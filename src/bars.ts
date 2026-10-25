@@ -55,56 +55,85 @@ export function dailyRange(
 const volumeOf = (v: number | null): number | null =>
   v === null ? null : Math.round(v);
 
-// The source's values replace the stored ones, corrections included;
-// a final row stays final.
+// what a write did: the rows it was given, and the earliest date whose
+// stored values changed, for whatever is computed from past bars
+export type Written = { rows: number; changedFrom: string | null };
+
+export const earliest = (a: string | null, b: string | null) =>
+  a === null ? b : b === null ? a : a < b ? a : b;
+
+type Stored = Omit<Bar, "final"> & { final: number };
+
+const sameValues = (a: Stored, b: Bar) =>
+  a.open === b.open &&
+  a.high === b.high &&
+  a.low === b.low &&
+  a.close === b.close &&
+  a.volume === volumeOf(b.volume);
+
+// The source's values replace the stored ones, corrections included; a
+// row is written only when it changes, and a final row stays final.
 export function upsertBars(
   db: Db,
   instrument: string,
   interval: Interval,
   bars: readonly Bar[],
   fetchedAt: number,
-): number {
-  const upsert = db.query(
+): Written {
+  const read = db.query<Stored, [string, string, string]>(
+    `select date, open, high, low, close, volume, final from bars
+     where instrument = ? and interval = ? and date = ?`,
+  );
+  const insert = db.query(
     `insert into bars (instrument, interval, date, open, high, low, close,
        volume, final, fetched_at)
-     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-     on conflict (instrument, interval, date) do update set
-       open = excluded.open,
-       high = excluded.high,
-       low = excluded.low,
-       close = excluded.close,
-       volume = excluded.volume,
-       final = max(bars.final, excluded.final),
-       fetched_at = excluded.fetched_at`,
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
+  const update = db.query(
+    `update bars set open = ?, high = ?, low = ?, close = ?, volume = ?,
+       final = ?, fetched_at = ?
+     where instrument = ? and interval = ? and date = ?`,
+  );
+  let changedFrom: string | null = null;
   for (const b of bars) {
-    upsert.run(
-      instrument,
-      interval,
-      b.date,
-      b.open,
-      b.high,
-      b.low,
-      b.close,
-      volumeOf(b.volume),
-      b.final ? 1 : 0,
-      fetchedAt,
-    );
+    const stored = read.get(instrument, interval, b.date);
+    const final = b.final || stored?.final === 1 ? 1 : 0;
+    const values = [b.open, b.high, b.low, b.close, volumeOf(b.volume)];
+    if (stored === null) {
+      insert.run(instrument, interval, b.date, ...values, final, fetchedAt);
+      changedFrom = earliest(changedFrom, b.date);
+    } else if (!sameValues(stored, b)) {
+      update.run(...values, final, fetchedAt, instrument, interval, b.date);
+      changedFrom = earliest(changedFrom, b.date);
+    } else if (final !== stored.final) {
+      update.run(...values, final, fetchedAt, instrument, interval, b.date);
+    }
   }
-  return bars.length;
+  return { rows: bars.length, changedFrom };
 }
 
-// for a whole history after a split, so no bar keeps its old scale
-export function replaceDailyBars(
+// Deletes the daily bars from from to to, both included, that are not
+// in keep: a day the source has no bar for had no trading. Answers the
+// earliest date deleted.
+export function deleteDailyBars(
   db: Db,
   instrument: string,
-  bars: readonly Bar[],
-  fetchedAt: number,
-): number {
-  db.query("delete from bars where instrument = ? and interval = '1d'").run(
-    instrument,
+  from: string,
+  to: string,
+  keep: ReadonlySet<string>,
+): string | null {
+  const gone = db
+    .query<{ date: string }, [string, string, string]>(
+      `select date from bars where instrument = ? and interval = '1d'
+       and date >= ? and date <= ? order by date`,
+    )
+    .all(instrument, from, to)
+    .filter((r) => !keep.has(r.date));
+  const del = db.query(
+    "delete from bars where instrument = ? and interval = '1d' and date = ?",
   );
-  return upsertBars(db, instrument, "1d", bars, fetchedAt);
+  for (const r of gone) del.run(instrument, r.date);
+  return gone[0]?.date ?? null;
 }
 
 // Monday to Sunday by the exchange's date; final once the week's Sunday
@@ -158,5 +187,5 @@ export function rebuildWeeks(
   db.query(
     "delete from bars where instrument = ? and interval = '1wk' and date >= ?",
   ).run(instrument, monday);
-  return upsertBars(db, instrument, "1wk", weeks, now);
+  return upsertBars(db, instrument, "1wk", weeks, now).rows;
 }

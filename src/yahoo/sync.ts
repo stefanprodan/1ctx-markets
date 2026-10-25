@@ -7,9 +7,11 @@
 import {
   type Bar,
   dailyRange,
+  deleteDailyBars,
+  earliest,
   rebuildWeeks,
-  replaceDailyBars,
   upsertBars,
+  type Written,
 } from "../bars.ts";
 import {
   barDate,
@@ -27,11 +29,12 @@ import {
   readBySourceSymbol,
   upsertInstrument,
 } from "../instruments.ts";
-import { SourceError } from "../source.ts";
-import { addDays, dateOfWall, startOfDate } from "../zone.ts";
+import { type Phrase, SourceError } from "../source.ts";
+import { addDays, dateOfWall, startOfDate, wallTime } from "../zone.ts";
 import {
   type ChartAnswer,
   type ChartMeta,
+  type ChartRow,
   SOURCE,
   type SparkAnswer,
   type Yahoo,
@@ -42,21 +45,46 @@ export type YahooContext = { db: Db; clock: Clock; yahoo: Yahoo };
 
 export const BACKFILL_YEARS = 10;
 export const REFETCH_DAYS = 30;
+// a history starting this much later than asked, and later than the
+// stored one, is cut short, not a listing that began then
+const SHORT_HISTORY_DAYS = 10;
 
-// Daily bars dated in the exchange's zone. The row Yahoo ends some
-// answers with, stamped at the last trade, merges into the bar of its
-// local date when that is the answer's session date, a closing auction
-// after the end included; otherwise it moves the quote only (EURUSD=X
-// on Sunday while its session is Friday's). Null closes are no bar.
-export function dailyBars(answer: ChartAnswer, latest: Session | null): Bar[] {
+const timeOfDay = (zone: string, at: number) =>
+  ((wallTime(zone, at) % DAY_MS) + DAY_MS) % DAY_MS;
+
+type Read = {
+  bars: Bar[];
+  // the dates of the source's regular rows, null closes included
+  days: Set<string>;
+};
+
+// Daily bars dated in the exchange's zone. Yahoo ends some answers with
+// a row off the bar grid at the last trade; it merges into the regular
+// bar of the answer's session date, a closing auction after the end
+// included, and never makes a bar of its own (EURUSD=X traded on Sunday
+// while its session was Friday's). Null closes are no bar.
+function read(answer: ChartAnswer, latest: Session | null): Read {
   const zone = answer.session.zone;
-  const current = sessionDate(answer.session);
+  const rows = answer.rows;
+  let trailing: ChartRow | null = null;
+  let regular = rows;
+  const last = rows.at(-1);
+  if (last !== undefined) {
+    const grid =
+      rows.length > 1
+        ? timeOfDay(zone, rows.at(-2)!.at)
+        : timeOfDay(zone, answer.session.start);
+    if (timeOfDay(zone, last.at) !== grid) {
+      trailing = last;
+      regular = rows.slice(0, -1);
+    }
+  }
   const byDate = new Map<string, Bar>();
-  answer.rows.forEach((row, i) => {
+  const days = new Set<string>();
+  for (const row of regular) {
     const date = barDate(zone, row.at);
-    const trailing = i === answer.rows.length - 1 && row.at === answer.time;
-    if (trailing && date !== current) return;
-    if (row.close === null) return;
+    days.add(date);
+    if (row.close === null) continue;
     const bar = byDate.get(date);
     if (bar === undefined) {
       byDate.set(date, {
@@ -68,16 +96,31 @@ export function dailyBars(answer: ChartAnswer, latest: Session | null): Bar[] {
         volume: row.volume,
         final: latest !== null && isBarFinal(date, latest),
       });
-      return;
+    } else {
+      merge(bar, row);
     }
-    bar.open ??= row.open;
-    bar.high = maxOf(bar.high, row.high);
-    bar.low = minOf(bar.low, row.low);
-    bar.close = row.close;
-    // both are the day's volume, one later than the other
-    bar.volume = maxOf(bar.volume, row.volume);
-  });
-  return [...byDate.values()];
+  }
+  if (trailing !== null && trailing.close !== null) {
+    const date = barDate(zone, trailing.at);
+    const bar = byDate.get(date);
+    if (date === sessionDate(answer.session) && bar !== undefined) {
+      merge(bar, trailing);
+    }
+  }
+  return { bars: [...byDate.values()], days };
+}
+
+function merge(bar: Bar, row: ChartRow): void {
+  bar.open ??= row.open;
+  bar.high = maxOf(bar.high, row.high);
+  bar.low = minOf(bar.low, row.low);
+  bar.close = row.close!;
+  // both are the day's volume, one later than the other
+  bar.volume = maxOf(bar.volume, row.volume);
+}
+
+export function dailyBars(answer: ChartAnswer, latest: Session | null): Bar[] {
+  return read(answer, latest).bars;
 }
 
 const maxOf = (a: number | null, b: number | null) =>
@@ -156,36 +199,74 @@ function recordSplits(
 }
 
 // Writes one chart answer's session, bars and weeks. A whole history
-// replaces every daily bar, so none keeps a scale from before a split.
+// replaces every daily bar, so none keeps a scale from before a split,
+// unless it is cut short against the stored one; then nothing is
+// written, the splits stay unapplied, and the next run asks again. A
+// window drops the stored days inside its span that the source no
+// longer has.
 function store(
   ctx: YahooContext,
   instrument: Instrument,
   answer: ChartAnswer,
   whole: { since: string; splits: readonly ChartAnswer[] } | null,
-): number {
+): Written {
   const { db, clock } = ctx;
-  return db.transaction(() => {
+  return db.transaction((): Written => {
     recordSession(db, instrument.market, answer.session, answer.fetchedAt);
     const latest = readSession(db, instrument.market);
-    let bars = dailyBars(answer, latest);
-    let rows: number;
+    const { bars, days } = read(answer, latest);
     if (whole) {
-      bars = bars.filter((b) => b.date >= whole.since);
-      // an empty answer never wipes a stored history
-      if (bars.length === 0 && dailyRange(db, instrument.id) !== null) {
-        throw new SourceError("malformed answer", "a history without bars");
+      const kept = bars.filter((b) => b.date >= whole.since);
+      const range = dailyRange(db, instrument.id);
+      if (range !== null) {
+        const first = kept[0]?.date;
+        if (
+          first === undefined ||
+          (first > addDays(whole.since, SHORT_HISTORY_DAYS) &&
+            range.first < addDays(first, -SHORT_HISTORY_DAYS))
+        ) {
+          throw new SourceError("malformed answer", "a history cut short");
+        }
       }
-      rows = replaceDailyBars(db, instrument.id, bars, answer.fetchedAt);
+      const keep = new Set([...days].filter((d) => d >= whole.since));
+      const deleted = deleteDailyBars(
+        db,
+        instrument.id,
+        "0000-01-01",
+        "9999-12-31",
+        keep,
+      );
+      const written = upsertBars(
+        db,
+        instrument.id,
+        "1d",
+        kept,
+        answer.fetchedAt,
+      );
       recordSplits(db, instrument, whole.splits, clock.now());
       rebuildWeeks(db, instrument.id, latest, clock.now());
-    } else {
-      rows = upsertBars(db, instrument.id, "1d", bars, answer.fetchedAt);
-      const first = bars[0]?.date;
-      if (first !== undefined) {
-        rebuildWeeks(db, instrument.id, latest, clock.now(), first);
-      }
+      return {
+        rows: written.rows,
+        changedFrom: earliest(deleted, written.changedFrom),
+      };
     }
-    return rows;
+    const written = upsertBars(db, instrument.id, "1d", bars, answer.fetchedAt);
+    const span = [...days].sort();
+    let deleted: string | null = null;
+    if (span.length > 0) {
+      deleted = deleteDailyBars(
+        db,
+        instrument.id,
+        span[0]!,
+        span.at(-1)!,
+        days,
+      );
+      rebuildWeeks(db, instrument.id, latest, clock.now(), span[0]!);
+    }
+    return {
+      rows: written.rows,
+      changedFrom: earliest(deleted, written.changedFrom),
+    };
   })();
 }
 
@@ -195,7 +276,7 @@ export async function addInstrument(
   ctx: YahooContext,
   sourceSymbol: string,
   expected: string | null = null,
-): Promise<{ instrument: Instrument; rows: number }> {
+): Promise<{ instrument: Instrument } & Written> {
   const { monday, from } = backfillStart(ctx.clock.now());
   const answer = await ctx.yahoo.chart(sourceSymbol, from, ctx.clock.now());
   const id = keyOf(answer.exchange, answer.symbol);
@@ -206,13 +287,13 @@ export async function addInstrument(
   const instrument = upsertInstrument(ctx.db, fields(answer), ctx.clock.now());
   // a history older than ten years is kept, so it is fetched whole
   if (range !== null && range.first < monday) {
-    return { instrument, rows: await backfill(ctx, instrument, [answer]) };
+    return { instrument, ...(await backfill(ctx, instrument, [answer])) };
   }
-  const rows = store(ctx, instrument, answer, {
+  const written = store(ctx, instrument, answer, {
     since: monday,
     splits: [answer],
   });
-  return { instrument, rows };
+  return { instrument, ...written };
 }
 
 // Ten years of daily bars again, or from the first stored bar if that
@@ -221,7 +302,7 @@ export async function backfill(
   ctx: YahooContext,
   instrument: Instrument,
   triggers: readonly ChartAnswer[] = [],
-): Promise<number> {
+): Promise<Written> {
   const range = dailyRange(ctx.db, instrument.id);
   let { monday, from } = backfillStart(ctx.clock.now());
   if (range !== null && range.first < monday) {
@@ -246,7 +327,7 @@ export async function backfill(
 export async function refetch(
   ctx: YahooContext,
   instrument: Instrument,
-): Promise<number> {
+): Promise<Written> {
   const { db, clock } = ctx;
   const range = dailyRange(db, instrument.id);
   if (range === null) return backfill(ctx, instrument);
@@ -374,17 +455,26 @@ export function storeQuotes(db: Db, answer: SparkAnswer): QuoteRow[] {
 export async function fetchQuotes(
   ctx: YahooContext,
   instruments: readonly Instrument[],
-): Promise<{ quotes: QuoteRow[]; errors: unknown[] }> {
+): Promise<{
+  quotes: QuoteRow[];
+  skipped: { symbol: string | null; phrase: Phrase }[];
+  errors: unknown[];
+}> {
   const batches = await ctx.yahoo.sparkAll(
     instruments.map((i) => i.sourceSymbol),
   );
   const quotes: QuoteRow[] = [];
+  const skipped: { symbol: string | null; phrase: Phrase }[] = [];
   const errors: unknown[] = [];
   for (const batch of batches) {
-    if (batch.answer) quotes.push(...storeQuotes(ctx.db, batch.answer));
-    else errors.push(batch.error);
+    if (batch.answer) {
+      quotes.push(...storeQuotes(ctx.db, batch.answer));
+      skipped.push(...batch.answer.skipped);
+    } else {
+      errors.push(batch.error);
+    }
   }
-  return { quotes, errors };
+  return { quotes, skipped, errors };
 }
 
 export function readQuote(db: Db, instrument: string): QuoteRow | null {

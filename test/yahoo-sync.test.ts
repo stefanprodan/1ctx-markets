@@ -119,6 +119,23 @@ describe("daily bars from a chart answer", () => {
     expect(bars[3]).toMatchObject({ close: 103.2699966430664, final: true });
   });
 
+  test("a trailing row never makes a bar of its own", async () => {
+    // a Sunday evening trade in CL=F's Sunday session, which has no
+    // regular row yet
+    const cl = await answer("chart-cl-f-5d-1d", (r) => {
+      const at = Date.parse("2026-10-25T22:30:00Z") / 1000;
+      r.meta.regularMarketTime = at;
+      appendRow(r, at, [103, 104, 102, 103.5, 10]);
+    });
+    expect(dates(dailyBars(cl, cl.session))).not.toContain("2026-10-25");
+    // off the bar grid, though not stamped at the last trade's time
+    const fx = await answer("chart-eurusd-x-5d-1d", (r) => {
+      r.meta.regularMarketTime += 1;
+    });
+    expect(dates(dailyBars(fx, fx.session))).not.toContain("2026-10-25");
+    expect(dailyBars(fx, fx.session)).toHaveLength(5);
+  });
+
   test("a null close is skipped, never stored as 0", async () => {
     const a = await answer("chart-nvda-5d-1d", (r) => {
       r.indicators.quote[0].close[2] = null;
@@ -298,6 +315,96 @@ describe("refetch", () => {
   });
 });
 
+describe("refetch changes", () => {
+  // NVDA's ten years, then a refetch answering route
+  async function stored() {
+    const history = await recorded("chart-nvda-5y-1d");
+    let route: Recorded = history;
+    const t = setup(Date.parse(history.recordedAt), () => route);
+    const { instrument } = await addInstrument(t.ctx, "NVDA");
+    return {
+      ...t,
+      instrument,
+      answer: (r: Recorded) => {
+        route = r;
+      },
+    };
+  }
+
+  function without(fx: Recorded, index: number): Recorded {
+    const out = clone(fx);
+    const result = out.body.chart.result[0];
+    result.timestamp.splice(index, 1);
+    for (const k of ["open", "high", "low", "close", "volume"]) {
+      result.indicators.quote[0][k].splice(index, 1);
+    }
+    return out;
+  }
+
+  test("reports the earliest date whose values changed, and none when nothing did", async () => {
+    const { ctx, instrument, answer } = await stored();
+    const fx = await recorded("chart-nvda-5d-1d");
+    answer(fx);
+    expect(await refetch(ctx, instrument)).toEqual({
+      rows: 5,
+      changedFrom: null,
+    });
+    const corrected = clone(fx);
+    corrected.body.chart.result[0].indicators.quote[0].close[3] = 212.5;
+    answer(corrected);
+    expect((await refetch(ctx, instrument)).changedFrom).toBe("2026-10-22");
+  });
+
+  test("drops a stored day the source no longer has, only inside the answer's span", async () => {
+    const { db, ctx, instrument, answer } = await stored();
+    const fx = await recorded("chart-nvda-5d-1d");
+    answer(without(fx, 2));
+    expect((await refetch(ctx, instrument)).changedFrom).toBe("2026-10-21");
+    const days = dates(readBars(db, "US:NVDA", "1d"));
+    expect(days).not.toContain("2026-10-21");
+    expect(days).toContain("2026-10-16");
+    expect(days).toHaveLength(1254);
+    const week = readBars(db, "US:NVDA", "1wk").at(-1)!;
+    expect(week.date).toBe("2026-10-19");
+
+    // an answer without rows deletes nothing
+    const empty = clone(fx);
+    const result = empty.body.chart.result[0];
+    delete result.timestamp;
+    result.indicators.quote = [{}];
+    answer(empty);
+    expect((await refetch(ctx, instrument)).changedFrom).toBeNull();
+    expect(readBars(db, "US:NVDA", "1d")).toHaveLength(1254);
+  });
+
+  test("a history cut short is refused and its split left for the next run", async () => {
+    const { db, ctx, f, instrument, answer } = await stored();
+    const short = clone(await recorded("chart-nvda-5d-1d"));
+    short.body.chart.result[0].events = {
+      splits: {
+        "1792157400": {
+          date: 1792157400,
+          numerator: 2,
+          denominator: 1,
+          splitRatio: "2:1",
+        },
+      },
+    };
+    answer(short);
+    // the window and then the whole history both answer five days
+    await expect(refetch(ctx, instrument)).rejects.toThrow(
+      "a history cut short",
+    );
+    expect(f.urls).toHaveLength(3);
+    expect(readBars(db, "US:NVDA", "1d")).toHaveLength(1255);
+    expect(db.query("select date from splits").all()).toEqual([
+      { date: "2024-06-10" },
+    ]);
+    await expect(refetch(ctx, instrument)).rejects.toThrow();
+    expect(f.urls).toHaveLength(5);
+  });
+});
+
 describe("quotes from a spark answer", () => {
   async function withInstruments() {
     const fx = await recorded("spark-v7-batch");
@@ -391,6 +498,20 @@ describe("quotes from a spark answer", () => {
     meta.regularMarketPrice = 1;
     expect(storeQuotes(db, parseSpark(body, clock.now()))).toHaveLength(4);
     expect(readQuote(db, "CRYPTO:SOL-USD")!.price).toBe(101.52);
+  });
+
+  test("a bad entry skips only itself, with a fixed phrase", async () => {
+    const { db, clock, fx } = await withInstruments();
+    const body = clone(fx.body);
+    delete body.spark.result[2].response[0].meta.regularMarketPrice;
+    body.spark.result[4].response = null;
+    const parsed = parseSpark(body, clock.now());
+    expect(parsed.skipped).toEqual([
+      { symbol: "NVDA", phrase: "malformed answer" },
+      { symbol: "EURUSD=X", phrase: "not found" },
+    ]);
+    expect(storeQuotes(db, parsed)).toHaveLength(3);
+    expect(readQuote(db, "US:NVDA")).toBeNull();
   });
 
   test("an instrument not stored gets no quote, its market's session still counts", async () => {

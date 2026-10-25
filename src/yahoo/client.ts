@@ -7,7 +7,13 @@
 
 import { type Session, sessionFromChartMeta } from "../calendars.ts";
 import type { Clock } from "../clock.ts";
-import { type Fetch, type Queue, queue, SourceError } from "../source.ts";
+import {
+  type Fetch,
+  type Phrase,
+  type Queue,
+  queue,
+  SourceError,
+} from "../source.ts";
 
 export const SOURCE = "yahoo";
 export const HOST = "https://query1.finance.yahoo.com";
@@ -59,7 +65,12 @@ export type ChartAnswer = ChartMeta & {
   fetchedAt: number;
 };
 
-export type SparkAnswer = { quotes: ChartMeta[]; fetchedAt: number };
+export type SparkAnswer = {
+  quotes: ChartMeta[];
+  // entries with no quote, each with a fixed phrase
+  skipped: { symbol: string | null; phrase: Phrase }[];
+  fetchedAt: number;
+};
 
 export type SparkBatch = {
   symbols: string[];
@@ -83,6 +94,9 @@ export type Yahoo = {
   // the others' answers
   sparkAll(symbols: readonly string[]): Promise<SparkBatch[]>;
   search(query: string): Promise<Listing[]>;
+  // the same client and queue, failing at once while the queue is
+  // paused, for a tool answering a caller
+  failFast(): Yahoo;
 };
 
 export type YahooOptions = {
@@ -244,8 +258,8 @@ export function parseChart(body: unknown, fetchedAt: number): ChartAnswer {
   };
 }
 
-// A symbol the source has no data for may come back without a response;
-// it gets no quote rather than failing its batch.
+// Each entry is read on its own, so one bad symbol skips only itself;
+// a symbol without data comes back without a response.
 export function parseSpark(body: unknown, fetchedAt: number): SparkAnswer {
   const spark = obj(obj(body, "body").spark, "spark");
   if (spark.error !== null && spark.error !== undefined) {
@@ -253,14 +267,26 @@ export function parseSpark(body: unknown, fetchedAt: number): SparkAnswer {
   }
   if (!Array.isArray(spark.result)) throw malformed("no spark results");
   const quotes: ChartMeta[] = [];
+  const skipped: SparkAnswer["skipped"] = [];
   for (const entry of spark.result) {
-    const response = obj(entry, "spark result").response;
-    if (response === null || response === undefined) continue;
-    if (!Array.isArray(response)) throw malformed("spark response");
-    if (response.length === 0) continue;
-    quotes.push(parseMeta(obj(response[0], "spark response").meta));
+    const symbol = isObj(entry) ? optionalText(entry.symbol) : null;
+    const response = isObj(entry) ? entry.response : undefined;
+    if (
+      response === null ||
+      (Array.isArray(response) && response.length === 0)
+    ) {
+      skipped.push({ symbol, phrase: "not found" });
+      continue;
+    }
+    try {
+      if (!Array.isArray(response)) throw malformed("spark response");
+      quotes.push(parseMeta(obj(response[0], "spark response").meta));
+    } catch (error) {
+      if (!(error instanceof SourceError)) throw error;
+      skipped.push({ symbol, phrase: error.phrase });
+    }
   }
-  return { quotes, fetchedAt };
+  return { quotes, skipped, fetchedAt };
 }
 
 export function parseSearch(body: unknown): Listing[] {
@@ -290,93 +316,106 @@ export function yahoo(options: YahooOptions): Yahoo {
   const calls = options.queue ?? queue(clock, CONCURRENCY);
 
   // the body, parsed as JSON, of a call that answered 200
-  const get = (url: string): Promise<{ body: unknown; fetchedAt: number }> =>
-    calls.run(async () => {
-      const abort = new AbortController();
-      let timedOut = false;
-      const cancel = clock.at(clock.now() + TIMEOUT_MS, () => {
-        timedOut = true;
-        abort.abort();
-      });
-      try {
-        let res: Response;
-        let raw: string;
+  const get = (
+    url: string,
+    failFast: boolean,
+  ): Promise<{ body: unknown; fetchedAt: number }> =>
+    calls.run(
+      async () => {
+        const abort = new AbortController();
+        let timedOut = false;
+        const cancel = clock.at(clock.now() + TIMEOUT_MS, () => {
+          timedOut = true;
+          abort.abort();
+        });
         try {
-          res = await doFetch(url, {
-            headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
-            signal: abort.signal,
-          });
-          raw = await res.text();
-        } catch {
-          throw new SourceError(timedOut ? "timed out" : "network error");
+          let res: Response;
+          let raw: string;
+          try {
+            res = await doFetch(url, {
+              headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
+              signal: abort.signal,
+            });
+            raw = await res.text();
+          } catch {
+            throw new SourceError(timedOut ? "timed out" : "network error");
+          }
+          const fetchedAt = clock.now();
+          if (res.status === 429) throw new SourceError("rate limited");
+          if (res.status === 400) throw new SourceError("bad request");
+          let body: unknown;
+          try {
+            body = JSON.parse(raw);
+          } catch {
+            body = undefined;
+          }
+          // an unknown symbol is a 404 with a chart error in the body
+          if (res.status === 404) throw new SourceError("not found");
+          if (!res.ok)
+            throw new SourceError("source error", `HTTP ${res.status}`);
+          if (body === undefined) throw malformed("not JSON");
+          return { body, fetchedAt };
+        } finally {
+          cancel();
         }
-        const fetchedAt = clock.now();
-        if (res.status === 429) throw new SourceError("rate limited");
-        if (res.status === 400) throw new SourceError("bad request");
-        let body: unknown;
-        try {
-          body = JSON.parse(raw);
-        } catch {
-          body = undefined;
+      },
+      { failFast },
+    );
+
+  const client = (failFast: boolean): Yahoo => {
+    const spark = async (symbols: readonly string[]): Promise<SparkAnswer> => {
+      if (symbols.length === 0 || symbols.length > SPARK_MAX) {
+        throw new Error(`a spark call takes 1 to ${SPARK_MAX} symbols`);
+      }
+      // a cached answer freezes the price for minutes; _ makes each URL new
+      const list = symbols.map(encodeURIComponent).join(",");
+      const url = `${host}/v7/finance/spark?symbols=${list}&range=1d&interval=5m&_=${clock.now()}`;
+      const { body, fetchedAt } = await get(url, failFast);
+      return parseSpark(body, fetchedAt);
+    };
+
+    return {
+      async chart(symbol, from, to) {
+        const params = new URLSearchParams({
+          period1: String(Math.floor(from / 1000)),
+          period2: String(Math.ceil(to / 1000)),
+          interval: "1d",
+          events: "div,split",
+        });
+        const url = `${host}/v8/finance/chart/${encodeURIComponent(symbol)}?${params}`;
+        const { body, fetchedAt } = await get(url, failFast);
+        return parseChart(body, fetchedAt);
+      },
+      spark,
+      async sparkAll(symbols) {
+        const batches: string[][] = [];
+        for (let i = 0; i < symbols.length; i += SPARK_MAX) {
+          batches.push(symbols.slice(i, i + SPARK_MAX));
         }
-        // an unknown symbol is a 404 with a chart error in the body
-        if (res.status === 404) throw new SourceError("not found");
-        if (!res.ok)
-          throw new SourceError("source error", `HTTP ${res.status}`);
-        if (body === undefined) throw malformed("not JSON");
-        return { body, fetchedAt };
-      } finally {
-        cancel();
-      }
-    });
-
-  const spark = async (symbols: readonly string[]): Promise<SparkAnswer> => {
-    if (symbols.length === 0 || symbols.length > SPARK_MAX) {
-      throw new Error(`a spark call takes 1 to ${SPARK_MAX} symbols`);
-    }
-    // a cached answer freezes the price for minutes; _ makes each URL new
-    const list = symbols.map(encodeURIComponent).join(",");
-    const url = `${host}/v7/finance/spark?symbols=${list}&range=1d&interval=5m&_=${clock.now()}`;
-    const { body, fetchedAt } = await get(url);
-    return parseSpark(body, fetchedAt);
-  };
-
-  return {
-    async chart(symbol, from, to) {
-      const params = new URLSearchParams({
-        period1: String(Math.floor(from / 1000)),
-        period2: String(Math.ceil(to / 1000)),
-        interval: "1d",
-        events: "div,split",
-      });
-      const url = `${host}/v8/finance/chart/${encodeURIComponent(symbol)}?${params}`;
-      const { body, fetchedAt } = await get(url);
-      return parseChart(body, fetchedAt);
-    },
-    spark,
-    async sparkAll(symbols) {
-      const batches: string[][] = [];
-      for (let i = 0; i < symbols.length; i += SPARK_MAX) {
-        batches.push(symbols.slice(i, i + SPARK_MAX));
-      }
-      return Promise.all(
-        batches.map((batch) =>
-          spark(batch).then(
-            (answer): SparkBatch => ({ symbols: batch, answer }),
-            (error: unknown): SparkBatch => ({ symbols: batch, error }),
+        return Promise.all(
+          batches.map((batch) =>
+            spark(batch).then(
+              (answer): SparkBatch => ({ symbols: batch, answer }),
+              (error: unknown): SparkBatch => ({ symbols: batch, error }),
+            ),
           ),
-        ),
-      );
-    },
-    async search(query) {
-      const params = new URLSearchParams({
-        q: query,
-        quotesCount: "10",
-        newsCount: "0",
-        listsCount: "0",
-      });
-      const { body } = await get(`${host}/v1/finance/search?${params}`);
-      return parseSearch(body);
-    },
+        );
+      },
+      async search(query) {
+        const params = new URLSearchParams({
+          q: query,
+          quotesCount: "10",
+          newsCount: "0",
+          listsCount: "0",
+        });
+        const { body } = await get(
+          `${host}/v1/finance/search?${params}`,
+          failFast,
+        );
+        return parseSearch(body);
+      },
+      failFast: () => client(true),
+    };
   };
+  return client(false);
 }

@@ -5,6 +5,7 @@
 // so the identity holds when the source changes.
 
 import type { Db } from "./db/index.ts";
+import { SourceError } from "./source.ts";
 
 export type Instrument = {
   id: string;
@@ -51,13 +52,22 @@ export function readInstruments(db: Db): Instrument[] {
   return db.query<Instrument, []>(`${SELECT} order by id`).all();
 }
 
-// the source's latest answer refreshes the name, type, currency and zone
+// The source's latest answer refreshes the name, type, currency and
+// zone. A source symbol stored under another key is refused: the source
+// moved it to another market, which a migration re-keys.
 export function upsertInstrument(
   db: Db,
   fields: InstrumentFields,
   now: number,
 ): Instrument {
   const id = `${fields.market}:${fields.symbol}`;
+  const other = readBySourceSymbol(db, fields.source, fields.sourceSymbol);
+  if (other !== null && other.id !== id) {
+    throw new SourceError(
+      "malformed answer",
+      `${fields.sourceSymbol} is stored as ${other.id}, answered as ${id}`,
+    );
+  }
   db.query(
     `insert into instruments (id, market, symbol, source, source_symbol,
        exchange, name, type, currency, zone, added_at, updated_at)

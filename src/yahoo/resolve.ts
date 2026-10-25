@@ -5,14 +5,19 @@
 // and which listing a caller's symbol means, never by a guess.
 
 import { CRYPTO } from "../calendars.ts";
+import { type Clock, DAY_MS } from "../clock.ts";
 import type { Db } from "../db/index.ts";
 import {
   type Instrument,
   readBySourceSymbol,
   readInstrument,
 } from "../instruments.ts";
+import { SourceError } from "../source.ts";
 import type { Listing, Yahoo } from "./client.ts";
 import { SOURCE } from "./client.ts";
+
+// a short chart is enough for an exact symbol's answer to name its key
+const CHECK_MS = 7 * DAY_MS;
 
 // The key is the identity: an alias added later moves stored keys, so
 // it ships with a migration that re-keys them.
@@ -65,9 +70,8 @@ export type Candidate = Listing & {
 export type Resolution =
   // stored already
   | { kind: "known"; instrument: Instrument }
-  // one listing, added by its source symbol; the key is null when only
-  // the chart answer will name the exchange
-  | { kind: "new"; sourceSymbol: string; id: string | null }
+  // one listing, added by its source symbol
+  | { kind: "new"; sourceSymbol: string; id: string }
   // several listings, for the caller to pick from
   | { kind: "candidates"; candidates: Candidate[] };
 
@@ -88,15 +92,16 @@ const candidate = (l: Listing): Candidate => ({
 const KEY = /^([A-Za-z0-9]+):(\S+)$/;
 
 // A key not yet stored is searched on its market's codes. A Yahoo
-// symbol with its suffix, or an index, futures or FX symbol, is exact
-// and needs no search. A bare symbol takes the listing whose Yahoo
+// symbol with its suffix, or an index, futures or FX symbol, is exact:
+// a short chart names its key, and only a 404 falls back to the search.
+// A bare symbol takes the listing whose Yahoo
 // symbol equals it; a name, or a symbol with no such listing, answers
 // every listing as a candidate.
 export async function resolve(
-  db: Db,
-  yahoo: Yahoo,
+  ctx: { db: Db; clock: Clock; yahoo: Yahoo },
   input: string,
 ): Promise<Resolution> {
+  const { db, yahoo } = ctx;
   const given = input.trim();
   if (given === "") throw new ResolveError(input);
   const key = KEY.exec(given);
@@ -116,7 +121,23 @@ export async function resolve(
   const upper = given.toUpperCase();
   const known = readBySourceSymbol(db, SOURCE, upper);
   if (known) return { kind: "known", instrument: known };
-  if (isExact(upper)) return { kind: "new", sourceSymbol: upper, id: null };
+  if (isExact(upper)) {
+    // Yahoo writes share classes BRK-B, so BRK.B is no listing of its
+    // own and falls back to a search
+    try {
+      const now = ctx.clock.now();
+      const a = await yahoo.chart(upper, now - CHECK_MS, now);
+      return {
+        kind: "new",
+        sourceSymbol: a.symbol,
+        id: keyOf(a.exchange, a.symbol),
+      };
+    } catch (error) {
+      if (!(error instanceof SourceError && error.phrase === "not found")) {
+        throw error;
+      }
+    }
+  }
   const listings = (await yahoo.search(given)).map(candidate);
   const exact = listings.find((l) => l.sourceSymbol.toUpperCase() === upper);
   if (exact) {

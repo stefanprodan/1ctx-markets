@@ -224,6 +224,26 @@ describe("the queue", () => {
     expect(isStale(db, "yahoo")).toBe(false);
   });
 
+  test("a tool's call fails at once while the queue is paused; a job's waits", async () => {
+    const limited = await recorded("chart-429-chrome-ua");
+    const nvda = await recorded("chart-nvda-5d-1d");
+    const clock = fakeClock();
+    let answer = limited;
+    const f = fakeFetch(() => answer);
+    const client = yahoo({ clock, fetch: f.fetch });
+    expect(await phrase(client.chart("NVDA", 0, 1))).toBe("rate limited");
+    answer = nvda;
+    const job = client.chart("NVDA", 0, 1);
+    expect(await phrase(client.failFast().chart("NVDA", 0, 1))).toBe(
+      "rate limited",
+    );
+    expect(f.urls).toHaveLength(1);
+    await clock.advance(RATE_LIMIT_BACKOFF_MS);
+    await job;
+    await client.failFast().chart("NVDA", 0, 1);
+    expect(f.urls).toHaveLength(3);
+  });
+
   test("a failure backs off for a shorter while, and nothing is retried", async () => {
     const nvda = await recorded("chart-nvda-5d-1d");
     const clock = fakeClock();

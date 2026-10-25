@@ -46,8 +46,20 @@ const backsOff = (error: unknown): boolean =>
 export const RATE_LIMIT_BACKOFF_MS = 5 * MINUTE_MS;
 export const FAILURE_BACKOFF_MS = 30_000;
 
+export type RunOptions = {
+  // a tool answering a caller fails at once while the queue is paused,
+  // where a job waits the back-off out
+  failFast?: boolean;
+};
+
 export type Queue = {
-  run<T>(task: () => Promise<T>): Promise<T>;
+  run<T>(task: () => Promise<T>, options?: RunOptions): Promise<T>;
+};
+
+type Waiting = {
+  start: () => void;
+  failFast: boolean;
+  reject: (error: unknown) => void;
 };
 
 // A few calls at a time; after a 429 or a failure, no call starts until
@@ -56,40 +68,51 @@ export function queue(clock: Clock, concurrency: number): Queue {
   if (!Number.isSafeInteger(concurrency) || concurrency < 1) {
     throw new Error("concurrency is a whole number above 0");
   }
-  const waiting: (() => void)[] = [];
+  let waiting: Waiting[] = [];
   let active = 0;
   let until = 0;
+  let pausedBy: Phrase = "rate limited";
   let armed = false;
   const pump = () => {
-    while (active < concurrency && waiting.length > 0) {
-      if (clock.now() < until) {
-        if (!armed) {
-          armed = true;
-          clock.at(until, () => {
-            armed = false;
-            pump();
-          });
-        }
-        return;
+    if (clock.now() < until) {
+      const fast = waiting.filter((w) => w.failFast);
+      waiting = waiting.filter((w) => !w.failFast);
+      for (const w of fast) w.reject(new SourceError(pausedBy, "backing off"));
+      if (!armed && waiting.length > 0) {
+        armed = true;
+        clock.at(until, () => {
+          armed = false;
+          pump();
+        });
       }
+      return;
+    }
+    while (active < concurrency && waiting.length > 0) {
       active++;
-      waiting.shift()!();
+      waiting.shift()!.start();
     }
   };
   return {
-    run<T>(task: () => Promise<T>): Promise<T> {
+    run<T>(task: () => Promise<T>, options: RunOptions = {}): Promise<T> {
       return new Promise<T>((resolve, reject) => {
-        waiting.push(() => {
+        const start = () => {
           Promise.resolve()
             .then(task)
             .then(resolve, (error: unknown) => {
               if (backsOff(error)) {
-                const pause =
+                const limited =
                   error instanceof SourceError &&
-                  error.phrase === "rate limited"
-                    ? RATE_LIMIT_BACKOFF_MS
-                    : FAILURE_BACKOFF_MS;
-                until = Math.max(until, clock.now() + pause);
+                  error.phrase === "rate limited";
+                const pause = limited
+                  ? RATE_LIMIT_BACKOFF_MS
+                  : FAILURE_BACKOFF_MS;
+                if (clock.now() + pause > until) {
+                  until = clock.now() + pause;
+                  pausedBy =
+                    error instanceof SourceError
+                      ? error.phrase
+                      : "source error";
+                }
               }
               reject(error);
             })
@@ -97,7 +120,8 @@ export function queue(clock: Clock, concurrency: number): Queue {
               active--;
               pump();
             });
-        });
+        };
+        waiting.push({ start, failFast: options.failFast === true, reject });
         pump();
       });
     },
