@@ -54,7 +54,7 @@ export function session(zone: string, start: number, end: number): Session {
   return { zone: checkZone(zone), start, end };
 }
 
-// a stored session only moves forward, whatever a late answer shows
+// moves back only while the stored session has not begun, to undo a bad answer
 export function recordSession(
   db: Db,
   market: string,
@@ -74,7 +74,8 @@ export function recordSession(
          session_end = excluded.session_end,
          fetched_at = excluded.fetched_at
        where excluded.fetched_at >= markets.fetched_at
-         and excluded.session_start >= markets.session_start`,
+         and (excluded.session_start >= markets.session_start
+           or markets.session_start > excluded.fetched_at)`,
     )
     .run(market, checked.zone, checked.start, checked.end, fetchedAt);
   return changes > 0;

@@ -274,6 +274,38 @@ describe("stored sessions", () => {
     db.close();
   });
 
+  test("a session wrongly in the future is corrected by the next answer", async () => {
+    const db = database();
+    const { meta, fetchedAt } = await chart("chart-nvda-5d-1d");
+    const friday = sessionFromChartMeta(meta);
+    const bogus = at(friday, "2027-10-25T13:30:00Z", "2027-10-25T20:00:00Z");
+    const monday = at(friday, "2026-10-26T13:30:00Z", "2026-10-26T20:00:00Z");
+    expect(recordSession(db, "US", bogus, fetchedAt)).toBe(true);
+    const now = utc("2026-10-26T14:00:00Z");
+    expect(recordSession(db, "US", monday, now)).toBe(true);
+    const stored = readSession(db, "US")!;
+    expect(stored.start).toBe(monday.start);
+    expect(isQuoted("US", stored, now)).toBe(true);
+    expect(isBarFinal("2026-10-26", stored)).toBe(false);
+    db.close();
+  });
+
+  test("a delayed opening revised earlier is taken", async () => {
+    const db = database();
+    const { meta } = await chart("chart-vvsm-de-5d-1d");
+    const s = sessionFromChartMeta(meta);
+    const delayed = at(s, "2026-10-26T15:30:00Z", "2026-10-26T16:30:00Z");
+    const revised = at(s, "2026-10-26T14:30:00Z", "2026-10-26T16:30:00Z");
+    expect(
+      recordSession(db, "XETRA", delayed, utc("2026-10-26T08:00:00Z")),
+    ).toBe(true);
+    expect(
+      recordSession(db, "XETRA", revised, utc("2026-10-26T14:00:00Z")),
+    ).toBe(true);
+    expect(readSession(db, "XETRA")!.start).toBe(revised.start);
+    db.close();
+  });
+
   test("an answer fetched at the same time as the stored one replaces it", () => {
     const db = database();
     const t = utc("2026-10-26T08:00:00Z");
