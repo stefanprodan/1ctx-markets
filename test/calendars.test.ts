@@ -6,6 +6,7 @@ import { join } from "node:path";
 import {
   barDate,
   CRYPTO,
+  closeQuoteAt,
   isBarFinal,
   isQuoted,
   isWeekFinal,
@@ -319,6 +320,19 @@ describe("quoting", () => {
     expect(nextCheck(s, utc("2026-10-25T19:40:07Z"))).toBe(
       utc("2026-10-26T04:00:00Z"),
     );
+  });
+
+  test("takes one quote after the end, past a closing auction's print", async () => {
+    const { meta } = await chart("chart-vvsm-de-5d-1d");
+    const s = sessionFromChartMeta(meta);
+    const quoteAt = closeQuoteAt("XETRA", s)!;
+    expect(quoteAt).toBe(utc("2026-10-23T15:45:00Z"));
+    expect(quoteAt).toBeGreaterThan(meta.regularMarketTime * 1000);
+    expect(isQuoted("XETRA", s, quoteAt)).toBe(false);
+    const crypto = sessionFromChartMeta(
+      (await chart("chart-sol-usd-5d-1d")).meta,
+    );
+    expect(closeQuoteAt(CRYPTO, crypto)).toBeNull();
   });
 
   test("crypto is always quoted", async () => {

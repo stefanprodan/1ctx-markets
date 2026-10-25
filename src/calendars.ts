@@ -111,6 +111,11 @@ export function isQuoted(
   return s !== null && now >= s.start && now < s.end + MINUTE_MS;
 }
 
+// A closing auction can print after the end; crypto never closes.
+export function closeQuoteAt(market: string, s: Session): number | null {
+  return market === CRYPTO ? null : s.end + 15 * MINUTE_MS;
+}
+
 // When to ask the source again for a market not quoted: the stored
 // session's start, if it is still ahead of since; otherwise its local
 // start time on each following day, then hourly until its local end
