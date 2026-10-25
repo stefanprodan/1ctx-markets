@@ -14,6 +14,7 @@ import {
   parseObservations,
   parseSeries,
   SOURCE,
+  scrub,
 } from "../src/fred/client.ts";
 import { dueAt, fredJobs, seriesStale } from "../src/fred/jobs.ts";
 import {
@@ -53,8 +54,22 @@ async function answer(url: URL): Promise<Recorded> {
   const id = url.searchParams.get("series_id")!;
   if (!SERIES.includes(id)) return fixture("observations-unknown");
   if (isSeries(url)) return fixture(`series-${id.toLowerCase()}`);
-  if (isObservations(url)) return fixture(`observations-${id.toLowerCase()}`);
+  if (isObservations(url)) {
+    return paged(url, await fixture(`observations-${id.toLowerCase()}`));
+  }
   throw new Error(`no fixture for ${url}`);
+}
+
+// The recordings are the latest 30 of each series; asked from a start
+// date, FRED answers the whole history in one page, which the recorded
+// rows stand for.
+function paged(url: URL, fx: Recorded): Recorded {
+  if (!url.searchParams.has("observation_start")) return fx;
+  const out = clone(fx);
+  out.body.sort_order = "asc";
+  out.body.limit = 100_000;
+  out.body.count = out.body.observations.length;
+  return out;
 }
 
 function setup(
@@ -298,7 +313,9 @@ describe("fred series", () => {
   test("a revised value replaces the stored one and says from when", async () => {
     let values: Record<string, string> = {};
     const { ctx, db } = setup((url) =>
-      isObservations(url) ? revised("DGS10", values) : answer(url),
+      isObservations(url)
+        ? revised("DGS10", values).then((fx) => paged(url, fx))
+        : answer(url),
     );
     await addSeries(ctx, "DGS10");
     const instrument = readInstrument(db, "FRED:DGS10")!;
@@ -601,6 +618,15 @@ describe("fred answers are checked", () => {
     expect(meta.notes).toBe("see https://x?api_key=REDACTED and REDACTED");
   });
 
+  test("the key is cut in its query-string form too", () => {
+    const key = "my key+1";
+    const wire = new URLSearchParams({ k: key }).toString().slice(2);
+    expect(wire).toBe("my+key%2B1");
+    expect(scrub(`a ${wire} b ${key} c ${encodeURIComponent(key)}`, key)).toBe(
+      "a REDACTED b REDACTED c REDACTED",
+    );
+  });
+
   test("another series answering is a fixed error naming neither", async () => {
     const { ctx, db } = setup(async (url) => {
       if (!isSeries(url)) return answer(url);
@@ -633,19 +659,72 @@ describe("fred answers are checked", () => {
     ]);
     expect(readBars(db, "FRED:DGS10", "1d")).toEqual(stored);
     expect(lastRun(db, SOURCE, "bars", "FRED:DGS10")?.status).toBe("failed");
-    // the last page of a series is short and whole
-    const tail = await observations((b) => {
-      b.count = 35;
-      b.offset = 30;
+    // a series holding fewer than asked is short and whole
+    const few = await observations((b) => {
+      b.count = 5;
       b.observations = b.observations.slice(0, 5);
     });
-    expect(parseObservations(tail, 1).dates).toHaveLength(5);
+    expect(parseObservations(few, 1).dates).toHaveLength(5);
     const short = await observations((b) => {
       b.observations = b.observations.slice(0, 29);
     });
     expect(phraseOf(() => parseObservations(short, 1))).toBe(
       "malformed answer",
     );
+  });
+
+  test("surplus rows are malformed and delete no stored day", async () => {
+    let surplus = false;
+    const { ctx, db } = setup(async (url) => {
+      const fx = await answer(url);
+      if (!surplus || !isObservations(url)) return fx;
+      const out = clone(fx);
+      // the newest and one two weeks back, with a count of one
+      out.body.count = 1;
+      out.body.observations = [
+        out.body.observations[0],
+        out.body.observations[9],
+      ];
+      return out;
+    });
+    await addSeries(ctx, "DGS10");
+    const stored = readBars(db, "FRED:DGS10", "1d");
+    surplus = true;
+    const error = await errorOf(
+      refetchSeries(ctx, readInstrument(db, "FRED:DGS10")!),
+    );
+    expect((error as SourceError).phrase).toBe("malformed answer");
+    expect(readBars(db, "FRED:DGS10", "1d")).toEqual(stored);
+  });
+
+  test("a page past the first or a backfill cut short is malformed", async () => {
+    const offset = await observations((b) => {
+      b.offset = 1;
+      b.observations = b.observations.slice(0, 29);
+    });
+    expect(phraseOf(() => parseObservations(offset, 1))).toBe(
+      "malformed answer",
+    );
+    // the latest 30 of a long series are a whole answer, a history not
+    const latest = await observations(() => {});
+    expect(parseObservations(latest, 1).dates).toHaveLength(30);
+    expect(phraseOf(() => parseObservations(latest, 1, true))).toBe(
+      "malformed answer",
+    );
+
+    const { ctx, db } = setup(async (url) => {
+      const fx = await answer(url);
+      if (!isObservations(url)) return fx;
+      const out = clone(fx);
+      out.body.count = 3;
+      out.body.limit = 2;
+      out.body.observations = out.body.observations.slice(0, 2);
+      return out;
+    });
+    const error = await errorOf(addSeries(ctx, "DGS10"));
+    expect((error as SourceError).phrase).toBe("malformed answer");
+    expect(readInstrument(db, "FRED:DGS10")).toBeNull();
+    expect(readBars(db, "FRED:DGS10", "1d")).toEqual([]);
   });
 
   test("a date answered twice is malformed, a dot included", async () => {
@@ -693,6 +772,28 @@ describe("fred answers are checked", () => {
   test("ten years before 29 February backfills from 28 February", () => {
     // 2018-02-28 is a Wednesday
     expect(backfillStart(Date.UTC(2028, 1, 29, 12))).toBe("2018-02-26");
+  });
+
+  test("a source closed while a call takes its slot sends nothing", async () => {
+    const base = fakeClock();
+    const f = fakeFetch(() => fixture("series-dgs10"));
+    let close: (() => void) | null = null;
+    // closes the source the moment the slot reads the time, after its
+    // own check
+    const clock = {
+      ...base,
+      now: () => {
+        const hook = close;
+        close = null;
+        hook?.();
+        return base.now();
+      },
+    };
+    const client = fred({ clock, key: KEY, fetch: f.fetch });
+    close = () => client.close();
+    const error = await errorOf(client.series("DGS10"));
+    expect(error).toBeInstanceOf(QueueClosed);
+    expect(f.urls).toHaveLength(0);
   });
 
   test("closing the source cancels a call waiting for its slot", async () => {

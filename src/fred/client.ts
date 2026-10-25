@@ -108,12 +108,16 @@ export function parseLastUpdated(v: unknown): number | null {
 const RESTRICTED =
   /internal use only|not (?:authorized|permitted) to (?:publish|distribute|redistribute)|reproduction of this data[^.]*prohibited/i;
 
-// A text an answer echoes may hold the key, as sent or percent-encoded,
-// so it is cut out before anything keeps it.
+// A text an answer echoes may hold the key, raw, percent-encoded or as
+// a query string writes it, so it is cut out before anything keeps it.
 export function scrub(value: string, key: string): string {
   if (key === "") return value;
   let out = value;
-  const forms = new Set([key, encodeURIComponent(key)]);
+  const forms = new Set([
+    key,
+    encodeURIComponent(key),
+    new URLSearchParams({ k: key }).toString().slice(2),
+  ]);
   // case-blind, since percent escapes come in either case
   for (const form of [...forms].sort((a, b) => b.length - a.length)) {
     out = out.replace(
@@ -158,27 +162,33 @@ export function parseSeries(body: unknown): SeriesMeta {
 
 const DECIMAL = /^-?\d+(?:\.\d+)?$/;
 
-function whole(v: unknown, what: string): number {
+function wholeNumber(v: unknown, what: string): number {
   if (typeof v !== "number" || !Number.isSafeInteger(v) || v < 0) {
     throw malformed(`no ${what}`);
   }
   return v;
 }
 
+// The page must hold exactly the rows its envelope says, from the
+// first, or a missing or surplus day would rewrite stored bars; a
+// whole history (a start date) must fit the one page.
 export function parseObservations(
   body: unknown,
   fetchedAt: number,
+  whole = false,
 ): Observations {
   const envelope = obj(body, "body");
   const list = envelope.observations;
   if (!Array.isArray(list)) throw malformed("no observations");
-  // a reply cut short would read as days FRED no longer has
-  const count = whole(envelope.count, "count");
-  const offset = whole(envelope.offset, "offset");
-  const limit = whole(envelope.limit, "limit");
-  if (list.length < Math.min(Math.max(count - offset, 0), limit)) {
-    throw malformed("fewer observations than the count");
+  const count = wholeNumber(envelope.count, "count");
+  const offset = wholeNumber(envelope.offset, "offset");
+  const limit = wholeNumber(envelope.limit, "limit");
+  // no offset is ever asked for
+  if (offset !== 0) throw malformed("a page past the first");
+  if (list.length !== Math.min(count, limit)) {
+    throw malformed("observations do not match the count");
   }
+  if (whole && count > list.length) throw malformed("a history cut short");
   const byDate = new Map<string, number | null>();
   for (const entry of list) {
     const o = obj(entry, "observation");
@@ -273,6 +283,8 @@ export function fred(options: FredOptions): Fred {
     calls.run(
       async () => {
         await slot();
+        // closed while it waited for the slot
+        if (closed) throw new QueueClosed();
         const query = new URLSearchParams({
           ...params,
           api_key: key,
@@ -333,7 +345,9 @@ export function fred(options: FredOptions): Fred {
               limit: String(range.limit),
             }
           : { series_id: id, observation_start: range.start };
-      return get("series/observations", params, failFast, parseObservations);
+      return get("series/observations", params, failFast, (body, at) =>
+        parseObservations(body, at, "start" in range),
+      );
     },
     failFast: () => client(true),
     close() {
