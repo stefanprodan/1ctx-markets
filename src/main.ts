@@ -60,6 +60,8 @@ const app = start({
   clock: wallClock,
   log,
   version: VERSION,
+  db,
+  quoteEveryMs: config.quoteEveryMs,
 });
 
 main.info("startup", {
@@ -71,6 +73,8 @@ main.info("startup", {
   track_days: config.trackDays,
   inline_fetch: config.inlineFetch,
 });
+// one field per source with its state; Yahoo needs no key
+main.info("sources", { yahoo: "on" });
 
 let stopping = false;
 async function shutdown(signal: string) {
