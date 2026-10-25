@@ -151,7 +151,7 @@ describe("quotes", () => {
     expect(quoteStale(t.db, u0)).toEqual([]);
   });
 
-  test("a symbol skipped or left out of the answer fails its market's run", async () => {
+  test("a symbol skipped or left out is stale alone; an empty answer fails the run", async () => {
     const s = sim([US("U0"), US("U1"), CRYPTO("C0-USD")]);
     let edit: (result: any[]) => any[] = (r) => r;
     const t = setup(utc("2026-10-26T17:58"), (url, now) => {
@@ -173,13 +173,13 @@ describe("quotes", () => {
     };
     await t.runTo(utc("2026-10-26T18:05"));
     expect(lastRun(t.db, "yahoo", JOBS.quotes, "US")).toMatchObject({
-      status: "failed",
-      error: "malformed answer",
+      status: "ok",
       rows: 1,
     });
     expect(readQuote(t.db, "US:U0")!.fetchedAt).toBe(utc("2026-10-26T18:05"));
+    expect(quoteStale(t.db, readInstrument(t.db, "US:U0")!)).toEqual([]);
     expect(quoteStale(t.db, readInstrument(t.db, "US:U1")!)).toEqual([
-      "quote sync failed",
+      "no quote in the last pass",
     ]);
     expect(lastRun(t.db, "yahoo", JOBS.quotes, "CRYPTO")!.status).toBe("ok");
 
@@ -292,11 +292,11 @@ describe("a closed market's check", () => {
     await t.runTo(utc("2026-10-26T16:00"));
     expect(readSession(t.db, "US")!.start).toBe(utc("2026-10-26T13:30"));
     expect(readQuote(t.db, "US:U1")!.fetchedAt).toBe(utc("2026-10-26T16:00"));
-    // U0 still fails every run it is in
-    expect(lastRun(t.db, "yahoo", JOBS.quotes, "US")).toMatchObject({
-      status: "failed",
-      error: "not found",
-    });
+    // U0 is stale on its own, never U1
+    expect(quoteStale(t.db, readInstrument(t.db, "US:U1")!)).toEqual([]);
+    expect(quoteStale(t.db, readInstrument(t.db, "US:U0")!)).toEqual([
+      "no quote in the last pass",
+    ]);
   });
 });
 

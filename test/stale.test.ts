@@ -29,14 +29,25 @@ function setup() {
   const { db } = open(":memory:", clock);
   const us = upsertInstrument(db, instrument("US", "NVDA"), clock.now());
   const other = upsertInstrument(db, instrument("OTHER", "X"), clock.now());
-  // runs a job to its end, a step after the last
+  // runs a job to its end, a step after the last; a quote pass that
+  // ends well answers every instrument of its market
   let at = clock.now();
   const run = (job: string, scope: string | null, error?: unknown) => {
     at += MINUTE_MS;
     const id = startRun(db, "yahoo", job, at, scope);
-    if (error === undefined) endRun(db, id, at, 1);
-    else failRun(db, id, at, error);
+    if (error === undefined) {
+      if (job === JOBS.quotes) quote(scope!, at);
+      endRun(db, id, at, 1);
+    } else failRun(db, id, at, error);
   };
+  const quote = (market: string, fetchedAt: number) =>
+    db
+      .query(
+        `insert into quotes (instrument, price, time, source, fetched_at)
+         select id, 1, ?1, 'yahoo', ?1 from instruments where market = ?2
+         on conflict (instrument) do update set fetched_at = ?1`,
+      )
+      .run(fetchedAt, market);
   return { clock, db, us, other, run, now: () => at };
 }
 
@@ -57,6 +68,21 @@ describe("staleness", () => {
     expect(quoteStale(db, us)).toEqual([]);
     run(JOBS.check, "US", new SourceError("timed out"));
     expect(quoteStale(db, us)).toEqual(["session check failed"]);
+  });
+
+  test("a quote pass that answered marks only the instrument left out", () => {
+    const { db, us, run, now } = setup();
+    run(JOBS.quotes, "US");
+    // added after the pass, so not asked in it
+    const later = upsertInstrument(db, instrument("US", "AMD"), now() + 1);
+    expect(quoteStale(db, later)).toEqual([]);
+    run(JOBS.quotes, "US");
+    db.query("update quotes set fetched_at = ? where instrument = ?").run(
+      now() - 1,
+      later.id,
+    );
+    expect(quoteStale(db, later)).toEqual(["no quote in the last pass"]);
+    expect(quoteStale(db, us)).toEqual([]);
   });
 
   test("bars: none stored, a failed pass, and a session newer than the last good pass", () => {

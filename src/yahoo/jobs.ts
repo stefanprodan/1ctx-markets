@@ -23,7 +23,7 @@ import {
 import type { Log } from "../log.ts";
 import { endRun, failRun, lastStarted, runJob, startRun } from "../runs.ts";
 import type { Scheduler } from "../scheduler.ts";
-import { phraseOf, SourceError } from "../source.ts";
+import { type Phrase, phraseOf, SourceError } from "../source.ts";
 import { barsDue, JOBS } from "../stale.ts";
 import { SOURCE, type SparkAnswer } from "./client.ts";
 import {
@@ -161,6 +161,7 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
       ];
       const batches = await yahoo.sparkAll(symbols);
       const failed = new Map<string, unknown>();
+      const missing = new Map<string, Phrase>();
       const answers: SparkAnswer[] = [];
       for (const b of batches) {
         if (!b.answer) {
@@ -168,14 +169,16 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
           continue;
         }
         answers.push(b.answer);
-        // a symbol skipped or left out has no new quote, so its run fails
+        // a symbol skipped or left out is stale on its own
         const quoted = new Set(b.answer.quotes.map((q) => q.symbol));
         const skipped = new Map(
           b.answer.skipped.map((k) => [k.symbol, k.phrase]),
         );
         for (const s of b.symbols) {
           if (quoted.has(s)) continue;
-          failed.set(s, new SourceError(skipped.get(s) ?? "malformed answer"));
+          const phrase = skipped.get(s) ?? "malformed answer";
+          missing.set(s, phrase);
+          log.warn("yahoo quote missing", { symbol: s, error: phrase });
         }
       }
       return await writer.write((db) => {
@@ -184,9 +187,12 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
         work.forEach((w, k) => {
           const mine = new Set(w.instruments.map((i) => i.id));
           const rows = quotes.filter((q) => mine.has(q.instrument)).length;
-          const error = w.instruments
-            .map((i) => failed.get(i.sourceSymbol))
-            .find((e) => e !== undefined);
+          // the run fails on a failed call, or when no quote came back
+          const symbols = w.instruments.map((i) => i.sourceSymbol);
+          const none = symbols.every((s) => missing.has(s));
+          const error =
+            symbols.map((s) => failed.get(s)).find((e) => e !== undefined) ??
+            (none ? new SourceError(missing.get(symbols[0]!)!) : undefined);
           if (error === undefined) endRun(db, ids[k]!, now, rows);
           else {
             failRun(db, ids[k]!, now, error, rows);

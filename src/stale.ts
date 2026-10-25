@@ -4,7 +4,8 @@
 // Whether an instrument's quote or bars are stale, with fixed reasons,
 // read from its own source's runs in its own market: a successful
 // search never clears a failed quote pass, and one market's failure
-// never marks another's rows.
+// never marks another's rows. A quote pass that answered is judged
+// per instrument, so one symbol that never answers marks only itself.
 
 import { readSession } from "./calendars.ts";
 import type { Db } from "./db/index.ts";
@@ -23,6 +24,7 @@ export const JOBS = {
 
 export const STALE = {
   quotesFailed: "quote sync failed",
+  noQuote: "no quote in the last pass",
   checkFailed: "session check failed",
   barsFailed: "bar sync failed",
   barsPending: "bar sync pending",
@@ -31,7 +33,7 @@ export const STALE = {
 
 export type StaleReason = (typeof STALE)[keyof typeof STALE];
 
-type Scoped = Pick<Instrument, "id" | "source" | "market">;
+type Scoped = Pick<Instrument, "id" | "source" | "market" | "addedAt">;
 
 const failed = (db: Db, i: Scoped, job: string) =>
   lastRun(db, i.source, job, i.market)?.status === "failed";
@@ -39,7 +41,19 @@ const failed = (db: Db, i: Scoped, job: string) =>
 // none when the quote is current
 export function quoteStale(db: Db, instrument: Scoped): StaleReason[] {
   const reasons: StaleReason[] = [];
-  if (failed(db, instrument, JOBS.quotes)) reasons.push(STALE.quotesFailed);
+  const pass = lastRun(db, instrument.source, JOBS.quotes, instrument.market);
+  if (pass?.status === "failed") reasons.push(STALE.quotesFailed);
+  else if (pass && pass.startedAt >= instrument.addedAt) {
+    // asked in the last pass, and its quote did not come back
+    const quote = db
+      .query<{ fetchedAt: number }, [string]>(
+        "select fetched_at as fetchedAt from quotes where instrument = ?",
+      )
+      .get(instrument.id);
+    if (quote === null || quote.fetchedAt < pass.startedAt) {
+      reasons.push(STALE.noQuote);
+    }
+  }
   // a closed market's new session can go unseen while its checks fail
   if (failed(db, instrument, JOBS.check)) reasons.push(STALE.checkFailed);
   return reasons;
