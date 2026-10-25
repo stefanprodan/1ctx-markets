@@ -1,0 +1,142 @@
+{
+  "recordedAt": "2026-10-25T19:42:31.907Z",
+  "request": {
+    "method": "GET",
+    "url": "https://query1.finance.yahoo.com/v8/finance/chart/H2O.RO?range=5d&interval=1d"
+  },
+  "status": 200,
+  "headers": {
+    "age": "0",
+    "cache-control": "public, max-age=10, stale-while-revalidate=20",
+    "content-type": "application/json;charset=utf-8"
+  },
+  "body": {
+    "chart": {
+      "result": [
+        {
+          "meta": {
+            "currency": "RON",
+            "symbol": "H2O.RO",
+            "exchangeName": "BVB",
+            "fullExchangeName": "BVB",
+            "instrumentType": "EQUITY",
+            "firstTradeDate": 1690268400,
+            "regularMarketTime": 1792767414,
+            "hasPrePostMarketData": false,
+            "gmtoffset": 7200,
+            "timezone": "EET",
+            "exchangeTimezoneName": "Europe/Bucharest",
+            "regularMarketPrice": 181,
+            "regularMarketChangePercent": -0.33,
+            "fulldayPrice": 181,
+            "fulldayChange": -0.6,
+            "fulldayChangePercent": -0.33,
+            "fiftyTwoWeekHigh": 221,
+            "fiftyTwoWeekLow": 118.9,
+            "regularMarketDayHigh": 182,
+            "regularMarketDayLow": 180.2,
+            "regularMarketVolume": 6123,
+            "longName": "S.P.E.E.H. Hidroelectrica S.A.",
+            "shortName": "S.P.E.E.H. Hidroelectrica SA",
+            "chartPreviousClose": 182.8,
+            "priceHint": 2,
+            "currentTradingPeriod": {
+              "pre": {
+                "timezone": "EEST",
+                "start": 1792738800,
+                "end": 1792738800,
+                "gmtoffset": 10800
+              },
+              "regular": {
+                "timezone": "EEST",
+                "start": 1792738800,
+                "end": 1792767600,
+                "gmtoffset": 10800
+              },
+              "post": {
+                "timezone": "EEST",
+                "start": 1792767600,
+                "end": 1792767600,
+                "gmtoffset": 10800
+              }
+            },
+            "dataGranularity": "1d",
+            "range": "5d",
+            "validRanges": [
+              "1d",
+              "5d",
+              "1mo",
+              "3mo",
+              "6mo",
+              "1y",
+              "2y",
+              "5y",
+              "ytd",
+              "max"
+            ]
+          },
+          "timestamp": [
+            1792393200,
+            1792479600,
+            1792566000,
+            1792652400,
+            1792738800
+          ],
+          "indicators": {
+            "quote": [
+              {
+                "high": [
+                  184,
+                  183.39999389648438,
+                  182.60000610351562,
+                  182.8000030517578,
+                  182
+                ],
+                "open": [
+                  182.1999969482422,
+                  183,
+                  182.60000610351562,
+                  182,
+                  181.60000610351562
+                ],
+                "low": [
+                  181.39999389648438,
+                  180,
+                  180.39999389648438,
+                  180,
+                  180.1999969482422
+                ],
+                "volume": [
+                  13438,
+                  39024,
+                  31949,
+                  6678,
+                  6123
+                ],
+                "close": [
+                  182.8000030517578,
+                  181,
+                  182,
+                  181.60000610351562,
+                  181
+                ]
+              }
+            ],
+            "adjclose": [
+              {
+                "adjclose": [
+                  182.8000030517578,
+                  181,
+                  182,
+                  181.60000610351562,
+                  181
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "error": null
+    }
+  }
+}

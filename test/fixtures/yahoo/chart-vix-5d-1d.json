@@ -1,0 +1,143 @@
+{
+  "recordedAt": "2026-10-25T19:40:00.943Z",
+  "request": {
+    "method": "GET",
+    "url": "https://query1.finance.yahoo.com/v8/finance/chart/%5EVIX?range=5d&interval=1d"
+  },
+  "status": 200,
+  "headers": {
+    "age": "9",
+    "cache-control": "public, max-age=10, stale-while-revalidate=20",
+    "content-type": "application/json;charset=utf-8"
+  },
+  "body": {
+    "chart": {
+      "result": [
+        {
+          "meta": {
+            "currency": "USD",
+            "symbol": "^VIX",
+            "exchangeName": "CXI",
+            "fullExchangeName": "Cboe Indices",
+            "instrumentType": "INDEX",
+            "firstTradeDate": 631267200,
+            "regularMarketTime": 1792786501,
+            "hasPrePostMarketData": false,
+            "gmtoffset": -18000,
+            "timezone": "CDT",
+            "exchangeTimezoneName": "America/Chicago",
+            "regularMarketPrice": 19.45,
+            "regularMarketChangePercent": 2.207,
+            "fulldayPrice": 19.45,
+            "fulldayChange": 0.42,
+            "fulldayChangePercent": 2.207,
+            "fiftyTwoWeekHigh": 35.3,
+            "fiftyTwoWeekLow": 13.38,
+            "regularMarketDayHigh": 20.66,
+            "regularMarketDayLow": 18.87,
+            "regularMarketVolume": 0,
+            "longName": "CBOE Volatility Index",
+            "shortName": "CBOE Volatility Index",
+            "chartPreviousClose": 18.44,
+            "priceHint": 2,
+            "currentTradingPeriod": {
+              "pre": {
+                "timezone": "CDT",
+                "start": 1792738800,
+                "end": 1792738800,
+                "gmtoffset": -18000
+              },
+              "regular": {
+                "timezone": "CDT",
+                "start": 1792738800,
+                "end": 1792786500,
+                "gmtoffset": -18000
+              },
+              "post": {
+                "timezone": "CDT",
+                "start": 1792786500,
+                "end": 1792786500,
+                "gmtoffset": -18000
+              }
+            },
+            "dataGranularity": "1d",
+            "range": "5d",
+            "validRanges": [
+              "1d",
+              "5d",
+              "1mo",
+              "3mo",
+              "6mo",
+              "1y",
+              "2y",
+              "5y",
+              "10y",
+              "ytd",
+              "max"
+            ]
+          },
+          "timestamp": [
+            1792393200,
+            1792479600,
+            1792566000,
+            1792652400,
+            1792738800
+          ],
+          "indicators": {
+            "quote": [
+              {
+                "high": [
+                  18.93000030517578,
+                  19.1299991607666,
+                  17.579999923706055,
+                  20.309999465942383,
+                  20.65999984741211
+                ],
+                "low": [
+                  17.389999389648438,
+                  17.25,
+                  16.510000228881836,
+                  17.709999084472656,
+                  18.8700008392334
+                ],
+                "volume": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "open": [
+                  18.3700008392334,
+                  18.420000076293945,
+                  17.25,
+                  18.290000915527344,
+                  19.18000030517578
+                ],
+                "close": [
+                  18.440000534057617,
+                  17.309999465942383,
+                  16.68000030517578,
+                  19.030000686645508,
+                  19.450000762939453
+                ]
+              }
+            ],
+            "adjclose": [
+              {
+                "adjclose": [
+                  18.440000534057617,
+                  17.309999465942383,
+                  16.68000030517578,
+                  19.030000686645508,
+                  19.450000762939453
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "error": null
+    }
+  }
+}

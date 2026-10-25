@@ -1,0 +1,143 @@
+{
+  "recordedAt": "2026-10-25T19:40:19.637Z",
+  "request": {
+    "method": "GET",
+    "url": "https://query1.finance.yahoo.com/v8/finance/chart/%5ENDX?range=5d&interval=1d"
+  },
+  "status": 200,
+  "headers": {
+    "age": "0",
+    "cache-control": "public, max-age=10, stale-while-revalidate=20",
+    "content-type": "application/json;charset=utf-8"
+  },
+  "body": {
+    "chart": {
+      "result": [
+        {
+          "meta": {
+            "currency": "USD",
+            "symbol": "^NDX",
+            "exchangeName": "NIM",
+            "fullExchangeName": "Nasdaq GIDS",
+            "instrumentType": "INDEX",
+            "firstTradeDate": 497021400,
+            "regularMarketTime": 1792790159,
+            "hasPrePostMarketData": false,
+            "gmtoffset": -14400,
+            "timezone": "EDT",
+            "exchangeTimezoneName": "America/New_York",
+            "regularMarketPrice": 28957.527,
+            "regularMarketChangePercent": -0.004,
+            "fulldayPrice": 28957.527,
+            "fulldayChange": -1.172,
+            "fulldayChangePercent": -0.004,
+            "fiftyTwoWeekHigh": 31361.37,
+            "fiftyTwoWeekLow": 22841.42,
+            "regularMarketDayHigh": 29161.03,
+            "regularMarketDayLow": 28825.725,
+            "regularMarketVolume": 1043947000,
+            "longName": "NASDAQ-100",
+            "shortName": "NASDAQ-100",
+            "chartPreviousClose": 29187.55,
+            "priceHint": 2,
+            "currentTradingPeriod": {
+              "pre": {
+                "timezone": "EDT",
+                "end": 1792762200,
+                "start": 1792742400,
+                "gmtoffset": -14400
+              },
+              "regular": {
+                "timezone": "EDT",
+                "end": 1792785600,
+                "start": 1792762200,
+                "gmtoffset": -14400
+              },
+              "post": {
+                "timezone": "EDT",
+                "end": 1792800000,
+                "start": 1792785600,
+                "gmtoffset": -14400
+              }
+            },
+            "dataGranularity": "1d",
+            "range": "5d",
+            "validRanges": [
+              "1d",
+              "5d",
+              "1mo",
+              "3mo",
+              "6mo",
+              "1y",
+              "2y",
+              "5y",
+              "10y",
+              "ytd",
+              "max"
+            ]
+          },
+          "timestamp": [
+            1792416600,
+            1792503000,
+            1792589400,
+            1792675800,
+            1792762200
+          ],
+          "indicators": {
+            "quote": [
+              {
+                "volume": [
+                  7537660000,
+                  7660360000,
+                  7818990000,
+                  9012120000,
+                  6554790000
+                ],
+                "open": [
+                  29539.310546875,
+                  29393.9609375,
+                  29707,
+                  29304.30078125,
+                  28847.8203125
+                ],
+                "low": [
+                  29461.3203125,
+                  29208.830078125,
+                  29593.69921875,
+                  28855.099609375,
+                  28825.720703125
+                ],
+                "close": [
+                  29529.349609375,
+                  29490.279296875,
+                  29822.51953125,
+                  28958.689453125,
+                  28957.529296875
+                ],
+                "high": [
+                  29788.759765625,
+                  29711.529296875,
+                  29928.310546875,
+                  29411.759765625,
+                  29161.029296875
+                ]
+              }
+            ],
+            "adjclose": [
+              {
+                "adjclose": [
+                  29529.349609375,
+                  29490.279296875,
+                  29822.51953125,
+                  28958.689453125,
+                  28957.529296875
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "error": null
+    }
+  }
+}

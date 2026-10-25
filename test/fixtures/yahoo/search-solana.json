@@ -1,0 +1,119 @@
+{
+  "recordedAt": "2026-10-25T19:40:38.941Z",
+  "request": {
+    "method": "GET",
+    "url": "https://query1.finance.yahoo.com/v1/finance/search?q=Solana&quotesCount=10&newsCount=0&listsCount=0"
+  },
+  "status": 200,
+  "headers": {
+    "age": "0",
+    "cache-control": "public, max-age=600, stale-while-revalidate=180",
+    "content-type": "application/json;charset=utf-8"
+  },
+  "body": {
+    "explains": [],
+    "count": 7,
+    "quotes": [
+      {
+        "exchange": "CCC",
+        "shortname": "Solana USD",
+        "quoteType": "CRYPTOCURRENCY",
+        "symbol": "SOL-USD",
+        "index": "quotes",
+        "score": 41987.2,
+        "typeDisp": "Cryptocurrency",
+        "longname": "Solana USD",
+        "exchDisp": "CCC",
+        "isYahooFinance": true
+      },
+      {
+        "exchange": "PCX",
+        "shortname": "Bitwise Solana Staking ETF",
+        "quoteType": "ETF",
+        "symbol": "BSOL",
+        "index": "quotes",
+        "score": 20215,
+        "typeDisp": "ETF",
+        "longname": "Bitwise Solana Staking ETF",
+        "exchDisp": "NYSEArca",
+        "isYahooFinance": true
+      },
+      {
+        "exchange": "PCX",
+        "shortname": "Fidelity Solana Fund",
+        "quoteType": "ETF",
+        "symbol": "FSOL",
+        "index": "quotes",
+        "score": 20078,
+        "typeDisp": "ETF",
+        "exchDisp": "NYSEArca",
+        "isYahooFinance": true
+      },
+      {
+        "exchange": "PCX",
+        "shortname": "ProShares Ultra Solana ETF",
+        "quoteType": "ETF",
+        "symbol": "SLON",
+        "index": "quotes",
+        "score": 20056,
+        "typeDisp": "ETF",
+        "longname": "ProShares Ultra Solana ETF",
+        "exchDisp": "NYSEArca",
+        "isYahooFinance": true
+      },
+      {
+        "exchange": "NGM",
+        "shortname": "2x Solana ETF",
+        "quoteType": "ETF",
+        "symbol": "SOLT",
+        "index": "quotes",
+        "score": 20193,
+        "typeDisp": "ETF",
+        "longname": "2x Solana ETF",
+        "exchDisp": "NASDAQ",
+        "isYahooFinance": true
+      },
+      {
+        "exchange": "CCC",
+        "shortname": "Solana CAD",
+        "quoteType": "CRYPTOCURRENCY",
+        "symbol": "SOL-CAD",
+        "index": "quotes",
+        "score": 20090,
+        "typeDisp": "Cryptocurrency",
+        "longname": "Solana CAD",
+        "exchDisp": "CCC",
+        "isYahooFinance": true
+      },
+      {
+        "exchange": "CCC",
+        "shortname": "Solana EUR",
+        "quoteType": "CRYPTOCURRENCY",
+        "symbol": "SOL-EUR",
+        "index": "quotes",
+        "score": 20089,
+        "typeDisp": "Cryptocurrency",
+        "longname": "Solana EUR",
+        "exchDisp": "CCC",
+        "isYahooFinance": true
+      }
+    ],
+    "news": [],
+    "nav": [],
+    "lists": [],
+    "researchReports": [],
+    "screenerFieldResults": [],
+    "totalTime": 20,
+    "timeTakenForQuotes": 414,
+    "timeTakenForNews": 0,
+    "timeTakenForAlgowatchlist": 400,
+    "timeTakenForPredefinedScreener": 400,
+    "timeTakenForCrunchbase": 0,
+    "timeTakenForNav": 400,
+    "timeTakenForResearchReports": 0,
+    "timeTakenForQuestions": 0,
+    "timeTakenForScreenerField": 0,
+    "timeTakenForCulturalAssets": 0,
+    "timeTakenForSearchLists": 0
+  }
+}

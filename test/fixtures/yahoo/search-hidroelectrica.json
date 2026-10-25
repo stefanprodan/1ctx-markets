@@ -1,0 +1,102 @@
+{
+  "recordedAt": "2026-10-25T19:40:32.454Z",
+  "request": {
+    "method": "GET",
+    "url": "https://query1.finance.yahoo.com/v1/finance/search?q=Hidroelectrica&quotesCount=10&newsCount=0&listsCount=0"
+  },
+  "status": 200,
+  "headers": {
+    "age": "0",
+    "cache-control": "public, max-age=600, stale-while-revalidate=180",
+    "content-type": "application/json;charset=utf-8"
+  },
+  "body": {
+    "explains": [],
+    "count": 5,
+    "quotes": [
+      {
+        "exchange": "BVB",
+        "shortname": "S.P.E.E.H. Hidroelectrica SA",
+        "quoteType": "EQUITY",
+        "symbol": "H2O.RO",
+        "index": "quotes",
+        "score": 20033,
+        "typeDisp": "Equity",
+        "longname": "S.P.E.E.H. Hidroelectrica S.A.",
+        "exchDisp": "BVB",
+        "sector": "Utilities",
+        "sectorDisp": "Utilities",
+        "industry": "Utilities—Renewable",
+        "industryDisp": "Utilities—Renewable",
+        "dispSecIndFlag": true,
+        "isYahooFinance": true
+      },
+      {
+        "exchange": "VIE",
+        "shortname": "RBI OETrackX4 l Hidroelectrica",
+        "quoteType": "EQUITY",
+        "symbol": "AT0000A36C80.VI",
+        "index": "quotes",
+        "score": 20001,
+        "typeDisp": "Equity",
+        "exchDisp": "Vienna",
+        "isYahooFinance": true
+      },
+      {
+        "exchange": "VIE",
+        "shortname": "RBI OETrackX2 l Hidroelectrica",
+        "quoteType": "EQUITY",
+        "symbol": "AT0000A36C64.VI",
+        "index": "quotes",
+        "score": 20001,
+        "typeDisp": "Equity",
+        "exchDisp": "Vienna",
+        "isYahooFinance": true
+      },
+      {
+        "exchange": "FRA",
+        "shortname": "Soc.Pr.Ener.Elec.H.Hidroelec. N",
+        "quoteType": "EQUITY",
+        "symbol": "E28.F",
+        "index": "quotes",
+        "score": 20001,
+        "typeDisp": "Equity",
+        "longname": "S.P.E.E.H. Hidroelectrica S.A.",
+        "exchDisp": "Frankfurt",
+        "sector": "Utilities",
+        "sectorDisp": "Utilities",
+        "industry": "Utilities—Renewable",
+        "industryDisp": "Utilities—Renewable",
+        "isYahooFinance": true
+      },
+      {
+        "exchange": "VIE",
+        "shortname": "RBI OETrackX3 l Hidroelectrica",
+        "quoteType": "EQUITY",
+        "symbol": "AT0000A36C72.VI",
+        "index": "quotes",
+        "score": 20001,
+        "typeDisp": "Equity",
+        "exchDisp": "Vienna",
+        "isYahooFinance": true
+      }
+    ],
+    "news": [],
+    "nav": [],
+    "lists": [],
+    "researchReports": [],
+    "screenerFieldResults": [],
+    "totalTime": 17,
+    "timeTakenForQuotes": 411,
+    "timeTakenForNews": 0,
+    "timeTakenForAlgowatchlist": 400,
+    "timeTakenForPredefinedScreener": 400,
+    "timeTakenForCrunchbase": 0,
+    "timeTakenForNav": 400,
+    "timeTakenForResearchReports": 0,
+    "timeTakenForQuestions": 0,
+    "timeTakenForScreenerField": 0,
+    "timeTakenForCulturalAssets": 0,
+    "timeTakenForSearchLists": 0
+  }
+}

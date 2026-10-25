@@ -1,0 +1,22 @@
+{
+  "recordedAt": "2026-10-25T19:42:35.165Z",
+  "request": {
+    "method": "GET",
+    "url": "https://query2.finance.yahoo.com/v7/finance/quote?symbols=NVDA,VVSM.DE,SOL-USD"
+  },
+  "status": 401,
+  "headers": {
+    "age": "1",
+    "cache-control": "max-age=0, private",
+    "content-type": "application/json;charset=utf-8"
+  },
+  "body": {
+    "finance": {
+      "result": null,
+      "error": {
+        "code": "Unauthorized",
+        "description": "User is unable to access this feature - https://bit.ly/yahoo-finance-api-feedback"
+      }
+    }
+  }
+}

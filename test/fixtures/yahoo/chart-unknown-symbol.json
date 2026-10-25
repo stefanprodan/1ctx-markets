@@ -1,0 +1,22 @@
+{
+  "recordedAt": "2026-10-25T19:39:20.058Z",
+  "request": {
+    "method": "GET",
+    "url": "https://query1.finance.yahoo.com/v8/finance/chart/NOPE-ZZZZ?range=5d&interval=1d"
+  },
+  "status": 404,
+  "headers": {
+    "age": "2",
+    "cache-control": "max-age=0, private",
+    "content-type": "application/json;charset=utf-8"
+  },
+  "body": {
+    "chart": {
+      "result": null,
+      "error": {
+        "code": "Not Found",
+        "description": "No data found, symbol may be delisted"
+      }
+    }
+  }
+}
