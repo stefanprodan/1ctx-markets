@@ -1,0 +1,23 @@
+{
+  "recordedAt": "2026-10-25T20:25:35.802Z",
+  "request": {
+    "method": "GET",
+    "url": "https://api.stlouisfed.org/fred/series/observations?series_id=NOSUCHSERIES&api_key=REDACTED&file_type=json"
+  },
+  "status": 400,
+  "headers": {
+    "alt-svc": "h3=\":443\"; ma=93600",
+    "connection": "keep-alive",
+    "content-length": "77",
+    "content-type": "application/json; charset=UTF-8",
+    "date": "Sun, 25 Oct 2026 20:25:36 GMT",
+    "expires": "Sun, 25 Oct 2026 20:26:36 GMT",
+    "server": "Apache",
+    "strict-transport-security": "max-age=86400",
+    "x-location": "cfs"
+  },
+  "body": {
+    "error_code": 400,
+    "error_message": "Bad Request.  The series does not exist."
+  }
+}

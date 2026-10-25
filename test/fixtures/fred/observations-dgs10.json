@@ -1,0 +1,220 @@
+{
+  "recordedAt": "2026-10-25T20:25:26.538Z",
+  "request": {
+    "method": "GET",
+    "url": "https://api.stlouisfed.org/fred/series/observations?series_id=DGS10&sort_order=desc&limit=30&api_key=REDACTED&file_type=json"
+  },
+  "status": 200,
+  "headers": {
+    "alt-svc": "h3=\":443\"; ma=93600",
+    "cache-control": "max-age=0, no-cache",
+    "connection": "keep-alive",
+    "content-encoding": "gzip",
+    "content-length": "368",
+    "content-type": "application/json; charset=UTF-8",
+    "date": "Sun, 25 Oct 2026 20:25:26 GMT",
+    "expires": "Sun, 25 Oct 2026 20:25:26 GMT",
+    "last-modified": "Fri, 23 Oct 2026 20:16:51 GMT",
+    "pragma": "no-cache",
+    "server": "Apache",
+    "strict-transport-security": "max-age=86400",
+    "vary": "Accept-Encoding",
+    "x-location": "cfs"
+  },
+  "body": {
+    "realtime_start": "2026-10-23",
+    "realtime_end": "2026-10-23",
+    "observation_start": "1600-01-01",
+    "observation_end": "9999-12-31",
+    "units": "lin",
+    "output_type": 1,
+    "file_type": "json",
+    "order_by": "observation_date",
+    "sort_order": "desc",
+    "count": 16908,
+    "offset": 0,
+    "limit": 30,
+    "observations": [
+      {
+        "realtime_start": "2026-10-23",
+        "realtime_end": "2026-10-23",
+        "date": "2026-10-22",
+        "value": "4.96"
+      },
+      {
+        "realtime_start": "2026-10-23",
+        "realtime_end": "2026-10-23",
+        "date": "2026-10-21",
+        "value": "5.13"
+      },
+      {
+        "realtime_start": "2026-10-23",
+        "realtime_end": "2026-10-23",
+        "date": "2026-10-20",
+        "value": "5.12"
+      },
+      {
+        "realtime_start": "2026-10-23",
+        "realtime_end": "2026-10-23",
+        "date": "2026-10-19",
+        "value": "5.15"
+      },
+      {
+        "realtime_start": "2026-10-23",
+        "realtime_end": "2026-10-23",
+        "date": "2026-10-16",
+        "value": "5.09"
+      },
+      {
+        "realtime_start": "2026-10-23",
+        "realtime_end": "2026-10-23",
+        "date": "2026-10-15",
+        "value": "5.1"
+      },
+      {
+        "realtime_start": "2026-10-23",
+        "realtime_end": "2026-10-23",
+        "date": "2026-10-14",
+        "value": "5.19"
+      },
+      {
+        "realtime_start": "2026-10-23",
+        "realtime_end": "2026-10-23",
+        "date": "2026-10-13",
+        "value": "5.21"
+      },
+      {
+        "realtime_start": "2026-10-23",
+        "realtime_end": "2026-10-23",
+        "date": "2026-10-12",
+        "value": "."
+      },
+      {
+        "realtime_start": "2026-10-23",
+        "realtime_end": "2026-10-23",
+        "date": "2026-10-09",
+        "value": "5.24"
+      },
+      {
+        "realtime_start": "2026-10-23",
+        "realtime_end": "2026-10-23",
+        "date": "2026-10-08",
+        "value": "5.22"
+      },
+      {
+        "realtime_start": "2026-10-23",
+        "realtime_end": "2026-10-23",
+        "date": "2026-10-07",
+        "value": "5.28"
+      },
+      {
+        "realtime_start": "2026-10-23",
+        "realtime_end": "2026-10-23",
+        "date": "2026-10-06",
+        "value": "5.27"
+      },
+      {
+        "realtime_start": "2026-10-23",
+        "realtime_end": "2026-10-23",
+        "date": "2026-10-05",
+        "value": "5.31"
+      },
+      {
+        "realtime_start": "2026-10-23",
+        "realtime_end": "2026-10-23",
+        "date": "2026-10-02",
+        "value": "5.28"
+      },
+      {
+        "realtime_start": "2026-10-23",
+        "realtime_end": "2026-10-23",
+        "date": "2026-10-01",
+        "value": "5.24"
+      },
+      {
+        "realtime_start": "2026-10-23",
+        "realtime_end": "2026-10-23",
+        "date": "2026-09-30",
+        "value": "5.29"
+      },
+      {
+        "realtime_start": "2026-10-23",
+        "realtime_end": "2026-10-23",
+        "date": "2026-09-29",
+        "value": "5.26"
+      },
+      {
+        "realtime_start": "2026-10-23",
+        "realtime_end": "2026-10-23",
+        "date": "2026-09-28",
+        "value": "5.24"
+      },
+      {
+        "realtime_start": "2026-10-23",
+        "realtime_end": "2026-10-23",
+        "date": "2026-09-25",
+        "value": "5.17"
+      },
+      {
+        "realtime_start": "2026-10-23",
+        "realtime_end": "2026-10-23",
+        "date": "2026-09-24",
+        "value": "5.18"
+      },
+      {
+        "realtime_start": "2026-10-23",
+        "realtime_end": "2026-10-23",
+        "date": "2026-09-23",
+        "value": "5.11"
+      },
+      {
+        "realtime_start": "2026-10-23",
+        "realtime_end": "2026-10-23",
+        "date": "2026-09-22",
+        "value": "4.96"
+      },
+      {
+        "realtime_start": "2026-10-23",
+        "realtime_end": "2026-10-23",
+        "date": "2026-09-21",
+        "value": "4.96"
+      },
+      {
+        "realtime_start": "2026-10-23",
+        "realtime_end": "2026-10-23",
+        "date": "2026-09-18",
+        "value": "5.01"
+      },
+      {
+        "realtime_start": "2026-10-23",
+        "realtime_end": "2026-10-23",
+        "date": "2026-09-17",
+        "value": "4.94"
+      },
+      {
+        "realtime_start": "2026-10-23",
+        "realtime_end": "2026-10-23",
+        "date": "2026-09-16",
+        "value": "5.01"
+      },
+      {
+        "realtime_start": "2026-10-23",
+        "realtime_end": "2026-10-23",
+        "date": "2026-09-15",
+        "value": "5"
+      },
+      {
+        "realtime_start": "2026-10-23",
+        "realtime_end": "2026-10-23",
+        "date": "2026-09-14",
+        "value": "4.97"
+      },
+      {
+        "realtime_start": "2026-10-23",
+        "realtime_end": "2026-10-23",
+        "date": "2026-09-11",
+        "value": "4.96"
+      }
+    ]
+  }
+}
