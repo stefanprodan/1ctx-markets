@@ -30,6 +30,9 @@ export const STALE = {
   barsFailed: "bar sync failed",
   barsPending: "bar sync pending",
   noHistory: "no history",
+  signalsPending: "signals pending",
+  // a live row stepped over a stored day not final yet
+  previousDayNotFinal: "previous day not final",
 } as const;
 
 export type StaleReason = (typeof STALE)[keyof typeof STALE];
