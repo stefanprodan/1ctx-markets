@@ -21,7 +21,7 @@ describe("the MCP endpoint", () => {
       expect(client.getServerVersion()?.name).toBe(SERVER_NAME);
       expect(client.getServerVersion()?.version).toBe("v0.0.0-test");
       expect(client.getServerCapabilities()?.tools).toBeDefined();
-      const names = ["quote", "history", "search"];
+      const names = ["quote", "history", "movers", "search", "screen"];
       expect((await client.listTools()).tools.map((t) => t.name)).toEqual(
         names,
       );

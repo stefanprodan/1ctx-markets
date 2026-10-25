@@ -10,8 +10,11 @@ import type { Db } from "../db/index.ts";
 import { SOURCE as FRED } from "../fred/client.ts";
 import { ATTRIBUTION } from "../fred/sync.ts";
 import type { Instrument } from "../instruments.ts";
-import { readSignals } from "../signals/read.ts";
+import type { DailyRow } from "../signals/daily.ts";
+import { type InstrumentSignals, readSignals } from "../signals/read.ts";
 import { DAILY_COLUMNS, WEEKLY_COLUMNS } from "../signals/store.ts";
+import type { WeeklyRow } from "../signals/weekly.ts";
+import type { StaleReason } from "../stale.ts";
 import { readQuote } from "../yahoo/sync.ts";
 import { cursor, fitPage, iso, readCursor, round } from "./answer.ts";
 import { ArgError, fields, symbols } from "./args.ts";
@@ -54,28 +57,55 @@ export type Signals = {
   stale: string[];
 };
 
+export type Picked<T> = { kind: "live" | "final"; row: T } | null;
+
+// The unrounded rows a quote's signals come from, for readers that
+// compute on them: the stored rows, the one picked per interval, and
+// why they may be behind.
+export type Latest = {
+  signals: InstrumentSignals | null;
+  daily: Picked<DailyRow>;
+  weekly: Picked<WeeklyRow>;
+  stale: StaleReason[];
+};
+
+const pick = <T>(rows: { live: T | null; final: T | null }): Picked<T> =>
+  rows.live !== null
+    ? { kind: "live", row: rows.live }
+    : rows.final !== null
+      ? { kind: "final", row: rows.final }
+      : null;
+
 // The live row when one is current, else the last final row; a FRED
 // series has final rows only, and no quote to be stale.
+export function readLatest(
+  db: Db,
+  instrument: Instrument,
+  now: number,
+): Latest {
+  const s = readSignals(db, instrument.id, now);
+  if (s === null)
+    return { signals: null, daily: null, weekly: null, stale: [] };
+  return {
+    signals: s,
+    daily: pick(s.daily),
+    weekly: pick(s.weekly),
+    stale: instrument.source === FRED ? s.stale.final : s.stale.live,
+  };
+}
+
 export function latestSignals(
   db: Db,
   instrument: Instrument,
   now: number,
+  latest: Latest = readLatest(db, instrument, now),
 ): Signals {
-  const s = readSignals(db, instrument.id, now);
-  if (s === null) return { daily: null, weekly: null, stale: [] };
-  const pick = (
-    rows: { live: { date: string } | null; final: { date: string } | null },
-    interval: "1d" | "1wk",
-  ): SignalRow | null =>
-    rows.live !== null
-      ? signalRow(rows.live, "live", interval)
-      : rows.final !== null
-        ? signalRow(rows.final, "final", interval)
-        : null;
+  const row = (p: Picked<{ date: string }>, interval: "1d" | "1wk") =>
+    p === null ? null : signalRow(p.row, p.kind, interval);
   return {
-    daily: pick(s.daily, "1d"),
-    weekly: pick(s.weekly, "1wk"),
-    stale: instrument.source === FRED ? s.stale.final : s.stale.live,
+    daily: row(latest.daily, "1d"),
+    weekly: row(latest.weekly, "1wk"),
+    stale: latest.stale,
   };
 }
 
@@ -121,8 +151,9 @@ export function quoteItem(
   input: string,
   instrument: Instrument,
   now: number,
+  latest?: Latest,
 ): QuoteItem {
-  const signals = latestSignals(db, instrument, now);
+  const signals = latestSignals(db, instrument, now, latest);
   const base = {
     input,
     id: instrument.id,

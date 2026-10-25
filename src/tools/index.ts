@@ -15,7 +15,15 @@ import { errorFields } from "../log.ts";
 import { errorResult, type ToolResult, textResult } from "./answer.ts";
 import { ArgError, MAX_SYMBOL } from "./args.ts";
 import { historyAnswer, parseHistory } from "./history.ts";
+import { AVERAGES, moversAnswer, parseMovers } from "./movers.ts";
 import { MAX_SYMBOLS, parseQuote, quotePage } from "./quote.ts";
+import {
+  FIELD_NAMES,
+  FIELDS,
+  MAX_FILTERS,
+  parseScreen,
+  screenAnswer,
+} from "./screen.ts";
 import { parseSearch, searchPage } from "./search.ts";
 import type { Markets } from "./targets.ts";
 
@@ -61,6 +69,13 @@ const quoteDescription = (m: Markets) =>
 
 const HISTORY =
   "Daily (1d) or weekly (1wk) bars of one symbol, oldest first, each with its final flag and that date's signal row. from and to are YYYY-MM-DD; to defaults to the latest bar, from to 3 months before to for 1d and 2 years for 1wk. Prices are split-adjusted; averages and returns are on price, with dividends and FX conversion excluded. With a benchmark (any symbol, e.g. QQQ or ^GDAXI), it adds the 1- and 3-month return relative to it at to, in percentage points, naming both currencies. Symbols resolve and are fetched as in quote. When next is set, call again with the same arguments and next.";
+
+const MOVERS =
+  "The day's movers among 1 to 100 symbols. min_move_pct (0 or more) is the live change from the previous close, in percent, with direction up, down or either (default). average (daily_sma50, daily_sma200, daily_ema20, weekly_sma50, weekly_sma200) with relation above or below compares the live price with it; crossed_up or crossed_down compares the last final close with the average then, and the live price with the average now. Give a move, an average or both; all given must hold. Matches come largest absolute change first. A symbol with a stale or missing quote or average is unavailable, never a match; a FRED series has no live quote and never moves. Symbols resolve and are fetched as in quote. When next is set, call again with the same arguments and next.";
+
+const STATES = FIELD_NAMES.filter((name) => FIELDS[name]!.state);
+
+const SCREEN = `Filter and rank 1 to 100 symbols on their latest signals: the live row once the market traded today, else the last final. filters: at most ${MAX_FILTERS}, all must hold: {field, min, max} inclusive, either bound alone, or {field, eq: -1|0|1} for ${STATES.join(", ")}. Fields: sma50, sma200, ema20, rsi14, macd, macd_signal, macd_histogram, macd_turn, atr14, move_atr, volatility20, bollinger_lower, high52w, low52w, drawdown, from_low, days_since_high, volume_ratio, cross, cross_edge, weekly_sma50, weekly_sma200, weekly_cross, weekly_cross_edge; percent from the price to an average: distance_sma50, distance_sma200, distance_ema20, distance_weekly_sma50, distance_weekly_sma200, distance_bollinger_lower; relative_return_1m, relative_return_3m (need benchmark). Price-level fields need one unit and currency across the symbols. A missing, null or stale input makes a symbol unavailable, never a match. sort: a field, order asc or desc; by id otherwise. Fetched as in quote; next continues.`;
 
 const SEARCH =
   "Find instruments by name or symbol: stored ones and Yahoo's listings, each with its id, exchange, type and name, for quote or history. Fetches no prices. FRED series match only as FRED:<series id>.";
@@ -108,10 +123,73 @@ export function tools(m: Markets): Tool[] {
       run: (input) => historyAnswer(m, parseHistory(input)),
     },
     {
+      name: "movers",
+      description: MOVERS,
+      inputSchema: schema(
+        {
+          symbols: {
+            type: "array",
+            minItems: 1,
+            maxItems: MAX_SYMBOLS,
+            items: symbol,
+          },
+          min_move_pct: { type: "number", minimum: 0 },
+          direction: {
+            type: "string",
+            enum: ["up", "down", "either"],
+            default: "either",
+          },
+          average: { type: "string", enum: Object.keys(AVERAGES) },
+          relation: {
+            type: "string",
+            enum: ["above", "below", "crossed_up", "crossed_down"],
+          },
+          next,
+        },
+        ["symbols"],
+      ),
+      run: (input) => moversAnswer(m, parseMovers(input)),
+    },
+    {
       name: "search",
       description: SEARCH,
       inputSchema: schema({ query: symbol, next }, ["query"]),
       run: async (input) => textResult(await searchPage(m, parseSearch(input))),
+    },
+    {
+      name: "screen",
+      description: SCREEN,
+      inputSchema: schema(
+        {
+          symbols: {
+            type: "array",
+            minItems: 1,
+            maxItems: MAX_SYMBOLS,
+            items: symbol,
+          },
+          filters: {
+            type: "array",
+            maxItems: MAX_FILTERS,
+            items: {
+              type: "object",
+              properties: {
+                field: { type: "string", enum: FIELD_NAMES },
+                min: { type: "number" },
+                max: { type: "number" },
+                eq: { type: "integer", enum: [-1, 0, 1] },
+              },
+              required: ["field"],
+              additionalProperties: false,
+            },
+          },
+          benchmark: symbol,
+          sort: { type: "string", enum: FIELD_NAMES },
+          order: { type: "string", enum: ["asc", "desc"] },
+          next,
+        },
+        ["symbols"],
+      ),
+      run: (input) => screenAnswer(m, parseScreen(input)),
     },
   ];
 }

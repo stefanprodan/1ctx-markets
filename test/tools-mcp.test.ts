@@ -7,6 +7,7 @@ import { ATTRIBUTION, NO_DATA } from "../src/fred/sync.ts";
 import { readInstrument, upsertInstrument } from "../src/instruments.ts";
 import { PAGE_BYTES } from "../src/tools/answer.ts";
 import { BASIS } from "../src/tools/history.ts";
+import { FIELD_NAMES } from "../src/tools/screen.ts";
 import { lastReadAt, markRead } from "../src/tracking.ts";
 import { mcpClient, type TestApp, withApp } from "./helpers/app.ts";
 import { FRED_KEY, NOW, sources } from "./helpers/sources.ts";
@@ -62,12 +63,23 @@ const yahooApp = async (
 };
 
 describe("the tool list", () => {
-  test("names quote, history and search, each short and refusing other arguments", () =>
+  test("names the five tools, each short and refusing other arguments", () =>
     withApp(async (t) => {
       const client = await mcpClient(t);
       const { tools } = await client.listTools();
       await client.close();
-      expect(tools.map((x) => x.name)).toEqual(["quote", "history", "search"]);
+      expect(tools.map((x) => x.name)).toEqual([
+        "quote",
+        "history",
+        "movers",
+        "search",
+        "screen",
+      ]);
+      // an agent learns the fields from the description alone
+      const screen = tools.find((x) => x.name === "screen")!;
+      for (const name of FIELD_NAMES) {
+        expect(screen.description).toContain(name);
+      }
       for (const tool of tools) {
         // 1ctx cuts a description at 1,024
         expect(tool.description!.length).toBeLessThan(1024);
@@ -114,6 +126,27 @@ describe("arguments", () => {
         ["search", { query: "  " }, "query must be a non-empty string"],
         ["search", { query: "x".repeat(101) }, "query is longer than 100"],
         ["search", { query: "nvda", market: "US" }, "unknown argument market"],
+        [
+          "screen",
+          { symbols: ["NVDA"], filters: [{ field: "pe", max: 20 }] },
+          "filters[0].field must be one of the screen fields",
+        ],
+        [
+          "screen",
+          { symbols: ["NVDA"], sort: "relative_return_3m" },
+          "relative_return fields need a benchmark",
+        ],
+        [
+          "screen",
+          { symbols: ["NVDA"], filters: [{ field: "rsi14", max: 30, or: 1 }] },
+          "unknown key or",
+        ],
+        ["movers", { symbols: ["NVDA"] }, "give min_move_pct"],
+        [
+          "movers",
+          { symbols: ["NVDA"], min_move_pct: 2, direction: "flat" },
+          "direction must be one of",
+        ],
       ];
       for (const [name, args, message] of bad) {
         const a = await call(t, name, args);
@@ -354,6 +387,199 @@ describe("history", () => {
       const a = await call(t, "history", { symbol: "NOSUCHNAME" });
       expect(a.isError).toBe(true);
       expect(a.body).toMatchObject({ input: "NOSUCHNAME", error: "not_found" });
+    }));
+});
+
+describe("screen", () => {
+  test("filters and ranks over a benchmark, tracking every symbol named and the benchmark", () =>
+    yahooApp(async (t, s) => {
+      const a = await call(t, "screen", {
+        symbols: ["NVDA", "FRED:DGS10", "NOSUCHNAME"],
+        benchmark: "^GSPC",
+        filters: [{ field: "rsi14", min: 0, max: 100 }],
+        sort: "relative_return_1m",
+        order: "desc",
+      });
+      expect(a.isError).toBe(false);
+      expect(a.body).toMatchObject({
+        benchmark: { id: "SNP:^GSPC", currency: "USD", stale: [] },
+        sort: { field: "relative_return_1m", order: "desc" },
+        counts: { matched: 1, not_matched: 0, unavailable: 1, errors: 1 },
+        next: null,
+      });
+      const [nvda, dgs10, none] = a.body.items;
+      expect(nvda).toMatchObject({
+        id: "US:NVDA",
+        status: "matched",
+        kind: "market_quote",
+        price: 210.96,
+        trade_time: "2026-10-23T20:00:00Z",
+        fetched_at: "2026-10-25T21:05:00Z",
+      });
+      expect(nvda.fields.rsi14).toMatchObject({
+        kind: "live",
+        date: "2026-10-23",
+      });
+      expect(nvda.fields.relative_return_1m.unit).toBe("percentage points");
+      // a yield's level against an index's price has no common unit
+      expect(dgs10).toMatchObject({
+        id: "FRED:DGS10",
+        status: "unavailable",
+        missing: ["relative_return_1m"],
+      });
+      expect(none).toMatchObject({ input: "NOSUCHNAME", error: "not_found" });
+      for (const id of ["US:NVDA", "FRED:DGS10", "SNP:^GSPC"]) {
+        expect(lastReadAt(t.db, id)).toBe(NOW);
+      }
+      expect(s.calls.charts("NVDA")).toHaveLength(1);
+    }));
+
+  test("a FRED series matches on its final rows, never on a distance to an average", () =>
+    yahooApp(async (t) => {
+      const a = await call(t, "screen", {
+        symbols: ["FRED:DGS10", "NVDA"],
+        filters: [
+          { field: "rsi14", min: 0 },
+          { field: "distance_weekly_sma200", min: -100 },
+        ],
+      });
+      expect(a.body.counts).toMatchObject({ matched: 1, unavailable: 1 });
+      expect(a.body.items[0].id).toBe("US:NVDA");
+      expect(a.body.items[0].fields.distance_weekly_sma200.kind).toBe("live");
+      expect(a.body.items[1]).toMatchObject({
+        id: "FRED:DGS10",
+        status: "unavailable",
+        missing: ["distance_weekly_sma200"],
+      });
+      const rsi = await call(t, "screen", {
+        symbols: ["FRED:DGS10"],
+        filters: [{ field: "rsi14", min: 0 }],
+      });
+      expect(rsi.body.items[0]).toMatchObject({
+        id: "FRED:DGS10",
+        status: "matched",
+        kind: "observation",
+        price: null,
+        observation: { date: "2026-10-22", value: 4.96 },
+      });
+      expect(rsi.body.items[0].fields.rsi14.kind).toBe("final");
+      expect(rsi.body.attribution).toBe(ATTRIBUTION);
+    }));
+});
+
+describe("movers", () => {
+  test("answers live moves, and a FRED series never moves", () =>
+    yahooApp(async (t) => {
+      const a = await call(t, "movers", {
+        symbols: ["NVDA", "^GSPC", "FRED:DGS10"],
+        min_move_pct: 0.5,
+        direction: "down",
+      });
+      expect(a.isError).toBe(false);
+      // NVDA -1.25 from 212.21 is -0.589%; ^GSPC -0.467%
+      expect(a.body.counts).toEqual({
+        matched: 1,
+        not_matched: 1,
+        unavailable: 1,
+        errors: 0,
+      });
+      expect(a.body.items[0]).toMatchObject({
+        id: "US:NVDA",
+        status: "matched",
+        price: 210.96,
+        previous_close: 212.21,
+        trade_time: "2026-10-23T20:00:00Z",
+      });
+      expect(a.body.items[0].change_percent).toBeCloseTo(
+        (-1.25 / 212.21) * 100,
+        4,
+      );
+      expect(a.body.items[1]).toMatchObject({
+        id: "FRED:DGS10",
+        status: "unavailable",
+        reason: "a FRED series has no live quote, so it never moves",
+      });
+      expect(a.body.attribution).toBeUndefined();
+      for (const id of ["US:NVDA", "SNP:^GSPC", "FRED:DGS10"]) {
+        expect(lastReadAt(t.db, id)).toBe(NOW);
+      }
+    }));
+
+  test("pages under 32 KiB by whole items", () =>
+    withApp(async (t) => {
+      const name = "Ünïcödé “Holdings” 日本株式会社 \\ ✓ ".repeat(12);
+      const ids: string[] = [];
+      for (let k = 0; k < 100; k++) {
+        const i = upsertInstrument(
+          t.db,
+          {
+            market: "XX",
+            symbol: `S${k}`,
+            source: "other",
+            sourceSymbol: `S${k}`,
+            exchange: "XX",
+            name: `${name}${k}`,
+            type: "EQUITY",
+            currency: "EUR",
+            unit: "per_share",
+            zone: "UTC",
+          },
+          NOW,
+        );
+        upsertBars(
+          t.db,
+          i.id,
+          "1d",
+          [
+            {
+              date: "2026-10-23",
+              open: 1,
+              high: 1,
+              low: 1,
+              close: 1,
+              volume: 1,
+              final: true,
+            },
+          ],
+          NOW,
+        );
+        t.db
+          .query(
+            `insert into signals (instrument, interval, date, kind, computed_at)
+             values (?, '1d', '2026-10-23', 'final', ?)`,
+          )
+          .run(i.id, NOW);
+        t.db
+          .query(
+            `insert into quotes (instrument, price, previous_close,
+               previous_close_field, change, change_percent, time, source,
+               fetched_at)
+             values (?, ?, 1, 'previousClose', ?, ?, ?, 'other', ?)`,
+          )
+          .run(i.id, 1 + k / 100, k / 100, k, NOW, NOW);
+        ids.push(i.id);
+      }
+      const seen: string[] = [];
+      let next: string | null = null;
+      let pages = 0;
+      do {
+        const a: Answer = await call(t, "movers", {
+          symbols: ids,
+          min_move_pct: 0,
+          ...(next === null ? {} : { next }),
+        });
+        expect(a.isError).toBe(false);
+        expect(a.body.counts.matched).toBe(100);
+        if (a.body.next !== null) {
+          expect(a.bytes).toBeGreaterThan(PAGE_BYTES - 2048);
+        }
+        seen.push(...a.body.items.map((i: any) => i.id));
+        next = a.body.next;
+        pages++;
+      } while (next !== null);
+      expect(pages).toBeGreaterThan(1);
+      // largest move first
+      expect(seen).toEqual([...ids].reverse());
     }));
 });
 
