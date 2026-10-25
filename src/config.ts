@@ -56,7 +56,8 @@ export const HELP = `\x1b[1m1ctx-markets\x1b[0m - a self-hosted market data serv
 \x1b[1mSecrets:\x1b[0m
   bearer.key             the bearer every request carries, at least 32
                          characters; the server will not start without it
-  source-<name>.key      a source's API key, e.g. source-finnhub.key`;
+  source-<name>.key      a source's API key, which turns it on, e.g.
+                         source-fred.key`;
 
 const VALUED_FLAGS = [
   "--listen",

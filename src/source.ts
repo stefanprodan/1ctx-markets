@@ -17,6 +17,7 @@ export const PHRASES = [
   "network error",
   "timed out",
   "malformed answer",
+  "key refused",
 ] as const;
 
 export type Phrase = (typeof PHRASES)[number];

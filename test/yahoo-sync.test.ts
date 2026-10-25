@@ -813,3 +813,8 @@ describe("quotes from a spark answer", () => {
     expect(readSessions(db)).toHaveLength(5);
   });
 });
+
+test("ten years before 29 February backfills from 28 February", () => {
+  // 2018-02-28 is a Wednesday
+  expect(backfillStart(Date.UTC(2028, 1, 29, 12)).monday).toBe("2018-02-26");
+});
