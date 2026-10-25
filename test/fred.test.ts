@@ -367,7 +367,7 @@ describe("fred series", () => {
 });
 
 describe("fred job", () => {
-  test("runs at 23:00 UTC each day and records an unscoped run", async () => {
+  test("runs at 23:00 UTC each day with a run per series", async () => {
     const { clock, ctx, db, f } = setup();
     await addSeries(ctx, "DGS10");
     await addSeries(ctx, "VIXCLS");
@@ -390,9 +390,15 @@ describe("fred job", () => {
       Date.UTC(2026, 9, 27, 23, 0),
     ]);
     expect(latest()).toBe(4);
-    const run = lastRun(db, SOURCE, "bars", null)!;
-    expect(run).toMatchObject({ status: "ok", scope: null, rows: 59 });
-    expect(run.startedAt).toBe(Date.UTC(2026, 9, 27, 23, 0));
+    for (const [scope, rows] of [
+      ["FRED:DGS10", 29],
+      ["FRED:VIXCLS", 30],
+    ] as const) {
+      const run = lastRun(db, SOURCE, "bars", scope)!;
+      expect(run).toMatchObject({ status: "ok", scope, rows });
+      expect(run.startedAt).toBe(Date.UTC(2026, 9, 27, 23, 0));
+    }
+    expect(lastRun(db, SOURCE, "bars", null)).toBeNull();
   });
 
   test("a pass missed while down runs on the first tick", async () => {
@@ -402,42 +408,65 @@ describe("fred job", () => {
     // down from Monday morning to Tuesday morning, past 23:00
     await clock.advance(Date.UTC(2026, 9, 27, 7, 0) - clock.now());
     expect(dueAt(clock.now())).toBe(Date.UTC(2026, 9, 26, 23, 0));
-    expect((await sync.tick())?.error).toBeNull();
-    expect(lastRun(db, SOURCE, "bars", null)?.startedAt).toBe(
+    expect((await sync.tick())?.failed).toEqual([]);
+    expect(lastRun(db, SOURCE, "bars", "FRED:DGS10")?.startedAt).toBe(
       Date.UTC(2026, 9, 27, 7, 0),
     );
     expect(await sync.tick()).toBeNull();
   });
 
-  test("staleness reads the source's own unscoped runs", async () => {
-    let failing = false;
-    const { clock, ctx, db } = setup((url) =>
-      failing ? fixture("observations-bad-key") : answer(url),
+  test("a series that fails every night is stale alone", async () => {
+    let dead = false;
+    const { clock, ctx, db, f } = setup((url) =>
+      dead && url.searchParams.get("series_id") === "VIXCLS"
+        ? fixture("observations-unknown")
+        : answer(url),
     );
     const sync = fredJobs({ ctx, log: silent });
     const before = { id: "FRED:DGS10", source: SOURCE, addedAt: 0 };
     expect(seriesStale(db, before, clock.now())).toEqual([STALE.noHistory]);
     await addSeries(ctx, "DGS10");
-    const instrument = readInstrument(db, "FRED:DGS10")!;
-    expect(seriesStale(db, instrument, clock.now())).toEqual([]);
+    await addSeries(ctx, "VIXCLS");
+    const dgs10 = readInstrument(db, "FRED:DGS10")!;
+    const vix = readInstrument(db, "FRED:VIXCLS")!;
+    expect(seriesStale(db, dgs10, clock.now())).toEqual([]);
 
     await clock.advance(Date.UTC(2026, 9, 26, 23, 0) - clock.now());
-    expect(seriesStale(db, instrument, clock.now())).toEqual([
-      STALE.barsPending,
+    expect(seriesStale(db, dgs10, clock.now())).toEqual([STALE.barsPending]);
+    dead = true;
+    expect((await sync.tick())?.failed).toEqual([
+      { instrument: "FRED:VIXCLS", error: "not found" },
     ]);
-    failing = true;
-    const pass = await sync.tick();
-    expect(pass?.error).toBe("key refused");
-    expect(seriesStale(db, instrument, clock.now())).toEqual([
+    expect(seriesStale(db, dgs10, clock.now())).toEqual([]);
+    expect(seriesStale(db, vix, clock.now())).toEqual([
       STALE.barsFailed,
       STALE.barsPending,
     ]);
-    // a failed pass waits before it is asked again
+
+    // the failed series waits before it is asked again; the other is done
+    const asked = () => f.urls.length;
+    const calls = asked();
     expect(await sync.tick()).toBeNull();
-    failing = false;
     await clock.advance(60 * MINUTE_MS);
-    expect((await sync.tick())?.error).toBeNull();
-    expect(seriesStale(db, instrument, clock.now())).toEqual([]);
+    const retry = await sync.tick();
+    expect(retry?.failed.map((x) => x.instrument)).toEqual(["FRED:VIXCLS"]);
+    expect(asked()).toBe(calls + 1);
+
+    // the next night it fails again, and only it is stale
+    await clock.advance(Date.UTC(2026, 9, 27, 23, 0) - clock.now());
+    const night = await sync.tick();
+    expect(night?.failed.map((x) => x.instrument)).toEqual(["FRED:VIXCLS"]);
+    expect(seriesStale(db, dgs10, clock.now())).toEqual([]);
+    expect(seriesStale(db, vix, clock.now())).toEqual([
+      STALE.barsFailed,
+      STALE.barsPending,
+    ]);
+
+    // once it answers again it is fresh
+    dead = false;
+    await clock.advance(60 * MINUTE_MS);
+    expect((await sync.tick())?.failed).toEqual([]);
+    expect(seriesStale(db, vix, clock.now())).toEqual([]);
   });
 });
 
@@ -511,8 +540,12 @@ describe("fred source", () => {
       await addSeries(ctx, "DGS10");
       failing = true;
       const pass = await app.fredJobs!.pass();
-      expect(pass.error).toBe("network error");
-      expect(lastRun(db, SOURCE, "bars", null)?.error).toBe("network error");
+      expect(pass.failed).toEqual([
+        { instrument: "FRED:DGS10", error: "network error" },
+      ]);
+      expect(lastRun(db, SOURCE, "bars", "FRED:DGS10")?.error).toBe(
+        "network error",
+      );
       // a line that quotes a URL with the key is masked too
       logger(clock, store.values, (line) => lines.push(line))("fred").warn(
         `asked https://api.stlouisfed.org/fred/series?api_key=${KEY}`,
