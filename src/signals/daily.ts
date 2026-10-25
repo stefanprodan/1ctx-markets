@@ -26,8 +26,6 @@ export type Bar = {
   volume: number | null;
 };
 
-export type DailyBar = Bar & { open: number };
-
 export type Quote = {
   price: number;
   dayHigh: number | null;
@@ -105,13 +103,14 @@ export function liveDaily(
       volume: quote.volume,
     },
   ];
-  return dailyRow(all, all.length - 1, last);
+  return dailyRow(all, all.length - 1, last, true);
 }
 
 function dailyRow(
   bars: readonly Bar[],
   i: number,
   prev: DailyRow | null,
+  provisional = false,
 ): DailyRow {
   const bar = bars[i]!;
   const c = bar.close;
@@ -160,7 +159,7 @@ function dailyRow(
     moveAtr,
     volatility20: volatility(bars, i),
     bollingerLower: bollingerLower(bars, i),
-    ...range52w(bars, i),
+    ...range52w(bars, i, provisional),
     volumeRatio: volumeRatio(bars, i),
     ema12,
     ema26,
@@ -286,9 +285,14 @@ const NO_RANGE: Range52w = {
   daysSinceHigh: null,
 };
 
-// Highs and lows when every bar in the window has both, closes when
-// none has either (a FRED series); a window mixing them has no range.
-function range52w(bars: readonly Bar[], i: number): Range52w {
+// A final bar with neither high nor low ranges over its close (FRED,
+// a 0 range a source stored as null); a quote without them is not a
+// bar's range yet, so the live row has none rather than use the price.
+function range52w(
+  bars: readonly Bar[],
+  i: number,
+  provisional: boolean,
+): Range52w {
   const start = addDays(bars[i]!.date, 1 - WINDOW_DAYS);
   if (bars[0]!.date > start) return NO_RANGE;
   let lo = 0;
@@ -298,16 +302,15 @@ function range52w(bars: readonly Bar[], i: number): Range52w {
     if (bars[mid]!.date < start) lo = mid + 1;
     else hi = mid;
   }
-  const first = bars[lo]!;
-  const closes = first.high === null && first.low === null;
   let high = Number.NEGATIVE_INFINITY;
   let low = Number.POSITIVE_INFINITY;
   let at = lo;
   for (let k = lo; k <= i; k++) {
     const b = bars[k]!;
-    if (closes !== (b.high === null && b.low === null)) return NO_RANGE;
-    const h = closes ? b.close : b.high;
-    const l = closes ? b.close : b.low;
+    const closeOnly = b.high === null && b.low === null;
+    if (closeOnly && provisional && k === i) return NO_RANGE;
+    const h = closeOnly ? b.close : b.high;
+    const l = closeOnly ? b.close : b.low;
     if (h === null || l === null) return NO_RANGE;
     // the latest bar at the high, since the fall starts there
     if (h >= high) {

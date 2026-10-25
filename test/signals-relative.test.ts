@@ -3,6 +3,7 @@
 
 import { describe, expect, test } from "bun:test";
 import {
+  LEVEL_NOTE,
   monthsBack,
   RETURN_NOTE,
   relativeReturn,
@@ -45,8 +46,8 @@ describe("relative return", () => {
       to: "2027-03-31",
       currency: "USD",
     });
-    expect(r.benchmark.return).toBeCloseTo(10, 12);
-    expect(r.instrument.return).toBeCloseTo(20, 12);
+    expect(r.benchmark.change).toBeCloseTo(10, 12);
+    expect(r.instrument.change).toBeCloseTo(20, 12);
     expect(r.relative).toBeCloseTo(10, 12);
     expect(r.note).toBe(RETURN_NOTE);
     expect(RETURN_NOTE).toBe(
@@ -60,7 +61,7 @@ describe("relative return", () => {
       { ...benchmark, live: { date: "2027-03-31", price: 120 } },
       1,
     )!;
-    expect(same.benchmark.return).toBeCloseTo(20, 12);
+    expect(same.benchmark.change).toBeCloseTo(20, 12);
     expect(same.relative).toBeCloseTo(0, 12);
 
     // a new benchmark day moves both end anchors to 2027-04-01
@@ -69,7 +70,7 @@ describe("relative return", () => {
       { ...benchmark, live: { date: "2027-04-01", price: 100 } },
       1,
     )!;
-    expect(next.benchmark).toMatchObject({ from: "2027-02-25", return: 0 });
+    expect(next.benchmark).toMatchObject({ from: "2027-02-25", change: 0 });
     expect(next.instrument).toMatchObject({ to: "2027-04-01" });
   });
 
@@ -77,6 +78,37 @@ describe("relative return", () => {
     expect(relativeReturn(instrument, benchmark, 3)).toBeNull();
     const late = { ...instrument, bars: instrument.bars.slice(1) };
     expect(relativeReturn(late, benchmark, 1)).toBeNull();
+  });
+
+  test("a listing with no bar inside the window has no answer", () => {
+    const stopped = { ...instrument, bars: instrument.bars.slice(0, 1) };
+    expect(relativeReturn(stopped, benchmark, 1)).toBeNull();
+    const old = { ...instrument, bars: bars([["2020-01-03", 50]]) };
+    expect(relativeReturn(old, benchmark, 1)).toBeNull();
+  });
+
+  test("a level series changes in points and never meets a price", () => {
+    const yields = (rows: [string, number][]) => ({
+      bars: bars(rows),
+      currency: "USD",
+      level: true as const,
+    });
+    const tenYear = yields([
+      ["2027-02-25", 0.5],
+      ["2027-03-31", -0.2],
+    ]);
+    const twoYear = yields([
+      ["2027-02-25", 1],
+      ["2027-03-31", 1.5],
+    ]);
+    const r = relativeReturn(tenYear, twoYear, 1)!;
+    expect(r.instrument).toMatchObject({ unit: "points" });
+    expect(r.instrument.change).toBeCloseTo(-0.7, 12);
+    expect(r.benchmark.change).toBe(0.5);
+    expect(r.relative).toBeCloseTo(-1.2, 12);
+    expect(r.note).toBe(LEVEL_NOTE);
+    expect(relativeReturn(tenYear, benchmark, 1)).toBeNull();
+    expect(relativeReturn(instrument, twoYear, 1)).toBeNull();
   });
 
   test("months back keep the day and clamp it to the month's end", () => {

@@ -6,7 +6,6 @@
 
 export type Close = { date: string; close: number };
 
-// to, exclusive
 export function meanClose(
   rows: readonly Close[],
   from: number,

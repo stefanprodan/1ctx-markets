@@ -10,16 +10,21 @@ import { type Close, checkOrder } from "./common.ts";
 export const RETURN_NOTE =
   "price returns in each listing's own currency; FX conversion excluded";
 
+export const LEVEL_NOTE =
+  "changes in each series' level, in points, not returns";
+
 export type Listing = {
   bars: readonly Close[];
   // replaces the close of a bar on its date, or follows the last bar
   live?: { date: string; price: number };
   currency: string;
+  // a yield or spread, which changes in level rather than returns
+  level?: true;
 };
 
 export type ListingReturn = {
-  // percent
-  return: number;
+  change: number;
+  unit: "percent" | "points";
   from: string;
   to: string;
   currency: string;
@@ -27,39 +32,47 @@ export type ListingReturn = {
 
 export type RelativeReturn = {
   months: 1 | 3;
-  // percentage points
+  // points of the unit both listings share
   relative: number;
   instrument: ListingReturn;
   benchmark: ListingReturn;
-  note: typeof RETURN_NOTE;
+  note: typeof RETURN_NOTE | typeof LEVEL_NOTE;
 };
 
-// Null when either listing has no bar on or before an anchor, or a
-// close at or below 0 to measure a return from.
+// Null when either listing has no bar on or before an anchor, the
+// instrument has no bar after the benchmark's start, a price starts at
+// or below 0, or a level is set against a price (the units differ).
 export function relativeReturn(
   instrument: Listing,
   benchmark: Listing,
   months: 1 | 3,
 ): RelativeReturn | null {
   if (months !== 1 && months !== 3) throw new Error("months is 1 or 3");
+  const level = instrument.level === true;
+  if (level !== (benchmark.level === true)) return null;
   const bench = withLive(benchmark);
   const inst = withLive(instrument);
   const end = bench.at(-1);
   if (end === undefined) return null;
   const benchStart = onOrBefore(bench, monthsBack(end.date, months));
   if (benchStart === null) return null;
-  const b = listingReturn(benchStart, end, benchmark.currency);
+  const b = change(benchStart, end, benchmark.currency, level);
   const instStart = onOrBefore(inst, benchStart.date);
   const instEnd = onOrBefore(inst, end.date);
   if (b === null || instStart === null || instEnd === null) return null;
-  const i = listingReturn(instStart, instEnd, instrument.currency);
+  // a listing that stopped trading would read as flat
+  if (instEnd.date < benchStart.date) return null;
+  if (instStart.date === instEnd.date && benchStart.date !== end.date) {
+    return null;
+  }
+  const i = change(instStart, instEnd, instrument.currency, level);
   if (i === null) return null;
   return {
     months,
-    relative: i.return - b.return,
+    relative: i.change - b.change,
     instrument: i,
     benchmark: b,
-    note: RETURN_NOTE,
+    note: level ? LEVEL_NOTE : RETURN_NOTE,
   };
 }
 
@@ -96,14 +109,16 @@ function onOrBefore(rows: readonly Close[], date: string): Close | null {
   return lo > 0 ? rows[lo - 1]! : null;
 }
 
-function listingReturn(
+function change(
   from: Close,
   to: Close,
   currency: string,
+  level: boolean,
 ): ListingReturn | null {
-  if (from.close <= 0) return null;
+  if (!level && from.close <= 0) return null;
   return {
-    return: 100 * (to.close / from.close - 1),
+    change: level ? to.close - from.close : 100 * (to.close / from.close - 1),
+    unit: level ? "points" : "percent",
     from: from.date,
     to: to.date,
     currency,

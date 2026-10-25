@@ -244,14 +244,43 @@ describe("daily signals", () => {
     });
   });
 
-  test("a series without highs and lows ranges over closes, a mixed one has none", () => {
+  test("a final bar without highs and lows ranges over its close", () => {
     const closes = closesOnly(range(262, (k) => 100 - (k % 50)));
     const rows = dailySeries(closes);
     expect(rows[261]).toMatchObject({ high52w: 100, low52w: 51 });
     const mixed = closes.map((b, k) =>
       k === 200 ? { ...b, high: 101, low: 99 } : b,
     );
-    expect(dailySeries(mixed)[261]!.high52w).toBeNull();
+    expect(dailySeries(mixed)[261]).toMatchObject({
+      high52w: 101,
+      low52w: 51,
+    });
+  });
+
+  test("one bar without a high or low keeps the 52-week range", () => {
+    const bars = generated(600).map((b, k) =>
+      k === 400 ? { ...b, high: null, low: null } : b,
+    );
+    const rows = dailySeries(bars);
+    expect(rows[400]!.high52w).not.toBeNull();
+    expect(rows[599]!.high52w).not.toBeNull();
+    const halfRange = generated(300).map((b, k) =>
+      k === 290 ? { ...b, low: null } : b,
+    );
+    expect(dailySeries(halfRange)[299]!.high52w).toBeNull();
+  });
+
+  test("a live quote without a high or low has no range on a close series", () => {
+    const closes = closesOnly(range(262, (k) => 100 - (k % 50)));
+    const rows = dailySeries(closes);
+    const live = liveDaily(
+      closes,
+      rows[261]!,
+      { price: 80, dayHigh: null, dayLow: null, volume: null },
+      { date: addDays(closes[261]!.date, 1), replacesLast: false },
+    );
+    expect(live.high52w).toBeNull();
+    expect(live.daysSinceHigh).toBeNull();
   });
 
   test("volume ratio reads the previous 20 days and needs volume", () => {
