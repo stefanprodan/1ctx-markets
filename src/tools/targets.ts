@@ -30,7 +30,6 @@ import { catchUp, fetchInstrument } from "../yahoo/sync.ts";
 
 // 1ctx's untouched tool timeout is 20 seconds
 export const CALL_MS = 15_000;
-export const INLINE_FETCH = 5;
 
 type Flight = { promise: Promise<unknown>; deadline: number };
 
@@ -43,8 +42,6 @@ export type Markets = {
   yahoo: Yahoo;
   fred: Fred | null;
   trackMs: number;
-  // the most symbols one call fetches
-  inlineFetch: number;
   callMs: number;
   log: Log;
   // fetches in flight, shared by every call naming the same instrument
@@ -59,7 +56,6 @@ export function markets(options: {
   fred: Fred | null;
   log: Log;
   trackMs?: number;
-  inlineFetch?: number;
   callMs?: number;
 }): Markets {
   return {
@@ -69,7 +65,6 @@ export function markets(options: {
     yahoo: options.yahoo.failFast(),
     fred: options.fred?.failFast() ?? null,
     trackMs: options.trackMs ?? TRACK_MS,
-    inlineFetch: options.inlineFetch ?? INLINE_FETCH,
     callMs: options.callMs ?? CALL_MS,
     log: options.log,
     inflight: new Map(),
@@ -290,10 +285,9 @@ async function step(
 const EXPIRED = Symbol("expired");
 
 // Each input in order to its instrument or an error, inside the call's
-// deadline. Resolution runs first for every input, so the inputs that
-// need a fetch take the call's budget in order; past it they answer
-// timeout, as the deadline does. A fetch that misses the deadline
-// stores nothing new.
+// deadline. No count caps the fetches: the source's queue paces them,
+// and one not done by the deadline answers timeout and stores nothing
+// new.
 export async function readTargets(
   m: Markets,
   inputs: readonly string[],
@@ -317,25 +311,12 @@ export async function readTargets(
         ]),
       ),
     );
-    const planned = new Set<string>();
     const targets = await Promise.all(
       steps.map(async (s, k): Promise<Target> => {
         const input = inputs[k]!;
         if (s === EXPIRED) return { input, error: timeout(m) };
         if (s.kind === "ready") return { input, instrument: s.instrument };
         if (s.kind === "error") return { input, error: s.error };
-        if (!planned.has(s.key)) {
-          if (planned.size >= m.inlineFetch) {
-            return {
-              input,
-              error: {
-                error: "timeout",
-                message: `not fetched: at most ${m.inlineFetch} new symbols a call; ${RETRY}`,
-              },
-            };
-          }
-          planned.add(s.key);
-        }
         const fetched = shared(m, `fetch:${s.key}`, deadline, s.run).then(
           (instrument): Target => ({ input, instrument }),
           (error: unknown): Target => ({ input, error: itemError(m, error) }),

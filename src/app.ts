@@ -36,8 +36,6 @@ export type AppOptions = {
   quoteEveryMs: number;
   // an instrument read within this many days stays tracked
   trackDays?: number;
-  // the most unknown symbols one read fetches inside the call
-  inlineFetch?: number;
   // FRED is on while its key file holds one
   fredKey?: string | null;
   // tests answer every source call from recordings
@@ -109,7 +107,6 @@ export function start(options: AppOptions): App {
     fred: fredClient,
     log: options.log("tools"),
     trackMs,
-    inlineFetch: options.inlineFetch,
   });
   const mcp = mcpHandler(options.version, options.log("mcp"), reads);
   const server = serve({

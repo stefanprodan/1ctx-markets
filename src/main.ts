@@ -63,7 +63,6 @@ const app = start({
   db,
   quoteEveryMs: config.quoteEveryMs,
   trackDays: config.trackDays,
-  inlineFetch: config.inlineFetch,
   // read through the keys module, so the log masks it
   fredKey: store.source("fred"),
 });
@@ -75,7 +74,6 @@ main.info("startup", {
   migrations: migrations.length > 0 ? migrations.join(",") : "current",
   quote_every: config.quoteEveryMs / MINUTE_MS,
   track_days: config.trackDays,
-  inline_fetch: config.inlineFetch,
 });
 // one field per source with its state and why; Yahoo needs no key
 main.info("sources", app.sources);

@@ -11,7 +11,6 @@ import { MINUTE_MS } from "./clock.ts";
 export const DEFAULT_LISTEN = "127.0.0.1:11237";
 export const DEFAULT_QUOTE_EVERY = 5;
 export const DEFAULT_TRACK_DAYS = 30;
-export const DEFAULT_INLINE_FETCH = 5;
 
 export type Config = {
   hostname: string;
@@ -21,8 +20,6 @@ export type Config = {
   quoteEveryMs: number;
   // an instrument read within this many days stays tracked
   trackDays: number;
-  // the most unknown instruments one read fetches inside the call
-  inlineFetch: number;
 };
 
 export const dbPath = (config: Config): string =>
@@ -48,8 +45,6 @@ export const HELP = `\x1b[1m1ctx-markets\x1b[0m - a self-hosted market data serv
   --quote-every <min>    minutes between quote syncs (default: ${DEFAULT_QUOTE_EVERY})
   --track-days <days>    an instrument read within this many days stays
                          tracked (default: ${DEFAULT_TRACK_DAYS})
-  --inline-fetch <n>     the most unknown instruments one read fetches
-                         (default: ${DEFAULT_INLINE_FETCH})
   -v, --version          show version
   -h, --help             show this help
 
@@ -59,13 +54,7 @@ export const HELP = `\x1b[1m1ctx-markets\x1b[0m - a self-hosted market data serv
   source-<name>.key      a source's API key, which turns it on, e.g.
                          source-fred.key`;
 
-const VALUED_FLAGS = [
-  "--listen",
-  "--data",
-  "--quote-every",
-  "--track-days",
-  "--inline-fetch",
-];
+const VALUED_FLAGS = ["--listen", "--data", "--quote-every", "--track-days"];
 
 export function defaultDataDir(home: string): string {
   return join(home, ".1ctx-markets");
@@ -91,7 +80,6 @@ export function parseCli(argv: string[], home: string = homedir()): Cli {
   let dataDir = defaultDataDir(home);
   let quoteEvery = DEFAULT_QUOTE_EVERY;
   let trackDays = DEFAULT_TRACK_DAYS;
-  let inlineFetch = DEFAULT_INLINE_FETCH;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
@@ -125,12 +113,6 @@ export function parseCli(argv: string[], home: string = homedir()): Cli {
         trackDays = n;
         break;
       }
-      case "--inline-fetch": {
-        const n = positive();
-        if (typeof n === "string") return { kind: "error", message: n };
-        inlineFetch = n;
-        break;
-      }
       case "-v":
       case "--version":
         return { kind: "version" };
@@ -151,7 +133,6 @@ export function parseCli(argv: string[], home: string = homedir()): Cli {
       dataDir,
       quoteEveryMs: quoteEvery * MINUTE_MS,
       trackDays,
-      inlineFetch,
     },
   };
 }

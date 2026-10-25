@@ -31,14 +31,13 @@ import { yahoo } from "../src/yahoo/client.ts";
 import { yahooJobs } from "../src/yahoo/jobs.ts";
 import { addInstrument } from "../src/yahoo/sync.ts";
 import { fakeClock } from "./helpers/clock.ts";
-import { sim, US } from "./helpers/sim.ts";
+import { sim, US, XETRA } from "./helpers/sim.ts";
 import { FRED_KEY, gate, NOW, sources } from "./helpers/sources.ts";
 import { chartSymbol, fakeFetch, type Recorded } from "./helpers/yahoo.ts";
 
 async function setup(
   options: {
     hold?: (url: URL) => Promise<Recorded | undefined> | undefined;
-    inlineFetch?: number;
   } = {},
 ) {
   const clock = fakeClock(NOW);
@@ -54,7 +53,6 @@ async function setup(
     yahoo: client,
     fred: fredClient,
     log: silent,
-    inlineFetch: options.inlineFetch,
   });
   return {
     clock,
@@ -134,17 +132,43 @@ describe("a symbol never seen", () => {
     expect(t.calls.urls.length).toBe(asked);
   });
 
-  test("past the call's budget answers timeout without a fetch", async () => {
-    const t = await setup({ inlineFetch: 1 });
-    const out = await readTargets(t.m, ["NVDA", "^GSPC", "NVDA"]);
-    expect(idOf(out[0])).toBe("US:NVDA");
-    expect(errorOf(out[1])).toMatchObject({ error: "timeout" });
-    expect(errorOf(out[1])!.message).toContain("at most 1 new symbols");
-    // the same symbol again shares the fetch already planned
-    expect(idOf(out[2])).toBe("US:NVDA");
-    // only the short chart that resolved it
-    expect(t.calls.charts("^GSPC")).toHaveLength(1);
-    expect(readInstrument(t.db, "SNP:^GSPC")).toBeNull();
+  test("no count caps the new symbols of a call; only the deadline does", async () => {
+    const listings = Array.from({ length: 8 }, (_, k) => XETRA(`S${k}`));
+    const s = sim(listings);
+    const clock = fakeClock(NOW);
+    const { db } = open(":memory:", clock);
+    const held = gate();
+    const f = fakeFetch((url) =>
+      url.pathname === "/v7/finance/spark" &&
+      url.searchParams.get("symbols") === "S7.DE"
+        ? held.hold().then(() => s.route(url, clock.now()))
+        : s.route(url, clock.now()),
+    );
+    const m = markets({
+      db,
+      clock,
+      writer: writer(db),
+      yahoo: yahoo({ clock, fetch: f.fetch }),
+      fred: null,
+      log: silent,
+    });
+    const read = readTargets(
+      m,
+      listings.map((l) => l.symbol),
+    );
+    await held.arrived;
+    await clock.advance(CALL_MS);
+    const out = await read;
+    expect(out.slice(0, 7).map(idOf)).toEqual(
+      Array.from({ length: 7 }, (_, k) => `XETRA:S${k}`),
+    );
+    expect(errorOf(out[7])).toMatchObject({ error: "timeout" });
+    expect(errorOf(out[7])!.message).toContain("retry this symbol");
+    held.release();
+    await Promise.all(
+      [...m.inflight.values()].map((x) => x.promise.catch(() => {})),
+    );
+    expect(readInstrument(db, "XETRA:S7")).toBeNull();
   });
 
   test("FRED off answers no data from FRED", async () => {
