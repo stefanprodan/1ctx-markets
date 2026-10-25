@@ -1,0 +1,157 @@
+{
+  "recordedAt": "2026-10-25T19:45:48.899Z",
+  "request": {
+    "method": "GET",
+    "url": "https://wapi.bvb.ro/api/search?limit=30&query=TRANSILVANIA&type=&exchange="
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json; charset=utf-8"
+  },
+  "body": [
+    {
+      "symbol": "TBK",
+      "full_name": "TRANSILVANIA BROKER DE ASIGURARE",
+      "description": "TBK, TRANSILVANIA BROKER DE ASIGURARE, ROTBKAACNOR5",
+      "exchange": "BVB",
+      "ticker": "TBK",
+      "type": "Shares"
+    },
+    {
+      "symbol": "TRANSI",
+      "full_name": "TRANSILVANIA INVESTMENTS ALLIANCE S.A.",
+      "description": "TRANSI, TRANSILVANIA INVESTMENTS ALLIANCE S.A., ROSIFCACNOR8",
+      "exchange": "BVB",
+      "ticker": "TRANSI",
+      "type": "Shares"
+    },
+    {
+      "symbol": "TLV32",
+      "full_name": "BANCA TRANSILVANIA S.A.",
+      "description": "TLV32, BANCA TRANSILVANIA S.A., XS3109437387",
+      "exchange": "BVB",
+      "ticker": "TLV32",
+      "type": "Bonds"
+    },
+    {
+      "symbol": "TLV33E",
+      "full_name": "BANCA TRANSILVANIA S.A.",
+      "description": "TLV33E, BANCA TRANSILVANIA S.A., XS2641792465",
+      "exchange": "BVB",
+      "ticker": "TLV33E",
+      "type": "Bonds"
+    },
+    {
+      "symbol": "AROBS",
+      "full_name": "AROBS TRANSILVANIA SOFTWARE",
+      "description": "AROBS, AROBS TRANSILVANIA SOFTWARE, ROWMR49B0RG5",
+      "exchange": "BVB",
+      "ticker": "AROBS",
+      "type": "Shares"
+    },
+    {
+      "symbol": "TLV",
+      "full_name": "BANCA TRANSILVANIA S.A.",
+      "description": "TLV, BANCA TRANSILVANIA S.A., ROTLVAACNOR1",
+      "exchange": "BVB",
+      "ticker": "TLV",
+      "type": "Shares"
+    },
+    {
+      "symbol": "EBTLVTL19",
+      "full_name": "Banca Transilvania TURBO LONG 10/1.77/1.82",
+      "description": "EBTLVTL19, Banca Transilvania TURBO LONG 10/1.77/1.82, AT0000A2W465",
+      "exchange": "BVB",
+      "ticker": "EBTLVTL19",
+      "type": "Structured"
+    },
+    {
+      "symbol": "RBTLVTL6",
+      "full_name": "Banca Transilvania SA Turbo Long",
+      "description": "RBTLVTL6, Banca Transilvania SA Turbo Long, AT0000A32R61",
+      "exchange": "BVB",
+      "ticker": "RBTLVTL6",
+      "type": "Structured"
+    },
+    {
+      "symbol": "RBTLVTL7",
+      "full_name": "Banca Transilvania SA Turbo Long",
+      "description": "RBTLVTL7, Banca Transilvania SA Turbo Long, AT0000A32R79",
+      "exchange": "BVB",
+      "ticker": "RBTLVTL7",
+      "type": "Structured"
+    },
+    {
+      "symbol": "RCTLVTL3",
+      "full_name": "TURBO LONG ON BANCA TRANSILVANIA SA",
+      "description": "RCTLVTL3, TURBO LONG ON BANCA TRANSILVANIA SA, AT0000A2GU27",
+      "exchange": "BVB",
+      "ticker": "RCTLVTL3",
+      "type": "Structured"
+    },
+    {
+      "symbol": "RBAROBTL5",
+      "full_name": "Turbo Long Certificate on Arobs Transilvania Software SA",
+      "description": "RBAROBTL5, Turbo Long Certificate on Arobs Transilvania Software SA, AT0000A3W7V6",
+      "exchange": "BVB",
+      "ticker": "RBAROBTL5",
+      "type": "Structured"
+    },
+    {
+      "symbol": "RBTLVTL14",
+      "full_name": "Turbo Long Certificate on Banca Transilvania SA",
+      "description": "RBTLVTL14, Turbo Long Certificate on Banca Transilvania SA, AT0000A3W802",
+      "exchange": "BVB",
+      "ticker": "RBTLVTL14",
+      "type": "Structured"
+    },
+    {
+      "symbol": "RBAROBTL1",
+      "full_name": "Turbo Long Certificates on Arobs Transilvania Software SA",
+      "description": "RBAROBTL1, Turbo Long Certificates on Arobs Transilvania Software SA, AT0000A3KS08",
+      "exchange": "BVB",
+      "ticker": "RBAROBTL1",
+      "type": "Structured"
+    },
+    {
+      "symbol": "RBAROBTL2",
+      "full_name": "Turbo Long Certificates on Arobs Transilvania Software SA",
+      "description": "RBAROBTL2, Turbo Long Certificates on Arobs Transilvania Software SA, AT0000A3N6H8",
+      "exchange": "BVB",
+      "ticker": "RBAROBTL2",
+      "type": "Structured"
+    },
+    {
+      "symbol": "RBAROBTL3",
+      "full_name": "Turbo Long Certificates on Arobs Transilvania Software SA",
+      "description": "RBAROBTL3, Turbo Long Certificates on Arobs Transilvania Software SA, AT0000A3N6J4",
+      "exchange": "BVB",
+      "ticker": "RBAROBTL3",
+      "type": "Structured"
+    },
+    {
+      "symbol": "RBTLVTL10",
+      "full_name": "Turbo Long Certificates on Banca Transilvania SA",
+      "description": "RBTLVTL10, Turbo Long Certificates on Banca Transilvania SA, AT0000A3AHF8",
+      "exchange": "BVB",
+      "ticker": "RBTLVTL10",
+      "type": "Structured"
+    },
+    {
+      "symbol": "RBTLVTL12",
+      "full_name": "Turbo Long Certificates on Banca Transilvania SA",
+      "description": "RBTLVTL12, Turbo Long Certificates on Banca Transilvania SA, AT0000A3RPK5",
+      "exchange": "BVB",
+      "ticker": "RBTLVTL12",
+      "type": "Structured"
+    },
+    {
+      "symbol": "RBTLVTL13",
+      "full_name": "Turbo Long Certificates on Banca Transilvania SA",
+      "description": "RBTLVTL13, Turbo Long Certificates on Banca Transilvania SA, AT0000A3RPL3",
+      "exchange": "BVB",
+      "ticker": "RBTLVTL13",
+      "type": "Structured"
+    }
+  ]
+}

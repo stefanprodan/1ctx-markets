@@ -1,0 +1,90 @@
+{
+  "recordedAt": "2026-10-25T19:40:45.238Z",
+  "request": {
+    "method": "GET",
+    "url": "https://query1.finance.yahoo.com/v8/finance/spark?symbols=NVDA,VVSM.DE,SOL-USD&range=5d&interval=1d"
+  },
+  "status": 200,
+  "headers": {
+    "age": "1",
+    "cache-control": "public, max-age=45, stale-while-revalidate=15",
+    "content-type": "application/json;charset=utf-8"
+  },
+  "body": {
+    "SOL-USD": {
+      "timestamp": [
+        1792540800,
+        1792627200,
+        1792713600,
+        1792800000,
+        1792886400
+      ],
+      "end": null,
+      "symbol": "SOL-USD",
+      "fulldayChange": 0.639999,
+      "fulldayChangePercent": 0.633224,
+      "fulldayPrice": 101.71,
+      "previousClose": null,
+      "chartPreviousClose": 106.793655,
+      "start": null,
+      "dataGranularity": 300,
+      "close": [
+        106.793655,
+        103.54232,
+        102.77986,
+        102.27166,
+        101.71
+      ]
+    },
+    "NVDA": {
+      "timestamp": [
+        1792416600,
+        1792503000,
+        1792589400,
+        1792675800,
+        1792762200
+      ],
+      "end": null,
+      "symbol": "NVDA",
+      "fulldayChange": -1.096,
+      "fulldayChangePercent": -0.516,
+      "fulldayPrice": 210.96,
+      "previousClose": null,
+      "chartPreviousClose": 214.13,
+      "start": null,
+      "dataGranularity": 300,
+      "close": [
+        217.09,
+        216.47,
+        221.97,
+        212.21,
+        210.96
+      ]
+    },
+    "VVSM.DE": {
+      "timestamp": [
+        1792393200,
+        1792479600,
+        1792566000,
+        1792652400,
+        1792738800
+      ],
+      "end": null,
+      "symbol": "VVSM.DE",
+      "fulldayChange": 0.6,
+      "fulldayChangePercent": 0.693,
+      "fulldayPrice": 87.22,
+      "previousClose": null,
+      "chartPreviousClose": 89.95,
+      "start": null,
+      "dataGranularity": 300,
+      "close": [
+        91.99,
+        89.92,
+        91.12,
+        86.62,
+        87.22
+      ]
+    }
+  }
+}

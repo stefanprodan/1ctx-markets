@@ -1,0 +1,54 @@
+{
+  "recordedAt": "2026-10-25T19:39:05.989Z",
+  "request": {
+    "method": "GET",
+    "url": "https://finnhub.io/api/v1/stock/metric?symbol=TLV.RO&metric=all"
+  },
+  "status": 200,
+  "headers": {
+    "access-control-allow-credentials": "true",
+    "access-control-allow-headers": "Origin",
+    "access-control-allow-methods": "POST, GET, OPTIONS, PUT, DELETE",
+    "access-control-allow-origin": "*",
+    "access-control-expose-headers": "Content-Length",
+    "alt-svc": "h3=\":443\"; ma=86400",
+    "cf-cache-status": "DYNAMIC",
+    "cf-ray": "a503af7299ade463-OTP",
+    "connection": "keep-alive",
+    "content-encoding": "zstd",
+    "content-type": "application/json; charset=utf-8",
+    "date": "Sun, 25 Oct 2026 19:39:06 GMT",
+    "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.0,\"max_age\":604800}",
+    "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=dsCSuMdQm2fYd0n6ACsiY%2Bu9fzEbLsl6DhHbYOgR3s%2BNZ5ZkfAJnBmqd%2BO3QDcFcCSl%2BXXK3vF4DpNeOhScYYyvcopVZXy2cDALzvnxOlDSMJOuKfrUvrnuya8Qx\"}]}",
+    "server": "cloudflare",
+    "transfer-encoding": "chunked",
+    "x-ratelimit-limit": "60",
+    "x-ratelimit-remaining": "58",
+    "x-ratelimit-reset": "1792957189"
+  },
+  "body": {
+    "metric": {
+      "10DayAverageTradingVolume": 0.55985,
+      "13WeekPriceReturnDaily": -2.269,
+      "26WeekPriceReturnDaily": 11.2888,
+      "3MonthADReturnStd": 23.115807,
+      "3MonthAverageTradingVolume": 0.60539,
+      "52WeekHigh": 38.28,
+      "52WeekHighDate": "2026-07-17",
+      "52WeekLow": 24.3,
+      "52WeekLowDate": "2025-10-20",
+      "52WeekPriceReturnDaily": 48.1572,
+      "5DayPriceReturnDaily": -0.2756,
+      "monthToDatePriceReturnDaily": 5.7895,
+      "priceRelativeToS&P50013Week": -5.1164,
+      "priceRelativeToS&P50026Week": 3.3508,
+      "priceRelativeToS&P5004Week": 8.7367,
+      "priceRelativeToS&P50052Week": 35.026,
+      "priceRelativeToS&P500Ytd": 25.6518,
+      "yearToDatePriceReturnDaily": 37.0974
+    },
+    "metricType": "all",
+    "series": {},
+    "symbol": "TLV.RO"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "recordedAt": "2026-10-25T19:37:28.000Z",
+  "request": {
+    "method": "GET",
+    "url": "https://query1.finance.yahoo.com/v8/finance/chart/SOL-USD?range=5d&interval=1d"
+  },
+  "status": 429,
+  "headers": {
+    "content-type": "text/html",
+    "cache-control": "no-store",
+    "age": "0"
+  },
+  "body": "Too Many Requests"
+}

@@ -1,0 +1,143 @@
+{
+  "recordedAt": "2026-10-25T19:40:16.507Z",
+  "request": {
+    "method": "GET",
+    "url": "https://query1.finance.yahoo.com/v8/finance/chart/%5EGSPC?range=5d&interval=1d"
+  },
+  "status": 200,
+  "headers": {
+    "age": "8",
+    "cache-control": "public, max-age=10, stale-while-revalidate=20",
+    "content-type": "application/json;charset=utf-8"
+  },
+  "body": {
+    "chart": {
+      "result": [
+        {
+          "meta": {
+            "currency": "USD",
+            "symbol": "^GSPC",
+            "exchangeName": "SNP",
+            "fullExchangeName": "SNP",
+            "instrumentType": "INDEX",
+            "firstTradeDate": -1325583000,
+            "regularMarketTime": 1792787901,
+            "hasPrePostMarketData": false,
+            "gmtoffset": -14400,
+            "timezone": "EDT",
+            "exchangeTimezoneName": "America/New_York",
+            "regularMarketPrice": 7623.68,
+            "regularMarketChangePercent": -0.519,
+            "fulldayPrice": 7623.68,
+            "fulldayChange": -39.75,
+            "fulldayChangePercent": -0.519,
+            "fiftyTwoWeekHigh": 7844.52,
+            "fiftyTwoWeekLow": 6316.91,
+            "regularMarketDayHigh": 7660.15,
+            "regularMarketDayLow": 7612.07,
+            "regularMarketVolume": 2749563000,
+            "longName": "S&P 500",
+            "shortName": "S&P 500",
+            "chartPreviousClose": 7659.44,
+            "priceHint": 2,
+            "currentTradingPeriod": {
+              "pre": {
+                "timezone": "EDT",
+                "end": 1792762200,
+                "start": 1792742400,
+                "gmtoffset": -14400
+              },
+              "regular": {
+                "timezone": "EDT",
+                "end": 1792785600,
+                "start": 1792762200,
+                "gmtoffset": -14400
+              },
+              "post": {
+                "timezone": "EDT",
+                "end": 1792800000,
+                "start": 1792785600,
+                "gmtoffset": -14400
+              }
+            },
+            "dataGranularity": "1d",
+            "range": "5d",
+            "validRanges": [
+              "1d",
+              "5d",
+              "1mo",
+              "3mo",
+              "6mo",
+              "1y",
+              "2y",
+              "5y",
+              "10y",
+              "ytd",
+              "max"
+            ]
+          },
+          "timestamp": [
+            1792416600,
+            1792503000,
+            1792589400,
+            1792675800,
+            1792762200
+          ],
+          "indicators": {
+            "quote": [
+              {
+                "low": [
+                  7684.7900390625,
+                  7668.02978515625,
+                  7709.33984375,
+                  7637.35986328125,
+                  7612.06982421875
+                ],
+                "open": [
+                  7702.77001953125,
+                  7679.009765625,
+                  7736.43017578125,
+                  7694.6201171875,
+                  7637.18017578125
+                ],
+                "high": [
+                  7731.18017578125,
+                  7748.419921875,
+                  7770.39990234375,
+                  7702.93994140625,
+                  7660.14990234375
+                ],
+                "close": [
+                  7690.72998046875,
+                  7712.56982421875,
+                  7757.169921875,
+                  7663.43017578125,
+                  7623.68017578125
+                ],
+                "volume": [
+                  4587260000,
+                  5004770000,
+                  4921480000,
+                  5972620000,
+                  5062330000
+                ]
+              }
+            ],
+            "adjclose": [
+              {
+                "adjclose": [
+                  7690.72998046875,
+                  7712.56982421875,
+                  7757.169921875,
+                  7663.43017578125,
+                  7623.68017578125
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "error": null
+    }
+  }
+}

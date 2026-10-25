@@ -1,0 +1,29 @@
+{
+  "recordedAt": "2026-10-25T19:39:02.707Z",
+  "request": {
+    "method": "GET",
+    "url": "https://finnhub.io/api/v1/stock/insider-sentiment?symbol=VVSM.DE&from=2026-01-01&to=2026-10-25"
+  },
+  "status": 403,
+  "headers": {
+    "access-control-allow-credentials": "true",
+    "access-control-allow-headers": "Origin",
+    "access-control-allow-methods": "POST, GET, OPTIONS, PUT, DELETE",
+    "access-control-allow-origin": "*",
+    "access-control-expose-headers": "Content-Length",
+    "alt-svc": "h3=\":443\"; ma=86400",
+    "cf-cache-status": "DYNAMIC",
+    "cf-ray": "a503af5e1ffce463-OTP",
+    "connection": "keep-alive",
+    "content-encoding": "zstd",
+    "content-type": "application/json; charset=utf-8",
+    "date": "Sun, 25 Oct 2026 19:39:02 GMT",
+    "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.0,\"max_age\":604800}",
+    "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=4KcEiTuGVTnJ9AVtyWPT%2B8PMVduUAi%2BeGdjAW9K2CmyT%2Fd5LYd%2FtGOA5k68PHjILRA2yEHo26E7GoGNtRd6gvpuY1ehc9%2Fiav6JB0a11id%2FcXZ2om5GwvjWIjBgW\"}]}",
+    "server": "cloudflare",
+    "transfer-encoding": "chunked"
+  },
+  "body": {
+    "error": "You don't have access to this resource."
+  }
+}

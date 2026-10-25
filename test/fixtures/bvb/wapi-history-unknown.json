@@ -1,0 +1,21 @@
+{
+  "recordedAt": "2026-10-25T19:45:43.851Z",
+  "request": {
+    "method": "GET",
+    "url": "https://wapi.bvb.ro/api/history?symbol=ZZZZ&from=1789069496&to=1792957496&rs=1D&ajust=1&countback=30&currencyCode=RON"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json; charset=utf-8"
+  },
+  "body": {
+    "t": null,
+    "o": null,
+    "h": null,
+    "l": null,
+    "c": null,
+    "v": null,
+    "s": "no_data",
+    "nextTime": null
+  }
+}

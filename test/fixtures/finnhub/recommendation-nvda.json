@@ -1,0 +1,67 @@
+{
+  "recordedAt": "2026-10-25T19:38:51.175Z",
+  "request": {
+    "method": "GET",
+    "url": "https://finnhub.io/api/v1/stock/recommendation?symbol=NVDA"
+  },
+  "status": 200,
+  "headers": {
+    "access-control-allow-credentials": "true",
+    "access-control-allow-headers": "Origin",
+    "access-control-allow-methods": "POST, GET, OPTIONS, PUT, DELETE",
+    "access-control-allow-origin": "*",
+    "access-control-expose-headers": "Content-Length",
+    "alt-svc": "h3=\":443\"; ma=86400",
+    "cf-cache-status": "DYNAMIC",
+    "cf-ray": "a503af15fa5be463-OTP",
+    "connection": "keep-alive",
+    "content-encoding": "zstd",
+    "content-type": "application/json; charset=utf-8",
+    "date": "Sun, 25 Oct 2026 19:38:51 GMT",
+    "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.0,\"max_age\":604800}",
+    "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=n8kZsVJ1XzKj6kwBs%2B531LKYTguGqtfSPsUR9E3HTw2lh4G7eP7WeMm17SSjBa7sT6NC2QbBhBz9itk2lN5aiFcJT9AJV5S0KCjgiMXKiZu03%2FO4dkocbb3QC4AB\"}]}",
+    "server": "cloudflare",
+    "transfer-encoding": "chunked",
+    "x-ratelimit-limit": "60",
+    "x-ratelimit-remaining": "59",
+    "x-ratelimit-reset": "1792957191"
+  },
+  "body": [
+    {
+      "symbol": "NVDA",
+      "period": "2026-10-01",
+      "strongBuy": 25,
+      "buy": 41,
+      "hold": 2,
+      "sell": 1,
+      "strongSell": 0
+    },
+    {
+      "symbol": "NVDA",
+      "period": "2026-09-01",
+      "strongBuy": 24,
+      "buy": 41,
+      "hold": 3,
+      "sell": 1,
+      "strongSell": 0
+    },
+    {
+      "symbol": "NVDA",
+      "period": "2026-08-01",
+      "strongBuy": 23,
+      "buy": 41,
+      "hold": 3,
+      "sell": 1,
+      "strongSell": 0
+    },
+    {
+      "symbol": "NVDA",
+      "period": "2026-07-01",
+      "strongBuy": 24,
+      "buy": 40,
+      "hold": 4,
+      "sell": 1,
+      "strongSell": 0
+    }
+  ]
+}

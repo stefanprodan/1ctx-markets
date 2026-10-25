@@ -1,0 +1,29 @@
+{
+  "recordedAt": "2026-10-25T19:39:01.068Z",
+  "request": {
+    "method": "GET",
+    "url": "https://finnhub.io/api/v1/stock/earnings?symbol=VVSM.DE"
+  },
+  "status": 403,
+  "headers": {
+    "access-control-allow-credentials": "true",
+    "access-control-allow-headers": "Origin",
+    "access-control-allow-methods": "POST, GET, OPTIONS, PUT, DELETE",
+    "access-control-allow-origin": "*",
+    "access-control-expose-headers": "Content-Length",
+    "alt-svc": "h3=\":443\"; ma=86400",
+    "cf-cache-status": "DYNAMIC",
+    "cf-ray": "a503af53de79e463-OTP",
+    "connection": "keep-alive",
+    "content-encoding": "zstd",
+    "content-type": "application/json; charset=utf-8",
+    "date": "Sun, 25 Oct 2026 19:39:01 GMT",
+    "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.0,\"max_age\":604800}",
+    "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=0hyz9IcZds7qffejOA8yENoL1HFfEr8wrPyxEBD%2BlmgjoqtODx85qF3WhiM5rlXo1iFFIFV4elwzReyh9PtuEwo%2F2ln9vznzKHLU%2F3dUIrIFlqU3N0OTYCUfh8%2FB\"}]}",
+    "server": "cloudflare",
+    "transfer-encoding": "chunked"
+  },
+  "body": {
+    "error": "You don't have access to this resource."
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "recordedAt": "2026-10-25T19:39:07.625Z",
+  "request": {
+    "method": "GET",
+    "url": "https://finnhub.io/api/v1/stock/recommendation?symbol=TLV.RO"
+  },
+  "status": 200,
+  "headers": {
+    "access-control-allow-credentials": "true",
+    "access-control-allow-headers": "Origin",
+    "access-control-allow-methods": "POST, GET, OPTIONS, PUT, DELETE",
+    "access-control-allow-origin": "*",
+    "access-control-expose-headers": "Content-Length",
+    "alt-svc": "h3=\":443\"; ma=86400",
+    "cf-cache-status": "DYNAMIC",
+    "cf-ray": "a503af7cc991e463-OTP",
+    "connection": "keep-alive",
+    "content-length": "2",
+    "content-type": "application/json; charset=utf-8",
+    "date": "Sun, 25 Oct 2026 19:39:07 GMT",
+    "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.0,\"max_age\":604800}",
+    "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=sccIhr5PChOkqlthkRObLd0TgsWOqio4dwEcdjzmERYaFedQ%2BycW78PYlxtqqhzyjYKANRlUH0IM06hkxByK0YNAfw2eujGDEEPt8u%2Fgo3jayCLkyok5s2tY7pET\"}]}",
+    "server": "cloudflare",
+    "x-ratelimit-limit": "60",
+    "x-ratelimit-remaining": "56",
+    "x-ratelimit-reset": "1792957191"
+  },
+  "body": []
+}

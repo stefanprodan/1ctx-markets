@@ -1,0 +1,29 @@
+{
+  "recordedAt": "2026-10-25T19:39:15.897Z",
+  "request": {
+    "method": "GET",
+    "url": "https://finnhub.io/api/v1/stock/price-target?symbol=NVDA"
+  },
+  "status": 403,
+  "headers": {
+    "access-control-allow-credentials": "true",
+    "access-control-allow-headers": "Origin",
+    "access-control-allow-methods": "POST, GET, OPTIONS, PUT, DELETE",
+    "access-control-allow-origin": "*",
+    "access-control-expose-headers": "Content-Length",
+    "alt-svc": "h3=\":443\"; ma=86400",
+    "cf-cache-status": "DYNAMIC",
+    "cf-ray": "a503afb089aae463-OTP",
+    "connection": "keep-alive",
+    "content-encoding": "zstd",
+    "content-type": "application/json; charset=utf-8",
+    "date": "Sun, 25 Oct 2026 19:39:16 GMT",
+    "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.0,\"max_age\":604800}",
+    "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=nH%2FkiBZ%2FDA%2FMOAXEVoTnWExAXWypqML5HeZVLIDm35Iq9Ki9qFwvIYnFoXy7gs%2BybE91fPoYm5bdDPanIUd5QuFk9wx8CaXhn5aUyaA9fmhwKxZjT%2BBny2T6x8Lx\"}]}",
+    "server": "cloudflare",
+    "transfer-encoding": "chunked"
+  },
+  "body": {
+    "error": "You don't have access to this resource."
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "recordedAt": "2026-10-25T19:45:51.411Z",
+  "request": {
+    "method": "GET",
+    "url": "https://wapi.bvb.ro/api/search?limit=31&query=TRANSILVANIA&type=&exchange="
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json; charset=utf-8"
+  },
+  "body": "Request Error! - s2",
+  "note": "A limit above 30 is refused with a JSON string body and HTTP 200."
+}

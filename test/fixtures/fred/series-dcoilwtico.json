@@ -1,0 +1,47 @@
+{
+  "recordedAt": "2026-10-25T20:25:33.220Z",
+  "request": {
+    "method": "GET",
+    "url": "https://api.stlouisfed.org/fred/series?series_id=DCOILWTICO&api_key=REDACTED&file_type=json"
+  },
+  "status": 200,
+  "headers": {
+    "alt-svc": "h3=\":443\"; ma=93600",
+    "cache-control": "max-age=0, no-cache",
+    "connection": "keep-alive",
+    "content-encoding": "gzip",
+    "content-length": "382",
+    "content-type": "application/json; charset=UTF-8",
+    "date": "Sun, 25 Oct 2026 20:25:33 GMT",
+    "expires": "Sun, 25 Oct 2026 20:25:33 GMT",
+    "last-modified": "Wed, 21 Oct 2026 17:18:25 GMT",
+    "pragma": "no-cache",
+    "server": "Apache",
+    "strict-transport-security": "max-age=86400",
+    "vary": "Accept-Encoding",
+    "x-location": "cfs"
+  },
+  "body": {
+    "realtime_start": "2026-10-21",
+    "realtime_end": "2026-10-21",
+    "seriess": [
+      {
+        "id": "DCOILWTICO",
+        "realtime_start": "2026-10-21",
+        "realtime_end": "2026-10-21",
+        "title": "Crude Oil Prices: West Texas Intermediate (WTI) - Cushing, Oklahoma",
+        "observation_start": "1986-01-02",
+        "observation_end": "2026-10-20",
+        "frequency": "Daily",
+        "frequency_short": "D",
+        "units": "Dollars per Barrel",
+        "units_short": "$ per Barrel",
+        "seasonal_adjustment": "Not Seasonally Adjusted",
+        "seasonal_adjustment_short": "NSA",
+        "last_updated": "2026-10-21 12:18:25-05",
+        "popularity": 84,
+        "notes": "Definitions, Sources and Explanatory Notes (http://www.eia.doe.gov/dnav/pet/TblDefs/pet_pri_spt_tbldef2.asp)"
+      }
+    ]
+  }
+}

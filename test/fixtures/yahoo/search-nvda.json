@@ -1,0 +1,132 @@
+{
+  "recordedAt": "2026-10-25T19:40:26.003Z",
+  "request": {
+    "method": "GET",
+    "url": "https://query1.finance.yahoo.com/v1/finance/search?q=NVDA&quotesCount=10&newsCount=0&listsCount=0"
+  },
+  "status": 200,
+  "headers": {
+    "age": "0",
+    "cache-control": "public, max-age=600, stale-while-revalidate=180",
+    "content-type": "application/json;charset=utf-8"
+  },
+  "body": {
+    "explains": [],
+    "count": 7,
+    "quotes": [
+      {
+        "exchange": "NMS",
+        "shortname": "NVIDIA Corporation",
+        "quoteType": "EQUITY",
+        "symbol": "NVDA",
+        "index": "quotes",
+        "score": 122435504,
+        "typeDisp": "Equity",
+        "longname": "NVIDIA Corporation",
+        "exchDisp": "NASDAQ",
+        "sector": "Technology",
+        "sectorDisp": "Technology",
+        "industry": "Semiconductors",
+        "industryDisp": "Semiconductors",
+        "dispSecIndFlag": true,
+        "isYahooFinance": true,
+        "prevName": "Usual Stablecoin",
+        "nameChangeDate": "2026-10-25"
+      },
+      {
+        "exchange": "NGM",
+        "shortname": "GraniteShares 2x Long NVDA Dail",
+        "quoteType": "ETF",
+        "symbol": "NVDL",
+        "index": "quotes",
+        "score": 22040,
+        "typeDisp": "ETF",
+        "longname": "GraniteShares 2x Long NVDA Daily ETF",
+        "exchDisp": "NASDAQ",
+        "isYahooFinance": true
+      },
+      {
+        "exchange": "PCX",
+        "shortname": "YieldMax NVDA Option Income Str",
+        "quoteType": "ETF",
+        "symbol": "NVDY",
+        "index": "quotes",
+        "score": 21078,
+        "typeDisp": "ETF",
+        "longname": "YieldMax NVDA Option Income Strategy ETF",
+        "exchDisp": "NYSEArca",
+        "isYahooFinance": true
+      },
+      {
+        "exchange": "NGM",
+        "shortname": "GraniteShares 2x Short NVDA Dai",
+        "quoteType": "ETF",
+        "symbol": "NVD",
+        "index": "quotes",
+        "score": 20638,
+        "typeDisp": "ETF",
+        "longname": "Graniteshares 2x Short NVDA Daily ETF",
+        "exchDisp": "NASDAQ",
+        "isYahooFinance": true
+      },
+      {
+        "exchange": "BTS",
+        "shortname": "REX NVDA Growth & Income ETF",
+        "quoteType": "ETF",
+        "symbol": "NVII",
+        "index": "quotes",
+        "score": 20232,
+        "typeDisp": "ETF",
+        "exchDisp": "BATS Trading",
+        "isYahooFinance": true
+      },
+      {
+        "exchange": "TOR",
+        "shortname": "NVIDIA CDR (CAD HEDGED)",
+        "quoteType": "EQUITY",
+        "symbol": "NVDA.TO",
+        "index": "quotes",
+        "score": 20227,
+        "typeDisp": "Equity",
+        "longname": "NVIDIA Corporation",
+        "exchDisp": "Toronto",
+        "sector": "Technology",
+        "sectorDisp": "Technology",
+        "industry": "Semiconductors",
+        "industryDisp": "Semiconductors",
+        "isYahooFinance": true,
+        "prevName": "Usual Stablecoin",
+        "nameChangeDate": "2026-10-25"
+      },
+      {
+        "exchange": "NGM",
+        "shortname": "Direxion Daily NVDA Bull 2X ETF",
+        "quoteType": "ETF",
+        "symbol": "NVDU",
+        "index": "quotes",
+        "score": 20190,
+        "typeDisp": "ETF",
+        "longname": "Direxion Daily Nvda Bull 2X Shares",
+        "exchDisp": "NASDAQ",
+        "isYahooFinance": true
+      }
+    ],
+    "news": [],
+    "nav": [],
+    "lists": [],
+    "researchReports": [],
+    "screenerFieldResults": [],
+    "totalTime": 20,
+    "timeTakenForQuotes": 413,
+    "timeTakenForNews": 0,
+    "timeTakenForAlgowatchlist": 400,
+    "timeTakenForPredefinedScreener": 400,
+    "timeTakenForCrunchbase": 0,
+    "timeTakenForNav": 400,
+    "timeTakenForResearchReports": 0,
+    "timeTakenForQuestions": 0,
+    "timeTakenForScreenerField": 0,
+    "timeTakenForCulturalAssets": 0,
+    "timeTakenForSearchLists": 0
+  }
+}

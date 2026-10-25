@@ -1,0 +1,115 @@
+{
+  "recordedAt": "2026-10-25T19:40:29.231Z",
+  "request": {
+    "method": "GET",
+    "url": "https://query1.finance.yahoo.com/v1/finance/search?q=VVSM&quotesCount=10&newsCount=0&listsCount=0"
+  },
+  "status": 200,
+  "headers": {
+    "age": "1",
+    "cache-control": "public, max-age=600, stale-while-revalidate=180",
+    "content-type": "application/json;charset=utf-8"
+  },
+  "body": {
+    "explains": [],
+    "count": 7,
+    "quotes": [
+      {
+        "exchange": "GER",
+        "shortname": "VanEck Semiconductor UC.ETF   R",
+        "quoteType": "ETF",
+        "symbol": "VVSM.DE",
+        "index": "quotes",
+        "score": 20120,
+        "typeDisp": "ETF",
+        "longname": "VanEck Semiconductor UCITS ETF",
+        "exchDisp": "XETRA",
+        "isYahooFinance": true
+      },
+      {
+        "exchange": "MUN",
+        "shortname": "VanEck Semiconductor UC.ETF   R",
+        "quoteType": "ETF",
+        "symbol": "VVSM.MU",
+        "index": "quotes",
+        "score": 20002,
+        "typeDisp": "ETF",
+        "exchDisp": "Munich",
+        "isYahooFinance": true
+      },
+      {
+        "exchange": "DXE",
+        "shortname": "VanEck Semiconductor UCITS ETF",
+        "quoteType": "ETF",
+        "symbol": "VVSMD.XD",
+        "index": "quotes",
+        "score": 20002,
+        "typeDisp": "ETF",
+        "longname": "MSCI ACWI ex USA SRI GRTR USD",
+        "exchDisp": "DXE",
+        "isYahooFinance": true
+      },
+      {
+        "exchange": "PNK",
+        "quoteType": "MUTUALFUND",
+        "symbol": "VVSMF",
+        "index": "quotes",
+        "score": 20002,
+        "typeDisp": "Fund",
+        "longname": "Vaneck Vectors Ucits Etfs Plc - Vaneck Vectors Semiconductor Ucits Etf",
+        "exchDisp": "OTC Markets",
+        "isYahooFinance": true
+      },
+      {
+        "exchange": "CXE",
+        "shortname": "VanEck Semiconductor UCITS ETF",
+        "quoteType": "ETF",
+        "symbol": "VVSMD.XC",
+        "index": "quotes",
+        "score": 20001,
+        "typeDisp": "ETF",
+        "exchDisp": "CXE",
+        "isYahooFinance": true
+      },
+      {
+        "exchange": "HAN",
+        "shortname": "VanEck Semiconductor UC.ETF   R",
+        "quoteType": "ETF",
+        "symbol": "VVSM.HA",
+        "index": "quotes",
+        "score": 20001,
+        "typeDisp": "ETF",
+        "exchDisp": "Hanover",
+        "isYahooFinance": true
+      },
+      {
+        "exchange": "DUS",
+        "shortname": "VanEck Semiconductor UC.ETF   R",
+        "quoteType": "ETF",
+        "symbol": "VVSM.DU",
+        "index": "quotes",
+        "score": 20001,
+        "typeDisp": "ETF",
+        "exchDisp": "Dusseldorf Stock Exchange",
+        "isYahooFinance": true
+      }
+    ],
+    "news": [],
+    "nav": [],
+    "lists": [],
+    "researchReports": [],
+    "screenerFieldResults": [],
+    "totalTime": 17,
+    "timeTakenForQuotes": 411,
+    "timeTakenForNews": 0,
+    "timeTakenForAlgowatchlist": 400,
+    "timeTakenForPredefinedScreener": 400,
+    "timeTakenForCrunchbase": 0,
+    "timeTakenForNav": 400,
+    "timeTakenForResearchReports": 0,
+    "timeTakenForQuestions": 0,
+    "timeTakenForScreenerField": 0,
+    "timeTakenForCulturalAssets": 0,
+    "timeTakenForSearchLists": 0
+  }
+}
