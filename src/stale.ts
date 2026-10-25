@@ -25,6 +25,7 @@ export const JOBS = {
 export const STALE = {
   quotesFailed: "quote sync failed",
   noQuote: "no quote in the last pass",
+  noQuoteYet: "no quote yet",
   checkFailed: "session check failed",
   barsFailed: "bar sync failed",
   barsPending: "bar sync pending",
@@ -41,18 +42,21 @@ const failed = (db: Db, i: Scoped, job: string) =>
 // none when the quote is current
 export function quoteStale(db: Db, instrument: Scoped): StaleReason[] {
   const reasons: StaleReason[] = [];
+  const quote = db
+    .query<{ fetchedAt: number }, [string]>(
+      "select fetched_at as fetchedAt from quotes where instrument = ?",
+    )
+    .get(instrument.id);
   const pass = lastRun(db, instrument.source, JOBS.quotes, instrument.market);
   if (pass?.status === "failed") reasons.push(STALE.quotesFailed);
-  else if (pass && pass.startedAt >= instrument.addedAt) {
+  if (quote === null) reasons.push(STALE.noQuoteYet);
+  else if (
+    pass?.status === "ok" &&
+    pass.startedAt >= instrument.addedAt &&
+    quote.fetchedAt < pass.startedAt
+  ) {
     // asked in the last pass, and its quote did not come back
-    const quote = db
-      .query<{ fetchedAt: number }, [string]>(
-        "select fetched_at as fetchedAt from quotes where instrument = ?",
-      )
-      .get(instrument.id);
-    if (quote === null || quote.fetchedAt < pass.startedAt) {
-      reasons.push(STALE.noQuote);
-    }
+    reasons.push(STALE.noQuote);
   }
   // a closed market's new session can go unseen while its checks fail
   if (failed(db, instrument, JOBS.check)) reasons.push(STALE.checkFailed);

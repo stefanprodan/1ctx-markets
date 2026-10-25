@@ -292,10 +292,10 @@ describe("a closed market's check", () => {
     await t.runTo(utc("2026-10-26T16:00"));
     expect(readSession(t.db, "US")!.start).toBe(utc("2026-10-26T13:30"));
     expect(readQuote(t.db, "US:U1")!.fetchedAt).toBe(utc("2026-10-26T16:00"));
-    // U0 is stale on its own, never U1
+    // U0, never answered, is stale on its own, never U1
     expect(quoteStale(t.db, readInstrument(t.db, "US:U1")!)).toEqual([]);
     expect(quoteStale(t.db, readInstrument(t.db, "US:U0")!)).toEqual([
-      "no quote in the last pass",
+      "no quote yet",
     ]);
   });
 });

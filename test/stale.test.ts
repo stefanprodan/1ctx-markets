@@ -73,16 +73,29 @@ describe("staleness", () => {
   test("a quote pass that answered marks only the instrument left out", () => {
     const { db, us, run, now } = setup();
     run(JOBS.quotes, "US");
-    // added after the pass, so not asked in it
+    // added after the pass, so not asked in it, and with no quote
     const later = upsertInstrument(db, instrument("US", "AMD"), now() + 1);
-    expect(quoteStale(db, later)).toEqual([]);
+    expect(quoteStale(db, later)).toEqual(["no quote yet"]);
     run(JOBS.quotes, "US");
+    expect(quoteStale(db, later)).toEqual([]);
     db.query("update quotes set fetched_at = ? where instrument = ?").run(
       now() - 1,
       later.id,
     );
     expect(quoteStale(db, later)).toEqual(["no quote in the last pass"]);
     expect(quoteStale(db, us)).toEqual([]);
+  });
+
+  test("an instrument with no quote is stale, whatever the passes", () => {
+    const { db, us, run } = setup();
+    expect(quoteStale(db, us)).toEqual(["no quote yet"]);
+    run(JOBS.quotes, "US");
+    // added before the pass ended, though not asked in it
+    db.query("delete from quotes where instrument = ?").run(us.id);
+    expect(quoteStale(db, us)).toEqual(["no quote yet"]);
+    run(JOBS.quotes, "US", new SourceError("rate limited"));
+    db.query("delete from quotes where instrument = ?").run(us.id);
+    expect(quoteStale(db, us)).toEqual(["quote sync failed", "no quote yet"]);
   });
 
   test("bars: none stored, a failed pass, and a session newer than the last good pass", () => {
