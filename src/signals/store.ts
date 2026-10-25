@@ -9,6 +9,7 @@
 
 import { type Interval, readBars, type Bar as StoredBar } from "../bars.ts";
 import { readSession, sessionDate, weekOf } from "../calendars.ts";
+import { MINUTE_MS } from "../clock.ts";
 import type { Db } from "../db/index.ts";
 import type { Instrument } from "../instruments.ts";
 import { type DailyRow, dailySeries, liveDaily } from "./daily.ts";
@@ -188,10 +189,14 @@ export type LiveQuote = {
   time: number;
 };
 
+// a closing auction prints after the end, as the post-close quote does
+export const LIVE_AFTER_END_MS = 15 * MINUTE_MS;
+
 // What the live row is computed from: the stored quote, dated by its
-// market's stored session. A quote traded before that session began
-// belongs to an earlier one (CL=F's Friday trade under Sunday's
-// session), so there is no live row until the session's first trade.
+// market's stored session. A trade outside that session, up to the
+// post-close window, belongs to another day (EURUSD=X's Sunday trade
+// under Friday's session, CL=F's Friday trade under Sunday's), so it
+// updates the quote only.
 export function liveTarget(
   db: Db,
   instrument: Scoped,
@@ -203,7 +208,12 @@ export function liveTarget(
     )
     .get(instrument.id);
   const session = readSession(db, instrument.market);
-  if (quote === null || session === null || quote.time < session.start) {
+  if (
+    quote === null ||
+    session === null ||
+    quote.time < session.start ||
+    quote.time > session.end + LIVE_AFTER_END_MS
+  ) {
     return null;
   }
   return { date: sessionDate(session), quote };
@@ -244,15 +254,19 @@ function lastFinalRow<T>(
   );
 }
 
-// The stored bars the provisional one joins: every bar final but one
-// on the provisional date, and the last final row on the last final
-// bar; null while a bar before it waits to turn final.
-function liveBase<T>(
+// The stored bars the provisional one joins and the row of the bar
+// before it: the last final row when every earlier bar is final and has
+// one. Otherwise, as when a bar pass fails at a session's rollover, the
+// series runs from the first bar over the bars as stored, the unfinished
+// day included, so live prices never wait on the bars. Null with no
+// bars or with the provisional date's bar already final.
+function liveBase<T extends { date: string }>(
   db: Db,
   instrument: string,
   interval: Interval,
   date: string,
   n: number,
+  series: (bars: StoredBar[]) => T[],
 ): { bars: StoredBar[]; last: T | null; replacesLast: boolean } | null {
   const bars = recent(db, instrument, interval, n);
   if (bars.length === 0) return null;
@@ -261,10 +275,16 @@ function liveBase<T>(
   const replacesLast = tail.date === date;
   if (replacesLast && tail.final) return null;
   const base = replacesLast ? bars.slice(0, -1) : bars;
-  if (base.some((b) => !b.final)) return null;
   const last = lastFinalRow<T>(db, instrument, interval);
-  if ((last?.date ?? null) !== (base.at(-1)?.date ?? null)) return null;
-  return { bars, last, replacesLast };
+  if (
+    base.every((b) => b.final) &&
+    (last?.date ?? null) === (base.at(-1)?.date ?? null)
+  ) {
+    return { bars, last, replacesLast };
+  }
+  const all = readBars(db, instrument, interval);
+  const rows = series(replacesLast ? all.slice(0, -1) : all);
+  return { bars: all, last: rows.at(-1) ?? null, replacesLast };
 }
 
 function replaceLive(
@@ -283,9 +303,8 @@ function replaceLive(
   }
 }
 
-// The live daily and weekly rows from the stored quote. With no quote
-// of the current session there is none; while a bar before the
-// session's waits to turn final, the old row stays and reads pending.
+// The live daily and weekly rows from the stored quote; with no quote
+// traded in the current session there is none.
 export function refreshLive(db: Db, instrument: Scoped, now: number): void {
   const target = liveTarget(db, instrument);
   if (target === null) {
@@ -295,7 +314,14 @@ export function refreshLive(db: Db, instrument: Scoped, now: number): void {
     return;
   }
   const { date, quote } = target;
-  const day = liveBase<DailyRow>(db, instrument.id, "1d", date, LIVE_DAYS + 1);
+  const day = liveBase<DailyRow>(
+    db,
+    instrument.id,
+    "1d",
+    date,
+    LIVE_DAYS + 1,
+    dailySeries,
+  );
   if (day !== null) {
     const row = liveDaily(day.bars, day.last, quote, {
       date,
@@ -310,6 +336,7 @@ export function refreshLive(db: Db, instrument: Scoped, now: number): void {
     "1wk",
     monday,
     LIVE_WEEKS + 1,
+    weeklySeries,
   );
   if (week !== null) {
     const row = liveWeekly(week.bars, week.last, quote.price, {

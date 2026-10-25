@@ -276,11 +276,33 @@ describe("live rows", () => {
     await ctx.writer.write((db) =>
       storeQuotes(db, parseSpark(quote, clock.now())),
     );
-    // Friday's bar is not final yet, so Monday's live row waits
-    expect(liveRow(db, "1d")).toBeNull();
-    expect(readSignals(db, "US:NVDA", clock.now())!.stale.live).toContain(
-      STALE.signalsPending,
+    // Friday's bar is not final yet: the live row steps over it as
+    // stored, and says so
+    const asStored = readBars(db, "US:NVDA", "1d");
+    expect(asStored.at(-1)).toMatchObject({ date: "2026-10-23", final: false });
+    const quoted = {
+      price: 200,
+      dayHigh: 213.85,
+      dayLow: 210.18,
+      volume: 80189765,
+    };
+    expect(liveRow(db, "1d")).toEqual(
+      liveDaily(asStored, dailySeries(asStored).at(-1)!, quoted, {
+        date: "2026-10-26",
+        replacesLast: false,
+      }),
     );
+    const storedWeeks = closes(readBars(db, "US:NVDA", "1wk"));
+    expect(liveRow(db, "1wk")).toEqual(
+      liveWeekly(storedWeeks, weeklySeries(storedWeeks).at(-1)!, 200, {
+        date: "2026-10-26",
+        replacesLast: false,
+      }),
+    );
+    expect((rows(db, "1d").at(-1) as any).date).toBe("2026-10-22");
+    const early = readSignals(db, "US:NVDA", clock.now())!.stale.live;
+    expect(early).toContain(STALE.previousDayNotFinal);
+    expect(early).not.toContain(STALE.signalsPending);
 
     await refetch(ctx, instrument);
     const days = readBars(db, "US:NVDA", "1d");
@@ -304,12 +326,12 @@ describe("live rows", () => {
         replacesLast: false,
       }),
     );
-    expect(readSignals(db, "US:NVDA", clock.now())!.stale.live).not.toContain(
-      STALE.signalsPending,
-    );
+    const late = readSignals(db, "US:NVDA", clock.now())!.stale.live;
+    expect(late).not.toContain(STALE.signalsPending);
+    expect(late).not.toContain(STALE.previousDayNotFinal);
   });
 
-  test("a quote traded before its market's session began makes none", async () => {
+  test("a trade outside its session's window makes none", async () => {
     const { db, ctx, clock } = await stored();
     const friday = await nvdaSpark();
     await ctx.writer.write((db) =>
@@ -326,6 +348,27 @@ describe("live rows", () => {
     );
     expect(rows(db, "1d", "live")).toEqual([]);
     expect(rows(db, "1wk", "live")).toEqual([]);
+
+    // a closing auction ten minutes after Friday's end counts
+    const auction = await nvdaSpark((m) => {
+      m.regularMarketTime += 10 * 60;
+    });
+    await ctx.writer.write((db) =>
+      storeQuotes(db, parseSpark(auction, clock.now() + 2000)),
+    );
+    expect(liveRow(db, "1d")).toMatchObject({ date: "2026-10-23" });
+    // a Sunday evening trade under Friday's session, as EURUSD=X's
+    const sunday = await nvdaSpark((m) => {
+      m.regularMarketTime = utc("2026-10-25T19:20") / 1000;
+      m.regularMarketPrice = 1;
+    });
+    await ctx.writer.write((db) =>
+      storeQuotes(db, parseSpark(sunday, clock.now() + 3000)),
+    );
+    expect(rows(db, "1d", "live")).toEqual([]);
+    expect(
+      db.query("select price from quotes where instrument = 'US:NVDA'").get(),
+    ).toEqual({ price: 1 });
   });
 });
 
@@ -355,8 +398,9 @@ describe("a tick at a session's rollover", () => {
 
     await clock.advance(utc("2026-10-26T00:00") - clock.now());
     await jobs.quoteTick();
-    // Sunday's bar is not final until the bar pass
-    expect(live()).toEqual([{ date: "2026-10-25" }]);
+    // Sunday's bar is not final until the bar pass; the live row moves
+    // on over it as stored
+    expect(live()).toEqual([{ date: "2026-10-26" }]);
     await jobs.barTick();
     const days = readBars(db, "CRYPTO:C0-USD", "1d");
     expect(days.at(-2)).toMatchObject({ date: "2026-10-25", final: true });

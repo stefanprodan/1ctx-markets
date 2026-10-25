@@ -79,6 +79,17 @@ export function readSignals(
     final.push(STALE.signalsPending);
   }
   const live = [...new Set([...final, ...quoteStale(db, i)])];
+  const unfinished = (interval: Interval, row: { date: string } | null) =>
+    row !== null &&
+    db
+      .query<{ n: number }, [string, string, string]>(
+        `select count(*) as n from bars where instrument = ? and interval = ?
+           and final = 0 and date < ?`,
+      )
+      .get(i.id, interval, row.date)!.n > 0;
+  if (unfinished("1d", daily.live) || unfinished("1wk", weekly.live)) {
+    live.push(STALE.previousDayNotFinal);
+  }
   const target = liveTarget(db, i);
   if (target !== null && !live.includes(STALE.noHistory)) {
     const behind = (
