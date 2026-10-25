@@ -405,6 +405,46 @@ describe("refetch changes", () => {
   });
 });
 
+describe("a history that stops early", () => {
+  test("is refused, keeping the stored days after it and leaving its split", async () => {
+    const history = await recorded("chart-nvda-5y-1d");
+    const window = clone(await recorded("chart-nvda-5d-1d"));
+    window.body.chart.result[0].events = {
+      splits: {
+        "1792157400": {
+          date: 1792157400,
+          numerator: 2,
+          denominator: 1,
+          splitRatio: "2:1",
+        },
+      },
+    };
+    const early = clone(history);
+    const result = early.body.chart.result[0];
+    result.timestamp.splice(-60);
+    for (const k of ["open", "high", "low", "close", "volume"]) {
+      result.indicators.quote[0][k].splice(-60);
+    }
+    const answers = [history, window, early];
+    let n = 0;
+    const { db, ctx } = setup(
+      Date.parse(history.recordedAt),
+      () => answers[n++],
+    );
+    const { instrument } = await addInstrument(ctx, "NVDA");
+    await expect(refetch(ctx, instrument)).rejects.toThrow(
+      "a history cut short",
+    );
+    expect(n).toBe(3);
+    const days = readBars(db, "US:NVDA", "1d");
+    expect(days).toHaveLength(1255);
+    expect(days.at(-1)!.date).toBe("2026-10-23");
+    expect(db.query("select date from splits").all()).toEqual([
+      { date: "2024-06-10" },
+    ]);
+  });
+});
+
 describe("quotes from a spark answer", () => {
   async function withInstruments() {
     const fx = await recorded("spark-v7-batch");

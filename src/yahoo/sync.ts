@@ -199,11 +199,11 @@ function recordSplits(
 }
 
 // Writes one chart answer's session, bars and weeks. A whole history
-// replaces every daily bar, so none keeps a scale from before a split,
-// unless it is cut short against the stored one; then nothing is
-// written, the splits stay unapplied, and the next run asks again. A
-// window drops the stored days inside its span that the source no
-// longer has.
+// rewrites every daily bar, so none keeps a scale from before a split,
+// unless it starts or stops well short of the stored one; then nothing
+// is written, the splits stay unapplied, and the next run asks again.
+// Either answer drops only the stored days inside its own span that
+// the source no longer has.
 function store(
   ctx: YahooContext,
   instrument: Instrument,
@@ -220,22 +220,23 @@ function store(
       const range = dailyRange(db, instrument.id);
       if (range !== null) {
         const first = kept[0]?.date;
+        const last = kept.at(-1)?.date;
         if (
           first === undefined ||
+          last === undefined ||
           (first > addDays(whole.since, SHORT_HISTORY_DAYS) &&
-            range.first < addDays(first, -SHORT_HISTORY_DAYS))
+            range.first < addDays(first, -SHORT_HISTORY_DAYS)) ||
+          last < addDays(range.last, -SHORT_HISTORY_DAYS)
         ) {
           throw new SourceError("malformed answer", "a history cut short");
         }
       }
       const keep = new Set([...days].filter((d) => d >= whole.since));
-      const deleted = deleteDailyBars(
-        db,
-        instrument.id,
-        "0000-01-01",
-        "9999-12-31",
-        keep,
-      );
+      const span = [...keep].sort();
+      const deleted =
+        span.length === 0
+          ? null
+          : deleteDailyBars(db, instrument.id, span[0]!, span.at(-1)!, keep);
       const written = upsertBars(
         db,
         instrument.id,

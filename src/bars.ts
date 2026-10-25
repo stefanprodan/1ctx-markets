@@ -41,15 +41,20 @@ export function readBars(
 export function dailyRange(
   db: Db,
   instrument: string,
-): { first: string; lastFinal: string | null } | null {
+): { first: string; last: string; lastFinal: string | null } | null {
   const row = db
-    .query<{ first: string | null; lastFinal: string | null }, [string]>(
-      `select min(date) as first,
+    .query<
+      { first: string | null; last: string; lastFinal: string | null },
+      [string]
+    >(
+      `select min(date) as first, max(date) as last,
          max(case when final = 1 then date end) as lastFinal
        from bars where instrument = ? and interval = '1d'`,
     )
     .get(instrument);
-  return row?.first ? { first: row.first, lastFinal: row.lastFinal } : null;
+  return row?.first
+    ? { first: row.first, last: row.last, lastFinal: row.lastFinal }
+    : null;
 }
 
 const volumeOf = (v: number | null): number | null =>
