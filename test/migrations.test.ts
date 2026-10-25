@@ -74,6 +74,29 @@ describe("migrations", () => {
     expect(half).toBeNull();
   });
 
+  test("a unit is set on the instruments stored before it", () => {
+    const db = new Database(":memory:", { strict: true });
+    const clock = fakeClock();
+    const at = MIGRATIONS.findIndex((m) => m.id === "0004-scopes-units");
+    migrate(db, clock, MIGRATIONS.slice(0, at));
+    const add = db.query(
+      `insert into instruments (id, market, symbol, source, source_symbol,
+         exchange, type, zone, added_at, updated_at)
+       values (?, ?, ?, 'yahoo', ?, 'X', ?, 'UTC', 0, 0)`,
+    );
+    add.run("US:NVDA", "US", "NVDA", "NVDA", "ETF");
+    add.run("CRYPTO:SOL-USD", "CRYPTO", "SOL-USD", "SOL-USD", "CRYPTOCURRENCY");
+    add.run("CXI:^VIX", "CXI", "^VIX", "^VIX", "INDEX");
+    migrate(db, clock);
+    expect(
+      db.query("select id, unit from instruments order by id").all(),
+    ).toEqual([
+      { id: "CRYPTO:SOL-USD", unit: "per_unit" },
+      { id: "CXI:^VIX", unit: "unknown" },
+      { id: "US:NVDA", unit: "per_share" },
+    ]);
+  });
+
   test("open applies the shipped list to a new database", () => {
     const { db, migrations } = open(":memory:", fakeClock());
     expect(migrations).toEqual(MIGRATIONS.map((m) => m.id));
