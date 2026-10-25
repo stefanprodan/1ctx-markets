@@ -68,7 +68,8 @@ export function quoteStale(db: Db, instrument: Scoped): StaleReason[] {
 
 // The bars miss a day while the market's current session began after
 // the last bar pass that ended well, and until then the previous bar
-// is not final.
+// is not final. An instrument added since that session began came with
+// its whole history, so it misses none.
 export function barsStale(
   db: Db,
   instrument: Scoped,
@@ -82,7 +83,11 @@ export function barsStale(
   if (has === 0) return [STALE.noHistory];
   const reasons: StaleReason[] = [];
   if (failed(db, instrument, JOBS.bars)) reasons.push(STALE.barsFailed);
-  if (barsDue(db, instrument.source, instrument.market, now)) {
+  const session = readSession(db, instrument.market);
+  if (
+    barsDue(db, instrument.source, instrument.market, now) &&
+    (session === null || instrument.addedAt < session.start)
+  ) {
     reasons.push(STALE.barsPending);
   }
   return reasons;

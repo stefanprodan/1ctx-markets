@@ -386,6 +386,70 @@ export async function addInstrument(
   });
 }
 
+// a read's deadline passed before its fetch could be stored
+export const expired = () =>
+  new SourceError("timed out", "the call's deadline passed");
+
+// An instrument a read named and the server has no bars for, fetched
+// inside the call: the instrument, ten years of bars, their signals and
+// a fresh quote land in one write while live() holds, or nothing does.
+export async function fetchInstrument(
+  ctx: YahooContext,
+  sourceSymbol: string,
+  expected: string | null,
+  live: () => boolean,
+): Promise<Instrument> {
+  const { monday, from } = backfillStart(ctx.clock.now());
+  const answer = await ctx.yahoo.chart(sourceSymbol, from, ctx.clock.now());
+  const id = keyOf(answer.exchange, answer.symbol);
+  if (expected !== null && expected !== id) {
+    throw new SourceError("malformed answer", `${expected} answered as ${id}`);
+  }
+  // a chart's previous close is the one before its range, ten years back
+  const quote = await ctx.yahoo.spark([answer.symbol]);
+  return exclusive(ctx.db, id, async () => {
+    // stored meanwhile by another read or the backfill
+    if (dailyRange(ctx.db, id) !== null) {
+      return ctx.writer.write((db) => {
+        if (!live()) throw expired();
+        const instrument = upsertInstrument(
+          db,
+          fields(answer),
+          ctx.clock.now(),
+        );
+        storeQuotes(db, quote);
+        return instrument;
+      });
+    }
+    if (startsShort(answer, monday)) throw cutShort();
+    return ctx.writer.write((db) => {
+      if (!live()) throw expired();
+      const now = ctx.clock.now();
+      const instrument = upsertInstrument(db, fields(answer), now);
+      store(db, now, instrument, answer, { since: monday, splits: [answer] });
+      storeQuotes(db, quote);
+      return instrument;
+    });
+  });
+}
+
+// An instrument no read named within the tracking window, so no job
+// kept it: its bars refetched as the daily job would, then a fresh
+// quote. Each write is a whole update on its own.
+export async function catchUp(
+  ctx: YahooContext,
+  instrument: Instrument,
+  live: () => boolean,
+): Promise<Instrument> {
+  await refetch(ctx, instrument);
+  const quote = await ctx.yahoo.spark([instrument.sourceSymbol]);
+  await ctx.writer.write((db) => {
+    if (!live()) throw expired();
+    storeQuotes(db, quote);
+  });
+  return instrument;
+}
+
 // Ten years of daily bars again, or from the first stored bar if that
 // is older, so after a split no stored bar keeps its old scale.
 export function backfill(

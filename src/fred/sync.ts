@@ -174,10 +174,12 @@ function source(ctx: FredContext): Fred {
 // The series and ten years of its observations, stored together, for a
 // tool reading FRED:<id> it has not seen. Only daily series are kept,
 // since signals assume daily bars; one whose notes restrict passing the
-// values on is still kept for the server's own callers.
+// values on is still kept for the server's own callers. A read's fetch
+// stores nothing once live() no longer holds.
 export async function addSeries(
   ctx: FredContext,
   input: string,
+  live: () => boolean = () => true,
 ): Promise<AddResult> {
   if (ctx.fred === null) return { kind: "off", message: NO_DATA };
   const id = seriesId(input);
@@ -203,6 +205,9 @@ export async function addSeries(
       start: backfillStart(ctx.clock.now()),
     });
     return ctx.writer.write((db) => {
+      if (!live()) {
+        throw new SourceError("timed out", "the call's deadline passed");
+      }
       const now = ctx.clock.now();
       const instrument = upsertInstrument(db, fields(id, meta), now);
       return {

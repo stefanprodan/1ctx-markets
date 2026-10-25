@@ -10,7 +10,7 @@ import { SERVER_NAME } from "../src/mcp.ts";
 import { withApp } from "./helpers/app.ts";
 
 describe("the MCP endpoint", () => {
-  test("answers an SDK client's initialize and an empty tool list", () =>
+  test("answers an SDK client's initialize and its tool list", () =>
     withApp(async ({ url, bearer }) => {
       const client = new Client({ name: "test", version: "1" });
       const transport = new StreamableHTTPClientTransport(
@@ -21,7 +21,10 @@ describe("the MCP endpoint", () => {
       expect(client.getServerVersion()?.name).toBe(SERVER_NAME);
       expect(client.getServerVersion()?.version).toBe("v0.0.0-test");
       expect(client.getServerCapabilities()?.tools).toBeDefined();
-      expect((await client.listTools()).tools).toEqual([]);
+      const names = ["quote", "history", "search"];
+      expect((await client.listTools()).tools.map((t) => t.name)).toEqual(
+        names,
+      );
       await client.close();
 
       // the client answers an empty list itself when the capability is
@@ -40,6 +43,6 @@ describe("the MCP endpoint", () => {
       const text = await res.text();
       const body = JSON.parse(text.match(/^data: (.*)$/m)?.[1] ?? text);
       expect(body.error).toBeUndefined();
-      expect(body.result.tools).toEqual([]);
+      expect(body.result.tools.map((t: any) => t.name)).toEqual(names);
     }));
 });

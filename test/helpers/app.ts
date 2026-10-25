@@ -2,12 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { join } from "node:path";
-import { start } from "../../src/app.ts";
+import {
+  Client,
+  StreamableHTTPClientTransport,
+} from "@modelcontextprotocol/client";
+import { type App, start } from "../../src/app.ts";
 import { MINUTE_MS } from "../../src/clock.ts";
-import { open } from "../../src/db/index.ts";
+import { type Db, open } from "../../src/db/index.ts";
 import { keys, requireBearer } from "../../src/keys.ts";
 import { logger } from "../../src/log.ts";
-import { fakeClock } from "./clock.ts";
+import type { Fetch } from "../../src/source.ts";
+import { type FakeClock, fakeClock } from "./clock.ts";
 
 export const SECRETS = join(import.meta.dir, "..", "fixtures", "secrets");
 
@@ -16,13 +21,26 @@ export type TestApp = {
   bearer: string;
   // every log line the app wrote
   lines: string[];
+  clock: FakeClock;
+  db: Db;
+  app: App;
+};
+
+export type TestOptions = {
+  // answers every source call; by default any call fails the test
+  fetch?: Fetch;
+  fredKey?: string;
+  start?: number;
 };
 
 // on loopback, on a port the system picks; stopped when fn ends, since
 // tests in a file run concurrently
-export async function withApp(fn: (t: TestApp) => Promise<void>) {
+export async function withApp(
+  fn: (t: TestApp) => Promise<void>,
+  options: TestOptions = {},
+) {
   const store = keys(SECRETS);
-  const clock = fakeClock();
+  const clock = fakeClock(options.start);
   const lines: string[] = [];
   const bearer = requireBearer(store);
   const { db } = open(":memory:", clock);
@@ -35,15 +53,36 @@ export async function withApp(fn: (t: TestApp) => Promise<void>) {
     version: "v0.0.0-test",
     db,
     quoteEveryMs: 5 * MINUTE_MS,
+    fredKey: options.fredKey ?? null,
     // no test reaches a network
-    fetch: async (url) => {
-      throw new Error(`no network in tests: ${url}`);
-    },
+    fetch:
+      options.fetch ??
+      (async (url) => {
+        throw new Error(`no network in tests: ${url}`);
+      }),
   });
   try {
-    await fn({ url: `http://127.0.0.1:${app.server.port}`, bearer, lines });
+    await fn({
+      url: `http://127.0.0.1:${app.server.port}`,
+      bearer,
+      lines,
+      clock,
+      db,
+      app,
+    });
   } finally {
     await app.stop();
     db.close();
   }
+}
+
+// an SDK client on the app's /mcp, closed by the caller
+export async function mcpClient(t: TestApp): Promise<Client> {
+  const client = new Client({ name: "test", version: "1" });
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL(`${t.url}/mcp`), {
+      requestInit: { headers: { authorization: `Bearer ${t.bearer}` } },
+    }),
+  );
+  return client;
 }

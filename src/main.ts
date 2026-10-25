@@ -62,6 +62,8 @@ const app = start({
   version: VERSION,
   db,
   quoteEveryMs: config.quoteEveryMs,
+  trackDays: config.trackDays,
+  inlineFetch: config.inlineFetch,
   // read through the keys module, so the log masks it
   fredKey: store.source("fred"),
 });

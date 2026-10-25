@@ -125,21 +125,22 @@ export type RelativeRead = Omit<RelativeReturn, "note"> & {
 // The instrument's return less the benchmark's over 1 or 3 months, on
 // final daily closes, ending on live prices when both have a quote of
 // the same session date. A percent series changes in level. Null when
-// either is unknown or relativeReturn has no answer.
+// either is unknown or relativeReturn has no answer. With to, it ends on
+// the bars up to that date, and on live prices only when to reaches them.
 export function readRelativeReturn(
   db: Db,
   instrument: string,
   benchmark: string,
   months: 1 | 3,
+  to: string | null = null,
 ): RelativeRead | null {
   const a = readInstrument(db, instrument);
   const b = readInstrument(db, benchmark);
   if (a === null || b === null) return null;
   const closes = (id: string) =>
-    finalPrefix(readBars(db, id, "1d")).map((x) => ({
-      date: x.date,
-      close: x.close,
-    }));
+    finalPrefix(readBars(db, id, "1d"))
+      .filter((x) => to === null || x.date <= to)
+      .map((x) => ({ date: x.date, close: x.close }));
   const ia = closes(a.id);
   const ib = closes(b.id);
   const ta = liveTarget(db, a);
@@ -150,6 +151,7 @@ export function readRelativeReturn(
     ta !== null &&
     tb !== null &&
     ta.date === tb.date &&
+    (to === null || ta.date <= to) &&
     after(ia, ta.date) &&
     after(ib, tb.date);
   const listing = (

@@ -36,6 +36,8 @@ export function bearerCheck(bearer: string): (req: Request) => boolean {
 export type RouterDeps = {
   bearer: string;
   mcp: McpHttpHandler;
+  // GET /quotes, when the tools are served
+  quotes?: Handle;
   clock: Clock;
   log: Log;
 };
@@ -47,6 +49,12 @@ export function router(deps: RouterDeps): Handle {
       return json({ error: "unauthorized" }, 401, {
         "www-authenticate": "Bearer",
       });
+    }
+    if (path === "/quotes" && deps.quotes !== undefined) {
+      if (req.method !== "GET") {
+        return json({ error: "method not allowed" }, 405, { allow: "GET" });
+      }
+      return deps.quotes(req);
     }
     if (path !== "/mcp") return json({ error: "not found" }, 404);
     // stateless: no stream to resume with GET, no session to end with DELETE
