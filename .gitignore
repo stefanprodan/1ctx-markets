@@ -111,3 +111,11 @@ dist
 
 # TernJS port file
 .tern-port
+
+# build output
+bin/
+.*.bun-build
+
+# Local dev space
+workspace/
+.preview/
