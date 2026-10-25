@@ -62,6 +62,8 @@ const app = start({
   version: VERSION,
   db,
   quoteEveryMs: config.quoteEveryMs,
+  // read through the keys module, so the log masks it
+  fredKey: store.source("fred"),
 });
 
 main.info("startup", {
@@ -73,8 +75,8 @@ main.info("startup", {
   track_days: config.trackDays,
   inline_fetch: config.inlineFetch,
 });
-// one field per source with its state; Yahoo needs no key
-main.info("sources", { yahoo: "on" });
+// one field per source with its state and why; Yahoo needs no key
+main.info("sources", app.sources);
 
 let stopping = false;
 async function shutdown(signal: string) {

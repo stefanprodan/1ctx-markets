@@ -31,6 +31,7 @@ import {
   type Unit,
   upsertInstrument,
 } from "../instruments.ts";
+import { exclusive } from "../lock.ts";
 import { type Phrase, SourceError } from "../source.ts";
 import type { Writer } from "../writer.ts";
 import { addDays, dateOfWall, startOfDate, wallTime } from "../zone.ts";
@@ -262,34 +263,6 @@ function startsShort(answer: ChartAnswer, since: string): boolean {
 
 const cutShort = () =>
   new SourceError("malformed answer", "a history cut short");
-
-// One fetch-and-store per instrument and database at a time, held
-// across the call and its write, so an answer fetched before a split's
-// rewrite never lands after it.
-const held = new WeakMap<Db, Map<string, Promise<void>>>();
-
-async function exclusive<T>(
-  db: Db,
-  id: string,
-  fn: () => Promise<T>,
-): Promise<T> {
-  let locks = held.get(db);
-  if (locks === undefined) {
-    locks = new Map();
-    held.set(db, locks);
-  }
-  const run = (locks.get(id) ?? Promise.resolve()).then(fn);
-  const tail = run.then(
-    () => {},
-    () => {},
-  );
-  locks.set(id, tail);
-  try {
-    return await run;
-  } finally {
-    if (locks.get(id) === tail) locks.delete(id);
-  }
-}
 
 // Writes one chart answer's session, bars and weeks, inside a writer
 // transaction. A whole history rewrites every daily bar, so none keeps

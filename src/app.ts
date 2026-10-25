@@ -6,8 +6,10 @@
 
 import { type Clock, DAY_MS } from "./clock.ts";
 import type { Db } from "./db/index.ts";
+import { type Fred, fred } from "./fred/client.ts";
+import { type FredJobs, fredJobs } from "./fred/jobs.ts";
 import { router, serve } from "./http.ts";
-import { errorFields, type LogFactory } from "./log.ts";
+import { errorFields, type LogFactory, type LogFields } from "./log.ts";
 import { mcpHandler } from "./mcp.ts";
 import { failInterrupted, pruneRuns } from "./runs.ts";
 import { type Scheduler, scheduler } from "./scheduler.ts";
@@ -29,6 +31,8 @@ export type AppOptions = {
   // the one writable connection; main closes it after stop()
   db: Db;
   quoteEveryMs: number;
+  // FRED is on while its key file holds one
+  fredKey?: string | null;
   // tests answer every source call from recordings
   fetch?: Fetch;
 };
@@ -40,6 +44,11 @@ export type App = {
   // the one client and queue jobs and tools share
   yahoo: Yahoo;
   yahooJobs: YahooJobs;
+  // null while the source is off
+  fred: Fred | null;
+  fredJobs: FredJobs | null;
+  // one field per source with its state and why, for the start log
+  sources: LogFields;
   stop(): Promise<void>;
 };
 
@@ -67,6 +76,20 @@ export function start(options: AppOptions): App {
     log: options.log("yahoo"),
   });
 
+  const fredKey = options.fredKey ?? null;
+  const fredQueue = fredKey === null ? null : queue(clock, 1);
+  const fredClient =
+    fredKey === null || fredQueue === null
+      ? null
+      : fred({ clock, key: fredKey, fetch: options.fetch, queue: fredQueue });
+  const fredSync =
+    fredClient === null
+      ? null
+      : fredJobs({
+          ctx: { db, clock, writer: write, fred: fredClient },
+          log: options.log("fred"),
+        });
+
   const mcp = mcpHandler(options.version, options.log("mcp"));
   const server = serve({
     hostname: options.hostname,
@@ -80,6 +103,7 @@ export function start(options: AppOptions): App {
   });
   const jobs = scheduler(clock, options.log("scheduler"));
   sync.schedule(jobs);
+  fredSync?.schedule(jobs);
   jobs.every("retention", DAY_MS, async () => {
     await write.write((db) => pruneRuns(db, clock.now()));
   });
@@ -89,12 +113,19 @@ export function start(options: AppOptions): App {
     writer: write,
     yahoo: client,
     yahooJobs: sync,
+    fred: fredClient,
+    fredJobs: fredSync,
+    sources: {
+      yahoo: "on",
+      fred: fredKey === null ? "off (no key)" : "on (key file)",
+    },
     async stop() {
       // no new run or request starts, no job waits out a back-off, every
       // run settles, then the queued writes drain before main closes the
       // database
       const settled = jobs.stop();
       yahooQueue.close();
+      fredQueue?.close();
       await server.stop();
       await settled;
       await mcp.close();
