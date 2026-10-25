@@ -7,7 +7,13 @@
 
 import type { Clock } from "../clock.ts";
 import { MINUTE_MS } from "../clock.ts";
-import { type Fetch, type Queue, queue, SourceError } from "../source.ts";
+import {
+  type Fetch,
+  type Queue,
+  QueueClosed,
+  queue,
+  SourceError,
+} from "../source.ts";
 import { wallOfDate } from "../zone.ts";
 
 export const SOURCE = "fred";
@@ -54,6 +60,9 @@ export type Fred = {
   // the same client and queue, failing at once while the queue is
   // paused, for a tool answering a caller
   failFast(): Fred;
+  // At shutdown: closes the queue and fails a call waiting for its
+  // minute's slot, so no call goes out after.
+  close(): void;
 };
 
 export type FredOptions = {
@@ -99,6 +108,35 @@ export function parseLastUpdated(v: unknown): number | null {
 const RESTRICTED =
   /internal use only|not (?:authorized|permitted) to (?:publish|distribute|redistribute)|reproduction of this data[^.]*prohibited/i;
 
+// A text an answer echoes may hold the key, as sent or percent-encoded,
+// so it is cut out before anything keeps it.
+export function scrub(value: string, key: string): string {
+  if (key === "") return value;
+  let out = value;
+  const forms = new Set([key, encodeURIComponent(key)]);
+  // case-blind, since percent escapes come in either case
+  for (const form of [...forms].sort((a, b) => b.length - a.length)) {
+    out = out.replace(
+      new RegExp(form.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"),
+      "REDACTED",
+    );
+  }
+  return out;
+}
+
+function scrubbed(meta: SeriesMeta, key: string): SeriesMeta {
+  const s = (v: string) => scrub(v, key);
+  return {
+    ...meta,
+    id: s(meta.id),
+    title: s(meta.title),
+    units: s(meta.units),
+    unitsShort: s(meta.unitsShort),
+    frequencyShort: s(meta.frequencyShort),
+    notes: meta.notes === null ? null : s(meta.notes),
+  };
+}
+
 export function parseSeries(body: unknown): SeriesMeta {
   const list = obj(body, "body").seriess;
   if (!Array.isArray(list) || list.length !== 1) {
@@ -118,12 +156,29 @@ export function parseSeries(body: unknown): SeriesMeta {
   };
 }
 
+const DECIMAL = /^-?\d+(?:\.\d+)?$/;
+
+function whole(v: unknown, what: string): number {
+  if (typeof v !== "number" || !Number.isSafeInteger(v) || v < 0) {
+    throw malformed(`no ${what}`);
+  }
+  return v;
+}
+
 export function parseObservations(
   body: unknown,
   fetchedAt: number,
 ): Observations {
-  const list = obj(body, "body").observations;
+  const envelope = obj(body, "body");
+  const list = envelope.observations;
   if (!Array.isArray(list)) throw malformed("no observations");
+  // a reply cut short would read as days FRED no longer has
+  const count = whole(envelope.count, "count");
+  const offset = whole(envelope.offset, "offset");
+  const limit = whole(envelope.limit, "limit");
+  if (list.length < Math.min(Math.max(count - offset, 0), limit)) {
+    throw malformed("fewer observations than the count");
+  }
   const byDate = new Map<string, number | null>();
   for (const entry of list) {
     const o = obj(entry, "observation");
@@ -133,12 +188,17 @@ export function parseObservations(
     } catch {
       throw malformed("observation date");
     }
-    const raw = text(o.value, "observation value");
+    if (byDate.has(date)) throw malformed("a date answered twice");
+    // untrimmed: a plain decimal has no spaces around it
+    const raw = o.value;
+    if (typeof raw !== "string") throw malformed("observation value");
     // a day with no observation, never a zero
     if (raw === ".") {
       byDate.set(date, null);
       continue;
     }
+    // Number() would read "0x10" as 16 and "" as 0
+    if (!DECIMAL.test(raw)) throw malformed("observation value");
     const value = Number(raw);
     if (!Number.isFinite(value)) throw malformed("observation value");
     byDate.set(date, value);
@@ -174,10 +234,13 @@ export function fred(options: FredOptions): Fred {
   const calls = options.queue ?? queue(clock, CONCURRENCY);
   // start times of the calls in the last minute
   const started: number[] = [];
+  let closed = false;
+  const waits = new Set<{ cancel: () => void; reject: (e: unknown) => void }>();
 
   // waits, holding the queue's slot, until a call fits the minute
   const slot = async (): Promise<void> => {
     for (;;) {
+      if (closed) throw new QueueClosed();
       const now = clock.now();
       while (started.length > 0 && started[0]! <= now - MINUTE_MS) {
         started.shift();
@@ -187,7 +250,17 @@ export function fred(options: FredOptions): Fred {
         return;
       }
       const until = started[0]! + MINUTE_MS;
-      await new Promise<void>((resolve) => clock.at(until, resolve));
+      await new Promise<void>((resolve, reject) => {
+        const wait = {
+          cancel: () => {},
+          reject,
+        };
+        wait.cancel = clock.at(until, () => {
+          waits.delete(wait);
+          resolve();
+        });
+        waits.add(wait);
+      });
     }
   };
 
@@ -248,7 +321,9 @@ export function fred(options: FredOptions): Fred {
 
   const client = (failFast: boolean): Fred => ({
     series: (id) =>
-      get("series", { series_id: id }, failFast, (body) => parseSeries(body)),
+      get("series", { series_id: id }, failFast, (body) =>
+        scrubbed(parseSeries(body), key),
+      ),
     observations(id, range) {
       const params: Record<string, string> =
         "limit" in range
@@ -261,6 +336,15 @@ export function fred(options: FredOptions): Fred {
       return get("series/observations", params, failFast, parseObservations);
     },
     failFast: () => client(true),
+    close() {
+      closed = true;
+      calls.close();
+      for (const wait of waits) {
+        wait.cancel();
+        wait.reject(new QueueClosed());
+      }
+      waits.clear();
+    },
   });
   return client(false);
 }

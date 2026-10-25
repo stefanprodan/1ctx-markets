@@ -77,11 +77,10 @@ export function start(options: AppOptions): App {
   });
 
   const fredKey = options.fredKey ?? null;
-  const fredQueue = fredKey === null ? null : queue(clock, 1);
   const fredClient =
-    fredKey === null || fredQueue === null
+    fredKey === null
       ? null
-      : fred({ clock, key: fredKey, fetch: options.fetch, queue: fredQueue });
+      : fred({ clock, key: fredKey, fetch: options.fetch });
   const fredSync =
     fredClient === null
       ? null
@@ -125,7 +124,7 @@ export function start(options: AppOptions): App {
       // database
       const settled = jobs.stop();
       yahooQueue.close();
-      fredQueue?.close();
+      fredClient?.close();
       await server.stop();
       await settled;
       await mcp.close();

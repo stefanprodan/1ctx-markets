@@ -31,7 +31,7 @@ import { readInstrument } from "../src/instruments.ts";
 import { keys } from "../src/keys.ts";
 import { format, logger, silent } from "../src/log.ts";
 import { lastRun } from "../src/runs.ts";
-import { SourceError } from "../src/source.ts";
+import { QueueClosed, SourceError } from "../src/source.ts";
 import { STALE } from "../src/stale.ts";
 import { writer } from "../src/writer.ts";
 import { fakeClock } from "./helpers/clock.ts";
@@ -337,6 +337,8 @@ describe("fred series", () => {
       else if (url.searchParams.has("limit")) {
         out.body.observations = out.body.observations.slice(0, 10);
       }
+      // each reply whole for what it holds
+      out.body.count = out.body.observations.length;
       return out;
     });
     await addSeries(ctx, "VIXCLS");
@@ -560,5 +562,154 @@ describe("fred source", () => {
       await app.stop();
       db.close();
     }
+  });
+});
+
+describe("fred answers are checked", () => {
+  const observations = async (edit: (body: any) => void) => {
+    const fx = clone(await fixture("observations-dgs10"));
+    edit(fx.body);
+    return fx.body;
+  };
+  const phraseOf = (fn: () => unknown) => {
+    try {
+      fn();
+    } catch (e) {
+      return (e as SourceError).phrase;
+    }
+    return null;
+  };
+
+  test("the key is cut from every text an answer echoes", async () => {
+    // a made-up key that percent-encoding changes
+    const key = "k3y+with/slash=end";
+    const encoded = encodeURIComponent(key).toLowerCase();
+    const clock = fakeClock();
+    const f = fakeFetch(async () => {
+      const fx = clone(await fixture("series-dgs10"));
+      const s = fx.body.seriess[0];
+      s.title = `Yield ${key}`;
+      s.notes = `see https://x?api_key=${encoded} and ${key}`;
+      s.units = `Percent ${key}`;
+      return fx;
+    });
+    const meta = await fred({ clock, key, fetch: f.fetch }).series("DGS10");
+    const text = JSON.stringify(meta);
+    expect(text).not.toContain(key);
+    expect(text.toLowerCase()).not.toContain(encoded);
+    expect(meta.title).toBe("Yield REDACTED");
+    expect(meta.notes).toBe("see https://x?api_key=REDACTED and REDACTED");
+  });
+
+  test("another series answering is a fixed error naming neither", async () => {
+    const { ctx, db } = setup(async (url) => {
+      if (!isSeries(url)) return answer(url);
+      const fx = clone(await fixture("series-dgs10"));
+      fx.body.seriess[0].id = "VIXCLS";
+      return fx;
+    });
+    const error = (await errorOf(addSeries(ctx, "DGS10"))) as SourceError;
+    expect(error.phrase).toBe("malformed answer");
+    expect(error.message).not.toContain("DGS10");
+    expect(error.message).not.toContain("VIXCLS");
+    expect(readInstrument(db, "FRED:DGS10")).toBeNull();
+  });
+
+  test("a reply with fewer rows than its count writes nothing", async () => {
+    let cut = false;
+    const { ctx, db } = setup(async (url) => {
+      const fx = await answer(url);
+      if (!cut || !isObservations(url)) return fx;
+      const out = clone(fx);
+      out.body.observations = out.body.observations.slice(0, 10);
+      return out;
+    });
+    await addSeries(ctx, "DGS10");
+    const stored = readBars(db, "FRED:DGS10", "1d");
+    cut = true;
+    const pass = await fredJobs({ ctx, log: silent }).pass();
+    expect(pass.failed).toEqual([
+      { instrument: "FRED:DGS10", error: "malformed answer" },
+    ]);
+    expect(readBars(db, "FRED:DGS10", "1d")).toEqual(stored);
+    expect(lastRun(db, SOURCE, "bars", "FRED:DGS10")?.status).toBe("failed");
+    // the last page of a series is short and whole
+    const tail = await observations((b) => {
+      b.count = 35;
+      b.offset = 30;
+      b.observations = b.observations.slice(0, 5);
+    });
+    expect(parseObservations(tail, 1).dates).toHaveLength(5);
+    const short = await observations((b) => {
+      b.observations = b.observations.slice(0, 29);
+    });
+    expect(phraseOf(() => parseObservations(short, 1))).toBe(
+      "malformed answer",
+    );
+  });
+
+  test("a date answered twice is malformed, a dot included", async () => {
+    for (const value of ["5.00", "."]) {
+      const body = await observations((b) => {
+        b.observations.push({ ...b.observations[0], value });
+        b.count += 1;
+        b.limit += 1;
+      });
+      expect(phraseOf(() => parseObservations(body, 1))).toBe(
+        "malformed answer",
+      );
+    }
+  });
+
+  test("only plain decimals are values", async () => {
+    for (const value of ["0x10", "1e3", "", " 5", "+5", "Infinity", "5."]) {
+      const body = await observations((b) => {
+        b.observations[0].value = value;
+      });
+      expect(phraseOf(() => parseObservations(body, 1))).toBe(
+        "malformed answer",
+      );
+    }
+    const ok = await observations((b) => {
+      b.observations[0].value = "-0.25";
+    });
+    expect(parseObservations(ok, 1).observations.at(-1)?.value).toBe(-0.25);
+  });
+
+  test("the id asked for is the key, whatever case FRED answers", async () => {
+    const { ctx, db } = setup(async (url) => {
+      if (!isSeries(url)) return answer(url);
+      const fx = clone(await fixture("series-dgs10"));
+      fx.body.seriess[0].id = "dgs10";
+      return fx;
+    });
+    await addSeries(ctx, "FRED:dgs10");
+    expect(readInstrument(db, "FRED:DGS10")).toMatchObject({
+      symbol: "DGS10",
+      sourceSymbol: "DGS10",
+    });
+  });
+
+  test("ten years before 29 February backfills from 28 February", () => {
+    // 2018-02-28 is a Wednesday
+    expect(backfillStart(Date.UTC(2028, 1, 29, 12))).toBe("2018-02-26");
+  });
+
+  test("closing the source cancels a call waiting for its slot", async () => {
+    const fx = await fixture("observations-vixcls");
+    const { clock, ctx, f } = setup(() => fx);
+    const calls = Array.from({ length: 61 }, () =>
+      ctx.fred!.observations("VIXCLS", { limit: 30 }).then(
+        () => null,
+        (e: unknown) => e,
+      ),
+    );
+    for (let i = 0; i < 1000 && f.urls.length < 60; i++) await clock.advance(0);
+    expect(f.urls).toHaveLength(60);
+    ctx.fred!.close();
+    await clock.advance(2 * MINUTE_MS);
+    const results = await Promise.all(calls);
+    expect(f.urls).toHaveLength(60);
+    expect(results.at(-1)).toBeInstanceOf(QueueClosed);
   });
 });

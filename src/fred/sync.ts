@@ -27,7 +27,7 @@ import {
 import { exclusive } from "../lock.ts";
 import { SourceError } from "../source.ts";
 import type { Writer } from "../writer.ts";
-import { addDays, dateOfWall, startOfDate } from "../zone.ts";
+import { dateOfWall, startOfDate } from "../zone.ts";
 import {
   type Fred,
   type Observations,
@@ -94,12 +94,13 @@ export function unitOf(meta: Pick<SeriesMeta, "units" | "unitsShort">): Unit {
   return "unknown";
 }
 
-function fields(meta: SeriesMeta): InstrumentFields {
+// keyed by the id asked for, uppercase, as the lock is
+function fields(id: string, meta: SeriesMeta): InstrumentFields {
   return {
     market: MARKET,
-    symbol: meta.id,
+    symbol: id,
     source: SOURCE,
-    sourceSymbol: meta.id,
+    sourceSymbol: id,
     exchange: MARKET,
     name: meta.title,
     type: TYPE,
@@ -158,7 +159,8 @@ function store(
 export function backfillStart(now: number): string {
   const day = dateOfWall(now);
   const back = `${Number(day.slice(0, 4)) - BACKFILL_YEARS}${day.slice(4)}`;
-  return weekOf(back.endsWith("-02-29") ? addDays(back, -1) : back);
+  // ten years before a 29 February is no leap year
+  return weekOf(back.endsWith("-02-29") ? `${back.slice(0, 8)}28` : back);
 }
 
 function source(ctx: FredContext): Fred {
@@ -183,8 +185,9 @@ export async function addSeries(
   }
   const client = ctx.fred;
   const meta = await client.series(id);
+  // neither id is repeated: an echoed one is the source's text
   if (meta.id.toUpperCase() !== id) {
-    throw new SourceError("malformed answer", `${id} answered as ${meta.id}`);
+    throw new SourceError("malformed answer", "another series answered");
   }
   if (meta.frequencyShort !== "D") throw new Refused(DAILY_ONLY);
   return exclusive(ctx.db, key, async () => {
@@ -198,7 +201,7 @@ export async function addSeries(
     });
     return ctx.writer.write((db) => {
       const now = ctx.clock.now();
-      const instrument = upsertInstrument(db, fields(meta), now);
+      const instrument = upsertInstrument(db, fields(id, meta), now);
       return {
         kind: "added",
         instrument,

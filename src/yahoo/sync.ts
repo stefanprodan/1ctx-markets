@@ -146,7 +146,10 @@ const minOf = (a: number | null, b: number | null) =>
 export function backfillStart(now: number): { monday: string; from: number } {
   const today = dateOfWall(now);
   const back = `${Number(today.slice(0, 4)) - BACKFILL_YEARS}${today.slice(4)}`;
-  const monday = weekOf(back.endsWith("-02-29") ? addDays(back, -1) : back);
+  // ten years before a 29 February is no leap year
+  const monday = weekOf(
+    back.endsWith("-02-29") ? `${back.slice(0, 8)}28` : back,
+  );
   return { monday, from: Date.parse(`${monday}T00:00:00Z`) - DAY_MS };
 }
 
