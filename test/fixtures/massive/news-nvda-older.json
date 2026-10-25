@@ -1,0 +1,203 @@
+{
+  "recordedAt": "2026-10-25T19:39:48.206Z",
+  "request": {
+    "method": "GET",
+    "url": "https://api.massive.com/v2/reference/news?ticker=NVDA&published_utc.lt=2026-09-01T00:00:00Z&order=desc&limit=3&sort=published_utc"
+  },
+  "status": 200,
+  "headers": {
+    "connection": "keep-alive",
+    "content-encoding": "gzip",
+    "content-type": "application/json",
+    "date": "Sun, 25 Oct 2026 19:39:48 GMT",
+    "link": "<https://api.massive.com/v2/reference/news?cursor=YXA9MjAyNi0wOC0zMVQxNyUzQTEwJTNBMDBaJmFzPTg1Yzc5NWMxZjlhNzI5NTBmOTIyNWFjZjQ0ZGQ2YmI3NWIzNmRmOTZiOTlhZWE3MTY0ZTBlZTRmOTg1MmI2MTImbGltaXQ9MyZvcmRlcj1kZXNjZW5kaW5nJnB1Ymxpc2hlZF91dGMubHQ9MjAyNi0wOS0wMVQwMCUzQTAwJTNBMDBaJnRpY2tlcj1OVkRB>; rel=\"next\"",
+    "strict-transport-security": "max-age=15724800; includeSubDomains",
+    "transfer-encoding": "chunked",
+    "vary": "Accept-Encoding",
+    "x-item-count": "3",
+    "x-polygon-cluster-name": "polygon-ny5",
+    "x-request-id": "0c42255c37a65c5a94bc1919da7594f5"
+  },
+  "body": {
+    "results": [
+      {
+        "id": "f18cb22b7d36e9adc6ec926b1cd5a576a3a565625b96fd32374e367374c14087",
+        "publisher": {
+          "name": "The Motley Fool",
+          "homepage_url": "https://www.fool.com/",
+          "logo_url": "https://s3.massive.com/public/assets/news/logos/themotleyfool.svg",
+          "favicon_url": "https://s3.massive.com/public/assets/news/favicons/themotleyfool.ico"
+        },
+        "title": "Jensen Huang Told Investors in June to 'Buy at a Discount' During Nvidia's Sell-Off. Nearly Three Months Later, Nvidia Is Up 4%, and a Broader AI Basket Gained 8%. Did His Call Pay Off?",
+        "author": "Reuben Gregg Brewer",
+        "published_utc": "2026-08-31T23:15:00Z",
+        "article_url": "https://www.fool.com/investing/2026/08/31/jensen-huang-told-investors-in-june-to-buy-at-a-di/?source=iedfolrf0000001",
+        "tickers": [
+          "NVDA",
+          "MSFT",
+          "AMZN",
+          "GOOG",
+          "GOOGL",
+          "GOOGM",
+          "GOOGN"
+        ],
+        "image_url": "https://g.foolcdn.com/image/?url=https%3A%2F%2Fg.foolcdn.com%2Feditorial%2Fimages%2F885065%2Fjensen-huang_nvidia_nvda_ceo_imagesource_nvidia-corporation.jpg&w=1200&op=resize",
+        "description": "Jensen Huang's June recommendation to buy Nvidia during a market pullback resulted in a 4% gain over three months, matching S&P 500 returns. However, a diversified AI basket of Nvidia, Microsoft, Amazon, and Alphabet gained 8%, driven primarily by Microsoft's 24% surge. The article argues that three months is too short to evaluate long-term investments, and Nvidia's strong 106% year-over-year revenue growth and 17.5x P/E ratio (below its 23x five-year average) suggest Huang's optimism may still be justified for long-term investors.",
+        "keywords": [
+          "AI stocks",
+          "buy recommendation",
+          "market pullback",
+          "long-term investing",
+          "valuation",
+          "revenue growth"
+        ],
+        "insights": [
+          {
+            "ticker": "NVDA",
+            "sentiment": "positive",
+            "sentiment_reasoning": "Strong 106% year-over-year revenue growth, 18% sequential revenue increase, and valuation (17.5x P/E) below historical average suggest solid long-term fundamentals despite modest 4% short-term gains."
+          },
+          {
+            "ticker": "MSFT",
+            "sentiment": "positive",
+            "sentiment_reasoning": "Significant 24% gain over the three-month period, driving most of the diversified AI basket's 8% overall performance."
+          },
+          {
+            "ticker": "AMZN",
+            "sentiment": "neutral",
+            "sentiment_reasoning": "Modest 8% gain over three months, contributing positively to the AI basket but without standout performance."
+          },
+          {
+            "ticker": "GOOG",
+            "sentiment": "negative",
+            "sentiment_reasoning": "Declined 5% over the three-month period, underperforming the broader AI basket and S&P 500."
+          },
+          {
+            "ticker": "GOOGL",
+            "sentiment": "negative",
+            "sentiment_reasoning": "Declined 5% over the three-month period, underperforming the broader AI basket and S&P 500."
+          },
+          {
+            "ticker": "GOOGM",
+            "sentiment": "negative",
+            "sentiment_reasoning": "Declined 5% over the three-month period, underperforming the broader AI basket and S&P 500."
+          },
+          {
+            "ticker": "GOOGN",
+            "sentiment": "negative",
+            "sentiment_reasoning": "Declined 5% over the three-month period, underperforming the broader AI basket and S&P 500."
+          }
+        ]
+      },
+      {
+        "id": "f9f0f99c9088a4d74e8f046fc2d4ce992eeaa056b5506e6b8d9c53616d2f5fe3",
+        "publisher": {
+          "name": "The Motley Fool",
+          "homepage_url": "https://www.fool.com/",
+          "logo_url": "https://s3.massive.com/public/assets/news/logos/themotleyfool.svg",
+          "favicon_url": "https://s3.massive.com/public/assets/news/favicons/themotleyfool.ico"
+        },
+        "title": "Not Nvidia, Not AMD. Micron Could Be September's Biggest AI Winner or Loser.",
+        "author": "Harsh Chauhan",
+        "published_utc": "2026-08-31T19:23:00Z",
+        "article_url": "https://www.fool.com/investing/2026/08/31/not-nvidia-not-amd-micron-could-be-septembers-bigg/?source=iedfolrf0000001",
+        "tickers": [
+          "MU",
+          "NVDA",
+          "AMD"
+        ],
+        "image_url": "https://g.foolcdn.com/image/?url=https%3A%2F%2Fg.foolcdn.com%2Feditorial%2Fimages%2F885148%2Fmicron-building-at-night-with-micron-logo-on-top_micron.jpg&w=1200&op=resize",
+        "description": "Micron Technology is positioned to be a major beneficiary of strong AI infrastructure demand, with its fiscal Q4 earnings report due September 30. Despite a recent 11% stock decline, strong results from Nvidia and AMD indicate robust demand for memory chips critical to AI servers. Micron trades at an attractive valuation with expected 348% revenue growth and 10x earnings growth, suggesting significant upside potential.",
+        "keywords": [
+          "AI semiconductors",
+          "memory chips",
+          "DRAM",
+          "HBM (high-bandwidth memory)",
+          "data center infrastructure",
+          "earnings report",
+          "valuation",
+          "hyperscaler capital expenditure"
+        ],
+        "insights": [
+          {
+            "ticker": "MU",
+            "sentiment": "positive",
+            "sentiment_reasoning": "Strong tailwinds from AI infrastructure demand, critical role in AI server systems, attractive valuation (P/E of 21, forward P/E of 6), expected 348% revenue growth and 10x EPS growth, trading cheaper than peers despite faster growth trajectory."
+          },
+          {
+            "ticker": "NVDA",
+            "sentiment": "positive",
+            "sentiment_reasoning": "Reported 106% YoY revenue growth in Q2, projects 70% growth in fiscal 2028, strong demand for AI chips, increasing capital expenditures from hyperscalers indicate sustained growth momentum."
+          },
+          {
+            "ticker": "AMD",
+            "sentiment": "positive",
+            "sentiment_reasoning": "Posted 50% YoY revenue growth in Q2, projects 41% growth in current quarter, expects long-term revenue growth substantially above 35% target, identifies $2 trillion revenue opportunity in high-performance computing by 2030."
+          }
+        ]
+      },
+      {
+        "id": "85c795c1f9a72950f9225acf44dd6bb75b36df96b99aea7164e0ee4f9852b612",
+        "publisher": {
+          "name": "The Motley Fool",
+          "homepage_url": "https://www.fool.com/",
+          "logo_url": "https://s3.massive.com/public/assets/news/logos/themotleyfool.svg",
+          "favicon_url": "https://s3.massive.com/public/assets/news/favicons/themotleyfool.ico"
+        },
+        "title": "This Vanguard ETF Is Up 12% in 2026. Here's Whether Long-Term Investors Should Still Be Buying at These Levels.",
+        "author": "Leo Sun",
+        "published_utc": "2026-08-31T17:10:00Z",
+        "article_url": "https://www.fool.com/investing/2026/08/31/this-vanguard-etf-is-up-xx-in-2026-heres-whether-l/?source=iedfolrf0000001",
+        "tickers": [
+          "VOO",
+          "NVDA",
+          "AAPL",
+          "MSFT",
+          "AMZN"
+        ],
+        "image_url": "https://g.foolcdn.com/image/?url=https%3A%2F%2Fg.foolcdn.com%2Feditorial%2Fimages%2F885275%2Fhappy-female-investor.jpg&w=1200&op=resize",
+        "description": "Vanguard's S&P 500 ETF (VOO) has risen 12% year-to-date and hit an all-time high, but faces near-term challenges including elevated valuations at 21x forward earnings, heavy concentration in tech stocks, and AI market dependency. However, the S&P 500's historical 10% average annual return makes VOO suitable for long-term investors with a decade-plus time horizon, though short-term investors should consider alternatives like CDs or T-bills.",
+        "keywords": [
+          "S&P 500",
+          "ETF",
+          "valuation",
+          "tech concentration",
+          "AI stocks",
+          "long-term investing",
+          "market correction risk"
+        ],
+        "insights": [
+          {
+            "ticker": "VOO",
+            "sentiment": "positive",
+            "sentiment_reasoning": "Recommended as a solid long-term investment vehicle with low fees (0.03%), strong historical returns (10% average since 1957), and suitable for buy-and-hold investors with 10+ year horizons despite current elevated valuations."
+          },
+          {
+            "ticker": "NVDA",
+            "sentiment": "neutral",
+            "sentiment_reasoning": "Highlighted as a top holding (7.55% of VOO) benefiting from AI tailwinds, but also represents concentration risk and valuation concerns if AI spending slows."
+          },
+          {
+            "ticker": "AAPL",
+            "sentiment": "neutral",
+            "sentiment_reasoning": "Listed as second-largest holding (7.04% of VOO), contributing to tech concentration risk and potential vulnerability to market corrections."
+          },
+          {
+            "ticker": "MSFT",
+            "sentiment": "neutral",
+            "sentiment_reasoning": "Third-largest holding (5.36% of VOO), part of the tech concentration that inflates valuations and creates downside risk if AI momentum slows."
+          },
+          {
+            "ticker": "AMZN",
+            "sentiment": "neutral",
+            "sentiment_reasoning": "Fourth-largest holding (4.13% of VOO), contributing to tech-heavy portfolio concentration and valuation concerns."
+          }
+        ]
+      }
+    ],
+    "status": "OK",
+    "request_id": "0c42255c37a65c5a94bc1919da7594f5",
+    "count": 3,
+    "next_url": "https://api.massive.com/v2/reference/news?cursor=YXA9MjAyNi0wOC0zMVQxNyUzQTEwJTNBMDBaJmFzPTg1Yzc5NWMxZjlhNzI5NTBmOTIyNWFjZjQ0ZGQ2YmI3NWIzNmRmOTZiOTlhZWE3MTY0ZTBlZTRmOTg1MmI2MTImbGltaXQ9MyZvcmRlcj1kZXNjZW5kaW5nJnB1Ymxpc2hlZF91dGMubHQ9MjAyNi0wOS0wMVQwMCUzQTAwJTNBMDBaJnRpY2tlcj1OVkRB"
+  }
+}

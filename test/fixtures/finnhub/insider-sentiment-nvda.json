@@ -1,0 +1,90 @@
+{
+  "recordedAt": "2026-10-25T19:38:54.479Z",
+  "request": {
+    "method": "GET",
+    "url": "https://finnhub.io/api/v1/stock/insider-sentiment?symbol=NVDA&from=2026-01-01&to=2026-10-25"
+  },
+  "status": 200,
+  "headers": {
+    "access-control-allow-credentials": "true",
+    "access-control-allow-headers": "Origin",
+    "access-control-allow-methods": "POST, GET, OPTIONS, PUT, DELETE",
+    "access-control-allow-origin": "*",
+    "access-control-expose-headers": "Content-Length",
+    "alt-svc": "h3=\":443\"; ma=86400",
+    "cf-cache-status": "DYNAMIC",
+    "cf-ray": "a503af2aa9bbe463-OTP",
+    "connection": "keep-alive",
+    "content-encoding": "zstd",
+    "content-type": "application/json; charset=utf-8",
+    "date": "Sun, 25 Oct 2026 19:38:54 GMT",
+    "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.0,\"max_age\":604800}",
+    "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=VC2OxGBKgu0vjCApZmIQ0LMGZ7qqfoxuw8k7T0DG%2BOIDk6022xFN2w3pGfs%2B0Dj89O8zCZ9R5HpjbnyWXw50V%2B4t0zwDFCqkXH0uKxkOA%2BI9z2fgnB1tQSQ%2BK0J7\"}]}",
+    "server": "cloudflare",
+    "transfer-encoding": "chunked",
+    "x-ratelimit-limit": "60",
+    "x-ratelimit-remaining": "59",
+    "x-ratelimit-reset": "1792957194"
+  },
+  "body": {
+    "data": [
+      {
+        "symbol": "NVDA",
+        "year": 2026,
+        "month": 1,
+        "change": -527640,
+        "mspr": -100
+      },
+      {
+        "symbol": "NVDA",
+        "year": 2026,
+        "month": 2,
+        "change": -47640,
+        "mspr": -100
+      },
+      {
+        "symbol": "NVDA",
+        "year": 2026,
+        "month": 3,
+        "change": -100898,
+        "mspr": -0.08332534
+      },
+      {
+        "symbol": "NVDA",
+        "year": 2026,
+        "month": 5,
+        "change": -625,
+        "mspr": -100
+      },
+      {
+        "symbol": "NVDA",
+        "year": 2026,
+        "month": 6,
+        "change": -2742641,
+        "mspr": -95.84094
+      },
+      {
+        "symbol": "NVDA",
+        "year": 2026,
+        "month": 7,
+        "change": -500000,
+        "mspr": -100
+      },
+      {
+        "symbol": "NVDA",
+        "year": 2026,
+        "month": 9,
+        "change": -4642764,
+        "mspr": -93.08281
+      },
+      {
+        "symbol": "NVDA",
+        "year": 2026,
+        "month": 10,
+        "change": -500000,
+        "mspr": -100
+      }
+    ],
+    "symbol": "NVDA"
+  }
+}

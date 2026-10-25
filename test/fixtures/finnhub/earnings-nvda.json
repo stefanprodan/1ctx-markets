@@ -1,0 +1,71 @@
+{
+  "recordedAt": "2026-10-25T19:38:52.835Z",
+  "request": {
+    "method": "GET",
+    "url": "https://finnhub.io/api/v1/stock/earnings?symbol=NVDA"
+  },
+  "status": 200,
+  "headers": {
+    "access-control-allow-credentials": "true",
+    "access-control-allow-headers": "Origin",
+    "access-control-allow-methods": "POST, GET, OPTIONS, PUT, DELETE",
+    "access-control-allow-origin": "*",
+    "access-control-expose-headers": "Content-Length",
+    "alt-svc": "h3=\":443\"; ma=86400",
+    "cf-cache-status": "DYNAMIC",
+    "cf-ray": "a503af205aafe463-OTP",
+    "connection": "keep-alive",
+    "content-encoding": "zstd",
+    "content-type": "application/json; charset=utf-8",
+    "date": "Sun, 25 Oct 2026 19:38:52 GMT",
+    "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.0,\"max_age\":604800}",
+    "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=pmcASeudzUkcqm04O7qVsYbZ%2FhOT7zCUaZpTtN%2FmpnDUtL%2Fi8LeohYo8Jn3I2an%2FOoHSBgB8lSiuL1pXdSRekQwxbbCmIKCZQ9O8dGpsV1NeMjWHOO7XIC6qgenf\"}]}",
+    "server": "cloudflare",
+    "transfer-encoding": "chunked",
+    "x-ratelimit-limit": "60",
+    "x-ratelimit-remaining": "58",
+    "x-ratelimit-reset": "1792957191"
+  },
+  "body": [
+    {
+      "symbol": "NVDA",
+      "estimate": 2.1384,
+      "actual": 2.22,
+      "period": "2026-09-30",
+      "surprise": 0.0816,
+      "surprisePercent": 3.8159,
+      "year": 2027,
+      "quarter": 2
+    },
+    {
+      "symbol": "NVDA",
+      "estimate": 1.7922,
+      "actual": 1.87,
+      "period": "2026-06-30",
+      "surprise": 0.0778,
+      "surprisePercent": 4.341,
+      "year": 2027,
+      "quarter": 1
+    },
+    {
+      "symbol": "NVDA",
+      "estimate": 1.7922,
+      "actual": 1.87,
+      "period": "2026-06-30",
+      "surprise": 0.0778,
+      "surprisePercent": 4.341,
+      "year": 2026,
+      "quarter": 1
+    },
+    {
+      "symbol": "NVDA",
+      "estimate": 1.5634,
+      "actual": 1.62,
+      "period": "2026-03-31",
+      "surprise": 0.0566,
+      "surprisePercent": 3.6203,
+      "year": 2026,
+      "quarter": 4
+    }
+  ]
+}

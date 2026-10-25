@@ -1,0 +1,29 @@
+{
+  "recordedAt": "2026-10-25T19:39:04.349Z",
+  "request": {
+    "method": "GET",
+    "url": "https://finnhub.io/api/v1/calendar/earnings?from=2026-07-01&to=2027-01-31&symbol=VVSM.DE"
+  },
+  "status": 403,
+  "headers": {
+    "access-control-allow-credentials": "true",
+    "access-control-allow-headers": "Origin",
+    "access-control-allow-methods": "POST, GET, OPTIONS, PUT, DELETE",
+    "access-control-allow-origin": "*",
+    "access-control-expose-headers": "Content-Length",
+    "alt-svc": "h3=\":443\"; ma=86400",
+    "cf-cache-status": "DYNAMIC",
+    "cf-ray": "a503af68581fe463-OTP",
+    "connection": "keep-alive",
+    "content-encoding": "zstd",
+    "content-type": "application/json; charset=utf-8",
+    "date": "Sun, 25 Oct 2026 19:39:04 GMT",
+    "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.0,\"max_age\":604800}",
+    "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=f22WsxKtzC7B8AoEkIS9h77IP3sEQCiDmO5M%2BFmtnb1j1fyl5QaBTHvypANaNnpMJl9VXa5audJSWtODmGgIBw0%2FDZGvbrxTYnPGhJqv%2BZLp3JVpWHJLe30i8U%2Fp\"}]}",
+    "server": "cloudflare",
+    "transfer-encoding": "chunked"
+  },
+  "body": {
+    "error": "You don't have access to this resource."
+  }
+}

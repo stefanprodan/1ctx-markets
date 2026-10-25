@@ -1,0 +1,223 @@
+{
+  "recordedAt": "2026-10-25T19:40:03.338Z",
+  "request": {
+    "method": "GET",
+    "url": "https://api.massive.com/v2/reference/news?ticker=NVDA&published_utc.lt=2025-09-01T00:00:00Z&order=desc&limit=3&sort=published_utc"
+  },
+  "status": 200,
+  "headers": {
+    "connection": "keep-alive",
+    "content-encoding": "gzip",
+    "content-length": "2032",
+    "content-type": "application/json",
+    "date": "Sun, 25 Oct 2026 19:40:03 GMT",
+    "link": "<https://api.massive.com/v2/reference/news?cursor=YXA9MjAyNS0wOC0zMVQxNSUzQTA0JTNBMDBaJmFzPTZiMTQwYzUxZDkyNWEyZWQ1NzkwNDYyNzJlNWQwOTExODExNTVjNmY5OTQ2OWZkZTZhZDViMzZmYzc1M2U0NDgmbGltaXQ9MyZvcmRlcj1kZXNjZW5kaW5nJnB1Ymxpc2hlZF91dGMubHQ9MjAyNS0wOS0wMVQwMCUzQTAwJTNBMDBaJnRpY2tlcj1OVkRB>; rel=\"next\"",
+    "strict-transport-security": "max-age=15724800; includeSubDomains",
+    "vary": "Accept-Encoding",
+    "x-item-count": "3",
+    "x-polygon-cluster-name": "polygon-ny5",
+    "x-request-id": "6533c1ebbc4e2d483a8a5f2b26a669ff"
+  },
+  "body": {
+    "results": [
+      {
+        "id": "8751a67adb33a0d04cdf984a8573bb8daf1aba344bf6ef365f31f853999c9701",
+        "publisher": {
+          "name": "The Motley Fool",
+          "homepage_url": "https://www.fool.com/",
+          "logo_url": "https://s3.massive.com/public/assets/news/logos/themotleyfool.svg",
+          "favicon_url": "https://s3.massive.com/public/assets/news/favicons/themotleyfool.ico"
+        },
+        "title": "Nvidia's $60 Billion Buyback Plan: Good or Bad News for Investors?",
+        "author": "Adria Cimino",
+        "published_utc": "2025-08-31T23:10:00Z",
+        "article_url": "https://www.fool.com/investing/2025/08/31/nvidias-60-billion-buyback-plan-good-or-bad-news/?source=iedfolrf0000001",
+        "tickers": [
+          "NVDA",
+          "AAPL",
+          "GOOG",
+          "GOOGL",
+          "AMJB",
+          "JPM",
+          "JPMpC",
+          "JPMpD",
+          "JPMpJ",
+          "JPMpK",
+          "JPMpL",
+          "JPMpM",
+          "VYLD"
+        ],
+        "image_url": "https://g.foolcdn.com/editorial/images/831408/gettyimages-1150572051.jpg",
+        "description": "Nvidia announced a massive $60 billion share repurchase program, reflecting strong confidence in its AI chip business and future growth potential. The company has been experiencing significant revenue growth and is positioned as a leading AI chip designer.",
+        "keywords": [
+          "Nvidia",
+          "AI",
+          "share buyback",
+          "stock market",
+          "technology",
+          "chip design"
+        ],
+        "insights": [
+          {
+            "ticker": "NVDA",
+            "sentiment": "positive",
+            "sentiment_reasoning": "Strong AI chip market performance, consistent innovation, robust revenue growth, and strategic share buyback indicating management confidence in future prospects"
+          },
+          {
+            "ticker": "AAPL",
+            "sentiment": "neutral",
+            "sentiment_reasoning": "Mentioned as part of share repurchase trend, no specific performance details provided"
+          },
+          {
+            "ticker": "GOOG",
+            "sentiment": "neutral",
+            "sentiment_reasoning": "Mentioned as part of share repurchase trend, no specific performance details provided"
+          },
+          {
+            "ticker": "GOOGL",
+            "sentiment": "neutral",
+            "sentiment_reasoning": "Mentioned as part of share repurchase trend, no specific performance details provided"
+          },
+          {
+            "ticker": "AMJB",
+            "sentiment": "neutral",
+            "sentiment_reasoning": "Mentioned as part of share repurchase trend, no specific performance details provided"
+          },
+          {
+            "ticker": "JPM",
+            "sentiment": "neutral",
+            "sentiment_reasoning": "Mentioned as part of share repurchase trend, no specific performance details provided"
+          },
+          {
+            "ticker": "JPMpC",
+            "sentiment": "neutral",
+            "sentiment_reasoning": "Mentioned as part of share repurchase trend, no specific performance details provided"
+          },
+          {
+            "ticker": "JPMpD",
+            "sentiment": "neutral",
+            "sentiment_reasoning": "Mentioned as part of share repurchase trend, no specific performance details provided"
+          },
+          {
+            "ticker": "JPMpJ",
+            "sentiment": "neutral",
+            "sentiment_reasoning": "Mentioned as part of share repurchase trend, no specific performance details provided"
+          },
+          {
+            "ticker": "JPMpK",
+            "sentiment": "neutral",
+            "sentiment_reasoning": "Mentioned as part of share repurchase trend, no specific performance details provided"
+          },
+          {
+            "ticker": "JPMpL",
+            "sentiment": "neutral",
+            "sentiment_reasoning": "Mentioned as part of share repurchase trend, no specific performance details provided"
+          },
+          {
+            "ticker": "JPMpM",
+            "sentiment": "neutral",
+            "sentiment_reasoning": "Mentioned as part of share repurchase trend, no specific performance details provided"
+          },
+          {
+            "ticker": "VYLD",
+            "sentiment": "neutral",
+            "sentiment_reasoning": "Mentioned as part of share repurchase trend, no specific performance details provided"
+          }
+        ]
+      },
+      {
+        "id": "17aff1fba92f87a086dc6a7a97e3cc9eec513ebcc5198379e6ceecb6bb3ed879",
+        "publisher": {
+          "name": "The Motley Fool",
+          "homepage_url": "https://www.fool.com/",
+          "logo_url": "https://s3.massive.com/public/assets/news/logos/themotleyfool.svg",
+          "favicon_url": "https://s3.massive.com/public/assets/news/favicons/themotleyfool.ico"
+        },
+        "title": "This Warren Buffett-Approved Investment Could Turn $300 Per Month Into $1 Million",
+        "author": "Adria Cimino",
+        "published_utc": "2025-08-31T15:15:00Z",
+        "article_url": "https://www.fool.com/investing/2025/08/31/this-warren-buffett-approved-investment-could-turn/?source=iedfolrf0000001",
+        "tickers": [
+          "NVDA",
+          "MSFT",
+          "AAPL",
+          "SPY"
+        ],
+        "image_url": "https://g.foolcdn.com/editorial/images/831431/warren-buffett-1-tmf-2015.jpg",
+        "description": "Warren Buffett recommends investing in a low-cost S&P 500 index fund as a reliable long-term investment strategy, highlighting the potential to turn monthly $300 investments into a $1 million portfolio over 35 years.",
+        "keywords": [
+          "Warren Buffett",
+          "S&P 500",
+          "ETF",
+          "investing",
+          "compounding",
+          "long-term investment"
+        ],
+        "insights": [
+          {
+            "ticker": "NVDA",
+            "sentiment": "positive",
+            "sentiment_reasoning": "Highlighted as an AI chip leader with potential for significant stock gains"
+          },
+          {
+            "ticker": "MSFT",
+            "sentiment": "positive",
+            "sentiment_reasoning": "Listed as one of the top three holdings in the S&P 500, indicating strong market performance"
+          },
+          {
+            "ticker": "AAPL",
+            "sentiment": "positive",
+            "sentiment_reasoning": "Listed as one of the top three holdings in the S&P 500, indicating strong market performance"
+          },
+          {
+            "ticker": "SPY",
+            "sentiment": "positive",
+            "sentiment_reasoning": "Recommended by Buffett, low expense ratio, tracks market performance with consistent 10% annual returns"
+          }
+        ]
+      },
+      {
+        "id": "6b140c51d925a2ed579046272e5d091181155c6f99469fde6ad5b36fc753e448",
+        "publisher": {
+          "name": "The Motley Fool",
+          "homepage_url": "https://www.fool.com/",
+          "logo_url": "https://s3.massive.com/public/assets/news/logos/themotleyfool.svg",
+          "favicon_url": "https://s3.massive.com/public/assets/news/favicons/themotleyfool.ico"
+        },
+        "title": "Prediction: Nvidia Will Soar Over the Next 5 Years. Here's 1 Reason Why.",
+        "author": "Stefon Walters",
+        "published_utc": "2025-08-31T15:04:00Z",
+        "article_url": "https://www.fool.com/investing/2025/08/31/prediction-nvidia-will-soar-over-the-next-5-years/?source=iedfolrf0000001",
+        "tickers": [
+          "NVDA",
+          "PLTR"
+        ],
+        "image_url": "https://g.foolcdn.com/editorial/images/831067/diverse-business-team-data-servers-it-1.jpg",
+        "description": "Nvidia is positioned as a critical player in AI infrastructure, with its data center segment growing from $3 billion to $115.2 billion in revenue, and potential for $3-4 trillion in AI infrastructure investments over the next five years.",
+        "keywords": [
+          "AI",
+          "data centers",
+          "GPU",
+          "infrastructure",
+          "technology investment"
+        ],
+        "insights": [
+          {
+            "ticker": "NVDA",
+            "sentiment": "positive",
+            "sentiment_reasoning": "Strong growth in data center revenue, pivotal role in AI infrastructure, expected to benefit from massive AI investment opportunities"
+          },
+          {
+            "ticker": "PLTR",
+            "sentiment": "neutral",
+            "sentiment_reasoning": "Mentioned as current best-performing stock in S&P 500, but no detailed analysis provided"
+          }
+        ]
+      }
+    ],
+    "status": "OK",
+    "request_id": "6533c1ebbc4e2d483a8a5f2b26a669ff",
+    "count": 3,
+    "next_url": "https://api.massive.com/v2/reference/news?cursor=YXA9MjAyNS0wOC0zMVQxNSUzQTA0JTNBMDBaJmFzPTZiMTQwYzUxZDkyNWEyZWQ1NzkwNDYyNzJlNWQwOTExODExNTVjNmY5OTQ2OWZkZTZhZDViMzZmYzc1M2U0NDgmbGltaXQ9MyZvcmRlcj1kZXNjZW5kaW5nJnB1Ymxpc2hlZF91dGMubHQ9MjAyNS0wOS0wMVQwMCUzQTAwJTNBMDBaJnRpY2tlcj1OVkRB"
+  }
+}

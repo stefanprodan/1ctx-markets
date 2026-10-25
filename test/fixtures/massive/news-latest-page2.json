@@ -1,0 +1,213 @@
+{
+  "recordedAt": "2026-10-25T19:39:33.067Z",
+  "request": {
+    "method": "GET",
+    "url": "https://api.massive.com/v2/reference/news?cursor=YXA9MjAyNi0xMC0yNVQxOCUzQTI1JTNBMDBaJmFzPTYwODU3MzQ2ZjJjNGRjYjg0YjdjMDVkZGQwYTU0ODA3MWU3MTA2ZDMzOGJhMjE5OGYzOTAwOTgzNmZhMDBiYjImbGltaXQ9NSZvcmRlcj1kZXNjZW5kaW5n"
+  },
+  "status": 200,
+  "headers": {
+    "connection": "keep-alive",
+    "content-encoding": "gzip",
+    "content-type": "application/json",
+    "date": "Sun, 25 Oct 2026 19:39:33 GMT",
+    "link": "<https://api.massive.com/v2/reference/news?cursor=YXA9MjAyNi0xMC0yNVQxOCUzQTExJTNBMDBaJmFzPTRkYTNkOGFjNmI3YWY0NDUzNmRiOTBiYzljZjRhZjBjYTdjYmNhM2I3YjUyMjZmYzI1OWEyNWI5ZTc4YThiZTImbGltaXQ9NSZvcmRlcj1kZXNjZW5kaW5n>; rel=\"next\"",
+    "strict-transport-security": "max-age=15724800; includeSubDomains",
+    "transfer-encoding": "chunked",
+    "vary": "Accept-Encoding",
+    "x-item-count": "5",
+    "x-polygon-cluster-name": "polygon-ny5",
+    "x-request-id": "1e323d0a87090c535b1322ff6e35a97c"
+  },
+  "body": {
+    "results": [
+      {
+        "id": "02e2a1d5ebdc62c8973532844efb2ec756178a15e51f8e10e35e793783fd3cec",
+        "publisher": {
+          "name": "The Motley Fool",
+          "homepage_url": "https://www.fool.com/",
+          "logo_url": "https://s3.massive.com/public/assets/news/logos/themotleyfool.svg",
+          "favicon_url": "https://s3.massive.com/public/assets/news/favicons/themotleyfool.ico"
+        },
+        "title": "Archer Aviation Stock Is Down 50%. Is Now Finally the Time to Buy?",
+        "author": "Steven Porrello",
+        "published_utc": "2026-10-25T18:23:00Z",
+        "article_url": "https://www.fool.com/investing/2026/10/25/archer-stock-is-down-50-is-now-finally-time/?source=iedfolrf0000001",
+        "tickers": [
+          "ACHR"
+        ],
+        "image_url": "https://g.foolcdn.com/image/?url=https%3A%2F%2Fg.foolcdn.com%2Feditorial%2Fimages%2F891369%2Fmidnight_american-flag.jpg&w=1200&op=resize",
+        "description": "Archer Aviation's stock has dropped 50% in 2026, falling from $8 to under $4 per share. While the company faces significant uncertainties around profitability, aircraft production costs, and market demand for electric air taxis, these challenges are not insurmountable. The stock represents a high-risk, high-reward opportunity suitable only for long-term investors with high risk tolerance.",
+        "keywords": [
+          "eVTOL aircraft",
+          "electric air taxis",
+          "stock decline",
+          "aircraft certification",
+          "investment risk",
+          "long-term investment"
+        ],
+        "insights": [
+          {
+            "ticker": "ACHR",
+            "sentiment": "negative",
+            "sentiment_reasoning": "The stock has lost 50% of its value in 2026. The company faces unresolved challenges including unproven commercial viability of flying taxis, uncertain profitability margins, unknown production capacity and costs, and years away from proving its business model. While risks are not insurmountable, significant uncertainties persist."
+          }
+        ]
+      },
+      {
+        "id": "b03392a51ecc011997315b372df822378f1b708f60840cbece9b01ecabb88d5a",
+        "publisher": {
+          "name": "GlobeNewswire Inc.",
+          "homepage_url": "https://www.globenewswire.com",
+          "logo_url": "https://s3.massive.com/public/assets/news/logos/globenewswire.svg",
+          "favicon_url": "https://s3.massive.com/public/assets/news/favicons/globenewswire.ico"
+        },
+        "title": "Hims & Hers Health (HIMS) Alert: Securities Class Action Pending, Investors with Losses Encouraged to Contact Hagens Berman Before November 2, 2026 Lead Plaintiff Deadline",
+        "author": "Hagens Berman",
+        "published_utc": "2026-10-25T18:21:00Z",
+        "article_url": "https://www.globenewswire.com/news-release/2026/10/25/3387767/32716/en/hims-hers-health-hims-alert-securities-class-action-pending-investors-with-losses-encouraged-to-contact-hagens-berman-before-november-2-2026-lead-plaintiff-deadline.html",
+        "tickers": [
+          "HIMS",
+          "META",
+          "SNAP"
+        ],
+        "image_url": "https://ml.globenewswire.com/Resource/Download/2c81cd72-0ffb-43c9-9d0f-b622c3e44e43",
+        "description": "Hims & Hers Health faces a securities class action lawsuit following an FTC federal complaint alleging deceptive health data sharing with third-party advertising platforms and ROSCA violations related to subscription billing practices. The allegations caused HIMS stock to plunge $4.32 (-14.7%) on July 29, 2026, erasing over $970 million in market capitalization. Investors with losses are encouraged to contact Hagens Berman before the November 2, 2026 lead plaintiff deadline.",
+        "keywords": [
+          "securities class action",
+          "FTC complaint",
+          "data privacy",
+          "deceptive practices",
+          "subscription billing",
+          "ROSCA violations",
+          "stock decline",
+          "investor losses"
+        ],
+        "insights": [
+          {
+            "ticker": "HIMS",
+            "sentiment": "negative",
+            "sentiment_reasoning": "Company faces serious FTC allegations of deceptive health data sharing with Meta and Snap, unauthorized subscription billing, and dark patterns preventing cancellations. Stock crashed 14.7% on July 29, 2026, losing $970 million in market value. Securities class action lawsuit filed with substantial investor losses."
+          },
+          {
+            "ticker": "META",
+            "sentiment": "neutral",
+            "sentiment_reasoning": "Meta is mentioned as a third-party recipient of health data shared by Hims through tracking pixels, but the article does not allege Meta's direct misconduct or indicate regulatory action against Meta itself."
+          },
+          {
+            "ticker": "SNAP",
+            "sentiment": "neutral",
+            "sentiment_reasoning": "Snap is mentioned as a third-party recipient of health data shared by Hims through customer list matching, but the article does not allege Snap's direct misconduct or indicate regulatory action against Snap itself."
+          }
+        ]
+      },
+      {
+        "id": "acc8d35f03e6de6f275862895323fff1f5691b9a70dd2250bd5e5d7aa9639906",
+        "publisher": {
+          "name": "GlobeNewswire Inc.",
+          "homepage_url": "https://www.globenewswire.com",
+          "logo_url": "https://s3.massive.com/public/assets/news/logos/globenewswire.svg",
+          "favicon_url": "https://s3.massive.com/public/assets/news/favicons/globenewswire.ico"
+        },
+        "title": "Innventure (INV) Facing Securities Class Action Amid Questions Over DarkNX Project Bookings Removal, Stock Drops",
+        "author": "Hagens Berman",
+        "published_utc": "2026-10-25T18:17:00Z",
+        "article_url": "https://www.globenewswire.com/news-release/2026/10/25/3387766/32716/en/innventure-inv-facing-securities-class-action-amid-questions-over-darknx-project-bookings-removal-stock-drops.html",
+        "tickers": [
+          "INV"
+        ],
+        "image_url": "https://ml.globenewswire.com/Resource/Download/2c81cd72-0ffb-43c9-9d0f-b622c3e44e43",
+        "description": "Innventure Inc. (NASDAQ: INV) faces a securities class action lawsuit after its stock plummeted 55% on August 14, 2026, following the company's removal of the DarkNX project from its 2026 forecast and suspension of revenue guidance. A forensic research report alleged the 300MW data center project in Ontario, Canada was non-existent with 'zero evidence' of its viability, contradicting management's prior assurances to investors. The stock price fell 74% between May 27 and August 14, 2026, as the company revealed the deployment site was no longer available.",
+        "keywords": [
+          "securities class action",
+          "DarkNX project",
+          "revenue guidance suspension",
+          "stock price decline",
+          "Accelsius",
+          "data center",
+          "investor fraud",
+          "forensic research",
+          "misleading statements"
+        ],
+        "insights": [
+          {
+            "ticker": "INV",
+            "sentiment": "negative",
+            "sentiment_reasoning": "Company faces securities class action lawsuit, stock crashed 55-74%, removed major project from bookings, suspended revenue guidance, and is accused of making false statements about the viability of the DarkNX project to investors. Forensic research alleged the project was fictitious with no evidence of existence."
+          }
+        ]
+      },
+      {
+        "id": "0429c72501f77f2fefb10aa1a92f536f867391241ab537db5b92847e4b2efaf2",
+        "publisher": {
+          "name": "The Motley Fool",
+          "homepage_url": "https://www.fool.com/",
+          "logo_url": "https://s3.massive.com/public/assets/news/logos/themotleyfool.svg",
+          "favicon_url": "https://s3.massive.com/public/assets/news/favicons/themotleyfool.ico"
+        },
+        "title": "GrafTech: 2 Key Takeaways for Long-Term Investors",
+        "author": "The Motley Fool Team",
+        "published_utc": "2026-10-25T18:15:02Z",
+        "article_url": "https://www.fool.com/earnings/takeaways/2026/10/25/graftech-2-key-takeaways-for-long-term-investors/?source=iedfolrf0000001",
+        "tickers": [
+          "EAF"
+        ],
+        "image_url": "https://g.foolcdn.com/image/?url=https%3A%2F%2Fcdn.content.foolcdn.com%2Fimages%2F1umn9qeh%2Fproduction%2Fb4204f36ed605fc54d4ba32e2cb31d1dd892afd6-800x450.jpg&w=1200&op=resize",
+        "description": "GrafTech announced higher customer price commitments and structural cost reductions in Q3 2026. The company expects mid-single-digit price increases in Q4 2026 and is closing its Monterrey plant to eliminate excess capacity, targeting $20-25 million in annual cost savings by 2028. Management is optimistic about steel market recovery and maintaining pricing discipline, though profitability improvements remain to be demonstrated.",
+        "keywords": [
+          "graphite electrodes",
+          "pricing inflection point",
+          "capacity reduction",
+          "cost savings",
+          "steel market recovery",
+          "petroleum needle coke",
+          "vertical integration"
+        ],
+        "insights": [
+          {
+            "ticker": "EAF",
+            "sentiment": "positive",
+            "sentiment_reasoning": "Company achieved pricing inflection point with mid-single-digit Q4 price increases expected, secured higher customer commitments for 2027, and is executing strategic cost reduction initiatives ($20-25M annual savings) through plant closure. Stock rose 14.23% on the announcement. However, sentiment is tempered by the caveat that financial performance has not yet reflected full benefits and profitability restoration depends on steel market normalization."
+          }
+        ]
+      },
+      {
+        "id": "4da3d8ac6b7af44536db90bc9cf4af0ca7cbca3b7b5226fc259a25b9e78a8be2",
+        "publisher": {
+          "name": "The Motley Fool",
+          "homepage_url": "https://www.fool.com/",
+          "logo_url": "https://s3.massive.com/public/assets/news/logos/themotleyfool.svg",
+          "favicon_url": "https://s3.massive.com/public/assets/news/favicons/themotleyfool.ico"
+        },
+        "title": "Realty Income Yields More Than Quintuple the S&P 500. Here's What a $10,000 Investment Produces in Yearly Dividends.",
+        "author": "Thomas Niel",
+        "published_utc": "2026-10-25T18:11:00Z",
+        "article_url": "https://www.fool.com/investing/2026/10/25/realty-income-yields-more-than-quintuple-the-sp-50/?source=iedfolrf0000001",
+        "tickers": [
+          "O"
+        ],
+        "image_url": "https://g.foolcdn.com/image/?url=https%3A%2F%2Fg.foolcdn.com%2Feditorial%2Fimages%2F891494%2Fa-hand-pointing-at-a-digital-board-that-says-reit-1302x625-79ecf9f.jpg&w=1200&op=resize",
+        "description": "Realty Income (O) offers a forward dividend yield of 5.9%, more than five times the S&P 500's yield of under 1.1%. A $10,000 investment would generate approximately $583.54 annually in dividends. As a REIT required to distribute 90% of taxable income, Realty Income has maintained over 30 years of consecutive annual dividend increases, making it attractive for income-focused investors willing to accept slower price appreciation.",
+        "keywords": [
+          "dividend yield",
+          "REIT",
+          "income investing",
+          "dividend growth",
+          "monthly dividends",
+          "interest rates",
+          "payout ratio"
+        ],
+        "insights": [
+          {
+            "ticker": "O",
+            "sentiment": "positive",
+            "sentiment_reasoning": "The article highlights Realty Income's exceptional 5.9% dividend yield (5x higher than S&P 500), 30+ year track record of consecutive annual dividend increases, sustainable 74.5% payout ratio, and reliable monthly dividend payments. These factors make it attractive for income investors seeking dependable returns."
+          }
+        ]
+      }
+    ],
+    "status": "OK",
+    "request_id": "1e323d0a87090c535b1322ff6e35a97c",
+    "count": 5,
+    "next_url": "https://api.massive.com/v2/reference/news?cursor=YXA9MjAyNi0xMC0yNVQxOCUzQTExJTNBMDBaJmFzPTRkYTNkOGFjNmI3YWY0NDUzNmRiOTBiYzljZjRhZjBjYTdjYmNhM2I3YjUyMjZmYzI1OWEyNWI5ZTc4YThiZTImbGltaXQ9NSZvcmRlcj1kZXNjZW5kaW5n"
+  }
+}
