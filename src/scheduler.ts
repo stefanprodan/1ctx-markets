@@ -13,11 +13,13 @@ export type Job = (due: number) => Promise<void> | void;
 export type Scheduler = {
   // the first run is one period from now
   every(name: string, periodMs: number, job: Job): void;
-  stop(): void;
+  // resolves once every run still going has settled
+  stop(): Promise<void>;
 };
 
 export function scheduler(clock: Clock, log: Log): Scheduler {
   const cancels = new Map<string, () => void>();
+  const runs = new Set<Promise<void>>();
   return {
     every(name, periodMs, job) {
       if (!Number.isSafeInteger(periodMs) || periodMs <= 0) {
@@ -47,7 +49,7 @@ export function scheduler(clock: Clock, log: Log): Scheduler {
           return;
         }
         running = true;
-        void (async () => {
+        const settled = (async () => {
           try {
             await job(due);
           } catch (error) {
@@ -56,12 +58,15 @@ export function scheduler(clock: Clock, log: Log): Scheduler {
             running = false;
           }
         })();
+        runs.add(settled);
+        void settled.then(() => runs.delete(settled));
       };
       arm(clock.now() + periodMs);
     },
-    stop() {
+    async stop() {
       for (const cancel of cancels.values()) cancel();
       cancels.clear();
+      await Promise.all(runs);
     },
   };
 }

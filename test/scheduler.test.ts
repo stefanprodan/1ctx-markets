@@ -38,7 +38,7 @@ describe("scheduler", () => {
 
     await clock.advance(3 * EVERY);
     expect(runs).toEqual([1, 2, 3, 4, 5].map((n) => START + n * EVERY));
-    jobs.stop();
+    await jobs.stop();
   });
 
   test("a run still going takes the next turn", async () => {
@@ -61,7 +61,8 @@ describe("scheduler", () => {
     release();
     await clock.advance(EVERY);
     expect(runs).toBe(2);
-    jobs.stop();
+    release();
+    await jobs.stop();
   });
 
   test("a failing run is logged and the next one still comes", async () => {
@@ -77,7 +78,7 @@ describe("scheduler", () => {
     await clock.advance(2 * EVERY);
     expect(runs).toBe(2);
     expect(lines).toEqual(["error job failed", "error job failed"]);
-    jobs.stop();
+    await jobs.stop();
   });
 
   test("a late run keeps to the period and runs once for the turns missed", () => {
@@ -104,6 +105,29 @@ describe("scheduler", () => {
     expect(timers).toEqual([START + EVERY, START + 4 * EVERY]);
   });
 
+  test("stop resolves once a run still going has finished", async () => {
+    const clock = fakeClock();
+    const jobs = scheduler(clock, silent);
+    let release = () => {};
+    let finished = false;
+    jobs.every("slow", EVERY, async () => {
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      finished = true;
+    });
+    await clock.advance(EVERY);
+    let stopped = false;
+    const stopping = jobs.stop().then(() => {
+      stopped = true;
+    });
+    await clock.advance(EVERY);
+    expect(stopped).toBe(false);
+    release();
+    await stopping;
+    expect(finished).toBe(true);
+  });
+
   test("stop cancels every job", async () => {
     const clock = fakeClock();
     const jobs = scheduler(clock, silent);
@@ -111,7 +135,7 @@ describe("scheduler", () => {
     jobs.every("quotes", EVERY, () => {
       runs++;
     });
-    jobs.stop();
+    await jobs.stop();
     await clock.advance(3 * EVERY);
     expect(runs).toBe(0);
   });

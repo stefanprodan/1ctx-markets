@@ -8,7 +8,7 @@ import {
   StreamableHTTPClientTransport,
 } from "@modelcontextprotocol/client";
 import { KeyError, keys, requireBearer } from "../src/keys.ts";
-import { format, logger, MASK } from "../src/log.ts";
+import { errorFields, format, logger, MASK } from "../src/log.ts";
 import { SECRETS, withApp } from "./helpers/app.ts";
 import { fakeClock } from "./helpers/clock.ts";
 
@@ -106,6 +106,13 @@ describe("the bearer", () => {
     expect(format(0, "test", "info", "plain")).toBe(
       "time=1970-01-01T00:00:00.000Z level=INFO msg=plain area=test",
     );
+  });
+});
+
+describe("error fields", () => {
+  test("keep only the first line of a message", () => {
+    const fields = errorFields(new TypeError("first line\nsecond line"));
+    expect(fields).toEqual({ error_type: "TypeError", error: "first line" });
   });
 });
 

@@ -42,8 +42,11 @@ export function start(options: AppOptions): App {
     server,
     jobs,
     async stop() {
-      jobs.stop();
+      // no new run starts, and one still writing finishes before main
+      // closes the database
+      const settled = jobs.stop();
       await server.stop();
+      await settled;
       await mcp.close();
     },
   };

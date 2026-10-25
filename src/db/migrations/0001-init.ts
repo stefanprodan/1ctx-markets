@@ -3,7 +3,7 @@
 
 import type { Migration } from "../migration.ts";
 
-// only the runner's own record; each later part appends its tables
+// only the runner's own record; each schema change appends a migration
 export const m0001: Migration = {
   id: "0001-init",
   up(db) {

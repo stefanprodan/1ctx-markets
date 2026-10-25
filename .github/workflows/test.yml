@@ -51,3 +51,32 @@ jobs:
           test "$(./bin/1ctx-markets --version)" = "$expected"
           ./bin/1ctx-markets --help >/dev/null
           make smoke
+
+  macos-smoke:
+    if: github.event_name == 'push'
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Read Bun version
+        id: bun
+        run: |
+          version=$(scripts/bun-version.sh)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: ${{ steps.bun.outputs.version }}
+      - name: Verify architecture
+        run: test "$(uname -m)" = arm64
+      - name: Install dependencies
+        run: bun install --frozen-lockfile --ignore-scripts
+      - name: Build
+        run: make build
+      - name: Smoke test binary
+        run: |
+          expected="v$(bun -e 'console.log(require("./package.json").version)')"
+          test "$(./bin/1ctx-markets --version)" = "$expected"
+          ./bin/1ctx-markets --help >/dev/null
+          make smoke

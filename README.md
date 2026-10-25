@@ -7,6 +7,8 @@ Protocol (MCP, Streamable HTTP) and a small read-only HTTP API, both
 behind one bearer key. It makes no model calls and holds no portfolio:
 only market data and the price rules agents set.
 
+Today it serves only the bearer-protected MCP endpoint, with no tools yet.
+
 ## Run it
 
 You need [Bun](https://bun.sh) at the version in `.bun-version`.
@@ -15,6 +17,7 @@ You need [Bun](https://bun.sh) at the version in `.bun-version`.
 bun install --frozen-lockfile --ignore-scripts
 mkdir -p ~/.1ctx-markets/secrets
 openssl rand -hex 32 > ~/.1ctx-markets/secrets/bearer.key
+chmod 600 ~/.1ctx-markets/secrets/bearer.key
 make start
 ```
 

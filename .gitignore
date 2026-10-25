@@ -115,3 +115,7 @@ dist
 # build output
 bin/
 .*.bun-build
+
+# Local dev space
+workspace/
+.preview/
