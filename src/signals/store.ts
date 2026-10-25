@@ -8,10 +8,11 @@
 // Every function here runs inside a writer transaction.
 
 import { type Interval, readBars, type Bar as StoredBar } from "../bars.ts";
-import { readSession, sessionDate, weekOf } from "../calendars.ts";
+import { CRYPTO, readSession, sessionDate, weekOf } from "../calendars.ts";
 import { MINUTE_MS } from "../clock.ts";
 import type { Db } from "../db/index.ts";
 import type { Instrument } from "../instruments.ts";
+import { localDate } from "../zone.ts";
 import { type DailyRow, dailySeries, liveDaily } from "./daily.ts";
 import { liveWeekly, type WeeklyRow, weeklySeries } from "./weekly.ts";
 
@@ -196,7 +197,8 @@ export const LIVE_AFTER_END_MS = 15 * MINUTE_MS;
 // market's stored session. A trade outside that session, up to the
 // post-close window, belongs to another day (EURUSD=X's Sunday trade
 // under Friday's session, CL=F's Friday trade under Sunday's), so it
-// updates the quote only.
+// updates the quote only. Crypto's day is the UTC day, so its trade's
+// UTC date is the row's, with no allowance carrying it past midnight.
 export function liveTarget(
   db: Db,
   instrument: Scoped,
@@ -207,9 +209,12 @@ export function liveTarget(
        from quotes where instrument = ?`,
     )
     .get(instrument.id);
+  if (quote === null) return null;
+  if (instrument.market === CRYPTO) {
+    return { date: localDate("UTC", quote.time), quote };
+  }
   const session = readSession(db, instrument.market);
   if (
-    quote === null ||
     session === null ||
     quote.time < session.start ||
     quote.time > session.end + LIVE_AFTER_END_MS
@@ -304,7 +309,7 @@ function replaceLive(
 }
 
 // The live daily and weekly rows from the stored quote; with no quote
-// traded in the current session there is none.
+// traded in the current session, or no bars to step from, there is none.
 export function refreshLive(db: Db, instrument: Scoped, now: number): void {
   const target = liveTarget(db, instrument);
   if (target === null) {
@@ -322,13 +327,14 @@ export function refreshLive(db: Db, instrument: Scoped, now: number): void {
     LIVE_DAYS + 1,
     dailySeries,
   );
-  if (day !== null) {
-    const row = liveDaily(day.bars, day.last, quote, {
-      date,
-      replacesLast: day.replacesLast,
-    });
-    replaceLive(db, instrument.id, "1d", row, quote.time, now);
-  }
+  const dayRow =
+    day === null
+      ? null
+      : liveDaily(day.bars, day.last, quote, {
+          date,
+          replacesLast: day.replacesLast,
+        });
+  replaceLive(db, instrument.id, "1d", dayRow, quote.time, now);
   const monday = weekOf(date);
   const week = liveBase<WeeklyRow>(
     db,
@@ -338,11 +344,28 @@ export function refreshLive(db: Db, instrument: Scoped, now: number): void {
     LIVE_WEEKS + 1,
     weeklySeries,
   );
-  if (week !== null) {
-    const row = liveWeekly(week.bars, week.last, quote.price, {
-      date: monday,
-      replacesLast: week.replacesLast,
-    });
-    replaceLive(db, instrument.id, "1wk", row, quote.time, now);
+  const weekRow =
+    week === null
+      ? null
+      : liveWeekly(week.bars, week.last, quote.price, {
+          date: monday,
+          replacesLast: week.replacesLast,
+        });
+  replaceLive(db, instrument.id, "1wk", weekRow, quote.time, now);
+}
+
+// A live row its market's session has moved past, or one the quote no
+// longer dates, is computed again or removed; a current one is kept.
+export function pruneLive(db: Db, instrument: Scoped, now: number): void {
+  const target = liveTarget(db, instrument);
+  const dates = db
+    .query<{ date: string }, [string]>(
+      `select date from signals where instrument = ? and kind = 'live'
+       and interval = '1d'`,
+    )
+    .all(instrument.id)
+    .map((r) => r.date);
+  if (target === null ? dates.length > 0 : !dates.includes(target.date)) {
+    refreshLive(db, instrument, now);
   }
 }

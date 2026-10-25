@@ -32,7 +32,7 @@ import {
   upsertInstrument,
 } from "../instruments.ts";
 import { exclusive } from "../lock.ts";
-import { refreshLive, signalsAfterBars } from "../signals/store.ts";
+import { pruneLive, refreshLive, signalsAfterBars } from "../signals/store.ts";
 import { type Phrase, SourceError } from "../source.ts";
 import type { Writer } from "../writer.ts";
 import { addDays, dateOfWall, startOfDate, wallTime } from "../zone.ts";
@@ -505,8 +505,9 @@ export function quoteOf(
 
 // Each answer's session goes to its market, known instrument or not;
 // a quote older than the stored one is kept out, and one as old only
-// replaces it when fetched later. Each stored quote moves its live
-// signal rows in the same writer transaction.
+// replaces it when fetched later. Every session is recorded first, so
+// the live rows, moved in the same writer transaction, never depend on
+// the answer's order; a live row the new sessions moved past goes.
 export function storeQuotes(db: Db, answer: SparkAnswer): QuoteRow[] {
   const written: QuoteRow[] = [];
   const upsert = db.query(
@@ -530,8 +531,14 @@ export function storeQuotes(db: Db, answer: SparkAnswer): QuoteRow[] {
        or (excluded.time = quotes.time
          and excluded.fetched_at > quotes.fetched_at)`,
   );
+  const markets = new Set<string>();
   for (const meta of answer.quotes) {
-    recordSession(db, marketOf(meta.exchange), meta.session, answer.fetchedAt);
+    const market = marketOf(meta.exchange);
+    recordSession(db, market, meta.session, answer.fetchedAt);
+    markets.add(market);
+  }
+  const moved = new Set<string>();
+  for (const meta of answer.quotes) {
     const instrument = readBySourceSymbol(db, SOURCE, meta.symbol);
     if (instrument === null) continue;
     const q = quoteOf(instrument.id, meta, answer.fetchedAt);
@@ -552,6 +559,15 @@ export function storeQuotes(db: Db, answer: SparkAnswer): QuoteRow[] {
     if (changes > 0) {
       written.push(q);
       refreshLive(db, instrument, answer.fetchedAt);
+      moved.add(instrument.id);
+    }
+  }
+  const others = db.query<{ id: string; market: string }, [string]>(
+    "select id, market from instruments where market = ?",
+  );
+  for (const market of markets) {
+    for (const i of others.all(market)) {
+      if (!moved.has(i.id)) pruneLive(db, i, answer.fetchedAt);
     }
   }
   return written;

@@ -108,7 +108,12 @@ export function readSignals(
   return { instrument: i.id, daily, weekly, stale: { final, live } };
 }
 
-export type RelativeRead = RelativeReturn & {
+// an index such as the DAX is unit unknown and a decided benchmark
+export const UNKNOWN_UNITS_NOTE = "units unknown, treated as prices";
+
+export type RelativeRead = Omit<RelativeReturn, "note"> & {
+  // the maths' note, and when a unit is unknown, that it was read as a price
+  note: string;
   // both listings ended on a live price of the same session date
   live: boolean;
 };
@@ -156,5 +161,11 @@ export function readRelativeReturn(
       : {}),
   });
   const r = relativeReturn(listing(ia, a, ta), listing(ib, b, tb), months);
-  return r === null ? null : { ...r, live };
+  if (r === null) return null;
+  const unknown = a.unit === "unknown" || b.unit === "unknown";
+  return {
+    ...r,
+    note: unknown ? `${r.note}; ${UNKNOWN_UNITS_NOTE}` : r.note,
+    live,
+  };
 }

@@ -4,15 +4,23 @@
 import { describe, expect, test } from "bun:test";
 import { type Interval, readBars, upsertBars } from "../src/bars.ts";
 import { recordSession, session } from "../src/calendars.ts";
-import { MINUTE_MS } from "../src/clock.ts";
+import { DAY_MS, MINUTE_MS } from "../src/clock.ts";
 import { type Db, open } from "../src/db/index.ts";
 import { type Unit, upsertInstrument } from "../src/instruments.ts";
 import { silent } from "../src/log.ts";
 import { endRun, failRun, startRun } from "../src/runs.ts";
 import { dailySeries, liveDaily } from "../src/signals/daily.ts";
-import { readRelativeReturn, readSignals } from "../src/signals/read.ts";
-import { LEVEL_NOTE, relativeReturn } from "../src/signals/relative.ts";
-import { finalPrefix, selectList } from "../src/signals/store.ts";
+import {
+  readRelativeReturn,
+  readSignals,
+  UNKNOWN_UNITS_NOTE,
+} from "../src/signals/read.ts";
+import {
+  LEVEL_NOTE,
+  RETURN_NOTE,
+  relativeReturn,
+} from "../src/signals/relative.ts";
+import { finalPrefix, refreshLive, selectList } from "../src/signals/store.ts";
 import { liveWeekly, weeklySeries } from "../src/signals/weekly.ts";
 import { JOBS, STALE } from "../src/stale.ts";
 import { writer } from "../src/writer.ts";
@@ -24,9 +32,8 @@ import {
   refetch,
   storeQuotes,
 } from "../src/yahoo/sync.ts";
-import { addDays, fromWallTime, wallOfDate } from "../src/zone.ts";
+import { addDays, fromWallTime, localDate, wallOfDate } from "../src/zone.ts";
 import { fakeClock } from "./helpers/clock.ts";
-import { CRYPTO, sim } from "./helpers/sim.ts";
 import {
   clone,
   fakeFetch,
@@ -331,6 +338,73 @@ describe("live rows", () => {
     expect(late).not.toContain(STALE.previousDayNotFinal);
   });
 
+  test("every session in an answer counts before any live row, in either order", async () => {
+    for (const reversed of [false, true]) {
+      const { db, ctx, clock } = await stored();
+      const friday = await nvdaSpark();
+      await ctx.writer.write((db) =>
+        storeQuotes(db, parseSpark(friday, clock.now())),
+      );
+      expect(liveRow(db, "1d")).not.toBeNull();
+      // after Monday's open, NVDA again on Friday's session, another US
+      // listing on Monday's
+      await clock.advance(utc("2026-10-26T13:40") - clock.now());
+      const body = await nvdaSpark();
+      const other = clone(body.spark.result[0]);
+      other.symbol = "ZZZ";
+      const meta = other.response[0].meta;
+      meta.symbol = "ZZZ";
+      meta.currentTradingPeriod.regular.start += 3 * DAY_S;
+      meta.currentTradingPeriod.regular.end += 3 * DAY_S;
+      meta.regularMarketTime = utc("2026-10-26T13:35") / 1000;
+      body.spark.result = reversed
+        ? [other, body.spark.result[0]]
+        : [body.spark.result[0], other];
+      const written = await ctx.writer.write((db) =>
+        storeQuotes(db, parseSpark(body, clock.now())),
+      );
+      expect(written.map((q) => q.instrument)).toEqual(["US:NVDA"]);
+      expect(rows(db, "1d", "live")).toEqual([]);
+      expect(rows(db, "1wk", "live")).toEqual([]);
+    }
+  });
+
+  test("a live row its market's new session moved past goes, quoted or not", async () => {
+    const { db, ctx, clock } = await stored();
+    const friday = await nvdaSpark();
+    await ctx.writer.write((db) =>
+      storeQuotes(db, parseSpark(friday, clock.now())),
+    );
+    await clock.advance(utc("2026-10-26T13:40") - clock.now());
+    const monday = await nvdaSpark((m) => {
+      m.symbol = "ZZZ";
+      m.currentTradingPeriod.regular.start += 3 * DAY_S;
+      m.currentTradingPeriod.regular.end += 3 * DAY_S;
+      m.regularMarketTime = utc("2026-10-26T13:35") / 1000;
+    });
+    monday.spark.result[0].symbol = "ZZZ";
+    await ctx.writer.write((db) =>
+      storeQuotes(db, parseSpark(monday, clock.now())),
+    );
+    expect(rows(db, "1d", "live")).toEqual([]);
+    expect(rows(db, "1wk", "live")).toEqual([]);
+  });
+
+  test("with no bars left to step from, the live rows go", async () => {
+    const { db, ctx, clock, instrument } = await stored();
+    const friday = await nvdaSpark();
+    await ctx.writer.write((db) =>
+      storeQuotes(db, parseSpark(friday, clock.now())),
+    );
+    expect(liveRow(db, "1wk")).not.toBeNull();
+    await ctx.writer.write((db) => {
+      db.query("delete from bars where instrument = 'US:NVDA'").run();
+      refreshLive(db, instrument, clock.now());
+    });
+    expect(rows(db, "1d", "live")).toEqual([]);
+    expect(rows(db, "1wk", "live")).toEqual([]);
+  });
+
   test("a trade outside its session's window makes none", async () => {
     const { db, ctx, clock } = await stored();
     const friday = await nvdaSpark();
@@ -372,60 +446,189 @@ describe("live rows", () => {
   });
 });
 
+// a warmed-up crypto history that is not flat, the same for every
+// fetch of a day, quoted a little above its day's close
+function cryptoRoute(clock: { now(): number }) {
+  const walk = (date: string) => {
+    const k = wallOfDate(date) / DAY_MS;
+    return 100 + 15 * Math.sin(k / 9) + 5 * Math.sin(k / 2.3);
+  };
+  const meta = (now: number) => {
+    const today = localDate("UTC", now);
+    const start = wallOfDate(today) / 1000;
+    const close = walk(today);
+    return {
+      symbol: "C0-USD",
+      exchangeName: "CCC",
+      instrumentType: "CRYPTOCURRENCY",
+      currency: "USD",
+      exchangeTimezoneName: "UTC",
+      regularMarketPrice: close + 0.5,
+      regularMarketTime: Math.floor(now / 1000),
+      previousClose: walk(addDays(today, -1)),
+      regularMarketDayHigh: close + 2,
+      regularMarketDayLow: close - 2,
+      regularMarketVolume: 1500,
+      currentTradingPeriod: { regular: { start, end: start + DAY_S - 60 } },
+    };
+  };
+  const chart = (now: number) => {
+    const today = localDate("UTC", now);
+    const days: string[] = [];
+    for (let d = addDays(today, -420); d <= today; d = addDays(d, 1)) {
+      days.push(d);
+    }
+    const close = days.map(walk);
+    const open = days.map((d) => walk(addDays(d, -1)));
+    return {
+      chart: {
+        result: [
+          {
+            meta: meta(now),
+            timestamp: days.map((d) => wallOfDate(d) / 1000),
+            indicators: {
+              quote: [
+                {
+                  open,
+                  high: close.map((c, k) => Math.max(c, open[k]!) + 1),
+                  low: close.map((c, k) => Math.min(c, open[k]!) - 1),
+                  close,
+                  volume: days.map(
+                    (d) => 1000 + (((wallOfDate(d) / DAY_MS) * 37) % 500),
+                  ),
+                },
+              ],
+            },
+          },
+        ],
+        error: null,
+      },
+    };
+  };
+  const spark = (now: number) => ({
+    spark: {
+      result: [{ symbol: "C0-USD", response: [{ meta: meta(now) }] }],
+      error: null,
+    },
+  });
+  const ok = (body: unknown): Recorded => ({
+    recordedAt: "",
+    status: 200,
+    headers: { "content-type": "application/json" },
+    body,
+  });
+  return {
+    spark,
+    route: (url: URL) =>
+      ok(
+        url.pathname === "/v7/finance/spark"
+          ? spark(clock.now())
+          : chart(clock.now()),
+      ),
+  };
+}
+
+async function crypto(start: number) {
+  const clock = fakeClock(start);
+  const { db } = open(":memory:", clock);
+  const c = cryptoRoute(clock);
+  const f = fakeFetch(c.route);
+  const ctx = {
+    db,
+    clock,
+    yahoo: yahoo({ clock, fetch: f.fetch }),
+    writer: writer(db),
+  };
+  await addInstrument(ctx, "C0-USD");
+  const read = (interval: Interval, kind: string) =>
+    db
+      .query(
+        `select date, ${selectList(interval)} from signals
+         where instrument = 'CRYPTO:C0-USD' and interval = ? and kind = ?
+         order by date`,
+      )
+      .all(interval, kind) as any[];
+  return { db, clock, ctx, spark: c.spark, read };
+}
+
 describe("a tick at a session's rollover", () => {
   test("finalises the bar, its final row, then the live row", async () => {
-    const s = sim([CRYPTO("C0-USD")]);
-    const clock = fakeClock(utc("2026-10-25T23:52"));
-    const { db } = open(":memory:", clock);
-    const f = fakeFetch((url) => s.route(url, clock.now()));
-    const ctx = {
-      db,
-      clock,
-      yahoo: yahoo({ clock, fetch: f.fetch }),
-      writer: writer(db),
-    };
+    const { db, clock, ctx, read } = await crypto(utc("2026-10-25T23:52"));
     const jobs = yahooJobs({ ctx, quoteEveryMs: 5 * MINUTE_MS, log: silent });
-    await addInstrument(ctx, "C0-USD");
     await clock.advance(utc("2026-10-25T23:55") - clock.now());
     await jobs.quoteTick();
-    const live = () =>
-      db
-        .query(
-          "select date from signals where kind = 'live' and interval = '1d'",
-        )
-        .all();
-    expect(live()).toEqual([{ date: "2026-10-25" }]);
+    expect(read("1d", "live").map((r) => r.date)).toEqual(["2026-10-25"]);
 
     await clock.advance(utc("2026-10-26T00:00") - clock.now());
     await jobs.quoteTick();
-    // Sunday's bar is not final until the bar pass; the live row moves
-    // on over it as stored
-    expect(live()).toEqual([{ date: "2026-10-26" }]);
+    const quote = db
+      .query(
+        `select price, day_high as dayHigh, day_low as dayLow, volume
+         from quotes`,
+      )
+      .get() as any;
+    // Sunday's bar is not final yet: the live row steps over it as stored
+    const asStored = readBars(db, "CRYPTO:C0-USD", "1d");
+    expect(asStored.at(-1)).toMatchObject({
+      date: "2026-10-25",
+      final: false,
+    });
+    const early = read("1d", "live");
+    expect(early).toEqual([
+      liveDaily(asStored, dailySeries(asStored).at(-1)!, quote, {
+        date: "2026-10-26",
+        replacesLast: false,
+      }),
+    ]);
+    const earlyWeek = read("1wk", "live");
+    expect(earlyWeek.map((r) => r.date)).toEqual(["2026-10-26"]);
+    for (const k of ["sma50", "sma200", "rsi14", "macdSignal", "atr14"]) {
+      expect(early[0][k]).not.toBeNull();
+    }
+    expect(earlyWeek[0].sma50).not.toBeNull();
+
     await jobs.barTick();
     const days = readBars(db, "CRYPTO:C0-USD", "1d");
     expect(days.at(-2)).toMatchObject({ date: "2026-10-25", final: true });
-    const finals = db
-      .query(
-        `select date, ${selectList("1d")} from signals
-         where kind = 'final' and interval = '1d' order by date`,
-      )
-      .all() as any[];
+    expect(days.at(-1)).toMatchObject({ date: "2026-10-26", final: false });
+    const finals = read("1d", "final");
     expect(finals).toEqual(dailySeries(finalPrefix(days)));
     expect(finals.at(-1).date).toBe("2026-10-25");
-    const row = db
-      .query(
-        `select date, ${selectList("1d")} from signals
-         where kind = 'live' and interval = '1d'`,
-      )
-      .get();
-    expect(row).toEqual(
-      liveDaily(
-        days,
-        finals.at(-1),
-        { price: 100, dayHigh: 101, dayLow: 98, volume: 1000 },
-        { date: "2026-10-26", replacesLast: true },
-      ),
+    const live = read("1d", "live");
+    expect(live).toEqual([
+      liveDaily(days, finals.at(-1), quote, {
+        date: "2026-10-26",
+        replacesLast: true,
+      }),
+    ]);
+    // Sunday did not change on turning final, so neither did the row
+    expect(live).toEqual(early);
+    const weeks = readBars(db, "CRYPTO:C0-USD", "1wk");
+    expect(weeks.at(-2)).toMatchObject({ date: "2026-10-19", final: true });
+    expect(read("1wk", "live")).toEqual([
+      liveWeekly(closes(weeks), read("1wk", "final").at(-1), quote.price, {
+        date: "2026-10-26",
+        replacesLast: true,
+      }),
+    ]);
+    expect(read("1wk", "live")).toEqual(earlyWeek);
+  });
+
+  test("a crypto trade is dated by its UTC day, past midnight included", async () => {
+    const { db, clock, ctx, spark, read } = await crypto(
+      utc("2026-10-25T23:52"),
     );
+    // Sunday's session still shown, the trade already Monday's
+    const body = spark(utc("2026-10-25T23:59"));
+    body.spark.result[0].response[0].meta.regularMarketTime =
+      utc("2026-10-26T00:05") / 1000;
+    await ctx.writer.write((db) =>
+      storeQuotes(db, parseSpark(body, utc("2026-10-26T00:05"))),
+    );
+    expect(read("1d", "live").map((r) => r.date)).toEqual(["2026-10-26"]);
+    expect(read("1wk", "live").map((r) => r.date)).toEqual(["2026-10-26"]);
+    expect(readBars(db, "CRYPTO:C0-USD", "1d").at(-1)!.date).toBe("2026-10-25");
+    expect(clock.now()).toBe(utc("2026-10-25T23:52"));
   });
 });
 
@@ -612,6 +815,25 @@ describe("relative return", () => {
     expect(r.instrument.unit).toBe("points");
     expect(r.instrument.currency).toBe("unknown");
     expect(readRelativeReturn(db, "US:AAA", "FRED:Y10", 1)).toBeNull();
+    expect(readRelativeReturn(db, "US:AAA", "XETRA:BBB", 1)!.note).toBe(
+      RETURN_NOTE,
+    );
+    // an index benchmark such as the DAX has no unit Yahoo tells apart
+    const dax = upsertInstrument(
+      db,
+      listing("XETRA", "^GDAXI", "Europe/Berlin", "unknown", "EUR"),
+      now,
+    );
+    upsertBars(
+      db,
+      dax.id,
+      "1d",
+      bars([], (k) => 20000 + k),
+      now,
+    );
+    const r2 = readRelativeReturn(db, "US:AAA", "XETRA:^GDAXI", 1)!;
+    expect(r2.note).toBe(`${RETURN_NOTE}; ${UNKNOWN_UNITS_NOTE}`);
+    expect(r2.benchmark.unit).toBe("percent");
     expect(aBars.length).toBeGreaterThan(0);
   });
 });
