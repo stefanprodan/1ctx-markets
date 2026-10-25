@@ -1,10 +1,8 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Local wall time in an IANA zone from the platform's time zone data,
-// so dates and hours follow each zone's clock changes without a table.
-// A wall time is held as epoch ms read as if the zone were UTC, which
-// keeps day and hour steps plain arithmetic.
+// A wall time is epoch ms read as if the zone were UTC, so day and hour
+// steps stay plain arithmetic across clock changes.
 
 import { DAY_MS } from "./clock.ts";
 
@@ -64,7 +62,6 @@ export function fromWallTime(zone: string, wall: number): number {
   return fits.length > 0 ? Math.min(...fits) : before;
 }
 
-// YYYY-MM-DD in the zone
 export function localDate(zone: string, at: number): string {
   return dateOfWall(wallTime(zone, at));
 }
@@ -73,7 +70,6 @@ export function dateOfWall(wall: number): string {
   return new Date(wall).toISOString().slice(0, 10);
 }
 
-// a date's midnight as a wall time
 export function wallOfDate(date: string): number {
   const m = DATE.exec(date);
   const wall = m ? Date.UTC(+m[1]!, +m[2]! - 1, +m[3]!) : Number.NaN;

@@ -102,8 +102,7 @@ export function readSessions(db: Db): StoredSession[] {
   return db.query<Row, []>(`${SELECT} order by market`).all();
 }
 
-// The end names the session's last minute: Yahoo ends a whole local
-// day at 23:59, and quoting must run up to the next day's midnight.
+// A session's end names its last minute, so a 23:59 end runs to midnight.
 export function isQuoted(
   market: string,
   s: Session | null,
@@ -124,7 +123,8 @@ export function nextCheck(s: Session, since: number): number {
   if (since < s.start) return s.start;
   const day = Math.floor(wallTime(s.zone, s.start) / DAY_MS) * DAY_MS;
   const from = wallTime(s.zone, s.start) - day;
-  const until = wallTime(s.zone, s.end) - day;
+  // an end that a clock change puts before the start still gets its start slot
+  const until = Math.max(wallTime(s.zone, s.end) - day, from + 1);
   // a check stale by months starts near since, not at the session
   let wall = Math.max(
     day + DAY_MS,

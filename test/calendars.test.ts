@@ -14,6 +14,7 @@ import {
   readSessions,
   recordSession,
   type Session,
+  session,
   sessionDate,
   sessionFromChartMeta,
   weekEnd,
@@ -423,6 +424,18 @@ describe("checks for a closed market", () => {
     );
   });
 
+  test("a session whose local end falls before its start still gets a daily check", () => {
+    // 01:50 EDT to 01:10 EST across the US clock change
+    const s = session(
+      "America/New_York",
+      utc("2026-11-01T05:50:00Z"),
+      utc("2026-11-01T06:10:00Z"),
+    );
+    expect(nextCheck(s, utc("2026-11-01T06:20:00Z"))).toBe(
+      utc("2026-11-02T06:50:00Z"),
+    );
+  });
+
   test("a session still ahead is checked at its start", () => {
     const s = sessionFromChartMeta(
       period("Europe/Berlin", "2026-10-26T08:00:00Z", "2026-10-26T16:30:00Z"),
@@ -435,13 +448,14 @@ describe("bar dates and finality", () => {
   test("dates FX bars by the London day they start", async () => {
     const { meta, stamps } = await chart("chart-eurusd-x-5d-1d");
     const s = sessionFromChartMeta(meta);
-    expect(stamps.map((t) => barDate(s.zone, t))).toEqual([
+    // the last stamp is the live price, not a daily bar
+    expect(stamps.at(-1)).toBe(meta.regularMarketTime * 1000);
+    expect(stamps.slice(0, -1).map((t) => barDate(s.zone, t))).toEqual([
       "2026-10-19",
       "2026-10-20",
       "2026-10-21",
       "2026-10-22",
       "2026-10-23",
-      "2026-10-25",
     ]);
     // the answer's own offset is already winter time and would misdate
     expect(meta.gmtoffset).toBe(0);
