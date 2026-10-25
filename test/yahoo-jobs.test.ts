@@ -275,6 +275,31 @@ describe("closed markets", () => {
   });
 });
 
+describe("a closed market's check", () => {
+  test("goes round its instruments, so one that never answers cannot hide a session", async () => {
+    const s = sim([US("U0"), US("U1")]);
+    const t = setup(utc("2026-10-25T20:00"), (url, now) => {
+      const answer = s.route(url, now)!;
+      if (url.pathname === "/v7/finance/spark") {
+        for (const r of answer.body.spark.result) {
+          if (r.symbol === "U0") r.response = null;
+        }
+      }
+      return answer;
+    });
+    await addInstrument(t.ctx, "U0");
+    await addInstrument(t.ctx, "U1");
+    await t.runTo(utc("2026-10-26T16:00"));
+    expect(readSession(t.db, "US")!.start).toBe(utc("2026-10-26T13:30"));
+    expect(readQuote(t.db, "US:U1")!.fetchedAt).toBe(utc("2026-10-26T16:00"));
+    // U0 still fails every run it is in
+    expect(lastRun(t.db, "yahoo", JOBS.quotes, "US")).toMatchObject({
+      status: "failed",
+      error: "not found",
+    });
+  });
+});
+
 describe("bars at the session change", () => {
   async function weekend(edit: (nvda: any, now: number) => void = () => {}) {
     const fixtures = {

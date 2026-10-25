@@ -193,8 +193,9 @@ function fields(answer: ChartMeta) {
 type Split = SplitEvent & { date: string };
 
 // The answers' splits not stored with the same date and ratio: a
-// corrected ratio rescales the history as a new split does. A later
-// answer's ratio wins.
+// corrected ratio rescales the history as a new split does. Events are
+// merged by date first, a later answer's ratio winning, so the whole
+// history's ratio decides even when it matches the stored one.
 function unapplied(
   db: Db,
   instrument: Instrument,
@@ -209,21 +210,21 @@ function unapplied(
       .all(instrument.id)
       .map((r) => [r.date, r]),
   );
-  const out = new Map<string, Split>();
+  const merged = new Map<string, Split>();
   for (const answer of answers) {
     for (const s of answer.splits) {
       const date = barDate(instrument.zone, s.at);
-      const old = stored.get(date);
-      if (
-        old === undefined ||
-        old.numerator !== s.numerator ||
-        old.denominator !== s.denominator
-      ) {
-        out.set(date, { ...s, date });
-      }
+      merged.set(date, { ...s, date });
     }
   }
-  return [...out.values()];
+  return [...merged.values()].filter((s) => {
+    const old = stored.get(s.date);
+    return (
+      old === undefined ||
+      old.numerator !== s.numerator ||
+      old.denominator !== s.denominator
+    );
+  });
 }
 
 function recordSplits(
@@ -293,11 +294,10 @@ async function exclusive<T>(
 // Writes one chart answer's session, bars and weeks, inside a writer
 // transaction. A whole history rewrites every daily bar, so none keeps
 // a scale from before a split, unless it starts or stops well short of
-// the stored one, or applies a split without reaching the stored last
-// day; then nothing is written, the splits stay unapplied, and the next
-// run asks again. Either answer drops the stored days inside its own
-// span that the source no longer prices, and a split's whole history
-// every stored day before it too.
+// the stored one, or applies a split without covering every stored day;
+// then nothing is written, the splits stay unapplied, and the next run
+// asks again. Either answer drops the stored days inside its own span
+// that the source no longer prices.
 function store(
   db: Db,
   now: number,
@@ -324,17 +324,17 @@ function store(
         (first > addDays(whole.since, SHORT_HISTORY_DAYS) &&
           range.first < addDays(first, -SHORT_HISTORY_DAYS)) ||
         last < addDays(range.last, -SHORT_HISTORY_DAYS) ||
-        (splits.length > 0 && span.at(-1)! < range.last)
+        (splits.length > 0 &&
+          (span[0]! > range.first || span.at(-1)! < range.last))
       ) {
         throw cutShort();
       }
     }
     const keep = new Set(kept.map((b) => b.date));
-    const from = splits.length > 0 ? whole.since : span[0];
     const deleted =
-      from === undefined || span.length === 0
+      span.length === 0
         ? null
-        : deleteDailyBars(db, instrument.id, from, span.at(-1)!, keep);
+        : deleteDailyBars(db, instrument.id, span[0]!, span.at(-1)!, keep);
     const written = upsertBars(db, instrument.id, "1d", kept, answer.fetchedAt);
     recordSplits(db, instrument, splits, now);
     rebuildWeeks(db, instrument.id, latest, now);

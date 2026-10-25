@@ -95,6 +95,14 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
   const { ctx, quoteEveryMs, log } = options;
   const { db, clock, yahoo, writer } = ctx;
   let lastSlot: number | null = null;
+  // each market's next check instrument, so one that never answers
+  // cannot hide a new session from the rest
+  const checkTurn = new Map<string, number>();
+  const nextOne = (market: string, instruments: Instrument[]) => {
+    const k = checkTurn.get(market) ?? 0;
+    checkTurn.set(market, k + 1);
+    return [instruments[k % instruments.length]!];
+  };
   // when each instrument's backfill last failed or answered no bars
   const backfillMissed = new Map<string, number>();
 
@@ -111,10 +119,12 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
         if (quotePass) work.push({ market, job: JOBS.quotes, instruments });
         continue;
       }
-      const one = instruments.slice(0, 1);
       // a market with no stored session yet is asked on the period
       if (s === null) {
-        if (quotePass) work.push({ market, job: JOBS.check, instruments: one });
+        if (quotePass) {
+          const one = nextOne(market, instruments);
+          work.push({ market, job: JOBS.check, instruments: one });
+        }
         continue;
       }
       const close = closeQuoteAt(market, s);
@@ -130,6 +140,7 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
       const checked = lastStarted(db, SOURCE, JOBS.check, market);
       const since = Math.max(s.fetchedAt, checked?.startedAt ?? 0);
       if (now >= nextCheck(s, since)) {
+        const one = nextOne(market, instruments);
         work.push({ market, job: JOBS.check, instruments: one });
       }
     }

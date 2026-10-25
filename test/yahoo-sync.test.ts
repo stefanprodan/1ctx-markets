@@ -578,6 +578,47 @@ describe("a split's whole history", () => {
     ]);
   });
 
+  test("is refused when it starts a day after the stored bars", async () => {
+    const history = listed(await recorded("chart-nvda-5y-1d"));
+    const window = withSplit(await recorded("chart-nvda-5d-1d"), OCT16, 2, 1);
+    const whole = withSplit(scaled(history, 2), OCT16, 2, 1);
+    const result = whole.body.chart.result[0];
+    result.timestamp.shift();
+    for (const k of ["open", "high", "low", "close", "volume"]) {
+      result.indicators.quote[0][k].shift();
+    }
+    const { db, ctx, instrument } = await stored([window, whole]);
+    const first = readBars(db, "US:NVDA", "1d")[0]!;
+    expect(first.date).toBe("2021-10-25");
+    await expect(refetch(ctx, instrument)).rejects.toThrow(
+      "a history cut short",
+    );
+    expect(readBars(db, "US:NVDA", "1d")[0]).toEqual(first);
+    expect(db.query("select date from splits").all()).toEqual([
+      { date: "2024-06-10" },
+    ]);
+  });
+
+  test("the whole history's ratio wins over the window's", async () => {
+    const history = listed(await recorded("chart-nvda-5y-1d"));
+    const window = await recorded("chart-nvda-5d-1d");
+    const halved = withSplit(scaled(history, 2), OCT16, 2, 1);
+    const { db, ctx, instrument } = await stored([
+      withSplit(window, OCT16, 2, 1),
+      halved,
+      withSplit(window, OCT16, 3, 1),
+      halved,
+    ]);
+    await refetch(ctx, instrument);
+    await refetch(ctx, instrument);
+    expect(
+      db
+        .query("select numerator, ratio from splits where date = '2026-10-16'")
+        .all(),
+    ).toEqual([{ numerator: 2, ratio: "2:1" }]);
+    expect(closeOn(db, "2026-10-22")).toBeCloseTo(octoberClose(history) / 2, 9);
+  });
+
   test("a corrected ratio refetches the history and replaces the record", async () => {
     const history = listed(await recorded("chart-nvda-5y-1d"));
     const window = await recorded("chart-nvda-5d-1d");
