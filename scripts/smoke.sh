@@ -34,7 +34,7 @@ printf '%s' "$BEARER" >"$RUN/data/secrets/bearer.key"
 "$BIN" --listen "127.0.0.1:$PORT" --data "$RUN/data" >"$RUN/log" 2>&1 &
 PID=$!
 
-status() { curl -s -o /dev/null -w '%{http_code}' "$@" || true; }
+status() { curl -s --max-time 5 -o /dev/null -w '%{http_code}' "$@" || true; }
 
 for _ in $(seq 1 50); do
   [[ $(status "$URL/mcp") == 401 ]] && break
@@ -44,7 +44,7 @@ done
 [[ $(status "$URL/mcp") == 401 ]] || fail "a request without the bearer was not refused"
 
 INIT='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"smoke","version":"1"}}}'
-answer=$(curl -sf "$URL/mcp" \
+answer=$(curl -sf --max-time 5 "$URL/mcp" \
   -H "authorization: Bearer $BEARER" \
   -H 'content-type: application/json' \
   -H 'accept: application/json, text/event-stream' \

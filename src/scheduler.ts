@@ -20,8 +20,11 @@ export type Scheduler = {
 export function scheduler(clock: Clock, log: Log): Scheduler {
   const cancels = new Map<string, () => void>();
   const runs = new Set<Promise<void>>();
+  let stopped = false;
   return {
     every(name, periodMs, job) {
+      // a job registered during shutdown would outlive the database
+      if (stopped) throw new Error(`job ${name} scheduled after stop`);
       if (!Number.isSafeInteger(periodMs) || periodMs <= 0) {
         throw new Error("a period is a positive whole number of ms");
       }
@@ -64,6 +67,7 @@ export function scheduler(clock: Clock, log: Log): Scheduler {
       arm(clock.now() + periodMs);
     },
     async stop() {
+      stopped = true;
       for (const cancel of cancels.values()) cancel();
       cancels.clear();
       await Promise.all(runs);

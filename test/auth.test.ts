@@ -103,6 +103,24 @@ describe("the bearer", () => {
     expect(lines).toHaveLength(1);
     expect(lines[0]).not.toContain(finnhub);
     expect(lines[0]).toContain(MASK);
+    const odd = "key with/odd+chars=0123456789abcdef";
+    const sent: string[] = [];
+    logger(
+      fakeClock(),
+      () => [odd],
+      (line) => sent.push(line),
+    )("test").info("request", { path: `/mcp/${encodeURIComponent(odd)}` });
+    expect(sent[0]).not.toContain(encodeURIComponent(odd));
+    expect(sent[0]).toContain(MASK);
+    for (const path of [
+      encodeURIComponent(odd).toLowerCase(),
+      encodeURI(odd),
+      `%zz/${encodeURI(odd)}`,
+    ]) {
+      const line = format(0, "test", "info", "request", { path }, [odd]);
+      expect(line).not.toContain(path);
+      expect(line).toContain(MASK);
+    }
     expect(format(0, "test", "info", "plain")).toBe(
       "time=1970-01-01T00:00:00.000Z level=INFO msg=plain area=test",
     );
@@ -125,6 +143,20 @@ describe("key files", () => {
     const short = keys(join(SECRETS, "..", "short"));
     expect(() => requireBearer(short)).toThrow("shorter than 32 characters");
     expect(() => requireBearer(short)).not.toThrow(short.bearer()!);
+
+    const spaced = `${"a".repeat(20)} ${"b".repeat(20)}`;
+    const store = {
+      dir: SECRETS,
+      bearer: () => spaced,
+      source: () => null,
+      values: () => [spaced],
+    };
+    expect(() => requireBearer(store)).toThrow("printable ASCII");
+    expect(() => requireBearer(store)).not.toThrow(spaced);
+    const accented = "é".repeat(40);
+    expect(() => requireBearer({ ...store, bearer: () => accented })).toThrow(
+      "printable ASCII",
+    );
   });
 
   test("a source key is read by name and a bad name is refused", () => {

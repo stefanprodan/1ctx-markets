@@ -139,4 +139,23 @@ describe("scheduler", () => {
     await clock.advance(3 * EVERY);
     expect(runs).toBe(0);
   });
+
+  test("a job scheduled once stop has begun is refused", async () => {
+    const clock = fakeClock();
+    const jobs = scheduler(clock, silent);
+    let release = () => {};
+    jobs.every(
+      "slow",
+      EVERY,
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    await clock.advance(EVERY);
+    const stopping = jobs.stop();
+    expect(() => jobs.every("late", EVERY, () => {})).toThrow("after stop");
+    release();
+    await stopping;
+  });
 });

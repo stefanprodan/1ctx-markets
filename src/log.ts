@@ -24,8 +24,19 @@ function value(text: string): string {
     : text;
 }
 
+// a key sent in a URL arrives percent-encoded in the logged path, in any
+// case of hex; each run is decoded alone, so one bad escape spares the rest
+const decoded = (text: string): string =>
+  text.replace(/(?:%[0-9a-f]{2})+/gi, (run) => {
+    try {
+      return decodeURIComponent(run);
+    } catch {
+      return run;
+    }
+  });
+
 function masked(text: string, keys: readonly string[]): string {
-  let out = text;
+  let out = decoded(text);
   // the longest first, so a key inside another leaves none of the longer
   for (const key of [...keys].sort((a, b) => b.length - a.length)) {
     out = out.replaceAll(key, MASK);

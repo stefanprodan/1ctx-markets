@@ -57,9 +57,14 @@ export class KeyError extends Error {}
 // the message names the file, never what it holds
 export function requireBearer(store: Keys): string {
   const bearer = store.bearer();
-  if (bearer === null || bearer.length < MIN_BEARER_LENGTH) {
+  // a header token is printable ASCII, so any other bearer could never match
+  if (
+    bearer === null ||
+    bearer.length < MIN_BEARER_LENGTH ||
+    !/^[\x21-\x7e]+$/.test(bearer)
+  ) {
     throw new KeyError(
-      `${join(store.dir, BEARER_FILE)} is missing, unreadable or shorter than ${MIN_BEARER_LENGTH} characters; write one with: openssl rand -hex 32 > ${join(store.dir, BEARER_FILE)}`,
+      `${join(store.dir, BEARER_FILE)} is missing, unreadable, shorter than ${MIN_BEARER_LENGTH} characters or holds anything but printable ASCII; write one with: openssl rand -hex 32 > ${join(store.dir, BEARER_FILE)}`,
     );
   }
   return bearer;
