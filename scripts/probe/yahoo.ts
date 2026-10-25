@@ -195,6 +195,16 @@ const CASES: Case[] = [
     name: "spark-v8-batch",
     url: `${Q1}/v8/finance/spark?symbols=NVDA,VVSM.DE,SOL-USD&range=5d&interval=1d`,
   },
+  // v7 spark carries a chart meta per symbol (price time, session); v8 does not.
+  {
+    name: "spark-v7-batch",
+    url: `${Q1}/v7/finance/spark?symbols=NVDA,VVSM.DE,SOL-USD,TLV.RO,EURUSD%3DX&range=1d&interval=5m`,
+  },
+  // Yahoo caps a spark call at 20 symbols; 21 is a 400.
+  {
+    name: "spark-v7-21-symbols",
+    url: `${Q1}/v7/finance/spark?symbols=A,B,C,D,F,GE,HD,IBM,JPM,KO,MA,MO,MU,NKE,PG,T,UL,V,VZ,WMT,XOM&range=1d&interval=5m`,
+  },
 ];
 
 // Only headers a client may act on; cookies are never stored.
