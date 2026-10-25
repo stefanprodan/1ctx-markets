@@ -6,9 +6,9 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { start } from "../src/app.ts";
-import { readBars } from "../src/bars.ts";
+import { type Interval, readBars } from "../src/bars.ts";
 import { MINUTE_MS } from "../src/clock.ts";
-import { open } from "../src/db/index.ts";
+import { type Db, open } from "../src/db/index.ts";
 import {
   fred,
   parseObservations,
@@ -32,9 +32,14 @@ import { readInstrument } from "../src/instruments.ts";
 import { keys } from "../src/keys.ts";
 import { format, logger, silent } from "../src/log.ts";
 import { lastRun } from "../src/runs.ts";
+import { dailySeries } from "../src/signals/daily.ts";
+import { readSignals } from "../src/signals/read.ts";
+import { selectList } from "../src/signals/store.ts";
+import { weeklySeries } from "../src/signals/weekly.ts";
 import { QueueClosed, SourceError } from "../src/source.ts";
 import { STALE } from "../src/stale.ts";
 import { writer } from "../src/writer.ts";
+import { addDays } from "../src/zone.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { clone, fakeFetch, type Recorded } from "./helpers/yahoo.ts";
 
@@ -812,5 +817,109 @@ describe("fred answers are checked", () => {
     const results = await Promise.all(calls);
     expect(f.urls).toHaveLength(60);
     expect(results.at(-1)).toBeInstanceOf(QueueClosed);
+  });
+});
+
+describe("fred signals", () => {
+  // weekdays from mid 2025 to the recordings' last day: more than 52
+  // weeks, so the range over closes has values
+  function history(revise: Record<string, string> = {}) {
+    const rows: { date: string; value: string }[] = [];
+    let k = 0;
+    for (let d = "2025-06-02"; d <= "2026-10-22"; d = addDays(d, 1)) {
+      const day = new Date(`${d}T00:00:00Z`).getUTCDay();
+      if (day === 0 || day === 6) continue;
+      const v = 4 + 0.5 * Math.sin(k / 11) + 0.2 * Math.sin(k / 3);
+      rows.push({ date: d, value: revise[d] ?? v.toFixed(2) });
+      k++;
+    }
+    return rows;
+  }
+
+  async function route(url: URL, revise: Record<string, string>) {
+    if (!isObservations(url)) return answer(url);
+    const fx = clone(await fixture("observations-dgs10"));
+    const all = history(revise).map((o) => ({
+      realtime_start: "2026-10-23",
+      realtime_end: "2026-10-23",
+      ...o,
+    }));
+    if (url.searchParams.has("observation_start")) {
+      fx.body.sort_order = "asc";
+      fx.body.limit = 100_000;
+      fx.body.count = all.length;
+      fx.body.observations = all;
+    } else {
+      fx.body.count = all.length;
+      fx.body.observations = all.slice(-30).reverse();
+    }
+    return fx;
+  }
+
+  const rowsOf = (db: Db, interval: Interval, kind = "final") =>
+    db
+      .query(
+        `select date, ${selectList(interval)} from signals
+         where instrument = 'FRED:DGS10' and interval = ? and kind = ?
+         order by date`,
+      )
+      .all(interval, kind) as any[];
+
+  function expectSeries(db: Db) {
+    const days = readBars(db, "FRED:DGS10", "1d");
+    expect(rowsOf(db, "1d")).toEqual(dailySeries(days));
+    const weeks = readBars(db, "FRED:DGS10", "1wk");
+    expect(rowsOf(db, "1wk")).toEqual(
+      weeklySeries(weeks.map((w) => ({ date: w.date, close: w.close }))),
+    );
+  }
+
+  test("a backfill gives final rows over its closes and no live row", async () => {
+    const { ctx, db, clock } = setup((url) => route(url, {}));
+    await addSeries(ctx, "DGS10");
+    const days = readBars(db, "FRED:DGS10", "1d");
+    expect(days.length).toBeGreaterThan(260);
+    expectSeries(db);
+    const last = rowsOf(db, "1d").at(-1);
+    expect(last.date).toBe("2026-10-22");
+    // the 52-week range over closes; no highs and lows, so no ATR; no volume
+    const year = days.filter((d) => d.date >= addDays("2026-10-22", -363));
+    expect(last.high52w).toBe(Math.max(...year.map((d) => d.close)));
+    expect(last.low52w).toBe(Math.min(...year.map((d) => d.close)));
+    expect(last.daysSinceHigh).not.toBeNull();
+    expect(last.atr14).toBeNull();
+    expect(last.moveAtr).toBeNull();
+    expect(last.volumeRatio).toBeNull();
+    expect(last.sma200).not.toBeNull();
+    expect(last.rsi14).not.toBeNull();
+    expect(rowsOf(db, "1d", "live")).toEqual([]);
+    expect(rowsOf(db, "1wk", "live")).toEqual([]);
+    const read = readSignals(db, "FRED:DGS10", clock.now())!;
+    expect(read.daily.final!.date).toBe("2026-10-22");
+    expect(read.daily.live).toBeNull();
+    expect(read.weekly.live).toBeNull();
+    expect(read.stale.final).toEqual([]);
+  });
+
+  test("a revised value recomputes the rows from the first bar", async () => {
+    let revise: Record<string, string> = {};
+    const { ctx, db } = setup((url) => route(url, revise));
+    await addSeries(ctx, "DGS10");
+    const instrument = readInstrument(db, "FRED:DGS10")!;
+    const before = rowsOf(db, "1d");
+
+    revise = { "2026-10-20": "6.50" };
+    const changed = await refetchSeries(ctx, instrument);
+    expect(changed.changedFrom).toBe("2026-10-20");
+    expectSeries(db);
+    const after = rowsOf(db, "1d");
+    expect(after).toHaveLength(before.length);
+    const on = (rows: any[], date: string) => rows.find((r) => r.date === date);
+    expect(on(after, "2026-10-19")).toEqual(on(before, "2026-10-19"));
+    expect(on(after, "2026-10-20").high52w).toBe(6.5);
+    expect(on(after, "2026-10-22").sma50).not.toBe(
+      on(before, "2026-10-22").sma50,
+    );
+    expect(rowsOf(db, "1d", "live")).toEqual([]);
   });
 });

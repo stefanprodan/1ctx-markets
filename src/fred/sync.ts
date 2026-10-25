@@ -25,6 +25,7 @@ import {
   upsertInstrument,
 } from "../instruments.ts";
 import { exclusive } from "../lock.ts";
+import { signalsAfterBars } from "../signals/store.ts";
 import { SourceError } from "../source.ts";
 import type { Writer } from "../writer.ts";
 import { dateOfWall, startOfDate } from "../zone.ts";
@@ -132,7 +133,8 @@ const barsOf = (answer: Observations): Bar[] =>
 // The answer's values replace the stored ones, and a stored day inside
 // its span that it now leaves out (a "." or no row) goes. The weeks
 // from the span on are built again, so one whose Sunday has passed
-// turns final.
+// turns final, and the signals follow in the same write; with no quote
+// a series has no live row.
 function store(
   db: Db,
   instrument: Instrument,
@@ -151,6 +153,7 @@ function store(
   const changedFrom = earliest(deleted, written.changedFrom);
   const from = earliest(changedFrom, first ?? null);
   if (from !== null) rebuildWeeks(db, instrument.id, today(now), now, from);
+  signalsAfterBars(db, instrument, changedFrom, now);
   return { rows: written.rows, changedFrom };
 }
 
