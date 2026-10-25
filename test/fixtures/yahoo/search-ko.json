@@ -1,0 +1,127 @@
+{
+  "recordedAt": "2026-10-25T20:53:13.011Z",
+  "request": {
+    "method": "GET",
+    "url": "https://query1.finance.yahoo.com/v1/finance/search?q=KO&quotesCount=10&newsCount=0&listsCount=0"
+  },
+  "status": 200,
+  "headers": {
+    "age": "2",
+    "cache-control": "public, max-age=600, stale-while-revalidate=180",
+    "content-type": "application/json;charset=utf-8"
+  },
+  "body": {
+    "explains": [],
+    "count": 7,
+    "quotes": [
+      {
+        "exchange": "NYQ",
+        "shortname": "Coca-Cola Company (The)",
+        "quoteType": "EQUITY",
+        "symbol": "KO",
+        "index": "quotes",
+        "score": 19158000,
+        "typeDisp": "Equity",
+        "longname": "The Coca-Cola Company",
+        "exchDisp": "NYSE",
+        "sector": "Consumer Defensive",
+        "sectorDisp": "Consumer Defensive",
+        "industry": "Beverages—Non-Alcoholic",
+        "industryDisp": "Beverages—Non—Alcoholic",
+        "dispSecIndFlag": true,
+        "isYahooFinance": true
+      },
+      {
+        "exchange": "CME",
+        "shortname": "Czech Koruna/Euro (CZK/EUR) Cro",
+        "quoteType": "FUTURE",
+        "symbol": "ECK=F",
+        "index": "quotes",
+        "score": 30011,
+        "typeDisp": "Futures",
+        "exchDisp": "Chicago Mercantile Exchange",
+        "isYahooFinance": true
+      },
+      {
+        "exchange": "CME",
+        "shortname": "Korean Won Futures,Nov-2026",
+        "quoteType": "FUTURE",
+        "symbol": "KRW=F",
+        "index": "quotes",
+        "score": 30010,
+        "typeDisp": "Futures",
+        "longname": "Nasdaq Europe Utilities Large M",
+        "exchDisp": "Chicago Mercantile Exchange",
+        "isYahooFinance": true
+      },
+      {
+        "exchange": "CME",
+        "shortname": "Czech Koruna Futures,Dec-2026",
+        "quoteType": "FUTURE",
+        "symbol": "CZK=F",
+        "index": "quotes",
+        "score": 30002,
+        "typeDisp": "Futures",
+        "exchDisp": "Chicago Mercantile Exchange",
+        "isYahooFinance": true
+      },
+      {
+        "exchange": "KSC",
+        "shortname": "KOSPI Composite Index",
+        "quoteType": "INDEX",
+        "symbol": "^KS11",
+        "index": "quotes",
+        "score": 27456,
+        "typeDisp": "Index",
+        "longname": "KOSPI Composite Index",
+        "exchDisp": "Korea",
+        "isYahooFinance": true
+      },
+      {
+        "exchange": "NYQ",
+        "shortname": "Kohl's Corporation",
+        "quoteType": "EQUITY",
+        "symbol": "KSS",
+        "index": "quotes",
+        "score": 23258,
+        "typeDisp": "Equity",
+        "longname": "Kohl's Corporation",
+        "exchDisp": "NYSE",
+        "sector": "Consumer Cyclical",
+        "sectorDisp": "Consumer Cyclical",
+        "industry": "Department Stores",
+        "industryDisp": "Department Stores",
+        "isYahooFinance": true
+      },
+      {
+        "exchange": "PCX",
+        "shortname": "iShares MSCI South Korea ETF",
+        "quoteType": "ETF",
+        "symbol": "EWY",
+        "index": "quotes",
+        "score": 22714,
+        "typeDisp": "ETF",
+        "longname": "iShares MSCI South Korea ETF",
+        "exchDisp": "NYSEArca",
+        "isYahooFinance": true
+      }
+    ],
+    "news": [],
+    "nav": [],
+    "lists": [],
+    "researchReports": [],
+    "screenerFieldResults": [],
+    "totalTime": 31,
+    "timeTakenForQuotes": 425,
+    "timeTakenForNews": 0,
+    "timeTakenForAlgowatchlist": 400,
+    "timeTakenForPredefinedScreener": 400,
+    "timeTakenForCrunchbase": 0,
+    "timeTakenForNav": 400,
+    "timeTakenForResearchReports": 0,
+    "timeTakenForQuestions": 0,
+    "timeTakenForScreenerField": 0,
+    "timeTakenForCulturalAssets": 0,
+    "timeTakenForSearchLists": 0
+  }
+}

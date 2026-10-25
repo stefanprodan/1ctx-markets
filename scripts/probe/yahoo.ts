@@ -75,6 +75,16 @@ const CASES: Case[] = [
       events: "div,split",
     }),
   },
+  // A Bucharest bonus-share issue, which Yahoo gives as a split (114.42:100).
+  {
+    name: "chart-tlv-ro-bonus-2026",
+    url: chart(Q1, "TLV.RO", {
+      period1: utc("2026-07-01T00:00:00Z"),
+      period2: utc("2026-08-01T00:00:00Z"),
+      interval: "1d",
+      events: "div,split",
+    }),
+  },
   {
     name: "chart-nvda-5y-1d",
     url: chart(Q1, "NVDA", {
@@ -169,6 +179,8 @@ const CASES: Case[] = [
   { name: "search-hidroelectrica", url: search("Hidroelectrica") },
   { name: "search-tlv", url: search("TLV") },
   { name: "search-solana", url: search("Solana") },
+  // A NYSE listing, for its exchange code.
+  { name: "search-ko", url: search("KO") },
 
   // Item 7: batched quotes.
   {
