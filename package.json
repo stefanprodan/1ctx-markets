@@ -1,0 +1,29 @@
+{
+  "name": "1ctx-markets",
+  "version": "0.0.0-dev",
+  "description": "A self-hosted market data server for AI agents",
+  "type": "module",
+  "bin": {
+    "1ctx-markets": "./src/main.ts"
+  },
+  "scripts": {
+    "start": "bun src/main.ts",
+    "dev": "bun --watch src/main.ts",
+    "test": "bun test --concurrent --max-concurrency 4 --timeout 20000 test/",
+    "lint": "bun biome check --write . && bun check",
+    "build": "mkdir -p bin && bun build src/main.ts --compile ${TARGET:+--target=$TARGET} --no-compile-autoload-dotenv --no-compile-autoload-bunfig --sourcemap --define \"process.env.MARKETS_BUILD_VERSION=\\\"${VERSION:-}\\\"\" --outfile bin/1ctx-markets && rm -f .*.bun-build",
+    "smoke": "scripts/smoke.sh",
+    "clean": "rm -rf bin .*.bun-build"
+  },
+  "license": "Apache-2.0",
+  "engines": {
+    "bun": ">=1.4.4"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.2",
+    "@modelcontextprotocol/client": "2.3.1",
+    "@modelcontextprotocol/server": "2.3.1",
+    "@types/bun": "1.4.4",
+    "typescript": "7.0.2"
+  }
+}
