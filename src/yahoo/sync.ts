@@ -32,6 +32,7 @@ import {
   upsertInstrument,
 } from "../instruments.ts";
 import { exclusive } from "../lock.ts";
+import { refreshLive, signalsAfterBars } from "../signals/store.ts";
 import { type Phrase, SourceError } from "../source.ts";
 import type { Writer } from "../writer.ts";
 import { addDays, dateOfWall, startOfDate, wallTime } from "../zone.ts";
@@ -274,7 +275,7 @@ const cutShort = () =>
 // then nothing is written, the splits stay unapplied, and the next run
 // asks again. Either answer drops the stored days inside its own span
 // that the source no longer prices.
-function store(
+function storeBars(
   db: Db,
   now: number,
   instrument: Instrument,
@@ -331,6 +332,20 @@ function store(
     rows: written.rows,
     changedFrom: earliest(deleted, written.changedFrom),
   };
+}
+
+// The bars, then the signals computed from them, in one transaction:
+// none before a backfill has stored bars.
+function store(
+  db: Db,
+  now: number,
+  instrument: Instrument,
+  answer: ChartAnswer,
+  whole: { since: string; splits: readonly ChartAnswer[] } | null,
+): Written {
+  const written = storeBars(db, now, instrument, answer, whole);
+  signalsAfterBars(db, instrument, written.changedFrom, now);
+  return written;
 }
 
 // Adds an instrument by Yahoo's symbol with ten years of daily bars;
@@ -490,7 +505,8 @@ export function quoteOf(
 
 // Each answer's session goes to its market, known instrument or not;
 // a quote older than the stored one is kept out, and one as old only
-// replaces it when fetched later. Runs inside a writer transaction.
+// replaces it when fetched later. Each stored quote moves its live
+// signal rows in the same writer transaction.
 export function storeQuotes(db: Db, answer: SparkAnswer): QuoteRow[] {
   const written: QuoteRow[] = [];
   const upsert = db.query(
@@ -533,7 +549,10 @@ export function storeQuotes(db: Db, answer: SparkAnswer): QuoteRow[] {
       q.source,
       q.fetchedAt,
     );
-    if (changes > 0) written.push(q);
+    if (changes > 0) {
+      written.push(q);
+      refreshLive(db, instrument, answer.fetchedAt);
+    }
   }
   return written;
 }
