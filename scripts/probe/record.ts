@@ -41,6 +41,8 @@ export async function record(
   url: string,
   authHeaders: Record<string, string>,
   key: string,
+  // rewrites restricted data before the first write, so it never reaches disk
+  edit?: (fixture: Record<string, unknown>) => void,
 ): Promise<Recorded> {
   const recordedAt = new Date().toISOString();
   const res = await fetch(url, {
@@ -62,6 +64,7 @@ export async function record(
     headers,
     body,
   };
+  edit?.(fixture);
   let out = JSON.stringify(fixture, null, 2) + "\n";
   // A source may echo the key (e.g. inside a cursor URL); never let it reach disk.
   if (out.includes(key)) out = out.split(key).join("REDACTED");
