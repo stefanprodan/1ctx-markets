@@ -45,20 +45,26 @@ cases.push(
   ],
 );
 
+function madeUpValues(fixture: Record<string, unknown>) {
+  fixture.note =
+    "values replaced with made-up numbers: this series may not be redistributed";
+  const body = fixture.body as { observations?: { value: string }[] };
+  let n = 0;
+  for (const obs of body.observations ?? []) {
+    if (obs.value !== ".") obs.value = (3 + (n++ % 7) / 10).toFixed(2);
+  }
+}
+
 // 120 calls a minute is the limit; stay far under it.
 for (const [name, u] of cases) {
   const file = join(dir, `${name}.json`);
-  await record(file, u, {}, key);
   const id = series.find((s) => name === `observations-${s.toLowerCase()}`);
-  if (id && synthetic.has(id)) {
-    const fixture = await Bun.file(file).json();
-    fixture.note =
-      "values replaced with made-up numbers: this series may not be redistributed";
-    let n = 0;
-    for (const obs of fixture.body.observations ?? []) {
-      if (obs.value !== ".") obs.value = (3 + (n++ % 7) / 10).toFixed(2);
-    }
-    await Bun.write(file, `${JSON.stringify(fixture, null, 2)}\n`);
-  }
+  await record(
+    file,
+    u,
+    {},
+    key,
+    id && synthetic.has(id) ? madeUpValues : undefined,
+  );
   await sleep(1000);
 }
