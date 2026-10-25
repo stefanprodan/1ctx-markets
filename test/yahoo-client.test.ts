@@ -10,6 +10,7 @@ import {
   RATE_LIMIT_BACKOFF_MS,
   SourceError,
 } from "../src/source.ts";
+import { writer } from "../src/writer.ts";
 import {
   parseChart,
   parseSpark,
@@ -197,7 +198,7 @@ describe("the queue", () => {
     let answer = limited;
     const f = fakeFetch(() => answer);
     const client = yahoo({ clock, fetch: f.fetch });
-    const run = runJob(db, clock, "yahoo", "bars", async () => {
+    const run = runJob(writer(db), clock, "yahoo", "bars", async () => {
       await client.chart("NVDA", 0, clock.now());
       return 1;
     });
@@ -220,7 +221,7 @@ describe("the queue", () => {
     await next;
     expect(f.urls).toHaveLength(2);
 
-    await runJob(db, clock, "yahoo", "bars", async () => 3);
+    await runJob(writer(db), clock, "yahoo", "bars", async () => 3);
     expect(isStale(db, "yahoo")).toBe(false);
   });
 
@@ -242,6 +243,23 @@ describe("the queue", () => {
     await job;
     await client.failFast().chart("NVDA", 0, 1);
     expect(f.urls).toHaveLength(3);
+  });
+
+  test("closed at shutdown, the waiting calls fail and none waits out a back-off", async () => {
+    const limited = await recorded("chart-429-chrome-ua");
+    const clock = fakeClock();
+    const f = fakeFetch(() => limited);
+    const calls = queue(clock, 2);
+    const client = yahoo({ clock, fetch: f.fetch, queue: calls });
+    expect(await phrase(client.chart("NVDA", 0, 1))).toBe("rate limited");
+    const waiting = client.chart("NVDA", 0, 1);
+    calls.close();
+    await expect(waiting).rejects.toThrow("the source queue is closed");
+    await expect(client.chart("NVDA", 0, 1)).rejects.toThrow(
+      "the source queue is closed",
+    );
+    await clock.advance(RATE_LIMIT_BACKOFF_MS);
+    expect(f.urls).toHaveLength(1);
   });
 
   test("a failure backs off for a shorter while, and nothing is retried", async () => {

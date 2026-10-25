@@ -7,6 +7,19 @@
 import type { Db } from "./db/index.ts";
 import { SourceError } from "./source.ts";
 
+// what a price means; unknown rather than a guess, since Yahoo's INDEX
+// covers both ^VIX's points and ^TNX's percent
+export const UNITS = [
+  "per_share",
+  "percent_of_par",
+  "index_points",
+  "percent",
+  "per_unit",
+  "unknown",
+] as const;
+
+export type Unit = (typeof UNITS)[number];
+
 export type Instrument = {
   id: string;
   market: string;
@@ -17,6 +30,7 @@ export type Instrument = {
   name: string | null;
   type: string;
   currency: string | null;
+  unit: Unit;
   zone: string;
   addedAt: number;
   updatedAt: number;
@@ -25,7 +39,7 @@ export type Instrument = {
 export type InstrumentFields = Omit<Instrument, "id" | "addedAt" | "updatedAt">;
 
 const SELECT = `select id, market, symbol, source,
-  source_symbol as sourceSymbol, exchange, name, type, currency, zone,
+  source_symbol as sourceSymbol, exchange, name, type, currency, unit, zone,
   added_at as addedAt, updated_at as updatedAt from instruments`;
 
 export function readInstrument(db: Db, id: string): Instrument | null {
@@ -70,8 +84,8 @@ export function upsertInstrument(
   }
   db.query(
     `insert into instruments (id, market, symbol, source, source_symbol,
-       exchange, name, type, currency, zone, added_at, updated_at)
-     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       exchange, name, type, currency, unit, zone, added_at, updated_at)
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      on conflict (id) do update set
        source = excluded.source,
        source_symbol = excluded.source_symbol,
@@ -79,6 +93,7 @@ export function upsertInstrument(
        name = coalesce(excluded.name, instruments.name),
        type = excluded.type,
        currency = coalesce(excluded.currency, instruments.currency),
+       unit = excluded.unit,
        zone = excluded.zone,
        updated_at = excluded.updated_at`,
   ).run(
@@ -91,6 +106,7 @@ export function upsertInstrument(
     fields.name,
     fields.type,
     fields.currency,
+    fields.unit,
     fields.zone,
     now,
     now,

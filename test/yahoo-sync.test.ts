@@ -7,6 +7,7 @@ import { readSessions } from "../src/calendars.ts";
 import { DAY_MS } from "../src/clock.ts";
 import { open } from "../src/db/index.ts";
 import { readInstrument, upsertInstrument } from "../src/instruments.ts";
+import { writer } from "../src/writer.ts";
 import {
   type ChartAnswer,
   parseChart,
@@ -21,6 +22,7 @@ import {
   readQuote,
   refetch,
   storeQuotes,
+  unitOf,
 } from "../src/yahoo/sync.ts";
 import { startOfDate } from "../src/zone.ts";
 import { fakeClock } from "./helpers/clock.ts";
@@ -53,7 +55,12 @@ function setup(start: number, route: (url: URL) => Recorded | undefined) {
   const clock = fakeClock(start);
   const { db } = open(":memory:", clock);
   const f = fakeFetch(route);
-  const ctx = { db, clock, yahoo: yahoo({ clock, fetch: f.fetch }) };
+  const ctx = {
+    db,
+    clock,
+    yahoo: yahoo({ clock, fetch: f.fetch }),
+    writer: writer(db),
+  };
   return { ...ctx, ctx, f };
 }
 
@@ -247,6 +254,43 @@ describe("backfill", () => {
         )
         .run(),
     ).toThrow("FOREIGN KEY");
+  });
+});
+
+describe("units", () => {
+  test("from Yahoo's instrument type, never a guess for an index or a future", async () => {
+    const names: Record<string, string> = {
+      NVDA: "chart-nvda-5d-1d",
+      "VVSM.DE": "chart-vvsm-de-5d-1d",
+      "SOL-USD": "chart-sol-usd-5d-1d",
+      "EURUSD=X": "chart-eurusd-x-5d-1d",
+      "^TNX": "chart-tnx-5d-1d",
+      "^VIX": "chart-vix-5d-1d",
+      "CL=F": "chart-cl-f-5d-1d",
+    };
+    const fixtures = new Map<string, Recorded>();
+    for (const [symbol, name] of Object.entries(names)) {
+      fixtures.set(symbol, await recorded(name));
+    }
+    const { ctx } = setup(Date.parse("2026-10-25T19:40:00Z"), (url) =>
+      fixtures.get(decodeURIComponent(url.pathname.split("/").at(-1)!)),
+    );
+    const units: Record<string, string> = {};
+    for (const symbol of Object.keys(names)) {
+      const { instrument } = await addInstrument(ctx, symbol);
+      units[symbol] = instrument.unit;
+    }
+    expect(units).toEqual({
+      NVDA: "per_share",
+      "VVSM.DE": "per_share",
+      "SOL-USD": "per_unit",
+      "EURUSD=X": "per_unit",
+      "^TNX": "unknown",
+      "^VIX": "unknown",
+      "CL=F": "unknown",
+    });
+    expect(unitOf("MUTUALFUND")).toBe("per_share");
+    expect(unitOf("FUTURE")).toBe("unknown");
   });
 });
 
@@ -463,6 +507,7 @@ describe("quotes from a spark answer", () => {
           name: null,
           type: meta.instrumentType,
           currency: meta.currency,
+          unit: unitOf(meta.instrumentType),
           zone: meta.exchangeTimezoneName,
         },
         clock.now(),

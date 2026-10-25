@@ -54,7 +54,17 @@ export type RunOptions = {
 
 export type Queue = {
   run<T>(task: () => Promise<T>, options?: RunOptions): Promise<T>;
+  // At shutdown: refuses new calls and fails the waiting ones, so no job
+  // waits out a back-off; calls already sent finish.
+  close(): void;
 };
+
+export class QueueClosed extends Error {
+  constructor() {
+    super("the source queue is closed");
+    this.name = "QueueClosed";
+  }
+}
 
 type Waiting = {
   start: () => void;
@@ -73,7 +83,9 @@ export function queue(clock: Clock, concurrency: number): Queue {
   let until = 0;
   let pausedBy: Phrase = "rate limited";
   let armed = false;
+  let closed = false;
   const pump = () => {
+    if (closed) return;
     if (clock.now() < until) {
       const fast = waiting.filter((w) => w.failFast);
       waiting = waiting.filter((w) => !w.failFast);
@@ -94,6 +106,7 @@ export function queue(clock: Clock, concurrency: number): Queue {
   };
   return {
     run<T>(task: () => Promise<T>, options: RunOptions = {}): Promise<T> {
+      if (closed) return Promise.reject(new QueueClosed());
       return new Promise<T>((resolve, reject) => {
         const start = () => {
           Promise.resolve()
@@ -124,6 +137,12 @@ export function queue(clock: Clock, concurrency: number): Queue {
         waiting.push({ start, failFast: options.failFast === true, reject });
         pump();
       });
+    },
+    close() {
+      closed = true;
+      const left = waiting;
+      waiting = [];
+      for (const w of left) w.reject(new QueueClosed());
     },
   };
 }

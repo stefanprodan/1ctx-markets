@@ -1,0 +1,83 @@
+// Copyright 2026 Stefan Prodan.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Whether an instrument's quote or bars are stale, with fixed reasons,
+// read from its own source's runs in its own market: a successful
+// search never clears a failed quote pass, and one market's failure
+// never marks another's rows.
+
+import { readSession } from "./calendars.ts";
+import type { Db } from "./db/index.ts";
+import type { Instrument } from "./instruments.ts";
+import { lastRun, lastStarted } from "./runs.ts";
+
+// the jobs whose runs carry a market as their scope
+export const JOBS = {
+  // every instrument of a market in session, and once after its close
+  quotes: "quotes",
+  // one instrument of a closed market, to see a new session
+  check: "check",
+  // the 30-day refetch when a market's session moves on
+  bars: "bars",
+} as const;
+
+export const STALE = {
+  quotesFailed: "quote sync failed",
+  checkFailed: "session check failed",
+  barsFailed: "bar sync failed",
+  barsPending: "bar sync pending",
+  noHistory: "no history",
+} as const;
+
+export type StaleReason = (typeof STALE)[keyof typeof STALE];
+
+type Scoped = Pick<Instrument, "id" | "source" | "market">;
+
+const failed = (db: Db, i: Scoped, job: string) =>
+  lastRun(db, i.source, job, i.market)?.status === "failed";
+
+// none when the quote is current
+export function quoteStale(db: Db, instrument: Scoped): StaleReason[] {
+  const reasons: StaleReason[] = [];
+  if (failed(db, instrument, JOBS.quotes)) reasons.push(STALE.quotesFailed);
+  // a closed market's new session can go unseen while its checks fail
+  if (failed(db, instrument, JOBS.check)) reasons.push(STALE.checkFailed);
+  return reasons;
+}
+
+// The bars miss a day while the market's current session began after
+// the last bar pass that ended well, and until then the previous bar
+// is not final.
+export function barsStale(
+  db: Db,
+  instrument: Scoped,
+  now: number,
+): StaleReason[] {
+  const has = db
+    .query<{ n: number }, [string]>(
+      "select count(*) as n from bars where instrument = ? and interval = '1d'",
+    )
+    .get(instrument.id)!.n;
+  if (has === 0) return [STALE.noHistory];
+  const reasons: StaleReason[] = [];
+  if (failed(db, instrument, JOBS.bars)) reasons.push(STALE.barsFailed);
+  if (barsDue(db, instrument.source, instrument.market, now)) {
+    reasons.push(STALE.barsPending);
+  }
+  return reasons;
+}
+
+// A market's bars are due once its stored session has begun and no bar
+// pass has ended well since; a restart after downtime is due the same
+// way.
+export function barsDue(
+  db: Db,
+  source: string,
+  market: string,
+  now: number,
+): boolean {
+  const session = readSession(db, market);
+  if (session === null || session.start > now) return false;
+  const ok = lastStarted(db, source, JOBS.bars, market, "ok");
+  return ok === null || ok.startedAt < session.start;
+}

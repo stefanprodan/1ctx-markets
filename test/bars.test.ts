@@ -102,6 +102,7 @@ describe("weekly bars", () => {
         name: null,
         type: "EQUITY",
         currency: "USD",
+        unit: "per_share",
         zone: "America/New_York",
       },
       clock.now(),

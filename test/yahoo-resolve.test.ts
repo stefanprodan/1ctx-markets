@@ -5,6 +5,7 @@ import { describe, expect, test } from "bun:test";
 import { open } from "../src/db/index.ts";
 import { upsertInstrument } from "../src/instruments.ts";
 import { SourceError } from "../src/source.ts";
+import { writer } from "../src/writer.ts";
 import { yahoo } from "../src/yahoo/client.ts";
 import {
   isExact,
@@ -54,7 +55,13 @@ async function setup(extra: Record<string, Recorded> = {}) {
     return answers[(url.searchParams.get("q") ?? "").toUpperCase()];
   });
   const client = yahoo({ clock, fetch: f.fetch });
-  return { db, clock, f, client, ctx: { db, clock, yahoo: client } };
+  return {
+    db,
+    clock,
+    f,
+    client,
+    ctx: { db, clock, yahoo: client, writer: writer(db) },
+  };
 }
 
 describe("markets from exchange codes", () => {
@@ -217,6 +224,7 @@ describe("which listing a symbol means", () => {
       name: null,
       type: "ETF",
       currency: "USD",
+      unit: "per_share" as const,
       zone: "America/New_York",
     };
     upsertInstrument(db, fields, clock.now());
@@ -247,6 +255,7 @@ describe("which listing a symbol means", () => {
         name: null,
         type: "ETF",
         currency: "EUR",
+        unit: "per_share",
         zone: "Europe/Berlin",
       },
       clock.now(),
