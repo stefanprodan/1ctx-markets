@@ -3,6 +3,8 @@
 
 import { join } from "node:path";
 import type { Fetch } from "../../src/source.ts";
+import { markRead } from "../../src/tracking.ts";
+import { addInstrument, type YahooContext } from "../../src/yahoo/sync.ts";
 
 const YAHOO = join(import.meta.dir, "..", "fixtures", "yahoo");
 
@@ -20,7 +22,7 @@ export async function recorded(name: string): Promise<Recorded> {
 // answers each call with what route gives for its URL; a route that
 // gives nothing fails the test, so no call goes unnoticed
 export function fakeFetch(
-  route: (url: URL) => Recorded | Promise<Recorded> | undefined,
+  route: (url: URL) => Recorded | Promise<Recorded | undefined> | undefined,
 ): { fetch: Fetch; urls: URL[]; headers: Headers[] } {
   const urls: URL[] = [];
   const headers: Headers[] = [];
@@ -79,5 +81,14 @@ export function backTo(fx: Recorded, from: string): Recorded {
   for (const k of ["open", "high", "low", "close", "volume"]) {
     q[k] = [...stamps.map(() => (k === "volume" ? 1000 : 10)), ...q[k]];
   }
+  return out;
+}
+
+// added and named by a read, as a tool would, so the jobs track it
+export async function added(ctx: YahooContext, symbol: string) {
+  const out = await addInstrument(ctx, symbol);
+  await ctx.writer.write((db) =>
+    markRead(db, [out.instrument.id], ctx.clock.now()),
+  );
   return out;
 }

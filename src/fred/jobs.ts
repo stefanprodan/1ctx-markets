@@ -6,16 +6,18 @@
 // series refetches its last observations. Each series records its own
 // run, scoped to its id, so one dead series never marks another stale.
 // A minute tick decides what is due, so a pass missed while the server
-// was down runs on start.
+// was down runs on start. Only series a read named within the tracking
+// window are fetched.
 
 import { DAY_MS, MINUTE_MS } from "../clock.ts";
 import type { Db } from "../db/index.ts";
-import { type Instrument, readInstruments } from "../instruments.ts";
+import type { Instrument } from "../instruments.ts";
 import type { Log } from "../log.ts";
 import { endRun, failRun, lastRun, lastStarted, startRun } from "../runs.ts";
 import type { Scheduler } from "../scheduler.ts";
 import { phraseOf } from "../source.ts";
 import { JOBS, STALE, type StaleReason } from "../stale.ts";
+import { TRACK_MS, trackedInstruments } from "../tracking.ts";
 import { SOURCE } from "./client.ts";
 import { type FredContext, refetchSeries } from "./sync.ts";
 
@@ -37,7 +39,7 @@ export type FredPass = {
 export type FredJobs = {
   // the series due, when any is
   tick(): Promise<FredPass | null>;
-  // these series, or every one
+  // these series, or every tracked one
   pass(instruments?: readonly Instrument[]): Promise<FredPass>;
   schedule(jobs: Scheduler): void;
 };
@@ -47,8 +49,9 @@ export function dueAt(now: number): number {
   return Math.floor((now - DAILY_AT_MS) / DAY_MS) * DAY_MS + DAILY_AT_MS;
 }
 
-const series = (db: Db): Instrument[] =>
-  readInstruments(db).filter((i) => i.source === SOURCE);
+// only the series a read named within the window
+const series = (db: Db, now: number, trackMs: number): Instrument[] =>
+  trackedInstruments(db, now, trackMs).filter((i) => i.source === SOURCE);
 
 type Scoped = Pick<Instrument, "id" | "addedAt">;
 
@@ -83,12 +86,17 @@ export function seriesStale(
   return reasons;
 }
 
-export function fredJobs(options: { ctx: FredContext; log: Log }): FredJobs {
+export function fredJobs(options: {
+  ctx: FredContext;
+  log: Log;
+  trackMs?: number;
+}): FredJobs {
   const { ctx, log } = options;
   const { db, clock, writer } = ctx;
+  const trackMs = options.trackMs ?? TRACK_MS;
 
   async function pass(
-    instruments: readonly Instrument[] = series(db),
+    instruments: readonly Instrument[] = series(db, clock.now(), trackMs),
   ): Promise<FredPass> {
     let rows = 0;
     const changed: FredPass["changed"] = [];
@@ -127,7 +135,7 @@ export function fredJobs(options: { ctx: FredContext; log: Log }): FredJobs {
 
   async function tick(): Promise<FredPass | null> {
     const now = clock.now();
-    const due = series(db).filter((i) => {
+    const due = series(db, now, trackMs).filter((i) => {
       if (!seriesDue(db, i, now)) return false;
       const last = lastStarted(db, SOURCE, JOBS.bars, i.id);
       return !(last?.status === "failed" && now - last.startedAt < RETRY_MS);

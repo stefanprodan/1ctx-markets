@@ -38,6 +38,7 @@ import { selectList } from "../src/signals/store.ts";
 import { weeklySeries } from "../src/signals/weekly.ts";
 import { QueueClosed, SourceError } from "../src/source.ts";
 import { JOBS, STALE } from "../src/stale.ts";
+import { markRead } from "../src/tracking.ts";
 import { writer } from "../src/writer.ts";
 import { addDays } from "../src/zone.ts";
 import { fakeClock } from "./helpers/clock.ts";
@@ -103,6 +104,13 @@ async function revised(
     if (o.date in values) o.value = values[o.date];
   }
   return fx;
+}
+
+// added and named by a read, as a tool would, so the job tracks it
+async function tracked(ctx: FredContext, id: string) {
+  const out = await addSeries(ctx, id);
+  await ctx.writer.write((db) => markRead(db, [`FRED:${id}`], ctx.clock.now()));
+  return out;
 }
 
 const errorOf = async (p: Promise<unknown>): Promise<unknown> =>
@@ -393,8 +401,8 @@ describe("fred series", () => {
 describe("fred job", () => {
   test("runs at 23:00 UTC each day with a run per series", async () => {
     const { clock, ctx, db, f } = setup();
-    await addSeries(ctx, "DGS10");
-    await addSeries(ctx, "VIXCLS");
+    await tracked(ctx, "DGS10");
+    await tracked(ctx, "VIXCLS");
     const sync = fredJobs({ ctx, log: silent });
     // a tick each minute up to until, as the scheduler runs them
     const passes: number[] = [];
@@ -427,7 +435,7 @@ describe("fred job", () => {
 
   test("a pass missed while down runs on the first tick", async () => {
     const { clock, ctx, db } = setup();
-    await addSeries(ctx, "DGS10");
+    await tracked(ctx, "DGS10");
     const sync = fredJobs({ ctx, log: silent });
     // down from Monday morning to Tuesday morning, past 23:00
     await clock.advance(Date.UTC(2026, 9, 27, 7, 0) - clock.now());
@@ -449,8 +457,8 @@ describe("fred job", () => {
     const sync = fredJobs({ ctx, log: silent });
     const before = { id: "FRED:DGS10", source: SOURCE, addedAt: 0 };
     expect(seriesStale(db, before, clock.now())).toEqual([STALE.noHistory]);
-    await addSeries(ctx, "DGS10");
-    await addSeries(ctx, "VIXCLS");
+    await tracked(ctx, "DGS10");
+    await tracked(ctx, "VIXCLS");
     const dgs10 = readInstrument(db, "FRED:DGS10")!;
     const vix = readInstrument(db, "FRED:VIXCLS")!;
     expect(seriesStale(db, dgs10, clock.now())).toEqual([]);
@@ -561,7 +569,7 @@ describe("fred source", () => {
         'fred="on (key file)"',
       );
       const ctx = { db, clock, writer: app.writer, fred: app.fred };
-      await addSeries(ctx, "DGS10");
+      await tracked(ctx, "DGS10");
       failing = true;
       const pass = await app.fredJobs!.pass();
       expect(pass.failed).toEqual([
@@ -655,7 +663,7 @@ describe("fred answers are checked", () => {
       out.body.observations = out.body.observations.slice(0, 10);
       return out;
     });
-    await addSeries(ctx, "DGS10");
+    await tracked(ctx, "DGS10");
     const stored = readBars(db, "FRED:DGS10", "1d");
     cut = true;
     const pass = await fredJobs({ ctx, log: silent }).pass();
