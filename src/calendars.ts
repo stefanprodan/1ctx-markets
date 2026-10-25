@@ -54,9 +54,7 @@ export function session(zone: string, start: number, end: number): Session {
   return { zone: checkZone(zone), start, end };
 }
 
-// Stores the session unless an answer fetched later is already stored,
-// so a slow answer never brings back an older session. Returns whether
-// it was stored.
+// a stored session only moves forward, whatever a late answer shows
 export function recordSession(
   db: Db,
   market: string,
@@ -75,7 +73,8 @@ export function recordSession(
          session_start = excluded.session_start,
          session_end = excluded.session_end,
          fetched_at = excluded.fetched_at
-       where excluded.fetched_at >= markets.fetched_at`,
+       where excluded.fetched_at >= markets.fetched_at
+         and excluded.session_start >= markets.session_start`,
     )
     .run(market, checked.zone, checked.start, checked.end, fetchedAt);
   return changes > 0;

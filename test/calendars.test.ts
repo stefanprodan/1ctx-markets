@@ -256,6 +256,23 @@ describe("stored sessions", () => {
     db.close();
   });
 
+  test("a later answer showing an older session never moves it back", async () => {
+    const db = database();
+    const { meta } = await chart("chart-nvda-5d-1d");
+    const friday = sessionFromChartMeta(meta);
+    const monday = at(friday, "2026-10-26T13:30:00Z", "2026-10-26T20:00:00Z");
+    const now = utc("2026-10-26T14:00:00Z");
+    expect(recordSession(db, "US", monday, utc("2026-10-26T13:30:05Z"))).toBe(
+      true,
+    );
+    expect(recordSession(db, "US", friday, now)).toBe(false);
+    const stored = readSession(db, "US")!;
+    expect(stored.start).toBe(monday.start);
+    expect(isQuoted("US", stored, now)).toBe(true);
+    expect(isBarFinal("2026-10-23", stored)).toBe(true);
+    db.close();
+  });
+
   test("an answer fetched at the same time as the stored one replaces it", () => {
     const db = database();
     const t = utc("2026-10-26T08:00:00Z");
