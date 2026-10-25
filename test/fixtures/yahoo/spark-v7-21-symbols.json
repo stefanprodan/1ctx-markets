@@ -1,0 +1,22 @@
+{
+  "recordedAt": "2026-10-25T21:04:05.048Z",
+  "request": {
+    "method": "GET",
+    "url": "https://query1.finance.yahoo.com/v7/finance/spark?symbols=A,B,C,D,F,GE,HD,IBM,JPM,KO,MA,MO,MU,NKE,PG,T,UL,V,VZ,WMT,XOM&range=1d&interval=5m"
+  },
+  "status": 400,
+  "headers": {
+    "age": "2",
+    "cache-control": "max-age=0, private",
+    "content-type": "application/json;charset=utf-8"
+  },
+  "body": {
+    "spark": {
+      "result": null,
+      "error": {
+        "code": "Bad Request",
+        "description": "Number of symbols needs to be less than or equal to 20"
+      }
+    }
+  }
+}
