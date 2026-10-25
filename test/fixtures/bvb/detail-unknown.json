@@ -1,0 +1,13 @@
+{
+  "recordedAt": "2026-10-25T19:45:08.448Z",
+  "request": {
+    "method": "GET",
+    "url": "https://bvb.ro/FinancialInstruments/Details/FinancialInstrumentsDetails.aspx?s=ZZZZ"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "text/html; charset=utf-8"
+  },
+  "body": "<!-- fragment: status -->\n<div id=\"status\">\r\n                Starea pietei: \r\n            <span id=\"statusMarket\">INCHISA</span>\r\n            </div>\n<!-- fragment: header -->\n\n<!-- fragment: delayMarker -->\n\n<!-- fragment: prices -->\n\n<!-- fragment: indicators -->\n\n<!-- fragment: issue -->\n",
+  "note": "Unknown symbol. HTML trimmed to the data fragments (each preceded by a 'fragment:' comment); the page key and form state are stripped."
+}

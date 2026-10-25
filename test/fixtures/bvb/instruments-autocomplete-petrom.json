@@ -1,0 +1,77 @@
+{
+  "recordedAt": "2026-10-25T19:45:54.004Z",
+  "request": {
+    "method": "POST",
+    "url": "https://bvb.ro/proxyshld.aspx/GetInstrumentsList",
+    "body": "{'searchtext':'petrom'}"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json; charset=utf-8"
+  },
+  "body": {
+    "d": [
+      {
+        "Symbol": "SNP",
+        "Isin": "ROSNPPACNOR9",
+        "Name": "OMV PETROM S.A.",
+        "Status": "T"
+      },
+      {
+        "Symbol": "EBSNPTL15",
+        "Isin": "AT0000A31PQ4",
+        "Name": "OMV Petrom TURBO LONG 10/0.33/0.35",
+        "Status": "T"
+      },
+      {
+        "Symbol": "EBSNPTL14",
+        "Isin": "AT0000A2W4C4",
+        "Name": "OMV Petrom TURBO LONG 10/0.35/0.37",
+        "Status": "T"
+      },
+      {
+        "Symbol": "EBSNPTL13",
+        "Isin": "AT0000A2W4B6",
+        "Name": "OMV Petrom TURBO LONG 10/0.30/0.32",
+        "Status": "T"
+      },
+      {
+        "Symbol": "EBSNPTL12",
+        "Isin": "AT0000A2L4D5",
+        "Name": "OMV PETROM TURBO LONG 10/0.27/0.29",
+        "Status": "T"
+      },
+      {
+        "Symbol": "EBSNPTL16",
+        "Isin": "AT0000A33933",
+        "Name": "OMV PETROM TURBO LONG 10/0.4/0.42",
+        "Status": "T"
+      },
+      {
+        "Symbol": "RBSNPTL6",
+        "Isin": "AT0000A32R53",
+        "Name": "OMV Petrom SA Turbo Long",
+        "Status": "T"
+      },
+      {
+        "Symbol": "RCSNPTL3",
+        "Isin": "AT0000A2GU19",
+        "Name": "TURBO LONG ON OMV PETROM SA",
+        "Status": "T"
+      },
+      {
+        "Symbol": "RCSNPTL5",
+        "Isin": "AT0000A2Y7Y9",
+        "Name": "Turbo Long on OMV Petrom SA",
+        "Status": "T"
+      },
+      {
+        "Symbol": "RBSNPTL10",
+        "Isin": "AT0000A3BS90",
+        "Name": "Turbo Long Certificates on OMV Petrom SA",
+        "Status": "T"
+      }
+    ]
+  },
+  "note": "Site search box; no key or cookie needed; at most 10 matches."
+}
