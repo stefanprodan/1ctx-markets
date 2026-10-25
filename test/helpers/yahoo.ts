@@ -49,3 +49,35 @@ export const chartSymbol = (url: URL): string | null =>
     : null;
 
 export const clone = <T>(v: T): T => structuredClone(v);
+
+// a recorded chart answer as a listing that began on its first row, so
+// a short recording stands for a whole history
+export function listed(fx: Recorded): Recorded {
+  const out = clone(fx);
+  const result = out.body.chart.result[0];
+  result.meta.firstTradeDate = result.timestamp[0];
+  return out;
+}
+
+// a recorded chart answer with a made-up weekday row at 15:00 UTC for
+// each day from from up to its first row
+export function backTo(fx: Recorded, from: string): Recorded {
+  const out = clone(fx);
+  const result = out.body.chart.result[0];
+  const q = result.indicators.quote[0];
+  const stamps: number[] = [];
+  const first = result.timestamp[0] * 1000;
+  for (
+    let at = Date.parse(`${from}T15:00:00Z`);
+    at < first - 86_400_000 / 2;
+    at += 86_400_000
+  ) {
+    const day = new Date(at).getUTCDay();
+    if (day !== 0 && day !== 6) stamps.push(at / 1000);
+  }
+  result.timestamp = [...stamps, ...result.timestamp];
+  for (const k of ["open", "high", "low", "close", "volume"]) {
+    q[k] = [...stamps.map(() => (k === "volume" ? 1000 : 10)), ...q[k]];
+  }
+  return out;
+}

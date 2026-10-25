@@ -60,6 +60,8 @@ export type SplitEvent = {
 };
 
 export type ChartAnswer = ChartMeta & {
+  // UTC epoch ms of the listing's first trade, when Yahoo gives it
+  firstTrade: number | null;
   rows: ChartRow[];
   splits: SplitEvent[];
   fetchedAt: number;
@@ -250,8 +252,13 @@ export function parseChart(body: unknown, fetchedAt: number): ChartAnswer {
     throw malformed("not one chart result");
   }
   const result = obj(chart.result[0], "chart result");
+  const meta = obj(result.meta, "meta");
   return {
-    ...parseMeta(result.meta),
+    ...parseMeta(meta),
+    firstTrade:
+      meta.firstTradeDate === undefined || meta.firstTradeDate === null
+        ? null
+        : seconds(meta.firstTradeDate, "first trade date"),
     rows: parseRows(result),
     splits: parseSplits(result),
     fetchedAt,
@@ -315,11 +322,13 @@ export function yahoo(options: YahooOptions): Yahoo {
   const doFetch: Fetch = options.fetch ?? ((url, init) => fetch(url, init));
   const calls = options.queue ?? queue(clock, CONCURRENCY);
 
-  // the body, parsed as JSON, of a call that answered 200
-  const get = (
+  // the answer of a call that answered 200, read inside the queued task
+  // so a malformed one backs the queue off like any failure
+  const get = <T>(
     url: string,
     failFast: boolean,
-  ): Promise<{ body: unknown; fetchedAt: number }> =>
+    parse: (body: unknown, fetchedAt: number) => T,
+  ): Promise<T> =>
     calls.run(
       async () => {
         const abort = new AbortController();
@@ -354,7 +363,7 @@ export function yahoo(options: YahooOptions): Yahoo {
           if (!res.ok)
             throw new SourceError("source error", `HTTP ${res.status}`);
           if (body === undefined) throw malformed("not JSON");
-          return { body, fetchedAt };
+          return parse(body, fetchedAt);
         } finally {
           cancel();
         }
@@ -370,8 +379,7 @@ export function yahoo(options: YahooOptions): Yahoo {
       // a cached answer freezes the price for minutes; _ makes each URL new
       const list = symbols.map(encodeURIComponent).join(",");
       const url = `${host}/v7/finance/spark?symbols=${list}&range=1d&interval=5m&_=${clock.now()}`;
-      const { body, fetchedAt } = await get(url, failFast);
-      return parseSpark(body, fetchedAt);
+      return get(url, failFast, parseSpark);
     };
 
     return {
@@ -383,8 +391,7 @@ export function yahoo(options: YahooOptions): Yahoo {
           events: "div,split",
         });
         const url = `${host}/v8/finance/chart/${encodeURIComponent(symbol)}?${params}`;
-        const { body, fetchedAt } = await get(url, failFast);
-        return parseChart(body, fetchedAt);
+        return get(url, failFast, parseChart);
       },
       spark,
       async sparkAll(symbols) {
@@ -408,11 +415,11 @@ export function yahoo(options: YahooOptions): Yahoo {
           newsCount: "0",
           listsCount: "0",
         });
-        const { body } = await get(
+        return get(
           `${host}/v1/finance/search?${params}`,
           failFast,
+          parseSearch,
         );
-        return parseSearch(body);
       },
       failFast: () => client(true),
     };

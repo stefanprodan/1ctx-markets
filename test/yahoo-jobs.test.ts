@@ -10,17 +10,20 @@ import { open } from "../src/db/index.ts";
 import { readInstrument } from "../src/instruments.ts";
 import { silent } from "../src/log.ts";
 import { INTERRUPTED, lastRun, startRun } from "../src/runs.ts";
+import { scheduler } from "../src/scheduler.ts";
 import { barsStale, JOBS, quoteStale } from "../src/stale.ts";
 import { writer } from "../src/writer.ts";
 import { yahoo } from "../src/yahoo/client.ts";
-import { type TickReport, yahooJobs } from "../src/yahoo/jobs.ts";
+import { RETRY_MS, type TickReport, yahooJobs } from "../src/yahoo/jobs.ts";
 import { addInstrument, readQuote } from "../src/yahoo/sync.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { BVB, CRYPTO, type SimListing, sim, US, XETRA } from "./helpers/sim.ts";
 import {
+  backTo,
   chartSymbol,
   clone,
   fakeFetch,
+  listed,
   type Recorded,
   recorded,
 } from "./helpers/yahoo.ts";
@@ -30,7 +33,7 @@ const utc = (iso: string) => Date.parse(`${iso}Z`);
 
 function setup(
   start: number,
-  route: (url: URL, now: number) => Recorded | undefined,
+  route: (url: URL, now: number) => Recorded | Promise<Recorded> | undefined,
 ) {
   const clock = fakeClock(start);
   const { db } = open(":memory:", clock);
@@ -147,11 +150,54 @@ describe("quotes", () => {
     await t.runTo(utc("2026-10-26T18:10"));
     expect(quoteStale(t.db, u0)).toEqual([]);
   });
+
+  test("a symbol skipped or left out of the answer fails its market's run", async () => {
+    const s = sim([US("U0"), US("U1"), CRYPTO("C0-USD")]);
+    let edit: (result: any[]) => any[] = (r) => r;
+    const t = setup(utc("2026-10-26T17:58"), (url, now) => {
+      const answer = s.route(url, now)!;
+      if (url.pathname === "/v7/finance/spark") {
+        answer.body.spark.result = edit(answer.body.spark.result);
+      }
+      return answer;
+    });
+    for (const symbol of ["U0", "U1", "C0-USD"]) {
+      await addInstrument(t.ctx, symbol);
+    }
+    await t.runTo(utc("2026-10-26T18:00"));
+    edit = (result) => {
+      for (const r of result) {
+        if (r.symbol === "U1") delete r.response[0].meta.regularMarketPrice;
+      }
+      return result;
+    };
+    await t.runTo(utc("2026-10-26T18:05"));
+    expect(lastRun(t.db, "yahoo", JOBS.quotes, "US")).toMatchObject({
+      status: "failed",
+      error: "malformed answer",
+      rows: 1,
+    });
+    expect(readQuote(t.db, "US:U0")!.fetchedAt).toBe(utc("2026-10-26T18:05"));
+    expect(quoteStale(t.db, readInstrument(t.db, "US:U1")!)).toEqual([
+      "quote sync failed",
+    ]);
+    expect(lastRun(t.db, "yahoo", JOBS.quotes, "CRYPTO")!.status).toBe("ok");
+
+    edit = () => [];
+    await t.runTo(utc("2026-10-26T18:10"));
+    for (const market of ["US", "CRYPTO"]) {
+      expect(lastRun(t.db, "yahoo", JOBS.quotes, market)).toMatchObject({
+        status: "failed",
+        error: "malformed answer",
+        rows: 0,
+      });
+    }
+  });
 });
 
 describe("closed markets", () => {
   test("are checked from the last attempt, and quoting restarts once a later session shows", async () => {
-    const chart = await recorded("chart-vvsm-de-5d-1d");
+    const chart = listed(await recorded("chart-vvsm-de-5d-1d"));
     const spark = await sparkFrom();
     const vvsm = spark.metas.get("VVSM.DE");
     let chartAnswer = chart;
@@ -232,8 +278,8 @@ describe("closed markets", () => {
 describe("bars at the session change", () => {
   async function weekend(edit: (nvda: any, now: number) => void = () => {}) {
     const fixtures = {
-      NVDA: await recorded("chart-nvda-5d-1d"),
-      HYG: await recorded("chart-hyg-5d-1d"),
+      NVDA: listed(await recorded("chart-nvda-5d-1d")),
+      HYG: listed(await recorded("chart-hyg-5d-1d")),
     };
     const spark = await sparkFrom();
     // HYG rides the spark answer as NVDA's twin on PCX
@@ -331,6 +377,40 @@ describe("bars at the session change", () => {
   });
 });
 
+describe("a slow bar pass", () => {
+  test("never takes a quote turn", async () => {
+    const listings = Array.from({ length: 16 }, (_, i) => US(`U${i}`));
+    const s = sim(listings);
+    let slow = false;
+    const t = setup(utc("2026-10-26T13:25"), (url, now) => {
+      const answer = s.route(url, now)!;
+      if (!slow || chartSymbol(url) === null) return answer;
+      // each chart answers 25 s later, 400 s for the pass
+      return new Promise((resolve) =>
+        t.clock.at(t.clock.now() + 25_000, () => resolve(answer)),
+      );
+    });
+    for (const l of listings) await addInstrument(t.ctx, l.symbol);
+    // Friday's bar pass, so only Monday's is slow
+    await t.jobs.tick();
+    slow = true;
+    const before = t.f.urls.length;
+    const jobs = scheduler(t.clock, silent);
+    t.jobs.schedule(jobs);
+    // a second at a time, so each answer's timer is set before it is due
+    while (t.clock.now() < utc("2026-10-26T13:45")) {
+      await t.clock.advance(1000);
+    }
+    await jobs.stop();
+    const urls = t.f.urls.slice(before);
+    expect(charts(urls)).toHaveLength(16);
+    const turns = sparks(urls).map((u) => Number(u.searchParams.get("_")));
+    for (const at of ["13:35", "13:40", "13:45"]) {
+      expect(turns).toContain(utc(`2026-10-26T${at}`));
+    }
+  });
+});
+
 describe("backfill", () => {
   test("runs as its own turn for an instrument with no bars, never on the quote path", async () => {
     const s = sim([US("U0")]);
@@ -352,6 +432,59 @@ describe("backfill", () => {
     });
     expect(barsStale(t.db, u0, t.clock.now())).toEqual([]);
     expect(await t.jobs.backfillTurn()).toBeNull();
+  });
+
+  test("a first history that starts well after the listing is retried later", async () => {
+    // ten years asked, the listing traded since 1999, five years answered
+    const short = await recorded("chart-nvda-5y-1d");
+    let answer = short;
+    const t = setup(Date.parse(short.recordedAt), () => answer);
+    const { rows } = await addInstrument(t.ctx, "NVDA");
+    expect(rows).toBe(0);
+    expect(readBars(t.db, "US:NVDA", "1d")).toEqual([]);
+    await expect(t.jobs.backfillTurn()).rejects.toThrow("a history cut short");
+    expect(lastRun(t.db, "yahoo", "backfill")).toMatchObject({
+      status: "failed",
+      error: "malformed answer",
+    });
+    expect(readBars(t.db, "US:NVDA", "1d")).toEqual([]);
+    expect(await t.jobs.backfillTurn()).toBeNull();
+    answer = backTo(short, "2016-10-24");
+    await t.clock.advance(RETRY_MS);
+    expect(await t.jobs.backfillTurn()).toBe("US:NVDA");
+    expect(readBars(t.db, "US:NVDA", "1d")[0]!.date).toBe("2016-10-24");
+  });
+
+  test("an empty history waits like a failure, and the next instrument goes", async () => {
+    const s = sim([US("U0"), US("U1")]);
+    let empty = false;
+    const t = setup(utc("2026-10-26T17:58"), (url, now) => {
+      const answer = s.route(url, now)!;
+      if (empty && chartSymbol(url) === "U0") {
+        const result = answer.body.chart.result[0];
+        delete result.timestamp;
+        result.indicators.quote = [{}];
+      }
+      return answer;
+    });
+    await addInstrument(t.ctx, "U0");
+    await addInstrument(t.ctx, "U1");
+    t.db.query("delete from bars").run();
+    empty = true;
+    const before = t.f.urls.length;
+    expect(await t.jobs.backfillTurn()).toBe("US:U0");
+    expect(lastRun(t.db, "yahoo", "backfill")).toMatchObject({
+      status: "ok",
+      rows: 0,
+    });
+    expect(await t.jobs.backfillTurn()).toBe("US:U1");
+    expect(await t.jobs.backfillTurn()).toBeNull();
+    expect(charts(t.f.urls.slice(before)).map(chartSymbol)).toEqual([
+      "U0",
+      "U1",
+    ]);
+    await t.clock.advance(RETRY_MS);
+    expect(await t.jobs.backfillTurn()).toBe("US:U0");
   });
 });
 

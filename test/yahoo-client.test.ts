@@ -280,6 +280,46 @@ describe("the queue", () => {
     expect(f.urls).toHaveLength(2);
   });
 
+  test("an answer that reads wrong backs the queue off like a failure", async () => {
+    const chart = await recorded("chart-nvda-5d-1d");
+    const spark = await recorded("spark-v7-batch");
+    const search = await recorded("search-nvda");
+    const bad = clone(chart);
+    delete bad.body.chart.result[0].meta.regularMarketPrice;
+    const cases: [
+      Recorded,
+      (y: ReturnType<typeof yahoo>) => Promise<unknown>,
+      string,
+    ][] = [
+      [bad, (y) => y.chart("NVDA", 0, 1), "malformed answer"],
+      [
+        { ...spark, body: { spark: { result: null, error: { code: "x" } } } },
+        (y) => y.spark(["NVDA"]),
+        "source error",
+      ],
+      [
+        { ...search, body: { quotes: "none" } },
+        (y) => y.search("NVDA"),
+        "malformed answer",
+      ],
+    ];
+    for (const [answer, call, expected] of cases) {
+      const clock = fakeClock();
+      let first = true;
+      const f = fakeFetch(() => {
+        const out = first ? answer : chart;
+        first = false;
+        return out;
+      });
+      const client = yahoo({ clock, fetch: f.fetch });
+      expect(await phrase(call(client))).toBe(expected);
+      expect(await phrase(client.failFast().chart("NVDA", 0, 1))).toBe(
+        expected,
+      );
+      expect(f.urls).toHaveLength(1);
+    }
+  });
+
   test("runs a few calls at a time", async () => {
     const clock = fakeClock();
     const q = queue(clock, 2);

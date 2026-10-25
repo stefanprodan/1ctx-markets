@@ -5,7 +5,7 @@ import { describe, expect, test } from "bun:test";
 import { readBars } from "../src/bars.ts";
 import { readSessions } from "../src/calendars.ts";
 import { DAY_MS } from "../src/clock.ts";
-import { open } from "../src/db/index.ts";
+import { type Db, open } from "../src/db/index.ts";
 import { readInstrument, upsertInstrument } from "../src/instruments.ts";
 import { writer } from "../src/writer.ts";
 import {
@@ -17,6 +17,7 @@ import {
 import { marketOf, symbolOf } from "../src/yahoo/resolve.ts";
 import {
   addInstrument,
+  backfill,
   backfillStart,
   dailyBars,
   readQuote,
@@ -26,7 +27,14 @@ import {
 } from "../src/yahoo/sync.ts";
 import { startOfDate } from "../src/zone.ts";
 import { fakeClock } from "./helpers/clock.ts";
-import { clone, fakeFetch, type Recorded, recorded } from "./helpers/yahoo.ts";
+import {
+  backTo,
+  clone,
+  fakeFetch,
+  listed,
+  type Recorded,
+  recorded,
+} from "./helpers/yahoo.ts";
 
 async function answer(
   name: string,
@@ -50,8 +58,35 @@ function appendRow(result: any, at: number, values: number[]) {
 
 const dates = (bars: { date: string }[]) => bars.map((b) => b.date);
 
+// a chart answer with one split event at at, in seconds
+function withSplit(fx: Recorded, at: number, n: number, d: number): Recorded {
+  const out = clone(fx);
+  out.body.chart.result[0].events = {
+    splits: {
+      [at]: { date: at, numerator: n, denominator: d, splitRatio: `${n}:${d}` },
+    },
+  };
+  return out;
+}
+
+// a chart answer with every price divided by by
+function scaled(fx: Recorded, by: number): Recorded {
+  const out = clone(fx);
+  const q = out.body.chart.result[0].indicators.quote[0];
+  for (const k of ["open", "high", "low", "close"]) {
+    q[k] = q[k].map((v: number | null) => (v === null ? null : v / by));
+  }
+  return out;
+}
+
+// 2026-10-16, inside the 30-day window
+const OCT16 = 1792157400;
+
 // a database and a client whose chart answers come from route
-function setup(start: number, route: (url: URL) => Recorded | undefined) {
+function setup(
+  start: number,
+  route: (url: URL) => Recorded | Promise<Recorded> | undefined,
+) {
   const clock = fakeClock(start);
   const { db } = open(":memory:", clock);
   const f = fakeFetch(route);
@@ -195,7 +230,7 @@ describe("daily bars from a chart answer", () => {
 
 describe("backfill", () => {
   test("adds an instrument with ten years from a Monday, its weeks and splits", async () => {
-    const fx = await recorded("chart-nvda-5y-1d");
+    const fx = backTo(await recorded("chart-nvda-5y-1d"), "2016-10-21");
     const now = Date.parse(fx.recordedAt);
     const { db, ctx, f } = setup(now, () => fx);
     const { instrument, rows } = await addInstrument(ctx, "NVDA", "US:NVDA");
@@ -217,8 +252,10 @@ describe("backfill", () => {
     expect(f.urls[0]!.searchParams.get("period1")).toBe(
       String(Date.parse("2016-10-23T00:00:00Z") / 1000),
     );
-    expect(rows).toBe(1255);
+    // the Friday before the Monday is dropped
+    expect(rows).toBe(fx.body.chart.result[0].timestamp.length - 1);
     const days = readBars(db, "US:NVDA", "1d");
+    expect(days[0]!.date).toBe("2016-10-24");
     expect(days.at(-1)).toMatchObject({ date: "2026-10-23", final: false });
     expect(days.at(-2)).toMatchObject({ date: "2026-10-22", final: true });
     const weeks = readBars(db, "US:NVDA", "1wk");
@@ -270,7 +307,7 @@ describe("units", () => {
     };
     const fixtures = new Map<string, Recorded>();
     for (const [symbol, name] of Object.entries(names)) {
-      fixtures.set(symbol, await recorded(name));
+      fixtures.set(symbol, listed(await recorded(name)));
     }
     const { ctx } = setup(Date.parse("2026-10-25T19:40:00Z"), (url) =>
       fixtures.get(decodeURIComponent(url.pathname.split("/").at(-1)!)),
@@ -296,7 +333,7 @@ describe("units", () => {
 
 describe("refetch", () => {
   test("the last 30 days, which makes earlier bars final and takes corrections", async () => {
-    const fx = await recorded("chart-nvda-5d-1d");
+    const fx = listed(await recorded("chart-nvda-5d-1d"));
     const monday = clone(fx);
     const result = monday.body.chart.result[0];
     const day = 24 * 60 * 60;
@@ -325,7 +362,7 @@ describe("refetch", () => {
 
   test("a split refetches the whole history once, and not again", async () => {
     const bonus = await recorded("chart-tlv-ro-bonus-2026");
-    const before = clone(bonus);
+    const before = listed(bonus);
     delete before.body.chart.result[0].events;
     let route = before;
     const now = Date.parse(bonus.recordedAt);
@@ -362,7 +399,7 @@ describe("refetch", () => {
 describe("refetch changes", () => {
   // NVDA's ten years, then a refetch answering route
   async function stored() {
-    const history = await recorded("chart-nvda-5y-1d");
+    const history = listed(await recorded("chart-nvda-5y-1d"));
     let route: Recorded = history;
     const t = setup(Date.parse(history.recordedAt), () => route);
     const { instrument } = await addInstrument(t.ctx, "NVDA");
@@ -421,6 +458,22 @@ describe("refetch changes", () => {
     expect(readBars(db, "US:NVDA", "1d")).toHaveLength(1254);
   });
 
+  test("drops a stored day whose close the source no longer gives", async () => {
+    const { db, ctx, instrument, answer } = await stored();
+    const fx = clone(await recorded("chart-nvda-5d-1d"));
+    fx.body.chart.result[0].indicators.quote[0].close[2] = null;
+    answer(fx);
+    expect((await refetch(ctx, instrument)).changedFrom).toBe("2026-10-21");
+    const days = readBars(db, "US:NVDA", "1d");
+    expect(dates(days)).not.toContain("2026-10-21");
+    const week = readBars(db, "US:NVDA", "1wk").at(-1)!;
+    expect(week.volume).toBe(
+      days
+        .filter((d) => d.date >= "2026-10-19")
+        .reduce((sum, d) => sum + d.volume!, 0),
+    );
+  });
+
   test("a history cut short is refused and its split left for the next run", async () => {
     const { db, ctx, f, instrument, answer } = await stored();
     const short = clone(await recorded("chart-nvda-5d-1d"));
@@ -451,7 +504,7 @@ describe("refetch changes", () => {
 
 describe("a history that stops early", () => {
   test("is refused, keeping the stored days after it and leaving its split", async () => {
-    const history = await recorded("chart-nvda-5y-1d");
+    const history = listed(await recorded("chart-nvda-5y-1d"));
     const window = clone(await recorded("chart-nvda-5d-1d"));
     window.body.chart.result[0].events = {
       splits: {
@@ -486,6 +539,99 @@ describe("a history that stops early", () => {
     expect(db.query("select date from splits").all()).toEqual([
       { date: "2024-06-10" },
     ]);
+  });
+});
+
+describe("a split's whole history", () => {
+  async function stored(answers: Recorded[]) {
+    const history = listed(await recorded("chart-nvda-5y-1d"));
+    const queue = [history, ...answers];
+    const t = setup(Date.parse(history.recordedAt), () => queue.shift());
+    const { instrument } = await addInstrument(t.ctx, "NVDA");
+    return { ...t, history, instrument };
+  }
+
+  const closeOn = (db: Db, date: string) =>
+    readBars(db, "US:NVDA", "1d").find((b) => b.date === date)!.close;
+
+  // the recorded close of 2026-10-22, the day before the last
+  const octoberClose = (fx: Recorded): number =>
+    fx.body.chart.result[0].indicators.quote[0].close.at(-2);
+
+  test("is refused when it stops a day short of the stored bars", async () => {
+    const history = listed(await recorded("chart-nvda-5y-1d"));
+    const window = withSplit(await recorded("chart-nvda-5d-1d"), OCT16, 2, 1);
+    const whole = withSplit(scaled(history, 2), OCT16, 2, 1);
+    const result = whole.body.chart.result[0];
+    result.timestamp.pop();
+    for (const k of ["open", "high", "low", "close", "volume"]) {
+      result.indicators.quote[0][k].pop();
+    }
+    const { db, ctx, instrument } = await stored([window, whole]);
+    const before = closeOn(db, "2026-10-22");
+    await expect(refetch(ctx, instrument)).rejects.toThrow(
+      "a history cut short",
+    );
+    expect(closeOn(db, "2026-10-22")).toBe(before);
+    expect(db.query("select date from splits").all()).toEqual([
+      { date: "2024-06-10" },
+    ]);
+  });
+
+  test("a corrected ratio refetches the history and replaces the record", async () => {
+    const history = listed(await recorded("chart-nvda-5y-1d"));
+    const window = await recorded("chart-nvda-5d-1d");
+    const { db, ctx, f, instrument } = await stored([
+      withSplit(window, OCT16, 2, 1),
+      withSplit(scaled(history, 2), OCT16, 2, 1),
+      withSplit(window, OCT16, 2, 1),
+      withSplit(window, OCT16, 3, 1),
+      withSplit(scaled(history, 3), OCT16, 3, 1),
+    ]);
+    await refetch(ctx, instrument);
+    await refetch(ctx, instrument);
+    expect(f.urls).toHaveLength(4);
+    await refetch(ctx, instrument);
+    expect(f.urls).toHaveLength(6);
+    expect(
+      db
+        .query("select numerator, ratio from splits where date = '2026-10-16'")
+        .all(),
+    ).toEqual([{ numerator: 3, ratio: "3:1" }]);
+    expect(closeOn(db, "2026-10-22")).toBeCloseTo(octoberClose(history) / 3, 9);
+  });
+
+  test("an older answer in flight never lands after the split's rewrite", async () => {
+    const history = listed(await recorded("chart-nvda-5y-1d"));
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    // the add, the backfill's old-scale history held past the split, then
+    // the refetch's window and whole history
+    const answers: Recorded[] = [
+      history,
+      history,
+      withSplit(await recorded("chart-nvda-5d-1d"), OCT16, 2, 1),
+      withSplit(scaled(history, 2), OCT16, 2, 1),
+    ];
+    let n = 0;
+    const { db, ctx, f } = setup(Date.parse(history.recordedAt), async () => {
+      const k = n++;
+      if (k === 1) await gate;
+      return answers[k]!;
+    });
+    const { instrument } = await addInstrument(ctx, "NVDA");
+    const older = backfill(ctx, instrument);
+    const newer = refetch(ctx, instrument);
+    await new Promise((resolve) => setImmediate(resolve));
+    // the refetch waits for the backfill's whole call and write
+    expect(f.urls).toHaveLength(2);
+    release();
+    await older;
+    await newer;
+    expect(f.urls).toHaveLength(4);
+    expect(closeOn(db, "2026-10-22")).toBeCloseTo(octoberClose(history) / 2, 9);
   });
 });
 
@@ -581,8 +727,27 @@ describe("quotes from a spark answer", () => {
     const meta = body.spark.result[0].response[0].meta;
     meta.regularMarketTime -= 60;
     meta.regularMarketPrice = 1;
-    expect(storeQuotes(db, parseSpark(body, clock.now()))).toHaveLength(4);
+    expect(storeQuotes(db, parseSpark(body, clock.now() + 1))).toHaveLength(4);
     expect(readQuote(db, "CRYPTO:SOL-USD")!.price).toBe(101.52);
+  });
+
+  test("a quote as old as the stored one replaces it only when fetched later", async () => {
+    const { db, clock, fx } = await withInstruments();
+    storeQuotes(db, parseSpark(fx.body, clock.now()));
+    const body = clone(fx.body);
+    body.spark.result[0].response[0].meta.previousClose = 100;
+    expect(storeQuotes(db, parseSpark(body, clock.now() - 1000))).toEqual([]);
+    expect(readQuote(db, "CRYPTO:SOL-USD")).toMatchObject({
+      previousClose: 102.269684,
+      fetchedAt: clock.now(),
+    });
+    expect(storeQuotes(db, parseSpark(body, clock.now() + 1000))).toHaveLength(
+      5,
+    );
+    expect(readQuote(db, "CRYPTO:SOL-USD")).toMatchObject({
+      previousClose: 100,
+      fetchedAt: clock.now() + 1000,
+    });
   });
 
   test("a bad entry skips only itself, with a fixed phrase", async () => {

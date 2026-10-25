@@ -40,6 +40,7 @@ import {
   type ChartRow,
   SOURCE,
   type SparkAnswer,
+  type SplitEvent,
   type Yahoo,
 } from "./client.ts";
 import { keyOf, marketOf, symbolOf } from "./resolve.ts";
@@ -63,7 +64,8 @@ const timeOfDay = (zone: string, at: number) =>
 
 type Read = {
   bars: Bar[];
-  // the dates of the source's regular rows, null closes included
+  // the dates of the source's regular rows, null closes included, which
+  // bound the span a write reconciles; only bars are kept in it
   days: Set<string>;
 };
 
@@ -188,48 +190,114 @@ function fields(answer: ChartMeta) {
   };
 }
 
-const storedSplits = (db: Db, instrument: string): Set<string> =>
-  new Set(
+type Split = SplitEvent & { date: string };
+
+// The answers' splits not stored with the same date and ratio: a
+// corrected ratio rescales the history as a new split does. A later
+// answer's ratio wins.
+function unapplied(
+  db: Db,
+  instrument: Instrument,
+  answers: readonly ChartAnswer[],
+): Split[] {
+  const stored = new Map(
     db
-      .query<{ date: string }, [string]>(
-        "select date from splits where instrument = ?",
-      )
-      .all(instrument)
-      .map((r) => r.date),
+      .query<
+        { date: string; numerator: number; denominator: number },
+        [string]
+      >("select date, numerator, denominator from splits where instrument = ?")
+      .all(instrument.id)
+      .map((r) => [r.date, r]),
   );
+  const out = new Map<string, Split>();
+  for (const answer of answers) {
+    for (const s of answer.splits) {
+      const date = barDate(instrument.zone, s.at);
+      const old = stored.get(date);
+      if (
+        old === undefined ||
+        old.numerator !== s.numerator ||
+        old.denominator !== s.denominator
+      ) {
+        out.set(date, { ...s, date });
+      }
+    }
+  }
+  return [...out.values()];
+}
 
 function recordSplits(
   db: Db,
   instrument: Instrument,
-  answers: readonly ChartAnswer[],
+  splits: Split[],
   now: number,
 ): void {
-  const insert = db.query(
+  const upsert = db.query(
     `insert into splits (instrument, date, numerator, denominator, ratio,
        applied_at)
      values (?, ?, ?, ?, ?, ?)
-     on conflict (instrument, date) do nothing`,
+     on conflict (instrument, date) do update set
+       numerator = excluded.numerator,
+       denominator = excluded.denominator,
+       ratio = excluded.ratio,
+       applied_at = excluded.applied_at`,
   );
-  for (const answer of answers) {
-    for (const s of answer.splits) {
-      insert.run(
-        instrument.id,
-        barDate(instrument.zone, s.at),
-        s.numerator,
-        s.denominator,
-        s.ratio,
-        now,
-      );
-    }
+  for (const s of splits) {
+    upsert.run(instrument.id, s.date, s.numerator, s.denominator, s.ratio, now);
+  }
+}
+
+// An initial history begins near the later of the start asked for and
+// the listing's first trade, or it was cut short; with no first trade
+// date a late start cannot be told from a recent listing.
+function startsShort(answer: ChartAnswer, since: string): boolean {
+  if (answer.firstTrade === null) return false;
+  const first = read(answer, null).bars.find((b) => b.date >= since)?.date;
+  if (first === undefined) return false;
+  const listed = barDate(answer.session.zone, answer.firstTrade);
+  const floor = listed > since ? listed : since;
+  return first > addDays(floor, SHORT_HISTORY_DAYS);
+}
+
+const cutShort = () =>
+  new SourceError("malformed answer", "a history cut short");
+
+// One fetch-and-store per instrument and database at a time, held
+// across the call and its write, so an answer fetched before a split's
+// rewrite never lands after it.
+const held = new WeakMap<Db, Map<string, Promise<void>>>();
+
+async function exclusive<T>(
+  db: Db,
+  id: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  let locks = held.get(db);
+  if (locks === undefined) {
+    locks = new Map();
+    held.set(db, locks);
+  }
+  const run = (locks.get(id) ?? Promise.resolve()).then(fn);
+  const tail = run.then(
+    () => {},
+    () => {},
+  );
+  locks.set(id, tail);
+  try {
+    return await run;
+  } finally {
+    if (locks.get(id) === tail) locks.delete(id);
   }
 }
 
 // Writes one chart answer's session, bars and weeks, inside a writer
 // transaction. A whole history rewrites every daily bar, so none keeps
 // a scale from before a split, unless it starts or stops well short of
-// the stored one; then nothing is written, the splits stay unapplied,
-// and the next run asks again. Either answer drops only the stored days
-// inside its own span that the source no longer has.
+// the stored one, or applies a split without reaching the stored last
+// day; then nothing is written, the splits stay unapplied, and the next
+// run asks again. Either answer drops the stored days inside its own
+// span that the source no longer prices, and a split's whole history
+// every stored day before it too.
 function store(
   db: Db,
   now: number,
@@ -242,8 +310,12 @@ function store(
   const { bars, days } = read(answer, latest);
   if (whole) {
     const kept = bars.filter((b) => b.date >= whole.since);
+    const span = [...days].filter((d) => d >= whole.since).sort();
+    const splits = unapplied(db, instrument, whole.splits);
     const range = dailyRange(db, instrument.id);
-    if (range !== null) {
+    if (range === null) {
+      if (startsShort(answer, whole.since)) throw cutShort();
+    } else {
       const first = kept[0]?.date;
       const last = kept.at(-1)?.date;
       if (
@@ -251,19 +323,20 @@ function store(
         last === undefined ||
         (first > addDays(whole.since, SHORT_HISTORY_DAYS) &&
           range.first < addDays(first, -SHORT_HISTORY_DAYS)) ||
-        last < addDays(range.last, -SHORT_HISTORY_DAYS)
+        last < addDays(range.last, -SHORT_HISTORY_DAYS) ||
+        (splits.length > 0 && span.at(-1)! < range.last)
       ) {
-        throw new SourceError("malformed answer", "a history cut short");
+        throw cutShort();
       }
     }
-    const keep = new Set([...days].filter((d) => d >= whole.since));
-    const span = [...keep].sort();
+    const keep = new Set(kept.map((b) => b.date));
+    const from = splits.length > 0 ? whole.since : span[0];
     const deleted =
-      span.length === 0
+      from === undefined || span.length === 0
         ? null
-        : deleteDailyBars(db, instrument.id, span[0]!, span.at(-1)!, keep);
+        : deleteDailyBars(db, instrument.id, from, span.at(-1)!, keep);
     const written = upsertBars(db, instrument.id, "1d", kept, answer.fetchedAt);
-    recordSplits(db, instrument, whole.splits, now);
+    recordSplits(db, instrument, splits, now);
     rebuildWeeks(db, instrument.id, latest, now);
     return {
       rows: written.rows,
@@ -274,7 +347,8 @@ function store(
   const span = [...days].sort();
   let deleted: string | null = null;
   if (span.length > 0) {
-    deleted = deleteDailyBars(db, instrument.id, span[0]!, span.at(-1)!, days);
+    const keep = new Set(bars.map((b) => b.date));
+    deleted = deleteDailyBars(db, instrument.id, span[0]!, span.at(-1)!, keep);
     rebuildWeeks(db, instrument.id, latest, now, span[0]!);
   }
   return {
@@ -285,6 +359,7 @@ function store(
 
 // Adds an instrument by Yahoo's symbol with ten years of daily bars;
 // the chart answer names its key, which must match one resolved first.
+// A history cut short adds the instrument alone, for backfill to retry.
 export async function addInstrument(
   ctx: YahooContext,
   sourceSymbol: string,
@@ -296,29 +371,40 @@ export async function addInstrument(
   if (expected !== null && expected !== id) {
     throw new SourceError("malformed answer", `${expected} answered as ${id}`);
   }
-  const range = dailyRange(ctx.db, id);
-  // a history older than ten years is kept, so it is fetched whole
-  if (range !== null && range.first < monday) {
-    const instrument = await ctx.writer.write((db) =>
-      upsertInstrument(db, fields(answer), ctx.clock.now()),
-    );
-    return { instrument, ...(await backfill(ctx, instrument, [answer])) };
-  }
-  // the instrument and its bars land together, or neither does
-  return ctx.writer.write((db) => {
-    const now = ctx.clock.now();
-    const instrument = upsertInstrument(db, fields(answer), now);
-    const written = store(db, now, instrument, answer, {
-      since: monday,
-      splits: [answer],
+  return exclusive(ctx.db, id, async () => {
+    // stored bars may be newer than this answer, so they are fetched
+    // again under the lock
+    if (dailyRange(ctx.db, id) !== null) {
+      const instrument = await ctx.writer.write((db) =>
+        upsertInstrument(db, fields(answer), ctx.clock.now()),
+      );
+      return { instrument, ...(await backfillHeld(ctx, instrument)) };
+    }
+    const short = startsShort(answer, monday);
+    // the instrument and its bars land together, or neither does
+    return ctx.writer.write((db) => {
+      const now = ctx.clock.now();
+      const instrument = upsertInstrument(db, fields(answer), now);
+      if (short) return { instrument, rows: 0, changedFrom: null };
+      const written = store(db, now, instrument, answer, {
+        since: monday,
+        splits: [answer],
+      });
+      return { instrument, ...written };
     });
-    return { instrument, ...written };
   });
 }
 
 // Ten years of daily bars again, or from the first stored bar if that
 // is older, so after a split no stored bar keeps its old scale.
-export async function backfill(
+export function backfill(
+  ctx: YahooContext,
+  instrument: Instrument,
+): Promise<Written> {
+  return exclusive(ctx.db, instrument.id, () => backfillHeld(ctx, instrument));
+}
+
+async function backfillHeld(
   ctx: YahooContext,
   instrument: Instrument,
   triggers: readonly ChartAnswer[] = [],
@@ -338,21 +424,29 @@ export async function backfill(
   return ctx.writer.write((db) =>
     store(db, ctx.clock.now(), instrument, answer, {
       since: monday,
-      splits: [answer, ...triggers],
+      splits: [...triggers, answer],
     }),
   );
 }
 
 // The last 30 days, or from the last final bar after a longer gap. A
-// split not applied yet refetches the whole history once; one already
-// applied, still inside the window for a month, does nothing more.
-export async function refetch(
+// split not applied yet, or applied with another ratio, refetches the
+// whole history once; one already applied, still inside the window for
+// a month, does nothing more.
+export function refetch(
+  ctx: YahooContext,
+  instrument: Instrument,
+): Promise<Written> {
+  return exclusive(ctx.db, instrument.id, () => refetchHeld(ctx, instrument));
+}
+
+async function refetchHeld(
   ctx: YahooContext,
   instrument: Instrument,
 ): Promise<Written> {
   const { db, clock } = ctx;
   const range = dailyRange(db, instrument.id);
-  if (range === null) return backfill(ctx, instrument);
+  if (range === null) return backfillHeld(ctx, instrument);
   const now = clock.now();
   const since = range.lastFinal ?? range.first;
   const from = Math.min(
@@ -361,11 +455,9 @@ export async function refetch(
   );
   const answer = await ctx.yahoo.chart(instrument.sourceSymbol, from, now);
   checkAnswer(instrument, answer);
-  const applied = storedSplits(db, instrument.id);
-  const fresh = answer.splits.some(
-    (s) => !applied.has(barDate(instrument.zone, s.at)),
-  );
-  if (fresh) return backfill(ctx, instrument, [answer]);
+  if (unapplied(db, instrument, [answer]).length > 0) {
+    return backfillHeld(ctx, instrument, [answer]);
+  }
   return ctx.writer.write((db) =>
     store(db, ctx.clock.now(), instrument, answer, null),
   );
@@ -421,8 +513,8 @@ export function quoteOf(
 }
 
 // Each answer's session goes to its market, known instrument or not;
-// a quote older than the stored one is kept out. Runs inside a writer
-// transaction.
+// a quote older than the stored one is kept out, and one as old only
+// replaces it when fetched later. Runs inside a writer transaction.
 export function storeQuotes(db: Db, answer: SparkAnswer): QuoteRow[] {
   const written: QuoteRow[] = [];
   const upsert = db.query(
@@ -442,7 +534,9 @@ export function storeQuotes(db: Db, answer: SparkAnswer): QuoteRow[] {
        time = excluded.time,
        source = excluded.source,
        fetched_at = excluded.fetched_at
-     where excluded.time >= quotes.time`,
+     where excluded.time > quotes.time
+       or (excluded.time = quotes.time
+         and excluded.fetched_at > quotes.fetched_at)`,
   );
   for (const meta of answer.quotes) {
     recordSession(db, marketOf(meta.exchange), meta.session, answer.fetchedAt);

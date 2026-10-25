@@ -3,9 +3,10 @@
 //
 // Yahoo's scheduled work. One short tick decides what is due from the
 // stored sessions and runs: quotes for markets in session, one batch
-// after each close, a check of one instrument per closed market, then
-// the 30-day bar refetch of each market whose session moved on.
-// Backfill takes its own turns, never the quote path's.
+// after each close, a check of one instrument per closed market. The
+// 30-day bar refetch of each market whose session moved on is a job of
+// its own, so a slow one never takes a quote turn, and backfill takes
+// its own turns too; all share the source queue and the writer.
 
 import {
   closeQuoteAt,
@@ -22,7 +23,7 @@ import {
 import type { Log } from "../log.ts";
 import { endRun, failRun, lastStarted, runJob, startRun } from "../runs.ts";
 import type { Scheduler } from "../scheduler.ts";
-import { phraseOf } from "../source.ts";
+import { phraseOf, SourceError } from "../source.ts";
 import { barsDue, JOBS } from "../stale.ts";
 import { SOURCE, type SparkAnswer } from "./client.ts";
 import {
@@ -68,7 +69,10 @@ export type TickReport = {
 };
 
 export type YahooJobs = {
+  // quotes and checks, then the bars due, as both jobs run in a minute
   tick(): Promise<TickReport>;
+  quoteTick(): Promise<Omit<TickReport, "bars">>;
+  barTick(): Promise<BarPass[]>;
   // the instrument backfilled, if any was waiting
   backfillTurn(): Promise<string | null>;
   schedule(jobs: Scheduler): void;
@@ -91,7 +95,8 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
   const { ctx, quoteEveryMs, log } = options;
   const { db, clock, yahoo, writer } = ctx;
   let lastSlot: number | null = null;
-  const backfillFailed = new Map<string, number>();
+  // when each instrument's backfill last failed or answered no bars
+  const backfillMissed = new Map<string, number>();
 
   // what each market needs now; quotePass is the turn of the period
   function plan(
@@ -147,8 +152,20 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
       const failed = new Map<string, unknown>();
       const answers: SparkAnswer[] = [];
       for (const b of batches) {
-        if (b.answer) answers.push(b.answer);
-        else for (const s of b.symbols) failed.set(s, b.error);
+        if (!b.answer) {
+          for (const s of b.symbols) failed.set(s, b.error);
+          continue;
+        }
+        answers.push(b.answer);
+        // a symbol skipped or left out has no new quote, so its run fails
+        const quoted = new Set(b.answer.quotes.map((q) => q.symbol));
+        const skipped = new Map(
+          b.answer.skipped.map((k) => [k.symbol, k.phrase]),
+        );
+        for (const s of b.symbols) {
+          if (quoted.has(s)) continue;
+          failed.set(s, new SourceError(skipped.get(s) ?? "malformed answer"));
+        }
       }
       return await writer.write((db) => {
         const quotes = answers.flatMap((a) => storeQuotes(db, a));
@@ -238,19 +255,22 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
     };
   }
 
-  async function tick(): Promise<TickReport> {
+  async function quoteTick(): Promise<Omit<TickReport, "bars">> {
     const now = clock.now();
     const slot = Math.floor(now / quoteEveryMs);
     const quotePass = slot !== lastSlot;
     lastSlot = slot;
-    let markets = byMarket(readInstruments(db));
-    const work = plan(markets, now, quotePass);
+    const work = plan(byMarket(readInstruments(db)), now, quotePass);
     if (work.length > 0) await sparkPass(work);
+    return {
+      quoted: work.filter((w) => w.job === JOBS.quotes).map((w) => w.market),
+      checked: work.filter((w) => w.job === JOBS.check).map((w) => w.market),
+    };
+  }
 
-    // the answers may have moved a session on
-    markets = byMarket(readInstruments(db));
+  async function barTick(): Promise<BarPass[]> {
     const bars: BarPass[] = [];
-    for (const [market, instruments] of markets) {
+    for (const [market, instruments] of byMarket(readInstruments(db))) {
       if (!barsDue(db, SOURCE, market, clock.now())) continue;
       const last = lastStarted(db, SOURCE, JOBS.bars, market);
       if (
@@ -261,11 +281,13 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
       }
       bars.push(await barPass(market, instruments));
     }
-    return {
-      quoted: work.filter((w) => w.job === JOBS.quotes).map((w) => w.market),
-      checked: work.filter((w) => w.job === JOBS.check).map((w) => w.market),
-      bars,
-    };
+    return bars;
+  }
+
+  // the quote answers may move a session on before the bars are read
+  async function tick(): Promise<TickReport> {
+    const quotes = await quoteTick();
+    return { ...quotes, bars: await barTick() };
   }
 
   async function backfillTurn(): Promise<string | null> {
@@ -279,29 +301,37 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
       )
       .all(SOURCE)
       .map((r) => r.id)
-      .filter((id) => now - (backfillFailed.get(id) ?? -RETRY_MS) >= RETRY_MS);
+      .filter((id) => now - (backfillMissed.get(id) ?? -RETRY_MS) >= RETRY_MS);
     const instrument =
       waiting[0] === undefined ? null : readInstrument(db, waiting[0]);
     if (instrument === null) return null;
+    let rows: number;
     try {
-      await runJob(writer, clock, SOURCE, BACKFILL_JOB, async () => {
+      rows = await runJob(writer, clock, SOURCE, BACKFILL_JOB, async () => {
         const written = await backfill(ctx, instrument);
         return written.rows;
       });
     } catch (error) {
-      backfillFailed.set(instrument.id, now);
+      backfillMissed.set(instrument.id, now);
       throw error;
     }
-    backfillFailed.delete(instrument.id);
+    // an empty answer waits like a failure, so the next instrument goes
+    if (rows === 0) backfillMissed.set(instrument.id, now);
+    else backfillMissed.delete(instrument.id);
     return instrument.id;
   }
 
   return {
     tick,
+    quoteTick,
+    barTick,
     backfillTurn,
     schedule(jobs) {
       jobs.every("yahoo", TICK_MS, async () => {
-        await tick();
+        await quoteTick();
+      });
+      jobs.every("yahoo-bars", TICK_MS, async () => {
+        await barTick();
       });
       jobs.every("yahoo-backfill", TICK_MS, async () => {
         await backfillTurn();
