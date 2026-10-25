@@ -8,6 +8,8 @@
 import { type Interval, readBars } from "../bars.ts";
 import { weekOf } from "../calendars.ts";
 import type { Db } from "../db/index.ts";
+import { SOURCE as FRED } from "../fred/client.ts";
+import { seriesStale } from "../fred/jobs.ts";
 import { readInstrument } from "../instruments.ts";
 import { barsStale, quoteStale, STALE, type StaleReason } from "../stale.ts";
 import type { DailyRow } from "./daily.ts";
@@ -74,7 +76,9 @@ export function readSignals(
     final: latest<FinalRow<WeeklyRow>>(db, i.id, "1wk", "final"),
     live: latest<LiveRow<WeeklyRow>>(db, i.id, "1wk", "live"),
   };
-  const final = barsStale(db, i, now);
+  // a FRED series is fetched by its own nightly pass, run per series
+  const final =
+    i.source === FRED ? seriesStale(db, i, now) : barsStale(db, i, now);
   if (finalPending(db, i.id)) {
     final.push(STALE.signalsPending);
   }

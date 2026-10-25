@@ -505,9 +505,10 @@ export function quoteOf(
 
 // Each answer's session goes to its market, known instrument or not;
 // a quote older than the stored one is kept out, and one as old only
-// replaces it when fetched later. Every session is recorded first, so
-// the live rows, moved in the same writer transaction, never depend on
-// the answer's order; a live row the new sessions moved past goes.
+// replaces it when fetched later. Every market's session is settled and
+// recorded first, so the live rows, moved in the same writer
+// transaction, never depend on the answer's order; a live row the new
+// sessions moved past goes.
 export function storeQuotes(db: Db, answer: SparkAnswer): QuoteRow[] {
   const written: QuoteRow[] = [];
   const upsert = db.query(
@@ -531,12 +532,20 @@ export function storeQuotes(db: Db, answer: SparkAnswer): QuoteRow[] {
        or (excluded.time = quotes.time
          and excluded.fetched_at > quotes.fetched_at)`,
   );
-  const markets = new Set<string>();
+  // one session per market and answer, the latest its listings show,
+  // since before the open some still show the previous day's
+  const sessions = new Map<string, Session>();
   for (const meta of answer.quotes) {
     const market = marketOf(meta.exchange);
-    recordSession(db, market, meta.session, answer.fetchedAt);
-    markets.add(market);
+    const seen = sessions.get(market);
+    if (seen === undefined || meta.session.start > seen.start) {
+      sessions.set(market, meta.session);
+    }
   }
+  for (const [market, s] of sessions) {
+    recordSession(db, market, s, answer.fetchedAt);
+  }
+  const markets = new Set(sessions.keys());
   const moved = new Set<string>();
   for (const meta of answer.quotes) {
     const instrument = readBySourceSymbol(db, SOURCE, meta.symbol);

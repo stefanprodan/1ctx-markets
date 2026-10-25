@@ -31,13 +31,13 @@ import {
 import { readInstrument } from "../src/instruments.ts";
 import { keys } from "../src/keys.ts";
 import { format, logger, silent } from "../src/log.ts";
-import { lastRun } from "../src/runs.ts";
+import { failRun, lastRun, startRun } from "../src/runs.ts";
 import { dailySeries } from "../src/signals/daily.ts";
 import { readSignals } from "../src/signals/read.ts";
 import { selectList } from "../src/signals/store.ts";
 import { weeklySeries } from "../src/signals/weekly.ts";
 import { QueueClosed, SourceError } from "../src/source.ts";
-import { STALE } from "../src/stale.ts";
+import { JOBS, STALE } from "../src/stale.ts";
 import { writer } from "../src/writer.ts";
 import { addDays } from "../src/zone.ts";
 import { fakeClock } from "./helpers/clock.ts";
@@ -899,6 +899,13 @@ describe("fred signals", () => {
     expect(read.daily.live).toBeNull();
     expect(read.weekly.live).toBeNull();
     expect(read.stale.final).toEqual([]);
+
+    // a failed nightly pass of this series marks its signals stale
+    const id = startRun(db, SOURCE, JOBS.bars, clock.now(), "FRED:DGS10");
+    failRun(db, id, clock.now(), new SourceError("source error"));
+    const after = readSignals(db, "FRED:DGS10", clock.now())!;
+    expect(after.stale.final).toEqual([STALE.barsFailed]);
+    expect(after.stale.live).toContain(STALE.barsFailed);
   });
 
   test("a revised value recomputes the rows from the first bar", async () => {

@@ -3,7 +3,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { type Interval, readBars, upsertBars } from "../src/bars.ts";
-import { recordSession, session } from "../src/calendars.ts";
+import { readSession, recordSession, session } from "../src/calendars.ts";
 import { DAY_MS, MINUTE_MS } from "../src/clock.ts";
 import { type Db, open } from "../src/db/index.ts";
 import { type Unit, upsertInstrument } from "../src/instruments.ts";
@@ -364,6 +364,35 @@ describe("live rows", () => {
         storeQuotes(db, parseSpark(body, clock.now())),
       );
       expect(written.map((q) => q.instrument)).toEqual(["US:NVDA"]);
+      expect(rows(db, "1d", "live")).toEqual([]);
+      expect(rows(db, "1wk", "live")).toEqual([]);
+    }
+  });
+
+  test("one answer settles its market's session on the latest, in either order", async () => {
+    for (const reversed of [false, true]) {
+      const { db, ctx, clock } = await stored();
+      const friday = await nvdaSpark();
+      await ctx.writer.write((db) =>
+        storeQuotes(db, parseSpark(friday, clock.now())),
+      );
+      // before Monday's open NVDA still shows Friday's session, another
+      // US listing already Monday's
+      await clock.advance(utc("2026-10-26T13:20") - clock.now());
+      const body = await nvdaSpark();
+      const other = clone(body.spark.result[0]);
+      other.symbol = "ZZZ";
+      const meta = other.response[0].meta;
+      meta.symbol = "ZZZ";
+      meta.currentTradingPeriod.regular.start += 3 * DAY_S;
+      meta.currentTradingPeriod.regular.end += 3 * DAY_S;
+      body.spark.result = reversed
+        ? [other, body.spark.result[0]]
+        : [body.spark.result[0], other];
+      await ctx.writer.write((db) =>
+        storeQuotes(db, parseSpark(body, clock.now())),
+      );
+      expect(readSession(db, "US")!.start).toBe(utc("2026-10-26T13:30"));
       expect(rows(db, "1d", "live")).toEqual([]);
       expect(rows(db, "1wk", "live")).toEqual([]);
     }
