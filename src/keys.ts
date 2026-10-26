@@ -5,7 +5,7 @@
 // mask, nowhere else.
 
 import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 export const BEARER_FILE = "bearer.key";
 // names the key's owner wherever it is pasted
@@ -60,6 +60,8 @@ export function createBearer(dir: string): boolean {
   const random = crypto.getRandomValues(new Uint8Array(32));
   const value = BEARER_PREFIX + Buffer.from(random).toString("base64url");
   try {
+    // only secrets/ is private; its parents keep the umask's mode
+    mkdirSync(dirname(dir), { recursive: true });
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     writeFileSync(path, value, { flag: "wx", mode: 0o600 });
     return true;

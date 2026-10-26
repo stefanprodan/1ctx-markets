@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Smoke test of the compiled binary: it refuses to start on an empty
 # bearer file, writes a bearer on a first start, refuses a request
-# without it, and answers an MCP initialize with it. Each run starts from a fresh directory, so it
-# migrates a new database, and removes the directory on exit.
+# without it, and answers an MCP initialize with it. Each run starts
+# from a fresh directory, so it migrates a new database, and removes the
+# directory on exit.
 set -euo pipefail
 
 BIN=${1:-bin/1ctx-markets}
