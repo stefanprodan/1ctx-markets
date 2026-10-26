@@ -95,6 +95,9 @@ inside a call in `docs/tools.md`; rule pauses in `docs/rules.md`.
 - **The key drops Yahoo's suffix and maps the exchange code**
   (`symbolOf()`, `marketOf()`, `ALIASES`): `VVSM.DE` on `GER` is
   `XETRA:VVSM`. Index, futures and FX symbols keep their form.
+- **Bucharest listings are Yahoo's only while the Bucharest feed is
+  off** (`docs/bvb.md`); on, the same `BVB:` key is served by the feed,
+  and a Yahoo symbol naming one (`TLV.RO`) resolves to it there.
 - **Every stored answer must name the key it is stored under.**
   `checkAnswer()` and the `expected` argument of `addInstrument()` and
   `fetchInstrument()` refuse an answer whose exchange and symbol make

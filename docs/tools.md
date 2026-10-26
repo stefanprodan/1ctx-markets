@@ -87,7 +87,7 @@ bearer and flags in `docs/config.md`.
 |---|---|---|
 | `quote` | `symbols`, `next` | per symbol a `QuoteItem` (`quote.ts`) |
 | `history` | `symbol`, `interval`, `from`, `to`, `benchmark`, `next` | bars oldest first with `final` and signals; `relative` |
-| `search` | `query`, `next` | up to 20 stored matches, then Yahoo's listings, each with id, exchange, type, name, `stored` |
+| `search` | `query`, `next` | up to 20 stored matches, then the Bucharest feed's tradable listings while it is on, then Yahoo's, each with id, exchange, type, name, `source`, `stored` |
 | `movers` | `symbols`, `min_move_pct`, `direction`, `average`, `relation`, `next` | matches by absolute change, largest first; `counts` |
 | `screen` | `symbols`, `filters`, `benchmark`, `sort`, `order`, `next` | matches with each used field's value, unit, kind and date; `counts` |
 | `research`, `events` | see `docs/research.md` | |
@@ -157,7 +157,11 @@ bearer and flags in `docs/config.md`.
   FRED's; a Yahoo symbol with a suffix or `^`/`=` is checked with a
   short chart; a bare symbol takes the listing whose Yahoo symbol
   equals it; anything else answers `candidates` for the caller to pick
-  an id from.
+  an id from. With the Bucharest feed on, `BVB:<symbol>` is the feed's
+  and a bare symbol or name also goes through the exchange's search
+  under the same rules (`resolveBoth()`, `docs/bvb.md`); with it off,
+  a Bucharest index, bond or other `BVB:` key Yahoo lacks answers
+  `no_data`.
 - **What the server lacks is fetched inside the call.** An instrument
   with no bars gets ten years of history, its signals and a fresh quote
   in one write (`fetchInstrument()`); one stored but no longer tracked

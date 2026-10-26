@@ -2,8 +2,8 @@
 
 Governs the database and what every table shares: `src/db/`
 (connection and migrations), `src/writer.ts`, `src/instruments.ts`,
-`src/runs.ts`, `src/stale.ts`, `src/tracking.ts`, `src/clock.ts` and
-the retention turn in `src/app.ts`. Market sessions and bar dates are
+`src/quotes.ts`, `src/runs.ts`, `src/stale.ts`, `src/tracking.ts`,
+`src/clock.ts` and the retention turn in `src/app.ts`. Market sessions and bar dates are
 in `docs/calendars.md`; how Yahoo's answers become rows is in
 `docs/yahoo.md`; signal rows in `docs/signals.md`; key files and flags
 in `docs/config.md`.
@@ -98,6 +98,19 @@ in `docs/config.md`.
   scaled.** The rescale check and the signals compare ratios of stored
   closes (`rescaleOf()` in `src/yahoo/sync.ts` treats ratios within
   0.0001 as one). Volumes are whole numbers (`Math.round`).
+- **A quote's `time` is the trade time, null when the source gives
+  none** (the Bucharest index page), never the fetch time
+  (`src/quotes.ts`). A quote without a time replaces the stored one
+  only when fetched later; a live signal row dates it by its fetch,
+  inside its market's session (`liveTarget()`).
+
+## Price sources
+
+- **`sources` holds the price sources on at the last start**, one row
+  per name with when it was turned on (migration `0010-bvb`). It is
+  written only once a switch of the `BVB` market's source landed
+  (`docs/bvb.md`), so a restart during one redoes it; with no rows,
+  Yahoo was the only one.
 
 ## Runs and staleness
 
@@ -139,6 +152,7 @@ in `docs/config.md`.
 | `no history` | `barsStale`, `seriesStale` | no daily bars stored |
 | `signals pending` | `readSignals` | final signals behind the final bars, or live rows behind the latest quote |
 | `previous day not final` | `readSignals` | a live row stepped over a stored bar not final yet |
+| `source switch pending` | `quoteStale`, `barsStale` | the market's latest source switch run is running or failed (`SWITCH`) |
 
 - **`quote overdue` follows when a quote was last due**
   (`lastQuoteDue`): now while the market trades (always for crypto),

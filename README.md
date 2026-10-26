@@ -50,6 +50,8 @@ holdings, orders or portfolio, and it makes no model calls.
   holidays and clock changes need no table.
 - **Free sources, each optional.** Yahoo needs no key and is always on.
   FRED, Finnhub and Massive turn on when their free key file is present.
+  The Bucharest Stock Exchange's own feed, with its shares, government
+  bonds and indices, turns on with `--source bvb` and needs no key.
 - **One binary, one file.** A standalone binary built with Bun, one
   SQLite database and a directory of key files. Answers stay under 32
   KiB, so MCP clients need no setting changed.
@@ -102,7 +104,8 @@ The server listens on `127.0.0.1:11237`, serves MCP at `/mcp`, and
 keeps `markets.db` in `~/.1ctx-markets`. `--listen`, `--data`,
 `--quote-every` (minutes between quote syncs, 5 by default) and
 `--track-days` (how long an instrument stays synced after its last
-read, 30 by default) change that; `--help` lists them. It
+read, 30 by default) change that, and `--source bvb` turns on the
+Bucharest Stock Exchange's feed; `--help` lists them. It
 speaks plain HTTP, so keep it on loopback or put a TLS proxy in front.
 
 Connect an MCP client over Streamable HTTP with the bearer in the

@@ -54,7 +54,10 @@ bar's close, or the live price on the live row.
 - **A close at or below 0 in the 20 returns makes `volatility20`
   null.** **`volume_ratio` is null when the bar or any of the 20 before
   has no volume, or their sum is 0** (an index or FX pair reports 0); a
-  0 day of a share that trades is a ratio of 0.
+  0 day of a share that trades is a ratio of 0. **It is null too when a
+  split of a Bucharest feed instrument falls inside those 21 bars**
+  (`volumeBreaks()`), since that feed adjusts prices but keeps volumes
+  raw (`docs/bvb.md`).
 
 ## Weekly signals
 
