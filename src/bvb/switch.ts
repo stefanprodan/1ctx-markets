@@ -28,6 +28,7 @@ import { SOURCE as YAHOO } from "../yahoo/client.ts";
 import { keyOf as yahooKey } from "../yahoo/resolve.ts";
 import {
   backfillStart,
+  dailyBars,
   RETRY_MS,
   storeSwitched,
   type YahooContext,
@@ -37,6 +38,7 @@ import { MARKET, SOURCE } from "./client.ts";
 import {
   type BvbContext,
   barsAnswered,
+  checkCovers,
   draft,
   fieldsOf,
   quoteNow,
@@ -125,8 +127,13 @@ export function sourceSwitch(options: {
       throw new SourceError("malformed answer", `${i.id} answered otherwise`);
     }
     const quote = await yahoo.yahoo.spark([answer.symbol]);
+    const dates = dailyBars(answer, null)
+      .map((b) => b.date)
+      .filter((d) => d >= monday);
     await writer.write((db) => {
       checkSource(db, i);
+      // checked against the old source's days before any is cleared
+      checkCovers(db, i.id, dates, monday, false);
       clear(db, i.id, true);
       storeSwitched(db, clock.now(), answer, quote, monday, yahoo.rules);
     });
@@ -146,8 +153,11 @@ export function sourceSwitch(options: {
       id: i.id,
     });
     const quote = await quoteNow(ctx, planned);
+    const dates = history.bars.map((b) => b.date).filter((d) => d >= since);
     await writer.write((db) => {
       checkSource(db, i);
+      // checked against the old source's days before any is cleared
+      checkCovers(db, i.id, dates, since, false);
       clear(db, i.id, false);
       const now = clock.now();
       const instrument = upsertInstrument(db, fieldsOf(meta), now);

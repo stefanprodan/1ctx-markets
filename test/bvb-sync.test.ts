@@ -67,6 +67,25 @@ async function setup(start: number, routes: BvbRoutes = {}, rules?: RuleHooks) {
 const friday = (db: Parameters<typeof recordSession>[0], at: number) =>
   recordSession(db, MARKET, { zone: "Europe/Bucharest", ...FRIDAY }, at);
 
+// a recorded history keeping the bars whose trading date passes keep
+function cut(fx: Recorded, keep: (date: string) => boolean): Recorded {
+  const out = clone(fx);
+  const kept = out.body.t.map((t: number) =>
+    keep(new Date(t * 1000).toISOString().slice(0, 10)),
+  );
+  for (const k of ["t", "o", "h", "l", "c", "v"]) {
+    out.body[k] = out.body[k].filter((_: unknown, i: number) => kept[i]);
+  }
+  return out;
+}
+
+const splitsOf = (db: Parameters<typeof recordSession>[0]) =>
+  db
+    .query<{ date: string; numerator: number }, []>(
+      "select date, numerator from splits where instrument = 'BVB:TLV' order by date",
+    )
+    .all();
+
 describe("instruments from the feed", () => {
   test("a share, a bond and an index are fetched with history and a quote", async () => {
     const t = await setup(utc("2026-10-23T14:00:00"));
@@ -389,6 +408,114 @@ describe("bars from the chart feed", () => {
     const again = wapi(t.f.urls, "/api/history").length;
     await t.run(refetch(t.ctx, tlv));
     expect(wapi(t.f.urls, "/api/history").length).toBe(again + 1);
+  });
+
+  test("a rescale seen before its first bar is dated on its session and pauses rules", async () => {
+    // stored before the bonus issue of 16 July, adjusted on its morning
+    const before = (fx: Recorded) => cut(fx, (d) => d < "2026-07-16");
+    const adjusted = before(
+      await bvbRecorded("wapi-history-tlv-1d-bonus-2026"),
+    );
+    let answer = before(
+      await bvbRecorded("wapi-history-tlv-1d-bonus-2026-unadjusted"),
+    );
+    const paused: string[] = [];
+    const rules: RuleHooks = {
+      evaluate() {},
+      rescaled: (_db, id) => {
+        paused.push(id);
+      },
+    };
+    const t = await setup(
+      utc("2026-07-15T14:00:00"),
+      { hold: (url) => (url.pathname === "/api/history" ? answer : undefined) },
+      rules,
+    );
+    const day = (date: string) =>
+      recordSession(
+        t.db,
+        MARKET,
+        {
+          zone: "Europe/Bucharest",
+          start: utc(`${date}T07:00:00`),
+          end: utc(`${date}T15:00:00`),
+        },
+        t.clock.now(),
+      );
+    day("2026-07-15");
+    const tlv = await t.add("TLV");
+    // the stored last day is not final yet
+    expect(readBars(t.db, "BVB:TLV", "1d").at(-1)).toMatchObject({
+      date: "2026-07-15",
+      final: false,
+    });
+    await t.clock.advance(utc("2026-07-16T07:00:30") - t.clock.now());
+    day("2026-07-16");
+    answer = adjusted;
+    await t.run(refetch(t.ctx, tlv));
+    expect(paused).toContain("BVB:TLV");
+    expect(splitsOf(t.db)).toEqual([
+      { date: "2026-07-16", numerator: expect.closeTo(1.14424, 4) },
+    ]);
+  });
+
+  test("unrelated corrections refetch the history without a rescale", async () => {
+    let answer: Recorded = await bvbRecorded("wapi-history-tlv-1d");
+    const paused: string[] = [];
+    const rules: RuleHooks = {
+      evaluate() {},
+      rescaled: (_db, id) => {
+        paused.push(id);
+      },
+    };
+    const t = await setup(
+      utc("2026-10-23T14:00:00"),
+      { hold: (url) => (url.pathname === "/api/history" ? answer : undefined) },
+      rules,
+    );
+    friday(t.db, t.clock.now());
+    const tlv = await t.add("TLV");
+    const corrected = clone(answer);
+    // three final days in the window, each moved its own way
+    corrected.body.c[12] *= 1.01;
+    corrected.body.c[13] *= 0.98;
+    corrected.body.c[14] *= 1.03;
+    answer = corrected;
+    const before = wapi(t.f.urls, "/api/history").length;
+    await t.run(refetch(t.ctx, tlv));
+    expect(wapi(t.f.urls, "/api/history").length).toBe(before + 2);
+    expect(paused).toEqual([]);
+    expect(splitsOf(t.db)).toEqual([]);
+    expect(readBars(t.db, "BVB:TLV", "1d")[14]!.close).toBeCloseTo(
+      corrected.body.c[14],
+      6,
+    );
+  });
+
+  test("a rescaled whole history short of the stored last day is refused", async () => {
+    const adjusted = await bvbRecorded("wapi-history-tlv-1d-bonus-2026");
+    let answer = await bvbRecorded("wapi-history-tlv-1d-bonus-2026-unadjusted");
+    const t = await setup(utc("2026-08-03T07:00:00"), {
+      hold: (url) => (url.pathname === "/api/history" ? answer : undefined),
+    });
+    recordSession(
+      t.db,
+      MARKET,
+      {
+        zone: "Europe/Bucharest",
+        start: utc("2026-08-03T07:00:00"),
+        end: utc("2026-08-03T15:00:00"),
+      },
+      t.clock.now(),
+    );
+    const tlv = await t.add("TLV");
+    const stored = readBars(t.db, "BVB:TLV", "1d");
+    // adjusted, and a week short of the stored 31 July
+    answer = cut(adjusted, (d) => d < "2026-07-25");
+    await expect(t.run(refetch(t.ctx, tlv))).rejects.toThrow(
+      "malformed answer",
+    );
+    expect(readBars(t.db, "BVB:TLV", "1d")).toEqual(stored);
   });
 
   test("a whole history short of the stored one is refused", async () => {

@@ -20,15 +20,38 @@ import { readTargets } from "../src/tools/targets.ts";
 import { writer } from "../src/writer.ts";
 import { backfill, catchUp, refetch } from "../src/yahoo/sync.ts";
 import { SECRETS } from "./helpers/app.ts";
-import { bothSources, wapi } from "./helpers/bvb.ts";
+import { bothSources, bvbRecorded, wapi } from "./helpers/bvb.ts";
 import { type FakeClock, fakeClock } from "./helpers/clock.ts";
 import { drive } from "./helpers/drive.ts";
 import { gate, NOW } from "./helpers/sources.ts";
-import { listed, type Recorded, recorded } from "./helpers/yahoo.ts";
+import { clone, listed, type Recorded, recorded } from "./helpers/yahoo.ts";
 
 const charts = async (): Promise<Record<string, Recorded>> => ({
   "TLV.RO": listed(await recorded("chart-tlv-ro-bonus-2026")),
 });
+
+// the feed's history over the same weeks as Yahoo's recorded chart
+async function sameWeeks(): Promise<
+  (url: URL) => Promise<Recorded> | undefined
+> {
+  const fx = await bvbRecorded("wapi-history-tlv-1d-bonus-2026");
+  return (url) =>
+    url.hostname === "wapi.bvb.ro" && url.pathname === "/api/history"
+      ? Promise.resolve(fx)
+      : undefined;
+}
+
+// Yahoo's recorded chart from its sixteenth row, listed from there
+async function lateChart(): Promise<Recorded> {
+  const fx = clone(await recorded("chart-tlv-ro-bonus-2026"));
+  const result = fx.body.chart.result[0];
+  result.timestamp = result.timestamp.slice(15);
+  const q = result.indicators.quote[0];
+  for (const k of ["open", "high", "low", "close", "volume"]) {
+    q[k] = q[k].slice(15);
+  }
+  return listed(fx);
+}
 
 function boot(db: Db, clock: FakeClock, fetch: Fetch, feed: boolean): App {
   const store = keys(SECRETS);
@@ -63,7 +86,10 @@ describe("switching the Bucharest market's source", () => {
   test("the flag moves the market to the feed and back, and the same flags move nothing", async () => {
     const clock = fakeClock(NOW);
     const { db } = open(":memory:", clock);
-    const f = await bothSources({ charts: await charts() });
+    const f = await bothSources({
+      charts: await charts(),
+      hold: await sameWeeks(),
+    });
     await withTlv(clock, db, f.fetch);
     expect(readSources(db)).toEqual(["yahoo"]);
     const yahooBars = readBars(db, "BVB:TLV", "1d").length;
@@ -102,7 +128,10 @@ describe("switching the Bucharest market's source", () => {
   test("a restart during a switch redoes the refetch", async () => {
     const clock = fakeClock(NOW);
     const { db } = open(":memory:", clock);
-    const plain = await bothSources({ charts: await charts() });
+    const plain = await bothSources({
+      charts: await charts(),
+      hold: await sameWeeks(),
+    });
     await withTlv(clock, db, plain.fetch);
 
     const g = gate();
@@ -139,10 +168,52 @@ describe("switching the Bucharest market's source", () => {
     db.close();
   });
 
+  test("a new source's history short of the stored one keeps the old one and the switch pending", async () => {
+    const clock = fakeClock(NOW);
+    const { db } = open(":memory:", clock);
+    // the feed's recent weeks only, after Yahoo's stored July
+    const short = await bothSources({ charts: await charts() });
+    await withTlv(clock, db, short.fetch);
+    const yahooBars = readBars(db, "BVB:TLV", "1d");
+    const on = boot(db, clock, short.fetch, true);
+    await settle(on, clock);
+    await on.stop();
+    const kept = readInstrument(db, "BVB:TLV")!;
+    expect(kept).toMatchObject({ source: "yahoo", sourceSymbol: "TLV.RO" });
+    expect(readBars(db, "BVB:TLV", "1d")).toEqual(yahooBars);
+    expect(readQuote(db, "BVB:TLV")!.source).toBe("yahoo");
+    expect(readSources(db)).toEqual(["yahoo"]);
+    expect(quoteStale(db, kept)).toContain(STALE.switchPending);
+
+    // and back: Yahoo's chart starts weeks after the feed's stored days
+    const full = await bothSources({
+      charts: await charts(),
+      hold: await sameWeeks(),
+    });
+    const feed = boot(db, clock, full.fetch, true);
+    await settle(feed, clock);
+    await feed.stop();
+    const feedBars = readBars(db, "BVB:TLV", "1d");
+    expect(readInstrument(db, "BVB:TLV")!.source).toBe("bvb");
+    const late = await bothSources({
+      charts: { "TLV.RO": await lateChart() },
+    });
+    const off = boot(db, clock, late.fetch, false);
+    await settle(off, clock);
+    await off.stop();
+    expect(readInstrument(db, "BVB:TLV")!.source).toBe("bvb");
+    expect(readBars(db, "BVB:TLV", "1d")).toEqual(feedBars);
+    expect(readSources(db)).toEqual(["bvb", "yahoo"]);
+    db.close();
+  });
+
   test("work begun on the old source writes nothing into an instrument the switch moved", async () => {
     const clock = fakeClock(NOW);
     const { db } = open(":memory:", clock);
-    const f = await bothSources({ charts: await charts() });
+    const f = await bothSources({
+      charts: await charts(),
+      hold: await sameWeeks(),
+    });
     await withTlv(clock, db, f.fetch);
     // as a Yahoo pass or tool read it before the switch
     const before = readInstrument(db, "BVB:TLV")!;
@@ -187,7 +258,10 @@ describe("switching the Bucharest market's source", () => {
   test("a switch a crash left running is redone even with the sources written", async () => {
     const clock = fakeClock(NOW);
     const { db } = open(":memory:", clock);
-    const f = await bothSources({ charts: await charts() });
+    const f = await bothSources({
+      charts: await charts(),
+      hold: await sameWeeks(),
+    });
     await withTlv(clock, db, f.fetch);
     db.query("insert into sources (name, since) values ('bvb', 0)").run();
     startRun(db, SWITCH.source, SWITCH.job, clock.now(), MARKET);

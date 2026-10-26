@@ -273,17 +273,18 @@ const SAME_RATIO = 0.0001;
 const RESCALE_DAYS = 3;
 
 // the ratio past prices moved by and the stored days that show it
-type Rescale = { ratio: number; dates: string[] };
+export type Rescale = { ratio: number; dates: string[] };
 
-const sameRatio = (a: number, b: number) => Math.abs(a / b - 1) <= SAME_RATIO;
+export const sameRatio = (a: number, b: number) =>
+  Math.abs(a / b - 1) <= SAME_RATIO;
 
 // Stored final days the answer prices again, moved by one ratio though
 // the answer has no split: past prices adjusted in place. An adjustment
 // moves every day before its date, so the oldest days show it; a run of
 // unmoved days means none came before them.
-function rescaleOf(
+export function rescaleOf(
   db: Db,
-  instrument: Instrument,
+  instrument: Pick<Instrument, "id">,
   bars: readonly Bar[],
 ): Rescale | null {
   const stored = db.query<{ close: number }, [string, string]>(

@@ -141,17 +141,28 @@ exchange: one client, its parsers, its session, the same tables.
   (`barsDue()`), finalising the previous day, as for Yahoo; a failed
   instrument is its own run and is retried after `RETRY_MS`.
 - **A stored final close that moved (by more than 0.01%) refetches the
-  whole history** (`refetchAnswer()`): the feed announces no corporate action and
-  rewrites past prices in place. At least 3 final days moved by more
-  than 0.1% are a rescale: rules on old price levels pause first
-  (`rules.rescaled`, `docs/rules.md`), and the first day after the last
-  moved one is kept in `splits` with its factor.
+  whole history** (`refetchAnswer()`): the feed announces no corporate
+  action and rewrites past prices in place.
+- **A rescale is Yahoo's rule** (`rescaleOf()`, `docs/yahoo.md`): the
+  oldest final days moved by one ratio, at least 3 in a row and more
+  than 0.1% from 1. Other moved days are corrections: refetched, no
+  pause, no split. On a rescale, rules on old price levels pause first
+  (`rules.rescaled`, `docs/rules.md`), even before the action's first
+  bar, and the action's day is kept in `splits` with its factor
+  (`rescaleIn()`): the first day after the last stored day, final or
+  not, on the old ratio; with no later bar yet, the stored session's
+  day.
 - **A whole history replaces every stored day** (`storeWhole()`) and is
-  refused when it would leave a stored day on the old scale or stops
-  more than 10 days short; nothing is written then.
+  refused when it ends more than 10 days before the stored last day, or
+  starts more than 10 days after both the asked start and the stored
+  first day (`checkCovers()`); one whose final closes moved must cover
+  every stored day, first and last. Nothing is written then.
 - **Volume ratios never span a split of a feed instrument**
   (`volumeBreaks()` in `src/signals/store.ts`), since raw volumes
   change scale there.
+- **A bonus issue older than an instrument's first fetch is not
+  detected:** its first history is already adjusted, so no stored close
+  moves and no split is kept, and volume ratios may span it.
 
 ## Resolution
 
@@ -174,7 +185,10 @@ exchange: one client, its parsers, its session, the same tables.
 - **A change of flags moves the market to the other source**
   (`sourceSwitch()`): each `BVB` instrument on the old source gets its
   whole history and a quote from the new one, under its lock, replacing
-  its bars, signals and quote in one write. Moving to Yahoo finds the
+  its bars, signals and quote in one write. The new history is checked
+  against the old source's stored days before any is cleared
+  (`checkCovers()`); one cut short fails the switch, keeps the old
+  history and leaves it pending. Moving to Yahoo finds the
   listing through Yahoo's search, never a guessed suffix; the stored
   splits are dropped and Yahoo's recorded from its answer. Moving to the
   feed keeps them, since they date where raw volumes change scale.
