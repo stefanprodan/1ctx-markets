@@ -123,7 +123,7 @@ export function readSignals(
   return { instrument: i.id, daily, weekly, stale: { final, live } };
 }
 
-// an index such as the DAX is unit unknown and a decided benchmark
+// a stock index is unit unknown and still a valid benchmark
 export const UNKNOWN_UNITS_NOTE = "units unknown, treated as prices";
 
 export type RelativeRead = Omit<RelativeReturn, "note"> & {
@@ -133,11 +133,7 @@ export type RelativeRead = Omit<RelativeReturn, "note"> & {
   live: boolean;
 };
 
-// The instrument's return less the benchmark's over 1 or 3 months, on
-// final daily closes, ending on live prices when both have a quote of
-// the same session date. A percent series changes in level. Null when
-// either is unknown or relativeReturn has no answer. With to, it ends on
-// the bars up to that date, and on live prices only when to reaches them.
+// live prices end it only when both quote the same session date
 export function readRelativeReturn(
   db: Db,
   instrument: string,

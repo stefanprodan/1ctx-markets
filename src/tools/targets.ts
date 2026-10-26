@@ -326,11 +326,7 @@ async function step(
 
 const EXPIRED = Symbol("expired");
 
-// Each input in order to its instrument or an error, inside the call's
-// deadline. Each input resolves and fetches on its own, so a slow one
-// holds no other. No count caps the fetches: the source's queue paces
-// them, no fetch starts past the deadline, and one not done by then
-// answers timeout and stores nothing new.
+// each input resolves on its own under one deadline; the queue paces fetches
 export async function readTargets(
   m: Markets,
   inputs: readonly string[],

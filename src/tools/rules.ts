@@ -1,10 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// The rules tool, the only one that changes what a caller sees. A rule
-// is created only once every instrument it reads is resolved and stored
-// inside the call, and its earnings gate bound to one event, so a
-// failure leaves no rule; its first evaluation runs in the same write.
+// The only tool with write annotations; a failed create leaves no rule.
 
 import {
   eligible,

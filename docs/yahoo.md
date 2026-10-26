@@ -1,0 +1,227 @@
+# Yahoo
+
+Governs the Yahoo source: `src/yahoo/client.ts` (calls and parsing),
+`src/yahoo/resolve.ts` (symbols into keys), `src/yahoo/sync.ts`
+(answers into rows), `src/yahoo/jobs.ts` (the schedule), and what
+every source shares in `src/source.ts` and `src/lock.ts`. Sessions,
+bar dates and finality are in `docs/calendars.md`; tables, the writer
+and staleness in `docs/storage.md`; the tools that resolve and fetch
+inside a call in `docs/tools.md`; rule pauses in `docs/rules.md`.
+
+## Endpoints
+
+- **Three endpoints on `query1.finance.yahoo.com`, no cookie or
+  crumb:**
+
+| Call | Path | Used for |
+| --- | --- | --- |
+| `chart` | `/v8/finance/chart/<symbol>?period1&period2&interval=1d&events=div,split` | daily bars, splits, one listing's meta |
+| `spark` | `/v7/finance/spark?symbols=<list>&range=1d&interval=5m&_=<now>` | quotes and sessions, up to 20 symbols |
+| `search` | `/v1/finance/search?q&quotesCount=10&newsCount=0&listsCount=0` | listings for a bare symbol or a name |
+
+- **Never `/v7/finance/quote` or `/v8/finance/spark`.** v7 quote
+  answers 401 without a cookie and crumb; v8 spark has no trade time
+  and no session. Each v7 spark entry is a full chart meta with
+  `regularMarketPrice`, `regularMarketTime`, `previousClose`,
+  `exchangeTimezoneName` and `currentTradingPeriod`.
+- **Every spark URL ends with `_=<now>`.** Yahoo caches a v7 spark
+  answer for minutes, which freezes the price; the parameter makes each
+  URL new.
+- **A spark call takes 1 to `SPARK_MAX` (20) symbols;** 21 is a 400.
+  `sparkAll()` splits any list into calls of 20, and a failed call
+  keeps the others' answers.
+- **The User-Agent is `Mozilla/5.0`.** A full browser User-Agent was
+  answered 429.
+- **Bars come from `open`, `high`, `low`, `close`, `volume`,** which
+  Yahoo split-adjusts; `adjclose` is also dividend-adjusted and is never
+  read, since averages are on price.
+
+## Parsing
+
+- **An answer without the expected shape is an error, never empty
+  rows** (`malformed answer`). A chart range without trading answers no
+  timestamps and an empty quote object: that alone is zero rows.
+- **A spark entry is read on its own,** so one bad symbol skips only
+  itself (`skipped` with its phrase); an entry with no response is
+  `not found`.
+- **A meta's day high or low of 0 is none:** ^TNX's meta reads 0 while
+  its bars do not.
+- **Every answer parses inside its queued call,** so a malformed
+  answer backs the queue off like any failure.
+
+## The queue and errors
+
+- **Every Yahoo call, from a job or a tool, goes through one queue**
+  (`queue()` in `src/source.ts`, `YAHOO_CONCURRENCY` 2 in
+  `src/app.ts`). A second client or a direct `fetch` would escape the
+  back-off and the rate limit.
+- **A failure backs the queue off, and the failed call is not
+  retried.** A 429 pauses every call for `RATE_LIMIT_BACKOFF_MS` (5
+  minutes), any other failure for `FAILURE_BACKOFF_MS` (30 seconds).
+  `not found`, `bad request` and a passed deadline never back off: an
+  unknown symbol is no sign the source is unwell.
+- **Jobs wait a back-off out; tools fail at once.** `failFast()` and
+  `within(live)` answer `Paused` while the queue backs off, and
+  `within` starts no call once the caller's deadline passed
+  (`DeadlinePassed`). Each call times out after 30 seconds.
+- **Errors carry a fixed phrase** (`SourceError`, `PHRASES`), which is
+  all a run or an answer repeats:
+
+| Phrase | From Yahoo |
+| --- | --- |
+| `rate limited` | HTTP 429 |
+| `bad request` | HTTP 400 |
+| `not found` | HTTP 404, `chart.error.code` `Not Found`, or a spark entry with no response (`parseSpark()`) |
+| `source error` | any other non-2xx, a chart or spark error body, no quote for a fetched symbol |
+| `network error` | the fetch or body read threw |
+| `timed out` | the 30-second timeout, or the caller's deadline |
+| `malformed answer` | not JSON, an unexpected shape, an answer naming another key, a history refused |
+
+## Resolution
+
+- **A caller's symbol becomes one listing, never a guess**
+  (`resolve()` in `src/yahoo/resolve.ts`):
+  - a `market:symbol` key stored is that instrument; one not stored is
+    searched: one listing with that key is it, several are
+    `candidates`, none is a `ResolveError`;
+  - a stored Yahoo symbol is that instrument;
+  - an exact symbol (suffixed like `VVSM.DE`, or holding `^` or `=`
+    like `^VIX`, `CL=F`, `EURUSD=X`) is asked with a 7-day chart,
+    whose answer names the key; only a 404 falls back to search
+    (Yahoo writes share classes `BRK-B`, so `BRK.B` falls back);
+  - otherwise the search listing whose Yahoo symbol equals the input;
+  - otherwise every listing is answered as `candidates` for the caller
+    to pick one id from; none is a `ResolveError`.
+- **The key drops Yahoo's suffix and maps the exchange code**
+  (`symbolOf()`, `marketOf()`, `ALIASES`): `VVSM.DE` on `GER` is
+  `XETRA:VVSM`. Index, futures and FX symbols keep their form.
+- **Every stored answer must name the key it is stored under.**
+  `checkAnswer()` and the `expected` argument of `addInstrument()` and
+  `fetchInstrument()` refuse an answer whose exchange and symbol make
+  another key (`malformed answer`).
+
+## Daily bars
+
+- **The trailing row is merged, never a bar of its own.** Yahoo ends
+  some chart answers with a row off the bar grid at the last trade
+  (`read()` in `src/yahoo/sync.ts`): a row whose local time of day
+  differs from the previous row's. It merges into the regular bar of
+  the answer's session date, a closing auction after the end included,
+  and is dropped otherwise: EURUSD=X traded on Sunday while its session
+  was Friday's. A row with a null close is no bar.
+- **Each write reconciles the answer's span.** Stored daily bars inside
+  the span of the answer's regular rows that the answer no longer
+  prices are deleted (`deleteDailyBars()`): a day the source has no bar
+  for had no trading. Weeks are rebuilt from the span's first week, or
+  all of them for a whole history.
+- **The bars, their signals and the rule evaluation land in one
+  transaction** (`store()`), so nothing reads bars without their
+  signals.
+
+## Backfill and refetch
+
+- **A new instrument gets ten years of daily bars from a Monday**
+  (`backfillStart()`, `BACKFILL_YEARS`): the Monday on or before ten
+  years back, so the first week is whole, fetched from the day before
+  it in UTC to cover any zone, with bars before the Monday dropped. A
+  stored history older than that is fetched from its own first week.
+- **A tool that names an unknown symbol fetches it inside the call**
+  (`fetchInstrument()`): a 10-year chart, then a spark quote, written
+  together with the instrument and signals while `live()` holds, or
+  nothing is. A quote is required because a chart's previous close is
+  the one before its range, ten years back. `addInstrument()` instead
+  adds the instrument alone when its history is cut short, for the
+  backfill job to retry.
+- **The bar pass refetches the last 30 days** (`refetch()`,
+  `REFETCH_DAYS`), or from the last final bar after a longer gap. It
+  finalises the previous bar, fills gaps and applies a new split in the
+  same pass the new session's bars land in. An untracked instrument a
+  read names is caught up the same way (`catchUp()`), then quoted.
+
+## Splits and rescales
+
+- **A split not stored, or stored with another ratio, refetches the
+  whole history once,** so no stored day keeps the old scale. Events are
+  merged by date across the answers, a later answer's ratio winning
+  (`unapplied()`). A split already applied inside the 30-day window
+  does nothing more.
+- **Past prices moved by one ratio without a split are a rescale**
+  (`rescaleOf()`): at least `RESCALE_DAYS` (3) of the oldest stored
+  final days repriced by one shared ratio (within `SAME_RATIO`,
+  0.0001) more than `RESCALE` (0.001) from 1. Fewer days are
+  corrections and are written as such. The whole history must confirm
+  the window's ratio on its own oldest days and on every day the window
+  showed it (`confirms()`), or it is refused.
+- **Rules on old price levels pause before the whole history is
+  asked** (`rules.rescaled`), since it may be refused; the bar pass
+  ends with an evaluation of its market's rules once its bars are in.
+- **A whole history cut short is refused, and nothing is written.** It
+  is refused when it starts more than 10 days (`SHORT_HISTORY_DAYS`)
+  after both the start asked for and the stored first bar, when it
+  stops more than 10 days before the stored last bar, or when it applies a split
+  or rescale without covering every stored day. On a first history, a
+  start more than 10 days past the later of the asked start and the
+  listing's first trade is cut short (`startsShort()`). Writing it would
+  drop or leave unscaled the stored days it omits. The splits stay
+  unapplied, and a refused history is asked again only after `RETRY_MS`
+  (60 minutes).
+
+## Quotes
+
+- **The day change is price minus previous close, never Yahoo's own
+  change field,** which disagreed with both for SOL-USD (`quoteOf()`).
+  `previousClose` is preferred over `chartPreviousClose`, and the field
+  used is stored.
+- **A quote older than the stored one is kept out;** one with the same
+  trade time replaces it only when fetched later (`storeQuotes()`).
+- **Every answer's sessions are recorded first,** then quotes and live
+  signal rows; a live row the new session moved past goes.
+
+## The per-instrument lock
+
+- **One fetch-and-store per instrument at a time** (`exclusive()` in
+  `src/lock.ts`), held across the call and its write for a refetch,
+  backfill and catch-up, so an answer fetched before another write
+  never lands after it. A new instrument's first chart (and spark)
+  comes before the lock, since its key is known only from the answer
+  (`addInstrument()`, `fetchInstrument()`); under the lock they re-read
+  whether another holder stored its bars meanwhile (`dailyRange()`)
+  and backfill or keep the stored history instead. Every holder
+  re-checks the deadline under the lock, since the wait may have
+  outlasted it.
+
+## Jobs and their call budget
+
+- **Three scheduled jobs tick every minute** (`TICK_MS`, `schedule()`
+  in `src/yahoo/jobs.ts`), each over tracked instruments only. A tick
+  that finds the job's last run still going is skipped (`job skipped`,
+  `src/scheduler.ts`), so a source is never asked twice at once by the
+  same job. What is due is read from the stored sessions and runs, so
+  a restart picks up where it was, except four marks held in memory
+  that a restart clears: refused whole histories (`refused` in
+  `src/yahoo/sync.ts`), failed backfills (`backfillMissed`), each
+  market's check turn (`checkTurn`) and the quote period last passed
+  (`lastSlot`, all three in `src/yahoo/jobs.ts`), so a restart can
+  repeat a quote pass within the same period.
+
+| Job | Does | Calls |
+| --- | --- | --- |
+| `yahoo` (`quoteTick`) | quote pass for markets in session, once per quote period (`--quote-every`, default 5 minutes) | one spark per 20 symbols, all markets together |
+| `yahoo` post-close | one quote pass at `closeQuoteAt()` if none started since | in the same spark calls |
+| `yahoo` check | one instrument per closed market at `nextCheck()`, round-robin; a market with no session on each period | in the same spark calls |
+| `yahoo-bars` (`barTick`) | 30-day refetch per market whose session moved on (`barsDue()`); a failed pass waits `RETRY_MS` | one chart per instrument with bars, plus one whole history per split or rescale |
+| `yahoo-backfill` (`backfillTurn`) | one tracked instrument with no bars per turn; a failure or empty answer waits `RETRY_MS` | one 10-year chart |
+
+- **The check instrument rotates per market** (`checkTurn`), so one
+  that never answers cannot hide a new session from the rest.
+- **A quote or check run is per market** (scope), failing when a call
+  failed or none of its symbols came back; a missing symbol is logged
+  and stale on its own. The rules are evaluated after the runs end, so
+  a quote's staleness is this pass's.
+- **Bars are their own job,** so a slow refetch never takes a quote
+  turn; backfill takes its own turns too. All three share the queue
+  and the writer.
+- **Tool calls spend from the same queue:** a resolution is at most one
+  7-day chart and one search, an unknown symbol a 10-year chart and a
+  spark, a catch-up a refetch chart and a spark, plus one whole
+  history on a split or rescale.

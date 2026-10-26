@@ -1,12 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// One share's research: the live quote and latest signals beside
-// Finnhub's metrics, analyst counts, earnings surprises, insider months
-// and next earnings event, and Massive's news, each with its period,
-// fetch time and staleness. A share Finnhub covers with no research yet,
-// or one Massive covers with no news yet, is fetched inside the call.
-// GET /research answers the same Finnhub summaries for scripts.
 
 import {
   type EventRow,
@@ -94,8 +87,6 @@ const SECTION_OF: Record<ResearchKind, Section> = {
 // GET /research names at most this many symbols
 export const MAX_RESEARCH_SYMBOLS = 5;
 
-// The instrument's research before the answer: off, not covered, a
-// share fetched inside the call, or one not done by the deadline.
 export type Inline =
   | { kind: "off" }
   | { kind: "not covered" }
@@ -104,12 +95,8 @@ export type Inline =
 
 const EXPIRED = Symbol("expired");
 
-// Each resolved share Finnhub covers and has never answered for is
-// fetched inside the same deadline as its resolution: five calls, all
-// stored together or none. With news, each share or ETF Massive covers
-// and was never asked for gets its newest page the same way, the rest
-// of its 30 days coming with the job. Two calls naming one share one
-// fetch.
+// the sections fetched land in one write, a passed deadline stores none;
+// news gets its newest page
 export async function researchTargets(
   m: Markets,
   inputs: readonly string[],
@@ -128,7 +115,7 @@ export async function researchTargets(
   const expired = new Promise<typeof EXPIRED>((resolve) => {
     cancel = m.clock.at(deadline, () => resolve(EXPIRED));
   });
-  // the fetch raced with the deadline, its outcome set into into
+  // the race only answers timeout; the fetch's own live() refuses a late write
   const settle = (
     into: Map<string, Inline>,
     id: string,
@@ -227,8 +214,6 @@ const valuesOf = (kind: ResearchKind, row: Values): Values => {
   return out;
 };
 
-// One section's latest row with its period, fetch time and stale
-// reasons; with no row, why there is none.
 function latestSection(m: Markets, instrument: Instrument, kind: ResearchKind) {
   const state = sectionState(
     m.db,
@@ -281,8 +266,6 @@ const messageOf = (inline: Inline | undefined): string | null =>
       ? NOT_COVERED
       : null;
 
-// Finnhub's part of an answer: each section's latest, or one message
-// when Finnhub is off, does not cover the share or was not done in time.
 export function researchSummary(
   m: Markets,
   instrument: Instrument,
@@ -319,8 +302,6 @@ const newsItem = (r: NewsRow) => ({
   truncated: r.truncated,
 });
 
-// Massive's part of an overview: the newest headlines, or one message
-// when Massive is off or does not cover the instrument.
 export function newsSummary(
   m: Markets,
   instrument: Instrument,
@@ -420,7 +401,7 @@ export async function researchAnswer(
         news: summary,
         ...(quote.observation != null ? { attribution: ATTRIBUTION } : {}),
       });
-    // held to a page like every answer: headlines go before anything else
+    // headlines are dropped first to fit the page
     let text = answer();
     while (!fits(text) && "headlines" in summary && summary.headlines.length) {
       summary.headlines.pop();
@@ -512,9 +493,6 @@ const json = (body: string, status: number): Response =>
 const failed = (status: number, error: string, message: string) =>
   json(JSON.stringify({ error, message }), status);
 
-// GET /research?symbols=a,b: at most five summaries, the quote's brief
-// projection beside Finnhub's part, under the same deadline and
-// tracking as the research tool.
 export function researchHandler(
   m: Markets,
 ): (req: Request) => Promise<Response> {

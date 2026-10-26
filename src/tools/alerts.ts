@@ -1,13 +1,8 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// GET /alerts for 1ctx's automation check, which asks on a schedule and
-// starts a run only on a new answer. The alert id is the cursor, sent as
-// the ETag and read back from If-None-Match, so alerts fired in the same
-// second are never lost or repeated as a date would. A page stays under
-// 16 KiB and its ETag is its last alert, so a backlog drains over several
-// checks. The same alerts always answer the same bytes, which the
-// check's hash of the last answer relies on.
+// For a client polling GET /alerts: the alert id is the cursor, and the same
+// alerts must answer the same bytes.
 
 import type { Db } from "../db/index.ts";
 import type { Log } from "../log.ts";

@@ -45,7 +45,6 @@ export function readRule(db: Db, id: number): RuleRow | null {
   return r === null ? null : row(r);
 }
 
-// by id; from the id given, at most limit
 export function readRules(
   db: Db,
   options: { from?: number; limit?: number; active?: boolean } = {},
@@ -141,7 +140,6 @@ export function insertAlert(
   );
 }
 
-// oldest first, after the id given
 export function readAlertsAfter(
   db: Db,
   after: number,

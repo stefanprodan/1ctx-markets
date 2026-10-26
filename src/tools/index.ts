@@ -1,9 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// The read tools on an MCP server instance, and GET /quotes. Schemas
-// tell a client the shape; the tools check arguments themselves, so an
-// error says which argument and why.
+// Each tool checks its own arguments, so an error names which and why.
 
 import {
   fromJsonSchema,

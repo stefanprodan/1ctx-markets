@@ -32,8 +32,7 @@ export class SourceError extends Error {
   }
 }
 
-// A text an answer echoes may hold the key, raw, percent-encoded or as
-// a query string writes it, so it is cut out before anything keeps it.
+// an echoed text may hold the key raw, percent- or query-encoded
 export function scrub(value: string, key: string): string {
   if (key === "") return value;
   let out = value;
@@ -57,16 +56,14 @@ export function phraseOf(error: unknown): string {
   return error instanceof SourceError ? error.phrase : "failed";
 }
 
-// A read's own deadline passed: the call was never made, or its answer
-// is not wanted, which says nothing about the source.
+// the read's own deadline, never a sign the source is unwell
 export class DeadlinePassed extends SourceError {
   constructor() {
     super("timed out", "the call's deadline passed");
   }
 }
 
-// A tool's call refused while the queue backs off: it never reached the
-// source, so no run records it.
+// it never reached the source, so no run records it
 export class Paused extends SourceError {
   constructor(phrase: Phrase) {
     super(phrase, "backing off");
@@ -85,18 +82,15 @@ export const RATE_LIMIT_BACKOFF_MS = 5 * MINUTE_MS;
 export const FAILURE_BACKOFF_MS = 30_000;
 
 export type RunOptions = {
-  // a tool answering a caller fails at once while the queue is paused,
-  // where a job waits the back-off out
+  // a tool fails at once while the queue backs off; a job waits it out
   failFast?: boolean;
-  // false once the caller's deadline passed: a call waiting for a slot
-  // then never starts
+  // false once the caller's deadline passed, so a waiting call never starts
   live?: () => boolean;
 };
 
 export type Queue = {
   run<T>(task: () => Promise<T>, options?: RunOptions): Promise<T>;
-  // At shutdown: refuses new calls and fails the waiting ones, so no job
-  // waits out a back-off; calls already sent finish.
+  // at shutdown: fails waiting calls, so none goes out after
   close(): void;
   // when calls waiting out a back-off resume, null with none waiting
   due(): number | null;
@@ -116,8 +110,6 @@ type Waiting = {
   reject: (error: unknown) => void;
 };
 
-// A few calls at a time; after a 429 or a failure, no call starts until
-// the back-off has passed, and the failed call is not retried.
 export function queue(clock: Clock, concurrency: number): Queue {
   if (!Number.isSafeInteger(concurrency) || concurrency < 1) {
     throw new Error("concurrency is a whole number above 0");
@@ -203,19 +195,13 @@ export function queue(clock: Clock, concurrency: number): Queue {
 }
 
 export type Limiter = {
-  // task once the queue lets it start and the spacing since the last
-  // start has passed; refused once closed or past the caller's deadline
   run<T>(task: () => Promise<T>, options?: RunOptions): Promise<T>;
-  // when the next waiting call may go, the spacing or a back-off; null
-  // while none waits on the clock
   due(): number | null;
-  // At shutdown: closes the queue and fails a call waiting for its slot,
-  // so no call goes out after.
+  // at shutdown: fails waiting calls, so none goes out after
   close(): void;
 };
 
-// One call at a time, each start at least spacingMs after the last, so
-// a source's own rate limit holds across its jobs and tools.
+// spaced starts, so a source's own rate limit holds across its jobs and tools
 export function limiter(clock: Clock, spacingMs: number): Limiter {
   const calls = queue(clock, 1);
   let lastStart = Number.NEGATIVE_INFINITY;
@@ -249,8 +235,7 @@ export function limiter(clock: Clock, spacingMs: number): Limiter {
         if (closed) throw new QueueClosed();
         if (run.live !== undefined && !run.live()) throw new DeadlinePassed();
         await slot();
-        // closed, or past the caller's deadline, while it waited: the
-        // slot stays free for the next call
+        // closed or past the deadline while it waited: the slot stays free
         if (closed) throw new QueueClosed();
         if (run.live !== undefined && !run.live()) throw new DeadlinePassed();
         lastStart = clock.now();

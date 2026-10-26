@@ -19,8 +19,7 @@ export type Run = {
   id: number;
   source: string;
   job: string;
-  // the market of a quote or bar pass, the instrument of its own bar
-  // refetch, null otherwise
+  // a Yahoo pass's market, else the instrument; null for Yahoo's backfill
   scope: string | null;
   startedAt: number;
   endedAt: number | null;
@@ -80,8 +79,7 @@ export function failInterrupted(db: Db, now: number): number {
     .run(now, INTERRUPTED).changes;
 }
 
-// Records the run around fn, which answers the rows it wrote; a failure
-// is recorded and thrown on, so the scheduler logs it.
+// a failure is recorded and thrown on, so the scheduler logs it
 export async function runJob(
   writer: Writer,
   clock: Clock,
@@ -103,8 +101,7 @@ export async function runJob(
   }
 }
 
-// The latest run of the job that has ended, in the scope when one is
-// given (null included), in any scope otherwise.
+// ended runs only; a null scope matches null-scoped runs, no scope any
 export function lastRun(
   db: Db,
   source: string,
@@ -132,8 +129,7 @@ export function lastRun(
   );
 }
 
-// the latest run of the job in the scope with this status, running ones
-// included, for when a pass is next due
+// the latest run, running ones included, for when a pass is next due
 export function lastStarted(
   db: Db,
   source: string,
@@ -168,8 +164,7 @@ export function staleJobs(db: Db, source: string): string[] {
     .map((r) => r.job);
 }
 
-// A failure of the job in the scope newer than its last success; with
-// no job, any of the source's jobs in any scope.
+// with no job, any of the source's jobs in any scope
 export function isStale(
   db: Db,
   source: string,

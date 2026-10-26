@@ -1,10 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Massive's news per tracked US ticker: which instruments are asked, how
-// one instrument's news is walked from the newest article down to what
-// is stored, and how each article lands. Each walk records one run
-// scoped to the instrument, so one ticker failing is stale alone.
+// a run per walk, scoped to the instrument, so one failure is stale alone
 
 import { type Clock, DAY_MS, MINUTE_MS } from "../clock.ts";
 import type { Db } from "../db/index.ts";
@@ -32,8 +29,7 @@ export const JOB = "news";
 export const KEPT_MS = 30 * DAY_MS;
 // each ticker is asked this often
 export const EVERY_MS = 30 * MINUTE_MS;
-// asked again from this far before the newest stored article, for one
-// published late with an earlier time
+// for an article published late with an earlier time
 export const OVERLAP_MS = 2 * 60 * MINUTE_MS;
 // pages one run follows for one ticker; the rest continue next run
 export const MAX_PAGES = 3;
@@ -50,8 +46,7 @@ export const STALE_NEWS = {
   older: "older news pending",
 } as const;
 
-// db is for reads; every write goes through writer; massive is null
-// while the source is off
+// db is for reads; writes go through writer; null while the source is off
 export type MassiveContext = {
   db: Db;
   clock: Clock;
@@ -81,8 +76,7 @@ export type NewsRow = {
   fetchedAt: number;
 };
 
-// The article as one ticker's row, or null when the ticker is not one
-// of its own: only an exact match counts, so JPMpC is not JPM.
+// an exact match only, so JPMpC is never JPM
 export function rowFor(
   a: Article,
   symbol: string,
@@ -152,19 +146,7 @@ export type NewsResult =
   | { status: "ok"; rows: number; pages: number; complete: boolean }
   | { status: "failed"; rows: number; pages: number; error: unknown };
 
-// Walks one ticker's news newest first, each article kept for this
-// ticker alone and deduplicated by its id. A first fetch walks 30 days
-// back from the newest article, and what it leaves is the history. Each
-// later run gives an unfinished history one page first, then finishes a
-// top walk cut short before starting a new one from the newest stored
-// article less the overlap, the next run when it finished one, then
-// gives the history what pages are left.
-// Unfinished walks go on from Massive's own cursor, so articles tied at
-// a page edge are never skipped. What was fetched is stored in one
-// write with one run; a page that failed is the run's failure, with the
-// pages before it kept. A passed deadline or a closing server stores
-// nothing and is thrown; a tool's call refused while the source backs
-// off records no run.
+// resumes from Massive's cursor, never a time: no tie at a page edge is lost
 export async function refreshNews(
   ctx: MassiveContext,
   instrument: Instrument,
@@ -183,6 +165,7 @@ export async function refreshNews(
   const more = options.more ?? (() => true);
   const maxPages = options.maxPages ?? MAX_PAGES;
   const symbol = massiveSymbol(instrument);
+  // its own lock key, so news never waits on the instrument's bar fetch
   return exclusive(ctx.db, `${SOURCE}:${instrument.id}`, async () => {
     const startedAt = ctx.clock.now();
     const floor = startedAt - KEPT_MS;
@@ -198,8 +181,6 @@ export async function refreshNews(
     let error: unknown = null;
     const stopped = () => error !== null || seen.paused !== null;
 
-    // Up to limit pages of one walk above after, from its cursor or the
-    // newest article; answers where it goes on.
     const walk = async (
       from: WalkState,
       after: number,
@@ -394,8 +375,6 @@ export type NewsState = {
   stale: string[];
 };
 
-// The ticker's own runs only: never asked, its last run failed, no good
-// run for two periods, or a walk not finished yet.
 export function newsState(db: Db, instrument: string, now: number): NewsState {
   const ok = lastStarted(db, SOURCE, JOB, instrument, "ok");
   const last = lastStarted(db, SOURCE, JOB, instrument);
@@ -445,8 +424,6 @@ export function readNews(
     .map((r) => ({ ...r, truncated: r.truncated === 1 }));
 }
 
-// Articles past 30 days go, and those of an instrument no longer tracked,
-// with its unfinished walks.
 export function pruneNews(
   db: Db,
   now: number,

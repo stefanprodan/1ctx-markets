@@ -51,8 +51,7 @@ export const ATTRIBUTION =
 export const NO_DATA = "no data from FRED";
 export const DAILY_ONLY = "only daily FRED series are supported";
 
-// db is for reads; every write goes through writer; fred is null while
-// the source is off
+// db is for reads; writes go through writer; null while the source is off
 export type FredContext = {
   db: Db;
   clock: Clock;
@@ -72,7 +71,6 @@ export class Refused extends Error {
 
 export type AddResult =
   | { kind: "off"; message: typeof NO_DATA }
-  // stored already, with bars
   | { kind: "known"; instrument: Instrument }
   | ({ kind: "added"; instrument: Instrument; meta: SeriesMeta } & Written);
 
@@ -114,9 +112,7 @@ function fields(id: string, meta: SeriesMeta): InstrumentFields {
   };
 }
 
-// Every observation date is a closed day, so any date before today is
-// final; weeks are final once their Sunday has ended in UTC. Only the
-// weekly build reads it: FRED has no session to store.
+// for the weekly build only: FRED has no session, every date a closed day
 function today(now: number): Session {
   const start = startOfDate(ZONE, dateOfWall(now));
   return { zone: ZONE, start, end: start + DAY_MS - 1 };
@@ -133,11 +129,7 @@ const barsOf = (answer: Observations): Bar[] =>
     final: true,
   }));
 
-// The answer's values replace the stored ones, and a stored day inside
-// its span that it now leaves out (a "." or no row) goes. The weeks
-// from the span on are built again, so one whose Sunday has passed
-// turns final, and the signals follow in the same write; with no quote
-// a series has no live row.
+// a stored day the answer's span no longer holds goes (a "." or no row)
 function store(
   db: Db,
   instrument: Instrument,
@@ -174,11 +166,7 @@ function source(ctx: FredContext): Fred {
   return ctx.fred;
 }
 
-// The series and ten years of its observations, stored together, for a
-// tool reading FRED:<id> it has not seen. Only daily series are kept,
-// since signals assume daily bars; one whose notes restrict passing the
-// values on is still kept for the server's own callers. A read's fetch
-// stores nothing once live() no longer holds.
+// daily series only, since every signal assumes daily bars
 export async function addSeries(
   ctx: FredContext,
   input: string,
@@ -223,10 +211,7 @@ export async function addSeries(
   });
 }
 
-// The last 30 observations, so late and revised values land; after a
-// gap longer than those, again from the last stored day. A series with
-// no bars yet is backfilled. Every answer comes in before the one
-// write, which live() guards for a read past its deadline.
+// after a gap past 30 observations, asked again from the last stored day
 export function refetchSeries(
   ctx: FredContext,
   instrument: Instrument,

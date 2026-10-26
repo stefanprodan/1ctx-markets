@@ -10,11 +10,7 @@ export type Paced = { due(): number | null };
 
 const turn = () => new Promise<void>((resolve) => setImmediate(resolve));
 
-// Until p settles, moves the fake clock to the time a limiter's waiting
-// call is due, its spacing or its back-off's end, and nowhere else, so a
-// fetch's timeout or a call's deadline never fires under work in
-// flight. With nothing due it lets the work run a turn; the bound only
-// fails a test whose work never settles.
+// the clock moves only to a limiter's due time, so no deadline fires early
 export async function drive<T>(
   clock: FakeClock,
   limiters: Paced | readonly Paced[],

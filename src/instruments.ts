@@ -66,9 +66,7 @@ export function readInstruments(db: Db): Instrument[] {
   return db.query<Instrument, []>(`${SELECT} order by id`).all();
 }
 
-// The source's latest answer refreshes the name, type, currency and
-// zone. A source symbol stored under another key is refused: the source
-// moved it to another market, which a migration re-keys.
+// a source symbol under another key moved market; a migration re-keys it
 export function upsertInstrument(
   db: Db,
   fields: InstrumentFields,

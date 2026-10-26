@@ -1,11 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Massive's news for one ticker, newest first, a page at a time. The key
-// goes only in the Authorization header, never in a URL; a next_url
-// cursor is sent only to Massive's own news path, every text kept has
-// the key cut out, and errors hold a fixed phrase and nothing Massive
-// or fetch said.
+// the key only in a header; a next_url only to Massive's own news path
 
 import type { Clock } from "../clock.ts";
 import {
@@ -71,13 +67,11 @@ export type Massive = {
   news(query: NewsQuery): Promise<Page>;
   // the page a previous page's next names
   next(cursor: string): Promise<Page>;
-  // the same client and limiter, failing at once while the queue is
-  // paused, for a tool answering a caller
+  // fails at once while the queue backs off, for a tool
   failFast(): Massive;
   // failing fast, and starting no call once live() is false
   within(live: () => boolean): Massive;
-  // At shutdown: closes the queue and fails a call waiting for its
-  // slot, so no call goes out after.
+  // at shutdown: fails waiting calls, so none goes out after
   close(): void;
   // when the next waiting call may go, for a test stepping its clock
   due(): number | null;
@@ -172,7 +166,7 @@ function article(v: unknown): Article {
   };
 }
 
-// Every text an article keeps, with the key cut out wherever it shows.
+// an answer can echo the key, so every kept text is scrubbed
 export function scrubbed(a: Article, key: string): Article {
   const s = (v: string) => scrub(v, key);
   return {
@@ -231,9 +225,7 @@ function decodings(cursor: string): string[] {
   return forms.map((f) => f.toLowerCase());
 }
 
-// The cursor goes out with the key in its header, so it must be Massive's
-// own news path over https, with no key of any kind in it, as written or
-// decoded. It is checked, never rewritten.
+// it goes out with the key in its header: checked, never rewritten
 export function checkCursor(cursor: string, host: string, key: string): URL {
   let url: URL;
   try {
@@ -263,7 +255,6 @@ export function massive(options: MassiveOptions): Massive {
   const { clock, key } = options;
   const host = options.host ?? HOST;
   const doFetch: Fetch = options.fetch ?? ((url, init) => fetch(url, init));
-  // one call at a time, so the spacing holds across jobs and tools
   const calls = limiter(clock, SPACING_MS);
 
   const get = (url: string, run: RunOptions): Promise<Page> =>
@@ -291,6 +282,7 @@ export function massive(options: MassiveOptions): Massive {
         }
         const fetchedAt = clock.now();
         if (res.status === 429) throw new SourceError("rate limited");
+        // unlike Finnhub's, a Massive 403 is a refused key, never no data
         if (res.status === 401 || res.status === 403) {
           throw new SourceError("key refused");
         }

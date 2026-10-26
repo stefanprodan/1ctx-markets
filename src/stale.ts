@@ -1,11 +1,8 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Whether an instrument's quote or bars are stale, with fixed reasons,
-// read from its own source's runs in its own market: a successful
-// search never clears a failed quote pass, and one market's failure
-// never marks another's rows. A quote pass that answered is judged
-// per instrument, so one symbol that never answers marks only itself.
+// Staleness from the instrument's own source, job and scope; one
+// market's failure never marks another.
 
 import { CRYPTO, closeQuoteAt, readSession } from "./calendars.ts";
 import type { Db } from "./db/index.ts";
@@ -45,9 +42,7 @@ type Scoped = Pick<Instrument, "id" | "source" | "market" | "addedAt">;
 const failed = (db: Db, i: Scoped, job: string) =>
   lastRun(db, i.source, job, i.market)?.status === "failed";
 
-// None when the quote is current. With due, a quote no pass refreshed
-// within two periods of when one was last due is overdue, as after
-// downtime, before Monday's first pass or a missed close.
+// with due: no pass refreshed it within two periods, as after downtime
 export function quoteStale(
   db: Db,
   instrument: Scoped,
@@ -81,10 +76,7 @@ export function quoteStale(
   return reasons;
 }
 
-// The last time a pass should have refreshed a market's quote: now
-// while it trades, its post-close quote once it closed, and null before
-// its stored session begins. A session left from Friday on Monday is
-// what failed checks already mark.
+// a Friday session still stored on Monday is left to the failed checks
 function lastQuoteDue(db: Db, market: string, now: number): number | null {
   if (market === CRYPTO) return now;
   const s = readSession(db, market);
@@ -92,10 +84,7 @@ function lastQuoteDue(db: Db, market: string, now: number): number | null {
   return Math.min(now, closeQuoteAt(market, s) ?? now);
 }
 
-// The bars miss a day while the market's current session began after
-// the last bar pass that ended well, and until then the previous bar
-// is not final. An instrument added since that session began came with
-// its whole history, so it misses none.
+// one added since the session began came with its whole history
 export function barsStale(
   db: Db,
   instrument: Scoped,
@@ -126,9 +115,7 @@ export function barsStale(
   return reasons;
 }
 
-// A market's bars are due once its stored session has begun and no bar
-// pass has ended well since; a restart after downtime is due the same
-// way.
+// read from stored state alone, so a restart after downtime catches up
 export function barsDue(
   db: Db,
   source: string,

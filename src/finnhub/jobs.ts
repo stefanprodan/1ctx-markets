@@ -1,12 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Finnhub's scheduled work: once a day, after 23:00 UTC, each tracked
-// US share's five sections; and for an event a rule waits on, its
-// calendar hourly on the event's date and the day after, so its actuals
-// are seen within the hour. A minute tick decides what is due, so a day
-// missed while the server was down runs on start, and a tick starts no
-// new instrument after its budget, so ticks never pile up.
+// a minute tick decides what is due, so a day missed while down runs on start
 
 import { MINUTE_MS } from "../clock.ts";
 import { type Instrument, readInstrument } from "../instruments.ts";
@@ -39,7 +34,6 @@ export const WAITED_EVERY_MS = 60 * MINUTE_MS;
 export const TICK_BUDGET_MS = 45_000;
 
 export type ResearchPass = {
-  // instruments asked, with the sections asked
   asked: { instrument: string; sections: Section[] }[];
   failed: { instrument: string; section: Section; error: string }[];
 };
@@ -65,7 +59,6 @@ export function finnhubJobs(options: {
     return last?.status === "failed" && now - last.startedAt < RETRY_MS;
   };
 
-  // the daily sections due for each tracked share
   const daily = (now: number) =>
     trackedInstruments(db, now, trackMs)
       .filter(eligible)
@@ -79,8 +72,7 @@ export function finnhubJobs(options: {
       }))
       .filter((w) => w.sections.length > 0);
 
-  // the calendar of each instrument with a waited event dated today or
-  // yesterday on its exchange and not reported yet, asked hourly
+  // hourly by the exchange's date, so actuals are seen within the hour
   const waited = (now: number) => {
     const due = new Map<string, Instrument>();
     for (const key of hooks.waited(db, now)) {

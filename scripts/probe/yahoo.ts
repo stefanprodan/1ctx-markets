@@ -8,8 +8,7 @@ import { join } from "node:path";
 const OUT = join(import.meta.dir, "..", "..", "test", "fixtures", "yahoo");
 const GAP_MS = 3000;
 
-// curl sending a full Chrome UA got 429 every time (chart-429-chrome-ua.json,
-// recorded by hand); Bun passed with either. The bare token is the safe pick.
+// a full Chrome UA draws 429s (chart-429-chrome-ua.json); the bare token passes
 const UA = "Mozilla/5.0";
 
 const Q1 = "https://query1.finance.yahoo.com";
@@ -32,7 +31,7 @@ const search = (q: string) =>
 type Case = { name: string; url: string };
 
 const CASES: Case[] = [
-  // Item 1: access without cookie or crumb, both hosts, and the UA quirk.
+  // Access without cookie or crumb, both hosts, and the UA quirk.
   {
     name: "chart-sol-usd-5d-1d",
     url: chart(Q1, "SOL-USD", { range: "5d", interval: "1d" }),
@@ -46,7 +45,7 @@ const CASES: Case[] = [
     url: chart(Q1, "NOPE-ZZZZ", { range: "5d", interval: "1d" }),
   },
 
-  // Item 2: a live day (crypto trades on weekends).
+  // A live day (crypto trades on weekends).
   {
     name: "chart-btc-usd-5d-1d",
     url: chart(Q1, "BTC-USD", { range: "5d", interval: "1d" }),
@@ -65,7 +64,7 @@ const CASES: Case[] = [
     url: chart(Q1, "SOL-USD", { range: "1mo", interval: "1d" }),
   },
 
-  // Item 3: NVDA 10-for-1 split, effective 2024-06-10.
+  // NVDA 10-for-1 split, effective 2024-06-10.
   {
     name: "chart-nvda-split-2024",
     url: chart(Q1, "NVDA", {
@@ -94,7 +93,7 @@ const CASES: Case[] = [
     }),
   },
 
-  // Item 4: weekly bar boundaries.
+  // Weekly bar boundaries.
   {
     name: "chart-vvsm-de-3mo-1wk",
     url: chart(Q1, "VVSM.DE", { range: "3mo", interval: "1wk" }),
@@ -108,7 +107,7 @@ const CASES: Case[] = [
     url: chart(Q1, "SOL-USD", { range: "3mo", interval: "1wk" }),
   },
 
-  // Item 5: trading periods and zones (intraday intervals carry tradingPeriods).
+  // Trading periods and zones (intraday intervals carry tradingPeriods).
   {
     name: "chart-vvsm-de-5d-1d",
     url: chart(Q1, "VVSM.DE", { range: "5d", interval: "1d" }),
@@ -173,7 +172,6 @@ const CASES: Case[] = [
     url: chart(Q1, "EURUSD=X", { range: "5d", interval: "1d" }),
   },
 
-  // Item 6: search.
   { name: "search-nvda", url: search("NVDA") },
   { name: "search-vvsm", url: search("VVSM") },
   { name: "search-hidroelectrica", url: search("Hidroelectrica") },
@@ -182,7 +180,6 @@ const CASES: Case[] = [
   // A NYSE listing, for its exchange code.
   { name: "search-ko", url: search("KO") },
 
-  // Item 7: batched quotes.
   {
     name: "quote-v7-batch",
     url: `${Q1}/v7/finance/quote?symbols=NVDA,VVSM.DE,SOL-USD`,

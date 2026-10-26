@@ -117,13 +117,7 @@ export function closeQuoteAt(market: string, s: Session): number | null {
   return market === CRYPTO ? null : s.end + 15 * MINUTE_MS;
 }
 
-// When to ask the source again for a market not quoted: the stored
-// session's start, if it is still ahead of since; otherwise its local
-// start time on each following day, then hourly until its local end
-// time, since the source can keep showing a past session over a
-// weekend or a holiday. The first such time after since, which is when
-// the stored answer was fetched or the last check ran, so a time
-// already past means a check is due now.
+// a past session can show over a holiday: ask at local start, then hourly
 export function nextCheck(s: Session, since: number): number {
   if (since < s.start) return s.start;
   const day = Math.floor(wallTime(s.zone, s.start) / DAY_MS) * DAY_MS;
@@ -143,8 +137,7 @@ export function nextCheck(s: Session, since: number): number {
   }
 }
 
-// A bar's date is the local date its session starts on, never the UTC
-// date: EURUSD=X's Friday bar is stamped Thursday 23:00 UTC.
+// the local date, never UTC: EURUSD=X's Friday bar starts Thursday 23:00 UTC
 export function barDate(zone: string, at: number): string {
   return localDate(zone, at);
 }
@@ -153,28 +146,23 @@ export function sessionDate(s: Session): string {
   return localDate(s.zone, s.start);
 }
 
-// Final once an answer shows a later session: late prints after the
-// end, such as a closing auction, land before that.
+// final only at a later session, so late prints (a closing auction) land first
 export function isBarFinal(date: string, latest: Session): boolean {
   // a malformed date would compare as a string and pass
   wallOfDate(date);
   return sessionDate(latest) > date;
 }
 
-// the Monday of the week holding date, weeks running Monday to Sunday
 export function weekOf(date: string): string {
   const weekday = new Date(wallOfDate(date)).getUTCDay();
   return addDays(date, -((weekday + 6) % 7));
 }
 
-// the instant the week's Sunday ends in the zone
 export function weekEnd(zone: string, monday: string): number {
   if (weekOf(monday) !== monday) throw new Error(`not a Monday: ${monday}`);
   return startOfDate(checkZone(zone), addDays(monday, 7));
 }
 
-// Final once its Sunday has ended in the market's zone and its last
-// daily bar is final.
 export function isWeekFinal(
   monday: string,
   lastBar: string,

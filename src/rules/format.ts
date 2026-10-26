@@ -469,10 +469,7 @@ const unitOf = (o: Operand, i: Instrument): string => {
   return i.currency === null ? i.unit : `${i.unit} ${i.currency}`;
 };
 
-// What only the resolved instruments tell: at most four of them, no
-// quote field of a series with no quotes, no relative return on one, a
-// live value in every comparison, and the same known unit on both sides
-// of one across instruments.
+// checks only the resolved instruments can answer: count, quotes, units
 export function checkBound(
   c: Condition,
   own: string,

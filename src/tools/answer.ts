@@ -1,10 +1,8 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Every answer is one JSON text part that fits an MCP client's untouched
-// defaults: its text and the serialized result each stay under 32 KiB,
-// built by adding whole items until the next would not fit, with a
-// cursor to continue. Nothing is cut inside an item.
+// One JSON text part that fits a client's untouched 32 KiB defaults;
+// nothing is cut inside an item.
 
 import { createHash } from "node:crypto";
 

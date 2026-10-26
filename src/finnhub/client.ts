@@ -1,11 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Finnhub's free-key answers: basic financials, analyst counts, earnings
-// surprises, insider sentiment and the earnings calendar. The key goes
-// only in a header, never in a URL; errors hold a fixed phrase and
-// nothing Finnhub or fetch said. A 403 or an empty answer is no data for
-// that section, never an error, and an answer of any other shape is.
+// the key only in a header; a 403 or empty answer is no data, not an error
 
 import type { Clock } from "../clock.ts";
 import {
@@ -92,13 +88,11 @@ export type Finnhub = {
     from: string,
     to: string,
   ): Promise<Answer<CalendarEvent[]>>;
-  // the same client and limiter, failing at once while the queue is
-  // paused, for a tool answering a caller
+  // fails at once while the queue backs off, for a tool
   failFast(): Finnhub;
   // failing fast, and starting no call once live() is false
   within(live: () => boolean): Finnhub;
-  // At shutdown: closes the queue and fails a call waiting for its
-  // slot, so no call goes out after.
+  // at shutdown: fails waiting calls, so none goes out after
   close(): void;
   // when the next waiting call may go, for a test stepping its clock
   due(): number | null;
@@ -291,7 +285,6 @@ export function finnhub(options: FinnhubOptions): Finnhub {
   const { clock, key } = options;
   const host = options.host ?? HOST;
   const doFetch: Fetch = options.fetch ?? ((url, init) => fetch(url, init));
-  // one call at a time, so the spacing holds across jobs and tools
   const calls = limiter(clock, SPACING_MS);
 
   const get = <T>(
