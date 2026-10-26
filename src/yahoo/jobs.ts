@@ -227,8 +227,9 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
   // The last 30 days of each instrument with bars: finalises the
   // previous bar, applies a new split before the session's quotes are
   // used, and fills gaps. An instrument with none waits for backfill.
-  // Each refetch is a run in its instrument's scope, so one that fails
-  // is stale alone; the market's run fails only when none answered. A
+  // Each refetch is a run in its instrument's scope, recorded by its
+  // write when it lands and here when it fails, so one that fails is
+  // stale alone; the market's run fails only when none answered. A
   // retry of failed instruments leaves the market's run alone.
   async function barPass(
     market: string,
@@ -245,7 +246,6 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
     const attempts: {
       instrument: string;
       at: number;
-      rows: number;
       error?: unknown;
     }[] = [];
     for (const instrument of instruments) {
@@ -258,7 +258,7 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
       const at = clock.now();
       try {
         const written = await refetch(ctx, instrument);
-        attempts.push({ instrument: instrument.id, at, rows: written.rows });
+        attempts.push({ instrument: instrument.id, at });
         rows += written.rows;
         if (written.changedFrom !== null) {
           changed.push({
@@ -267,7 +267,7 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
           });
         }
       } catch (e) {
-        attempts.push({ instrument: instrument.id, at, rows: 0, error: e });
+        attempts.push({ instrument: instrument.id, at, error: e });
         log.warn("yahoo bars failed", {
           instrument: instrument.id,
           error: phraseOf(e),
@@ -282,9 +282,9 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
     await writer.write((db) => {
       const now = clock.now();
       for (const a of attempts) {
+        if (!("error" in a)) continue;
         const run = startRun(db, SOURCE, JOBS.bars, a.at, a.instrument);
-        if ("error" in a) failRun(db, run, now, a.error);
-        else endRun(db, run, now, a.rows);
+        failRun(db, run, now, a.error);
       }
       if (id !== null) {
         if (error === undefined) endRun(db, id, now, rows);

@@ -15,7 +15,7 @@ import { barsStale, JOBS, quoteStale } from "../src/stale.ts";
 import { writer } from "../src/writer.ts";
 import { yahoo } from "../src/yahoo/client.ts";
 import { RETRY_MS, type TickReport, yahooJobs } from "../src/yahoo/jobs.ts";
-import { readQuote } from "../src/yahoo/sync.ts";
+import { catchUp, readQuote } from "../src/yahoo/sync.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { BVB, CRYPTO, type SimListing, sim, US, XETRA } from "./helpers/sim.ts";
 import {
@@ -419,12 +419,37 @@ describe("bars at the session change", () => {
     expect(lastRun(t.db, "yahoo", JOBS.bars, "US")!.status).toBe("ok");
     expect(barsStale(t.db, nvda, t.clock.now())).toEqual(["bar sync failed"]);
     expect(barsStale(t.db, hyg, t.clock.now())).toEqual([]);
+    // still down: asked again only once RETRY_MS has passed, each time
+    const failedAt = t.clock.now();
+    const asked = (from: number) =>
+      charts(t.f.urls.slice(from)).map(chartSymbol);
+    let before = t.f.urls.length;
+    await t.runTo(failedAt + RETRY_MS - MINUTE_MS);
+    expect(asked(before)).toEqual([]);
+    await t.runTo(failedAt + RETRY_MS);
+    expect(asked(before)).toEqual(["NVDA"]);
+    expect(barsStale(t.db, nvda, t.clock.now())).toEqual(["bar sync failed"]);
+    before = t.f.urls.length;
+    await t.runTo(failedAt + 2 * RETRY_MS - MINUTE_MS);
+    expect(asked(before)).toEqual([]);
+    down.clear();
+    await t.runTo(failedAt + 2 * RETRY_MS);
+    expect(asked(before)).toEqual(["NVDA"]);
+    expect(barsStale(t.db, nvda, t.clock.now())).toEqual([]);
+    expect(barsStale(t.db, hyg, t.clock.now())).toEqual([]);
+    expect(lastRun(t.db, "yahoo", JOBS.bars, "US")!.status).toBe("ok");
+  });
+
+  test("a read that catches up an instrument clears its failed refetch at once", async () => {
+    const down = new Set(["NVDA"]);
+    const t = await weekend(undefined, down);
+    const nvda = readInstrument(t.db, "US:NVDA")!;
+    expect(barsStale(t.db, nvda, t.clock.now())).toEqual(["bar sync failed"]);
     down.clear();
     const before = t.f.urls.length;
-    await t.runTo(t.clock.now() + RETRY_MS + MINUTE_MS);
+    await catchUp(t.ctx, nvda, () => true);
     expect(charts(t.f.urls.slice(before)).map(chartSymbol)).toEqual(["NVDA"]);
     expect(barsStale(t.db, nvda, t.clock.now())).toEqual([]);
-    expect(lastRun(t.db, "yahoo", JOBS.bars, "US")!.status).toBe("ok");
   });
 
   test("the market's run fails when no refetch answered", async () => {
