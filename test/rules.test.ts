@@ -606,6 +606,18 @@ function scaled(fx: Recorded, by: number): Recorded {
   return out;
 }
 
+// a chart answer with its last n prices divided by by
+function scaledLast(fx: Recorded, by: number, n: number): Recorded {
+  const out = clone(fx);
+  const q = out.body.chart.result[0].indicators.quote[0];
+  for (const k of ["open", "high", "low", "close"]) {
+    q[k] = q[k].map((v: number | null, i: number) =>
+      v === null || i < q[k].length - n ? v : v / by,
+    );
+  }
+  return out;
+}
+
 // 2026-10-16, inside the 30-day window
 const OCT16 = 1792157400;
 
@@ -754,6 +766,35 @@ describe("splits", () => {
       lastResult: "false",
     });
     expect(alerts(t)).toBe(0);
+  });
+
+  test("a window's rescale the whole history does not confirm stays paused and writes nothing", async () => {
+    const window = await recorded("chart-nvda-5d-1d");
+    const history = listed(await recorded("chart-nvda-5y-1d"));
+    // the whole history unchanged, or halved only on its recent days
+    for (const whole of [history, scaledLast(history, 2, 10)]) {
+      const t = await rulesTest();
+      const level = await create(t, "NVDA", {
+        left: "price",
+        op: "<",
+        right: 200,
+      });
+      const closes = () =>
+        t.db
+          .query("select date, close from bars where instrument = 'US:NVDA'")
+          .all();
+      const before = closes();
+      const answers = [scaled(window, 2), whole];
+      t.charts.set("NVDA", () => answers.shift()!);
+      await expect(
+        refetch(t.ctx, readInstrument(t.db, "US:NVDA")!),
+      ).rejects.toThrow("does not confirm");
+      expect(answers).toHaveLength(0);
+      expect(closes()).toEqual(before);
+      expect(rule(t, level.body.rule.id).paused).toBe("split");
+      await t.quote("NVDA", { price: NVDA_PRICE / 2 });
+      expect(alerts(t)).toBe(0);
+    }
   });
 
   test("a correction to one past bar pauses nothing and refetches no history", async () => {

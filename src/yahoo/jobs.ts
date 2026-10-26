@@ -28,14 +28,14 @@ import { SOURCE, type SparkAnswer } from "./client.ts";
 import {
   backfill,
   type QuoteRow,
+  RETRY_MS,
   refetch,
   storeQuotes,
   type YahooContext,
 } from "./sync.ts";
 
 export const TICK_MS = MINUTE_MS;
-// a failed bar pass or backfill is asked again after this, not each tick
-export const RETRY_MS = 60 * MINUTE_MS;
+export { RETRY_MS };
 export const BACKFILL_JOB = "backfill";
 
 export type JobsOptions = {

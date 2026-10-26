@@ -20,6 +20,7 @@ import {
   backfill,
   backfillStart,
   dailyBars,
+  RETRY_MS,
   readQuote,
   refetch,
   storeQuotes,
@@ -475,7 +476,7 @@ describe("refetch changes", () => {
   });
 
   test("a history cut short is refused and its split left for the next run", async () => {
-    const { db, ctx, f, instrument, answer } = await stored();
+    const { db, ctx, f, clock, instrument, answer } = await stored();
     const short = clone(await recorded("chart-nvda-5d-1d"));
     short.body.chart.result[0].events = {
       splits: {
@@ -497,8 +498,12 @@ describe("refetch changes", () => {
     expect(db.query("select date from splits").all()).toEqual([
       { date: "2024-06-10" },
     ]);
-    await expect(refetch(ctx, instrument)).rejects.toThrow();
-    expect(f.urls).toHaveLength(5);
+    // the whole history is asked again only after the retry period
+    await expect(refetch(ctx, instrument)).rejects.toThrow("retry period");
+    expect(f.urls).toHaveLength(4);
+    await clock.advance(RETRY_MS);
+    await expect(refetch(ctx, instrument)).rejects.toThrow("cut short");
+    expect(f.urls).toHaveLength(6);
   });
 });
 
