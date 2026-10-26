@@ -37,13 +37,21 @@ export const textResult = (text: string): ToolResult => ({
   content: [{ type: "text", text }],
 });
 
-// the same one-part form, flagged so a client knows nothing was answered
-export const errorResult = (
+// The same one-part form, flagged so a client knows nothing was
+// answered, under the same limits: one too long keeps only its error
+// and a cut message.
+export function errorResult(
   body: { error: string; message: string } & Record<string, unknown>,
-): ToolResult => ({
-  content: [{ type: "text", text: JSON.stringify(body) }],
-  isError: true,
-});
+): ToolResult {
+  let text = JSON.stringify(body);
+  if (!fits(text)) {
+    text = JSON.stringify({
+      error: body.error,
+      message: body.message.slice(0, 1024),
+    });
+  }
+  return { content: [{ type: "text", text }], isError: true };
+}
 
 export class PageOverflow extends Error {
   constructor() {

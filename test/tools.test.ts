@@ -11,12 +11,14 @@ import { readInstrument, upsertInstrument } from "../src/instruments.ts";
 import { silent } from "../src/log.ts";
 import {
   cursor,
+  errorResult,
   fitPage,
   fits,
   PAGE_BYTES,
   PageOverflow,
   readCursor,
 } from "../src/tools/answer.ts";
+import { fields } from "../src/tools/args.ts";
 import { searchPage } from "../src/tools/search.ts";
 import {
   CALL_MS,
@@ -86,29 +88,37 @@ describe("a symbol never seen", () => {
     expect(t.m.inflight.size).toBe(0);
   });
 
-  test("not done by the deadline answers timeout and stores nothing", async () => {
-    const held = gate();
-    const t = await setup({
-      hold: (url) => (chartSymbol(url) === "NVDA" ? held.hold() : undefined),
-    });
-    const read = readTargets(t.m, ["NVDA"]);
-    await held.arrived;
-    await t.clock.advance(CALL_MS);
-    const [target] = await read;
-    expect(errorOf(target)).toMatchObject({ error: "timeout" });
-    expect(errorOf(target)!.message).toContain("retry this symbol");
-    // the fetch goes on after the answer, and lands nothing
-    const flights = [...t.m.inflight.values()].map((f) =>
-      f.promise.catch(() => {}),
-    );
-    expect(flights).toHaveLength(1);
-    held.release();
-    await Promise.all(flights);
-    expect(t.calls.sparks()).toHaveLength(1);
-    for (const table of ["instruments", "bars", "quotes", "signals"]) {
-      expect(stored(t.db, table)).toBe(0);
-    }
-  });
+  test.each([
+    ["the history", (url: URL) => chartSymbol(url) === "NVDA"],
+    ["the quote", (url: URL) => url.pathname === "/v7/finance/spark"],
+  ])(
+    "not done by the deadline, held on %s, answers timeout and stores nothing",
+    async (_, holds) => {
+      const held = gate();
+      const t = await setup({
+        hold: (url) => (holds(url) ? held.hold() : undefined),
+      });
+      const read = readTargets(t.m, ["NVDA"]);
+      await held.arrived;
+      await t.clock.advance(CALL_MS);
+      const [target] = await read;
+      expect(errorOf(target)).toMatchObject({ error: "timeout" });
+      expect(errorOf(target)!.message).toContain("retry this symbol");
+      // the fetch goes on after the answer, starts no other call and lands
+      // nothing
+      const flights = [...t.m.inflight.values()].map((f) =>
+        f.promise.catch(() => {}),
+      );
+      expect(flights).toHaveLength(1);
+      const asked = t.calls.urls.length;
+      held.release();
+      await Promise.all(flights);
+      expect(t.calls.urls).toHaveLength(asked);
+      for (const table of ["instruments", "bars", "quotes", "signals"]) {
+        expect(stored(t.db, table)).toBe(0);
+      }
+    },
+  );
 
   test("a source backing off answers rate limited at once", async () => {
     const limited: Recorded = {
@@ -171,6 +181,50 @@ describe("a symbol never seen", () => {
     expect(readInstrument(db, "XETRA:S7")).toBeNull();
   });
 
+  test("a slow symbol holds no other", async () => {
+    const search = gate();
+    const spark = gate();
+    const t = await setup({
+      hold: (url) =>
+        url.pathname === "/v1/finance/search"
+          ? search.hold()
+          : url.searchParams.get("symbols") === "^GSPC"
+            ? spark.hold()
+            : undefined,
+    });
+    const read = readTargets(t.m, ["NVDA", "^GSPC"]);
+    // ^GSPC reaches its quote while NVDA's search is still held
+    await spark.arrived;
+    spark.release();
+    search.release();
+    expect((await read).map(idOf)).toEqual(["US:NVDA", "SNP:^GSPC"]);
+  });
+
+  test("a new symbol whose quote is skipped stores nothing", async () => {
+    const t = await setup({
+      hold: (url) =>
+        url.pathname === "/v7/finance/spark"
+          ? Promise.resolve({
+              recordedAt: "",
+              status: 200,
+              headers: { "content-type": "application/json" },
+              body: {
+                spark: {
+                  result: [{ symbol: "NVDA", response: [] }],
+                  error: null,
+                },
+              },
+            })
+          : undefined,
+    });
+    const [target] = await readTargets(t.m, ["NVDA"]);
+    expect(errorOf(target)?.error).toBe("source_error");
+    expect(errorOf(target)!.message).toContain("retry this symbol");
+    for (const table of ["instruments", "bars", "quotes", "signals"]) {
+      expect(stored(t.db, table)).toBe(0);
+    }
+  });
+
   test("FRED off answers no data from FRED", async () => {
     const clock = fakeClock(NOW);
     const { db } = open(":memory:", clock);
@@ -221,7 +275,49 @@ describe("tracking", () => {
     expect(lastReadAt(t.db, "US:NVDA")).toBe(t.clock.now());
   });
 
-  test("the Yahoo jobs sync only tracked instruments, and backfill any", async () => {
+  describe("a catch-up past the deadline writes nothing", () => {
+    const snapshot = (db: ReturnType<typeof open>["db"]) =>
+      db
+        .query(
+          `select (select max(computed_at) from signals) as signals,
+             (select max(fetched_at) from bars) as bars,
+             (select max(fetched_at) from quotes) as quotes`,
+        )
+        .get();
+    test.each([
+      ["NVDA", "the history", (u: URL) => chartSymbol(u) === "NVDA"],
+      ["NVDA", "the quote", (u: URL) => u.pathname === "/v7/finance/spark"],
+      [
+        "FRED:DGS10",
+        "the observations",
+        (u: URL) => u.pathname === "/fred/series/observations",
+      ],
+    ])("%s held on %s", async (symbol, _, holds) => {
+      let held: ReturnType<typeof gate> | null = null;
+      const t = await setup({
+        hold: (url) => (held !== null && holds(url) ? held.hold() : undefined),
+      });
+      const [first] = await readTargets(t.m, [symbol]);
+      const id = idOf(first)!;
+      await t.clock.advance(TRACK_MS + DAY_MS);
+      const before = snapshot(t.db);
+      const gateNow = gate();
+      held = gateNow;
+      const read = readTargets(t.m, [id]);
+      await gateNow.arrived;
+      await t.clock.advance(CALL_MS);
+      expect(errorOf((await read)[0])).toMatchObject({ error: "timeout" });
+      const asked = t.calls.urls.length;
+      gateNow.release();
+      await Promise.all(
+        [...t.m.inflight.values()].map((f) => f.promise.catch(() => {})),
+      );
+      expect(t.calls.urls).toHaveLength(asked);
+      expect(snapshot(t.db)).toEqual(before);
+    });
+  });
+
+  test("the Yahoo jobs sync and backfill only tracked instruments", async () => {
     const utc = (iso: string) => Date.parse(`${iso}Z`);
     const s = sim([US("U0"), US("U1"), US("U2")]);
     const clock = fakeClock(utc("2026-10-26T17:58"));
@@ -268,6 +364,9 @@ describe("tracking", () => {
     expect(charted).toEqual(["U0"]);
     // the bars of an untracked instrument are kept
     expect(stored(db, "bars where instrument = 'US:U1'")).toBeGreaterThan(0);
+    // never read, so no job backfills it; a read does, inside the call
+    expect(await jobs.backfillTurn()).toBeNull();
+    markRead(db, ["US:U2"], clock.now());
     expect(await jobs.backfillTurn()).toBe("US:U2");
   });
 
@@ -335,6 +434,28 @@ describe("pages", () => {
       next: null,
       items: [],
     });
+  });
+
+  test("an error holds the same limits, and quotes a caller's name cut short", () => {
+    const huge = errorResult({
+      error: "candidates",
+      message: "several listings match",
+      candidates: Array.from({ length: 2000 }, (_, k) => ({ id: `X:${k}` })),
+    });
+    expect(fits(huge.content[0]!.text)).toBe(true);
+    expect(JSON.parse(huge.content[0]!.text)).toEqual({
+      error: "candidates",
+      message: "several listings match",
+    });
+    const name = "n".repeat(PAGE_BYTES);
+    expect(() => fields({ [name]: 1 }, ["symbols"])).toThrow(
+      `unknown argument ${"n".repeat(64)}…`,
+    );
+    try {
+      fields({ [name]: 1 }, ["symbols"]);
+    } catch (error) {
+      expect((error as Error).message.length).toBeLessThan(100);
+    }
   });
 
   test("a cursor continues only the arguments it was made for", () => {

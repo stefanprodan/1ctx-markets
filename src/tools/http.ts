@@ -5,7 +5,7 @@
 // JSON, with the same resolution, tracking, deadline and pages.
 
 import { errorFields } from "../log.ts";
-import { ArgError } from "./args.ts";
+import { ArgError, quoted } from "./args.ts";
 import { briefItem, parseQuote, quotePage } from "./quote.ts";
 import type { Markets } from "./targets.ts";
 
@@ -31,7 +31,7 @@ export function quotesHandler(m: Markets): (req: Request) => Promise<Response> {
     try {
       for (const name of params.keys()) {
         if (!ARGS.includes(name))
-          throw new ArgError(`unknown argument ${name}`);
+          throw new ArgError(`unknown argument ${quoted(name)}`);
       }
       if (params.getAll("symbols").length !== 1) {
         throw new ArgError("symbols must be given once, comma-separated");

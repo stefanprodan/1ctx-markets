@@ -7,7 +7,8 @@
 // Every instrument answered counts as read, which is what tracks it.
 
 import { dailyRange } from "../bars.ts";
-import type { Clock } from "../clock.ts";
+import { type Clock, MINUTE_MS } from "../clock.ts";
+import { DEFAULT_QUOTE_EVERY } from "../config.ts";
 import type { Db } from "../db/index.ts";
 import { SOURCE as FRED, type Fred } from "../fred/client.ts";
 import {
@@ -42,6 +43,8 @@ export type Markets = {
   yahoo: Yahoo;
   fred: Fred | null;
   trackMs: number;
+  // how often the quote job runs, so a quote it fell behind on is stale
+  quoteEveryMs: number;
   callMs: number;
   log: Log;
   // fetches in flight, shared by every call naming the same instrument
@@ -56,6 +59,7 @@ export function markets(options: {
   fred: Fred | null;
   log: Log;
   trackMs?: number;
+  quoteEveryMs?: number;
   callMs?: number;
 }): Markets {
   return {
@@ -65,6 +69,7 @@ export function markets(options: {
     yahoo: options.yahoo.failFast(),
     fred: options.fred?.failFast() ?? null,
     trackMs: options.trackMs ?? TRACK_MS,
+    quoteEveryMs: options.quoteEveryMs ?? DEFAULT_QUOTE_EVERY * MINUTE_MS,
     callMs: options.callMs ?? CALL_MS,
     log: options.log,
     inflight: new Map(),
@@ -200,8 +205,8 @@ function fredStep(m: Markets, id: string): Step {
     return {
       kind: "fetch",
       key: id,
-      run: async () => {
-        await refetchSeries(ctx, stored);
+      run: async (live) => {
+        await refetchSeries(ctx, stored, live);
         return stored;
       },
     };
@@ -285,9 +290,10 @@ async function step(
 const EXPIRED = Symbol("expired");
 
 // Each input in order to its instrument or an error, inside the call's
-// deadline. No count caps the fetches: the source's queue paces them,
-// and one not done by the deadline answers timeout and stores nothing
-// new.
+// deadline. Each input resolves and fetches on its own, so a slow one
+// holds no other. No count caps the fetches: the source's queue paces
+// them, no fetch starts past the deadline, and one not done by then
+// answers timeout and stores nothing new.
 export async function readTargets(
   m: Markets,
   inputs: readonly string[],
@@ -297,31 +303,22 @@ export async function readTargets(
   const expired = new Promise<typeof EXPIRED>((resolve) => {
     cancel = m.clock.at(deadline, () => resolve(EXPIRED));
   });
-  try {
-    const steps = await Promise.all(
-      inputs.map((input) =>
-        Promise.race([
-          step(m, input, deadline).catch(
-            (error: unknown): Step => ({
-              kind: "error",
-              error: itemError(m, error),
-            }),
-          ),
-          expired,
-        ]),
-      ),
+  const one = async (input: string): Promise<Target> => {
+    const s = await step(m, input, deadline).catch(
+      (error: unknown): Step => ({ kind: "error", error: itemError(m, error) }),
     );
+    if (s.kind === "ready") return { input, instrument: s.instrument };
+    if (s.kind === "error") return { input, error: s.error };
+    if (m.clock.now() >= deadline) return { input, error: timeout(m) };
+    return shared(m, `fetch:${s.key}`, deadline, s.run).then(
+      (instrument): Target => ({ input, instrument }),
+      (error: unknown): Target => ({ input, error: itemError(m, error) }),
+    );
+  };
+  try {
     const targets = await Promise.all(
-      steps.map(async (s, k): Promise<Target> => {
-        const input = inputs[k]!;
-        if (s === EXPIRED) return { input, error: timeout(m) };
-        if (s.kind === "ready") return { input, instrument: s.instrument };
-        if (s.kind === "error") return { input, error: s.error };
-        const fetched = shared(m, `fetch:${s.key}`, deadline, s.run).then(
-          (instrument): Target => ({ input, instrument }),
-          (error: unknown): Target => ({ input, error: itemError(m, error) }),
-        );
-        const done = await Promise.race([fetched, expired]);
+      inputs.map(async (input): Promise<Target> => {
+        const done = await Promise.race([one(input), expired]);
         return done === EXPIRED ? { input, error: timeout(m) } : done;
       }),
     );

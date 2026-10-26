@@ -351,6 +351,19 @@ describe("history", () => {
       expect(one.note).toContain("FX conversion excluded");
       // the benchmark counts as read
       expect(lastReadAt(t.db, "SNP:^GSPC")).toBe(NOW);
+      // with its own fetch time and staleness
+      expect(rel.benchmark.fetched_at).toBe("2026-10-25T21:05:00Z");
+      expect(rel.benchmark.stale).toEqual([]);
+      expect(rel.stale).toEqual([]);
+      t.db.query("delete from quotes where instrument = 'SNP:^GSPC'").run();
+      const stale = await call(t, "history", {
+        symbol: "NVDA",
+        from: "2026-09-01",
+        to: "2026-10-23",
+        benchmark: "^GSPC",
+      });
+      expect(stale.body.relative.benchmark.stale).toEqual(["no quote yet"]);
+      expect(stale.body.relative.stale).toEqual(["benchmark: no quote yet"]);
     }));
 
   test("pages ascending and next continues only the same arguments", () =>

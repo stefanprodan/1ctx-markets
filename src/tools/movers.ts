@@ -18,6 +18,7 @@ import {
   distinct,
   type Resolved,
   setPage,
+  startOf,
   type Unavailable,
   unavailable,
 } from "./sets.ts";
@@ -199,7 +200,8 @@ function moves(args: MoversArgs, change: number): boolean {
   }
 }
 
-type Matched = { id: string; move: number; item: object };
+// move is null when an average alone was asked and the day has no change
+type Matched = { id: string; move: number | null; item: object };
 
 // Matched, unavailable, or null when its inputs were all there and it
 // did not move as asked.
@@ -209,20 +211,21 @@ function moverOne(
   r: Resolved,
   now: number,
 ): Matched | Unavailable | null {
+  const moving = args.min_move_pct !== null;
   const inputs = [
-    "change_percent",
+    ...(moving ? ["change_percent"] : []),
     ...(args.average === null ? [] : [args.average]),
   ];
   if (r.instrument.source === FRED) {
     return unavailable(r, inputs, [], NO_QUOTE);
   }
-  const latest = readLatest(m.db, r.instrument, now);
-  const q = quoteItem(m.db, r.input, r.instrument, now, latest);
+  const latest = readLatest(m.db, r.instrument, now, m.quoteEveryMs);
+  const q = quoteItem(m.db, r.input, r.instrument, latest);
   if (q.stale.length > 0) return unavailable(r, inputs, q.stale);
   const raw = readQuote(m.db, r.instrument.id);
   const change = raw?.changePercent ?? null;
   const missing: string[] = [];
-  if (change === null) missing.push("change_percent");
+  if (moving && change === null) missing.push("change_percent");
   // no quote leaves the average nothing to compare with
   const relation: Relation | null =
     args.average === null
@@ -239,12 +242,12 @@ function moverOne(
       relation?.ok === false ? relation.reason : undefined,
     );
   }
-  if (!moves(args, change!)) return null;
+  if (moving && !moves(args, change!)) return null;
   const shown = relation?.ok ? relation : null;
   if (shown !== null && !shown.holds) return null;
   return {
     id: r.instrument.id,
-    move: Math.abs(change!),
+    move: change === null ? null : Math.abs(change),
     item: {
       input: r.input,
       id: r.instrument.id,
@@ -268,6 +271,7 @@ export async function moversAnswer(
   args: MoversArgs,
 ): Promise<ToolResult> {
   const { next, ...asked } = args;
+  const offset = startOf(next, asked);
   const targets = await readTargets(m, args.symbols);
   const now = m.clock.now();
   const { resolved, errors } = distinct(targets);
@@ -280,18 +284,26 @@ export async function moversAnswer(
     else if ("status" in result) out.push(result);
     else matched.push(result);
   }
-  matched.sort((a, b) =>
-    a.move !== b.move ? b.move - a.move : a.id < b.id ? -1 : 1,
-  );
+  // the ones without a change after those with one, each by id on a tie
+  matched.sort((a, b) => {
+    if (a.move !== b.move) {
+      if (a.move === null) return 1;
+      if (b.move === null) return -1;
+      return b.move - a.move;
+    }
+    return a.id < b.id ? -1 : 1;
+  });
   return textResult(
     setPage({
       args: asked,
-      next,
+      offset,
       matched: matched.map(({ item }) => ({ item, fred: false })),
       notMatched,
       unavailable: out,
       errors,
-      head: { sort: "absolute change_percent, largest first" },
+      head: {
+        sort: "absolute change_percent, largest first; those without one last",
+      },
       attribution: ATTRIBUTION,
     }),
   );

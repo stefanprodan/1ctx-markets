@@ -25,7 +25,8 @@ import {
   textResult,
 } from "./answer.ts";
 import { ArgError, date, fields, oneOf, optionalText, text } from "./args.ts";
-import { latestSignals, type SignalRow, signalRow } from "./quote.ts";
+import { quoteItem, readLatest, type SignalRow, signalRow } from "./quote.ts";
+import { benchmarkStale } from "./sets.ts";
 import { type Markets, readTargets } from "./targets.ts";
 
 export const BASIS =
@@ -91,12 +92,18 @@ function rowsByDate(
   };
 }
 
+// The benchmark's own staleness and fetch time go with it: a stale
+// benchmark makes the comparison stale, whatever the symbol's state.
 function relative(
-  db: Db,
+  m: Markets,
   instrument: Instrument,
   benchmark: Instrument,
   to: string,
 ) {
+  const db = m.db;
+  const now = m.clock.now();
+  const latest = readLatest(db, benchmark, now, m.quoteEveryMs);
+  const read = quoteItem(db, benchmark.id, benchmark, latest);
   const returns = ([1, 3] as const).map((months) => {
     const r = readRelativeReturn(db, instrument.id, benchmark.id, months, to);
     if (r === null) {
@@ -124,7 +131,10 @@ function relative(
       name: benchmark.name,
       currency: benchmark.currency,
       unit: benchmark.unit,
+      fetched_at: read.fetched_at,
+      stale: latest.stale,
     },
+    stale: benchmarkStale(latest.stale),
     at: to,
     unit: "percentage points",
     returns,
@@ -188,9 +198,9 @@ export async function historyAnswer(
     rel =
       "error" in bench
         ? { benchmark: { input: bench.input }, ...bench.error }
-        : relative(db, instrument, bench.instrument, to);
+        : relative(m, instrument, bench.instrument, to);
   }
-  const stale = latestSignals(db, instrument, m.clock.now()).stale;
+  const stale = readLatest(db, instrument, m.clock.now(), m.quoteEveryMs).stale;
   const benchFred =
     bench !== undefined &&
     "instrument" in bench &&

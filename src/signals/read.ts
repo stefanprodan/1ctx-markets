@@ -60,11 +60,13 @@ function latest<T>(
   );
 }
 
-// Null for an instrument never stored.
+// Null for an instrument never stored. With quoteEveryMs, a quote no
+// pass kept up with is stale too.
 export function readSignals(
   db: Db,
   instrument: string,
   now: number,
+  quoteEveryMs: number | null = null,
 ): InstrumentSignals | null {
   const i = readInstrument(db, instrument);
   if (i === null) return null;
@@ -82,7 +84,16 @@ export function readSignals(
   if (finalPending(db, i.id)) {
     final.push(STALE.signalsPending);
   }
-  const live = [...new Set([...final, ...quoteStale(db, i)])];
+  const live = [
+    ...new Set([
+      ...final,
+      ...quoteStale(
+        db,
+        i,
+        quoteEveryMs === null ? null : { now, everyMs: quoteEveryMs },
+      ),
+    ]),
+  ];
   const unfinished = (interval: Interval, row: { date: string } | null) =>
     row !== null &&
     db

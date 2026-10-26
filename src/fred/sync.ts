@@ -222,10 +222,12 @@ export async function addSeries(
 
 // The last 30 observations, so late and revised values land; after a
 // gap longer than those, again from the last stored day. A series with
-// no bars yet is backfilled.
+// no bars yet is backfilled. Every answer comes in before the one
+// write, which live() guards for a read past its deadline.
 export function refetchSeries(
   ctx: FredContext,
   instrument: Instrument,
+  live: () => boolean = () => true,
 ): Promise<Written> {
   const client = source(ctx);
   return exclusive(ctx.db, instrument.id, async () => {
@@ -242,8 +244,11 @@ export function refetchSeries(
         start: range.last,
       });
     }
-    return ctx.writer.write((db) =>
-      store(db, instrument, answer, ctx.clock.now()),
-    );
+    return ctx.writer.write((db) => {
+      if (!live()) {
+        throw new SourceError("timed out", "the call's deadline passed");
+      }
+      return store(db, instrument, answer, ctx.clock.now());
+    });
   });
 }

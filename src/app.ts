@@ -107,6 +107,7 @@ export function start(options: AppOptions): App {
     fred: fredClient,
     log: options.log("tools"),
     trackMs,
+    quoteEveryMs: options.quoteEveryMs,
   });
   const mcp = mcpHandler(options.version, options.log("mcp"), reads);
   const server = serve({

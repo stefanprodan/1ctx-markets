@@ -82,8 +82,9 @@ export function readLatest(
   db: Db,
   instrument: Instrument,
   now: number,
+  quoteEveryMs: number,
 ): Latest {
-  const s = readSignals(db, instrument.id, now);
+  const s = readSignals(db, instrument.id, now, quoteEveryMs);
   if (s === null)
     return { signals: null, daily: null, weekly: null, stale: [] };
   return {
@@ -94,12 +95,7 @@ export function readLatest(
   };
 }
 
-export function latestSignals(
-  db: Db,
-  instrument: Instrument,
-  now: number,
-  latest: Latest = readLatest(db, instrument, now),
-): Signals {
+export function latestSignals(latest: Latest): Signals {
   const row = (p: Picked<{ date: string }>, interval: "1d" | "1wk") =>
     p === null ? null : signalRow(p.row, p.kind, interval);
   return {
@@ -150,10 +146,9 @@ export function quoteItem(
   db: Db,
   input: string,
   instrument: Instrument,
-  now: number,
-  latest?: Latest,
+  latest: Latest,
 ): QuoteItem {
-  const signals = latestSignals(db, instrument, now, latest);
+  const signals = latestSignals(latest);
   const base = {
     input,
     id: instrument.id,
@@ -274,7 +269,8 @@ export async function quotePage(
       const item: ErrorItem = { input: t.input, ...t.error };
       return { item, fred: false };
     }
-    const q = quoteItem(m.db, t.input, t.instrument, now);
+    const latest = readLatest(m.db, t.instrument, now, m.quoteEveryMs);
+    const q = quoteItem(m.db, t.input, t.instrument, latest);
     return { item: project(q), fred: q.observation != null };
   });
   const items = rows.map((r) => r.item);

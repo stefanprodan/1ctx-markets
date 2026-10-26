@@ -405,8 +405,17 @@ export async function fetchInstrument(
   if (expected !== null && expected !== id) {
     throw new SourceError("malformed answer", `${expected} answered as ${id}`);
   }
+  if (!live()) throw expired();
   // a chart's previous close is the one before its range, ten years back
   const quote = await ctx.yahoo.spark([answer.symbol]);
+  // bars with no quote would answer an old price as the live one
+  if (
+    !quote.quotes.some(
+      (q) => q.symbol.toUpperCase() === answer.symbol.toUpperCase(),
+    )
+  ) {
+    throw new SourceError("source error", `no quote for ${answer.symbol}`);
+  }
   return exclusive(ctx.db, id, async () => {
     // stored meanwhile by another read or the backfill
     if (dailyRange(ctx.db, id) !== null) {
@@ -441,13 +450,17 @@ export async function catchUp(
   instrument: Instrument,
   live: () => boolean,
 ): Promise<Instrument> {
-  await refetch(ctx, instrument);
-  const quote = await ctx.yahoo.spark([instrument.sourceSymbol]);
-  await ctx.writer.write((db) => {
+  return exclusive(ctx.db, instrument.id, async () => {
+    const bars = await refetchAnswer(ctx, instrument);
     if (!live()) throw expired();
-    storeQuotes(db, quote);
+    const quote = await ctx.yahoo.spark([instrument.sourceSymbol]);
+    return ctx.writer.write((db) => {
+      if (!live()) throw expired();
+      bars(db);
+      storeQuotes(db, quote);
+      return instrument;
+    });
   });
-  return instrument;
 }
 
 // Ten years of daily bars again, or from the first stored bar if that
@@ -459,11 +472,23 @@ export function backfill(
   return exclusive(ctx.db, instrument.id, () => backfillHeld(ctx, instrument));
 }
 
+// What a source answered, fetched in full before anything is written,
+// as the write that stores it.
+type Answered = (db: Db) => Written;
+
 async function backfillHeld(
   ctx: YahooContext,
   instrument: Instrument,
   triggers: readonly ChartAnswer[] = [],
 ): Promise<Written> {
+  return ctx.writer.write(await backfillAnswer(ctx, instrument, triggers));
+}
+
+async function backfillAnswer(
+  ctx: YahooContext,
+  instrument: Instrument,
+  triggers: readonly ChartAnswer[] = [],
+): Promise<Answered> {
   const range = dailyRange(ctx.db, instrument.id);
   let { monday, from } = backfillStart(ctx.clock.now());
   if (range !== null && range.first < monday) {
@@ -476,12 +501,11 @@ async function backfillHeld(
     ctx.clock.now(),
   );
   checkAnswer(instrument, answer);
-  return ctx.writer.write((db) =>
+  return (db) =>
     store(db, ctx.clock.now(), instrument, answer, {
       since: monday,
       splits: [...triggers, answer],
-    }),
-  );
+    });
 }
 
 // The last 30 days, or from the last final bar after a longer gap. A
@@ -499,9 +523,16 @@ async function refetchHeld(
   ctx: YahooContext,
   instrument: Instrument,
 ): Promise<Written> {
+  return ctx.writer.write(await refetchAnswer(ctx, instrument));
+}
+
+async function refetchAnswer(
+  ctx: YahooContext,
+  instrument: Instrument,
+): Promise<Answered> {
   const { db, clock } = ctx;
   const range = dailyRange(db, instrument.id);
-  if (range === null) return backfillHeld(ctx, instrument);
+  if (range === null) return backfillAnswer(ctx, instrument);
   const now = clock.now();
   const since = range.lastFinal ?? range.first;
   const from = Math.min(
@@ -511,11 +542,9 @@ async function refetchHeld(
   const answer = await ctx.yahoo.chart(instrument.sourceSymbol, from, now);
   checkAnswer(instrument, answer);
   if (unapplied(db, instrument, [answer]).length > 0) {
-    return backfillHeld(ctx, instrument, [answer]);
+    return backfillAnswer(ctx, instrument, [answer]);
   }
-  return ctx.writer.write((db) =>
-    store(db, ctx.clock.now(), instrument, answer, null),
-  );
+  return (db) => store(db, ctx.clock.now(), instrument, answer, null);
 }
 
 export type QuoteRow = {

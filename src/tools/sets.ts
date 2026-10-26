@@ -70,11 +70,23 @@ export const byId = (a: { id: string }, b: { id: string }) =>
 
 type Entry = { item: object; fred: boolean };
 
+const NOT_THESE = "next does not continue these arguments";
+
+// Where a page starts, checked before anything is read or fetched: a
+// cursor is an offset made for these arguments.
+export function startOf(next: string | null, args: unknown): number {
+  if (next === null) return 0;
+  const at = readCursor(next, args);
+  const n = at !== null && /^[1-9]\d{0,5}$/.test(at) ? Number(at) : null;
+  if (n === null) throw new ArgError(NOT_THESE);
+  return n;
+}
+
 // One page: matches in their order, then the unavailable by id, then
 // the errors as asked; counts cover every page.
 export function setPage(options: {
   args: unknown;
-  next: string | null;
+  offset: number;
   matched: Entry[];
   notMatched: number;
   unavailable: Unavailable[];
@@ -89,15 +101,9 @@ export function setPage(options: {
       .map((item) => ({ item, fred: false })),
     ...options.errors.map((item) => ({ item, fred: false })),
   ];
-  let offset = 0;
-  if (options.next !== null) {
-    const at = readCursor(options.next, options.args);
-    const n = at === null ? Number.NaN : Number(at);
-    if (!Number.isSafeInteger(n) || n < 1 || n >= items.length) {
-      throw new ArgError("next does not continue these arguments");
-    }
-    offset = n;
-  }
+  const offset = options.offset;
+  // the set may have shrunk since the cursor was made
+  if (offset > 0 && offset >= items.length) throw new ArgError(NOT_THESE);
   const rest = items.slice(offset);
   return fitPage(
     rest.map((e) => e.item),

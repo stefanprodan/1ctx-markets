@@ -14,13 +14,21 @@ import { readRelativeReturn } from "../signals/read.ts";
 import type { WeeklyRow } from "../signals/weekly.ts";
 import type { StaleReason } from "../stale.ts";
 import { errorResult, round, type ToolResult, textResult } from "./answer.ts";
-import { ArgError, fields, oneOf, optionalText, symbols } from "./args.ts";
+import {
+  ArgError,
+  fields,
+  oneOf,
+  optionalText,
+  quoted,
+  symbols,
+} from "./args.ts";
 import { type Latest, MAX_SYMBOLS, quoteItem, readLatest } from "./quote.ts";
 import {
   benchmarkStale,
   distinct,
   type Resolved,
   setPage,
+  startOf,
   type Unavailable,
   unavailable,
 } from "./sets.ts";
@@ -116,7 +124,7 @@ export type ScreenArgs = {
 };
 
 function field(value: unknown, name: string): string {
-  if (typeof value !== "string" || !(value in FIELDS)) {
+  if (typeof value !== "string" || !Object.hasOwn(FIELDS, value)) {
     throw new ArgError(`${name} must be one of the screen fields`);
   }
   return value;
@@ -150,7 +158,9 @@ function parseFilter(input: unknown, k: number): Filter {
   }
   for (const key of Object.keys(f)) {
     if (key !== "field" && key !== "min" && key !== "max") {
-      throw new ArgError(`${name}: unknown key ${key}; use min and max`);
+      throw new ArgError(
+        `${name}: unknown key ${quoted(key)}; use min and max`,
+      );
     }
   }
   const min = bound(f.min, `${name}.min`);
@@ -314,6 +324,7 @@ export async function screenAnswer(
   args: ScreenArgs,
 ): Promise<ToolResult> {
   const { next, ...asked } = args;
+  const offset = startOf(next, asked);
   const names =
     args.benchmark === null ? args.symbols : [...args.symbols, args.benchmark];
   const targets = await readTargets(m, names);
@@ -326,7 +337,7 @@ export async function screenAnswer(
     }
     ctx.benchmark = {
       instrument: b.instrument,
-      stale: readLatest(m.db, b.instrument, now).stale,
+      stale: readLatest(m.db, b.instrument, now, m.quoteEveryMs).stale,
     };
   }
   const { resolved, errors } = distinct(targets.slice(0, args.symbols.length));
@@ -389,7 +400,7 @@ export async function screenAnswer(
   return textResult(
     setPage({
       args: asked,
-      next,
+      offset,
       matched: matched.map(({ item, fred }) => ({ item, fred })),
       notMatched,
       unavailable: out,
@@ -409,8 +420,8 @@ function screenOne(
   now: number,
 ): Matched | Unavailable | null {
   const { m } = ctx;
-  const latest = readLatest(m.db, r.instrument, now);
-  const q = quoteItem(m.db, r.input, r.instrument, now, latest);
+  const latest = readLatest(m.db, r.instrument, now, m.quoteEveryMs);
+  const q = quoteItem(m.db, r.input, r.instrument, latest);
   if (q.stale.length > 0) return unavailable(r, used, q.stale);
   const values = new Map<string, Value>();
   const missing: string[] = [];

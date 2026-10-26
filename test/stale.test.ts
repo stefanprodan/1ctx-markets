@@ -3,7 +3,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { recordSession } from "../src/calendars.ts";
-import { MINUTE_MS } from "../src/clock.ts";
+import { DAY_MS, MINUTE_MS } from "../src/clock.ts";
 import { open } from "../src/db/index.ts";
 import { upsertInstrument } from "../src/instruments.ts";
 import { endRun, failRun, startRun } from "../src/runs.ts";
@@ -52,6 +52,38 @@ function setup() {
 }
 
 describe("staleness", () => {
+  test("a quote no pass refreshed in a trading session is overdue", () => {
+    const { db, us, other, run, now } = setup();
+    const every = 5 * MINUTE_MS;
+    run(JOBS.quotes, "US");
+    run(JOBS.quotes, "OTHER");
+    const fetched = now();
+    const due = (at: number) => ({ now: at, everyMs: every });
+    const start = fetched + 60 * MINUTE_MS;
+    recordSession(
+      db,
+      "US",
+      { zone: "America/New_York", start, end: start + 390 * MINUTE_MS },
+      fetched,
+    );
+    // closed: the last quote stands for the close
+    expect(quoteStale(db, us, due(start - 1))).toEqual([]);
+    // in session, within two periods of the pass, then past them
+    expect(quoteStale(db, us, due(start + 1))).toEqual(["quote overdue"]);
+    db.query("update quotes set fetched_at = ? where instrument = ?").run(
+      start,
+      us.id,
+    );
+    expect(quoteStale(db, us, due(start + 2 * every))).toEqual([]);
+    expect(quoteStale(db, us, due(start + 2 * every + 1))).toEqual([
+      "quote overdue",
+    ]);
+    // without the period, as the jobs read it, and for a market with no
+    // session, never
+    expect(quoteStale(db, us)).toEqual([]);
+    expect(quoteStale(db, other, due(start + DAY_MS))).toEqual([]);
+  });
+
   test("is per job and scope: a successful search never clears a failed quote pass", () => {
     const { db, us, other, run, now } = setup();
     run(JOBS.quotes, "US");

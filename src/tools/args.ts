@@ -16,6 +16,12 @@ export class ArgError extends Error {
 // the longest symbol or name a caller may pass
 export const MAX_SYMBOL = 100;
 
+// a caller's own text quoted back in an error, cut so no error outgrows
+// a page
+export const QUOTED = 64;
+export const quoted = (name: string): string =>
+  name.length > QUOTED ? `${name.slice(0, QUOTED)}…` : name;
+
 export function fields(
   input: unknown,
   allowed: readonly string[],
@@ -24,7 +30,8 @@ export function fields(
     throw new ArgError("arguments must be an object");
   }
   for (const name of Object.keys(input)) {
-    if (!allowed.includes(name)) throw new ArgError(`unknown argument ${name}`);
+    if (!allowed.includes(name))
+      throw new ArgError(`unknown argument ${quoted(name)}`);
   }
   return input as Record<string, unknown>;
 }

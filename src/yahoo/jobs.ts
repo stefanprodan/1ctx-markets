@@ -23,7 +23,7 @@ import { endRun, failRun, lastStarted, runJob, startRun } from "../runs.ts";
 import type { Scheduler } from "../scheduler.ts";
 import { type Phrase, phraseOf, SourceError } from "../source.ts";
 import { barsDue, JOBS } from "../stale.ts";
-import { TRACK_MS, trackedInstruments } from "../tracking.ts";
+import { TRACK_MS, trackedIds, trackedInstruments } from "../tracking.ts";
 import { SOURCE, type SparkAnswer } from "./client.ts";
 import {
   backfill,
@@ -310,10 +310,12 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
     return { ...quotes, bars: await barTick() };
   }
 
-  // Every instrument without bars, read or not, so one added by a read
-  // whose history was cut short completes.
+  // Every tracked instrument without bars, so one added by a read whose
+  // history was cut short completes; an untracked one waits for a read,
+  // which backfills inside the call.
   async function backfillTurn(): Promise<string | null> {
     const now = clock.now();
+    const wanted = trackedIds(db, now, trackMs);
     const waiting = db
       .query<{ id: string }, [string]>(
         `select id from instruments i where source = ?
@@ -323,6 +325,7 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
       )
       .all(SOURCE)
       .map((r) => r.id)
+      .filter((id) => wanted.has(id))
       .filter((id) => now - (backfillMissed.get(id) ?? -RETRY_MS) >= RETRY_MS);
     const instrument =
       waiting[0] === undefined ? null : readInstrument(db, waiting[0]);

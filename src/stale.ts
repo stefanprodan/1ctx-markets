@@ -7,7 +7,7 @@
 // never marks another's rows. A quote pass that answered is judged
 // per instrument, so one symbol that never answers marks only itself.
 
-import { readSession } from "./calendars.ts";
+import { isQuoted, readSession } from "./calendars.ts";
 import type { Db } from "./db/index.ts";
 import type { Instrument } from "./instruments.ts";
 import { lastRun, lastStarted } from "./runs.ts";
@@ -33,6 +33,8 @@ export const STALE = {
   signalsPending: "signals pending",
   // a live row stepped over a stored day not final yet
   previousDayNotFinal: "previous day not final",
+  // the market trades, and no pass refreshed the quote for two periods
+  quoteOverdue: "quote overdue",
 } as const;
 
 export type StaleReason = (typeof STALE)[keyof typeof STALE];
@@ -42,8 +44,15 @@ type Scoped = Pick<Instrument, "id" | "source" | "market" | "addedAt">;
 const failed = (db: Db, i: Scoped, job: string) =>
   lastRun(db, i.source, job, i.market)?.status === "failed";
 
-// none when the quote is current
-export function quoteStale(db: Db, instrument: Scoped): StaleReason[] {
+// None when the quote is current. With due, a quote of a market in
+// session that no pass refreshed within two periods is overdue, as
+// after downtime or before Monday's first pass; a closed market's last
+// quote is its close.
+export function quoteStale(
+  db: Db,
+  instrument: Scoped,
+  due: { now: number; everyMs: number } | null = null,
+): StaleReason[] {
   const reasons: StaleReason[] = [];
   const quote = db
     .query<{ fetchedAt: number }, [string]>(
@@ -60,6 +69,14 @@ export function quoteStale(db: Db, instrument: Scoped): StaleReason[] {
   ) {
     // asked in the last pass, and its quote did not come back
     reasons.push(STALE.noQuote);
+  }
+  if (
+    due !== null &&
+    quote !== null &&
+    quote.fetchedAt < due.now - 2 * due.everyMs &&
+    isQuoted(instrument.market, readSession(db, instrument.market), due.now)
+  ) {
+    reasons.push(STALE.quoteOverdue);
   }
   // a closed market's new session can go unseen while its checks fail
   if (failed(db, instrument, JOBS.check)) reasons.push(STALE.checkFailed);

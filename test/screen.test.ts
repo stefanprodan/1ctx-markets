@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
-import { DAY_MS } from "../src/clock.ts";
+import { DAY_MS, MINUTE_MS } from "../src/clock.ts";
 import { type Db, open } from "../src/db/index.ts";
 import { fred } from "../src/fred/client.ts";
 import { upsertInstrument } from "../src/instruments.ts";
 import { silent } from "../src/log.ts";
-import { PAGE_BYTES } from "../src/tools/answer.ts";
+import { cursor, PAGE_BYTES } from "../src/tools/answer.ts";
 import { ArgError } from "../src/tools/args.ts";
 import { moversAnswer, parseMovers } from "../src/tools/movers.ts";
 import { parseScreen, screenAnswer } from "../src/tools/screen.ts";
@@ -234,6 +234,12 @@ describe("screen arguments", () => {
       "read only by relative_return",
     ],
     [{ symbols: ["A"], sort: "rsi14", limit: 5 }, "unknown argument limit"],
+    [{ symbols: ["A"], sort: "constructor" }, "sort must be one of"],
+    [{ symbols: ["A"], sort: "__proto__" }, "sort must be one of"],
+    [
+      { symbols: ["A"], filters: [{ field: "toString", max: 1 }] },
+      "must be one of",
+    ],
   ];
   test("are refused with the argument and why", () => {
     for (const [args, message] of refused) {
@@ -892,6 +898,80 @@ describe("movers", () => {
         stale: ["no quote yet"],
       },
     ]);
+  });
+
+  test("an average alone needs no day change, and ranks those without one last", async () => {
+    const w = moves();
+    listing(w.db, "XX:FLAT", { price: 150 });
+    w.db
+      .query(
+        `update quotes set previous_close = null, previous_close_field = null,
+           change = null, change_percent = null where instrument = 'XX:FLAT'`,
+      )
+      .run();
+    const a = await movers(w.m, {
+      symbols: [...names, "XX:FLAT"],
+      average: "daily_sma50",
+      relation: "above",
+    });
+    expect(ids(a.body)).toEqual(["XX:UP3", "XX:UP05", "XX:FLAT"]);
+    expect(a.body.items[2]).toMatchObject({ change_percent: null, price: 150 });
+    const moving = await movers(w.m, {
+      symbols: ["XX:FLAT"],
+      min_move_pct: 0,
+    });
+    expect(moving.body.items[0]).toMatchObject({
+      status: "unavailable",
+      missing: ["change_percent"],
+    });
+  });
+
+  test("a market that trades with a quote no pass refreshed is stale", async () => {
+    const w = world();
+    listing(w.db, "CRYPTO:C", { price: 103 });
+    bar(w.db, "CRYPTO:C", "1wk", "2026-10-19", 103, false);
+    row(w.db, "CRYPTO:C", "1wk", "2026-10-19", "live");
+    const ok = await movers(w.m, { symbols: ["CRYPTO:C"], min_move_pct: 1 });
+    expect(ids(ok.body)).toEqual(["CRYPTO:C"]);
+    await w.clock.advance(10 * MINUTE_MS + 1);
+    const late = await movers(w.m, { symbols: ["CRYPTO:C"], min_move_pct: 1 });
+    expect(late.body.items[0]).toMatchObject({
+      status: "unavailable",
+      stale: ["quote overdue"],
+    });
+  });
+
+  test("a cursor is checked before any symbol is read", async () => {
+    const w = moves();
+    const asked = {
+      symbols: names,
+      min_move_pct: 1,
+      direction: "either",
+      average: null,
+      relation: null,
+    };
+    for (const next of [
+      "bogus",
+      "1~0000000000",
+      cursor("0", asked),
+      cursor("1.5", asked),
+      cursor("x", asked),
+    ]) {
+      await expect(
+        moversAnswer(
+          w.m,
+          parseMovers({ symbols: names, min_move_pct: 1, next }),
+        ),
+      ).rejects.toThrow("next does not continue");
+    }
+    for (const id of names) expect(lastReadAt(w.db, id)).toBeNull();
+    // the same arguments' cursor continues them
+    const rest = await movers(w.m, {
+      symbols: names,
+      min_move_pct: 1,
+      next: cursor("1", asked),
+    });
+    expect(ids(rest.body)).toEqual(["XX:UP3", "XX:DN2"]);
   });
 
   test("every named symbol counts as read, matched or not", async () => {
