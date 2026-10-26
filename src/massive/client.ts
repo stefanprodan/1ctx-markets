@@ -210,8 +210,30 @@ export function parseNews(body: unknown): Omit<Page, "fetchedAt"> {
 // A key never travels in a query, by any name.
 const KEY_PARAMS = new Set(["apikey", "api_key", "key", "token"]);
 
+// The cursor as written and each form decoding it gives, lowercase: a
+// key escaped once or twice, or as a query writes a space, still shows.
+function decodings(cursor: string): string[] {
+  const forms = [cursor];
+  for (let k = 0; k < 3; k++) {
+    const last = forms.at(-1)!;
+    let next: string;
+    try {
+      next = decodeURIComponent(last.replaceAll("+", " "));
+    } catch {
+      break;
+    }
+    if (next === last) break;
+    forms.push(next);
+  }
+  try {
+    forms.push(decodeURIComponent(cursor));
+  } catch {}
+  return forms.map((f) => f.toLowerCase());
+}
+
 // The cursor goes out with the key in its header, so it must be Massive's
-// own news path over https, with no key of any kind in it.
+// own news path over https, with no key of any kind in it, as written or
+// decoded. It is checked, never rewritten.
 export function checkCursor(cursor: string, host: string, key: string): URL {
   let url: URL;
   try {
@@ -220,8 +242,9 @@ export function checkCursor(cursor: string, host: string, key: string): URL {
     throw malformed("next_url is not a URL");
   }
   const own = new URL(host);
+  const lower = key.toLowerCase();
   const keyed =
-    cursor.includes(key) ||
+    (key !== "" && decodings(cursor).some((f) => f.includes(lower))) ||
     [...url.searchParams.keys()].some((k) => KEY_PARAMS.has(k.toLowerCase()));
   if (
     url.protocol !== "https:" ||
@@ -310,13 +333,13 @@ export function massive(options: MassiveOptions): Massive {
       return get(`${host}${NEWS_PATH}?${params}`, run);
     },
     next(cursor) {
-      let url: URL;
       try {
-        url = checkCursor(cursor, host, key);
+        checkCursor(cursor, host, key);
       } catch (error) {
         return Promise.reject(error);
       }
-      return get(url.href, run);
+      // sent as Massive wrote it: the cursor is opaque
+      return get(cursor, run);
     },
     failFast: () => client({ failFast: true }),
     within: (live) => client({ failFast: true, live }),

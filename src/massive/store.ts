@@ -255,7 +255,10 @@ export async function refreshNews(
       // a new top walk waits for the next run once one was finished, or
       // the pages left would cut it again over the same overlap
       const resumed = top !== null;
-      if (top !== null) top = await walk(top, top.after ?? floor, maxPages);
+      // a walk saved long ago stops at today's floor, not its own
+      if (top !== null) {
+        top = await walk(top, Math.max(top.after ?? floor, floor), maxPages);
+      }
       if (top === null && !resumed && !stopped()) {
         const after =
           newest === null ? floor : Math.max(floor, newest - OVERLAP_MS);

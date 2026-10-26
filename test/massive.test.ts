@@ -790,3 +790,65 @@ test("retention runs at start, for news and research alike", async () => {
     db.close();
   }
 });
+
+describe("cursors that hold a key", () => {
+  // made up, with characters a URL and a query string each encode
+  const KEY = "Sk3y+with/slash=and&amp";
+  const base = `${HOST}/v2/reference/news?cursor=`;
+
+  test("are refused raw, escaped once or twice, as a query writes it, in any case", () => {
+    const once = encodeURIComponent(KEY);
+    for (const form of [
+      KEY,
+      KEY.toLowerCase(),
+      once,
+      once.toLowerCase(),
+      encodeURIComponent(once),
+      new URLSearchParams({ k: KEY }).toString().slice(2),
+      `x${once.toUpperCase()}y`,
+    ]) {
+      expect(() => checkCursor(`${base}${form}`, HOST, KEY)).toThrow(
+        "malformed answer",
+      );
+    }
+    expect(checkCursor(`${base}abc`, HOST, KEY).pathname).toBe(
+      "/v2/reference/news",
+    );
+  });
+
+  test("a cursor is sent exactly as Massive wrote it", async () => {
+    const clock = fakeClock(NOW);
+    const sent: string[] = [];
+    const client = massive({
+      clock,
+      key: MASSIVE_KEY,
+      fetch: async (url) => {
+        sent.push(url);
+        return new Response(JSON.stringify({ status: "OK", results: [] }));
+      },
+    });
+    // a URL parser would write the quote and the space escaped
+    const cursor = `${base}a'b%7eZ`;
+    await drive(clock, client, client.next(cursor));
+    expect(sent).toEqual([cursor]);
+  });
+});
+
+test("a top walk saved long ago stops at today's floor", async () => {
+  const t = setup({
+    ignoreAfter: true,
+    articles: await series("NVDA", 300, NOW, 6 * HOUR_MS),
+  });
+  const nvda = share(t.db, "NVDA", NOW);
+  t.db
+    .query(
+      `insert into news_walks (instrument, walk, cursor, after)
+       values (?, 'top', null, ?)`,
+    )
+    .run(nvda.id, NOW - 60 * DAY_MS);
+  const r = await t.go(refreshNews(t.ctx, nvda));
+  // the second page reaches 30 days back; nothing older is asked
+  expect(r).toMatchObject({ status: "ok", pages: 2, complete: true });
+  expect(newsRows(t.db, nvda.id)).toBe(120);
+  expect(readWalks(t.db, nvda.id)).toEqual(DONE);
+});
