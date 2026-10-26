@@ -26,7 +26,7 @@ import {
 } from "../instruments.ts";
 import { exclusive } from "../lock.ts";
 import { signalsAfterBars } from "../signals/store.ts";
-import { SourceError } from "../source.ts";
+import { DeadlinePassed, SourceError } from "../source.ts";
 import type { Writer } from "../writer.ts";
 import { dateOfWall, startOfDate } from "../zone.ts";
 import {
@@ -174,10 +174,12 @@ function source(ctx: FredContext): Fred {
 // The series and ten years of its observations, stored together, for a
 // tool reading FRED:<id> it has not seen. Only daily series are kept,
 // since signals assume daily bars; one whose notes restrict passing the
-// values on is still kept for the server's own callers.
+// values on is still kept for the server's own callers. A read's fetch
+// stores nothing once live() no longer holds.
 export async function addSeries(
   ctx: FredContext,
   input: string,
+  live: () => boolean = () => true,
 ): Promise<AddResult> {
   if (ctx.fred === null) return { kind: "off", message: NO_DATA };
   const id = seriesId(input);
@@ -187,6 +189,7 @@ export async function addSeries(
     return { kind: "known", instrument: known };
   }
   const client = ctx.fred;
+  if (!live()) throw new DeadlinePassed();
   const meta = await client.series(id);
   // neither id is repeated: an echoed one is the source's text
   if (meta.id.toUpperCase() !== id) {
@@ -199,10 +202,12 @@ export async function addSeries(
     if (stored !== null && dailyRange(ctx.db, key) !== null) {
       return { kind: "known", instrument: stored };
     }
+    if (!live()) throw new DeadlinePassed();
     const answer = await client.observations(id, {
       start: backfillStart(ctx.clock.now()),
     });
     return ctx.writer.write((db) => {
+      if (!live()) throw new DeadlinePassed();
       const now = ctx.clock.now();
       const instrument = upsertInstrument(db, fields(id, meta), now);
       return {
@@ -217,13 +222,16 @@ export async function addSeries(
 
 // The last 30 observations, so late and revised values land; after a
 // gap longer than those, again from the last stored day. A series with
-// no bars yet is backfilled.
+// no bars yet is backfilled. Every answer comes in before the one
+// write, which live() guards for a read past its deadline.
 export function refetchSeries(
   ctx: FredContext,
   instrument: Instrument,
+  live: () => boolean = () => true,
 ): Promise<Written> {
   const client = source(ctx);
   return exclusive(ctx.db, instrument.id, async () => {
+    if (!live()) throw new DeadlinePassed();
     const range = dailyRange(ctx.db, instrument.id);
     let answer = await client.observations(
       instrument.sourceSymbol,
@@ -233,12 +241,14 @@ export function refetchSeries(
     );
     const oldest = answer.dates[0];
     if (range !== null && oldest !== undefined && oldest > range.last) {
+      if (!live()) throw new DeadlinePassed();
       answer = await client.observations(instrument.sourceSymbol, {
         start: range.last,
       });
     }
-    return ctx.writer.write((db) =>
-      store(db, instrument, answer, ctx.clock.now()),
-    );
+    return ctx.writer.write((db) => {
+      if (!live()) throw new DeadlinePassed();
+      return store(db, instrument, answer, ctx.clock.now());
+    });
   });
 }

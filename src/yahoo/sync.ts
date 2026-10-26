@@ -33,7 +33,7 @@ import {
 } from "../instruments.ts";
 import { exclusive } from "../lock.ts";
 import { pruneLive, refreshLive, signalsAfterBars } from "../signals/store.ts";
-import { type Phrase, SourceError } from "../source.ts";
+import { DeadlinePassed, type Phrase, SourceError } from "../source.ts";
 import type { Writer } from "../writer.ts";
 import { addDays, dateOfWall, startOfDate, wallTime } from "../zone.ts";
 import {
@@ -386,6 +386,86 @@ export async function addInstrument(
   });
 }
 
+// a read's deadline passed before its fetch could be stored
+export const expired = () => new DeadlinePassed();
+
+// An instrument a read named and the server has no bars for, fetched
+// inside the call: the instrument, ten years of bars, their signals and
+// a fresh quote land in one write while live() holds, or nothing does.
+export async function fetchInstrument(
+  ctx: YahooContext,
+  sourceSymbol: string,
+  expected: string | null,
+  live: () => boolean,
+): Promise<Instrument> {
+  const { monday, from } = backfillStart(ctx.clock.now());
+  const answer = await ctx.yahoo.chart(sourceSymbol, from, ctx.clock.now());
+  const id = keyOf(answer.exchange, answer.symbol);
+  if (expected !== null && expected !== id) {
+    throw new SourceError("malformed answer", `${expected} answered as ${id}`);
+  }
+  if (!live()) throw expired();
+  // a chart's previous close is the one before its range, ten years back
+  const quote = await ctx.yahoo.spark([answer.symbol]);
+  // bars with no quote would answer an old price as the live one
+  if (
+    !quote.quotes.some(
+      (q) => q.symbol.toUpperCase() === answer.symbol.toUpperCase(),
+    )
+  ) {
+    throw new SourceError("source error", `no quote for ${answer.symbol}`);
+  }
+  return exclusive(ctx.db, id, async () => {
+    // the lock may have been held past the deadline
+    if (!live()) throw expired();
+    // stored meanwhile by another read or the backfill
+    if (dailyRange(ctx.db, id) !== null) {
+      return ctx.writer.write((db) => {
+        if (!live()) throw expired();
+        const instrument = upsertInstrument(
+          db,
+          fields(answer),
+          ctx.clock.now(),
+        );
+        storeQuotes(db, quote);
+        return instrument;
+      });
+    }
+    if (startsShort(answer, monday)) throw cutShort();
+    return ctx.writer.write((db) => {
+      if (!live()) throw expired();
+      const now = ctx.clock.now();
+      const instrument = upsertInstrument(db, fields(answer), now);
+      store(db, now, instrument, answer, { since: monday, splits: [answer] });
+      storeQuotes(db, quote);
+      return instrument;
+    });
+  });
+}
+
+// An instrument no read named within the tracking window, so no job
+// kept it: its bars refetched as the daily job would, then a fresh
+// quote. Each write is a whole update on its own.
+export async function catchUp(
+  ctx: YahooContext,
+  instrument: Instrument,
+  live: () => boolean,
+): Promise<Instrument> {
+  return exclusive(ctx.db, instrument.id, async () => {
+    // the lock may have been held past the deadline
+    if (!live()) throw expired();
+    const bars = await refetchAnswer(ctx, instrument);
+    if (!live()) throw expired();
+    const quote = await ctx.yahoo.spark([instrument.sourceSymbol]);
+    return ctx.writer.write((db) => {
+      if (!live()) throw expired();
+      bars(db);
+      storeQuotes(db, quote);
+      return instrument;
+    });
+  });
+}
+
 // Ten years of daily bars again, or from the first stored bar if that
 // is older, so after a split no stored bar keeps its old scale.
 export function backfill(
@@ -395,11 +475,23 @@ export function backfill(
   return exclusive(ctx.db, instrument.id, () => backfillHeld(ctx, instrument));
 }
 
+// What a source answered, fetched in full before anything is written,
+// as the write that stores it.
+type Answered = (db: Db) => Written;
+
 async function backfillHeld(
   ctx: YahooContext,
   instrument: Instrument,
   triggers: readonly ChartAnswer[] = [],
 ): Promise<Written> {
+  return ctx.writer.write(await backfillAnswer(ctx, instrument, triggers));
+}
+
+async function backfillAnswer(
+  ctx: YahooContext,
+  instrument: Instrument,
+  triggers: readonly ChartAnswer[] = [],
+): Promise<Answered> {
   const range = dailyRange(ctx.db, instrument.id);
   let { monday, from } = backfillStart(ctx.clock.now());
   if (range !== null && range.first < monday) {
@@ -412,12 +504,11 @@ async function backfillHeld(
     ctx.clock.now(),
   );
   checkAnswer(instrument, answer);
-  return ctx.writer.write((db) =>
+  return (db) =>
     store(db, ctx.clock.now(), instrument, answer, {
       since: monday,
       splits: [...triggers, answer],
-    }),
-  );
+    });
 }
 
 // The last 30 days, or from the last final bar after a longer gap. A
@@ -435,9 +526,16 @@ async function refetchHeld(
   ctx: YahooContext,
   instrument: Instrument,
 ): Promise<Written> {
+  return ctx.writer.write(await refetchAnswer(ctx, instrument));
+}
+
+async function refetchAnswer(
+  ctx: YahooContext,
+  instrument: Instrument,
+): Promise<Answered> {
   const { db, clock } = ctx;
   const range = dailyRange(db, instrument.id);
-  if (range === null) return backfillHeld(ctx, instrument);
+  if (range === null) return backfillAnswer(ctx, instrument);
   const now = clock.now();
   const since = range.lastFinal ?? range.first;
   const from = Math.min(
@@ -447,11 +545,9 @@ async function refetchHeld(
   const answer = await ctx.yahoo.chart(instrument.sourceSymbol, from, now);
   checkAnswer(instrument, answer);
   if (unapplied(db, instrument, [answer]).length > 0) {
-    return backfillHeld(ctx, instrument, [answer]);
+    return backfillAnswer(ctx, instrument, [answer]);
   }
-  return ctx.writer.write((db) =>
-    store(db, ctx.clock.now(), instrument, answer, null),
-  );
+  return (db) => store(db, ctx.clock.now(), instrument, answer, null);
 }
 
 export type QuoteRow = {

@@ -14,6 +14,9 @@ import { mcpHandler } from "./mcp.ts";
 import { failInterrupted, pruneRuns } from "./runs.ts";
 import { type Scheduler, scheduler } from "./scheduler.ts";
 import { type Fetch, queue } from "./source.ts";
+import { quotesHandler } from "./tools/http.ts";
+import { type Markets, markets } from "./tools/targets.ts";
+import { TRACK_DAYS } from "./tracking.ts";
 import { type Writer, writer } from "./writer.ts";
 import { type Yahoo, yahoo } from "./yahoo/client.ts";
 import { type YahooJobs, yahooJobs } from "./yahoo/jobs.ts";
@@ -31,6 +34,8 @@ export type AppOptions = {
   // the one writable connection; main closes it after stop()
   db: Db;
   quoteEveryMs: number;
+  // an instrument read within this many days stays tracked
+  trackDays?: number;
   // FRED is on while its key file holds one
   fredKey?: string | null;
   // tests answer every source call from recordings
@@ -47,6 +52,8 @@ export type App = {
   // null while the source is off
   fred: Fred | null;
   fredJobs: FredJobs | null;
+  // what the tools and GET /quotes read through
+  markets: Markets;
   // one field per source with its state and why, for the start log
   sources: LogFields;
   stop(): Promise<void>;
@@ -54,6 +61,7 @@ export type App = {
 
 export function start(options: AppOptions): App {
   const { clock, db } = options;
+  const trackMs = (options.trackDays ?? TRACK_DAYS) * DAY_MS;
   const write = writer(db);
   // queued first, so no job's run is taken for one a crash left running;
   // pruned here too, since a server restarted daily never reaches the
@@ -74,6 +82,7 @@ export function start(options: AppOptions): App {
     ctx: { db, clock, yahoo: client, writer: write },
     quoteEveryMs: options.quoteEveryMs,
     log: options.log("yahoo"),
+    trackMs,
   });
 
   const fredKey = options.fredKey ?? null;
@@ -87,15 +96,27 @@ export function start(options: AppOptions): App {
       : fredJobs({
           ctx: { db, clock, writer: write, fred: fredClient },
           log: options.log("fred"),
+          trackMs,
         });
 
-  const mcp = mcpHandler(options.version, options.log("mcp"));
+  const reads = markets({
+    db,
+    clock,
+    writer: write,
+    yahoo: client,
+    fred: fredClient,
+    log: options.log("tools"),
+    trackMs,
+    quoteEveryMs: options.quoteEveryMs,
+  });
+  const mcp = mcpHandler(options.version, options.log("mcp"), reads);
   const server = serve({
     hostname: options.hostname,
     port: options.port,
     handle: router({
       bearer: options.bearer,
       mcp,
+      quotes: quotesHandler(reads),
       clock,
       log: options.log("http"),
     }),
@@ -114,6 +135,7 @@ export function start(options: AppOptions): App {
     yahooJobs: sync,
     fred: fredClient,
     fredJobs: fredSync,
+    markets: reads,
     sources: {
       yahoo: "on",
       fred: fredKey === null ? "off (no key)" : "on (key file)",

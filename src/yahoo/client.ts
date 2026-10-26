@@ -12,6 +12,7 @@ import {
   type Phrase,
   type Queue,
   queue,
+  type RunOptions,
   SourceError,
 } from "../source.ts";
 
@@ -99,6 +100,8 @@ export type Yahoo = {
   // the same client and queue, failing at once while the queue is
   // paused, for a tool answering a caller
   failFast(): Yahoo;
+  // failing fast, and starting no call once live() is false
+  within(live: () => boolean): Yahoo;
 };
 
 export type YahooOptions = {
@@ -326,52 +329,49 @@ export function yahoo(options: YahooOptions): Yahoo {
   // so a malformed one backs the queue off like any failure
   const get = <T>(
     url: string,
-    failFast: boolean,
+    run: RunOptions,
     parse: (body: unknown, fetchedAt: number) => T,
   ): Promise<T> =>
-    calls.run(
-      async () => {
-        const abort = new AbortController();
-        let timedOut = false;
-        const cancel = clock.at(clock.now() + TIMEOUT_MS, () => {
-          timedOut = true;
-          abort.abort();
-        });
+    calls.run(async () => {
+      const abort = new AbortController();
+      let timedOut = false;
+      const cancel = clock.at(clock.now() + TIMEOUT_MS, () => {
+        timedOut = true;
+        abort.abort();
+      });
+      try {
+        let res: Response;
+        let raw: string;
         try {
-          let res: Response;
-          let raw: string;
-          try {
-            res = await doFetch(url, {
-              headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
-              signal: abort.signal,
-            });
-            raw = await res.text();
-          } catch {
-            throw new SourceError(timedOut ? "timed out" : "network error");
-          }
-          const fetchedAt = clock.now();
-          if (res.status === 429) throw new SourceError("rate limited");
-          if (res.status === 400) throw new SourceError("bad request");
-          let body: unknown;
-          try {
-            body = JSON.parse(raw);
-          } catch {
-            body = undefined;
-          }
-          // an unknown symbol is a 404 with a chart error in the body
-          if (res.status === 404) throw new SourceError("not found");
-          if (!res.ok)
-            throw new SourceError("source error", `HTTP ${res.status}`);
-          if (body === undefined) throw malformed("not JSON");
-          return parse(body, fetchedAt);
-        } finally {
-          cancel();
+          res = await doFetch(url, {
+            headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
+            signal: abort.signal,
+          });
+          raw = await res.text();
+        } catch {
+          throw new SourceError(timedOut ? "timed out" : "network error");
         }
-      },
-      { failFast },
-    );
+        const fetchedAt = clock.now();
+        if (res.status === 429) throw new SourceError("rate limited");
+        if (res.status === 400) throw new SourceError("bad request");
+        let body: unknown;
+        try {
+          body = JSON.parse(raw);
+        } catch {
+          body = undefined;
+        }
+        // an unknown symbol is a 404 with a chart error in the body
+        if (res.status === 404) throw new SourceError("not found");
+        if (!res.ok)
+          throw new SourceError("source error", `HTTP ${res.status}`);
+        if (body === undefined) throw malformed("not JSON");
+        return parse(body, fetchedAt);
+      } finally {
+        cancel();
+      }
+    }, run);
 
-  const client = (failFast: boolean): Yahoo => {
+  const client = (run: RunOptions): Yahoo => {
     const spark = async (symbols: readonly string[]): Promise<SparkAnswer> => {
       if (symbols.length === 0 || symbols.length > SPARK_MAX) {
         throw new Error(`a spark call takes 1 to ${SPARK_MAX} symbols`);
@@ -379,7 +379,7 @@ export function yahoo(options: YahooOptions): Yahoo {
       // a cached answer freezes the price for minutes; _ makes each URL new
       const list = symbols.map(encodeURIComponent).join(",");
       const url = `${host}/v7/finance/spark?symbols=${list}&range=1d&interval=5m&_=${clock.now()}`;
-      return get(url, failFast, parseSpark);
+      return get(url, run, parseSpark);
     };
 
     return {
@@ -391,7 +391,7 @@ export function yahoo(options: YahooOptions): Yahoo {
           events: "div,split",
         });
         const url = `${host}/v8/finance/chart/${encodeURIComponent(symbol)}?${params}`;
-        return get(url, failFast, parseChart);
+        return get(url, run, parseChart);
       },
       spark,
       async sparkAll(symbols) {
@@ -415,14 +415,11 @@ export function yahoo(options: YahooOptions): Yahoo {
           newsCount: "0",
           listsCount: "0",
         });
-        return get(
-          `${host}/v1/finance/search?${params}`,
-          failFast,
-          parseSearch,
-        );
+        return get(`${host}/v1/finance/search?${params}`, run, parseSearch);
       },
-      failFast: () => client(true),
+      failFast: () => client({ failFast: true }),
+      within: (live) => client({ failFast: true, live }),
     };
   };
-  return client(false);
+  return client({});
 }

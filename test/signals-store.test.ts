@@ -35,6 +35,7 @@ import {
 import { addDays, fromWallTime, localDate, wallOfDate } from "../src/zone.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import {
+  added,
   clone,
   fakeFetch,
   listed,
@@ -568,7 +569,7 @@ async function crypto(start: number) {
     yahoo: yahoo({ clock, fetch: f.fetch }),
     writer: writer(db),
   };
-  await addInstrument(ctx, "C0-USD");
+  await added(ctx, "C0-USD");
   const read = (interval: Interval, kind: string) =>
     db
       .query(

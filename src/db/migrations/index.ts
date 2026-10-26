@@ -11,6 +11,7 @@ import { m0002 } from "./0002-markets.ts";
 import { m0003 } from "./0003-yahoo.ts";
 import { m0004 } from "./0004-scopes-units.ts";
 import { m0005 } from "./0005-signals.ts";
+import { m0006 } from "./0006-tracking.ts";
 
 export const MIGRATIONS: readonly Migration[] = [
   m0001,
@@ -18,4 +19,5 @@ export const MIGRATIONS: readonly Migration[] = [
   m0003,
   m0004,
   m0005,
+  m0006,
 ];

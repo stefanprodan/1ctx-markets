@@ -6,7 +6,9 @@
 // after each close, a check of one instrument per closed market. The
 // 30-day bar refetch of each market whose session moved on is a job of
 // its own, so a slow one never takes a quote turn, and backfill takes
-// its own turns too; all share the source queue and the writer.
+// its own turns too; all share the source queue and the writer. Quotes
+// and bars follow only the instruments a read named within the tracking
+// window.
 
 import {
   closeQuoteAt,
@@ -15,16 +17,13 @@ import {
   readSession,
 } from "../calendars.ts";
 import { MINUTE_MS } from "../clock.ts";
-import {
-  type Instrument,
-  readInstrument,
-  readInstruments,
-} from "../instruments.ts";
+import { type Instrument, readInstrument } from "../instruments.ts";
 import type { Log } from "../log.ts";
 import { endRun, failRun, lastStarted, runJob, startRun } from "../runs.ts";
 import type { Scheduler } from "../scheduler.ts";
 import { type Phrase, phraseOf, SourceError } from "../source.ts";
 import { barsDue, JOBS } from "../stale.ts";
+import { TRACK_MS, trackedIds, trackedInstruments } from "../tracking.ts";
 import { SOURCE, type SparkAnswer } from "./client.ts";
 import {
   backfill,
@@ -43,6 +42,8 @@ export type JobsOptions = {
   ctx: YahooContext;
   quoteEveryMs: number;
   log: Log;
+  // an instrument read within this long is synced; others wait for a read
+  trackMs?: number;
 };
 
 type Work = {
@@ -94,6 +95,8 @@ function byMarket(
 export function yahooJobs(options: JobsOptions): YahooJobs {
   const { ctx, quoteEveryMs, log } = options;
   const { db, clock, yahoo, writer } = ctx;
+  const trackMs = options.trackMs ?? TRACK_MS;
+  const tracked = () => byMarket(trackedInstruments(db, clock.now(), trackMs));
   let lastSlot: number | null = null;
   // each market's next check instrument, so one that never answers
   // cannot hide a new session from the rest
@@ -277,7 +280,7 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
     const slot = Math.floor(now / quoteEveryMs);
     const quotePass = slot !== lastSlot;
     lastSlot = slot;
-    const work = plan(byMarket(readInstruments(db)), now, quotePass);
+    const work = plan(tracked(), now, quotePass);
     if (work.length > 0) await sparkPass(work);
     return {
       quoted: work.filter((w) => w.job === JOBS.quotes).map((w) => w.market),
@@ -287,7 +290,7 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
 
   async function barTick(): Promise<BarPass[]> {
     const bars: BarPass[] = [];
-    for (const [market, instruments] of byMarket(readInstruments(db))) {
+    for (const [market, instruments] of tracked()) {
       if (!barsDue(db, SOURCE, market, clock.now())) continue;
       const last = lastStarted(db, SOURCE, JOBS.bars, market);
       if (
@@ -307,8 +310,12 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
     return { ...quotes, bars: await barTick() };
   }
 
+  // Every tracked instrument without bars, so one added by a read whose
+  // history was cut short completes; an untracked one waits for a read,
+  // which backfills inside the call.
   async function backfillTurn(): Promise<string | null> {
     const now = clock.now();
+    const wanted = trackedIds(db, now, trackMs);
     const waiting = db
       .query<{ id: string }, [string]>(
         `select id from instruments i where source = ?
@@ -318,6 +325,7 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
       )
       .all(SOURCE)
       .map((r) => r.id)
+      .filter((id) => wanted.has(id))
       .filter((id) => now - (backfillMissed.get(id) ?? -RETRY_MS) >= RETRY_MS);
     const instrument =
       waiting[0] === undefined ? null : readInstrument(db, waiting[0]);

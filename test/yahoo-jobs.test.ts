@@ -15,10 +15,11 @@ import { barsStale, JOBS, quoteStale } from "../src/stale.ts";
 import { writer } from "../src/writer.ts";
 import { yahoo } from "../src/yahoo/client.ts";
 import { RETRY_MS, type TickReport, yahooJobs } from "../src/yahoo/jobs.ts";
-import { addInstrument, readQuote } from "../src/yahoo/sync.ts";
+import { readQuote } from "../src/yahoo/sync.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { BVB, CRYPTO, type SimListing, sim, US, XETRA } from "./helpers/sim.ts";
 import {
+  added,
   backTo,
   chartSymbol,
   clone,
@@ -100,7 +101,7 @@ describe("quotes", () => {
     const s = sim(listings);
     // Monday 17:58 UTC: New York trades, Xetra closed at 16:30
     const t = setup(utc("2026-10-26T17:58"), (url, now) => s.route(url, now));
-    for (const l of listings) await addInstrument(t.ctx, l.symbol);
+    for (const l of listings) await added(t.ctx, l.symbol);
     await t.runTo(utc("2026-10-26T18:00"));
     const before = t.f.urls.length;
     const reports = await t.runTo(utc("2026-10-26T18:05"));
@@ -136,8 +137,8 @@ describe("quotes", () => {
         ? { recordedAt: "", status: 500, headers: {}, body: "" }
         : s.route(url, now),
     );
-    await addInstrument(t.ctx, "U0");
-    await addInstrument(t.ctx, "C0-USD");
+    await added(t.ctx, "U0");
+    await added(t.ctx, "C0-USD");
     await t.runTo(utc("2026-10-26T18:00"));
     down = true;
     await t.runTo(utc("2026-10-26T18:05"));
@@ -162,7 +163,7 @@ describe("quotes", () => {
       return answer;
     });
     for (const symbol of ["U0", "U1", "C0-USD"]) {
-      await addInstrument(t.ctx, symbol);
+      await added(t.ctx, symbol);
     }
     await t.runTo(utc("2026-10-26T18:00"));
     edit = (result) => {
@@ -208,7 +209,7 @@ describe("closed markets", () => {
         return { recordedAt: "", status: 500, headers: {}, body: "" };
       return spark.route(url);
     });
-    await addInstrument(t.ctx, "VVSM.DE");
+    await added(t.ctx, "VVSM.DE");
     expect(readBars(t.db, "XETRA:VVSM", "1d").at(-1)).toMatchObject({
       date: "2026-10-23",
       final: false,
@@ -287,8 +288,8 @@ describe("a closed market's check", () => {
       }
       return answer;
     });
-    await addInstrument(t.ctx, "U0");
-    await addInstrument(t.ctx, "U1");
+    await added(t.ctx, "U0");
+    await added(t.ctx, "U1");
     await t.runTo(utc("2026-10-26T16:00"));
     expect(readSession(t.db, "US")!.start).toBe(utc("2026-10-26T13:30"));
     expect(readQuote(t.db, "US:U1")!.fetchedAt).toBe(utc("2026-10-26T16:00"));
@@ -324,8 +325,8 @@ describe("bars at the session change", () => {
       }
       return answer;
     });
-    await addInstrument(t.ctx, "NVDA");
-    await addInstrument(t.ctx, "HYG");
+    await added(t.ctx, "NVDA");
+    await added(t.ctx, "HYG");
     await t.runTo(utc("2026-10-26T13:29"));
     const before = t.f.urls.length;
     monday = true;
@@ -415,7 +416,7 @@ describe("a slow bar pass", () => {
         t.clock.at(t.clock.now() + 25_000, () => resolve(answer)),
       );
     });
-    for (const l of listings) await addInstrument(t.ctx, l.symbol);
+    for (const l of listings) await added(t.ctx, l.symbol);
     // Friday's bar pass, so only Monday's is slow
     await t.jobs.tick();
     slow = true;
@@ -440,7 +441,7 @@ describe("backfill", () => {
   test("runs as its own turn for an instrument with no bars, never on the quote path", async () => {
     const s = sim([US("U0")]);
     const t = setup(utc("2026-10-26T17:58"), (url, now) => s.route(url, now));
-    await addInstrument(t.ctx, "U0");
+    await added(t.ctx, "U0");
     t.db.query("delete from bars").run();
     const u0 = readInstrument(t.db, "US:U0")!;
     expect(barsStale(t.db, u0, t.clock.now())).toEqual(["no history"]);
@@ -464,7 +465,7 @@ describe("backfill", () => {
     const short = await recorded("chart-nvda-5y-1d");
     let answer = short;
     const t = setup(Date.parse(short.recordedAt), () => answer);
-    const { rows } = await addInstrument(t.ctx, "NVDA");
+    const { rows } = await added(t.ctx, "NVDA");
     expect(rows).toBe(0);
     expect(readBars(t.db, "US:NVDA", "1d")).toEqual([]);
     await expect(t.jobs.backfillTurn()).rejects.toThrow("a history cut short");
@@ -492,8 +493,8 @@ describe("backfill", () => {
       }
       return answer;
     });
-    await addInstrument(t.ctx, "U0");
-    await addInstrument(t.ctx, "U1");
+    await added(t.ctx, "U0");
+    await added(t.ctx, "U1");
     t.db.query("delete from bars").run();
     empty = true;
     const before = t.f.urls.length;
@@ -518,7 +519,7 @@ describe("a simulated weekday", () => {
   async function monday(listings: SimListing[]) {
     const s = sim(listings);
     const t = setup(utc("2026-10-25T20:00"), (url, now) => s.route(url, now));
-    for (const l of listings) await addInstrument(t.ctx, l.symbol);
+    for (const l of listings) await added(t.ctx, l.symbol);
     await t.runTo(utc("2026-10-26T00:00"));
     const before = t.f.urls.length;
     await t.runTo(utc("2026-10-27T00:00"));

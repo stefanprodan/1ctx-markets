@@ -97,6 +97,23 @@ describe("migrations", () => {
     ]);
   });
 
+  test("instruments stored before tracking start one window from their update", () => {
+    const db = new Database(":memory:", { strict: true });
+    const clock = fakeClock();
+    const at = MIGRATIONS.findIndex((m) => m.id === "0006-tracking");
+    migrate(db, clock, MIGRATIONS.slice(0, at));
+    db.query(
+      `insert into instruments (id, market, symbol, source, source_symbol,
+         exchange, type, zone, added_at, updated_at)
+       values ('US:NVDA', 'US', 'NVDA', 'yahoo', 'NVDA', 'NMS', 'EQUITY',
+         'America/New_York', 1, 2)`,
+    ).run();
+    migrate(db, clock);
+    expect(
+      db.query("select last_read_at as at from instruments").get(),
+    ).toEqual({ at: 2 });
+  });
+
   test("open applies the shipped list to a new database", () => {
     const { db, migrations } = open(":memory:", fakeClock());
     expect(migrations).toEqual(MIGRATIONS.map((m) => m.id));
