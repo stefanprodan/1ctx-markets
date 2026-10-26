@@ -16,7 +16,7 @@ import {
   Client,
   StreamableHTTPClientTransport,
 } from "@modelcontextprotocol/client";
-import { router } from "../src/http.ts";
+import { IDLE_TIMEOUT_S, router } from "../src/http.ts";
 import {
   BEARER_FILE,
   BEARER_PREFIX,
@@ -26,6 +26,7 @@ import {
   requireBearer,
 } from "../src/keys.ts";
 import { errorFields, format, logger, MASK } from "../src/log.ts";
+import { CALL_MS } from "../src/tools/targets.ts";
 import { SECRETS, withApp } from "./helpers/app.ts";
 import { fakeClock } from "./helpers/clock.ts";
 
@@ -190,6 +191,14 @@ describe("the bearer", () => {
     expect(format(0, "test", "info", "plain")).toBe(
       "time=1970-01-01T00:00:00.000Z level=INFO msg=plain area=test",
     );
+  });
+});
+
+describe("the server", () => {
+  test("keeps a request open past a tool call's deadline", () => {
+    // Bun's own default of 10 s cut a quote call that fetched new symbols
+    expect(IDLE_TIMEOUT_S * 1000).toBeGreaterThan(CALL_MS + 10_000);
+    expect(IDLE_TIMEOUT_S).toBeLessThanOrEqual(255);
   });
 });
 

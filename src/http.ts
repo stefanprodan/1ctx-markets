@@ -11,6 +11,9 @@ import type { Clock } from "./clock.ts";
 import { type Log, sdkErrorFields } from "./log.ts";
 
 const MAX_BODY_BYTES = 1024 * 1024;
+// Bun drops a request idle for 10 s by default, under a tool call's 15 s
+// deadline (CALL_MS); 30 s clears it with room for the queued write
+export const IDLE_TIMEOUT_S = 30;
 
 export type Handle = (req: Request) => Promise<Response>;
 
@@ -113,6 +116,7 @@ export function serve(options: {
     hostname: options.hostname,
     port: options.port,
     maxRequestBodySize: MAX_BODY_BYTES,
+    idleTimeout: IDLE_TIMEOUT_S,
     fetch: options.handle,
   });
 }
