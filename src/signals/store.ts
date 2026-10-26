@@ -209,20 +209,32 @@ export function liveTarget(
   db: Db,
   instrument: Scoped,
 ): { date: string; quote: LiveQuote } | null {
-  // an index page gives no trade time and is current while its market
-  // trades, so its fetch dates the live row; the quote keeps no time
-  const quote = db
-    .query<LiveQuote, [string]>(
-      `select price, day_high as dayHigh, day_low as dayLow, volume,
-         coalesce(time, fetched_at) as time
+  const row = db
+    .query<
+      Omit<LiveQuote, "time"> & { time: number | null; fetchedAt: number },
+      [string]
+    >(
+      `select price, day_high as dayHigh, day_low as dayLow, volume, time,
+         fetched_at as fetchedAt
        from quotes where instrument = ?`,
     )
     .get(instrument.id);
-  if (quote === null) return null;
+  if (row === null) return null;
+  const session =
+    instrument.market === CRYPTO ? null : readSession(db, instrument.market);
+  // an index page gives no trade time and is current while its market
+  // trades, so its fetch, at most the session's end, dates the live row;
+  // the quote keeps no time
+  const { fetchedAt, ...rest } = row;
+  const quote: LiveQuote = {
+    ...rest,
+    time:
+      row.time ??
+      (session === null ? fetchedAt : Math.min(fetchedAt, session.end)),
+  };
   if (instrument.market === CRYPTO) {
     return { date: localDate("UTC", quote.time), quote };
   }
-  const session = readSession(db, instrument.market);
   if (
     session === null ||
     quote.time < session.start ||

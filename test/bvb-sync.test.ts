@@ -292,6 +292,27 @@ describe("quotes from the list pages", () => {
     expect(details()).toBe(before + 1);
   });
 
+  test("an index quote fetched after the close keeps its session's live row", async () => {
+    const t = await setup(utc("2026-10-23T14:00:00"), { open: true });
+    friday(t.db, t.clock.now());
+    await t.add("BET");
+    const live = () =>
+      t.db
+        .query<{ date: string; quoteTime: number }, []>(
+          "select date, quote_time as quoteTime from signals where instrument = 'BVB:BET' and kind = 'live' and interval = '1d'",
+        )
+        .all();
+    expect(live().map((r) => r.date)).toEqual(["2026-10-23"]);
+    // the pass after the close, past the live rows' margin
+    await t.clock.advance(utc("2026-10-23T15:15:30") - t.clock.now());
+    expect((await t.run(t.jobs.quoteTick())).quoted).toBe(true);
+    const q = readQuote(t.db, "BVB:BET")!;
+    expect(q.fetchedAt).toBeGreaterThan(utc("2026-10-23T15:15:00"));
+    // the quote keeps no time; its live row is dated at the session's end
+    expect(q.time).toBeNull();
+    expect(live()).toEqual([{ date: "2026-10-23", quoteTime: FRIDAY.end }]);
+  });
+
   test("a page the client cannot read fails the run and marks the rows stale", async () => {
     const shares = await bvbRecorded("shares-list");
     const broken: Recorded = clone(shares);

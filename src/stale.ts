@@ -4,6 +4,7 @@
 // Staleness from the instrument's own source, job and scope; one
 // market's failure never marks another.
 
+import { SOURCE as BVB } from "./bvb/client.ts";
 import { CRYPTO, closeQuoteAt, readSession } from "./calendars.ts";
 import type { Db } from "./db/index.ts";
 import type { Instrument } from "./instruments.ts";
@@ -38,6 +39,8 @@ export const STALE = {
   quoteOverdue: "quote overdue",
   // the market's whole history is being refetched from another source
   switchPending: "source switch pending",
+  // its source is off since the last start, so its prices are its last
+  sourceOff: "source off",
 } as const;
 
 export type StaleReason = (typeof STALE)[keyof typeof STALE];
@@ -51,6 +54,18 @@ const failed = (db: Db, i: Scoped, job: string) =>
 function switching(db: Db, market: string): boolean {
   const run = lastStarted(db, SWITCH.source, SWITCH.job, market);
   return run !== null && run.status !== "ok";
+}
+
+// The sources table names the price sources on at the last start once a
+// switch landed; empty, no start has written it, so none is off. Only
+// the feed can be turned off.
+function sourceOff(db: Db, i: Scoped): boolean {
+  if (i.source !== BVB || switching(db, i.market)) return false;
+  const names = db
+    .query<{ name: string }, []>("select name from sources")
+    .all()
+    .map((r) => r.name);
+  return names.length > 0 && !names.includes(i.source);
 }
 
 // with due: no pass refreshed it within two periods, as after downtime
@@ -85,6 +100,7 @@ export function quoteStale(
   // a closed market's new session can go unseen while its checks fail
   if (failed(db, instrument, JOBS.check)) reasons.push(STALE.checkFailed);
   if (switching(db, instrument.market)) reasons.push(STALE.switchPending);
+  if (sourceOff(db, instrument)) reasons.push(STALE.sourceOff);
   return reasons;
 }
 
@@ -109,7 +125,9 @@ export function barsStale(
     .get(instrument.id)!.n;
   const reasons: StaleReason[] = switching(db, instrument.market)
     ? [STALE.switchPending]
-    : [];
+    : sourceOff(db, instrument)
+      ? [STALE.sourceOff]
+      : [];
   if (has === 0) return [STALE.noHistory, ...reasons];
   // the market's pass, or this instrument's own refetch in it
   if (

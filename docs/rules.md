@@ -128,7 +128,9 @@ Examples, each created with `symbol` set to the rule's own share:
   actuals are seen (`reportedSeenAt`), the rule is false with "waiting
   for the earnings results", so it stays armed. After, a value traded
   at or before the moment the results were seen makes it unknown, since
-  that price says nothing of them. A deleted event makes it unknown.
+  that price says nothing of them; so does a live quote with no trade
+  time (an index page's), which may be older. A deleted event makes it
+  unknown.
   An unknown input wins over the gate: the rule is unknown, never
   waiting (`evaluateWith()`).
 - **The gate stays bound to its quarter.** It is never moved to the

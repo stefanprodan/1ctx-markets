@@ -92,11 +92,15 @@ export const BARS_PENDING =
   "bars of the new session not refetched yet, so a split may be unseen";
 export const WAITING = "waiting for the earnings results";
 export const BEFORE_RESULTS = "prices from before the earnings results";
+export const UNTIMED =
+  "a live price with no trade time may be from before the earnings results";
 
 type Read = {
   value: number | null;
   // the trade times of the live quotes the value came from
   times: number[];
+  // a live quote it came from has no trade time
+  untimed?: boolean;
   // why the value cannot be used, empty when it can
   reasons: string[];
 };
@@ -151,6 +155,7 @@ function reader(db: Db, now: number, quoteEveryMs: number) {
         return {
           value,
           times: q !== null && q.time !== null && def.live ? [q.time] : [],
+          untimed: q !== null && q.time === null && def.live,
           reasons: [
             ...(value === null ? [`${of}: no value`] : []),
             ...stale.map((r) => `${of}: ${r}`),
@@ -171,10 +176,14 @@ function reader(db: Db, now: number, quoteEveryMs: number) {
             reasons: [`${of}: no live relative return`, ...stale],
           };
         }
-        const times = [quote(i.id)?.time, quote(bench)?.time].filter(
-          (t): t is number => typeof t === "number",
-        );
-        return { value: r.relative, times, reasons: stale };
+        const quoted = [quote(i.id)?.time, quote(bench)?.time];
+        const times = quoted.filter((t): t is number => typeof t === "number");
+        return {
+          value: r.relative,
+          times,
+          untimed: quoted.includes(null),
+          reasons: stale,
+        };
       }
       const s = signalsOf(i.id);
       const rows = def.from === "daily" ? s?.daily : s?.weekly;
@@ -258,6 +267,7 @@ export const eventOf = (db: Db, rule: RuleRow): EventRow | null => {
 function evaluateWith(r: Reader, db: Db, rule: RuleRow): Evaluation {
   const reasons: string[] = [];
   const times: number[] = [];
+  let untimed = false;
   const values = new Map<Comparison, boolean>();
   const shownValues: ComparisonValue[] = [];
   for (const c of comparisons<Comparison>(rule.condition.node)) {
@@ -277,6 +287,7 @@ function evaluateWith(r: Reader, db: Db, rule: RuleRow): Evaluation {
     if (ok) {
       values.set(c, holds(left.value!, c.op, rv!));
       times.push(...left.times, ...(right?.times ?? []));
+      untimed ||= left.untimed === true || right?.untimed === true;
     }
     reasons.push(...own);
     shownValues.push({
@@ -314,6 +325,9 @@ function evaluateWith(r: Reader, db: Db, rule: RuleRow): Evaluation {
     }
     if (e.reportedSeenAt === null) {
       return { result: "false", values: shownValues, reasons: [WAITING] };
+    }
+    if (untimed) {
+      return { result: "unknown", values: shownValues, reasons: [UNTIMED] };
     }
     // a price traded before the results were seen says nothing of them
     if (times.some((t) => t <= e.reportedSeenAt!)) {

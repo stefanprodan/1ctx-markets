@@ -207,6 +207,33 @@ describe("switching the Bucharest market's source", () => {
     db.close();
   });
 
+  test("a feed listing kept with the feed off is stale as its source is off", async () => {
+    const clock = fakeClock(NOW);
+    const { db } = open(":memory:", clock);
+    const f = await bothSources({ charts: await charts() });
+    const on = boot(db, clock, f.fetch, true);
+    await settle(on, clock);
+    const [t] = await drive(
+      clock,
+      on.bvb!,
+      readTargets(on.markets, ["BVB:R2807A"]),
+    );
+    expect("instrument" in t! && t.instrument.id).toBe("BVB:R2807A");
+    await on.stop();
+    const bond = () => readInstrument(db, "BVB:R2807A")!;
+    expect(quoteStale(db, bond())).not.toContain(STALE.sourceOff);
+
+    const off = boot(db, clock, f.fetch, false);
+    await settle(off, clock);
+    await off.stop();
+    // Yahoo has no bond: it stays the feed's, with its last quote
+    expect(bond().source).toBe("bvb");
+    expect(readQuote(db, "BVB:R2807A")).not.toBeNull();
+    expect(quoteStale(db, bond())).toContain(STALE.sourceOff);
+    expect(barsStale(db, bond(), clock.now())).toContain(STALE.sourceOff);
+    db.close();
+  });
+
   test("work begun on the old source writes nothing into an instrument the switch moved", async () => {
     const clock = fakeClock(NOW);
     const { db } = open(":memory:", clock);

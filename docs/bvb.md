@@ -193,7 +193,9 @@ exchange: one client, its parsers, its session, the same tables.
   splits are dropped and Yahoo's recorded from its answer. Moving to the
   feed keeps them, since they date where raw volumes change scale.
 - **A listing the new source lacks stays where it is** (an index or
-  bond on Yahoo answers `no_data`).
+  bond on Yahoo answers `no_data`). With the feed off it is `source off`
+  once the switch landed, so rules on it are unknown, never driven by
+  its last quote; the switch's write re-evaluates the market's rules.
 - **Only the switch moves an instrument between sources.** Work from
   the old source that began before it is refused under the lock
   (`checkSource()`, `docs/yahoo.md`), and an inline fetch of a key

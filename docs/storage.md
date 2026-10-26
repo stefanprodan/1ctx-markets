@@ -101,8 +101,9 @@ in `docs/config.md`.
 - **A quote's `time` is the trade time, null when the source gives
   none** (the Bucharest index page), never the fetch time
   (`src/quotes.ts`). A quote without a time replaces the stored one
-  only when fetched later; a live signal row dates it by its fetch,
-  inside its market's session (`liveTarget()`).
+  only when fetched later; a live signal row dates it by its fetch, at
+  most its stored session's end, so the pass after the close keeps the
+  session's row (`liveTarget()`).
 
 ## Price sources
 
@@ -153,6 +154,7 @@ in `docs/config.md`.
 | `signals pending` | `readSignals` | final signals behind the final bars, or live rows behind the latest quote |
 | `previous day not final` | `readSignals` | a live row stepped over a stored bar not final yet |
 | `source switch pending` | `quoteStale`, `barsStale` | the market's latest source switch run is running or failed (`SWITCH`) |
+| `source off` | `quoteStale`, `barsStale` | a feed instrument whose source the last landed switch turned off (the `sources` table lacks it), so its prices are its last |
 
 - **`quote overdue` follows when a quote was last due**
   (`lastQuoteDue`): now while the market trades (always for crypto),

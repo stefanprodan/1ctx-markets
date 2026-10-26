@@ -212,6 +212,14 @@ export function sourceSwitch(options: {
       }
       endRun(db, id, now, moved);
       writeSources(db, wanted, now);
+      // a listing kept on a source now off reads its source off
+      yahoo.rules?.evaluate(
+        db,
+        readInstruments(db)
+          .filter((i) => i.market === MARKET)
+          .map((i) => i.id),
+        now,
+      );
     });
     log.info("source switch", {
       market: MARKET,

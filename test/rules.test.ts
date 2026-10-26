@@ -509,6 +509,47 @@ describe("the earnings gate", () => {
     });
   });
 
+  test("a price with no trade time never passes it", async () => {
+    const t = await rulesTest({ finnhub: true });
+    const r = await create(t, "NVDA", {
+      afterEarnings: "NVDA",
+      left: "changePct",
+      op: "<",
+      right: -5,
+    });
+    const nvda = readInstrument(t.db, "US:NVDA")!;
+    await t.clock.advance(Date.parse("2026-11-17T22:00:00Z") - t.clock.now());
+    t.calendar.edit = calendarWithActuals;
+    await drive(
+      t.clock,
+      pacedOf(t.m),
+      refreshResearch(
+        { db: t.db, clock: t.clock, writer: t.write, finnhub: t.m.finnhub },
+        nvda,
+        ["calendar"],
+        { hooks: t.engine.finnhub },
+      ),
+    );
+    // after the results, a dip fetched with no trade time, as an index
+    // page answers: it may have traded before them
+    await t.clock.advance(Date.parse("2026-11-18T14:45:00Z") - t.clock.now());
+    await t.quote("NVDA", {
+      price: 195,
+      previousClose: 195,
+      sessionDays: 26,
+      time: Date.parse("2026-11-18T14:40:00Z"),
+    });
+    expect(rule(t, r.body.rule.id).lastResult).toBe("false");
+    await t.write.write((db) => {
+      db.query(
+        "update quotes set time = null, change_percent = -20 where instrument = 'US:NVDA'",
+      ).run();
+      t.engine.evaluate(db, ["US:NVDA"], t.clock.now());
+    });
+    expect(rule(t, r.body.rule.id).lastResult).toBe("unknown");
+    expect(alerts(t)).toBe(0);
+  });
+
   test("binds the next event not yet reported, never one reported today", async () => {
     const t = await rulesTest({ finnhub: true });
     // today's quarter reported at the close, the next one still to come
