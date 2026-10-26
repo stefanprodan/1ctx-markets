@@ -67,6 +67,7 @@ const app = start({
   fredKey: store.source("fred"),
   finnhubKey: store.source("finnhub"),
   massiveKey: store.source("massive"),
+  bvb: config.sources.includes("bvb"),
 });
 
 main.info("startup", {

@@ -20,6 +20,7 @@ runs what `parseCli()` answers. `HELP` in `src/config.ts` is the
 | `--data <dir>` | `~/.1ctx-markets` | holds `markets.db` and `secrets/` |
 | `--quote-every <min>` | 5 | minutes between quote passes; a quote two periods behind is `quote overdue` |
 | `--track-days <days>` | 30 | an instrument read within this many days stays tracked; news of an untracked one is pruned (`pruneNews`) |
+| `--source <name>` | none | turns on a keyless source, repeated for each; `bvb` is the Bucharest feed (`docs/bvb.md`) |
 | `-v`, `--version` | | prints the version |
 | `-h`, `--help` | | prints the help |
 
@@ -31,6 +32,9 @@ runs what `parseCli()` answers. `HELP` in `src/config.ts` is the
   numbers above 0 of at most six digits (`count()`); an empty `--data`
   is refused, and `--listen` needs a host before its last colon; an
   unknown option is refused, never ignored.
+- **An unknown `--source` name stops the start** with the list of
+  known names (`KNOWN_SOURCES`), so a typo never runs without the
+  source.
 - **No default market, instrument, benchmark or currency exists.**
   The server runs for any country; what it syncs comes from use.
 
@@ -57,7 +61,8 @@ runs what `parseCli()` answers. `HELP` in `src/config.ts` is the
   message naming the file and how to write one, never its contents.
 - **A source key turns its source on.** Yahoo needs none and is always
   on; FRED, Finnhub and Massive are on while their file holds a key,
-  and every tool answers without them.
+  and every tool answers without them. A keyless optional source is on
+  only with its `--source` flag.
 - **A key value never reaches a row, a log line, an error or an
   answer.** The logger masks every value `keys.ts` has read (`MASK`,
   `[key]`) out of the message and every field, percent-decoded first,
@@ -74,8 +79,9 @@ runs what `parseCli()` answers. `HELP` in `src/config.ts` is the
   slog-text form. `startup` holds `version`, `listen`, `data` (with
   `~` for the home directory), `migrations`, `quote_every` and
   `track_days`. `sources` has one field per source: `yahoo=on`, and
-  for the others `on (key file)` or `off (no key)`, quoted since they
-  hold a space (`fred="on (key file)"`, `src/log.ts`).
+  for the keyed ones `on (key file)` or `off (no key)`, for `bvb`
+  `on (flag)` or `off (no flag)`, quoted since they hold a space
+  (`fred="on (key file)"`, `src/log.ts`).
 - **Log fields are fixed names and short values.** `errorFields()`
   keeps an error's type and first line only, so a stack stays out. A
   source's own text stays out because a `SourceError` message is a
@@ -120,7 +126,7 @@ shutdown is ignored (`stopping` in `src/main.ts`). The order in
 2. Close every source queue, so a call waiting out a back-off fails at
    once; calls already sent finish.
 3. Stop the HTTP server, so no new request starts.
-4. Wait for the runs still going to settle.
+4. Wait for the runs still going to settle, the source switch's too.
 5. Close the MCP handler.
 6. Close the writer, which refuses new writes and drains the queued
    ones.

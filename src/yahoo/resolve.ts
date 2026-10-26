@@ -68,8 +68,14 @@ export type Candidate = Listing & {
 
 export type Resolution =
   | { kind: "known"; instrument: Instrument }
-  // one listing, added by its source symbol
-  | { kind: "new"; sourceSymbol: string; id: string }
+  // one listing, added by its source symbol; listings: the search's,
+  // when a search found it
+  | {
+      kind: "new";
+      sourceSymbol: string;
+      id: string;
+      listings?: Candidate[];
+    }
   | { kind: "candidates"; candidates: Candidate[] };
 
 export class ResolveError extends Error {
@@ -132,7 +138,12 @@ export async function resolve(
   const listings = (await yahoo.search(given)).map(candidate);
   const exact = listings.find((l) => l.sourceSymbol.toUpperCase() === upper);
   if (exact) {
-    return { kind: "new", sourceSymbol: exact.sourceSymbol, id: exact.id };
+    return {
+      kind: "new",
+      sourceSymbol: exact.sourceSymbol,
+      id: exact.id,
+      listings,
+    };
   }
   if (listings.length === 0) throw new ResolveError(given);
   return { kind: "candidates", candidates: listings };

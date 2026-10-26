@@ -1,7 +1,8 @@
 # 1ctx-markets
 
 A self-hosted market data server for AI agents. It syncs free market
-data (Yahoo, and optionally FRED, Finnhub and Massive) into one SQLite
+data (Yahoo, and optionally FRED, Finnhub, Massive and the Bucharest
+Stock Exchange's own feed) into one SQLite
 file, computes signals, evaluates price rules, and serves them over the
 Model Context Protocol (MCP, Streamable HTTP) and a small read-only
 HTTP API, both behind one bearer key. It holds market data and price
@@ -53,9 +54,11 @@ src/scheduler.ts    jobs on a fixed period, driven by the Clock
 src/calendars.ts    sessions from the source's answers; src/zone.ts wall times
 src/bars.ts         daily bars, weeks built from them
 src/instruments.ts  instruments keyed market:symbol, units
+src/quotes.ts       the latest quote per instrument, whichever source
 src/runs.ts         sync_runs rows; src/stale.ts the stale reasons
 src/tracking.ts     tracking by use, no ticker list
 src/yahoo/          client, resolve, sync, jobs: the always-on source
+src/bvb/            the Bucharest exchange's own feed, on with --source bvb
 src/fred/           FRED series as close-only daily bars
 src/finnhub/        research sections and earnings events
 src/massive/        news
@@ -82,6 +85,7 @@ the same commit as the code that changes a rule.
 | `docs/calendars.md` | market sessions from the source, quoting and checks, bar dates and finality, weeks, wall time, crypto |
 | `docs/yahoo.md` | Yahoo's endpoints, parsing, the source queue and phrases, resolution, bars, splits and rescales, quotes, the lock, the jobs |
 | `docs/fred.md` | FRED: its key, limits, answer checks, series as instruments, bars, the daily job, attribution |
+| `docs/bvb.md` | the Bucharest feed: its pages and chart feed, parsing, the session, quotes, bars and rescales, resolution, switching sources |
 | `docs/research.md` | Finnhub research and earnings events, Massive news, the `research` and `events` tools, `GET /research` |
 | `docs/signals.md` | the daily and weekly signals, final and live rows, reading, relative return |
 | `docs/rules.md` | rule conditions, validation, evaluation, the earnings gate, split pauses, the `rules` tool, `GET /alerts` |
@@ -105,7 +109,8 @@ the same commit as the code that changes a rule.
   kept by hand.
 - **No default markets, instruments, benchmarks or currencies.** The
   server runs for any country; what it syncs is learned from use.
-  Every source but Yahoo is optional and off without its key file.
+  Every source but Yahoo is optional: off without its key file, or
+  without its `--source` flag for a keyless one.
 - **No SQL, expression or query tool, ever.** The tools are fixed;
   `screen` is the only open-ended read.
 - **Live prices drive the answers.** Averages are on closed days plus

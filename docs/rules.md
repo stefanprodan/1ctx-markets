@@ -96,8 +96,9 @@ Examples, each created with `symbol` set to the rule's own share:
   are read in one transaction. A write that stores quotes, bars or
   signals, or ends a run, calls `RuleHooks.evaluate()` in the same
   write: `storeQuotes()` and `store()` in `src/yahoo/sync.ts`, the
-  quote and bar passes in `src/yahoo/jobs.ts`, the FRED series pass in
-  `src/fred/jobs.ts`. A FRED series stored inside a tool call
+  quote and bar passes in `src/yahoo/jobs.ts` and `src/bvb/jobs.ts`,
+  `storeBvbQuotes()`, `storeWindow()` and `storeWhole()` in
+  `src/bvb/sync.ts`, the FRED series pass in `src/fred/jobs.ts`. A FRED series stored inside a tool call
   (`src/fred/sync.ts`) evaluates nothing; its rules run on the next
   series pass. Gated rules also run in `hooks.reported()` when Finnhub
   sees an event's results.
@@ -127,7 +128,10 @@ Examples, each created with `symbol` set to the rule's own share:
   actuals are seen (`reportedSeenAt`), the rule is false with "waiting
   for the earnings results", so it stays armed. After, a value traded
   at or before the moment the results were seen makes it unknown, since
-  that price says nothing of them. A deleted event makes it unknown.
+  that price says nothing of them; so does a live quote with no trade
+  time (an index page's), which may be older, and a live signal row
+  built from one, since it is dated by the quote's fetch. A deleted
+  event makes it unknown.
   An unknown input wins over the gate: the rule is unknown, never
   waiting (`evaluateWith()`).
 - **The gate stays bound to its quarter.** It is never moved to the
@@ -149,7 +153,9 @@ Examples, each created with `symbol` set to the rule's own share:
   inside the write that applies a new split or rescales past prices,
   before that write evaluates, and in a write of its own when a refetch
   window first shows one, before the whole history is asked
-  (`refetchAnswer()` in `src/yahoo/sync.ts`).
+  (`refetchAnswer()` in `src/yahoo/sync.ts`). The Bucharest feed
+  pauses the same way when its 30-day window shows past prices moved
+  by one ratio (`refetchAnswer()` in `src/bvb/sync.ts`).
 - **Until the new session's bars are in, split-sensitive comparisons
   are unknown** ("bars of the new session not refetched yet, so a
   split may be unseen", `BARS_PENDING`), since the opening quote may

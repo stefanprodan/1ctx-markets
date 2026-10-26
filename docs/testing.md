@@ -42,6 +42,7 @@ recorders under `scripts/probe/`. The clock contract is in
 | Helper | Answers |
 |---|---|
 | `yahoo.ts` | `recorded()`, `fakeFetch()`, `listed()` (a short chart read as a whole history), `backTo()` (made-up weekday rows before a recording), `added()` |
+| `bvb.ts` | the Bucharest exchange's pages and chart feed by URL (`bvbFetch()`), `opened()` (a page read as open: every recording is of a closed market), `keyed()` (a made-up page key, which the recordings strip), `bothSources()` with Yahoo |
 | `sources.ts` | Yahoo and FRED by URL from the recordings for reads that fetch inside a call; `gate()` holds a call until released |
 | `sim.ts` | a made-up Yahoo for whole simulated days: `US`, `XETRA`, `BVB`, `CRYPTO` listings with sessions from their zone |
 | `finnhub.ts` | Finnhub by path and symbol (`AS`): NVDA in full, a 403 refusal, an empty answer |

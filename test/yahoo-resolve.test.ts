@@ -108,7 +108,7 @@ describe("markets from exchange codes", () => {
 describe("which listing a symbol means", () => {
   test("a bare symbol takes the listing whose Yahoo symbol equals it", async () => {
     const { ctx } = await setup();
-    expect(await resolve(ctx, "NVDA")).toEqual({
+    expect(await resolve(ctx, "NVDA")).toMatchObject({
       kind: "new",
       sourceSymbol: "NVDA",
       id: "US:NVDA",
@@ -118,7 +118,7 @@ describe("which listing a symbol means", () => {
 
   test("a NYSE listing is US by its code NYQ", async () => {
     const { ctx } = await setup();
-    expect(await resolve(ctx, "KO")).toEqual({
+    expect(await resolve(ctx, "KO")).toMatchObject({
       kind: "new",
       sourceSymbol: "KO",
       id: "US:KO",

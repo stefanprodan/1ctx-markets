@@ -62,6 +62,35 @@ export function readBySourceSymbol(
   );
 }
 
+// a source switch moved the instrument while work from its old source ran
+export class Moved extends SourceError {
+  constructor(id: string) {
+    super("source error", `${id} moved to another source`);
+  }
+}
+
+// read again under the instrument's lock and in each write, so work begun
+// before a switch never writes into the instrument it moved
+export function checkSource(
+  db: Db,
+  instrument: Pick<Instrument, "id" | "source" | "sourceSymbol">,
+): void {
+  const now = readInstrument(db, instrument.id);
+  if (
+    now === null ||
+    now.source !== instrument.source ||
+    now.sourceSymbol !== instrument.sourceSymbol
+  ) {
+    throw new Moved(instrument.id);
+  }
+}
+
+// a key stored from another source is the switch's to move, never a fetch's
+export function checkOwner(db: Db, id: string, source: string): void {
+  const stored = readInstrument(db, id);
+  if (stored !== null && stored.source !== source) throw new Moved(id);
+}
+
 export function readInstruments(db: Db): Instrument[] {
   return db.query<Instrument, []>(`${SELECT} order by id`).all();
 }

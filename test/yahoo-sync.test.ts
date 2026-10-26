@@ -7,6 +7,7 @@ import { readSessions } from "../src/calendars.ts";
 import { DAY_MS } from "../src/clock.ts";
 import { type Db, open } from "../src/db/index.ts";
 import { readInstrument, upsertInstrument } from "../src/instruments.ts";
+import { readQuote } from "../src/quotes.ts";
 import { writer } from "../src/writer.ts";
 import {
   type ChartAnswer,
@@ -21,7 +22,6 @@ import {
   backfillStart,
   dailyBars,
   RETRY_MS,
-  readQuote,
   refetch,
   storeQuotes,
   unitOf,

@@ -17,6 +17,10 @@ are in `docs/yahoo.md`; tables, times and staleness in
   (`sessionFromChartMeta()`). Every chart and v7 spark answer carries
   it. `session()` refuses an end not after its start, or a period
   longer than 25 hours (`MAX_SESSION_MS`): that is no single day.
+- **A source with a schedule of its own supplies the session itself.**
+  The Bucharest feed records its trading schedule page's session, on a
+  day its market status reads open, ending at 18:00 since prices move
+  until then (`docs/bvb.md`).
 - **The zone is an IANA name, never an offset.** `checkZone()` rejects
   `+02:00`-style values and unknown zones and returns the canonical
   name: an offset cannot follow a clock change, and every local date

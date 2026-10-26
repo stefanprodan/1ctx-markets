@@ -64,6 +64,9 @@ inside a call in `docs/tools.md`; rule pauses in `docs/rules.md`.
   `within(live)` answer `Paused` while the queue backs off, and
   `within` starts no call once the caller's deadline passed
   (`DeadlinePassed`). Each call times out after 30 seconds.
+- **A call with a deadline goes ahead of waiting job calls** (`queue()`
+  in `src/source.ts`), first in first out among its own, so a read
+  never times out behind a pass; a limiter keeps its spacing.
 - **Errors carry a fixed phrase** (`SourceError`, `PHRASES`), which is
   all a run or an answer repeats:
 
@@ -95,6 +98,9 @@ inside a call in `docs/tools.md`; rule pauses in `docs/rules.md`.
 - **The key drops Yahoo's suffix and maps the exchange code**
   (`symbolOf()`, `marketOf()`, `ALIASES`): `VVSM.DE` on `GER` is
   `XETRA:VVSM`. Index, futures and FX symbols keep their form.
+- **Bucharest listings are Yahoo's only while the Bucharest feed is
+  off** (`docs/bvb.md`); on, the same `BVB:` key is served by the feed,
+  and a Yahoo symbol naming one (`TLV.RO`) resolves to it there.
 - **Every stored answer must name the key it is stored under.**
   `checkAnswer()` and the `expected` argument of `addInstrument()` and
   `fetchInstrument()` refuse an answer whose exchange and symbol make
@@ -189,6 +195,13 @@ inside a call in `docs/tools.md`; rule pauses in `docs/rules.md`.
   and backfill or keep the stored history instead. Every holder
   re-checks the deadline under the lock, since the wait may have
   outlasted it.
+- **Work on a stored instrument re-reads it under the lock and in each
+  write** (`checkSource()` in `src/instruments.ts`) and is refused
+  (`Moved`) when its source or source symbol changed, so a pass or
+  read begun before a source switch never mixes histories or relabels
+  bars. A fetch never takes over a key another source holds
+  (`checkOwner()`); only the switch moves it. A bar pass skips a moved
+  instrument without a failed run.
 
 ## Jobs and their call budget
 

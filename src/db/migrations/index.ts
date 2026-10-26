@@ -15,6 +15,7 @@ import { m0006 } from "./0006-tracking.ts";
 import { m0007 } from "./0007-research.ts";
 import { m0008 } from "./0008-news.ts";
 import { m0009 } from "./0009-rules.ts";
+import { m0010 } from "./0010-bvb.ts";
 
 export const MIGRATIONS: readonly Migration[] = [
   m0001,
@@ -26,4 +27,5 @@ export const MIGRATIONS: readonly Migration[] = [
   m0007,
   m0008,
   m0009,
+  m0010,
 ];

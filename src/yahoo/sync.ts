@@ -24,12 +24,15 @@ import {
 import { type Clock, DAY_MS, MINUTE_MS } from "../clock.ts";
 import type { Db } from "../db/index.ts";
 import {
+  checkOwner,
+  checkSource,
   type Instrument,
   readBySourceSymbol,
   type Unit,
   upsertInstrument,
 } from "../instruments.ts";
 import { exclusive } from "../lock.ts";
+import { type QuoteRow, upsertQuote } from "../quotes.ts";
 import { NO_RULES, type RuleHooks } from "../rules/hooks.ts";
 import { endRun, startRun } from "../runs.ts";
 import { pruneLive, refreshLive, signalsAfterBars } from "../signals/store.ts";
@@ -270,17 +273,18 @@ const SAME_RATIO = 0.0001;
 const RESCALE_DAYS = 3;
 
 // the ratio past prices moved by and the stored days that show it
-type Rescale = { ratio: number; dates: string[] };
+export type Rescale = { ratio: number; dates: string[] };
 
-const sameRatio = (a: number, b: number) => Math.abs(a / b - 1) <= SAME_RATIO;
+export const sameRatio = (a: number, b: number) =>
+  Math.abs(a / b - 1) <= SAME_RATIO;
 
 // Stored final days the answer prices again, moved by one ratio though
 // the answer has no split: past prices adjusted in place. An adjustment
 // moves every day before its date, so the oldest days show it; a run of
 // unmoved days means none came before them.
-function rescaleOf(
+export function rescaleOf(
   db: Db,
-  instrument: Instrument,
+  instrument: Pick<Instrument, "id">,
   bars: readonly Bar[],
 ): Rescale | null {
   const stored = db.query<{ close: number }, [string, string]>(
@@ -483,14 +487,16 @@ export async function addInstrument(
     // stored bars may be newer than this answer, so they are fetched
     // again under the lock
     if (dailyRange(ctx.db, id) !== null) {
-      const instrument = await ctx.writer.write((db) =>
-        upsertInstrument(db, fields(answer), ctx.clock.now()),
-      );
+      const instrument = await ctx.writer.write((db) => {
+        checkOwner(db, id, SOURCE);
+        return upsertInstrument(db, fields(answer), ctx.clock.now());
+      });
       return { instrument, ...(await backfillHeld(ctx, instrument)) };
     }
     const short = startsShort(answer, monday);
     // the instrument and its bars land together, or neither does
     return ctx.writer.write((db) => {
+      checkOwner(db, id, SOURCE);
       const now = ctx.clock.now();
       const instrument = upsertInstrument(db, fields(answer), now);
       if (short) return { instrument, rows: 0, changedFrom: null };
@@ -505,6 +511,24 @@ export async function addInstrument(
       return { instrument, ...written };
     });
   });
+}
+
+// A market moved to Yahoo from another source: its stored days are gone
+// and this whole history and quote replace them in the caller's write.
+export function storeSwitched(
+  db: Db,
+  now: number,
+  answer: ChartAnswer,
+  quote: SparkAnswer,
+  since: string,
+  rules: RuleHooks = NO_RULES,
+): Instrument {
+  if (startsShort(answer, since)) throw cutShort();
+  const instrument = upsertInstrument(db, fields(answer), now);
+  store(db, now, instrument, answer, { since, splits: [answer] }, rules);
+  barsAnswered(db, instrument, { rows: 0, changedFrom: null }, now);
+  storeQuotes(db, quote, rules, now);
+  return instrument;
 }
 
 export const expired = () => new DeadlinePassed();
@@ -540,6 +564,7 @@ export async function fetchInstrument(
     if (dailyRange(ctx.db, id) !== null) {
       return ctx.writer.write((db) => {
         if (!live()) throw expired();
+        checkOwner(db, id, SOURCE);
         const instrument = upsertInstrument(
           db,
           fields(answer),
@@ -552,6 +577,7 @@ export async function fetchInstrument(
     if (startsShort(answer, monday)) throw cutShort();
     return ctx.writer.write((db) => {
       if (!live()) throw expired();
+      checkOwner(db, id, SOURCE);
       const now = ctx.clock.now();
       const instrument = upsertInstrument(db, fields(answer), now);
       store(
@@ -577,6 +603,7 @@ export async function catchUp(
   return exclusive(ctx.db, instrument.id, async () => {
     // the lock may have been held past the deadline
     if (!live()) throw expired();
+    checkSource(ctx.db, instrument);
     const bars = await refetchAnswer(ctx, instrument, live);
     if (!live()) throw expired();
     const quote = await ctx.yahoo.spark([instrument.sourceSymbol]);
@@ -594,7 +621,10 @@ export function backfill(
   ctx: YahooContext,
   instrument: Instrument,
 ): Promise<Written> {
-  return exclusive(ctx.db, instrument.id, () => backfillHeld(ctx, instrument));
+  return exclusive(ctx.db, instrument.id, () => {
+    checkSource(ctx.db, instrument);
+    return backfillHeld(ctx, instrument);
+  });
 }
 
 // fetched in full before anything is written
@@ -629,8 +659,9 @@ async function backfillAnswer(
     ctx.clock.now(),
   );
   checkAnswer(instrument, answer);
-  return (db) =>
-    store(
+  return (db) => {
+    checkSource(db, instrument);
+    return store(
       db,
       ctx.clock.now(),
       instrument,
@@ -638,6 +669,7 @@ async function backfillAnswer(
       { since: monday, splits: [...triggers, answer], rescale },
       ctx.rules,
     );
+  };
 }
 
 // a split or rescale asks the whole history once, so no day keeps an old scale
@@ -645,7 +677,10 @@ export function refetch(
   ctx: YahooContext,
   instrument: Instrument,
 ): Promise<Written> {
-  return exclusive(ctx.db, instrument.id, () => refetchHeld(ctx, instrument));
+  return exclusive(ctx.db, instrument.id, () => {
+    checkSource(ctx.db, instrument);
+    return refetchHeld(ctx, instrument);
+  });
 }
 
 async function refetchHeld(
@@ -682,6 +717,7 @@ async function refetchAnswer(
     // old price levels stop now, since the whole history may be refused
     await ctx.writer.write((w) => {
       if (!live()) throw expired();
+      checkSource(w, instrument);
       ctx.rules?.rescaled(w, instrument.id, ctx.clock.now());
     });
     const marks = refusedOf(db);
@@ -709,24 +745,11 @@ async function refetchAnswer(
       }
     };
   }
-  return (db) =>
-    store(db, ctx.clock.now(), instrument, answer, null, ctx.rules);
+  return (db) => {
+    checkSource(db, instrument);
+    return store(db, ctx.clock.now(), instrument, answer, null, ctx.rules);
+  };
 }
-
-export type QuoteRow = {
-  instrument: string;
-  price: number;
-  previousClose: number | null;
-  previousCloseField: "previousClose" | "chartPreviousClose" | null;
-  change: number | null;
-  changePercent: number | null;
-  dayHigh: number | null;
-  dayLow: number | null;
-  volume: number | null;
-  time: number;
-  source: string;
-  fetchedAt: number;
-};
 
 // The day change is worked out from price and previous close, never
 // Yahoo's own change field, which disagreed with both for SOL-USD.
@@ -770,27 +793,6 @@ export function storeQuotes(
   now: number = answer.fetchedAt,
 ): QuoteRow[] {
   const written: QuoteRow[] = [];
-  const upsert = db.query(
-    `insert into quotes (instrument, price, previous_close,
-       previous_close_field, change, change_percent, day_high, day_low,
-       volume, time, source, fetched_at)
-     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-     on conflict (instrument) do update set
-       price = excluded.price,
-       previous_close = excluded.previous_close,
-       previous_close_field = excluded.previous_close_field,
-       change = excluded.change,
-       change_percent = excluded.change_percent,
-       day_high = excluded.day_high,
-       day_low = excluded.day_low,
-       volume = excluded.volume,
-       time = excluded.time,
-       source = excluded.source,
-       fetched_at = excluded.fetched_at
-     where excluded.time > quotes.time
-       or (excluded.time = quotes.time
-         and excluded.fetched_at > quotes.fetched_at)`,
-  );
   // one session per market and answer, the latest its listings show,
   // since before the open some still show the previous day's
   const sessions = new Map<string, Session>();
@@ -810,21 +812,7 @@ export function storeQuotes(
     const instrument = readBySourceSymbol(db, SOURCE, meta.symbol);
     if (instrument === null) continue;
     const q = quoteOf(instrument.id, meta, answer.fetchedAt);
-    const { changes } = upsert.run(
-      q.instrument,
-      q.price,
-      q.previousClose,
-      q.previousCloseField,
-      q.change,
-      q.changePercent,
-      q.dayHigh,
-      q.dayLow,
-      q.volume,
-      q.time,
-      q.source,
-      q.fetchedAt,
-    );
-    if (changes > 0) {
+    if (upsertQuote(db, q)) {
       written.push(q);
       refreshLive(db, instrument, answer.fetchedAt);
       moved.add(instrument.id);
@@ -874,18 +862,4 @@ export async function fetchQuotes(
     return stored;
   });
   return { quotes, skipped, errors };
-}
-
-export function readQuote(db: Db, instrument: string): QuoteRow | null {
-  return (
-    db
-      .query<QuoteRow, [string]>(
-        `select instrument, price, previous_close as previousClose,
-           previous_close_field as previousCloseField, change,
-           change_percent as changePercent, day_high as dayHigh,
-           day_low as dayLow, volume, time, source, fetched_at as fetchedAt
-         from quotes where instrument = ?`,
-      )
-      .get(instrument) ?? null
-  );
 }
