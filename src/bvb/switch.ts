@@ -38,6 +38,7 @@ import { MARKET, SOURCE } from "./client.ts";
 import {
   type BvbContext,
   barsAnswered,
+  CutShort,
   checkCovers,
   checkListed,
   draft,
@@ -192,12 +193,18 @@ export function sourceSwitch(options: {
         });
         moved++;
       } catch (error) {
-        // a listing the other source lacks stays where it is
+        // a listing the other source lacks, or holds only in part, stays
+        // where it is, so one short history never holds the market back
         if (
           error instanceof Refused ||
+          error instanceof CutShort ||
           (error instanceof SourceError && error.phrase === "not found")
         ) {
-          log.info("source switch kept", { instrument: i.id, source: from });
+          log.info("source switch kept", {
+            instrument: i.id,
+            source: from,
+            error: phraseOf(error),
+          });
           continue;
         }
         failed ??= error;

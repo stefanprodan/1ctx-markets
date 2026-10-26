@@ -168,7 +168,7 @@ describe("switching the Bucharest market's source", () => {
     db.close();
   });
 
-  test("a new source's history short of the stored one keeps the old one and the switch pending", async () => {
+  test("a listing whose new history is short of the stored one stays on its old source", async () => {
     const clock = fakeClock(NOW);
     const { db } = open(":memory:", clock);
     // the feed's recent weeks only, after Yahoo's stored July
@@ -182,28 +182,40 @@ describe("switching the Bucharest market's source", () => {
     expect(kept).toMatchObject({ source: "yahoo", sourceSymbol: "TLV.RO" });
     expect(readBars(db, "BVB:TLV", "1d")).toEqual(yahooBars);
     expect(readQuote(db, "BVB:TLV")!.source).toBe("yahoo");
-    expect(readSources(db)).toEqual(["yahoo"]);
-    expect(quoteStale(db, kept)).toContain(STALE.switchPending);
+    // the switch lands for the rest, so nothing stays pending
+    expect(readSources(db)).toEqual(["bvb", "yahoo"]);
+    expect(lastStarted(db, SWITCH.source, SWITCH.job, MARKET)!.status).toBe(
+      "ok",
+    );
+    expect(quoteStale(db, kept)).not.toContain(STALE.switchPending);
+    db.close();
+  });
 
-    // and back: Yahoo's chart starts weeks after the feed's stored days
+  test("a feed listing Yahoo's history falls short of stays on the feed, its source off", async () => {
+    const clock = fakeClock(NOW);
+    const { db } = open(":memory:", clock);
     const full = await bothSources({
       charts: await charts(),
       hold: await sameWeeks(),
     });
+    await withTlv(clock, db, full.fetch);
     const feed = boot(db, clock, full.fetch, true);
     await settle(feed, clock);
     await feed.stop();
     const feedBars = readBars(db, "BVB:TLV", "1d");
     expect(readInstrument(db, "BVB:TLV")!.source).toBe("bvb");
+    // Yahoo's chart starts weeks after the feed's stored days
     const late = await bothSources({
       charts: { "TLV.RO": await lateChart() },
     });
     const off = boot(db, clock, late.fetch, false);
     await settle(off, clock);
     await off.stop();
-    expect(readInstrument(db, "BVB:TLV")!.source).toBe("bvb");
+    const kept = readInstrument(db, "BVB:TLV")!;
+    expect(kept.source).toBe("bvb");
     expect(readBars(db, "BVB:TLV", "1d")).toEqual(feedBars);
-    expect(readSources(db)).toEqual(["bvb", "yahoo"]);
+    expect(readSources(db)).toEqual(["yahoo"]);
+    expect(quoteStale(db, kept)).toContain(STALE.sourceOff);
     db.close();
   });
 

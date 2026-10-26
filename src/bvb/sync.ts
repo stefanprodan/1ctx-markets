@@ -262,8 +262,14 @@ function barsOf(history: History, latest: Session | null): Bar[] {
   }));
 }
 
-export const cutShort = () =>
-  new SourceError("malformed answer", "a history cut short");
+// a whole history that would leave stored days uncovered
+export class CutShort extends SourceError {
+  constructor() {
+    super("malformed answer", "a history cut short");
+  }
+}
+
+export const cutShort = () => new CutShort();
 
 // A whole history replacing the stored days reaches the stored last day
 // and starts near the asked start or the stored first day; every: it

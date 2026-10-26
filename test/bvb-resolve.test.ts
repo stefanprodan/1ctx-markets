@@ -56,10 +56,16 @@ async function bvbTlvSearch(): Promise<Recorded> {
   return fx;
 }
 
-async function setup(feed: boolean) {
+// withoutRo: Yahoo's top results leave the Bucharest listing out
+async function setup(feed: boolean, withoutRo = false) {
   const clock = fakeClock(NOW);
   const { db } = open(":memory:", clock);
   const search = await tlvSearch();
+  if (withoutRo) {
+    search.body.quotes = search.body.quotes.filter(
+      (q: { symbol: string }) => !q.symbol.endsWith(".RO"),
+    );
+  }
   const s = await sources({
     charts: {
       TLV: await usTlv(),
@@ -153,13 +159,28 @@ describe("resolution with the feed on", () => {
     ).toEqual(["BVB:TLV", "US:TLV"]);
   });
 
-  test("a symbol Yahoo names exactly, with no Bucharest listing, asks no exchange search", async () => {
+  test("a symbol Yahoo names exactly, absent from the exchange's lists, asks no exchange search", async () => {
     const t = await setup(true);
+    // a quote pass read the shares list, so the exchange's symbols are known
+    await drive(t.clock, t.exchange!, t.exchange!.shares());
     const [nvda] = await t.read(["NVDA"]);
     expect(idOf(nvda)).toBe("US:NVDA");
     expect(
       t.urls.filter((u) => u.pathname === "/proxyshld.aspx/GetInstrumentsList"),
     ).toEqual([]);
+  });
+
+  test("a symbol the exchange lists is asked of it though Yahoo's results lack it", async () => {
+    for (const listsRead of [false, true]) {
+      const t = await setup(true, true);
+      if (listsRead) await drive(t.clock, t.exchange!, t.exchange!.shares());
+      const [tlv] = await t.read(["TLV"]);
+      expect(
+        errorOf(tlv)
+          ?.candidates?.map((c) => c.id)
+          .sort(),
+      ).toEqual(["BVB:TLV", "US:TLV"]);
+    }
   });
 
   test("a name the exchange lists once resolves to the feed", async () => {

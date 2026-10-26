@@ -144,6 +144,8 @@ export type Bvb = {
     to: number,
   ): Promise<History>;
   search(text: string): Promise<Listing[]>;
+  // the symbols, uppercased, on the list pages last read; null before any
+  listed(): ReadonlySet<string> | null;
   failFast(): Bvb;
   within(live: () => boolean): Bvb;
   due(): number | null;
@@ -463,6 +465,15 @@ export function bvb(options: BvbOptions): Bvb {
   const calls: Limiter = limiter(clock, SPACING_MS);
   // the chart feed's key, from the last instrument page read
   let key: string | null = null;
+  // each list page's symbols, from its last read
+  const lists = new Map<string, ReadonlySet<string>>();
+  const keep = <T extends { rows: { symbol: string }[] }>(
+    kind: string,
+    page: T,
+  ): T => {
+    lists.set(kind, new Set(page.rows.map((r) => r.symbol.toUpperCase())));
+    return page;
+  };
 
   const request = async (
     url: string,
@@ -569,10 +580,18 @@ export function bvb(options: BvbOptions): Bvb {
     };
 
     return {
-      shares: () => page("/FinancialInstruments/Markets/Shares", parseShares),
-      bonds: () => page("/FinancialInstruments/Markets/Bonds", parseBonds),
+      shares: () =>
+        page("/FinancialInstruments/Markets/Shares", parseShares).then((p) =>
+          keep("shares", p),
+        ),
+      bonds: () =>
+        page("/FinancialInstruments/Markets/Bonds", parseBonds).then((p) =>
+          keep("bonds", p),
+        ),
       indices: () =>
-        page("/TradingAndStatistics/Trading/MarketsToday", parseIndices),
+        page("/TradingAndStatistics/Trading/MarketsToday", parseIndices).then(
+          (p) => keep("indices", p),
+        ),
       detail: (symbol) =>
         page(detailPath(symbol), (html, fetchedAt) => {
           key = pageKey(html) ?? key;
@@ -620,6 +639,10 @@ export function bvb(options: BvbOptions): Bvb {
           refuse(raw.status);
           return parseSearch(json(raw));
         }, run),
+      listed: () =>
+        lists.size === 0
+          ? null
+          : new Set([...lists.values()].flatMap((s) => [...s])),
       failFast: () => client({ failFast: true }),
       within: (live) => client({ failFast: true, live }),
       due: () => calls.due(),

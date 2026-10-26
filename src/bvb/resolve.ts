@@ -85,12 +85,17 @@ export async function resolveBoth(
   }
   const [y] = await Promise.allSettled([resolveYahoo(ctx, given)]);
   if (y.status === "fulfilled" && y.value.kind === "known") return y.value;
-  // Yahoo lists Bucharest shares (.RO): an exact match beside none of
-  // them needs no exchange search, which waits on the feed's spacing
+  // Yahoo's exact match skips the exchange's search, which waits on the
+  // feed's spacing, only when it is a Bucharest listing or the exchange's
+  // last list pages lack the symbol and Yahoo's results name none there
+  const lists = ctx.bvb.listed();
   if (
     y.status === "fulfilled" &&
     y.value.kind === "new" &&
-    !(y.value.listings ?? []).some((c) => c.market === MARKET)
+    (marketOfId(y.value.id) === MARKET ||
+      (lists !== null &&
+        !lists.has(given.toUpperCase()) &&
+        !(y.value.listings ?? []).some((c) => c.market === MARKET)))
   ) {
     const { id, sourceSymbol } = y.value;
     return marketOfId(id) === MARKET

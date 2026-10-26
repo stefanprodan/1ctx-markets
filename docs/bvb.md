@@ -86,9 +86,9 @@ exchange: one client, its parsers, its session, the same tables.
 
 - **One call at a time, starts `SPACING_MS` (2 seconds) apart**
   (`limiter()` in `src/source.ts`), the probes' pace, for jobs and
-  tools together; a tool's call goes ahead of the jobs' waiting ones. A failure backs the queue off as for Yahoo; a tool
-  fails fast meanwhile and starts nothing past its deadline
-  (`within(live)`).
+  tools together; a tool's call goes ahead of the jobs' waiting ones.
+  A failure backs the queue off as for Yahoo; a tool fails fast
+  meanwhile and starts nothing past its deadline (`within(live)`).
 
 ## Instruments
 
@@ -174,6 +174,9 @@ exchange: one client, its parsers, its session, the same tables.
 - **A bonus issue older than an instrument's first fetch is not
   detected:** its first history is already adjusted, so no stored close
   moves and no split is kept, and volume ratios may span it.
+- **A rescale moving every stored day while the stored session is still
+  today pauses rules but keeps no split,** having no day to date it by,
+  so volume ratios may span that action too.
 
 ## Resolution
 
@@ -183,10 +186,13 @@ exchange: one client, its parsers, its session, the same tables.
   `candidates`, none is a `ResolveError`. Only status `T` (tradable)
   counts. `BVB:TLV` and a `TLV` elsewhere stay apart: a bare `TLV`
   exact on both answers both as candidates.
-- **The exchange's search is asked only when Yahoo's leaves room for
-  it:** no exact match, or a search that lists a Bucharest share (`.RO`).
-  Yahoo's exact match beside none is it, so a bare `NVDA` never waits
-  on the feed's spacing.
+- **Yahoo's exact match skips the exchange's search only when the
+  exchange lacks the symbol:** the symbols on the list pages the client
+  last read (`listed()`, kept by the quote pass, no extra call) do not
+  hold it and Yahoo's results name no Bucharest listing (`.RO`). With no
+  list read yet, or Yahoo's top results missing a Bucharest listing the
+  lists hold (`EL`, `M`), the exchange is asked, so a bare symbol on
+  both answers both as candidates, never a guess.
 - **A `BVB:` key is the feed's while it is on,** asked by its symbol
   answer; a Yahoo symbol naming a Bucharest listing (`TLV.RO`) resolves
   to the same key and is fetched from the feed.
@@ -202,8 +208,9 @@ exchange: one client, its parsers, its session, the same tables.
   whole history and a quote from the new one, under its lock, replacing
   its bars, signals and quote in one write. The new history is checked
   against the old source's stored days before any is cleared
-  (`checkCovers()`); one cut short fails the switch, keeps the old
-  history and leaves it pending. Moving to Yahoo finds the
+  (`checkCovers()`); a listing whose new history is cut short keeps its
+  old history and source, as one the new source lacks does, and the
+  switch lands for the rest. Moving to Yahoo finds the
   listing through Yahoo's search, never a guessed suffix; the stored
   splits are dropped and Yahoo's recorded from its answer. Moving to the
   feed keeps them, since they date where raw volumes change scale.
