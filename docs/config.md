@@ -98,7 +98,8 @@ runs what `parseCli()` answers. `HELP` in `src/config.ts` is the
 
 - **One Bun server; the bearer is checked before any route is looked
   up** (`router()`), so an unknown path answers 401 without the bearer
-  and 404 with it. `GET /health` is the one route checked before it. The compare hashes both sides with SHA-256 and uses
+  and 404 with it. `GET /health` is the one route checked before it.
+  The compare hashes both sides with SHA-256 and uses
   `timingSafeEqual`, so its time does not depend on what was sent. A
   refusal carries `WWW-Authenticate: Bearer`.
 

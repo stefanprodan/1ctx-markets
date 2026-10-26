@@ -39,9 +39,12 @@ today; any other platform answers `service is not supported on
 - **The kill timeout is 45 seconds** (`EXIT_TIMEOUT`, launchd's
   `ExitTimeOut`): a source call already sent ends within its 30-second
   timeout, then the writer drains its queue (`docs/config.md`,
-  Shutdown). It stays under the 60 seconds `service stop` waits for the
-  process to exit (`WAIT_MS` in `launchd.ts`), so a stop never reports
-  a timeout while launchd is still to kill.
+  Shutdown). That bounds the server's own work, not a client that holds
+  a request open; launchd's kill is the backstop, and it loses no
+  committed data since each SQLite write is atomic. It stays under the
+  60 seconds `service stop` waits for the process to exit (`WAIT_MS` in
+  `launchd.ts`), so a stop never reports a timeout while launchd is
+  still to kill.
 - **A stop waits for the process, not only the label.** launchd forgets
   the job while the server still drains and holds the port, and a start
   into that window fails.
@@ -72,8 +75,16 @@ under `~/.1ctx-markets` and the binary in `~/.1ctx-markets/bin`.
 
 - **The host is never in a tracked file.** It is `STAGING_SSH` in the
   gitignored `scripts/staging.env`, copied from `staging.env.example`
-  with `STAGING_LISTEN` and `STAGING_FLAGS` (the server flags the
-  install adds, such as `--source bvb`).
+  with `STAGING_LISTEN` and `STAGING_FLAGS`.
+- **Staging always runs `--source bvb` and `--data ~/.1ctx-markets`**
+  (the box's home). `STAGING_FLAGS` holds extra server flags only; one
+  holding `--data` is refused, since the backups and keys stay in
+  `~/.1ctx-markets`.
+- **The listen and flags are checked before any ssh** by the server's
+  own `parseCli()` from the commit being built, since the binary is
+  swapped before the install runs. They reach the box quoted one by one
+  for an explicit `bash`, so its login shell (zsh globs `[::1]`) never
+  reparses them.
 - **ssh runs with `BatchMode=yes` and `ConnectTimeout=10`**, so a
   missing key or a down box fails at once instead of prompting.
 - **`make staging-deploy` takes `main` only.** It refuses another
@@ -85,10 +96,13 @@ under `~/.1ctx-markets` and the binary in `~/.1ctx-markets/bin`.
   dirty tree) and must print that version.
 - **A deploy backs the database up before it swaps the binary.** A
   `sqlite3 .backup` into `~/.1ctx-markets/backups`, taken out of WAL
-  (`journal_mode=delete`) so it is one file, integrity-checked, the last
-  three kept. The new binary is uploaded beside the live one and renamed
-  over it, so an interrupted copy never leaves a truncated executable,
-  then `service install --restart` runs with the env's listen and flags.
+  (`journal_mode=delete`) so it is one file, integrity-checked (a copy
+  that fails is removed and the deploy stops), the last three kept. The
+  new binary is uploaded beside the live one and renamed over it, so an
+  interrupted copy never leaves a truncated executable, then `service
+  install --restart` runs with the env's listen and flags.
+- **An install that fails after the swap needs a manual redeploy,** and
+  the backup restored if the new binary's migration ran.
 - **`make staging-secrets DIR=<dir>` copies only the `source-*.key`
   files the box lacks** into `~/.1ctx-markets/secrets` (700, files
   600). Each value goes over ssh stdin, never in an argument or the

@@ -18,8 +18,10 @@ cd "$(dirname "$0")/.."
 . scripts/staging.env
 HOST=${STAGING_SSH:?STAGING_SSH is not set in scripts/staging.env}
 LISTEN=${STAGING_LISTEN:-127.0.0.1:11238}
-# more server flags for the install, such as --source bvb
-FLAGS=${STAGING_FLAGS:-}
+# staging always runs the Bucharest feed; STAGING_FLAGS adds to it,
+# split on spaces, never globbed
+read -r -a EXTRA <<<"${STAGING_FLAGS:-}"
+INSTALL=(--listen "$LISTEN" --source bvb ${EXTRA[@]+"${EXTRA[@]}"})
 KEEP_BACKUPS=3
 
 # BatchMode fails fast instead of prompting
@@ -27,6 +29,25 @@ ssh_() { ssh -o BatchMode=yes -o ConnectTimeout=10 "$HOST" "$@"; }
 fail() {
   echo "staging: $1" >&2
   exit 1
+}
+
+# Refused here, before any ssh: the binary is swapped before the install
+# runs, so a flag the server refuses would leave the box without a service.
+check_install() {
+  local flag
+  for flag in ${EXTRA[@]+"${EXTRA[@]}"}; do
+    # backups and keys live in ~/.1ctx-markets, so the database does too
+    [ "$flag" != --data ] || fail "STAGING_FLAGS must not hold --data"
+  done
+  # the server's own parser, from the commit being built
+  bun -e '
+    const { parseCli } = require("./src/config.ts");
+    const cli = parseCli(process.argv.slice(1));
+    if (cli.kind !== "run") {
+      console.error(cli.kind === "error" ? cli.message : "not server options");
+      process.exit(1);
+    }' -- "${INSTALL[@]}" --data /check ||
+    fail "the server refuses STAGING_LISTEN or STAGING_FLAGS"
 }
 
 deploy() {
@@ -39,6 +60,7 @@ deploy() {
     [ "$branch" = main ] || fail "on $branch, not main; ALLOW_BRANCH=1 deploys it anyway"
     [ -z "$dirty" ] || fail "the checkout has uncommitted changes"
   fi
+  check_install
   sha=$(git rev-parse --short HEAD)
   # a dirty tree names its diff too, so two bypass deploys from one
   # commit are two versions
@@ -65,6 +87,8 @@ sqlite3 "$out" 'pragma journal_mode=delete' >/dev/null
 rm -f "$out-shm" "$out-wal"
 [ "$(sqlite3 "$out" 'pragma integrity_check')" = ok ] || {
   echo "staging: the backup failed its integrity check: $out" >&2
+  # a bad copy must not count toward the ones kept
+  rm -f "$out"
   exit 1
 }
 echo "backup: $out"
@@ -76,9 +100,16 @@ REMOTE
   # Upload beside the live binary and rename: an interrupted copy must not
   # leave the service manager restarting a truncated executable.
   scp -q -o BatchMode=yes -o ConnectTimeout=10 bin/1ctx-markets "$HOST:~/.1ctx-markets/bin/1ctx-markets.new"
-  # shellcheck disable=SC2029 # LISTEN and FLAGS are meant to expand here
-  ssh_ "mv -f ~/.1ctx-markets/bin/1ctx-markets.new ~/.1ctx-markets/bin/1ctx-markets &&
-    ~/.1ctx-markets/bin/1ctx-markets service install --restart --listen $LISTEN $FLAGS"
+  # Each argument quoted for an explicit bash, so the box's login shell
+  # (zsh globs `[::1]`) never reparses them; the data directory is the
+  # box's own home.
+  local script args
+  # shellcheck disable=SC2016 # expanded by the bash on the box
+  script='set -e; b=$HOME/.1ctx-markets/bin/1ctx-markets; mv -f "$b.new" "$b"
+    exec "$b" service install --restart "$@" --data "$HOME/.1ctx-markets"'
+  args=$(printf ' %q' "${INSTALL[@]}")
+  # shellcheck disable=SC2029 # quoted above, expanded on the box
+  ssh_ "bash -c $(printf %q "$script") _$args"
 }
 
 secrets() {
