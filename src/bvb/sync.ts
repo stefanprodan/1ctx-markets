@@ -78,6 +78,8 @@ export type BvbContext = {
 export const NO_DATA =
   "no data from bvb; the server turns it on with --source bvb";
 export const ONLY = "the Bucharest feed serves shares, bonds and indices only";
+export const AERO =
+  "the Bucharest feed serves the regulated market's shares only, not AeRO's";
 
 // the feed's types, the ones served
 const KINDS: Readonly<Record<string, { type: string; unit: Unit }>> = {
@@ -561,6 +563,16 @@ export async function quoteNow(
   return q;
 }
 
+// an AeRO share is on no list a quote pass reads, so it would never be quoted
+export async function checkListed(ctx: BvbContext, meta: Meta): Promise<void> {
+  if (KINDS[meta.type]?.type !== "EQUITY") return;
+  const page = await ctx.bvb.shares();
+  const symbol = meta.symbol.toUpperCase();
+  if (!page.rows.some((r) => r.symbol.toUpperCase() === symbol)) {
+    throw new Refused(AERO);
+  }
+}
+
 // an instrument as the feed's symbol answer names it, before it is stored
 export function draft(meta: Meta, now: number): Instrument {
   const f = fieldsOf(meta);
@@ -583,6 +595,8 @@ export async function fetchInstrument(
       `${expected} answered as ${planned.id}`,
     );
   }
+  if (!live()) throw expired();
+  await checkListed(ctx, meta);
   if (!live()) throw expired();
   const quote = await quoteNow(ctx, planned);
   return exclusive(ctx.db, planned.id, async () => {

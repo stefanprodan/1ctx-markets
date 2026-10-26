@@ -39,6 +39,7 @@ import {
   type BvbContext,
   barsAnswered,
   checkCovers,
+  checkListed,
   draft,
   fieldsOf,
   quoteNow,
@@ -148,6 +149,8 @@ export function sourceSwitch(options: {
     if (planned.id !== i.id) {
       throw new SourceError("malformed answer", `${i.id} answered otherwise`);
     }
+    // an AeRO share stays on Yahoo
+    await checkListed(ctx, meta);
     const { history, since } = await wholeHistory(ctx, {
       ...planned,
       id: i.id,

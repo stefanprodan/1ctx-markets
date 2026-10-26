@@ -23,7 +23,10 @@ exchange: one client, its parsers, its session, the same tables.
   Bucharest index, so with the feed off `BVB:BET`, a bond, or a `BVB:`
   key Yahoo lacks answers `no_data` with `NO_DATA`, never an error.
 - **AeRO, the junior market, is left out.** Its list needs an ASP.NET
-  partial postback; a plain request answers the regulated market's.
+  partial postback; a plain request answers the regulated market's. A
+  share the regulated list lacks is refused when fetched
+  (`checkListed()`, `AERO`), since no quote pass could quote it, and
+  the switch keeps it on Yahoo.
 
 ## What it reads
 
@@ -175,13 +178,17 @@ exchange: one client, its parsers, its session, the same tables.
   `candidates`, none is a `ResolveError`. Only status `T` (tradable)
   counts. `BVB:TLV` and a `TLV` elsewhere stay apart: a bare `TLV`
   exact on both answers both as candidates.
+- **The exchange's search is asked only when Yahoo's leaves room for
+  it:** no exact match, or a search that lists a Bucharest share (`.RO`).
+  Yahoo's exact match beside none is it, so a bare `NVDA` never waits
+  on the feed's spacing.
 - **A `BVB:` key is the feed's while it is on,** asked by its symbol
   answer; a Yahoo symbol naming a Bucharest listing (`TLV.RO`) resolves
   to the same key and is fetched from the feed.
 - **An instrument never seen is fetched inside the call**
-  (`fetchInstrument()`): the symbol answer, a quote (the instrument
-  page, or the index page), then ten years of bars, in one write while
-  `live()` holds.
+  (`fetchInstrument()`): the symbol answer, for a share the shares
+  list, a quote (the instrument page, or the index page), then ten
+  years of bars, in one write while `live()` holds.
 
 ## Switching sources
 
@@ -217,4 +224,5 @@ day at the default 5-minute quote period: 1 schedule page, 98 quote
 passes (97 in session and one after the close) of 3 list pages (294),
 9 instrument pages, 10 histories: about 314 calls, one every 95
 seconds of the session on average. A holiday costs up to 8
-schedule pages. Inline fetches add 3 calls per new instrument.
+schedule pages. Inline fetches add 3 calls per new index or bond and
+4 per new share.

@@ -83,11 +83,26 @@ export async function resolveBoth(
       })),
     };
   }
-  const [y, b] = await Promise.allSettled([
-    resolveYahoo(ctx, given),
-    ctx.bvb.search(given),
-  ]);
+  const [y] = await Promise.allSettled([resolveYahoo(ctx, given)]);
   if (y.status === "fulfilled" && y.value.kind === "known") return y.value;
+  // Yahoo lists Bucharest shares (.RO): an exact match beside none of
+  // them needs no exchange search, which waits on the feed's spacing
+  if (
+    y.status === "fulfilled" &&
+    y.value.kind === "new" &&
+    !(y.value.listings ?? []).some((c) => c.market === MARKET)
+  ) {
+    const { id, sourceSymbol } = y.value;
+    return marketOfId(id) === MARKET
+      ? {
+          kind: "new",
+          source: "bvb",
+          sourceSymbol: id.slice(MARKET.length + 1),
+          id,
+        }
+      : { kind: "new", source: "yahoo", sourceSymbol, id };
+  }
+  const [b] = await Promise.allSettled([ctx.bvb.search(given)]);
   const listings =
     b.status === "fulfilled"
       ? b.value.filter((l) => l.status === TRADABLE).map(candidateOf)

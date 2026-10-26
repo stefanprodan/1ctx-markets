@@ -153,6 +153,15 @@ describe("resolution with the feed on", () => {
     ).toEqual(["BVB:TLV", "US:TLV"]);
   });
 
+  test("a symbol Yahoo names exactly, with no Bucharest listing, asks no exchange search", async () => {
+    const t = await setup(true);
+    const [nvda] = await t.read(["NVDA"]);
+    expect(idOf(nvda)).toBe("US:NVDA");
+    expect(
+      t.urls.filter((u) => u.pathname === "/proxyshld.aspx/GetInstrumentsList"),
+    ).toEqual([]);
+  });
+
   test("a name the exchange lists once resolves to the feed", async () => {
     const t = await setup(true);
     // Yahoo's TLV.RO names the same key, served from the feed

@@ -6,6 +6,7 @@ import { readBars } from "../src/bars.ts";
 import { bvb, MARKET } from "../src/bvb/client.ts";
 import { bvbJobs } from "../src/bvb/jobs.ts";
 import {
+  AERO,
   type BvbContext,
   fetchInstrument,
   refetch,
@@ -14,7 +15,8 @@ import {
 import { readSession, recordSession } from "../src/calendars.ts";
 import { MINUTE_MS } from "../src/clock.ts";
 import { open } from "../src/db/index.ts";
-import type { Instrument } from "../src/instruments.ts";
+import { Refused } from "../src/fred/sync.ts";
+import { type Instrument, readInstrument } from "../src/instruments.ts";
 import { silent } from "../src/log.ts";
 import { readQuote } from "../src/quotes.ts";
 import type { RuleHooks } from "../src/rules/hooks.ts";
@@ -26,6 +28,7 @@ import {
   type BvbRoutes,
   bvbFetch,
   bvbRecorded,
+  keyed,
   site,
   wapi,
 } from "./helpers/bvb.ts";
@@ -134,6 +137,30 @@ describe("instruments from the feed", () => {
     expect(
       readBars(t.db, "BVB:BET", "1d").every((b) => b.volume === null),
     ).toBe(true);
+  });
+
+  test("a share not on the regulated list is refused, never stored", async () => {
+    // a made-up junior-market share, answered as TLV's recordings are
+    const meta = clone(await bvbRecorded("wapi-symbols-tlv"));
+    meta.body.name = "XYZ";
+    meta.body.ticker = "XYZ";
+    const detail = keyed(await bvbRecorded("detail-tlv"));
+    const history = await bvbRecorded("wapi-history-tlv-1d");
+    const t = await setup(utc("2026-10-23T14:00:00"), {
+      hold: (url) => {
+        const s = url.searchParams;
+        if (s.get("symbol") === "XYZ") {
+          return url.pathname === "/api/symbols" ? meta : history;
+        }
+        return s.get("s") === "XYZ" ? detail : undefined;
+      },
+    });
+    friday(t.db, t.clock.now());
+    const asked = t.run(fetchInstrument(t.ctx, "XYZ", null, () => true));
+    await expect(asked).rejects.toBeInstanceOf(Refused);
+    await expect(asked).rejects.toThrow(AERO);
+    expect(readInstrument(t.db, "BVB:XYZ")).toBeNull();
+    expect(wapi(t.f.urls, "/api/history")).toEqual([]);
   });
 
   test("an unknown symbol is not found and nothing is stored", async () => {
