@@ -129,8 +129,9 @@ Never run one from a test or CI.
   `scripts/probe/record.ts` reads the file the environment variable
   names or the data directory's. `record()` drops `set-cookie`,
   `authorization` and `x-finnhub-token`, replaces a key-named query
-  parameter with `REDACTED`, and replaces the key wherever it appears
-  in the output (a cursor URL can echo it) before writing. `bvb.ts`
+  parameter with `REDACTED`, and replaces the key in every form, encoded too
+  (`scrub()` in `src/source.ts`), in every string of the output before
+  writing (a cursor URL can echo it). `bvb.ts`
   strips the page key and ASP.NET form state (`scrub()`); `yahoo.ts`
   keeps only the headers a client acts on.
 - **Restricted values are replaced before the first write.** A series
