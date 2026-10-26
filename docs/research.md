@@ -4,7 +4,8 @@ Governs Finnhub's research and earnings events (`src/finnhub/*`),
 Massive's news (`src/massive/*`), the `research` and `events` tools
 (`src/tools/research.ts`, `src/tools/events.ts`), `GET /research`, and
 the `research`, `events`, `news` and `news_walks` tables
-(`src/db/migrations/0007-research.ts`, `0008-news.ts`). The shared
+(`src/db/migrations/0007-research.ts`, `0008-news.ts`,
+`0012-listing.ts`). The shared
 source queue is in `docs/yahoo.md`; resolution, tracking and the answer
 contract in `docs/tools.md`; rules that wait on events in
 `docs/rules.md`; runs and retention in `docs/storage.md`.
@@ -101,10 +102,29 @@ contract in `docs/tools.md`; rules that wait on events in
   instead (`hasRows` in `sectionState`). A 401 is "key refused", a 404
   "not found", a 429 "rate limited", any other status "source error"
   (`src/finnhub/client.ts`); any other shape is "malformed answer".
-- **An answer, or any row in it, naming another symbol is no data**
-  (`ownListing`), as a 403 is: an ADR is answered as its home listing
-  (TSM as `2330.TW`, its EPS in TWD per local share), which is no
-  number for the symbol asked.
+- **An answer whose every part names one other symbol is that
+  listing's** (`listingOf`): an ADR is answered as its home listing
+  (TSM as `2330.TW`, its EPS in TWD per local share). Only what holds
+  for any listing of the company is kept, with `listing` set to that
+  symbol:
+
+  | Section | Kept from another listing | Why the rest goes |
+  | --- | --- | --- |
+  | `analysts` | every count | |
+  | `metric` | `COMPANY_METRICS`: growth, net margin, ROE, current ratio, debt to equity | P/E, PEG, P/S, P/B, yield and beta are on that listing's price |
+  | `earnings` | nothing: no data | EPS in its currency per its share; its rows can disagree (TSM Q3 2026: actual 148.9 against an estimate of 29.2) |
+  | `insider` | nothing: no data | share counts of its shares |
+  | `calendar` | date, hour, fiscal year and quarter, and whether actuals came | estimates and actuals in its currency |
+
+  A part naming no symbol is the asked one's. Parts naming two symbols
+  are no data, as a 403 is, since neither can be trusted; a symbol not
+  1 to 20 letters, digits, `.` or `-` is "malformed answer". A metric
+  left with nothing is no data.
+- **An answer naming a listing replaces the kind's rows of any other**
+  (`storeSection`), its own included, even when it keeps nothing, so no
+  figure of one listing is read as another's; an event a rule waits on
+  stays, as retention keeps it. A 403 or an empty answer names none
+  and replaces nothing.
 - **A Massive 403 is "key refused", like its 401**
   (`src/massive/client.ts`): unlike Finnhub's, it is never no data.
 - **A key answered twice with the same values is one row**; with
@@ -120,8 +140,9 @@ contract in `docs/tools.md`; rules that wait on events in
 - **An event is keyed by fiscal year and quarter, never by date**, so a
   moved date updates the event instead of adding one.
 - **Only actuals confirm an event.** `reported_seen_at` is set the
-  first time an EPS or revenue actual appears and never moves; actuals
-  once seen are kept when a later answer omits them. `eventStatus` is
+  first time an EPS or revenue actual appears and never moves, also for
+  another listing, whose actuals are not stored; actuals once seen are
+  kept when a later answer of the same listing omits them. `eventStatus` is
   "reported" only then, else "scheduled" when the date is after the
   exchange's today, else "awaiting results". A passed date or an
   after-close label never reports it: results can slip, and a rule
@@ -187,7 +208,9 @@ contract in `docs/tools.md`; rules that wait on events in
   The overview drops headlines first to fit one page; `overview` has
   no next page.
 - **Every section carries its period, `fetched_at` and `stale`**; a
-  section with no row says why.
+  section with no row says why. A section or event of another listing
+  also carries `listing` and the note `OTHER_LISTING`; a share's own
+  carries neither.
 - **`GET /research?symbols=a,b` answers at most five Finnhub summaries**
   beside each quote's brief projection, under the same deadline and
   tracking as the tool. It carries no news and fetches none. A page

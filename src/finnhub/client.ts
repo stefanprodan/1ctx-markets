@@ -74,10 +74,14 @@ export type CalendarEvent = {
   epsActual: number | null;
   revenueEstimate: number | null;
   revenueActual: number | null;
+  // an actual was answered, kept or not
+  reported: boolean;
 };
 
-// null is no data: a 403, or an answer with nothing in it
-export type Answer<T> = { data: T | null; fetchedAt: number };
+// null is no data: a 403, or an answer with nothing in it; listing is
+// the other listing that answered, null for the asked symbol's own
+export type Parsed<T> = { data: T | null; listing: string | null };
+export type Answer<T> = Parsed<T> & { fetchedAt: number };
 
 export type Finnhub = {
   metric(symbol: string): Promise<Answer<Metric>>;
@@ -151,22 +155,43 @@ function day(v: unknown, what: string): string {
   throw malformed(`no ${what}`);
 }
 
-// An ADR is answered with its home listing (TSM as 2330.TW, its EPS in
-// TWD per local share): no data for the symbol asked, never an error.
-class AnotherListing extends Error {}
+const LISTING = /^[A-Za-z0-9.-]{1,20}$/;
 
-function sameSymbol(row: Obj, symbol: string): void {
-  if (row.symbol !== undefined && row.symbol !== symbol) {
-    throw new AnotherListing();
+// the fields of a company, the same whichever listing answers
+export const COMPANY_METRICS = [
+  "epsGrowthTTMYoy",
+  "revenueGrowthTTMYoy",
+  "netMarginTTM",
+  "roeTTM",
+  "currentRatioQuarterly",
+  "debtToEquityQuarterly",
+] as const satisfies readonly (keyof Metric)[];
+
+// An ADR is answered with its home listing (TSM as 2330.TW, its EPS in
+// TWD per local share): only what holds for any listing is kept. Every
+// part naming one other symbol is that listing; parts naming two are no
+// data, since neither can be trusted; a part naming none is the asked.
+function listingOf(parts: readonly Obj[], symbol: string): string | null {
+  const named = new Set(parts.map((p) => p.symbol ?? symbol));
+  for (const n of named) {
+    if (n !== symbol && (typeof n !== "string" || !LISTING.test(n))) {
+      throw malformed("no listing");
+    }
   }
+  if (named.size > 1) throw new Mixed();
+  const [only] = named;
+  return only === undefined || only === symbol ? null : (only as string);
 }
 
-// the answer, or no data when any part of it names another symbol
-function ownListing<T>(parse: () => T | null): T | null {
+class Mixed extends Error {}
+
+const NONE = { data: null, listing: null };
+
+function parsed<T>(parse: () => Parsed<T>): Parsed<T> {
   try {
     return parse();
   } catch (error) {
-    if (error instanceof AnotherListing) return null;
+    if (error instanceof Mixed) return NONE;
     throw error;
   }
 }
@@ -186,33 +211,38 @@ export function collapse<T>(rows: readonly T[], key: (row: T) => string): T[] {
   return [...byKey.values()].map((v) => v.row);
 }
 
-export const parseMetric = (body: unknown, symbol: string): Metric | null =>
-  ownListing(() => metricOf(body, symbol));
+export const parseMetric = (body: unknown, symbol: string): Parsed<Metric> =>
+  parsed(() => metricOf(body, symbol));
 
-function metricOf(body: unknown, symbol: string): Metric | null {
+function metricOf(body: unknown, symbol: string): Parsed<Metric> {
   const b = obj(body, "body");
-  sameSymbol(b, symbol);
+  const listing = listingOf([b], symbol);
   const m = obj(b.metric, "metric");
+  const kept: readonly string[] =
+    listing === null ? Object.keys(METRIC_FIELDS) : COMPANY_METRICS;
   const out = {} as Metric;
   let any = false;
   for (const [column, field] of Object.entries(METRIC_FIELDS)) {
-    const v = optionalNum(m[field], field);
+    const v = kept.includes(column) ? optionalNum(m[field], field) : null;
     out[column as keyof Metric] = v;
     if (v !== null) any = true;
   }
   // TLV.RO's answer holds price fields only: nothing this server keeps
-  return any ? out : null;
+  return { data: any ? out : null, listing };
 }
 
 export const parseAnalysts = (
   body: unknown,
   symbol: string,
-): Analysts[] | null => ownListing(() => analystsOf(body, symbol));
+): Parsed<Analysts[]> => parsed(() => analystsOf(body, symbol));
 
-function analystsOf(body: unknown, symbol: string): Analysts[] | null {
-  const rows = list(body, "recommendations").map((entry): Analysts => {
-    const r = obj(entry, "recommendation");
-    sameSymbol(r, symbol);
+// counts of analysts hold for every listing
+function analystsOf(body: unknown, symbol: string): Parsed<Analysts[]> {
+  const entries = list(body, "recommendations").map((entry) =>
+    obj(entry, "recommendation"),
+  );
+  const listing = listingOf(entries, symbol);
+  const rows = entries.map((r): Analysts => {
     return {
       period: day(r.period, "period"),
       strongBuy: count(r.strongBuy, "strongBuy"),
@@ -222,18 +252,26 @@ function analystsOf(body: unknown, symbol: string): Analysts[] | null {
       strongSell: count(r.strongSell, "strongSell"),
     };
   });
-  return rows.length === 0 ? null : collapse(rows, (r) => r.period);
+  return {
+    data: rows.length === 0 ? null : collapse(rows, (r) => r.period),
+    listing,
+  };
 }
 
 export const parseEarnings = (
   body: unknown,
   symbol: string,
-): Earnings[] | null => ownListing(() => earningsOf(body, symbol));
+): Parsed<Earnings[]> => parsed(() => earningsOf(body, symbol));
 
-function earningsOf(body: unknown, symbol: string): Earnings[] | null {
-  const rows = list(body, "earnings").map((entry): Earnings => {
-    const r = obj(entry, "earnings row");
-    sameSymbol(r, symbol);
+// Another listing's EPS is in its currency per its share, and its rows
+// can disagree with each other: nothing of it is kept.
+function earningsOf(body: unknown, symbol: string): Parsed<Earnings[]> {
+  const entries = list(body, "earnings").map((entry) =>
+    obj(entry, "earnings row"),
+  );
+  const listing = listingOf(entries, symbol);
+  if (listing !== null) return { data: null, listing };
+  const rows = entries.map((r): Earnings => {
     // the fiscal labels are not kept: they disagree for one period
     return {
       period: day(r.period, "period"),
@@ -243,18 +281,26 @@ function earningsOf(body: unknown, symbol: string): Earnings[] | null {
       surprisePercent: optionalNum(r.surprisePercent, "surprisePercent"),
     };
   });
-  return rows.length === 0 ? null : collapse(rows, (r) => r.period);
+  return {
+    data: rows.length === 0 ? null : collapse(rows, (r) => r.period),
+    listing,
+  };
 }
 
-export const parseInsider = (body: unknown, symbol: string): Insider[] | null =>
-  ownListing(() => insiderOf(body, symbol));
+export const parseInsider = (
+  body: unknown,
+  symbol: string,
+): Parsed<Insider[]> => parsed(() => insiderOf(body, symbol));
 
-function insiderOf(body: unknown, symbol: string): Insider[] | null {
+// another listing's share counts are of its shares: nothing is kept
+function insiderOf(body: unknown, symbol: string): Parsed<Insider[]> {
   const b = obj(body, "body");
-  sameSymbol(b, symbol);
-  const rows = list(b.data, "insider data").map((entry): Insider => {
-    const r = obj(entry, "insider month");
-    sameSymbol(r, symbol);
+  const entries = list(b.data, "insider data").map((entry) =>
+    obj(entry, "insider month"),
+  );
+  const listing = listingOf([b, ...entries], symbol);
+  if (listing !== null) return { data: null, listing };
+  const rows = entries.map((r): Insider => {
     const year = count(r.year, "year");
     const month = count(r.month, "month");
     if (month < 1 || month > 12) throw malformed("no month");
@@ -267,7 +313,10 @@ function insiderOf(body: unknown, symbol: string): Insider[] | null {
       mspr: num(r.mspr, "mspr"),
     };
   });
-  return rows.length === 0 ? null : collapse(rows, (r) => r.period);
+  return {
+    data: rows.length === 0 ? null : collapse(rows, (r) => r.period),
+    listing,
+  };
 }
 
 const HOUR = /^[a-z]{0,8}$/;
@@ -275,37 +324,50 @@ const HOUR = /^[a-z]{0,8}$/;
 export const parseCalendar = (
   body: unknown,
   symbol: string,
-): CalendarEvent[] | null => ownListing(() => calendarOf(body, symbol));
+): Parsed<CalendarEvent[]> => parsed(() => calendarOf(body, symbol));
 
-function calendarOf(body: unknown, symbol: string): CalendarEvent[] | null {
+// Another listing's dates are the company's; its estimates and actuals
+// are in its currency per its share, so only whether actuals came is kept.
+function calendarOf(body: unknown, symbol: string): Parsed<CalendarEvent[]> {
   const b = obj(body, "body");
-  const rows = list(b.earningsCalendar, "earnings calendar").map(
-    (entry): CalendarEvent => {
-      const r = obj(entry, "calendar row");
-      // a calendar row always names its symbol
-      if (r.symbol === undefined) throw malformed("no symbol");
-      sameSymbol(r, symbol);
-      const quarter = count(r.quarter, "quarter");
-      if (quarter < 1 || quarter > 4) throw malformed("no quarter");
-      const hour = r.hour ?? "";
-      if (typeof hour !== "string" || !HOUR.test(hour)) {
-        throw malformed("no hour");
-      }
-      return {
-        fiscalYear: count(r.year, "year"),
-        fiscalQuarter: quarter,
-        date: day(r.date, "date"),
-        hour,
-        epsEstimate: optionalNum(r.epsEstimate, "epsEstimate"),
-        epsActual: optionalNum(r.epsActual, "epsActual"),
-        revenueEstimate: optionalNum(r.revenueEstimate, "revenueEstimate"),
-        revenueActual: optionalNum(r.revenueActual, "revenueActual"),
-      };
-    },
-  );
-  return rows.length === 0
-    ? null
-    : collapse(rows, (r) => `${r.fiscalYear} Q${r.fiscalQuarter}`);
+  const entries = list(b.earningsCalendar, "earnings calendar").map((entry) => {
+    const r = obj(entry, "calendar row");
+    // a calendar row always names its symbol
+    if (r.symbol === undefined) throw malformed("no symbol");
+    return r;
+  });
+  const listing = listingOf(entries, symbol);
+  const own = listing === null;
+  const rows = entries.map((r): CalendarEvent => {
+    const quarter = count(r.quarter, "quarter");
+    if (quarter < 1 || quarter > 4) throw malformed("no quarter");
+    const hour = r.hour ?? "";
+    if (typeof hour !== "string" || !HOUR.test(hour)) {
+      throw malformed("no hour");
+    }
+    const epsActual = optionalNum(r.epsActual, "epsActual");
+    const revenueActual = optionalNum(r.revenueActual, "revenueActual");
+    return {
+      fiscalYear: count(r.year, "year"),
+      fiscalQuarter: quarter,
+      date: day(r.date, "date"),
+      hour,
+      epsEstimate: own ? optionalNum(r.epsEstimate, "epsEstimate") : null,
+      epsActual: own ? epsActual : null,
+      revenueEstimate: own
+        ? optionalNum(r.revenueEstimate, "revenueEstimate")
+        : null,
+      revenueActual: own ? revenueActual : null,
+      reported: epsActual !== null || revenueActual !== null,
+    };
+  });
+  return {
+    data:
+      rows.length === 0
+        ? null
+        : collapse(rows, (r) => `${r.fiscalYear} Q${r.fiscalQuarter}`),
+    listing,
+  };
 }
 
 export function finnhub(options: FinnhubOptions): Finnhub {
@@ -318,7 +380,7 @@ export function finnhub(options: FinnhubOptions): Finnhub {
     path: string,
     params: Record<string, string>,
     run: RunOptions,
-    parse: (body: unknown) => T | null,
+    parse: (body: unknown) => Parsed<T>,
   ): Promise<Answer<T>> =>
     calls.run(async () => {
       const abort = new AbortController();
@@ -344,7 +406,7 @@ export function finnhub(options: FinnhubOptions): Finnhub {
         }
         const fetchedAt = clock.now();
         // the free key's answer for a listing it does not cover
-        if (res.status === 403) return { data: null, fetchedAt };
+        if (res.status === 403) return { ...NONE, fetchedAt };
         if (res.status === 429) throw new SourceError("rate limited");
         if (res.status === 401) throw new SourceError("key refused");
         if (res.status === 404) throw new SourceError("not found");
@@ -357,7 +419,7 @@ export function finnhub(options: FinnhubOptions): Finnhub {
         } catch {
           throw new Unreadable();
         }
-        return { data: parse(body), fetchedAt };
+        return { ...parse(body), fetchedAt };
       } finally {
         cancel();
       }

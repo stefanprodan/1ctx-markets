@@ -181,6 +181,55 @@ describe("migrations", () => {
     ]);
   });
 
+  test("research and events stored before listings are the share's own", () => {
+    const db = new Database(":memory:", { strict: true });
+    const clock = fakeClock();
+    const at = MIGRATIONS.findIndex((m) => m.id === "0012-listing");
+    migrate(db, clock, MIGRATIONS.slice(0, at));
+    db.exec(`
+      insert into instruments (id, market, symbol, source, source_symbol,
+        exchange, type, currency, zone, added_at, updated_at)
+      values ('US:TSM', 'US', 'TSM', 'yahoo', 'TSM', 'NYQ', 'EQUITY', 'USD',
+        'America/New_York', 0, 0);
+      insert into research (instrument, kind, period, pe_ttm, fetched_at)
+      values ('US:TSM', 'metric', '2026-10-01', 20, 0);
+      insert into research (instrument, kind, period, eps_actual, fetched_at)
+      values ('US:TSM', 'earnings', '2026-09-30', 148.9, 0);
+      insert into events (instrument, fiscal_year, fiscal_quarter, date, hour,
+        eps_actual, reported_seen_at, fetched_at)
+      values ('US:TSM', 2026, 3, '2026-10-15', 'bmo', 148.9, 0, 0);
+    `);
+    migrate(db, clock);
+    expect(
+      db.query("select kind, listing from research order by kind").all(),
+    ).toEqual([
+      { kind: "earnings", listing: null },
+      { kind: "metric", listing: null },
+    ]);
+    expect(db.query("select listing from events").all()).toEqual([
+      { listing: null },
+    ]);
+    // another listing keeps no figure per share, and only a symbol's shape
+    const research = db.query(
+      `insert into research (instrument, kind, period, pe_ttm, listing,
+         fetched_at) values ('US:TSM', ?, '2026-08-01', ?, ?, 0)`,
+    );
+    research.run("analysts", null, "2330.TW");
+    expect(() => research.run("metric", 20, "2330.TW")).toThrow();
+    expect(() => research.run("earnings", null, "2330.TW")).toThrow();
+    expect(() => research.run("insider", null, "2330 TW")).toThrow();
+    research.run("insider", null, null);
+    expect(() =>
+      db
+        .query(
+          `insert into events (instrument, fiscal_year, fiscal_quarter, date,
+             hour, eps_estimate, listing, fetched_at)
+           values ('US:TSM', 2026, 4, '2027-01-13', 'bmo', 32.2, '2330.TW', 0)`,
+        )
+        .run(),
+    ).toThrow();
+  });
+
   test("open applies the shipped list to a new database", () => {
     const { db, migrations } = open(":memory:", fakeClock());
     expect(migrations).toEqual(MIGRATIONS.map((m) => m.id));

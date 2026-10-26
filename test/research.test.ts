@@ -10,6 +10,7 @@ import {
   NO_DATA,
   NO_EVENTS,
   NOT_COVERED,
+  OTHER_LISTING,
   refreshResearch,
   STALE_RESEARCH,
 } from "../src/finnhub/store.ts";
@@ -27,6 +28,7 @@ import {
   HEADLINES,
   parseResearch,
   researchAnswer,
+  researchHandler,
   researchTargets,
 } from "../src/tools/research.ts";
 import { CALL_MS, markets } from "../src/tools/targets.ts";
@@ -759,10 +761,11 @@ describe("events inside the call", () => {
     ]);
   });
 
-  test("a share answered as another listing is listed as no data", async () => {
+  test("rows of another listing carry it and one note; a share's own neither", async () => {
     const t = await setup({ charts: await shares(["TSM"]) });
     usShare(t.db, "TSM");
-    const b = body(
+    const other = { listing: "2330.TW", note: OTHER_LISTING };
+    const ev = body(
       await drive(
         t.clock,
         pacedOf(t.m),
@@ -771,16 +774,83 @@ describe("events inside the call", () => {
           parseEvents({
             from: "2026-10-01",
             to: "2027-01-31",
-            symbols: ["TSM"],
+            symbols: ["TSM", "NVDA"],
           }),
         ),
       ),
     );
-    expect(b.events).toEqual([]);
-    expect(b.unavailable).toEqual([
-      { input: "TSM", id: "US:TSM", message: NO_DATA },
+    expect(ev.unavailable).toBeUndefined();
+    expect(ev.events).toMatchObject([
+      {
+        id: "US:TSM",
+        date: "2026-10-15",
+        status: "reported",
+        eps_estimate: null,
+        eps_actual: null,
+        revenue_actual: null,
+        ...other,
+      },
+      { id: "US:NVDA", date: "2026-11-17", status: "scheduled" },
+      { id: "US:TSM", date: "2027-01-13", status: "scheduled", ...other },
     ]);
-    expect(t.finnhubCalls()).toHaveLength(1);
+    expect(ev.events[1]).not.toContainKey("listing");
+    expect(ev.events[1]).not.toContainKey("note");
+
+    const overview = body(
+      await drive(
+        t.clock,
+        pacedOf(t.m),
+        researchAnswer(t.m, parseResearch({ symbol: "TSM" })),
+      ),
+    );
+    expect(overview.research.metric).toMatchObject({
+      ...other,
+      roe_ttm: 41.19,
+      pe_ttm: null,
+    });
+    expect(overview.research.analysts).toMatchObject({ ...other, buy: 28 });
+    expect(overview.research.earnings).toEqual(
+      expect.objectContaining({ period: null, message: NO_DATA }),
+    );
+    expect(overview.research.earnings).not.toContainKey("listing");
+    expect(overview.research.insider).not.toContainKey("listing");
+    expect(overview.research.next_event).toMatchObject({
+      date: "2027-01-13",
+      ...other,
+    });
+    const analysts = body(
+      await researchAnswer(
+        t.m,
+        parseResearch({ symbol: "TSM", section: "analysts" }),
+      ),
+    );
+    expect(analysts).toMatchObject(other);
+    expect(analysts.rows).toHaveLength(4);
+    expect(analysts.rows[0]).not.toContainKey("listing");
+    const insiders = body(
+      await researchAnswer(
+        t.m,
+        parseResearch({ symbol: "TSM", section: "insiders" }),
+      ),
+    );
+    expect(insiders.rows).toHaveLength(8);
+    expect(insiders).not.toContainKey("listing");
+
+    const res = await drive(
+      t.clock,
+      pacedOf(t.m),
+      researchHandler(t.m)(
+        new Request("http://markets.test/research?symbols=TSM,NVDA"),
+      ),
+    );
+    const { items } = (await res.json()) as { items: any[] };
+    expect(items[0].research.metric).toMatchObject(other);
+    expect(items[0].research.next_event).toMatchObject(other);
+    for (const s of ["metric", "analysts", "earnings", "insider"]) {
+      expect(items[1].research[s]).not.toContainKey("listing");
+      expect(items[1].research[s]).not.toContainKey("note");
+    }
+    expect(items[1].research.next_event).not.toContainKey("listing");
   });
 
   test("a share whose calendar turned to no data is listed beside its kept events", async () => {
