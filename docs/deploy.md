@@ -77,6 +77,9 @@ under `~/.1ctx-markets` and the binary in `~/.1ctx-markets/bin`.
 - **The host is never in a tracked file.** It is `STAGING_SSH` in the
   gitignored `scripts/staging.env`, copied from `staging.env.example`
   with `STAGING_LISTEN` and `STAGING_FLAGS`.
+- **Staging binds `0.0.0.0:11238`** so clients on the tailnet reach it;
+  Tailscale encrypts the plain HTTP, and the bearer still guards every
+  route but `/health`. 1ctx on the same box uses `127.0.0.1:11238`.
 - **Staging always runs `--source bvb` and `--data ~/.1ctx-markets`**
   (the box's home). `STAGING_FLAGS` holds extra server flags only; one
   holding `--data` is refused, since the backups and keys stay in

@@ -102,7 +102,8 @@ keeps `markets.db` in `~/.1ctx-markets`. `--listen`, `--data`,
 `--track-days` (how long an instrument stays synced after its last
 read, 30 by default) change that, and `--source bvb` turns on the
 Bucharest Stock Exchange's feed; `--help` lists them. It
-speaks plain HTTP, so keep it on loopback or put a TLS proxy in front.
+speaks plain HTTP, so keep it on loopback, on a private network such
+as Tailscale, or behind a TLS proxy.
 
 On macOS, the binary can run itself as a service of your user,
 started at login and restarted if it exits, with any of the options
