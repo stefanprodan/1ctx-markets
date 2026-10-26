@@ -56,9 +56,14 @@ runs what `parseCli()` answers. `HELP` in `src/config.ts` is the
   trimmed; one absent, empty, not a regular file or over 4,096 bytes
   reads as no key. Keys are read once at start: a changed key needs a
   restart.
+- **A first start writes the bearer** (`createBearer()`):
+  `1ctx-markets-` and 32 random bytes in base64url, mode 600, in a
+  `secrets/` made mode 700. It writes only when no file is there, so an
+  existing key, even an empty or bad one, is never replaced.
 - **The server will not start without a bearer** of at least 32
   printable ASCII characters (`requireBearer()`); it exits 1 with a
-  message naming the file and how to write one, never its contents.
+  message naming the file and how to get a new one, never its
+  contents.
 - **A source key turns its source on.** Yahoo needs none and is always
   on; FRED, Finnhub and Massive are on while their file holds a key,
   and every tool answers without them. A keyless optional source is on
@@ -144,8 +149,9 @@ or runs against a closed connection.
   (`--no-compile-autoload-dotenv`, `--no-compile-autoload-bunfig`), so
   a stray file beside it never configures it.
 - **`make smoke` checks the compiled binary**: it refuses to start with
-  an empty bearer, starts with one, answers 401 without it, answers an
-  MCP initialize with it, creates `markets.db`, keeps the bearer out
-  of the log, and checks `--version` prints a line starting with `v`.
+  an empty bearer, writes a prefixed one on a first start, answers 401
+  without it, answers an MCP initialize with it, creates `markets.db`,
+  keeps the bearer out of the log, and checks `--version` prints a
+  line starting with `v`.
 - **Bun is the only runtime**, at the version in `.bun-version`; there
   is no Node. `make start` and `make dev` run from source.
