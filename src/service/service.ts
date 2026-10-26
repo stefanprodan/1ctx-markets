@@ -231,8 +231,10 @@ async function uninstall(purge: boolean, r: Resolved): Promise<void> {
       "service definition is invalid; uninstall without --purge",
     );
   }
-  await r.backend.remove();
   if (purge) {
+    // the definition goes last, so a purge cut short can be run again on
+    // the same directory
+    await r.backend.stop();
     // nothing installed: the default directory, as a bare start uses
     const purged = config ?? configOf([], r.home)!;
     const db = dbPath(purged);
@@ -246,6 +248,7 @@ async function uninstall(purge: boolean, r: Resolved): Promise<void> {
       }
     }
   }
+  await r.backend.remove();
   r.write(`uninstalled ${r.backend.name}${purge ? " and purged data" : ""}`);
 }
 

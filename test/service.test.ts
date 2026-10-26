@@ -474,7 +474,7 @@ describe("service purge on disk", () => {
     const dir = mkdtempSync(join(tmpdir(), "markets-purge-"));
     // a directory in place of the log: rm without recursion refuses it
     mkdirSync(join(dir, "markets.log", "held"), { recursive: true });
-    const { backend } = fake({ args: [BIN, "--data", dir] });
+    const { backend, calls } = fake({ args: [BIN, "--data", dir] });
     const { all, lines } = deps(backend);
     delete all.remove;
 
@@ -483,6 +483,9 @@ describe("service purge on disk", () => {
     await expect(failed).rejects.toBeInstanceOf(ServiceError);
     await expect(failed).rejects.toThrow("markets.log");
     expect(lines).toEqual([]);
+    // the definition stays, so a second purge names the same directory
+    expect(calls).not.toContain("remove");
+    expect(await backend.installed()).toEqual([BIN, "--data", dir]);
   });
 });
 

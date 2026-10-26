@@ -28,7 +28,8 @@ today; any other platform answers `service is not supported on
   the options back from the definition. One that is not our plist
   (binary, empty or torn), lacks the binary's absolute path or `--data`,
   or holds options the server would refuse is `service definition is
-  invalid` to every command but a plain `uninstall`.
+  invalid`: `start`, `restart` and `uninstall --purge` refuse it,
+  `status` shows it, `stop` and a plain `uninstall` work.
 - **`install` needs the compiled binary** and refuses to replace a
   running service without `--restart`, which is the switch anywhere but
   right after a flag that takes a value.
