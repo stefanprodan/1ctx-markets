@@ -4,6 +4,14 @@
 // The wiring main.ts starts, kept apart so a test runs the same with a
 // fake clock, a captured log and a fake fetch.
 
+import { type Bvb, bvb } from "./bvb/client.ts";
+import { type BvbJobs, bvbJobs } from "./bvb/jobs.ts";
+import {
+  priceSources,
+  type SourceSwitch,
+  sourceSwitch,
+  writeSources,
+} from "./bvb/switch.ts";
 import { type Clock, DAY_MS } from "./clock.ts";
 import type { Db } from "./db/index.ts";
 import { type Finnhub, finnhub } from "./finnhub/client.ts";
@@ -50,6 +58,8 @@ export type AppOptions = {
   fredKey?: string | null;
   finnhubKey?: string | null;
   massiveKey?: string | null;
+  // the Bucharest exchange's feed, on with --source bvb
+  bvb?: boolean;
   // what the research jobs ask of the rules, the rules' own by default
   hooks?: Hooks;
   // tests answer every source call from recordings
@@ -70,6 +80,10 @@ export type App = {
   finnhubJobs: FinnhubJobs | null;
   massive: Massive | null;
   massiveJobs: MassiveJobs | null;
+  bvb: Bvb | null;
+  bvbJobs: BvbJobs | null;
+  // moves the Bucharest market between Yahoo and the feed
+  sourceSwitch: SourceSwitch;
   // what the tools and GET /quotes read through
   markets: Markets;
   // one field per source with its state and why, for the start log
@@ -108,12 +122,47 @@ export function start(options: AppOptions): App {
     });
   const yahooQueue = queue(clock, YAHOO_CONCURRENCY);
   const client = yahoo({ clock, fetch: options.fetch, queue: yahooQueue });
+  const yahooCtx = { db, clock, yahoo: client, writer: write, rules };
   const sync = yahooJobs({
-    ctx: { db, clock, yahoo: client, writer: write, rules },
+    ctx: yahooCtx,
     quoteEveryMs: options.quoteEveryMs,
     log: options.log("yahoo"),
     trackMs,
   });
+
+  const bvbClient =
+    options.bvb === true ? bvb({ clock, fetch: options.fetch }) : null;
+  const bvbCtx =
+    bvbClient === null
+      ? null
+      : { db, clock, bvb: bvbClient, writer: write, rules };
+  const bvbSync =
+    bvbCtx === null
+      ? null
+      : bvbJobs({
+          ctx: bvbCtx,
+          quoteEveryMs: options.quoteEveryMs,
+          log: options.log("bvb"),
+          trackMs,
+        });
+  const switcher = sourceSwitch({
+    yahoo: yahooCtx,
+    bvb: bvbCtx,
+    log: options.log("sources"),
+  });
+  // after the startup write, so its interrupted runs are failed first
+  if (switcher.needed()) void switcher.run();
+  else {
+    void write
+      .write((db) =>
+        writeSources(db, priceSources(bvbClient !== null), clock.now()),
+      )
+      .catch((error: unknown) => {
+        options
+          .log("sources")
+          .error("sources write failed", errorFields(error));
+      });
+  }
 
   const fredKey = options.fredKey ?? null;
   const fredClient =
@@ -164,6 +213,7 @@ export function start(options: AppOptions): App {
     writer: write,
     yahoo: client,
     fred: fredClient,
+    bvb: bvbClient,
     finnhub: finnhubClient,
     massive: massiveClient,
     hooks,
@@ -191,6 +241,8 @@ export function start(options: AppOptions): App {
   fredSync?.schedule(jobs);
   finnhubSync?.schedule(jobs);
   massiveSync?.schedule(jobs);
+  bvbSync?.schedule(jobs);
+  switcher.schedule(jobs);
   jobs.every("retention", DAY_MS, async () => {
     await write.write(prune);
   });
@@ -206,12 +258,16 @@ export function start(options: AppOptions): App {
     finnhubJobs: finnhubSync,
     massive: massiveClient,
     massiveJobs: massiveSync,
+    bvb: bvbClient,
+    bvbJobs: bvbSync,
+    sourceSwitch: switcher,
     markets: reads,
     sources: {
       yahoo: "on",
       fred: fredKey === null ? "off (no key)" : "on (key file)",
       finnhub: finnhubKey === null ? "off (no key)" : "on (key file)",
       massive: massiveKey === null ? "off (no key)" : "on (key file)",
+      bvb: bvbClient === null ? "off (no flag)" : "on (flag)",
     },
     async stop() {
       // no new run or request starts, no job waits out a back-off, every
@@ -222,8 +278,10 @@ export function start(options: AppOptions): App {
       fredClient?.close();
       finnhubClient?.close();
       massiveClient?.close();
+      bvbClient?.close();
       await server.stop();
       await settled;
+      await switcher.settled();
       await mcp.close();
       await write.close();
     },

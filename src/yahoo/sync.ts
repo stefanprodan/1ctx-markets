@@ -508,6 +508,24 @@ export async function addInstrument(
   });
 }
 
+// A market moved to Yahoo from another source: its stored days are gone
+// and this whole history and quote replace them in the caller's write.
+export function storeSwitched(
+  db: Db,
+  now: number,
+  answer: ChartAnswer,
+  quote: SparkAnswer,
+  since: string,
+  rules: RuleHooks = NO_RULES,
+): Instrument {
+  if (startsShort(answer, since)) throw cutShort();
+  const instrument = upsertInstrument(db, fields(answer), now);
+  store(db, now, instrument, answer, { since, splits: [answer] }, rules);
+  barsAnswered(db, instrument, { rows: 0, changedFrom: null }, now);
+  storeQuotes(db, quote, rules, now);
+  return instrument;
+}
+
 export const expired = () => new DeadlinePassed();
 
 // one write while live() holds, or nothing

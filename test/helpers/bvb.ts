@@ -7,6 +7,7 @@
 
 import { join } from "node:path";
 import type { Fetch } from "../../src/source.ts";
+import { sources } from "./sources.ts";
 import { clone, fakeFetch, type Recorded } from "./yahoo.ts";
 
 const BVB = join(import.meta.dir, "..", "fixtures", "bvb");
@@ -152,3 +153,25 @@ export const wapi = (urls: URL[], path: string) =>
 
 export const site = (urls: URL[], path: string) =>
   urls.filter((u) => u.hostname === "bvb.ro" && u.pathname === path);
+
+// Yahoo and FRED from sources(), the exchange from its recordings
+export async function bothSources(
+  options: {
+    charts?: Record<string, Recorded>;
+    hold?: (url: URL) => Recorded | Promise<Recorded | undefined> | undefined;
+  } = {},
+): Promise<{ fetch: Fetch; exchange: URL[] }> {
+  const hold = options.hold;
+  const yahoo = await sources({
+    charts: options.charts,
+    hold: hold === undefined ? undefined : async (url) => hold(url),
+  });
+  const exchange = await bvbFetch({ hold });
+  const fetch: Fetch = (raw, init) => {
+    const host = new URL(raw).hostname;
+    return host === "bvb.ro" || host === "wapi.bvb.ro"
+      ? exchange.fetch(raw, init)
+      : yahoo.fetch(raw, init);
+  };
+  return { fetch, exchange: exchange.urls };
+}

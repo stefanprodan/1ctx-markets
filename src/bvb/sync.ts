@@ -388,7 +388,7 @@ export function storeWhole(
 }
 
 // an ok run in the instrument's scope clears only its own failed refetch
-function barsAnswered(
+export function barsAnswered(
   db: Db,
   instrument: Instrument,
   written: Written,
