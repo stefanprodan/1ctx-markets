@@ -191,12 +191,26 @@ function shared<T>(
 
 const hasBars = (db: Db, id: string) => dailyRange(db, id) !== null;
 
+// The source clients a fetch uses, refusing any call once its deadline
+// passed, so nothing new is asked for an answer no caller waits on.
+const yahooCtx = (m: Markets, live: () => boolean) => ({
+  db: m.db,
+  clock: m.clock,
+  writer: m.writer,
+  yahoo: m.yahoo.within(live),
+});
+
 function fredStep(m: Markets, id: string): Step {
   const fred = m.fred;
   if (fred === null) {
     return { kind: "error", error: { error: "no_data", message: NO_DATA } };
   }
-  const ctx = { db: m.db, clock: m.clock, writer: m.writer, fred };
+  const ctx = (live: () => boolean) => ({
+    db: m.db,
+    clock: m.clock,
+    writer: m.writer,
+    fred: fred.within(live),
+  });
   const stored = readInstrument(m.db, id);
   if (stored !== null && hasBars(m.db, id)) {
     if (isTracked(m.db, id, m.clock.now(), m.trackMs)) {
@@ -206,7 +220,7 @@ function fredStep(m: Markets, id: string): Step {
       kind: "fetch",
       key: id,
       run: async (live) => {
-        await refetchSeries(ctx, stored, live);
+        await refetchSeries(ctx(live), stored, live);
         return stored;
       },
     };
@@ -215,7 +229,7 @@ function fredStep(m: Markets, id: string): Step {
     kind: "fetch",
     key: id,
     run: async (live) => {
-      const added = await addSeries(ctx, id, live);
+      const added = await addSeries(ctx(live), id, live);
       if (added.kind === "off") throw new Refused(NO_DATA);
       return added.instrument;
     },
@@ -225,13 +239,17 @@ function fredStep(m: Markets, id: string): Step {
 function storedStep(m: Markets, instrument: Instrument): Step {
   if (instrument.source === FRED) return fredStep(m, instrument.id);
   if (instrument.source !== YAHOO) return { kind: "ready", instrument };
-  const ctx = { db: m.db, clock: m.clock, writer: m.writer, yahoo: m.yahoo };
   if (!hasBars(m.db, instrument.id)) {
     return {
       kind: "fetch",
       key: instrument.id,
       run: (live) =>
-        fetchInstrument(ctx, instrument.sourceSymbol, instrument.id, live),
+        fetchInstrument(
+          yahooCtx(m, live),
+          instrument.sourceSymbol,
+          instrument.id,
+          live,
+        ),
     };
   }
   if (isTracked(m.db, instrument.id, m.clock.now(), m.trackMs)) {
@@ -240,7 +258,7 @@ function storedStep(m: Markets, instrument: Instrument): Step {
   return {
     kind: "fetch",
     key: instrument.id,
-    run: (live) => catchUp(ctx, instrument, live),
+    run: (live) => catchUp(yahooCtx(m, live), instrument, live),
   };
 }
 
@@ -261,9 +279,8 @@ async function step(
   if (upper.startsWith(`${FRED_MARKET}:`)) {
     return fredStep(m, `${FRED_MARKET}:${seriesId(upper)}`);
   }
-  const ctx = { db: m.db, clock: m.clock, yahoo: m.yahoo };
-  const r = await shared(m, `resolve:${upper}`, deadline, () =>
-    resolve(ctx, given),
+  const r = await shared(m, `resolve:${upper}`, deadline, (live) =>
+    resolve(yahooCtx(m, live), given),
   );
   if (r.kind === "known") return storedStep(m, r.instrument);
   if (r.kind === "candidates") {
@@ -279,11 +296,11 @@ async function step(
   // stored by another call since the search answered
   const stored = readInstrument(m.db, r.id);
   if (stored !== null) return storedStep(m, stored);
-  const yctx = { ...ctx, writer: m.writer };
   return {
     kind: "fetch",
     key: r.id,
-    run: (live) => fetchInstrument(yctx, r.sourceSymbol, r.id, live),
+    run: (live) =>
+      fetchInstrument(yahooCtx(m, live), r.sourceSymbol, r.id, live),
   };
 }
 
@@ -303,6 +320,10 @@ export async function readTargets(
   const expired = new Promise<typeof EXPIRED>((resolve) => {
     cancel = m.clock.at(deadline, () => resolve(EXPIRED));
   });
+  // a fetch this call already made, by instrument: a second input
+  // naming it, resolved after the first landed, finds it stored yet not
+  // read, and would catch it up again
+  const fetches = new Map<string, Promise<Instrument>>();
   const one = async (input: string): Promise<Target> => {
     const s = await step(m, input, deadline).catch(
       (error: unknown): Step => ({ kind: "error", error: itemError(m, error) }),
@@ -310,7 +331,12 @@ export async function readTargets(
     if (s.kind === "ready") return { input, instrument: s.instrument };
     if (s.kind === "error") return { input, error: s.error };
     if (m.clock.now() >= deadline) return { input, error: timeout(m) };
-    return shared(m, `fetch:${s.key}`, deadline, s.run).then(
+    let fetched = fetches.get(s.key);
+    if (fetched === undefined) {
+      fetched = shared(m, `fetch:${s.key}`, deadline, s.run);
+      fetches.set(s.key, fetched);
+    }
+    return fetched.then(
       (instrument): Target => ({ input, instrument }),
       (error: unknown): Target => ({ input, error: itemError(m, error) }),
     );
@@ -326,7 +352,15 @@ export async function readTargets(
       "instrument" in t ? [t.instrument.id] : [],
     );
     if (ids.length > 0) {
-      await m.writer.write((db) => markRead(db, ids, m.clock.now()));
+      // queued behind other writes, it waits no longer than the call
+      const wrote = m.writer
+        .write((db) => {
+          if (m.clock.now() < deadline) markRead(db, ids, m.clock.now());
+        })
+        .catch((error: unknown) => {
+          m.log.error("tracking failed", errorFields(error));
+        });
+      await Promise.race([wrote, expired]);
     }
     return targets;
   } finally {

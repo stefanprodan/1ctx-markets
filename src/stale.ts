@@ -7,7 +7,7 @@
 // never marks another's rows. A quote pass that answered is judged
 // per instrument, so one symbol that never answers marks only itself.
 
-import { isQuoted, readSession } from "./calendars.ts";
+import { CRYPTO, closeQuoteAt, readSession } from "./calendars.ts";
 import type { Db } from "./db/index.ts";
 import type { Instrument } from "./instruments.ts";
 import { lastRun, lastStarted } from "./runs.ts";
@@ -44,10 +44,9 @@ type Scoped = Pick<Instrument, "id" | "source" | "market" | "addedAt">;
 const failed = (db: Db, i: Scoped, job: string) =>
   lastRun(db, i.source, job, i.market)?.status === "failed";
 
-// None when the quote is current. With due, a quote of a market in
-// session that no pass refreshed within two periods is overdue, as
-// after downtime or before Monday's first pass; a closed market's last
-// quote is its close.
+// None when the quote is current. With due, a quote no pass refreshed
+// within two periods of when one was last due is overdue, as after
+// downtime, before Monday's first pass or a missed close.
 export function quoteStale(
   db: Db,
   instrument: Scoped,
@@ -70,17 +69,26 @@ export function quoteStale(
     // asked in the last pass, and its quote did not come back
     reasons.push(STALE.noQuote);
   }
-  if (
-    due !== null &&
-    quote !== null &&
-    quote.fetchedAt < due.now - 2 * due.everyMs &&
-    isQuoted(instrument.market, readSession(db, instrument.market), due.now)
-  ) {
-    reasons.push(STALE.quoteOverdue);
+  if (due !== null && quote !== null) {
+    const expected = lastQuoteDue(db, instrument.market, due.now);
+    if (expected !== null && quote.fetchedAt < expected - 2 * due.everyMs) {
+      reasons.push(STALE.quoteOverdue);
+    }
   }
   // a closed market's new session can go unseen while its checks fail
   if (failed(db, instrument, JOBS.check)) reasons.push(STALE.checkFailed);
   return reasons;
+}
+
+// The last time a pass should have refreshed a market's quote: now
+// while it trades, its post-close quote once it closed, and null before
+// its stored session begins. A session left from Friday on Monday is
+// what failed checks already mark.
+function lastQuoteDue(db: Db, market: string, now: number): number | null {
+  if (market === CRYPTO) return now;
+  const s = readSession(db, market);
+  if (s === null || now < s.start) return null;
+  return Math.min(now, closeQuoteAt(market, s) ?? now);
 }
 
 // The bars miss a day while the market's current session began after

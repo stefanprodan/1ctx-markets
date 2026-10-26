@@ -82,6 +82,20 @@ describe("staleness", () => {
     // session, never
     expect(quoteStale(db, us)).toEqual([]);
     expect(quoteStale(db, other, due(start + DAY_MS))).toEqual([]);
+    // a quote that missed the close stays overdue after it, until the
+    // post-close quote lands
+    const end = start + 390 * MINUTE_MS;
+    db.query("update quotes set fetched_at = ? where instrument = ?").run(
+      end - 60 * MINUTE_MS,
+      us.id,
+    );
+    expect(quoteStale(db, us, due(end + MINUTE_MS))).toEqual(["quote overdue"]);
+    expect(quoteStale(db, us, due(end + DAY_MS))).toEqual(["quote overdue"]);
+    db.query("update quotes set fetched_at = ? where instrument = ?").run(
+      end + 15 * MINUTE_MS,
+      us.id,
+    );
+    expect(quoteStale(db, us, due(end + DAY_MS))).toEqual([]);
   });
 
   test("is per job and scope: a successful search never clears a failed quote pass", () => {

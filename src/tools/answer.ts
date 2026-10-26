@@ -43,15 +43,21 @@ export const textResult = (text: string): ToolResult => ({
 export function errorResult(
   body: { error: string; message: string } & Record<string, unknown>,
 ): ToolResult {
-  let text = JSON.stringify(body);
-  if (!fits(text)) {
-    text = JSON.stringify({
-      error: body.error,
-      message: body.message.slice(0, 1024),
-    });
-  }
-  return { content: [{ type: "text", text }], isError: true };
+  const result = (text: string): ToolResult => ({
+    content: [{ type: "text", text }],
+    isError: true,
+  });
+  const full = result(JSON.stringify(body));
+  if (sent(full)) return full;
+  return result(
+    JSON.stringify({ error: body.error, message: body.message.slice(0, 1024) }),
+  );
 }
+
+// the result as it goes out, isError included, inside the page
+const sent = (r: ToolResult): boolean =>
+  bytes(r.content[0]!.text) <= PAGE_BYTES &&
+  bytes(JSON.stringify(r)) + ENVELOPE_BYTES <= PAGE_BYTES;
 
 export class PageOverflow extends Error {
   constructor() {

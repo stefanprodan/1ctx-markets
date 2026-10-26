@@ -37,11 +37,20 @@ export function phraseOf(error: unknown): string {
   return error instanceof SourceError ? error.phrase : "failed";
 }
 
+// A read's own deadline passed: the call was never made, or its answer
+// is not wanted, which says nothing about the source.
+export class DeadlinePassed extends SourceError {
+  constructor() {
+    super("timed out", "the call's deadline passed");
+  }
+}
+
 // an unknown symbol or a wrong request is no sign the source is unwell
 const backsOff = (error: unknown): boolean =>
   !(
-    error instanceof SourceError &&
-    (error.phrase === "not found" || error.phrase === "bad request")
+    error instanceof DeadlinePassed ||
+    (error instanceof SourceError &&
+      (error.phrase === "not found" || error.phrase === "bad request"))
   );
 
 export const RATE_LIMIT_BACKOFF_MS = 5 * MINUTE_MS;
@@ -51,6 +60,9 @@ export type RunOptions = {
   // a tool answering a caller fails at once while the queue is paused,
   // where a job waits the back-off out
   failFast?: boolean;
+  // false once the caller's deadline passed: a call waiting for a slot
+  // then never starts
+  live?: () => boolean;
 };
 
 export type Queue = {
@@ -70,6 +82,7 @@ export class QueueClosed extends Error {
 type Waiting = {
   start: () => void;
   failFast: boolean;
+  live: () => boolean;
   reject: (error: unknown) => void;
 };
 
@@ -101,8 +114,13 @@ export function queue(clock: Clock, concurrency: number): Queue {
       return;
     }
     while (active < concurrency && waiting.length > 0) {
+      const next = waiting.shift()!;
+      if (!next.live()) {
+        next.reject(new DeadlinePassed());
+        continue;
+      }
       active++;
-      waiting.shift()!.start();
+      next.start();
     }
   };
   return {
@@ -135,7 +153,12 @@ export function queue(clock: Clock, concurrency: number): Queue {
               pump();
             });
         };
-        waiting.push({ start, failFast: options.failFast === true, reject });
+        waiting.push({
+          start,
+          failFast: options.failFast === true,
+          live: options.live ?? (() => true),
+          reject,
+        });
         pump();
       });
     },

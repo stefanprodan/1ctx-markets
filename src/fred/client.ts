@@ -8,10 +8,12 @@
 import type { Clock } from "../clock.ts";
 import { MINUTE_MS } from "../clock.ts";
 import {
+  DeadlinePassed,
   type Fetch,
   type Queue,
   QueueClosed,
   queue,
+  type RunOptions,
   SourceError,
 } from "../source.ts";
 import { wallOfDate } from "../zone.ts";
@@ -60,6 +62,8 @@ export type Fred = {
   // the same client and queue, failing at once while the queue is
   // paused, for a tool answering a caller
   failFast(): Fred;
+  // failing fast, and starting no call once live() is false
+  within(live: () => boolean): Fred;
   // At shutdown: closes the queue and fails a call waiting for its
   // minute's slot, so no call goes out after.
   close(): void;
@@ -277,63 +281,61 @@ export function fred(options: FredOptions): Fred {
   const get = <T>(
     path: string,
     params: Record<string, string>,
-    failFast: boolean,
+    run: RunOptions,
     parse: (body: unknown, fetchedAt: number) => T,
   ): Promise<T> =>
-    calls.run(
-      async () => {
-        await slot();
-        // closed while it waited for the slot
-        if (closed) throw new QueueClosed();
-        const query = new URLSearchParams({
-          ...params,
-          api_key: key,
-          file_type: "json",
-        });
-        const abort = new AbortController();
-        let timedOut = false;
-        const cancel = clock.at(clock.now() + TIMEOUT_MS, () => {
-          timedOut = true;
-          abort.abort();
-        });
+    calls.run(async () => {
+      await slot();
+      // closed, or past the caller's deadline, while it waited
+      if (closed) throw new QueueClosed();
+      if (run.live !== undefined && !run.live()) throw new DeadlinePassed();
+      const query = new URLSearchParams({
+        ...params,
+        api_key: key,
+        file_type: "json",
+      });
+      const abort = new AbortController();
+      let timedOut = false;
+      const cancel = clock.at(clock.now() + TIMEOUT_MS, () => {
+        timedOut = true;
+        abort.abort();
+      });
+      try {
+        let res: Response;
+        let raw: string;
         try {
-          let res: Response;
-          let raw: string;
-          try {
-            res = await doFetch(`${host}/${path}?${query}`, {
-              headers: { Accept: "application/json" },
-              signal: abort.signal,
-            });
-            raw = await res.text();
-          } catch {
-            // a fetch error can quote the URL, and with it the key
-            throw new SourceError(timedOut ? "timed out" : "network error");
-          }
-          const fetchedAt = clock.now();
-          let body: unknown;
-          try {
-            body = JSON.parse(raw);
-          } catch {
-            body = undefined;
-          }
-          if (res.status === 429) throw new SourceError("rate limited");
-          if (res.status === 400) throw refusal(body);
-          if (res.status === 404) throw new SourceError("not found");
-          if (!res.ok) {
-            throw new SourceError("source error", `HTTP ${res.status}`);
-          }
-          if (body === undefined) throw malformed("not JSON");
-          return parse(body, fetchedAt);
-        } finally {
-          cancel();
+          res = await doFetch(`${host}/${path}?${query}`, {
+            headers: { Accept: "application/json" },
+            signal: abort.signal,
+          });
+          raw = await res.text();
+        } catch {
+          // a fetch error can quote the URL, and with it the key
+          throw new SourceError(timedOut ? "timed out" : "network error");
         }
-      },
-      { failFast },
-    );
+        const fetchedAt = clock.now();
+        let body: unknown;
+        try {
+          body = JSON.parse(raw);
+        } catch {
+          body = undefined;
+        }
+        if (res.status === 429) throw new SourceError("rate limited");
+        if (res.status === 400) throw refusal(body);
+        if (res.status === 404) throw new SourceError("not found");
+        if (!res.ok) {
+          throw new SourceError("source error", `HTTP ${res.status}`);
+        }
+        if (body === undefined) throw malformed("not JSON");
+        return parse(body, fetchedAt);
+      } finally {
+        cancel();
+      }
+    }, run);
 
-  const client = (failFast: boolean): Fred => ({
+  const client = (run: RunOptions): Fred => ({
     series: (id) =>
-      get("series", { series_id: id }, failFast, (body) =>
+      get("series", { series_id: id }, run, (body) =>
         scrubbed(parseSeries(body), key),
       ),
     observations(id, range) {
@@ -345,11 +347,12 @@ export function fred(options: FredOptions): Fred {
               limit: String(range.limit),
             }
           : { series_id: id, observation_start: range.start };
-      return get("series/observations", params, failFast, (body, at) =>
+      return get("series/observations", params, run, (body, at) =>
         parseObservations(body, at, "start" in range),
       );
     },
-    failFast: () => client(true),
+    failFast: () => client({ failFast: true }),
+    within: (live) => client({ failFast: true, live }),
     close() {
       closed = true;
       calls.close();
@@ -360,5 +363,5 @@ export function fred(options: FredOptions): Fred {
       waits.clear();
     },
   });
-  return client(false);
+  return client({});
 }

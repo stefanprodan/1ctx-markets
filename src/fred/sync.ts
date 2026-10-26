@@ -26,7 +26,7 @@ import {
 } from "../instruments.ts";
 import { exclusive } from "../lock.ts";
 import { signalsAfterBars } from "../signals/store.ts";
-import { SourceError } from "../source.ts";
+import { DeadlinePassed, SourceError } from "../source.ts";
 import type { Writer } from "../writer.ts";
 import { dateOfWall, startOfDate } from "../zone.ts";
 import {
@@ -189,6 +189,7 @@ export async function addSeries(
     return { kind: "known", instrument: known };
   }
   const client = ctx.fred;
+  if (!live()) throw new DeadlinePassed();
   const meta = await client.series(id);
   // neither id is repeated: an echoed one is the source's text
   if (meta.id.toUpperCase() !== id) {
@@ -201,13 +202,12 @@ export async function addSeries(
     if (stored !== null && dailyRange(ctx.db, key) !== null) {
       return { kind: "known", instrument: stored };
     }
+    if (!live()) throw new DeadlinePassed();
     const answer = await client.observations(id, {
       start: backfillStart(ctx.clock.now()),
     });
     return ctx.writer.write((db) => {
-      if (!live()) {
-        throw new SourceError("timed out", "the call's deadline passed");
-      }
+      if (!live()) throw new DeadlinePassed();
       const now = ctx.clock.now();
       const instrument = upsertInstrument(db, fields(id, meta), now);
       return {
@@ -231,6 +231,7 @@ export function refetchSeries(
 ): Promise<Written> {
   const client = source(ctx);
   return exclusive(ctx.db, instrument.id, async () => {
+    if (!live()) throw new DeadlinePassed();
     const range = dailyRange(ctx.db, instrument.id);
     let answer = await client.observations(
       instrument.sourceSymbol,
@@ -240,14 +241,13 @@ export function refetchSeries(
     );
     const oldest = answer.dates[0];
     if (range !== null && oldest !== undefined && oldest > range.last) {
+      if (!live()) throw new DeadlinePassed();
       answer = await client.observations(instrument.sourceSymbol, {
         start: range.last,
       });
     }
     return ctx.writer.write((db) => {
-      if (!live()) {
-        throw new SourceError("timed out", "the call's deadline passed");
-      }
+      if (!live()) throw new DeadlinePassed();
       return store(db, instrument, answer, ctx.clock.now());
     });
   });

@@ -8,6 +8,7 @@ import { fred } from "../src/fred/client.ts";
 import { fredJobs } from "../src/fred/jobs.ts";
 import { addSeries } from "../src/fred/sync.ts";
 import { readInstrument, upsertInstrument } from "../src/instruments.ts";
+import { exclusive } from "../src/lock.ts";
 import { silent } from "../src/log.ts";
 import {
   cursor,
@@ -200,6 +201,52 @@ describe("a symbol never seen", () => {
     expect((await read).map(idOf)).toEqual(["US:NVDA", "SNP:^GSPC"]);
   });
 
+  test("two inputs of one instrument in a call fetch it once", async () => {
+    let searches = 0;
+    const search = gate();
+    const spark = gate();
+    const t = await setup({
+      hold: (url) => {
+        if (url.pathname === "/v1/finance/search" && ++searches === 2) {
+          return search.hold();
+        }
+        return url.pathname === "/v7/finance/spark" ? spark.hold() : undefined;
+      },
+    });
+    const read = readTargets(t.m, ["NVDA", "US:NVDA"]);
+    await spark.arrived;
+    const flight = t.m.inflight.get("fetch:US:NVDA")!.promise;
+    spark.release();
+    await flight;
+    // the second input resolves once the first has landed
+    search.release();
+    expect((await read).map(idOf)).toEqual(["US:NVDA", "US:NVDA"]);
+    expect(t.calls.charts("NVDA")).toHaveLength(1);
+    expect(t.calls.sparks()).toHaveLength(1);
+  });
+
+  test("the tracking write waits no longer than the call, and lands nothing after it", async () => {
+    const t = await setup();
+    await readTargets(t.m, ["NVDA"]);
+    await t.clock.advance(DAY_MS);
+    const held = gate();
+    const real = t.m.writer;
+    const m: Markets = {
+      ...t.m,
+      writer: {
+        write: (fn) => held.hold().then(() => real.write(fn)),
+        close: () => real.close(),
+      },
+    };
+    const read = readTargets(m, ["US:NVDA"]);
+    await held.arrived;
+    await t.clock.advance(CALL_MS);
+    expect((await read).map(idOf)).toEqual(["US:NVDA"]);
+    held.release();
+    await real.write(() => {});
+    expect(lastReadAt(t.db, "US:NVDA")).toBe(NOW);
+  });
+
   test("a new symbol whose quote is skipped stores nothing", async () => {
     const t = await setup({
       hold: (url) =>
@@ -315,6 +362,30 @@ describe("tracking", () => {
       expect(t.calls.urls).toHaveLength(asked);
       expect(snapshot(t.db)).toEqual(before);
     });
+
+    test.each(["NVDA", "FRED:DGS10"])(
+      "%s behind a lock held past the deadline asks nothing",
+      async (symbol) => {
+        const t = await setup();
+        const [first] = await readTargets(t.m, [symbol]);
+        const id = idOf(first)!;
+        await t.clock.advance(TRACK_MS + DAY_MS);
+        const before = snapshot(t.db);
+        const lock = gate();
+        const holder = exclusive(t.db, id, () => lock.hold());
+        const read = readTargets(t.m, [id]);
+        await t.clock.advance(CALL_MS);
+        expect(errorOf((await read)[0])).toMatchObject({ error: "timeout" });
+        const asked = t.calls.urls.length;
+        lock.release();
+        await holder;
+        await Promise.all(
+          [...t.m.inflight.values()].map((f) => f.promise.catch(() => {})),
+        );
+        expect(t.calls.urls).toHaveLength(asked);
+        expect(snapshot(t.db)).toEqual(before);
+      },
+    );
   });
 
   test("the Yahoo jobs sync and backfill only tracked instruments", async () => {
@@ -443,6 +514,13 @@ describe("pages", () => {
       candidates: Array.from({ length: 2000 }, (_, k) => ({ id: `X:${k}` })),
     });
     expect(fits(huge.content[0]!.text)).toBe(true);
+    // measured as sent, isError included, at every size near the limit
+    for (let n = PAGE_BYTES - 700; n < PAGE_BYTES - 400; n++) {
+      const r = errorResult({ error: "x", message: "m".repeat(n) });
+      expect(Buffer.byteLength(JSON.stringify(r)) + 512).toBeLessThanOrEqual(
+        PAGE_BYTES,
+      );
+    }
     expect(JSON.parse(huge.content[0]!.text)).toEqual({
       error: "candidates",
       message: "several listings match",

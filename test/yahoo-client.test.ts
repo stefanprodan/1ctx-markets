@@ -320,6 +320,34 @@ describe("the queue", () => {
     }
   });
 
+  test("never starts a call waiting past its caller's deadline, nor backs off", async () => {
+    const clock = fakeClock();
+    const q = queue(clock, 1);
+    let open = () => {};
+    const first = q.run(
+      () =>
+        new Promise<void>((resolve) => {
+          open = resolve;
+        }),
+    );
+    let live = true;
+    let ran = false;
+    const late = q.run(
+      async () => {
+        ran = true;
+      },
+      { failFast: true, live: () => live },
+    );
+    await settle();
+    live = false;
+    open();
+    await first;
+    expect(await phrase(late)).toBe("timed out");
+    expect(ran).toBe(false);
+    // the queue goes on at once
+    expect(await q.run(async () => "next", { failFast: true })).toBe("next");
+  });
+
   test("runs a few calls at a time", async () => {
     const clock = fakeClock();
     const q = queue(clock, 2);

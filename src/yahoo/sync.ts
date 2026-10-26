@@ -33,7 +33,7 @@ import {
 } from "../instruments.ts";
 import { exclusive } from "../lock.ts";
 import { pruneLive, refreshLive, signalsAfterBars } from "../signals/store.ts";
-import { type Phrase, SourceError } from "../source.ts";
+import { DeadlinePassed, type Phrase, SourceError } from "../source.ts";
 import type { Writer } from "../writer.ts";
 import { addDays, dateOfWall, startOfDate, wallTime } from "../zone.ts";
 import {
@@ -387,8 +387,7 @@ export async function addInstrument(
 }
 
 // a read's deadline passed before its fetch could be stored
-export const expired = () =>
-  new SourceError("timed out", "the call's deadline passed");
+export const expired = () => new DeadlinePassed();
 
 // An instrument a read named and the server has no bars for, fetched
 // inside the call: the instrument, ten years of bars, their signals and
@@ -417,6 +416,8 @@ export async function fetchInstrument(
     throw new SourceError("source error", `no quote for ${answer.symbol}`);
   }
   return exclusive(ctx.db, id, async () => {
+    // the lock may have been held past the deadline
+    if (!live()) throw expired();
     // stored meanwhile by another read or the backfill
     if (dailyRange(ctx.db, id) !== null) {
       return ctx.writer.write((db) => {
@@ -451,6 +452,8 @@ export async function catchUp(
   live: () => boolean,
 ): Promise<Instrument> {
   return exclusive(ctx.db, instrument.id, async () => {
+    // the lock may have been held past the deadline
+    if (!live()) throw expired();
     const bars = await refetchAnswer(ctx, instrument);
     if (!live()) throw expired();
     const quote = await ctx.yahoo.spark([instrument.sourceSymbol]);
