@@ -1,14 +1,14 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// The command line, parsed without acting on it; main.ts runs what it
-// answers.
+// The command line, parsed without acting on it: main.ts runs what it
+// answers, and `service install` refuses exactly what the server would.
 
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { MINUTE_MS } from "./clock.ts";
 
-export const DEFAULT_LISTEN = "127.0.0.1:11237";
+export const DEFAULT_LISTEN = "127.0.0.1:11238";
 export const DEFAULT_QUOTE_EVERY = 5;
 export const DEFAULT_TRACK_DAYS = 30;
 // the keyless sources a start can turn on, each with --source <name>
@@ -33,6 +33,7 @@ export const secretsDir = (config: Config): string =>
 
 export type Cli =
   | { kind: "run"; config: Config }
+  | { kind: "service"; argv: string[] }
   | { kind: "help" }
   | { kind: "version" }
   | { kind: "error"; message: string };
@@ -41,6 +42,16 @@ export const HELP = `\x1b[1m1ctx-markets\x1b[0m - a self-hosted market data serv
 
 \x1b[1mUsage:\x1b[0m
   1ctx-markets [options]
+  1ctx-markets service install [options] [--restart]
+  1ctx-markets service status|start|stop|restart
+  1ctx-markets service uninstall [--purge]
+
+\x1b[1mService:\x1b[0m
+  install                run 1ctx-markets with these options as a service
+                         of the signed-in user, started at login and kept
+                         alive; --restart replaces one that is running
+  uninstall              remove the service; --purge also removes the
+                         database and the log, never secrets/
 
 \x1b[1mOptions:\x1b[0m
   --listen <host:port>   bind address (default: ${DEFAULT_LISTEN})
@@ -61,7 +72,8 @@ export const HELP = `\x1b[1m1ctx-markets\x1b[0m - a self-hosted market data serv
                          source-fred.key, source-finnhub.key or
                          source-massive.key`;
 
-const VALUED_FLAGS = [
+// the flags that take the next argument as their value
+export const VALUED_FLAGS = [
   "--listen",
   "--data",
   "--quote-every",
@@ -89,6 +101,7 @@ const count = (value: string): number | null =>
   /^[1-9]\d{0,5}$/.test(value) ? Number(value) : null;
 
 export function parseCli(argv: string[], home: string = homedir()): Cli {
+  if (argv[0] === "service") return { kind: "service", argv: argv.slice(1) };
   let listen = DEFAULT_LISTEN;
   let dataDir = defaultDataDir(home);
   let quoteEvery = DEFAULT_QUOTE_EVERY;
@@ -159,4 +172,21 @@ export function parseCli(argv: string[], home: string = homedir()): Cli {
       sources: [...sources].sort(),
     },
   };
+}
+
+// The arguments that start a server with this config, every one spelled
+// out, so a service definition reads back through parseCli() unchanged.
+export function configToArgs(config: Config): string[] {
+  const args = [
+    "--listen",
+    `${config.hostname}:${config.port}`,
+    "--data",
+    config.dataDir,
+    "--quote-every",
+    String(config.quoteEveryMs / MINUTE_MS),
+    "--track-days",
+    String(config.trackDays),
+  ];
+  for (const name of config.sources) args.push("--source", name);
+  return args;
 }

@@ -30,6 +30,9 @@ make test              # bun test; run after any code change, before finishing
 make build             # standalone binary in bin/ (VERSION=v1.2.3 for a release)
 make smoke             # start the binary, check its bearer and MCP answer, stop it
 make clean             # remove bin/ and Bun's build leftovers
+make staging-deploy    # build main, back up staging's db, swap its binary, restart
+make staging-status    # what the staging service says
+make staging-secrets DIR=<dir>  # copy the source keys staging lacks
 ```
 
 Read the whole output of `make test` and `make lint`; never pipe it
@@ -65,9 +68,11 @@ src/massive/        news
 src/signals/        daily, weekly, live and relative signals
 src/rules/          rule conditions, evaluation, alerts
 src/tools/          the MCP tools, GET /quotes, /research, /alerts
+src/service/        `service install|start|stop|...`: launchd, CLI only
 test/               one *.test.ts per area, helpers/ (fakes), fixtures/ (recordings)
 scripts/probe/      the fixture recorders, run by hand
 scripts/smoke.sh    the binary's smoke test
+scripts/staging.sh  deploy, status and keys of the staging box (host in staging.env)
 scripts/bun-version.sh  the Bun version CI installs (.github/workflows/test.yml)
 docs/               the rules of each area (see Docs)
 ```
@@ -81,6 +86,7 @@ the same commit as the code that changes a rule.
 | Doc | Governs |
 |---|---|
 | `docs/config.md` | flags, the data directory, key files, the start log, HTTP routes, shutdown order, the build and smoke test |
+| `docs/deploy.md` | the `service` command, launchd, the kill timeout, the log, staging deploys, backups and keys |
 | `docs/storage.md` | the database, migrations, the writer, instruments, times and prices, the clock, runs and staleness, tracking, retention |
 | `docs/calendars.md` | market sessions from the source, quoting and checks, bar dates and finality, weeks, wall time, crypto |
 | `docs/yahoo.md` | Yahoo's endpoints, parsing, the source queue and phrases, resolution, bars, splits and rescales, quotes, the lock, the jobs |

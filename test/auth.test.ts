@@ -74,6 +74,25 @@ describe("the bearer", () => {
       expect(known.status).toBe(404);
     }));
 
+  test("health answers without the bearer and is never logged", () =>
+    withApp(async ({ url, lines }) => {
+      const health = await fetch(`${url}/health`);
+      expect(health.status).toBe(200);
+      expect(await health.text()).toBe("");
+      const posted = await fetch(`${url}/health`, { method: "POST" });
+      expect(posted.status).toBe(405);
+      expect(posted.headers.get("allow")).toBe("GET");
+      for (const path of ["/health/", "/healthz", "/quotes", "/alerts"]) {
+        expect((await fetch(`${url}${path}`)).status).toBe(401);
+      }
+      expect(lines.filter((line) => /path=\/health(\s|$)/.test(line))).toEqual(
+        [],
+      );
+      expect(lines.filter((line) => line.includes("msg=request"))).toHaveLength(
+        4,
+      );
+    }));
+
   test("refuses MCP without the bearer or with a wrong one", () =>
     withApp(async ({ url, bearer }) => {
       expect((await post(url, {})).status).toBe(401);

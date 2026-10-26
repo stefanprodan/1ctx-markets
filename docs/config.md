@@ -6,7 +6,8 @@ and smoke scripts in `package.json`, `Makefile` and
 `scripts/smoke.sh`. The tools and `GET /quotes` are in
 `docs/tools.md`, `GET /alerts` in `docs/rules.md`, `GET /research` in
 `docs/research.md`; the database, migrations and retention in
-`docs/storage.md`.
+`docs/storage.md`; the `service` command and staging in
+`docs/deploy.md`.
 
 ## Flags
 
@@ -16,7 +17,7 @@ runs what `parseCli()` answers. `HELP` in `src/config.ts` is the
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `--listen <host:port>` | `127.0.0.1:11237` | bind address; the port is after the last colon |
+| `--listen <host:port>` | `127.0.0.1:11238` | bind address; the port is after the last colon |
 | `--data <dir>` | `~/.1ctx-markets` | holds `markets.db` and `secrets/` |
 | `--quote-every <min>` | 5 | minutes between quote passes; a quote two periods behind is `quote overdue` |
 | `--track-days <days>` | 30 | an instrument read within this many days stays tracked; news of an untracked one is pruned (`pruneNews`) |
@@ -43,6 +44,7 @@ runs what `parseCli()` answers. `HELP` in `src/config.ts` is the
 | Path | Holds |
 |---|---|
 | `markets.db` | the one SQLite database (`docs/storage.md`) |
+| `markets.log` | the service's log, when run by `service install` (`docs/deploy.md`) |
 | `secrets/bearer.key` | the bearer every request carries |
 | `secrets/source-<name>.key` | a source's API key: `source-fred.key`, `source-finnhub.key`, `source-massive.key` |
 
@@ -96,7 +98,8 @@ runs what `parseCli()` answers. `HELP` in `src/config.ts` is the
 
 - **One Bun server; the bearer is checked before any route is looked
   up** (`router()`), so an unknown path answers 401 without the bearer
-  and 404 with it. The compare hashes both sides with SHA-256 and uses
+  and 404 with it. `GET /health` is the one route checked before it.
+  The compare hashes both sides with SHA-256 and uses
   `timingSafeEqual`, so its time does not depend on what was sent. A
   refusal carries `WWW-Authenticate: Bearer`.
 
@@ -106,14 +109,19 @@ runs what `parseCli()` answers. `HELP` in `src/config.ts` is the
 | `/quotes` | GET | the quote reader for scripts |
 | `/research` | GET | research summaries for scripts |
 | `/alerts` | GET | the alerts feed |
+| `/health` | GET | 200 with no body and no bearer, for the service's start check |
 
 - **Any other method is 405 with `Allow`.** `/mcp` is stateless (one
   MCP server instance per request, `legacy: "stateless"` in
   `src/mcp.ts`), so there is no GET stream to resume and no session to
   DELETE.
 - **A request body is at most 1 MiB** (`MAX_BODY_BYTES`).
-- **Every request logs one line** with method, path, status and
-  duration; an unhandled error answers 500 with no detail. An MCP SDK
+- **`/health` answers 200 without the bearer and is never logged.**
+  It holds no data, so it needs no key, and a service manager polls it
+  while the server starts. Every other path still answers 401 without
+  the bearer.
+- **Every request but `/health` logs one line** with method, path,
+  status and duration; an unhandled error answers 500 with no detail. An MCP SDK
   error is logged by its type and code only, since its message can
   quote the request.
 - **The default bind is loopback.** The bearer is the only access
@@ -149,9 +157,9 @@ or runs against a closed connection.
   (`--no-compile-autoload-dotenv`, `--no-compile-autoload-bunfig`), so
   a stray file beside it never configures it.
 - **`make smoke` checks the compiled binary**: it refuses to start with
-  an empty bearer, writes a prefixed one on a first start, answers 401
-  without it, answers an MCP initialize with it, creates `markets.db`,
-  keeps the bearer out of the log, and checks `--version` prints a
-  line starting with `v`.
+  an empty bearer, writes a prefixed one on a first start, answers
+  `/health` without it and 401 to anything else, answers an MCP
+  initialize with it, creates `markets.db`, keeps the bearer out of the
+  log, and checks `--version` prints a line starting with `v`.
 - **Bun is the only runtime**, at the version in `.bun-version`; there
   is no Node. `make start` and `make dev` run from source.
