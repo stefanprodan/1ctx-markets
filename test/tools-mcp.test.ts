@@ -63,7 +63,7 @@ const yahooApp = async (
 };
 
 describe("the tool list", () => {
-  test("names the five tools, each short and refusing other arguments", () =>
+  test("names the seven tools, each short and refusing other arguments", () =>
     withApp(async (t) => {
       const client = await mcpClient(t);
       const { tools } = await client.listTools();
@@ -74,6 +74,8 @@ describe("the tool list", () => {
         "movers",
         "search",
         "screen",
+        "research",
+        "events",
       ]);
       // an agent learns the fields from the description alone
       const screen = tools.find((x) => x.name === "screen")!;

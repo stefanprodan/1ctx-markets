@@ -6,6 +6,9 @@
 
 import { type Clock, DAY_MS } from "./clock.ts";
 import type { Db } from "./db/index.ts";
+import { type Finnhub, finnhub } from "./finnhub/client.ts";
+import { type FinnhubJobs, finnhubJobs } from "./finnhub/jobs.ts";
+import { type Hooks, NO_HOOKS, pruneResearch } from "./finnhub/store.ts";
 import { type Fred, fred } from "./fred/client.ts";
 import { type FredJobs, fredJobs } from "./fred/jobs.ts";
 import { router, serve } from "./http.ts";
@@ -15,6 +18,7 @@ import { failInterrupted, pruneRuns } from "./runs.ts";
 import { type Scheduler, scheduler } from "./scheduler.ts";
 import { type Fetch, queue } from "./source.ts";
 import { quotesHandler } from "./tools/http.ts";
+import { researchHandler } from "./tools/research.ts";
 import { type Markets, markets } from "./tools/targets.ts";
 import { TRACK_DAYS } from "./tracking.ts";
 import { type Writer, writer } from "./writer.ts";
@@ -38,6 +42,10 @@ export type AppOptions = {
   trackDays?: number;
   // FRED is on while its key file holds one
   fredKey?: string | null;
+  // Finnhub is on while its key file holds one
+  finnhubKey?: string | null;
+  // what rules answer the research jobs, none until they exist
+  hooks?: Hooks;
   // tests answer every source call from recordings
   fetch?: Fetch;
 };
@@ -52,6 +60,8 @@ export type App = {
   // null while the source is off
   fred: Fred | null;
   fredJobs: FredJobs | null;
+  finnhub: Finnhub | null;
+  finnhubJobs: FinnhubJobs | null;
   // what the tools and GET /quotes read through
   markets: Markets;
   // one field per source with its state and why, for the start log
@@ -99,12 +109,30 @@ export function start(options: AppOptions): App {
           trackMs,
         });
 
+  const hooks = options.hooks ?? NO_HOOKS;
+  const finnhubKey = options.finnhubKey ?? null;
+  const finnhubClient =
+    finnhubKey === null
+      ? null
+      : finnhub({ clock, key: finnhubKey, fetch: options.fetch });
+  const finnhubSync =
+    finnhubClient === null
+      ? null
+      : finnhubJobs({
+          ctx: { db, clock, writer: write, finnhub: finnhubClient },
+          log: options.log("finnhub"),
+          trackMs,
+          hooks,
+        });
+
   const reads = markets({
     db,
     clock,
     writer: write,
     yahoo: client,
     fred: fredClient,
+    finnhub: finnhubClient,
+    hooks,
     log: options.log("tools"),
     trackMs,
     quoteEveryMs: options.quoteEveryMs,
@@ -117,6 +145,7 @@ export function start(options: AppOptions): App {
       bearer: options.bearer,
       mcp,
       quotes: quotesHandler(reads),
+      research: researchHandler(reads),
       clock,
       log: options.log("http"),
     }),
@@ -124,8 +153,12 @@ export function start(options: AppOptions): App {
   const jobs = scheduler(clock, options.log("scheduler"));
   sync.schedule(jobs);
   fredSync?.schedule(jobs);
+  finnhubSync?.schedule(jobs);
   jobs.every("retention", DAY_MS, async () => {
-    await write.write((db) => pruneRuns(db, clock.now()));
+    await write.write((db) => {
+      pruneRuns(db, clock.now());
+      pruneResearch(db, clock.now(), hooks.waited(db, clock.now()));
+    });
   });
   return {
     server,
@@ -135,10 +168,13 @@ export function start(options: AppOptions): App {
     yahooJobs: sync,
     fred: fredClient,
     fredJobs: fredSync,
+    finnhub: finnhubClient,
+    finnhubJobs: finnhubSync,
     markets: reads,
     sources: {
       yahoo: "on",
       fred: fredKey === null ? "off (no key)" : "on (key file)",
+      finnhub: finnhubKey === null ? "off (no key)" : "on (key file)",
     },
     async stop() {
       // no new run or request starts, no job waits out a back-off, every
@@ -147,6 +183,7 @@ export function start(options: AppOptions): App {
       const settled = jobs.stop();
       yahooQueue.close();
       fredClient?.close();
+      finnhubClient?.close();
       await server.stop();
       await settled;
       await mcp.close();

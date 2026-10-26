@@ -7,6 +7,8 @@ export type FakeClock = Clock & {
   // fires every timer due on the way, in time order, letting each
   // run's promises settle before the next
   advance(ms: number): Promise<void>;
+  // when the earliest timer is due, null with none
+  next(): number | null;
 };
 
 // a Monday morning in Bucharest, in winter time
@@ -20,6 +22,11 @@ export function fakeClock(start = START): FakeClock {
   const timers = new Map<number, { at: number; fire: () => void }>();
   return {
     now: () => now,
+    next() {
+      let at: number | null = null;
+      for (const t of timers.values()) if (at === null || t.at < at) at = t.at;
+      return at;
+    },
     at(at, fire) {
       const id = next++;
       timers.set(id, { at, fire });

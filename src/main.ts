@@ -65,6 +65,7 @@ const app = start({
   trackDays: config.trackDays,
   // read through the keys module, so the log masks it
   fredKey: store.source("fred"),
+  finnhubKey: store.source("finnhub"),
 });
 
 main.info("startup", {
