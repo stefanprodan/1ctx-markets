@@ -126,7 +126,8 @@ runs what `parseCli()` answers. `HELP` in `src/config.ts` is the
   quote the request.
 - **The default bind is loopback.** The bearer is the only access
   control and the server speaks plain HTTP, so a bind beyond loopback
-  sends the bearer in clear unless a TLS proxy fronts it.
+  sends the bearer in clear unless the network encrypts it (a private
+  network such as Tailscale) or a TLS proxy fronts it.
 
 ## Shutdown
 

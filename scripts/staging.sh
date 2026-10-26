@@ -17,7 +17,8 @@ cd "$(dirname "$0")/.."
 # shellcheck source=/dev/null
 . scripts/staging.env
 HOST=${STAGING_SSH:?STAGING_SSH is not set in scripts/staging.env}
-LISTEN=${STAGING_LISTEN:-127.0.0.1:11238}
+# every interface, so the tailnet reaches it; WireGuard carries the bearer
+LISTEN=${STAGING_LISTEN:-0.0.0.0:11238}
 # staging always runs the Bucharest feed; STAGING_FLAGS adds to it,
 # split on spaces, never globbed
 read -r -a EXTRA <<<"${STAGING_FLAGS:-}"
