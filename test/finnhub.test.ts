@@ -630,6 +630,55 @@ describe("research rows", () => {
     ]);
   });
 
+  test("the share's own actuals replace an event of another listing", async () => {
+    const t = setup({
+      route: edited("/api/v1/calendar/earnings", "NVDA", (b) => {
+        for (const r of b.earningsCalendar) {
+          r.epsActual = 1.5;
+          r.revenueActual = 1e10;
+        }
+      }),
+    });
+    const nvda = share(t.db, "NVDA", NOW);
+    t.db
+      .query(
+        `insert into events (instrument, fiscal_year, fiscal_quarter, date,
+           hour, reported_seen_at, listing, fetched_at)
+         values (?, 2027, 3, '2026-11-17', '', ?, 'NVDA.XX', ?)`,
+      )
+      .run(nvda.id, NOW, NOW);
+    await drive(t.clock, t.client, refreshResearch(t.ctx, nvda, ["calendar"]));
+    expect(readEvents(t.db, "2000-01-01", "2100-01-01")).toMatchObject([
+      {
+        fiscalYear: 2027,
+        fiscalQuarter: 3,
+        listing: null,
+        epsActual: 1.5,
+        revenueActual: 1e10,
+        reportedSeenAt: NOW,
+      },
+    ]);
+  });
+
+  test("a symbol of null is a malformed answer", () => {
+    expect(() =>
+      parseAnalysts(
+        [
+          {
+            symbol: null,
+            period: "2026-10-01",
+            strongBuy: 1,
+            buy: 1,
+            hold: 0,
+            sell: 0,
+            strongSell: 0,
+          },
+        ],
+        "NVDA",
+      ),
+    ).toThrow("malformed answer");
+  });
+
   test("a later answer leaving out an earnings actual keeps it", async () => {
     let drop = false;
     const t = setup({

@@ -214,10 +214,12 @@ function upsertEvents(
        hour = excluded.hour,
        eps_estimate = excluded.eps_estimate,
        eps_actual = case when excluded.listing is events.listing
-         then coalesce(excluded.eps_actual, events.eps_actual) end,
+         then coalesce(excluded.eps_actual, events.eps_actual)
+         else excluded.eps_actual end,
        revenue_estimate = excluded.revenue_estimate,
        revenue_actual = case when excluded.listing is events.listing
-         then coalesce(excluded.revenue_actual, events.revenue_actual) end,
+         then coalesce(excluded.revenue_actual, events.revenue_actual)
+         else excluded.revenue_actual end,
        reported_seen_at = coalesce(events.reported_seen_at,
          excluded.reported_seen_at),
        listing = excluded.listing,

@@ -172,7 +172,9 @@ export const COMPANY_METRICS = [
 // part naming one other symbol is that listing; parts naming two are no
 // data, since neither can be trusted; a part naming none is the asked.
 function listingOf(parts: readonly Obj[], symbol: string): string | null {
-  const named = new Set(parts.map((p) => p.symbol ?? symbol));
+  const named = new Set(
+    parts.map((p) => (p.symbol === undefined ? symbol : p.symbol)),
+  );
   for (const n of named) {
     if (n !== symbol && (typeof n !== "string" || !LISTING.test(n))) {
       throw malformed("no listing");
