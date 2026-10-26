@@ -227,16 +227,27 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
   // The last 30 days of each instrument with bars: finalises the
   // previous bar, applies a new split before the session's quotes are
   // used, and fills gaps. An instrument with none waits for backfill.
+  // Each refetch is a run in its instrument's scope, so one that fails
+  // is stale alone; the market's run fails only when none answered. A
+  // retry of failed instruments leaves the market's run alone.
   async function barPass(
     market: string,
     instruments: Instrument[],
+    marketRun = true,
   ): Promise<BarPass> {
-    const id = await writer.write((db) =>
-      startRun(db, SOURCE, JOBS.bars, clock.now(), market),
-    );
+    const id = marketRun
+      ? await writer.write((db) =>
+          startRun(db, SOURCE, JOBS.bars, clock.now(), market),
+        )
+      : null;
     let rows = 0;
-    let error: unknown;
     const changed: BarPass["changed"] = [];
+    const attempts: {
+      instrument: string;
+      at: number;
+      rows: number;
+      error?: unknown;
+    }[] = [];
     for (const instrument of instruments) {
       const has = db
         .query<{ n: number }, [string]>(
@@ -244,8 +255,10 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
         )
         .get(instrument.id)!.n;
       if (has === 0) continue;
+      const at = clock.now();
       try {
         const written = await refetch(ctx, instrument);
+        attempts.push({ instrument: instrument.id, at, rows: written.rows });
         rows += written.rows;
         if (written.changedFrom !== null) {
           changed.push({
@@ -254,17 +267,29 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
           });
         }
       } catch (e) {
-        error ??= e;
+        attempts.push({ instrument: instrument.id, at, rows: 0, error: e });
         log.warn("yahoo bars failed", {
           instrument: instrument.id,
           error: phraseOf(e),
         });
       }
     }
+    const error =
+      attempts.length > 0 && attempts.every((a) => "error" in a)
+        ? attempts[0]!.error
+        : undefined;
     // the session's bars are in, so its price levels can be read again
     await writer.write((db) => {
-      if (error === undefined) endRun(db, id, clock.now(), rows);
-      else failRun(db, id, clock.now(), error, rows);
+      const now = clock.now();
+      for (const a of attempts) {
+        const run = startRun(db, SOURCE, JOBS.bars, a.at, a.instrument);
+        if ("error" in a) failRun(db, run, now, a.error);
+        else endRun(db, run, now, a.rows);
+      }
+      if (id !== null) {
+        if (error === undefined) endRun(db, id, now, rows);
+        else failRun(db, id, now, error, rows);
+      }
       ctx.rules?.evaluate(
         db,
         instruments.map((i) => i.id),
@@ -302,7 +327,18 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
   async function barTick(): Promise<BarPass[]> {
     const bars: BarPass[] = [];
     for (const [market, instruments] of tracked()) {
-      if (!barsDue(db, SOURCE, market, clock.now())) continue;
+      if (!barsDue(db, SOURCE, market, clock.now())) {
+        // an instrument whose own refetch failed is retried alone
+        const retry = instruments.filter((i) => {
+          const last = lastStarted(db, SOURCE, JOBS.bars, i.id);
+          return (
+            last?.status === "failed" &&
+            clock.now() - last.startedAt >= RETRY_MS
+          );
+        });
+        if (retry.length > 0) bars.push(await barPass(market, retry, false));
+        continue;
+      }
       const last = lastStarted(db, SOURCE, JOBS.bars, market);
       if (
         last?.status === "failed" &&

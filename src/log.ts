@@ -109,3 +109,20 @@ export function errorFields(error: unknown): LogFields {
     error: message.split(/\r?\n/, 1)[0] || undefined,
   };
 }
+
+// the type and code only: an SDK message can quote the request
+export function sdkErrorFields(error: unknown): LogFields {
+  const fields: LogFields = {
+    error: "mcp sdk error",
+    error_type: "exception",
+  };
+  if (error instanceof Error) {
+    const name = error.name === "Error" ? error.constructor.name : error.name;
+    if (/^[A-Za-z][A-Za-z0-9]{0,39}$/.test(name)) fields.error_type = name;
+  }
+  const code = (error as { code?: unknown } | null)?.code;
+  if (typeof code === "number" && Number.isSafeInteger(code)) {
+    fields.error_code = code;
+  }
+  return fields;
+}

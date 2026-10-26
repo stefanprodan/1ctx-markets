@@ -6,7 +6,8 @@ import { upsertBars } from "../src/bars.ts";
 import { ATTRIBUTION, NO_DATA } from "../src/fred/sync.ts";
 import { readInstrument, upsertInstrument } from "../src/instruments.ts";
 import { PAGE_BYTES } from "../src/tools/answer.ts";
-import { BASIS } from "../src/tools/history.ts";
+import { BASIS, DEFAULT_MONTHS } from "../src/tools/history.ts";
+import { MAX_SYMBOLS } from "../src/tools/quote.ts";
 import { FIELD_NAMES } from "../src/tools/screen.ts";
 import { lastReadAt, markRead } from "../src/tracking.ts";
 import { mcpClient, type TestApp, withApp } from "./helpers/app.ts";
@@ -83,6 +84,15 @@ describe("the tool list", () => {
       for (const name of FIELD_NAMES) {
         expect(screen.description).toContain(name);
       }
+      // the limits read from the code, never typed by hand
+      for (const name of ["movers", "screen"]) {
+        const tool = tools.find((x) => x.name === name)!;
+        expect(tool.description).toContain(`1 to ${MAX_SYMBOLS} symbols`);
+      }
+      const history = tools.find((x) => x.name === "history")!;
+      expect(history.description).toContain(
+        `${DEFAULT_MONTHS["1d"]} months before to for 1d and ${DEFAULT_MONTHS["1wk"]} months for 1wk`,
+      );
       for (const tool of tools) {
         // 1ctx cuts a description at 1,024
         expect(tool.description!.length).toBeLessThan(1024);
@@ -241,6 +251,25 @@ describe("quote", () => {
       }
     }));
 
+  test("research on a FRED series carries the attribution once", () =>
+    yahooApp(async (t) => {
+      const a = await call(t, "research", { symbol: "FRED:DGS10" });
+      expect(a.body.quote.observation).toEqual({
+        date: "2026-10-22",
+        value: 4.96,
+      });
+      expect(a.body.attribution).toBe(ATTRIBUTION);
+      expect(a.text.split(ATTRIBUTION)).toHaveLength(2);
+      const res = await fetch(
+        `${t.url}/research?symbols=FRED:DGS10,fred:dgs10`,
+        { headers: { authorization: `Bearer ${t.bearer}` } },
+      );
+      expect(res.status).toBe(200);
+      const raw = await res.text();
+      expect(JSON.parse(raw).attribution).toBe(ATTRIBUTION);
+      expect(raw.split(ATTRIBUTION)).toHaveLength(2);
+    }));
+
   test("with FRED off answers no data from FRED", () =>
     withApp(async (t) => {
       const a = await call(t, "quote", { symbols: ["FRED:DGS10"] });
@@ -368,6 +397,19 @@ describe("history", () => {
       });
       expect(stale.body.relative.benchmark.stale).toEqual(["no quote yet"]);
       expect(stale.body.relative.stale).toEqual(["benchmark: no quote yet"]);
+    }));
+
+  test("a yield against a spread answers the relative change in points", () =>
+    yahooApp(async (t) => {
+      const a = await call(t, "history", {
+        symbol: "FRED:DGS10",
+        benchmark: "FRED:BAMLH0A0HYM2",
+      });
+      expect(a.isError).toBe(false);
+      const rel = a.body.relative;
+      expect(rel.returns[0].relative).toBeNumber();
+      expect(rel.returns[0].instrument.unit).toBe("points");
+      expect(rel.unit).toBe("points");
     }));
 
   test("pages ascending and next continues only the same arguments", () =>

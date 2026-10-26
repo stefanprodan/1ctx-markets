@@ -7,7 +7,7 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import type { McpHttpHandler } from "@modelcontextprotocol/server";
 import type { Clock } from "./clock.ts";
-import { errorFields, type Log } from "./log.ts";
+import { type Log, sdkErrorFields } from "./log.ts";
 
 const MAX_BODY_BYTES = 1024 * 1024;
 
@@ -82,7 +82,8 @@ export function router(deps: RouterDeps): Handle {
     try {
       res = await route(req, path);
     } catch (error) {
-      deps.log.error("request failed", { path, ...errorFields(error) });
+      // a throw from the MCP handler can quote the request
+      deps.log.error("request failed", { path, ...sdkErrorFields(error) });
       res = json({ error: "internal error" }, 500);
     }
     deps.log.info("request", {

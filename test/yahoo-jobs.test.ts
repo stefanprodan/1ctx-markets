@@ -302,7 +302,12 @@ describe("a closed market's check", () => {
 });
 
 describe("bars at the session change", () => {
-  async function weekend(edit: (nvda: any, now: number) => void = () => {}) {
+  async function weekend(
+    edit: (nvda: any, now: number) => void = () => {},
+    // symbols whose Monday chart answers fail, with a 404 that pauses no
+    // queue, so the next chart goes at once
+    down = new Set<string>(),
+  ) {
     const fixtures = {
       NVDA: listed(await recorded("chart-nvda-5d-1d")),
       HYG: listed(await recorded("chart-hyg-5d-1d")),
@@ -317,6 +322,9 @@ describe("bars at the session change", () => {
     const t = setup(utc("2026-10-25T19:40"), (url, now) => {
       const symbol = chartSymbol(url) as keyof typeof fixtures | null;
       if (symbol === null) return spark.route(url);
+      if (monday && down.has(symbol)) {
+        return { recordedAt: "", status: 404, headers: {}, body: "" };
+      }
       const answer = clone(fixtures[symbol]);
       if (monday) {
         const result = answer.body.chart.result[0];
@@ -400,6 +408,32 @@ describe("bars at the session change", () => {
     expect(
       barsStale(t.db, readInstrument(t.db, "US:NVDA")!, t.clock.now()),
     ).toEqual([]);
+  });
+
+  test("one failed refetch marks only its instrument stale, and only it is retried", async () => {
+    const down = new Set(["NVDA"]);
+    const t = await weekend(undefined, down);
+    const nvda = readInstrument(t.db, "US:NVDA")!;
+    const hyg = readInstrument(t.db, "US:HYG")!;
+    expect(t.report.bars).toMatchObject([{ market: "US", error: null }]);
+    expect(lastRun(t.db, "yahoo", JOBS.bars, "US")!.status).toBe("ok");
+    expect(barsStale(t.db, nvda, t.clock.now())).toEqual(["bar sync failed"]);
+    expect(barsStale(t.db, hyg, t.clock.now())).toEqual([]);
+    down.clear();
+    const before = t.f.urls.length;
+    await t.runTo(t.clock.now() + RETRY_MS + MINUTE_MS);
+    expect(charts(t.f.urls.slice(before)).map(chartSymbol)).toEqual(["NVDA"]);
+    expect(barsStale(t.db, nvda, t.clock.now())).toEqual([]);
+    expect(lastRun(t.db, "yahoo", JOBS.bars, "US")!.status).toBe("ok");
+  });
+
+  test("the market's run fails when no refetch answered", async () => {
+    const t = await weekend(undefined, new Set(["NVDA", "HYG"]));
+    expect(t.report.bars[0]!.error).not.toBeNull();
+    expect(lastRun(t.db, "yahoo", JOBS.bars, "US")!.status).toBe("failed");
+    expect(
+      barsStale(t.db, readInstrument(t.db, "US:HYG")!, t.clock.now()),
+    ).toContain("bar sync failed");
   });
 });
 

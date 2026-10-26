@@ -7,6 +7,7 @@ import {
   Client,
   StreamableHTTPClientTransport,
 } from "@modelcontextprotocol/client";
+import { router } from "../src/http.ts";
 import { KeyError, keys, requireBearer } from "../src/keys.ts";
 import { errorFields, format, logger, MASK } from "../src/log.ts";
 import { SECRETS, withApp } from "./helpers/app.ts";
@@ -93,6 +94,36 @@ describe("the bearer", () => {
         }
       }
     }));
+
+  test("a request that throws logs its type, never its text", async () => {
+    const lines: string[] = [];
+    const clock = fakeClock();
+    const log = logger(
+      clock,
+      () => [],
+      (line) => lines.push(line),
+    )("http");
+    const handle = router({
+      bearer: WRONG,
+      mcp: {
+        fetch: async () => {
+          throw new TypeError('bad params {"symbol":"quoted-request"}');
+        },
+      } as never,
+      clock,
+      log,
+    });
+    const res = await handle(
+      new Request("http://localhost/mcp", {
+        method: "POST",
+        headers: { authorization: `Bearer ${WRONG}` },
+      }),
+    );
+    expect(res.status).toBe(500);
+    const failed = lines.find((line) => line.includes("request failed"));
+    expect(failed).toContain("TypeError");
+    for (const line of lines) expect(line).not.toContain("quoted-request");
+  });
 
   test("a key handed to the logger is masked", () => {
     const store = keys(SECRETS);

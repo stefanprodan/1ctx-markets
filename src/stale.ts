@@ -18,7 +18,8 @@ export const JOBS = {
   quotes: "quotes",
   // one instrument of a closed market, to see a new session
   check: "check",
-  // the 30-day refetch when a market's session moves on
+  // the 30-day refetch when a market's session moves on, with a run per
+  // instrument scoped to its id
   bars: "bars",
 } as const;
 
@@ -107,7 +108,14 @@ export function barsStale(
     .get(instrument.id)!.n;
   if (has === 0) return [STALE.noHistory];
   const reasons: StaleReason[] = [];
-  if (failed(db, instrument, JOBS.bars)) reasons.push(STALE.barsFailed);
+  // the market's pass, or this instrument's own refetch in it
+  if (
+    failed(db, instrument, JOBS.bars) ||
+    lastRun(db, instrument.source, JOBS.bars, instrument.id)?.status ===
+      "failed"
+  ) {
+    reasons.push(STALE.barsFailed);
+  }
   const session = readSession(db, instrument.market);
   if (
     barsDue(db, instrument.source, instrument.market, now) &&

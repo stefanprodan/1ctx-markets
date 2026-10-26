@@ -47,7 +47,12 @@ import {
 } from "./answer.ts";
 import { ArgError, fields, quoted, text } from "./args.ts";
 import { researchTargets } from "./research.ts";
-import { type ItemError, type Markets, readTargets } from "./targets.ts";
+import {
+  type ItemError,
+  type Markets,
+  readTargets,
+  timeout,
+} from "./targets.ts";
 
 export const RULE_ACTIONS = ["create", "list", "pause", "delete"] as const;
 type Action = (typeof RULE_ACTIONS)[number];
@@ -210,6 +215,7 @@ async function create(
   if (gate !== null && m.finnhub === null) {
     return errorResult({ error: "no_event_source", message: NO_EVENT_SOURCE });
   }
+  const deadline = m.clock.now() + m.callMs;
   const plain = [
     ...new Set([
       args.symbol,
@@ -282,6 +288,8 @@ async function create(
   }
   const done = await m.writer.write((db) => {
     const now = m.clock.now();
+    // a write queued past the call's deadline stores no rule
+    if (now >= deadline) return null;
     const id = insertRule(
       db,
       {
@@ -294,6 +302,7 @@ async function create(
     const outcome = applyRule(db, readRule(db, id)!, now, m.quoteEveryMs);
     return { rule: readRule(db, id)!, outcome };
   });
+  if (done === null) return errorResult(timeout(m));
   const body = {
     rule: ruleItem(m, done.rule),
     evaluation: done.outcome.evaluation,
