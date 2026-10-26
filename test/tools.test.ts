@@ -293,6 +293,33 @@ describe("a symbol never seen", () => {
   });
 });
 
+describe("search", () => {
+  test("one waiting in the source's queue past its deadline never goes out", async () => {
+    const a = gate();
+    const b = gate();
+    const t = await setup({
+      hold: (url) => {
+        const q = url.searchParams.get("q");
+        return q === "AAA" ? a.hold() : q === "BBB" ? b.hold() : undefined;
+      },
+    });
+    const page = (query: string) =>
+      searchPage(t.m, { query, next: null }).then((p) => JSON.parse(p));
+    const held = [page("AAA"), page("BBB")];
+    await Promise.all([a.arrived, b.arrived]);
+    const waiting = page("CCC");
+    await t.clock.advance(CALL_MS);
+    expect((await waiting).errors).toMatchObject([{ error: "timeout" }]);
+    a.release();
+    b.release();
+    await Promise.all(held);
+    // the queue runs in order, so a later search's answer settles CCC's turn
+    await page("DDD");
+    const asked = t.calls.searches().map((u) => u.searchParams.get("q"));
+    expect(asked).toEqual(["AAA", "BBB", "DDD"]);
+  });
+});
+
 describe("tracking", () => {
   test("a read renews it, a search does not, and 30 days end it", async () => {
     const t = await setup();

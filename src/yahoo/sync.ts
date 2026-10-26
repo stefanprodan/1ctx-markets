@@ -577,7 +577,7 @@ export async function catchUp(
   return exclusive(ctx.db, instrument.id, async () => {
     // the lock may have been held past the deadline
     if (!live()) throw expired();
-    const bars = await refetchAnswer(ctx, instrument);
+    const bars = await refetchAnswer(ctx, instrument, live);
     if (!live()) throw expired();
     const quote = await ctx.yahoo.spark([instrument.sourceSymbol]);
     return ctx.writer.write((db) => {
@@ -661,6 +661,7 @@ async function refetchHeld(
 async function refetchAnswer(
   ctx: YahooContext,
   instrument: Instrument,
+  live: () => boolean = () => true,
 ): Promise<Answered> {
   const { db, clock } = ctx;
   const range = dailyRange(db, instrument.id);
@@ -679,9 +680,10 @@ async function refetchAnswer(
     : rescaleOf(db, instrument, read(answer, null).bars);
   if (split || rescale !== null) {
     // old price levels stop now, since the whole history may be refused
-    await ctx.writer.write((w) =>
-      ctx.rules?.rescaled(w, instrument.id, ctx.clock.now()),
-    );
+    await ctx.writer.write((w) => {
+      if (!live()) throw expired();
+      ctx.rules?.rescaled(w, instrument.id, ctx.clock.now());
+    });
     const marks = refusedOf(db);
     const last = marks.get(instrument.id);
     if (last !== undefined && now - last < RETRY_MS) {

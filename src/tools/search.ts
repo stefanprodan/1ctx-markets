@@ -62,17 +62,18 @@ function stored(m: Markets, query: string): Found[] {
 
 const EXPIRED = Symbol("expired");
 
-// within the call's deadline, an answer or why there is none
+// an answer by the call's deadline, and no source call started after it
 async function within<T>(
   m: Markets,
-  work: Promise<T>,
+  work: (live: () => boolean) => Promise<T>,
 ): Promise<T | typeof EXPIRED> {
+  const deadline = m.clock.now() + m.callMs;
   let cancel = () => {};
   const expired = new Promise<typeof EXPIRED>((resolve) => {
-    cancel = m.clock.at(m.clock.now() + m.callMs, () => resolve(EXPIRED));
+    cancel = m.clock.at(deadline, () => resolve(EXPIRED));
   });
   try {
-    return await Promise.race([work, expired]);
+    return await Promise.race([work(() => m.clock.now() < deadline), expired]);
   } finally {
     cancel();
   }
@@ -99,14 +100,15 @@ async function fredCandidates(
   const key = `${FRED_MARKET}:${id}`;
   const known = readInstrument(m.db, key);
   if (known !== null) return { found: [fromStored(known)], notes: [] };
-  if (m.fred === null) {
+  const fred = m.fred;
+  if (fred === null) {
     return {
       found: [],
       notes: [{ source: "fred", error: "no_data", message: NO_DATA }],
     };
   }
   try {
-    const meta = await within(m, m.fred.series(id));
+    const meta = await within(m, (live) => fred.within(live).series(id));
     if (meta === EXPIRED) return { found: [], notes: [late(m, "fred")] };
     return {
       found: [
@@ -137,7 +139,9 @@ async function yahooCandidates(
   query: string,
 ): Promise<{ found: Found[]; notes: SourceNote[] }> {
   try {
-    const listings = await within(m, m.yahoo.search(query));
+    const listings = await within(m, (live) =>
+      m.yahoo.within(live).search(query),
+    );
     if (listings === EXPIRED) return { found: [], notes: [late(m, YAHOO)] };
     return {
       found: listings.map((l) => {
