@@ -15,8 +15,6 @@ import type { Target } from "./targets.ts";
 
 export type Resolved = { input: string; instrument: Instrument };
 
-// The targets of the named symbols, the first input of each instrument
-// kept, and the errors as items.
 export function distinct(targets: readonly Target[]): {
   resolved: Resolved[];
   errors: ErrorItem[];
@@ -81,8 +79,7 @@ export function startOf(next: string | null, args: unknown): number {
   return n;
 }
 
-// One page: matches in their order, then the unavailable by id, then
-// the errors as asked; counts cover every page.
+// counts cover every page
 export function setPage(options: {
   args: unknown;
   offset: number;

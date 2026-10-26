@@ -1,8 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// What is due is read from stored sessions and runs, so a restart
-// resumes where it was; only tracked instruments are synced.
 
 import {
   closeQuoteAt,

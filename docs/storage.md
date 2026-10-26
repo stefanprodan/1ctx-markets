@@ -119,9 +119,8 @@ in `docs/config.md`.
   instrument added before the last ok pass whose quote is older than
   that pass is `no quote in the last pass`, so one symbol that never
   answers marks only itself.
-- **A bar pass is judged per market.** One instrument's refetch failure
-  fails its market's `bars` run, so every instrument in that market
-  reads `bar sync failed` until a pass ends well.
+- **A failed refetch is its instrument's own `bars` run** and marks
+  only it; the market's run fails only when no instrument answered.
 - **The reasons are fixed phrases in `STALE`** (`src/stale.ts`); a
   tool answers the phrase, never prose of its own. Add a reason there.
 
@@ -132,7 +131,7 @@ in `docs/config.md`.
 | `no quote yet` | `quoteStale` | no quote stored |
 | `quote overdue` | `quoteStale` with `due` | quote older than two quote periods before the last time one was due |
 | `session check failed` | `quoteStale` | the market's last closed-market check failed |
-| `bar sync failed` | `barsStale`, `seriesStale` | the market's (FRED: the series') last bar run failed |
+| `bar sync failed` | `barsStale`, `seriesStale` | the market's last bar pass or the instrument's own refetch failed (FRED: the series' last run) |
 | `bar sync pending` | `barsStale` | a session began after the last ok bar pass (`barsDue`), the instrument added before it |
 | `bar sync pending` | `seriesStale` | FRED: no run ended well since the latest 23:00 UTC (`seriesDue`), the series added before it |
 | `no history` | `barsStale`, `seriesStale` | no daily bars stored |

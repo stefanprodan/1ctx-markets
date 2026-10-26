@@ -1,7 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// every function here runs inside a writer transaction
+// every write here runs inside a writer transaction
 
 import { type Interval, readBars, type Bar as StoredBar } from "../bars.ts";
 import { CRYPTO, readSession, sessionDate, weekOf } from "../calendars.ts";
@@ -92,8 +92,7 @@ function insertRows(
   }
 }
 
-// The bars up to the first one not final: only final bars make final
-// rows, and a series never skips a day.
+// only final bars make final rows, and a series never skips a day
 export function finalPrefix<T extends { final: boolean }>(
   bars: readonly T[],
 ): T[] {
@@ -120,8 +119,6 @@ function span(db: Db, sql: string, instrument: string, interval: Interval) {
     .get(instrument, interval) as Span;
 }
 
-// The final rows lag the final bars: a bar turned final or went away
-// since the last recompute.
 export function finalPending(db: Db, instrument: string): boolean {
   for (const interval of ["1d", "1wk"] as const) {
     const bars = span(
@@ -290,8 +287,6 @@ function replaceLive(
   }
 }
 
-// The live daily and weekly rows from the stored quote; with no quote
-// traded in the current session, or no bars to step from, there is none.
 export function refreshLive(db: Db, instrument: Scoped, now: number): void {
   const target = liveTarget(db, instrument);
   if (target === null) {
@@ -336,8 +331,6 @@ export function refreshLive(db: Db, instrument: Scoped, now: number): void {
   replaceLive(db, instrument.id, "1wk", weekRow, quote.time, now);
 }
 
-// A live row its market's session has moved past, or one the quote no
-// longer dates, is computed again or removed; a current one is kept.
 export function pruneLive(db: Db, instrument: Scoped, now: number): void {
   const target = liveTarget(db, instrument);
   const dates = db

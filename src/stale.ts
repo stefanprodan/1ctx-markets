@@ -1,7 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Staleness from the instrument's own source, job and market; one
+// Staleness from the instrument's own source, job and scope; one
 // market's failure never marks another.
 
 import { CRYPTO, closeQuoteAt, readSession } from "./calendars.ts";
@@ -42,9 +42,7 @@ type Scoped = Pick<Instrument, "id" | "source" | "market" | "addedAt">;
 const failed = (db: Db, i: Scoped, job: string) =>
   lastRun(db, i.source, job, i.market)?.status === "failed";
 
-// None when the quote is current. With due, a quote no pass refreshed
-// within two periods of when one was last due is overdue, as after
-// downtime, before Monday's first pass or a missed close.
+// with due, overdue after two periods unrefreshed, as after downtime
 export function quoteStale(
   db: Db,
   instrument: Scoped,
@@ -78,10 +76,7 @@ export function quoteStale(
   return reasons;
 }
 
-// The last time a pass should have refreshed a market's quote: now
-// while it trades, its post-close quote once it closed, and null before
-// its stored session begins. A session left from Friday on Monday is
-// what failed checks already mark.
+// a session left from Friday on Monday is what failed checks already mark
 function lastQuoteDue(db: Db, market: string, now: number): number | null {
   if (market === CRYPTO) return now;
   const s = readSession(db, market);
@@ -120,9 +115,7 @@ export function barsStale(
   return reasons;
 }
 
-// A market's bars are due once its stored session has begun and no bar
-// pass has ended well since; a restart after downtime is due the same
-// way.
+// a restart after downtime is due the same way
 export function barsDue(
   db: Db,
   source: string,

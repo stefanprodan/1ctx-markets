@@ -56,9 +56,7 @@ export function seriesDue(db: Db, instrument: Scoped, now: number): boolean {
   return ok === null || ok.startedAt < due;
 }
 
-// A series' bars, stale with the same reasons as a market's, read from
-// its own runs only: none yet, its last run failed, or its daily run is
-// due and has not ended well.
+// its own runs only, so one dead series never marks another
 export function seriesStale(
   db: Db,
   instrument: Scoped,

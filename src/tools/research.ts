@@ -90,8 +90,6 @@ const SECTION_OF: Record<ResearchKind, Section> = {
 // GET /research names at most this many symbols
 export const MAX_RESEARCH_SYMBOLS = 5;
 
-// The instrument's research before the answer: off, not covered, a
-// share fetched inside the call, or one not done by the deadline.
 export type Inline =
   | { kind: "off" }
   | { kind: "not covered" }
@@ -100,7 +98,8 @@ export type Inline =
 
 const EXPIRED = Symbol("expired");
 
-// all five sections land in one write or none; news gets its newest page
+// the sections fetched land in one write, a passed deadline stores none;
+// news gets its newest page
 export async function researchTargets(
   m: Markets,
   inputs: readonly string[],
@@ -218,8 +217,6 @@ const valuesOf = (kind: ResearchKind, row: Values): Values => {
   return out;
 };
 
-// One section's latest row with its period, fetch time and stale
-// reasons; with no row, why there is none.
 function latestSection(m: Markets, instrument: Instrument, kind: ResearchKind) {
   const state = sectionState(
     m.db,
@@ -272,8 +269,6 @@ const messageOf = (inline: Inline | undefined): string | null =>
       ? NOT_COVERED
       : null;
 
-// Finnhub's part of an answer: each section's latest, or one message
-// when Finnhub is off, does not cover the share or was not done in time.
 export function researchSummary(
   m: Markets,
   instrument: Instrument,
@@ -310,8 +305,6 @@ const newsItem = (r: NewsRow) => ({
   truncated: r.truncated,
 });
 
-// Massive's part of an overview: the newest headlines, or one message
-// when Massive is off or does not cover the instrument.
 export function newsSummary(
   m: Markets,
   instrument: Instrument,
@@ -503,9 +496,6 @@ const json = (body: string, status: number): Response =>
 const failed = (status: number, error: string, message: string) =>
   json(JSON.stringify({ error, message }), status);
 
-// GET /research?symbols=a,b: at most five summaries, the quote's brief
-// projection beside Finnhub's part, under the same deadline and
-// tracking as the research tool.
 export function researchHandler(
   m: Markets,
 ): (req: Request) => Promise<Response> {

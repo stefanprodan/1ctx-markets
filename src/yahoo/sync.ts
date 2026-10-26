@@ -1,7 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Each call fetches first, then queues one write.
+// every fetch finishes before its write is queued; no write awaits a fetch
 
 import {
   type Bar,
@@ -451,8 +451,7 @@ function store(
   return written;
 }
 
-// Every stored refetch or backfill is its instrument's own bars run, so
-// one in a read clears a failure from the bar pass at once.
+// an ok run in the instrument's scope clears only its own failed refetch
 function barsAnswered(
   db: Db,
   instrument: Instrument,
@@ -590,8 +589,7 @@ export async function catchUp(
   });
 }
 
-// Ten years of daily bars again, or from the first stored bar if that
-// is older, so after a split no stored bar keeps its old scale.
+// from the first stored bar if older, so no bar keeps a pre-split scale
 export function backfill(
   ctx: YahooContext,
   instrument: Instrument,
@@ -599,8 +597,7 @@ export function backfill(
   return exclusive(ctx.db, instrument.id, () => backfillHeld(ctx, instrument));
 }
 
-// What a source answered, fetched in full before anything is written,
-// as the write that stores it.
+// fetched in full before anything is written
 type Answered = (db: Db) => Written;
 
 async function backfillHeld(

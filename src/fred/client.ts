@@ -54,7 +54,7 @@ export type Observations = {
 };
 
 export type ObservationRange =
-  // the latest n, newest first on the wire
+  // limit: the latest n, newest first on the wire; start: from that date on
   { limit: number } | { start: string };
 
 export type Fred = {
