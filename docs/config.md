@@ -6,7 +6,8 @@ and smoke scripts in `package.json`, `Makefile` and
 `scripts/smoke.sh`. The tools and `GET /quotes` are in
 `docs/tools.md`, `GET /alerts` in `docs/rules.md`, `GET /research` in
 `docs/research.md`; the database, migrations and retention in
-`docs/storage.md`.
+`docs/storage.md`; the `service` command and staging in
+`docs/deploy.md`.
 
 ## Flags
 
@@ -43,6 +44,7 @@ runs what `parseCli()` answers. `HELP` in `src/config.ts` is the
 | Path | Holds |
 |---|---|
 | `markets.db` | the one SQLite database (`docs/storage.md`) |
+| `markets.log` | the service's log, when run by `service install` (`docs/deploy.md`) |
 | `secrets/bearer.key` | the bearer every request carries |
 | `secrets/source-<name>.key` | a source's API key: `source-fred.key`, `source-finnhub.key`, `source-massive.key` |
 

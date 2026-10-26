@@ -104,6 +104,15 @@ read, 30 by default) change that, and `--source bvb` turns on the
 Bucharest Stock Exchange's feed; `--help` lists them. It
 speaks plain HTTP, so keep it on loopback or put a TLS proxy in front.
 
+On macOS, the binary can run itself as a service of your user,
+started at login and restarted if it exits, with any of the options
+above, logging to `markets.log` beside the database; `service status`,
+`stop`, `start` and `uninstall` manage it:
+
+```sh
+./bin/1ctx-markets service install --source bvb
+```
+
 Connect an MCP client over Streamable HTTP with the bearer in the
 `Authorization` header. For Claude Code:
 

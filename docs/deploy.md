@@ -1,0 +1,89 @@
+# Deploying the server
+
+Governs running the binary as a service and the staging scripts:
+`src/service/`, `scripts/staging.sh`, `scripts/staging.env.example` and
+their `Makefile` and `package.json` targets. Flags, `GET /health` and
+the shutdown order are in `docs/config.md`.
+
+## The OS service (`1ctx-markets service`)
+
+`1ctx-markets service install|start|stop|restart|status|uninstall`
+runs the compiled binary as a service of the signed-in user, started
+at login and restarted when it exits. Only macOS (launchd) is supported
+today; any other platform answers `service is not supported on
+<platform> yet`.
+
+- **`src/service/` is CLI only.** It imports `config.ts` and
+  `clock.ts`, opens no database and reads no key; `main.ts` runs it
+  before the bearer and the database. `service.ts` knows no platform; a
+  new service manager is a `ServiceBackend` picked in `backendFor()`.
+- **The launchd label is `dev.1ctx.markets`**, a LaunchAgent in
+  `~/Library/LaunchAgents/dev.1ctx.markets.plist`, with `HOME` set and
+  the data directory as its working directory.
+- **`install` parses its options with the server's `parseCli()`.** It
+  refuses what the server would, before touching anything, pins a
+  relative `--data` to where it was typed and writes every option out
+  (`configToArgs()`), defaults included, so a later default change
+  never moves a running service. `start`, `restart` and `status` read
+  the options back from the definition; one the server would refuse is
+  `service definition is invalid`.
+- **`install` needs the compiled binary** and refuses to replace a
+  running service without `--restart`, which is the switch anywhere but
+  right after a flag that takes a value.
+- **A start waits for `GET /health`**, once a second for up to 60
+  tries, at the listen address (loopback for a wildcard bind).
+- **The kill timeout is 45 seconds** (`EXIT_TIMEOUT`, launchd's
+  `ExitTimeOut`): a source call already sent ends within its 30-second
+  timeout, then the writer drains its queue (`docs/config.md`,
+  Shutdown). It stays under the 60 seconds `service stop` waits for the
+  process to exit (`WAIT_MS` in `launchd.ts`), so a stop never reports
+  a timeout while launchd is still to kill.
+- **A stop waits for the process, not only the label.** launchd forgets
+  the job while the server still drains and holds the port, and a start
+  into that window fails.
+- **The plist is staged and read back before anything stops**, so a bad
+  write never takes a running service down.
+- **The log is `markets.log` in the data directory and rotates only on
+  install.** launchd holds it open while the service runs, so past 8 MiB
+  it moves to `.1` between the stop and the start.
+- **`uninstall --purge` removes the database and the log, never
+  `secrets/`**: `markets.db` with its `-wal` and `-shm`, `markets.log`
+  and `.1`, in the directory the definition names. A definition it
+  cannot read is refused rather than guessed at.
+- **Tests fake the backend and launchctl** (`test/service.test.ts`,
+  `test/service-launchd.test.ts`); the waits run on the fake clock. No
+  test runs `launchctl` or installs a service.
+
+## Staging
+
+Staging is a Mac reached over ssh that runs the server for real use
+beside other services; its database holds real data and is never
+wiped. It runs the binary through `1ctx-markets service` with its data
+under `~/.1ctx-markets` and the binary in `~/.1ctx-markets/bin`.
+`scripts/staging.sh` drives it, behind `make staging-deploy`,
+`make staging-status` and `make staging-secrets DIR=<dir>`.
+
+- **The host is never in a tracked file.** It is `STAGING_SSH` in the
+  gitignored `scripts/staging.env`, copied from `staging.env.example`
+  with `STAGING_LISTEN` and `STAGING_FLAGS` (the server flags the
+  install adds, such as `--source bvb`).
+- **ssh runs with `BatchMode=yes` and `ConnectTimeout=10`**, so a
+  missing key or a down box fails at once instead of prompting.
+- **`make staging-deploy` takes `main` only.** It refuses another
+  branch or a dirty checkout unless `ALLOW_BRANCH=1`, before any ssh. A
+  migration that ran on staging is never edited again, like one merged
+  to `main`.
+- **The binary is checked before it leaves.** It is built with
+  `VERSION=v<package version>+<commit>` (`.dirty<hash>` on a bypassed
+  dirty tree) and must print that version.
+- **A deploy backs the database up before it swaps the binary.** A
+  `sqlite3 .backup` into `~/.1ctx-markets/backups`, taken out of WAL
+  (`journal_mode=delete`) so it is one file, integrity-checked, the last
+  three kept. The new binary is uploaded beside the live one and renamed
+  over it, so an interrupted copy never leaves a truncated executable,
+  then `service install --restart` runs with the env's listen and flags.
+- **`make staging-secrets DIR=<dir>` copies only the `source-*.key`
+  files the box lacks** into `~/.1ctx-markets/secrets` (700, files
+  600). Each value goes over ssh stdin, never in an argument or the
+  output, which names files only; a key the box holds is kept. The
+  bearer is never copied: the box's first start writes its own.
