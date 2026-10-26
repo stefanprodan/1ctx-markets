@@ -1,5 +1,7 @@
-// One real call, one fixture; a key in a header, query or echoed cursor
-// never reaches disk.
+// One real call, one fixture; the key in any form, in the URL, a header or
+// the body, is replaced before the first write, so it never reaches disk.
+
+import { scrub } from "../../src/source.ts";
 
 const MAX_BYTES = 1_000_000;
 const SECRET_PARAMS = ["token", "apikey", "apiKey", "api_key"];
@@ -25,6 +27,18 @@ export function scrubUrl(raw: string): string {
   for (const p of SECRET_PARAMS)
     if (u.searchParams.has(p)) u.searchParams.set(p, "REDACTED");
   return u.toString();
+}
+
+// a source may echo the key, percent-encoded inside a cursor URL for one
+function clean(value: unknown, key: string): unknown {
+  if (typeof value === "string") return scrub(value, key);
+  if (Array.isArray(value)) return value.map((v) => clean(v, key));
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([k, v]) => [scrub(k, key), clean(v, key)]),
+    );
+  }
+  return value;
 }
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -64,9 +78,7 @@ export async function record(
     body,
   };
   edit?.(fixture);
-  let out = JSON.stringify(fixture, null, 2) + "\n";
-  // a source may echo the key, inside a cursor URL for one
-  if (out.includes(key)) out = out.split(key).join("REDACTED");
+  const out = JSON.stringify(clean(fixture, key), null, 2) + "\n";
   if (out.length > MAX_BYTES)
     throw new Error(`${file}: fixture over 1 MB, use a smaller limit`);
   await Bun.write(file, out);
