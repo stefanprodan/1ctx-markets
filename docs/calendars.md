@@ -90,7 +90,7 @@ are in `docs/yahoo.md`; tables, times and staleness in
   `src/bars.ts`). An open crypto week from Yahoo
   holds Monday to Saturday only. A week's date is its Monday.
 - **A week is final once its Sunday has ended in the market's zone and
-  its last daily bar is final** (`weekEnd()`, `isWeekFinal()`).
+  every daily bar in it is final** (`weeksOf()`, `isWeekFinal()`).
 
 ## Wall time
 

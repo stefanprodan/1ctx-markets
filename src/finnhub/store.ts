@@ -343,7 +343,8 @@ function recordRun(
   );
 }
 
-// one write after every fetch, so nothing half-fetched lands
+// fetched sections land in one write; a Paused refusal stores those before
+// it, a passed deadline none
 export async function refreshResearch(
   ctx: FinnhubContext,
   instrument: Instrument,

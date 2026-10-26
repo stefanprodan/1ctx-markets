@@ -1,8 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// One share's research beside its quote; a covered share with none yet is
-// fetched inside the call.
 
 import {
   type EventRow,

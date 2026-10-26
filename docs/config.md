@@ -77,8 +77,9 @@ runs what `parseCli()` answers. `HELP` in `src/config.ts` is the
   for the others `on (key file)` or `off (no key)`, quoted since they
   hold a space (`fred="on (key file)"`, `src/log.ts`).
 - **Log fields are fixed names and short values.** `errorFields()`
-  keeps an error's type and first line only, so a stack or a source's
-  answer stays out of the log.
+  keeps an error's type and first line only, so a stack stays out. A
+  source's own text stays out because a `SourceError` message is a
+  fixed phrase and a detail the code writes (`src/source.ts`).
 
 ## HTTP
 

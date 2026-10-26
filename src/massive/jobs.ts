@@ -1,7 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// no page past a tick's budget, so ticks never pile up
 
 import { MINUTE_MS } from "../clock.ts";
 import type { Log } from "../log.ts";

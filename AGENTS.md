@@ -18,7 +18,7 @@ rules only, never holdings, orders or a portfolio.
 
 ## The dev loop
 
-Everything goes through the Makefile; each target runs the
+Everything goes through the Makefile; each target but `help` runs the
 `package.json` script of the same name.
 
 ```sh

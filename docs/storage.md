@@ -15,7 +15,8 @@ in `docs/config.md`.
   `foreign_keys = on` and `busy_timeout = 5000`, then migrates. The
   process holds this one connection for reads and writes; tools read it
   synchronously while the writer queue is the only path that changes
-  it. Copying a live database needs its `-wal` and `-shm` files too.
+  it. Back it up with SQLite's own backup (`.backup`, `vacuum into`),
+  or stop the server before copying `markets.db`.
 - **Keys never enter the database.** Each key is a file in `secrets/`
   beside `markets.db` (`bearer.key`, `source-<name>.key`), read only by
   `src/keys.ts`. A key never goes in a row, a log line, an error or an
@@ -31,13 +32,14 @@ in `docs/config.md`.
   transaction** with its row in `migrations` (id, `applied_at`), in list
   order. `0001-init` creates that table itself, so a fresh database has
   nothing recorded.
-- **Tables are `strict`, and checks hold only what the code
-  guarantees.** A check a source's odd answer can break would fail the
+- **Data tables are `strict`** (the `migrations` ledger is not), **and
+  checks hold only what the code guarantees.** A check a source's odd answer can break would fail the
   whole write that carries it (see the comment on `0005-signals`).
 - **A migration that moves data writes it in SQL, from the rows
   present.** `0004-scopes-units` fills `instruments.unit` from `type`;
-  `0006-tracking` starts `last_read_at` at `updated_at`, so no
-  instrument stops being tracked at the upgrade.
+  `0006-tracking` starts `last_read_at` at `updated_at`, so an
+  instrument updated within the tracking window stays tracked at the
+  upgrade and an older one does not.
 
 ## The writer
 

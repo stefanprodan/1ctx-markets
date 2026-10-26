@@ -25,7 +25,8 @@ bearer and flags in `docs/config.md`.
 - **Every answer is one JSON text part.** `textResult()` and
   `errorResult()` in `answer.ts` build the only result shapes. MCP
   clients render a second part or a structured result differently, and
-  1ctx reads the first text part only.
+  1ctx (an agent workspace, this server's first MCP client) reads the
+  first text part only.
 - **A page fits 32 KiB twice: its text, and the result serialized
   plus 512 bytes for the JSON-RPC envelope and stream frame**
   (`PAGE_BYTES`, `ENVELOPE_BYTES`, `fits()`). Codex has the smallest
@@ -97,8 +98,9 @@ bearer and flags in `docs/config.md`.
   (`DEFAULT_MONTHS`). `basis` states split-adjusted prices with
   dividends and FX excluded, or FRED's revisions (`BASIS`,
   `FRED_BASIS`).
-- **search fetches no prices and tracks nothing.** FRED series match
-  only as `FRED:<series id>`, with a note when the series is not daily.
+- **search fetches no prices and tracks nothing.** FRED is asked only
+  for `FRED:<series id>`, with a note when the series is not daily; a
+  stored series also matches by its symbol or name.
   A source that failed or timed out is in `errors`, beside what the
   other side found.
 - **movers needs a move, an average or both.** `direction` needs
@@ -134,7 +136,7 @@ bearer and flags in `docs/config.md`.
   has final rows only, never moves in movers, and has no price to
   measure a distance from in screen. A page holding FRED values carries
   FRED's `attribution` once.
-- **Every item carries its unit and currency.** `unit` is one of
+- **Every quote item carries its unit and currency.** `unit` is one of
   `UNITS` in `src/instruments.ts`; `unknown` is answered rather than
   guessed, since Yahoo's index type covers both points and yields. A
   FRED `percent` series' change is in points, so its `change_percent`
@@ -205,7 +207,7 @@ bearer and flags in `docs/config.md`.
   times, `stale` and the daily and weekly SMA 50 and 200. It shares
   resolution, tracking, the deadline and the pages with `quote`.
 - **`symbols` is given once, comma-separated**, as a shell script
-  builds it; any other parameter is refused. A bad argument answers 400
+  builds it; only `symbols` and `next` are accepted. A bad argument answers 400
   `bad_arguments`, anything else 500 `internal`. Every answer is
   `cache-control: no-store`, since a quote is live.
 
@@ -223,7 +225,6 @@ bearer and flags in `docs/config.md`.
 - **A limit in a description is the constant's value.** quote
   interpolates `MAX_SYMBOLS` and `callMs`, screen `MAX_FILTERS`, events
   `MAX_EVENT_SYMBOLS`, rules `MAX_COMPARISONS`, `MAX_DEPTH` and
-  `MAX_INSTRUMENTS`. movers and screen write "1 to 100" and history its
-  range defaults as text, so a change to `MAX_SYMBOLS` or
-  `DEFAULT_MONTHS` changes those descriptions in the same commit. A
-  constant a description names changes with it in the same commit.
+  `MAX_INSTRUMENTS`, movers and screen `MAX_SYMBOLS`, history
+  `DEFAULT_MONTHS`. An argument's limit is interpolated, never written as
+  text.

@@ -10,8 +10,8 @@ staleness in `docs/storage.md`; the answer pages in `docs/tools.md`.
 
 ## On and off
 
-- **FRED is on only while `source-fred.key` beside the database holds
-  a key.** `src/app.ts` builds no client and schedules no job without
+- **FRED is on only while `secrets/source-fred.key` in the data
+  directory holds a key.** `src/app.ts` builds no client and schedules no job without
   it, and every source but Yahoo is optional, so no code path may
   assume FRED exists.
 - **Off is an answer, never an error.** `addSeries` returns

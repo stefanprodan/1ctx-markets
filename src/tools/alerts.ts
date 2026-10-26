@@ -1,7 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// For 1ctx's automation check: the alert id is the cursor, and the same
+// For a client polling GET /alerts: the alert id is the cursor, and the same
 // alerts must answer the same bytes.
 
 import type { Db } from "../db/index.ts";

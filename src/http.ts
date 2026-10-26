@@ -40,7 +40,7 @@ export type RouterDeps = {
   quotes?: Handle;
   // GET /research, when the tools are served
   research?: Handle;
-  // GET /alerts, the feed 1ctx's automation check reads
+  // GET /alerts, the feed a polling client reads
   alerts?: Handle;
   clock: Clock;
   log: Log;

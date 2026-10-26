@@ -62,7 +62,7 @@ bar's close, or the live price on the live row.
   on weekly closes**, dated by the week's Monday (`weekly.ts`); the
   schema's checks keep every other column null on `1wk` rows.
 - **A week's bar is final once its Sunday has ended in the market's
-  zone and its last daily bar is final** (`weeksOf` in `src/bars.ts`),
+  zone and every daily bar in it is final** (`weeksOf` in `src/bars.ts`),
   and weekly rows follow the same final and live rules as daily ones.
 
 ## Final rows
@@ -103,11 +103,11 @@ bar's close, or the live price on the live row.
   `liveBase` runs the series from the first bar over the bars as stored,
   the unfinished day included, and the read adds "previous day not
   final".
-- **The live row reads `LIVE_DAYS` + 1 daily bars or `LIVE_WEEKS` + 1
-  weeks** (`refreshLive()`), so 400 daily bars or 200 weeks come before
-  the provisional one, enough for 52 weeks of a daily market and SMA
-  200;
-  the rest is stepped from the running values the final row stores:
+- **The live row reads the latest `LIVE_DAYS` + 1 daily bars or
+  `LIVE_WEEKS` + 1 weeks** (`refreshLive()`), dropping the last only
+  when the provisional row replaces it, so at least 400 daily bars or
+  200 weeks come before the provisional one, enough for 52 weeks of a
+  daily market and SMA 200; the rest is stepped from the running values the final row stores:
   `ema12`, `ema26`, `rsi_gain`, `rsi_loss` and `prev_histogram` (the
   previous histogram, for `macd_turn`). These are never shown to a
   caller (`RUNNING` in `src/tools/quote.ts`).

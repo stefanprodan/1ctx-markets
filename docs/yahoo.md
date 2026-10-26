@@ -157,8 +157,8 @@ inside a call in `docs/tools.md`; rule pauses in `docs/rules.md`.
   ends with an evaluation of its market's rules once its bars are in.
 - **A whole history cut short is refused, and nothing is written.** It
   is refused when it starts more than 10 days (`SHORT_HISTORY_DAYS`)
-  after the start asked for and later than the stored first bar, when it
-  stops 10 days before the stored last bar, or when it applies a split
+  after both the start asked for and the stored first bar, when it
+  stops more than 10 days before the stored last bar, or when it applies a split
   or rescale without covering every stored day. On a first history, a
   start more than 10 days past the later of the asked start and the
   listing's first trade is cut short (`startsShort()`). Writing it would
@@ -180,10 +180,15 @@ inside a call in `docs/tools.md`; rule pauses in `docs/rules.md`.
 ## The per-instrument lock
 
 - **One fetch-and-store per instrument at a time** (`exclusive()` in
-  `src/lock.ts`), held across the call and its write, so an answer
-  fetched before another write never lands after it. Under the lock,
-  code re-reads what another holder may have stored (`dailyRange()`)
-  and re-checks the deadline, since the wait may have outlasted it.
+  `src/lock.ts`), held across the call and its write for a refetch,
+  backfill and catch-up, so an answer fetched before another write
+  never lands after it. A new instrument's first chart (and spark)
+  comes before the lock, since its key is known only from the answer
+  (`addInstrument()`, `fetchInstrument()`); under the lock they re-read
+  whether another holder stored its bars meanwhile (`dailyRange()`)
+  and backfill or keep the stored history instead. Every holder
+  re-checks the deadline under the lock, since the wait may have
+  outlasted it.
 
 ## Jobs and their call budget
 
@@ -192,10 +197,12 @@ inside a call in `docs/tools.md`; rule pauses in `docs/rules.md`.
   that finds the job's last run still going is skipped (`job skipped`,
   `src/scheduler.ts`), so a source is never asked twice at once by the
   same job. What is due is read from the stored sessions and runs, so
-  a restart picks up where it was, except three marks held in memory
+  a restart picks up where it was, except four marks held in memory
   that a restart clears: refused whole histories (`refused` in
-  `src/yahoo/sync.ts`), failed backfills (`backfillMissed`) and each
-  market's check turn (`checkTurn`, both in `src/yahoo/jobs.ts`).
+  `src/yahoo/sync.ts`), failed backfills (`backfillMissed`), each
+  market's check turn (`checkTurn`) and the quote period last passed
+  (`lastSlot`, all three in `src/yahoo/jobs.ts`), so a restart can
+  repeat a quote pass within the same period.
 
 | Job | Does | Calls |
 | --- | --- | --- |

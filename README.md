@@ -44,9 +44,9 @@ holdings, orders or portfolio, and it makes no model calls.
   turns true. `GET
   /alerts` is a feed a scheduled job can poll, answering 304 when
   nothing is new.
-- **Units and staleness on every value.** Every value carries its
-  unit, currency and time, and a list of stale reasons when a source
-  failed or a sync is behind. Market hours come from the source, so
+- **Units and staleness on every quote.** Each quote carries its unit,
+  currency and times, and a list of stale reasons when a source failed
+  or a sync is behind. Market hours come from the source, so
   holidays and clock changes need no table.
 - **Free sources, each optional.** Yahoo needs no key and is always on.
   FRED, Finnhub and Massive turn on when their free key file is present.

@@ -12,7 +12,7 @@ contract in `docs/tools.md`; rules that wait on events in
 ## Keys
 
 - **Each source is on only while its key file exists**
-  (`source-finnhub.key`, `source-massive.key`); off is an answer, never
+  (`secrets/source-finnhub.key`, `secrets/source-massive.key`); off is an answer, never
   an error: `NO_DATA`, `NO_EVENTS` ("no event source") or `NO_NEWS`.
 - **Keys travel only in a header, never in a URL**: Finnhub's
   `X-Finnhub-Token`, Massive's `Authorization: Bearer`. A URL ends up
@@ -52,13 +52,17 @@ contract in `docs/tools.md`; rules that wait on events in
   minute) and 13 s for Massive (5 a minute, no rate-limit headers).
   A second client would break the source's limit.
 - **After a failure the queue backs off** (30 s, 5 minutes after a
-  429) and never retries the call. A 404, a 400 or a passed deadline
-  does not back it off (`backsOff` in `src/source.ts`). A tool's call
+  429) and never retries the call. Only "not found", "bad request"
+  and a passed deadline leave it running (`backsOff` in
+  `src/source.ts`): a 404, or Massive's 400. Finnhub answers a 400 as
+  "source error", which backs off. A tool's call
   fails at once while paused (`Paused`) and records no run, which
   would hold off the job's retry; a job waits it out.
-- **A minute tick starts no new work after its budget**
-  (`TICK_BUDGET_MS`: 45 s Finnhub, 30 s Massive), so ticks never pile
-  up; cut work goes on next tick.
+- **A minute tick starts no new instrument after its budget**
+  (`TICK_BUDGET_MS`: 45 s Finnhub, 30 s Massive), and Massive no new
+  page; work already started finishes, so a tick can run past it. A
+  tick that finds the last one still running is skipped
+  (`src/scheduler.ts`); cut work goes on next tick.
 - **A tool fetches inside its own deadline** (`researchTargets`,
   `m.callMs`): a covered share with no research yet (no good run of
   any section, `hasResearch`) gets all five sections; for the
@@ -81,8 +85,9 @@ contract in `docs/tools.md`; rules that wait on events in
   close and after-market reports). A section failed within `RETRY_MS`
   (60 minutes) waits.
 - **Each section records its own run, scoped to the instrument**, so
-  one failing section is stale alone. All sections asked are stored in
-  one write, so nothing half-fetched lands.
+  one failing section is stale alone. The sections fetched land in one
+  write, failures as their own runs; a `Paused` refusal stores the
+  sections fetched before it, and a passed deadline stores none.
 - **A Finnhub 403 or an empty answer is no data, never an error**: the
   stored rows stay and the section reads "no data in the last answer";
   with no rows stored it carries `NO_DATA` ("no data from Finnhub")
