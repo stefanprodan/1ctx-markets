@@ -9,7 +9,7 @@ import {
 import { type App, start } from "../../src/app.ts";
 import { MINUTE_MS } from "../../src/clock.ts";
 import { type Db, open } from "../../src/db/index.ts";
-import { keys, requireBearer } from "../../src/keys.ts";
+import { keys, requireAdmin, requireBearer } from "../../src/keys.ts";
 import { logger } from "../../src/log.ts";
 import type { Fetch } from "../../src/source.ts";
 import { type FakeClock, fakeClock } from "./clock.ts";
@@ -19,6 +19,7 @@ export const SECRETS = join(import.meta.dir, "..", "fixtures", "secrets");
 export type TestApp = {
   url: string;
   bearer: string;
+  admin: string;
   // every log line the app wrote
   lines: string[];
   clock: FakeClock;
@@ -45,11 +46,13 @@ export async function withApp(
   const clock = fakeClock(options.start);
   const lines: string[] = [];
   const bearer = requireBearer(store);
+  const admin = requireAdmin(store, bearer);
   const { db } = open(":memory:", clock);
   const app = start({
     hostname: "127.0.0.1",
     port: 0,
     bearer,
+    adminKey: admin,
     clock,
     log: logger(clock, store.values, (line) => lines.push(line)),
     version: "v0.0.0-test",
@@ -69,6 +72,7 @@ export async function withApp(
     await fn({
       url: `http://127.0.0.1:${app.server.port}`,
       bearer,
+      admin,
       lines,
       clock,
       db,

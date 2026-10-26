@@ -4,6 +4,7 @@
 // One Bun server; the bearer is checked before any route is looked up,
 // so an unknown path answers 401 to a caller without it, as /mcp does.
 // GET /health is the one route before it, for a service manager's probe.
+// /admin/* takes the admin key alone, which no other path takes.
 
 import { createHash, timingSafeEqual } from "node:crypto";
 import type { McpHttpHandler } from "@modelcontextprotocol/server";
@@ -46,18 +47,30 @@ export type RouterDeps = {
   research?: Handle;
   // GET /alerts, the feed a polling client reads
   alerts?: Handle;
+  // /admin/*, behind its own key
+  admin?: { key: string; handle: Handle };
   clock: Clock;
   log: Log;
 };
 
+const unauthorized = () =>
+  json({ error: "unauthorized" }, 401, { "www-authenticate": "Bearer" });
+
+const isAdmin = (path: string) =>
+  path === "/admin" || path.startsWith("/admin/");
+
 export function router(deps: RouterDeps): Handle {
   const authorized = bearerCheck(deps.bearer);
+  const admin =
+    deps.admin === undefined
+      ? null
+      : { handle: deps.admin.handle, authorized: bearerCheck(deps.admin.key) };
   const route = async (req: Request, path: string): Promise<Response> => {
-    if (!authorized(req)) {
-      return json({ error: "unauthorized" }, 401, {
-        "www-authenticate": "Bearer",
-      });
+    if (admin !== null && isAdmin(path)) {
+      if (!admin.authorized(req)) return unauthorized();
+      return admin.handle(req);
     }
+    if (!authorized(req)) return unauthorized();
     const read =
       path === "/quotes"
         ? deps.quotes

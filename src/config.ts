@@ -34,6 +34,7 @@ export const secretsDir = (config: Config): string =>
 export type Cli =
   | { kind: "run"; config: Config }
   | { kind: "service"; argv: string[] }
+  | { kind: "admin"; argv: string[] }
   | { kind: "help" }
   | { kind: "version" }
   | { kind: "error"; message: string };
@@ -45,6 +46,9 @@ export const HELP = `\x1b[1m1ctx-markets\x1b[0m - a self-hosted market data serv
   1ctx-markets service install [options] [--restart]
   1ctx-markets service status|start|stop|restart
   1ctx-markets service uninstall [--purge]
+  1ctx-markets admin [--listen <host:port>] [--data <dir>] status
+  1ctx-markets admin ... refetch [--fetch <parts>] [--sections <list>] <id>...
+  1ctx-markets admin ... delete <id>
 
 \x1b[1mService:\x1b[0m
   install                run 1ctx-markets with these options as a service
@@ -52,6 +56,16 @@ export const HELP = `\x1b[1m1ctx-markets\x1b[0m - a self-hosted market data serv
                          alive; --restart replaces one that is running
   uninstall              remove the service; --purge also removes the
                          database and the log, never secrets/
+
+\x1b[1mAdmin:\x1b[0m
+  status                 the sources, the last run of every job, the
+                         tracked count and the database size
+  refetch                ask the sources again for stored instruments;
+                         parts: bars,quotes,research,calendar,news
+  delete                 remove an instrument and all its rows
+                         The running server is called on this machine with
+                         admin.key; --listen and --data default to the
+                         installed service's, else the defaults below
 
 \x1b[1mOptions:\x1b[0m
   --listen <host:port>   bind address (default: ${DEFAULT_LISTEN})
@@ -68,6 +82,8 @@ export const HELP = `\x1b[1m1ctx-markets\x1b[0m - a self-hosted market data serv
 \x1b[1mSecrets:\x1b[0m
   bearer.key             the bearer every request carries, at least 32
                          characters; the first start writes one
+  admin.key              the key of /admin/* alone; the first start
+                         writes one
   source-<name>.key      a source's API key, which turns it on:
                          source-fred.key, source-finnhub.key or
                          source-massive.key`;
@@ -102,6 +118,7 @@ const count = (value: string): number | null =>
 
 export function parseCli(argv: string[], home: string = homedir()): Cli {
   if (argv[0] === "service") return { kind: "service", argv: argv.slice(1) };
+  if (argv[0] === "admin") return { kind: "admin", argv: argv.slice(1) };
   let listen = DEFAULT_LISTEN;
   let dataDir = defaultDataDir(home);
   let quoteEvery = DEFAULT_QUOTE_EVERY;

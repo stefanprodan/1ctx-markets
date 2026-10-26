@@ -4,4 +4,10 @@
 // The CLI-only service area: `1ctx-markets service` installs the binary
 // with the platform's service manager. It opens no database.
 
-export { runService, type ServiceDeps, ServiceError } from "./service.ts";
+export {
+  runService,
+  type ServiceDeps,
+  ServiceError,
+  serviceConfig,
+  urlOf,
+} from "./service.ts";

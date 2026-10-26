@@ -195,6 +195,8 @@ in `docs/config.md`.
 - **Instruments, bars, splits, quotes, signals and markets are never
   pruned.** An instrument that stops being tracked keeps its history;
   a read later catches it up from its last final bar, not a backfill.
+  Only the operator's delete removes one, with every row of it
+  (`docs/admin.md`).
 - **Alert ids are never reused** (`autoincrement`): `GET /alerts`
   reads the id as its cursor and reports a hole after it as a
   retention gap.

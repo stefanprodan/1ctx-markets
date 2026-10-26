@@ -5,6 +5,7 @@
 
 import type { Clock } from "../clock.ts";
 import {
+  type Backoff,
   type Fetch,
   limiter,
   type RunOptions,
@@ -76,6 +77,7 @@ export type Massive = {
   close(): void;
   // when the next waiting call may go, for a test stepping its clock
   due(): number | null;
+  backoff(): Backoff | null;
 };
 
 export type MassiveOptions = {
@@ -338,6 +340,7 @@ export function massive(options: MassiveOptions): Massive {
     within: (live) => client({ failFast: true, live }),
     close: () => calls.close(),
     due: () => calls.due(),
+    backoff: () => calls.backoff(),
   });
   return client({});
 }

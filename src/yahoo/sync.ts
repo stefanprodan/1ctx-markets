@@ -635,10 +635,12 @@ export async function catchUp(
 export function backfill(
   ctx: YahooContext,
   instrument: Instrument,
+  live: () => boolean = () => true,
 ): Promise<Written> {
   return exclusive(ctx.db, instrument.id, () => {
+    if (!live()) throw expired();
     checkSource(ctx.db, instrument);
-    return backfillHeld(ctx, instrument);
+    return backfillHeld(ctx, instrument, [], live);
   });
 }
 
@@ -649,11 +651,13 @@ async function backfillHeld(
   ctx: YahooContext,
   instrument: Instrument,
   triggers: readonly ChartAnswer[] = [],
+  live: () => boolean = () => true,
 ): Promise<Written> {
   const write = await backfillAnswer(ctx, instrument, triggers);
-  return ctx.writer.write((db) =>
-    barsAnswered(db, instrument, write(db), ctx.clock.now()),
-  );
+  return ctx.writer.write((db) => {
+    if (!live()) throw expired();
+    return barsAnswered(db, instrument, write(db), ctx.clock.now());
+  });
 }
 
 async function backfillAnswer(

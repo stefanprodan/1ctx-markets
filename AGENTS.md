@@ -69,6 +69,7 @@ src/signals/        daily, weekly, live and relative signals
 src/rules/          rule conditions, evaluation, alerts
 src/tools/          the MCP tools, GET /quotes, /research, /alerts
 src/service/        `service install|start|stop|...`: launchd, CLI only
+src/admin/          /admin/* behind its own key, and the `admin` command
 test/               one *.test.ts per area, helpers/ (fakes), fixtures/ (recordings)
 scripts/probe/      the fixture recorders, run by hand
 scripts/smoke.sh    the binary's smoke test
@@ -86,6 +87,7 @@ the same commit as the code that changes a rule.
 | Doc | Governs |
 |---|---|
 | `docs/config.md` | flags, the data directory, key files, the start log, HTTP routes, shutdown order, the build and smoke test |
+| `docs/admin.md` | the admin key, `/admin/*` (status, refetch, delete) and the `admin` command |
 | `docs/deploy.md` | the `service` command, launchd, the kill timeout, the log, staging deploys, backups and keys |
 | `docs/storage.md` | the database, migrations, the writer, instruments, times and prices, the clock, runs and staleness, tracking, retention |
 | `docs/calendars.md` | market sessions from the source, quoting and checks, bar dates and finality, weeks, wall time, crypto |

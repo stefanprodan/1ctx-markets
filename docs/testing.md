@@ -52,8 +52,8 @@ recorders under `scripts/probe/`. The clock contract is in
 
 - **Keys in tests are made up** (`FRED_KEY`, `FINNHUB_KEY`,
   `MASSIVE_KEY` in the helpers; `test/fixtures/secrets/` and
-  `test/fixtures/short/` hold test-only bearers and a made-up Finnhub
-  key file). No test reads a real key file.
+  `test/fixtures/short/` hold test-only bearers, a made-up admin
+  key and a made-up Finnhub key file). No test reads a real key file.
 
 ## No elapsed time
 

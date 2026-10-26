@@ -7,15 +7,19 @@ import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import pkg from "../package.json";
+import { AdminError, runAdmin } from "./admin/cli.ts";
 import { start } from "./app.ts";
 import { MINUTE_MS, wallClock } from "./clock.ts";
 import { dbPath, HELP, parseCli, secretsDir } from "./config.ts";
 import { open } from "./db/index.ts";
 import {
+  ADMIN_FILE,
   BEARER_FILE,
+  createAdmin,
   createBearer,
   KeyError,
   keys,
+  requireAdmin,
   requireBearer,
 } from "./keys.ts";
 import { errorFields, logger } from "./log.ts";
@@ -53,6 +57,16 @@ if (cli.kind === "service") {
   }
   process.exit(0);
 }
+if (cli.kind === "admin") {
+  try {
+    await runAdmin(cli.argv);
+  } catch (error) {
+    if (!(error instanceof AdminError)) throw error;
+    console.error(`error: ${error.message}`);
+    process.exit(1);
+  }
+  process.exit(0);
+}
 
 const config = cli.config;
 const store = keys(secretsDir(config));
@@ -60,10 +74,14 @@ const log = logger(wallClock, store.values);
 const main = log("markets");
 
 let bearer: string;
+let adminKey: string;
 let created = false;
+let adminCreated = false;
 try {
   created = createBearer(store.dir);
   bearer = requireBearer(store);
+  adminCreated = createAdmin(store.dir);
+  adminKey = requireAdmin(store, bearer);
 } catch (error) {
   if (!(error instanceof KeyError)) throw error;
   console.error(`error: ${error.message}`);
@@ -74,6 +92,11 @@ if (created) {
     path: displayPath(join(store.dir, BEARER_FILE)),
   });
 }
+if (adminCreated) {
+  main.info("admin key created", {
+    path: displayPath(join(store.dir, ADMIN_FILE)),
+  });
+}
 
 mkdirSync(config.dataDir, { recursive: true });
 const { db, migrations } = open(dbPath(config), wallClock);
@@ -82,6 +105,7 @@ const app = start({
   hostname: config.hostname,
   port: config.port,
   bearer,
+  adminKey,
   clock: wallClock,
   log,
   version: VERSION,

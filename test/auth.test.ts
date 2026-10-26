@@ -223,6 +223,7 @@ describe("key files", () => {
     const store = {
       dir: SECRETS,
       bearer: () => spaced,
+      admin: () => null,
       source: () => null,
       values: () => [spaced],
     };

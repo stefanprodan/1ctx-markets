@@ -101,12 +101,17 @@ export type RunOptions = {
   live?: () => boolean;
 };
 
+// a back-off in force: when calls go again and the phrase that started it
+export type Backoff = { until: number; after: Phrase };
+
 export type Queue = {
   run<T>(task: () => Promise<T>, options?: RunOptions): Promise<T>;
   // at shutdown: fails waiting calls, so none goes out after
   close(): void;
   // when calls waiting out a back-off resume, null with none waiting
   due(): number | null;
+  // null once it ended, whether or not a call waits
+  backoff(): Backoff | null;
 };
 
 export class QueueClosed extends Error {
@@ -213,12 +218,14 @@ export function queue(clock: Clock, concurrency: number): Queue {
       for (const w of left) w.reject(new QueueClosed());
     },
     due: () => (armed ? until : null),
+    backoff: () => (clock.now() < until ? { until, after: pausedBy } : null),
   };
 }
 
 export type Limiter = {
   run<T>(task: () => Promise<T>, options?: RunOptions): Promise<T>;
   due(): number | null;
+  backoff(): Backoff | null;
   // at shutdown: fails waiting calls, so none goes out after
   close(): void;
 };
@@ -264,6 +271,7 @@ export function limiter(clock: Clock, spacingMs: number): Limiter {
         return task();
       }, run),
     due: () => parked ?? calls.due(),
+    backoff: () => calls.backoff(),
     close() {
       closed = true;
       calls.close();

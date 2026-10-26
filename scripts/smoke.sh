@@ -2,7 +2,8 @@
 # Smoke test of the compiled binary: it refuses to start on an empty
 # bearer file, writes a bearer on a first start, answers /health
 # without it, refuses any other request without it, and answers an MCP
-# initialize with it. Each run starts
+# initialize with it; the admin key it writes beside it serves
+# `admin status` and nothing else takes it. Each run starts
 # from a fresh directory, so it migrates a new database, and removes the
 # directory on exit.
 set -euo pipefail
@@ -60,7 +61,21 @@ answer=$(curl -sf --max-time 5 "$URL/mcp" \
   -d "$INIT") || fail "initialize failed"
 grep -q '"name":"1ctx-markets"' <<<"$answer" || fail "initialize did not name the server"
 
+ADMIN=$(cat "$RUN/data/secrets/admin.key")
+[[ $ADMIN == 1ctx-markets-admin-* ]] || fail "the first start wrote no prefixed admin key"
+[[ $(stat -c %a "$RUN/data/secrets/admin.key" 2>/dev/null || stat -f %Lp "$RUN/data/secrets/admin.key") == 600 ]] ||
+  fail "the admin key file is readable by others"
+[[ $(status "$URL/admin/status" -H "authorization: Bearer $BEARER") == 401 ]] ||
+  fail "the bearer was taken on /admin/status"
+[[ $(status "$URL/quotes" -H "authorization: Bearer $ADMIN") == 401 ]] ||
+  fail "the admin key was taken on /quotes"
+"$BIN" admin --listen "127.0.0.1:$PORT" --data "$RUN/data" status >"$RUN/admin" ||
+  fail "admin status failed"
+grep -q '"version"' "$RUN/admin" || fail "admin status did not answer the version"
+grep -q "$ADMIN" "$RUN/admin" && fail "admin status printed the key"
+
 [[ -f "$RUN/data/markets.db" ]] || fail "markets.db was not created"
 grep -q "$BEARER" "$RUN/log" && fail "the bearer reached the log"
+grep -q "$ADMIN" "$RUN/log" && fail "the admin key reached the log"
 "$BIN" --version | grep -q '^v' || fail "version flag failed"
 echo "smoke ok"

@@ -545,6 +545,33 @@ export function refetch(
   });
 }
 
+// the whole history asked again, as after a parser fix
+export function backfill(
+  ctx: BvbContext,
+  instrument: Instrument,
+  live: () => boolean = () => true,
+): Promise<Written> {
+  return exclusive(ctx.db, instrument.id, async () => {
+    if (!live()) throw expired();
+    checkSource(ctx.db, instrument);
+    const { history, since } = await wholeHistory(ctx, instrument);
+    return ctx.writer.write((db) => {
+      if (!live()) throw expired();
+      checkSource(db, instrument);
+      const now = ctx.clock.now();
+      const written = storeWhole(
+        db,
+        now,
+        instrument,
+        history,
+        since,
+        ctx.rules,
+      );
+      return barsAnswered(db, instrument, written, now);
+    });
+  });
+}
+
 // a share's or bond's from its instrument page, an index's from the index
 // page; bars with no quote would answer an old price as the live one
 export async function quoteNow(
