@@ -14,12 +14,12 @@ import {
 } from "../src/rules/format.ts";
 import { countRules, readRule } from "../src/rules/store.ts";
 import { endRun, failRun, startRun } from "../src/runs.ts";
-import { SourceError } from "../src/source.ts";
+import { DeadlinePassed, SourceError } from "../src/source.ts";
 import { tools } from "../src/tools/index.ts";
 import { NO_EVENT_SOURCE } from "../src/tools/rules.ts";
 import { trackedIds } from "../src/tracking.ts";
 import { yahooJobs } from "../src/yahoo/jobs.ts";
-import { refetch } from "../src/yahoo/sync.ts";
+import { catchUp, refetch } from "../src/yahoo/sync.ts";
 import { drive, pacedOf } from "./helpers/drive.ts";
 import { EVERY_MS, type RulesTest, rulesTest } from "./helpers/rules.ts";
 import { clone, listed, type Recorded, recorded } from "./helpers/yahoo.ts";
@@ -795,6 +795,25 @@ describe("splits", () => {
       await t.quote("NVDA", { price: NVDA_PRICE / 2 });
       expect(alerts(t)).toBe(0);
     }
+  });
+
+  test("a read's split answered past its deadline pauses nothing", async () => {
+    const t = await rulesTest();
+    const level = await create(t, "NVDA", {
+      left: "price",
+      op: "<",
+      right: 200,
+    });
+    const window = await recorded("chart-nvda-5d-1d");
+    let alive = true;
+    t.charts.set("NVDA", () => {
+      alive = false;
+      return withSplit(scaled(window, 10), OCT16, 10, 1);
+    });
+    await expect(
+      catchUp(t.ctx, readInstrument(t.db, "US:NVDA")!, () => alive),
+    ).rejects.toBeInstanceOf(DeadlinePassed);
+    expect(rule(t, level.body.rule.id).paused).toBeNull();
   });
 
   test("a correction to one past bar pauses nothing and refetches no history", async () => {
