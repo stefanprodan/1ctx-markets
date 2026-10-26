@@ -40,6 +40,9 @@ export const NO_DATA = "no data from Finnhub";
 export const NOT_COVERED =
   "no data from Finnhub: it covers US-listed equities only";
 export const NO_EVENTS = "no event source";
+// beside rows Finnhub answered for another listing of the share's company
+export const OTHER_LISTING =
+  "from another listing of the company on Finnhub, without the values that depend on the listing";
 
 export const RESEARCH_KEPT_MONTHS = 24;
 export const EVENTS_KEPT_MONTHS = 24;
@@ -148,6 +151,7 @@ const upsertResearch = (
   kind: string,
   period: string,
   values: Record<string, number | null>,
+  listing: string | null,
   fetchedAt: number,
   kept: readonly string[] = [],
 ) => {
@@ -157,12 +161,14 @@ const upsertResearch = (
       ? `${c} = coalesce(excluded.${c}, research.${c})`
       : `${c} = excluded.${c}`;
   db.query(
-    `insert into research (instrument, kind, period, ${columns.join(", ")}, fetched_at)
-     values (?, ?, ?, ${columns.map(() => "?").join(", ")}, ?)
+    `insert into research (instrument, kind, period, ${columns.join(", ")},
+       listing, fetched_at)
+     values (?, ?, ?, ${columns.map(() => "?").join(", ")}, ?, ?)
      on conflict (instrument, kind, period) do update set
        ${columns.map(set).join(", ")},
+       listing = excluded.listing,
        fetched_at = excluded.fetched_at`,
-  ).run(instrument, kind, period, ...Object.values(values), fetchedAt);
+  ).run(instrument, kind, period, ...Object.values(values), listing, fetchedAt);
 };
 
 // an actual, and the surprise worked out from it, never go back to null
@@ -184,11 +190,13 @@ const METRIC_COLUMNS: Record<keyof Metric, string> = {
   beta: "beta",
 };
 
-// by fiscal quarter, so a moved date updates the event; actuals are kept
+// By fiscal quarter, so a moved date updates the event; actuals are
+// kept, but never across listings, whose figures are another currency's.
 function upsertEvents(
   db: Db,
   instrument: string,
   events: readonly CalendarEvent[],
+  listing: string | null,
   fetchedAt: number,
 ): EventKey[] {
   const before = db.query<{ seen: number | null }, [string, number, number]>(
@@ -198,18 +206,23 @@ function upsertEvents(
   const upsert = db.query(
     `insert into events (instrument, fiscal_year, fiscal_quarter, date, hour,
        eps_estimate, eps_actual, revenue_estimate, revenue_actual,
-       reported_seen_at, fetched_at)
+       reported_seen_at, listing, fetched_at)
      values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9,
-       case when ?7 is not null or ?9 is not null then ?10 end, ?10)
+       case when ?11 then ?10 end, ?12, ?10)
      on conflict (instrument, fiscal_year, fiscal_quarter) do update set
        date = excluded.date,
        hour = excluded.hour,
        eps_estimate = excluded.eps_estimate,
-       eps_actual = coalesce(excluded.eps_actual, events.eps_actual),
+       eps_actual = case when excluded.listing is events.listing
+         then coalesce(excluded.eps_actual, events.eps_actual)
+         else excluded.eps_actual end,
        revenue_estimate = excluded.revenue_estimate,
-       revenue_actual = coalesce(excluded.revenue_actual, events.revenue_actual),
+       revenue_actual = case when excluded.listing is events.listing
+         then coalesce(excluded.revenue_actual, events.revenue_actual)
+         else excluded.revenue_actual end,
        reported_seen_at = coalesce(events.reported_seen_at,
          excluded.reported_seen_at),
+       listing = excluded.listing,
        fetched_at = excluded.fetched_at`,
   );
   const reported: EventKey[] = [];
@@ -226,9 +239,10 @@ function upsertEvents(
       e.revenueEstimate,
       e.revenueActual,
       fetchedAt,
+      e.reported ? 1 : 0,
+      listing,
     );
-    const actual = e.epsActual !== null || e.revenueActual !== null;
-    if (actual && (was === null || was.seen === null)) {
+    if (e.reported && (was === null || was.seen === null)) {
       reported.push({
         instrument,
         fiscalYear: e.fiscalYear,
@@ -239,7 +253,31 @@ function upsertEvents(
   return reported;
 }
 
-// one section's answer into its rows; no data writes none
+const eventKey = (k: EventKey) =>
+  `${k.instrument}|${k.fiscalYear}|${k.fiscalQuarter}`;
+
+// an event a rule waits on stays, as retention keeps it
+function dropEvents(
+  db: Db,
+  events: readonly EventKey[],
+  held: readonly EventKey[],
+): number {
+  const keep = new Set(held.map(eventKey));
+  const del = db.query(
+    `delete from events where instrument = ? and fiscal_year = ?
+       and fiscal_quarter = ?`,
+  );
+  let n = 0;
+  for (const k of events) {
+    if (keep.has(eventKey(k))) continue;
+    n += del.run(k.instrument, k.fiscalYear, k.fiscalQuarter).changes;
+  }
+  return n;
+}
+
+// One section's answer into its rows; no data writes none. An answer
+// naming a listing replaces the kind's rows of any other, so no figure
+// of one listing is read as another's.
 function storeSection(
   db: Db,
   instrument: string,
@@ -247,23 +285,34 @@ function storeSection(
   hooks: Hooks,
 ): number {
   const { answer } = f;
-  if (answer.data === null) return 0;
+  const { listing } = answer;
+  if (answer.data === null && listing === null) return 0;
   const at = answer.fetchedAt;
+  let rows = 0;
   switch (f.section) {
     case "metric": {
-      const m = f.answer.data!;
+      db.query(
+        "delete from research where instrument = ? and kind = 'metric'",
+      ).run(instrument);
+      const m = f.answer.data;
+      if (m === null) return 0;
       const values: Record<string, number | null> = {};
       for (const k of Object.keys(METRIC_FIELDS) as (keyof Metric)[]) {
         values[METRIC_COLUMNS[k]] = m[k];
       }
-      db.query(
-        "delete from research where instrument = ? and kind = 'metric'",
-      ).run(instrument);
-      upsertResearch(db, instrument, "metric", dateOfWall(at), values, at);
+      upsertResearch(
+        db,
+        instrument,
+        "metric",
+        dateOfWall(at),
+        values,
+        listing,
+        at,
+      );
       return 1;
     }
     case "analysts":
-      for (const r of f.answer.data!) {
+      for (const r of f.answer.data ?? []) {
         upsertResearch(
           db,
           instrument,
@@ -276,12 +325,14 @@ function storeSection(
             sell: r.sell,
             strong_sell: r.strongSell,
           },
+          listing,
           at,
         );
+        rows++;
       }
-      return f.answer.data!.length;
+      break;
     case "earnings":
-      for (const r of f.answer.data!) {
+      for (const r of f.answer.data ?? []) {
         upsertResearch(
           db,
           instrument,
@@ -293,29 +344,46 @@ function storeSection(
             surprise: r.surprise,
             surprise_percent: r.surprisePercent,
           },
+          listing,
           at,
           EARNINGS_KEPT,
         );
+        rows++;
       }
-      return f.answer.data!.length;
+      break;
     case "insider":
-      for (const r of f.answer.data!) {
+      for (const r of f.answer.data ?? []) {
         upsertResearch(
           db,
           instrument,
           "insider",
           r.period,
           { insider_change: r.change, mspr: r.mspr },
+          listing,
           at,
         );
+        rows++;
       }
-      return f.answer.data!.length;
+      break;
     case "calendar": {
-      const reported = upsertEvents(db, instrument, f.answer.data!, at);
+      const events = f.answer.data ?? [];
+      const reported = upsertEvents(db, instrument, events, listing, at);
       if (reported.length > 0) hooks.reported?.(db, reported, at);
-      return f.answer.data!.length;
+      const stale = db
+        .query<EventKey, [string, string | null]>(
+          `select instrument, fiscal_year as fiscalYear,
+             fiscal_quarter as fiscalQuarter
+           from events where instrument = ? and listing is not ?`,
+        )
+        .all(instrument, listing);
+      if (stale.length > 0) dropEvents(db, stale, hooks.waited(db, at));
+      return events.length;
     }
   }
+  db.query(
+    "delete from research where instrument = ? and kind = ? and listing is not ?",
+  ).run(instrument, f.section, listing);
+  return rows;
 }
 
 function recordRun(
@@ -491,6 +559,7 @@ export function sectionState(
 
 export type ResearchRow = {
   period: string;
+  listing: string | null;
   fetchedAt: number;
 } & Record<string, number | string | null>;
 
@@ -514,7 +583,8 @@ export function readResearch(
 ): ResearchRow[] {
   return db
     .query<ResearchRow, [string, string, number]>(
-      `select period, ${KIND[kind].join(", ")}, fetched_at as fetchedAt
+      `select period, ${KIND[kind].join(", ")}, listing,
+         fetched_at as fetchedAt
        from research where instrument = ? and kind = ?
        order by period desc limit ?`,
     )
@@ -532,6 +602,7 @@ export type EventRow = {
   revenueEstimate: number | null;
   revenueActual: number | null;
   reportedSeenAt: number | null;
+  listing: string | null;
   fetchedAt: number;
 };
 
@@ -539,7 +610,7 @@ const EVENT_SELECT = `select instrument, fiscal_year as fiscalYear,
   fiscal_quarter as fiscalQuarter, date, hour, eps_estimate as epsEstimate,
   eps_actual as epsActual, revenue_estimate as revenueEstimate,
   revenue_actual as revenueActual, reported_seen_at as reportedSeenAt,
-  fetched_at as fetchedAt from events`;
+  listing, fetched_at as fetchedAt from events`;
 
 // by date, then instrument and fiscal key
 export function readEvents(
@@ -602,7 +673,8 @@ export function nextEvent(
 
 export type EventStatus = "scheduled" | "awaiting results" | "reported";
 
-// Only actuals report an event: a passed date or an amc label never do.
+// Only actuals report an event, stored or, for another listing, only
+// seen: a passed date or an amc label never do.
 export function eventStatus(
   e: Pick<EventRow, "date" | "reportedSeenAt">,
   today: string,
@@ -620,23 +692,12 @@ export function pruneResearch(
   let n = db
     .query("delete from research where kind <> 'metric' and period < ?")
     .run(cut).changes;
-  const keep = new Set(
-    held.map((k) => `${k.instrument}|${k.fiscalYear}|${k.fiscalQuarter}`),
-  );
   const old = db
     .query<EventKey, [string]>(
       `select instrument, fiscal_year as fiscalYear,
          fiscal_quarter as fiscalQuarter from events where date < ?`,
     )
     .all(monthsBack(dateOfWall(now), EVENTS_KEPT_MONTHS));
-  const del = db.query(
-    `delete from events where instrument = ? and fiscal_year = ?
-       and fiscal_quarter = ?`,
-  );
-  for (const k of old) {
-    if (keep.has(`${k.instrument}|${k.fiscalYear}|${k.fiscalQuarter}`))
-      continue;
-    n += del.run(k.instrument, k.fiscalYear, k.fiscalQuarter).changes;
-  }
+  n += dropEvents(db, old, held);
   return n;
 }

@@ -80,7 +80,7 @@ export function capNotes(notes: readonly Note[]): {
 function noCalendar(m: Markets, input: string, i: Instrument): Note | null {
   const ok = lastStarted(m.db, SOURCE, "calendar", i.id, "ok");
   if (ok !== null) {
-    // a 403 or another listing's answer; events kept from before show stale
+    // a 403 or an empty answer; events kept from before show stale
     return ok.rows === 0 ? { input, id: i.id, message: NO_DATA } : null;
   }
   const last = lastStarted(m.db, SOURCE, "calendar", i.id);

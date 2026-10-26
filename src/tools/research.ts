@@ -9,6 +9,7 @@ import {
   NO_DATA,
   NOT_COVERED,
   nextEvent,
+  OTHER_LISTING,
   type ResearchKind,
   readResearch,
   refreshResearch,
@@ -226,6 +227,10 @@ export async function researchTargets(
 
 type Values = Record<string, number | string | null>;
 
+// a share's own rows carry neither field
+const listingFields = (listing: string | null) =>
+  listing === null ? {} : { listing, note: OTHER_LISTING };
+
 const valuesOf = (kind: ResearchKind, row: Values): Values => {
   const out: Values = {};
   for (const c of kindColumns(kind)) {
@@ -257,6 +262,7 @@ function latestSection(m: Markets, instrument: Instrument, kind: ResearchKind) {
     period: row.period,
     fetched_at: iso(row.fetchedAt),
     stale: state.stale,
+    ...listingFields(row.listing),
     ...valuesOf(kind, row),
   };
 }
@@ -279,6 +285,7 @@ export function eventItem(m: Markets, instrument: Instrument, e: EventRow) {
     reported_seen_at: iso(e.reportedSeenAt),
     fetched_at: iso(e.fetchedAt),
     stale: state.stale,
+    ...listingFields(e.listing),
   };
 }
 
@@ -497,6 +504,8 @@ export async function researchAnswer(
             ...(items.length === 0 && state.noData ? { message: NO_DATA } : {}),
             fetched_at: iso(state.fetchedAt),
             stale: state.stale,
+            // a fetch replaces the kind's rows, so all are of one listing
+            ...listingFields(rows[0]?.listing ?? null),
           }),
       next: count < items.length ? cursor(items[count]!.period, asked) : null,
     }),

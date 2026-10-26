@@ -10,6 +10,7 @@ import { DAY_MS, MINUTE_MS } from "../src/clock.ts";
 import { type Db, open } from "../src/db/index.ts";
 import {
   finnhub,
+  parseAnalysts,
   parseCalendar,
   parseEarnings,
   SPACING_MS,
@@ -163,6 +164,7 @@ describe("finnhub answers", () => {
         epsActual: null,
         revenueEstimate: 111356225808,
         revenueActual: null,
+        reported: false,
       },
     ]);
   });
@@ -186,7 +188,7 @@ describe("finnhub answers", () => {
     },
   );
 
-  test("a malformed or conflicting answer is an error, another symbol's no data", async () => {
+  test("a malformed or conflicting answer is an error, mixed symbols no data", async () => {
     const nvda = async (name: string) => (await finnhubFixture(name)).body;
     expect(() => parseEarnings({ not: "a list" }, "NVDA")).toThrow(
       "malformed answer",
@@ -196,12 +198,25 @@ describe("finnhub answers", () => {
     expect(() => parseEarnings(conflicting, "NVDA")).toThrow(
       "2026-06-30 answered twice",
     );
-    const other = clone(await nvda("calendar-earnings-nvda"));
-    other.earningsCalendar[0].symbol = "AMD";
-    expect(parseCalendar(other, "NVDA")).toBeNull();
+    const none = { data: null, listing: null };
+    // the asked symbol beside another, and two others
     const row = clone(await nvda("earnings-nvda"));
     row[1].symbol = "AMD";
-    expect(parseEarnings(row, "NVDA")).toBeNull();
+    expect(parseEarnings(row, "NVDA")).toEqual(none);
+    const two = clone(await nvda("recommendation-nvda"));
+    two[0].symbol = "AMD";
+    for (const r of two.slice(1)) r.symbol = "INTC";
+    expect(parseAnalysts(two, "NVDA")).toEqual(none);
+    // a part naming no symbol is the asked one's
+    const unnamed = clone(await nvda("recommendation-nvda"));
+    for (const r of unnamed) r.symbol = "AMD";
+    delete unnamed[1].symbol;
+    expect(parseAnalysts(unnamed, "NVDA")).toEqual(none);
+    for (const odd of ["AMD US", "", "A".repeat(21), 7]) {
+      const other = clone(await nvda("calendar-earnings-nvda"));
+      other.earningsCalendar[0].symbol = odd;
+      expect(() => parseCalendar(other, "NVDA")).toThrow("malformed answer");
+    }
     const t = setup({
       route: edited("/api/v1/stock/recommendation", "NVDA", (b) => {
         b[0].buy = "41";
@@ -446,39 +461,222 @@ describe("research rows", () => {
     ).toBe(before);
   });
 
-  test("an ADR answered as its home listing is no data, the queue running on", async () => {
+  test("an ADR answered as its home listing keeps what holds for any listing", async () => {
     const t = setup();
     const tsm = share(t.db, "TSM", NOW);
     const nvda = share(t.db, "NVDA", NOW);
-    // a row kept from an earlier answer stays
-    t.db
-      .query(
-        `insert into research (instrument, kind, period, pe_ttm, fetched_at)
-         values (?, 'metric', '2026-10-01', 20, ?)`,
-      )
-      .run(tsm.id, NOW);
-    const results = await drive(t.clock, t.client, refreshResearch(t.ctx, tsm));
+    const reported: EventKey[][] = [];
+    const hooks = {
+      waited: () => [],
+      reported: (_: Db, keys: readonly EventKey[]) => {
+        reported.push([...keys]);
+      },
+    };
+    const results = await drive(
+      t.clock,
+      t.client,
+      refreshResearch(t.ctx, tsm, undefined, { hooks }),
+    );
     expect(
       results.map((r) => [r.section, r.status === "ok" ? r.rows : r.status]),
     ).toEqual([
-      ["metric", 0],
-      ["analysts", 0],
+      ["metric", 1],
+      ["analysts", 4],
       ["earnings", 0],
       ["insider", 8],
-      ["calendar", 0],
+      ["calendar", 2],
     ]);
-    expect(readResearch(t.db, tsm.id, "metric")).toMatchObject([
-      { period: "2026-10-01", pe_ttm: 20 },
-    ]);
-    expect(readResearch(t.db, tsm.id, "analysts")).toEqual([]);
+    const [metric] = readResearch(t.db, tsm.id, "metric");
+    expect(metric).toMatchObject({
+      listing: "2330.TW",
+      eps_growth_ttm_yoy: 60.55,
+      revenue_growth_ttm_yoy: 36.17,
+      net_margin_ttm: 51.53,
+      roe_ttm: 41.19,
+      current_ratio_quarterly: 2.5841,
+      debt_to_equity_quarterly: 0.1405,
+      forward_pe: null,
+      forward_peg: null,
+      pe_ttm: null,
+      ps_ttm: null,
+      pb: null,
+      dividend_yield_ttm: null,
+      beta: null,
+    });
+    const analysts = readResearch(t.db, tsm.id, "analysts");
+    expect(analysts).toHaveLength(4);
+    expect(analysts[0]).toMatchObject({
+      period: "2026-10-01",
+      listing: "2330.TW",
+      strong_buy: 12,
+      buy: 28,
+      hold: 2,
+    });
     expect(readResearch(t.db, tsm.id, "earnings")).toEqual([]);
-    expect(readResearch(t.db, tsm.id, "insider")).toHaveLength(8);
-    expect(readEvents(t.db, "2000-01-01", "2100-01-01")).toEqual([]);
-    for (const s of ["metric", "analysts", "earnings", "calendar"] as const) {
-      expect(sectionState(t.db, tsm.id, s, t.clock.now()).noData).toBe(true);
-    }
+    expect(sectionState(t.db, tsm.id, "earnings", t.clock.now()).noData).toBe(
+      true,
+    );
+    // TSM's insider answer names TSM: its own
+    const insider = readResearch(t.db, tsm.id, "insider");
+    expect(insider).toHaveLength(8);
+    expect(insider.every((r) => r.listing === null)).toBe(true);
+    const events = readEvents(t.db, "2000-01-01", "2100-01-01");
+    expect(events).toMatchObject([
+      {
+        fiscalYear: 2026,
+        fiscalQuarter: 3,
+        date: "2026-10-15",
+        hour: "bmo",
+        listing: "2330.TW",
+        epsEstimate: null,
+        epsActual: null,
+        revenueEstimate: null,
+        revenueActual: null,
+      },
+      {
+        fiscalYear: 2026,
+        fiscalQuarter: 4,
+        date: "2027-01-13",
+        listing: "2330.TW",
+        epsEstimate: null,
+        reportedSeenAt: null,
+      },
+    ]);
+    // reported from actuals it does not store
+    expect(events[0]!.reportedSeenAt).not.toBeNull();
+    expect(eventStatus(events[0]!, "2026-10-26")).toBe("reported");
+    expect(eventStatus(events[1]!, "2026-10-26")).toBe("scheduled");
+    expect(eventStatus(events[1]!, "2027-01-13")).toBe("awaiting results");
+    expect(reported).toEqual([
+      [{ instrument: tsm.id, fiscalYear: 2026, fiscalQuarter: 3 }],
+    ]);
     await drive(t.clock, t.client, refreshResearch(t.ctx, nvda, ["metric"]));
     expect(t.starts[5]! - t.starts[4]!).toBe(SPACING_MS);
+  });
+
+  test("rows of another listing replace the share's own, and the reverse", async () => {
+    let home = true;
+    // NVDA answered as if by another listing, then by its own again
+    const t = setup({
+      route: async (url) => {
+        if (!home || url.searchParams.get("symbol") !== "NVDA") return;
+        const fx = clone((await finnhubAnswer(url))!);
+        const b = fx.body;
+        const parts = Array.isArray(b) ? b : [b, ...(b.earningsCalendar ?? [])];
+        for (const part of parts) part.symbol = "NVDA.XX";
+        return fx;
+      },
+    });
+    const nvda = share(t.db, "NVDA", NOW);
+    const held: EventKey = {
+      instrument: nvda.id,
+      fiscalYear: 2026,
+      fiscalQuarter: 2,
+    };
+    const hooks = { waited: () => [held] };
+    // rows stored as the share's own, as before listings were told apart
+    const insert = t.db.query(
+      `insert into research (instrument, kind, period, eps_actual, fetched_at)
+       values (?, 'earnings', ?, 100, ?)`,
+    );
+    insert.run(nvda.id, "2025-03-31", NOW);
+    t.db
+      .query(
+        `insert into research (instrument, kind, period, buy, fetched_at)
+         values (?, 'analysts', '2025-01-01', 9, ?)`,
+      )
+      .run(nvda.id, NOW);
+    const event = t.db.query(
+      `insert into events (instrument, fiscal_year, fiscal_quarter, date, hour,
+         eps_actual, reported_seen_at, fetched_at)
+       values (?, ?, ?, ?, '', 1, ?, ?)`,
+    );
+    event.run(nvda.id, 2026, 1, "2026-05-20", NOW, NOW);
+    event.run(nvda.id, 2026, 2, "2026-08-20", NOW, NOW);
+    const all = ["metric", "analysts", "earnings", "calendar"] as const;
+    await drive(
+      t.clock,
+      t.client,
+      refreshResearch(t.ctx, nvda, all, { hooks }),
+    );
+    const listings = (kind: "metric" | "analysts" | "earnings") =>
+      readResearch(t.db, nvda.id, kind).map((r) => r.listing);
+    expect(listings("metric")).toEqual(["NVDA.XX"]);
+    expect(listings("analysts")).toEqual(Array(4).fill("NVDA.XX"));
+    expect(listings("earnings")).toEqual([]);
+    const events = () =>
+      readEvents(t.db, "2000-01-01", "2100-01-01").map((e) => ({
+        q: `${e.fiscalYear} Q${e.fiscalQuarter}`,
+        listing: e.listing,
+        epsActual: e.epsActual,
+      }));
+    // the waited event stays as it was
+    expect(events()).toEqual([
+      { q: "2026 Q2", listing: null, epsActual: 1 },
+      { q: "2027 Q3", listing: "NVDA.XX", epsActual: null },
+    ]);
+    home = false;
+    await drive(
+      t.clock,
+      t.client,
+      refreshResearch(t.ctx, nvda, all, { hooks }),
+    );
+    expect(listings("metric")).toEqual([null]);
+    expect(listings("analysts")).toEqual(Array(4).fill(null));
+    expect(listings("earnings")).toEqual(Array(3).fill(null));
+    expect(events()).toEqual([
+      { q: "2026 Q2", listing: null, epsActual: 1 },
+      { q: "2027 Q3", listing: null, epsActual: null },
+    ]);
+  });
+
+  test("the share's own actuals replace an event of another listing", async () => {
+    const t = setup({
+      route: edited("/api/v1/calendar/earnings", "NVDA", (b) => {
+        for (const r of b.earningsCalendar) {
+          r.epsActual = 1.5;
+          r.revenueActual = 1e10;
+        }
+      }),
+    });
+    const nvda = share(t.db, "NVDA", NOW);
+    t.db
+      .query(
+        `insert into events (instrument, fiscal_year, fiscal_quarter, date,
+           hour, reported_seen_at, listing, fetched_at)
+         values (?, 2027, 3, '2026-11-17', '', ?, 'NVDA.XX', ?)`,
+      )
+      .run(nvda.id, NOW, NOW);
+    await drive(t.clock, t.client, refreshResearch(t.ctx, nvda, ["calendar"]));
+    expect(readEvents(t.db, "2000-01-01", "2100-01-01")).toMatchObject([
+      {
+        fiscalYear: 2027,
+        fiscalQuarter: 3,
+        listing: null,
+        epsActual: 1.5,
+        revenueActual: 1e10,
+        reportedSeenAt: NOW,
+      },
+    ]);
+  });
+
+  test("a symbol of null is a malformed answer", () => {
+    expect(() =>
+      parseAnalysts(
+        [
+          {
+            symbol: null,
+            period: "2026-10-01",
+            strongBuy: 1,
+            buy: 1,
+            hold: 0,
+            sell: 0,
+            strongSell: 0,
+          },
+        ],
+        "NVDA",
+      ),
+    ).toThrow("malformed answer");
   });
 
   test("a later answer leaving out an earnings actual keeps it", async () => {
