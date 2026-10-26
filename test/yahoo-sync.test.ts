@@ -162,7 +162,7 @@ describe("daily bars from a chart answer", () => {
     expect(bars[3]).toMatchObject({ close: 103.2699966430664, final: true });
   });
 
-  test("a trailing row is its session date's bar when no grid row has it", async () => {
+  test("an FX pair's trailing row is its session date's bar when no grid row has it", async () => {
     // EURRON=X on a Monday: grid rows to Friday, then the live minute
     const a = await answer("chart-eurron-x-5d-1d");
     const bars = dailyBars(a, a.session);
@@ -180,6 +180,9 @@ describe("daily bars from a chart answer", () => {
       low: 5.343299865722656,
       close: 5.345900058746338,
     });
+  });
+
+  test("a trailing row of any other type never makes a bar of its own", async () => {
     // a Sunday evening trade in CL=F's Sunday session, which has no
     // regular row yet
     const cl = await answer("chart-cl-f-5d-1d", (r) => {
@@ -187,11 +190,7 @@ describe("daily bars from a chart answer", () => {
       r.meta.regularMarketTime = at;
       appendRow(r, at, [103, 104, 102, 103.5, 10]);
     });
-    expect(dailyBars(cl, cl.session).at(-1)).toMatchObject({
-      date: "2026-10-25",
-      close: 103.5,
-      final: false,
-    });
+    expect(dates(dailyBars(cl, cl.session))).not.toContain("2026-10-25");
   });
 
   test("a trailing row off its session's date never makes a bar", async () => {

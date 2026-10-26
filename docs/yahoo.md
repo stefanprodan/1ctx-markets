@@ -121,8 +121,10 @@ inside a call in `docs/tools.md`; rule pauses in `docs/rules.md`.
   (`read()` in `src/yahoo/sync.ts`): a row whose local time of day
   differs from the previous row's. On the answer's session date it
   merges into that date's regular bar, a closing auction after the end
-  included, or is that date's bar when no grid row has it (an FX pair's
-  daily chart has none for today); it is dropped otherwise: EURUSD=X
+  included. With no grid row of that date it is the date's bar only for
+  a `CURRENCY`, whose daily answer stamps today's row at the live
+  minute; CL=F's Sunday evening trades share their Sunday session's
+  date but are Monday's bar. Off that date it is dropped: EURUSD=X
   traded on Sunday while its session was Friday's. A row with a null
   close is no bar.
 - **Each write reconciles the answer's span.** Stored daily bars inside

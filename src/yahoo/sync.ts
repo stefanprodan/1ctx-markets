@@ -78,9 +78,8 @@ type Read = {
   days: Set<string>;
 };
 
-// a trailing off-grid row counts only on the session's date, as its bar when
-// no grid row has it (FX has none for today): EURUSD=X trades on Sunday
-// while its session is Friday's
+// a trailing off-grid row counts only on the session's date: EURUSD=X
+// trades on Sunday while its session is Friday's
 function read(answer: ChartAnswer, latest: Session | null): Read {
   const zone = answer.session.zone;
   const rows = answer.rows;
@@ -107,12 +106,19 @@ function read(answer: ChartAnswer, latest: Session | null): Read {
   }
   if (trailing !== null && trailing.close !== null) {
     const date = barDate(zone, trailing.at);
-    if (date === sessionDate(answer.session)) {
+    if (
+      date === sessionDate(answer.session) &&
+      (byDate.has(date) || ownsToday(answer.type))
+    ) {
       add(byDate, date, trailing, latest);
     }
   }
   return { bars: [...byDate.values()], days };
 }
+
+// FX answers stamp today's row at the live minute; CL=F's Sunday evening
+// trades belong to Monday's bar, though its Sunday session has their date
+const ownsToday = (type: string) => type.toUpperCase() === "CURRENCY";
 
 function add(
   byDate: Map<string, Bar>,
