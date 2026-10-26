@@ -58,8 +58,7 @@ holdings, orders or portfolio, and it makes no model calls.
 
 ## Quick Start
 
-You need [Bun](https://bun.sh) at the version in `.bun-version`, and
-`openssl` to make the bearer key.
+You need [Bun](https://bun.sh) at the version in `.bun-version`.
 
 Clone the repository and install the build dependencies:
 
@@ -69,20 +68,13 @@ cd 1ctx-markets
 bun install --frozen-lockfile --ignore-scripts
 ```
 
-Create the bearer key every request carries (at least 32 characters):
-
-```sh
-mkdir -p ~/.1ctx-markets/secrets
-openssl rand -hex 32 > ~/.1ctx-markets/secrets/bearer.key
-chmod 600 ~/.1ctx-markets/secrets/bearer.key
-```
-
 Optionally, add free API keys to turn on more sources: sign up for
 [FRED](https://fred.stlouisfed.org/docs/api/api_key.html),
 [Finnhub](https://finnhub.io/register) or
 [Massive](https://massive.com). Each file holds the bare key:
 
 ```sh
+mkdir -p ~/.1ctx-markets/secrets
 printf '%s' '<your FRED key>' > ~/.1ctx-markets/secrets/source-fred.key
 printf '%s' '<your Finnhub key>' > ~/.1ctx-markets/secrets/source-finnhub.key
 printf '%s' '<your Massive key>' > ~/.1ctx-markets/secrets/source-massive.key
@@ -99,6 +91,10 @@ make start
 make build
 ./bin/1ctx-markets
 ```
+
+The first start writes the bearer key every request carries to
+`~/.1ctx-markets/secrets/bearer.key`, readable only by you; it starts
+with `1ctx-markets-`, and an existing key is kept.
 
 The server listens on `127.0.0.1:11237`, serves MCP at `/mcp`, and
 keeps `markets.db` in `~/.1ctx-markets`. `--listen`, `--data`,

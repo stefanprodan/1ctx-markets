@@ -5,12 +5,19 @@
 
 import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
+import { join } from "node:path";
 import pkg from "../package.json";
 import { start } from "./app.ts";
 import { MINUTE_MS, wallClock } from "./clock.ts";
 import { dbPath, HELP, parseCli, secretsDir } from "./config.ts";
 import { open } from "./db/index.ts";
-import { KeyError, keys, requireBearer } from "./keys.ts";
+import {
+  BEARER_FILE,
+  createBearer,
+  KeyError,
+  keys,
+  requireBearer,
+} from "./keys.ts";
 import { errorFields, logger } from "./log.ts";
 
 const buildVersion = process.env.MARKETS_BUILD_VERSION;
@@ -42,12 +49,19 @@ const log = logger(wallClock, store.values);
 const main = log("markets");
 
 let bearer: string;
+let created = false;
 try {
+  created = createBearer(store.dir);
   bearer = requireBearer(store);
 } catch (error) {
   if (!(error instanceof KeyError)) throw error;
   console.error(`error: ${error.message}`);
   process.exit(1);
+}
+if (created) {
+  main.info("bearer key created", {
+    path: displayPath(join(store.dir, BEARER_FILE)),
+  });
 }
 
 mkdirSync(config.dataDir, { recursive: true });

@@ -2,13 +2,29 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   Client,
   StreamableHTTPClientTransport,
 } from "@modelcontextprotocol/client";
 import { router } from "../src/http.ts";
-import { KeyError, keys, requireBearer } from "../src/keys.ts";
+import {
+  BEARER_FILE,
+  BEARER_PREFIX,
+  createBearer,
+  KeyError,
+  keys,
+  requireBearer,
+} from "../src/keys.ts";
 import { errorFields, format, logger, MASK } from "../src/log.ts";
 import { SECRETS, withApp } from "./helpers/app.ts";
 import { fakeClock } from "./helpers/clock.ts";
@@ -188,6 +204,50 @@ describe("key files", () => {
     expect(() => requireBearer({ ...store, bearer: () => accented })).toThrow(
       "printable ASCII",
     );
+  });
+
+  test("a first start writes a prefixed bearer only the owner reads", () => {
+    const dir = join(mkdtempSync(join(tmpdir(), "bearer-")), "secrets");
+    expect(createBearer(dir)).toBe(true);
+    const path = join(dir, BEARER_FILE);
+    const value = readFileSync(path, "utf8");
+    expect(value).toMatch(/^1ctx-markets-[A-Za-z0-9_-]{43}$/);
+    expect(statSync(path).mode & 0o777).toBe(0o600);
+    expect(statSync(dir).mode & 0o777).toBe(0o700);
+    expect(requireBearer(keys(dir))).toBe(value);
+
+    expect(createBearer(dir)).toBe(false);
+    expect(readFileSync(path, "utf8")).toBe(value);
+    const other = join(mkdtempSync(join(tmpdir(), "bearer-")), "secrets");
+    createBearer(other);
+    expect(readFileSync(join(other, BEARER_FILE), "utf8")).not.toBe(value);
+    expect(value.startsWith(BEARER_PREFIX)).toBe(true);
+  });
+
+  test("an existing bearer file is never replaced, even an empty one", () => {
+    const dir = mkdtempSync(join(tmpdir(), "bearer-"));
+    writeFileSync(join(dir, BEARER_FILE), "");
+    expect(createBearer(dir)).toBe(false);
+    expect(readFileSync(join(dir, BEARER_FILE), "utf8")).toBe("");
+    expect(() => requireBearer(keys(dir))).toThrow("remove it and start again");
+
+    const kept = "an-older-bearer-0123456789abcdef0123456789";
+    writeFileSync(join(dir, BEARER_FILE), kept);
+    expect(createBearer(dir)).toBe(false);
+    expect(requireBearer(keys(dir))).toBe(kept);
+  });
+
+  test("a bearer that cannot be written stops the start naming the file", () => {
+    const root = mkdtempSync(join(tmpdir(), "bearer-"));
+    const dir = join(root, "secrets");
+    mkdirSync(dir);
+    chmodSync(dir, 0o500);
+    try {
+      expect(() => createBearer(dir)).toThrow(KeyError);
+      expect(() => createBearer(dir)).toThrow(join(dir, BEARER_FILE));
+    } finally {
+      chmodSync(dir, 0o700);
+    }
   });
 
   test("a source key is read by name and a bad name is refused", () => {
