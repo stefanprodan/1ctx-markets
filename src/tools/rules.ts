@@ -254,7 +254,7 @@ async function create(
         message: `${company.id}: ${state.error.message}`,
       });
     }
-    const event = nextEvent(m.db, company, m.clock.now());
+    const event = nextEvent(m.db, company, m.clock.now(), true);
     if (event === null) {
       return errorResult({
         error: "no_event",

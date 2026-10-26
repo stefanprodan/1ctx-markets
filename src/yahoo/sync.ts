@@ -271,13 +271,17 @@ function startsShort(answer: ChartAnswer, since: string): boolean {
 const cutShort = () =>
   new SourceError("malformed answer", "a history cut short");
 
-// a stored final close moved by more than this was rescaled, not corrected
-const RESCALE = 0.01;
+// a shared ratio this far from 1 is a rescale, not numerical noise
+const RESCALE = 0.001;
+// ratios this close to each other are one ratio
+const SAME_RATIO = 0.0001;
+// fewer days moved by one ratio are corrections
+const RESCALE_DAYS = 3;
 
-// The oldest stored final day the answer prices again moved like a
-// split, though the answer has none: past prices adjusted in place.
-// A correction moves a recent day; an adjustment moves every day
-// before its date, so the oldest one shows it.
+// Stored final days the answer prices again, moved by one ratio though
+// the answer has no split: past prices adjusted in place. An adjustment
+// moves every day before its date, so the oldest days show it; a run of
+// unmoved days means none came before them.
 function rescaledPast(
   db: Db,
   instrument: Instrument,
@@ -287,11 +291,18 @@ function rescaledPast(
     `select close from bars where instrument = ? and interval = '1d'
      and date = ? and final = 1`,
   );
+  let ratio = 0;
+  let run = 0;
   for (const b of [...bars].sort((x, y) => (x.date < y.date ? -1 : 1))) {
     const s = stored.get(instrument.id, b.date);
-    if (s !== null) {
-      return s.close > 0 && Math.abs(b.close / s.close - 1) > RESCALE;
+    if (s === null || s.close <= 0) continue;
+    const r = b.close / s.close;
+    if (run > 0 && Math.abs(r / ratio - 1) <= SAME_RATIO) run++;
+    else {
+      ratio = r;
+      run = 1;
     }
+    if (run >= RESCALE_DAYS) return Math.abs(ratio - 1) > RESCALE;
   }
   return false;
 }
@@ -299,11 +310,11 @@ function rescaledPast(
 // Writes one chart answer's session, bars and weeks, inside a writer
 // transaction. A whole history rewrites every daily bar, so none keeps
 // a scale from before a split, unless it starts or stops well short of
-// the stored one, or applies a split without covering every stored day;
-// then nothing is written, the splits stay unapplied, and the next run
-// asks again. Either answer drops the stored days inside its own span
-// that the source no longer prices. Rescaled says a new split was
-// applied or past prices were adjusted.
+// the stored one, or applies a split or a rescale without covering every
+// stored day; then nothing is written, the splits stay unapplied, and
+// the next run asks again. Either answer drops the stored days inside
+// its own span that the source no longer prices. Rescaled says a new
+// split was applied or past prices were adjusted.
 function storeBars(
   db: Db,
   now: number,
@@ -318,6 +329,7 @@ function storeBars(
     const kept = bars.filter((b) => b.date >= whole.since);
     const span = [...days].filter((d) => d >= whole.since).sort();
     const splits = unapplied(db, instrument, whole.splits);
+    const rescaled = splits.length > 0 || rescaledPast(db, instrument, kept);
     const range = dailyRange(db, instrument.id);
     if (range === null) {
       if (startsShort(answer, whole.since)) throw cutShort();
@@ -330,13 +342,11 @@ function storeBars(
         (first > addDays(whole.since, SHORT_HISTORY_DAYS) &&
           range.first < addDays(first, -SHORT_HISTORY_DAYS)) ||
         last < addDays(range.last, -SHORT_HISTORY_DAYS) ||
-        (splits.length > 0 &&
-          (span[0]! > range.first || span.at(-1)! < range.last))
+        (rescaled && (span[0]! > range.first || span.at(-1)! < range.last))
       ) {
         throw cutShort();
       }
     }
-    const rescaled = splits.length > 0 || rescaledPast(db, instrument, kept);
     const keep = new Set(kept.map((b) => b.date));
     const deleted =
       span.length === 0
@@ -351,7 +361,6 @@ function storeBars(
       rescaled,
     };
   }
-  const rescaled = rescaledPast(db, instrument, bars);
   const written = upsertBars(db, instrument.id, "1d", bars, answer.fetchedAt);
   const span = [...days].sort();
   let deleted: string | null = null;
@@ -363,7 +372,8 @@ function storeBars(
   return {
     rows: written.rows,
     changedFrom: earliest(deleted, written.changedFrom),
-    rescaled,
+    // a window is stored only when refetchAnswer found no rescale in it
+    rescaled: false,
   };
 }
 
@@ -570,9 +580,10 @@ async function backfillAnswer(
 }
 
 // The last 30 days, or from the last final bar after a longer gap. A
-// split not applied yet, or applied with another ratio, refetches the
-// whole history once; one already applied, still inside the window for
-// a month, does nothing more.
+// split not applied yet, or applied with another ratio, or past prices
+// rescaled with no split, refetches the whole history once, so no
+// stored day keeps the old scale; a split already applied, still
+// inside the window for a month, does nothing more.
 export function refetch(
   ctx: YahooContext,
   instrument: Instrument,
@@ -602,7 +613,10 @@ async function refetchAnswer(
   );
   const answer = await ctx.yahoo.chart(instrument.sourceSymbol, from, now);
   checkAnswer(instrument, answer);
-  if (unapplied(db, instrument, [answer]).length > 0) {
+  if (
+    unapplied(db, instrument, [answer]).length > 0 ||
+    rescaledPast(db, instrument, read(answer, null).bars)
+  ) {
     return backfillAnswer(ctx, instrument, [answer]);
   }
   return (db) =>

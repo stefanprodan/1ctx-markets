@@ -581,21 +581,29 @@ export function readEvent(db: Db, key: EventKey): EventRow | null {
 export const AWAITING_DAYS = 7;
 
 // The instrument's earliest event dated from its exchange's today on,
-// or one of the last week still awaiting its results.
+// or one of the last week still awaiting its results; unreported skips
+// any whose actuals were seen, which a gate waiting on it would pass.
 export function nextEvent(
   db: Db,
   instrument: Pick<Instrument, "id" | "zone">,
   now: number,
+  unreported = false,
 ): EventRow | null {
   const today = localDate(instrument.zone, now);
   return (
     db
-      .query<EventRow, [string, string, string]>(
+      .query<EventRow, [string, string, string, number]>(
         `${EVENT_SELECT} where instrument = ?1
            and (date >= ?2 or (reported_seen_at is null and date >= ?3))
+           and (?4 = 0 or reported_seen_at is null)
          order by date limit 1`,
       )
-      .get(instrument.id, today, addDays(today, -AWAITING_DAYS)) ?? null
+      .get(
+        instrument.id,
+        today,
+        addDays(today, -AWAITING_DAYS),
+        unreported ? 1 : 0,
+      ) ?? null
   );
 }
 

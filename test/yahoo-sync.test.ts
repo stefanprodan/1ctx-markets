@@ -625,8 +625,9 @@ describe("a split's whole history", () => {
     const { db, ctx, f, instrument } = await stored([
       withSplit(window, OCT16, 2, 1),
       withSplit(scaled(history, 2), OCT16, 2, 1),
-      withSplit(window, OCT16, 2, 1),
-      withSplit(window, OCT16, 3, 1),
+      // windows priced on the scale of the split they carry
+      withSplit(scaled(window, 2), OCT16, 2, 1),
+      withSplit(scaled(window, 3), OCT16, 3, 1),
       withSplit(scaled(history, 3), OCT16, 3, 1),
     ]);
     await refetch(ctx, instrument);

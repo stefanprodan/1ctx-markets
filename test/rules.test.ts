@@ -7,7 +7,11 @@ import { refreshResearch } from "../src/finnhub/store.ts";
 import { readInstrument } from "../src/instruments.ts";
 import { silent } from "../src/log.ts";
 import { WAITING } from "../src/rules/evaluate.ts";
-import { FIELD_NAMES } from "../src/rules/format.ts";
+import {
+  FIELD_NAMES,
+  NO_RETURN_QUOTE,
+  UNKNOWN_UNIT,
+} from "../src/rules/format.ts";
 import { countRules, readRule } from "../src/rules/store.ts";
 import { endRun, failRun, startRun } from "../src/runs.ts";
 import { SourceError } from "../src/source.ts";
@@ -145,7 +149,10 @@ describe("the rule format", () => {
   test("refuses what only the resolved instruments tell, storing no rule", async () => {
     const t = await rulesTest({
       fred: true,
-      charts: { "^VIX": listed(await recorded("chart-vix-5d-1d")) },
+      charts: {
+        "^VIX": listed(await recorded("chart-vix-5d-1d")),
+        "^TNX": listed(await recorded("chart-tnx-5d-1d")),
+      },
     });
     const bad: [string, unknown, string][] = [
       [
@@ -161,7 +168,35 @@ describe("the rule format", () => {
       [
         "NVDA",
         { left: "price", op: ">", right: { field: "price", symbol: "^VIX" } },
-        "both sides need the same unit",
+        UNKNOWN_UNIT,
+      ],
+      // index points against a yield, both in a unit Yahoo leaves unknown
+      [
+        "^VIX",
+        { left: "price", op: ">", right: { field: "price", symbol: "^TNX" } },
+        UNKNOWN_UNIT,
+      ],
+      [
+        "NVDA",
+        {
+          left: { field: "relativeReturn1m", benchmark: "FRED:DCOILWTICO" },
+          op: "<",
+          right: -5,
+        },
+        NO_RETURN_QUOTE,
+      ],
+      [
+        "NVDA",
+        {
+          left: {
+            field: "relativeReturn3m",
+            symbol: "FRED:DGS10",
+            benchmark: "^GSPC",
+          },
+          op: "<",
+          right: -5,
+        },
+        NO_RETURN_QUOTE,
       ],
       [
         "FRED:DGS10",
@@ -187,6 +222,17 @@ describe("the rule format", () => {
       right: { field: "drawdown", symbol: "FRED:DGS10" },
     });
     expect(ok.error).toBe(false);
+    // an unknown unit against its own values, or across in a known unit
+    for (const condition of [
+      { left: "price", op: ">", right: "sma50" },
+      {
+        left: "changePct",
+        op: ">",
+        right: { field: "changePct", symbol: "^TNX" },
+      },
+    ]) {
+      expect((await create(t, "^VIX", condition)).error).toBe(false);
+    }
   });
 
   test("the tool's description names every field", async () => {
@@ -463,6 +509,40 @@ describe("the earnings gate", () => {
     });
   });
 
+  test("binds the next event not yet reported, never one reported today", async () => {
+    const t = await rulesTest({ finnhub: true });
+    // today's quarter reported at the close, the next one still to come
+    t.calendar.edit = (fx) => {
+      const out = clone(fx);
+      const next = out.body.earningsCalendar[0];
+      out.body.earningsCalendar.unshift({
+        ...next,
+        date: "2026-10-25",
+        quarter: 2,
+        epsActual: 2.61,
+        revenueActual: 110e9,
+      });
+      return out;
+    };
+    const r = await create(t, "NVDA", {
+      afterEarnings: "NVDA",
+      left: "changePct",
+      op: "<",
+      right: -5,
+    });
+    expect(r.error).toBe(false);
+    expect(r.body.rule.condition.afterEarnings).toEqual({
+      symbol: "US:NVDA",
+      fiscalYear: 2027,
+      fiscalQuarter: 3,
+    });
+    // a dip traded after today's actuals waits for the next quarter
+    await t.clock.advance(10 * 60_000);
+    await t.quote("NVDA", { price: 150, time: t.clock.now() - 60_000 });
+    expect(rule(t, r.body.rule.id).lastResult).toBe("false");
+    expect(alerts(t)).toBe(0);
+  });
+
   test("its event is waited on while the rule exists", async () => {
     const t = await rulesTest({ finnhub: true });
     const r = await create(t, "NVDA", {
@@ -640,13 +720,72 @@ describe("splits", () => {
     expect(alerts(t)).toBe(1);
   });
 
-  test("past prices adjusted with no split pause them too", async () => {
+  test("past prices adjusted with no split refetch the history and pause them too", async () => {
     const t = await rulesTest();
     const ids = await nvdaRules(t);
+    const deep = await create(t, "NVDA", {
+      left: "drawdown",
+      op: "<",
+      right: -50,
+    });
     const window = await recorded("chart-nvda-5d-1d");
-    t.charts.set("NVDA", () => scaled(window, 2));
+    const history = listed(await recorded("chart-nvda-5y-1d"));
+    const answers = [scaled(window, 2), scaled(history, 2)];
+    t.charts.set("NVDA", () => answers.shift()!);
     await refetch(t.ctx, readInstrument(t.db, "US:NVDA")!);
+    expect(answers).toHaveLength(0);
     expect(pausedOf(t, ids)).toMatchObject({ price: "split", rsi: null });
+    // every stored day on the new scale: a halved price is no deep drawdown
+    await pass(t, "ok", "bars");
+    await t.quote("NVDA", {
+      price: 105.48,
+      previousClose: 106.105,
+      dayHigh: 106.925,
+      dayLow: 105.09,
+    });
+    const live = t.db
+      .query(
+        "select drawdown from signals where instrument = 'US:NVDA' and kind = 'live' and interval = '1d'",
+      )
+      .get() as { drawdown: number };
+    expect(live.drawdown).toBeCloseTo(-13.32, 1);
+    expect(rule(t, deep.body.rule.id)).toMatchObject({
+      paused: null,
+      lastResult: "false",
+    });
+    expect(alerts(t)).toBe(0);
+  });
+
+  test("a correction to one past bar pauses nothing and refetches no history", async () => {
+    const t = await rulesTest();
+    const ids = await nvdaRules(t);
+    const window = clone(await recorded("chart-nvda-5d-1d"));
+    const closes = window.body.chart.result[0].indicators.quote[0].close;
+    closes[0] = closes[0] * 0.9;
+    const before = t.calls.length;
+    t.charts.set("NVDA", () => window);
+    await refetch(t.ctx, readInstrument(t.db, "US:NVDA")!);
+    expect(t.calls.length - before).toBe(1);
+    expect(pausedOf(t, ids)).toMatchObject({ price: null, average: null });
+  });
+
+  test("a rescale of half a percent pauses price levels", async () => {
+    const t = await rulesTest();
+    const level = await create(t, "NVDA", {
+      left: "price",
+      op: "<",
+      right: 210.5,
+    });
+    const window = await recorded("chart-nvda-5d-1d");
+    const history = listed(await recorded("chart-nvda-5y-1d"));
+    const answers = [scaled(window, 1.005), scaled(history, 1.005)];
+    t.charts.set("NVDA", () => answers.shift()!);
+    await refetch(t.ctx, readInstrument(t.db, "US:NVDA")!);
+    expect(answers).toHaveLength(0);
+    expect(rule(t, level.body.rule.id).paused).toBe("split");
+    await pass(t, "ok", "bars");
+    await t.quote("NVDA", { price: NVDA_PRICE / 1.005 });
+    expect(alerts(t)).toBe(0);
   });
 
   test("TLV's bonus issue pauses its price levels", async () => {

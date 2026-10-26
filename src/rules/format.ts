@@ -452,6 +452,17 @@ export function isLive(o: Operand, i: Pick<Instrument, "source">): boolean {
   return def.from !== "quote" || def.live;
 }
 
+// a price level in a unit the source does not name, such as an index's
+// points or a yield's percent
+const unknownUnit = (o: Operand, i: Instrument): boolean =>
+  FIELDS[o.field]!.unit === PRICE_LEVEL && i.unit === "unknown";
+
+export const UNKNOWN_UNIT =
+  "comparing different instruments needs a known shared unit";
+
+export const NO_RETURN_QUOTE =
+  "relative return needs live quotes for the instrument and its benchmark";
+
 const unitOf = (o: Operand, i: Instrument): string => {
   const unit = FIELDS[o.field]!.unit;
   if (unit !== PRICE_LEVEL) return unit;
@@ -459,8 +470,9 @@ const unitOf = (o: Operand, i: Instrument): string => {
 };
 
 // What only the resolved instruments tell: at most four of them, no
-// quote field of a series with no quotes, a live value in every
-// comparison, and the same unit on both sides of one.
+// quote field of a series with no quotes, no relative return on one, a
+// live value in every comparison, and the same known unit on both sides
+// of one across instruments.
 export function checkBound(
   c: Condition,
   own: string,
@@ -487,7 +499,13 @@ export function checkBound(
           `${at}: ${i.id} is a series with no quote; read it by a signal such as sma50`,
         );
       }
-      if (o.benchmark !== undefined) get(o.benchmark);
+      if (FIELDS[o.field]!.from === "relative") {
+        const b = get(o.benchmark!);
+        // a series' return never moves with a live price
+        if (!hasQuote(i) || !hasQuote(b)) {
+          throw new RuleError(`${at}: ${NO_RETURN_QUOTE}`);
+        }
+      }
     }
     if (!operands(cmp).some((o) => isLive(o, get(o.symbol)))) {
       throw new RuleError(
@@ -495,8 +513,16 @@ export function checkBound(
       );
     }
     if (typeof cmp.right !== "number") {
-      const l = unitOf(cmp.left, get(cmp.left.symbol));
-      const r = unitOf(cmp.right, get(cmp.right.symbol));
+      const li = get(cmp.left.symbol);
+      const ri = get(cmp.right.symbol);
+      if (
+        li.id !== ri.id &&
+        (unknownUnit(cmp.left, li) || unknownUnit(cmp.right, ri))
+      ) {
+        throw new RuleError(`${at}: ${UNKNOWN_UNIT}`);
+      }
+      const l = unitOf(cmp.left, li);
+      const r = unitOf(cmp.right, ri);
       if (l !== r) {
         throw new RuleError(
           `${at} compares ${cmp.left.field} in ${l} with ${cmp.right.field} in ${r}; both sides need the same unit`,
