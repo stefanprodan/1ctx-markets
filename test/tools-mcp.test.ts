@@ -63,7 +63,7 @@ const yahooApp = async (
 };
 
 describe("the tool list", () => {
-  test("names the seven tools, each short and refusing other arguments", () =>
+  test("names the eight tools, each short and refusing other arguments", () =>
     withApp(async (t) => {
       const client = await mcpClient(t);
       const { tools } = await client.listTools();
@@ -76,6 +76,7 @@ describe("the tool list", () => {
         "screen",
         "research",
         "events",
+        "rules",
       ]);
       // an agent learns the fields from the description alone
       const screen = tools.find((x) => x.name === "screen")!;
@@ -86,7 +87,8 @@ describe("the tool list", () => {
         // 1ctx cuts a description at 1,024
         expect(tool.description!.length).toBeLessThan(1024);
         expect(tool.inputSchema.additionalProperties).toBe(false);
-        expect(tool.annotations?.readOnlyHint).toBe(true);
+        // rules is the one tool that changes what a caller sees
+        expect(tool.annotations?.readOnlyHint).toBe(tool.name !== "rules");
       }
     }));
 });
@@ -710,5 +712,36 @@ describe("GET /quotes", () => {
         expect(((await res.json()) as any).error).toBe("bad_arguments");
       }
       expect(s.calls.urls).toHaveLength(0);
+    }));
+});
+
+describe("rules", () => {
+  test("a rule made over MCP fires into GET /alerts and follows the bar job", () =>
+    yahooApp(async (t) => {
+      const made = await call(t, "rules", {
+        action: "create",
+        symbol: "NVDA",
+        condition: { left: "price", op: "<", right: 211 },
+        note: "below 211",
+      });
+      expect(made.isError).toBe(false);
+      expect(made.body.evaluation.result).toBe("true");
+      expect(made.body.alert).toMatchObject({ id: 1, note: "below 211" });
+      const res = await fetch(`${t.url}/alerts`, {
+        headers: { authorization: `Bearer ${t.bearer}` },
+      });
+      expect(res.headers.get("etag")).toBe('W/"alerts-1"');
+      const body = (await res.json()) as any;
+      expect(body.alerts).toEqual([made.body.alert]);
+
+      // the bar job's write evaluates the rule again, without a new alert
+      await t.clock.advance(60_000);
+      await t.app.yahooJobs.barTick();
+      const listed = await call(t, "rules", { action: "list" });
+      expect(listed.body.rules[0]).toMatchObject({
+        last_result: "true",
+        last_evaluated_at: "2026-10-25T21:06:00Z",
+        armed: false,
+      });
     }));
 });

@@ -28,14 +28,14 @@ import { SOURCE, type SparkAnswer } from "./client.ts";
 import {
   backfill,
   type QuoteRow,
+  RETRY_MS,
   refetch,
   storeQuotes,
   type YahooContext,
 } from "./sync.ts";
 
 export const TICK_MS = MINUTE_MS;
-// a failed bar pass or backfill is asked again after this, not each tick
-export const RETRY_MS = 60 * MINUTE_MS;
+export { RETRY_MS };
 export const BACKFILL_JOB = "backfill";
 
 export type JobsOptions = {
@@ -206,6 +206,12 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
             });
           }
         });
+        // after the runs end, so a quote's staleness is this pass's
+        ctx.rules?.evaluate(
+          db,
+          quotes.map((q) => q.instrument),
+          now,
+        );
         return quotes;
       });
     } catch (error) {
@@ -255,11 +261,16 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
         });
       }
     }
-    await writer.write((db) =>
-      error === undefined
-        ? endRun(db, id, clock.now(), rows)
-        : failRun(db, id, clock.now(), error, rows),
-    );
+    // the session's bars are in, so its price levels can be read again
+    await writer.write((db) => {
+      if (error === undefined) endRun(db, id, clock.now(), rows);
+      else failRun(db, id, clock.now(), error, rows);
+      ctx.rules?.evaluate(
+        db,
+        instruments.map((i) => i.id),
+        clock.now(),
+      );
+    });
     const from = changed.map((c) => c.changedFrom).sort()[0];
     log.info("yahoo bars refetched", {
       market,

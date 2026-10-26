@@ -12,6 +12,12 @@ import {
   type McpServer,
 } from "@modelcontextprotocol/server";
 import { errorFields } from "../log.ts";
+import {
+  MAX_COMPARISONS,
+  MAX_DEPTH,
+  MAX_INSTRUMENTS,
+  MAX_NOTE,
+} from "../rules/format.ts";
 import { errorResult, type ToolResult, textResult } from "./answer.ts";
 import { ArgError, MAX_SYMBOL } from "./args.ts";
 import { eventsAnswer, MAX_EVENT_SYMBOLS, parseEvents } from "./events.ts";
@@ -23,6 +29,7 @@ import {
   RESEARCH_SECTIONS,
   researchAnswer,
 } from "./research.ts";
+import { parseRules, RULE_ACTIONS, rulesAnswer } from "./rules.ts";
 import {
   FIELD_NAMES,
   MAX_FILTERS,
@@ -88,11 +95,15 @@ const RESEARCH =
 
 const EVENTS = `Earnings events dated from to to (YYYY-MM-DD, inclusive) of the tracked US shares, or of 1 to ${MAX_EVENT_SYMBOLS} symbols named, by date. Each: fiscal_year, fiscal_quarter, date, hour (amc after close, bmo before open, or empty), status (scheduled; awaiting results once its date came without actuals; reported once EPS or revenue actuals are seen, with reported_seen_at), EPS and revenue estimates and actuals (revenue in whole currency units), fetched_at, stale. Symbols resolve and are fetched as in quote; one Finnhub does not cover is listed as unavailable. When next is set, call again with the same arguments and next.`;
 
+const RULES = `Price rules on live quotes. Turning true writes one alert; again only after false. create: symbol, condition, note; answers its first evaluation. condition: {left, op, right} (op < <= > >=; right a number or operand) or {all: [...]}/{any: [...]}; ≤${MAX_COMPARISONS} comparisons, ${MAX_DEPTH} levels, ${MAX_INSTRUMENTS} instruments. Operand: a field of symbol, or {field, symbol} (^VIX). Fields: price changePct dayHigh dayLow previousClose sma50 sma200 ema20 rsi14 macd macdSignal macdHistogram macdTurn atr14 moveAtr volatility20 bollingerLower high52w low52w drawdown fromLow daysSinceHigh volumeRatio cross crossEdge weeklySma50 weeklySma200 weeklyCross weeklyCrossEdge, and {field: relativeReturn1m|relativeReturn3m, benchmark}. Each comparison reads a live value, in one unit. Example: {"all":[{"left":"rsi14","op":"<","right":30},{"left":"price","op":">","right":"sma200"}]}. "afterEarnings": "<US share>" on the root waits for its next results. A stale input changes nothing. A split pauses price-vs-number rules. list: next; pause: id, paused; delete: id.`;
+
 type Tool = {
   name: string;
   description: string;
   inputSchema: ReturnType<typeof schema>;
   run: (input: unknown) => Promise<ToolResult>;
+  // read-only unless said otherwise
+  writes?: true;
 };
 
 export function tools(m: Markets): Tool[] {
@@ -235,6 +246,27 @@ export function tools(m: Markets): Tool[] {
       ),
       run: (input) => eventsAnswer(m, parseEvents(input)),
     },
+    {
+      name: "rules",
+      description: RULES,
+      inputSchema: schema(
+        {
+          action: { type: "string", enum: [...RULE_ACTIONS] },
+          symbol,
+          condition: {
+            type: "object",
+            description: "the condition JSON, as in the description",
+          },
+          note: { type: "string", maxLength: MAX_NOTE },
+          id: { type: "integer", minimum: 1 },
+          paused: { type: "boolean" },
+          next,
+        },
+        ["action"],
+      ),
+      run: (input) => rulesAnswer(m, parseRules(input)),
+      writes: true,
+    },
   ];
 }
 
@@ -274,7 +306,14 @@ export function registerTools(m: Markets): (server: McpServer) => void {
         {
           description: tool.description,
           inputSchema: tool.inputSchema,
-          annotations: { readOnlyHint: true, openWorldHint: true },
+          annotations: tool.writes
+            ? {
+                readOnlyHint: false,
+                destructiveHint: true,
+                idempotentHint: false,
+                openWorldHint: true,
+              }
+            : { readOnlyHint: true, openWorldHint: true },
         },
         (input: unknown) => call(m, tool, input),
       );

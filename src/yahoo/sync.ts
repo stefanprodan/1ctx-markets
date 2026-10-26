@@ -23,7 +23,7 @@ import {
   sessionDate,
   weekOf,
 } from "../calendars.ts";
-import { type Clock, DAY_MS } from "../clock.ts";
+import { type Clock, DAY_MS, MINUTE_MS } from "../clock.ts";
 import type { Db } from "../db/index.ts";
 import {
   type Instrument,
@@ -32,6 +32,7 @@ import {
   upsertInstrument,
 } from "../instruments.ts";
 import { exclusive } from "../lock.ts";
+import { NO_RULES, type RuleHooks } from "../rules/hooks.ts";
 import { pruneLive, refreshLive, signalsAfterBars } from "../signals/store.ts";
 import { DeadlinePassed, type Phrase, SourceError } from "../source.ts";
 import type { Writer } from "../writer.ts";
@@ -53,9 +54,14 @@ export type YahooContext = {
   clock: Clock;
   yahoo: Yahoo;
   writer: Writer;
+  // told of each write, inside it; none in tests that need no rules
+  rules?: RuleHooks;
 };
 
 export const BACKFILL_YEARS = 10;
+// a failed bar pass or backfill, or a refused whole history, is asked
+// again after this, not each run
+export const RETRY_MS = 60 * MINUTE_MS;
 export const REFETCH_DAYS = 30;
 // a history starting this much later than asked, and later than the
 // stored one, is cut short, not a listing that began then
@@ -268,20 +274,118 @@ function startsShort(answer: ChartAnswer, since: string): boolean {
 const cutShort = () =>
   new SourceError("malformed answer", "a history cut short");
 
+// a shared ratio this far from 1 is a rescale, not numerical noise
+const RESCALE = 0.001;
+// ratios this close to each other are one ratio
+const SAME_RATIO = 0.0001;
+// fewer days moved by one ratio are corrections
+const RESCALE_DAYS = 3;
+
+// the ratio past prices moved by and the stored days that show it
+type Rescale = { ratio: number; dates: string[] };
+
+const sameRatio = (a: number, b: number) => Math.abs(a / b - 1) <= SAME_RATIO;
+
+// Stored final days the answer prices again, moved by one ratio though
+// the answer has no split: past prices adjusted in place. An adjustment
+// moves every day before its date, so the oldest days show it; a run of
+// unmoved days means none came before them.
+function rescaleOf(
+  db: Db,
+  instrument: Instrument,
+  bars: readonly Bar[],
+): Rescale | null {
+  const stored = db.query<{ close: number }, [string, string]>(
+    `select close from bars where instrument = ? and interval = '1d'
+     and date = ? and final = 1`,
+  );
+  let ratio = 0;
+  let dates: string[] = [];
+  for (const b of [...bars].sort((x, y) => (x.date < y.date ? -1 : 1))) {
+    const s = stored.get(instrument.id, b.date);
+    if (s === null || s.close <= 0) continue;
+    const r = b.close / s.close;
+    if (dates.length > 0 && sameRatio(r, ratio)) dates.push(b.date);
+    else if (dates.length >= RESCALE_DAYS) break;
+    else {
+      ratio = r;
+      dates = [b.date];
+    }
+    if (dates.length === RESCALE_DAYS && Math.abs(ratio - 1) <= RESCALE) {
+      return null;
+    }
+  }
+  if (dates.length < RESCALE_DAYS) return null;
+  return { ratio, dates };
+}
+
+// A whole history confirms a window's rescale when its own oldest days
+// moved by the window's ratio and so did every day the window showed it on.
+function confirms(
+  found: Rescale | null,
+  window: Rescale,
+  db: Db,
+  instrument: Instrument,
+  bars: readonly Bar[],
+): boolean {
+  if (found === null || !sameRatio(found.ratio, window.ratio)) return false;
+  const byDate = new Map(bars.map((b) => [b.date, b]));
+  const stored = db.query<{ close: number }, [string, string]>(
+    `select close from bars where instrument = ? and interval = '1d'
+     and date = ? and final = 1`,
+  );
+  return window.dates.every((d) => {
+    const b = byDate.get(d);
+    const s = stored.get(instrument.id, d);
+    return (
+      b !== undefined &&
+      s !== null &&
+      s.close > 0 &&
+      sameRatio(b.close / s.close, window.ratio)
+    );
+  });
+}
+
+// a whole history and the answers whose splits it applies, and the
+// rescale a window showed, which it must confirm
+type Whole = {
+  since: string;
+  splits: readonly ChartAnswer[];
+  rescale?: Rescale;
+};
+
+const unconfirmed = () =>
+  new SourceError(
+    "malformed answer",
+    "a whole history that does not confirm its window's rescale",
+  );
+
+// when each instrument's whole history was last refused, per database
+const refused = new WeakMap<Db, Map<string, number>>();
+const refusedOf = (db: Db) => {
+  let m = refused.get(db);
+  if (m === undefined) {
+    m = new Map();
+    refused.set(db, m);
+  }
+  return m;
+};
+
 // Writes one chart answer's session, bars and weeks, inside a writer
 // transaction. A whole history rewrites every daily bar, so none keeps
 // a scale from before a split, unless it starts or stops well short of
-// the stored one, or applies a split without covering every stored day;
-// then nothing is written, the splits stay unapplied, and the next run
-// asks again. Either answer drops the stored days inside its own span
-// that the source no longer prices.
+// the stored one, or applies a split or a rescale without covering every
+// stored day; then nothing is written, the splits stay unapplied, and
+// the next run asks again. Either answer drops the stored days inside
+// its own span that the source no longer prices. Rescaled says a new
+// split was applied or past prices were adjusted.
 function storeBars(
   db: Db,
   now: number,
   instrument: Instrument,
   answer: ChartAnswer,
-  whole: { since: string; splits: readonly ChartAnswer[] } | null,
-): Written {
+  whole: Whole | null,
+): Written & { rescaled: boolean } {
   recordSession(db, instrument.market, answer.session, answer.fetchedAt);
   const latest = readSession(db, instrument.market);
   const { bars, days } = read(answer, latest);
@@ -289,6 +393,14 @@ function storeBars(
     const kept = bars.filter((b) => b.date >= whole.since);
     const span = [...days].filter((d) => d >= whole.since).sort();
     const splits = unapplied(db, instrument, whole.splits);
+    const found = rescaleOf(db, instrument, kept);
+    if (
+      whole.rescale !== undefined &&
+      !confirms(found, whole.rescale, db, instrument, kept)
+    ) {
+      throw unconfirmed();
+    }
+    const rescaled = splits.length > 0 || found !== null;
     const range = dailyRange(db, instrument.id);
     if (range === null) {
       if (startsShort(answer, whole.since)) throw cutShort();
@@ -301,8 +413,7 @@ function storeBars(
         (first > addDays(whole.since, SHORT_HISTORY_DAYS) &&
           range.first < addDays(first, -SHORT_HISTORY_DAYS)) ||
         last < addDays(range.last, -SHORT_HISTORY_DAYS) ||
-        (splits.length > 0 &&
-          (span[0]! > range.first || span.at(-1)! < range.last))
+        (rescaled && (span[0]! > range.first || span.at(-1)! < range.last))
       ) {
         throw cutShort();
       }
@@ -318,6 +429,7 @@ function storeBars(
     return {
       rows: written.rows,
       changedFrom: earliest(deleted, written.changedFrom),
+      rescaled,
     };
   }
   const written = upsertBars(db, instrument.id, "1d", bars, answer.fetchedAt);
@@ -331,20 +443,32 @@ function storeBars(
   return {
     rows: written.rows,
     changedFrom: earliest(deleted, written.changedFrom),
+    // a window is stored only when refetchAnswer found no rescale in it
+    rescaled: false,
   };
 }
 
 // The bars, then the signals computed from them, in one transaction:
-// none before a backfill has stored bars.
+// none before a backfill has stored bars. A rescale pauses the rules on
+// old price levels before anything evaluates them.
 function store(
   db: Db,
   now: number,
   instrument: Instrument,
   answer: ChartAnswer,
-  whole: { since: string; splits: readonly ChartAnswer[] } | null,
+  whole: Whole | null,
+  rules: RuleHooks = NO_RULES,
 ): Written {
-  const written = storeBars(db, now, instrument, answer, whole);
+  const { rescaled, ...written } = storeBars(
+    db,
+    now,
+    instrument,
+    answer,
+    whole,
+  );
+  if (rescaled) rules.rescaled(db, instrument.id, now);
   signalsAfterBars(db, instrument, written.changedFrom, now);
+  rules.evaluate(db, [instrument.id], now);
   return written;
 }
 
@@ -377,10 +501,14 @@ export async function addInstrument(
       const now = ctx.clock.now();
       const instrument = upsertInstrument(db, fields(answer), now);
       if (short) return { instrument, rows: 0, changedFrom: null };
-      const written = store(db, now, instrument, answer, {
-        since: monday,
-        splits: [answer],
-      });
+      const written = store(
+        db,
+        now,
+        instrument,
+        answer,
+        { since: monday, splits: [answer] },
+        ctx.rules,
+      );
       return { instrument, ...written };
     });
   });
@@ -427,7 +555,7 @@ export async function fetchInstrument(
           fields(answer),
           ctx.clock.now(),
         );
-        storeQuotes(db, quote);
+        storeQuotes(db, quote, ctx.rules, ctx.clock.now());
         return instrument;
       });
     }
@@ -436,8 +564,15 @@ export async function fetchInstrument(
       if (!live()) throw expired();
       const now = ctx.clock.now();
       const instrument = upsertInstrument(db, fields(answer), now);
-      store(db, now, instrument, answer, { since: monday, splits: [answer] });
-      storeQuotes(db, quote);
+      store(
+        db,
+        now,
+        instrument,
+        answer,
+        { since: monday, splits: [answer] },
+        ctx.rules,
+      );
+      storeQuotes(db, quote, ctx.rules, now);
       return instrument;
     });
   });
@@ -460,7 +595,7 @@ export async function catchUp(
     return ctx.writer.write((db) => {
       if (!live()) throw expired();
       bars(db);
-      storeQuotes(db, quote);
+      storeQuotes(db, quote, ctx.rules, ctx.clock.now());
       return instrument;
     });
   });
@@ -491,6 +626,7 @@ async function backfillAnswer(
   ctx: YahooContext,
   instrument: Instrument,
   triggers: readonly ChartAnswer[] = [],
+  rescale?: Rescale,
 ): Promise<Answered> {
   const range = dailyRange(ctx.db, instrument.id);
   let { monday, from } = backfillStart(ctx.clock.now());
@@ -505,16 +641,22 @@ async function backfillAnswer(
   );
   checkAnswer(instrument, answer);
   return (db) =>
-    store(db, ctx.clock.now(), instrument, answer, {
-      since: monday,
-      splits: [...triggers, answer],
-    });
+    store(
+      db,
+      ctx.clock.now(),
+      instrument,
+      answer,
+      { since: monday, splits: [...triggers, answer], rescale },
+      ctx.rules,
+    );
 }
 
 // The last 30 days, or from the last final bar after a longer gap. A
-// split not applied yet, or applied with another ratio, refetches the
-// whole history once; one already applied, still inside the window for
-// a month, does nothing more.
+// split not applied yet, or applied with another ratio, or past prices
+// rescaled with no split, pauses the old price levels and refetches the
+// whole history once, so no stored day keeps the old scale; a refused
+// whole history is asked again only after RETRY_MS. A split already
+// applied, still inside the window for a month, does nothing more.
 export function refetch(
   ctx: YahooContext,
   instrument: Instrument,
@@ -544,10 +686,42 @@ async function refetchAnswer(
   );
   const answer = await ctx.yahoo.chart(instrument.sourceSymbol, from, now);
   checkAnswer(instrument, answer);
-  if (unapplied(db, instrument, [answer]).length > 0) {
-    return backfillAnswer(ctx, instrument, [answer]);
+  const split = unapplied(db, instrument, [answer]).length > 0;
+  const rescale = split
+    ? null
+    : rescaleOf(db, instrument, read(answer, null).bars);
+  if (split || rescale !== null) {
+    // old price levels stop now, since the whole history may be refused
+    await ctx.writer.write((w) =>
+      ctx.rules?.rescaled(w, instrument.id, ctx.clock.now()),
+    );
+    const marks = refusedOf(db);
+    const last = marks.get(instrument.id);
+    if (last !== undefined && now - last < RETRY_MS) {
+      throw new SourceError(
+        "malformed answer",
+        "a whole history refused within the retry period",
+      );
+    }
+    const write = await backfillAnswer(
+      ctx,
+      instrument,
+      [answer],
+      rescale ?? undefined,
+    );
+    return (w) => {
+      try {
+        const written = write(w);
+        marks.delete(instrument.id);
+        return written;
+      } catch (e) {
+        if (e instanceof SourceError) marks.set(instrument.id, ctx.clock.now());
+        throw e;
+      }
+    };
   }
-  return (db) => store(db, ctx.clock.now(), instrument, answer, null);
+  return (db) =>
+    store(db, ctx.clock.now(), instrument, answer, null, ctx.rules);
 }
 
 export type QuoteRow = {
@@ -604,8 +778,13 @@ export function quoteOf(
 // replaces it when fetched later. Every market's session is settled and
 // recorded first, so the live rows, moved in the same writer
 // transaction, never depend on the answer's order; a live row the new
-// sessions moved past goes.
-export function storeQuotes(db: Db, answer: SparkAnswer): QuoteRow[] {
+// sessions moved past goes. Then the rules reading a moved quote.
+export function storeQuotes(
+  db: Db,
+  answer: SparkAnswer,
+  rules: RuleHooks = NO_RULES,
+  now: number = answer.fetchedAt,
+): QuoteRow[] {
   const written: QuoteRow[] = [];
   const upsert = db.query(
     `insert into quotes (instrument, price, previous_close,
@@ -675,6 +854,7 @@ export function storeQuotes(db: Db, answer: SparkAnswer): QuoteRow[] {
       if (!moved.has(i.id)) pruneLive(db, i, answer.fetchedAt);
     }
   }
+  rules.evaluate(db, moved, now);
   return written;
 }
 
@@ -702,9 +882,15 @@ export async function fetchQuotes(
       errors.push(batch.error);
     }
   }
-  const quotes = await ctx.writer.write((db) =>
-    answers.flatMap((answer) => storeQuotes(db, answer)),
-  );
+  const quotes = await ctx.writer.write((db) => {
+    const stored = answers.flatMap((answer) => storeQuotes(db, answer));
+    ctx.rules?.evaluate(
+      db,
+      stored.map((q) => q.instrument),
+      ctx.clock.now(),
+    );
+    return stored;
+  });
   return { quotes, skipped, errors };
 }
 
