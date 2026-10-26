@@ -140,11 +140,11 @@ contract in `docs/tools.md`; rules that wait on events in
   inline. A symbol not covered or not resolved is listed under
   `unavailable`, and so is every share whose calendar has no good run,
   with why (never fetched, its fetch failed, timed out), and every
-  share whose last good calendar run was no data with no event kept
-  (`NO_DATA`), so an empty list means no earnings in the range. A failed fetch is listed there
-  too, while its stored events still show. The list is
-  capped at 8 KiB with the rest counted, and appears on the first page
-  only (`src/tools/events.ts`).
+  share whose last good calendar run was no data (`NO_DATA`), its
+  kept events still shown, so an empty list means no earnings in the
+  range. A failed fetch is listed there too, while its stored events
+  still show. The list is capped at 8 KiB with the rest counted, and
+  appears on the first page only (`src/tools/events.ts`).
 
 ## News
 

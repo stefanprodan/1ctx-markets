@@ -783,6 +783,43 @@ describe("events inside the call", () => {
     expect(t.finnhubCalls()).toHaveLength(1);
   });
 
+  test("a share whose calendar turned to no data is listed beside its kept events", async () => {
+    let deny = false;
+    const t = await setup({
+      hold: (url) =>
+        deny && url.pathname === "/api/v1/calendar/earnings"
+          ? Promise.resolve({
+              recordedAt: "",
+              status: 403,
+              headers: {},
+              body: {},
+            })
+          : undefined,
+    });
+    const ask = (from: string, to: string) =>
+      eventsAnswer(t.m, parseEvents({ from, to, symbols: ["NVDA"] }));
+    await drive(t.clock, pacedOf(t.m), ask("2026-10-01", "2026-12-31"));
+    deny = true;
+    await drive(
+      t.clock,
+      pacedOf(t.m),
+      refreshResearch(
+        { db: t.db, clock: t.clock, writer: t.write, finnhub: t.fh! },
+        readInstrument(t.db, "US:NVDA")!,
+        ["calendar"],
+      ),
+    );
+    const note = [{ input: "NVDA", id: "US:NVDA", message: NO_DATA }];
+    const kept = body(await ask("2026-10-01", "2026-12-31"));
+    expect(kept.events.map((e: { date: string }) => e.date)).toEqual([
+      "2026-11-17",
+    ]);
+    expect(kept.unavailable).toEqual(note);
+    const later = body(await ask("2027-01-01", "2027-03-31"));
+    expect(later.events).toEqual([]);
+    expect(later.unavailable).toEqual(note);
+  });
+
   test("an overview and events for one new share ask its calendar once", async () => {
     const t = await setup();
     await drive(

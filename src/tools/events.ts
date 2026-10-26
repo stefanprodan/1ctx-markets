@@ -76,19 +76,12 @@ export function capNotes(notes: readonly Note[]): {
 }
 
 // why a share has no calendar, so an empty list is never read as no
-// earnings ahead; null once one is stored or a fetch ended well
+// earnings ahead; null once its last good fetch had data
 function noCalendar(m: Markets, input: string, i: Instrument): Note | null {
   const ok = lastStarted(m.db, SOURCE, "calendar", i.id, "ok");
   if (ok !== null) {
-    // an answer of no data, a 403 or another listing's, with nothing kept
-    const kept = m.db
-      .query<{ n: number }, [string]>(
-        "select count(*) as n from events where instrument = ?",
-      )
-      .get(i.id)!.n;
-    return ok.rows === 0 && kept === 0
-      ? { input, id: i.id, message: NO_DATA }
-      : null;
+    // a 403 or another listing's answer; events kept from before show stale
+    return ok.rows === 0 ? { input, id: i.id, message: NO_DATA } : null;
   }
   const last = lastStarted(m.db, SOURCE, "calendar", i.id);
   return last?.status === "failed"
