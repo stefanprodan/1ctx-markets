@@ -96,7 +96,7 @@ runs what `parseCli()` answers. `HELP` in `src/config.ts` is the
 
 - **One Bun server; the bearer is checked before any route is looked
   up** (`router()`), so an unknown path answers 401 without the bearer
-  and 404 with it. The compare hashes both sides with SHA-256 and uses
+  and 404 with it. `GET /health` is the one route checked before it. The compare hashes both sides with SHA-256 and uses
   `timingSafeEqual`, so its time does not depend on what was sent. A
   refusal carries `WWW-Authenticate: Bearer`.
 
@@ -106,14 +106,19 @@ runs what `parseCli()` answers. `HELP` in `src/config.ts` is the
 | `/quotes` | GET | the quote reader for scripts |
 | `/research` | GET | research summaries for scripts |
 | `/alerts` | GET | the alerts feed |
+| `/health` | GET | 200 with no body and no bearer, for the service's start check |
 
 - **Any other method is 405 with `Allow`.** `/mcp` is stateless (one
   MCP server instance per request, `legacy: "stateless"` in
   `src/mcp.ts`), so there is no GET stream to resume and no session to
   DELETE.
 - **A request body is at most 1 MiB** (`MAX_BODY_BYTES`).
-- **Every request logs one line** with method, path, status and
-  duration; an unhandled error answers 500 with no detail. An MCP SDK
+- **`/health` answers 200 without the bearer and is never logged.**
+  It holds no data, so it needs no key, and a service manager polls it
+  while the server starts. Every other path still answers 401 without
+  the bearer.
+- **Every request but `/health` logs one line** with method, path,
+  status and duration; an unhandled error answers 500 with no detail. An MCP SDK
   error is logged by its type and code only, since its message can
   quote the request.
 - **The default bind is loopback.** The bearer is the only access
@@ -149,9 +154,9 @@ or runs against a closed connection.
   (`--no-compile-autoload-dotenv`, `--no-compile-autoload-bunfig`), so
   a stray file beside it never configures it.
 - **`make smoke` checks the compiled binary**: it refuses to start with
-  an empty bearer, writes a prefixed one on a first start, answers 401
-  without it, answers an MCP initialize with it, creates `markets.db`,
-  keeps the bearer out of the log, and checks `--version` prints a
-  line starting with `v`.
+  an empty bearer, writes a prefixed one on a first start, answers
+  `/health` without it and 401 to anything else, answers an MCP
+  initialize with it, creates `markets.db`, keeps the bearer out of the
+  log, and checks `--version` prints a line starting with `v`.
 - **Bun is the only runtime**, at the version in `.bun-version`; there
   is no Node. `make start` and `make dev` run from source.

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Smoke test of the compiled binary: it refuses to start on an empty
-# bearer file, writes a bearer on a first start, refuses a request
-# without it, and answers an MCP initialize with it. Each run starts
+# bearer file, writes a bearer on a first start, answers /health
+# without it, refuses any other request without it, and answers an MCP
+# initialize with it. Each run starts
 # from a fresh directory, so it migrates a new database, and removes the
 # directory on exit.
 set -euo pipefail
@@ -42,6 +43,7 @@ for _ in $(seq 1 50); do
   sleep 0.2
 done
 [[ $(status "$URL/mcp") == 401 ]] || fail "a request without the bearer was not refused"
+[[ $(status "$URL/health") == 200 ]] || fail "/health did not answer 200 without the bearer"
 
 BEARER=$(cat "$RUN/data/secrets/bearer.key")
 [[ $BEARER == 1ctx-markets-* ]] || fail "the first start wrote no prefixed bearer"

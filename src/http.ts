@@ -3,6 +3,7 @@
 //
 // One Bun server; the bearer is checked before any route is looked up,
 // so an unknown path answers 401 to a caller without it, as /mcp does.
+// GET /health is the one route before it, for a service manager's probe.
 
 import { createHash, timingSafeEqual } from "node:crypto";
 import type { McpHttpHandler } from "@modelcontextprotocol/server";
@@ -78,6 +79,13 @@ export function router(deps: RouterDeps): Handle {
   return async (req) => {
     const started = deps.clock.now();
     const path = new URL(req.url).pathname;
+    // polled while the service starts, so it stays out of the log
+    if (path === "/health") {
+      if (req.method !== "GET") {
+        return json({ error: "method not allowed" }, 405, { allow: "GET" });
+      }
+      return new Response(null, { status: 200 });
+    }
     let res: Response;
     try {
       res = await route(req, path);
