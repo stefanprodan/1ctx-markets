@@ -32,6 +32,26 @@ export class SourceError extends Error {
   }
 }
 
+// A text an answer echoes may hold the key, raw, percent-encoded or as
+// a query string writes it, so it is cut out before anything keeps it.
+export function scrub(value: string, key: string): string {
+  if (key === "") return value;
+  let out = value;
+  const forms = new Set([
+    key,
+    encodeURIComponent(key),
+    new URLSearchParams({ k: key }).toString().slice(2),
+  ]);
+  // case-blind, since percent escapes come in either case
+  for (const form of [...forms].sort((a, b) => b.length - a.length)) {
+    out = out.replace(
+      new RegExp(form.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"),
+      "REDACTED",
+    );
+  }
+  return out;
+}
+
 // the phrase a run records for any error, so no message text is stored
 export function phraseOf(error: unknown): string {
   return error instanceof SourceError ? error.phrase : "failed";
@@ -221,7 +241,6 @@ export function limiter(clock: Clock, spacingMs: number): Limiter {
         parked = null;
       }
     }
-    lastStart = clock.now();
   };
 
   return {
@@ -230,9 +249,11 @@ export function limiter(clock: Clock, spacingMs: number): Limiter {
         if (closed) throw new QueueClosed();
         if (run.live !== undefined && !run.live()) throw new DeadlinePassed();
         await slot();
-        // closed, or past the caller's deadline, while it waited
+        // closed, or past the caller's deadline, while it waited: the
+        // slot stays free for the next call
         if (closed) throw new QueueClosed();
         if (run.live !== undefined && !run.live()) throw new DeadlinePassed();
+        lastStart = clock.now();
         return task();
       }, run),
     due: () => parked ?? calls.due(),

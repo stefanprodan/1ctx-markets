@@ -11,7 +11,13 @@ import type { Db } from "../db/index.ts";
 import type { Instrument } from "../instruments.ts";
 import { exclusive } from "../lock.ts";
 import { lastStarted } from "../runs.ts";
-import { DeadlinePassed, Paused, phraseOf, QueueClosed } from "../source.ts";
+import {
+  DeadlinePassed,
+  Paused,
+  phraseOf,
+  QueueClosed,
+  SourceError,
+} from "../source.ts";
 import type { Writer } from "../writer.ts";
 import { WriterClosed } from "../writer.ts";
 import {
@@ -70,6 +76,8 @@ export type NewsRow = {
   publisher: string | null;
   sentiment: Sentiment | null;
   reasoning: string | null;
+  // the title, publisher or reasoning was cut
+  truncated: boolean;
   fetchedAt: number;
 };
 
@@ -90,6 +98,7 @@ export function rowFor(
     publisher: a.publisher,
     sentiment: own?.sentiment ?? null,
     reasoning: own?.reasoning ?? null,
+    truncated: a.truncated || own?.truncated === true,
     fetchedAt,
   };
 }
@@ -104,30 +113,28 @@ export function newestPublished(db: Db, instrument: string): number | null {
   );
 }
 
-// the time below which the instrument's 30 days are not complete yet
-export function backfillBefore(db: Db, instrument: string): number | null {
-  return (
-    db
-      .query<{ before: number }, [string]>(
-        "select before from news_backfill where instrument = ?",
-      )
-      .get(instrument)?.before ?? null
-  );
+// Where an unfinished walk goes on: Massive's own cursor, or null to
+// start it again from the newest article; the top walk keeps its floor.
+export type WalkState = { cursor: string | null; after: number | null };
+export type Walks = { top: WalkState | null; history: WalkState | null };
+
+export function readWalks(db: Db, instrument: string): Walks {
+  const rows = db
+    .query<WalkState & { walk: "top" | "history" }, [string]>(
+      "select walk, cursor, after from news_walks where instrument = ?",
+    )
+    .all(instrument);
+  const of = (walk: string) => {
+    const r = rows.find((w) => w.walk === walk);
+    return r === undefined ? null : { cursor: r.cursor, after: r.after };
+  };
+  return { top: of("top"), history: of("history") };
 }
 
 // whether a run of the instrument's news ever ended well
 export function newsAsked(db: Db, instrument: string): boolean {
   return lastStarted(db, SOURCE, JOB, instrument, "ok") !== null;
 }
-
-type Walk = {
-  rows: NewsRow[];
-  // the oldest article the walk reached, null with none
-  oldest: number | null;
-  // reached the window's floor or the last page
-  complete: boolean;
-  error: unknown;
-};
 
 // a closing server or a read past its deadline says nothing about the
 // source, so no run is recorded for it
@@ -136,17 +143,28 @@ const aborts = (error: unknown): boolean =>
   error instanceof WriterClosed ||
   error instanceof DeadlinePassed;
 
+// a cursor Massive no longer answers is started again, never retried
+const expired = (error: unknown): boolean =>
+  error instanceof SourceError &&
+  (error.phrase === "not found" || error.phrase === "bad request");
+
 export type NewsResult =
   | { status: "ok"; rows: number; pages: number; complete: boolean }
   | { status: "failed"; rows: number; pages: number; error: unknown };
 
-// Walks one ticker's news newest first, from the top and then down the
-// part not complete yet, each article kept for this ticker alone and
-// deduplicated by its id. What was fetched is stored in one write with
-// one run; a page that failed is the run's failure, with the pages
-// before it kept, and where it stopped is where the next run goes on.
-// A passed deadline or a closing server stores nothing and is thrown;
-// a tool's call refused while the source backs off records no run.
+// Walks one ticker's news newest first, each article kept for this
+// ticker alone and deduplicated by its id. A first fetch walks 30 days
+// back from the newest article, and what it leaves is the history. Each
+// later run gives an unfinished history one page first, then finishes a
+// top walk cut short before starting a new one from the newest stored
+// article less the overlap, the next run when it finished one, then
+// gives the history what pages are left.
+// Unfinished walks go on from Massive's own cursor, so articles tied at
+// a page edge are never skipped. What was fetched is stored in one
+// write with one run; a page that failed is the run's failure, with the
+// pages before it kept. A passed deadline or a closing server stores
+// nothing and is thrown; a tool's call refused while the source backs
+// off records no run.
 export async function refreshNews(
   ctx: MassiveContext,
   instrument: Instrument,
@@ -169,71 +187,87 @@ export async function refreshNews(
     const startedAt = ctx.clock.now();
     const floor = startedAt - KEPT_MS;
     const newest = newestPublished(ctx.db, instrument.id);
-    const gap = backfillBefore(ctx.db, instrument.id);
-    // what the walks share: pages asked, and a refusal while backing off
-    const seen = { pages: 0, paused: null as Paused | null };
+    const walks = readWalks(ctx.db, instrument.id);
+    const first =
+      walks.top === null &&
+      walks.history === null &&
+      !newsAsked(ctx.db, instrument.id);
+    // pages asked, a refusal while backing off, and a cursor to restart
+    const seen = { pages: 0, paused: null as Paused | null, reset: false };
+    const rows: NewsRow[] = [];
+    let error: unknown = null;
+    const stopped = () => error !== null || seen.paused !== null;
 
-    const walk = async (after: number, before: number | null) => {
-      const w: Walk = { rows: [], oldest: null, complete: false, error: null };
-      let page: Page | null = null;
-      for (;;) {
+    // Up to limit pages of one walk above after, from its cursor or the
+    // newest article; answers where it goes on.
+    const walk = async (
+      from: WalkState,
+      after: number,
+      limit: number,
+    ): Promise<WalkState | null> => {
+      let cursor = from.cursor;
+      for (let n = 0; n < limit; n++) {
         if (!live()) throw new DeadlinePassed();
-        if (seen.pages >= maxPages || !more()) return w;
+        if (seen.pages >= maxPages || !more() || stopped()) break;
+        let page: Page;
         try {
           page =
-            page === null
-              ? await client.news({ ticker: symbol, after, before })
-              : await client.next(page.next!);
-        } catch (error) {
-          if (aborts(error)) throw error;
-          if (error instanceof Paused) seen.paused = error;
-          else w.error = error;
-          return w;
+            cursor === null
+              ? await client.news({ ticker: symbol, after })
+              : await client.next(cursor);
+        } catch (e) {
+          if (aborts(e)) throw e;
+          if (e instanceof Paused) seen.paused = e;
+          else if (cursor !== null && expired(e)) {
+            cursor = null;
+            seen.reset = true;
+          } else error = e;
+          break;
         }
         seen.pages++;
         for (const a of page.articles) {
-          if (a.publishedAt <= after) continue;
-          if (before !== null && a.publishedAt >= before) continue;
+          if (a.publishedAt <= after || a.publishedAt <= floor) continue;
           const row = rowFor(a, symbol, page.fetchedAt);
-          if (row !== null) w.rows.push(row);
+          if (row !== null) rows.push(row);
         }
         const last = page.articles.at(-1)?.publishedAt ?? null;
-        if (last !== null) w.oldest = Math.min(w.oldest ?? last, last);
         // newest first, so a page reaching the floor is the last needed
-        if (page.next === null || last === null || last <= after) {
-          w.complete = true;
-          return w;
-        }
+        if (page.next === null || last === null || last <= after) return null;
+        cursor = page.next;
       }
+      return { cursor, after: from.after };
     };
 
-    const top = await walk(
-      newest === null ? floor : Math.max(floor, newest - OVERLAP_MS),
-      null,
-    );
-    const rows = [...top.rows];
-    let error = top.error;
-    // where the next run goes on below, null once all 30 days are in
-    let resume: number | null;
-    if (!top.complete) {
-      // cut short: everything under where it stopped is asked again
-      resume = top.oldest ?? gap;
-    } else if (newest === null) {
-      // the first walk came down to the floor
-      resume = null;
+    // a new walk that got no page leaves nothing to go on from
+    const fresh = async (after: number) => {
+      const before = seen.pages;
+      const state = await walk({ cursor: null, after }, after, maxPages);
+      return seen.pages === before ? null : state;
+    };
+    let top = walks.top;
+    let history = walks.history;
+    if (first) {
+      const state = await fresh(floor);
+      history = state === null ? null : { cursor: state.cursor, after: null };
     } else {
-      resume = gap;
-      if (gap !== null) {
-        const down = await walk(floor, gap);
-        rows.push(...down.rows);
-        error = down.error;
-        resume = down.complete ? null : (down.oldest ?? gap);
+      // an unfinished history always gets a page, whatever the top needs
+      if (history !== null) history = await walk(history, floor, 1);
+      // a new top walk waits for the next run once one was finished, or
+      // the pages left would cut it again over the same overlap
+      const resumed = top !== null;
+      if (top !== null) top = await walk(top, top.after ?? floor, maxPages);
+      if (top === null && !resumed && !stopped()) {
+        const after =
+          newest === null ? floor : Math.max(floor, newest - OVERLAP_MS);
+        top = await fresh(after);
       }
+      if (history !== null) history = await walk(history, floor, maxPages);
     }
+
     const { pages, paused } = seen;
     // no call reached the source, refused or cut by a budget: no run
     // records it, so neither a retry nor the next walk is held off
-    if (pages === 0 && error === null) {
+    if (pages === 0 && error === null && !seen.reset) {
       if (paused !== null) throw paused;
       return { status: "ok", rows: 0, pages: 0, complete: false };
     }
@@ -242,36 +276,43 @@ export async function refreshNews(
       if (!live()) throw new DeadlinePassed();
       const now = ctx.clock.now();
       const stored = storeRows(db, instrument.id, rows);
-      if (resume === null || resume <= now - KEPT_MS) {
-        db.query("delete from news_backfill where instrument = ?").run(
-          instrument.id,
-        );
-      } else {
-        db.query(
-          `insert into news_backfill (instrument, before) values (?, ?)
-           on conflict (instrument) do update set before = excluded.before`,
-        ).run(instrument.id, resume);
-      }
+      saveWalk(db, instrument.id, "top", top);
+      saveWalk(db, instrument.id, "history", history);
       recordRun(db, instrument.id, startedAt, now, stored, error);
       return error === null
         ? {
             status: "ok",
             rows: stored,
             pages,
-            complete: resume === null,
+            complete: top === null && history === null,
           }
-        : failedResult(stored, pages, error);
+        : { status: "failed", rows: stored, pages, error };
     });
     if (paused !== null) throw paused;
     return result;
   });
 }
 
-const failedResult = (
-  rows: number,
-  pages: number,
-  error: unknown,
-): NewsResult => ({ status: "failed", rows, pages, error });
+function saveWalk(
+  db: Db,
+  instrument: string,
+  walk: "top" | "history",
+  state: WalkState | null,
+): void {
+  if (state === null) {
+    db.query("delete from news_walks where instrument = ? and walk = ?").run(
+      instrument,
+      walk,
+    );
+    return;
+  }
+  db.query(
+    `insert into news_walks (instrument, walk, cursor, after)
+     values (?, ?, ?, ?)
+     on conflict (instrument, walk) do update set
+       cursor = excluded.cursor, after = excluded.after`,
+  ).run(instrument, walk, state.cursor, state.after);
+}
 
 function storeRows(
   db: Db,
@@ -280,8 +321,8 @@ function storeRows(
 ): number {
   const upsert = db.query(
     `insert into news (instrument, id, published_at, title, url, publisher,
-       sentiment, reasoning, fetched_at)
-     values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       sentiment, reasoning, truncated, fetched_at)
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      on conflict (instrument, id) do update set
        published_at = excluded.published_at,
        title = excluded.title,
@@ -289,6 +330,7 @@ function storeRows(
        publisher = excluded.publisher,
        sentiment = excluded.sentiment,
        reasoning = excluded.reasoning,
+       truncated = excluded.truncated,
        fetched_at = excluded.fetched_at`,
   );
   const seen = new Set<string>();
@@ -305,6 +347,7 @@ function storeRows(
       r.publisher,
       r.sentiment,
       r.reasoning,
+      r.truncated ? 1 : 0,
       r.fetchedAt,
     );
   }
@@ -349,7 +392,7 @@ export type NewsState = {
 };
 
 // The ticker's own runs only: never asked, its last run failed, no good
-// run for two periods, or its 30 days not complete yet.
+// run for two periods, or a walk not finished yet.
 export function newsState(db: Db, instrument: string, now: number): NewsState {
   const ok = lastStarted(db, SOURCE, JOB, instrument, "ok");
   const last = lastStarted(db, SOURCE, JOB, instrument);
@@ -359,33 +402,48 @@ export function newsState(db: Db, instrument: string, now: number): NewsState {
   else if (ok !== null && now - ok.startedAt >= 2 * EVERY_MS) {
     stale.push(STALE_NEWS.pending);
   }
-  if (backfillBefore(db, instrument) !== null) stale.push(STALE_NEWS.older);
+  const walks = readWalks(db, instrument);
+  if (walks.top !== null || walks.history !== null) {
+    stale.push(STALE_NEWS.older);
+  }
   return { fetchedAt: ok?.endedAt ?? null, stale };
 }
 
 // where a page of news starts: older than this article
 export type NewsCursor = { publishedAt: number; id: string };
 
-// newest first, ties by id, from below the cursor when one is given
+// Newest first, ties by id, from below the cursor when one is given;
+// only the last 30 days, whether or not retention has run.
 export function readNews(
   db: Db,
   instrument: string,
+  now: number,
   limit: number,
   from: NewsCursor | null = null,
 ): NewsRow[] {
   return db
-    .query<NewsRow, [string, number, string, number]>(
+    .query<
+      Omit<NewsRow, "truncated"> & { truncated: number },
+      [string, number, number, string, number]
+    >(
       `select id, published_at as publishedAt, title, url, publisher,
-         sentiment, reasoning, fetched_at as fetchedAt
-       from news where instrument = ?1
-         and (?2 < 0 or published_at < ?2 or (published_at = ?2 and id < ?3))
-       order by published_at desc, id desc limit ?4`,
+         sentiment, reasoning, truncated, fetched_at as fetchedAt
+       from news where instrument = ?1 and published_at > ?2
+         and (?3 < 0 or published_at < ?3 or (published_at = ?3 and id < ?4))
+       order by published_at desc, id desc limit ?5`,
     )
-    .all(instrument, from?.publishedAt ?? -1, from?.id ?? "", limit);
+    .all(
+      instrument,
+      now - KEPT_MS,
+      from?.publishedAt ?? -1,
+      from?.id ?? "",
+      limit,
+    )
+    .map((r) => ({ ...r, truncated: r.truncated === 1 }));
 }
 
 // Articles past 30 days go, and those of an instrument no longer tracked,
-// with where its backfill stood.
+// with its unfinished walks.
 export function pruneNews(
   db: Db,
   now: number,
@@ -396,7 +454,7 @@ export function pruneNews(
     .run(now - KEPT_MS).changes;
   const held = db
     .query<{ instrument: string }, []>(
-      `select instrument from news union select instrument from news_backfill`,
+      "select instrument from news union select instrument from news_walks",
     )
     .all();
   for (const { instrument } of held) {
@@ -404,8 +462,7 @@ export function pruneNews(
     n += db
       .query("delete from news where instrument = ?")
       .run(instrument).changes;
-    db.query("delete from news_backfill where instrument = ?").run(instrument);
+    db.query("delete from news_walks where instrument = ?").run(instrument);
   }
-  db.query("delete from news_backfill where before <= ?").run(now - KEPT_MS);
   return n;
 }

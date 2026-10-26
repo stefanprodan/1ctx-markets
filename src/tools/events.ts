@@ -54,6 +54,24 @@ export function parseEvents(input: unknown): EventsArgs {
 
 type Note = { input: string; id?: string; error?: string; message: string };
 
+// the unavailable list's share of a page; past it, the rest are counted
+export const UNAVAILABLE_BYTES = 8 * 1024;
+
+// the notes that fit the share, in order, and how many were left out
+export function capNotes(notes: readonly Note[]): {
+  listed: Note[];
+  more: number;
+} {
+  const listed: Note[] = [];
+  let bytes = 0;
+  for (const n of notes) {
+    bytes += Buffer.byteLength(JSON.stringify(n)) + 1;
+    if (bytes > UNAVAILABLE_BYTES) break;
+    listed.push(n);
+  }
+  return { listed, more: notes.length - listed.length };
+}
+
 export async function eventsAnswer(
   m: Markets,
   args: EventsArgs,
@@ -118,13 +136,15 @@ export async function eventsAnswer(
         r,
       ),
     }));
+  const { listed, more } = capNotes(notes);
   const page = fitPage(
     items.map((x) => x.item),
     (count) => ({
       from: args.from,
       to: args.to,
       source: "finnhub",
-      ...(start === null && notes.length > 0 ? { unavailable: notes } : {}),
+      ...(start === null && notes.length > 0 ? { unavailable: listed } : {}),
+      ...(start === null && more > 0 ? { unavailable_more: more } : {}),
       next: count < items.length ? cursor(items[count]!.key, asked) : null,
     }),
     "events",

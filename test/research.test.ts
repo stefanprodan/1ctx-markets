@@ -6,12 +6,23 @@ import { DAY_MS, MINUTE_MS } from "../src/clock.ts";
 import { open } from "../src/db/index.ts";
 import { finnhub } from "../src/finnhub/client.ts";
 import { finnhubJobs } from "../src/finnhub/jobs.ts";
-import { NO_DATA, NO_EVENTS, NOT_COVERED } from "../src/finnhub/store.ts";
+import {
+  NO_DATA,
+  NO_EVENTS,
+  NOT_COVERED,
+  refreshResearch,
+  STALE_RESEARCH,
+} from "../src/finnhub/store.ts";
+import { readInstrument } from "../src/instruments.ts";
 import { silent } from "../src/log.ts";
-import { massive, PAGE_LIMIT } from "../src/massive/client.ts";
+import { MAX_TITLE, massive, PAGE_LIMIT } from "../src/massive/client.ts";
 import { NEWS_NOT_COVERED, NO_NEWS, STALE_NEWS } from "../src/massive/store.ts";
-import { PAGE_BYTES } from "../src/tools/answer.ts";
-import { eventsAnswer, parseEvents } from "../src/tools/events.ts";
+import { fits, PAGE_BYTES } from "../src/tools/answer.ts";
+import {
+  eventsAnswer,
+  parseEvents,
+  UNAVAILABLE_BYTES,
+} from "../src/tools/events.ts";
 import {
   HEADLINES,
   parseResearch,
@@ -543,6 +554,7 @@ describe("news inside the call", () => {
       title: expect.stringContaining("Jensen Huang"),
       publisher: "The Motley Fool",
       sentiment: "positive",
+      truncated: false,
     });
     expect(t.massiveCalls()).toHaveLength(1);
     expect(t.massiveCalls()[0]!.searchParams.get("published_utc.gt")).toBe(
@@ -726,6 +738,7 @@ describe("the research news section", () => {
           url: expect.stringMatching(/^https:\/\/www\.fool\.com\//),
           sentiment: "positive",
           reasoning: expect.stringContaining("106% year-over-year"),
+          truncated: false,
         });
         const bad = await call(t, "research", {
           symbol: "US:NVDA",
@@ -736,5 +749,91 @@ describe("the research news section", () => {
       },
       { massive: { articles } },
     );
+  });
+});
+
+describe("answers held to a page", () => {
+  test("a section that answered no data keeps its rows and says so", async () => {
+    let refused = false;
+    const t = await setup({
+      hold: (url) =>
+        refused && url.pathname.endsWith("/stock/recommendation")
+          ? Promise.resolve({
+              recordedAt: "",
+              status: 403,
+              headers: {},
+              body: {},
+            })
+          : undefined,
+    });
+    await drive(t.clock, pacedOf(t.m), researchTargets(t.m, ["NVDA"]));
+    refused = true;
+    const nvda = readInstrument(t.db, "US:NVDA")!;
+    await drive(
+      t.clock,
+      t.fh!,
+      refreshResearch(
+        { db: t.db, clock: t.clock, writer: t.write, finnhub: t.fh },
+        nvda,
+        ["analysts"],
+      ),
+    );
+    const section = body(
+      await researchAnswer(
+        t.m,
+        parseResearch({ symbol: "US:NVDA", section: "analysts" }),
+      ),
+    );
+    expect(section.rows).toHaveLength(4);
+    expect(section.stale).toEqual([STALE_RESEARCH.noData]);
+    const overview = body(
+      await researchAnswer(t.m, parseResearch({ symbol: "US:NVDA" })),
+    );
+    expect(overview.research.analysts.stale).toEqual([STALE_RESEARCH.noData]);
+  });
+
+  test("the overview with the longest text a headline keeps fits a page", async () => {
+    const articles = await series("NVDA", 10, NOW, HOUR_MS);
+    for (const a of articles) {
+      a.title = "t".repeat(5_000);
+      a.publisher = { name: "p".repeat(5_000) };
+    }
+    const t = await setup({ massive: { articles } });
+    const answer = await drive(
+      t.clock,
+      pacedOf(t.m),
+      researchAnswer(t.m, parseResearch({ symbol: "NVDA" })),
+    );
+    expect(fits(answer.content[0]!.text)).toBe(true);
+    const b = body(answer);
+    expect(b.news.headlines).toHaveLength(HEADLINES);
+    expect(b.news.headlines[0]).toMatchObject({ truncated: true });
+    expect(b.news.headlines[0].title).toHaveLength(MAX_TITLE);
+  });
+
+  test("events lists what fits of the unavailable symbols and counts the rest", async () => {
+    const t = await setup();
+    // long names no listing matches: their notes outgrow the share
+    const symbols = Array.from(
+      { length: 100 },
+      (_, k) => `ZZQ${k}${"X".repeat(90)}`,
+    );
+    const answer = await drive(
+      t.clock,
+      pacedOf(t.m),
+      eventsAnswer(
+        t.m,
+        parseEvents({ from: "2026-10-01", to: "2026-12-31", symbols }),
+      ),
+    );
+    const text = answer.content[0]!.text;
+    expect(fits(text)).toBe(true);
+    const b = JSON.parse(text);
+    expect(b.unavailable.length).toBeGreaterThan(0);
+    expect(b.unavailable.length + b.unavailable_more).toBe(100);
+    expect(b.unavailable_more).toBeGreaterThan(0);
+    expect(
+      Buffer.byteLength(JSON.stringify(b.unavailable)),
+    ).toBeLessThanOrEqual(UNAVAILABLE_BYTES);
   });
 });

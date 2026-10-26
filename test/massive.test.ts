@@ -14,6 +14,9 @@ import { format, logger, silent } from "../src/log.ts";
 import {
   checkCursor,
   HOST,
+  MAX_PUBLISHER,
+  MAX_REASONING,
+  MAX_TITLE,
   massive,
   PAGE_LIMIT,
   parseNews,
@@ -22,7 +25,6 @@ import {
 } from "../src/massive/client.ts";
 import { massiveJobs } from "../src/massive/jobs.ts";
 import {
-  backfillBefore,
   eligible,
   KEPT_MS,
   MAX_PAGES,
@@ -32,6 +34,7 @@ import {
   OVERLAP_MS,
   pruneNews,
   readNews,
+  readWalks,
   refreshNews,
   rowFor,
   STALE_NEWS,
@@ -55,6 +58,8 @@ import { NOW } from "./helpers/sources.ts";
 import { fakeFetch } from "./helpers/yahoo.ts";
 
 const HOUR_MS = 60 * MINUTE_MS;
+// no walk left unfinished
+const DONE = { top: null, history: null };
 
 function setup(fake: FakeMassive = { articles: [] }) {
   const clock = fakeClock(NOW);
@@ -294,7 +299,7 @@ describe("news per ticker", () => {
       "2026-09-25T21:05:00Z",
     );
     expect(newsRows(t.db, nvda.id)).toBe(20);
-    expect(backfillBefore(t.db, nvda.id)).toBeNull();
+    expect(readWalks(t.db, nvda.id)).toEqual(DONE);
     expect(lastRun(t.db, "massive", "news", nvda.id)).toMatchObject({
       status: "ok",
       rows: 20,
@@ -313,7 +318,7 @@ describe("news per ticker", () => {
     // the overlap answers the stored ones again; they stay one row each
     expect(second.rows).toBe(5);
     expect(newsRows(t.db, nvda.id)).toBe(23);
-    const ids = readNews(t.db, nvda.id, 100).map((r) => r.id);
+    const ids = readNews(t.db, nvda.id, t.clock.now(), 100).map((r) => r.id);
     expect(new Set(ids).size).toBe(ids.length);
   });
 
@@ -337,7 +342,7 @@ describe("news per ticker", () => {
     });
     const jpm = share(t.db, "JPM", NOW);
     await t.go(refreshNews(t.ctx, jpm));
-    const rows = readNews(t.db, jpm.id, 10);
+    const rows = readNews(t.db, jpm.id, t.clock.now(), 10);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ sentiment: "positive", reasoning: "r" });
   });
@@ -354,7 +359,7 @@ describe("news per ticker", () => {
     expect(t.f.urls).toHaveLength(2);
     expect(t.f.urls[1]!.searchParams.has("cursor")).toBe(true);
     expect(newsRows(t.db, nvda.id)).toBe(120);
-    expect(backfillBefore(t.db, nvda.id)).toBeNull();
+    expect(readWalks(t.db, nvda.id)).toEqual(DONE);
   });
 
   test("more than a run's pages go on below where it stopped on the next runs", async () => {
@@ -370,9 +375,11 @@ describe("news per ticker", () => {
       pages: MAX_PAGES,
       complete: false,
     });
-    const before = backfillBefore(t.db, nvda.id);
-    expect(before).toBe(
-      Math.min(...readNews(t.db, nvda.id, 1000).map((r) => r.publishedAt)),
+    // the history goes on from Massive's own cursor, never a timestamp
+    const walks = readWalks(t.db, nvda.id);
+    expect(walks.top).toBeNull();
+    expect(walks.history?.cursor).toStartWith(
+      "https://api.massive.com/v2/reference/news?cursor=",
     );
     expect(newsState(t.db, nvda.id, t.clock.now()).stale).toEqual([
       STALE_NEWS.older,
@@ -383,14 +390,17 @@ describe("news per ticker", () => {
     const second = await t.go(refreshNews(t.ctx, nvda));
     expect(second).toMatchObject({ status: "ok", complete: true });
     const urls = t.f.urls.slice(asked);
-    // the top first, then down from where the first run stopped
-    expect(urls[0]!.searchParams.has("published_utc.lt")).toBe(false);
-    expect(urls[1]!.searchParams.get("published_utc.lt")).toBe(utc(before!));
-    const inWindow = t.fake.articles.filter(
-      (a) => Date.parse(a.published_utc) > NOW + 30 * MINUTE_MS - KEPT_MS,
-    ).length;
-    expect(newsRows(t.db, nvda.id)).toBeGreaterThanOrEqual(inWindow);
-    expect(backfillBefore(t.db, nvda.id)).toBeNull();
+    // a history page first, then the top, then the history's rest
+    expect(urls.map((u) => u.searchParams.has("cursor"))).toEqual([
+      true,
+      false,
+      true,
+    ]);
+    expect(urls[1]!.searchParams.get("published_utc.gt")).toBe(
+      utc(NOW - OVERLAP_MS),
+    );
+    expect(newsRows(t.db, nvda.id)).toBe(total);
+    expect(readWalks(t.db, nvda.id)).toEqual(DONE);
     expect(newsState(t.db, nvda.id, t.clock.now()).stale).toEqual([]);
   });
 
@@ -434,10 +444,9 @@ describe("news per ticker", () => {
     const later = NOW + 15 * DAY_MS;
     pruneNews(t.db, later, new Set([nvda.id]));
     // 0, 10 and 20 days old at NOW: 15 days on, the 20-day one is past 30
-    expect(readNews(t.db, nvda.id, 10).map((r) => r.publishedAt)).toEqual([
-      NOW,
-      NOW - 10 * DAY_MS,
-    ]);
+    expect(
+      readNews(t.db, nvda.id, later, 10).map((r) => r.publishedAt),
+    ).toEqual([NOW, NOW - 10 * DAY_MS]);
     expect(newsRows(t.db, amd.id)).toBe(0);
   });
 });
@@ -588,7 +597,7 @@ describe("massive source", () => {
       for (const f of pass.failed) expect(f.error).toBe("network error");
       expect(lines.length).toBeGreaterThan(0);
       for (const l of lines) expect(l).not.toContain(MASSIVE_KEY);
-      for (const table of ["sync_runs", "news", "news_backfill"]) {
+      for (const table of ["sync_runs", "news", "news_walks"]) {
         const rows = JSON.stringify(db.query(`select * from ${table}`).all());
         expect(rows).not.toContain(MASSIVE_KEY);
       }
@@ -597,4 +606,187 @@ describe("massive source", () => {
       db.close();
     }
   });
+});
+
+describe("news walks", () => {
+  test("articles tied at a page edge all land, from Massive's own cursor", async () => {
+    // all published in the same second, across a page edge
+    const t = setup({ articles: await series("NVDA", 150, NOW, 0) });
+    const nvda = share(t.db, "NVDA", NOW);
+    const first = await t.go(refreshNews(t.ctx, nvda, { maxPages: 1 }));
+    expect(first).toMatchObject({ rows: PAGE_LIMIT, complete: false });
+    await t.clock.advance(30 * MINUTE_MS);
+    const second = await t.go(refreshNews(t.ctx, nvda));
+    expect(second).toMatchObject({ status: "ok", complete: true });
+    expect(newsRows(t.db, nvda.id)).toBe(150);
+    expect(readWalks(t.db, nvda.id)).toEqual(DONE);
+  });
+
+  test("a burst at the top never starves the history, nor loses its own edge", async () => {
+    const t = setup({
+      articles: await series("NVDA", 3 * PAGE_LIMIT, NOW, 30 * MINUTE_MS),
+    });
+    const nvda = share(t.db, "NVDA", NOW);
+    await t.go(refreshNews(t.ctx, nvda, { maxPages: 1 }));
+    const older = () =>
+      count(
+        t.db,
+        "select count(*) as n from news where instrument = ? and published_at <= ?",
+        nvda.id,
+        NOW,
+      );
+    expect(older()).toBe(PAGE_LIMIT);
+    // a burst of more new articles than a run leaves the top
+    for (const [run, burst] of [250, 0].entries()) {
+      const at = NOW + (run + 1) * 30 * MINUTE_MS;
+      t.fake.articles.push(
+        ...(await series("NVDA", burst, at, 1_000, (run + 1) * 10_000)),
+      );
+      await t.clock.advance(at - t.clock.now());
+      const before = older();
+      await t.go(refreshNews(t.ctx, nvda));
+      // the history moves on every run while it is unfinished
+      expect(older()).toBeGreaterThan(before);
+    }
+    expect(older()).toBe(3 * PAGE_LIMIT);
+    expect(readWalks(t.db, nvda.id).history).toBeNull();
+    // the top walks go on from their cursors until every article is in
+    for (let run = 0; run < 10 && readWalks(t.db, nvda.id).top; run++) {
+      await t.clock.advance(30 * MINUTE_MS);
+      await t.go(refreshNews(t.ctx, nvda));
+    }
+    expect(readWalks(t.db, nvda.id)).toEqual(DONE);
+    expect(newsRows(t.db, nvda.id)).toBe(t.fake.articles.length);
+  });
+
+  test("a cursor Massive no longer answers starts its walk again", async () => {
+    const t = setup({ articles: await series("NVDA", 150, NOW, HOUR_MS) });
+    const nvda = share(t.db, "NVDA", NOW);
+    await t.go(refreshNews(t.ctx, nvda, { maxPages: 1 }));
+    t.db
+      .query("update news_walks set cursor = ? where instrument = ?")
+      .run("https://api.massive.com/v2/reference/news?cursor=gone", nvda.id);
+    await t.clock.advance(30 * MINUTE_MS);
+    await t.go(refreshNews(t.ctx, nvda, { maxPages: 1 }));
+    expect(readWalks(t.db, nvda.id).history).toEqual({
+      cursor: null,
+      after: null,
+    });
+    await t.clock.advance(30 * MINUTE_MS);
+    await t.go(refreshNews(t.ctx, nvda));
+    expect(newsRows(t.db, nvda.id)).toBe(150);
+    expect(readWalks(t.db, nvda.id)).toEqual(DONE);
+  });
+
+  test("reads show only the last 30 days, before retention runs", async () => {
+    const t = setup({ articles: await series("NVDA", 3, NOW, 10 * DAY_MS) });
+    const nvda = share(t.db, "NVDA", NOW);
+    await t.go(refreshNews(t.ctx, nvda));
+    expect(newsRows(t.db, nvda.id)).toBe(3);
+    const later = NOW + 15 * DAY_MS;
+    expect(readNews(t.db, nvda.id, later, 10)).toHaveLength(2);
+  });
+});
+
+describe("what an article keeps", () => {
+  // made up, with characters a URL and a query string each encode
+  const KEY = "k3y+with/slash=and&amp";
+
+  test("the key is cut from every text kept, raw or encoded", async () => {
+    const forms = [
+      KEY,
+      encodeURIComponent(KEY),
+      new URLSearchParams({ k: KEY }).toString().slice(2),
+    ];
+    const [base] = await recordedArticles();
+    const a = made(base, 1, NOW - HOUR_MS, {
+      tickers: ["NVDA"],
+      insights: [
+        {
+          ticker: "NVDA",
+          sentiment: "positive",
+          sentiment_reasoning: `see ${forms[1]} and ${forms[2]}`,
+        },
+      ],
+    });
+    a.title = `leaked ${forms[0]}`;
+    a.article_url = `https://example.com/a?apiKey=${forms[2]}&b=${forms[1]}`;
+    a.publisher = { name: `pub ${forms[0].toUpperCase()} ${forms[1]}` };
+    const clock = fakeClock(NOW);
+    const { db } = open(":memory:", clock);
+    const f = fakeFetch((url) => massiveAnswer({ articles: [a] }, url));
+    const client = massive({ clock, key: KEY, fetch: f.fetch });
+    const ctx = { db, clock, writer: writer(db), massive: client };
+    const nvda = share(db, "NVDA", NOW);
+    await drive(clock, client, refreshNews(ctx, nvda));
+    const rows = JSON.stringify(db.query("select * from news").all());
+    expect(rows).toContain("REDACTED");
+    for (const form of forms) {
+      expect(rows.toLowerCase()).not.toContain(form.toLowerCase());
+    }
+  });
+
+  test("long text is cut and flagged, and the answers stay under a page", async () => {
+    const [base] = await recordedArticles();
+    const long = made(base, 1, NOW, {
+      tickers: ["NVDA"],
+      insights: [
+        {
+          ticker: "NVDA",
+          sentiment: "negative",
+          sentiment_reasoning: "r".repeat(5_000),
+        },
+      ],
+    });
+    long.title = "t".repeat(5_000);
+    long.publisher = { name: "p".repeat(5_000) };
+    const [article] = parseNews({ results: [long] }).articles;
+    expect(article!.title).toHaveLength(MAX_TITLE);
+    expect(article!.publisher).toHaveLength(MAX_PUBLISHER);
+    expect(article!.insights[0]!.reasoning).toHaveLength(MAX_REASONING);
+    expect(rowFor(article!, "NVDA", NOW)?.truncated).toBe(true);
+    const short = parseNews((await massiveFixture("news-nvda-older")).body)
+      .articles[0]!;
+    expect(rowFor(short, "NVDA", NOW)?.truncated).toBe(false);
+  });
+});
+
+test("retention runs at start, for news and research alike", async () => {
+  const clock = fakeClock(NOW);
+  const { db } = open(":memory:", clock);
+  const nvda = share(db, "NVDA", NOW);
+  const insert = db.query(
+    `insert into news (instrument, id, published_at, title, url, fetched_at)
+     values (?, ?, ?, 't', 'https://example.com/', ?)`,
+  );
+  insert.run(nvda.id, "old", NOW - 40 * DAY_MS, NOW);
+  insert.run(nvda.id, "new", NOW - DAY_MS, NOW);
+  db.query(
+    `insert into research (instrument, kind, period, buy, fetched_at)
+     values (?, 'analysts', '2020-01-01', 1, ?)`,
+  ).run(nvda.id, NOW);
+  const a = start({
+    hostname: "127.0.0.1",
+    port: 0,
+    bearer: "b".repeat(32),
+    clock,
+    log: () => silent,
+    version: "v0.0.0-test",
+    db,
+    quoteEveryMs: 5 * MINUTE_MS,
+    fetch: async (url) => {
+      throw new Error(`no network in tests: ${url}`);
+    },
+  });
+  try {
+    // queued after the startup cleanup
+    await a.writer.write(() => {});
+    expect(db.query("select id from news order by id").all()).toEqual([
+      { id: "new" },
+    ]);
+    expect(count(db, "select count(*) as n from research")).toBe(0);
+  } finally {
+    await a.stop();
+    db.close();
+  }
 });

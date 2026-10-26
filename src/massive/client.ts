@@ -3,8 +3,9 @@
 //
 // Massive's news for one ticker, newest first, a page at a time. The key
 // goes only in the Authorization header, never in a URL; a next_url
-// cursor is sent only to Massive's own news path, and errors hold a
-// fixed phrase and nothing Massive or fetch said.
+// cursor is sent only to Massive's own news path, every text kept has
+// the key cut out, and errors hold a fixed phrase and nothing Massive
+// or fetch said.
 
 import type { Clock } from "../clock.ts";
 import {
@@ -12,6 +13,7 @@ import {
   limiter,
   type RunOptions,
   SourceError,
+  scrub,
 } from "../source.ts";
 
 export const SOURCE = "massive";
@@ -21,8 +23,10 @@ export const NEWS_PATH = "/v2/reference/news";
 export const SPACING_MS = 13_000;
 export const PAGE_LIMIT = 100;
 const TIMEOUT_MS = 30_000;
-// longer text is cut, so one article always fits a page of an answer
-export const MAX_TEXT = 1_000;
+// longer text is cut and flagged, so an article always fits an answer
+export const MAX_TITLE = 300;
+export const MAX_PUBLISHER = 300;
+export const MAX_REASONING = 1_000;
 const MAX_URL = 2_000;
 
 export const SENTIMENTS = ["positive", "neutral", "negative"] as const;
@@ -32,6 +36,8 @@ export type Insight = {
   ticker: string;
   sentiment: Sentiment | null;
   reasoning: string | null;
+  // the reasoning was cut
+  truncated: boolean;
 };
 
 export type Article = {
@@ -42,6 +48,8 @@ export type Article = {
   publisher: string | null;
   tickers: string[];
   insights: Insight[];
+  // the title or publisher was cut
+  truncated: boolean;
 };
 
 export type Page = {
@@ -98,8 +106,8 @@ function str(v: unknown, what: string): string {
 const optionalStr = (v: unknown): string | null =>
   typeof v === "string" && v.trim() !== "" ? v.trim() : null;
 
-const cut = (v: string): string =>
-  v.length > MAX_TEXT ? `${v.slice(0, MAX_TEXT - 1)}…` : v;
+const cut = (v: string, max: number): string =>
+  v.length > max ? `${v.slice(0, max - 1)}…` : v;
 
 // RFC 3339 to the second, as Massive's published_utc filters take it
 export const utc = (ms: number): string =>
@@ -125,12 +133,14 @@ function articleUrl(v: unknown): string {
 function insight(v: unknown): Insight {
   if (!isObj(v)) throw malformed("no insight");
   const sentiment = SENTIMENTS.find((s) => s === v.sentiment) ?? null;
-  const reasoning = optionalStr(v.sentiment_reasoning);
+  const given = optionalStr(v.sentiment_reasoning);
+  // an unknown word is no sentiment, never a neutral one
+  const reasoning = sentiment === null ? null : given;
   return {
     ticker: str(v.ticker, "insight ticker"),
-    // an unknown word is no sentiment, never a neutral one
     sentiment,
-    reasoning: sentiment === null || reasoning === null ? null : cut(reasoning),
+    reasoning: reasoning === null ? null : cut(reasoning, MAX_REASONING),
+    truncated: reasoning !== null && reasoning.length > MAX_REASONING,
   };
 }
 
@@ -146,14 +156,37 @@ function article(v: unknown): Article {
     : [];
   const insights = v.insights === undefined ? [] : v.insights;
   if (!Array.isArray(insights)) throw malformed("no insights");
+  const title = str(v.title, "title");
+  const publisher = isObj(v.publisher) ? optionalStr(v.publisher.name) : null;
   return {
     id,
     publishedAt,
-    title: cut(str(v.title, "title")),
+    title: cut(title, MAX_TITLE),
     url: articleUrl(v.article_url),
-    publisher: isObj(v.publisher) ? optionalStr(v.publisher.name) : null,
+    publisher: publisher === null ? null : cut(publisher, MAX_PUBLISHER),
     tickers,
     insights: insights.map(insight),
+    truncated:
+      title.length > MAX_TITLE ||
+      (publisher !== null && publisher.length > MAX_PUBLISHER),
+  };
+}
+
+// Every text an article keeps, with the key cut out wherever it shows.
+export function scrubbed(a: Article, key: string): Article {
+  const s = (v: string) => scrub(v, key);
+  return {
+    ...a,
+    id: s(a.id),
+    title: s(a.title),
+    url: s(a.url),
+    publisher: a.publisher === null ? null : s(a.publisher),
+    tickers: a.tickers.map(s),
+    insights: a.insights.map((i) => ({
+      ...i,
+      ticker: s(i.ticker),
+      reasoning: i.reasoning === null ? null : s(i.reasoning),
+    })),
   };
 }
 
@@ -252,7 +285,11 @@ export function massive(options: MassiveOptions): Massive {
         const page = parseNews(body);
         // a cursor that is not Massive's own is never followed
         if (page.next !== null) checkCursor(page.next, host, key);
-        return { ...page, fetchedAt };
+        return {
+          articles: page.articles.map((a) => scrubbed(a, key)),
+          next: page.next,
+          fetchedAt,
+        };
       } finally {
         cancel();
       }

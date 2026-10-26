@@ -4,7 +4,8 @@
 // Massive's news endpoint answered from the recorded articles: a test
 // sets the articles it holds, re-dated or re-tickered from the
 // recordings, and the fake filters, orders and pages them as Massive
-// does, with an opaque next_url cursor that holds no key.
+// does, with an opaque next_url cursor that holds no key: as Massive's
+// own, it names the last article given, its time and id.
 
 import { join } from "node:path";
 import { clone, type Recorded } from "./yahoo.ts";
@@ -108,16 +109,27 @@ export function massiveAnswer(
     return answer(404, { status: "NOT_FOUND" });
   }
   const cursor = url.searchParams.get("cursor");
+  let state: any = null;
+  if (cursor !== null) {
+    try {
+      state = JSON.parse(Buffer.from(cursor, "base64url").toString());
+    } catch {
+      // a cursor it no longer knows
+      return answer(400, { status: "ERROR", error: "bad cursor" });
+    }
+  }
   const q =
-    cursor === null
+    state === null
       ? {
           ticker: url.searchParams.get("ticker") ?? "",
           gt: url.searchParams.get("published_utc.gt"),
           lt: url.searchParams.get("published_utc.lt"),
           limit: Number(url.searchParams.get("limit") ?? "10"),
-          offset: 0,
+          // the last article given, as Massive's ap and as
+          ap: null,
+          as: null,
         }
-      : JSON.parse(Buffer.from(cursor, "base64url").toString());
+      : state;
   const matches = (t: string) =>
     fake.prefix ? t.startsWith(q.ticker) : t === q.ticker;
   const rows = fake.articles
@@ -136,15 +148,27 @@ export function massiveAnswer(
         Date.parse(b.published_utc) - Date.parse(a.published_utc) ||
         (b.id < a.id ? -1 : 1),
     );
-  const page = rows.slice(q.offset, q.offset + q.limit);
+  const rest =
+    q.ap === null
+      ? rows
+      : rows.filter((a) => {
+          const at = Date.parse(a.published_utc);
+          return at < q.ap || (at === q.ap && a.id < q.as);
+        });
+  const page = rest.slice(0, q.limit);
   const body: Record<string, unknown> = {
     results: page,
     status: "OK",
     request_id: "made-up",
     count: page.length,
   };
-  if (q.offset + q.limit < rows.length) {
-    const next = encode({ ...q, offset: q.offset + q.limit });
+  if (rest.length > q.limit) {
+    const last = page.at(-1);
+    const next = encode({
+      ...q,
+      ap: Date.parse(last.published_utc),
+      as: last.id,
+    });
     body.next_url =
       fake.nextUrl?.(next) ??
       `https://${MASSIVE_HOST}/v2/reference/news?cursor=${next}`;

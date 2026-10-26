@@ -42,6 +42,7 @@ import {
   cursor,
   errorResult,
   fitPage,
+  fits,
   iso,
   PageOverflow,
   readCursor,
@@ -314,6 +315,7 @@ const newsItem = (r: NewsRow) => ({
   url: r.url,
   sentiment: r.sentiment,
   reasoning: r.reasoning,
+  truncated: r.truncated,
 });
 
 // Massive's part of an overview: the newest headlines, or one message
@@ -331,12 +333,15 @@ export function newsSummary(
     ...(n?.kind === "failed" ? n.error : {}),
     fetched_at: iso(state.fetchedAt),
     stale: state.stale,
-    headlines: readNews(m.db, instrument.id, HEADLINES).map((r) => ({
-      published_at: iso(r.publishedAt),
-      title: r.title,
-      publisher: r.publisher,
-      sentiment: r.sentiment,
-    })),
+    headlines: readNews(m.db, instrument.id, m.clock.now(), HEADLINES).map(
+      (r) => ({
+        published_at: iso(r.publishedAt),
+        title: r.title,
+        publisher: r.publisher,
+        sentiment: r.sentiment,
+        truncated: r.truncated,
+      }),
+    ),
   };
 }
 
@@ -405,14 +410,22 @@ export async function researchAnswer(
       instrument,
       latest,
     );
-    return textResult(
+    const summary = newsSummary(m, instrument, news.get(instrument.id));
+    const answer = () =>
       JSON.stringify({
         ...head,
         quote,
         research: researchSummary(m, instrument, inline.get(instrument.id)),
-        news: newsSummary(m, instrument, news.get(instrument.id)),
-      }),
-    );
+        news: summary,
+      });
+    // held to a page like every answer: headlines go before anything else
+    let text = answer();
+    while (!fits(text) && "headlines" in summary && summary.headlines.length) {
+      summary.headlines.pop();
+      text = answer();
+    }
+    if (!fits(text)) throw new PageOverflow();
+    return textResult(text);
   }
   if (args.section === "news") {
     const own = news.get(instrument.id);
@@ -421,7 +434,7 @@ export async function researchAnswer(
     const from = start === null ? null : readNewsPosition(start);
     const rows =
       message === null
-        ? readNews(m.db, instrument.id, NEWS_PAGE_ROWS + 1, from)
+        ? readNews(m.db, instrument.id, m.clock.now(), NEWS_PAGE_ROWS + 1, from)
         : [];
     const items = rows.slice(0, NEWS_PAGE_ROWS).map(newsItem);
     const page = fitPage(

@@ -289,6 +289,25 @@ describe("finnhub answers", () => {
     expect(t.clock.now()).toBe(NOW + SPACING_MS);
   });
 
+  test("a call dropped past its deadline leaves its slot to the next", async () => {
+    const t = setup();
+    await t.client.metric("NVDA");
+    // its deadline passes while it waits for its slot
+    const late = t.client
+      .within(() => t.clock.now() < NOW + SPACING_MS / 2)
+      .analysts("NVDA");
+    const next = t.client.earnings("NVDA");
+    const [dropped, asked] = await drive(
+      t.clock,
+      t.client,
+      Promise.allSettled([late, next]),
+    );
+    expect(dropped.status).toBe("rejected");
+    expect(asked.status).toBe("fulfilled");
+    // the next call starts in the dropped one's slot, not one later
+    expect(t.starts).toEqual([NOW, NOW + SPACING_MS]);
+  });
+
   test("a call waiting for its slot past its deadline never starts", async () => {
     const t = setup();
     await t.client.metric("NVDA");
@@ -397,6 +416,54 @@ describe("research rows", () => {
         nvda.id,
       ),
     ).toBe(before);
+  });
+
+  test("a later answer leaving out an earnings actual keeps it", async () => {
+    let drop = false;
+    const t = setup({
+      route: edited("/api/v1/stock/earnings", "NVDA", (b) => {
+        if (drop) for (const r of b) r.actual = r.surprise = null;
+      }),
+    });
+    const nvda = share(t.db, "NVDA", NOW);
+    await drive(t.clock, t.client, refreshResearch(t.ctx, nvda, ["earnings"]));
+    const before = readResearch(t.db, nvda.id, "earnings")[0]!;
+    expect(before.eps_actual).toBe(2.22);
+    drop = true;
+    await drive(t.clock, t.client, refreshResearch(t.ctx, nvda, ["earnings"]));
+    const after = readResearch(t.db, nvda.id, "earnings")[0]!;
+    expect(after).toMatchObject({
+      eps_actual: 2.22,
+      surprise: before.surprise,
+      eps_estimate: before.eps_estimate,
+    });
+  });
+
+  test("rows kept from an earlier answer say the last one had no data", async () => {
+    let refused = false;
+    const t = setup({
+      route: (url) =>
+        refused && url.pathname.endsWith("/stock/recommendation")
+          ? { recordedAt: "", status: 403, headers: {}, body: {} }
+          : undefined,
+    });
+    const nvda = share(t.db, "NVDA", NOW);
+    await drive(t.clock, t.client, refreshResearch(t.ctx, nvda, ["analysts"]));
+    expect(
+      sectionState(t.db, nvda.id, "analysts", t.clock.now()).stale,
+    ).toEqual([]);
+    refused = true;
+    await drive(t.clock, t.client, refreshResearch(t.ctx, nvda, ["analysts"]));
+    expect(readResearch(t.db, nvda.id, "analysts")).toHaveLength(4);
+    expect(
+      sectionState(t.db, nvda.id, "analysts", t.clock.now()),
+    ).toMatchObject({ noData: true, stale: [STALE_RESEARCH.noData] });
+    // a share that never had rows answers no data with no such reason
+    const none = share(t.db, "EMPTY", NOW);
+    await drive(t.clock, t.client, refreshResearch(t.ctx, none, ["analysts"]));
+    expect(
+      sectionState(t.db, none.id, "analysts", t.clock.now()).stale,
+    ).toEqual([]);
   });
 
   test("a conflicting earnings period refuses that section only", async () => {

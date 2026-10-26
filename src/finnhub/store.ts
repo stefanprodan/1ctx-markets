@@ -55,6 +55,8 @@ export const STALE_RESEARCH = {
   failed: "research sync failed",
   pending: "research sync pending",
   none: "no research yet",
+  // the rows shown are from an earlier answer
+  noData: "no data in the last answer",
 } as const;
 
 // db is for reads; every write goes through writer; finnhub is null
@@ -144,6 +146,8 @@ const aborts = (error: unknown): boolean =>
   error instanceof WriterClosed ||
   error instanceof DeadlinePassed;
 
+// columns in kept hold a value once seen when a later answer leaves it
+// out, as an earnings actual does
 const upsertResearch = (
   db: Db,
   instrument: string,
@@ -151,16 +155,24 @@ const upsertResearch = (
   period: string,
   values: Record<string, number | null>,
   fetchedAt: number,
+  kept: readonly string[] = [],
 ) => {
   const columns = Object.keys(values);
+  const set = (c: string) =>
+    kept.includes(c)
+      ? `${c} = coalesce(excluded.${c}, research.${c})`
+      : `${c} = excluded.${c}`;
   db.query(
     `insert into research (instrument, kind, period, ${columns.join(", ")}, fetched_at)
      values (?, ?, ?, ${columns.map(() => "?").join(", ")}, ?)
      on conflict (instrument, kind, period) do update set
-       ${columns.map((c) => `${c} = excluded.${c}`).join(", ")},
+       ${columns.map(set).join(", ")},
        fetched_at = excluded.fetched_at`,
   ).run(instrument, kind, period, ...Object.values(values), fetchedAt);
 };
+
+// an actual, and the surprise worked out from it, never go back to null
+const EARNINGS_KEPT = ["eps_actual", "surprise", "surprise_percent"];
 
 const METRIC_COLUMNS: Record<keyof Metric, string> = {
   forwardPE: "forward_pe",
@@ -291,6 +303,7 @@ function storeSection(
             surprise_percent: r.surprisePercent,
           },
           at,
+          EARNINGS_KEPT,
         );
       }
       return f.answer.data!.length;
@@ -444,8 +457,19 @@ export type SectionState = {
   stale: string[];
 };
 
+// whether the section holds rows from any answer
+function hasRows(db: Db, instrument: string, section: Section): boolean {
+  const sql =
+    section === "calendar"
+      ? "select count(*) as n from events where instrument = ?"
+      : "select count(*) as n from research where instrument = ? and kind = ?";
+  const args = section === "calendar" ? [instrument] : [instrument, section];
+  return (db.query(sql).get(...args) as { n: number }).n > 0;
+}
+
 // A section's own runs only: never asked, its last run failed, or its
-// daily refresh is due and has not ended well.
+// daily refresh is due and has not ended well; and rows kept from an
+// earlier answer while the last one had no data.
 export function sectionState(
   db: Db,
   instrument: string,
@@ -459,6 +483,10 @@ export function sectionState(
   if (last?.status === "failed") stale.push(STALE_RESEARCH.failed);
   else if (ok !== null && ok.startedAt < dueAt(now)) {
     stale.push(STALE_RESEARCH.pending);
+  }
+  const noData = ok !== null && ok.rows === 0;
+  if (noData && hasRows(db, instrument, section)) {
+    stale.push(STALE_RESEARCH.noData);
   }
   return {
     fetchedAt: ok?.endedAt ?? null,

@@ -80,13 +80,21 @@ export function start(options: AppOptions): App {
   const { clock, db } = options;
   const trackMs = (options.trackDays ?? TRACK_DAYS) * DAY_MS;
   const write = writer(db);
+  const hooks = options.hooks ?? NO_HOOKS;
+  // every table's retention, at start and once a day
+  const prune = (db: Db) => {
+    const now = clock.now();
+    pruneRuns(db, now);
+    pruneResearch(db, now, hooks.waited(db, now));
+    pruneNews(db, now, trackedIds(db, now, trackMs));
+  };
   // queued first, so no job's run is taken for one a crash left running;
   // pruned here too, since a server restarted daily never reaches the
   // daily turn
   void write
     .write((db) => {
       failInterrupted(db, clock.now());
-      pruneRuns(db, clock.now());
+      prune(db);
     })
     .catch((error: unknown) => {
       options
@@ -116,7 +124,6 @@ export function start(options: AppOptions): App {
           trackMs,
         });
 
-  const hooks = options.hooks ?? NO_HOOKS;
   const finnhubKey = options.finnhubKey ?? null;
   const finnhubClient =
     finnhubKey === null
@@ -178,11 +185,7 @@ export function start(options: AppOptions): App {
   finnhubSync?.schedule(jobs);
   massiveSync?.schedule(jobs);
   jobs.every("retention", DAY_MS, async () => {
-    await write.write((db) => {
-      pruneRuns(db, clock.now());
-      pruneResearch(db, clock.now(), hooks.waited(db, clock.now()));
-      pruneNews(db, clock.now(), trackedIds(db, clock.now(), trackMs));
-    });
+    await write.write(prune);
   });
   return {
     server,
