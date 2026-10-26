@@ -349,7 +349,14 @@ export async function refreshResearch(
   ctx: FinnhubContext,
   instrument: Instrument,
   sections: readonly Section[] = SECTIONS,
-  options: { live?: () => boolean; hooks?: Hooks; client?: Finnhub } = {},
+  options: {
+    live?: () => boolean;
+    hooks?: Hooks;
+    client?: Finnhub;
+    // only those still without a good run once the lock is held, so a
+    // call that waited on another's fetch asks nothing it stored
+    unfetched?: boolean;
+  } = {},
 ): Promise<SectionResult[]> {
   const client = options.client ?? ctx.finnhub;
   if (client === null) throw new Error("finnhub is off");
@@ -358,9 +365,13 @@ export async function refreshResearch(
   const symbol = finnhubSymbol(instrument);
   // its own lock key, so research never waits on the instrument's bar fetch
   return exclusive(ctx.db, `${SOURCE}:${instrument.id}`, async () => {
+    const asked = options.unfetched
+      ? unfetched(ctx.db, instrument.id, sections)
+      : sections;
+    if (asked.length === 0) return [];
     const outcomes: Outcome[] = [];
     let paused: Paused | null = null;
-    for (const section of sections) {
+    for (const section of asked) {
       if (!live()) throw new DeadlinePassed();
       const startedAt = ctx.clock.now();
       try {

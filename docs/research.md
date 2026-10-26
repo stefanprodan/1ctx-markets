@@ -74,7 +74,9 @@ contract in `docs/tools.md`; rules that wait on events in
   (`SECTIONS_OF`). For the `overview` and `news` sections only, a
   covered instrument never asked for news gets one page. The rest come
   with the jobs. Concurrent calls naming one instrument and sections
-  share one fetch (`shared`). A deadline that passes stores nothing.
+  share one fetch (`shared`); the sections are checked again inside
+  the instrument's lock, so a call that waited asks none another
+  stored. A deadline that passes stores nothing.
 
 ## Finnhub sections
 
@@ -137,8 +139,9 @@ contract in `docs/tools.md`; rules that wait on events in
   named covered share whose calendar has no good run is fetched
   inline. A symbol not covered or not resolved is listed under
   `unavailable`, and so is every share whose calendar has no good run,
-  with why (never fetched, its fetch failed, timed out), so an empty
-  list means no earnings in the range. A failed fetch is listed there
+  with why (never fetched, its fetch failed, timed out), and every
+  share whose last good calendar run was no data with no event kept
+  (`NO_DATA`), so an empty list means no earnings in the range. A failed fetch is listed there
   too, while its stored events still show. The list is
   capped at 8 KiB with the rest counted, and appears on the first page
   only (`src/tools/events.ts`).

@@ -8,6 +8,7 @@
 import { SOURCE } from "../finnhub/client.ts";
 import {
   eligible,
+  NO_DATA,
   NO_EVENTS,
   NOT_COVERED,
   readEvents,
@@ -74,10 +75,21 @@ export function capNotes(notes: readonly Note[]): {
   return { listed, more: notes.length - listed.length };
 }
 
-// why a share's calendar never ended well, so an empty list is never
-// read as no earnings ahead; null once it did
+// why a share has no calendar, so an empty list is never read as no
+// earnings ahead; null once one is stored or a fetch ended well
 function noCalendar(m: Markets, input: string, i: Instrument): Note | null {
-  if (lastStarted(m.db, SOURCE, "calendar", i.id, "ok") !== null) return null;
+  const ok = lastStarted(m.db, SOURCE, "calendar", i.id, "ok");
+  if (ok !== null) {
+    // an answer of no data, a 403 or another listing's, with nothing kept
+    const kept = m.db
+      .query<{ n: number }, [string]>(
+        "select count(*) as n from events where instrument = ?",
+      )
+      .get(i.id)!.n;
+    return ok.rows === 0 && kept === 0
+      ? { input, id: i.id, message: NO_DATA }
+      : null;
+  }
   const last = lastStarted(m.db, SOURCE, "calendar", i.id);
   return last?.status === "failed"
     ? {

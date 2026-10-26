@@ -759,6 +759,47 @@ describe("events inside the call", () => {
     ]);
   });
 
+  test("a share answered as another listing is listed as no data", async () => {
+    const t = await setup({ charts: await shares(["TSM"]) });
+    usShare(t.db, "TSM");
+    const b = body(
+      await drive(
+        t.clock,
+        pacedOf(t.m),
+        eventsAnswer(
+          t.m,
+          parseEvents({
+            from: "2026-10-01",
+            to: "2027-01-31",
+            symbols: ["TSM"],
+          }),
+        ),
+      ),
+    );
+    expect(b.events).toEqual([]);
+    expect(b.unavailable).toEqual([
+      { input: "TSM", id: "US:TSM", message: NO_DATA },
+    ]);
+    expect(t.finnhubCalls()).toHaveLength(1);
+  });
+
+  test("an overview and events for one new share ask its calendar once", async () => {
+    const t = await setup();
+    await drive(
+      t.clock,
+      pacedOf(t.m),
+      Promise.all([
+        researchAnswer(t.m, parseResearch({ symbol: "NVDA" })),
+        eventsAnswer(t.m, parseEvents({ ...range, symbols: ["NVDA"] })),
+      ]),
+    );
+    const paths = t.finnhubCalls().map((u) => u.pathname);
+    expect(paths.filter((p) => p === "/api/v1/calendar/earnings")).toHaveLength(
+      1,
+    );
+    expect(paths).toHaveLength(5);
+  });
+
   test("events for eleven shares asks one calendar each", async () => {
     const symbols = Array.from({ length: 11 }, (_, k) => `ZZ${k}`);
     const t = await setup({ charts: await shares(symbols) });
@@ -770,7 +811,10 @@ describe("events inside the call", () => {
         eventsAnswer(t.m, parseEvents({ ...range, symbols })),
       ),
     );
-    expect(b.unavailable).toBeUndefined();
+    // each answers 403, which is no data for its calendar
+    expect(b.unavailable).toEqual(
+      symbols.map((s) => ({ input: s, id: `US:${s}`, message: NO_DATA })),
+    );
     expect(t.finnhubCalls()).toHaveLength(11);
     expect(new Set(t.finnhubCalls().map((u) => u.pathname))).toEqual(
       new Set(["/api/v1/calendar/earnings"]),

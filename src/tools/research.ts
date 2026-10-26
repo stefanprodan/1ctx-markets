@@ -206,7 +206,12 @@ export async function researchTargets(
         { db: m.db, clock: m.clock, writer: m.writer, finnhub: client },
         instrument,
         missing,
-        { live, hooks: m.hooks, client: client.within(live) },
+        {
+          live,
+          hooks: m.hooks,
+          client: client.within(live),
+          unfetched: true,
+        },
       ),
     );
     settle(inline, instrument.id, fetch);
