@@ -111,4 +111,9 @@ under `~/.1ctx-markets` and the binary in `~/.1ctx-markets/bin`.
   files the box lacks** into `~/.1ctx-markets/secrets` (700, files
   600). Each value goes over ssh stdin, never in an argument or the
   output, which names files only; a key the box holds is kept. The
-  bearer is never copied: the box's first start writes its own.
+  bearer and the admin key are never copied: the box's first start
+  writes its own.
+- **Admin actions run on the box over ssh** with `1ctx-markets admin
+  status|refetch|delete` (`docs/admin.md`), which reads the installed
+  service's listen address and data directory and calls it on
+  loopback, so the service keeps running.

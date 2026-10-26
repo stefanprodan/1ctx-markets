@@ -105,7 +105,7 @@ function storedConfig(args: string[], home: string): Config | null {
 }
 
 // where a client on this machine reaches the server
-function urlOf(config: Config): string {
+export function urlOf(config: Config): string {
   let host = config.hostname;
   if (host === "0.0.0.0" || host === "::" || host === "[::]") {
     host = "127.0.0.1";
@@ -250,6 +250,18 @@ async function uninstall(purge: boolean, r: Resolved): Promise<void> {
   }
   await r.backend.remove();
   r.write(`uninstalled ${r.backend.name}${purge ? " and purged data" : ""}`);
+}
+
+// the installed service's options, null when none is installed, it
+// cannot be read, or the platform has no service manager
+export async function serviceConfig(
+  deps: ServiceDeps = {},
+): Promise<Config | null> {
+  try {
+    return (await installedConfig(resolveDeps(deps))).config;
+  } catch {
+    return null;
+  }
 }
 
 export async function runService(

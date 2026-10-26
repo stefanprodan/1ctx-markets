@@ -211,21 +211,26 @@ export async function addSeries(
   });
 }
 
-// after a gap past 30 observations, asked again from the last stored day
+// after a gap past 30 observations, asked again from the last stored day;
+// whole asks from the first stored day, as after a parser fix
 export function refetchSeries(
   ctx: FredContext,
   instrument: Instrument,
   live: () => boolean = () => true,
+  whole = false,
 ): Promise<Written> {
   const client = source(ctx);
   return exclusive(ctx.db, instrument.id, async () => {
     if (!live()) throw new DeadlinePassed();
     const range = dailyRange(ctx.db, instrument.id);
+    const start = backfillStart(ctx.clock.now());
     let answer = await client.observations(
       instrument.sourceSymbol,
       range === null
-        ? { start: backfillStart(ctx.clock.now()) }
-        : { limit: REFETCH_OBSERVATIONS },
+        ? { start }
+        : whole
+          ? { start: earliest(range.first, start)! }
+          : { limit: REFETCH_OBSERVATIONS },
     );
     const oldest = answer.dates[0];
     if (range !== null && oldest !== undefined && oldest > range.last) {

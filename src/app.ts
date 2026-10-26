@@ -4,6 +4,7 @@
 // The wiring main.ts starts, kept apart so a test runs the same with a
 // fake clock, a captured log and a fake fetch.
 
+import { adminHandler, type SourceState } from "./admin/http.ts";
 import { type Bvb, bvb } from "./bvb/client.ts";
 import { type BvbJobs, bvbJobs } from "./bvb/jobs.ts";
 import {
@@ -29,7 +30,7 @@ import { ruleEngine } from "./rules/evaluate.ts";
 import { pruneAlerts } from "./rules/store.ts";
 import { failInterrupted, pruneRuns } from "./runs.ts";
 import { type Scheduler, scheduler } from "./scheduler.ts";
-import { type Fetch, queue } from "./source.ts";
+import { type Backoff, type Fetch, queue } from "./source.ts";
 import { alertsHandler } from "./tools/alerts.ts";
 import { quotesHandler } from "./tools/http.ts";
 import { researchHandler } from "./tools/research.ts";
@@ -42,10 +43,14 @@ import { type YahooJobs, yahooJobs } from "./yahoo/jobs.ts";
 // Yahoo calls in flight at once, jobs and tools together
 const YAHOO_CONCURRENCY = 2;
 
+type Paced = { backoff(): Backoff | null };
+
 export type AppOptions = {
   hostname: string;
   port: number;
   bearer: string;
+  // /admin/* answers only while there is one
+  adminKey?: string | null;
   clock: Clock;
   log: LogFactory;
   version: string;
@@ -226,6 +231,30 @@ export function start(options: AppOptions): App {
     quoteEveryMs: options.quoteEveryMs,
   });
   const mcp = mcpHandler(options.version, options.log("mcp"), reads);
+  const keyed = (name: string, key: string | null, client: Paced | null) => ({
+    name,
+    on: client !== null,
+    why: key === null ? "no key" : "key file",
+    backoff: () => client?.backoff() ?? null,
+  });
+  const states: SourceState[] = [
+    {
+      name: "yahoo",
+      on: true,
+      why: "always",
+      backoff: () => yahooQueue.backoff(),
+    },
+    keyed("fred", fredKey, fredClient),
+    keyed("finnhub", finnhubKey, finnhubClient),
+    keyed("massive", massiveKey, massiveClient),
+    {
+      name: "bvb",
+      on: bvbClient !== null,
+      why: bvbClient === null ? "no flag" : "flag",
+      backoff: () => bvbClient?.backoff() ?? null,
+    },
+  ];
+  const adminKey = options.adminKey ?? null;
   const server = serve({
     hostname: options.hostname,
     port: options.port,
@@ -235,6 +264,17 @@ export function start(options: AppOptions): App {
       quotes: quotesHandler(reads),
       research: researchHandler(reads),
       alerts: alertsHandler({ db, log: options.log("alerts") }),
+      admin:
+        adminKey === null
+          ? undefined
+          : {
+              key: adminKey,
+              handle: adminHandler({
+                m: { ...reads, log: options.log("admin") },
+                version: options.version,
+                sources: states,
+              }),
+            },
       clock,
       log: options.log("http"),
     }),
@@ -265,13 +305,12 @@ export function start(options: AppOptions): App {
     bvbJobs: bvbSync,
     sourceSwitch: switcher,
     markets: reads,
-    sources: {
-      yahoo: "on",
-      fred: fredKey === null ? "off (no key)" : "on (key file)",
-      finnhub: finnhubKey === null ? "off (no key)" : "on (key file)",
-      massive: massiveKey === null ? "off (no key)" : "on (key file)",
-      bvb: bvbClient === null ? "off (no flag)" : "on (flag)",
-    },
+    sources: Object.fromEntries(
+      states.map((s) => [
+        s.name,
+        s.name === "yahoo" ? "on" : `${s.on ? "on" : "off"} (${s.why})`,
+      ]),
+    ),
     async stop() {
       // no new run or request starts, no job waits out a back-off, every
       // run settles, then the queued writes drain before main closes the

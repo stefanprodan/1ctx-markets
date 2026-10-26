@@ -8,6 +8,7 @@
 
 import type { Clock } from "../clock.ts";
 import {
+  type Backoff,
   type Fetch,
   type Limiter,
   limiter,
@@ -153,6 +154,7 @@ export type Bvb = {
   failFast(): Bvb;
   within(live: () => boolean): Bvb;
   due(): number | null;
+  backoff(): Backoff | null;
   close(): void;
 };
 
@@ -671,6 +673,7 @@ export function bvb(options: BvbOptions): Bvb {
       failFast: () => client({ failFast: true }),
       within: (live) => client({ failFast: true, live }),
       due: () => calls.due(),
+      backoff: () => calls.backoff(),
       close: () => calls.close(),
     };
   };

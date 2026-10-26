@@ -8,6 +8,7 @@
 import type { Clock } from "../clock.ts";
 import { MINUTE_MS } from "../clock.ts";
 import {
+  type Backoff,
   DeadlinePassed,
   type Fetch,
   type Queue,
@@ -65,6 +66,7 @@ export type Fred = {
   failFast(): Fred;
   // failing fast, and starting no call once live() is false
   within(live: () => boolean): Fred;
+  backoff(): Backoff | null;
   // at shutdown: fails waiting calls, so none goes out after
   close(): void;
 };
@@ -331,6 +333,7 @@ export function fred(options: FredOptions): Fred {
     },
     failFast: () => client({ failFast: true }),
     within: (live) => client({ failFast: true, live }),
+    backoff: () => calls.backoff(),
     close() {
       closed = true;
       calls.close();

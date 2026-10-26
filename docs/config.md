@@ -7,7 +7,8 @@ and smoke scripts in `package.json`, `Makefile` and
 `docs/tools.md`, `GET /alerts` in `docs/rules.md`, `GET /research` in
 `docs/research.md`; the database, migrations and retention in
 `docs/storage.md`; the `service` command and staging in
-`docs/deploy.md`.
+`docs/deploy.md`; `/admin/*` and the `admin` command in
+`docs/admin.md`.
 
 ## Flags
 
@@ -46,6 +47,7 @@ runs what `parseCli()` answers. `HELP` in `src/config.ts` is the
 | `markets.db` | the one SQLite database (`docs/storage.md`) |
 | `markets.log` | the service's log, when run by `service install` (`docs/deploy.md`) |
 | `secrets/bearer.key` | the bearer every request carries |
+| `secrets/admin.key` | the key of `/admin/*` alone (`docs/admin.md`) |
 | `secrets/source-<name>.key` | a source's API key: `source-fred.key`, `source-finnhub.key`, `source-massive.key` |
 
 - **Migrations, the startup write and retention are in
@@ -66,6 +68,9 @@ runs what `parseCli()` answers. `HELP` in `src/config.ts` is the
   printable ASCII characters (`requireBearer()`); it exits 1 with a
   message naming the file and how to get a new one, never its
   contents.
+- **The admin key is written and checked the same way**
+  (`createAdmin()`, `requireAdmin()`), prefixed `1ctx-markets-admin-`,
+  and must differ from the bearer. It authorizes `/admin/*` only.
 - **A source key turns its source on.** Yahoo needs none and is always
   on; FRED, Finnhub and Massive are on while their file holds a key,
   and every tool answers without them. A keyless optional source is on
@@ -82,6 +87,8 @@ runs what `parseCli()` answers. `HELP` in `src/config.ts` is the
 
 ## Start log
 
+- **A first start logs `bearer key created` and `admin key created`**
+  with the file's path, never the value.
 - **One `startup` line, then one `sources` line**, on stderr in
   slog-text form. `startup` holds `version`, `listen`, `data` (with
   `~` for the home directory), `migrations`, `quote_every` and
@@ -111,6 +118,7 @@ runs what `parseCli()` answers. `HELP` in `src/config.ts` is the
 | `/quotes` | GET | the quote reader for scripts |
 | `/research` | GET | research summaries for scripts |
 | `/alerts` | GET | the alerts feed |
+| `/admin/*` | GET, POST, DELETE | the operator's routes, behind the admin key instead of the bearer (`docs/admin.md`) |
 | `/health` | GET | 200 with no body and no bearer, for the service's start check |
 
 - **Any other method is 405 with `Allow`.** `/mcp` is stateless (one

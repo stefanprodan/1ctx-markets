@@ -8,6 +8,7 @@
 import { type Session, sessionFromChartMeta } from "../calendars.ts";
 import type { Clock } from "../clock.ts";
 import {
+  type Backoff,
   type Fetch,
   type Phrase,
   type Queue,
@@ -100,6 +101,8 @@ export type Yahoo = {
   failFast(): Yahoo;
   // failing fast, and starting no call once live() is false
   within(live: () => boolean): Yahoo;
+  // the shared queue's, null once it ended
+  backoff(): Backoff | null;
 };
 
 export type YahooOptions = {
@@ -428,6 +431,7 @@ export function yahoo(options: YahooOptions): Yahoo {
       },
       failFast: () => client({ failFast: true }),
       within: (live) => client({ failFast: true, live }),
+      backoff: () => calls.backoff(),
     };
   };
   return client({});
