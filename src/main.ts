@@ -19,6 +19,7 @@ import {
   requireBearer,
 } from "./keys.ts";
 import { errorFields, logger } from "./log.ts";
+import { runService, ServiceError } from "./service/index.ts";
 
 const buildVersion = process.env.MARKETS_BUILD_VERSION;
 export const VERSION = buildVersion || `v${pkg.version}`;
@@ -40,6 +41,16 @@ if (cli.kind === "version") {
 }
 if (cli.kind === "help") {
   console.log(HELP);
+  process.exit(0);
+}
+if (cli.kind === "service") {
+  try {
+    await runService(cli.argv);
+  } catch (error) {
+    if (!(error instanceof ServiceError)) throw error;
+    console.error(`error: ${error.message}`);
+    process.exit(1);
+  }
   process.exit(0);
 }
 
