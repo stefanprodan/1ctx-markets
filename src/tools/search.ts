@@ -5,6 +5,8 @@
 // Yahoo's listings. It fetches no prices and tracks nothing, so a search
 // never keeps an instrument synced.
 
+import { SOURCE as BVB } from "../bvb/client.ts";
+import { candidateOf, TRADABLE } from "../bvb/resolve.ts";
 import { MARKET as FRED_MARKET, NO_DATA, seriesId } from "../fred/sync.ts";
 import { type Instrument, readInstrument } from "../instruments.ts";
 import { SOURCE as YAHOO } from "../yahoo/client.ts";
@@ -163,6 +165,38 @@ async function yahooCandidates(
   }
 }
 
+// the exchange's own listings, tradable only, while the feed is on
+async function bvbCandidates(
+  m: Markets,
+  query: string,
+): Promise<{ found: Found[]; notes: SourceNote[] }> {
+  const bvb = m.bvb;
+  if (bvb === null) return { found: [], notes: [] };
+  try {
+    const listings = await within(m, (live) => bvb.within(live).search(query));
+    if (listings === EXPIRED) return { found: [], notes: [late(m, BVB)] };
+    return {
+      found: listings
+        .filter((l) => l.status === TRADABLE)
+        .map((l) => {
+          const c = candidateOf(l);
+          return {
+            id: c.id,
+            name: c.name,
+            type: c.type,
+            exchange: c.exchange,
+            source: BVB,
+            source_symbol: c.sourceSymbol,
+            stored: readInstrument(m.db, c.id) !== null,
+          };
+        }),
+      notes: [],
+    };
+  } catch (error) {
+    return { found: [], notes: [{ source: BVB, ...itemError(m, error) }] };
+  }
+}
+
 export async function searchPage(
   m: Markets,
   args: SearchArgs,
@@ -177,11 +211,14 @@ export async function searchPage(
   }
   const fredQuery = args.query.toUpperCase().startsWith(`${FRED_MARKET}:`);
   const local = fredQuery ? [] : stored(m, args.query);
-  const remote = fredQuery
-    ? await fredCandidates(m, args.query)
-    : await yahooCandidates(m, args.query);
+  const [exchange, remote] = await Promise.all([
+    fredQuery ? { found: [], notes: [] } : bvbCandidates(m, args.query),
+    fredQuery ? fredCandidates(m, args.query) : yahooCandidates(m, args.query),
+  ]);
+  const notes = [...exchange.notes, ...remote.notes];
   const seen = new Set<string>();
-  const all = [...local, ...remote.found].filter((c) => {
+  // a Bucharest listing is the feed's while it is on
+  const all = [...local, ...exchange.found, ...remote.found].filter((c) => {
     if (seen.has(c.id)) return false;
     seen.add(c.id);
     return true;
@@ -191,7 +228,7 @@ export async function searchPage(
     rest,
     (count) => ({
       query: args.query,
-      ...(remote.notes.length > 0 ? { errors: remote.notes } : {}),
+      ...(notes.length > 0 ? { errors: notes } : {}),
       next:
         offset + count < all.length
           ? cursor(String(offset + count), args.query)

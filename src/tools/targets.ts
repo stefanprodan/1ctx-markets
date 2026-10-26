@@ -7,6 +7,18 @@
 // Every instrument answered counts as read, which is what tracks it.
 
 import { dailyRange } from "../bars.ts";
+import {
+  SOURCE as BVB,
+  MARKET as BVB_MARKET,
+  type Bvb,
+} from "../bvb/client.ts";
+import { resolveBoth } from "../bvb/resolve.ts";
+import {
+  NO_DATA as BVB_NO_DATA,
+  catchUp as bvbCatchUp,
+  fetchInstrument as bvbFetchInstrument,
+  keyOf as bvbKey,
+} from "../bvb/sync.ts";
 import { type Clock, MINUTE_MS } from "../clock.ts";
 import { DEFAULT_QUOTE_EVERY } from "../config.ts";
 import type { Db } from "../db/index.ts";
@@ -46,6 +58,8 @@ export type Markets = {
   // fail-fast clients: a read never waits out a source's back-off
   yahoo: Yahoo;
   fred: Fred | null;
+  // null while the Bucharest feed is off
+  bvb: Bvb | null;
   finnhub: Finnhub | null;
   massive: Massive | null;
   // what rules hand the research reads
@@ -67,6 +81,7 @@ export function markets(options: {
   writer: Writer;
   yahoo: Yahoo;
   fred: Fred | null;
+  bvb?: Bvb | null;
   finnhub?: Finnhub | null;
   massive?: Massive | null;
   hooks?: Hooks;
@@ -82,6 +97,7 @@ export function markets(options: {
     writer: options.writer,
     yahoo: options.yahoo.failFast(),
     fred: options.fred?.failFast() ?? null,
+    bvb: options.bvb?.failFast() ?? null,
     finnhub: options.finnhub?.failFast() ?? null,
     massive: options.massive?.failFast() ?? null,
     hooks: options.hooks ?? NO_HOOKS,
@@ -256,8 +272,50 @@ function fredStep(m: Markets, id: string): Step {
   };
 }
 
+const bvbCtx = (m: Markets, bvb: Bvb, live: () => boolean) => ({
+  db: m.db,
+  clock: m.clock,
+  writer: m.writer,
+  bvb: bvb.within(live),
+  rules: m.rules,
+});
+
+const noBvb: Step = {
+  kind: "error",
+  error: { error: "no_data", message: BVB_NO_DATA },
+};
+
+function bvbFetchStep(m: Markets, symbol: string, id: string): Step {
+  const bvb = m.bvb;
+  if (bvb === null) return noBvb;
+  return {
+    kind: "fetch",
+    key: id,
+    run: (live) => bvbFetchInstrument(bvbCtx(m, bvb, live), symbol, id, live),
+  };
+}
+
+// a Bucharest index or bond exists only on the feed, so it has no data
+// while the feed is off
+function bvbStep(m: Markets, instrument: Instrument): Step {
+  const bvb = m.bvb;
+  if (bvb === null) return noBvb;
+  if (!hasBars(m.db, instrument.id)) {
+    return bvbFetchStep(m, instrument.sourceSymbol, instrument.id);
+  }
+  if (isTracked(m.db, instrument.id, m.clock.now(), m.trackMs)) {
+    return { kind: "ready", instrument };
+  }
+  return {
+    kind: "fetch",
+    key: instrument.id,
+    run: (live) => bvbCatchUp(bvbCtx(m, bvb, live), instrument, live),
+  };
+}
+
 function storedStep(m: Markets, instrument: Instrument): Step {
   if (instrument.source === FRED) return fredStep(m, instrument.id);
+  if (instrument.source === BVB) return bvbStep(m, instrument);
   if (instrument.source !== YAHOO) return { kind: "ready", instrument };
   if (!hasBars(m.db, instrument.id)) {
     return {
@@ -282,9 +340,10 @@ function storedStep(m: Markets, instrument: Instrument): Step {
   };
 }
 
-// A stored key is exact; FRED:<id> is FRED's before anything else; any
-// other symbol or name goes through Yahoo's rules, sharing one search
-// with any call resolving the same text.
+// A stored key is exact; FRED:<id> is FRED's before anything else, and
+// BVB:<symbol> the feed's while it is on; any other symbol or name goes
+// through Yahoo's rules, beside the exchange's own search while the feed
+// is on, sharing one search with any call resolving the same text.
 async function step(
   m: Markets,
   input: string,
@@ -299,20 +358,42 @@ async function step(
   if (upper.startsWith(`${FRED_MARKET}:`)) {
     return fredStep(m, `${FRED_MARKET}:${seriesId(upper)}`);
   }
-  const r = await shared(m, `resolve:${upper}`, deadline, (live) =>
-    resolve(yahooCtx(m, live), given),
-  );
-  if (r.kind === "known") return storedStep(m, r.instrument);
-  if (r.kind === "candidates") {
+  const bvb = m.bvb;
+  if (upper.startsWith(`${BVB_MARKET}:`) && bvb !== null) {
+    // the symbol as written: the exchange writes some in mixed case
+    const symbol = given.slice(BVB_MARKET.length + 1).trim();
+    return bvbFetchStep(m, symbol, bvbKey(symbol));
+  }
+  if (!upper.includes(":") && bvb !== null) {
+    const both = await shared(m, `resolve:${upper}`, deadline, (live) =>
+      resolveBoth({ ...yahooCtx(m, live), bvb: bvb.within(live) }, given),
+    );
+    if (both.kind === "known") return storedStep(m, both.instrument);
+    if (both.kind === "candidates") return candidates(both.candidates);
+    const stored = readInstrument(m.db, both.id);
+    if (stored !== null) return storedStep(m, stored);
+    if (both.source === BVB) return bvbFetchStep(m, both.sourceSymbol, both.id);
     return {
-      kind: "error",
-      error: {
-        error: "candidates",
-        message: "several listings match; call again with one id",
-        candidates: r.candidates.map(candidateItem),
-      },
+      kind: "fetch",
+      key: both.id,
+      run: (live) =>
+        fetchInstrument(yahooCtx(m, live), both.sourceSymbol, both.id, live),
     };
   }
+  let r: Awaited<ReturnType<typeof resolve>>;
+  try {
+    r = await shared(m, `resolve:${upper}`, deadline, (live) =>
+      resolve(yahooCtx(m, live), given),
+    );
+  } catch (error) {
+    // Yahoo carries Bucharest shares only: the rest is on the feed
+    if (error instanceof ResolveError && upper.startsWith(`${BVB_MARKET}:`)) {
+      return noBvb;
+    }
+    throw error;
+  }
+  if (r.kind === "known") return storedStep(m, r.instrument);
+  if (r.kind === "candidates") return candidates(r.candidates);
   // stored by another call since the search answered
   const stored = readInstrument(m.db, r.id);
   if (stored !== null) return storedStep(m, stored);
@@ -323,6 +404,15 @@ async function step(
       fetchInstrument(yahooCtx(m, live), r.sourceSymbol, r.id, live),
   };
 }
+
+const candidates = (list: readonly Candidate[]): Step => ({
+  kind: "error",
+  error: {
+    error: "candidates",
+    message: "several listings match; call again with one id",
+    candidates: list.map(candidateItem),
+  },
+});
 
 const EXPIRED = Symbol("expired");
 
