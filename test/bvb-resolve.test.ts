@@ -161,13 +161,24 @@ describe("resolution with the feed on", () => {
 
   test("a symbol Yahoo names exactly, absent from the exchange's lists, asks no exchange search", async () => {
     const t = await setup(true);
-    // a quote pass read the shares list, so the exchange's symbols are known
+    // quote passes read every list, so the exchange's symbols are known
     await drive(t.clock, t.exchange!, t.exchange!.shares());
+    await drive(t.clock, t.exchange!, t.exchange!.bonds());
+    await drive(t.clock, t.exchange!, t.exchange!.indices());
     const [nvda] = await t.read(["NVDA"]);
     expect(idOf(nvda)).toBe("US:NVDA");
     expect(
       t.urls.filter((u) => u.pathname === "/proxyshld.aspx/GetInstrumentsList"),
     ).toEqual([]);
+  });
+
+  test("with a list page unread, a symbol Yahoo names exactly still asks the exchange", async () => {
+    const t = await setup(true);
+    await drive(t.clock, t.exchange!, t.exchange!.shares());
+    await t.read(["NVDA"]);
+    expect(
+      t.urls.filter((u) => u.pathname === "/proxyshld.aspx/GetInstrumentsList"),
+    ).toHaveLength(1);
   });
 
   test("a symbol the exchange lists is asked of it though Yahoo's results lack it", async () => {

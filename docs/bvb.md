@@ -189,8 +189,8 @@ exchange: one client, its parsers, its session, the same tables.
 - **Yahoo's exact match skips the exchange's search only when the
   exchange lacks the symbol:** the symbols on the list pages the client
   last read (`listed()`, kept by the quote pass, no extra call) do not
-  hold it and Yahoo's results name no Bucharest listing (`.RO`). With no
-  list read yet, or Yahoo's top results missing a Bucharest listing the
+  hold it and Yahoo's results name no Bucharest listing (`.RO`). Until
+  all three lists (shares, bonds, indices) are read, or Yahoo's top results missing a Bucharest listing the
   lists hold (`EL`, `M`), the exchange is asked, so a bare symbol on
   both answers both as candidates, never a guess.
 - **A `BVB:` key is the feed's while it is on,** asked by its symbol

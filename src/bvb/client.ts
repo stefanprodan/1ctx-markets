@@ -144,7 +144,8 @@ export type Bvb = {
     to: number,
   ): Promise<History>;
   search(text: string): Promise<Listing[]>;
-  // the symbols, uppercased, on the list pages last read; null before any
+  // the symbols, uppercased, on the list pages last read; null until all
+  // three are read, as an unread kind may hold the symbol
   listed(): ReadonlySet<string> | null;
   failFast(): Bvb;
   within(live: () => boolean): Bvb;
@@ -467,6 +468,7 @@ export function bvb(options: BvbOptions): Bvb {
   let key: string | null = null;
   // each list page's symbols, from its last read
   const lists = new Map<string, ReadonlySet<string>>();
+  const LISTS = ["shares", "bonds", "indices"];
   const keep = <T extends { rows: { symbol: string }[] }>(
     kind: string,
     page: T,
@@ -640,7 +642,7 @@ export function bvb(options: BvbOptions): Bvb {
           return parseSearch(json(raw));
         }, run),
       listed: () =>
-        lists.size === 0
+        !LISTS.every((k) => lists.has(k))
           ? null
           : new Set([...lists.values()].flatMap((s) => [...s])),
       failFast: () => client({ failFast: true }),
