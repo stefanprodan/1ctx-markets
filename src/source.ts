@@ -32,6 +32,26 @@ export class SourceError extends Error {
   }
 }
 
+// A text an answer echoes may hold the key, raw, percent-encoded or as
+// a query string writes it, so it is cut out before anything keeps it.
+export function scrub(value: string, key: string): string {
+  if (key === "") return value;
+  let out = value;
+  const forms = new Set([
+    key,
+    encodeURIComponent(key),
+    new URLSearchParams({ k: key }).toString().slice(2),
+  ]);
+  // case-blind, since percent escapes come in either case
+  for (const form of [...forms].sort((a, b) => b.length - a.length)) {
+    out = out.replace(
+      new RegExp(form.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"),
+      "REDACTED",
+    );
+  }
+  return out;
+}
+
 // the phrase a run records for any error, so no message text is stored
 export function phraseOf(error: unknown): string {
   return error instanceof SourceError ? error.phrase : "failed";
@@ -42,6 +62,14 @@ export function phraseOf(error: unknown): string {
 export class DeadlinePassed extends SourceError {
   constructor() {
     super("timed out", "the call's deadline passed");
+  }
+}
+
+// A tool's call refused while the queue backs off: it never reached the
+// source, so no run records it.
+export class Paused extends SourceError {
+  constructor(phrase: Phrase) {
+    super(phrase, "backing off");
   }
 }
 
@@ -70,6 +98,8 @@ export type Queue = {
   // At shutdown: refuses new calls and fails the waiting ones, so no job
   // waits out a back-off; calls already sent finish.
   close(): void;
+  // when calls waiting out a back-off resume, null with none waiting
+  due(): number | null;
 };
 
 export class QueueClosed extends Error {
@@ -103,7 +133,7 @@ export function queue(clock: Clock, concurrency: number): Queue {
     if (clock.now() < until) {
       const fast = waiting.filter((w) => w.failFast);
       waiting = waiting.filter((w) => !w.failFast);
-      for (const w of fast) w.reject(new SourceError(pausedBy, "backing off"));
+      for (const w of fast) w.reject(new Paused(pausedBy));
       if (!armed && waiting.length > 0) {
         armed = true;
         clock.at(until, () => {
@@ -167,6 +197,74 @@ export function queue(clock: Clock, concurrency: number): Queue {
       const left = waiting;
       waiting = [];
       for (const w of left) w.reject(new QueueClosed());
+    },
+    due: () => (armed ? until : null),
+  };
+}
+
+export type Limiter = {
+  // task once the queue lets it start and the spacing since the last
+  // start has passed; refused once closed or past the caller's deadline
+  run<T>(task: () => Promise<T>, options?: RunOptions): Promise<T>;
+  // when the next waiting call may go, the spacing or a back-off; null
+  // while none waits on the clock
+  due(): number | null;
+  // At shutdown: closes the queue and fails a call waiting for its slot,
+  // so no call goes out after.
+  close(): void;
+};
+
+// One call at a time, each start at least spacingMs after the last, so
+// a source's own rate limit holds across its jobs and tools.
+export function limiter(clock: Clock, spacingMs: number): Limiter {
+  const calls = queue(clock, 1);
+  let lastStart = Number.NEGATIVE_INFINITY;
+  let closed = false;
+  let parked: number | null = null;
+  const waits = new Set<{ cancel: () => void; reject: (e: unknown) => void }>();
+
+  // waits, holding the queue, until the spacing since the last start
+  const slot = async (): Promise<void> => {
+    const until = lastStart + spacingMs;
+    if (clock.now() < until) {
+      parked = until;
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const wait = { cancel: () => {}, reject };
+          wait.cancel = clock.at(until, () => {
+            waits.delete(wait);
+            resolve();
+          });
+          waits.add(wait);
+        });
+      } finally {
+        parked = null;
+      }
+    }
+  };
+
+  return {
+    run: (task, run = {}) =>
+      calls.run(async () => {
+        if (closed) throw new QueueClosed();
+        if (run.live !== undefined && !run.live()) throw new DeadlinePassed();
+        await slot();
+        // closed, or past the caller's deadline, while it waited: the
+        // slot stays free for the next call
+        if (closed) throw new QueueClosed();
+        if (run.live !== undefined && !run.live()) throw new DeadlinePassed();
+        lastStart = clock.now();
+        return task();
+      }, run),
+    due: () => parked ?? calls.due(),
+    close() {
+      closed = true;
+      calls.close();
+      for (const wait of waits) {
+        wait.cancel();
+        wait.reject(new QueueClosed());
+      }
+      waits.clear();
     },
   };
 }

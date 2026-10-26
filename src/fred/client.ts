@@ -15,8 +15,11 @@ import {
   queue,
   type RunOptions,
   SourceError,
+  scrub,
 } from "../source.ts";
 import { wallOfDate } from "../zone.ts";
+
+export { scrub };
 
 export const SOURCE = "fred";
 export const HOST = "https://api.stlouisfed.org/fred";
@@ -111,26 +114,6 @@ export function parseLastUpdated(v: unknown): number | null {
 // "Reproduction of this data in any form is prohibited"
 const RESTRICTED =
   /internal use only|not (?:authorized|permitted) to (?:publish|distribute|redistribute)|reproduction of this data[^.]*prohibited/i;
-
-// A text an answer echoes may hold the key, raw, percent-encoded or as
-// a query string writes it, so it is cut out before anything keeps it.
-export function scrub(value: string, key: string): string {
-  if (key === "") return value;
-  let out = value;
-  const forms = new Set([
-    key,
-    encodeURIComponent(key),
-    new URLSearchParams({ k: key }).toString().slice(2),
-  ]);
-  // case-blind, since percent escapes come in either case
-  for (const form of [...forms].sort((a, b) => b.length - a.length)) {
-    out = out.replace(
-      new RegExp(form.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"),
-      "REDACTED",
-    );
-  }
-  return out;
-}
 
 function scrubbed(meta: SeriesMeta, key: string): SeriesMeta {
   const s = (v: string) => scrub(v, key);

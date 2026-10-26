@@ -14,9 +14,15 @@ import {
 import { errorFields } from "../log.ts";
 import { errorResult, type ToolResult, textResult } from "./answer.ts";
 import { ArgError, MAX_SYMBOL } from "./args.ts";
+import { eventsAnswer, MAX_EVENT_SYMBOLS, parseEvents } from "./events.ts";
 import { historyAnswer, parseHistory } from "./history.ts";
 import { AVERAGES, moversAnswer, parseMovers } from "./movers.ts";
 import { MAX_SYMBOLS, parseQuote, quotePage } from "./quote.ts";
+import {
+  parseResearch,
+  RESEARCH_SECTIONS,
+  researchAnswer,
+} from "./research.ts";
 import {
   FIELD_NAMES,
   MAX_FILTERS,
@@ -76,6 +82,11 @@ const SCREEN = `Filter and rank 1 to 100 symbols on their latest signals: the li
 
 const SEARCH =
   "Find instruments by name or symbol: stored ones and Yahoo's listings, each with its id, exchange, type and name, for quote or history. Fetches no prices. FRED series match only as FRED:<series id>.";
+
+const RESEARCH =
+  "One US-listed share's research from Finnhub and news from Massive. section overview (default): the quote and latest signals as in quote, the latest metrics (forward_pe, forward_peg, pe_ttm, ps_ttm, pb, EPS and revenue growth TTM YoY, net margin TTM, ROE TTM, current ratio and debt to equity quarterly, dividend yield TTM, beta), analyst counts, earnings surprise, insider month (share change, MSPR), the next earnings event and five recent headlines, each with fetched_at and stale reasons. analysts, earnings and insiders page their history, newest first; news pages 30 days of articles for this ticker, newest first, each with published_at, title, publisher, url, and the ticker's own sentiment (positive, neutral, negative, or null) with reasoning. A share never researched or never asked for news is fetched inside the call as in quote; ETFs, indices and non-US listings answer no data from Finnhub, and news covers US shares and ETFs. When next is set, call again with the same arguments and next.";
+
+const EVENTS = `Earnings events dated from to to (YYYY-MM-DD, inclusive) of the tracked US shares, or of 1 to ${MAX_EVENT_SYMBOLS} symbols named, by date. Each: fiscal_year, fiscal_quarter, date, hour (amc after close, bmo before open, or empty), status (scheduled; awaiting results once its date came without actuals; reported once EPS or revenue actuals are seen, with reported_seen_at), EPS and revenue estimates and actuals (revenue in whole currency units), fetched_at, stale. Symbols resolve and are fetched as in quote; one Finnhub does not cover is listed as unavailable. When next is set, call again with the same arguments and next.`;
 
 type Tool = {
   name: string;
@@ -187,6 +198,42 @@ export function tools(m: Markets): Tool[] {
         ["symbols"],
       ),
       run: (input) => screenAnswer(m, parseScreen(input)),
+    },
+    {
+      name: "research",
+      description: RESEARCH,
+      inputSchema: schema(
+        {
+          symbol,
+          section: {
+            type: "string",
+            enum: [...RESEARCH_SECTIONS],
+            default: "overview",
+          },
+          next,
+        },
+        ["symbol"],
+      ),
+      run: (input) => researchAnswer(m, parseResearch(input)),
+    },
+    {
+      name: "events",
+      description: EVENTS,
+      inputSchema: schema(
+        {
+          from: day,
+          to: day,
+          symbols: {
+            type: "array",
+            minItems: 1,
+            maxItems: MAX_EVENT_SYMBOLS,
+            items: symbol,
+          },
+          next,
+        },
+        ["from", "to"],
+      ),
+      run: (input) => eventsAnswer(m, parseEvents(input)),
     },
   ];
 }

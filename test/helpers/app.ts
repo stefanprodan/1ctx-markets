@@ -30,6 +30,8 @@ export type TestOptions = {
   // answers every source call; by default any call fails the test
   fetch?: Fetch;
   fredKey?: string;
+  finnhubKey?: string;
+  massiveKey?: string;
   start?: number;
 };
 
@@ -54,6 +56,8 @@ export async function withApp(
     db,
     quoteEveryMs: 5 * MINUTE_MS,
     fredKey: options.fredKey ?? null,
+    finnhubKey: options.finnhubKey ?? null,
+    massiveKey: options.massiveKey ?? null,
     // no test reaches a network
     fetch:
       options.fetch ??

@@ -38,6 +38,8 @@ export type RouterDeps = {
   mcp: McpHttpHandler;
   // GET /quotes, when the tools are served
   quotes?: Handle;
+  // GET /research, when the tools are served
+  research?: Handle;
   clock: Clock;
   log: Log;
 };
@@ -50,11 +52,17 @@ export function router(deps: RouterDeps): Handle {
         "www-authenticate": "Bearer",
       });
     }
-    if (path === "/quotes" && deps.quotes !== undefined) {
+    const read =
+      path === "/quotes"
+        ? deps.quotes
+        : path === "/research"
+          ? deps.research
+          : undefined;
+    if (read !== undefined) {
       if (req.method !== "GET") {
         return json({ error: "method not allowed" }, 405, { allow: "GET" });
       }
-      return deps.quotes(req);
+      return read(req);
     }
     if (path !== "/mcp") return json({ error: "not found" }, 404);
     // stateless: no stream to resume with GET, no session to end with DELETE

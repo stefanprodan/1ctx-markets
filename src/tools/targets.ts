@@ -10,6 +10,8 @@ import { dailyRange } from "../bars.ts";
 import { type Clock, MINUTE_MS } from "../clock.ts";
 import { DEFAULT_QUOTE_EVERY } from "../config.ts";
 import type { Db } from "../db/index.ts";
+import type { Finnhub } from "../finnhub/client.ts";
+import { type Hooks, NO_HOOKS } from "../finnhub/store.ts";
 import { SOURCE as FRED, type Fred } from "../fred/client.ts";
 import {
   addSeries,
@@ -21,6 +23,7 @@ import {
 } from "../fred/sync.ts";
 import { type Instrument, readInstrument } from "../instruments.ts";
 import { errorFields, type Log } from "../log.ts";
+import type { Massive } from "../massive/client.ts";
 import { QueueClosed, SourceError } from "../source.ts";
 import { isTracked, markRead, TRACK_MS } from "../tracking.ts";
 import type { Writer } from "../writer.ts";
@@ -42,6 +45,10 @@ export type Markets = {
   // fail-fast clients: a read never waits out a source's back-off
   yahoo: Yahoo;
   fred: Fred | null;
+  finnhub: Finnhub | null;
+  massive: Massive | null;
+  // what rules hand the research reads, none until they exist
+  hooks: Hooks;
   trackMs: number;
   // how often the quote job runs, so a quote it fell behind on is stale
   quoteEveryMs: number;
@@ -57,6 +64,9 @@ export function markets(options: {
   writer: Writer;
   yahoo: Yahoo;
   fred: Fred | null;
+  finnhub?: Finnhub | null;
+  massive?: Massive | null;
+  hooks?: Hooks;
   log: Log;
   trackMs?: number;
   quoteEveryMs?: number;
@@ -68,6 +78,9 @@ export function markets(options: {
     writer: options.writer,
     yahoo: options.yahoo.failFast(),
     fred: options.fred?.failFast() ?? null,
+    finnhub: options.finnhub?.failFast() ?? null,
+    massive: options.massive?.failFast() ?? null,
+    hooks: options.hooks ?? NO_HOOKS,
     trackMs: options.trackMs ?? TRACK_MS,
     quoteEveryMs: options.quoteEveryMs ?? DEFAULT_QUOTE_EVERY * MINUTE_MS,
     callMs: options.callMs ?? CALL_MS,
@@ -106,7 +119,7 @@ export type Target =
 
 export const RETRY = "retry this symbol";
 
-const timeout = (m: Markets): ItemError => ({
+export const timeout = (m: Markets): ItemError => ({
   error: "timeout",
   message: `not done within ${m.callMs / 1000} seconds; ${RETRY}`,
 });
@@ -166,7 +179,7 @@ type Step =
 
 // One promise per key while it runs; a caller joining later extends the
 // deadline its write is held to, so a fetch lands while anyone waits.
-function shared<T>(
+export function shared<T>(
   m: Markets,
   key: string,
   deadline: number,
