@@ -20,9 +20,10 @@ import type { Log } from "../log.ts";
 import type { QuoteRow } from "../quotes.ts";
 import { endRun, failRun, lastStarted, startRun } from "../runs.ts";
 import type { Scheduler } from "../scheduler.ts";
-import { phraseOf, SourceError } from "../source.ts";
+import { phraseOf, QueueClosed, SourceError } from "../source.ts";
 import { barsDue, JOBS } from "../stale.ts";
 import { TRACK_MS, trackedInstruments } from "../tracking.ts";
+import { WriterClosed } from "../writer.ts";
 import { RETRY_MS } from "../yahoo/sync.ts";
 import { localDate } from "../zone.ts";
 import {
@@ -64,6 +65,8 @@ export type BvbJobs = {
   barTick(): Promise<string[]>;
   // quotes and checks, then the bars due, as both jobs run in a minute
   tick(): Promise<BvbTick>;
+  // the list pages due, at start, so resolution need not wait for a tick
+  warm(): Promise<void>;
   schedule(jobs: Scheduler): void;
 };
 
@@ -125,10 +128,24 @@ export function bvbJobs(options: BvbJobsOptions): BvbJobs {
         await read();
         listFailed.delete(kind);
       } catch (error) {
+        // shutting down: nothing failed
+        if (error instanceof QueueClosed || error instanceof WriterClosed) {
+          return;
+        }
         listFailed.set(kind, clock.now());
         log.warn("bvb list failed", { list: kind, error: phraseOf(error) });
       }
     }
+  }
+
+  // the start's read runs outside the scheduler's guard, so a tick joins
+  // it rather than reading the pages again
+  let listing: Promise<void> | null = null;
+  function lists(): Promise<void> {
+    listing ??= readLists().finally(() => {
+      listing = null;
+    });
+    return listing;
   }
 
   function checkDue(
@@ -266,7 +283,7 @@ export function bvbJobs(options: BvbJobsOptions): BvbJobs {
   // after the quotes, so the pages a pass read are not read twice
   async function quoteTick(): Promise<Omit<BvbTick, "bars">> {
     const done = await quoteOrCheck();
-    await readLists();
+    await lists();
     return done;
   }
 
@@ -383,6 +400,7 @@ export function bvbJobs(options: BvbJobsOptions): BvbJobs {
     quoteTick,
     barTick,
     tick,
+    warm: lists,
     schedule(jobs) {
       jobs.every("bvb", TICK_MS, async () => {
         await quoteTick();

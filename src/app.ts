@@ -164,6 +164,9 @@ export function start(options: AppOptions): App {
       });
   }
 
+  // the exchange's lists at once, so a new symbol skips its search
+  void bvbSync?.warm();
+
   const fredKey = options.fredKey ?? null;
   const fredClient =
     fredKey === null

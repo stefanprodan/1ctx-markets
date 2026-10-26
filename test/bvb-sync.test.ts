@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
+import { start } from "../src/app.ts";
 import { readBars } from "../src/bars.ts";
 import { bvb, MARKET } from "../src/bvb/client.ts";
 import { bvbJobs } from "../src/bvb/jobs.ts";
@@ -17,13 +18,15 @@ import { MINUTE_MS } from "../src/clock.ts";
 import { open } from "../src/db/index.ts";
 import { Refused } from "../src/fred/sync.ts";
 import { type Instrument, readInstrument } from "../src/instruments.ts";
-import { silent } from "../src/log.ts";
+import { keys, requireBearer } from "../src/keys.ts";
+import { logger, silent } from "../src/log.ts";
 import { readQuote } from "../src/quotes.ts";
 import type { RuleHooks } from "../src/rules/hooks.ts";
 import { lastRun } from "../src/runs.ts";
 import { JOBS, quoteStale, STALE } from "../src/stale.ts";
 import { markRead } from "../src/tracking.ts";
 import { writer } from "../src/writer.ts";
+import { SECRETS } from "./helpers/app.ts";
 import {
   type BvbRoutes,
   bvbFetch,
@@ -34,6 +37,7 @@ import {
 } from "./helpers/bvb.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { drive } from "./helpers/drive.ts";
+import { gate } from "./helpers/sources.ts";
 import { clone, type Recorded } from "./helpers/yahoo.ts";
 
 const EVERY = 5 * MINUTE_MS;
@@ -409,6 +413,78 @@ describe("the list pages with nothing tracked", () => {
     expect(shareReads()).toBe(2);
     // the pages that read are not asked again that day
     expect(t.f.urls).toHaveLength(4);
+  });
+});
+
+describe("the list pages at start", () => {
+  const LIST_PATHS = [
+    "/FinancialInstruments/Markets/Shares",
+    "/FinancialInstruments/Markets/Bonds",
+    "/TradingAndStatistics/Trading/MarketsToday",
+  ];
+
+  // the server with the feed on; held, the shares page waits in the fetch
+  async function boot(held = false) {
+    const clock = fakeClock(utc("2026-10-23T14:00:00"));
+    const { db } = open(":memory:", clock);
+    const g = gate();
+    const f = await bvbFetch({
+      hold: (url) =>
+        held && url.pathname.endsWith("/Shares") ? g.hold() : undefined,
+    });
+    const store = keys(SECRETS);
+    const lines: string[] = [];
+    const app = start({
+      hostname: "127.0.0.1",
+      port: 0,
+      bearer: requireBearer(store),
+      clock,
+      log: logger(clock, store.values, (line) => lines.push(line)),
+      version: "v0.0.0-test",
+      db,
+      quoteEveryMs: EVERY,
+      bvb: true,
+      fetch: f.fetch,
+    });
+    const pages = () => f.urls.map((u) => u.pathname);
+    return { clock, db, app, g, lines, pages };
+  }
+
+  test("the lists are read at start with no tick", async () => {
+    const t = await boot();
+    try {
+      await drive(t.clock, t.app.bvb!, t.app.bvbJobs!.warm());
+      expect(t.pages()).toEqual(LIST_PATHS);
+      expect(t.app.bvb!.listed()).not.toBeNull();
+    } finally {
+      await t.app.stop();
+      t.db.close();
+    }
+  });
+
+  test("a tick during the start's read joins it", async () => {
+    const t = await boot(true);
+    try {
+      await t.g.arrived;
+      const tick = t.app.bvbJobs!.quoteTick();
+      t.g.release();
+      await drive(t.clock, t.app.bvb!, tick);
+      expect(t.pages()).toEqual(LIST_PATHS);
+    } finally {
+      await t.app.stop();
+      t.db.close();
+    }
+  });
+
+  test("a stop during the start's read ends it quietly", async () => {
+    const t = await boot(true);
+    await t.g.arrived;
+    await t.app.stop();
+    t.g.release();
+    await t.app.bvbJobs!.warm();
+    expect(t.pages()).toEqual([LIST_PATHS[0]]);
+    expect(t.lines.filter((l) => l.includes("bvb list failed"))).toEqual([]);
+    t.db.close();
   });
 });
 

@@ -126,8 +126,8 @@ exchange: one client, its parsers, its session, the same tables.
   market is quoted, and once after its close (`closeQuoteAt()`), since
   the share list is marked 15 minutes delayed.
 - **Every list page is read at least once an exchange day while the
-  feed is on, tracked or not** (`readLists()`), so resolution knows
-  the exchange's symbols within a minute of a start. The day is the
+  feed is on, tracked or not, and at start** (`readLists()`, `warm()`),
+  so a new symbol need not wait on the exchange's search. The day is the
   stored session's or a stored listing's zone, or with neither 24
   hours; a quote pass's read counts, and a failed read waits
   `RETRY_MS`.
