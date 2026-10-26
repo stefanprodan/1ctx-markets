@@ -107,6 +107,7 @@ type Waiting = {
   start: () => void;
   failFast: boolean;
   live: () => boolean;
+  deadline: boolean;
   reject: (error: unknown) => void;
 };
 
@@ -175,12 +176,20 @@ export function queue(clock: Clock, concurrency: number): Queue {
               pump();
             });
         };
-        waiting.push({
+        const call = {
           start,
           failFast: options.failFast === true,
           live: options.live ?? (() => true),
+          deadline: options.live !== undefined,
           reject,
-        });
+        };
+        // a call with a deadline goes ahead of the jobs' calls, in order
+        // among its own, so a read never times out behind a pass
+        const behind = call.deadline
+          ? waiting.findIndex((w) => !w.deadline)
+          : -1;
+        if (behind === -1) waiting.push(call);
+        else waiting.splice(behind, 0, call);
         pump();
       });
     },

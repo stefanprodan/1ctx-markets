@@ -46,11 +46,14 @@ exchange: one client, its parsers, its session, the same tables.
   page was read, its `sk` key as `X-SK-API`. A 401 reads the
   instrument's page for a fresh key and asks once more; a second 401 is
   `key refused`. The 401 resolves inside its queued call, so the
-  refresh never waits out a back-off.
-- **`countback` is required and wins over `from`.** It is set to one
-  bar per day of the window, and the feed answers earlier bars too, as
-  it does for a window with no trading, so `parseHistory()` drops bars
-  before `from`. Daily bars are stamped 00:00 UTC of the trading date;
+  refresh never waits out a back-off; the second 401 fails inside its
+  queued call, so it backs the queue off like any refusal.
+- **`countback` is required and wins over `from`,** uncapped: 3660
+  answers trading days back 14 years whatever `from` says. It is set to
+  the window's weekdays and a margin (about 252 a year), and the feed
+  answers bars outside the window too, as it does for a window with no
+  trading, so `parseHistory()` drops bars before `from` and after
+  `to`. Daily bars are stamped 00:00 UTC of the trading date;
   any other stamp is malformed. An unknown symbol is `"s":"no_data"`
   (`not found`). Indices are asked with `currencyCode=-` and have no
   volume.
@@ -80,7 +83,7 @@ exchange: one client, its parsers, its session, the same tables.
 
 - **One call at a time, starts `SPACING_MS` (2 seconds) apart**
   (`limiter()` in `src/source.ts`), the probes' pace, for jobs and
-  tools together. A failure backs the queue off as for Yahoo; a tool
+  tools together; a tool's call goes ahead of the jobs' waiting ones. A failure backs the queue off as for Yahoo; a tool
   fails fast meanwhile and starts nothing past its deadline
   (`within(live)`).
 

@@ -34,6 +34,7 @@ import {
 } from "./helpers/bvb.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { drive } from "./helpers/drive.ts";
+import { gate } from "./helpers/sources.ts";
 import { clone, fakeFetch } from "./helpers/yahoo.ts";
 
 const wall = (iso: string) => Date.parse(`${iso}Z`);
@@ -176,7 +177,7 @@ describe("recorded pages", () => {
 describe("recorded chart feed answers", () => {
   test("daily bars are dated by their UTC midnight and filtered by t", async () => {
     const body = (await bvbRecorded("wapi-history-tlv-1d")).body;
-    const all = parseHistory(body, 0, 1);
+    const all = parseHistory(body, 0, Infinity, 1);
     expect(all.bars.length).toBe(30);
     expect(all.bars[0]).toEqual({
       date: "2026-09-14",
@@ -188,12 +189,29 @@ describe("recorded chart feed answers", () => {
     });
     expect(all.bars.at(-1)!.date).toBe("2026-10-23");
     // countback answers bars before from, which are dropped
-    const since = parseHistory(body, Date.parse("2026-10-20T00:00:00Z"), 1);
+    const since = parseHistory(
+      body,
+      Date.parse("2026-10-20T00:00:00Z"),
+      Infinity,
+      1,
+    );
     expect(since.bars.map((b) => b.date)).toEqual([
       "2026-10-20",
       "2026-10-21",
       "2026-10-22",
       "2026-10-23",
+    ]);
+    // and bars after to
+    const until = parseHistory(
+      body,
+      Date.parse("2026-10-16T00:00:00Z"),
+      Date.parse("2026-10-20T12:00:00Z"),
+      1,
+    );
+    expect(until.bars.map((b) => b.date)).toEqual([
+      "2026-10-16",
+      "2026-10-19",
+      "2026-10-20",
     ]);
   });
 
@@ -201,11 +219,12 @@ describe("recorded chart feed answers", () => {
     const bet = parseHistory(
       (await bvbRecorded("wapi-history-bet-1d")).body,
       0,
+      Infinity,
       1,
     );
     expect(bet.bars.every((b) => b.volume === null)).toBe(true);
     const unknown = (await bvbRecorded("wapi-history-unknown")).body;
-    expect(() => parseHistory(unknown, 0, 1)).toThrow(
+    expect(() => parseHistory(unknown, 0, Infinity, 1)).toThrow(
       new SourceError("not found"),
     );
   });
@@ -214,13 +233,17 @@ describe("recorded chart feed answers", () => {
     const body = (await bvbRecorded("wapi-history-tlv-1d")).body;
     const off = clone(body);
     off.t[3] += 3600;
-    expect(() => parseHistory(off, 0, 1)).toThrow("malformed answer");
+    expect(() => parseHistory(off, 0, Infinity, 1)).toThrow("malformed answer");
     const twice = clone(body);
     twice.t[3] = twice.t[2];
-    expect(() => parseHistory(twice, 0, 1)).toThrow("malformed answer");
+    expect(() => parseHistory(twice, 0, Infinity, 1)).toThrow(
+      "malformed answer",
+    );
     const short = clone(body);
     short.c.pop();
-    expect(() => parseHistory(short, 0, 1)).toThrow("malformed answer");
+    expect(() => parseHistory(short, 0, Infinity, 1)).toThrow(
+      "malformed answer",
+    );
   });
 
   test("the symbol answer names the type, zone and currency", async () => {
@@ -278,7 +301,10 @@ describe("the client", () => {
     const [h] = wapi(f.urls, "/api/history");
     expect(h!.searchParams.get("ajust")).toBe("1");
     expect(h!.searchParams.get("currencyCode")).toBe("RON");
-    expect(Number(h!.searchParams.get("countback"))).toBeGreaterThanOrEqual(45);
+    // the window's weekdays and a margin, never one a calendar day
+    const countback = Number(h!.searchParams.get("countback"));
+    expect(countback).toBeGreaterThanOrEqual(33);
+    expect(countback).toBeLessThan(45);
     const sent = f.headers[f.urls.indexOf(h!)]!;
     expect(sent.get("referer")).toBe("https://bvb.ro/");
     expect(sent.get("x-sk-api")).toBe(PAGE_KEY);
@@ -332,6 +358,52 @@ describe("the client", () => {
       drive(clock, other, other.history("TLV", "RON", 0, now)),
     ).rejects.toThrow(new SourceError("key refused"));
     expect(again.urls.length).toBe(3);
+    // the final refusal backs the queue off like any other
+    await expect(
+      drive(clock, other, other.failFast().shares()),
+    ).rejects.toThrow("backing off");
+    expect(again.urls.length).toBe(3);
+  });
+
+  test("ten years ask about 252 trading days a year, not a bar a day", async () => {
+    const clock = fakeClock();
+    const f = await bvbFetch();
+    const client = bvb({ clock, fetch: f.fetch });
+    const now = clock.now();
+    await drive(
+      clock,
+      client,
+      client.history("TLV", "RON", now - 3653 * 86_400_000, now),
+    );
+    const [h] = wapi(f.urls, "/api/history");
+    const countback = Number(h!.searchParams.get("countback"));
+    // at least every weekday of the window, far short of 3653
+    expect(countback).toBeGreaterThanOrEqual(2609);
+    expect(countback).toBeLessThan(2700);
+  });
+
+  test("a call with a deadline goes ahead of queued job calls", async () => {
+    const clock = fakeClock();
+    const g = gate();
+    const f = await bvbFetch({
+      hold: (url) =>
+        url.pathname === "/TradingAndStatistics/TradingSessionSchedule"
+          ? g.hold()
+          : undefined,
+    });
+    const client = bvb({ clock, fetch: f.fetch });
+    const job = client.schedule();
+    await drive(clock, client, g.arrived);
+    const queued = [client.shares(), client.bonds()];
+    const read = client.within(() => true).indices();
+    g.release();
+    await drive(clock, client, Promise.all([job, read, ...queued]));
+    expect(f.urls.map((u) => u.pathname)).toEqual([
+      "/TradingAndStatistics/TradingSessionSchedule",
+      "/TradingAndStatistics/Trading/MarketsToday",
+      "/FinancialInstruments/Markets/Shares",
+      "/FinancialInstruments/Markets/Bonds",
+    ]);
   });
 
   test("an open market reads open on every page", async () => {

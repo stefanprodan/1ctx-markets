@@ -393,10 +393,11 @@ function columnOf(
 }
 
 // a window without trading still answers the last session's bars, and
-// countback reaches past from, so bars before from are dropped
+// countback wins over from, so bars outside from and to are dropped
 export function parseHistory(
   body: unknown,
   from: number,
+  to: number,
   fetchedAt: number,
 ): History {
   if (!isObj(body)) throw malformed("no history answer");
@@ -421,7 +422,7 @@ export function parseHistory(
     const date = dateOfWall(t[i]! * 1000);
     if (date <= last) throw malformed("bars out of order");
     last = date;
-    if (t[i]! * 1000 < from || c[i] === null) continue;
+    if (t[i]! * 1000 < from || t[i]! * 1000 > to || c[i] === null) continue;
     bars.push({
       date,
       open: o[i]!,
@@ -533,7 +534,8 @@ export function bvb(options: BvbOptions): Bvb {
       symbol: string,
       parse: (body: unknown, fetchedAt: number) => T,
     ): Promise<T> => {
-      const once = () =>
+      // only the first 401 resolves; the last is a refusal like any other
+      const once = (last: boolean) =>
         calls.run(async () => {
           const headers: Record<string, string> = {
             Accept: "application/json",
@@ -542,14 +544,17 @@ export function bvb(options: BvbOptions): Bvb {
           };
           if (key !== null) headers["X-SK-API"] = key;
           const raw = await request(`${WAPI}${path}`, { headers });
-          if (raw.status === 401) return { refused: true as const };
+          if (raw.status === 401) {
+            if (last) throw new SourceError("key refused");
+            return { refused: true as const };
+          }
           refuse(raw.status);
           return {
             refused: false as const,
             value: parse(json(raw), raw.fetchedAt),
           };
         }, run);
-      return once().then(async (first) => {
+      return once(false).then(async (first) => {
         if (!first.refused) return first.value;
         await calls.run(async () => {
           const raw = await request(`${SITE}${detailPath(symbol)}`, {});
@@ -557,7 +562,7 @@ export function bvb(options: BvbOptions): Bvb {
           key = pageKey(raw.text);
           if (key === null) throw new SourceError("key refused");
         }, run);
-        const second = await once();
+        const second = await once(true);
         if (second.refused) throw new SourceError("key refused");
         return second.value;
       });
@@ -582,8 +587,9 @@ export function bvb(options: BvbOptions): Bvb {
       history(symbol, currency, from, to) {
         const first = Math.floor(from / 1000);
         const last = Math.ceil(to / 1000);
-        // countback is required; one bar a day covers the whole window
-        const countback = Math.ceil((last - first) / DAY_S) + 1;
+        // countback is required and wins over from: the window's weekdays
+        // and a margin, about 252 trading days a year
+        const countback = Math.ceil((((last - first) / DAY_S) * 5) / 7) + 5;
         const params = new URLSearchParams({
           symbol,
           from: String(first),
@@ -595,7 +601,7 @@ export function bvb(options: BvbOptions): Bvb {
           currencyCode: currency ?? "-",
         });
         return feed(`/history?${params}`, symbol, (b, fetchedAt) =>
-          parseHistory(b, from, fetchedAt),
+          parseHistory(b, from, to, fetchedAt),
         );
       },
       search: (text) =>

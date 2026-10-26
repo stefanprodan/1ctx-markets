@@ -64,6 +64,9 @@ inside a call in `docs/tools.md`; rule pauses in `docs/rules.md`.
   `within(live)` answer `Paused` while the queue backs off, and
   `within` starts no call once the caller's deadline passed
   (`DeadlinePassed`). Each call times out after 30 seconds.
+- **A call with a deadline goes ahead of waiting job calls** (`queue()`
+  in `src/source.ts`), first in first out among its own, so a read
+  never times out behind a pass; a limiter keeps its spacing.
 - **Errors carry a fixed phrase** (`SourceError`, `PHRASES`), which is
   all a run or an answer repeats:
 
