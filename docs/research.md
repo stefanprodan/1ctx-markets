@@ -52,11 +52,13 @@ contract in `docs/tools.md`; rules that wait on events in
   minute) and 13 s for Massive (5 a minute, no rate-limit headers).
   A second client would break the source's limit.
 - **After a failure the queue backs off** (30 s, 5 minutes after a
-  429) and never retries the call. Only "not found", "bad request"
-  and a passed deadline leave it running (`backsOff` in
-  `src/source.ts`): a 404, or Massive's 400. Finnhub answers a 400 as
-  "source error", which backs off. A tool's call
-  fails at once while paused (`Paused`) and records no run, which
+  429) and never retries the call. "Not found", "bad request", a
+  malformed answer that parsed as JSON and a passed deadline leave it
+  running (`backsOff` in `src/source.ts`): a 404, Massive's 400, one
+  share's odd answer. A body that is not JSON (`Unreadable`) backs
+  off. Finnhub answers a 400 as "source error", which backs off. A
+  tool's call fails at once while paused (`Paused`), answered as the
+  source backing off after that phrase, and records no run, which
   would hold off the job's retry; a job waits it out.
 - **A minute tick starts no new instrument after its budget**
   (`TICK_BUDGET_MS`: 45 s Finnhub, 30 s Massive), and Massive no new
@@ -64,12 +66,15 @@ contract in `docs/tools.md`; rules that wait on events in
   tick that finds the last one still running is skipped
   (`src/scheduler.ts`); cut work goes on next tick.
 - **A tool fetches inside its own deadline** (`researchTargets`,
-  `m.callMs`): a covered share with no research yet (no good run of
-  any section, `hasResearch`) gets all five sections; for the
-  `overview` and `news` sections only, a covered instrument never asked
-  for news gets one page. The rest come with the jobs. Concurrent
-  calls naming one instrument share one fetch (`shared`). A deadline
-  that passes stores nothing.
+  `m.callMs`) the sections it reads that have no good run
+  (`unfetched`), so a pass cut short is finished by the next call
+  that needs what it left: `events` and a rule's earnings gate the
+  calendar only (one call per share), the `research` overview and
+  `GET /research` all five, a history section its own
+  (`SECTIONS_OF`). For the `overview` and `news` sections only, a
+  covered instrument never asked for news gets one page. The rest come
+  with the jobs. Concurrent calls naming one instrument and sections
+  share one fetch (`shared`). A deadline that passes stores nothing.
 
 ## Finnhub sections
 
@@ -94,11 +99,15 @@ contract in `docs/tools.md`; rules that wait on events in
   instead (`hasRows` in `sectionState`). A 401 is "key refused", a 404
   "not found", a 429 "rate limited", any other status "source error"
   (`src/finnhub/client.ts`); any other shape is "malformed answer".
+- **An answer, or any row in it, naming another symbol is no data**
+  (`ownListing`), as a 403 is: an ADR is answered as its home listing
+  (TSM as `2330.TW`, its EPS in TWD per local share), which is no
+  number for the symbol asked.
 - **A Massive 403 is "key refused", like its 401**
   (`src/massive/client.ts`): unlike Finnhub's, it is never no data.
-- **An answer row naming another symbol refuses the section**; a key
-  answered twice with the same values is one row, with different values
-  the section is refused (`collapse`), since either could be wrong.
+- **A key answered twice with the same values is one row**; with
+  different values the section is refused (`collapse`), since either
+  could be wrong.
 - **Stale reasons per section** (`sectionState`, `STALE_RESEARCH`): "no
   research yet", "research sync failed", "research sync pending" (no
   good run since the latest 23:00 UTC, `dueAt`), "no data in the last
@@ -125,9 +134,12 @@ contract in `docs/tools.md`; rules that wait on events in
   (`nextEvent`).
 - **The `events` tool lists events between two dates** of the tracked
   US shares, or of the named symbols once resolved; of those, only a
-  covered share with no research yet is fetched inline. A symbol not
-  covered or not resolved is listed under `unavailable`; a failed fetch
-  is listed there too, while its stored events still show. The list is
+  named covered share whose calendar has no good run is fetched
+  inline. A symbol not covered or not resolved is listed under
+  `unavailable`, and so is every share whose calendar has no good run,
+  with why (never fetched, its fetch failed, timed out), so an empty
+  list means no earnings in the range. A failed fetch is listed there
+  too, while its stored events still show. The list is
   capped at 8 KiB with the rest counted, and appears on the first page
   only (`src/tools/events.ts`).
 

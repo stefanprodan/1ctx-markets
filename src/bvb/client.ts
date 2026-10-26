@@ -13,6 +13,7 @@ import {
   limiter,
   type RunOptions,
   SourceError,
+  Unreadable,
 } from "../source.ts";
 import { checkZone, dateOfWall } from "../zone.ts";
 import {
@@ -520,13 +521,13 @@ export function bvb(options: BvbOptions): Bvb {
     try {
       return JSON.parse(raw.text);
     } catch {
-      throw malformed("not JSON");
+      throw new Unreadable();
     }
   };
 
   const client = (run: RunOptions): Bvb => {
     // parsed inside the queued call, so a page that does not read backs
-    // the queue off
+    // the queue off: a proxy or consent page is HTML too
     const page = <T>(
       path: string,
       parse: (html: string, fetchedAt: number) => T,
@@ -534,7 +535,18 @@ export function bvb(options: BvbOptions): Bvb {
       calls.run(async () => {
         const raw = await request(`${SITE}${path}`, {});
         refuse(raw.status);
-        return parse(raw.text, raw.fetchedAt);
+        try {
+          return parse(raw.text, raw.fetchedAt);
+        } catch (error) {
+          if (
+            error instanceof SourceError &&
+            error.phrase === "malformed answer" &&
+            !(error instanceof Unreadable)
+          ) {
+            throw new Unreadable(error.detail ?? "a page that does not read");
+          }
+          throw error;
+        }
       }, run);
 
     const detailPath = (symbol: string) =>

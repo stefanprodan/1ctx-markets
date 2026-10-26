@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Finnhub answered from the recordings by path and symbol: NVDA in
-// full, VVSM.DE refused with 403 and TLV.RO empty. Made-up US symbols
-// answer as one of them, under their own symbol.
+// full, VVSM.DE refused with 403, TLV.RO empty and TSM, an ADR, as its
+// home listing 2330.TW but for insiders. Made-up US symbols answer as
+// one of them, under their own symbol.
 
 import { join } from "node:path";
 import { clone, type Recorded } from "./yahoo.ts";
@@ -25,6 +26,7 @@ export const AS: Record<string, string> = {
   NVDA: "nvda",
   "VVSM.DE": "vvsm",
   "TLV.RO": "tlv",
+  TSM: "tsm",
   // a US share the free key refuses, and one it has nothing for
   REFUSED: "vvsm",
   EMPTY: "tlv",
@@ -32,6 +34,9 @@ export const AS: Record<string, string> = {
 
 export const finnhubFixture = (name: string): Promise<Recorded> =>
   Bun.file(join(DIR, `${name}.json`)).json();
+
+// answered as recorded: the symbols they name are the point
+const AS_RECORDED = new Set(["TSM"]);
 
 // the recording renamed to the symbol asked, wherever it names one
 function renamed(fx: Recorded, symbol: string): Recorded {
@@ -56,5 +61,6 @@ export async function finnhubAnswer(url: URL): Promise<Recorded | undefined> {
   if (kind === undefined || as === undefined) {
     return { recordedAt: "", status: 403, headers: {}, body: { error: "no" } };
   }
-  return renamed(await finnhubFixture(`${kind}-${as}`), symbol);
+  const fx = await finnhubFixture(`${kind}-${as}`);
+  return AS_RECORDED.has(symbol) ? fx : renamed(fx, symbol);
 }

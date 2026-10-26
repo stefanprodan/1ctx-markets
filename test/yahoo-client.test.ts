@@ -280,30 +280,40 @@ describe("the queue", () => {
     expect(f.urls).toHaveLength(2);
   });
 
-  test("an answer that reads wrong backs the queue off like a failure", async () => {
+  test("an answer of an odd shape fails alone; one not JSON backs the queue off", async () => {
     const chart = await recorded("chart-nvda-5d-1d");
     const spark = await recorded("spark-v7-batch");
     const search = await recorded("search-nvda");
     const bad = clone(chart);
     delete bad.body.chart.result[0].meta.regularMarketPrice;
+    // the answer, the call, its phrase, and whether the queue backs off
     const cases: [
       Recorded,
       (y: ReturnType<typeof yahoo>) => Promise<unknown>,
       string,
+      boolean,
     ][] = [
-      [bad, (y) => y.chart("NVDA", 0, 1), "malformed answer"],
+      [bad, (y) => y.chart("NVDA", 0, 1), "malformed answer", false],
       [
         { ...spark, body: { spark: { result: null, error: { code: "x" } } } },
         (y) => y.spark(["NVDA"]),
         "source error",
+        true,
       ],
       [
         { ...search, body: { quotes: "none" } },
         (y) => y.search("NVDA"),
         "malformed answer",
+        false,
+      ],
+      [
+        { ...chart, body: "<html>consent</html>" },
+        (y) => y.chart("NVDA", 0, 1),
+        "malformed answer",
+        true,
       ],
     ];
-    for (const [answer, call, expected] of cases) {
+    for (const [answer, call, expected, backsOff] of cases) {
       const clock = fakeClock();
       let first = true;
       const f = fakeFetch(() => {
@@ -313,10 +323,14 @@ describe("the queue", () => {
       });
       const client = yahoo({ clock, fetch: f.fetch });
       expect(await phrase(call(client))).toBe(expected);
-      expect(await phrase(client.failFast().chart("NVDA", 0, 1))).toBe(
-        expected,
-      );
-      expect(f.urls).toHaveLength(1);
+      const next = client.failFast().chart("NVDA", 0, 1);
+      if (backsOff) {
+        expect(await phrase(next)).toBe(expected);
+        expect(f.urls).toHaveLength(1);
+      } else {
+        await next;
+        expect(f.urls).toHaveLength(2);
+      }
     }
   });
 

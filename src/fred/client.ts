@@ -16,6 +16,7 @@ import {
   type RunOptions,
   SourceError,
   scrub,
+  Unreadable,
 } from "../source.ts";
 import { wallOfDate } from "../zone.ts";
 
@@ -303,7 +304,7 @@ export function fred(options: FredOptions): Fred {
         if (!res.ok) {
           throw new SourceError("source error", `HTTP ${res.status}`);
         }
-        if (body === undefined) throw malformed("not JSON");
+        if (body === undefined) throw new Unreadable();
         return parse(body, fetchedAt);
       } finally {
         cancel();

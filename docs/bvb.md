@@ -89,6 +89,9 @@ exchange: one client, its parsers, its session, the same tables.
   tools together; a tool's call goes ahead of the jobs' waiting ones.
   A failure backs the queue off as for Yahoo; a tool fails fast
   meanwhile and starts nothing past its deadline (`within(live)`).
+  A page that does not read backs off whatever failed in it, since a
+  proxy or consent page is HTML too (`Unreadable`); a feed or search
+  answer backs off only when it is not JSON.
 
 ## Instruments
 

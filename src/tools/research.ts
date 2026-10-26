@@ -5,7 +5,6 @@ import {
   type EventRow,
   eligible,
   eventStatus,
-  hasResearch,
   kindColumns,
   NO_DATA,
   NOT_COVERED,
@@ -16,6 +15,7 @@ import {
   SECTIONS,
   type Section,
   sectionState,
+  unfetched,
 } from "../finnhub/store.ts";
 import { ATTRIBUTION } from "../fred/sync.ts";
 import type { Instrument } from "../instruments.ts";
@@ -95,12 +95,23 @@ export type Inline =
 
 const EXPIRED = Symbol("expired");
 
-// the sections fetched land in one write, a passed deadline stores none;
-// news gets its newest page
+// Finnhub sections each research section reads; news reads none
+export const SECTIONS_OF: Record<ResearchSection, readonly Section[]> = {
+  overview: SECTIONS,
+  analysts: ["analysts"],
+  earnings: ["earnings"],
+  insiders: ["insider"],
+  news: [],
+};
+
+// Each share gets the sections asked that never ended well, so a pass
+// cut short is finished by the next call that needs what it left. The
+// sections fetched land in one write, a passed deadline stores none;
+// news gets its newest page.
 export async function researchTargets(
   m: Markets,
   inputs: readonly string[],
-  options: { news?: boolean } = {},
+  options: { news?: boolean; sections?: readonly Section[] } = {},
 ): Promise<{
   targets: Target[];
   inline: Map<string, Inline>;
@@ -178,16 +189,23 @@ export async function researchTargets(
       continue;
     }
     inline.set(instrument.id, { kind: "stored" });
-    if (hasResearch(m.db, instrument.id)) continue;
+    const missing = unfetched(
+      m.db,
+      instrument.id,
+      options.sections ?? SECTIONS,
+    );
+    if (missing.length === 0) continue;
     if (m.clock.now() >= deadline) {
       inline.set(instrument.id, { kind: "failed", error: timeout(m) });
       continue;
     }
-    const fetch = shared(m, `research:${instrument.id}`, deadline, (live) =>
+    // keyed by the sections, so a call never waits on ones it did not ask
+    const key = `research:${instrument.id}:${missing.join(",")}`;
+    const fetch = shared(m, key, deadline, (live) =>
       refreshResearch(
         { db: m.db, clock: m.clock, writer: m.writer, finnhub: client },
         instrument,
-        SECTIONS,
+        missing,
         { live, hooks: m.hooks, client: client.within(live) },
       ),
     );
@@ -371,6 +389,7 @@ export async function researchAnswer(
   const withNews = args.section === "overview" || args.section === "news";
   const { targets, inline, news } = await researchTargets(m, [args.symbol], {
     news: withNews,
+    sections: SECTIONS_OF[args.section],
   });
   const target = targets[0]!;
   if ("error" in target) {

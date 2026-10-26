@@ -425,15 +425,14 @@ export function sectionDue(
   return ok === null || ok.startedAt < dueAt(now);
 }
 
-// whether any section ever ended well
-export function hasResearch(db: Db, instrument: string): boolean {
-  return (
-    db
-      .query<{ n: number }, [string, string]>(
-        `select count(*) as n from sync_runs
-         where source = ? and scope = ? and status = 'ok'`,
-      )
-      .get(SOURCE, instrument)!.n > 0
+// the sections of these that never ended well
+export function unfetched(
+  db: Db,
+  instrument: string,
+  sections: readonly Section[],
+): Section[] {
+  return sections.filter(
+    (s) => lastStarted(db, SOURCE, s, instrument, "ok") === null,
   );
 }
 

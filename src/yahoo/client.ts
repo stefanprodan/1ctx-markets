@@ -14,6 +14,7 @@ import {
   queue,
   type RunOptions,
   SourceError,
+  Unreadable,
 } from "../source.ts";
 
 export const SOURCE = "yahoo";
@@ -322,7 +323,8 @@ export function yahoo(options: YahooOptions): Yahoo {
   const doFetch: Fetch = options.fetch ?? ((url, init) => fetch(url, init));
   const calls = options.queue ?? queue(clock, CONCURRENCY);
 
-  // parsed inside the queued task, so a malformed answer backs the queue off
+  // parsed inside the queued task, so a body that is not JSON backs the
+  // queue off
   const get = <T>(
     url: string,
     run: RunOptions,
@@ -360,7 +362,7 @@ export function yahoo(options: YahooOptions): Yahoo {
         if (res.status === 404) throw new SourceError("not found");
         if (!res.ok)
           throw new SourceError("source error", `HTTP ${res.status}`);
-        if (body === undefined) throw malformed("not JSON");
+        if (body === undefined) throw new Unreadable();
         return parse(body, fetchedAt);
       } finally {
         cancel();

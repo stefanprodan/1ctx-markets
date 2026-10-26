@@ -1,0 +1,49 @@
+{
+  "recordedAt": "2026-10-26T13:02:00.000Z",
+  "request": {
+    "method": "GET",
+    "url": "https://finnhub.io/api/v1/stock/recommendation?symbol=TSM"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json; charset=utf-8"
+  },
+  "body": [
+    {
+      "symbol": "2330.TW",
+      "period": "2026-10-01",
+      "strongBuy": 12,
+      "buy": 28,
+      "hold": 2,
+      "sell": 0,
+      "strongSell": 0
+    },
+    {
+      "symbol": "2330.TW",
+      "period": "2026-09-01",
+      "strongBuy": 12,
+      "buy": 29,
+      "hold": 2,
+      "sell": 0,
+      "strongSell": 0
+    },
+    {
+      "symbol": "2330.TW",
+      "period": "2026-08-01",
+      "strongBuy": 13,
+      "buy": 28,
+      "hold": 2,
+      "sell": 0,
+      "strongSell": 0
+    },
+    {
+      "symbol": "2330.TW",
+      "period": "2026-07-01",
+      "strongBuy": 13,
+      "buy": 28,
+      "hold": 2,
+      "sell": 0,
+      "strongSell": 0
+    }
+  ]
+}

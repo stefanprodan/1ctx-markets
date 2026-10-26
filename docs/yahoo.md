@@ -46,8 +46,10 @@ inside a call in `docs/tools.md`; rule pauses in `docs/rules.md`.
   `not found`.
 - **A meta's day high or low of 0 is none:** ^TNX's meta reads 0 while
   its bars do not.
-- **Every answer parses inside its queued call,** so a malformed
-  answer backs the queue off like any failure.
+- **Every answer parses inside its queued call,** so a body that is
+  not JSON (a proxy or consent page) backs the queue off like any
+  failure (`Unreadable` in `src/source.ts`). An answer of an odd shape
+  fails its call alone: one symbol's odd answer never pauses the rest.
 
 ## The queue and errors
 
@@ -58,10 +60,12 @@ inside a call in `docs/tools.md`; rule pauses in `docs/rules.md`.
 - **A failure backs the queue off, and the failed call is not
   retried.** A 429 pauses every call for `RATE_LIMIT_BACKOFF_MS` (5
   minutes), any other failure for `FAILURE_BACKOFF_MS` (30 seconds).
-  `not found`, `bad request` and a passed deadline never back off: an
-  unknown symbol is no sign the source is unwell.
+  `not found`, `bad request`, a malformed answer that parsed as JSON
+  and a passed deadline never back off: an unknown symbol or one odd
+  answer is no sign the source is unwell (`backsOff`).
 - **Jobs wait a back-off out; tools fail at once.** `failFast()` and
-  `within(live)` answer `Paused` while the queue backs off, and
+  `within(live)` answer `Paused` while the queue backs off, which a
+  tool answers as the source backing off after that phrase, and
   `within` starts no call once the caller's deadline passed
   (`DeadlinePassed`). Each call times out after 30 seconds.
 - **A call with a deadline goes ahead of waiting job calls** (`queue()`

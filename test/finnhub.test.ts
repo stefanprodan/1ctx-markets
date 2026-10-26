@@ -186,7 +186,7 @@ describe("finnhub answers", () => {
     },
   );
 
-  test("a malformed or conflicting answer is an error, never empty rows", async () => {
+  test("a malformed or conflicting answer is an error, another symbol's no data", async () => {
     const nvda = async (name: string) => (await finnhubFixture(name)).body;
     expect(() => parseEarnings({ not: "a list" }, "NVDA")).toThrow(
       "malformed answer",
@@ -198,7 +198,10 @@ describe("finnhub answers", () => {
     );
     const other = clone(await nvda("calendar-earnings-nvda"));
     other.earningsCalendar[0].symbol = "AMD";
-    expect(() => parseCalendar(other, "NVDA")).toThrow("another symbol");
+    expect(parseCalendar(other, "NVDA")).toBeNull();
+    const row = clone(await nvda("earnings-nvda"));
+    row[1].symbol = "AMD";
+    expect(parseEarnings(row, "NVDA")).toBeNull();
     const t = setup({
       route: edited("/api/v1/stock/recommendation", "NVDA", (b) => {
         b[0].buy = "41";
@@ -228,6 +231,31 @@ describe("finnhub answers", () => {
     for (const h of t.f.headers) {
       expect(h.get("x-finnhub-token")).toBe(FINNHUB_KEY);
     }
+  });
+
+  test("an answer of an odd shape fails alone; one not JSON pauses the source", async () => {
+    let body: unknown = { not: "a list" };
+    const t = setup({
+      route: (url) =>
+        url.pathname.endsWith("/stock/recommendation")
+          ? { recordedAt: "", status: 200, headers: {}, body }
+          : undefined,
+    });
+    await expect(
+      drive(t.clock, t.client, t.client.analysts("NVDA")),
+    ).rejects.toThrow("malformed answer");
+    // the next call starts at its spacing, not after a back-off
+    await drive(t.clock, t.client, t.client.failFast().metric("NVDA"));
+    expect(t.starts).toEqual([NOW, NOW + SPACING_MS]);
+    body = "<html>consent</html>";
+    await expect(
+      drive(t.clock, t.client, t.client.analysts("NVDA")),
+    ).rejects.toThrow("malformed answer");
+    const asked = t.f.urls.length;
+    await expect(t.client.failFast().metric("NVDA")).rejects.toThrow(
+      "backing off",
+    );
+    expect(t.f.urls).toHaveLength(asked);
   });
 
   test("a 401 is a refused key and a 429 pauses the source", async () => {
@@ -416,6 +444,41 @@ describe("research rows", () => {
         nvda.id,
       ),
     ).toBe(before);
+  });
+
+  test("an ADR answered as its home listing is no data, the queue running on", async () => {
+    const t = setup();
+    const tsm = share(t.db, "TSM", NOW);
+    const nvda = share(t.db, "NVDA", NOW);
+    // a row kept from an earlier answer stays
+    t.db
+      .query(
+        `insert into research (instrument, kind, period, pe_ttm, fetched_at)
+         values (?, 'metric', '2026-10-01', 20, ?)`,
+      )
+      .run(tsm.id, NOW);
+    const results = await drive(t.clock, t.client, refreshResearch(t.ctx, tsm));
+    expect(
+      results.map((r) => [r.section, r.status === "ok" ? r.rows : r.status]),
+    ).toEqual([
+      ["metric", 0],
+      ["analysts", 0],
+      ["earnings", 0],
+      ["insider", 8],
+      ["calendar", 0],
+    ]);
+    expect(readResearch(t.db, tsm.id, "metric")).toMatchObject([
+      { period: "2026-10-01", pe_ttm: 20 },
+    ]);
+    expect(readResearch(t.db, tsm.id, "analysts")).toEqual([]);
+    expect(readResearch(t.db, tsm.id, "earnings")).toEqual([]);
+    expect(readResearch(t.db, tsm.id, "insider")).toHaveLength(8);
+    expect(readEvents(t.db, "2000-01-01", "2100-01-01")).toEqual([]);
+    for (const s of ["metric", "analysts", "earnings", "calendar"] as const) {
+      expect(sectionState(t.db, tsm.id, s, t.clock.now()).noData).toBe(true);
+    }
+    await drive(t.clock, t.client, refreshResearch(t.ctx, nvda, ["metric"]));
+    expect(t.starts[5]! - t.starts[4]!).toBe(SPACING_MS);
   });
 
   test("a later answer leaving out an earnings actual keeps it", async () => {

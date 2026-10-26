@@ -13,7 +13,7 @@ import {
   refreshResearch,
   STALE_RESEARCH,
 } from "../src/finnhub/store.ts";
-import { readInstrument } from "../src/instruments.ts";
+import { readInstrument, upsertInstrument } from "../src/instruments.ts";
 import { silent } from "../src/log.ts";
 import { MAX_TITLE, massive, PAGE_LIMIT } from "../src/massive/client.ts";
 import { NEWS_NOT_COVERED, NO_NEWS, STALE_NEWS } from "../src/massive/store.ts";
@@ -30,7 +30,7 @@ import {
   researchTargets,
 } from "../src/tools/research.ts";
 import { CALL_MS, markets } from "../src/tools/targets.ts";
-import { lastReadAt } from "../src/tracking.ts";
+import { lastReadAt, markRead } from "../src/tracking.ts";
 import { writer } from "../src/writer.ts";
 import { yahoo } from "../src/yahoo/client.ts";
 import { type TestApp, withApp } from "./helpers/app.ts";
@@ -44,17 +44,23 @@ import {
   series,
 } from "./helpers/massive.ts";
 import { gate, NOW, sources } from "./helpers/sources.ts";
-import type { Recorded } from "./helpers/yahoo.ts";
+import { clone, listed, type Recorded, recorded } from "./helpers/yahoo.ts";
 
 type Hold = (url: URL) => Promise<Recorded | undefined> | undefined;
 
 async function setup(
-  options: { hold?: Hold; off?: boolean; massive?: FakeMassive } = {},
+  options: {
+    hold?: Hold;
+    off?: boolean;
+    massive?: FakeMassive;
+    charts?: Record<string, Recorded>;
+  } = {},
 ) {
   const clock = fakeClock(NOW);
   const { db } = open(":memory:", clock);
   const fake = options.massive;
   const s = await sources({
+    charts: options.charts,
     hold: async (url) =>
       (await options.hold?.(url)) ??
       (await finnhubAnswer(url)) ??
@@ -622,7 +628,186 @@ describe("news inside the call", () => {
   });
 });
 
+// a made-up US share stored, so a bare symbol needs no search
+const usShare = (db: ReturnType<typeof open>["db"], symbol: string) =>
+  upsertInstrument(
+    db,
+    {
+      market: "US",
+      symbol,
+      source: "yahoo",
+      sourceSymbol: symbol,
+      exchange: "NMS",
+      name: symbol,
+      type: "EQUITY",
+      currency: "USD",
+      unit: "per_share",
+      zone: "America/New_York",
+    },
+    NOW,
+  );
+
+// NVDA's chart answered as other made-up US shares
+async function shares(symbols: readonly string[]) {
+  const nvda = listed(await recorded("chart-nvda-5y-1d"));
+  const out: Record<string, Recorded> = {};
+  for (const s of symbols) {
+    const c = clone(nvda);
+    c.body.chart.result[0].meta.symbol = s;
+    out[s] = c;
+  }
+  return out;
+}
+
+describe("events inside the call", () => {
+  const range = { from: "2026-10-01", to: "2026-12-31" };
+
+  test("a research pass cut after its first section leaves the calendar to the next call", async () => {
+    let limited = true;
+    const t = await setup({
+      hold: (url) =>
+        limited && url.pathname === "/api/v1/stock/recommendation"
+          ? Promise.resolve({
+              recordedAt: "",
+              status: 429,
+              headers: {},
+              body: {},
+            })
+          : undefined,
+    });
+    const first = body(
+      await drive(
+        t.clock,
+        pacedOf(t.m),
+        researchAnswer(t.m, parseResearch({ symbol: "NVDA" })),
+      ),
+    );
+    expect(first.research).toMatchObject({ error: "rate_limited" });
+    expect(t.finnhubCalls()).toHaveLength(2);
+    limited = false;
+    await t.clock.advance(5 * MINUTE_MS);
+    const events = body(
+      await drive(
+        t.clock,
+        pacedOf(t.m),
+        eventsAnswer(t.m, parseEvents({ ...range, symbols: ["NVDA"] })),
+      ),
+    );
+    expect(events.events).toEqual([
+      expect.objectContaining({ id: "US:NVDA", date: "2026-11-17" }),
+    ]);
+    expect(events.unavailable).toBeUndefined();
+    expect(t.finnhubCalls().map((u) => u.pathname)).toEqual([
+      "/api/v1/stock/metric",
+      "/api/v1/stock/recommendation",
+      "/api/v1/calendar/earnings",
+    ]);
+    // a history section fetches only itself
+    await drive(
+      t.clock,
+      pacedOf(t.m),
+      researchAnswer(
+        t.m,
+        parseResearch({ symbol: "NVDA", section: "insiders" }),
+      ),
+    );
+    expect(t.finnhubCalls().at(-1)?.pathname).toBe(
+      "/api/v1/stock/insider-sentiment",
+    );
+    expect(t.finnhubCalls()).toHaveLength(4);
+  });
+
+  test("a share whose calendar never ended well is listed under unavailable", async () => {
+    const t = await setup({
+      hold: (url) =>
+        url.pathname === "/api/v1/calendar/earnings"
+          ? Promise.resolve({
+              recordedAt: "",
+              status: 200,
+              headers: {},
+              body: { earningsCalendar: "none" },
+            })
+          : undefined,
+    });
+    const named = body(
+      await drive(
+        t.clock,
+        pacedOf(t.m),
+        eventsAnswer(t.m, parseEvents({ ...range, symbols: ["NVDA"] })),
+      ),
+    );
+    expect(named.events).toEqual([]);
+    expect(named.unavailable).toEqual([
+      {
+        input: "NVDA",
+        id: "US:NVDA",
+        error: "source_error",
+        message:
+          "no calendar yet: its fetch failed (malformed answer); retry this symbol later",
+      },
+    ]);
+    // a tracked share the jobs have not reached yet
+    markRead(t.db, [usShare(t.db, "ZZQ").id], NOW);
+    const tracked = body(await eventsAnswer(t.m, parseEvents(range)));
+    expect(tracked.unavailable).toEqual([
+      expect.objectContaining({ input: "US:NVDA", error: "source_error" }),
+      {
+        input: "US:ZZQ",
+        id: "US:ZZQ",
+        message: "no calendar yet: never fetched; retry this symbol later",
+      },
+    ]);
+  });
+
+  test("events for eleven shares asks one calendar each", async () => {
+    const symbols = Array.from({ length: 11 }, (_, k) => `ZZ${k}`);
+    const t = await setup({ charts: await shares(symbols) });
+    for (const s of symbols) usShare(t.db, s);
+    const b = body(
+      await drive(
+        t.clock,
+        pacedOf(t.m),
+        eventsAnswer(t.m, parseEvents({ ...range, symbols })),
+      ),
+    );
+    expect(b.unavailable).toBeUndefined();
+    expect(t.finnhubCalls()).toHaveLength(11);
+    expect(new Set(t.finnhubCalls().map((u) => u.pathname))).toEqual(
+      new Set(["/api/v1/calendar/earnings"]),
+    );
+  });
+});
+
 describe("a call refused while a source backs off", () => {
+  test("names the back-off, never the phrase as its own answer's", async () => {
+    let consent = true;
+    const t = await setup({
+      hold: (url) =>
+        consent && url.hostname === "finnhub.io"
+          ? Promise.resolve({
+              recordedAt: "",
+              status: 200,
+              headers: {},
+              body: "<html>consent</html>",
+            })
+          : undefined,
+    });
+    await expect(t.fh!.metric("NVDA")).rejects.toThrow("malformed answer");
+    consent = false;
+    const b = body(
+      await drive(
+        t.clock,
+        pacedOf(t.m),
+        researchAnswer(t.m, parseResearch({ symbol: "NVDA" })),
+      ),
+    );
+    expect(b.research).toMatchObject({
+      error: "source_error",
+      message:
+        "the source is backing off after malformed answer; retry this symbol later",
+    });
+  });
+
   const limited = (url: URL, host: string): Promise<Recorded> | undefined =>
     url.hostname === host
       ? Promise.resolve({ recordedAt: "", status: 429, headers: {}, body: {} })

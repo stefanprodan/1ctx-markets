@@ -45,7 +45,9 @@ staleness in `docs/storage.md`; the answer pages in `docs/tools.md`.
   minute**, half of FRED's 120, so a job and tools sharing the client
   never trip it. The minute window lives in `fred()`; the queue from
   `src/source.ts` backs off 30 s after a failure and 5 minutes after a
-  429, and never retries the failed call.
+  429, and never retries the failed call. A malformed answer backs off
+  only when it is not JSON (`Unreadable`); one of an odd shape fails
+  its call alone.
 - **A tool's call uses `within(live)`**: it fails at once while the
   queue backs off (`Paused`) and starts nothing once the caller's
   deadline passed. A job's call waits the back-off out.

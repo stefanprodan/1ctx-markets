@@ -25,7 +25,7 @@ export type Phrase = (typeof PHRASES)[number];
 export class SourceError extends Error {
   constructor(
     readonly phrase: Phrase,
-    detail?: string,
+    readonly detail?: string,
   ) {
     super(detail ? `${phrase}: ${detail}` : phrase);
     this.name = "SourceError";
@@ -56,6 +56,15 @@ export function phraseOf(error: unknown): string {
   return error instanceof SourceError ? error.phrase : "failed";
 }
 
+// A body that is not the source's format at all, such as a proxy or
+// consent page: the source is unwell. An answer of an odd shape is that
+// answer's fault alone, so it fails its call and the queue runs on.
+export class Unreadable extends SourceError {
+  constructor(detail = "not JSON") {
+    super("malformed answer", detail);
+  }
+}
+
 // the read's own deadline, never a sign the source is unwell
 export class DeadlinePassed extends SourceError {
   constructor() {
@@ -70,12 +79,16 @@ export class Paused extends SourceError {
   }
 }
 
-// an unknown symbol or a wrong request is no sign the source is unwell
+// an unknown symbol, a wrong request or one odd answer is no sign the
+// source is unwell
 const backsOff = (error: unknown): boolean =>
   !(
     error instanceof DeadlinePassed ||
     (error instanceof SourceError &&
-      (error.phrase === "not found" || error.phrase === "bad request"))
+      (error.phrase === "not found" ||
+        error.phrase === "bad request" ||
+        (error.phrase === "malformed answer" &&
+          !(error instanceof Unreadable))))
   );
 
 export const RATE_LIMIT_BACKOFF_MS = 5 * MINUTE_MS;
