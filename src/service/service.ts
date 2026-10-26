@@ -4,6 +4,7 @@
 // `1ctx-markets service`: the binary installs itself with the platform's
 // service manager. The commands here know no platform; the backend does.
 
+import { rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { type Clock, wallClock } from "../clock.ts";
@@ -52,6 +53,16 @@ async function healthProbe(url: string): Promise<boolean> {
   }
 }
 
+// a file already gone is purged; any other failure is the purge's
+async function removeFile(path: string): Promise<void> {
+  try {
+    await rm(path);
+  } catch (error) {
+    if ((error as { code?: string }).code === "ENOENT") return;
+    throw error;
+  }
+}
+
 function backendFor(platform: string, home: string): ServiceBackend {
   if (platform === "darwin") return launchdBackend({ home });
   throw new ServiceError(`service is not supported on ${platform} yet`);
@@ -69,13 +80,7 @@ function resolveDeps(deps: ServiceDeps) {
     write: deps.write ?? ((line: string) => console.log(line)),
     sleep: sleeper(deps.clock ?? wallClock),
     probe: deps.probe ?? healthProbe,
-    remove:
-      deps.remove ??
-      (async (path: string) => {
-        await Bun.file(path)
-          .delete()
-          .catch(() => undefined);
-      }),
+    remove: deps.remove ?? removeFile,
   };
 }
 
@@ -90,6 +95,15 @@ function configOf(args: string[], home: string): Config | null {
   return cli.kind === "run" ? cli.config : null;
 }
 
+// install writes the binary's absolute path and every option, --data
+// included, so a definition without them is torn or not ours
+function storedConfig(args: string[], home: string): Config | null {
+  const [binary, ...options] = args;
+  if (binary === undefined || !isAbsolute(binary)) return null;
+  if (!options.includes("--data")) return null;
+  return configOf(options, home);
+}
+
 // where a client on this machine reaches the server
 function urlOf(config: Config): string {
   let host = config.hostname;
@@ -101,13 +115,17 @@ function urlOf(config: Config): string {
 
 async function waitForHealth(url: string, r: Resolved): Promise<void> {
   for (let attempt = 0; attempt < HEALTH_ATTEMPTS; attempt++) {
-    if (await r.probe(`${url}/health`)) {
+    // another listener on the port answers too: the job must have a process
+    if (
+      (await r.probe(`${url}/health`)) &&
+      ((await r.backend.state())?.pid ?? null) !== null
+    ) {
       r.write(`1ctx-markets up at ${url}`);
       return;
     }
     await r.sleep(HEALTH_POLL_MS);
   }
-  throw new ServiceError(`1ctx-markets did not answer at ${url}`);
+  throw new ServiceError(`1ctx-markets did not come up at ${url}`);
 }
 
 async function installedConfig(r: Resolved): Promise<{
@@ -115,7 +133,7 @@ async function installedConfig(r: Resolved): Promise<{
   config: Config | null;
 }> {
   const args = await r.backend.installed();
-  const config = args === null ? null : configOf(args.slice(1), r.home);
+  const config = args === null ? null : storedConfig(args, r.home);
   return { args, config };
 }
 
@@ -190,10 +208,11 @@ async function status(r: Resolved): Promise<void> {
         ? "ok"
         : "no answer";
   const fallback = args === null ? "not installed" : "stopped";
+  const invalid = args !== null && config === null;
   r.write(
     [
       `service: ${r.backend.name}`,
-      `state: ${state?.state ?? fallback}`,
+      `state: ${invalid ? "invalid definition" : (state?.state ?? fallback)}`,
       `pid: ${state?.pid ?? "-"}`,
       `binary: ${state?.program ?? args?.[0] ?? "-"}`,
       `health: ${health}`,
@@ -219,7 +238,12 @@ async function uninstall(purge: boolean, r: Resolved): Promise<void> {
     const db = dbPath(purged);
     const log = logPath(purged.dataDir);
     for (const path of [db, `${db}-shm`, `${db}-wal`, log, `${log}.1`]) {
-      await r.remove(path);
+      try {
+        await r.remove(path);
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        throw new ServiceError(`could not remove ${path}: ${reason}`);
+      }
     }
   }
   r.write(`uninstalled ${r.backend.name}${purge ? " and purged data" : ""}`);

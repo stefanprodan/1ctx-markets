@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type {
   ServiceBackend,
   ServiceDefinition,
@@ -11,7 +14,8 @@ import {
   type ServiceDeps,
   ServiceError,
 } from "../src/service/index.ts";
-import { WAIT_MS } from "../src/service/launchd.ts";
+import { launchdBackend, WAIT_MS } from "../src/service/launchd.ts";
+import { renderPlist } from "../src/service/plist.ts";
 import { EXIT_TIMEOUT } from "../src/service/service.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { drive } from "./helpers/drive.ts";
@@ -19,8 +23,11 @@ import { drive } from "./helpers/drive.ts";
 const HOME = "/home/u";
 const DATA = "/home/u/.1ctx-markets";
 const BIN = "/home/u/.1ctx-markets/bin/1ctx-markets";
+const STORED = [BIN, "--data", DATA];
 
-function fake(start: { args?: string[] | null; loaded?: boolean } = {}) {
+function fake(
+  start: { args?: string[] | null; loaded?: boolean; pid?: number | null } = {},
+) {
   const calls: string[] = [];
   const held = { args: start.args ?? null, loaded: start.loaded ?? false };
   let definition: ServiceDefinition | null = null;
@@ -48,7 +55,13 @@ function fake(start: { args?: string[] | null; loaded?: boolean } = {}) {
       held.loaded = false;
     },
     state: async () =>
-      held.loaded ? { state: "running", pid: 7, program: BIN } : null,
+      held.loaded
+        ? {
+            state: start.pid === null ? "spawn scheduled" : "running",
+            pid: start.pid === undefined ? 7 : start.pid,
+            program: BIN,
+          }
+        : null,
   };
   return { backend, calls, definition: () => definition };
 }
@@ -173,7 +186,7 @@ describe("service install", () => {
   });
 
   test("--restart is the switch anywhere it cannot be a value", async () => {
-    const { backend, calls, definition } = fake({ args: [BIN], loaded: true });
+    const { backend, calls, definition } = fake({ args: STORED, loaded: true });
     const { run } = deps(backend);
 
     await run(["install", "--restart", "--listen", "h:1"]);
@@ -222,12 +235,22 @@ describe("service install", () => {
     expect(lines).toEqual(["1ctx-markets up at http://127.0.0.1:11238"]);
   });
 
+  test("a health answer from a job with no process is not up", async () => {
+    const { backend } = fake({ pid: null });
+    const { run, lines } = deps(backend);
+
+    await expect(run(["install"])).rejects.toThrow(
+      "1ctx-markets did not come up at http://127.0.0.1:11238",
+    );
+    expect(lines).toEqual([]);
+  });
+
   test("a server that never answers is an error", async () => {
     const { backend } = fake();
     const { run } = deps(backend, { probe: async () => false });
 
     await expect(run(["install"])).rejects.toThrow(
-      "1ctx-markets did not answer at http://127.0.0.1:11238",
+      "1ctx-markets did not come up at http://127.0.0.1:11238",
     );
   });
 });
@@ -302,7 +325,7 @@ describe("service status", () => {
   });
 
   test("a running server that does not answer says so", async () => {
-    const { backend } = fake({ args: [BIN], loaded: true });
+    const { backend } = fake({ args: STORED, loaded: true });
     const { run, lines } = deps(backend, { probe: async () => false });
 
     await run(["status"]);
@@ -311,7 +334,7 @@ describe("service status", () => {
   });
 
   test("stopped asks no server", async () => {
-    const { backend } = fake({ args: [BIN] });
+    const { backend } = fake({ args: STORED });
     const { run, lines, probed } = deps(backend);
 
     await run(["status"]);
@@ -384,6 +407,85 @@ describe("service uninstall", () => {
   });
 });
 
+describe("service definition", () => {
+  test("one without the binary or --data is invalid for every reader", async () => {
+    for (const args of [[], ["bin", "--data", "/d"], [BIN]]) {
+      const { backend, calls } = fake({ args });
+      const { run, lines, removed } = deps(backend);
+      for (const argv of [["start"], ["restart"], ["uninstall", "--purge"]]) {
+        await expect(run(argv)).rejects.toThrow("definition is invalid");
+      }
+      await run(["status"]);
+      expect(lines[0]).toContain("state: invalid definition");
+      expect(calls).toEqual([]);
+      expect(removed).toEqual([]);
+    }
+  });
+
+  test("a binary, torn or empty plist is refused by purge", async () => {
+    const plist = renderPlist({
+      label: "dev.1ctx.markets",
+      programArguments: STORED,
+    });
+    for (const xml of [
+      "bplist00\u0000\u0001",
+      plist.slice(0, plist.indexOf("</array>") + 8),
+      "",
+    ]) {
+      const backend = launchdBackend({
+        home: HOME,
+        spawn: async () => ({ code: 113, stdout: "", stderr: "" }),
+        files: {
+          mkdir: async () => {},
+          write: async () => {},
+          read: async () => xml,
+          size: async () => null,
+          rename: async () => {},
+          remove: async () => {
+            throw new Error("removed the plist");
+          },
+        },
+      });
+      const { run, removed } = deps(backend);
+
+      await expect(run(["uninstall", "--purge"])).rejects.toThrow(
+        "uninstall without --purge",
+      );
+      expect(removed).toEqual([]);
+    }
+  });
+});
+
+describe("service purge on disk", () => {
+  test("a file already gone is no error", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "markets-purge-"));
+    writeFileSync(join(dir, "markets.db"), "x");
+    const { backend } = fake({ args: [BIN, "--data", dir] });
+    const { all, lines } = deps(backend);
+    delete all.remove;
+
+    await runService(["uninstall", "--purge"], all);
+
+    expect(lines).toEqual(["uninstalled fake.service and purged data"]);
+    expect(await Bun.file(join(dir, "markets.db")).exists()).toBe(false);
+  });
+
+  test("a file that cannot be removed fails the purge", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "markets-purge-"));
+    // a directory in place of the log: rm without recursion refuses it
+    mkdirSync(join(dir, "markets.log", "held"), { recursive: true });
+    const { backend } = fake({ args: [BIN, "--data", dir] });
+    const { all, lines } = deps(backend);
+    delete all.remove;
+
+    const failed = runService(["uninstall", "--purge"], all);
+
+    await expect(failed).rejects.toBeInstanceOf(ServiceError);
+    await expect(failed).rejects.toThrow("markets.log");
+    expect(lines).toEqual([]);
+  });
+});
+
 describe("service command line", () => {
   test("anything else is the usage", async () => {
     const { run } = deps(fake().backend);
@@ -404,7 +506,7 @@ describe("service command line", () => {
   });
 
   test("a backend failure is a service error with its words", async () => {
-    const { backend } = fake({ args: [BIN], loaded: true });
+    const { backend } = fake({ args: STORED, loaded: true });
     backend.stop = async () => {
       throw new Error("launchctl bootout: Operation not permitted");
     };

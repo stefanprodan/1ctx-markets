@@ -96,9 +96,10 @@ export function plistPath(label: string, home: string): string {
 }
 
 // The <string> children of the ProgramArguments array. The plist is our
-// own XML file, so a scan for the array after the key is enough; a binary
-// plist yields no arguments.
+// own XML file, so a scan for the array after the key is enough; a binary,
+// empty or torn plist yields no arguments.
 export function programArguments(xml: string): string[] {
+  if (!/^<\?xml[\s\S]*<\/plist>\s*$/.test(xml)) return [];
   const key = xml.indexOf("<key>ProgramArguments</key>");
   if (key === -1) return [];
   const start = xml.indexOf("<array>", key);

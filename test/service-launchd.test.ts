@@ -2,8 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { ServiceDefinition } from "../src/service/backend.ts";
 import {
+  diskFiles,
   type LaunchdFiles,
   launchdBackend,
   parseLaunchdPrint,
@@ -290,5 +294,19 @@ describe("launchd backend", () => {
     expect(held.has(PLIST)).toBe(false);
     expect(await backend.installed()).toBeNull();
     expect(await backend.loaded()).toBe(false);
+  });
+});
+
+describe("launchd files", () => {
+  // umask is the process's, so no other test may run beside this one
+  test.serial("the plist is 644 under a permissive umask", async () => {
+    const path = join(mkdtempSync(join(tmpdir(), "markets-plist-")), "a.plist");
+    const before = process.umask(0o002);
+    try {
+      await diskFiles.write(path, "<plist/>");
+    } finally {
+      process.umask(before);
+    }
+    expect(statSync(path).mode & 0o777).toBe(0o644);
   });
 });

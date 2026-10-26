@@ -25,13 +25,17 @@ today; any other platform answers `service is not supported on
   relative `--data` to where it was typed and writes every option out
   (`configToArgs()`), defaults included, so a later default change
   never moves a running service. `start`, `restart` and `status` read
-  the options back from the definition; one the server would refuse is
-  `service definition is invalid`.
+  the options back from the definition. One that is not our plist
+  (binary, empty or torn), lacks the binary's absolute path or `--data`,
+  or holds options the server would refuse is `service definition is
+  invalid` to every command but a plain `uninstall`.
 - **`install` needs the compiled binary** and refuses to replace a
   running service without `--restart`, which is the switch anywhere but
   right after a flag that takes a value.
-- **A start waits for `GET /health`**, once a second for up to 60
-  tries, at the listen address (loopback for a wildcard bind).
+- **A start waits for `GET /health` and a process**, once a second for
+  up to 60 tries, at the listen address (loopback for a wildcard bind).
+  The job must also show a pid, since another listener on the port
+  would answer `/health` for a job that keeps crashing.
 - **The kill timeout is 45 seconds** (`EXIT_TIMEOUT`, launchd's
   `ExitTimeOut`): a source call already sent ends within its 30-second
   timeout, then the writer drains its queue (`docs/config.md`,
@@ -42,14 +46,17 @@ today; any other platform answers `service is not supported on
   the job while the server still drains and holds the port, and a start
   into that window fails.
 - **The plist is staged and read back before anything stops**, so a bad
-  write never takes a running service down.
+  write never takes a running service down. It is written mode 644
+  whatever the umask, since launchd refuses one others can write.
 - **The log is `markets.log` in the data directory and rotates only on
   install.** launchd holds it open while the service runs, so past 8 MiB
   it moves to `.1` between the stop and the start.
 - **`uninstall --purge` removes the database and the log, never
   `secrets/`**: `markets.db` with its `-wal` and `-shm`, `markets.log`
   and `.1`, in the directory the definition names. A definition it
-  cannot read is refused rather than guessed at.
+  cannot read is refused rather than guessed at. A file already gone is
+  no error; any other failure stops the purge and is reported, never a
+  success.
 - **Tests fake the backend and launchctl** (`test/service.test.ts`,
   `test/service-launchd.test.ts`); the waits run on the fake clock. No
   test runs `launchctl` or installs a service.

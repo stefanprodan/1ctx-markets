@@ -4,7 +4,15 @@
 // The macOS backend: a LaunchAgent of the signed-in user, driven through
 // launchctl. Every effect is injected, so a test runs it on any platform.
 
-import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  readFile,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { dirname } from "node:path";
 import { type Clock, wallClock } from "../clock.ts";
 import type {
@@ -66,11 +74,15 @@ function missing(error: unknown): boolean {
   return (error as { code?: string }).code === "ENOENT";
 }
 
-const diskFiles: LaunchdFiles = {
+export const diskFiles: LaunchdFiles = {
   mkdir: async (path) => {
     await mkdir(path, { recursive: true });
   },
-  write: (path, data) => writeFile(path, data),
+  // launchd refuses a plist others can write, whatever the umask made it
+  write: async (path, data) => {
+    await writeFile(path, data, { mode: 0o644 });
+    await chmod(path, 0o644);
+  },
   read: async (path) => {
     try {
       return await readFile(path, "utf8");
