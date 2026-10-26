@@ -37,7 +37,7 @@ import { type Instrument, readInstrument } from "../instruments.ts";
 import { errorFields, type Log } from "../log.ts";
 import type { Massive } from "../massive/client.ts";
 import { NO_RULES, type RuleHooks } from "../rules/hooks.ts";
-import { QueueClosed, SourceError } from "../source.ts";
+import { Paused, QueueClosed, SourceError } from "../source.ts";
 import { isTracked, markRead, TRACK_MS } from "../tracking.ts";
 import type { Writer } from "../writer.ts";
 import { WriterClosed } from "../writer.ts";
@@ -161,6 +161,13 @@ export function itemError(m: Markets, error: unknown): ItemError {
   }
   if (error instanceof Refused) {
     return { error: "refused", message: error.message };
+  }
+  // refused before it was asked, so the phrase is another call's
+  if (error instanceof Paused && error.phrase !== "rate limited") {
+    return {
+      error: "source_error",
+      message: `the source is backing off after ${error.phrase}; ${RETRY} later`,
+    };
   }
   if (error instanceof SourceError) {
     switch (error.phrase) {

@@ -9,6 +9,7 @@ import {
   limiter,
   type RunOptions,
   SourceError,
+  Unreadable,
 } from "../source.ts";
 import { wallOfDate } from "../zone.ts";
 
@@ -150,10 +151,23 @@ function day(v: unknown, what: string): string {
   throw malformed(`no ${what}`);
 }
 
-// rows are for the symbol asked, or the answer is someone else's
+// An ADR is answered with its home listing (TSM as 2330.TW, its EPS in
+// TWD per local share): no data for the symbol asked, never an error.
+class AnotherListing extends Error {}
+
 function sameSymbol(row: Obj, symbol: string): void {
   if (row.symbol !== undefined && row.symbol !== symbol) {
-    throw malformed("another symbol answered");
+    throw new AnotherListing();
+  }
+}
+
+// the answer, or no data when any part of it names another symbol
+function ownListing<T>(parse: () => T | null): T | null {
+  try {
+    return parse();
+  } catch (error) {
+    if (error instanceof AnotherListing) return null;
+    throw error;
   }
 }
 
@@ -172,7 +186,10 @@ export function collapse<T>(rows: readonly T[], key: (row: T) => string): T[] {
   return [...byKey.values()].map((v) => v.row);
 }
 
-export function parseMetric(body: unknown, symbol: string): Metric | null {
+export const parseMetric = (body: unknown, symbol: string): Metric | null =>
+  ownListing(() => metricOf(body, symbol));
+
+function metricOf(body: unknown, symbol: string): Metric | null {
   const b = obj(body, "body");
   sameSymbol(b, symbol);
   const m = obj(b.metric, "metric");
@@ -187,10 +204,12 @@ export function parseMetric(body: unknown, symbol: string): Metric | null {
   return any ? out : null;
 }
 
-export function parseAnalysts(
+export const parseAnalysts = (
   body: unknown,
   symbol: string,
-): Analysts[] | null {
+): Analysts[] | null => ownListing(() => analystsOf(body, symbol));
+
+function analystsOf(body: unknown, symbol: string): Analysts[] | null {
   const rows = list(body, "recommendations").map((entry): Analysts => {
     const r = obj(entry, "recommendation");
     sameSymbol(r, symbol);
@@ -206,10 +225,12 @@ export function parseAnalysts(
   return rows.length === 0 ? null : collapse(rows, (r) => r.period);
 }
 
-export function parseEarnings(
+export const parseEarnings = (
   body: unknown,
   symbol: string,
-): Earnings[] | null {
+): Earnings[] | null => ownListing(() => earningsOf(body, symbol));
+
+function earningsOf(body: unknown, symbol: string): Earnings[] | null {
   const rows = list(body, "earnings").map((entry): Earnings => {
     const r = obj(entry, "earnings row");
     sameSymbol(r, symbol);
@@ -225,7 +246,10 @@ export function parseEarnings(
   return rows.length === 0 ? null : collapse(rows, (r) => r.period);
 }
 
-export function parseInsider(body: unknown, symbol: string): Insider[] | null {
+export const parseInsider = (body: unknown, symbol: string): Insider[] | null =>
+  ownListing(() => insiderOf(body, symbol));
+
+function insiderOf(body: unknown, symbol: string): Insider[] | null {
   const b = obj(body, "body");
   sameSymbol(b, symbol);
   const rows = list(b.data, "insider data").map((entry): Insider => {
@@ -248,16 +272,19 @@ export function parseInsider(body: unknown, symbol: string): Insider[] | null {
 
 const HOUR = /^[a-z]{0,8}$/;
 
-export function parseCalendar(
+export const parseCalendar = (
   body: unknown,
   symbol: string,
-): CalendarEvent[] | null {
+): CalendarEvent[] | null => ownListing(() => calendarOf(body, symbol));
+
+function calendarOf(body: unknown, symbol: string): CalendarEvent[] | null {
   const b = obj(body, "body");
   const rows = list(b.earningsCalendar, "earnings calendar").map(
     (entry): CalendarEvent => {
       const r = obj(entry, "calendar row");
       // a calendar row always names its symbol
-      if (r.symbol !== symbol) throw malformed("another symbol answered");
+      if (r.symbol === undefined) throw malformed("no symbol");
+      sameSymbol(r, symbol);
       const quarter = count(r.quarter, "quarter");
       if (quarter < 1 || quarter > 4) throw malformed("no quarter");
       const hour = r.hour ?? "";
@@ -328,7 +355,7 @@ export function finnhub(options: FinnhubOptions): Finnhub {
         try {
           body = JSON.parse(raw);
         } catch {
-          throw malformed("not JSON");
+          throw new Unreadable();
         }
         return { data: parse(body), fetchedAt };
       } finally {

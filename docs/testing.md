@@ -45,7 +45,7 @@ recorders under `scripts/probe/`. The clock contract is in
 | `bvb.ts` | the Bucharest exchange's pages and chart feed by URL (`bvbFetch()`), `opened()` (a page read as open: every recording is of a closed market), `keyed()` (a made-up page key, which the recordings strip), `bothSources()` with Yahoo |
 | `sources.ts` | Yahoo and FRED by URL from the recordings for reads that fetch inside a call; `gate()` holds a call until released |
 | `sim.ts` | a made-up Yahoo for whole simulated days: `US`, `XETRA`, `BVB`, `CRYPTO` listings with sessions from their zone |
-| `finnhub.ts` | Finnhub by path and symbol (`AS`): NVDA in full, a 403 refusal, an empty answer |
+| `finnhub.ts` | Finnhub by path and symbol (`AS`): NVDA in full, a 403 refusal, an empty answer, TSM as recorded (its home listing answers) |
 | `massive.ts` | Massive's news, filtered, ordered and paged with an opaque `next_url` |
 | `rules.ts` | reads with rules over the recorded sources, quotes edited from the recorded metas |
 | `app.ts` | the whole server on loopback (`withApp()`) and an MCP SDK client on it (`mcpClient()`) |

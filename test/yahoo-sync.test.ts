@@ -162,7 +162,27 @@ describe("daily bars from a chart answer", () => {
     expect(bars[3]).toMatchObject({ close: 103.2699966430664, final: true });
   });
 
-  test("a trailing row never makes a bar of its own", async () => {
+  test("an FX pair's trailing row is its session date's bar when no grid row has it", async () => {
+    // EURRON=X on a Monday: grid rows to Friday, then the live minute
+    const a = await answer("chart-eurron-x-5d-1d");
+    const bars = dailyBars(a, a.session);
+    expect(dates(bars)).toEqual([
+      "2026-10-20",
+      "2026-10-21",
+      "2026-10-22",
+      "2026-10-23",
+      "2026-10-26",
+    ]);
+    expect(bars.map((b) => b.final)).toEqual([true, true, true, true, false]);
+    expect(bars[4]).toMatchObject({
+      open: 5.348899841308594,
+      high: 5.354599952697754,
+      low: 5.343299865722656,
+      close: 5.345900058746338,
+    });
+  });
+
+  test("a trailing row of any other type never makes a bar of its own", async () => {
     // a Sunday evening trade in CL=F's Sunday session, which has no
     // regular row yet
     const cl = await answer("chart-cl-f-5d-1d", (r) => {
@@ -171,6 +191,9 @@ describe("daily bars from a chart answer", () => {
       appendRow(r, at, [103, 104, 102, 103.5, 10]);
     });
     expect(dates(dailyBars(cl, cl.session))).not.toContain("2026-10-25");
+  });
+
+  test("a trailing row off its session's date never makes a bar", async () => {
     // off the bar grid, though not stamped at the last trade's time
     const fx = await answer("chart-eurusd-x-5d-1d", (r) => {
       r.meta.regularMarketTime += 1;
@@ -292,6 +315,67 @@ describe("backfill", () => {
         )
         .run(),
     ).toThrow("FOREIGN KEY");
+  });
+});
+
+describe("an FX pair's currency", () => {
+  test("comes from its symbol when Yahoo answers none", async () => {
+    const pair = await answer("chart-eurron-x-5d-1d");
+    expect(pair.currency).toBe("RON");
+    const usdBased = await answer("chart-eurron-x-5d-1d", (r) => {
+      r.meta.symbol = "RON=X";
+    });
+    expect(usdBased.currency).toBe("RON");
+    const odd = await answer("chart-eurron-x-5d-1d", (r) => {
+      r.meta.symbol = "RON-X";
+    });
+    expect(odd.currency).toBeNull();
+    const stated = await answer("chart-eurusd-x-5d-1d");
+    expect(stated.currency).toBe("USD");
+  });
+
+  test("never for another type", async () => {
+    const a = await answer("chart-vix-5d-1d", (r) => {
+      r.meta.currency = "";
+      r.meta.symbol = "ABCDEF=X";
+    });
+    expect(a.currency).toBeNull();
+  });
+
+  test("stores its currency, today's bar and week, and a live row on both", async () => {
+    const fx = listed(await recorded("chart-eurron-x-5d-1d"));
+    const now = Date.parse(fx.recordedAt);
+    const { db, ctx } = setup(now, () => fx);
+    const { instrument } = await addInstrument(ctx, "EURRON=X", "CCY:EURRON=X");
+    expect(instrument).toMatchObject({ currency: "RON", unit: "per_unit" });
+    expect(readBars(db, "CCY:EURRON=X", "1d").at(-1)).toMatchObject({
+      date: "2026-10-26",
+      close: 5.345900058746338,
+      final: false,
+    });
+    const weeks = readBars(db, "CCY:EURRON=X", "1wk");
+    expect(weeks.map((w) => [w.date, w.final])).toEqual([
+      ["2026-10-19", true],
+      ["2026-10-26", false],
+    ]);
+    const result = fx.body.chart.result[0];
+    const spark = {
+      spark: {
+        result: [{ symbol: "EURRON=X", response: [{ meta: result.meta }] }],
+      },
+    };
+    await ctx.writer.write((w) => storeQuotes(w, parseSpark(spark, now)));
+    expect(
+      db
+        .query(
+          `select interval, date from signals where instrument = ?
+           and kind = 'live' order by interval`,
+        )
+        .all("CCY:EURRON=X"),
+    ).toEqual([
+      { interval: "1d", date: "2026-10-26" },
+      { interval: "1wk", date: "2026-10-26" },
+    ]);
   });
 });
 

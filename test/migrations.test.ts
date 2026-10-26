@@ -154,6 +154,33 @@ describe("migrations", () => {
     });
   });
 
+  test("an FX pair stored with no currency gets its symbol's", () => {
+    const db = new Database(":memory:", { strict: true });
+    const clock = fakeClock();
+    const at = MIGRATIONS.findIndex((m) => m.id === "0011-fx-currency");
+    migrate(db, clock, MIGRATIONS.slice(0, at));
+    const add = db.query(
+      `insert into instruments (id, market, symbol, source, source_symbol,
+         exchange, type, currency, zone, added_at, updated_at)
+       values (?, 'CCY', ?, 'yahoo', ?, 'CCY', ?, ?, 'Europe/London', 0, 0)`,
+    );
+    add.run("CCY:EURRON=X", "EURRON=X", "EURRON=X", "CURRENCY", null);
+    add.run("CCY:RON=X", "RON=X", "RON=X", "CURRENCY", null);
+    add.run("CCY:EURUSD=X", "EURUSD=X", "EURUSD=X", "CURRENCY", "USD");
+    add.run("CCY:ABC=F", "ABC=F", "ABC=F", "CURRENCY", null);
+    add.run("CCY:ABCDEF=X", "ABCDEF=X", "ABCDEF=X", "INDEX", null);
+    migrate(db, clock);
+    expect(
+      db.query("select id, currency from instruments order by id").all(),
+    ).toEqual([
+      { id: "CCY:ABC=F", currency: null },
+      { id: "CCY:ABCDEF=X", currency: null },
+      { id: "CCY:EURRON=X", currency: "RON" },
+      { id: "CCY:EURUSD=X", currency: "USD" },
+      { id: "CCY:RON=X", currency: "RON" },
+    ]);
+  });
+
   test("open applies the shipped list to a new database", () => {
     const { db, migrations } = open(":memory:", fakeClock());
     expect(migrations).toEqual(MIGRATIONS.map((m) => m.id));

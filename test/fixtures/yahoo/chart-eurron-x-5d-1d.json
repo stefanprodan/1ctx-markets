@@ -1,0 +1,141 @@
+{
+  "recordedAt": "2026-10-26T12:52:00.000Z",
+  "request": {
+    "method": "GET",
+    "url": "https://query1.finance.yahoo.com/v8/finance/chart/EURRON%3DX?range=5d&interval=1d"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json;charset=utf-8"
+  },
+  "body": {
+    "chart": {
+      "result": [
+        {
+          "meta": {
+            "currency": "",
+            "symbol": "EURRON=X",
+            "exchangeName": "CCY",
+            "fullExchangeName": "CCY",
+            "instrumentType": "CURRENCY",
+            "firstTradeDate": 1120172400,
+            "regularMarketTime": 1793019105,
+            "hasPrePostMarketData": false,
+            "gmtoffset": 0,
+            "timezone": "GMT",
+            "exchangeTimezoneName": "Europe/London",
+            "regularMarketPrice": 5.3459,
+            "regularMarketChangePercent": -0.043,
+            "fulldayPrice": 5.3459,
+            "fulldayChange": -0.0023,
+            "fulldayChangePercent": -0.043,
+            "fiftyTwoWeekHigh": 5.3552,
+            "fiftyTwoWeekLow": 5.062,
+            "regularMarketDayHigh": 5.3546,
+            "regularMarketDayLow": 5.3433,
+            "regularMarketVolume": 0,
+            "longName": "EUR/RON",
+            "shortName": "EUR/RON",
+            "chartPreviousClose": 5.3201,
+            "priceHint": 4,
+            "currentTradingPeriod": {
+              "pre": {
+                "timezone": "GMT",
+                "start": 1792972800,
+                "end": 1792972800,
+                "gmtoffset": 0
+              },
+              "regular": {
+                "timezone": "GMT",
+                "start": 1792972800,
+                "end": 1793059140,
+                "gmtoffset": 0
+              },
+              "post": {
+                "timezone": "GMT",
+                "start": 1793059140,
+                "end": 1793059140,
+                "gmtoffset": 0
+              }
+            },
+            "dataGranularity": "1d",
+            "range": "5d",
+            "validRanges": [
+              "1d",
+              "5d",
+              "1mo",
+              "3mo",
+              "6mo",
+              "1y",
+              "2y",
+              "5y",
+              "10y",
+              "ytd",
+              "max"
+            ]
+          },
+          "timestamp": [
+            1792450800,
+            1792537200,
+            1792623600,
+            1792710000,
+            1793019105
+          ],
+          "indicators": {
+            "quote": [
+              {
+                "open": [
+                  5.320160865783691,
+                  5.31975793838501,
+                  5.334022045135498,
+                  5.341973781585693,
+                  5.348899841308594
+                ],
+                "low": [
+                  5.315972805023193,
+                  5.307553768157959,
+                  5.328289031982422,
+                  5.339976787567139,
+                  5.343299865722656
+                ],
+                "volume": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "high": [
+                  5.329693794250488,
+                  5.336513042449951,
+                  5.344387054443359,
+                  5.348027229309082,
+                  5.354599952697754
+                ],
+                "close": [
+                  5.32006311416626,
+                  5.320123195648193,
+                  5.33433723449707,
+                  5.342295169830322,
+                  5.345900058746338
+                ]
+              }
+            ],
+            "adjclose": [
+              {
+                "adjclose": [
+                  5.32006311416626,
+                  5.320123195648193,
+                  5.33433723449707,
+                  5.342295169830322,
+                  5.345900058746338
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "error": null
+    }
+  }
+}

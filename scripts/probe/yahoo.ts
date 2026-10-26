@@ -171,6 +171,11 @@ const CASES: Case[] = [
     name: "chart-eurusd-x-5d-1d",
     url: chart(Q1, "EURUSD=X", { range: "5d", interval: "1d" }),
   },
+  // No currency in its meta, and on a weekday no grid row for today.
+  {
+    name: "chart-eurron-x-5d-1d",
+    url: chart(Q1, "EURRON=X", { range: "5d", interval: "1d" }),
+  },
 
   { name: "search-nvda", url: search("NVDA") },
   { name: "search-vvsm", url: search("VVSM") },

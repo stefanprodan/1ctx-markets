@@ -78,8 +78,8 @@ type Read = {
   days: Set<string>;
 };
 
-// a trailing off-grid row merges into the session date's bar, never its own:
-// EURUSD=X trades on Sunday while its session is Friday's
+// a trailing off-grid row counts only on the session's date: EURUSD=X
+// trades on Sunday while its session is Friday's
 function read(answer: ChartAnswer, latest: Session | null): Read {
   const zone = answer.session.zone;
   const rows = answer.rows;
@@ -102,29 +102,44 @@ function read(answer: ChartAnswer, latest: Session | null): Read {
     const date = barDate(zone, row.at);
     days.add(date);
     if (row.close === null) continue;
-    const bar = byDate.get(date);
-    if (bar === undefined) {
-      byDate.set(date, {
-        date,
-        open: row.open,
-        high: row.high,
-        low: row.low,
-        close: row.close,
-        volume: row.volume,
-        final: latest !== null && isBarFinal(date, latest),
-      });
-    } else {
-      merge(bar, row);
-    }
+    add(byDate, date, row, latest);
   }
   if (trailing !== null && trailing.close !== null) {
     const date = barDate(zone, trailing.at);
-    const bar = byDate.get(date);
-    if (date === sessionDate(answer.session) && bar !== undefined) {
-      merge(bar, trailing);
+    if (
+      date === sessionDate(answer.session) &&
+      (byDate.has(date) || ownsToday(answer.type))
+    ) {
+      add(byDate, date, trailing, latest);
     }
   }
   return { bars: [...byDate.values()], days };
+}
+
+// FX answers stamp today's row at the live minute; CL=F's Sunday evening
+// trades belong to Monday's bar, though its Sunday session has their date
+const ownsToday = (type: string) => type.toUpperCase() === "CURRENCY";
+
+function add(
+  byDate: Map<string, Bar>,
+  date: string,
+  row: ChartRow,
+  latest: Session | null,
+): void {
+  const bar = byDate.get(date);
+  if (bar !== undefined) {
+    merge(bar, row);
+    return;
+  }
+  byDate.set(date, {
+    date,
+    open: row.open,
+    high: row.high,
+    low: row.low,
+    close: row.close!,
+    volume: row.volume,
+    final: latest !== null && isBarFinal(date, latest),
+  });
 }
 
 function merge(bar: Bar, row: ChartRow): void {

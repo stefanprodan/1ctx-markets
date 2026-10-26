@@ -1,0 +1,30 @@
+{
+  "recordedAt": "2026-10-26T13:02:00.000Z",
+  "request": {
+    "method": "GET",
+    "url": "https://finnhub.io/api/v1/stock/metric?symbol=TSM&metric=all"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json; charset=utf-8"
+  },
+  "body": {
+    "metric": {
+      "forwardPE": 18.88111,
+      "forwardPEG": 0.45176,
+      "peTTM": 24.2749,
+      "psTTM": 12.5078,
+      "pb": 8.8382,
+      "epsGrowthTTMYoy": 60.55,
+      "revenueGrowthTTMYoy": 36.17,
+      "netProfitMarginTTM": 51.53,
+      "roeTTM": 41.19,
+      "currentRatioQuarterly": 2.5841,
+      "totalDebt/totalEquityQuarterly": 0.1405,
+      "currentDividendYieldTTM": 0.9224,
+      "beta": 0.9595426
+    },
+    "metricType": "all",
+    "symbol": "2330.TW"
+  }
+}

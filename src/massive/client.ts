@@ -10,6 +10,7 @@ import {
   type RunOptions,
   SourceError,
   scrub,
+  Unreadable,
 } from "../source.ts";
 
 export const SOURCE = "massive";
@@ -295,7 +296,7 @@ export function massive(options: MassiveOptions): Massive {
         try {
           body = JSON.parse(raw);
         } catch {
-          throw malformed("not JSON");
+          throw new Unreadable();
         }
         const page = parseNews(body);
         // a cursor that is not Massive's own is never followed

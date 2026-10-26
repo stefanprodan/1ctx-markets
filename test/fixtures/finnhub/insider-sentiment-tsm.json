@@ -1,0 +1,72 @@
+{
+  "recordedAt": "2026-10-26T13:02:00.000Z",
+  "request": {
+    "method": "GET",
+    "url": "https://finnhub.io/api/v1/stock/insider-sentiment?symbol=TSM&from=2025-10-01&to=2026-10-26"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json; charset=utf-8"
+  },
+  "body": {
+    "data": [
+      {
+        "symbol": "TSM",
+        "year": 2026,
+        "month": 3,
+        "change": 8000,
+        "mspr": 100
+      },
+      {
+        "symbol": "TSM",
+        "year": 2026,
+        "month": 4,
+        "change": -18072,
+        "mspr": -82.41518
+      },
+      {
+        "symbol": "TSM",
+        "year": 2026,
+        "month": 5,
+        "change": -346373,
+        "mspr": -97.948685
+      },
+      {
+        "symbol": "TSM",
+        "year": 2026,
+        "month": 6,
+        "change": -996346,
+        "mspr": -99.27186
+      },
+      {
+        "symbol": "TSM",
+        "year": 2026,
+        "month": 7,
+        "change": 11625,
+        "mspr": 0.11223507
+      },
+      {
+        "symbol": "TSM",
+        "year": 2026,
+        "month": 8,
+        "change": 1000,
+        "mspr": 100
+      },
+      {
+        "symbol": "TSM",
+        "year": 2026,
+        "month": 9,
+        "change": 494320,
+        "mspr": 100
+      },
+      {
+        "symbol": "TSM",
+        "year": 2026,
+        "month": 10,
+        "change": 1530,
+        "mspr": 100
+      }
+    ],
+    "symbol": "TSM"
+  }
+}

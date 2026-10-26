@@ -46,8 +46,14 @@ inside a call in `docs/tools.md`; rule pauses in `docs/rules.md`.
   `not found`.
 - **A meta's day high or low of 0 is none:** ^TNX's meta reads 0 while
   its bars do not.
-- **Every answer parses inside its queued call,** so a malformed
-  answer backs the queue off like any failure.
+- **A `CURRENCY` meta with no currency takes it from its symbol**
+  (`currencyOf()`): EURRON=X answers `""`; `AAABBB=X` and the
+  USD-based `BBB=X` quote in `BBB`. No fetch of a stored instrument
+  rewrites it, so migration `0011-fx-currency` fixed stored pairs.
+- **Every answer parses inside its queued call,** so a body that is
+  not JSON (a proxy or consent page) backs the queue off like any
+  failure (`Unreadable` in `src/source.ts`). An answer of an odd shape
+  fails its call alone: one symbol's odd answer never pauses the rest.
 
 ## The queue and errors
 
@@ -58,10 +64,12 @@ inside a call in `docs/tools.md`; rule pauses in `docs/rules.md`.
 - **A failure backs the queue off, and the failed call is not
   retried.** A 429 pauses every call for `RATE_LIMIT_BACKOFF_MS` (5
   minutes), any other failure for `FAILURE_BACKOFF_MS` (30 seconds).
-  `not found`, `bad request` and a passed deadline never back off: an
-  unknown symbol is no sign the source is unwell.
+  `not found`, `bad request`, a malformed answer that parsed as JSON
+  and a passed deadline never back off: an unknown symbol or one odd
+  answer is no sign the source is unwell (`backsOff`).
 - **Jobs wait a back-off out; tools fail at once.** `failFast()` and
-  `within(live)` answer `Paused` while the queue backs off, and
+  `within(live)` answer `Paused` while the queue backs off, which a
+  tool answers as the source backing off after that phrase, and
   `within` starts no call once the caller's deadline passed
   (`DeadlinePassed`). Each call times out after 30 seconds.
 - **A call with a deadline goes ahead of waiting job calls** (`queue()`
@@ -108,13 +116,17 @@ inside a call in `docs/tools.md`; rule pauses in `docs/rules.md`.
 
 ## Daily bars
 
-- **The trailing row is merged, never a bar of its own.** Yahoo ends
+- **The trailing row counts only on the session's date.** Yahoo ends
   some chart answers with a row off the bar grid at the last trade
   (`read()` in `src/yahoo/sync.ts`): a row whose local time of day
-  differs from the previous row's. It merges into the regular bar of
-  the answer's session date, a closing auction after the end included,
-  and is dropped otherwise: EURUSD=X traded on Sunday while its session
-  was Friday's. A row with a null close is no bar.
+  differs from the previous row's. On the answer's session date it
+  merges into that date's regular bar, a closing auction after the end
+  included. With no grid row of that date it is the date's bar only for
+  a `CURRENCY`, whose daily answer stamps today's row at the live
+  minute; CL=F's Sunday evening trades share their Sunday session's
+  date but are Monday's bar. Off that date it is dropped: EURUSD=X
+  traded on Sunday while its session was Friday's. A row with a null
+  close is no bar.
 - **Each write reconciles the answer's span.** Stored daily bars inside
   the span of the answer's regular rows that the answer no longer
   prices are deleted (`deleteDailyBars()`): a day the source has no bar

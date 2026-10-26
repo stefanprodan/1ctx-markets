@@ -89,6 +89,9 @@ exchange: one client, its parsers, its session, the same tables.
   tools together; a tool's call goes ahead of the jobs' waiting ones.
   A failure backs the queue off as for Yahoo; a tool fails fast
   meanwhile and starts nothing past its deadline (`within(live)`).
+  A page that does not read backs off whatever failed in it, since a
+  proxy or consent page is HTML too (`Unreadable`); a feed or search
+  answer backs off only when it is not JSON.
 
 ## Instruments
 
@@ -122,6 +125,12 @@ exchange: one client, its parsers, its session, the same tables.
   shares, bonds, indices, one call each per quote period while the
   market is quoted, and once after its close (`closeQuoteAt()`), since
   the share list is marked 15 minutes delayed.
+- **Every list page is read at least once an exchange day while the
+  feed is on, tracked or not, and at start** (`readLists()`, `warm()`),
+  so a new symbol need not wait on the exchange's search. The day is the
+  stored session's or a stored listing's zone, or with neither 24
+  hours; a quote pass's read counts, and a failed read waits
+  `RETRY_MS`.
 - **A quote's time is the time the exchange gives,** so a delayed
   price shows its age. The shares list is a snapshot 15 minutes behind
   and every row carries the snapshot's time (all rows 11:15 at 11:30),
@@ -188,7 +197,7 @@ exchange: one client, its parsers, its session, the same tables.
   exact on both answers both as candidates.
 - **Yahoo's exact match skips the exchange's search only when the
   exchange lacks the symbol:** the symbols on the list pages the client
-  last read (`listed()`, kept by the quote pass, no extra call) do not
+  last read (`listed()`, kept by the jobs' reads) do not
   hold it and Yahoo's results name no Bucharest listing (`.RO`). The
   exchange is asked while any of the three lists (shares, bonds,
   indices) is unread, or when the lists hold the symbol though Yahoo's
@@ -238,5 +247,5 @@ day at the default 5-minute quote period: 1 schedule page, 98 quote
 passes (97 in session and one after the close) of 3 list pages (294),
 9 instrument pages, 10 histories: about 314 calls, one every 95
 seconds of the session on average. A holiday costs up to 8
-schedule pages. Inline fetches add 3 calls per new index or bond and
-4 per new share.
+schedule pages; with nothing tracked, a day is the 3 list pages.
+Inline fetches add 3 calls per new index or bond and 4 per new share.

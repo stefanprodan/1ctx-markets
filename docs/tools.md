@@ -178,9 +178,9 @@ bearer and flags in `docs/config.md`.
   deadline too.
 - **Reads never wait out a back-off.** The tools use `failFast()`
   clients: while a source's queue is paused after a 429 or failure, a
-  read answers at once with the item error of the phrase that paused it
-  (`rate_limited`, `source_error`, or `timeout` after a timed-out
-  call); jobs wait.
+  read answers at once, `rate_limited` after a 429, else
+  `source_error` saying the source is backing off after the phrase
+  that paused it, never as if its own answer had failed; jobs wait.
 - **Concurrent calls share one fetch.** `m.inflight` holds one promise
   per key (`resolve:<TEXT>`, `fetch:<id>`); a caller that joins extends
   the deadline the fetch's write is held to (`shared()`). Within one

@@ -14,6 +14,7 @@ import {
   queue,
   type RunOptions,
   SourceError,
+  Unreadable,
 } from "../source.ts";
 
 export const SOURCE = "yahoo";
@@ -141,6 +142,15 @@ function text(v: unknown, what: string): string {
 const optionalText = (v: unknown): string | null =>
   typeof v === "string" && v.trim() !== "" ? v.trim() : null;
 
+// some pairs answer "" (EURRON=X); AAABBB=X and USD-based BBB=X quote in BBB
+const PAIR = /^(?:[A-Z]{3})?([A-Z]{3})=X$/;
+
+function currencyOf(m: Obj, symbol: string, type: string): string | null {
+  const stated = optionalText(m.currency);
+  if (stated !== null || type.toUpperCase() !== "CURRENCY") return stated;
+  return PAIR.exec(symbol.toUpperCase())?.[1] ?? null;
+}
+
 const seconds = (v: unknown, what: string): number => {
   const s = finite(v, what);
   if (!Number.isSafeInteger(s)) throw malformed(`${what} is not whole seconds`);
@@ -155,11 +165,13 @@ function parseMeta(v: unknown): ChartMeta {
   } catch (error) {
     throw malformed(error instanceof Error ? error.message : "no session");
   }
+  const symbol = text(m.symbol, "symbol");
+  const type = text(m.instrumentType, "instrument type");
   return {
-    symbol: text(m.symbol, "symbol"),
+    symbol,
     exchange: text(m.exchangeName, "exchange"),
-    type: text(m.instrumentType, "instrument type"),
-    currency: optionalText(m.currency),
+    type,
+    currency: currencyOf(m, symbol, type),
     name: optionalText(m.longName) ?? optionalText(m.shortName),
     session,
     price: finite(m.regularMarketPrice, "price"),
@@ -322,7 +334,8 @@ export function yahoo(options: YahooOptions): Yahoo {
   const doFetch: Fetch = options.fetch ?? ((url, init) => fetch(url, init));
   const calls = options.queue ?? queue(clock, CONCURRENCY);
 
-  // parsed inside the queued task, so a malformed answer backs the queue off
+  // parsed inside the queued task, so a body that is not JSON backs the
+  // queue off
   const get = <T>(
     url: string,
     run: RunOptions,
@@ -360,7 +373,7 @@ export function yahoo(options: YahooOptions): Yahoo {
         if (res.status === 404) throw new SourceError("not found");
         if (!res.ok)
           throw new SourceError("source error", `HTTP ${res.status}`);
-        if (body === undefined) throw malformed("not JSON");
+        if (body === undefined) throw new Unreadable();
         return parse(body, fetchedAt);
       } finally {
         cancel();

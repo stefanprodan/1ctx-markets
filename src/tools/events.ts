@@ -5,13 +5,16 @@
 // named, each scheduled, awaiting results or reported. Only actuals
 // report an event; its date or an after-close label never do.
 
+import { SOURCE } from "../finnhub/client.ts";
 import {
   eligible,
+  NO_DATA,
   NO_EVENTS,
   NOT_COVERED,
   readEvents,
 } from "../finnhub/store.ts";
 import { type Instrument, readInstrument } from "../instruments.ts";
+import { lastStarted } from "../runs.ts";
 import { trackedInstruments } from "../tracking.ts";
 import {
   cursor,
@@ -23,7 +26,7 @@ import {
 import { ArgError, date, fields, optionalText, symbols } from "./args.ts";
 import { eventItem, researchTargets } from "./research.ts";
 import { distinct } from "./sets.ts";
-import type { Markets } from "./targets.ts";
+import { type Markets, RETRY } from "./targets.ts";
 
 export const MAX_EVENT_SYMBOLS = 100;
 
@@ -72,6 +75,29 @@ export function capNotes(notes: readonly Note[]): {
   return { listed, more: notes.length - listed.length };
 }
 
+// why a share has no calendar, so an empty list is never read as no
+// earnings ahead; null once its last good fetch had data
+function noCalendar(m: Markets, input: string, i: Instrument): Note | null {
+  const ok = lastStarted(m.db, SOURCE, "calendar", i.id, "ok");
+  if (ok !== null) {
+    // a 403 or another listing's answer; events kept from before show stale
+    return ok.rows === 0 ? { input, id: i.id, message: NO_DATA } : null;
+  }
+  const last = lastStarted(m.db, SOURCE, "calendar", i.id);
+  return last?.status === "failed"
+    ? {
+        input,
+        id: i.id,
+        error: "source_error",
+        message: `no calendar yet: its fetch failed (${last.error}); ${RETRY} later`,
+      }
+    : {
+        input,
+        id: i.id,
+        message: `no calendar yet: never fetched; ${RETRY} later`,
+      };
+}
+
 export async function eventsAnswer(
   m: Markets,
   args: EventsArgs,
@@ -101,8 +127,14 @@ export async function eventsAnswer(
     instruments = trackedInstruments(m.db, m.clock.now(), m.trackMs).filter(
       eligible,
     );
+    for (const i of instruments) {
+      const note = noCalendar(m, i.id, i);
+      if (note !== null) notes.push(note);
+    }
   } else {
-    const { targets, inline } = await researchTargets(m, args.symbols);
+    const { targets, inline } = await researchTargets(m, args.symbols, {
+      sections: ["calendar"],
+    });
     const { resolved, errors } = distinct(targets);
     for (const e of errors) notes.push(e);
     instruments = [];
@@ -118,6 +150,9 @@ export async function eventsAnswer(
       }
       if (state?.kind === "failed") {
         notes.push({ input: r.input, id: r.instrument.id, ...state.error });
+      } else {
+        const note = noCalendar(m, r.input, r.instrument);
+        if (note !== null) notes.push(note);
       }
       instruments.push(r.instrument);
     }

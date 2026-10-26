@@ -1,0 +1,37 @@
+{
+  "recordedAt": "2026-10-26T13:02:00.000Z",
+  "request": {
+    "method": "GET",
+    "url": "https://finnhub.io/api/v1/calendar/earnings?symbol=TSM&from=2026-07-01&to=2027-01-31"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json; charset=utf-8"
+  },
+  "body": {
+    "earningsCalendar": [
+      {
+        "symbol": "2330.TW",
+        "date": "2027-01-13",
+        "hour": "bmo",
+        "quarter": 4,
+        "year": 2026,
+        "epsEstimate": 32.224,
+        "epsActual": null,
+        "revenueEstimate": 1631710183105,
+        "revenueActual": null
+      },
+      {
+        "symbol": "2330.TW",
+        "date": "2026-10-15",
+        "hour": "bmo",
+        "quarter": 3,
+        "year": 2026,
+        "epsEstimate": 29.241,
+        "epsActual": 148.94339999999997,
+        "revenueEstimate": 1485955433631,
+        "revenueActual": 1512746880000
+      }
+    ]
+  }
+}

@@ -222,7 +222,9 @@ async function create(
   // one start, so both reads end by the same deadline
   const [targets, research] = await Promise.all([
     readTargets(m, plain),
-    gate === null ? null : researchTargets(m, [gate]),
+    gate === null
+      ? null
+      : researchTargets(m, [gate], { sections: ["calendar"] }),
   ]);
   const all = [...targets, ...(research?.targets ?? [])];
   for (const t of all) {

@@ -1,0 +1,53 @@
+{
+  "recordedAt": "2026-10-26T13:02:00.000Z",
+  "request": {
+    "method": "GET",
+    "url": "https://finnhub.io/api/v1/stock/earnings?symbol=TSM"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json; charset=utf-8"
+  },
+  "body": [
+    {
+      "symbol": "2330.TW",
+      "estimate": 29.241,
+      "actual": 148.94339999999997,
+      "period": "2026-09-30",
+      "surprise": 119.7024,
+      "surprisePercent": 409.3649,
+      "year": 2026,
+      "quarter": 3
+    },
+    {
+      "symbol": "2330.TW",
+      "estimate": 24.5662,
+      "actual": 27.25,
+      "period": "2026-06-30",
+      "surprise": 2.6838,
+      "surprisePercent": 10.9248,
+      "year": 2026,
+      "quarter": 2
+    },
+    {
+      "symbol": "2330.TW",
+      "estimate": 21.1379,
+      "actual": 22.077,
+      "period": "2026-03-31",
+      "surprise": 0.9391,
+      "surprisePercent": 4.4427,
+      "year": 2026,
+      "quarter": 1
+    },
+    {
+      "symbol": "2330.TW",
+      "estimate": 18.5437,
+      "actual": 19.51,
+      "period": "2025-12-31",
+      "surprise": 0.9663,
+      "surprisePercent": 5.2109,
+      "year": 2025,
+      "quarter": 4
+    }
+  ]
+}
