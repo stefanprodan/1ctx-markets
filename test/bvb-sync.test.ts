@@ -364,6 +364,54 @@ describe("quotes from the list pages", () => {
   });
 });
 
+describe("the list pages with nothing tracked", () => {
+  const LIST_PATHS = [
+    "/FinancialInstruments/Markets/Shares",
+    "/FinancialInstruments/Markets/Bonds",
+    "/TradingAndStatistics/Trading/MarketsToday",
+  ];
+
+  test("each page is read once an exchange day", async () => {
+    const t = await setup(utc("2026-10-23T14:00:00"));
+    friday(t.db, t.clock.now());
+    const pages = () => t.f.urls.map((u) => u.pathname);
+    await t.run(t.jobs.quoteTick());
+    expect(pages()).toEqual(LIST_PATHS);
+    expect(t.ctx.bvb.listed()).not.toBeNull();
+    // 23:59 in Bucharest is still the same exchange day
+    await t.clock.advance(utc("2026-10-23T20:59:00") - t.clock.now());
+    await t.run(t.jobs.quoteTick());
+    expect(pages()).toHaveLength(3);
+    // midnight in Bucharest, not in UTC, starts the next
+    await t.clock.advance(utc("2026-10-23T21:01:00") - t.clock.now());
+    await t.run(t.jobs.quoteTick());
+    expect(pages()).toEqual([...LIST_PATHS, ...LIST_PATHS]);
+  });
+
+  test("a page that failed is read again after the retry wait", async () => {
+    const shares = await bvbRecorded("shares-list");
+    const broken: Recorded = clone(shares);
+    broken.body = (broken.body as string).replace('id="gv"', 'id="moved"');
+    const t = await setup(utc("2026-10-23T14:00:00"), {
+      hold: (url) => (url.pathname.endsWith("/Shares") ? broken : undefined),
+    });
+    friday(t.db, t.clock.now());
+    const shareReads = () =>
+      site(t.f.urls, "/FinancialInstruments/Markets/Shares").length;
+    await t.run(t.jobs.quoteTick());
+    expect(shareReads()).toBe(1);
+    expect(t.ctx.bvb.listed()).toBeNull();
+    await t.clock.advance(30 * MINUTE_MS);
+    await t.run(t.jobs.quoteTick());
+    expect(shareReads()).toBe(1);
+    await t.clock.advance(30 * MINUTE_MS);
+    await t.run(t.jobs.quoteTick());
+    expect(shareReads()).toBe(2);
+    // the pages that read are not asked again that day
+    expect(t.f.urls).toHaveLength(4);
+  });
+});
+
 describe("bars from the chart feed", () => {
   test("a new session refetches the last 30 days and finalises the day", async () => {
     const t = await setup(utc("2026-10-23T14:00:00"));

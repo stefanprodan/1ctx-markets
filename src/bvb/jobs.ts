@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // The Bucharest feed's schedule: one check of the trading schedule page
-// a day, the list pages each quote period while the session is open,
-// and the 30-day refetch once a new session shows.
+// a day, the list pages each quote period while the session is open and
+// once an exchange day whatever is tracked, and the 30-day refetch once a
+// new session shows.
 
 import {
   closeQuoteAt,
@@ -13,7 +14,7 @@ import {
   recordSession,
   type StoredSession,
 } from "../calendars.ts";
-import { MINUTE_MS } from "../clock.ts";
+import { DAY_MS, MINUTE_MS } from "../clock.ts";
 import { type Instrument, Moved } from "../instruments.ts";
 import type { Log } from "../log.ts";
 import type { QuoteRow } from "../quotes.ts";
@@ -23,7 +24,14 @@ import { phraseOf, SourceError } from "../source.ts";
 import { barsDue, JOBS } from "../stale.ts";
 import { TRACK_MS, trackedInstruments } from "../tracking.ts";
 import { RETRY_MS } from "../yahoo/sync.ts";
-import { type ListRow, MARKET, type Schedule, SOURCE } from "./client.ts";
+import { localDate } from "../zone.ts";
+import {
+  type ListKind,
+  type ListRow,
+  MARKET,
+  type Schedule,
+  SOURCE,
+} from "./client.ts";
 import {
   type BvbContext,
   detailQuote,
@@ -76,6 +84,52 @@ export function bvbJobs(options: BvbJobsOptions): BvbJobs {
   // the last schedule read, so a market with no session yet is checked at
   // its local start and hourly after, not on every period
   let template: Schedule | null = null;
+  // a list page that failed waits RETRY_MS, as a failed bar refetch does
+  const listFailed = new Map<ListKind, number>();
+  const pages: [ListKind, () => Promise<unknown>][] = [
+    ["shares", () => bvb.shares()],
+    ["bonds", () => bvb.bonds()],
+    ["indices", () => bvb.indices()],
+  ];
+
+  // the exchange's zone from its session or a stored listing; none known
+  // yet, a day is a day since the last read
+  function zoneOf(): string | null {
+    const s = readSession(db, MARKET);
+    if (s !== null) return s.zone;
+    const row = db
+      .query<{ zone: string }, [string]>(
+        "select zone from instruments where source = ? limit 1",
+      )
+      .get(SOURCE);
+    return row?.zone ?? null;
+  }
+
+  // every list page once an exchange day, so resolution knows what the
+  // exchange lists without its search; a quote pass's read counts
+  async function readLists(): Promise<void> {
+    const zone = zoneOf();
+    for (const [kind, read] of pages) {
+      const now = clock.now();
+      const at = bvb.listedAt(kind);
+      if (at !== null) {
+        const today =
+          zone === null
+            ? now - at < DAY_MS
+            : localDate(zone, at) === localDate(zone, now);
+        if (today) continue;
+      }
+      const failed = listFailed.get(kind);
+      if (failed !== undefined && now - failed < RETRY_MS) continue;
+      try {
+        await read();
+        listFailed.delete(kind);
+      } catch (error) {
+        listFailed.set(kind, clock.now());
+        log.warn("bvb list failed", { list: kind, error: phraseOf(error) });
+      }
+    }
+  }
 
   function checkDue(
     s: StoredSession | null,
@@ -134,18 +188,20 @@ export function bvbJobs(options: BvbJobsOptions): BvbJobs {
     let seen = 0;
     const of = (type: string) => instruments.filter((i) => i.type === type);
     const lists: [
+      ListKind,
       Instrument[],
       () => Promise<{ rows: ListRow[]; fetchedAt: number }>,
     ][] = [
-      [of("EQUITY"), () => bvb.shares()],
-      [of("BOND"), () => bvb.bonds()],
+      ["shares", of("EQUITY"), () => bvb.shares()],
+      ["bonds", of("BOND"), () => bvb.bonds()],
     ];
-    for (const [mine, read] of lists) {
+    for (const [kind, mine, read] of lists) {
       if (mine.length === 0) continue;
       let page: { rows: ListRow[]; fetchedAt: number };
       try {
         page = await read();
       } catch (error) {
+        listFailed.set(kind, clock.now());
         failed ??= error;
         continue;
       }
@@ -182,6 +238,7 @@ export function bvbJobs(options: BvbJobsOptions): BvbJobs {
           quotes.push(indexQuote(i, row, page.fetchedAt));
         }
       } catch (error) {
+        listFailed.set("indices", clock.now());
         failed ??= error;
       }
     }
@@ -206,7 +263,14 @@ export function bvbJobs(options: BvbJobsOptions): BvbJobs {
     }
   }
 
+  // after the quotes, so the pages a pass read are not read twice
   async function quoteTick(): Promise<Omit<BvbTick, "bars">> {
+    const done = await quoteOrCheck();
+    await readLists();
+    return done;
+  }
+
+  async function quoteOrCheck(): Promise<Omit<BvbTick, "bars">> {
     const now = clock.now();
     const slot = Math.floor(now / quoteEveryMs);
     const periodTurn = slot !== lastSlot;

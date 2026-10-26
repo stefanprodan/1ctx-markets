@@ -3,7 +3,9 @@
 
 import { describe, expect, test } from "bun:test";
 import { bvb } from "../src/bvb/client.ts";
+import { bvbJobs } from "../src/bvb/jobs.ts";
 import { NO_DATA } from "../src/bvb/sync.ts";
+import { MINUTE_MS } from "../src/clock.ts";
 import { open } from "../src/db/index.ts";
 import { readInstrument, upsertInstrument } from "../src/instruments.ts";
 import { silent } from "../src/log.ts";
@@ -107,10 +109,11 @@ async function setup(feed: boolean, withoutRo = false) {
     });
   };
   const exchange = feed ? bvb({ clock, fetch }) : null;
+  const w = writer(db);
   const m = markets({
     db,
     clock,
-    writer: writer(db),
+    writer: w,
     yahoo: yahoo({ clock, fetch }),
     fred: null,
     bvb: exchange,
@@ -120,7 +123,7 @@ async function setup(feed: boolean, withoutRo = false) {
     exchange === null
       ? readTargets(m, inputs)
       : drive(clock, exchange, readTargets(m, inputs));
-  return { clock, db, m, read, urls, calls: s.calls, exchange };
+  return { clock, db, w, m, read, urls, calls: s.calls, exchange };
 }
 
 const idOf = (t: Target | undefined) =>
@@ -170,6 +173,24 @@ describe("resolution with the feed on", () => {
     expect(
       t.urls.filter((u) => u.pathname === "/proxyshld.aspx/GetInstrumentsList"),
     ).toEqual([]);
+  });
+
+  test("the feed's jobs read the lists with nothing tracked, so a new symbol asks no exchange search", async () => {
+    for (const ticked of [false, true]) {
+      const t = await setup(true);
+      const jobs = bvbJobs({
+        ctx: { db: t.db, clock: t.clock, bvb: t.exchange!, writer: t.w },
+        quoteEveryMs: 5 * MINUTE_MS,
+        log: silent,
+      });
+      // before the jobs' first tick the lists are unread: the exchange is asked
+      if (ticked) await drive(t.clock, t.exchange!, jobs.quoteTick());
+      const before = t.urls.length;
+      expect(idOf((await t.read(["NVDA"]))[0])).toBe("US:NVDA");
+      expect(t.urls.slice(before).map((u) => u.pathname)).toEqual(
+        ticked ? [] : ["/proxyshld.aspx/GetInstrumentsList"],
+      );
+    }
   });
 
   test("with a list page unread, a symbol Yahoo names exactly still asks the exchange", async () => {

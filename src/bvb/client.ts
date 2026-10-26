@@ -148,11 +148,16 @@ export type Bvb = {
   // the symbols, uppercased, on the list pages last read; null until all
   // three are read, as an unread kind may hold the symbol
   listed(): ReadonlySet<string> | null;
+  // when the list page of a kind was last read, null if never
+  listedAt(kind: ListKind): number | null;
   failFast(): Bvb;
   within(live: () => boolean): Bvb;
   due(): number | null;
   close(): void;
 };
+
+export const LISTS = ["shares", "bonds", "indices"] as const;
+export type ListKind = (typeof LISTS)[number];
 
 export type BvbOptions = { clock: Clock; fetch?: Fetch };
 
@@ -468,13 +473,18 @@ export function bvb(options: BvbOptions): Bvb {
   // the chart feed's key, from the last instrument page read
   let key: string | null = null;
   // each list page's symbols, from its last read
-  const lists = new Map<string, ReadonlySet<string>>();
-  const LISTS = ["shares", "bonds", "indices"];
-  const keep = <T extends { rows: { symbol: string }[] }>(
-    kind: string,
+  const lists = new Map<
+    ListKind,
+    { symbols: ReadonlySet<string>; at: number }
+  >();
+  const keep = <T extends { rows: { symbol: string }[]; fetchedAt: number }>(
+    kind: ListKind,
     page: T,
   ): T => {
-    lists.set(kind, new Set(page.rows.map((r) => r.symbol.toUpperCase())));
+    lists.set(kind, {
+      symbols: new Set(page.rows.map((r) => r.symbol.toUpperCase())),
+      at: page.fetchedAt,
+    });
     return page;
   };
 
@@ -656,7 +666,8 @@ export function bvb(options: BvbOptions): Bvb {
       listed: () =>
         !LISTS.every((k) => lists.has(k))
           ? null
-          : new Set([...lists.values()].flatMap((s) => [...s])),
+          : new Set([...lists.values()].flatMap((l) => [...l.symbols])),
+      listedAt: (kind) => lists.get(kind)?.at ?? null,
       failFast: () => client({ failFast: true }),
       within: (live) => client({ failFast: true, live }),
       due: () => calls.due(),
