@@ -24,6 +24,7 @@ import {
   type Section,
   sectionState,
 } from "../finnhub/store.ts";
+import { ATTRIBUTION } from "../fred/sync.ts";
 import type { Instrument } from "../instruments.ts";
 import { errorFields } from "../log.ts";
 import {
@@ -417,6 +418,7 @@ export async function researchAnswer(
         quote,
         research: researchSummary(m, instrument, inline.get(instrument.id)),
         news: summary,
+        ...(quote.observation != null ? { attribution: ATTRIBUTION } : {}),
       });
     // held to a page like every answer: headlines go before anything else
     let text = answer();
@@ -549,7 +551,11 @@ export function researchHandler(
           ),
         };
       });
-      const page = fitPage(items, () => ({}));
+      // once per answer that holds a FRED value
+      const fred = items.some((i) => "observation" in i && i.observation);
+      const page = fitPage(items, () =>
+        fred ? { attribution: ATTRIBUTION } : {},
+      );
       // five summaries fit a page by far; none is ever dropped in silence
       if (page.count < items.length) throw new PageOverflow();
       return json(page.text, 200);

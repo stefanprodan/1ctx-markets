@@ -35,7 +35,7 @@ export const FRED_BASIS =
   "observations as FRED publishes them; a revision replaces the earlier value";
 
 // the range when from is left out
-const DEFAULT_MONTHS: Record<Interval, number> = { "1d": 3, "1wk": 24 };
+export const DEFAULT_MONTHS: Record<Interval, number> = { "1d": 3, "1wk": 24 };
 
 export type HistoryArgs = {
   symbol: string;
@@ -104,6 +104,7 @@ function relative(
   const now = m.clock.now();
   const latest = readLatest(db, benchmark, now, m.quoteEveryMs);
   const read = quoteItem(db, benchmark.id, benchmark, latest);
+  let unit: "points" | "percentage points" | null = null;
   const returns = ([1, 3] as const).map((months) => {
     const r = readRelativeReturn(db, instrument.id, benchmark.id, months, to);
     if (r === null) {
@@ -116,6 +117,8 @@ function relative(
       to: x.to,
       currency: x.currency,
     });
+    // a yield or spread changes in points, so their difference is too
+    unit = r.instrument.unit === "points" ? "points" : "percentage points";
     return {
       months,
       relative: round(r.relative),
@@ -136,7 +139,7 @@ function relative(
     },
     stale: benchmarkStale(latest.stale),
     at: to,
-    unit: "percentage points",
+    unit,
     returns,
   };
 }

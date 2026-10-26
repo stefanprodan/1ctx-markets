@@ -33,8 +33,10 @@ import {
 } from "../instruments.ts";
 import { exclusive } from "../lock.ts";
 import { NO_RULES, type RuleHooks } from "../rules/hooks.ts";
+import { endRun, startRun } from "../runs.ts";
 import { pruneLive, refreshLive, signalsAfterBars } from "../signals/store.ts";
 import { DeadlinePassed, type Phrase, SourceError } from "../source.ts";
+import { JOBS } from "../stale.ts";
 import type { Writer } from "../writer.ts";
 import { addDays, dateOfWall, startOfDate, wallTime } from "../zone.ts";
 import {
@@ -472,6 +474,23 @@ function store(
   return written;
 }
 
+// Every stored refetch or backfill is its instrument's own bars run, so
+// one in a read clears a failure from the bar pass at once.
+function barsAnswered(
+  db: Db,
+  instrument: Instrument,
+  written: Written,
+  now: number,
+): Written {
+  endRun(
+    db,
+    startRun(db, SOURCE, JOBS.bars, now, instrument.id),
+    now,
+    written.rows,
+  );
+  return written;
+}
+
 // Adds an instrument by Yahoo's symbol with ten years of daily bars;
 // the chart answer names its key, which must match one resolved first.
 // A history cut short adds the instrument alone, for backfill to retry.
@@ -594,7 +613,7 @@ export async function catchUp(
     const quote = await ctx.yahoo.spark([instrument.sourceSymbol]);
     return ctx.writer.write((db) => {
       if (!live()) throw expired();
-      bars(db);
+      barsAnswered(db, instrument, bars(db), ctx.clock.now());
       storeQuotes(db, quote, ctx.rules, ctx.clock.now());
       return instrument;
     });
@@ -619,7 +638,10 @@ async function backfillHeld(
   instrument: Instrument,
   triggers: readonly ChartAnswer[] = [],
 ): Promise<Written> {
-  return ctx.writer.write(await backfillAnswer(ctx, instrument, triggers));
+  const write = await backfillAnswer(ctx, instrument, triggers);
+  return ctx.writer.write((db) =>
+    barsAnswered(db, instrument, write(db), ctx.clock.now()),
+  );
 }
 
 async function backfillAnswer(
@@ -668,7 +690,10 @@ async function refetchHeld(
   ctx: YahooContext,
   instrument: Instrument,
 ): Promise<Written> {
-  return ctx.writer.write(await refetchAnswer(ctx, instrument));
+  const write = await refetchAnswer(ctx, instrument);
+  return ctx.writer.write((db) =>
+    barsAnswered(db, instrument, write(db), ctx.clock.now()),
+  );
 }
 
 async function refetchAnswer(

@@ -906,6 +906,23 @@ describe("dependencies", () => {
 });
 
 describe("the rules tool", () => {
+  test("a create whose write is queued past the deadline answers timeout and adds no rule", async () => {
+    const t = await rulesTest();
+    const first = await create(t, "NVDA", { left: "price", op: ">", right: 1 });
+    expect(first.error).toBe(false);
+    const real = t.m.writer.write;
+    // each write waits out the call's deadline before it is queued
+    t.m.writer.write = async (fn) => {
+      await t.clock.advance(t.m.callMs);
+      return real(fn);
+    };
+    const r = await create(t, "NVDA", { left: "price", op: "<", right: 1 });
+    t.m.writer.write = real;
+    expect(r.error).toBe(true);
+    expect(r.body.error).toBe("timeout");
+    expect(countRules(t.db)).toBe(1);
+  });
+
   test("lists in pages, pauses, resumes and deletes, keeping alerts", async () => {
     const t = await rulesTest();
     const ids: number[] = [];

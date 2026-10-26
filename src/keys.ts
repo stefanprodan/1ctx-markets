@@ -10,7 +10,7 @@ import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 export const BEARER_FILE = "bearer.key";
-// what `openssl rand -hex 16` writes
+// half of what `openssl rand -hex 32` writes, as the error and README say
 export const MIN_BEARER_LENGTH = 32;
 const MAX_KEY_BYTES = 4096;
 const SOURCE_NAME = /^[a-z][a-z0-9-]{0,47}$/;

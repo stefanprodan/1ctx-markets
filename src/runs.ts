@@ -19,7 +19,8 @@ export type Run = {
   id: number;
   source: string;
   job: string;
-  // the market of a quote or bar pass, null otherwise
+  // the market of a quote or bar pass, the instrument of its own bar
+  // refetch, null otherwise
   scope: string | null;
   startedAt: number;
   endedAt: number | null;
