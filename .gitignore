@@ -119,3 +119,6 @@ bin/
 # Local dev space
 workspace/
 .preview/
+
+# the staging host, never tracked
+scripts/staging.env
