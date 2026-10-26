@@ -96,6 +96,8 @@ runs what `parseCli()` answers. `HELP` in `src/config.ts` is the
 
 ## HTTP
 
+- **A request stays open 30 s** (`IDLE_TIMEOUT_S`), over a tool call's
+  15 s deadline: Bun's own 10 s default cut calls that fetch new symbols.
 - **One Bun server; the bearer is checked before any route is looked
   up** (`router()`), so an unknown path answers 401 without the bearer
   and 404 with it. `GET /health` is the one route checked before it.
