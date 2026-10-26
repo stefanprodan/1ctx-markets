@@ -40,6 +40,8 @@ export type RouterDeps = {
   quotes?: Handle;
   // GET /research, when the tools are served
   research?: Handle;
+  // GET /alerts, the feed 1ctx's automation check reads
+  alerts?: Handle;
   clock: Clock;
   log: Log;
 };
@@ -57,7 +59,9 @@ export function router(deps: RouterDeps): Handle {
         ? deps.quotes
         : path === "/research"
           ? deps.research
-          : undefined;
+          : path === "/alerts"
+            ? deps.alerts
+            : undefined;
     if (read !== undefined) {
       if (req.method !== "GET") {
         return json({ error: "method not allowed" }, 405, { allow: "GET" });

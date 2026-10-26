@@ -29,6 +29,7 @@ describe("the MCP endpoint", () => {
         "screen",
         "research",
         "events",
+        "rules",
       ];
       expect((await client.listTools()).tools.map((t) => t.name)).toEqual(
         names,

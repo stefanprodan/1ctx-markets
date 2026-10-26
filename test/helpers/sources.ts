@@ -65,6 +65,8 @@ export async function sources(
   options: {
     // holds a call until it resolves, or answers it instead
     hold?: (url: URL) => Promise<Recorded | undefined> | undefined;
+    // more charts by Yahoo symbol, each quoted by its own meta
+    charts?: Record<string, Recorded>;
   } = {},
 ): Promise<{ fetch: Fetch; calls: Calls }> {
   const nvda = listed(await recorded("chart-nvda-5y-1d"));
@@ -75,6 +77,10 @@ export async function sources(
     batch.body.spark.result.map((r: any) => [r.symbol, r.response[0].meta]),
   );
   metas.set("^GSPC", gspc.body.chart.result[0].meta);
+  for (const [symbol, fx] of Object.entries(options.charts ?? {})) {
+    charts[symbol] = fx;
+    metas.set(symbol, fx.body.chart.result[0].meta);
+  }
   const spark = (url: URL): Recorded => {
     const out = clone(batch);
     out.body.spark.result = url.searchParams

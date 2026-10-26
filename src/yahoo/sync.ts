@@ -32,6 +32,7 @@ import {
   upsertInstrument,
 } from "../instruments.ts";
 import { exclusive } from "../lock.ts";
+import { NO_RULES, type RuleHooks } from "../rules/hooks.ts";
 import { pruneLive, refreshLive, signalsAfterBars } from "../signals/store.ts";
 import { DeadlinePassed, type Phrase, SourceError } from "../source.ts";
 import type { Writer } from "../writer.ts";
@@ -53,6 +54,8 @@ export type YahooContext = {
   clock: Clock;
   yahoo: Yahoo;
   writer: Writer;
+  // told of each write, inside it; none in tests that need no rules
+  rules?: RuleHooks;
 };
 
 export const BACKFILL_YEARS = 10;
@@ -268,20 +271,46 @@ function startsShort(answer: ChartAnswer, since: string): boolean {
 const cutShort = () =>
   new SourceError("malformed answer", "a history cut short");
 
+// a stored final close moved by more than this was rescaled, not corrected
+const RESCALE = 0.01;
+
+// The oldest stored final day the answer prices again moved like a
+// split, though the answer has none: past prices adjusted in place.
+// A correction moves a recent day; an adjustment moves every day
+// before its date, so the oldest one shows it.
+function rescaledPast(
+  db: Db,
+  instrument: Instrument,
+  bars: readonly Bar[],
+): boolean {
+  const stored = db.query<{ close: number }, [string, string]>(
+    `select close from bars where instrument = ? and interval = '1d'
+     and date = ? and final = 1`,
+  );
+  for (const b of [...bars].sort((x, y) => (x.date < y.date ? -1 : 1))) {
+    const s = stored.get(instrument.id, b.date);
+    if (s !== null) {
+      return s.close > 0 && Math.abs(b.close / s.close - 1) > RESCALE;
+    }
+  }
+  return false;
+}
+
 // Writes one chart answer's session, bars and weeks, inside a writer
 // transaction. A whole history rewrites every daily bar, so none keeps
 // a scale from before a split, unless it starts or stops well short of
 // the stored one, or applies a split without covering every stored day;
 // then nothing is written, the splits stay unapplied, and the next run
 // asks again. Either answer drops the stored days inside its own span
-// that the source no longer prices.
+// that the source no longer prices. Rescaled says a new split was
+// applied or past prices were adjusted.
 function storeBars(
   db: Db,
   now: number,
   instrument: Instrument,
   answer: ChartAnswer,
   whole: { since: string; splits: readonly ChartAnswer[] } | null,
-): Written {
+): Written & { rescaled: boolean } {
   recordSession(db, instrument.market, answer.session, answer.fetchedAt);
   const latest = readSession(db, instrument.market);
   const { bars, days } = read(answer, latest);
@@ -307,6 +336,7 @@ function storeBars(
         throw cutShort();
       }
     }
+    const rescaled = splits.length > 0 || rescaledPast(db, instrument, kept);
     const keep = new Set(kept.map((b) => b.date));
     const deleted =
       span.length === 0
@@ -318,8 +348,10 @@ function storeBars(
     return {
       rows: written.rows,
       changedFrom: earliest(deleted, written.changedFrom),
+      rescaled,
     };
   }
+  const rescaled = rescaledPast(db, instrument, bars);
   const written = upsertBars(db, instrument.id, "1d", bars, answer.fetchedAt);
   const span = [...days].sort();
   let deleted: string | null = null;
@@ -331,20 +363,31 @@ function storeBars(
   return {
     rows: written.rows,
     changedFrom: earliest(deleted, written.changedFrom),
+    rescaled,
   };
 }
 
 // The bars, then the signals computed from them, in one transaction:
-// none before a backfill has stored bars.
+// none before a backfill has stored bars. A rescale pauses the rules on
+// old price levels before anything evaluates them.
 function store(
   db: Db,
   now: number,
   instrument: Instrument,
   answer: ChartAnswer,
   whole: { since: string; splits: readonly ChartAnswer[] } | null,
+  rules: RuleHooks = NO_RULES,
 ): Written {
-  const written = storeBars(db, now, instrument, answer, whole);
+  const { rescaled, ...written } = storeBars(
+    db,
+    now,
+    instrument,
+    answer,
+    whole,
+  );
+  if (rescaled) rules.rescaled(db, instrument.id, now);
   signalsAfterBars(db, instrument, written.changedFrom, now);
+  rules.evaluate(db, [instrument.id], now);
   return written;
 }
 
@@ -377,10 +420,14 @@ export async function addInstrument(
       const now = ctx.clock.now();
       const instrument = upsertInstrument(db, fields(answer), now);
       if (short) return { instrument, rows: 0, changedFrom: null };
-      const written = store(db, now, instrument, answer, {
-        since: monday,
-        splits: [answer],
-      });
+      const written = store(
+        db,
+        now,
+        instrument,
+        answer,
+        { since: monday, splits: [answer] },
+        ctx.rules,
+      );
       return { instrument, ...written };
     });
   });
@@ -427,7 +474,7 @@ export async function fetchInstrument(
           fields(answer),
           ctx.clock.now(),
         );
-        storeQuotes(db, quote);
+        storeQuotes(db, quote, ctx.rules, ctx.clock.now());
         return instrument;
       });
     }
@@ -436,8 +483,15 @@ export async function fetchInstrument(
       if (!live()) throw expired();
       const now = ctx.clock.now();
       const instrument = upsertInstrument(db, fields(answer), now);
-      store(db, now, instrument, answer, { since: monday, splits: [answer] });
-      storeQuotes(db, quote);
+      store(
+        db,
+        now,
+        instrument,
+        answer,
+        { since: monday, splits: [answer] },
+        ctx.rules,
+      );
+      storeQuotes(db, quote, ctx.rules, now);
       return instrument;
     });
   });
@@ -460,7 +514,7 @@ export async function catchUp(
     return ctx.writer.write((db) => {
       if (!live()) throw expired();
       bars(db);
-      storeQuotes(db, quote);
+      storeQuotes(db, quote, ctx.rules, ctx.clock.now());
       return instrument;
     });
   });
@@ -505,10 +559,14 @@ async function backfillAnswer(
   );
   checkAnswer(instrument, answer);
   return (db) =>
-    store(db, ctx.clock.now(), instrument, answer, {
-      since: monday,
-      splits: [...triggers, answer],
-    });
+    store(
+      db,
+      ctx.clock.now(),
+      instrument,
+      answer,
+      { since: monday, splits: [...triggers, answer] },
+      ctx.rules,
+    );
 }
 
 // The last 30 days, or from the last final bar after a longer gap. A
@@ -547,7 +605,8 @@ async function refetchAnswer(
   if (unapplied(db, instrument, [answer]).length > 0) {
     return backfillAnswer(ctx, instrument, [answer]);
   }
-  return (db) => store(db, ctx.clock.now(), instrument, answer, null);
+  return (db) =>
+    store(db, ctx.clock.now(), instrument, answer, null, ctx.rules);
 }
 
 export type QuoteRow = {
@@ -604,8 +663,13 @@ export function quoteOf(
 // replaces it when fetched later. Every market's session is settled and
 // recorded first, so the live rows, moved in the same writer
 // transaction, never depend on the answer's order; a live row the new
-// sessions moved past goes.
-export function storeQuotes(db: Db, answer: SparkAnswer): QuoteRow[] {
+// sessions moved past goes. Then the rules reading a moved quote.
+export function storeQuotes(
+  db: Db,
+  answer: SparkAnswer,
+  rules: RuleHooks = NO_RULES,
+  now: number = answer.fetchedAt,
+): QuoteRow[] {
   const written: QuoteRow[] = [];
   const upsert = db.query(
     `insert into quotes (instrument, price, previous_close,
@@ -675,6 +739,7 @@ export function storeQuotes(db: Db, answer: SparkAnswer): QuoteRow[] {
       if (!moved.has(i.id)) pruneLive(db, i, answer.fetchedAt);
     }
   }
+  rules.evaluate(db, moved, now);
   return written;
 }
 
@@ -702,9 +767,15 @@ export async function fetchQuotes(
       errors.push(batch.error);
     }
   }
-  const quotes = await ctx.writer.write((db) =>
-    answers.flatMap((answer) => storeQuotes(db, answer)),
-  );
+  const quotes = await ctx.writer.write((db) => {
+    const stored = answers.flatMap((answer) => storeQuotes(db, answer));
+    ctx.rules?.evaluate(
+      db,
+      stored.map((q) => q.instrument),
+      ctx.clock.now(),
+    );
+    return stored;
+  });
   return { quotes, skipped, errors };
 }
 

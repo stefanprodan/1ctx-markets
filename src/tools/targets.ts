@@ -24,6 +24,7 @@ import {
 import { type Instrument, readInstrument } from "../instruments.ts";
 import { errorFields, type Log } from "../log.ts";
 import type { Massive } from "../massive/client.ts";
+import { NO_RULES, type RuleHooks } from "../rules/hooks.ts";
 import { QueueClosed, SourceError } from "../source.ts";
 import { isTracked, markRead, TRACK_MS } from "../tracking.ts";
 import type { Writer } from "../writer.ts";
@@ -47,8 +48,10 @@ export type Markets = {
   fred: Fred | null;
   finnhub: Finnhub | null;
   massive: Massive | null;
-  // what rules hand the research reads, none until they exist
+  // what rules hand the research reads
   hooks: Hooks;
+  // told of every write a read's fetch makes
+  rules: RuleHooks;
   trackMs: number;
   // how often the quote job runs, so a quote it fell behind on is stale
   quoteEveryMs: number;
@@ -67,6 +70,7 @@ export function markets(options: {
   finnhub?: Finnhub | null;
   massive?: Massive | null;
   hooks?: Hooks;
+  rules?: RuleHooks;
   log: Log;
   trackMs?: number;
   quoteEveryMs?: number;
@@ -81,6 +85,7 @@ export function markets(options: {
     finnhub: options.finnhub?.failFast() ?? null,
     massive: options.massive?.failFast() ?? null,
     hooks: options.hooks ?? NO_HOOKS,
+    rules: options.rules ?? NO_RULES,
     trackMs: options.trackMs ?? TRACK_MS,
     quoteEveryMs: options.quoteEveryMs ?? DEFAULT_QUOTE_EVERY * MINUTE_MS,
     callMs: options.callMs ?? CALL_MS,
@@ -211,6 +216,7 @@ const yahooCtx = (m: Markets, live: () => boolean) => ({
   clock: m.clock,
   writer: m.writer,
   yahoo: m.yahoo.within(live),
+  rules: m.rules,
 });
 
 function fredStep(m: Markets, id: string): Step {
@@ -223,6 +229,7 @@ function fredStep(m: Markets, id: string): Step {
     clock: m.clock,
     writer: m.writer,
     fred: fred.within(live),
+    rules: m.rules,
   });
   const stored = readInstrument(m.db, id);
   if (stored !== null && hasBars(m.db, id)) {

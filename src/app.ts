@@ -8,7 +8,7 @@ import { type Clock, DAY_MS } from "./clock.ts";
 import type { Db } from "./db/index.ts";
 import { type Finnhub, finnhub } from "./finnhub/client.ts";
 import { type FinnhubJobs, finnhubJobs } from "./finnhub/jobs.ts";
-import { type Hooks, NO_HOOKS, pruneResearch } from "./finnhub/store.ts";
+import { type Hooks, pruneResearch } from "./finnhub/store.ts";
 import { type Fred, fred } from "./fred/client.ts";
 import { type FredJobs, fredJobs } from "./fred/jobs.ts";
 import { router, serve } from "./http.ts";
@@ -17,9 +17,12 @@ import { type Massive, massive } from "./massive/client.ts";
 import { type MassiveJobs, massiveJobs } from "./massive/jobs.ts";
 import { pruneNews } from "./massive/store.ts";
 import { mcpHandler } from "./mcp.ts";
+import { ruleEngine } from "./rules/evaluate.ts";
+import { pruneAlerts } from "./rules/store.ts";
 import { failInterrupted, pruneRuns } from "./runs.ts";
 import { type Scheduler, scheduler } from "./scheduler.ts";
 import { type Fetch, queue } from "./source.ts";
+import { alertsHandler } from "./tools/alerts.ts";
 import { quotesHandler } from "./tools/http.ts";
 import { researchHandler } from "./tools/research.ts";
 import { type Markets, markets } from "./tools/targets.ts";
@@ -49,7 +52,7 @@ export type AppOptions = {
   finnhubKey?: string | null;
   // Massive is on while its key file holds one
   massiveKey?: string | null;
-  // what rules answer the research jobs, none until they exist
+  // what the research jobs ask of the rules, the rules' own by default
   hooks?: Hooks;
   // tests answer every source call from recordings
   fetch?: Fetch;
@@ -80,13 +83,18 @@ export function start(options: AppOptions): App {
   const { clock, db } = options;
   const trackMs = (options.trackDays ?? TRACK_DAYS) * DAY_MS;
   const write = writer(db);
-  const hooks = options.hooks ?? NO_HOOKS;
+  const rules = ruleEngine({
+    quoteEveryMs: options.quoteEveryMs,
+    log: options.log("rules"),
+  });
+  const hooks = options.hooks ?? rules.finnhub;
   // every table's retention, at start and once a day
   const prune = (db: Db) => {
     const now = clock.now();
     pruneRuns(db, now);
     pruneResearch(db, now, hooks.waited(db, now));
     pruneNews(db, now, trackedIds(db, now, trackMs));
+    pruneAlerts(db, now);
   };
   // queued first, so no job's run is taken for one a crash left running;
   // pruned here too, since a server restarted daily never reaches the
@@ -104,7 +112,7 @@ export function start(options: AppOptions): App {
   const yahooQueue = queue(clock, YAHOO_CONCURRENCY);
   const client = yahoo({ clock, fetch: options.fetch, queue: yahooQueue });
   const sync = yahooJobs({
-    ctx: { db, clock, yahoo: client, writer: write },
+    ctx: { db, clock, yahoo: client, writer: write, rules },
     quoteEveryMs: options.quoteEveryMs,
     log: options.log("yahoo"),
     trackMs,
@@ -119,7 +127,7 @@ export function start(options: AppOptions): App {
     fredClient === null
       ? null
       : fredJobs({
-          ctx: { db, clock, writer: write, fred: fredClient },
+          ctx: { db, clock, writer: write, fred: fredClient, rules },
           log: options.log("fred"),
           trackMs,
         });
@@ -162,6 +170,7 @@ export function start(options: AppOptions): App {
     finnhub: finnhubClient,
     massive: massiveClient,
     hooks,
+    rules,
     log: options.log("tools"),
     trackMs,
     quoteEveryMs: options.quoteEveryMs,
@@ -175,6 +184,7 @@ export function start(options: AppOptions): App {
       mcp,
       quotes: quotesHandler(reads),
       research: researchHandler(reads),
+      alerts: alertsHandler({ db, log: options.log("alerts") }),
       clock,
       log: options.log("http"),
     }),

@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // There is no ticker list: an instrument is tracked while a read named
-// it within the window, and only tracked ones are synced on a schedule.
+// it within the window or a rule reads it, and only tracked ones are
+// synced on a schedule.
 // Searches and jobs never count as reads.
 
 import { DAY_MS } from "./clock.ts";
 import type { Db } from "./db/index.ts";
 import { type Instrument, readInstruments } from "./instruments.ts";
+import { ruleInstruments } from "./rules/store.ts";
 
 export const TRACK_DAYS = 30;
 export const TRACK_MS = TRACK_DAYS * DAY_MS;
@@ -21,14 +23,14 @@ export function markRead(db: Db, ids: Iterable<string>, now: number): void {
   for (const id of new Set(ids)) update.run(now, id);
 }
 
-// The instruments read within the window. Rules, when they exist, add
-// the instruments they read here, so every job follows the same set.
+// The instruments read within the window and every one a rule reads,
+// paused or not, so every job follows the same set.
 export function trackedIds(
   db: Db,
   now: number,
   trackMs: number = TRACK_MS,
 ): Set<string> {
-  return new Set(
+  const ids = new Set(
     db
       .query<{ id: string }, [number]>(
         "select id from instruments where last_read_at > ?",
@@ -36,6 +38,8 @@ export function trackedIds(
       .all(now - trackMs)
       .map((r) => r.id),
   );
+  for (const id of ruleInstruments(db)) ids.add(id);
+  return ids;
 }
 
 export function isTracked(

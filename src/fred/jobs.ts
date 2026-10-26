@@ -107,7 +107,11 @@ export function fredJobs(options: {
       );
       try {
         const written = await refetchSeries(ctx, instrument);
-        await writer.write((db) => endRun(db, id, clock.now(), written.rows));
+        // the series is no longer due, so rules read it from here
+        await writer.write((db) => {
+          endRun(db, id, clock.now(), written.rows);
+          ctx.rules?.evaluate(db, [instrument.id], clock.now());
+        });
         rows += written.rows;
         if (written.changedFrom !== null) {
           changed.push({

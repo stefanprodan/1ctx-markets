@@ -25,6 +25,7 @@ import {
   upsertInstrument,
 } from "../instruments.ts";
 import { exclusive } from "../lock.ts";
+import type { RuleHooks } from "../rules/hooks.ts";
 import { signalsAfterBars } from "../signals/store.ts";
 import { DeadlinePassed, SourceError } from "../source.ts";
 import type { Writer } from "../writer.ts";
@@ -57,6 +58,8 @@ export type FredContext = {
   clock: Clock;
   writer: Writer;
   fred: Fred | null;
+  // told when a series' run ends; none in tests that need no rules
+  rules?: RuleHooks;
 };
 
 // a series the server will not keep, said to the caller as it is

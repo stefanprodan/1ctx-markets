@@ -206,6 +206,12 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
             });
           }
         });
+        // after the runs end, so a quote's staleness is this pass's
+        ctx.rules?.evaluate(
+          db,
+          quotes.map((q) => q.instrument),
+          now,
+        );
         return quotes;
       });
     } catch (error) {
@@ -255,11 +261,16 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
         });
       }
     }
-    await writer.write((db) =>
-      error === undefined
-        ? endRun(db, id, clock.now(), rows)
-        : failRun(db, id, clock.now(), error, rows),
-    );
+    // the session's bars are in, so its price levels can be read again
+    await writer.write((db) => {
+      if (error === undefined) endRun(db, id, clock.now(), rows);
+      else failRun(db, id, clock.now(), error, rows);
+      ctx.rules?.evaluate(
+        db,
+        instruments.map((i) => i.id),
+        clock.now(),
+      );
+    });
     const from = changed.map((c) => c.changedFrom).sort()[0];
     log.info("yahoo bars refetched", {
       market,
