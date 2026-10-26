@@ -44,7 +44,10 @@ is offered over MCP.
   found`, and nothing is resolved or added.
 - **Each part runs through its source's own fetch code, client and
   queue or limiter** (`within(live)`, so a back-off fails at once),
-  every part at once under one deadline of `callMs` (15 s):
+  every part at once under one deadline of `callMs` (15 s). Its calls
+  queue with the tools' own, first come first served, so a large
+  refetch can hold an agent's call for up to that deadline: refetch few
+  instruments at a time.
 
 | Part | Source | Asks |
 |---|---|---|
