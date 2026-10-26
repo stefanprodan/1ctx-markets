@@ -202,6 +202,12 @@ function reader(db: Db, now: number, quoteEveryMs: number) {
           live && row !== null && row !== undefined && "quoteTime" in row
             ? [row.quoteTime as number]
             : [],
+        // a live row from an untimed quote is dated by its fetch
+        untimed:
+          live &&
+          row !== null &&
+          row !== undefined &&
+          quote(i.id)?.time === null,
         reasons: [
           ...(row === null || row === undefined
             ? [`${of}: no ${live ? "live" : "final"} signal row`]

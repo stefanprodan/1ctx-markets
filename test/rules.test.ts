@@ -14,6 +14,7 @@ import {
 } from "../src/rules/format.ts";
 import { countRules, readRule } from "../src/rules/store.ts";
 import { endRun, failRun, startRun } from "../src/runs.ts";
+import { refreshLive } from "../src/signals/store.ts";
 import { DeadlinePassed, SourceError } from "../src/source.ts";
 import { tools } from "../src/tools/index.ts";
 import { NO_EVENT_SOURCE } from "../src/tools/rules.ts";
@@ -548,6 +549,53 @@ describe("the earnings gate", () => {
     });
     expect(rule(t, r.body.rule.id).lastResult).toBe("unknown");
     expect(alerts(t)).toBe(0);
+  });
+
+  test("a live signal row from a quote with no trade time never passes it", async () => {
+    const t = await rulesTest({ finnhub: true });
+    const r = await create(t, "NVDA", {
+      afterEarnings: "NVDA",
+      left: "rsi14",
+      op: ">",
+      right: 0,
+    });
+    const nvda = readInstrument(t.db, "US:NVDA")!;
+    await t.clock.advance(Date.parse("2026-11-17T22:00:00Z") - t.clock.now());
+    t.calendar.edit = calendarWithActuals;
+    await drive(
+      t.clock,
+      pacedOf(t.m),
+      refreshResearch(
+        { db: t.db, clock: t.clock, writer: t.write, finnhub: t.m.finnhub },
+        nvda,
+        ["calendar"],
+        { hooks: t.engine.finnhub },
+      ),
+    );
+    await t.clock.advance(Date.parse("2026-11-18T14:45:00Z") - t.clock.now());
+    await t.quote("NVDA", {
+      sessionDays: 26,
+      time: Date.parse("2026-11-18T14:40:00Z"),
+    });
+    // the new session's bars in, as the bar pass leaves them
+    await drive(t.clock, pacedOf(t.m), refetch(t.ctx, nvda));
+    await pass(t, "ok", "bars");
+    await t.write.write((db) => {
+      refreshLive(db, nvda, t.clock.now());
+      t.engine.evaluate(db, ["US:NVDA"], t.clock.now());
+    });
+    // traded after the results, so its live row may pass
+    expect(rule(t, r.body.rule.id).lastResult).toBe("true");
+    // the same quote with no trade time: its live row is dated by its
+    // fetch, which says nothing of when the price traded
+    await t.write.write((db) => {
+      db.query(
+        "update quotes set time = null where instrument = 'US:NVDA'",
+      ).run();
+      refreshLive(db, nvda, t.clock.now());
+      t.engine.evaluate(db, ["US:NVDA"], t.clock.now());
+    });
+    expect(rule(t, r.body.rule.id).lastResult).toBe("unknown");
   });
 
   test("binds the next event not yet reported, never one reported today", async () => {
