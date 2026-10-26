@@ -10,6 +10,7 @@ import {
 import { MINUTE_MS } from "../clock.ts";
 import { type Instrument, readInstrument } from "../instruments.ts";
 import type { Log } from "../log.ts";
+import type { QuoteRow } from "../quotes.ts";
 import { endRun, failRun, lastStarted, runJob, startRun } from "../runs.ts";
 import type { Scheduler } from "../scheduler.ts";
 import { type Phrase, phraseOf, SourceError } from "../source.ts";
@@ -18,7 +19,6 @@ import { TRACK_MS, trackedIds, trackedInstruments } from "../tracking.ts";
 import { SOURCE, type SparkAnswer } from "./client.ts";
 import {
   backfill,
-  type QuoteRow,
   RETRY_MS,
   refetch,
   storeQuotes,

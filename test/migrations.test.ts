@@ -114,6 +114,46 @@ describe("migrations", () => {
     ).toEqual({ at: 2 });
   });
 
+  test("quotes stored before it are kept and may then lack a trade time", () => {
+    const db = new Database(":memory:", { strict: true });
+    const clock = fakeClock();
+    const at = MIGRATIONS.findIndex((m) => m.id === "0010-bvb");
+    migrate(db, clock, MIGRATIONS.slice(0, at));
+    db.query(
+      `insert into instruments (id, market, symbol, source, source_symbol,
+         exchange, type, zone, added_at, updated_at)
+       values (?, 'BVB', ?, 'yahoo', ?, 'BVB', 'EQUITY', 'Europe/Bucharest',
+         0, 0)`,
+    ).run("BVB:TLV", "TLV", "TLV.RO");
+    const quote = db.query(
+      `insert into quotes (instrument, price, previous_close,
+         previous_close_field, change, time, source, fetched_at)
+       values (?, 36.18, ?, ?, ?, ?, 'yahoo', 2)`,
+    );
+    quote.run("BVB:TLV", 36.4, "previousClose", -0.22, 1);
+    migrate(db, clock);
+    expect(
+      db
+        .query(
+          "select instrument, price, previous_close_field as f, time from quotes",
+        )
+        .all(),
+    ).toEqual([
+      { instrument: "BVB:TLV", price: 36.18, f: "previousClose", time: 1 },
+    ]);
+    db.query(
+      `insert into instruments (id, market, symbol, source, source_symbol,
+         exchange, type, zone, added_at, updated_at)
+       values ('BVB:BET', 'BVB', 'BET', 'bvb', 'BET', 'BVB', 'INDEX',
+         'Europe/Bucharest', 0, 0)`,
+    ).run();
+    quote.run("BVB:BET", 35018.02, "change", -339.79, null);
+    expect(() => quote.run("BVB:BET", 1, "guess", 1, null)).toThrow();
+    expect(db.query("select count(*) as n from sources").get()).toEqual({
+      n: 0,
+    });
+  });
+
   test("open applies the shipped list to a new database", () => {
     const { db, migrations } = open(":memory:", fakeClock());
     expect(migrations).toEqual(MIGRATIONS.map((m) => m.id));

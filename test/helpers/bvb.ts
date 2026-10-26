@@ -69,7 +69,7 @@ export type BvbRoutes = {
   // histories by symbol, in place of the recorded ones
   histories?: Record<string, Recorded>;
   // holds a call until it resolves, or answers it instead
-  hold?: (url: URL) => Promise<Recorded | undefined> | undefined;
+  hold?: (url: URL) => Recorded | Promise<Recorded | undefined> | undefined;
 };
 
 // a symbol answer for any symbol the recordings lack, as the feed's

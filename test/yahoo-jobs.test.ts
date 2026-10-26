@@ -9,13 +9,14 @@ import { DAY_MS, MINUTE_MS } from "../src/clock.ts";
 import { open } from "../src/db/index.ts";
 import { readInstrument } from "../src/instruments.ts";
 import { silent } from "../src/log.ts";
+import { readQuote } from "../src/quotes.ts";
 import { INTERRUPTED, lastRun, startRun } from "../src/runs.ts";
 import { scheduler } from "../src/scheduler.ts";
 import { barsStale, JOBS, quoteStale } from "../src/stale.ts";
 import { writer } from "../src/writer.ts";
 import { yahoo } from "../src/yahoo/client.ts";
 import { RETRY_MS, type TickReport, yahooJobs } from "../src/yahoo/jobs.ts";
-import { catchUp, readQuote } from "../src/yahoo/sync.ts";
+import { catchUp } from "../src/yahoo/sync.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { BVB, CRYPTO, type SimListing, sim, US, XETRA } from "./helpers/sim.ts";
 import {

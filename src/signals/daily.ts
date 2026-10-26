@@ -68,12 +68,16 @@ export type DailyRow = {
 // 52 calendar weeks ending on the bar's date
 const WINDOW_DAYS = 52 * 7;
 
-// from the first stored bar: Wilder's averages and EMA seeds depend on it
-export function dailySeries(bars: readonly Bar[]): DailyRow[] {
+// from the first stored bar: Wilder's averages and EMA seeds depend on it;
+// breaks are the dates a source's raw volumes change scale on
+export function dailySeries(
+  bars: readonly Bar[],
+  breaks: readonly string[] = [],
+): DailyRow[] {
   checkOrder(bars);
   const rows: DailyRow[] = [];
   for (let i = 0; i < bars.length; i++) {
-    rows.push(dailyRow(bars, i, rows[i - 1] ?? null));
+    rows.push(dailyRow(bars, i, rows[i - 1] ?? null, false, breaks));
   }
   return rows;
 }
@@ -84,6 +88,7 @@ export function liveDaily(
   last: DailyRow | null,
   quote: Quote,
   session: { date: string; replacesLast: boolean },
+  breaks: readonly string[] = [],
 ): DailyRow {
   const base = baseRows(bars, session.date, session.replacesLast);
   checkLastRow(base, last);
@@ -97,14 +102,15 @@ export function liveDaily(
       volume: quote.volume,
     },
   ];
-  return dailyRow(all, all.length - 1, last, true);
+  return dailyRow(all, all.length - 1, last, true, breaks);
 }
 
 function dailyRow(
   bars: readonly Bar[],
   i: number,
   prev: DailyRow | null,
-  provisional = false,
+  provisional: boolean,
+  breaks: readonly string[],
 ): DailyRow {
   const bar = bars[i]!;
   const c = bar.close;
@@ -154,7 +160,7 @@ function dailyRow(
     volatility20: volatility(bars, i),
     bollingerLower: bollingerLower(bars, i),
     ...range52w(bars, i, provisional),
-    volumeRatio: volumeRatio(bars, i),
+    volumeRatio: volumeRatio(bars, i, breaks),
     ema12,
     ema26,
     rsiGain,
@@ -324,10 +330,18 @@ function range52w(
 }
 
 // An instrument without volume (an index or FX reading 0, FRED) has
-// none; a 0 day for one that trades is a ratio of 0.
-function volumeRatio(bars: readonly Bar[], i: number): number | null {
+// none; a 0 day for one that trades is a ratio of 0. None spans a break:
+// raw volumes beside adjusted prices change scale on a bonus issue.
+function volumeRatio(
+  bars: readonly Bar[],
+  i: number,
+  breaks: readonly string[],
+): number | null {
   const v = bars[i]!.volume;
   if (i < 20 || v === null) return null;
+  const from = bars[i - 20]!.date;
+  const to = bars[i]!.date;
+  if (breaks.some((b) => b > from && b <= to)) return null;
   let sum = 0;
   for (let k = i - 20; k < i; k++) {
     const w = bars[k]!.volume;

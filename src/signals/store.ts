@@ -4,6 +4,7 @@
 // every write here runs inside a writer transaction
 
 import { type Interval, readBars, type Bar as StoredBar } from "../bars.ts";
+import { SOURCE as BVB } from "../bvb/client.ts";
 import { CRYPTO, readSession, sessionDate, weekOf } from "../calendars.ts";
 import { MINUTE_MS } from "../clock.ts";
 import type { Db } from "../db/index.ts";
@@ -100,6 +101,18 @@ export function finalPrefix<T extends { final: boolean }>(
   return k === -1 ? [...bars] : bars.slice(0, k);
 }
 
+// the dates the Bucharest feed's volumes change scale on: its splits,
+// since it keeps volumes raw beside adjusted prices
+function volumeBreaks(db: Db, instrument: string): string[] {
+  return db
+    .query<{ date: string }, [string, string]>(
+      `select s.date from splits s join instruments i on i.id = s.instrument
+       where s.instrument = ? and i.source = ? order by s.date`,
+    )
+    .all(instrument, BVB)
+    .map((r) => r.date);
+}
+
 // from the first bar: an incremental patch would drift from the seeds
 export function recomputeSignals(db: Db, instrument: string, now: number) {
   const days = finalPrefix(readBars(db, instrument, "1d"));
@@ -107,7 +120,16 @@ export function recomputeSignals(db: Db, instrument: string, now: number) {
   db.query("delete from signals where instrument = ? and kind = 'final'").run(
     instrument,
   );
-  insertRows(db, instrument, "1d", "final", dailySeries(days), null, now);
+  const breaks = volumeBreaks(db, instrument);
+  insertRows(
+    db,
+    instrument,
+    "1d",
+    "final",
+    dailySeries(days, breaks),
+    null,
+    now,
+  );
   insertRows(db, instrument, "1wk", "final", weeklySeries(weeks), null, now);
 }
 
@@ -187,9 +209,12 @@ export function liveTarget(
   db: Db,
   instrument: Scoped,
 ): { date: string; quote: LiveQuote } | null {
+  // an index page gives no trade time and is current while its market
+  // trades, so its fetch dates the live row; the quote keeps no time
   const quote = db
     .query<LiveQuote, [string]>(
-      `select price, day_high as dayHigh, day_low as dayLow, volume, time
+      `select price, day_high as dayHigh, day_low as dayLow, volume,
+         coalesce(time, fetched_at) as time
        from quotes where instrument = ?`,
     )
     .get(instrument.id);
@@ -296,21 +321,25 @@ export function refreshLive(db: Db, instrument: Scoped, now: number): void {
     return;
   }
   const { date, quote } = target;
+  const breaks = volumeBreaks(db, instrument.id);
   const day = liveBase<DailyRow>(
     db,
     instrument.id,
     "1d",
     date,
     LIVE_DAYS + 1,
-    dailySeries,
+    (bars) => dailySeries(bars, breaks),
   );
   const dayRow =
     day === null
       ? null
-      : liveDaily(day.bars, day.last, quote, {
-          date,
-          replacesLast: day.replacesLast,
-        });
+      : liveDaily(
+          day.bars,
+          day.last,
+          quote,
+          { date, replacesLast: day.replacesLast },
+          breaks,
+        );
   replaceLive(db, instrument.id, "1d", dayRow, quote.time, now);
   const monday = weekOf(date);
   const week = liveBase<WeeklyRow>(

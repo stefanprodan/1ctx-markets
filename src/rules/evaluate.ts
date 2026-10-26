@@ -124,7 +124,7 @@ function reader(db: Db, now: number, quoteEveryMs: number) {
           changePercent: number | null;
           dayHigh: number | null;
           dayLow: number | null;
-          time: number;
+          time: number | null;
         },
         [string]
       >(
@@ -150,7 +150,7 @@ function reader(db: Db, now: number, quoteEveryMs: number) {
         const value = q?.[def.column] ?? null;
         return {
           value,
-          times: q !== null && def.live ? [q.time] : [],
+          times: q !== null && q.time !== null && def.live ? [q.time] : [],
           reasons: [
             ...(value === null ? [`${of}: no value`] : []),
             ...stale.map((r) => `${of}: ${r}`),
@@ -172,7 +172,7 @@ function reader(db: Db, now: number, quoteEveryMs: number) {
           };
         }
         const times = [quote(i.id)?.time, quote(bench)?.time].filter(
-          (t): t is number => t !== undefined,
+          (t): t is number => typeof t === "number",
         );
         return { value: r.relative, times, reasons: stale };
       }

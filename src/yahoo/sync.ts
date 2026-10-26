@@ -30,6 +30,7 @@ import {
   upsertInstrument,
 } from "../instruments.ts";
 import { exclusive } from "../lock.ts";
+import { type QuoteRow, upsertQuote } from "../quotes.ts";
 import { NO_RULES, type RuleHooks } from "../rules/hooks.ts";
 import { endRun, startRun } from "../runs.ts";
 import { pruneLive, refreshLive, signalsAfterBars } from "../signals/store.ts";
@@ -713,21 +714,6 @@ async function refetchAnswer(
     store(db, ctx.clock.now(), instrument, answer, null, ctx.rules);
 }
 
-export type QuoteRow = {
-  instrument: string;
-  price: number;
-  previousClose: number | null;
-  previousCloseField: "previousClose" | "chartPreviousClose" | null;
-  change: number | null;
-  changePercent: number | null;
-  dayHigh: number | null;
-  dayLow: number | null;
-  volume: number | null;
-  time: number;
-  source: string;
-  fetchedAt: number;
-};
-
 // The day change is worked out from price and previous close, never
 // Yahoo's own change field, which disagreed with both for SOL-USD.
 export function quoteOf(
@@ -770,27 +756,6 @@ export function storeQuotes(
   now: number = answer.fetchedAt,
 ): QuoteRow[] {
   const written: QuoteRow[] = [];
-  const upsert = db.query(
-    `insert into quotes (instrument, price, previous_close,
-       previous_close_field, change, change_percent, day_high, day_low,
-       volume, time, source, fetched_at)
-     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-     on conflict (instrument) do update set
-       price = excluded.price,
-       previous_close = excluded.previous_close,
-       previous_close_field = excluded.previous_close_field,
-       change = excluded.change,
-       change_percent = excluded.change_percent,
-       day_high = excluded.day_high,
-       day_low = excluded.day_low,
-       volume = excluded.volume,
-       time = excluded.time,
-       source = excluded.source,
-       fetched_at = excluded.fetched_at
-     where excluded.time > quotes.time
-       or (excluded.time = quotes.time
-         and excluded.fetched_at > quotes.fetched_at)`,
-  );
   // one session per market and answer, the latest its listings show,
   // since before the open some still show the previous day's
   const sessions = new Map<string, Session>();
@@ -810,21 +775,7 @@ export function storeQuotes(
     const instrument = readBySourceSymbol(db, SOURCE, meta.symbol);
     if (instrument === null) continue;
     const q = quoteOf(instrument.id, meta, answer.fetchedAt);
-    const { changes } = upsert.run(
-      q.instrument,
-      q.price,
-      q.previousClose,
-      q.previousCloseField,
-      q.change,
-      q.changePercent,
-      q.dayHigh,
-      q.dayLow,
-      q.volume,
-      q.time,
-      q.source,
-      q.fetchedAt,
-    );
-    if (changes > 0) {
+    if (upsertQuote(db, q)) {
       written.push(q);
       refreshLive(db, instrument, answer.fetchedAt);
       moved.add(instrument.id);
@@ -874,18 +825,4 @@ export async function fetchQuotes(
     return stored;
   });
   return { quotes, skipped, errors };
-}
-
-export function readQuote(db: Db, instrument: string): QuoteRow | null {
-  return (
-    db
-      .query<QuoteRow, [string]>(
-        `select instrument, price, previous_close as previousClose,
-           previous_close_field as previousCloseField, change,
-           change_percent as changePercent, day_high as dayHigh,
-           day_low as dayLow, volume, time, source, fetched_at as fetchedAt
-         from quotes where instrument = ?`,
-      )
-      .get(instrument) ?? null
-  );
 }
