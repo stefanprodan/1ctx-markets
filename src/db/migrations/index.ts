@@ -13,6 +13,7 @@ import { m0004 } from "./0004-scopes-units.ts";
 import { m0005 } from "./0005-signals.ts";
 import { m0006 } from "./0006-tracking.ts";
 import { m0007 } from "./0007-research.ts";
+import { m0008 } from "./0008-news.ts";
 
 export const MIGRATIONS: readonly Migration[] = [
   m0001,
@@ -22,4 +23,5 @@ export const MIGRATIONS: readonly Migration[] = [
   m0005,
   m0006,
   m0007,
+  m0008,
 ];

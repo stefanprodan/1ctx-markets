@@ -37,8 +37,8 @@ import { SourceError } from "../src/source.ts";
 import { markRead } from "../src/tracking.ts";
 import { writer } from "../src/writer.ts";
 import { fakeClock } from "./helpers/clock.ts";
+import { drive } from "./helpers/drive.ts";
 import {
-  drive,
   FINNHUB_KEY,
   finnhubAnswer,
   finnhubFixture,
@@ -108,7 +108,7 @@ const edited =
 describe("finnhub answers", () => {
   test("NVDA parses in full, its repeated earnings period collapsed", async () => {
     const t = setup();
-    const d = <T>(p: Promise<T>) => drive(t.clock, p);
+    const d = <T>(p: Promise<T>) => drive(t.clock, t.client, p);
     const metric = await d(t.client.metric("NVDA"));
     expect(metric.data).toMatchObject({
       forwardPE: 17.02191,
@@ -173,6 +173,7 @@ describe("finnhub answers", () => {
       const t = setup();
       const answers = await drive(
         t.clock,
+        t.client,
         Promise.all([
           t.client.metric(symbol),
           t.client.analysts(symbol),
@@ -218,6 +219,7 @@ describe("finnhub answers", () => {
     await t.client.metric("NVDA");
     const error = await drive(
       t.clock,
+      t.client,
       t.client.earnings("NVDA").catch((e: unknown) => e),
     );
     expect(error).toBeInstanceOf(SourceError);
@@ -235,9 +237,9 @@ describe("finnhub answers", () => {
     });
     await expect(t.client.metric("NVDA")).rejects.toThrow("key refused");
     status = 429;
-    await expect(drive(t.clock, t.client.analysts("NVDA"))).rejects.toThrow(
-      "rate limited",
-    );
+    await expect(
+      drive(t.clock, t.client, t.client.analysts("NVDA")),
+    ).rejects.toThrow("rate limited");
     const asked = t.f.urls.length;
     // a tool fails at once while the source backs off, asking nothing
     await expect(t.client.failFast().earnings("NVDA")).rejects.toThrow(
@@ -256,7 +258,7 @@ describe("finnhub answers", () => {
       job.earnings("NVDA"),
       tool.within(() => true).metric("NVDA"),
     ]);
-    await drive(t.clock, all);
+    await drive(t.clock, t.client, all);
     expect(t.starts).toHaveLength(4);
     for (let k = 1; k < t.starts.length; k++) {
       expect(t.starts[k]! - t.starts[k - 1]!).toBeGreaterThanOrEqual(
@@ -265,13 +267,37 @@ describe("finnhub answers", () => {
     }
   });
 
+  test("driving the clock moves it only to the limiter's due times, never under a slow call", async () => {
+    // each answer takes many event-loop turns, as on a slow machine
+    const t = setup({
+      route: async () => {
+        for (let k = 0; k < 5_000; k++) {
+          await new Promise<void>((resolve) => setImmediate(resolve));
+        }
+        return undefined;
+      },
+    });
+    const [metric, analysts] = await drive(
+      t.clock,
+      t.client,
+      Promise.all([t.client.metric("NVDA"), t.client.analysts("NVDA")]),
+    );
+    // neither call's 30 s timeout fired while it ran
+    expect(metric.data).not.toBeNull();
+    expect(analysts.data).not.toBeNull();
+    expect(t.starts).toEqual([NOW, NOW + SPACING_MS]);
+    expect(t.clock.now()).toBe(NOW + SPACING_MS);
+  });
+
   test("a call waiting for its slot past its deadline never starts", async () => {
     const t = setup();
     await t.client.metric("NVDA");
     let live = true;
     const late = t.client.within(() => live).analysts("NVDA");
     live = false;
-    await expect(drive(t.clock, late)).rejects.toThrow("deadline passed");
+    await expect(drive(t.clock, t.client, late)).rejects.toThrow(
+      "deadline passed",
+    );
     expect(t.f.urls).toHaveLength(1);
   });
 });
@@ -299,7 +325,11 @@ describe("research rows", () => {
   test("NVDA's five sections land with a run each", async () => {
     const t = setup();
     const nvda = share(t.db, "NVDA", NOW);
-    const results = await drive(t.clock, refreshResearch(t.ctx, nvda));
+    const results = await drive(
+      t.clock,
+      t.client,
+      refreshResearch(t.ctx, nvda),
+    );
     expect(results.map((r) => [r.section, r.status])).toEqual([
       ["metric", "ok"],
       ["analysts", "ok"],
@@ -329,7 +359,7 @@ describe("research rows", () => {
       expect(lastRun(t.db, "finnhub", s, nvda.id)?.status).toBe("ok");
     }
     // a second fetch replaces the one metric row
-    await drive(t.clock, refreshResearch(t.ctx, nvda, ["metric"]));
+    await drive(t.clock, t.client, refreshResearch(t.ctx, nvda, ["metric"]));
     expect(readResearch(t.db, nvda.id, "metric")).toHaveLength(1);
   });
 
@@ -344,9 +374,9 @@ describe("research rows", () => {
     const nvda = share(t.db, "NVDA", NOW);
     const none = share(t.db, "REFUSED", NOW);
     const empty = share(t.db, "EMPTY", NOW);
-    await drive(t.clock, refreshResearch(t.ctx, nvda));
+    await drive(t.clock, t.client, refreshResearch(t.ctx, nvda));
     for (const i of [none, empty]) {
-      const results = await drive(t.clock, refreshResearch(t.ctx, i));
+      const results = await drive(t.clock, t.client, refreshResearch(t.ctx, i));
       expect(results.every((r) => r.status === "ok" && r.rows === 0)).toBe(
         true,
       );
@@ -359,7 +389,7 @@ describe("research rows", () => {
       nvda.id,
     );
     refused = true;
-    await drive(t.clock, refreshResearch(t.ctx, nvda));
+    await drive(t.clock, t.client, refreshResearch(t.ctx, nvda));
     expect(
       count(
         t.db,
@@ -376,7 +406,11 @@ describe("research rows", () => {
       }),
     });
     const nvda = share(t.db, "NVDA", NOW);
-    const results = await drive(t.clock, refreshResearch(t.ctx, nvda));
+    const results = await drive(
+      t.clock,
+      t.client,
+      refreshResearch(t.ctx, nvda),
+    );
     expect(results.find((r) => r.section === "earnings")?.status).toBe(
       "failed",
     );
@@ -410,7 +444,11 @@ describe("earnings events", () => {
     };
     const nvda = share(t.db, "NVDA", NOW);
     const refresh = () =>
-      drive(t.clock, refreshResearch(t.ctx, nvda, ["calendar"], { hooks }));
+      drive(
+        t.clock,
+        t.client,
+        refreshResearch(t.ctx, nvda, ["calendar"], { hooks }),
+      );
     const event = () => readEvents(t.db, "2026-01-01", "2027-12-31");
     await refresh();
     expect(event()).toHaveLength(1);
@@ -459,7 +497,7 @@ describe("earnings events", () => {
   test("the next event is the earliest from today, or one awaiting results", async () => {
     const t = setup();
     const nvda = share(t.db, "NVDA", NOW);
-    await drive(t.clock, refreshResearch(t.ctx, nvda, ["calendar"]));
+    await drive(t.clock, t.client, refreshResearch(t.ctx, nvda, ["calendar"]));
     expect(nextEvent(t.db, nvda, NOW)?.date).toBe("2026-11-17");
     expect(
       nextEvent(t.db, nvda, Date.parse("2026-11-20T15:00:00Z"))?.date,
@@ -472,7 +510,7 @@ describe("earnings events", () => {
   test("retention drops rows past 24 months, keeping the metric and waited events", async () => {
     const t = setup();
     const nvda = share(t.db, "NVDA", NOW);
-    await drive(t.clock, refreshResearch(t.ctx, nvda));
+    await drive(t.clock, t.client, refreshResearch(t.ctx, nvda));
     const later = Date.parse("2028-10-15T12:00:00Z");
     const insert = t.db.query(
       `insert into events (instrument, fiscal_year, fiscal_quarter, date, hour,
@@ -508,7 +546,7 @@ describe("the daily job", () => {
     share(t.db, "VVSM", NOW, { market: "XETRA" });
     share(t.db, "OLD", NOW - 40 * DAY_MS, { read: true });
     const jobs = finnhubJobs({ ctx: t.ctx, log: silent });
-    const first = await drive(t.clock, jobs.tick());
+    const first = await drive(t.clock, t.client, jobs.tick());
     expect(first.asked.map((a) => a.instrument).sort()).toEqual([
       "US:EMPTY",
       "US:NVDA",
@@ -523,7 +561,7 @@ describe("the daily job", () => {
     expect((await jobs.tick()).asked).toEqual([]);
     // after the next 23:00 UTC, all again
     await t.clock.advance(2 * 60 * MINUTE_MS);
-    const next = await drive(t.clock, jobs.tick());
+    const next = await drive(t.clock, t.client, jobs.tick());
     expect(next.asked).toHaveLength(3);
     expect(t.f.urls).toHaveLength(30);
   });
@@ -533,11 +571,11 @@ describe("the daily job", () => {
     const names = Array.from({ length: 12 }, (_, k) => `ZZ${k}`);
     for (const s of names) share(t.db, s, NOW);
     const jobs = finnhubJobs({ ctx: t.ctx, log: silent });
-    const first = await drive(t.clock, jobs.tick());
+    const first = await drive(t.clock, t.client, jobs.tick());
     expect(first.asked.length).toBeLessThan(12);
     expect(t.clock.now() - NOW).toBeLessThan(TICK_BUDGET_MS + 10_000);
     await t.clock.advance(MINUTE_MS);
-    const second = await drive(t.clock, jobs.tick());
+    const second = await drive(t.clock, t.client, jobs.tick());
     expect(first.asked.length + second.asked.length).toBe(12);
     expect(t.starts).toHaveLength(60);
     for (const at of t.starts) {
@@ -571,7 +609,7 @@ describe("the daily job", () => {
         (l) => lines.push(l),
       )("finnhub"),
     });
-    const first = await drive(t.clock, jobs.tick());
+    const first = await drive(t.clock, t.client, jobs.tick());
     expect(first.failed).toEqual([
       { instrument: nvda.id, section: "earnings", error: "malformed answer" },
     ]);
@@ -586,7 +624,7 @@ describe("the daily job", () => {
     expect((await jobs.tick()).asked).toEqual([]);
     conflicting = false;
     await t.clock.advance(31 * MINUTE_MS);
-    const retry = await drive(t.clock, jobs.tick());
+    const retry = await drive(t.clock, t.client, jobs.tick());
     expect(retry.asked).toEqual([
       { instrument: nvda.id, sections: ["earnings"] },
     ]);
@@ -617,23 +655,23 @@ describe("the daily job", () => {
         },
       },
     });
-    await drive(t.clock, jobs.tick());
+    await drive(t.clock, t.client, jobs.tick());
     const calendars = () =>
       t.f.urls.filter((u) => u.pathname.endsWith("/calendar/earnings")).length;
     expect(calendars()).toBe(1);
     // on its date, past the day's refresh
     await t.clock.advance(Date.parse("2026-11-17T14:00:00Z") - t.clock.now());
-    await drive(t.clock, jobs.tick());
+    await drive(t.clock, t.client, jobs.tick());
     expect(calendars()).toBe(2);
     await t.clock.advance(30 * MINUTE_MS);
     await jobs.tick();
     expect(calendars()).toBe(2);
     await t.clock.advance(31 * MINUTE_MS);
-    await drive(t.clock, jobs.tick());
+    await drive(t.clock, t.client, jobs.tick());
     expect(calendars()).toBe(3);
     actual = 2.61;
     await t.clock.advance(61 * MINUTE_MS);
-    await drive(t.clock, jobs.tick());
+    await drive(t.clock, t.client, jobs.tick());
     expect(calendars()).toBe(4);
     expect(seen).toBe(1);
     // reported: no more hourly asks
@@ -691,7 +729,7 @@ describe("finnhub source", () => {
       );
       await a.writer.write((db) => share(db, "NVDA", clock.now()));
       // every call fails with an error quoting the key
-      const pass = await drive(clock, a.finnhubJobs!.tick());
+      const pass = await drive(clock, a.finnhub!, a.finnhubJobs!.tick());
       expect(pass.failed).toHaveLength(5);
       for (const f of pass.failed) expect(f.error).toBe("network error");
       expect(lines.length).toBeGreaterThan(0);

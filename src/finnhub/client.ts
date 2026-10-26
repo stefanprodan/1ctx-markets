@@ -9,11 +9,8 @@
 
 import type { Clock } from "../clock.ts";
 import {
-  DeadlinePassed,
   type Fetch,
-  type Queue,
-  QueueClosed,
-  queue,
+  limiter,
   type RunOptions,
   SourceError,
 } from "../source.ts";
@@ -103,6 +100,8 @@ export type Finnhub = {
   // At shutdown: closes the queue and fails a call waiting for its
   // slot, so no call goes out after.
   close(): void;
+  // when the next waiting call may go, for a test stepping its clock
+  due(): number | null;
 };
 
 export type FinnhubOptions = {
@@ -292,27 +291,8 @@ export function finnhub(options: FinnhubOptions): Finnhub {
   const { clock, key } = options;
   const host = options.host ?? HOST;
   const doFetch: Fetch = options.fetch ?? ((url, init) => fetch(url, init));
-  // one call at a time, so the spacing below holds across jobs and tools
-  const calls: Queue = queue(clock, 1);
-  let lastStart = Number.NEGATIVE_INFINITY;
-  let closed = false;
-  const waits = new Set<{ cancel: () => void; reject: (e: unknown) => void }>();
-
-  // waits, holding the queue, until the spacing since the last start
-  const slot = async (): Promise<void> => {
-    const until = lastStart + SPACING_MS;
-    if (clock.now() < until) {
-      await new Promise<void>((resolve, reject) => {
-        const wait = { cancel: () => {}, reject };
-        wait.cancel = clock.at(until, () => {
-          waits.delete(wait);
-          resolve();
-        });
-        waits.add(wait);
-      });
-    }
-    lastStart = clock.now();
-  };
+  // one call at a time, so the spacing holds across jobs and tools
+  const calls = limiter(clock, SPACING_MS);
 
   const get = <T>(
     path: string,
@@ -321,12 +301,6 @@ export function finnhub(options: FinnhubOptions): Finnhub {
     parse: (body: unknown) => T | null,
   ): Promise<Answer<T>> =>
     calls.run(async () => {
-      if (closed) throw new QueueClosed();
-      if (run.live !== undefined && !run.live()) throw new DeadlinePassed();
-      await slot();
-      // closed, or past the caller's deadline, while it waited
-      if (closed) throw new QueueClosed();
-      if (run.live !== undefined && !run.live()) throw new DeadlinePassed();
       const abort = new AbortController();
       let timedOut = false;
       const cancel = clock.at(clock.now() + TIMEOUT_MS, () => {
@@ -390,15 +364,8 @@ export function finnhub(options: FinnhubOptions): Finnhub {
       ),
     failFast: () => client({ failFast: true }),
     within: (live) => client({ failFast: true, live }),
-    close() {
-      closed = true;
-      calls.close();
-      for (const wait of waits) {
-        wait.cancel();
-        wait.reject(new QueueClosed());
-      }
-      waits.clear();
-    },
+    close: () => calls.close(),
+    due: () => calls.due(),
   });
   return client({});
 }

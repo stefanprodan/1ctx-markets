@@ -31,6 +31,7 @@ export type TestOptions = {
   fetch?: Fetch;
   fredKey?: string;
   finnhubKey?: string;
+  massiveKey?: string;
   start?: number;
 };
 
@@ -56,6 +57,7 @@ export async function withApp(
     quoteEveryMs: 5 * MINUTE_MS,
     fredKey: options.fredKey ?? null,
     finnhubKey: options.finnhubKey ?? null,
+    massiveKey: options.massiveKey ?? null,
     // no test reaches a network
     fetch:
       options.fetch ??

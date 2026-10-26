@@ -6,7 +6,6 @@
 // answer as one of them, under their own symbol.
 
 import { join } from "node:path";
-import type { FakeClock } from "./clock.ts";
 import { clone, type Recorded } from "./yahoo.ts";
 
 const DIR = join(import.meta.dir, "..", "fixtures", "finnhub");
@@ -58,38 +57,4 @@ export async function finnhubAnswer(url: URL): Promise<Recorded | undefined> {
     return { recordedAt: "", status: 403, headers: {}, body: { error: "no" } };
   }
   return renamed(await finnhubFixture(`${kind}-${as}`), symbol);
-}
-
-const turn = () => new Promise<void>((resolve) => setImmediate(resolve));
-// turns with no timer due before the work counts as waiting on a later one
-const IDLE_TURNS = 2_000;
-
-// Moves the fake clock to each timer due within one spacing until p
-// settles, so the limiter's waits fire as they come due; a later timer
-// (a back-off's end) fires only once the work has sat idle, so a
-// fetch's timeout never fires under a call in flight. Bounded, so a
-// stuck call fails the test.
-export async function drive<T>(
-  clock: FakeClock,
-  p: Promise<T>,
-  turns = 200_000,
-): Promise<T> {
-  let done = false;
-  const settled = p.finally(() => {
-    done = true;
-  });
-  settled.catch(() => {});
-  let idle = 0;
-  for (let k = 0; k < turns && !done; k++) {
-    const next = clock.next();
-    if (next !== null && (next <= clock.now() + 1_100 || idle >= IDLE_TURNS)) {
-      idle = 0;
-      await clock.advance(Math.max(0, next - clock.now()));
-    } else {
-      idle++;
-      await turn();
-    }
-  }
-  if (!done) throw new Error("did not settle");
-  return settled;
 }

@@ -2,14 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
+import { DAY_MS, MINUTE_MS } from "../src/clock.ts";
 import { open } from "../src/db/index.ts";
 import { finnhub } from "../src/finnhub/client.ts";
+import { finnhubJobs } from "../src/finnhub/jobs.ts";
 import { NO_DATA, NO_EVENTS, NOT_COVERED } from "../src/finnhub/store.ts";
 import { silent } from "../src/log.ts";
+import { massive, PAGE_LIMIT } from "../src/massive/client.ts";
+import { NEWS_NOT_COVERED, NO_NEWS, STALE_NEWS } from "../src/massive/store.ts";
 import { PAGE_BYTES } from "../src/tools/answer.ts";
 import { eventsAnswer, parseEvents } from "../src/tools/events.ts";
 import {
-  NEWS_PENDING,
+  HEADLINES,
   parseResearch,
   researchAnswer,
   researchTargets,
@@ -20,33 +24,64 @@ import { writer } from "../src/writer.ts";
 import { yahoo } from "../src/yahoo/client.ts";
 import { type TestApp, withApp } from "./helpers/app.ts";
 import { fakeClock } from "./helpers/clock.ts";
-import { drive, FINNHUB_KEY, finnhubAnswer } from "./helpers/finnhub.ts";
+import { drive, pacedOf } from "./helpers/drive.ts";
+import { FINNHUB_KEY, finnhubAnswer } from "./helpers/finnhub.ts";
+import {
+  type FakeMassive,
+  MASSIVE_KEY,
+  massiveAnswer,
+  series,
+} from "./helpers/massive.ts";
 import { gate, NOW, sources } from "./helpers/sources.ts";
 import type { Recorded } from "./helpers/yahoo.ts";
 
 type Hold = (url: URL) => Promise<Recorded | undefined> | undefined;
 
-async function setup(options: { hold?: Hold; off?: boolean } = {}) {
+async function setup(
+  options: { hold?: Hold; off?: boolean; massive?: FakeMassive } = {},
+) {
   const clock = fakeClock(NOW);
   const { db } = open(":memory:", clock);
+  const fake = options.massive;
   const s = await sources({
-    hold: async (url) => (await options.hold?.(url)) ?? finnhubAnswer(url),
+    hold: async (url) =>
+      (await options.hold?.(url)) ??
+      (await finnhubAnswer(url)) ??
+      (fake === undefined ? undefined : massiveAnswer(fake, url)),
   });
   const write = writer(db);
+  const fh = options.off
+    ? null
+    : finnhub({ clock, key: FINNHUB_KEY, fetch: s.fetch });
+  const ms =
+    fake === undefined
+      ? null
+      : massive({ clock, key: MASSIVE_KEY, fetch: s.fetch });
   const m = markets({
     db,
     clock,
     writer: write,
     yahoo: yahoo({ clock, fetch: s.fetch }),
     fred: null,
-    finnhub: options.off
-      ? null
-      : finnhub({ clock, key: FINNHUB_KEY, fetch: s.fetch }),
+    finnhub: fh,
+    massive: ms,
     log: silent,
   });
   const finnhubCalls = () =>
     s.calls.urls.filter((u) => u.hostname === "finnhub.io");
-  return { clock, db, m, calls: s.calls, finnhubCalls };
+  const massiveCalls = () =>
+    s.calls.urls.filter((u) => u.hostname === "api.massive.com");
+  return {
+    clock,
+    db,
+    m,
+    fh,
+    ms,
+    write,
+    calls: s.calls,
+    finnhubCalls,
+    massiveCalls,
+  };
 }
 
 const body = (r: { content: { text: string }[] }) =>
@@ -61,6 +96,7 @@ describe("research inside the call", () => {
     const { clock, db, m, finnhubCalls } = await t;
     const answer = await drive(
       clock,
+      pacedOf(m),
       researchAnswer(m, parseResearch({ symbol: "NVDA" })),
     );
     expect(clock.now() - NOW).toBeLessThan(CALL_MS);
@@ -97,7 +133,7 @@ describe("research inside the call", () => {
       hour: "amc",
       status: "scheduled",
     });
-    expect(b.news).toEqual({ message: NEWS_PENDING });
+    expect(b.news).toEqual({ source: "massive", message: NO_NEWS });
     expect(finnhubCalls()).toHaveLength(5);
     expect(lastReadAt(db, "US:NVDA")).not.toBeNull();
     await researchAnswer(m, parseResearch({ symbol: "US:NVDA" }));
@@ -108,6 +144,7 @@ describe("research inside the call", () => {
     const { clock, m, finnhubCalls } = await setup();
     await drive(
       clock,
+      pacedOf(m),
       Promise.all([
         researchTargets(m, ["NVDA"]),
         researchTargets(m, ["US:NVDA", "nvda"]),
@@ -123,7 +160,7 @@ describe("research inside the call", () => {
         url.pathname === "/api/v1/stock/earnings" ? held.hold() : undefined,
     });
     const answer = researchAnswer(m, parseResearch({ symbol: "NVDA" }));
-    await drive(clock, held.arrived);
+    await drive(clock, pacedOf(m), held.arrived);
     await clock.advance(CALL_MS);
     const b = body(await answer);
     expect(b.research).toMatchObject({ error: "timeout" });
@@ -148,6 +185,7 @@ describe("research inside the call", () => {
     const index = body(
       await drive(
         t.clock,
+        pacedOf(t.m),
         researchAnswer(t.m, parseResearch({ symbol: "^GSPC" })),
       ),
     );
@@ -158,6 +196,7 @@ describe("research inside the call", () => {
     const nvda = body(
       await drive(
         off.clock,
+        pacedOf(off.m),
         researchAnswer(off.m, parseResearch({ symbol: "NVDA" })),
       ),
     );
@@ -208,18 +247,28 @@ async function call(t: TestApp, name: string, args: unknown): Promise<Answer> {
 // an app on the recordings with NVDA read and researched
 async function researchApp(
   fn: (t: TestApp, urls: URL[]) => Promise<void>,
-  options: { off?: boolean } = {},
+  options: { off?: boolean; massive?: FakeMassive } = {},
 ) {
-  const s = await sources({ hold: (url) => finnhubAnswer(url) });
+  const fake = options.massive;
+  const s = await sources({
+    hold: async (url) =>
+      (await finnhubAnswer(url)) ??
+      (fake === undefined ? undefined : massiveAnswer(fake, url)),
+  });
   return withApp(
     async (t) => {
-      await drive(t.clock, researchTargets(t.app.markets, ["NVDA"]));
+      await drive(
+        t.clock,
+        pacedOf(t.app.markets),
+        researchTargets(t.app.markets, ["NVDA"]),
+      );
       await fn(t, s.calls.urls);
     },
     {
       fetch: s.fetch,
       start: NOW,
       ...(options.off ? {} : { finnhubKey: FINNHUB_KEY }),
+      ...(fake === undefined ? {} : { massiveKey: MASSIVE_KEY }),
     },
   );
 }
@@ -314,7 +363,7 @@ describe("the research and events tools", () => {
         symbol: "US:NVDA",
         section: "news",
       });
-      expect(news.body.message).toBe(NEWS_PENDING);
+      expect(news.body.message).toBe(NO_NEWS);
     }));
 
   test("events answers a range with each status, paged", () =>
@@ -466,4 +515,226 @@ describe("GET /research", () => {
       const none = await fetch(`${t.url}/research?symbols=NVDA`);
       expect(none.status).toBe(401);
     }));
+});
+
+const HOUR_MS = 60 * MINUTE_MS;
+
+describe("news inside the call", () => {
+  test("a share never asked for news gets its newest page within the deadline, then reads the store", async () => {
+    const t = await setup({
+      massive: { articles: await series("NVDA", 120, NOW, HOUR_MS) },
+    });
+    const answer = await drive(
+      t.clock,
+      pacedOf(t.m),
+      researchAnswer(t.m, parseResearch({ symbol: "NVDA" })),
+    );
+    expect(t.clock.now() - NOW).toBeLessThan(CALL_MS);
+    const b = body(answer);
+    expect(b.news).toMatchObject({
+      source: "massive",
+      fetched_at: "2026-10-25T21:05:00Z",
+      // the first page is in; the rest of its 30 days come with the job
+      stale: [STALE_NEWS.older],
+    });
+    expect(b.news.headlines).toHaveLength(HEADLINES);
+    expect(b.news.headlines[0]).toEqual({
+      published_at: "2026-10-25T21:05:00Z",
+      title: expect.stringContaining("Jensen Huang"),
+      publisher: "The Motley Fool",
+      sentiment: "positive",
+    });
+    expect(t.massiveCalls()).toHaveLength(1);
+    expect(t.massiveCalls()[0]!.searchParams.get("published_utc.gt")).toBe(
+      "2026-09-25T21:05:00Z",
+    );
+    expect(count(t.db, "news")).toBe(100);
+    await drive(
+      t.clock,
+      pacedOf(t.m),
+      researchAnswer(t.m, parseResearch({ symbol: "US:NVDA" })),
+    );
+    expect(t.massiveCalls()).toHaveLength(1);
+  });
+
+  test("not done by the deadline answers timeout and stores nothing", async () => {
+    const held = gate();
+    const t = await setup({
+      massive: { articles: await series("NVDA", 3, NOW, HOUR_MS) },
+      hold: (url) =>
+        url.hostname === "api.massive.com" ? held.hold() : undefined,
+    });
+    const answer = researchAnswer(t.m, parseResearch({ symbol: "NVDA" }));
+    await drive(t.clock, pacedOf(t.m), held.arrived);
+    await t.clock.advance(CALL_MS);
+    const b = body(await answer);
+    expect(b.news).toMatchObject({ source: "massive", error: "timeout" });
+    const flights = [...t.m.inflight.values()].map((f) =>
+      f.promise.catch(() => {}),
+    );
+    held.release();
+    await Promise.all(flights);
+    expect(count(t.db, "news")).toBe(0);
+    expect(
+      t.db.query("select * from sync_runs where source = 'massive'").all(),
+    ).toEqual([]);
+  });
+
+  test("an index is not asked, and Massive off answers no news source", async () => {
+    const t = await setup({ massive: { articles: [] } });
+    const index = body(
+      await drive(
+        t.clock,
+        pacedOf(t.m),
+        researchAnswer(t.m, parseResearch({ symbol: "^GSPC" })),
+      ),
+    );
+    expect(index.news).toEqual({
+      source: "massive",
+      message: NEWS_NOT_COVERED,
+    });
+    expect(t.massiveCalls()).toHaveLength(0);
+    const off = await setup();
+    const news = body(
+      await drive(
+        off.clock,
+        pacedOf(off.m),
+        researchAnswer(
+          off.m,
+          parseResearch({ symbol: "NVDA", section: "news" }),
+        ),
+      ),
+    );
+    expect(news).toMatchObject({ section: "news", message: NO_NEWS });
+    expect(news.articles).toEqual([]);
+  });
+});
+
+describe("a call refused while a source backs off", () => {
+  const limited = (url: URL, host: string): Promise<Recorded> | undefined =>
+    url.hostname === host
+      ? Promise.resolve({ recordedAt: "", status: 429, headers: {}, body: {} })
+      : undefined;
+
+  test("records no Finnhub run, so the job is not held off", async () => {
+    let refuse = true;
+    const t = await setup({
+      hold: (url) => (refuse ? limited(url, "finnhub.io") : undefined),
+    });
+    // a job's call is rate limited: the source backs off
+    await expect(t.fh!.metric("NVDA")).rejects.toThrow("rate limited");
+    refuse = false;
+    const b = body(
+      await drive(
+        t.clock,
+        pacedOf(t.m),
+        researchAnswer(t.m, parseResearch({ symbol: "NVDA" })),
+      ),
+    );
+    expect(b.research).toMatchObject({ error: "rate_limited" });
+    expect(t.finnhubCalls()).toHaveLength(1);
+    expect(
+      t.db.query("select * from sync_runs where source = 'finnhub'").all(),
+    ).toEqual([]);
+    // once the back-off is over, the job asks every section
+    await t.clock.advance(5 * MINUTE_MS);
+    const jobs = finnhubJobs({
+      ctx: { db: t.db, clock: t.clock, writer: t.write, finnhub: t.fh },
+      log: silent,
+    });
+    const pass = await drive(t.clock, t.fh!, jobs.tick());
+    expect(pass.asked).toEqual([
+      {
+        instrument: "US:NVDA",
+        sections: ["metric", "analysts", "earnings", "insider", "calendar"],
+      },
+    ]);
+    expect(pass.failed).toEqual([]);
+  });
+
+  test("records no Massive run, so the next read fetches it", async () => {
+    let refuse = true;
+    const t = await setup({
+      massive: { articles: await series("NVDA", 3, NOW, HOUR_MS) },
+      hold: (url) => (refuse ? limited(url, "api.massive.com") : undefined),
+    });
+    await expect(
+      t.ms!.news({ ticker: "NVDA", after: NOW - DAY_MS }),
+    ).rejects.toThrow("rate limited");
+    refuse = false;
+    const b = body(
+      await drive(
+        t.clock,
+        pacedOf(t.m),
+        researchAnswer(t.m, parseResearch({ symbol: "NVDA", section: "news" })),
+      ),
+    );
+    expect(b).toMatchObject({ source: "massive", error: "rate_limited" });
+    expect(t.massiveCalls()).toHaveLength(1);
+    expect(
+      t.db.query("select * from sync_runs where source = 'massive'").all(),
+    ).toEqual([]);
+    await t.clock.advance(5 * MINUTE_MS);
+    const again = body(
+      await drive(
+        t.clock,
+        pacedOf(t.m),
+        researchAnswer(t.m, parseResearch({ symbol: "NVDA", section: "news" })),
+      ),
+    );
+    expect(again.articles).toHaveLength(3);
+    expect(again.stale).toEqual([]);
+  });
+});
+
+describe("the research news section", () => {
+  test("pages the ticker's articles newest first, each page under 32 KiB", async () => {
+    const articles = await series("NVDA", 150, NOW, HOUR_MS);
+    await researchApp(
+      async (t) => {
+        const seen: any[] = [];
+        let next: string | null = null;
+        let pages = 0;
+        do {
+          const a = await call(t, "research", {
+            symbol: "US:NVDA",
+            section: "news",
+            ...(next === null ? {} : { next }),
+          });
+          expect(a.isError).toBe(false);
+          expect(a.body).toMatchObject({
+            id: "US:NVDA",
+            section: "news",
+            source: "massive",
+            fetched_at: expect.stringMatching(/^2026-10-25T21:05:\d\dZ$/),
+            stale: [STALE_NEWS.older],
+          });
+          seen.push(...a.body.articles);
+          next = a.body.next;
+          pages++;
+        } while (next !== null && pages < 20);
+        expect(pages).toBeGreaterThan(1);
+        // the first page inside the call; older ones come with the job
+        expect(seen).toHaveLength(PAGE_LIMIT);
+        const times = seen.map((a) => Date.parse(a.published_at));
+        expect(times).toEqual([...times].sort((x, y) => y - x));
+        expect(new Set(seen.map((a) => a.title)).size).toBe(PAGE_LIMIT);
+        expect(seen[0]).toEqual({
+          published_at: "2026-10-25T21:05:00Z",
+          title: expect.stringContaining("Jensen Huang"),
+          publisher: "The Motley Fool",
+          url: expect.stringMatching(/^https:\/\/www\.fool\.com\//),
+          sentiment: "positive",
+          reasoning: expect.stringContaining("106% year-over-year"),
+        });
+        const bad = await call(t, "research", {
+          symbol: "US:NVDA",
+          section: "news",
+          next: "nope~0000000000",
+        });
+        expect(bad.body.message).toContain("next does not continue");
+      },
+      { massive: { articles } },
+    );
+  });
 });

@@ -23,6 +23,7 @@ import {
 } from "../fred/sync.ts";
 import { type Instrument, readInstrument } from "../instruments.ts";
 import { errorFields, type Log } from "../log.ts";
+import type { Massive } from "../massive/client.ts";
 import { QueueClosed, SourceError } from "../source.ts";
 import { isTracked, markRead, TRACK_MS } from "../tracking.ts";
 import type { Writer } from "../writer.ts";
@@ -45,6 +46,7 @@ export type Markets = {
   yahoo: Yahoo;
   fred: Fred | null;
   finnhub: Finnhub | null;
+  massive: Massive | null;
   // what rules hand the research reads, none until they exist
   hooks: Hooks;
   trackMs: number;
@@ -63,6 +65,7 @@ export function markets(options: {
   yahoo: Yahoo;
   fred: Fred | null;
   finnhub?: Finnhub | null;
+  massive?: Massive | null;
   hooks?: Hooks;
   log: Log;
   trackMs?: number;
@@ -76,6 +79,7 @@ export function markets(options: {
     yahoo: options.yahoo.failFast(),
     fred: options.fred?.failFast() ?? null,
     finnhub: options.finnhub?.failFast() ?? null,
+    massive: options.massive?.failFast() ?? null,
     hooks: options.hooks ?? NO_HOOKS,
     trackMs: options.trackMs ?? TRACK_MS,
     quoteEveryMs: options.quoteEveryMs ?? DEFAULT_QUOTE_EVERY * MINUTE_MS,

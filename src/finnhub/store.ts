@@ -13,7 +13,7 @@ import type { Instrument } from "../instruments.ts";
 import { exclusive } from "../lock.ts";
 import { lastStarted } from "../runs.ts";
 import { monthsBack } from "../signals/relative.ts";
-import { DeadlinePassed, phraseOf, QueueClosed } from "../source.ts";
+import { DeadlinePassed, Paused, phraseOf, QueueClosed } from "../source.ts";
 import type { Writer } from "../writer.ts";
 import { WriterClosed } from "../writer.ts";
 import { addDays, dateOfWall, localDate } from "../zone.ts";
@@ -342,7 +342,10 @@ function recordRun(
 // The sections asked one after another through the shared limiter, then
 // stored in one write with a run for each, so nothing half-fetched lands
 // when a read's deadline passes. A section's failure is its own run; a
-// closing server or a passed deadline stores nothing and is thrown.
+// closing server or a passed deadline stores nothing and is thrown. A
+// tool's call refused while the source backs off never reached it, so
+// it records no run, which would hold off the job's retry; the sections
+// asked before it are stored, then the refusal is thrown.
 export async function refreshResearch(
   ctx: FinnhubContext,
   instrument: Instrument,
@@ -356,6 +359,7 @@ export async function refreshResearch(
   const symbol = finnhubSymbol(instrument);
   return exclusive(ctx.db, `${SOURCE}:${instrument.id}`, async () => {
     const outcomes: Outcome[] = [];
+    let paused: Paused | null = null;
     for (const section of sections) {
       if (!live()) throw new DeadlinePassed();
       const startedAt = ctx.clock.now();
@@ -364,9 +368,19 @@ export async function refreshResearch(
         outcomes.push({ fetched, startedAt });
       } catch (error) {
         if (aborts(error)) throw error;
+        if (error instanceof Paused) {
+          paused = error;
+          break;
+        }
         outcomes.push({ section, error, startedAt });
       }
     }
+    if (paused === null) return store(outcomes);
+    if (outcomes.length > 0) await store(outcomes);
+    throw paused;
+  });
+
+  function store(outcomes: readonly Outcome[]): Promise<SectionResult[]> {
     return ctx.writer.write((db) => {
       if (!live()) throw new DeadlinePassed();
       const now = ctx.clock.now();
@@ -387,7 +401,7 @@ export async function refreshResearch(
         };
       });
     });
-  });
+  }
 }
 
 // the time of day, UTC, the daily refresh is due: after the US close

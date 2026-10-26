@@ -66,6 +66,7 @@ const app = start({
   // read through the keys module, so the log masks it
   fredKey: store.source("fred"),
   finnhubKey: store.source("finnhub"),
+  massiveKey: store.source("massive"),
 });
 
 main.info("startup", {

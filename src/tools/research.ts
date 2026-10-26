@@ -3,9 +3,10 @@
 //
 // One share's research: the live quote and latest signals beside
 // Finnhub's metrics, analyst counts, earnings surprises, insider months
-// and next earnings event, each with its period, fetch time and
-// staleness. A share Finnhub covers with no research yet is fetched
-// inside the call. GET /research answers the same summaries for scripts.
+// and next earnings event, and Massive's news, each with its period,
+// fetch time and staleness. A share Finnhub covers with no research yet,
+// or one Massive covers with no news yet, is fetched inside the call.
+// GET /research answers the same Finnhub summaries for scripts.
 
 import {
   type EventRow,
@@ -25,6 +26,17 @@ import {
 } from "../finnhub/store.ts";
 import type { Instrument } from "../instruments.ts";
 import { errorFields } from "../log.ts";
+import {
+  NEWS_NOT_COVERED,
+  type NewsCursor,
+  type NewsRow,
+  NO_NEWS,
+  newsAsked,
+  eligible as newsEligible,
+  newsState,
+  readNews,
+  refreshNews,
+} from "../massive/store.ts";
 import { localDate } from "../zone.ts";
 import {
   cursor,
@@ -49,8 +61,10 @@ import {
   timeout,
 } from "./targets.ts";
 
-// news is read from Massive, which is not served yet
-export const NEWS_PENDING = "news comes from Massive";
+// headlines the overview shows
+export const HEADLINES = 5;
+// rows a news page reads before fitting them under 32 KiB
+const NEWS_PAGE_ROWS = 50;
 
 export const RESEARCH_SECTIONS = [
   "overview",
@@ -90,19 +104,78 @@ const EXPIRED = Symbol("expired");
 
 // Each resolved share Finnhub covers and has never answered for is
 // fetched inside the same deadline as its resolution: five calls, all
-// stored together or none. Two calls naming it share one fetch.
+// stored together or none. With news, each share or ETF Massive covers
+// and was never asked for gets its newest page the same way, the rest
+// of its 30 days coming with the job. Two calls naming one share one
+// fetch.
 export async function researchTargets(
   m: Markets,
   inputs: readonly string[],
-): Promise<{ targets: Target[]; inline: Map<string, Inline> }> {
+  options: { news?: boolean } = {},
+): Promise<{
+  targets: Target[];
+  inline: Map<string, Inline>;
+  news: Map<string, Inline>;
+}> {
   const deadline = m.clock.now() + m.callMs;
   const targets = await readTargets(m, inputs);
   const inline = new Map<string, Inline>();
+  const news = new Map<string, Inline>();
   const work: Promise<void>[] = [];
   let cancel = () => {};
   const expired = new Promise<typeof EXPIRED>((resolve) => {
     cancel = m.clock.at(deadline, () => resolve(EXPIRED));
   });
+  // the fetch raced with the deadline, its outcome set into into
+  const settle = (
+    into: Map<string, Inline>,
+    id: string,
+    fetch: Promise<unknown>,
+  ) =>
+    work.push(
+      Promise.race([fetch, expired]).then(
+        (done) => {
+          if (done === EXPIRED) {
+            into.set(id, { kind: "failed", error: timeout(m) });
+          }
+        },
+        (error: unknown) => {
+          into.set(id, { kind: "failed", error: itemError(m, error) });
+        },
+      ),
+    );
+  for (const t of targets) {
+    if (!options.news || !("instrument" in t) || news.has(t.instrument.id)) {
+      continue;
+    }
+    const instrument = t.instrument;
+    const client = m.massive;
+    if (client === null) {
+      news.set(instrument.id, { kind: "off" });
+      continue;
+    }
+    if (!newsEligible(instrument)) {
+      news.set(instrument.id, { kind: "not covered" });
+      continue;
+    }
+    news.set(instrument.id, { kind: "stored" });
+    if (newsAsked(m.db, instrument.id)) continue;
+    if (m.clock.now() >= deadline) {
+      news.set(instrument.id, { kind: "failed", error: timeout(m) });
+      continue;
+    }
+    const fetch = shared(m, `news:${instrument.id}`, deadline, (live) =>
+      refreshNews(
+        { db: m.db, clock: m.clock, writer: m.writer, massive: client },
+        instrument,
+        { live, maxPages: 1, client: client.within(live) },
+      ).then((r) => {
+        // the walk's own failure, recorded as its run, is this answer's
+        if (r.status === "failed") throw r.error;
+      }),
+    );
+    settle(news, instrument.id, fetch);
+  }
   for (const t of targets) {
     if (!("instrument" in t) || inline.has(t.instrument.id)) continue;
     const instrument = t.instrument;
@@ -129,28 +202,14 @@ export async function researchTargets(
         { live, hooks: m.hooks, client: client.within(live) },
       ),
     );
-    work.push(
-      Promise.race([fetch, expired]).then(
-        (done) => {
-          if (done === EXPIRED) {
-            inline.set(instrument.id, { kind: "failed", error: timeout(m) });
-          }
-        },
-        (error: unknown) => {
-          inline.set(instrument.id, {
-            kind: "failed",
-            error: itemError(m, error),
-          });
-        },
-      ),
-    );
+    settle(inline, instrument.id, fetch);
   }
   try {
     await Promise.all(work);
   } finally {
     cancel();
   }
-  return { targets, inline };
+  return { targets, inline, news };
 }
 
 type Values = Record<string, number | string | null>;
@@ -241,6 +300,54 @@ export function researchSummary(
   };
 }
 
+const newsMessage = (n: Inline | undefined): string | null =>
+  n?.kind === "off"
+    ? NO_NEWS
+    : n?.kind === "not covered"
+      ? NEWS_NOT_COVERED
+      : null;
+
+const newsItem = (r: NewsRow) => ({
+  published_at: iso(r.publishedAt),
+  title: r.title,
+  publisher: r.publisher,
+  url: r.url,
+  sentiment: r.sentiment,
+  reasoning: r.reasoning,
+});
+
+// Massive's part of an overview: the newest headlines, or one message
+// when Massive is off or does not cover the instrument.
+export function newsSummary(
+  m: Markets,
+  instrument: Instrument,
+  n: Inline | undefined,
+) {
+  const message = newsMessage(n);
+  if (message !== null) return { source: "massive", message };
+  const state = newsState(m.db, instrument.id, m.clock.now());
+  return {
+    source: "massive",
+    ...(n?.kind === "failed" ? n.error : {}),
+    fetched_at: iso(state.fetchedAt),
+    stale: state.stale,
+    headlines: readNews(m.db, instrument.id, HEADLINES).map((r) => ({
+      published_at: iso(r.publishedAt),
+      title: r.title,
+      publisher: r.publisher,
+      sentiment: r.sentiment,
+    })),
+  };
+}
+
+// a news page goes on below the last article it showed
+const newsPosition = (r: NewsRow): string => `${r.publishedAt}.${r.id}`;
+
+function readNewsPosition(position: string): NewsCursor | null {
+  const m = /^(\d{1,15})\.(.+)$/.exec(position);
+  return m === null ? null : { publishedAt: Number(m[1]), id: m[2]! };
+}
+
 export type ResearchArgs = {
   symbol: string;
   section: ResearchSection;
@@ -252,7 +359,7 @@ export function parseResearch(input: unknown): ResearchArgs {
   return {
     symbol: text(f.symbol, "symbol"),
     section: oneOf(f.section, "section", RESEARCH_SECTIONS, "overview"),
-    next: optionalText(f.next, "next", 200),
+    next: optionalText(f.next, "next", 300),
   };
 }
 
@@ -263,15 +370,21 @@ export async function researchAnswer(
   const { next, ...asked } = args;
   let start: string | null = null;
   if (next !== null) {
-    if (args.section === "overview" || args.section === "news") {
+    if (args.section === "overview") {
       throw new ArgError(`${args.section} has no next page`);
     }
     start = readCursor(next, asked);
-    if (start === null) {
+    if (
+      start === null ||
+      (args.section === "news" && readNewsPosition(start) === null)
+    ) {
       throw new ArgError("next does not continue these arguments");
     }
   }
-  const { targets, inline } = await researchTargets(m, [args.symbol]);
+  const withNews = args.section === "overview" || args.section === "news";
+  const { targets, inline, news } = await researchTargets(m, [args.symbol], {
+    news: withNews,
+  });
   const target = targets[0]!;
   if ("error" in target) {
     return errorResult({ input: target.input, ...target.error });
@@ -297,12 +410,40 @@ export async function researchAnswer(
         ...head,
         quote,
         research: researchSummary(m, instrument, inline.get(instrument.id)),
-        news: { message: NEWS_PENDING },
+        news: newsSummary(m, instrument, news.get(instrument.id)),
       }),
     );
   }
   if (args.section === "news") {
-    return textResult(JSON.stringify({ ...head, message: NEWS_PENDING }));
+    const own = news.get(instrument.id);
+    const message = newsMessage(own);
+    const state = newsState(m.db, instrument.id, m.clock.now());
+    const from = start === null ? null : readNewsPosition(start);
+    const rows =
+      message === null
+        ? readNews(m.db, instrument.id, NEWS_PAGE_ROWS + 1, from)
+        : [];
+    const items = rows.slice(0, NEWS_PAGE_ROWS).map(newsItem);
+    const page = fitPage(
+      items,
+      (count) => ({
+        ...head,
+        source: "massive",
+        ...(message !== null
+          ? { message }
+          : {
+              ...(own?.kind === "failed" ? own.error : {}),
+              fetched_at: iso(state.fetchedAt),
+              stale: state.stale,
+            }),
+        next:
+          count > 0 && count < rows.length
+            ? cursor(newsPosition(rows[count - 1]!), asked)
+            : null,
+      }),
+      "articles",
+    );
+    return textResult(page.text);
   }
   const kind = KINDS[args.section];
   const own = inline.get(instrument.id);
