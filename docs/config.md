@@ -16,7 +16,7 @@ runs what `parseCli()` answers. `HELP` in `src/config.ts` is the
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `--listen <host:port>` | `127.0.0.1:11237` | bind address; the port is after the last colon |
+| `--listen <host:port>` | `127.0.0.1:11238` | bind address; the port is after the last colon |
 | `--data <dir>` | `~/.1ctx-markets` | holds `markets.db` and `secrets/` |
 | `--quote-every <min>` | 5 | minutes between quote passes; a quote two periods behind is `quote overdue` |
 | `--track-days <days>` | 30 | an instrument read within this many days stays tracked; news of an untracked one is pruned (`pruneNews`) |

@@ -9,7 +9,7 @@ set -euo pipefail
 
 BIN=${1:-bin/1ctx-markets}
 BIN=$(cd "$(dirname "$BIN")" && pwd)/$(basename "$BIN")
-PORT=${SMOKE_PORT:-11238}
+PORT=${SMOKE_PORT:-11239}
 URL=http://127.0.0.1:$PORT
 RUN=bin/smoke-$$
 mkdir -p bin

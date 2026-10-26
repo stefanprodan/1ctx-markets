@@ -96,7 +96,7 @@ The first start writes the bearer key every request carries to
 `~/.1ctx-markets/secrets/bearer.key`, readable only by you; it starts
 with `1ctx-markets-`, and an existing key is kept.
 
-The server listens on `127.0.0.1:11237`, serves MCP at `/mcp`, and
+The server listens on `127.0.0.1:11238`, serves MCP at `/mcp`, and
 keeps `markets.db` in `~/.1ctx-markets`. `--listen`, `--data`,
 `--quote-every` (minutes between quote syncs, 5 by default) and
 `--track-days` (how long an instrument stays synced after its last
@@ -108,7 +108,7 @@ Connect an MCP client over Streamable HTTP with the bearer in the
 `Authorization` header. For Claude Code:
 
 ```sh
-claude mcp add --transport http markets http://127.0.0.1:11237/mcp \
+claude mcp add --transport http markets http://127.0.0.1:11238/mcp \
   --header "Authorization: Bearer $(cat ~/.1ctx-markets/secrets/bearer.key)"
 ```
 
@@ -116,7 +116,7 @@ Scripts can read quotes over HTTP with the same key:
 
 ```sh
 curl -H "Authorization: Bearer $(cat ~/.1ctx-markets/secrets/bearer.key)" \
-  'http://127.0.0.1:11237/quotes?symbols=NVDA,VVSM.DE,BTC-USD'
+  'http://127.0.0.1:11238/quotes?symbols=NVDA,VVSM.DE,BTC-USD'
 ```
 
 `make help` lists the other tasks (`test`, `lint`, `smoke`).

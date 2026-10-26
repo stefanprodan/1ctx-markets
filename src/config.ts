@@ -8,7 +8,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { MINUTE_MS } from "./clock.ts";
 
-export const DEFAULT_LISTEN = "127.0.0.1:11237";
+export const DEFAULT_LISTEN = "127.0.0.1:11238";
 export const DEFAULT_QUOTE_EVERY = 5;
 export const DEFAULT_TRACK_DAYS = 30;
 // the keyless sources a start can turn on, each with --source <name>
