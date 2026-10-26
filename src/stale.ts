@@ -42,7 +42,7 @@ type Scoped = Pick<Instrument, "id" | "source" | "market" | "addedAt">;
 const failed = (db: Db, i: Scoped, job: string) =>
   lastRun(db, i.source, job, i.market)?.status === "failed";
 
-// with due, overdue after two periods unrefreshed, as after downtime
+// with due: no pass refreshed it within two periods, as after downtime
 export function quoteStale(
   db: Db,
   instrument: Scoped,
@@ -76,7 +76,7 @@ export function quoteStale(
   return reasons;
 }
 
-// a session left from Friday on Monday is what failed checks already mark
+// a Friday session still stored on Monday is left to the failed checks
 function lastQuoteDue(db: Db, market: string, now: number): number | null {
   if (market === CRYPTO) return now;
   const s = readSession(db, market);
@@ -115,7 +115,7 @@ export function barsStale(
   return reasons;
 }
 
-// a restart after downtime is due the same way
+// read from stored state alone, so a restart after downtime catches up
 export function barsDue(
   db: Db,
   source: string,
