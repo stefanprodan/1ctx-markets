@@ -8,7 +8,7 @@ import {
   readSession,
 } from "../calendars.ts";
 import { MINUTE_MS } from "../clock.ts";
-import { type Instrument, readInstrument } from "../instruments.ts";
+import { type Instrument, Moved, readInstrument } from "../instruments.ts";
 import type { Log } from "../log.ts";
 import type { QuoteRow } from "../quotes.ts";
 import { endRun, failRun, lastStarted, runJob, startRun } from "../runs.ts";
@@ -249,6 +249,8 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
           });
         }
       } catch (e) {
+        // another source holds it now, and its own jobs keep its bars
+        if (e instanceof Moved) continue;
         attempts.push({ instrument: instrument.id, at, error: e });
         log.warn("yahoo bars failed", {
           instrument: instrument.id,

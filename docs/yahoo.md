@@ -192,6 +192,13 @@ inside a call in `docs/tools.md`; rule pauses in `docs/rules.md`.
   and backfill or keep the stored history instead. Every holder
   re-checks the deadline under the lock, since the wait may have
   outlasted it.
+- **Work on a stored instrument re-reads it under the lock and in each
+  write** (`checkSource()` in `src/instruments.ts`) and is refused
+  (`Moved`) when its source or source symbol changed, so a pass or
+  read begun before a source switch never mixes histories or relabels
+  bars. A fetch never takes over a key another source holds
+  (`checkOwner()`); only the switch moves it. A bar pass skips a moved
+  instrument without a failed run.
 
 ## Jobs and their call budget
 

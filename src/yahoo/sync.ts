@@ -24,6 +24,8 @@ import {
 import { type Clock, DAY_MS, MINUTE_MS } from "../clock.ts";
 import type { Db } from "../db/index.ts";
 import {
+  checkOwner,
+  checkSource,
   type Instrument,
   readBySourceSymbol,
   type Unit,
@@ -484,14 +486,16 @@ export async function addInstrument(
     // stored bars may be newer than this answer, so they are fetched
     // again under the lock
     if (dailyRange(ctx.db, id) !== null) {
-      const instrument = await ctx.writer.write((db) =>
-        upsertInstrument(db, fields(answer), ctx.clock.now()),
-      );
+      const instrument = await ctx.writer.write((db) => {
+        checkOwner(db, id, SOURCE);
+        return upsertInstrument(db, fields(answer), ctx.clock.now());
+      });
       return { instrument, ...(await backfillHeld(ctx, instrument)) };
     }
     const short = startsShort(answer, monday);
     // the instrument and its bars land together, or neither does
     return ctx.writer.write((db) => {
+      checkOwner(db, id, SOURCE);
       const now = ctx.clock.now();
       const instrument = upsertInstrument(db, fields(answer), now);
       if (short) return { instrument, rows: 0, changedFrom: null };
@@ -559,6 +563,7 @@ export async function fetchInstrument(
     if (dailyRange(ctx.db, id) !== null) {
       return ctx.writer.write((db) => {
         if (!live()) throw expired();
+        checkOwner(db, id, SOURCE);
         const instrument = upsertInstrument(
           db,
           fields(answer),
@@ -571,6 +576,7 @@ export async function fetchInstrument(
     if (startsShort(answer, monday)) throw cutShort();
     return ctx.writer.write((db) => {
       if (!live()) throw expired();
+      checkOwner(db, id, SOURCE);
       const now = ctx.clock.now();
       const instrument = upsertInstrument(db, fields(answer), now);
       store(
@@ -596,6 +602,7 @@ export async function catchUp(
   return exclusive(ctx.db, instrument.id, async () => {
     // the lock may have been held past the deadline
     if (!live()) throw expired();
+    checkSource(ctx.db, instrument);
     const bars = await refetchAnswer(ctx, instrument, live);
     if (!live()) throw expired();
     const quote = await ctx.yahoo.spark([instrument.sourceSymbol]);
@@ -613,7 +620,10 @@ export function backfill(
   ctx: YahooContext,
   instrument: Instrument,
 ): Promise<Written> {
-  return exclusive(ctx.db, instrument.id, () => backfillHeld(ctx, instrument));
+  return exclusive(ctx.db, instrument.id, () => {
+    checkSource(ctx.db, instrument);
+    return backfillHeld(ctx, instrument);
+  });
 }
 
 // fetched in full before anything is written
@@ -648,8 +658,9 @@ async function backfillAnswer(
     ctx.clock.now(),
   );
   checkAnswer(instrument, answer);
-  return (db) =>
-    store(
+  return (db) => {
+    checkSource(db, instrument);
+    return store(
       db,
       ctx.clock.now(),
       instrument,
@@ -657,6 +668,7 @@ async function backfillAnswer(
       { since: monday, splits: [...triggers, answer], rescale },
       ctx.rules,
     );
+  };
 }
 
 // a split or rescale asks the whole history once, so no day keeps an old scale
@@ -664,7 +676,10 @@ export function refetch(
   ctx: YahooContext,
   instrument: Instrument,
 ): Promise<Written> {
-  return exclusive(ctx.db, instrument.id, () => refetchHeld(ctx, instrument));
+  return exclusive(ctx.db, instrument.id, () => {
+    checkSource(ctx.db, instrument);
+    return refetchHeld(ctx, instrument);
+  });
 }
 
 async function refetchHeld(
@@ -701,6 +716,7 @@ async function refetchAnswer(
     // old price levels stop now, since the whole history may be refused
     await ctx.writer.write((w) => {
       if (!live()) throw expired();
+      checkSource(w, instrument);
       ctx.rules?.rescaled(w, instrument.id, ctx.clock.now());
     });
     const marks = refusedOf(db);
@@ -728,8 +744,10 @@ async function refetchAnswer(
       }
     };
   }
-  return (db) =>
-    store(db, ctx.clock.now(), instrument, answer, null, ctx.rules);
+  return (db) => {
+    checkSource(db, instrument);
+    return store(db, ctx.clock.now(), instrument, answer, null, ctx.rules);
+  };
 }
 
 // The day change is worked out from price and previous close, never

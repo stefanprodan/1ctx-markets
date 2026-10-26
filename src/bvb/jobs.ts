@@ -14,7 +14,7 @@ import {
   type StoredSession,
 } from "../calendars.ts";
 import { MINUTE_MS } from "../clock.ts";
-import type { Instrument } from "../instruments.ts";
+import { type Instrument, Moved } from "../instruments.ts";
 import type { Log } from "../log.ts";
 import type { QuoteRow } from "../quotes.ts";
 import { endRun, failRun, lastStarted, startRun } from "../runs.ts";
@@ -257,6 +257,8 @@ export function bvbJobs(options: BvbJobsOptions): BvbJobs {
         rows += (await refetch(ctx, instrument)).rows;
         done.push(instrument.id);
       } catch (error) {
+        // another source holds it now, and its own jobs keep its bars
+        if (error instanceof Moved) continue;
         failures.push({ instrument: instrument.id, at, error });
         log.warn("bvb bars failed", {
           instrument: instrument.id,

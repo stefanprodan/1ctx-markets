@@ -23,6 +23,8 @@ import { type Clock, DAY_MS, MINUTE_MS } from "../clock.ts";
 import type { Db } from "../db/index.ts";
 import { Refused } from "../fred/sync.ts";
 import {
+  checkOwner,
+  checkSource,
   type Instrument,
   type InstrumentFields,
   readInstruments,
@@ -437,8 +439,10 @@ async function refetchAnswer(
   const range = dailyRange(db, instrument.id);
   if (range === null) {
     const { history, since } = await wholeHistory(ctx, instrument);
-    return (w) =>
-      storeWhole(w, clock.now(), instrument, history, since, ctx.rules);
+    return (w) => {
+      checkSource(w, instrument);
+      return storeWhole(w, clock.now(), instrument, history, since, ctx.rules);
+    };
   }
   const now = clock.now();
   const since = range.lastFinal ?? range.first;
@@ -456,18 +460,24 @@ async function refetchAnswer(
   const bars = barsOf(window, latest);
   const moved = movedDays(db, instrument.id, bars);
   if (moved.length === 0) {
-    return (w) => storeWindow(w, clock.now(), instrument, window, ctx.rules);
+    return (w) => {
+      checkSource(w, instrument);
+      return storeWindow(w, clock.now(), instrument, window, ctx.rules);
+    };
   }
   if (rescaleOf(moved, bars) !== null) {
     await ctx.writer.write((w) => {
       if (!live()) throw expired();
+      checkSource(w, instrument);
       ctx.rules?.rescaled(w, instrument.id, clock.now());
     });
   }
   if (!live()) throw expired();
   const { history, since: start } = await wholeHistory(ctx, instrument);
-  return (w) =>
-    storeWhole(w, clock.now(), instrument, history, start, ctx.rules);
+  return (w) => {
+    checkSource(w, instrument);
+    return storeWhole(w, clock.now(), instrument, history, start, ctx.rules);
+  };
 }
 
 export function refetch(
@@ -475,6 +485,7 @@ export function refetch(
   instrument: Instrument,
 ): Promise<Written> {
   return exclusive(ctx.db, instrument.id, async () => {
+    checkSource(ctx.db, instrument);
     const write = await refetchAnswer(ctx, instrument);
     return ctx.writer.write((db) =>
       barsAnswered(db, instrument, write(db), ctx.clock.now()),
@@ -537,6 +548,8 @@ export async function fetchInstrument(
     if (dailyRange(ctx.db, planned.id) !== null) {
       return ctx.writer.write((db) => {
         if (!live()) throw expired();
+        // a Yahoo row flips to the feed only with its history refetched
+        checkOwner(db, planned.id, SOURCE);
         const now = ctx.clock.now();
         const instrument = upsertInstrument(db, fieldsOf(meta), now);
         storeBvbQuotes(db, [quote], ctx.rules, now);
@@ -547,6 +560,7 @@ export async function fetchInstrument(
     if (!live()) throw expired();
     return ctx.writer.write((db) => {
       if (!live()) throw expired();
+      checkOwner(db, planned.id, SOURCE);
       const now = ctx.clock.now();
       const instrument = upsertInstrument(db, fieldsOf(meta), now);
       barsAnswered(
@@ -569,6 +583,7 @@ export async function catchUp(
 ): Promise<Instrument> {
   return exclusive(ctx.db, instrument.id, async () => {
     if (!live()) throw expired();
+    checkSource(ctx.db, instrument);
     const bars = await refetchAnswer(ctx, instrument, live);
     if (!live()) throw expired();
     const quote = await quoteNow(ctx, instrument);

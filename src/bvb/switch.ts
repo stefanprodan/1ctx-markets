@@ -13,6 +13,7 @@ import { MINUTE_MS } from "../clock.ts";
 import type { Db } from "../db/index.ts";
 import { Refused } from "../fred/sync.ts";
 import {
+  checkSource,
   type Instrument,
   readInstruments,
   upsertInstrument,
@@ -125,6 +126,7 @@ export function sourceSwitch(options: {
     }
     const quote = await yahoo.yahoo.spark([answer.symbol]);
     await writer.write((db) => {
+      checkSource(db, i);
       clear(db, i.id, true);
       storeSwitched(db, clock.now(), answer, quote, monday, yahoo.rules);
     });
@@ -145,6 +147,7 @@ export function sourceSwitch(options: {
     });
     const quote = await quoteNow(ctx, planned);
     await writer.write((db) => {
+      checkSource(db, i);
       clear(db, i.id, false);
       const now = clock.now();
       const instrument = upsertInstrument(db, fieldsOf(meta), now);
@@ -170,9 +173,10 @@ export function sourceSwitch(options: {
     );
     for (const i of movers) {
       try {
-        await exclusive(db, i.id, () =>
-          bvb === null ? toYahoo(i) : toBvb(bvb, i),
-        );
+        await exclusive(db, i.id, () => {
+          checkSource(db, i);
+          return bvb === null ? toYahoo(i) : toBvb(bvb, i);
+        });
         moved++;
       } catch (error) {
         // a listing the other source lacks stays where it is

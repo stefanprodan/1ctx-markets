@@ -180,6 +180,11 @@ exchange: one client, its parsers, its session, the same tables.
   feed keeps them, since they date where raw volumes change scale.
 - **A listing the new source lacks stays where it is** (an index or
   bond on Yahoo answers `no_data`).
+- **Only the switch moves an instrument between sources.** Work from
+  the old source that began before it is refused under the lock
+  (`checkSource()`, `docs/yahoo.md`), and an inline fetch of a key
+  stored from Yahoo is refused, since flipping its source would keep
+  Yahoo's bars under the feed's name.
 - **The `sources` table is written only once the switch completed,**
   so a restart during one redoes it; a run left `running` or `failed`
   is redone too. Until it lands the market's instruments are

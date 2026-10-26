@@ -4,11 +4,12 @@
 import { describe, expect, test } from "bun:test";
 import { type App, start } from "../src/app.ts";
 import { readBars } from "../src/bars.ts";
-import { MARKET } from "../src/bvb/client.ts";
+import { bvb, MARKET } from "../src/bvb/client.ts";
 import { readSources } from "../src/bvb/switch.ts";
+import { fetchInstrument } from "../src/bvb/sync.ts";
 import { MINUTE_MS } from "../src/clock.ts";
 import { type Db, open } from "../src/db/index.ts";
-import { readInstrument } from "../src/instruments.ts";
+import { Moved, readInstrument } from "../src/instruments.ts";
 import { keys, requireBearer } from "../src/keys.ts";
 import { logger } from "../src/log.ts";
 import { readQuote } from "../src/quotes.ts";
@@ -16,6 +17,8 @@ import { lastStarted, startRun } from "../src/runs.ts";
 import type { Fetch } from "../src/source.ts";
 import { barsStale, quoteStale, STALE, SWITCH } from "../src/stale.ts";
 import { readTargets } from "../src/tools/targets.ts";
+import { writer } from "../src/writer.ts";
+import { backfill, catchUp, refetch } from "../src/yahoo/sync.ts";
 import { SECRETS } from "./helpers/app.ts";
 import { bothSources, wapi } from "./helpers/bvb.ts";
 import { type FakeClock, fakeClock } from "./helpers/clock.ts";
@@ -133,6 +136,51 @@ describe("switching the Bucharest market's source", () => {
     expect(quoteStale(db, readInstrument(db, "BVB:TLV")!)).not.toContain(
       STALE.switchPending,
     );
+    db.close();
+  });
+
+  test("work begun on the old source writes nothing into an instrument the switch moved", async () => {
+    const clock = fakeClock(NOW);
+    const { db } = open(":memory:", clock);
+    const f = await bothSources({ charts: await charts() });
+    await withTlv(clock, db, f.fetch);
+    // as a Yahoo pass or tool read it before the switch
+    const before = readInstrument(db, "BVB:TLV")!;
+    const on = boot(db, clock, f.fetch, true);
+    await settle(on, clock);
+    const bars = readBars(db, "BVB:TLV", "1d");
+    const ctx = { db, clock, yahoo: on.yahoo, writer: on.writer };
+    await expect(refetch(ctx, before)).rejects.toBeInstanceOf(Moved);
+    await expect(backfill(ctx, before)).rejects.toBeInstanceOf(Moved);
+    await expect(catchUp(ctx, before, () => true)).rejects.toBeInstanceOf(
+      Moved,
+    );
+    await on.stop();
+    expect(readBars(db, "BVB:TLV", "1d")).toEqual(bars);
+    expect(readInstrument(db, "BVB:TLV")!.source).toBe("bvb");
+    db.close();
+  });
+
+  test("a feed fetch of a key stored from Yahoo leaves it to the switch", async () => {
+    const clock = fakeClock(NOW);
+    const { db } = open(":memory:", clock);
+    const f = await bothSources({ charts: await charts() });
+    await withTlv(clock, db, f.fetch);
+    const bars = readBars(db, "BVB:TLV", "1d");
+    const exchange = bvb({ clock, fetch: f.fetch });
+    const ctx = { db, clock, bvb: exchange, writer: writer(db) };
+    await expect(
+      drive(
+        clock,
+        exchange,
+        fetchInstrument(ctx, "TLV", "BVB:TLV", () => true),
+      ),
+    ).rejects.toBeInstanceOf(Moved);
+    expect(readInstrument(db, "BVB:TLV")).toMatchObject({
+      source: "yahoo",
+      sourceSymbol: "TLV.RO",
+    });
+    expect(readBars(db, "BVB:TLV", "1d")).toEqual(bars);
     db.close();
   });
 
