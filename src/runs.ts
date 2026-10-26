@@ -19,8 +19,7 @@ export type Run = {
   id: number;
   source: string;
   job: string;
-  // the market of a quote or bar pass, the instrument of its own bar
-  // refetch, null otherwise
+  // a Yahoo pass's market; the instrument of a refetch and other sources' runs
   scope: string | null;
   startedAt: number;
   endedAt: number | null;
@@ -132,8 +131,7 @@ export function lastRun(
   );
 }
 
-// the latest run of the job in the scope with this status, running ones
-// included, for when a pass is next due
+// the latest run, running ones included, for when a pass is next due
 export function lastStarted(
   db: Db,
   source: string,

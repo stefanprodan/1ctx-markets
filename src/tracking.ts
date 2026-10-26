@@ -1,10 +1,8 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// There is no ticker list: an instrument is tracked while a read named
-// it within the window or a rule reads it, and only tracked ones are
-// synced on a schedule.
-// Searches and jobs never count as reads.
+// No ticker list: tracked means read within the window or read by a rule;
+// searches and jobs never count.
 
 import { DAY_MS } from "./clock.ts";
 import type { Db } from "./db/index.ts";

@@ -60,8 +60,7 @@ export function dailyRange(
 const volumeOf = (v: number | null): number | null =>
   v === null ? null : Math.round(v);
 
-// what a write did: the rows it was given, and the earliest date whose
-// stored values changed, for whatever is computed from past bars
+// changedFrom: the earliest changed date, for what is computed from past bars
 export type Written = { rows: number; changedFrom: string | null };
 
 export const earliest = (a: string | null, b: string | null) =>
@@ -76,8 +75,7 @@ const sameValues = (a: Stored, b: Bar) =>
   a.close === b.close &&
   a.volume === volumeOf(b.volume);
 
-// The source's values replace the stored ones, corrections included; a
-// row is written only when it changes, and a final row stays final.
+// corrections replace stored values; a final row stays final
 export function upsertBars(
   db: Db,
   instrument: string,
@@ -117,9 +115,7 @@ export function upsertBars(
   return { rows: bars.length, changedFrom };
 }
 
-// Deletes the daily bars from from to to, both included, that are not
-// in keep: a day the source has no bar for had no trading. Answers the
-// earliest date deleted.
+// a day the source has no bar for had no trading
 export function deleteDailyBars(
   db: Db,
   instrument: string,
@@ -141,8 +137,6 @@ export function deleteDailyBars(
   return gone[0]?.date ?? null;
 }
 
-// Monday to Sunday by the exchange's date; final once the week's Sunday
-// has ended in its zone and its last daily bar is final.
 export function weeksOf(
   days: readonly Bar[],
   latest: Session | null,
@@ -178,8 +172,7 @@ export function weeksOf(
   return out.sort((a, b) => (a.date < b.date ? -1 : 1));
 }
 
-// Rebuilds the weeks from the one holding from, or all of them; a week
-// whose days are gone goes too.
+// a week whose days are gone goes too
 export function rebuildWeeks(
   db: Db,
   instrument: string,

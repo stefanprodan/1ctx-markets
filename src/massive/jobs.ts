@@ -1,10 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Massive's scheduled work: every 30 minutes, each tracked US share's
-// and ETF's news since its newest stored article. A minute tick takes
-// the tickers due, longest waiting first, and asks no page after its
-// budget, so ticks never pile up; a walk cut there goes on next time.
+// no page past a tick's budget, so ticks never pile up
 
 import { MINUTE_MS } from "../clock.ts";
 import type { Log } from "../log.ts";

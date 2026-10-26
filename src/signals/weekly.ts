@@ -23,9 +23,7 @@ export function weeklySeries(weeks: readonly Close[]): WeeklyRow[] {
   return rows;
 }
 
-// The current week's close replaced by the price. replacesLast says
-// the week is the last stored one; last is the final row of the week
-// before it.
+// replacesLast: the live week is stored; last is the prior week's final row
 export function liveWeekly(
   weeks: readonly Close[],
   last: WeeklyRow | null,

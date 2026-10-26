@@ -1,6 +1,5 @@
-// Shared recorder for the source probes: one real call, one fixture file.
-// Keys travel only in headers; stored URLs and headers are scrubbed anyway
-// in case a source echoes a key back (query param or next_url cursor).
+// One real call, one fixture; a key in a header, query or echoed cursor
+// never reaches disk.
 
 const MAX_BYTES = 1_000_000;
 const SECRET_PARAMS = ["token", "apikey", "apiKey", "api_key"];
@@ -66,7 +65,7 @@ export async function record(
   };
   edit?.(fixture);
   let out = JSON.stringify(fixture, null, 2) + "\n";
-  // A source may echo the key (e.g. inside a cursor URL); never let it reach disk.
+  // a source may echo the key, inside a cursor URL for one
   if (out.includes(key)) out = out.split(key).join("REDACTED");
   if (out.length > MAX_BYTES)
     throw new Error(`${file}: fixture over 1 MB, use a smaller limit`);

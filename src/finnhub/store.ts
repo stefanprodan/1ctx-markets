@@ -1,10 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Finnhub's research and earnings events: which instruments it is asked
-// about, the five sections fetched for one, and how each lands. Every
-// section records its own run, scoped to the instrument, so one failing
-// section is stale alone; an answer with no data keeps the stored rows.
+// a run per section, scoped to the instrument, so one failure is stale alone
 
 import type { Clock } from "../clock.ts";
 import { DAY_MS, MINUTE_MS } from "../clock.ts";
@@ -59,8 +56,7 @@ export const STALE_RESEARCH = {
   noData: "no data in the last answer",
 } as const;
 
-// db is for reads; every write goes through writer; finnhub is null
-// while the source is off
+// db is for reads; writes go through writer; null while the source is off
 export type FinnhubContext = {
   db: Db;
   clock: Clock;
@@ -68,9 +64,7 @@ export type FinnhubContext = {
   finnhub: Finnhub | null;
 };
 
-// An event a rule waits on, by its fiscal key. Rules, when they exist,
-// answer these, so the calendar is asked hourly around its date and
-// retention keeps it.
+// rules answer these, so the calendar is asked hourly and retention keeps it
 export type EventKey = {
   instrument: string;
   fiscalYear: number;
@@ -190,10 +184,7 @@ const METRIC_COLUMNS: Record<keyof Metric, string> = {
   beta: "beta",
 };
 
-// Upserts an event by its fiscal quarter, so a moved date updates it.
-// Actuals once seen are kept when a later answer leaves them out, and
-// the time they were first seen never moves. Answers the keys it just
-// saw reported.
+// by fiscal quarter, so a moved date updates the event; actuals are kept
 function upsertEvents(
   db: Db,
   instrument: string,
@@ -352,13 +343,7 @@ function recordRun(
   );
 }
 
-// The sections asked one after another through the shared limiter, then
-// stored in one write with a run for each, so nothing half-fetched lands
-// when a read's deadline passes. A section's failure is its own run; a
-// closing server or a passed deadline stores nothing and is thrown. A
-// tool's call refused while the source backs off never reached it, so
-// it records no run, which would hold off the job's retry; the sections
-// asked before it are stored, then the refusal is thrown.
+// one write after every fetch, so nothing half-fetched lands
 export async function refreshResearch(
   ctx: FinnhubContext,
   instrument: Instrument,
@@ -370,6 +355,7 @@ export async function refreshResearch(
   const live = options.live ?? (() => true);
   const hooks = options.hooks ?? NO_HOOKS;
   const symbol = finnhubSymbol(instrument);
+  // its own lock key, so research never waits on the instrument's bar fetch
   return exclusive(ctx.db, `${SOURCE}:${instrument.id}`, async () => {
     const outcomes: Outcome[] = [];
     let paused: Paused | null = null;
@@ -381,6 +367,7 @@ export async function refreshResearch(
         outcomes.push({ fetched, startedAt });
       } catch (error) {
         if (aborts(error)) throw error;
+        // no run: it would hold off the job's retry
         if (error instanceof Paused) {
           paused = error;
           break;
@@ -437,7 +424,7 @@ export function sectionDue(
   return ok === null || ok.startedAt < dueAt(now);
 }
 
-// whether any section of the instrument was ever asked
+// whether any section ever ended well
 export function hasResearch(db: Db, instrument: string): boolean {
   return (
     db
@@ -457,7 +444,6 @@ export type SectionState = {
   stale: string[];
 };
 
-// whether the section holds rows from any answer
 function hasRows(db: Db, instrument: string, section: Section): boolean {
   const sql =
     section === "calendar"
@@ -467,9 +453,6 @@ function hasRows(db: Db, instrument: string, section: Section): boolean {
   return (db.query(sql).get(...args) as { n: number }).n > 0;
 }
 
-// A section's own runs only: never asked, its last run failed, or its
-// daily refresh is due and has not ended well; and rows kept from an
-// earlier answer while the last one had no data.
 export function sectionState(
   db: Db,
   instrument: string,
@@ -576,8 +559,7 @@ export function readEvent(db: Db, key: EventKey): EventRow | null {
   );
 }
 
-// days an event past its date still counts as next while it awaits
-// its results
+// days a passed event still counts as next while it awaits results
 export const AWAITING_DAYS = 7;
 
 // The instrument's earliest event dated from its exchange's today on,
@@ -618,8 +600,6 @@ export function eventStatus(
   return e.date > today ? "scheduled" : "awaiting results";
 }
 
-// Research rows past 24 months go, the one metric row stays; events past
-// 24 months go unless a rule waits on them.
 export function pruneResearch(
   db: Db,
   now: number,

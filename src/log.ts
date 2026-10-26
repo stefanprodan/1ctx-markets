@@ -1,10 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// One slog-text line per event on stderr, timed by the clock. Every key
-// value read so far is masked out of the message and the fields before
-// a line is written, so a key that reaches a log call never reaches the
-// log.
+// Every key value read is masked before a line is written.
 
 import type { Clock } from "./clock.ts";
 

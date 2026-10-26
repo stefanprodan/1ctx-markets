@@ -1,10 +1,8 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Keys are files in the secrets directory beside the database, one bare
-// value per file, and only this module reads them. A value goes to the
-// caller that asked for it and to the logger's mask, never to a row, a
-// log line, an error message or an answer.
+// The only reader of key files; a value goes to its caller and the log
+// mask, nowhere else.
 
 import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";

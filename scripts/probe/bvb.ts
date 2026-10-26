@@ -183,8 +183,7 @@ async function detail(name: string, symbol: string, note?: string) {
   );
 }
 
-// Unix seconds for the history windows. A fixed "to" keeps re-recordings
-// comparable; countback is required by the route (404 without it).
+// countback is required by the route (404 without it)
 const now = Math.floor(Date.now() / 1000);
 const DAY = 86400;
 const BONUS_FROM = Date.parse("2026-07-01T00:00:00Z") / 1000;
@@ -228,7 +227,7 @@ const cases: Record<string, () => Promise<void>> = {
       "wapi-history-tlv-1w",
       `history?symbol=TLV&from=${now - 120 * DAY}&to=${now}&rs=1W&ajust=1&countback=12&currencyCode=RON`,
     ),
-  // The 2026-07-16 bonus-share issue: does ajust=1 rewrite the bars before it?
+  // the 2026-07-16 bonus issue, adjusted and unadjusted
   "wapi-history-tlv-1d-bonus-2026": () =>
     wapi(
       "wapi-history-tlv-1d-bonus-2026",

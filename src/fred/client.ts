@@ -55,20 +55,16 @@ export type Observations = {
 
 export type ObservationRange =
   // the latest n, newest first on the wire
-  | { limit: number }
-  // from this date on
-  | { start: string };
+  { limit: number } | { start: string };
 
 export type Fred = {
   series(id: string): Promise<SeriesMeta>;
   observations(id: string, range: ObservationRange): Promise<Observations>;
-  // the same client and queue, failing at once while the queue is
-  // paused, for a tool answering a caller
+  // fails at once while the queue backs off, for a tool
   failFast(): Fred;
   // failing fast, and starting no call once live() is false
   within(live: () => boolean): Fred;
-  // At shutdown: closes the queue and fails a call waiting for its
-  // minute's slot, so no call goes out after.
+  // at shutdown: fails waiting calls, so none goes out after
   close(): void;
 };
 
@@ -156,9 +152,7 @@ function wholeNumber(v: unknown, what: string): number {
   return v;
 }
 
-// The page must hold exactly the rows its envelope says, from the
-// first, or a missing or surplus day would rewrite stored bars; a
-// whole history (a start date) must fit the one page.
+// exactly the envelope's rows on one page, or stored bars are rewritten
 export function parseObservations(
   body: unknown,
   fetchedAt: number,

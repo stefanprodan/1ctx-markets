@@ -1,11 +1,8 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Rules evaluated inside the write that moved their inputs, so the
-// quote, its live signals and the rule are read in one transaction. A
-// rule is true, false or unknown: any missing, null, stale or
-// recomputing input makes it unknown, which neither fires nor rearms
-// it. True fires one alert and disarms; false rearms. No damping.
+// Rules run inside the write that moved their inputs, so the quote,
+// signals and rule are read in one transaction.
 
 import type { Db } from "../db/index.ts";
 import {

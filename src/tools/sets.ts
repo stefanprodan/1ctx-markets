@@ -39,7 +39,6 @@ export type Unavailable = {
   input: string;
   id: string;
   status: "unavailable";
-  // the inputs it lacked
   missing: string[];
   stale: string[];
   reason?: string;

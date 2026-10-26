@@ -1,13 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// FRED's one scheduled job: once a day at 23:00 UTC on the server's
-// clock, since a FRED-only server may know no market's hours, every
-// series refetches its last observations. Each series records its own
-// run, scoped to its id, so one dead series never marks another stale.
-// A minute tick decides what is due, so a pass missed while the server
-// was down runs on start. Only series a read named within the tracking
-// window are fetched.
+// once a day on the server's clock: a FRED-only server may know no market
 
 import { DAY_MS, MINUTE_MS } from "../clock.ts";
 import type { Db } from "../db/index.ts";
@@ -29,8 +23,7 @@ export const RETRY_MS = 60 * MINUTE_MS;
 
 export type FredPass = {
   rows: number;
-  // each series whose stored bars changed, from that date on, for
-  // whatever is computed from past bars
+  // from that date on, for whatever is computed from past bars
   changed: { instrument: string; changedFrom: string }[];
   // each series that failed, with its fixed phrase
   failed: { instrument: string; error: string }[];
@@ -49,7 +42,6 @@ export function dueAt(now: number): number {
   return Math.floor((now - DAILY_AT_MS) / DAY_MS) * DAY_MS + DAILY_AT_MS;
 }
 
-// only the series a read named within the window
 const series = (db: Db, now: number, trackMs: number): Instrument[] =>
   trackedInstruments(db, now, trackMs).filter((i) => i.source === SOURCE);
 

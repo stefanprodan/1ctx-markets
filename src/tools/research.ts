@@ -1,12 +1,8 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// One share's research: the live quote and latest signals beside
-// Finnhub's metrics, analyst counts, earnings surprises, insider months
-// and next earnings event, and Massive's news, each with its period,
-// fetch time and staleness. A share Finnhub covers with no research yet,
-// or one Massive covers with no news yet, is fetched inside the call.
-// GET /research answers the same Finnhub summaries for scripts.
+// One share's research beside its quote; a covered share with none yet is
+// fetched inside the call.
 
 import {
   type EventRow,
@@ -104,12 +100,7 @@ export type Inline =
 
 const EXPIRED = Symbol("expired");
 
-// Each resolved share Finnhub covers and has never answered for is
-// fetched inside the same deadline as its resolution: five calls, all
-// stored together or none. With news, each share or ETF Massive covers
-// and was never asked for gets its newest page the same way, the rest
-// of its 30 days coming with the job. Two calls naming one share one
-// fetch.
+// all five sections land in one write or none; news gets its newest page
 export async function researchTargets(
   m: Markets,
   inputs: readonly string[],
@@ -128,7 +119,7 @@ export async function researchTargets(
   const expired = new Promise<typeof EXPIRED>((resolve) => {
     cancel = m.clock.at(deadline, () => resolve(EXPIRED));
   });
-  // the fetch raced with the deadline, its outcome set into into
+  // the race only answers timeout; the fetch's own live() refuses a late write
   const settle = (
     into: Map<string, Inline>,
     id: string,
@@ -420,7 +411,7 @@ export async function researchAnswer(
         news: summary,
         ...(quote.observation != null ? { attribution: ATTRIBUTION } : {}),
       });
-    // held to a page like every answer: headlines go before anything else
+    // headlines are dropped first to fit the page
     let text = answer();
     while (!fits(text) && "headlines" in summary && summary.headlines.length) {
       summary.headlines.pop();

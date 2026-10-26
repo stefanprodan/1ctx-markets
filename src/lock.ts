@@ -20,6 +20,7 @@ export async function exclusive<T>(
     held.set(db, locks);
   }
   const run = (locks.get(id) ?? Promise.resolve()).then(fn);
+  // a holder's failure must not fail the next one waiting
   const tail = run.then(
     () => {},
     () => {},

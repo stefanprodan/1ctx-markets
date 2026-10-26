@@ -28,8 +28,7 @@ function format(zone: string): Intl.DateTimeFormat {
   return f;
 }
 
-// Returns the zone's canonical name, or throws: a UTC offset is
-// rejected, since it cannot follow a clock change.
+// a UTC offset is refused: it cannot follow a clock change
 export function checkZone(zone: unknown): string {
   if (typeof zone !== "string" || zone === "") {
     throw new Error("no exchange zone");
@@ -53,8 +52,7 @@ export function wallTime(zone: string, at: number): number {
   );
 }
 
-// The instant a wall time names. An hour that occurs twice takes its
-// first instant; one skipped by a clock change moves past the gap.
+// a repeated hour takes its first instant; a skipped one moves past the gap
 export function fromWallTime(zone: string, wall: number): number {
   const before = wall - (wallTime(zone, wall - DAY_MS) - (wall - DAY_MS));
   const after = wall - (wallTime(zone, wall + DAY_MS) - (wall + DAY_MS));
@@ -83,7 +81,6 @@ export function addDays(date: string, days: number): string {
   return dateOfWall(wallOfDate(date) + days * DAY_MS);
 }
 
-// the instant a local date begins in the zone
 export function startOfDate(zone: string, date: string): number {
   return fromWallTime(zone, wallOfDate(date));
 }

@@ -68,9 +68,7 @@ export type DailyRow = {
 // 52 calendar weeks ending on the bar's date
 const WINDOW_DAYS = 52 * 7;
 
-// Final rows for an instrument's daily bars, which start at its first
-// stored bar: Wilder's averages and the EMA seeds depend on where
-// history starts.
+// from the first stored bar: Wilder's averages and EMA seeds depend on it
 export function dailySeries(bars: readonly Bar[]): DailyRow[] {
   checkOrder(bars);
   const rows: DailyRow[] = [];
@@ -80,11 +78,7 @@ export function dailySeries(bars: readonly Bar[]): DailyRow[] {
   return rows;
 }
 
-// The live row: the final bars, from the first stored one, plus one
-// provisional bar of the quote. replacesLast says the quote's session
-// is the last stored bar, not yet final, which the provisional bar
-// replaces; otherwise it is a new day after the last bar. last is the
-// final row of the bar before the provisional one.
+// replacesLast: the quote's session is the last stored bar, not yet final
 export function liveDaily(
   bars: readonly Bar[],
   last: DailyRow | null,

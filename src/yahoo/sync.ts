@@ -1,9 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Yahoo's answers into instruments, bars, splits and quotes. Each call
-// fetches first and then queues one write; the jobs that call these on
-// a schedule live in jobs.ts.
+// Each call fetches first, then queues one write.
 
 import {
   type Bar,
@@ -61,12 +59,10 @@ export type YahooContext = {
 };
 
 export const BACKFILL_YEARS = 10;
-// a failed bar pass or backfill, or a refused whole history, is asked
-// again after this, not each run
+// a failed pass or backfill, or a refused whole history, waits this long
 export const RETRY_MS = 60 * MINUTE_MS;
 export const REFETCH_DAYS = 30;
-// a history starting this much later than asked, and later than the
-// stored one, is cut short, not a listing that began then
+// a start this far past the asked one, and past the stored one, is cut short
 const SHORT_HISTORY_DAYS = 10;
 
 const timeOfDay = (zone: string, at: number) =>
@@ -79,11 +75,8 @@ type Read = {
   days: Set<string>;
 };
 
-// Daily bars dated in the exchange's zone. Yahoo ends some answers with
-// a row off the bar grid at the last trade; it merges into the regular
-// bar of the answer's session date, a closing auction after the end
-// included, and never makes a bar of its own (EURUSD=X traded on Sunday
-// while its session was Friday's). Null closes are no bar.
+// a trailing off-grid row merges into the session date's bar, never its own:
+// EURUSD=X trades on Sunday while its session is Friday's
 function read(answer: ChartAnswer, latest: Session | null): Read {
   const zone = answer.session.zone;
   const rows = answer.rows;
@@ -149,9 +142,7 @@ const maxOf = (a: number | null, b: number | null) =>
 const minOf = (a: number | null, b: number | null) =>
   a === null ? b : b === null ? a : Math.min(a, b);
 
-// The Monday on or before ten years back, so the first week is whole.
-// The UTC date is a day off at most; the day before it covers any zone,
-// and bars before the Monday are dropped.
+// a Monday so the first week is whole; from the UTC day before, for any zone
 export function backfillStart(now: number): { monday: string; from: number } {
   const today = dateOfWall(now);
   const back = `${Number(today.slice(0, 4)) - BACKFILL_YEARS}${today.slice(4)}`;
@@ -205,10 +196,7 @@ function fields(answer: ChartMeta) {
 
 type Split = SplitEvent & { date: string };
 
-// The answers' splits not stored with the same date and ratio: a
-// corrected ratio rescales the history as a new split does. Events are
-// merged by date first, a later answer's ratio winning, so the whole
-// history's ratio decides even when it matches the stored one.
+// a corrected ratio rescales like a new split; per date, a later answer wins
 function unapplied(
   db: Db,
   instrument: Instrument,
@@ -261,9 +249,7 @@ function recordSplits(
   }
 }
 
-// An initial history begins near the later of the start asked for and
-// the listing's first trade, or it was cut short; with no first trade
-// date a late start cannot be told from a recent listing.
+// with no first trade date a late start cannot be told from a recent listing
 function startsShort(answer: ChartAnswer, since: string): boolean {
   if (answer.firstTrade === null) return false;
   const first = read(answer, null).bars.find((b) => b.date >= since)?.date;
@@ -373,14 +359,7 @@ const refusedOf = (db: Db) => {
   return m;
 };
 
-// Writes one chart answer's session, bars and weeks, inside a writer
-// transaction. A whole history rewrites every daily bar, so none keeps
-// a scale from before a split, unless it starts or stops well short of
-// the stored one, or applies a split or a rescale without covering every
-// stored day; then nothing is written, the splits stay unapplied, and
-// the next run asks again. Either answer drops the stored days inside
-// its own span that the source no longer prices. Rescaled says a new
-// split was applied or past prices were adjusted.
+// a cut-short whole history writes nothing, so no day keeps an old scale
 function storeBars(
   db: Db,
   now: number,
@@ -450,9 +429,7 @@ function storeBars(
   };
 }
 
-// The bars, then the signals computed from them, in one transaction:
-// none before a backfill has stored bars. A rescale pauses the rules on
-// old price levels before anything evaluates them.
+// bars and signals in one write; a rescale pauses rules before they evaluate
 function store(
   db: Db,
   now: number,
@@ -491,9 +468,7 @@ function barsAnswered(
   return written;
 }
 
-// Adds an instrument by Yahoo's symbol with ten years of daily bars;
-// the chart answer names its key, which must match one resolved first.
-// A history cut short adds the instrument alone, for backfill to retry.
+// a history cut short adds the instrument alone, for backfill to retry
 export async function addInstrument(
   ctx: YahooContext,
   sourceSymbol: string,
@@ -533,12 +508,9 @@ export async function addInstrument(
   });
 }
 
-// a read's deadline passed before its fetch could be stored
 export const expired = () => new DeadlinePassed();
 
-// An instrument a read named and the server has no bars for, fetched
-// inside the call: the instrument, ten years of bars, their signals and
-// a fresh quote land in one write while live() holds, or nothing does.
+// one write while live() holds, or nothing
 export async function fetchInstrument(
   ctx: YahooContext,
   sourceSymbol: string,
@@ -597,9 +569,7 @@ export async function fetchInstrument(
   });
 }
 
-// An instrument no read named within the tracking window, so no job
-// kept it: its bars refetched as the daily job would, then a fresh
-// quote. Each write is a whole update on its own.
+// untracked, so no job kept its bars: refetched like the bar pass, then quoted
 export async function catchUp(
   ctx: YahooContext,
   instrument: Instrument,
@@ -673,12 +643,7 @@ async function backfillAnswer(
     );
 }
 
-// The last 30 days, or from the last final bar after a longer gap. A
-// split not applied yet, or applied with another ratio, or past prices
-// rescaled with no split, pauses the old price levels and refetches the
-// whole history once, so no stored day keeps the old scale; a refused
-// whole history is asked again only after RETRY_MS. A split already
-// applied, still inside the window for a month, does nothing more.
+// a split or rescale asks the whole history once, so no day keeps an old scale
 export function refetch(
   ctx: YahooContext,
   instrument: Instrument,
@@ -798,12 +763,7 @@ export function quoteOf(
   };
 }
 
-// Each answer's session goes to its market, known instrument or not;
-// a quote older than the stored one is kept out, and one as old only
-// replaces it when fetched later. Every market's session is settled and
-// recorded first, so the live rows, moved in the same writer
-// transaction, never depend on the answer's order; a live row the new
-// sessions moved past goes. Then the rules reading a moved quote.
+// sessions are recorded before quotes, so live rows never depend on order
 export function storeQuotes(
   db: Db,
   answer: SparkAnswer,
@@ -883,8 +843,6 @@ export function storeQuotes(
   return written;
 }
 
-// Quotes for these instruments in spark calls of 20; a failed call
-// keeps the others' quotes and is answered back.
 export async function fetchQuotes(
   ctx: YahooContext,
   instruments: readonly Instrument[],

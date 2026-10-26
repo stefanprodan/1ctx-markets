@@ -70,7 +70,6 @@ export type ChartAnswer = ChartMeta & {
 
 export type SparkAnswer = {
   quotes: ChartMeta[];
-  // entries with no quote, each with a fixed phrase
   skipped: { symbol: string | null; phrase: Phrase }[];
   fetchedAt: number;
 };
@@ -93,12 +92,10 @@ export type Yahoo = {
   chart(symbol: string, from: number, to: number): Promise<ChartAnswer>;
   // at most SPARK_MAX symbols
   spark(symbols: readonly string[]): Promise<SparkAnswer>;
-  // any number of symbols, in calls of SPARK_MAX; a failed call keeps
-  // the others' answers
+  // in calls of SPARK_MAX; a failed call keeps the others' answers
   sparkAll(symbols: readonly string[]): Promise<SparkBatch[]>;
   search(query: string): Promise<Listing[]>;
-  // the same client and queue, failing at once while the queue is
-  // paused, for a tool answering a caller
+  // fails at once while the queue backs off, for a tool
   failFast(): Yahoo;
   // failing fast, and starting no call once live() is false
   within(live: () => boolean): Yahoo;
@@ -325,8 +322,7 @@ export function yahoo(options: YahooOptions): Yahoo {
   const doFetch: Fetch = options.fetch ?? ((url, init) => fetch(url, init));
   const calls = options.queue ?? queue(clock, CONCURRENCY);
 
-  // the answer of a call that answered 200, read inside the queued task
-  // so a malformed one backs the queue off like any failure
+  // parsed inside the queued task, so a malformed answer backs the queue off
   const get = <T>(
     url: string,
     run: RunOptions,

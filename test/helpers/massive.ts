@@ -1,11 +1,8 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Massive's news endpoint answered from the recorded articles: a test
-// sets the articles it holds, re-dated or re-tickered from the
-// recordings, and the fake filters, orders and pages them as Massive
-// does, with an opaque next_url cursor that holds no key: as Massive's
-// own, it names the last article given, its time and id.
+// Massive's news faked from recorded articles; next_url is opaque and holds
+// no key, as Massive's own.
 
 import { join } from "node:path";
 import { clone, type Recorded } from "./yahoo.ts";
@@ -125,7 +122,7 @@ export function massiveAnswer(
           gt: url.searchParams.get("published_utc.gt"),
           lt: url.searchParams.get("published_utc.lt"),
           limit: Number(url.searchParams.get("limit") ?? "10"),
-          // the last article given, as Massive's ap and as
+          // the cursor's last article (Massive's own ap/as fields)
           ap: null,
           as: null,
         }

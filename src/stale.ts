@@ -1,11 +1,8 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Whether an instrument's quote or bars are stale, with fixed reasons,
-// read from its own source's runs in its own market: a successful
-// search never clears a failed quote pass, and one market's failure
-// never marks another's rows. A quote pass that answered is judged
-// per instrument, so one symbol that never answers marks only itself.
+// Staleness from the instrument's own source, job and market; one
+// market's failure never marks another.
 
 import { CRYPTO, closeQuoteAt, readSession } from "./calendars.ts";
 import type { Db } from "./db/index.ts";
@@ -92,10 +89,7 @@ function lastQuoteDue(db: Db, market: string, now: number): number | null {
   return Math.min(now, closeQuoteAt(market, s) ?? now);
 }
 
-// The bars miss a day while the market's current session began after
-// the last bar pass that ended well, and until then the previous bar
-// is not final. An instrument added since that session began came with
-// its whole history, so it misses none.
+// one added since the session began came with its whole history
 export function barsStale(
   db: Db,
   instrument: Scoped,

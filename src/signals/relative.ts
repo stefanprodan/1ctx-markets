@@ -39,9 +39,6 @@ export type RelativeReturn = {
   note: typeof RETURN_NOTE | typeof LEVEL_NOTE;
 };
 
-// Null when either listing has no bar on or before an anchor, the
-// instrument has no bar after the benchmark's start, a price starts at
-// or below 0, or a level is set against a price (the units differ).
 export function relativeReturn(
   instrument: Listing,
   benchmark: Listing,

@@ -1,14 +1,8 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Yahoo's scheduled work. One short tick decides what is due from the
-// stored sessions and runs: quotes for markets in session, one batch
-// after each close, a check of one instrument per closed market. The
-// 30-day bar refetch of each market whose session moved on is a job of
-// its own, so a slow one never takes a quote turn, and backfill takes
-// its own turns too; all share the source queue and the writer. Quotes
-// and bars follow only the instruments a read named within the tracking
-// window.
+// What is due is read from stored sessions and runs, so a restart
+// resumes where it was; only tracked instruments are synced.
 
 import {
   closeQuoteAt,
@@ -42,7 +36,7 @@ export type JobsOptions = {
   ctx: YahooContext;
   quoteEveryMs: number;
   log: Log;
-  // an instrument read within this long is synced; others wait for a read
+  // read within this long, or held by a rule, keeps an instrument synced
   trackMs?: number;
 };
 
@@ -55,8 +49,7 @@ type Work = {
 export type BarPass = {
   market: string;
   rows: number;
-  // each instrument whose stored bars changed, from that date on, for
-  // whatever is computed from past bars
+  // the first changed day per instrument, for whatever past bars feed
   changed: { instrument: string; changedFrom: string }[];
   error: string | null;
 };
@@ -64,7 +57,6 @@ export type BarPass = {
 export type TickReport = {
   // markets whose every instrument was asked, in session or after close
   quoted: string[];
-  // closed markets checked with one instrument
   checked: string[];
   bars: BarPass[];
 };
@@ -150,8 +142,6 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
     return work;
   }
 
-  // every market's symbols in one set of spark calls of 20, and one
-  // run per market
   async function sparkPass(work: Work[]): Promise<QuoteRow[]> {
     const ids = await writer.write((db) =>
       work.map((w) => startRun(db, SOURCE, w.job, clock.now(), w.market)),
@@ -224,13 +214,7 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
     }
   }
 
-  // The last 30 days of each instrument with bars: finalises the
-  // previous bar, applies a new split before the session's quotes are
-  // used, and fills gaps. An instrument with none waits for backfill.
-  // Each refetch is a run in its instrument's scope, recorded by its
-  // write when it lands and here when it fails, so one that fails is
-  // stale alone; the market's run fails only when none answered. A
-  // retry of failed instruments leaves the market's run alone.
+  // a failed refetch is its instrument's own run, so it alone is stale
   async function barPass(
     market: string,
     instruments: Instrument[],
@@ -254,6 +238,7 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
           "select count(*) as n from bars where instrument = ? and interval = '1d'",
         )
         .get(instrument.id)!.n;
+      // an instrument with no bars waits for the backfill job
       if (has === 0) continue;
       const at = clock.now();
       try {
@@ -357,9 +342,7 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
     return { ...quotes, bars: await barTick() };
   }
 
-  // Every tracked instrument without bars, so one added by a read whose
-  // history was cut short completes; an untracked one waits for a read,
-  // which backfills inside the call.
+  // tracked only: an untracked instrument is fetched inside the read naming it
   async function backfillTurn(): Promise<string | null> {
     const now = clock.now();
     const wanted = trackedIds(db, now, trackMs);

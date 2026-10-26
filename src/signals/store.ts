@@ -1,11 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Signal rows from the stored bars and quotes. Final rows come only
-// from final bars and are recomputed from the first stored bar, since
-// the seeds depend on where history starts; the live row steps from
-// the last final row with one provisional bar built from the quote.
-// Every function here runs inside a writer transaction.
+// every function here runs inside a writer transaction
 
 import { type Interval, readBars, type Bar as StoredBar } from "../bars.ts";
 import { CRYPTO, readSession, sessionDate, weekOf } from "../calendars.ts";
@@ -66,9 +62,7 @@ export const selectList = (interval: Interval): string =>
     .map(([key, column]) => `${column} as ${key}`)
     .join(", ");
 
-// The live row reads this many daily bars back: 52 calendar weeks of a
-// market trading every day and 200 bars for SMA 200, the rest stepped
-// from the last final row's running values.
+// 52 calendar weeks of a market trading daily, and 200 bars for SMA 200
 export const LIVE_DAYS = 400;
 // SMA 200 on weeks
 export const LIVE_WEEKS = 200;
@@ -107,7 +101,7 @@ export function finalPrefix<T extends { final: boolean }>(
   return k === -1 ? [...bars] : bars.slice(0, k);
 }
 
-// Replaces every final row of the instrument from its first stored bar.
+// from the first bar: an incremental patch would drift from the seeds
 export function recomputeSignals(db: Db, instrument: string, now: number) {
   const days = finalPrefix(readBars(db, instrument, "1d"));
   const weeks = finalPrefix(readBars(db, instrument, "1wk"));
@@ -165,9 +159,7 @@ function lastFinalDate(
 
 type Scoped = Pick<Instrument, "id" | "market">;
 
-// After a bar write: the final rows again when a past bar changed or a
-// bar turned final, then the live rows, so at a session's rollover the
-// previous bar's final row comes before the new live row.
+// final rows first, so at a rollover the live row steps from yesterday's
 export function signalsAfterBars(
   db: Db,
   instrument: Scoped,
@@ -190,15 +182,10 @@ export type LiveQuote = {
   time: number;
 };
 
-// a closing auction prints after the end, as the post-close quote does
+// a closing auction prints late; keep it covering closeQuoteAt's 15 minutes
 export const LIVE_AFTER_END_MS = 15 * MINUTE_MS;
 
-// What the live row is computed from: the stored quote, dated by its
-// market's stored session. A trade outside that session, up to the
-// post-close window, belongs to another day (EURUSD=X's Sunday trade
-// under Friday's session, CL=F's Friday trade under Sunday's), so it
-// updates the quote only. Crypto's day is the UTC day, so its trade's
-// UTC date is the row's, with no allowance carrying it past midnight.
+// dated by the market's stored session, never UTC hours; crypto's by UTC day
 export function liveTarget(
   db: Db,
   instrument: Scoped,
@@ -259,12 +246,7 @@ function lastFinalRow<T>(
   );
 }
 
-// The stored bars the provisional one joins and the row of the bar
-// before it: the last final row when every earlier bar is final and has
-// one. Otherwise, as when a bar pass fails at a session's rollover, the
-// series runs from the first bar over the bars as stored, the unfinished
-// day included, so live prices never wait on the bars. Null with no
-// bars or with the provisional date's bar already final.
+// an earlier bar not final runs the series as stored: live never waits on bars
 function liveBase<T extends { date: string }>(
   db: Db,
   instrument: string,

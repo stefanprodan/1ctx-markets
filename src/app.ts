@@ -46,11 +46,9 @@ export type AppOptions = {
   quoteEveryMs: number;
   // an instrument read within this many days stays tracked
   trackDays?: number;
-  // FRED is on while its key file holds one
+  // a source is on while its key file holds a key
   fredKey?: string | null;
-  // Finnhub is on while its key file holds one
   finnhubKey?: string | null;
-  // Massive is on while its key file holds one
   massiveKey?: string | null;
   // what the research jobs ask of the rules, the rules' own by default
   hooks?: Hooks;
@@ -96,9 +94,8 @@ export function start(options: AppOptions): App {
     pruneNews(db, now, trackedIds(db, now, trackMs));
     pruneAlerts(db, now);
   };
-  // queued first, so no job's run is taken for one a crash left running;
-  // pruned here too, since a server restarted daily never reaches the
-  // daily turn
+  // first, so no run is taken for a crashed one; prunes too, since a
+  // server restarted daily never reaches the daily turn
   void write
     .write((db) => {
       failInterrupted(db, clock.now());

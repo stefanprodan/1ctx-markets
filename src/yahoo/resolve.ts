@@ -35,8 +35,7 @@ const ALIASES: Readonly<Record<string, string>> = {
   CCC: CRYPTO,
 };
 
-// any code not aliased is a market of its own, so a new exchange needs
-// no change here
+// any code not aliased is its own market, so a new exchange needs no change
 export function marketOf(exchange: string): string {
   const code = exchange.trim().toUpperCase();
   if (code === "") throw new Error("no exchange code");
@@ -68,11 +67,9 @@ export type Candidate = Listing & {
 };
 
 export type Resolution =
-  // stored already
   | { kind: "known"; instrument: Instrument }
   // one listing, added by its source symbol
   | { kind: "new"; sourceSymbol: string; id: string }
-  // several listings, for the caller to pick from
   | { kind: "candidates"; candidates: Candidate[] };
 
 export class ResolveError extends Error {
@@ -91,12 +88,7 @@ const candidate = (l: Listing): Candidate => ({
 
 const KEY = /^([A-Za-z0-9]+):(\S+)$/;
 
-// A key not yet stored is searched on its market's codes. A Yahoo
-// symbol with its suffix, or an index, futures or FX symbol, is exact:
-// a short chart names its key, and only a 404 falls back to the search.
-// A bare symbol takes the listing whose Yahoo
-// symbol equals it; a name, or a symbol with no such listing, answers
-// every listing as a candidate.
+// never a guess: exact symbols ask a chart, bare ones must equal a listing
 export async function resolve(
   ctx: { db: Db; clock: Clock; yahoo: Yahoo },
   input: string,
@@ -122,8 +114,7 @@ export async function resolve(
   const known = readBySourceSymbol(db, SOURCE, upper);
   if (known) return { kind: "known", instrument: known };
   if (isExact(upper)) {
-    // Yahoo writes share classes BRK-B, so BRK.B is no listing of its
-    // own and falls back to a search
+    // Yahoo writes share classes BRK-B, so BRK.B falls back to a search
     try {
       const now = ctx.clock.now();
       const a = await yahoo.chart(upper, now - CHECK_MS, now);

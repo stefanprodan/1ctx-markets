@@ -40,7 +40,6 @@ export function sign(d: number): -1 | 0 | 1 {
   return d > 0 ? 1 : d < 0 ? -1 : 0;
 }
 
-// 1 when the difference turns above 0 from at or below it, -1 the reverse
 export function crossEdge(diff: number, prevDiff: number): -1 | 0 | 1 {
   if (diff > 0 && prevDiff <= 0) return 1;
   if (diff < 0 && prevDiff >= 0) return -1;
@@ -81,8 +80,7 @@ export function checkOrder(rows: readonly { date: string }[]): void {
   }
 }
 
-// The rows a live value is computed over: the stored ones, the last
-// dropped when the provisional row replaces it.
+// without the last stored row when the provisional row replaces it
 export function baseRows<T extends { date: string }>(
   rows: readonly T[],
   date: string,
