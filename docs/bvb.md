@@ -42,8 +42,8 @@ exchange: one client, its parsers, its session, the same tables.
 | `search` | `POST bvb.ro/proxyshld.aspx/GetInstrumentsList` | up to 10 listings: symbol, ISIN, name, status |
 
 - **Every page carries the market status** (`#statusMarket`,
-  `statusOf()`); `INCHISA` is closed, anything else open, none is a
-  malformed page.
+  `statusOf()`); `INCHISA` is closed, anything else open (`DESCHISA`
+  while trading), none is a malformed page.
 - **The chart feed wants the page key or the site's Referer.** Every
   feed call sends `Referer: https://bvb.ro/` and, once an instrument
   page was read, its `sk` key as `X-SK-API`. A 401 reads the
@@ -93,8 +93,9 @@ exchange: one client, its parsers, its session, the same tables.
 ## Instruments
 
 - **The key is `BVB:<symbol>` uppercased; the source symbol is the
-  exchange's own,** mixed case kept (`BETPlus`). Resolution compares
-  feed symbols case-blind (`readByFeedSymbol()`).
+  exchange's own,** mixed case kept (`BETPlus`). The feed accepts a
+  symbol in any case; resolution compares feed symbols case-blind
+  (`readByFeedSymbol()`).
 - **The type and unit come from the feed's symbol answer** (`KINDS`):
   `Shares` is `EQUITY` per share, `Bonds` is `BOND` in percent of par,
   `index` is `INDEX` in index points. Any other type is `refused`
@@ -121,9 +122,13 @@ exchange: one client, its parsers, its session, the same tables.
   shares, bonds, indices, one call each per quote period while the
   market is quoted, and once after its close (`closeQuoteAt()`), since
   the share list is marked 15 minutes delayed.
-- **A quote's time is the exchange's last trade time,** so a delayed
-  price shows its age. The list writes minutes and the instrument page
-  seconds; a list row in the stored trade's minute is that trade.
+- **A quote's time is the time the exchange gives,** so a delayed
+  price shows its age. The shares list is a snapshot 15 minutes behind
+  and every row carries the snapshot's time (all rows 11:15 at 11:30),
+  so a share's list quote is dated by the snapshot, not its own last
+  trade. Yahoo's `.RO` prices are 15 minutes behind too. The list writes
+  minutes and the instrument page seconds; a list row in the stored
+  trade's minute is that trade.
 - **The previous close is the instrument page's reference price,**
   never one worked back from the list's rounded change percent. The
   page is read once per listing and trading day: for the first trade
