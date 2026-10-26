@@ -189,9 +189,10 @@ exchange: one client, its parsers, its session, the same tables.
 - **Yahoo's exact match skips the exchange's search only when the
   exchange lacks the symbol:** the symbols on the list pages the client
   last read (`listed()`, kept by the quote pass, no extra call) do not
-  hold it and Yahoo's results name no Bucharest listing (`.RO`). Until
-  all three lists (shares, bonds, indices) are read, or Yahoo's top results missing a Bucharest listing the
-  lists hold (`EL`, `M`), the exchange is asked, so a bare symbol on
+  hold it and Yahoo's results name no Bucharest listing (`.RO`). The
+  exchange is asked while any of the three lists (shares, bonds,
+  indices) is unread, or when the lists hold the symbol though Yahoo's
+  top results lack its `.RO` listing (`EL`, `M`), so a bare symbol on
   both answers both as candidates, never a guess.
 - **A `BVB:` key is the feed's while it is on,** asked by its symbol
   answer; a Yahoo symbol naming a Bucharest listing (`TLV.RO`) resolves
@@ -210,7 +211,8 @@ exchange: one client, its parsers, its session, the same tables.
   against the old source's stored days before any is cleared
   (`checkCovers()`); a listing whose new history is cut short keeps its
   old history and source, as one the new source lacks does, and the
-  switch lands for the rest. Moving to Yahoo finds the
+  switch lands for the rest; a kept listing moves only at the next
+  change of flags. Moving to Yahoo finds the
   listing through Yahoo's search, never a guessed suffix; the stored
   splits are dropped and Yahoo's recorded from its answer. Moving to the
   feed keeps them, since they date where raw volumes change scale.

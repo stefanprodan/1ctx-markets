@@ -184,7 +184,11 @@ describe("resolution with the feed on", () => {
   test("a symbol the exchange lists is asked of it though Yahoo's results lack it", async () => {
     for (const listsRead of [false, true]) {
       const t = await setup(true, true);
-      if (listsRead) await drive(t.clock, t.exchange!, t.exchange!.shares());
+      if (listsRead) {
+        await drive(t.clock, t.exchange!, t.exchange!.shares());
+        await drive(t.clock, t.exchange!, t.exchange!.bonds());
+        await drive(t.clock, t.exchange!, t.exchange!.indices());
+      }
       const [tlv] = await t.read(["TLV"]);
       expect(
         errorOf(tlv)
