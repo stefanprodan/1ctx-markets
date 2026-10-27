@@ -31,8 +31,7 @@ export function mcpHandler(
         { name: SERVER_NAME, version },
         {
           capabilities: { tools: { listChanged: false } },
-          // they route between the tools, so a server without them sends none
-          ...(register === null ? {} : { instructions: INSTRUCTIONS }),
+          instructions: INSTRUCTIONS,
         },
       );
       register?.(server);
