@@ -2,9 +2,9 @@
 
 Governs the Model Context Protocol (MCP) tools and `GET /quotes`:
 `src/mcp.ts`, `src/instructions.ts`, `src/tools/index.ts`, `answer.ts`,
-`args.ts`, `targets.ts`, `quote.ts`, `history.ts`, `search.ts`,
-`movers.ts`, `screen.ts`, `sets.ts` and `http.ts` under `src/tools/`.
-The research and events tools and `GET /research` are in
+`args.ts`, `targets.ts`, `quote.ts`, `extended.ts`, `history.ts`,
+`search.ts`, `movers.ts`, `screen.ts`, `sets.ts` and `http.ts` under
+`src/tools/`. The research and events tools and `GET /research` are in
 `docs/research.md`; the rules tool and `GET /alerts` in
 `docs/rules.md`; signal rows in `docs/signals.md`; stale reasons and
 the tracking table in `docs/storage.md`; the source queue in
@@ -109,7 +109,7 @@ the tracking table in `docs/storage.md`; the source queue in
 
 | Tool | Takes | Answers |
 |---|---|---|
-| `quote` | `symbols`, `benchmark`, `next` | per symbol a `QuoteItem` (`quote.ts`) with `returns`, `session` and, with a benchmark, `relative_return_1m` and `_3m` |
+| `quote` | `symbols`, `benchmark`, `extended`, `next` | per symbol a `QuoteItem` (`quote.ts`) with `returns`, `session`, with a benchmark `relative_return_1m` and `_3m`, with `extended` true `extended` |
 | `history` | `symbol`, `interval`, `from`, `to`, `benchmark`, `next` | bars oldest first with `final` and signals; `relative` |
 | `search` | `query`, `next` | up to 20 stored matches, then the Bucharest feed's tradable listings while it is on, then Yahoo's, each with id, exchange, type, name, `source`, `stored` |
 | `movers` | `symbols`, `min_move_pct`, `direction`, `average`, `relation`, `next` | matches by absolute change, largest first; `counts` |
@@ -140,9 +140,23 @@ the tracking table in `docs/storage.md`; the source queue in
   series answers null. No pre-market, after-hours or holiday state:
   only the regular session is stored (`docs/calendars.md`). Not named
   `market`, which an id's prefix already is.
+- **quote's `extended` is asked, never default** (`extended.ts`), so
+  a large quote at night makes no extra calls. A reader of a share
+  that reports after the close wants the first price after the
+  release, and before the open the pre-market one. It holds `session`
+  (`pre` or `post`), `price`, `change` and `change_percent` from the
+  regular close, and the bar's `time`: the latest priced bar in a pre
+  or post window since the last regular close, kept until the next
+  regular open. Null with an `extended:` reason in `stale` (no extended
+  trading, no priced bar since the close, regular session open, fetch
+  failed or late), never meaning the price held. One chart per listing
+  within the call's deadline (`docs/yahoo.md`), kept in memory for its
+  quote period (`m.extended`), so the thin market is never fresher
+  than the regular one. Never stored: signals, bars, movers, screen,
+  history, rules and `GET /quotes` read the regular session only.
 - **These are the quote tool's only.** `quotePage()` computes them
-  when no projection is given; `quoteItem()`, which screen, movers and
-  `GET /quotes` share, never reads them. Bars are read from the
+  and `extended` when no projection is given; `quoteItem()`, which
+  screen, movers and `GET /quotes` share, never reads them. Bars are read from the
   earliest start a call needs (`readCloses()`), and the benchmark's
   closes once per call, never every stored bar per item.
 - **history defaults its range from the last bar.** `to` is the latest
@@ -296,7 +310,7 @@ the tracking table in `docs/storage.md`; the source queue in
   an agent filters on, and how to continue with `next`. No history, no
   marketing, no repetition of the schema's types.
 - **Stay at 1,024 characters or fewer**: 1ctx cuts a description
-  there, and `test/tools-mcp.test.ts` asserts it. quote (1,021), rules
+  there, and `test/tools-mcp.test.ts` asserts it. quote (1,019), rules
   (1,019) and research (1,019) are near the limit; shorten wording
   before adding a field. screen names its field groups and points at
   its schema's enum (`FIELD_NAMES`), which lists every field.

@@ -78,7 +78,7 @@ const day: JsonSchemaType = {
 };
 
 const quoteDescription = (m: Markets) =>
-  `Live quotes and latest signals for 1 to ${MAX_SYMBOLS} symbols: a stored id (US:NVDA, CRYPTO:SOL-USD), a Yahoo symbol (VVSM.DE, ^VIX, EURUSD=X), FRED:<series id> or a name; several listings answer candidates to pick an id from. One never read is fetched within ${m.callMs / 1000} seconds, else timeout: call again. Each item: price, previous close, change, day range, volume, trade_time, fetched_at, daily and weekly signal rows (live or final: SMA 50/200, EMA 20, RSI 14, MACD, ATR 14, volatility, Bollinger lower, 52-week range, drawdown, volume ratio), stale. returns: 1w, 1m, 3m, ytd percent (points for a yield) from the last final close on or before each start to to, live if it ends on the live price; null if bars do not reach. session: open or closed by the last session the source reported (closed at an open until checked), start, end. benchmark (one symbol) adds relative_return_1m, _3m in percentage points. FRED answers its last observation, price null. Errors are items. When next is set, call again with the same arguments and next.`;
+  `Live quotes and signals for 1 to ${MAX_SYMBOLS} symbols: a stored id (US:NVDA), a Yahoo symbol (VVSM.DE, ^VIX), FRED:<series id> or a name; several listings answer candidates. One never read is fetched within ${m.callMs / 1000} seconds, else timeout: call again. Each item: price, previous close, change, day range, volume, trade_time, fetched_at, daily and weekly signal rows (live or final: SMA 50/200, EMA 20, RSI, MACD, ATR, volatility, Bollinger, 52-week range, drawdown, volume ratio), stale. returns: 1w, 1m, 3m, ytd percent (points for a yield) to the live price or last final close (live says which), null if bars fall short. session: open or closed (regular), start, end. benchmark (one symbol) adds relative_return_1m, _3m in percentage points. extended true adds extended, the last pre- or post-market price since the regular close (session, price, change, change_percent, time), or null with why in stale. FRED answers its last observation, price null. Errors are items. When next is set, call again with the same arguments and next.`;
 
 const HISTORY = `Daily (1d) or weekly (1wk) bars of one symbol, oldest first, each with its final flag and that date's signal row. from and to are YYYY-MM-DD; to defaults to the latest bar, from to ${DEFAULT_MONTHS["1d"]} months before to for 1d and ${DEFAULT_MONTHS["1wk"]} months for 1wk. Prices are split-adjusted; averages and returns are on price, with dividends and FX conversion excluded. With a benchmark (any symbol, e.g. QQQ or ^GDAXI), it adds the 1- and 3-month return relative to it at to, in percentage points (points for a yield or spread), naming both currencies. Symbols resolve and are fetched as in quote. When next is set, call again with the same arguments and next.`;
 
@@ -118,6 +118,7 @@ export function tools(m: Markets): Tool[] {
             items: symbol,
           },
           benchmark: symbol,
+          extended: { type: "boolean", default: false },
           next,
         },
         ["symbols"],

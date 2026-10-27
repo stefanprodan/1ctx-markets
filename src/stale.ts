@@ -48,6 +48,12 @@ export const STALE = {
   switchPending: "source switch pending",
   // its source is off since the last start, so its prices are its last
   sourceOff: "source off",
+  // why quote's extended is null when asked; none says the price held
+  extendedNone: "extended: no pre- or post-market trading",
+  extendedNoPrice: "extended: no price since the regular close",
+  extendedOpen: "extended: regular session open",
+  extendedTimeout: "extended: not fetched in time",
+  extendedFailed: "extended: fetch failed",
 } as const;
 
 export type StaleReason = (typeof STALE)[keyof typeof STALE];

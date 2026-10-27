@@ -44,6 +44,9 @@ export type ChartMeta = {
   dayHigh: number | null;
   dayLow: number | null;
   volume: number | null;
+  // hasPrePostMarketData: whether the listing trades before and after
+  // its regular session; null when the answer does not say
+  prePost: boolean | null;
 };
 
 export type ChartRow = {
@@ -70,6 +73,17 @@ export type ChartAnswer = ChartMeta & {
   fetchedAt: number;
 };
 
+// UTC epoch ms, end exclusive
+export type Window = { start: number; end: number };
+
+// one day's minutes with pre- and post-market bars and their windows
+export type IntradayAnswer = ChartAnswer & {
+  windows: { pre: Window[]; regular: Window[]; post: Window[] };
+};
+
+// the day the server is in, holding the post bars until the next open
+export const INTRADAY_RANGE = "1d";
+
 export type SparkAnswer = {
   quotes: ChartMeta[];
   skipped: { symbol: string | null; phrase: Phrase }[];
@@ -92,6 +106,10 @@ export type Listing = {
 export type Yahoo = {
   // daily bars with split events, from and to in UTC epoch ms
   chart(symbol: string, from: number, to: number): Promise<ChartAnswer>;
+  // 1-minute bars of INTRADAY_RANGE with pre- and post-market trading
+  intraday(symbol: string): Promise<IntradayAnswer>;
+  // the listing's hasPrePostMarketData from the last answer naming it
+  prePost(symbol: string): boolean | undefined;
   // at most SPARK_MAX symbols
   spark(symbols: readonly string[]): Promise<SparkAnswer>;
   // in calls of SPARK_MAX; a failed call keeps the others' answers
@@ -187,6 +205,10 @@ function parseMeta(v: unknown): ChartMeta {
     dayHigh: optionalNumber(m.regularMarketDayHigh, "day high") || null,
     dayLow: optionalNumber(m.regularMarketDayLow, "day low") || null,
     volume: optionalNumber(m.regularMarketVolume, "volume"),
+    prePost:
+      typeof m.hasPrePostMarketData === "boolean"
+        ? m.hasPrePostMarketData
+        : null,
   };
 }
 
@@ -280,6 +302,55 @@ export function parseChart(body: unknown, fetchedAt: number): ChartAnswer {
   };
 }
 
+function window(v: unknown, what: string): Window {
+  const w = obj(v, what);
+  const start = seconds(w.start, `${what} start`);
+  const end = seconds(w.end, `${what} end`);
+  // a market without the window answers it empty (TLV.RO's pre)
+  if (end < start) throw malformed(`${what} ends before it starts`);
+  return { start, end };
+}
+
+// currentTradingPeriod's window and each day's in tradingPeriods, which
+// a range of more than one day carries
+function windows(meta: Obj, name: "pre" | "regular" | "post"): Window[] {
+  const out: Window[] = [];
+  const current = isObj(meta.currentTradingPeriod)
+    ? meta.currentTradingPeriod[name]
+    : undefined;
+  if (current !== undefined) out.push(window(current, `${name} period`));
+  const days = isObj(meta.tradingPeriods)
+    ? meta.tradingPeriods[name]
+    : undefined;
+  if (days !== undefined) {
+    if (!Array.isArray(days)) throw malformed(`${name} periods`);
+    for (const day of days) {
+      for (const w of Array.isArray(day) ? day : [day]) {
+        out.push(window(w, `${name} period`));
+      }
+    }
+  }
+  return out;
+}
+
+export function parseIntraday(
+  body: unknown,
+  fetchedAt: number,
+): IntradayAnswer {
+  const answer = parseChart(body, fetchedAt);
+  // parseChart checked there is one result with a meta
+  const result = (obj(body, "body").chart as Obj).result as unknown[];
+  const meta = obj(obj(result[0], "chart result").meta, "meta");
+  return {
+    ...answer,
+    windows: {
+      pre: windows(meta, "pre"),
+      regular: windows(meta, "regular"),
+      post: windows(meta, "post"),
+    },
+  };
+}
+
 // Each entry is read on its own, so one bad symbol skips only itself;
 // a symbol without data comes back without a response.
 export function parseSpark(body: unknown, fetchedAt: number): SparkAnswer {
@@ -336,6 +407,13 @@ export function yahoo(options: YahooOptions): Yahoo {
   const host = options.host ?? HOST;
   const doFetch: Fetch = options.fetch ?? ((url, init) => fetch(url, init));
   const calls = options.queue ?? queue(clock, CONCURRENCY);
+  // kept from every answer, so a quote asking for extended prices skips
+  // a listing without them; a restart empties it
+  const prePost = new Map<string, boolean>();
+  const seen = <T extends ChartMeta>(meta: T): T => {
+    if (meta.prePost !== null) prePost.set(meta.symbol, meta.prePost);
+    return meta;
+  };
 
   // parsed inside the queued task, so a body that is not JSON backs the
   // queue off
@@ -391,7 +469,9 @@ export function yahoo(options: YahooOptions): Yahoo {
       // a cached answer freezes the price for minutes; _ makes each URL new
       const list = symbols.map(encodeURIComponent).join(",");
       const url = `${host}/v7/finance/spark?symbols=${list}&range=1d&interval=5m&_=${clock.now()}`;
-      return get(url, run, parseSpark);
+      const answer = await get(url, run, parseSpark);
+      for (const quote of answer.quotes) seen(quote);
+      return answer;
     };
 
     return {
@@ -403,8 +483,18 @@ export function yahoo(options: YahooOptions): Yahoo {
           events: "div,split",
         });
         const url = `${host}/v8/finance/chart/${encodeURIComponent(symbol)}?${params}`;
-        return get(url, run, parseChart);
+        return seen(await get(url, run, parseChart));
       },
+      async intraday(symbol) {
+        const params = new URLSearchParams({
+          interval: "1m",
+          range: INTRADAY_RANGE,
+          includePrePost: "true",
+        });
+        const url = `${host}/v8/finance/chart/${encodeURIComponent(symbol)}?${params}`;
+        return seen(await get(url, run, parseIntraday));
+      },
+      prePost: (symbol) => prePost.get(symbol),
       spark,
       async sparkAll(symbols) {
         const batches: string[][] = [];

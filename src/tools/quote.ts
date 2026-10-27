@@ -28,6 +28,7 @@ import type { WeeklyRow } from "../signals/weekly.ts";
 import type { StaleReason } from "../stale.ts";
 import { cursor, fitPage, iso, price, readCursor, round } from "./answer.ts";
 import { ArgError, fields, optionalText, symbols } from "./args.ts";
+import { type ExtendedRead, readExtended } from "./extended.ts";
 import { benchmarkStale } from "./sets.ts";
 import {
   type ItemError,
@@ -286,19 +287,28 @@ export type QuoteArgs = {
   symbols: string[];
   benchmark: string | null;
   next: string | null;
+  extended: boolean;
 };
 
 export function parseQuote(input: unknown): QuoteArgs {
-  const f = fields(input, ["symbols", "benchmark", "next"]);
+  const f = fields(input, ["symbols", "benchmark", "next", "extended"]);
   const list = symbols(f.symbols, "symbols", MAX_SYMBOLS);
   const benchmark = optionalText(f.benchmark, "benchmark");
   if (f.next !== undefined && f.next !== null && typeof f.next !== "string") {
     throw new ArgError("next must be a string from an earlier answer");
   }
+  if (
+    f.extended !== undefined &&
+    f.extended !== null &&
+    typeof f.extended !== "boolean"
+  ) {
+    throw new ArgError("extended must be true or false");
+  }
   return {
     symbols: list,
     benchmark,
     next: (f.next as string | undefined) ?? null,
+    extended: f.extended === true,
   };
 }
 
@@ -372,6 +382,7 @@ function agentItem(
   i: Instrument,
   bench: Benchmark | null,
   now: number,
+  extended: ExtendedRead | undefined,
 ) {
   const side = instrumentSide(m.db, i, bench?.side ?? null, earliestStart);
   const r = returnsOf(side);
@@ -400,7 +411,12 @@ function agentItem(
           relative_return_3m: relative(3),
         }),
     session: sessionOf(m, i, now),
-    stale,
+    ...(extended === undefined
+      ? { stale }
+      : {
+          extended: extended.extended,
+          stale: extended.reason === null ? stale : [...stale, extended.reason],
+        }),
   };
 }
 
@@ -415,10 +431,23 @@ export async function quotePage(
 ): Promise<string> {
   const offset = offsetOf(args);
   const asked = args.symbols.slice(offset);
+  const deadline = m.clock.now() + m.callMs;
   const targets = await readTargets(
     m,
     args.benchmark === null ? asked : [...asked, args.benchmark],
+    deadline,
   );
+  // quote's only, never a projection's
+  const extended =
+    args.extended && project === undefined
+      ? await readExtended(
+          m,
+          targets
+            .slice(0, asked.length)
+            .flatMap((t) => ("instrument" in t ? [t.instrument] : [])),
+          deadline,
+        )
+      : null;
   const now = m.clock.now();
   const bench =
     args.benchmark === null ? null : benchmarkOf(m, targets.at(-1)!, now);
@@ -431,7 +460,14 @@ export async function quotePage(
     const q = quoteItem(m.db, t.input, t.instrument, latest);
     const item =
       project === undefined
-        ? agentItem(m, q, t.instrument, bench, now)
+        ? agentItem(
+            m,
+            q,
+            t.instrument,
+            bench,
+            now,
+            extended?.get(t.instrument.id),
+          )
         : project(q, latest);
     return { item, fred: q.observation != null };
   });

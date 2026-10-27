@@ -16,6 +16,7 @@ inside a call in `docs/tools.md`; rule pauses in `docs/rules.md`.
 | Call | Path | Used for |
 | --- | --- | --- |
 | `chart` | `/v8/finance/chart/<symbol>?period1&period2&interval=1d&events=div,split` | daily bars, splits, one listing's meta |
+| `intraday` | `/v8/finance/chart/<symbol>?interval=1m&range=1d&includePrePost=true` | quote's `extended`: minute bars with pre and post trading, and each window |
 | `spark` | `/v7/finance/spark?symbols=<list>&range=1d&interval=5m&_=<now>` | quotes and sessions, up to 20 symbols |
 | `search` | `/v1/finance/search?q&quotesCount=10&newsCount=0&listsCount=0` | listings for a bare symbol or a name |
 
@@ -215,6 +216,19 @@ inside a call in `docs/tools.md`; rule pauses in `docs/rules.md`.
   trade time replaces it only when fetched later (`storeQuotes()`).
 - **Every answer's sessions are recorded first,** then quotes and live
   signal rows; a live row the new session moved past goes.
+- **`hasPrePostMarketData` decides whether a listing has extended
+  trading,** never the windows: `currentTradingPeriod` names `pre` and
+  `post` for Xetra too, whose flag is false. The client keeps the flag
+  per Yahoo symbol in memory from every chart and spark answer
+  (`prePost()`), so a listing whose quote pass said false is never
+  charted for `extended`; one not seen yet is charted once, and its
+  answer says. A restart empties it.
+- **`intraday()` reads one day of minutes** (`INTRADAY_RANGE`) with
+  the pre, regular and post windows of `currentTradingPeriod` and of
+  each day in `tradingPeriods`; a market without a window answers it
+  empty. Extended bars' `volume` reads 0. Only quote's `extended`
+  reads it, inside the call (`docs/tools.md`); no job polls the
+  extended windows.
 
 ## The per-instrument lock
 
@@ -270,4 +284,6 @@ inside a call in `docs/tools.md`; rule pauses in `docs/rules.md`.
 - **Tool calls spend from the same queue:** a resolution is at most one
   7-day chart and one search, an unknown symbol a 10-year chart and a
   spark, a catch-up a refetch chart and a spark, plus one whole
-  history on a split or rescale.
+  history on a split or rescale; quote's `extended` one intraday chart
+  per listing with extended trading and a closed session, per quote
+  period.

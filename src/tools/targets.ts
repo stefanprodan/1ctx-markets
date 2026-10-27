@@ -44,6 +44,7 @@ import { WriterClosed } from "../writer.ts";
 import { SOURCE as YAHOO, type Yahoo } from "../yahoo/client.ts";
 import { type Candidate, ResolveError, resolve } from "../yahoo/resolve.ts";
 import { catchUp, fetchInstrument } from "../yahoo/sync.ts";
+import type { ExtendedCache } from "./extended.ts";
 
 // 1ctx's untouched tool timeout is 20 seconds
 export const CALL_MS = 15_000;
@@ -73,6 +74,8 @@ export type Markets = {
   log: Log;
   // fetches in flight, shared by every call naming the same instrument
   inflight: Map<string, Flight>;
+  // quote's extended prices, one quote period each
+  extended: ExtendedCache;
 };
 
 export function markets(options: {
@@ -107,6 +110,7 @@ export function markets(options: {
     callMs: options.callMs ?? CALL_MS,
     log: options.log,
     inflight: new Map(),
+    extended: new Map(),
   };
 }
 
@@ -427,8 +431,8 @@ const EXPIRED = Symbol("expired");
 export async function readTargets(
   m: Markets,
   inputs: readonly string[],
+  deadline = m.clock.now() + m.callMs,
 ): Promise<Target[]> {
-  const deadline = m.clock.now() + m.callMs;
   let cancel = () => {};
   const expired = new Promise<typeof EXPIRED>((resolve) => {
     cancel = m.clock.at(deadline, () => resolve(EXPIRED));
