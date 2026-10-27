@@ -16,16 +16,10 @@ import {
   keyOf as bvbKey,
 } from "../bvb/sync.ts";
 import type { Db } from "../db/index.ts";
-import {
-  addSeries,
-  NO_DATA,
-  Refused,
-  refetchSeries,
-  seriesId,
-} from "../fred/sync.ts";
+import { addSeries, NO_DATA, refetchSeries, seriesId } from "../fred/sync.ts";
 import { type Instrument, readInstrument } from "../instruments.ts";
 import { errorFields } from "../log.ts";
-import { Paused, QueueClosed, SourceError } from "../source.ts";
+import { Paused, QueueClosed, Refused, SourceError } from "../source.ts";
 import { BVB, BVB_MARKET, FRED, FRED_MARKET, YAHOO } from "../sources/ids.ts";
 import { isTracked, markRead } from "../tracking.ts";
 import { WriterClosed } from "../writer.ts";

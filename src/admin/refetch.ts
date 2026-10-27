@@ -23,16 +23,18 @@ import { checkSource, type Instrument, Moved } from "../instruments.ts";
 import { errorFields } from "../log.ts";
 import { eligible as massiveEligible, refreshNews } from "../massive/store.ts";
 import { endRun, failRun, startRun } from "../runs.ts";
-import { DeadlinePassed, Paused, QueueClosed, SourceError } from "../source.ts";
+import {
+  DeadlinePassed,
+  expired,
+  Paused,
+  QueueClosed,
+  SourceError,
+} from "../source.ts";
 import { BVB, FRED, YAHOO } from "../sources/ids.ts";
 import { JOBS } from "../stale.ts";
 import type { Markets } from "../tools/markets.ts";
 import { WriterClosed } from "../writer.ts";
-import {
-  expired,
-  storeQuotes,
-  backfill as yahooBackfill,
-} from "../yahoo/sync.ts";
+import { storeQuotes, backfill as yahooBackfill } from "../yahoo/sync.ts";
 
 export const PARTS = [
   "bars",

@@ -24,7 +24,6 @@ import {
   DAILY_ONLY,
   type FredContext,
   NO_DATA,
-  Refused,
   refetchSeries,
   unitOf,
 } from "../src/fred/sync.ts";
@@ -36,7 +35,7 @@ import { dailySeries } from "../src/signals/daily.ts";
 import { readSignals } from "../src/signals/read.ts";
 import { selectList } from "../src/signals/store.ts";
 import { weeklySeries } from "../src/signals/weekly.ts";
-import { QueueClosed, SourceError } from "../src/source.ts";
+import { QueueClosed, Refused, SourceError } from "../src/source.ts";
 import { JOBS, STALE } from "../src/stale.ts";
 import { markRead } from "../src/tracking.ts";
 import { writer } from "../src/writer.ts";

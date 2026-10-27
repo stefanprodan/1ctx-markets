@@ -17,13 +17,13 @@ import {
 import { readSession, recordSession } from "../src/calendars.ts";
 import { MINUTE_MS } from "../src/clock.ts";
 import { open } from "../src/db/index.ts";
-import { Refused } from "../src/fred/sync.ts";
 import { type Instrument, readInstrument } from "../src/instruments.ts";
 import { keys, requireBearer } from "../src/keys.ts";
 import { logger, silent } from "../src/log.ts";
 import { readQuote } from "../src/quotes.ts";
 import type { RuleHooks } from "../src/rules/hooks.ts";
 import { lastRun } from "../src/runs.ts";
+import { Refused } from "../src/source.ts";
 import { JOBS, quoteStale, STALE } from "../src/stale.ts";
 import { round } from "../src/tools/answer.ts";
 import { historyAnswer, parseHistory } from "../src/tools/history.ts";

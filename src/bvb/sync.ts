@@ -22,7 +22,6 @@ import {
 } from "../calendars.ts";
 import { type Clock, DAY_MS, MINUTE_MS } from "../clock.ts";
 import type { Db } from "../db/index.ts";
-import { Refused } from "../fred/sync.ts";
 import {
   checkOwner,
   checkSource,
@@ -37,12 +36,11 @@ import { type QuoteRow, readQuote, upsertQuote } from "../quotes.ts";
 import { NO_RULES, type RuleHooks } from "../rules/hooks.ts";
 import { endRun, startRun } from "../runs.ts";
 import { pruneLive, refreshLive, signalsAfterBars } from "../signals/store.ts";
-import { SourceError } from "../source.ts";
+import { expired, Refused, SourceError } from "../source.ts";
 import { JOBS } from "../stale.ts";
 import type { Writer } from "../writer.ts";
 import {
   backfillStart,
-  expired,
   REFETCH_DAYS,
   rescaleOf,
   sameRatio,

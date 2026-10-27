@@ -11,7 +11,6 @@ import { dailyRange } from "../bars.ts";
 import { weekOf } from "../calendars.ts";
 import { MINUTE_MS } from "../clock.ts";
 import type { Db } from "../db/index.ts";
-import { Refused } from "../fred/sync.ts";
 import {
   checkSource,
   type Instrument,
@@ -22,7 +21,7 @@ import { exclusive } from "../lock.ts";
 import { errorFields, type Log } from "../log.ts";
 import { endRun, failRun, lastStarted, startRun } from "../runs.ts";
 import type { Scheduler } from "../scheduler.ts";
-import { phraseOf, SourceError } from "../source.ts";
+import { phraseOf, Refused, SourceError } from "../source.ts";
 import { YAHOO } from "../sources/ids.ts";
 import { SWITCH } from "../stale.ts";
 import { keyOf as yahooKey } from "../yahoo/resolve.ts";

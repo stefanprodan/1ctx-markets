@@ -36,7 +36,7 @@ import { type QuoteRow, upsertQuote } from "../quotes.ts";
 import { NO_RULES, type RuleHooks } from "../rules/hooks.ts";
 import { endRun, startRun } from "../runs.ts";
 import { pruneLive, refreshLive, signalsAfterBars } from "../signals/store.ts";
-import { DeadlinePassed, type Phrase, SourceError } from "../source.ts";
+import { expired, type Phrase, SourceError } from "../source.ts";
 import { JOBS } from "../stale.ts";
 import type { Writer } from "../writer.ts";
 import { addDays, dateOfWall, startOfDate, wallTime } from "../zone.ts";
@@ -597,8 +597,6 @@ export function storeSwitched(
   storeQuotes(db, quote, rules, now);
   return instrument;
 }
-
-export const expired = () => new DeadlinePassed();
 
 // one write while live() holds, or nothing
 export async function fetchInstrument(

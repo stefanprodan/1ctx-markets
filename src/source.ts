@@ -72,10 +72,20 @@ export class DeadlinePassed extends SourceError {
   }
 }
 
+export const expired = () => new DeadlinePassed();
+
 // it never reached the source, so no run records it
 export class Paused extends SourceError {
   constructor(phrase: Phrase) {
     super(phrase, "backing off");
+  }
+}
+
+// an instrument the server will not keep, said to the caller as it is
+export class Refused extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "Refused";
   }
 }
 

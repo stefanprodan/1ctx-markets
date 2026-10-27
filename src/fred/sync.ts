@@ -27,7 +27,7 @@ import {
 import { exclusive } from "../lock.ts";
 import type { RuleHooks } from "../rules/hooks.ts";
 import { signalsAfterBars } from "../signals/store.ts";
-import { DeadlinePassed, SourceError } from "../source.ts";
+import { DeadlinePassed, Refused, SourceError } from "../source.ts";
 import { FRED_MARKET } from "../sources/ids.ts";
 import type { Writer } from "../writer.ts";
 import { dateOfWall, startOfDate } from "../zone.ts";
@@ -61,14 +61,6 @@ export type FredContext = {
   // told when a series' run ends; none in tests that need no rules
   rules?: RuleHooks;
 };
-
-// a series the server will not keep, said to the caller as it is
-export class Refused extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "Refused";
-  }
-}
 
 export type AddResult =
   | { kind: "off"; message: typeof NO_DATA }
