@@ -3,7 +3,7 @@
 //
 // The latest quote per instrument, whichever source gave it.
 
-import type { Db } from "./storage/db/index.ts";
+import type { Db } from "../storage/db/index.ts";
 
 export type QuoteRow = {
   instrument: string;

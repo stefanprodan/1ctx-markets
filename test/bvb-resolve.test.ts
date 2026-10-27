@@ -5,7 +5,7 @@ import { describe, expect, test } from "bun:test";
 import { bvb } from "../src/bvb/client.ts";
 import { bvbJobs } from "../src/bvb/jobs.ts";
 import { NO_DATA } from "../src/bvb/sync.ts";
-import { readInstrument, upsertInstrument } from "../src/instruments.ts";
+import { readInstrument, upsertInstrument } from "../src/market/instruments.ts";
 import { MINUTE_MS } from "../src/runtime/clock.ts";
 import { silent } from "../src/runtime/log.ts";
 import type { Fetch } from "../src/source.ts";

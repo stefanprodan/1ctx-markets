@@ -13,8 +13,9 @@ import {
   refreshResearch,
   STALE_RESEARCH,
 } from "../src/finnhub/store.ts";
-import { readInstrument, upsertInstrument } from "../src/instruments.ts";
 import { iso } from "../src/market/format.ts";
+import { readInstrument, upsertInstrument } from "../src/market/instruments.ts";
+import { lastReadAt, markRead } from "../src/market/tracking.ts";
 import {
   MAX_PUBLISHER,
   MAX_REASONING,
@@ -57,7 +58,6 @@ import {
   WEEK_TITLE,
   WEEK_URL,
 } from "../src/tools/research.ts";
-import { lastReadAt, markRead } from "../src/tracking.ts";
 import { yahoo } from "../src/yahoo/client.ts";
 import { api } from "./helpers/api.ts";
 import { type TestApp, withApp } from "./helpers/app.ts";

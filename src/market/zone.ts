@@ -4,7 +4,7 @@
 // A wall time is epoch ms read as if the zone were UTC, so day and hour
 // steps stay plain arithmetic across clock changes.
 
-import { DAY_MS } from "./runtime/clock.ts";
+import { DAY_MS } from "../runtime/clock.ts";
 
 const DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 

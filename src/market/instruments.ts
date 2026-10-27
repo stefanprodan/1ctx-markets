@@ -4,8 +4,8 @@
 // Instruments keyed market:symbol; the source's own symbol is a column,
 // so the identity holds when the source changes.
 
-import { SourceError } from "./source.ts";
-import type { Db } from "./storage/db/index.ts";
+import { SourceError } from "../source.ts";
+import type { Db } from "../storage/db/index.ts";
 
 // what a price means; unknown rather than a guess, since Yahoo's INDEX
 // covers both ^VIX's points and ^TNX's percent

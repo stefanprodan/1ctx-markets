@@ -20,7 +20,7 @@ import {
   sessionFromChartMeta,
   weekEnd,
   weekOf,
-} from "../src/calendars.ts";
+} from "../src/market/calendars.ts";
 import { open } from "../src/storage/db/index.ts";
 import { fakeClock } from "./helpers/clock.ts";
 

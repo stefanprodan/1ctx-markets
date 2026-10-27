@@ -3,7 +3,6 @@
 
 import { describe, expect, test } from "bun:test";
 import { start } from "../src/app.ts";
-import { readBars } from "../src/bars.ts";
 import { bvb, MARKET } from "../src/bvb/client.ts";
 import { bvbJobs } from "../src/bvb/jobs.ts";
 import {
@@ -14,22 +13,23 @@ import {
   sessionOf,
   UNLISTED,
 } from "../src/bvb/sync.ts";
-import { readSession, recordSession } from "../src/calendars.ts";
-import { type Instrument, readInstrument } from "../src/instruments.ts";
+import { readBars } from "../src/market/bars.ts";
+import { readSession, recordSession } from "../src/market/calendars.ts";
 import { round } from "../src/market/format.ts";
-import { readQuote } from "../src/quotes.ts";
+import { type Instrument, readInstrument } from "../src/market/instruments.ts";
+import { readQuote } from "../src/market/quotes.ts";
+import { JOBS, quoteStale, STALE } from "../src/market/stale.ts";
+import { markRead } from "../src/market/tracking.ts";
 import type { RuleHooks } from "../src/rules/hooks.ts";
 import { MINUTE_MS } from "../src/runtime/clock.ts";
 import { keys, requireBearer } from "../src/runtime/keys.ts";
 import { logger, silent } from "../src/runtime/log.ts";
 import { Refused } from "../src/source.ts";
-import { JOBS, quoteStale, STALE } from "../src/stale.ts";
 import { open } from "../src/storage/db/index.ts";
 import { lastRun } from "../src/storage/runs.ts";
 import { writer } from "../src/storage/writer.ts";
 import { historyAnswer, parseHistory } from "../src/tools/history.ts";
 import { markets } from "../src/tools/markets.ts";
-import { markRead } from "../src/tracking.ts";
 import { yahoo } from "../src/yahoo/client.ts";
 import { api } from "./helpers/api.ts";
 import { SECRETS } from "./helpers/app.ts";

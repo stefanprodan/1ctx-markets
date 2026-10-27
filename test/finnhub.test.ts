@@ -30,7 +30,11 @@ import {
   STALE_RESEARCH,
   sectionState,
 } from "../src/finnhub/store.ts";
-import { type Instrument, upsertInstrument } from "../src/instruments.ts";
+import {
+  type Instrument,
+  upsertInstrument,
+} from "../src/market/instruments.ts";
+import { markRead } from "../src/market/tracking.ts";
 import { DAY_MS, MINUTE_MS } from "../src/runtime/clock.ts";
 import { keys } from "../src/runtime/keys.ts";
 import { format, logger, silent } from "../src/runtime/log.ts";
@@ -38,7 +42,6 @@ import { SourceError } from "../src/source.ts";
 import { type Db, open } from "../src/storage/db/index.ts";
 import { lastRun } from "../src/storage/runs.ts";
 import { writer } from "../src/storage/writer.ts";
-import { markRead } from "../src/tracking.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { drive } from "./helpers/drive.ts";
 import {

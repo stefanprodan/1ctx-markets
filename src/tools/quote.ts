@@ -6,11 +6,12 @@
 // may be behind. The API's quotes route answers a smaller projection of
 // the same items, and movers and screen read the same rows.
 
-import { CRYPTO, isQuoted, readSession } from "../calendars.ts";
 import { ATTRIBUTION } from "../fred/sync.ts";
-import type { Instrument } from "../instruments.ts";
+import { CRYPTO, isQuoted, readSession } from "../market/calendars.ts";
 import { iso, price, round } from "../market/format.ts";
-import { readQuote } from "../quotes.ts";
+import type { Instrument } from "../market/instruments.ts";
+import { readQuote } from "../market/quotes.ts";
+import type { StaleReason } from "../market/stale.ts";
 import type { DailyRow } from "../signals/daily.ts";
 import {
   benchmarkSide,
@@ -25,7 +26,6 @@ import { earliestStart } from "../signals/relative.ts";
 import { DAILY_COLUMNS, WEEKLY_COLUMNS } from "../signals/store.ts";
 import type { WeeklyRow } from "../signals/weekly.ts";
 import { FRED } from "../sources/ids.ts";
-import type { StaleReason } from "../stale.ts";
 import type { Db } from "../storage/db/index.ts";
 import { cursor, fitPage, readCursor } from "./answer.ts";
 import { ArgError, fields, optionalText, symbols } from "./args.ts";

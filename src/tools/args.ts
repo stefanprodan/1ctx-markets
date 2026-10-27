@@ -4,7 +4,7 @@
 // Arguments are checked before anything is fetched, and one the tool
 // does not take is refused rather than ignored.
 
-import { wallOfDate } from "../zone.ts";
+import { wallOfDate } from "../market/zone.ts";
 
 export class ArgError extends Error {
   constructor(message: string) {

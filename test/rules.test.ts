@@ -8,7 +8,8 @@ import {
   readEvents,
   refreshResearch,
 } from "../src/finnhub/store.ts";
-import { readInstrument } from "../src/instruments.ts";
+import { readInstrument } from "../src/market/instruments.ts";
+import { trackedIds } from "../src/market/tracking.ts";
 import { WAITING } from "../src/rules/evaluate.ts";
 import {
   FIELD_NAMES,
@@ -23,7 +24,6 @@ import { DeadlinePassed, SourceError } from "../src/source.ts";
 import { endRun, failRun, startRun } from "../src/storage/runs.ts";
 import { tools } from "../src/tools/index.ts";
 import { NO_EVENT_SOURCE } from "../src/tools/rules.ts";
-import { trackedIds } from "../src/tracking.ts";
 import { yahooJobs } from "../src/yahoo/jobs.ts";
 import { catchUp, refetch } from "../src/yahoo/sync.ts";
 import { drive, pacedOf } from "./helpers/drive.ts";

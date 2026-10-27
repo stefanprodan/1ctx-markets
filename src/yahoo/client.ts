@@ -5,7 +5,7 @@
 // crumb. Every call goes through one queue, and an answer that does not
 // have the expected shape is an error, never empty rows.
 
-import { type Session, sessionFromChartMeta } from "../calendars.ts";
+import { type Session, sessionFromChartMeta } from "../market/calendars.ts";
 import type { Clock } from "../runtime/clock.ts";
 import {
   type Backoff,

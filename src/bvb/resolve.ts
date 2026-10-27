@@ -9,7 +9,7 @@ import {
   type Instrument,
   readBySourceSymbol,
   readInstrument,
-} from "../instruments.ts";
+} from "../market/instruments.ts";
 import type { Clock } from "../runtime/clock.ts";
 import { YAHOO } from "../sources/ids.ts";
 import type { Db } from "../storage/db/index.ts";

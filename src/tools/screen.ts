@@ -7,8 +7,9 @@
 // formula is not.
 
 import { ATTRIBUTION } from "../fred/sync.ts";
-import type { Instrument } from "../instruments.ts";
 import { round } from "../market/format.ts";
+import type { Instrument } from "../market/instruments.ts";
+import type { StaleReason } from "../market/stale.ts";
 import type { DailyRow } from "../signals/daily.ts";
 import {
   benchmarkSide,
@@ -20,7 +21,6 @@ import {
 import { earliestStart, type ReturnPeriod } from "../signals/relative.ts";
 import type { WeeklyRow } from "../signals/weekly.ts";
 import { FRED } from "../sources/ids.ts";
-import type { StaleReason } from "../stale.ts";
 import {
   errorResult,
   type Failure,

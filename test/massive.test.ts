@@ -6,7 +6,11 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { start } from "../src/app.ts";
-import { type Instrument, upsertInstrument } from "../src/instruments.ts";
+import {
+  type Instrument,
+  upsertInstrument,
+} from "../src/market/instruments.ts";
+import { markRead } from "../src/market/tracking.ts";
 import {
   checkCursor,
   HOST,
@@ -42,7 +46,6 @@ import { SourceError } from "../src/source.ts";
 import { type Db, open } from "../src/storage/db/index.ts";
 import { lastRun } from "../src/storage/runs.ts";
 import { writer } from "../src/storage/writer.ts";
-import { markRead } from "../src/tracking.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { drive } from "./helpers/drive.ts";
 import {

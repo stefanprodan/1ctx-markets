@@ -5,8 +5,8 @@
 // stored daily ones, never fetched: an open crypto week from Yahoo
 // holds Monday to Saturday only.
 
+import type { Db } from "../storage/db/index.ts";
 import { isWeekFinal, type Session, weekOf } from "./calendars.ts";
-import type { Db } from "./storage/db/index.ts";
 
 export type Interval = "1d" | "1wk";
 

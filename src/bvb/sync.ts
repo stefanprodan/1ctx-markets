@@ -11,7 +11,7 @@ import {
   rebuildWeeks,
   upsertBars,
   type Written,
-} from "../bars.ts";
+} from "../market/bars.ts";
 import {
   isBarFinal,
   readSession,
@@ -19,7 +19,7 @@ import {
   session,
   sessionDate,
   weekOf,
-} from "../calendars.ts";
+} from "../market/calendars.ts";
 import {
   checkOwner,
   checkSource,
@@ -28,8 +28,16 @@ import {
   readInstruments,
   type Unit,
   upsertInstrument,
-} from "../instruments.ts";
-import { type QuoteRow, readQuote, upsertQuote } from "../quotes.ts";
+} from "../market/instruments.ts";
+import { type QuoteRow, readQuote, upsertQuote } from "../market/quotes.ts";
+import { JOBS } from "../market/stale.ts";
+import {
+  addDays,
+  fromWallTime,
+  localDate,
+  startOfDate,
+  wallTime,
+} from "../market/zone.ts";
 import { NO_RULES, type RuleHooks } from "../rules/hooks.ts";
 import { type Clock, DAY_MS, MINUTE_MS } from "../runtime/clock.ts";
 import { exclusive } from "../runtime/lock.ts";
@@ -41,17 +49,9 @@ import {
   rescaleOf,
   sameRatio,
 } from "../sources/history.ts";
-import { JOBS } from "../stale.ts";
 import type { Db } from "../storage/db/index.ts";
 import { endRun, startRun } from "../storage/runs.ts";
 import type { Writer } from "../storage/writer.ts";
-import {
-  addDays,
-  fromWallTime,
-  localDate,
-  startOfDate,
-  wallTime,
-} from "../zone.ts";
 import {
   type Bvb,
   type Detail,

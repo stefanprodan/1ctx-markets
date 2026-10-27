@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
-import { recordSession, session } from "../src/calendars.ts";
+import { recordSession, session } from "../src/market/calendars.ts";
 import { round } from "../src/market/format.ts";
 import type { Db } from "../src/storage/db/index.ts";
 import { cursor, fits, PAGE_BYTES } from "../src/tools/answer.ts";

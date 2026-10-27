@@ -6,6 +6,7 @@
 // API, so every page is read by its table ids and labels, and one that
 // does not read is an error, never empty rows.
 
+import { checkZone, dateOfWall } from "../market/zone.ts";
 import type { Clock } from "../runtime/clock.ts";
 import {
   type Backoff,
@@ -17,7 +18,6 @@ import {
   Unreadable,
 } from "../source.ts";
 import { BVB, BVB_MARKET } from "../sources/ids.ts";
-import { checkZone, dateOfWall } from "../zone.ts";
 import {
   column,
   malformed,

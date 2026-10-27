@@ -3,12 +3,12 @@
 //
 // The history rules every source with daily bars follows.
 
-import type { Bar } from "../bars.ts";
-import { weekOf } from "../calendars.ts";
-import type { Instrument } from "../instruments.ts";
+import type { Bar } from "../market/bars.ts";
+import { weekOf } from "../market/calendars.ts";
+import type { Instrument } from "../market/instruments.ts";
+import { dateOfWall } from "../market/zone.ts";
 import { DAY_MS, MINUTE_MS } from "../runtime/clock.ts";
 import type { Db } from "../storage/db/index.ts";
-import { dateOfWall } from "../zone.ts";
 
 export const BACKFILL_YEARS = 10;
 // a failed pass or backfill, or a refused whole history, waits this long

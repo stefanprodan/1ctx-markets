@@ -19,6 +19,7 @@ import { type FinnhubJobs, finnhubJobs } from "./finnhub/jobs.ts";
 import { type Hooks, pruneResearch } from "./finnhub/store.ts";
 import { type Fred, fred } from "./fred/client.ts";
 import { type FredJobs, fredJobs } from "./fred/jobs.ts";
+import { TRACK_DAYS, trackedIds } from "./market/tracking.ts";
 import { type Massive, massive } from "./massive/client.ts";
 import { type MassiveJobs, massiveJobs } from "./massive/jobs.ts";
 import { pruneNews } from "./massive/store.ts";
@@ -35,7 +36,6 @@ import { failInterrupted, pruneRuns } from "./storage/runs.ts";
 import { type Writer, writer } from "./storage/writer.ts";
 import { alertsHandler } from "./tools/alerts.ts";
 import { type Markets, markets } from "./tools/markets.ts";
-import { TRACK_DAYS, trackedIds } from "./tracking.ts";
 import { type Yahoo, yahoo } from "./yahoo/client.ts";
 import { type YahooJobs, yahooJobs } from "./yahoo/jobs.ts";
 

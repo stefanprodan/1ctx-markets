@@ -5,13 +5,13 @@
 // call only when asked and kept in memory for one quote period. Never
 // stored: signals, movers, screen and rules stay on the regular session.
 
-import { CRYPTO, isQuoted, readSession } from "../calendars.ts";
-import type { Instrument } from "../instruments.ts";
+import { CRYPTO, isQuoted, readSession } from "../market/calendars.ts";
 import { iso, price, round } from "../market/format.ts";
+import type { Instrument } from "../market/instruments.ts";
+import { STALE, type StaleReason } from "../market/stale.ts";
 import { MINUTE_MS } from "../runtime/clock.ts";
 import { SourceError } from "../source.ts";
 import { YAHOO } from "../sources/ids.ts";
-import { STALE, type StaleReason } from "../stale.ts";
 import type { IntradayAnswer, Window } from "../yahoo/client.ts";
 import { type ExtendedRead, type Markets, shared } from "./markets.ts";
 

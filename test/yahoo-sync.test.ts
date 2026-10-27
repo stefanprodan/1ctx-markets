@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
-import { readBars } from "../src/bars.ts";
-import { readSessions } from "../src/calendars.ts";
-import { readInstrument, upsertInstrument } from "../src/instruments.ts";
-import { readQuote } from "../src/quotes.ts";
+import { readBars } from "../src/market/bars.ts";
+import { readSessions } from "../src/market/calendars.ts";
+import { readInstrument, upsertInstrument } from "../src/market/instruments.ts";
+import { readQuote } from "../src/market/quotes.ts";
+import { startOfDate } from "../src/market/zone.ts";
 import { DAY_MS } from "../src/runtime/clock.ts";
 import { backfillStart, RETRY_MS } from "../src/sources/history.ts";
 import { type Db, open } from "../src/storage/db/index.ts";
@@ -25,7 +26,6 @@ import {
   storeQuotes,
   unitOf,
 } from "../src/yahoo/sync.ts";
-import { startOfDate } from "../src/zone.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import {
   backTo,

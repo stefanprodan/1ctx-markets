@@ -4,10 +4,10 @@
 // No ticker list: tracked means read within the window or read by a rule;
 // searches and jobs never count.
 
+import { ruleInstruments } from "../rules/store.ts";
+import { DAY_MS } from "../runtime/clock.ts";
+import type { Db } from "../storage/db/index.ts";
 import { type Instrument, readInstruments } from "./instruments.ts";
-import { ruleInstruments } from "./rules/store.ts";
-import { DAY_MS } from "./runtime/clock.ts";
-import type { Db } from "./storage/db/index.ts";
 
 export const TRACK_DAYS = 30;
 export const TRACK_MS = TRACK_DAYS * DAY_MS;

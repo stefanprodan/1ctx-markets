@@ -15,6 +15,7 @@ import {
 import { NO_EVENTS } from "../finnhub/store.ts";
 import { ATTRIBUTION } from "../fred/sync.ts";
 import { price } from "../market/format.ts";
+import { localDate } from "../market/zone.ts";
 import { readRules } from "../rules/store.ts";
 import { errorFields, type Log } from "../runtime/log.ts";
 import { ArgError, fields } from "../tools/args.ts";
@@ -40,7 +41,6 @@ import {
 import { parseScreen, readScreen } from "../tools/screen.ts";
 import { parseSearch, searchAll } from "../tools/search.ts";
 import { setAll } from "../tools/sets.ts";
-import { localDate } from "../zone.ts";
 import { ASSET_CACHE, DOC_FILES, docsFile, docsPage } from "./docs.ts";
 import {
   failed,

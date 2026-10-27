@@ -6,8 +6,8 @@
 // paged first. Only a match can be wrong in silence, so a missing,
 // null or stale input never makes one.
 
-import type { Instrument } from "../instruments.ts";
-import type { StaleReason } from "../stale.ts";
+import type { Instrument } from "../market/instruments.ts";
+import type { StaleReason } from "../market/stale.ts";
 import { cursor, fitPage, readCursor } from "./answer.ts";
 import { ArgError } from "./args.ts";
 import type { ErrorItem, Target } from "./targets.ts";

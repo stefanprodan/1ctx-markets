@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
-import { upsertInstrument } from "../src/instruments.ts";
+import { upsertInstrument } from "../src/market/instruments.ts";
 import { SourceError } from "../src/source.ts";
 import { open } from "../src/storage/db/index.ts";
 import { writer } from "../src/storage/writer.ts";

@@ -3,7 +3,7 @@
 //
 // a run per walk, scoped to the instrument, so one failure is stale alone
 
-import type { Instrument } from "../instruments.ts";
+import type { Instrument } from "../market/instruments.ts";
 import { type Clock, DAY_MS, MINUTE_MS } from "../runtime/clock.ts";
 import { exclusive } from "../runtime/lock.ts";
 import {

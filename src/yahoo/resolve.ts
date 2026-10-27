@@ -4,12 +4,12 @@
 // Yahoo symbols into market:symbol keys, for any exchange it carries,
 // and which listing a caller's symbol means, never by a guess.
 
-import { CRYPTO } from "../calendars.ts";
+import { CRYPTO } from "../market/calendars.ts";
 import {
   type Instrument,
   readBySourceSymbol,
   readInstrument,
-} from "../instruments.ts";
+} from "../market/instruments.ts";
 import { type Clock, DAY_MS } from "../runtime/clock.ts";
 import { SourceError } from "../source.ts";
 import type { Db } from "../storage/db/index.ts";

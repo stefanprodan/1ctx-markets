@@ -6,15 +6,24 @@ import {
   isQuoted,
   nextCheck,
   readSession,
-} from "../calendars.ts";
-import { type Instrument, Moved, readInstrument } from "../instruments.ts";
-import type { QuoteRow } from "../quotes.ts";
+} from "../market/calendars.ts";
+import {
+  type Instrument,
+  Moved,
+  readInstrument,
+} from "../market/instruments.ts";
+import type { QuoteRow } from "../market/quotes.ts";
+import { barsDue, JOBS, owedDue } from "../market/stale.ts";
+import {
+  TRACK_MS,
+  trackedIds,
+  trackedInstruments,
+} from "../market/tracking.ts";
 import { MINUTE_MS } from "../runtime/clock.ts";
 import type { Log } from "../runtime/log.ts";
 import type { Scheduler } from "../runtime/scheduler.ts";
 import { type Phrase, phraseOf, SourceError } from "../source.ts";
 import { RETRY_MS } from "../sources/history.ts";
-import { barsDue, JOBS, owedDue } from "../stale.ts";
 import {
   endRun,
   failRun,
@@ -22,7 +31,6 @@ import {
   runJob,
   startRun,
 } from "../storage/runs.ts";
-import { TRACK_MS, trackedIds, trackedInstruments } from "../tracking.ts";
 import { SOURCE, type SparkAnswer } from "./client.ts";
 import { backfill, refetch, storeQuotes, type YahooContext } from "./sync.ts";
 

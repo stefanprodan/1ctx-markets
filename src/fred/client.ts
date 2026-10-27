@@ -5,6 +5,7 @@
 // the URL, so no URL, error or answer text this client makes carries
 // one: errors hold a fixed phrase and nothing FRED or fetch said.
 
+import { wallOfDate } from "../market/zone.ts";
 import type { Clock } from "../runtime/clock.ts";
 import { MINUTE_MS } from "../runtime/clock.ts";
 import {
@@ -20,7 +21,6 @@ import {
   Unreadable,
 } from "../source.ts";
 import { FRED } from "../sources/ids.ts";
-import { wallOfDate } from "../zone.ts";
 
 export { scrub };
 

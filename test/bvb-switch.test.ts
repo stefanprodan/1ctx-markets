@@ -3,17 +3,17 @@
 
 import { describe, expect, test } from "bun:test";
 import { type App, start } from "../src/app.ts";
-import { readBars } from "../src/bars.ts";
 import { bvb, MARKET } from "../src/bvb/client.ts";
 import { readSources } from "../src/bvb/switch.ts";
 import { fetchInstrument } from "../src/bvb/sync.ts";
-import { Moved, readInstrument } from "../src/instruments.ts";
-import { readQuote } from "../src/quotes.ts";
+import { readBars } from "../src/market/bars.ts";
+import { Moved, readInstrument } from "../src/market/instruments.ts";
+import { readQuote } from "../src/market/quotes.ts";
+import { barsStale, quoteStale, STALE, SWITCH } from "../src/market/stale.ts";
 import { MINUTE_MS } from "../src/runtime/clock.ts";
 import { keys, requireBearer } from "../src/runtime/keys.ts";
 import { logger } from "../src/runtime/log.ts";
 import type { Fetch } from "../src/source.ts";
-import { barsStale, quoteStale, STALE, SWITCH } from "../src/stale.ts";
 import { type Db, open } from "../src/storage/db/index.ts";
 import { lastStarted, startRun } from "../src/storage/runs.ts";
 import { writer } from "../src/storage/writer.ts";

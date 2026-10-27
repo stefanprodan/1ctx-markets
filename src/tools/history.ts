@@ -5,18 +5,18 @@
 // signal row, and its return against a benchmark the caller names,
 // computed on read at the range's end.
 
-import { type Bar, type Interval, readBars } from "../bars.ts";
-import { weekOf } from "../calendars.ts";
 import { ATTRIBUTION } from "../fred/sync.ts";
-import type { Instrument } from "../instruments.ts";
+import { type Bar, type Interval, readBars } from "../market/bars.ts";
+import { weekOf } from "../market/calendars.ts";
 import { price, round } from "../market/format.ts";
+import type { Instrument } from "../market/instruments.ts";
+import type { StaleReason } from "../market/stale.ts";
+import { dateOfWall } from "../market/zone.ts";
 import { readRelativeReturn } from "../signals/read.ts";
 import { monthsBack } from "../signals/relative.ts";
 import { type LiveTarget, liveTarget, selectList } from "../signals/store.ts";
 import { FRED } from "../sources/ids.ts";
-import type { StaleReason } from "../stale.ts";
 import type { Db } from "../storage/db/index.ts";
-import { dateOfWall } from "../zone.ts";
 import {
   cursor,
   errorResult,

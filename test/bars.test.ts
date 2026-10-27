@@ -8,9 +8,9 @@ import {
   rebuildWeeks,
   upsertBars,
   weeksOf,
-} from "../src/bars.ts";
-import { session } from "../src/calendars.ts";
-import { upsertInstrument } from "../src/instruments.ts";
+} from "../src/market/bars.ts";
+import { session } from "../src/market/calendars.ts";
+import { upsertInstrument } from "../src/market/instruments.ts";
 import { open } from "../src/storage/db/index.ts";
 import { parseChart } from "../src/yahoo/client.ts";
 import { dailyBars } from "../src/yahoo/sync.ts";

@@ -10,15 +10,15 @@ import {
   type Hooks,
   readEvent,
 } from "../finnhub/store.ts";
-import { type Instrument, readInstrument } from "../instruments.ts";
 import { iso, price, round } from "../market/format.ts";
+import { type Instrument, readInstrument } from "../market/instruments.ts";
+import { barsStale, quoteStale, STALE } from "../market/stale.ts";
 import { errorFields, type Log, silent } from "../runtime/log.ts";
 import {
   type InstrumentSignals,
   readRelativeReturn,
   readSignals,
 } from "../signals/read.ts";
-import { barsStale, quoteStale, STALE } from "../stale.ts";
 import type { Db } from "../storage/db/index.ts";
 import {
   type Comparison,

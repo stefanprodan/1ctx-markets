@@ -3,21 +3,26 @@
 
 import { describe, expect, test } from "bun:test";
 import { start } from "../src/app.ts";
-import { readBars } from "../src/bars.ts";
-import { readSession } from "../src/calendars.ts";
-import { readInstrument, upsertInstrument } from "../src/instruments.ts";
-import { readQuote } from "../src/quotes.ts";
+import { readBars } from "../src/market/bars.ts";
+import { readSession } from "../src/market/calendars.ts";
+import { readInstrument, upsertInstrument } from "../src/market/instruments.ts";
+import { readQuote } from "../src/market/quotes.ts";
+import {
+  barsStale,
+  JOBS,
+  OWED_RETRY_MS,
+  quoteStale,
+} from "../src/market/stale.ts";
+import { markRead } from "../src/market/tracking.ts";
 import { DAY_MS, MINUTE_MS } from "../src/runtime/clock.ts";
 import { silent } from "../src/runtime/log.ts";
 import { scheduler } from "../src/runtime/scheduler.ts";
 import { readSignals } from "../src/signals/read.ts";
-import { barsStale, JOBS, OWED_RETRY_MS, quoteStale } from "../src/stale.ts";
 import { open } from "../src/storage/db/index.ts";
 import { endRun, INTERRUPTED, lastRun, startRun } from "../src/storage/runs.ts";
 import { writer } from "../src/storage/writer.ts";
 import { markets } from "../src/tools/markets.ts";
 import { moversAnswer, parseMovers } from "../src/tools/movers.ts";
-import { markRead } from "../src/tracking.ts";
 import { yahoo } from "../src/yahoo/client.ts";
 import { RETRY_MS, type TickReport, yahooJobs } from "../src/yahoo/jobs.ts";
 import { catchUp } from "../src/yahoo/sync.ts";

@@ -6,7 +6,6 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { start } from "../src/app.ts";
-import { type Interval, readBars } from "../src/bars.ts";
 import {
   fred,
   parseObservations,
@@ -25,7 +24,11 @@ import {
   refetchSeries,
   unitOf,
 } from "../src/fred/sync.ts";
-import { readInstrument } from "../src/instruments.ts";
+import { type Interval, readBars } from "../src/market/bars.ts";
+import { readInstrument } from "../src/market/instruments.ts";
+import { JOBS, STALE } from "../src/market/stale.ts";
+import { markRead } from "../src/market/tracking.ts";
+import { addDays } from "../src/market/zone.ts";
 import { MINUTE_MS } from "../src/runtime/clock.ts";
 import { keys } from "../src/runtime/keys.ts";
 import { format, logger, silent } from "../src/runtime/log.ts";
@@ -34,12 +37,9 @@ import { readSignals } from "../src/signals/read.ts";
 import { selectList } from "../src/signals/store.ts";
 import { weeklySeries } from "../src/signals/weekly.ts";
 import { QueueClosed, Refused, SourceError } from "../src/source.ts";
-import { JOBS, STALE } from "../src/stale.ts";
 import { type Db, open } from "../src/storage/db/index.ts";
 import { failRun, lastRun, startRun } from "../src/storage/runs.ts";
 import { writer } from "../src/storage/writer.ts";
-import { markRead } from "../src/tracking.ts";
-import { addDays } from "../src/zone.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { clone, fakeFetch, type Recorded } from "./helpers/yahoo.ts";
 

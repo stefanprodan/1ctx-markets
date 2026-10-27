@@ -4,12 +4,12 @@
 // Staleness from the instrument's own source, job and scope; one
 // market's failure never marks another.
 
+import { MINUTE_MS } from "../runtime/clock.ts";
+import { BVB } from "../sources/ids.ts";
+import type { Db } from "../storage/db/index.ts";
+import { lastRun, lastStarted } from "../storage/runs.ts";
 import { CRYPTO, closeQuoteAt, readSession } from "./calendars.ts";
 import type { Instrument } from "./instruments.ts";
-import { MINUTE_MS } from "./runtime/clock.ts";
-import { BVB } from "./sources/ids.ts";
-import type { Db } from "./storage/db/index.ts";
-import { lastRun, lastStarted } from "./storage/runs.ts";
 
 // the jobs whose runs carry a market as their scope
 export const JOBS = {

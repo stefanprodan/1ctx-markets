@@ -14,7 +14,7 @@ import {
   PARTS,
   RESEARCH_SECTIONS as REFETCH_SECTIONS,
 } from "../admin/refetch.ts";
-import { UNITS } from "../instruments.ts";
+import { UNITS } from "../market/instruments.ts";
 import { MAX_NOTE } from "../rules/format.ts";
 import { ALERT_PAGE_BYTES } from "../tools/alerts.ts";
 import { MAX_SYMBOL } from "../tools/args.ts";

@@ -7,14 +7,16 @@
 // last start are written only once the switch landed, so a restart
 // during one redoes it.
 
-import { dailyRange } from "../bars.ts";
-import { weekOf } from "../calendars.ts";
+import { dailyRange } from "../market/bars.ts";
+import { weekOf } from "../market/calendars.ts";
 import {
   checkSource,
   type Instrument,
   readInstruments,
   upsertInstrument,
-} from "../instruments.ts";
+} from "../market/instruments.ts";
+import { SWITCH } from "../market/stale.ts";
+import { startOfDate } from "../market/zone.ts";
 import { MINUTE_MS } from "../runtime/clock.ts";
 import { exclusive } from "../runtime/lock.ts";
 import { errorFields, type Log } from "../runtime/log.ts";
@@ -22,12 +24,10 @@ import type { Scheduler } from "../runtime/scheduler.ts";
 import { phraseOf, Refused, SourceError } from "../source.ts";
 import { backfillStart, RETRY_MS } from "../sources/history.ts";
 import { YAHOO } from "../sources/ids.ts";
-import { SWITCH } from "../stale.ts";
 import type { Db } from "../storage/db/index.ts";
 import { endRun, failRun, lastStarted, startRun } from "../storage/runs.ts";
 import { keyOf as yahooKey } from "../yahoo/resolve.ts";
 import { dailyBars, storeSwitched, type YahooContext } from "../yahoo/sync.ts";
-import { startOfDate } from "../zone.ts";
 import { MARKET, SOURCE } from "./client.ts";
 import {
   type BvbContext,

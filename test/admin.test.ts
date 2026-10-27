@@ -16,7 +16,8 @@ import { INSTRUMENT_TABLES, MAX_SYMBOLS } from "../src/admin/http.ts";
 import { refetch } from "../src/admin/refetch.ts";
 import { finnhub, SPACING_MS } from "../src/finnhub/client.ts";
 import { refreshResearch } from "../src/finnhub/store.ts";
-import { readInstrument, upsertInstrument } from "../src/instruments.ts";
+import { readInstrument, upsertInstrument } from "../src/market/instruments.ts";
+import { lastReadAt } from "../src/market/tracking.ts";
 import { DEFAULT_LISTEN, parseCli } from "../src/runtime/config.ts";
 import {
   ADMIN_FILE,
@@ -35,7 +36,6 @@ import { type Db, open } from "../src/storage/db/index.ts";
 import { writer } from "../src/storage/writer.ts";
 import { CALL_MS, markets } from "../src/tools/markets.ts";
 import { readTargets } from "../src/tools/targets.ts";
-import { lastReadAt } from "../src/tracking.ts";
 import { yahoo } from "../src/yahoo/client.ts";
 import { api } from "./helpers/api.ts";
 import { withApp } from "./helpers/app.ts";

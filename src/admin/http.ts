@@ -7,14 +7,14 @@
 // sent.
 
 import { failed, json, readBody } from "../api/http.ts";
-import { type Instrument, readInstrument } from "../instruments.ts";
 import { iso } from "../market/format.ts";
+import { type Instrument, readInstrument } from "../market/instruments.ts";
+import { trackedIds } from "../market/tracking.ts";
 import { instrumentsOf } from "../rules/format.ts";
 import { readRules } from "../rules/store.ts";
 import type { Backoff } from "../source.ts";
 import type { Db } from "../storage/db/index.ts";
 import type { Markets } from "../tools/markets.ts";
-import { trackedIds } from "../tracking.ts";
 import {
   PARTS,
   type Part,

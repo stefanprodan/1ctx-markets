@@ -8,7 +8,7 @@
 import { candidateOf, TRADABLE } from "../bvb/resolve.ts";
 import { KINDS } from "../bvb/sync.ts";
 import { NO_DATA, seriesId } from "../fred/sync.ts";
-import { type Instrument, readInstrument } from "../instruments.ts";
+import { type Instrument, readInstrument } from "../market/instruments.ts";
 import { BVB, FRED_MARKET, YAHOO } from "../sources/ids.ts";
 import { keyOf } from "../yahoo/resolve.ts";
 import { cursor, fitPage, readCursor } from "./answer.ts";

@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
+import { lastReadAt } from "../src/market/tracking.ts";
 import { DAY_MS, MINUTE_MS } from "../src/runtime/clock.ts";
 import { cursor, PAGE_BYTES } from "../src/tools/answer.ts";
 import { ArgError } from "../src/tools/args.ts";
 import type { Markets } from "../src/tools/markets.ts";
 import { moversAnswer, parseMovers } from "../src/tools/movers.ts";
 import { parseScreen, screenAnswer } from "../src/tools/screen.ts";
-import { lastReadAt } from "../src/tracking.ts";
 import { api } from "./helpers/api.ts";
 import {
   bar,

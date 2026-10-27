@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { join } from "node:path";
+import { markRead } from "../../src/market/tracking.ts";
 import type { Fetch } from "../../src/source.ts";
-import { markRead } from "../../src/tracking.ts";
 import { addInstrument, type YahooContext } from "../../src/yahoo/sync.ts";
 
 const YAHOO = join(import.meta.dir, "..", "fixtures", "yahoo");

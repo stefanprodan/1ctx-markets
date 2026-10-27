@@ -9,8 +9,9 @@ import {
   NOT_COVERED,
   nextEvent,
 } from "../finnhub/store.ts";
-import type { Instrument } from "../instruments.ts";
 import { iso } from "../market/format.ts";
+import type { Instrument } from "../market/instruments.ts";
+import { localDate } from "../market/zone.ts";
 import {
   applyRule,
   type Evaluation,
@@ -38,7 +39,6 @@ import {
   readRules,
   setPaused,
 } from "../rules/store.ts";
-import { localDate } from "../zone.ts";
 import {
   cursor,
   errorResult,

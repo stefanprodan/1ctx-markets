@@ -7,15 +7,15 @@ import type { Bvb } from "../bvb/client.ts";
 import type { Finnhub } from "../finnhub/client.ts";
 import { type Hooks, NO_HOOKS } from "../finnhub/store.ts";
 import type { Fred } from "../fred/client.ts";
+import type { StaleReason } from "../market/stale.ts";
+import { TRACK_MS } from "../market/tracking.ts";
 import type { Massive } from "../massive/client.ts";
 import { NO_RULES, type RuleHooks } from "../rules/hooks.ts";
 import { type Clock, MINUTE_MS } from "../runtime/clock.ts";
 import { DEFAULT_QUOTE_EVERY } from "../runtime/config.ts";
 import type { Log } from "../runtime/log.ts";
-import type { StaleReason } from "../stale.ts";
 import type { Db } from "../storage/db/index.ts";
 import type { Writer } from "../storage/writer.ts";
-import { TRACK_MS } from "../tracking.ts";
 import type { Yahoo } from "../yahoo/client.ts";
 
 // 1ctx's untouched tool timeout is 20 seconds

@@ -13,15 +13,16 @@ import {
   rebuildWeeks,
   upsertBars,
   type Written,
-} from "../bars.ts";
-import { type Session, weekOf } from "../calendars.ts";
+} from "../market/bars.ts";
+import { type Session, weekOf } from "../market/calendars.ts";
 import {
   type Instrument,
   type InstrumentFields,
   readInstrument,
   type Unit,
   upsertInstrument,
-} from "../instruments.ts";
+} from "../market/instruments.ts";
+import { dateOfWall, startOfDate } from "../market/zone.ts";
 import type { RuleHooks } from "../rules/hooks.ts";
 import { type Clock, DAY_MS } from "../runtime/clock.ts";
 import { exclusive } from "../runtime/lock.ts";
@@ -30,7 +31,6 @@ import { DeadlinePassed, Refused, SourceError } from "../source.ts";
 import { FRED_MARKET } from "../sources/ids.ts";
 import type { Db } from "../storage/db/index.ts";
 import type { Writer } from "../storage/writer.ts";
-import { dateOfWall, startOfDate } from "../zone.ts";
 import {
   type Fred,
   type Observations,

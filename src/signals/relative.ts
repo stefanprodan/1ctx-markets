@@ -4,7 +4,7 @@
 // The two listings trade on different calendars, so every anchor is a
 // date on the benchmark's days, never a row offset.
 
-import { addDays, wallOfDate } from "../zone.ts";
+import { addDays, wallOfDate } from "../market/zone.ts";
 import { type Close, checkOrder } from "./common.ts";
 
 export const RETURN_NOTE =

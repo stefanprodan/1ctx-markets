@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { fred } from "../../src/fred/client.ts";
-import { upsertInstrument } from "../../src/instruments.ts";
+import { upsertInstrument } from "../../src/market/instruments.ts";
 import { silent } from "../../src/runtime/log.ts";
 import { type Db, open } from "../../src/storage/db/index.ts";
 import { writer } from "../../src/storage/writer.ts";

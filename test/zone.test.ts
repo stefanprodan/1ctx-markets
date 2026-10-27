@@ -8,7 +8,7 @@ import {
   fromWallTime,
   startOfDate,
   wallTime,
-} from "../src/zone.ts";
+} from "../src/market/zone.ts";
 
 const utc = (iso: string) => Date.parse(iso);
 
