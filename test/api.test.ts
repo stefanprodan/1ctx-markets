@@ -12,6 +12,7 @@ import { type Db, open } from "../src/db/index.ts";
 import { finnhub } from "../src/finnhub/client.ts";
 import { fred } from "../src/fred/client.ts";
 import { silent } from "../src/log.ts";
+import { round } from "../src/tools/answer.ts";
 import { tools } from "../src/tools/index.ts";
 import { CALL_MS, markets } from "../src/tools/targets.ts";
 import { lastReadAt } from "../src/tracking.ts";
@@ -790,6 +791,26 @@ describe("history", () => {
     // the next day the same end is past
     await w.clock.advance(DAY_MS);
     expect(await cache(LIVE)).toBe("private, max-age=3600");
+  });
+
+  test("an index's first read answers its final rows and its live row", async () => {
+    const t = await setup();
+    const body: any = await (await t.call("/history?symbol=^GSPC")).json();
+    const live = t.db
+      .query<{ date: string; sma50: number; sma200: number }, []>(
+        `select date, sma50, sma200 from signals
+         where instrument = 'SNP:^GSPC' and kind = 'live' and interval = '1d'`,
+      )
+      .get()!;
+    // Yahoo stamps the index's close 38 minutes after its session's end
+    expect(live.date).toBe("2026-10-23");
+    const last = body.bars.at(-1);
+    expect(last).toMatchObject({ date: live.date, final: false });
+    expect(last.sma50).toBe(round(live.sma50));
+    expect(last.sma200).toBe(round(live.sma200));
+    expect(last.sma200).not.toBeNull();
+    const final = body.bars.slice(0, -1);
+    expect(final.every((b: any) => b.final && b.sma50 !== null)).toBe(true);
   });
 
   test("resolves and fetches a new symbol inside the call, as the tool does", async () => {

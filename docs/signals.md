@@ -95,10 +95,14 @@ bar's close, or the live price on the live row.
   new day after the last bar. A final bar on the quote's date means no
   live row.
 - **The quote dates the row by its market's stored session**
-  (`liveTarget`): a trade from the session's start to
-  `LIVE_AFTER_END_MS` (15 minutes) after its end, so a closing auction
-  still counts. A trade outside that window belongs to another day and
-  updates the quote only, never a row. Never date it by fixed UTC hours.
+  (`liveTarget`): a trade from the session's start until its local
+  start time on the next day, or `LIVE_AFTER_END_MS` (15 minutes) after
+  its end when that is later (`liveUntil()`). Nothing of the next
+  session trades before it starts, a closing auction prints after the
+  end, and Yahoo stamps an index's value up to 75 minutes after it
+  (^NDX at 21:15:59 UTC for a 20:00 end). A trade outside that window
+  belongs to another day and updates the quote only, never a row.
+  Never date it by fixed UTC hours.
 - **Crypto's day is the UTC day**: its trade's UTC date is the row's,
   with no allowance carrying it past midnight.
 - **Live prices never wait on the bars.** When an earlier bar is not

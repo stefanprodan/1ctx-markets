@@ -461,6 +461,15 @@ describe("live rows", () => {
       storeQuotes(db, parseSpark(auction, clock.now() + 2000)),
     );
     expect(liveRow(db, "1d")).toMatchObject({ date: "2026-10-23" });
+    // a value stamped 75 minutes after the end, as Yahoo stamps ^NDX's
+    const late = await nvdaSpark((m) => {
+      m.regularMarketTime = m.currentTradingPeriod.regular.end + 75 * 60 + 59;
+      m.regularMarketPrice = 190;
+    });
+    await ctx.writer.write((db) =>
+      storeQuotes(db, parseSpark(late, clock.now() + 2500)),
+    );
+    expect(liveRow(db, "1d")).toMatchObject({ date: "2026-10-23" });
     // a Sunday evening trade under Friday's session, as EURUSD=X's
     const sunday = await nvdaSpark((m) => {
       m.regularMarketTime = utc("2026-10-25T19:20") / 1000;
