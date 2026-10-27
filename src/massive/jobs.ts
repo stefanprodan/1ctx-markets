@@ -1,10 +1,10 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 
-import { MINUTE_MS } from "../clock.ts";
-import type { Log } from "../log.ts";
 import { lastStarted } from "../runs.ts";
-import type { Scheduler } from "../scheduler.ts";
+import { MINUTE_MS } from "../runtime/clock.ts";
+import type { Log } from "../runtime/log.ts";
+import type { Scheduler } from "../runtime/scheduler.ts";
 import { phraseOf, QueueClosed } from "../source.ts";
 import { TRACK_MS, trackedInstruments } from "../tracking.ts";
 import { WriterClosed } from "../writer.ts";

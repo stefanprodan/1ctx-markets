@@ -6,7 +6,7 @@
 // API, so every page is read by its table ids and labels, and one that
 // does not read is an error, never empty rows.
 
-import type { Clock } from "../clock.ts";
+import type { Clock } from "../runtime/clock.ts";
 import {
   type Backoff,
   type Fetch,

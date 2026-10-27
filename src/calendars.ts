@@ -4,8 +4,8 @@
 // Each market's hours come from its source's answers, never from a
 // table kept by hand, so any exchange the source carries works.
 
-import { DAY_MS, MINUTE_MS } from "./clock.ts";
 import type { Db } from "./db/index.ts";
+import { DAY_MS, MINUTE_MS } from "./runtime/clock.ts";
 import {
   addDays,
   checkZone,

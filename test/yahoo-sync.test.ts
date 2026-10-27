@@ -4,10 +4,10 @@
 import { describe, expect, test } from "bun:test";
 import { readBars } from "../src/bars.ts";
 import { readSessions } from "../src/calendars.ts";
-import { DAY_MS } from "../src/clock.ts";
 import { type Db, open } from "../src/db/index.ts";
 import { readInstrument, upsertInstrument } from "../src/instruments.ts";
 import { readQuote } from "../src/quotes.ts";
+import { DAY_MS } from "../src/runtime/clock.ts";
 import { backfillStart, RETRY_MS } from "../src/sources/history.ts";
 import { writer } from "../src/writer.ts";
 import {

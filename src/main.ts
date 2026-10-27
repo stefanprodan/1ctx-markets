@@ -9,9 +9,9 @@ import { join } from "node:path";
 import pkg from "../package.json";
 import { AdminError, runAdmin } from "./admin/cli.ts";
 import { start } from "./app.ts";
-import { MINUTE_MS, wallClock } from "./clock.ts";
-import { dbPath, HELP, parseCli, secretsDir } from "./config.ts";
 import { open } from "./db/index.ts";
+import { MINUTE_MS, wallClock } from "./runtime/clock.ts";
+import { dbPath, HELP, parseCli, secretsDir } from "./runtime/config.ts";
 import {
   ADMIN_FILE,
   BEARER_FILE,
@@ -21,8 +21,8 @@ import {
   keys,
   requireAdmin,
   requireBearer,
-} from "./keys.ts";
-import { errorFields, logger } from "./log.ts";
+} from "./runtime/keys.ts";
+import { errorFields, logger } from "./runtime/log.ts";
 import { runService, ServiceError } from "./service/index.ts";
 
 const buildVersion = process.env.MARKETS_BUILD_VERSION;

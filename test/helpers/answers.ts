@@ -9,7 +9,7 @@ import { PREFIX } from "../../src/api/http.ts";
 import { open } from "../../src/db/index.ts";
 import { finnhub } from "../../src/finnhub/client.ts";
 import { fred } from "../../src/fred/client.ts";
-import { silent } from "../../src/log.ts";
+import { silent } from "../../src/runtime/log.ts";
 import { call, tools } from "../../src/tools/index.ts";
 import { markets } from "../../src/tools/markets.ts";
 import { writer } from "../../src/writer.ts";

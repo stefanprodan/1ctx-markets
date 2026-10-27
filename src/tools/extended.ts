@@ -6,9 +6,9 @@
 // stored: signals, movers, screen and rules stay on the regular session.
 
 import { CRYPTO, isQuoted, readSession } from "../calendars.ts";
-import { MINUTE_MS } from "../clock.ts";
 import type { Instrument } from "../instruments.ts";
 import { iso, price, round } from "../market/format.ts";
+import { MINUTE_MS } from "../runtime/clock.ts";
 import { SourceError } from "../source.ts";
 import { YAHOO } from "../sources/ids.ts";
 import { STALE, type StaleReason } from "../stale.ts";

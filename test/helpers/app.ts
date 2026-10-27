@@ -7,10 +7,10 @@ import {
   StreamableHTTPClientTransport,
 } from "@modelcontextprotocol/client";
 import { type App, start } from "../../src/app.ts";
-import { MINUTE_MS } from "../../src/clock.ts";
 import { type Db, open } from "../../src/db/index.ts";
-import { keys, requireAdmin, requireBearer } from "../../src/keys.ts";
-import { logger } from "../../src/log.ts";
+import { MINUTE_MS } from "../../src/runtime/clock.ts";
+import { keys, requireAdmin, requireBearer } from "../../src/runtime/keys.ts";
+import { logger } from "../../src/runtime/log.ts";
 import type { Fetch } from "../../src/source.ts";
 import { type FakeClock, fakeClock } from "./clock.ts";
 

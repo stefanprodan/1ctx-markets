@@ -42,7 +42,7 @@ check_install() {
   done
   # the server's own parser, from the commit being built
   bun -e '
-    const { parseCli } = require("./src/config.ts");
+    const { parseCli } = require("./src/runtime/config.ts");
     const cli = parseCli(process.argv.slice(1));
     if (cli.kind !== "run") {
       console.error(cli.kind === "error" ? cli.message : "not server options");

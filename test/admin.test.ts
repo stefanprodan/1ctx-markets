@@ -14,11 +14,11 @@ import { join } from "node:path";
 import { AdminError, runAdmin } from "../src/admin/cli.ts";
 import { INSTRUMENT_TABLES, MAX_SYMBOLS } from "../src/admin/http.ts";
 import { refetch } from "../src/admin/refetch.ts";
-import { DEFAULT_LISTEN, parseCli } from "../src/config.ts";
 import { type Db, open } from "../src/db/index.ts";
 import { finnhub, SPACING_MS } from "../src/finnhub/client.ts";
 import { refreshResearch } from "../src/finnhub/store.ts";
 import { readInstrument, upsertInstrument } from "../src/instruments.ts";
+import { DEFAULT_LISTEN, parseCli } from "../src/runtime/config.ts";
 import {
   ADMIN_FILE,
   ADMIN_PREFIX,
@@ -29,8 +29,8 @@ import {
   keys,
   requireAdmin,
   requireBearer,
-} from "../src/keys.ts";
-import { silent } from "../src/log.ts";
+} from "../src/runtime/keys.ts";
+import { silent } from "../src/runtime/log.ts";
 import { queue, RATE_LIMIT_BACKOFF_MS, SourceError } from "../src/source.ts";
 import { CALL_MS, markets } from "../src/tools/markets.ts";
 import { readTargets } from "../src/tools/targets.ts";

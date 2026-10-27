@@ -5,10 +5,10 @@
 // market's failure never marks another.
 
 import { CRYPTO, closeQuoteAt, readSession } from "./calendars.ts";
-import { MINUTE_MS } from "./clock.ts";
 import type { Db } from "./db/index.ts";
 import type { Instrument } from "./instruments.ts";
 import { lastRun, lastStarted } from "./runs.ts";
+import { MINUTE_MS } from "./runtime/clock.ts";
 import { BVB } from "./sources/ids.ts";
 
 // the jobs whose runs carry a market as their scope

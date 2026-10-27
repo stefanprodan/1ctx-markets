@@ -3,7 +3,7 @@
 //
 // the key only in a header; a 403 or empty answer is no data, not an error
 
-import type { Clock } from "../clock.ts";
+import type { Clock } from "../runtime/clock.ts";
 import {
   type Backoff,
   type Fetch,

@@ -5,7 +5,7 @@
 // all a sync run or an answer repeats, and its calls go through one
 // queue that backs off after a failure instead of retrying.
 
-import { type Clock, MINUTE_MS } from "./clock.ts";
+import { type Clock, MINUTE_MS } from "./runtime/clock.ts";
 
 export type Fetch = (url: string, init: RequestInit) => Promise<Response>;
 

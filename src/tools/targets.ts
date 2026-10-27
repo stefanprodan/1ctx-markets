@@ -18,7 +18,7 @@ import {
 import type { Db } from "../db/index.ts";
 import { addSeries, NO_DATA, refetchSeries, seriesId } from "../fred/sync.ts";
 import { type Instrument, readInstrument } from "../instruments.ts";
-import { errorFields } from "../log.ts";
+import { errorFields } from "../runtime/log.ts";
 import { Paused, QueueClosed, Refused, SourceError } from "../source.ts";
 import { BVB, BVB_MARKET, FRED, FRED_MARKET, YAHOO } from "../sources/ids.ts";
 import { isTracked, markRead } from "../tracking.ts";

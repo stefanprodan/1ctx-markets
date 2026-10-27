@@ -5,11 +5,11 @@
 // the same alerts must answer the same bytes.
 
 import type { Db } from "../db/index.ts";
-import type { Log } from "../log.ts";
-import { errorFields } from "../log.ts";
 import { iso } from "../market/format.ts";
 import type { Snapshot } from "../rules/evaluate.ts";
 import { lastAlertId, readAlertsAfter } from "../rules/store.ts";
+import type { Log } from "../runtime/log.ts";
+import { errorFields } from "../runtime/log.ts";
 import { alertItem } from "./rules.ts";
 
 // strictly under: the whole body, in UTF-8 bytes

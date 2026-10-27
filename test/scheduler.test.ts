@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
-import { MINUTE_MS } from "../src/clock.ts";
-import { type Log, silent } from "../src/log.ts";
-import { scheduler } from "../src/scheduler.ts";
+import { MINUTE_MS } from "../src/runtime/clock.ts";
+import { type Log, silent } from "../src/runtime/log.ts";
+import { scheduler } from "../src/runtime/scheduler.ts";
 import { fakeClock, START } from "./helpers/clock.ts";
 
 const EVERY = 5 * MINUTE_MS;

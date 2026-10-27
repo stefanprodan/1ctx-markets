@@ -5,7 +5,7 @@
 // shown from its start on, as the recordings showed Friday's on Sunday,
 // and its chart and spark answers have the recorded shape.
 
-import { MINUTE_MS } from "../../src/clock.ts";
+import { MINUTE_MS } from "../../src/runtime/clock.ts";
 import {
   addDays,
   fromWallTime,

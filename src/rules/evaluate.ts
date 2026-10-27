@@ -12,8 +12,8 @@ import {
   readEvent,
 } from "../finnhub/store.ts";
 import { type Instrument, readInstrument } from "../instruments.ts";
-import { errorFields, type Log, silent } from "../log.ts";
 import { iso, price, round } from "../market/format.ts";
+import { errorFields, type Log, silent } from "../runtime/log.ts";
 import {
   type InstrumentSignals,
   readRelativeReturn,

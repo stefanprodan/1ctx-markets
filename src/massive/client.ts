@@ -3,7 +3,7 @@
 //
 // the key only in a header; a next_url only to Massive's own news path
 
-import type { Clock } from "../clock.ts";
+import type { Clock } from "../runtime/clock.ts";
 import {
   type Backoff,
   type Fetch,

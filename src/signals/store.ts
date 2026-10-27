@@ -11,9 +11,9 @@ import {
   sessionDate,
   weekOf,
 } from "../calendars.ts";
-import { DAY_MS, MINUTE_MS } from "../clock.ts";
 import type { Db } from "../db/index.ts";
 import type { Instrument } from "../instruments.ts";
+import { DAY_MS, MINUTE_MS } from "../runtime/clock.ts";
 import { BVB } from "../sources/ids.ts";
 import { fromWallTime, localDate, wallTime } from "../zone.ts";
 import { type DailyRow, dailySeries, liveDaily } from "./daily.ts";

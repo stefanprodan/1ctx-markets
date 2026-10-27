@@ -7,8 +7,8 @@
 
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { type Config, parseCli, secretsDir } from "../config.ts";
-import { ADMIN_FILE, keys } from "../keys.ts";
+import { type Config, parseCli, secretsDir } from "../runtime/config.ts";
+import { ADMIN_FILE, keys } from "../runtime/keys.ts";
 import { serviceConfig, urlOf } from "../service/index.ts";
 import { PARTS, RESEARCH_SECTIONS } from "./refetch.ts";
 

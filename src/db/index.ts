@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Database } from "bun:sqlite";
-import type { Clock } from "../clock.ts";
+import type { Clock } from "../runtime/clock.ts";
 import type { Migration } from "./migration.ts";
 import { MIGRATIONS } from "./migrations/index.ts";
 

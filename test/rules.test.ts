@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
-import { DAY_MS } from "../src/clock.ts";
 import { finnhubJobs } from "../src/finnhub/jobs.ts";
 import {
   pruneResearch,
@@ -10,7 +9,6 @@ import {
   refreshResearch,
 } from "../src/finnhub/store.ts";
 import { readInstrument } from "../src/instruments.ts";
-import { silent } from "../src/log.ts";
 import { WAITING } from "../src/rules/evaluate.ts";
 import {
   FIELD_NAMES,
@@ -19,6 +17,8 @@ import {
 } from "../src/rules/format.ts";
 import { countRules, readRule } from "../src/rules/store.ts";
 import { endRun, failRun, startRun } from "../src/runs.ts";
+import { DAY_MS } from "../src/runtime/clock.ts";
+import { silent } from "../src/runtime/log.ts";
 import { refreshLive } from "../src/signals/store.ts";
 import { DeadlinePassed, SourceError } from "../src/source.ts";
 import { tools } from "../src/tools/index.ts";

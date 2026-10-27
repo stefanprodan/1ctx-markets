@@ -1,7 +1,6 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 
-import { DAY_MS } from "../clock.ts";
 import {
   type EventRow,
   eligible,
@@ -38,6 +37,7 @@ import {
   refreshNews,
   topNews,
 } from "../massive/store.ts";
+import { DAY_MS } from "../runtime/clock.ts";
 import { dateOfWall, localDate, wallOfDate } from "../zone.ts";
 import {
   cursor,

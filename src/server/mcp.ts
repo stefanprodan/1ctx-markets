@@ -9,7 +9,7 @@ import {
   type McpHttpHandler,
   McpServer,
 } from "@modelcontextprotocol/server";
-import { type Log, sdkErrorFields } from "../log.ts";
+import { type Log, sdkErrorFields } from "../runtime/log.ts";
 import { registerTools } from "../tools/index.ts";
 import type { Markets } from "../tools/markets.ts";
 import { INSTRUCTIONS } from "./instructions.ts";

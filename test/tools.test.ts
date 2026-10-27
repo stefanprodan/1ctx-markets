@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
-import { DAY_MS, MINUTE_MS } from "../src/clock.ts";
 import { open } from "../src/db/index.ts";
 import { fred } from "../src/fred/client.ts";
 import { fredJobs } from "../src/fred/jobs.ts";
 import { addSeries } from "../src/fred/sync.ts";
 import { readInstrument, upsertInstrument } from "../src/instruments.ts";
-import { exclusive } from "../src/lock.ts";
-import { silent } from "../src/log.ts";
+import { DAY_MS, MINUTE_MS } from "../src/runtime/clock.ts";
+import { exclusive } from "../src/runtime/lock.ts";
+import { silent } from "../src/runtime/log.ts";
 import {
   cursor,
   errorResult,

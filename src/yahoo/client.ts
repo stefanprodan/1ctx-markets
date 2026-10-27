@@ -6,7 +6,7 @@
 // have the expected shape is an error, never empty rows.
 
 import { type Session, sessionFromChartMeta } from "../calendars.ts";
-import type { Clock } from "../clock.ts";
+import type { Clock } from "../runtime/clock.ts";
 import {
   type Backoff,
   type Fetch,

@@ -7,7 +7,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { start } from "../src/app.ts";
 import { type Interval, readBars } from "../src/bars.ts";
-import { MINUTE_MS } from "../src/clock.ts";
 import { type Db, open } from "../src/db/index.ts";
 import {
   fred,
@@ -28,9 +27,10 @@ import {
   unitOf,
 } from "../src/fred/sync.ts";
 import { readInstrument } from "../src/instruments.ts";
-import { keys } from "../src/keys.ts";
-import { format, logger, silent } from "../src/log.ts";
 import { failRun, lastRun, startRun } from "../src/runs.ts";
+import { MINUTE_MS } from "../src/runtime/clock.ts";
+import { keys } from "../src/runtime/keys.ts";
+import { format, logger, silent } from "../src/runtime/log.ts";
 import { dailySeries } from "../src/signals/daily.ts";
 import { readSignals } from "../src/signals/read.ts";
 import { selectList } from "../src/signals/store.ts";

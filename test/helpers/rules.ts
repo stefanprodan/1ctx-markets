@@ -5,12 +5,12 @@
 // a test adds, Finnhub when asked for, and quotes a test makes from the
 // recorded metas, stored through the same write the quote job uses.
 
-import { MINUTE_MS } from "../../src/clock.ts";
 import { type Db, open } from "../../src/db/index.ts";
 import { finnhub } from "../../src/finnhub/client.ts";
 import { fred } from "../../src/fred/client.ts";
-import { silent } from "../../src/log.ts";
 import { type Engine, ruleEngine } from "../../src/rules/evaluate.ts";
+import { MINUTE_MS } from "../../src/runtime/clock.ts";
+import { silent } from "../../src/runtime/log.ts";
 import { call, tools } from "../../src/tools/index.ts";
 import { type Markets, markets } from "../../src/tools/markets.ts";
 import { type Writer, writer } from "../../src/writer.ts";

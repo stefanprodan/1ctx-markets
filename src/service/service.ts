@@ -7,14 +7,14 @@
 import { rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
-import { type Clock, wallClock } from "../clock.ts";
+import { type Clock, wallClock } from "../runtime/clock.ts";
 import {
   type Config,
   configToArgs,
   dbPath,
   parseCli,
   VALUED_FLAGS,
-} from "../config.ts";
+} from "../runtime/config.ts";
 import type { ServiceBackend } from "./backend.ts";
 import { launchdBackend, sleeper } from "./launchd.ts";
 

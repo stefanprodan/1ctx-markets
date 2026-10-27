@@ -15,7 +15,6 @@ import {
   type Written,
 } from "../bars.ts";
 import { type Session, weekOf } from "../calendars.ts";
-import { type Clock, DAY_MS } from "../clock.ts";
 import type { Db } from "../db/index.ts";
 import {
   type Instrument,
@@ -24,8 +23,9 @@ import {
   type Unit,
   upsertInstrument,
 } from "../instruments.ts";
-import { exclusive } from "../lock.ts";
 import type { RuleHooks } from "../rules/hooks.ts";
+import { type Clock, DAY_MS } from "../runtime/clock.ts";
+import { exclusive } from "../runtime/lock.ts";
 import { signalsAfterBars } from "../signals/store.ts";
 import { DeadlinePassed, Refused, SourceError } from "../source.ts";
 import { FRED_MARKET } from "../sources/ids.ts";

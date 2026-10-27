@@ -7,12 +7,12 @@ import {
   nextCheck,
   readSession,
 } from "../calendars.ts";
-import { MINUTE_MS } from "../clock.ts";
 import { type Instrument, Moved, readInstrument } from "../instruments.ts";
-import type { Log } from "../log.ts";
 import type { QuoteRow } from "../quotes.ts";
 import { endRun, failRun, lastStarted, runJob, startRun } from "../runs.ts";
-import type { Scheduler } from "../scheduler.ts";
+import { MINUTE_MS } from "../runtime/clock.ts";
+import type { Log } from "../runtime/log.ts";
+import type { Scheduler } from "../runtime/scheduler.ts";
 import { type Phrase, phraseOf, SourceError } from "../source.ts";
 import { RETRY_MS } from "../sources/history.ts";
 import { barsDue, JOBS, owedDue } from "../stale.ts";

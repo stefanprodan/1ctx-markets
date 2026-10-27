@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
-import { DAY_MS, MINUTE_MS } from "../src/clock.ts";
 import { open } from "../src/db/index.ts";
 import { finnhub } from "../src/finnhub/client.ts";
 import { finnhubJobs } from "../src/finnhub/jobs.ts";
@@ -16,7 +15,6 @@ import {
   STALE_RESEARCH,
 } from "../src/finnhub/store.ts";
 import { readInstrument, upsertInstrument } from "../src/instruments.ts";
-import { silent } from "../src/log.ts";
 import { iso } from "../src/market/format.ts";
 import {
   MAX_PUBLISHER,
@@ -34,6 +32,8 @@ import {
   topNews,
 } from "../src/massive/store.ts";
 import { endRun, startRun } from "../src/runs.ts";
+import { DAY_MS, MINUTE_MS } from "../src/runtime/clock.ts";
+import { silent } from "../src/runtime/log.ts";
 import { fits, PAGE_BYTES } from "../src/tools/answer.ts";
 import { ArgError } from "../src/tools/args.ts";
 import {

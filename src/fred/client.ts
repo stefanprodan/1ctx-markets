@@ -5,8 +5,8 @@
 // the URL, so no URL, error or answer text this client makes carries
 // one: errors hold a fixed phrase and nothing FRED or fetch said.
 
-import type { Clock } from "../clock.ts";
-import { MINUTE_MS } from "../clock.ts";
+import type { Clock } from "../runtime/clock.ts";
+import { MINUTE_MS } from "../runtime/clock.ts";
 import {
   type Backoff,
   DeadlinePassed,

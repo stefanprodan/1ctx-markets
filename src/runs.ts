@@ -5,8 +5,8 @@
 // a job whose last run in its scope failed marks that scope's rows
 // stale, and never another job's, scope's or source's.
 
-import { type Clock, DAY_MS } from "./clock.ts";
 import type { Db } from "./db/index.ts";
+import { type Clock, DAY_MS } from "./runtime/clock.ts";
 import { phraseOf } from "./source.ts";
 import type { Writer } from "./writer.ts";
 

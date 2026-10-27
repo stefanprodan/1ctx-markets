@@ -20,9 +20,9 @@ import {
 } from "../finnhub/store.ts";
 import { refetchSeries } from "../fred/sync.ts";
 import { checkSource, type Instrument, Moved } from "../instruments.ts";
-import { errorFields } from "../log.ts";
 import { eligible as massiveEligible, refreshNews } from "../massive/store.ts";
 import { endRun, failRun, startRun } from "../runs.ts";
+import { errorFields } from "../runtime/log.ts";
 import {
   DeadlinePassed,
   expired,

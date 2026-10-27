@@ -10,13 +10,13 @@ import {
   type McpServer,
 } from "@modelcontextprotocol/server";
 import { CALENDAR_AHEAD_DAYS } from "../finnhub/store.ts";
-import { errorFields } from "../log.ts";
 import {
   MAX_COMPARISONS,
   MAX_DEPTH,
   MAX_INSTRUMENTS,
   MAX_NOTE,
 } from "../rules/format.ts";
+import { errorFields } from "../runtime/log.ts";
 import { errorResult, type ToolResult, textResult } from "./answer.ts";
 import { ArgError, MAX_SYMBOL } from "./args.ts";
 import { eventsAnswer, MAX_EVENT_SYMBOLS, parseEvents } from "./events.ts";

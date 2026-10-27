@@ -3,11 +3,11 @@
 //
 // a run per walk, scoped to the instrument, so one failure is stale alone
 
-import { type Clock, DAY_MS, MINUTE_MS } from "../clock.ts";
 import type { Db } from "../db/index.ts";
 import type { Instrument } from "../instruments.ts";
-import { exclusive } from "../lock.ts";
 import { lastStarted } from "../runs.ts";
+import { type Clock, DAY_MS, MINUTE_MS } from "../runtime/clock.ts";
+import { exclusive } from "../runtime/lock.ts";
 import {
   DeadlinePassed,
   Paused,

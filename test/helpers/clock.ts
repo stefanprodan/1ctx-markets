@@ -1,7 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { Clock } from "../../src/clock.ts";
+import type { Clock } from "../../src/runtime/clock.ts";
 
 export type FakeClock = Clock & {
   // fires every timer due on the way, in time order, letting each

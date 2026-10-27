@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
-import { DAY_MS, MINUTE_MS } from "../src/clock.ts";
+import { DAY_MS, MINUTE_MS } from "../src/runtime/clock.ts";
 import { cursor, PAGE_BYTES } from "../src/tools/answer.ts";
 import { ArgError } from "../src/tools/args.ts";
 import type { Markets } from "../src/tools/markets.ts";

@@ -5,13 +5,13 @@
 // and which listing a caller's symbol means, never by a guess.
 
 import { CRYPTO } from "../calendars.ts";
-import { type Clock, DAY_MS } from "../clock.ts";
 import type { Db } from "../db/index.ts";
 import {
   type Instrument,
   readBySourceSymbol,
   readInstrument,
 } from "../instruments.ts";
+import { type Clock, DAY_MS } from "../runtime/clock.ts";
 import { SourceError } from "../source.ts";
 import type { Listing, Yahoo } from "./client.ts";
 import { SOURCE } from "./client.ts";
