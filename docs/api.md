@@ -267,5 +267,9 @@ answer; 1ctx (an agent workspace whose scheduled tasks poll it) is one.
   `'self'` alone. `validatorUrl` is null, since the validator would
   send the spec to another host; `persistAuthorization` is off, so the
   key typed into Authorize is kept for the page only.
+- **The page follows the system's light or dark scheme.** Swagger UI's
+  CSS carries a dark theme under `html.dark-mode` that its bundle never
+  sets, so `init.js` sets it from `prefers-color-scheme` and follows a
+  change.
 - **The smoke test** (`scripts/smoke.sh`) asks the binary for the page,
   its files and the spec without a key.
