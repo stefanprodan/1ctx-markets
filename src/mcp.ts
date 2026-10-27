@@ -9,6 +9,7 @@ import {
   type McpHttpHandler,
   McpServer,
 } from "@modelcontextprotocol/server";
+import { INSTRUCTIONS } from "./instructions.ts";
 import { type Log, sdkErrorFields } from "./log.ts";
 import { registerTools } from "./tools/index.ts";
 import type { Markets } from "./tools/targets.ts";
@@ -28,7 +29,11 @@ export function mcpHandler(
       // declaring tools answers tools/list even with none registered
       const server = new McpServer(
         { name: SERVER_NAME, version },
-        { capabilities: { tools: { listChanged: false } } },
+        {
+          capabilities: { tools: { listChanged: false } },
+          // they route between the tools, so a server without them sends none
+          ...(register === null ? {} : { instructions: INSTRUCTIONS }),
+        },
       );
       register?.(server);
       return server;

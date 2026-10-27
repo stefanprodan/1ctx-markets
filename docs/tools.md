@@ -1,14 +1,14 @@
 # Tools
 
 Governs the Model Context Protocol (MCP) tools and `GET /quotes`:
-`src/mcp.ts`, `src/tools/index.ts`, `answer.ts`, `args.ts`,
-`targets.ts`, `quote.ts`, `history.ts`, `search.ts`, `movers.ts`,
-`screen.ts`, `sets.ts` and `http.ts` under `src/tools/`. The research
-and events tools and `GET /research` are in `docs/research.md`; the
-rules tool and `GET /alerts` in `docs/rules.md`; signal rows in
-`docs/signals.md`; stale reasons and the tracking table in
-`docs/storage.md`; the source queue in `docs/yahoo.md`; the server,
-bearer and flags in `docs/config.md`.
+`src/mcp.ts`, `src/instructions.ts`, `src/tools/index.ts`, `answer.ts`,
+`args.ts`, `targets.ts`, `quote.ts`, `history.ts`, `search.ts`,
+`movers.ts`, `screen.ts`, `sets.ts` and `http.ts` under `src/tools/`.
+The research and events tools and `GET /research` are in
+`docs/research.md`; the rules tool and `GET /alerts` in
+`docs/rules.md`; signal rows in `docs/signals.md`; stale reasons and
+the tracking table in `docs/storage.md`; the source queue in
+`docs/yahoo.md`; the server, bearer and flags in `docs/config.md`.
 
 ## The MCP endpoint
 
@@ -19,6 +19,27 @@ bearer and flags in `docs/config.md`.
   `src/tools/index.ts`.
 - **SDK errors are logged with type and code only**
   (`sdkErrorFields()`), since an SDK message can quote the request.
+
+## Server instructions
+
+- **One text sent on initialize** (`INSTRUCTIONS` in
+  `src/instructions.ts`) says which tool answers what and what holds
+  across tools: missing values, symbols, live prices, freshness, units,
+  paging, and what the server does not hold. A description is cut at
+  1,024 characters and a client may list tools by one line, so guidance
+  across tools lives here; never repeat a description's argument list.
+- **At most `INSTRUCTIONS_BYTES` (4 KB)**: clients cut long
+  instructions from the end. A new line pushes an old one out, or the
+  cap is raised as a choice in review. Every line changes what an agent
+  does; nothing that dates (symbol lists, dates, prices).
+- **Routing first, what the server does not hold last**, so a cut drops
+  the least. No portfolio, holding, market, country or default symbol:
+  the text goes to every user.
+- **`test/instructions.test.ts` holds it to that**: sent on initialize,
+  under the cap, the groups in order, every registered tool named, every
+  backticked name a tool, an argument of a registered input schema, or
+  one of the answer fields the test lists (those checked in review), and
+  a short deny list.
 
 ## The answer contract
 

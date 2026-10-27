@@ -48,6 +48,7 @@ src/keys.ts         key files, the only reader of secrets/
 src/log.ts          slog-text lines on stderr, keys masked
 src/http.ts         the Bun server, the bearer check, the routes
 src/mcp.ts          the stateless MCP endpoint
+src/instructions.ts the server instructions every MCP client gets
 src/clock.ts        the only reader of the wall clock
 src/writer.ts       the one writer queue
 src/db/             open(), migrate(), migrations/ (append-only)
@@ -119,6 +120,10 @@ the same commit as the code that changes a rule.
   server runs for any country; what it syncs is learned from use.
   Every source but Yahoo is optional: off without its key file, or
   without its `--source` flag for a keyless one.
+- **A change that adds or renames a tool, an argument or an answer
+  field an agent chooses by updates the server instructions**
+  (`src/instructions.ts`, `docs/tools.md`) in the same PR: they are
+  the only guidance across tools a client keeps whole.
 - **No SQL, expression or query tool, ever.** The tools are fixed;
   `screen` is the only open-ended read.
 - **Live prices drive the answers.** Averages are on closed days plus
