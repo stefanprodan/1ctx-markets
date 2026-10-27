@@ -439,7 +439,12 @@ export async function refreshResearch(
     if (asked.length === 0) return [];
     const outcomes: Outcome[] = [];
     let paused: Paused | null = null;
-    for (const section of asked) {
+    // the calendar first, so earnings asked in the same pass are fetched
+    // after any report the calendar first sees; results keep asked order
+    const fetchOrder = asked.toSorted(
+      (a, b) => Number(b === "calendar") - Number(a === "calendar"),
+    );
+    for (const section of fetchOrder) {
       if (!live()) throw new DeadlinePassed();
       const startedAt = ctx.clock.now();
       try {
@@ -455,10 +460,16 @@ export async function refreshResearch(
         outcomes.push({ section, error, startedAt });
       }
     }
-    if (paused === null) return store(outcomes);
+    if (paused === null) return inOrder(await store(outcomes));
     if (outcomes.length > 0) await store(outcomes);
     throw paused;
   });
+
+  function inOrder(results: SectionResult[]): SectionResult[] {
+    return results.toSorted(
+      (a, b) => SECTIONS.indexOf(a.section) - SECTIONS.indexOf(b.section),
+    );
+  }
 
   function store(outcomes: readonly Outcome[]): Promise<SectionResult[]> {
     return ctx.writer.write((db) => {

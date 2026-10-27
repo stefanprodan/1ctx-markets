@@ -165,10 +165,10 @@ export function finnhubJobs(options: {
   };
 
   // A share whose event was seen reported after its last good earnings
-  // run ended is asked its earnings, so the surprises carry the new
+  // run started is asked its earnings, so the surprises carry the new
   // quarter the same hour. From stored state, so a tick cut by its
-  // budget leaves the rest to the next; the end, since a pass asking
-  // both sections stores them in one write.
+  // budget leaves the rest to the next; a pass asking both sections
+  // fetches the calendar first, so its earnings start after the sighting.
   const sightedEarnings = (events: readonly WindowEvent[], now: number) => {
     const seen = new Map<string, { instrument: Instrument; at: number }>();
     for (const e of events) {
@@ -181,7 +181,7 @@ export function finnhubJobs(options: {
     return [...seen.values()]
       .filter(({ instrument, at }) => {
         const ok = lastStarted(db, SOURCE, "earnings", instrument.id, "ok");
-        const before = ok === null || (ok.endedAt ?? 0) < at;
+        const before = ok === null || ok.startedAt < at;
         return before && !retrying(instrument.id, "earnings", now);
       })
       .map(({ instrument }) => ({

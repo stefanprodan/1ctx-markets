@@ -179,11 +179,12 @@ contract in `docs/tools.md`; rules that wait on events in
   These are few, US listings of foreign companies; spaced by the
   share's last `calendar` run (`MARKET_EVERY_MS`) and `RETRY_MS`.
 - **A share whose event in the window was seen reported after its last
-  good `earnings` run ended is asked its `earnings`** (`sightedEarnings`),
+  good `earnings` run started is asked its `earnings`** (`sightedEarnings`),
   so its surprises carry the new quarter the same hour. It is read from
   stored state, so shares a tick's budget cut are asked on the next
-  tick; the run's end, not its start, since a pass asking both
-  sections stores them in one write and must not ask again.
+  tick. A pass asks `calendar` before the other sections
+  (`refreshResearch`), so earnings asked with it start after any report
+  the calendar first sees and are not asked again.
 - **Cost: one call an hour while any tracked share is in its window,
   plus one per report**, and one an hour per share whose event is of
   another listing, however many shares are tracked; asking each

@@ -439,17 +439,18 @@ describe("research rows", () => {
       ["insider", "ok"],
       ["calendar", "ok"],
     ]);
+    // the calendar first, so earnings come after any report it sees
     expect(t.f.urls.map((u) => u.pathname)).toEqual([
+      "/api/v1/calendar/earnings",
       "/api/v1/stock/metric",
       "/api/v1/stock/recommendation",
       "/api/v1/stock/earnings",
       "/api/v1/stock/insider-sentiment",
-      "/api/v1/calendar/earnings",
     ]);
     // insider from 12 months back, the calendar 120 days back to 90 ahead
-    expect(t.f.urls[3]!.searchParams.get("from")).toBe("2025-10-25");
-    expect(t.f.urls[4]!.searchParams.get("from")).toBe("2026-06-27");
-    expect(t.f.urls[4]!.searchParams.get("to")).toBe("2027-01-23");
+    expect(t.f.urls[4]!.searchParams.get("from")).toBe("2025-10-25");
+    expect(t.f.urls[0]!.searchParams.get("from")).toBe("2026-06-27");
+    expect(t.f.urls[0]!.searchParams.get("to")).toBe("2027-01-23");
     expect(readResearch(t.db, nvda.id, "metric")).toHaveLength(1);
     expect(readResearch(t.db, nvda.id, "analysts")).toHaveLength(4);
     expect(
@@ -1281,6 +1282,46 @@ describe("the market calendar", () => {
     expect(calendars()).toBe(2);
     expect(seen).toBe(1);
     expect(marketCalls(t)).toEqual([]);
+  });
+
+  test("a pass asking earnings with the calendar that first sees a report asks earnings after it, once", async () => {
+    const t = marketSetup({
+      route: edited("/api/v1/calendar/earnings", "TSM", (b) => {
+        b.earningsCalendar[0].date = "2026-10-27";
+        b.earningsCalendar[0].epsActual = 33.1;
+      }),
+    });
+    const tsm = share(t.db, "TSM", AT);
+    t.db
+      .query(
+        `insert into events (instrument, fiscal_year, fiscal_quarter, date,
+           hour, listing, fetched_at)
+         values (?, 2026, 4, '2026-10-27', 'bmo', '2330.TW', ?)`,
+      )
+      .run(tsm.id, AT - DAY_MS);
+    // earnings due with the daily refresh, the calendar by its event
+    fresh(t.db, tsm.id);
+    t.db
+      .query(
+        "delete from sync_runs where scope = ? and job in ('earnings', 'calendar')",
+      )
+      .run(tsm.id);
+    const jobs = finnhubJobs({ ctx: t.ctx, log: silent });
+    const first = await drive(t.clock, t.client, jobs.tick());
+    expect(first.asked).toEqual([
+      { instrument: tsm.id, sections: ["earnings", "calendar"] },
+    ]);
+    expect(t.f.urls.map((u) => u.pathname)).toEqual([
+      "/api/v1/calendar/earnings",
+      "/api/v1/stock/earnings",
+    ]);
+    const [e] = readEvents(t.db, "2026-10-27", "2026-10-27");
+    expect(e!.reportedSeenAt).not.toBeNull();
+    // its earnings started after the sighting: not asked again
+    await t.clock.advance(61 * MINUTE_MS);
+    const next = await drive(t.clock, t.client, jobs.tick());
+    expect(next.asked).toEqual([]);
+    expect(t.f.urls).toHaveLength(2);
   });
 
   test("first sightings past one tick's budget get their earnings on the next tick, each once", async () => {
