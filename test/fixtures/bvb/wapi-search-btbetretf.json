@@ -1,0 +1,21 @@
+{
+  "recordedAt": "2026-10-27T23:05:01.806Z",
+  "request": {
+    "method": "GET",
+    "url": "https://wapi.bvb.ro/api/search?limit=30&query=BTBETRETF&type=&exchange="
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json; charset=utf-8"
+  },
+  "body": [
+    {
+      "symbol": "BTBETRETF",
+      "full_name": "FONDUL DESCHIS DE INVESTITII BT INDEX ROMANIA ETF BET TR",
+      "description": "BTBETRETF, FONDUL DESCHIS DE INVESTITII BT INDEX ROMANIA ETF BET TR, ROGEF1KGQBE5",
+      "exchange": "BVB",
+      "ticker": "BTBETRETF",
+      "type": "Units"
+    }
+  ]
+}
