@@ -1,13 +1,14 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// /admin/*, behind the admin key alone and reachable from the internet
-// wherever the server is: arguments are parsed strictly, bodies and
-// lists are bounded, and errors are fixed phrases that echo nothing sent.
+// /api/v1/admin/*, behind the admin key alone and reachable from the
+// internet wherever the server is: arguments are parsed strictly, bodies
+// and lists are bounded, and errors are fixed phrases that echo nothing
+// sent.
 
+import { failed, json, readBody } from "../api/http.ts";
 import type { Db } from "../db/index.ts";
 import { type Instrument, readInstrument } from "../instruments.ts";
-import { errorFields } from "../log.ts";
 import { instrumentsOf } from "../rules/format.ts";
 import { readRules } from "../rules/store.ts";
 import type { Backoff } from "../source.ts";
@@ -54,22 +55,7 @@ export type AdminDeps = {
   sources: readonly SourceState[];
 };
 
-const json = (
-  body: unknown,
-  status: number,
-  headers: Record<string, string> = {},
-): Response =>
-  Response.json(body, {
-    status,
-    headers: { "cache-control": "no-store", ...headers },
-  });
-
-const bad = (message: string) => json({ error: "bad_arguments", message }, 400);
-
-const notAllowed = (allow: string) =>
-  json({ error: "method not allowed" }, 405, { allow });
-
-const NOT_FOUND = () => json({ error: "not found" }, 404);
+const bad = (message: string) => failed({ error: "bad_arguments", message });
 
 class ArgError extends Error {}
 
@@ -124,7 +110,8 @@ function jobs(db: Db) {
 const count = (db: Db, sql: string): number =>
   (db.query(sql).get() as { n: number }).n;
 
-function status(d: AdminDeps): Response {
+export function adminStatus(d: AdminDeps, url: URL): Response {
+  if (url.search !== "") return bad("status takes no arguments");
   const { db, clock } = d.m;
   const now = clock.now();
   return json(
@@ -212,32 +199,17 @@ function parseRefetch(body: unknown): RefetchArgs {
   return { symbols, parts, sections };
 }
 
-async function readBody(req: Request): Promise<unknown | Response> {
-  const type = req.headers.get("content-type") ?? "";
-  if (!/^application\/json(\s*;.*)?$/i.test(type)) {
-    return json({ error: "unsupported media type" }, 415);
-  }
-  const length = Number(req.headers.get("content-length") ?? "0");
-  if (!Number.isFinite(length) || length > MAX_BODY_BYTES) {
-    return json({ error: "body too large" }, 413);
-  }
-  const bytes = await req.arrayBuffer();
-  if (bytes.byteLength > MAX_BODY_BYTES) {
-    return json({ error: "body too large" }, 413);
-  }
-  try {
-    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
-  } catch {
-    return bad("the body is not JSON");
-  }
-}
-
-async function refetchRoute(d: AdminDeps, req: Request): Promise<Response> {
-  const body = await readBody(req);
-  if (body instanceof Response) return body;
+export async function adminRefetch(
+  d: AdminDeps,
+  req: Request,
+  url: URL,
+): Promise<Response> {
+  if (url.search !== "") return bad("refetch takes its arguments in the body");
+  const read = await readBody(req, MAX_BODY_BYTES);
+  if (read instanceof Response) return read;
   let args: RefetchArgs;
   try {
-    args = parseRefetch(body);
+    args = parseRefetch(read.body);
   } catch (error) {
     if (error instanceof ArgError) return bad(error.message);
     throw error;
@@ -266,7 +238,12 @@ async function refetchRoute(d: AdminDeps, req: Request): Promise<Response> {
 
 // every row of one instrument in one write, never another's; a rule
 // reading it holds it, as tracking does
-async function remove(d: AdminDeps, raw: string): Promise<Response> {
+export async function adminDelete(
+  d: AdminDeps,
+  url: URL,
+  raw: string,
+): Promise<Response> {
+  if (url.search !== "") return bad("delete takes no arguments");
   let id: string;
   try {
     id = keyOf(decodeURIComponent(raw));
@@ -292,50 +269,15 @@ async function remove(d: AdminDeps, raw: string): Promise<Response> {
     db.query("delete from instruments where id = ?").run(id);
     return { rows };
   });
-  if (done === null) return NOT_FOUND();
+  if (done === null) {
+    return failed({ error: "not_found", message: "no such instrument" });
+  }
   if ("rules" in done) {
-    return json(
-      {
-        error: "conflict",
-        message: "rules read this instrument; delete them first",
-        rules: done.rules,
-      },
-      409,
-    );
+    return failed({
+      error: "conflict",
+      message: "rules read this instrument; delete them first",
+      rules: done.rules,
+    });
   }
   return json({ deleted: id, rows: done.rows }, 200);
-}
-
-const INSTRUMENT_PATH = /^\/admin\/instruments\/([^/]+)$/;
-
-export function adminHandler(
-  d: AdminDeps,
-): (req: Request) => Promise<Response> {
-  return async (req) => {
-    const url = new URL(req.url);
-    const path = url.pathname;
-    try {
-      if (path === "/admin/status") {
-        if (req.method !== "GET") return notAllowed("GET");
-        if (url.search !== "") return bad("status takes no arguments");
-        return status(d);
-      }
-      if (path === "/admin/refetch") {
-        if (req.method !== "POST") return notAllowed("POST");
-        if (url.search !== "")
-          return bad("refetch takes its arguments in the body");
-        return await refetchRoute(d, req);
-      }
-      const m = INSTRUMENT_PATH.exec(path);
-      if (m !== null) {
-        if (req.method !== "DELETE") return notAllowed("DELETE");
-        if (url.search !== "") return bad("delete takes no arguments");
-        return await remove(d, m[1]!);
-      }
-      return NOT_FOUND();
-    } catch (error) {
-      d.m.log.error("admin failed", errorFields(error));
-      return json({ error: "internal error" }, 500);
-    }
-  };
 }

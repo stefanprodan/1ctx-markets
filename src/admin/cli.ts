@@ -104,11 +104,11 @@ async function configOf(p: Parsed, deps: AdminCliDeps): Promise<Config> {
 
 function request(p: Parsed): { path: string; init: RequestInit } {
   if (p.command === "status") {
-    return { path: "/admin/status", init: { method: "GET" } };
+    return { path: "/api/v1/admin/status", init: { method: "GET" } };
   }
   if (p.command === "delete") {
     return {
-      path: `/admin/instruments/${encodeURIComponent(p.ids[0]!)}`,
+      path: `/api/v1/admin/instruments/${encodeURIComponent(p.ids[0]!)}`,
       init: { method: "DELETE" },
     };
   }
@@ -118,7 +118,7 @@ function request(p: Parsed): { path: string; init: RequestInit } {
   };
   if (p.sections !== null) body.sections = p.sections;
   return {
-    path: "/admin/refetch",
+    path: "/api/v1/admin/refetch",
     init: {
       method: "POST",
       headers: { "content-type": "application/json" },

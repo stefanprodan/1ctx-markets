@@ -2,12 +2,13 @@
 
 Governs Finnhub's research and earnings events (`src/finnhub/*`),
 Massive's news (`src/massive/*`), the `research` and `events` tools
-(`src/tools/research.ts`, `src/tools/events.ts`), `GET /research`, and
-the `research`, `events`, `news` and `news_walks` tables
+(`src/tools/research.ts`, `src/tools/events.ts`), and the `research`,
+`events`, `news` and `news_walks` tables
 (`src/db/migrations/0007-research.ts`, `0008-news.ts`,
 `0012-listing.ts`). The shared
 source queue is in `docs/yahoo.md`; resolution, tracking and the answer
-contract in `docs/tools.md`; rules that wait on events in
+contract in `docs/tools.md`; the research route over HTTP in
+`docs/api.md`; rules that wait on events in
 `docs/rules.md`; runs and retention in `docs/storage.md`.
 
 ## Keys
@@ -70,8 +71,9 @@ contract in `docs/tools.md`; rules that wait on events in
   `m.callMs`) the sections it reads that have no good run
   (`unfetched`), so a pass cut short is finished by the next call
   that needs what it left: `events` and a rule's earnings gate the
-  calendar only (one call per share), the `research` overview and
-  `GET /research` all five, a history section its own
+  calendar only (one call per share), the `research` overview all
+  five and the research route those its `sections` ask, a history
+  section its own
   (`SECTIONS_OF`). For the `overview` and `news` sections only, a
   covered instrument never asked for news gets one page. The rest come
   with the jobs. Concurrent calls naming one instrument and sections
@@ -280,44 +282,6 @@ contract in `docs/tools.md`; rules that wait on events in
   section with no row says why. A section or event of another listing
   also carries `listing` and the note `OTHER_LISTING`; a share's own
   carries neither.
-- **`GET /research?symbols=a,b` answers at most five Finnhub summaries**
-  beside each quote's brief projection, under the same deadline and
-  tracking as the tool. A page that cannot hold every summary is a 500
-  `internal` (`PageOverflow`), never a dropped summary.
-- **Each `GET /research` Finnhub section but `metric` adds `history`**:
-  its newest rows, the latest included, each as the section's page
-  shows it, so a script reads a trend without paging the tool. The
-  counts are fixed (`HTTP_HISTORY`), never arguments, to keep five
-  summaries in one page: `analysts` two months, the least that shows a
-  direction; `earnings` four quarters, one fiscal year of beats and
-  misses; `insider` the three newest months with a row (Finnhub has
-  none for a month without trades), a quarter of activity. Rows of
-  another listing follow the section's rules, so `earnings` and
-  `insider` hold none, and `listing` is on the section, not each row.
-  The `research` overview carries no history.
-- **Each share's `news` is the stored summary of a week; it fetches
-  no news** (`newsWeek`). `since` is seven days before the call
-  (`WEEK_MS`, the span a daily reader needs), by published time;
-  `counts` cover that window and `items` hold at most three
-  (`WEEK_ITEMS`) in the summary's order, each `published_at`,
-  `publisher`, `sentiment`, `title`, `reasoning`, `url` and
-  `truncated`. A share never walked answers counts of 0 with `stale`
-  saying why; off or not covered answers `NO_NEWS` or
-  `NEWS_NOT_COVERED`. Window and count are constants, not arguments:
-  the endpoint is for scripts and stays small.
-- **Its items have caps of their own, a page budget for five shares
-  with their history, not a display width**: title 160 characters
-  (`WEEK_TITLE`), publisher 60 (`WEEK_PUBLISHER`), reasoning 280
-  (`WEEK_REASONING`), cut with an ellipsis; a URL over 300
-  (`WEEK_URL`) answers `url: null`, since a cut link is broken. Any
-  cut or left-out field sets `truncated`. The `news` section keeps the
-  stored caps.
-- **A page that does not fit gives up news items first**: every share
-  is held to two items, then one, then none, with `items_cut: true` on
-  each share that lost some and `counts` kept, since text that escapes
-  can outgrow the page at the caps; only a page that does not fit with
-  none is `PageOverflow`.
-
 ## Retention
 
 - **Research rows past 24 months by period go; the metric row stays**

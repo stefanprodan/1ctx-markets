@@ -8,7 +8,8 @@
 keeps quotes, daily history, technical signals, research and news in
 one SQLite file, syncs them on its own schedule from free sources, and
 serves them to agents over the [Model Context Protocol](https://modelcontextprotocol.io/)
-(MCP) and a small read-only HTTP API, both behind one bearer key.
+(MCP) and a REST API with an OpenAPI description, both behind one
+bearer key.
 
 It works for any country and any exchange Yahoo Finance carries:
 shares, ETFs, indices, futures, currencies and crypto. Nothing is
@@ -41,9 +42,8 @@ holdings, orders or portfolio, and it makes no model calls.
   signals, other symbols included: price below 200, RSI under 30 while
   above the 200-day average, the VIX above 30, a drop after the next
   earnings report. Each rule fires one alert each time its condition
-  turns true. `GET
-  /alerts` is a feed a scheduled job can poll, answering 304 when
-  nothing is new.
+  turns true. `GET /api/v1/alerts` is a feed a scheduled job can poll,
+  answering 304 when nothing is new.
 - **Units and staleness on every quote.** Each quote carries its unit,
   currency and times, and a list of stale reasons when a source failed
   or a sync is behind. Market hours come from the source, so
@@ -53,8 +53,9 @@ holdings, orders or portfolio, and it makes no model calls.
   The Bucharest Stock Exchange's own feed, with its shares, government
   bonds and indices, turns on with `--source bvb` and needs no key.
 - **One binary, one file.** A standalone binary built with Bun, one
-  SQLite database and a directory of key files. Answers stay under 32
-  KiB, so MCP clients need no setting changed.
+  SQLite database and a directory of key files. MCP answers stay under
+  32 KiB pages, so MCP clients need no setting changed; the REST API
+  answers whole results, unpaged.
 
 ## Quick Start
 
@@ -122,12 +123,16 @@ claude mcp add --transport http markets http://127.0.0.1:11238/mcp \
   --header "Authorization: Bearer $(cat ~/.1ctx-markets/secrets/bearer.key)"
 ```
 
-Scripts can read quotes over HTTP with the same key:
+Scripts read the same data over the REST API with the same key:
 
 ```sh
 curl -H "Authorization: Bearer $(cat ~/.1ctx-markets/secrets/bearer.key)" \
-  'http://127.0.0.1:11238/quotes?symbols=NVDA,VVSM.DE,BTC-USD'
+  'http://127.0.0.1:11238/api/v1/quotes?symbols=NVDA,VVSM.DE,BTC-USD'
 ```
+
+Every route, with its arguments, answers and errors, is browsable at
+<http://127.0.0.1:11238/api/v1/docs>, a Swagger UI page bundled in the
+binary; its OpenAPI description is `/api/v1/openapi.json`.
 
 `make help` lists the other tasks (`test`, `lint`, `smoke`).
 

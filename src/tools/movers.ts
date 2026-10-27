@@ -23,6 +23,7 @@ import {
 import {
   distinct,
   type Resolved,
+  type SetRead,
   setPage,
   startOf,
   type Unavailable,
@@ -256,12 +257,10 @@ function moverOne(
   };
 }
 
-export async function moversAnswer(
+export async function readMovers(
   m: Markets,
   args: MoversArgs,
-): Promise<ToolResult> {
-  const { next, ...asked } = args;
-  const offset = startOf(next, asked);
+): Promise<SetRead> {
   const targets = await readTargets(m, args.symbols);
   const now = m.clock.now();
   const { resolved, errors } = distinct(targets);
@@ -283,18 +282,24 @@ export async function moversAnswer(
     }
     return a.id < b.id ? -1 : 1;
   });
-  return textResult(
-    setPage({
-      args: asked,
-      offset,
-      matched: matched.map(({ item }) => ({ item, fred: false })),
-      notMatched,
-      unavailable: out,
-      errors,
-      head: {
-        sort: "absolute change_percent, largest first; those without one last",
-      },
-      attribution: ATTRIBUTION,
-    }),
-  );
+  return {
+    matched: matched.map(({ item }) => ({ item, fred: false })),
+    notMatched,
+    unavailable: out,
+    errors,
+    head: {
+      sort: "absolute change_percent, largest first; those without one last",
+    },
+    attribution: ATTRIBUTION,
+  };
+}
+
+export async function moversAnswer(
+  m: Markets,
+  args: MoversArgs,
+): Promise<ToolResult> {
+  const { next, ...asked } = args;
+  const offset = startOf(next, asked);
+  const read = await readMovers(m, args);
+  return textResult(setPage({ ...read, args: asked, offset }));
 }

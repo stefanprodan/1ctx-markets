@@ -2,12 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
+import { join } from "node:path";
 import {
   Client,
   StreamableHTTPClientTransport,
 } from "@modelcontextprotocol/client";
 import { SERVER_NAME } from "../src/mcp.ts";
+import { mcpAnswers } from "./helpers/answers.ts";
 import { withApp } from "./helpers/app.ts";
+
+// recorded from the tools before the API shared their code
+const ANSWERS = join(import.meta.dir, "fixtures", "mcp", "answers.json");
 
 describe("the MCP endpoint", () => {
   test("answers an SDK client's initialize and its tool list", () =>
@@ -54,4 +59,15 @@ describe("the MCP endpoint", () => {
       expect(body.error).toBeUndefined();
       expect(body.result.tools.map((t: any) => t.name)).toEqual(names);
     }));
+});
+
+describe("the tools' answers", () => {
+  test("are the bytes recorded, pages included", async () => {
+    const want: Record<string, string[]> = await Bun.file(ANSWERS).json();
+    const got = await mcpAnswers();
+    expect(Object.keys(got)).toEqual(Object.keys(want));
+    for (const [call, pages] of Object.entries(want)) {
+      expect([call, got[call]]).toEqual([call, pages]);
+    }
+  });
 });

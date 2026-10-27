@@ -2,9 +2,9 @@
 
 Governs price rules, their evaluation and the alerts they fire:
 `src/rules/format.ts`, `evaluate.ts`, `hooks.ts` and `store.ts`, the
-rules tool in `src/tools/rules.ts` and `GET /alerts` in
-`src/tools/alerts.ts`. The answer contract, resolution and the inline
-fetch are in `docs/tools.md`; earnings events in `docs/research.md`;
+rules tool in `src/tools/rules.ts` and the alerts feed in
+`src/tools/alerts.ts`, served as `docs/api.md` says. The answer
+contract, resolution and the inline fetch are in `docs/tools.md`; earnings events in `docs/research.md`;
 splits, the refetch and the bars a session waits on in
 `docs/yahoo.md`; alert retention and tracking in `docs/storage.md`.
 
@@ -185,51 +185,8 @@ Examples, each created with `symbol` set to the rule's own share:
   delete removes the rule and keeps its alerts.** Alerts have no
   foreign key, so a fired alert outlives its rule.
 
-## GET /alerts
+## Over HTTP
 
-The feed a client polling `GET /alerts` reads on a schedule, acting
-only on a new answer; 1ctx (an agent workspace whose scheduled tasks
-poll it) is one.
-
-- **The alert id is the cursor, sent as the ETag.** `ETag:
-  W/"alerts-<id>"` names the last alert in the page; the client sends it
-  back in `If-None-Match`, which also takes `"alerts-<id>"` without
-  `W/` (`TAG`). Ids autoincrement and are never reused
-  (migration `0009-rules`), so alerts fired in the same second are
-  never lost or repeated as a time cursor would be.
-- **Statuses:**
-
-| Status | When |
-|---|---|
-| 200 | alerts after the cursor, or from the start after a reset; or a retention gap alone, with `ETag` `lastAlertId()` |
-| 204 | no cursor (or a reset one) and no alerts |
-| 304 | a cursor and nothing after it; the ETag is repeated |
-| 400 | any query argument, or an `If-None-Match` not of this form |
-| 401 | no or wrong bearer, checked before the route |
-| 405 | any method but GET, with `Allow: GET` |
-| 500 | `internal`, logged with no detail in the body |
-
-- **A page stays strictly under 16 KiB** (`ALERT_PAGE_BYTES`), since
-  1ctx's poll refuses a larger body. It holds whole alerts oldest
-  first with `more`, so a backlog drains over several polls.
-  One alert too large alone keeps only `id`, `rule_id`, `fired_at`
-  and `truncated: true` (`alertPage()`), so the feed never stalls on
-  it.
-- **The same alerts answer the same bytes.** A client may hash the
-  last answer; never add a time, counter or other changing field to a page.
-- **Items are rebuilt from each alert's stored `snapshot`**
-  (`alertItem()` in `src/tools/rules.ts`). A change to `Snapshot` or
-  `alertItem()` must still read 90 days of old snapshots, and it
-  changes the bytes of pages already answered, which starts the
-  check's run again.
-- **A hole after the cursor is a retention gap.** Alerts are kept 90
-  days (`ALERTS_KEPT_DAYS`, pruned at start and daily); a first id
-  above cursor + 1, or none left while `lastAlertId()` is past the
-  cursor, answers `retention_gap: true`. Only retention deletes alerts,
-  which this relies on.
-- **A cursor above any id this database issued starts over** with
-  `cursor_reset: true`, as after a restore.
-- **Delivery is at least once.** The cursor moves only when the client
-  stores the new ETag, so a poll that fails after reading gets the
-  same page again; a consumer deduplicates by alert id.
-- **Answers are `cache-control: private, no-store`.**
+- **The rules routes and the alerts feed are in `docs/api.md`.** The
+  routes call the tool's own `createRule()`, `pauseRule()` and
+  `deleteRuleById()`, so a rule made either way is the same.

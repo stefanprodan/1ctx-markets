@@ -5,11 +5,11 @@ import { describe, expect, test } from "bun:test";
 import { DAY_MS, MINUTE_MS } from "../src/clock.ts";
 import { cursor, PAGE_BYTES } from "../src/tools/answer.ts";
 import { ArgError } from "../src/tools/args.ts";
-import { quotesHandler } from "../src/tools/http.ts";
 import { moversAnswer, parseMovers } from "../src/tools/movers.ts";
 import { parseScreen, screenAnswer } from "../src/tools/screen.ts";
 import type { Markets } from "../src/tools/targets.ts";
 import { lastReadAt } from "../src/tracking.ts";
+import { api } from "./helpers/api.ts";
 import {
   bar,
   FINAL,
@@ -877,14 +877,11 @@ describe("movers", () => {
   });
 });
 
-describe("GET /quotes's last final day", () => {
-  const quotes = async (m: Markets, symbols: string[], next?: string) => {
-    const query = new URLSearchParams({
-      symbols: symbols.join(","),
-      ...(next === undefined ? {} : { next }),
-    });
-    const res = await quotesHandler(m)(
-      new Request(`http://localhost/quotes?${query}`),
+describe("the quotes route's last final day", () => {
+  const quotes = async (m: Markets, symbols: string[]) => {
+    const query = new URLSearchParams({ symbols: symbols.join(",") });
+    const res = await api(m)(
+      new Request(`http://localhost/api/v1/quotes?${query}`),
     );
     expect(res.status).toBe(200);
     const text = await res.text();
@@ -1003,7 +1000,7 @@ describe("GET /quotes's last final day", () => {
     expect(body.items[0].last_final).toBeNull();
   });
 
-  test("100 symbols fit the page cap, or continue with next", async () => {
+  test("100 symbols answer in one body past the page cap, with no next", async () => {
     const w = world();
     const symbols: string[] = [];
     for (let k = 0; k < 100; k++) {
@@ -1021,17 +1018,12 @@ describe("GET /quotes's last final day", () => {
       row(w.db, id, "1wk", "2026-10-19", "live", many);
       symbols.push(id);
     }
-    const seen: string[] = [];
-    let next: string | undefined;
-    do {
-      const { body, bytes } = await quotes(w.m, symbols, next);
-      expect(bytes).toBeLessThanOrEqual(PAGE_BYTES);
-      for (const item of body.items) {
-        expect(item.last_final.daily.sma200).toBeNumber();
-        seen.push(item.id);
-      }
-      next = body.next ?? undefined;
-    } while (next !== undefined);
-    expect(seen).toEqual(symbols);
+    const { body, bytes } = await quotes(w.m, symbols);
+    expect(bytes).toBeGreaterThan(PAGE_BYTES);
+    expect(body).not.toContainKey("next");
+    for (const item of body.items) {
+      expect(item.last_final.daily.sma200).toBeNumber();
+    }
+    expect(body.items.map((i: any) => i.id)).toEqual(symbols);
   });
 });

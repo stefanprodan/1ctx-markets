@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Smoke test of the compiled binary: it refuses to start on an empty
 # bearer file, writes a bearer on a first start, answers /health
-# without it, refuses any other request without it, and answers an MCP
+# and the API's spec and docs page with their embedded assets without
+# it, refuses any other request without it, and answers an MCP
 # initialize with it; the admin key it writes beside it serves
 # `admin status` and nothing else takes it. Each run starts
 # from a fresh directory, so it migrates a new database, and removes the
@@ -45,6 +46,10 @@ for _ in $(seq 1 50); do
 done
 [[ $(status "$URL/mcp") == 401 ]] || fail "a request without the bearer was not refused"
 [[ $(status "$URL/health") == 200 ]] || fail "/health did not answer 200 without the bearer"
+for path in openapi.json docs docs/init.js docs/swagger-ui-bundle.js docs/swagger-ui.css; do
+  [[ $(status "$URL/api/v1/$path") == 200 ]] || fail "/api/v1/$path was not served without the bearer"
+done
+[[ $(status "$URL/api/v1/quotes") == 401 ]] || fail "/api/v1/quotes answered without the bearer"
 
 BEARER=$(cat "$RUN/data/secrets/bearer.key")
 [[ $BEARER == 1ctx-markets-* ]] || fail "the first start wrote no prefixed bearer"
@@ -65,10 +70,10 @@ ADMIN=$(cat "$RUN/data/secrets/admin.key")
 [[ $ADMIN == 1ctx-markets-admin-* ]] || fail "the first start wrote no prefixed admin key"
 [[ $(stat -c %a "$RUN/data/secrets/admin.key" 2>/dev/null || stat -f %Lp "$RUN/data/secrets/admin.key") == 600 ]] ||
   fail "the admin key file is readable by others"
-[[ $(status "$URL/admin/status" -H "authorization: Bearer $BEARER") == 401 ]] ||
-  fail "the bearer was taken on /admin/status"
-[[ $(status "$URL/quotes" -H "authorization: Bearer $ADMIN") == 401 ]] ||
-  fail "the admin key was taken on /quotes"
+[[ $(status "$URL/api/v1/admin/status" -H "authorization: Bearer $BEARER") == 401 ]] ||
+  fail "the bearer was taken on /api/v1/admin/status"
+[[ $(status "$URL/api/v1/quotes" -H "authorization: Bearer $ADMIN") == 401 ]] ||
+  fail "the admin key was taken on /api/v1/quotes"
 "$BIN" admin --listen "127.0.0.1:$PORT" --data "$RUN/data" status >"$RUN/admin" ||
   fail "admin status failed"
 grep -q '"version"' "$RUN/admin" || fail "admin status did not answer the version"

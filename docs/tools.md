@@ -1,12 +1,12 @@
 # Tools
 
-Governs the Model Context Protocol (MCP) tools and `GET /quotes`:
-`src/mcp.ts`, `src/instructions.ts`, `src/tools/index.ts`, `answer.ts`,
-`args.ts`, `targets.ts`, `quote.ts`, `extended.ts`, `history.ts`,
-`search.ts`, `movers.ts`, `screen.ts`, `sets.ts` and `http.ts` under
-`src/tools/`. The research and events tools and `GET /research` are in
-`docs/research.md`; the rules tool and `GET /alerts` in
-`docs/rules.md`; signal rows in `docs/signals.md`; stale reasons and
+Governs the Model Context Protocol (MCP) tools: `src/mcp.ts`,
+`src/instructions.ts`, `src/tools/index.ts`, `answer.ts`, `args.ts`,
+`targets.ts`, `quote.ts`, `extended.ts`, `history.ts`, `search.ts`,
+`movers.ts`, `screen.ts` and `sets.ts` under `src/tools/`. The HTTP
+API that calls the same reads is in `docs/api.md`; the research and
+events tools in `docs/research.md`; the rules tool in `docs/rules.md`;
+signal rows in `docs/signals.md`; stale reasons and
 the tracking table in `docs/storage.md`; the source queue in
 `docs/yahoo.md`; the server, bearer and flags in `docs/config.md`.
 
@@ -64,7 +64,7 @@ the tracking table in `docs/storage.md`; the source queue in
   SHA-256 over the arguments without `next`; `readCursor()` refuses one
   passed with other arguments, answered as `bad_arguments`. quote binds
   its `benchmark` with the symbols only when one is given, so a cursor
-  made without one is the one `GET /quotes` always made. The
+  made without one is the one quote always made. The
   position is the next offset (quote, search, movers, screen), the next
   bar's date (history) or the next rule id (rules list).
 - **movers and screen page a fresh view.** Each call reads again and
@@ -154,10 +154,12 @@ the tracking table in `docs/storage.md`; the source queue in
   within the call's deadline (`docs/yahoo.md`), kept in memory for its
   quote period (`m.extended`), so the thin market is never fresher
   than the regular one. Never stored: signals, bars, movers, screen,
-  history, rules and `GET /quotes` read the regular session only.
-- **These are the quote tool's only.** `quotePage()` computes them
-  and `extended` when no projection is given; `quoteItem()`, which
-  screen, movers and `GET /quotes` share, never reads them. Bars are read from the
+  history and rules read the regular session only; the API's quotes
+  route reads it only with `extended=true`.
+- **These are the quote tool's only.** `quoteRows()` computes them
+  when no projection is given, and `extended` whenever it is asked;
+  `quoteItem()`, which screen, movers and the API's quotes route
+  share, never reads them. Bars are read from the
   earliest start a call needs (`readCloses()`), and the benchmark's
   closes once per call, never every stored bar per item.
 - **history defaults its range from the last bar.** `to` is the latest
@@ -277,32 +279,20 @@ the tracking table in `docs/storage.md`; the source queue in
   in code, an agent's formula is not, and every answer must stay inside
   the page and cost limits. A new need is a new field or tool argument.
 
-## GET /quotes
+## One read, two surfaces
 
-- **`GET /quotes?symbols=A,B&next=…` answers `quotePage()` with
-  `briefItem()`**: price or observation, change, unit, currency,
-  times, `stale`, the daily and weekly SMA 50 and 200, and
-  `last_final`. It shares resolution, tracking, the deadline and the
-  pages with `quote`, never quote's `returns`, `session` or benchmark:
-  the projection adds a field only when a script needs it.
-- **`last_final.daily` is the last final daily bar's `date` and
-  `close` with its final row's `sma50` and `sma200`**, the values
-  movers crosses from, so a script tells a crossing since the last
-  close without movers. `last_final` is null with no final bar, an
-  average null with too few bars. Daily only: a crossing since the
-  last close is a daily question; `weekly` may be added beside it.
-- **The crossing rule**, counted only when `stale` is empty and
-  `sma.daily` is `live` and dated after `last_final.daily.date`, as
-  movers counts it: `last_final.daily.close >= last_final.daily.sma200`
-  and `price < sma.daily.sma200` is crossed below, `<=` and `>` back
-  above. With `last_final.daily.sma200` null (under 200 bars) the
-  same with `sma50`. Averages are rounded to six significant digits
-  and movers compares unrounded ones, so a close or price that close
-  to its average can count differently.
-- **`symbols` is given once, comma-separated**, as a shell script
-  builds it; only `symbols` and `next` are accepted. A bad argument answers 400
-  `bad_arguments`, anything else 500 `internal`. Every answer is
-  `cache-control: no-store`, since a quote is live.
+- **Each tool is a read and its paging.** `quoteRows()`,
+  `readHistory()`, `searchAll()`, `readMovers()`, `readScreen()`,
+  `readEventsOf()` and `createRule()`, `pauseRule()`,
+  `deleteRuleById()` answer the whole result; the tool pages it with
+  `fitPage()` and the API (`docs/api.md`) answers it at once. A change
+  to what a tool reads goes in the read, so both surfaces stay the
+  same.
+- **The MCP answers are pinned.** `test/fixtures/mcp/answers.json`
+  holds every tool's pages over the recordings (`mcpAnswers()` in
+  `test/helpers/answers.ts`); `test/mcp.test.ts` compares them byte
+  for byte. A change meant to alter an answer records the file again
+  in the same commit, and the review reads its diff.
 
 ## Tool descriptions
 

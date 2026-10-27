@@ -4,9 +4,10 @@ A self-hosted market data server for AI agents. It syncs free market
 data (Yahoo, and optionally FRED, Finnhub, Massive and the Bucharest
 Stock Exchange's own feed) into one SQLite
 file, computes signals, evaluates price rules, and serves them over the
-Model Context Protocol (MCP, Streamable HTTP) and a small read-only
-HTTP API, both behind one bearer key. It holds market data and price
-rules only, never holdings, orders or a portfolio.
+Model Context Protocol (MCP, Streamable HTTP) and a REST API under
+`/api/v1` with an OpenAPI spec, both behind one bearer key. It holds
+market data and price rules only, never holdings, orders or a
+portfolio.
 
 - **Runtime:** Bun only, TypeScript run directly, `bun:sqlite`, one
   standalone binary. No Node. The Bun version is pinned in
@@ -15,7 +16,10 @@ rules only, never holdings, orders or a portfolio.
   official npm only, `bun install --ignore-scripts`. A new package
   needs the owner's explicit go-ahead. In `src/`, only `mcp.ts`,
   `http.ts` and `tools/index.ts` import `@modelcontextprotocol/server`
-  (`http.ts` a type only); the MCP client is for tests.
+  (`http.ts` a type only); the MCP client is for tests. `swagger-ui-dist`
+  is the one package `src/api/` imports, and only its
+  `swagger-ui-bundle.js` and `swagger-ui.css`, embedded as files
+  (`docs/api.md`).
 
 ## The dev loop
 
@@ -68,9 +72,10 @@ src/finnhub/        research sections and earnings events
 src/massive/        news
 src/signals/        daily, weekly, live and relative signals
 src/rules/          rule conditions, evaluation, alerts
-src/tools/          the MCP tools, GET /quotes, /research, /alerts
+src/tools/          the MCP tools and the reads they share with the API
+src/api/            /api/v1: routes, the OpenAPI spec, the bundled docs page
 src/service/        `service install|start|stop|...`: launchd, CLI only
-src/admin/          /admin/* behind its own key, and the `admin` command
+src/admin/          /api/v1/admin/* behind its own key, and the `admin` command
 test/               one *.test.ts per area, helpers/ (fakes), fixtures/ (recordings)
 scripts/probe/      the fixture recorders, run by hand
 scripts/smoke.sh    the binary's smoke test
@@ -88,17 +93,18 @@ the same commit as the code that changes a rule.
 | Doc | Governs |
 |---|---|
 | `docs/config.md` | flags, the data directory, key files, the start log, HTTP routes, shutdown order, the build and smoke test |
-| `docs/admin.md` | the admin key, `/admin/*` (status, refetch, delete) and the `admin` command |
+| `docs/admin.md` | the admin key, `/api/v1/admin/*` (status, refetch, delete) and the `admin` command |
+| `docs/api.md` | the REST API under `/api/v1`: routes, no paging, errors, keys, caching, the alerts feed, the spec and its contract test, the docs page |
 | `docs/deploy.md` | the `service` command, launchd, the kill timeout, the log, staging deploys, backups and keys |
 | `docs/storage.md` | the database, migrations, the writer, instruments, times and prices, the clock, runs and staleness, tracking, retention |
 | `docs/calendars.md` | market sessions from the source, quoting and checks, bar dates and finality, weeks, wall time, crypto |
 | `docs/yahoo.md` | Yahoo's endpoints, parsing, the source queue and phrases, resolution, bars, splits and rescales, quotes, the lock, the jobs |
 | `docs/fred.md` | FRED: its key, limits, answer checks, series as instruments, bars, the daily job, attribution |
 | `docs/bvb.md` | the Bucharest feed: its pages and chart feed, parsing, the session, quotes, bars and rescales, resolution, switching sources |
-| `docs/research.md` | Finnhub research and earnings events, Massive news, the `research` and `events` tools, `GET /research` |
+| `docs/research.md` | Finnhub research and earnings events, Massive news, the `research` and `events` tools |
 | `docs/signals.md` | the daily and weekly signals, final and live rows, reading, relative return |
-| `docs/rules.md` | rule conditions, validation, evaluation, the earnings gate, split pauses, the `rules` tool, `GET /alerts` |
-| `docs/tools.md` | the answer contract, arguments, each tool, units and staleness, resolution and the inline fetch, `GET /quotes`, tool descriptions |
+| `docs/rules.md` | rule conditions, validation, evaluation, the earnings gate, split pauses, the `rules` tool |
+| `docs/tools.md` | the answer contract, arguments, each tool, units and staleness, resolution and the inline fetch, the reads the API shares, tool descriptions |
 | `docs/testing.md` | the test suite, fakes, the fake clock, fixtures and the recorders |
 
 ## Rules the code follows

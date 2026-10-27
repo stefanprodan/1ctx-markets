@@ -130,29 +130,25 @@ function noCalendar(m: Markets, input: string, i: Instrument): Note | null {
       };
 }
 
-export async function eventsAnswer(
+export type EventsRead =
+  | { off: true }
+  | {
+      off: false;
+      // keyed by date, share and quarter, the order events go out in
+      events: { key: string; item: object }[];
+      notes: Note[];
+      quiet: object[];
+    };
+
+// The events from start (the range's first without one), why a share
+// has none to show, and, on a first read of named shares, the ones
+// with nothing in the range.
+export async function readEventsOf(
   m: Markets,
   args: EventsArgs,
-): Promise<ToolResult> {
-  const { next, ...asked } = args;
-  let start: string | null = null;
-  if (next !== null) {
-    start = readCursor(next, asked);
-    if (start === null) {
-      throw new ArgError("next does not continue these arguments");
-    }
-  }
-  if (m.finnhub === null) {
-    return textResult(
-      JSON.stringify({
-        from: args.from,
-        to: args.to,
-        message: NO_EVENTS,
-        next: null,
-        events: [],
-      }),
-    );
-  }
+  start: string | null,
+): Promise<EventsRead> {
+  if (m.finnhub === null) return { off: true };
   let instruments: Instrument[];
   const notes: Note[] = [];
   let resolvedOnce: Resolved[] = [];
@@ -195,7 +191,7 @@ export async function eventsAnswer(
   const rows = readEvents(m.db, args.from, args.to, [...byId.keys()]);
   const key = (r: (typeof rows)[number]) =>
     `${r.date}|${r.instrument}|${r.fiscalYear}|${r.fiscalQuarter}`;
-  const items = rows
+  const events = rows
     .filter((r) => start === null || key(r) >= start)
     .map((r) => ({
       key: key(r),
@@ -205,7 +201,6 @@ export async function eventsAnswer(
         r,
       ),
     }));
-  const { listed, more } = capNotes(notes, UNAVAILABLE_BYTES);
   // every tracked share would list here, most with nothing in a short range
   const quiet: object[] = [];
   if (start === null && args.symbols !== null) {
@@ -221,6 +216,35 @@ export async function eventsAnswer(
       });
     }
   }
+  return { off: false, events, notes, quiet };
+}
+
+export async function eventsAnswer(
+  m: Markets,
+  args: EventsArgs,
+): Promise<ToolResult> {
+  const { next, ...asked } = args;
+  let start: string | null = null;
+  if (next !== null) {
+    start = readCursor(next, asked);
+    if (start === null) {
+      throw new ArgError("next does not continue these arguments");
+    }
+  }
+  const read = await readEventsOf(m, args, start);
+  if (read.off) {
+    return textResult(
+      JSON.stringify({
+        from: args.from,
+        to: args.to,
+        message: NO_EVENTS,
+        next: null,
+        events: [],
+      }),
+    );
+  }
+  const { events: items, notes, quiet } = read;
+  const { listed, more } = capNotes(notes, UNAVAILABLE_BYTES);
   const none = capNotes(quiet, NO_EVENT_BYTES);
   const page = fitPage(
     items.map((x) => x.item),

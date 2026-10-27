@@ -4,7 +4,8 @@
 // The wiring main.ts starts, kept apart so a test runs the same with a
 // fake clock, a captured log and a fake fetch.
 
-import { adminHandler, type SourceState } from "./admin/http.ts";
+import type { SourceState } from "./admin/http.ts";
+import { routes } from "./api/routes.ts";
 import { type Bvb, bvb } from "./bvb/client.ts";
 import { type BvbJobs, bvbJobs } from "./bvb/jobs.ts";
 import {
@@ -32,8 +33,6 @@ import { failInterrupted, pruneRuns } from "./runs.ts";
 import { type Scheduler, scheduler } from "./scheduler.ts";
 import { type Backoff, type Fetch, queue } from "./source.ts";
 import { alertsHandler } from "./tools/alerts.ts";
-import { quotesHandler } from "./tools/http.ts";
-import { researchHandler } from "./tools/research.ts";
 import { type Markets, markets } from "./tools/targets.ts";
 import { TRACK_DAYS, trackedIds } from "./tracking.ts";
 import { type Writer, writer } from "./writer.ts";
@@ -49,7 +48,7 @@ export type AppOptions = {
   hostname: string;
   port: number;
   bearer: string;
-  // /admin/* answers only while there is one
+  // /api/v1/admin/* answers only while there is one
   adminKey?: string | null;
   clock: Clock;
   log: LogFactory;
@@ -89,7 +88,7 @@ export type App = {
   bvbJobs: BvbJobs | null;
   // moves the Bucharest market between Yahoo and the feed
   sourceSwitch: SourceSwitch;
-  // what the tools and GET /quotes read through
+  // what the tools and the API read through
   markets: Markets;
   // one field per source with its state and why, for the start log
   sources: LogFields;
@@ -261,20 +260,20 @@ export function start(options: AppOptions): App {
     handle: router({
       bearer: options.bearer,
       mcp,
-      quotes: quotesHandler(reads),
-      research: researchHandler(reads),
-      alerts: alertsHandler({ db, log: options.log("alerts") }),
-      admin:
-        adminKey === null
-          ? undefined
-          : {
-              key: adminKey,
-              handle: adminHandler({
+      api: routes({
+        m: reads,
+        alerts: alertsHandler({ db, log: options.log("alerts") }),
+        admin:
+          adminKey === null
+            ? null
+            : {
                 m: { ...reads, log: options.log("admin") },
                 version: options.version,
                 sources: states,
-              }),
-            },
+              },
+        log: options.log("api"),
+      }),
+      adminKey,
       clock,
       log: options.log("http"),
     }),

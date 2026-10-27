@@ -3,8 +3,8 @@
 //
 // The quote reader: one item per symbol with its live quote, or a FRED
 // series' last observation, the latest signal rows and why any of it
-// may be behind. GET /quotes answers a smaller projection of the same
-// items, and movers and screen read the same rows.
+// may be behind. The API's quotes route answers a smaller projection of
+// the same items, and movers and screen read the same rows.
 
 import { CRYPTO, isQuoted, readSession } from "../calendars.ts";
 import type { Db } from "../db/index.ts";
@@ -313,7 +313,7 @@ export function parseQuote(input: unknown): QuoteArgs {
 }
 
 // a page is never continued under another benchmark; without one the
-// cursor is the one GET /quotes has always made
+// cursor is the one quote has always made
 const continued = (args: QuoteArgs) =>
   args.benchmark === null
     ? args.symbols
@@ -374,8 +374,8 @@ function benchmarkOf(m: Markets, t: Target, now: number): Benchmark {
   };
 }
 
-// What only the quote tool adds to an item: GET /quotes, movers and
-// screen share quoteItem and never pay for these reads.
+// What only the quote tool adds to an item: the quotes route, movers
+// and screen share quoteItem and never pay for these reads.
 function agentItem(
   m: Markets,
   q: QuoteItem,
@@ -420,15 +420,23 @@ function agentItem(
   };
 }
 
-// One page of items in the order asked, each symbol's error an item of
-// its own, and FRED's attribution once when the page holds its values.
-// Without project, the quote tool's items, with returns, the session and
-// the benchmark.
-export async function quotePage(
+// Every item asked from the cursor on, in the order asked, each symbol's
+// error an item of its own. Without project, the quote tool's items,
+// with returns, the session and the benchmark; extended is read for
+// either when asked.
+export async function quoteRows(
   m: Markets,
   args: QuoteArgs,
-  project?: (item: QuoteItem, latest: Latest) => object,
-): Promise<string> {
+  project?: (
+    item: QuoteItem,
+    latest: Latest,
+    extended: ExtendedRead | undefined,
+  ) => object,
+): Promise<{
+  offset: number;
+  bench: Benchmark | null;
+  rows: { item: object; fred: boolean }[];
+}> {
   const offset = offsetOf(args);
   const asked = args.symbols.slice(offset);
   const deadline = m.clock.now() + m.callMs;
@@ -437,17 +445,15 @@ export async function quotePage(
     args.benchmark === null ? asked : [...asked, args.benchmark],
     deadline,
   );
-  // quote's only, never a projection's
-  const extended =
-    args.extended && project === undefined
-      ? await readExtended(
-          m,
-          targets
-            .slice(0, asked.length)
-            .flatMap((t) => ("instrument" in t ? [t.instrument] : [])),
-          deadline,
-        )
-      : null;
+  const extended = args.extended
+    ? await readExtended(
+        m,
+        targets
+          .slice(0, asked.length)
+          .flatMap((t) => ("instrument" in t ? [t.instrument] : [])),
+        deadline,
+      )
+    : null;
   const now = m.clock.now();
   const bench =
     args.benchmark === null ? null : benchmarkOf(m, targets.at(-1)!, now);
@@ -458,19 +464,24 @@ export async function quotePage(
     }
     const latest = readLatest(m.db, t.instrument, now, m.quoteEveryMs);
     const q = quoteItem(m.db, t.input, t.instrument, latest);
+    const ext = extended?.get(t.instrument.id);
     const item =
       project === undefined
-        ? agentItem(
-            m,
-            q,
-            t.instrument,
-            bench,
-            now,
-            extended?.get(t.instrument.id),
-          )
-        : project(q, latest);
+        ? agentItem(m, q, t.instrument, bench, now, ext)
+        : project(q, latest, ext);
     return { item, fred: q.observation != null };
   });
+  return { offset, bench, rows };
+}
+
+// One page of quoteRows(), and FRED's attribution once when the page
+// holds its values.
+export async function quotePage(
+  m: Markets,
+  args: QuoteArgs,
+  project?: (item: QuoteItem, latest: Latest) => object,
+): Promise<string> {
+  const { offset, bench, rows } = await quoteRows(m, args, project);
   const items = rows.map((r) => r.item);
   return fitPage(items, (count) => {
     const end = offset + count;

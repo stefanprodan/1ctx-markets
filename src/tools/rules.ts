@@ -10,7 +10,13 @@ import {
   nextEvent,
 } from "../finnhub/store.ts";
 import type { Instrument } from "../instruments.ts";
-import { applyRule, eventOf, type Fired, gateItem } from "../rules/evaluate.ts";
+import {
+  applyRule,
+  type Evaluation,
+  eventOf,
+  type Fired,
+  gateItem,
+} from "../rules/evaluate.ts";
 import {
   bindCondition,
   checkBound,
@@ -35,6 +41,7 @@ import { localDate } from "../zone.ts";
 import {
   cursor,
   errorResult,
+  type Failure,
   fitPage,
   fits,
   iso,
@@ -201,16 +208,25 @@ export const alertItem = (a: Fired) => ({
   values: a.snapshot.values,
 });
 
-const failedTarget = (input: string, error: ItemError) =>
-  errorResult({ ...error, message: `${quoted(input)}: ${error.message}` });
+const failedTarget = (input: string, error: ItemError): Failure => ({
+  ...error,
+  message: `${quoted(input)}: ${error.message}`,
+});
 
-async function create(
+export type Created = {
+  rule: ReturnType<typeof ruleItem>;
+  evaluation: Evaluation;
+  alert: ReturnType<typeof alertItem> | null;
+};
+
+// The rule as stored with its first evaluation, or why none was stored.
+export async function createRule(
   m: Markets,
   args: Extract<RulesArgs, { action: "create" }>,
-): Promise<ToolResult> {
+): Promise<Created | Failure> {
   const gate = args.condition.afterEarnings;
   if (gate !== null && m.finnhub === null) {
-    return errorResult({ error: "no_event_source", message: NO_EVENT_SOURCE });
+    return { error: "no_event_source", message: NO_EVENT_SOURCE };
   }
   const deadline = m.clock.now() + m.callMs;
   const plain = [
@@ -248,23 +264,23 @@ async function create(
       state.kind === "not covered" ||
       !eligible(company)
     ) {
-      return errorResult({
+      return {
         error: "no_event_source",
         message: `${company.id}: ${NO_EVENT_SOURCE}; ${NOT_COVERED}`,
-      });
+      };
     }
     if (state.kind === "failed") {
-      return errorResult({
+      return {
         ...state.error,
         message: `${company.id}: ${state.error.message}`,
-      });
+      };
     }
     const event = nextEvent(m.db, company, m.clock.now(), true);
     if (event === null) {
-      return errorResult({
+      return {
         error: "no_event",
         message: `${company.id} has no upcoming earnings event to wait for`,
-      });
+      };
     }
     bound = {
       symbol: company.id,
@@ -301,12 +317,20 @@ async function create(
     const outcome = applyRule(db, readRule(db, id)!, now, m.quoteEveryMs);
     return { rule: readRule(db, id)!, outcome };
   });
-  if (done === null) return errorResult(timeout(m));
-  const body = {
+  if (done === null) return timeout(m);
+  return {
     rule: ruleItem(m, done.rule),
     evaluation: done.outcome.evaluation,
     alert: done.outcome.alert === null ? null : alertItem(done.outcome.alert),
   };
+}
+
+async function create(
+  m: Markets,
+  args: Extract<RulesArgs, { action: "create" }>,
+): Promise<ToolResult> {
+  const body = await createRule(m, args);
+  if ("error" in body) return errorResult(body);
   const full = JSON.stringify(body);
   if (fits(full)) return textResult(full);
   // the reasons can repeat per operand; the rule and its result cannot
@@ -344,13 +368,15 @@ function list(m: Markets, args: Extract<RulesArgs, { action: "list" }>) {
   return textResult(page.text);
 }
 
-const notFound = (id: number) =>
-  errorResult({ error: "not_found", message: `no rule ${id}` });
+const notFound = (id: number): Failure => ({
+  error: "not_found",
+  message: `no rule ${id}`,
+});
 
-async function pause(
+export async function pauseRule(
   m: Markets,
   args: Extract<RulesArgs, { action: "pause" }>,
-): Promise<ToolResult> {
+): Promise<{ rule: ReturnType<typeof ruleItem> } | Failure> {
   const out = await m.writer.write((db) => {
     const rule = readRule(db, args.id);
     if (rule === null) return null;
@@ -362,22 +388,28 @@ async function pause(
   });
   if (out === null) return notFound(args.id);
   if ("split" in out) {
-    return errorResult({
+    return {
       error: "split_paused",
       message: `rule ${args.id} was ${SPLIT_PAUSED}`,
-    });
+    };
   }
-  return textResult(JSON.stringify({ rule: ruleItem(m, out.rule) }));
+  return { rule: ruleItem(m, out.rule) };
 }
 
-async function remove(
+// its alerts stay, as alerts outlive their rules
+export async function deleteRuleById(
   m: Markets,
-  args: Extract<RulesArgs, { action: "delete" }>,
-): Promise<ToolResult> {
-  const deleted = await m.writer.write((db) => deleteRule(db, args.id));
-  if (!deleted) return notFound(args.id);
-  return textResult(JSON.stringify({ deleted: args.id, alerts: "kept" }));
+  id: number,
+): Promise<{ deleted: number; alerts: "kept" } | Failure> {
+  const deleted = await m.writer.write((db) => deleteRule(db, id));
+  if (!deleted) return notFound(id);
+  return { deleted: id, alerts: "kept" };
 }
+
+const answered = (body: object | Failure): ToolResult =>
+  "error" in body
+    ? errorResult(body as Failure)
+    : textResult(JSON.stringify(body));
 
 export async function rulesAnswer(
   m: Markets,
@@ -389,8 +421,8 @@ export async function rulesAnswer(
     case "list":
       return list(m, args);
     case "pause":
-      return pause(m, args);
+      return answered(await pauseRule(m, args));
     case "delete":
-      return remove(m, args);
+      return answered(await deleteRuleById(m, args.id));
   }
 }

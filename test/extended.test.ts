@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
+import { spec } from "../src/api/openapi.ts";
 import { rebuildWeeks } from "../src/bars.ts";
 import { readSession, recordSession, session } from "../src/calendars.ts";
 import { open } from "../src/db/index.ts";
@@ -24,7 +25,9 @@ import {
   yahoo,
 } from "../src/yahoo/client.ts";
 import { storeQuotes } from "../src/yahoo/sync.ts";
+import { api } from "./helpers/api.ts";
 import { fakeClock } from "./helpers/clock.ts";
+import { answerSchema, validate } from "./helpers/schema.ts";
 import { gate } from "./helpers/sources.ts";
 import { bar, FINAL, instrument, listing, world } from "./helpers/world.ts";
 import {
@@ -174,6 +177,38 @@ const HOOD = {
 };
 
 describe("quote extended", () => {
+  test("the quotes route answers the tool's extended per item, only when asked", async () => {
+    const t = await setup();
+    await t.client.spark(SYMBOLS);
+    const get = async (query: string) => {
+      const res = await api(t.m)(
+        new Request(
+          `http://markets.test/api/v1/quotes?symbols=${IDS.join(",")}${query}`,
+        ),
+      );
+      expect(res.status).toBe(200);
+      const body: any = await res.json();
+      const schema = answerSchema(spec, "GET", "/quotes", 200)!;
+      expect(validate(body, schema, spec)).toEqual([]);
+      return body.items as any[];
+    };
+    const asked = await get("&extended=true");
+    const tool = await ask(t.m);
+    expect(byId(asked, "US:HOOD").extended).toEqual(HOOD);
+    for (const [k, item] of asked.entries()) {
+      expect(item.extended).toEqual(tool[k].extended);
+      expect(item.stale).toEqual(tool[k].stale);
+    }
+    for (const query of ["", "&extended=false"]) {
+      for (const item of await get(query)) {
+        expect(item).not.toContainKey("extended");
+        expect(item.stale).toEqual([]);
+      }
+    }
+    // one chart for the period, whichever surface asked first
+    expect(t.charted("HOOD")).toHaveLength(1);
+  });
+
   test("answers the last post bar of a listing that trades after hours", async () => {
     const t = await setup();
     await t.client.spark(SYMBOLS);

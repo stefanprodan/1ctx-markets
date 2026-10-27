@@ -197,6 +197,29 @@ async function bvbCandidates(
   }
 }
 
+// Every candidate, stored first, each id once, and the sources that
+// failed beside them.
+export async function searchAll(
+  m: Markets,
+  query: string,
+): Promise<{ notes: SourceNote[]; all: Found[] }> {
+  const fredQuery = query.toUpperCase().startsWith(`${FRED_MARKET}:`);
+  const local = fredQuery ? [] : stored(m, query);
+  const [exchange, remote] = await Promise.all([
+    fredQuery ? { found: [], notes: [] } : bvbCandidates(m, query),
+    fredQuery ? fredCandidates(m, query) : yahooCandidates(m, query),
+  ]);
+  const notes = [...exchange.notes, ...remote.notes];
+  const seen = new Set<string>();
+  // a Bucharest listing is the feed's while it is on
+  const all = [...local, ...exchange.found, ...remote.found].filter((c) => {
+    if (seen.has(c.id)) return false;
+    seen.add(c.id);
+    return true;
+  });
+  return { notes, all };
+}
+
 export async function searchPage(
   m: Markets,
   args: SearchArgs,
@@ -209,20 +232,7 @@ export async function searchPage(
       throw new ArgError("next does not continue this query");
     }
   }
-  const fredQuery = args.query.toUpperCase().startsWith(`${FRED_MARKET}:`);
-  const local = fredQuery ? [] : stored(m, args.query);
-  const [exchange, remote] = await Promise.all([
-    fredQuery ? { found: [], notes: [] } : bvbCandidates(m, args.query),
-    fredQuery ? fredCandidates(m, args.query) : yahooCandidates(m, args.query),
-  ]);
-  const notes = [...exchange.notes, ...remote.notes];
-  const seen = new Set<string>();
-  // a Bucharest listing is the feed's while it is on
-  const all = [...local, ...exchange.found, ...remote.found].filter((c) => {
-    if (seen.has(c.id)) return false;
-    seen.add(c.id);
-    return true;
-  });
+  const { notes, all } = await searchAll(m, args.query);
   const rest = all.slice(offset);
   return fitPage(
     rest,

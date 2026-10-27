@@ -5,7 +5,7 @@
 // signal row, and its return against a benchmark the caller names,
 // computed on read at the range's end.
 
-import { type Interval, readBars } from "../bars.ts";
+import { type Bar, type Interval, readBars } from "../bars.ts";
 import type { Db } from "../db/index.ts";
 import { SOURCE as FRED } from "../fred/client.ts";
 import { ATTRIBUTION } from "../fred/sync.ts";
@@ -13,6 +13,7 @@ import type { Instrument } from "../instruments.ts";
 import { readRelativeReturn } from "../signals/read.ts";
 import { monthsBack } from "../signals/relative.ts";
 import { selectList } from "../signals/store.ts";
+import type { StaleReason } from "../stale.ts";
 import { dateOfWall } from "../zone.ts";
 import {
   cursor,
@@ -27,7 +28,7 @@ import {
 import { ArgError, date, fields, oneOf, optionalText, text } from "./args.ts";
 import { quoteItem, readLatest, type SignalRow, signalRow } from "./quote.ts";
 import { benchmarkStale } from "./sets.ts";
-import { type Markets, readTargets } from "./targets.ts";
+import { type ItemError, type Markets, readTargets } from "./targets.ts";
 
 export const BASIS =
   "split-adjusted prices; dividends and FX conversion excluded";
@@ -144,6 +145,77 @@ function relative(
   };
 }
 
+export type HistoryBar = Bar & { row: SignalRow | null };
+
+export type HistoryRead =
+  | { input: string; error: ItemError }
+  | {
+      instrument: Instrument;
+      from: string;
+      to: string;
+      bars: HistoryBar[];
+      relative: object | null;
+      stale: StaleReason[];
+      attribution: boolean;
+    };
+
+// The bars from start (from without one) to to, each with that date's
+// final row, or its live row on the one bar not final.
+export async function readHistory(
+  m: Markets,
+  args: HistoryArgs,
+  start: string | null,
+): Promise<HistoryRead> {
+  const names =
+    args.benchmark === null ? [args.symbol] : [args.symbol, args.benchmark];
+  const [target, bench] = await readTargets(m, names);
+  if ("error" in target!) return { input: target.input, error: target.error };
+  const instrument = target.instrument;
+  const db = m.db;
+  const all = readBars(db, instrument.id, args.interval);
+  const to = args.to ?? all.at(-1)?.date ?? dateOfWall(m.clock.now());
+  const from = args.from ?? monthsBack(to, DEFAULT_MONTHS[args.interval]);
+  const first = start ?? from;
+  const signals = rowsByDate(db, instrument.id, args.interval, first, to);
+  const bars = all
+    .filter((b) => b.date >= first && b.date <= to)
+    .map((b) => {
+      const final = signals.final.get(b.date);
+      const live =
+        !b.final && signals.live?.date === b.date ? signals.live : null;
+      const row: SignalRow | null =
+        final !== undefined
+          ? signalRow(final, "final", args.interval)
+          : live !== null
+            ? signalRow(live, "live", args.interval)
+            : null;
+      return { ...b, row };
+    });
+  let rel: object | null = null;
+  if (bench !== undefined) {
+    rel =
+      "error" in bench
+        ? { benchmark: { input: bench.input }, ...bench.error }
+        : relative(m, instrument, bench.instrument, to);
+  }
+  const benchFred =
+    bench !== undefined &&
+    "instrument" in bench &&
+    bench.instrument.source === FRED;
+  return {
+    instrument,
+    from,
+    to,
+    bars,
+    relative: rel,
+    stale: readLatest(db, instrument, m.clock.now(), m.quoteEveryMs).stale,
+    attribution: instrument.source === FRED || benchFred,
+  };
+}
+
+export const basisOf = (i: Instrument): string =>
+  i.source === FRED ? FRED_BASIS : BASIS;
+
 export async function historyAnswer(
   m: Markets,
   args: HistoryArgs,
@@ -155,33 +227,13 @@ export async function historyAnswer(
     if (start === null)
       throw new ArgError("next does not continue these arguments");
   }
-  const names =
-    args.benchmark === null ? [args.symbol] : [args.symbol, args.benchmark];
-  const [target, bench] = await readTargets(m, names);
-  if ("error" in target!) {
-    return errorResult({ input: target.input, ...target.error });
-  }
-  const instrument = target.instrument;
-  const db = m.db;
-  const all = readBars(db, instrument.id, args.interval);
-  const to = args.to ?? all.at(-1)?.date ?? dateOfWall(m.clock.now());
-  const from = args.from ?? monthsBack(to, DEFAULT_MONTHS[args.interval]);
-  const first = start ?? from;
-  const bars = all.filter((b) => b.date >= first && b.date <= to);
-  const signals = rowsByDate(db, instrument.id, args.interval, first, to);
-  const items = bars.map((b) => {
-    const final = signals.final.get(b.date);
-    const live =
-      !b.final && signals.live?.date === b.date ? signals.live : null;
-    const row: SignalRow | null =
-      final !== undefined
-        ? signalRow(final, "final", args.interval)
-        : live !== null
-          ? signalRow(live, "live", args.interval)
-          : null;
+  const read = await readHistory(m, args, start);
+  if ("error" in read) return errorResult({ input: read.input, ...read.error });
+  const { instrument, from, to } = read;
+  const items = read.bars.map((b) => {
     let sig: Omit<SignalRow, "date"> | null = null;
-    if (row !== null) {
-      const { date: _, ...rest } = row;
+    if (b.row !== null) {
+      const { date: _, ...rest } = b.row;
       sig = rest;
     }
     return {
@@ -195,19 +247,6 @@ export async function historyAnswer(
       signals: sig,
     };
   });
-  const isFred = instrument.source === FRED;
-  let rel: object | null = null;
-  if (bench !== undefined) {
-    rel =
-      "error" in bench
-        ? { benchmark: { input: bench.input }, ...bench.error }
-        : relative(m, instrument, bench.instrument, to);
-  }
-  const stale = readLatest(db, instrument, m.clock.now(), m.quoteEveryMs).stale;
-  const benchFred =
-    bench !== undefined &&
-    "instrument" in bench &&
-    bench.instrument.source === FRED;
   const page = fitPage(
     items,
     (count) => ({
@@ -219,10 +258,10 @@ export async function historyAnswer(
       interval: args.interval,
       from,
       to,
-      basis: isFred ? FRED_BASIS : BASIS,
-      stale,
-      ...(rel === null ? {} : { relative: rel }),
-      ...(isFred || benchFred ? { attribution: ATTRIBUTION } : {}),
+      basis: basisOf(instrument),
+      stale: read.stale,
+      ...(read.relative === null ? {} : { relative: read.relative }),
+      ...(read.attribution ? { attribution: ATTRIBUTION } : {}),
       next: count < items.length ? cursor(items[count]!.date, asked) : null,
     }),
     "bars",
