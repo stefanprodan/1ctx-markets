@@ -110,7 +110,7 @@ the tracking table in `docs/storage.md`; the source queue in
 | Tool | Takes | Answers |
 |---|---|---|
 | `quote` | `symbols`, `benchmark`, `extended`, `next` | per symbol a `QuoteItem` (`quote.ts`) with `returns`, `session`, with a benchmark `relative_return_1m` and `_3m`, with `extended` true `extended` |
-| `history` | `symbol`, `interval`, `from`, `to`, `benchmark`, `next` | bars oldest first with `final` and signals; `relative` |
+| `history` | `symbol`, `interval`, `from`, `to`, `benchmark`, `next` | bars oldest first with `final` and signals; `session`; `relative` |
 | `search` | `query`, `next` | up to 20 stored matches, then the Bucharest feed's tradable listings while it is on, then Yahoo's, each with id, exchange, type, name, `source`, `stored` |
 | `movers` | `symbols`, `min_move_pct`, `direction`, `average`, `relation`, `next` | matches by absolute change, largest first; `counts` |
 | `screen` | `symbols`, `filters`, `benchmark`, `sort`, `order`, `fields`, `next` | matches with each used and asked field's value, unit, kind and date; `counts` |
@@ -162,6 +162,18 @@ the tracking table in `docs/storage.md`; the source queue in
   share, never reads them. Bars are read from the
   earliest start a call needs (`readCloses()`), and the benchmark's
   closes once per call, never every stored bar per item.
+- **history's latest session bar is its live quote's** (`withLive()`
+  in `history.ts`): the quote's price as the close, its day range
+  widening the stored one, beside the live row's signals, even when the
+  source has no bar for the day yet. A stored bar of that session is
+  the last bar pass's, taken near the open, so its close is hours old;
+  the Bucharest feed often has none then. It is the bar the live row
+  steps from (`docs/signals.md`), so the two never disagree.
+- **A bar is final once its source shows a later session**
+  (`docs/calendars.md`), so a day's bar after its close is still not
+  final. history's `session` is quote's, the last regular session with
+  `state` `open` or `closed`, so a reader tells an intraday bar from an
+  unsettled close.
 - **history defaults its range from the last bar.** `to` is the latest
   bar, `from` 3 months before it for `1d` and 24 months for `1wk`
   (`DEFAULT_MONTHS`). `basis` states split-adjusted prices with

@@ -181,6 +181,7 @@ function reads(m: Markets): Route[] {
             ...(read.attribution ? { attribution: ATTRIBUTION } : {}),
             from: read.from,
             to: read.to,
+            session: read.session,
             interval: args.interval,
             ...(read.relative === null ? {} : { relative: read.relative }),
             bars: read.bars.map((b) => ({

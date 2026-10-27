@@ -223,6 +223,13 @@ const schemas: Record<string, Schema> = {
       attribution: str,
       from: str,
       to: str,
+      session: nullable(
+        object({ state: values(["open", "closed"]), start: nstr, end: nstr }, [
+          "state",
+          "start",
+          "end",
+        ]),
+      ),
       interval: values(["1d", "1wk"]),
       relative: described(
         object({ benchmark: freeForm(TOOLS) }, ["benchmark"], true),
@@ -242,6 +249,7 @@ const schemas: Record<string, Schema> = {
       "stale",
       "from",
       "to",
+      "session",
       "interval",
       "bars",
     ],
@@ -649,7 +657,7 @@ const paths = {
       tags: ["market data"],
       operationId: "history",
       summary: "Daily or weekly bars with their averages",
-      description: `One symbol's bars from from to to, oldest first, all of them: the server keeps up to ten years, about 2,520 daily bars. Each bar has its close, whether it is final, and the SMA 50 and 200 of that date's signal row, null where it has none; the bar of a session still trading is not final and carries the live row. Prices are split-adjusted; dividends and FX conversion are excluded (basis). ${DEADLINE} ${STALE} A range whose bars are all final, ending before today in the instrument's own zone, with no benchmark, may be kept by the client for an hour, since final bars change only by a split or a revision; every other answer is no-store.`,
+      description: `One symbol's bars from from to to, oldest first, all of them: the server keeps up to ten years, about 2,520 daily bars. Each bar has its close, whether it is final, and the SMA 50 and 200 of that date's signal row, null where it has none. A bar is final once its source shows a later session, so a closed day's bar stays not final until the next session opens. The latest session's bar is its live quote's, with the live row's averages, even before the source has a bar for it. session is the market's last regular session, as the quote tool answers it: state open or closed, start and end in UTC; crypto is always open with null bounds, a FRED series null. Prices are split-adjusted; dividends and FX conversion are excluded (basis). ${DEADLINE} ${STALE} A range whose bars are all final, ending before today in the instrument's own zone, with no benchmark, may be kept by the client for an hour, since final bars change only by a split or a revision; every other answer is no-store.`,
       parameters: [
         query("symbol", SYMBOL, str, true),
         query("interval", "1d (default) or 1wk.", values(["1d", "1wk"])),

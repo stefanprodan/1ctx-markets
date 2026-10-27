@@ -20,7 +20,7 @@ consumer each.
 | Method and path | Key | Calls | Answers |
 |---|---|---|---|
 | `GET /api/v1/quotes?symbols=&extended=` | read | `quoteRows()` with `briefItem()` | every symbol asked, up to `MAX_SYMBOLS` (100); `extended=true` adds the quote tool's `extended` per item |
-| `GET /api/v1/history?symbol=&interval=&from=&to=&benchmark=` | read | `readHistory()` | the instrument (`id`, `name`, `exchange`, `type`, `currency`, `unit`, `source`, `basis`, `stale`, FRED's `attribution`), `from`, `to`, `interval`, the tool's `relative` when a benchmark is named, and `bars` oldest first: `date`, `close`, `final`, `sma50`, `sma200` |
+| `GET /api/v1/history?symbol=&interval=&from=&to=&benchmark=` | read | `readHistory()` | the instrument (`id`, `name`, `exchange`, `type`, `currency`, `unit`, `source`, `basis`, `stale`, FRED's `attribution`), `from`, `to`, the tool's `session`, `interval`, the tool's `relative` when a benchmark is named, and `bars` oldest first: `date`, `close`, `final`, `sma50`, `sma200` |
 | `GET /api/v1/search?query=` | read | `searchAll()` | every candidate, the tool's fields |
 | `GET /api/v1/research?symbols=&sections=&since=` | read | `researchList()` | up to `MAX_RESEARCH_SYMBOLS` (5) brief quotes with their research summary and news week |
 | `GET /api/v1/events?from=&to=&symbols=` | read | `readEventsOf()` | every event, `unavailable` and `no_event` uncapped |

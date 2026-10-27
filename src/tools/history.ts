@@ -6,13 +6,14 @@
 // computed on read at the range's end.
 
 import { type Bar, type Interval, readBars } from "../bars.ts";
+import { weekOf } from "../calendars.ts";
 import type { Db } from "../db/index.ts";
 import { SOURCE as FRED } from "../fred/client.ts";
 import { ATTRIBUTION } from "../fred/sync.ts";
 import type { Instrument } from "../instruments.ts";
 import { readRelativeReturn } from "../signals/read.ts";
 import { monthsBack } from "../signals/relative.ts";
-import { selectList } from "../signals/store.ts";
+import { type LiveTarget, liveTarget, selectList } from "../signals/store.ts";
 import type { StaleReason } from "../stale.ts";
 import { dateOfWall } from "../zone.ts";
 import {
@@ -26,7 +27,13 @@ import {
   textResult,
 } from "./answer.ts";
 import { ArgError, date, fields, oneOf, optionalText, text } from "./args.ts";
-import { quoteItem, readLatest, type SignalRow, signalRow } from "./quote.ts";
+import {
+  quoteItem,
+  readLatest,
+  type SignalRow,
+  sessionOf,
+  signalRow,
+} from "./quote.ts";
 import { benchmarkStale } from "./sets.ts";
 import { type ItemError, type Markets, readTargets } from "./targets.ts";
 
@@ -145,6 +152,60 @@ function relative(
   };
 }
 
+const widen = (
+  v: number | null,
+  q: number | null,
+  price: number,
+  f: (...xs: number[]) => number,
+) =>
+  v === null && q === null
+    ? null
+    : f(...[v, q, price].filter((x) => x !== null));
+
+// The session's bar is the quote's, as its live row is: a stored one is
+// the last bar pass's, taken near the open, and a feed may store none.
+export function withLive(
+  bars: readonly Bar[],
+  target: LiveTarget | null,
+  interval: Interval,
+): Bar[] {
+  if (target === null) return [...bars];
+  const date = interval === "1d" ? target.date : weekOf(target.date);
+  const q = target.quote;
+  const last = bars.at(-1);
+  if (
+    last !== undefined &&
+    (last.date > date || (last.date === date && last.final))
+  ) {
+    return [...bars];
+  }
+  if (last?.date === date) {
+    return [
+      ...bars.slice(0, -1),
+      {
+        ...last,
+        high: widen(last.high, q.dayHigh, q.price, Math.max),
+        low: widen(last.low, q.dayLow, q.price, Math.min),
+        close: q.price,
+        // a week's volume is its days' sum, which the quote is not
+        volume: interval === "1d" ? (q.volume ?? last.volume) : last.volume,
+      },
+    ];
+  }
+  return [
+    ...bars,
+    {
+      date,
+      open: null,
+      high: q.dayHigh,
+      low: q.dayLow,
+      close: q.price,
+      volume: q.volume,
+      final: false,
+    },
+  ];
+}
+
 export type HistoryBar = Bar & { row: SignalRow | null };
 
 export type HistoryRead =
@@ -154,6 +215,7 @@ export type HistoryRead =
       from: string;
       to: string;
       bars: HistoryBar[];
+      session: ReturnType<typeof sessionOf>;
       relative: object | null;
       stale: StaleReason[];
       attribution: boolean;
@@ -172,7 +234,11 @@ export async function readHistory(
   if ("error" in target!) return { input: target.input, error: target.error };
   const instrument = target.instrument;
   const db = m.db;
-  const all = readBars(db, instrument.id, args.interval);
+  const all = withLive(
+    readBars(db, instrument.id, args.interval),
+    liveTarget(db, instrument),
+    args.interval,
+  );
   const to = args.to ?? all.at(-1)?.date ?? dateOfWall(m.clock.now());
   const from = args.from ?? monthsBack(to, DEFAULT_MONTHS[args.interval]);
   const first = start ?? from;
@@ -207,6 +273,7 @@ export async function readHistory(
     from,
     to,
     bars,
+    session: sessionOf(m, instrument, m.clock.now()),
     relative: rel,
     stale: readLatest(db, instrument, m.clock.now(), m.quoteEveryMs).stale,
     attribution: instrument.source === FRED || benchFred,
@@ -258,6 +325,7 @@ export async function historyAnswer(
       interval: args.interval,
       from,
       to,
+      session: read.session,
       basis: basisOf(instrument),
       stale: read.stale,
       ...(read.relative === null ? {} : { relative: read.relative }),
