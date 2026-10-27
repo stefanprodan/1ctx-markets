@@ -24,10 +24,12 @@ const CALLS: [string, Record<string, unknown>][] = [
   ["quote", { symbols: ["NVDA", "FRED:DGS10", "^GSPC"] }],
   ["quote", { symbols: ["NVDA"], benchmark: "^GSPC" }],
   ["quote", { symbols: [] }],
+  ["quote", { symbols: ["NVDA", "FRED:DGS10"], extended: true }],
   ["history", { symbol: "NVDA", from: "2026-07-01" }],
   ["history", { symbol: "NVDA", interval: "1wk", benchmark: "^GSPC" }],
   ["history", { symbol: "FRED:DGS10", from: "2026-01-01" }],
   ["history", { symbol: "ZZNOTHING" }],
+  ["history", { symbol: "NVDA", from: "2026-04-01", to: "2026-09-30" }],
   ["search", { query: "NVDA" }],
   ["search", { query: "FRED:DGS10" }],
   ["movers", { symbols: ["NVDA", "^GSPC", "FRED:DGS10"], min_move_pct: 0 }],
@@ -61,6 +63,8 @@ const CALLS: [string, Record<string, unknown>][] = [
   ["research", { symbol: "NVDA" }],
   ["research", { symbol: "NVDA", section: "analysts" }],
   ["research", { symbol: "NVDA", section: "earnings" }],
+  ["research", { symbol: "NVDA", section: "news", since: "2026-10-10" }],
+  ["research", { symbol: "NVDA", section: "analysts", since: "2026-10-10" }],
   ["events", { from: "2026-01-01", to: "2026-12-31", symbols: ["NVDA"] }],
   ["events", { from: "2026-01-01", to: "2026-12-31" }],
   [
@@ -124,6 +128,35 @@ export async function mcpAnswers(): Promise<Answers> {
     const tool = list.find((t) => t.name === name)!;
     answers[`${k} ${name} ${JSON.stringify(input)}`] = await pages(
       (args) => drive(clock, pacedOf(m), call(m, tool, args)),
+      input,
+    );
+  }
+  // a century of quarters, so events pages
+  const insert = db.query(
+    `insert into events (instrument, fiscal_year, fiscal_quarter, date,
+       hour, eps_estimate, eps_actual, reported_seen_at, fetched_at)
+     values ('US:NVDA', ?, ?, ?, 'bmo', 1, ?, ?, ?)`,
+  );
+  for (let k = 0; k < 120; k++) {
+    const year = 1980 + Math.floor(k / 4);
+    const date = `${year}-${String((k % 4) * 3 + 1).padStart(2, "0")}-15`;
+    const reported = k % 2 === 1;
+    insert.run(
+      year,
+      (k % 4) + 1,
+      date,
+      reported ? 0 : null,
+      reported ? NOW : null,
+      NOW,
+    );
+  }
+  const events = list.find((t) => t.name === "events")!;
+  for (const input of [
+    { from: "1979-01-01", to: "2030-01-01" },
+    { from: "1979-01-01", to: "2030-01-01", symbols: ["NVDA"] },
+  ]) {
+    answers[`events ${JSON.stringify(input)}`] = await pages(
+      (args) => drive(clock, pacedOf(m), call(m, events, args)),
       input,
     );
   }

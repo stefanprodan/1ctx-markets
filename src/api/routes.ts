@@ -41,6 +41,7 @@ import { parseScreen, readScreen } from "../tools/screen.ts";
 import { parseSearch, searchAll } from "../tools/search.ts";
 import { setAll } from "../tools/sets.ts";
 import type { Markets } from "../tools/targets.ts";
+import { localDate } from "../zone.ts";
 import { ASSET_CACHE, DOC_FILES, docsFile, docsPage } from "./docs.ts";
 import {
   failed,
@@ -93,7 +94,8 @@ async function bodyOf(req: Request): Promise<{ body: unknown } | Response> {
   return read;
 }
 
-const RULE_ID = /^[1-9]\d{0,15}$/;
+// 15 digits stay under Number.MAX_SAFE_INTEGER, so no id rounds to another
+const RULE_ID = /^[1-9]\d{0,14}$/;
 
 function ruleId(raw: string): number {
   if (!RULE_ID.test(raw)) {
@@ -158,8 +160,10 @@ function reads(m: Markets): Route[] {
           return failed({ input: read.input, ...read.error });
         }
         const i = read.instrument;
+        // a range ending today or later still takes the next live bar
         const final =
           args.to !== null &&
+          args.to < localDate(i.zone, m.clock.now()) &&
           args.benchmark === null &&
           read.bars.length > 0 &&
           read.bars.every((b) => b.final);

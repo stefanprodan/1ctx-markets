@@ -168,9 +168,11 @@ consumer each.
   a page sends no bearer.
 - **Reads answer `cache-control: no-store`**, since prices are live.
   Two exceptions: a history range whose bars are all final, with `to`
-  given and no benchmark, is `private, max-age=3600`, since final bars
-  change only by a split's rescale or a FRED revision; the spec and
-  the docs files are `public, max-age=3600`.
+  given and before today in the instrument's own zone (`localDate()`)
+  and no benchmark, is `private, max-age=3600`, since final bars change
+  only by a split's rescale or a FRED revision; a range ending today or
+  later takes the next live bar, so it is never kept. The spec and the
+  docs files are `public, max-age=3600`.
 
 ## The alerts feed
 
@@ -226,10 +228,20 @@ answer; 1ctx (an agent workspace whose scheduled tasks poll it) is one.
   descriptions copied, and name no user, market or holding.
 - **Schemas use a small subset of JSON Schema**: `type` (an array of
   types for null), `properties`, `required`, `additionalProperties`,
-  `items`, `enum`, `$ref`. The `Schema` type allows nothing else, and
-  the checker in `test/helpers/schema.ts` refuses any other keyword,
-  so no schema claims what the test does not hold true. A `$ref`
-  stands alone; a value that may be null is spelled out inline.
+  `items`, `enum`, `oneOf`, `$ref`, and `description`, which annotates
+  and checks nothing. The `Schema` type allows nothing else, and the
+  checker in `test/helpers/schema.ts` refuses any other keyword, so no
+  schema claims what the test does not hold true. `oneOf` holds when
+  exactly one branch matches. A `$ref` stands alone; a value that may
+  be null is spelled out inline.
+- **An item is a whole result or a whole error.** Quote, research,
+  movers and screen items are `oneOf` a result with its fields
+  required, `Unavailable` where the tool has it, and `ItemError`, each
+  closed to other fields, so an item with only `input` fails.
+- **A free-form object says where its fields are.** A rule's
+  condition, a job row, an event and the like stay `type: object` with
+  a `description` naming the doc that gives their fields, rather than
+  a second copy of them here.
 - **`test/api.test.ts` holds the spec to the code**: every routed
   method and path is an operation and every operation is routed; every
   schema keeps to the subset; one call per operation for its success

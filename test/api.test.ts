@@ -7,6 +7,7 @@ import { POLICY } from "../src/api/docs.ts";
 import { MAX_BODY_BYTES, PREFIX } from "../src/api/http.ts";
 import { spec } from "../src/api/openapi.ts";
 import { routes } from "../src/api/routes.ts";
+import { DAY_MS } from "../src/clock.ts";
 import { type Db, open } from "../src/db/index.ts";
 import { finnhub } from "../src/finnhub/client.ts";
 import { fred } from "../src/fred/client.ts";
@@ -28,7 +29,7 @@ import {
   validate,
 } from "./helpers/schema.ts";
 import { FRED_KEY, gate, NOW, sources } from "./helpers/sources.ts";
-import { bar, instrument, row, world } from "./helpers/world.ts";
+import { bar, FINAL, instrument, LIVE, row, world } from "./helpers/world.ts";
 import { chartSymbol } from "./helpers/yahoo.ts";
 
 const METHODS = ["get", "post", "patch", "delete"];
@@ -134,7 +135,9 @@ describe("the spec", () => {
   test("the checker refuses keywords outside the subset and wrong values", () => {
     for (const s of [
       { type: "string", minLength: 1 },
+      { anyOf: [{ type: "string" }, { type: "number" }] },
       { oneOf: [{ type: "string" }] },
+      { type: "string", description: 1 },
       { type: "object", properties: { a: { pattern: "x" } } },
       { type: "array", items: { format: "date" } },
       { type: "text" },
@@ -155,6 +158,52 @@ describe("the spec", () => {
     expect(validate({ a: 1, b: "y" }, s, {})).not.toEqual([]);
     expect(validate({ a: 1, c: 1 }, s, {})).not.toEqual([]);
     expect(validate([], s, {})).not.toEqual([]);
+    // exactly one branch: a value both or neither match is refused
+    const either = {
+      oneOf: [
+        {
+          type: "object",
+          properties: { a: { type: "integer" } },
+          required: ["a"],
+        },
+        {
+          type: "object",
+          properties: { b: { type: "string" } },
+          required: ["b"],
+        },
+      ],
+    };
+    expect(validate({ a: 1 }, either, {})).toEqual([]);
+    expect(validate({ b: "x" }, either, {})).toEqual([]);
+    expect(validate({ a: 1, b: "x" }, either, {})).not.toEqual([]);
+    expect(validate({ c: 1 }, either, {})).not.toEqual([]);
+    // an item is a whole result or a whole error, never a bare input
+    const quotes = answerSchema(spec, "GET", "/quotes", 200)!;
+    const answer = (item: object) => validate({ items: [item] }, quotes, spec);
+    expect(answer({ input: "X" })).not.toEqual([]);
+    expect(
+      answer({ input: "X", error: "not_found", message: "no listing" }),
+    ).toEqual([]);
+    expect(
+      answer({ input: "X", id: "US:X", error: "not_found", message: "m" }),
+    ).not.toEqual([]);
+    for (const path of ["/movers", "/screen"]) {
+      const method = path === "/screen" ? "POST" : "GET";
+      const set = answerSchema(spec, method, path, 200)!;
+      const sort = path === "/screen" ? { field: "id", order: "asc" } : "x";
+      const counts = { matched: 1, not_matched: 0, unavailable: 0, errors: 0 };
+      expect(
+        validate(
+          {
+            sort,
+            counts,
+            items: [{ input: "X", id: "US:X", status: "matched" }],
+          },
+          set,
+          spec,
+        ),
+      ).not.toEqual([]);
+    }
   });
 });
 
@@ -558,6 +607,14 @@ describe("every operation", () => {
       await t.call("/rules/0", { method: "DELETE" }),
       400,
     );
+    // past Number.MAX_SAFE_INTEGER an id would round to another
+    for (const big of ["9999999999999999", "100000000000000000"]) {
+      const res = await t.call(`/rules/${big}`, { method: "DELETE" });
+      expect([big, res.status]).toEqual([big, 400]);
+    }
+    expect(
+      (await t.call("/rules/999999999999999", { method: "DELETE" })).status,
+    ).toBe(404);
     await check(
       "DELETE",
       "/rules/{id}",
@@ -709,6 +766,30 @@ describe("history", () => {
     ]) {
       expect((await get(query)).headers.get("cache-control")).toBe("no-store");
     }
+  });
+
+  test("a range ending today or later is never kept, its bars final or not", async () => {
+    const w = world();
+    const id = "XX:DAYS";
+    instrument(w.db, id);
+    // final up to the day before the fake clock's, in the listing's zone
+    for (const date of ["2026-10-20", "2026-10-21", FINAL]) {
+      bar(w.db, id, "1d", date, 100, true);
+    }
+    const cache = async (to: string) =>
+      (
+        await api(w.m)(
+          new Request(
+            `http://markets.test/api/v1/history?symbol=${id}&from=2026-10-01&to=${to}`,
+          ),
+        )
+      ).headers.get("cache-control");
+    expect(await cache(FINAL)).toBe("private, max-age=3600");
+    expect(await cache(LIVE)).toBe("no-store");
+    expect(await cache("2027-01-01")).toBe("no-store");
+    // the next day the same end is past
+    await w.clock.advance(DAY_MS);
+    expect(await cache(LIVE)).toBe("private, max-age=3600");
   });
 
   test("resolves and fetches a new symbol inside the call, as the tool does", async () => {

@@ -3,7 +3,8 @@
 //
 // The JSON Schema subset the API's spec uses, checked by hand: a keyword
 // outside it is refused rather than skipped, so no schema can claim what
-// this checker does not hold true.
+// this checker does not hold true. description annotates and checks
+// nothing.
 
 const KEYWORDS = new Set([
   "type",
@@ -12,7 +13,9 @@ const KEYWORDS = new Set([
   "additionalProperties",
   "items",
   "enum",
+  "oneOf",
   "$ref",
+  "description",
 ]);
 
 const TYPES = new Set([
@@ -69,6 +72,21 @@ export function schemaErrors(schema: unknown, at = "#"): string[] {
   if (schema.enum !== undefined && !Array.isArray(schema.enum)) {
     out.push(`${at}: enum`);
   }
+  if (schema.oneOf !== undefined) {
+    if (!Array.isArray(schema.oneOf) || schema.oneOf.length < 2) {
+      out.push(`${at}: oneOf is a list of two or more schemas`);
+    } else {
+      for (const [k, v] of schema.oneOf.entries()) {
+        out.push(...schemaErrors(v, `${at}/oneOf/${k}`));
+      }
+    }
+  }
+  if (
+    schema.description !== undefined &&
+    typeof schema.description !== "string"
+  ) {
+    out.push(`${at}: description`);
+  }
   if (schema.$ref !== undefined) {
     if (typeof schema.$ref !== "string" || Object.keys(schema).length > 1) {
       out.push(`${at}: $ref stands alone`);
@@ -111,6 +129,18 @@ export function validate(
   if (bad.length > 0) return bad;
   if (schema.$ref !== undefined) {
     return validate(value, resolve(root, schema.$ref as string), root, at);
+  }
+  if (schema.oneOf !== undefined) {
+    const branches = (schema.oneOf as Schema[]).map((b) =>
+      validate(value, b, root, at),
+    );
+    const matched = branches.filter((b) => b.length === 0).length;
+    if (matched !== 1) {
+      return [
+        `${at}: matches ${matched} of oneOf's ${branches.length}`,
+        ...(matched === 0 ? branches.flat() : []),
+      ];
+    }
   }
   const out: string[] = [];
   if (schema.type !== undefined) {

@@ -42,7 +42,7 @@ type JsonType =
   | "array"
   | "null";
 
-// the only keywords a schema here may use
+// the only keywords a schema here may use; description only annotates
 export type Schema = {
   type?: JsonType | JsonType[];
   properties?: Record<string, Schema>;
@@ -50,7 +50,10 @@ export type Schema = {
   additionalProperties?: boolean | Schema;
   items?: Schema;
   enum?: (string | number | boolean | null)[];
+  // exactly one branch matches, as an item that is a result or its error
+  oneOf?: Schema[];
   $ref?: string;
+  description?: string;
 };
 
 const ref = (name: string): Schema => ({
@@ -62,7 +65,15 @@ const num: Schema = { type: "number" };
 const nnum: Schema = { type: ["number", "null"] };
 const int: Schema = { type: "integer" };
 const bool: Schema = { type: "boolean" };
-const anyObject: Schema = { type: "object" };
+// an object whose fields a doc gives, not this spec
+const freeForm = (doc: string): Schema => ({
+  type: "object",
+  description: `Its fields are described in ${doc}.`,
+});
+const described = (s: Schema, doc: string): Schema => ({
+  ...s,
+  description: `Its fields beyond those listed are described in ${doc}.`,
+});
 const list = (items: Schema): Schema => ({ type: "array", items });
 const values = (allowed: readonly (string | number)[]): Schema => ({
   type: typeof allowed[0] === "number" ? "integer" : "string",
@@ -85,12 +96,21 @@ const nullable = (s: Schema): Schema => ({
 
 const DEADLINE_S = CALL_MS / 1000;
 
+const TOOLS = "docs/tools.md";
+const RESEARCH = "docs/research.md";
+const RULES = "docs/rules.md";
+const ADMIN = "docs/admin.md";
+
 // what an item holds when its symbol did not resolve or fetch in time
-const itemError = {
-  error: values(ERRORS),
-  message: str,
-  candidates: list(ref("Candidate")),
-};
+const itemError = object(
+  {
+    input: str,
+    error: values(ERRORS),
+    message: str,
+    candidates: list(ref("Candidate")),
+  },
+  ["input", "error", "message"],
+);
 
 const averages = nullable(
   object({
@@ -123,15 +143,38 @@ const brief = {
   ),
 };
 
+// every brief field but a FRED series' observation is always there
+const briefRequired = Object.keys(brief).filter((k) => k !== "observation");
+
 // a $ref takes no null beside it, so an alert that may be null is inline
-const alert = object(
-  { id: int, rule_id: int, fired_at: str, truncated: bool },
-  ["id", "rule_id", "fired_at"],
-  true,
+const alert = described(
+  object(
+    { id: int, rule_id: int, fired_at: str, truncated: bool },
+    ["id", "rule_id", "fired_at"],
+    true,
+  ),
+  RULES,
 );
 
+const unavailable = object(
+  {
+    input: str,
+    id: str,
+    status: values(["unavailable"]),
+    missing: list(str),
+    stale: list(str),
+    reason: str,
+  },
+  ["input", "id", "status", "missing", "stale"],
+);
+
+const oneOf = (...names: string[]): Schema => ({ oneOf: names.map(ref) });
+
 const schemas: Record<string, Schema> = {
-  Error: object({ error: str, message: str }, ["error", "message"], true),
+  Error: described(
+    object({ error: str, message: str }, ["error", "message"], true),
+    "docs/api.md",
+  ),
   Candidate: object({
     id: str,
     name: nstr,
@@ -139,7 +182,8 @@ const schemas: Record<string, Schema> = {
     exchange: str,
     source_symbol: str,
   }),
-  QuoteItem: object(
+  ItemError: itemError,
+  Quote: object(
     {
       ...brief,
       extended: nullable(
@@ -151,10 +195,10 @@ const schemas: Record<string, Schema> = {
           time: nstr,
         }),
       ),
-      ...itemError,
     },
-    ["input"],
+    briefRequired,
   ),
+  QuoteItem: oneOf("Quote", "ItemError"),
   Quotes: object({ attribution: str, items: list(ref("QuoteItem")) }, [
     "items",
   ]),
@@ -180,7 +224,10 @@ const schemas: Record<string, Schema> = {
       from: str,
       to: str,
       interval: values(["1d", "1wk"]),
-      relative: object({ benchmark: anyObject }, ["benchmark"], true),
+      relative: described(
+        object({ benchmark: freeForm(TOOLS) }, ["benchmark"], true),
+        TOOLS,
+      ),
       bars: list(ref("Bar")),
     },
     [
@@ -229,15 +276,15 @@ const schemas: Record<string, Schema> = {
     },
     ["query", "candidates"],
   ),
-  ResearchItem: object(
+  ResearchResult: object(
     {
       ...brief,
-      research: object({ source: str }, ["source"], true),
-      news: object({ source: str }, ["source"], true),
-      ...itemError,
+      research: described(object({ source: str }, ["source"], true), RESEARCH),
+      news: described(object({ source: str }, ["source"], true), RESEARCH),
     },
-    ["input"],
+    briefRequired,
   ),
+  ResearchItem: oneOf("ResearchResult", "ItemError"),
   Research: object({ attribution: str, items: list(ref("ResearchItem")) }, [
     "items",
   ]),
@@ -248,16 +295,27 @@ const schemas: Record<string, Schema> = {
       source: str,
       message: str,
       unavailable: list(
-        object({ input: str, message: str }, ["input", "message"], true),
+        described(
+          object({ input: str, message: str }, ["input", "message"], true),
+          RESEARCH,
+        ),
       ),
       no_event: list(
-        object({ input: str, id: str, last: anyObject, next: anyObject }, [
-          "input",
-          "id",
-        ]),
+        object(
+          {
+            input: str,
+            id: str,
+            last: nullable(freeForm(RESEARCH)),
+            next: nullable(freeForm(RESEARCH)),
+          },
+          ["input", "id"],
+        ),
       ),
       events: list(
-        object({ id: str, date: str, status: str }, ["id", "date"], true),
+        described(
+          object({ id: str, date: str, status: str }, ["id", "date"], true),
+          RESEARCH,
+        ),
       ),
     },
     ["from", "to", "events"],
@@ -268,37 +326,99 @@ const schemas: Record<string, Schema> = {
     unavailable: int,
     errors: int,
   }),
-  SetItem: object(
+  Unavailable: unavailable,
+  Mover: object(
     {
       input: str,
       id: str,
-      status: values(["matched", "unavailable"]),
-      missing: list(str),
-      stale: list(str),
-      reason: str,
-      error: values(ERRORS),
-      message: str,
-      candidates: list(ref("Candidate")),
+      status: values(["matched"]),
+      name: nstr,
+      unit: values(UNITS),
+      currency: nstr,
+      price: nnum,
+      previous_close: nnum,
+      change: nnum,
+      change_percent: nnum,
+      trade_time: nstr,
+      fetched_at: nstr,
+      average: freeForm(TOOLS),
     },
-    ["input"],
-    true,
+    [
+      "input",
+      "id",
+      "status",
+      "name",
+      "unit",
+      "currency",
+      "price",
+      "previous_close",
+      "change",
+      "change_percent",
+      "trade_time",
+      "fetched_at",
+    ],
   ),
+  MoverItem: oneOf("Mover", "Unavailable", "ItemError"),
+  Screened: object(
+    {
+      input: str,
+      id: str,
+      status: values(["matched"]),
+      name: nstr,
+      unit: values(UNITS),
+      currency: nstr,
+      kind: values(["market_quote", "observation"]),
+      price: nnum,
+      observation: nullable(object({ date: str, value: num })),
+      trade_time: nstr,
+      fetched_at: nstr,
+      fields: {
+        type: "object",
+        additionalProperties: nullable(
+          object(
+            {
+              value: nnum,
+              unit: str,
+              kind: values(["live", "final"]),
+              date: str,
+              note: str,
+            },
+            ["value", "unit", "kind", "date"],
+          ),
+        ),
+      },
+    },
+    [
+      "input",
+      "id",
+      "status",
+      "name",
+      "unit",
+      "currency",
+      "kind",
+      "price",
+      "trade_time",
+      "fetched_at",
+      "fields",
+    ],
+  ),
+  ScreenItem: oneOf("Screened", "Unavailable", "ItemError"),
   Movers: object(
     {
       sort: str,
       counts: ref("Counts"),
       attribution: str,
-      items: list(ref("SetItem")),
+      items: list(ref("MoverItem")),
     },
     ["sort", "counts", "items"],
   ),
   Screen: object(
     {
-      benchmark: anyObject,
+      benchmark: freeForm(TOOLS),
       sort: object({ field: str, order: values(["asc", "desc"]) }),
       attribution: str,
       counts: ref("Counts"),
-      items: list(ref("SetItem")),
+      items: list(ref("ScreenItem")),
     },
     ["sort", "counts", "items"],
   ),
@@ -327,7 +447,7 @@ const schemas: Record<string, Schema> = {
     {
       id: int,
       symbol: str,
-      condition: anyObject,
+      condition: freeForm(RULES),
       note: nstr,
       paused: { type: ["string", "null"], enum: ["manual", "split", null] },
       message: str,
@@ -335,7 +455,7 @@ const schemas: Record<string, Schema> = {
       created_at: str,
       last_result: nstr,
       last_evaluated_at: nstr,
-      after_earnings: anyObject,
+      after_earnings: freeForm(RULES),
     },
     [
       "id",
@@ -350,16 +470,19 @@ const schemas: Record<string, Schema> = {
     ],
   ),
   Rules: object({ rules: list(ref("Rule")) }),
-  RuleArgs: object({ symbol: str, condition: anyObject, note: nstr }, [
+  RuleArgs: object({ symbol: str, condition: freeForm(RULES), note: nstr }, [
     "symbol",
     "condition",
   ]),
   Created: object({
     rule: ref("Rule"),
-    evaluation: object(
-      { result: str, values: list(anyObject), reasons: list(str) },
-      ["result", "reasons"],
-      true,
+    evaluation: described(
+      object(
+        { result: str, values: list(freeForm(RULES)), reasons: list(str) },
+        ["result", "reasons"],
+        true,
+      ),
+      RULES,
     ),
     alert: nullable(alert),
   }),
@@ -385,7 +508,7 @@ const schemas: Record<string, Schema> = {
         backing_off: nullable(object({ until: nstr, after: str })),
       }),
     ),
-    jobs: list(anyObject),
+    jobs: list(freeForm(ADMIN)),
     instruments: int,
     tracked: int,
     database_bytes: int,
@@ -399,7 +522,7 @@ const schemas: Record<string, Schema> = {
     ["symbols", "fetch"],
   ),
   Refetched: object({
-    results: list(object({ symbol: str }, ["symbol"], true)),
+    results: list(described(object({ symbol: str }, ["symbol"], true), ADMIN)),
   }),
   Deleted: object({
     deleted: str,
@@ -526,7 +649,7 @@ const paths = {
       tags: ["market data"],
       operationId: "history",
       summary: "Daily or weekly bars with their averages",
-      description: `One symbol's bars from from to to, oldest first, all of them: the server keeps up to ten years, about 2,520 daily bars. Each bar has its close, whether it is final, and the SMA 50 and 200 of that date's signal row, null where it has none; the bar of a session still trading is not final and carries the live row. Prices are split-adjusted; dividends and FX conversion are excluded (basis). ${DEADLINE} ${STALE} A range whose bars are all final, with to given and no benchmark, may be kept by the client for an hour; every other answer is no-store.`,
+      description: `One symbol's bars from from to to, oldest first, all of them: the server keeps up to ten years, about 2,520 daily bars. Each bar has its close, whether it is final, and the SMA 50 and 200 of that date's signal row, null where it has none; the bar of a session still trading is not final and carries the live row. Prices are split-adjusted; dividends and FX conversion are excluded (basis). ${DEADLINE} ${STALE} A range whose bars are all final, ending before today in the instrument's own zone, with no benchmark, may be kept by the client for an hour, since final bars change only by a split or a revision; every other answer is no-store.`,
       parameters: [
         query("symbol", SYMBOL, str, true),
         query("interval", "1d (default) or 1wk.", values(["1d", "1wk"])),
@@ -807,7 +930,7 @@ const paths = {
       responses: {
         200: {
           description: "The OpenAPI document",
-          content: content(anyObject),
+          content: content(freeForm("the OpenAPI 3.1 specification")),
         },
         400: r("BadArguments"),
       },
