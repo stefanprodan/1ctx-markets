@@ -22,6 +22,7 @@ import {
 } from "../finnhub/store.ts";
 import { ATTRIBUTION } from "../fred/sync.ts";
 import type { Instrument } from "../instruments.ts";
+import { iso, round } from "../market/format.ts";
 import { cut } from "../massive/client.ts";
 import {
   countNews,
@@ -43,10 +44,8 @@ import {
   errorResult,
   fitPage,
   fits,
-  iso,
   PageOverflow,
   readCursor,
-  round,
   type ToolResult,
   textResult,
 } from "./answer.ts";

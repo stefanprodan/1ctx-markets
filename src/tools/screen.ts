@@ -8,6 +8,7 @@
 
 import { ATTRIBUTION } from "../fred/sync.ts";
 import type { Instrument } from "../instruments.ts";
+import { round } from "../market/format.ts";
 import type { DailyRow } from "../signals/daily.ts";
 import {
   benchmarkSide,
@@ -23,7 +24,6 @@ import type { StaleReason } from "../stale.ts";
 import {
   errorResult,
   type Failure,
-  round,
   type ToolResult,
   textResult,
 } from "./answer.ts";

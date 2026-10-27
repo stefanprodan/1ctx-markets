@@ -17,6 +17,7 @@ import {
 } from "../src/finnhub/store.ts";
 import { readInstrument, upsertInstrument } from "../src/instruments.ts";
 import { silent } from "../src/log.ts";
+import { iso } from "../src/market/format.ts";
 import {
   MAX_PUBLISHER,
   MAX_REASONING,
@@ -33,7 +34,7 @@ import {
   topNews,
 } from "../src/massive/store.ts";
 import { endRun, startRun } from "../src/runs.ts";
-import { fits, iso, PAGE_BYTES } from "../src/tools/answer.ts";
+import { fits, PAGE_BYTES } from "../src/tools/answer.ts";
 import { ArgError } from "../src/tools/args.ts";
 import {
   eventsAnswer,

@@ -7,9 +7,9 @@
 import type { Db } from "../db/index.ts";
 import type { Log } from "../log.ts";
 import { errorFields } from "../log.ts";
+import { iso } from "../market/format.ts";
 import type { Snapshot } from "../rules/evaluate.ts";
 import { lastAlertId, readAlertsAfter } from "../rules/store.ts";
-import { iso } from "./answer.ts";
 import { alertItem } from "./rules.ts";
 
 // strictly under: the whole body, in UTF-8 bytes

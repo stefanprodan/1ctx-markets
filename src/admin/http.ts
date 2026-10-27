@@ -9,10 +9,10 @@
 import { failed, json, readBody } from "../api/http.ts";
 import type { Db } from "../db/index.ts";
 import { type Instrument, readInstrument } from "../instruments.ts";
+import { iso } from "../market/format.ts";
 import { instrumentsOf } from "../rules/format.ts";
 import { readRules } from "../rules/store.ts";
 import type { Backoff } from "../source.ts";
-import { iso } from "../tools/answer.ts";
 import type { Markets } from "../tools/markets.ts";
 import { trackedIds } from "../tracking.ts";
 import {

@@ -10,6 +10,7 @@ import {
   nextEvent,
 } from "../finnhub/store.ts";
 import type { Instrument } from "../instruments.ts";
+import { iso } from "../market/format.ts";
 import {
   applyRule,
   type Evaluation,
@@ -44,7 +45,6 @@ import {
   type Failure,
   fitPage,
   fits,
-  iso,
   readCursor,
   type ToolResult,
   textResult,

@@ -10,6 +10,7 @@ import { weekOf } from "../calendars.ts";
 import type { Db } from "../db/index.ts";
 import { ATTRIBUTION } from "../fred/sync.ts";
 import type { Instrument } from "../instruments.ts";
+import { price, round } from "../market/format.ts";
 import { readRelativeReturn } from "../signals/read.ts";
 import { monthsBack } from "../signals/relative.ts";
 import { type LiveTarget, liveTarget, selectList } from "../signals/store.ts";
@@ -20,9 +21,7 @@ import {
   cursor,
   errorResult,
   fitPage,
-  price,
   readCursor,
-  round,
   type ToolResult,
   textResult,
 } from "./answer.ts";

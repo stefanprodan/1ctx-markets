@@ -15,8 +15,8 @@ import {
 import { NO_EVENTS } from "../finnhub/store.ts";
 import { ATTRIBUTION } from "../fred/sync.ts";
 import { errorFields, type Log } from "../log.ts";
+import { price } from "../market/format.ts";
 import { readRules } from "../rules/store.ts";
-import { price } from "../tools/answer.ts";
 import { ArgError, fields } from "../tools/args.ts";
 import { parseEvents, readEventsOf } from "../tools/events.ts";
 import { basisOf, parseHistory, readHistory } from "../tools/history.ts";

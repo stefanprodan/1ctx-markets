@@ -9,9 +9,10 @@
 import type { Db } from "../db/index.ts";
 import { ATTRIBUTION } from "../fred/sync.ts";
 import type { Instrument } from "../instruments.ts";
+import { price, round } from "../market/format.ts";
 import { readQuote } from "../quotes.ts";
 import { FRED } from "../sources/ids.ts";
-import { price, round, type ToolResult, textResult } from "./answer.ts";
+import { type ToolResult, textResult } from "./answer.ts";
 import { ArgError, fields, oneOf, optionalText, symbols } from "./args.ts";
 import type { Markets } from "./markets.ts";
 import {

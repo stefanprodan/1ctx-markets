@@ -13,13 +13,13 @@ import {
 } from "../finnhub/store.ts";
 import { type Instrument, readInstrument } from "../instruments.ts";
 import { errorFields, type Log, silent } from "../log.ts";
+import { iso, price, round } from "../market/format.ts";
 import {
   type InstrumentSignals,
   readRelativeReturn,
   readSignals,
 } from "../signals/read.ts";
 import { barsStale, quoteStale, STALE } from "../stale.ts";
-import { iso, price, round } from "../tools/answer.ts";
 import {
   type Comparison,
   comparisons,

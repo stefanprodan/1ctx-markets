@@ -12,7 +12,7 @@ import { type Db, open } from "../src/db/index.ts";
 import { finnhub } from "../src/finnhub/client.ts";
 import { fred } from "../src/fred/client.ts";
 import { silent } from "../src/log.ts";
-import { round } from "../src/tools/answer.ts";
+import { round } from "../src/market/format.ts";
 import { withLive } from "../src/tools/history.ts";
 import { tools } from "../src/tools/index.ts";
 import { CALL_MS, markets } from "../src/tools/markets.ts";
