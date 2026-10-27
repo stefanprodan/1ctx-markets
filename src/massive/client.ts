@@ -13,8 +13,9 @@ import {
   scrub,
   Unreadable,
 } from "../source.ts";
+import { MASSIVE } from "../sources/ids.ts";
 
-export const SOURCE = "massive";
+export const SOURCE = MASSIVE;
 export const HOST = "https://api.massive.com";
 export const NEWS_PATH = "/v2/reference/news";
 // the free key allows 5 a minute and sends no rate-limit headers

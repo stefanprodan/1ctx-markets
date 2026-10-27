@@ -12,9 +12,10 @@ import {
   SourceError,
   Unreadable,
 } from "../source.ts";
+import { FINNHUB } from "../sources/ids.ts";
 import { wallOfDate } from "../zone.ts";
 
-export const SOURCE = "finnhub";
+export const SOURCE = FINNHUB;
 export const HOST = "https://finnhub.io/api/v1";
 // the free key allows 60 a minute; one start every 1.1 s stays under it
 export const SPACING_MS = 1_100;

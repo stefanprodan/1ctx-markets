@@ -7,10 +7,10 @@
 // quote, and a FRED series, which has no live quote, never moves.
 
 import type { Db } from "../db/index.ts";
-import { SOURCE as FRED } from "../fred/client.ts";
 import { ATTRIBUTION } from "../fred/sync.ts";
 import type { Instrument } from "../instruments.ts";
 import { readQuote } from "../quotes.ts";
+import { FRED } from "../sources/ids.ts";
 import { price, round, type ToolResult, textResult } from "./answer.ts";
 import { ArgError, fields, oneOf, optionalText, symbols } from "./args.ts";
 import type { Markets } from "./markets.ts";

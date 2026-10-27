@@ -19,11 +19,12 @@ import {
   scrub,
   Unreadable,
 } from "../source.ts";
+import { FRED } from "../sources/ids.ts";
 import { wallOfDate } from "../zone.ts";
 
 export { scrub };
 
-export const SOURCE = "fred";
+export const SOURCE = FRED;
 export const HOST = "https://api.stlouisfed.org/fred";
 const CONCURRENCY = 1;
 const TIMEOUT_MS = 30_000;

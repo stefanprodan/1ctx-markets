@@ -17,8 +17,9 @@ import {
   SourceError,
   Unreadable,
 } from "../source.ts";
+import { YAHOO } from "../sources/ids.ts";
 
-export const SOURCE = "yahoo";
+export const SOURCE = YAHOO;
 export const HOST = "https://query1.finance.yahoo.com";
 // a full browser User-Agent was answered 429
 const USER_AGENT = "Mozilla/5.0";

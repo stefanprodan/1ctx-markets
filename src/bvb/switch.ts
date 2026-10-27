@@ -23,8 +23,8 @@ import { errorFields, type Log } from "../log.ts";
 import { endRun, failRun, lastStarted, startRun } from "../runs.ts";
 import type { Scheduler } from "../scheduler.ts";
 import { phraseOf, SourceError } from "../source.ts";
+import { YAHOO } from "../sources/ids.ts";
 import { SWITCH } from "../stale.ts";
-import { SOURCE as YAHOO } from "../yahoo/client.ts";
 import { keyOf as yahooKey } from "../yahoo/resolve.ts";
 import {
   backfillStart,

@@ -4,7 +4,6 @@
 // every write here runs inside a writer transaction
 
 import { type Interval, readBars, type Bar as StoredBar } from "../bars.ts";
-import { SOURCE as BVB } from "../bvb/client.ts";
 import {
   CRYPTO,
   readSession,
@@ -15,6 +14,7 @@ import {
 import { DAY_MS, MINUTE_MS } from "../clock.ts";
 import type { Db } from "../db/index.ts";
 import type { Instrument } from "../instruments.ts";
+import { BVB } from "../sources/ids.ts";
 import { fromWallTime, localDate, wallTime } from "../zone.ts";
 import { type DailyRow, dailySeries, liveDaily } from "./daily.ts";
 import { liveWeekly, type WeeklyRow, weeklySeries } from "./weekly.ts";

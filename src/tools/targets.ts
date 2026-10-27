@@ -7,11 +7,7 @@
 // Every instrument answered counts as read, which is what tracks it.
 
 import { dailyRange } from "../bars.ts";
-import {
-  SOURCE as BVB,
-  MARKET as BVB_MARKET,
-  type Bvb,
-} from "../bvb/client.ts";
+import type { Bvb } from "../bvb/client.ts";
 import { resolveBoth } from "../bvb/resolve.ts";
 import {
   NO_DATA as BVB_NO_DATA,
@@ -20,10 +16,8 @@ import {
   keyOf as bvbKey,
 } from "../bvb/sync.ts";
 import type { Db } from "../db/index.ts";
-import { SOURCE as FRED } from "../fred/client.ts";
 import {
   addSeries,
-  MARKET as FRED_MARKET,
   NO_DATA,
   Refused,
   refetchSeries,
@@ -32,9 +26,9 @@ import {
 import { type Instrument, readInstrument } from "../instruments.ts";
 import { errorFields } from "../log.ts";
 import { Paused, QueueClosed, SourceError } from "../source.ts";
+import { BVB, BVB_MARKET, FRED, FRED_MARKET, YAHOO } from "../sources/ids.ts";
 import { isTracked, markRead } from "../tracking.ts";
 import { WriterClosed } from "../writer.ts";
-import { SOURCE as YAHOO } from "../yahoo/client.ts";
 import { type Candidate, ResolveError, resolve } from "../yahoo/resolve.ts";
 import { catchUp, fetchInstrument } from "../yahoo/sync.ts";
 import { type Markets, shared } from "./markets.ts";

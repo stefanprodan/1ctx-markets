@@ -7,10 +7,10 @@
 // condition names every instrument by its id and binds its earnings gate
 // to one fiscal quarter.
 
-import { SOURCE as FRED } from "../fred/client.ts";
 import type { Instrument } from "../instruments.ts";
 import type { DailyRow } from "../signals/daily.ts";
 import type { WeeklyRow } from "../signals/weekly.ts";
+import { FRED } from "../sources/ids.ts";
 
 export class RuleError extends Error {
   constructor(message: string) {

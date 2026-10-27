@@ -9,12 +9,9 @@ import { CRYPTO, isQuoted, readSession } from "../calendars.ts";
 import { MINUTE_MS } from "../clock.ts";
 import type { Instrument } from "../instruments.ts";
 import { SourceError } from "../source.ts";
+import { YAHOO } from "../sources/ids.ts";
 import { STALE, type StaleReason } from "../stale.ts";
-import {
-  type IntradayAnswer,
-  type Window,
-  SOURCE as YAHOO,
-} from "../yahoo/client.ts";
+import type { IntradayAnswer, Window } from "../yahoo/client.ts";
 import { iso, price, round } from "./answer.ts";
 import { type ExtendedRead, type Markets, shared } from "./markets.ts";
 

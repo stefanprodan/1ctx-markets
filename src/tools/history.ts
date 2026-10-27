@@ -8,12 +8,12 @@
 import { type Bar, type Interval, readBars } from "../bars.ts";
 import { weekOf } from "../calendars.ts";
 import type { Db } from "../db/index.ts";
-import { SOURCE as FRED } from "../fred/client.ts";
 import { ATTRIBUTION } from "../fred/sync.ts";
 import type { Instrument } from "../instruments.ts";
 import { readRelativeReturn } from "../signals/read.ts";
 import { monthsBack } from "../signals/relative.ts";
 import { type LiveTarget, liveTarget, selectList } from "../signals/store.ts";
+import { FRED } from "../sources/ids.ts";
 import type { StaleReason } from "../stale.ts";
 import { dateOfWall } from "../zone.ts";
 import {

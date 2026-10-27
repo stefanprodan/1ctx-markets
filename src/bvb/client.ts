@@ -16,6 +16,7 @@ import {
   SourceError,
   Unreadable,
 } from "../source.ts";
+import { BVB, BVB_MARKET } from "../sources/ids.ts";
 import { checkZone, dateOfWall } from "../zone.ts";
 import {
   column,
@@ -31,8 +32,8 @@ import {
   textOf,
 } from "./format.ts";
 
-export const SOURCE = "bvb";
-export const MARKET = "BVB";
+export const SOURCE = BVB;
+export const MARKET = BVB_MARKET;
 export const SITE = "https://bvb.ro";
 export const WAPI = "https://wapi.bvb.ro/api";
 // the probes' pace, which the site never refused

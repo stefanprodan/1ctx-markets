@@ -28,6 +28,7 @@ import { exclusive } from "../lock.ts";
 import type { RuleHooks } from "../rules/hooks.ts";
 import { signalsAfterBars } from "../signals/store.ts";
 import { DeadlinePassed, SourceError } from "../source.ts";
+import { FRED_MARKET } from "../sources/ids.ts";
 import type { Writer } from "../writer.ts";
 import { dateOfWall, startOfDate } from "../zone.ts";
 import {
@@ -37,7 +38,7 @@ import {
   SOURCE,
 } from "./client.ts";
 
-export const MARKET = "FRED";
+export const MARKET = FRED_MARKET;
 // observation dates are calendar dates, not an exchange's
 export const ZONE = "UTC";
 const TYPE = "SERIES";

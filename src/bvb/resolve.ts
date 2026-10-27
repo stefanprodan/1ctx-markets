@@ -12,7 +12,8 @@ import {
   readBySourceSymbol,
   readInstrument,
 } from "../instruments.ts";
-import { SOURCE as YAHOO, type Yahoo } from "../yahoo/client.ts";
+import { YAHOO } from "../sources/ids.ts";
+import type { Yahoo } from "../yahoo/client.ts";
 import {
   type Candidate,
   ResolveError,

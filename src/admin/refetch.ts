@@ -7,7 +7,7 @@
 // ones the jobs read.
 
 import type { Written } from "../bars.ts";
-import { SOURCE as BVB, type Bvb } from "../bvb/client.ts";
+import type { Bvb } from "../bvb/client.ts";
 import {
   backfill as bvbBackfill,
   quoteNow,
@@ -18,17 +18,16 @@ import {
   refreshResearch,
   type Section,
 } from "../finnhub/store.ts";
-import { SOURCE as FRED } from "../fred/client.ts";
 import { refetchSeries } from "../fred/sync.ts";
 import { checkSource, type Instrument, Moved } from "../instruments.ts";
 import { errorFields } from "../log.ts";
 import { eligible as massiveEligible, refreshNews } from "../massive/store.ts";
 import { endRun, failRun, startRun } from "../runs.ts";
 import { DeadlinePassed, Paused, QueueClosed, SourceError } from "../source.ts";
+import { BVB, FRED, YAHOO } from "../sources/ids.ts";
 import { JOBS } from "../stale.ts";
 import type { Markets } from "../tools/markets.ts";
 import { WriterClosed } from "../writer.ts";
-import { SOURCE as YAHOO } from "../yahoo/client.ts";
 import {
   expired,
   storeQuotes,

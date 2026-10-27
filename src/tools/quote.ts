@@ -8,7 +8,6 @@
 
 import { CRYPTO, isQuoted, readSession } from "../calendars.ts";
 import type { Db } from "../db/index.ts";
-import { SOURCE as FRED } from "../fred/client.ts";
 import { ATTRIBUTION } from "../fred/sync.ts";
 import type { Instrument } from "../instruments.ts";
 import { readQuote } from "../quotes.ts";
@@ -25,6 +24,7 @@ import {
 import { earliestStart } from "../signals/relative.ts";
 import { DAILY_COLUMNS, WEEKLY_COLUMNS } from "../signals/store.ts";
 import type { WeeklyRow } from "../signals/weekly.ts";
+import { FRED } from "../sources/ids.ts";
 import type { StaleReason } from "../stale.ts";
 import { cursor, fitPage, iso, price, readCursor, round } from "./answer.ts";
 import { ArgError, fields, optionalText, symbols } from "./args.ts";
