@@ -14,7 +14,7 @@ import type { QuoteRow } from "../quotes.ts";
 import { endRun, failRun, lastStarted, runJob, startRun } from "../runs.ts";
 import type { Scheduler } from "../scheduler.ts";
 import { type Phrase, phraseOf, SourceError } from "../source.ts";
-import { barsDue, JOBS } from "../stale.ts";
+import { barsDue, JOBS, owedDue } from "../stale.ts";
 import { TRACK_MS, trackedIds, trackedInstruments } from "../tracking.ts";
 import { SOURCE, type SparkAnswer } from "./client.ts";
 import {
@@ -312,12 +312,15 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
     const bars: BarPass[] = [];
     for (const [market, instruments] of tracked()) {
       if (!barsDue(db, SOURCE, market, clock.now())) {
-        // an instrument whose own refetch failed is retried alone
+        // an instrument whose own refetch failed or left a close owed is
+        // retried alone
+        const owed = owedDue(db, SOURCE, market, instruments, clock.now());
         const retry = instruments.filter((i) => {
           const last = lastStarted(db, SOURCE, JOBS.bars, i.id);
           return (
-            last?.status === "failed" &&
-            clock.now() - last.startedAt >= RETRY_MS
+            (last?.status === "failed" &&
+              clock.now() - last.startedAt >= RETRY_MS) ||
+            owed.includes(i)
           );
         });
         if (retry.length > 0) bars.push(await barPass(market, retry, false));

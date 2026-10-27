@@ -6,6 +6,7 @@
 
 import { SOURCE as BVB } from "./bvb/client.ts";
 import { CRYPTO, closeQuoteAt, readSession } from "./calendars.ts";
+import { MINUTE_MS } from "./clock.ts";
 import type { Db } from "./db/index.ts";
 import type { Instrument } from "./instruments.ts";
 import { lastRun, lastStarted } from "./runs.ts";
@@ -19,7 +20,13 @@ export const JOBS = {
   // the 30-day refetch when a market's session moves on, with a run per
   // instrument scoped to its id
   bars: "bars",
+  // a refetch that left the previous session's close to come, scoped to
+  // the instrument and written right after its bars run
+  owed: "owed",
 } as const;
+
+// a chart can take hours to fill the close; often enough to land it early
+export const OWED_RETRY_MS = 15 * MINUTE_MS;
 
 // a market's prices moving to another source, a run scoped to the market
 export const SWITCH = { source: "sources", job: "switch" } as const;
@@ -158,4 +165,35 @@ export function barsDue(
   if (session === null || session.start > now) return false;
   const ok = lastStarted(db, source, JOBS.bars, market, "ok");
   return ok === null || ok.startedAt < session.start;
+}
+
+// Owed in this session only: the next one starts a full pass, after which
+// a day never closed is a gap. All are asked together once the earliest
+// is due, so a market is asked at most once per OWED_RETRY_MS.
+export function owedDue<T extends { id: string }>(
+  db: Db,
+  source: string,
+  market: string,
+  instruments: readonly T[],
+  now: number,
+): T[] {
+  const session = readSession(db, market);
+  if (session === null) return [];
+  let earliest = now;
+  const owed = instruments.filter((i) => {
+    const mark = lastStarted(db, source, JOBS.owed, i.id);
+    // any later bars run, landed or failed, settles it
+    const bars = lastStarted(db, source, JOBS.bars, i.id);
+    if (
+      mark === null ||
+      bars === null ||
+      bars.id > mark.id ||
+      mark.startedAt < session.start
+    ) {
+      return false;
+    }
+    earliest = Math.min(earliest, mark.startedAt);
+    return true;
+  });
+  return now - earliest >= OWED_RETRY_MS ? owed : [];
 }

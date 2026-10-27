@@ -137,6 +137,9 @@ in `docs/config.md`.
   answers marks only itself.
 - **A failed refetch is its instrument's own `bars` run** and marks
   only it; the market's run fails only when no instrument answered.
+  A refetch that left the last finished session's close owed adds an
+  ok `owed` run in the same scope (`docs/yahoo.md`), since only a
+  failed run may carry an error.
 - **The reasons are fixed phrases in `STALE`** (`src/stale.ts`); a
   tool answers the phrase, never prose of its own. Add a reason there.
 

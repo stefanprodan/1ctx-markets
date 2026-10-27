@@ -12,7 +12,10 @@ import { silent } from "../src/log.ts";
 import { readQuote } from "../src/quotes.ts";
 import { INTERRUPTED, lastRun, startRun } from "../src/runs.ts";
 import { scheduler } from "../src/scheduler.ts";
-import { barsStale, JOBS, quoteStale } from "../src/stale.ts";
+import { readSignals } from "../src/signals/read.ts";
+import { barsStale, JOBS, OWED_RETRY_MS, quoteStale } from "../src/stale.ts";
+import { moversAnswer, parseMovers } from "../src/tools/movers.ts";
+import { markets } from "../src/tools/targets.ts";
 import { writer } from "../src/writer.ts";
 import { yahoo } from "../src/yahoo/client.ts";
 import { RETRY_MS, type TickReport, yahooJobs } from "../src/yahoo/jobs.ts";
@@ -460,6 +463,252 @@ describe("bars at the session change", () => {
     expect(
       barsStale(t.db, readInstrument(t.db, "US:HYG")!, t.clock.now()),
     ).toContain("bar sync failed");
+  });
+});
+
+describe("a finished session's close that lands late", () => {
+  // stored from Sunday's chart; from the next session's start each chart
+  // ask is answered by at, k counting the asks
+  async function nextSession(o: {
+    symbol: string;
+    sunday: Recorded;
+    session: [string, string];
+    at: (k: number, now: number) => Recorded;
+    price?: number;
+  }) {
+    const spark = await sparkFrom();
+    let moved = false;
+    const asks: number[] = [];
+    const t = setup(utc("2026-10-25T19:40"), (url, now) => {
+      if (chartSymbol(url) === null) return spark.route(url);
+      if (!moved) return o.sunday;
+      asks.push(now);
+      return o.at(asks.length - 1, now);
+    });
+    await added(t.ctx, o.symbol);
+    const [start, end] = o.session;
+    await t.runTo(utc(start) - MINUTE_MS);
+    moved = true;
+    const meta = spark.metas.get(o.symbol);
+    moveSession(meta, start, end, utc(start));
+    if (o.price !== undefined) meta.regularMarketPrice = o.price;
+    await t.runTo(utc(start));
+    return { ...t, asks, meta };
+  }
+
+  const XETRA_MONDAY: [string, string] = [
+    "2026-10-26T08:00",
+    "2026-10-26T16:30",
+  ];
+  const FRIDAY_CLOSE = 87.22000122070312;
+
+  // Monday's open as recorded, and with Friday's close not in yet
+  async function mondayOpen() {
+    const open = await recorded("chart-vvsm-de-5d-1d-open-0800");
+    const late = clone(open);
+    late.body.chart.result[0].indicators.quote[0].close[3] = null;
+    return { open, late };
+  }
+
+  function appendDay(result: any, at: string, close: number | null) {
+    result.timestamp.push(utc(at) / 1000);
+    const q = result.indicators.quote[0];
+    for (const k of ["open", "high", "low", "close"]) q[k].push(close);
+    q.volume.push(close === null ? null : 1000);
+  }
+
+  const bar = (db: any, id: string, date: string) =>
+    readBars(db, id, "1d").find((b) => b.date === date);
+
+  const spaced = (asks: number[]) =>
+    asks.slice(1).map((at, k) => at - asks[k]!);
+
+  test("a Xetra chart at the open without the last close keeps its bar and asks again until it lands", async () => {
+    const { open, late } = await mondayOpen();
+    const t = await nextSession({
+      symbol: "VVSM.DE",
+      sunday: listed(await recorded("chart-vvsm-de-5d-1d")),
+      session: XETRA_MONDAY,
+      at: (k) => (k < 2 ? late : open),
+    });
+    expect(t.asks).toEqual([utc("2026-10-26T08:00")]);
+    expect(bar(t.db, "XETRA:VVSM", "2026-10-23")).toMatchObject({
+      close: FRIDAY_CLOSE,
+      final: false,
+    });
+
+    await t.runTo(utc("2026-10-26T18:00"));
+    expect(t.asks).toEqual([
+      utc("2026-10-26T08:00"),
+      utc("2026-10-26T08:15"),
+      utc("2026-10-26T08:30"),
+    ]);
+    expect(bar(t.db, "XETRA:VVSM", "2026-10-23")).toMatchObject({
+      close: FRIDAY_CLOSE,
+      final: true,
+    });
+    expect(
+      barsStale(t.db, readInstrument(t.db, "XETRA:VVSM")!, t.clock.now()),
+    ).toEqual([]);
+  });
+
+  test("a crypto chart at midnight without the day just ended gets it on a later pass", async () => {
+    const sunday = listed(await recorded("chart-sol-usd-5d-1d"));
+    // Monday's chart: its session and first row, Sunday's row left out
+    // or with its final close
+    const monday = (close: number | null) => {
+      const out = clone(sunday);
+      const result = out.body.chart.result[0];
+      moveSession(
+        result.meta,
+        "2026-10-26T00:00",
+        "2026-10-26T23:59",
+        utc("2026-10-26T00:00"),
+      );
+      const q = result.indicators.quote[0];
+      if (close === null) {
+        result.timestamp.pop();
+        for (const k of ["open", "high", "low", "close", "volume"]) q[k].pop();
+      } else {
+        q.close[q.close.length - 1] = close;
+      }
+      appendDay(result, "2026-10-26T00:00", 101.3);
+      return out;
+    };
+    const missing = monday(null);
+    const full = monday(101.2);
+    const t = await nextSession({
+      symbol: "SOL-USD",
+      sunday,
+      session: ["2026-10-26T00:00", "2026-10-26T23:59"],
+      at: (k) => (k < 2 ? missing : full),
+    });
+    expect(bar(t.db, "CRYPTO:SOL-USD", "2026-10-25")).toMatchObject({
+      close: 101.66000366210938,
+      final: false,
+    });
+
+    await t.runTo(utc("2026-10-26T06:00"));
+    expect(t.asks).toEqual([
+      utc("2026-10-26T00:00"),
+      utc("2026-10-26T00:15"),
+      utc("2026-10-26T00:30"),
+    ]);
+    expect(bar(t.db, "CRYPTO:SOL-USD", "2026-10-25")).toMatchObject({
+      close: 101.2,
+      final: true,
+    });
+  });
+
+  test("US charts at the open have the last close and make no extra pass", async () => {
+    const open = await recorded("chart-nvda-5d-1d-open-1330");
+    const t = await nextSession({
+      symbol: "NVDA",
+      sunday: listed(await recorded("chart-nvda-5d-1d")),
+      session: ["2026-10-26T13:30", "2026-10-26T20:00"],
+      at: () => open,
+    });
+    await t.runTo(utc("2026-10-26T21:00"));
+    expect(t.asks).toEqual([utc("2026-10-26T13:30")]);
+    expect(bar(t.db, "US:NVDA", "2026-10-23")).toMatchObject({ final: true });
+  });
+
+  test("a day never closed is asked every period until the next session starts, then dropped", async () => {
+    const { late } = await mondayOpen();
+    // Tuesday's open: Monday closed, Friday still without its close
+    const tuesday = clone(late);
+    const result = tuesday.body.chart.result[0];
+    moveSession(
+      result.meta,
+      "2026-10-27T08:00",
+      "2026-10-27T16:30",
+      utc("2026-10-27T08:00"),
+    );
+    result.indicators.quote[0].close[4] = 88;
+    appendDay(result, "2026-10-27T08:00", null);
+    const t = await nextSession({
+      symbol: "VVSM.DE",
+      sunday: listed(await recorded("chart-vvsm-de-5d-1d")),
+      session: XETRA_MONDAY,
+      at: (_, now) => (now >= utc("2026-10-27T08:00") ? tuesday : late),
+    });
+    await t.runTo(utc("2026-10-27T07:59"));
+    // the worst case: every period from one session's start to the next
+    expect(t.asks).toHaveLength(96);
+    expect(new Set(spaced(t.asks))).toEqual(new Set([OWED_RETRY_MS]));
+    expect(bar(t.db, "XETRA:VVSM", "2026-10-23")).toMatchObject({
+      final: false,
+    });
+
+    moveSession(
+      t.meta,
+      "2026-10-27T08:00",
+      "2026-10-27T16:30",
+      utc("2026-10-27T08:00"),
+    );
+    await t.runTo(utc("2026-10-27T12:00"));
+    expect(t.asks).toHaveLength(97);
+    expect(t.asks.at(-1)).toBe(utc("2026-10-27T08:00"));
+    expect(bar(t.db, "XETRA:VVSM", "2026-10-23")).toBeUndefined();
+    expect(bar(t.db, "XETRA:VVSM", "2026-10-26")).toMatchObject({
+      close: 88,
+      final: true,
+    });
+  });
+
+  test("the daily SMA 200 spans the owed day, and a crossing reads its close once it lands", async () => {
+    const week = backTo(await recorded("chart-vvsm-de-5d-1d"), "2026-01-01");
+    const q = week.body.chart.result[0].indicators.quote[0];
+    const made = q.close.length - 5;
+    for (const k of ["open", "high", "low", "close"]) {
+      q[k] = q[k].map((v: number, i: number) => (i < made ? 88 : v));
+    }
+    const closes: number[] = [...q.close];
+    const { open, late } = await mondayOpen();
+    const t = await nextSession({
+      symbol: "VVSM.DE",
+      sunday: listed(week),
+      session: XETRA_MONDAY,
+      at: (k) => (k < 2 ? late : open),
+      price: 90,
+    });
+    const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+    const then = mean(closes.slice(-200));
+    const now = mean([...closes.slice(-199), 90]);
+    const daily = () =>
+      readSignals(t.db, "XETRA:VVSM", t.clock.now())!.daily as any;
+    // owed: the live average already counts the kept bar
+    expect(daily().final.date).toBe("2026-10-22");
+    expect(daily().live).toMatchObject({ date: "2026-10-26" });
+    expect(daily().live.sma200).toBeCloseTo(now, 9);
+
+    await t.runTo(utc("2026-10-26T08:30"));
+    expect(daily().final.date).toBe("2026-10-23");
+    expect(daily().final.sma200).toBeCloseTo(then, 9);
+    expect(daily().live.sma200).toBeCloseTo(now, 9);
+    const m = markets({
+      db: t.db,
+      clock: t.clock,
+      writer: t.ctx.writer,
+      yahoo: t.ctx.yahoo,
+      fred: null,
+      log: silent,
+    });
+    const r = await moversAnswer(
+      m,
+      parseMovers({
+        symbols: ["XETRA:VVSM"],
+        average: "daily_sma200",
+        relation: "crossed_up",
+      }),
+    );
+    const item = JSON.parse(r.content[0]!.text).items[0];
+    expect(item.status).toBe("matched");
+    expect(item.average.last_final).toEqual({
+      date: "2026-10-23",
+      close: expect.closeTo(FRIDAY_CLOSE, 2),
+      value: expect.closeTo(then, 2),
+    });
   });
 });
 
