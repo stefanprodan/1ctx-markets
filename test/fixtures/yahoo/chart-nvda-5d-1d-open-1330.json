@@ -1,0 +1,143 @@
+{
+  "recordedAt": "2026-10-26T13:30:53.559Z",
+  "request": {
+    "method": "GET",
+    "url": "https://query1.finance.yahoo.com/v8/finance/chart/NVDA?range=5d&interval=1d"
+  },
+  "status": 200,
+  "headers": {
+    "age": "0",
+    "cache-control": "public, max-age=10, stale-while-revalidate=20",
+    "content-type": "application/json;charset=utf-8"
+  },
+  "body": {
+    "chart": {
+      "result": [
+        {
+          "meta": {
+            "currency": "USD",
+            "symbol": "NVDA",
+            "exchangeName": "NMS",
+            "fullExchangeName": "NasdaqGS",
+            "instrumentType": "EQUITY",
+            "firstTradeDate": 917015400,
+            "regularMarketTime": 1793021424,
+            "hasPrePostMarketData": true,
+            "gmtoffset": -14400,
+            "timezone": "EDT",
+            "exchangeTimezoneName": "America/New_York",
+            "regularMarketPrice": 213.214,
+            "regularMarketChangePercent": 1.069,
+            "fulldayPrice": 213.214,
+            "fulldayChange": 1.765,
+            "fulldayChangePercent": 0.837,
+            "fiftyTwoWeekHigh": 243.37,
+            "fiftyTwoWeekLow": 164.27,
+            "regularMarketDayHigh": 213.25,
+            "regularMarketDayLow": 212.61,
+            "regularMarketVolume": 3344614,
+            "longName": "NVIDIA Corporation",
+            "shortName": "NVIDIA Corporation",
+            "chartPreviousClose": 217.09,
+            "priceHint": 2,
+            "currentTradingPeriod": {
+              "pre": {
+                "timezone": "EDT",
+                "start": 1793001600,
+                "end": 1793021400,
+                "gmtoffset": -14400
+              },
+              "regular": {
+                "timezone": "EDT",
+                "start": 1793021400,
+                "end": 1793044800,
+                "gmtoffset": -14400
+              },
+              "post": {
+                "timezone": "EDT",
+                "start": 1793044800,
+                "end": 1793059200,
+                "gmtoffset": -14400
+              }
+            },
+            "dataGranularity": "1d",
+            "range": "5d",
+            "validRanges": [
+              "1d",
+              "5d",
+              "1mo",
+              "3mo",
+              "6mo",
+              "1y",
+              "2y",
+              "5y",
+              "10y",
+              "ytd",
+              "max"
+            ]
+          },
+          "timestamp": [
+            1792503000,
+            1792589400,
+            1792675800,
+            1792762200,
+            1793021400
+          ],
+          "indicators": {
+            "quote": [
+              {
+                "high": [
+                  218.4600067138672,
+                  222.19000244140625,
+                  218.8800048828125,
+                  213.85000610351562,
+                  213.25
+                ],
+                "low": [
+                  212.77000427246094,
+                  217.66000366210938,
+                  211.25999450683594,
+                  210.17999267578125,
+                  212.61000061035156
+                ],
+                "volume": [
+                  79609100,
+                  87085700,
+                  125407600,
+                  79987200,
+                  3344614
+                ],
+                "open": [
+                  215.97999572753906,
+                  220.9600067138672,
+                  217.1300048828125,
+                  210.99000549316406,
+                  213.1199951171875
+                ],
+                "close": [
+                  216.47000122070312,
+                  221.97000122070312,
+                  212.2100067138672,
+                  210.9600067138672,
+                  213.21420288085938
+                ]
+              }
+            ],
+            "adjclose": [
+              {
+                "adjclose": [
+                  216.47000122070312,
+                  221.97000122070312,
+                  212.2100067138672,
+                  210.9600067138672,
+                  213.21420288085938
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "error": null
+    }
+  }
+}

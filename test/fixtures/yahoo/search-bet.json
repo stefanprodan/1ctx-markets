@@ -1,0 +1,128 @@
+{
+  "recordedAt": "2026-10-25T22:28:41.314Z",
+  "request": {
+    "method": "GET",
+    "url": "https://query1.finance.yahoo.com/v1/finance/search?q=BET&quotesCount=10&newsCount=0&listsCount=0"
+  },
+  "status": 200,
+  "headers": {
+    "age": "0",
+    "cache-control": "public, max-age=600, stale-while-revalidate=180",
+    "content-type": "application/json;charset=utf-8"
+  },
+  "body": {
+    "explains": [],
+    "count": 7,
+    "quotes": [
+      {
+        "exchange": "NYQ",
+        "shortname": "Beta Technologies, Inc.",
+        "quoteType": "EQUITY",
+        "symbol": "BETA",
+        "index": "quotes",
+        "score": 21974,
+        "typeDisp": "Equity",
+        "exchDisp": "NYSE",
+        "sector": "Industrials",
+        "sectorDisp": "Industrials",
+        "industry": "Aerospace & Defense",
+        "industryDisp": "Aerospace & Defense",
+        "dispSecIndFlag": true,
+        "isYahooFinance": true
+      },
+      {
+        "exchange": "NGM",
+        "shortname": "Better Home & Finance Holding C",
+        "quoteType": "EQUITY",
+        "symbol": "BETR",
+        "index": "quotes",
+        "score": 21158,
+        "typeDisp": "Equity",
+        "longname": "Better Home & Finance Holding Company",
+        "exchDisp": "NASDAQ",
+        "sector": "Financial Services",
+        "sectorDisp": "Financial Services",
+        "industry": "Mortgage Finance",
+        "industryDisp": "Mortgage Finance",
+        "isYahooFinance": true
+      },
+      {
+        "exchange": "TOR",
+        "shortname": "BETAPRO NAT GAS LEV DAILY BULL ",
+        "quoteType": "ETF",
+        "symbol": "HNU.TO",
+        "index": "quotes",
+        "score": 20292,
+        "typeDisp": "ETF",
+        "longname": "BetaPro Natural Gas Leveraged Daily Bull ETF",
+        "exchDisp": "Toronto",
+        "isYahooFinance": true
+      },
+      {
+        "exchange": "TOR",
+        "shortname": "BETAPRO CRUDE OIL INV LVGD DLY ",
+        "quoteType": "ETF",
+        "symbol": "HOD.TO",
+        "index": "quotes",
+        "score": 20242,
+        "typeDisp": "ETF",
+        "longname": "BetaPro Crude Oil Inverse Leveraged Daily Bear ETF",
+        "exchDisp": "Toronto",
+        "isYahooFinance": true
+      },
+      {
+        "exchange": "NEO",
+        "shortname": "BETAPRO -3X SEMICONDUCTOR DAILY",
+        "quoteType": "EQUITY",
+        "symbol": "SOXS.NE",
+        "index": "quotes",
+        "score": 20210,
+        "typeDisp": "Equity",
+        "longname": "BetaPro -3x Semiconductor Daily Leveraged Bear Alternative ETF",
+        "exchDisp": "NEO",
+        "isYahooFinance": true
+      },
+      {
+        "exchange": "BTS",
+        "shortname": "JPMorgan BetaBuilders Canada ET",
+        "quoteType": "ETF",
+        "symbol": "BBCA",
+        "index": "quotes",
+        "score": 20187,
+        "typeDisp": "ETF",
+        "longname": "JPMorgan BetaBuilders Canada ETF",
+        "exchDisp": "BATS Trading",
+        "isYahooFinance": true
+      },
+      {
+        "exchange": "TOR",
+        "shortname": "BETAPRO CRUDE OIL LVGD DLY BULL",
+        "quoteType": "ETF",
+        "symbol": "HOU.TO",
+        "index": "quotes",
+        "score": 20181,
+        "typeDisp": "ETF",
+        "longname": "BetaPro Crude Oil Daily Bull ETF",
+        "exchDisp": "Toronto",
+        "isYahooFinance": true
+      }
+    ],
+    "news": [],
+    "nav": [],
+    "lists": [],
+    "researchReports": [],
+    "screenerFieldResults": [],
+    "totalTime": 22,
+    "timeTakenForQuotes": 415,
+    "timeTakenForNews": 0,
+    "timeTakenForAlgowatchlist": 400,
+    "timeTakenForPredefinedScreener": 400,
+    "timeTakenForCrunchbase": 0,
+    "timeTakenForNav": 400,
+    "timeTakenForResearchReports": 0,
+    "timeTakenForQuestions": 0,
+    "timeTakenForScreenerField": 0,
+    "timeTakenForCulturalAssets": 0,
+    "timeTakenForSearchLists": 0
+  }
+}

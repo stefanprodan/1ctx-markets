@@ -1,0 +1,210 @@
+{
+  "recordedAt": "2026-10-26T09:30:35.152Z",
+  "request": {
+    "method": "GET",
+    "url": "https://query1.finance.yahoo.com/v8/finance/chart/VVSM.DE?range=1d&interval=5m"
+  },
+  "status": 200,
+  "headers": {
+    "age": "0",
+    "cache-control": "public, max-age=10, stale-while-revalidate=20",
+    "content-type": "application/json;charset=utf-8"
+  },
+  "body": {
+    "chart": {
+      "result": [
+        {
+          "meta": {
+            "currency": "EUR",
+            "symbol": "VVSM.DE",
+            "exchangeName": "GER",
+            "fullExchangeName": "XETRA",
+            "instrumentType": "ETF",
+            "firstTradeDate": 1607673600,
+            "regularMarketTime": 1793006058,
+            "hasPrePostMarketData": false,
+            "gmtoffset": 3600,
+            "timezone": "CET",
+            "exchangeTimezoneName": "Europe/Berlin",
+            "regularMarketPrice": 86.81,
+            "regularMarketChangePercent": -0.47,
+            "fulldayPrice": 86.81,
+            "fulldayChange": -0.41,
+            "fulldayChangePercent": -0.47,
+            "fiftyTwoWeekHigh": 110.82,
+            "fiftyTwoWeekLow": 46.57,
+            "regularMarketDayHigh": 86.89,
+            "regularMarketDayLow": 86,
+            "regularMarketVolume": 35401,
+            "longName": "VanEck Semiconductor UCITS ETF",
+            "shortName": "VanEck Semiconductor UC.ETF   R",
+            "chartPreviousClose": 87.22,
+            "previousClose": 87.22,
+            "scale": 3,
+            "priceHint": 2,
+            "currentTradingPeriod": {
+              "pre": {
+                "timezone": "CET",
+                "end": 1793001600,
+                "start": 1792994400,
+                "gmtoffset": 3600
+              },
+              "regular": {
+                "timezone": "CET",
+                "end": 1793032200,
+                "start": 1793001600,
+                "gmtoffset": 3600
+              },
+              "post": {
+                "timezone": "CET",
+                "end": 1793043000,
+                "start": 1793032200,
+                "gmtoffset": 3600
+              }
+            },
+            "tradingPeriods": [
+              [
+                {
+                  "timezone": "CET",
+                  "end": 1793032200,
+                  "start": 1793001600,
+                  "gmtoffset": 3600
+                }
+              ]
+            ],
+            "dataGranularity": "5m",
+            "range": "1d",
+            "validRanges": [
+              "1d",
+              "5d",
+              "1mo",
+              "3mo",
+              "6mo",
+              "1y",
+              "2y",
+              "5y",
+              "10y",
+              "ytd",
+              "max"
+            ]
+          },
+          "timestamp": [
+            1793001600,
+            1793001900,
+            1793002200,
+            1793002500,
+            1793002800,
+            1793003100,
+            1793003400,
+            1793003700,
+            1793004000,
+            1793004300,
+            1793004600,
+            1793004900,
+            1793005200,
+            1793005500,
+            1793005800,
+            1793006058
+          ],
+          "indicators": {
+            "quote": [
+              {
+                "close": [
+                  86.30999755859375,
+                  86.20999908447266,
+                  86.04000091552734,
+                  86.19000244140625,
+                  86.31999969482422,
+                  86.20999908447266,
+                  86.41999816894531,
+                  86.77999877929688,
+                  null,
+                  86.86000061035156,
+                  86.83999633789062,
+                  86.77999877929688,
+                  86.77999877929688,
+                  86.83000183105469,
+                  86.88999938964844,
+                  86.80999755859375
+                ],
+                "open": [
+                  86.33000183105469,
+                  86.2699966430664,
+                  86.08000183105469,
+                  86.08000183105469,
+                  86.18000030517578,
+                  86.29000091552734,
+                  86.25,
+                  86.61000061035156,
+                  null,
+                  86.75,
+                  86.8499984741211,
+                  86.86000061035156,
+                  86.79000091552734,
+                  86.83999633789062,
+                  86.87000274658203,
+                  86.80999755859375
+                ],
+                "volume": [
+                  0,
+                  240,
+                  9601,
+                  1244,
+                  239,
+                  188,
+                  587,
+                  264,
+                  null,
+                  195,
+                  667,
+                  2110,
+                  3256,
+                  12760,
+                  212,
+                  0
+                ],
+                "high": [
+                  86.33000183105469,
+                  86.31999969482422,
+                  86.08000183105469,
+                  86.2699966430664,
+                  86.31999969482422,
+                  86.3499984741211,
+                  86.41999816894531,
+                  86.77999877929688,
+                  null,
+                  86.86000061035156,
+                  86.86000061035156,
+                  86.87000274658203,
+                  86.81999969482422,
+                  86.88999938964844,
+                  86.88999938964844,
+                  86.80999755859375
+                ],
+                "low": [
+                  86.23999786376953,
+                  86.20999908447266,
+                  86,
+                  86.05000305175781,
+                  86.18000030517578,
+                  86.20999908447266,
+                  86.22000122070312,
+                  86.61000061035156,
+                  null,
+                  86.73999786376953,
+                  86.77999877929688,
+                  86.77999877929688,
+                  86.7699966430664,
+                  86.80999755859375,
+                  86.83000183105469,
+                  86.80999755859375
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "error": null
+    }
+  }
+}

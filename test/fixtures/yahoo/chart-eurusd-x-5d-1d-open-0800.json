@@ -1,0 +1,143 @@
+{
+  "recordedAt": "2026-10-26T08:00:20.006Z",
+  "request": {
+    "method": "GET",
+    "url": "https://query1.finance.yahoo.com/v8/finance/chart/EURUSD%3DX?range=5d&interval=1d"
+  },
+  "status": 200,
+  "headers": {
+    "age": "1",
+    "cache-control": "public, max-age=10, stale-while-revalidate=20",
+    "content-type": "application/json;charset=utf-8"
+  },
+  "body": {
+    "chart": {
+      "result": [
+        {
+          "meta": {
+            "currency": "USD",
+            "symbol": "EURUSD=X",
+            "exchangeName": "CCY",
+            "fullExchangeName": "CCY",
+            "instrumentType": "CURRENCY",
+            "firstTradeDate": 1070236800,
+            "regularMarketTime": 1793001584,
+            "hasPrePostMarketData": false,
+            "gmtoffset": 0,
+            "timezone": "GMT",
+            "exchangeTimezoneName": "Europe/London",
+            "regularMarketPrice": 1.1208,
+            "regularMarketChangePercent": 0.0336,
+            "fulldayPrice": 1.1208,
+            "fulldayChange": 0.0004,
+            "fulldayChangePercent": 0.0336,
+            "fiftyTwoWeekHigh": 1.2024,
+            "fiftyTwoWeekLow": 1.1114,
+            "regularMarketDayHigh": 1.123,
+            "regularMarketDayLow": 1.1206,
+            "regularMarketVolume": 0,
+            "longName": "EUR/USD",
+            "shortName": "EUR/USD",
+            "chartPreviousClose": 1.1216,
+            "priceHint": 4,
+            "currentTradingPeriod": {
+              "pre": {
+                "timezone": "GMT",
+                "end": 1792972800,
+                "start": 1792972800,
+                "gmtoffset": 0
+              },
+              "regular": {
+                "timezone": "GMT",
+                "end": 1793059140,
+                "start": 1792972800,
+                "gmtoffset": 0
+              },
+              "post": {
+                "timezone": "GMT",
+                "end": 1793059140,
+                "start": 1793059140,
+                "gmtoffset": 0
+              }
+            },
+            "dataGranularity": "1d",
+            "range": "5d",
+            "validRanges": [
+              "1d",
+              "5d",
+              "1mo",
+              "3mo",
+              "6mo",
+              "1y",
+              "2y",
+              "5y",
+              "10y",
+              "ytd",
+              "max"
+            ]
+          },
+          "timestamp": [
+            1792450800,
+            1792537200,
+            1792623600,
+            1792710000,
+            1793001584
+          ],
+          "indicators": {
+            "quote": [
+              {
+                "high": [
+                  1.1259105205535889,
+                  1.1238480806350708,
+                  1.1257457733154297,
+                  1.1226494312286377,
+                  1.12296462059021
+                ],
+                "low": [
+                  1.1206490993499756,
+                  1.121415615081787,
+                  1.1190564632415771,
+                  1.1187058687210083,
+                  1.1205737590789795
+                ],
+                "open": [
+                  1.1214282512664795,
+                  1.1225864887237549,
+                  1.1233556270599365,
+                  1.122158169746399,
+                  1.121956706047058
+                ],
+                "volume": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "close": [
+                  1.1215791702270508,
+                  1.122674584388733,
+                  1.1234692335128784,
+                  1.1221455335617065,
+                  1.120824933052063
+                ]
+              }
+            ],
+            "adjclose": [
+              {
+                "adjclose": [
+                  1.1215791702270508,
+                  1.122674584388733,
+                  1.1234692335128784,
+                  1.1221455335617065,
+                  1.120824933052063
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "error": null
+    }
+  }
+}

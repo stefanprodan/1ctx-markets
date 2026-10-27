@@ -14,6 +14,8 @@ const UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
 const GAP_MS = 2500;
 const MAX_BYTES = 1_000_000;
+// a dated recording keeps the baseline fixture: PROBE_SUFFIX=open-0800
+const SUFFIX = process.env.PROBE_SUFFIX ? `-${process.env.PROBE_SUFFIX}` : "";
 
 let lastCall = 0;
 let calls = 0;
@@ -93,8 +95,8 @@ function save(
   const json = JSON.stringify(fixture, null, 2) + "\n";
   if (json.length > MAX_BYTES)
     throw new Error(`${name}: fixture is ${json.length} bytes, trim it`);
-  writeFileSync(join(OUT, `${name}.json`), json);
-  console.log(`${name}: ${a.status} ${a.contentType} ${json.length}B`);
+  writeFileSync(join(OUT, `${name}${SUFFIX}.json`), json);
+  console.log(`${name}${SUFFIX}: ${a.status} ${a.contentType} ${json.length}B`);
 }
 
 function parsed(a: Answer): unknown {
