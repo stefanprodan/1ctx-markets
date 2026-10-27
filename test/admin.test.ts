@@ -12,11 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AdminError, runAdmin } from "../src/admin/cli.ts";
-import {
-  adminHandler,
-  INSTRUMENT_TABLES,
-  MAX_SYMBOLS,
-} from "../src/admin/http.ts";
+import { INSTRUMENT_TABLES, MAX_SYMBOLS } from "../src/admin/http.ts";
 import { refetch } from "../src/admin/refetch.ts";
 import { DEFAULT_LISTEN, parseCli } from "../src/config.ts";
 import { type Db, open } from "../src/db/index.ts";
@@ -40,6 +36,7 @@ import { CALL_MS, markets, readTargets } from "../src/tools/targets.ts";
 import { lastReadAt } from "../src/tracking.ts";
 import { writer } from "../src/writer.ts";
 import { yahoo } from "../src/yahoo/client.ts";
+import { api } from "./helpers/api.ts";
 import { withApp } from "./helpers/app.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { drive, pacedOf } from "./helpers/drive.ts";
@@ -116,11 +113,10 @@ const share = (db: Db, market: string, symbol: string, exchange: string) =>
     NOW,
   );
 
-const admin = (t: Setup) =>
-  adminHandler({ m: t.m, version: "v0.0.0-test", sources: [] });
+const admin = (t: Setup) => api(t.m);
 
 const post = (body: unknown, headers: Record<string, string> = {}) =>
-  new Request("http://markets.test/admin/refetch", {
+  new Request("http://markets.test/api/v1/admin/refetch", {
     method: "POST",
     headers: { "content-type": "application/json", ...headers },
     body: typeof body === "string" ? body : JSON.stringify(body),
@@ -169,23 +165,36 @@ describe("the admin routes' guard", () => {
     },
   });
 
-  test("the bearer is refused on /admin/* and the admin key everywhere else", () =>
+  test("the bearer is refused on the admin routes and the admin key everywhere else", () =>
     withApp(async ({ url, bearer, admin, lines }) => {
       const as = (key: string) => ({ authorization: `Bearer ${key}` });
       for (const headers of [{}, as(bearer)]) {
-        for (const path of ["/admin/status", "/admin/nothing", "/admin"]) {
+        for (const path of [
+          "/api/v1/admin/status",
+          "/api/v1/admin/nothing",
+          "/api/v1/admin",
+        ]) {
           const res = await fetch(`${url}${path}`, { headers });
           expect(res.status).toBe(401);
           expect(res.headers.get("www-authenticate")).toBe("Bearer");
         }
       }
       expect(
-        (await fetch(`${url}/admin/status`, { headers: as(admin) })).status,
+        (await fetch(`${url}/api/v1/admin/status`, { headers: as(admin) }))
+          .status,
       ).toBe(200);
       expect(
-        (await fetch(`${url}/admin/nothing`, { headers: as(admin) })).status,
+        (await fetch(`${url}/api/v1/admin/nothing`, { headers: as(admin) }))
+          .status,
       ).toBe(404);
-      for (const path of ["/quotes", "/research", "/alerts", "/anything"]) {
+      for (const path of [
+        "/api/v1/quotes",
+        "/api/v1/research",
+        "/api/v1/alerts",
+        "/api/v1/anything",
+        "/admin/status",
+        "/anything",
+      ]) {
         const res = await fetch(`${url}${path}`, { headers: as(admin) });
         expect(res.status).toBe(401);
       }
@@ -199,7 +208,9 @@ describe("the admin routes' guard", () => {
         body: initialize,
       });
       expect(mcp.status).toBe(401);
-      expect(lines.some((l) => l.includes("path=/admin/status"))).toBe(true);
+      expect(lines.some((l) => l.includes("path=/api/v1/admin/status"))).toBe(
+        true,
+      );
       for (const line of lines) {
         expect(line).not.toContain(admin);
         expect(line).not.toContain(bearer);
@@ -217,7 +228,7 @@ describe("the admin routes' guard", () => {
              ('finnhub', 'metric', 'US:A', ?1, ?1, 'failed', 0, 'not found'),
              ('finnhub', 'metric', 'US:B', ?2, ?2, 'ok', 1, null)`,
         ).run(NOW - 60_000, NOW);
-        const res = await fetch(`${url}/admin/status`, {
+        const res = await fetch(`${url}/api/v1/admin/status`, {
           headers: { authorization: `Bearer ${admin}` },
         });
         expect(res.status).toBe(200);
@@ -266,11 +277,11 @@ describe("the admin routes' guard", () => {
         expect(b.instruments).toBe(0);
         expect(b.tracked).toBe(0);
         expect(b.database_bytes).toBeGreaterThan(0);
-        const query = await fetch(`${url}/admin/status?x=1`, {
+        const query = await fetch(`${url}/api/v1/admin/status?x=1`, {
           headers: { authorization: `Bearer ${admin}` },
         });
         expect(query.status).toBe(400);
-        const posted = await fetch(`${url}/admin/status`, {
+        const posted = await fetch(`${url}/api/v1/admin/status`, {
           method: "POST",
           headers: { authorization: `Bearer ${admin}` },
         });
@@ -530,9 +541,9 @@ describe("refetch", () => {
         415,
       ],
       [post(`{"symbols":["${"A".repeat(20_000)}"]}`), 413],
-      [new Request("http://markets.test/admin/refetch"), 405],
+      [new Request("http://markets.test/api/v1/admin/refetch"), 405],
       [
-        new Request("http://markets.test/admin/refetch?x=1", {
+        new Request("http://markets.test/api/v1/admin/refetch?x=1", {
           method: "POST",
         }),
         400,
@@ -587,7 +598,7 @@ describe("delete", () => {
 
   const del = (id: string) =>
     new Request(
-      `http://markets.test/admin/instruments/${encodeURIComponent(id)}`,
+      `http://markets.test/api/v1/admin/instruments/${encodeURIComponent(id)}`,
       {
         method: "DELETE",
       },
@@ -673,14 +684,14 @@ describe("delete", () => {
     expect(
       (
         await handle(
-          new Request("http://markets.test/admin/instruments/%E0%A4%A"),
+          new Request("http://markets.test/api/v1/admin/instruments/%E0%A4%A"),
         )
       ).status,
     ).toBe(405);
     expect(
       (
         await handle(
-          new Request("http://markets.test/admin/instruments/%E0%A4%A", {
+          new Request("http://markets.test/api/v1/admin/instruments/%E0%A4%A", {
             method: "DELETE",
           }),
         )
@@ -689,7 +700,7 @@ describe("delete", () => {
     expect(
       (
         await handle(
-          new Request("http://markets.test/admin/instruments/US:A/x", {
+          new Request("http://markets.test/api/v1/admin/instruments/US:A/x", {
             method: "DELETE",
           }),
         )
@@ -728,7 +739,7 @@ describe("the admin command", () => {
       service: async () => null,
     });
     expect(f.calls).toHaveLength(1);
-    expect(f.calls[0]!.url).toBe("http://127.0.0.1:9999/admin/status");
+    expect(f.calls[0]!.url).toBe("http://127.0.0.1:9999/api/v1/admin/status");
     const headers = f.calls[0]!.init.headers as Record<string, string>;
     expect(headers.authorization).toBe(`Bearer ${key}`);
     expect(out).toEqual([JSON.stringify({ ok: true }, null, 2)]);
@@ -748,7 +759,7 @@ describe("the admin command", () => {
         service: async () => installed.config,
       },
     );
-    expect(f.calls[0]!.url).toBe("http://127.0.0.1:12000/admin/refetch");
+    expect(f.calls[0]!.url).toBe("http://127.0.0.1:12000/api/v1/admin/refetch");
     expect(f.calls[0]!.init.method).toBe("POST");
     expect(JSON.parse(f.calls[0]!.init.body as string)).toEqual({
       symbols: ["US:NVDA"],
@@ -773,7 +784,7 @@ describe("the admin command", () => {
       service: async () => null,
     });
     expect(h.calls[0]!.url).toBe(
-      `http://${DEFAULT_LISTEN}/admin/instruments/US%3A%5EGSPC`,
+      `http://${DEFAULT_LISTEN}/api/v1/admin/instruments/US%3A%5EGSPC`,
     );
     expect(h.calls[0]!.init.method).toBe("DELETE");
   });

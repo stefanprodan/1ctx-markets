@@ -83,7 +83,12 @@ describe("the bearer", () => {
       const posted = await fetch(`${url}/health`, { method: "POST" });
       expect(posted.status).toBe(405);
       expect(posted.headers.get("allow")).toBe("GET");
-      for (const path of ["/health/", "/healthz", "/quotes", "/alerts"]) {
+      for (const path of [
+        "/health/",
+        "/healthz",
+        "/api/v1/quotes",
+        "/quotes",
+      ]) {
         expect((await fetch(`${url}${path}`)).status).toBe(401);
       }
       expect(lines.filter((line) => /path=\/health(\s|$)/.test(line))).toEqual(

@@ -47,7 +47,6 @@ import {
   MAX_RESEARCH_SYMBOLS,
   parseResearch,
   researchAnswer,
-  researchHandler,
   researchTargets,
   WEEK_ITEMS,
   WEEK_PUBLISHER,
@@ -59,6 +58,7 @@ import { CALL_MS, markets } from "../src/tools/targets.ts";
 import { lastReadAt, markRead } from "../src/tracking.ts";
 import { writer } from "../src/writer.ts";
 import { yahoo } from "../src/yahoo/client.ts";
+import { api } from "./helpers/api.ts";
 import { type TestApp, withApp } from "./helpers/app.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { drive, pacedOf } from "./helpers/drive.ts";
@@ -525,9 +525,9 @@ describe("the research and events tools", () => {
     ));
 });
 
-describe("GET /research", () => {
+describe("the research route", () => {
   const get = (t: TestApp, query: string, init: RequestInit = {}) =>
-    fetch(`${t.url}/research${query}`, {
+    fetch(`${t.url}/api/v1/research${query}`, {
       ...init,
       headers: { authorization: `Bearer ${t.bearer}` },
     });
@@ -574,7 +574,7 @@ describe("GET /research", () => {
       }
       const post = await get(t, "?symbols=NVDA", { method: "POST" });
       expect(post.status).toBe(405);
-      const none = await fetch(`${t.url}/research?symbols=NVDA`);
+      const none = await fetch(`${t.url}/api/v1/research?symbols=NVDA`);
       expect(none.status).toBe(401);
     }));
 });
@@ -881,8 +881,8 @@ describe("events inside the call", () => {
     const res = await drive(
       t.clock,
       pacedOf(t.m),
-      researchHandler(t.m)(
-        new Request("http://markets.test/research?symbols=TSM,NVDA"),
+      api(t.m)(
+        new Request("http://markets.test/api/v1/research?symbols=TSM,NVDA"),
       ),
     );
     const { items } = (await res.json()) as { items: any[] };
@@ -1319,13 +1319,13 @@ describe("no_event held to its share", () => {
   });
 });
 
-describe("GET /research history", () => {
+describe("the research route's history", () => {
   const ask = async (t: Awaited<ReturnType<typeof setup>>, symbols: string) => {
     const res = await drive(
       t.clock,
       pacedOf(t.m),
-      researchHandler(t.m)(
-        new Request(`http://markets.test/research?symbols=${symbols}`),
+      api(t.m)(
+        new Request(`http://markets.test/api/v1/research?symbols=${symbols}`),
       ),
     );
     expect(res.status).toBe(200);
@@ -1515,8 +1515,8 @@ async function getResearch(t: Setup, symbols: string) {
   const res = await drive(
     t.clock,
     pacedOf(t.m),
-    researchHandler(t.m)(
-      new Request(`http://localhost/research?symbols=${symbols}`),
+    api(t.m)(
+      new Request(`http://localhost/api/v1/research?symbols=${symbols}`),
     ),
   );
   expect(res.status).toBe(200);
@@ -1529,7 +1529,7 @@ const tenth = (k: number) =>
     .toISOString()
     .replace(/\.\d{3}Z$/, "Z");
 
-describe("the news summary in GET /research", () => {
+describe("the news summary in the research route", () => {
   test("counts the last week and lists the items that take a side first", async () => {
     const t = await setup({ massive: { articles: await tenDays("NVDA") } });
     await drive(t.clock, pacedOf(t.m), researchTargets(t.m, ["NVDA"]));
@@ -1620,12 +1620,12 @@ describe("the news summary in GET /research", () => {
     }
   });
 
-  test("at the widest numbers every share gives up its third item", async () => {
+  test("at the widest numbers every share keeps its items, unpaged", async () => {
     const { raw, items } = await fullFive("x", true);
-    expect(fits(raw)).toBe(true);
+    expect(fits(raw)).toBe(false);
     for (const item of items) {
-      expect(item.news.items).toHaveLength(2);
-      expect(item.news.items_cut).toBe(true);
+      expect(item.news.items).toHaveLength(WEEK_ITEMS);
+      expect(item.news).not.toContainKey("items_cut");
     }
   });
 
@@ -1660,13 +1660,12 @@ describe("the news summary in GET /research", () => {
     }
   });
 
-  test("text that escapes gives up news items, never a summary", async () => {
-    const { raw, items } = await fullFive('"\\', true);
-    expect(fits(raw)).toBe(true);
+  test("text that escapes keeps every summary and item", async () => {
+    const { items } = await fullFive('"\\', true);
     expect(items).toHaveLength(MAX_RESEARCH_SYMBOLS);
     for (const item of items) {
-      expect(item.news.items.length).toBeLessThan(WEEK_ITEMS);
-      expect(item.news.items_cut).toBe(true);
+      expect(item.news.items).toHaveLength(WEEK_ITEMS);
+      expect(item.news).not.toContainKey("items_cut");
       expect(item.news.counts).toEqual({
         positive: 1,
         neutral: 11,

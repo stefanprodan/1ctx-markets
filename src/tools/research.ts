@@ -22,7 +22,6 @@ import {
 } from "../finnhub/store.ts";
 import { ATTRIBUTION } from "../fred/sync.ts";
 import type { Instrument } from "../instruments.ts";
-import { errorFields } from "../log.ts";
 import { cut } from "../massive/client.ts";
 import {
   countNews,
@@ -57,7 +56,7 @@ import {
   fields,
   oneOf,
   optionalText,
-  quoted,
+  symbols,
   text,
 } from "./args.ts";
 import { briefItem, quoteItem, readLatest } from "./quote.ts";
@@ -75,11 +74,14 @@ import {
 export const HEADLINES = 5;
 // rows a news page reads before fitting them under 32 KiB
 const NEWS_PAGE_ROWS = 50;
-// GET /research's news window: the span a daily reader needs
+// the research route's news window without since: the span a daily
+// reader needs
 export const WEEK_MS = 7 * DAY_MS;
-// GET /research's news items per share: three keep five shares in a page
+// the research route's news items per share: counts give the balance,
+// a few items the reasons
 export const WEEK_ITEMS = 3;
-// a page budget for five shares with their history, not a display width
+// a budget that keeps five shares with their history short, not a
+// display width
 export const WEEK_TITLE = 160;
 export const WEEK_PUBLISHER = 60;
 export const WEEK_REASONING = 280;
@@ -110,10 +112,12 @@ const SECTION_OF: Record<ResearchKind, Section> = {
   metric: "metric",
 };
 
-// GET /research names at most this many symbols
+// A share never fetched costs five Finnhub calls, and the free key allows
+// 60 a minute shared with the jobs: five shares keep one request well
+// inside it.
 export const MAX_RESEARCH_SYMBOLS = 5;
 
-// fixed so five summaries fit a page; the reasons are in docs/research.md
+// fixed so five summaries stay short; the reasons are in docs/api.md
 export const HTTP_HISTORY = { analysts: 2, earnings: 4, insider: 3 } as const;
 type HistoryKind = keyof typeof HTTP_HISTORY;
 
@@ -408,7 +412,11 @@ export function newsSummary(
 }
 
 // No fetch: a share never walked answers counts of 0 and why it is stale.
-export function newsWeek(m: Markets, instrument: Instrument) {
+export function newsWeek(
+  m: Markets,
+  instrument: Instrument,
+  since = m.clock.now() - WEEK_MS,
+) {
   const message =
     m.massive === null
       ? NO_NEWS
@@ -417,7 +425,6 @@ export function newsWeek(m: Markets, instrument: Instrument) {
         : NEWS_NOT_COVERED;
   if (message !== null) return { source: "massive", message };
   const now = m.clock.now();
-  const since = now - WEEK_MS;
   const state = newsState(m.db, instrument.id, now);
   return {
     source: "massive",
@@ -632,87 +639,100 @@ export async function researchAnswer(
   return textResult(page.text);
 }
 
-const json = (body: string, status: number): Response =>
-  new Response(body, {
-    status,
-    headers: {
-      "content-type": "application/json",
-      "cache-control": "no-store",
-    },
-  });
+// what the research route answers beside each share's quote, by the
+// answer's own field names
+export const RESEARCH_PARTS = [
+  "metric",
+  "analysts",
+  "earnings",
+  "insider",
+  "next_event",
+  "news",
+] as const;
+export type ResearchPart = (typeof RESEARCH_PARTS)[number];
 
-const failed = (status: number, error: string, message: string) =>
-  json(JSON.stringify({ error, message }), status);
+type FinnhubPart = Exclude<ResearchPart, "news">;
 
-export function researchHandler(
-  m: Markets,
-): (req: Request) => Promise<Response> {
-  return async (req) => {
-    const params = new URL(req.url).searchParams;
-    try {
-      for (const name of params.keys()) {
-        if (name !== "symbols") {
-          throw new ArgError(`unknown argument ${quoted(name)}`);
-        }
-      }
-      if (params.getAll("symbols").length !== 1) {
-        throw new ArgError("symbols must be given once, comma-separated");
-      }
-      const list = params.get("symbols")!.split(",");
-      if (list.length > MAX_RESEARCH_SYMBOLS) {
-        throw new ArgError(
-          `symbols must be a list of 1 to ${MAX_RESEARCH_SYMBOLS} symbols`,
-        );
-      }
-      const symbols = list.map((v, k) => text(v, `symbols[${k}]`));
-      // news is read as stored: a script's call fetches no news
-      const { targets, inline } = await researchTargets(m, symbols);
-      const now = m.clock.now();
-      const items = targets.map((t) => {
-        if ("error" in t) return { input: t.input, ...t.error };
-        const latest = readLatest(m.db, t.instrument, now, m.quoteEveryMs);
-        const item = quoteItem(m.db, t.input, t.instrument, latest);
-        const quote = briefItem(m.db, item, latest);
-        return {
-          ...quote,
-          research: researchSummary(
-            m,
-            t.instrument,
-            inline.get(t.instrument.id),
-            HTTP_HISTORY,
-          ),
-          news: newsWeek(m, t.instrument),
-        };
-      });
-      // once per answer that holds a FRED value
-      const fred = items.some((i) => "observation" in i && i.observation);
-      // Text that escapes can outgrow the page at the caps: every share
-      // gives up news items before a summary is ever dropped.
-      for (let limit = WEEK_ITEMS; limit >= 0; limit--) {
-        const held = items.map((i) => {
-          const list = "news" in i ? i.news.items : undefined;
-          if (!("news" in i) || list === undefined || list.length <= limit) {
-            return i;
-          }
-          const news = { ...i.news, items: list.slice(0, limit) };
-          return { ...i, news: { ...news, items_cut: true } };
-        });
-        try {
-          const page = fitPage(held, () =>
-            fred ? { attribution: ATTRIBUTION } : {},
-          );
-          if (page.count === held.length) return json(page.text, 200);
-        } catch (error) {
-          if (!(error instanceof PageOverflow)) throw error;
-        }
-      }
-      throw new PageOverflow();
-    } catch (error) {
-      if (error instanceof ArgError) {
-        return failed(400, "bad_arguments", error.message);
-      }
-      m.log.error("research failed", errorFields(error));
-      return failed(500, "internal", "internal error");
+const SECTION_OF_PART: Record<FinnhubPart, Section> = {
+  metric: "metric",
+  analysts: "analysts",
+  earnings: "earnings",
+  insider: "insider",
+  next_event: "calendar",
+};
+
+export type ResearchListArgs = {
+  symbols: string[];
+  parts: ResearchPart[];
+  since: string | null;
+};
+
+export function parseResearchList(input: unknown): ResearchListArgs {
+  const f = fields(input, ["symbols", "sections", "since"]);
+  const list = symbols(f.symbols, "symbols", MAX_RESEARCH_SYMBOLS);
+  let parts: ResearchPart[] = [...RESEARCH_PARTS];
+  if (f.sections !== undefined && f.sections !== null) {
+    const asked = f.sections;
+    if (
+      !Array.isArray(asked) ||
+      asked.length === 0 ||
+      !asked.every((v) => (RESEARCH_PARTS as readonly unknown[]).includes(v))
+    ) {
+      throw new ArgError(`sections is a list of ${RESEARCH_PARTS.join(", ")}`);
     }
-  };
+    parts = RESEARCH_PARTS.filter((p) => asked.includes(p));
+  }
+  const since = date(f.since, "since");
+  if (since !== null && !parts.includes("news")) {
+    throw new ArgError("since is for the news section only");
+  }
+  return { symbols: list, parts, since };
+}
+
+// Each share's brief quote with its Finnhub summary and stored news,
+// under the same deadline and tracking as the tool; a call fetches the
+// Finnhub sections asked that never ended well, and no news.
+export async function researchList(m: Markets, args: ResearchListArgs) {
+  let since = m.clock.now() - WEEK_MS;
+  if (args.since !== null) {
+    // a UTC date, as published times are
+    const earliest = dateOfWall(m.clock.now() - KEPT_MS);
+    if (args.since < earliest) {
+      throw new ArgError(
+        `since must be at most ${SINCE_DAYS} days back, ${earliest} or later`,
+      );
+    }
+    since = wallOfDate(args.since);
+  }
+  const finnhub = args.parts.filter((p): p is FinnhubPart => p !== "news");
+  const left = (Object.keys(SECTION_OF_PART) as FinnhubPart[]).filter(
+    (p) => !finnhub.includes(p),
+  );
+  const { targets, inline } = await researchTargets(m, args.symbols, {
+    sections: finnhub.map((p) => SECTION_OF_PART[p]),
+  });
+  const now = m.clock.now();
+  const items = targets.map((t) => {
+    if ("error" in t) return { input: t.input, ...t.error };
+    const latest = readLatest(m.db, t.instrument, now, m.quoteEveryMs);
+    const item = quoteItem(m.db, t.input, t.instrument, latest);
+    const quote = briefItem(m.db, item, latest);
+    const research: Record<string, unknown> = researchSummary(
+      m,
+      t.instrument,
+      inline.get(t.instrument.id),
+      HTTP_HISTORY,
+    );
+    for (const p of left) delete research[p];
+    return {
+      ...quote,
+      ...(finnhub.length > 0 ? { research } : {}),
+      ...(args.parts.includes("news")
+        ? { news: newsWeek(m, t.instrument, since) }
+        : {}),
+    };
+  });
+  // once per answer that holds a FRED value
+  const fred = items.some((i) => "observation" in i && i.observation);
+  return { ...(fred ? { attribution: ATTRIBUTION } : {}), items };
 }

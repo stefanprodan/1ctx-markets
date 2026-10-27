@@ -138,7 +138,7 @@ expected, with "malformed answer":
   FRED's terms ask: "This product uses the FRED® API but is not
   endorsed or certified by the Federal Reserve Bank of St. Louis". It
   appears once per page and only when that page holds a FRED value:
-  quote and `GET /quotes` pages with an observation, history of a
+  quote pages and quotes answers with an observation, history of a
   series or against one as benchmark, screen with a FRED benchmark or a
   FRED match on the page. A new answer showing FRED values must add it
   the same way.

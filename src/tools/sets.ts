@@ -79,24 +79,35 @@ export function startOf(next: string | null, args: unknown): number {
   return n;
 }
 
-// counts cover every page
-export function setPage(options: {
-  args: unknown;
-  offset: number;
+// what a movers or screen call found, before any page
+export type SetRead = {
   matched: Entry[];
   notMatched: number;
   unavailable: Unavailable[];
   errors: ErrorItem[];
   head: Record<string, unknown>;
   attribution: string;
-}): string {
-  const items: Entry[] = [
-    ...options.matched,
-    ...[...options.unavailable]
-      .sort(byId)
-      .map((item) => ({ item, fred: false })),
-    ...options.errors.map((item) => ({ item, fred: false })),
-  ];
+};
+
+// matches first, then the unavailable by id, then the errors
+const ordered = (read: SetRead): Entry[] => [
+  ...read.matched,
+  ...[...read.unavailable].sort(byId).map((item) => ({ item, fred: false })),
+  ...read.errors.map((item) => ({ item, fred: false })),
+];
+
+const countsOf = (read: SetRead) => ({
+  matched: read.matched.length,
+  not_matched: read.notMatched,
+  unavailable: read.unavailable.length,
+  errors: read.errors.length,
+});
+
+// counts cover every page
+export function setPage(
+  options: SetRead & { args: unknown; offset: number },
+): string {
+  const items = ordered(options);
   const offset = options.offset;
   // the set may have shrunk since the cursor was made
   if (offset > 0 && offset >= items.length) throw new ArgError(NOT_THESE);
@@ -105,12 +116,7 @@ export function setPage(options: {
     rest.map((e) => e.item),
     (count) => ({
       ...options.head,
-      counts: {
-        matched: options.matched.length,
-        not_matched: options.notMatched,
-        unavailable: options.unavailable.length,
-        errors: options.errors.length,
-      },
+      counts: countsOf(options),
       ...(rest.slice(0, count).some((e) => e.fred)
         ? { attribution: options.attribution }
         : {}),
@@ -120,4 +126,15 @@ export function setPage(options: {
           : null,
     }),
   ).text;
+}
+
+// the whole set in one answer, as setPage orders it
+export function setAll(read: SetRead): object {
+  const items = ordered(read);
+  return {
+    ...read.head,
+    counts: countsOf(read),
+    ...(items.some((e) => e.fred) ? { attribution: read.attribution } : {}),
+    items: items.map((e) => e.item),
+  };
 }

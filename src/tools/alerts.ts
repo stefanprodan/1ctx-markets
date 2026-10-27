@@ -1,8 +1,8 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// For a client polling GET /alerts: the alert id is the cursor, and the same
-// alerts must answer the same bytes.
+// For a client polling /api/v1/alerts: the alert id is the cursor, and
+// the same alerts must answer the same bytes.
 
 import type { Db } from "../db/index.ts";
 import type { Log } from "../log.ts";
@@ -107,7 +107,7 @@ export function alertsHandler(deps: {
   return async (req) => {
     try {
       if ([...new URL(req.url).searchParams.keys()].length > 0) {
-        return refused("GET /alerts takes no query arguments");
+        return refused("the alerts feed takes no query arguments");
       }
       const cursor = cursorOf(req);
       if (cursor === undefined) {

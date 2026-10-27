@@ -207,6 +207,6 @@ in `docs/config.md`.
   a read later catches it up from its last final bar, not a backfill.
   Only the operator's delete removes one, with every row of it
   (`docs/admin.md`).
-- **Alert ids are never reused** (`autoincrement`): `GET /alerts`
+- **Alert ids are never reused** (`autoincrement`): the alerts feed
   reads the id as its cursor and reports a hole after it as a
   retention gap.

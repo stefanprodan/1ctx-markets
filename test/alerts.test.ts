@@ -41,7 +41,7 @@ function setup() {
   const clock = fakeClock(START);
   const { db } = open(":memory:", clock);
   const handle = alertsHandler({ db, log: silent });
-  const get = (tag?: string, path = "/alerts") =>
+  const get = (tag?: string, path = "/api/v1/alerts") =>
     handle(
       new Request(`http://localhost${path}`, {
         headers: tag === undefined ? {} : { "if-none-match": tag },
@@ -57,7 +57,7 @@ const fire = (db: Db, at: number, n = 1, note: string | null = null) => {
 const ids = async (res: Response) =>
   ((await res.json()) as { alerts: { id: number }[] }).alerts.map((a) => a.id);
 
-describe("GET /alerts", () => {
+describe("the alerts feed", () => {
   test("answers 204 with no cursor and no alerts", async () => {
     const t = setup();
     const res = await t.get();
@@ -177,24 +177,24 @@ describe("GET /alerts", () => {
       expect(res.status).toBe(400);
       expect(((await res.json()) as any).error).toBe("bad_arguments");
     }
-    expect((await t.get(undefined, "/alerts?since=1")).status).toBe(400);
+    expect((await t.get(undefined, "/api/v1/alerts?since=1")).status).toBe(400);
   });
 
   test("is served behind the bearer, GET only", () =>
     withApp(async (t) => {
       insertAlert(t.db, 1, snapshot(1), t.clock.now());
       const auth = { authorization: `Bearer ${t.bearer}` };
-      expect((await fetch(`${t.url}/alerts`)).status).toBe(401);
-      const post = await fetch(`${t.url}/alerts`, {
+      expect((await fetch(`${t.url}/api/v1/alerts`)).status).toBe(401);
+      const post = await fetch(`${t.url}/api/v1/alerts`, {
         method: "POST",
         headers: auth,
       });
       expect(post.status).toBe(405);
       expect(post.headers.get("allow")).toBe("GET");
-      const res = await fetch(`${t.url}/alerts`, { headers: auth });
+      const res = await fetch(`${t.url}/api/v1/alerts`, { headers: auth });
       expect(res.status).toBe(200);
       expect(res.headers.get("etag")).toBe('W/"alerts-1"');
-      const again = await fetch(`${t.url}/alerts`, {
+      const again = await fetch(`${t.url}/api/v1/alerts`, {
         headers: { ...auth, "if-none-match": res.headers.get("etag")! },
       });
       expect(again.status).toBe(304);

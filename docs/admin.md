@@ -1,9 +1,9 @@
 # Admin
 
 Governs the operator's routes and command: `src/admin/http.ts`
-(`/admin/*`), `src/admin/refetch.ts` and `src/admin/cli.ts`
-(`1ctx-markets admin`). Key files and the router are in
-`docs/config.md`; runs, tracking and retention in `docs/storage.md`;
+(`/api/v1/admin/*`), `src/admin/refetch.ts` and `src/admin/cli.ts`
+(`1ctx-markets admin`). The routes, their errors and the spec are in
+`docs/api.md`; key files in `docs/config.md`; runs, tracking and retention in `docs/storage.md`;
 each source's fetch code in its own doc.
 
 ## Why
@@ -20,9 +20,10 @@ is offered over MCP.
   way: 32 random bytes in base64url, mode 600, never replaced. One
   that is unusable or equal to the bearer stops the start
   (`requireAdmin()`); the message names the file only.
-- **`/admin` and `/admin/*` take the admin key alone**, checked as the
-  bearer is (`router()` in `src/http.ts`): the bearer is refused there
-  and the admin key on every other path, `/mcp` included.
+- **`/api/v1/admin` and `/api/v1/admin/*` take the admin key alone**,
+  checked as the bearer is (`router()` in `src/http.ts`): the bearer is
+  refused there and the admin key on every other path, `/mcp`
+  included. With no admin key they refuse every caller.
 - **The routes are on the server's own port, so treat them as
   internet-facing** wherever the server is reachable (staging is,
   through a tunnel). Arguments are parsed strictly and refused whole,
@@ -30,11 +31,11 @@ is offered over MCP.
   20 instruments (`MAX_SYMBOLS`), an id matches `KEY`, and every error
   is a fixed phrase that echoes nothing sent.
 
-| Path | Method | Does |
-|---|---|---|
-| `/admin/status` | GET | sources on, off and why, a back-off in force, every job's last run and its failing scopes, the instrument and tracked counts, the database size, the version |
-| `/admin/refetch` | POST | `{"symbols": [...], "fetch": [...], "sections": [...]}`, answered per symbol and part |
-| `/admin/instruments/<id>` | DELETE | the instrument and every row of it |
+| Route | Does |
+|---|---|
+| `GET /api/v1/admin/status` | sources on, off and why, a back-off in force, every job's last run and its failing scopes, the instrument and tracked counts, the database size, the version |
+| `POST /api/v1/admin/refetch` | `{"symbols": [...], "fetch": [...], "sections": [...]}`, answered per symbol and part |
+| `DELETE /api/v1/admin/instruments/{id}` | the instrument and every row of it |
 
 ## Refetch
 
@@ -78,7 +79,7 @@ is offered over MCP.
 - **Refused with 409 while a rule reads it**, its own or another's
   condition: delete the rule first. The check is in the same write.
 - **Its alerts stay** until retention, since alerts have no foreign key
-  and a hole would read as a retention gap on `GET /alerts`.
+  and a hole would read as a retention gap on the alerts feed.
 - **Not built:** deleting alerts, untracking (tracking ends by itself),
   key rotation (replace the file and restart).
 

@@ -267,7 +267,7 @@ describe("quote", () => {
       expect(a.body.attribution).toBe(ATTRIBUTION);
       expect(a.text.split(ATTRIBUTION)).toHaveLength(2);
       const res = await fetch(
-        `${t.url}/research?symbols=FRED:DGS10,fred:dgs10`,
+        `${t.url}/api/v1/research?symbols=FRED:DGS10,fred:dgs10`,
         { headers: { authorization: `Bearer ${t.bearer}` } },
       );
       expect(res.status).toBe(200);
@@ -683,9 +683,9 @@ describe("search", () => {
     }));
 });
 
-describe("GET /quotes", () => {
+describe("the quotes route", () => {
   const get = (t: TestApp, query: string, init: RequestInit = {}) =>
-    fetch(`${t.url}/quotes${query}`, {
+    fetch(`${t.url}/api/v1/quotes${query}`, {
       ...init,
       headers: { authorization: `Bearer ${t.bearer}`, ...init.headers },
     });
@@ -698,7 +698,7 @@ describe("GET /quotes", () => {
       expect(res.headers.get("cache-control")).toBe("no-store");
       const body: any = await res.json();
       expect(body.attribution).toBe(ATTRIBUTION);
-      expect(body.next).toBeNull();
+      expect(body).not.toContainKey("next");
       const [nvda, dgs10] = body.items;
       expect(Object.keys(nvda).sort()).toEqual(
         [
@@ -741,7 +741,7 @@ describe("GET /quotes", () => {
 
   test("401 without the bearer, 405 for other methods, 400 for bad arguments", () =>
     yahooApp(async (t, s) => {
-      const none = await fetch(`${t.url}/quotes?symbols=NVDA`);
+      const none = await fetch(`${t.url}/api/v1/quotes?symbols=NVDA`);
       expect(none.status).toBe(401);
       const post = await get(t, "?symbols=NVDA", { method: "POST" });
       expect(post.status).toBe(405);
@@ -765,7 +765,7 @@ describe("GET /quotes", () => {
 });
 
 describe("rules", () => {
-  test("a rule made over MCP fires into GET /alerts and follows the bar job", () =>
+  test("a rule made over MCP fires into the alerts feed and follows the bar job", () =>
     yahooApp(async (t) => {
       const made = await call(t, "rules", {
         action: "create",
@@ -776,7 +776,7 @@ describe("rules", () => {
       expect(made.isError).toBe(false);
       expect(made.body.evaluation.result).toBe("true");
       expect(made.body.alert).toMatchObject({ id: 1, note: "below 211" });
-      const res = await fetch(`${t.url}/alerts`, {
+      const res = await fetch(`${t.url}/api/v1/alerts`, {
         headers: { authorization: `Bearer ${t.bearer}` },
       });
       expect(res.headers.get("etag")).toBe('W/"alerts-1"');

@@ -3,11 +3,14 @@
 //
 // One Bun server; the bearer is checked before any route is looked up,
 // so an unknown path answers 401 to a caller without it, as /mcp does.
-// GET /health is the one route before it, for a service manager's probe.
-// /admin/* takes the admin key alone, which no other path takes.
+// GET /health, the API's spec and its docs page are the routes before
+// it: they hold no data. /api/v1/admin/* takes the admin key alone,
+// which no other path takes.
 
 import { createHash, timingSafeEqual } from "node:crypto";
 import type { McpHttpHandler } from "@modelcontextprotocol/server";
+import { failed, notAllowed, notFound, PREFIX } from "./api/http.ts";
+import { match, type Route } from "./api/routes.ts";
 import type { Clock } from "./clock.ts";
 import { type Log, sdkErrorFields } from "./log.ts";
 
@@ -17,12 +20,6 @@ const MAX_BODY_BYTES = 1024 * 1024;
 export const IDLE_TIMEOUT_S = 30;
 
 export type Handle = (req: Request) => Promise<Response>;
-
-const json = (
-  body: unknown,
-  status: number,
-  headers: Record<string, string> = {},
-): Response => Response.json(body, { status, headers });
 
 // both sides hashed, so the compare takes the same time whatever was sent
 const digest = (value: string): Buffer =>
@@ -41,20 +38,19 @@ export function bearerCheck(bearer: string): (req: Request) => boolean {
 export type RouterDeps = {
   bearer: string;
   mcp: McpHttpHandler;
-  // GET /quotes, when the tools are served
-  quotes?: Handle;
-  // GET /research, when the tools are served
-  research?: Handle;
-  // GET /alerts, the feed a polling client reads
-  alerts?: Handle;
-  // /admin/*, behind its own key
-  admin?: { key: string; handle: Handle };
+  // /api/v1, when the tools are served
+  api?: readonly Route[];
+  // the key of /api/v1/admin/* alone; with none those paths refuse all
+  adminKey?: string | null;
   clock: Clock;
   log: Log;
 };
 
 const unauthorized = () =>
-  json({ error: "unauthorized" }, 401, { "www-authenticate": "Bearer" });
+  failed(
+    { error: "unauthorized", message: "no or wrong bearer key" },
+    { "www-authenticate": "Bearer" },
+  );
 
 const isAdmin = (path: string) =>
   path === "/admin" || path.startsWith("/admin/");
@@ -62,34 +58,28 @@ const isAdmin = (path: string) =>
 export function router(deps: RouterDeps): Handle {
   const authorized = bearerCheck(deps.bearer);
   const admin =
-    deps.admin === undefined
-      ? null
-      : { handle: deps.admin.handle, authorized: bearerCheck(deps.admin.key) };
+    deps.adminKey == null ? () => false : bearerCheck(deps.adminKey);
+  const api = deps.api ?? [];
+  const apiRoute = async (req: Request, path: string): Promise<Response> => {
+    const url = new URL(req.url);
+    const found = match(api, path);
+    const open = found?.routes.every((r) => r.key === "none") === true;
+    if (!open && !(isAdmin(path) ? admin(req) : authorized(req))) {
+      return unauthorized();
+    }
+    if (found === null) return notFound();
+    const r = found.routes.find((x) => x.method === req.method);
+    if (r === undefined) return notAllowed(found.routes.map((x) => x.method));
+    return r.handle(req, url, found.params);
+  };
   const route = async (req: Request, path: string): Promise<Response> => {
-    if (admin !== null && isAdmin(path)) {
-      if (!admin.authorized(req)) return unauthorized();
-      return admin.handle(req);
+    if (path.startsWith(`${PREFIX}/`)) {
+      return apiRoute(req, path.slice(PREFIX.length));
     }
     if (!authorized(req)) return unauthorized();
-    const read =
-      path === "/quotes"
-        ? deps.quotes
-        : path === "/research"
-          ? deps.research
-          : path === "/alerts"
-            ? deps.alerts
-            : undefined;
-    if (read !== undefined) {
-      if (req.method !== "GET") {
-        return json({ error: "method not allowed" }, 405, { allow: "GET" });
-      }
-      return read(req);
-    }
-    if (path !== "/mcp") return json({ error: "not found" }, 404);
+    if (path !== "/mcp") return notFound();
     // stateless: no stream to resume with GET, no session to end with DELETE
-    if (req.method !== "POST") {
-      return json({ error: "method not allowed" }, 405, { allow: "POST" });
-    }
+    if (req.method !== "POST") return notAllowed(["POST"]);
     return deps.mcp.fetch(req);
   };
   return async (req) => {
@@ -97,9 +87,7 @@ export function router(deps: RouterDeps): Handle {
     const path = new URL(req.url).pathname;
     // polled while the service starts, so it stays out of the log
     if (path === "/health") {
-      if (req.method !== "GET") {
-        return json({ error: "method not allowed" }, 405, { allow: "GET" });
-      }
+      if (req.method !== "GET") return notAllowed(["GET"]);
       return new Response(null, { status: 200 });
     }
     let res: Response;
@@ -108,7 +96,7 @@ export function router(deps: RouterDeps): Handle {
     } catch (error) {
       // a throw from the MCP handler can quote the request
       deps.log.error("request failed", { path, ...sdkErrorFields(error) });
-      res = json({ error: "internal error" }, 500);
+      res = failed({ error: "internal", message: "internal error" });
     }
     deps.log.info("request", {
       method: req.method,

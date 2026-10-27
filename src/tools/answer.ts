@@ -31,6 +31,12 @@ export function fits(text: string): boolean {
   );
 }
 
+// why a call failed as a whole, in the tool's own error codes
+export type Failure = { error: string; message: string } & Record<
+  string,
+  unknown
+>;
+
 export const textResult = (text: string): ToolResult => ({
   content: [{ type: "text", text }],
 });

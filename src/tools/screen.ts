@@ -20,7 +20,13 @@ import {
 import { earliestStart, type ReturnPeriod } from "../signals/relative.ts";
 import type { WeeklyRow } from "../signals/weekly.ts";
 import type { StaleReason } from "../stale.ts";
-import { errorResult, round, type ToolResult, textResult } from "./answer.ts";
+import {
+  errorResult,
+  type Failure,
+  round,
+  type ToolResult,
+  textResult,
+} from "./answer.ts";
 import {
   ArgError,
   fields,
@@ -34,6 +40,7 @@ import {
   benchmarkStale,
   distinct,
   type Resolved,
+  type SetRead,
   setPage,
   startOf,
   type Unavailable,
@@ -388,6 +395,17 @@ export async function screenAnswer(
   // a cursor made before fields existed still continues
   const asked = shown.length === 0 ? rest : { ...rest, fields: shown };
   const offset = startOf(next, asked);
+  const read = await readScreen(m, args);
+  if ("error" in read) return errorResult(read);
+  return textResult(setPage({ ...read, args: asked, offset }));
+}
+
+// The set screen found, or why the call failed as a whole: a benchmark
+// that did not resolve, or price-level fields over mixed units.
+export async function readScreen(
+  m: Markets,
+  args: ScreenArgs,
+): Promise<SetRead | Failure> {
   const names =
     args.benchmark === null ? args.symbols : [...args.symbols, args.benchmark];
   const targets = await readTargets(m, names);
@@ -395,9 +413,7 @@ export async function screenAnswer(
   const ctx: Context = { m, benchmark: null };
   if (args.benchmark !== null) {
     const b = targets.at(-1)!;
-    if ("error" in b) {
-      return errorResult({ benchmark: b.input, ...b.error });
-    }
+    if ("error" in b) return { benchmark: b.input, ...b.error };
     ctx.benchmark = {
       side: benchmarkSide(m.db, b.instrument, 3),
       stale: readLatest(m.db, b.instrument, now, m.quoteEveryMs).stale,
@@ -418,11 +434,11 @@ export async function screenAnswer(
       groups.set(key, [...(groups.get(key) ?? []), r.instrument.id]);
     }
     if (groups.size > 1) {
-      return errorResult({
+      return {
         error: "mixed_units",
         message: `${absolute.join(", ")} ${absolute.length > 1 ? "are" : "is"} in each listing's own unit and currency, and these symbols mix them; screen each group apart, or use a percent field such as distance_sma50`,
         groups: Object.fromEntries(groups),
-      });
+      };
     }
   }
   const matched: Matched[] = [];
@@ -460,18 +476,14 @@ export async function screenAnswer(
         : { field: args.sort, order: args.order },
     ...(bench?.source === FRED ? { attribution: ATTRIBUTION } : {}),
   };
-  return textResult(
-    setPage({
-      args: asked,
-      offset,
-      matched: matched.map(({ item, fred }) => ({ item, fred })),
-      notMatched,
-      unavailable: out,
-      errors,
-      head,
-      attribution: ATTRIBUTION,
-    }),
-  );
+  return {
+    matched: matched.map(({ item, fred }) => ({ item, fred })),
+    notMatched,
+    unavailable: out,
+    errors,
+    head,
+    attribution: ATTRIBUTION,
+  };
 }
 
 // Matched, unavailable, or null when an input it had failed a filter.

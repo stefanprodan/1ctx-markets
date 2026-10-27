@@ -3,11 +3,10 @@
 Governs the process around the data: `src/main.ts`, `src/config.ts`,
 `src/keys.ts`, `src/app.ts`, `src/http.ts`, `src/log.ts`, the build
 and smoke scripts in `package.json`, `Makefile` and
-`scripts/smoke.sh`. The tools and `GET /quotes` are in
-`docs/tools.md`, `GET /alerts` in `docs/rules.md`, `GET /research` in
-`docs/research.md`; the database, migrations and retention in
-`docs/storage.md`; the `service` command and staging in
-`docs/deploy.md`; `/admin/*` and the `admin` command in
+`scripts/smoke.sh`. The tools are in `docs/tools.md`, the HTTP API
+under `/api/v1` in `docs/api.md`; the database, migrations and
+retention in `docs/storage.md`; the `service` command and staging in
+`docs/deploy.md`; the admin routes and the `admin` command in
 `docs/admin.md`.
 
 ## Flags
@@ -47,7 +46,7 @@ runs what `parseCli()` answers. `HELP` in `src/config.ts` is the
 | `markets.db` | the one SQLite database (`docs/storage.md`) |
 | `markets.log` | the service's log, when run by `service install` (`docs/deploy.md`) |
 | `secrets/bearer.key` | the bearer every request carries |
-| `secrets/admin.key` | the key of `/admin/*` alone (`docs/admin.md`) |
+| `secrets/admin.key` | the key of `/api/v1/admin/*` alone (`docs/admin.md`) |
 | `secrets/source-<name>.key` | a source's API key: `source-fred.key`, `source-finnhub.key`, `source-massive.key` |
 
 - **Migrations, the startup write and retention are in
@@ -70,7 +69,7 @@ runs what `parseCli()` answers. `HELP` in `src/config.ts` is the
   contents.
 - **The admin key is written and checked the same way**
   (`createAdmin()`, `requireAdmin()`), prefixed `1ctx-markets-admin-`,
-  and must differ from the bearer. It authorizes `/admin/*` only.
+  and must differ from the bearer. It authorizes `/api/v1/admin/*` only.
 - **A source key turns its source on.** Yahoo needs none and is always
   on; FRED, Finnhub and Massive are on while their file holds a key,
   and every tool answers without them. A keyless optional source is on
@@ -107,7 +106,8 @@ runs what `parseCli()` answers. `HELP` in `src/config.ts` is the
   15 s deadline: Bun's own 10 s default cut calls that fetch new symbols.
 - **One Bun server; the bearer is checked before any route is looked
   up** (`router()`), so an unknown path answers 401 without the bearer
-  and 404 with it. `GET /health` is the one route checked before it.
+  and 404 with it. `GET /health`, the API's spec and its docs page are
+  the routes checked before it.
   The compare hashes both sides with SHA-256 and uses
   `timingSafeEqual`, so its time does not depend on what was sent. A
   refusal carries `WWW-Authenticate: Bearer`.
@@ -115,21 +115,20 @@ runs what `parseCli()` answers. `HELP` in `src/config.ts` is the
 | Path | Method | Serves |
 |---|---|---|
 | `/mcp` | POST | MCP over Streamable HTTP, stateless |
-| `/quotes` | GET | the quote reader for scripts |
-| `/research` | GET | research summaries for scripts |
-| `/alerts` | GET | the alerts feed |
-| `/admin/*` | GET, POST, DELETE | the operator's routes, behind the admin key instead of the bearer (`docs/admin.md`) |
+| `/api/v1/*` | GET, POST, PATCH, DELETE | the REST API, its spec and docs page (`docs/api.md`); `/api/v1/admin/*` behind the admin key instead of the bearer (`docs/admin.md`) |
 | `/health` | GET | 200 with no body and no bearer, for the service's start check |
 
 - **Any other method is 405 with `Allow`.** `/mcp` is stateless (one
   MCP server instance per request, `legacy: "stateless"` in
   `src/mcp.ts`), so there is no GET stream to resume and no session to
   DELETE.
-- **A request body is at most 1 MiB** (`MAX_BODY_BYTES`).
+- **Bun refuses a request body over 1 MiB** (`MAX_BODY_BYTES` in
+  `src/http.ts`) with an empty 413 before any route runs; the API's
+  routes hold bodies to their own smaller caps (`docs/api.md`).
 - **`/health` answers 200 without the bearer and is never logged.**
   It holds no data, so it needs no key, and a service manager polls it
-  while the server starts. Every other path still answers 401 without
-  the bearer.
+  while the server starts. Every other path but the API's spec and
+  docs page still answers 401 without the bearer.
 - **Every request but `/health` logs one line** with method, path,
   status and duration; an unhandled error answers 500 with no detail. An MCP SDK
   error is logged by its type and code only, since its message can
