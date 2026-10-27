@@ -20,7 +20,7 @@ consumer each.
 | Method and path | Key | Calls | Answers |
 |---|---|---|---|
 | `GET /api/v1/quotes?symbols=&extended=` | read | `quoteRows()` with `briefItem()` | every symbol asked, up to `MAX_SYMBOLS` (100); `extended=true` adds the quote tool's `extended` per item |
-| `GET /api/v1/history?symbol=&interval=&from=&to=&benchmark=` | read | `readHistory()` | the instrument (`id`, `name`, `exchange`, `type`, `currency`, `unit`, `source`, `basis`, `stale`, FRED's `attribution`), `from`, `to`, `interval`, the tool's `relative` when a benchmark is named, and `bars` oldest first: `date`, `close`, `final`, `sma50`, `sma200` |
+| `GET /api/v1/history?symbol=&interval=&from=&to=&benchmark=` | read | `readHistory()` | the instrument (`id`, `name`, `exchange`, `type`, `currency`, `unit`, `source`, `basis`, `stale`, FRED's `attribution`), `from`, `to`, the tool's `session`, `interval`, the tool's `relative` when a benchmark is named, and `bars` oldest first: `date`, `close`, `final`, `sma50`, `sma200` |
 | `GET /api/v1/search?query=` | read | `searchAll()` | every candidate, the tool's fields |
 | `GET /api/v1/research?symbols=&sections=&since=` | read | `researchList()` | up to `MAX_RESEARCH_SYMBOLS` (5) brief quotes with their research summary and news week |
 | `GET /api/v1/events?from=&to=&symbols=` | read | `readEventsOf()` | every event, `unavailable` and `no_event` uncapped |
@@ -172,7 +172,7 @@ consumer each.
   and no benchmark, is `private, max-age=3600`, since final bars change
   only by a split's rescale or a FRED revision; a range ending today or
   later takes the next live bar, so it is never kept. The spec and the
-  docs files are `public, max-age=3600`.
+  docs files are `public, max-age=3600`, the docs page `no-cache`.
 
 ## The alerts feed
 
@@ -267,6 +267,15 @@ answer; 1ctx (an agent workspace whose scheduled tasks poll it) is one.
   `'self'` alone. `validatorUrl` is null, since the validator would
   send the spec to another host; `persistAuthorization` is off, so the
   key typed into Authorize is kept for the page only.
+- **Each file is named with its fingerprint** (`fingerprint()`,
+  `fingerprinted()` in `docs.ts`): the first 12 hex digits of its
+  bytes' SHA-256, computed once at start from the files embedded in the
+  binary, as `<file>?h=<hash>`. A CDN keeps `.js` and `.css` by their
+  extension for hours whatever the server says, so a changed file
+  needs a new URL, while an unchanged one keeps its URL and stays
+  cached. Any `h`, stale or none, answers the file as this build has
+  it. The page is `no-cache`, so a new build's names are seen at once;
+  a page naming a file other than once fails at start.
 - **The page follows the system's light or dark scheme.** Swagger UI's
   CSS carries a dark theme under `html.dark-mode` that its bundle never
   sets, so `init.js` sets it from `prefers-color-scheme` and follows a

@@ -5,11 +5,17 @@
 
 import { type Interval, readBars, type Bar as StoredBar } from "../bars.ts";
 import { SOURCE as BVB } from "../bvb/client.ts";
-import { CRYPTO, readSession, sessionDate, weekOf } from "../calendars.ts";
-import { MINUTE_MS } from "../clock.ts";
+import {
+  CRYPTO,
+  readSession,
+  type Session,
+  sessionDate,
+  weekOf,
+} from "../calendars.ts";
+import { DAY_MS, MINUTE_MS } from "../clock.ts";
 import type { Db } from "../db/index.ts";
 import type { Instrument } from "../instruments.ts";
-import { localDate } from "../zone.ts";
+import { fromWallTime, localDate, wallTime } from "../zone.ts";
 import { type DailyRow, dailySeries, liveDaily } from "./daily.ts";
 import { liveWeekly, type WeeklyRow, weeklySeries } from "./weekly.ts";
 
@@ -206,6 +212,13 @@ export type LiveQuote = {
 // a closing auction prints late; keep it covering closeQuoteAt's 15 minutes
 export const LIVE_AFTER_END_MS = 15 * MINUTE_MS;
 
+// Nothing of the next session trades before its local start, while an
+// index's value can be stamped long after the end (^NDX 75 minutes).
+export function liveUntil(s: Session): number {
+  const next = fromWallTime(s.zone, wallTime(s.zone, s.start) + DAY_MS);
+  return Math.max(s.end + LIVE_AFTER_END_MS, next - 1);
+}
+
 // dated by the market's stored session, never UTC hours; crypto's by UTC day
 export function liveTarget(db: Db, instrument: Scoped): LiveTarget | null {
   const row = db
@@ -237,7 +250,7 @@ export function liveTarget(db: Db, instrument: Scoped): LiveTarget | null {
   if (
     session === null ||
     quote.time < session.start ||
-    quote.time > session.end + LIVE_AFTER_END_MS
+    quote.time > liveUntil(session)
   ) {
     return null;
   }

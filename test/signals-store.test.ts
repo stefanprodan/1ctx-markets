@@ -461,6 +461,15 @@ describe("live rows", () => {
       storeQuotes(db, parseSpark(auction, clock.now() + 2000)),
     );
     expect(liveRow(db, "1d")).toMatchObject({ date: "2026-10-23" });
+    // a value stamped 75 minutes after the end, as Yahoo stamps ^NDX's
+    const late = await nvdaSpark((m) => {
+      m.regularMarketTime = m.currentTradingPeriod.regular.end + 75 * 60 + 59;
+      m.regularMarketPrice = 190;
+    });
+    await ctx.writer.write((db) =>
+      storeQuotes(db, parseSpark(late, clock.now() + 2500)),
+    );
+    expect(liveRow(db, "1d")).toMatchObject({ date: "2026-10-23" });
     // a Sunday evening trade under Friday's session, as EURUSD=X's
     const sunday = await nvdaSpark((m) => {
       m.regularMarketTime = utc("2026-10-25T19:20") / 1000;
@@ -848,10 +857,10 @@ describe("relative return", () => {
     expect(readRelativeReturn(db, "US:AAA", "XETRA:BBB", 1)!.note).toBe(
       RETURN_NOTE,
     );
-    // an index benchmark such as the DAX has no unit Yahoo tells apart
+    // an index's points are no other listing's unit, so the note stays
     const dax = upsertInstrument(
       db,
-      listing("XETRA", "^GDAXI", "Europe/Berlin", "unknown", "EUR"),
+      listing("XETRA", "^GDAXI", "Europe/Berlin", "index_points", "EUR"),
       now,
     );
     upsertBars(
@@ -864,6 +873,21 @@ describe("relative return", () => {
     const r2 = readRelativeReturn(db, "US:AAA", "XETRA:^GDAXI", 1)!;
     expect(r2.note).toBe(`${RETURN_NOTE}; ${UNKNOWN_UNITS_NOTE}`);
     expect(r2.benchmark.unit).toBe("percent");
+    const fut = upsertInstrument(
+      db,
+      listing("NYM", "CL=F", "America/New_York", "unknown", "USD"),
+      now,
+    );
+    upsertBars(
+      db,
+      fut.id,
+      "1d",
+      bars([], (k) => 60 + k / 10),
+      now,
+    );
+    expect(readRelativeReturn(db, "US:AAA", "NYM:CL=F", 1)!.note).toBe(
+      `${RETURN_NOTE}; ${UNKNOWN_UNITS_NOTE}`,
+    );
     expect(aBars.length).toBeGreaterThan(0);
   });
 });

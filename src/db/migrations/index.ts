@@ -18,6 +18,7 @@ import { m0009 } from "./0009-rules.ts";
 import { m0010 } from "./0010-bvb.ts";
 import { m0011 } from "./0011-fx-currency.ts";
 import { m0012 } from "./0012-listing.ts";
+import { m0013 } from "./0013-index-units.ts";
 
 export const MIGRATIONS: readonly Migration[] = [
   m0001,
@@ -32,4 +33,5 @@ export const MIGRATIONS: readonly Migration[] = [
   m0010,
   m0011,
   m0012,
+  m0013,
 ];

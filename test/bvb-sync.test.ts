@@ -12,6 +12,7 @@ import {
   fetchInstrument,
   refetch,
   sessionOf,
+  UNLISTED,
 } from "../src/bvb/sync.ts";
 import { readSession, recordSession } from "../src/calendars.ts";
 import { MINUTE_MS } from "../src/clock.ts";
@@ -24,8 +25,13 @@ import { readQuote } from "../src/quotes.ts";
 import type { RuleHooks } from "../src/rules/hooks.ts";
 import { lastRun } from "../src/runs.ts";
 import { JOBS, quoteStale, STALE } from "../src/stale.ts";
+import { round } from "../src/tools/answer.ts";
+import { historyAnswer, parseHistory } from "../src/tools/history.ts";
+import { markets } from "../src/tools/targets.ts";
 import { markRead } from "../src/tracking.ts";
 import { writer } from "../src/writer.ts";
+import { yahoo } from "../src/yahoo/client.ts";
+import { api } from "./helpers/api.ts";
 import { SECRETS } from "./helpers/app.ts";
 import {
   type BvbRoutes,
@@ -41,6 +47,9 @@ import { gate } from "./helpers/sources.ts";
 import { clone, type Recorded } from "./helpers/yahoo.ts";
 
 const EVERY = 5 * MINUTE_MS;
+const noNetwork = async (url: string): Promise<Response> => {
+  throw new Error(`no network in tests: ${url}`);
+};
 const utc = (iso: string) => Date.parse(`${iso}Z`);
 // the recorded session: Friday 23 October, 10:00 to 18:00 in Bucharest
 // (summer time), as its schedule page gives it
@@ -167,6 +176,54 @@ describe("instruments from the feed", () => {
     expect(wapi(t.f.urls, "/api/history")).toEqual([]);
   });
 
+  test("a fund unit is an ETF priced per share, quoted from its list", async () => {
+    const t = await setup(utc("2026-10-27T16:30:00"));
+    const tuesday = {
+      zone: "Europe/Bucharest",
+      start: utc("2026-10-27T08:00:00"),
+      end: utc("2026-10-27T16:00:00"),
+    };
+    recordSession(t.db, MARKET, tuesday, tuesday.start);
+    const etf = await t.add("BTBETRETF");
+    expect(etf).toMatchObject({
+      id: "BVB:BTBETRETF",
+      source: "bvb",
+      type: "ETF",
+      unit: "per_share",
+      currency: "RON",
+      zone: "Europe/Bucharest",
+    });
+    expect(readQuote(t.db, etf.id)).toMatchObject({
+      price: 12.028,
+      previousClose: 12.058,
+      time: utc("2026-10-27T15:55:39"),
+    });
+    // every session since its listing, the last still the stored one's
+    const bars = readBars(t.db, etf.id, "1d");
+    expect(bars).toHaveLength(132);
+    expect(bars[0]!.date).toBe("2026-04-23");
+    expect(bars.at(-1)).toMatchObject({ date: "2026-10-27", final: false });
+    const before = t.f.urls.length;
+    expect((await t.run(t.jobs.quoteTick())).quoted).toBe(true);
+    expect(t.f.urls.slice(before).map((u) => u.pathname)).toContain(
+      "/FinancialInstruments/Markets/FundUnits",
+    );
+    expect(lastRun(t.db, "bvb", JOBS.quotes, MARKET)!.status).toBe("ok");
+    expect(readQuote(t.db, etf.id)!.price).toBe(12.028);
+  });
+
+  test("a fund unit its list lacks is refused, never stored", async () => {
+    const meta = clone(await bvbRecorded("wapi-symbols-btbetretf"));
+    meta.body.name = "XYZETF";
+    const t = await setup(utc("2026-10-27T16:30:00"), {
+      hold: (url) =>
+        url.searchParams.get("symbol") === "XYZETF" ? meta : undefined,
+    });
+    const asked = t.run(fetchInstrument(t.ctx, "XYZETF", null, () => true));
+    await expect(asked).rejects.toThrow(UNLISTED);
+    expect(readInstrument(t.db, "BVB:XYZETF")).toBeNull();
+  });
+
   test("an unknown symbol is not found and nothing is stored", async () => {
     const t = await setup(utc("2026-10-23T14:00:00"));
     await expect(
@@ -280,10 +337,12 @@ describe("quotes from the list pages", () => {
     const before = t.f.urls.length;
     expect((await t.run(t.jobs.quoteTick())).quoted).toBe(true);
     const pass = t.f.urls.slice(before).map((u) => u.pathname);
+    // the pass reads the kinds tracked, then the day's unread list
     expect(pass).toEqual([
       "/FinancialInstruments/Markets/Shares",
       "/FinancialInstruments/Markets/Bonds",
       "/TradingAndStatistics/Trading/MarketsToday",
+      "/FinancialInstruments/Markets/FundUnits",
     ]);
     expect(lastRun(t.db, "bvb", JOBS.quotes, MARKET)!.status).toBe("ok");
     // bonds stay in percent of par, as quoted
@@ -371,6 +430,7 @@ describe("quotes from the list pages", () => {
 describe("the list pages with nothing tracked", () => {
   const LIST_PATHS = [
     "/FinancialInstruments/Markets/Shares",
+    "/FinancialInstruments/Markets/FundUnits",
     "/FinancialInstruments/Markets/Bonds",
     "/TradingAndStatistics/Trading/MarketsToday",
   ];
@@ -385,7 +445,7 @@ describe("the list pages with nothing tracked", () => {
     // 23:59 in Bucharest is still the same exchange day
     await t.clock.advance(utc("2026-10-23T20:59:00") - t.clock.now());
     await t.run(t.jobs.quoteTick());
-    expect(pages()).toHaveLength(3);
+    expect(pages()).toHaveLength(LIST_PATHS.length);
     // midnight in Bucharest, not in UTC, starts the next
     await t.clock.advance(utc("2026-10-23T21:01:00") - t.clock.now());
     await t.run(t.jobs.quoteTick());
@@ -412,13 +472,14 @@ describe("the list pages with nothing tracked", () => {
     await t.run(t.jobs.quoteTick());
     expect(shareReads()).toBe(2);
     // the pages that read are not asked again that day
-    expect(t.f.urls).toHaveLength(4);
+    expect(t.f.urls).toHaveLength(5);
   });
 });
 
 describe("the list pages at start", () => {
   const LIST_PATHS = [
     "/FinancialInstruments/Markets/Shares",
+    "/FinancialInstruments/Markets/FundUnits",
     "/FinancialInstruments/Markets/Bonds",
     "/TradingAndStatistics/Trading/MarketsToday",
   ];
@@ -709,5 +770,152 @@ describe("bars from the chart feed", () => {
       "malformed answer",
     );
     expect(readBars(t.db, "BVB:TLV", "1d").length).toBe(30);
+  });
+});
+
+describe("a session still trading in history", () => {
+  // the tool's and the route's last bar, as a chart reads them
+  async function lastBars(t: Awaited<ReturnType<typeof setup>>) {
+    const m = markets({
+      db: t.db,
+      clock: t.clock,
+      writer: t.ctx.writer,
+      yahoo: yahoo({ clock: t.clock, fetch: noNetwork }),
+      fred: null,
+      bvb: t.ctx.bvb,
+      log: silent,
+    });
+    const tool: any = JSON.parse(
+      (await historyAnswer(m, parseHistory({ symbol: "BVB:TLV" }))).content[0]!
+        .text,
+    );
+    const route: any = await (
+      await api(m)(
+        new Request("http://markets.test/api/v1/history?symbol=BVB:TLV"),
+      )
+    ).json();
+    expect(route.session).toEqual(tool.session);
+    return {
+      tool: tool.bars.at(-1),
+      route: route.bars.at(-1),
+      session: route.session,
+    };
+  }
+
+  test("a share's day with no bar stored answers its quote's bar and live row", async () => {
+    const shares = await bvbRecorded("shares-list-closed-1605");
+    const detail = keyed(await bvbRecorded("detail-tlv-closed-1605"));
+    let after = false;
+    const t = await setup(utc("2026-10-23T14:00:00"), {
+      hold: (url) => {
+        if (!after) return undefined;
+        if (url.pathname === "/FinancialInstruments/Markets/Shares") {
+          return shares;
+        }
+        return url.searchParams.get("s") === "TLV" ? detail : undefined;
+      },
+    });
+    friday(t.db, t.clock.now());
+    await t.add("TLV");
+    // Monday's session; its bar pass at the open finds no Monday bar yet
+    const monday = {
+      zone: "Europe/Bucharest",
+      start: utc("2026-10-26T08:00:00"),
+      end: utc("2026-10-26T16:00:00"),
+    };
+    recordSession(t.db, MARKET, monday, monday.start);
+    await t.clock.advance(utc("2026-10-26T08:01:00") - t.clock.now());
+    expect(await t.run(t.jobs.barTick())).toEqual(["BVB:TLV"]);
+    expect(readBars(t.db, "BVB:TLV", "1d").at(-1)!.date).toBe("2026-10-23");
+    const bounds = {
+      start: "2026-10-26T08:00:00Z",
+      end: "2026-10-26T16:00:00Z",
+    };
+    expect((await lastBars(t)).session).toEqual({ state: "open", ...bounds });
+    // the pass after the close quotes the day's last trade, 17:50 local
+    after = true;
+    await t.clock.advance(monday.end + 16 * MINUTE_MS - t.clock.now());
+    expect((await t.run(t.jobs.quoteTick())).quoted).toBe(true);
+    expect(readQuote(t.db, "BVB:TLV")).toMatchObject({
+      price: 36.4,
+      time: utc("2026-10-26T15:50:00"),
+    });
+    // the live row is there: the read must answer it on the quote's bar
+    const live = t.db
+      .query<{ date: string; sma50: number | null; ema20: number }, []>(
+        `select date, sma50, ema20 from signals
+         where instrument = 'BVB:TLV' and kind = 'live' and interval = '1d'`,
+      )
+      .get()!;
+    expect(live.date).toBe("2026-10-26");
+    const { tool, route, session } = await lastBars(t);
+    expect(session).toEqual({ state: "closed", ...bounds });
+    expect(tool).toMatchObject({
+      date: "2026-10-26",
+      close: 36.4,
+      final: false,
+      signals: { kind: "live", ema20: round(live.ema20) },
+    });
+    expect(route).toEqual({
+      date: "2026-10-26",
+      close: 36.4,
+      final: false,
+      sma50: round(live.sma50),
+      sma200: null,
+    });
+  });
+
+  test("an index's bar stored at the open closes at its quote", async () => {
+    // the night's recordings: the day's bar closes at 34411.76, and its
+    // first minute, which a bar pass at the open stored, at 34406.79
+    const day = await bvbRecorded("wapi-history-bet-1d-night-2300");
+    const minutes = await bvbRecorded("wapi-history-bet-1min-night-2300");
+    const open = minutes.body.t.indexOf(utc("2026-10-27T08:00:00") / 1000);
+    const atOpen = clone(day);
+    atOpen.body.c[atOpen.body.c.length - 1] = minutes.body.c[open];
+    const night = await bvbRecorded("markets-today-night-2300");
+    let after = false;
+    const t = await setup(utc("2026-10-27T08:01:00"), {
+      hold: (url) => {
+        if (url.pathname === "/api/history") return atOpen;
+        if (after && url.pathname.endsWith("/MarketsToday")) return night;
+        return undefined;
+      },
+    });
+    const tuesday = {
+      zone: "Europe/Bucharest",
+      start: utc("2026-10-27T08:00:00"),
+      end: utc("2026-10-27T16:00:00"),
+    };
+    recordSession(t.db, MARKET, tuesday, tuesday.start);
+    await t.add("BET");
+    expect(readBars(t.db, "BVB:BET", "1d").at(-1)).toMatchObject({
+      date: "2026-10-27",
+      close: 34406.79,
+      final: false,
+    });
+    after = true;
+    await t.clock.advance(tuesday.end + 16 * MINUTE_MS - t.clock.now());
+    expect((await t.run(t.jobs.quoteTick())).quoted).toBe(true);
+    expect(readQuote(t.db, "BVB:BET")!.price).toBe(34411.76);
+    const m = markets({
+      db: t.db,
+      clock: t.clock,
+      writer: t.ctx.writer,
+      yahoo: yahoo({ clock: t.clock, fetch: noNetwork }),
+      fred: null,
+      bvb: t.ctx.bvb,
+      log: silent,
+    });
+    const body: any = await (
+      await api(m)(
+        new Request("http://markets.test/api/v1/history?symbol=BVB:BET"),
+      )
+    ).json();
+    expect(body.bars.at(-1)).toMatchObject({
+      date: "2026-10-27",
+      close: 34411.76,
+      final: false,
+    });
   });
 });

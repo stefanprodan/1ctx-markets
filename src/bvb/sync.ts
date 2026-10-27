@@ -77,13 +77,17 @@ export type BvbContext = {
 
 export const NO_DATA =
   "no data from bvb; the server turns it on with --source bvb";
-export const ONLY = "the Bucharest feed serves shares, bonds and indices only";
+export const ONLY =
+  "the Bucharest feed serves shares, fund units, bonds and indices only";
 export const AERO =
   "the Bucharest feed serves the regulated market's shares only, not AeRO's";
+export const UNLISTED =
+  "the Bucharest feed serves the fund units on its fund units list only";
 
-// the feed's types, the ones served
-const KINDS: Readonly<Record<string, { type: string; unit: Unit }>> = {
+// the feed's types, the ones served; a fund unit trades as a share does
+export const KINDS: Readonly<Record<string, { type: string; unit: Unit }>> = {
   Shares: { type: "EQUITY", unit: "per_share" },
+  Units: { type: "ETF", unit: "per_share" },
   Bonds: { type: "BOND", unit: "percent_of_par" },
   index: { type: "INDEX", unit: "index_points" },
 };
@@ -596,13 +600,15 @@ export async function quoteNow(
   return q;
 }
 
-// an AeRO share is on no list a quote pass reads, so it would never be quoted
+// a listing on no list a quote pass reads, an AeRO share, would never be quoted
 export async function checkListed(ctx: BvbContext, meta: Meta): Promise<void> {
-  if (KINDS[meta.type]?.type !== "EQUITY") return;
-  const page = await ctx.bvb.shares();
+  const type = KINDS[meta.type]?.type;
+  if (type !== "EQUITY" && type !== "ETF") return;
+  const page =
+    type === "EQUITY" ? await ctx.bvb.shares() : await ctx.bvb.units();
   const symbol = meta.symbol.toUpperCase();
   if (!page.rows.some((r) => r.symbol.toUpperCase() === symbol)) {
-    throw new Refused(AERO);
+    throw new Refused(type === "EQUITY" ? AERO : UNLISTED);
   }
 }
 

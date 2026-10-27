@@ -1,0 +1,23 @@
+{
+  "recordedAt": "2026-10-27T23:05:06.937Z",
+  "request": {
+    "method": "POST",
+    "url": "https://bvb.ro/proxyshld.aspx/GetInstrumentsList",
+    "body": "{'searchtext':'BTBETRETF'}"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json; charset=utf-8"
+  },
+  "body": {
+    "d": [
+      {
+        "Symbol": "BTBETRETF",
+        "Isin": "ROGEF1KGQBE5",
+        "Name": "FONDUL DESCHIS DE INVESTITII BT INDEX ROMANIA ETF BET TR",
+        "Status": "T"
+      }
+    ]
+  },
+  "note": "Search for an exchange-traded fund's units."
+}

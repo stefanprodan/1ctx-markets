@@ -3,7 +3,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
-import { POLICY } from "../src/api/docs.ts";
+import { fingerprint, fingerprinted, POLICY } from "../src/api/docs.ts";
 import { MAX_BODY_BYTES, PREFIX } from "../src/api/http.ts";
 import { spec } from "../src/api/openapi.ts";
 import { routes } from "../src/api/routes.ts";
@@ -12,6 +12,8 @@ import { type Db, open } from "../src/db/index.ts";
 import { finnhub } from "../src/finnhub/client.ts";
 import { fred } from "../src/fred/client.ts";
 import { silent } from "../src/log.ts";
+import { round } from "../src/tools/answer.ts";
+import { withLive } from "../src/tools/history.ts";
 import { tools } from "../src/tools/index.ts";
 import { CALL_MS, markets } from "../src/tools/targets.ts";
 import { lastReadAt } from "../src/tracking.ts";
@@ -627,6 +629,7 @@ describe("every operation", () => {
     await check("GET", "/openapi.json", await t.call("/openapi.json?x=1"), 400);
     await check("GET", "/docs", await t.call("/docs"), 200);
     await check("GET", "/docs/{file}", await t.call("/docs/init.js"), 200);
+    await check("GET", "/docs/{file}", await t.call("/docs/init.js?x=1"), 400);
 
     // 500 is every route's wrapper, checked once below
     const documented = Object.entries(spec.paths).flatMap(([path, item]) =>
@@ -790,6 +793,69 @@ describe("history", () => {
     // the next day the same end is past
     await w.clock.advance(DAY_MS);
     expect(await cache(LIVE)).toBe("private, max-age=3600");
+  });
+
+  test("the session's bar never ranges short of its quote's price", () => {
+    const stored = {
+      date: "2026-10-22",
+      open: 10,
+      high: 11,
+      low: 9,
+      close: 10,
+      volume: 5,
+      final: true,
+    };
+    // a day range read before the last trade, which moved past it
+    const quote = { dayHigh: 12, dayLow: 11.5, volume: 7, time: 0 };
+    const up = withLive(
+      [stored],
+      { date: "2026-10-23", quote: { ...quote, price: 12.5 } },
+      "1d",
+    ).at(-1)!;
+    expect(up).toMatchObject({ high: 12.5, low: 11.5, close: 12.5 });
+    const down = withLive(
+      [stored],
+      { date: "2026-10-23", quote: { ...quote, price: 11 } },
+      "1d",
+    ).at(-1)!;
+    expect(down).toMatchObject({ high: 12, low: 11, close: 11 });
+    // no range at all stays none
+    const bare = withLive(
+      [stored],
+      {
+        date: "2026-10-23",
+        quote: {
+          dayHigh: null,
+          dayLow: null,
+          volume: null,
+          time: 0,
+          price: 11,
+        },
+      },
+      "1d",
+    ).at(-1)!;
+    expect(bare).toMatchObject({ high: null, low: null, close: 11 });
+  });
+
+  test("an index's first read answers its final rows and its live row", async () => {
+    const t = await setup();
+    const body: any = await (await t.call("/history?symbol=^GSPC")).json();
+    expect(body.unit).toBe("index_points");
+    const live = t.db
+      .query<{ date: string; sma50: number; sma200: number }, []>(
+        `select date, sma50, sma200 from signals
+         where instrument = 'SNP:^GSPC' and kind = 'live' and interval = '1d'`,
+      )
+      .get()!;
+    // Yahoo stamps the index's close 38 minutes after its session's end
+    expect(live.date).toBe("2026-10-23");
+    const last = body.bars.at(-1);
+    expect(last).toMatchObject({ date: live.date, final: false });
+    expect(last.sma50).toBe(round(live.sma50));
+    expect(last.sma200).toBe(round(live.sma200));
+    expect(last.sma200).not.toBeNull();
+    const final = body.bars.slice(0, -1);
+    expect(final.every((b: any) => b.final && b.sma50 !== null)).toBe(true);
   });
 
   test("resolves and fetches a new symbol inside the call, as the tool does", async () => {
@@ -1035,17 +1101,13 @@ describe("the docs page", () => {
       expect(page.headers.get("content-type")).toContain("text/html");
       expect(page.headers.get("content-security-policy")).toBe(POLICY);
       const html = await page.text();
+      // asked again on every load, so a new build's fingerprints are seen
+      expect(page.headers.get("cache-control")).toBe("no-cache");
       const linked = [...html.matchAll(/(?:src|href)="([^"]+)"/g)].map(
         (m) => m[1]!,
       );
-      expect(linked.sort()).toEqual(
-        [
-          "data:,",
-          "/api/v1/docs/init.js",
-          "/api/v1/docs/swagger-ui-bundle.js",
-          "/api/v1/docs/swagger-ui.css",
-        ].sort(),
-      );
+      expect(linked.filter((l) => l !== "data:,").length).toBe(3);
+      expect(linked).toContain("data:,");
       expect(html).not.toMatch(/https?:/);
       expect(html).not.toMatch(/<script>|<script [^>]*>[^<]/);
       const types: Record<string, string> = {
@@ -1059,6 +1121,16 @@ describe("the docs page", () => {
         expect(res.headers.get("content-type")).toContain(type);
         expect(res.headers.get("x-content-type-options")).toBe("nosniff");
         const bytes = new Uint8Array(await res.arrayBuffer());
+        // the page names each file with its bytes' fingerprint
+        expect(linked).toContain(
+          `/api/v1/docs/${file}?h=${fingerprint(bytes)}`,
+        );
+        // a stale fingerprint or none still answers the current file
+        for (const h of [`?h=${fingerprint(bytes)}`, "?h=0123456789ab", ""]) {
+          const again = await fetch(`${url}/api/v1/docs/${file}${h}`);
+          expect([file, h, again.status]).toEqual([file, h, 200]);
+          expect(new Uint8Array(await again.arrayBuffer())).toEqual(bytes);
+        }
         if (file !== "init.js") {
           const dist = join(
             import.meta.dir,
@@ -1079,4 +1151,29 @@ describe("the docs page", () => {
       expect(await served.json()).toEqual(JSON.parse(JSON.stringify(spec)));
       expect(lines.some((l) => l.includes("path=/api/v1/docs "))).toBe(true);
     }));
+
+  test("a file's fingerprint follows its bytes", () => {
+    const one = new TextEncoder().encode("window.a = 1;");
+    const two = new TextEncoder().encode("window.a = 2;");
+    expect(fingerprint(one)).toMatch(/^[0-9a-f]{12}$/);
+    expect(fingerprint(one)).toBe(fingerprint(one.slice()));
+    expect(fingerprint(two)).not.toBe(fingerprint(one));
+    const html = [
+      '<link href="/api/v1/docs/swagger-ui.css" />',
+      '<script src="/api/v1/docs/swagger-ui-bundle.js"></script>',
+      '<script src="/api/v1/docs/init.js"></script>',
+    ].join("");
+    const hashes = {
+      "swagger-ui.css": "a",
+      "swagger-ui-bundle.js": "b",
+      "init.js": fingerprint(two),
+    };
+    expect(fingerprinted(html, hashes)).toContain(
+      `/api/v1/docs/init.js?h=${fingerprint(two)}"`,
+    );
+    // a page that leaves a file out fails at start, never serves it stale
+    expect(() =>
+      fingerprinted(html.replace("init.js", "other.js"), hashes),
+    ).toThrow("init.js");
+  });
 });

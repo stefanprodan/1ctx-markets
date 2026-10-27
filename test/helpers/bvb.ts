@@ -48,10 +48,12 @@ const DETAILS: Record<string, string> = {
   SNP: "detail-snp",
   H2O: "detail-h2o",
   R2807A: "detail-bond-r2807a",
+  BTBETRETF: "detail-btbetretf",
 };
 
 const METAS: Record<string, string> = {
   TLV: "wapi-symbols-tlv",
+  BTBETRETF: "wapi-symbols-btbetretf",
   BET: "wapi-symbols-bet",
   R2807A: "wapi-symbols-r2807a",
 };
@@ -62,6 +64,14 @@ const HISTORIES: Record<string, string> = {
   H2O: "wapi-history-h2o-1d",
   BET: "wapi-history-bet-1d",
   R2807A: "wapi-history-r2807a-1d",
+  BTBETRETF: "wapi-history-btbetretf-1d",
+};
+
+// the chart feed's searches by query; any other finds nothing
+const SEARCHES: Record<string, string> = {
+  PETROM: "wapi-search-petrom",
+  BTBETRETF: "wapi-search-btbetretf",
+  TRANSILVANIA: "wapi-search-transilvania",
 };
 
 export type BvbRoutes = {
@@ -89,6 +99,8 @@ export async function bvbAnswer(
     switch (url.pathname) {
       case "/FinancialInstruments/Markets/Shares":
         return page("shares-list");
+      case "/FinancialInstruments/Markets/FundUnits":
+        return page("fund-units-list");
       case "/FinancialInstruments/Markets/Bonds":
         return page("bonds-list");
       case "/TradingAndStatistics/Trading/MarketsToday":
@@ -109,6 +121,11 @@ export async function bvbAnswer(
     if (url.pathname === "/api/symbols") {
       return METAS[symbol] ? bvbRecorded(METAS[symbol]) : UNKNOWN_META;
     }
+    if (url.pathname === "/api/search") {
+      const name =
+        SEARCHES[(url.searchParams.get("query") ?? "").toUpperCase()];
+      return name === undefined ? made(200, []) : bvbRecorded(name);
+    }
     if (url.pathname === "/api/history") {
       const given = routes.histories?.[symbol];
       if (given !== undefined) return given;
@@ -118,7 +135,7 @@ export async function bvbAnswer(
   return undefined;
 }
 
-// every search but petrom's finds nothing, as an empty list
+// every site search but petrom's and the fund unit's finds nothing
 export async function bvbFetch(routes: BvbRoutes = {}): Promise<{
   fetch: Fetch;
   urls: URL[];
@@ -134,6 +151,16 @@ export async function bvbFetch(routes: BvbRoutes = {}): Promise<{
   const fetch: Fetch = async (raw, init) => {
     const body = typeof init.body === "string" ? init.body : null;
     bodies.push(body);
+    if (
+      body !== null &&
+      new URL(raw).pathname === "/proxyshld.aspx/GetInstrumentsList" &&
+      /btbetretf/i.test(body)
+    ) {
+      f.urls.push(new URL(raw));
+      f.headers.push(new Headers(init.headers));
+      const fx = await bvbRecorded("instruments-autocomplete-btbetretf");
+      return new Response(JSON.stringify(fx.body), { status: 200 });
+    }
     if (
       body !== null &&
       new URL(raw).pathname === "/proxyshld.aspx/GetInstrumentsList" &&

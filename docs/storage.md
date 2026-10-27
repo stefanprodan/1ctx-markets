@@ -39,7 +39,9 @@ in `docs/config.md`.
   present.** `0004-scopes-units` fills `instruments.unit` from `type`;
   `0006-tracking` starts `last_read_at` at `updated_at`, so an
   instrument updated within the tracking window stays tracked at the
-  upgrade and an older one does not.
+  upgrade and an older one does not. A value derived by a changed rule
+  is moved the same way, since only a new listing's fetch writes it:
+  `0013-index-units` sets a stored Yahoo index's unit.
 
 ## The writer
 
@@ -79,9 +81,13 @@ in `docs/config.md`.
 - **Each instrument has a unit, and an unknown one stays `unknown`.**
   `instruments.unit` is one of `UNITS` in `src/instruments.ts`:
   `per_share`, `percent_of_par`, `index_points`, `percent`,
-  `per_unit`, `unknown`. Yahoo's `INDEX` covers both ^VIX's points and
-  ^TNX's percent, so its unit is never guessed from the type. Tools
-  compare price levels only within one unit and currency.
+  `per_unit`, `unknown`. Yahoo's `INDEX` is `index_points`, ^VIX's
+  and ^TNX's too, a yield index's points being its yield in percent;
+  its `FUTURE` holds per-barrel and per-bond prices alike, so stays
+  `unknown`. Tools compare price levels only within one unit and
+  currency, and across two instruments never in `index_points` or
+  `unknown`: one index's points are no other's (^VIX's volatility,
+  ^TNX's yield).
 
 ## Times, dates and prices
 

@@ -380,12 +380,12 @@ describe("history", () => {
       expect(rel.returns.map((r: any) => r.months)).toEqual([1, 3]);
       const one = rel.returns[0];
       expect(one.relative).toBeNumber();
-      // the 23rd is not final yet, and ^GSPC has no live price of that day
+      // both have a live price of the 23rd, ^GSPC's stamped after its close
       expect(one.instrument).toMatchObject({
         currency: "USD",
-        to: "2026-10-22",
+        to: "2026-10-23",
       });
-      expect(one.live).toBe(false);
+      expect(one.live).toBe(true);
       expect(one.benchmark.currency).toBe("USD");
       expect(one.note).toContain("FX conversion excluded");
       // the benchmark counts as read

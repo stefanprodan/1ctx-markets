@@ -1,0 +1,133 @@
+{
+  "recordedAt": "2026-10-27T23:05:04.333Z",
+  "request": {
+    "method": "GET",
+    "url": "https://wapi.bvb.ro/api/search?limit=30&query=petrom&type=&exchange="
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json; charset=utf-8"
+  },
+  "body": [
+    {
+      "symbol": "SNP",
+      "full_name": "OMV PETROM S.A.",
+      "description": "SNP, OMV PETROM S.A., ROSNPPACNOR9",
+      "exchange": "BVB",
+      "ticker": "SNP",
+      "type": "Shares"
+    },
+    {
+      "symbol": "EBSNPTL12",
+      "full_name": "OMV PETROM TURBO LONG 10/0.27/0.29",
+      "description": "EBSNPTL12, OMV PETROM TURBO LONG 10/0.27/0.29, AT0000A2L4D5",
+      "exchange": "BVB",
+      "ticker": "EBSNPTL12",
+      "type": "Structured"
+    },
+    {
+      "symbol": "EBSNPTL13",
+      "full_name": "OMV Petrom TURBO LONG 10/0.30/0.32",
+      "description": "EBSNPTL13, OMV Petrom TURBO LONG 10/0.30/0.32, AT0000A2W4B6",
+      "exchange": "BVB",
+      "ticker": "EBSNPTL13",
+      "type": "Structured"
+    },
+    {
+      "symbol": "EBSNPTL14",
+      "full_name": "OMV Petrom TURBO LONG 10/0.35/0.37",
+      "description": "EBSNPTL14, OMV Petrom TURBO LONG 10/0.35/0.37, AT0000A2W4C4",
+      "exchange": "BVB",
+      "ticker": "EBSNPTL14",
+      "type": "Structured"
+    },
+    {
+      "symbol": "EBSNPTL15",
+      "full_name": "OMV Petrom TURBO LONG 10/0.33/0.35",
+      "description": "EBSNPTL15, OMV Petrom TURBO LONG 10/0.33/0.35, AT0000A31PQ4",
+      "exchange": "BVB",
+      "ticker": "EBSNPTL15",
+      "type": "Structured"
+    },
+    {
+      "symbol": "EBSNPTL16",
+      "full_name": "OMV PETROM TURBO LONG 10/0.4/0.42",
+      "description": "EBSNPTL16, OMV PETROM TURBO LONG 10/0.4/0.42, AT0000A33933",
+      "exchange": "BVB",
+      "ticker": "EBSNPTL16",
+      "type": "Structured"
+    },
+    {
+      "symbol": "RBSNPTL6",
+      "full_name": "OMV Petrom SA Turbo Long",
+      "description": "RBSNPTL6, OMV Petrom SA Turbo Long, AT0000A32R53",
+      "exchange": "BVB",
+      "ticker": "RBSNPTL6",
+      "type": "Structured"
+    },
+    {
+      "symbol": "RCSNPTL3",
+      "full_name": "TURBO LONG ON OMV PETROM SA",
+      "description": "RCSNPTL3, TURBO LONG ON OMV PETROM SA, AT0000A2GU19",
+      "exchange": "BVB",
+      "ticker": "RCSNPTL3",
+      "type": "Structured"
+    },
+    {
+      "symbol": "RCSNPTL5",
+      "full_name": "Turbo Long on OMV Petrom SA",
+      "description": "RCSNPTL5, Turbo Long on OMV Petrom SA, AT0000A2Y7Y9",
+      "exchange": "BVB",
+      "ticker": "RCSNPTL5",
+      "type": "Structured"
+    },
+    {
+      "symbol": "RBSNPTL10",
+      "full_name": "Turbo Long Certificates on OMV Petrom SA",
+      "description": "RBSNPTL10, Turbo Long Certificates on OMV Petrom SA, AT0000A3BS90",
+      "exchange": "BVB",
+      "ticker": "RBSNPTL10",
+      "type": "Structured"
+    },
+    {
+      "symbol": "RBSNPTL11",
+      "full_name": "Turbo Long Certificates on OMV Petrom SA",
+      "description": "RBSNPTL11, Turbo Long Certificates on OMV Petrom SA, AT0000A3RPH1",
+      "exchange": "BVB",
+      "ticker": "RBSNPTL11",
+      "type": "Structured"
+    },
+    {
+      "symbol": "RBSNPTL12",
+      "full_name": "Turbo Long Certificates on OMV Petrom SA",
+      "description": "RBSNPTL12, Turbo Long Certificates on OMV Petrom SA, AT0000A3RPJ7",
+      "exchange": "BVB",
+      "ticker": "RBSNPTL12",
+      "type": "Structured"
+    },
+    {
+      "symbol": "RBSNPTL7",
+      "full_name": "Turbo Long Certificates on OMV Petrom SA",
+      "description": "RBSNPTL7, Turbo Long Certificates on OMV Petrom SA, AT0000A3BS66",
+      "exchange": "BVB",
+      "ticker": "RBSNPTL7",
+      "type": "Structured"
+    },
+    {
+      "symbol": "RBSNPTL8",
+      "full_name": "Turbo Long Certificates on OMV Petrom SA",
+      "description": "RBSNPTL8, Turbo Long Certificates on OMV Petrom SA, AT0000A3BS74",
+      "exchange": "BVB",
+      "ticker": "RBSNPTL8",
+      "type": "Structured"
+    },
+    {
+      "symbol": "RBSNPTL9",
+      "full_name": "Turbo Long Certificates on OMV Petrom SA",
+      "description": "RBSNPTL9, Turbo Long Certificates on OMV Petrom SA, AT0000A3BS82",
+      "exchange": "BVB",
+      "ticker": "RBSNPTL9",
+      "type": "Structured"
+    }
+  ]
+}

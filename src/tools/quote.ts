@@ -332,7 +332,7 @@ function offsetOf(args: QuoteArgs): number {
 // The last regular session the source reported, so it can read closed at
 // an opening until a check stores the day's; crypto never closes, and a
 // FRED series has no session.
-function sessionOf(m: Markets, i: Instrument, now: number) {
+export function sessionOf(m: Markets, i: Instrument, now: number) {
   if (i.source === FRED) return null;
   if (i.market === CRYPTO) return { state: "open", start: null, end: null };
   const s = readSession(m.db, i.market);

@@ -7,6 +7,7 @@
 
 import { SOURCE as BVB } from "../bvb/client.ts";
 import { candidateOf, TRADABLE } from "../bvb/resolve.ts";
+import { KINDS } from "../bvb/sync.ts";
 import { MARKET as FRED_MARKET, NO_DATA, seriesId } from "../fred/sync.ts";
 import { type Instrument, readInstrument } from "../instruments.ts";
 import { SOURCE as YAHOO } from "../yahoo/client.ts";
@@ -35,6 +36,8 @@ type Found = {
   exchange: string;
   source: string;
   source_symbol: string;
+  // the Bucharest feed's listings only
+  isin?: string | null;
   stored: boolean;
   note?: string;
 };
@@ -68,8 +71,9 @@ const EXPIRED = Symbol("expired");
 async function within<T>(
   m: Markets,
   work: (live: () => boolean) => Promise<T>,
+  deadline = m.clock.now() + m.callMs,
 ): Promise<T | typeof EXPIRED> {
-  const deadline = m.clock.now() + m.callMs;
+  if (m.clock.now() >= deadline) return EXPIRED;
   let cancel = () => {};
   const expired = new Promise<typeof EXPIRED>((resolve) => {
     cancel = m.clock.at(deadline, () => resolve(EXPIRED));
@@ -165,6 +169,29 @@ async function yahooCandidates(
   }
 }
 
+// The site's search has no type, so the chart feed's names it: the one a
+// stored listing would take, or the feed's own (Structured); a failed or
+// late answer leaves it null. It takes what is left of the search's
+// deadline, so the exchange's side answers within one call's time.
+async function typesOf(
+  m: Markets,
+  bvb: NonNullable<Markets["bvb"]>,
+  query: string,
+  symbol: string,
+  deadline: number,
+): Promise<Map<string, string>> {
+  try {
+    const types = await within(
+      m,
+      (live) => bvb.within(live).types(query, symbol),
+      deadline,
+    );
+    return types === EXPIRED ? new Map() : types;
+  } catch {
+    return new Map();
+  }
+}
+
 // the exchange's own listings, tradable only, while the feed is on
 async function bvbCandidates(
   m: Markets,
@@ -172,24 +199,34 @@ async function bvbCandidates(
 ): Promise<{ found: Found[]; notes: SourceNote[] }> {
   const bvb = m.bvb;
   if (bvb === null) return { found: [], notes: [] };
+  const deadline = m.clock.now() + m.callMs;
   try {
-    const listings = await within(m, (live) => bvb.within(live).search(query));
+    const listings = await within(
+      m,
+      (live) => bvb.within(live).search(query),
+      deadline,
+    );
     if (listings === EXPIRED) return { found: [], notes: [late(m, BVB)] };
+    const tradable = listings.filter((l) => l.status === TRADABLE);
+    const types =
+      tradable.length === 0
+        ? new Map<string, string>()
+        : await typesOf(m, bvb, query, tradable[0]!.symbol, deadline);
     return {
-      found: listings
-        .filter((l) => l.status === TRADABLE)
-        .map((l) => {
-          const c = candidateOf(l);
-          return {
-            id: c.id,
-            name: c.name,
-            type: c.type,
-            exchange: c.exchange,
-            source: BVB,
-            source_symbol: c.sourceSymbol,
-            stored: readInstrument(m.db, c.id) !== null,
-          };
-        }),
+      found: tradable.map((l) => {
+        const c = candidateOf(l);
+        const type = types.get(l.symbol.toUpperCase()) ?? null;
+        return {
+          id: c.id,
+          name: c.name,
+          type: type === null ? null : (KINDS[type]?.type ?? type),
+          exchange: c.exchange,
+          source: BVB,
+          source_symbol: c.sourceSymbol,
+          isin: l.isin,
+          stored: readInstrument(m.db, c.id) !== null,
+        };
+      }),
       notes: [],
     };
   } catch (error) {
@@ -211,8 +248,13 @@ export async function searchAll(
   ]);
   const notes = [...exchange.notes, ...remote.notes];
   const seen = new Set<string>();
+  // the instrument stores no ISIN, so a stored listing takes the feed's
+  const isins = new Map(exchange.found.map((c) => [c.id, c.isin]));
+  const known = local.map((c) =>
+    isins.has(c.id) ? { ...c, isin: isins.get(c.id) } : c,
+  );
   // a Bucharest listing is the feed's while it is on
-  const all = [...local, ...exchange.found, ...remote.found].filter((c) => {
+  const all = [...known, ...exchange.found, ...remote.found].filter((c) => {
     if (seen.has(c.id)) return false;
     seen.add(c.id);
     return true;

@@ -83,7 +83,8 @@ Examples, each created with `symbol` set to the rule's own share:
   values alone would never change between quotes; both sides of a
   comparison in the same unit, a price level's unit including its
   currency; and no cross-instrument price comparison when either unit
-  is `unknown`.
+  is `unknown` or `index_points`, since one index's points are no
+  other's (^VIX's volatility, ^TNX's yield).
 - **A stored condition names every instrument by id** and binds its
   gate to one fiscal year and quarter (`bindCondition()`,
   `writeCondition()`). `readCondition()` parses stored rows strictly;

@@ -105,7 +105,7 @@ export type Schedule = {
 export type Meta = {
   symbol: string;
   name: string | null;
-  // Shares, Bonds, index
+  // Shares, Bonds, Units, index
   type: string;
   currency: string | null;
   zone: string;
@@ -133,6 +133,8 @@ export type Listing = {
 
 export type Bvb = {
   shares(): Promise<SharesPage>;
+  // fund units, exchange-traded funds among them: the shares page's columns
+  units(): Promise<SharesPage>;
   bonds(): Promise<BondsPage>;
   indices(): Promise<IndicesPage>;
   detail(symbol: string): Promise<Detail>;
@@ -146,8 +148,11 @@ export type Bvb = {
     to: number,
   ): Promise<History>;
   search(text: string): Promise<Listing[]>;
+  // the chart feed's search, for each listing's type, which the site's
+  // search lacks; symbol is a listing whose page gives a key if refused
+  types(text: string, symbol: string): Promise<Map<string, string>>;
   // the symbols, uppercased, on the list pages last read; null until all
-  // three are read, as an unread kind may hold the symbol
+  // are read, as an unread kind may hold the symbol
   listed(): ReadonlySet<string> | null;
   // when the list page of a kind was last read, null if never
   listedAt(kind: ListKind): number | null;
@@ -158,7 +163,7 @@ export type Bvb = {
   close(): void;
 };
 
-export const LISTS = ["shares", "bonds", "indices"] as const;
+export const LISTS = ["shares", "units", "bonds", "indices"] as const;
 export type ListKind = (typeof LISTS)[number];
 
 export type BvbOptions = { clock: Clock; fetch?: Fetch };
@@ -466,6 +471,19 @@ export function parseSearch(body: unknown): Listing[] {
   return out;
 }
 
+// symbols uppercased to the feed's type: Shares, Units, Structured, ...
+export function parseTypes(body: unknown): Map<string, string> {
+  if (!Array.isArray(body)) throw malformed("no search list");
+  const out = new Map<string, string>();
+  for (const d of body) {
+    if (!isObj(d)) continue;
+    const symbol = typeof d.symbol === "string" ? d.symbol.trim() : "";
+    const type = typeof d.type === "string" ? d.type.trim() : "";
+    if (symbol !== "" && type !== "") out.set(symbol.toUpperCase(), type);
+  }
+  return out;
+}
+
 type Raw = { status: number; text: string; fetchedAt: number };
 
 export function bvb(options: BvbOptions): Bvb {
@@ -610,6 +628,10 @@ export function bvb(options: BvbOptions): Bvb {
         page("/FinancialInstruments/Markets/Shares", parseShares).then((p) =>
           keep("shares", p),
         ),
+      units: () =>
+        page("/FinancialInstruments/Markets/FundUnits", parseShares).then((p) =>
+          keep("units", p),
+        ),
       bonds: () =>
         page("/FinancialInstruments/Markets/Bonds", parseBonds).then((p) =>
           keep("bonds", p),
@@ -665,6 +687,16 @@ export function bvb(options: BvbOptions): Bvb {
           refuse(raw.status);
           return parseSearch(json(raw));
         }, run),
+      types: (text, symbol) => {
+        const params = new URLSearchParams({
+          // the most the feed takes
+          limit: "30",
+          query: text.slice(0, MAX_SEARCH),
+          type: "",
+          exchange: "",
+        });
+        return feed(`/search?${params}`, symbol, parseTypes);
+      },
       listed: () =>
         !LISTS.every((k) => lists.has(k))
           ? null

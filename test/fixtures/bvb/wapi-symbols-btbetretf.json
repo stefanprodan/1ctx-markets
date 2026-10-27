@@ -1,0 +1,56 @@
+{
+  "recordedAt": "2026-10-27T23:04:56.688Z",
+  "request": {
+    "method": "GET",
+    "url": "https://wapi.bvb.ro/api/symbols?symbol=BTBETRETF"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json; charset=utf-8"
+  },
+  "body": {
+    "name": "BTBETRETF",
+    "description": "FONDUL DESCHIS DE INVESTITII BT INDEX ROMANIA ETF BET TR",
+    "exchange": "BVB",
+    "listed_exchange": "BVB",
+    "type": "Units",
+    "ticker": "BTBETRETF",
+    "session": "0700-1830",
+    "timezone": "Europe/Bucharest",
+    "has_intraday": true,
+    "supported_resolutions": [
+      "1",
+      "5",
+      "15",
+      "30",
+      "60",
+      "D",
+      "1W",
+      "1M"
+    ],
+    "intraday_multipliers": [
+      "1",
+      "5",
+      "15",
+      "30",
+      "60"
+    ],
+    "has_seconds": false,
+    "seconds_multipliers": null,
+    "has_daily": true,
+    "has_weekly_and_monthly": true,
+    "has_empty_bars": false,
+    "force_session_rebuild": false,
+    "visible_plots_set": "ohlcv",
+    "has_fractional_volume": false,
+    "volume_precision": 0,
+    "data_status": "delayed_streaming",
+    "expired": false,
+    "sector": "FINANCIAL AND INSURANCE ACTIVITIES",
+    "industry": "Other financial service activities, except insurance and pension funding",
+    "currency_code": "RON",
+    "minmov": 1,
+    "minmove2": 0,
+    "pricescale": 10000
+  }
+}

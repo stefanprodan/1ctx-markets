@@ -181,6 +181,7 @@ function reads(m: Markets): Route[] {
             ...(read.attribution ? { attribution: ATTRIBUTION } : {}),
             from: read.from,
             to: read.to,
+            session: read.session,
             interval: args.interval,
             ...(read.relative === null ? {} : { relative: read.relative }),
             bars: read.bars.map((b) => ({
@@ -370,8 +371,10 @@ export function routes(deps: ApiDeps): Route[] {
       path: "/docs/{file}",
       key: "none",
       values: { file: DOC_FILES },
-      handle: async (_req, _url, params) =>
-        docsFile(params.file as (typeof DOC_FILES)[number]),
+      handle: async (_req, url, params) => {
+        queryArgs(url, { h: "text" });
+        return docsFile(params.file as (typeof DOC_FILES)[number]);
+      },
     },
   ];
   if (admin !== null) {

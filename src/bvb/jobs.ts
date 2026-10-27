@@ -91,6 +91,7 @@ export function bvbJobs(options: BvbJobsOptions): BvbJobs {
   const listFailed = new Map<ListKind, number>();
   const pages: [ListKind, () => Promise<unknown>][] = [
     ["shares", () => bvb.shares()],
+    ["units", () => bvb.units()],
     ["bonds", () => bvb.bonds()],
     ["indices", () => bvb.indices()],
   ];
@@ -210,6 +211,7 @@ export function bvbJobs(options: BvbJobsOptions): BvbJobs {
       () => Promise<{ rows: ListRow[]; fetchedAt: number }>,
     ][] = [
       ["shares", of("EQUITY"), () => bvb.shares()],
+      ["units", of("ETF"), () => bvb.units()],
       ["bonds", of("BOND"), () => bvb.bonds()],
     ];
     for (const [kind, mine, read] of lists) {

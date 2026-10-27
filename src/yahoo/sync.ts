@@ -181,8 +181,9 @@ function checkAnswer(instrument: Instrument, answer: ChartMeta): void {
   }
 }
 
-// Yahoo's INDEX holds both ^VIX's points and ^TNX's percent, and
-// FUTURE both per-barrel and per-bond prices, so neither is guessed.
+// An index is in points, a yield index's (^TNX) being its yield in
+// percent; FUTURE holds both per-barrel and per-bond prices, so is not
+// guessed.
 export function unitOf(type: string): Unit {
   switch (type.toUpperCase()) {
     case "EQUITY":
@@ -192,6 +193,8 @@ export function unitOf(type: string): Unit {
     case "CRYPTOCURRENCY":
     case "CURRENCY":
       return "per_unit";
+    case "INDEX":
+      return "index_points";
     default:
       return "unknown";
   }

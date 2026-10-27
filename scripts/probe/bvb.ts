@@ -202,6 +202,8 @@ const cases: Record<string, () => Promise<void>> = {
       "Fidelis RON bond (prospectus link names Fidelis).",
     ),
   "detail-unknown": () => detail("detail-unknown", "ZZZZ", "Unknown symbol."),
+  "detail-btbetretf": () =>
+    detail("detail-btbetretf", "BTBETRETF", "An exchange-traded fund's units."),
 
   "wapi-config": () => wapi("wapi-config", "config?withNews=false&lang=ro"),
   "wapi-time": () =>
@@ -212,6 +214,8 @@ const cases: Record<string, () => Promise<void>> = {
   "wapi-symbols-bet": () => wapi("wapi-symbols-bet", "symbols?symbol=BET"),
   "wapi-symbols-r2807a": () =>
     wapi("wapi-symbols-r2807a", "symbols?symbol=R2807A"),
+  "wapi-symbols-btbetretf": () =>
+    wapi("wapi-symbols-btbetretf", "symbols?symbol=BTBETRETF"),
   "wapi-symbols-unknown": () =>
     wapi("wapi-symbols-unknown", "symbols?symbol=ZZZZ"),
   "wapi-history-tlv-1d": () =>
@@ -263,6 +267,18 @@ const cases: Record<string, () => Promise<void>> = {
       "wapi-history-bet-1d",
       `history?symbol=BET&from=${now - 45 * DAY}&to=${now}&rs=1D&ajust=1&countback=30&currencyCode=-`,
     ),
+  // the last session minute by minute, to read an index's close
+  "wapi-history-bet-1min": () =>
+    wapi(
+      "wapi-history-bet-1min",
+      `history?symbol=BET&from=${now - DAY}&to=${now}&rs=1&ajust=1&countback=600&currencyCode=-`,
+    ),
+  // every session since the fund's listing
+  "wapi-history-btbetretf-1d": () =>
+    wapi(
+      "wapi-history-btbetretf-1d",
+      `history?symbol=BTBETRETF&from=${now - 240 * DAY}&to=${now}&rs=1D&ajust=1&countback=200&currencyCode=RON`,
+    ),
   "wapi-history-r2807a-1d": () =>
     wapi(
       "wapi-history-r2807a-1d",
@@ -301,6 +317,13 @@ const cases: Record<string, () => Promise<void>> = {
       "wapi-search-transilvania",
       "search?limit=30&query=TRANSILVANIA&type=&exchange=",
     ),
+  "wapi-search-petrom": () =>
+    wapi("wapi-search-petrom", "search?limit=30&query=petrom&type=&exchange="),
+  "wapi-search-btbetretf": () =>
+    wapi(
+      "wapi-search-btbetretf",
+      "search?limit=30&query=BTBETRETF&type=&exchange=",
+    ),
   "wapi-search-limit-31": () =>
     wapi(
       "wapi-search-limit-31",
@@ -326,6 +349,25 @@ const cases: Record<string, () => Promise<void>> = {
       a,
       parsed(a),
       "Site search box; no key or cookie needed; at most 10 matches.",
+      body,
+    );
+  },
+  "instruments-autocomplete-btbetretf": async () => {
+    const url = `${SITE}/proxyshld.aspx/GetInstrumentsList`;
+    const body = "{'searchtext':'BTBETRETF'}";
+    const a = await call(
+      "POST",
+      url,
+      { "Content-Type": "application/json" },
+      body,
+    );
+    save(
+      "instruments-autocomplete-btbetretf",
+      "POST",
+      url,
+      a,
+      parsed(a),
+      "Search for an exchange-traded fund's units.",
       body,
     );
   },
@@ -427,6 +469,23 @@ const cases: Record<string, () => Promise<void>> = {
       `Regulated market bonds, all currencies; price column is percent of par. ${pageNote}`,
     );
   },
+  "fund-units-list": async () => {
+    const url = `${SITE}/FinancialInstruments/Markets/FundUnits`;
+    const a = await call("GET", url);
+    save(
+      "fund-units-list",
+      "GET",
+      url,
+      a,
+      scrub(
+        fragments({
+          status: statusBlock(a.text),
+          table: tableById(a.text, "gv"),
+        }),
+      ),
+      `Fund units, exchange-traded funds among them. ${pageNote}`,
+    );
+  },
   "markets-today": async () => {
     const url = `${SITE}/TradingAndStatistics/Trading/MarketsToday`;
     const a = await call("GET", url);
@@ -479,9 +538,15 @@ const cases: Record<string, () => Promise<void>> = {
 mkdirSync(OUT, { recursive: true });
 const wanted = process.argv.slice(2);
 const names = wanted.length ? wanted : Object.keys(cases);
-// The wapi cases need a page key; the TLV details page provides it.
-if (names.some((n) => n.startsWith("wapi-")) && !names.includes("detail-tlv"))
-  names.unshift("detail-tlv");
+// The wapi cases need a page key; the TLV details page provides it, read
+// without a fixture unless asked, so a baseline recording stays as it is.
+if (names.some((n) => n.startsWith("wapi-")) && !names.includes("detail-tlv")) {
+  const a = await call(
+    "GET",
+    `${SITE}/FinancialInstruments/Details/FinancialInstrumentsDetails.aspx?s=TLV`,
+  );
+  key = pageKey(a.text);
+}
 for (const n of names) {
   const fn = cases[n];
   if (!fn) throw new Error(`unknown case ${n}`);

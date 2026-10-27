@@ -12,7 +12,7 @@ export const INSTRUCTIONS_BYTES = 4096;
 export const INSTRUCTIONS = `Market data and price rules. Which tool answers what:
 - Prices now, and how a symbol did over a week, a month, three months or the year so far (ytd): \`quote\`, whose \`returns\` hold those periods and \`session\` whether its market is open; \`benchmark\` adds relative strength. The benchmark's own returns come from quoting it as a symbol too, never derived from the relative figures.
 - A US share's move before the open or after the close: \`quote\` with \`extended\`; a null \`extended\` gives its reason in \`stale\`, and it never drives a rule or signal.
-- Bars, a chart's data, a full year or any other period: \`history\`.
+- Bars, a chart's data, a full year or any other period: \`history\`; its \`session\` says whether the last bar is still trading.
 - Many symbols at once: \`movers\` for today's moves and average crossings, \`screen\` to filter and rank on signals and returns, with \`fields\` for more columns than the ones filtered or sorted on.
 - A US share's fundamentals, analysts, earnings, insiders and news, or a US ETF's news: \`research\`, for the few symbols that matter. For news, \`section\` news with \`since\` keeps to a recent window; read its \`counts\` by sentiment before the articles.
 - Earnings dates: \`events\`. A named share under \`no_event\` had no earnings in the window: that is an answer, not missing data.
@@ -28,7 +28,7 @@ Live prices: a quote is the live price while its market is open, and the day's c
 
 Freshness: answers carry \`fetched_at\`; read it before calling a figure current. Research refreshes daily after the US close, earnings around a share's report date, news through the day.
 
-Units: prices are in the listing's own \`currency\`. A series whose \`unit\` is percent (a yield, a spread) moves in points, not percent; unknown means not known, as a Yahoo index can be points or percent.
+Units: prices are in the listing's own \`currency\`. A series whose \`unit\` is percent (a yield, a spread) moves in points, not percent; an index is in points, a yield index's (^TNX) being its yield in percent; unknown means not known.
 
 Paging: never change the arguments to avoid a page.
 

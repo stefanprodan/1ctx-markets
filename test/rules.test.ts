@@ -158,6 +158,7 @@ describe("the rule format", () => {
       charts: {
         "^VIX": listed(await recorded("chart-vix-5d-1d")),
         "^TNX": listed(await recorded("chart-tnx-5d-1d")),
+        "CL=F": listed(await recorded("chart-cl-f-5d-1d")),
       },
     });
     const bad: [string, unknown, string][] = [
@@ -176,10 +177,16 @@ describe("the rule format", () => {
         { left: "price", op: ">", right: { field: "price", symbol: "^VIX" } },
         UNKNOWN_UNIT,
       ],
-      // index points against a yield, both in a unit Yahoo leaves unknown
+      // index points against a yield: no two indices share a unit
       [
         "^VIX",
         { left: "price", op: ">", right: { field: "price", symbol: "^TNX" } },
+        UNKNOWN_UNIT,
+      ],
+      // a future's price per barrel or per bond, which Yahoo leaves unknown
+      [
+        "^VIX",
+        { left: "price", op: ">", right: { field: "price", symbol: "CL=F" } },
         UNKNOWN_UNIT,
       ],
       [
@@ -228,7 +235,7 @@ describe("the rule format", () => {
       right: { field: "drawdown", symbol: "FRED:DGS10" },
     });
     expect(ok.error).toBe(false);
-    // an unknown unit against its own values, or across in a known unit
+    // an index against its own values, or across in a known unit
     for (const condition of [
       { left: "price", op: ">", right: "sma50" },
       {

@@ -407,8 +407,8 @@ describe("units", () => {
       "VVSM.DE": "per_share",
       "SOL-USD": "per_unit",
       "EURUSD=X": "per_unit",
-      "^TNX": "unknown",
-      "^VIX": "unknown",
+      "^TNX": "index_points",
+      "^VIX": "index_points",
       "CL=F": "unknown",
     });
     expect(unitOf("MUTUALFUND")).toBe("per_share");
