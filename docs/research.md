@@ -166,6 +166,23 @@ contract in `docs/tools.md`; rules that wait on events in
   range. A failed fetch is listed there too, while its stored events
   still show. The list is capped at 8 KiB with the rest counted, and
   appears on the first page only (`src/tools/events.ts`).
+- **A named share with a calendar and nothing in the range is listed
+  under `no_event`**, so an empty answer for it is never read as
+  missing data: `input`, `id`, `last` (the newest stored event before
+  `from`) and `next` (the first after `to`), each `date`, `hour` and
+  `status`, or null. Actuals stay out, one `research` call away, so 100
+  shares stay small. A share under `unavailable` is not repeated, and
+  without `symbols` the list is left out, since most tracked shares
+  have nothing in a short range. It has its own byte share
+  (`NO_EVENT_BYTES`, the size of `UNAVAILABLE_BYTES`, through
+  `capNotes()`), the rest counted in `no_event_more`, first page only.
+- **A null `next` means none within `CALENDAR_AHEAD_DAYS` (90) of the
+  last calendar fetch, never no next event**: the calendar is asked
+  only that far ahead. The description interpolates the number.
+- **Events are company events only.** The description says macro
+  dates (central bank meetings, data releases, elections) are not in
+  it, so an agent looks them up elsewhere rather than reading an empty
+  answer as none; the server keeps no macro calendar.
 
 ## News
 

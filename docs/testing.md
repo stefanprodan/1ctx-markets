@@ -49,6 +49,7 @@ recorders under `scripts/probe/`. The clock contract is in
 | `massive.ts` | Massive's news, filtered, ordered and paged with an opaque `next_url` |
 | `rules.ts` | reads with rules over the recorded sources, quotes edited from the recorded metas |
 | `app.ts` | the whole server on loopback (`withApp()`) and an MCP SDK client on it (`mcpClient()`) |
+| `world.ts` | no source at all: instruments of a source no job syncs, with bars, signal rows and quotes written by hand (`world()`, `listing()`), for the readers' arithmetic |
 
 - **Keys in tests are made up** (`FRED_KEY`, `FINNHUB_KEY`,
   `MASSIVE_KEY` in the helpers; `test/fixtures/secrets/` and

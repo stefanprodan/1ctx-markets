@@ -10,7 +10,14 @@ import { SOURCE as FRED } from "../fred/client.ts";
 import { ATTRIBUTION } from "../fred/sync.ts";
 import type { Instrument } from "../instruments.ts";
 import type { DailyRow } from "../signals/daily.ts";
-import { readRelativeReturn } from "../signals/read.ts";
+import {
+  benchmarkSide,
+  instrumentSide,
+  relativeOf,
+  returnsOf,
+  type Side,
+} from "../signals/read.ts";
+import { earliestStart, type ReturnPeriod } from "../signals/relative.ts";
 import type { WeeklyRow } from "../signals/weekly.ts";
 import type { StaleReason } from "../stale.ts";
 import { errorResult, round, type ToolResult, textResult } from "./answer.ts";
@@ -35,6 +42,7 @@ import {
 import { type Markets, readTargets } from "./targets.ts";
 
 export const MAX_FILTERS = 8;
+export const MAX_FIELDS = 8;
 
 type DailyKey = Exclude<keyof DailyRow, "date">;
 type WeeklyKey = Exclude<keyof WeeklyRow, "date">;
@@ -43,7 +51,8 @@ type Source =
   | { from: "daily"; key: DailyKey }
   | { from: "weekly"; key: WeeklyKey }
   | { from: "distance"; interval: "daily" | "weekly"; key: DailyKey }
-  | { from: "relative"; months: 1 | 3 };
+  | { from: "relative"; months: 1 | 3 }
+  | { from: "return"; period: ReturnPeriod };
 
 type Field = {
   source: Source;
@@ -102,6 +111,10 @@ export const FIELDS: Readonly<Record<string, Field>> = {
   distance_weekly_sma50: distance("weekly", "sma50"),
   distance_weekly_sma200: distance("weekly", "sma200"),
   distance_bollinger_lower: distance("daily", "bollingerLower"),
+  return_1w: { source: { from: "return", period: "1w" } },
+  return_1m: { source: { from: "return", period: "1m" } },
+  return_3m: { source: { from: "return", period: "3m" } },
+  return_ytd: { source: { from: "return", period: "ytd" } },
   relative_return_1m: { source: { from: "relative", months: 1 } },
   relative_return_3m: { source: { from: "relative", months: 3 } },
 };
@@ -120,6 +133,8 @@ export type ScreenArgs = {
   benchmark: string | null;
   sort: string | null;
   order: "asc" | "desc";
+  // shown beside the filter and sort fields, never filtered on
+  fields: string[];
   next: string | null;
 };
 
@@ -181,6 +196,7 @@ export function parseScreen(input: unknown): ScreenArgs {
     "benchmark",
     "sort",
     "order",
+    "fields",
     "next",
   ]);
   const list = symbols(f.symbols, "symbols", MAX_SYMBOLS);
@@ -199,7 +215,16 @@ export function parseScreen(input: unknown): ScreenArgs {
   }
   const order = oneOf(f.order, "order", ["asc", "desc"] as const, "asc");
   const benchmark = optionalText(f.benchmark, "benchmark");
-  const used = [...filters.map((x) => x.field), ...(sort ? [sort] : [])];
+  const rawFields = f.fields ?? [];
+  if (!Array.isArray(rawFields) || rawFields.length > MAX_FIELDS) {
+    throw new ArgError(`fields must be a list of at most ${MAX_FIELDS}`);
+  }
+  const shown = [...new Set(rawFields.map((x, k) => field(x, `fields[${k}]`)))];
+  const used = [
+    ...filters.map((x) => x.field),
+    ...(sort ? [sort] : []),
+    ...shown,
+  ];
   const relative = used.some(isRelative);
   if (relative && benchmark === null) {
     throw new ArgError("relative_return fields need a benchmark");
@@ -213,6 +238,7 @@ export function parseScreen(input: unknown): ScreenArgs {
     benchmark,
     sort,
     order,
+    fields: shown,
     next: optionalText(f.next, "next", 200),
   };
 }
@@ -238,8 +264,32 @@ const unitOf = (def: Field, i: Instrument): string => def.unit ?? ownUnit(i);
 
 type Context = {
   m: Markets;
-  benchmark: { instrument: Instrument; stale: StaleReason[] } | null;
+  benchmark: { side: Side; stale: StaleReason[] } | null;
 };
+
+// what a symbol's return and relative fields read, once per symbol
+type Reads = { side: () => Side; returns: () => ReturnType<typeof returnsOf> };
+
+function reads(ctx: Context, instrument: Instrument): Reads {
+  let side: Side | undefined;
+  let returns: ReturnType<typeof returnsOf> | undefined;
+  const sideOf = () => {
+    side ??= instrumentSide(
+      ctx.m.db,
+      instrument,
+      ctx.benchmark?.side ?? null,
+      earliestStart,
+    );
+    return side;
+  };
+  return {
+    side: sideOf,
+    returns: () => {
+      if (returns === undefined) returns = returnsOf(sideOf());
+      return returns;
+    },
+  };
+}
 
 function readField(
   ctx: Context,
@@ -247,6 +297,7 @@ function readField(
   instrument: Instrument,
   latest: Latest,
   price: number | null,
+  r: Reads,
 ): Read {
   const def = FIELDS[name]!;
   const s = def.source;
@@ -286,23 +337,33 @@ function readField(
       },
     };
   }
+  if (s.from === "return") {
+    const ret = r.returns();
+    const v = ret?.[s.period] ?? null;
+    if (ret === null || v === null) return missing;
+    return {
+      ok: true,
+      value: {
+        value: v,
+        // a yield or spread moves in points, as quote's returns
+        unit: instrument.unit === "percent" ? "points" : "percent",
+        kind: ret.live ? "live" : "final",
+        date: ret.to,
+      },
+    };
+  }
   const bench = ctx.benchmark!;
   if (bench.stale.length > 0) return { ok: false, benchmark: true };
-  const r = readRelativeReturn(
-    ctx.m.db,
-    instrument.id,
-    bench.instrument.id,
-    s.months,
-  );
-  if (r === null) return missing;
+  const rel = relativeOf(r.side(), bench.side, s.months);
+  if (rel === null) return missing;
   return {
     ok: true,
     value: {
-      value: r.relative,
-      unit: r.instrument.unit === "points" ? "points" : "percentage points",
-      kind: r.live ? "live" : "final",
-      date: r.instrument.to,
-      note: r.note,
+      value: rel.relative,
+      unit: rel.instrument.unit === "points" ? "points" : "percentage points",
+      kind: rel.live ? "live" : "final",
+      date: rel.instrument.to,
+      note: rel.note,
     },
   };
 }
@@ -323,7 +384,9 @@ export async function screenAnswer(
   m: Markets,
   args: ScreenArgs,
 ): Promise<ToolResult> {
-  const { next, ...asked } = args;
+  const { next, fields: shown, ...rest } = args;
+  // a cursor made before fields existed still continues
+  const asked = shown.length === 0 ? rest : { ...rest, fields: shown };
   const offset = startOf(next, asked);
   const names =
     args.benchmark === null ? args.symbols : [...args.symbols, args.benchmark];
@@ -336,7 +399,7 @@ export async function screenAnswer(
       return errorResult({ benchmark: b.input, ...b.error });
     }
     ctx.benchmark = {
-      instrument: b.instrument,
+      side: benchmarkSide(m.db, b.instrument, 3),
       stale: readLatest(m.db, b.instrument, now, m.quoteEveryMs).stale,
     };
   }
@@ -378,7 +441,7 @@ export async function screenAnswer(
     }
     return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
   });
-  const bench = ctx.benchmark?.instrument;
+  const bench = ctx.benchmark?.side.instrument;
   const head: Record<string, unknown> = {
     ...(bench === undefined
       ? {}
@@ -427,8 +490,9 @@ function screenOne(
   const missing: string[] = [];
   const stale: string[] = [];
   let reason: string | undefined;
+  const once = reads(ctx, r.instrument);
   for (const name of used) {
-    const read = readField(ctx, name, r.instrument, latest, q.price);
+    const read = readField(ctx, name, r.instrument, latest, q.price, once);
     if (read.ok) {
       values.set(name, read.value);
       continue;
@@ -441,9 +505,17 @@ function screenOne(
   if (!args.filters.every((f) => passes(f, values.get(f.field)!.value))) {
     return null;
   }
-  const shown: Record<string, object> = {};
+  const shown: Record<string, object | null> = {};
   for (const [name, v] of values) {
     shown[name] = { ...v, value: round(v.value) };
+  }
+  // an asked field no filter reads is shown, or null, never a reason
+  for (const name of args.fields) {
+    if (Object.hasOwn(shown, name)) continue;
+    const read = readField(ctx, name, r.instrument, latest, q.price, once);
+    shown[name] = read.ok
+      ? { ...read.value, value: round(read.value.value) }
+      : null;
   }
   return {
     id: r.instrument.id,

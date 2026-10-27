@@ -154,6 +154,23 @@ bar's close, or the live price on the live row.
   returns** (`LEVEL_NOTE`); prices change in percent in each listing's
   own currency, no FX conversion (`RETURN_NOTE`). `relative` is the
   instrument's change less the benchmark's.
+- **Reads are bounded to the anchors** (`readCloses()`): closes from
+  the last bar on or before the earliest start the end can need,
+  widened when the last final close is earlier than the last bar. A
+  benchmark side is read once and reused across instruments and
+  periods (`benchmarkSide()`, `instrumentSide()`, `relativeOf()`).
 - **When either unit is `unknown`, the note adds "units unknown,
   treated as prices"** (`UNKNOWN_UNITS_NOTE`), because an index such as
   a stock index is unit unknown and a valid benchmark.
+
+## Trailing returns
+
+- **`1w`, `1m`, `3m` and `ytd` from the last final close on or before
+  each start** (`trailingReturns()`): 7 days, 1 and 3 calendar months
+  back by `monthsBack()`, and the previous year's 31 December, counted
+  from the end's date; a holiday on the 31st takes the close before.
+- **The end is the live price only when its session date follows the
+  last final bar** (`returnsOf()`), the rule relative return follows;
+  otherwise the last final close. `to` and `live` say which.
+- **A percent unit answers points, prices percent** in the listing's
+  own currency; a period whose start the bars do not reach is null.

@@ -4,7 +4,7 @@
 // The two listings trade on different calendars, so every anchor is a
 // date on the benchmark's days, never a row offset.
 
-import { wallOfDate } from "../zone.ts";
+import { addDays, wallOfDate } from "../zone.ts";
 import { type Close, checkOrder } from "./common.ts";
 
 export const RETURN_NOTE =
@@ -71,6 +71,44 @@ export function relativeReturn(
     benchmark: b,
     note: level ? LEVEL_NOTE : RETURN_NOTE,
   };
+}
+
+export const RETURN_PERIODS = ["1w", "1m", "3m", "ytd"] as const;
+
+export type ReturnPeriod = (typeof RETURN_PERIODS)[number];
+
+// where each period starts, counted back from the end's date
+export function periodStart(end: string, period: ReturnPeriod): string {
+  if (period === "1w") return addDays(end, -7);
+  if (period === "1m") return monthsBack(end, 1);
+  if (period === "3m") return monthsBack(end, 3);
+  return `${Number(end.slice(0, 4)) - 1}-12-31`;
+}
+
+// the earliest a period's start can be, for a read bounded to it
+export const earliestStart = (end: string): string =>
+  [periodStart(end, "ytd"), periodStart(end, "3m")].sort()[0]!;
+
+export type Returns = Record<ReturnPeriod, number | null> & {
+  to: string;
+  live: boolean;
+};
+
+// From the last final close on or before each start to the end: the
+// live price when it follows the bars, else the last final close.
+// Null with neither; a period is null when the bars do not reach it.
+export function trailingReturns(l: Listing): Returns | null {
+  const series = withLive(l);
+  const end = series.at(-1);
+  if (end === undefined) return null;
+  const out = { to: end.date, live: l.live !== undefined } as Returns;
+  for (const period of RETURN_PERIODS) {
+    const start = onOrBefore(l.bars, periodStart(end.date, period));
+    const c =
+      start === null ? null : change(start, end, l.currency, l.level === true);
+    out[period] = c?.change ?? null;
+  }
+  return out;
 }
 
 // the same calendar day m months back, clamped to that month's end

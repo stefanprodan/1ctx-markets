@@ -9,6 +9,7 @@ import {
   type jsonSchemaValidator,
   type McpServer,
 } from "@modelcontextprotocol/server";
+import { CALENDAR_AHEAD_DAYS } from "../finnhub/store.ts";
 import { errorFields } from "../log.ts";
 import {
   MAX_COMPARISONS,
@@ -31,6 +32,7 @@ import {
 import { parseRules, RULE_ACTIONS, rulesAnswer } from "./rules.ts";
 import {
   FIELD_NAMES,
+  MAX_FIELDS,
   MAX_FILTERS,
   parseScreen,
   screenAnswer,
@@ -76,20 +78,20 @@ const day: JsonSchemaType = {
 };
 
 const quoteDescription = (m: Markets) =>
-  `Live quotes and the latest signals for 1 to ${MAX_SYMBOLS} symbols. A symbol is a stored id (US:NVDA, XETRA:VVSM, CRYPTO:SOL-USD), a Yahoo symbol (NVDA, VVSM.DE, ^VIX, EURUSD=X), FRED:<series id> (FRED:DGS10) or a name; one with several listings answers candidates to pick an id from. A symbol never read is fetched inside the call within ${m.callMs / 1000} seconds; one not done answers timeout: call again for it. Each item: price, previous close, change, day range, volume, trade_time (null when the source gives none), fetched_at, the latest daily and weekly signal rows (live or final: SMA 50/200, EMA 20, RSI 14, MACD, ATR 14, 20-day volatility, Bollinger lower band, 52-week range, drawdown, volume ratio) and stale reasons. A FRED series answers its last observation and date, with a null price. Errors are items. When next is set, call again with the same symbols and next.`;
+  `Live quotes and latest signals for 1 to ${MAX_SYMBOLS} symbols: a stored id (US:NVDA, CRYPTO:SOL-USD), a Yahoo symbol (VVSM.DE, ^VIX, EURUSD=X), FRED:<series id> or a name; several listings answer candidates to pick an id from. One never read is fetched within ${m.callMs / 1000} seconds, else timeout: call again. Each item: price, previous close, change, day range, volume, trade_time, fetched_at, daily and weekly signal rows (live or final: SMA 50/200, EMA 20, RSI 14, MACD, ATR 14, volatility, Bollinger lower, 52-week range, drawdown, volume ratio), stale. returns: 1w, 1m, 3m, ytd percent (points for a yield) from the last final close on or before each start to to, live if it ends on the live price; null if bars do not reach. session: open or closed by the last session the source reported (closed at an open until checked), start, end. benchmark (one symbol) adds relative_return_1m, _3m in percentage points. FRED answers its last observation, price null. Errors are items. When next is set, call again with the same arguments and next.`;
 
 const HISTORY = `Daily (1d) or weekly (1wk) bars of one symbol, oldest first, each with its final flag and that date's signal row. from and to are YYYY-MM-DD; to defaults to the latest bar, from to ${DEFAULT_MONTHS["1d"]} months before to for 1d and ${DEFAULT_MONTHS["1wk"]} months for 1wk. Prices are split-adjusted; averages and returns are on price, with dividends and FX conversion excluded. With a benchmark (any symbol, e.g. QQQ or ^GDAXI), it adds the 1- and 3-month return relative to it at to, in percentage points (points for a yield or spread), naming both currencies. Symbols resolve and are fetched as in quote. When next is set, call again with the same arguments and next.`;
 
 const MOVERS = `The day's movers among 1 to ${MAX_SYMBOLS} symbols. min_move_pct (0 or more) is the live change from the previous close, in percent, with direction up, down or either (default). average (daily_sma50, daily_sma200, daily_ema20, weekly_sma50, weekly_sma200) with relation above or below compares the live price with it; crossed_up or crossed_down compares the last final close with the average then, and the live price with the average now. Give a move, an average or both; all given must hold. Matches come largest absolute change first. A symbol with a stale or missing quote or average is unavailable, never a match; a FRED series has no live quote and never moves. Symbols resolve and are fetched as in quote. When next is set, call again with the same arguments and next; each page is a fresh view, so matches may shift.`;
 
-const SCREEN = `Filter and rank 1 to ${MAX_SYMBOLS} symbols on their latest signals: the live row once the market traded today, else the last final. filters: at most ${MAX_FILTERS}, all must hold: {field, min, max} inclusive, either bound alone, or {field, eq: -1|0|1} for the cross, edge and turn states. Fields: sma50, sma200, ema20, rsi14, macd, macd_signal, macd_histogram, macd_turn, atr14, move_atr, volatility20, bollinger_lower, high52w, low52w, drawdown, from_low, days_since_high, volume_ratio, cross, cross_edge, weekly_sma50, weekly_sma200, weekly_cross, weekly_cross_edge; percent from the price to an average: distance_sma50, distance_sma200, distance_ema20, distance_weekly_sma50, distance_weekly_sma200, distance_bollinger_lower; relative_return_1m, relative_return_3m (need benchmark). Price-level fields need one unit and currency across the symbols. A missing, null or stale input makes a symbol unavailable, never a match. sort: a field, order asc or desc; by id otherwise. Fetched as in quote; next continues a fresh view, which may shift.`;
+const SCREEN = `Filter and rank 1 to ${MAX_SYMBOLS} symbols on their latest signals: the live row once the market traded today, else the last final. filters: at most ${MAX_FILTERS}, all must hold: {field, min, max} inclusive, either bound alone, or {field, eq: -1|0|1} for the cross, edge and turn states. field: one of the schema's list, the daily signals as quote names them, weekly_* ones, distance_* (percent from the price to an average), return_1w, _1m, _3m, _ytd (as quote's returns) and relative_return_1m, _3m (need benchmark). fields: at most ${MAX_FIELDS} more shown on every row, null when missing. Price-level fields need one unit and currency across the symbols. A missing, null or stale input makes a symbol unavailable, never a match. sort: a field, order asc or desc; by id otherwise. Fetched as in quote; next continues a fresh view, which may shift.`;
 
 const SEARCH =
   "Find instruments by name or symbol: stored ones, Yahoo's listings and, with the Bucharest feed on, the exchange's own, each with its id, exchange, type and name, for quote or history. Fetches no prices. A FRED series not stored yet is found only as FRED:<series id>.";
 
 const RESEARCH = `One US-listed share's research from Finnhub and news from Massive. section overview (default): the quote and latest signals as in quote, the latest metrics (forward_pe, forward_peg, pe_ttm, ps_ttm, pb, EPS and revenue growth TTM YoY, net margin TTM, ROE TTM, current ratio and debt to equity quarterly, dividend yield TTM, beta), analyst counts, earnings surprise, insider month (share change, MSPR), the next earnings event and five headlines, each with fetched_at and stale. analysts, earnings and insiders page their history, newest first; news pages the ticker's articles newest first from since (YYYY-MM-DD UTC, at most ${SINCE_DAYS} days back, the default), the first page counting them by sentiment; each has published_at, title, publisher, url, its own sentiment (positive, neutral, negative, null) and reasoning. What was never fetched is fetched in the call as in quote; ETFs, indices and non-US listings get no Finnhub data; news covers US shares and ETFs. When next is set, call again with the same arguments and next.`;
 
-const EVENTS = `Earnings events dated from to to (YYYY-MM-DD, inclusive) of the tracked US shares, or of 1 to ${MAX_EVENT_SYMBOLS} symbols named, by date. Each: fiscal_year, fiscal_quarter, date, hour (amc after close, bmo before open, or empty), status (scheduled; awaiting results once its date came without actuals; reported once EPS or revenue actuals are seen, with reported_seen_at), EPS and revenue estimates and actuals (revenue in whole currency units), fetched_at, stale. Symbols resolve and are fetched as in quote; one Finnhub does not cover is listed as unavailable. When next is set, call again with the same arguments and next.`;
+const EVENTS = `Earnings events dated from to to (YYYY-MM-DD, inclusive) of the tracked US shares, or of 1 to ${MAX_EVENT_SYMBOLS} symbols named, by date. Company events only: macro dates (central bank meetings, data releases, elections) are not here; look them up elsewhere. Each: fiscal_year, fiscal_quarter, date, hour (amc after close, bmo before open, or empty), status (scheduled; awaiting results once its date came without actuals; reported once EPS or revenue actuals are seen, with reported_seen_at), EPS and revenue estimates and actuals (revenue in whole currency units), fetched_at, stale. Symbols resolve and are fetched as in quote; one Finnhub does not cover is listed as unavailable. A named share with nothing in the range is in no_event with the last stored event before from and the next after to (date, hour, status), so it is never read as missing data; a no_event next is null when none is within ${CALENDAR_AHEAD_DAYS} days of its last fetch. When next is set, call again with the same arguments and next.`;
 
 const RULES = `Price rules on live quotes. Turning true writes one alert; again only after false. create: symbol, condition, note; answers its first evaluation. condition: {left, op, right} (op < <= > >=; right a number or operand) or {all: [...]}/{any: [...]}; ≤${MAX_COMPARISONS} comparisons, ${MAX_DEPTH} levels, ${MAX_INSTRUMENTS} instruments. Operand: a field of symbol, or {field, symbol} (^VIX). Fields: price changePct dayHigh dayLow previousClose sma50 sma200 ema20 rsi14 macd macdSignal macdHistogram macdTurn atr14 moveAtr volatility20 bollingerLower high52w low52w drawdown fromLow daysSinceHigh volumeRatio cross crossEdge weeklySma50 weeklySma200 weeklyCross weeklyCrossEdge, and {field: relativeReturn1m|relativeReturn3m, benchmark}. Each comparison reads a live value, in one unit. Example: {"all":[{"left":"rsi14","op":"<","right":30},{"left":"price","op":">","right":"sma200"}]}. "afterEarnings": "<US share>" on the root waits for its next results. A stale input changes nothing. A split pauses price-vs-number rules. list: next; pause: id, paused; delete: id.`;
 
@@ -115,6 +117,7 @@ export function tools(m: Markets): Tool[] {
             maxItems: MAX_SYMBOLS,
             items: symbol,
           },
+          benchmark: symbol,
           next,
         },
         ["symbols"],
@@ -200,6 +203,11 @@ export function tools(m: Markets): Tool[] {
           benchmark: symbol,
           sort: { type: "string", enum: FIELD_NAMES },
           order: { type: "string", enum: ["asc", "desc"] },
+          fields: {
+            type: "array",
+            maxItems: MAX_FIELDS,
+            items: { type: "string", enum: FIELD_NAMES },
+          },
           next,
         },
         ["symbols"],

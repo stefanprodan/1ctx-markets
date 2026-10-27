@@ -3,174 +3,24 @@
 
 import { describe, expect, test } from "bun:test";
 import { DAY_MS, MINUTE_MS } from "../src/clock.ts";
-import { type Db, open } from "../src/db/index.ts";
-import { fred } from "../src/fred/client.ts";
-import { upsertInstrument } from "../src/instruments.ts";
-import { silent } from "../src/log.ts";
 import { cursor, PAGE_BYTES } from "../src/tools/answer.ts";
 import { ArgError } from "../src/tools/args.ts";
 import { quotesHandler } from "../src/tools/http.ts";
 import { moversAnswer, parseMovers } from "../src/tools/movers.ts";
 import { parseScreen, screenAnswer } from "../src/tools/screen.ts";
-import { type Markets, markets } from "../src/tools/targets.ts";
+import type { Markets } from "../src/tools/targets.ts";
 import { lastReadAt } from "../src/tracking.ts";
-import { writer } from "../src/writer.ts";
-import { yahoo } from "../src/yahoo/client.ts";
-import { fakeClock } from "./helpers/clock.ts";
-
-const NOW = Date.parse("2026-10-23T18:00:00Z");
-// the live day and the final day before it
-const LIVE = "2026-10-23";
-const FINAL = "2026-10-22";
-
-type Values = Record<string, number | null>;
-
-// Instruments of a source no job syncs, so a read finds them ready and
-// fetches nothing; every stored row is written here by hand.
-function world() {
-  const clock = fakeClock(NOW);
-  const { db } = open(":memory:", clock);
-  const noNetwork = async (url: string): Promise<Response> => {
-    throw new Error(`no network in tests: ${url}`);
-  };
-  const m: Markets = markets({
-    db,
-    clock,
-    writer: writer(db),
-    yahoo: yahoo({ clock, fetch: noNetwork }),
-    fred: fred({ clock, key: "0".repeat(32), fetch: noNetwork }),
-    log: silent,
-  });
-  return { clock, db, m };
-}
-
-function instrument(
-  db: Db,
-  id: string,
-  options: { currency?: string | null; unit?: string; name?: string } = {},
-) {
-  const [market, symbol] = id.split(":") as [string, string];
-  const isFred = market === "FRED";
-  upsertInstrument(
-    db,
-    {
-      market,
-      symbol,
-      source: isFred ? "fred" : "other",
-      sourceSymbol: symbol,
-      exchange: market,
-      name: options.name ?? symbol,
-      type: isFred ? "SERIES" : "EQUITY",
-      currency:
-        options.currency === undefined
-          ? isFred
-            ? null
-            : "USD"
-          : options.currency,
-      unit: (options.unit ?? (isFred ? "percent" : "per_share")) as never,
-      zone: "UTC",
-    },
-    NOW,
-  );
-}
-
-function bar(
-  db: Db,
-  id: string,
-  interval: "1d" | "1wk",
-  date: string,
-  close: number,
-  final: boolean,
-) {
-  db.query(
-    `insert into bars (instrument, interval, date, open, high, low, close,
-       volume, final, fetched_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(
-    id,
-    interval,
-    date,
-    close,
-    close,
-    close,
-    close,
-    1000,
-    final ? 1 : 0,
-    NOW,
-  );
-}
-
-// a signal row; sma50 and sma200 default so the cross check holds
-function row(
-  db: Db,
-  id: string,
-  interval: "1d" | "1wk",
-  date: string,
-  kind: "final" | "live",
-  values: Values = {},
-) {
-  const v: Values = { sma50: 100, sma200: 90, ...values };
-  if (!("cross" in values)) {
-    v.cross =
-      v.sma50 == null || v.sma200 == null
-        ? null
-        : Math.sign(v.sma50 - v.sma200);
-  }
-  const cols = Object.keys(v);
-  db.query(
-    `insert into signals (instrument, interval, date, kind, ${cols.join(", ")},
-       quote_time, computed_at)
-     values (?, ?, ?, ?, ${cols.map(() => "?").join(", ")}, ?, ?)`,
-  ).run(
-    id,
-    interval,
-    date,
-    kind,
-    ...cols.map((c) => v[c]!),
-    kind === "live" ? NOW : null,
-    NOW,
-  );
-}
-
-function quote(db: Db, id: string, price: number, previousClose: number) {
-  const change = price - previousClose;
-  db.query(
-    `insert into quotes (instrument, price, previous_close,
-       previous_close_field, change, change_percent, day_high, day_low,
-       volume, time, source, fetched_at)
-     values (?, ?, ?, 'previousClose', ?, ?, null, null, null, ?, 'other', ?)`,
-  ).run(
-    id,
-    price,
-    previousClose,
-    change,
-    (change / previousClose) * 100,
-    NOW,
-    NOW,
-  );
-}
-
-// A listing with a final day, a live day and its quote: the daily rows
-// take the values given, the final close is previousClose.
-function listing(
-  db: Db,
-  id: string,
-  options: {
-    price?: number;
-    previousClose?: number;
-    live?: Values;
-    final?: Values;
-    currency?: string | null;
-    name?: string;
-  } = {},
-) {
-  instrument(db, id, { currency: options.currency, name: options.name });
-  const prev = options.previousClose ?? 100;
-  bar(db, id, "1d", FINAL, prev, true);
-  row(db, id, "1d", FINAL, "final", options.final);
-  bar(db, id, "1d", LIVE, options.price ?? 100, false);
-  row(db, id, "1d", LIVE, "live", options.live);
-  quote(db, id, options.price ?? 100, prev);
-}
+import {
+  bar,
+  FINAL,
+  instrument,
+  LIVE,
+  listing,
+  NOW,
+  quote,
+  row,
+  world,
+} from "./helpers/world.ts";
 
 async function screen(m: Markets, args: unknown) {
   const r = await screenAnswer(m, parseScreen(args));
@@ -235,6 +85,18 @@ describe("screen arguments", () => {
       "read only by relative_return",
     ],
     [{ symbols: ["A"], sort: "rsi14", limit: 5 }, "unknown argument limit"],
+    [
+      { symbols: ["A"], sort: "rsi14", fields: Array(9).fill("drawdown") },
+      "fields must be a list of at most 8",
+    ],
+    [
+      { symbols: ["A"], sort: "rsi14", fields: ["rsi"] },
+      "fields[0] must be one of",
+    ],
+    [
+      { symbols: ["A"], sort: "rsi14", fields: ["relative_return_1m"] },
+      "need a benchmark",
+    ],
     [{ symbols: ["A"], sort: "constructor" }, "sort must be one of"],
     [{ symbols: ["A"], sort: "__proto__" }, "sort must be one of"],
     [
@@ -301,6 +163,38 @@ describe("screen", () => {
     expect(item.fields).toEqual({
       rsi14: { value: 30, unit: "0 to 100", kind: "live", date: LIVE },
       drawdown: { value: -20, unit: "percent", kind: "live", date: LIVE },
+    });
+  });
+
+  test("fields are shown on every row beside the filter fields", async () => {
+    const w = three();
+    // C has a week of history: its 1-week return ends on its last close
+    bar(w.db, "XX:C", "1d", "2026-10-15", 80, true);
+    row(w.db, "XX:C", "1d", "2026-10-15", "final");
+    const a = await screen(w.m, {
+      symbols: all,
+      filters: [{ field: "rsi14", max: 45 }],
+      fields: ["drawdown", "return_1w", "rsi14"],
+    });
+    expect(ids(a.body)).toEqual(["XX:A", "XX:B"]);
+    expect(Object.keys(a.body.items[0].fields)).toEqual([
+      "rsi14",
+      "drawdown",
+      "return_1w",
+    ]);
+    expect(a.body.items[0].fields.drawdown).toMatchObject({ value: -20 });
+    // A's bars do not reach a week back
+    expect(a.body.items[0].fields.return_1w).toBeNull();
+    const c = await screen(w.m, {
+      symbols: all,
+      filters: [{ field: "return_1w", min: 0 }],
+    });
+    expect(ids(c.body)).toEqual(["XX:C"]);
+    expect(c.body.items[0].fields.return_1w).toEqual({
+      value: 25,
+      unit: "percent",
+      kind: "final",
+      date: FINAL,
     });
   });
 

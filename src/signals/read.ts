@@ -5,23 +5,28 @@
 // behind, and relative return, computed on read for the benchmark the
 // caller names rather than stored for every pair.
 
-import { type Interval, readBars } from "../bars.ts";
+import type { Interval } from "../bars.ts";
 import { weekOf } from "../calendars.ts";
 import type { Db } from "../db/index.ts";
 import { SOURCE as FRED } from "../fred/client.ts";
 import { seriesStale } from "../fred/jobs.ts";
-import { readInstrument } from "../instruments.ts";
+import { type Instrument, readInstrument } from "../instruments.ts";
 import { barsStale, quoteStale, STALE, type StaleReason } from "../stale.ts";
+import type { Close } from "./common.ts";
 import type { DailyRow } from "./daily.ts";
 import {
   type Listing,
+  monthsBack,
   type RelativeReturn,
+  type Returns,
   relativeReturn,
+  trailingReturns,
 } from "./relative.ts";
 import {
   finalPending,
   finalPrefix,
   type Kind,
+  type LiveTarget,
   liveTarget,
   selectList,
 } from "./store.ts";
@@ -133,7 +138,116 @@ export type RelativeRead = Omit<RelativeReturn, "note"> & {
   live: boolean;
 };
 
-// live prices end it only when both quote the same session date
+// Final daily closes up to to, from the last bar on or before from; the
+// whole series when no bar is that old. A bar not final ends them.
+function closesFrom(
+  db: Db,
+  id: string,
+  from: string,
+  to: string | null,
+): { rows: Close[]; first: string | null; whole: boolean } {
+  const bars = db
+    .query<
+      { date: string; close: number; final: number },
+      [string, string, string]
+    >(
+      `select date, close, final from bars
+       where instrument = ?1 and interval = '1d' and date <= ?3
+         and date >= coalesce((select max(date) from bars
+           where instrument = ?1 and interval = '1d' and date <= ?2), '')
+       order by date`,
+    )
+    .all(id, from, to ?? "9999-12-31");
+  const first = bars[0]?.date ?? null;
+  return {
+    rows: finalPrefix(bars.map((b) => ({ ...b, final: b.final === 1 }))).map(
+      ({ date, close }) => ({ date, close }),
+    ),
+    first,
+    whole: first === null || first > from,
+  };
+}
+
+// The closes that reach back to anchor(end) for every end they can
+// have, read from there instead of every stored bar: the end is never
+// before the last final close.
+export function readCloses(
+  db: Db,
+  id: string,
+  anchor: (end: string) => string,
+  to: string | null = null,
+): Close[] {
+  const top = db
+    .query<{ d: string | null }, [string, string]>(
+      `select max(date) as d from bars
+       where instrument = ? and interval = '1d' and date <= ?`,
+    )
+    .get(id, to ?? "9999-12-31")!.d;
+  if (top === null) return [];
+  let s = closesFrom(db, id, anchor(top), to);
+  for (;;) {
+    const end = s.rows.at(-1)?.date;
+    if (end === undefined || s.whole || s.first! <= anchor(end)) return s.rows;
+    s = closesFrom(db, id, anchor(end), to);
+  }
+}
+
+// What a relative return reads of one listing, kept to be read again.
+export type Side = {
+  instrument: Instrument;
+  closes: readonly Close[];
+  target: LiveTarget | null;
+};
+
+// A benchmark side reaches its own start months back.
+export function benchmarkSide(
+  db: Db,
+  b: Instrument,
+  months: 1 | 3,
+  to: string | null = null,
+): Side {
+  return {
+    instrument: b,
+    closes: readCloses(db, b.id, (end) => monthsBack(end, months), to),
+    target: liveTarget(db, b),
+  };
+}
+
+// An instrument side reaches its own anchor and, beside a benchmark,
+// the benchmark's first close, which no start of its is before.
+export function instrumentSide(
+  db: Db,
+  a: Instrument,
+  bench: Side | null,
+  anchor: ((end: string) => string) | null,
+  to: string | null = null,
+): Side {
+  const first = bench?.closes[0]?.date ?? null;
+  const reach = (end: string) => {
+    const own = anchor === null ? null : anchor(end);
+    if (own === null) return first ?? end;
+    return first === null || own < first ? own : first;
+  };
+  return {
+    instrument: a,
+    closes: readCloses(db, a.id, reach, to),
+    target: liveTarget(db, a),
+  };
+}
+
+// Ends on the live price only when its session date follows the last
+// final close, the rule relativeOf follows; a yield moves in points.
+export function returnsOf(side: Side): Returns | null {
+  const t = side.target;
+  const after = t !== null && t.date > (side.closes.at(-1)?.date ?? "");
+  return trailingReturns({
+    bars: side.closes,
+    currency: side.instrument.currency ?? "unknown",
+    ...(side.instrument.unit === "percent" ? { level: true as const } : {}),
+    ...(after ? { live: { date: t.date, price: t.quote.price } } : {}),
+  });
+}
+
 export function readRelativeReturn(
   db: Db,
   instrument: string,
@@ -144,14 +258,24 @@ export function readRelativeReturn(
   const a = readInstrument(db, instrument);
   const b = readInstrument(db, benchmark);
   if (a === null || b === null) return null;
-  const closes = (id: string) =>
-    finalPrefix(readBars(db, id, "1d"))
-      .filter((x) => to === null || x.date <= to)
-      .map((x) => ({ date: x.date, close: x.close }));
-  const ia = closes(a.id);
-  const ib = closes(b.id);
-  const ta = liveTarget(db, a);
-  const tb = liveTarget(db, b);
+  const bench = benchmarkSide(db, b, months, to);
+  const side = instrumentSide(db, a, bench, null, to);
+  return relativeOf(side, bench, months, to);
+}
+
+// live prices end it only when both quote the same session date
+export function relativeOf(
+  sa: Side,
+  sb: Side,
+  months: 1 | 3,
+  to: string | null = null,
+): RelativeRead | null {
+  const a = sa.instrument;
+  const b = sb.instrument;
+  const ia = sa.closes;
+  const ib = sb.closes;
+  const ta = sa.target;
+  const tb = sb.target;
   const after = (rows: readonly { date: string }[], date: string) =>
     (rows.at(-1)?.date ?? "") < date;
   const live =
