@@ -5,6 +5,28 @@ import { describe, expect, test } from "bun:test";
 import { iso } from "../src/market/format.ts";
 import { readInstrument, upsertInstrument } from "../src/market/instruments.ts";
 import { lastReadAt, markRead } from "../src/market/tracking.ts";
+import { fits, PAGE_BYTES } from "../src/operations/answer.ts";
+import { ArgError } from "../src/operations/args.ts";
+import {
+  eventsAnswer,
+  NO_EVENT_BYTES,
+  parseEvents,
+  UNAVAILABLE_BYTES,
+} from "../src/operations/events.ts";
+import { CALL_MS, markets } from "../src/operations/markets.ts";
+import {
+  HEADLINES,
+  HTTP_HISTORY,
+  MAX_RESEARCH_SYMBOLS,
+  parseResearch,
+  researchAnswer,
+  researchTargets,
+  WEEK_ITEMS,
+  WEEK_PUBLISHER,
+  WEEK_REASONING,
+  WEEK_TITLE,
+  WEEK_URL,
+} from "../src/operations/research.ts";
 import { DAY_MS, MINUTE_MS } from "../src/runtime/clock.ts";
 import { silent } from "../src/runtime/log.ts";
 import { finnhub } from "../src/sources/finnhub/client.ts";
@@ -37,28 +59,6 @@ import { yahoo } from "../src/sources/yahoo/client.ts";
 import { open } from "../src/storage/db/index.ts";
 import { endRun, startRun } from "../src/storage/runs.ts";
 import { writer } from "../src/storage/writer.ts";
-import { fits, PAGE_BYTES } from "../src/tools/answer.ts";
-import { ArgError } from "../src/tools/args.ts";
-import {
-  eventsAnswer,
-  NO_EVENT_BYTES,
-  parseEvents,
-  UNAVAILABLE_BYTES,
-} from "../src/tools/events.ts";
-import { CALL_MS, markets } from "../src/tools/markets.ts";
-import {
-  HEADLINES,
-  HTTP_HISTORY,
-  MAX_RESEARCH_SYMBOLS,
-  parseResearch,
-  researchAnswer,
-  researchTargets,
-  WEEK_ITEMS,
-  WEEK_PUBLISHER,
-  WEEK_REASONING,
-  WEEK_TITLE,
-  WEEK_URL,
-} from "../src/tools/research.ts";
 import { api } from "./helpers/api.ts";
 import { type TestApp, withApp } from "./helpers/app.ts";
 import { fakeClock } from "./helpers/clock.ts";

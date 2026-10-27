@@ -15,22 +15,22 @@ import {
   RESEARCH_SECTIONS as REFETCH_SECTIONS,
 } from "../admin/refetch.ts";
 import { UNITS } from "../market/instruments.ts";
-import { MAX_NOTE } from "../rules/format.ts";
-import { ALERT_PAGE_BYTES } from "../tools/alerts.ts";
-import { MAX_SYMBOL } from "../tools/args.ts";
-import { MAX_EVENT_SYMBOLS } from "../tools/events.ts";
-import { DEFAULT_MONTHS } from "../tools/history.ts";
-import { CALL_MS } from "../tools/markets.ts";
-import { AVERAGES } from "../tools/movers.ts";
-import { MAX_SYMBOLS } from "../tools/quote.ts";
+import { MAX_SYMBOL } from "../operations/args.ts";
+import { MAX_EVENT_SYMBOLS } from "../operations/events.ts";
+import { DEFAULT_MONTHS } from "../operations/history.ts";
+import { CALL_MS } from "../operations/markets.ts";
+import { AVERAGES } from "../operations/movers.ts";
+import { MAX_SYMBOLS } from "../operations/quote.ts";
 import {
   MAX_RESEARCH_SYMBOLS,
   RESEARCH_PARTS,
   SINCE_DAYS,
   WEEK_ITEMS,
-} from "../tools/research.ts";
-import { FIELD_NAMES, MAX_FIELDS, MAX_FILTERS } from "../tools/screen.ts";
-import { ERRORS } from "../tools/targets.ts";
+} from "../operations/research.ts";
+import { FIELD_NAMES, MAX_FIELDS, MAX_FILTERS } from "../operations/screen.ts";
+import { ERRORS } from "../operations/targets.ts";
+import { MAX_NOTE } from "../rules/format.ts";
+import { ALERT_PAGE_BYTES } from "./alerts.ts";
 import { DOC_FILES } from "./docs.ts";
 import { MAX_BODY_BYTES } from "./http.ts";
 

@@ -6,12 +6,12 @@
 // calls it without a server or a port.
 
 import type { SourceState } from "../../src/admin/http.ts";
+import { alertsHandler } from "../../src/api/alerts.ts";
 import { PREFIX } from "../../src/api/http.ts";
 import { routes } from "../../src/api/routes.ts";
+import type { Markets } from "../../src/operations/markets.ts";
 import { silent } from "../../src/runtime/log.ts";
 import { router } from "../../src/server/http.ts";
-import { alertsHandler } from "../../src/tools/alerts.ts";
-import type { Markets } from "../../src/tools/markets.ts";
 
 // made up: no real key is ever read by a test
 export const READ_KEY = "test-read-key-0123456789abcdef0123456789";

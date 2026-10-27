@@ -9,9 +9,9 @@ import {
   type McpHttpHandler,
   McpServer,
 } from "@modelcontextprotocol/server";
+import type { Markets } from "../operations/markets.ts";
 import { type Log, sdkErrorFields } from "../runtime/log.ts";
 import { registerTools } from "../tools/index.ts";
-import type { Markets } from "../tools/markets.ts";
 import { INSTRUCTIONS } from "./instructions.ts";
 
 export const SERVER_NAME = "1ctx-markets";

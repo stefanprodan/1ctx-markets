@@ -5,12 +5,12 @@
 // the same alerts must answer the same bytes.
 
 import { iso } from "../market/format.ts";
+import { alertItem } from "../operations/rules.ts";
 import type { Snapshot } from "../rules/evaluate.ts";
 import { lastAlertId, readAlertsAfter } from "../rules/store.ts";
 import type { Log } from "../runtime/log.ts";
 import { errorFields } from "../runtime/log.ts";
 import type { Db } from "../storage/db/index.ts";
-import { alertItem } from "./rules.ts";
 
 // strictly under: the whole body, in UTF-8 bytes
 export const ALERT_PAGE_BYTES = 16 * 1024;

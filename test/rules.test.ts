@@ -4,6 +4,7 @@
 import { describe, expect, test } from "bun:test";
 import { readInstrument } from "../src/market/instruments.ts";
 import { trackedIds } from "../src/market/tracking.ts";
+import { NO_EVENT_SOURCE } from "../src/operations/rules.ts";
 import { WAITING } from "../src/rules/evaluate.ts";
 import {
   FIELD_NAMES,
@@ -25,7 +26,6 @@ import { yahooJobs } from "../src/sources/yahoo/jobs.ts";
 import { catchUp, refetch } from "../src/sources/yahoo/sync.ts";
 import { endRun, failRun, startRun } from "../src/storage/runs.ts";
 import { tools } from "../src/tools/index.ts";
-import { NO_EVENT_SOURCE } from "../src/tools/rules.ts";
 import { drive, pacedOf } from "./helpers/drive.ts";
 import { EVERY_MS, type RulesTest, rulesTest } from "./helpers/rules.ts";
 import { clone, listed, type Recorded, recorded } from "./helpers/yahoo.ts";

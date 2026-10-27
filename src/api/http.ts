@@ -4,7 +4,7 @@
 // What every /api/v1 route shares: one error shape, statuses by the
 // tools' own codes, query arguments read strictly, and bounded bodies.
 
-import { ArgError, quoted } from "../tools/args.ts";
+import { ArgError, quoted } from "../operations/args.ts";
 
 export const PREFIX = "/api/v1";
 

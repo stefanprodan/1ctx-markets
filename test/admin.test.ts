@@ -16,6 +16,8 @@ import { INSTRUMENT_TABLES, MAX_SYMBOLS } from "../src/admin/http.ts";
 import { refetch } from "../src/admin/refetch.ts";
 import { readInstrument, upsertInstrument } from "../src/market/instruments.ts";
 import { lastReadAt } from "../src/market/tracking.ts";
+import { CALL_MS, markets } from "../src/operations/markets.ts";
+import { readTargets } from "../src/operations/targets.ts";
 import { DEFAULT_LISTEN, parseCli } from "../src/runtime/config.ts";
 import {
   ADMIN_FILE,
@@ -39,8 +41,6 @@ import {
 import { yahoo } from "../src/sources/yahoo/client.ts";
 import { type Db, open } from "../src/storage/db/index.ts";
 import { writer } from "../src/storage/writer.ts";
-import { CALL_MS, markets } from "../src/tools/markets.ts";
-import { readTargets } from "../src/tools/targets.ts";
 import { api } from "./helpers/api.ts";
 import { withApp } from "./helpers/app.ts";
 import { fakeClock } from "./helpers/clock.ts";

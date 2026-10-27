@@ -3,6 +3,9 @@
 
 import { describe, expect, test } from "bun:test";
 import { readInstrument, upsertInstrument } from "../src/market/instruments.ts";
+import { CALL_MS, markets } from "../src/operations/markets.ts";
+import { searchPage } from "../src/operations/search.ts";
+import { readTargets, type Target } from "../src/operations/targets.ts";
 import { MINUTE_MS } from "../src/runtime/clock.ts";
 import { silent } from "../src/runtime/log.ts";
 import { bvb } from "../src/sources/bvb/client.ts";
@@ -12,9 +15,6 @@ import type { Fetch } from "../src/sources/source.ts";
 import { yahoo } from "../src/sources/yahoo/client.ts";
 import { open } from "../src/storage/db/index.ts";
 import { writer } from "../src/storage/writer.ts";
-import { CALL_MS, markets } from "../src/tools/markets.ts";
-import { searchPage } from "../src/tools/search.ts";
-import { readTargets, type Target } from "../src/tools/targets.ts";
 import { bvbAnswer, bvbRecorded, made } from "./helpers/bvb.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { drive } from "./helpers/drive.ts";

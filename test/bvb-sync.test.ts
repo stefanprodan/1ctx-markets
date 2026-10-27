@@ -10,6 +10,8 @@ import { type Instrument, readInstrument } from "../src/market/instruments.ts";
 import { readQuote } from "../src/market/quotes.ts";
 import { JOBS, quoteStale, STALE } from "../src/market/stale.ts";
 import { markRead } from "../src/market/tracking.ts";
+import { historyAnswer, parseHistory } from "../src/operations/history.ts";
+import { markets } from "../src/operations/markets.ts";
 import type { RuleHooks } from "../src/rules/hooks.ts";
 import { MINUTE_MS } from "../src/runtime/clock.ts";
 import { keys, requireBearer } from "../src/runtime/keys.ts";
@@ -29,8 +31,6 @@ import { yahoo } from "../src/sources/yahoo/client.ts";
 import { open } from "../src/storage/db/index.ts";
 import { lastRun } from "../src/storage/runs.ts";
 import { writer } from "../src/storage/writer.ts";
-import { historyAnswer, parseHistory } from "../src/tools/history.ts";
-import { markets } from "../src/tools/markets.ts";
 import { api } from "./helpers/api.ts";
 import { SECRETS } from "./helpers/app.ts";
 import {

@@ -5,8 +5,10 @@
 // fake clock, a captured log and a fake fetch.
 
 import type { SourceState } from "./admin/http.ts";
+import { alertsHandler } from "./api/alerts.ts";
 import { routes } from "./api/routes.ts";
 import { TRACK_DAYS, trackedIds } from "./market/tracking.ts";
+import { type Markets, markets } from "./operations/markets.ts";
 import { ruleEngine } from "./rules/evaluate.ts";
 import { pruneAlerts } from "./rules/store.ts";
 import { type Clock, DAY_MS } from "./runtime/clock.ts";
@@ -36,8 +38,6 @@ import { type YahooJobs, yahooJobs } from "./sources/yahoo/jobs.ts";
 import type { Db } from "./storage/db/index.ts";
 import { failInterrupted, pruneRuns } from "./storage/runs.ts";
 import { type Writer, writer } from "./storage/writer.ts";
-import { alertsHandler } from "./tools/alerts.ts";
-import { type Markets, markets } from "./tools/markets.ts";
 
 // Yahoo calls in flight at once, jobs and tools together
 const YAHOO_CONCURRENCY = 2;

@@ -6,6 +6,7 @@
 // tools' answers through a change that should leave them as they are.
 
 import { PREFIX } from "../../src/api/http.ts";
+import { markets } from "../../src/operations/markets.ts";
 import { silent } from "../../src/runtime/log.ts";
 import { finnhub } from "../../src/sources/finnhub/client.ts";
 import { fred } from "../../src/sources/fred/client.ts";
@@ -13,7 +14,6 @@ import { yahoo } from "../../src/sources/yahoo/client.ts";
 import { open } from "../../src/storage/db/index.ts";
 import { writer } from "../../src/storage/writer.ts";
 import { call, tools } from "../../src/tools/index.ts";
-import { markets } from "../../src/tools/markets.ts";
 import { api, READ_KEY } from "./api.ts";
 import { fakeClock } from "./clock.ts";
 import { drive, pacedOf } from "./drive.ts";

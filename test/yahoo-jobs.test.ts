@@ -14,6 +14,8 @@ import {
   quoteStale,
 } from "../src/market/stale.ts";
 import { markRead } from "../src/market/tracking.ts";
+import { markets } from "../src/operations/markets.ts";
+import { moversAnswer, parseMovers } from "../src/operations/movers.ts";
 import { DAY_MS, MINUTE_MS } from "../src/runtime/clock.ts";
 import { silent } from "../src/runtime/log.ts";
 import { scheduler } from "../src/runtime/scheduler.ts";
@@ -28,8 +30,6 @@ import { catchUp } from "../src/sources/yahoo/sync.ts";
 import { open } from "../src/storage/db/index.ts";
 import { endRun, INTERRUPTED, lastRun, startRun } from "../src/storage/runs.ts";
 import { writer } from "../src/storage/writer.ts";
-import { markets } from "../src/tools/markets.ts";
-import { moversAnswer, parseMovers } from "../src/tools/movers.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { BVB, CRYPTO, type SimListing, sim, US, XETRA } from "./helpers/sim.ts";
 import {

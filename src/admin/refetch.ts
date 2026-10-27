@@ -9,6 +9,7 @@
 import type { Written } from "../market/bars.ts";
 import { checkSource, type Instrument, Moved } from "../market/instruments.ts";
 import { JOBS } from "../market/stale.ts";
+import type { Markets } from "../operations/markets.ts";
 import { errorFields } from "../runtime/log.ts";
 import type { Bvb } from "../sources/bvb/client.ts";
 import {
@@ -40,7 +41,6 @@ import {
 } from "../sources/yahoo/sync.ts";
 import { endRun, failRun, startRun } from "../storage/runs.ts";
 import { WriterClosed } from "../storage/writer.ts";
-import type { Markets } from "../tools/markets.ts";
 
 export const PARTS = [
   "bars",

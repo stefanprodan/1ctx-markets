@@ -16,6 +16,7 @@ import {
   Client,
   StreamableHTTPClientTransport,
 } from "@modelcontextprotocol/client";
+import { CALL_MS } from "../src/operations/markets.ts";
 import {
   BEARER_FILE,
   BEARER_PREFIX,
@@ -26,7 +27,6 @@ import {
 } from "../src/runtime/keys.ts";
 import { errorFields, format, logger, MASK } from "../src/runtime/log.ts";
 import { IDLE_TIMEOUT_S, router } from "../src/server/http.ts";
-import { CALL_MS } from "../src/tools/markets.ts";
 import { SECRETS, withApp } from "./helpers/app.ts";
 import { fakeClock } from "./helpers/clock.ts";
 
