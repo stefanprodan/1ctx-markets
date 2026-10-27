@@ -113,3 +113,25 @@ describe("imports", () => {
     expect(cycles(await graph(SRC))).toEqual([]);
   });
 });
+
+describe("layers", () => {
+  test("the REST API never imports the MCP tools", async () => {
+    const edges = await graph(SRC);
+    const crossing = [...edges]
+      .filter(([f]) => f.startsWith("api/"))
+      .flatMap(([f, to]) =>
+        to.filter((t) => t.startsWith("tools/")).map((t) => `${f} -> ${t}`),
+      );
+    expect(crossing).toEqual([]);
+  });
+
+  test("only the MCP endpoint imports the tool registry", async () => {
+    const edges = await graph(SRC);
+    const importers = [...edges]
+      .filter(
+        ([f, to]) => !f.startsWith("tools/") && to.includes("tools/index.ts"),
+      )
+      .map(([f]) => f);
+    expect(importers).toEqual(["server/mcp.ts"]);
+  });
+});
