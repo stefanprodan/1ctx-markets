@@ -7,6 +7,8 @@ import { join } from "node:path";
 
 const OUT = join(import.meta.dir, "..", "..", "test", "fixtures", "yahoo");
 const GAP_MS = 3000;
+// a dated recording keeps the baseline fixture: PROBE_SUFFIX=open-0800
+const SUFFIX = process.env.PROBE_SUFFIX ? `-${process.env.PROBE_SUFFIX}` : "";
 
 // a full Chrome UA draws 429s (chart-429-chrome-ua.json); the bare token passes
 const UA = "Mozilla/5.0";
@@ -184,6 +186,17 @@ const CASES: Case[] = [
   { name: "search-solana", url: search("Solana") },
   // A NYSE listing, for its exchange code.
   { name: "search-ko", url: search("KO") },
+  // how Yahoo names the Bucharest indices
+  { name: "search-bet", url: search("BET") },
+  // a live session's intraday bars, for the trailing row and the delay
+  {
+    name: "chart-tlv-ro-1d-5m",
+    url: chart(Q1, "TLV.RO", { range: "1d", interval: "5m" }),
+  },
+  {
+    name: "chart-vvsm-de-1d-5m",
+    url: chart(Q1, "VVSM.DE", { range: "1d", interval: "5m" }),
+  },
 
   {
     name: "quote-v7-batch",
@@ -234,7 +247,7 @@ async function record(c: Case) {
     body,
   };
   const out = JSON.stringify(fixture, null, 2) + "\n";
-  writeFileSync(join(OUT, `${c.name}.json`), out);
+  writeFileSync(join(OUT, `${c.name}${SUFFIX}.json`), out);
   const extra = Object.entries(headers)
     .filter(([k]) => !/^(content-type|cache-control|age)$/.test(k))
     .map(([k, v]) => `${k}=${v}`)

@@ -1,0 +1,13 @@
+{
+  "recordedAt": "2026-10-26T08:00:26.450Z",
+  "request": {
+    "method": "GET",
+    "url": "https://wapi.bvb.ro/api/time"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json; charset=utf-8"
+  },
+  "body": 1793001626,
+  "note": "Server time, Unix seconds UTC, as a bare number."
+}
