@@ -52,12 +52,16 @@ function renamed(fx: Recorded, symbol: string): Recorded {
   return out;
 }
 
-// the answer for a Finnhub URL, or undefined for another host
-export async function finnhubAnswer(url: URL): Promise<Recorded | undefined> {
+// the answer for a Finnhub URL, or undefined for another host; more
+// maps made-up symbols to recordings beside AS
+export async function finnhubAnswer(
+  url: URL,
+  more: Record<string, string> = {},
+): Promise<Recorded | undefined> {
   if (url.hostname !== "finnhub.io") return undefined;
   const kind = PATHS[url.pathname];
   const symbol = url.searchParams.get("symbol") ?? "";
-  const as = AS[symbol];
+  const as = more[symbol] ?? AS[symbol];
   if (kind === undefined || as === undefined) {
     return { recordedAt: "", status: 403, headers: {}, body: { error: "no" } };
   }

@@ -216,6 +216,17 @@ contract in `docs/tools.md`; rules that wait on events in
   tracking as the tool. It carries no news and fetches none. A page
   that cannot hold every summary is a 500 `internal` (`PageOverflow`),
   never a dropped summary.
+- **Each `GET /research` Finnhub section but `metric` adds `history`**:
+  its newest rows, the latest included, each as the section's page
+  shows it, so a script reads a trend without paging the tool. The
+  counts are fixed (`HTTP_HISTORY`), never arguments, to keep five
+  summaries in one page: `analysts` two months, the least that shows a
+  direction; `earnings` four quarters, one fiscal year of beats and
+  misses; `insider` the three newest months with a row (Finnhub has
+  none for a month without trades), a quarter of activity. Rows of
+  another listing follow the section's rules, so `earnings` and
+  `insider` hold none, and `listing` is on the section, not each row.
+  The `research` overview carries no history.
 
 ## Retention
 
