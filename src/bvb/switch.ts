@@ -9,14 +9,12 @@
 
 import { dailyRange } from "../bars.ts";
 import { weekOf } from "../calendars.ts";
-import type { Db } from "../db/index.ts";
 import {
   checkSource,
   type Instrument,
   readInstruments,
   upsertInstrument,
 } from "../instruments.ts";
-import { endRun, failRun, lastStarted, startRun } from "../runs.ts";
 import { MINUTE_MS } from "../runtime/clock.ts";
 import { exclusive } from "../runtime/lock.ts";
 import { errorFields, type Log } from "../runtime/log.ts";
@@ -25,6 +23,8 @@ import { phraseOf, Refused, SourceError } from "../source.ts";
 import { backfillStart, RETRY_MS } from "../sources/history.ts";
 import { YAHOO } from "../sources/ids.ts";
 import { SWITCH } from "../stale.ts";
+import type { Db } from "../storage/db/index.ts";
+import { endRun, failRun, lastStarted, startRun } from "../storage/runs.ts";
 import { keyOf as yahooKey } from "../yahoo/resolve.ts";
 import { dailyBars, storeSwitched, type YahooContext } from "../yahoo/sync.ts";
 import { startOfDate } from "../zone.ts";

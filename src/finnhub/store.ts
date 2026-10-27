@@ -3,16 +3,16 @@
 //
 // a run per section, scoped to the instrument, so one failure is stale alone
 
-import type { Db } from "../db/index.ts";
 import type { Instrument } from "../instruments.ts";
-import { lastStarted } from "../runs.ts";
 import type { Clock } from "../runtime/clock.ts";
 import { DAY_MS, MINUTE_MS } from "../runtime/clock.ts";
 import { exclusive } from "../runtime/lock.ts";
 import { monthsBack } from "../signals/relative.ts";
 import { DeadlinePassed, Paused, phraseOf, QueueClosed } from "../source.ts";
-import type { Writer } from "../writer.ts";
-import { WriterClosed } from "../writer.ts";
+import type { Db } from "../storage/db/index.ts";
+import { lastStarted } from "../storage/runs.ts";
+import type { Writer } from "../storage/writer.ts";
+import { WriterClosed } from "../storage/writer.ts";
 import { addDays, dateOfWall, localDate } from "../zone.ts";
 import {
   type Analysts,

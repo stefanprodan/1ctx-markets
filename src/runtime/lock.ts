@@ -5,7 +5,7 @@
 // across the call and its write, so an answer fetched before another
 // write never lands after it.
 
-import type { Db } from "../db/index.ts";
+import type { Db } from "../storage/db/index.ts";
 
 const held = new WeakMap<Db, Map<string, Promise<void>>>();
 

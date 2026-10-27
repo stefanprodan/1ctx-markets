@@ -10,8 +10,8 @@ import {
   weeksOf,
 } from "../src/bars.ts";
 import { session } from "../src/calendars.ts";
-import { open } from "../src/db/index.ts";
 import { upsertInstrument } from "../src/instruments.ts";
+import { open } from "../src/storage/db/index.ts";
 import { parseChart } from "../src/yahoo/client.ts";
 import { dailyBars } from "../src/yahoo/sync.ts";
 import { fakeClock } from "./helpers/clock.ts";

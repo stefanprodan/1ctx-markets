@@ -2,15 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
-import { open } from "../src/db/index.ts";
-import { isStale, lastRun, runJob } from "../src/runs.ts";
 import {
   FAILURE_BACKOFF_MS,
   queue,
   RATE_LIMIT_BACKOFF_MS,
   SourceError,
 } from "../src/source.ts";
-import { writer } from "../src/writer.ts";
+import { open } from "../src/storage/db/index.ts";
+import { isStale, lastRun, runJob } from "../src/storage/runs.ts";
+import { writer } from "../src/storage/writer.ts";
 import {
   parseChart,
   parseSpark,

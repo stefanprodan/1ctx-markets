@@ -5,7 +5,6 @@
 // instrument search beside Yahoo's, under the same rules: one exact
 // listing is it, several are candidates, never a guess.
 
-import type { Db } from "../db/index.ts";
 import {
   type Instrument,
   readBySourceSymbol,
@@ -13,6 +12,7 @@ import {
 } from "../instruments.ts";
 import type { Clock } from "../runtime/clock.ts";
 import { YAHOO } from "../sources/ids.ts";
+import type { Db } from "../storage/db/index.ts";
 import type { Yahoo } from "../yahoo/client.ts";
 import {
   type Candidate,

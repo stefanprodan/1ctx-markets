@@ -4,7 +4,6 @@
 // Rules run inside the write that moved their inputs, so the quote,
 // signals and rule are read in one transaction.
 
-import type { Db } from "../db/index.ts";
 import {
   type EventKey,
   type EventRow,
@@ -20,6 +19,7 @@ import {
   readSignals,
 } from "../signals/read.ts";
 import { barsStale, quoteStale, STALE } from "../stale.ts";
+import type { Db } from "../storage/db/index.ts";
 import {
   type Comparison,
   comparisons,

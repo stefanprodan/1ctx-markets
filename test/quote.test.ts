@@ -3,8 +3,8 @@
 
 import { describe, expect, test } from "bun:test";
 import { recordSession, session } from "../src/calendars.ts";
-import type { Db } from "../src/db/index.ts";
 import { round } from "../src/market/format.ts";
+import type { Db } from "../src/storage/db/index.ts";
 import { cursor, fits, PAGE_BYTES } from "../src/tools/answer.ts";
 import { historyAnswer, parseHistory } from "../src/tools/history.ts";
 import type { Markets } from "../src/tools/markets.ts";

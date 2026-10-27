@@ -21,7 +21,6 @@ import {
 import { refetchSeries } from "../fred/sync.ts";
 import { checkSource, type Instrument, Moved } from "../instruments.ts";
 import { eligible as massiveEligible, refreshNews } from "../massive/store.ts";
-import { endRun, failRun, startRun } from "../runs.ts";
 import { errorFields } from "../runtime/log.ts";
 import {
   DeadlinePassed,
@@ -32,8 +31,9 @@ import {
 } from "../source.ts";
 import { BVB, FRED, YAHOO } from "../sources/ids.ts";
 import { JOBS } from "../stale.ts";
+import { endRun, failRun, startRun } from "../storage/runs.ts";
+import { WriterClosed } from "../storage/writer.ts";
 import type { Markets } from "../tools/markets.ts";
-import { WriterClosed } from "../writer.ts";
 import { storeQuotes, backfill as yahooBackfill } from "../yahoo/sync.ts";
 
 export const PARTS = [

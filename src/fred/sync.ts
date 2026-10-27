@@ -15,7 +15,6 @@ import {
   type Written,
 } from "../bars.ts";
 import { type Session, weekOf } from "../calendars.ts";
-import type { Db } from "../db/index.ts";
 import {
   type Instrument,
   type InstrumentFields,
@@ -29,7 +28,8 @@ import { exclusive } from "../runtime/lock.ts";
 import { signalsAfterBars } from "../signals/store.ts";
 import { DeadlinePassed, Refused, SourceError } from "../source.ts";
 import { FRED_MARKET } from "../sources/ids.ts";
-import type { Writer } from "../writer.ts";
+import type { Db } from "../storage/db/index.ts";
+import type { Writer } from "../storage/writer.ts";
 import { dateOfWall, startOfDate } from "../zone.ts";
 import {
   type Fred,

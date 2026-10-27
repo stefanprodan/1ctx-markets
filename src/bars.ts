@@ -6,7 +6,7 @@
 // holds Monday to Saturday only.
 
 import { isWeekFinal, type Session, weekOf } from "./calendars.ts";
-import type { Db } from "./db/index.ts";
+import type { Db } from "./storage/db/index.ts";
 
 export type Interval = "1d" | "1wk";
 

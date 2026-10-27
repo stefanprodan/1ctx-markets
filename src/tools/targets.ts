@@ -15,14 +15,14 @@ import {
   fetchInstrument as bvbFetchInstrument,
   keyOf as bvbKey,
 } from "../bvb/sync.ts";
-import type { Db } from "../db/index.ts";
 import { addSeries, NO_DATA, refetchSeries, seriesId } from "../fred/sync.ts";
 import { type Instrument, readInstrument } from "../instruments.ts";
 import { errorFields } from "../runtime/log.ts";
 import { Paused, QueueClosed, Refused, SourceError } from "../source.ts";
 import { BVB, BVB_MARKET, FRED, FRED_MARKET, YAHOO } from "../sources/ids.ts";
+import type { Db } from "../storage/db/index.ts";
+import { WriterClosed } from "../storage/writer.ts";
 import { isTracked, markRead } from "../tracking.ts";
-import { WriterClosed } from "../writer.ts";
 import { type Candidate, ResolveError, resolve } from "../yahoo/resolve.ts";
 import { catchUp, fetchInstrument } from "../yahoo/sync.ts";
 import { type Markets, shared } from "./markets.ts";

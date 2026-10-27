@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
-import { open } from "../src/db/index.ts";
 import { finnhub } from "../src/finnhub/client.ts";
 import { finnhubJobs } from "../src/finnhub/jobs.ts";
 import {
@@ -31,9 +30,11 @@ import {
   STALE_NEWS,
   topNews,
 } from "../src/massive/store.ts";
-import { endRun, startRun } from "../src/runs.ts";
 import { DAY_MS, MINUTE_MS } from "../src/runtime/clock.ts";
 import { silent } from "../src/runtime/log.ts";
+import { open } from "../src/storage/db/index.ts";
+import { endRun, startRun } from "../src/storage/runs.ts";
+import { writer } from "../src/storage/writer.ts";
 import { fits, PAGE_BYTES } from "../src/tools/answer.ts";
 import { ArgError } from "../src/tools/args.ts";
 import {
@@ -57,7 +58,6 @@ import {
   WEEK_URL,
 } from "../src/tools/research.ts";
 import { lastReadAt, markRead } from "../src/tracking.ts";
-import { writer } from "../src/writer.ts";
 import { yahoo } from "../src/yahoo/client.ts";
 import { api } from "./helpers/api.ts";
 import { type TestApp, withApp } from "./helpers/app.ts";

@@ -7,7 +7,6 @@
 
 import { type Bar, type Interval, readBars } from "../bars.ts";
 import { weekOf } from "../calendars.ts";
-import type { Db } from "../db/index.ts";
 import { ATTRIBUTION } from "../fred/sync.ts";
 import type { Instrument } from "../instruments.ts";
 import { price, round } from "../market/format.ts";
@@ -16,6 +15,7 @@ import { monthsBack } from "../signals/relative.ts";
 import { type LiveTarget, liveTarget, selectList } from "../signals/store.ts";
 import { FRED } from "../sources/ids.ts";
 import type { StaleReason } from "../stale.ts";
+import type { Db } from "../storage/db/index.ts";
 import { dateOfWall } from "../zone.ts";
 import {
   cursor,

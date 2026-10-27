@@ -7,7 +7,6 @@
 // the same items, and movers and screen read the same rows.
 
 import { CRYPTO, isQuoted, readSession } from "../calendars.ts";
-import type { Db } from "../db/index.ts";
 import { ATTRIBUTION } from "../fred/sync.ts";
 import type { Instrument } from "../instruments.ts";
 import { iso, price, round } from "../market/format.ts";
@@ -27,6 +26,7 @@ import { DAILY_COLUMNS, WEEKLY_COLUMNS } from "../signals/store.ts";
 import type { WeeklyRow } from "../signals/weekly.ts";
 import { FRED } from "../sources/ids.ts";
 import type { StaleReason } from "../stale.ts";
+import type { Db } from "../storage/db/index.ts";
 import { cursor, fitPage, readCursor } from "./answer.ts";
 import { ArgError, fields, optionalText, symbols } from "./args.ts";
 import { readExtended } from "./extended.ts";

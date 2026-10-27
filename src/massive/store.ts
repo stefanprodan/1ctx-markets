@@ -3,9 +3,7 @@
 //
 // a run per walk, scoped to the instrument, so one failure is stale alone
 
-import type { Db } from "../db/index.ts";
 import type { Instrument } from "../instruments.ts";
-import { lastStarted } from "../runs.ts";
 import { type Clock, DAY_MS, MINUTE_MS } from "../runtime/clock.ts";
 import { exclusive } from "../runtime/lock.ts";
 import {
@@ -15,8 +13,10 @@ import {
   QueueClosed,
   SourceError,
 } from "../source.ts";
-import type { Writer } from "../writer.ts";
-import { WriterClosed } from "../writer.ts";
+import type { Db } from "../storage/db/index.ts";
+import { lastStarted } from "../storage/runs.ts";
+import type { Writer } from "../storage/writer.ts";
+import { WriterClosed } from "../storage/writer.ts";
 import {
   type Article,
   type Massive,

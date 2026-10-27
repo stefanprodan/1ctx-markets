@@ -5,9 +5,9 @@
 
 import type { Bar } from "../bars.ts";
 import { weekOf } from "../calendars.ts";
-import type { Db } from "../db/index.ts";
 import type { Instrument } from "../instruments.ts";
 import { DAY_MS, MINUTE_MS } from "../runtime/clock.ts";
+import type { Db } from "../storage/db/index.ts";
 import { dateOfWall } from "../zone.ts";
 
 export const BACKFILL_YEARS = 10;

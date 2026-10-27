@@ -16,11 +16,11 @@ import {
   UNKNOWN_UNIT,
 } from "../src/rules/format.ts";
 import { countRules, readRule } from "../src/rules/store.ts";
-import { endRun, failRun, startRun } from "../src/runs.ts";
 import { DAY_MS } from "../src/runtime/clock.ts";
 import { silent } from "../src/runtime/log.ts";
 import { refreshLive } from "../src/signals/store.ts";
 import { DeadlinePassed, SourceError } from "../src/source.ts";
+import { endRun, failRun, startRun } from "../src/storage/runs.ts";
 import { tools } from "../src/tools/index.ts";
 import { NO_EVENT_SOURCE } from "../src/tools/rules.ts";
 import { trackedIds } from "../src/tracking.ts";

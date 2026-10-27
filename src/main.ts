@@ -9,7 +9,6 @@ import { join } from "node:path";
 import pkg from "../package.json";
 import { AdminError, runAdmin } from "./admin/cli.ts";
 import { start } from "./app.ts";
-import { open } from "./db/index.ts";
 import { MINUTE_MS, wallClock } from "./runtime/clock.ts";
 import { dbPath, HELP, parseCli, secretsDir } from "./runtime/config.ts";
 import {
@@ -24,6 +23,7 @@ import {
 } from "./runtime/keys.ts";
 import { errorFields, logger } from "./runtime/log.ts";
 import { runService, ServiceError } from "./service/index.ts";
+import { open } from "./storage/db/index.ts";
 
 const buildVersion = process.env.MARKETS_BUILD_VERSION;
 export const VERSION = buildVersion || `v${pkg.version}`;

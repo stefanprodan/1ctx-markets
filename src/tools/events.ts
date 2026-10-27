@@ -15,8 +15,8 @@ import {
   readEvents,
 } from "../finnhub/store.ts";
 import { type Instrument, readInstrument } from "../instruments.ts";
-import { lastStarted } from "../runs.ts";
 import { FINNHUB as SOURCE } from "../sources/ids.ts";
+import { lastStarted } from "../storage/runs.ts";
 import { trackedInstruments } from "../tracking.ts";
 import { localDate } from "../zone.ts";
 import {
