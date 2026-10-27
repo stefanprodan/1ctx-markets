@@ -374,6 +374,23 @@ describe("the latest extended bar", () => {
     });
   });
 
+  test("is the day before's last post bar before today's pre window", async () => {
+    const fx = clone(await recorded(`chart-hood-2d-1m-prepost-${POST}`));
+    const result = fx.body.chart.result[0];
+    const now = Date.parse("2026-10-27T07:30:00Z");
+    const n = result.timestamp.filter((s: number) => s * 1000 <= now).length;
+    result.timestamp = result.timestamp.slice(0, n);
+    const quote = result.indicators.quote[0];
+    for (const k of Object.keys(quote)) quote[k] = quote[k].slice(0, n);
+    const answer = {
+      ...parseIntraday(fx.body, now),
+      time: Date.parse("2026-10-26T20:00:00Z"),
+    };
+    const read = latestExtended(answer, now);
+    expect(read.extended?.session).toBe("post");
+    expect(read.extended?.time).toBe("2026-10-26T23:59:00Z");
+  });
+
   test("never reaches back to the previous day's post bars", async () => {
     const fx = await recorded(`chart-hood-2d-1m-prepost-${POST}`);
     expect(latestOf(unpricedSinceClose(fx))).toEqual({

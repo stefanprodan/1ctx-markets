@@ -226,11 +226,11 @@ inside a call in `docs/tools.md`; rule pauses in `docs/rules.md`.
 - **`intraday()` reads two days of minutes** (`INTRADAY_RANGE`), about
   1,300 bars for a US share: before the pre window a one-day answer can
   hold no bar inside its windows, while two keep the last post bars
-  until the next open. It carries the pre, regular and post windows of `currentTradingPeriod` and of
-  each day in `tradingPeriods`; a market without a window answers it
-  empty. Extended bars' `volume` reads 0. Only quote's `extended`
-  reads it, inside the call (`docs/tools.md`); no job polls the
-  extended windows.
+  until the next open. It carries the pre, regular and post windows
+  of `currentTradingPeriod` and of each day in `tradingPeriods`; a
+  market without a window answers it empty. Extended bars' `volume`
+  reads 0. Only quote's `extended` reads it, inside the call
+  (`docs/tools.md`); no job polls the extended windows.
 
 ## The per-instrument lock
 
