@@ -103,7 +103,7 @@ function str(v: unknown, what: string): string {
 const optionalStr = (v: unknown): string | null =>
   typeof v === "string" && v.trim() !== "" ? v.trim() : null;
 
-const cut = (v: string, max: number): string =>
+export const cut = (v: string, max: number): string =>
   v.length > max ? `${v.slice(0, max - 1)}…` : v;
 
 // RFC 3339 to the second, as Massive's published_utc filters take it

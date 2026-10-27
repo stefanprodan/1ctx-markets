@@ -17,9 +17,23 @@ import {
 } from "../src/finnhub/store.ts";
 import { readInstrument, upsertInstrument } from "../src/instruments.ts";
 import { silent } from "../src/log.ts";
-import { MAX_TITLE, massive, PAGE_LIMIT } from "../src/massive/client.ts";
-import { NEWS_NOT_COVERED, NO_NEWS, STALE_NEWS } from "../src/massive/store.ts";
+import {
+  MAX_PUBLISHER,
+  MAX_REASONING,
+  MAX_TITLE,
+  massive,
+  PAGE_LIMIT,
+} from "../src/massive/client.ts";
+import {
+  NEWS_NOT_COVERED,
+  NO_NEWS,
+  readNews,
+  refreshNews,
+  STALE_NEWS,
+  topNews,
+} from "../src/massive/store.ts";
 import { fits, iso, PAGE_BYTES } from "../src/tools/answer.ts";
+import { ArgError } from "../src/tools/args.ts";
 import {
   eventsAnswer,
   parseEvents,
@@ -28,10 +42,16 @@ import {
 import {
   HEADLINES,
   HTTP_HISTORY,
+  MAX_RESEARCH_SYMBOLS,
   parseResearch,
   researchAnswer,
   researchHandler,
   researchTargets,
+  WEEK_ITEMS,
+  WEEK_PUBLISHER,
+  WEEK_REASONING,
+  WEEK_TITLE,
+  WEEK_URL,
 } from "../src/tools/research.ts";
 import { CALL_MS, markets } from "../src/tools/targets.ts";
 import { lastReadAt, markRead } from "../src/tracking.ts";
@@ -44,7 +64,9 @@ import { FINNHUB_KEY, finnhubAnswer } from "./helpers/finnhub.ts";
 import {
   type FakeMassive,
   MASSIVE_KEY,
+  made,
   massiveAnswer,
+  massiveFixture,
   series,
 } from "./helpers/massive.ts";
 import { gate, NOW, sources } from "./helpers/sources.ts";
@@ -322,6 +344,21 @@ describe("the research and events tools", () => {
           { symbol: "NVDA", section: "earnings", next: "x~0000000000" },
           "next does not continue",
         ],
+        [
+          "research",
+          { symbol: "NVDA", section: "news", since: "2026-09-24" },
+          "since must be at most 30 days back, 2026-09-25 or later",
+        ],
+        [
+          "research",
+          { symbol: "NVDA", section: "news", since: "2026-9-30" },
+          "since must be a date",
+        ],
+        [
+          "research",
+          { symbol: "NVDA", since: "2026-10-22" },
+          "since is for the news section only",
+        ],
         ["events", { from: "2026-10-01" }, "to must be a date"],
         ["events", { to: "2026-10-01" }, "from must be a date"],
         [
@@ -516,6 +553,7 @@ describe("GET /research", () => {
         source: "finnhub",
         message: NOT_COVERED,
       });
+      expect(items[0].news).toEqual({ source: "massive", message: NO_NEWS });
       expect(lastReadAt(t.db, "SNP:^GSPC")).not.toBeNull();
 
       for (const query of [
@@ -1330,3 +1368,311 @@ describe("GET /research history", () => {
     }
   });
 });
+
+// Ten days of one ticker's news, one article every 12 hours from an hour
+// before NOW, newest first; null is no sentiment for the ticker.
+const TEN_DAYS = [
+  "neutral",
+  null,
+  "neutral",
+  "positive",
+  ...Array<string>(9).fill("neutral"),
+  "negative",
+  // older than a week
+  "positive",
+  "negative",
+  "positive",
+  "negative",
+  "positive",
+  "negative",
+];
+
+async function tenDays(ticker: string): Promise<any[]> {
+  const [base] = (await massiveFixture("news-nvda-older")).body.results;
+  const own = base.insights.find((i: any) => i.ticker === "NVDA");
+  return TEN_DAYS.map((sentiment, k) =>
+    made(base, k, NOW - HOUR_MS - k * 12 * HOUR_MS, {
+      tickers: [ticker],
+      insights: sentiment === null ? [] : [{ ...own, ticker, sentiment }],
+    }),
+  );
+}
+
+type Setup = Awaited<ReturnType<typeof setup>>;
+
+// every article of the shares walked, as the job would
+async function walked(t: Setup, ids: readonly string[]) {
+  for (const id of ids) {
+    await drive(
+      t.clock,
+      t.ms!,
+      refreshNews(
+        { db: t.db, clock: t.clock, writer: t.write, massive: t.ms },
+        readInstrument(t.db, id)!,
+      ),
+    );
+  }
+}
+
+async function getResearch(t: Setup, symbols: string) {
+  const res = await drive(
+    t.clock,
+    pacedOf(t.m),
+    researchHandler(t.m)(
+      new Request(`http://localhost/research?symbols=${symbols}`),
+    ),
+  );
+  expect(res.status).toBe(200);
+  return res.text();
+}
+
+// when the k-th article of tenDays() was published
+const tenth = (k: number) =>
+  new Date(NOW - HOUR_MS - k * 12 * HOUR_MS)
+    .toISOString()
+    .replace(/\.\d{3}Z$/, "Z");
+
+describe("the news summary in GET /research", () => {
+  test("counts the last week and lists the items that take a side first", async () => {
+    const t = await setup({ massive: { articles: await tenDays("NVDA") } });
+    await drive(t.clock, pacedOf(t.m), researchTargets(t.m, ["NVDA"]));
+    await walked(t, ["US:NVDA"]);
+    const calls = t.massiveCalls().length;
+    const { items } = JSON.parse(await getResearch(t, "NVDA"));
+    expect(t.massiveCalls()).toHaveLength(calls);
+    const news = items[0].news;
+    expect(news).toMatchObject({
+      source: "massive",
+      since: new Date(t.clock.now() - 7 * DAY_MS)
+        .toISOString()
+        .replace(/\.\d{3}Z$/, "Z"),
+      stale: [],
+      counts: { positive: 1, neutral: 11, negative: 1, unknown: 1 },
+    });
+    expect(news.items).toHaveLength(WEEK_ITEMS);
+    expect(news.items.map((i: any) => i.sentiment)).toEqual([
+      "positive",
+      "negative",
+      "neutral",
+    ]);
+    expect(news.items.map((i: any) => i.published_at)).toEqual([
+      tenth(3),
+      tenth(13),
+      tenth(0),
+    ]);
+    expect(Object.keys(news.items[0])).toEqual([
+      "published_at",
+      "publisher",
+      "sentiment",
+      "title",
+      "reasoning",
+      "url",
+      "truncated",
+    ]);
+    expect(news.items[0].reasoning).toBeString();
+  });
+
+  test("an article with no sentiment comes after every neutral one", async () => {
+    const t = await setup({ massive: { articles: await tenDays("NVDA") } });
+    await drive(t.clock, pacedOf(t.m), researchTargets(t.m, ["NVDA"]));
+    await walked(t, ["US:NVDA"]);
+    const now = t.clock.now();
+    const rows = topNews(t.db, "US:NVDA", now, now - 7 * DAY_MS, 20);
+    expect(rows).toHaveLength(14);
+    expect(rows.map((r) => r.sentiment)).toEqual([
+      "positive",
+      "negative",
+      ...Array(11).fill("neutral"),
+      null,
+    ]);
+  });
+
+  test("a share never walked counts nothing and says why, fetching none", async () => {
+    const t = await setup({ massive: { articles: await tenDays("NVDA") } });
+    const { items } = JSON.parse(await getResearch(t, "NVDA,^GSPC"));
+    expect(t.massiveCalls()).toHaveLength(0);
+    expect(items[0].news).toMatchObject({
+      source: "massive",
+      fetched_at: null,
+      stale: [STALE_NEWS.none],
+      counts: { positive: 0, neutral: 0, negative: 0, unknown: 0 },
+      items: [],
+    });
+    expect(items[1].news).toEqual({
+      source: "massive",
+      message: NEWS_NOT_COVERED,
+    });
+  });
+
+  test("five shares with full history and news at their caps fit one page", async () => {
+    const { raw, items } = await fullFive("x", false);
+    expect(fits(raw)).toBe(true);
+    for (const item of items) {
+      expect(item.research.earnings.history).toHaveLength(
+        HTTP_HISTORY.earnings,
+      );
+      expect(item.news.items).toHaveLength(WEEK_ITEMS);
+      expect(item.news).not.toContainKey("items_cut");
+      for (const i of item.news.items) {
+        expect(i.title).toHaveLength(WEEK_TITLE);
+        expect(i.publisher).toHaveLength(WEEK_PUBLISHER);
+        expect(i.reasoning).toHaveLength(WEEK_REASONING);
+        expect(i.url).toHaveLength(WEEK_URL);
+        expect(i.truncated).toBe(true);
+      }
+    }
+  });
+
+  test("text that escapes gives up news items, never a summary", async () => {
+    const { raw, items } = await fullFive('"\\', true);
+    expect(fits(raw)).toBe(true);
+    expect(items).toHaveLength(MAX_RESEARCH_SYMBOLS);
+    for (const item of items) {
+      expect(item.news.items.length).toBeLessThan(WEEK_ITEMS);
+      expect(item.news.items_cut).toBe(true);
+      expect(item.news.counts).toEqual({
+        positive: 1,
+        neutral: 11,
+        negative: 1,
+        unknown: 1,
+      });
+      expect(item.research.insider.history).toHaveLength(HTTP_HISTORY.insider);
+    }
+  });
+
+  test("a URL over the summary's cap answers null and marks the item cut", async () => {
+    const articles = await tenDays("NVDA");
+    for (const a of articles) {
+      a.article_url = `https://example.com/${"u".repeat(WEEK_URL)}`;
+    }
+    const t = await setup({ massive: { articles } });
+    await drive(t.clock, pacedOf(t.m), researchTargets(t.m, ["NVDA"]));
+    await walked(t, ["US:NVDA"]);
+    const { items } = JSON.parse(await getResearch(t, "NVDA"));
+    expect(items[0].news.items[0]).toMatchObject({
+      url: null,
+      truncated: true,
+    });
+    const page = body(
+      await researchAnswer(
+        t.m,
+        parseResearch({ symbol: "US:NVDA", section: "news" }),
+      ),
+    );
+    // the news section keeps the stored caps
+    expect(page.articles[0].url).toHaveLength(WEEK_URL + 20);
+  });
+});
+
+describe("the research news section since a date", () => {
+  test("answers and counts the articles published from it", async () => {
+    const t = await setup({ massive: { articles: await tenDays("NVDA") } });
+    await drive(t.clock, pacedOf(t.m), researchTargets(t.m, ["NVDA"]));
+    await walked(t, ["US:NVDA"]);
+    const page = (args: Record<string, unknown>) =>
+      researchAnswer(
+        t.m,
+        parseResearch({ symbol: "US:NVDA", section: "news", ...args }),
+      );
+    const week = body(await page({ since: "2026-10-22" }));
+    expect(week.counts).toEqual({
+      positive: 1,
+      neutral: 6,
+      negative: 0,
+      unknown: 1,
+    });
+    expect(week.articles).toHaveLength(8);
+    for (const a of week.articles) {
+      expect(a.published_at >= "2026-10-22T00:00:00Z").toBe(true);
+    }
+    const keys = Object.keys(week);
+    expect(keys.indexOf("counts")).toBeLessThan(keys.indexOf("articles"));
+    const all = body(await page({}));
+    expect(all.articles).toHaveLength(TEN_DAYS.length);
+    expect(all.counts).toEqual({
+      positive: 4,
+      neutral: 11,
+      negative: 4,
+      unknown: 1,
+    });
+    // thirty days back is the oldest kept
+    expect(body(await page({ since: "2026-09-25" })).articles).toHaveLength(
+      TEN_DAYS.length,
+    );
+    // older is a bad_arguments refusal (the tools' argument test)
+    await expect(page({ since: "2026-09-24" })).rejects.toThrow(ArgError);
+  });
+
+  test("a later page carries no counts", async () => {
+    const t = await setup({
+      massive: { articles: await series("NVDA", 150, NOW, HOUR_MS) },
+    });
+    await drive(t.clock, pacedOf(t.m), researchTargets(t.m, ["NVDA"]));
+    await walked(t, ["US:NVDA"]);
+    const args = { symbol: "US:NVDA", section: "news", since: "2026-10-20" };
+    const first = body(await researchAnswer(t.m, parseResearch(args)));
+    expect(first.counts.positive).toBeGreaterThan(first.articles.length);
+    expect(first.next).toBeString();
+    const second = body(
+      await researchAnswer(t.m, parseResearch({ ...args, next: first.next })),
+    );
+    expect(second.counts).toBeUndefined();
+    expect(second.articles.length).toBeGreaterThan(0);
+  });
+});
+
+// Five made-up shares with a fourth quarter of earnings, widest the
+// widest numbers research rounds to, and a week of news stored at the
+// source's caps, its text made of fill, then GET /research for all five.
+async function fullFive(fill: string, widest: boolean) {
+  const symbols = Array.from(
+    { length: MAX_RESEARCH_SYMBOLS },
+    (_, k) => `ZN${k}`,
+  );
+  const text = (n: number) => fill.repeat(n).slice(0, n);
+  const url = `https://example.com/${"u".repeat(WEEK_URL - 20)}`;
+  const articles = (await Promise.all(symbols.map((s) => tenDays(s))))
+    .flat()
+    .map((a, k) => {
+      a.id = `${String(k).padStart(8, "0")}${"1".repeat(56)}`;
+      a.title = text(MAX_TITLE + 1);
+      a.publisher = { ...a.publisher, name: text(MAX_PUBLISHER + 1) };
+      a.article_url = url;
+      for (const i of a.insights)
+        i.sentiment_reasoning = text(MAX_REASONING + 1);
+      return a;
+    });
+  const t = await setup({
+    massive: { articles },
+    charts: await shares(symbols),
+    hold: (u) =>
+      finnhubAnswer(u, Object.fromEntries(symbols.map((s) => [s, "nvda"]))),
+  });
+  for (const s of symbols) usShare(t.db, s);
+  // one share a call: five shares' research is more than one deadline
+  for (const s of symbols) {
+    await drive(t.clock, pacedOf(t.m), researchTargets(t.m, [s]));
+  }
+  const quarter = t.db.query(
+    `insert or replace into research (instrument, kind, period,
+       eps_estimate, eps_actual, surprise, surprise_percent, fetched_at)
+     values (?, 'earnings', '2025-12-31', 1, 1.02, 0.02, 2, ?)`,
+  );
+  for (const s of symbols) quarter.run(`US:${s}`, NOW);
+  for (const kind of ["metric", "analysts", "earnings", "insider"] as const) {
+    if (!widest) break;
+    const value = kind === "analysts" ? 123456789 : -1.23457e-15;
+    const set = kindColumns(kind).map((c) => `${c} = ${value}`);
+    t.db
+      .query(`update research set ${set.join(", ")} where kind = ?`)
+      .run(kind);
+  }
+  await walked(
+    t,
+    symbols.map((s) => `US:${s}`),
+  );
+  const stored = readNews(t.db, "US:ZN0", t.clock.now(), 1)[0]!;
+  expect(stored.reasoning).toHaveLength(MAX_REASONING);
+  const raw = await getResearch(t, symbols.join(","));
+  return { raw, items: JSON.parse(raw).items as any[] };
+}

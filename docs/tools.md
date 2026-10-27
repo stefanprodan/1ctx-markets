@@ -223,12 +223,12 @@ bearer and flags in `docs/config.md`.
   marketing, no repetition of the schema's types.
 - **Stay under 1,024 characters**: 1ctx cuts a description there,
   and `test/tools-mcp.test.ts` asserts it. screen (1,020), rules
-  (1,019) and research (1,003) are near the limit; shorten wording
+  (1,019) and research (1,019) are near the limit; shorten wording
   before adding a field, and keep every screen field name in it, which
   the same test checks.
 - **A limit in a description is the constant's value.** quote
   interpolates `MAX_SYMBOLS` and `callMs`, screen `MAX_FILTERS`, events
-  `MAX_EVENT_SYMBOLS`, rules `MAX_COMPARISONS`, `MAX_DEPTH` and
-  `MAX_INSTRUMENTS`, movers and screen `MAX_SYMBOLS`, history
-  `DEFAULT_MONTHS`. An argument's limit is interpolated, never written as
+  `MAX_EVENT_SYMBOLS`, research `SINCE_DAYS`, rules `MAX_COMPARISONS`,
+  `MAX_DEPTH` and `MAX_INSTRUMENTS`, movers and screen `MAX_SYMBOLS`,
+  history `DEFAULT_MONTHS`. An argument's limit is interpolated, never written as
   text.
