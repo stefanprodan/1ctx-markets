@@ -215,6 +215,28 @@ const CASES: Case[] = [
     name: "spark-v7-batch",
     url: `${Q1}/v7/finance/spark?symbols=NVDA,VVSM.DE,SOL-USD,TLV.RO,EURUSD%3DX&range=1d&interval=5m`,
   },
+  // Extended hours: 1-minute bars with pre and post trading, recorded
+  // dated (PROBE_SUFFIX) in the post window, overnight and pre-market.
+  ...["HOOD", "VWCE.DE", "BTC-USD", "TLV.RO"].map((symbol) => ({
+    name: `chart-${symbol.toLowerCase().replace(".", "-")}-1d-1m-prepost`,
+    url: chart(Q1, symbol, {
+      range: "1d",
+      interval: "1m",
+      includePrePost: true,
+    }),
+  })),
+  {
+    name: "chart-hood-2d-1m-prepost",
+    url: chart(Q1, "HOOD", {
+      range: "2d",
+      interval: "1m",
+      includePrePost: true,
+    }),
+  },
+  {
+    name: "spark-v7-extended",
+    url: `${Q1}/v7/finance/spark?symbols=HOOD,VWCE.DE,BTC-USD,TLV.RO&range=1d&interval=5m`,
+  },
   // Yahoo caps a spark call at 20 symbols; 21 is a 400.
   {
     name: "spark-v7-21-symbols",

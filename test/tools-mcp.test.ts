@@ -119,6 +119,11 @@ describe("arguments", () => {
         ["quote", { symbols: ["NVDA"], limit: 3 }, "unknown argument limit"],
         [
           "quote",
+          { symbols: ["NVDA"], extended: "yes" },
+          "extended must be true or false",
+        ],
+        [
+          "quote",
           { symbols: ["NVDA"], next: "5~0000000000" },
           "next does not continue",
         ],

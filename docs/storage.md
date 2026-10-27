@@ -159,6 +159,12 @@ in `docs/config.md`.
 | `previous day not final` | `readSignals` | a live row stepped over a stored bar not final yet |
 | `source switch pending` | `quoteStale`, `barsStale` | the market's latest source switch run is running or failed (`SWITCH`) |
 | `source off` | `quoteStale`, `barsStale` | a feed instrument whose source the last landed switch turned off (the `sources` table lacks it), so its prices are its last |
+| `extended: no pre- or post-market trading` | `readExtended` | quote's `extended` asked: the source's flag says the listing has none, or it is crypto |
+| `extended: not reported by its source` | `readExtended` | quote's `extended` asked of a listing not priced by Yahoo (another price source, a FRED series) |
+| `extended: no price since the regular close` | `readExtended` | no pre or post bar has a price since the last regular close |
+| `extended: regular session open` | `readExtended` | the stored session or the chart's regular window holds now |
+| `extended: not fetched in time` | `readExtended` | the chart missed the call's deadline |
+| `extended: fetch failed` | `readExtended` | the chart call failed |
 
 - **`quote overdue` follows when a quote was last due**
   (`lastQuoteDue`): now while the market trades (always for crypto),
