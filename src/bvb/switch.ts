@@ -22,16 +22,11 @@ import { errorFields, type Log } from "../log.ts";
 import { endRun, failRun, lastStarted, startRun } from "../runs.ts";
 import type { Scheduler } from "../scheduler.ts";
 import { phraseOf, Refused, SourceError } from "../source.ts";
+import { backfillStart, RETRY_MS } from "../sources/history.ts";
 import { YAHOO } from "../sources/ids.ts";
 import { SWITCH } from "../stale.ts";
 import { keyOf as yahooKey } from "../yahoo/resolve.ts";
-import {
-  backfillStart,
-  dailyBars,
-  RETRY_MS,
-  storeSwitched,
-  type YahooContext,
-} from "../yahoo/sync.ts";
+import { dailyBars, storeSwitched, type YahooContext } from "../yahoo/sync.ts";
 import { startOfDate } from "../zone.ts";
 import { MARKET, SOURCE } from "./client.ts";
 import {

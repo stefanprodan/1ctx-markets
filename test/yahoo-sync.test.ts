@@ -8,6 +8,7 @@ import { DAY_MS } from "../src/clock.ts";
 import { type Db, open } from "../src/db/index.ts";
 import { readInstrument, upsertInstrument } from "../src/instruments.ts";
 import { readQuote } from "../src/quotes.ts";
+import { backfillStart, RETRY_MS } from "../src/sources/history.ts";
 import { writer } from "../src/writer.ts";
 import {
   type ChartAnswer,
@@ -19,9 +20,7 @@ import { marketOf, symbolOf } from "../src/yahoo/resolve.ts";
 import {
   addInstrument,
   backfill,
-  backfillStart,
   dailyBars,
-  RETRY_MS,
   refetch,
   storeQuotes,
   unitOf,

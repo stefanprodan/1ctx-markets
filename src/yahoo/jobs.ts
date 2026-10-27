@@ -14,16 +14,11 @@ import type { QuoteRow } from "../quotes.ts";
 import { endRun, failRun, lastStarted, runJob, startRun } from "../runs.ts";
 import type { Scheduler } from "../scheduler.ts";
 import { type Phrase, phraseOf, SourceError } from "../source.ts";
+import { RETRY_MS } from "../sources/history.ts";
 import { barsDue, JOBS, owedDue } from "../stale.ts";
 import { TRACK_MS, trackedIds, trackedInstruments } from "../tracking.ts";
 import { SOURCE, type SparkAnswer } from "./client.ts";
-import {
-  backfill,
-  RETRY_MS,
-  refetch,
-  storeQuotes,
-  type YahooContext,
-} from "./sync.ts";
+import { backfill, refetch, storeQuotes, type YahooContext } from "./sync.ts";
 
 export const TICK_MS = MINUTE_MS;
 export { RETRY_MS };

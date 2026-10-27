@@ -21,10 +21,10 @@ import type { QuoteRow } from "../quotes.ts";
 import { endRun, failRun, lastStarted, startRun } from "../runs.ts";
 import type { Scheduler } from "../scheduler.ts";
 import { phraseOf, QueueClosed, SourceError } from "../source.ts";
+import { RETRY_MS } from "../sources/history.ts";
 import { barsDue, JOBS } from "../stale.ts";
 import { TRACK_MS, trackedInstruments } from "../tracking.ts";
 import { WriterClosed } from "../writer.ts";
-import { RETRY_MS } from "../yahoo/sync.ts";
 import { localDate } from "../zone.ts";
 import {
   type ListKind,

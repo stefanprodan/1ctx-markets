@@ -37,14 +37,14 @@ import { NO_RULES, type RuleHooks } from "../rules/hooks.ts";
 import { endRun, startRun } from "../runs.ts";
 import { pruneLive, refreshLive, signalsAfterBars } from "../signals/store.ts";
 import { expired, Refused, SourceError } from "../source.ts";
-import { JOBS } from "../stale.ts";
-import type { Writer } from "../writer.ts";
 import {
   backfillStart,
   REFETCH_DAYS,
   rescaleOf,
   sameRatio,
-} from "../yahoo/sync.ts";
+} from "../sources/history.ts";
+import { JOBS } from "../stale.ts";
+import type { Writer } from "../writer.ts";
 import {
   addDays,
   fromWallTime,
