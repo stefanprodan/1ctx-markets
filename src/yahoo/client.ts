@@ -81,8 +81,9 @@ export type IntradayAnswer = ChartAnswer & {
   windows: { pre: Window[]; regular: Window[]; post: Window[] };
 };
 
-// the day the server is in, holding the post bars until the next open
-export const INTRADAY_RANGE = "1d";
+// two days: before the pre window a one-day answer can hold no bar in
+// its windows, while two keep the last post bars until the next open
+export const INTRADAY_RANGE = "2d";
 
 export type SparkAnswer = {
   quotes: ChartMeta[];

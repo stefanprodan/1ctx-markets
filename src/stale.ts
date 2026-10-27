@@ -50,6 +50,7 @@ export const STALE = {
   sourceOff: "source off",
   // why quote's extended is null when asked; none says the price held
   extendedNone: "extended: no pre- or post-market trading",
+  extendedUnreported: "extended: not reported by its source",
   extendedNoPrice: "extended: no price since the regular close",
   extendedOpen: "extended: regular session open",
   extendedTimeout: "extended: not fetched in time",

@@ -84,9 +84,8 @@ async function readOne(
   instrument: Instrument,
   deadline: number,
 ): Promise<ExtendedRead> {
-  if (instrument.source !== YAHOO || instrument.market === CRYPTO) {
-    return none(STALE.extendedNone);
-  }
+  if (instrument.source !== YAHOO) return none(STALE.extendedUnreported);
+  if (instrument.market === CRYPTO) return none(STALE.extendedNone);
   if (m.yahoo.prePost(instrument.sourceSymbol) === false) {
     return none(STALE.extendedNone);
   }

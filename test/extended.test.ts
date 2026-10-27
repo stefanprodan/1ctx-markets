@@ -17,10 +17,16 @@ import { parseRules, rulesAnswer } from "../src/tools/rules.ts";
 import { CALL_MS, type Markets, markets } from "../src/tools/targets.ts";
 import { markRead } from "../src/tracking.ts";
 import { writer } from "../src/writer.ts";
-import { parseIntraday, parseSpark, yahoo } from "../src/yahoo/client.ts";
+import {
+  INTRADAY_RANGE,
+  parseIntraday,
+  parseSpark,
+  yahoo,
+} from "../src/yahoo/client.ts";
 import { storeQuotes } from "../src/yahoo/sync.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { gate } from "./helpers/sources.ts";
+import { bar, FINAL, instrument, listing, world } from "./helpers/world.ts";
 import {
   chartSymbol,
   clone,
@@ -61,6 +67,8 @@ const IDS = LISTINGS.map((l) => l.id);
 
 const chartName = (symbol: string) =>
   `chart-${symbol.toLowerCase().replace(".", "-")}-1d-1m-prepost-${POST}`;
+// what the client asks for HOOD
+const HOOD_CHART = `chart-hood-2d-1m-prepost-${POST}`;
 
 const intraday = (url: URL) =>
   url.searchParams.get("includePrePost") === "true";
@@ -72,12 +80,22 @@ async function setup(
 ) {
   const spark = await recorded(`spark-v7-extended-${POST}`);
   const charts = new Map<string, Recorded>();
+  // the others have one-day recordings only: just their flag is read
   for (const s of SYMBOLS) charts.set(s, await recorded(chartName(s)));
+  charts.set("HOOD", await recorded(HOOD_CHART));
+  const hoodAsked = new URL(
+    (charts.get("HOOD") as Recorded & { request: { url: string } }).request.url,
+  ).searchParams;
   const clock = fakeClock(Date.parse(charts.get("HOOD")!.recordedAt));
   const { db } = open(":memory:", clock);
   const f = fakeFetch(async (url) => {
     await options.hold?.(url);
     const symbol = chartSymbol(url);
+    if (symbol === "HOOD" && intraday(url)) {
+      for (const [k, v] of hoodAsked) {
+        if (url.searchParams.get(k) !== v) return undefined;
+      }
+    }
     if (symbol !== null && intraday(url)) return charts.get(symbol);
     if (url.pathname === "/v7/finance/spark") return spark;
     return undefined;
@@ -145,13 +163,14 @@ const byId = (items: any[], id: string) => items.find((i) => i.id === id);
 
 // HOOD's last post bar in the recording, against its regular close
 const HOOD_CLOSE = 94.56;
-const HOOD_LAST = 89.6298;
+// the two-day recording's last bar, 21:22:50 UTC at 89.69
+const HOOD_LAST = 89.69;
 const HOOD = {
   session: "post",
   price: HOOD_LAST,
   change: round(HOOD_LAST - HOOD_CLOSE),
   change_percent: round(((HOOD_LAST - HOOD_CLOSE) / HOOD_CLOSE) * 100),
-  time: "2026-10-27T21:22:26Z",
+  time: "2026-10-27T21:22:50Z",
 };
 
 describe("quote extended", () => {
@@ -174,7 +193,7 @@ describe("quote extended", () => {
     expect(t.charted("HOOD")).toHaveLength(1);
     const url = t.charted("HOOD")[0]!;
     expect(url.searchParams.get("interval")).toBe("1m");
-    expect(url.searchParams.get("range")).toBe("1d");
+    expect(url.searchParams.get("range")).toBe(INTRADAY_RANGE);
   });
 
   test("learns the flag from the chart of a listing no spark answer named", async () => {
@@ -204,10 +223,34 @@ describe("quote extended", () => {
     await ask(t.m);
     expect(t.charted("HOOD")).toHaveLength(1);
     await t.clock.advance(t.m.quoteEveryMs);
-    const later = await ask(t.m);
+    await ask(t.m);
     expect(t.charted("HOOD")).toHaveLength(2);
-    // still the newest price after the post bars stop
-    expect(byId(later, "US:HOOD").extended).toEqual(HOOD);
+    // past the post window and before the next pre window, the last
+    // post bar is still the newest price
+    await t.clock.advance(Date.parse("2026-10-28T01:00:00Z") - t.clock.now());
+    const night = await ask(t.m);
+    expect(t.charted("HOOD")).toHaveLength(3);
+    expect(byId(night, "US:HOOD").extended).toEqual(HOOD);
+  });
+
+  test("is not reported for a listing another source prices", async () => {
+    const w = world();
+    listing(w.db, "XX:A");
+    instrument(w.db, "FRED:DGS10");
+    bar(w.db, "FRED:DGS10", "1d", FINAL, 4.2, true);
+    // a FRED series no read kept would be fetched again
+    w.db.query("update instruments set last_read_at = ?").run(w.clock.now());
+    const items = JSON.parse(
+      await quotePage(
+        w.m,
+        parseQuote({ symbols: ["XX:A", "FRED:DGS10"], extended: true }),
+      ),
+    ).items;
+    for (const item of items) {
+      expect(item.extended).toBeNull();
+      expect(item.stale).toContain(STALE.extendedUnreported);
+      expect(item.stale).not.toContain(STALE.extendedNone);
+    }
   });
 
   test("leaves the answer as it was when not asked", async () => {

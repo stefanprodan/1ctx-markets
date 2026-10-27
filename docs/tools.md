@@ -148,8 +148,9 @@ the tracking table in `docs/storage.md`; the source queue in
   regular close, and the bar's `time`: the latest priced bar in a pre
   or post window since the last regular close, kept until the next
   regular open. Null with an `extended:` reason in `stale` (no extended
-  trading, no priced bar since the close, regular session open, fetch
-  failed or late), never meaning the price held. One chart per listing
+  trading, not reported by its source, no priced bar since the close,
+  regular session open, fetch failed or late; `docs/storage.md`),
+  never meaning the price held. One chart per listing
   within the call's deadline (`docs/yahoo.md`), kept in memory for its
   quote period (`m.extended`), so the thin market is never fresher
   than the regular one. Never stored: signals, bars, movers, screen,
@@ -310,7 +311,7 @@ the tracking table in `docs/storage.md`; the source queue in
   an agent filters on, and how to continue with `next`. No history, no
   marketing, no repetition of the schema's types.
 - **Stay at 1,024 characters or fewer**: 1ctx cuts a description
-  there, and `test/tools-mcp.test.ts` asserts it. quote (1,019), rules
+  there, and `test/tools-mcp.test.ts` asserts it. quote (1,023), rules
   (1,019) and research (1,019) are near the limit; shorten wording
   before adding a field. screen names its field groups and points at
   its schema's enum (`FIELD_NAMES`), which lists every field.

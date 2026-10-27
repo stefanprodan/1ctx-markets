@@ -16,7 +16,7 @@ inside a call in `docs/tools.md`; rule pauses in `docs/rules.md`.
 | Call | Path | Used for |
 | --- | --- | --- |
 | `chart` | `/v8/finance/chart/<symbol>?period1&period2&interval=1d&events=div,split` | daily bars, splits, one listing's meta |
-| `intraday` | `/v8/finance/chart/<symbol>?interval=1m&range=1d&includePrePost=true` | quote's `extended`: minute bars with pre and post trading, and each window |
+| `intraday` | `/v8/finance/chart/<symbol>?interval=1m&range=2d&includePrePost=true` | quote's `extended`: minute bars with pre and post trading, and each window |
 | `spark` | `/v7/finance/spark?symbols=<list>&range=1d&interval=5m&_=<now>` | quotes and sessions, up to 20 symbols |
 | `search` | `/v1/finance/search?q&quotesCount=10&newsCount=0&listsCount=0` | listings for a bare symbol or a name |
 
@@ -223,8 +223,10 @@ inside a call in `docs/tools.md`; rule pauses in `docs/rules.md`.
   (`prePost()`), so a listing whose quote pass said false is never
   charted for `extended`; one not seen yet is charted once, and its
   answer says. A restart empties it.
-- **`intraday()` reads one day of minutes** (`INTRADAY_RANGE`) with
-  the pre, regular and post windows of `currentTradingPeriod` and of
+- **`intraday()` reads two days of minutes** (`INTRADAY_RANGE`), about
+  1,300 bars for a US share: before the pre window a one-day answer can
+  hold no bar inside its windows, while two keep the last post bars
+  until the next open. It carries the pre, regular and post windows of `currentTradingPeriod` and of
   each day in `tradingPeriods`; a market without a window answers it
   empty. Extended bars' `volume` reads 0. Only quote's `extended`
   reads it, inside the call (`docs/tools.md`); no job polls the
