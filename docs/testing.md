@@ -51,14 +51,16 @@ recorders under `scripts/probe/`. The clock contract is in
 | `app.ts` | the whole server on loopback (`withApp()`) and an MCP SDK client on it (`mcpClient()`) |
 | `api.ts` | `/api/v1` through the real router over a test's own `Markets`, with the right made-up key put on each request (`api()`) |
 | `schema.ts` | the JSON Schema subset the API's spec uses: `schemaErrors()` refuses any other keyword, `validate()` checks an answer, `specSchemas()` and `answerSchema()` find them in the spec |
-| `answers.ts` | every MCP tool called over the recordings, page by page, as the bytes a client gets (`mcpAnswers()`), pinned by `test/fixtures/mcp/answers.json` |
+| `answers.ts` | every MCP tool called over the recordings, page by page, as the bytes a client gets (`mcpAnswers()`), pinned by `test/fixtures/mcp/answers.json`; every `/api/v1` route as its status, headers and bytes (`restAnswers()`), pinned by `test/fixtures/api/answers.json` |
 | `world.ts` | no source at all: instruments of a source no job syncs, with bars, signal rows and quotes written by hand (`world()`, `listing()`), for the readers' arithmetic |
 
-- **The MCP answers are pinned byte for byte.**
-  `test/fixtures/mcp/answers.json` is `mcpAnswers()` written as JSON;
-  a change meant to alter an answer writes it again in the same commit
-  (`bun -e` importing `mcpAnswers()` and `Bun.write`), and the review
-  reads its diff. Any other change leaves it as it is.
+- **The MCP and REST answers are pinned byte for byte.**
+  `test/fixtures/mcp/answers.json` is `mcpAnswers()` and
+  `test/fixtures/api/answers.json` is `restAnswers()`, each written as
+  JSON; a change meant to alter an answer writes it again in the same
+  commit (`bun -e` importing the function and `Bun.write`), and the
+  review reads its diff. Any other change leaves it as it is. The
+  Swagger UI package's own files are pinned by their digest.
 - **Keys in tests are made up** (`FRED_KEY`, `FINNHUB_KEY`,
   `MASSIVE_KEY` in the helpers; `test/fixtures/secrets/` and
   `test/fixtures/short/` hold test-only bearers, a made-up admin

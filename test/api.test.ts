@@ -19,6 +19,7 @@ import { CALL_MS, markets } from "../src/tools/targets.ts";
 import { lastReadAt } from "../src/tracking.ts";
 import { writer } from "../src/writer.ts";
 import { yahoo } from "../src/yahoo/client.ts";
+import { restAnswers } from "./helpers/answers.ts";
 import { ADMIN_KEY, api } from "./helpers/api.ts";
 import { withApp } from "./helpers/app.ts";
 import { fakeClock } from "./helpers/clock.ts";
@@ -35,6 +36,8 @@ import { bar, FINAL, instrument, LIVE, row, world } from "./helpers/world.ts";
 import { chartSymbol } from "./helpers/yahoo.ts";
 
 const METHODS = ["get", "post", "patch", "delete"];
+
+const ANSWERS = join(import.meta.dir, "fixtures", "api", "answers.json");
 
 // the symbols whose first chart waits in the fake fetch until released
 type Gate = ReturnType<typeof gate>;
@@ -1175,5 +1178,17 @@ describe("the docs page", () => {
     expect(() =>
       fingerprinted(html.replace("init.js", "other.js"), hashes),
     ).toThrow("init.js");
+  });
+});
+
+describe("the routes' answers", () => {
+  test("are the status, headers and bytes recorded", async () => {
+    const want: Awaited<ReturnType<typeof restAnswers>> =
+      await Bun.file(ANSWERS).json();
+    const got = await restAnswers();
+    expect(Object.keys(got)).toEqual(Object.keys(want));
+    for (const [call, answer] of Object.entries(want)) {
+      expect([call, got[call]]).toEqual([call, answer]);
+    }
   });
 });
