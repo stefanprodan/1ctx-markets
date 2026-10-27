@@ -185,7 +185,8 @@ the tracking table in `docs/storage.md`; the source queue in
   `BOND`, `INDEX`), else the feed's own (`Structured`). One more feed
   call per search with a tradable listing, within what is left of the
   search's own deadline, so the exchange's side answers within one
-  call's time; failed or late, the type is null. Its `isin` is the site's, kept on a stored candidate too.
+  call's time; failed or late, the type is null. Its `isin` is the
+  site's, kept on a stored candidate too.
 - **search fetches no prices and tracks nothing.** FRED is asked only
   for `FRED:<series id>`, with a note when the series is not daily; a
   stored series also matches by its symbol or name.
