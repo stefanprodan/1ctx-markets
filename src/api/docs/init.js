@@ -13,3 +13,11 @@ window.ui = window.SwaggerUIBundle({
   presets: [window.SwaggerUIBundle.presets.apis],
   layout: "BaseLayout",
 });
+
+// Swagger UI's CSS carries a dark theme under html.dark-mode but its
+// bundle never sets it, so the page follows the system's scheme here.
+const dark = window.matchMedia("(prefers-color-scheme: dark)");
+const scheme = () =>
+  document.documentElement.classList.toggle("dark-mode", dark.matches);
+scheme();
+dark.addEventListener("change", scheme);
