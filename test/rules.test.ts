@@ -158,6 +158,7 @@ describe("the rule format", () => {
       charts: {
         "^VIX": listed(await recorded("chart-vix-5d-1d")),
         "^TNX": listed(await recorded("chart-tnx-5d-1d")),
+        "CL=F": listed(await recorded("chart-cl-f-5d-1d")),
       },
     });
     const bad: [string, unknown, string][] = [
@@ -174,12 +175,12 @@ describe("the rule format", () => {
       [
         "NVDA",
         { left: "price", op: ">", right: { field: "price", symbol: "^VIX" } },
-        UNKNOWN_UNIT,
+        "per_share USD with price in index_points USD",
       ],
-      // index points against a yield, both in a unit Yahoo leaves unknown
+      // a future's price per barrel or per bond, which Yahoo leaves unknown
       [
         "^VIX",
-        { left: "price", op: ">", right: { field: "price", symbol: "^TNX" } },
+        { left: "price", op: ">", right: { field: "price", symbol: "CL=F" } },
         UNKNOWN_UNIT,
       ],
       [
@@ -228,7 +229,7 @@ describe("the rule format", () => {
       right: { field: "drawdown", symbol: "FRED:DGS10" },
     });
     expect(ok.error).toBe(false);
-    // an unknown unit against its own values, or across in a known unit
+    // a level against its own values, or across in a known unit
     for (const condition of [
       { left: "price", op: ">", right: "sma50" },
       {

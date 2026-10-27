@@ -452,8 +452,8 @@ export function isLive(o: Operand, i: Pick<Instrument, "source">): boolean {
   return def.from !== "quote" || def.live;
 }
 
-// a price level in a unit the source does not name, such as an index's
-// points or a yield's percent
+// a price level in a unit the source does not name, such as a future's
+// price per barrel or per bond
 const unknownUnit = (o: Operand, i: Instrument): boolean =>
   FIELDS[o.field]!.unit === PRICE_LEVEL && i.unit === "unknown";
 

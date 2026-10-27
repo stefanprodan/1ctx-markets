@@ -796,6 +796,7 @@ describe("history", () => {
   test("an index's first read answers its final rows and its live row", async () => {
     const t = await setup();
     const body: any = await (await t.call("/history?symbol=^GSPC")).json();
+    expect(body.unit).toBe("index_points");
     const live = t.db
       .query<{ date: string; sma50: number; sma200: number }, []>(
         `select date, sma50, sma200 from signals

@@ -231,7 +231,8 @@ the tracking table in `docs/storage.md`; the source queue in
   FRED's `attribution` once.
 - **Every quote item carries its unit and currency.** `unit` is one of
   `UNITS` in `src/instruments.ts`; `unknown` is answered rather than
-  guessed, since Yahoo's index type covers both points and yields. A
+  guessed, since Yahoo's future type covers prices per barrel and per
+  bond. A
   FRED `percent` series' change is in points, so its `change_percent`
   is null (`quote.ts`). Relative return is in percentage points and
   names both currencies; between two level series it is in `points`

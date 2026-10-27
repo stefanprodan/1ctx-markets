@@ -87,13 +87,46 @@ describe("migrations", () => {
     add.run("US:NVDA", "US", "NVDA", "NVDA", "ETF");
     add.run("CRYPTO:SOL-USD", "CRYPTO", "SOL-USD", "SOL-USD", "CRYPTOCURRENCY");
     add.run("CXI:^VIX", "CXI", "^VIX", "^VIX", "INDEX");
-    migrate(db, clock);
+    migrate(db, clock, MIGRATIONS.slice(0, at + 1));
     expect(
       db.query("select id, unit from instruments order by id").all(),
     ).toEqual([
       { id: "CRYPTO:SOL-USD", unit: "per_unit" },
       { id: "CXI:^VIX", unit: "unknown" },
       { id: "US:NVDA", unit: "per_share" },
+    ]);
+  });
+
+  test("a Yahoo index stored with no unit takes index points", () => {
+    const db = new Database(":memory:", { strict: true });
+    const clock = fakeClock();
+    const at = MIGRATIONS.findIndex((m) => m.id === "0013-index-units");
+    migrate(db, clock, MIGRATIONS.slice(0, at));
+    const add = db.query(
+      `insert into instruments (id, market, symbol, source, source_symbol,
+         exchange, type, unit, zone, added_at, updated_at)
+       values (?, ?, ?, ?, ?, 'X', ?, ?, 'UTC', 0, 0)`,
+    );
+    add.run("SNP:^GSPC", "SNP", "^GSPC", "yahoo", "^GSPC", "INDEX", "unknown");
+    add.run("NYM:CL=F", "NYM", "CL=F", "yahoo", "CL=F", "FUTURE", "unknown");
+    add.run("BVB:BET", "BVB", "BET", "bvb", "BET", "INDEX", "index_points");
+    add.run(
+      "FRED:DGS10",
+      "FRED",
+      "DGS10",
+      "fred",
+      "DGS10",
+      "SERIES",
+      "percent",
+    );
+    migrate(db, clock);
+    expect(
+      db.query("select id, unit from instruments order by id").all(),
+    ).toEqual([
+      { id: "BVB:BET", unit: "index_points" },
+      { id: "FRED:DGS10", unit: "percent" },
+      { id: "NYM:CL=F", unit: "unknown" },
+      { id: "SNP:^GSPC", unit: "index_points" },
     ]);
   });
 
