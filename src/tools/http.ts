@@ -40,7 +40,10 @@ export function quotesHandler(m: Markets): (req: Request) => Promise<Response> {
         symbols: params.get("symbols")!.split(","),
         ...(params.has("next") ? { next: params.get("next") } : {}),
       });
-      return json(await quotePage(m, args, briefItem), 200);
+      const page = await quotePage(m, args, (item, latest) =>
+        briefItem(m.db, item, latest),
+      );
+      return json(page, 200);
     } catch (error) {
       if (error instanceof ArgError) {
         return failed(400, "bad_arguments", error.message);

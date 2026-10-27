@@ -9,6 +9,7 @@ import { upsertInstrument } from "../src/instruments.ts";
 import { silent } from "../src/log.ts";
 import { cursor, PAGE_BYTES } from "../src/tools/answer.ts";
 import { ArgError } from "../src/tools/args.ts";
+import { quotesHandler } from "../src/tools/http.ts";
 import { moversAnswer, parseMovers } from "../src/tools/movers.ts";
 import { parseScreen, screenAnswer } from "../src/tools/screen.ts";
 import { type Markets, markets } from "../src/tools/targets.ts";
@@ -979,5 +980,164 @@ describe("movers", () => {
     await w.clock.advance(DAY_MS);
     await movers(w.m, { symbols: names, min_move_pct: 50 });
     for (const id of names) expect(lastReadAt(w.db, id)).toBe(NOW + DAY_MS);
+  });
+});
+
+describe("GET /quotes's last final day", () => {
+  const quotes = async (m: Markets, symbols: string[], next?: string) => {
+    const query = new URLSearchParams({
+      symbols: symbols.join(","),
+      ...(next === undefined ? {} : { next }),
+    });
+    const res = await quotesHandler(m)(
+      new Request(`http://localhost/quotes?${query}`),
+    );
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    return { body: JSON.parse(text), bytes: Buffer.byteLength(text) };
+  };
+
+  // the rule docs/tools.md gives a script, on the SMA 50 under 200 bars
+  function crossed(item: any): "up" | "down" | null {
+    const then = item.last_final?.daily;
+    const now = item.sma.daily;
+    if (then == null || now?.kind !== "live" || item.stale.length > 0) {
+      return null;
+    }
+    if (now.date <= then.date) return null;
+    const key = then.sma200 === null ? "sma50" : "sma200";
+    if (then[key] === null || now[key] === null) return null;
+    if (then.close >= then[key] && item.price < now[key]) return "down";
+    if (then.close <= then[key] && item.price > now[key]) return "up";
+    return null;
+  }
+
+  function crossings() {
+    const w = world();
+    listing(w.db, "XX:UPX", {
+      previousClose: 99,
+      price: 101,
+      final: { sma200: 100 },
+      live: { sma200: 100.2 },
+    });
+    listing(w.db, "XX:DNX", {
+      previousClose: 101,
+      price: 99,
+      final: { sma200: 100 },
+      live: { sma200: 100.1 },
+    });
+    listing(w.db, "XX:OVER", {
+      previousClose: 105,
+      price: 106,
+      final: { sma200: 100 },
+      live: { sma200: 100.1 },
+    });
+    listing(w.db, "XX:ON", {
+      previousClose: 100,
+      price: 99.5,
+      final: { sma200: 100 },
+      live: { sma200: 100 },
+    });
+    // under 200 bars: no SMA 200, crossing its SMA 50 both ways
+    listing(w.db, "XX:NEWDN", {
+      previousClose: 101,
+      price: 99,
+      final: { sma50: 100, sma200: null },
+      live: { sma50: 100.1, sma200: null },
+    });
+    listing(w.db, "XX:NEWUP", {
+      previousClose: 99,
+      price: 101,
+      final: { sma50: 100, sma200: null },
+      live: { sma50: 100.1, sma200: null },
+    });
+    return w;
+  }
+  const long = ["XX:UPX", "XX:DNX", "XX:OVER", "XX:ON"];
+  const young = ["XX:NEWDN", "XX:NEWUP"];
+
+  test("answers the last final close and its averages", async () => {
+    const { m } = crossings();
+    const { body } = await quotes(m, ["XX:DNX", "XX:NEWDN"]);
+    expect(body.items[0]).toMatchObject({
+      price: 99,
+      sma: { daily: { kind: "live", date: LIVE, sma200: 100.1 } },
+      last_final: {
+        daily: { date: FINAL, close: 101, sma50: 100, sma200: 100 },
+      },
+    });
+    expect(body.items[1].last_final).toEqual({
+      daily: { date: FINAL, close: 101, sma50: 100, sma200: null },
+    });
+  });
+
+  test("a crossing told from it is the one movers answers", async () => {
+    const { m } = crossings();
+    const { body } = await quotes(m, [...long, ...young]);
+    for (const [relation, side] of [
+      ["crossed_down", "down"],
+      ["crossed_up", "up"],
+    ] as const) {
+      const old = await movers(m, {
+        symbols: long,
+        average: "daily_sma200",
+        relation,
+      });
+      const fresh = await movers(m, {
+        symbols: young,
+        average: "daily_sma50",
+        relation,
+      });
+      const expected = [...ids(old.body), ...ids(fresh.body)].sort();
+      expect(expected.length).toBeGreaterThan(1);
+      const told = body.items
+        .filter((i: any) => crossed(i) === side)
+        .map((i: any) => i.id)
+        .sort();
+      expect(told).toEqual(expected);
+    }
+  });
+
+  test("is null with no final bar", async () => {
+    const w = world();
+    instrument(w.db, "XX:A");
+    bar(w.db, "XX:A", "1d", LIVE, 100, false);
+    row(w.db, "XX:A", "1d", LIVE, "live");
+    quote(w.db, "XX:A", 100, 100);
+    const { body } = await quotes(w.m, ["XX:A"]);
+    expect(body.items[0].sma.daily).not.toBeNull();
+    expect(body.items[0].last_final).toBeNull();
+  });
+
+  test("100 symbols fit the page cap, or continue with next", async () => {
+    const w = world();
+    const symbols: string[] = [];
+    for (let k = 0; k < 100; k++) {
+      const id = `XXXXXX:SYMBOL${k}-USD`;
+      const many = { sma50: 12345.6 + k, sma200: 12345.7 + k };
+      listing(w.db, id, {
+        previousClose: 12345.678 + k,
+        price: 12346.789 + k,
+        final: many,
+        live: many,
+      });
+      bar(w.db, id, "1wk", "2026-10-12", 12345.678, true);
+      row(w.db, id, "1wk", "2026-10-12", "final", many);
+      bar(w.db, id, "1wk", "2026-10-19", 12346.789, false);
+      row(w.db, id, "1wk", "2026-10-19", "live", many);
+      symbols.push(id);
+    }
+    const seen: string[] = [];
+    let next: string | undefined;
+    do {
+      const { body, bytes } = await quotes(w.m, symbols, next);
+      expect(bytes).toBeLessThanOrEqual(PAGE_BYTES);
+      for (const item of body.items) {
+        expect(item.last_final.daily.sma200).toBeNumber();
+        seen.push(item.id);
+      }
+      next = body.next ?? undefined;
+    } while (next !== undefined);
+    expect(seen).toEqual(symbols);
   });
 });

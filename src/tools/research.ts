@@ -671,7 +671,8 @@ export function researchHandler(
       const items = targets.map((t) => {
         if ("error" in t) return { input: t.input, ...t.error };
         const latest = readLatest(m.db, t.instrument, now, m.quoteEveryMs);
-        const quote = briefItem(quoteItem(m.db, t.input, t.instrument, latest));
+        const item = quoteItem(m.db, t.input, t.instrument, latest);
+        const quote = briefItem(m.db, item, latest);
         return {
           ...quote,
           research: researchSummary(

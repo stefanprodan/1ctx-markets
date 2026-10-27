@@ -16,7 +16,7 @@ import { type InstrumentSignals, readSignals } from "../signals/read.ts";
 import { DAILY_COLUMNS, WEEKLY_COLUMNS } from "../signals/store.ts";
 import type { WeeklyRow } from "../signals/weekly.ts";
 import type { StaleReason } from "../stale.ts";
-import { cursor, fitPage, iso, readCursor, round } from "./answer.ts";
+import { cursor, fitPage, iso, price, readCursor, round } from "./answer.ts";
 import { ArgError, fields, symbols } from "./args.ts";
 import { type ItemError, type Markets, readTargets } from "./targets.ts";
 
@@ -204,14 +204,46 @@ export function quoteItem(
   };
 }
 
+// the close of the bar a final row was computed for
+export function closeOn(
+  db: Db,
+  id: string,
+  interval: "1d" | "1wk",
+  date: string,
+): number | null {
+  return (
+    db
+      .query<{ close: number }, [string, string, string]>(
+        "select close from bars where instrument = ? and interval = ? and date = ?",
+      )
+      .get(id, interval, date)?.close ?? null
+  );
+}
+
+// the last final close and its averages, the pair movers crosses from
+function lastFinal(db: Db, id: string, latest: Latest) {
+  const row = latest.signals?.daily.final ?? null;
+  const close = row === null ? null : closeOn(db, id, "1d", row.date);
+  if (row === null || close === null) return null;
+  return {
+    daily: {
+      date: row.date,
+      close: price(close),
+      sma50: round(row.sma50),
+      sma200: round(row.sma200),
+    },
+  };
+}
+
 const averages = (row: SignalRow | null) =>
   row === null
     ? null
     : { kind: row.kind, date: row.date, sma50: row.sma50, sma200: row.sma200 };
 
-// what a script needs: the price or observation, the times, stale, and
-// the daily and weekly SMA 50 and 200
-export function briefItem(item: QuoteItem) {
+// what a script needs: the price or observation, the times, stale, the
+// daily and weekly SMA 50 and 200, and the last final day's to tell a
+// crossing since that close
+export function briefItem(db: Db, item: QuoteItem, latest: Latest) {
   return {
     input: item.input,
     id: item.id,
@@ -230,6 +262,7 @@ export function briefItem(item: QuoteItem) {
       daily: averages(item.signals.daily),
       weekly: averages(item.signals.weekly),
     },
+    last_final: lastFinal(db, item.id, latest),
   };
 }
 
@@ -259,7 +292,7 @@ function offsetOf(args: QuoteArgs): number {
 export async function quotePage(
   m: Markets,
   args: QuoteArgs,
-  project: (item: QuoteItem) => object = (item) => item,
+  project: (item: QuoteItem, latest: Latest) => object = (item) => item,
 ): Promise<string> {
   const offset = offsetOf(args);
   const targets = await readTargets(m, args.symbols.slice(offset));
@@ -271,7 +304,7 @@ export async function quotePage(
     }
     const latest = readLatest(m.db, t.instrument, now, m.quoteEveryMs);
     const q = quoteItem(m.db, t.input, t.instrument, latest);
-    return { item: project(q), fred: q.observation != null };
+    return { item: project(q, latest), fred: q.observation != null };
   });
   const items = rows.map((r) => r.item);
   return fitPage(items, (count) => {
