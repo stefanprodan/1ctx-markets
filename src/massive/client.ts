@@ -103,8 +103,14 @@ function str(v: unknown, what: string): string {
 const optionalStr = (v: unknown): string | null =>
   typeof v === "string" && v.trim() !== "" ? v.trim() : null;
 
-export const cut = (v: string, max: number): string =>
-  v.length > max ? `${v.slice(0, max - 1)}…` : v;
+// never between the halves of a surrogate pair, which no reader can print
+export function cut(v: string, max: number): string {
+  if (v.length <= max) return v;
+  let end = max - 1;
+  const unit = v.charCodeAt(end - 1);
+  if (unit >= 0xd800 && unit <= 0xdbff) end--;
+  return `${v.slice(0, end)}…`;
+}
 
 // RFC 3339 to the second, as Massive's published_utc filters take it
 export const utc = (ms: number): string =>

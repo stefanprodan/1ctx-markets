@@ -1523,6 +1523,46 @@ describe("the news summary in GET /research", () => {
     }
   });
 
+  test("at the widest numbers every share gives up its third item", async () => {
+    const { raw, items } = await fullFive("x", true);
+    expect(fits(raw)).toBe(true);
+    for (const item of items) {
+      expect(item.news.items).toHaveLength(2);
+      expect(item.news.items_cut).toBe(true);
+    }
+  });
+
+  test("a cut never splits an emoji", async () => {
+    const articles = await tenDays("NVDA");
+    for (const a of articles) {
+      a.title = "😀".repeat(MAX_TITLE);
+      a.publisher = { ...a.publisher, name: "😀".repeat(MAX_PUBLISHER) };
+      for (const i of a.insights) {
+        i.sentiment_reasoning = "😀".repeat(MAX_REASONING);
+      }
+    }
+    const t = await setup({ massive: { articles } });
+    await drive(t.clock, pacedOf(t.m), researchTargets(t.m, ["NVDA"]));
+    await walked(t, ["US:NVDA"]);
+    const summary = JSON.parse(await getResearch(t, "NVDA")).items[0].news;
+    const section = body(
+      await researchAnswer(
+        t.m,
+        parseResearch({ symbol: "US:NVDA", section: "news" }),
+      ),
+    );
+    const lone =
+      /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
+    const texts = [...summary.items, ...section.articles]
+      .flatMap((i: any) => [i.title, i.publisher, i.reasoning])
+      .filter((v: string | null) => v !== null);
+    expect(texts.length).toBeGreaterThan(0);
+    for (const v of texts) {
+      expect(v.endsWith("…")).toBe(true);
+      expect(lone.test(v)).toBe(false);
+    }
+  });
+
   test("text that escapes gives up news items, never a summary", async () => {
     const { raw, items } = await fullFive('"\\', true);
     expect(fits(raw)).toBe(true);
@@ -1603,6 +1643,22 @@ describe("the research news section since a date", () => {
     await expect(page({ since: "2026-09-24" })).rejects.toThrow(ArgError);
   });
 
+  test("a cursor without since is bound as before since existed", async () => {
+    const t = await setup({
+      massive: { articles: await series("NVDA", 150, NOW, HOUR_MS) },
+    });
+    await drive(t.clock, pacedOf(t.m), researchTargets(t.m, ["NVDA"]));
+    await walked(t, ["US:NVDA"]);
+    const first = body(
+      await researchAnswer(
+        t.m,
+        parseResearch({ symbol: "US:NVDA", section: "news" }),
+      ),
+    );
+    // the digest of {symbol: "US:NVDA", section: "news"}
+    expect(first.next).toEndWith("~63edd53c95");
+  });
+
   test("a later page carries no counts", async () => {
     const t = await setup({
       massive: { articles: await series("NVDA", 150, NOW, HOUR_MS) },
@@ -1621,8 +1677,8 @@ describe("the research news section since a date", () => {
   });
 });
 
-// Five made-up shares with a fourth quarter of earnings, widest the
-// widest numbers research rounds to, and a week of news stored at the
+// Five made-up shares with a fourth quarter of earnings, with widest
+// the widest numbers research rounds to, and a week of news stored at the
 // source's caps, its text made of fill, then GET /research for all five.
 async function fullFive(fill: string, widest: boolean) {
   const symbols = Array.from(

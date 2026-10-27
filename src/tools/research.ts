@@ -483,7 +483,9 @@ export async function researchAnswer(
   m: Markets,
   args: ResearchArgs,
 ): Promise<ToolResult> {
-  const { next, ...asked } = args;
+  const { next, since: given, ...rest } = args;
+  // without since the digest is what cursors were bound to before it
+  const asked = given === null ? rest : { ...rest, since: given };
   let since: number | null = null;
   if (args.since !== null) {
     if (args.section !== "news") {

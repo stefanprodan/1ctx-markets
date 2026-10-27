@@ -230,5 +230,5 @@ bearer and flags in `docs/config.md`.
   interpolates `MAX_SYMBOLS` and `callMs`, screen `MAX_FILTERS`, events
   `MAX_EVENT_SYMBOLS`, research `SINCE_DAYS`, rules `MAX_COMPARISONS`,
   `MAX_DEPTH` and `MAX_INSTRUMENTS`, movers and screen `MAX_SYMBOLS`,
-  history `DEFAULT_MONTHS`. An argument's limit is interpolated, never written as
-  text.
+  history `DEFAULT_MONTHS`. An argument's limit is interpolated, never
+  written as text.
