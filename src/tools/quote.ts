@@ -28,6 +28,7 @@ import type { WeeklyRow } from "../signals/weekly.ts";
 import type { StaleReason } from "../stale.ts";
 import { cursor, fitPage, iso, price, readCursor, round } from "./answer.ts";
 import { ArgError, fields, optionalText, symbols } from "./args.ts";
+import { benchmarkStale } from "./sets.ts";
 import {
   type ItemError,
   type Markets,
@@ -333,13 +334,18 @@ function sessionOf(m: Markets, i: Instrument, now: number) {
 }
 
 type Benchmark =
-  | { side: Side; head: object; fred: boolean }
-  | { side: null; head: object; fred: false };
+  | { side: Side; head: object; stale: string[]; fred: boolean }
+  | { side: null; head: object; stale: string[]; fred: false };
 
 // as history gives it: its fetch time and its own stale reasons
 function benchmarkOf(m: Markets, t: Target, now: number): Benchmark {
   if ("error" in t) {
-    return { side: null, head: { input: t.input, ...t.error }, fred: false };
+    return {
+      side: null,
+      head: { input: t.input, ...t.error },
+      stale: [],
+      fred: false,
+    };
   }
   const b = t.instrument;
   const latest = readLatest(m.db, b, now, m.quoteEveryMs);
@@ -353,6 +359,7 @@ function benchmarkOf(m: Markets, t: Target, now: number): Benchmark {
       fetched_at: quoteItem(m.db, b.id, b, latest).fetched_at,
       stale: latest.stale,
     },
+    stale: benchmarkStale(latest.stale),
     fred: b.source === FRED,
   };
 }
@@ -432,7 +439,7 @@ export async function quotePage(
   return fitPage(items, (count) => {
     const end = offset + count;
     return {
-      ...(bench === null ? {} : { benchmark: bench.head }),
+      ...(bench === null ? {} : { benchmark: bench.head, stale: bench.stale }),
       next:
         end < args.symbols.length ? cursor(String(end), continued(args)) : null,
       ...(bench?.fred || rows.slice(0, count).some((r) => r.fred)

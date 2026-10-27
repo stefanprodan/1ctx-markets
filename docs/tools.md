@@ -108,8 +108,9 @@ bearer and flags in `docs/config.md`.
 - **quote's `benchmark` is one symbol for the call**, resolved and
   fetched as history's, adding `relative_return_1m` and `_3m` per item
   (`relativeOf()`) and the benchmark's id, `fetched_at` and own `stale`
-  on the page as `benchmark`; a benchmark that fails is that object's
-  error and the relative fields are null.
+  on the page as `benchmark`, its reasons prefixed `benchmark:` in the
+  page's `stale` as history gives them; a benchmark that fails is that
+  object's error and the relative fields are null.
 - **quote's `session` is the last regular session the source
   reported**: `state` `open` or `closed` by `isQuoted()`, `start` and
   `end` in UTC. At an opening it reads `closed` until a check stores
@@ -279,7 +280,8 @@ bearer and flags in `docs/config.md`.
   its schema's enum (`FIELD_NAMES`), which lists every field.
 - **A limit in a description is the constant's value.** quote
   interpolates `MAX_SYMBOLS` and `callMs`, screen `MAX_FILTERS` and
-  `MAX_FIELDS`, events `MAX_EVENT_SYMBOLS` and `CALENDAR_AHEAD_DAYS`, research `SINCE_DAYS`, rules `MAX_COMPARISONS`,
-  `MAX_DEPTH` and `MAX_INSTRUMENTS`, movers and screen `MAX_SYMBOLS`,
+  `MAX_FIELDS`, events `MAX_EVENT_SYMBOLS` and `CALENDAR_AHEAD_DAYS`,
+  research `SINCE_DAYS`, rules `MAX_COMPARISONS`, `MAX_DEPTH` and
+  `MAX_INSTRUMENTS`, movers and screen `MAX_SYMBOLS`,
   history `DEFAULT_MONTHS`. An argument's limit is interpolated, never
   written as text.

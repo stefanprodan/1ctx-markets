@@ -192,6 +192,7 @@ describe("quote against a benchmark", () => {
     w.db.query("delete from quotes where instrument = 'XX:B'").run();
     const q = await ask(w.m, { symbols: ["XX:A"], benchmark: "XX:B" });
     expect(q.benchmark.stale).toContain("no quote yet");
+    expect(q.stale).toContain("benchmark: no quote yet");
     // the symbol's own reasons stay its own
     expect(q.items[0].stale).not.toContain("no quote yet");
   });
