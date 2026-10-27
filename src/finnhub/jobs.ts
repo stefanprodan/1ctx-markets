@@ -42,40 +42,69 @@ export type ResearchPass = {
   failed: { instrument: string; section: Section; error: string }[];
 };
 
-// The range of exchange dates, yesterday to today in each share's zone,
-// holding an unreported stored event of one of these shares; null when
-// none does. Yesterday too, as many reporters have no actuals a day on.
-export function reportingWindow(
+export type WindowEvent = {
+  instrument: Instrument;
+  date: string;
+  listing: string | null;
+  seenAt: number | null;
+};
+
+// Every stored event of these shares dated their exchange's yesterday or
+// today; yesterday too, as many reporters have no actuals a day on.
+export function windowEvents(
   db: Db,
   shares: readonly Instrument[],
   now: number,
-): { from: string; to: string } | null {
+): WindowEvent[] {
   const today = new Map<string, string>();
-  const days = new Map<string, string>();
-  for (const s of shares) {
-    let d = today.get(s.zone);
+  const days = new Map<string, { share: Instrument; today: string }>();
+  for (const share of shares) {
+    let d = today.get(share.zone);
     if (d === undefined) {
-      d = localDate(s.zone, now);
-      today.set(s.zone, d);
+      d = localDate(share.zone, now);
+      today.set(share.zone, d);
     }
-    days.set(s.id, d);
+    days.set(share.id, { share, today: d });
   }
-  if (days.size === 0) return null;
+  if (days.size === 0) return [];
   const all = [...today.values()].sort();
-  const waiting = db
-    .query<{ instrument: string; date: string }, [string, string]>(
-      `select instrument, date from events
-       where date >= ? and date <= ? and reported_seen_at is null`,
+  const out: WindowEvent[] = [];
+  const rows = db
+    .query<
+      {
+        instrument: string;
+        date: string;
+        listing: string | null;
+        seenAt: number | null;
+      },
+      [string, string]
+    >(
+      `select instrument, date, listing, reported_seen_at as seenAt
+       from events where date >= ? and date <= ?`,
     )
-    .all(addDays(all[0]!, -1), all.at(-1)!)
-    .map((e) => ({ e, d: days.get(e.instrument) }))
-    .filter(
-      ({ e, d }) => d !== undefined && e.date >= addDays(d, -1) && e.date <= d,
-    )
-    .map(({ d }) => d!)
+    .all(addDays(all[0]!, -1), all.at(-1)!);
+  for (const r of rows) {
+    const d = days.get(r.instrument);
+    if (d === undefined) continue;
+    if (r.date < addDays(d.today, -1) || r.date > d.today) continue;
+    out.push({ ...r, instrument: d.share });
+  }
+  return out;
+}
+
+// The market calendar's range for the unreported events of the shares'
+// own listings; null when none waits. Another listing's events are not
+// in that answer under the share's symbol.
+export function reportingWindow(
+  events: readonly WindowEvent[],
+  now: number,
+): { from: string; to: string } | null {
+  const days = events
+    .filter((e) => e.seenAt === null && e.listing === null)
+    .map((e) => localDate(e.instrument.zone, now))
     .sort();
-  if (waiting.length === 0) return null;
-  return { from: addDays(waiting[0]!, -1), to: waiting.at(-1)! };
+  if (days.length === 0) return null;
+  return { from: addDays(days[0]!, -1), to: days.at(-1)! };
 }
 
 export type FinnhubJobs = {
@@ -111,16 +140,66 @@ export function finnhubJobs(options: {
       }))
       .filter((w) => w.sections.length > 0);
 
-  // One call for every tracked share around its report, however many
-  // there are; a first sighting asks that share's earnings once, so its
-  // surprises carry the new quarter the same hour.
+  // the share's section was asked within the hour, or failed and waits
+  const askedWithin = (id: string, section: Section, now: number) => {
+    const last = lastStarted(db, SOURCE, section, id);
+    return (
+      (last !== null && now - last.startedAt < MARKET_EVERY_MS) ||
+      retrying(id, section, now)
+    );
+  };
+
+  // A share's event of another listing is not in the market answer, so
+  // its own calendar is asked hourly; these are few, foreign companies.
+  const otherListings = (events: readonly WindowEvent[], now: number) => {
+    const due = new Map<string, Instrument>();
+    for (const e of events) {
+      if (e.seenAt !== null || e.listing === null) continue;
+      if (askedWithin(e.instrument.id, "calendar", now)) continue;
+      due.set(e.instrument.id, e.instrument);
+    }
+    return [...due.values()].map((instrument) => ({
+      instrument,
+      sections: ["calendar"] as Section[],
+    }));
+  };
+
+  // A share whose event was seen reported after its last good earnings
+  // run ended is asked its earnings, so the surprises carry the new
+  // quarter the same hour. From stored state, so a tick cut by its
+  // budget leaves the rest to the next; the end, since a pass asking
+  // both sections stores them in one write.
+  const sightedEarnings = (events: readonly WindowEvent[], now: number) => {
+    const seen = new Map<string, { instrument: Instrument; at: number }>();
+    for (const e of events) {
+      if (e.seenAt === null) continue;
+      const had = seen.get(e.instrument.id);
+      if (had === undefined || had.at < e.seenAt) {
+        seen.set(e.instrument.id, { instrument: e.instrument, at: e.seenAt });
+      }
+    }
+    return [...seen.values()]
+      .filter(({ instrument, at }) => {
+        const ok = lastStarted(db, SOURCE, "earnings", instrument.id, "ok");
+        const before = ok === null || (ok.endedAt ?? 0) < at;
+        return before && !retrying(instrument.id, "earnings", now);
+      })
+      .map(({ instrument }) => ({
+        instrument,
+        sections: ["earnings"] as Section[],
+      }));
+  };
+
+  // One call for every tracked share reporting, however many there are;
+  // true when it was asked.
   async function market(
     shares: readonly Instrument[],
+    window: { from: string; to: string } | null,
     now: number,
     pass: ResearchPass,
-  ): Promise<Instrument[]> {
-    const window = reportingWindow(db, shares, now);
-    if (window === null || ctx.finnhub === null) return [];
+  ): Promise<boolean> {
+    const client = ctx.finnhub;
+    if (window === null || client === null) return false;
     const last = lastStarted(
       db,
       SOURCE,
@@ -128,28 +207,26 @@ export function finnhubJobs(options: {
       MARKET_CALENDAR.scope,
     );
     const wait = last?.status === "failed" ? RETRY_MS : MARKET_EVERY_MS;
-    if (last !== null && now - last.startedAt < wait) return [];
+    if (last !== null && now - last.startedAt < wait) return false;
     const startedAt = clock.now();
     let outcome: Parameters<typeof storeMarketCalendar>[2];
     try {
-      const answer = await ctx.finnhub.marketCalendar(window.from, window.to);
+      const answer = await client.marketCalendar(window.from, window.to);
       outcome = { answer, startedAt };
     } catch (error) {
       if (error instanceof QueueClosed || error instanceof WriterClosed) {
         throw error;
       }
       // no run: it would hold off the next hour's ask
-      if (error instanceof Paused) return [];
+      if (error instanceof Paused) return false;
       outcome = { error, startedAt };
     }
     const result = await storeMarketCalendar(ctx, shares, outcome, hooks);
-    if (result.status === "failed") {
-      pass.market = { error: phraseOf(result.error) };
-      return [];
-    }
-    pass.market = { rows: result.rows, reported: result.reported };
-    const sighted = new Set(result.reported);
-    return shares.filter((s) => sighted.has(s.id));
+    pass.market =
+      result.status === "failed"
+        ? { error: phraseOf(result.error) }
+        : { rows: result.rows, reported: result.reported };
+    return true;
   }
 
   async function tick(): Promise<ResearchPass> {
@@ -157,9 +234,12 @@ export function finnhubJobs(options: {
     if (ctx.finnhub === null) return pass;
     const started = clock.now();
     const shares = trackedInstruments(db, started, trackMs).filter(eligible);
-    let sighted: Instrument[];
+    let events = windowEvents(db, shares, started);
     try {
-      sighted = await market(shares, started, pass);
+      const window = reportingWindow(events, started);
+      if (await market(shares, window, started, pass)) {
+        events = windowEvents(db, shares, started);
+      }
     } catch (error) {
       // shutting down: the next start picks the work up
       if (error instanceof QueueClosed || error instanceof WriterClosed) {
@@ -167,16 +247,16 @@ export function finnhubJobs(options: {
       }
       throw error;
     }
-    // first sightings' earnings first, each instrument once with all it is due
+    // reporting shares first, each instrument once with all it is due
     const work = new Map<
       string,
       { instrument: Instrument; sections: Section[] }
     >();
-    const reported = sighted.map((instrument) => ({
-      instrument,
-      sections: ["earnings"] as Section[],
-    }));
-    for (const w of [...reported, ...daily(shares, started)]) {
+    for (const w of [
+      ...otherListings(events, started),
+      ...sightedEarnings(events, started),
+      ...daily(shares, started),
+    ]) {
       const had = work.get(w.instrument.id);
       if (had === undefined) work.set(w.instrument.id, w);
       else {

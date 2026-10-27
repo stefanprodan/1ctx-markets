@@ -1018,11 +1018,14 @@ describe("the market calendar", () => {
       rows?: (rows: any[]) => void;
       fail?: () => boolean;
       start?: number;
+      route?: Route;
     } = {},
   ) {
     return setup({
       start: options.start ?? AT,
       route: async (url) => {
+        const routed = await options.route?.(url);
+        if (routed !== undefined) return routed;
         if (isMarket(url)) {
           if (options.fail?.()) {
             return { recordedAt: "", status: 500, headers: {}, body: {} };
@@ -1218,6 +1221,96 @@ describe("the market calendar", () => {
       date: "2026-10-27",
       epsEstimate: 0.5,
     });
+  });
+
+  test("an event of another listing is asked by its share's calendar hourly, never the market", async () => {
+    let actual: number | null = null;
+    const t = marketSetup({
+      route: edited("/api/v1/calendar/earnings", "TSM", (b) => {
+        b.earningsCalendar[0].date = "2026-10-27";
+        b.earningsCalendar[0].epsActual = actual;
+      }),
+    });
+    const tsm = share(t.db, "TSM", AT);
+    t.db
+      .query(
+        `insert into events (instrument, fiscal_year, fiscal_quarter, date,
+           hour, listing, fetched_at)
+         values (?, 2026, 4, '2026-10-27', 'bmo', '2330.TW', ?)`,
+      )
+      .run(tsm.id, AT - DAY_MS);
+    fresh(t.db, tsm.id);
+    const key = { instrument: tsm.id, fiscalYear: 2026, fiscalQuarter: 4 };
+    let seen = 0;
+    const jobs = finnhubJobs({
+      ctx: t.ctx,
+      log: silent,
+      hooks: {
+        waited: () => [key],
+        // the answer's past quarter is seen too, on the first ask
+        reported: (_db, events) => {
+          seen += events.filter((k) => k.fiscalQuarter === 4).length;
+        },
+      },
+    });
+    const calendars = () =>
+      t.f.urls.filter(
+        (u) =>
+          u.pathname === "/api/v1/calendar/earnings" &&
+          u.searchParams.get("symbol") === "TSM",
+      ).length;
+    const first = await drive(t.clock, t.client, jobs.tick());
+    expect(first.asked).toEqual([
+      { instrument: tsm.id, sections: ["calendar"] },
+    ]);
+    expect(calendars()).toBe(1);
+    await t.clock.advance(30 * MINUTE_MS);
+    await drive(t.clock, t.client, jobs.tick());
+    expect(calendars()).toBe(1);
+    actual = 33.1;
+    await t.clock.advance(31 * MINUTE_MS);
+    await drive(t.clock, t.client, jobs.tick());
+    expect(calendars()).toBe(2);
+    expect(seen).toBe(1);
+    const [e] = readEvents(t.db, "2026-10-27", "2026-10-27");
+    expect(e).toMatchObject({ listing: "2330.TW", epsActual: null });
+    expect(e!.reportedSeenAt).not.toBeNull();
+    // reported: neither its calendar nor the market is asked again
+    await t.clock.advance(61 * MINUTE_MS);
+    await drive(t.clock, t.client, jobs.tick());
+    expect(calendars()).toBe(2);
+    expect(seen).toBe(1);
+    expect(marketCalls(t)).toEqual([]);
+  });
+
+  test("first sightings past one tick's budget get their earnings on the next tick, each once", async () => {
+    const names = Array.from({ length: 50 }, (_, k) => `ZZ${k}`);
+    const t = marketSetup({
+      rows: (rows) => {
+        const hood = row(rows, "HOOD");
+        for (const symbol of names) {
+          rows.push({ ...hood, symbol, epsActual: 0.7 });
+        }
+      },
+    });
+    for (const s of names) reporting(t.db, s);
+    const jobs = finnhubJobs({ ctx: t.ctx, log: silent });
+    const earnings = () =>
+      t.f.urls
+        .filter((u) => u.pathname === "/api/v1/stock/earnings")
+        .map((u) => u.searchParams.get("symbol"));
+    const first = await drive(t.clock, t.client, jobs.tick());
+    expect(first.market).toMatchObject({ rows: 50 });
+    expect(earnings().length).toBeLessThan(50);
+    await t.clock.advance(MINUTE_MS);
+    const second = await drive(t.clock, t.client, jobs.tick());
+    expect(second.market).toBeNull();
+    expect(earnings().sort()).toEqual([...names].sort());
+    // each earnings ran after its sighting: none is asked again
+    await t.clock.advance(MINUTE_MS);
+    const third = await drive(t.clock, t.client, jobs.tick());
+    expect(third.asked).toEqual([]);
+    expect(marketCalls(t)).toHaveLength(1);
   });
 
   test("a waited event's first sighting calls the reported hook once, in the market write", async () => {
