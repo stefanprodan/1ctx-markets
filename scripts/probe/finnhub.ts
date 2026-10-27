@@ -1,5 +1,5 @@
 // Records Finnhub free-tier answers as test fixtures.
-// Run: bun scripts/probe/finnhub.ts  (FINNHUB_KEY_FILE overrides the key path)
+// Run: bun scripts/probe/finnhub.ts [case...]  (FINNHUB_KEY_FILE overrides the key path)
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { readKey, record, sleep } from "./record";
@@ -41,10 +41,26 @@ cases.push([
   "calendar-earnings-day",
   `${base}/calendar/earnings?from=2026-10-28&to=2026-10-28`,
 ]);
+// Two days past their dates hold actuals; a week shows whether a busy range is cut off.
+cases.push([
+  "calendar-earnings-two-days",
+  `${base}/calendar/earnings?from=2026-10-26&to=2026-10-27`,
+]);
+cases.push([
+  "calendar-earnings-week",
+  `${base}/calendar/earnings?from=2026-10-26&to=2026-11-01`,
+]);
 cases.push(["price-target-nvda", `${base}/stock/price-target?symbol=NVDA`]);
 
+const wanted = process.argv.slice(2);
+const missing = wanted.filter((w) => !cases.some(([name]) => name === w));
+if (missing.length) throw new Error(`unknown case: ${missing.join(", ")}`);
+const run = wanted.length
+  ? cases.filter(([name]) => wanted.includes(name))
+  : cases;
+
 // Free tier is 60 calls a minute; stay well under it.
-for (const [name, url] of cases) {
+for (const [name, url] of run) {
   await record(join(dir, `${name}.json`), url, auth, key);
   await sleep(1500);
 }
