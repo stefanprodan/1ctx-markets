@@ -50,8 +50,9 @@ holdings, orders or portfolio, and it makes no model calls.
   holidays and clock changes need no table.
 - **Free sources, each optional.** Yahoo needs no key and is always on.
   FRED, Finnhub and Massive turn on when their free key file is present.
-  The Bucharest Stock Exchange's own feed, with its shares, government
-  bonds and indices, turns on with `--source bvb` and needs no key.
+  The Bucharest Stock Exchange's own feed, with its shares, fund units,
+  government bonds and indices, turns on with `--source bvb` and needs
+  no key.
 - **One binary, one file.** A standalone binary built with Bun, one
   SQLite database and a directory of key files. MCP answers stay under
   32 KiB pages, so MCP clients need no setting changed; the REST API

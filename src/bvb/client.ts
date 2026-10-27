@@ -105,7 +105,7 @@ export type Schedule = {
 export type Meta = {
   symbol: string;
   name: string | null;
-  // Shares, Bonds, index
+  // Shares, Bonds, Units, index
   type: string;
   currency: string | null;
   zone: string;
@@ -133,6 +133,8 @@ export type Listing = {
 
 export type Bvb = {
   shares(): Promise<SharesPage>;
+  // fund units, exchange-traded funds among them: the shares page's columns
+  units(): Promise<SharesPage>;
   bonds(): Promise<BondsPage>;
   indices(): Promise<IndicesPage>;
   detail(symbol: string): Promise<Detail>;
@@ -147,7 +149,7 @@ export type Bvb = {
   ): Promise<History>;
   search(text: string): Promise<Listing[]>;
   // the symbols, uppercased, on the list pages last read; null until all
-  // three are read, as an unread kind may hold the symbol
+  // are read, as an unread kind may hold the symbol
   listed(): ReadonlySet<string> | null;
   // when the list page of a kind was last read, null if never
   listedAt(kind: ListKind): number | null;
@@ -158,7 +160,7 @@ export type Bvb = {
   close(): void;
 };
 
-export const LISTS = ["shares", "bonds", "indices"] as const;
+export const LISTS = ["shares", "units", "bonds", "indices"] as const;
 export type ListKind = (typeof LISTS)[number];
 
 export type BvbOptions = { clock: Clock; fetch?: Fetch };
@@ -609,6 +611,10 @@ export function bvb(options: BvbOptions): Bvb {
       shares: () =>
         page("/FinancialInstruments/Markets/Shares", parseShares).then((p) =>
           keep("shares", p),
+        ),
+      units: () =>
+        page("/FinancialInstruments/Markets/FundUnits", parseShares).then((p) =>
+          keep("units", p),
         ),
       bonds: () =>
         page("/FinancialInstruments/Markets/Bonds", parseBonds).then((p) =>

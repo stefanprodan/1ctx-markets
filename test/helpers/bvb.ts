@@ -48,10 +48,12 @@ const DETAILS: Record<string, string> = {
   SNP: "detail-snp",
   H2O: "detail-h2o",
   R2807A: "detail-bond-r2807a",
+  BTBETRETF: "detail-btbetretf",
 };
 
 const METAS: Record<string, string> = {
   TLV: "wapi-symbols-tlv",
+  BTBETRETF: "wapi-symbols-btbetretf",
   BET: "wapi-symbols-bet",
   R2807A: "wapi-symbols-r2807a",
 };
@@ -62,6 +64,7 @@ const HISTORIES: Record<string, string> = {
   H2O: "wapi-history-h2o-1d",
   BET: "wapi-history-bet-1d",
   R2807A: "wapi-history-r2807a-1d",
+  BTBETRETF: "wapi-history-btbetretf-1d",
 };
 
 export type BvbRoutes = {
@@ -89,6 +92,8 @@ export async function bvbAnswer(
     switch (url.pathname) {
       case "/FinancialInstruments/Markets/Shares":
         return page("shares-list");
+      case "/FinancialInstruments/Markets/FundUnits":
+        return page("fund-units-list");
       case "/FinancialInstruments/Markets/Bonds":
         return page("bonds-list");
       case "/TradingAndStatistics/Trading/MarketsToday":

@@ -12,6 +12,7 @@ import {
   fetchInstrument,
   refetch,
   sessionOf,
+  UNLISTED,
 } from "../src/bvb/sync.ts";
 import { readSession, recordSession } from "../src/calendars.ts";
 import { MINUTE_MS } from "../src/clock.ts";
@@ -175,6 +176,54 @@ describe("instruments from the feed", () => {
     expect(wapi(t.f.urls, "/api/history")).toEqual([]);
   });
 
+  test("a fund unit is an ETF priced per share, quoted from its list", async () => {
+    const t = await setup(utc("2026-10-27T16:30:00"));
+    const tuesday = {
+      zone: "Europe/Bucharest",
+      start: utc("2026-10-27T08:00:00"),
+      end: utc("2026-10-27T16:00:00"),
+    };
+    recordSession(t.db, MARKET, tuesday, tuesday.start);
+    const etf = await t.add("BTBETRETF");
+    expect(etf).toMatchObject({
+      id: "BVB:BTBETRETF",
+      source: "bvb",
+      type: "ETF",
+      unit: "per_share",
+      currency: "RON",
+      zone: "Europe/Bucharest",
+    });
+    expect(readQuote(t.db, etf.id)).toMatchObject({
+      price: 12.028,
+      previousClose: 12.058,
+      time: utc("2026-10-27T15:55:39"),
+    });
+    // every session since its listing, the last still the stored one's
+    const bars = readBars(t.db, etf.id, "1d");
+    expect(bars).toHaveLength(132);
+    expect(bars[0]!.date).toBe("2026-04-23");
+    expect(bars.at(-1)).toMatchObject({ date: "2026-10-27", final: false });
+    const before = t.f.urls.length;
+    expect((await t.run(t.jobs.quoteTick())).quoted).toBe(true);
+    expect(t.f.urls.slice(before).map((u) => u.pathname)).toContain(
+      "/FinancialInstruments/Markets/FundUnits",
+    );
+    expect(lastRun(t.db, "bvb", JOBS.quotes, MARKET)!.status).toBe("ok");
+    expect(readQuote(t.db, etf.id)!.price).toBe(12.028);
+  });
+
+  test("a fund unit its list lacks is refused, never stored", async () => {
+    const meta = clone(await bvbRecorded("wapi-symbols-btbetretf"));
+    meta.body.name = "XYZETF";
+    const t = await setup(utc("2026-10-27T16:30:00"), {
+      hold: (url) =>
+        url.searchParams.get("symbol") === "XYZETF" ? meta : undefined,
+    });
+    const asked = t.run(fetchInstrument(t.ctx, "XYZETF", null, () => true));
+    await expect(asked).rejects.toThrow(UNLISTED);
+    expect(readInstrument(t.db, "BVB:XYZETF")).toBeNull();
+  });
+
   test("an unknown symbol is not found and nothing is stored", async () => {
     const t = await setup(utc("2026-10-23T14:00:00"));
     await expect(
@@ -288,10 +337,12 @@ describe("quotes from the list pages", () => {
     const before = t.f.urls.length;
     expect((await t.run(t.jobs.quoteTick())).quoted).toBe(true);
     const pass = t.f.urls.slice(before).map((u) => u.pathname);
+    // the pass reads the kinds tracked, then the day's unread list
     expect(pass).toEqual([
       "/FinancialInstruments/Markets/Shares",
       "/FinancialInstruments/Markets/Bonds",
       "/TradingAndStatistics/Trading/MarketsToday",
+      "/FinancialInstruments/Markets/FundUnits",
     ]);
     expect(lastRun(t.db, "bvb", JOBS.quotes, MARKET)!.status).toBe("ok");
     // bonds stay in percent of par, as quoted
@@ -379,6 +430,7 @@ describe("quotes from the list pages", () => {
 describe("the list pages with nothing tracked", () => {
   const LIST_PATHS = [
     "/FinancialInstruments/Markets/Shares",
+    "/FinancialInstruments/Markets/FundUnits",
     "/FinancialInstruments/Markets/Bonds",
     "/TradingAndStatistics/Trading/MarketsToday",
   ];
@@ -393,7 +445,7 @@ describe("the list pages with nothing tracked", () => {
     // 23:59 in Bucharest is still the same exchange day
     await t.clock.advance(utc("2026-10-23T20:59:00") - t.clock.now());
     await t.run(t.jobs.quoteTick());
-    expect(pages()).toHaveLength(3);
+    expect(pages()).toHaveLength(LIST_PATHS.length);
     // midnight in Bucharest, not in UTC, starts the next
     await t.clock.advance(utc("2026-10-23T21:01:00") - t.clock.now());
     await t.run(t.jobs.quoteTick());
@@ -420,13 +472,14 @@ describe("the list pages with nothing tracked", () => {
     await t.run(t.jobs.quoteTick());
     expect(shareReads()).toBe(2);
     // the pages that read are not asked again that day
-    expect(t.f.urls).toHaveLength(4);
+    expect(t.f.urls).toHaveLength(5);
   });
 });
 
 describe("the list pages at start", () => {
   const LIST_PATHS = [
     "/FinancialInstruments/Markets/Shares",
+    "/FinancialInstruments/Markets/FundUnits",
     "/FinancialInstruments/Markets/Bonds",
     "/TradingAndStatistics/Trading/MarketsToday",
   ];

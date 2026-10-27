@@ -26,13 +26,15 @@ exchange: one client, its parsers, its session, the same tables.
   partial postback; a plain request answers the regulated market's. A
   share the regulated list lacks is refused when fetched
   (`checkListed()`, `AERO`), since no quote pass could quote it, and
-  the switch keeps it on Yahoo.
+  the switch keeps it on Yahoo. A fund unit the fund units list lacks
+  is refused the same way (`UNLISTED`).
 
 ## What it reads
 
 | Call | Path | Gives |
 | --- | --- | --- |
 | `shares` | `bvb.ro/FinancialInstruments/Markets/Shares` | every regulated share: price, last trade time, the price currency in the header |
+| `units` | `bvb.ro/FinancialInstruments/Markets/FundUnits` | fund units, exchange-traded funds among them, in the shares page's columns |
 | `bonds` | `bvb.ro/FinancialInstruments/Markets/Bonds` | bonds: price in percent of par, last trade time, issue currency |
 | `indices` | `bvb.ro/TradingAndStatistics/Trading/MarketsToday` | indices (`table#gvI`): value and exact change, no time |
 | `detail` | `bvb.ro/FinancialInstruments/Details/FinancialInstrumentsDetails.aspx?s=` | the reference price (previous close), the last trade with seconds, day high and low, the page key |
@@ -100,10 +102,14 @@ exchange: one client, its parsers, its session, the same tables.
   symbol in any case; resolution compares feed symbols case-blind
   (`readByFeedSymbol()`).
 - **The type and unit come from the feed's symbol answer** (`KINDS`):
-  `Shares` is `EQUITY` per share, `Bonds` is `BOND` in percent of par,
-  `index` is `INDEX` in index points. Any other type is `refused`
-  (`ONLY`). An expired symbol is `not found`. The zone and currency are
-  the answer's; an index has no currency.
+  `Shares` is `EQUITY` per share, `Units` is `ETF` per share, `Bonds`
+  is `BOND` in percent of par, `index` is `INDEX` in index points. A
+  fund unit trades on the regulated market as a share does, so it is
+  quoted from its list and the instrument page and its bars come from
+  the chart feed, as a share's; the list also holds fund units that are
+  not exchange-traded funds, typed `ETF` too. Any other type is
+  `refused` (`ONLY`). An expired symbol is `not found`. The zone and
+  currency are the answer's; an index has no currency.
 
 ## The session
 
@@ -122,9 +128,10 @@ exchange: one client, its parsers, its session, the same tables.
 ## Quotes
 
 - **A quote pass reads only the list pages the tracked kinds need:**
-  shares, bonds, indices, one call each per quote period while the
-  market is quoted, and once after its close (`closeQuoteAt()`), since
-  the share list is marked 15 minutes delayed.
+  shares, fund units, bonds, indices, one call each per quote period
+  while the market is quoted, and once after its close
+  (`closeQuoteAt()`), since the share list is marked 15 minutes
+  delayed.
 - **Every list page is read at least once an exchange day while the
   feed is on, tracked or not, and at start** (`readLists()`, `warm()`),
   so a new symbol need not wait on the exchange's search. The day is the
@@ -199,10 +206,10 @@ exchange: one client, its parsers, its session, the same tables.
   exchange lacks the symbol:** the symbols on the list pages the client
   last read (`listed()`, kept by the jobs' reads) do not
   hold it and Yahoo's results name no Bucharest listing (`.RO`). The
-  exchange is asked while any of the three lists (shares, bonds,
-  indices) is unread, or when the lists hold the symbol though Yahoo's
-  top results lack its `.RO` listing (`EL`, `M`), so a bare symbol on
-  both answers both as candidates, never a guess.
+  exchange is asked while any of the four lists (shares, fund units,
+  bonds, indices) is unread, or when the lists hold the symbol though
+  Yahoo's top results lack its `.RO` listing (`EL`, `M`), so a bare
+  symbol on both answers both as candidates, never a guess.
 - **A `BVB:` key is the feed's while it is on,** asked by its symbol
   answer; a Yahoo symbol naming a Bucharest listing (`TLV.RO`) resolves
   to the same key and is fetched from the feed.
@@ -245,7 +252,8 @@ exchange: one client, its parsers, its session, the same tables.
 For 10 Bucharest instruments (8 shares, 1 bond, 1 index) on a trading
 day at the default 5-minute quote period: 1 schedule page, 98 quote
 passes (97 in session and one after the close) of 3 list pages (294),
-9 instrument pages, 10 histories: about 314 calls, one every 95
-seconds of the session on average. A holiday costs up to 8
-schedule pages; with nothing tracked, a day is the 3 list pages.
+the fund units list once, 9 instrument pages, 10 histories: about 315
+calls, one every 95 seconds of the session on average. A tracked fund
+unit adds its list to every pass. A holiday costs up to 8 schedule
+pages; with nothing tracked, a day is the 4 list pages.
 Inline fetches add 3 calls per new index or bond and 4 per new share.

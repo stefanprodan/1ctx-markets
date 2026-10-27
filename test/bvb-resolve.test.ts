@@ -166,6 +166,7 @@ describe("resolution with the feed on", () => {
     const t = await setup(true);
     // quote passes read every list, so the exchange's symbols are known
     await drive(t.clock, t.exchange!, t.exchange!.shares());
+    await drive(t.clock, t.exchange!, t.exchange!.units());
     await drive(t.clock, t.exchange!, t.exchange!.bonds());
     await drive(t.clock, t.exchange!, t.exchange!.indices());
     const [nvda] = await t.read(["NVDA"]);
