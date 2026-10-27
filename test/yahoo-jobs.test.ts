@@ -7,15 +7,16 @@ import { readBars } from "../src/bars.ts";
 import { readSession } from "../src/calendars.ts";
 import { DAY_MS, MINUTE_MS } from "../src/clock.ts";
 import { open } from "../src/db/index.ts";
-import { readInstrument } from "../src/instruments.ts";
+import { readInstrument, upsertInstrument } from "../src/instruments.ts";
 import { silent } from "../src/log.ts";
 import { readQuote } from "../src/quotes.ts";
-import { INTERRUPTED, lastRun, startRun } from "../src/runs.ts";
+import { endRun, INTERRUPTED, lastRun, startRun } from "../src/runs.ts";
 import { scheduler } from "../src/scheduler.ts";
 import { readSignals } from "../src/signals/read.ts";
 import { barsStale, JOBS, OWED_RETRY_MS, quoteStale } from "../src/stale.ts";
 import { moversAnswer, parseMovers } from "../src/tools/movers.ts";
 import { markets } from "../src/tools/targets.ts";
+import { markRead } from "../src/tracking.ts";
 import { writer } from "../src/writer.ts";
 import { yahoo } from "../src/yahoo/client.ts";
 import { RETRY_MS, type TickReport, yahooJobs } from "../src/yahoo/jobs.ts";
@@ -493,7 +494,7 @@ describe("a finished session's close that lands late", () => {
     moveSession(meta, start, end, utc(start));
     if (o.price !== undefined) meta.regularMarketPrice = o.price;
     await t.runTo(utc(start));
-    return { ...t, asks, meta };
+    return { ...t, asks, meta, spark };
   }
 
   const XETRA_MONDAY: [string, string] = [
@@ -611,6 +612,44 @@ describe("a finished session's close that lands late", () => {
     await t.runTo(utc("2026-10-26T21:00"));
     expect(t.asks).toEqual([utc("2026-10-26T13:30")]);
     expect(bar(t.db, "US:NVDA", "2026-10-23")).toMatchObject({ final: true });
+  });
+
+  test("an owed mark on an instrument with no bars never speeds up its market's pass", async () => {
+    const { late } = await mondayOpen();
+    const t = await nextSession({
+      symbol: "VVSM.DE",
+      sunday: listed(await recorded("chart-vvsm-de-5d-1d")),
+      session: XETRA_MONDAY,
+      at: () => late,
+    });
+    const meta = clone(t.meta);
+    meta.symbol = "XX0.DE";
+    t.spark.metas.set("XX0.DE", meta);
+    await t.ctx.writer.write((db) => {
+      const now = t.clock.now();
+      upsertInstrument(
+        db,
+        {
+          market: "XETRA",
+          symbol: "XX0",
+          source: "yahoo",
+          sourceSymbol: "XX0.DE",
+          exchange: "GER",
+          name: "XX0",
+          type: "ETF",
+          currency: "EUR",
+          unit: "per_share",
+          zone: "Europe/Berlin",
+        },
+        now,
+      );
+      markRead(db, ["XETRA:XX0"], now);
+      endRun(db, startRun(db, "yahoo", JOBS.bars, now, "XETRA:XX0"), now, 0);
+      endRun(db, startRun(db, "yahoo", JOBS.owed, now, "XETRA:XX0"), now, 0);
+    });
+    await t.runTo(utc("2026-10-26T10:00"));
+    expect(t.asks).toHaveLength(9);
+    expect(new Set(spaced(t.asks))).toEqual(new Set([OWED_RETRY_MS]));
   });
 
   test("a day never closed is asked every period until the next session starts, then dropped", async () => {

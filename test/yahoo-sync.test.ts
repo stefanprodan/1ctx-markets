@@ -647,6 +647,19 @@ describe("a finished day the answer has not closed yet", () => {
     });
   });
 
+  test("a listing whose answer has only null closes stores no bars and owes nothing", async () => {
+    const open = clone(await recorded("chart-vvsm-de-5d-1d-open-0800"));
+    const q = open.body.chart.result[0].indicators.quote[0];
+    q.close = q.close.map(() => null);
+    const t = setup(Date.parse(open.recordedAt), () => listed(open));
+    const { instrument } = await addInstrument(t.ctx, "VVSM.DE");
+    expect(await backfill(t.ctx, instrument)).toMatchObject({
+      rows: 0,
+      owed: null,
+    });
+    expect(readBars(t.db, "XETRA:VVSM", "1d")).toEqual([]);
+  });
+
   test("keeps the stored bar of a day the answer has no row for", async () => {
     const t = await friday();
     const late = clone(t.open);

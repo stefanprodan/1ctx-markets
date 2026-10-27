@@ -381,6 +381,9 @@ const refusedOf = (db: Db) => {
 // owed: the newest finished day the answer gave no close for, none final stored
 export type Landed = Written & { owed: string | null };
 
+const hasDaily = (db: Db, i: Pick<Instrument, "id">) =>
+  dailyRange(db, i.id) !== null;
+
 // A chart can leave the session before the latest one without its close
 // for a while after the next opens, so that day is owed, not dropped.
 function unclosed(
@@ -389,7 +392,10 @@ function unclosed(
   latest: Session | null,
   { bars, days }: Read,
 ): string | null {
-  if (latest === null) return null;
+  // backfill owns an instrument with no bars, so it is never owed
+  if (latest === null || (bars.length === 0 && !hasDaily(db, instrument))) {
+    return null;
+  }
   const today = sessionDate(latest);
   const stored = db
     .query<{ date: string; final: number }, [string, string]>(

@@ -180,7 +180,12 @@ export function owedDue<T extends { id: string }>(
   const session = readSession(db, market);
   if (session === null) return [];
   let earliest = now;
+  const has = db.query<{ n: number }, [string]>(
+    "select count(*) as n from (select 1 from bars where instrument = ? and interval = '1d' limit 1)",
+  );
   const owed = instruments.filter((i) => {
+    // the bar pass skips one with no bars, so its mark would never renew
+    if (has.get(i.id)!.n === 0) return false;
     const mark = lastStarted(db, source, JOBS.owed, i.id);
     // any later bars run, landed or failed, settles it
     const bars = lastStarted(db, source, JOBS.bars, i.id);

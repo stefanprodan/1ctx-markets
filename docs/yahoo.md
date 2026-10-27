@@ -148,8 +148,11 @@ inside a call in `docs/tools.md`; rule pauses in `docs/rules.md`.
   `src/stale.ts` asks a market's owed instruments again, together, once
   the earliest mark is `OWED_RETRY_MS` (15 minutes) old, so the market
   gets at most one owed pass per period. Only marks from the current
-  session count: the next session's full pass sees the day no longer
-  newest, and one the source never closed is then deleted as above.
+  session count, and an instrument with no daily bars is never owed
+  (backfill owns it). A day is owed until the session after the one it
+  became newest in starts; that session's full pass decides again, and
+  a day the source never closed is deleted as above once it is no
+  longer newest.
 - **The bars, their signals and the rule evaluation land in one
   transaction** (`store()`), so nothing reads bars without their
   signals.
