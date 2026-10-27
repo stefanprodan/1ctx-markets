@@ -709,6 +709,7 @@ describe("GET /quotes", () => {
           "fetched_at",
           "stale",
           "sma",
+          "last_final",
         ].sort(),
       );
       expect(nvda).toMatchObject({

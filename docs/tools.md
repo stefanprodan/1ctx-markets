@@ -208,8 +208,23 @@ bearer and flags in `docs/config.md`.
 
 - **`GET /quotes?symbols=A,B&next=…` answers `quotePage()` with
   `briefItem()`**: price or observation, change, unit, currency,
-  times, `stale` and the daily and weekly SMA 50 and 200. It shares
-  resolution, tracking, the deadline and the pages with `quote`.
+  times, `stale`, the daily and weekly SMA 50 and 200, and
+  `last_final`. It shares resolution, tracking, the deadline and the
+  pages with `quote`.
+- **`last_final.daily` is the last final daily bar's `date` and
+  `close` with its final row's `sma50` and `sma200`**, the values
+  movers crosses from, so a script tells a crossing since the last
+  close without movers. `last_final` is null with no final bar, an
+  average null with too few bars. Daily only: a crossing since the
+  last close is a daily question; `weekly` may be added beside it.
+- **The crossing rule**, counted only when `stale` is empty and
+  `sma.daily` is `live` and dated after `last_final.daily.date`, as
+  movers counts it: `last_final.daily.close >= last_final.daily.sma200`
+  and `price < sma.daily.sma200` is crossed below, `<=` and `>` back
+  above. With `last_final.daily.sma200` null (under 200 bars) the
+  same with `sma50`. Averages are rounded to six significant digits
+  and movers compares unrounded ones, so a close or price that close
+  to its average can count differently.
 - **`symbols` is given once, comma-separated**, as a shell script
   builds it; only `symbols` and `next` are accepted. A bad argument answers 400
   `bad_arguments`, anything else 500 `internal`. Every answer is

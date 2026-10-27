@@ -13,7 +13,13 @@ import type { Instrument } from "../instruments.ts";
 import { readQuote } from "../quotes.ts";
 import { price, round, type ToolResult, textResult } from "./answer.ts";
 import { ArgError, fields, oneOf, optionalText, symbols } from "./args.ts";
-import { type Latest, MAX_SYMBOLS, quoteItem, readLatest } from "./quote.ts";
+import {
+  closeOn,
+  type Latest,
+  MAX_SYMBOLS,
+  quoteItem,
+  readLatest,
+} from "./quote.ts";
 import {
   distinct,
   type Resolved,
@@ -98,22 +104,6 @@ export function parseMovers(input: unknown): MoversArgs {
 
 const NO_QUOTE = "a FRED series has no live quote, so it never moves";
 const NO_LIVE = "no live row: no trade in the current session yet";
-
-// the close of the bar a final row was computed for
-function closeOn(
-  db: Db,
-  id: string,
-  interval: "1d" | "1wk",
-  date: string,
-): number | null {
-  return (
-    db
-      .query<{ close: number }, [string, string, string]>(
-        "select close from bars where instrument = ? and interval = ? and date = ?",
-      )
-      .get(id, interval, date)?.close ?? null
-  );
-}
 
 type Side = { kind: "live" | "final"; date: string; value: number };
 
