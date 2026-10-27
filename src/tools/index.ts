@@ -26,6 +26,7 @@ import {
   parseResearch,
   RESEARCH_SECTIONS,
   researchAnswer,
+  SINCE_DAYS,
 } from "./research.ts";
 import { parseRules, RULE_ACTIONS, rulesAnswer } from "./rules.ts";
 import {
@@ -86,8 +87,7 @@ const SCREEN = `Filter and rank 1 to ${MAX_SYMBOLS} symbols on their latest sign
 const SEARCH =
   "Find instruments by name or symbol: stored ones, Yahoo's listings and, with the Bucharest feed on, the exchange's own, each with its id, exchange, type and name, for quote or history. Fetches no prices. A FRED series not stored yet is found only as FRED:<series id>.";
 
-const RESEARCH =
-  "One US-listed share's research from Finnhub and news from Massive. section overview (default): the quote and latest signals as in quote, the latest metrics (forward_pe, forward_peg, pe_ttm, ps_ttm, pb, EPS and revenue growth TTM YoY, net margin TTM, ROE TTM, current ratio and debt to equity quarterly, dividend yield TTM, beta), analyst counts, earnings surprise, insider month (share change, MSPR), the next earnings event and five recent headlines, each with fetched_at and stale reasons. analysts, earnings and insiders page their history, newest first; news pages 30 days of articles for this ticker, newest first, each with published_at, title, publisher, url, and the ticker's own sentiment (positive, neutral, negative, or null) with reasoning. A share never researched or never asked for news is fetched inside the call as in quote; ETFs, indices and non-US listings answer no data from Finnhub, and news covers US shares and ETFs. When next is set, call again with the same arguments and next.";
+const RESEARCH = `One US-listed share's research from Finnhub and news from Massive. section overview (default): the quote and latest signals as in quote, the latest metrics (forward_pe, forward_peg, pe_ttm, ps_ttm, pb, EPS and revenue growth TTM YoY, net margin TTM, ROE TTM, current ratio and debt to equity quarterly, dividend yield TTM, beta), analyst counts, earnings surprise, insider month (share change, MSPR), the next earnings event and five headlines, each with fetched_at and stale. analysts, earnings and insiders page their history, newest first; news pages the ticker's articles newest first from since (YYYY-MM-DD UTC, at most ${SINCE_DAYS} days back, the default), the first page counting them by sentiment; each has published_at, title, publisher, url, its own sentiment (positive, neutral, negative, null) and reasoning. What was never fetched is fetched in the call as in quote; ETFs, indices and non-US listings get no Finnhub data; news covers US shares and ETFs. When next is set, call again with the same arguments and next.`;
 
 const EVENTS = `Earnings events dated from to to (YYYY-MM-DD, inclusive) of the tracked US shares, or of 1 to ${MAX_EVENT_SYMBOLS} symbols named, by date. Each: fiscal_year, fiscal_quarter, date, hour (amc after close, bmo before open, or empty), status (scheduled; awaiting results once its date came without actuals; reported once EPS or revenue actuals are seen, with reported_seen_at), EPS and revenue estimates and actuals (revenue in whole currency units), fetched_at, stale. Symbols resolve and are fetched as in quote; one Finnhub does not cover is listed as unavailable. When next is set, call again with the same arguments and next.`;
 
@@ -217,6 +217,7 @@ export function tools(m: Markets): Tool[] {
             enum: [...RESEARCH_SECTIONS],
             default: "overview",
           },
+          since: day,
           next,
         },
         ["symbol"],

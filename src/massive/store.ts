@@ -394,23 +394,32 @@ export function newsState(db: Db, instrument: string, now: number): NewsState {
 // where a page of news starts: older than this article
 export type NewsCursor = { publishedAt: number; id: string };
 
-// Newest first, ties by id, from below the cursor when one is given;
-// only the last 30 days, whether or not retention has run.
+type StoredRow = Omit<NewsRow, "truncated"> & { truncated: number };
+
+const COLUMNS = `id, published_at as publishedAt, title, url, publisher,
+  sentiment, reasoning, truncated, fetched_at as fetchedAt`;
+
+const asRow = (r: StoredRow): NewsRow => ({
+  ...r,
+  truncated: r.truncated === 1,
+});
+
+// Newest first, ties by id, from below the cursor when one is given and
+// published at or after since; only the last 30 days, whether or not
+// retention has run.
 export function readNews(
   db: Db,
   instrument: string,
   now: number,
   limit: number,
   from: NewsCursor | null = null,
+  since: number | null = null,
 ): NewsRow[] {
   return db
-    .query<
-      Omit<NewsRow, "truncated"> & { truncated: number },
-      [string, number, number, string, number]
-    >(
-      `select id, published_at as publishedAt, title, url, publisher,
-         sentiment, reasoning, truncated, fetched_at as fetchedAt
+    .query<StoredRow, [string, number, number, string, number, number]>(
+      `select ${COLUMNS}
        from news where instrument = ?1 and published_at > ?2
+         and published_at >= ?6
          and (?3 < 0 or published_at < ?3 or (published_at = ?3 and id < ?4))
        order by published_at desc, id desc limit ?5`,
     )
@@ -420,8 +429,61 @@ export function readNews(
       from?.publishedAt ?? -1,
       from?.id ?? "",
       limit,
+      since ?? 0,
     )
-    .map((r) => ({ ...r, truncated: r.truncated === 1 }));
+    .map(asRow);
+}
+
+// unknown is an article Massive gave no sentiment for this ticker
+export type NewsCounts = {
+  positive: number;
+  neutral: number;
+  negative: number;
+  unknown: number;
+};
+
+// the articles readNews answers from since, by sentiment
+export function countNews(
+  db: Db,
+  instrument: string,
+  now: number,
+  since: number,
+): NewsCounts {
+  const counts = { positive: 0, neutral: 0, negative: 0, unknown: 0 };
+  const rows = db
+    .query<
+      { sentiment: Sentiment | null; n: number },
+      [string, number, number]
+    >(
+      `select sentiment, count(*) as n from news
+       where instrument = ?1 and published_at > ?2 and published_at >= ?3
+       group by sentiment`,
+    )
+    .all(instrument, now - KEPT_MS, since);
+  for (const r of rows) counts[r.sentiment ?? "unknown"] = r.n;
+  return counts;
+}
+
+// Articles that take a side first, then neutral, then none, each newest
+// first: a neutral one is most often a passing mention of the ticker.
+export function topNews(
+  db: Db,
+  instrument: string,
+  now: number,
+  since: number,
+  limit: number,
+): NewsRow[] {
+  return db
+    .query<StoredRow, [string, number, number, number]>(
+      `select ${COLUMNS}
+       from news where instrument = ?1 and published_at > ?2
+         and published_at >= ?3
+       order by case when sentiment is null then 2
+           when sentiment = 'neutral' then 1 else 0 end,
+         published_at desc, id desc limit ?4`,
+    )
+    .all(instrument, now - KEPT_MS, since, limit)
+    .map(asRow);
 }
 
 export function pruneNews(

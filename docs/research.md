@@ -199,6 +199,13 @@ contract in `docs/tools.md`; rules that wait on events in
 - **Stale reasons** (`newsState`, `STALE_NEWS`): "no news yet", "news
   sync failed", "news sync pending" (no good run for two periods),
   "older news pending" (a walk not finished).
+- **Counts are by the ticker's own sentiment** (`countNews`):
+  `positive`, `neutral`, `negative`, and `unknown` for an article
+  with none, over the same 30 days the reads keep.
+- **A summary's items take a side first** (`topNews`): positive and
+  negative newest first, then neutral, then no sentiment. A neutral
+  article is most often a passing mention of the ticker in another
+  company's story, so the ones that take a side say more per byte.
 
 ## Answers
 
@@ -207,15 +214,20 @@ contract in `docs/tools.md`; rules that wait on events in
   `analysts`, `earnings`, `insiders` and `news`, paged newest first.
   The overview drops headlines first to fit one page; `overview` has
   no next page.
+- **`news` takes `since`**, a UTC date as published times are, at
+  most 30 days back (`SINCE_DAYS`, what is kept), else
+  `bad_arguments`; without it the section answers all 30 days. Its
+  first page carries `counts` for that window before the articles, so
+  an agent reads the balance of a week before its text; later pages
+  carry none. `since` with another section is refused.
 - **Every section carries its period, `fetched_at` and `stale`**; a
   section with no row says why. A section or event of another listing
   also carries `listing` and the note `OTHER_LISTING`; a share's own
   carries neither.
 - **`GET /research?symbols=a,b` answers at most five Finnhub summaries**
   beside each quote's brief projection, under the same deadline and
-  tracking as the tool. It carries no news and fetches none. A page
-  that cannot hold every summary is a 500 `internal` (`PageOverflow`),
-  never a dropped summary.
+  tracking as the tool. A page that cannot hold every summary is a 500
+  `internal` (`PageOverflow`), never a dropped summary.
 - **Each `GET /research` Finnhub section but `metric` adds `history`**:
   its newest rows, the latest included, each as the section's page
   shows it, so a script reads a trend without paging the tool. The
@@ -227,6 +239,28 @@ contract in `docs/tools.md`; rules that wait on events in
   another listing follow the section's rules, so `earnings` and
   `insider` hold none, and `listing` is on the section, not each row.
   The `research` overview carries no history.
+- **Each share's `news` is the stored summary of a week; it fetches
+  no news** (`newsWeek`). `since` is seven days before the call
+  (`WEEK_MS`, the span a daily reader needs), by published time;
+  `counts` cover that window and `items` hold at most three
+  (`WEEK_ITEMS`) in the summary's order, each `published_at`,
+  `publisher`, `sentiment`, `title`, `reasoning`, `url` and
+  `truncated`. A share never walked answers counts of 0 with `stale`
+  saying why; off or not covered answers `NO_NEWS` or
+  `NEWS_NOT_COVERED`. Window and count are constants, not arguments:
+  the endpoint is for scripts and stays small.
+- **Its items have caps of their own, a page budget for five shares
+  with their history, not a display width**: title 160 characters
+  (`WEEK_TITLE`), publisher 60 (`WEEK_PUBLISHER`), reasoning 280
+  (`WEEK_REASONING`), cut with an ellipsis; a URL over 300
+  (`WEEK_URL`) answers `url: null`, since a cut link is broken. Any
+  cut or left-out field sets `truncated`. The `news` section keeps the
+  stored caps.
+- **A page that does not fit gives up news items first**: every share
+  is held to two items, then one, then none, with `items_cut: true` on
+  each share that lost some and `counts` kept, since text that escapes
+  can outgrow the page at the caps; only a page that does not fit with
+  none is `PageOverflow`.
 
 ## Retention
 

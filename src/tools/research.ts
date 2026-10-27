@@ -1,6 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 
+import { DAY_MS } from "../clock.ts";
 import {
   type EventRow,
   eligible,
@@ -22,7 +23,10 @@ import {
 import { ATTRIBUTION } from "../fred/sync.ts";
 import type { Instrument } from "../instruments.ts";
 import { errorFields } from "../log.ts";
+import { cut } from "../massive/client.ts";
 import {
+  countNews,
+  KEPT_MS,
   NEWS_NOT_COVERED,
   type NewsCursor,
   type NewsRow,
@@ -32,8 +36,9 @@ import {
   newsState,
   readNews,
   refreshNews,
+  topNews,
 } from "../massive/store.ts";
-import { localDate } from "../zone.ts";
+import { dateOfWall, localDate, wallOfDate } from "../zone.ts";
 import {
   cursor,
   errorResult,
@@ -46,7 +51,15 @@ import {
   type ToolResult,
   textResult,
 } from "./answer.ts";
-import { ArgError, fields, oneOf, optionalText, quoted, text } from "./args.ts";
+import {
+  ArgError,
+  date,
+  fields,
+  oneOf,
+  optionalText,
+  quoted,
+  text,
+} from "./args.ts";
 import { briefItem, quoteItem, readLatest } from "./quote.ts";
 import {
   type ItemError,
@@ -62,6 +75,17 @@ import {
 export const HEADLINES = 5;
 // rows a news page reads before fitting them under 32 KiB
 const NEWS_PAGE_ROWS = 50;
+// GET /research's news window: the span a daily reader needs
+export const WEEK_MS = 7 * DAY_MS;
+// GET /research's news items per share: three keep five shares in a page
+export const WEEK_ITEMS = 3;
+// a page budget for five shares with their history, not a display width
+export const WEEK_TITLE = 160;
+export const WEEK_PUBLISHER = 60;
+export const WEEK_REASONING = 280;
+export const WEEK_URL = 300;
+// how far back the news section's since may go: what is kept
+export const SINCE_DAYS = KEPT_MS / DAY_MS;
 
 export const RESEARCH_SECTIONS = [
   "overview",
@@ -383,6 +407,53 @@ export function newsSummary(
   };
 }
 
+// No fetch: a share never walked answers counts of 0 and why it is stale.
+export function newsWeek(m: Markets, instrument: Instrument) {
+  const message =
+    m.massive === null
+      ? NO_NEWS
+      : newsEligible(instrument)
+        ? null
+        : NEWS_NOT_COVERED;
+  if (message !== null) return { source: "massive", message };
+  const now = m.clock.now();
+  const since = now - WEEK_MS;
+  const state = newsState(m.db, instrument.id, now);
+  return {
+    source: "massive",
+    since: iso(since),
+    fetched_at: iso(state.fetchedAt),
+    stale: state.stale,
+    counts: countNews(m.db, instrument.id, now, since),
+    items: topNews(m.db, instrument.id, now, since, WEEK_ITEMS).map(weekItem),
+  };
+}
+
+const capped = (v: string | null, max: number) =>
+  v === null ? null : cut(v, max);
+
+function weekItem(r: NewsRow) {
+  const title = cut(r.title, WEEK_TITLE);
+  const publisher = capped(r.publisher, WEEK_PUBLISHER);
+  const reasoning = capped(r.reasoning, WEEK_REASONING);
+  // a URL cut is a broken link, so a long one is left out
+  const url = r.url.length > WEEK_URL ? null : r.url;
+  return {
+    published_at: iso(r.publishedAt),
+    publisher,
+    sentiment: r.sentiment,
+    title,
+    reasoning,
+    url,
+    truncated:
+      r.truncated ||
+      title !== r.title ||
+      publisher !== r.publisher ||
+      reasoning !== r.reasoning ||
+      url === null,
+  };
+}
+
 // a news page goes on below the last article it showed
 const newsPosition = (r: NewsRow): string => `${r.publishedAt}.${r.id}`;
 
@@ -394,14 +465,16 @@ function readNewsPosition(position: string): NewsCursor | null {
 export type ResearchArgs = {
   symbol: string;
   section: ResearchSection;
+  since: string | null;
   next: string | null;
 };
 
 export function parseResearch(input: unknown): ResearchArgs {
-  const f = fields(input, ["symbol", "section", "next"]);
+  const f = fields(input, ["symbol", "section", "since", "next"]);
   return {
     symbol: text(f.symbol, "symbol"),
     section: oneOf(f.section, "section", RESEARCH_SECTIONS, "overview"),
+    since: date(f.since, "since"),
     next: optionalText(f.next, "next", 300),
   };
 }
@@ -410,7 +483,23 @@ export async function researchAnswer(
   m: Markets,
   args: ResearchArgs,
 ): Promise<ToolResult> {
-  const { next, ...asked } = args;
+  const { next, since: given, ...rest } = args;
+  // without since the digest is what cursors were bound to before it
+  const asked = given === null ? rest : { ...rest, since: given };
+  let since: number | null = null;
+  if (args.since !== null) {
+    if (args.section !== "news") {
+      throw new ArgError("since is for the news section only");
+    }
+    // a UTC date, as published times are
+    const earliest = dateOfWall(m.clock.now() - KEPT_MS);
+    if (args.since < earliest) {
+      throw new ArgError(
+        `since must be at most ${SINCE_DAYS} days back, ${earliest} or later`,
+      );
+    }
+    since = wallOfDate(args.since);
+  }
   let start: string | null = null;
   if (next !== null) {
     if (args.section === "overview") {
@@ -472,10 +561,16 @@ export async function researchAnswer(
     const message = newsMessage(own);
     const state = newsState(m.db, instrument.id, m.clock.now());
     const from = start === null ? null : readNewsPosition(start);
+    const now = m.clock.now();
     const rows =
       message === null
-        ? readNews(m.db, instrument.id, m.clock.now(), NEWS_PAGE_ROWS + 1, from)
+        ? readNews(m.db, instrument.id, now, NEWS_PAGE_ROWS + 1, from, since)
         : [];
+    // the first page counts the whole window before its articles
+    const counts =
+      message === null && from === null
+        ? { counts: countNews(m.db, instrument.id, now, since ?? 0) }
+        : {};
     const items = rows.slice(0, NEWS_PAGE_ROWS).map(newsItem);
     const page = fitPage(
       items,
@@ -488,6 +583,7 @@ export async function researchAnswer(
               ...(own?.kind === "failed" ? own.error : {}),
               fetched_at: iso(state.fetchedAt),
               stale: state.stale,
+              ...counts,
             }),
         next:
           count > 0 && count < rows.length
@@ -569,6 +665,7 @@ export function researchHandler(
         );
       }
       const symbols = list.map((v, k) => text(v, `symbols[${k}]`));
+      // news is read as stored: a script's call fetches no news
       const { targets, inline } = await researchTargets(m, symbols);
       const now = m.clock.now();
       const items = targets.map((t) => {
@@ -583,16 +680,32 @@ export function researchHandler(
             inline.get(t.instrument.id),
             HTTP_HISTORY,
           ),
+          news: newsWeek(m, t.instrument),
         };
       });
       // once per answer that holds a FRED value
       const fred = items.some((i) => "observation" in i && i.observation);
-      const page = fitPage(items, () =>
-        fred ? { attribution: ATTRIBUTION } : {},
-      );
-      // five summaries fit a page by far; none is ever dropped in silence
-      if (page.count < items.length) throw new PageOverflow();
-      return json(page.text, 200);
+      // Text that escapes can outgrow the page at the caps: every share
+      // gives up news items before a summary is ever dropped.
+      for (let limit = WEEK_ITEMS; limit >= 0; limit--) {
+        const held = items.map((i) => {
+          const list = "news" in i ? i.news.items : undefined;
+          if (!("news" in i) || list === undefined || list.length <= limit) {
+            return i;
+          }
+          const news = { ...i.news, items: list.slice(0, limit) };
+          return { ...i, news: { ...news, items_cut: true } };
+        });
+        try {
+          const page = fitPage(held, () =>
+            fred ? { attribution: ATTRIBUTION } : {},
+          );
+          if (page.count === held.length) return json(page.text, 200);
+        } catch (error) {
+          if (!(error instanceof PageOverflow)) throw error;
+        }
+      }
+      throw new PageOverflow();
     } catch (error) {
       if (error instanceof ArgError) {
         return failed(400, "bad_arguments", error.message);
