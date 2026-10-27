@@ -7,6 +7,7 @@ import { open } from "../src/db/index.ts";
 import { finnhub } from "../src/finnhub/client.ts";
 import { finnhubJobs } from "../src/finnhub/jobs.ts";
 import {
+  kindColumns,
   NO_DATA,
   NO_EVENTS,
   NOT_COVERED,
@@ -18,7 +19,7 @@ import { readInstrument, upsertInstrument } from "../src/instruments.ts";
 import { silent } from "../src/log.ts";
 import { MAX_TITLE, massive, PAGE_LIMIT } from "../src/massive/client.ts";
 import { NEWS_NOT_COVERED, NO_NEWS, STALE_NEWS } from "../src/massive/store.ts";
-import { fits, PAGE_BYTES } from "../src/tools/answer.ts";
+import { fits, iso, PAGE_BYTES } from "../src/tools/answer.ts";
 import {
   eventsAnswer,
   parseEvents,
@@ -26,6 +27,7 @@ import {
 } from "../src/tools/events.ts";
 import {
   HEADLINES,
+  HTTP_HISTORY,
   parseResearch,
   researchAnswer,
   researchHandler,
@@ -846,6 +848,14 @@ describe("events inside the call", () => {
     const { items } = (await res.json()) as { items: any[] };
     expect(items[0].research.metric).toMatchObject(other);
     expect(items[0].research.next_event).toMatchObject(other);
+    // counts hold for any listing; per-share figures of another do not
+    const { analysts: a, earnings: e, insider: i } = items[0].research;
+    expect(a).toMatchObject(other);
+    expect(a.history).toHaveLength(2);
+    expect(a.history[0]).not.toContainKey("listing");
+    expect(e.history).toEqual([]);
+    expect(i.history).toHaveLength(3);
+    expect(i).not.toContainKey("listing");
     for (const s of ["metric", "analysts", "earnings", "insider"]) {
       expect(items[1].research[s]).not.toContainKey("listing");
       expect(items[1].research[s]).not.toContainKey("note");
@@ -1171,5 +1181,152 @@ describe("answers held to a page", () => {
     expect(
       Buffer.byteLength(JSON.stringify(b.unavailable)),
     ).toBeLessThanOrEqual(UNAVAILABLE_BYTES);
+  });
+});
+
+describe("GET /research history", () => {
+  const ask = async (t: Awaited<ReturnType<typeof setup>>, symbols: string) => {
+    const res = await drive(
+      t.clock,
+      pacedOf(t.m),
+      researchHandler(t.m)(
+        new Request(`http://markets.test/research?symbols=${symbols}`),
+      ),
+    );
+    expect(res.status).toBe(200);
+    const raw = await res.text();
+    return { raw, items: JSON.parse(raw).items as any[] };
+  };
+
+  // made-up shares answered as the full recording
+  const full = (symbols: readonly string[]) =>
+    Object.fromEntries(symbols.map((s) => [s, "nvda"]));
+
+  const addQuarters = (
+    db: ReturnType<typeof open>["db"],
+    id: string,
+    periods: readonly string[],
+  ) => {
+    const insert = db.query(
+      `insert or replace into research (instrument, kind, period,
+         eps_estimate, eps_actual, surprise, surprise_percent, fetched_at)
+       values (?, 'earnings', ?, 1, 1.02, 0.02, 2, ?)`,
+    );
+    for (const p of periods) insert.run(id, p, NOW);
+  };
+
+  test("insider history holds the newest months that have a row", async () => {
+    const t = await setup({
+      charts: await shares(["TWO", "EMPTY"]),
+      hold: async (url) => {
+        const a = await finnhubAnswer(url, full(["TWO"]));
+        if (
+          a !== undefined &&
+          url.searchParams.get("symbol") === "TWO" &&
+          url.pathname.endsWith("/insider-sentiment")
+        ) {
+          a.body.data = a.body.data.slice(-2);
+        }
+        return a;
+      },
+    });
+    for (const s of ["TWO", "EMPTY"]) usShare(t.db, s);
+    await drive(t.clock, pacedOf(t.m), researchTargets(t.m, ["NVDA"]));
+    const periods = MONTHS(19);
+    const insert = t.db.query(
+      `insert or replace into research (instrument, kind, period,
+         insider_change, mspr, fetched_at) values ('US:NVDA', 'insider', ?, ?, ?, ?)`,
+    );
+    for (const [k, p] of periods.entries()) {
+      insert.run(p, -1000 * (k + 1), -50, NOW);
+    }
+
+    const { items } = await ask(t, "NVDA,TWO,EMPTY");
+    const [nvda, two, empty] = items.map((i) => i.research.insider);
+    expect(nvda.history).toEqual(
+      periods.slice(0, 3).map((period, k) => ({
+        period,
+        change: -1000 * (k + 1),
+        mspr: -50,
+        fetched_at: iso(NOW),
+      })),
+    );
+    expect(nvda.period).toBe(periods[0]);
+    expect(nvda.mspr).toBe(-50);
+    expect(two.history.map((r: any) => r.period)).toEqual([
+      "2026-10-01",
+      "2026-09-01",
+    ]);
+    expect(empty).toMatchObject({ period: null, message: NO_DATA });
+    expect(empty.history).toEqual([]);
+  });
+
+  test("earnings answers four quarters and analysts two months, newest first", async () => {
+    const t = await setup();
+    await drive(t.clock, pacedOf(t.m), researchTargets(t.m, ["NVDA"]));
+    addQuarters(t.db, "US:NVDA", ["2025-12-31", "2025-09-30"]);
+    const { items } = await ask(t, "NVDA");
+    const { analysts, earnings, metric } = items[0].research;
+    expect(
+      earnings.history.map((r: any) => [r.period, r.surprise_percent]),
+    ).toEqual([
+      ["2026-09-30", 3.8159],
+      ["2026-06-30", 4.341],
+      ["2026-03-31", 3.6203],
+      ["2025-12-31", 2],
+    ]);
+    expect(earnings).toMatchObject({
+      period: "2026-09-30",
+      surprise_percent: 3.8159,
+    });
+    expect(analysts.history.map((r: any) => r.period)).toEqual([
+      "2026-10-01",
+      "2026-09-01",
+    ]);
+    expect(analysts.history[0]).toEqual({
+      period: "2026-10-01",
+      strong_buy: analysts.strong_buy,
+      buy: analysts.buy,
+      hold: analysts.hold,
+      sell: analysts.sell,
+      strong_sell: analysts.strong_sell,
+      fetched_at: analysts.fetched_at,
+    });
+    expect(metric).not.toContainKey("history");
+    const overview = body(
+      await researchAnswer(t.m, parseResearch({ symbol: "NVDA" })),
+    );
+    expect(overview.research.earnings).not.toContainKey("history");
+  });
+
+  test("five shares with full history and the longest numbers fit a page", async () => {
+    const symbols = ["ZZA", "ZZB", "ZZC", "ZZD", "ZZE"];
+    const t = await setup({
+      charts: await shares(symbols),
+      hold: (url) => finnhubAnswer(url, full(symbols)),
+    });
+    for (const s of symbols) usShare(t.db, s);
+    // one share a call: five need more Finnhub calls than one deadline holds
+    for (const s of symbols) {
+      await drive(t.clock, pacedOf(t.m), researchTargets(t.m, [s]));
+    }
+    for (const s of symbols) addQuarters(t.db, `US:${s}`, ["2025-12-31"]);
+    // six significant digits at their widest; counts are whole
+    for (const kind of ["metric", "analysts", "earnings", "insider"] as const) {
+      const value = kind === "analysts" ? 123456789 : -1.23457e-15;
+      const set = kindColumns(kind).map((c) => `${c} = ${value}`);
+      t.db
+        .query(`update research set ${set.join(", ")} where kind = ?`)
+        .run(kind);
+    }
+    const { raw, items } = await ask(t, symbols.join(","));
+    expect(fits(raw)).toBe(true);
+    for (const i of items) {
+      const r = i.research;
+      expect(r.analysts.history).toHaveLength(HTTP_HISTORY.analysts);
+      expect(r.earnings.history).toHaveLength(HTTP_HISTORY.earnings);
+      expect(r.insider.history).toHaveLength(HTTP_HISTORY.insider);
+      expect(r.insider.mspr).toBe(-1.23457e-15);
+    }
   });
 });

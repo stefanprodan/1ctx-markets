@@ -11,6 +11,7 @@ import {
   nextEvent,
   OTHER_LISTING,
   type ResearchKind,
+  type ResearchRow,
   readResearch,
   refreshResearch,
   SECTIONS,
@@ -87,6 +88,10 @@ const SECTION_OF: Record<ResearchKind, Section> = {
 
 // GET /research names at most this many symbols
 export const MAX_RESEARCH_SYMBOLS = 5;
+
+// fixed so five summaries fit a page; the reasons are in docs/research.md
+export const HTTP_HISTORY = { analysts: 2, earnings: 4, insider: 3 } as const;
+type HistoryKind = keyof typeof HTTP_HISTORY;
 
 export type Inline =
   | { kind: "off" }
@@ -242,20 +247,37 @@ const valuesOf = (kind: ResearchKind, row: Values): Values => {
   return out;
 };
 
-function latestSection(m: Markets, instrument: Instrument, kind: ResearchKind) {
+// a row as a section page shows it
+const rowItem = (kind: ResearchKind, r: ResearchRow) => ({
+  period: r.period,
+  ...valuesOf(kind, r),
+  fetched_at: iso(r.fetchedAt),
+});
+
+function latestSection(
+  m: Markets,
+  instrument: Instrument,
+  kind: ResearchKind,
+  history = 0,
+) {
   const state = sectionState(
     m.db,
     instrument.id,
     SECTION_OF[kind],
     m.clock.now(),
   );
-  const [row] = readResearch(m.db, instrument.id, kind, 1);
+  const rows = readResearch(m.db, instrument.id, kind, Math.max(history, 1));
+  // a fetch replaces the kind's rows, so the section's listing is its rows'
+  const past =
+    history > 0 ? { history: rows.map((r) => rowItem(kind, r)) } : {};
+  const row = rows[0];
   if (row === undefined) {
     return {
       period: null,
       fetched_at: iso(state.fetchedAt),
       stale: state.stale,
       ...(state.noData ? { message: NO_DATA } : {}),
+      ...past,
     };
   }
   return {
@@ -264,6 +286,7 @@ function latestSection(m: Markets, instrument: Instrument, kind: ResearchKind) {
     stale: state.stale,
     ...listingFields(row.listing),
     ...valuesOf(kind, row),
+    ...past,
   };
 }
 
@@ -300,17 +323,20 @@ export function researchSummary(
   m: Markets,
   instrument: Instrument,
   inline: Inline | undefined,
+  history: Partial<Record<HistoryKind, number>> = {},
 ) {
   const message = messageOf(inline);
   if (message !== null) return { source: "finnhub", message };
   const event = nextEvent(m.db, instrument, m.clock.now());
+  const section = (kind: HistoryKind) =>
+    latestSection(m, instrument, kind, history[kind]);
   return {
     source: "finnhub",
     ...(inline?.kind === "failed" ? inline.error : {}),
     metric: latestSection(m, instrument, "metric"),
-    analysts: latestSection(m, instrument, "analysts"),
-    earnings: latestSection(m, instrument, "earnings"),
-    insider: latestSection(m, instrument, "insider"),
+    analysts: section("analysts"),
+    earnings: section("earnings"),
+    insider: section("insider"),
     next_event: event === null ? null : eventItem(m, instrument, event),
   };
 }
@@ -487,11 +513,7 @@ export async function researchAnswer(
           (r) => start === null || r.period <= start,
         )
       : [];
-  const items = rows.map((r) => ({
-    period: r.period,
-    ...valuesOf(kind, r),
-    fetched_at: iso(r.fetchedAt),
-  }));
+  const items = rows.map((r) => rowItem(kind, r));
   const page = fitPage(
     items,
     (count) => ({
@@ -559,6 +581,7 @@ export function researchHandler(
             m,
             t.instrument,
             inline.get(t.instrument.id),
+            HTTP_HISTORY,
           ),
         };
       });
