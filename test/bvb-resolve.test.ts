@@ -11,7 +11,12 @@ import { readInstrument, upsertInstrument } from "../src/instruments.ts";
 import { silent } from "../src/log.ts";
 import type { Fetch } from "../src/source.ts";
 import { searchPage } from "../src/tools/search.ts";
-import { markets, readTargets, type Target } from "../src/tools/targets.ts";
+import {
+  CALL_MS,
+  markets,
+  readTargets,
+  type Target,
+} from "../src/tools/targets.ts";
 import { writer } from "../src/writer.ts";
 import { yahoo } from "../src/yahoo/client.ts";
 import { bvbAnswer, bvbRecorded, made } from "./helpers/bvb.ts";
@@ -303,6 +308,58 @@ describe("resolution with the feed on", () => {
           c.source === "yahoo" && "isin" in c,
       ),
     ).toBe(false);
+  });
+
+  test("a slow search and a slow type answer still answer within one call", async () => {
+    const clock = fakeClock(NOW);
+    const { db } = open(":memory:", clock);
+    const s = await sources();
+    const start = clock.now();
+    // answered once the clock reaches at
+    const late = (at: number, answer: Recorded) =>
+      new Promise<Response>((resolve) => {
+        clock.at(at, () =>
+          resolve(
+            new Response(JSON.stringify(answer.body), {
+              status: answer.status,
+            }),
+          ),
+        );
+      });
+    const site = await bvbRecorded("instruments-autocomplete-petrom");
+    const feed = await bvbRecorded("wapi-search-petrom");
+    const fetch: Fetch = async (raw, init) => {
+      const url = new URL(raw);
+      if (url.pathname === "/proxyshld.aspx/GetInstrumentsList") {
+        return late(start + 0.6 * CALL_MS, site);
+      }
+      if (url.hostname === "wapi.bvb.ro")
+        return late(start + 5 * CALL_MS, feed);
+      return s.fetch(raw, init);
+    };
+    const m = markets({
+      db,
+      clock,
+      writer: writer(db),
+      yahoo: yahoo({ clock, fetch }),
+      fred: null,
+      bvb: bvb({ clock, fetch }),
+      log: silent,
+    });
+    let page: any = null;
+    const asked = searchPage(m, { query: "petrom", next: null }).then((p) => {
+      page = JSON.parse(p);
+    });
+    for (let k = 0; k < CALL_MS / 1000 && page === null; k++) {
+      await clock.advance(1000);
+      await new Promise((r) => setImmediate(r));
+    }
+    expect(page).not.toBeNull();
+    expect(clock.now() - start).toBeLessThanOrEqual(CALL_MS);
+    const snp = page.candidates.find((c: { id: string }) => c.id === "BVB:SNP");
+    expect(snp).toMatchObject({ type: null, isin: "ROSNPPACNOR9" });
+    await asked;
+    await clock.advance(5 * CALL_MS);
   });
 
   test("a fund unit resolves to the feed and searches as an ETF", async () => {

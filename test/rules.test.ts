@@ -175,7 +175,13 @@ describe("the rule format", () => {
       [
         "NVDA",
         { left: "price", op: ">", right: { field: "price", symbol: "^VIX" } },
-        "per_share USD with price in index_points USD",
+        UNKNOWN_UNIT,
+      ],
+      // index points against a yield: no two indices share a unit
+      [
+        "^VIX",
+        { left: "price", op: ">", right: { field: "price", symbol: "^TNX" } },
+        UNKNOWN_UNIT,
       ],
       // a future's price per barrel or per bond, which Yahoo leaves unknown
       [
@@ -229,7 +235,7 @@ describe("the rule format", () => {
       right: { field: "drawdown", symbol: "FRED:DGS10" },
     });
     expect(ok.error).toBe(false);
-    // a level against its own values, or across in a known unit
+    // an index against its own values, or across in a known unit
     for (const condition of [
       { left: "price", op: ">", right: "sma50" },
       {

@@ -13,6 +13,7 @@ import { finnhub } from "../src/finnhub/client.ts";
 import { fred } from "../src/fred/client.ts";
 import { silent } from "../src/log.ts";
 import { round } from "../src/tools/answer.ts";
+import { withLive } from "../src/tools/history.ts";
 import { tools } from "../src/tools/index.ts";
 import { CALL_MS, markets } from "../src/tools/targets.ts";
 import { lastReadAt } from "../src/tracking.ts";
@@ -792,6 +793,48 @@ describe("history", () => {
     // the next day the same end is past
     await w.clock.advance(DAY_MS);
     expect(await cache(LIVE)).toBe("private, max-age=3600");
+  });
+
+  test("the session's bar never ranges short of its quote's price", () => {
+    const stored = {
+      date: "2026-10-22",
+      open: 10,
+      high: 11,
+      low: 9,
+      close: 10,
+      volume: 5,
+      final: true,
+    };
+    // a day range read before the last trade, which moved past it
+    const quote = { dayHigh: 12, dayLow: 11.5, volume: 7, time: 0 };
+    const up = withLive(
+      [stored],
+      { date: "2026-10-23", quote: { ...quote, price: 12.5 } },
+      "1d",
+    ).at(-1)!;
+    expect(up).toMatchObject({ high: 12.5, low: 11.5, close: 12.5 });
+    const down = withLive(
+      [stored],
+      { date: "2026-10-23", quote: { ...quote, price: 11 } },
+      "1d",
+    ).at(-1)!;
+    expect(down).toMatchObject({ high: 12, low: 11, close: 11 });
+    // no range at all stays none
+    const bare = withLive(
+      [stored],
+      {
+        date: "2026-10-23",
+        quote: {
+          dayHigh: null,
+          dayLow: null,
+          volume: null,
+          time: 0,
+          price: 11,
+        },
+      },
+      "1d",
+    ).at(-1)!;
+    expect(bare).toMatchObject({ high: null, low: null, close: 11 });
   });
 
   test("an index's first read answers its final rows and its live row", async () => {

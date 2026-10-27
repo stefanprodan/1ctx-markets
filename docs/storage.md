@@ -85,7 +85,9 @@ in `docs/config.md`.
   and ^TNX's too, a yield index's points being its yield in percent;
   its `FUTURE` holds per-barrel and per-bond prices alike, so stays
   `unknown`. Tools compare price levels only within one unit and
-  currency.
+  currency, and across two instruments never in `index_points` or
+  `unknown`: one index's points are no other's (^VIX's volatility,
+  ^TNX's yield).
 
 ## Times, dates and prices
 

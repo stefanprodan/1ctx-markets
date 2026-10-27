@@ -163,9 +163,10 @@ bar's close, or the live price on the live row.
   widened when the last final close is earlier than the last bar. A
   benchmark side is read once and reused across instruments and
   periods (`benchmarkSide()`, `instrumentSide()`, `relativeOf()`).
-- **When either unit is `unknown`, the note adds "units unknown,
-  treated as prices"** (`UNKNOWN_UNITS_NOTE`), because a listing of
-  unknown unit, such as a future, can still be a valid benchmark.
+- **When either unit is `unknown`, or `index_points` on another
+  instrument, the note adds "units unknown, treated as prices"**
+  (`UNKNOWN_UNITS_NOTE`): a future or an index is still a valid
+  benchmark, and one index's points are no other listing's unit.
 
 ## Trailing returns
 

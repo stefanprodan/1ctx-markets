@@ -197,8 +197,8 @@ export function withLive(
     {
       date,
       open: null,
-      high: q.dayHigh,
-      low: q.dayLow,
+      high: widen(null, q.dayHigh, q.price, Math.max),
+      low: widen(null, q.dayLow, q.price, Math.min),
       close: q.price,
       volume: q.volume,
       final: false,

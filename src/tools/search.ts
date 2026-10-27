@@ -71,8 +71,9 @@ const EXPIRED = Symbol("expired");
 async function within<T>(
   m: Markets,
   work: (live: () => boolean) => Promise<T>,
+  deadline = m.clock.now() + m.callMs,
 ): Promise<T | typeof EXPIRED> {
-  const deadline = m.clock.now() + m.callMs;
+  if (m.clock.now() >= deadline) return EXPIRED;
   let cancel = () => {};
   const expired = new Promise<typeof EXPIRED>((resolve) => {
     cancel = m.clock.at(deadline, () => resolve(EXPIRED));
@@ -170,16 +171,20 @@ async function yahooCandidates(
 
 // The site's search has no type, so the chart feed's names it: the one a
 // stored listing would take, or the feed's own (Structured); a failed or
-// late answer leaves it null.
+// late answer leaves it null. It takes what is left of the search's
+// deadline, so the exchange's side answers within one call's time.
 async function typesOf(
   m: Markets,
   bvb: NonNullable<Markets["bvb"]>,
   query: string,
   symbol: string,
+  deadline: number,
 ): Promise<Map<string, string>> {
   try {
-    const types = await within(m, (live) =>
-      bvb.within(live).types(query, symbol),
+    const types = await within(
+      m,
+      (live) => bvb.within(live).types(query, symbol),
+      deadline,
     );
     return types === EXPIRED ? new Map() : types;
   } catch {
@@ -194,14 +199,19 @@ async function bvbCandidates(
 ): Promise<{ found: Found[]; notes: SourceNote[] }> {
   const bvb = m.bvb;
   if (bvb === null) return { found: [], notes: [] };
+  const deadline = m.clock.now() + m.callMs;
   try {
-    const listings = await within(m, (live) => bvb.within(live).search(query));
+    const listings = await within(
+      m,
+      (live) => bvb.within(live).search(query),
+      deadline,
+    );
     if (listings === EXPIRED) return { found: [], notes: [late(m, BVB)] };
     const tradable = listings.filter((l) => l.status === TRADABLE);
     const types =
       tradable.length === 0
         ? new Map<string, string>()
-        : await typesOf(m, bvb, query, tradable[0]!.symbol);
+        : await typesOf(m, bvb, query, tradable[0]!.symbol, deadline);
     return {
       found: tradable.map((l) => {
         const c = candidateOf(l);

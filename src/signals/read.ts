@@ -128,7 +128,7 @@ export function readSignals(
   return { instrument: i.id, daily, weekly, stale: { final, live } };
 }
 
-// a stock index is unit unknown and still a valid benchmark
+// a listing of unknown unit, or an index, is still a valid benchmark
 export const UNKNOWN_UNITS_NOTE = "units unknown, treated as prices";
 
 export type RelativeRead = Omit<RelativeReturn, "note"> & {
@@ -299,7 +299,11 @@ export function relativeOf(
   });
   const r = relativeReturn(listing(ia, a, ta), listing(ib, b, tb), months);
   if (r === null) return null;
-  const unknown = a.unit === "unknown" || b.unit === "unknown";
+  // one index's points are no other's, so two instruments share no unit
+  const unknown =
+    a.unit === "unknown" ||
+    b.unit === "unknown" ||
+    (a.id !== b.id && (a.unit === "index_points" || b.unit === "index_points"));
   return {
     ...r,
     note: unknown ? `${r.note}; ${UNKNOWN_UNITS_NOTE}` : r.note,
