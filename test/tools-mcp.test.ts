@@ -79,11 +79,12 @@ describe("the tool list", () => {
         "events",
         "rules",
       ]);
-      // an agent learns the fields from the description alone
+      // the schema lists every field the description points at
       const screen = tools.find((x) => x.name === "screen")!;
-      for (const name of FIELD_NAMES) {
-        expect(screen.description).toContain(name);
-      }
+      const props = screen.inputSchema.properties as any;
+      expect(props.sort.enum).toEqual(FIELD_NAMES);
+      expect(props.fields.items.enum).toEqual(FIELD_NAMES);
+      expect(props.filters.items.properties.field.enum).toEqual(FIELD_NAMES);
       // the limits read from the code, never typed by hand
       for (const name of ["movers", "screen"]) {
         const tool = tools.find((x) => x.name === name)!;
@@ -95,7 +96,7 @@ describe("the tool list", () => {
       );
       for (const tool of tools) {
         // 1ctx cuts a description at 1,024
-        expect(tool.description!.length).toBeLessThan(1024);
+        expect(tool.description!.length).toBeLessThanOrEqual(1024);
         expect(tool.inputSchema.additionalProperties).toBe(false);
         // rules is the one tool that changes what a caller sees
         expect(tool.annotations?.readOnlyHint).toBe(tool.name !== "rules");

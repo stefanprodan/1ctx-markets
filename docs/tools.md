@@ -40,7 +40,9 @@ bearer and flags in `docs/config.md`.
 - **A cursor is bound to the arguments it continues.** `cursor()`
   writes `<position>~<digest>`, the digest being the first 10 hex of
   SHA-256 over the arguments without `next`; `readCursor()` refuses one
-  passed with other arguments, answered as `bad_arguments`. The
+  passed with other arguments, answered as `bad_arguments`. quote binds
+  its `benchmark` with the symbols only when one is given, so a cursor
+  made without one is the one `GET /quotes` always made. The
   position is the next offset (quote, search, movers, screen), the next
   bar's date (history) or the next rule id (rules list).
 - **movers and screen page a fresh view.** Each call reads again and
@@ -85,14 +87,41 @@ bearer and flags in `docs/config.md`.
 
 | Tool | Takes | Answers |
 |---|---|---|
-| `quote` | `symbols`, `next` | per symbol a `QuoteItem` (`quote.ts`) |
+| `quote` | `symbols`, `benchmark`, `next` | per symbol a `QuoteItem` (`quote.ts`) with `returns`, `session` and, with a benchmark, `relative_return_1m` and `_3m` |
 | `history` | `symbol`, `interval`, `from`, `to`, `benchmark`, `next` | bars oldest first with `final` and signals; `relative` |
 | `search` | `query`, `next` | up to 20 stored matches, then the Bucharest feed's tradable listings while it is on, then Yahoo's, each with id, exchange, type, name, `source`, `stored` |
 | `movers` | `symbols`, `min_move_pct`, `direction`, `average`, `relation`, `next` | matches by absolute change, largest first; `counts` |
-| `screen` | `symbols`, `filters`, `benchmark`, `sort`, `order`, `next` | matches with each used field's value, unit, kind and date; `counts` |
+| `screen` | `symbols`, `filters`, `benchmark`, `sort`, `order`, `fields`, `next` | matches with each used and asked field's value, unit, kind and date; `counts` |
 | `research`, `events` | see `docs/research.md` | |
 | `rules` | see `docs/rules.md` | |
 
+- **quote's `returns` answer "how did it do" without `history`.**
+  `1w`, `1m`, `3m` and `ytd` run from the last final close on or
+  before each start (7 days, 1 and 3 calendar months back by
+  `monthsBack()`, the previous year's 31 December) to the end, which is
+  the live price only when its session date follows the last final
+  bar, else the last final close; `to` and `live` say which, so a
+  closed day is told from an intraday reading (`trailingReturns()`,
+  `returnsOf()`). Percent in the listing's own currency, points for a
+  `percent` unit; a period is null when the bars do not reach its
+  start.
+- **quote's `benchmark` is one symbol for the call**, resolved and
+  fetched as history's, adding `relative_return_1m` and `_3m` per item
+  (`relativeOf()`) and the benchmark's id, `fetched_at` and own `stale`
+  on the page as `benchmark`; a benchmark that fails is that object's
+  error and the relative fields are null.
+- **quote's `session` is the last regular session the source
+  reported**: `state` `open` or `closed` by `isQuoted()`, `start` and
+  `end` in UTC. At an opening it reads `closed` until a check stores
+  the day's session. Crypto is always `open` with null bounds; a FRED
+  series answers null. No pre-market, after-hours or holiday state:
+  only the regular session is stored (`docs/calendars.md`). Not named
+  `market`, which an id's prefix already is.
+- **These are the quote tool's only.** `quotePage()` computes them
+  when no projection is given; `quoteItem()`, which screen, movers and
+  `GET /quotes` share, never reads them. Bars are read from the
+  earliest start a call needs (`readCloses()`), and the benchmark's
+  closes once per call, never every stored bar per item.
 - **history defaults its range from the last bar.** `to` is the latest
   bar, `from` 3 months before it for `1d` and 24 months for `1wk`
   (`DEFAULT_MONTHS`). `basis` states split-adjusted prices with
@@ -115,6 +144,12 @@ bearer and flags in `docs/config.md`.
   needs `sort`; a range filter needs `min` or `max`, with `min` not
   above `max`; a state field takes `eq` only. A `benchmark` is
   accepted only with a `relative_return_*` field and required by one.
+  `return_1w`, `_1m`, `_3m` and `_ytd` follow quote's `returns`.
+- **screen's `fields` shows up to `MAX_FIELDS` (8) more fields on every
+  row**, beside the filter and sort fields, so one call answers the
+  values a filter does not read. They never filter: one missing is
+  `null` on a match, never a reason for `unavailable`, and they never
+  make a mix of units refused.
 - **A match is never made from a missing, null or stale input.** In
   movers and screen such a symbol is `unavailable` with what it lacked
   (`missing`, `stale`, `reason`), listed after the matches by id, then
@@ -210,7 +245,8 @@ bearer and flags in `docs/config.md`.
   `briefItem()`**: price or observation, change, unit, currency,
   times, `stale`, the daily and weekly SMA 50 and 200, and
   `last_final`. It shares resolution, tracking, the deadline and the
-  pages with `quote`.
+  pages with `quote`, never quote's `returns`, `session` or benchmark:
+  the projection adds a field only when a script needs it.
 - **`last_final.daily` is the last final daily bar's `date` and
   `close` with its final row's `sma50` and `sma200`**, the values
   movers crosses from, so a script tells a crossing since the last
@@ -236,14 +272,14 @@ bearer and flags in `docs/config.md`.
   tool answers, every argument's form and limit, the fields and units
   an agent filters on, and how to continue with `next`. No history, no
   marketing, no repetition of the schema's types.
-- **Stay under 1,024 characters**: 1ctx cuts a description there,
-  and `test/tools-mcp.test.ts` asserts it. screen (1,020), rules
+- **Stay at 1,024 characters or fewer**: 1ctx cuts a description
+  there, and `test/tools-mcp.test.ts` asserts it. quote (1,021), rules
   (1,019) and research (1,019) are near the limit; shorten wording
-  before adding a field, and keep every screen field name in it, which
-  the same test checks.
+  before adding a field. screen names its field groups and points at
+  its schema's enum (`FIELD_NAMES`), which lists every field.
 - **A limit in a description is the constant's value.** quote
-  interpolates `MAX_SYMBOLS` and `callMs`, screen `MAX_FILTERS`, events
-  `MAX_EVENT_SYMBOLS`, research `SINCE_DAYS`, rules `MAX_COMPARISONS`,
+  interpolates `MAX_SYMBOLS` and `callMs`, screen `MAX_FILTERS` and
+  `MAX_FIELDS`, events `MAX_EVENT_SYMBOLS` and `CALENDAR_AHEAD_DAYS`, research `SINCE_DAYS`, rules `MAX_COMPARISONS`,
   `MAX_DEPTH` and `MAX_INSTRUMENTS`, movers and screen `MAX_SYMBOLS`,
   history `DEFAULT_MONTHS`. An argument's limit is interpolated, never
   written as text.

@@ -6,19 +6,34 @@
 // may be behind. GET /quotes answers a smaller projection of the same
 // items, and movers and screen read the same rows.
 
+import { CRYPTO, isQuoted, readSession } from "../calendars.ts";
 import type { Db } from "../db/index.ts";
 import { SOURCE as FRED } from "../fred/client.ts";
 import { ATTRIBUTION } from "../fred/sync.ts";
 import type { Instrument } from "../instruments.ts";
 import { readQuote } from "../quotes.ts";
 import type { DailyRow } from "../signals/daily.ts";
-import { type InstrumentSignals, readSignals } from "../signals/read.ts";
+import {
+  benchmarkSide,
+  type InstrumentSignals,
+  instrumentSide,
+  readSignals,
+  relativeOf,
+  returnsOf,
+  type Side,
+} from "../signals/read.ts";
+import { earliestStart } from "../signals/relative.ts";
 import { DAILY_COLUMNS, WEEKLY_COLUMNS } from "../signals/store.ts";
 import type { WeeklyRow } from "../signals/weekly.ts";
 import type { StaleReason } from "../stale.ts";
 import { cursor, fitPage, iso, price, readCursor, round } from "./answer.ts";
-import { ArgError, fields, symbols } from "./args.ts";
-import { type ItemError, type Markets, readTargets } from "./targets.ts";
+import { ArgError, fields, optionalText, symbols } from "./args.ts";
+import {
+  type ItemError,
+  type Markets,
+  readTargets,
+  type Target,
+} from "./targets.ts";
 
 export const MAX_SYMBOLS = 100;
 
@@ -266,20 +281,36 @@ export function briefItem(db: Db, item: QuoteItem, latest: Latest) {
   };
 }
 
-export type QuoteArgs = { symbols: string[]; next: string | null };
+export type QuoteArgs = {
+  symbols: string[];
+  benchmark: string | null;
+  next: string | null;
+};
 
 export function parseQuote(input: unknown): QuoteArgs {
-  const f = fields(input, ["symbols", "next"]);
+  const f = fields(input, ["symbols", "benchmark", "next"]);
   const list = symbols(f.symbols, "symbols", MAX_SYMBOLS);
+  const benchmark = optionalText(f.benchmark, "benchmark");
   if (f.next !== undefined && f.next !== null && typeof f.next !== "string") {
     throw new ArgError("next must be a string from an earlier answer");
   }
-  return { symbols: list, next: (f.next as string | undefined) ?? null };
+  return {
+    symbols: list,
+    benchmark,
+    next: (f.next as string | undefined) ?? null,
+  };
 }
+
+// a page is never continued under another benchmark; without one the
+// cursor is the one GET /quotes has always made
+const continued = (args: QuoteArgs) =>
+  args.benchmark === null
+    ? args.symbols
+    : { symbols: args.symbols, benchmark: args.benchmark };
 
 function offsetOf(args: QuoteArgs): number {
   if (args.next === null) return 0;
-  const at = readCursor(args.next, args.symbols);
+  const at = readCursor(args.next, continued(args));
   const n = at === null ? Number.NaN : Number(at);
   if (!Number.isSafeInteger(n) || n < 1 || n >= args.symbols.length) {
     throw new ArgError("next does not continue these symbols");
@@ -287,32 +318,124 @@ function offsetOf(args: QuoteArgs): number {
   return n;
 }
 
+// The last regular session the source reported, so it can read closed at
+// an opening until a check stores the day's; crypto never closes, and a
+// FRED series has no session.
+function sessionOf(m: Markets, i: Instrument, now: number) {
+  if (i.source === FRED) return null;
+  if (i.market === CRYPTO) return { state: "open", start: null, end: null };
+  const s = readSession(m.db, i.market);
+  return {
+    state: isQuoted(i.market, s, now) ? "open" : "closed",
+    start: iso(s?.start ?? null),
+    end: iso(s?.end ?? null),
+  };
+}
+
+type Benchmark =
+  | { side: Side; head: object; fred: boolean }
+  | { side: null; head: object; fred: false };
+
+// as history gives it: its fetch time and its own stale reasons
+function benchmarkOf(m: Markets, t: Target, now: number): Benchmark {
+  if ("error" in t) {
+    return { side: null, head: { input: t.input, ...t.error }, fred: false };
+  }
+  const b = t.instrument;
+  const latest = readLatest(m.db, b, now, m.quoteEveryMs);
+  return {
+    side: benchmarkSide(m.db, b, 3),
+    head: {
+      id: b.id,
+      name: b.name,
+      currency: b.currency,
+      unit: b.unit,
+      fetched_at: quoteItem(m.db, b.id, b, latest).fetched_at,
+      stale: latest.stale,
+    },
+    fred: b.source === FRED,
+  };
+}
+
+// What only the quote tool adds to an item: GET /quotes, movers and
+// screen share quoteItem and never pay for these reads.
+function agentItem(
+  m: Markets,
+  q: QuoteItem,
+  i: Instrument,
+  bench: Benchmark | null,
+  now: number,
+) {
+  const side = instrumentSide(m.db, i, bench?.side ?? null, earliestStart);
+  const r = returnsOf(side);
+  const relative = (months: 1 | 3) => {
+    if (!bench?.side) return null;
+    return round(relativeOf(side, bench.side, months)?.relative ?? null);
+  };
+  const { stale, ...rest } = q;
+  return {
+    ...rest,
+    returns:
+      r === null
+        ? null
+        : {
+            "1w": round(r["1w"]),
+            "1m": round(r["1m"]),
+            "3m": round(r["3m"]),
+            ytd: round(r.ytd),
+            to: r.to,
+            live: r.live,
+          },
+    ...(bench === null
+      ? {}
+      : {
+          relative_return_1m: relative(1),
+          relative_return_3m: relative(3),
+        }),
+    session: sessionOf(m, i, now),
+    stale,
+  };
+}
+
 // One page of items in the order asked, each symbol's error an item of
 // its own, and FRED's attribution once when the page holds its values.
+// Without project, the quote tool's items, with returns, the session and
+// the benchmark.
 export async function quotePage(
   m: Markets,
   args: QuoteArgs,
-  project: (item: QuoteItem, latest: Latest) => object = (item) => item,
+  project?: (item: QuoteItem, latest: Latest) => object,
 ): Promise<string> {
   const offset = offsetOf(args);
-  const targets = await readTargets(m, args.symbols.slice(offset));
+  const asked = args.symbols.slice(offset);
+  const targets = await readTargets(
+    m,
+    args.benchmark === null ? asked : [...asked, args.benchmark],
+  );
   const now = m.clock.now();
-  const rows = targets.map((t) => {
+  const bench =
+    args.benchmark === null ? null : benchmarkOf(m, targets.at(-1)!, now);
+  const rows = targets.slice(0, asked.length).map((t) => {
     if ("error" in t) {
       const item: ErrorItem = { input: t.input, ...t.error };
       return { item, fred: false };
     }
     const latest = readLatest(m.db, t.instrument, now, m.quoteEveryMs);
     const q = quoteItem(m.db, t.input, t.instrument, latest);
-    return { item: project(q, latest), fred: q.observation != null };
+    const item =
+      project === undefined
+        ? agentItem(m, q, t.instrument, bench, now)
+        : project(q, latest);
+    return { item, fred: q.observation != null };
   });
   const items = rows.map((r) => r.item);
   return fitPage(items, (count) => {
     const end = offset + count;
     return {
+      ...(bench === null ? {} : { benchmark: bench.head }),
       next:
-        end < args.symbols.length ? cursor(String(end), args.symbols) : null,
-      ...(rows.slice(0, count).some((r) => r.fred)
+        end < args.symbols.length ? cursor(String(end), continued(args)) : null,
+      ...(bench?.fred || rows.slice(0, count).some((r) => r.fred)
         ? { attribution: ATTRIBUTION }
         : {}),
     };

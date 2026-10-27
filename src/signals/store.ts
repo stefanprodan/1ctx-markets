@@ -193,6 +193,8 @@ export function signalsAfterBars(
   refreshLive(db, instrument, now);
 }
 
+export type LiveTarget = { date: string; quote: LiveQuote };
+
 export type LiveQuote = {
   price: number;
   dayHigh: number | null;
@@ -205,10 +207,7 @@ export type LiveQuote = {
 export const LIVE_AFTER_END_MS = 15 * MINUTE_MS;
 
 // dated by the market's stored session, never UTC hours; crypto's by UTC day
-export function liveTarget(
-  db: Db,
-  instrument: Scoped,
-): { date: string; quote: LiveQuote } | null {
+export function liveTarget(db: Db, instrument: Scoped): LiveTarget | null {
   const row = db
     .query<
       Omit<LiveQuote, "time"> & { time: number | null; fetchedAt: number },

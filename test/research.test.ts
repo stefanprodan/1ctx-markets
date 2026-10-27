@@ -32,10 +32,12 @@ import {
   STALE_NEWS,
   topNews,
 } from "../src/massive/store.ts";
+import { endRun, startRun } from "../src/runs.ts";
 import { fits, iso, PAGE_BYTES } from "../src/tools/answer.ts";
 import { ArgError } from "../src/tools/args.ts";
 import {
   eventsAnswer,
+  NO_EVENT_BYTES,
   parseEvents,
   UNAVAILABLE_BYTES,
 } from "../src/tools/events.ts";
@@ -938,6 +940,48 @@ describe("events inside the call", () => {
     expect(later.unavailable).toEqual(note);
   });
 
+  test("a named share with nothing in the range is listed with its nearest events", async () => {
+    const t = await setup({
+      charts: await shares(["TSM", "ZZQ"]),
+      hold: (url) =>
+        url.pathname === "/api/v1/calendar/earnings" &&
+        url.searchParams.get("symbol") === "ZZQ"
+          ? Promise.resolve({
+              recordedAt: "",
+              status: 200,
+              headers: {},
+              body: { earningsCalendar: "none" },
+            })
+          : undefined,
+    });
+    usShare(t.db, "TSM");
+    usShare(t.db, "ZZQ");
+    const args = {
+      from: "2026-10-27",
+      to: "2026-11-30",
+      symbols: ["NVDA", "TSM", "ZZQ"],
+    };
+    const b = body(
+      await drive(t.clock, pacedOf(t.m), eventsAnswer(t.m, parseEvents(args))),
+    );
+    expect(b.events.map((e: { id: string }) => e.id)).toEqual(["US:NVDA"]);
+    expect(b.no_event).toEqual([
+      {
+        input: "TSM",
+        id: "US:TSM",
+        last: { date: "2026-10-15", hour: "bmo", status: "reported" },
+        next: { date: "2027-01-13", hour: "bmo", status: "scheduled" },
+      },
+    ]);
+    expect(b.unavailable.map((n: { id: string }) => n.id)).toEqual(["US:ZZQ"]);
+    expect(b.no_event_more).toBeUndefined();
+    // every tracked share would list there
+    const tracked = body(
+      await eventsAnswer(t.m, parseEvents({ ...args, symbols: undefined })),
+    );
+    expect(tracked).not.toContainKey("no_event");
+  });
+
   test("an overview and events for one new share ask its calendar once", async () => {
     const t = await setup();
     await drive(
@@ -1219,6 +1263,59 @@ describe("answers held to a page", () => {
     expect(
       Buffer.byteLength(JSON.stringify(b.unavailable)),
     ).toBeLessThanOrEqual(UNAVAILABLE_BYTES);
+  });
+});
+
+describe("no_event held to its share", () => {
+  test("lists what fits and counts the rest", async () => {
+    const t = await setup();
+    const symbols: string[] = [];
+    for (let k = 0; k < 100; k++) {
+      const i = usShare(t.db, `ZZ${String(k).padStart(3, "0")}`);
+      t.db
+        .query("update instruments set source = 'other' where id = ?")
+        .run(i.id);
+      t.db
+        .query(
+          `insert into bars (instrument, interval, date, close, final,
+             fetched_at) values (?, '1d', '2026-10-23', 1, 1, ?)`,
+        )
+        .run(i.id, NOW);
+      for (const [q, date] of [
+        [3, "2026-08-20"],
+        [4, "2027-02-20"],
+      ] as const) {
+        t.db
+          .query(
+            `insert into events (instrument, fiscal_year, fiscal_quarter,
+               date, hour, fetched_at) values (?, 2026, ?, ?, 'amc', ?)`,
+          )
+          .run(i.id, q, date, NOW);
+      }
+      // its calendar fetched well, so nothing is asked in the call
+      endRun(t.db, startRun(t.db, "finnhub", "calendar", NOW, i.id), NOW, 2);
+      symbols.push(i.id);
+    }
+    const answer = await eventsAnswer(
+      t.m,
+      parseEvents({ from: "2026-10-01", to: "2026-12-31", symbols }),
+    );
+    const text = answer.content[0]!.text;
+    expect(fits(text)).toBe(true);
+    const b = JSON.parse(text);
+    expect(t.finnhubCalls()).toHaveLength(0);
+    expect(b.unavailable).toBeUndefined();
+    expect(b.no_event[0]).toEqual({
+      input: "US:ZZ000",
+      id: "US:ZZ000",
+      last: { date: "2026-08-20", hour: "amc", status: "awaiting results" },
+      next: { date: "2027-02-20", hour: "amc", status: "scheduled" },
+    });
+    expect(b.no_event_more).toBeGreaterThan(0);
+    expect(b.no_event.length + b.no_event_more).toBe(100);
+    expect(Buffer.byteLength(JSON.stringify(b.no_event))).toBeLessThanOrEqual(
+      NO_EVENT_BYTES,
+    );
   });
 });
 

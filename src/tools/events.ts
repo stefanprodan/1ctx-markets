@@ -7,7 +7,9 @@
 
 import { SOURCE } from "../finnhub/client.ts";
 import {
+  type EventStatus,
   eligible,
+  eventStatus,
   NO_DATA,
   NO_EVENTS,
   NOT_COVERED,
@@ -16,6 +18,7 @@ import {
 import { type Instrument, readInstrument } from "../instruments.ts";
 import { lastStarted } from "../runs.ts";
 import { trackedInstruments } from "../tracking.ts";
+import { localDate } from "../zone.ts";
 import {
   cursor,
   fitPage,
@@ -25,7 +28,7 @@ import {
 } from "./answer.ts";
 import { ArgError, date, fields, optionalText, symbols } from "./args.ts";
 import { eventItem, researchTargets } from "./research.ts";
-import { distinct } from "./sets.ts";
+import { distinct, type Resolved } from "./sets.ts";
 import { type Markets, RETRY } from "./targets.ts";
 
 export const MAX_EVENT_SYMBOLS = 100;
@@ -60,19 +63,48 @@ type Note = { input: string; id?: string; error?: string; message: string };
 // the unavailable list's share of a page; past it, the rest are counted
 export const UNAVAILABLE_BYTES = 8 * 1024;
 
+// the no_event list's share, so neither list crowds out the other
+export const NO_EVENT_BYTES = UNAVAILABLE_BYTES;
+
 // the notes that fit the share, in order, and how many were left out
-export function capNotes(notes: readonly Note[]): {
-  listed: Note[];
-  more: number;
-} {
-  const listed: Note[] = [];
+export function capNotes<T>(
+  notes: readonly T[],
+  share: number,
+): { listed: T[]; more: number } {
+  const listed: T[] = [];
   let bytes = 0;
   for (const n of notes) {
     bytes += Buffer.byteLength(JSON.stringify(n)) + 1;
-    if (bytes > UNAVAILABLE_BYTES) break;
+    if (bytes > share) break;
     listed.push(n);
   }
   return { listed, more: notes.length - listed.length };
+}
+
+type Nearest = { date: string; hour: string; status: EventStatus } | null;
+
+// The stored events either side of the range, so a share with nothing
+// in it is never read as missing data.
+function nearest(m: Markets, i: Instrument, from: string, to: string) {
+  const today = localDate(i.zone, m.clock.now());
+  const one = (sql: string, date: string): Nearest => {
+    const e = m.db
+      .query<
+        { date: string; hour: string; reportedSeenAt: number | null },
+        [string, string]
+      >(
+        `select date, hour, reported_seen_at as reportedSeenAt from events
+         where instrument = ? and ${sql} limit 1`,
+      )
+      .get(i.id, date);
+    return e === null
+      ? null
+      : { date: e.date, hour: e.hour, status: eventStatus(e, today) };
+  };
+  return {
+    last: one("date < ? order by date desc", from),
+    next: one("date > ? order by date", to),
+  };
 }
 
 // why a share has no calendar, so an empty list is never read as no
@@ -123,6 +155,7 @@ export async function eventsAnswer(
   }
   let instruments: Instrument[];
   const notes: Note[] = [];
+  let resolvedOnce: Resolved[] = [];
   if (args.symbols === null) {
     instruments = trackedInstruments(m.db, m.clock.now(), m.trackMs).filter(
       eligible,
@@ -136,6 +169,7 @@ export async function eventsAnswer(
       sections: ["calendar"],
     });
     const { resolved, errors } = distinct(targets);
+    resolvedOnce = resolved;
     for (const e of errors) notes.push(e);
     instruments = [];
     for (const r of resolved) {
@@ -171,7 +205,23 @@ export async function eventsAnswer(
         r,
       ),
     }));
-  const { listed, more } = capNotes(notes);
+  const { listed, more } = capNotes(notes, UNAVAILABLE_BYTES);
+  // every tracked share would list here, most with nothing in a short range
+  const quiet: object[] = [];
+  if (start === null && args.symbols !== null) {
+    const noted = new Set(notes.map((n) => n.id));
+    const dated = new Set(rows.map((r) => r.instrument));
+    for (const r of resolvedOnce) {
+      const id = r.instrument.id;
+      if (noted.has(id) || dated.has(id) || !byId.has(id)) continue;
+      quiet.push({
+        input: r.input,
+        id,
+        ...nearest(m, r.instrument, args.from, args.to),
+      });
+    }
+  }
+  const none = capNotes(quiet, NO_EVENT_BYTES);
   const page = fitPage(
     items.map((x) => x.item),
     (count) => ({
@@ -180,6 +230,8 @@ export async function eventsAnswer(
       source: "finnhub",
       ...(start === null && notes.length > 0 ? { unavailable: listed } : {}),
       ...(start === null && more > 0 ? { unavailable_more: more } : {}),
+      ...(quiet.length > 0 ? { no_event: none.listed } : {}),
+      ...(none.more > 0 ? { no_event_more: none.more } : {}),
       next: count < items.length ? cursor(items[count]!.key, asked) : null,
     }),
     "events",
