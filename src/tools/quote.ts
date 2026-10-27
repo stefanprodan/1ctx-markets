@@ -31,7 +31,7 @@ import { ArgError, fields, optionalText, symbols } from "./args.ts";
 import { readExtended } from "./extended.ts";
 import type { ExtendedRead, Markets } from "./markets.ts";
 import { benchmarkStale } from "./sets.ts";
-import { type ItemError, readTargets, type Target } from "./targets.ts";
+import { type ErrorItem, readTargets, type Target } from "./targets.ts";
 
 export const MAX_SYMBOLS = 100;
 
@@ -141,8 +141,6 @@ export type QuoteItem = {
   signals: { daily: SignalRow | null; weekly: SignalRow | null };
   stale: string[];
 };
-
-export type ErrorItem = { input: string } & ItemError;
 
 type Observed = { date: string; close: number; fetchedAt: number };
 

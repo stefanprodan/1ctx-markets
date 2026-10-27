@@ -6,9 +6,6 @@ import { dirname, join, relative } from "node:path";
 
 const SRC = join(import.meta.dir, "..", "src");
 
-// cycles there before this test, to be broken; never add one
-const KNOWN: string[][] = [["tools/quote.ts", "tools/sets.ts"]];
-
 // static, side-effect, type-only and re-export forms, and import()
 const SPECIFIER =
   /\b(?:import|export)\b[^;"'`]*?\bfrom\s*["']([^"']+)["']|\bimport\s*\(?\s*["']([^"']+)["']/g;
@@ -113,6 +110,6 @@ describe("imports", () => {
   });
 
   test("src has no import cycle", async () => {
-    expect(cycles(await graph(SRC))).toEqual(KNOWN);
+    expect(cycles(await graph(SRC))).toEqual([]);
   });
 });

@@ -10,8 +10,7 @@ import type { Instrument } from "../instruments.ts";
 import type { StaleReason } from "../stale.ts";
 import { cursor, fitPage, readCursor } from "./answer.ts";
 import { ArgError } from "./args.ts";
-import type { ErrorItem } from "./quote.ts";
-import type { Target } from "./targets.ts";
+import type { ErrorItem, Target } from "./targets.ts";
 
 export type Resolved = { input: string; instrument: Instrument };
 

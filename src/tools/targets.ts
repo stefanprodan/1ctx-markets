@@ -63,6 +63,8 @@ export type ItemError = {
   candidates?: CandidateItem[];
 };
 
+export type ErrorItem = { input: string } & ItemError;
+
 export type Target =
   | { input: string; instrument: Instrument }
   | { input: string; error: ItemError };
