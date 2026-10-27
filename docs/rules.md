@@ -136,10 +136,10 @@ Examples, each created with `symbol` set to the rule's own share:
   waiting (`evaluateWith()`).
 - **The gate stays bound to its quarter.** It is never moved to the
   next event; a later quarter is a new rule.
-- **Waited events drive Finnhub's calendar.** `hooks.waited()` names
-  every gated event so its calendar is asked hourly around its date and
-  retention keeps it; `hooks.reported()` re-evaluates the gated rules
-  when one reports.
+- **Waited events are kept.** `hooks.waited()` names every gated
+  event so retention keeps it; its share is tracked, so the hourly
+  whole-market calendar (`docs/research.md`) sees its actuals, and
+  `hooks.reported()` re-evaluates the gated rules when one reports.
 
 ## Splits and rescales
 

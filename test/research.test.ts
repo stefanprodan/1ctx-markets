@@ -217,7 +217,8 @@ describe("research inside the call", () => {
     );
     held.release();
     await Promise.all(flights);
-    expect(finnhubCalls()).toHaveLength(3);
+    // the calendar, metric and analysts before the held earnings
+    expect(finnhubCalls()).toHaveLength(4);
     expect(count(db, "research")).toBe(0);
     expect(count(db, "events")).toBe(0);
     expect(
@@ -706,11 +707,11 @@ async function shares(symbols: readonly string[]) {
 describe("events inside the call", () => {
   const range = { from: "2026-10-01", to: "2026-12-31" };
 
-  test("a research pass cut after its first section leaves the calendar to the next call", async () => {
+  test("a research pass cut at its calendar leaves it to the next call", async () => {
     let limited = true;
     const t = await setup({
       hold: (url) =>
-        limited && url.pathname === "/api/v1/stock/recommendation"
+        limited && url.pathname === "/api/v1/calendar/earnings"
           ? Promise.resolve({
               recordedAt: "",
               status: 429,
@@ -727,7 +728,7 @@ describe("events inside the call", () => {
       ),
     );
     expect(first.research).toMatchObject({ error: "rate_limited" });
-    expect(t.finnhubCalls()).toHaveLength(2);
+    expect(t.finnhubCalls()).toHaveLength(1);
     limited = false;
     await t.clock.advance(5 * MINUTE_MS);
     const events = body(
@@ -742,8 +743,7 @@ describe("events inside the call", () => {
     ]);
     expect(events.unavailable).toBeUndefined();
     expect(t.finnhubCalls().map((u) => u.pathname)).toEqual([
-      "/api/v1/stock/metric",
-      "/api/v1/stock/recommendation",
+      "/api/v1/calendar/earnings",
       "/api/v1/calendar/earnings",
     ]);
     // a history section fetches only itself
@@ -758,7 +758,7 @@ describe("events inside the call", () => {
     expect(t.finnhubCalls().at(-1)?.pathname).toBe(
       "/api/v1/stock/insider-sentiment",
     );
-    expect(t.finnhubCalls()).toHaveLength(4);
+    expect(t.finnhubCalls()).toHaveLength(3);
   });
 
   test("a share whose calendar never ended well is listed under unavailable", async () => {

@@ -149,9 +149,48 @@ contract in `docs/tools.md`; rules that wait on events in
   waiting on the report would fire before the numbers exist.
 - **The first sighting calls `hooks.reported` inside the same write**,
   so rules waiting on the event see it atomically.
-- **An event a rule waits on is asked hourly on its date and the day
-  after, by the exchange's local date (`localDate`), until reported**
-  (`WAITED_EVERY_MS`, `waited` in `src/finnhub/jobs.ts`).
+- **A tracked share reporting yesterday or today is refreshed hourly
+  from one whole-market call** (`market` and `reportingWindow` in
+  `src/finnhub/jobs.ts`, `storeMarketCalendar`), rule or not: a reader
+  needs the new quarter on the report date, and the 23:00 UTC refresh
+  can come before Finnhub posts an after-close actual. While any
+  tracked eligible share has an unreported stored event of its own
+  listing dated its exchange's yesterday or today (`localDate`,
+  `windowEvents`), the job asks
+  `calendar/earnings` from yesterday to today with no symbol, at most
+  once every `MARKET_EVERY_MS` (60 minutes), a failure waiting
+  `RETRY_MS`. Yesterday too, since many reporters have no actuals a
+  day later. Its run is `market-calendar` scoped to `US`
+  (`MARKET_CALENDAR`), never an instrument.
+- **The whole-market answer only updates events already stored** of
+  tracked shares' own listing, matched by `finnhubSymbol`, fiscal year
+  and quarter, through the write a share's calendar uses, so a first
+  sighting calls `hooks.reported` in it. A matched row writes its date
+  and hour too, so a quarter moved within the range is moved. A row of
+  another symbol or quarter is ignored and learns no instrument; a
+  missing row deletes or moves nothing, since the list changes between
+  calls; the daily per-symbol calendar stays the source for new events
+  and listings. A symbol whose rows are malformed or conflict is left
+  out alone (`parseMarketCalendar`).
+- **An unreported event of another listing in the same window is asked
+  by the share's own calendar hourly** (`otherListings`): the market
+  answer names the share's symbol, never the listing Finnhub answers it
+  as (TSM as `2330.TW`), so it is not counted for the market call.
+  These are few, US listings of foreign companies; spaced by the
+  share's last `calendar` run (`MARKET_EVERY_MS`) and `RETRY_MS`.
+- **A share whose event in the window was seen reported after its last
+  good `earnings` run started is asked its `earnings`** (`sightedEarnings`),
+  so its surprises carry the new quarter the same hour. It is read from
+  stored state, so shares a tick's budget cut are asked on the next
+  tick. A pass asks `calendar` before the other sections
+  (`refreshResearch`), so earnings asked with it start after any report
+  the calendar first sees and are not asked again.
+- **Cost: one call an hour while any tracked share is in its window,
+  plus one per report**, and one an hour per share whose event is of
+  another listing, however many shares are tracked; asking each
+  reporting share by symbol would be hundreds an hour on a busy day.
+  The answer is US listings only and uncut: 285 rows for two days, 934
+  for a week.
 - **The next event is the earliest dated from the exchange's today, or
   one up to `AWAITING_DAYS` (7) past still awaiting results**
   (`nextEvent`).

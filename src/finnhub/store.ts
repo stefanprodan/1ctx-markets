@@ -67,7 +67,7 @@ export type FinnhubContext = {
   finnhub: Finnhub | null;
 };
 
-// rules answer these, so the calendar is asked hourly and retention keeps it
+// rules answer these, so retention keeps them
 export type EventKey = {
   instrument: string;
   fiscalYear: number;
@@ -388,8 +388,8 @@ function storeSection(
 
 function recordRun(
   db: Db,
-  instrument: string,
-  section: Section,
+  scope: string,
+  job: string,
   startedAt: number,
   now: number,
   outcome: { rows: number } | { error: unknown },
@@ -401,8 +401,8 @@ function recordRun(
      values (?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     SOURCE,
-    section,
-    instrument,
+    job,
+    scope,
     startedAt,
     now,
     failed ? "failed" : "ok",
@@ -439,7 +439,12 @@ export async function refreshResearch(
     if (asked.length === 0) return [];
     const outcomes: Outcome[] = [];
     let paused: Paused | null = null;
-    for (const section of asked) {
+    // the calendar first, so earnings asked in the same pass are fetched
+    // after any report the calendar first sees; results come back in SECTIONS order
+    const fetchOrder = asked.toSorted(
+      (a, b) => Number(b === "calendar") - Number(a === "calendar"),
+    );
+    for (const section of fetchOrder) {
       if (!live()) throw new DeadlinePassed();
       const startedAt = ctx.clock.now();
       try {
@@ -455,10 +460,16 @@ export async function refreshResearch(
         outcomes.push({ section, error, startedAt });
       }
     }
-    if (paused === null) return store(outcomes);
+    if (paused === null) return inOrder(await store(outcomes));
     if (outcomes.length > 0) await store(outcomes);
     throw paused;
   });
+
+  function inOrder(results: SectionResult[]): SectionResult[] {
+    return results.toSorted(
+      (a, b) => SECTIONS.indexOf(a.section) - SECTIONS.indexOf(b.section),
+    );
+  }
 
   function store(outcomes: readonly Outcome[]): Promise<SectionResult[]> {
     return ctx.writer.write((db) => {
@@ -482,6 +493,73 @@ export async function refreshResearch(
       });
     });
   }
+}
+
+// The whole-market calendar's run: Finnhub's market calendar holds US
+// listings only, which is all eligible() lets it research.
+export const MARKET_CALENDAR = { job: "market-calendar", scope: "US" } as const;
+
+export type MarketCalendarResult =
+  | {
+      status: "ok";
+      rows: number;
+      // instruments with an event first seen reported in this answer
+      reported: string[];
+    }
+  | { status: "failed"; error: unknown };
+
+// Only events already stored for these shares, of their own listing, are
+// updated, through the write a share's calendar uses; a row of any other
+// symbol or quarter is ignored, and a missing row deletes nothing, since
+// the list changes between calls.
+export function storeMarketCalendar(
+  ctx: FinnhubContext,
+  shares: readonly Instrument[],
+  outcome:
+    | { answer: Answer<Map<string, CalendarEvent[]>>; startedAt: number }
+    | { error: unknown; startedAt: number },
+  hooks: Hooks = NO_HOOKS,
+): Promise<MarketCalendarResult> {
+  const { job, scope } = MARKET_CALENDAR;
+  return ctx.writer.write((db): MarketCalendarResult => {
+    const now = ctx.clock.now();
+    if ("error" in outcome) {
+      recordRun(db, scope, job, outcome.startedAt, now, outcome);
+      return { status: "failed", error: outcome.error };
+    }
+    const { answer } = outcome;
+    const stored = db.query<
+      { fiscalYear: number; fiscalQuarter: number },
+      [string]
+    >(
+      `select fiscal_year as fiscalYear, fiscal_quarter as fiscalQuarter
+       from events where instrument = ? and listing is null`,
+    );
+    const reported: EventKey[] = [];
+    let rows = 0;
+    for (const share of shares) {
+      const answered = answer.data?.get(finnhubSymbol(share));
+      if (answered === undefined) continue;
+      const own = new Set(
+        stored.all(share.id).map((k) => `${k.fiscalYear} Q${k.fiscalQuarter}`),
+      );
+      const events = answered.filter((e) =>
+        own.has(`${e.fiscalYear} Q${e.fiscalQuarter}`),
+      );
+      if (events.length === 0) continue;
+      reported.push(
+        ...upsertEvents(db, share.id, events, null, answer.fetchedAt),
+      );
+      rows += events.length;
+    }
+    if (reported.length > 0) hooks.reported?.(db, reported, answer.fetchedAt);
+    recordRun(db, scope, job, outcome.startedAt, now, { rows });
+    return {
+      status: "ok",
+      rows,
+      reported: [...new Set(reported.map((k) => k.instrument))],
+    };
+  });
 }
 
 // the time of day, UTC, the daily refresh is due: after the US close

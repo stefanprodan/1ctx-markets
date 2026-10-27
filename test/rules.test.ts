@@ -3,7 +3,12 @@
 
 import { describe, expect, test } from "bun:test";
 import { DAY_MS } from "../src/clock.ts";
-import { refreshResearch } from "../src/finnhub/store.ts";
+import { finnhubJobs } from "../src/finnhub/jobs.ts";
+import {
+  pruneResearch,
+  readEvents,
+  refreshResearch,
+} from "../src/finnhub/store.ts";
 import { readInstrument } from "../src/instruments.ts";
 import { silent } from "../src/log.ts";
 import { WAITING } from "../src/rules/evaluate.ts";
@@ -630,6 +635,82 @@ describe("the earnings gate", () => {
     await t.quote("NVDA", { price: 150, time: t.clock.now() - 60_000 });
     expect(rule(t, r.body.rule.id).lastResult).toBe("false");
     expect(alerts(t)).toBe(0);
+  });
+
+  test("fires once on the first sighting from the market calendar", async () => {
+    const t = await rulesTest({ finnhub: true });
+    const r = await create(t, "NVDA", {
+      afterEarnings: "NVDA",
+      left: "changePct",
+      op: "<",
+      right: -5,
+    });
+    // the whole market's answer lists the share with its actuals
+    t.calendar.edit = (fx) => {
+      const rows: { symbol: string }[] = fx.body.earningsCalendar;
+      if (rows.every((r) => r.symbol === "NVDA")) return fx;
+      const out = clone(fx);
+      out.body.earningsCalendar.push({
+        symbol: "NVDA",
+        date: "2026-11-17",
+        hour: "amc",
+        quarter: 3,
+        year: 2027,
+        epsEstimate: 2.5,
+        epsActual: 2.61,
+        revenueEstimate: 60e9,
+        revenueActual: 62e9,
+      });
+      return out;
+    };
+    const jobs = finnhubJobs({
+      ctx: { db: t.db, clock: t.clock, writer: t.write, finnhub: t.m.finnhub },
+      log: silent,
+      hooks: t.engine.finnhub,
+    });
+    const market = () =>
+      t.calls.filter(
+        (u) =>
+          u.pathname === "/api/v1/calendar/earnings" &&
+          !u.searchParams.has("symbol"),
+      ).length;
+    await t.clock.advance(Date.parse("2026-11-17T22:00:00Z") - t.clock.now());
+    const pass = await drive(t.clock, pacedOf(t.m), jobs.tick());
+    expect(pass.market).toEqual({ rows: 1, reported: ["US:NVDA"] });
+    expect(market()).toBe(1);
+    // evaluated in the write that saw the actuals
+    expect(rule(t, r.body.rule.id).lastResult).toBe("unknown");
+    await t.clock.advance(Date.parse("2026-11-18T14:45:00Z") - t.clock.now());
+    await t.quote("NVDA", {
+      price: 195,
+      sessionDays: 26,
+      time: Date.parse("2026-11-18T14:40:00Z"),
+    });
+    expect(alerts(t)).toBe(1);
+    // reported: the market calendar is not asked again for it
+    await t.clock.advance(60 * 60_000);
+    await drive(t.clock, pacedOf(t.m), jobs.tick());
+    expect(market()).toBe(1);
+    expect(alerts(t)).toBe(1);
+  });
+
+  test("retention keeps the event it waits on", async () => {
+    const t = await rulesTest({ finnhub: true });
+    await create(t, "NVDA", {
+      afterEarnings: "NVDA",
+      left: "changePct",
+      op: "<",
+      right: -5,
+    });
+    const later = Date.parse("2029-06-01T00:00:00Z");
+    await t.write.write((db) =>
+      pruneResearch(db, later, t.engine.finnhub.waited(db, later)),
+    );
+    expect(
+      readEvents(t.db, "2000-01-01", "2100-01-01").map(
+        (e) => `${e.instrument} ${e.fiscalYear}Q${e.fiscalQuarter}`,
+      ),
+    ).toEqual(["US:NVDA 2027Q3"]);
   });
 
   test("its event is waited on while the rule exists", async () => {

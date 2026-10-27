@@ -13,9 +13,10 @@ import {
   parseAnalysts,
   parseCalendar,
   parseEarnings,
+  parseMarketCalendar,
   SPACING_MS,
 } from "../src/finnhub/client.ts";
-import { finnhubJobs, TICK_BUDGET_MS } from "../src/finnhub/jobs.ts";
+import { finnhubJobs, RETRY_MS, TICK_BUDGET_MS } from "../src/finnhub/jobs.ts";
 import {
   type EventKey,
   eligible,
@@ -27,6 +28,7 @@ import {
   readEvents,
   readResearch,
   refreshResearch,
+  SECTIONS,
   STALE_RESEARCH,
   sectionState,
 } from "../src/finnhub/store.ts";
@@ -225,6 +227,44 @@ describe("finnhub answers", () => {
     await expect(t.client.analysts("NVDA")).rejects.toThrow("malformed answer");
   });
 
+  test("the whole-market calendar parses every row, by symbol, each its own listing's", async () => {
+    for (const [name, rows] of [
+      ["calendar-earnings-two-days", 285],
+      ["calendar-earnings-week", 934],
+    ] as const) {
+      const fx = await finnhubFixture(name);
+      const parsed = parseMarketCalendar(fx.body);
+      expect(parsed.listing).toBeNull();
+      const all = [...parsed.data!.values()].flat();
+      expect(all).toHaveLength(rows);
+      expect(parsed.data!.get("HOOD")).toEqual([
+        {
+          fiscalYear: 2026,
+          fiscalQuarter: 3,
+          date: "2026-10-27",
+          hour: "amc",
+          epsEstimate: 0.5684,
+          epsActual: null,
+          revenueEstimate: 1450566571,
+          revenueActual: null,
+          reported: false,
+        },
+      ]);
+    }
+    // a class share keeps Finnhub's dotted symbol
+    const week = parseMarketCalendar(
+      (await finnhubFixture("calendar-earnings-week")).body,
+    );
+    expect(week.data!.has("MOG.A")).toBe(true);
+    // a malformed envelope is an error; a symbol's bad row drops it alone
+    expect(() => parseMarketCalendar({})).toThrow("malformed answer");
+    const fx = clone(await finnhubFixture("calendar-earnings-two-days"));
+    fx.body.earningsCalendar.find((r: any) => r.symbol === "HOOD").quarter = 7;
+    const parsed = parseMarketCalendar(fx.body);
+    expect(parsed.data!.has("HOOD")).toBe(false);
+    expect(parsed.data!.size).toBeGreaterThan(200);
+  });
+
   test("the key goes only in its header, never in a URL or an error", async () => {
     const t = setup({
       route: (url) => {
@@ -399,17 +439,18 @@ describe("research rows", () => {
       ["insider", "ok"],
       ["calendar", "ok"],
     ]);
+    // the calendar first, so earnings come after any report it sees
     expect(t.f.urls.map((u) => u.pathname)).toEqual([
+      "/api/v1/calendar/earnings",
       "/api/v1/stock/metric",
       "/api/v1/stock/recommendation",
       "/api/v1/stock/earnings",
       "/api/v1/stock/insider-sentiment",
-      "/api/v1/calendar/earnings",
     ]);
     // insider from 12 months back, the calendar 120 days back to 90 ahead
-    expect(t.f.urls[3]!.searchParams.get("from")).toBe("2025-10-25");
-    expect(t.f.urls[4]!.searchParams.get("from")).toBe("2026-06-27");
-    expect(t.f.urls[4]!.searchParams.get("to")).toBe("2027-01-23");
+    expect(t.f.urls[4]!.searchParams.get("from")).toBe("2025-10-25");
+    expect(t.f.urls[0]!.searchParams.get("from")).toBe("2026-06-27");
+    expect(t.f.urls[0]!.searchParams.get("to")).toBe("2027-01-23");
     expect(readResearch(t.db, nvda.id, "metric")).toHaveLength(1);
     expect(readResearch(t.db, nvda.id, "analysts")).toHaveLength(4);
     expect(
@@ -962,50 +1003,391 @@ describe("the daily job", () => {
     expect(lines.some((l) => l.includes("finnhub section failed"))).toBe(true);
     for (const l of lines) expect(l).not.toContain(FINNHUB_KEY);
   });
+});
 
-  test("a waited event's calendar is asked hourly on its date until reported", async () => {
+describe("the market calendar", () => {
+  // after the US close on a day the recordings hold reporters for, two
+  // hours before the daily refresh
+  const AT = Date.parse("2026-10-27T20:30:00Z");
+  const isMarket = (u: URL) =>
+    u.pathname === "/api/v1/calendar/earnings" && !u.searchParams.has("symbol");
+
+  // the market recordings with their rows edited, every other answer as
+  // the helper gives it, a made-up share answering as NVDA
+  function marketSetup(
+    options: {
+      rows?: (rows: any[]) => void;
+      fail?: () => boolean;
+      start?: number;
+      route?: Route;
+    } = {},
+  ) {
+    return setup({
+      start: options.start ?? AT,
+      route: async (url) => {
+        const routed = await options.route?.(url);
+        if (routed !== undefined) return routed;
+        if (isMarket(url)) {
+          if (options.fail?.()) {
+            return { recordedAt: "", status: 500, headers: {}, body: {} };
+          }
+          const fx = clone((await finnhubAnswer(url))!);
+          options.rows?.(fx.body.earningsCalendar);
+          return fx;
+        }
+        return finnhubAnswer(url, { HOOD: "nvda", AAT: "nvda" });
+      },
+    });
+  }
+
+  const row = (rows: any[], symbol: string) =>
+    rows.find((r) => r.symbol === symbol);
+
+  // a stored event of the share's own listing, not yet reported
+  const stored = (db: Db, id: string, date: string, quarter = 3) =>
+    db
+      .query(
+        `insert into events (instrument, fiscal_year, fiscal_quarter, date,
+           hour, eps_estimate, fetched_at) values (?, 2026, ?, ?, 'amc', 0.5, ?)`,
+      )
+      .run(id, quarter, date, AT - DAY_MS);
+
+  // every section fetched well, so the daily refresh asks nothing today
+  const fresh = (db: Db, id: string) => {
+    for (const s of SECTIONS) {
+      db.query(
+        `insert into sync_runs (source, job, scope, started_at, ended_at,
+           status, rows) values ('finnhub', ?, ?, ?, ?, 'ok', 1)`,
+      ).run(s, id, AT - 60 * MINUTE_MS, AT - 60 * MINUTE_MS);
+    }
+  };
+
+  const reporting = (db: Db, symbol: string, date = "2026-10-27") => {
+    const i = share(db, symbol, AT);
+    stored(db, i.id, date);
+    fresh(db, i.id);
+    return i;
+  };
+
+  const marketCalls = (t: { f: { urls: URL[] } }) => t.f.urls.filter(isMarket);
+
+  test("a reporting share's actual comes from one market call, then its earnings once", async () => {
     let actual: number | null = null;
-    const t = setup({
-      route: edited("/api/v1/calendar/earnings", "NVDA", (b) => {
+    const t = marketSetup({
+      rows: (rows) => {
+        row(rows, "HOOD").epsActual = actual;
+      },
+    });
+    const hood = reporting(t.db, "HOOD");
+    const jobs = finnhubJobs({ ctx: t.ctx, log: silent });
+    // no actual yet: the event waits
+    const first = await drive(t.clock, t.client, jobs.tick());
+    expect(first.market).toEqual({ rows: 1, reported: [] });
+    expect(marketCalls(t).map((u) => u.search)).toEqual([
+      "?from=2026-10-26&to=2026-10-27",
+    ]);
+    expect(t.f.urls).toHaveLength(1);
+    actual = 0.61;
+    await t.clock.advance(60 * MINUTE_MS);
+    const second = await drive(t.clock, t.client, jobs.tick());
+    expect(second.market).toEqual({ rows: 1, reported: [hood.id] });
+    expect(second.asked).toEqual([
+      { instrument: hood.id, sections: ["earnings"] },
+    ]);
+    const [e] = readEvents(t.db, "2026-10-27", "2026-10-27");
+    expect(e).toMatchObject({
+      instrument: hood.id,
+      epsActual: 0.61,
+      epsEstimate: 0.5684,
+      listing: null,
+    });
+    expect(e!.reportedSeenAt).not.toBeNull();
+    expect(readResearch(t.db, hood.id, "earnings").length).toBeGreaterThan(0);
+    expect(
+      t.f.urls.map((u) => `${u.pathname}?${u.searchParams.get("symbol")}`),
+    ).toEqual([
+      "/api/v1/calendar/earnings?null",
+      "/api/v1/calendar/earnings?null",
+      "/api/v1/stock/earnings?HOOD",
+    ]);
+    // reported: nothing else waits, so the next hour asks nothing
+    await t.clock.advance(60 * MINUTE_MS);
+    const third = await drive(t.clock, t.client, jobs.tick());
+    expect(third).toEqual({ market: null, asked: [], failed: [] });
+    expect(t.f.urls).toHaveLength(3);
+  });
+
+  test("no tracked share in its window makes no market call", async () => {
+    const t = marketSetup();
+    // reports in two days
+    reporting(t.db, "HOOD", "2026-10-29");
+    // reports today, but read too long ago to be tracked
+    const old = share(t.db, "AAT", AT - 40 * DAY_MS);
+    stored(t.db, old.id, "2026-10-27");
+    // reported already
+    const done = reporting(t.db, "AB");
+    t.db
+      .query("update events set reported_seen_at = ? where instrument = ?")
+      .run(AT - MINUTE_MS, done.id);
+    // reports today, but not a share
+    const etf = share(t.db, "QQQ", AT, { type: "ETF" });
+    stored(t.db, etf.id, "2026-10-27");
+    fresh(t.db, etf.id);
+    const jobs = finnhubJobs({ ctx: t.ctx, log: silent });
+    const pass = await drive(t.clock, t.client, jobs.tick());
+    expect(pass.market).toBeNull();
+    expect(marketCalls(t)).toEqual([]);
+  });
+
+  test("an event two local days ago is not waited on, one yesterday is", async () => {
+    const t = marketSetup();
+    const hood = reporting(t.db, "HOOD", "2026-10-25");
+    const jobs = finnhubJobs({ ctx: t.ctx, log: silent });
+    await drive(t.clock, t.client, jobs.tick());
+    expect(marketCalls(t)).toEqual([]);
+    t.db
+      .query("update events set date = '2026-10-26' where instrument = ?")
+      .run(hood.id);
+    await t.clock.advance(MINUTE_MS);
+    await drive(t.clock, t.client, jobs.tick());
+    expect(marketCalls(t)).toHaveLength(1);
+  });
+
+  test("ticks inside an hour make one call; a failed one waits the retry", async () => {
+    let failing = false;
+    const t = marketSetup({ fail: () => failing });
+    reporting(t.db, "HOOD");
+    const jobs = finnhubJobs({ ctx: t.ctx, log: silent });
+    await drive(t.clock, t.client, jobs.tick());
+    await t.clock.advance(30 * MINUTE_MS);
+    await drive(t.clock, t.client, jobs.tick());
+    expect(marketCalls(t)).toHaveLength(1);
+    await t.clock.advance(31 * MINUTE_MS);
+    failing = true;
+    const failed = await drive(t.clock, t.client, jobs.tick());
+    expect(failed.market).toEqual({ error: "source error" });
+    expect(marketCalls(t)).toHaveLength(2);
+    const run = lastRun(t.db, "finnhub", "market-calendar", "US");
+    expect(run).toMatchObject({ status: "failed", error: "source error" });
+    failing = false;
+    await t.clock.advance(RETRY_MS - 2 * MINUTE_MS);
+    await drive(t.clock, t.client, jobs.tick());
+    expect(marketCalls(t)).toHaveLength(2);
+    await t.clock.advance(3 * MINUTE_MS);
+    const retry = await drive(t.clock, t.client, jobs.tick());
+    expect(retry.market).toEqual({ rows: 1, reported: [] });
+    expect(marketCalls(t)).toHaveLength(3);
+  });
+
+  test("only stored events of tracked shares change; a missing row changes none", async () => {
+    const t = marketSetup({
+      rows: (rows) => {
+        // a quarter the share has no event for
+        row(rows, "AAT").quarter = 2;
+        // a share missing from this answer
+        rows.splice(rows.indexOf(row(rows, "HOOD")), 1);
+      },
+    });
+    const hood = reporting(t.db, "HOOD");
+    const aat = reporting(t.db, "AAT");
+    const instruments = count(t.db, "select count(*) as n from instruments");
+    const before = readEvents(t.db, "2000-01-01", "2100-01-01");
+    const jobs = finnhubJobs({ ctx: t.ctx, log: silent });
+    const pass = await drive(t.clock, t.client, jobs.tick());
+    expect(pass.market).toEqual({ rows: 0, reported: [] });
+    expect(marketCalls(t)).toHaveLength(1);
+    // AB and every other reporter in the answer is not tracked
+    expect(count(t.db, "select count(*) as n from instruments")).toBe(
+      instruments,
+    );
+    expect(readEvents(t.db, "2000-01-01", "2100-01-01")).toEqual(before);
+    expect(before.map((e) => e.instrument).sort()).toEqual([aat.id, hood.id]);
+  });
+
+  test("a symbol whose rows conflict is left out alone", async () => {
+    const t = marketSetup({
+      rows: (rows) => {
+        const aat = row(rows, "AAT");
+        rows.push({ ...aat, date: "2026-10-28" });
+        row(rows, "HOOD").epsActual = 0.61;
+      },
+    });
+    const hood = reporting(t.db, "HOOD");
+    const aat = reporting(t.db, "AAT");
+    const jobs = finnhubJobs({ ctx: t.ctx, log: silent });
+    const pass = await drive(t.clock, t.client, jobs.tick());
+    expect(pass.market).toEqual({ rows: 1, reported: [hood.id] });
+    const events = readEvents(t.db, "2026-10-27", "2026-10-28");
+    expect(events.find((e) => e.instrument === aat.id)).toMatchObject({
+      date: "2026-10-27",
+      epsEstimate: 0.5,
+    });
+  });
+
+  test("an event of another listing is asked by its share's calendar hourly, never the market", async () => {
+    let actual: number | null = null;
+    const t = marketSetup({
+      route: edited("/api/v1/calendar/earnings", "TSM", (b) => {
+        b.earningsCalendar[0].date = "2026-10-27";
         b.earningsCalendar[0].epsActual = actual;
       }),
     });
-    const nvda = share(t.db, "NVDA", NOW);
-    const key = { instrument: nvda.id, fiscalYear: 2027, fiscalQuarter: 3 };
+    const tsm = share(t.db, "TSM", AT);
+    t.db
+      .query(
+        `insert into events (instrument, fiscal_year, fiscal_quarter, date,
+           hour, listing, fetched_at)
+         values (?, 2026, 4, '2026-10-27', 'bmo', '2330.TW', ?)`,
+      )
+      .run(tsm.id, AT - DAY_MS);
+    fresh(t.db, tsm.id);
+    const key = { instrument: tsm.id, fiscalYear: 2026, fiscalQuarter: 4 };
     let seen = 0;
     const jobs = finnhubJobs({
       ctx: t.ctx,
       log: silent,
       hooks: {
         waited: () => [key],
-        reported: () => {
-          seen++;
+        // the answer's past quarter is seen too, on the first ask
+        reported: (_db, events) => {
+          seen += events.filter((k) => k.fiscalQuarter === 4).length;
+        },
+      },
+    });
+    const calendars = () =>
+      t.f.urls.filter(
+        (u) =>
+          u.pathname === "/api/v1/calendar/earnings" &&
+          u.searchParams.get("symbol") === "TSM",
+      ).length;
+    const first = await drive(t.clock, t.client, jobs.tick());
+    expect(first.asked).toEqual([
+      { instrument: tsm.id, sections: ["calendar"] },
+    ]);
+    expect(calendars()).toBe(1);
+    await t.clock.advance(30 * MINUTE_MS);
+    await drive(t.clock, t.client, jobs.tick());
+    expect(calendars()).toBe(1);
+    actual = 33.1;
+    await t.clock.advance(31 * MINUTE_MS);
+    await drive(t.clock, t.client, jobs.tick());
+    expect(calendars()).toBe(2);
+    expect(seen).toBe(1);
+    const [e] = readEvents(t.db, "2026-10-27", "2026-10-27");
+    expect(e).toMatchObject({ listing: "2330.TW", epsActual: null });
+    expect(e!.reportedSeenAt).not.toBeNull();
+    // reported: neither its calendar nor the market is asked again
+    await t.clock.advance(61 * MINUTE_MS);
+    await drive(t.clock, t.client, jobs.tick());
+    expect(calendars()).toBe(2);
+    expect(seen).toBe(1);
+    expect(marketCalls(t)).toEqual([]);
+  });
+
+  test("a pass asking earnings with the calendar that first sees a report asks earnings after it, once", async () => {
+    const t = marketSetup({
+      route: edited("/api/v1/calendar/earnings", "TSM", (b) => {
+        b.earningsCalendar[0].date = "2026-10-27";
+        b.earningsCalendar[0].epsActual = 33.1;
+      }),
+    });
+    const tsm = share(t.db, "TSM", AT);
+    t.db
+      .query(
+        `insert into events (instrument, fiscal_year, fiscal_quarter, date,
+           hour, listing, fetched_at)
+         values (?, 2026, 4, '2026-10-27', 'bmo', '2330.TW', ?)`,
+      )
+      .run(tsm.id, AT - DAY_MS);
+    // earnings due with the daily refresh, the calendar by its event
+    fresh(t.db, tsm.id);
+    t.db
+      .query(
+        "delete from sync_runs where scope = ? and job in ('earnings', 'calendar')",
+      )
+      .run(tsm.id);
+    const jobs = finnhubJobs({ ctx: t.ctx, log: silent });
+    const first = await drive(t.clock, t.client, jobs.tick());
+    expect(first.asked).toEqual([
+      { instrument: tsm.id, sections: ["earnings", "calendar"] },
+    ]);
+    expect(t.f.urls.map((u) => u.pathname)).toEqual([
+      "/api/v1/calendar/earnings",
+      "/api/v1/stock/earnings",
+    ]);
+    const [e] = readEvents(t.db, "2026-10-27", "2026-10-27");
+    expect(e!.reportedSeenAt).not.toBeNull();
+    // its earnings started after the sighting: not asked again
+    await t.clock.advance(61 * MINUTE_MS);
+    const next = await drive(t.clock, t.client, jobs.tick());
+    expect(next.asked).toEqual([]);
+    expect(t.f.urls).toHaveLength(2);
+  });
+
+  test("first sightings past one tick's budget get their earnings on the next tick, each once", async () => {
+    const names = Array.from({ length: 50 }, (_, k) => `ZZ${k}`);
+    const t = marketSetup({
+      rows: (rows) => {
+        const hood = row(rows, "HOOD");
+        for (const symbol of names) {
+          rows.push({ ...hood, symbol, epsActual: 0.7 });
+        }
+      },
+    });
+    for (const s of names) reporting(t.db, s);
+    const jobs = finnhubJobs({ ctx: t.ctx, log: silent });
+    const earnings = () =>
+      t.f.urls
+        .filter((u) => u.pathname === "/api/v1/stock/earnings")
+        .map((u) => u.searchParams.get("symbol"));
+    const first = await drive(t.clock, t.client, jobs.tick());
+    expect(first.market).toMatchObject({ rows: 50 });
+    expect(earnings().length).toBeLessThan(50);
+    await t.clock.advance(MINUTE_MS);
+    const second = await drive(t.clock, t.client, jobs.tick());
+    expect(second.market).toBeNull();
+    expect(earnings().sort()).toEqual([...names].sort());
+    // each earnings ran after its sighting: none is asked again
+    await t.clock.advance(MINUTE_MS);
+    const third = await drive(t.clock, t.client, jobs.tick());
+    expect(third.asked).toEqual([]);
+    expect(marketCalls(t)).toHaveLength(1);
+  });
+
+  test("a waited event's first sighting calls the reported hook once, in the market write", async () => {
+    const t = marketSetup({
+      rows: (rows) => {
+        row(rows, "HOOD").epsActual = 0.61;
+      },
+    });
+    const hood = reporting(t.db, "HOOD");
+    const key = { instrument: hood.id, fiscalYear: 2026, fiscalQuarter: 3 };
+    const seen: { events: readonly EventKey[]; calls: number }[] = [];
+    const jobs = finnhubJobs({
+      ctx: t.ctx,
+      log: silent,
+      hooks: {
+        waited: () => [key],
+        reported: (db, events) => {
+          // the event is written when the hook reads it
+          expect(
+            (
+              db
+                .query(
+                  "select reported_seen_at as at from events where instrument = ?",
+                )
+                .get(hood.id) as { at: number | null }
+            ).at,
+          ).not.toBeNull();
+          seen.push({ events, calls: t.f.urls.length });
         },
       },
     });
     await drive(t.clock, t.client, jobs.tick());
-    const calendars = () =>
-      t.f.urls.filter((u) => u.pathname.endsWith("/calendar/earnings")).length;
-    expect(calendars()).toBe(1);
-    // on its date, past the day's refresh
-    await t.clock.advance(Date.parse("2026-11-17T14:00:00Z") - t.clock.now());
+    await t.clock.advance(60 * MINUTE_MS);
     await drive(t.clock, t.client, jobs.tick());
-    expect(calendars()).toBe(2);
-    await t.clock.advance(30 * MINUTE_MS);
-    await jobs.tick();
-    expect(calendars()).toBe(2);
-    await t.clock.advance(31 * MINUTE_MS);
-    await drive(t.clock, t.client, jobs.tick());
-    expect(calendars()).toBe(3);
-    actual = 2.61;
-    await t.clock.advance(61 * MINUTE_MS);
-    await drive(t.clock, t.client, jobs.tick());
-    expect(calendars()).toBe(4);
-    expect(seen).toBe(1);
-    // reported: no more hourly asks
-    await t.clock.advance(61 * MINUTE_MS);
-    await jobs.tick();
-    expect(calendars()).toBe(4);
+    expect(seen).toEqual([{ events: [key], calls: 1 }]);
+    expect(isMarket(t.f.urls[0]!)).toBe(true);
   });
 });
 
