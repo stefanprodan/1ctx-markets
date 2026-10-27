@@ -378,6 +378,39 @@ const refusedOf = (db: Db) => {
   return m;
 };
 
+// owed: the newest finished day the answer gave no close for, none final stored
+export type Landed = Written & { owed: string | null };
+
+const hasDaily = (db: Db, i: Pick<Instrument, "id">) =>
+  dailyRange(db, i.id) !== null;
+
+// A chart can leave the session before the latest one without its close
+// for a while after the next opens, so that day is owed, not dropped.
+function unclosed(
+  db: Db,
+  instrument: Instrument,
+  latest: Session | null,
+  { bars, days }: Read,
+): string | null {
+  // backfill owns an instrument with no bars, so it is never owed
+  if (latest === null || (bars.length === 0 && !hasDaily(db, instrument))) {
+    return null;
+  }
+  const today = sessionDate(latest);
+  const stored = db
+    .query<{ date: string; final: number }, [string, string]>(
+      `select date, final from bars where instrument = ? and interval = '1d'
+       and date < ? order by date desc limit 1`,
+    )
+    .get(instrument.id, today);
+  let newest = stored?.date ?? null;
+  for (const d of days) {
+    if (d < today && (newest === null || d > newest)) newest = d;
+  }
+  if (newest === null || bars.some((b) => b.date === newest)) return null;
+  return stored?.date === newest && stored.final === 1 ? null : newest;
+}
+
 // a cut-short whole history writes nothing, so no day keeps an old scale
 function storeBars(
   db: Db,
@@ -385,10 +418,12 @@ function storeBars(
   instrument: Instrument,
   answer: ChartAnswer,
   whole: Whole | null,
-): Written & { rescaled: boolean } {
+): Landed & { rescaled: boolean } {
   recordSession(db, instrument.market, answer.session, answer.fetchedAt);
   const latest = readSession(db, instrument.market);
-  const { bars, days } = read(answer, latest);
+  const answered = read(answer, latest);
+  const { bars, days } = answered;
+  const owed = unclosed(db, instrument, latest, answered);
   if (whole) {
     const kept = bars.filter((b) => b.date >= whole.since);
     const span = [...days].filter((d) => d >= whole.since).sort();
@@ -429,6 +464,7 @@ function storeBars(
     return {
       rows: written.rows,
       changedFrom: earliest(deleted, written.changedFrom),
+      owed,
       rescaled,
     };
   }
@@ -437,12 +473,14 @@ function storeBars(
   let deleted: string | null = null;
   if (span.length > 0) {
     const keep = new Set(bars.map((b) => b.date));
+    if (owed !== null) keep.add(owed);
     deleted = deleteDailyBars(db, instrument.id, span[0]!, span.at(-1)!, keep);
     rebuildWeeks(db, instrument.id, latest, now, span[0]!);
   }
   return {
     rows: written.rows,
     changedFrom: earliest(deleted, written.changedFrom),
+    owed,
     // a window is stored only when refetchAnswer found no rescale in it
     rescaled: false,
   };
@@ -456,7 +494,7 @@ function store(
   answer: ChartAnswer,
   whole: Whole | null,
   rules: RuleHooks = NO_RULES,
-): Written {
+): Landed {
   const { rescaled, ...written } = storeBars(
     db,
     now,
@@ -470,19 +508,23 @@ function store(
   return written;
 }
 
-// an ok run in the instrument's scope clears only its own failed refetch
+// an ok run in the instrument's scope clears only its own failed refetch;
+// one that left a day owed says so, for the bar job to ask again
 function barsAnswered(
   db: Db,
   instrument: Instrument,
-  written: Written,
+  written: Landed,
   now: number,
-): Written {
+): Landed {
   endRun(
     db,
     startRun(db, SOURCE, JOBS.bars, now, instrument.id),
     now,
     written.rows,
   );
+  if (written.owed !== null) {
+    endRun(db, startRun(db, SOURCE, JOBS.owed, now, instrument.id), now, 0);
+  }
   return written;
 }
 
@@ -540,8 +582,15 @@ export function storeSwitched(
 ): Instrument {
   if (startsShort(answer, since)) throw cutShort();
   const instrument = upsertInstrument(db, fields(answer), now);
-  store(db, now, instrument, answer, { since, splits: [answer] }, rules);
-  barsAnswered(db, instrument, { rows: 0, changedFrom: null }, now);
+  const { owed } = store(
+    db,
+    now,
+    instrument,
+    answer,
+    { since, splits: [answer] },
+    rules,
+  );
+  barsAnswered(db, instrument, { rows: 0, changedFrom: null, owed }, now);
   storeQuotes(db, quote, rules, now);
   return instrument;
 }
@@ -636,7 +685,7 @@ export function backfill(
   ctx: YahooContext,
   instrument: Instrument,
   live: () => boolean = () => true,
-): Promise<Written> {
+): Promise<Landed> {
   return exclusive(ctx.db, instrument.id, () => {
     if (!live()) throw expired();
     checkSource(ctx.db, instrument);
@@ -645,14 +694,14 @@ export function backfill(
 }
 
 // fetched in full before anything is written
-type Answered = (db: Db) => Written;
+type Answered = (db: Db) => Landed;
 
 async function backfillHeld(
   ctx: YahooContext,
   instrument: Instrument,
   triggers: readonly ChartAnswer[] = [],
   live: () => boolean = () => true,
-): Promise<Written> {
+): Promise<Landed> {
   const write = await backfillAnswer(ctx, instrument, triggers);
   return ctx.writer.write((db) => {
     if (!live()) throw expired();
@@ -695,7 +744,7 @@ async function backfillAnswer(
 export function refetch(
   ctx: YahooContext,
   instrument: Instrument,
-): Promise<Written> {
+): Promise<Landed> {
   return exclusive(ctx.db, instrument.id, () => {
     checkSource(ctx.db, instrument);
     return refetchHeld(ctx, instrument);
@@ -705,7 +754,7 @@ export function refetch(
 async function refetchHeld(
   ctx: YahooContext,
   instrument: Instrument,
-): Promise<Written> {
+): Promise<Landed> {
   const write = await refetchAnswer(ctx, instrument);
   return ctx.writer.write((db) =>
     barsAnswered(db, instrument, write(db), ctx.clock.now()),

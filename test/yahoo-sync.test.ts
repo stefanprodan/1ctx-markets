@@ -514,6 +514,7 @@ describe("refetch changes", () => {
     expect(await refetch(ctx, instrument)).toEqual({
       rows: 5,
       changedFrom: null,
+      owed: null,
     });
     const corrected = clone(fx);
     corrected.body.chart.result[0].indicators.quote[0].close[3] = 212.5;
@@ -588,6 +589,92 @@ describe("refetch changes", () => {
     await clock.advance(RETRY_MS);
     await expect(refetch(ctx, instrument)).rejects.toThrow("cut short");
     expect(f.urls).toHaveLength(6);
+  });
+});
+
+describe("a finished day the answer has not closed yet", () => {
+  // Friday's live bar stored on Sunday, then the chart at Monday's open
+  async function friday() {
+    const week = listed(await recorded("chart-vvsm-de-5d-1d"));
+    const open = await recorded("chart-vvsm-de-5d-1d-open-0800");
+    let route = week;
+    const t = setup(Date.parse(week.recordedAt), () => route);
+    const { instrument } = await addInstrument(t.ctx, "VVSM.DE");
+    expect(readBars(t.db, "XETRA:VVSM", "1d").at(-1)).toMatchObject({
+      date: "2026-10-23",
+      final: false,
+    });
+    await t.clock.advance(Date.parse(open.recordedAt) - t.clock.now());
+    return {
+      ...t,
+      instrument,
+      open,
+      answer: (r: Recorded) => {
+        route = r;
+      },
+    };
+  }
+
+  const FRIDAY = 87.22000122070312;
+
+  test("keeps the stored bar of a day whose close is null, then stores it final", async () => {
+    const t = await friday();
+    const late = clone(t.open);
+    const q = late.body.chart.result[0].indicators.quote[0];
+    q.close[3] = null;
+    // an older day without its close is gone, as before
+    q.close[1] = null;
+    t.answer(late);
+    expect(await refetch(t.ctx, t.instrument)).toMatchObject({
+      changedFrom: "2026-10-21",
+      owed: "2026-10-23",
+    });
+    const days = readBars(t.db, "XETRA:VVSM", "1d");
+    expect(dates(days)).toEqual([
+      "2026-10-19",
+      "2026-10-20",
+      "2026-10-22",
+      "2026-10-23",
+    ]);
+    expect(days.at(-1)).toMatchObject({ close: FRIDAY, final: false });
+
+    t.answer(t.open);
+    expect((await refetch(t.ctx, t.instrument)).owed).toBeNull();
+    expect(readBars(t.db, "XETRA:VVSM", "1d").at(-1)).toMatchObject({
+      date: "2026-10-23",
+      close: FRIDAY,
+      final: true,
+    });
+  });
+
+  test("a listing whose answer has only null closes stores no bars and owes nothing", async () => {
+    const open = clone(await recorded("chart-vvsm-de-5d-1d-open-0800"));
+    const q = open.body.chart.result[0].indicators.quote[0];
+    q.close = q.close.map(() => null);
+    const t = setup(Date.parse(open.recordedAt), () => listed(open));
+    const { instrument } = await addInstrument(t.ctx, "VVSM.DE");
+    expect(await backfill(t.ctx, instrument)).toMatchObject({
+      rows: 0,
+      owed: null,
+    });
+    expect(readBars(t.db, "XETRA:VVSM", "1d")).toEqual([]);
+  });
+
+  test("keeps the stored bar of a day the answer has no row for", async () => {
+    const t = await friday();
+    const late = clone(t.open);
+    const result = late.body.chart.result[0];
+    result.timestamp.splice(3, 1);
+    for (const k of ["open", "high", "low", "close", "volume"]) {
+      result.indicators.quote[0][k].splice(3, 1);
+    }
+    t.answer(late);
+    expect((await refetch(t.ctx, t.instrument)).owed).toBe("2026-10-23");
+    expect(readBars(t.db, "XETRA:VVSM", "1d").at(-1)).toMatchObject({
+      date: "2026-10-23",
+      close: FRIDAY,
+      final: false,
+    });
   });
 });
 

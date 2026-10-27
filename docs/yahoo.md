@@ -132,6 +132,27 @@ inside a call in `docs/tools.md`; rule pauses in `docs/rules.md`.
   prices are deleted (`deleteDailyBars()`): a day the source has no bar
   for had no trading. Weeks are rebuilt from the span's first week, or
   all of them for a whole history.
+- **The last finished session without its close is owed, not gone**
+  (`unclosed()` in `src/yahoo/sync.ts`). A chart can leave that day's
+  close empty, or its row out, for a while after the next session
+  opens: an exchange that fills it late (Xetra at its open), or a
+  market whose session starts at midnight (crypto). The newest day
+  before the stored session's date, from the answer's rows or the
+  stored bars, is owed when the answer has no close for it and no final
+  bar is stored. A 30-day refetch keeps its stored bar, so averages
+  still span the right days; a whole history does not, so no day keeps
+  an old scale. Older days follow the reconcile rule above.
+- **An owed day is asked for until it lands or the next session
+  starts.** The refetch writes an `owed` run in the instrument's scope
+  after its `bars` run; any later `bars` run settles it. `owedDue()` in
+  `src/stale.ts` asks a market's owed instruments again, together, once
+  the earliest mark is `OWED_RETRY_MS` (15 minutes) old, so the market
+  gets at most one owed pass per period. Only marks from the current
+  session count, and an instrument with no daily bars is never owed
+  (backfill owns it). A day is owed until the session after the one it
+  became newest in starts; that session's full pass decides again, and
+  a day the source never closed is deleted as above once it is no
+  longer newest.
 - **The bars, their signals and the rule evaluation land in one
   transaction** (`store()`), so nothing reads bars without their
   signals.
@@ -234,7 +255,7 @@ inside a call in `docs/tools.md`; rule pauses in `docs/rules.md`.
 | `yahoo` (`quoteTick`) | quote pass for markets in session, once per quote period (`--quote-every`, default 5 minutes) | one spark per 20 symbols, all markets together |
 | `yahoo` post-close | one quote pass at `closeQuoteAt()` if none started since | in the same spark calls |
 | `yahoo` check | one instrument per closed market at `nextCheck()`, round-robin; a market with no session on each period | in the same spark calls |
-| `yahoo-bars` (`barTick`) | 30-day refetch per market whose session moved on (`barsDue()`); a failed pass waits `RETRY_MS` | one chart per instrument with bars, plus one whole history per split or rescale |
+| `yahoo-bars` (`barTick`) | 30-day refetch per market whose session moved on (`barsDue()`); a failed pass waits `RETRY_MS`; owed instruments again every `OWED_RETRY_MS` (`owedDue()`) | one chart per instrument with bars, plus one whole history per split or rescale; one chart per owed instrument per 15 minutes, at most 96 a day each |
 | `yahoo-backfill` (`backfillTurn`) | one tracked instrument with no bars per turn; a failure or empty answer waits `RETRY_MS` | one 10-year chart |
 
 - **The check instrument rotates per market** (`checkTurn`), so one
