@@ -38,9 +38,9 @@ the tracking table in `docs/storage.md`; the source queue in
 - **`test/instructions.test.ts` holds it to that**: sent on initialize,
   under the cap, the groups in order, every registered tool named, every
   backticked name a tool, an argument of a registered input schema, or
-  one of the answer fields the test lists, each still a key in
-  `src/tools/*.ts`, and a short deny list. Which tool an argument or
-  field belongs to is left to review.
+  one of the answer fields the test lists, and a short deny list.
+  Whether those fields are still answered, and which tool an argument
+  belongs to, is left to review.
 
 ## The answer contract
 

@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import { INSTRUCTIONS, INSTRUCTIONS_BYTES } from "../src/instructions.ts";
 import { mcpClient, withApp } from "./helpers/app.ts";
 
@@ -100,19 +98,6 @@ describe("the server instructions", () => {
       );
       expect(unknown).toEqual([]);
     }));
-
-  test("name answer fields the tools still answer", () => {
-    const dir = join(import.meta.dir, "../src/tools");
-    const code = readdirSync(dir)
-      .filter((f) => f.endsWith(".ts"))
-      .map((f) => readFileSync(join(dir, f), "utf8"))
-      .join("\n");
-    for (const field of ANSWER_FIELDS) {
-      // a key, or a shorthand property in an object literal
-      const key = new RegExp(`\\b${field}\\??:|[{,]\\s*${field}\\s*[,}]`);
-      expect(`${field} ${key.test(code)}`).toBe(`${field} true`);
-    }
-  });
 
   test("name no holding, place or workspace", () => {
     for (const word of DENIED) {

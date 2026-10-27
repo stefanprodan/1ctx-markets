@@ -27,7 +27,7 @@ Live prices: a quote is the live price while its market is open, and the day's c
 
 Freshness: answers carry \`fetched_at\`; read it before calling a figure current. Research refreshes daily after the US close, earnings around a share's report date, news through the day.
 
-Units: prices are in the listing's own \`currency\`. A series whose \`unit\` is percent (a yield, a spread) moves in points, not percent; unknown means not known, as a Yahoo index can be either.
+Units: prices are in the listing's own \`currency\`. A series whose \`unit\` is percent (a yield, a spread) moves in points, not percent; unknown means not known, as a Yahoo index can be points or percent.
 
 Paging: never change the arguments to avoid a page.
 
