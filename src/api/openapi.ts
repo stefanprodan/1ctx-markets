@@ -963,6 +963,8 @@ const paths = {
       tags: ["docs"],
       operationId: "docsFile",
       summary: "The page's script and style",
+      description:
+        "The page names each file with a fingerprint of its bytes, so a cache keyed by URL takes a changed file as a new one; any fingerprint, stale or none, answers the file as this build has it.",
       security: [],
       parameters: [
         {
@@ -972,9 +974,11 @@ const paths = {
           required: true,
           schema: values(DOC_FILES),
         },
+        query("h", "The file's fingerprint, as the page names it."),
       ],
       responses: {
         200: { description: "The file" },
+        400: r("BadArguments"),
       },
     },
   },

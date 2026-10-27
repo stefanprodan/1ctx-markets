@@ -172,7 +172,7 @@ consumer each.
   and no benchmark, is `private, max-age=3600`, since final bars change
   only by a split's rescale or a FRED revision; a range ending today or
   later takes the next live bar, so it is never kept. The spec and the
-  docs files are `public, max-age=3600`.
+  docs files are `public, max-age=3600`, the docs page `no-cache`.
 
 ## The alerts feed
 
@@ -267,6 +267,15 @@ answer; 1ctx (an agent workspace whose scheduled tasks poll it) is one.
   `'self'` alone. `validatorUrl` is null, since the validator would
   send the spec to another host; `persistAuthorization` is off, so the
   key typed into Authorize is kept for the page only.
+- **Each file is named with its fingerprint** (`fingerprint()`,
+  `fingerprinted()` in `docs.ts`): the first 12 hex digits of its
+  bytes' SHA-256, computed once at start from the files embedded in the
+  binary, as `<file>?h=<hash>`. A CDN keeps `.js` and `.css` by their
+  extension for hours whatever the server says, so a changed file
+  needs a new URL, while an unchanged one keeps its URL and stays
+  cached. Any `h`, stale or none, answers the file as this build has
+  it. The page is `no-cache`, so a new build's names are seen at once;
+  a page naming a file other than once fails at start.
 - **The page follows the system's light or dark scheme.** Swagger UI's
   CSS carries a dark theme under `html.dark-mode` that its bundle never
   sets, so `init.js` sets it from `prefers-color-scheme` and follows a

@@ -3,7 +3,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
-import { POLICY } from "../src/api/docs.ts";
+import { fingerprint, fingerprinted, POLICY } from "../src/api/docs.ts";
 import { MAX_BODY_BYTES, PREFIX } from "../src/api/http.ts";
 import { spec } from "../src/api/openapi.ts";
 import { routes } from "../src/api/routes.ts";
@@ -628,6 +628,7 @@ describe("every operation", () => {
     await check("GET", "/openapi.json", await t.call("/openapi.json?x=1"), 400);
     await check("GET", "/docs", await t.call("/docs"), 200);
     await check("GET", "/docs/{file}", await t.call("/docs/init.js"), 200);
+    await check("GET", "/docs/{file}", await t.call("/docs/init.js?x=1"), 400);
 
     // 500 is every route's wrapper, checked once below
     const documented = Object.entries(spec.paths).flatMap(([path, item]) =>
@@ -1057,17 +1058,13 @@ describe("the docs page", () => {
       expect(page.headers.get("content-type")).toContain("text/html");
       expect(page.headers.get("content-security-policy")).toBe(POLICY);
       const html = await page.text();
+      // asked again on every load, so a new build's fingerprints are seen
+      expect(page.headers.get("cache-control")).toBe("no-cache");
       const linked = [...html.matchAll(/(?:src|href)="([^"]+)"/g)].map(
         (m) => m[1]!,
       );
-      expect(linked.sort()).toEqual(
-        [
-          "data:,",
-          "/api/v1/docs/init.js",
-          "/api/v1/docs/swagger-ui-bundle.js",
-          "/api/v1/docs/swagger-ui.css",
-        ].sort(),
-      );
+      expect(linked.filter((l) => l !== "data:,").length).toBe(3);
+      expect(linked).toContain("data:,");
       expect(html).not.toMatch(/https?:/);
       expect(html).not.toMatch(/<script>|<script [^>]*>[^<]/);
       const types: Record<string, string> = {
@@ -1081,6 +1078,16 @@ describe("the docs page", () => {
         expect(res.headers.get("content-type")).toContain(type);
         expect(res.headers.get("x-content-type-options")).toBe("nosniff");
         const bytes = new Uint8Array(await res.arrayBuffer());
+        // the page names each file with its bytes' fingerprint
+        expect(linked).toContain(
+          `/api/v1/docs/${file}?h=${fingerprint(bytes)}`,
+        );
+        // a stale fingerprint or none still answers the current file
+        for (const h of [`?h=${fingerprint(bytes)}`, "?h=0123456789ab", ""]) {
+          const again = await fetch(`${url}/api/v1/docs/${file}${h}`);
+          expect([file, h, again.status]).toEqual([file, h, 200]);
+          expect(new Uint8Array(await again.arrayBuffer())).toEqual(bytes);
+        }
         if (file !== "init.js") {
           const dist = join(
             import.meta.dir,
@@ -1101,4 +1108,29 @@ describe("the docs page", () => {
       expect(await served.json()).toEqual(JSON.parse(JSON.stringify(spec)));
       expect(lines.some((l) => l.includes("path=/api/v1/docs "))).toBe(true);
     }));
+
+  test("a file's fingerprint follows its bytes", () => {
+    const one = new TextEncoder().encode("window.a = 1;");
+    const two = new TextEncoder().encode("window.a = 2;");
+    expect(fingerprint(one)).toMatch(/^[0-9a-f]{12}$/);
+    expect(fingerprint(one)).toBe(fingerprint(one.slice()));
+    expect(fingerprint(two)).not.toBe(fingerprint(one));
+    const html = [
+      '<link href="/api/v1/docs/swagger-ui.css" />',
+      '<script src="/api/v1/docs/swagger-ui-bundle.js"></script>',
+      '<script src="/api/v1/docs/init.js"></script>',
+    ].join("");
+    const hashes = {
+      "swagger-ui.css": "a",
+      "swagger-ui-bundle.js": "b",
+      "init.js": fingerprint(two),
+    };
+    expect(fingerprinted(html, hashes)).toContain(
+      `/api/v1/docs/init.js?h=${fingerprint(two)}"`,
+    );
+    // a page that leaves a file out fails at start, never serves it stale
+    expect(() =>
+      fingerprinted(html.replace("init.js", "other.js"), hashes),
+    ).toThrow("init.js");
+  });
 });

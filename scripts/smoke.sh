@@ -49,6 +49,13 @@ done
 for path in openapi.json docs docs/init.js docs/swagger-ui-bundle.js docs/swagger-ui.css; do
   [[ $(status "$URL/api/v1/$path") == 200 ]] || fail "/api/v1/$path was not served without the bearer"
 done
+# the page names each embedded file with its fingerprint, worked out at start
+PAGE=$(curl -s --max-time 5 "$URL/api/v1/docs" || true)
+for file in init.js swagger-ui-bundle.js swagger-ui.css; do
+  ref=$(grep -o "/api/v1/docs/$file?h=[0-9a-f]\{12\}" <<<"$PAGE") ||
+    fail "the docs page names no fingerprint for $file"
+  [[ $(status "$URL$ref") == 200 ]] || fail "$ref was not served"
+done
 [[ $(status "$URL/api/v1/quotes") == 401 ]] || fail "/api/v1/quotes answered without the bearer"
 
 BEARER=$(cat "$RUN/data/secrets/bearer.key")
