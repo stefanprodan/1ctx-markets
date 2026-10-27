@@ -45,7 +45,7 @@ recorders under `scripts/probe/`. The clock contract is in
 | `bvb.ts` | the Bucharest exchange's pages and chart feed by URL (`bvbFetch()`), `opened()` (a page read as open: every recording is of a closed market), `keyed()` (a made-up page key, which the recordings strip), `bothSources()` with Yahoo |
 | `sources.ts` | Yahoo and FRED by URL from the recordings for reads that fetch inside a call; `gate()` holds a call until released |
 | `sim.ts` | a made-up Yahoo for whole simulated days: `US`, `XETRA`, `BVB`, `CRYPTO` listings with sessions from their zone |
-| `finnhub.ts` | Finnhub by path and symbol (`AS`): NVDA in full, a 403 refusal, an empty answer, TSM as recorded (its home listing answers) |
+| `finnhub.ts` | Finnhub by path and symbol (`AS`): NVDA in full, a 403 refusal, an empty answer, TSM as recorded (its home listing answers); a calendar with no symbol as the whole-market two days or week |
 | `massive.ts` | Massive's news, filtered, ordered and paged with an opaque `next_url` |
 | `rules.ts` | reads with rules over the recorded sources, quotes edited from the recorded metas |
 | `app.ts` | the whole server on loopback (`withApp()`) and an MCP SDK client on it (`mcpClient()`) |
@@ -121,7 +121,7 @@ Never run one from a test or CI.
 |---|---|---|
 | `yahoo.ts` | charts (splits, weeks, sessions, indices, FX, futures), searches, v7 and v8 spark and v7 quote batches; a case name records one | none |
 | `fred.ts` | four daily series' metadata and last 30 observations, an unknown series, a refused key | `FRED_KEY_FILE` or `~/.1ctx-markets/secrets/source-fred.key` |
-| `finnhub.ts` | the five research sections for a US share, a Xetra ETF and a Bucharest share, one day's calendar, a price target | `FINNHUB_KEY_FILE` or `source-finnhub.key` |
+| `finnhub.ts` | the five research sections for a US share, a Xetra ETF and a Bucharest share, the whole-market calendar for one day, two days and a week, a price target | `FINNHUB_KEY_FILE` or `source-finnhub.key` |
 | `massive.ts` | the latest news and its next page, older and year-old NVDA news | `MASSIVE_KEY_FILE` or `source-massive.key` |
 | `bvb.ts` | the Bucharest Stock Exchange's pages and chart feed, trimmed to the fragments that hold data; a case name records one | none; the page key is stripped |
 

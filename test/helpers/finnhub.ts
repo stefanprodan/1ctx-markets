@@ -4,7 +4,8 @@
 // Finnhub answered from the recordings by path and symbol: NVDA in
 // full, VVSM.DE refused with 403, TLV.RO empty and TSM, an ADR, as its
 // home listing 2330.TW but for insiders. Made-up US symbols answer as
-// one of them, under their own symbol.
+// one of them, under their own symbol. The calendar asked with no
+// symbol is the whole market's, two days or a week as recorded.
 
 import { join } from "node:path";
 import { clone, type Recorded } from "./yahoo.ts";
@@ -52,6 +53,15 @@ function renamed(fx: Recorded, symbol: string): Recorded {
   return out;
 }
 
+// two days answer a range of up to two days, the week a longer one
+function marketRecording(url: URL): string {
+  const from = Date.parse(url.searchParams.get("from") ?? "");
+  const to = Date.parse(url.searchParams.get("to") ?? "");
+  return to - from <= 86_400_000
+    ? "calendar-earnings-two-days"
+    : "calendar-earnings-week";
+}
+
 // the answer for a Finnhub URL, or undefined for another host; more
 // maps made-up symbols to recordings beside AS
 export async function finnhubAnswer(
@@ -61,6 +71,9 @@ export async function finnhubAnswer(
   if (url.hostname !== "finnhub.io") return undefined;
   const kind = PATHS[url.pathname];
   const symbol = url.searchParams.get("symbol") ?? "";
+  if (kind === "calendar-earnings" && symbol === "") {
+    return finnhubFixture(marketRecording(url));
+  }
   const as = more[symbol] ?? AS[symbol];
   if (kind === undefined || as === undefined) {
     return { recordedAt: "", status: 403, headers: {}, body: { error: "no" } };

@@ -94,6 +94,11 @@ export type Finnhub = {
     from: string,
     to: string,
   ): Promise<Answer<CalendarEvent[]>>;
+  // every US listing reporting in the range, by symbol
+  marketCalendar(
+    from: string,
+    to: string,
+  ): Promise<Answer<Map<string, CalendarEvent[]>>>;
   // fails at once while the queue backs off, for a tool
   failFast(): Finnhub;
   // failing fast, and starting no call once live() is false
@@ -334,45 +339,76 @@ export const parseCalendar = (
 // are in its currency per its share, so only whether actuals came is kept.
 function calendarOf(body: unknown, symbol: string): Parsed<CalendarEvent[]> {
   const b = obj(body, "body");
-  const entries = list(b.earningsCalendar, "earnings calendar").map((entry) => {
+  const entries = calendarEntries(b);
+  const listing = listingOf(entries, symbol);
+  const own = listing === null;
+  const rows = entries.map((r) => calendarRow(r, own));
+  return {
+    data: rows.length === 0 ? null : collapseQuarters(rows),
+    listing,
+  };
+}
+
+function calendarEntries(b: Obj): Obj[] {
+  return list(b.earningsCalendar, "earnings calendar").map((entry) => {
     const r = obj(entry, "calendar row");
     // a calendar row always names its symbol
     if (r.symbol === undefined) throw malformed("no symbol");
     return r;
   });
-  const listing = listingOf(entries, symbol);
-  const own = listing === null;
-  const rows = entries.map((r): CalendarEvent => {
-    const quarter = count(r.quarter, "quarter");
-    if (quarter < 1 || quarter > 4) throw malformed("no quarter");
-    const hour = r.hour ?? "";
-    if (typeof hour !== "string" || !HOUR.test(hour)) {
-      throw malformed("no hour");
-    }
-    const epsActual = optionalNum(r.epsActual, "epsActual");
-    const revenueActual = optionalNum(r.revenueActual, "revenueActual");
-    return {
-      fiscalYear: count(r.year, "year"),
-      fiscalQuarter: quarter,
-      date: day(r.date, "date"),
-      hour,
-      epsEstimate: own ? optionalNum(r.epsEstimate, "epsEstimate") : null,
-      epsActual: own ? epsActual : null,
-      revenueEstimate: own
-        ? optionalNum(r.revenueEstimate, "revenueEstimate")
-        : null,
-      revenueActual: own ? revenueActual : null,
-      reported: epsActual !== null || revenueActual !== null,
-    };
-  });
+}
+
+const collapseQuarters = (rows: readonly CalendarEvent[]) =>
+  collapse(rows, (r) => `${r.fiscalYear} Q${r.fiscalQuarter}`);
+
+function calendarRow(r: Obj, own: boolean): CalendarEvent {
+  const quarter = count(r.quarter, "quarter");
+  if (quarter < 1 || quarter > 4) throw malformed("no quarter");
+  const hour = r.hour ?? "";
+  if (typeof hour !== "string" || !HOUR.test(hour)) {
+    throw malformed("no hour");
+  }
+  const epsActual = optionalNum(r.epsActual, "epsActual");
+  const revenueActual = optionalNum(r.revenueActual, "revenueActual");
   return {
-    data:
-      rows.length === 0
-        ? null
-        : collapse(rows, (r) => `${r.fiscalYear} Q${r.fiscalQuarter}`),
-    listing,
+    fiscalYear: count(r.year, "year"),
+    fiscalQuarter: quarter,
+    date: day(r.date, "date"),
+    hour,
+    epsEstimate: own ? optionalNum(r.epsEstimate, "epsEstimate") : null,
+    epsActual: own ? epsActual : null,
+    revenueEstimate: own
+      ? optionalNum(r.revenueEstimate, "revenueEstimate")
+      : null,
+    revenueActual: own ? revenueActual : null,
+    reported: epsActual !== null || revenueActual !== null,
   };
 }
+
+export const parseMarketCalendar = (
+  body: unknown,
+): Parsed<Map<string, CalendarEvent[]>> => {
+  const entries = calendarEntries(obj(body, "body"));
+  const bySymbol = new Map<string, Obj[]>();
+  for (const r of entries) {
+    if (typeof r.symbol !== "string") throw malformed("no symbol");
+    const rows = bySymbol.get(r.symbol) ?? [];
+    rows.push(r);
+    bySymbol.set(r.symbol, rows);
+  }
+  // Each row is its own listing's. A symbol whose rows are malformed or
+  // conflict is left out alone, as a missing row is: one company's bad
+  // row says nothing of the others', and its own calendar still asks it.
+  const data = new Map<string, CalendarEvent[]>();
+  for (const [symbol, rows] of bySymbol) {
+    try {
+      data.set(symbol, collapseQuarters(rows.map((r) => calendarRow(r, true))));
+    } catch (error) {
+      if (!(error instanceof SourceError)) throw error;
+    }
+  }
+  return { data: data.size === 0 ? null : data, listing: null };
+};
 
 export function finnhub(options: FinnhubOptions): Finnhub {
   const { clock, key } = options;
@@ -448,6 +484,8 @@ export function finnhub(options: FinnhubOptions): Finnhub {
       get("calendar/earnings", { symbol, from, to }, run, (b) =>
         parseCalendar(b, symbol),
       ),
+    marketCalendar: (from, to) =>
+      get("calendar/earnings", { from, to }, run, parseMarketCalendar),
     failFast: () => client({ failFast: true }),
     within: (live) => client({ failFast: true, live }),
     close: () => calls.close(),

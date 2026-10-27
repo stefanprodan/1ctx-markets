@@ -117,9 +117,10 @@ in `docs/config.md`.
 
 - **Every source job run is a `sync_runs` row** (`startRun`, `endRun`,
   `failRun`, or `runJob()` around a function), with `scope` the market
-  of a Yahoo quote, check or bar pass, the instrument key for FRED
-  series and for Finnhub and Massive runs (each source writes its own
-  through its `recordRun`), null otherwise (Yahoo `backfill`).
+  of a Yahoo quote, check or bar pass or of Finnhub's whole-market
+  calendar, the instrument key for FRED series and for Finnhub and
+  Massive runs (each source writes its own through its `recordRun`),
+  null otherwise (Yahoo `backfill`).
   At startup `failInterrupted()` fails runs a crash left `running`, in
   the first queued write, so no job's run is taken for one of those.
 - **A run's error is a fixed phrase, never an error's text.**
