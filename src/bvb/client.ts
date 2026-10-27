@@ -148,6 +148,9 @@ export type Bvb = {
     to: number,
   ): Promise<History>;
   search(text: string): Promise<Listing[]>;
+  // the chart feed's search, for each listing's type, which the site's
+  // search lacks; symbol is a listing whose page gives a key if refused
+  types(text: string, symbol: string): Promise<Map<string, string>>;
   // the symbols, uppercased, on the list pages last read; null until all
   // are read, as an unread kind may hold the symbol
   listed(): ReadonlySet<string> | null;
@@ -468,6 +471,19 @@ export function parseSearch(body: unknown): Listing[] {
   return out;
 }
 
+// symbols uppercased to the feed's type: Shares, Units, Structured, ...
+export function parseTypes(body: unknown): Map<string, string> {
+  if (!Array.isArray(body)) throw malformed("no search list");
+  const out = new Map<string, string>();
+  for (const d of body) {
+    if (!isObj(d)) continue;
+    const symbol = typeof d.symbol === "string" ? d.symbol.trim() : "";
+    const type = typeof d.type === "string" ? d.type.trim() : "";
+    if (symbol !== "" && type !== "") out.set(symbol.toUpperCase(), type);
+  }
+  return out;
+}
+
 type Raw = { status: number; text: string; fetchedAt: number };
 
 export function bvb(options: BvbOptions): Bvb {
@@ -671,6 +687,16 @@ export function bvb(options: BvbOptions): Bvb {
           refuse(raw.status);
           return parseSearch(json(raw));
         }, run),
+      types: (text, symbol) => {
+        const params = new URLSearchParams({
+          // the most the feed takes
+          limit: "30",
+          query: text.slice(0, MAX_SEARCH),
+          type: "",
+          exchange: "",
+        });
+        return feed(`/search?${params}`, symbol, parseTypes);
+      },
       listed: () =>
         !LISTS.every((k) => lists.has(k))
           ? null

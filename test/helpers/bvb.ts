@@ -67,6 +67,13 @@ const HISTORIES: Record<string, string> = {
   BTBETRETF: "wapi-history-btbetretf-1d",
 };
 
+// the chart feed's searches by query; any other finds nothing
+const SEARCHES: Record<string, string> = {
+  PETROM: "wapi-search-petrom",
+  BTBETRETF: "wapi-search-btbetretf",
+  TRANSILVANIA: "wapi-search-transilvania",
+};
+
 export type BvbRoutes = {
   // the market status every page reads, closed as recorded by default
   open?: boolean;
@@ -114,6 +121,11 @@ export async function bvbAnswer(
     if (url.pathname === "/api/symbols") {
       return METAS[symbol] ? bvbRecorded(METAS[symbol]) : UNKNOWN_META;
     }
+    if (url.pathname === "/api/search") {
+      const name =
+        SEARCHES[(url.searchParams.get("query") ?? "").toUpperCase()];
+      return name === undefined ? made(200, []) : bvbRecorded(name);
+    }
     if (url.pathname === "/api/history") {
       const given = routes.histories?.[symbol];
       if (given !== undefined) return given;
@@ -123,7 +135,7 @@ export async function bvbAnswer(
   return undefined;
 }
 
-// every search but petrom's finds nothing, as an empty list
+// every site search but petrom's and the fund unit's finds nothing
 export async function bvbFetch(routes: BvbRoutes = {}): Promise<{
   fetch: Fetch;
   urls: URL[];
@@ -139,6 +151,16 @@ export async function bvbFetch(routes: BvbRoutes = {}): Promise<{
   const fetch: Fetch = async (raw, init) => {
     const body = typeof init.body === "string" ? init.body : null;
     bodies.push(body);
+    if (
+      body !== null &&
+      new URL(raw).pathname === "/proxyshld.aspx/GetInstrumentsList" &&
+      /btbetretf/i.test(body)
+    ) {
+      f.urls.push(new URL(raw));
+      f.headers.push(new Headers(init.headers));
+      const fx = await bvbRecorded("instruments-autocomplete-btbetretf");
+      return new Response(JSON.stringify(fx.body), { status: 200 });
+    }
     if (
       body !== null &&
       new URL(raw).pathname === "/proxyshld.aspx/GetInstrumentsList" &&

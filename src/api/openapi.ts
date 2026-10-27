@@ -267,6 +267,7 @@ const schemas: Record<string, Schema> = {
             exchange: str,
             source: str,
             source_symbol: str,
+            isin: nstr,
             stored: bool,
             note: str,
           },
@@ -684,7 +685,7 @@ const paths = {
       operationId: "search",
       summary: "Instruments by name or symbol",
       description:
-        "Every match: stored instruments first, then the regional feeds that are on, then Yahoo's listings, each with the id to pass to the other routes. It fetches no prices and counts nothing as read, so a search never keeps an instrument synced. A source that failed is in errors beside what the others found. A FRED series not stored yet is found only as FRED:<series id>.",
+        "Every match: stored instruments first, then the regional feeds that are on, then Yahoo's listings, each with the id to pass to the other routes; a regional feed's listings add their ISIN and the type the feed gives. It fetches no prices and counts nothing as read, so a search never keeps an instrument synced. A source that failed is in errors beside what the others found. A FRED series not stored yet is found only as FRED:<series id>.",
       parameters: [query("query", "A name or symbol.", str, true)],
       responses: reads({ 200: ok("The candidates", ref("Search")) }),
     },

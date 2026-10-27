@@ -94,7 +94,9 @@ async function setup(feed: boolean, withoutRo = false) {
         ? exchangeSearch
         : /petrom/i.test(text)
           ? await bvbRecorded("instruments-autocomplete-petrom")
-          : made(200, { d: [] });
+          : /btbetretf/i.test(text)
+            ? await bvbRecorded("instruments-autocomplete-btbetretf")
+            : made(200, { d: [] });
     } else {
       answer = await bvbAnswer(url);
     }
@@ -267,6 +269,68 @@ describe("resolution with the feed on", () => {
     expect(
       page.candidates.filter((c: { id: string }) => c.id === "BVB:TLV"),
     ).toHaveLength(1);
+  });
+
+  test("the exchange's listings carry their ISIN and the feed's type", async () => {
+    const t = await setup(true);
+    const page = JSON.parse(
+      await drive(
+        t.clock,
+        t.exchange!,
+        searchPage(t.m, { query: "petrom", next: null }),
+      ),
+    );
+    const bvbOnes = page.candidates.filter(
+      (c: { source: string }) => c.source === "bvb",
+    );
+    expect(bvbOnes).toHaveLength(10);
+    // a type the feed serves is the one its instrument takes
+    expect(bvbOnes[0]).toMatchObject({
+      id: "BVB:SNP",
+      type: "EQUITY",
+      isin: "ROSNPPACNOR9",
+    });
+    expect(bvbOnes[1]).toMatchObject({
+      id: "BVB:EBSNPTL15",
+      type: "Structured",
+      isin: "AT0000A31PQ4",
+    });
+    expect(bvbOnes.every((c: { isin: string }) => c.isin !== null)).toBe(true);
+    // Yahoo's candidates have no ISIN
+    expect(
+      page.candidates.some(
+        (c: { source: string; isin?: string }) =>
+          c.source === "yahoo" && "isin" in c,
+      ),
+    ).toBe(false);
+  });
+
+  test("a fund unit resolves to the feed and searches as an ETF", async () => {
+    const t = await setup(true);
+    const [etf] = await t.read(["BTBETRETF"]);
+    expect(idOf(etf)).toBe("BVB:BTBETRETF");
+    expect(readInstrument(t.db, "BVB:BTBETRETF")).toMatchObject({
+      source: "bvb",
+      type: "ETF",
+      unit: "per_share",
+    });
+    const page = JSON.parse(
+      await drive(
+        t.clock,
+        t.exchange!,
+        searchPage(t.m, { query: "BTBETRETF", next: null }),
+      ),
+    );
+    expect(page.candidates).toContainEqual({
+      id: "BVB:BTBETRETF",
+      name: "FONDUL DESCHIS DE INVESTITII BT INDEX ROMANIA ETF BET TR",
+      type: "ETF",
+      exchange: "BVB",
+      source: "bvb",
+      source_symbol: "BTBETRETF",
+      isin: "ROGEF1KGQBE5",
+      stored: true,
+    });
   });
 });
 

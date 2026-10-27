@@ -42,6 +42,7 @@ exchange: one client, its parsers, its session, the same tables.
 | `meta` | `wapi.bvb.ro/api/symbols?symbol=` | type, currency, the IANA zone, name |
 | `history` | `wapi.bvb.ro/api/history?…&rs=1D&ajust=1&countback=N` | adjusted daily bars as column arrays |
 | `search` | `POST bvb.ro/proxyshld.aspx/GetInstrumentsList` | up to 10 listings: symbol, ISIN, name, status |
+| `types` | `wapi.bvb.ro/api/search?limit=30&query=` | up to 30 listings with their type (`Shares`, `Units`, `Structured`, ...), which the site's search lacks |
 
 - **Every page carries the market status** (`#statusMarket`,
   `statusOf()`); `INCHISA` is closed, anything else open (`DESCHISA`

@@ -12,6 +12,7 @@ import {
   parseSchedule,
   parseSearch,
   parseShares,
+  parseTypes,
   SPACING_MS,
 } from "../src/bvb/client.ts";
 import {
@@ -274,6 +275,20 @@ describe("recorded chart feed answers", () => {
       status: "T",
     });
   });
+
+  test("the chart feed's search names each listing's type", async () => {
+    const types = parseTypes(
+      (await bvbRecorded("wapi-search-transilvania")).body,
+    );
+    expect(types.get("TLV")).toBe("Shares");
+    expect(types.get("TLV32")).toBe("Bonds");
+    expect(types.get("EBTLVTL19")).toBe("Structured");
+    const units = parseTypes((await bvbRecorded("wapi-search-btbetretf")).body);
+    expect([...units]).toEqual([["BTBETRETF", "Units"]]);
+    // a refused search answers a bare string
+    const refused = (await bvbRecorded("wapi-search-limit-31")).body;
+    expect(() => parseTypes(refused)).toThrow("malformed answer");
+  });
 });
 
 describe("the client", () => {
@@ -426,6 +441,11 @@ describe("the client", () => {
     expect(found.map((l) => l.symbol)).toContain("SNP");
     expect(f.bodies.at(-1)).toBe(JSON.stringify({ searchtext: "petrom" }));
     expect(await drive(clock, client, client.search("nothing"))).toEqual([]);
+    const types = await drive(clock, client, client.types("petrom", "SNP"));
+    expect(types.get("SNP")).toBe("Shares");
+    const asked = wapi(f.urls, "/api/search").at(-1)!;
+    expect(asked.searchParams.get("query")).toBe("petrom");
+    expect(asked.searchParams.get("limit")).toBe("30");
   });
 
   test("a failed call backs off and a tool fails fast meanwhile", async () => {
