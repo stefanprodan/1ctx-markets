@@ -7,10 +7,7 @@ import { dirname, join, relative } from "node:path";
 const SRC = join(import.meta.dir, "..", "src");
 
 // cycles there before this test, to be broken; never add one
-const KNOWN: string[][] = [
-  ["tools/extended.ts", "tools/targets.ts"],
-  ["tools/quote.ts", "tools/sets.ts"],
-];
+const KNOWN: string[][] = [["tools/quote.ts", "tools/sets.ts"]];
 
 // static, side-effect, type-only and re-export forms, and import()
 const SPECIFIER =

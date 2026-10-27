@@ -13,6 +13,7 @@ import type { Instrument } from "../instruments.ts";
 import { readQuote } from "../quotes.ts";
 import { price, round, type ToolResult, textResult } from "./answer.ts";
 import { ArgError, fields, oneOf, optionalText, symbols } from "./args.ts";
+import type { Markets } from "./markets.ts";
 import {
   closeOn,
   type Latest,
@@ -29,7 +30,7 @@ import {
   type Unavailable,
   unavailable,
 } from "./sets.ts";
-import { type Markets, readTargets } from "./targets.ts";
+import { readTargets } from "./targets.ts";
 
 export const AVERAGES = {
   daily_sma50: { interval: "1d", key: "sma50" },

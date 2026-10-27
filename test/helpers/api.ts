@@ -11,7 +11,7 @@ import { routes } from "../../src/api/routes.ts";
 import { router } from "../../src/http.ts";
 import { silent } from "../../src/log.ts";
 import { alertsHandler } from "../../src/tools/alerts.ts";
-import type { Markets } from "../../src/tools/targets.ts";
+import type { Markets } from "../../src/tools/markets.ts";
 
 // made up: no real key is ever read by a test
 export const READ_KEY = "test-read-key-0123456789abcdef0123456789";

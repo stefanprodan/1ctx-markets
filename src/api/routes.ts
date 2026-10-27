@@ -19,8 +19,8 @@ import { readRules } from "../rules/store.ts";
 import { price } from "../tools/answer.ts";
 import { ArgError, fields } from "../tools/args.ts";
 import { parseEvents, readEventsOf } from "../tools/events.ts";
-import type { ExtendedRead } from "../tools/extended.ts";
 import { basisOf, parseHistory, readHistory } from "../tools/history.ts";
+import type { ExtendedRead, Markets } from "../tools/markets.ts";
 import { parseMovers, readMovers } from "../tools/movers.ts";
 import {
   briefItem,
@@ -40,7 +40,6 @@ import {
 import { parseScreen, readScreen } from "../tools/screen.ts";
 import { parseSearch, searchAll } from "../tools/search.ts";
 import { setAll } from "../tools/sets.ts";
-import type { Markets } from "../tools/targets.ts";
 import { localDate } from "../zone.ts";
 import { ASSET_CACHE, DOC_FILES, docsFile, docsPage } from "./docs.ts";
 import {

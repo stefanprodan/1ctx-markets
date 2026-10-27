@@ -19,12 +19,8 @@ import {
   fetchInstrument as bvbFetchInstrument,
   keyOf as bvbKey,
 } from "../bvb/sync.ts";
-import { type Clock, MINUTE_MS } from "../clock.ts";
-import { DEFAULT_QUOTE_EVERY } from "../config.ts";
 import type { Db } from "../db/index.ts";
-import type { Finnhub } from "../finnhub/client.ts";
-import { type Hooks, NO_HOOKS } from "../finnhub/store.ts";
-import { SOURCE as FRED, type Fred } from "../fred/client.ts";
+import { SOURCE as FRED } from "../fred/client.ts";
 import {
   addSeries,
   MARKET as FRED_MARKET,
@@ -34,85 +30,14 @@ import {
   seriesId,
 } from "../fred/sync.ts";
 import { type Instrument, readInstrument } from "../instruments.ts";
-import { errorFields, type Log } from "../log.ts";
-import type { Massive } from "../massive/client.ts";
-import { NO_RULES, type RuleHooks } from "../rules/hooks.ts";
+import { errorFields } from "../log.ts";
 import { Paused, QueueClosed, SourceError } from "../source.ts";
-import { isTracked, markRead, TRACK_MS } from "../tracking.ts";
-import type { Writer } from "../writer.ts";
+import { isTracked, markRead } from "../tracking.ts";
 import { WriterClosed } from "../writer.ts";
-import { SOURCE as YAHOO, type Yahoo } from "../yahoo/client.ts";
+import { SOURCE as YAHOO } from "../yahoo/client.ts";
 import { type Candidate, ResolveError, resolve } from "../yahoo/resolve.ts";
 import { catchUp, fetchInstrument } from "../yahoo/sync.ts";
-import type { ExtendedCache } from "./extended.ts";
-
-// 1ctx's untouched tool timeout is 20 seconds
-export const CALL_MS = 15_000;
-
-type Flight = { promise: Promise<unknown>; deadline: number };
-
-export type Markets = {
-  // for reads; every write goes through writer
-  db: Db;
-  clock: Clock;
-  writer: Writer;
-  // fail-fast clients: a read never waits out a source's back-off
-  yahoo: Yahoo;
-  fred: Fred | null;
-  // null while the Bucharest feed is off
-  bvb: Bvb | null;
-  finnhub: Finnhub | null;
-  massive: Massive | null;
-  // what rules hand the research reads
-  hooks: Hooks;
-  // told of every write a read's fetch makes
-  rules: RuleHooks;
-  trackMs: number;
-  // how often the quote job runs, so a quote it fell behind on is stale
-  quoteEveryMs: number;
-  callMs: number;
-  log: Log;
-  // fetches in flight, shared by every call naming the same instrument
-  inflight: Map<string, Flight>;
-  // quote's extended prices, one quote period each
-  extended: ExtendedCache;
-};
-
-export function markets(options: {
-  db: Db;
-  clock: Clock;
-  writer: Writer;
-  yahoo: Yahoo;
-  fred: Fred | null;
-  bvb?: Bvb | null;
-  finnhub?: Finnhub | null;
-  massive?: Massive | null;
-  hooks?: Hooks;
-  rules?: RuleHooks;
-  log: Log;
-  trackMs?: number;
-  quoteEveryMs?: number;
-  callMs?: number;
-}): Markets {
-  return {
-    db: options.db,
-    clock: options.clock,
-    writer: options.writer,
-    yahoo: options.yahoo.failFast(),
-    fred: options.fred?.failFast() ?? null,
-    bvb: options.bvb?.failFast() ?? null,
-    finnhub: options.finnhub?.failFast() ?? null,
-    massive: options.massive?.failFast() ?? null,
-    hooks: options.hooks ?? NO_HOOKS,
-    rules: options.rules ?? NO_RULES,
-    trackMs: options.trackMs ?? TRACK_MS,
-    quoteEveryMs: options.quoteEveryMs ?? DEFAULT_QUOTE_EVERY * MINUTE_MS,
-    callMs: options.callMs ?? CALL_MS,
-    log: options.log,
-    inflight: new Map(),
-    extended: new Map(),
-  };
-}
+import { type Markets, shared } from "./markets.ts";
 
 export const ERRORS = [
   "candidates",
@@ -208,31 +133,6 @@ type Step =
       run: (live: () => boolean) => Promise<Instrument>;
     }
   | { kind: "error"; error: ItemError };
-
-// One promise per key while it runs; a caller joining later extends the
-// deadline its write is held to, so a fetch lands while anyone waits.
-export function shared<T>(
-  m: Markets,
-  key: string,
-  deadline: number,
-  run: (live: () => boolean) => Promise<T>,
-): Promise<T> {
-  const running = m.inflight.get(key);
-  if (running !== undefined) {
-    running.deadline = Math.max(running.deadline, deadline);
-    return running.promise as Promise<T>;
-  }
-  const flight: Flight = { promise: Promise.resolve(), deadline };
-  const live = () => m.clock.now() < flight.deadline;
-  const promise = Promise.resolve()
-    .then(() => run(live))
-    .finally(() => {
-      if (m.inflight.get(key) === flight) m.inflight.delete(key);
-    });
-  flight.promise = promise;
-  m.inflight.set(key, flight);
-  return promise;
-}
 
 const hasBars = (db: Db, id: string) => dailyRange(db, id) !== null;
 

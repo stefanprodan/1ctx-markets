@@ -11,7 +11,7 @@ import { finnhub } from "../../src/finnhub/client.ts";
 import { fred } from "../../src/fred/client.ts";
 import { silent } from "../../src/log.ts";
 import { call, tools } from "../../src/tools/index.ts";
-import { markets } from "../../src/tools/targets.ts";
+import { markets } from "../../src/tools/markets.ts";
 import { writer } from "../../src/writer.ts";
 import { yahoo } from "../../src/yahoo/client.ts";
 import { api, READ_KEY } from "./api.ts";

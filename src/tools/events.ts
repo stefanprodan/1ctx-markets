@@ -27,9 +27,10 @@ import {
   textResult,
 } from "./answer.ts";
 import { ArgError, date, fields, optionalText, symbols } from "./args.ts";
+import type { Markets } from "./markets.ts";
 import { eventItem, researchTargets } from "./research.ts";
 import { distinct, type Resolved } from "./sets.ts";
-import { type Markets, RETRY } from "./targets.ts";
+import { RETRY } from "./targets.ts";
 
 export const MAX_EVENT_SYMBOLS = 100;
 

@@ -26,7 +26,7 @@ import {
   requireBearer,
 } from "../src/keys.ts";
 import { errorFields, format, logger, MASK } from "../src/log.ts";
-import { CALL_MS } from "../src/tools/targets.ts";
+import { CALL_MS } from "../src/tools/markets.ts";
 import { SECRETS, withApp } from "./helpers/app.ts";
 import { fakeClock } from "./helpers/clock.ts";
 

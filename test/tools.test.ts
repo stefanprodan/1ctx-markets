@@ -20,14 +20,9 @@ import {
   readCursor,
 } from "../src/tools/answer.ts";
 import { fields } from "../src/tools/args.ts";
+import { CALL_MS, type Markets, markets } from "../src/tools/markets.ts";
 import { searchPage } from "../src/tools/search.ts";
-import {
-  CALL_MS,
-  type Markets,
-  markets,
-  readTargets,
-  type Target,
-} from "../src/tools/targets.ts";
+import { readTargets, type Target } from "../src/tools/targets.ts";
 import { lastReadAt, markRead, TRACK_MS, trackedIds } from "../src/tracking.ts";
 import { writer } from "../src/writer.ts";
 import { yahoo } from "../src/yahoo/client.ts";

@@ -12,7 +12,7 @@ import { fred } from "../../src/fred/client.ts";
 import { silent } from "../../src/log.ts";
 import { type Engine, ruleEngine } from "../../src/rules/evaluate.ts";
 import { call, tools } from "../../src/tools/index.ts";
-import { type Markets, markets } from "../../src/tools/targets.ts";
+import { type Markets, markets } from "../../src/tools/markets.ts";
 import { type Writer, writer } from "../../src/writer.ts";
 import { parseSpark, type Yahoo, yahoo } from "../../src/yahoo/client.ts";
 import { storeQuotes } from "../../src/yahoo/sync.ts";

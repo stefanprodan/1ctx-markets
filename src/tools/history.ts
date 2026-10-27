@@ -27,6 +27,7 @@ import {
   textResult,
 } from "./answer.ts";
 import { ArgError, date, fields, oneOf, optionalText, text } from "./args.ts";
+import type { Markets } from "./markets.ts";
 import {
   quoteItem,
   readLatest,
@@ -35,7 +36,7 @@ import {
   signalRow,
 } from "./quote.ts";
 import { benchmarkStale } from "./sets.ts";
-import { type ItemError, type Markets, readTargets } from "./targets.ts";
+import { type ItemError, readTargets } from "./targets.ts";
 
 export const BASIS =
   "split-adjusted prices; dividends and FX conversion excluded";

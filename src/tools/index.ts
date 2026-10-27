@@ -21,6 +21,7 @@ import { errorResult, type ToolResult, textResult } from "./answer.ts";
 import { ArgError, MAX_SYMBOL } from "./args.ts";
 import { eventsAnswer, MAX_EVENT_SYMBOLS, parseEvents } from "./events.ts";
 import { DEFAULT_MONTHS, historyAnswer, parseHistory } from "./history.ts";
+import type { Markets } from "./markets.ts";
 import { AVERAGES, moversAnswer, parseMovers } from "./movers.ts";
 import { MAX_SYMBOLS, parseQuote, quotePage } from "./quote.ts";
 import {
@@ -38,7 +39,6 @@ import {
   screenAnswer,
 } from "./screen.ts";
 import { parseSearch, searchPage } from "./search.ts";
-import type { Markets } from "./targets.ts";
 
 // the tools check their own arguments, with errors in their own words
 const permissive = {

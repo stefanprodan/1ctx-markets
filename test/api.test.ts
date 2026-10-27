@@ -15,7 +15,7 @@ import { silent } from "../src/log.ts";
 import { round } from "../src/tools/answer.ts";
 import { withLive } from "../src/tools/history.ts";
 import { tools } from "../src/tools/index.ts";
-import { CALL_MS, markets } from "../src/tools/targets.ts";
+import { CALL_MS, markets } from "../src/tools/markets.ts";
 import { lastReadAt } from "../src/tracking.ts";
 import { writer } from "../src/writer.ts";
 import { yahoo } from "../src/yahoo/client.ts";

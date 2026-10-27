@@ -20,6 +20,7 @@ import { ALERT_PAGE_BYTES } from "../tools/alerts.ts";
 import { MAX_SYMBOL } from "../tools/args.ts";
 import { MAX_EVENT_SYMBOLS } from "../tools/events.ts";
 import { DEFAULT_MONTHS } from "../tools/history.ts";
+import { CALL_MS } from "../tools/markets.ts";
 import { AVERAGES } from "../tools/movers.ts";
 import { MAX_SYMBOLS } from "../tools/quote.ts";
 import {
@@ -29,7 +30,7 @@ import {
   WEEK_ITEMS,
 } from "../tools/research.ts";
 import { FIELD_NAMES, MAX_FIELDS, MAX_FILTERS } from "../tools/screen.ts";
-import { CALL_MS, ERRORS } from "../tools/targets.ts";
+import { ERRORS } from "../tools/targets.ts";
 import { DOC_FILES } from "./docs.ts";
 import { MAX_BODY_BYTES } from "./http.ts";
 

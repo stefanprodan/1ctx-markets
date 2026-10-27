@@ -41,6 +41,7 @@ import {
   parseEvents,
   UNAVAILABLE_BYTES,
 } from "../src/tools/events.ts";
+import { CALL_MS, markets } from "../src/tools/markets.ts";
 import {
   HEADLINES,
   HTTP_HISTORY,
@@ -54,7 +55,6 @@ import {
   WEEK_TITLE,
   WEEK_URL,
 } from "../src/tools/research.ts";
-import { CALL_MS, markets } from "../src/tools/targets.ts";
 import { lastReadAt, markRead } from "../src/tracking.ts";
 import { writer } from "../src/writer.ts";
 import { yahoo } from "../src/yahoo/client.ts";

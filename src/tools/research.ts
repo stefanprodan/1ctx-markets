@@ -59,13 +59,12 @@ import {
   symbols,
   text,
 } from "./args.ts";
+import { type Markets, shared } from "./markets.ts";
 import { briefItem, quoteItem, readLatest } from "./quote.ts";
 import {
   type ItemError,
   itemError,
-  type Markets,
   readTargets,
-  shared,
   type Target,
   timeout,
 } from "./targets.ts";

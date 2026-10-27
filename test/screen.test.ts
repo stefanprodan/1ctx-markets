@@ -5,9 +5,9 @@ import { describe, expect, test } from "bun:test";
 import { DAY_MS, MINUTE_MS } from "../src/clock.ts";
 import { cursor, PAGE_BYTES } from "../src/tools/answer.ts";
 import { ArgError } from "../src/tools/args.ts";
+import type { Markets } from "../src/tools/markets.ts";
 import { moversAnswer, parseMovers } from "../src/tools/movers.ts";
 import { parseScreen, screenAnswer } from "../src/tools/screen.ts";
-import type { Markets } from "../src/tools/targets.ts";
 import { lastReadAt } from "../src/tracking.ts";
 import { api } from "./helpers/api.ts";
 import {

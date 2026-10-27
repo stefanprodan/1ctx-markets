@@ -16,23 +16,7 @@ import {
   SOURCE as YAHOO,
 } from "../yahoo/client.ts";
 import { iso, price, round } from "./answer.ts";
-import { type Markets, shared } from "./targets.ts";
-
-export type Extended = {
-  session: "pre" | "post";
-  price: number | null;
-  // from the regular close
-  change: number | null;
-  change_percent: number | null;
-  time: string | null;
-};
-
-export type ExtendedRead =
-  | { extended: Extended; reason: null }
-  | { extended: null; reason: StaleReason };
-
-// by instrument id, for the quote period it was fetched in
-export type ExtendedCache = Map<string, { slot: number; read: ExtendedRead }>;
+import { type ExtendedRead, type Markets, shared } from "./markets.ts";
 
 const none = (reason: StaleReason): ExtendedRead => ({
   extended: null,

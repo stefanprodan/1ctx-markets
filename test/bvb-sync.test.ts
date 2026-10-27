@@ -27,7 +27,7 @@ import { lastRun } from "../src/runs.ts";
 import { JOBS, quoteStale, STALE } from "../src/stale.ts";
 import { round } from "../src/tools/answer.ts";
 import { historyAnswer, parseHistory } from "../src/tools/history.ts";
-import { markets } from "../src/tools/targets.ts";
+import { markets } from "../src/tools/markets.ts";
 import { markRead } from "../src/tracking.ts";
 import { writer } from "../src/writer.ts";
 import { yahoo } from "../src/yahoo/client.ts";

@@ -50,13 +50,9 @@ import {
   textResult,
 } from "./answer.ts";
 import { ArgError, fields, quoted, text } from "./args.ts";
+import type { Markets } from "./markets.ts";
 import { researchTargets } from "./research.ts";
-import {
-  type ItemError,
-  type Markets,
-  readTargets,
-  timeout,
-} from "./targets.ts";
+import { type ItemError, readTargets, timeout } from "./targets.ts";
 
 export const RULE_ACTIONS = ["create", "list", "pause", "delete"] as const;
 type Action = (typeof RULE_ACTIONS)[number];

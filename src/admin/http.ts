@@ -13,7 +13,7 @@ import { instrumentsOf } from "../rules/format.ts";
 import { readRules } from "../rules/store.ts";
 import type { Backoff } from "../source.ts";
 import { iso } from "../tools/answer.ts";
-import type { Markets } from "../tools/targets.ts";
+import type { Markets } from "../tools/markets.ts";
 import { trackedIds } from "../tracking.ts";
 import {
   PARTS,

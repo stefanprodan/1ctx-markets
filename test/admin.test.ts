@@ -32,7 +32,8 @@ import {
 } from "../src/keys.ts";
 import { silent } from "../src/log.ts";
 import { queue, RATE_LIMIT_BACKOFF_MS, SourceError } from "../src/source.ts";
-import { CALL_MS, markets, readTargets } from "../src/tools/targets.ts";
+import { CALL_MS, markets } from "../src/tools/markets.ts";
+import { readTargets } from "../src/tools/targets.ts";
 import { lastReadAt } from "../src/tracking.ts";
 import { writer } from "../src/writer.ts";
 import { yahoo } from "../src/yahoo/client.ts";

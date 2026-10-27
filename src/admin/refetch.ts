@@ -26,7 +26,7 @@ import { eligible as massiveEligible, refreshNews } from "../massive/store.ts";
 import { endRun, failRun, startRun } from "../runs.ts";
 import { DeadlinePassed, Paused, QueueClosed, SourceError } from "../source.ts";
 import { JOBS } from "../stale.ts";
-import type { Markets } from "../tools/targets.ts";
+import type { Markets } from "../tools/markets.ts";
 import { WriterClosed } from "../writer.ts";
 import { SOURCE as YAHOO } from "../yahoo/client.ts";
 import {

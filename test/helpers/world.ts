@@ -5,7 +5,7 @@ import { type Db, open } from "../../src/db/index.ts";
 import { fred } from "../../src/fred/client.ts";
 import { upsertInstrument } from "../../src/instruments.ts";
 import { silent } from "../../src/log.ts";
-import { type Markets, markets } from "../../src/tools/targets.ts";
+import { type Markets, markets } from "../../src/tools/markets.ts";
 import { writer } from "../../src/writer.ts";
 import { yahoo } from "../../src/yahoo/client.ts";
 import { fakeClock } from "./clock.ts";

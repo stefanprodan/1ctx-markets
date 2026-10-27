@@ -33,7 +33,7 @@ import { failInterrupted, pruneRuns } from "./runs.ts";
 import { type Scheduler, scheduler } from "./scheduler.ts";
 import { type Backoff, type Fetch, queue } from "./source.ts";
 import { alertsHandler } from "./tools/alerts.ts";
-import { type Markets, markets } from "./tools/targets.ts";
+import { type Markets, markets } from "./tools/markets.ts";
 import { TRACK_DAYS, trackedIds } from "./tracking.ts";
 import { type Writer, writer } from "./writer.ts";
 import { type Yahoo, yahoo } from "./yahoo/client.ts";

@@ -10,13 +10,9 @@ import { open } from "../src/db/index.ts";
 import { readInstrument, upsertInstrument } from "../src/instruments.ts";
 import { silent } from "../src/log.ts";
 import type { Fetch } from "../src/source.ts";
+import { CALL_MS, markets } from "../src/tools/markets.ts";
 import { searchPage } from "../src/tools/search.ts";
-import {
-  CALL_MS,
-  markets,
-  readTargets,
-  type Target,
-} from "../src/tools/targets.ts";
+import { readTargets, type Target } from "../src/tools/targets.ts";
 import { writer } from "../src/writer.ts";
 import { yahoo } from "../src/yahoo/client.ts";
 import { bvbAnswer, bvbRecorded, made } from "./helpers/bvb.ts";

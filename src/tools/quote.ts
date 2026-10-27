@@ -28,14 +28,10 @@ import type { WeeklyRow } from "../signals/weekly.ts";
 import type { StaleReason } from "../stale.ts";
 import { cursor, fitPage, iso, price, readCursor, round } from "./answer.ts";
 import { ArgError, fields, optionalText, symbols } from "./args.ts";
-import { type ExtendedRead, readExtended } from "./extended.ts";
+import { readExtended } from "./extended.ts";
+import type { ExtendedRead, Markets } from "./markets.ts";
 import { benchmarkStale } from "./sets.ts";
-import {
-  type ItemError,
-  type Markets,
-  readTargets,
-  type Target,
-} from "./targets.ts";
+import { type ItemError, readTargets, type Target } from "./targets.ts";
 
 export const MAX_SYMBOLS = 100;
 

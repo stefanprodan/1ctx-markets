@@ -14,7 +14,8 @@ import { SOURCE as YAHOO } from "../yahoo/client.ts";
 import { keyOf } from "../yahoo/resolve.ts";
 import { cursor, fitPage, readCursor } from "./answer.ts";
 import { ArgError, fields, optionalText, text } from "./args.ts";
-import { itemError, type Markets } from "./targets.ts";
+import type { Markets } from "./markets.ts";
+import { itemError } from "./targets.ts";
 
 // stored matches answered at most
 const STORED = 20;

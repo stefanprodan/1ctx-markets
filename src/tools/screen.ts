@@ -35,6 +35,7 @@ import {
   quoted,
   symbols,
 } from "./args.ts";
+import type { Markets } from "./markets.ts";
 import { type Latest, MAX_SYMBOLS, quoteItem, readLatest } from "./quote.ts";
 import {
   benchmarkStale,
@@ -46,7 +47,7 @@ import {
   type Unavailable,
   unavailable,
 } from "./sets.ts";
-import { type Markets, readTargets } from "./targets.ts";
+import { readTargets } from "./targets.ts";
 
 export const MAX_FILTERS = 8;
 export const MAX_FIELDS = 8;
