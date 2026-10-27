@@ -7,7 +7,7 @@ import {
   Client,
   StreamableHTTPClientTransport,
 } from "@modelcontextprotocol/client";
-import { SERVER_NAME } from "../src/mcp.ts";
+import { SERVER_NAME } from "../src/server/mcp.ts";
 import { mcpAnswers } from "./helpers/answers.ts";
 import { withApp } from "./helpers/app.ts";
 

@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
-import { INSTRUCTIONS, INSTRUCTIONS_BYTES } from "../src/instructions.ts";
+import {
+  INSTRUCTIONS,
+  INSTRUCTIONS_BYTES,
+} from "../src/server/instructions.ts";
 import { mcpClient, withApp } from "./helpers/app.ts";
 
 // Backticked names that are answer fields, checked in review; every other

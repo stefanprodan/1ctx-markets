@@ -8,8 +8,8 @@
 import type { SourceState } from "../../src/admin/http.ts";
 import { PREFIX } from "../../src/api/http.ts";
 import { routes } from "../../src/api/routes.ts";
-import { router } from "../../src/http.ts";
 import { silent } from "../../src/log.ts";
+import { router } from "../../src/server/http.ts";
 import { alertsHandler } from "../../src/tools/alerts.ts";
 import type { Markets } from "../../src/tools/markets.ts";
 

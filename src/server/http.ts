@@ -9,10 +9,10 @@
 
 import { createHash, timingSafeEqual } from "node:crypto";
 import type { McpHttpHandler } from "@modelcontextprotocol/server";
-import { failed, notAllowed, notFound, PREFIX } from "./api/http.ts";
-import { match, type Route } from "./api/routes.ts";
-import type { Clock } from "./clock.ts";
-import { type Log, sdkErrorFields } from "./log.ts";
+import { failed, notAllowed, notFound, PREFIX } from "../api/http.ts";
+import { match, type Route } from "../api/routes.ts";
+import type { Clock } from "../clock.ts";
+import { type Log, sdkErrorFields } from "../log.ts";
 
 const MAX_BODY_BYTES = 1024 * 1024;
 // Bun drops a request idle for 10 s by default, under a tool call's 15 s
