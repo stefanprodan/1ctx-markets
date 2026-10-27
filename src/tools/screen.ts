@@ -6,7 +6,6 @@
 // custom periods, since a fixed field is checked once and an agent's
 // formula is not.
 
-import { ATTRIBUTION } from "../fred/sync.ts";
 import { round } from "../market/format.ts";
 import type { Instrument } from "../market/instruments.ts";
 import type { StaleReason } from "../market/stale.ts";
@@ -20,6 +19,7 @@ import {
 } from "../signals/read.ts";
 import { earliestStart, type ReturnPeriod } from "../signals/relative.ts";
 import type { WeeklyRow } from "../signals/weekly.ts";
+import { ATTRIBUTION } from "../sources/fred/sync.ts";
 import { FRED } from "../sources/ids.ts";
 import {
   errorResult,

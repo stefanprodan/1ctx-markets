@@ -3,21 +3,21 @@
 //
 // once a day on the server's clock: a FRED-only server may know no market
 
-import type { Instrument } from "../market/instruments.ts";
-import { JOBS, STALE, type StaleReason } from "../market/stale.ts";
-import { TRACK_MS, trackedInstruments } from "../market/tracking.ts";
-import { DAY_MS, MINUTE_MS } from "../runtime/clock.ts";
-import type { Log } from "../runtime/log.ts";
-import type { Scheduler } from "../runtime/scheduler.ts";
-import { phraseOf } from "../source.ts";
-import type { Db } from "../storage/db/index.ts";
+import type { Instrument } from "../../market/instruments.ts";
+import { JOBS, STALE, type StaleReason } from "../../market/stale.ts";
+import { TRACK_MS, trackedInstruments } from "../../market/tracking.ts";
+import { DAY_MS, MINUTE_MS } from "../../runtime/clock.ts";
+import type { Log } from "../../runtime/log.ts";
+import type { Scheduler } from "../../runtime/scheduler.ts";
+import type { Db } from "../../storage/db/index.ts";
 import {
   endRun,
   failRun,
   lastRun,
   lastStarted,
   startRun,
-} from "../storage/runs.ts";
+} from "../../storage/runs.ts";
+import { phraseOf } from "../source.ts";
 import { SOURCE } from "./client.ts";
 import { type FredContext, refetchSeries } from "./sync.ts";
 

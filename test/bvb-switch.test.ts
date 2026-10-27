@@ -3,9 +3,6 @@
 
 import { describe, expect, test } from "bun:test";
 import { type App, start } from "../src/app.ts";
-import { bvb, MARKET } from "../src/bvb/client.ts";
-import { readSources } from "../src/bvb/switch.ts";
-import { fetchInstrument } from "../src/bvb/sync.ts";
 import { readBars } from "../src/market/bars.ts";
 import { Moved, readInstrument } from "../src/market/instruments.ts";
 import { readQuote } from "../src/market/quotes.ts";
@@ -13,12 +10,15 @@ import { barsStale, quoteStale, STALE, SWITCH } from "../src/market/stale.ts";
 import { MINUTE_MS } from "../src/runtime/clock.ts";
 import { keys, requireBearer } from "../src/runtime/keys.ts";
 import { logger } from "../src/runtime/log.ts";
-import type { Fetch } from "../src/source.ts";
+import { bvb, MARKET } from "../src/sources/bvb/client.ts";
+import { readSources } from "../src/sources/bvb/switch.ts";
+import { fetchInstrument } from "../src/sources/bvb/sync.ts";
+import type { Fetch } from "../src/sources/source.ts";
+import { backfill, catchUp, refetch } from "../src/sources/yahoo/sync.ts";
 import { type Db, open } from "../src/storage/db/index.ts";
 import { lastStarted, startRun } from "../src/storage/runs.ts";
 import { writer } from "../src/storage/writer.ts";
 import { readTargets } from "../src/tools/targets.ts";
-import { backfill, catchUp, refetch } from "../src/yahoo/sync.ts";
 import { SECRETS } from "./helpers/app.ts";
 import { bothSources, bvbRecorded, wapi } from "./helpers/bvb.ts";
 import { type FakeClock, fakeClock } from "./helpers/clock.ts";

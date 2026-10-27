@@ -1,7 +1,7 @@
 // One real call, one fixture; the key in any form, in the URL, a header or
 // the body, is replaced before the first write, so it never reaches disk.
 
-import { scrub } from "../../src/source.ts";
+import { scrub } from "../../src/sources/source.ts";
 
 const MAX_BYTES = 1_000_000;
 const SECRET_PARAMS = ["token", "apikey", "apiKey", "api_key"];

@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
-import { ATTRIBUTION, NO_DATA } from "../src/fred/sync.ts";
 import { upsertBars } from "../src/market/bars.ts";
 import { readInstrument, upsertInstrument } from "../src/market/instruments.ts";
 import { lastReadAt, markRead } from "../src/market/tracking.ts";
+import { ATTRIBUTION, NO_DATA } from "../src/sources/fred/sync.ts";
 import { PAGE_BYTES } from "../src/tools/answer.ts";
 import { BASIS, DEFAULT_MONTHS } from "../src/tools/history.ts";
 import { MAX_SYMBOLS } from "../src/tools/quote.ts";

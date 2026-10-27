@@ -3,16 +3,6 @@
 
 import { describe, expect, test } from "bun:test";
 import { start } from "../src/app.ts";
-import { bvb, MARKET } from "../src/bvb/client.ts";
-import { bvbJobs } from "../src/bvb/jobs.ts";
-import {
-  AERO,
-  type BvbContext,
-  fetchInstrument,
-  refetch,
-  sessionOf,
-  UNLISTED,
-} from "../src/bvb/sync.ts";
 import { readBars } from "../src/market/bars.ts";
 import { readSession, recordSession } from "../src/market/calendars.ts";
 import { round } from "../src/market/format.ts";
@@ -24,13 +14,23 @@ import type { RuleHooks } from "../src/rules/hooks.ts";
 import { MINUTE_MS } from "../src/runtime/clock.ts";
 import { keys, requireBearer } from "../src/runtime/keys.ts";
 import { logger, silent } from "../src/runtime/log.ts";
-import { Refused } from "../src/source.ts";
+import { bvb, MARKET } from "../src/sources/bvb/client.ts";
+import { bvbJobs } from "../src/sources/bvb/jobs.ts";
+import {
+  AERO,
+  type BvbContext,
+  fetchInstrument,
+  refetch,
+  sessionOf,
+  UNLISTED,
+} from "../src/sources/bvb/sync.ts";
+import { Refused } from "../src/sources/source.ts";
+import { yahoo } from "../src/sources/yahoo/client.ts";
 import { open } from "../src/storage/db/index.ts";
 import { lastRun } from "../src/storage/runs.ts";
 import { writer } from "../src/storage/writer.ts";
 import { historyAnswer, parseHistory } from "../src/tools/history.ts";
 import { markets } from "../src/tools/markets.ts";
-import { yahoo } from "../src/yahoo/client.ts";
 import { api } from "./helpers/api.ts";
 import { SECRETS } from "./helpers/app.ts";
 import {

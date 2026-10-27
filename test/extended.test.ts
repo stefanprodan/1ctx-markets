@@ -15,6 +15,13 @@ import { STALE } from "../src/market/stale.ts";
 import { markRead } from "../src/market/tracking.ts";
 import { silent } from "../src/runtime/log.ts";
 import { recomputeSignals, refreshLive } from "../src/signals/store.ts";
+import {
+  INTRADAY_RANGE,
+  parseIntraday,
+  parseSpark,
+  yahoo,
+} from "../src/sources/yahoo/client.ts";
+import { storeQuotes } from "../src/sources/yahoo/sync.ts";
 import { open } from "../src/storage/db/index.ts";
 import { writer } from "../src/storage/writer.ts";
 import { latestExtended } from "../src/tools/extended.ts";
@@ -22,13 +29,6 @@ import { CALL_MS, type Markets, markets } from "../src/tools/markets.ts";
 import { moversAnswer, parseMovers } from "../src/tools/movers.ts";
 import { parseQuote, quotePage } from "../src/tools/quote.ts";
 import { parseRules, rulesAnswer } from "../src/tools/rules.ts";
-import {
-  INTRADAY_RANGE,
-  parseIntraday,
-  parseSpark,
-  yahoo,
-} from "../src/yahoo/client.ts";
-import { storeQuotes } from "../src/yahoo/sync.ts";
 import { api } from "./helpers/api.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { answerSchema, validate } from "./helpers/schema.ts";

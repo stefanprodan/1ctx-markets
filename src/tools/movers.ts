@@ -6,10 +6,10 @@
 // drive it, so a crossing compares the last final close with the live
 // quote, and a FRED series, which has no live quote, never moves.
 
-import { ATTRIBUTION } from "../fred/sync.ts";
 import { price, round } from "../market/format.ts";
 import type { Instrument } from "../market/instruments.ts";
 import { readQuote } from "../market/quotes.ts";
+import { ATTRIBUTION } from "../sources/fred/sync.ts";
 import { FRED } from "../sources/ids.ts";
 import type { Db } from "../storage/db/index.ts";
 import { type ToolResult, textResult } from "./answer.ts";

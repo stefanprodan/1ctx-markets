@@ -7,14 +7,26 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { start } from "../src/app.ts";
 import {
+  type Instrument,
+  upsertInstrument,
+} from "../src/market/instruments.ts";
+import { markRead } from "../src/market/tracking.ts";
+import { DAY_MS, MINUTE_MS } from "../src/runtime/clock.ts";
+import { keys } from "../src/runtime/keys.ts";
+import { format, logger, silent } from "../src/runtime/log.ts";
+import {
   finnhub,
   parseAnalysts,
   parseCalendar,
   parseEarnings,
   parseMarketCalendar,
   SPACING_MS,
-} from "../src/finnhub/client.ts";
-import { finnhubJobs, RETRY_MS, TICK_BUDGET_MS } from "../src/finnhub/jobs.ts";
+} from "../src/sources/finnhub/client.ts";
+import {
+  finnhubJobs,
+  RETRY_MS,
+  TICK_BUDGET_MS,
+} from "../src/sources/finnhub/jobs.ts";
 import {
   type EventKey,
   eligible,
@@ -29,16 +41,8 @@ import {
   SECTIONS,
   STALE_RESEARCH,
   sectionState,
-} from "../src/finnhub/store.ts";
-import {
-  type Instrument,
-  upsertInstrument,
-} from "../src/market/instruments.ts";
-import { markRead } from "../src/market/tracking.ts";
-import { DAY_MS, MINUTE_MS } from "../src/runtime/clock.ts";
-import { keys } from "../src/runtime/keys.ts";
-import { format, logger, silent } from "../src/runtime/log.ts";
-import { SourceError } from "../src/source.ts";
+} from "../src/sources/finnhub/store.ts";
+import { SourceError } from "../src/sources/source.ts";
 import { type Db, open } from "../src/storage/db/index.ts";
 import { lastRun } from "../src/storage/runs.ts";
 import { writer } from "../src/storage/writer.ts";

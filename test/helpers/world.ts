@@ -1,13 +1,13 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 
-import { fred } from "../../src/fred/client.ts";
 import { upsertInstrument } from "../../src/market/instruments.ts";
 import { silent } from "../../src/runtime/log.ts";
+import { fred } from "../../src/sources/fred/client.ts";
+import { yahoo } from "../../src/sources/yahoo/client.ts";
 import { type Db, open } from "../../src/storage/db/index.ts";
 import { writer } from "../../src/storage/writer.ts";
 import { type Markets, markets } from "../../src/tools/markets.ts";
-import { yahoo } from "../../src/yahoo/client.ts";
 import { fakeClock } from "./clock.ts";
 
 export const NOW = Date.parse("2026-10-23T18:00:00Z");

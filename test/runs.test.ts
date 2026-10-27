@@ -3,7 +3,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { DAY_MS } from "../src/runtime/clock.ts";
-import { SourceError } from "../src/source.ts";
+import { SourceError } from "../src/sources/source.ts";
 import { open } from "../src/storage/db/index.ts";
 import {
   isStale,

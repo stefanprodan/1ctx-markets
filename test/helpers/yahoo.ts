@@ -3,8 +3,11 @@
 
 import { join } from "node:path";
 import { markRead } from "../../src/market/tracking.ts";
-import type { Fetch } from "../../src/source.ts";
-import { addInstrument, type YahooContext } from "../../src/yahoo/sync.ts";
+import type { Fetch } from "../../src/sources/source.ts";
+import {
+  addInstrument,
+  type YahooContext,
+} from "../../src/sources/yahoo/sync.ts";
 
 const YAHOO = join(import.meta.dir, "..", "fixtures", "yahoo");
 

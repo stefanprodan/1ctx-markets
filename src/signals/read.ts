@@ -5,7 +5,6 @@
 // behind, and relative return, computed on read for the benchmark the
 // caller names rather than stored for every pair.
 
-import { seriesStale } from "../fred/jobs.ts";
 import type { Interval } from "../market/bars.ts";
 import { weekOf } from "../market/calendars.ts";
 import { type Instrument, readInstrument } from "../market/instruments.ts";
@@ -15,6 +14,7 @@ import {
   STALE,
   type StaleReason,
 } from "../market/stale.ts";
+import { seriesStale } from "../sources/fred/jobs.ts";
 import { FRED } from "../sources/ids.ts";
 import type { Db } from "../storage/db/index.ts";
 import type { Close } from "./common.ts";

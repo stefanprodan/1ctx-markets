@@ -3,12 +3,6 @@
 //
 // The only tool with write annotations; a failed create leaves no rule.
 
-import {
-  eligible,
-  eventStatus,
-  NOT_COVERED,
-  nextEvent,
-} from "../finnhub/store.ts";
 import { iso } from "../market/format.ts";
 import type { Instrument } from "../market/instruments.ts";
 import { localDate } from "../market/zone.ts";
@@ -39,6 +33,12 @@ import {
   readRules,
   setPaused,
 } from "../rules/store.ts";
+import {
+  eligible,
+  eventStatus,
+  NOT_COVERED,
+  nextEvent,
+} from "../sources/finnhub/store.ts";
 import {
   cursor,
   errorResult,

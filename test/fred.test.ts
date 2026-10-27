@@ -6,24 +6,6 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { start } from "../src/app.ts";
-import {
-  fred,
-  parseObservations,
-  parseSeries,
-  SOURCE,
-  scrub,
-} from "../src/fred/client.ts";
-import { dueAt, fredJobs, seriesStale } from "../src/fred/jobs.ts";
-import {
-  ATTRIBUTION,
-  addSeries,
-  backfillStart,
-  DAILY_ONLY,
-  type FredContext,
-  NO_DATA,
-  refetchSeries,
-  unitOf,
-} from "../src/fred/sync.ts";
 import { type Interval, readBars } from "../src/market/bars.ts";
 import { readInstrument } from "../src/market/instruments.ts";
 import { JOBS, STALE } from "../src/market/stale.ts";
@@ -36,7 +18,25 @@ import { dailySeries } from "../src/signals/daily.ts";
 import { readSignals } from "../src/signals/read.ts";
 import { selectList } from "../src/signals/store.ts";
 import { weeklySeries } from "../src/signals/weekly.ts";
-import { QueueClosed, Refused, SourceError } from "../src/source.ts";
+import {
+  fred,
+  parseObservations,
+  parseSeries,
+  SOURCE,
+  scrub,
+} from "../src/sources/fred/client.ts";
+import { dueAt, fredJobs, seriesStale } from "../src/sources/fred/jobs.ts";
+import {
+  ATTRIBUTION,
+  addSeries,
+  backfillStart,
+  DAILY_ONLY,
+  type FredContext,
+  NO_DATA,
+  refetchSeries,
+  unitOf,
+} from "../src/sources/fred/sync.ts";
+import { QueueClosed, Refused, SourceError } from "../src/sources/source.ts";
 import { type Db, open } from "../src/storage/db/index.ts";
 import { failRun, lastRun, startRun } from "../src/storage/runs.ts";
 import { writer } from "../src/storage/writer.ts";

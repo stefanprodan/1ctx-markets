@@ -6,7 +6,7 @@
 // as a benchmark, the recorded searches and the FRED series.
 
 import { join } from "node:path";
-import type { Fetch } from "../../src/source.ts";
+import type { Fetch } from "../../src/sources/source.ts";
 import {
   backTo,
   chartSymbol,

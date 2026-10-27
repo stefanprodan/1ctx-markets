@@ -14,8 +14,6 @@ import { join } from "node:path";
 import { AdminError, runAdmin } from "../src/admin/cli.ts";
 import { INSTRUMENT_TABLES, MAX_SYMBOLS } from "../src/admin/http.ts";
 import { refetch } from "../src/admin/refetch.ts";
-import { finnhub, SPACING_MS } from "../src/finnhub/client.ts";
-import { refreshResearch } from "../src/finnhub/store.ts";
 import { readInstrument, upsertInstrument } from "../src/market/instruments.ts";
 import { lastReadAt } from "../src/market/tracking.ts";
 import { DEFAULT_LISTEN, parseCli } from "../src/runtime/config.ts";
@@ -31,12 +29,18 @@ import {
   requireBearer,
 } from "../src/runtime/keys.ts";
 import { silent } from "../src/runtime/log.ts";
-import { queue, RATE_LIMIT_BACKOFF_MS, SourceError } from "../src/source.ts";
+import { finnhub, SPACING_MS } from "../src/sources/finnhub/client.ts";
+import { refreshResearch } from "../src/sources/finnhub/store.ts";
+import {
+  queue,
+  RATE_LIMIT_BACKOFF_MS,
+  SourceError,
+} from "../src/sources/source.ts";
+import { yahoo } from "../src/sources/yahoo/client.ts";
 import { type Db, open } from "../src/storage/db/index.ts";
 import { writer } from "../src/storage/writer.ts";
 import { CALL_MS, markets } from "../src/tools/markets.ts";
 import { readTargets } from "../src/tools/targets.ts";
-import { yahoo } from "../src/yahoo/client.ts";
 import { api } from "./helpers/api.ts";
 import { withApp } from "./helpers/app.ts";
 import { fakeClock } from "./helpers/clock.ts";

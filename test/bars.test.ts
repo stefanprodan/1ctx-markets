@@ -11,9 +11,9 @@ import {
 } from "../src/market/bars.ts";
 import { session } from "../src/market/calendars.ts";
 import { upsertInstrument } from "../src/market/instruments.ts";
+import { parseChart } from "../src/sources/yahoo/client.ts";
+import { dailyBars } from "../src/sources/yahoo/sync.ts";
 import { open } from "../src/storage/db/index.ts";
-import { parseChart } from "../src/yahoo/client.ts";
-import { dailyBars } from "../src/yahoo/sync.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { recorded } from "./helpers/yahoo.ts";
 

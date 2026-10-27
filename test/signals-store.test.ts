@@ -31,17 +31,17 @@ import {
 } from "../src/signals/relative.ts";
 import { finalPrefix, refreshLive, selectList } from "../src/signals/store.ts";
 import { liveWeekly, weeklySeries } from "../src/signals/weekly.ts";
-import { type Db, open } from "../src/storage/db/index.ts";
-import { endRun, failRun, startRun } from "../src/storage/runs.ts";
-import { writer } from "../src/storage/writer.ts";
-import { parseSpark, yahoo } from "../src/yahoo/client.ts";
-import { yahooJobs } from "../src/yahoo/jobs.ts";
+import { parseSpark, yahoo } from "../src/sources/yahoo/client.ts";
+import { yahooJobs } from "../src/sources/yahoo/jobs.ts";
 import {
   addInstrument,
   backfill,
   refetch,
   storeQuotes,
-} from "../src/yahoo/sync.ts";
+} from "../src/sources/yahoo/sync.ts";
+import { type Db, open } from "../src/storage/db/index.ts";
+import { endRun, failRun, startRun } from "../src/storage/runs.ts";
+import { writer } from "../src/storage/writer.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import {
   added,

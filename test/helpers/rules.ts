@@ -5,17 +5,21 @@
 // a test adds, Finnhub when asked for, and quotes a test makes from the
 // recorded metas, stored through the same write the quote job uses.
 
-import { finnhub } from "../../src/finnhub/client.ts";
-import { fred } from "../../src/fred/client.ts";
 import { type Engine, ruleEngine } from "../../src/rules/evaluate.ts";
 import { MINUTE_MS } from "../../src/runtime/clock.ts";
 import { silent } from "../../src/runtime/log.ts";
+import { finnhub } from "../../src/sources/finnhub/client.ts";
+import { fred } from "../../src/sources/fred/client.ts";
+import {
+  parseSpark,
+  type Yahoo,
+  yahoo,
+} from "../../src/sources/yahoo/client.ts";
+import { storeQuotes } from "../../src/sources/yahoo/sync.ts";
 import { type Db, open } from "../../src/storage/db/index.ts";
 import { type Writer, writer } from "../../src/storage/writer.ts";
 import { call, tools } from "../../src/tools/index.ts";
 import { type Markets, markets } from "../../src/tools/markets.ts";
-import { parseSpark, type Yahoo, yahoo } from "../../src/yahoo/client.ts";
-import { storeQuotes } from "../../src/yahoo/sync.ts";
 import { type FakeClock, fakeClock } from "./clock.ts";
 import { drive, pacedOf } from "./drive.ts";
 import { FINNHUB_KEY, finnhubAnswer } from "./finnhub.ts";

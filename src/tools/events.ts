@@ -5,6 +5,9 @@
 // named, each scheduled, awaiting results or reported. Only actuals
 // report an event; its date or an after-close label never do.
 
+import { type Instrument, readInstrument } from "../market/instruments.ts";
+import { trackedInstruments } from "../market/tracking.ts";
+import { localDate } from "../market/zone.ts";
 import {
   type EventStatus,
   eligible,
@@ -13,10 +16,7 @@ import {
   NO_EVENTS,
   NOT_COVERED,
   readEvents,
-} from "../finnhub/store.ts";
-import { type Instrument, readInstrument } from "../market/instruments.ts";
-import { trackedInstruments } from "../market/tracking.ts";
-import { localDate } from "../market/zone.ts";
+} from "../sources/finnhub/store.ts";
 import { FINNHUB as SOURCE } from "../sources/ids.ts";
 import { lastStarted } from "../storage/runs.ts";
 import {

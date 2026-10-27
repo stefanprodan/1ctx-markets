@@ -5,12 +5,12 @@
 // Yahoo's listings. It fetches no prices and tracks nothing, so a search
 // never keeps an instrument synced.
 
-import { candidateOf, TRADABLE } from "../bvb/resolve.ts";
-import { KINDS } from "../bvb/sync.ts";
-import { NO_DATA, seriesId } from "../fred/sync.ts";
 import { type Instrument, readInstrument } from "../market/instruments.ts";
+import { candidateOf, TRADABLE } from "../sources/bvb/resolve.ts";
+import { KINDS } from "../sources/bvb/sync.ts";
+import { NO_DATA, seriesId } from "../sources/fred/sync.ts";
 import { BVB, FRED_MARKET, YAHOO } from "../sources/ids.ts";
-import { keyOf } from "../yahoo/resolve.ts";
+import { keyOf } from "../sources/yahoo/resolve.ts";
 import { cursor, fitPage, readCursor } from "./answer.ts";
 import { ArgError, fields, optionalText, text } from "./args.ts";
 import type { Markets } from "./markets.ts";

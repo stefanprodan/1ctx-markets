@@ -3,8 +3,9 @@
 //
 // the key only in a header; a 403 or empty answer is no data, not an error
 
-import { wallOfDate } from "../market/zone.ts";
-import type { Clock } from "../runtime/clock.ts";
+import { wallOfDate } from "../../market/zone.ts";
+import type { Clock } from "../../runtime/clock.ts";
+import { FINNHUB } from "../ids.ts";
 import {
   type Backoff,
   type Fetch,
@@ -13,7 +14,6 @@ import {
   SourceError,
   Unreadable,
 } from "../source.ts";
-import { FINNHUB } from "../sources/ids.ts";
 
 export const SOURCE = FINNHUB;
 export const HOST = "https://finnhub.io/api/v1";

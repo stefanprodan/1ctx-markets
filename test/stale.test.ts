@@ -6,7 +6,7 @@ import { recordSession } from "../src/market/calendars.ts";
 import { upsertInstrument } from "../src/market/instruments.ts";
 import { barsStale, JOBS, quoteStale } from "../src/market/stale.ts";
 import { DAY_MS, MINUTE_MS } from "../src/runtime/clock.ts";
-import { SourceError } from "../src/source.ts";
+import { SourceError } from "../src/sources/source.ts";
 import { open } from "../src/storage/db/index.ts";
 import { endRun, failRun, startRun } from "../src/storage/runs.ts";
 import { fakeClock } from "./helpers/clock.ts";

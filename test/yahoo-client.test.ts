@@ -7,16 +7,16 @@ import {
   queue,
   RATE_LIMIT_BACKOFF_MS,
   SourceError,
-} from "../src/source.ts";
-import { open } from "../src/storage/db/index.ts";
-import { isStale, lastRun, runJob } from "../src/storage/runs.ts";
-import { writer } from "../src/storage/writer.ts";
+} from "../src/sources/source.ts";
 import {
   parseChart,
   parseSpark,
   SPARK_MAX,
   yahoo,
-} from "../src/yahoo/client.ts";
+} from "../src/sources/yahoo/client.ts";
+import { open } from "../src/storage/db/index.ts";
+import { isStale, lastRun, runJob } from "../src/storage/runs.ts";
+import { writer } from "../src/storage/writer.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import {
   chartSymbol,

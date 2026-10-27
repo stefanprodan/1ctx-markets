@@ -6,7 +6,7 @@
 // stale, and never another job's, scope's or source's.
 
 import { type Clock, DAY_MS } from "../runtime/clock.ts";
-import { phraseOf } from "../source.ts";
+import { phraseOf } from "../sources/source.ts";
 import type { Db } from "./db/index.ts";
 import type { Writer } from "./writer.ts";
 

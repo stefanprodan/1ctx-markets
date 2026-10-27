@@ -6,23 +6,7 @@
 
 import type { SourceState } from "./admin/http.ts";
 import { routes } from "./api/routes.ts";
-import { type Bvb, bvb } from "./bvb/client.ts";
-import { type BvbJobs, bvbJobs } from "./bvb/jobs.ts";
-import {
-  priceSources,
-  type SourceSwitch,
-  sourceSwitch,
-  writeSources,
-} from "./bvb/switch.ts";
-import { type Finnhub, finnhub } from "./finnhub/client.ts";
-import { type FinnhubJobs, finnhubJobs } from "./finnhub/jobs.ts";
-import { type Hooks, pruneResearch } from "./finnhub/store.ts";
-import { type Fred, fred } from "./fred/client.ts";
-import { type FredJobs, fredJobs } from "./fred/jobs.ts";
 import { TRACK_DAYS, trackedIds } from "./market/tracking.ts";
-import { type Massive, massive } from "./massive/client.ts";
-import { type MassiveJobs, massiveJobs } from "./massive/jobs.ts";
-import { pruneNews } from "./massive/store.ts";
 import { ruleEngine } from "./rules/evaluate.ts";
 import { pruneAlerts } from "./rules/store.ts";
 import { type Clock, DAY_MS } from "./runtime/clock.ts";
@@ -30,14 +14,30 @@ import { errorFields, type LogFactory, type LogFields } from "./runtime/log.ts";
 import { type Scheduler, scheduler } from "./runtime/scheduler.ts";
 import { router, serve } from "./server/http.ts";
 import { mcpHandler } from "./server/mcp.ts";
-import { type Backoff, type Fetch, queue } from "./source.ts";
+import { type Bvb, bvb } from "./sources/bvb/client.ts";
+import { type BvbJobs, bvbJobs } from "./sources/bvb/jobs.ts";
+import {
+  priceSources,
+  type SourceSwitch,
+  sourceSwitch,
+  writeSources,
+} from "./sources/bvb/switch.ts";
+import { type Finnhub, finnhub } from "./sources/finnhub/client.ts";
+import { type FinnhubJobs, finnhubJobs } from "./sources/finnhub/jobs.ts";
+import { type Hooks, pruneResearch } from "./sources/finnhub/store.ts";
+import { type Fred, fred } from "./sources/fred/client.ts";
+import { type FredJobs, fredJobs } from "./sources/fred/jobs.ts";
+import { type Massive, massive } from "./sources/massive/client.ts";
+import { type MassiveJobs, massiveJobs } from "./sources/massive/jobs.ts";
+import { pruneNews } from "./sources/massive/store.ts";
+import { type Backoff, type Fetch, queue } from "./sources/source.ts";
+import { type Yahoo, yahoo } from "./sources/yahoo/client.ts";
+import { type YahooJobs, yahooJobs } from "./sources/yahoo/jobs.ts";
 import type { Db } from "./storage/db/index.ts";
 import { failInterrupted, pruneRuns } from "./storage/runs.ts";
 import { type Writer, writer } from "./storage/writer.ts";
 import { alertsHandler } from "./tools/alerts.ts";
 import { type Markets, markets } from "./tools/markets.ts";
-import { type Yahoo, yahoo } from "./yahoo/client.ts";
-import { type YahooJobs, yahooJobs } from "./yahoo/jobs.ts";
 
 // Yahoo calls in flight at once, jobs and tools together
 const YAHOO_CONCURRENCY = 2;

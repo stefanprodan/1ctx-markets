@@ -18,14 +18,18 @@ import { DAY_MS, MINUTE_MS } from "../src/runtime/clock.ts";
 import { silent } from "../src/runtime/log.ts";
 import { scheduler } from "../src/runtime/scheduler.ts";
 import { readSignals } from "../src/signals/read.ts";
+import { yahoo } from "../src/sources/yahoo/client.ts";
+import {
+  RETRY_MS,
+  type TickReport,
+  yahooJobs,
+} from "../src/sources/yahoo/jobs.ts";
+import { catchUp } from "../src/sources/yahoo/sync.ts";
 import { open } from "../src/storage/db/index.ts";
 import { endRun, INTERRUPTED, lastRun, startRun } from "../src/storage/runs.ts";
 import { writer } from "../src/storage/writer.ts";
 import { markets } from "../src/tools/markets.ts";
 import { moversAnswer, parseMovers } from "../src/tools/movers.ts";
-import { yahoo } from "../src/yahoo/client.ts";
-import { RETRY_MS, type TickReport, yahooJobs } from "../src/yahoo/jobs.ts";
-import { catchUp } from "../src/yahoo/sync.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { BVB, CRYPTO, type SimListing, sim, US, XETRA } from "./helpers/sim.ts";
 import {

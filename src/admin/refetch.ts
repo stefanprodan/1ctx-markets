@@ -6,35 +6,41 @@
 // Nothing is marked due by hand: the runs these fetches record are the
 // ones the jobs read.
 
-import type { Bvb } from "../bvb/client.ts";
+import type { Written } from "../market/bars.ts";
+import { checkSource, type Instrument, Moved } from "../market/instruments.ts";
+import { JOBS } from "../market/stale.ts";
+import { errorFields } from "../runtime/log.ts";
+import type { Bvb } from "../sources/bvb/client.ts";
 import {
   backfill as bvbBackfill,
   quoteNow,
   storeBvbQuotes,
-} from "../bvb/sync.ts";
+} from "../sources/bvb/sync.ts";
 import {
   eligible as finnhubEligible,
   refreshResearch,
   type Section,
-} from "../finnhub/store.ts";
-import { refetchSeries } from "../fred/sync.ts";
-import type { Written } from "../market/bars.ts";
-import { checkSource, type Instrument, Moved } from "../market/instruments.ts";
-import { JOBS } from "../market/stale.ts";
-import { eligible as massiveEligible, refreshNews } from "../massive/store.ts";
-import { errorFields } from "../runtime/log.ts";
+} from "../sources/finnhub/store.ts";
+import { refetchSeries } from "../sources/fred/sync.ts";
+import { BVB, FRED, YAHOO } from "../sources/ids.ts";
+import {
+  eligible as massiveEligible,
+  refreshNews,
+} from "../sources/massive/store.ts";
 import {
   DeadlinePassed,
   expired,
   Paused,
   QueueClosed,
   SourceError,
-} from "../source.ts";
-import { BVB, FRED, YAHOO } from "../sources/ids.ts";
+} from "../sources/source.ts";
+import {
+  storeQuotes,
+  backfill as yahooBackfill,
+} from "../sources/yahoo/sync.ts";
 import { endRun, failRun, startRun } from "../storage/runs.ts";
 import { WriterClosed } from "../storage/writer.ts";
 import type { Markets } from "../tools/markets.ts";
-import { storeQuotes, backfill as yahooBackfill } from "../yahoo/sync.ts";
 
 export const PARTS = [
   "bars",

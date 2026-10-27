@@ -6,7 +6,7 @@
 // stripped, so an open market and a key are made up here, in code.
 
 import { join } from "node:path";
-import type { Fetch } from "../../src/source.ts";
+import type { Fetch } from "../../src/sources/source.ts";
 import { sources } from "./sources.ts";
 import { clone, fakeFetch, type Recorded } from "./yahoo.ts";
 

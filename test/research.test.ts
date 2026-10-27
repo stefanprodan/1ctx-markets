@@ -2,8 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
-import { finnhub } from "../src/finnhub/client.ts";
-import { finnhubJobs } from "../src/finnhub/jobs.ts";
+import { iso } from "../src/market/format.ts";
+import { readInstrument, upsertInstrument } from "../src/market/instruments.ts";
+import { lastReadAt, markRead } from "../src/market/tracking.ts";
+import { DAY_MS, MINUTE_MS } from "../src/runtime/clock.ts";
+import { silent } from "../src/runtime/log.ts";
+import { finnhub } from "../src/sources/finnhub/client.ts";
+import { finnhubJobs } from "../src/sources/finnhub/jobs.ts";
 import {
   kindColumns,
   NO_DATA,
@@ -12,17 +17,14 @@ import {
   OTHER_LISTING,
   refreshResearch,
   STALE_RESEARCH,
-} from "../src/finnhub/store.ts";
-import { iso } from "../src/market/format.ts";
-import { readInstrument, upsertInstrument } from "../src/market/instruments.ts";
-import { lastReadAt, markRead } from "../src/market/tracking.ts";
+} from "../src/sources/finnhub/store.ts";
 import {
   MAX_PUBLISHER,
   MAX_REASONING,
   MAX_TITLE,
   massive,
   PAGE_LIMIT,
-} from "../src/massive/client.ts";
+} from "../src/sources/massive/client.ts";
 import {
   NEWS_NOT_COVERED,
   NO_NEWS,
@@ -30,9 +32,8 @@ import {
   refreshNews,
   STALE_NEWS,
   topNews,
-} from "../src/massive/store.ts";
-import { DAY_MS, MINUTE_MS } from "../src/runtime/clock.ts";
-import { silent } from "../src/runtime/log.ts";
+} from "../src/sources/massive/store.ts";
+import { yahoo } from "../src/sources/yahoo/client.ts";
 import { open } from "../src/storage/db/index.ts";
 import { endRun, startRun } from "../src/storage/runs.ts";
 import { writer } from "../src/storage/writer.ts";
@@ -58,7 +59,6 @@ import {
   WEEK_TITLE,
   WEEK_URL,
 } from "../src/tools/research.ts";
-import { yahoo } from "../src/yahoo/client.ts";
 import { api } from "./helpers/api.ts";
 import { type TestApp, withApp } from "./helpers/app.ts";
 import { fakeClock } from "./helpers/clock.ts";

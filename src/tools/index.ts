@@ -9,7 +9,6 @@ import {
   type jsonSchemaValidator,
   type McpServer,
 } from "@modelcontextprotocol/server";
-import { CALENDAR_AHEAD_DAYS } from "../finnhub/store.ts";
 import {
   MAX_COMPARISONS,
   MAX_DEPTH,
@@ -17,6 +16,7 @@ import {
   MAX_NOTE,
 } from "../rules/format.ts";
 import { errorFields } from "../runtime/log.ts";
+import { CALENDAR_AHEAD_DAYS } from "../sources/finnhub/store.ts";
 import { errorResult, type ToolResult, textResult } from "./answer.ts";
 import { ArgError, MAX_SYMBOL } from "./args.ts";
 import { eventsAnswer, MAX_EVENT_SYMBOLS, parseEvents } from "./events.ts";

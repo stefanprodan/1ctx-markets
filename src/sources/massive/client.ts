@@ -3,7 +3,8 @@
 //
 // the key only in a header; a next_url only to Massive's own news path
 
-import type { Clock } from "../runtime/clock.ts";
+import type { Clock } from "../../runtime/clock.ts";
+import { MASSIVE } from "../ids.ts";
 import {
   type Backoff,
   type Fetch,
@@ -13,7 +14,6 @@ import {
   scrub,
   Unreadable,
 } from "../source.ts";
-import { MASSIVE } from "../sources/ids.ts";
 
 export const SOURCE = MASSIVE;
 export const HOST = "https://api.massive.com";

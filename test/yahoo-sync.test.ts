@@ -9,15 +9,13 @@ import { readQuote } from "../src/market/quotes.ts";
 import { startOfDate } from "../src/market/zone.ts";
 import { DAY_MS } from "../src/runtime/clock.ts";
 import { backfillStart, RETRY_MS } from "../src/sources/history.ts";
-import { type Db, open } from "../src/storage/db/index.ts";
-import { writer } from "../src/storage/writer.ts";
 import {
   type ChartAnswer,
   parseChart,
   parseSpark,
   yahoo,
-} from "../src/yahoo/client.ts";
-import { marketOf, symbolOf } from "../src/yahoo/resolve.ts";
+} from "../src/sources/yahoo/client.ts";
+import { marketOf, symbolOf } from "../src/sources/yahoo/resolve.ts";
 import {
   addInstrument,
   backfill,
@@ -25,7 +23,9 @@ import {
   refetch,
   storeQuotes,
   unitOf,
-} from "../src/yahoo/sync.ts";
+} from "../src/sources/yahoo/sync.ts";
+import { type Db, open } from "../src/storage/db/index.ts";
+import { writer } from "../src/storage/writer.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import {
   backTo,

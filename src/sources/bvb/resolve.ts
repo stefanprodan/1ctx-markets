@@ -9,10 +9,10 @@ import {
   type Instrument,
   readBySourceSymbol,
   readInstrument,
-} from "../market/instruments.ts";
-import type { Clock } from "../runtime/clock.ts";
-import { YAHOO } from "../sources/ids.ts";
-import type { Db } from "../storage/db/index.ts";
+} from "../../market/instruments.ts";
+import type { Clock } from "../../runtime/clock.ts";
+import type { Db } from "../../storage/db/index.ts";
+import { YAHOO } from "../ids.ts";
 import type { Yahoo } from "../yahoo/client.ts";
 import {
   type Candidate,

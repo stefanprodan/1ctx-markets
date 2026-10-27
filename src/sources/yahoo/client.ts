@@ -5,8 +5,9 @@
 // crumb. Every call goes through one queue, and an answer that does not
 // have the expected shape is an error, never empty rows.
 
-import { type Session, sessionFromChartMeta } from "../market/calendars.ts";
-import type { Clock } from "../runtime/clock.ts";
+import { type Session, sessionFromChartMeta } from "../../market/calendars.ts";
+import type { Clock } from "../../runtime/clock.ts";
+import { YAHOO } from "../ids.ts";
 import {
   type Backoff,
   type Fetch,
@@ -17,7 +18,6 @@ import {
   SourceError,
   Unreadable,
 } from "../source.ts";
-import { YAHOO } from "../sources/ids.ts";
 
 export const SOURCE = YAHOO;
 export const HOST = "https://query1.finance.yahoo.com";

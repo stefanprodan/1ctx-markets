@@ -11,7 +11,7 @@ import {
   rebuildWeeks,
   upsertBars,
   type Written,
-} from "../market/bars.ts";
+} from "../../market/bars.ts";
 import {
   barDate,
   isBarFinal,
@@ -20,7 +20,7 @@ import {
   type Session,
   sessionDate,
   weekOf,
-} from "../market/calendars.ts";
+} from "../../market/calendars.ts";
 import {
   checkOwner,
   checkSource,
@@ -28,15 +28,21 @@ import {
   readBySourceSymbol,
   type Unit,
   upsertInstrument,
-} from "../market/instruments.ts";
-import { type QuoteRow, upsertQuote } from "../market/quotes.ts";
-import { JOBS } from "../market/stale.ts";
-import { addDays, startOfDate, wallTime } from "../market/zone.ts";
-import { NO_RULES, type RuleHooks } from "../rules/hooks.ts";
-import { type Clock, DAY_MS } from "../runtime/clock.ts";
-import { exclusive } from "../runtime/lock.ts";
-import { pruneLive, refreshLive, signalsAfterBars } from "../signals/store.ts";
-import { expired, type Phrase, SourceError } from "../source.ts";
+} from "../../market/instruments.ts";
+import { type QuoteRow, upsertQuote } from "../../market/quotes.ts";
+import { JOBS } from "../../market/stale.ts";
+import { addDays, startOfDate, wallTime } from "../../market/zone.ts";
+import { NO_RULES, type RuleHooks } from "../../rules/hooks.ts";
+import { type Clock, DAY_MS } from "../../runtime/clock.ts";
+import { exclusive } from "../../runtime/lock.ts";
+import {
+  pruneLive,
+  refreshLive,
+  signalsAfterBars,
+} from "../../signals/store.ts";
+import type { Db } from "../../storage/db/index.ts";
+import { endRun, startRun } from "../../storage/runs.ts";
+import type { Writer } from "../../storage/writer.ts";
 import {
   backfillStart,
   REFETCH_DAYS,
@@ -44,10 +50,8 @@ import {
   type Rescale,
   rescaleOf,
   sameRatio,
-} from "../sources/history.ts";
-import type { Db } from "../storage/db/index.ts";
-import { endRun, startRun } from "../storage/runs.ts";
-import type { Writer } from "../storage/writer.ts";
+} from "../history.ts";
+import { expired, type Phrase, SourceError } from "../source.ts";
 import {
   type ChartAnswer,
   type ChartMeta,
