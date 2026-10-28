@@ -114,14 +114,27 @@ export function readSignals(
   }
   const target = liveTarget(db, i);
   if (target !== null && !live.includes(STALE.noHistory)) {
+    // a quote dated a bar already final has no live row by design
+    // (liveBase), as when crypto's Sunday trade is read after Monday's rollover
+    const final = (interval: Interval, date: string) =>
+      db
+        .query<{ n: number }, [string, string, string]>(
+          `select count(*) as n from bars where instrument = ? and interval = ?
+             and date = ? and final = 1`,
+        )
+        .get(i.id, interval, date)!.n > 0;
     const behind = (
+      interval: Interval,
       row: { date: string; quoteTime: number } | null,
       date: string,
     ) =>
-      row === null || row.date !== date || row.quoteTime !== target.quote.time;
+      (row === null ||
+        row.date !== date ||
+        row.quoteTime !== target.quote.time) &&
+      !final(interval, date);
     if (
-      (behind(daily.live, target.date) ||
-        behind(weekly.live, weekOf(target.date))) &&
+      (behind("1d", daily.live, target.date) ||
+        behind("1wk", weekly.live, weekOf(target.date))) &&
       !live.includes(STALE.signalsPending)
     ) {
       live.push(STALE.signalsPending);

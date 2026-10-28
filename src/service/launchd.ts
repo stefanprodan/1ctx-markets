@@ -19,6 +19,7 @@ import type {
   ServiceState,
 } from "./backend.ts";
 import {
+  label,
   type PlistSpec,
   plistPath,
   programArguments,
@@ -251,9 +252,12 @@ export function launchdBackend(deps: LaunchdDeps): ServiceBackend {
 
   return {
     name: LABEL,
+    // another label's definition is another service's: its arguments
+    // would point a purge at that service's data
     installed: async () => {
       const xml = await files.read(path);
-      return xml === null ? null : programArguments(xml);
+      if (xml === null) return null;
+      return label(xml) === LABEL ? programArguments(xml) : [];
     },
     loaded: async () => (await state()) !== null,
     install,

@@ -224,7 +224,8 @@ exchange: one client, its parsers, its session, the same tables.
   (`checkCovers()`); a listing whose new history is cut short keeps its
   old history and source, as one the new source lacks does, and the
   switch lands for the rest; a kept listing moves only at the next
-  change of flags. Moving to Yahoo finds the listing through Yahoo's
+  change of flags. Moving to Yahoo needs Yahoo's quote too, since the old
+  source's quote is cleared with its bars. Moving to Yahoo finds the listing through Yahoo's
   search, never a guessed suffix; the stored splits are dropped and
   Yahoo's recorded from its answer. Moving to the feed keeps them,
   since they date where raw volumes change scale.

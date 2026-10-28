@@ -22,7 +22,11 @@ import { YAHOO } from "../ids.ts";
 import { phraseOf, Refused, SourceError } from "../source.ts";
 import { dailyBars } from "../yahoo/history.ts";
 import { keyOf as yahooKey } from "../yahoo/resolve.ts";
-import { storeSwitched, type YahooContext } from "../yahoo/sync.ts";
+import {
+  requireQuote,
+  storeSwitched,
+  type YahooContext,
+} from "../yahoo/sync.ts";
 import { MARKET, SOURCE } from "./client.ts";
 import { barsAnswered, CutShort, checkCovers, storeWhole } from "./history.ts";
 import { storeBvbQuotes } from "./quotes.ts";
@@ -114,6 +118,8 @@ export function sourceSwitch(options: {
       throw new SourceError("malformed answer", `${i.id} answered otherwise`);
     }
     const quote = await yahoo.yahoo.spark([answer.symbol]);
+    // the old source's quote is cleared with its bars
+    requireQuote(quote, answer.symbol);
     const dates = dailyBars(answer, null)
       .map((b) => b.date)
       .filter((d) => d >= monday);

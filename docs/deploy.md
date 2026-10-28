@@ -27,7 +27,7 @@ today; any other platform answers `service is not supported on
   defaults included (`configToArgs()`), so a later default change
   never moves a running service. `start`, `restart` and `status` read
   the options back from the definition.
-- **A definition that is not ours, lacks the binary's absolute path or
+- **A definition that is not ours (another `Label`), lacks the binary's absolute path or
   `--data`, or holds options the server would refuse is `service
   definition is invalid`**: `start`, `restart` and `uninstall --purge`
   refuse it, `status` shows it, `stop` and a plain `uninstall` work.

@@ -111,7 +111,7 @@ route's transport in `docs/api.md`; rules that wait on events in
   | `metric` | `COMPANY_METRICS`: growth, net margin, ROE, current ratio, debt to equity | P/E, PEG, P/S, P/B, yield and beta are on that listing's price |
   | `earnings` | nothing: no data | EPS in its currency per its share; its actuals and estimates can disagree |
   | `insider` | nothing: no data | share counts of its shares |
-  | `calendar` | date, hour, fiscal year and quarter, and whether actuals came | estimates and actuals in its currency |
+  | `calendar` | date, hour, fiscal year (1900 to 2200, as stored) and quarter, and whether actuals came | estimates and actuals in its currency |
 
   A part naming no symbol is the asked one's. Parts naming two symbols
   are no data, as a 403 is, since neither can be trusted; a symbol not
@@ -197,7 +197,8 @@ route's transport in `docs/api.md`; rules that wait on events in
 - **The `events` tool lists events between two dates** of the tracked
   US shares, or of the named symbols once resolved; of those, only a
   named covered share whose calendar has no good run is fetched
-  inline. A symbol not covered or not resolved is listed under
+  inline; a section that fails there is the share's error, never an
+  empty answer. A symbol not covered or not resolved is listed under
   `unavailable`, and so is every share whose calendar has no good run,
   with why (never fetched, its fetch failed, timed out), and every
   share whose last good calendar run was no data (`NO_DATA`), its

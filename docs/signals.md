@@ -120,7 +120,9 @@ bar's close, or the live price on the live row.
   row** (`readLatest()` in `src/operations/quote.ts`), tagged `kind`.
 - **Stale reasons are fixed phrases** (`docs/storage.md`).
   `readSignals()` adds "signals pending" when final rows lag the final
-  bars or the live rows lag the quote (another date or trade time), and
+  bars or the live rows lag the quote (another date or trade time), but
+  not when the quote's date already has a final bar, which by design has
+  no live row (crypto's Sunday trade after Monday's rollover), and
   "previous day not final" when a live row stepped over a stored day not
   yet final. FRED uses the final list only (`docs/fred.md`).
 - **Values are rounded to six significant digits on output** (`round()`

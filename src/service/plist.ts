@@ -106,11 +106,19 @@ export function programArguments(xml: string): string[] {
   if (start === -1 || end === -1) return [];
   const body = xml.slice(start, end);
   return [...body.matchAll(/<string>([^<]*)<\/string>/g)].map((m) =>
-    m[1]
-      .replace(/&lt;/g, "<")
-      .replace(/&gt;/g, ">")
-      .replace(/&quot;/g, '"')
-      .replace(/&apos;/g, "'")
-      .replace(/&amp;/g, "&"),
+    unescapeXml(m[1]!),
   );
 }
+
+export function label(xml: string): string | null {
+  const m = /<key>Label<\/key>\s*<string>([^<]*)<\/string>/.exec(xml);
+  return m === null ? null : unescapeXml(m[1]!);
+}
+
+const unescapeXml = (s: string) =>
+  s
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&");

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Only actuals mark an event reported, never its date or after-close label.
 
+import { iso } from "../market/format.ts";
 import { type Instrument, readInstrument } from "../market/instruments.ts";
 import { trackedInstruments } from "../market/tracking.ts";
 import { localDate } from "../market/zone.ts";
@@ -108,11 +109,20 @@ function nearest(m: Markets, i: Instrument, from: string, to: string) {
 // so an empty list is never read as no earnings ahead; null once data came
 function noCalendar(m: Markets, input: string, i: Instrument): Note | null {
   const ok = lastStarted(m.db, SOURCE, "calendar", i.id, "ok");
+  const last = lastStarted(m.db, SOURCE, "calendar", i.id);
+  // a refresh that failed since: an empty range then is not "no event"
+  if (ok !== null && last?.status === "failed") {
+    return {
+      input,
+      id: i.id,
+      error: "source_error",
+      message: `calendar not refreshed: its fetch failed (${last.error}); events are from ${iso(ok.startedAt)}; ${RETRY} later`,
+    };
+  }
   if (ok !== null) {
     // a 403 or an empty answer; events kept from before show stale
     return ok.rows === 0 ? { input, id: i.id, message: NO_DATA } : null;
   }
-  const last = lastStarted(m.db, SOURCE, "calendar", i.id);
   return last?.status === "failed"
     ? {
         input,
@@ -173,12 +183,11 @@ export async function readEventsOf(
         });
         continue;
       }
-      if (state?.kind === "failed") {
+      const note = noCalendar(m, r.input, r.instrument);
+      // a failed run says more than the call's error; a timeout leaves none
+      if (state?.kind === "failed" && note?.error === undefined) {
         notes.push({ input: r.input, id: r.instrument.id, ...state.error });
-      } else {
-        const note = noCalendar(m, r.input, r.instrument);
-        if (note !== null) notes.push(note);
-      }
+      } else if (note !== null) notes.push(note);
       instruments.push(r.instrument);
     }
   }

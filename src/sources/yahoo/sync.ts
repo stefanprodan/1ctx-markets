@@ -132,7 +132,7 @@ export function storeSwitched(
 }
 
 // bars with no quote would answer an old price as the live one
-function requireQuote(answer: SparkAnswer, symbol: string): void {
+export function requireQuote(answer: SparkAnswer, symbol: string): void {
   const upper = symbol.toUpperCase();
   if (!answer.quotes.some((q) => q.symbol.toUpperCase() === upper)) {
     throw new SourceError("source error", `no quote for ${symbol}`);

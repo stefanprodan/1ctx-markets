@@ -105,7 +105,8 @@ Phrases from Yahoo (`docs/sources.md`, Refusals):
   from the previous row's. On the answer's session date it merges into
   that date's regular bar, a closing auction after the end included.
   With no grid row of that date it is the date's bar only for a
-  `CURRENCY`, whose daily answer stamps today's row at the live minute;
+  `CURRENCY`, whose daily answer stamps today's row at the live minute
+  (so that row's date counts as covered when a whole history is checked);
   a future's Sunday evening trades share their Sunday session's date
   but are Monday's bar. Off that date it is dropped: an FX pair can
   trade on Sunday while its session is Friday's. A row with a null
