@@ -352,7 +352,7 @@ function evaluateWith(r: Reader, db: Db, rule: RuleRow): Evaluation {
   };
 }
 
-// Evaluates one rule and moves its state, in the caller's transaction.
+// in the caller's transaction
 export function applyRule(
   db: Db,
   rule: RuleRow,

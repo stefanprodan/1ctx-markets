@@ -58,10 +58,9 @@ export type Key = "read" | "admin" | "none";
 
 export type Route = {
   method: Method;
-  // under /api/v1, as the spec names it; {name} is one path segment
+  // {name} matches one path segment
   path: string;
   key: Key;
-  // a segment's only values, when it names a fixed set
   values?: Record<string, readonly string[]>;
   handle: (
     req: Request,
@@ -72,9 +71,8 @@ export type Route = {
 
 export type ApiDeps = {
   m: Markets;
-  // the alerts feed, as it has always answered
   alerts: (req: Request) => Promise<Response>;
-  // the operator's routes, while there is an admin key
+  // null without an admin key
   admin: AdminDeps | null;
   log: Log;
 };

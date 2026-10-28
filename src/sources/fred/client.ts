@@ -61,12 +61,9 @@ export type ObservationRange =
 export type Fred = {
   series(id: string): Promise<SeriesMeta>;
   observations(id: string, range: ObservationRange): Promise<Observations>;
-  // fails at once while the queue backs off, for a tool
   failFast(): Fred;
-  // failing fast, and starting no call once live() is false
   within(live: () => boolean): Fred;
   backoff(): Backoff | null;
-  // at shutdown: fails waiting calls, so none goes out after
   close(): void;
 };
 

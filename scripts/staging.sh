@@ -53,7 +53,7 @@ deploy() {
   fi
   check_install
   sha=$(git rev-parse --short HEAD)
-  # so two bypass deploys from one commit are two versions
+  # a dirty tree names its diff, so two bypass deploys from one commit differ
   [ -z "$dirty" ] || sha=$sha.dirty$(git diff HEAD | shasum | cut -c1-6)
   local version
   version=v$(bun -e 'console.log(require("./package.json").version)')+$sha

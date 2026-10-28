@@ -100,13 +100,9 @@ export type Finnhub = {
     from: string,
     to: string,
   ): Promise<Answer<Map<string, CalendarEvent[]>>>;
-  // fails at once while the queue backs off, for a tool
   failFast(): Finnhub;
-  // failing fast, and starting no call once live() is false
   within(live: () => boolean): Finnhub;
-  // at shutdown: fails waiting calls, so none goes out after
   close(): void;
-  // when the next waiting call may go, for a test stepping its clock
   due(): number | null;
   backoff(): Backoff | null;
 };

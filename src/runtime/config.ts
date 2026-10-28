@@ -15,12 +15,10 @@ export const KNOWN_SOURCES = ["bvb"] as const;
 export type Config = {
   hostname: string;
   port: number;
-  // holds markets.db and secrets/
   dataDir: string;
   quoteEveryMs: number;
   // an instrument read within this many days stays tracked
   trackDays: number;
-  // keyless sources turned on, each named once
   sources: string[];
 };
 

@@ -161,8 +161,8 @@ export function launchdBackend(deps: LaunchdDeps): ServiceBackend {
     throw failure(argv, result);
   }
 
-  // gone means launchd dropped the label and its process exited: launchd
-  // forgets the job while the server still drains and holds the port
+  // gone: launchd dropped the label and the process exited; launchd forgets
+  // the job while the server drains and holds the port, so a bootstrap fails
   async function waitForExit(pid: number | null): Promise<void> {
     const gone = async () =>
       (await state()) === null && (pid === null || !alive(pid));

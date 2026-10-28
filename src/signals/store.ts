@@ -237,8 +237,8 @@ export function liveTarget(db: Db, instrument: Scoped): LiveTarget | null {
   if (row === null) return null;
   const session =
     instrument.market === CRYPTO ? null : readSession(db, instrument.market);
-  // an index page has no trade time and is current while its market trades, so
-  // its fetch, at most the session's end, dates the live row, not the quote
+  // an untimed index page is current while its market trades: its fetch, at
+  // most the session's end, dates the live row; the stored quote keeps no time
   const { fetchedAt, ...rest } = row;
   const quote: LiveQuote = {
     ...rest,

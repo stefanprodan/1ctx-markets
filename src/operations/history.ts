@@ -159,7 +159,8 @@ const widen = (
     ? null
     : f(...[v, q, price].filter((x) => x !== null));
 
-// a stored session bar is from a pass near the open, and a feed may store none
+// the session's bar comes from the quote: a stored one is from a pass near the
+// open, and a feed may store none
 export function withLive(
   bars: readonly Bar[],
   target: LiveTarget | null,

@@ -128,7 +128,7 @@ export function lastRun(
   );
 }
 
-// the latest run, running ones included, for when a pass is next due
+// running ones included
 export function lastStarted(
   db: Db,
   source: string,
@@ -147,7 +147,6 @@ export function lastStarted(
   );
 }
 
-// the source's jobs whose latest ended run failed in any of their scopes
 export function staleJobs(db: Db, source: string): string[] {
   return db
     .query<{ job: string }, [string]>(
@@ -163,7 +162,7 @@ export function staleJobs(db: Db, source: string): string[] {
     .map((r) => r.job);
 }
 
-// with no job, any of the source's jobs in any scope
+// no job means any of the source's jobs, in any scope
 export function isStale(
   db: Db,
   source: string,

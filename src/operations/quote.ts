@@ -121,7 +121,6 @@ export type QuoteItem = {
   currency: string | null;
   kind: "market_quote" | "observation";
   price: number | null;
-  // a FRED series' last value and its date
   observation?: { date: string; value: number } | null;
   previous_close: number | null;
   change: number | null;
@@ -295,7 +294,8 @@ export function parseQuote(input: unknown): QuoteArgs {
   };
 }
 
-// without a benchmark, the cursor stays the one quote has always made
+// a page is never continued under another benchmark; without one the cursor
+// is the symbols alone
 const continued = (args: QuoteArgs) =>
   args.benchmark === null
     ? args.symbols

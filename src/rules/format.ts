@@ -302,7 +302,7 @@ function parse(
   return { node: n, gate: v.afterEarnings };
 }
 
-// What a caller sends, checked before anything is resolved or fetched.
+// checked before anything is resolved or fetched
 export function parseCondition(value: unknown): InputCondition {
   if (isObject(value)) {
     const bytes = Buffer.byteLength(JSON.stringify(value));
@@ -368,7 +368,7 @@ export function comparisons<T extends { op: Op }>(
 const operands = <O>(c: { left: O; right: number | O }): O[] =>
   typeof c.right === "number" ? [c.left] : [c.left, c.right];
 
-// every symbol a caller named, the gate's included, in order and once
+// the gate's symbol included, in order and once
 export function inputSymbols(c: InputCondition): string[] {
   const out: string[] = [];
   for (const cmp of comparisons<InputComparison>(c.node)) {
@@ -407,7 +407,7 @@ export function bindCondition(
   return { node: walk(c.node), afterEarnings: gate };
 }
 
-// every instrument a stored condition reads, the gate's company included
+// the gate's company included
 export function instrumentsOf(c: Condition): Set<string> {
   const out = new Set<string>();
   for (const cmp of comparisons<Comparison>(c.node)) {

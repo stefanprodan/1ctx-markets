@@ -33,7 +33,6 @@ export function bearerCheck(bearer: string): (req: Request) => boolean {
 export type RouterDeps = {
   bearer: string;
   mcp: McpHttpHandler;
-  // /api/v1, when the tools are served
   api?: readonly Route[];
   // the key of /api/v1/admin/* alone; with none those paths refuse all
   adminKey?: string | null;

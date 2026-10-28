@@ -11,9 +11,7 @@ import { CRYPTO, closeQuoteAt, readSession } from "./calendars.ts";
 import type { Instrument } from "./instruments.ts";
 
 export const JOBS = {
-  // every instrument of a market in session, and once after its close
   quotes: "quotes",
-  // one instrument of a closed market, to see a new session
   check: "check",
   // the 30-day refetch when a market's session moves on, one run per instrument
   bars: "bars",
