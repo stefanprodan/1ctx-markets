@@ -7,6 +7,10 @@ import { ApiError, client, type Fetch, failure, says } from "./api.ts";
 export type SourceStatus = {
   name: string;
   label: string;
+  short: string;
+  mark: string;
+  // how to turn it on, for a source that needs a key
+  key: { file: string; adds: string; signup: string } | null;
   state: "on" | "off";
   why: string;
   backing_off: { until: string | null; after: string } | null;
@@ -16,6 +20,7 @@ export type JobStatus = {
   source: string;
   job: string;
   label: string;
+  about: string | null;
   last: {
     scope: string | null;
     started_at: string | null;

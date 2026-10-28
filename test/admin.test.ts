@@ -290,26 +290,45 @@ describe("the admin routes' guard", () => {
         }
         const b = JSON.parse(text);
         expect(b.version).toBe("v0.0.0-test");
-        expect(b.sources).toEqual(
-          [
-            ["yahoo", "Yahoo Finance", "on", "always"],
-            ["fred", "FRED", "off", "no key"],
-            ["finnhub", "Finnhub", "on", "key file"],
-            ["massive", "Massive", "off", "no key"],
-            ["bvb", "Bucharest Stock Exchange", "off", "no flag"],
-          ].map(([name, label, state, why]) => ({
-            name,
-            label,
-            state,
-            why,
-            backing_off: null,
-          })),
-        );
+        expect(
+          b.sources.map(
+            (x: {
+              name: string;
+              label: string;
+              short: string;
+              mark: string;
+            }) => [x.name, x.label, x.short, x.mark],
+          ),
+        ).toEqual([
+          ["yahoo", "Yahoo Finance", "Yahoo", "Y"],
+          ["fred", "FRED", "FRED", "FR"],
+          ["finnhub", "Finnhub", "Finnhub", "FH"],
+          ["massive", "Massive", "Massive", "M"],
+          ["bvb", "Bucharest Stock Exchange", "BVB", "BVB"],
+        ]);
+        const [yahoo, fred] = b.sources;
+        expect(yahoo).toMatchObject({
+          state: "on",
+          why: "always",
+          backing_off: null,
+          key: null,
+        });
+        // a keyed source says how to turn it on, for the page to show
+        expect(fred).toMatchObject({ state: "off", why: "no key" });
+        expect(fred.key.file).toBe("secrets/source-fred.key");
+        expect(fred.key.signup).toStartWith("https://");
+        expect(b.sources[4]).toMatchObject({
+          state: "off",
+          why: "no flag",
+          key: null,
+        });
         expect(b.jobs).toEqual([
           {
             source: "finnhub",
             job: "metric",
             label: "Key figures",
+            about:
+              "Refreshes each US share's key figures once a day, after 23:00 UTC.",
             last: {
               scope: "US:B",
               started_at: "2026-10-25T21:05:00Z",
@@ -328,6 +347,7 @@ describe("the admin routes' guard", () => {
             source: "yahoo",
             job: "quotes",
             label: "Live prices",
+            about: "Quotes each open market, every 5 minutes by default.",
             last: {
               scope: "US",
               started_at: "2026-10-25T21:05:00Z",

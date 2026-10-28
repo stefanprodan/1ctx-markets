@@ -25,11 +25,9 @@
     white-space: nowrap;
   }
   .srv-sub {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
     font-size: var(--text-small);
     color: var(--faint);
+    overflow-wrap: anywhere;
   }
 
   /* in the 14px slot 1ctx's rows give an icon */
@@ -47,6 +45,56 @@
     height: 8px;
     border-radius: 50%;
     background: currentColor;
+  }
+
+  .srv-details {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+  .srv-about,
+  .srv-ok {
+    margin: 0;
+    color: var(--dim);
+  }
+  .srv-failing {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr) max-content;
+    gap: 4px var(--space-4);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .srv-failing li {
+    display: contents;
+  }
+  .srv-failing-scope {
+    font-family: var(--mono);
+    font-size: var(--text-mono);
+    color: var(--fg);
+  }
+  .srv-failing-at,
+  .srv-failing-more {
+    color: var(--faint);
+  }
+  .srv-failing-more {
+    margin: 0;
+  }
+
+  /* the chevron trails the row; the dot holds its slot on the left */
+  .srv-source .rows-chevron {
+    order: 1;
+  }
+
+  .srv-logo {
+    width: auto;
+    min-width: 28px;
+    padding: 0 6px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--fg);
   }
 
   .srv-source-bad .rows-count {

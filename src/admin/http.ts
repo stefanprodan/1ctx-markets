@@ -73,6 +73,39 @@ const SOURCE_LABELS: Record<string, string> = {
   massive: "Massive",
 };
 
+const SOURCE_SHORT: Record<string, string> = {
+  yahoo: "Yahoo",
+  bvb: "BVB",
+  fred: "FRED",
+  finnhub: "Finnhub",
+  massive: "Massive",
+};
+
+// letters in a tile, since no free logo set holds these sources
+const SOURCE_MARKS: Record<string, string> = {
+  yahoo: "Y",
+  bvb: "BVB",
+  fred: "FR",
+  finnhub: "FH",
+  massive: "M",
+};
+
+// how an operator turns on a source that needs a key
+const SOURCE_KEYS: Record<string, { adds: string; signup: string }> = {
+  fred: {
+    adds: "Treasury yields, credit spreads, oil and other daily economic series.",
+    signup: "https://fred.stlouisfed.org/docs/api/api_key.html",
+  },
+  finnhub: {
+    adds: "Key figures, analyst ratings, earnings and insider trades for US shares.",
+    signup: "https://finnhub.io/register",
+  },
+  massive: {
+    adds: "News for US shares and ETFs.",
+    signup: "https://massive.com",
+  },
+};
+
 const JOB_LABELS: Record<string, string> = {
   quotes: "Live prices",
   bars: "Daily prices",
@@ -89,6 +122,33 @@ const JOB_LABELS: Record<string, string> = {
   news: "News",
   switch: "Source change",
 };
+
+const JOB_ABOUT: Record<string, string> = {
+  quotes: "Quotes each open market, every 5 minutes by default.",
+  bars: "Fetches the last 30 days of daily prices for each instrument once its market's session ends.",
+  "fred/bars": "Fetches each series' daily values once a day, after 23:00 UTC.",
+  backfill: "Fetches an instrument's whole history the first time it is read.",
+  check:
+    "Asks whether a closed market has opened, at its usual opening time and hourly after.",
+  owed: "Asks again for a finished day's close the source had not sent yet.",
+  metric: "Refreshes each US share's key figures once a day, after 23:00 UTC.",
+  analysts:
+    "Refreshes each US share's analyst ratings once a day, after 23:00 UTC.",
+  earnings:
+    "Refreshes each US share's earnings results once a day, after 23:00 UTC.",
+  insider:
+    "Refreshes each US share's insider trades once a day, after 23:00 UTC.",
+  calendar:
+    "Refreshes each US share's next earnings date once a day, after 23:00 UTC.",
+  "market-calendar":
+    "Checks the US earnings calendar hourly while a tracked share reports today or yesterday.",
+  news: "Fetches each tracked share's news every 30 minutes.",
+  switch:
+    "Moves a market's instruments to another source when the start options change.",
+};
+
+export const jobAbout = (source: string, job: string): string | null =>
+  JOB_ABOUT[`${source}/${job}`] ?? JOB_ABOUT[job] ?? null;
 
 export function jobLabel(source: string, job: string): string {
   const known = JOB_LABELS[`${source}/${job}`] ?? JOB_LABELS[job];
@@ -149,6 +209,7 @@ function jobs(db: Db) {
     source: r.source,
     job: r.job,
     label: jobLabel(r.source, r.job),
+    about: jobAbout(r.source, r.job),
     last: {
       scope: r.scope,
       started_at: iso(r.startedAt),
@@ -181,6 +242,15 @@ export function adminStatus(d: AdminDeps, url: URL): Response {
         return {
           name: s.name,
           label: SOURCE_LABELS[s.name] ?? s.name,
+          short: SOURCE_SHORT[s.name] ?? s.name,
+          mark: SOURCE_MARKS[s.name] ?? s.name.slice(0, 2).toUpperCase(),
+          key:
+            s.name in SOURCE_KEYS
+              ? {
+                  file: `secrets/source-${s.name}.key`,
+                  ...SOURCE_KEYS[s.name],
+                }
+              : null,
           state: s.on ? "on" : "off",
           why: s.why,
           backing_off:

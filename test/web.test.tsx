@@ -26,15 +26,16 @@ import {
 import { SignIn } from "../src/web/views/SignIn.tsx";
 import {
   ago,
+  allOk,
   bytes,
   clockTime,
-  failures,
-  groupName,
   groups,
   jobLine,
   jobTone,
   jobWhen,
+  runTime,
   sourceState,
+  switchFailure,
   trackFailed,
   trackLine,
   until,
@@ -43,83 +44,94 @@ import { StatusBody } from "../src/web/views/Status.tsx";
 
 const NOW = Date.parse("2026-10-28T12:00:00Z");
 
+const source = (
+  name: string,
+  more: Partial<Status["sources"][number]> = {},
+): Status["sources"][number] => ({
+  name,
+  label: `Casey ${name}`,
+  short: name.toUpperCase(),
+  mark: name.slice(0, 2).toUpperCase(),
+  state: "on",
+  why: "always",
+  backing_off: null,
+  key: null,
+  ...more,
+});
+
+const job = (
+  src: string,
+  name: string,
+  more: Partial<Status["jobs"][number]> = {},
+): Status["jobs"][number] => ({
+  source: src,
+  job: name,
+  label: name,
+  about: `What ${name} does.`,
+  last: {
+    scope: "US",
+    started_at: "2026-10-28T11:57:00Z",
+    ended_at: "2026-10-28T11:57:02Z",
+    status: "ok",
+    rows: 1,
+    error: null,
+  },
+  scopes: 1,
+  failing_scopes: 0,
+  failing: [],
+  ...more,
+});
+
 const STATUS: Status = {
   version: "v1.2.3",
   sources: [
-    {
-      name: "yahoo",
-      label: "Casey Prices",
-      state: "on",
-      why: "always",
-      backing_off: null,
-    },
-    {
-      name: "finnhub",
-      label: "Casey Research",
-      state: "on",
+    source("prices"),
+    source("feed"),
+    source("research", {
       why: "key file",
       backing_off: { until: "2026-10-28T12:05:00Z", after: "rate limited" },
-    },
-    {
-      name: "massive",
-      label: "Casey News",
+    }),
+    source("news", {
       state: "off",
       why: "no key",
-      backing_off: null,
-    },
+      key: {
+        file: "secrets/source-news.key",
+        adds: "News for shares.",
+        signup: "https://example.com/keys",
+      },
+    }),
   ],
   jobs: [
-    {
-      source: "yahoo",
-      job: "quotes",
-      label: "Live prices",
+    job("prices", "Live prices", { scopes: 19 }),
+    job("feed", "Daily prices", {
       last: {
-        scope: "US",
-        started_at: "2026-10-28T11:57:00Z",
-        ended_at: "2026-10-28T11:57:02Z",
-        status: "ok",
-        rows: 1234,
-        error: null,
-      },
-      scopes: 19,
-      failing_scopes: 0,
-      failing: [],
-    },
-    {
-      source: "bvb",
-      job: "bars",
-      label: "Daily prices",
-      last: {
-        scope: "BVB:TLV",
+        scope: "FEED:TLV",
         started_at: "2026-10-28T09:00:00Z",
         ended_at: "2026-10-28T09:00:01Z",
         status: "failed",
         rows: 0,
-        error: "the feed answered no bars",
+        error: "no bars",
       },
       scopes: 14,
       failing_scopes: 7,
       failing: [
-        { scope: "BVB:TLV", error: "no bars", at: "2026-10-28T09:00:01Z" },
-        { scope: "BVB:SNP", error: "timeout", at: "2026-10-28T08:00:01Z" },
+        { scope: "FEED:TLV", error: "no bars", at: "2026-10-28T09:00:01Z" },
+        { scope: "FEED:SNP", error: "timeout", at: "2026-10-28T08:00:01Z" },
       ],
-    },
-    {
-      source: "sources",
-      job: "switch",
-      label: "Source change",
+    }),
+    job("research", "Key figures", {
       last: {
-        scope: "BVB",
-        started_at: "2026-10-26T09:00:00Z",
-        ended_at: "2026-10-26T09:00:01Z",
+        scope: "US:A",
+        started_at: "2026-10-27T23:00:00Z",
+        ended_at: "2026-10-27T23:00:05Z",
         status: "ok",
-        rows: 0,
+        rows: 4,
         error: null,
       },
-      scopes: 1,
-      failing_scopes: 0,
-      failing: [],
-    },
+      scopes: 19,
+    }),
+    job("news", "News", { scopes: 24 }),
+    job("sources", "switch"),
   ],
   instruments: 78,
   tracked: 61,
@@ -399,7 +411,7 @@ describe("the status model", () => {
     expect(clockTime(Date.UTC(2026, 9, 28, 13, 5, 9))).not.toMatch(/AM|PM/i);
   });
 
-  test("sizes, distances and lines read as an operator says them", () => {
+  test("sizes, distances and times read as an operator says them", () => {
     expect(bytes(512)).toBe("512 B");
     expect(bytes(65_515_520)).toBe("62 MB");
     expect(bytes(1_500_000)).toBe("1.4 MB");
@@ -412,98 +424,113 @@ describe("the status model", () => {
     expect(until(null, NOW)).toBe("for now");
     // a back-off already past never reads as a negative wait
     expect(until("2026-10-28T11:58:00Z", NOW)).toBe("for now");
-    const [yahoo, finnhub, massive] = STATUS.sources;
-    expect(sourceState(yahoo!, NOW)).toBe("On");
-    expect(sourceState(finnhub!, NOW)).toBe(
+    expect(runTime(null)).toBe("never");
+    expect(runTime("2026-10-28T13:05:00Z")).not.toMatch(/AM|PM/i);
+  });
+
+  test("a source and its jobs read as counts, never a single run", () => {
+    const [prices, , research] = STATUS.sources;
+    expect(sourceState(prices!, NOW)).toBe("On");
+    expect(sourceState(research!, NOW)).toBe(
       "Backing off for 5 min · rate limited",
     );
-    expect(sourceState(massive!, NOW)).toBe("Off · no key");
-    const [quotes, bars, sw] = STATUS.jobs;
-    expect(jobLine(quotes!)).toBe("19 markets · all ok");
-    expect(jobLine(bars!)).toBe("14 instruments · 7 failing");
-    expect(jobLine({ ...sw!, scopes: 1 })).toBe("1 market · ok");
-    expect(jobLine({ ...quotes!, scopes: 0 })).toBe("");
-    expect(jobWhen(quotes!, NOW)).toBe("2 min ago");
-    // the time never repeats how the run went
-    expect(jobWhen(bars!, NOW)).toBe("2 h ago");
-    expect(failures(bars!)).toEqual([
-      "BVB:TLV: no bars",
-      "BVB:SNP: timeout",
-      "5 more failing",
-    ]);
-    // a failed run whose scope the server did not name still says why
-    expect(failures({ ...bars!, failing: [], failing_scopes: 0 })).toEqual([
-      "BVB:TLV: the feed answered no bars",
-    ]);
-    expect(jobTone(quotes!)).toBe("done");
-    expect(jobTone(bars!)).toBe("failed");
+    const [live, daily, figures] = STATUS.jobs;
+    expect(jobLine(live!)).toBe("19 markets · all ok");
+    expect(jobLine(daily!)).toBe("14 instruments · 7 failing");
+    expect(jobLine({ ...live!, scopes: 1 })).toBe("1 market · ok");
+    expect(jobLine({ ...live!, scopes: 0 })).toBe("");
+    expect(allOk(figures!)).toBe("All 19 instruments ok.");
+    expect(allOk({ ...live!, scopes: 1 })).toBe("1 market ok.");
+    expect(jobWhen(live!, NOW)).toBe("2 min ago");
+    // the time never says how the run went
+    expect(jobWhen(daily!, NOW)).toBe("2 h ago");
+    expect(jobTone(live!)).toBe("done");
+    expect(jobTone(daily!)).toBe("failed");
     // a good last run still reads failing while another scope failed
-    expect(jobTone({ ...quotes!, failing_scopes: 1 })).toBe("failed");
-    const g = groups(STATUS.sources, STATUS.jobs);
-    expect(g.map(groupName)).toEqual([
-      "Casey Prices",
-      "Casey Research",
-      "Casey News",
-      "bvb",
-      "Server",
-    ]);
+    expect(jobTone({ ...live!, failing_scopes: 1 })).toBe("failed");
     expect(STATUS.track.map(trackLine)).toEqual(["SNP:^GSPC", "not found"]);
     expect(STATUS.track.map(trackFailed)).toEqual([false, true]);
   });
 
-  test("a source's failing jobs come first", () => {
-    const [quotes] = STATUS.jobs;
-    const failing = {
-      ...quotes!,
-      job: "bars",
-      label: "Daily prices",
-      failing_scopes: 1,
-      failing: [{ scope: "US:A", error: "x", at: null }],
-    };
-    const [yahoo] = groups(STATUS.sources, [quotes!, failing]);
-    expect(yahoo!.jobs.map((j) => j.label)).toEqual([
+  test("only sources that are on get a card, failing jobs first", () => {
+    const g = groups(STATUS.sources, STATUS.jobs);
+    expect(g.map((x) => x.source.name)).toEqual(["prices", "feed", "research"]);
+    const [live] = STATUS.jobs;
+    const failing = job("prices", "Daily prices", { failing_scopes: 1 });
+    const [prices] = groups(STATUS.sources, [live!, failing]);
+    expect(prices!.jobs.map((j) => j.label)).toEqual([
       "Daily prices",
       "Live prices",
     ]);
   });
+
+  test("a source change shows only when it failed", () => {
+    expect(switchFailure(STATUS.jobs)).toBeNull();
+    const failed = STATUS.jobs.map((j) =>
+      j.source === "sources"
+        ? {
+            ...j,
+            failing_scopes: 1,
+            failing: [{ scope: "BVB", error: "timeout", at: null }],
+          }
+        : j,
+    );
+    expect(switchFailure(failed)).toBe(
+      "Source change for market BVB failed: timeout. Its prices stay stale until a retry succeeds.",
+    );
+  });
 });
 
 describe("the views", () => {
-  test("status draws a card per source with its jobs and the tracked values", () => {
+  test("status draws the on sources' cards, the keyed ones to add, and the tracked values", () => {
     const html = render(<StatusBody status={STATUS} now={NOW} />);
     for (const words of [
       "78",
       "61 tracked",
-      "2 on",
-      "of 3",
+      "PRICES, FEED, RESEARCH",
       "1 failing",
       "62 MB",
       "v1.2.3",
-      "Casey Prices",
+      "Casey prices",
       "Backing off for 5 min · rate limited",
-      "Off · no key",
-      "Live prices",
       "19 markets · all ok",
       "14 instruments · 7 failing",
-      "BVB:TLV: no bars",
-      "5 more failing",
-      "Server",
+      "Add a source",
+      "News for shares.",
+      "secrets/source-news.key",
+      "https://example.com/keys",
+      "Get a key",
       "Always tracked",
       "SNP:^GSPC",
       "not found",
     ]) {
       expect([words, html.includes(words)]).toEqual([words, true]);
     }
+    // an off source has no card, only its row to add
+    expect(html).not.toMatch(/class="label"[^>]*>Casey news</);
+    expect(html).not.toContain(">switch<");
     expect(html).toContain('class="srv-mark status-failed"');
     expect(html).not.toContain("rows-meta-bad");
+    // the jobs tile counts the jobs shown, not the off source's
+    expect(html).toMatch(/Jobs<\/span><span class="srv-figure">3</);
   });
 
-  test("status draws a source with no runs and no tracked values", () => {
+  test("status leaves out what is empty", () => {
     const html = render(
-      <StatusBody status={{ ...STATUS, jobs: [], track: [] }} now={NOW} />,
+      <StatusBody
+        status={{
+          ...STATUS,
+          sources: STATUS.sources.map((x) => ({ ...x, state: "on" as const })),
+          jobs: [],
+          track: [],
+        }}
+        now={NOW}
+      />,
     );
     expect(html).toContain("No runs yet");
+    expect(html).not.toContain("Add a source");
     expect(html).not.toContain("Always tracked");
+    expect(html).not.toContain("notice-failed");
   });
 
   test("sign-in asks for the admin key alone", () => {

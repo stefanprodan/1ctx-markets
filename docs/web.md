@@ -115,12 +115,22 @@ signed in with the admin key alone.
 
 ## Pages
 
-- **Status:** `GET /api/v1/admin/status` drawn: the instrument and
-  tracked counts, the sources on, the jobs and how many fail, the
-  database size and version; each source on or off and why with its
-  back-off; each job's last run with its outcome, scope, rows, error
-  phrase and failing scopes; each `--track` value and what it resolved
-  to.
+- **Status:** `GET /api/v1/admin/status` drawn as tiles (instruments,
+  the sources on by short name, the jobs shown and how many fail, the
+  database) and a card per source that is on, never one that is off:
+  most servers never turn a regional source on, and an off source has
+  nothing to fix. A job is a two-line row (its label, then how many
+  markets or instruments it covers and how many fail) with its last
+  run's time, which never repeats the outcome; opened, it says what the
+  job does, then its failing scopes with error and time, or that all
+  are ok. Failing jobs come first.
+- **Names come from the server** (`label`, `short`, `mark`, `about`):
+  the bundle is public, so it names no source (`docs/admin.md`).
+- **The source switch shows only when it failed,** as one line above
+  the cards: it runs once per change of flags, not on a schedule.
+- **Add a source** lists the keyed sources that are off, with what each
+  adds, its key file and where to get a key; it is absent when none is
+  off. The `--track` values are a grid of value and resolved id.
 - **Instruments:** a placeholder; the list and the instrument page
   come later.
 
