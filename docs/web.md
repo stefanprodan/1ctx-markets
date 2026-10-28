@@ -175,6 +175,49 @@ signed in with the admin key alone.
   second ask, and a failed one keeps the rows and shows the error. An
   instrument's page re-reads the same way (`lib/refresh.ts`).
 
+## The chart
+
+- **TradingView Lightweight Charts 5.2.1** (`views/Chart.tsx`), run
+  with the first chart (a dynamic import); the compiled binary does
+  not split the page, so the library ships in its bundle either way. Its
+  data comes from `GET /api/v1/history?ohlc=true`, a read; the bars
+  are shaped in `Chart.model.ts`, which has no DOM and is tested.
+- **Ranges** 1M to Max (`RANGES`, 1Y by default); 3Y and up read
+  weekly bars (`intervalOf`), so the averages read "50-week" and
+  "200-week". Max is the ten years the server keeps. No 1D: the
+  server stores no intraday bars.
+- **Candles or a line**, the toggle only where the bars have an open;
+  a series (FRED) is a line. A bar the live quote made with no open
+  takes the last close. **Volume** is its own pane (price 4 : volume
+  1, by stretch, which a redraw keeps), by the bar's direction; none
+  where the source gives none.
+- **SMA 50 and 200 from `history`**, never recomputed, each a toggle,
+  coloured `--chart-sma50` and `--chart-sma200`: tokens per theme,
+  checked for colour blindness against `--card` with the dataviz
+  validator. A toggle and a legend entry wear a stroke of the colour,
+  so identity is never colour alone.
+- **The legend is its own rows above the plot**, never over it, its
+  height held (taller on a phone, and before the first answer) so the
+  plot never moves; it names the range its bars were read for, not one
+  still loading, and a failed read shows over the bars kept: date, Live while the market is
+  open and the bar not final, O H L C, volume, the change from the
+  range's first close (points for a series in percent), then the
+  averages. It follows the crosshair; at rest the latest bar, whose
+  averages fall back to the last there are (an open week has none).
+- **The bar still trading is drawn faded**; the last price has its
+  line. Log is a toggle; a range change fits the content.
+- **Colours are read from the tokens on every draw**, and a theme flip
+  draws again.
+- **Settings are kept in `localStorage`** (`chart`): the range, line,
+  log and both averages, one set for every instrument; a blocked or
+  broken value starts from the defaults, field by field.
+- **TradingView's credit is the page's footer** ("Charts by
+  TradingView", linking tradingview.com), which the licence accepts
+  in place of the logo; the logo sat on the volume. The NOTICE text is
+  in `Chart.tsx`, the package shipping none. The footer shows on the
+  instrument page only, with "1ctx Markets" (the repository) and the
+  version on its left.
+
 ## Tests
 
 - **No DOM and no network:** views render with

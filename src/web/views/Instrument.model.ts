@@ -65,14 +65,19 @@ export const RETURNS: readonly { key: keyof Returns; label: string }[] = [
   { key: "ytd", label: "Year to date" },
 ];
 
-export function returnCell(value: number | null): {
+// a series that is itself a percent (a yield) returns in points
+export function returnCell(
+  value: number | null,
+  points = false,
+): {
   text: string;
   dir: -1 | 0 | 1;
 } {
   if (value === null) return { text: "—", dir: 0 };
   const n = Math.abs(value).toFixed(2);
   const dir = Number(n) === 0 ? 0 : value > 0 ? 1 : -1;
-  return { text: `${dir > 0 ? "+" : dir < 0 ? "−" : ""}${n}%`, dir };
+  const sign = dir > 0 ? "+" : dir < 0 ? "−" : "";
+  return { text: `${sign}${n}${points ? " pts" : "%"}`, dir };
 }
 
 export type Choice = {

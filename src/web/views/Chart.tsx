@@ -1,0 +1,477 @@
+// Copyright 2026 Stefan Prodan.
+// SPDX-License-Identifier: Apache-2.0
+// The price chart: TradingView's Lightweight Charts, run only when a
+// chart is drawn (the binary ships it in the page's bundle), coloured
+// from the page's tokens and again on a theme flip. The licence's link is the page's footer (CHART_CREDIT), so the
+// logo, which sat on the volume, is off.
+//
+// TradingView Lightweight Charts™
+// Copyright (c) 2026 TradingView, Inc. https://www.tradingview.com/
+
+import { batch, useSignal } from "@preact/signals";
+import type {
+  IChartApi,
+  ISeriesApi,
+  MouseEventParams,
+  SeriesType,
+} from "lightweight-charts";
+import { useEffect, useRef } from "preact/hooks";
+import { theme } from "../app/theme.ts";
+import { says } from "../data/api.ts";
+import { markets } from "../data/store.ts";
+import { useRefresh } from "../lib/refresh.ts";
+import {
+  averageLabel,
+  averages,
+  candles,
+  changeText,
+  closes,
+  dayOf,
+  figure,
+  fromOf,
+  type History,
+  hasCandles,
+  hasVolume,
+  intervalOf,
+  isLive,
+  type Legend,
+  legendOf,
+  RANGES,
+  type Range,
+  readSettings,
+  type Settings,
+  tick,
+  volumes,
+  volumeText,
+} from "./Chart.model.ts";
+import "./chart.css";
+
+type Lib = typeof import("lightweight-charts");
+
+const token = (name: string) =>
+  getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+// a colour at an alpha, from a token in #rrggbb
+function alpha(hex: string, a: number): string {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex);
+  if (m === null) return hex;
+  const n = Number.parseInt(m[1]!, 16);
+  return `rgba(${n >> 16}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+}
+
+function colors() {
+  return {
+    card: token("--card"),
+    fg: token("--fg"),
+    faint: token("--faint"),
+    line: token("--line"),
+    up: token("--done"),
+    down: token("--failed"),
+    sma50: token("--chart-sma50"),
+    sma200: token("--chart-sma200"),
+    font: token("--mono"),
+  };
+}
+
+// the library hands a day back as given, or as its own business day
+function dateOf(time: unknown): string {
+  if (typeof time === "string") return time;
+  if (typeof time === "number")
+    return new Date(time * 1000).toISOString().slice(0, 10);
+  const t = time as { year: number; month: number; day: number };
+  const two = (n: number) => String(n).padStart(2, "0");
+  return `${t.year}-${two(t.month)}-${two(t.day)}`;
+}
+
+export const CHART_CREDIT = "https://www.tradingview.com/";
+
+const SETTINGS_KEY = "chart";
+
+// storage may be blocked or full: the chart then starts from the defaults
+function loadSettings(): Settings {
+  try {
+    return readSettings(localStorage.getItem(SETTINGS_KEY));
+  } catch {
+    return readSettings(null);
+  }
+}
+
+function saveSettings(s: Settings): void {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+  } catch {
+    // kept for this page only
+  }
+}
+
+const today = () => new Date().toISOString().slice(0, 10);
+
+export function LegendLine({
+  legend,
+  interval,
+  range,
+  show,
+}: {
+  legend: Legend;
+  interval: History["interval"];
+  range: Range;
+  show: { sma50: boolean; sma200: boolean };
+}) {
+  const dir =
+    legend.change === null || Math.abs(legend.change) < 0.005
+      ? ""
+      : legend.change > 0
+        ? " chart-up"
+        : " chart-down";
+  return (
+    <div class="chart-legend">
+      <span class="chart-legend-row">
+        <span class="chart-date">{dayOf(legend.date)}</span>
+        {legend.live && <span class="chart-live">Live</span>}
+        {legend.open !== null && (
+          <>
+            <span>
+              <i>O</i> {figure(legend.open)}
+            </span>
+            <span>
+              <i>H</i> {figure(legend.high)}
+            </span>
+            <span>
+              <i>L</i> {figure(legend.low)}
+            </span>
+          </>
+        )}
+        <span>
+          <i>C</i> {figure(legend.close)}
+        </span>
+        {legend.volume !== null && (
+          <span>
+            <i>Vol</i> {volumeText(legend.volume)}
+          </span>
+        )}
+        {legend.change !== null && (
+          <span class={`chart-change${dir}`}>
+            <i>{range}</i> {changeText(legend.change, legend.points)}
+          </span>
+        )}
+      </span>
+      <span class="chart-legend-row">
+        {show.sma50 && legend.sma50 !== null && (
+          <span class="chart-avg chart-avg-50">
+            {averageLabel(interval, 50)} {figure(legend.sma50)}
+          </span>
+        )}
+        {show.sma200 && legend.sma200 !== null && (
+          <span class="chart-avg chart-avg-200">
+            {averageLabel(interval, 200)} {figure(legend.sma200)}
+          </span>
+        )}
+      </span>
+    </div>
+  );
+}
+
+export function Chart({ id }: { id: string }) {
+  const box = useRef<HTMLDivElement>(null);
+  const kept = useRef(loadSettings()).current;
+  const range = useSignal<Range>(kept.range);
+  const data = useSignal<History | null>(null);
+  const error = useSignal<string | null>(null);
+  const line = useSignal(kept.line);
+  const log = useSignal(kept.log);
+  const sma50 = useSignal(kept.sma50);
+  const sma200 = useSignal(kept.sma200);
+  useEffect(() => {
+    saveSettings({
+      range: range.value,
+      line: line.value,
+      log: log.value,
+      sma50: sma50.value,
+      sma200: sma200.value,
+    });
+  }, [range.value, line.value, log.value, sma50.value, sma200.value]);
+  const hover = useSignal<string | null>(null);
+  const lib = useRef<Lib | null>(null);
+  const chart = useRef<IChartApi | null>(null);
+  const series = useRef<ISeriesApi<SeriesType>[]>([]);
+  // the range a load was asked for, so an older answer never lands
+  const asked = useRef(0);
+
+  // the range the bars on screen were read for, which the legend names
+  const shown = useSignal<Range>(kept.range);
+
+  const load = async (fit: boolean) => {
+    const mine = ++asked.current;
+    const r = range.value;
+    try {
+      const h = await markets.history(id, fromOf(r, today()), intervalOf(r));
+      if (mine !== asked.current) return;
+      batch(() => {
+        data.value = h;
+        shown.value = r;
+      });
+      error.value = null;
+      draw(fit);
+    } catch (e) {
+      if (mine === asked.current) error.value = says(e);
+    }
+  };
+
+  // the library runs with the first chart; a page without one never starts it
+  useEffect(() => {
+    let gone = false;
+    void import("lightweight-charts").then((l) => {
+      if (gone || box.current === null) return;
+      lib.current = l;
+      const c = l.createChart(box.current, {
+        autoSize: true,
+        layout: { attributionLogo: false },
+        crosshair: { mode: l.CrosshairMode.Normal },
+        handleScale: { axisPressedMouseMove: true },
+      });
+      c.subscribeCrosshairMove((p: MouseEventParams) => {
+        hover.value =
+          p.time === undefined || p.point === undefined ? null : dateOf(p.time);
+      });
+      chart.current = c;
+      draw(true);
+    });
+    return () => {
+      gone = true;
+      chart.current?.remove();
+      chart.current = null;
+      series.current = [];
+    };
+  }, []);
+
+  useEffect(() => {
+    void load(true);
+  }, [id, range.value]);
+  useRefresh(() => load(false));
+
+  // a theme flip, a toggle: the same bars drawn again
+  useEffect(() => {
+    draw(false);
+  }, [theme.value, line.value, log.value, sma50.value, sma200.value]);
+
+  function draw(fit: boolean) {
+    const l = lib.current;
+    const c = chart.current;
+    const h = data.value;
+    if (l === null || c === null || h === null) return;
+    const k = colors();
+    c.applyOptions({
+      layout: {
+        background: { type: l.ColorType.Solid, color: k.card },
+        textColor: k.faint,
+        fontFamily: k.font,
+        fontSize: 11,
+        attributionLogo: false,
+        panes: { separatorColor: k.line, separatorHoverColor: k.line },
+      },
+      grid: {
+        vertLines: { visible: false },
+        horzLines: { color: alpha(k.line, 0.7) },
+      },
+      rightPriceScale: {
+        borderVisible: false,
+        scaleMargins: { top: 0.1, bottom: 0.04 },
+        mode: log.value
+          ? l.PriceScaleMode.Logarithmic
+          : l.PriceScaleMode.Normal,
+      },
+      timeScale: {
+        borderVisible: false,
+        fixLeftEdge: true,
+        fixRightEdge: true,
+        tickMarkFormatter: (time: unknown, type: number) =>
+          tick(
+            dateOf(time),
+            type === l.TickMarkType.Year
+              ? "year"
+              : type === l.TickMarkType.Month
+                ? "month"
+                : "day",
+          ),
+      },
+      crosshair: {
+        vertLine: { color: k.faint, labelBackgroundColor: k.faint },
+        horzLine: { color: k.faint, labelBackgroundColor: k.faint },
+      },
+    });
+    for (const s of series.current) c.removeSeries(s);
+    series.current = [];
+
+    const live = isLive(h);
+    const asCandles = !line.value && hasCandles(h.bars);
+    let price: ISeriesApi<SeriesType>;
+    if (asCandles) {
+      const data = candles(h.bars).map((b, i, all) =>
+        // the bar still trading is drawn hollow-light, as not final
+        live && i === all.length - 1
+          ? {
+              ...b,
+              color: alpha(b.close >= b.open ? k.up : k.down, 0.45),
+              wickColor: alpha(b.close >= b.open ? k.up : k.down, 0.45),
+            }
+          : b,
+      );
+      price = c.addSeries(l.CandlestickSeries, {
+        upColor: k.up,
+        downColor: k.down,
+        wickUpColor: k.up,
+        wickDownColor: k.down,
+        borderVisible: false,
+        priceLineColor: k.faint,
+      });
+      price.setData(data);
+    } else {
+      price = c.addSeries(l.LineSeries, {
+        color: k.fg,
+        lineWidth: 2,
+        priceLineColor: k.faint,
+        crosshairMarkerRadius: 4,
+      });
+      price.setData(closes(h.bars));
+    }
+    series.current.push(price);
+
+    const avg = (key: "sma50" | "sma200", color: string) => {
+      const s = c.addSeries(l.LineSeries, {
+        color,
+        lineWidth: 2,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+      });
+      s.setData(averages(h.bars, key));
+      series.current.push(s);
+    };
+    if (sma50.value) avg("sma50", k.sma50);
+    if (sma200.value) avg("sma200", k.sma200);
+
+    if (hasVolume(h.bars)) {
+      const v = c.addSeries(
+        l.HistogramSeries,
+        {
+          priceFormat: { type: "volume" },
+          priceLineVisible: false,
+          lastValueVisible: false,
+        },
+        1,
+      );
+      v.setData(
+        volumes(h.bars).map((b) => ({
+          time: b.time,
+          value: b.value,
+          color: alpha(b.up ? k.up : k.down, 0.5),
+        })),
+      );
+      series.current.push(v);
+      // a redraw makes the pane anew: the share holds where a height
+      // would reset
+      c.panes()[0]?.setStretchFactor(4);
+      c.panes()[1]?.setStretchFactor(1);
+    }
+    if (fit) c.timeScale().fitContent();
+  }
+
+  const h = data.value;
+  const legend = h === null ? null : legendOf(h, hover.value);
+  const candlesOk = h !== null && hasCandles(h.bars);
+  return (
+    <section class="card chart-card" aria-label="Chart">
+      <div class="chart-head">
+        <fieldset class="seg seg-small" aria-label="Range">
+          {RANGES.map((r) => (
+            <button
+              key={r}
+              type="button"
+              class={`seg-option${range.value === r ? " seg-on" : ""}`}
+              aria-pressed={range.value === r}
+              onClick={() => {
+                range.value = r;
+              }}
+            >
+              {r}
+            </button>
+          ))}
+        </fieldset>
+        <div class="chart-tools">
+          {candlesOk && (
+            <fieldset class="seg seg-small" aria-label="Style">
+              <button
+                type="button"
+                class={`seg-option${!line.value ? " seg-on" : ""}`}
+                aria-pressed={!line.value}
+                onClick={() => {
+                  line.value = false;
+                }}
+              >
+                Candles
+              </button>
+              <button
+                type="button"
+                class={`seg-option${line.value ? " seg-on" : ""}`}
+                aria-pressed={line.value}
+                onClick={() => {
+                  line.value = true;
+                }}
+              >
+                Line
+              </button>
+            </fieldset>
+          )}
+          <fieldset class="seg seg-small" aria-label="Lines">
+            <button
+              type="button"
+              class={`seg-option chart-toggle-50${sma50.value ? " seg-on" : ""}`}
+              aria-pressed={sma50.value}
+              onClick={() => {
+                sma50.value = !sma50.value;
+              }}
+            >
+              50
+            </button>
+            <button
+              type="button"
+              class={`seg-option chart-toggle-200${sma200.value ? " seg-on" : ""}`}
+              aria-pressed={sma200.value}
+              onClick={() => {
+                sma200.value = !sma200.value;
+              }}
+            >
+              200
+            </button>
+            <button
+              type="button"
+              class={`seg-option${log.value ? " seg-on" : ""}`}
+              aria-pressed={log.value}
+              onClick={() => {
+                log.value = !log.value;
+              }}
+            >
+              Log
+            </button>
+          </fieldset>
+        </div>
+      </div>
+      <div class="chart-body">
+        {/* a read that failed says so over the bars still shown */}
+        {error.value !== null && <p class="chart-note">{error.value}</p>}
+        {legend !== null && h !== null ? (
+          <LegendLine
+            legend={legend}
+            interval={h.interval}
+            range={shown.value}
+            show={{ sma50: sma50.value, sma200: sma200.value }}
+          />
+        ) : (
+          // its room held before the first answer, so the plot never jumps
+          <div class="chart-legend" aria-hidden="true" />
+        )}
+        <div class="chart-canvas" ref={box} />
+      </div>
+    </section>
+  );
+}

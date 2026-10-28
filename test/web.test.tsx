@@ -34,7 +34,23 @@ import {
   type Status,
   store,
 } from "../src/web/data/store.ts";
+import { Page } from "../src/web/ui/Page.tsx";
 import { SettingDelete } from "../src/web/ui/SettingDelete.tsx";
+import {
+  candles,
+  changeText,
+  DEFAULT_SETTINGS,
+  fromOf,
+  type History,
+  hasCandles,
+  hasVolume,
+  intervalOf,
+  legendOf,
+  readSettings,
+  tick,
+  volumes,
+} from "../src/web/views/Chart.model.ts";
+import { LegendLine } from "../src/web/views/Chart.tsx";
 import {
   choices,
   headline,
@@ -1147,5 +1163,153 @@ describe("the instrument page", () => {
     await s.loadInstruments();
     expect(await s.remove("US:NVDA")).toEqual({ ok: true });
     expect(s.instruments.value?.map((r) => r.id)).toEqual(["US:AMD"]);
+  });
+});
+
+const hbar = (
+  date: string,
+  close: number | null,
+  more: Record<string, unknown> = {},
+) => ({
+  date,
+  open: close,
+  high: close,
+  low: close,
+  close,
+  volume: 100,
+  final: true,
+  sma50: null,
+  sma200: null,
+  ...more,
+});
+
+describe("the chart model", () => {
+  test("a range asks from its first day, weekly past two years", () => {
+    expect(fromOf("1M", "2026-10-28")).toBe("2026-09-28");
+    expect(fromOf("YTD", "2026-10-28")).toBe("2026-01-01");
+    expect(fromOf("Max", "2026-10-28")).toBe("2016-10-28");
+    // a shorter month takes its last day, never rolls into the next
+    expect(fromOf("1M", "2026-03-31")).toBe("2026-02-28");
+    expect(fromOf("3M", "2026-05-31")).toBe("2026-02-28");
+    expect(fromOf("1Y", "2028-02-29")).toBe("2027-02-28");
+    expect(fromOf("1M", "2026-01-15")).toBe("2025-12-15");
+    expect(intervalOf("1Y")).toBe("1d");
+    expect(intervalOf("3Y")).toBe("1wk");
+    expect(intervalOf("Max")).toBe("1wk");
+  });
+
+  test("a bar with no open borrows the last close; a series is a line", () => {
+    const bars = [
+      hbar("2026-10-27", 100),
+      hbar("2026-10-28", 103, {
+        open: null,
+        high: null,
+        low: null,
+        final: false,
+      }),
+    ];
+    expect(candles(bars).at(-1)).toEqual({
+      time: "2026-10-28",
+      open: 100,
+      high: 103,
+      low: 100,
+      close: 103,
+    });
+    const series = [
+      hbar("2026-10-26", 5, {
+        open: null,
+        high: null,
+        low: null,
+        volume: null,
+      }),
+    ];
+    expect(hasCandles(series)).toBe(false);
+    expect(hasVolume(series)).toBe(false);
+    expect(
+      volumes([hbar("2026-10-27", 100), hbar("2026-10-28", 99)]).map(
+        (v) => v.up,
+      ),
+    ).toEqual([true, false]);
+  });
+
+  test("the legend reads the bar under the crosshair, else the latest", () => {
+    const h: History = {
+      id: "US:NVDA",
+      unit: "per_share",
+      interval: "1d",
+      session: { state: "open" },
+      bars: [
+        hbar("2026-10-27", 100, { sma50: 90, sma200: 80 }),
+        hbar("2026-10-28", 110, { final: false, sma50: null, sma200: null }),
+      ],
+    };
+    const latest = legendOf(h, null)!;
+    expect(latest).toMatchObject({
+      date: "2026-10-28",
+      live: true,
+      close: 110,
+      change: 10,
+    });
+    // a bar with no average yet keeps the last at rest
+    expect(latest.sma50).toBe(90);
+    const hovered = legendOf(h, "2026-10-27")!;
+    expect(hovered).toMatchObject({ live: false, change: 0, sma50: 90 });
+    expect(legendOf({ ...h, session: { state: "closed" } }, null)!.live).toBe(
+      false,
+    );
+    // a yield moves in points
+    const y = legendOf({ ...h, unit: "percent" }, null)!;
+    expect(changeText(y.change, y.points)).toBe("+10.00 pts");
+    expect(changeText(-0.001)).toBe("0.00%");
+  });
+
+  test("the axis says a month or a day with its month, never a bare day", () => {
+    expect(tick("2026-09-01", "month")).toBe("Sep");
+    expect(tick("2026-10-05", "day")).toBe("5 Oct");
+    expect(tick("2026-01-02", "year")).toBe("2026");
+  });
+
+  test("kept settings fall back field by field", () => {
+    expect(readSettings(null)).toEqual(DEFAULT_SETTINGS);
+    expect(readSettings("not json")).toEqual(DEFAULT_SETTINGS);
+    expect(
+      readSettings(JSON.stringify({ range: "6M", line: true, log: "yes" })),
+    ).toEqual({
+      ...DEFAULT_SETTINGS,
+      range: "6M",
+      line: true,
+    });
+    expect(readSettings(JSON.stringify({ range: "1D" })).range).toBe(
+      DEFAULT_SETTINGS.range,
+    );
+  });
+
+  test("the legend names each average beside its stroke", () => {
+    const h: History = {
+      id: "US:NVDA",
+      unit: "per_share",
+      interval: "1wk",
+      session: null,
+      bars: [hbar("2026-10-26", 110, { sma50: 90, sma200: 80 })],
+    };
+    const html = render(
+      <LegendLine
+        legend={legendOf(h, null)!}
+        interval="1wk"
+        range="5Y"
+        show={{ sma50: true, sma200: false }}
+      />,
+    );
+    expect(html).toContain("50-week average");
+    expect(html).not.toContain("200-week average");
+    expect(html).toContain("5Y");
+  });
+
+  test("a yield's returns are points; a page footer only where one is asked", () => {
+    expect(returnCell(-0.15, true).text).toBe("−0.15 pts");
+    expect(render(<Page title="Status" />)).not.toContain("page-foot");
+    const foot = render(<Page title="NVDA" foot="Charts by TradingView" />);
+    expect(foot).toContain("github.com/stefanprodan/1ctx-markets");
+    expect(foot).toContain("Charts by TradingView");
   });
 });

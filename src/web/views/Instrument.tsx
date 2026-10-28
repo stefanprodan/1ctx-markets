@@ -12,6 +12,7 @@ import { useMenu } from "../lib/menu.ts";
 import { useRefresh } from "../lib/refresh.ts";
 import { Page } from "../ui/Page.tsx";
 import { SettingDelete } from "../ui/SettingDelete.tsx";
+import { CHART_CREDIT, Chart } from "./Chart.tsx";
 import {
   type Choice,
   choices,
@@ -47,7 +48,10 @@ export function Head({ detail, now }: { detail: Detail; now: number }) {
       {r !== null && (
         <dl class="ins-returns">
           {RETURNS.map(({ key, label }) => {
-            const c = returnCell(r[key] as number | null);
+            const c = returnCell(
+              r[key] as number | null,
+              detail.instrument.unit === "percent",
+            );
             return (
               <div key={key} class="ins-return">
                 <dt>{label}</dt>
@@ -185,6 +189,16 @@ export function Instrument({ params }: { params: Params }) {
         (said.value?.bad ? said.value.text : null) ??
         (detail?.error ? UNREAD : null)
       }
+      foot={
+        detail !== null && (
+          <>
+            Charts by{" "}
+            <a href={CHART_CREDIT} target="_blank" rel="noopener">
+              TradingView
+            </a>
+          </>
+        )
+      }
       actions={
         detail !== null && (
           <RefetchMenu
@@ -201,6 +215,7 @@ export function Instrument({ params }: { params: Params }) {
       {detail !== null && (
         <>
           <Head detail={detail} now={Date.now()} />
+          <Chart id={id} />
           <SettingDelete
             title={`Delete ${symbol}`}
             line={deleteLine}

@@ -244,6 +244,53 @@
     color: var(--faint);
     cursor: default;
   }
+  /* a few options side by side in one frame, the picked one filled */
+  .seg {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    width: fit-content;
+    max-width: 100%;
+    margin: 0;
+    padding: 2px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+  }
+  .seg-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: var(--space-1) var(--space-3);
+    border: 0;
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--dim);
+    font-size: var(--text-ui);
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .seg-option:hover,
+  .seg-on {
+    color: var(--fg);
+  }
+  .seg-on {
+    background: var(--hover);
+  }
+  .seg-option:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+  .seg-on:disabled {
+    opacity: 1;
+  }
+  /* the small one in a card's head */
+  .seg-small .seg-option {
+    height: 24px;
+    padding: 0 var(--space-2);
+    color: var(--faint);
+    font-size: var(--text-small);
+  }
+
   /* a finger's 44px */
   @media (pointer: coarse) {
     .menu-item {

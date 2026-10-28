@@ -211,6 +211,11 @@ export const paths = {
           "benchmark",
           "A symbol to compare with. Adds `relative`: the 1- and 3-month return against it, in percentage points.",
         ),
+        query(
+          "ohlc",
+          "`true` adds each bar's open, high, low and volume, for a chart. Default: `false`.",
+          bool,
+        ),
       ],
       responses: reads({
         200: ok("The bars.", ref("History")),

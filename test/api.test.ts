@@ -270,6 +270,37 @@ describe("every operation", () => {
       200,
     );
     expect(h.relative.returns).toHaveLength(2);
+    // the tools' bars stay close only; a chart asks for its candles
+    expect(Object.keys(h.bars[0]).sort()).toEqual([
+      "close",
+      "date",
+      "final",
+      "sma200",
+      "sma50",
+    ]);
+    const ohlc = await check(
+      "GET",
+      "/history",
+      await t.call("/history?symbol=NVDA&ohlc=true"),
+      200,
+    );
+    expect(Object.keys(ohlc.bars.at(-2)).sort()).toEqual([
+      "close",
+      "date",
+      "final",
+      "high",
+      "low",
+      "open",
+      "sma200",
+      "sma50",
+      "volume",
+    ]);
+    await check(
+      "GET",
+      "/history",
+      await t.call("/history?symbol=NVDA&ohlc=1"),
+      400,
+    );
     await check("GET", "/history", await t.call("/history?interval=1h"), 400);
     await check(
       "GET",

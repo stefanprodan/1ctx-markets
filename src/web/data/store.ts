@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { batch, signal } from "@preact/signals";
+import type { History, Interval } from "../views/Chart.model.ts";
 import { ApiError, client, type Fetch, failure, says } from "./api.ts";
 
 export type SourceStatus = {
@@ -130,6 +131,7 @@ type ListedPage = { total: number; more: boolean; instruments: Listed[] };
 
 export const INSTRUMENTS_PATH = "/api/v1/admin/instruments";
 export const REFETCH_PATH = "/api/v1/admin/refetch";
+export const HISTORY_PATH = "/api/v1/history";
 const one = (id: string) => `${INSTRUMENTS_PATH}/${encodeURIComponent(id)}`;
 export const STATUS_PATH = "/api/v1/admin/status";
 export const SESSION_PATH = "/ui/session";
@@ -295,7 +297,14 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
     return { ok: true };
   }
 
+  // a chart's bars with their candles and volume; a read, as the page is
+  function history(id: string, from: string, interval: Interval) {
+    const q = new URLSearchParams({ symbol: id, from, interval, ohlc: "true" });
+    return call<History>(`${HISTORY_PATH}?${q}`);
+  }
+
   return {
+    history,
     detail,
     detailId,
     detailError,

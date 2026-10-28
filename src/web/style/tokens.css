@@ -37,6 +37,9 @@
     --failed: #f87171;
     --failed-line: rgba(248, 113, 113, 0.45);
     --failed-wash: rgba(248, 113, 113, 0.08);
+    /* the chart's two averages, checked for colour blindness on --card */
+    --chart-sma50: #3b82f6;
+    --chart-sma200: #c08018;
     /* the fill under the pointer and under the picked option */
     --hover: #2a2b2d;
     /* a word or a knob on a brand fill */
@@ -97,6 +100,8 @@
     --failed: #c62828;
     --failed-line: rgba(198, 40, 40, 0.4);
     --failed-wash: rgba(198, 40, 40, 0.06);
+    --chart-sma50: #1d5fd6;
+    --chart-sma200: #a06800;
     --hover: #e6e3da;
     --on-brand: #fbfaf7;
     --shadow-pop: 0 6px 20px rgba(19, 19, 20, 0.12);

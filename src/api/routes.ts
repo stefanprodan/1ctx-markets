@@ -141,15 +141,18 @@ function reads(m: Markets): Route[] {
       path: "/history",
       key: "read",
       handle: async (_req, url) => {
-        const args = parseHistory(
-          queryArgs(url, {
-            symbol: "text",
-            interval: "text",
-            from: "text",
-            to: "text",
-            benchmark: "text",
-          }),
-        );
+        const { ohlc, ...rest } = queryArgs(url, {
+          symbol: "text",
+          interval: "text",
+          from: "text",
+          to: "text",
+          benchmark: "text",
+          ohlc: "boolean",
+        });
+        // a chart's candles and volume; the tools' bars stay close only,
+        // so an agent's page holds more of them
+        const full = ohlc === true;
+        const args = parseHistory(rest);
         const read = await readHistory(m, args, null);
         if ("error" in read) {
           return failed({ input: read.input, ...read.error });
@@ -181,7 +184,15 @@ function reads(m: Markets): Route[] {
             ...(read.relative === null ? {} : { relative: read.relative }),
             bars: read.bars.map((b) => ({
               date: b.date,
+              ...(full
+                ? {
+                    open: price(b.open),
+                    high: price(b.high),
+                    low: price(b.low),
+                  }
+                : {}),
               close: price(b.close),
+              ...(full ? { volume: b.volume } : {}),
               final: b.final,
               sma50: (b.row?.sma50 as number | null | undefined) ?? null,
               sma200: (b.row?.sma200 as number | null | undefined) ?? null,

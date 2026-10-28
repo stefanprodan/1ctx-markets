@@ -184,16 +184,23 @@ export const schemas: Record<string, Schema> = {
   Quotes: object({ attribution: str, items: list(ref("QuoteItem")) }, [
     "items",
   ]),
-  Bar: object({
-    date: str,
-    close: nnum,
-    final: note(
-      bool,
-      "False until the source reports a later session; a weekly bar also waits for its week to end.",
-    ),
-    sma50: nnum,
-    sma200: nnum,
-  }),
+  Bar: object(
+    {
+      date: str,
+      open: note(nnum, "With `ohlc` only."),
+      high: note(nnum, "With `ohlc` only."),
+      low: note(nnum, "With `ohlc` only."),
+      close: nnum,
+      volume: note(nnum, "With `ohlc` only. Null where the source gives none."),
+      final: note(
+        bool,
+        "False until the source reports a later session; a weekly bar also waits for its week to end.",
+      ),
+      sma50: nnum,
+      sma200: nnum,
+    },
+    ["date", "close", "final", "sma50", "sma200"],
+  ),
   History: object(
     {
       id: str,

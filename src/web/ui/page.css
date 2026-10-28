@@ -73,4 +73,22 @@
     margin: 0;
     color: var(--faint);
   }
+
+  .page-foot {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: var(--space-2) var(--space-4);
+    margin-top: auto;
+    padding: var(--space-4) 0 var(--space-2);
+    border-top: 1px solid var(--line);
+    font-size: var(--text-small);
+    color: var(--faint);
+  }
+  .page-foot a {
+    color: var(--dim);
+  }
+  .page-foot a:hover {
+    color: var(--fg);
+  }
 }
