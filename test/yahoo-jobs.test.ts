@@ -137,6 +137,31 @@ describe("quotes", () => {
     expect(await tick(fresh())).toEqual(["CRYPTO"]);
   });
 
+  test("a restart asks again only the market whose pass shutdown cut", async () => {
+    const s = sim([US("U0"), CRYPTO("C0-USD")]);
+    // Monday 17:58 UTC: New York trades
+    const t = setup(utc("2026-10-26T17:58"), (url, now) => s.route(url, now));
+    await added(t.ctx, "U0");
+    await added(t.ctx, "C0-USD");
+    expect((await t.runTo(utc("2026-10-26T18:00"))).at(-1)!.quoted).toEqual([
+      "CRYPTO",
+      "US",
+    ]);
+    // shutdown cut the crypto pass, the US one ended
+    t.db
+      .query(
+        "update sync_runs set status = 'failed', error = ? where id = (select max(id) from sync_runs where job = 'quotes' and scope = 'CRYPTO')",
+      )
+      .run(STOPPED);
+    await t.clock.advance(MINUTE_MS);
+    const restarted = yahooJobs({
+      ctx: t.ctx,
+      quoteEveryMs: EVERY,
+      log: silent,
+    });
+    expect((await restarted.tick()).quoted).toEqual(["CRYPTO"]);
+  });
+
   test("only markets in session and crypto always, in batches of 20 each with _=", async () => {
     const listings: SimListing[] = [
       ...Array.from({ length: 21 }, (_, i) => US(`U${i}`)),

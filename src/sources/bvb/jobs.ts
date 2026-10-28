@@ -291,13 +291,16 @@ export function bvbJobs(options: BvbJobsOptions): BvbJobs {
   async function quoteOrCheck(): Promise<Omit<BvbTick, "bars">> {
     const now = clock.now();
     const slot = Math.floor(now / quoteEveryMs);
-    // the first tick after a start reads the last pass, so a restart or a
-    // deploy never adds a pass to a period that had one
-    if (lastSlot === null) {
-      const at = lastPassAt(db, SOURCE, [JOBS.quotes]);
-      lastSlot = at === null ? null : Math.floor(at / quoteEveryMs);
-    }
-    const periodTurn = slot !== lastSlot;
+    // the first tick after a start passes only when its period has no
+    // pass yet, so a restart or a deploy never adds one
+    const first = lastSlot === null;
+    const periodTurn =
+      slot !== lastSlot &&
+      !(
+        first &&
+        (lastPassAt(db, SOURCE, [JOBS.quotes], MARKET) ?? -1) >=
+          slot * quoteEveryMs
+      );
     lastSlot = slot;
     const instruments = tracked();
     if (instruments.length === 0) return { quoted: false, checked: false };

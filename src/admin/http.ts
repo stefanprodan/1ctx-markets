@@ -14,7 +14,8 @@ import type { TrackState } from "../operations/track.ts";
 import { instrumentsOf } from "../rules/format.ts";
 import { readRules, ruleInstruments } from "../rules/store.ts";
 import { sourceFile } from "../runtime/keys.ts";
-import { YAHOO } from "../sources/ids.ts";
+import { ATTRIBUTION } from "../sources/fred/sync.ts";
+import { FRED, YAHOO } from "../sources/ids.ts";
 import type { Backoff } from "../sources/source.ts";
 import { BACKFILL_JOB } from "../sources/yahoo/jobs.ts";
 import type { Db } from "../storage/db/index.ts";
@@ -366,10 +367,15 @@ export function adminInstruments(d: AdminDeps, url: URL): Response {
     )
     .all(query, after ?? "", limit + 1);
   const row = listRow(d.m, ruleInstruments(db), now);
+  const page = rows.slice(0, limit);
   return json({
+    // FRED's terms, wherever a page shows one of its values
+    ...(page.some((r) => r.source === FRED)
+      ? { attribution: ATTRIBUTION }
+      : {}),
     total,
     more: rows.length > limit,
-    instruments: rows.slice(0, limit).map(row),
+    instruments: page.map(row),
   });
 }
 
@@ -447,6 +453,7 @@ export async function adminInstrument(
   const item = rows[0]!.item;
   const failure = "error" in item ? (item as ErrorItem) : null;
   return json({
+    ...(stored.source === FRED ? { attribution: ATTRIBUTION } : {}),
     instrument: listRow(d.m, ruleInstruments(d.m.db), now)(stored),
     quote: failure === null ? item : null,
     error:

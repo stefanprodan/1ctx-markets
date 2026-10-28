@@ -4,7 +4,7 @@
 import type { Instrument } from "../../market/instruments.ts";
 import { addDays, localDate } from "../../market/zone.ts";
 import type { Db } from "../../storage/db/index.ts";
-import { lastStarted } from "../../storage/runs.ts";
+import { failedRun, lastStarted } from "../../storage/runs.ts";
 import { SOURCE } from "./client.ts";
 import { dueAt, type EventKey, METRIC_COLUMNS, type Section } from "./store.ts";
 
@@ -43,7 +43,8 @@ export function sectionState(
   const last = lastStarted(db, SOURCE, section, instrument);
   const stale: string[] = [];
   if (ok === null) stale.push(STALE_RESEARCH.none);
-  if (last?.status === "failed") stale.push(STALE_RESEARCH.failed);
+  // a run cut by shutdown is no failure: the next run settles it
+  if (failedRun(last)) stale.push(STALE_RESEARCH.failed);
   else if (ok !== null && ok.startedAt < dueAt(now)) {
     stale.push(STALE_RESEARCH.pending);
   }

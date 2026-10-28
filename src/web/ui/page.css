@@ -85,6 +85,14 @@
     font-size: var(--text-small);
     color: var(--faint);
   }
+  .page-foot-end {
+    text-align: right;
+  }
+  /* a notice a source's terms ask for, on its own line under the credit */
+  .page-foot-note {
+    display: block;
+    margin-top: var(--space-1);
+  }
   .page-foot a {
     color: var(--dim);
   }

@@ -109,6 +109,12 @@ signed in with the admin key alone.
   pages' data, so the next sign-in counts as an arrival.
 - **A later load supersedes one in flight**, the same id included, so
   a refresh tick never lands over the reload after a refetch.
+- **A sign-in or sign-out starts a session anew** (`session` in the
+  store): an answer from before it never lands, and its 401 never signs
+  the new one out. A delete makes a list in flight stale, and a refetch
+  reloads its instrument only while that page is still open.
+- **`useRefresh` sets its timer once** and calls the latest load, so a
+  redraw (a crosshair moving) never pushes the refresh back.
 - **1ctx's look, copied, not shared:** `style/tokens.css`,
   `style/base.css`, the fonts, the rail, strip and shell styles, the
   logo and icons, trimmed to what these pages use. The rail is the
@@ -228,7 +234,8 @@ signed in with the admin key alone.
   in place of the logo; the logo sat on the volume. The NOTICE text is
   in `Chart.tsx`, the package shipping none. The footer shows on the
   instrument page only, with "1ctx Markets" (the repository) and the
-  version on its left.
+  version on its left; a FRED series adds FRED's notice under the
+  credit, as its terms ask.
 
 ## Tests
 

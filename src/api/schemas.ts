@@ -573,13 +573,24 @@ export const schemas: Record<string, Schema> = {
     change_percent: nnum,
     fetched_at: nstr,
   }),
-  AdminInstruments: object({
-    total: note(int, "Every match, across all pages."),
-    more: note(bool, "Another page follows."),
-    instruments: list(ref("AdminInstrumentRow")),
-  }),
+  AdminInstruments: object(
+    {
+      attribution: note(
+        str,
+        "A source's required notice, when the page holds one of its values.",
+      ),
+      total: note(int, "Every match, across all pages."),
+      more: note(bool, "Another page follows."),
+      instruments: list(ref("AdminInstrumentRow")),
+    },
+    ["total", "more", "instruments"],
+  ),
   AdminInstrument: object(
     {
+      attribution: note(
+        str,
+        "A source's required notice, when the series is one of its.",
+      ),
       instrument: ref("AdminInstrumentRow"),
       quote: note(
         nullable(
@@ -609,7 +620,7 @@ export const schemas: Record<string, Schema> = {
               ),
               returns: note(
                 nullable(freeForm),
-                "Returns in percent over `1w`, `1m`, `3m` and `ytd`, to `to`; `live` when today's price counts.",
+                "Returns over `1w`, `1m`, `3m` and `ytd`, to `to`: in percent, or in points for a series whose `unit` is percent (a yield); `live` when today's price counts.",
               ),
               session: note(
                 nullable(freeForm),

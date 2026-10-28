@@ -51,7 +51,7 @@ export function Page({
             </a>
             {version !== undefined && ` ${version}`}
           </span>
-          <span>{foot}</span>
+          <span class="page-foot-end">{foot}</span>
         </footer>
       )}
     </div>

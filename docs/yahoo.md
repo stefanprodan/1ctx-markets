@@ -219,11 +219,11 @@ Phrases from Yahoo (`docs/sources.md`, Refusals):
   in memory that a restart clears: refused whole histories (`refused`
   in `sync.ts`), failed backfills (`backfillMissed`) and each market's
   check turn (`checkTurn`, both in `jobs.ts`). The quote period last
-  passed (`lastSlot`) is read from the runs on the first tick
-  (`lastPassAt()`: a market's pass, never an instrument's read, nor one
-  cut by shutdown), so a restart or a deploy never repeats a quote pass
-  within its period; a first run, or a stop past the period, passes at
-  once.
+  passed is checked per market on the first tick (`lastPassAt()`: that
+  market's pass, never an instrument's read, nor one cut by shutdown),
+  so a restart or a deploy never repeats a market's quote pass within
+  its period, while a market whose pass shutdown cut, a first run, or a
+  stop past the period passes at once.
 
 | Job | Does |
 | --- | --- |

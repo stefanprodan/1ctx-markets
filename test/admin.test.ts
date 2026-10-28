@@ -1123,6 +1123,11 @@ describe("the instrument list", () => {
       fetched_at: null,
     });
     expect(lastReadAt(w.db, "US:AAA")).toBeNull();
+    // FRED's notice wherever a page holds one of its series, never else
+    expect(body.attribution).toContain("FRED");
+    expect((await list(w.m, "?query=US:")).body).not.toHaveProperty(
+      "attribution",
+    );
   });
 
   test("one instrument answers its row and the tools' quote, as a read", async () => {
@@ -1171,6 +1176,7 @@ describe("the instrument list", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as any;
     expect(body.instrument.id).toBe("FRED:DGS10");
+    expect(body.attribution).toContain("FRED");
     expect(body.quote).toBeNull();
     expect(body.error).toMatchObject({ error: "source_error" });
   });

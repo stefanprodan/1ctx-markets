@@ -13,8 +13,9 @@ export const RUNS_KEPT_MS = 30 * DAY_MS;
 export const INTERRUPTED = "interrupted";
 
 // a failure that says something about the source: never a shutdown's cut
-export const failedRun = (r: Pick<Run, "status" | "error"> | null): boolean =>
-  r?.status === "failed" && r.error !== STOPPED;
+export const failedRun = <R extends Pick<Run, "status" | "error">>(
+  r: R | null | undefined,
+): r is R => r?.status === "failed" && r.error !== STOPPED;
 
 export type Run = {
   id: number;
@@ -132,22 +133,22 @@ export function lastRun(
   );
 }
 
-// when a market-wide pass of these jobs last started (a market's scope,
-// never an instrument's read), one cut by shutdown aside: a restart
-// asks again only when its period holds no pass yet
+// when a market's pass of these jobs last started, one cut by shutdown
+// aside: a restart asks a market again only when its period holds no
+// pass of it yet
 export function lastPassAt(
   db: Db,
   source: string,
   jobs: readonly string[],
+  market: string,
 ): number | null {
   const row = db
-    .query<{ at: number | null }, [string, string, string]>(
+    .query<{ at: number | null }, [string, string, string, string]>(
       `select max(started_at) as at from sync_runs
        where source = ?1 and job in (select value from json_each(?2))
-         and instr(coalesce(scope, ''), ':') = 0
-         and not (status = 'failed' and error is ?3)`,
+         and scope = ?3 and not (status = 'failed' and error is ?4)`,
     )
-    .get(source, JSON.stringify(jobs), STOPPED);
+    .get(source, JSON.stringify(jobs), market, STOPPED);
   return row?.at ?? null;
 }
 

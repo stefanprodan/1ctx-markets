@@ -29,6 +29,7 @@ import type { Detail } from "../src/web/data/store.ts";
 import {
   INSTRUMENTS_PATH,
   type Listed,
+  REFETCH_PATH,
   SESSION_PATH,
   STATUS_PATH,
   type Status,
@@ -1339,5 +1340,108 @@ describe("the chart model", () => {
     const foot = render(<Page title="NVDA" foot="Charts by TradingView" />);
     expect(foot).toContain("github.com/stefanprodan/1ctx-markets");
     expect(foot).toContain("Charts by TradingView");
+  });
+});
+
+describe("the store across sessions and pages", () => {
+  // answers held until released, by path
+  function held() {
+    const waits = new Map<string, ((r: Response) => void)[]>();
+    const fetch: Fetch = (path, init) =>
+      new Promise<Response>((resolve) => {
+        const key = `${init?.method ?? "GET"} ${path}`;
+        waits.set(key, [...(waits.get(key) ?? []), resolve]);
+      });
+    const answer = async (key: string, res: Response) => {
+      while (!(waits.get(key)?.length ?? 0)) await Bun.sleep(0);
+      waits.get(key)!.shift()!(res);
+      await Bun.sleep(0);
+    };
+    return { fetch, answer };
+  }
+
+  test("a status answer from before a sign-out never signs back in", async () => {
+    const h = held();
+    const s = store(h.fetch);
+    const one = `GET ${INSTRUMENTS_PATH}/US%3AA`;
+    const status = s.loadStatus();
+    const detail = s.loadInstrument("US:A");
+    await h.answer(
+      one,
+      Response.json({ error: "unauthorized" }, { status: 401 }),
+    );
+    await detail;
+    expect(s.signedIn.value).toBe(false);
+    await h.answer(`GET ${STATUS_PATH}`, Response.json(STATUS));
+    await status;
+    expect(s.signedIn.value).toBe(false);
+    expect(s.status.value).toBeNull();
+  });
+
+  test("an old call's 401 never signs out a newer sign-in", async () => {
+    const h = held();
+    const s = store(h.fetch);
+    const one = `GET ${INSTRUMENTS_PATH}/US%3AA`;
+    const detail = s.loadInstrument("US:A");
+    const signing = s.signIn("right");
+    await h.answer(`POST ${SESSION_PATH}`, new Response(null, { status: 204 }));
+    await h.answer(`GET ${STATUS_PATH}`, Response.json(STATUS));
+    await signing;
+    await h.answer(
+      one,
+      Response.json({ error: "unauthorized" }, { status: 401 }),
+    );
+    await detail;
+    expect(s.signedIn.value).toBe(true);
+  });
+
+  test("a list read before a delete never brings the row back", async () => {
+    const h = held();
+    const s = store(h.fetch);
+    const list = `GET ${INSTRUMENTS_PATH}?limit=200`;
+    const first = s.loadInstruments();
+    await h.answer(
+      list,
+      Response.json({
+        total: 2,
+        more: false,
+        instruments: [listed("US:A"), listed("US:B")],
+      }),
+    );
+    await first;
+    const refreshing = s.loadInstruments();
+    const removing = s.remove("US:A");
+    await h.answer(
+      `DELETE ${INSTRUMENTS_PATH}/US%3AA`,
+      Response.json({ deleted: "US:A", rows: {} }),
+    );
+    expect(await removing).toEqual({ ok: true });
+    // the refresh asked before the delete answers with the row
+    await h.answer(
+      list,
+      Response.json({
+        total: 2,
+        more: false,
+        instruments: [listed("US:A"), listed("US:B")],
+      }),
+    );
+    await refreshing;
+    expect(s.instruments.value?.map((r) => r.id)).toEqual(["US:B"]);
+  });
+
+  test("a refetch that ends on another page never takes that page over", async () => {
+    const h = held();
+    const s = store(h.fetch);
+    const fetching = s.refetch("US:A", ["quotes"], []);
+    const b = s.loadInstrument("US:B");
+    await h.answer(
+      `GET ${INSTRUMENTS_PATH}/US%3AB`,
+      Response.json(detail({ id: "US:B" })),
+    );
+    await b;
+    await h.answer(`POST ${REFETCH_PATH}`, Response.json({ results: [] }));
+    await fetching;
+    expect(s.detailId.value).toBe("US:B");
+    expect(s.detail.value?.quote?.id).toBe("US:B");
   });
 });

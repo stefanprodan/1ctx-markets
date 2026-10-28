@@ -6,7 +6,7 @@ import { checkStored, type Instrument } from "../../market/instruments.ts";
 import { type Clock, DAY_MS, MINUTE_MS } from "../../runtime/clock.ts";
 import { exclusive } from "../../runtime/lock.ts";
 import type { Db } from "../../storage/db/index.ts";
-import { lastStarted } from "../../storage/runs.ts";
+import { failedRun, lastStarted } from "../../storage/runs.ts";
 import type { Writer } from "../../storage/writer.ts";
 import { WriterClosed } from "../../storage/writer.ts";
 import {
@@ -378,7 +378,8 @@ export function newsState(db: Db, instrument: string, now: number): NewsState {
   const last = lastStarted(db, SOURCE, JOB, instrument);
   const stale: string[] = [];
   if (ok === null) stale.push(STALE_NEWS.none);
-  if (last?.status === "failed") stale.push(STALE_NEWS.failed);
+  // a run cut by shutdown is no failure: the next run settles it
+  if (failedRun(last)) stale.push(STALE_NEWS.failed);
   else if (ok !== null && now - ok.startedAt >= 2 * EVERY_MS) {
     stale.push(STALE_NEWS.pending);
   }

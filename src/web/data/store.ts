@@ -83,6 +83,8 @@ export type Returns = {
 };
 
 export type Detail = {
+  // FRED's notice, which its terms ask wherever its values show
+  attribution?: string;
   instrument: Listed;
   // null when the read failed; error says why
   error: { error: string; message: string } | null;
@@ -156,7 +158,20 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
   const detailId = signal<string | null>(null);
   const detailError = signal<string | null>(null);
 
-  const signedOut = () =>
+  // a sign-in or sign-out starts a session anew: a call from before it
+  // neither lands its answer nor signs the new one out
+  let session = 0;
+  // a later status load supersedes one in flight, and a superseded one
+  // answers with the latest's outcome, so a sign-in never reads a stale
+  // result
+  let latest = 0;
+  let current: Promise<boolean> = Promise.resolve(false);
+
+  const signedOut = () => {
+    session++;
+    latest++;
+    current = Promise.resolve(false);
+    loading.value = false;
     batch(() => {
       signedIn.value = false;
       status.value = null;
@@ -168,14 +183,28 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
       detailId.value = null;
       detailError.value = null;
     });
-  const call = client(fetchFn, signedOut);
-  // a superseded load's 401 must not sign out a newer sign-in, so the
-  // status load signs out itself, only while it is the latest
+  };
   const quiet = client(fetchFn, () => {});
-  // a later load supersedes one in flight, and a superseded one answers
-  // with the latest's outcome, so a sign-in never reads a stale result
-  let latest = 0;
-  let current: Promise<boolean> = Promise.resolve(false);
+  // a 401 signs out only the session the call was made in
+  async function call<T>(
+    path: string,
+    method?: string,
+    body?: unknown,
+  ): Promise<T> {
+    const mine = session;
+    try {
+      return await quiet<T>(path, method, body);
+    } catch (error) {
+      if (
+        error instanceof ApiError &&
+        error.status === 401 &&
+        mine === session
+      ) {
+        signedOut();
+      }
+      throw error;
+    }
+  }
 
   function loadStatus(): Promise<boolean> {
     current = load(++latest);
@@ -207,6 +236,9 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
   // every stored instrument, a page at a time; a list is no read. A load
   // already going answers for a second ask, so a tick never stacks.
   let listing: Promise<void> | null = null;
+  // a delete or a new session makes a list in flight stale: its answer
+  // never lands, and the next ask starts a list of its own
+  let listed = 0;
   function loadInstruments(): Promise<void> {
     listing ??= listAll().finally(() => {
       listing = null;
@@ -214,6 +246,9 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
     return listing;
   }
   async function listAll(): Promise<void> {
+    const mine = ++listed;
+    const at = session;
+    const stale = () => mine !== listed || at !== session;
     try {
       const all: Listed[] = [];
       let after = "";
@@ -225,23 +260,25 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
         if (!page.more || page.instruments.length === 0) break;
         after = page.instruments.at(-1)!.id;
       }
+      if (stale()) return;
       batch(() => {
         instruments.value = all;
         instrumentsError.value = null;
       });
     } catch (error) {
+      if (stale()) return;
       if (!(error instanceof ApiError && error.status === 401)) {
         instrumentsError.value = says(error);
       }
     }
   }
 
-  // a later id supersedes one in flight; the same id reloads in place
   // a later load supersedes one in flight, even of the same id, so a
   // refresh tick never lands over the reload after a refetch
   let instrumentLoad = 0;
   async function loadInstrument(id: string): Promise<void> {
     const mine = ++instrumentLoad;
+    const at = session;
     if (detailId.value !== id) {
       batch(() => {
         detailId.value = id;
@@ -251,13 +288,13 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
     }
     try {
       const d = await call<Detail>(one(id));
-      if (mine !== instrumentLoad) return;
+      if (mine !== instrumentLoad || at !== session) return;
       batch(() => {
         detail.value = d;
         detailError.value = null;
       });
     } catch (error) {
-      if (mine !== instrumentLoad) return;
+      if (mine !== instrumentLoad || at !== session) return;
       if (!(error instanceof ApiError && error.status === 401)) {
         detailError.value = says(error);
       }
@@ -274,8 +311,8 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
       fetch: parts,
       ...(parts.includes("research") ? { sections } : {}),
     });
-    // what changed shows at once
-    void loadInstrument(id);
+    // what changed shows at once, if its page is still the one open
+    if (detailId.value === id) void loadInstrument(id);
     return done.results;
   }
 
@@ -295,6 +332,9 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
       }
       return { ok: false, error: says(error) };
     }
+    // a list still loading was read before the delete
+    listed++;
+    listing = null;
     batch(() => {
       instruments.value = instruments.value?.filter((r) => r.id !== id) ?? null;
       if (detailId.value === id) detail.value = null;
@@ -346,6 +386,8 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
       if (!res.ok) {
         throw failure(res.status, await res.json().catch(() => null));
       }
+      // a new session: an old call's late 401 never signs it out
+      session++;
       // the cookie set but the status refused, so the form says why; a
       // 401 here is a cookie the browser dropped, never a session ended
       if (!(await loadStatus())) {
@@ -354,10 +396,7 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
     },
     async signOut(): Promise<void> {
       await call(SESSION_PATH, "DELETE");
-      // a status load still in flight must not sign back in
-      latest++;
-      current = Promise.resolve(false);
-      loading.value = false;
+      // supersedes any load in flight, so none signs back in
       signedOut();
     },
   };

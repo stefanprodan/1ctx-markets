@@ -138,8 +138,7 @@ export function barsStale(
   // the market's pass, or this instrument's own refetch in it
   if (
     failed(db, instrument, JOBS.bars) ||
-    lastRun(db, instrument.source, JOBS.bars, instrument.id)?.status ===
-      "failed"
+    failedRun(lastRun(db, instrument.source, JOBS.bars, instrument.id))
   ) {
     reasons.push(STALE.barsFailed);
   }

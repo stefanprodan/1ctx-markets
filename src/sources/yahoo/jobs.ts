@@ -107,17 +107,19 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
     markets: Map<string, Instrument[]>,
     now: number,
     quotePass: boolean,
+    passed: (market: string) => boolean = () => false,
   ): Work[] {
     const work: Work[] = [];
     for (const [market, instruments] of markets) {
+      const turn = quotePass && !passed(market);
       const s = readSession(db, market);
       if (isQuoted(market, s, now)) {
-        if (quotePass) work.push({ market, job: JOBS.quotes, instruments });
+        if (turn) work.push({ market, job: JOBS.quotes, instruments });
         continue;
       }
       // a market with no stored session yet is asked on the period
       if (s === null) {
-        if (quotePass) {
+        if (turn) {
           const one = nextOne(market, instruments);
           work.push({ market, job: JOBS.check, instruments: one });
         }
@@ -311,15 +313,16 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
   async function quoteTick(): Promise<Omit<TickReport, "bars">> {
     const now = clock.now();
     const slot = Math.floor(now / quoteEveryMs);
-    // the first tick after a start reads the last pass, so a restart or a
-    // deploy never adds a pass to a period that had one
-    if (lastSlot === null) {
-      const at = lastPassAt(db, SOURCE, [JOBS.quotes, JOBS.check]);
-      lastSlot = at === null ? null : Math.floor(at / quoteEveryMs);
-    }
     const quotePass = slot !== lastSlot;
+    // the first tick after a start passes only the markets its period has
+    // no pass of yet, so a restart or a deploy never adds one
+    const first = lastSlot === null;
     lastSlot = slot;
-    const work = plan(tracked(), now, quotePass);
+    const passed = (market: string) =>
+      first &&
+      (lastPassAt(db, SOURCE, [JOBS.quotes, JOBS.check], market) ?? -1) >=
+        slot * quoteEveryMs;
+    const work = plan(tracked(), now, quotePass, passed);
     if (work.length > 0) await sparkPass(work);
     return {
       quoted: work.filter((w) => w.job === JOBS.quotes).map((w) => w.market),

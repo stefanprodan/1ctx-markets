@@ -204,6 +204,9 @@ export function Instrument({ params }: { params: Params }) {
             <a href={CHART_CREDIT} target="_blank" rel="noopener">
               TradingView
             </a>
+            {detail.attribution && (
+              <span class="page-foot-note">{detail.attribution}</span>
+            )}
           </>
         )
       }
