@@ -72,8 +72,7 @@ const sameValues = (a: Stored, b: Bar) =>
   a.close === b.close &&
   a.volume === volumeOf(b.volume);
 
-// corrections replace stored values; a final row stays final; pointCloses:
-// the dates whose close is their session's last 5-minute close
+// corrections replace stored values; a final row stays final
 export function upsertBars(
   db: Db,
   instrument: string,

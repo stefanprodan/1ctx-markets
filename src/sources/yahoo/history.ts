@@ -101,9 +101,7 @@ const isCurrency = (type: string) => type.toUpperCase() === "CURRENCY";
 
 type Settled = { bars: Bar[]; pointCloses: Set<string> };
 
-// Yahoo closes a currency pair's day at about its open, so a final day
-// closes at its session's last 5-minute close, else at the next day's
-// open; untrusted, after a rescale, stored and point closes are old-scale
+// Yahoo's FX daily close is about its open; untrusted: old-scale closes
 export function settle(
   db: Db,
   instrument: Pick<Instrument, "id" | "type">,
@@ -154,6 +152,37 @@ export function settle(
     return next === null ? b : { ...b, close: next };
   });
   return { bars: out, pointCloses };
+}
+
+// a window's first open can revise the stored day before it
+function settleBefore(
+  db: Db,
+  instrument: Pick<Instrument, "id" | "type">,
+  bars: readonly Bar[],
+): Bar | null {
+  const first = bars[0];
+  if (!isCurrency(instrument.type) || first?.open == null) return null;
+  const stored = db
+    .query<
+      Omit<Bar, "final"> & { final: number; pointClose: number },
+      [string, string]
+    >(
+      `select date, open, high, low, close, volume, final,
+         point_close as pointClose
+       from bars where instrument = ? and interval = '1d' and date < ?
+       order by date desc limit 1`,
+    )
+    .get(instrument.id, first.date);
+  if (
+    stored === null ||
+    stored.final !== 1 ||
+    stored.pointClose === 1 ||
+    stored.close === first.open
+  ) {
+    return null;
+  }
+  const { pointClose, ...bar } = stored;
+  return { ...bar, close: first.open, final: true };
 }
 
 function add(
@@ -450,11 +479,12 @@ function storeBars(
       rescaled,
     };
   }
+  const before = settleBefore(db, instrument, bars);
   const written = upsertBars(
     db,
     instrument.id,
     "1d",
-    bars,
+    before === null ? bars : [before, ...bars],
     answer.fetchedAt,
     pointCloses,
   );
@@ -464,8 +494,9 @@ function storeBars(
     const keep = new Set(bars.map((b) => b.date));
     if (owed !== null) keep.add(owed);
     deleted = deleteDailyBars(db, instrument.id, span[0]!, span.at(-1)!, keep);
-    rebuildWeeks(db, instrument.id, latest, now, span[0]!);
   }
+  const from = earliest(before?.date ?? null, span[0] ?? null);
+  if (from !== null) rebuildWeeks(db, instrument.id, latest, now, from);
   return {
     rows: written.rows,
     changedFrom: earliest(deleted, written.changedFrom),

@@ -3,9 +3,7 @@
 
 import type { Migration } from "../migration.ts";
 
-// the session leads the key, so replacing and pruning one read it;
-// point_close marks a currency pair's close taken from its session's last
-// 5-minute close, kept after the points are pruned
+// the session leads the key, so replacing and pruning one read it
 export const m0015: Migration = {
   id: "0015-intraday",
   up(db) {

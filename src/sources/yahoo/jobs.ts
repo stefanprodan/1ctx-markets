@@ -144,8 +144,7 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
           continue;
         }
       }
-      // closed before this process ran: one check for every instrument
-      // without the last session's 5-minute closes, which its answer holds
+      // closed before the start, so no pass of ours stored its closes
       if (!filled.has(market)) {
         filled.add(market);
         const day = sessionDate(s);

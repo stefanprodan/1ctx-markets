@@ -1013,12 +1013,21 @@ describe("a currency pair's daily close", () => {
   };
   const YAHOO_FRIDAY = 1.1221455335617065;
 
-  // weeks are rebuilt on each write, so their fetch time moves
-  const rows = (db: Db) =>
-    db
-      .query(`select * from bars where instrument = ? order by interval, date`)
-      .all(EUR)
-      .map((r: any) => (r.interval === "1wk" ? { ...r, fetched_at: 0 } : r));
+  // any write rebuilds weeks with a new fetch time, so weeks compare by value
+  const rows = (db: Db) => ({
+    days: db
+      .query(
+        `select * from bars where instrument = ? and interval = '1d'
+         order by date`,
+      )
+      .all(EUR),
+    weeks: db
+      .query(
+        `select date, open, high, low, close, volume, final, point_close
+         from bars where instrument = ? and interval = '1wk' order by date`,
+      )
+      .all(EUR),
+  });
   const close = (db: Db, date: string) =>
     db
       .query<{ close: number; point: number }, [string, string]>(
@@ -1027,8 +1036,7 @@ describe("a currency pair's daily close", () => {
       )
       .get(EUR, date);
 
-  // added on Sunday, when Friday's bar is still the session's, and
-  // quoted on Sunday evening, which stores Friday's points when points
+  // added on Sunday in Friday's session; Sunday evening's quote has its points
   async function friday(points: boolean) {
     const answers = new Map<string, Recorded>([
       [SUNDAY, listed(await recorded(SUNDAY))],
@@ -1113,6 +1121,34 @@ describe("a currency pair's daily close", () => {
     const written = await refetch(ctx, t.instrument);
     expect(written.changedFrom).toBe("2026-10-23");
     expect(close(t.db, "2026-10-23")!.close).toBe(OPENS["2026-10-26"]);
+  });
+
+  test("a window whose first open is revised settles the stored day before it", async () => {
+    const revised = clone(await recorded(MONDAY));
+    revised.body.chart.result[0].indicators.quote[0].open[0] = 1.13;
+    const refetched = async (t: Awaited<ReturnType<typeof friday>>) => {
+      const f = fakeFetch(() => revised);
+      const ctx = {
+        ...t.ctx,
+        yahoo: yahoo({ clock: t.clock, fetch: f.fetch }),
+      };
+      return refetch(ctx, t.instrument);
+    };
+    const t = await friday(false);
+    expect(close(t.db, "2026-10-19")!.close).toBe(OPENS["2026-10-20"]);
+    const written = await refetched(t);
+    expect(written.changedFrom).toBe("2026-10-19");
+    expect(close(t.db, "2026-10-19")).toEqual({ close: 1.13, point: 0 });
+    // a close kept from points stays
+    const kept = await friday(false);
+    kept.db
+      .query(
+        `update bars set close = 1.2, point_close = 1 where instrument = ?
+         and interval = '1d' and date = '2026-10-19'`,
+      )
+      .run(EUR);
+    await refetched(kept);
+    expect(close(kept.db, "2026-10-19")).toEqual({ close: 1.2, point: 1 });
   });
 
   test("a close from points outlives them; an unchanged answer changes nothing", async () => {
