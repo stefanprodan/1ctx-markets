@@ -101,10 +101,11 @@ export function App({ store = markets }: { store?: Store }) {
     if (alias !== undefined) navigate(alias, true);
     else if (route === null) navigate(HOME, true);
   }, [here, route]);
-  // a page's load runs on arrival; the first page's is the check above
+  // a page's load runs on arrival; the check above is the status page's
   useEffect(() => {
     if (signedIn !== true || route === null) return;
-    if (arrived.current !== null && arrived.current !== here) {
+    const first = arrived.current === null;
+    if (arrived.current !== here && !(first && route.path === "/status")) {
       void route.load?.();
     }
     arrived.current = here;

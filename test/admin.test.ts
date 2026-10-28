@@ -55,7 +55,7 @@ import { fakeClock } from "./helpers/clock.ts";
 import { drive, pacedOf } from "./helpers/drive.ts";
 import { FINNHUB_KEY, finnhubAnswer } from "./helpers/finnhub.ts";
 import { gate, NOW, sources } from "./helpers/sources.ts";
-import { bar, instrument, world } from "./helpers/world.ts";
+import { bar, instrument, quote, world } from "./helpers/world.ts";
 import type { Recorded } from "./helpers/yahoo.ts";
 
 const tempDir = () => mkdtempSync(join(tmpdir(), "markets-admin-"));
@@ -1090,6 +1090,37 @@ describe("the instrument list", () => {
     });
     // a listing is no read
     expect(lastReadAt(w.db, "US:NONE")).toBeNull();
+  });
+
+  test("gives each its stored price without fetching or reading it", async () => {
+    const w = world();
+    instrument(w.db, "US:AAA");
+    instrument(w.db, "FRED:DGS10");
+    instrument(w.db, "US:NONE");
+    quote(w.db, "US:AAA", 110, 100);
+    // a series has no quote: its newest daily close stands in
+    bar(w.db, "FRED:DGS10", "1d", "2026-10-23", 4.9, true);
+    bar(w.db, "FRED:DGS10", "1d", "2026-10-26", 5, true);
+    const { body } = await list(w.m);
+    const by = Object.fromEntries(body.instruments.map((i: any) => [i.id, i]));
+    expect(by["US:AAA"]).toMatchObject({
+      price: 110,
+      change: 10,
+      change_percent: 10,
+      fetched_at: expect.any(String),
+    });
+    expect(by["FRED:DGS10"]).toMatchObject({
+      price: 5,
+      change: null,
+      change_percent: null,
+      fetched_at: expect.any(String),
+    });
+    expect(by["US:NONE"]).toMatchObject({
+      price: null,
+      change: null,
+      fetched_at: null,
+    });
+    expect(lastReadAt(w.db, "US:AAA")).toBeNull();
   });
 
   test("parses strictly", async () => {

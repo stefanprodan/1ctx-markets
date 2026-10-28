@@ -3,6 +3,7 @@
 
 import type { ComponentChildren } from "preact";
 import { useId } from "preact/hooks";
+import { Icon } from "../lib/icons.tsx";
 import "./rows.css";
 
 export function Rows({ children }: { children: ComponentChildren }) {
@@ -99,6 +100,70 @@ export function RowsLine({
       >
         {children}
       </Tag>
+    </div>
+  );
+}
+
+export function RowsGo({
+  href,
+  end,
+  under,
+  off,
+  side,
+  compact,
+  children,
+}: {
+  href: string;
+  end?: ComponentChildren;
+  under?: ComponentChildren;
+  off?: boolean;
+  // on a phone the meta stays beside the title, as the feed's time
+  // does, and the arrow waits for the width where the row fits
+  side?: boolean;
+  // as tall as its lines, for a long list of one or two short lines
+  compact?: boolean;
+  children: ComponentChildren;
+}) {
+  // a row with a button at its end leaves the arrow out, or it would
+  // sit between the words and the button
+  const link = (line: boolean) => (
+    <a
+      class={`${line ? "rows-line rows-go" : "rows-go rows-go-part"}${
+        side ? " rows-go-side" : ""
+      }${compact ? " rows-go-compact" : ""}`}
+      href={href}
+    >
+      {children}
+      {line && <Icon name="chevron-right" size={14} class="rows-go-arrow" />}
+    </a>
+  );
+  return (
+    <div class={`rows-item${off ? " rows-item-off" : ""}`}>
+      {end === undefined ? (
+        link(true)
+      ) : (
+        <div class="rows-line rows-line-end">
+          {link(false)}
+          {end}
+        </div>
+      )}
+      {under}
+    </div>
+  );
+}
+
+export function RowsMore({
+  onClick,
+  children,
+}: {
+  onClick: () => void;
+  children: ComponentChildren;
+}) {
+  return (
+    <div class="rows-item rows-more">
+      <button type="button" class="btn-text" onClick={onClick}>
+        {children}
+      </button>
     </div>
   );
 }

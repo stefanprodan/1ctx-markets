@@ -562,6 +562,13 @@ export const schemas: Record<string, Schema> = {
         ),
         read_at: nstr,
         read_until: nstr,
+        price: note(
+          nnum,
+          "The stored price, or a series' latest value. Listing fetches nothing.",
+        ),
+        change: nnum,
+        change_percent: nnum,
+        fetched_at: nstr,
       }),
     ),
   }),

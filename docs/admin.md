@@ -54,7 +54,11 @@ is offered over MCP.
   reads it), `read` (read within the tracking window, with `read_at`
   and `read_until`), `track` (a `--track` value resolved to it);
   `tracked` is true when any holds.
-- **A listing is no read**: it tracks nothing.
+- **Each row carries its stored price**: `price`, `change`,
+  `change_percent` and `fetched_at` from the stored quote, or a
+  series' newest daily close with no change (FRED has no quote). The
+  UI's list shows these rather than calling `/quotes`, which is a read.
+- **A listing is no read**: it tracks nothing and fetches nothing.
 
 ## Refetch
 

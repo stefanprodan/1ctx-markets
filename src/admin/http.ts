@@ -318,6 +318,10 @@ type Stored = {
   unit: string;
   source: string;
   readAt: number | null;
+  price: number | null;
+  change: number | null;
+  changePercent: number | null;
+  fetchedAt: number | null;
 };
 
 function parseList(url: URL) {
@@ -346,19 +350,29 @@ export function adminInstruments(d: AdminDeps, url: URL): Response {
   const { db, clock, tracking } = d.m;
   const now = clock.now();
   const where =
-    "(?1 = '' or instr(lower(id), lower(?1)) > 0 or instr(lower(coalesce(name, '')), lower(?1)) > 0)";
+    "(?1 = '' or instr(lower(i.id), lower(?1)) > 0 or instr(lower(coalesce(i.name, '')), lower(?1)) > 0)";
   const total = (
     db
       .query<{ n: number }, [string]>(
-        `select count(*) as n from instruments where ${where}`,
+        `select count(*) as n from instruments i where ${where}`,
       )
       .get(query) as { n: number }
   ).n;
   const rows = db
     .query<Stored, [string, string, number]>(
-      `select id, name, market, exchange, currency, type, unit, source,
-         last_read_at as readAt
-       from instruments where ${where} and id > ?2 order by id limit ?3`,
+      // the stored quote, else the newest daily close (a FRED series has
+      // no quote): a list is no read, so it never fetches
+      `select i.id, i.name, i.market, i.exchange, i.currency, i.type, i.unit,
+         i.source, i.last_read_at as readAt,
+         coalesce(q.price, b.close) as price,
+         q.change, q.change_percent as changePercent,
+         coalesce(q.fetched_at, b.fetched_at) as fetchedAt
+       from instruments i
+       left join quotes q on q.instrument = i.id
+       left join bars b on b.instrument = i.id and b.interval = '1d'
+         and b.date = (select max(date) from bars
+           where instrument = i.id and interval = '1d')
+       where ${where} and i.id > ?2 order by i.id limit ?3`,
     )
     .all(query, after ?? "", limit + 1);
   const ruled = ruleInstruments(db);
@@ -386,6 +400,10 @@ export function adminInstruments(d: AdminDeps, url: URL): Response {
         tracked_by: by,
         read_at: iso(r.readAt),
         read_until: read ? iso(r.readAt! + tracking.readMs) : null,
+        price: r.price,
+        change: r.change,
+        change_percent: r.changePercent,
+        fetched_at: iso(r.fetchedAt),
       };
     }),
   });

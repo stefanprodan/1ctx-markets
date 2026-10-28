@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
+import { signal } from "@preact/signals";
 import { render } from "preact-render-to-string";
 import { UI_PATHS } from "../src/server/http.ts";
 import { Shell } from "../src/web/app/App.tsx";
@@ -18,11 +19,22 @@ import {
   says,
 } from "../src/web/data/api.ts";
 import {
+  INSTRUMENTS_PATH,
+  type Listed,
   SESSION_PATH,
   STATUS_PATH,
   type Status,
   store,
 } from "../src/web/data/store.ts";
+import {
+  about,
+  bySymbol,
+  change,
+  matches,
+  price,
+  symbolOf,
+} from "../src/web/views/Instruments.model.ts";
+import { InstrumentsList } from "../src/web/views/Instruments.tsx";
 import { SignIn } from "../src/web/views/SignIn.tsx";
 import {
   ago,
@@ -638,5 +650,157 @@ describe("the views", () => {
     );
     expect(html).toContain('<aside class="rail">');
     expect(html).toContain('<main class="shell-main"><p>page</p></main>');
+  });
+});
+
+const listed = (id: string, more: Partial<Listed> = {}): Listed => ({
+  id,
+  name: `${id} name`,
+  market: id.split(":")[0]!,
+  currency: "USD",
+  kind: "EQUITY",
+  unit: "per_share",
+  source: "yahoo",
+  tracked: true,
+  tracked_by: ["read"],
+  read_until: "2026-11-27T12:00:00Z",
+  price: 100,
+  change: 1,
+  change_percent: 1,
+  fetched_at: "2026-10-28T11:59:00Z",
+  ...more,
+});
+
+describe("the instruments model", () => {
+  test("a row names the kind and market in plain words, and a stop only", () => {
+    expect(symbolOf("US:NVDA")).toBe("NVDA");
+    expect(about(listed("US:NVDA"))).toBe("Stock · US");
+    expect(about(listed("XETRA:VWCE", { kind: "ETF" }))).toBe("ETF · XETRA");
+    // a market that repeats the kind is said once
+    expect(about(listed("CRYPTO:BTC-USD", { kind: "CRYPTOCURRENCY" }))).toBe(
+      "Crypto",
+    );
+    expect(
+      about(
+        listed("BVB:R2809A", { kind: "BOND", tracked: false, tracked_by: [] }),
+      ),
+    ).toBe("Bond · BVB · No longer updated");
+  });
+
+  test("a price carries its currency or unit, a change its sign", () => {
+    expect(price(listed("US:A", { price: 1661.62 }))).toBe("1,661.62 USD");
+    expect(price(listed("BVB:SNP", { price: 1.359, currency: "RON" }))).toBe(
+      "1.359 RON",
+    );
+    expect(
+      price(
+        listed("FRED:DGS10", { price: 5, unit: "percent", currency: null }),
+      ),
+    ).toBe("5.00%");
+    expect(price(listed("US:A", { price: null }))).toBe("—");
+    expect(change(listed("US:A", { change_percent: 1.264 }))).toEqual({
+      text: "+1.26%",
+      dir: 1,
+    });
+    expect(change(listed("US:A", { change_percent: -0.52 }))).toEqual({
+      text: "−0.52%",
+      dir: -1,
+    });
+    // a move that rounds to nothing is flat, never "−0.00%"
+    expect(change(listed("US:A", { change_percent: -0.001 }))).toEqual({
+      text: "0.00%",
+      dir: 0,
+    });
+    expect(change(listed("FRED:DGS10", { change_percent: null })).text).toBe(
+      "",
+    );
+  });
+
+  test("rows sort by symbol, an index's ^ aside, and match the id or name", () => {
+    const rows = ["US:NVDA", "DJI:^DJI", "BVB:BET", "XETRA:4GLD"].map((id) =>
+      listed(id),
+    );
+    expect(rows.sort(bySymbol).map((r) => r.id)).toEqual([
+      "XETRA:4GLD",
+      "BVB:BET",
+      "DJI:^DJI",
+      "US:NVDA",
+    ]);
+    expect(matches(listed("US:AAPL", { name: "Apple Inc." }), " apple ")).toBe(
+      true,
+    );
+    expect(matches(listed("US:AAPL"), "us:aa")).toBe(true);
+    expect(matches(listed("US:AAPL"), "nvda")).toBe(false);
+  });
+});
+
+describe("the instruments list", () => {
+  test("draws each row with its price and change, filtered by the search", () => {
+    const all = [
+      listed("US:NVDA", {
+        name: "NVIDIA",
+        price: 216.885,
+        change_percent: -0.48,
+      }),
+      listed("BVB:H2O", { name: "Hidroelectrica", currency: "RON" }),
+    ];
+    const html = render(<InstrumentsList all={all} query={signal("")} />);
+    expect(html).toContain('placeholder="Search"');
+    expect(html.indexOf("H2O")).toBeLessThan(html.indexOf("NVDA"));
+    expect(html).toContain('href="/instruments/US%3ANVDA"');
+    expect(html).toContain("216.89 USD");
+    expect(html).toContain("−0.48%");
+    expect(html).toContain('class="rows-count" aria-live="polite">2<');
+    const one = render(<InstrumentsList all={all} query={signal("nvidia")} />);
+    expect(one).toContain("NVDA");
+    expect(one).not.toContain("H2O");
+    const none = render(<InstrumentsList all={all} query={signal("zzz")} />);
+    expect(none).toContain("No instrument matches.");
+    // before the first answer, no count and no rows
+    const waiting = render(<InstrumentsList all={null} query={signal("")} />);
+    expect(waiting).not.toContain("rows-count");
+  });
+
+  test("loads every page, and a second ask joins the load in flight", async () => {
+    const first = Promise.withResolvers<Response>();
+    const asked: string[] = [];
+    const s = store(async (path) => {
+      asked.push(path);
+      if (path === `${INSTRUMENTS_PATH}?limit=200`) return first.promise;
+      return Response.json({
+        total: 2,
+        more: false,
+        instruments: [listed("US:B")],
+      });
+    });
+    const a = s.loadInstruments();
+    const b = s.loadInstruments();
+    first.resolve(
+      Response.json({ total: 2, more: true, instruments: [listed("US:A")] }),
+    );
+    await Promise.all([a, b]);
+    expect(asked).toEqual([
+      `${INSTRUMENTS_PATH}?limit=200`,
+      `${INSTRUMENTS_PATH}?limit=200&after=US%3AA`,
+    ]);
+    expect(s.instruments.value?.map((r) => r.id)).toEqual(["US:A", "US:B"]);
+  });
+
+  test("a failed refresh keeps the rows and says why", async () => {
+    let fail = false;
+    const s = store(async () =>
+      fail
+        ? Response.json({ error: "internal", message: "x" }, { status: 500 })
+        : Response.json({
+            total: 1,
+            more: false,
+            instruments: [listed("US:A")],
+          }),
+    );
+    await s.loadInstruments();
+    fail = true;
+    await s.loadInstruments();
+    expect(s.instruments.value?.map((r) => r.id)).toEqual(["US:A"]);
+    expect(s.instrumentsError.value).toBe("The server failed.");
   });
 });

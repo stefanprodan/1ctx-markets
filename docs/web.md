@@ -100,8 +100,8 @@ signed in with the admin key alone.
   `data/api.ts` makes the calls. Any 401 signs out (the shell gives way
   to the sign-in), and a later status load supersedes one in flight.
   The first status answer is also the check of the cookie.
-- **A page's `load` in `app/routes.ts` runs on arrival**, the first
-  page's being that check.
+- **A page's `load` in `app/routes.ts` runs on arrival**, the status
+  page's on first arrival being that check.
 - **1ctx's look, copied, not shared:** `style/tokens.css`,
   `style/base.css`, the fonts, the rail, strip and shell styles, the
   logo and icons, trimmed to what these pages use. The rail is the
@@ -136,8 +136,18 @@ signed in with the admin key alone.
 - **Add a source** lists the keyed sources that are off, with what each
   adds, its key file and where to get a key; it is absent when none is
   off. The `--track` values are a grid of value and resolved id.
-- **Instruments:** a placeholder; the list and the instrument page
-  come later.
+- **Instruments:** every stored instrument from
+  `GET /api/v1/admin/instruments`, all pages, in one card with a search
+  over id and name, kept in the view so a refresh keeps it. Sorted by
+  symbol, an index's `^` aside. A row is the symbol and name, then the
+  kind in plain words (Stock, ETF, Index, Bond, Future, Crypto,
+  Currency, Series) and the market, left out where it repeats the kind;
+  "No longer updated" only when nothing tracks it. On the right, the
+  stored price with its currency and the day's change. The list never
+  quotes: a quote is a read and would keep every row tracked.
+- **The list re-reads every minute** (`REFRESH_MS`) while the tab is
+  visible, and at once when it comes back; a load in flight answers a
+  second ask, and a failed one keeps the rows and shows the error.
 
 ## Tests
 

@@ -49,6 +49,26 @@ export type Status = {
   database_bytes: number;
 };
 
+export type Listed = {
+  id: string;
+  name: string | null;
+  market: string;
+  currency: string | null;
+  kind: string;
+  unit: string;
+  source: string;
+  tracked: boolean;
+  tracked_by: ("rule" | "read" | "track")[];
+  read_until: string | null;
+  price: number | null;
+  change: number | null;
+  change_percent: number | null;
+  fetched_at: string | null;
+};
+
+type ListedPage = { total: number; more: boolean; instruments: Listed[] };
+
+export const INSTRUMENTS_PATH = "/api/v1/admin/instruments";
 export const STATUS_PATH = "/api/v1/admin/status";
 export const SESSION_PATH = "/ui/session";
 
@@ -60,6 +80,8 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
   const statusAt = signal<number | null>(null);
   const statusError = signal<string | null>(null);
   const loading = signal(false);
+  const instruments = signal<Listed[] | null>(null);
+  const instrumentsError = signal<string | null>(null);
 
   const signedOut = () =>
     batch(() => {
@@ -67,6 +89,8 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
       status.value = null;
       statusAt.value = null;
       statusError.value = null;
+      instruments.value = null;
+      instrumentsError.value = null;
     });
   const call = client(fetchFn, signedOut);
   // a superseded load's 401 must not sign out a newer sign-in, so the
@@ -104,7 +128,42 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
     }
   }
 
+  // every stored instrument, a page at a time; a list is no read. A load
+  // already going answers for a second ask, so a tick never stacks.
+  let listing: Promise<void> | null = null;
+  function loadInstruments(): Promise<void> {
+    listing ??= listAll().finally(() => {
+      listing = null;
+    });
+    return listing;
+  }
+  async function listAll(): Promise<void> {
+    try {
+      const all: Listed[] = [];
+      let after = "";
+      for (;;) {
+        const page = await call<ListedPage>(
+          `${INSTRUMENTS_PATH}?limit=200${after ? `&after=${encodeURIComponent(after)}` : ""}`,
+        );
+        all.push(...page.instruments);
+        if (!page.more || page.instruments.length === 0) break;
+        after = page.instruments.at(-1)!.id;
+      }
+      batch(() => {
+        instruments.value = all;
+        instrumentsError.value = null;
+      });
+    } catch (error) {
+      if (!(error instanceof ApiError && error.status === 401)) {
+        instrumentsError.value = says(error);
+      }
+    }
+  }
+
   return {
+    instruments,
+    instrumentsError,
+    loadInstruments,
     signedIn,
     status,
     statusAt,

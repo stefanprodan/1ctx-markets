@@ -19,9 +19,8 @@
     top: 0;
     z-index: 2;
     display: flex;
-    align-items: center;
+    align-items: flex-end;
     gap: var(--space-3);
-    min-height: 32px;
     margin-left: calc(-1 * var(--shell-left, 0px));
     margin-right: calc(-1 * var(--shell-right, 0px));
     padding-top: var(--shell-inset-top, 0px);
@@ -36,7 +35,9 @@
     margin: 0;
     font-size: var(--text-title);
     font-weight: 600;
-    line-height: 32px;
+    /* as 1ctx: the title's box is its text, so its middle meets the
+       rail's toggle across the top inset */
+    line-height: 1;
   }
 
   .page-meta {
@@ -48,9 +49,13 @@
     font-size: var(--text-small);
   }
 
+  /* takes no height, so a taller button never moves the title */
   .page-actions {
     display: flex;
+    align-self: center;
+    align-items: center;
     gap: var(--space-2);
+    height: 0;
     margin-left: auto;
   }
 

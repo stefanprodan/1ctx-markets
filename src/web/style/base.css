@@ -1,6 +1,21 @@
 @layer tokens, base, owners;
 
 @layer base {
+  /* the native clear is the system's blue in a light scheme; the mask
+     takes the cross's shape and the theme gives its colour */
+  input[type="search"]::-webkit-search-cancel-button {
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    background: var(--faint);
+    mask:
+      url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'><path d='M2 1l4 4 4-4 1 1-4 4 4 4-1 1-4-4-4 4-1-1 4-4-4-4z'/></svg>")
+      center / contain no-repeat;
+    cursor: pointer;
+  }
+  input[type="search"]::-webkit-search-cancel-button:hover {
+    background: var(--fg);
+  }
   * {
     box-sizing: border-box;
   }

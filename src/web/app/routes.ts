@@ -33,6 +33,9 @@ export const ROUTES: readonly Route[] = [
     label: "Instruments",
     icon: "list",
     view: Instruments,
+    load: async () => {
+      await markets.loadInstruments();
+    },
   },
 ];
 

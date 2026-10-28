@@ -1,0 +1,30 @@
+@layer tokens, base, owners;
+
+@layer owners {
+  .ins-symbol {
+    flex-shrink: 0;
+    font-family: var(--mono);
+    font-weight: 600;
+    color: var(--fg);
+  }
+  .ins-name {
+    min-width: 0;
+    color: var(--dim);
+  }
+  .ins-price {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--fg);
+  }
+  .ins-up {
+    color: var(--done);
+  }
+  .ins-down {
+    color: var(--failed);
+  }
+  .rows-meta-under .ins-up,
+  .rows-meta-under .ins-down {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+  }
+}

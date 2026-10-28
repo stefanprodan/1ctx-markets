@@ -1,0 +1,42 @@
+/* The search box: fills a card's head band, the glass lit while the
+   text has the focus. */
+
+@layer tokens, base, owners;
+
+@layer owners {
+  /* the icon keeps its size when the search shares a head */
+  .search-icon {
+    flex-shrink: 0;
+  }
+  .search {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-grow: 1;
+    min-width: 0;
+    height: 40px;
+    padding: 0 var(--space-4) 0 15px;
+    color: var(--faint);
+    cursor: text;
+  }
+  .search:focus-within {
+    color: var(--dim);
+  }
+  /* on a phone the head's gap alone parts the box from what sits
+     beside it, so a placeholder keeps its last letters */
+  @media (max-width: 719px) {
+    .search:not(:last-child) {
+      padding-right: 0;
+    }
+  }
+  .search-input {
+    flex-grow: 1;
+    min-width: 0;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    outline: none;
+    color: var(--fg);
+  }
+}
