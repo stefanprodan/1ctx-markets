@@ -24,7 +24,8 @@ route's transport in `docs/api.md`; rules that wait on events in
   in errors and logs; a header does not.
 - **Every Massive text kept is scrubbed of the key** (`scrubbed` in
   `src/sources/massive/client.ts`: id, title, URL, publisher, tickers,
-  reasoning). Finnhub keeps only numbers, checked dates and an hour
+  reasoning), before a text is cut to its cap, so a key across the cap
+  leaves no prefix. Finnhub keeps only numbers, checked dates and an hour
   label matching `^[a-z]{0,8}$`, so nothing of its answer can carry
   text.
 - **A Massive `next_url` is followed only when it is Massive's own news
@@ -32,6 +33,8 @@ route's transport in `docs/api.md`; rules that wait on events in
   or password, no key-named parameter, and the key in no decoding of
   it. It is checked on receipt and before it is sent, and never
   rewritten, because it goes out with the key in its header.
+- **A Massive page without `status: "OK"` is malformed** (`parseNews`),
+  never an empty last page that would end a history walk.
 
 ## Eligibility
 

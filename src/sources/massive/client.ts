@@ -129,10 +129,13 @@ function articleUrl(v: unknown): string {
   return raw;
 }
 
-function insight(v: unknown): Insight {
+type Clean = (v: string) => string;
+
+function insight(v: unknown, clean: Clean): Insight {
   if (!isObj(v)) throw malformed("no insight");
   const sentiment = SENTIMENTS.find((s) => s === v.sentiment) ?? null;
-  const given = optionalStr(v.sentiment_reasoning);
+  const raw = optionalStr(v.sentiment_reasoning);
+  const given = raw === null ? null : clean(raw);
   // an unknown word is no sentiment, never a neutral one
   const reasoning = sentiment === null ? null : given;
   return {
@@ -143,7 +146,8 @@ function insight(v: unknown): Insight {
   };
 }
 
-function article(v: unknown): Article {
+// scrubbed before the cut, or a key across a cap keeps its prefix
+function article(v: unknown, clean: Clean): Article {
   if (!isObj(v)) throw malformed("no article");
   const published = str(v.published_utc, "published_utc");
   const publishedAt = Date.parse(published);
@@ -155,8 +159,9 @@ function article(v: unknown): Article {
     : [];
   const insights = v.insights === undefined ? [] : v.insights;
   if (!Array.isArray(insights)) throw malformed("no insights");
-  const title = str(v.title, "title");
-  const publisher = isObj(v.publisher) ? optionalStr(v.publisher.name) : null;
+  const title = clean(str(v.title, "title"));
+  const named = isObj(v.publisher) ? optionalStr(v.publisher.name) : null;
+  const publisher = named === null ? null : clean(named);
   return {
     id,
     publishedAt,
@@ -164,7 +169,7 @@ function article(v: unknown): Article {
     url: articleUrl(v.article_url),
     publisher: publisher === null ? null : cut(publisher, MAX_PUBLISHER),
     tickers,
-    insights: insights.map(insight),
+    insights: insights.map((i) => insight(i, clean)),
     truncated:
       title.length > MAX_TITLE ||
       (publisher !== null && publisher.length > MAX_PUBLISHER),
@@ -189,9 +194,15 @@ export function scrubbed(a: Article, key: string): Article {
   };
 }
 
-export function parseNews(body: unknown): Omit<Page, "fetchedAt"> {
+// every page Massive answers says OK; one without a status is not a page,
+// and reading it as the last one would end a history walk early
+export function parseNews(
+  body: unknown,
+  clean: Clean = (v) => v,
+): Omit<Page, "fetchedAt"> {
   if (!isObj(body)) throw malformed("no body");
-  if (body.status !== undefined && body.status !== "OK") {
+  if (body.status === undefined) throw malformed("no status");
+  if (body.status !== "OK") {
     throw new SourceError("source error", "status not OK");
   }
   const results = body.results ?? [];
@@ -201,7 +212,7 @@ export function parseNews(body: unknown): Omit<Page, "fetchedAt"> {
     throw malformed("no next_url");
   }
   return {
-    articles: results.map(article),
+    articles: results.map((a) => article(a, clean)),
     next: typeof next === "string" && next !== "" ? next : null,
   };
 }
@@ -302,7 +313,7 @@ export function massive(options: MassiveOptions): Massive {
         } catch {
           throw new Unreadable();
         }
-        const page = parseNews(body);
+        const page = parseNews(body, (v) => scrub(v, key));
         // a cursor that is not Massive's own is never followed
         if (page.next !== null) checkCursor(page.next, host, key);
         return {
