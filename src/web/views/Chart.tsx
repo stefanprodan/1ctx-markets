@@ -241,7 +241,18 @@ export function Chart({ id }: { id: string }) {
       error.value = null;
       draw(fit);
     } catch (e) {
-      if (mine === asked.current) error.value = says(e);
+      if (mine !== asked.current) return;
+      error.value = says(e);
+      // a refresh that fails keeps its bars; another range's never stand in
+      if (r !== shown.value) {
+        batch(() => {
+          data.value = null;
+          shown.value = r;
+        });
+        const c = chart.current;
+        if (c !== null) for (const s of series.current) c.removeSeries(s);
+        series.current = [];
+      }
     }
   };
 

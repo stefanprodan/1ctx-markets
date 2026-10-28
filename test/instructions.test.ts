@@ -21,6 +21,7 @@ const ANSWER_FIELDS = [
   "fetched_at",
   "currency",
   "unit",
+  "previous_close",
 ];
 
 // the text goes to every user: no one's holdings, place or workspace

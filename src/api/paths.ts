@@ -191,7 +191,7 @@ export const paths = {
         "- Prices are split-adjusted, without dividends or currency conversion.",
         "- `session` is the market's last regular session.",
         "- A range with `to` before today and only final bars, without `benchmark`, may be cached for an hour.",
-        `- \`5m\` answers \`points\` instead of \`bars\`: the regular session's closes as the quote passes stored them, up to the last ${INTRADAY_SESSIONS} sessions, without averages. \`from\` and \`to\` are session dates, the newest stored session by default. A source with no such closes, or none stored in the range, answers \`no_data\`.`,
+        `- \`5m\` answers \`points\` instead of \`bars\`: the regular session's closes as the quote passes stored them, up to the last ${INTRADAY_SESSIONS} sessions, without averages, and \`previous_close\`, what a move is measured from. \`from\` and \`to\` are session dates, the newest stored session by default. A source with no such closes, or none stored in the range, answers \`no_data\`.`,
         STALE,
         UNSEEN,
         DEADLINE,
@@ -208,7 +208,10 @@ export const paths = {
           "from",
           `\`YYYY-MM-DD\`. Default: ${DEFAULT_MONTHS["1d"]} months before \`to\` for \`1d\`, ${DEFAULT_MONTHS["1wk"]} months for \`1wk\`.`,
         ),
-        query("to", "`YYYY-MM-DD`. Default: the latest bar."),
+        query(
+          "to",
+          "`YYYY-MM-DD`. Default: the latest bar; with `5m`, the newest stored session.",
+        ),
         query(
           "benchmark",
           "A symbol to compare with. Adds `relative`: the 1- and 3-month return against it, in percentage points. Not taken with `5m`.",

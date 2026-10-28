@@ -204,7 +204,7 @@ signed in with the admin key alone.
   legend) are in the viewer's local time (`localTime`, `timeLabel`),
   the crosshair's day label for daily bars kept as the library writes
   it. No candles, averages or volume, so their toggles hide. The legend gives the day and time,
-  the close and the change from the range's first close.
+  the close and the change from the answer's `previous_close`, else the first close.
 - **Candles or a line**, the toggle only where the bars have an open;
   a series (FRED) is a line. A bar the live quote made with no open
   takes the last close. **Volume** is its own pane (price 4 : volume

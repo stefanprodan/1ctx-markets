@@ -167,7 +167,6 @@ describe("a spark answer's points", () => {
       expect(q.price).toBeGreaterThan(0);
       expect(q.points).toEqual([]);
     }
-    // and the quotes land
     const t = setup(Date.parse(fx.recordedAt));
     listings(t.db, fx, t.clock.now());
     storeQuotes(t.db, answer);
@@ -331,6 +330,18 @@ describe("history with interval 5m", () => {
     });
     // the bar the world helper stores on 2026-10-01
     expect(both.body.previous_close).toBe(1);
+    // a quote already in the next session never measures this one
+    t.db
+      .query(
+        "update quotes set time = ?, previous_close = 999 where instrument = 'XETRA:VVSM'",
+      )
+      .run(Date.parse("2026-10-27T08:01:00Z"));
+    const rolled = await history(t.m, {
+      symbol: "XETRA:VVSM",
+      interval: "5m",
+    });
+    expect(rolled.body.to).toBe("2026-10-26");
+    expect(rolled.body.previous_close).toBe(1);
   });
 
   test("a closed session's newest point is final; crypto's newest never is", async () => {

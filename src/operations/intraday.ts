@@ -15,6 +15,7 @@ import {
   readIntraday,
 } from "../market/intraday.ts";
 import type { StaleReason } from "../market/stale.ts";
+import { localDate } from "../market/zone.ts";
 import { YAHOO } from "../sources/ids.ts";
 import type { Db } from "../storage/db/index.ts";
 import {
@@ -63,21 +64,19 @@ export type IntradayRead =
       stale: StaleReason[];
     };
 
-// the newest session takes the quote's previous close, so its move is the
-// quote's change; Yahoo's FX previous close is not the prior daily bar's
-function previousClose(
-  db: Db,
-  id: string,
-  first: string,
-  newest: string | null,
-): number | null {
-  if (first === newest) {
-    const q = db
-      .query<{ close: number | null }, [string]>(
-        "select previous_close as close from quotes where instrument = ?",
-      )
-      .get(id);
-    if (q?.close != null) return q.close;
+// the quote's own session wins: Yahoo's FX previous close is not its last bar's
+function previousClose(db: Db, i: Instrument, first: string): number | null {
+  const q = db
+    .query<{ close: number | null; time: number | null }, [string]>(
+      "select previous_close as close, time from quotes where instrument = ?",
+    )
+    .get(i.id);
+  if (
+    q?.close != null &&
+    q.time != null &&
+    localDate(i.zone, q.time) === first
+  ) {
+    return q.close;
   }
   return (
     db
@@ -86,7 +85,7 @@ function previousClose(
          where instrument = ? and interval = '1d' and date < ?
          order by date desc limit 1`,
       )
-      .get(id, first)?.close ?? null
+      .get(i.id, first)?.close ?? null
   );
 }
 
@@ -150,12 +149,7 @@ export async function readIntradayHistory(
     to,
     points: stored.map((p) => ({ ...p, final: p.at !== moving })),
     sessions,
-    previousClose: previousClose(
-      db,
-      instrument.id,
-      sessions[0]?.session ?? from,
-      newest,
-    ),
+    previousClose: previousClose(db, instrument, sessions[0]?.session ?? from),
     session: sessionOf(m, instrument, now),
     stale: readLatest(db, instrument, now, m.quoteEveryMs).stale,
   };
