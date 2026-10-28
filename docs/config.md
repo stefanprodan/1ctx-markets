@@ -46,7 +46,7 @@ the `--help` text, and a flag changes there in the same commit.
 | `markets.db` | the one SQLite database (`docs/storage.md`) |
 | `markets.log` | the service's log, when run by `service install` (`docs/deploy.md`) |
 | `secrets/bearer.key` | the bearer every request carries |
-| `secrets/admin.key` | the key of `/api/v1/admin/*` and the web UI's sign-in (`docs/admin.md`, `docs/web.md`) |
+| `secrets/admin.key` | the key of the operator's routes, which opens every `/api/v1` route, and the web UI's sign-in (`docs/admin.md`, `docs/web.md`) |
 | `secrets/source-<name>.key` | a source's API key: `source-fred.key`, `source-finnhub.key`, `source-massive.key` |
 
 ## Keys
@@ -64,8 +64,8 @@ the `--help` text, and a flag changes there in the same commit.
   file and how to get a new one, never its contents.
 - **The admin key is written and checked the same way**
   (`createAdmin()`, `requireAdmin()`), prefixed `1ctx-markets-admin-`,
-  and must differ from the bearer. It authorizes `/api/v1/admin/*`
-  only.
+  and must differ from the bearer. It holds every `/api/v1` scope,
+  the admin one alone among keys, and never opens `/mcp`.
 - **A source key turns its source on.** Yahoo needs none and is always
   on; FRED, Finnhub and Massive are on while their file holds a key,
   and every tool answers without them. A keyless optional source is on
@@ -99,9 +99,10 @@ the `--help` text, and a flag changes there in the same commit.
 - **A request stays open 30 s** (`IDLE_TIMEOUT_S`), over a tool call's
   15 s deadline, since Bun's 10 s default would cut a call that
   fetches a new symbol.
-- **One Bun server; the bearer is checked before any route is looked
-  up** (`router()`), so an unknown path answers 401 without the bearer
-  and 404 with it. Only `GET /health`, the API's spec and its docs
+- **One Bun server; a key is checked before an unknown path is
+  answered** (`router()`), so it answers 401 without a key and 404
+  with one; under `/api/v1` the route is matched first and the key
+  held to its scope (`docs/api.md`). Only `GET /health`, the API's spec and its docs
   page, the web UI's page and its sign-in answer without it. The
   compare hashes both sides with SHA-256 and uses `timingSafeEqual`,
   so its time does not depend on what was sent.
@@ -110,7 +111,7 @@ the `--help` text, and a flag changes there in the same commit.
 | Path | Method | Serves |
 |---|---|---|
 | `/mcp` | POST | MCP over Streamable HTTP, stateless |
-| `/api/v1/*` | GET, POST, PATCH, DELETE | the REST API, its spec and docs page (`docs/api.md`); `/api/v1/admin/*` behind the admin key instead of the bearer (`docs/admin.md`) |
+| `/api/v1/*` | GET, POST, PATCH, DELETE | the REST API, its spec and docs page (`docs/api.md`); each operation takes the read or the admin scope (`docs/admin.md`) |
 | `/health` | GET | 200 with no body, for the service's start check |
 | `/`, `/status`, `/instruments` | GET | the web UI's page, its assets at the paths it names (`docs/web.md`) |
 | `/ui/session` | POST, DELETE | the web UI's sign-in and sign-out (`docs/web.md`) |

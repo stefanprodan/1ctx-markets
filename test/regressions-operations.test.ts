@@ -154,12 +154,11 @@ test("rule creation refuses a dependency deleted while another symbol is fetchin
     );
     await held.arrived;
     const deleted = await api(t.m)(
-      new Request("http://markets.test/api/v1/admin/instruments/US:B", {
+      new Request("http://markets.test/api/v1/instruments/US:B", {
         method: "DELETE",
       }),
     );
-    expect(deleted.status).toBe(200);
-    expect(await deleted.json()).toMatchObject({ deleted: "US:B" });
+    expect(deleted.status).toBe(204);
     expect(readInstrument(t.db, "US:B")).toBeNull();
     held.release();
     const created = await pending;
@@ -295,10 +294,10 @@ test("research requesting only the next event reports an inline calendar failure
     expect(response.status).toBe(200);
     const answer: any = await response.json();
     expectCalendarFailure(t);
-    expect(answer.items[0].price).toBeNumber();
-    expect(answer.items[0].research.next_event).toBeNull();
-    expect(answer.items[0].research.error).toBe("source_error");
-    expect(answer.items[0].research.message).toContain("malformed answer");
+    expect(answer.research[0].id).toBe("US:NVDA");
+    expect(answer.research[0].company.next_event).toBeNull();
+    expect(answer.research[0].company.error).toBe("source_error");
+    expect(answer.research[0].company.message).toContain("malformed answer");
   } finally {
     await close(t);
   }

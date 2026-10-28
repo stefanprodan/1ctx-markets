@@ -950,14 +950,14 @@ describe("the quotes route's last final day", () => {
   test("answers the last final close and its averages", async () => {
     const { m } = crossings();
     const { body } = await quotes(m, ["XX:DNX", "XX:NEWDN"]);
-    expect(body.items[0]).toMatchObject({
+    expect(body.quotes[0]).toMatchObject({
       price: 99,
       sma: { daily: { kind: "live", date: LIVE, sma200: 100.1 } },
       last_final: {
         daily: { date: FINAL, close: 101, sma50: 100, sma200: 100 },
       },
     });
-    expect(body.items[1].last_final).toEqual({
+    expect(body.quotes[1].last_final).toEqual({
       daily: { date: FINAL, close: 101, sma50: 100, sma200: null },
     });
   });
@@ -981,7 +981,7 @@ describe("the quotes route's last final day", () => {
       });
       const expected = [...ids(old.body), ...ids(fresh.body)].sort();
       expect(expected.length).toBeGreaterThan(1);
-      const told = body.items
+      const told = body.quotes
         .filter((i: any) => crossed(i) === side)
         .map((i: any) => i.id)
         .sort();
@@ -996,8 +996,8 @@ describe("the quotes route's last final day", () => {
     row(w.db, "XX:A", "1d", LIVE, "live");
     quote(w.db, "XX:A", 100, 100);
     const { body } = await quotes(w.m, ["XX:A"]);
-    expect(body.items[0].sma.daily).not.toBeNull();
-    expect(body.items[0].last_final).toBeNull();
+    expect(body.quotes[0].sma.daily).not.toBeNull();
+    expect(body.quotes[0].last_final).toBeNull();
   });
 
   test("100 symbols answer in one body past the page cap, with no next", async () => {
@@ -1021,9 +1021,9 @@ describe("the quotes route's last final day", () => {
     const { body, bytes } = await quotes(w.m, symbols);
     expect(bytes).toBeGreaterThan(PAGE_BYTES);
     expect(body).not.toContainKey("next");
-    for (const item of body.items) {
+    for (const item of body.quotes) {
       expect(item.last_final.daily.sma200).toBeNumber();
     }
-    expect(body.items.map((i: any) => i.id)).toEqual(symbols);
+    expect(body.quotes.map((i: any) => i.id)).toEqual(symbols);
   });
 });

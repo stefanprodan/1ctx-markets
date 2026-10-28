@@ -47,24 +47,92 @@ const STATUS: Record<string, number> = {
 
 export const statusOf = (code: string): number => STATUS[code] ?? 500;
 
+// /mcp's and the sign-in's {error, message} errors, never /api/v1's
 export const failed = (
   body: { error: string; message: string } & Record<string, unknown>,
   headers: Record<string, string> = NO_STORE,
 ): Response => json(body, statusOf(body.error), headers);
 
-export const notFound = (message = "no such route"): Response =>
-  failed({ error: "not_found", message });
+// RFC 9110's phrases: with no type, a problem's title is its status's
+const TITLES: Record<number, string> = {
+  400: "Bad Request",
+  401: "Unauthorized",
+  403: "Forbidden",
+  404: "Not Found",
+  405: "Method Not Allowed",
+  409: "Conflict",
+  413: "Content Too Large",
+  415: "Unsupported Media Type",
+  500: "Internal Server Error",
+  503: "Service Unavailable",
+};
+
+export const PROBLEM_TYPE = "application/problem+json";
+
+// RFC 9457 without a type URL: code names the error, as the tools do
+export function problem(
+  code: string,
+  detail: string,
+  extensions: Record<string, unknown> = {},
+  headers: Record<string, string> = NO_STORE,
+): Response {
+  const status = statusOf(code);
+  return new Response(
+    JSON.stringify({
+      title: TITLES[status],
+      status,
+      detail,
+      code,
+      ...extensions,
+    }),
+    { status, headers: { "content-type": PROBLEM_TYPE, ...headers } },
+  );
+}
+
+// a tool's error, {error, message, ...extensions}, as a problem
+export const problemOf = (
+  body: { error: string; message: string } & Record<string, unknown>,
+  headers: Record<string, string> = NO_STORE,
+): Response => {
+  const { error, message, ...extensions } = body;
+  return problem(error, message, extensions, headers);
+};
+
+// an item's error inside a 200: {code, detail, candidates?}
+export function itemOf<T extends object>(item: T): object {
+  if (!("error" in item) || typeof item.error !== "string") return item;
+  const { error, message, candidates, ...rest } = item as Record<
+    string,
+    unknown
+  >;
+  return {
+    ...rest,
+    error: {
+      code: error,
+      detail: message,
+      ...(candidates === undefined ? {} : { candidates }),
+    },
+  };
+}
+
+export const notFound = (detail = "no such route"): Response =>
+  problem("not_found", detail);
 
 export const notAllowed = (allow: readonly string[]): Response =>
-  failed(
-    { error: "method_not_allowed", message: `use ${allow.join(", ")}` },
-    { ...NO_STORE, allow: allow.join(", ") },
+  problem(
+    "method_not_allowed",
+    `use ${allow.join(", ")}`,
+    {},
+    {
+      ...NO_STORE,
+      allow: allow.join(", "),
+    },
   );
 
 export type Param = "text" | "list" | "number" | "boolean";
 
 // a list is comma-separated as a shell script builds it; next is refused too,
-// since nothing is paged
+// since only the stored list pages
 export function queryArgs(
   url: URL,
   params: Record<string, Param>,
@@ -95,6 +163,15 @@ export function queryArgs(
   return out;
 }
 
+// a path segment is percent-decoded; a raw ^ arrives as it is
+export function pathSymbol(raw: string): string {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    throw new ArgError("the path holds a malformed symbol");
+  }
+}
+
 export const noQuery = (url: URL): void => {
   if (url.search !== "") throw new ArgError("this route takes no query");
 };
@@ -106,16 +183,10 @@ export async function readBody(
 ): Promise<{ body: unknown } | Response> {
   const type = req.headers.get("content-type") ?? "";
   if (!/^application\/json(\s*;.*)?$/i.test(type)) {
-    return failed({
-      error: "unsupported_media_type",
-      message: "the body is application/json",
-    });
+    return problem("unsupported_media_type", "the body is application/json");
   }
   const tooLarge = () =>
-    failed({
-      error: "payload_too_large",
-      message: `the body is at most ${max} bytes`,
-    });
+    problem("payload_too_large", `the body is at most ${max} bytes`);
   const length = Number(req.headers.get("content-length") ?? "0");
   if (!Number.isFinite(length) || length > max) return tooLarge();
   const bytes = await req.arrayBuffer();
@@ -125,6 +196,6 @@ export async function readBody(
       body: JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)),
     };
   } catch {
-    return failed({ error: "bad_arguments", message: "the body is not JSON" });
+    return problem("bad_arguments", "the body is not JSON");
   }
 }

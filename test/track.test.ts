@@ -60,12 +60,22 @@ const bars = (t: TestApp, id: string): number =>
     )
     .get(id)!.n;
 
-const status = async (t: TestApp): Promise<any> =>
+const get = async (t: TestApp, path: string): Promise<any> =>
   (
-    await fetch(`${t.url}/api/v1/admin/status`, {
+    await fetch(`${t.url}/api/v1${path}`, {
       headers: { authorization: `Bearer ${t.admin}` },
     })
   ).json();
+
+// the status counts, and each watchlist entry's value, id and state
+const status = async (t: TestApp): Promise<any> => ({
+  ...(await get(t, "/status")),
+  track: (await get(t, "/watchlist")).entries.map((e: any) => ({
+    value: e.value,
+    id: e.id,
+    state: e.state,
+  })),
+});
 
 const notResolved = (t: TestApp, value: string): string[] =>
   t.lines.filter(
@@ -108,6 +118,54 @@ describe("--track", () => {
         expect(daily().length).toBe(asked);
       },
       { fetch: s.fetch, start: NOW, track: ["^DJI", "GC=F"] },
+    );
+  });
+
+  test("the watchlist answers the values in flag order, stored rows only, no read and no fetch", async () => {
+    const unknown = await recorded("chart-unknown-symbol");
+    const s = await sources({
+      charts: await charts(),
+      hold: async (url) =>
+        chartSymbol(url) === "ZZNOPE" ? unknown : undefined,
+    });
+    await withApp(
+      async (t) => {
+        await t.app.tracker.settled();
+        const asked = s.calls.urls.length;
+        const reads = t.db
+          .query(
+            "select count(*) as n from instruments where last_read_at is not null",
+          )
+          .get();
+        const res = await fetch(`${t.url}/api/v1/watchlist`, {
+          headers: { authorization: `Bearer ${t.bearer}` },
+        });
+        expect(res.status).toBe(200);
+        const { entries } = (await res.json()) as { entries: any[] };
+        expect(entries.map((e) => [e.value, e.id, e.state])).toEqual([
+          ["GC=F", GOLD, "tracked"],
+          ["ZZNOPE", null, "not_found"],
+          ["^DJI", DJI, "tracked"],
+        ]);
+        expect(entries[0].instrument).toMatchObject({
+          id: GOLD,
+          kind: "FUTURE",
+          tracked_by: ["track"],
+        });
+        expect(entries[0].instrument.price).toBeNumber();
+        expect(entries[2].session).toMatchObject({ state: "closed" });
+        expect(entries[1]).toMatchObject({ instrument: null, session: null });
+        expect(s.calls.urls.length).toBe(asked);
+        expect(
+          t.db
+            .query(
+              "select count(*) as n from instruments where last_read_at is not null",
+            )
+            .get(),
+        ).toEqual(reads);
+        expect(lastReadAt(t.db, DJI)).toBeNull();
+      },
+      { fetch: s.fetch, start: NOW, track: ["GC=F", "ZZNOPE", "^DJI"] },
     );
   });
 
@@ -321,13 +379,13 @@ describe("--track", () => {
       async (t) => {
         await t.app.tracker.settled();
         const deleted = await fetch(
-          `${t.url}/api/v1/admin/instruments/${encodeURIComponent(DJI)}`,
+          `${t.url}/api/v1/instruments/${encodeURIComponent(DJI)}`,
           {
             method: "DELETE",
             headers: { authorization: `Bearer ${t.admin}` },
           },
         );
-        expect(deleted.status).toBe(200);
+        expect(deleted.status).toBe(204);
         expect(bars(t, DJI)).toBe(0);
         await t.clock.advance(PERIOD);
         await t.app.tracker.settled();

@@ -283,8 +283,14 @@ async function step(
     return bvbFetchStep(m, symbol, bvbKey(symbol));
   }
   if (!upper.includes(":") && bvb !== null) {
-    const both = await shared(m, `resolve:${upper}`, deadline, (live) =>
-      resolveBoth({ ...yahooCtx(m, live), bvb: bvb.within(live) }, given),
+    // the two rules answer differently, so they never share a flight
+    const key = `${m.yahooFirst ? "resolve-yahoo" : "resolve"}:${upper}`;
+    const both = await shared(m, key, deadline, (live) =>
+      resolveBoth(
+        { ...yahooCtx(m, live), bvb: bvb.within(live) },
+        given,
+        m.yahooFirst,
+      ),
     );
     if (both.kind === "known") return storedStep(m, both.instrument);
     if (both.kind === "candidates") return candidates(both.candidates);
@@ -324,20 +330,22 @@ async function step(
 }
 
 // the instrument step() finds stored for an input, asking no source;
-// null when only a source can answer
+// null when only a source can answer. yahooFirst: a bare symbol stored
+// from Yahoo wins, as on REST
 export function storedInstrument(
   db: Db,
   input: string,
   bvb: boolean,
+  yahooFirst = false,
 ): Instrument | null {
   const given = input.trim();
   const upper = given.toUpperCase();
   if (upper.includes(":")) return readInstrument(db, upper);
-  if (!bvb) return readBySourceSymbol(db, YAHOO, upper);
-  const stored = [
-    readByFeedSymbol(db, given),
-    readBySourceSymbol(db, YAHOO, upper),
-  ].filter((i) => i !== null);
+  const yahoo = readBySourceSymbol(db, YAHOO, upper);
+  if (!bvb) return yahoo;
+  const feed = readByFeedSymbol(db, given);
+  if (yahooFirst) return yahoo ?? feed;
+  const stored = [feed, yahoo].filter((i) => i !== null);
   return stored.length === 1 ? stored[0]! : null;
 }
 

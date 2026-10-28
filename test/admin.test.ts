@@ -17,7 +17,6 @@ import {
   jobLabel,
   MAX_FAILING,
   MAX_PAGE,
-  MAX_SYMBOLS,
 } from "../src/admin/http.ts";
 import { refetch } from "../src/admin/refetch.ts";
 import { iso } from "../src/market/format.ts";
@@ -129,12 +128,19 @@ const share = (db: Db, market: string, symbol: string, exchange: string) =>
 
 const admin = (t: Setup) => api(t.m);
 
-const post = (body: unknown, headers: Record<string, string> = {}) =>
-  new Request("http://markets.test/api/v1/admin/refetch", {
-    method: "POST",
-    headers: { "content-type": "application/json", ...headers },
-    body: typeof body === "string" ? body : JSON.stringify(body),
-  });
+const post = (
+  symbol: string,
+  body: unknown,
+  headers: Record<string, string> = {},
+) =>
+  new Request(
+    `http://markets.test/api/v1/instruments/${encodeURIComponent(symbol)}/refetch`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json", ...headers },
+      body: typeof body === "string" ? body : JSON.stringify(body),
+    },
+  );
 
 describe("the admin key", () => {
   test("a first start writes it once, prefixed and private", () => {
@@ -167,7 +173,7 @@ describe("the admin key", () => {
   });
 });
 
-describe("the admin routes' guard", () => {
+describe("the admin scope", () => {
   const initialize = JSON.stringify({
     jsonrpc: "2.0",
     id: 1,
@@ -179,38 +185,37 @@ describe("the admin routes' guard", () => {
     },
   });
 
-  test("the bearer is refused on the admin routes and the admin key everywhere else", () =>
+  test("the read key is forbidden the admin routes; the admin key opens every route but /mcp", () =>
     withApp(async ({ url, bearer, admin, lines }) => {
       const as = (key: string) => ({ authorization: `Bearer ${key}` });
-      for (const headers of [{}, as(bearer)]) {
-        for (const path of [
-          "/api/v1/admin/status",
-          "/api/v1/admin/nothing",
-          "/api/v1/admin",
-        ]) {
-          const res = await fetch(`${url}${path}`, { headers });
-          expect(res.status).toBe(401);
-          expect(res.headers.get("www-authenticate")).toBe("Bearer");
-        }
+      for (const path of ["/api/v1/status", "/api/v1/instruments"]) {
+        const none = await fetch(`${url}${path}`);
+        expect([path, none.status]).toEqual([path, 401]);
+        expect(none.headers.get("www-authenticate")).toBe("Bearer");
+        const read = await fetch(`${url}${path}`, { headers: as(bearer) });
+        expect([path, read.status]).toEqual([path, 403]);
+        expect(await read.json()).toMatchObject({ code: "forbidden" });
+        const own = await fetch(`${url}${path}`, { headers: as(admin) });
+        expect([path, own.status]).toEqual([path, 200]);
       }
-      expect(
-        (await fetch(`${url}/api/v1/admin/status`, { headers: as(admin) }))
-          .status,
-      ).toBe(200);
-      expect(
-        (await fetch(`${url}/api/v1/admin/nothing`, { headers: as(admin) }))
-          .status,
-      ).toBe(404);
       for (const path of [
-        "/api/v1/quotes",
-        "/api/v1/research",
-        "/api/v1/alerts",
-        "/api/v1/anything",
-        "/admin/status",
-        "/anything",
+        "/api/v1/rules",
+        "/api/v1/watchlist",
+        "/api/v1/openapi.json",
       ]) {
         const res = await fetch(`${url}${path}`, { headers: as(admin) });
-        expect(res.status).toBe(401);
+        expect([path, res.status]).toEqual([path, 200]);
+      }
+      expect(
+        (await fetch(`${url}/api/v1/alerts`, { headers: as(admin) })).status,
+      ).toBe(204);
+      for (const path of ["/api/v1/nothing", "/api/v1/admin/status"]) {
+        const res = await fetch(`${url}${path}`, { headers: as(admin) });
+        expect([path, res.status]).toEqual([path, 404]);
+      }
+      for (const path of ["/admin/status", "/anything"]) {
+        const res = await fetch(`${url}${path}`, { headers: as(admin) });
+        expect([path, res.status]).toEqual([path, 401]);
       }
       const mcp = await fetch(`${url}/mcp`, {
         method: "POST",
@@ -222,9 +227,7 @@ describe("the admin routes' guard", () => {
         body: initialize,
       });
       expect(mcp.status).toBe(401);
-      expect(lines.some((l) => l.includes("path=/api/v1/admin/status"))).toBe(
-        true,
-      );
+      expect(lines.some((l) => l.includes("path=/api/v1/status"))).toBe(true);
       for (const line of lines) {
         expect(line).not.toContain(admin);
         expect(line).not.toContain(bearer);
@@ -250,7 +253,7 @@ describe("the admin routes' guard", () => {
           insert.run(`US:F${i}`, NOW - i * 60_000, "failed", `error ${i}`);
         }
         insert.run("US:OK", NOW, "ok", null);
-        const res = await fetch(`${url}/api/v1/admin/status`, {
+        const res = await fetch(`${url}/api/v1/status`, {
           headers: { authorization: `Bearer ${admin}` },
         });
         const [bars] = (await res.json()).jobs;
@@ -281,7 +284,7 @@ describe("the admin routes' guard", () => {
              ('bvb', 'bars', 'BVB', ?1, ?1, 'failed', 0, 'interrupted')`,
         ).run(NOW);
         const backfill = async () => {
-          const res = await fetch(`${url}/api/v1/admin/status`, {
+          const res = await fetch(`${url}/api/v1/status`, {
             headers: { authorization: `Bearer ${admin}` },
           });
           return (await res.json()).jobs.find(
@@ -289,7 +292,7 @@ describe("the admin routes' guard", () => {
           );
         };
         // a run cut by shutdown is no failure: the next run settles it
-        const res0 = await fetch(`${url}/api/v1/admin/status`, {
+        const res0 = await fetch(`${url}/api/v1/status`, {
           headers: { authorization: `Bearer ${admin}` },
         });
         const bvb = (await res0.json()).jobs.filter(
@@ -328,7 +331,7 @@ describe("the admin routes' guard", () => {
           failing_scopes: 0,
           failing: [],
         });
-        const res = await fetch(`${url}/api/v1/admin/status`, {
+        const res = await fetch(`${url}/api/v1/status`, {
           headers: { authorization: `Bearer ${admin}` },
         });
         const bars = (await res.json()).jobs.find(
@@ -354,7 +357,7 @@ describe("the admin routes' guard", () => {
              ('finnhub', 'metric', 'US:A', ?1, ?1, 'failed', 0, 'not found'),
              ('finnhub', 'metric', 'US:B', ?2, ?2, 'ok', 1, null)`,
         ).run(NOW - 60_000, NOW);
-        const res = await fetch(`${url}/api/v1/admin/status`, {
+        const res = await fetch(`${url}/api/v1/status`, {
           headers: { authorization: `Bearer ${admin}` },
         });
         expect(res.status).toBe(200);
@@ -452,11 +455,11 @@ describe("the admin routes' guard", () => {
         expect(b.instruments).toBe(0);
         expect(b.tracked).toBe(0);
         expect(b.database_bytes).toBeGreaterThan(0);
-        const query = await fetch(`${url}/api/v1/admin/status?x=1`, {
+        const query = await fetch(`${url}/api/v1/status?x=1`, {
           headers: { authorization: `Bearer ${admin}` },
         });
         expect(query.status).toBe(400);
-        const posted = await fetch(`${url}/api/v1/admin/status`, {
+        const posted = await fetch(`${url}/api/v1/status`, {
           method: "POST",
           headers: { authorization: `Bearer ${admin}` },
         });
@@ -666,67 +669,71 @@ describe("refetch", () => {
     expect(count(t.db, "select count(*) as n from research")).toBe(0);
   });
 
-  test("the route parses strictly and answers an unknown symbol not found", async () => {
+  test("the route takes a stored symbol as written, parses strictly, and fetches no unknown one", async () => {
     const t = await setup();
     share(t.db, "XETRA", "VVSM", "GER");
+    t.db
+      .query("update instruments set source_symbol = 'VVSM.DE' where id = ?")
+      .run("XETRA:VVSM");
     const handle = admin(t);
-    const ok = await handle(
-      post({ symbols: ["US:NOPE", "xetra:vvsm"], fetch: ["calendar"] }),
-    );
-    expect(ok.status).toBe(200);
-    expect(await ok.json()).toEqual({
-      results: [
-        { symbol: "US:NOPE", status: "not found" },
-        { symbol: "XETRA:VVSM", part: "calendar", status: "not covered" },
-      ],
+    for (const symbol of ["xetra:vvsm", "VVSM.DE", "vvsm.de"]) {
+      const ok = await handle(post(symbol, { parts: ["calendar"] }));
+      expect([symbol, ok.status]).toEqual([symbol, 200]);
+      expect(await ok.json()).toEqual({
+        input: symbol,
+        id: "XETRA:VVSM",
+        parts: [{ part: "calendar", status: "not covered" }],
+      });
+    }
+    const asked = t.calls.urls.length;
+    const missing = await handle(post("NOPE", { parts: ["bars"] }));
+    expect(missing.status).toBe(404);
+    expect(await missing.json()).toMatchObject({
+      code: "not_found",
+      input: "NOPE",
     });
+    expect(t.calls.urls.length).toBe(asked);
+    expect(readInstrument(t.db, "US:NOPE")).toBeNull();
     const refused: [Request, number][] = [
-      [post("{"), 400],
-      [post([]), 400],
-      [post({ symbols: ["US:A"] }), 400],
-      [post({ symbols: [], fetch: ["bars"] }), 400],
-      [post({ symbols: ["US:A"], fetch: ["bars"], extra: 1 }), 400],
-      [post({ symbols: ["US:A"], fetch: ["everything"] }), 400],
-      [post({ symbols: ["US:A"], fetch: ["bars"], sections: ["metric"] }), 400],
+      [post("XETRA:VVSM", "{"), 400],
+      [post("XETRA:VVSM", []), 400],
+      [post("XETRA:VVSM", {}), 400],
+      [post("XETRA:VVSM", { parts: [] }), 400],
+      [post("XETRA:VVSM", { parts: ["bars"], extra: 1 }), 400],
+      [post("XETRA:VVSM", { parts: ["everything"] }), 400],
+      [post("XETRA:VVSM", { parts: ["bars"], sections: ["metric"] }), 400],
       [
-        post({
-          symbols: ["US:A"],
-          fetch: ["research"],
-          sections: ["calendar"],
-        }),
+        post("XETRA:VVSM", { parts: ["research"], sections: ["calendar"] }),
         400,
       ],
-      [post({ symbols: ["<script>"], fetch: ["bars"] }), 400],
-      [post({ symbols: ["A".repeat(65)], fetch: ["bars"] }), 400],
-      [
-        post({
-          symbols: Array.from(
-            { length: MAX_SYMBOLS + 1 },
-            (_, k) => `US:S${k}`,
-          ),
-          fetch: ["bars"],
-        }),
-        400,
-      ],
+      [post("<script>", { parts: ["bars"] }), 400],
+      [post("A".repeat(65), { parts: ["bars"] }), 400],
       [
         post(
-          { symbols: ["US:A"], fetch: ["bars"] },
+          "XETRA:VVSM",
+          { parts: ["bars"] },
           { "content-type": "text/plain" },
         ),
         415,
       ],
-      [post(`{"symbols":["${"A".repeat(20_000)}"]}`), 413],
-      [new Request("http://markets.test/api/v1/admin/refetch"), 405],
+      [post("XETRA:VVSM", `{"parts":["${"A".repeat(20_000)}"]}`), 413],
       [
-        new Request("http://markets.test/api/v1/admin/refetch?x=1", {
-          method: "POST",
-        }),
+        new Request(
+          "http://markets.test/api/v1/instruments/XETRA:VVSM/refetch",
+        ),
+        405,
+      ],
+      [
+        new Request(
+          "http://markets.test/api/v1/instruments/XETRA:VVSM/refetch?x=1",
+          { method: "POST" },
+        ),
         400,
       ],
     ];
     for (const [req, status] of refused) {
       const res = await handle(req);
-      expect(res.status).toBe(status);
+      expect([req.url, res.status]).toEqual([req.url, status]);
       const text = await res.text();
       expect(text).not.toContain("<script>");
       expect(text).not.toContain("everything");
@@ -775,7 +782,7 @@ describe("delete", () => {
 
   const del = (id: string) =>
     new Request(
-      `http://markets.test/api/v1/admin/instruments/${encodeURIComponent(id)}`,
+      `http://markets.test/api/v1/instruments/${encodeURIComponent(id)}`,
       {
         method: "DELETE",
       },
@@ -805,14 +812,10 @@ describe("delete", () => {
       )
       .run(NOW);
     const before = of(t.db, "US:BBB");
+    expect(Object.values(of(t.db, "US:AAA")).every((n) => n === 1)).toBe(true);
     const res = await admin(t)(del("us:aaa"));
-    expect(res.status).toBe(200);
-    const b = (await res.json()) as {
-      deleted: string;
-      rows: Record<string, number>;
-    };
-    expect(b.deleted).toBe("US:AAA");
-    expect(Object.values(b.rows).every((n) => n === 1)).toBe(true);
+    expect(res.status).toBe(204);
+    expect(await res.text()).toBe("");
     expect(Object.values(of(t.db, "US:AAA")).every((n) => n === 0)).toBe(true);
     expect(readInstrument(t.db, "US:AAA")).toBeNull();
     expect(of(t.db, "US:BBB")).toEqual(before);
@@ -845,13 +848,17 @@ describe("delete", () => {
     const res = await admin(t)(del("US:AAA"));
     expect(res.status).toBe(409);
     expect(await res.json()).toMatchObject({
-      error: "conflict",
+      code: "conflict",
+      input: "US:AAA",
       rules: [rule],
     });
     expect(readInstrument(t.db, "US:AAA")).not.toBeNull();
     expect(of(t.db, "US:AAA").bars).toBe(1);
     t.db.query("delete from rules").run();
-    expect((await admin(t)(del("US:AAA"))).status).toBe(200);
+    // a symbol as written names the stored instrument; nothing is fetched
+    const asked = t.calls.urls.length;
+    expect((await admin(t)(del("AAA"))).status).toBe(204);
+    expect(t.calls.urls.length).toBe(asked);
   });
 
   test("refuses a malformed id and any other method", async () => {
@@ -861,7 +868,7 @@ describe("delete", () => {
     expect(
       (
         await handle(
-          new Request("http://markets.test/api/v1/admin/instruments/%E0%A4%A", {
+          new Request("http://markets.test/api/v1/instruments/%E0%A4%A", {
             method: "PATCH",
           }),
         )
@@ -870,7 +877,7 @@ describe("delete", () => {
     expect(
       (
         await handle(
-          new Request("http://markets.test/api/v1/admin/instruments/%E0%A4%A", {
+          new Request("http://markets.test/api/v1/instruments/%E0%A4%A", {
             method: "DELETE",
           }),
         )
@@ -879,7 +886,7 @@ describe("delete", () => {
     expect(
       (
         await handle(
-          new Request("http://markets.test/api/v1/admin/instruments/US:A/x", {
+          new Request("http://markets.test/api/v1/instruments/US:A/x", {
             method: "DELETE",
           }),
         )
@@ -918,7 +925,7 @@ describe("the admin command", () => {
       service: async () => null,
     });
     expect(f.calls).toHaveLength(1);
-    expect(f.calls[0]!.url).toBe("http://127.0.0.1:9999/api/v1/admin/status");
+    expect(f.calls[0]!.url).toBe("http://127.0.0.1:9999/api/v1/status");
     const headers = f.calls[0]!.init.headers as Record<string, string>;
     expect(headers.authorization).toBe(`Bearer ${key}`);
     expect(out).toEqual([JSON.stringify({ ok: true }, null, 2)]);
@@ -938,11 +945,12 @@ describe("the admin command", () => {
         service: async () => installed.config,
       },
     );
-    expect(f.calls[0]!.url).toBe("http://127.0.0.1:12000/api/v1/admin/refetch");
+    expect(f.calls[0]!.url).toBe(
+      "http://127.0.0.1:12000/api/v1/instruments/US%3ANVDA/refetch",
+    );
     expect(f.calls[0]!.init.method).toBe("POST");
     expect(JSON.parse(f.calls[0]!.init.body as string)).toEqual({
-      symbols: ["US:NVDA"],
-      fetch: ["research"],
+      parts: ["research"],
       sections: ["metric"],
     });
     const home = tempDir();
@@ -963,9 +971,53 @@ describe("the admin command", () => {
       service: async () => null,
     });
     expect(h.calls[0]!.url).toBe(
-      `http://${DEFAULT_LISTEN}/api/v1/admin/instruments/US%3A%5EGSPC`,
+      `http://${DEFAULT_LISTEN}/api/v1/instruments/US%3A%5EGSPC`,
     );
     expect(h.calls[0]!.init.method).toBe("DELETE");
+  });
+
+  test("refetches several ids one call each, in turn, past a failed one", async () => {
+    const { dir } = dataDir();
+    const calls: string[] = [];
+    const out: string[] = [];
+    let open = 0;
+    const answers: Record<string, [number, string]> = {
+      A: [200, '{"input":"A","id":"US:A","parts":[]}'],
+      B: [404, '{"title":"Not Found","status":404,"code":"not_found"}'],
+      C: [200, '{"input":"C","id":"US:C","parts":[]}'],
+    };
+    const run = runAdmin(["--data", dir, "refetch", "A", "B", "C"], {
+      fetch: async (url) => {
+        const id = /instruments\/([^/]+)\/refetch$/.exec(url)![1]!;
+        calls.push(id);
+        // the next call starts only once this one answered
+        open++;
+        expect(open).toBe(1);
+        await Promise.resolve();
+        open--;
+        const [status, body] = answers[id]!;
+        return new Response(body, { status });
+      },
+      write: (line) => out.push(line),
+      service: async () => null,
+    });
+    await expect(run).rejects.toThrow("404");
+    expect(calls).toEqual(["A", "B", "C"]);
+    expect(out).toHaveLength(1);
+    expect(JSON.parse(out[0]!)).toEqual(
+      ["A", "B", "C"].map((id) => JSON.parse(answers[id]![1])),
+    );
+  });
+
+  test("delete prints a line for its answer with no body", async () => {
+    const { dir } = dataDir();
+    const out: string[] = [];
+    await runAdmin(["--data", dir, "delete", "^GSPC"], {
+      fetch: async () => new Response(null, { status: 204 }),
+      write: (line) => out.push(line),
+      service: async () => null,
+    });
+    expect(out).toEqual(["deleted ^GSPC"]);
   });
 
   test("prints a refusal and fails, never with the key", async () => {
@@ -1007,7 +1059,7 @@ describe("the admin command", () => {
 describe("the instrument list", () => {
   const list = async (m: Markets, query = "") => {
     const res = await api(m)(
-      new Request(`http://markets.test/api/v1/admin/instruments${query}`),
+      new Request(`http://markets.test/api/v1/instruments${query}`),
     );
     return { status: res.status, body: (await res.json()) as any };
   };
@@ -1017,20 +1069,27 @@ describe("the instrument list", () => {
     for (const id of ["US:CCC", "US:AAA", "XETRA:BBB", "FRED:DGS10"]) {
       instrument(w.db, id, { name: `${id.split(":")[1]} name` });
     }
-    const first = await list(w.m, "?limit=2");
+    const first = await list(w.m, "?page_size=2");
     expect(first.status).toBe(200);
     expect(first.body.total).toBe(4);
-    expect(first.body.more).toBe(true);
     expect(first.body.instruments.map((i: any) => i.id)).toEqual([
       "FRED:DGS10",
       "US:AAA",
     ]);
-    const next = await list(w.m, "?limit=2&after=US:AAA");
-    expect(next.body.more).toBe(false);
+    const token = first.body.next_page_token;
+    expect(token).toBeString();
+    // the row the token names, deleted between pages, skips no other
+    w.db.query("delete from instruments where id = 'US:AAA'").run();
+    const next = await list(
+      w.m,
+      `?page_size=2&page_token=${encodeURIComponent(token)}`,
+    );
+    expect(next.body).not.toHaveProperty("next_page_token");
     expect(next.body.instruments.map((i: any) => i.id)).toEqual([
       "US:CCC",
       "XETRA:BBB",
     ]);
+    instrument(w.db, "US:AAA", { name: "AAA name" });
     const found = await list(w.m, "?query=bbb");
     expect(found.body.total).toBe(1);
     expect(found.body.instruments[0]).toMatchObject({
@@ -1140,9 +1199,7 @@ describe("the instrument list", () => {
       name: "Aaa Inc.",
     });
     const one = (path: string) =>
-      api(w.m)(
-        new Request(`http://markets.test/api/v1/admin/instruments/${path}`),
-      );
+      api(w.m)(new Request(`http://markets.test/api/v1/instruments/${path}`));
     const res = await one("US%3AAAA");
     expect(res.status).toBe(200);
     const body = (await res.json()) as any;
@@ -1161,13 +1218,16 @@ describe("the instrument list", () => {
     expect(body.credit).toBeNull();
     expect(lastReadAt(w.db, "US:AAA")).not.toBeNull();
 
+    // a symbol never stored is fetched; one whose fetch fails has no row
     const missing = await one("US%3ANOPE");
-    expect(missing.status).toBe(404);
-    expect(((await missing.json()) as any).error).toBe("not_found");
-    // never a fetch of a symbol not stored
+    expect(missing.status).toBe(503);
+    expect(await missing.json()).toMatchObject({
+      code: "source_error",
+      input: "US:NOPE",
+    });
     expect(readInstrument(w.db, "US:NOPE")).toBeNull();
     expect((await one("US%3AAAA?x=1")).status).toBe(400);
-    expect((await one("%3Cb%3E")).status).toBe(400);
+    expect((await one("%E0%A4%A")).status).toBe(400);
   });
 
   test("one instrument whose read fails keeps its stored row and says why", async () => {
@@ -1175,7 +1235,7 @@ describe("the instrument list", () => {
     // stored with nothing fetched: the read asks a source, which is offline
     instrument(w.db, "FRED:DGS10");
     const res = await api(w.m)(
-      new Request("http://markets.test/api/v1/admin/instruments/FRED%3ADGS10"),
+      new Request("http://markets.test/api/v1/instruments/FRED%3ADGS10"),
     );
     expect(res.status).toBe(200);
     const body = (await res.json()) as any;
@@ -1187,22 +1247,25 @@ describe("the instrument list", () => {
       url: "https://fred.stlouisfed.org/",
     });
     expect(body.quote).toBeNull();
-    expect(body.error).toMatchObject({ error: "source_error" });
+    expect(body.error).toMatchObject({ code: "source_error" });
+    expect(body.input).toBe("FRED:DGS10");
   });
 
   test("parses strictly", async () => {
     const w = world();
     for (const query of [
-      "?limit=0",
-      `?limit=${MAX_PAGE + 1}`,
-      "?limit=1.5",
-      "?after=<b>",
+      "?page_size=0",
+      `?page_size=${MAX_PAGE + 1}`,
+      "?page_size=1.5",
+      "?page_token=<b>",
       `?query=${"x".repeat(65)}`,
       "?next=US:A",
-      "?limit=1&limit=2",
+      "?limit=1",
+      "?after=US:A",
+      "?page_size=1&page_size=2",
     ]) {
       const res = await list(w.m, query);
-      expect([query, res.status, res.body.error]).toEqual([
+      expect([query, res.status, res.body.code]).toEqual([
         query,
         400,
         "bad_arguments",

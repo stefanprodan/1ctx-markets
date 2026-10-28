@@ -87,7 +87,7 @@ src/operations/             the reads the MCP tools and the API share, with thei
 src/tools/                  the MCP surface: the tool registry and research's page
 src/api/                    /api/v1: routes, alerts, the spec, the docs page; never imports tools/
 src/service/                `service install|start|stop|...`: launchd, CLI only
-src/admin/                  /api/v1/admin/* behind its own key, and the `admin` command
+src/admin/                  the instrument, watchlist and status routes, and the `admin` command
 src/web/                    the web UI, bundled from index.html (Preact)
   app/                      the shell, rail, router, routes and theme
   data/                     every call and signal; views never fetch
@@ -110,8 +110,8 @@ the same commit as the code that changes a rule.
 | Doc | Governs |
 |---|---|
 | `docs/config.md` | flags, the data directory, key files, the start log, HTTP routes, shutdown order, the build and smoke test |
-| `docs/admin.md` | the admin key, `/api/v1/admin/*` (status, refetch, delete) and the `admin` command |
-| `docs/api.md` | the REST API under `/api/v1`: routes and their parameters, no paging, errors, keys, caching, the alerts feed, the spec and its contract test, the docs page |
+| `docs/admin.md` | the admin key and its scope, the instrument list, status, refetch, delete and the `admin` command |
+| `docs/api.md` | the REST API under `/api/v1`: routes and their parameters, symbols, bars, the watchlist, paging, problem details, scopes, caching, the alerts feed, the spec and its contract test, the docs page |
 | `docs/deploy.md` | the `service` command, launchd, the kill timeout, the log, staging deploys, backups and keys |
 | `docs/storage.md` | the database, migrations, the writer, instruments, times and prices, the clock, runs and staleness, tracking, retention |
 | `docs/calendars.md` | market sessions from the source, quoting and checks, bar dates and finality, weeks, wall time, crypto |

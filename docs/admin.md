@@ -1,11 +1,12 @@
 # Admin
 
-Governs the operator's routes and command: `src/admin/http.ts`
-(`/api/v1/admin/*`), `src/admin/refetch.ts` and `src/admin/cli.ts`
-(`1ctx-markets admin`). The routes, their errors and the spec are in
-`docs/api.md`; key files in `docs/config.md`; runs, tracking and
-retention in `docs/storage.md`; the source queue and deadlines in
-`docs/sources.md`; each source's fetch code in its own doc.
+Governs the operator's routes and command: `src/admin/http.ts` (the
+instrument, watchlist and status handlers), `src/admin/refetch.ts` and
+`src/admin/cli.ts` (`1ctx-markets admin`). The routes, their errors
+and the spec are in `docs/api.md`; key files in `docs/config.md`;
+runs, tracking and retention in `docs/storage.md`; the source queue
+and deadlines in `docs/sources.md`; each source's fetch code in its
+own doc.
 
 ## Why
 
@@ -20,35 +21,35 @@ is offered over MCP.
   bearer, the same way** (`docs/config.md`, Keys), prefixed
   `1ctx-markets-admin-`. One that is unusable or equal to the bearer
   stops the start; the message names the file only.
-- **`/api/v1/admin` and `/api/v1/admin/*` take the admin key alone**,
-  checked as the bearer is (`router()` in `src/server/http.ts`): the
-  bearer is refused there and the admin key on every other path,
-  `/mcp` included. With no admin key they refuse every caller.
+- **The admin scope takes the admin key alone**, checked as the read
+  key is (`router()` in `src/server/http.ts`), after the route is
+  matched: the read key there is 403. The admin key also holds the
+  read scope, so it opens every route but `/mcp`, which stays the read
+  key's. With no admin key the admin routes refuse every caller.
 - **The web UI's session cookie opens them too**, made by signing in
   with the admin key (`docs/web.md`); a write by cookie needs this
   server's `Origin`, or it is 403.
 - **The routes are on the server's own port, so treat them as
   internet-facing** wherever the server is reachable. Arguments are
-  parsed strictly and refused whole, bodies are at most 16 KiB
-  (`MAX_BODY_BYTES`), a request names at most 20 instruments
-  (`MAX_SYMBOLS`), an id matches `KEY`, and every error is a fixed
-  phrase that echoes nothing sent.
+  parsed strictly and refused whole, a refetch body is at most 16 KiB
+  (`MAX_BODY_BYTES`), a path symbol matches `KEY`, and every error is a
+  fixed phrase that echoes nothing a source said.
 
 | Route | Does |
 |---|---|
-| `GET /api/v1/admin/instruments?query=&after=&limit=` | the stored instruments by id, a page at a time (below) |
-| `GET /api/v1/admin/status` | sources on, off and why, and every job, with names for people (a source's `label`, `short` and `mark`, a job's `label` and `about`; a keyed source's `key`: its file, what it adds, where to get one), a back-off in force, every job's last run, its scopes (markets or instruments with a run kept) and failing scopes counted, the newest `MAX_FAILING` (5) failing named with their error (a run cut by shutdown, error `stopped`, never counts, since the next run settles it; one cut by a crash, `interrupted`, does, since a run that kills the server would otherwise never show; a failed Yahoo backfill is settled once the instrument has daily bars, since a read fetches a history without a backfill run; runs with no scope, from before backfill runs had one, are skipped; the page reads failure from these counts, never the last run), the instrument and tracked counts, each `--track` value with its id and state (`pending`, `tracked` or the read's error code), the database size, the version |
-| `GET /api/v1/admin/instruments/{id}` | one stored instrument's list row and its quote as the quote tool gives it, returns and session included; a read (below) |
-| `POST /api/v1/admin/refetch` | `{"symbols": [...], "fetch": [...], "sections": [...]}`, answered per symbol and part |
-| `DELETE /api/v1/admin/instruments/{id}` | the instrument and every row of it |
+| `GET /api/v1/instruments?query=&page_size=&page_token=` | the stored instruments by id, a page at a time (below) |
+| `GET /api/v1/status` | sources on, off and why, and every job, with names for people (a source's `label`, `short` and `mark`, a job's `label` and `about`; a keyed source's `key`: its file, what it adds, where to get one), a back-off in force, every job's last run, its scopes (markets or instruments with a run kept) and failing scopes counted, the newest `MAX_FAILING` (5) failing named with their error (a run cut by shutdown, error `stopped`, never counts, since the next run settles it; one cut by a crash, `interrupted`, does, since a run that kills the server would otherwise never show; a failed Yahoo backfill is settled once the instrument has daily bars, since a read fetches a history without a backfill run; runs with no scope, from before backfill runs had one, are skipped; the page reads failure from these counts, never the last run), the instrument and tracked counts, the database size, the version. The `--track` values are `GET /api/v1/watchlist`'s (`docs/api.md`) |
+| `POST /api/v1/instruments/{symbol}/refetch` | `{"parts": [...], "sections": [...]}`, answered per part |
+| `DELETE /api/v1/instruments/{symbol}` | the instrument and every row of it; 204 |
 
 ## The instrument list
 
-- **Paged by id, the one paged route:** `limit` 1 to `MAX_PAGE` (200,
-  `DEFAULT_PAGE` 50 by default), `after` the last id of the page
-  before, `more` true while ids are past the page. A page is a screen
-  of rows, and the stored set grows with use; paging by id never skips
-  a row when one is deleted between pages. `total` counts every match.
+- **Paged by id, the one paged route:** `page_size` 1 to `MAX_PAGE`
+  (200, `DEFAULT_PAGE` 50 by default), `page_token` the
+  `next_page_token` of the page before (its last id), and
+  `next_page_token` absent on the last page. A page is a screen of
+  rows, and the stored set grows with use; paging by id never skips a
+  row when one is deleted between pages. `total` counts every match.
 - **`query` keeps ids or names holding it**, ignoring ASCII case only
   (SQLite's `lower()`), at most 64 characters.
 - **Each row says what tracks it** in `tracked_by`: `rule` (a rule
@@ -64,24 +65,25 @@ is offered over MCP.
   and with one FRED instrument, as on the public routes. One instrument
   also has `credit`, its price source's short name and site (Yahoo,
   BVB, FRED), which the instrument page's footer links.
-- **One instrument is a read**, as the UI's instrument page is one:
-  `GET /api/v1/admin/instruments/{id}` reads it through `quoteRows()`
-  as the quote tool does, so it is tracked and a due price is fetched,
+- **One instrument is a read, for the read key too**:
+  `GET /api/v1/instruments/{symbol}` (`docs/api.md`, "One instrument")
+  reads it through `quoteRows()` as the quote tool does, so an unknown
+  symbol is fetched, a stored one tracked and a due price fetched,
   with `extended` asked, so the page shows pre or post trading; that
-  read is cached per quote period and skipped while the session is open.
-  The public `/quotes` leaves returns and session out to stay cheap
-  for many symbols; one instrument can afford them. A stored id only:
-  an unknown one is 404 and nothing is fetched. A read that fails (a
-  source down, the deadline) still answers 200 with the stored row,
-  `quote` null and `error` the item's code and phrase, so the page keeps
-  the stored price.
+  read is cached per quote period and skipped while the session is
+  open. The public `/quotes` leaves returns and session out to stay
+  cheap for many symbols; one instrument can afford them. A stored
+  instrument whose read fails (a source down, the deadline) still
+  answers 200 with the stored row, `quote` null and `error` the item's
+  code and detail, so the page keeps the stored price.
 
 ## Refetch
 
 - **For after a parser fix:** a run recorded by old code holds a
   section or history off until it is next due; this asks again now.
-- **Stored instruments only, by id**; an id not stored answers `not
-  found`, and nothing is resolved or added.
+- **One stored instrument a call**, named by its id or a symbol as
+  written (`storedInstrument()`, the stored Yahoo listing first); one
+  not stored is 404, and nothing is resolved, fetched or added.
 - **Each part runs through its source's own fetch code, client and
   queue or limiter** (`within(live)`, so a back-off fails at once),
   every part at once under one call deadline (15 s). Its calls queue
@@ -97,8 +99,9 @@ is offered over MCP.
 | `calendar` | Finnhub | the earnings calendar |
 | `news` | Massive | one page, as a tool asks |
 
-- **Each part answers `fetched` with its rows, `not covered`, `source
-  off`, or `failed` with a fixed phrase** (a source phrase, `backing
+- **The answer is `input`, `id` and `parts[]`; each part answers
+  `fetched` with its rows, `not covered`, `source off`, or `failed`
+  with a fixed phrase** (a source phrase, `backing
   off after <phrase>`, `timed out`, `moved to another source`, `the
   server is stopping`, `failed`).
 - **It records the runs the jobs record, never one by hand.** Bars end
@@ -111,6 +114,8 @@ is offered over MCP.
 
 ## Delete
 
+- **Stored only, never fetched**, named as refetch names it; 204 with
+  no body.
 - **One write removes the instrument, every row keyed to it
   (`INSTRUMENT_TABLES`) and its own runs**, so the key added again
   starts unfetched; nothing of another instrument goes. A research or
@@ -135,5 +140,10 @@ is offered over MCP.
   over ssh without stopping the service. `--listen` and `--data`
   default to the installed service's, else the server's defaults; a
   wildcard bind is called on loopback (`urlOf()`).
+- **`refetch` with several ids makes one call each, in turn**, since
+  the route takes one instrument a call: it carries on past a failed
+  one, prints one JSON array of the answers in the order given, and
+  exits 1 if any call was not 2xx. `--fetch` names the parts.
+- **`delete` prints `deleted <id>` for its 204**, else the problem.
 - **It prints the server's JSON and never the key**, and exits 1 on a
   status other than 2xx or no answer.

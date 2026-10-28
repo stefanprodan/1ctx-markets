@@ -50,7 +50,7 @@ export type AppOptions = {
   hostname: string;
   port: number;
   bearer: string;
-  // /api/v1/admin/* answers only while there is one
+  // the admin routes open to no one without one
   adminKey?: string | null;
   // the web UI's sign-in, which needs the admin key; off with --no-ui
   ui?: boolean;
@@ -303,15 +303,12 @@ export function start(options: AppOptions): App {
       api: routes({
         m: reads,
         alerts: alertsHandler({ db, log: options.log("alerts") }),
-        admin:
-          adminKey === null
-            ? null
-            : {
-                m: { ...reads, log: options.log("admin") },
-                version: options.version,
-                sources: states,
-                track: track.status,
-              },
+        admin: {
+          m: { ...reads, log: options.log("admin") },
+          version: options.version,
+          sources: states,
+        },
+        track: track.status,
         log: options.log("api"),
       }),
       adminKey,

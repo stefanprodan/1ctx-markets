@@ -1,11 +1,12 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-// The bearer is checked before route lookup, so an unknown path answers 401.
+// A key is checked before a path is known missing, so an unknown path
+// answers 401 without one.
 
 import { createHash, timingSafeEqual } from "node:crypto";
 import type { McpHttpHandler } from "@modelcontextprotocol/server";
 import type { HTMLBundle } from "bun";
-import { failed, notAllowed, notFound, PREFIX } from "../api/http.ts";
+import { failed, notAllowed, notFound, PREFIX, problem } from "../api/http.ts";
 import { match, type Route } from "../api/routes.ts";
 import type { Clock } from "../runtime/clock.ts";
 import { type Log, sdkErrorFields } from "../runtime/log.ts";
@@ -50,7 +51,8 @@ export type RouterDeps = {
   bearer: string;
   mcp: McpHttpHandler;
   api?: readonly Route[];
-  // the key of /api/v1/admin/* alone; with none those paths refuse all
+  // holds every /api/v1 scope but never /mcp; with none, admin routes
+  // refuse every caller
   adminKey?: string | null;
   // the web UI's sign-in; with none the cookie opens nothing
   sessions?: Sessions | null;
@@ -58,20 +60,22 @@ export type RouterDeps = {
   log: Log;
 };
 
+// /mcp's refusal; /api/v1's is a problem
 const unauthorized = () =>
   failed(
     { error: "unauthorized", message: "no or wrong bearer key" },
     { "www-authenticate": "Bearer" },
   );
 
-const forbidden = () =>
-  failed({
-    error: "forbidden",
-    message: "forbidden",
-  });
+const apiUnauthorized = () =>
+  problem(
+    "unauthorized",
+    "no or wrong key",
+    {},
+    { "cache-control": "no-store", "www-authenticate": "Bearer" },
+  );
 
-const isAdmin = (path: string) =>
-  path === "/admin" || path.startsWith("/admin/");
+const forbidden = (detail: string) => problem("forbidden", detail);
 
 const READS = new Set(["GET", "HEAD"]);
 
@@ -83,28 +87,33 @@ export function router(deps: RouterDeps): Handle {
   const sessions = deps.sessions ?? null;
   const signedIn = (req: Request) =>
     sessions?.valid(cookieOf(req), deps.clock.now()) === true;
-  // the cookie opens admin, GET reads and screen; a non-GET needs our pages
-  const allowed = (req: Request, path: string): Response | null => {
-    if (isAdmin(path) ? admin(req) : authorized(req)) return null;
-    const read = READS.has(req.method);
-    // screen takes its filters as a body, so its POST is a read
-    const bodyRead = req.method === "POST" && path === "/screen";
-    if (!signedIn(req) || (!read && !bodyRead && !isAdmin(path))) {
-      return unauthorized();
+  // the route is matched first, then the key held against its scope
+  const allowed = (req: Request, r: Route | null): Response | null => {
+    if (admin(req)) return null;
+    if (authorized(req)) {
+      return r === null || r.scope === "read"
+        ? null
+        : forbidden("this key does not open this route");
     }
-    return read || sameOrigin(req) ? null : forbidden();
+    if (!signedIn(req) || r?.cookie === false) return apiUnauthorized();
+    // a cookie's write must come from this server's own pages
+    return READS.has(req.method) || sameOrigin(req)
+      ? null
+      : forbidden("not sent from this server's pages");
   };
   const apiRoute = async (req: Request, path: string): Promise<Response> => {
     const url = new URL(req.url);
     const found = match(api, path);
-    const open = found?.routes.every((r) => r.key === "none") === true;
-    if (!open) {
-      const refused = allowed(req, path);
-      if (refused !== null) return refused;
+    if (found?.routes.every((r) => r.scope === "none") === true) {
+      const r = found.routes.find((x) => x.method === req.method);
+      if (r === undefined) return notAllowed(found.routes.map((x) => x.method));
+      return r.handle(req, url, found.params);
     }
+    const r = found?.routes.find((x) => x.method === req.method) ?? null;
+    const refused = allowed(req, r);
+    if (refused !== null) return refused;
     if (found === null) return notFound();
-    const r = found.routes.find((x) => x.method === req.method);
-    if (r === undefined) return notAllowed(found.routes.map((x) => x.method));
+    if (r === null) return notAllowed(found.routes.map((x) => x.method));
     return r.handle(req, url, found.params);
   };
   const route = async (req: Request, path: string): Promise<Response> => {
@@ -115,9 +124,11 @@ export function router(deps: RouterDeps): Handle {
       return sessionRoute(sessions, req, deps.clock.now());
     }
     if (!authorized(req)) return unauthorized();
-    if (path !== "/mcp") return notFound();
+    if (path !== "/mcp") {
+      return failed({ error: "not_found", message: "no such route" });
+    }
     // stateless: no stream to resume with GET, no session to end with DELETE
-    if (req.method !== "POST") return notAllowed(["POST"]);
+    if (req.method !== "POST") return plainNotAllowed(["POST"]);
     return deps.mcp.fetch(req);
   };
   return async (req) => {
@@ -125,7 +136,7 @@ export function router(deps: RouterDeps): Handle {
     const path = new URL(req.url).pathname;
     // polled while the service starts, so it stays out of the log
     if (path === "/health") {
-      if (req.method !== "GET") return notAllowed(["GET"]);
+      if (req.method !== "GET") return plainNotAllowed(["GET"]);
       return new Response(null, { status: 200 });
     }
     let res: Response;
@@ -134,7 +145,9 @@ export function router(deps: RouterDeps): Handle {
     } catch (error) {
       // a throw from the MCP handler can quote the request
       deps.log.error("request failed", { path, ...sdkErrorFields(error) });
-      res = failed({ error: "internal", message: "internal error" });
+      res = path.startsWith(`${PREFIX}/`)
+        ? problem("internal", "internal error")
+        : failed({ error: "internal", message: "internal error" });
     }
     deps.log.info("request", {
       method: req.method,
@@ -145,6 +158,13 @@ export function router(deps: RouterDeps): Handle {
     return res;
   };
 }
+
+// outside /api/v1 an error keeps the {error, message} shape
+const plainNotAllowed = (allow: readonly string[]): Response =>
+  failed(
+    { error: "method_not_allowed", message: `use ${allow.join(", ")}` },
+    { "cache-control": "no-store", allow: allow.join(", ") },
+  );
 
 export function serve(options: {
   hostname: string;

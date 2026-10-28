@@ -810,7 +810,7 @@ describe("a session still trading in history", () => {
     );
     const route: any = await (
       await api(m)(
-        new Request("http://markets.test/api/v1/history?symbol=BVB:TLV"),
+        new Request("http://markets.test/api/v1/instruments/BVB:TLV/bars"),
       )
     ).json();
     expect(route.session).toEqual(tool.session);
@@ -875,13 +875,19 @@ describe("a session still trading in history", () => {
       final: false,
       signals: { kind: "live", ema20: round(live.ema20) },
     });
+    // the quote's day range, with no open or volume from the quote
     expect(route).toEqual({
       date: "2026-10-26",
+      open: tool.open,
+      high: tool.high,
+      low: tool.low,
       close: 36.4,
+      volume: tool.volume,
       final: false,
       sma50: round(live.sma50),
       sma200: null,
     });
+    expect(route).toMatchObject({ open: null, high: 36.4, low: 36.18 });
   });
 
   test("an index's bar stored at the open closes at its quote", async () => {
@@ -928,7 +934,7 @@ describe("a session still trading in history", () => {
     });
     const body: any = await (
       await api(m)(
-        new Request("http://markets.test/api/v1/history?symbol=BVB:BET"),
+        new Request("http://markets.test/api/v1/instruments/BVB:BET/bars"),
       )
     ).json();
     expect(body.bars.at(-1)).toMatchObject({

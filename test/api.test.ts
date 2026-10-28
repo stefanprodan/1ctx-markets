@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
+import { connect } from "node:net";
 import { join } from "node:path";
 import { fingerprint, fingerprinted, POLICY } from "../src/api/docs.ts";
 import { MAX_BODY_BYTES, PREFIX } from "../src/api/http.ts";
 import { spec } from "../src/api/openapi.ts";
 import { routes } from "../src/api/routes.ts";
 import { round } from "../src/market/format.ts";
+import { readInstrument } from "../src/market/instruments.ts";
 import { storeIntraday } from "../src/market/intraday.ts";
 import { lastReadAt } from "../src/market/tracking.ts";
 import { withLive } from "../src/operations/history.ts";
@@ -22,7 +24,7 @@ import { type Db, open } from "../src/storage/db/index.ts";
 import { writer } from "../src/storage/writer.ts";
 import { tools } from "../src/tools/index.ts";
 import { restAnswers } from "./helpers/answers.ts";
-import { ADMIN_KEY, api } from "./helpers/api.ts";
+import { ADMIN_KEY, api, READ_KEY } from "./helpers/api.ts";
 import { withApp } from "./helpers/app.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { drive, pacedOf } from "./helpers/drive.ts";
@@ -34,7 +36,15 @@ import {
   validate,
 } from "./helpers/schema.ts";
 import { FRED_KEY, gate, NOW, sources } from "./helpers/sources.ts";
-import { bar, FINAL, instrument, LIVE, row, world } from "./helpers/world.ts";
+import {
+  bar,
+  FINAL,
+  instrument,
+  LIVE,
+  listing,
+  row,
+  world,
+} from "./helpers/world.ts";
 import { chartSymbol } from "./helpers/yahoo.ts";
 
 const METHODS = ["get", "post", "patch", "delete"];
@@ -113,7 +123,8 @@ describe("the spec", () => {
     const list = routes({
       m: w.m,
       alerts: async () => new Response(),
-      admin: { m: w.m, version: "v", sources: [], track: () => [] },
+      admin: { m: w.m, version: "v", sources: [] },
+      track: () => [],
       log: silent,
     });
     const routed = list.map((r) => `${r.method} ${r.path}`).sort();
@@ -153,7 +164,7 @@ describe("the spec", () => {
       { type: "object", properties: { a: { pattern: "x" } } },
       { type: "array", items: { format: "date" } },
       { type: "text" },
-      { $ref: "#/components/schemas/Error", type: "object" },
+      { $ref: "#/components/schemas/Problem", type: "object" },
     ]) {
       expect(schemaErrors(s)).not.toEqual([]);
     }
@@ -191,25 +202,36 @@ describe("the spec", () => {
     expect(validate({ c: 1 }, either, {})).not.toEqual([]);
     // an item is a whole result or a whole error, never a bare input
     const quotes = answerSchema(spec, "GET", "/quotes", 200)!;
-    const answer = (item: object) => validate({ items: [item] }, quotes, spec);
+    const answer = (item: object) => validate({ quotes: [item] }, quotes, spec);
     expect(answer({ input: "X" })).not.toEqual([]);
     expect(
-      answer({ input: "X", error: "not_found", message: "no listing" }),
+      answer({
+        input: "X",
+        error: { code: "not_found", detail: "no listing" },
+      }),
     ).toEqual([]);
     expect(
-      answer({ input: "X", id: "US:X", error: "not_found", message: "m" }),
+      answer({
+        input: "X",
+        id: "US:X",
+        error: { code: "not_found", detail: "m" },
+      }),
+    ).not.toEqual([]);
+    expect(
+      answer({ input: "X", error: "not_found", message: "no listing" }),
     ).not.toEqual([]);
     for (const path of ["/movers", "/screen"]) {
       const method = path === "/screen" ? "POST" : "GET";
       const set = answerSchema(spec, method, path, 200)!;
       const sort = path === "/screen" ? { field: "id", order: "asc" } : "x";
       const counts = { matched: 1, not_matched: 0, unavailable: 0, errors: 0 };
+      const list = path === "/screen" ? "matches" : "movers";
       expect(
         validate(
           {
             sort,
             counts,
-            items: [{ input: "X", id: "US:X", status: "matched" }],
+            [list]: [{ input: "X", id: "US:X", status: "matched" }],
           },
           set,
           spec,
@@ -237,6 +259,16 @@ describe("every operation", () => {
         raw.slice(0, 300),
       ]);
       covered.add(`${method} ${path} ${status}`);
+      const type = res.headers.get("content-type");
+      // every error is a problem whose status is the answer's
+      if (status >= 400) {
+        expect([method, path, status, type]).toEqual([
+          method,
+          path,
+          status,
+          "application/problem+json",
+        ]);
+      }
       const schema = answerSchema(spec, method, path, status);
       if (schema === null) return raw;
       const body = JSON.parse(raw);
@@ -246,9 +278,18 @@ describe("every operation", () => {
         status,
         [],
       ]);
+      if (status >= 400) {
+        expect([method, path, body.status, body.type]).toEqual([
+          method,
+          path,
+          status,
+          undefined,
+        ]);
+      }
       return body;
     };
     const wrong = { headers: { authorization: "Bearer wrong" } };
+    const reader = { headers: { authorization: `Bearer ${READ_KEY}` } };
 
     await check(
       "GET",
@@ -264,28 +305,17 @@ describe("every operation", () => {
       401,
     );
 
+    const bars = "/instruments/{symbol}/bars";
     const h = await check(
       "GET",
-      "/history",
-      await t.call("/history?symbol=NVDA&benchmark=^GSPC"),
+      bars,
+      await t.call("/instruments/NVDA/bars?benchmark=^GSPC"),
       200,
     );
     expect(h.relative.returns).toHaveLength(2);
-    // the tools' bars stay close only; a chart asks for its candles
-    expect(Object.keys(h.bars[0]).sort()).toEqual([
-      "close",
-      "date",
-      "final",
-      "sma200",
-      "sma50",
-    ]);
-    const ohlc = await check(
-      "GET",
-      "/history",
-      await t.call("/history?symbol=NVDA&ohlc=true"),
-      200,
-    );
-    expect(Object.keys(ohlc.bars.at(-2)).sort()).toEqual([
+    expect(h).toMatchObject({ input: "NVDA", instrument: { id: "US:NVDA" } });
+    // daily bars always carry their candles and volume
+    expect(Object.keys(h.bars.at(-2)).sort()).toEqual([
       "close",
       "date",
       "final",
@@ -298,8 +328,8 @@ describe("every operation", () => {
     ]);
     await check(
       "GET",
-      "/history",
-      await t.call("/history?symbol=NVDA&ohlc=1"),
+      bars,
+      await t.call("/instruments/NVDA/bars?ohlc=true"),
       400,
     );
     // the whole range of 5-minute closes, past a tool's page, in its own schema
@@ -318,11 +348,13 @@ describe("every operation", () => {
     }
     const five = await check(
       "GET",
-      "/history",
-      await t.call("/history?symbol=NVDA&interval=5m&from=2026-10-01"),
+      bars,
+      await t.call("/instruments/NVDA/bars?interval=5m&from=2026-10-01"),
       200,
     );
     expect(five).toMatchObject({
+      input: "NVDA",
+      instrument: { id: "US:NVDA" },
       interval: "5m",
       from: "2026-10-01",
       to: "2026-10-23",
@@ -332,36 +364,41 @@ describe("every operation", () => {
     expect(five.next).toBeUndefined();
     await check(
       "GET",
-      "/history",
-      await t.call("/history?symbol=NVDA&interval=5m&ohlc=true"),
+      bars,
+      await t.call("/instruments/NVDA/bars?interval=5m&benchmark=^GSPC"),
       400,
     );
     await check(
       "GET",
-      "/history",
-      await t.call("/history?symbol=NVDA&interval=5m&benchmark=^GSPC"),
+      bars,
+      await t.call("/instruments/NVDA/bars?interval=1d&extended=true"),
       400,
     );
-    await check("GET", "/history", await t.call("/history?interval=1h"), 400);
     await check(
       "GET",
-      "/history",
-      await t.call("/history?symbol=A", wrong),
-      401,
+      bars,
+      await t.call("/instruments/NVDA/bars?interval=1h"),
+      400,
     );
+    await check("GET", bars, await t.call("/instruments/A/bars", wrong), 401);
     const missing = await check(
       "GET",
-      "/history",
-      await t.call("/history?symbol=ZZNOTHING"),
+      bars,
+      await t.call("/instruments/ZZNOTHING/bars"),
       404,
     );
-    expect(missing).toMatchObject({ input: "ZZNOTHING", error: "not_found" });
-    const slow = await t.late("SLOWA.DE", "/history?symbol=SLOWA.DE");
-    expect((await check("GET", "/history", slow, 503)).error).toBe("timeout");
+    expect(missing).toMatchObject({ input: "ZZNOTHING", code: "not_found" });
+    const slow = await t.late("SLOWA.DE", "/instruments/SLOWA.DE/bars");
+    expect((await check("GET", bars, slow, 503)).code).toBe("timeout");
 
-    await check("GET", "/search", await t.call("/search?query=NVDA"), 200);
-    await check("GET", "/search", await t.call("/search"), 400);
-    await check("GET", "/search", await t.call("/search?query=A", wrong), 401);
+    await check("GET", "/symbols", await t.call("/symbols?query=NVDA"), 200);
+    await check("GET", "/symbols", await t.call("/symbols"), 400);
+    await check(
+      "GET",
+      "/symbols",
+      await t.call("/symbols?query=A", wrong),
+      401,
+    );
 
     const r = await check(
       "GET",
@@ -371,7 +408,7 @@ describe("every operation", () => {
       ),
       200,
     );
-    expect(Object.keys(r.items[0].research).sort()).toEqual([
+    expect(Object.keys(r.research[0].company).sort()).toEqual([
       "metric",
       "source",
     ]);
@@ -390,16 +427,21 @@ describe("every operation", () => {
 
     const e = await check(
       "GET",
-      "/events",
-      await t.call("/events?from=2026-01-01&to=2026-12-31&symbols=NVDA"),
+      "/earnings",
+      await t.call("/earnings?from=2026-01-01&to=2026-12-31&symbols=NVDA"),
       200,
     );
-    expect(e.events).toHaveLength(1);
-    await check("GET", "/events", await t.call("/events?to=2026-12-31"), 400);
+    expect(e.earnings).toHaveLength(1);
     await check(
       "GET",
-      "/events",
-      await t.call("/events?from=2026-01-01&to=2026-12-31", wrong),
+      "/earnings",
+      await t.call("/earnings?to=2026-12-31"),
+      400,
+    );
+    await check(
+      "GET",
+      "/earnings",
+      await t.call("/earnings?from=2026-01-01&to=2026-12-31", wrong),
       401,
     );
 
@@ -488,13 +530,11 @@ describe("every operation", () => {
       condition: { left: "price", op: "<", right: 211 },
       note: "below 211",
     };
-    const made = await check(
-      "POST",
-      "/rules",
-      await t.call("/rules", json(rule)),
-      201,
-    );
+    const created = await t.call("/rules", json(rule));
+    const location = created.headers.get("location");
+    const made = await check("POST", "/rules", created, 201);
     expect(made.alert).not.toBeNull();
+    expect(location).toBe(`${PREFIX}/rules/${made.rule.id}`);
     await check(
       "POST",
       "/rules",
@@ -542,6 +582,16 @@ describe("every operation", () => {
     await check("GET", "/rules", await t.call("/rules", wrong), 401);
 
     const id = made.rule.id;
+    const one = await check(
+      "GET",
+      "/rules/{id}",
+      await t.call(location!.slice(PREFIX.length)),
+      200,
+    );
+    expect(one).toEqual({ rule: listed.rules[0] });
+    await check("GET", "/rules/{id}", await t.call("/rules/x"), 400);
+    await check("GET", "/rules/{id}", await t.call("/rules/999"), 404);
+    await check("GET", "/rules/{id}", await t.call(`/rules/${id}`, wrong), 401);
     await check(
       "PATCH",
       "/rules/{id}",
@@ -610,31 +660,37 @@ describe("every operation", () => {
     );
     await check("GET", "/alerts", await t.call("/alerts", wrong), 401);
 
-    await check("GET", "/admin/status", await t.call("/admin/status"), 200);
-    await check("GET", "/admin/status", await t.call("/admin/status?x=1"), 400);
+    await check("GET", "/watchlist", await t.call("/watchlist"), 200);
+    await check("GET", "/watchlist", await t.call("/watchlist?x=1"), 400);
+    await check("GET", "/watchlist", await t.call("/watchlist", wrong), 401);
+
+    await check("GET", "/status", await t.call("/status"), 200);
+    await check("GET", "/status", await t.call("/status?x=1"), 400);
+    await check("GET", "/status", await t.call("/status", wrong), 401);
+    await check("GET", "/status", await t.call("/status", reader), 403);
     await check(
       "GET",
-      "/admin/status",
-      await t.call("/admin/status", wrong),
-      401,
-    );
-    await check(
-      "GET",
-      "/admin/instruments",
-      await t.call("/admin/instruments?limit=2"),
+      "/instruments",
+      await t.call("/instruments?page_size=2"),
       200,
     );
     await check(
       "GET",
-      "/admin/instruments",
-      await t.call("/admin/instruments?limit=0"),
+      "/instruments",
+      await t.call("/instruments?page_size=0"),
       400,
     );
     await check(
       "GET",
-      "/admin/instruments",
-      await t.call("/admin/instruments", wrong),
+      "/instruments",
+      await t.call("/instruments", wrong),
       401,
+    );
+    await check(
+      "GET",
+      "/instruments",
+      await t.call("/instruments", reader),
+      403,
     );
     // signed in by the UI's cookie, without this server's Origin
     const cookie = {
@@ -649,11 +705,12 @@ describe("every operation", () => {
       }),
       403,
     );
-    const refetch = { symbols: ["US:NOPE"], fetch: ["quotes"] };
+    const again = "/instruments/{symbol}/refetch";
+    const refetch = { parts: ["quotes"] };
     await check(
       "POST",
-      "/admin/refetch",
-      await t.call("/admin/refetch", {
+      again,
+      await t.call("/instruments/US:NVDA/refetch", {
         ...json(refetch),
         headers: { "content-type": "application/json", ...cookie },
       }),
@@ -661,57 +718,73 @@ describe("every operation", () => {
     );
     await check(
       "POST",
-      "/admin/refetch",
-      await t.call("/admin/refetch", json(refetch)),
+      again,
+      await t.call("/instruments/US:NVDA/refetch", json(refetch)),
       200,
     );
     await check(
       "POST",
-      "/admin/refetch",
-      await t.call("/admin/refetch", json({ symbols: [] })),
+      again,
+      await t.call("/instruments/US:NOPE/refetch", json(refetch)),
+      404,
+    );
+    await check(
+      "POST",
+      again,
+      await t.call("/instruments/US:NVDA/refetch", json({ parts: [] })),
       400,
     );
     await check(
       "POST",
-      "/admin/refetch",
-      await t.call("/admin/refetch", { ...json(refetch), ...wrong }),
+      again,
+      await t.call("/instruments/US:NVDA/refetch", {
+        ...json(refetch),
+        ...wrong,
+      }),
       401,
     );
     await check(
       "POST",
-      "/admin/refetch",
-      await t.call("/admin/refetch", json({ symbols: ["x".repeat(20_000)] })),
+      again,
+      await t.call("/instruments/US:NVDA/refetch", {
+        ...json(refetch),
+        ...reader,
+      }),
+      403,
+    );
+    await check(
+      "POST",
+      again,
+      await t.call(
+        "/instruments/US:NVDA/refetch",
+        json({ parts: ["x".repeat(20_000)] }),
+      ),
       413,
     );
     await check(
       "POST",
-      "/admin/refetch",
-      await t.call("/admin/refetch", json(refetch, "text/plain")),
+      again,
+      await t.call("/instruments/US:NVDA/refetch", json(refetch, "text/plain")),
       415,
     );
+    const path = "/instruments/{symbol}";
+    const at = (id: string, init: RequestInit = {}) =>
+      t.call(`/instruments/${encodeURIComponent(id)}`, init);
     const del = (id: string, init: RequestInit = {}) =>
-      t.call(`/admin/instruments/${encodeURIComponent(id)}`, {
-        method: "DELETE",
-        ...init,
-      });
-    const path = "/admin/instruments/{id}";
-    const one = (id: string, init: RequestInit = {}) =>
-      t.call(`/admin/instruments/${encodeURIComponent(id)}`, init);
-    await check("GET", path, await one("US:NVDA"), 200);
-    await check("GET", path, await one("<b>"), 400);
-    await check("GET", path, await one("US:NOPE"), 404);
-    await check("GET", path, await one("US:NVDA", wrong), 401);
+      at(id, { method: "DELETE", ...init });
+    await check("GET", path, await at("US:NVDA"), 200);
+    await check("GET", path, await at("NVDA", reader), 200);
+    await check("GET", path, await at("ZZNOTHING"), 404);
+    await check("GET", path, await t.call("/instruments/%E0%A4%A"), 400);
+    await check("GET", path, await at("US:NVDA", wrong), 401);
+    const slowRead = await t.late("SLOWD.DE", "/instruments/SLOWD.DE");
+    await check("GET", path, slowRead, 503);
     await check("DELETE", path, await del("US:NVDA"), 409);
-    await check("DELETE", path, await del("FRED:DGS10"), 200);
+    await check("DELETE", path, await del("FRED:DGS10"), 204);
     await check("DELETE", path, await del("FRED:DGS10"), 404);
     await check("DELETE", path, await del("<b>"), 400);
     await check("DELETE", path, await del("US:NVDA", wrong), 401);
-    await check(
-      "DELETE",
-      path,
-      await del("US:NVDA", { headers: { ...cookie, origin: "http://x.test" } }),
-      403,
-    );
+    await check("DELETE", path, await del("US:NVDA", reader), 403);
 
     // rules delete last: its alert stays
     await check(
@@ -773,8 +846,14 @@ describe("every operation", () => {
     w.db.close();
     const res = await handle(new Request("http://markets.test/api/v1/rules"));
     expect(res.status).toBe(500);
+    expect(res.headers.get("content-type")).toBe("application/problem+json");
     const body = await res.json();
-    expect(body).toEqual({ error: "internal", message: "internal error" });
+    expect(body).toEqual({
+      title: "Internal Server Error",
+      status: 500,
+      detail: "internal error",
+      code: "internal",
+    });
     const schema = answerSchema(spec, "GET", "/rules", 500)!;
     expect(validate(body, schema, spec)).toEqual([]);
   });
@@ -783,19 +862,22 @@ describe("every operation", () => {
     const t = await setup();
     for (const path of [
       "/quotes?symbols=NVDA&next=1",
-      "/history?symbol=NVDA&next=1",
-      "/search?query=NVDA&next=1",
+      "/instruments/NVDA/bars?next=1",
+      "/symbols?query=NVDA&next=1",
       "/research?symbols=NVDA&next=1",
-      "/events?from=2026-01-01&to=2026-01-02&next=1",
+      "/earnings?from=2026-01-01&to=2026-01-02&next=1",
       "/movers?symbols=NVDA&min_move_pct=1&next=1",
       "/quotes?symbols=NVDA&benchmark=^GSPC",
       "/quotes?symbols=NVDA&extended=yes",
       "/quotes?symbols=NVDA&extended=true&extended=false",
+      "/instruments/NVDA/bars?symbol=NVDA",
+      "/instruments/NVDA?extended=true",
+      "/watchlist?x=1",
       "/alerts?next=1",
     ]) {
       const res = await t.call(path);
       expect([path, res.status]).toEqual([path, 400]);
-      expect(((await res.json()) as any).error).toBe("bad_arguments");
+      expect(((await res.json()) as any).code).toBe("bad_arguments");
     }
     for (const body of [
       { symbols: ["NVDA"], sort: "rsi14", next: "1" },
@@ -809,7 +891,7 @@ describe("every operation", () => {
   });
 });
 
-describe("history", () => {
+describe("bars", () => {
   // ten years of trading days, the most the server keeps
   const DAYS = 2520;
 
@@ -841,21 +923,29 @@ describe("history", () => {
     const { w, id, dates } = long();
     const res = await api(w.m)(
       new Request(
-        `http://markets.test/api/v1/history?symbol=${id}&from=${dates[0]}`,
+        `http://markets.test/api/v1/instruments/${id}/bars?from=${dates[0]}`,
       ),
     );
     expect(res.status).toBe(200);
     expect(res.headers.get("cache-control")).toBe("no-store");
     const body: any = await res.json();
     expect(
-      validate(body, answerSchema(spec, "GET", "/history", 200)!, spec),
+      validate(
+        body,
+        answerSchema(spec, "GET", "/instruments/{symbol}/bars", 200)!,
+        spec,
+      ),
     ).toEqual([]);
     expect(body).not.toContainKey("next");
     expect(body.bars).toHaveLength(DAYS);
     expect(body.bars.map((b: any) => b.date)).toEqual(dates);
     expect(body.bars[0]).toEqual({
       date: dates[0],
+      open: 100,
+      high: 100,
+      low: 100,
       close: 100,
+      volume: 1000,
       final: true,
       sma50: 0,
       sma200: null,
@@ -872,23 +962,24 @@ describe("history", () => {
       sma50: DAYS - 1,
       sma200: DAYS - 0.5,
     });
-    expect(Buffer.byteLength(JSON.stringify(body))).toBeLessThan(200 * 1024);
   });
 
   test("a range of final bars with its end given may be kept a while", async () => {
     const { w, id, dates } = long();
     const get = (query: string) =>
       api(w.m)(
-        new Request(`http://markets.test/api/v1/history?symbol=${id}${query}`),
+        new Request(
+          `http://markets.test/api/v1/instruments/${id}/bars${query}`,
+        ),
       );
     const end = dates.at(-2)!;
-    const final = await get(`&to=${end}`);
+    const final = await get(`?to=${end}`);
     expect(final.headers.get("cache-control")).toBe("private, max-age=3600");
     // the end moves when a bar lands, and a benchmark is read live
     for (const query of [
       "",
-      `&to=${dates.at(-1)}`,
-      `&to=${end}&benchmark=${id}`,
+      `?to=${dates.at(-1)}`,
+      `?to=${end}&benchmark=${id}`,
     ]) {
       expect((await get(query)).headers.get("cache-control")).toBe("no-store");
     }
@@ -906,7 +997,7 @@ describe("history", () => {
       (
         await api(w.m)(
           new Request(
-            `http://markets.test/api/v1/history?symbol=${id}&from=2026-10-01&to=${to}`,
+            `http://markets.test/api/v1/instruments/${id}/bars?from=2026-10-01&to=${to}`,
           ),
         )
       ).headers.get("cache-control");
@@ -962,8 +1053,8 @@ describe("history", () => {
 
   test("an index's first read answers its final rows and its live row", async () => {
     const t = await setup();
-    const body: any = await (await t.call("/history?symbol=^GSPC")).json();
-    expect(body.unit).toBe("index_points");
+    const body: any = await (await t.call("/instruments/^GSPC/bars")).json();
+    expect(body.instrument.unit).toBe("index_points");
     const live = t.db
       .query<{ date: string; sma50: number; sma200: number }, []>(
         `select date, sma50, sma200 from signals
@@ -983,10 +1074,10 @@ describe("history", () => {
 
   test("resolves and fetches a new symbol inside the call, as the tool does", async () => {
     const t = await setup();
-    const res = await t.call("/history?symbol=NVDA&benchmark=^GSPC");
+    const res = await t.call("/instruments/NVDA/bars?benchmark=^GSPC");
     expect(res.status).toBe(200);
     const body: any = await res.json();
-    expect(body.id).toBe("US:NVDA");
+    expect(body.instrument.id).toBe("US:NVDA");
     expect(body.bars.length).toBeGreaterThan(50);
     expect(t.s.calls.charts("NVDA").length).toBeGreaterThan(0);
     expect(lastReadAt(t.db, "US:NVDA")).toBe(NOW);
@@ -1008,25 +1099,35 @@ describe("history", () => {
     expect(body.bars).toEqual(
       bars.map((b) => ({
         date: b.date,
+        open: b.open,
+        high: b.high,
+        low: b.low,
         close: b.close,
+        volume: b.volume,
         final: b.final,
         sma50: b.signals?.sma50 ?? null,
         sma200: b.signals?.sma200 ?? null,
       })),
     );
-    const missing = await t.call("/history?symbol=ZZNOTHING");
+    const missing = await t.call("/instruments/ZZNOTHING/bars");
     expect(missing.status).toBe(404);
     const wanted = JSON.parse(
       (await tool.run({ symbol: "ZZNOTHING" })).content[0]!.text,
     );
-    expect(await missing.json()).toEqual(wanted);
+    expect(await missing.json()).toEqual({
+      title: "Not Found",
+      status: 404,
+      detail: wanted.message,
+      code: wanted.error,
+      input: wanted.input,
+    });
   });
 });
 
-describe("search", () => {
-  test("answers the tool's pages joined and marks nothing read", async () => {
+describe("symbols", () => {
+  test("answers the search tool's pages joined and marks nothing read", async () => {
     const t = await setup();
-    const res = await t.call("/search?query=NVDA");
+    const res = await t.call("/symbols?query=NVDA");
     const body: any = await res.json();
     const tool = tools(t.m).find((x) => x.name === "search")!;
     const pages: any[] = [];
@@ -1062,6 +1163,7 @@ describe("rules", () => {
     };
     const made = await rest.call("/rules", json(rule));
     expect(made.status).toBe(201);
+    expect(made.headers.get("location")).toBe(`${PREFIX}/rules/1`);
     expect(await made.json()).toEqual(await run({ action: "create", ...rule }));
     const listed: any = await (await rest.call("/rules")).json();
     const { next, ...page } = await run({ action: "list" });
@@ -1101,10 +1203,11 @@ describe("rules", () => {
 describe("access", () => {
   const sample = (path: string) =>
     path
-      .replace("{id}", path.startsWith("/admin") ? "US%3AA" : "1")
+      .replace("{symbol}", "US%3AA")
+      .replace("{id}", "1")
       .replace("{file}", "init.js");
 
-  test("every path but the spec and docs needs its own key", () =>
+  test("each operation takes its scope; the admin key holds every one but /mcp", () =>
     withApp(async ({ url, bearer, admin }) => {
       const as = (key: string): Record<string, string> => ({
         authorization: `Bearer ${key}`,
@@ -1112,7 +1215,8 @@ describe("access", () => {
       const list = routes({
         m: world().m,
         alerts: async () => new Response(),
-        admin: null,
+        admin: { m: world().m, version: "v", sources: [] },
+        track: () => [],
         log: silent,
       });
       const paths = Object.entries(spec.paths).flatMap(([path, item]) =>
@@ -1121,36 +1225,46 @@ describe("access", () => {
           .map((k) => ({ method: k.toUpperCase(), path })),
       );
       for (const { method, path } of paths) {
-        const at = `${url}${PREFIX}${sample(path)}`;
-        const open = list.some((r) => r.path === path && r.key === "none");
-        const isAdmin = path.startsWith("/admin");
+        const r = list.find((x) => x.path === path && x.method === method)!;
+        // an unknown argument is refused after the key, before any read
+        const at = `${url}${PREFIX}${sample(path)}${r.scope === "none" ? "" : "?x=1"}`;
         const none = await fetch(at, { method });
         expect([method, path, none.status]).toEqual([
           method,
           path,
-          open ? 200 : 401,
+          r.scope === "none" ? 200 : 401,
         ]);
-        if (open) continue;
+        if (r.scope === "none") continue;
         expect(none.headers.get("www-authenticate")).toBe("Bearer");
-        const other = await fetch(at, {
+        expect(none.headers.get("content-type")).toBe(
+          "application/problem+json",
+        );
+        const read = await fetch(at, { method, headers: as(bearer) });
+        const forbidden = r.scope === "admin";
+        expect([method, path, read.status === 403]).toEqual([
           method,
-          headers: as(isAdmin ? bearer : admin),
-        });
-        expect([method, path, other.status]).toEqual([method, path, 401]);
-        const own = await fetch(at, {
-          method,
-          headers: as(isAdmin ? admin : bearer),
-        });
-        expect([method, path, own.status === 401]).toEqual([
+          path,
+          forbidden,
+        ]);
+        expect([method, path, read.status === 401]).toEqual([
           method,
           path,
           false,
         ]);
+        if (forbidden) {
+          expect(await read.json()).toMatchObject({ code: "forbidden" });
+        }
+        const own = await fetch(at, { method, headers: as(admin) });
+        expect([
+          method,
+          path,
+          own.status === 401 || own.status === 403,
+        ]).toEqual([method, path, false]);
       }
       for (const path of [
         "/api/v1/nothing",
         "/api/v1/docs/other.js",
-        "/api/v1/admin/nothing",
+        "/api/v1/instruments/US:A/nothing",
         "/api/v1",
       ]) {
         expect([path, (await fetch(`${url}${path}`)).status]).toEqual([
@@ -1158,34 +1272,202 @@ describe("access", () => {
           401,
         ]);
       }
-      expect(
-        (await fetch(`${url}/api/v1/nothing`, { headers: as(bearer) })).status,
-      ).toBe(404);
+      for (const key of [bearer, admin]) {
+        const res = await fetch(`${url}/api/v1/nothing`, { headers: as(key) });
+        expect(res.status).toBe(404);
+        expect(await res.json()).toEqual({
+          title: "Not Found",
+          status: 404,
+          detail: "no such route",
+          code: "not_found",
+        });
+      }
       const posted = await fetch(`${url}/api/v1/quotes`, {
         method: "PUT",
         headers: as(bearer),
       });
       expect(posted.status).toBe(405);
       expect(posted.headers.get("allow")).toBe("GET");
+      expect((await posted.json()).code).toBe("method_not_allowed");
+      // /mcp is the read key's alone, its refusal in the shape it always had
+      const mcp = await fetch(`${url}/mcp`, {
+        method: "POST",
+        headers: as(admin),
+      });
+      expect(mcp.status).toBe(401);
+      expect(mcp.headers.get("content-type")).toBe("application/json");
+      expect(await mcp.json()).toEqual({
+        error: "unauthorized",
+        message: "no or wrong bearer key",
+      });
     }));
 
   test("the old paths are gone", () =>
     withApp(async ({ url, bearer, admin }) => {
-      for (const [path, key] of [
-        ["/quotes?symbols=NVDA", bearer],
-        ["/research?symbols=NVDA", bearer],
-        ["/alerts", bearer],
-        ["/admin/status", admin],
-        ["/admin/status", bearer],
-        ["/admin/refetch", bearer],
-      ] as const) {
-        expect((await fetch(`${url}${path}`)).status).toBe(401);
-        const res = await fetch(`${url}${path}`, {
-          headers: { authorization: `Bearer ${key}` },
-        });
-        expect([path, res.status]).toEqual([path, key === bearer ? 404 : 401]);
+      for (const path of [
+        "/history?symbol=NVDA",
+        "/search?query=NVDA",
+        "/events?from=2026-01-01&to=2026-01-02",
+        "/admin/status",
+        "/admin/instruments",
+        "/admin/instruments/US:NVDA",
+        "/admin/refetch",
+      ]) {
+        expect((await fetch(`${url}/api/v1${path}`)).status).toBe(401);
+        for (const key of [bearer, admin]) {
+          const res = await fetch(`${url}/api/v1${path}`, {
+            headers: { authorization: `Bearer ${key}` },
+          });
+          expect([path, res.status]).toEqual([path, 404]);
+        }
       }
+      // the paths without the prefix were never routes
+      expect((await fetch(`${url}/quotes`)).status).toBe(401);
       expect(ADMIN_KEY).not.toBe(admin);
+    }));
+});
+
+describe("one instrument", () => {
+  test("a read fetches a symbol never stored; delete and refetch fetch nothing", async () => {
+    const t = await setup();
+    const reader = { headers: { authorization: `Bearer ${READ_KEY}` } };
+    const res = await t.call("/instruments/NVDA", reader);
+    expect(res.status).toBe(200);
+    const body: any = await res.json();
+    expect(body).toMatchObject({
+      input: "NVDA",
+      instrument: { id: "US:NVDA", tracked_by: ["read"] },
+      quote: { id: "US:NVDA" },
+      error: null,
+    });
+    expect(t.s.calls.charts("NVDA").length).toBeGreaterThan(0);
+    expect(lastReadAt(t.db, "US:NVDA")).toBe(NOW);
+    const asked = t.s.calls.urls.length;
+    for (const init of [
+      { method: "DELETE" },
+      json({ parts: ["bars"] }),
+    ] as RequestInit[]) {
+      const path = `/instruments/AMD${init.method === "POST" ? "/refetch" : ""}`;
+      const res = await t.call(path, init);
+      expect([path, res.status]).toEqual([path, 404]);
+    }
+    expect(t.s.calls.urls.length).toBe(asked);
+  });
+});
+
+describe("a symbol in a path", () => {
+  // stored from Yahoo and read lately, so a read fetches nothing
+  const FORMS: [string, string][] = [
+    ["^VIX", "CXI:^VIX"],
+    ["CL=F", "NYM:CL=F"],
+    ["VVSM.DE", "XETRA:VVSM"],
+    ["BRK-B", "US:BRK-B"],
+    ["BTC-USD", "CRYPTO:BTC-USD"],
+  ];
+
+  function stored() {
+    const w = world();
+    for (const [symbol, id] of FORMS) {
+      listing(w.db, id);
+      w.db
+        .query(
+          "update instruments set source = 'yahoo', source_symbol = ? where id = ?",
+        )
+        .run(symbol, id);
+    }
+    listing(w.db, "BVB:R2809A");
+    w.db.query("update instruments set last_read_at = ?").run(NOW);
+    return w;
+  }
+
+  test("takes Yahoo's forms as written, a raw ^ or %5E, a regional form and an id", async () => {
+    const w = stored();
+    const handle = api(w.m);
+    const at = (path: string, init: RequestInit = {}) =>
+      handle(new Request(`http://markets.test${PREFIX}${path}`, init));
+    const cases: [string, string, string][] = [
+      ...FORMS.map(([s, id]): [string, string, string] => [s, s, id]),
+      ["%5EVIX", "^VIX", "CXI:^VIX"],
+      ["BVB:R2809A", "BVB:R2809A", "BVB:R2809A"],
+      ["US%3ABRK-B", "US:BRK-B", "US:BRK-B"],
+    ];
+    for (const [sent, input, id] of cases) {
+      const one = await at(`/instruments/${sent}`);
+      expect([sent, one.status]).toEqual([sent, 200]);
+      expect(await one.json()).toMatchObject({ input, instrument: { id } });
+      const bars = await at(`/instruments/${sent}/bars`);
+      expect([sent, bars.status]).toEqual([sent, 200]);
+      expect(await bars.json()).toMatchObject({ input, instrument: { id } });
+      const again = await at(`/instruments/${sent}/refetch`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ parts: ["calendar"] }),
+      });
+      expect([sent, again.status]).toEqual([sent, 200]);
+      expect(await again.json()).toMatchObject({ input, id });
+    }
+    for (const [sent, id] of [
+      ["^VIX", "CXI:^VIX"],
+      ["BVB:R2809A", "BVB:R2809A"],
+      ["US%3ABRK-B", "US:BRK-B"],
+    ]) {
+      expect(
+        (await at(`/instruments/${sent}`, { method: "DELETE" })).status,
+      ).toBe(204);
+      expect([sent, readInstrument(w.db, id!)]).toEqual([sent, null]);
+    }
+  });
+
+  test("JSON bodies take ^VIX as written", async () => {
+    const w = stored();
+    const handle = api(w.m);
+    const screened: any = await (
+      await handle(
+        new Request(
+          `http://markets.test${PREFIX}/screen`,
+          json({
+            symbols: ["^VIX", "CL=F"],
+            sort: "rsi14",
+          }),
+        ),
+      )
+    ).json();
+    expect(screened.matches.map((x: any) => [x.input, x.id])).toEqual([
+      ["^VIX", "CXI:^VIX"],
+      ["CL=F", "NYM:CL=F"],
+    ]);
+    const made = await handle(
+      new Request(
+        `http://markets.test${PREFIX}/rules`,
+        json({
+          symbol: "^VIX",
+          condition: { left: "price", op: ">", right: 1 },
+        }),
+      ),
+    );
+    expect(made.status).toBe(201);
+    expect(((await made.json()) as any).rule.symbol).toBe("CXI:^VIX");
+  });
+
+  test("a raw ^ sent on the wire reaches the route", () =>
+    withApp(async ({ url, bearer }) => {
+      const { port } = new URL(url);
+      const raw = await new Promise<string>((resolve, reject) => {
+        let got = "";
+        const socket = connect(Number(port), "127.0.0.1", () => {
+          socket.write(
+            `GET ${PREFIX}/instruments/^VIX/bars?x=1 HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer ${bearer}\r\nConnection: close\r\n\r\n`,
+          );
+        });
+        socket.on("data", (d) => {
+          got += d.toString();
+        });
+        socket.on("end", () => resolve(got));
+        socket.on("error", reject);
+      });
+      // past the route and the key, the argument is refused, not the path
+      expect(raw).toStartWith("HTTP/1.1 400");
+      expect(raw).toContain('"detail":"unknown argument x"');
     }));
 });
 
@@ -1203,8 +1485,9 @@ describe("bodies over the cap", () => {
         });
       const ours = await post(MAX_BODY_BYTES);
       expect(ours.status).toBe(413);
+      expect(ours.headers.get("content-type")).toBe("application/problem+json");
       const body = await ours.json();
-      expect(body).toMatchObject({ error: "payload_too_large" });
+      expect(body).toMatchObject({ code: "payload_too_large", status: 413 });
       const schema = answerSchema(spec, "POST", "/screen", 413)!;
       expect(validate(body, schema, spec)).toEqual([]);
       // Bun refuses it before the router runs: no body, nothing logged

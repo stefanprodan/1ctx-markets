@@ -175,7 +175,9 @@ describe("the alerts feed", () => {
     ]) {
       const res = await t.get(tag);
       expect(res.status).toBe(400);
-      expect(((await res.json()) as any).error).toBe("bad_arguments");
+      expect(res.headers.get("content-type")).toBe("application/problem+json");
+      expect(res.headers.get("cache-control")).toBe("private, no-store");
+      expect(((await res.json()) as any).code).toBe("bad_arguments");
     }
     expect((await t.get(undefined, "/api/v1/alerts?since=1")).status).toBe(400);
   });

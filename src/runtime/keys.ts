@@ -9,7 +9,7 @@ export const BEARER_FILE = "bearer.key";
 // names the key's owner wherever it is pasted
 export const BEARER_PREFIX = "1ctx-markets-";
 export const MIN_BEARER_LENGTH = 32;
-// authorizes /api/v1/admin/* only, and nothing else takes it
+// holds every /api/v1 scope but never /mcp
 export const ADMIN_FILE = "admin.key";
 export const ADMIN_PREFIX = "1ctx-markets-admin-";
 const MAX_KEY_BYTES = 4096;

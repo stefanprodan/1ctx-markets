@@ -538,20 +538,20 @@ describe("the research route", () => {
       expect(ok.headers.get("content-type")).toBe("application/json");
       const raw = await ok.text();
       expect(Buffer.byteLength(raw)).toBeLessThan(PAGE_BYTES);
-      const { items } = JSON.parse(raw);
+      const { research: items } = JSON.parse(raw);
       expect(items[0]).toMatchObject({
         input: "US:NVDA",
         id: "US:NVDA",
-        kind: "market_quote",
-        research: {
+        company: {
           source: "finnhub",
           metric: { forward_pe: 17.0219 },
           analysts: { period: "2026-10-01" },
           next_event: { date: "2026-11-17", status: "scheduled" },
         },
       });
-      expect(items[0].price).toBeNumber();
-      expect(items[1].research).toEqual({
+      // no quote: /quotes answers prices
+      expect(items[0]).not.toContainKey("price");
+      expect(items[1].company).toEqual({
         source: "finnhub",
         message: NOT_COVERED,
       });
@@ -567,7 +567,7 @@ describe("the research route", () => {
       ]) {
         const bad = await get(t, query);
         expect(bad.status).toBe(400);
-        expect(((await bad.json()) as { error: string }).error).toBe(
+        expect(((await bad.json()) as { code: string }).code).toBe(
           "bad_arguments",
         );
       }
@@ -884,11 +884,11 @@ describe("events inside the call", () => {
         new Request("http://markets.test/api/v1/research?symbols=TSM,NVDA"),
       ),
     );
-    const { items } = (await res.json()) as { items: any[] };
-    expect(items[0].research.metric).toMatchObject(other);
-    expect(items[0].research.next_event).toMatchObject(other);
+    const { research: items } = (await res.json()) as { research: any[] };
+    expect(items[0].company.metric).toMatchObject(other);
+    expect(items[0].company.next_event).toMatchObject(other);
     // counts hold for any listing; per-share figures of another do not
-    const { analysts: a, earnings: e, insider: i } = items[0].research;
+    const { analysts: a, earnings: e, insider: i } = items[0].company;
     expect(a).toMatchObject(other);
     expect(a.history).toHaveLength(2);
     expect(a.history[0]).not.toContainKey("listing");
@@ -896,10 +896,10 @@ describe("events inside the call", () => {
     expect(i.history).toHaveLength(3);
     expect(i).not.toContainKey("listing");
     for (const s of ["metric", "analysts", "earnings", "insider"]) {
-      expect(items[1].research[s]).not.toContainKey("listing");
-      expect(items[1].research[s]).not.toContainKey("note");
+      expect(items[1].company[s]).not.toContainKey("listing");
+      expect(items[1].company[s]).not.toContainKey("note");
     }
-    expect(items[1].research.next_event).not.toContainKey("listing");
+    expect(items[1].company.next_event).not.toContainKey("listing");
   });
 
   test("a share whose calendar turned to no data is listed beside its kept events", async () => {
@@ -1329,7 +1329,7 @@ describe("the research route's history", () => {
     );
     expect(res.status).toBe(200);
     const raw = await res.text();
-    return { raw, items: JSON.parse(raw).items as any[] };
+    return { raw, items: JSON.parse(raw).research as any[] };
   };
 
   // made-up shares answered as the full recording
@@ -1376,7 +1376,7 @@ describe("the research route's history", () => {
     }
 
     const { items } = await ask(t, "NVDA,TWO,EMPTY");
-    const [nvda, two, empty] = items.map((i) => i.research.insider);
+    const [nvda, two, empty] = items.map((i) => i.company.insider);
     expect(nvda.history).toEqual(
       periods.slice(0, 3).map((period, k) => ({
         period,
@@ -1400,7 +1400,7 @@ describe("the research route's history", () => {
     await drive(t.clock, pacedOf(t.m), researchTargets(t.m, ["NVDA"]));
     addQuarters(t.db, "US:NVDA", ["2025-12-31", "2025-09-30"]);
     const { items } = await ask(t, "NVDA");
-    const { analysts, earnings, metric } = items[0].research;
+    const { analysts, earnings, metric } = items[0].company;
     expect(
       earnings.history.map((r: any) => [r.period, r.surprise_percent]),
     ).toEqual([
@@ -1456,7 +1456,7 @@ describe("the research route's history", () => {
     const { raw, items } = await ask(t, symbols.join(","));
     expect(fits(raw)).toBe(true);
     for (const i of items) {
-      const r = i.research;
+      const r = i.company;
       expect(r.analysts.history).toHaveLength(HTTP_HISTORY.analysts);
       expect(r.earnings.history).toHaveLength(HTTP_HISTORY.earnings);
       expect(r.insider.history).toHaveLength(HTTP_HISTORY.insider);
@@ -1534,7 +1534,7 @@ describe("the news summary in the research route", () => {
     await drive(t.clock, pacedOf(t.m), researchTargets(t.m, ["NVDA"]));
     await walked(t, ["US:NVDA"]);
     const calls = t.massiveCalls().length;
-    const { items } = JSON.parse(await getResearch(t, "NVDA"));
+    const { research: items } = JSON.parse(await getResearch(t, "NVDA"));
     expect(t.massiveCalls()).toHaveLength(calls);
     const news = items[0].news;
     expect(news).toMatchObject({
@@ -1585,7 +1585,7 @@ describe("the news summary in the research route", () => {
 
   test("a share never walked counts nothing and says why, fetching none", async () => {
     const t = await setup({ massive: { articles: await tenDays("NVDA") } });
-    const { items } = JSON.parse(await getResearch(t, "NVDA,^GSPC"));
+    const { research: items } = JSON.parse(await getResearch(t, "NVDA,^GSPC"));
     expect(t.massiveCalls()).toHaveLength(0);
     expect(items[0].news).toMatchObject({
       source: "massive",
@@ -1604,9 +1604,7 @@ describe("the news summary in the research route", () => {
     const { raw, items } = await fullFive("x", false);
     expect(fits(raw)).toBe(true);
     for (const item of items) {
-      expect(item.research.earnings.history).toHaveLength(
-        HTTP_HISTORY.earnings,
-      );
+      expect(item.company.earnings.history).toHaveLength(HTTP_HISTORY.earnings);
       expect(item.news.items).toHaveLength(WEEK_ITEMS);
       expect(item.news).not.toContainKey("items_cut");
       for (const i of item.news.items) {
@@ -1620,8 +1618,7 @@ describe("the news summary in the research route", () => {
   });
 
   test("at the widest numbers every share keeps its items, unpaged", async () => {
-    const { raw, items } = await fullFive("x", true);
-    expect(fits(raw)).toBe(false);
+    const { items } = await fullFive("x", true);
     for (const item of items) {
       expect(item.news.items).toHaveLength(WEEK_ITEMS);
       expect(item.news).not.toContainKey("items_cut");
@@ -1640,7 +1637,7 @@ describe("the news summary in the research route", () => {
     const t = await setup({ massive: { articles } });
     await drive(t.clock, pacedOf(t.m), researchTargets(t.m, ["NVDA"]));
     await walked(t, ["US:NVDA"]);
-    const summary = JSON.parse(await getResearch(t, "NVDA")).items[0].news;
+    const summary = JSON.parse(await getResearch(t, "NVDA")).research[0].news;
     const section = body(
       await researchAnswer(
         t.m,
@@ -1671,7 +1668,7 @@ describe("the news summary in the research route", () => {
         negative: 1,
         unknown: 1,
       });
-      expect(item.research.insider.history).toHaveLength(HTTP_HISTORY.insider);
+      expect(item.company.insider.history).toHaveLength(HTTP_HISTORY.insider);
     }
   });
 
@@ -1683,7 +1680,7 @@ describe("the news summary in the research route", () => {
     const t = await setup({ massive: { articles } });
     await drive(t.clock, pacedOf(t.m), researchTargets(t.m, ["NVDA"]));
     await walked(t, ["US:NVDA"]);
-    const { items } = JSON.parse(await getResearch(t, "NVDA"));
+    const { research: items } = JSON.parse(await getResearch(t, "NVDA"));
     expect(items[0].news.items[0]).toMatchObject({
       url: null,
       truncated: true,
@@ -1823,5 +1820,5 @@ async function fullFive(fill: string, widest: boolean) {
   const stored = readNews(t.db, "US:ZN0", t.clock.now(), 1)[0]!;
   expect(stored.reasoning).toHaveLength(MAX_REASONING);
   const raw = await getResearch(t, symbols.join(","));
-  return { raw, items: JSON.parse(raw).items as any[] };
+  return { raw, items: JSON.parse(raw).research as any[] };
 }

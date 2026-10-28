@@ -292,8 +292,11 @@ is fixed, never an argument, to keep five summaries short.
   costs five Finnhub calls, and the free key allows 60 a minute,
   shared with the jobs.
 - **`sections` picks what each share answers; a Finnhub section left
-  out is not fetched.** Each share is its brief quote with a Finnhub
-  summary and a news week, under the tool's deadline and tracking.
+  out is not fetched.** Each item is `input`, `id`, `company` (the
+  Finnhub summary, with its `source`, `message` and partial-failure
+  fields) and `news` (the news week), under the tool's deadline and
+  tracking. No quote: `/quotes` answers prices for many symbols in one
+  call. The research tool keeps its own names.
 - **Each Finnhub section but `metric` adds `history`**: its newest
   rows as the section's page shows them, so a script reads a trend
   without paging the tool (`HTTP_HISTORY`): `analysts` two months, the

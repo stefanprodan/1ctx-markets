@@ -84,7 +84,8 @@ export const HELP = `\x1b[1m1ctx-markets\x1b[0m - a self-hosted market data serv
 \x1b[1mSecrets:\x1b[0m
   bearer.key             the bearer every request carries, at least 32
                          characters; the first start writes one
-  admin.key              the key of /api/v1/admin/* and the web UI's
+  admin.key              the key of the operator's routes, which also
+                         opens every /api/v1 route, and the web UI's
                          sign-in; the first start writes one
   source-<name>.key      a source's API key, which turns it on:
                          source-fred.key, source-finnhub.key or

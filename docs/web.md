@@ -67,13 +67,14 @@ signed in with the admin key alone.
 
 ## What the cookie opens
 
-- **The admin routes, `/api/v1/admin/*`, every `GET` or `HEAD`
-  under `/api/v1`, and `POST /api/v1/screen`**, a read whose filters
-  are a body, held to the write check below. The bearer and the admin key keep their own paths
-  first (`router()`); the cookie is tried only when the key a path
-  takes is missing or wrong.
-- **Never `/mcp`, and never a write outside the admin routes** (rules
-  stay the bearer's).
+- **What the admin key opens but the rules writes**: every route
+  under `/api/v1`, the admin scope's included (`docs/api.md`, "Keys
+  and caching"), with `POST /api/v1/screen`, a read whose filters are
+  a body, and refetch and delete held to the write check below. A key
+  is tried first (`router()`); the cookie only when no key is valid.
+- **Never `/mcp`, and never a rules write** (`POST /rules`, `PATCH`
+  and `DELETE /rules/{id}`, marked `cookie: false`): rules stay the
+  keys'.
 - **A write by cookie must come from this server's own pages**, or it
   is 403 `forbidden` (`sameOrigin()`): `Sec-Fetch-Site` is
   `same-origin` when the browser sends it, which a proxy leaves alone;
