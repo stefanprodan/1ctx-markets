@@ -53,6 +53,9 @@ holdings, orders or portfolio, and it makes no model calls.
   The Bucharest Stock Exchange's own feed, with its shares, fund units,
   government bonds and indices, turns on with `--source bvb` and needs
   no key.
+- **A web UI for the operator.** Sign in with the admin key to see the
+  sources, every job's last run and the database at a glance, in the
+  same look as 1ctx; `--no-ui` turns it off.
 - **One binary, one file.** A standalone binary built with Bun, one
   SQLite database and a directory of key files. MCP answers stay under
   32 KiB pages, so MCP clients need no setting changed; the REST API

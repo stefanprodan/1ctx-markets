@@ -112,7 +112,7 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   one of those.
 - **A run's error is a fixed phrase, never an error's text**
   (`phraseOf()` in `src/sources/source.ts`, `failed` otherwise,
-  `interrupted` after a crash), since messages can echo a key or a
+  `interrupted` after a crash, `stopped` for a run cut by shutdown, which no stale reason, retry wait or status count reads as a failure), since messages can echo a key or a
   URL.
 - **Staleness is read from the instrument's own source, job and
   scope** (`lastRun()`): a failure newer than the last success marks

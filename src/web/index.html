@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="theme-color" content="#131314" />
+    <script>
+      // the theme before the first paint; app/theme.ts takes over
+      (() => {
+        var kept = null;
+        try {
+          kept = localStorage.getItem("theme");
+        } catch {}
+        var theme =
+          kept === "light" || kept === "dark"
+            ? kept
+            : matchMedia("(prefers-color-scheme: light)").matches
+              ? "light"
+              : "dark";
+        document.documentElement.dataset.theme = theme;
+        if (theme === "light")
+          document
+            .querySelector('meta[name="theme-color"]')
+            .setAttribute("content", "#f4f2ec");
+      })();
+    </script>
+    <title>Markets</title>
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>

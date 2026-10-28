@@ -42,15 +42,8 @@ export const num: Schema = { type: "number" };
 const nnum: Schema = { type: ["number", "null"] };
 export const int: Schema = { type: "integer" };
 export const bool: Schema = { type: "boolean" };
-// an object whose fields a doc gives, not this spec
-export const freeForm = (doc: string): Schema => ({
-  type: "object",
-  description: `Its fields are described in ${doc}.`,
-});
-const described = (s: Schema, doc: string): Schema => ({
-  ...s,
-  description: `Its fields beyond those listed are described in ${doc}.`,
-});
+// an object whose fields this spec leaves open
+export const freeForm: Schema = { type: "object" };
 export const list = (items: Schema): Schema => ({ type: "array", items });
 export const values = (allowed: readonly (string | number)[]): Schema => ({
   type: typeof allowed[0] === "number" ? "integer" : "string",
@@ -70,13 +63,12 @@ const nullable = (s: Schema): Schema => ({
   ...s,
   type: [s.type as JsonType, "null"],
 });
+const note = (s: Schema, description: string): Schema => ({
+  ...s,
+  description,
+});
 
 export const DEADLINE_S = CALL_MS / 1000;
-
-const TOOLS = "docs/tools.md";
-const RESEARCH = "docs/research.md";
-const RULES = "docs/rules.md";
-const ADMIN = "docs/admin.md";
 
 const itemError = object(
   {
@@ -102,20 +94,32 @@ const brief = {
   id: str,
   kind: values(["market_quote", "observation"]),
   price: nnum,
-  observation: nullable(object({ date: str, value: num })),
+  observation: note(
+    nullable(object({ date: str, value: num })),
+    "The last value of a `FRED:<series id>` symbol.",
+  ),
   previous_close: nnum,
   change: nnum,
   change_percent: nnum,
-  unit: values(UNITS),
+  unit: note(values(UNITS), "What the price measures."),
   currency: nstr,
   trade_time: nstr,
-  fetched_at: nstr,
-  stale: list(str),
-  sma: object({ daily: averages, weekly: averages }),
-  last_final: nullable(
-    object({
-      daily: object({ date: str, close: nnum, sma50: nnum, sma200: nnum }),
-    }),
+  fetched_at: note(nstr, "When the source answered."),
+  stale: note(
+    list(str),
+    "Why a value may be out of date. Empty means current.",
+  ),
+  sma: note(
+    object({ daily: averages, weekly: averages }),
+    "SMA 50 and SMA 200, `live` with today's price or `final` as of the last final bar. Null with too few bars.",
+  ),
+  last_final: note(
+    nullable(
+      object({
+        daily: object({ date: str, close: nnum, sma50: nnum, sma200: nnum }),
+      }),
+    ),
+    "The last final daily close and its averages. Null with no final bar.",
   ),
 };
 
@@ -123,13 +127,18 @@ const brief = {
 const briefRequired = Object.keys(brief).filter((k) => k !== "observation");
 
 // a $ref takes no null beside it, so an alert that may be null is inline
-const alert = described(
-  object(
-    { id: int, rule_id: int, fired_at: str, truncated: bool },
-    ["id", "rule_id", "fired_at"],
-    true,
-  ),
-  RULES,
+const alert = object(
+  {
+    id: int,
+    rule_id: int,
+    fired_at: str,
+    truncated: note(
+      bool,
+      "Too large for a page: only the id, rule and time are kept.",
+    ),
+  },
+  ["id", "rule_id", "fired_at"],
+  true,
 );
 
 const unavailable = object(
@@ -147,10 +156,7 @@ const unavailable = object(
 const oneOf = (...names: string[]): Schema => ({ oneOf: names.map(ref) });
 
 export const schemas: Record<string, Schema> = {
-  Error: described(
-    object({ error: str, message: str }, ["error", "message"], true),
-    "docs/api.md",
-  ),
+  Error: object({ error: str, message: str }, ["error", "message"], true),
   Candidate: object({
     id: str,
     name: nstr,
@@ -178,13 +184,23 @@ export const schemas: Record<string, Schema> = {
   Quotes: object({ attribution: str, items: list(ref("QuoteItem")) }, [
     "items",
   ]),
-  Bar: object({
-    date: str,
-    close: nnum,
-    final: bool,
-    sma50: nnum,
-    sma200: nnum,
-  }),
+  Bar: object(
+    {
+      date: str,
+      open: note(nnum, "With `ohlc` only."),
+      high: note(nnum, "With `ohlc` only."),
+      low: note(nnum, "With `ohlc` only."),
+      close: nnum,
+      volume: note(nnum, "With `ohlc` only. Null where the source gives none."),
+      final: note(
+        bool,
+        "False until the source reports a later session; a weekly bar also waits for its week to end.",
+      ),
+      sma50: nnum,
+      sma200: nnum,
+    },
+    ["date", "close", "final", "sma50", "sma200"],
+  ),
   History: object(
     {
       id: str,
@@ -194,23 +210,25 @@ export const schemas: Record<string, Schema> = {
       currency: nstr,
       unit: values(UNITS),
       source: str,
-      basis: str,
-      stale: list(str),
+      basis: note(str, "How prices are adjusted."),
+      stale: note(
+        list(str),
+        "Why a value may be out of date. Empty means current.",
+      ),
       attribution: str,
       from: str,
       to: str,
-      session: nullable(
-        object({ state: values(["open", "closed"]), start: nstr, end: nstr }, [
-          "state",
-          "start",
-          "end",
-        ]),
+      session: note(
+        nullable(
+          object(
+            { state: values(["open", "closed"]), start: nstr, end: nstr },
+            ["state", "start", "end"],
+          ),
+        ),
+        "The last regular session, in UTC. Crypto is always open with null times. Null for a `FRED:<series id>` symbol.",
       ),
       interval: values(["1d", "1wk"]),
-      relative: described(
-        object({ benchmark: freeForm(TOOLS) }, ["benchmark"], true),
-        TOOLS,
-      ),
+      relative: object({ benchmark: freeForm }, ["benchmark"], true),
       bars: list(ref("Bar")),
     },
     [
@@ -243,8 +261,8 @@ export const schemas: Record<string, Schema> = {
             exchange: str,
             source: str,
             source_symbol: str,
-            isin: nstr,
-            stored: bool,
+            isin: note(nstr, "A regional listing's ISIN."),
+            stored: note(bool, "Already stored on this server."),
             note: str,
           },
           [
@@ -264,8 +282,8 @@ export const schemas: Record<string, Schema> = {
   ResearchResult: object(
     {
       ...brief,
-      research: described(object({ source: str }, ["source"], true), RESEARCH),
-      news: described(object({ source: str }, ["source"], true), RESEARCH),
+      research: object({ source: str }, ["source"], true),
+      news: object({ source: str }, ["source"], true),
     },
     briefRequired,
   ),
@@ -280,27 +298,21 @@ export const schemas: Record<string, Schema> = {
       source: str,
       message: str,
       unavailable: list(
-        described(
-          object({ input: str, message: str }, ["input", "message"], true),
-          RESEARCH,
-        ),
+        object({ input: str, message: str }, ["input", "message"], true),
       ),
       no_event: list(
         object(
           {
             input: str,
             id: str,
-            last: nullable(freeForm(RESEARCH)),
-            next: nullable(freeForm(RESEARCH)),
+            last: nullable(freeForm),
+            next: nullable(freeForm),
           },
           ["input", "id"],
         ),
       ),
       events: list(
-        described(
-          object({ id: str, date: str, status: str }, ["id", "date"], true),
-          RESEARCH,
-        ),
+        object({ id: str, date: str, status: str }, ["id", "date"], true),
       ),
     },
     ["from", "to", "events"],
@@ -326,7 +338,7 @@ export const schemas: Record<string, Schema> = {
       change_percent: nnum,
       trade_time: nstr,
       fetched_at: nstr,
-      average: freeForm(TOOLS),
+      average: freeForm,
     },
     [
       "input",
@@ -399,7 +411,7 @@ export const schemas: Record<string, Schema> = {
   ),
   Screen: object(
     {
-      benchmark: freeForm(TOOLS),
+      benchmark: freeForm,
       sort: object({ field: str, order: values(["asc", "desc"]) }),
       attribution: str,
       counts: ref("Counts"),
@@ -432,15 +444,19 @@ export const schemas: Record<string, Schema> = {
     {
       id: int,
       symbol: str,
-      condition: freeForm(RULES),
+      condition: freeForm,
       note: nstr,
-      paused: { type: ["string", "null"], enum: ["manual", "split", null] },
+      paused: {
+        type: ["string", "null"],
+        enum: ["manual", "split", null],
+        description: "`manual`, `split` (cannot be resumed) or null.",
+      },
       message: str,
-      armed: bool,
+      armed: note(bool, "The next true result fires an alert."),
       created_at: str,
       last_result: nstr,
       last_evaluated_at: nstr,
-      after_earnings: freeForm(RULES),
+      after_earnings: freeForm,
     },
     [
       "id",
@@ -455,19 +471,16 @@ export const schemas: Record<string, Schema> = {
     ],
   ),
   Rules: object({ rules: list(ref("Rule")) }),
-  RuleArgs: object({ symbol: str, condition: freeForm(RULES), note: nstr }, [
+  RuleArgs: object({ symbol: str, condition: freeForm, note: nstr }, [
     "symbol",
     "condition",
   ]),
   Created: object({
     rule: ref("Rule"),
-    evaluation: described(
-      object(
-        { result: str, values: list(freeForm(RULES)), reasons: list(str) },
-        ["result", "reasons"],
-        true,
-      ),
-      RULES,
+    evaluation: object(
+      { result: str, values: list(freeForm), reasons: list(str) },
+      ["result", "reasons"],
+      true,
     ),
     alert: nullable(alert),
   }),
@@ -476,9 +489,15 @@ export const schemas: Record<string, Schema> = {
   Alert: alert,
   Alerts: object(
     {
-      retention_gap: bool,
-      cursor_reset: bool,
-      more: bool,
+      retention_gap: note(
+        bool,
+        "Alerts after the cursor were deleted by retention.",
+      ),
+      cursor_reset: note(
+        bool,
+        "The cursor is unknown to this server, so the feed starts over.",
+      ),
+      more: note(bool, "More alerts wait for the next poll."),
       alerts: list(ref("Alert")),
     },
     ["more", "alerts"],
@@ -488,12 +507,37 @@ export const schemas: Record<string, Schema> = {
     sources: list(
       object({
         name: str,
+        label: str,
+        short: str,
+        mark: str,
         state: values(["on", "off"]),
         why: str,
         backing_off: nullable(object({ until: nstr, after: str })),
+        key: nullable(object({ file: str, adds: str, signup: str })),
       }),
     ),
-    jobs: list(freeForm(ADMIN)),
+    jobs: list(
+      object({
+        source: str,
+        job: str,
+        label: str,
+        about: nstr,
+        last: object({
+          scope: nstr,
+          started_at: nstr,
+          ended_at: nstr,
+          status: values(["running", "ok", "failed"]),
+          rows: int,
+          error: nstr,
+        }),
+        instruments: int,
+        markets: int,
+        failing_instruments: int,
+        failing_markets: int,
+        failing_scopes: int,
+        failing: list(object({ scope: nstr, error: nstr, at: nstr })),
+      }),
+    ),
     instruments: int,
     tracked: int,
     track: list(
@@ -505,6 +549,125 @@ export const schemas: Record<string, Schema> = {
     ),
     database_bytes: int,
   }),
+  AdminInstrumentRow: object({
+    id: str,
+    name: nstr,
+    market: str,
+    exchange: str,
+    currency: nstr,
+    kind: str,
+    unit: values(UNITS),
+    source: str,
+    tracked: bool,
+    tracked_by: note(
+      list(values(["rule", "read", "track"])),
+      "What keeps it up to date: a rule, a recent read or the track list.",
+    ),
+    read_at: nstr,
+    read_until: nstr,
+    price: note(
+      nnum,
+      "The stored price, or a series' latest value. Listing fetches nothing.",
+    ),
+    change: nnum,
+    change_percent: nnum,
+    fetched_at: nstr,
+  }),
+  AdminInstruments: object(
+    {
+      attribution: note(
+        str,
+        "A source's required notice, when the page holds one of its values.",
+      ),
+      total: note(int, "Every match, across all pages."),
+      more: note(bool, "Another page follows."),
+      instruments: list(ref("AdminInstrumentRow")),
+    },
+    ["total", "more", "instruments"],
+  ),
+  AdminInstrument: object(
+    {
+      attribution: note(
+        str,
+        "A source's required notice, when the series is one of its.",
+      ),
+      credit: note(
+        nullable(object({ name: str, url: str })),
+        "Who the prices are from, with a link to its site.",
+      ),
+      instrument: ref("AdminInstrumentRow"),
+      quote: note(
+        nullable(
+          object(
+            {
+              input: str,
+              id: str,
+              name: nstr,
+              type: str,
+              source: str,
+              unit: brief.unit,
+              currency: nstr,
+              kind: brief.kind,
+              price: nnum,
+              observation: brief.observation,
+              previous_close: nnum,
+              change: nnum,
+              change_percent: nnum,
+              day_high: nnum,
+              day_low: nnum,
+              volume: nnum,
+              trade_time: nstr,
+              fetched_at: brief.fetched_at,
+              signals: note(
+                nullable(freeForm),
+                "The daily and weekly signals, as the quote tool gives them.",
+              ),
+              returns: note(
+                nullable(freeForm),
+                "Returns over `1w`, `1m`, `3m` and `ytd`, to `to`: in percent, or in points for a series whose `unit` is percent (a yield); `live` when today's price counts.",
+              ),
+              session: note(
+                nullable(freeForm),
+                "The market's last regular session: `state` open or closed, `start` and `end` in UTC. Null for a series.",
+              ),
+              stale: brief.stale,
+            },
+            [
+              "input",
+              "id",
+              "name",
+              "type",
+              "source",
+              "unit",
+              "currency",
+              "kind",
+              "price",
+              "previous_close",
+              "change",
+              "change_percent",
+              "day_high",
+              "day_low",
+              "volume",
+              "trade_time",
+              "fetched_at",
+              "signals",
+              "returns",
+              "session",
+              "stale",
+            ],
+          ),
+        ),
+        "The quote as the quote tool gives it. Null when the read failed: `error` says why, and `instrument` keeps the stored price.",
+      ),
+      error: note(
+        nullable(
+          object({ error: values(ERRORS), message: str }, ["error", "message"]),
+        ),
+        "Why the read failed, else null.",
+      ),
+    },
+    ["instrument", "credit", "quote", "error"],
+  ),
   RefetchArgs: object(
     {
       symbols: list(str),
@@ -514,7 +677,7 @@ export const schemas: Record<string, Schema> = {
     ["symbols", "fetch"],
   ),
   Refetched: object({
-    results: list(described(object({ symbol: str }, ["symbol"], true), ADMIN)),
+    results: list(object({ symbol: str }, ["symbol"], true)),
   }),
   Deleted: object({
     deleted: str,

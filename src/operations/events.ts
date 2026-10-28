@@ -18,7 +18,7 @@ import {
   NOT_COVERED,
 } from "../sources/finnhub/store.ts";
 import { FINNHUB as SOURCE } from "../sources/ids.ts";
-import { lastStarted } from "../storage/runs.ts";
+import { failedRun, lastStarted } from "../storage/runs.ts";
 import {
   cursor,
   fitPage,
@@ -111,7 +111,8 @@ function noCalendar(m: Markets, input: string, i: Instrument): Note | null {
   const ok = lastStarted(m.db, SOURCE, "calendar", i.id, "ok");
   const last = lastStarted(m.db, SOURCE, "calendar", i.id);
   // a refresh that failed since: an empty range then is not "no event"
-  if (ok !== null && last?.status === "failed") {
+  // a run cut by shutdown is no failure: the next run settles it
+  if (ok !== null && failedRun(last)) {
     return {
       input,
       id: i.id,
@@ -123,7 +124,7 @@ function noCalendar(m: Markets, input: string, i: Instrument): Note | null {
     // a 403 or an empty answer; events kept from before show stale
     return ok.rows === 0 ? { input, id: i.id, message: NO_DATA } : null;
   }
-  return last?.status === "failed"
+  return failedRun(last)
     ? {
         input,
         id: i.id,

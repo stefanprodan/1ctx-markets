@@ -26,6 +26,7 @@ import type { Scheduler } from "../../runtime/scheduler.ts";
 import {
   endRun,
   failRun,
+  lastPassAt,
   lastStarted,
   runJob,
   startRun,
@@ -106,17 +107,19 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
     markets: Map<string, Instrument[]>,
     now: number,
     quotePass: boolean,
+    passed: (market: string) => boolean = () => false,
   ): Work[] {
     const work: Work[] = [];
     for (const [market, instruments] of markets) {
+      const turn = quotePass && !passed(market);
       const s = readSession(db, market);
       if (isQuoted(market, s, now)) {
-        if (quotePass) work.push({ market, job: JOBS.quotes, instruments });
+        if (turn) work.push({ market, job: JOBS.quotes, instruments });
         continue;
       }
       // a market with no stored session yet is asked on the period
       if (s === null) {
-        if (quotePass) {
+        if (turn) {
           const one = nextOne(market, instruments);
           work.push({ market, job: JOBS.check, instruments: one });
         }
@@ -311,8 +314,15 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
     const now = clock.now();
     const slot = Math.floor(now / quoteEveryMs);
     const quotePass = slot !== lastSlot;
+    // the first tick after a start passes only the markets its period has
+    // no pass of yet, so a restart or a deploy never adds one
+    const first = lastSlot === null;
     lastSlot = slot;
-    const work = plan(tracked(), now, quotePass);
+    const passed = (market: string) =>
+      first &&
+      (lastPassAt(db, SOURCE, [JOBS.quotes, JOBS.check], market) ?? -1) >=
+        slot * quoteEveryMs;
+    const work = plan(tracked(), now, quotePass, passed);
     if (work.length > 0) await sparkPass(work);
     return {
       quoted: work.filter((w) => w.job === JOBS.quotes).map((w) => w.market),
@@ -375,10 +385,14 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
     if (instrument === null) return null;
     let rows: number;
     try {
-      rows = await runJob(writer, clock, SOURCE, BACKFILL_JOB, async () => {
-        const written = await backfill(ctx, instrument);
-        return written.rows;
-      });
+      rows = await runJob(
+        writer,
+        clock,
+        SOURCE,
+        BACKFILL_JOB,
+        async () => (await backfill(ctx, instrument)).rows,
+        instrument.id,
+      );
     } catch (error) {
       backfillMissed.set(instrument.id, now);
       throw error;

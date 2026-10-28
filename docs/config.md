@@ -23,6 +23,7 @@ the `--help` text, and a flag changes there in the same commit.
 | `--track-days <days>` | 30 | an instrument read within this many days stays tracked; news of an untracked one is pruned |
 | `--source <name>` | none | turns on a keyless source, repeated for each; `bvb` is the Bucharest feed (`docs/bvb.md`) |
 | `--track <symbol>` | none | keeps an instrument tracked whether read or not, repeated for each; a value is what `quote` takes (`docs/storage.md`, Tracking) |
+| `--no-ui` | the UI on | serves no web UI and refuses its sign-in (`docs/web.md`) |
 | `-v`, `--version` | | prints the version |
 | `-h`, `--help` | | prints the help |
 
@@ -45,7 +46,7 @@ the `--help` text, and a flag changes there in the same commit.
 | `markets.db` | the one SQLite database (`docs/storage.md`) |
 | `markets.log` | the service's log, when run by `service install` (`docs/deploy.md`) |
 | `secrets/bearer.key` | the bearer every request carries |
-| `secrets/admin.key` | the key of `/api/v1/admin/*` alone (`docs/admin.md`) |
+| `secrets/admin.key` | the key of `/api/v1/admin/*` and the web UI's sign-in (`docs/admin.md`, `docs/web.md`) |
 | `secrets/source-<name>.key` | a source's API key: `source-fred.key`, `source-finnhub.key`, `source-massive.key` |
 
 ## Keys
@@ -85,7 +86,7 @@ the `--help` text, and a flag changes there in the same commit.
 - **One `startup` line, then one `sources` line**, on stderr in
   slog-text form. `startup` holds `version`, `listen`, `data` (`~` for
   the home directory), `migrations` (applied, or `current`),
-  `quote_every` and `track_days`. `sources` has one field per source:
+  `quote_every`, `track_days` and `ui` (`on` or `off`). `sources` has one field per source:
   `yahoo=on`, the keyed ones `on (key file)` or `off (no key)`, `bvb`
   `on (flag)` or `off (no flag)`.
 - **Log fields are fixed names and short values.** `errorFields()`
@@ -100,9 +101,10 @@ the `--help` text, and a flag changes there in the same commit.
   fetches a new symbol.
 - **One Bun server; the bearer is checked before any route is looked
   up** (`router()`), so an unknown path answers 401 without the bearer
-  and 404 with it. Only `GET /health`, the API's spec and its docs page
-  answer without it. The compare hashes both sides with SHA-256 and
-  uses `timingSafeEqual`, so its time does not depend on what was sent.
+  and 404 with it. Only `GET /health`, the API's spec and its docs
+  page, the web UI's page and its sign-in answer without it. The
+  compare hashes both sides with SHA-256 and uses `timingSafeEqual`,
+  so its time does not depend on what was sent.
   A refusal carries `WWW-Authenticate: Bearer`.
 
 | Path | Method | Serves |
@@ -110,6 +112,8 @@ the `--help` text, and a flag changes there in the same commit.
 | `/mcp` | POST | MCP over Streamable HTTP, stateless |
 | `/api/v1/*` | GET, POST, PATCH, DELETE | the REST API, its spec and docs page (`docs/api.md`); `/api/v1/admin/*` behind the admin key instead of the bearer (`docs/admin.md`) |
 | `/health` | GET | 200 with no body, for the service's start check |
+| `/`, `/status`, `/instruments` | GET | the web UI's page, its assets at the paths it names (`docs/web.md`) |
+| `/ui/session` | POST, DELETE | the web UI's sign-in and sign-out (`docs/web.md`) |
 
 - **Any other method is 405 with `Allow`.** `/mcp` is stateless (one
   MCP server instance per request, `src/server/mcp.ts`), so there is
@@ -161,7 +165,8 @@ or runs against a closed connection.
 - **`make smoke` checks the compiled binary**: it refuses an empty
   bearer, writes a prefixed one on a first start, answers `/health`
   without it and 401 to anything else, answers an MCP initialize with
-  it, creates `markets.db`, keeps the bearer out of the log, and
-  prints a `--version` starting with `v`.
+  it, serves the web UI and its assets, signs in with the admin key
+  into a cookie that holds no key, creates `markets.db`, keeps the
+  bearer out of the log, and prints a `--version` starting with `v`.
 - **Bun is the only runtime**, at the version in `.bun-version`; there
   is no Node. `make start` and `make dev` run from source.

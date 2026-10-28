@@ -21,7 +21,13 @@ import { localDate } from "../../market/zone.ts";
 import { DAY_MS, MINUTE_MS } from "../../runtime/clock.ts";
 import type { Log } from "../../runtime/log.ts";
 import type { Scheduler } from "../../runtime/scheduler.ts";
-import { endRun, failRun, lastStarted, startRun } from "../../storage/runs.ts";
+import {
+  endRun,
+  failRun,
+  lastPassAt,
+  lastStarted,
+  startRun,
+} from "../../storage/runs.ts";
 import { WriterClosed } from "../../storage/writer.ts";
 import { RETRY_MS } from "../history.ts";
 import { phraseOf, QueueClosed, SourceError } from "../source.ts";
@@ -285,7 +291,16 @@ export function bvbJobs(options: BvbJobsOptions): BvbJobs {
   async function quoteOrCheck(): Promise<Omit<BvbTick, "bars">> {
     const now = clock.now();
     const slot = Math.floor(now / quoteEveryMs);
-    const periodTurn = slot !== lastSlot;
+    // the first tick after a start passes only when its period has no
+    // pass yet, so a restart or a deploy never adds one
+    const first = lastSlot === null;
+    const periodTurn =
+      slot !== lastSlot &&
+      !(
+        first &&
+        (lastPassAt(db, SOURCE, [JOBS.quotes], MARKET) ?? -1) >=
+          slot * quoteEveryMs
+      );
     lastSlot = slot;
     const instruments = tracked();
     if (instruments.length === 0) return { quoted: false, checked: false };

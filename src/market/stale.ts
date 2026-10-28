@@ -5,7 +5,7 @@
 import { MINUTE_MS } from "../runtime/clock.ts";
 import { BVB } from "../sources/ids.ts";
 import type { Db } from "../storage/db/index.ts";
-import { lastRun, lastStarted } from "../storage/runs.ts";
+import { failedRun, lastRun, lastStarted } from "../storage/runs.ts";
 import { CRYPTO, closeQuoteAt, readSession } from "./calendars.ts";
 import type { Instrument } from "./instruments.ts";
 
@@ -55,7 +55,7 @@ export type StaleReason = (typeof STALE)[keyof typeof STALE];
 type Scoped = Pick<Instrument, "id" | "source" | "market" | "addedAt">;
 
 const failed = (db: Db, i: Scoped, job: string) =>
-  lastRun(db, i.source, job, i.market)?.status === "failed";
+  failedRun(lastRun(db, i.source, job, i.market));
 
 // until the switch lands, running or failed
 function switching(db: Db, market: string): boolean {
@@ -87,7 +87,7 @@ export function quoteStale(
     )
     .get(instrument.id);
   const pass = lastRun(db, instrument.source, JOBS.quotes, instrument.market);
-  if (pass?.status === "failed") reasons.push(STALE.quotesFailed);
+  if (failedRun(pass)) reasons.push(STALE.quotesFailed);
   if (quote === null) reasons.push(STALE.noQuoteYet);
   else if (
     pass?.status === "ok" &&
@@ -138,8 +138,7 @@ export function barsStale(
   // the market's pass, or this instrument's own refetch in it
   if (
     failed(db, instrument, JOBS.bars) ||
-    lastRun(db, instrument.source, JOBS.bars, instrument.id)?.status ===
-      "failed"
+    failedRun(lastRun(db, instrument.source, JOBS.bars, instrument.id))
   ) {
     reasons.push(STALE.barsFailed);
   }

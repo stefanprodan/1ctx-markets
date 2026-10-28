@@ -1,7 +1,8 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-// By hand, so each limit carries its reason; schemas keep to the tested subset.
+// By hand, for people reading the docs page; schemas keep to the tested subset.
 
+import { COOKIE } from "../server/session.ts";
 import { paths, responses } from "./paths.ts";
 import { schemas } from "./schemas.ts";
 
@@ -12,15 +13,23 @@ export const spec = {
     version: "v1",
     // no identifier or url: the page would link to another host
     license: { name: "Apache-2.0" },
-    description: `Market data and price rules for scripts and other tools, the same reads the MCP tools answer. JSON in and out; query parameters for reads, a JSON body where the arguments are a structure. Nothing is paged: every route answers its whole result, since a script that does not follow a cursor would lose what is past it. An argument a route does not take is refused (400), next included. Every error is {"error": code, "message": text}, with the tools' own codes. Another method on a path answers 405 with Allow. Reads answer cache-control: no-store, since prices are live. The read key is the server's bearer; the admin key is for the operator's routes alone, and neither is taken where the other is.`,
+    description: `Market data and price rules, the same answers as the MCP tools.
+
+- Market data and rules routes take the read key, \`/admin\` routes the admin key.
+- Results are not paged, except the admin instrument list and the alerts feed.
+- Errors are \`{"error": code, "message": text}\`.`,
   },
   servers: [{ url: "/api/v1" }],
   security: [{ read: [] }],
   tags: [
-    { name: "market data" },
-    { name: "rules" },
-    { name: "admin" },
-    { name: "docs" },
+    { name: "market data", description: "Quotes, bars, research and screens." },
+    { name: "rules", description: "Price rules and their alerts." },
+    {
+      name: "admin",
+      description:
+        "Operator routes, for the admin key or the web UI's sign-in.",
+    },
+    { name: "docs", description: "This page and its OpenAPI document." },
   ],
   paths,
   components: {
@@ -28,12 +37,19 @@ export const spec = {
       read: {
         type: "http",
         scheme: "bearer",
-        description: "The server's bearer, secrets/bearer.key.",
+        description: "The read key, for the market data and rules routes.",
       },
       admin: {
         type: "http",
         scheme: "bearer",
-        description: "The operator's key, secrets/admin.key.",
+        description: "The admin key, for the `/admin` routes only.",
+      },
+      session: {
+        type: "apiKey",
+        in: "cookie",
+        name: COOKIE,
+        description:
+          "The web UI's sign-in cookie. It opens the `/admin` routes, the GET reads and `POST /screen`. A request other than GET must come from this server's own pages.",
       },
     },
     schemas,

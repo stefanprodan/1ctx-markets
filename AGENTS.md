@@ -17,7 +17,9 @@ only, never holdings, orders or a portfolio.
   `@modelcontextprotocol/server` (`server/http.ts` a type only); the
   MCP client is for tests. `swagger-ui-dist` is the one package
   `src/api/` imports, and only its `swagger-ui-bundle.js` and
-  `swagger-ui.css`, embedded as files (`docs/api.md`).
+  `swagger-ui.css`, embedded as files (`docs/api.md`). `preact` and
+  `@preact/signals` are imported only under `src/web/`, the client Bun
+  bundles into the binary; `preact-render-to-string` only by tests.
 
 ## The dev loop
 
@@ -49,6 +51,7 @@ src/server/                 HTTP and MCP
   http.ts                   the Bun server, the bearer check, the routes
   mcp.ts                    the stateless MCP endpoint
   instructions.ts           the server instructions every MCP client gets
+  session.ts                the web UI's sign-in and its cookie
 src/runtime/                the process
   config.ts                 flags and the --help text
   keys.ts                   key files, the only reader of secrets/
@@ -84,6 +87,11 @@ src/tools/                  the MCP surface: the tool registry and research's pa
 src/api/                    /api/v1: routes, alerts, the spec, the docs page; never imports tools/
 src/service/                `service install|start|stop|...`: launchd, CLI only
 src/admin/                  /api/v1/admin/* behind its own key, and the `admin` command
+src/web/                    the web UI, bundled from index.html (Preact)
+  app/                      the shell, rail, router, routes and theme
+  data/                     every call and signal; views never fetch
+  views/                    the pages: sign-in, Status, Instruments
+  style/ ui/ lib/ fonts/    1ctx's tokens, primitives, icons and fonts
 test/                       one *.test.ts per area, helpers/ (fakes), fixtures/ (recordings)
 scripts/probe/              the fixture recorders, run by hand
 scripts/smoke.sh            the binary's smoke test
@@ -114,6 +122,7 @@ the same commit as the code that changes a rule.
 | `docs/signals.md` | the daily and weekly signals, final and live rows, reading, relative return |
 | `docs/rules.md` | rule conditions, validation, evaluation, the earnings gate, split pauses, the `rules` tool |
 | `docs/tools.md` | the answer contract, arguments, each tool, units and staleness, resolution and the inline fetch, the reads the API shares, tool descriptions |
+| `docs/web.md` | the web UI: serving, the sign-in and its cookie, what the cookie opens, what an anonymous visitor sees, the client's rules, the pages |
 | `docs/testing.md` | the test suite, fakes, the fake clock, fixtures and the recorders |
 
 ## Rules the code follows

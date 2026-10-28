@@ -13,6 +13,7 @@ import { withLive } from "../src/operations/history.ts";
 import { CALL_MS, markets } from "../src/operations/markets.ts";
 import { DAY_MS } from "../src/runtime/clock.ts";
 import { silent } from "../src/runtime/log.ts";
+import { COOKIE, sessions } from "../src/server/session.ts";
 import { finnhub } from "../src/sources/finnhub/client.ts";
 import { fred } from "../src/sources/fred/client.ts";
 import { yahoo } from "../src/sources/yahoo/client.ts";
@@ -62,7 +63,13 @@ async function setup() {
     finnhub: finnhub({ clock, key: FINNHUB_KEY, fetch: s.fetch }),
     log: silent,
   });
-  const handle = api(m);
+  // one source of each kind, so the status answer checks every field
+  const handle = api(m, {
+    sources: [
+      { name: "yahoo", on: true, why: "always", backoff: () => null },
+      { name: "fred", on: false, why: "no key", backoff: () => null },
+    ],
+  });
   const call = (path: string, init: RequestInit = {}) =>
     drive(
       clock,
@@ -263,6 +270,37 @@ describe("every operation", () => {
       200,
     );
     expect(h.relative.returns).toHaveLength(2);
+    // the tools' bars stay close only; a chart asks for its candles
+    expect(Object.keys(h.bars[0]).sort()).toEqual([
+      "close",
+      "date",
+      "final",
+      "sma200",
+      "sma50",
+    ]);
+    const ohlc = await check(
+      "GET",
+      "/history",
+      await t.call("/history?symbol=NVDA&ohlc=true"),
+      200,
+    );
+    expect(Object.keys(ohlc.bars.at(-2)).sort()).toEqual([
+      "close",
+      "date",
+      "final",
+      "high",
+      "low",
+      "open",
+      "sma200",
+      "sma50",
+      "volume",
+    ]);
+    await check(
+      "GET",
+      "/history",
+      await t.call("/history?symbol=NVDA&ohlc=1"),
+      400,
+    );
     await check("GET", "/history", await t.call("/history?interval=1h"), 400);
     await check(
       "GET",
@@ -539,7 +577,47 @@ describe("every operation", () => {
       await t.call("/admin/status", wrong),
       401,
     );
+    await check(
+      "GET",
+      "/admin/instruments",
+      await t.call("/admin/instruments?limit=2"),
+      200,
+    );
+    await check(
+      "GET",
+      "/admin/instruments",
+      await t.call("/admin/instruments?limit=0"),
+      400,
+    );
+    await check(
+      "GET",
+      "/admin/instruments",
+      await t.call("/admin/instruments", wrong),
+      401,
+    );
+    // signed in by the UI's cookie, without this server's Origin
+    const cookie = {
+      cookie: `${COOKIE}=${sessions(ADMIN_KEY).issue(t.clock.now())}`,
+    };
+    await check(
+      "POST",
+      "/screen",
+      await t.call("/screen", {
+        ...json({ symbols: ["US:NVDA"] }),
+        headers: { "content-type": "application/json", ...cookie },
+      }),
+      403,
+    );
     const refetch = { symbols: ["US:NOPE"], fetch: ["quotes"] };
+    await check(
+      "POST",
+      "/admin/refetch",
+      await t.call("/admin/refetch", {
+        ...json(refetch),
+        headers: { "content-type": "application/json", ...cookie },
+      }),
+      403,
+    );
     await check(
       "POST",
       "/admin/refetch",
@@ -576,11 +654,23 @@ describe("every operation", () => {
         ...init,
       });
     const path = "/admin/instruments/{id}";
+    const one = (id: string, init: RequestInit = {}) =>
+      t.call(`/admin/instruments/${encodeURIComponent(id)}`, init);
+    await check("GET", path, await one("US:NVDA"), 200);
+    await check("GET", path, await one("<b>"), 400);
+    await check("GET", path, await one("US:NOPE"), 404);
+    await check("GET", path, await one("US:NVDA", wrong), 401);
     await check("DELETE", path, await del("US:NVDA"), 409);
     await check("DELETE", path, await del("FRED:DGS10"), 200);
     await check("DELETE", path, await del("FRED:DGS10"), 404);
     await check("DELETE", path, await del("<b>"), 400);
     await check("DELETE", path, await del("US:NVDA", wrong), 401);
+    await check(
+      "DELETE",
+      path,
+      await del("US:NVDA", { headers: { ...cookie, origin: "http://x.test" } }),
+      403,
+    );
 
     // rules delete last: its alert stays
     await check(

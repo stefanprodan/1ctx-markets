@@ -9,6 +9,7 @@ import { routes } from "../../src/api/routes.ts";
 import type { Markets } from "../../src/operations/markets.ts";
 import { silent } from "../../src/runtime/log.ts";
 import { router } from "../../src/server/http.ts";
+import { sessions } from "../../src/server/session.ts";
 
 // made up: no real key is ever read by a test
 export const READ_KEY = "test-read-key-0123456789abcdef0123456789";
@@ -18,6 +19,7 @@ export function api(m: Markets, options: { sources?: SourceState[] } = {}) {
   const handle = router({
     bearer: READ_KEY,
     adminKey: ADMIN_KEY,
+    sessions: sessions(ADMIN_KEY),
     mcp: {
       fetch: async () => {
         throw new Error("no MCP in API tests");
@@ -38,7 +40,10 @@ export function api(m: Markets, options: { sources?: SourceState[] } = {}) {
     log: silent,
   });
   return (req: Request): Promise<Response> => {
-    if (req.headers.has("authorization")) return handle(req);
+    // a request with the UI's cookie or its own key goes as it is
+    if (req.headers.has("authorization") || req.headers.has("cookie")) {
+      return handle(req);
+    }
     const path = new URL(req.url).pathname;
     const key = path.startsWith(`${PREFIX}/admin`) ? ADMIN_KEY : READ_KEY;
     const headers = new Headers(req.headers);

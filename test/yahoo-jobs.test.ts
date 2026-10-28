@@ -20,6 +20,7 @@ import { DAY_MS, MINUTE_MS } from "../src/runtime/clock.ts";
 import { silent } from "../src/runtime/log.ts";
 import { scheduler } from "../src/runtime/scheduler.ts";
 import { readSignals } from "../src/signals/read.ts";
+import { STOPPED } from "../src/sources/source.ts";
 import { yahoo } from "../src/sources/yahoo/client.ts";
 import {
   RETRY_MS,
@@ -106,6 +107,61 @@ function moveSession(meta: any, start: string, end: string, now: number) {
 }
 
 describe("quotes", () => {
+  test("a restart adds no pass to a period that had one; a first run and a long stop ask at once", async () => {
+    const s = sim([CRYPTO("C0-USD")]);
+    const t = setup(utc("2026-10-26T18:00"), (url, now) => s.route(url, now));
+    await added(t.ctx, "C0-USD");
+    const fresh = () =>
+      yahooJobs({ ctx: t.ctx, quoteEveryMs: EVERY, log: silent });
+    const tick = async (jobs: ReturnType<typeof fresh>) => {
+      await t.clock.advance(MINUTE_MS);
+      return (await jobs.tick()).quoted;
+    };
+    // a first run has no pass behind it
+    expect(await tick(t.jobs)).toEqual(["CRYPTO"]);
+    // restarted within the same five minutes: nothing new to ask
+    expect(await tick(fresh())).toEqual([]);
+    // the next period asks as the schedule does
+    const again = fresh();
+    await t.clock.advance(2 * MINUTE_MS);
+    expect(await tick(again)).toEqual(["CRYPTO"]);
+    // a pass cut by shutdown is no pass: the restart asks again
+    t.db
+      .query(
+        "update sync_runs set status = 'failed', error = ? where id = (select max(id) from sync_runs where job = 'quotes')",
+      )
+      .run(STOPPED);
+    expect(await tick(fresh())).toEqual(["CRYPTO"]);
+    // down for hours: the first tick asks at once
+    await t.clock.advance(3 * 60 * MINUTE_MS);
+    expect(await tick(fresh())).toEqual(["CRYPTO"]);
+  });
+
+  test("a restart asks again only the market whose pass shutdown cut", async () => {
+    const s = sim([US("U0"), CRYPTO("C0-USD")]);
+    // Monday 17:58 UTC: New York trades
+    const t = setup(utc("2026-10-26T17:58"), (url, now) => s.route(url, now));
+    await added(t.ctx, "U0");
+    await added(t.ctx, "C0-USD");
+    expect((await t.runTo(utc("2026-10-26T18:00"))).at(-1)!.quoted).toEqual([
+      "CRYPTO",
+      "US",
+    ]);
+    // shutdown cut the crypto pass, the US one ended
+    t.db
+      .query(
+        "update sync_runs set status = 'failed', error = ? where id = (select max(id) from sync_runs where job = 'quotes' and scope = 'CRYPTO')",
+      )
+      .run(STOPPED);
+    await t.clock.advance(MINUTE_MS);
+    const restarted = yahooJobs({
+      ctx: t.ctx,
+      quoteEveryMs: EVERY,
+      log: silent,
+    });
+    expect((await restarted.tick()).quoted).toEqual(["CRYPTO"]);
+  });
+
   test("only markets in session and crypto always, in batches of 20 each with _=", async () => {
     const listings: SimListing[] = [
       ...Array.from({ length: 21 }, (_, i) => US(`U${i}`)),
@@ -829,6 +885,8 @@ describe("backfill", () => {
     expect(lastRun(t.db, "yahoo", "backfill")).toMatchObject({
       status: "failed",
       error: "malformed answer",
+      // a run per instrument, so another one's success never hides it
+      scope: "US:NVDA",
     });
     expect(readBars(t.db, "US:NVDA", "1d")).toEqual([]);
     expect(await t.jobs.backfillTurn()).toBeNull();

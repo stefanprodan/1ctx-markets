@@ -62,6 +62,21 @@ describe("--track", () => {
   });
 });
 
+describe("--no-ui", () => {
+  test("the UI is on unless the flag turns it off, and a service keeps it", () => {
+    const on = parseCli([], "/home/x");
+    if (on.kind !== "run") throw new Error(on.kind);
+    expect(on.config.ui).toBe(true);
+    expect(configToArgs(on.config)).not.toContain("--no-ui");
+    const off = parseCli(["--no-ui"], "/home/x");
+    if (off.kind !== "run") throw new Error(off.kind);
+    expect(off.config.ui).toBe(false);
+    expect(configToArgs(off.config)).toContain("--no-ui");
+    expect(parseCli(configToArgs(off.config), "/home/y")).toEqual(off);
+    expect(HELP).toContain("--no-ui");
+  });
+});
+
 describe("service arguments", () => {
   test("a config written out reads back unchanged", () => {
     const cli = parseCli(

@@ -1,0 +1,120 @@
+/* The chart card: ranges and toggles in its head, the legend in its own
+   rows above the canvas, the canvas as wide as the card. */
+
+@layer tokens, base, owners;
+
+@layer owners {
+  .chart-card {
+    display: flex;
+    flex-direction: column;
+  }
+  .chart-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--line);
+  }
+  .chart-tools {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+  /* a line's toggle wears its colour as a short stroke, so the legend's
+     words and the line agree without colour alone */
+  .chart-toggle-50::before,
+  .chart-toggle-200::before,
+  .chart-avg::before {
+    content: "";
+    display: inline-block;
+    width: 10px;
+    height: 2px;
+    border-radius: 1px;
+    vertical-align: middle;
+  }
+  .chart-toggle-50::before,
+  .chart-avg-50::before {
+    background: var(--chart-sma50);
+  }
+  .chart-toggle-200::before,
+  .chart-avg-200::before {
+    background: var(--chart-sma200);
+  }
+  .seg-option:not(.seg-on).chart-toggle-50::before,
+  .seg-option:not(.seg-on).chart-toggle-200::before {
+    opacity: 0.35;
+  }
+  .chart-avg::before {
+    margin-right: 6px;
+  }
+
+  .chart-body {
+    padding: var(--space-3) 0 0;
+  }
+  .chart-canvas {
+    height: 400px;
+  }
+  @media (max-width: 719px) {
+    .chart-canvas {
+      height: 300px;
+    }
+  }
+  /* its own rows above the plot, so it never covers a bar or a line;
+     its height is held, so the plot never moves as it changes */
+  .chart-legend {
+    display: flex;
+    padding: 0 var(--space-4) var(--space-2);
+    flex-direction: column;
+    gap: 2px;
+    pointer-events: none;
+    font-family: var(--mono);
+    font-size: var(--text-small);
+    font-variant-numeric: tabular-nums;
+    color: var(--fg);
+  }
+  .chart-legend-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px var(--space-3);
+  }
+  .chart-legend i {
+    font-style: normal;
+    color: var(--faint);
+  }
+  .chart-date {
+    color: var(--dim);
+  }
+  .chart-live {
+    padding: 0 6px;
+    border-radius: var(--radius-cell);
+    background: var(--hover);
+    color: var(--fg);
+  }
+  .chart-up {
+    color: var(--done);
+  }
+  .chart-down {
+    color: var(--failed);
+  }
+  .chart-avg {
+    color: var(--dim);
+  }
+  .chart-note {
+    margin: 0;
+    padding: 0 var(--space-4) var(--space-2);
+    font-size: var(--text-ui);
+    color: var(--faint);
+  }
+  /* before the first answer: about two rows, a phone's about four */
+  .chart-legend-wait {
+    min-height: 40px;
+  }
+  @media (max-width: 719px) {
+    .chart-legend-wait {
+      min-height: 76px;
+    }
+  }
+}

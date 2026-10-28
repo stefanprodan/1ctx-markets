@@ -1,0 +1,133 @@
+@layer tokens, base, owners;
+
+@layer owners {
+  .ins-symbol {
+    flex-shrink: 0;
+    font-family: var(--mono);
+    font-weight: 600;
+    color: var(--fg);
+  }
+  .ins-name {
+    min-width: 0;
+    color: var(--dim);
+  }
+  .ins-price {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--fg);
+  }
+  .ins-up {
+    color: var(--done);
+  }
+  .ins-down {
+    color: var(--failed);
+  }
+  .rows-meta-under .ins-up,
+  .rows-meta-under .ins-down {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* an instrument's head: the figure the page is about, then its moves */
+  .ins-head {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: var(--space-4);
+  }
+  .ins-figure {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    margin-top: var(--space-1);
+  }
+  .ins-big {
+    font-size: var(--text-figure);
+    font-weight: 500;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+  }
+  .ins-move {
+    font-family: var(--mono);
+    font-size: var(--text-body);
+    font-variant-numeric: tabular-nums;
+  }
+  .ins-state {
+    font-size: var(--text-small);
+    color: var(--faint);
+  }
+  .ins-returns {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: var(--space-3);
+    margin: var(--space-3) 0 0;
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--line);
+  }
+  .ins-return {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .ins-return dt {
+    font-size: var(--text-small);
+    color: var(--faint);
+  }
+  .ins-return dd {
+    margin: 0;
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--fg);
+  }
+  .ins-return dd.ins-up {
+    color: var(--done);
+  }
+  .ins-return dd.ins-down {
+    color: var(--failed);
+  }
+  @media (max-width: 719px) {
+    .ins-returns {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  /* the refetch menu hangs under its button, as 1ctx's More */
+  .ins-more {
+    position: relative;
+  }
+  .ins-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    z-index: 3;
+    min-width: 200px;
+    max-width: min(320px, calc(100vw - 32px));
+  }
+  /* Everything stands apart from the single parts under it */
+  .ins-menu-all {
+    margin-bottom: 3px;
+    border-bottom: 1px solid var(--line);
+    border-radius: var(--radius) var(--radius) 0 0;
+  }
+
+  /* the labels share one cell; the hidden ones still take their width */
+  .ins-labels {
+    display: grid;
+  }
+  .ins-label {
+    grid-area: 1 / 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    visibility: hidden;
+  }
+  .ins-label-on {
+    visibility: visible;
+  }
+  .ins-label-done svg {
+    color: var(--done);
+  }
+}

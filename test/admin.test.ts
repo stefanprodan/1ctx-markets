@@ -12,12 +12,20 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AdminError, runAdmin } from "../src/admin/cli.ts";
-import { INSTRUMENT_TABLES, MAX_SYMBOLS } from "../src/admin/http.ts";
+import {
+  INSTRUMENT_TABLES,
+  jobLabel,
+  MAX_FAILING,
+  MAX_PAGE,
+  MAX_SYMBOLS,
+} from "../src/admin/http.ts";
 import { refetch } from "../src/admin/refetch.ts";
+import { iso } from "../src/market/format.ts";
 import { readInstrument, upsertInstrument } from "../src/market/instruments.ts";
-import { lastReadAt } from "../src/market/tracking.ts";
-import { CALL_MS, markets } from "../src/operations/markets.ts";
+import { lastReadAt, markRead } from "../src/market/tracking.ts";
+import { CALL_MS, type Markets, markets } from "../src/operations/markets.ts";
 import { readTargets } from "../src/operations/targets.ts";
+import { DAY_MS } from "../src/runtime/clock.ts";
 import { DEFAULT_LISTEN, parseCli } from "../src/runtime/config.ts";
 import {
   ADMIN_FILE,
@@ -47,6 +55,7 @@ import { fakeClock } from "./helpers/clock.ts";
 import { drive, pacedOf } from "./helpers/drive.ts";
 import { FINNHUB_KEY, finnhubAnswer } from "./helpers/finnhub.ts";
 import { gate, NOW, sources } from "./helpers/sources.ts";
+import { bar, instrument, listing, quote, world } from "./helpers/world.ts";
 import type { Recorded } from "./helpers/yahoo.ts";
 
 const tempDir = () => mkdtempSync(join(tmpdir(), "markets-admin-"));
@@ -222,6 +231,118 @@ describe("the admin routes' guard", () => {
       }
     }));
 
+  test("jobs read as words, an unknown one by its id", () => {
+    expect(jobLabel("yahoo", "quotes")).toBe("Live prices");
+    expect(jobLabel("yahoo", "bars")).toBe("Daily prices");
+    expect(jobLabel("fred", "bars")).toBe("Daily series");
+    expect(jobLabel("x", "new-thing")).toBe("New thing");
+  });
+
+  test("status names the newest failing scopes and counts them all", () =>
+    withApp(
+      async ({ url, admin, db }) => {
+        const insert = db.query(
+          `insert into sync_runs (source, job, scope, started_at, ended_at,
+             status, rows, error)
+           values ('yahoo', 'bars', ?1, ?2, ?2, ?3, 0, ?4)`,
+        );
+        for (let i = 0; i < 7; i++) {
+          insert.run(`US:F${i}`, NOW - i * 60_000, "failed", `error ${i}`);
+        }
+        insert.run("US:OK", NOW, "ok", null);
+        const res = await fetch(`${url}/api/v1/admin/status`, {
+          headers: { authorization: `Bearer ${admin}` },
+        });
+        const [bars] = (await res.json()).jobs;
+        expect(bars.instruments).toBe(8);
+        expect(bars.markets).toBe(0);
+        expect(bars.failing_scopes).toBe(7);
+        expect(bars.failing).toHaveLength(MAX_FAILING);
+        expect(bars.failing.map((f: { scope: string }) => f.scope)).toEqual([
+          "US:F0",
+          "US:F1",
+          "US:F2",
+          "US:F3",
+          "US:F4",
+        ]);
+      },
+      { start: NOW },
+    ));
+
+  test("a failed backfill settles once a read stored the history", () =>
+    withApp(
+      async ({ url, admin, db }) => {
+        db.query(
+          `insert into sync_runs (source, job, scope, started_at, ended_at,
+             status, rows, error)
+           values ('yahoo', 'backfill', 'US:X', ?1, ?1, 'failed', 0, 'timeout'),
+             ('yahoo', 'backfill', null, ?1, ?1, 'failed', 0, 'old'),
+             ('bvb', 'quotes', 'BVB', ?1, ?1, 'failed', 0, 'stopped'),
+             ('bvb', 'bars', 'BVB', ?1, ?1, 'failed', 0, 'interrupted')`,
+        ).run(NOW);
+        const backfill = async () => {
+          const res = await fetch(`${url}/api/v1/admin/status`, {
+            headers: { authorization: `Bearer ${admin}` },
+          });
+          return (await res.json()).jobs.find(
+            (j: { job: string }) => j.job === "backfill",
+          );
+        };
+        // a run cut by shutdown is no failure: the next run settles it
+        const res0 = await fetch(`${url}/api/v1/admin/status`, {
+          headers: { authorization: `Bearer ${admin}` },
+        });
+        const bvb = (await res0.json()).jobs.filter(
+          (j: { source: string }) => j.source === "bvb",
+        );
+        expect(
+          bvb.find((j: { job: string }) => j.job === "quotes"),
+        ).toMatchObject({
+          markets: 1,
+          failing_scopes: 0,
+          failing: [],
+        });
+        // a crash's cut counts: a run that kills the server would never show
+        expect(
+          bvb.find((j: { job: string }) => j.job === "bars"),
+        ).toMatchObject({
+          failing_markets: 1,
+        });
+        // a run from before backfill runs had a scope is not counted
+        expect(await backfill()).toMatchObject({
+          instruments: 1,
+          markets: 0,
+          failing_instruments: 1,
+        });
+        // only a backfill settles: a failed bars run of the same instrument stays
+        db.query(
+          `insert into sync_runs (source, job, scope, started_at, ended_at,
+             status, rows, error)
+           values ('yahoo', 'bars', 'US:X', ?1, ?1, 'failed', 0, 'timeout')`,
+        ).run(NOW);
+        instrument(db, "US:X");
+        bar(db, "US:X", "1d", "2026-10-24", 10, true);
+        expect(await backfill()).toMatchObject({
+          instruments: 1,
+          failing_instruments: 0,
+          failing_scopes: 0,
+          failing: [],
+        });
+        const res = await fetch(`${url}/api/v1/admin/status`, {
+          headers: { authorization: `Bearer ${admin}` },
+        });
+        const bars = (await res.json()).jobs.find(
+          (j: { source: string; job: string }) =>
+            j.source === "yahoo" && j.job === "bars",
+        );
+        expect(bars).toMatchObject({
+          failing_instruments: 1,
+          failing_scopes: 1,
+        });
+      },
+      { start: NOW },
+    ));
+
   test("status answers its fields and never a key", () =>
     withApp(
       async ({ url, admin, bearer, db }) => {
@@ -244,17 +365,45 @@ describe("the admin routes' guard", () => {
         }
         const b = JSON.parse(text);
         expect(b.version).toBe("v0.0.0-test");
-        expect(b.sources).toEqual([
-          { name: "yahoo", state: "on", why: "always", backing_off: null },
-          { name: "fred", state: "off", why: "no key", backing_off: null },
-          { name: "finnhub", state: "on", why: "key file", backing_off: null },
-          { name: "massive", state: "off", why: "no key", backing_off: null },
-          { name: "bvb", state: "off", why: "no flag", backing_off: null },
+        expect(
+          b.sources.map(
+            (x: {
+              name: string;
+              label: string;
+              short: string;
+              mark: string;
+            }) => [x.name, x.label, x.short, x.mark],
+          ),
+        ).toEqual([
+          ["yahoo", "Yahoo Finance", "Yahoo", "Y"],
+          ["fred", "FRED", "FRED", "FR"],
+          ["finnhub", "Finnhub", "Finnhub", "FH"],
+          ["massive", "Massive", "Massive", "M"],
+          ["bvb", "Bucharest Stock Exchange", "BVB", "BVB"],
         ]);
+        const [yahoo, fred] = b.sources;
+        expect(yahoo).toMatchObject({
+          state: "on",
+          why: "always",
+          backing_off: null,
+          key: null,
+        });
+        // a keyed source says how to turn it on, for the page to show
+        expect(fred).toMatchObject({ state: "off", why: "no key" });
+        expect(fred.key.file).toBe("secrets/source-fred.key");
+        expect(fred.key.signup).toStartWith("https://");
+        expect(b.sources[4]).toMatchObject({
+          state: "off",
+          why: "no flag",
+          key: null,
+        });
         expect(b.jobs).toEqual([
           {
             source: "finnhub",
             job: "metric",
+            label: "Key figures",
+            about:
+              "Refreshes each US share's key figures once a day, after 23:00 UTC.",
             last: {
               scope: "US:B",
               started_at: "2026-10-25T21:05:00Z",
@@ -263,11 +412,20 @@ describe("the admin routes' guard", () => {
               rows: 1,
               error: null,
             },
+            instruments: 2,
+            markets: 0,
+            failing_instruments: 1,
+            failing_markets: 0,
             failing_scopes: 1,
+            failing: [
+              { scope: "US:A", error: "not found", at: "2026-10-25T21:04:00Z" },
+            ],
           },
           {
             source: "yahoo",
             job: "quotes",
+            label: "Live prices",
+            about: "Quotes each open market, every 5 minutes by default.",
             last: {
               scope: "US",
               started_at: "2026-10-25T21:05:00Z",
@@ -276,7 +434,19 @@ describe("the admin routes' guard", () => {
               rows: 0,
               error: "rate limited",
             },
+            // one scope, whose latest run failed
+            instruments: 0,
+            markets: 1,
+            failing_instruments: 0,
+            failing_markets: 1,
             failing_scopes: 1,
+            failing: [
+              {
+                scope: "US",
+                error: "rate limited",
+                at: "2026-10-25T21:05:00Z",
+              },
+            ],
           },
         ]);
         expect(b.instruments).toBe(0);
@@ -689,7 +859,9 @@ describe("delete", () => {
     expect(
       (
         await handle(
-          new Request("http://markets.test/api/v1/admin/instruments/%E0%A4%A"),
+          new Request("http://markets.test/api/v1/admin/instruments/%E0%A4%A", {
+            method: "PATCH",
+          }),
         )
       ).status,
     ).toBe(405);
@@ -826,6 +998,213 @@ describe("the admin command", () => {
       await expect(
         runAdmin(["--data", dir, ...argv], { service: async () => null }),
       ).rejects.toThrow("usage:");
+    }
+  });
+});
+
+describe("the instrument list", () => {
+  const list = async (m: Markets, query = "") => {
+    const res = await api(m)(
+      new Request(`http://markets.test/api/v1/admin/instruments${query}`),
+    );
+    return { status: res.status, body: (await res.json()) as any };
+  };
+
+  test("pages the stored set by id and counts every match", async () => {
+    const w = world();
+    for (const id of ["US:CCC", "US:AAA", "XETRA:BBB", "FRED:DGS10"]) {
+      instrument(w.db, id, { name: `${id.split(":")[1]} name` });
+    }
+    const first = await list(w.m, "?limit=2");
+    expect(first.status).toBe(200);
+    expect(first.body.total).toBe(4);
+    expect(first.body.more).toBe(true);
+    expect(first.body.instruments.map((i: any) => i.id)).toEqual([
+      "FRED:DGS10",
+      "US:AAA",
+    ]);
+    const next = await list(w.m, "?limit=2&after=US:AAA");
+    expect(next.body.more).toBe(false);
+    expect(next.body.instruments.map((i: any) => i.id)).toEqual([
+      "US:CCC",
+      "XETRA:BBB",
+    ]);
+    const found = await list(w.m, "?query=bbb");
+    expect(found.body.total).toBe(1);
+    expect(found.body.instruments[0]).toMatchObject({
+      id: "XETRA:BBB",
+      name: "BBB name",
+      market: "XETRA",
+    });
+    const byName = await list(w.m, "?query=AAA%20NAME");
+    expect(byName.body.instruments.map((i: any) => i.id)).toEqual(["US:AAA"]);
+  });
+
+  test("names what tracks each one: a rule, a read and until when, --track", async () => {
+    const w = world();
+    const m: Markets = {
+      ...w.m,
+      tracking: { ...w.m.tracking, flagged: new Set(["US:FLAG"]) },
+    };
+    for (const id of ["US:RULE", "US:READ", "US:OLD", "US:FLAG", "US:NONE"]) {
+      instrument(w.db, id);
+    }
+    w.db
+      .query(
+        "insert into rules (instrument, condition, created_at) values (?, ?, ?)",
+      )
+      .run(
+        "US:RULE",
+        JSON.stringify({
+          left: { field: "price", symbol: "US:RULE" },
+          op: ">",
+          right: 1,
+        }),
+        NOW,
+      );
+    markRead(w.db, ["US:READ"], NOW - DAY_MS);
+    markRead(w.db, ["US:OLD"], NOW - 40 * DAY_MS);
+    const { body } = await list(m);
+    const by = Object.fromEntries(body.instruments.map((i: any) => [i.id, i]));
+    expect(by["US:RULE"]).toMatchObject({
+      tracked: true,
+      tracked_by: ["rule"],
+    });
+    expect(by["US:READ"]).toMatchObject({
+      tracked: true,
+      tracked_by: ["read"],
+      read_at: iso(NOW - DAY_MS),
+      read_until: iso(NOW + 29 * DAY_MS),
+    });
+    expect(by["US:OLD"]).toMatchObject({
+      tracked: false,
+      tracked_by: [],
+      read_at: iso(NOW - 40 * DAY_MS),
+      read_until: null,
+    });
+    expect(by["US:FLAG"]).toMatchObject({
+      tracked: true,
+      tracked_by: ["track"],
+    });
+    expect(by["US:NONE"]).toMatchObject({
+      tracked: false,
+      read_at: null,
+    });
+    // a listing is no read
+    expect(lastReadAt(w.db, "US:NONE")).toBeNull();
+  });
+
+  test("gives each its stored price without fetching or reading it", async () => {
+    const w = world();
+    instrument(w.db, "US:AAA");
+    instrument(w.db, "FRED:DGS10");
+    instrument(w.db, "US:NONE");
+    quote(w.db, "US:AAA", 110, 100);
+    // a series has no quote: its newest daily close stands in
+    bar(w.db, "FRED:DGS10", "1d", "2026-10-23", 4.9, true);
+    bar(w.db, "FRED:DGS10", "1d", "2026-10-26", 5, true);
+    const { body } = await list(w.m);
+    const by = Object.fromEntries(body.instruments.map((i: any) => [i.id, i]));
+    expect(by["US:AAA"]).toMatchObject({
+      price: 110,
+      change: 10,
+      change_percent: 10,
+      fetched_at: expect.any(String),
+    });
+    expect(by["FRED:DGS10"]).toMatchObject({
+      price: 5,
+      change: null,
+      change_percent: null,
+      fetched_at: expect.any(String),
+    });
+    expect(by["US:NONE"]).toMatchObject({
+      price: null,
+      change: null,
+      fetched_at: null,
+    });
+    expect(lastReadAt(w.db, "US:AAA")).toBeNull();
+    // FRED's notice wherever a page holds one of its series, never else
+    expect(body.attribution).toContain("FRED");
+    expect((await list(w.m, "?query=US:")).body).not.toHaveProperty(
+      "attribution",
+    );
+  });
+
+  test("one instrument answers its row and the tools' quote, as a read", async () => {
+    const w = world();
+    listing(w.db, "US:AAA", {
+      price: 110,
+      previousClose: 100,
+      name: "Aaa Inc.",
+    });
+    const one = (path: string) =>
+      api(w.m)(
+        new Request(`http://markets.test/api/v1/admin/instruments/${path}`),
+      );
+    const res = await one("US%3AAAA");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as any;
+    expect(body.instrument).toMatchObject({
+      id: "US:AAA",
+      name: "Aaa Inc.",
+      price: 110,
+      tracked: true,
+      tracked_by: ["read"],
+    });
+    expect(body.quote).toMatchObject({ id: "US:AAA", price: 110, change: 10 });
+    expect(body.quote).toHaveProperty("returns");
+    expect(body.quote).toHaveProperty("session");
+    expect(body.error).toBeNull();
+    // a source with no site of its own is credited by no one
+    expect(body.credit).toBeNull();
+    expect(lastReadAt(w.db, "US:AAA")).not.toBeNull();
+
+    const missing = await one("US%3ANOPE");
+    expect(missing.status).toBe(404);
+    expect(((await missing.json()) as any).error).toBe("not_found");
+    // never a fetch of a symbol not stored
+    expect(readInstrument(w.db, "US:NOPE")).toBeNull();
+    expect((await one("US%3AAAA?x=1")).status).toBe(400);
+    expect((await one("%3Cb%3E")).status).toBe(400);
+  });
+
+  test("one instrument whose read fails keeps its stored row and says why", async () => {
+    const w = world();
+    // stored with nothing fetched: the read asks a source, which is offline
+    instrument(w.db, "FRED:DGS10");
+    const res = await api(w.m)(
+      new Request("http://markets.test/api/v1/admin/instruments/FRED%3ADGS10"),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as any;
+    expect(body.instrument.id).toBe("FRED:DGS10");
+    expect(body.attribution).toContain("FRED");
+    // the page names who the prices are from and links its site
+    expect(body.credit).toEqual({
+      name: "FRED",
+      url: "https://fred.stlouisfed.org/",
+    });
+    expect(body.quote).toBeNull();
+    expect(body.error).toMatchObject({ error: "source_error" });
+  });
+
+  test("parses strictly", async () => {
+    const w = world();
+    for (const query of [
+      "?limit=0",
+      `?limit=${MAX_PAGE + 1}`,
+      "?limit=1.5",
+      "?after=<b>",
+      `?query=${"x".repeat(65)}`,
+      "?next=US:A",
+      "?limit=1&limit=2",
+    ]) {
+      const res = await list(w.m, query);
+      expect([query, res.status, res.body.error]).toEqual([
+        query,
+        400,
+        "bad_arguments",
+      ]);
     }
   });
 });

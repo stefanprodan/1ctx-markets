@@ -4,9 +4,11 @@
 import { describe, expect, test } from "bun:test";
 import { recordSession } from "../src/market/calendars.ts";
 import { upsertInstrument } from "../src/market/instruments.ts";
-import { barsStale, JOBS, quoteStale } from "../src/market/stale.ts";
+import { barsStale, JOBS, quoteStale, STALE } from "../src/market/stale.ts";
 import { DAY_MS, MINUTE_MS } from "../src/runtime/clock.ts";
-import { SourceError } from "../src/sources/source.ts";
+import { STALE_RESEARCH, sectionState } from "../src/sources/finnhub/read.ts";
+import { newsState, STALE_NEWS } from "../src/sources/massive/store.ts";
+import { QueueClosed, SourceError } from "../src/sources/source.ts";
 import { open } from "../src/storage/db/index.ts";
 import { endRun, failRun, startRun } from "../src/storage/runs.ts";
 import { fakeClock } from "./helpers/clock.ts";
@@ -32,7 +34,7 @@ function setup() {
   // runs a job to its end, a step after the last; a quote pass that
   // ends well answers every instrument of its market
   let at = clock.now();
-  const run = (job: string, scope: string | null, error?: unknown) => {
+  const run = (job: string, scope: string, error?: unknown) => {
     at += MINUTE_MS;
     const id = startRun(db, "yahoo", job, at, scope);
     if (error === undefined) {
@@ -102,7 +104,7 @@ describe("staleness", () => {
     run(JOBS.quotes, "US");
     expect(quoteStale(db, us)).toEqual([]);
     run(JOBS.quotes, "US", new SourceError("rate limited"));
-    run("search", null);
+    run("search", "US");
     run(JOBS.quotes, "OTHER");
     expect(quoteStale(db, us)).toEqual(["quote sync failed"]);
     expect(quoteStale(db, other)).toEqual([]);
@@ -169,5 +171,36 @@ describe("staleness", () => {
     run(JOBS.bars, "OTHER");
     run(JOBS.bars, "US");
     expect(barsStale(db, us, now())).toEqual([]);
+  });
+});
+
+describe("a run cut by shutdown", () => {
+  test("is no failure for bars, research or news; one the source failed is", () => {
+    const { db, us, run, now } = setup();
+    db.query(
+      `insert into bars (instrument, interval, date, open, high, low, close, volume, final, fetched_at)
+       values (?, '1d', '2026-10-23', 1, 1, 1, 1, 1, 1, ?)`,
+    ).run(us.id, now());
+    run(JOBS.bars, us.id, new QueueClosed());
+    expect(barsStale(db, us, now())).not.toContain(STALE.barsFailed);
+    run(JOBS.bars, us.id, new SourceError("timed out"));
+    expect(barsStale(db, us, now())).toContain(STALE.barsFailed);
+
+    const cut = (source: string, job: string, error: unknown) => {
+      const at = now() + MINUTE_MS;
+      failRun(db, startRun(db, source, job, at, us.id), at, error);
+    };
+    cut("massive", "news", new QueueClosed());
+    expect(newsState(db, us.id, now()).stale).not.toContain(STALE_NEWS.failed);
+    cut("massive", "news", new SourceError("timed out"));
+    expect(newsState(db, us.id, now()).stale).toContain(STALE_NEWS.failed);
+    cut("finnhub", "metric", new QueueClosed());
+    expect(sectionState(db, us.id, "metric", now()).stale).not.toContain(
+      STALE_RESEARCH.failed,
+    );
+    cut("finnhub", "metric", new SourceError("timed out"));
+    expect(sectionState(db, us.id, "metric", now()).stale).toContain(
+      STALE_RESEARCH.failed,
+    );
   });
 });

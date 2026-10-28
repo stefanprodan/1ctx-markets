@@ -1,0 +1,148 @@
+@layer tokens, base, owners;
+
+@layer owners {
+  .srv-tiles {
+    display: grid;
+    width: 960px;
+    max-width: 100%;
+    margin-bottom: var(--space-4);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 14px;
+  }
+  .srv-tile {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+    padding: var(--space-4);
+  }
+  .srv-figure {
+    margin-top: var(--space-1);
+    font-size: var(--text-figure);
+    font-weight: 500;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .srv-sub {
+    font-size: var(--text-small);
+    color: var(--faint);
+    overflow-wrap: anywhere;
+  }
+
+  /* in the 14px slot 1ctx's rows give an icon */
+  .srv-mark {
+    display: flex;
+    flex: none;
+    align-self: flex-start;
+    margin-top: 8px;
+    justify-content: center;
+    width: 14px;
+  }
+  .srv-mark::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  .srv-details {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+  .srv-about,
+  .srv-ok {
+    margin: 0;
+    color: var(--dim);
+  }
+  .srv-failing {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr) max-content;
+    gap: 4px var(--space-4);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .srv-failing li {
+    display: contents;
+  }
+  .srv-failing-scope {
+    font-family: var(--mono);
+    font-size: var(--text-mono);
+    color: var(--fg);
+  }
+  .srv-failing-at,
+  .srv-failing-more {
+    color: var(--faint);
+  }
+  .srv-failing-more {
+    margin: 0;
+  }
+
+  /* the chevron trails the row; the dot holds its slot on the left */
+  .srv-source .rows-chevron {
+    order: 1;
+  }
+
+  .srv-logo {
+    width: auto;
+    min-width: 28px;
+    padding: 0 6px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--fg);
+  }
+
+  .srv-track {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 2px var(--space-4);
+    margin: 0;
+    padding: var(--space-3) var(--space-4);
+    list-style: none;
+  }
+  .srv-track-item {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    min-width: 0;
+    padding: 4px 0;
+  }
+  .srv-track-value {
+    flex: none;
+    min-width: 9ch;
+    font-family: var(--mono);
+    font-size: var(--text-mono);
+  }
+  .srv-track-id {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--faint);
+    font-size: var(--text-small);
+  }
+
+  @media (max-width: 1099px) {
+    .srv-tiles {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .srv-track {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  @media (max-width: 719px) {
+    .srv-tiles {
+      gap: var(--space-2);
+    }
+    .srv-tile {
+      padding: var(--space-3);
+    }
+    .srv-track {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+}

@@ -22,6 +22,7 @@ import {
 import { errorFields, logger } from "./runtime/log.ts";
 import { runService, ServiceError } from "./service/index.ts";
 import { open } from "./storage/db/index.ts";
+import page from "./web/index.html";
 
 const buildVersion = process.env.MARKETS_BUILD_VERSION;
 export const VERSION = buildVersion || `v${pkg.version}`;
@@ -104,6 +105,11 @@ const app = start({
   port: config.port,
   bearer,
   adminKey,
+  ui: config.ui,
+  page,
+  // a local preview rebuilds the page as its sources change, so an edit
+  // never needs a restart; never set where the binary runs
+  pageDev: process.env.MARKETS_PAGE_DEV === "1",
   clock: wallClock,
   log,
   version: VERSION,
@@ -125,6 +131,7 @@ main.info("startup", {
   migrations: migrations.length > 0 ? migrations.join(",") : "current",
   quote_every: config.quoteEveryMs / MINUTE_MS,
   track_days: config.trackDays,
+  ui: config.ui ? "on" : "off",
 });
 main.info("sources", app.sources);
 

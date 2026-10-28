@@ -21,7 +21,7 @@ consumer each.
 | Method and path | Key | Calls | Answers |
 |---|---|---|---|
 | `GET /api/v1/quotes?symbols=&extended=` | read | `quoteRows()` with `briefItem()` | every symbol asked, up to `MAX_SYMBOLS` (100); `extended=true` adds the quote tool's `extended` per item |
-| `GET /api/v1/history?symbol=&interval=&from=&to=&benchmark=` | read | `readHistory()` | the instrument (`id`, `name`, `exchange`, `type`, `currency`, `unit`, `source`, `basis`, `stale`, FRED's `attribution`), `from`, `to`, the tool's `session`, `interval`, the tool's `relative` when a benchmark is named, and `bars` oldest first: `date`, `close`, `final`, `sma50`, `sma200` |
+| `GET /api/v1/history?symbol=&interval=&from=&to=&benchmark=&ohlc=` | read | `readHistory()` | the instrument (`id`, `name`, `exchange`, `type`, `currency`, `unit`, `source`, `basis`, `stale`, FRED's `attribution`), `from`, `to`, the tool's `session`, `interval`, the tool's `relative` when a benchmark is named, and `bars` oldest first: `date`, `close`, `final`, `sma50`, `sma200`; `ohlc=true` adds `open`, `high`, `low` and `volume` for the UI's chart, kept off by default so the tools' bars stay small |
 | `GET /api/v1/search?query=` | read | `searchAll()` | every candidate, the tool's fields |
 | `GET /api/v1/research?symbols=&sections=&since=` | read | `researchList()` | up to `MAX_RESEARCH_SYMBOLS` (5) brief quotes with their research summary and news week (below) |
 | `GET /api/v1/events?from=&to=&symbols=` | read | `readEventsOf()` | every event, `unavailable` and `no_event` uncapped |
@@ -33,6 +33,8 @@ consumer each.
 | `DELETE /api/v1/rules/{id}` | read | `deleteRuleById()` | 204; its alerts stay |
 | `GET /api/v1/alerts` | read | `alertsHandler()` | the alerts feed (below) |
 | `GET /api/v1/admin/status` | admin | `adminStatus()` | `docs/admin.md` |
+| `GET /api/v1/admin/instruments?query=&after=&limit=` | admin | `adminInstruments()` | a page of stored instruments and what tracks each (`docs/admin.md`) |
+| `GET /api/v1/admin/instruments/{id}` | admin | `adminInstrument()` | one instrument and its full quote, a read (`docs/admin.md`) |
 | `POST /api/v1/admin/refetch` | admin | `adminRefetch()` | `docs/admin.md` |
 | `DELETE /api/v1/admin/instruments/{id}` | admin | `adminDelete()` | `docs/admin.md` |
 | `GET /api/v1/openapi.json` | none | `spec` | the OpenAPI document |
@@ -85,7 +87,9 @@ consumer each.
 - **Every route answers its whole result**, nothing cut to fit: a
   script that does not follow a cursor loses what is past it, and an
   HTTP client has no 32 KiB limit, which is an MCP client's
-  (`docs/tools.md`).
+  (`docs/tools.md`). The operator's instrument list is the one paged
+  route, by `after`, since the web UI draws it a screen at a time
+  (`docs/admin.md`).
 - **No `next` in an answer or an argument**: `next` is refused as any
   unknown argument is (400 `bad_arguments`), in a query or a body.
 - **A symbol that did not resolve in time answers its error item**,
@@ -104,6 +108,7 @@ consumer each.
 |---|---|
 | 400 | `bad_arguments`, `mixed_units`, `no_event_source`, `no_event` |
 | 401 | `unauthorized` |
+| 403 | `forbidden`: a cookie request other than `GET` not sent from this server's own pages |
 | 404 | `not_found` (route, rule, instrument or symbol), `candidates`, `no_data`, `refused` |
 | 405 | `method_not_allowed`, with `Allow` |
 | 409 | `conflict`, `split_paused` |
@@ -125,7 +130,13 @@ consumer each.
 
 - **The read key is the bearer; the admin key takes
   `/api/v1/admin/*` alone.** Each is refused where the other is
-  taken. Rules writes take the read key, as the MCP rules tool does.
+  taken.
+- **The web UI's session cookie opens `/api/v1/admin/*` and every
+  `GET` under `/api/v1` and `POST /api/v1/screen`**, never a rules
+  write or `/mcp`; a cookie request that is not a `GET` must come from
+  this server's own pages (`docs/web.md`). The spec names
+  it as the `session` security scheme beside `read` on the reads and
+  `admin` on the admin routes. Rules writes take the read key, as the MCP rules tool does.
   Any other `/api/v1/` path, unknown ones included, answers 401
   without a key and 404 with one.
 - **The spec and the docs page are served before the bearer check**,
@@ -186,9 +197,13 @@ answer; 1ctx (an agent workspace whose scheduled tasks poll it) is one.
 - **`src/api/openapi.ts` is OpenAPI 3.1, written by hand as a typed
   object** and served at `/api/v1/openapi.json`. Every route,
   parameter, body, answer and documented error is in it, with two
-  bearer security schemes, `read` and `admin`.
-- **Descriptions give each limit's general reason**, never the MCP
-  descriptions copied, and name no user, market or holding.
+  bearer security schemes, `read` and `admin`, and the `session`
+  cookie.
+- **Descriptions are for a person reading the docs page**: what a
+  route returns, then the limits, defaults and units a caller needs,
+  never the reasons behind them or the MCP descriptions copied. They
+  name no user, market, holding, key file, flag or data source beyond
+  symbol syntax.
 - **Schemas use a small subset of JSON Schema**: `type` (an array of
   types for null), `properties`, `required`, `additionalProperties`,
   `items`, `enum`, `oneOf`, `$ref`, and `description`, which checks
@@ -201,8 +216,9 @@ answer; 1ctx (an agent workspace whose scheduled tasks poll it) is one.
   movers and screen items are `oneOf` a result with its fields
   required, `Unavailable` where the tool has it, and `ItemError`, each
   closed to other fields, so an item with only `input` fails.
-- **A free-form object names the doc that gives its fields** (a rule's
-  condition, a job row, an event) rather than a second copy here.
+- **A free-form object is left open** (a rule's condition, a job row,
+  an event): its fields are in the docs here, which a Swagger reader
+  cannot open, so the spec names none of them.
 - **`test/api.test.ts` holds the spec to the code**: every routed
   method and path is an operation and every operation is routed; every
   schema keeps to the subset; one call per operation for its success

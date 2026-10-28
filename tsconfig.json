@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "lib": ["ESNext"],
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "bundler",
@@ -12,8 +12,16 @@
     "strict": true,
     "skipLibCheck": true,
     "noUncheckedIndexedAccess": false,
-    "types": ["bun"]
+    "types": ["bun"],
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact"
   },
-  "include": ["src/**/*.ts", "test/**/*.ts", "scripts/**/*.ts"],
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "test/**/*.ts",
+    "test/**/*.tsx",
+    "scripts/**/*.ts"
+  ],
   "exclude": ["test/fixtures/**"]
 }

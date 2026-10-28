@@ -6,6 +6,7 @@ import {
   Client,
   StreamableHTTPClientTransport,
 } from "@modelcontextprotocol/client";
+import type { HTMLBundle } from "bun";
 import { type App, start } from "../../src/app.ts";
 import { MINUTE_MS } from "../../src/runtime/clock.ts";
 import { keys, requireAdmin, requireBearer } from "../../src/runtime/keys.ts";
@@ -39,6 +40,9 @@ export type TestOptions = {
   bvb?: boolean;
   // kept open after the app stops, so a second start reads it
   db?: Db;
+  // the web UI's sign-in, and the page it serves
+  ui?: boolean;
+  page?: HTMLBundle;
 };
 
 // on loopback, on a port the system picks; stopped when fn ends, since
@@ -68,6 +72,8 @@ export async function withApp(
     massiveKey: options.massiveKey ?? null,
     track: options.track,
     bvb: options.bvb,
+    ui: options.ui,
+    page: options.page,
     // no test reaches a network
     fetch:
       options.fetch ??

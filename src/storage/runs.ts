@@ -3,7 +3,7 @@
 // Staleness is read from runs: a failed last run marks only its job and scope.
 
 import { type Clock, DAY_MS } from "../runtime/clock.ts";
-import { phraseOf } from "../sources/source.ts";
+import { phraseOf, STOPPED } from "../sources/source.ts";
 import type { Db } from "./db/index.ts";
 import type { Writer } from "./writer.ts";
 
@@ -12,12 +12,17 @@ export const RUNS_KEPT_MS = 30 * DAY_MS;
 // the phrase a run left running by a crash is failed with at startup
 export const INTERRUPTED = "interrupted";
 
+// a failure that says something about the source: never a shutdown's cut
+export const failedRun = <R extends Pick<Run, "status" | "error">>(
+  r: R | null | undefined,
+): r is R => r?.status === "failed" && r.error !== STOPPED;
+
 export type Run = {
   id: number;
   source: string;
   job: string;
-  // a Yahoo pass's or Finnhub market calendar's market, else the
-  // instrument; null for Yahoo's backfill
+  // a market, else an instrument; null only in runs from before
+  // backfill runs were scoped
   scope: string | null;
   startedAt: number;
   endedAt: number | null;
@@ -34,7 +39,8 @@ export function startRun(
   source: string,
   job: string,
   now: number,
-  scope: string | null = null,
+  // a run with no scope would never show among a job's counts
+  scope: string,
 ): number {
   return Number(
     db
@@ -84,7 +90,7 @@ export async function runJob(
   source: string,
   job: string,
   fn: () => Promise<number>,
-  scope: string | null = null,
+  scope: string,
 ): Promise<number> {
   const id = await writer.write((db) =>
     startRun(db, source, job, clock.now(), scope),
@@ -125,6 +131,25 @@ export function lastRun(
       )
       .get(source, job, scope) ?? null
   );
+}
+
+// when a market's pass of these jobs last started, one cut by shutdown
+// aside: a restart asks a market again only when its period holds no
+// pass of it yet
+export function lastPassAt(
+  db: Db,
+  source: string,
+  jobs: readonly string[],
+  market: string,
+): number | null {
+  const row = db
+    .query<{ at: number | null }, [string, string, string, string]>(
+      `select max(started_at) as at from sync_runs
+       where source = ?1 and job in (select value from json_each(?2))
+         and scope = ?3 and not (status = 'failed' and error is ?4)`,
+    )
+    .get(source, JSON.stringify(jobs), market, STOPPED);
+  return row?.at ?? null;
 }
 
 // running ones included
