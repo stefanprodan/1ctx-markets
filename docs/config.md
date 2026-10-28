@@ -1,18 +1,18 @@
 # Running the server
 
-Governs the process around the data: `src/main.ts`, `src/config.ts`,
-`src/keys.ts`, `src/app.ts`, `src/http.ts`, `src/log.ts`, the build
-and smoke scripts in `package.json`, `Makefile` and
-`scripts/smoke.sh`. The tools are in `docs/tools.md`, the HTTP API
-under `/api/v1` in `docs/api.md`; the database, migrations and
-retention in `docs/storage.md`; the `service` command and staging in
-`docs/deploy.md`; the admin routes and the `admin` command in
-`docs/admin.md`.
+Governs the process around the data: `src/main.ts`,
+`src/runtime/config.ts`, `src/runtime/keys.ts`, `src/app.ts`,
+`src/server/http.ts`, `src/runtime/log.ts`, the build and smoke scripts
+in `package.json`, `Makefile` and `scripts/smoke.sh`. The tools are in
+`docs/tools.md`, the HTTP API under `/api/v1` in `docs/api.md`; the
+database, migrations and retention in `docs/storage.md`; the `service`
+command and staging in `docs/deploy.md`; the admin routes and the
+`admin` command in `docs/admin.md`.
 
 ## Flags
 
 `config.ts` parses the command line without acting on it; `main.ts`
-runs what `parseCli()` answers. `HELP` in `src/config.ts` is the
+runs what `parseCli()` answers. `HELP` in `src/runtime/config.ts` is the
 `--help` text; a flag changes there in the same commit.
 
 | Flag | Default | Meaning |
@@ -94,11 +94,11 @@ runs what `parseCli()` answers. `HELP` in `src/config.ts` is the
   `track_days`. `sources` has one field per source: `yahoo=on`, and
   for the keyed ones `on (key file)` or `off (no key)`, for `bvb`
   `on (flag)` or `off (no flag)`, quoted since they hold a space
-  (`fred="on (key file)"`, `src/log.ts`).
+  (`fred="on (key file)"`, `src/runtime/log.ts`).
 - **Log fields are fixed names and short values.** `errorFields()`
   keeps an error's type and first line only, so a stack stays out. A
   source's own text stays out because a `SourceError` message is a
-  fixed phrase and a detail the code writes (`src/source.ts`).
+  fixed phrase and a detail the code writes (`src/sources/source.ts`).
 
 ## HTTP
 
@@ -120,10 +120,10 @@ runs what `parseCli()` answers. `HELP` in `src/config.ts` is the
 
 - **Any other method is 405 with `Allow`.** `/mcp` is stateless (one
   MCP server instance per request, `legacy: "stateless"` in
-  `src/mcp.ts`), so there is no GET stream to resume and no session to
+  `src/server/mcp.ts`), so there is no GET stream to resume and no session to
   DELETE.
 - **Bun refuses a request body over 1 MiB** (`MAX_BODY_BYTES` in
-  `src/http.ts`) with an empty 413 before any route runs; the API's
+  `src/server/http.ts`) with an empty 413 before any route runs; the API's
   routes hold bodies to their own smaller caps (`docs/api.md`).
 - **`/health` answers 200 without the bearer and is never logged.**
   It holds no data, so it needs no key, and a service manager polls it

@@ -14,7 +14,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { dirname } from "node:path";
-import { type Clock, wallClock } from "../clock.ts";
+import { type Clock, wallClock } from "../runtime/clock.ts";
 import type {
   ServiceBackend,
   ServiceDefinition,

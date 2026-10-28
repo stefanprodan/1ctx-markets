@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
-import { DAY_MS } from "../src/clock.ts";
-import { type Db, open } from "../src/db/index.ts";
-import { silent } from "../src/log.ts";
+import { ALERT_PAGE_BYTES, alertsHandler } from "../src/api/alerts.ts";
 import type { Snapshot } from "../src/rules/evaluate.ts";
 import { insertAlert, pruneAlerts } from "../src/rules/store.ts";
-import { ALERT_PAGE_BYTES, alertsHandler } from "../src/tools/alerts.ts";
+import { DAY_MS } from "../src/runtime/clock.ts";
+import { silent } from "../src/runtime/log.ts";
+import { type Db, open } from "../src/storage/db/index.ts";
 import { withApp } from "./helpers/app.ts";
 import { fakeClock, START } from "./helpers/clock.ts";
 

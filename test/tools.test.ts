@@ -2,14 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
-import { DAY_MS, MINUTE_MS } from "../src/clock.ts";
-import { open } from "../src/db/index.ts";
-import { fred } from "../src/fred/client.ts";
-import { fredJobs } from "../src/fred/jobs.ts";
-import { addSeries } from "../src/fred/sync.ts";
-import { readInstrument, upsertInstrument } from "../src/instruments.ts";
-import { exclusive } from "../src/lock.ts";
-import { silent } from "../src/log.ts";
+import { readInstrument, upsertInstrument } from "../src/market/instruments.ts";
+import {
+  lastReadAt,
+  markRead,
+  TRACK_MS,
+  trackedIds,
+} from "../src/market/tracking.ts";
 import {
   cursor,
   errorResult,
@@ -18,21 +17,22 @@ import {
   PAGE_BYTES,
   PageOverflow,
   readCursor,
-} from "../src/tools/answer.ts";
-import { fields } from "../src/tools/args.ts";
-import { searchPage } from "../src/tools/search.ts";
-import {
-  CALL_MS,
-  type Markets,
-  markets,
-  readTargets,
-  type Target,
-} from "../src/tools/targets.ts";
-import { lastReadAt, markRead, TRACK_MS, trackedIds } from "../src/tracking.ts";
-import { writer } from "../src/writer.ts";
-import { yahoo } from "../src/yahoo/client.ts";
-import { yahooJobs } from "../src/yahoo/jobs.ts";
-import { addInstrument } from "../src/yahoo/sync.ts";
+} from "../src/operations/answer.ts";
+import { fields } from "../src/operations/args.ts";
+import { CALL_MS, type Markets, markets } from "../src/operations/markets.ts";
+import { searchPage } from "../src/operations/search.ts";
+import { readTargets, type Target } from "../src/operations/targets.ts";
+import { DAY_MS, MINUTE_MS } from "../src/runtime/clock.ts";
+import { exclusive } from "../src/runtime/lock.ts";
+import { silent } from "../src/runtime/log.ts";
+import { fred } from "../src/sources/fred/client.ts";
+import { fredJobs } from "../src/sources/fred/jobs.ts";
+import { addSeries } from "../src/sources/fred/sync.ts";
+import { yahoo } from "../src/sources/yahoo/client.ts";
+import { yahooJobs } from "../src/sources/yahoo/jobs.ts";
+import { addInstrument } from "../src/sources/yahoo/sync.ts";
+import { open } from "../src/storage/db/index.ts";
+import { writer } from "../src/storage/writer.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { sim, US, XETRA } from "./helpers/sim.ts";
 import { FRED_KEY, gate, NOW, sources } from "./helpers/sources.ts";

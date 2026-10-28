@@ -13,8 +13,8 @@ at login and restarted when it exits. Only macOS (launchd) is supported
 today; any other platform answers `service is not supported on
 <platform> yet`.
 
-- **`src/service/` is CLI only.** It imports `config.ts` and
-  `clock.ts`, opens no database and reads no key; `main.ts` runs it
+- **`src/service/` is CLI only.** It imports `runtime/config.ts`
+  and `runtime/clock.ts`, opens no database and reads no key; `main.ts` runs it
   before the bearer and the database. `service.ts` knows no platform; a
   new service manager is a `ServiceBackend` picked in `backendFor()`.
 - **The launchd label is `dev.1ctx.markets`**, a LaunchAgent in

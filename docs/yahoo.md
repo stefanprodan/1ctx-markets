@@ -1,12 +1,14 @@
 # Yahoo
 
-Governs the Yahoo source: `src/yahoo/client.ts` (calls and parsing),
-`src/yahoo/resolve.ts` (symbols into keys), `src/yahoo/sync.ts`
-(answers into rows), `src/yahoo/jobs.ts` (the schedule), and what
-every source shares in `src/source.ts` and `src/lock.ts`. Sessions,
-bar dates and finality are in `docs/calendars.md`; tables, the writer
-and staleness in `docs/storage.md`; the tools that resolve and fetch
-inside a call in `docs/tools.md`; rule pauses in `docs/rules.md`.
+Governs the Yahoo source: `src/sources/yahoo/client.ts` (calls and
+parsing), `src/sources/yahoo/resolve.ts` (symbols into keys),
+`src/sources/yahoo/sync.ts` (fetches), `history.ts` and `quotes.ts`
+(answers into rows), `src/sources/yahoo/jobs.ts` (the schedule), and
+what every source shares in `src/sources/source.ts` and
+`src/runtime/lock.ts`. Sessions, bar dates and finality are in
+`docs/calendars.md`; tables, the writer and staleness in
+`docs/storage.md`; the tools that resolve and fetch inside a call in
+`docs/tools.md`; rule pauses in `docs/rules.md`.
 
 ## Endpoints
 
@@ -53,13 +55,13 @@ inside a call in `docs/tools.md`; rule pauses in `docs/rules.md`.
   rewrites it, so migration `0011-fx-currency` fixed stored pairs.
 - **Every answer parses inside its queued call,** so a body that is
   not JSON (a proxy or consent page) backs the queue off like any
-  failure (`Unreadable` in `src/source.ts`). An answer of an odd shape
+  failure (`Unreadable` in `src/sources/source.ts`). An answer of an odd shape
   fails its call alone: one symbol's odd answer never pauses the rest.
 
 ## The queue and errors
 
 - **Every Yahoo call, from a job or a tool, goes through one queue**
-  (`queue()` in `src/source.ts`, `YAHOO_CONCURRENCY` 2 in
+  (`queue()` in `src/sources/source.ts`, `YAHOO_CONCURRENCY` 2 in
   `src/app.ts`). A second client or a direct `fetch` would escape the
   back-off and the rate limit.
 - **A failure backs the queue off, and the failed call is not
@@ -74,7 +76,7 @@ inside a call in `docs/tools.md`; rule pauses in `docs/rules.md`.
   `within` starts no call once the caller's deadline passed
   (`DeadlinePassed`). Each call times out after 30 seconds.
 - **A call with a deadline goes ahead of waiting job calls** (`queue()`
-  in `src/source.ts`), first in first out among its own, so a read
+  in `src/sources/source.ts`), first in first out among its own, so a read
   never times out behind a pass; a limiter keeps its spacing.
 - **Errors carry a fixed phrase** (`SourceError`, `PHRASES`), which is
   all a run or an answer repeats:
@@ -92,7 +94,7 @@ inside a call in `docs/tools.md`; rule pauses in `docs/rules.md`.
 ## Resolution
 
 - **A caller's symbol becomes one listing, never a guess**
-  (`resolve()` in `src/yahoo/resolve.ts`):
+  (`resolve()` in `src/sources/yahoo/resolve.ts`):
   - a `market:symbol` key stored is that instrument; one not stored is
     searched: one listing with that key is it, several are
     `candidates`, none is a `ResolveError`;
@@ -119,7 +121,7 @@ inside a call in `docs/tools.md`; rule pauses in `docs/rules.md`.
 
 - **The trailing row counts only on the session's date.** Yahoo ends
   some chart answers with a row off the bar grid at the last trade
-  (`read()` in `src/yahoo/sync.ts`): a row whose local time of day
+  (`read()` in `src/sources/yahoo/history.ts`): a row whose local time of day
   differs from the previous row's. On the answer's session date it
   merges into that date's regular bar, a closing auction after the end
   included. With no grid row of that date it is the date's bar only for
@@ -134,7 +136,7 @@ inside a call in `docs/tools.md`; rule pauses in `docs/rules.md`.
   for had no trading. Weeks are rebuilt from the span's first week, or
   all of them for a whole history.
 - **The last finished session without its close is owed, not gone**
-  (`unclosed()` in `src/yahoo/sync.ts`). A chart can leave that day's
+  (`unclosed()` in `src/sources/yahoo/history.ts`). A chart can leave that day's
   close empty, or its row out, for a while after the next session
   opens: an exchange that fills it late (Xetra at its open), or a
   market whose session starts at midnight (crypto). The newest day
@@ -146,7 +148,7 @@ inside a call in `docs/tools.md`; rule pauses in `docs/rules.md`.
 - **An owed day is asked for until it lands or the next session
   starts.** The refetch writes an `owed` run in the instrument's scope
   after its `bars` run; any later `bars` run settles it. `owedDue()` in
-  `src/stale.ts` asks a market's owed instruments again, together, once
+  `src/market/stale.ts` asks a market's owed instruments again, together, once
   the earliest mark is `OWED_RETRY_MS` (15 minutes) old, so the market
   gets at most one owed pass per period. Only marks from the current
   session count, and an instrument with no daily bars is never owed
@@ -235,7 +237,7 @@ inside a call in `docs/tools.md`; rule pauses in `docs/rules.md`.
 ## The per-instrument lock
 
 - **One fetch-and-store per instrument at a time** (`exclusive()` in
-  `src/lock.ts`), held across the call and its write for a refetch,
+  `src/runtime/lock.ts`), held across the call and its write for a refetch,
   backfill and catch-up, so an answer fetched before another write
   never lands after it. A new instrument's first chart (and spark)
   comes before the lock, since its key is known only from the answer
@@ -245,7 +247,7 @@ inside a call in `docs/tools.md`; rule pauses in `docs/rules.md`.
   re-checks the deadline under the lock, since the wait may have
   outlasted it.
 - **Work on a stored instrument re-reads it under the lock and in each
-  write** (`checkSource()` in `src/instruments.ts`) and is refused
+  write** (`checkSource()` in `src/market/instruments.ts`) and is refused
   (`Moved`) when its source or source symbol changed, so a pass or
   read begun before a source switch never mixes histories or relabels
   bars. A fetch never takes over a key another source holds
@@ -255,15 +257,15 @@ inside a call in `docs/tools.md`; rule pauses in `docs/rules.md`.
 ## Jobs and their call budget
 
 - **Three scheduled jobs tick every minute** (`TICK_MS`, `schedule()`
-  in `src/yahoo/jobs.ts`), each over tracked instruments only. A tick
+  in `src/sources/yahoo/jobs.ts`), each over tracked instruments only. A tick
   that finds the job's last run still going is skipped (`job skipped`,
-  `src/scheduler.ts`), so a source is never asked twice at once by the
+  `src/runtime/scheduler.ts`), so a source is never asked twice at once by the
   same job. What is due is read from the stored sessions and runs, so
   a restart picks up where it was, except four marks held in memory
   that a restart clears: refused whole histories (`refused` in
-  `src/yahoo/sync.ts`), failed backfills (`backfillMissed`), each
+  `src/sources/yahoo/sync.ts`), failed backfills (`backfillMissed`), each
   market's check turn (`checkTurn`) and the quote period last passed
-  (`lastSlot`, all three in `src/yahoo/jobs.ts`), so a restart can
+  (`lastSlot`, all three in `src/sources/yahoo/jobs.ts`), so a restart can
   repeat a quote pass within the same period.
 
 | Job | Does | Calls |

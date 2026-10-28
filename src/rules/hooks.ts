@@ -4,7 +4,7 @@
 // What a source's writes tell the rules, kept apart from the rules
 // themselves so the sync modules depend on a type, not on the engine.
 
-import type { Db } from "../db/index.ts";
+import type { Db } from "../storage/db/index.ts";
 
 export type RuleHooks = {
   // inside the write that stored these instruments' quotes, bars or

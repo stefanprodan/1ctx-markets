@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
-import { DAY_MS } from "../src/clock.ts";
-import { open } from "../src/db/index.ts";
+import { DAY_MS } from "../src/runtime/clock.ts";
+import { SourceError } from "../src/sources/source.ts";
+import { open } from "../src/storage/db/index.ts";
 import {
   isStale,
   lastRun,
@@ -11,9 +12,8 @@ import {
   runJob,
   staleJobs,
   startRun,
-} from "../src/runs.ts";
-import { SourceError } from "../src/source.ts";
-import { writer } from "../src/writer.ts";
+} from "../src/storage/runs.ts";
+import { writer } from "../src/storage/writer.ts";
 import { fakeClock } from "./helpers/clock.ts";
 
 describe("sync runs", () => {

@@ -2,15 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
-import { DAY_MS } from "../src/clock.ts";
-import { finnhubJobs } from "../src/finnhub/jobs.ts";
-import {
-  pruneResearch,
-  readEvents,
-  refreshResearch,
-} from "../src/finnhub/store.ts";
-import { readInstrument } from "../src/instruments.ts";
-import { silent } from "../src/log.ts";
+import { readInstrument } from "../src/market/instruments.ts";
+import { trackedIds } from "../src/market/tracking.ts";
+import { NO_EVENT_SOURCE } from "../src/operations/rules.ts";
 import { WAITING } from "../src/rules/evaluate.ts";
 import {
   FIELD_NAMES,
@@ -18,14 +12,18 @@ import {
   UNKNOWN_UNIT,
 } from "../src/rules/format.ts";
 import { countRules, readRule } from "../src/rules/store.ts";
-import { endRun, failRun, startRun } from "../src/runs.ts";
+import { DAY_MS } from "../src/runtime/clock.ts";
+import { silent } from "../src/runtime/log.ts";
 import { refreshLive } from "../src/signals/store.ts";
-import { DeadlinePassed, SourceError } from "../src/source.ts";
+import { finnhubJobs } from "../src/sources/finnhub/jobs.ts";
+import { readEvents } from "../src/sources/finnhub/read.ts";
+import { pruneResearch } from "../src/sources/finnhub/store.ts";
+import { refreshResearch } from "../src/sources/finnhub/sync.ts";
+import { DeadlinePassed, SourceError } from "../src/sources/source.ts";
+import { yahooJobs } from "../src/sources/yahoo/jobs.ts";
+import { catchUp, refetch } from "../src/sources/yahoo/sync.ts";
+import { endRun, failRun, startRun } from "../src/storage/runs.ts";
 import { tools } from "../src/tools/index.ts";
-import { NO_EVENT_SOURCE } from "../src/tools/rules.ts";
-import { trackedIds } from "../src/tracking.ts";
-import { yahooJobs } from "../src/yahoo/jobs.ts";
-import { catchUp, refetch } from "../src/yahoo/sync.ts";
 import { drive, pacedOf } from "./helpers/drive.ts";
 import { EVERY_MS, type RulesTest, rulesTest } from "./helpers/rules.ts";
 import { clone, listed, type Recorded, recorded } from "./helpers/yahoo.ts";

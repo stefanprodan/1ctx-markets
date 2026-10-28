@@ -3,10 +3,10 @@
 
 import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
-import { migrate, open } from "../src/db/index.ts";
-import type { Migration } from "../src/db/migration.ts";
-import { m0001 } from "../src/db/migrations/0001-init.ts";
-import { MIGRATIONS } from "../src/db/migrations/index.ts";
+import { migrate, open } from "../src/storage/db/index.ts";
+import type { Migration } from "../src/storage/db/migration.ts";
+import { m0001 } from "../src/storage/db/migrations/0001-init.ts";
+import { MIGRATIONS } from "../src/storage/db/migrations/index.ts";
 import { fakeClock, START } from "./helpers/clock.ts";
 
 const first: Migration = {

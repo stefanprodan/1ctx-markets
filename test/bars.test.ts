@@ -8,12 +8,12 @@ import {
   rebuildWeeks,
   upsertBars,
   weeksOf,
-} from "../src/bars.ts";
-import { session } from "../src/calendars.ts";
-import { open } from "../src/db/index.ts";
-import { upsertInstrument } from "../src/instruments.ts";
-import { parseChart } from "../src/yahoo/client.ts";
-import { dailyBars } from "../src/yahoo/sync.ts";
+} from "../src/market/bars.ts";
+import { session } from "../src/market/calendars.ts";
+import { upsertInstrument } from "../src/market/instruments.ts";
+import { parseChart } from "../src/sources/yahoo/client.ts";
+import { dailyBars } from "../src/sources/yahoo/history.ts";
+import { open } from "../src/storage/db/index.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { recorded } from "./helpers/yahoo.ts";
 

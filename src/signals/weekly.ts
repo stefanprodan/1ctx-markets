@@ -1,7 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 
-import { weekOf } from "../calendars.ts";
+import { weekOf } from "../market/calendars.ts";
 import {
   baseRows,
   type Close,

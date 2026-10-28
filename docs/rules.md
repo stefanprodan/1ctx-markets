@@ -2,8 +2,8 @@
 
 Governs price rules, their evaluation and the alerts they fire:
 `src/rules/format.ts`, `evaluate.ts`, `hooks.ts` and `store.ts`, the
-rules tool in `src/tools/rules.ts` and the alerts feed in
-`src/tools/alerts.ts`, served as `docs/api.md` says. The answer
+rules tool in `src/operations/rules.ts` and the alerts feed in
+`src/api/alerts.ts`, served as `docs/api.md` says. The answer
 contract, resolution and the inline fetch are in `docs/tools.md`; earnings events in `docs/research.md`;
 splits, the refetch and the bars a session waits on in
 `docs/yahoo.md`; alert retention and tracking in `docs/storage.md`.
@@ -96,13 +96,15 @@ Examples, each created with `symbol` set to the rule's own share:
   quote, its live signals, the runs staleness is read from and the rule
   are read in one transaction. A write that stores quotes, bars or
   signals, or ends a run, calls `RuleHooks.evaluate()` in the same
-  write: `storeQuotes()` and `store()` in `src/yahoo/sync.ts`, the
-  quote and bar passes in `src/yahoo/jobs.ts` and `src/bvb/jobs.ts`,
-  `storeBvbQuotes()`, `storeWindow()` and `storeWhole()` in
-  `src/bvb/sync.ts`, the FRED series pass in `src/fred/jobs.ts`. A FRED series stored inside a tool call
-  (`src/fred/sync.ts`) evaluates nothing; its rules run on the next
-  series pass. Gated rules also run in `hooks.reported()` when Finnhub
-  sees an event's results.
+  write: `storeQuotes()` in `src/sources/yahoo/quotes.ts` and `store()`
+  in `src/sources/yahoo/history.ts`, the quote and bar passes in
+  `src/sources/yahoo/jobs.ts` and `src/sources/bvb/jobs.ts`,
+  `storeBvbQuotes()` in `src/sources/bvb/quotes.ts`, `storeWindow()` and
+  `storeWhole()` in `src/sources/bvb/history.ts`, the FRED series pass
+  in `src/sources/fred/jobs.ts`. A FRED series stored inside a tool call
+  (`src/sources/fred/sync.ts`) evaluates nothing; its rules run on the
+  next series pass. Gated rules also run in `hooks.reported()` when
+  Finnhub sees an event's results.
 - **A rule is due when it reads any instrument that moved**; paused
   rules are skipped.
 - **The result is true, false or unknown.** Any missing, null, stale or
@@ -154,9 +156,9 @@ Examples, each created with `symbol` set to the rule's own share:
   inside the write that applies a new split or rescales past prices,
   before that write evaluates, and in a write of its own when a refetch
   window first shows one, before the whole history is asked
-  (`refetchAnswer()` in `src/yahoo/sync.ts`). The Bucharest feed
+  (`refetchAnswer()` in `src/sources/yahoo/sync.ts`). The Bucharest feed
   pauses the same way when its 30-day window shows past prices moved
-  by one ratio (`refetchAnswer()` in `src/bvb/sync.ts`).
+  by one ratio (`refetchAnswer()` in `src/sources/bvb/sync.ts`).
 - **Until the new session's bars are in, split-sensitive comparisons
   are unknown** ("bars of the new session not refetched yet, so a
   split may be unseen", `BARS_PENDING`), since the opening quote may

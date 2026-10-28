@@ -4,22 +4,18 @@
 // Rules run inside the write that moved their inputs, so the quote,
 // signals and rule are read in one transaction.
 
-import type { Db } from "../db/index.ts";
-import {
-  type EventKey,
-  type EventRow,
-  type Hooks,
-  readEvent,
-} from "../finnhub/store.ts";
-import { type Instrument, readInstrument } from "../instruments.ts";
-import { errorFields, type Log, silent } from "../log.ts";
+import { iso, price, round } from "../market/format.ts";
+import { type Instrument, readInstrument } from "../market/instruments.ts";
+import { barsStale, quoteStale, STALE } from "../market/stale.ts";
+import { errorFields, type Log, silent } from "../runtime/log.ts";
 import {
   type InstrumentSignals,
   readRelativeReturn,
   readSignals,
 } from "../signals/read.ts";
-import { barsStale, quoteStale, STALE } from "../stale.ts";
-import { iso, price, round } from "../tools/answer.ts";
+import { type EventRow, readEvent } from "../sources/finnhub/read.ts";
+import type { EventKey, Hooks } from "../sources/finnhub/store.ts";
+import type { Db } from "../storage/db/index.ts";
 import {
   type Comparison,
   comparisons,

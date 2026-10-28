@@ -14,10 +14,11 @@ portfolio.
   `.bun-version`.
 - **Packages** are devDependencies bundled at build time: exact pins,
   official npm only, `bun install --ignore-scripts`. A new package
-  needs the owner's explicit go-ahead. In `src/`, only `mcp.ts`,
-  `http.ts` and `tools/index.ts` import `@modelcontextprotocol/server`
-  (`http.ts` a type only); the MCP client is for tests. `swagger-ui-dist`
-  is the one package `src/api/` imports, and only its
+  needs the owner's explicit go-ahead. In `src/`, only `server/mcp.ts`,
+  `server/http.ts` and `tools/index.ts` import
+  `@modelcontextprotocol/server` (`server/http.ts` a type only); the
+  MCP client is for tests. `swagger-ui-dist` is the one package
+  `src/api/` imports, and only its
   `swagger-ui-bundle.js` and `swagger-ui.css`, embedded as files
   (`docs/api.md`).
 
@@ -45,43 +46,53 @@ through `tail` or `grep` (`docs/testing.md`).
 ## Layout
 
 ```
-src/main.ts         the entry: flags, the bearer, the db, start()
-src/app.ts          the wiring: sources, queues, jobs, the server, stop()
-src/config.ts       flags and the --help text
-src/keys.ts         key files, the only reader of secrets/
-src/log.ts          slog-text lines on stderr, keys masked
-src/http.ts         the Bun server, the bearer check, the routes
-src/mcp.ts          the stateless MCP endpoint
-src/instructions.ts the server instructions every MCP client gets
-src/clock.ts        the only reader of the wall clock
-src/writer.ts       the one writer queue
-src/db/             open(), migrate(), migrations/ (append-only)
-src/source.ts       what every source shares: phrases, queue, limiter
-src/lock.ts         one fetch-and-store per instrument at a time
-src/scheduler.ts    jobs on a fixed period, driven by the Clock
-src/calendars.ts    sessions from the source's answers; src/zone.ts wall times
-src/bars.ts         daily bars, weeks built from them
-src/instruments.ts  instruments keyed market:symbol, units
-src/quotes.ts       the latest quote per instrument, whichever source
-src/runs.ts         sync_runs rows; src/stale.ts the stale reasons
-src/tracking.ts     tracking by use, no ticker list
-src/yahoo/          client, resolve, sync, jobs: the always-on source
-src/bvb/            the Bucharest exchange's own feed, on with --source bvb
-src/fred/           FRED series as close-only daily bars
-src/finnhub/        research sections and earnings events
-src/massive/        news
-src/signals/        daily, weekly, live and relative signals
-src/rules/          rule conditions, evaluation, alerts
-src/tools/          the MCP tools and the reads they share with the API
-src/api/            /api/v1: routes, the OpenAPI spec, the bundled docs page
-src/service/        `service install|start|stop|...`: launchd, CLI only
-src/admin/          /api/v1/admin/* behind its own key, and the `admin` command
-test/               one *.test.ts per area, helpers/ (fakes), fixtures/ (recordings)
-scripts/probe/      the fixture recorders, run by hand
-scripts/smoke.sh    the binary's smoke test
-scripts/staging.sh  deploy, status and keys of the staging box (host in staging.env)
-scripts/bun-version.sh  the Bun version CI installs (.github/workflows/test.yml)
-docs/               the rules of each area (see Docs)
+src/main.ts                 the entry: flags, the bearer, the db, start()
+src/app.ts                  the wiring: sources, queues, jobs, the server, stop()
+src/server/                 HTTP and MCP
+  http.ts                   the Bun server, the bearer check, the routes
+  mcp.ts                    the stateless MCP endpoint
+  instructions.ts           the server instructions every MCP client gets
+src/runtime/                the process
+  config.ts                 flags and the --help text
+  keys.ts                   key files, the only reader of secrets/
+  log.ts                    slog-text lines on stderr, keys masked
+  clock.ts                  the only reader of the wall clock
+  scheduler.ts              jobs on a fixed period, driven by the Clock
+  lock.ts                   one fetch-and-store per instrument at a time
+src/storage/                the database and its write path
+  db/                       open(), migrate(), migrations/ (append-only)
+  writer.ts                 the one writer queue
+  runs.ts                   sync_runs rows
+src/market/                 market rules no source owns
+  instruments.ts            instruments keyed market:symbol, units
+  bars.ts                   daily bars, weeks built from them
+  quotes.ts                 the latest quote per instrument, whichever source
+  calendars.ts              sessions from the source's answers; zone.ts wall times
+  stale.ts                  the stale reasons
+  tracking.ts               tracking by use, no ticker list
+  format.ts                 the time and number forms every answer uses
+src/sources/                what every source shares, each provider under it
+  source.ts                 phrases, errors, queue, limiter
+  history.ts                backfill window, retry wait, rescales
+  ids.ts                    source and market ids
+  yahoo/                    the always-on source
+  bvb/                      the Bucharest exchange's own feed, on with --source bvb
+  fred/                     FRED series as close-only daily bars
+  finnhub/                  research sections and earnings events
+  massive/                  news
+src/signals/                daily, weekly, live and relative signals
+src/rules/                  rule conditions, evaluation, alerts
+src/operations/             the reads the MCP tools and the API share, with their MCP pages
+src/tools/                  the MCP surface: the tool registry and research's page
+src/api/                    /api/v1: routes, alerts, the spec, the docs page; never imports tools/
+src/service/                `service install|start|stop|...`: launchd, CLI only
+src/admin/                  /api/v1/admin/* behind its own key, and the `admin` command
+test/                       one *.test.ts per area, helpers/ (fakes), fixtures/ (recordings)
+scripts/probe/              the fixture recorders, run by hand
+scripts/smoke.sh            the binary's smoke test
+scripts/staging.sh          deploy, status and keys of the staging box (host in staging.env)
+scripts/bun-version.sh      the Bun version CI installs (.github/workflows/test.yml)
+docs/                       the rules of each area (see Docs)
 ```
 
 ## Docs
@@ -110,13 +121,13 @@ the same commit as the code that changes a rule.
 ## Rules the code follows
 
 - **A schema change is an appended migration** in
-  `src/db/migrations/`, renames and retypes included. A migration on
+  `src/storage/db/migrations/`, renames and retypes included. A migration on
   `main` is never edited: running servers hold real data.
 - **Every runtime write goes through the one writer queue**
   (`writer(db).write(fn)`), a synchronous closure that never awaits.
   Fetch first, then write.
 - **Keys are files beside the database**, one bare value per
-  `secrets/<name>.key`, read in `src/` only by `src/keys.ts` (the
+  `secrets/<name>.key`, read in `src/` only by `src/runtime/keys.ts` (the
   recorders use `readKey()`, `docs/testing.md`). A key is never
   printed, logged, stored in a row, put in an error or answered.
 - **Market hours come from the sources' answers and the exchange's
@@ -128,7 +139,7 @@ the same commit as the code that changes a rule.
   without its `--source` flag for a keyless one.
 - **A change that adds or renames a tool, an argument or an answer
   field an agent chooses by updates the server instructions**
-  (`src/instructions.ts`, `docs/tools.md`) in the same PR: they are
+  (`src/server/instructions.ts`, `docs/tools.md`) in the same PR: they are
   the only guidance across tools a client keeps whole.
 - **No SQL, expression or query tool, ever.** The tools are fixed;
   `screen` is the only open-ended read.

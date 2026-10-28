@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
-import { upsertBars } from "../src/bars.ts";
-import { ATTRIBUTION, NO_DATA } from "../src/fred/sync.ts";
-import { readInstrument, upsertInstrument } from "../src/instruments.ts";
-import { PAGE_BYTES } from "../src/tools/answer.ts";
-import { BASIS, DEFAULT_MONTHS } from "../src/tools/history.ts";
-import { MAX_SYMBOLS } from "../src/tools/quote.ts";
-import { FIELD_NAMES } from "../src/tools/screen.ts";
-import { lastReadAt, markRead } from "../src/tracking.ts";
+import { upsertBars } from "../src/market/bars.ts";
+import { readInstrument, upsertInstrument } from "../src/market/instruments.ts";
+import { lastReadAt, markRead } from "../src/market/tracking.ts";
+import { PAGE_BYTES } from "../src/operations/answer.ts";
+import { BASIS, DEFAULT_MONTHS } from "../src/operations/history.ts";
+import { MAX_SYMBOLS } from "../src/operations/quote.ts";
+import { FIELD_NAMES } from "../src/operations/screen.ts";
+import { ATTRIBUTION, NO_DATA } from "../src/sources/fred/sync.ts";
 import { mcpClient, type TestApp, withApp } from "./helpers/app.ts";
 import { FRED_KEY, NOW, sources } from "./helpers/sources.ts";
 

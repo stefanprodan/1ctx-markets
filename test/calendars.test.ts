@@ -20,8 +20,8 @@ import {
   sessionFromChartMeta,
   weekEnd,
   weekOf,
-} from "../src/calendars.ts";
-import { open } from "../src/db/index.ts";
+} from "../src/market/calendars.ts";
+import { open } from "../src/storage/db/index.ts";
 import { fakeClock } from "./helpers/clock.ts";
 
 const YAHOO = join(import.meta.dir, "fixtures", "yahoo");

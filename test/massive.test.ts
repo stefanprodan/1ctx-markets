@@ -6,11 +6,14 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { start } from "../src/app.ts";
-import { DAY_MS, MINUTE_MS } from "../src/clock.ts";
-import { type Db, open } from "../src/db/index.ts";
-import { type Instrument, upsertInstrument } from "../src/instruments.ts";
-import { keys } from "../src/keys.ts";
-import { format, logger, silent } from "../src/log.ts";
+import {
+  type Instrument,
+  upsertInstrument,
+} from "../src/market/instruments.ts";
+import { markRead } from "../src/market/tracking.ts";
+import { DAY_MS, MINUTE_MS } from "../src/runtime/clock.ts";
+import { keys } from "../src/runtime/keys.ts";
+import { format, logger, silent } from "../src/runtime/log.ts";
 import {
   checkCursor,
   HOST,
@@ -22,8 +25,8 @@ import {
   parseNews,
   SPACING_MS,
   utc,
-} from "../src/massive/client.ts";
-import { massiveJobs } from "../src/massive/jobs.ts";
+} from "../src/sources/massive/client.ts";
+import { massiveJobs } from "../src/sources/massive/jobs.ts";
 import {
   eligible,
   KEPT_MS,
@@ -38,11 +41,11 @@ import {
   refreshNews,
   rowFor,
   STALE_NEWS,
-} from "../src/massive/store.ts";
-import { lastRun } from "../src/runs.ts";
-import { SourceError } from "../src/source.ts";
-import { markRead } from "../src/tracking.ts";
-import { writer } from "../src/writer.ts";
+} from "../src/sources/massive/store.ts";
+import { SourceError } from "../src/sources/source.ts";
+import { type Db, open } from "../src/storage/db/index.ts";
+import { lastRun } from "../src/storage/runs.ts";
+import { writer } from "../src/storage/writer.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { drive } from "./helpers/drive.ts";
 import {

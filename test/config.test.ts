@@ -2,7 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
-import { configToArgs, HELP, KNOWN_SOURCES, parseCli } from "../src/config.ts";
+import {
+  configToArgs,
+  HELP,
+  KNOWN_SOURCES,
+  parseCli,
+} from "../src/runtime/config.ts";
 
 describe("--source", () => {
   test("turns a keyless source on, each named once", () => {

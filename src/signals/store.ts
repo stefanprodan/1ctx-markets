@@ -3,19 +3,23 @@
 //
 // every write here runs inside a writer transaction
 
-import { type Interval, readBars, type Bar as StoredBar } from "../bars.ts";
-import { SOURCE as BVB } from "../bvb/client.ts";
+import {
+  type Interval,
+  readBars,
+  type Bar as StoredBar,
+} from "../market/bars.ts";
 import {
   CRYPTO,
   readSession,
   type Session,
   sessionDate,
   weekOf,
-} from "../calendars.ts";
-import { DAY_MS, MINUTE_MS } from "../clock.ts";
-import type { Db } from "../db/index.ts";
-import type { Instrument } from "../instruments.ts";
-import { fromWallTime, localDate, wallTime } from "../zone.ts";
+} from "../market/calendars.ts";
+import type { Instrument } from "../market/instruments.ts";
+import { fromWallTime, localDate, wallTime } from "../market/zone.ts";
+import { DAY_MS, MINUTE_MS } from "../runtime/clock.ts";
+import { BVB } from "../sources/ids.ts";
+import type { Db } from "../storage/db/index.ts";
 import { type DailyRow, dailySeries, liveDaily } from "./daily.ts";
 import { liveWeekly, type WeeklyRow, weeklySeries } from "./weekly.ts";
 

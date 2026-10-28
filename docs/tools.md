@@ -1,9 +1,10 @@
 # Tools
 
-Governs the Model Context Protocol (MCP) tools: `src/mcp.ts`,
-`src/instructions.ts`, `src/tools/index.ts`, `answer.ts`, `args.ts`,
-`targets.ts`, `quote.ts`, `extended.ts`, `history.ts`, `search.ts`,
-`movers.ts`, `screen.ts` and `sets.ts` under `src/tools/`. The HTTP
+Governs the Model Context Protocol (MCP) tools: `src/server/mcp.ts`,
+`src/server/instructions.ts`, `src/tools/index.ts`, and `answer.ts`,
+`args.ts`, `markets.ts`, `targets.ts`, `quote.ts`, `extended.ts`,
+`history.ts`, `search.ts`, `movers.ts`, `screen.ts` and `sets.ts` under
+`src/operations/`. The HTTP
 API that calls the same reads is in `docs/api.md`; the research and
 events tools in `docs/research.md`; the rules tool in `docs/rules.md`;
 signal rows in `docs/signals.md`; stale reasons and
@@ -13,7 +14,7 @@ the tracking table in `docs/storage.md`; the source queue in
 ## The MCP endpoint
 
 - **The handler is stateless: a new `McpServer` per request**
-  (`mcpHandler()` in `src/mcp.ts`), so no tool may keep per-session
+  (`mcpHandler()` in `src/server/mcp.ts`), so no tool may keep per-session
   state. The tools are built once and registered on each instance by
   `registerTools()`; a new tool is added to `tools()` in
   `src/tools/index.ts`.
@@ -23,7 +24,7 @@ the tracking table in `docs/storage.md`; the source queue in
 ## Server instructions
 
 - **One text sent on initialize** (`INSTRUCTIONS` in
-  `src/instructions.ts`) says which tool answers what and what holds
+  `src/server/instructions.ts`) says which tool answers what and what holds
   across tools: missing values, symbols, live prices, freshness, units,
   paging, and what the server does not hold. A description is cut at
   1,024 characters and a client may list tools by one line, so guidance
@@ -232,7 +233,7 @@ the tracking table in `docs/storage.md`; the source queue in
   measure a distance from in screen. A page holding FRED values carries
   FRED's `attribution` once.
 - **Every quote item carries its unit and currency.** `unit` is one of
-  `UNITS` in `src/instruments.ts`; `unknown` is answered rather than
+  `UNITS` in `src/market/instruments.ts`; `unknown` is answered rather than
   guessed, since Yahoo's future type covers prices per barrel and per
   bond. A
   FRED `percent` series' change is in points, so its `change_percent`
@@ -240,14 +241,14 @@ the tracking table in `docs/storage.md`; the source queue in
   names both currencies; between two level series it is in `points`
   (`src/signals/relative.ts`, `screen.ts`).
 - **Staleness travels with the value.** `stale` holds fixed reasons
-  (`STALE` in `src/stale.ts`), read from the instrument's own source
+  (`STALE` in `src/market/stale.ts`), read from the instrument's own source
   and market's runs; a benchmark's reasons are prefixed `benchmark:`.
   An empty list means current. Add a reason to `STALE`, never free text.
 
 ## Resolution and the inline fetch
 
 - **A symbol resolves to one stored instrument, never by a guess**
-  (`step()` in `targets.ts`, `resolve()` in `src/yahoo/resolve.ts`).
+  (`step()` in `targets.ts`, `resolve()` in `src/sources/yahoo/resolve.ts`).
   A stored `market:symbol` key is exact, and one not stored is
   searched and taken only on an exact key match; `FRED:<id>` is
   FRED's; a Yahoo symbol with a suffix or `^`/`=` is checked with a

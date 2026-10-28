@@ -9,36 +9,48 @@ import {
   type jsonSchemaValidator,
   type McpServer,
 } from "@modelcontextprotocol/server";
-import { CALENDAR_AHEAD_DAYS } from "../finnhub/store.ts";
-import { errorFields } from "../log.ts";
 import {
-  MAX_COMPARISONS,
-  MAX_DEPTH,
-  MAX_INSTRUMENTS,
-  MAX_NOTE,
-} from "../rules/format.ts";
-import { errorResult, type ToolResult, textResult } from "./answer.ts";
-import { ArgError, MAX_SYMBOL } from "./args.ts";
-import { eventsAnswer, MAX_EVENT_SYMBOLS, parseEvents } from "./events.ts";
-import { DEFAULT_MONTHS, historyAnswer, parseHistory } from "./history.ts";
-import { AVERAGES, moversAnswer, parseMovers } from "./movers.ts";
-import { MAX_SYMBOLS, parseQuote, quotePage } from "./quote.ts";
+  errorResult,
+  type ToolResult,
+  textResult,
+} from "../operations/answer.ts";
+import { ArgError, MAX_SYMBOL } from "../operations/args.ts";
 import {
-  parseResearch,
-  RESEARCH_SECTIONS,
-  researchAnswer,
-  SINCE_DAYS,
-} from "./research.ts";
-import { parseRules, RULE_ACTIONS, rulesAnswer } from "./rules.ts";
+  eventsAnswer,
+  MAX_EVENT_SYMBOLS,
+  parseEvents,
+} from "../operations/events.ts";
+import {
+  DEFAULT_MONTHS,
+  historyAnswer,
+  parseHistory,
+} from "../operations/history.ts";
+import type { Markets } from "../operations/markets.ts";
+import { AVERAGES, moversAnswer, parseMovers } from "../operations/movers.ts";
+import { MAX_SYMBOLS, parseQuote, quotePage } from "../operations/quote.ts";
+import { SINCE_DAYS } from "../operations/research.ts";
+import { parseRules, RULE_ACTIONS, rulesAnswer } from "../operations/rules.ts";
 import {
   FIELD_NAMES,
   MAX_FIELDS,
   MAX_FILTERS,
   parseScreen,
   screenAnswer,
-} from "./screen.ts";
-import { parseSearch, searchPage } from "./search.ts";
-import type { Markets } from "./targets.ts";
+} from "../operations/screen.ts";
+import { parseSearch, searchPage } from "../operations/search.ts";
+import {
+  MAX_COMPARISONS,
+  MAX_DEPTH,
+  MAX_INSTRUMENTS,
+  MAX_NOTE,
+} from "../rules/format.ts";
+import { errorFields } from "../runtime/log.ts";
+import { CALENDAR_AHEAD_DAYS } from "../sources/finnhub/store.ts";
+import {
+  parseResearch,
+  RESEARCH_SECTIONS,
+  researchAnswer,
+} from "./research.ts";
 
 // the tools check their own arguments, with errors in their own words
 const permissive = {

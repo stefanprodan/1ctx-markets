@@ -6,8 +6,14 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { start } from "../src/app.ts";
-import { DAY_MS, MINUTE_MS } from "../src/clock.ts";
-import { type Db, open } from "../src/db/index.ts";
+import {
+  type Instrument,
+  upsertInstrument,
+} from "../src/market/instruments.ts";
+import { markRead } from "../src/market/tracking.ts";
+import { DAY_MS, MINUTE_MS } from "../src/runtime/clock.ts";
+import { keys } from "../src/runtime/keys.ts";
+import { format, logger, silent } from "../src/runtime/log.ts";
 import {
   finnhub,
   parseAnalysts,
@@ -15,30 +21,35 @@ import {
   parseEarnings,
   parseMarketCalendar,
   SPACING_MS,
-} from "../src/finnhub/client.ts";
-import { finnhubJobs, RETRY_MS, TICK_BUDGET_MS } from "../src/finnhub/jobs.ts";
+} from "../src/sources/finnhub/client.ts";
+import {
+  finnhubJobs,
+  RETRY_MS,
+  TICK_BUDGET_MS,
+} from "../src/sources/finnhub/jobs.ts";
+import {
+  eventStatus,
+  nextEvent,
+  readEvents,
+  readResearch,
+  STALE_RESEARCH,
+  sectionState,
+} from "../src/sources/finnhub/read.ts";
 import {
   type EventKey,
   eligible,
-  eventStatus,
-  type FinnhubContext,
   finnhubSymbol,
-  nextEvent,
   pruneResearch,
-  readEvents,
-  readResearch,
-  refreshResearch,
   SECTIONS,
-  STALE_RESEARCH,
-  sectionState,
-} from "../src/finnhub/store.ts";
-import { type Instrument, upsertInstrument } from "../src/instruments.ts";
-import { keys } from "../src/keys.ts";
-import { format, logger, silent } from "../src/log.ts";
-import { lastRun } from "../src/runs.ts";
-import { SourceError } from "../src/source.ts";
-import { markRead } from "../src/tracking.ts";
-import { writer } from "../src/writer.ts";
+} from "../src/sources/finnhub/store.ts";
+import {
+  type FinnhubContext,
+  refreshResearch,
+} from "../src/sources/finnhub/sync.ts";
+import { SourceError } from "../src/sources/source.ts";
+import { type Db, open } from "../src/storage/db/index.ts";
+import { lastRun } from "../src/storage/runs.ts";
+import { writer } from "../src/storage/writer.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { drive } from "./helpers/drive.ts";
 import {

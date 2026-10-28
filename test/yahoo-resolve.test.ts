@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
-import { open } from "../src/db/index.ts";
-import { upsertInstrument } from "../src/instruments.ts";
-import { SourceError } from "../src/source.ts";
-import { writer } from "../src/writer.ts";
-import { yahoo } from "../src/yahoo/client.ts";
+import { upsertInstrument } from "../src/market/instruments.ts";
+import { SourceError } from "../src/sources/source.ts";
+import { yahoo } from "../src/sources/yahoo/client.ts";
 import {
   isExact,
   keyOf,
@@ -14,7 +12,9 @@ import {
   ResolveError,
   resolve,
   symbolOf,
-} from "../src/yahoo/resolve.ts";
+} from "../src/sources/yahoo/resolve.ts";
+import { open } from "../src/storage/db/index.ts";
+import { writer } from "../src/storage/writer.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import {
   chartSymbol,

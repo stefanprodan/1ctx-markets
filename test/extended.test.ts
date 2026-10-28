@@ -3,28 +3,32 @@
 
 import { describe, expect, test } from "bun:test";
 import { spec } from "../src/api/openapi.ts";
-import { rebuildWeeks } from "../src/bars.ts";
-import { readSession, recordSession, session } from "../src/calendars.ts";
-import { open } from "../src/db/index.ts";
-import { readInstrument, upsertInstrument } from "../src/instruments.ts";
-import { silent } from "../src/log.ts";
+import { rebuildWeeks } from "../src/market/bars.ts";
+import {
+  readSession,
+  recordSession,
+  session,
+} from "../src/market/calendars.ts";
+import { iso, round } from "../src/market/format.ts";
+import { readInstrument, upsertInstrument } from "../src/market/instruments.ts";
+import { STALE } from "../src/market/stale.ts";
+import { markRead } from "../src/market/tracking.ts";
+import { latestExtended } from "../src/operations/extended.ts";
+import { CALL_MS, type Markets, markets } from "../src/operations/markets.ts";
+import { moversAnswer, parseMovers } from "../src/operations/movers.ts";
+import { parseQuote, quotePage } from "../src/operations/quote.ts";
+import { parseRules, rulesAnswer } from "../src/operations/rules.ts";
+import { silent } from "../src/runtime/log.ts";
 import { recomputeSignals, refreshLive } from "../src/signals/store.ts";
-import { STALE } from "../src/stale.ts";
-import { iso, round } from "../src/tools/answer.ts";
-import { latestExtended } from "../src/tools/extended.ts";
-import { moversAnswer, parseMovers } from "../src/tools/movers.ts";
-import { parseQuote, quotePage } from "../src/tools/quote.ts";
-import { parseRules, rulesAnswer } from "../src/tools/rules.ts";
-import { CALL_MS, type Markets, markets } from "../src/tools/targets.ts";
-import { markRead } from "../src/tracking.ts";
-import { writer } from "../src/writer.ts";
 import {
   INTRADAY_RANGE,
   parseIntraday,
   parseSpark,
   yahoo,
-} from "../src/yahoo/client.ts";
-import { storeQuotes } from "../src/yahoo/sync.ts";
+} from "../src/sources/yahoo/client.ts";
+import { storeQuotes } from "../src/sources/yahoo/quotes.ts";
+import { open } from "../src/storage/db/index.ts";
+import { writer } from "../src/storage/writer.ts";
 import { api } from "./helpers/api.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { answerSchema, validate } from "./helpers/schema.ts";

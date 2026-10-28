@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
-import { open } from "../src/db/index.ts";
-import { writer } from "../src/writer.ts";
+import { open } from "../src/storage/db/index.ts";
+import { writer } from "../src/storage/writer.ts";
 import { fakeClock } from "./helpers/clock.ts";
 
 function table() {

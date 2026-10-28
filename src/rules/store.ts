@@ -4,8 +4,8 @@
 // The rules and alerts tables. Kept free of the engine's imports, since
 // tracking reads the instruments every rule depends on from here.
 
-import { DAY_MS } from "../clock.ts";
-import type { Db } from "../db/index.ts";
+import { DAY_MS } from "../runtime/clock.ts";
+import type { Db } from "../storage/db/index.ts";
 import { type Condition, instrumentsOf, readCondition } from "./format.ts";
 
 export const ALERTS_KEPT_DAYS = 90;

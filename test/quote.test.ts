@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
-import { recordSession, session } from "../src/calendars.ts";
-import type { Db } from "../src/db/index.ts";
-import { cursor, fits, PAGE_BYTES, round } from "../src/tools/answer.ts";
-import { historyAnswer, parseHistory } from "../src/tools/history.ts";
-import { parseQuote, quotePage } from "../src/tools/quote.ts";
-import type { Markets } from "../src/tools/targets.ts";
+import { recordSession, session } from "../src/market/calendars.ts";
+import { round } from "../src/market/format.ts";
+import { cursor, fits, PAGE_BYTES } from "../src/operations/answer.ts";
+import { historyAnswer, parseHistory } from "../src/operations/history.ts";
+import type { Markets } from "../src/operations/markets.ts";
+import { parseQuote, quotePage } from "../src/operations/quote.ts";
+import type { Db } from "../src/storage/db/index.ts";
 import {
   bar,
   instrument,

@@ -2,23 +2,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
-import { bvb } from "../src/bvb/client.ts";
-import { bvbJobs } from "../src/bvb/jobs.ts";
-import { NO_DATA } from "../src/bvb/sync.ts";
-import { MINUTE_MS } from "../src/clock.ts";
-import { open } from "../src/db/index.ts";
-import { readInstrument, upsertInstrument } from "../src/instruments.ts";
-import { silent } from "../src/log.ts";
-import type { Fetch } from "../src/source.ts";
-import { searchPage } from "../src/tools/search.ts";
-import {
-  CALL_MS,
-  markets,
-  readTargets,
-  type Target,
-} from "../src/tools/targets.ts";
-import { writer } from "../src/writer.ts";
-import { yahoo } from "../src/yahoo/client.ts";
+import { readInstrument, upsertInstrument } from "../src/market/instruments.ts";
+import { CALL_MS, markets } from "../src/operations/markets.ts";
+import { searchPage } from "../src/operations/search.ts";
+import { readTargets, type Target } from "../src/operations/targets.ts";
+import { MINUTE_MS } from "../src/runtime/clock.ts";
+import { silent } from "../src/runtime/log.ts";
+import { bvb } from "../src/sources/bvb/client.ts";
+import { bvbJobs } from "../src/sources/bvb/jobs.ts";
+import { NO_DATA } from "../src/sources/bvb/sync.ts";
+import type { Fetch } from "../src/sources/source.ts";
+import { yahoo } from "../src/sources/yahoo/client.ts";
+import { open } from "../src/storage/db/index.ts";
+import { writer } from "../src/storage/writer.ts";
 import { bvbAnswer, bvbRecorded, made } from "./helpers/bvb.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { drive } from "./helpers/drive.ts";

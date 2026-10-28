@@ -5,13 +5,13 @@
 // shown from its start on, as the recordings showed Friday's on Sunday,
 // and its chart and spark answers have the recorded shape.
 
-import { MINUTE_MS } from "../../src/clock.ts";
 import {
   addDays,
   fromWallTime,
   localDate,
   wallOfDate,
-} from "../../src/zone.ts";
+} from "../../src/market/zone.ts";
+import { MINUTE_MS } from "../../src/runtime/clock.ts";
 import type { Recorded } from "./yahoo.ts";
 
 const HOUR_MS = 60 * MINUTE_MS;

@@ -5,14 +5,16 @@
 // by page, as the bytes a client gets: a fixture of these pins the
 // tools' answers through a change that should leave them as they are.
 
-import { open } from "../../src/db/index.ts";
-import { finnhub } from "../../src/finnhub/client.ts";
-import { fred } from "../../src/fred/client.ts";
-import { silent } from "../../src/log.ts";
+import { PREFIX } from "../../src/api/http.ts";
+import { markets } from "../../src/operations/markets.ts";
+import { silent } from "../../src/runtime/log.ts";
+import { finnhub } from "../../src/sources/finnhub/client.ts";
+import { fred } from "../../src/sources/fred/client.ts";
+import { yahoo } from "../../src/sources/yahoo/client.ts";
+import { open } from "../../src/storage/db/index.ts";
+import { writer } from "../../src/storage/writer.ts";
 import { call, tools } from "../../src/tools/index.ts";
-import { markets } from "../../src/tools/targets.ts";
-import { writer } from "../../src/writer.ts";
-import { yahoo } from "../../src/yahoo/client.ts";
+import { api, READ_KEY } from "./api.ts";
 import { fakeClock } from "./clock.ts";
 import { drive, pacedOf } from "./drive.ts";
 import { FINNHUB_KEY, finnhubAnswer } from "./finnhub.ts";
@@ -187,5 +189,158 @@ export async function mcpAnswers(): Promise<Answers> {
   );
   db.close();
   w.db.close();
+  return answers;
+}
+
+// the package's own files are pinned by digest: their bytes are its
+const DIGESTED = /\/docs\/swagger-ui(-bundle\.js|\.css)/;
+
+type RestAnswer = {
+  status: number;
+  headers: Record<string, string>;
+  body: string;
+};
+
+const post = (method: string, body: unknown): RequestInit => ({
+  method,
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify(body),
+});
+
+const WRONG = { headers: { authorization: "Bearer wrong" } };
+
+// the requests, in order, since rules and deletes change what later
+// requests read
+const REQUESTS: [string, RequestInit?][] = [
+  ["/quotes?symbols=NVDA,FRED:DGS10,^GSPC"],
+  ["/quotes?symbols=NVDA,FRED:DGS10&extended=true"],
+  ["/quotes?symbols=ZZNOTHING"],
+  ["/quotes?symbols=NVDA&next=x"],
+  ["/history?symbol=NVDA&from=2026-07-01"],
+  ["/history?symbol=NVDA&interval=1wk&benchmark=^GSPC"],
+  ["/history?symbol=NVDA&from=2026-04-01&to=2026-09-30"],
+  ["/history?symbol=FRED:DGS10&from=2026-01-01"],
+  ["/history?symbol=ZZNOTHING"],
+  ["/search?query=NVDA"],
+  ["/search?query=FRED:DGS10"],
+  ["/research?symbols=NVDA"],
+  ["/research?symbols=NVDA,^GSPC&sections=analysts,earnings"],
+  ["/research?symbols=NVDA&sections=news&since=2026-10-10"],
+  ["/events?from=2026-01-01&to=2026-12-31&symbols=NVDA"],
+  ["/events?from=2026-01-01&to=2026-12-31"],
+  ["/movers?symbols=NVDA,^GSPC,FRED:DGS10&min_move_pct=0"],
+  ["/movers?symbols=NVDA,^GSPC&average=daily_sma50&relation=above"],
+  [
+    "/screen",
+    post("POST", {
+      symbols: ["NVDA", "^GSPC"],
+      filters: [{ field: "rsi14", min: 0 }],
+      sort: "return_1m",
+      order: "desc",
+      fields: ["distance_sma200"],
+    }),
+  ],
+  ["/screen", post("POST", { symbols: ["NVDA"], sort: "relative_return_1m" })],
+  [
+    "/screen",
+    post("POST", {
+      symbols: ["NVDA"],
+      sort: "relative_return_1m",
+      benchmark: "^GSPC",
+    }),
+  ],
+  ["/screen", { method: "POST", body: "{}" }],
+  ["/alerts"],
+  ["/rules"],
+  [
+    "/rules",
+    post("POST", {
+      symbol: "NVDA",
+      condition: { left: "price", op: "<", right: 211 },
+      note: "below 211",
+    }),
+  ],
+  [
+    "/rules",
+    post("POST", {
+      symbol: "NVDA",
+      condition: { left: "rsi14", op: ">", right: 30 },
+    }),
+  ],
+  ["/rules", post("POST", { symbol: "ZZNOTHING", condition: "x" })],
+  ["/rules"],
+  ["/rules/1", post("PATCH", { paused: true })],
+  ["/rules/x", post("PATCH", { paused: true })],
+  ["/rules/2", { method: "DELETE" }],
+  ["/rules/2", { method: "DELETE" }],
+  ["/rules"],
+  ["/alerts"],
+  ["/alerts", { headers: { "if-none-match": 'W/"alerts-1"' } }],
+  ["/alerts", { headers: { "if-none-match": "x" } }],
+  ["/openapi.json"],
+  ["/docs"],
+  ["/docs/init.js?h=0"],
+  ["/docs/swagger-ui.css"],
+  ["/docs/swagger-ui-bundle.js"],
+  ["/docs/other.js"],
+  ["/admin/status"],
+  [
+    "/admin/refetch",
+    post("POST", {
+      symbols: ["US:NVDA", "US:ZZNOTHING"],
+      fetch: ["bars", "quotes", "research"],
+      sections: ["analysts"],
+    }),
+  ],
+  ["/admin/refetch", post("POST", { symbols: [] })],
+  ["/admin/instruments/US:NVDA", { method: "DELETE" }],
+  ["/admin/instruments/FRED:DGS10", { method: "DELETE" }],
+  ["/admin/instruments/FRED:DGS10", { method: "DELETE" }],
+  ["/admin/status"],
+  ["/nothing"],
+  ["/quotes", { method: "POST" }],
+  ["/quotes?symbols=NVDA", WRONG],
+  ["/admin/status", { headers: { authorization: `Bearer ${READ_KEY}` } }],
+];
+
+async function restAnswer(res: Response, path: string): Promise<RestAnswer> {
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  const body = DIGESTED.test(path)
+    ? `sha256:${new Bun.CryptoHasher("sha256").update(bytes).digest("hex")} ${bytes.byteLength}`
+    : new TextDecoder().decode(bytes);
+  const headers = Object.fromEntries(
+    [...res.headers.entries()].sort(([a], [b]) => a.localeCompare(b)),
+  );
+  return { status: res.status, headers, body };
+}
+
+// Every /api/v1 route over the recordings, as status, headers and the
+// bytes a client gets: a fixture of these pins the routes' answers.
+export async function restAnswers(): Promise<Record<string, RestAnswer>> {
+  const answers: Record<string, RestAnswer> = {};
+  const clock = fakeClock(NOW);
+  const { db } = open(":memory:", clock);
+  const s = await sources({ hold: (url) => finnhubAnswer(url) });
+  const m = markets({
+    db,
+    clock,
+    writer: writer(db),
+    yahoo: yahoo({ clock, fetch: s.fetch }),
+    fred: fred({ clock, key: FRED_KEY, fetch: s.fetch }),
+    finnhub: finnhub({ clock, key: FINNHUB_KEY, fetch: s.fetch }),
+    log: silent,
+  });
+  const handle = api(m, {
+    sources: [
+      { name: "yahoo", on: true, why: "always", backoff: () => null },
+      { name: "massive", on: false, why: "no key file", backoff: () => null },
+    ],
+  });
+  for (const [k, [path, init]] of REQUESTS.entries()) {
+    const req = new Request(`http://markets.test${PREFIX}${path}`, init);
+    const res = await drive(clock, pacedOf(m), handle(req));
+    answers[`${k} ${req.method} ${path}`] = await restAnswer(res, path);
+  }
+  db.close();
   return answers;
 }

@@ -1,9 +1,9 @@
 # FRED
 
 Governs the Federal Reserve Economic Data (FRED) source of the
-St. Louis Fed: `src/fred/client.ts` (calls and answer checks),
-`src/fred/sync.ts` (series as instruments, observations as bars) and
-`src/fred/jobs.ts` (the daily refetch and staleness). How the bars
+St. Louis Fed: `src/sources/fred/client.ts` (calls and answer checks),
+`src/sources/fred/sync.ts` (series as instruments, observations as bars) and
+`src/sources/fred/jobs.ts` (the daily refetch and staleness). How the bars
 become signals is in `docs/signals.md`; the shared source queue in
 `docs/yahoo.md`; key files in `docs/config.md`; runs, tracking and
 staleness in `docs/storage.md`; the answer pages in `docs/tools.md`.
@@ -17,7 +17,7 @@ staleness in `docs/storage.md`; the answer pages in `docs/tools.md`.
 - **Off is an answer, never an error.** `addSeries` returns
   `{ kind: "off" }` and a tool item carries `no_data` with `NO_DATA`
   ("no data from FRED"). That holds for a stored series too
-  (`storedStep()` sends it to `fredStep()` in `src/tools/targets.ts`):
+  (`storedStep()` sends it to `fredStep()` in `src/operations/targets.ts`):
   its rows are never served while FRED is off.
 
 ## The key
@@ -27,24 +27,24 @@ staleness in `docs/storage.md`; the answer pages in `docs/tools.md`.
   fetch failure becomes the fixed phrase "network error" or "timed out"
   because the thrown text can quote the URL.
 - **Every error holds a fixed phrase from `PHRASES` in
-  `src/source.ts`, never text FRED sent.** FRED answers 400 for both a
+  `src/sources/source.ts`, never text FRED sent.** FRED answers 400 for both a
   refused key and an unknown series; `refusal` tells them apart by
   `error_message` and maps them to "key refused" or "not found"
   without repeating it; any other 400 is "bad request".
 - **Every text field of a series' metadata is scrubbed before it is
-  kept or answered.** `scrubbed` runs `scrub` (`src/source.ts`), which
+  kept or answered.** `scrubbed` runs `scrub` (`src/sources/source.ts`), which
   cuts the key raw, percent-encoded and form-encoded, case-blind, out
   of the id, title, units, frequency and notes. Observations hold only
   checked dates and decimals, so they carry no text.
-- **The logger masks every key the keys module read** (`src/log.ts`,
-  `src/keys.ts`); that is a backstop, not a licence to log a URL.
+- **The logger masks every key the keys module read** (`src/runtime/log.ts`,
+  `src/runtime/keys.ts`); that is a backstop, not a licence to log a URL.
 
 ## Calls and limits
 
 - **One call at a time, at most `CALLS_PER_MINUTE` (60) starts in any
   minute**, half of FRED's 120, so a job and tools sharing the client
   never trip it. The minute window lives in `fred()`; the queue from
-  `src/source.ts` backs off 30 s after a failure and 5 minutes after a
+  `src/sources/source.ts` backs off 30 s after a failure and 5 minutes after a
   429, and never retries the failed call. A malformed answer backs off
   only when it is not JSON (`Unreadable`); one of an odd shape fails
   its call alone.
@@ -76,7 +76,7 @@ expected, with "malformed answer":
 - **A series is the instrument `FRED:<ID>`** of market `FRED`, type
   `SERIES`, zone `UTC`, no currency. `seriesId` takes `DGS10` or
   `fred:dgs10`, uppercases it and allows only `[A-Z0-9_]{1,40}`; the
-  lookup in `src/tools/targets.ts` sends any `FRED:` prefix here before
+  lookup in `src/operations/targets.ts` sends any `FRED:` prefix here before
   Yahoo.
 - **The unit comes from FRED's units, never a guess** (`unitOf`):
   "%" or "Percent" is `percent`, units starting "Index" are
@@ -142,5 +142,5 @@ expected, with "malformed answer":
   series or against one as benchmark, screen with a FRED benchmark or a
   FRED match on the page. A new answer showing FRED values must add it
   the same way.
-- **History states `FRED_BASIS`** (`src/tools/history.ts`): values as
+- **History states `FRED_BASIS`** (`src/operations/history.ts`): values as
   FRED publishes them, a revision replacing the earlier value.

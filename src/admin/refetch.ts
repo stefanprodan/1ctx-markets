@@ -6,34 +6,36 @@
 // Nothing is marked due by hand: the runs these fetches record are the
 // ones the jobs read.
 
-import type { Written } from "../bars.ts";
-import { SOURCE as BVB, type Bvb } from "../bvb/client.ts";
-import {
-  backfill as bvbBackfill,
-  quoteNow,
-  storeBvbQuotes,
-} from "../bvb/sync.ts";
+import type { Written } from "../market/bars.ts";
+import { checkSource, type Instrument, Moved } from "../market/instruments.ts";
+import { JOBS } from "../market/stale.ts";
+import type { Markets } from "../operations/markets.ts";
+import { errorFields } from "../runtime/log.ts";
+import type { Bvb } from "../sources/bvb/client.ts";
+import { storeBvbQuotes } from "../sources/bvb/quotes.ts";
+import { backfill as bvbBackfill, quoteNow } from "../sources/bvb/sync.ts";
 import {
   eligible as finnhubEligible,
-  refreshResearch,
   type Section,
-} from "../finnhub/store.ts";
-import { SOURCE as FRED } from "../fred/client.ts";
-import { refetchSeries } from "../fred/sync.ts";
-import { checkSource, type Instrument, Moved } from "../instruments.ts";
-import { errorFields } from "../log.ts";
-import { eligible as massiveEligible, refreshNews } from "../massive/store.ts";
-import { endRun, failRun, startRun } from "../runs.ts";
-import { DeadlinePassed, Paused, QueueClosed, SourceError } from "../source.ts";
-import { JOBS } from "../stale.ts";
-import type { Markets } from "../tools/targets.ts";
-import { WriterClosed } from "../writer.ts";
-import { SOURCE as YAHOO } from "../yahoo/client.ts";
+} from "../sources/finnhub/store.ts";
+import { refreshResearch } from "../sources/finnhub/sync.ts";
+import { refetchSeries } from "../sources/fred/sync.ts";
+import { BVB, FRED, YAHOO } from "../sources/ids.ts";
 import {
+  eligible as massiveEligible,
+  refreshNews,
+} from "../sources/massive/store.ts";
+import {
+  DeadlinePassed,
   expired,
-  storeQuotes,
-  backfill as yahooBackfill,
-} from "../yahoo/sync.ts";
+  Paused,
+  QueueClosed,
+  SourceError,
+} from "../sources/source.ts";
+import { storeQuotes } from "../sources/yahoo/quotes.ts";
+import { backfill as yahooBackfill } from "../sources/yahoo/sync.ts";
+import { endRun, failRun, startRun } from "../storage/runs.ts";
+import { WriterClosed } from "../storage/writer.ts";
 
 export const PARTS = [
   "bars",

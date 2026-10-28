@@ -2,28 +2,48 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
-import { DAY_MS, MINUTE_MS } from "../src/clock.ts";
-import { open } from "../src/db/index.ts";
-import { finnhub } from "../src/finnhub/client.ts";
-import { finnhubJobs } from "../src/finnhub/jobs.ts";
+import { iso } from "../src/market/format.ts";
+import { readInstrument, upsertInstrument } from "../src/market/instruments.ts";
+import { lastReadAt, markRead } from "../src/market/tracking.ts";
+import { fits, PAGE_BYTES } from "../src/operations/answer.ts";
+import { ArgError } from "../src/operations/args.ts";
 import {
-  kindColumns,
+  eventsAnswer,
+  NO_EVENT_BYTES,
+  parseEvents,
+  UNAVAILABLE_BYTES,
+} from "../src/operations/events.ts";
+import { CALL_MS, markets } from "../src/operations/markets.ts";
+import {
+  HEADLINES,
+  HTTP_HISTORY,
+  MAX_RESEARCH_SYMBOLS,
+  researchTargets,
+  WEEK_ITEMS,
+  WEEK_PUBLISHER,
+  WEEK_REASONING,
+  WEEK_TITLE,
+  WEEK_URL,
+} from "../src/operations/research.ts";
+import { DAY_MS, MINUTE_MS } from "../src/runtime/clock.ts";
+import { silent } from "../src/runtime/log.ts";
+import { finnhub } from "../src/sources/finnhub/client.ts";
+import { finnhubJobs } from "../src/sources/finnhub/jobs.ts";
+import { kindColumns, STALE_RESEARCH } from "../src/sources/finnhub/read.ts";
+import {
   NO_DATA,
   NO_EVENTS,
   NOT_COVERED,
   OTHER_LISTING,
-  refreshResearch,
-  STALE_RESEARCH,
-} from "../src/finnhub/store.ts";
-import { readInstrument, upsertInstrument } from "../src/instruments.ts";
-import { silent } from "../src/log.ts";
+} from "../src/sources/finnhub/store.ts";
+import { refreshResearch } from "../src/sources/finnhub/sync.ts";
 import {
   MAX_PUBLISHER,
   MAX_REASONING,
   MAX_TITLE,
   massive,
   PAGE_LIMIT,
-} from "../src/massive/client.ts";
+} from "../src/sources/massive/client.ts";
 import {
   NEWS_NOT_COVERED,
   NO_NEWS,
@@ -31,33 +51,12 @@ import {
   refreshNews,
   STALE_NEWS,
   topNews,
-} from "../src/massive/store.ts";
-import { endRun, startRun } from "../src/runs.ts";
-import { fits, iso, PAGE_BYTES } from "../src/tools/answer.ts";
-import { ArgError } from "../src/tools/args.ts";
-import {
-  eventsAnswer,
-  NO_EVENT_BYTES,
-  parseEvents,
-  UNAVAILABLE_BYTES,
-} from "../src/tools/events.ts";
-import {
-  HEADLINES,
-  HTTP_HISTORY,
-  MAX_RESEARCH_SYMBOLS,
-  parseResearch,
-  researchAnswer,
-  researchTargets,
-  WEEK_ITEMS,
-  WEEK_PUBLISHER,
-  WEEK_REASONING,
-  WEEK_TITLE,
-  WEEK_URL,
-} from "../src/tools/research.ts";
-import { CALL_MS, markets } from "../src/tools/targets.ts";
-import { lastReadAt, markRead } from "../src/tracking.ts";
-import { writer } from "../src/writer.ts";
-import { yahoo } from "../src/yahoo/client.ts";
+} from "../src/sources/massive/store.ts";
+import { yahoo } from "../src/sources/yahoo/client.ts";
+import { open } from "../src/storage/db/index.ts";
+import { endRun, startRun } from "../src/storage/runs.ts";
+import { writer } from "../src/storage/writer.ts";
+import { parseResearch, researchAnswer } from "../src/tools/research.ts";
 import { api } from "./helpers/api.ts";
 import { type TestApp, withApp } from "./helpers/app.ts";
 import { fakeClock } from "./helpers/clock.ts";

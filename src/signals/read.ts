@@ -5,13 +5,18 @@
 // behind, and relative return, computed on read for the benchmark the
 // caller names rather than stored for every pair.
 
-import type { Interval } from "../bars.ts";
-import { weekOf } from "../calendars.ts";
-import type { Db } from "../db/index.ts";
-import { SOURCE as FRED } from "../fred/client.ts";
-import { seriesStale } from "../fred/jobs.ts";
-import { type Instrument, readInstrument } from "../instruments.ts";
-import { barsStale, quoteStale, STALE, type StaleReason } from "../stale.ts";
+import type { Interval } from "../market/bars.ts";
+import { weekOf } from "../market/calendars.ts";
+import { type Instrument, readInstrument } from "../market/instruments.ts";
+import {
+  barsStale,
+  quoteStale,
+  STALE,
+  type StaleReason,
+} from "../market/stale.ts";
+import { seriesStale } from "../sources/fred/jobs.ts";
+import { FRED } from "../sources/ids.ts";
+import type { Db } from "../storage/db/index.ts";
 import type { Close } from "./common.ts";
 import type { DailyRow } from "./daily.ts";
 import {

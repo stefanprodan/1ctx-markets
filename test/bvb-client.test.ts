@@ -2,8 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
+import { bvb, SPACING_MS } from "../src/sources/bvb/client.ts";
 import {
-  bvb,
+  optionalRoNumber,
+  roClock,
+  roNumber,
+  roWallTime,
+  statusOf,
+  textOf,
+} from "../src/sources/bvb/format.ts";
+import {
   parseBonds,
   parseDetail,
   parseHistory,
@@ -13,17 +21,8 @@ import {
   parseSearch,
   parseShares,
   parseTypes,
-  SPACING_MS,
-} from "../src/bvb/client.ts";
-import {
-  optionalRoNumber,
-  roClock,
-  roNumber,
-  roWallTime,
-  statusOf,
-  textOf,
-} from "../src/bvb/format.ts";
-import { SourceError } from "../src/source.ts";
+} from "../src/sources/bvb/parse.ts";
+import { SourceError } from "../src/sources/source.ts";
 import {
   bvbFetch,
   bvbRecorded,

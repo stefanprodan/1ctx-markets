@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
+import { addDays } from "../src/market/zone.ts";
 import { crossEdge } from "../src/signals/common.ts";
 import {
   type Bar,
@@ -10,7 +11,6 @@ import {
   liveDaily,
   turn,
 } from "../src/signals/daily.ts";
-import { addDays } from "../src/zone.ts";
 
 // weekdays from a Monday
 function weekdays(from: string, n: number): string[] {

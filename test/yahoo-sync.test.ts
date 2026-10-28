@@ -2,31 +2,25 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
-import { readBars } from "../src/bars.ts";
-import { readSessions } from "../src/calendars.ts";
-import { DAY_MS } from "../src/clock.ts";
-import { type Db, open } from "../src/db/index.ts";
-import { readInstrument, upsertInstrument } from "../src/instruments.ts";
-import { readQuote } from "../src/quotes.ts";
-import { writer } from "../src/writer.ts";
+import { readBars } from "../src/market/bars.ts";
+import { readSessions } from "../src/market/calendars.ts";
+import { readInstrument, upsertInstrument } from "../src/market/instruments.ts";
+import { readQuote } from "../src/market/quotes.ts";
+import { startOfDate } from "../src/market/zone.ts";
+import { DAY_MS } from "../src/runtime/clock.ts";
+import { backfillStart, RETRY_MS } from "../src/sources/history.ts";
 import {
   type ChartAnswer,
   parseChart,
   parseSpark,
   yahoo,
-} from "../src/yahoo/client.ts";
-import { marketOf, symbolOf } from "../src/yahoo/resolve.ts";
-import {
-  addInstrument,
-  backfill,
-  backfillStart,
-  dailyBars,
-  RETRY_MS,
-  refetch,
-  storeQuotes,
-  unitOf,
-} from "../src/yahoo/sync.ts";
-import { startOfDate } from "../src/zone.ts";
+} from "../src/sources/yahoo/client.ts";
+import { dailyBars, unitOf } from "../src/sources/yahoo/history.ts";
+import { storeQuotes } from "../src/sources/yahoo/quotes.ts";
+import { marketOf, symbolOf } from "../src/sources/yahoo/resolve.ts";
+import { addInstrument, backfill, refetch } from "../src/sources/yahoo/sync.ts";
+import { type Db, open } from "../src/storage/db/index.ts";
+import { writer } from "../src/storage/writer.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import {
   backTo,

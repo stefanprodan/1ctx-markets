@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
+import { addDays } from "../src/market/zone.ts";
 import { liveWeekly, weeklySeries } from "../src/signals/weekly.ts";
-import { addDays } from "../src/zone.ts";
 
 function weeks(closes: number[], from = "2023-01-02") {
   return closes.map((close, k) => ({ date: addDays(from, 7 * k), close }));

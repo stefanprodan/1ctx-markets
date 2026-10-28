@@ -2,13 +2,22 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
-import { type Interval, readBars, upsertBars } from "../src/bars.ts";
-import { readSession, recordSession, session } from "../src/calendars.ts";
-import { DAY_MS, MINUTE_MS } from "../src/clock.ts";
-import { type Db, open } from "../src/db/index.ts";
-import { type Unit, upsertInstrument } from "../src/instruments.ts";
-import { silent } from "../src/log.ts";
-import { endRun, failRun, startRun } from "../src/runs.ts";
+import { type Interval, readBars, upsertBars } from "../src/market/bars.ts";
+import {
+  readSession,
+  recordSession,
+  session,
+} from "../src/market/calendars.ts";
+import { type Unit, upsertInstrument } from "../src/market/instruments.ts";
+import { JOBS, STALE } from "../src/market/stale.ts";
+import {
+  addDays,
+  fromWallTime,
+  localDate,
+  wallOfDate,
+} from "../src/market/zone.ts";
+import { DAY_MS, MINUTE_MS } from "../src/runtime/clock.ts";
+import { silent } from "../src/runtime/log.ts";
 import { dailySeries, liveDaily } from "../src/signals/daily.ts";
 import {
   readRelativeReturn,
@@ -22,17 +31,13 @@ import {
 } from "../src/signals/relative.ts";
 import { finalPrefix, refreshLive, selectList } from "../src/signals/store.ts";
 import { liveWeekly, weeklySeries } from "../src/signals/weekly.ts";
-import { JOBS, STALE } from "../src/stale.ts";
-import { writer } from "../src/writer.ts";
-import { parseSpark, yahoo } from "../src/yahoo/client.ts";
-import { yahooJobs } from "../src/yahoo/jobs.ts";
-import {
-  addInstrument,
-  backfill,
-  refetch,
-  storeQuotes,
-} from "../src/yahoo/sync.ts";
-import { addDays, fromWallTime, localDate, wallOfDate } from "../src/zone.ts";
+import { parseSpark, yahoo } from "../src/sources/yahoo/client.ts";
+import { yahooJobs } from "../src/sources/yahoo/jobs.ts";
+import { storeQuotes } from "../src/sources/yahoo/quotes.ts";
+import { addInstrument, backfill, refetch } from "../src/sources/yahoo/sync.ts";
+import { type Db, open } from "../src/storage/db/index.ts";
+import { endRun, failRun, startRun } from "../src/storage/runs.ts";
+import { writer } from "../src/storage/writer.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import {
   added,

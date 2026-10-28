@@ -21,7 +21,7 @@ is offered over MCP.
   that is unusable or equal to the bearer stops the start
   (`requireAdmin()`); the message names the file only.
 - **`/api/v1/admin` and `/api/v1/admin/*` take the admin key alone**,
-  checked as the bearer is (`router()` in `src/http.ts`): the bearer is
+  checked as the bearer is (`router()` in `src/server/http.ts`): the bearer is
   refused there and the admin key on every other path, `/mcp`
   included. With no admin key they refuse every caller.
 - **The routes are on the server's own port, so treat them as
