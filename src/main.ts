@@ -110,6 +110,7 @@ const app = start({
   db,
   quoteEveryMs: config.quoteEveryMs,
   trackDays: config.trackDays,
+  track: config.track,
   // read through the keys module, so the log masks it
   fredKey: store.source("fred"),
   finnhubKey: store.source("finnhub"),

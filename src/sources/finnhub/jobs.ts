@@ -3,7 +3,11 @@
 // a minute tick decides what is due, so a day missed while down runs on start
 
 import type { Instrument } from "../../market/instruments.ts";
-import { TRACK_MS, trackedInstruments } from "../../market/tracking.ts";
+import {
+  BY_USE,
+  type Tracking,
+  trackedInstruments,
+} from "../../market/tracking.ts";
 import { addDays, localDate } from "../../market/zone.ts";
 import { MINUTE_MS } from "../../runtime/clock.ts";
 import type { Log } from "../../runtime/log.ts";
@@ -115,12 +119,12 @@ export type FinnhubJobs = {
 export function finnhubJobs(options: {
   ctx: FinnhubContext;
   log: Log;
-  trackMs?: number;
+  tracking?: Tracking;
   hooks?: Hooks;
 }): FinnhubJobs {
   const { ctx, log } = options;
   const { db, clock } = ctx;
-  const trackMs = options.trackMs ?? TRACK_MS;
+  const tracking = options.tracking ?? BY_USE;
   const hooks = options.hooks ?? NO_HOOKS;
 
   const retrying = (id: string, section: Section, now: number) => {
@@ -229,7 +233,7 @@ export function finnhubJobs(options: {
     const pass: ResearchPass = { market: null, asked: [], failed: [] };
     if (ctx.finnhub === null) return pass;
     const started = clock.now();
-    const shares = trackedInstruments(db, started, trackMs).filter(eligible);
+    const shares = trackedInstruments(db, started, tracking).filter(eligible);
     let events = windowEvents(db, shares, started);
     try {
       const window = reportingWindow(events, started);

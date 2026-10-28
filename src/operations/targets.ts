@@ -1,6 +1,6 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-// Every instrument answered counts as read, which is what tracks it.
+// Every instrument a read answers counts as read, which is what tracks it.
 
 import { dailyRange } from "../market/bars.ts";
 import { type Instrument, readInstrument } from "../market/instruments.ts";
@@ -158,7 +158,7 @@ function fredStep(m: Markets, id: string): Step {
   });
   const stored = readInstrument(m.db, id);
   if (stored !== null && hasBars(m.db, id)) {
-    if (isTracked(m.db, id, m.clock.now(), m.trackMs)) {
+    if (isTracked(m.db, id, m.clock.now(), m.tracking)) {
       return { kind: "ready", instrument: stored };
     }
     return {
@@ -211,7 +211,7 @@ function bvbStep(m: Markets, instrument: Instrument): Step {
   if (!hasBars(m.db, instrument.id)) {
     return bvbFetchStep(m, instrument.sourceSymbol, instrument.id);
   }
-  if (isTracked(m.db, instrument.id, m.clock.now(), m.trackMs)) {
+  if (isTracked(m.db, instrument.id, m.clock.now(), m.tracking)) {
     return { kind: "ready", instrument };
   }
   return {
@@ -238,7 +238,7 @@ function storedStep(m: Markets, instrument: Instrument): Step {
         ),
     };
   }
-  if (isTracked(m.db, instrument.id, m.clock.now(), m.trackMs)) {
+  if (isTracked(m.db, instrument.id, m.clock.now(), m.tracking)) {
     return { kind: "ready", instrument };
   }
   return {
@@ -322,10 +322,28 @@ const candidates = (list: readonly Candidate[]): Step => ({
 const EXPIRED = Symbol("expired");
 
 // each input resolves on its own under one deadline; the queue paces fetches
-export async function readTargets(
+export function readTargets(
   m: Markets,
   inputs: readonly string[],
   deadline = m.clock.now() + m.callMs,
+): Promise<Target[]> {
+  return resolveAll(m, inputs, deadline, true);
+}
+
+// as a read resolves, fetching what is new, but no read is marked
+export function resolveTargets(
+  m: Markets,
+  inputs: readonly string[],
+  deadline = m.clock.now() + m.callMs,
+): Promise<Target[]> {
+  return resolveAll(m, inputs, deadline, false);
+}
+
+async function resolveAll(
+  m: Markets,
+  inputs: readonly string[],
+  deadline: number,
+  read: boolean,
 ): Promise<Target[]> {
   let cancel = () => {};
   const expired = new Promise<typeof EXPIRED>((resolve) => {
@@ -360,7 +378,7 @@ export async function readTargets(
     const ids = targets.flatMap((t) =>
       "instrument" in t ? [t.instrument.id] : [],
     );
-    if (ids.length > 0) {
+    if (read && ids.length > 0) {
       // queued behind other writes, it waits no longer than the call
       const wrote = m.writer
         .write((db) => {

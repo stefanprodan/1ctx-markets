@@ -34,6 +34,9 @@ export type TestOptions = {
   finnhubKey?: string;
   massiveKey?: string;
   start?: number;
+  track?: string[];
+  // kept open after the app stops, so a second start reads it
+  db?: Db;
 };
 
 // on loopback, on a port the system picks; stopped when fn ends, since
@@ -47,7 +50,7 @@ export async function withApp(
   const lines: string[] = [];
   const bearer = requireBearer(store);
   const admin = requireAdmin(store, bearer);
-  const { db } = open(":memory:", clock);
+  const db = options.db ?? open(":memory:", clock).db;
   const app = start({
     hostname: "127.0.0.1",
     port: 0,
@@ -61,6 +64,7 @@ export async function withApp(
     fredKey: options.fredKey ?? null,
     finnhubKey: options.finnhubKey ?? null,
     massiveKey: options.massiveKey ?? null,
+    track: options.track,
     // no test reaches a network
     fetch:
       options.fetch ??
@@ -80,7 +84,7 @@ export async function withApp(
     });
   } finally {
     await app.stop();
-    db.close();
+    if (options.db === undefined) db.close();
   }
 }
 

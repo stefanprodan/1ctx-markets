@@ -148,7 +148,7 @@ export async function readEventsOf(
   const notes: Note[] = [];
   let resolvedOnce: Resolved[] = [];
   if (args.symbols === null) {
-    instruments = trackedInstruments(m.db, m.clock.now(), m.trackMs).filter(
+    instruments = trackedInstruments(m.db, m.clock.now(), m.tracking).filter(
       eligible,
     );
     for (const i of instruments) {

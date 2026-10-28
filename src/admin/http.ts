@@ -7,6 +7,7 @@ import { iso } from "../market/format.ts";
 import { type Instrument, readInstrument } from "../market/instruments.ts";
 import { trackedIds } from "../market/tracking.ts";
 import type { Markets } from "../operations/markets.ts";
+import type { TrackState } from "../operations/track.ts";
 import { instrumentsOf } from "../rules/format.ts";
 import { readRules } from "../rules/store.ts";
 import type { Backoff } from "../sources/source.ts";
@@ -49,6 +50,8 @@ export type AdminDeps = {
   m: Markets;
   version: string;
   sources: readonly SourceState[];
+  // each --track value and what it resolved to
+  track: () => readonly TrackState[];
 };
 
 const bad = (message: string) => failed({ error: "bad_arguments", message });
@@ -125,7 +128,8 @@ export function adminStatus(d: AdminDeps, url: URL): Response {
       }),
       jobs: jobs(db),
       instruments: count(db, "select count(*) as n from instruments"),
-      tracked: trackedIds(db, now, d.m.trackMs).size,
+      tracked: trackedIds(db, now, d.m.tracking).size,
+      track: d.track(),
       database_bytes:
         count(db, "select page_count as n from pragma_page_count()") *
         count(db, "select page_size as n from pragma_page_size()"),

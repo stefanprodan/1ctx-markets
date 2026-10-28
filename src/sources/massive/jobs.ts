@@ -1,7 +1,11 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 
-import { TRACK_MS, trackedInstruments } from "../../market/tracking.ts";
+import {
+  BY_USE,
+  type Tracking,
+  trackedInstruments,
+} from "../../market/tracking.ts";
 import { MINUTE_MS } from "../../runtime/clock.ts";
 import type { Log } from "../../runtime/log.ts";
 import type { Scheduler } from "../../runtime/scheduler.ts";
@@ -35,15 +39,15 @@ export type MassiveJobs = {
 export function massiveJobs(options: {
   ctx: MassiveContext;
   log: Log;
-  trackMs?: number;
+  tracking?: Tracking;
 }): MassiveJobs {
   const { ctx, log } = options;
   const { db, clock } = ctx;
-  const trackMs = options.trackMs ?? TRACK_MS;
+  const tracking = options.tracking ?? BY_USE;
 
   // the tickers due, the one asked longest ago (or never) first
   const due = (now: number) =>
-    trackedInstruments(db, now, trackMs)
+    trackedInstruments(db, now, tracking)
       .filter((i) => eligible(i) && newsDue(db, i.id, now))
       .map((i) => ({
         instrument: i,

@@ -496,6 +496,13 @@ export const schemas: Record<string, Schema> = {
     jobs: list(freeForm(ADMIN)),
     instruments: int,
     tracked: int,
+    track: list(
+      object({
+        value: str,
+        id: nstr,
+        state: values(["pending", "tracked", ...ERRORS]),
+      }),
+    ),
     database_bytes: int,
   }),
   RefetchArgs: object(

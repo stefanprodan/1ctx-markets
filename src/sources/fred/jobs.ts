@@ -4,7 +4,11 @@
 
 import type { Instrument } from "../../market/instruments.ts";
 import { JOBS, STALE, type StaleReason } from "../../market/stale.ts";
-import { TRACK_MS, trackedInstruments } from "../../market/tracking.ts";
+import {
+  BY_USE,
+  type Tracking,
+  trackedInstruments,
+} from "../../market/tracking.ts";
 import { DAY_MS, MINUTE_MS } from "../../runtime/clock.ts";
 import type { Log } from "../../runtime/log.ts";
 import type { Scheduler } from "../../runtime/scheduler.ts";
@@ -47,8 +51,8 @@ export function dueAt(now: number): number {
   return Math.floor((now - DAILY_AT_MS) / DAY_MS) * DAY_MS + DAILY_AT_MS;
 }
 
-const series = (db: Db, now: number, trackMs: number): Instrument[] =>
-  trackedInstruments(db, now, trackMs).filter((i) => i.source === SOURCE);
+const series = (db: Db, now: number, tracking: Tracking): Instrument[] =>
+  trackedInstruments(db, now, tracking).filter((i) => i.source === SOURCE);
 
 type Scoped = Pick<Instrument, "id" | "addedAt">;
 
@@ -84,14 +88,14 @@ export function seriesStale(
 export function fredJobs(options: {
   ctx: FredContext;
   log: Log;
-  trackMs?: number;
+  tracking?: Tracking;
 }): FredJobs {
   const { ctx, log } = options;
   const { db, clock, writer } = ctx;
-  const trackMs = options.trackMs ?? TRACK_MS;
+  const tracking = options.tracking ?? BY_USE;
 
   async function pass(
-    instruments: readonly Instrument[] = series(db, clock.now(), trackMs),
+    instruments: readonly Instrument[] = series(db, clock.now(), tracking),
   ): Promise<FredPass> {
     let rows = 0;
     const changed: FredPass["changed"] = [];
@@ -134,7 +138,7 @@ export function fredJobs(options: {
 
   async function tick(): Promise<FredPass | null> {
     const now = clock.now();
-    const due = series(db, now, trackMs).filter((i) => {
+    const due = series(db, now, tracking).filter((i) => {
       if (!seriesDue(db, i, now)) return false;
       const last = lastStarted(db, SOURCE, JOBS.bars, i.id);
       return !(last?.status === "failed" && now - last.startedAt < RETRY_MS);

@@ -35,6 +35,33 @@ describe("--source", () => {
   });
 });
 
+describe("--track", () => {
+  test("takes each value once, as written", () => {
+    const cli = parseCli(
+      ["--track", "^GSPC", "--track", "BVB:BET", "--track", " ^GSPC "],
+      "/home/x",
+    );
+    if (cli.kind !== "run") throw new Error(cli.kind);
+    expect(cli.config.track).toEqual(["^GSPC", "BVB:BET"]);
+    const none = parseCli([], "/home/x");
+    if (none.kind === "run") expect(none.config.track).toEqual([]);
+  });
+
+  test("an empty value stops the start", () => {
+    for (const value of ["", "  "]) {
+      expect(parseCli(["--track", value], "/home/x")).toEqual({
+        kind: "error",
+        message: "--track is empty",
+      });
+    }
+    expect(parseCli(["--track"], "/home/x")).toEqual({
+      kind: "error",
+      message: "--track needs a value",
+    });
+    expect(HELP).toContain("--track <symbol>");
+  });
+});
+
 describe("service arguments", () => {
   test("a config written out reads back unchanged", () => {
     const cli = parseCli(
@@ -49,10 +76,15 @@ describe("service arguments", () => {
         "12",
         "--source",
         "bvb",
+        "--track",
+        "^GSPC",
+        "--track",
+        "GC=F",
       ],
       "/home/x",
     );
     if (cli.kind !== "run") throw new Error(cli.kind);
+    expect(cli.config.track).toEqual(["^GSPC", "GC=F"]);
     expect(parseCli(configToArgs(cli.config), "/home/y")).toEqual(cli);
   });
 

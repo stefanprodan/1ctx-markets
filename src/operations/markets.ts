@@ -3,7 +3,7 @@
 // The context every read takes, so no read imports another for it.
 
 import type { StaleReason } from "../market/stale.ts";
-import { TRACK_MS } from "../market/tracking.ts";
+import { BY_USE, type Tracking } from "../market/tracking.ts";
 import { NO_RULES, type RuleHooks } from "../rules/hooks.ts";
 import { type Clock, MINUTE_MS } from "../runtime/clock.ts";
 import { DEFAULT_QUOTE_EVERY } from "../runtime/config.ts";
@@ -35,7 +35,7 @@ export type Markets = {
   massive: Massive | null;
   hooks: Hooks;
   rules: RuleHooks;
-  trackMs: number;
+  tracking: Tracking;
   // so a quote the job fell behind on reads stale
   quoteEveryMs: number;
   callMs: number;
@@ -57,7 +57,7 @@ export function markets(options: {
   hooks?: Hooks;
   rules?: RuleHooks;
   log: Log;
-  trackMs?: number;
+  tracking?: Tracking;
   quoteEveryMs?: number;
   callMs?: number;
 }): Markets {
@@ -72,7 +72,7 @@ export function markets(options: {
     massive: options.massive?.failFast() ?? null,
     hooks: options.hooks ?? NO_HOOKS,
     rules: options.rules ?? NO_RULES,
-    trackMs: options.trackMs ?? TRACK_MS,
+    tracking: options.tracking ?? BY_USE,
     quoteEveryMs: options.quoteEveryMs ?? DEFAULT_QUOTE_EVERY * MINUTE_MS,
     callMs: options.callMs ?? CALL_MS,
     log: options.log,

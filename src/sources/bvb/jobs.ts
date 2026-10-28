@@ -12,7 +12,11 @@ import {
 import { type Instrument, Moved } from "../../market/instruments.ts";
 import type { QuoteRow } from "../../market/quotes.ts";
 import { barsDue, JOBS } from "../../market/stale.ts";
-import { TRACK_MS, trackedInstruments } from "../../market/tracking.ts";
+import {
+  BY_USE,
+  type Tracking,
+  trackedInstruments,
+} from "../../market/tracking.ts";
 import { localDate } from "../../market/zone.ts";
 import { DAY_MS, MINUTE_MS } from "../../runtime/clock.ts";
 import type { Log } from "../../runtime/log.ts";
@@ -39,7 +43,7 @@ export type BvbJobsOptions = {
   ctx: BvbContext;
   quoteEveryMs: number;
   log: Log;
-  trackMs?: number;
+  tracking?: Tracking;
 };
 
 export type BvbTick = {
@@ -67,9 +71,9 @@ const traded = (r: ListRow | undefined): r is Traded =>
 export function bvbJobs(options: BvbJobsOptions): BvbJobs {
   const { ctx, quoteEveryMs, log } = options;
   const { db, clock, bvb, writer } = ctx;
-  const trackMs = options.trackMs ?? TRACK_MS;
+  const tracking = options.tracking ?? BY_USE;
   const tracked = () =>
-    trackedInstruments(db, clock.now(), trackMs).filter(
+    trackedInstruments(db, clock.now(), tracking).filter(
       (i) => i.source === SOURCE,
     );
   let lastSlot: number | null = null;
