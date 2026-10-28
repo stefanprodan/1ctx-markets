@@ -123,7 +123,7 @@ signed in with the admin key alone.
   markets or instruments it covers and how many fail) with its last
   run's time, which never repeats the outcome; opened, it says what the
   job does, then its failing scopes with error and time, or that all
-  are ok. Failing jobs come first.
+  are ok. Failing jobs come first. Missing closes (`owed`) never shows: it only marks a day for the bars job to ask again, so it cannot fail.
 - **Names come from the server** (`label`, `short`, `mark`, `about`):
   the bundle is public, so it names no source (`docs/admin.md`).
 - **The source switch shows only when it failed,** as one line above

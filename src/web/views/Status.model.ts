@@ -126,7 +126,8 @@ export function groups(
     .map((source) => ({
       source,
       jobs: jobs
-        .filter((j) => j.source === source.name)
+        // owed only marks a day for the bars job to ask again: it never fails
+        .filter((j) => j.source === source.name && j.job !== "owed")
         .sort((a, b) => rank(a) - rank(b) || a.label.localeCompare(b.label)),
     }));
 }

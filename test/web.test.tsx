@@ -499,6 +499,9 @@ describe("the status model", () => {
       "Daily prices",
       "Live prices",
     ]);
+    // a job that only marks work for another never shows
+    const [shown] = groups(STATUS.sources, [live!, job("prices", "owed")]);
+    expect(shown!.jobs.map((j) => j.job)).toEqual(["Live prices"]);
   });
 
   test("a source change shows only when it failed", () => {
