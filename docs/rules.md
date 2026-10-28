@@ -5,9 +5,9 @@ Governs price rules, their evaluation and the alerts they fire:
 rules tool in `src/operations/rules.ts` and the alerts feed in
 `src/api/alerts.ts`, served as `docs/api.md` says. The answer
 contract, resolution and the inline fetch are in `docs/tools.md`;
-earnings events in `docs/research.md`; splits, the refetch and the
-bars a session waits on in `docs/yahoo.md`; alert retention and
-tracking in `docs/storage.md`.
+earnings events in `docs/research.md`; splits, rescales and the
+refetch in `docs/sources.md` and each source's doc; alert retention
+and tracking in `docs/storage.md`.
 
 A rule belongs to one instrument, reads a few with a fixed condition,
 and writes one alert each time the condition turns true. Rules hold
@@ -66,7 +66,8 @@ Examples, each created with `symbol` set to the rule's own share:
   values alone would never change between quotes; both sides in the
   same unit, a price level's including its currency; and no
   cross-instrument price comparison when either unit is `unknown` or
-  `index_points`, since one index's points are no other's.
+  `index_points`, since one index's points are no other's (^VIX's
+  volatility, ^TNX's yield).
 - **A stored condition names every instrument by id** and binds its
   gate to one fiscal year and quarter (`bindCondition()`).
   `readCondition()` parses stored rows strictly; a row that no longer

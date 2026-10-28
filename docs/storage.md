@@ -69,9 +69,9 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   when an answer omits them.
 - **Each instrument has a unit (`UNITS`), and an unknown one stays
   `unknown`.** Yahoo's `INDEX` is `index_points`, ^VIX's and ^TNX's
-  too. Tools compare price levels only within one unit and currency,
-  and across two instruments never in `index_points` or `unknown`: one
-  index's points are no other's (^VIX's volatility, ^TNX's yield).
+  too. Price levels compare only within one unit and currency
+  (`docs/rules.md`, "Validation"; screen's `mixed_units` in
+  `docs/tools.md`).
 
 ## Times, dates and prices
 
@@ -177,7 +177,7 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
 | `sync_runs` | 30 days by `started_at` (`RUNS_KEPT_MS`) |
 | `research` | 24 months by period; the one `metric` row per instrument stays |
 | `events` | 24 months by date, unless a rule waits on the event |
-| `news` | 30 days by `published_at`; all of an untracked instrument |
+| `news` | 30 days by `published_at`, which reads filter to whether or not retention ran; all of an untracked instrument |
 | `news_walks` | all of an untracked instrument (`pruneNews`) |
 | `alerts` | 90 days by `fired_at` (`ALERTS_KEPT_DAYS`) |
 

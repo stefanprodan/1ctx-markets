@@ -217,14 +217,12 @@ the rules tool in `docs/rules.md`; signal rows and returns in
   1ctx's untouched 20-second tool timeout. Each input resolves and
   fetches on its own, so a slow one holds no other; one not done
   answers `timeout` with "retry this symbol".
-- **Nothing starts or lands after the deadline**: source clients are
-  wrapped with `within(live)` (`docs/sources.md`, "Deadlines"), and
-  every fetch checks `live()` after any lock and inside its write, so
-  a late fetch stores nothing. The tracking write is skipped too.
-- **Reads never wait out a back-off** (`failFast()`): while a source's
-  queue is paused, a read answers at once, `rate_limited` after a 429,
-  else `source_error` naming the phrase that paused it, never as if
-  its own answer failed; jobs wait.
+- **Nothing starts or lands after the deadline**: no source call
+  starts past it (`docs/sources.md`, "Deadlines"), a late fetch stores
+  nothing (`docs/storage.md`, "The writer"), and the tracking write is
+  skipped too.
+- **Reads never wait out a back-off**: a paused source answers at once
+  (`docs/sources.md`, "The source queue" and "Refusals").
 - **Concurrent calls share one fetch** (`m.inflight`, `shared()`): a
   caller that joins extends the deadline the fetch's write is held
   to, and a second input naming the same instrument reuses the call's

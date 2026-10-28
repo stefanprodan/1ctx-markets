@@ -177,8 +177,6 @@ Phrases from Yahoo (`docs/sources.md`, Refusals):
   used is stored.
 - **A quote older than the stored one is kept out;** one with the same
   trade time replaces it only when fetched later (`storeQuotes()`).
-- **Every answer's sessions are recorded first,** then quotes and live
-  signal rows; a live row the new session moved past goes.
 - **`hasPrePostMarketData` decides whether a listing has extended
   trading,** never the windows: `currentTradingPeriod` names `pre` and
   `post` for Xetra too, whose flag is false. The client keeps the flag

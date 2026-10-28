@@ -102,15 +102,15 @@ the same commit as the code that changes a rule.
 |---|---|
 | `docs/config.md` | flags, the data directory, key files, the start log, HTTP routes, shutdown order, the build and smoke test |
 | `docs/admin.md` | the admin key, `/api/v1/admin/*` (status, refetch, delete) and the `admin` command |
-| `docs/api.md` | the REST API under `/api/v1`: routes, no paging, errors, keys, caching, the alerts feed, the spec and its contract test, the docs page |
+| `docs/api.md` | the REST API under `/api/v1`: routes and their parameters, no paging, errors, keys, caching, the alerts feed, the spec and its contract test, the docs page |
 | `docs/deploy.md` | the `service` command, launchd, the kill timeout, the log, staging deploys, backups and keys |
 | `docs/storage.md` | the database, migrations, the writer, instruments, times and prices, the clock, runs and staleness, tracking, retention |
 | `docs/calendars.md` | market sessions from the source, quoting and checks, bar dates and finality, weeks, wall time, crypto |
-| `docs/sources.md` | the source queue, deadlines, retries, backfill, splits and rescales, refusals and source ids every source shares |
-| `docs/yahoo.md` | Yahoo's endpoints, parsing, phrases, resolution, bars, splits and rescales, quotes, the lock, the jobs |
-| `docs/fred.md` | FRED: its key, limits, answer checks, series as instruments, bars, the daily job, attribution |
-| `docs/bvb.md` | the Bucharest feed: its pages and chart feed, parsing, the session, quotes, bars and rescales, resolution, switching sources |
-| `docs/research.md` | Finnhub research and earnings events, Massive news, the `research` and `events` tools |
+| `docs/sources.md` | what every source shares: the source queue, the per-instrument lock, deadlines, retries, backfill, splits and rescales, refusals, source ids |
+| `docs/yahoo.md` | Yahoo's endpoints, parsing, its phrases, resolution, bars, its backfill and split checks, quotes and extended hours, its first fetch and the lock, the jobs |
+| `docs/fred.md` | FRED: its key, its call limit, answer checks, series as instruments, bars, the daily job, attribution |
+| `docs/bvb.md` | the Bucharest feed: its pages and chart feed, parsing, the session, quotes, bars and its rescale checks, resolution, switching sources |
+| `docs/research.md` | Finnhub research and earnings events, Massive news, their keys and budgets, the `research` and `events` tools, the research route's contents |
 | `docs/signals.md` | the daily and weekly signals, final and live rows, reading, relative return |
 | `docs/rules.md` | rule conditions, validation, evaluation, the earnings gate, split pauses, the `rules` tool |
 | `docs/tools.md` | the answer contract, arguments, each tool, units and staleness, resolution and the inline fetch, the reads the API shares, tool descriptions |

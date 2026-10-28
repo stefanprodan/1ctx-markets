@@ -72,38 +72,13 @@ consumer each.
 
 ## The research route
 
-- **`sections` picks the parts each share answers** (`metric`,
-  `analysts`, `earnings`, `insider`, `next_event`, `news`; all by
-  default); a Finnhub section left out is not fetched. `since`, with
-  `news` asked, moves the news window's start: a UTC date at most
-  `SINCE_DAYS` back.
-- **Each share is its brief quote with a Finnhub summary and a news
-  week**, under the tool's deadline and tracking. Five symbols at most
-  (`MAX_RESEARCH_SYMBOLS`): a share never fetched costs five Finnhub
-  calls, and the free key allows 60 a minute, shared with the jobs.
-- **Each Finnhub section but `metric` adds `history`**: its newest
-  rows, as the section's page shows them, so a script reads a trend
-  without paging the tool. The counts are fixed (`HTTP_HISTORY`),
-  never arguments, to keep five summaries short: `analysts` two
-  months, the least that shows a direction; `earnings` four quarters,
-  one fiscal year of beats and misses; `insider` the three newest
-  months with a row (Finnhub has none for a month without trades).
-  Rows of another listing follow the section's rules
-  (`docs/research.md`), so `earnings` and `insider` hold none, and
-  `listing` is on the section, not each row. The tool's `overview`
-  carries no history.
-- **`news` is the stored summary of a window; it fetches no news**
-  (`newsWeek()`). The window starts seven days before the call
-  (`WEEK_MS`, the span a daily reader needs) or at `since`, by published
-  time; `counts` cover it and `items` hold the first `WEEK_ITEMS` (3),
-  never an argument, in the summary's order (`docs/research.md`,
-  "News"). A share never walked answers counts of 0 with `stale` saying
-  why; off or not covered answers `NO_NEWS` or `NEWS_NOT_COVERED`.
-- **Its items have caps of their own, a budget that keeps five shares
-  short, not a display width**: title 160 characters (`WEEK_TITLE`),
-  publisher 60, reasoning 280, cut with an ellipsis; a URL over 300
-  answers `url: null`, since a cut link is broken. Any cut or left-out
-  field sets `truncated`. The `news` section keeps the stored caps.
+- **`symbols` takes up to `MAX_RESEARCH_SYMBOLS` (5), `sections` a
+  list of `metric`, `analysts`, `earnings`, `insider`, `next_event`
+  and `news` (all by default), and `since` a UTC date, with `news`
+  asked.** Each share answers its brief quote (above), its research
+  summary with each asked section's `history`, and its news week;
+  what each holds and why is in `docs/research.md` ("The research
+  route").
 
 ## No paging
 

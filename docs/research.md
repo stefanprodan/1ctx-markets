@@ -2,8 +2,9 @@
 
 Governs Finnhub's research and earnings events
 (`src/sources/finnhub/*`), Massive's news (`src/sources/massive/*`),
-the `research` and `events` tools (`src/tools/research.ts`,
-`src/operations/research.ts`, `src/operations/events.ts`), and the
+the `research` and `events` tools and the research route's contents
+(`src/tools/research.ts`, `src/operations/research.ts`,
+`src/operations/events.ts`), and the
 `research`, `events`, `news` and `news_walks` tables
 (`src/storage/db/migrations/0007-research.ts`, `0008-news.ts`,
 `0012-listing.ts`). The queue, deadlines, retries, phrases, scrubbing
@@ -274,12 +275,36 @@ route's transport in `docs/api.md`; rules that wait on events in
   also carries `listing` and the note `OTHER_LISTING`; a share's own
   carries neither.
 
-## Retention
+## The research route
 
-- **Research rows past 24 months by period go; the metric row stays**
-  (`pruneResearch`).
-- **Events past 24 months go unless a rule waits on them.**
-- **News past 30 days by published time goes, and every article and
-  walk of an instrument no longer tracked** (`pruneNews`). Reads filter
-  to 30 days whether or not retention ran.
-- **Retention runs at start and once a day** (`prune` in `src/app.ts`).
+The HTTP route (`researchList()`, transport in `docs/api.md`) answers
+up to five shares at once for scripts, unpaged, so every count here
+is fixed, never an argument, to keep five summaries short.
+
+- **Five symbols** (`MAX_RESEARCH_SYMBOLS`): a share never fetched
+  costs five Finnhub calls, and the free key allows 60 a minute,
+  shared with the jobs.
+- **`sections` picks what each share answers; a Finnhub section left
+  out is not fetched.** Each share is its brief quote with a Finnhub
+  summary and a news week, under the tool's deadline and tracking.
+- **Each Finnhub section but `metric` adds `history`**: its newest
+  rows as the section's page shows them, so a script reads a trend
+  without paging the tool (`HTTP_HISTORY`): `analysts` two months, the
+  least that shows a direction; `earnings` four quarters, one fiscal
+  year of beats and misses; `insider` the three newest months with a
+  row (Finnhub has none for a month without trades). Rows of another
+  listing follow the section's rules, so `earnings` and `insider` hold
+  none, and `listing` is on the section, not each row. The tool's
+  `overview` carries no history.
+- **`news` is the stored summary of a window; it fetches no news**
+  (`newsWeek()`). The window starts seven days before the call
+  (`WEEK_MS`, the span a daily reader needs) or at `since`, at most
+  `SINCE_DAYS` back, by published time; `counts` cover it and `items`
+  hold the first `WEEK_ITEMS` (3) in the summary's order (`topNews`).
+  A share never walked answers counts of 0 with `stale` saying why; off
+  or not covered answers `NO_NEWS` or `NEWS_NOT_COVERED`.
+- **Its items have caps of their own, a budget that keeps five shares
+  short, not a display width**: title 160 characters (`WEEK_TITLE`),
+  publisher 60, reasoning 280, cut with an ellipsis; a URL over 300
+  answers `url: null`, since a cut link is broken. Any cut or left-out
+  field sets `truncated`. The `news` section keeps the stored caps.
