@@ -158,8 +158,8 @@ the rules tool in `docs/rules.md`; signal rows and returns in
   source with no such closes (FRED, the Bucharest feed) or none stored
   in the range is `no_data`, with which in the message.
 - **`previous_close` is what a 5m move is measured from:** the stored
-  quote's previous close when the range starts at the newest session,
-  so a day's move is quote's change, else the last daily close before
+  quote's previous close when the quote's trade date, in the market's
+  zone, is the first session's, so a day's move is quote's change, else the last daily close before
   the first session. Yahoo's previous close for a currency pair is not
   its prior daily bar's close, so the bar never stands in for the quote.
 - **history's `5m` cursor holds the next point's `at` and the resolved

@@ -288,7 +288,7 @@ export const schemas: Record<string, Schema> = {
     ),
     previous_close: note(
       nullable(num),
-      "What a move is measured from: the quote's previous close when the range starts at the newest session, else the last daily close before the first session.",
+      "What a move is measured from: the quote's previous close when the quote's trade date is the first session's, else the last daily close before the first session.",
     ),
     points: list(ref("Point")),
   }),
