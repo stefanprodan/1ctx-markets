@@ -135,7 +135,8 @@ Examples, each created with `symbol` set to the rule's own share:
   `docs/sources.md`, "Splits and rescales").
 - **Until the new session's bars are in, split-sensitive comparisons
   are unknown** (`BARS_PENDING`), since the opening quote may already
-  be on the new scale.
+  be on the new scale. The instrument's own failed bars run counts as
+  not in, though the market's pass succeeded on other listings.
 - **A split pause is final.** `paused` becomes `split` even on a rule
   paused by hand; resuming it answers `split_paused`. The levels are
   from before the split: delete the rule and create it with new ones.
@@ -153,7 +154,9 @@ Examples, each created with `symbol` set to the rule's own share:
 - **create leaves no rule on any failure.** Every symbol resolves and
   is stored inside the call (`readTargets()`, and `researchTargets()`
   for the gate, under one deadline); any error answers without a write.
-  The rule is inserted and first evaluated in one write, and the answer
+  The rule is inserted and first evaluated in one write, which checks
+  every operand is still stored (`not_found` if deleted meanwhile, since
+  no job adds an instrument back), and the answer
   holds the rule, its evaluation and any alert that fired at once. An
   answer too long keeps the result and the first 8 reasons.
 - **list pages rules by id; pause sets or clears a manual pause;

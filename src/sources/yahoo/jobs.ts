@@ -179,7 +179,7 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
           for (const s of a.skipped.slice(answers[k]!.skipped.length)) {
             missing.set(s.symbol!, s.phrase);
             log.warn("yahoo quote missing", {
-              symbol: s.symbol,
+              symbol: s.symbol!,
               error: s.phrase,
             });
           }

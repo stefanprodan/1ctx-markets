@@ -146,11 +146,15 @@ async function bars(
   const at = m.clock.now();
   let written: Written;
   try {
-    if (i.source === YAHOO) {
-      written = await yahooBackfill(yahooCtx(m, live), i, live);
-    } else if (i.source === BVB) {
-      if (m.bvb === null) return OFF;
-      written = await bvbBackfill(bvbCtx(m, m.bvb, live), i, live);
+    if (i.source === YAHOO || i.source === BVB) {
+      if (i.source === YAHOO) {
+        written = await yahooBackfill(yahooCtx(m, live), i, live);
+      } else {
+        if (m.bvb === null) return OFF;
+        written = await bvbBackfill(bvbCtx(m, m.bvb, live), i, live);
+      }
+      // the store's own evaluation ran before its run cleared a failed one
+      await m.writer.write((db) => m.rules.evaluate(db, [i.id], m.clock.now()));
     } else if (i.source === FRED) {
       const fred = m.fred;
       if (fred === null) return OFF;

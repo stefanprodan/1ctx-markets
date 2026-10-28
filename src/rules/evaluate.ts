@@ -4,7 +4,7 @@
 
 import { iso, price, round } from "../market/format.ts";
 import { type Instrument, readInstrument } from "../market/instruments.ts";
-import { barsStale, quoteStale, STALE } from "../market/stale.ts";
+import { barsStale, JOBS, quoteStale, STALE } from "../market/stale.ts";
 import { errorFields, type Log, silent } from "../runtime/log.ts";
 import {
   type InstrumentSignals,
@@ -14,6 +14,7 @@ import {
 import { type EventRow, readEvent } from "../sources/finnhub/read.ts";
 import type { EventKey, Hooks } from "../sources/finnhub/store.ts";
 import type { Db } from "../storage/db/index.ts";
+import { lastRun } from "../storage/runs.ts";
 import {
   type Comparison,
   comparisons,
@@ -212,12 +213,15 @@ function reader(db: Db, now: number, quoteEveryMs: number) {
         ],
       };
     },
+    // its own failed refetch counts too: the market's pass can succeed
+    // without this listing's bars, which are what would show a split
     barsPending(id: string): boolean {
       const i = instrument(id);
       return (
         i !== null &&
         hasQuote(i) &&
-        barsStale(db, i, now).includes(STALE.barsPending)
+        (barsStale(db, i, now).includes(STALE.barsPending) ||
+          lastRun(db, i.source, JOBS.bars, i.id)?.status === "failed")
       );
     },
   };

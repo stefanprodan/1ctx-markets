@@ -67,7 +67,8 @@ is offered over MCP.
   source, as the bar pass does; research and news record their own; a
   quote records none, since a quote run is the market's pass. Nothing
   is marked due, no run is deleted, and a refetch is no read, so it
-  tracks nothing.
+  tracks nothing. Bars evaluate the instrument's rules after the run
+  ends, so a failure the refetch repaired no longer holds them unknown.
 
 ## Delete
 
