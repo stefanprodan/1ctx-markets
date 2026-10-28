@@ -56,14 +56,23 @@ export function parseHistory(input: unknown): HistoryArgs {
     "from",
     "to",
     "benchmark",
+    "extended",
     "next",
   ]);
+  if (
+    f.extended !== undefined &&
+    f.extended !== null &&
+    typeof f.extended !== "boolean"
+  ) {
+    throw new ArgError("extended must be true or false");
+  }
   const args = {
     symbol: text(f.symbol, "symbol"),
     interval: oneOf(f.interval, "interval", ["1d", "1wk", "5m"] as const, "1d"),
     from: date(f.from, "from"),
     to: date(f.to, "to"),
     benchmark: optionalText(f.benchmark, "benchmark"),
+    extended: f.extended === true,
     next: optionalText(f.next, "next", 200),
   };
   if (args.from !== null && args.to !== null && args.from > args.to) {
@@ -71,6 +80,9 @@ export function parseHistory(input: unknown): HistoryArgs {
   }
   if (args.interval === "5m" && args.benchmark !== null) {
     throw new ArgError("benchmark is not taken with interval 5m");
+  }
+  if (args.interval !== "5m" && args.extended) {
+    throw new ArgError("extended is taken with interval 5m only");
   }
   return args;
 }
@@ -284,7 +296,8 @@ export async function historyAnswer(
   args: HistoryArgs,
 ): Promise<ToolResult> {
   if (args.interval === "5m") return intradayAnswer(m, args);
-  const { next, ...asked } = args;
+  // extended is 5m's alone, so a daily cursor reads as it always has
+  const { next, extended: _, ...asked } = args;
   let start: string | null = null;
   if (next !== null) {
     start = readCursor(next, asked);

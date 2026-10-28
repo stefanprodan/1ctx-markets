@@ -13,7 +13,7 @@ import { iso, round } from "../src/market/format.ts";
 import { readInstrument, upsertInstrument } from "../src/market/instruments.ts";
 import { STALE } from "../src/market/stale.ts";
 import { markRead } from "../src/market/tracking.ts";
-import { latestExtended } from "../src/operations/extended.ts";
+import { extendedPoints, latestExtended } from "../src/operations/extended.ts";
 import { CALL_MS, type Markets, markets } from "../src/operations/markets.ts";
 import { moversAnswer, parseMovers } from "../src/operations/movers.ts";
 import { parseQuote, quotePage } from "../src/operations/quote.ts";
@@ -514,4 +514,35 @@ describe("the latest extended bar", () => {
       );
     },
   );
+});
+
+describe("the extended points of a chart's day", () => {
+  test("are the last close of each 5 minutes, pre and post only, in order", async () => {
+    const fx = await recorded(hoodChart());
+    const at = Date.parse(fx.recordedAt);
+    const answer = parseIntraday(fx.body, at);
+    const points = extendedPoints(answer);
+    expect(points.length).toBeGreaterThan(0);
+    const { pre, regular, post } = answer.windows;
+    const inside = (ws: typeof pre, t: number) =>
+      ws.some((w) => t >= w.start && t < w.end);
+    for (const [i, p] of points.entries()) {
+      expect(p.at % (5 * 60_000)).toBe(0);
+      if (i > 0) expect(p.at).toBeGreaterThan(points[i - 1]!.at);
+      expect(inside(regular, p.at)).toBe(false);
+      expect(inside(p.session === "pre" ? pre : post, p.at)).toBe(true);
+    }
+    // a bucket holds its last minute's close
+    const last = points.at(-1)!;
+    const rows = answer.rows.filter(
+      (r) => r.close !== null && r.at >= last.at && r.at < last.at + 300_000,
+    );
+    expect(last.close).toBe(rows.at(-1)!.close!);
+  });
+
+  test("are none for a listing without extended trading", async () => {
+    const fx = await recorded(hoodChart());
+    const answer = { ...parseIntraday(fx.body, Date.now()), prePost: false };
+    expect(extendedPoints(answer)).toEqual([]);
+  });
 });

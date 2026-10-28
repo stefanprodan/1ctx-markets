@@ -15,7 +15,7 @@ import { localDate } from "../market/zone.ts";
 import { ArgError, fields } from "../operations/args.ts";
 import { parseEvents, readEventsOf } from "../operations/events.ts";
 import { basisOf, parseHistory, readHistory } from "../operations/history.ts";
-import { readIntradayHistory } from "../operations/intraday.ts";
+import { extendedOut, readIntradayHistory } from "../operations/intraday.ts";
 import type { ExtendedRead, Markets } from "../operations/markets.ts";
 import { parseMovers, readMovers } from "../operations/movers.ts";
 import {
@@ -144,6 +144,7 @@ async function intraday(
       fetched_at: iso(s.fetchedAt),
     })),
     previous_close: price(read.previousClose),
+    ...extendedOut(read.extended),
     points: read.points.map((p) => ({
       at: iso(p.at),
       session: p.session,
@@ -184,6 +185,7 @@ function reads(m: Markets): Route[] {
           to: "text",
           benchmark: "text",
           ohlc: "boolean",
+          extended: "boolean",
         });
         // a chart's candles and volume; the tools' bars stay close only,
         // so an agent's page holds more of them

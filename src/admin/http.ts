@@ -453,7 +453,11 @@ export async function adminInstrument(
   if (readInstrument(d.m.db, id) === null) {
     return failed({ error: "not_found", message: "no such instrument" });
   }
-  const { rows } = await quoteRows(d.m, parseQuote({ symbols: [id] }));
+  // pre or post trading beside the close, as a chart site shows it
+  const { rows } = await quoteRows(
+    d.m,
+    parseQuote({ symbols: [id], extended: true }),
+  );
   const now = d.m.clock.now();
   const stored = d.m.db
     .query<Stored, [string]>(`${STORED} where i.id = ?1`)

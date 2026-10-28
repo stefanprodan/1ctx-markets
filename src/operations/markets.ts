@@ -95,7 +95,16 @@ export type ExtendedRead =
   | { extended: null; reason: StaleReason };
 
 // by instrument id, for the quote period it was fetched in
-export type ExtendedCache = Map<string, { slot: number; read: ExtendedRead }>;
+export type ExtendedPoint = {
+  at: number;
+  session: "pre" | "post";
+  close: number;
+};
+
+export type ExtendedCache = Map<
+  string,
+  { slot: number; read: ExtendedRead; points: ExtendedPoint[] }
+>;
 
 // a joining caller extends the write's deadline, so it lands while anyone waits
 export function shared<T>(

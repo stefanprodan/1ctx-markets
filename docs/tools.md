@@ -97,7 +97,7 @@ the rules tool in `docs/rules.md`; signal rows and returns in
 | Tool | Takes | Answers |
 |---|---|---|
 | `quote` | `symbols`, `benchmark`, `extended`, `next` | per symbol a `QuoteItem` (`quote.ts`) with `returns`, `session`, with a benchmark `relative_return_1m` and `_3m`, with `extended` true `extended` |
-| `history` | `symbol`, `interval`, `from`, `to`, `benchmark`, `next` | bars oldest first with `final` and signals; `session`; `relative`; with `5m`, `points` and `sessions` |
+| `history` | `symbol`, `interval`, `from`, `to`, `benchmark`, `extended`, `next` | bars oldest first with `final` and signals; `session`; `relative`; with `5m`, `points` and `sessions`, and `extended_points` when `extended` |
 | `search` | `query`, `next` | up to 20 stored matches, then the Bucharest feed's tradable listings while it is on, then Yahoo's, each with id, exchange, type, name, `source`, `stored`; a Bucharest listing adds its `isin` |
 | `movers` | `symbols`, `min_move_pct`, `direction`, `average`, `relation`, `next` | matches by absolute change, largest first; `counts` |
 | `screen` | `symbols`, `filters`, `benchmark`, `sort`, `order`, `fields`, `next` | matches with each used and asked field's value, unit, kind and date; `counts` |
@@ -162,6 +162,13 @@ the rules tool in `docs/rules.md`; signal rows and returns in
   zone, is the first session's, so a day's move is quote's change, else the last daily close before
   the first session. Yahoo's previous close for a currency pair is not
   its prior daily bar's close, so the bar never stands in for the quote.
+- **history's `5m` with `extended=true` adds `extended_points`**: the
+  pre and post trading of the sessions answered, the last close of each
+  5 minutes (`extendedPoints()`), from the same read and cache as
+  quote's `extended`, so a chart costs no call more; so it too runs only
+  while the regular session is closed, a failed read leaves the list
+  empty and the points stand, and nothing of it is stored. Asked with
+  another interval it is `bad_arguments`.
 - **history's `5m` cursor holds the next point's `at` and the resolved
   `from` and `to`**, never a session date, which would repeat a page
   inside a session, so a session added between pages never moves the

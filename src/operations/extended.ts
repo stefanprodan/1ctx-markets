@@ -11,7 +11,12 @@ import { YAHOO } from "../sources/ids.ts";
 import { SourceError } from "../sources/source.ts";
 import type { IntradayAnswer, Window } from "../sources/yahoo/client.ts";
 import { checkAnswer } from "../sources/yahoo/history.ts";
-import { type ExtendedRead, type Markets, shared } from "./markets.ts";
+import {
+  type ExtendedPoint,
+  type ExtendedRead,
+  type Markets,
+  shared,
+} from "./markets.ts";
 
 const none = (reason: StaleReason): ExtendedRead => ({
   extended: null,
@@ -84,6 +89,7 @@ async function readOne(
     m.extended.set(instrument.id, {
       slot: Math.floor(answer.fetchedAt / m.quoteEveryMs),
       read,
+      points: extendedPoints(answer),
     });
     return read;
   } catch (error) {
@@ -93,6 +99,50 @@ async function readOne(
     return none(STALE.extendedFailed);
   }
 }
+
+// the last close of each 5 minutes, as the regular session's points are spaced
+export function extendedPoints(answer: IntradayAnswer): ExtendedPoint[] {
+  if (answer.prePost !== true) return [];
+  const { pre, post } = answer.windows;
+  const step = 5 * MINUTE_MS;
+  const buckets = new Map<number, ExtendedPoint>();
+  for (const r of answer.rows) {
+    if (r.close === null) continue;
+    const session = inside(pre, r.at)
+      ? "pre"
+      : inside(post, r.at)
+        ? "post"
+        : null;
+    if (session === null) continue;
+    const at = r.at - (r.at % step);
+    buckets.set(at, { at, session, close: r.close });
+  }
+  return [...buckets.values()].sort((a, b) => a.at - b.at);
+}
+
+// the same read and cache as the extended price, so a chart costs no call more
+export async function readExtendedPoints(
+  m: Markets,
+  instrument: Instrument,
+  deadline: number,
+): Promise<ExtendedPoint[]> {
+  const read = (await readExtended(m, [instrument], deadline)).get(
+    instrument.id,
+  );
+  // refused (open, none, a failure): a cached answer is not this read's
+  if (read === undefined || REFUSED.has(read.reason)) return [];
+  const cached = m.extended.get(instrument.id);
+  const slot = Math.floor(m.clock.now() / m.quoteEveryMs);
+  return cached?.slot === slot ? cached.points : [];
+}
+
+const REFUSED: ReadonlySet<StaleReason | null> = new Set([
+  STALE.extendedOpen,
+  STALE.extendedNone,
+  STALE.extendedUnreported,
+  STALE.extendedTimeout,
+  STALE.extendedFailed,
+]);
 
 const EXPIRED = Symbol("expired");
 

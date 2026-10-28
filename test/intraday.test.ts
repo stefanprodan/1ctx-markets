@@ -407,6 +407,28 @@ describe("history with interval 5m", () => {
     });
   });
 
+  test("extended is asked with 5m only, and a failed read keeps the answer", async () => {
+    expect(() =>
+      parseHistory({ symbol: "NVDA", interval: "1d", extended: true }),
+    ).toThrow("extended is taken with interval 5m only");
+    expect(() =>
+      parseHistory({ symbol: "NVDA", interval: "5m", extended: "yes" }),
+    ).toThrow("extended must be true or false");
+    const t = setup(Date.parse("2026-10-27T21:22:55Z"));
+    await pass(t, "spark-v7-extended-post-2122");
+    const plain = await history(t.m, { symbol: "US:HOOD", interval: "5m" });
+    expect(plain.body).not.toHaveProperty("extended_points");
+    // the read reaches no network here: it fails and the points stand
+    const asked = await history(t.m, {
+      symbol: "US:HOOD",
+      interval: "5m",
+      extended: true,
+    });
+    expect(asked.error).toBe(false);
+    expect(asked.body.extended_points).toEqual([]);
+    expect(asked.body.points).toEqual(plain.body.points);
+  });
+
   test("refuses benchmark, and answers no_data for a source without points or a range without any", async () => {
     expect(() =>
       parseHistory({ symbol: "NVDA", interval: "5m", benchmark: "^GSPC" }),

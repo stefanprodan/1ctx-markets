@@ -27,7 +27,8 @@ import {
   textResult,
 } from "./answer.ts";
 import { ArgError } from "./args.ts";
-import type { Markets } from "./markets.ts";
+import { readExtendedPoints } from "./extended.ts";
+import type { ExtendedPoint, Markets } from "./markets.ts";
 import { readLatest, sessionOf } from "./quote.ts";
 import { type ItemError, readTargets } from "./targets.ts";
 
@@ -37,6 +38,8 @@ export type IntradayArgs = {
   from: string | null;
   to: string | null;
   benchmark: string | null;
+  // pre and post trading of the sessions asked, never stored
+  extended: boolean;
   next: string | null;
 };
 
@@ -60,6 +63,7 @@ export type IntradayRead =
       points: IntradayPoint[];
       sessions: { session: string; fetchedAt: number }[];
       previousClose: number | null;
+      extended: ExtendedPoint[] | null;
       session: ReturnType<typeof sessionOf>;
       stale: StaleReason[];
     };
@@ -118,7 +122,9 @@ export async function readIntradayHistory(
   args: IntradayArgs,
   page: { from: string; to: string; start: number } | null,
 ): Promise<IntradayRead> {
-  const [target] = await readTargets(m, [args.symbol]);
+  // one budget for the call, the extended read included
+  const deadline = m.clock.now() + m.callMs;
+  const [target] = await readTargets(m, [args.symbol], deadline);
   if ("error" in target!) return { input: target.input, error: target.error };
   const instrument = target.instrument;
   if (instrument.source !== YAHOO) return noData(target.input, NO_SOURCE);
@@ -143,6 +149,12 @@ export async function readIntradayHistory(
   const now = m.clock.now();
   const moving = movingAt(db, instrument, now);
   const sessions = intradaySessions(db, instrument.id, from, to);
+  const days = new Set(sessions.map((s) => s.session));
+  const extended = args.extended
+    ? (await readExtendedPoints(m, instrument, deadline)).filter((p) =>
+        days.has(localDate(instrument.zone, p.at)),
+      )
+    : null;
   return {
     instrument,
     from,
@@ -150,10 +162,22 @@ export async function readIntradayHistory(
     points: stored.map((p) => ({ ...p, final: p.at !== moving })),
     sessions,
     previousClose: previousClose(db, instrument, sessions[0]?.session ?? from),
+    extended,
     session: sessionOf(m, instrument, now),
     stale: readLatest(db, instrument, now, m.quoteEveryMs).stale,
   };
 }
+
+export const extendedOut = (points: ExtendedPoint[] | null) =>
+  points === null
+    ? {}
+    : {
+        extended_points: points.map((p) => ({
+          at: iso(p.at),
+          session: p.session,
+          close: price(p.close),
+        })),
+      };
 
 const POSITION = /^(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})_(\d{1,16})$/;
 
@@ -161,7 +185,9 @@ export async function intradayAnswer(
   m: Markets,
   args: IntradayArgs,
 ): Promise<ToolResult> {
-  const { next, ...asked } = args;
+  // a cursor reads as it did before extended was an argument
+  const { next, extended, ...rest } = args;
+  const asked = extended ? { ...rest, extended } : rest;
   let page: { from: string; to: string; start: number } | null = null;
   if (next !== null) {
     const at = POSITION.exec(readCursor(next, asked) ?? "");
@@ -197,6 +223,7 @@ export async function intradayAnswer(
         fetched_at: iso(s.fetchedAt),
       })),
       previous_close: price(read.previousClose),
+      ...extendedOut(read.extended),
       stale: read.stale,
       next:
         count < points.length

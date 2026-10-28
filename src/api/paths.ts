@@ -221,6 +221,11 @@ export const paths = {
           "`true` adds each bar's open, high, low and volume, for a chart. Default: `false`. Not taken with `5m`.",
           bool,
         ),
+        query(
+          "extended",
+          "With `5m` only: `true` adds `extended_points`, the pre- and post-market closes of the sessions answered, read while the regular session is closed. Default: `false`.",
+          bool,
+        ),
       ],
       responses: reads({
         200: ok("The bars, or the points.", ref("HistoryAnswer")),
