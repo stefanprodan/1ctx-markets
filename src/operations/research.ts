@@ -50,25 +50,20 @@ import {
   timeout,
 } from "./targets.ts";
 
-// headlines the overview shows
 export const HEADLINES = 5;
 // rows a news page reads before fitting them under 32 KiB
 export const NEWS_PAGE_ROWS = 50;
-// the research route's news window without since: the span a daily
-// reader needs
+// the span a daily reader needs, when since is left out
 export const WEEK_MS = 7 * DAY_MS;
-// the research route's news items per share: counts give the balance,
-// a few items the reasons
+// counts give the balance, a few items the reasons
 export const WEEK_ITEMS = 3;
-// a budget that keeps five shares with their history short, not a
-// display width
+// a budget that keeps five shares short, not a display width
 export const WEEK_TITLE = 160;
 export const WEEK_PUBLISHER = 60;
 export const WEEK_REASONING = 280;
 export const WEEK_URL = 300;
-// how far back the news section's since may go: what is kept
+// since goes back only as far as news is kept
 export const SINCE_DAYS = KEPT_MS / DAY_MS;
-// the tool's section names to the stored kinds
 export const KINDS: Record<"analysts" | "earnings" | "insiders", ResearchKind> =
   {
     analysts: "analysts",
@@ -83,9 +78,7 @@ export const SECTION_OF: Record<ResearchKind, Section> = {
   metric: "metric",
 };
 
-// A share never fetched costs five Finnhub calls, and the free key allows
-// 60 a minute shared with the jobs: five shares keep one request well
-// inside it.
+// five never-fetched shares cost 25 of the free key's 60 calls a minute
 export const MAX_RESEARCH_SYMBOLS = 5;
 
 // fixed so five summaries stay short; the reasons are in docs/api.md
@@ -100,10 +93,8 @@ export type Inline =
 
 const EXPIRED = Symbol("expired");
 
-// Each share gets the sections asked that never ended well, so a pass
-// cut short is finished by the next call that needs what it left. The
-// sections fetched land in one write, a passed deadline stores none;
-// news gets its newest page.
+// The next call finishes a pass cut short; its sections land in one write,
+// and a passed deadline stores none.
 export async function researchTargets(
   m: Markets,
   inputs: readonly string[],
@@ -237,7 +228,6 @@ const valuesOf = (kind: ResearchKind, row: Values): Values => {
   return out;
 };
 
-// a row as a section page shows it
 export const rowItem = (kind: ResearchKind, r: ResearchRow) => ({
   period: r.period,
   ...valuesOf(kind, r),
@@ -423,8 +413,6 @@ function weekItem(r: NewsRow) {
   };
 }
 
-// what the research route answers beside each share's quote, by the
-// answer's own field names
 export const RESEARCH_PARTS = [
   "metric",
   "analysts",
@@ -473,9 +461,7 @@ export function parseResearchList(input: unknown): ResearchListArgs {
   return { symbols: list, parts, since };
 }
 
-// Each share's brief quote with its Finnhub summary and stored news,
-// under the same deadline and tracking as the tool; a call fetches the
-// Finnhub sections asked that never ended well, and no news.
+// fetches the Finnhub sections asked that never ended well, but never news
 export async function researchList(m: Markets, args: ResearchListArgs) {
   let since = m.clock.now() - WEEK_MS;
   if (args.since !== null) {

@@ -1,8 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Arguments are checked before anything is fetched, and one the tool
-// does not take is refused rather than ignored.
+// An unknown argument is refused, not ignored, before anything is fetched.
 
 import { wallOfDate } from "../market/zone.ts";
 
@@ -13,11 +12,9 @@ export class ArgError extends Error {
   }
 }
 
-// the longest symbol or name a caller may pass
 export const MAX_SYMBOL = 100;
 
-// a caller's own text quoted back in an error, cut so no error outgrows
-// a page
+// a caller's text quoted in an error is cut so no error outgrows a page
 export const QUOTED = 64;
 export const quoted = (name: string): string =>
   name.length > QUOTED ? `${name.slice(0, QUOTED)}…` : name;

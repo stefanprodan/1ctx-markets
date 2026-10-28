@@ -1,8 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// One JSON text part that fits a client's untouched 32 KiB defaults;
-// nothing is cut inside an item.
+// One text part within a client's untouched 32 KiB default; no item is cut.
 
 import { createHash } from "node:crypto";
 
@@ -18,7 +17,6 @@ export type ToolResult = {
 
 const bytes = (text: string): number => Buffer.byteLength(text);
 
-// the bytes a text takes once quoted inside the result's JSON
 const quotedBytes = (text: string): number => bytes(JSON.stringify(text)) - 2;
 
 const resultBytes = (text: string): number =>
@@ -31,7 +29,7 @@ export function fits(text: string): boolean {
   );
 }
 
-// why a call failed as a whole, in the tool's own error codes
+// a whole call's failure, in the tool's own error codes
 export type Failure = { error: string; message: string } & Record<
   string,
   unknown
@@ -41,9 +39,7 @@ export const textResult = (text: string): ToolResult => ({
   content: [{ type: "text", text }],
 });
 
-// The same one-part form, flagged so a client knows nothing was
-// answered, under the same limits: one too long keeps only its error
-// and a cut message.
+// flagged so a client knows nothing was answered; one too long is cut
 export function errorResult(
   body: { error: string; message: string } & Record<string, unknown>,
 ): ToolResult {
@@ -58,7 +54,6 @@ export function errorResult(
   );
 }
 
-// the result as it goes out, isError included, inside the page
 const sent = (r: ToolResult): boolean =>
   bytes(r.content[0]!.text) <= PAGE_BYTES &&
   bytes(JSON.stringify(r)) + ENVELOPE_BYTES <= PAGE_BYTES;
@@ -70,9 +65,7 @@ export class PageOverflow extends Error {
   }
 }
 
-// The longest prefix of items that fits under the fields shell(count)
-// gives; the items go last, under key. shell sees how many items are in,
-// so a cursor or a line that only some items need can follow them.
+// shell sees the count, so a cursor or a line only some items need fits
 export function fitPage<T>(
   items: readonly T[],
   shell: (count: number) => Record<string, unknown>,
@@ -110,8 +103,7 @@ export function fitPage<T>(
   return { text, count };
 }
 
-// A cursor names where the next page starts and the arguments it
-// continues, so one passed with other arguments is refused.
+// the digest refuses a cursor passed with other arguments
 export function cursor(position: string, args: unknown): string {
   return `${position}~${digest(args)}`;
 }

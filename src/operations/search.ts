@@ -1,9 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// A name or symbol to the instruments it may mean: the stored ones and
-// Yahoo's listings. It fetches no prices and tracks nothing, so a search
-// never keeps an instrument synced.
+// Tracks nothing, so a search never keeps an instrument synced.
 
 import { type Instrument, readInstrument } from "../market/instruments.ts";
 import { candidateOf, TRADABLE } from "../sources/bvb/resolve.ts";
@@ -16,7 +14,6 @@ import { ArgError, fields, optionalText, text } from "./args.ts";
 import type { Markets } from "./markets.ts";
 import { itemError } from "./targets.ts";
 
-// stored matches answered at most
 const STORED = 20;
 
 export type SearchArgs = { query: string; next: string | null };
@@ -169,10 +166,8 @@ async function yahooCandidates(
   }
 }
 
-// The site's search has no type, so the chart feed's names it: the one a
-// stored listing would take, or the feed's own (Structured); a failed or
-// late answer leaves it null. It takes what is left of the search's
-// deadline, so the exchange's side answers within one call's time.
+// The site's search has no type, so the chart feed names it; a failed or
+// late answer leaves it null, within what is left of the search's deadline.
 async function typesOf(
   m: Markets,
   bvb: NonNullable<Markets["bvb"]>,
@@ -192,7 +187,6 @@ async function typesOf(
   }
 }
 
-// the exchange's own listings, tradable only, while the feed is on
 async function bvbCandidates(
   m: Markets,
   query: string,
@@ -234,8 +228,6 @@ async function bvbCandidates(
   }
 }
 
-// Every candidate, stored first, each id once, and the sources that
-// failed beside them.
 export async function searchAll(
   m: Markets,
   query: string,

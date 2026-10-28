@@ -1,9 +1,6 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// What every read shares: the symbols a caller names resolved to stored
-// instruments, never by a guess, and fetched inside the call when the
-// server has no bars for one or no job kept it, all within one deadline.
 // Every instrument answered counts as read, which is what tracks it.
 
 import { dailyRange } from "../market/bars.ts";
@@ -86,8 +83,7 @@ export const candidateItem = (c: Candidate): CandidateItem => ({
   source_symbol: c.sourceSymbol,
 });
 
-// errors a caller can act on, each a fixed message; anything else is
-// logged and answered as a source error
+// anything but these fixed messages is logged and answered as a source error
 export function itemError(m: Markets, error: unknown): ItemError {
   if (error instanceof ResolveError) {
     return { error: "not_found", message: "no listing found; try search" };
@@ -140,8 +136,7 @@ type Step =
 
 const hasBars = (db: Db, id: string) => dailyRange(db, id) !== null;
 
-// The source clients a fetch uses, refusing any call once its deadline
-// passed, so nothing new is asked for an answer no caller waits on.
+// past the deadline, nothing new is asked for an answer no caller waits on
 const yahooCtx = (m: Markets, live: () => boolean) => ({
   db: m.db,
   clock: m.clock,
@@ -210,8 +205,7 @@ function bvbFetchStep(m: Markets, symbol: string, id: string): Step {
   };
 }
 
-// a Bucharest index or bond exists only on the feed, so it has no data
-// while the feed is off
+// a Bucharest index or bond is feed-only: no data while the feed is off
 function bvbStep(m: Markets, instrument: Instrument): Step {
   const bvb = m.bvb;
   if (bvb === null) return noBvb;
@@ -255,10 +249,7 @@ function storedStep(m: Markets, instrument: Instrument): Step {
   };
 }
 
-// A stored key is exact; FRED:<id> is FRED's before anything else, and
-// BVB:<symbol> the feed's while it is on; any other symbol or name goes
-// through Yahoo's rules, beside the exchange's own search while the feed
-// is on, sharing one search with any call resolving the same text.
+// a stored key is exact, never a guess; one search serves every call on a text
 async function step(
   m: Markets,
   input: string,
@@ -341,9 +332,7 @@ export async function readTargets(
   const expired = new Promise<typeof EXPIRED>((resolve) => {
     cancel = m.clock.at(deadline, () => resolve(EXPIRED));
   });
-  // a fetch this call already made, by instrument: a second input
-  // naming it, resolved after the first landed, finds it stored yet not
-  // read, and would catch it up again
+  // a second input naming a fetched instrument would catch it up again
   const fetches = new Map<string, Promise<Instrument>>();
   const one = async (input: string): Promise<Target> => {
     const s = await step(m, input, deadline).catch(
