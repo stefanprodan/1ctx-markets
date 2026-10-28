@@ -207,8 +207,10 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   session's last minutes are lost only when no pass ran between its
   last trade and the next session's start (crypto at 00:00 UTC).
 - **`INTRADAY_SESSIONS` (5) per instrument:** a write drops sessions
-  older than the newest five. A day the server was down is missing,
-  never filled in.
+  older than the newest five. An instrument holding fewer is filled
+  once a process from a five-day chart, which adds only sessions not
+  stored (`addIntraday()`, `docs/yahoo.md`, Jobs); a day missing
+  inside five stored sessions stays missing.
 - **Cleared with the prices:** a source switch's `clear()`, a confirmed
   rescale (`store()` in `src/sources/yahoo/history.ts`; the next quote
   pass refills the session, no ratio is guessed), and the operator's

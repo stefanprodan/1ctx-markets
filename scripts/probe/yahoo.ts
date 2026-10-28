@@ -244,6 +244,15 @@ const CASES: Case[] = [
     name: "spark-v7-extended",
     url: `${Q1}/v7/finance/spark?symbols=HOOD,VWCE.DE,BTC-USD,TLV.RO&range=1d&interval=5m`,
   },
+  // five sessions of regular-hours 5-minute closes, for the points backfill
+  ...["AAPL", "EURUSD=X", "BTC-USD"].map((symbol) => ({
+    name: `chart-${symbol.toLowerCase().replace("=", "-")}-5d-5m`,
+    url: chart(Q1, symbol, {
+      range: "5d",
+      interval: "5m",
+      includePrePost: false,
+    }),
+  })),
   // Yahoo caps a spark call at 20 symbols; 21 is a 400.
   {
     name: "spark-v7-21-symbols",

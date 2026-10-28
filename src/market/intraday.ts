@@ -55,6 +55,30 @@ export function storeIntraday(
   ).run(instrument, INTRADAY_SESSIONS);
 }
 
+// a stored session is the quote passes', which keep it current
+export function addIntraday(
+  db: Db,
+  instrument: string,
+  zone: string,
+  points: readonly Point[],
+  fetchedAt: number,
+): string[] {
+  const stored = new Set(storedSessions(db, instrument));
+  const fresh = points.filter((p) => !stored.has(localDate(zone, p.at)));
+  storeIntraday(db, instrument, zone, fresh, fetchedAt);
+  return storedSessions(db, instrument).filter((s) => !stored.has(s));
+}
+
+export function storedSessions(db: Db, instrument: string): string[] {
+  return db
+    .query<{ session: string }, [string]>(
+      `select distinct session from intraday where instrument = ?
+       order by session`,
+    )
+    .all(instrument)
+    .map((r) => r.session);
+}
+
 export function clearIntraday(db: Db, instrument: string): void {
   db.query("delete from intraday where instrument = ?").run(instrument);
 }

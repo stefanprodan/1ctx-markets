@@ -85,6 +85,8 @@ export const INTRADAY_RANGE = "2d";
 
 export type SparkQuote = ChartMeta & { points: Point[] };
 
+export type PointsAnswer = ChartMeta & { points: Point[]; fetchedAt: number };
+
 export type SparkAnswer = {
   quotes: SparkQuote[];
   skipped: { symbol: string | null; phrase: Phrase }[];
@@ -108,6 +110,7 @@ export type Yahoo = {
   // from and to in UTC epoch ms
   chart(symbol: string, from: number, to: number): Promise<ChartAnswer>;
   intraday(symbol: string): Promise<IntradayAnswer>;
+  points(symbol: string): Promise<PointsAnswer>;
   // the listing's hasPrePostMarketData from the last answer naming it
   prePost(symbol: string): boolean | undefined;
   spark(symbols: readonly string[]): Promise<SparkAnswer>;
@@ -351,19 +354,30 @@ export function parseIntraday(
 const FIRST_POINT = Date.UTC(1970, 0, 1);
 const LAST_POINT = Date.UTC(2200, 0, 1);
 
+function closesOf(rows: readonly ChartRow[]): Point[] {
+  const out: Point[] = [];
+  for (const row of rows) {
+    if (row.at < FIRST_POINT || row.at >= LAST_POINT) {
+      throw malformed("timestamp out of range");
+    }
+    if (row.close !== null) out.push({ at: row.at, close: row.close });
+  }
+  return out;
+}
+
 // a bad series never costs the price: it gives no points
 function sparkPoints(response: Obj): Point[] {
   try {
-    const out: Point[] = [];
-    for (const row of parseRows(response)) {
-      if (row.at < FIRST_POINT || row.at >= LAST_POINT) return [];
-      if (row.close !== null) out.push({ at: row.at, close: row.close });
-    }
-    return out;
+    return closesOf(parseRows(response));
   } catch (error) {
     if (error instanceof SourceError) return [];
     throw error;
   }
+}
+
+export function parsePoints(body: unknown, fetchedAt: number): PointsAnswer {
+  const { rows, splits, firstTrade, ...meta } = parseChart(body, fetchedAt);
+  return { ...meta, points: closesOf(rows) };
 }
 
 // Each entry is read on its own, so one bad symbol skips only itself;
@@ -509,6 +523,15 @@ export function yahoo(options: YahooOptions): Yahoo {
         });
         const url = `${host}/v8/finance/chart/${encodeURIComponent(symbol)}?${params}`;
         return seen(await get(url, run, parseIntraday));
+      },
+      async points(symbol) {
+        const params = new URLSearchParams({
+          range: "5d",
+          interval: "5m",
+          includePrePost: "false",
+        });
+        const url = `${host}/v8/finance/chart/${encodeURIComponent(symbol)}?${params}`;
+        return seen(await get(url, run, parsePoints));
       },
       prePost: (symbol) => prePost.get(symbol),
       spark,

@@ -509,40 +509,43 @@ export function settleStored(db: Db, now: number): void {
        and upper(type) = 'CURRENCY' order by id`,
     )
     .all(SOURCE);
+  for (const { id } of pairs) settleBars(db, readInstrument(db, id)!, now);
+}
+
+export function settleBars(db: Db, instrument: Instrument, now: number): void {
+  if (!isCurrency(instrument.type)) return;
+  const id = instrument.id;
   const update = db.query(
     `update bars set close = ?, point_close = ?
      where instrument = ? and interval = '1d' and date = ?`,
   );
-  for (const { id } of pairs) {
-    const instrument = readInstrument(db, id)!;
-    const stored = db
-      .query<
-        Omit<Bar, "final"> & { final: number; pointClose: number },
-        [string]
-      >(
-        `select date, open, high, low, close, volume, final,
-           point_close as pointClose
-         from bars where instrument = ? and interval = '1d' order by date`,
-      )
-      .all(id);
-    const { bars, pointCloses } = settle(
-      db,
-      instrument,
-      stored.map((b) => ({ ...b, final: b.final === 1 })),
-    );
-    let changedFrom: string | null = null;
-    bars.forEach((b, k) => {
-      const s = stored[k]!;
-      const point = pointCloses.has(b.date) ? 1 : 0;
-      if (b.close === s.close && point === s.pointClose) return;
-      update.run(b.close, point, id, b.date);
-      if (b.close !== s.close) changedFrom ??= b.date;
-    });
-    if (changedFrom === null) continue;
-    const latest = readSession(db, instrument.market);
-    rebuildWeeks(db, id, latest, now, changedFrom);
-    signalsAfterBars(db, instrument, changedFrom, now);
-  }
+  const stored = db
+    .query<
+      Omit<Bar, "final"> & { final: number; pointClose: number },
+      [string]
+    >(
+      `select date, open, high, low, close, volume, final,
+         point_close as pointClose
+       from bars where instrument = ? and interval = '1d' order by date`,
+    )
+    .all(id);
+  const { bars, pointCloses } = settle(
+    db,
+    instrument,
+    stored.map((b) => ({ ...b, final: b.final === 1 })),
+  );
+  let changedFrom: string | null = null;
+  bars.forEach((b, k) => {
+    const s = stored[k]!;
+    const point = pointCloses.has(b.date) ? 1 : 0;
+    if (b.close === s.close && point === s.pointClose) return;
+    update.run(b.close, point, id, b.date);
+    if (b.close !== s.close) changedFrom ??= b.date;
+  });
+  if (changedFrom === null) return;
+  const latest = readSession(db, instrument.market);
+  rebuildWeeks(db, id, latest, now, changedFrom);
+  signalsAfterBars(db, instrument, changedFrom, now);
 }
 
 // an ok run in the instrument's scope clears only its own failed refetch;

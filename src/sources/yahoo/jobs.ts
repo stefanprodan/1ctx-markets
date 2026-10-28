@@ -13,7 +13,7 @@ import {
   Moved,
   readInstrument,
 } from "../../market/instruments.ts";
-import { newestSession } from "../../market/intraday.ts";
+import { INTRADAY_SESSIONS, newestSession } from "../../market/intraday.ts";
 import type { QuoteRow } from "../../market/quotes.ts";
 import { barsDue, JOBS, owedDue } from "../../market/stale.ts";
 import {
@@ -37,11 +37,13 @@ import { RETRY_MS } from "../history.ts";
 import { type Phrase, phraseOf, SourceError } from "../source.ts";
 import { SOURCE, type SparkAnswer } from "./client.ts";
 import { refuseForeign, storeQuotes } from "./quotes.ts";
-import { backfill, refetch, type YahooContext } from "./sync.ts";
+import { backfill, fillSessions, refetch, type YahooContext } from "./sync.ts";
 
 export const TICK_MS = MINUTE_MS;
 export { RETRY_MS };
 export const BACKFILL_JOB = "backfill";
+// one call at a time leaves the queue's other slot to quotes and reads
+export const FILLS_PER_TURN = 5;
 
 export type JobsOptions = {
   ctx: YahooContext;
@@ -74,6 +76,7 @@ export type YahooJobs = {
   quoteTick(): Promise<Omit<TickReport, "bars">>;
   barTick(): Promise<BarPass[]>;
   backfillTurn(): Promise<string | null>;
+  fillTurn(): Promise<string[]>;
   schedule(jobs: Scheduler): void;
 };
 
@@ -105,6 +108,8 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
   };
   const backfillMissed = new Map<string, number>();
   const filled = new Set<string>();
+  // once a process, so a listing short of five sessions is not asked again
+  const fillAsked = new Set<string>();
 
   function plan(
     markets: Map<string, Instrument[]>,
@@ -422,11 +427,42 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
     return instrument.id;
   }
 
+  async function fillTurn(): Promise<string[]> {
+    const wanted = trackedIds(db, clock.now(), tracking);
+    const short = db
+      .query<{ id: string }, [string, number]>(
+        `select id from instruments i where source = ?
+           and (select count(distinct session) from intraday
+             where instrument = i.id) < ?
+         order by added_at, id`,
+      )
+      .all(SOURCE, INTRADAY_SESSIONS)
+      .map((r) => r.id)
+      .filter((id) => wanted.has(id) && !fillAsked.has(id))
+      .slice(0, FILLS_PER_TURN);
+    for (const id of short) {
+      fillAsked.add(id);
+      const instrument = readInstrument(db, id);
+      if (instrument === null) continue;
+      try {
+        await fillSessions(ctx, instrument);
+      } catch (e) {
+        if (e instanceof Moved) continue;
+        log.warn("yahoo sessions failed", {
+          instrument: id,
+          error: phraseOf(e),
+        });
+      }
+    }
+    return short;
+  }
+
   return {
     tick,
     quoteTick,
     barTick,
     backfillTurn,
+    fillTurn,
     schedule(jobs) {
       jobs.every("yahoo", TICK_MS, async () => {
         await quoteTick();
@@ -434,8 +470,9 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
       jobs.every("yahoo-bars", TICK_MS, async () => {
         await barTick();
       });
+      // the sessions wait for any 10-year history first
       jobs.every("yahoo-backfill", TICK_MS, async () => {
-        await backfillTurn();
+        if ((await backfillTurn()) === null) await fillTurn();
       });
     },
   };

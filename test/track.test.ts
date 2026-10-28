@@ -97,11 +97,15 @@ describe("--track", () => {
           { value: "GC=F", id: GOLD, state: "tracked" },
         ]);
         // resolved once: a later period asks nothing more of it
-        const asked = s.calls.charts("^DJI").length;
+        const daily = () =>
+          s.calls
+            .charts("^DJI")
+            .filter((u) => u.searchParams.get("interval") === "1d");
+        const asked = daily().length;
         await t.clock.advance(PERIOD);
         await t.app.tracker.settled();
         expect(s.calls.searches()).toHaveLength(0);
-        expect(s.calls.charts("^DJI").length).toBe(asked);
+        expect(daily().length).toBe(asked);
       },
       { fetch: s.fetch, start: NOW, track: ["^DJI", "GC=F"] },
     );

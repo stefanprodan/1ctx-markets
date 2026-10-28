@@ -12,12 +12,13 @@ finality in `docs/calendars.md`; tables, the writer and staleness in
 
 ## Endpoints
 
-- **Four calls on `query1.finance.yahoo.com`, no cookie or crumb:**
+- **Five calls on `query1.finance.yahoo.com`, no cookie or crumb:**
 
 | Call | Path | Used for |
 | --- | --- | --- |
 | `chart` | `/v8/finance/chart/<symbol>?period1&period2&interval=1d&events=div,split` | daily bars, splits, one listing's meta |
 | `intraday` | `/v8/finance/chart/<symbol>?interval=1m&range=2d&includePrePost=true` | quote's `extended`: minute bars with pre and post trading, and each window |
+| `points` | `/v8/finance/chart/<symbol>?range=5d&interval=5m&includePrePost=false` | up to five sessions of regular-hours 5-minute closes, for the fill |
 | `spark` | `/v7/finance/spark?symbols=<list>&range=1d&interval=5m&_=<now>` | quotes, sessions and 5-minute closes, up to 20 symbols |
 | `search` | `/v1/finance/search?q&quotesCount=10&newsCount=0&listsCount=0` | listings for a bare symbol or a name |
 
@@ -55,6 +56,9 @@ finality in `docs/calendars.md`; tables, the writer and staleness in
   `timestamp`, columns that do not parse, or a stamp outside 1970 to
   2200, has no points and keeps its quote: a bad series never costs the
   price, nor rolls back the quote's write.
+- **A `points` answer is read as a chart:** its closes, nulls dropped,
+  dated like a spark entry's; a series that does not parse fails the
+  call, since the answer holds nothing else.
 - **A meta's day high or low of 0 is none:** an index's meta can read
   0 while its bars do not.
 - **A `CURRENCY` meta with no currency takes it from its symbol**
@@ -246,8 +250,9 @@ Phrases from Yahoo (`docs/sources.md`, Refusals):
   once by the same job. What is due is read from the stored sessions
   and runs, so a restart picks up where it was, except three marks held
   in memory that a restart clears: refused whole histories (`refused`
-  in `sync.ts`), failed backfills (`backfillMissed`) and each market's
-  check turn (`checkTurn`, both in `jobs.ts`). The quote period last
+  in `sync.ts`), failed backfills (`backfillMissed`), each market's
+  check turn (`checkTurn`) and the sessions fills asked (`fillAsked`,
+  all in `jobs.ts`). The quote period last
   passed is checked per market on the first tick (`lastPassAt()`: that
   market's pass, never an instrument's read, nor one cut by shutdown),
   so a restart or a deploy never repeats a market's quote pass within
@@ -261,7 +266,22 @@ Phrases from Yahoo (`docs/sources.md`, Refusals):
 | `yahoo` check | one instrument per closed market at `nextCheck()`, round-robin; a market with no session on each period; in the same spark calls |
 | `yahoo-bars` (`barTick`) | 30-day refetch per market whose session moved on (`barsDue()`), plus one whole history per split or rescale; owed instruments again every `OWED_RETRY_MS` (`owedDue()`) |
 | `yahoo-backfill` (`backfillTurn`) | one tracked instrument with no bars per turn, one 10-year chart; a failure or empty answer waits `RETRY_MS` |
+| `yahoo-backfill` (`fillTurn`) | in a turn with no 10-year chart due, up to `FILLS_PER_TURN` (5) tracked instruments holding fewer than `INTRADAY_SESSIONS` sessions, one `points` call each, one at a time |
 
+- **The fill adds only sessions not stored** (`fillSessions()` in
+  `sync.ts`, `addIntraday()`): a session the quote passes stored is
+  never replaced, and the split rule and the five-session prune hold
+  as for any answer. It holds the instrument's lock like a refetch, so
+  a rescale's clear never meets an older answer. A currency pair whose
+  sessions it filled settles its stored days again (`settleBars()`),
+  weeks and signals following, so its filled final days close at the
+  session's last point. Each instrument is asked once a process,
+  answered or not, so a listing with fewer than five sessions, or none
+  at 5 minutes, is not asked each turn; a restart asks it once more.
+  Five a turn, one call at a time, keep the queue's other slot for
+  quote passes and reads, and fill a hundred instruments in twenty
+  minutes; storing began with the deploy, so without it 5D shows one
+  day until five sessions pass.
 - **The check instrument rotates per market** (`checkTurn`), so one
   that never answers cannot hide a new session from the rest.
 - **A market closed before the process started gets one check of every
