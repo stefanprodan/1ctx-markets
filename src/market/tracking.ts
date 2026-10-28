@@ -1,8 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// No ticker list: tracked means read within the window or read by a rule;
-// searches and jobs never count.
+// Tracked means read within the window or by a rule; searches and jobs don't.
 
 import { ruleInstruments } from "../rules/store.ts";
 import { DAY_MS } from "../runtime/clock.ts";
@@ -21,8 +20,7 @@ export function markRead(db: Db, ids: Iterable<string>, now: number): void {
   for (const id of new Set(ids)) update.run(now, id);
 }
 
-// The instruments read within the window and every one a rule reads,
-// paused or not, so every job follows the same set.
+// read within the window, plus every one a rule reads, paused or not
 export function trackedIds(
   db: Db,
   now: number,

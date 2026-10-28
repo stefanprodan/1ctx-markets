@@ -1,7 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// The latest quote per instrument, whichever source gave it.
 
 import type { Db } from "../storage/db/index.ts";
 

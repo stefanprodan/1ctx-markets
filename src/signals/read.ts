@@ -1,9 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// What the tools read: the latest signal rows with why they may be
-// behind, and relative return, computed on read for the benchmark the
-// caller names rather than stored for every pair.
+// Relative return is computed on read, not stored for every benchmark pair.
 
 import type { Interval } from "../market/bars.ts";
 import { weekOf } from "../market/calendars.ts";
@@ -173,9 +171,8 @@ function closesFrom(
   };
 }
 
-// The closes that reach back to anchor(end) for every end they can
-// have, read from there instead of every stored bar: the end is never
-// before the last final close.
+// read back only to anchor(end) for every end it can have, not every stored
+// bar; the end is never before the last final close
 export function readCloses(
   db: Db,
   id: string,
@@ -197,7 +194,6 @@ export function readCloses(
   }
 }
 
-// What a relative return reads of one listing, kept to be read again.
 export type Side = {
   instrument: Instrument;
   closes: readonly Close[];

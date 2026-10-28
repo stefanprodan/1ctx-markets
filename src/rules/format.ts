@@ -1,11 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// The rule format: a small fixed JSON tree of comparisons under all and
-// any, never an expression language, so every rule is checked once here
-// and read the same way by evaluation, tracking and the tools. A stored
-// condition names every instrument by its id and binds its earnings gate
-// to one fiscal quarter.
+// A fixed JSON tree of comparisons, never an expression language.
 
 import type { Instrument } from "../market/instruments.ts";
 import type { DailyRow } from "../signals/daily.ts";
@@ -68,8 +64,6 @@ const weekly = (key: WeeklyKey, unit: string): FieldDef => ({
   unit,
 });
 
-// The quote fields, the signal columns of the live daily and weekly
-// rows by their row names, and relative return computed on read.
 export const FIELDS: Readonly<Record<string, FieldDef>> = {
   price: quote("price", PRICE_LEVEL),
   // yesterday's close: a comparison needs another, live, side
@@ -387,8 +381,6 @@ export function inputSymbols(c: InputCondition): string[] {
   return [...new Set(out)];
 }
 
-// The caller's condition with each symbol replaced by its instrument id,
-// the rule's own filled in, and the gate bound to its event.
 export function bindCondition(
   c: InputCondition,
   own: string,
@@ -430,9 +422,8 @@ export function instrumentsOf(c: Condition): Set<string> {
 
 const isPriceLevel = (o: Operand) => FIELDS[o.field]!.unit === PRICE_LEVEL;
 
-// A split rescales instrument's price levels: a comparison of one with
-// a fixed number or with another listing's price no longer means what
-// it did. Against its own average or high it still does.
+// a split rescales the instrument's price levels: against a fixed number or
+// another listing's price a comparison changes meaning; against its average not
 export function splitSensitive(c: Comparison, instrument: string): boolean {
   const sides = operands(c).filter(
     (o) => o.symbol === instrument && isPriceLevel(o),
@@ -452,9 +443,8 @@ export function isLive(o: Operand, i: Pick<Instrument, "source">): boolean {
   return def.from !== "quote" || def.live;
 }
 
-// a price level in a unit the source does not name, such as a future's
-// price per barrel or per bond, or in one index's points, which are no
-// other index's: ^VIX's volatility, ^TNX's yield
+// a price level in a unit the source does not name (a future's per barrel or
+// per bond) or in one index's points, no other's: ^VIX volatility, ^TNX yield
 const unknownUnit = (o: Operand, i: Instrument): boolean =>
   FIELDS[o.field]!.unit === PRICE_LEVEL &&
   (i.unit === "unknown" || i.unit === "index_points");

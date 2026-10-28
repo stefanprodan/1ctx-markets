@@ -1,7 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// The time and number forms every answer uses, MCP and REST alike.
 
 // UTC to the second; null stays null
 export const iso = (ms: number | null): string | null =>
