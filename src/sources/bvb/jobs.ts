@@ -26,13 +26,8 @@ import { endRun, failRun, lastStarted, startRun } from "../../storage/runs.ts";
 import { WriterClosed } from "../../storage/writer.ts";
 import { RETRY_MS } from "../history.ts";
 import { phraseOf, QueueClosed, SourceError } from "../source.ts";
-import {
-  type ListKind,
-  type ListRow,
-  MARKET,
-  type Schedule,
-  SOURCE,
-} from "./client.ts";
+import { type ListKind, MARKET, SOURCE } from "./client.ts";
+import type { ListRow, Schedule } from "./parse.ts";
 import {
   detailQuote,
   indexQuote,

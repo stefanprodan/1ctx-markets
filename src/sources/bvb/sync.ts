@@ -22,7 +22,7 @@ import type { Db } from "../../storage/db/index.ts";
 import type { Writer } from "../../storage/writer.ts";
 import { backfillStart, REFETCH_DAYS } from "../history.ts";
 import { expired, Refused, SourceError } from "../source.ts";
-import { type Bvb, type History, MARKET, type Meta, SOURCE } from "./client.ts";
+import { type Bvb, MARKET, SOURCE } from "./client.ts";
 import {
   barsAnswered,
   barsOf,
@@ -31,6 +31,7 @@ import {
   storeWhole,
   storeWindow,
 } from "./history.ts";
+import type { History, Meta } from "./parse.ts";
 import { detailQuote, indexQuote, storeBvbQuotes } from "./quotes.ts";
 
 // db is for reads; every write goes through writer

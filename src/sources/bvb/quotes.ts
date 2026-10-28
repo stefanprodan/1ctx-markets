@@ -11,14 +11,8 @@ import { NO_RULES, type RuleHooks } from "../../rules/hooks.ts";
 import { DAY_MS, MINUTE_MS } from "../../runtime/clock.ts";
 import { pruneLive, refreshLive } from "../../signals/store.ts";
 import type { Db } from "../../storage/db/index.ts";
-import {
-  type Detail,
-  type IndexRow,
-  type ListRow,
-  MARKET,
-  type Schedule,
-  SOURCE,
-} from "./client.ts";
+import { MARKET, SOURCE } from "./client.ts";
+import type { Detail, IndexRow, ListRow, Schedule } from "./parse.ts";
 
 // the schedule's times on now's local date
 export function sessionOf(zone: string, s: Schedule, now: number): Session {

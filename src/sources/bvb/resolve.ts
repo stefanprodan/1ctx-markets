@@ -19,7 +19,8 @@ import {
   ResolveError,
   resolve as resolveYahoo,
 } from "../yahoo/resolve.ts";
-import { type Bvb, type Listing, MARKET, SOURCE } from "./client.ts";
+import { type Bvb, MARKET, SOURCE } from "./client.ts";
+import type { Listing } from "./parse.ts";
 import { keyOf } from "./sync.ts";
 
 export type Resolution =

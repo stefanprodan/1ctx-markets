@@ -27,7 +27,8 @@ import type { Db } from "../../storage/db/index.ts";
 import { endRun, startRun } from "../../storage/runs.ts";
 import { rescaleOf, sameRatio } from "../history.ts";
 import { SourceError } from "../source.ts";
-import { type History, MARKET, SOURCE } from "./client.ts";
+import { MARKET, SOURCE } from "./client.ts";
+import type { History } from "./parse.ts";
 
 // a close this far from the stored one has moved
 const MOVED = 0.0001;
