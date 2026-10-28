@@ -61,11 +61,12 @@ export function until(at: string | null, now: number): string {
 }
 export type Tone = "done" | "failed" | "running" | "stopped";
 
+// from the counts, not the last run: they skip what a later run settled
 export const jobTone = (j: JobStatus): Tone =>
-  j.last.status === "running"
-    ? "running"
-    : j.last.status === "failed" || j.failing_scopes > 0
-      ? "failed"
+  j.failing_scopes > 0
+    ? "failed"
+    : j.last.status === "running"
+      ? "running"
       : "done";
 
 // the state in an on source's card head
@@ -134,12 +135,8 @@ export function groups(
 export function switchFailure(jobs: readonly JobStatus[]): string | null {
   const j = jobs.find((x) => x.source === "sources" && x.job === "switch");
   if (j === undefined) return null;
-  const f =
-    j.failing[0] ??
-    (j.last.status === "failed"
-      ? { scope: j.last.scope, error: j.last.error }
-      : null);
-  if (f === null) return null;
+  const f = j.failing[0];
+  if (f === undefined) return null;
   const market = f.scope === null ? "a market" : `market ${f.scope}`;
   return `Source change for ${market} failed: ${f.error ?? "failed"}. Its prices stay stale until a retry succeeds.`;
 }

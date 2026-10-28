@@ -52,20 +52,11 @@ export function JobDetails({ job: j }: { job: JobStatus }) {
   return (
     <div class="srv-details">
       {j.about !== null && <p class="srv-about">{j.about}</p>}
-      {j.failing.length === 0 && j.last.status !== "failed" ? (
+      {j.failing.length === 0 ? (
         <p class="srv-ok">{allOk(j)}</p>
       ) : (
         <ul class="srv-failing">
-          {(j.failing.length > 0
-            ? j.failing
-            : [
-                {
-                  scope: j.last.scope,
-                  error: j.last.error,
-                  at: j.last.ended_at,
-                },
-              ]
-          ).map((x) => (
+          {j.failing.map((x) => (
             <li key={x.scope ?? ""}>
               <span class="srv-failing-scope">{x.scope ?? ""}</span>
               <span class="status-failed">{x.error ?? "failed"}</span>

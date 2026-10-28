@@ -556,11 +556,17 @@ describe("the views", () => {
     expect(bad).toContain("no bars");
     expect(bad).toContain("5 more failing");
     expect(bad).not.toContain("ok.");
-    // a failed run whose scope the server did not name still says why
-    const unnamed = render(
-      <JobDetails job={{ ...daily!, failing: [], failing_scopes: 0 }} />,
-    );
-    expect(unnamed).toContain("no bars");
+    // a last run that failed but a later read settled reads from the counts
+    const settled = {
+      ...daily!,
+      failing: [],
+      failing_scopes: 0,
+      failing_instruments: 0,
+    };
+    expect(jobTone(settled)).toBe("done");
+    const done = render(<JobDetails job={settled} />);
+    expect(done).toContain("All 14 instruments ok.");
+    expect(done).not.toContain("no bars");
   });
 
   test("status leaves out what is empty", () => {

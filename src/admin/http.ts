@@ -12,6 +12,7 @@ import type { TrackState } from "../operations/track.ts";
 import { instrumentsOf } from "../rules/format.ts";
 import { readRules, ruleInstruments } from "../rules/store.ts";
 import { sourceFile } from "../runtime/keys.ts";
+import { YAHOO } from "../sources/ids.ts";
 import type { Backoff } from "../sources/source.ts";
 import { BACKFILL_JOB } from "../sources/yahoo/jobs.ts";
 import type { Db } from "../storage/db/index.ts";
@@ -213,7 +214,11 @@ function jobs(db: Db) {
     // a run from before backfill runs had a scope names nothing
     if (r.scope === null) continue;
     // a read fetches a history without a backfill run, which settles it
-    const settled = r.job === BACKFILL_JOB && hasBars.get(r.scope) !== null;
+    const settled =
+      r.status === "failed" &&
+      r.source === YAHOO &&
+      r.job === BACKFILL_JOB &&
+      hasBars.get(r.scope) !== null;
     const key = `${r.source}|${r.job}`;
     const n = scopes.get(key) ?? {
       instruments: 0,
