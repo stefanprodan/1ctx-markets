@@ -11,7 +11,7 @@ import { SERVER_NAME } from "../src/server/mcp.ts";
 import { mcpAnswers } from "./helpers/answers.ts";
 import { withApp } from "./helpers/app.ts";
 
-// recorded from the tools before the API shared their code
+// never re-recorded: a change meant to keep the answers must match it
 const ANSWERS = join(import.meta.dir, "fixtures", "mcp", "answers.json");
 
 describe("the MCP endpoint", () => {

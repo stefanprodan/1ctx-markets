@@ -69,8 +69,7 @@ async function setup() {
       pacedOf(m),
       handle(new Request(`http://markets.test${PREFIX}${path}`, init)),
     );
-  // a call whose symbol is held past the deadline, then let go, since
-  // it holds one of the source queue's slots
+  // held past the deadline, then let go, since it holds a source queue slot
   const late = async (symbol: string, path: string, init: RequestInit = {}) => {
     const g = gate();
     gates.set(symbol, g);
@@ -243,7 +242,6 @@ describe("every operation", () => {
     };
     const wrong = { headers: { authorization: "Bearer wrong" } };
 
-    // quotes
     await check(
       "GET",
       "/quotes",
@@ -258,7 +256,6 @@ describe("every operation", () => {
       401,
     );
 
-    // history
     const h = await check(
       "GET",
       "/history",
@@ -283,12 +280,10 @@ describe("every operation", () => {
     const slow = await t.late("SLOWA.DE", "/history?symbol=SLOWA.DE");
     expect((await check("GET", "/history", slow, 503)).error).toBe("timeout");
 
-    // search
     await check("GET", "/search", await t.call("/search?query=NVDA"), 200);
     await check("GET", "/search", await t.call("/search"), 400);
     await check("GET", "/search", await t.call("/search?query=A", wrong), 401);
 
-    // research
     const r = await check(
       "GET",
       "/research",
@@ -314,7 +309,6 @@ describe("every operation", () => {
       401,
     );
 
-    // events
     const e = await check(
       "GET",
       "/events",
@@ -330,7 +324,6 @@ describe("every operation", () => {
       401,
     );
 
-    // movers
     await check(
       "GET",
       "/movers",
@@ -350,7 +343,6 @@ describe("every operation", () => {
       401,
     );
 
-    // screen
     const screen = {
       symbols: ["NVDA", "^GSPC"],
       filters: [{ field: "rsi14", min: 0 }],
@@ -412,7 +404,6 @@ describe("every operation", () => {
     // alerts before any fired
     await check("GET", "/alerts", await t.call("/alerts"), 204);
 
-    // rules
     const rule = {
       symbol: "NVDA",
       condition: { left: "price", op: "<", right: 211 },
@@ -540,7 +531,6 @@ describe("every operation", () => {
     );
     await check("GET", "/alerts", await t.call("/alerts", wrong), 401);
 
-    // admin
     await check("GET", "/admin/status", await t.call("/admin/status"), 200);
     await check("GET", "/admin/status", await t.call("/admin/status?x=1"), 400);
     await check(
@@ -627,7 +617,6 @@ describe("every operation", () => {
       401,
     );
 
-    // public
     await check("GET", "/openapi.json", await t.call("/openapi.json"), 200);
     await check("GET", "/openapi.json", await t.call("/openapi.json?x=1"), 400);
     await check("GET", "/docs", await t.call("/docs"), 200);

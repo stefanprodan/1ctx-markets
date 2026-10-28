@@ -74,14 +74,12 @@ const IDS = LISTINGS.map((l) => l.id);
 
 const chartName = (symbol: string) =>
   `chart-${symbol.toLowerCase().replace(".", "-")}-1d-1m-prepost-${POST}`;
-// what the client asks for HOOD
 const HOOD_CHART = `chart-hood-2d-1m-prepost-${POST}`;
 
 const intraday = (url: URL) =>
   url.searchParams.get("includePrePost") === "true";
 
-// The four listings stored, read and quoted from the recorded spark
-// answer, so a quote fetches nothing but the extended charts.
+// a quote fetches nothing but the extended charts
 async function setup(
   options: { hold?: (url: URL) => Promise<undefined> | undefined } = {},
 ) {
@@ -264,8 +262,7 @@ describe("quote extended", () => {
     await t.clock.advance(t.m.quoteEveryMs);
     await ask(t.m);
     expect(t.charted("HOOD")).toHaveLength(2);
-    // past the post window and before the next pre window, the last
-    // post bar is still the newest price
+    // overnight, the last post bar is still the newest price
     await t.clock.advance(Date.parse("2026-10-28T01:00:00Z") - t.clock.now());
     const night = await ask(t.m);
     expect(t.charted("HOOD")).toHaveLength(3);
@@ -381,7 +378,6 @@ describe("quote extended", () => {
   });
 });
 
-// a recorded chart with every close since the regular end blanked
 function unpricedSinceClose(fx: Recorded): Recorded {
   const out = clone(fx);
   const result = out.body.chart.result[0];

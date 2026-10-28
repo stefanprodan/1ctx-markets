@@ -1,9 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// /api/v1 through the real router over a test's own Markets, with the
-// right key put on each request, so a route is called as a client
-// calls it without a server or a port.
+// The real router without a server or a port, each request with its key.
 
 import type { SourceState } from "../../src/admin/http.ts";
 import { alertsHandler } from "../../src/api/alerts.ts";

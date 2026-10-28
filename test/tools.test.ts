@@ -105,8 +105,7 @@ describe("a symbol never seen", () => {
       const [target] = await read;
       expect(errorOf(target)).toMatchObject({ error: "timeout" });
       expect(errorOf(target)!.message).toContain("retry this symbol");
-      // the fetch goes on after the answer, starts no other call and lands
-      // nothing
+      // the fetch outlives the answer, starts no other call and lands nothing
       const flights = [...t.m.inflight.values()].map((f) =>
         f.promise.catch(() => {}),
       );
