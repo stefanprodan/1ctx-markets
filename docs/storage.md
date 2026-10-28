@@ -163,8 +163,9 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
 - **`--track` values live in memory only** (`Tracking.flagged`, filled
   by `tracker()` in `src/operations/track.ts`): no column, so the flag
   is the one source of truth and a value dropped from it is untracked
-  at the next start, its history kept (Retention). A stored value is
-  tracked at start, before the startup prune and with no call
+  at the next start, its history kept (Retention). A stored value
+  tracked by use or no further behind than the bar jobs' 30-day refetch
+  is tracked at start, before the startup prune and with no call
   (`seed()`); another resolves through `resolveTargets()`, the read
   path without `markRead()`, on start and on the `track` job each quote
   period, so an unknown symbol is fetched with its backfill as in a

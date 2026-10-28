@@ -2,9 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // The --track values: resolved as a read would, tracked without one.
 
-import { readInstrument } from "../market/instruments.ts";
+import { dailyRange } from "../market/bars.ts";
+import { type Instrument, readInstrument } from "../market/instruments.ts";
+import { trackedIds } from "../market/tracking.ts";
+import { startOfDate } from "../market/zone.ts";
+import { DAY_MS } from "../runtime/clock.ts";
 import { errorFields, type Log } from "../runtime/log.ts";
 import type { Scheduler } from "../runtime/scheduler.ts";
+import { REFETCH_DAYS } from "../sources/history.ts";
 import { BVB, FRED } from "../sources/ids.ts";
 import type { Db } from "../storage/db/index.ts";
 import type { Markets } from "./markets.ts";
@@ -32,21 +37,37 @@ const FINAL = new Set<TrackState["state"]>([
   "no_data",
 ]);
 
+// tracked by use, or behind by no more than the bar jobs' own refetch asks,
+// so the jobs keep it whole with no catch-up
+function current(db: Db, i: Instrument, byUse: Set<string>, now: number) {
+  if (byUse.has(i.id)) return true;
+  const range = dailyRange(db, i.id);
+  if (range === null) return false;
+  const since = startOfDate(i.zone, range.lastFinal ?? range.first);
+  return since >= now - REFETCH_DAYS * DAY_MS;
+}
+
 // Stored values are tracked before the startup prune, which would take
-// their news, and before a read could catch them up; a source that is
-// off leaves its own to the tracker, which answers no_data.
-export function seed(
-  db: Db,
-  values: readonly string[],
-  on: { bvb: boolean; fred: boolean },
-  flagged: Set<string>,
-): TrackState[] {
-  return values.map((value) => {
+// their news; one further behind, or whose source is off, is left to the
+// tracker, which catches it up as a read would or answers no_data.
+export function seed(options: {
+  db: Db;
+  values: readonly string[];
+  on: { bvb: boolean; fred: boolean };
+  readMs: number;
+  flagged: Set<string>;
+  now: number;
+}): TrackState[] {
+  const { db, on, readMs, flagged, now } = options;
+  const byUse = trackedIds(db, now, { readMs, flagged: new Set() });
+  return options.values.map((value) => {
     const stored = storedInstrument(db, value, on.bvb);
     const off =
       (stored?.source === BVB && !on.bvb) ||
       (stored?.source === FRED && !on.fred);
-    if (stored === null || off) return { value, id: null, state: "pending" };
+    if (stored === null || off || !current(db, stored, byUse, now)) {
+      return { value, id: null, state: "pending" };
+    }
     flagged.add(stored.id);
     return { value, id: stored.id, state: "tracked" };
   });

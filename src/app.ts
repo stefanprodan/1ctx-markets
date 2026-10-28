@@ -102,12 +102,14 @@ export function start(options: AppOptions): App {
     flagged,
   };
   // before the startup write, whose prune reads what is tracked
-  const trackStates = seed(
+  const trackStates = seed({
     db,
-    options.track ?? [],
-    { bvb: options.bvb === true, fred: (options.fredKey ?? null) !== null },
+    values: options.track ?? [],
+    on: { bvb: options.bvb === true, fred: (options.fredKey ?? null) !== null },
+    readMs: tracking.readMs,
     flagged,
-  );
+    now: clock.now(),
+  });
   const write = writer(db);
   const rules = ruleEngine({
     quoteEveryMs: options.quoteEveryMs,

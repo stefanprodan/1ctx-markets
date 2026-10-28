@@ -10,7 +10,9 @@ import { type TestApp, withApp } from "./helpers/app.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { sources } from "./helpers/sources.ts";
 import {
+  backTo,
   chartSymbol,
+  clone,
   listed,
   type Recorded,
   recorded,
@@ -220,6 +222,63 @@ describe("--track", () => {
           await t.app.writer.write(() => {});
           expect(news()).toBe(1);
           expect(s.calls.charts("^DJI").length).toBe(asked);
+          expect(lastReadAt(t.db, DJI)).toBeNull();
+        },
+        { fetch: s.fetch, start: NOW, track: ["^DJI"], db },
+      );
+    } finally {
+      db.close();
+    }
+  });
+
+  test("a stored value further behind than the refetch window is caught up at start", async () => {
+    const then = Date.parse("2026-07-01T08:00:00Z");
+    const full = listed(
+      backTo(await recorded("chart-dji-5d-1d"), "2026-05-04"),
+    );
+    // the same listing as answered on 1 July, its last day 26 June
+    const old = clone(full);
+    const r = old.body.chart.result[0];
+    const keep = r.timestamp.filter(
+      (at: number) => at * 1000 < Date.parse("2026-06-27T00:00:00Z"),
+    ).length;
+    r.timestamp = r.timestamp.slice(0, keep);
+    for (const k of ["open", "high", "low", "close", "volume"]) {
+      r.indicators.quote[0][k] = r.indicators.quote[0][k].slice(0, keep);
+    }
+    const { db } = open(":memory:", fakeClock(then));
+    const lastDate = () =>
+      db
+        .query<{ d: string }, [string]>(
+          "select max(date) as d from bars where instrument = ? and interval = '1d'",
+        )
+        .get(DJI)!.d;
+    try {
+      const first = await sources({ charts: { "^DJI": old } });
+      await withApp(
+        async (t) => {
+          await t.app.tracker.settled();
+        },
+        { fetch: first.fetch, start: then, track: ["^DJI"], db },
+      );
+      expect(lastDate()).toBe("2026-06-26");
+      const s = await sources({ charts: { "^DJI": full } });
+      await withApp(
+        async (t) => {
+          // not seeded, checked before the first pass can land
+          expect(t.app.tracker.status()).toEqual([
+            { value: "^DJI", id: null, state: "pending" },
+          ]);
+          expect(t.app.markets.tracking.flagged.size).toBe(0);
+          await t.app.tracker.settled();
+          expect(lastDate()).toBe("2026-10-27");
+          const [asked] = s.calls.charts("^DJI");
+          expect(Number(asked!.searchParams.get("period1")) * 1000).toBe(
+            Date.parse("2026-06-26T04:00:00Z"),
+          );
+          expect((await status(t)).track).toEqual([
+            { value: "^DJI", id: DJI, state: "tracked" },
+          ]);
           expect(lastReadAt(t.db, DJI)).toBeNull();
         },
         { fetch: s.fetch, start: NOW, track: ["^DJI"], db },
