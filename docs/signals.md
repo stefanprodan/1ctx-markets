@@ -2,12 +2,11 @@
 
 Governs the technical signals computed from stored bars and quotes:
 `src/signals/common.ts`, `daily.ts` and `weekly.ts` (the maths),
-`store.ts` (final and live rows), `read.ts` (what tools read, with
-stale reasons) and `relative.ts` (relative return), and the `signals`
-table (`src/storage/db/migrations/0005-signals.ts`). Sessions, bar dates and
+`store.ts` (final and live rows), `read.ts` (what tools read, with stale
+reasons) and `relative.ts` (relative return), and the `signals` table
+(`src/storage/db/migrations/0005-signals.ts`). Sessions, bar dates and
 finality are in `docs/calendars.md`; the bar writes that call these in
-`docs/yahoo.md` and `docs/fred.md`; stale reasons in
-`docs/storage.md`.
+`docs/yahoo.md` and `docs/fred.md`; stale reasons in `docs/storage.md`.
 
 ## The daily signals
 
@@ -36,50 +35,46 @@ bar's close, or the live price on the live row.
 | `days_since_high` | bars since the latest bar at the 52-week high | as `high52w` |
 | `volume_ratio` | volume over the mean of the 20 bars before it | i 20 |
 
-- **Final and live rows run the same step** (`dailyRow()` in
-  `daily.ts`, `smaCross` and the EMA helpers in `common.ts`), so a seed
-  recomputed from bars repeats the incremental path bit for bit. A new
-  signal goes in that step.
+- **Final and live rows run the same step** (`dailyRow()`, with the
+  helpers in `common.ts`), so a seed recomputed from bars repeats the
+  incremental path bit for bit. A new signal goes in that step.
 - **Wilder's averages and the EMA seeds depend on where history
   starts**, so a value is reproducible only from the first stored bar.
 - **A bar without high or low has no true range**: `atr14` is null on
   it and seeds again from the next 14 ranges, rather than stay null
   until a recompute.
-- **A final bar with neither high nor low ranges over its close**
-  (FRED, or a source's null range) for the 52-week values. A live
-  quote without a day high or low gives no 52-week values at all,
-  since a price is not a bar's range yet. A bar in the window with
-  only one of high or low nulls every 52-week value, final rows
-  included (`range52w()`).
+- **For the 52-week values a final bar with neither high nor low
+  ranges over its close** (FRED, or a source's null range); a live
+  quote without a day range gives none, since a price is not a bar's
+  range yet; a bar in the window with only one of high or low nulls
+  them all (`range52w()`).
 - **A close at or below 0 in the 20 returns makes `volatility20`
-  null.** **`volume_ratio` is null when the bar or any of the 20 before
-  has no volume, or their sum is 0** (an index or FX pair reports 0); a
-  0 day of a share that trades is a ratio of 0. **It is null too when a
-  split of a Bucharest feed instrument falls inside those 21 bars**
+  null.**
+- **`volume_ratio` is null when the bar or any of the 20 before has no
+  volume, or their sum is 0** (an index or FX pair reports 0); a 0 day
+  of a share that trades is a ratio of 0. It is null too when a split
+  of a Bucharest feed instrument falls inside those 21 bars
   (`volumeBreaks()`), since that feed adjusts prices but keeps volumes
   raw (`docs/bvb.md`).
 
 ## Weekly signals
 
 - **Weekly rows hold only `sma50`, `sma200`, `cross` and `cross_edge`
-  on weekly closes**, dated by the week's Monday (`weekly.ts`); the
-  schema's checks keep every other column null on `1wk` rows.
-- **A week's bar is final once its Sunday has ended in the market's
-  zone and every daily bar in it is final** (`weeksOf` in `src/market/bars.ts`),
-  and weekly rows follow the same final and live rules as daily ones.
+  on weekly closes**, dated by the week's Monday; the schema's checks
+  keep every other column null on `1wk` rows.
+- **Weekly rows follow the daily final and live rules**, on weeks
+  final as `docs/calendars.md` ("Weeks") says.
 
 ## Final rows
 
-- **Final rows come only from final bars** (`finalPrefix`: the bars up
-  to the first not final, since a series never skips a day). A
-  provisional bar never produces a final row.
+- **Final rows come only from final bars** (`finalPrefix()`: the bars
+  up to the first not final, since a series never skips a day).
 - **Any change recomputes every final row from the first stored bar**
-  (`recomputeSignals`): a past bar changed on or before the last final
-  row, or a bar turned final or went away (`finalPending` compares
-  counts and last dates). An incremental patch would drift from the
-  seeds.
+  (`recomputeSignals()`): a past bar changed on or before the last
+  final row, or a bar turned final or went away (`finalPending()`). An
+  incremental patch would drift from the seeds.
 - **Signals are computed inside the bar write's transaction**
-  (`signalsAfterBars`), final rows first, then the live rows, so at a
+  (`signalsAfterBars()`), final rows first, then the live rows, so at a
   session's rollover the previous day's final row exists before the new
   live row steps from it.
 
@@ -87,64 +82,61 @@ bar's close, or the live price on the live row.
 
 - **At most one live row per instrument and interval**
   (`signals_one_live`), stepped from the last final row with one
-  provisional bar from the stored quote (`liveDaily`, `liveWeekly`), so
-  it is exactly what the final row will be if the close, day high, low
-  and volume end as the quote shows them.
+  provisional bar from the stored quote, so it is exactly what the final
+  row will be if the close, day high, low and volume end as the quote
+  shows them.
 - **`replacesLast` says the quote's session is the last stored bar,
   not yet final**, which the provisional bar replaces; otherwise it is a
   new day after the last bar. A final bar on the quote's date means no
   live row.
 - **The quote dates the row by its market's stored session**
-  (`liveTarget`): a trade from the session's start until its local
-  start time on the next day, or `LIVE_AFTER_END_MS` (15 minutes) after
-  its end when that is later (`liveUntil()`). Nothing of the next
-  session trades before it starts, a closing auction prints after the
-  end, and Yahoo stamps an index's value up to 75 minutes after it
-  (^NDX at 21:15:59 UTC for a 20:00 end). A trade outside that window
-  belongs to another day and updates the quote only, never a row.
-  Never date it by fixed UTC hours.
+  (`liveTarget()`): a trade from the session's start until its local
+  start time on the next day, or `LIVE_AFTER_END_MS` after its end
+  when that is later (`liveUntil()`). Nothing of the next session
+  trades before it starts, a closing auction prints after the end, and
+  Yahoo stamps an index's value up to 75 minutes after it. A trade
+  outside that window updates the quote only, never a row. Never date
+  it by fixed UTC hours.
 - **Crypto's day is the UTC day**: its trade's UTC date is the row's,
   with no allowance carrying it past midnight.
 - **Live prices never wait on the bars.** When an earlier bar is not
   final or has no final row (a bar pass failed at a rollover),
-  `liveBase` runs the series from the first bar over the bars as stored,
-  the unfinished day included, and the read adds "previous day not
-  final".
-- **The live row reads the latest `LIVE_DAYS` + 1 daily bars or
-  `LIVE_WEEKS` + 1 weeks** (`refreshLive()`), dropping the last only
-  when the provisional row replaces it, so at least 400 daily bars or
-  200 weeks come before the provisional one, enough for 52 weeks of a
-  daily market and SMA 200; the rest is stepped from the running values the final row stores:
-  `ema12`, `ema26`, `rsi_gain`, `rsi_loss` and `prev_histogram` (the
-  previous histogram, for `macd_turn`). These are never shown to a
+  `liveBase()` runs the series from the first bar over the bars as
+  stored, the unfinished day included, and the read adds "previous day
+  not final".
+- **The live row reads only the latest `LIVE_DAYS` daily bars or
+  `LIVE_WEEKS` weeks before the provisional one** (`refreshLive()`),
+  enough for 52 weeks of a daily market and SMA 200; the rest is
+  stepped from the running values the final row stores (`ema12`,
+  `ema26`, `rsi_gain`, `rsi_loss`, `prev_histogram`), never shown to a
   caller (`RUNNING` in `src/operations/quote.ts`).
 - **A quote that moved recomputes the live rows; for the rest of its
-  market `pruneLive` drops or recomputes a row the session moved past.**
-  A live row stores the quote's trade time (`quote_time`).
+  market `pruneLive()` drops or recomputes a row the session moved
+  past.** A live row stores the quote's trade time (`quote_time`).
 
 ## Reading
 
 - **A reader takes the live row when one exists, else the last final
-  row** (`readLatest`, `src/operations/quote.ts`), each tagged `kind`.
-- **Stale reasons are fixed phrases from `STALE` in `src/market/stale.ts`.**
-  `readSignals` adds "signals pending" when final rows lag the final
+  row** (`readLatest()` in `src/operations/quote.ts`), tagged `kind`.
+- **Stale reasons are fixed phrases** (`docs/storage.md`).
+  `readSignals()` adds "signals pending" when final rows lag the final
   bars or the live rows lag the quote (another date or trade time), and
   "previous day not final" when a live row stepped over a stored day not
   yet final. FRED uses the final list only (`docs/fred.md`).
-- **Values are rounded to six significant digits on output** (`round`
+- **Values are rounded to six significant digits on output** (`round()`
   in `src/market/format.ts`); stored rows keep full precision, and a
   reader that computes on them takes the unrounded rows (`Latest`).
 
 ## Relative return
 
 - **Computed on read for the benchmark the caller names, never stored
-  per pair** (`readRelativeReturn`), over 1 or 3 months, on final daily
-  closes.
+  per pair** (`readRelativeReturn()`), over 1 or 3 months, on final
+  daily closes.
 - **Every anchor is a date on the benchmark's days, never a row
   offset**, since the two trade on different calendars. The end is the
   benchmark's last row; its start is its row on or before the same
   calendar day 1 or 3 months back (clamped to the month's end,
-  `monthsBack`); the instrument's start and end are its rows on or
+  `monthsBack()`); the instrument's start and end are its rows on or
   before those dates.
 - **Null when either has no row on or before an anchor, the
   instrument's last row is before the benchmark's start (it stopped
@@ -157,12 +149,13 @@ bar's close, or the live price on the live row.
 - **A percent unit is a level series: it changes in points, not
   returns** (`LEVEL_NOTE`); prices change in percent in each listing's
   own currency, no FX conversion (`RETURN_NOTE`). `relative` is the
-  instrument's change less the benchmark's.
+  instrument's change less the benchmark's, in percentage points, or
+  points between two level series.
 - **Reads are bounded to the anchors** (`readCloses()`): closes from
   the last bar on or before the earliest start the end can need,
   widened when the last final close is earlier than the last bar. A
   benchmark side is read once and reused across instruments and
-  periods (`benchmarkSide()`, `instrumentSide()`, `relativeOf()`).
+  periods (`benchmarkSide()`).
 - **When either unit is `unknown`, or `index_points` on another
   instrument, the note adds "units unknown, treated as prices"**
   (`UNKNOWN_UNITS_NOTE`): a future or an index is still a valid
@@ -170,10 +163,11 @@ bar's close, or the live price on the live row.
 
 ## Trailing returns
 
-- **`1w`, `1m`, `3m` and `ytd` from the last final close on or before
-  each start** (`trailingReturns()`): 7 days, 1 and 3 calendar months
-  back by `monthsBack()`, and the previous year's 31 December, counted
-  from the end's date; a holiday on the 31st takes the close before.
+- **quote's `returns` and screen's `return_*`: `1w`, `1m`, `3m` and
+  `ytd` from the last final close on or before each start**
+  (`trailingReturns()`): 7 days, 1 and 3 calendar months back by
+  `monthsBack()`, and the previous year's 31 December, counted from the
+  end's date; a holiday on the 31st takes the close before.
 - **The end is the live price only when its session date follows the
   last final bar** (`returnsOf()`), the rule relative return follows;
   otherwise the last final close. `to` and `live` say which.
