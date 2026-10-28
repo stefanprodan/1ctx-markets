@@ -52,8 +52,9 @@ finality in `docs/calendars.md`; tables, the writer and staleness in
   open the last stamp is the trade, off the grid; closed it may end on
   the grid before the meta's trade (VWCE.DE 16:30, its trade 16:36).
   Out of session it is the last session, not today's. An entry with no
-  `timestamp`, or columns that do not parse, has no points and keeps
-  its quote: a bad series never costs the price.
+  `timestamp`, columns that do not parse, or a stamp outside 1970 to
+  2200, has no points and keeps its quote: a bad series never costs the
+  price, nor rolls back the quote's write.
 - **A meta's day high or low of 0 is none:** an index's meta can read
   0 while its bars do not.
 - **A `CURRENCY` meta with no currency takes it from its symbol**

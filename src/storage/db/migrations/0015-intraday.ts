@@ -3,8 +3,7 @@
 
 import type { Migration } from "../migration.ts";
 
-// a quote answer's 5-minute closes; the key leads with the session, so a
-// session is replaced and pruned by key
+// the session leads the key, so replacing and pruning one read it
 export const m0015: Migration = {
   id: "0015-intraday",
   up(db) {

@@ -160,7 +160,9 @@ the rules tool in `docs/rules.md`; signal rows and returns in
 - **history's `5m` cursor holds the next point's `at` and the resolved
   `from` and `to`**, never a session date, which would repeat a page
   inside a session, so a session added between pages never moves the
-  bounds.
+  bounds. A cursor whose point is no longer stored (replaced, pruned or
+  cleared) is `bad_arguments`, so the client starts again rather than
+  reading an empty last page.
 - **A Bucharest search candidate's type is the chart feed's**
   (`types`, `docs/bvb.md`), since the site's search gives none: the
   type its instrument would take, else the feed's own. That is one

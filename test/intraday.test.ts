@@ -40,8 +40,7 @@ const noNetwork = async (url: string): Promise<Response> => {
   throw new Error(`no network in tests: ${url}`);
 };
 
-// each listing a recorded answer names, stored as the quote pass finds it:
-// with a final bar and read, so a call asks no source
+// with a final bar and a read, so a call asks no source
 function setup(at: number) {
   const clock = fakeClock(at);
   const { db } = open(":memory:", clock);
@@ -159,13 +158,24 @@ describe("a spark answer's points", () => {
     const fx = clone(await recorded("spark-v7-batch"));
     delete entry(fx, "NVDA").timestamp;
     entry(fx, "TLV.RO").indicators.quote[0].close.pop();
+    // whole seconds, but past any date a zone can name
+    entry(fx, "VVSM.DE").timestamp[3] = 9_000_000_000_000;
     const answer = parseSpark(fx.body, 1);
     expect(answer.skipped).toEqual([]);
-    for (const symbol of ["NVDA", "TLV.RO"]) {
+    for (const symbol of ["NVDA", "TLV.RO", "VVSM.DE"]) {
       const q = answer.quotes.find((q) => q.symbol === symbol)!;
       expect(q.price).toBeGreaterThan(0);
       expect(q.points).toEqual([]);
     }
+    // and the quotes land
+    const t = setup(Date.parse(fx.recordedAt));
+    listings(t.db, fx, t.clock.now());
+    storeQuotes(t.db, answer);
+    const quoted = t.db
+      .query("select instrument from quotes order by instrument")
+      .all();
+    expect(quoted).toContainEqual({ instrument: "XETRA:VVSM" });
+    expect(sessions(t.db, "XETRA:VVSM")).toEqual([]);
   });
 });
 
@@ -357,6 +367,13 @@ describe("history with interval 5m", () => {
       next: first.body.next,
     });
     expect(other.body.error).toBe("bad_arguments");
+    // the next point cleared: the walk is refused, never ended in silence
+    t.db.query("delete from intraday").run();
+    const gone = await history(t.m, { ...input, next: first.body.next });
+    expect(gone.body).toMatchObject({
+      error: "bad_arguments",
+      message: "next does not continue these arguments",
+    });
   });
 
   test("refuses benchmark, and answers no_data for a source without points or a range without any", async () => {

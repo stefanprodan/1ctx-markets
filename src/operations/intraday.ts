@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-// history's 5m interval: the stored closes as they are, no signals.
 
 import {
   CRYPTO,
@@ -31,7 +30,6 @@ import type { Markets } from "./markets.ts";
 import { readLatest, sessionOf } from "./quote.ts";
 import { type ItemError, readTargets } from "./targets.ts";
 
-// history's arguments with interval 5m; from and to are session dates
 export type IntradayArgs = {
   symbol: string;
   interval: "5m";
@@ -40,6 +38,8 @@ export type IntradayArgs = {
   benchmark: string | null;
   next: string | null;
 };
+
+const CONTINUES = "next does not continue these arguments";
 
 export const NO_SOURCE = "this instrument's source gives no 5-minute closes";
 
@@ -67,8 +67,7 @@ const noData = (input: string, message: string): IntradayRead => ({
   error: { error: "no_data", message },
 });
 
-// the newest point is still moving while its session trades; crypto's
-// always is
+// crypto never closes, so its newest point is never final
 function movingAt(db: Db, i: Instrument, now: number): number | null {
   const newest = db
     .query<{ at: number | null; session: string | null }, [string]>(
@@ -86,9 +85,7 @@ function movingAt(db: Db, i: Instrument, now: number): number | null {
     : null;
 }
 
-// bounds are session dates, the newest stored one by default; a cursor
-// carries the ones it was made with, so a session added between pages
-// never moves them
+// a cursor keeps its bounds, so a session added between pages never moves them
 export async function readIntradayHistory(
   m: Markets,
   args: IntradayArgs,
@@ -106,7 +103,11 @@ export async function readIntradayHistory(
     return noData(target.input, "no 5-minute closes stored yet");
   }
   const stored = readIntraday(db, instrument.id, from, to, page?.start);
-  if (stored.length === 0 && page === null) {
+  // its next point replaced or cleared: an empty page would end the walk
+  if (page !== null && stored[0]?.at !== page.start) {
+    throw new ArgError(CONTINUES);
+  }
+  if (stored.length === 0) {
     return noData(
       target.input,
       `no 5-minute closes stored from ${from} to ${to}`,
@@ -137,7 +138,7 @@ export async function intradayAnswer(
     const at = POSITION.exec(readCursor(next, asked) ?? "");
     const start = Number(at?.[3]);
     if (at === null || !Number.isSafeInteger(start)) {
-      throw new ArgError("next does not continue these arguments");
+      throw new ArgError(CONTINUES);
     }
     page = { from: at[1]!, to: at[2]!, start };
   }

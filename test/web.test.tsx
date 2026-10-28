@@ -51,11 +51,13 @@ import {
   intervalOf,
   isIntraday,
   legendOf,
+  localTime,
   pointLegendOf,
   pointLine,
   RANGES,
   readSettings,
   tick,
+  timeLabel,
   volumes,
 } from "../src/web/views/Chart.model.ts";
 import { LegendLine } from "../src/web/views/Chart.tsx";
@@ -1297,52 +1299,56 @@ describe("the chart model", () => {
     expect(tick("2026-01-02", "year")).toBe("2026");
   });
 
-  test("1D and 5D draw the 5-minute closes on the viewer's clock", () => {
+  test("1D and 5D draw the 5-minute closes in order, labelled on the viewer's clock", () => {
     expect(RANGES.slice(0, 3)).toEqual(["1D", "5D", "1M"]);
     expect(isIntraday("5D")).toBe(true);
     expect(isIntraday("1M")).toBe(false);
-    const point = (at: string, close: number, final = true) => ({
-      at,
-      session: at.slice(0, 10),
-      close,
-      final,
-    });
+    // Bucharest falls back at 01:00 UTC on 25 October: 03:00 to 04:00 twice
+    const zone = "Europe/Bucharest";
+    const from = Date.parse("2026-10-25T00:00:00Z");
+    const points = Array.from({ length: 31 }, (_, k) => ({
+      at: new Date(from + k * 300_000).toISOString().replace(".000", ""),
+      session: "2026-10-25",
+      close: k === 15 ? 90 : 100 + k,
+      final: k < 30,
+    }));
     const h: Intraday = {
-      id: "XETRA:VVSM",
-      unit: "per_share",
+      id: "CRYPTO:BTC-USD",
+      unit: "per_unit",
       interval: "5m",
       session: { state: "open" },
-      points: [
-        point("2026-10-23T15:25:00Z", 100),
-        point("2026-10-26T08:00:00Z", 102),
-        point("2026-10-26T08:05:00Z", 101, false),
-      ],
+      points,
     };
-    // the viewer two hours east of UTC
-    const east = () => 2 * 3_600_000;
-    const line = pointLine(h.points, east);
-    expect(line.map((p) => [p.time, p.value])).toEqual([
-      [Date.parse("2026-10-23T17:25:00Z") / 1000, 100],
-      [Date.parse("2026-10-26T10:00:00Z") / 1000, 102],
-      [Date.parse("2026-10-26T10:05:00Z") / 1000, 101],
-    ]);
-    const latest = pointLegendOf(h, null, east)!;
+    const line = pointLine(h.points);
+    expect(line).toHaveLength(31);
+    expect(line.every((p, k) => k === 0 || p.time > line[k - 1]!.time)).toBe(
+      true,
+    );
+    expect(line[15]).toEqual({ time: from / 1000 + 15 * 300, value: 90 });
+    const labels = line.map((p) => localTime(p.time, zone).time);
+    expect(labels.slice(0, 2)).toEqual(["03:00", "03:05"]);
+    expect(labels.filter((t) => t === "03:00")).toHaveLength(2);
+    expect(labels.at(-1)).toBe("04:30");
+    expect(localTime(line[0]!.time, zone).date).toBe("2026-10-25");
+    const latest = pointLegendOf(h, null, zone)!;
     expect(latest).toMatchObject({
-      date: "2026-10-26",
-      time: "10:05",
+      date: "2026-10-25",
+      time: "04:30",
       live: true,
-      close: 101,
-      change: 1,
+      close: 130,
+      change: 30,
       open: null,
       sma50: null,
     });
-    const hovered = pointLegendOf(h, line[0]!.time, east)!;
-    expect(hovered).toMatchObject({ date: "2026-10-23", time: "17:25" });
-    expect(hovered.live).toBe(false);
-    // a repeated hour at a clock change never steps the axis back
-    const back = (at: number) =>
-      at < Date.parse("2026-10-26T08:03:00Z") ? 3_600_000 : 0;
-    expect(pointLine(h.points, back)).toHaveLength(2);
+    // the crosshair's time is the point's own
+    const low = pointLegendOf(h, line[15]!.time, zone)!;
+    expect(low).toMatchObject({ time: "03:15", close: 90, live: false });
+    expect(timeLabel(line[0]!.time, zone)).toBe("25 Oct 2026 03:00");
+    // a day reads as the library writes it
+    expect(timeLabel("2026-10-05", undefined, "en-US")).toBe("05 Oct '26");
+    expect(
+      timeLabel({ year: 2026, month: 1, day: 9 }, undefined, "en-US"),
+    ).toBe("09 Jan '26");
   });
 
   test("kept settings fall back field by field", () => {

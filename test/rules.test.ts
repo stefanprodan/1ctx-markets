@@ -883,6 +883,34 @@ describe("splits", () => {
     expect(rule(t, fresh.body.rule.id).paused).toBeNull();
   });
 
+  test("a quote answer fetched before a split's rescale stores no session older than the split", async () => {
+    const t = await rulesTest();
+    await nvdaRules(t);
+    const history = listed(await recorded("chart-nvda-5y-1d"));
+    const window = await recorded("chart-nvda-5d-1d");
+    const answers = [
+      withSplit(scaled(window, 10), OCT16, 10, 1),
+      withSplit(scaled(history, 10), OCT16, 10, 1),
+    ];
+    t.charts.set("NVDA", () => answers.shift()!);
+    await refetch(t.ctx, readInstrument(t.db, "US:NVDA")!);
+    expect(answers).toHaveLength(0);
+    // the late answer's points, written after the rescale cleared them
+    const at = (iso: string) => ({ at: Date.parse(iso), close: 200 });
+    storeIntraday(
+      t.db,
+      "US:NVDA",
+      "America/New_York",
+      [at("2026-10-15T15:00:00Z"), at("2026-10-16T15:00:00Z")],
+      t.clock.now(),
+    );
+    const sessions = () =>
+      t.db
+        .query("select distinct session from intraday order by session")
+        .all();
+    expect(sessions()).toEqual([{ session: "2026-10-16" }]);
+  });
+
   test("a post-split opening quote reads unknown until the bar pass ends", async () => {
     const t = await rulesTest();
     const r = await create(t, "NVDA", { left: "price", op: "<", right: 200 });

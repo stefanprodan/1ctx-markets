@@ -118,7 +118,7 @@ function brief(
   };
 }
 
-// the whole range: a point is not a daily bar, so it has its own schema
+// a point is not a daily bar, so it has its own schema
 async function intraday(
   m: Markets,
   args: Parameters<typeof readIntradayHistory>[1],

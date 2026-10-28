@@ -31,7 +31,6 @@ export type History = {
   bars: HistoryBar[];
 };
 
-// a 5-minute close; at in UTC
 export type Point = {
   at: string;
   session: string;
@@ -47,7 +46,6 @@ export type Intraday = {
   points: Point[];
 };
 
-// the stored 5-minute closes: the newest session, or all five kept
 export const INTRADAY = ["1D", "5D"] as const;
 export type IntradayRange = (typeof INTRADAY)[number];
 
@@ -168,31 +166,63 @@ export function volumes(bars: readonly HistoryBar[]) {
   return out;
 }
 
-// the viewer's offset from UTC at an instant, in ms
-export const localOffset = (at: number): number =>
-  -new Date(at).getTimezoneOffset() * 60_000;
+// real UTC seconds, so a clock change never reorders or drops a point
+export const pointLine = (points: readonly Point[]) =>
+  points.map((p) => ({ time: Date.parse(p.at) / 1000, value: p.close }));
 
-// The library draws a time as UTC, so each point is shifted to the viewer's
-// wall time, in seconds; a repeated hour at a clock change would step back,
-// so its points are left out. No gap is drawn for a night or a weekend.
-export function pointLine(
-  points: readonly Point[],
-  offset: (at: number) => number = localOffset,
-): { time: number; value: number; point: Point }[] {
-  const out: { time: number; value: number; point: Point }[] = [];
-  for (const p of points) {
-    const at = Date.parse(p.at);
-    const time = (at + offset(at)) / 1000;
-    const last = out.at(-1);
-    if (last !== undefined && time <= last.time) continue;
-    out.push({ time, value: p.close, point: p });
+const clocks = new Map<string, Intl.DateTimeFormat>();
+
+// no zone is the viewer's; the library would label every time in UTC
+export function localTime(
+  seconds: number,
+  zone?: string,
+): { date: string; time: string } {
+  const key = zone ?? "";
+  let f = clocks.get(key);
+  if (f === undefined) {
+    f = new Intl.DateTimeFormat("en-US", {
+      timeZone: zone,
+      hourCycle: "h23",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    clocks.set(key, f);
   }
-  return out;
+  const p: Record<string, string> = {};
+  for (const part of f.formatToParts(seconds * 1000)) p[part.type] = part.value;
+  return {
+    date: `${p.year}-${p.month}-${p.day}`,
+    time: `${p.hour}:${p.minute}`,
+  };
 }
 
-// a shifted time's wall clock, HH:MM
-export const clockOf = (time: number): string =>
-  new Date(time * 1000).toISOString().slice(11, 16);
+// a day as the library writes one (dd MMM 'yy), since a formatter replaces it
+export function timeLabel(
+  time: unknown,
+  zone?: string,
+  locale?: string,
+): string {
+  if (typeof time === "number") {
+    const t = localTime(time, zone);
+    return `${dayOf(t.date)} ${t.time}`;
+  }
+  const date =
+    typeof time === "string"
+      ? time
+      : (() => {
+          const d = time as { year: number; month: number; day: number };
+          const two = (n: number) => String(n).padStart(2, "0");
+          return `${d.year}-${two(d.month)}-${two(d.day)}`;
+        })();
+  const [y, m, d] = date.split("-").map(Number) as [number, number, number];
+  const month = new Date(y, m - 1, 1).toLocaleString(locale, {
+    month: "short",
+  });
+  return `${String(d).padStart(2, "0")} ${month} '${String(y % 100).padStart(2, "0")}`;
+}
 
 // the last bar is still trading while its market is open
 export const isLive = (h: History): boolean =>
@@ -208,7 +238,6 @@ export function dayOf(date: string): string {
 
 export type Legend = {
   date: string;
-  // a 5-minute close's local time
   time?: string;
   live: boolean;
   open: number | null;
@@ -258,21 +287,22 @@ export function legendOf(h: History, date: string | null): Legend | null {
   };
 }
 
-// the point under the crosshair (a shifted time), else the latest
 export function pointLegendOf(
   h: Intraday,
   time: number | null,
-  offset: (at: number) => number = localOffset,
+  zone?: string,
 ): Legend | null {
-  const line = pointLine(h.points, offset);
-  const shown = time === null ? line.at(-1) : line.find((l) => l.time === time);
-  if (shown === undefined) return null;
-  const { point } = shown;
+  const point =
+    time === null
+      ? h.points.at(-1)
+      : h.points.find((p) => Date.parse(p.at) / 1000 === time);
+  if (point === undefined) return null;
   const first = h.points[0]?.close ?? null;
   const points = h.unit === "percent";
+  const local = localTime(Date.parse(point.at) / 1000, zone);
   return {
-    date: new Date(shown.time * 1000).toISOString().slice(0, 10),
-    time: clockOf(shown.time),
+    date: local.date,
+    time: local.time,
     live:
       h.session?.state === "open" && !point.final && point === h.points.at(-1),
     open: null,
@@ -337,8 +367,7 @@ export function changeText(v: number | null, points = false): string {
   return `${flat ? "" : v > 0 ? "+" : "−"}${n}${points ? " pts" : "%"}`;
 }
 
-// the chart's choices, kept for the next chart this browser draws; 1D and
-// 5D are never kept, so the daily chart's settings stay as they were
+// the chart's choices, kept for the next chart this browser draws
 export type Settings = {
   range: DailyRange;
   line: boolean;

@@ -27,7 +27,6 @@ import {
   axisPrice,
   candles,
   changeText,
-  clockOf,
   closes,
   type DailyRange,
   dayOf,
@@ -42,6 +41,7 @@ import {
   isLive,
   type Legend,
   legendOf,
+  localTime,
   pointLegendOf,
   pointLine,
   RANGES,
@@ -49,6 +49,7 @@ import {
   readSettings,
   type Settings,
   tick,
+  timeLabel,
   volumes,
   volumeText,
 } from "./Chart.model.ts";
@@ -197,7 +198,7 @@ export function Chart({ id }: { id: string }) {
   const tallest = useRef({ shape: "", px: 0 });
   const kept = useRef(loadSettings()).current;
   const range = useSignal<Range>(kept.range);
-  // the daily range kept, which a 1D or 5D pick leaves as it was
+  // a 1D or 5D pick is never kept
   const daily = useRef<DailyRange>(kept.range);
   if (!isIntraday(range.value)) daily.current = range.value;
   const data = useSignal<History | Intraday | null>(null);
@@ -215,7 +216,6 @@ export function Chart({ id }: { id: string }) {
       sma200: sma200.value,
     });
   }, [range.value, line.value, log.value, sma50.value, sma200.value]);
-  // a day, or a 5-minute close's shifted time in seconds
   const hover = useSignal<string | number | null>(null);
   const lib = useRef<Lib | null>(null);
   const chart = useRef<IChartApi | null>(null);
@@ -317,17 +317,22 @@ export function Chart({ id }: { id: string }) {
         fixLeftEdge: true,
         fixRightEdge: true,
         timeVisible: h.interval === "5m",
-        tickMarkFormatter: (time: unknown, type: number) =>
-          type === l.TickMarkType.Time && typeof time === "number"
-            ? clockOf(time)
-            : tick(
-                dateOf(time),
-                type === l.TickMarkType.Year
-                  ? "year"
-                  : type === l.TickMarkType.Month
-                    ? "month"
-                    : "day",
-              ),
+        tickMarkFormatter: (time: unknown, type: number) => {
+          const at = typeof time === "number" ? localTime(time) : null;
+          if (at !== null && type >= l.TickMarkType.Time) return at.time;
+          return tick(
+            at?.date ?? dateOf(time),
+            type === l.TickMarkType.Year
+              ? "year"
+              : type === l.TickMarkType.Month
+                ? "month"
+                : "day",
+          );
+        },
+      },
+      localization: {
+        timeFormatter: (time: unknown) =>
+          timeLabel(time, undefined, navigator.language),
       },
       crosshair: {
         vertLine: { color: k.faint, labelBackgroundColor: k.faint },
@@ -337,7 +342,6 @@ export function Chart({ id }: { id: string }) {
     for (const s of series.current) c.removeSeries(s);
     series.current = [];
 
-    // closes only: no candles, averages or volume at 5 minutes
     if (h.interval === "5m") {
       const s = c.addSeries(l.LineSeries, {
         color: k.fg,

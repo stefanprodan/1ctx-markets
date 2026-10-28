@@ -83,7 +83,6 @@ export type IntradayAnswer = ChartAnswer & {
 // its windows, while two keep the last post bars until the next open
 export const INTRADAY_RANGE = "2d";
 
-// the meta and the session's 5-minute closes so far, regular hours only
 export type SparkQuote = ChartMeta & { points: Point[] };
 
 export type SparkAnswer = {
@@ -348,11 +347,16 @@ export function parseIntraday(
   };
 }
 
+// a stamp outside these years cannot be dated in a zone
+const FIRST_POINT = Date.UTC(1970, 0, 1);
+const LAST_POINT = Date.UTC(2200, 0, 1);
+
 // a bad series never costs the price: it gives no points
 function sparkPoints(response: Obj): Point[] {
   try {
     const out: Point[] = [];
     for (const row of parseRows(response)) {
+      if (row.at < FIRST_POINT || row.at >= LAST_POINT) return [];
       if (row.close !== null) out.push({ at: row.at, close: row.close });
     }
     return out;

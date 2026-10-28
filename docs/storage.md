@@ -213,6 +213,10 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   rescale (`store()` in `src/sources/yahoo/history.ts`; the next quote
   pass refills the session, no ratio is guessed), and the operator's
   delete (`INSTRUMENT_TABLES`).
+- **No session before the instrument's newest split is stored**
+  (`splits`): a quote pass holds no per-instrument lock, so an answer
+  fetched before a rescale and written after it would bring old-scale
+  points back. A rescale with no split still clears every session.
 - **Only history's `5m` and the chart's 1D and 5D read it**; signals,
   rules, movers and screen never do, and the live price stays the
   quote's.

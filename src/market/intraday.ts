@@ -1,19 +1,16 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-// The 5-minute closes a quote answer carries, a few sessions per instrument.
 
 import type { Db } from "../storage/db/index.ts";
 import { localDate } from "./zone.ts";
 
 export const INTRADAY_SESSIONS = 5;
 
-// at in UTC epoch ms
 export type Point = { at: number; close: number };
 
 export type StoredPoint = Point & { session: string };
 
-// Each answer holds its sessions so far, so replacing them leaves no hole a
-// missed pass made; an answer with no points deletes nothing.
+// no rescale lock: a late answer never restores a pre-split session
 export function storeIntraday(
   db: Db,
   instrument: string,
@@ -22,9 +19,16 @@ export function storeIntraday(
   fetchedAt: number,
 ): void {
   if (points.length === 0) return;
+  const split =
+    db
+      .query<{ date: string | null }, [string]>(
+        "select max(date) as date from splits where instrument = ?",
+      )
+      .get(instrument)?.date ?? "";
   const sessions = new Map<string, Point[]>();
   for (const p of points) {
     const s = localDate(zone, p.at);
+    if (s < split) continue;
     const list = sessions.get(s);
     if (list === undefined) sessions.set(s, [p]);
     else list.push(p);
@@ -65,7 +69,6 @@ export function newestSession(db: Db, instrument: string): string | null {
   );
 }
 
-// oldest first, from the point at start on when given
 export function readIntraday(
   db: Db,
   instrument: string,
@@ -82,7 +85,6 @@ export function readIntraday(
     .all(instrument, from, to, start ?? Number.MIN_SAFE_INTEGER);
 }
 
-// each session's newest answer, oldest session first
 export function intradaySessions(
   db: Db,
   instrument: string,

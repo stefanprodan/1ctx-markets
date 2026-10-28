@@ -199,10 +199,11 @@ signed in with the admin key alone.
   "50-week" and "200-week". Max is the ten years the server keeps.
 - **1D and 5D read `history?interval=5m`**: the newest stored session,
   or all five kept (asked from Max's start). A line of closes on a time
-  axis, each point shifted to the viewer's wall time since the library
-  draws times as UTC (`pointLine`), a repeated hour at a clock change
-  left out so the axis never steps back; no candles, averages or
-  volume, so their toggles hide. The legend gives the day and time,
+  axis at the points' real UTC times (`pointLine`), so a clock change
+  never reorders or drops one; only the labels (axis ticks, crosshair,
+  legend) are in the viewer's local time (`localTime`, `timeLabel`),
+  the crosshair's day label for daily bars kept as the library writes
+  it. No candles, averages or volume, so their toggles hide. The legend gives the day and time,
   the close and the change from the range's first close.
 - **Candles or a line**, the toggle only where the bars have an open;
   a series (FRED) is a line. A bar the live quote made with no open

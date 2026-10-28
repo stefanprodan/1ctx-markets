@@ -355,8 +355,7 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
     return call<History>(`${HISTORY_PATH}?${q}`);
   }
 
-  // 1D is the server's default, the newest stored session; 5D asks from
-  // before any session it keeps
+  // 5D asks from before any session kept; 1D takes the server's default
   function intraday(id: string, range: IntradayRange, from: string) {
     const q = new URLSearchParams({ symbol: id, interval: "5m" });
     if (range === "5D") q.set("from", from);
