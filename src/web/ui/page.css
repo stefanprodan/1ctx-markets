@@ -1,0 +1,71 @@
+@layer tokens, base, owners;
+
+@layer owners {
+  .page {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    flex-grow: 1;
+    flex-shrink: 0;
+    width: 960px;
+    max-width: 100%;
+    padding-bottom: var(--shell-inset-bottom, 0px);
+  }
+
+  /* bleeds across the shell's gutter, so rows scroll under a band as wide
+     as the scroll box */
+  .page-head {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    min-height: 32px;
+    margin-left: calc(-1 * var(--shell-left, 0px));
+    margin-right: calc(-1 * var(--shell-right, 0px));
+    padding-top: var(--shell-inset-top, 0px);
+    padding-right: var(--shell-right, 0px);
+    padding-left: calc(var(--shell-left, 0px) + var(--page-lead, 0px));
+    padding-bottom: var(--space-2);
+    margin-bottom: calc(-1 * var(--space-2));
+    background: var(--page);
+  }
+
+  .page-title {
+    margin: 0;
+    font-size: var(--text-title);
+    font-weight: 600;
+    line-height: 32px;
+  }
+
+  .page-meta {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--faint);
+    font-size: var(--text-small);
+  }
+
+  .page-actions {
+    display: flex;
+    gap: var(--space-2);
+    margin-left: auto;
+  }
+
+  .page-failed {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .page-failed-icon {
+    flex-shrink: 0;
+    color: var(--failed);
+  }
+
+  .page-state {
+    margin: 0;
+    color: var(--faint);
+  }
+}

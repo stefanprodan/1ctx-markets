@@ -22,6 +22,7 @@ import {
 import { errorFields, logger } from "./runtime/log.ts";
 import { runService, ServiceError } from "./service/index.ts";
 import { open } from "./storage/db/index.ts";
+import page from "./web/index.html";
 
 const buildVersion = process.env.MARKETS_BUILD_VERSION;
 export const VERSION = buildVersion || `v${pkg.version}`;
@@ -105,6 +106,7 @@ const app = start({
   bearer,
   adminKey,
   ui: config.ui,
+  page,
   clock: wallClock,
   log,
   version: VERSION,

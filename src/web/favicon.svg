@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <title>Markets</title>
+  <style>
+    .fg { stroke: #131314; } .ac { fill: #d9a53a; stroke: none; }
+    @media (prefers-color-scheme: dark) { .fg { stroke: #e7e7e9; } .ac { fill: #f2c14e; stroke: none; } }
+  </style>
+  <path class="fg" d="M13.5 4H11C6.757 4 4.636 4 3.318 5.318S2 8.758 2 13s0 6.364 1.318 7.682S6.758 22 11 22s6.364 0 7.682-1.318S20 17.242 20 13v-2.5"/>
+  <path class="fg" d="M8.75 11.25 11.5 8.75V17.5"/>
+  <path class="ac" transform="translate(19.5 4.5) scale(1.25) translate(-19.5 -4.5)" d="M19.5 1.0C19.5 2.9250000000000003 21.075 4.5 23.0 4.5C21.075 4.5 19.5 6.074999999999999 19.5 8.0C19.5 6.074999999999999 17.925 4.5 16.0 4.5C17.925 4.5 19.5 2.9250000000000003 19.5 1.0Z"/>
+</svg>

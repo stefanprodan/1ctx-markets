@@ -1,0 +1,127 @@
+@layer tokens, base, owners;
+
+@layer owners {
+  .srv-tiles {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 14px;
+  }
+  .srv-tile {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+    padding: var(--space-4);
+  }
+  .srv-figure {
+    margin-top: var(--space-1);
+    font-size: var(--text-figure);
+    font-weight: 500;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .srv-sub {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--text-small);
+    color: var(--faint);
+  }
+
+  .srv-card {
+    overflow: hidden;
+  }
+  .srv-card-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    min-height: 44px;
+    padding: 0 var(--space-4);
+    border-bottom: 1px solid var(--line);
+  }
+  .srv-card-title {
+    margin: 0;
+    font-size: var(--text-ui);
+    font-weight: 600;
+  }
+
+  .srv-rows {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  /* the name's column is as wide as the longest job's, so every line
+     starts at one place */
+  .srv-row {
+    display: grid;
+    grid-template-columns: 8px 16ch minmax(0, 1fr);
+    align-items: baseline;
+    column-gap: var(--space-3);
+    padding: 10px var(--space-4);
+    border-top: 1px solid var(--line);
+  }
+  .srv-row:first-child {
+    border-top: 0;
+  }
+  .srv-row-wrap {
+    grid-template-columns: 8px 24ch minmax(0, 1fr);
+  }
+  .srv-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+    align-self: center;
+  }
+  .srv-name {
+    font-family: var(--mono);
+    font-size: var(--text-mono);
+    color: var(--fg);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .srv-job {
+    color: var(--dim);
+  }
+  .srv-line {
+    color: var(--dim);
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+  }
+  .srv-error {
+    grid-column: 3;
+    font-size: var(--text-small);
+    overflow-wrap: anywhere;
+  }
+  .srv-empty {
+    margin: 0;
+    padding: var(--space-3) var(--space-4);
+    color: var(--faint);
+  }
+
+  @media (max-width: 1099px) {
+    .srv-tiles {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  /* the line goes under the name on a phone */
+  @media (max-width: 719px) {
+    .srv-tiles {
+      gap: var(--space-2);
+    }
+    .srv-tile {
+      padding: var(--space-3);
+    }
+    .srv-row,
+    .srv-row-wrap {
+      grid-template-columns: 8px minmax(0, 1fr);
+      row-gap: 2px;
+    }
+    .srv-line,
+    .srv-error {
+      grid-column: 2;
+    }
+  }
+}

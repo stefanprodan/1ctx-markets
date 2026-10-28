@@ -1,0 +1,378 @@
+@layer tokens, base, owners;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  /* the attribute hides whatever display an owner gave the element:
+     an important declaration in this layer beats a normal one in the
+     owners layer, one of the two places the cascade is turned */
+  [hidden] {
+    /* biome-ignore lint/complexity/noImportantStyles: the layer order puts owners above base, and important is how base's hidden wins */
+    display: none !important;
+  }
+
+  @media (pointer: coarse) {
+    input,
+    textarea,
+    select,
+    [contenteditable] {
+      /* biome-ignore lint/complexity/noImportantStyles: every owner sets its own field size, and only important in base wins over them all */
+      font-size: var(--text-touch) !important;
+    }
+  }
+
+  html,
+  body {
+    margin: 0;
+    height: 100%;
+    background: var(--page);
+    color: var(--fg);
+    font-family: var(--sans);
+    font-size: var(--text-ui);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* iOS enlarges some blocks' text in landscape; the sizes are ours */
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  #app {
+    height: 100%;
+  }
+
+  a {
+    color: var(--brand);
+    text-decoration: none;
+  }
+  a:hover {
+    color: var(--brand-hover);
+  }
+
+  input,
+  textarea,
+  select,
+  button {
+    font: inherit;
+    color: inherit;
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--faint);
+  }
+
+  :focus-visible {
+    outline: 1px solid var(--brand);
+    outline-offset: 1px;
+  }
+
+  /* a section label: mono, uppercase, tracked, dim */
+  .label {
+    font-family: var(--mono);
+    font-size: var(--text-label);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--faint);
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 var(--space-3);
+    border-radius: var(--radius);
+    border: 1px solid var(--line);
+    background: transparent;
+    color: var(--dim);
+    font-size: var(--text-ui);
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .btn:hover {
+    color: var(--fg);
+  }
+  .btn-primary {
+    background: var(--hover);
+    border-color: var(--line-strong);
+    color: var(--fg);
+  }
+  .btn-small {
+    height: 28px;
+    padding: 0 var(--space-2);
+    font-size: var(--text-small);
+  }
+  .btn-danger {
+    color: var(--failed);
+    border-color: var(--failed);
+  }
+  .btn:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+
+  /* a switch: a track with a knob, lit when on; a button of its own, or
+     a span inside a row that is the button */
+  .switch {
+    position: relative;
+    display: inline-block;
+    flex-shrink: 0;
+    width: 36px;
+    height: 20px;
+    padding: 0;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-card);
+    background: var(--inset);
+    cursor: pointer;
+    transition: background 120ms;
+  }
+  .switch-knob {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--faint);
+    transition:
+      transform 120ms,
+      background 120ms;
+  }
+  .switch-on {
+    border-color: var(--brand);
+    background: var(--brand);
+  }
+  .switch-on .switch-knob {
+    transform: translateX(16px);
+    background: var(--on-brand);
+  }
+  .switch:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+
+  /* a button that is only its words, the Show all under a fold */
+  .btn-text {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--dim);
+    font-size: var(--text-small);
+    cursor: pointer;
+  }
+  .btn-text:hover {
+    color: var(--fg);
+  }
+
+  /* a square button that is only its icon */
+  .btn-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--faint);
+    cursor: pointer;
+  }
+  .btn-icon:hover {
+    background: var(--hover);
+    color: var(--fg);
+  }
+
+  /* a floating list of choices: the owner places it and sizes it */
+  .menu {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 0;
+    padding: var(--space-1);
+    list-style: none;
+    border-radius: var(--radius-card);
+    background: var(--card);
+    border: 1px solid var(--line-strong);
+    box-shadow: var(--shadow-pop);
+  }
+  /* never shrinks below its words: a capped menu scrolls instead */
+  .menu-item {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: var(--space-2);
+    width: 100%;
+    min-height: 30px;
+    padding: 0 var(--space-2);
+    border: 0;
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--dim);
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .menu-item:hover,
+  .menu-item-on {
+    background: var(--hover);
+    color: var(--fg);
+  }
+  .menu-item:disabled {
+    background: transparent;
+    color: var(--faint);
+    cursor: default;
+  }
+  /* a finger's 44px */
+  @media (pointer: coarse) {
+    .menu-item {
+      min-height: 44px;
+    }
+  }
+
+  /* a round tile: initials or an icon, 28 unless a size says */
+  .avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--inset);
+    border: 1px solid var(--line);
+    font-family: var(--mono);
+    font-size: var(--text-label);
+    font-weight: 600;
+    color: var(--dim);
+  }
+  /* a small framed word beside a name */
+  .tag {
+    flex-shrink: 0;
+    padding: 0 6px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    font-family: var(--mono);
+    font-size: var(--text-label);
+    font-weight: 400;
+    color: var(--faint);
+  }
+
+  /* one line, cut with an ellipsis */
+  .cut {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* a refusal in a box of its own */
+  .notice-failed {
+    margin: 0;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--failed-line);
+    border-radius: var(--radius);
+    background: var(--failed-wash);
+    line-height: 1.45;
+    color: var(--fg);
+  }
+
+  /* a state's colour, on its icon or its word */
+  .status-running {
+    color: var(--running);
+  }
+  .status-done {
+    color: var(--done);
+  }
+  .status-failed {
+    color: var(--failed);
+  }
+  .status-stopped {
+    color: var(--faint);
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .field input,
+  .field textarea,
+  .field select {
+    padding: 0 var(--space-3);
+    border-radius: var(--radius);
+    background: var(--inset);
+    border: 1px solid var(--line);
+    font-size: var(--text-input);
+  }
+  .field input,
+  .field select {
+    height: 36px;
+  }
+  .field textarea {
+    padding: var(--space-2) var(--space-3);
+    resize: vertical;
+    line-height: 1.5;
+  }
+
+  /* a refusal at its field: the words under it, its border in the
+     failed colour */
+  .field-error {
+    font-size: var(--text-small);
+    color: var(--failed);
+  }
+  .field input[aria-invalid="true"],
+  .field textarea[aria-invalid="true"] {
+    border-color: var(--failed);
+  }
+  /* the focus ring of a refused field keeps the refusal's colour */
+  [aria-invalid="true"]:focus-visible {
+    outline-color: var(--failed);
+  }
+
+  /* the HTTP status beside a failure's words, small and in mono, so
+     it reads as a reference and never as the message */
+  .code-tag {
+    display: inline-flex;
+    align-items: center;
+    height: 18px;
+    padding: 0 6px;
+    border: 1px solid var(--failed-line);
+    border-radius: var(--radius);
+    font-family: var(--mono);
+    font-size: var(--text-label);
+    line-height: 1;
+    color: var(--failed);
+    white-space: nowrap;
+  }
+
+  .card {
+    border-radius: var(--radius-card);
+    background: var(--card);
+    border: 1px solid var(--line);
+  }
+
+  .error {
+    color: var(--failed);
+  }
+
+  /* the slow fade a placeholder breathes with */
+  @keyframes pulse {
+    50% {
+      opacity: 0.45;
+    }
+  }
+
+  /* the one turn a spinner needs */
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+}

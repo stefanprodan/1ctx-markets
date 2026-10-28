@@ -101,9 +101,10 @@ the `--help` text, and a flag changes there in the same commit.
   fetches a new symbol.
 - **One Bun server; the bearer is checked before any route is looked
   up** (`router()`), so an unknown path answers 401 without the bearer
-  and 404 with it. Only `GET /health`, the API's spec and its docs page
-  and the web UI's sign-in answer without it. The compare hashes both sides with SHA-256 and
-  uses `timingSafeEqual`, so its time does not depend on what was sent.
+  and 404 with it. Only `GET /health`, the API's spec and its docs
+  page, the web UI's page and its sign-in answer without it. The
+  compare hashes both sides with SHA-256 and uses `timingSafeEqual`,
+  so its time does not depend on what was sent.
   A refusal carries `WWW-Authenticate: Bearer`.
 
 | Path | Method | Serves |
@@ -111,6 +112,7 @@ the `--help` text, and a flag changes there in the same commit.
 | `/mcp` | POST | MCP over Streamable HTTP, stateless |
 | `/api/v1/*` | GET, POST, PATCH, DELETE | the REST API, its spec and docs page (`docs/api.md`); `/api/v1/admin/*` behind the admin key instead of the bearer (`docs/admin.md`) |
 | `/health` | GET | 200 with no body, for the service's start check |
+| `/`, `/status`, `/instruments` | GET | the web UI's page, its assets at the paths it names (`docs/web.md`) |
 | `/ui/session` | POST, DELETE | the web UI's sign-in and sign-out (`docs/web.md`) |
 
 - **Any other method is 405 with `Allow`.** `/mcp` is stateless (one
@@ -163,7 +165,7 @@ or runs against a closed connection.
 - **`make smoke` checks the compiled binary**: it refuses an empty
   bearer, writes a prefixed one on a first start, answers `/health`
   without it and 401 to anything else, answers an MCP initialize with
-  it, signs in with the admin key
+  it, serves the web UI and its assets, signs in with the admin key
   into a cookie that holds no key, creates `markets.db`, keeps the
   bearer out of the log, and prints a `--version` starting with `v`.
 - **Bun is the only runtime**, at the version in `.bun-version`; there

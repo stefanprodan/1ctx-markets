@@ -79,7 +79,15 @@ ADMIN=$(cat "$RUN/data/secrets/admin.key")
 grep -q '"version"' "$RUN/admin" || fail "admin status did not answer the version"
 grep -q "$ADMIN" "$RUN/admin" && fail "admin status printed the key"
 
-# the web UI's sign-in
+# the web UI: the page and every asset it names, from the binary's bundle
+UI=$(curl -s --max-time 5 "$URL/" || true)
+grep -q '<title>Markets</title>' <<<"$UI" || fail "/ did not answer the web UI"
+assets=$(grep -o '\(src\|href\)="/[^"]*"' <<<"$UI" | sed -E 's/^(src|href)="//; s/"$//')
+[[ -n $assets ]] || fail "the web UI names no assets"
+for asset in $assets; do
+  [[ $(status "$URL$asset") == 200 ]] || fail "$asset was not served"
+done
+grep -q '\.js$' <<<"$assets" || fail "the web UI names no script"
 [[ $(status -X POST "$URL/ui/session" -H 'content-type: application/json' -d '{"key":"wrong"}') == 401 ]] ||
   fail "a wrong key signed the web UI in"
 COOKIE=$(curl -s --max-time 5 -o /dev/null -D - -X POST "$URL/ui/session" \

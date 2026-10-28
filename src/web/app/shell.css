@@ -1,0 +1,74 @@
+@layer tokens, base, owners;
+
+@layer owners {
+  .shell {
+    position: relative;
+    display: flex;
+    height: 100%;
+    min-height: 0;
+  }
+
+  /* the one scroll box: a view scrolls here, never inside itself, so
+     the bar is the browser's at the window's edge. No vertical padding
+     of its own: the page spends --shell-inset at its top and bottom,
+     so a head or a foot stuck to the edge is flush with it. The side
+     gutter is a variable, so the stuck head can spend it and run edge
+     to edge. Each edge adds the screen's safe area (the notch, the
+     home indicator), 0 off a phone */
+  .shell-main {
+    --shell-inset: var(--space-5);
+    --shell-gutter: 28px;
+    --shell-inset-top: calc(var(--shell-inset) + env(safe-area-inset-top));
+    --shell-inset-bottom: calc(
+      var(--shell-inset) +
+      env(safe-area-inset-bottom)
+    );
+    --shell-left: calc(var(--shell-gutter) + env(safe-area-inset-left));
+    --shell-right: calc(var(--shell-gutter) + env(safe-area-inset-right));
+    position: relative;
+    flex-grow: 1;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 0 var(--shell-right) 0 var(--shell-left);
+    overflow-y: auto;
+    /* a focused field scrolls into view below the stuck page head, its
+       label included, never under it */
+    scroll-padding-top: 96px;
+  }
+
+  /* the first load failed: the reason and a retry, centred */
+  .shell-fail {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-4);
+    height: 100%;
+    padding: calc(var(--space-4) + env(safe-area-inset-top))
+      calc(var(--space-4) + env(safe-area-inset-right))
+      calc(var(--space-4) + env(safe-area-inset-bottom))
+      calc(var(--space-4) + env(safe-area-inset-left));
+  }
+
+  @media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
+    .shell-main {
+      --shell-inset: var(--space-4);
+      --shell-gutter: var(--space-4);
+    }
+    /* the button shares the page head's row: the head moves right by
+       this much, the content under it keeps the full width. Fixed,
+       so it stays on the head's row while the page scrolls */
+    .shell-main-bare {
+      --page-lead: 40px;
+    }
+    .shell-show-float {
+      position: fixed;
+      top: calc(var(--space-4) + env(safe-area-inset-top));
+      left: calc(var(--space-3) + env(safe-area-inset-left));
+      /* over the page's stuck head, under the drawer */
+      z-index: 3;
+    }
+  }
+}

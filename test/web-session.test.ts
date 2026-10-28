@@ -13,8 +13,9 @@ import {
   sameOrigin,
   sessions,
 } from "../src/server/session.ts";
+import page from "../src/web/index.html";
 import { ADMIN_KEY, api, READ_KEY } from "./helpers/api.ts";
-import { withApp } from "./helpers/app.ts";
+import { SECRETS, withApp } from "./helpers/app.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { NOW } from "./helpers/sources.ts";
 import { world } from "./helpers/world.ts";
@@ -291,4 +292,101 @@ describe("what the cookie opens", () => {
       expect(status.status).toBe(401);
       expect((await fetch(url)).status).toBe(401);
     }));
+});
+
+describe("the served UI", () => {
+  test("answers its paths with the page and its assets, the key never logged", () =>
+    withApp(
+      async ({ url, admin, lines }) => {
+        const home = await fetch(url);
+        expect(home.status).toBe(200);
+        expect(home.headers.get("content-type")).toContain("text/html");
+        const html = await home.text();
+        expect(html).toContain("<title>Markets</title>");
+        expect(html).not.toMatch(/https?:\/\//);
+        const linked = [...html.matchAll(/(?:src|href)="(\/[^"]+)"/g)].map(
+          (m) => m[1]!,
+        );
+        expect(linked.some((l) => l.endsWith(".js"))).toBe(true);
+        expect(linked.some((l) => l.endsWith(".css"))).toBe(true);
+        for (const asset of linked) {
+          const res = await fetch(`${url}${asset}`);
+          expect([asset, res.status]).toEqual([asset, 200]);
+        }
+        for (const path of ["/status", "/instruments"]) {
+          const res = await fetch(`${url}${path}`);
+          expect([path, res.status]).toEqual([path, 200]);
+          expect(await res.text()).toBe(html);
+        }
+        // an unknown path is no page: it keeps the bearer's 401
+        expect((await fetch(`${url}/nothing`)).status).toBe(401);
+        const signed = await fetch(`${url}/ui/session`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ key: admin }),
+        });
+        expect(signed.status).toBe(204);
+        const status = await fetch(`${url}${PREFIX}/admin/status`, {
+          headers: { cookie: `${COOKIE}=${tokenOf(signed)}` },
+        });
+        expect(status.status).toBe(200);
+        expect(await status.text()).not.toContain(admin);
+        for (const line of lines) expect(line).not.toContain(admin);
+        expect(lines.some((l) => l.includes("path=/ui/session"))).toBe(true);
+      },
+      { ui: true, page },
+    ));
+
+  test("an anonymous visitor reads nothing about the server", () =>
+    withApp(
+      async ({ url }) => {
+        const seen: string[] = [];
+        const read = async (path: string, init?: RequestInit) => {
+          const res = await fetch(`${url}${path}`, init);
+          seen.push(
+            JSON.stringify([...res.headers.entries()]),
+            // fonts are inlined as base64, whose letters spell nothing
+            (await res.text()).replace(/url\(data:[^)]*\)/g, ""),
+          );
+          return res;
+        };
+        await read("/");
+        const page = seen[1]!;
+        for (const asset of [...page.matchAll(/(?:src|href)="(\/[^"]+)"/g)]) {
+          await read(asset[1]!);
+        }
+        await read("/status");
+        await read("/instruments");
+        await read("/ui/session");
+        for (const body of ['{"key":"x"}', "{}", "x"]) {
+          await read("/ui/session", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body,
+          });
+        }
+        await read("/api/v1/admin/status");
+        await read("/api/v1/admin/instruments");
+        expect(seen.length).toBeGreaterThan(16);
+        const all = seen.join("\n");
+        for (const secret of [
+          SECRETS,
+          "secrets",
+          "admin.key",
+          "bearer.key",
+          "v0.0.0-test",
+          "/Users/",
+          "sourceMappingURL",
+          "--track",
+          "--source",
+        ]) {
+          expect([secret, all.includes(secret)]).toEqual([secret, false]);
+        }
+        for (const name of ["yahoo", "fred", "finnhub", "massive", "bvb"]) {
+          const said = new RegExp(`\\b${name}\\b`, "i").test(all);
+          expect([name, said]).toEqual([name, false]);
+        }
+      },
+      { ui: true, page },
+    ));
 });

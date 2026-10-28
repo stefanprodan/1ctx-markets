@@ -1,0 +1,12 @@
+@layer tokens, base, owners;
+
+@layer owners {
+  /* the theme's switch at the end of its row */
+  .usermenu-switch {
+    margin-left: auto;
+  }
+
+  .usermenu-error {
+    margin: var(--space-1) var(--space-2);
+  }
+}
