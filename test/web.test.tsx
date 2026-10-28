@@ -37,6 +37,7 @@ import {
 import { Page } from "../src/web/ui/Page.tsx";
 import { SettingDelete } from "../src/web/ui/SettingDelete.tsx";
 import {
+  axisPrice,
   candles,
   changeText,
   DEFAULT_SETTINGS,
@@ -1261,6 +1262,13 @@ describe("the chart model", () => {
     const y = legendOf({ ...h, unit: "percent" }, null)!;
     expect(changeText(y.change, y.points)).toBe("+10.00 pts");
     expect(changeText(-0.001)).toBe("0.00%");
+  });
+
+  test("a price on the axis has separators, and no cents past five figures", () => {
+    expect(axisPrice(120000)).toBe("120,000");
+    expect(axisPrice(80684.99)).toBe("80,685");
+    expect(axisPrice(1661.62)).toBe("1,661.62");
+    expect(axisPrice(5)).toBe("5.00");
   });
 
   test("the axis says a month or a day with its month, never a bare day", () => {

@@ -196,14 +196,20 @@ signed in with the admin key alone.
   checked for colour blindness against `--card` with the dataviz
   validator. A toggle and a legend entry wear a stroke of the colour,
   so identity is never colour alone.
-- **The legend is its own rows above the plot**, never over it, its
-  height held (taller on a phone, and before the first answer) so the
-  plot never moves; it names the range its bars were read for, not one
+- **The legend is its own rows above the plot**, never over it, held
+  at the tallest it has been since the averages shown or the bars' kind
+  last changed (a guess before the first answer), so the plot never
+  moves and a short legend leaves no gap; it names the range its bars were read for, not one
   still loading, and a failed read shows over the bars kept: date, Live while the market is
   open and the bar not final, O H L C, volume, the change from the
   range's first close (points for a series in percent), then the
   averages. It follows the crosshair; at rest the latest bar, whose
   averages fall back to the last there are (an open week has none).
+- **Prices on the axis** have separators, and no cents from five
+  figures up (`axisPrice`), so a phone's axis stays narrow; each pane's
+  scale keeps headroom so its top label is whole.
+- **On a phone the head's row is the floating menu button's height**,
+  centred, so the button, title and actions share one middle.
 - **The bar still trading is drawn faded**; the last price has its
   line. Log is a toggle; a range change fits the content.
 - **Colours are read from the tokens on every draw**, and a theme flip

@@ -15,7 +15,7 @@ import type {
   MouseEventParams,
   SeriesType,
 } from "lightweight-charts";
-import { useEffect, useRef } from "preact/hooks";
+import { useEffect, useLayoutEffect, useRef } from "preact/hooks";
 import { theme } from "../app/theme.ts";
 import { says } from "../data/api.ts";
 import { markets } from "../data/store.ts";
@@ -23,6 +23,7 @@ import { useRefresh } from "../lib/refresh.ts";
 import {
   averageLabel,
   averages,
+  axisPrice,
   candles,
   changeText,
   closes,
@@ -84,6 +85,13 @@ function dateOf(time: unknown): string {
 }
 
 export const CHART_CREDIT = "https://www.tradingview.com/";
+
+// the price pane's own format; volume keeps the library's
+const PRICE = {
+  type: "custom" as const,
+  formatter: axisPrice,
+  minMove: 0.0001,
+};
 
 const SETTINGS_KEY = "chart";
 
@@ -173,6 +181,8 @@ export function LegendLine({
 
 export function Chart({ id }: { id: string }) {
   const box = useRef<HTMLDivElement>(null);
+  const legendBox = useRef<HTMLDivElement>(null);
+  const tallest = useRef({ shape: "", px: 0 });
   const kept = useRef(loadSettings()).current;
   const range = useSignal<Range>(kept.range);
   const data = useSignal<History | null>(null);
@@ -323,6 +333,7 @@ export function Chart({ id }: { id: string }) {
         wickDownColor: k.down,
         borderVisible: false,
         priceLineColor: k.faint,
+        priceFormat: PRICE,
       });
       price.setData(data);
     } else {
@@ -331,6 +342,7 @@ export function Chart({ id }: { id: string }) {
         lineWidth: 2,
         priceLineColor: k.faint,
         crosshairMarkerRadius: 4,
+        priceFormat: PRICE,
       });
       price.setData(closes(h.bars));
     }
@@ -343,6 +355,7 @@ export function Chart({ id }: { id: string }) {
         priceLineVisible: false,
         lastValueVisible: false,
         crosshairMarkerVisible: false,
+        priceFormat: PRICE,
       });
       s.setData(averages(h.bars, key));
       series.current.push(s);
@@ -367,6 +380,8 @@ export function Chart({ id }: { id: string }) {
           color: alpha(b.up ? k.up : k.down, 0.5),
         })),
       );
+      // room over the tallest bar, so the scale's top label is whole
+      v.priceScale().applyOptions({ scaleMargins: { top: 0.25, bottom: 0 } });
       series.current.push(v);
       // a redraw makes the pane anew: the share holds where a height
       // would reset
@@ -378,6 +393,25 @@ export function Chart({ id }: { id: string }) {
 
   const h = data.value;
   const legend = h === null ? null : legendOf(h, hover.value);
+  // what the legend can hold changes with the averages shown and the
+  // bars' kind: then the held height starts again
+  const shape =
+    h === null
+      ? "loading"
+      : `${sma50.value}${sma200.value}${hasCandles(h.bars)}`;
+  useLayoutEffect(() => {
+    const box = legendBox.current;
+    if (box === null) return;
+    if (tallest.current.shape !== shape) {
+      tallest.current = { shape, px: 0 };
+      box.style.minHeight = "";
+    }
+    const px = box.offsetHeight;
+    if (px > tallest.current.px) {
+      tallest.current.px = px;
+      box.style.minHeight = `${px}px`;
+    }
+  });
   const candlesOk = h !== null && hasCandles(h.bars);
   return (
     <section class="card chart-card" aria-label="Chart">
@@ -459,17 +493,21 @@ export function Chart({ id }: { id: string }) {
       <div class="chart-body">
         {/* a read that failed says so over the bars still shown */}
         {error.value !== null && <p class="chart-note">{error.value}</p>}
-        {legend !== null && h !== null ? (
-          <LegendLine
-            legend={legend}
-            interval={h.interval}
-            range={shown.value}
-            show={{ sma50: sma50.value, sma200: sma200.value }}
-          />
-        ) : (
-          // its room held before the first answer, so the plot never jumps
-          <div class="chart-legend" aria-hidden="true" />
-        )}
+        {/* holds the tallest the legend has been, so the plot never
+            moves as the crosshair changes its rows */}
+        <div class="chart-legend-box" ref={legendBox}>
+          {legend !== null && h !== null ? (
+            <LegendLine
+              legend={legend}
+              interval={h.interval}
+              range={shown.value}
+              show={{ sma50: sma50.value, sma200: sma200.value }}
+            />
+          ) : (
+            // a first guess at its room before the first answer
+            <div class="chart-legend chart-legend-wait" aria-hidden="true" />
+          )}
+        </div>
         <div class="chart-canvas" ref={box} />
       </div>
     </section>

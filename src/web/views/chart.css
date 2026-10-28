@@ -65,7 +65,6 @@
      its height is held, so the plot never moves as it changes */
   .chart-legend {
     display: flex;
-    min-height: 40px;
     padding: 0 var(--space-4) var(--space-2);
     flex-direction: column;
     gap: 2px;
@@ -109,10 +108,12 @@
     font-size: var(--text-ui);
     color: var(--faint);
   }
-  /* a phone wraps the figures to more rows: room for them, held; after
-     the base rule, which it overrides */
+  /* before the first answer: about two rows, a phone's about four */
+  .chart-legend-wait {
+    min-height: 40px;
+  }
   @media (max-width: 719px) {
-    .chart-legend {
+    .chart-legend-wait {
       min-height: 76px;
     }
   }

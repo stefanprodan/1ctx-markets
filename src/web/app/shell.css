@@ -63,6 +63,12 @@
     .shell-main-bare {
       --page-lead: 40px;
     }
+    /* the head's row as tall as the floating button and centred, so the
+       title, its line and the actions meet the button's middle */
+    .shell-main-bare .page-head {
+      align-items: center;
+      min-height: calc(var(--shell-inset-top) + 32px + var(--space-2));
+    }
     .shell-show-float {
       position: fixed;
       top: calc(var(--space-4) + env(safe-area-inset-top));

@@ -214,6 +214,15 @@ export function figure(v: number | null): string {
   });
 }
 
+// the price axis and its labels: separators, and no cents where a
+// price runs to five figures, so a phone's axis stays narrow
+export function axisPrice(v: number): string {
+  if (Math.abs(v) >= 10_000) {
+    return v.toLocaleString("en-US", { maximumFractionDigits: 0 });
+  }
+  return figure(v);
+}
+
 export function volumeText(v: number | null): string {
   if (v === null) return "—";
   if (v >= 1e9) return `${(v / 1e9).toFixed(2)}B`;
