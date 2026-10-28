@@ -1,11 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// One Bun server; the bearer is checked before any route is looked up,
-// so an unknown path answers 401 to a caller without it, as /mcp does.
-// GET /health, the API's spec and its docs page are the routes before
-// it: they hold no data. /api/v1/admin/* takes the admin key alone,
-// which no other path takes.
+// The bearer is checked before route lookup, so an unknown path answers 401.
 
 import { createHash, timingSafeEqual } from "node:crypto";
 import type { McpHttpHandler } from "@modelcontextprotocol/server";
@@ -15,8 +11,7 @@ import type { Clock } from "../runtime/clock.ts";
 import { type Log, sdkErrorFields } from "../runtime/log.ts";
 
 const MAX_BODY_BYTES = 1024 * 1024;
-// Bun drops a request idle for 10 s by default, under a tool call's 15 s
-// deadline (CALL_MS); 30 s clears it with room for the queued write
+// Bun's 10 s idle default is under CALL_MS; 30 s adds room for a queued write
 export const IDLE_TIMEOUT_S = 30;
 
 export type Handle = (req: Request) => Promise<Response>;

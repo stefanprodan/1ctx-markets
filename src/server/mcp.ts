@@ -1,8 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// The MCP endpoint on the SDK's Streamable HTTP handler, stateless as
-// 1ctx serves its own, so no session outlives a request.
+// Stateless as 1ctx serves its own, so no session outlives a request.
 
 import {
   createMcpHandler,
@@ -16,8 +15,6 @@ import { INSTRUCTIONS } from "./instructions.ts";
 
 export const SERVER_NAME = "1ctx-markets";
 
-// One server instance per request, each with the tools over the one set
-// of application services.
 export function mcpHandler(
   version: string,
   log: Log,

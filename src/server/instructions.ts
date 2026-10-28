@@ -1,11 +1,9 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// The server's instructions: the one text a client keeps whole for every
-// server on every turn, where a tool description is cut or listed short.
+// The one text a client keeps whole each turn; tool descriptions get cut.
 
-// Clients cut long instructions from the end, so the cap keeps a new
-// line from pushing an old one out unseen.
+// clients cut from the end, so the cap stops a new line pushing an old one out
 export const INSTRUCTIONS_BYTES = 4096;
 
 // Most important first, what the server lacks last: a cut drops the least.
