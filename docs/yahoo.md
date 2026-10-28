@@ -18,7 +18,7 @@ finality in `docs/calendars.md`; tables, the writer and staleness in
 | --- | --- | --- |
 | `chart` | `/v8/finance/chart/<symbol>?period1&period2&interval=1d&events=div,split` | daily bars, splits, one listing's meta |
 | `intraday` | `/v8/finance/chart/<symbol>?interval=1m&range=2d&includePrePost=true` | quote's `extended`: minute bars with pre and post trading, and each window |
-| `spark` | `/v7/finance/spark?symbols=<list>&range=1d&interval=5m&_=<now>` | quotes and sessions, up to 20 symbols |
+| `spark` | `/v7/finance/spark?symbols=<list>&range=1d&interval=5m&_=<now>` | quotes, sessions and 5-minute closes, up to 20 symbols |
 | `search` | `/v1/finance/search?q&quotesCount=10&newsCount=0&listsCount=0` | listings for a bare symbol or a name |
 
 - **Never `/v7/finance/quote` or `/v8/finance/spark`.** v7 quote
@@ -46,6 +46,14 @@ finality in `docs/calendars.md`; tables, the writer and staleness in
 - **A spark entry is read on its own,** so one bad symbol skips only
   itself (`skipped` with its phrase); an entry with no response is
   `not found`.
+- **A spark entry's `points` are its 5-minute closes** (`SparkQuote`),
+  null closes dropped. `indicators.quote[0]` holds `close` only, regular
+  hours only, from the regular open of the latest session so far: while
+  open the last stamp is the trade, off the grid; closed it may end on
+  the grid before the meta's trade (VWCE.DE 16:30, its trade 16:36).
+  Out of session it is the last session, not today's. An entry with no
+  `timestamp`, or columns that do not parse, has no points and keeps
+  its quote: a bad series never costs the price.
 - **A meta's day high or low of 0 is none:** an index's meta can read
   0 while its bars do not.
 - **A `CURRENCY` meta with no currency takes it from its symbol**
@@ -182,6 +190,11 @@ Phrases from Yahoo (`docs/sources.md`, Refusals):
   used is stored.
 - **A quote older than the stored one is kept out;** one with the same
   trade time replaces it only when fetched later (`storeQuotes()`).
+- **The points are stored with the quote, only when the quote is**
+  (`storeIntraday()` in `storeQuotes()`), in the same write, so every
+  spark answer stores them: the quote pass, the check, a first fetch,
+  a catch-up, a refetch and a source switch. No call is made for them
+  (`docs/storage.md`, "Intraday closes").
 - **`hasPrePostMarketData` decides whether a listing has extended
   trading,** never the windows: `currentTradingPeriod` names `pre` and
   `post` for Xetra too, whose flag is false. The client keeps the flag

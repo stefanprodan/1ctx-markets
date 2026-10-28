@@ -67,6 +67,7 @@ src/market/                 market rules no source owns
   instruments.ts            instruments keyed market:symbol, units
   bars.ts                   daily bars, weeks built from them
   quotes.ts                 the latest quote per instrument, whichever source
+  intraday.ts               the quote answers' 5-minute closes, five sessions
   calendars.ts              sessions from the source's answers; zone.ts wall times
   stale.ts                  the stale reasons
   tracking.ts               tracking by use, no ticker list

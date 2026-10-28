@@ -56,7 +56,8 @@ the rules tool in `docs/rules.md`; signal rows and returns in
   refuses it with other arguments (`bad_arguments`). quote binds its
   `benchmark` only when one is given, so a cursor without one stays
   valid. The position is the next offset, the next bar's date
-  (history) or the next rule id (rules list).
+  (history), the next point's `at` with its bounds (history's `5m`)
+  or the next rule id (rules list).
 - **movers and screen page a fresh view**: each call reads again and
   pages the sorted set from the offset, `counts` covering every page;
   the set may shift between pages, as the descriptions say. An offset
@@ -96,7 +97,7 @@ the rules tool in `docs/rules.md`; signal rows and returns in
 | Tool | Takes | Answers |
 |---|---|---|
 | `quote` | `symbols`, `benchmark`, `extended`, `next` | per symbol a `QuoteItem` (`quote.ts`) with `returns`, `session`, with a benchmark `relative_return_1m` and `_3m`, with `extended` true `extended` |
-| `history` | `symbol`, `interval`, `from`, `to`, `benchmark`, `next` | bars oldest first with `final` and signals; `session`; `relative` |
+| `history` | `symbol`, `interval`, `from`, `to`, `benchmark`, `next` | bars oldest first with `final` and signals; `session`; `relative`; with `5m`, `points` and `sessions` |
 | `search` | `query`, `next` | up to 20 stored matches, then the Bucharest feed's tradable listings while it is on, then Yahoo's, each with id, exchange, type, name, `source`, `stored`; a Bucharest listing adds its `isin` |
 | `movers` | `symbols`, `min_move_pct`, `direction`, `average`, `relation`, `next` | matches by absolute change, largest first; `counts` |
 | `screen` | `symbols`, `filters`, `benchmark`, `sort`, `order`, `fields`, `next` | matches with each used and asked field's value, unit, kind and date; `counts` |
@@ -146,6 +147,20 @@ the rules tool in `docs/rules.md`; signal rows and returns in
 - **history defaults its range from the last bar**: `to` the latest
   bar, `from` 3 months back for `1d`, 24 for `1wk` (`DEFAULT_MONTHS`).
   `basis` states the price basis (`BASIS`, `FRED_BASIS`).
+- **history's `5m` is asked, never default** (`intraday.ts`), so no
+  answer of `1d` or `1wk` changes. It answers the stored 5-minute
+  closes (`docs/storage.md`, "Intraday closes") oldest first as
+  `points` (`at` UTC, `session`, `close`, `final`), `sessions` with
+  each one's `fetched_at`, and quote's `session`; no signals, since an
+  average over 5-minute closes is not one this server computes.
+  `from` and `to` are session dates, `to` the newest stored session by
+  default and `from` `to`. `benchmark` with it is `bad_arguments`. A
+  source with no such closes (FRED, the Bucharest feed) or none stored
+  in the range is `no_data`, with which in the message.
+- **history's `5m` cursor holds the next point's `at` and the resolved
+  `from` and `to`**, never a session date, which would repeat a page
+  inside a session, so a session added between pages never moves the
+  bounds.
 - **A Bucharest search candidate's type is the chart feed's**
   (`types`, `docs/bvb.md`), since the site's search gives none: the
   type its instrument would take, else the feed's own. That is one

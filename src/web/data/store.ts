@@ -2,7 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { batch, signal } from "@preact/signals";
-import type { History, Interval } from "../views/Chart.model.ts";
+import type {
+  History,
+  Interval,
+  Intraday,
+  IntradayRange,
+} from "../views/Chart.model.ts";
 import { ApiError, client, type Fetch, failure, says } from "./api.ts";
 
 export type SourceStatus = {
@@ -350,8 +355,17 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
     return call<History>(`${HISTORY_PATH}?${q}`);
   }
 
+  // 1D is the server's default, the newest stored session; 5D asks from
+  // before any session it keeps
+  function intraday(id: string, range: IntradayRange, from: string) {
+    const q = new URLSearchParams({ symbol: id, interval: "5m" });
+    if (range === "5D") q.set("from", from);
+    return call<Intraday>(`${HISTORY_PATH}?${q}`);
+  }
+
   return {
     history,
+    intraday,
     detail,
     detailId,
     detailError,

@@ -3,11 +3,17 @@
 
 import { recordSession, type Session } from "../../market/calendars.ts";
 import { readBySourceSymbol } from "../../market/instruments.ts";
+import { storeIntraday } from "../../market/intraday.ts";
 import { type QuoteRow, upsertQuote } from "../../market/quotes.ts";
 import { NO_RULES, type RuleHooks } from "../../rules/hooks.ts";
 import { pruneLive, refreshLive } from "../../signals/store.ts";
 import type { Db } from "../../storage/db/index.ts";
-import { type ChartMeta, SOURCE, type SparkAnswer } from "./client.ts";
+import {
+  type ChartMeta,
+  SOURCE,
+  type SparkAnswer,
+  type SparkQuote,
+} from "./client.ts";
 import { keyOf, marketOf } from "./resolve.ts";
 
 // The day change is worked out from price and previous close, never
@@ -47,7 +53,7 @@ export function quoteOf(
 // A symbol can move listing on Yahoo's side; an answer naming another
 // key than the stored one is that other listing's price, never ours.
 export function refuseForeign(db: Db, answer: SparkAnswer): SparkAnswer {
-  const quotes: ChartMeta[] = [];
+  const quotes: SparkQuote[] = [];
   const skipped = [...answer.skipped];
   for (const meta of answer.quotes) {
     const instrument = readBySourceSymbol(db, SOURCE, meta.symbol);
@@ -89,8 +95,16 @@ export function storeQuotes(
     const instrument = readBySourceSymbol(db, SOURCE, meta.symbol);
     if (instrument === null) continue;
     const q = quoteOf(instrument.id, meta, answer.fetchedAt);
+    // the points go with the quote, so an older answer stores none
     if (upsertQuote(db, q)) {
       written.push(q);
+      storeIntraday(
+        db,
+        instrument.id,
+        instrument.zone,
+        meta.points,
+        answer.fetchedAt,
+      );
       refreshLive(db, instrument, answer.fetchedAt);
       moved.add(instrument.id);
     }

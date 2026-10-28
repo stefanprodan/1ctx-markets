@@ -248,6 +248,47 @@ export const schemas: Record<string, Schema> = {
       "bars",
     ],
   ),
+  Point: object({
+    at: note(str, "UTC, to the second."),
+    session: note(str, "The session's date in the market's zone."),
+    close: num,
+    final: note(
+      bool,
+      "False only for the newest point while its session trades; crypto's newest point never is.",
+    ),
+  }),
+  Intraday: object({
+    id: str,
+    name: nstr,
+    exchange: str,
+    type: str,
+    currency: nstr,
+    unit: values(UNITS),
+    source: str,
+    stale: note(
+      list(str),
+      "Why a value may be out of date. Empty means current.",
+    ),
+    from: note(str, "The first session date."),
+    to: note(str, "The last session date."),
+    session: note(
+      nullable(
+        object({ state: values(["open", "closed"]), start: nstr, end: nstr }, [
+          "state",
+          "start",
+          "end",
+        ]),
+      ),
+      "The last regular session, in UTC. Crypto is always open with null times.",
+    ),
+    interval: values(["5m"]),
+    sessions: note(
+      list(object({ session: str, fetched_at: str })),
+      "Each session's newest answer.",
+    ),
+    points: list(ref("Point")),
+  }),
+  HistoryAnswer: oneOf("History", "Intraday"),
   Search: object(
     {
       query: str,

@@ -31,7 +31,27 @@ export type History = {
   bars: HistoryBar[];
 };
 
-export const RANGES = [
+// a 5-minute close; at in UTC
+export type Point = {
+  at: string;
+  session: string;
+  close: number;
+  final: boolean;
+};
+
+export type Intraday = {
+  id: string;
+  unit: string;
+  interval: "5m";
+  session: { state: "open" | "closed" } | null;
+  points: Point[];
+};
+
+// the stored 5-minute closes: the newest session, or all five kept
+export const INTRADAY = ["1D", "5D"] as const;
+export type IntradayRange = (typeof INTRADAY)[number];
+
+export const DAILY = [
   "1M",
   "3M",
   "6M",
@@ -41,10 +61,16 @@ export const RANGES = [
   "5Y",
   "Max",
 ] as const;
-export type Range = (typeof RANGES)[number];
-export const DEFAULT_RANGE: Range = "1Y";
+export type DailyRange = (typeof DAILY)[number];
 
-const MONTHS: Record<Exclude<Range, "YTD" | "Max">, number> = {
+export const RANGES = [...INTRADAY, ...DAILY] as const;
+export type Range = (typeof RANGES)[number];
+export const DEFAULT_RANGE: DailyRange = "1Y";
+
+export const isIntraday = (r: Range): r is IntradayRange =>
+  (INTRADAY as readonly string[]).includes(r);
+
+const MONTHS: Record<Exclude<DailyRange, "YTD" | "Max">, number> = {
   "1M": 1,
   "3M": 3,
   "6M": 6,
@@ -55,14 +81,14 @@ const MONTHS: Record<Exclude<Range, "YTD" | "Max">, number> = {
 
 // past two years a range reads weekly bars: a few hundred pixels never
 // need thousands of days
-export const intervalOf = (range: Range): Interval =>
+export const intervalOf = (range: DailyRange): Interval =>
   range === "3Y" || range === "5Y" || range === "Max" ? "1wk" : "1d";
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 
 // the first day a range asks for, from today's date in UTC; Max is the
 // ten years the server keeps
-export function fromOf(range: Range, today: string): string {
+export function fromOf(range: DailyRange, today: string): string {
   if (range === "YTD") return `${today.slice(0, 4)}-01-01`;
   const months = range === "Max" ? 120 : MONTHS[range];
   const [y, m, day] = today.split("-").map(Number) as [number, number, number];
@@ -142,6 +168,32 @@ export function volumes(bars: readonly HistoryBar[]) {
   return out;
 }
 
+// the viewer's offset from UTC at an instant, in ms
+export const localOffset = (at: number): number =>
+  -new Date(at).getTimezoneOffset() * 60_000;
+
+// The library draws a time as UTC, so each point is shifted to the viewer's
+// wall time, in seconds; a repeated hour at a clock change would step back,
+// so its points are left out. No gap is drawn for a night or a weekend.
+export function pointLine(
+  points: readonly Point[],
+  offset: (at: number) => number = localOffset,
+): { time: number; value: number; point: Point }[] {
+  const out: { time: number; value: number; point: Point }[] = [];
+  for (const p of points) {
+    const at = Date.parse(p.at);
+    const time = (at + offset(at)) / 1000;
+    const last = out.at(-1);
+    if (last !== undefined && time <= last.time) continue;
+    out.push({ time, value: p.close, point: p });
+  }
+  return out;
+}
+
+// a shifted time's wall clock, HH:MM
+export const clockOf = (time: number): string =>
+  new Date(time * 1000).toISOString().slice(11, 16);
+
 // the last bar is still trading while its market is open
 export const isLive = (h: History): boolean =>
   h.session?.state === "open" && h.bars.at(-1)?.final === false;
@@ -156,6 +208,8 @@ export function dayOf(date: string): string {
 
 export type Legend = {
   date: string;
+  // a 5-minute close's local time
+  time?: string;
   live: boolean;
   open: number | null;
   high: number | null;
@@ -204,6 +258,42 @@ export function legendOf(h: History, date: string | null): Legend | null {
   };
 }
 
+// the point under the crosshair (a shifted time), else the latest
+export function pointLegendOf(
+  h: Intraday,
+  time: number | null,
+  offset: (at: number) => number = localOffset,
+): Legend | null {
+  const line = pointLine(h.points, offset);
+  const shown = time === null ? line.at(-1) : line.find((l) => l.time === time);
+  if (shown === undefined) return null;
+  const { point } = shown;
+  const first = h.points[0]?.close ?? null;
+  const points = h.unit === "percent";
+  return {
+    date: new Date(shown.time * 1000).toISOString().slice(0, 10),
+    time: clockOf(shown.time),
+    live:
+      h.session?.state === "open" && !point.final && point === h.points.at(-1),
+    open: null,
+    high: null,
+    low: null,
+    close: point.close,
+    volume: null,
+    change:
+      first === null
+        ? null
+        : points
+          ? point.close - first
+          : first === 0
+            ? null
+            : ((point.close - first) / first) * 100,
+    points,
+    sma50: null,
+    sma200: null,
+  };
+}
+
 export function figure(v: number | null): string {
   if (v === null) return "—";
   const a = Math.abs(v);
@@ -247,9 +337,10 @@ export function changeText(v: number | null, points = false): string {
   return `${flat ? "" : v > 0 ? "+" : "−"}${n}${points ? " pts" : "%"}`;
 }
 
-// the chart's choices, kept for the next chart this browser draws
+// the chart's choices, kept for the next chart this browser draws; 1D and
+// 5D are never kept, so the daily chart's settings stay as they were
 export type Settings = {
-  range: Range;
+  range: DailyRange;
   line: boolean;
   log: boolean;
   sma50: boolean;
@@ -280,8 +371,8 @@ export function readSettings(raw: string | null): Settings {
       ? (v[k] as boolean)
       : (DEFAULT_SETTINGS[k] as boolean);
   return {
-    range: RANGES.includes(v.range as Range)
-      ? (v.range as Range)
+    range: DAILY.includes(v.range as DailyRange)
+      ? (v.range as DailyRange)
       : DEFAULT_RANGE,
     line: flag("line"),
     log: flag("log"),

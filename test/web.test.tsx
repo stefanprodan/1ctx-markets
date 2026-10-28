@@ -27,6 +27,7 @@ import {
 } from "../src/web/data/api.ts";
 import type { Detail } from "../src/web/data/store.ts";
 import {
+  HISTORY_PATH,
   INSTRUMENTS_PATH,
   type Listed,
   REFETCH_PATH,
@@ -46,8 +47,13 @@ import {
   type History,
   hasCandles,
   hasVolume,
+  type Intraday,
   intervalOf,
+  isIntraday,
   legendOf,
+  pointLegendOf,
+  pointLine,
+  RANGES,
   readSettings,
   tick,
   volumes,
@@ -335,6 +341,17 @@ describe("the data layer", () => {
     await s.loadStatus();
     expect(s.signedIn.value).toBe(false);
     expect(s.status.value).toBeNull();
+  });
+
+  test("1D asks for the newest session, 5D for every one kept", async () => {
+    const one = `${HISTORY_PATH}?symbol=US%3AA&interval=5m`;
+    const five = `${one}&from=2016-10-28`;
+    const answer = { id: "US:A", interval: "5m", points: [] };
+    const f = fake({ [`GET ${one}`]: ok(answer), [`GET ${five}`]: ok(answer) });
+    const s = store(f.fetch);
+    expect(await s.intraday("US:A", "1D", "2016-10-28")).toEqual(answer as any);
+    await s.intraday("US:A", "5D", "2016-10-28");
+    expect(f.asked.map((a) => a.path)).toEqual([one, five]);
   });
 
   test("sign-in posts the key alone; a wrong one keeps the form", async () => {
@@ -1278,6 +1295,54 @@ describe("the chart model", () => {
     expect(tick("2026-09-01", "month")).toBe("Sep");
     expect(tick("2026-10-05", "day")).toBe("5 Oct");
     expect(tick("2026-01-02", "year")).toBe("2026");
+  });
+
+  test("1D and 5D draw the 5-minute closes on the viewer's clock", () => {
+    expect(RANGES.slice(0, 3)).toEqual(["1D", "5D", "1M"]);
+    expect(isIntraday("5D")).toBe(true);
+    expect(isIntraday("1M")).toBe(false);
+    const point = (at: string, close: number, final = true) => ({
+      at,
+      session: at.slice(0, 10),
+      close,
+      final,
+    });
+    const h: Intraday = {
+      id: "XETRA:VVSM",
+      unit: "per_share",
+      interval: "5m",
+      session: { state: "open" },
+      points: [
+        point("2026-10-23T15:25:00Z", 100),
+        point("2026-10-26T08:00:00Z", 102),
+        point("2026-10-26T08:05:00Z", 101, false),
+      ],
+    };
+    // the viewer two hours east of UTC
+    const east = () => 2 * 3_600_000;
+    const line = pointLine(h.points, east);
+    expect(line.map((p) => [p.time, p.value])).toEqual([
+      [Date.parse("2026-10-23T17:25:00Z") / 1000, 100],
+      [Date.parse("2026-10-26T10:00:00Z") / 1000, 102],
+      [Date.parse("2026-10-26T10:05:00Z") / 1000, 101],
+    ]);
+    const latest = pointLegendOf(h, null, east)!;
+    expect(latest).toMatchObject({
+      date: "2026-10-26",
+      time: "10:05",
+      live: true,
+      close: 101,
+      change: 1,
+      open: null,
+      sma50: null,
+    });
+    const hovered = pointLegendOf(h, line[0]!.time, east)!;
+    expect(hovered).toMatchObject({ date: "2026-10-23", time: "17:25" });
+    expect(hovered.live).toBe(false);
+    // a repeated hour at a clock change never steps the axis back
+    const back = (at: number) =>
+      at < Date.parse("2026-10-26T08:03:00Z") ? 3_600_000 : 0;
+    expect(pointLine(h.points, back)).toHaveLength(2);
   });
 
   test("kept settings fall back field by field", () => {

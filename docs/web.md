@@ -194,10 +194,16 @@ signed in with the admin key alone.
   not split the page, so the library ships in its bundle either way. Its
   data comes from `GET /api/v1/history?ohlc=true`, a read; the bars
   are shaped in `Chart.model.ts`, which has no DOM and is tested.
-- **Ranges** 1M to Max (`RANGES`, 1Y by default); 3Y and up read
-  weekly bars (`intervalOf`), so the averages read "50-week" and
-  "200-week". Max is the ten years the server keeps. No 1D: the
-  server stores no intraday bars.
+- **Ranges** 1D, 5D, then 1M to Max (`RANGES`, 1Y by default); 3Y
+  and up read weekly bars (`intervalOf`), so the averages read
+  "50-week" and "200-week". Max is the ten years the server keeps.
+- **1D and 5D read `history?interval=5m`**: the newest stored session,
+  or all five kept (asked from Max's start). A line of closes on a time
+  axis, each point shifted to the viewer's wall time since the library
+  draws times as UTC (`pointLine`), a repeated hour at a clock change
+  left out so the axis never steps back; no candles, averages or
+  volume, so their toggles hide. The legend gives the day and time,
+  the close and the change from the range's first close.
 - **Candles or a line**, the toggle only where the bars have an open;
   a series (FRED) is a line. A bar the live quote made with no open
   takes the last close. **Volume** is its own pane (price 4 : volume
@@ -228,7 +234,8 @@ signed in with the admin key alone.
   draws again.
 - **Settings are kept in `localStorage`** (`chart`): the range, line,
   log and both averages, one set for every instrument; a blocked or
-  broken value starts from the defaults, field by field.
+  broken value starts from the defaults, field by field. 1D and 5D are
+  never kept, so the daily chart's settings stay as they were.
 - **The credits are the page's footer**: "Data by <source> · Charts
   by TradingView", each name linking its site. The source (Yahoo, BVB,
   FRED) and its site come from the server's `credit`, since the public

@@ -43,6 +43,7 @@ export const INSTRUMENT_TABLES = [
   "bars",
   "splits",
   "quotes",
+  "intraday",
   "signals",
   "research",
   "events",

@@ -14,6 +14,7 @@ import type {
   ISeriesApi,
   MouseEventParams,
   SeriesType,
+  UTCTimestamp,
 } from "lightweight-charts";
 import { useEffect, useLayoutEffect, useRef } from "preact/hooks";
 import { theme } from "../app/theme.ts";
@@ -26,17 +27,23 @@ import {
   axisPrice,
   candles,
   changeText,
+  clockOf,
   closes,
+  type DailyRange,
   dayOf,
   figure,
   fromOf,
   type History,
   hasCandles,
   hasVolume,
+  type Intraday,
   intervalOf,
+  isIntraday,
   isLive,
   type Legend,
   legendOf,
+  pointLegendOf,
+  pointLine,
   RANGES,
   type Range,
   readSettings,
@@ -121,7 +128,7 @@ export function LegendLine({
   show,
 }: {
   legend: Legend;
-  interval: History["interval"];
+  interval: History["interval"] | Intraday["interval"];
   range: Range;
   show: { sma50: boolean; sma200: boolean };
 }) {
@@ -134,7 +141,10 @@ export function LegendLine({
   return (
     <div class="chart-legend">
       <span class="chart-legend-row">
-        <span class="chart-date">{dayOf(legend.date)}</span>
+        <span class="chart-date">
+          {dayOf(legend.date)}
+          {legend.time !== undefined && ` ${legend.time}`}
+        </span>
         {legend.live && <span class="chart-live">Live</span>}
         {legend.open !== null && (
           <>
@@ -163,18 +173,20 @@ export function LegendLine({
           </span>
         )}
       </span>
-      <span class="chart-legend-row">
-        {show.sma50 && legend.sma50 !== null && (
-          <span class="chart-avg chart-avg-50">
-            {averageLabel(interval, 50)} {figure(legend.sma50)}
-          </span>
-        )}
-        {show.sma200 && legend.sma200 !== null && (
-          <span class="chart-avg chart-avg-200">
-            {averageLabel(interval, 200)} {figure(legend.sma200)}
-          </span>
-        )}
-      </span>
+      {interval !== "5m" && (
+        <span class="chart-legend-row">
+          {show.sma50 && legend.sma50 !== null && (
+            <span class="chart-avg chart-avg-50">
+              {averageLabel(interval, 50)} {figure(legend.sma50)}
+            </span>
+          )}
+          {show.sma200 && legend.sma200 !== null && (
+            <span class="chart-avg chart-avg-200">
+              {averageLabel(interval, 200)} {figure(legend.sma200)}
+            </span>
+          )}
+        </span>
+      )}
     </div>
   );
 }
@@ -185,7 +197,10 @@ export function Chart({ id }: { id: string }) {
   const tallest = useRef({ shape: "", px: 0 });
   const kept = useRef(loadSettings()).current;
   const range = useSignal<Range>(kept.range);
-  const data = useSignal<History | null>(null);
+  // the daily range kept, which a 1D or 5D pick leaves as it was
+  const daily = useRef<DailyRange>(kept.range);
+  if (!isIntraday(range.value)) daily.current = range.value;
+  const data = useSignal<History | Intraday | null>(null);
   const error = useSignal<string | null>(null);
   const line = useSignal(kept.line);
   const log = useSignal(kept.log);
@@ -193,14 +208,15 @@ export function Chart({ id }: { id: string }) {
   const sma200 = useSignal(kept.sma200);
   useEffect(() => {
     saveSettings({
-      range: range.value,
+      range: daily.current,
       line: line.value,
       log: log.value,
       sma50: sma50.value,
       sma200: sma200.value,
     });
   }, [range.value, line.value, log.value, sma50.value, sma200.value]);
-  const hover = useSignal<string | null>(null);
+  // a day, or a 5-minute close's shifted time in seconds
+  const hover = useSignal<string | number | null>(null);
   const lib = useRef<Lib | null>(null);
   const chart = useRef<IChartApi | null>(null);
   const series = useRef<ISeriesApi<SeriesType>[]>([]);
@@ -214,7 +230,9 @@ export function Chart({ id }: { id: string }) {
     const mine = ++asked.current;
     const r = range.value;
     try {
-      const h = await markets.history(id, fromOf(r, today()), intervalOf(r));
+      const h = isIntraday(r)
+        ? await markets.intraday(id, r, fromOf("Max", today()))
+        : await markets.history(id, fromOf(r, today()), intervalOf(r));
       if (mine !== asked.current) return;
       batch(() => {
         data.value = h;
@@ -241,7 +259,11 @@ export function Chart({ id }: { id: string }) {
       });
       c.subscribeCrosshairMove((p: MouseEventParams) => {
         hover.value =
-          p.time === undefined || p.point === undefined ? null : dateOf(p.time);
+          p.time === undefined || p.point === undefined
+            ? null
+            : typeof p.time === "number"
+              ? p.time
+              : dateOf(p.time);
       });
       chart.current = c;
       draw(true);
@@ -294,15 +316,18 @@ export function Chart({ id }: { id: string }) {
         borderVisible: false,
         fixLeftEdge: true,
         fixRightEdge: true,
+        timeVisible: h.interval === "5m",
         tickMarkFormatter: (time: unknown, type: number) =>
-          tick(
-            dateOf(time),
-            type === l.TickMarkType.Year
-              ? "year"
-              : type === l.TickMarkType.Month
-                ? "month"
-                : "day",
-          ),
+          type === l.TickMarkType.Time && typeof time === "number"
+            ? clockOf(time)
+            : tick(
+                dateOf(time),
+                type === l.TickMarkType.Year
+                  ? "year"
+                  : type === l.TickMarkType.Month
+                    ? "month"
+                    : "day",
+              ),
       },
       crosshair: {
         vertLine: { color: k.faint, labelBackgroundColor: k.faint },
@@ -311,6 +336,26 @@ export function Chart({ id }: { id: string }) {
     });
     for (const s of series.current) c.removeSeries(s);
     series.current = [];
+
+    // closes only: no candles, averages or volume at 5 minutes
+    if (h.interval === "5m") {
+      const s = c.addSeries(l.LineSeries, {
+        color: k.fg,
+        lineWidth: 2,
+        priceLineColor: k.faint,
+        crosshairMarkerRadius: 4,
+        priceFormat: PRICE,
+      });
+      s.setData(
+        pointLine(h.points).map((p) => ({
+          time: p.time as UTCTimestamp,
+          value: p.value,
+        })),
+      );
+      series.current.push(s);
+      if (fit) c.timeScale().fitContent();
+      return;
+    }
 
     const live = isLive(h);
     const asCandles = !line.value && hasCandles(h.bars);
@@ -392,13 +437,20 @@ export function Chart({ id }: { id: string }) {
   }
 
   const h = data.value;
-  const legend = h === null ? null : legendOf(h, hover.value);
+  const legend =
+    h === null
+      ? null
+      : h.interval === "5m"
+        ? pointLegendOf(h, typeof hover.value === "number" ? hover.value : null)
+        : legendOf(h, typeof hover.value === "string" ? hover.value : null);
   // what the legend can hold changes with the averages shown and the
   // bars' kind: then the held height starts again
   const shape =
     h === null
       ? "loading"
-      : `${sma50.value}${sma200.value}${hasCandles(h.bars)}`;
+      : h.interval === "5m"
+        ? "points"
+        : `${sma50.value}${sma200.value}${hasCandles(h.bars)}`;
   useLayoutEffect(() => {
     const box = legendBox.current;
     if (box === null) return;
@@ -412,7 +464,9 @@ export function Chart({ id }: { id: string }) {
       box.style.minHeight = `${px}px`;
     }
   });
-  const candlesOk = h !== null && hasCandles(h.bars);
+  const intraday = isIntraday(range.value);
+  const candlesOk =
+    !intraday && h !== null && h.interval !== "5m" && hasCandles(h.bars);
   return (
     <section class="card chart-card" aria-label="Chart">
       <div class="chart-head">
@@ -457,26 +511,30 @@ export function Chart({ id }: { id: string }) {
             </fieldset>
           )}
           <fieldset class="seg seg-small" aria-label="Lines">
-            <button
-              type="button"
-              class={`seg-option chart-toggle-50${sma50.value ? " seg-on" : ""}`}
-              aria-pressed={sma50.value}
-              onClick={() => {
-                sma50.value = !sma50.value;
-              }}
-            >
-              50
-            </button>
-            <button
-              type="button"
-              class={`seg-option chart-toggle-200${sma200.value ? " seg-on" : ""}`}
-              aria-pressed={sma200.value}
-              onClick={() => {
-                sma200.value = !sma200.value;
-              }}
-            >
-              200
-            </button>
+            {!intraday && (
+              <>
+                <button
+                  type="button"
+                  class={`seg-option chart-toggle-50${sma50.value ? " seg-on" : ""}`}
+                  aria-pressed={sma50.value}
+                  onClick={() => {
+                    sma50.value = !sma50.value;
+                  }}
+                >
+                  50
+                </button>
+                <button
+                  type="button"
+                  class={`seg-option chart-toggle-200${sma200.value ? " seg-on" : ""}`}
+                  aria-pressed={sma200.value}
+                  onClick={() => {
+                    sma200.value = !sma200.value;
+                  }}
+                >
+                  200
+                </button>
+              </>
+            )}
             <button
               type="button"
               class={`seg-option${log.value ? " seg-on" : ""}`}

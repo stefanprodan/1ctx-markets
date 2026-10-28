@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { type Session, sessionFromChartMeta } from "../../market/calendars.ts";
+import type { Point } from "../../market/intraday.ts";
 import type { Clock } from "../../runtime/clock.ts";
 import { YAHOO } from "../ids.ts";
 import {
@@ -82,8 +83,11 @@ export type IntradayAnswer = ChartAnswer & {
 // its windows, while two keep the last post bars until the next open
 export const INTRADAY_RANGE = "2d";
 
+// the meta and the session's 5-minute closes so far, regular hours only
+export type SparkQuote = ChartMeta & { points: Point[] };
+
 export type SparkAnswer = {
-  quotes: ChartMeta[];
+  quotes: SparkQuote[];
   skipped: { symbol: string | null; phrase: Phrase }[];
   fetchedAt: number;
 };
@@ -344,6 +348,20 @@ export function parseIntraday(
   };
 }
 
+// a bad series never costs the price: it gives no points
+function sparkPoints(response: Obj): Point[] {
+  try {
+    const out: Point[] = [];
+    for (const row of parseRows(response)) {
+      if (row.close !== null) out.push({ at: row.at, close: row.close });
+    }
+    return out;
+  } catch (error) {
+    if (error instanceof SourceError) return [];
+    throw error;
+  }
+}
+
 // Each entry is read on its own, so one bad symbol skips only itself;
 // a symbol without data comes back without a response.
 export function parseSpark(body: unknown, fetchedAt: number): SparkAnswer {
@@ -352,7 +370,7 @@ export function parseSpark(body: unknown, fetchedAt: number): SparkAnswer {
     throw new SourceError("source error", "spark error");
   }
   if (!Array.isArray(spark.result)) throw malformed("no spark results");
-  const quotes: ChartMeta[] = [];
+  const quotes: SparkQuote[] = [];
   const skipped: SparkAnswer["skipped"] = [];
   for (const entry of spark.result) {
     const symbol = isObj(entry) ? optionalText(entry.symbol) : null;
@@ -366,7 +384,8 @@ export function parseSpark(body: unknown, fetchedAt: number): SparkAnswer {
     }
     try {
       if (!Array.isArray(response)) throw malformed("spark response");
-      quotes.push(parseMeta(obj(response[0], "spark response").meta));
+      const first = obj(response[0], "spark response");
+      quotes.push({ ...parseMeta(first.meta), points: sparkPoints(first) });
     } catch (error) {
       if (!(error instanceof SourceError)) throw error;
       skipped.push({ symbol, phrase: error.phrase });

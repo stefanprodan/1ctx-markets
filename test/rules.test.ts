@@ -3,6 +3,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { readInstrument } from "../src/market/instruments.ts";
+import { storeIntraday } from "../src/market/intraday.ts";
 import { trackedIds } from "../src/market/tracking.ts";
 import { NO_EVENT_SOURCE } from "../src/operations/rules.ts";
 import { WAITING } from "../src/rules/evaluate.ts";
@@ -916,9 +917,20 @@ describe("splits", () => {
     const history = listed(await recorded("chart-nvda-5y-1d"));
     const answers = [scaled(window, 2), scaled(history, 2)];
     t.charts.set("NVDA", () => answers.shift()!);
+    const points = () =>
+      t.db.query("select count(*) as n from intraday").get() as { n: number };
+    storeIntraday(
+      t.db,
+      "US:NVDA",
+      "America/New_York",
+      [{ at: t.clock.now(), close: 200 }],
+      t.clock.now(),
+    );
     await refetch(t.ctx, readInstrument(t.db, "US:NVDA")!);
     expect(answers).toHaveLength(0);
     expect(pausedOf(t, ids)).toMatchObject({ price: "split", rsi: null });
+    // on the old scale: the next quote pass refills the session
+    expect(points().n).toBe(0);
     // every stored day on the new scale: a halved price is no deep drawdown
     await pass(t, "ok", "bars");
     await t.quote("NVDA", {

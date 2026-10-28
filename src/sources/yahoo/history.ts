@@ -19,6 +19,7 @@ import {
   sessionDate,
 } from "../../market/calendars.ts";
 import type { Instrument, Unit } from "../../market/instruments.ts";
+import { clearIntraday } from "../../market/intraday.ts";
 import { JOBS } from "../../market/stale.ts";
 import { addDays, wallTime } from "../../market/zone.ts";
 import { NO_RULES, type RuleHooks } from "../../rules/hooks.ts";
@@ -410,7 +411,11 @@ export function store(
     answer,
     whole,
   );
-  if (rescaled) rules.rescaled(db, instrument.id, now);
+  if (rescaled) {
+    rules.rescaled(db, instrument.id, now);
+    // no ratio is guessed: the next quote pass refills the session
+    clearIntraday(db, instrument.id);
+  }
   signalsAfterBars(db, instrument, written.changedFrom, now);
   rules.evaluate(db, [instrument.id], now);
   return written;
