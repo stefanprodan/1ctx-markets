@@ -45,11 +45,11 @@ export const bool: Schema = { type: "boolean" };
 // an object whose fields a doc gives, not this spec
 export const freeForm = (doc: string): Schema => ({
   type: "object",
-  description: `Its fields are described in ${doc}.`,
+  description: `Fields: see ${doc}.`,
 });
 const described = (s: Schema, doc: string): Schema => ({
   ...s,
-  description: `Its fields beyond those listed are described in ${doc}.`,
+  description: `More fields: see ${doc}.`,
 });
 export const list = (items: Schema): Schema => ({ type: "array", items });
 export const values = (allowed: readonly (string | number)[]): Schema => ({
@@ -70,13 +70,17 @@ const nullable = (s: Schema): Schema => ({
   ...s,
   type: [s.type as JsonType, "null"],
 });
+const note = (s: Schema, description: string): Schema => ({
+  ...s,
+  description,
+});
 
 export const DEADLINE_S = CALL_MS / 1000;
 
-const TOOLS = "docs/tools.md";
-const RESEARCH = "docs/research.md";
-const RULES = "docs/rules.md";
-const ADMIN = "docs/admin.md";
+const TOOLS = "`docs/tools.md`";
+const RESEARCH = "`docs/research.md`";
+const RULES = "`docs/rules.md`";
+const ADMIN = "`docs/admin.md`";
 
 const itemError = object(
   {
@@ -102,20 +106,32 @@ const brief = {
   id: str,
   kind: values(["market_quote", "observation"]),
   price: nnum,
-  observation: nullable(object({ date: str, value: num })),
+  observation: note(
+    nullable(object({ date: str, value: num })),
+    "The last value of a `FRED:<series id>` symbol.",
+  ),
   previous_close: nnum,
   change: nnum,
   change_percent: nnum,
-  unit: values(UNITS),
+  unit: note(values(UNITS), "What the price measures."),
   currency: nstr,
   trade_time: nstr,
-  fetched_at: nstr,
-  stale: list(str),
-  sma: object({ daily: averages, weekly: averages }),
-  last_final: nullable(
-    object({
-      daily: object({ date: str, close: nnum, sma50: nnum, sma200: nnum }),
-    }),
+  fetched_at: note(nstr, "When the source answered."),
+  stale: note(
+    list(str),
+    "Why a value may be out of date. Empty means current.",
+  ),
+  sma: note(
+    object({ daily: averages, weekly: averages }),
+    "SMA 50 and SMA 200, `live` with today's price or `final` as of the last final bar. Null with too few bars.",
+  ),
+  last_final: note(
+    nullable(
+      object({
+        daily: object({ date: str, close: nnum, sma50: nnum, sma200: nnum }),
+      }),
+    ),
+    "The last final daily close and its averages. Null with no final bar.",
   ),
 };
 
@@ -125,7 +141,15 @@ const briefRequired = Object.keys(brief).filter((k) => k !== "observation");
 // a $ref takes no null beside it, so an alert that may be null is inline
 const alert = described(
   object(
-    { id: int, rule_id: int, fired_at: str, truncated: bool },
+    {
+      id: int,
+      rule_id: int,
+      fired_at: str,
+      truncated: note(
+        bool,
+        "Too large for a page: only the id, rule and time are kept.",
+      ),
+    },
     ["id", "rule_id", "fired_at"],
     true,
   ),
@@ -181,7 +205,7 @@ export const schemas: Record<string, Schema> = {
   Bar: object({
     date: str,
     close: nnum,
-    final: bool,
+    final: note(bool, "False until the next session starts."),
     sma50: nnum,
     sma200: nnum,
   }),
@@ -194,17 +218,22 @@ export const schemas: Record<string, Schema> = {
       currency: nstr,
       unit: values(UNITS),
       source: str,
-      basis: str,
-      stale: list(str),
+      basis: note(str, "How prices are adjusted."),
+      stale: note(
+        list(str),
+        "Why a value may be out of date. Empty means current.",
+      ),
       attribution: str,
       from: str,
       to: str,
-      session: nullable(
-        object({ state: values(["open", "closed"]), start: nstr, end: nstr }, [
-          "state",
-          "start",
-          "end",
-        ]),
+      session: note(
+        nullable(
+          object(
+            { state: values(["open", "closed"]), start: nstr, end: nstr },
+            ["state", "start", "end"],
+          ),
+        ),
+        "The last regular session, in UTC. Crypto is always open with null times. Null for a `FRED:<series id>` symbol.",
       ),
       interval: values(["1d", "1wk"]),
       relative: described(
@@ -243,8 +272,8 @@ export const schemas: Record<string, Schema> = {
             exchange: str,
             source: str,
             source_symbol: str,
-            isin: nstr,
-            stored: bool,
+            isin: note(nstr, "A regional listing's ISIN."),
+            stored: note(bool, "Already stored on this server."),
             note: str,
           },
           [
@@ -434,9 +463,13 @@ export const schemas: Record<string, Schema> = {
       symbol: str,
       condition: freeForm(RULES),
       note: nstr,
-      paused: { type: ["string", "null"], enum: ["manual", "split", null] },
+      paused: {
+        type: ["string", "null"],
+        enum: ["manual", "split", null],
+        description: "`manual`, `split` (cannot be resumed) or null.",
+      },
       message: str,
-      armed: bool,
+      armed: note(bool, "The next true result fires an alert."),
       created_at: str,
       last_result: nstr,
       last_evaluated_at: nstr,
@@ -476,9 +509,15 @@ export const schemas: Record<string, Schema> = {
   Alert: alert,
   Alerts: object(
     {
-      retention_gap: bool,
-      cursor_reset: bool,
-      more: bool,
+      retention_gap: note(
+        bool,
+        "Alerts after the cursor were deleted by retention.",
+      ),
+      cursor_reset: note(
+        bool,
+        "The cursor is unknown to this server, so the feed starts over.",
+      ),
+      more: note(bool, "More alerts wait for the next poll."),
       alerts: list(ref("Alert")),
     },
     ["more", "alerts"],
@@ -506,8 +545,8 @@ export const schemas: Record<string, Schema> = {
     database_bytes: int,
   }),
   AdminInstruments: object({
-    total: int,
-    more: bool,
+    total: note(int, "Every match, across all pages."),
+    more: note(bool, "Another page follows."),
     instruments: list(
       object({
         id: str,
@@ -519,7 +558,10 @@ export const schemas: Record<string, Schema> = {
         unit: values(UNITS),
         source: str,
         tracked: bool,
-        tracked_by: list(values(["rule", "read", "track"])),
+        tracked_by: note(
+          list(values(["rule", "read", "track"])),
+          "What keeps it up to date: a rule, a recent read or the track list.",
+        ),
         read_at: nstr,
         read_until: nstr,
       }),

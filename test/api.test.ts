@@ -562,6 +562,15 @@ describe("every operation", () => {
     const cookie = {
       cookie: `${COOKIE}=${sessions(ADMIN_KEY).issue(t.clock.now())}`,
     };
+    await check(
+      "POST",
+      "/screen",
+      await t.call("/screen", {
+        ...json({ symbols: ["US:NVDA"] }),
+        headers: { "content-type": "application/json", ...cookie },
+      }),
+      403,
+    );
     const refetch = { symbols: ["US:NOPE"], fetch: ["quotes"] };
     await check(
       "POST",

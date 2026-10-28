@@ -107,7 +107,7 @@ consumer each.
 |---|---|
 | 400 | `bad_arguments`, `mixed_units`, `no_event_source`, `no_event` |
 | 401 | `unauthorized` |
-| 403 | `forbidden`: a write signed in by the web UI's cookie without this server's `Origin` |
+| 403 | `forbidden`: a cookie request other than `GET` not sent from this server's own pages |
 | 404 | `not_found` (route, rule, instrument or symbol), `candidates`, `no_data`, `refused` |
 | 405 | `method_not_allowed`, with `Allow` |
 | 409 | `conflict`, `split_paused` |
@@ -198,8 +198,11 @@ answer; 1ctx (an agent workspace whose scheduled tasks poll it) is one.
   parameter, body, answer and documented error is in it, with two
   bearer security schemes, `read` and `admin`, and the `session`
   cookie.
-- **Descriptions give each limit's general reason**, never the MCP
-  descriptions copied, and name no user, market or holding.
+- **Descriptions are for a person reading the docs page**: what a
+  route returns, then the limits, defaults and units a caller needs,
+  never the reasons behind them or the MCP descriptions copied. They
+  name no user, market, holding, key file, flag or data source beyond
+  symbol syntax.
 - **Schemas use a small subset of JSON Schema**: `type` (an array of
   types for null), `properties`, `required`, `additionalProperties`,
   `items`, `enum`, `oneOf`, `$ref`, and `description`, which checks

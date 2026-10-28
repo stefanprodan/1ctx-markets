@@ -78,8 +78,7 @@ export function router(deps: RouterDeps): Handle {
   const sessions = deps.sessions ?? null;
   const signedIn = (req: Request) =>
     sessions?.valid(cookieOf(req), deps.clock.now()) === true;
-  // the bearer and the admin key keep their own paths; the cookie opens the
-  // admin routes and every read, and a write by it needs the server's Origin
+  // the cookie opens admin, GET reads and screen; a non-GET needs our pages
   const allowed = (req: Request, path: string): Response | null => {
     if (isAdmin(path) ? admin(req) : authorized(req)) return null;
     const read = READS.has(req.method);

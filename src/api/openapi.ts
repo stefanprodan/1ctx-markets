@@ -1,6 +1,6 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-// By hand, so each limit carries its reason; schemas keep to the tested subset.
+// By hand, for people reading the docs page; schemas keep to the tested subset.
 
 import { COOKIE } from "../server/session.ts";
 import { paths, responses } from "./paths.ts";
@@ -22,10 +22,10 @@ export const spec = {
   servers: [{ url: "/api/v1" }],
   security: [{ read: [] }],
   tags: [
-    { name: "market data" },
-    { name: "rules" },
-    { name: "admin" },
-    { name: "docs" },
+    { name: "market data", description: "Quotes, bars, research and screens." },
+    { name: "rules", description: "Price rules and their alerts." },
+    { name: "admin", description: "Operator routes, admin key only." },
+    { name: "docs", description: "This page and its OpenAPI document." },
   ],
   paths,
   components: {
@@ -33,19 +33,19 @@ export const spec = {
       read: {
         type: "http",
         scheme: "bearer",
-        description: "The server's bearer key.",
+        description: "The read key, for the market data and rules routes.",
       },
       admin: {
         type: "http",
         scheme: "bearer",
-        description: "The operator's admin key.",
+        description: "The admin key, for the `/admin` routes only.",
       },
       session: {
         type: "apiKey",
         in: "cookie",
         name: COOKIE,
         description:
-          "The web UI's sign-in, set by POST /ui/session with the admin key: it opens the admin routes and every read, and a write by it needs an Origin of this server's host.",
+          "The web UI's sign-in cookie. It opens the `/admin` routes, the GET reads and `POST /screen`. A request other than GET must come from this server's own pages.",
       },
     },
     schemas,
