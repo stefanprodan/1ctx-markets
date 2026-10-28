@@ -40,7 +40,7 @@ import {
   trackLine,
   until,
 } from "../src/web/views/Status.model.ts";
-import { StatusBody } from "../src/web/views/Status.tsx";
+import { JobDetails, StatusBody } from "../src/web/views/Status.tsx";
 
 const NOW = Date.parse("2026-10-28T12:00:00Z");
 
@@ -76,7 +76,8 @@ const job = (
     rows: 1,
     error: null,
   },
-  scopes: 1,
+  instruments: 0,
+  markets: 1,
   failing_scopes: 0,
   failing: [],
   ...more,
@@ -102,7 +103,7 @@ const STATUS: Status = {
     }),
   ],
   jobs: [
-    job("prices", "Live prices", { scopes: 19 }),
+    job("prices", "Live prices", { markets: 19 }),
     job("feed", "Daily prices", {
       last: {
         scope: "FEED:TLV",
@@ -112,7 +113,8 @@ const STATUS: Status = {
         rows: 0,
         error: "no bars",
       },
-      scopes: 14,
+      instruments: 14,
+      markets: 0,
       failing_scopes: 7,
       failing: [
         { scope: "FEED:TLV", error: "no bars", at: "2026-10-28T09:00:01Z" },
@@ -128,9 +130,10 @@ const STATUS: Status = {
         rows: 4,
         error: null,
       },
-      scopes: 19,
+      instruments: 19,
+      markets: 0,
     }),
-    job("news", "News", { scopes: 24 }),
+    job("news", "News", { instruments: 24, markets: 0 }),
     job("sources", "switch"),
   ],
   instruments: 78,
@@ -437,10 +440,14 @@ describe("the status model", () => {
     const [live, daily, figures] = STATUS.jobs;
     expect(jobLine(live!)).toBe("19 markets · all ok");
     expect(jobLine(daily!)).toBe("14 instruments · 7 failing");
-    expect(jobLine({ ...live!, scopes: 1 })).toBe("1 market · ok");
-    expect(jobLine({ ...live!, scopes: 0 })).toBe("");
+    expect(jobLine({ ...live!, markets: 1 })).toBe("1 market · ok");
+    expect(jobLine({ ...live!, markets: 0 })).toBe("");
     expect(allOk(figures!)).toBe("All 19 instruments ok.");
-    expect(allOk({ ...live!, scopes: 1 })).toBe("1 market ok.");
+    expect(allOk({ ...live!, markets: 1 })).toBe("1 market ok.");
+    // a bars job runs per market and per instrument: it reads as instruments
+    expect(jobLine({ ...live!, instruments: 50, markets: 19 })).toBe(
+      "50 instruments · all ok",
+    );
     expect(jobWhen(live!, NOW)).toBe("2 min ago");
     // the time never says how the run went
     expect(jobWhen(daily!, NOW)).toBe("2 h ago");
@@ -513,6 +520,24 @@ describe("the views", () => {
     expect(html).not.toContain("rows-meta-bad");
     // the jobs tile counts the jobs shown, not the off source's
     expect(html).toMatch(/Jobs<\/span><span class="srv-figure">3</);
+  });
+
+  test("an opened job says what it does, then its failures or that all are ok", () => {
+    const [live, daily] = STATUS.jobs;
+    const ok = render(<JobDetails job={live!} />);
+    expect(ok).toContain("What Live prices does.");
+    expect(ok).toContain("All 19 markets ok.");
+    expect(ok).not.toContain("srv-failing");
+    const bad = render(<JobDetails job={daily!} />);
+    expect(bad).toContain("FEED:TLV");
+    expect(bad).toContain("no bars");
+    expect(bad).toContain("5 more failing");
+    expect(bad).not.toContain("ok.");
+    // a failed run whose scope the server did not name still says why
+    const unnamed = render(
+      <JobDetails job={{ ...daily!, failing: [], failing_scopes: 0 }} />,
+    );
+    expect(unnamed).toContain("no bars");
   });
 
   test("status leaves out what is empty", () => {

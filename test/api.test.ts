@@ -63,7 +63,13 @@ async function setup() {
     finnhub: finnhub({ clock, key: FINNHUB_KEY, fetch: s.fetch }),
     log: silent,
   });
-  const handle = api(m);
+  // one source of each kind, so the status answer checks every field
+  const handle = api(m, {
+    sources: [
+      { name: "yahoo", on: true, why: "always", backoff: () => null },
+      { name: "fred", on: false, why: "no key", backoff: () => null },
+    ],
+  });
   const call = (path: string, init: RequestInit = {}) =>
     drive(
       clock,

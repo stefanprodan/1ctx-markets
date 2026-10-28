@@ -254,7 +254,8 @@ describe("the admin routes' guard", () => {
           headers: { authorization: `Bearer ${admin}` },
         });
         const [bars] = (await res.json()).jobs;
-        expect(bars.scopes).toBe(8);
+        expect(bars.instruments).toBe(8);
+        expect(bars.markets).toBe(0);
         expect(bars.failing_scopes).toBe(7);
         expect(bars.failing).toHaveLength(MAX_FAILING);
         expect(bars.failing.map((f: { scope: string }) => f.scope)).toEqual([
@@ -337,7 +338,8 @@ describe("the admin routes' guard", () => {
               rows: 1,
               error: null,
             },
-            scopes: 2,
+            instruments: 2,
+            markets: 0,
             failing_scopes: 1,
             failing: [
               { scope: "US:A", error: "not found", at: "2026-10-25T21:04:00Z" },
@@ -357,7 +359,8 @@ describe("the admin routes' guard", () => {
               error: "rate limited",
             },
             // one scope, whose latest run failed
-            scopes: 1,
+            instruments: 0,
+            markets: 1,
             failing_scopes: 1,
             failing: [
               {

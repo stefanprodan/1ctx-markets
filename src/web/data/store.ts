@@ -29,7 +29,8 @@ export type JobStatus = {
     rows: number;
     error: string | null;
   };
-  scopes: number;
+  instruments: number;
+  markets: number;
   failing_scopes: number;
   failing: { scope: string | null; error: string | null; at: string | null }[];
 };

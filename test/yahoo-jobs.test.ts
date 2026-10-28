@@ -829,6 +829,8 @@ describe("backfill", () => {
     expect(lastRun(t.db, "yahoo", "backfill")).toMatchObject({
       status: "failed",
       error: "malformed answer",
+      // a run per instrument, so another one's success never hides it
+      scope: "US:NVDA",
     });
     expect(readBars(t.db, "US:NVDA", "1d")).toEqual([]);
     expect(await t.jobs.backfillTurn()).toBeNull();

@@ -74,30 +74,30 @@ export function sourceState(s: SourceStatus, now: number): string {
   return `Backing off ${until(s.backing_off.until, now)} · ${s.backing_off.after}`;
 }
 
-// a job runs per market (US, ZRH) or per instrument (US:NVDA)
+// what a job covers: its instruments, else the markets it runs per
+function covers(j: JobStatus): { n: number; words: string } {
+  const instruments = j.instruments > 0;
+  const n = instruments ? j.instruments : j.markets;
+  const one = instruments ? "instrument" : "market";
+  return { n, words: `${count(n)} ${n === 1 ? one : `${one}s`}` };
+}
+
 export function jobLine(j: JobStatus): string {
-  if (j.scopes === 0) return "";
-  const market = j.last.scope !== null && !j.last.scope.includes(":");
-  const unit = market
-    ? j.scopes === 1
-      ? "market"
-      : "markets"
-    : j.scopes === 1
-      ? "instrument"
-      : "instruments";
+  const { n, words } = covers(j);
+  if (n === 0) return "";
   const state =
-    j.failing_scopes === 0
-      ? j.scopes === 1
+    j.failing_scopes > 0
+      ? `${count(j.failing_scopes)} failing`
+      : n === 1
         ? "ok"
-        : "all ok"
-      : `${count(j.failing_scopes)} failing`;
-  return `${count(j.scopes)} ${unit} · ${state}`;
+        : "all ok";
+  return `${words} · ${state}`;
 }
 
 export function allOk(j: JobStatus): string {
-  if (j.scopes === 0) return "No runs kept.";
-  const line = jobLine(j).split(" · ")[0];
-  return j.scopes === 1 ? `${line} ok.` : `All ${line} ok.`;
+  const { n, words } = covers(j);
+  if (n === 0) return "No runs kept.";
+  return n === 1 ? `${words} ok.` : `All ${words} ok.`;
 }
 
 // when it last ran; the dot and the lines under the name say how it went

@@ -11,6 +11,7 @@ import type { Markets } from "../operations/markets.ts";
 import type { TrackState } from "../operations/track.ts";
 import { instrumentsOf } from "../rules/format.ts";
 import { readRules, ruleInstruments } from "../rules/store.ts";
+import { sourceFile } from "../runtime/keys.ts";
 import type { Backoff } from "../sources/source.ts";
 import type { Db } from "../storage/db/index.ts";
 import {
@@ -102,7 +103,7 @@ const SOURCE_KEYS: Record<string, { adds: string; signup: string }> = {
   },
   massive: {
     adds: "News for US shares and ETFs.",
-    signup: "https://massive.com",
+    signup: "https://massive.com/dashboard/signup?redirect=%2Fdashboard%2Fkeys",
   },
 };
 
@@ -125,12 +126,13 @@ const JOB_LABELS: Record<string, string> = {
 
 const JOB_ABOUT: Record<string, string> = {
   quotes: "Quotes each open market, every 5 minutes by default.",
-  bars: "Fetches the last 30 days of daily prices for each instrument once its market's session ends.",
+  bars: "Fetches the last 30 days of daily prices for each market once its next session has started, and an instrument's whole history after a split.",
   "fred/bars": "Fetches each series' daily values once a day, after 23:00 UTC.",
-  backfill: "Fetches an instrument's whole history the first time it is read.",
+  backfill:
+    "Fetches ten years of daily prices for a tracked instrument that has none.",
   check:
     "Asks whether a closed market has opened, at its usual opening time and hourly after.",
-  owed: "Asks again for a finished day's close the source had not sent yet.",
+  owed: "Marks a finished day whose close the source had not sent yet, for Daily prices to ask again.",
   metric: "Refreshes each US share's key figures once a day, after 23:00 UTC.",
   analysts:
     "Refreshes each US share's analyst ratings once a day, after 23:00 UTC.",
@@ -142,7 +144,7 @@ const JOB_ABOUT: Record<string, string> = {
     "Refreshes each US share's next earnings date once a day, after 23:00 UTC.",
   "market-calendar":
     "Checks the US earnings calendar hourly while a tracked share reports today or yesterday.",
-  news: "Fetches each tracked share's news every 30 minutes.",
+  news: "Fetches news for each tracked US share and ETF every 30 minutes.",
   switch:
     "Moves a market's instruments to another source when the start options change.",
 };
@@ -187,7 +189,7 @@ function jobs(db: Db) {
     )
     .all();
   // each scope's latest ended run, over the runs kept
-  const scopes = new Map<string, number>();
+  const scopes = new Map<string, { instruments: number; markets: number }>();
   const failing = new Map<string, Failed[]>();
   for (const r of db
     .query<Failed & { source: string; job: string; status: string }, []>(
@@ -199,7 +201,10 @@ function jobs(db: Db) {
     )
     .all()) {
     const key = `${r.source}|${r.job}`;
-    scopes.set(key, (scopes.get(key) ?? 0) + 1);
+    const n = scopes.get(key) ?? { instruments: 0, markets: 0 };
+    if (r.scope?.includes(":")) n.instruments++;
+    else n.markets++;
+    scopes.set(key, n);
     if (r.status !== "failed") continue;
     const list = failing.get(key) ?? [];
     list.push(r);
@@ -218,7 +223,8 @@ function jobs(db: Db) {
       rows: r.rows,
       error: r.error,
     },
-    scopes: scopes.get(`${r.source}|${r.job}`) ?? 0,
+    // a bars job runs per market and per instrument: the page counts each
+    ...(scopes.get(`${r.source}|${r.job}`) ?? { instruments: 0, markets: 0 }),
     // scopes whose latest ended run failed, which read as stale
     failing_scopes: (failing.get(`${r.source}|${r.job}`) ?? []).length,
     failing: (failing.get(`${r.source}|${r.job}`) ?? [])
@@ -247,7 +253,7 @@ export function adminStatus(d: AdminDeps, url: URL): Response {
           key:
             s.name in SOURCE_KEYS
               ? {
-                  file: `secrets/source-${s.name}.key`,
+                  file: `secrets/${sourceFile(s.name)}`,
                   ...SOURCE_KEYS[s.name],
                 }
               : null,

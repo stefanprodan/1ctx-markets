@@ -48,7 +48,7 @@ function Tile({
   );
 }
 
-function JobDetails({ job: j }: { job: JobStatus }) {
+export function JobDetails({ job: j }: { job: JobStatus }) {
   return (
     <div class="srv-details">
       {j.about !== null && <p class="srv-about">{j.about}</p>}

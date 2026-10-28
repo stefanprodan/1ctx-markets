@@ -375,10 +375,14 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
     if (instrument === null) return null;
     let rows: number;
     try {
-      rows = await runJob(writer, clock, SOURCE, BACKFILL_JOB, async () => {
-        const written = await backfill(ctx, instrument);
-        return written.rows;
-      });
+      rows = await runJob(
+        writer,
+        clock,
+        SOURCE,
+        BACKFILL_JOB,
+        async () => (await backfill(ctx, instrument)).rows,
+        instrument.id,
+      );
     } catch (error) {
       backfillMissed.set(instrument.id, now);
       throw error;
