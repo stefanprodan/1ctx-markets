@@ -44,6 +44,9 @@ import {
 
 // recorded in the US post window, about 80 minutes after the close
 const POST = "post-2122";
+// recorded overnight, after the post window, and in the pre window
+const OVERNIGHT = "overnight-0030";
+const PRE = "pre-0830";
 
 const LISTINGS = [
   { id: "US:HOOD", symbol: "HOOD", exchange: "NMS", zone: "America/New_York" },
@@ -72,22 +75,30 @@ const DAYS = [
 const SYMBOLS = LISTINGS.map((l) => l.symbol);
 const IDS = LISTINGS.map((l) => l.id);
 
-const chartName = (symbol: string) =>
-  `chart-${symbol.toLowerCase().replace(".", "-")}-1d-1m-prepost-${POST}`;
-const HOOD_CHART = `chart-hood-2d-1m-prepost-${POST}`;
+const chartName = (symbol: string, window = POST) =>
+  `chart-${symbol.toLowerCase().replace(".", "-")}-1d-1m-prepost-${window}`;
+const hoodChart = (window = POST) => `chart-hood-2d-1m-prepost-${window}`;
 
 const intraday = (url: URL) =>
   url.searchParams.get("includePrePost") === "true";
 
 // a quote fetches nothing but the extended charts
 async function setup(
-  options: { hold?: (url: URL) => Promise<undefined> | undefined } = {},
+  options: {
+    hold?: (url: URL) => Promise<undefined> | undefined;
+    window?: string;
+  } = {},
 ) {
-  const spark = await recorded(`spark-v7-extended-${POST}`);
+  const window = options.window ?? POST;
+  const spark = await recorded(`spark-v7-extended-${window}`);
   const charts = new Map<string, Recorded>();
-  // the others have one-day recordings only: just their flag is read
-  for (const s of SYMBOLS) charts.set(s, await recorded(chartName(s)));
-  charts.set("HOOD", await recorded(HOOD_CHART));
+  // the others have one-day recordings only, and only some windows: just
+  // their flag is read; loaded up front so a held chart is the only wait
+  for (const s of SYMBOLS) {
+    const fx = await recorded(chartName(s, window)).catch(() => undefined);
+    if (fx !== undefined) charts.set(s, fx);
+  }
+  charts.set("HOOD", await recorded(hoodChart(window)));
   const hoodAsked = new URL(
     (charts.get("HOOD") as Recorded & { request: { url: string } }).request.url,
   ).searchParams;
@@ -178,6 +189,17 @@ const HOOD = {
   time: "2026-10-27T21:22:50Z",
 };
 
+const against = (session: "pre" | "post", at: number, time: string) => ({
+  session,
+  price: at,
+  change: round(at - HOOD_CLOSE),
+  change_percent: round(((at - HOOD_CLOSE) / HOOD_CLOSE) * 100),
+  time,
+});
+// overnight the evening's last post bar stands; then the morning's pre bar
+const HOOD_OVERNIGHT = against("post", 87.3423, "2026-10-27T23:59:59Z");
+const HOOD_PRE = against("pre", 86.79, "2026-10-28T08:29:56Z");
+
 describe("quote extended", () => {
   test("the quotes route answers the tool's extended per item, only when asked", async () => {
     const t = await setup();
@@ -267,6 +289,27 @@ describe("quote extended", () => {
     const night = await ask(t.m);
     expect(t.charted("HOOD")).toHaveLength(3);
     expect(byId(night, "US:HOOD").extended).toEqual(HOOD);
+  });
+
+  test.each([
+    ["after the post window", OVERNIGHT, HOOD_OVERNIGHT],
+    ["in the pre window", PRE, HOOD_PRE],
+  ])("answers the latest extended bar %s", async (_, window, expected) => {
+    const t = await setup({ window });
+    await t.client.spark(SYMBOLS);
+    const items = await ask(t.m);
+    const hood = byId(items, "US:HOOD");
+    expect(hood.extended).toEqual(expected);
+    expect(hood.price).toBe(HOOD_CLOSE);
+    for (const id of ["XETRA:VWCE", "CRYPTO:BTC-USD", "BVB:TLV"]) {
+      const item = byId(items, id);
+      expect(item.extended).toBeNull();
+      expect(item.stale).toContain(STALE.extendedNone);
+    }
+    expect(t.charted()).toHaveLength(1);
+    expect(t.charted("HOOD")[0]!.searchParams.get("range")).toBe(
+      INTRADAY_RANGE,
+    );
   });
 
   test("is not reported for a listing another source prices", async () => {
@@ -396,7 +439,7 @@ const latestOf = (fx: Recorded) => {
 
 describe("the latest extended bar", () => {
   test("is today's last post bar in an answer holding the day before", async () => {
-    const fx = await recorded(`chart-hood-2d-1m-prepost-${POST}`);
+    const fx = await recorded(hoodChart());
     const result = fx.body.chart.result[0];
     const last = result.timestamp.length - 1;
     const close = result.indicators.quote[0].close[last];
@@ -410,7 +453,7 @@ describe("the latest extended bar", () => {
   });
 
   test("is the day before's last post bar before today's pre window", async () => {
-    const fx = clone(await recorded(`chart-hood-2d-1m-prepost-${POST}`));
+    const fx = clone(await recorded(hoodChart()));
     const result = fx.body.chart.result[0];
     const now = Date.parse("2026-10-27T07:30:00Z");
     const n = result.timestamp.filter((s: number) => s * 1000 <= now).length;
@@ -427,7 +470,7 @@ describe("the latest extended bar", () => {
   });
 
   test("never reaches back to the previous day's post bars", async () => {
-    const fx = await recorded(`chart-hood-2d-1m-prepost-${POST}`);
+    const fx = await recorded(hoodChart());
     expect(latestOf(unpricedSinceClose(fx))).toEqual({
       extended: null,
       reason: STALE.extendedNoPrice,
@@ -442,10 +485,31 @@ describe("the latest extended bar", () => {
     });
   });
 
-  test.each(["VWCE.DE", "BTC-USD", "TLV.RO"])(
-    "is none for %s, which has no extended trading",
-    async (symbol) => {
-      expect(latestOf(await recorded(chartName(symbol))).reason).toBe(
+  test("is the evening's last post bar after the post window", async () => {
+    const fx = await recorded(hoodChart(OVERNIGHT));
+    expect(latestOf(fx).extended).toEqual(HOOD_OVERNIGHT);
+  });
+
+  test.each([
+    ["two-day", hoodChart(PRE)],
+    ["one-day", chartName("HOOD", PRE)],
+  ])(
+    "is the last pre bar in the pre window, from a %s answer",
+    async (_, name) => {
+      expect(latestOf(await recorded(name)).extended).toEqual(HOOD_PRE);
+    },
+  );
+
+  test.each([
+    ["VWCE.DE", "post", POST],
+    ["BTC-USD", "post", POST],
+    ["TLV.RO", "post", POST],
+    ["VWCE.DE", "pre", PRE],
+    ["TLV.RO", "pre", PRE],
+  ])(
+    "is none for %s, which has no extended trading, in the %s window",
+    async (symbol, _, window) => {
+      expect(latestOf(await recorded(chartName(symbol, window))).reason).toBe(
         STALE.extendedNone,
       );
     },
