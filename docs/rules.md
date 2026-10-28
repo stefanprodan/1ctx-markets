@@ -4,14 +4,14 @@ Governs price rules, their evaluation and the alerts they fire:
 `src/rules/format.ts`, `evaluate.ts`, `hooks.ts` and `store.ts`, the
 rules tool in `src/operations/rules.ts` and the alerts feed in
 `src/api/alerts.ts`, served as `docs/api.md` says. The answer
-contract, resolution and the inline fetch are in `docs/tools.md`; earnings events in `docs/research.md`;
-splits, the refetch and the bars a session waits on in
-`docs/yahoo.md`; alert retention and tracking in `docs/storage.md`.
+contract, resolution and the inline fetch are in `docs/tools.md`;
+earnings events in `docs/research.md`; splits, the refetch and the
+bars a session waits on in `docs/yahoo.md`; alert retention and
+tracking in `docs/storage.md`.
 
-A rule belongs to one instrument and reads up to four
-(`MAX_INSTRUMENTS`, `checkBound()`) with a fixed condition, and
-writes one alert each time the condition turns true. Rules hold market
-conditions only, never holdings or orders.
+A rule belongs to one instrument, reads a few with a fixed condition,
+and writes one alert each time the condition turns true. Rules hold
+market conditions only, never holdings or orders.
 
 ## The condition
 
@@ -19,10 +19,8 @@ conditions only, never holdings or orders.
   A comparison is `{left, op, right}` with `op` one of `<` `<=` `>`
   `>=`; `{all: [...]}` and `{any: [...]}` combine conditions.
 - **Parse rules only through `format.ts`; never read the stored JSON
-  elsewhere.** Evaluation, tracking and the tools all read a rule
-  through it, so a rule means the same thing everywhere.
-- **The `RULES` description in `src/tools/index.ts` lists every field
-  by hand**, so a new field in `format.ts` goes there too.
+  elsewhere**, so a rule means the same thing to evaluation, tracking
+  and the tools.
 - **An operand is a field name, or `{field, symbol}`.** A bare name is
   the rule's own symbol; `{"field": "price", "symbol": "^VIX"}` reads
   another instrument. `left` is always an operand; `right` is an
@@ -31,6 +29,12 @@ conditions only, never holdings or orders.
   `{"field": "relativeReturn3m", "benchmark": "QQQ"}`. No other field
   takes one.
 - **`afterEarnings` sits on the root only** and names a US share.
+- **The fields and their units are `FIELDS` in `format.ts`.** A price
+  level (`PRICE_LEVEL`) is in the listing's own unit and currency.
+  Field names are camelCase; a snake_case name taken from screen is
+  refused with a hint (`hint()`). The `RULES` description in
+  `src/tools/index.ts` lists every field by hand, so a new field goes
+  there too.
 
 | Limit | Value | Constant |
 |---|---|---|
@@ -41,32 +45,11 @@ conditions only, never holdings or orders.
 | note | 500 characters, also checked by migration `0009-rules`, so raising it needs an appended migration | `MAX_NOTE` |
 | a number on the right | finite, at most 1e15 in size | `MAX_LITERAL` |
 
-| Fields | Unit |
-|---|---|
-| `price`, `dayHigh`, `dayLow`, `previousClose` (quote) | price level |
-| `changePct` (quote) | percent |
-| `sma50`, `sma200`, `ema20`, `macd`, `macdSignal`, `macdHistogram`, `atr14`, `bollingerLower`, `high52w`, `low52w`, `weeklySma50`, `weeklySma200` | price level |
-| `cross`, `crossEdge`, `macdTurn`, `weeklyCross`, `weeklyCrossEdge` | state (-1, 0, 1) |
-| `rsi14` | 0 to 100 |
-| `moveAtr` | ATRs |
-| `volatility20` | percent per day |
-| `drawdown`, `fromLow` | percent |
-| `daysSinceHigh` | trading days |
-| `volumeRatio` | ratio |
-| `relativeReturn1m`, `relativeReturn3m` | percentage points |
-
-A price level is in the listing's own unit and currency
-(`PRICE_LEVEL`). Field names are camelCase; a snake_case name taken
-from screen is refused with a hint (`hint()`).
-
 Examples, each created with `symbol` set to the rule's own share:
 
 ```json
-{"left": "price", "op": "<", "right": 200}
 {"all": [{"left": "rsi14", "op": "<", "right": 30},
          {"left": "price", "op": ">", "right": "sma200"}]}
-{"left": "moveAtr", "op": "<", "right": -2}
-{"left": "drawdown", "op": "<", "right": -20}
 {"left": {"field": "price", "symbol": "^VIX"}, "op": ">", "right": 30}
 {"afterEarnings": "NVDA", "left": "changePct", "op": "<", "right": -5}
 ```
@@ -74,37 +57,31 @@ Examples, each created with `symbol` set to the rule's own share:
 ## Validation
 
 - **Shape is checked before anything is resolved or fetched**
-  (`parseCondition()`, `parseRules()`), and the named symbols are
-  counted against `MAX_INSTRUMENTS` there too.
+  (`parseCondition()`, `parseRules()`), the named symbols counted
+  against `MAX_INSTRUMENTS` too.
 - **What depends on the instruments is checked after they resolve**
   (`checkBound()`): no quote field of a FRED series, which has no
   quote; relative return only between two listings with quotes; every
   comparison reads at least one live value, since a rule on closed
-  values alone would never change between quotes; both sides of a
-  comparison in the same unit, a price level's unit including its
-  currency; and no cross-instrument price comparison when either unit
-  is `unknown` or `index_points`, since one index's points are no
-  other's (^VIX's volatility, ^TNX's yield).
+  values alone would never change between quotes; both sides in the
+  same unit, a price level's including its currency; and no
+  cross-instrument price comparison when either unit is `unknown` or
+  `index_points`, since one index's points are no other's.
 - **A stored condition names every instrument by id** and binds its
-  gate to one fiscal year and quarter (`bindCondition()`,
-  `writeCondition()`). `readCondition()` parses stored rows strictly;
-  a row that no longer parses is the server's fault.
+  gate to one fiscal year and quarter (`bindCondition()`).
+  `readCondition()` parses stored rows strictly; a row that no longer
+  parses is the server's fault.
 
 ## Evaluation
 
 - **Rules evaluate inside the write that moved their inputs**, so the
   quote, its live signals, the runs staleness is read from and the rule
-  are read in one transaction. A write that stores quotes, bars or
-  signals, or ends a run, calls `RuleHooks.evaluate()` in the same
-  write: `storeQuotes()` in `src/sources/yahoo/quotes.ts` and `store()`
-  in `src/sources/yahoo/history.ts`, the quote and bar passes in
-  `src/sources/yahoo/jobs.ts` and `src/sources/bvb/jobs.ts`,
-  `storeBvbQuotes()` in `src/sources/bvb/quotes.ts`, `storeWindow()` and
-  `storeWhole()` in `src/sources/bvb/history.ts`, the FRED series pass
-  in `src/sources/fred/jobs.ts`. A FRED series stored inside a tool call
-  (`src/sources/fred/sync.ts`) evaluates nothing; its rules run on the
-  next series pass. Gated rules also run in `hooks.reported()` when
-  Finnhub sees an event's results.
+  are read in one transaction. Every write that stores quotes, bars or
+  signals, or ends a run, calls `RuleHooks.evaluate()` in that write.
+  A FRED series stored inside a tool call (`src/sources/fred/sync.ts`)
+  evaluates nothing; its rules run on the next series pass. Gated
+  rules also run in `hooks.reported()` when Finnhub sees an event's
+  results.
 - **A rule is due when it reads any instrument that moved**; paused
   rules are skipped.
 - **The result is true, false or unknown.** Any missing, null, stale or
@@ -125,8 +102,7 @@ Examples, each created with `symbol` set to the rule's own share:
 - **`afterEarnings` waits for the next results of a US share.**
   Creating one needs Finnhub on and the share eligible (US, `EQUITY`),
   else `no_event_source`, and an upcoming unreported event, else
-  `no_event` (`nextEvent(…, true)`, which also takes one up to 7 days
-  past its date still awaiting results).
+  `no_event` (`nextEvent(…, true)`, `docs/research.md`).
 - **Only actuals open the gate.** Until Finnhub's EPS or revenue
   actuals are seen (`reportedSeenAt`), the rule is false with "waiting
   for the earnings results", so it stays armed. After, a value traded
@@ -134,15 +110,14 @@ Examples, each created with `symbol` set to the rule's own share:
   that price says nothing of them; so does a live quote with no trade
   time (an index page's), which may be older, and a live signal row
   built from one, since it is dated by the quote's fetch. A deleted
-  event makes it unknown.
-  An unknown input wins over the gate: the rule is unknown, never
-  waiting (`evaluateWith()`).
+  event makes it unknown. An unknown input wins over the gate: the
+  rule is unknown, never waiting (`evaluateWith()`).
 - **The gate stays bound to its quarter.** It is never moved to the
   next event; a later quarter is a new rule.
 - **Waited events are kept.** `hooks.waited()` names every gated
   event so retention keeps it; its share is tracked, so the hourly
-  whole-market calendar (`docs/research.md`) sees its actuals, and
-  `hooks.reported()` re-evaluates the gated rules when one reports.
+  whole-market calendar (`docs/research.md`) sees its actuals and
+  `hooks.reported()` re-evaluates the gated rules.
 
 ## Splits and rescales
 
@@ -150,19 +125,16 @@ Examples, each created with `symbol` set to the rule's own share:
   (`rescaled()`, `splitSensitive()`): a comparison of the instrument's
   price level with a number, or with another listing's price level.
   Against its own average, high or other price level the comparison
-  still holds and keeps running; non-price fields (RSI, percent, state)
-  are never paused.
-- **The pause comes before any evaluation on the new scale.** It runs
-  inside the write that applies a new split or rescales past prices,
-  before that write evaluates, and in a write of its own when a refetch
-  window first shows one, before the whole history is asked
-  (`refetchAnswer()` in `src/sources/yahoo/sync.ts`). The Bucharest feed
-  pauses the same way when its 30-day window shows past prices moved
-  by one ratio (`refetchAnswer()` in `src/sources/bvb/sync.ts`).
+  still holds and keeps running; non-price fields are never paused.
+- **The pause comes before any evaluation on the new scale**: inside
+  the write that applies a new split or rescales past prices, before
+  it evaluates, and in a write of its own when a refetch window first
+  shows one, before the whole history is asked (`refetchAnswer()` in
+  `src/sources/yahoo/sync.ts` and `src/sources/bvb/sync.ts`;
+  `docs/sources.md`, "Splits and rescales").
 - **Until the new session's bars are in, split-sensitive comparisons
-  are unknown** ("bars of the new session not refetched yet, so a
-  split may be unseen", `BARS_PENDING`), since the opening quote may
-  already be on the new scale.
+  are unknown** (`BARS_PENDING`), since the opening quote may already
+  be on the new scale.
 - **A split pause is final.** `paused` becomes `split` even on a rule
   paused by hand; resuming it answers `split_paused`. The levels are
   from before the split: delete the rule and create it with new ones.
@@ -176,8 +148,7 @@ Examples, each created with `symbol` set to the rule's own share:
 ## The rules tool
 
 - **Actions are `create`, `list`, `pause` and `delete`**, each taking
-  only its own arguments (`ARGS`). It is the only tool with write
-  annotations.
+  only its own arguments (`ARGS`).
 - **create leaves no rule on any failure.** Every symbol resolves and
   is stored inside the call (`readTargets()`, and `researchTargets()`
   for the gate, under one deadline); any error answers without a write.
@@ -187,9 +158,6 @@ Examples, each created with `symbol` set to the rule's own share:
 - **list pages rules by id; pause sets or clears a manual pause;
   delete removes the rule and keeps its alerts.** Alerts have no
   foreign key, so a fired alert outlives its rule.
-
-## Over HTTP
-
-- **The rules routes and the alerts feed are in `docs/api.md`.** The
-  routes call the tool's own `createRule()`, `pauseRule()` and
-  `deleteRuleById()`, so a rule made either way is the same.
+- **The rules routes call the same `createRule()`, `pauseRule()` and
+  `deleteRuleById()`** (`docs/api.md`), so a rule made either way is
+  the same.
