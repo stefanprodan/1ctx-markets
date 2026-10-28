@@ -27,6 +27,7 @@ import { SignIn } from "../src/web/views/SignIn.tsx";
 import {
   ago,
   bytes,
+  clockTime,
   jobLine,
   jobTone,
   sourceLine,
@@ -352,6 +353,10 @@ describe("the data layer", () => {
 });
 
 describe("the status model", () => {
+  test("the clock is 24-hour", () => {
+    expect(clockTime(Date.UTC(2026, 9, 28, 13, 5, 9))).not.toMatch(/AM|PM/i);
+  });
+
   test("sizes, distances and lines read as an operator says them", () => {
     expect(bytes(512)).toBe("512 B");
     expect(bytes(65_515_520)).toBe("62 MB");
