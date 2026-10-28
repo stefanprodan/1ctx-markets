@@ -839,6 +839,7 @@ const detail = (
   row: Partial<Listed> = {},
 ): Detail => ({
   instrument: listed("US:NVDA", { name: "NVIDIA", ...row }),
+  error: null,
   quote: {
     id: "US:NVDA",
     price: 217.24,
@@ -1063,7 +1064,41 @@ describe("the instrument page", () => {
     slow.resolve(Response.json(detail({ id: "US:OLD" })));
     await old;
     expect(s.detailId.value).toBe("US:NVDA");
-    expect(s.detail.value?.quote.id).toBe("US:NVDA");
+    expect(s.detail.value?.quote?.id).toBe("US:NVDA");
+  });
+
+  test("a reload of the same instrument supersedes a refresh in flight", async () => {
+    const tick = Promise.withResolvers<Response>();
+    let n = 0;
+    const s = store(async () =>
+      ++n === 1 ? tick.promise : Response.json(detail({ price: 220 })),
+    );
+    const refresh = s.loadInstrument("US:NVDA");
+    await s.loadInstrument("US:NVDA");
+    tick.resolve(Response.json(detail({ price: 210 })));
+    await refresh;
+    expect(s.detail.value?.quote?.price).toBe(220);
+  });
+
+  test("a failed read shows the stored price and says so", () => {
+    const unread: Detail = {
+      ...detail(),
+      instrument: listed("US:NVDA", {
+        price: 216.5,
+        change_percent: 0.4,
+        fetched_at: "2026-10-28T09:00:00Z",
+      }),
+      quote: null,
+      error: {
+        error: "source_error",
+        message: "network error; retry this symbol later",
+      },
+    };
+    expect(headline(unread).price).toBe("216.50 USD");
+    expect(priceState(unread, NOW)).toBe("Stored price · updated 3 h ago");
+    const html = render(<Head detail={unread} now={NOW} />);
+    expect(html).toContain("216.50 USD");
+    expect(html).not.toContain("1 week");
   });
 
   test("refetch posts the parts, sections only with research", async () => {

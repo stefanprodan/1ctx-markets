@@ -21,6 +21,7 @@ import {
   RETURNS,
   returnCell,
   summary,
+  UNREAD,
 } from "./Instrument.model.ts";
 import { about, symbolOf } from "./Instruments.model.ts";
 import "./instruments.css";
@@ -30,7 +31,7 @@ const tone = (dir: -1 | 0 | 1) =>
 
 export function Head({ detail, now }: { detail: Detail; now: number }) {
   const h = headline(detail);
-  const r = detail.quote.returns;
+  const r = detail.quote?.returns ?? null;
   return (
     <section class="card ins-head" aria-label="Price">
       <span class="label">{about(detail.instrument)}</span>
@@ -180,7 +181,9 @@ export function Instrument({ params }: { params: Params }) {
       title={symbol}
       meta={detail?.instrument.name ?? undefined}
       error={
-        markets.detailError.value ?? (said.value?.bad ? said.value.text : null)
+        markets.detailError.value ??
+        (said.value?.bad ? said.value.text : null) ??
+        (detail?.error ? UNREAD : null)
       }
       actions={
         detail !== null && (

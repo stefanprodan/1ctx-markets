@@ -65,7 +65,10 @@ is offered over MCP.
   as the quote tool does, so it is tracked and a due price is fetched.
   The public `/quotes` leaves returns and session out to stay cheap
   for many symbols; one instrument can afford them. A stored id only:
-  an unknown one is 404 and nothing is fetched.
+  an unknown one is 404 and nothing is fetched. A read that fails (a
+  source down, the deadline) still answers 200 with the stored row,
+  `quote` null and `error` the item's code and phrase, so the page keeps
+  the stored price.
 
 ## Refetch
 

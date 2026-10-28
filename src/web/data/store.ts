@@ -83,7 +83,9 @@ export type Returns = {
 
 export type Detail = {
   instrument: Listed;
-  quote: {
+  // null when the read failed; error says why
+  error: { error: string; message: string } | null;
+  quote: null | {
     id: string;
     price: number | null;
     observation?: { date: string; value: number } | null;
@@ -228,7 +230,11 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
   }
 
   // a later id supersedes one in flight; the same id reloads in place
+  // a later load supersedes one in flight, even of the same id, so a
+  // refresh tick never lands over the reload after a refetch
+  let instrumentLoad = 0;
   async function loadInstrument(id: string): Promise<void> {
+    const mine = ++instrumentLoad;
     if (detailId.value !== id) {
       batch(() => {
         detailId.value = id;
@@ -238,13 +244,13 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
     }
     try {
       const d = await call<Detail>(one(id));
-      if (detailId.value !== id) return;
+      if (mine !== instrumentLoad) return;
       batch(() => {
         detail.value = d;
         detailError.value = null;
       });
     } catch (error) {
-      if (detailId.value !== id) return;
+      if (mine !== instrumentLoad) return;
       if (!(error instanceof ApiError && error.status === 401)) {
         detailError.value = says(error);
       }

@@ -104,6 +104,8 @@ export function App({ store = markets }: { store?: Store }) {
   }, [here, route]);
   // a page's load runs on arrival; the check above is the status page's
   useEffect(() => {
+    // signed out, the page's data went; the next sign-in loads it again
+    if (signedIn === false) arrived.current = null;
     if (signedIn !== true || route === null) return;
     const first = arrived.current === null;
     if (arrived.current !== here && !(first && route.path === "/status")) {

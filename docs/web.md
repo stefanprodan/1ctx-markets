@@ -101,7 +101,10 @@ signed in with the admin key alone.
   to the sign-in), and a later status load supersedes one in flight.
   The first status answer is also the check of the cookie.
 - **A page's `load` in `app/routes.ts` runs on arrival**, the status
-  page's on first arrival being that check.
+  page's on first arrival being that check. A sign-out clears the
+  pages' data, so the next sign-in counts as an arrival.
+- **A later load supersedes one in flight**, the same id included, so
+  a refresh tick never lands over the reload after a refetch.
 - **1ctx's look, copied, not shared:** `style/tokens.css`,
   `style/base.css`, the fonts, the rail, strip and shell styles, the
   logo and icons, trimmed to what these pages use. The rail is the
@@ -152,7 +155,9 @@ signed in with the admin key alone.
   change, "Live · market open" or "Close · market closed" (a series:
   "Latest value" and its date) with when it was fetched, and the 1
   week, 1 month, 3 months and year-to-date returns from the quote, never
-  recomputed.
+  recomputed. A read that failed shows the stored price as "Stored
+  price" with its age, no returns, and one notice that a new price could
+  not be had; the server's phrase is for agents, not this page.
 - **Refetch is a button with a menu** in the page head (1ctx's More):
   Everything, then each part a source holds for it (research, earnings
   dates and news only for US shares, news for US ETFs too). A pick

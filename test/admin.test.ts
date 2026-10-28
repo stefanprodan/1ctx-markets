@@ -1149,6 +1149,7 @@ describe("the instrument list", () => {
     expect(body.quote).toMatchObject({ id: "US:AAA", price: 110, change: 10 });
     expect(body.quote).toHaveProperty("returns");
     expect(body.quote).toHaveProperty("session");
+    expect(body.error).toBeNull();
     expect(lastReadAt(w.db, "US:AAA")).not.toBeNull();
 
     const missing = await one("US%3ANOPE");
@@ -1158,6 +1159,20 @@ describe("the instrument list", () => {
     expect(readInstrument(w.db, "US:NOPE")).toBeNull();
     expect((await one("US%3AAAA?x=1")).status).toBe(400);
     expect((await one("%3Cb%3E")).status).toBe(400);
+  });
+
+  test("one instrument whose read fails keeps its stored row and says why", async () => {
+    const w = world();
+    // stored with nothing fetched: the read asks a source, which is offline
+    instrument(w.db, "FRED:DGS10");
+    const res = await api(w.m)(
+      new Request("http://markets.test/api/v1/admin/instruments/FRED%3ADGS10"),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as any;
+    expect(body.instrument.id).toBe("FRED:DGS10");
+    expect(body.quote).toBeNull();
+    expect(body.error).toMatchObject({ error: "source_error" });
   });
 
   test("parses strictly", async () => {

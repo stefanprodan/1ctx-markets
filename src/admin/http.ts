@@ -9,6 +9,7 @@ import { trackedIds } from "../market/tracking.ts";
 import { ArgError as QueryError } from "../operations/args.ts";
 import type { Markets } from "../operations/markets.ts";
 import { parseQuote, quoteRows } from "../operations/quote.ts";
+import type { ErrorItem } from "../operations/targets.ts";
 import type { TrackState } from "../operations/track.ts";
 import { instrumentsOf } from "../rules/format.ts";
 import { readRules, ruleInstruments } from "../rules/store.ts";
@@ -441,9 +442,17 @@ export async function adminInstrument(
   if (stored === null) {
     return failed({ error: "not_found", message: "no such instrument" });
   }
+  // a read that failed (a source down, the deadline) keeps the stored row:
+  // the quote is null and its error says why
+  const item = rows[0]!.item;
+  const failure = "error" in item ? (item as ErrorItem) : null;
   return json({
     instrument: listRow(d.m, ruleInstruments(d.m.db), now)(stored),
-    quote: rows[0]!.item,
+    quote: failure === null ? item : null,
+    error:
+      failure === null
+        ? null
+        : { error: failure.error, message: failure.message },
   });
 }
 

@@ -18,12 +18,16 @@ export function headline(d: Detail): {
   change: { text: string; dir: -1 | 0 | 1 };
 } {
   const q = d.quote;
-  const row: Listed = {
-    ...d.instrument,
-    price: q.price ?? q.observation?.value ?? null,
-    change: q.change,
-    change_percent: q.change_percent,
-  };
+  // a read that failed leaves the stored row's price
+  const row: Listed =
+    q === null
+      ? d.instrument
+      : {
+          ...d.instrument,
+          price: q.price ?? q.observation?.value ?? null,
+          change: q.change,
+          change_percent: q.change_percent,
+        };
   return { price: price(row), change: change(row) };
 }
 
@@ -36,6 +40,9 @@ const DAY = new Intl.DateTimeFormat("en-GB", {
 // live or the close, said plainly, then when it was fetched
 export function priceState(d: Detail, now: number): string {
   const q = d.quote;
+  if (q === null) {
+    return `Stored price · updated ${ago(d.instrument.fetched_at, now)}`;
+  }
   const when = `updated ${ago(q.fetched_at, now)}`;
   if (q.session === null) {
     const on = q.observation?.date;
@@ -47,6 +54,9 @@ export function priceState(d: Detail, now: number): string {
     ? `Live · market open · ${when}`
     : `Close · market closed · ${when}`;
 }
+
+// a failed read's own words are for agents; the page says it plainly
+export const UNREAD = "Couldn't get a new price. Showing the last one stored.";
 
 export const RETURNS: readonly { key: keyof Returns; label: string }[] = [
   { key: "1w", label: "1 week" },
