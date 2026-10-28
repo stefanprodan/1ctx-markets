@@ -215,12 +215,15 @@ Phrases from Yahoo (`docs/sources.md`, Refusals):
   the job's last run still going is skipped (`job skipped`,
   `src/runtime/scheduler.ts`), so a source is never asked twice at
   once by the same job. What is due is read from the stored sessions
-  and runs, so a restart picks up where it was, except four marks held
+  and runs, so a restart picks up where it was, except three marks held
   in memory that a restart clears: refused whole histories (`refused`
-  in `sync.ts`), failed backfills (`backfillMissed`), each market's
-  check turn (`checkTurn`) and the quote period last passed
-  (`lastSlot`, all three in `jobs.ts`), so a restart can repeat a
-  quote pass within the same period.
+  in `sync.ts`), failed backfills (`backfillMissed`) and each market's
+  check turn (`checkTurn`, both in `jobs.ts`). The quote period last
+  passed (`lastSlot`) is read from the runs on the first tick
+  (`lastPassAt()`: a market's pass, never an instrument's read, nor one
+  cut by shutdown), so a restart or a deploy never repeats a quote pass
+  within its period; a first run, or a stop past the period, passes at
+  once.
 
 | Job | Does |
 | --- | --- |

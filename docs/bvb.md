@@ -131,7 +131,8 @@ exchange: one client, its parsers, its session, the same tables.
   shares, fund units, bonds, indices, one call each per quote period
   while the market is quoted, and once after its close
   (`closeQuoteAt()`), since the share list is marked 15 minutes
-  delayed.
+  delayed. The period last passed is read from the runs on the first
+  tick (`lastPassAt()`), so a restart never repeats a pass within it.
 - **Every list page is read at least once an exchange day while the
   feed is on, tracked or not, and at start** (`readLists()`, `warm()`),
   so a new symbol need not wait on the exchange's search. The day is

@@ -26,6 +26,7 @@ import type { Scheduler } from "../../runtime/scheduler.ts";
 import {
   endRun,
   failRun,
+  lastPassAt,
   lastStarted,
   runJob,
   startRun,
@@ -310,6 +311,12 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
   async function quoteTick(): Promise<Omit<TickReport, "bars">> {
     const now = clock.now();
     const slot = Math.floor(now / quoteEveryMs);
+    // the first tick after a start reads the last pass, so a restart or a
+    // deploy never adds a pass to a period that had one
+    if (lastSlot === null) {
+      const at = lastPassAt(db, SOURCE, [JOBS.quotes, JOBS.check]);
+      lastSlot = at === null ? null : Math.floor(at / quoteEveryMs);
+    }
     const quotePass = slot !== lastSlot;
     lastSlot = slot;
     const work = plan(tracked(), now, quotePass);

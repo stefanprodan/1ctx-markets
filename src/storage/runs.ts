@@ -132,6 +132,25 @@ export function lastRun(
   );
 }
 
+// when a market-wide pass of these jobs last started (a market's scope,
+// never an instrument's read), one cut by shutdown aside: a restart
+// asks again only when its period holds no pass yet
+export function lastPassAt(
+  db: Db,
+  source: string,
+  jobs: readonly string[],
+): number | null {
+  const row = db
+    .query<{ at: number | null }, [string, string, string]>(
+      `select max(started_at) as at from sync_runs
+       where source = ?1 and job in (select value from json_each(?2))
+         and instr(coalesce(scope, ''), ':') = 0
+         and not (status = 'failed' and error is ?3)`,
+    )
+    .get(source, JSON.stringify(jobs), STOPPED);
+  return row?.at ?? null;
+}
+
 // running ones included
 export function lastStarted(
   db: Db,

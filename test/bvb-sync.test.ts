@@ -279,6 +279,25 @@ describe("the session", () => {
     expect(opened.quoted).toBe(true);
   });
 
+  test("a restart adds no quote pass to a period that had one", async () => {
+    const t = await setup(utc("2026-10-23T14:00:00"), { open: true });
+    friday(t.db, t.clock.now());
+    await t.add("TLV");
+    await t.clock.advance(utc("2026-10-26T07:00:00") - t.clock.now());
+    await t.run(t.jobs.quoteTick());
+    await t.run(t.jobs.quoteTick());
+    await t.run(t.clock.advance(utc("2026-10-26T08:00:00") - t.clock.now()));
+    expect((await t.run(t.jobs.quoteTick())).quoted).toBe(true);
+    const fresh = () =>
+      bvbJobs({ ctx: t.ctx, quoteEveryMs: EVERY, log: silent });
+    // restarted a minute on, in the same period
+    await t.run(t.clock.advance(MINUTE_MS));
+    expect((await t.run(fresh().quoteTick())).quoted).toBe(false);
+    // the next period quotes as the schedule does
+    await t.run(t.clock.advance(4 * MINUTE_MS));
+    expect((await t.run(fresh().quoteTick())).quoted).toBe(true);
+  });
+
   test("a closed status takes no quotes and checks again at the local start", async () => {
     const t = await setup(utc("2026-10-23T14:00:00"));
     friday(t.db, t.clock.now());
