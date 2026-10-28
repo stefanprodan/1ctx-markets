@@ -63,8 +63,9 @@ signed in with the admin key alone.
 
 ## What the cookie opens
 
-- **The admin routes, `/api/v1/admin/*`, and every `GET` or `HEAD`
-  under `/api/v1`.** The bearer and the admin key keep their own paths
+- **The admin routes, `/api/v1/admin/*`, every `GET` or `HEAD`
+  under `/api/v1`, and `POST /api/v1/screen`**, a read whose filters
+  are a body, held to the write check below. The bearer and the admin key keep their own paths
   first (`router()`); the cookie is tried only when the key a path
   takes is missing or wrong.
 - **Never `/mcp`, and never a write outside the admin routes** (rules
@@ -79,8 +80,9 @@ signed in with the admin key alone.
 
 ## What an anonymous visitor sees
 
-- **The page, its assets and the sign-in's 401, and nothing about the
-  server**: no host path, key or key file name, no data directory, no
+- **The page, its assets, the sign-in's 401, and the OpenAPI spec and
+  its docs page, which describe the API of every install and nothing
+  of this one**: no host path, key or key file name, no data directory, no
   version, no source or flag name, no instrument data, no config in
   `index.html`, no source map. The bundle holds view code only, with
   Bun's comments naming each module by its path in this repository, as

@@ -83,7 +83,11 @@ export function router(deps: RouterDeps): Handle {
   const allowed = (req: Request, path: string): Response | null => {
     if (isAdmin(path) ? admin(req) : authorized(req)) return null;
     const read = READS.has(req.method);
-    if (!signedIn(req) || (!read && !isAdmin(path))) return unauthorized();
+    // screen takes its filters as a body, so its POST is a read
+    const bodyRead = req.method === "POST" && path === "/screen";
+    if (!signedIn(req) || (!read && !bodyRead && !isAdmin(path))) {
+      return unauthorized();
+    }
     return read || sameOrigin(req) ? null : forbidden();
   };
   const apiRoute = async (req: Request, path: string): Promise<Response> => {

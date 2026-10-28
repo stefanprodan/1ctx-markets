@@ -260,6 +260,30 @@ describe("what the cookie opens", () => {
     expect(rule.status).toBe(401);
   });
 
+  test("screen's POST is a read, held to the write check", async () => {
+    const t = setup();
+    const cookie = `${COOKIE}=${await t.cookie()}`;
+    const screen = (headers: Record<string, string>) =>
+      t.at(`${PREFIX}/screen`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json", ...headers },
+        body: JSON.stringify({ symbols: ["US:NOPE"] }),
+      });
+    const own = await screen({ "sec-fetch-site": "same-origin" });
+    expect(own.status).not.toBe(401);
+    expect(own.status).not.toBe(403);
+    expect((await screen({ "sec-fetch-site": "cross-site" })).status).toBe(403);
+    const bare = await t.at(`${PREFIX}/screen`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer nope",
+        "content-type": "application/json",
+      },
+      body: "{}",
+    });
+    expect(bare.status).toBe(401);
+  });
+
   test("a forged, expired or other key's cookie opens nothing", async () => {
     const clock = fakeClock(NOW);
     const handle = router({

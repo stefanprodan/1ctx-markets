@@ -131,8 +131,9 @@ consumer each.
   `/api/v1/admin/*` alone.** Each is refused where the other is
   taken.
 - **The web UI's session cookie opens `/api/v1/admin/*` and every
-  `GET` under `/api/v1`**, never a rules write or `/mcp`; a write by
-  cookie needs this server's `Origin` (`docs/web.md`). The spec names
+  `GET` under `/api/v1` and `POST /api/v1/screen`**, never a rules
+  write or `/mcp`; a cookie request that is not a `GET` must come from
+  this server's own pages (`docs/web.md`). The spec names
   it as the `session` security scheme beside `read` on the reads and
   `admin` on the admin routes. Rules writes take the read key, as the MCP rules tool does.
   Any other `/api/v1/` path, unknown ones included, answers 401

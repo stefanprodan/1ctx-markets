@@ -13,7 +13,11 @@ export const spec = {
     version: "v1",
     // no identifier or url: the page would link to another host
     license: { name: "Apache-2.0" },
-    description: `Market data and price rules for scripts and other tools, the same reads the MCP tools answer. JSON in and out; query parameters for reads, a JSON body where the arguments are a structure. Nothing a script reads is paged: every such route answers its whole result, since a script that does not follow a cursor would lose what is past it; only the operator's instrument list, drawn a screen at a time, is. An argument a route does not take is refused (400), next included. Every error is {"error": code, "message": text}, with the tools' own codes. Another method on a path answers 405 with Allow. Reads answer cache-control: no-store, since prices are live. The read key is the server's bearer; the admin key is for the operator's routes alone, and neither is taken where the other is; the web UI's session cookie opens the reads and the operator's routes.`,
+    description: `Market data and price rules, the same answers as the MCP tools.
+
+- Reads take the bearer key, \`/admin\` routes the admin key.
+- Results are not paged, except the admin instrument list.
+- Errors are \`{"error": code, "message": text}\`.`,
   },
   servers: [{ url: "/api/v1" }],
   security: [{ read: [] }],
@@ -29,12 +33,12 @@ export const spec = {
       read: {
         type: "http",
         scheme: "bearer",
-        description: "The server's bearer, secrets/bearer.key.",
+        description: "The server's bearer key.",
       },
       admin: {
         type: "http",
         scheme: "bearer",
-        description: "The operator's key, secrets/admin.key.",
+        description: "The operator's admin key.",
       },
       session: {
         type: "apiKey",

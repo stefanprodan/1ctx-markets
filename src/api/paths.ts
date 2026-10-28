@@ -203,7 +203,7 @@ export const paths = {
       operationId: "research",
       security: READ_AUTH,
       summary: "Quotes with research summaries and a week of news",
-      description: `For each share, its brief quote as /quotes answers it, a Finnhub summary (metrics, analysts, earnings and insider sentiment with their newest rows, the next earnings event) and the stored news of the window (counts by sentiment and the ${WEEK_ITEMS} items that take a side first). Up to ${MAX_RESEARCH_SYMBOLS} symbols: a share never fetched costs five Finnhub calls, and the free key allows 60 a minute shared with the server's own jobs. Sections never fetched are fetched inside the call; news is read as stored. Finnhub covers US shares only. ${DEADLINE}`,
+      description: `For each share, its brief quote as /quotes answers it, a research summary (metrics, analysts, earnings and insider sentiment with their newest rows, the next earnings event) and the stored news of the window (counts by sentiment and the ${WEEK_ITEMS} items that take a side first). Up to ${MAX_RESEARCH_SYMBOLS} symbols: a share never fetched costs five calls to the research source, whose per-minute limit is shared with the server's own jobs. Sections never fetched are fetched inside the call; news is read as stored. Research covers US shares only. ${DEADLINE}`,
       parameters: [
         csv(
           "symbols",
@@ -213,7 +213,7 @@ export const paths = {
         ),
         csv(
           "sections",
-          "The parts each share answers, all by default; a Finnhub section left out is not fetched.",
+          "The parts each share answers, all by default; a section left out is not fetched.",
           values(RESEARCH_PARTS),
         ),
         query(
@@ -403,7 +403,7 @@ export const paths = {
       tags: ["admin"],
       operationId: "adminInstruments",
       summary: "The stored instruments and why each is tracked",
-      description: `Paged by id, since the stored set grows with use and a page is a screen of rows: pass the last id answered as after while more is true. total counts every match. tracked_by names what keeps each one synced: a rule reading it, a read within the tracking window (read_until is when that ends), or a --track flag. Listing is no read and tracks nothing.`,
+      description: `Paged by id, since the stored set grows with use and a page is a screen of rows: pass the last id answered as after while more is true. total counts every match. tracked_by names what keeps each one synced: a rule reading it, a read within the tracking window (read_until is when that ends), or the server's start options. Listing is no read and tracks nothing.`,
       security: ADMIN_AUTH,
       parameters: [
         query(
