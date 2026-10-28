@@ -505,6 +505,26 @@ export const schemas: Record<string, Schema> = {
     ),
     database_bytes: int,
   }),
+  AdminInstruments: object({
+    total: int,
+    more: bool,
+    instruments: list(
+      object({
+        id: str,
+        name: nstr,
+        market: str,
+        exchange: str,
+        currency: nstr,
+        kind: str,
+        unit: values(UNITS),
+        source: str,
+        tracked: bool,
+        tracked_by: list(values(["rule", "read", "track"])),
+        read_at: nstr,
+        read_until: nstr,
+      }),
+    ),
+  }),
   RefetchArgs: object(
     {
       symbols: list(str),

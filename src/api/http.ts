@@ -29,6 +29,7 @@ const STATUS: Record<string, number> = {
   no_event_source: 400,
   no_event: 400,
   unauthorized: 401,
+  forbidden: 403,
   not_found: 404,
   candidates: 404,
   no_data: 404,

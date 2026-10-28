@@ -21,6 +21,8 @@ export type Config = {
   sources: string[];
   // tracked whether read or not, each as the quote tool takes it
   track: string[];
+  // the web UI at / and its sign-in
+  ui: boolean;
 };
 
 export const dbPath = (config: Config): string =>
@@ -75,14 +77,15 @@ export const HELP = `\x1b[1m1ctx-markets\x1b[0m - a self-hosted market data serv
                          bvb: the Bucharest Stock Exchange's own feed
   --track <symbol>       keep an instrument tracked whether read or not,
                          repeated for each; a symbol as quote takes it
+  --no-ui                serve no web UI at / and refuse its sign-in
   -v, --version          show version
   -h, --help             show this help
 
 \x1b[1mSecrets:\x1b[0m
   bearer.key             the bearer every request carries, at least 32
                          characters; the first start writes one
-  admin.key              the key of /api/v1/admin/* alone; the first
-                         start writes one
+  admin.key              the key of /api/v1/admin/* and the web UI's
+                         sign-in; the first start writes one
   source-<name>.key      a source's API key, which turns it on:
                          source-fred.key, source-finnhub.key or
                          source-massive.key`;
@@ -124,6 +127,7 @@ export function parseCli(argv: string[], home: string = homedir()): Cli {
   let trackDays = DEFAULT_TRACK_DAYS;
   const sources = new Set<string>();
   const track = new Set<string>();
+  let ui = true;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
@@ -173,6 +177,9 @@ export function parseCli(argv: string[], home: string = homedir()): Cli {
         }
         track.add(value.trim());
         break;
+      case "--no-ui":
+        ui = false;
+        break;
       case "-v":
       case "--version":
         return { kind: "version" };
@@ -195,6 +202,7 @@ export function parseCli(argv: string[], home: string = homedir()): Cli {
       trackDays,
       sources: [...sources].sort(),
       track: [...track],
+      ui,
     },
   };
 }
@@ -213,5 +221,6 @@ export function configToArgs(config: Config): string[] {
   ];
   for (const name of config.sources) args.push("--source", name);
   for (const value of config.track) args.push("--track", value);
+  if (!config.ui) args.push("--no-ui");
   return args;
 }

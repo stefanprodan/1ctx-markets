@@ -49,6 +49,7 @@ src/server/                 HTTP and MCP
   http.ts                   the Bun server, the bearer check, the routes
   mcp.ts                    the stateless MCP endpoint
   instructions.ts           the server instructions every MCP client gets
+  session.ts                the web UI's sign-in and its cookie
 src/runtime/                the process
   config.ts                 flags and the --help text
   keys.ts                   key files, the only reader of secrets/
@@ -114,6 +115,7 @@ the same commit as the code that changes a rule.
 | `docs/signals.md` | the daily and weekly signals, final and live rows, reading, relative return |
 | `docs/rules.md` | rule conditions, validation, evaluation, the earnings gate, split pauses, the `rules` tool |
 | `docs/tools.md` | the answer contract, arguments, each tool, units and staleness, resolution and the inline fetch, the reads the API shares, tool descriptions |
+| `docs/web.md` | the web UI: the sign-in and its cookie, what the cookie opens, `--no-ui` |
 | `docs/testing.md` | the test suite, fakes, the fake clock, fixtures and the recorders |
 
 ## Rules the code follows

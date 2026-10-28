@@ -5,6 +5,7 @@
 import {
   type AdminDeps,
   adminDelete,
+  adminInstruments,
   adminRefetch,
   adminStatus,
 } from "../admin/http.ts";
@@ -377,6 +378,12 @@ export function routes(deps: ApiDeps): Route[] {
         path: "/admin/status",
         key: "admin",
         handle: async (_req, url) => adminStatus(admin, url),
+      },
+      {
+        method: "GET",
+        path: "/admin/instruments",
+        key: "admin",
+        handle: async (_req, url) => adminInstruments(admin, url),
       },
       {
         method: "POST",

@@ -12,12 +12,14 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AdminError, runAdmin } from "../src/admin/cli.ts";
-import { INSTRUMENT_TABLES, MAX_SYMBOLS } from "../src/admin/http.ts";
+import { INSTRUMENT_TABLES, MAX_PAGE, MAX_SYMBOLS } from "../src/admin/http.ts";
 import { refetch } from "../src/admin/refetch.ts";
+import { iso } from "../src/market/format.ts";
 import { readInstrument, upsertInstrument } from "../src/market/instruments.ts";
-import { lastReadAt } from "../src/market/tracking.ts";
-import { CALL_MS, markets } from "../src/operations/markets.ts";
+import { lastReadAt, markRead } from "../src/market/tracking.ts";
+import { CALL_MS, type Markets, markets } from "../src/operations/markets.ts";
 import { readTargets } from "../src/operations/targets.ts";
+import { DAY_MS } from "../src/runtime/clock.ts";
 import { DEFAULT_LISTEN, parseCli } from "../src/runtime/config.ts";
 import {
   ADMIN_FILE,
@@ -47,6 +49,7 @@ import { fakeClock } from "./helpers/clock.ts";
 import { drive, pacedOf } from "./helpers/drive.ts";
 import { FINNHUB_KEY, finnhubAnswer } from "./helpers/finnhub.ts";
 import { gate, NOW, sources } from "./helpers/sources.ts";
+import { instrument, world } from "./helpers/world.ts";
 import type { Recorded } from "./helpers/yahoo.ts";
 
 const tempDir = () => mkdtempSync(join(tmpdir(), "markets-admin-"));
@@ -826,6 +829,119 @@ describe("the admin command", () => {
       await expect(
         runAdmin(["--data", dir, ...argv], { service: async () => null }),
       ).rejects.toThrow("usage:");
+    }
+  });
+});
+
+describe("the instrument list", () => {
+  const list = async (m: Markets, query = "") => {
+    const res = await api(m)(
+      new Request(`http://markets.test/api/v1/admin/instruments${query}`),
+    );
+    return { status: res.status, body: (await res.json()) as any };
+  };
+
+  test("pages the stored set by id and counts every match", async () => {
+    const w = world();
+    for (const id of ["US:CCC", "US:AAA", "XETRA:BBB", "FRED:DGS10"]) {
+      instrument(w.db, id, { name: `${id.split(":")[1]} name` });
+    }
+    const first = await list(w.m, "?limit=2");
+    expect(first.status).toBe(200);
+    expect(first.body.total).toBe(4);
+    expect(first.body.more).toBe(true);
+    expect(first.body.instruments.map((i: any) => i.id)).toEqual([
+      "FRED:DGS10",
+      "US:AAA",
+    ]);
+    const next = await list(w.m, "?limit=2&after=US:AAA");
+    expect(next.body.more).toBe(false);
+    expect(next.body.instruments.map((i: any) => i.id)).toEqual([
+      "US:CCC",
+      "XETRA:BBB",
+    ]);
+    const found = await list(w.m, "?query=bbb");
+    expect(found.body.total).toBe(1);
+    expect(found.body.instruments[0]).toMatchObject({
+      id: "XETRA:BBB",
+      name: "BBB name",
+      market: "XETRA",
+    });
+    const byName = await list(w.m, "?query=AAA%20NAME");
+    expect(byName.body.instruments.map((i: any) => i.id)).toEqual(["US:AAA"]);
+  });
+
+  test("names what tracks each one: a rule, a read and until when, --track", async () => {
+    const w = world();
+    const m: Markets = {
+      ...w.m,
+      tracking: { ...w.m.tracking, flagged: new Set(["US:FLAG"]) },
+    };
+    for (const id of ["US:RULE", "US:READ", "US:OLD", "US:FLAG", "US:NONE"]) {
+      instrument(w.db, id);
+    }
+    w.db
+      .query(
+        "insert into rules (instrument, condition, created_at) values (?, ?, ?)",
+      )
+      .run(
+        "US:RULE",
+        JSON.stringify({
+          left: { field: "price", symbol: "US:RULE" },
+          op: ">",
+          right: 1,
+        }),
+        NOW,
+      );
+    markRead(w.db, ["US:READ"], NOW - DAY_MS);
+    markRead(w.db, ["US:OLD"], NOW - 40 * DAY_MS);
+    const { body } = await list(m);
+    const by = Object.fromEntries(body.instruments.map((i: any) => [i.id, i]));
+    expect(by["US:RULE"]).toMatchObject({
+      tracked: true,
+      tracked_by: ["rule"],
+    });
+    expect(by["US:READ"]).toMatchObject({
+      tracked: true,
+      tracked_by: ["read"],
+      read_at: iso(NOW - DAY_MS),
+      read_until: iso(NOW + 29 * DAY_MS),
+    });
+    expect(by["US:OLD"]).toMatchObject({
+      tracked: false,
+      tracked_by: [],
+      read_at: iso(NOW - 40 * DAY_MS),
+      read_until: null,
+    });
+    expect(by["US:FLAG"]).toMatchObject({
+      tracked: true,
+      tracked_by: ["track"],
+    });
+    expect(by["US:NONE"]).toMatchObject({
+      tracked: false,
+      read_at: null,
+    });
+    // a listing is no read
+    expect(lastReadAt(w.db, "US:NONE")).toBeNull();
+  });
+
+  test("parses strictly", async () => {
+    const w = world();
+    for (const query of [
+      "?limit=0",
+      `?limit=${MAX_PAGE + 1}`,
+      "?limit=1.5",
+      "?after=<b>",
+      `?query=${"x".repeat(65)}`,
+      "?next=US:A",
+      "?limit=1&limit=2",
+    ]) {
+      const res = await list(w.m, query);
+      expect([query, res.status, res.body.error]).toEqual([
+        query,
+        400,
+        "bad_arguments",
+      ]);
     }
   });
 });

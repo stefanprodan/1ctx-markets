@@ -24,6 +24,9 @@ is offered over MCP.
   checked as the bearer is (`router()` in `src/server/http.ts`): the
   bearer is refused there and the admin key on every other path,
   `/mcp` included. With no admin key they refuse every caller.
+- **The web UI's session cookie opens them too**, made by signing in
+  with the admin key (`docs/web.md`); a write by cookie needs this
+  server's `Origin`, or it is 403.
 - **The routes are on the server's own port, so treat them as
   internet-facing** wherever the server is reachable. Arguments are
   parsed strictly and refused whole, bodies are at most 16 KiB
@@ -33,9 +36,25 @@ is offered over MCP.
 
 | Route | Does |
 |---|---|
+| `GET /api/v1/admin/instruments?query=&after=&limit=` | the stored instruments by id, a page at a time (below) |
 | `GET /api/v1/admin/status` | sources on, off and why, a back-off in force, every job's last run and its failing scopes, the instrument and tracked counts, each `--track` value with its id and state (`pending`, `tracked` or the read's error code), the database size, the version |
 | `POST /api/v1/admin/refetch` | `{"symbols": [...], "fetch": [...], "sections": [...]}`, answered per symbol and part |
 | `DELETE /api/v1/admin/instruments/{id}` | the instrument and every row of it |
+
+## The instrument list
+
+- **Paged by id, the one paged route:** `limit` 1 to `MAX_PAGE` (200,
+  `DEFAULT_PAGE` 50 by default), `after` the last id of the page
+  before, `more` true while ids are past the page. A page is a screen
+  of rows, and the stored set grows with use; paging by id never skips
+  a row when one is deleted between pages. `total` counts every match.
+- **`query` keeps ids or names holding it**, ignoring case, at most 64
+  characters.
+- **Each row says what tracks it** in `tracked_by`: `rule` (a rule
+  reads it), `read` (read within the tracking window, with `read_at`
+  and `read_until`), `track` (a `--track` value resolved to it);
+  `tracked` is true when any holds.
+- **A listing is no read**: it tracks nothing.
 
 ## Refetch
 

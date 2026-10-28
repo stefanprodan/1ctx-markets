@@ -33,6 +33,7 @@ consumer each.
 | `DELETE /api/v1/rules/{id}` | read | `deleteRuleById()` | 204; its alerts stay |
 | `GET /api/v1/alerts` | read | `alertsHandler()` | the alerts feed (below) |
 | `GET /api/v1/admin/status` | admin | `adminStatus()` | `docs/admin.md` |
+| `GET /api/v1/admin/instruments?query=&after=&limit=` | admin | `adminInstruments()` | a page of stored instruments and what tracks each (`docs/admin.md`) |
 | `POST /api/v1/admin/refetch` | admin | `adminRefetch()` | `docs/admin.md` |
 | `DELETE /api/v1/admin/instruments/{id}` | admin | `adminDelete()` | `docs/admin.md` |
 | `GET /api/v1/openapi.json` | none | `spec` | the OpenAPI document |
@@ -85,7 +86,9 @@ consumer each.
 - **Every route answers its whole result**, nothing cut to fit: a
   script that does not follow a cursor loses what is past it, and an
   HTTP client has no 32 KiB limit, which is an MCP client's
-  (`docs/tools.md`).
+  (`docs/tools.md`). The operator's instrument list is the one paged
+  route, by `after`, since the web UI draws it a screen at a time
+  (`docs/admin.md`).
 - **No `next` in an answer or an argument**: `next` is refused as any
   unknown argument is (400 `bad_arguments`), in a query or a body.
 - **A symbol that did not resolve in time answers its error item**,
@@ -104,6 +107,7 @@ consumer each.
 |---|---|
 | 400 | `bad_arguments`, `mixed_units`, `no_event_source`, `no_event` |
 | 401 | `unauthorized` |
+| 403 | `forbidden`: a write signed in by the web UI's cookie without this server's `Origin` |
 | 404 | `not_found` (route, rule, instrument or symbol), `candidates`, `no_data`, `refused` |
 | 405 | `method_not_allowed`, with `Allow` |
 | 409 | `conflict`, `split_paused` |
@@ -125,7 +129,12 @@ consumer each.
 
 - **The read key is the bearer; the admin key takes
   `/api/v1/admin/*` alone.** Each is refused where the other is
-  taken. Rules writes take the read key, as the MCP rules tool does.
+  taken.
+- **The web UI's session cookie opens `/api/v1/admin/*` and every
+  `GET` under `/api/v1`**, never a rules write or `/mcp`; a write by
+  cookie needs this server's `Origin` (`docs/web.md`). The spec names
+  it as the `session` security scheme beside `read` on the reads and
+  `admin` on the admin routes. Rules writes take the read key, as the MCP rules tool does.
   Any other `/api/v1/` path, unknown ones included, answers 401
   without a key and 404 with one.
 - **The spec and the docs page are served before the bearer check**,
@@ -186,7 +195,8 @@ answer; 1ctx (an agent workspace whose scheduled tasks poll it) is one.
 - **`src/api/openapi.ts` is OpenAPI 3.1, written by hand as a typed
   object** and served at `/api/v1/openapi.json`. Every route,
   parameter, body, answer and documented error is in it, with two
-  bearer security schemes, `read` and `admin`.
+  bearer security schemes, `read` and `admin`, and the `session`
+  cookie.
 - **Descriptions give each limit's general reason**, never the MCP
   descriptions copied, and name no user, market or holding.
 - **Schemas use a small subset of JSON Schema**: `type` (an array of

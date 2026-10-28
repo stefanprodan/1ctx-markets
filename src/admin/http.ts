@@ -2,14 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // May face the internet: admin key only, strict input, errors echo nothing.
 
-import { failed, json, readBody } from "../api/http.ts";
+import { failed, json, queryArgs, readBody } from "../api/http.ts";
 import { iso } from "../market/format.ts";
 import { type Instrument, readInstrument } from "../market/instruments.ts";
 import { trackedIds } from "../market/tracking.ts";
+import { ArgError as QueryError } from "../operations/args.ts";
 import type { Markets } from "../operations/markets.ts";
 import type { TrackState } from "../operations/track.ts";
 import { instrumentsOf } from "../rules/format.ts";
-import { readRules } from "../rules/store.ts";
+import { readRules, ruleInstruments } from "../rules/store.ts";
 import type { Backoff } from "../sources/source.ts";
 import type { Db } from "../storage/db/index.ts";
 import {
@@ -22,6 +23,10 @@ import {
 
 export const MAX_BODY_BYTES = 16 * 1024;
 export const MAX_SYMBOLS = 20;
+// a page of the stored list: a screen of rows, quoted a page at a time
+export const DEFAULT_PAGE = 50;
+export const MAX_PAGE = 200;
+const MAX_QUERY = 64;
 // an instrument key's characters: market, colon, the source's symbol
 const KEY = /^[A-Za-z0-9.^=:_&-]{1,64}$/;
 
@@ -136,6 +141,89 @@ export function adminStatus(d: AdminDeps, url: URL): Response {
     },
     200,
   );
+}
+
+type Stored = {
+  id: string;
+  name: string | null;
+  market: string;
+  exchange: string;
+  currency: string | null;
+  type: string;
+  unit: string;
+  source: string;
+  readAt: number | null;
+};
+
+function parseList(url: URL) {
+  const q = queryArgs(url, { query: "text", after: "text", limit: "number" });
+  const query = q.query === undefined ? "" : String(q.query).trim();
+  if (query.length > MAX_QUERY) {
+    throw new QueryError(`query is at most ${MAX_QUERY} characters`);
+  }
+  let after: string | null = null;
+  if (q.after !== undefined) {
+    if (!KEY.test(String(q.after))) {
+      throw new QueryError("after is a stored instrument id");
+    }
+    after = String(q.after).toUpperCase();
+  }
+  const limit = (q.limit as number | undefined) ?? DEFAULT_PAGE;
+  if (!Number.isInteger(limit) || limit < 1 || limit > MAX_PAGE) {
+    throw new QueryError(`limit is a whole number from 1 to ${MAX_PAGE}`);
+  }
+  return { query, after, limit };
+}
+
+// by id, after the last one a page answered, so a delete never skips a row
+export function adminInstruments(d: AdminDeps, url: URL): Response {
+  const { query, after, limit } = parseList(url);
+  const { db, clock, tracking } = d.m;
+  const now = clock.now();
+  const where =
+    "(?1 = '' or instr(lower(id), lower(?1)) > 0 or instr(lower(coalesce(name, '')), lower(?1)) > 0)";
+  const total = (
+    db
+      .query<{ n: number }, [string]>(
+        `select count(*) as n from instruments where ${where}`,
+      )
+      .get(query) as { n: number }
+  ).n;
+  const rows = db
+    .query<Stored, [string, string, number]>(
+      `select id, name, market, exchange, currency, type, unit, source,
+         last_read_at as readAt
+       from instruments where ${where} and id > ?2 order by id limit ?3`,
+    )
+    .all(query, after ?? "", limit + 1);
+  const ruled = ruleInstruments(db);
+  const page = rows.slice(0, limit);
+  return json({
+    total,
+    more: rows.length > limit,
+    instruments: page.map((r) => {
+      const read = r.readAt !== null && r.readAt > now - tracking.readMs;
+      const by = [
+        ...(ruled.has(r.id) ? ["rule"] : []),
+        ...(read ? ["read"] : []),
+        ...(tracking.flagged.has(r.id) ? ["track"] : []),
+      ];
+      return {
+        id: r.id,
+        name: r.name,
+        market: r.market,
+        exchange: r.exchange,
+        currency: r.currency,
+        kind: r.type,
+        unit: r.unit,
+        source: r.source,
+        tracked: by.length > 0,
+        tracked_by: by,
+        read_at: iso(r.readAt),
+        read_until: read ? iso(r.readAt! + tracking.readMs) : null,
+      };
+    }),
+  });
 }
 
 const keyOf = (value: unknown): string => {

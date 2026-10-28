@@ -79,6 +79,19 @@ ADMIN=$(cat "$RUN/data/secrets/admin.key")
 grep -q '"version"' "$RUN/admin" || fail "admin status did not answer the version"
 grep -q "$ADMIN" "$RUN/admin" && fail "admin status printed the key"
 
+# the web UI's sign-in
+[[ $(status -X POST "$URL/ui/session" -H 'content-type: application/json' -d '{"key":"wrong"}') == 401 ]] ||
+  fail "a wrong key signed the web UI in"
+COOKIE=$(curl -s --max-time 5 -o /dev/null -D - -X POST "$URL/ui/session" \
+  -H 'content-type: application/json' --data-binary @- <<<"{\"key\":\"$ADMIN\"}" |
+  grep -i '^set-cookie:' | sed -E 's/^[^:]*: *([^;]*).*/\1/' | tr -d '\r')
+[[ $COOKIE == markets_session=v1.* ]] || fail "the admin key did not sign the web UI in"
+grep -q "$ADMIN" <<<"$COOKIE" && fail "the session cookie holds the admin key"
+[[ $(status "$URL/api/v1/admin/status" -H "cookie: $COOKIE") == 200 ]] ||
+  fail "the session cookie did not open /api/v1/admin/status"
+[[ $(status -X POST "$URL/mcp" -H "cookie: $COOKIE") == 401 ]] ||
+  fail "the session cookie opened /mcp"
+
 [[ -f "$RUN/data/markets.db" ]] || fail "markets.db was not created"
 grep -q "$BEARER" "$RUN/log" && fail "the bearer reached the log"
 grep -q "$ADMIN" "$RUN/log" && fail "the admin key reached the log"

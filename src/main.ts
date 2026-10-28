@@ -104,6 +104,7 @@ const app = start({
   port: config.port,
   bearer,
   adminKey,
+  ui: config.ui,
   clock: wallClock,
   log,
   version: VERSION,
@@ -125,6 +126,7 @@ main.info("startup", {
   migrations: migrations.length > 0 ? migrations.join(",") : "current",
   quote_every: config.quoteEveryMs / MINUTE_MS,
   track_days: config.trackDays,
+  ui: config.ui ? "on" : "off",
 });
 main.info("sources", app.sources);
 

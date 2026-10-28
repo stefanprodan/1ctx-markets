@@ -4,6 +4,8 @@
 import {
   MAX_BODY_BYTES as ADMIN_BODY_BYTES,
   MAX_SYMBOLS as ADMIN_SYMBOLS,
+  DEFAULT_PAGE,
+  MAX_PAGE,
 } from "../admin/http.ts";
 import { MAX_SYMBOL } from "../operations/args.ts";
 import { MAX_EVENT_SYMBOLS } from "../operations/events.ts";
@@ -34,6 +36,10 @@ import {
   values,
 } from "./schemas.ts";
 
+// the web UI's cookie opens the admin routes and every read
+const READ_AUTH = [{ read: [] }, { session: [] }];
+const ADMIN_AUTH = [{ admin: [] }, { session: [] }];
+
 const content = (schema: Schema) => ({
   "application/json": { schema },
 });
@@ -59,6 +65,9 @@ export const responses = {
     "not_found: no such route, rule or instrument; or a symbol that did not resolve to one instrument (not_found, candidates with the listings to pick an id from, no_data while its source is off, refused).",
   ),
   Conflict: error("conflict or split_paused: the stored state refuses it."),
+  Forbidden: error(
+    "forbidden: a write signed in by the web UI's cookie without an Origin naming this server's host, which a page on another site would send.",
+  ),
   TooLarge: error(
     `payload_too_large: a body over ${MAX_BODY_BYTES} bytes, as this JSON. A body over 1 MiB is refused by the HTTP server before any route runs: status 413 with an empty body and the connection closed.`,
   ),
@@ -130,6 +139,7 @@ export const paths = {
     get: {
       tags: ["market data"],
       operationId: "quotes",
+      security: READ_AUTH,
       summary: "Live quotes with their averages",
       description: `Every symbol asked in one answer, in the order asked, each a quote or its own error. Up to ${MAX_SYMBOLS} symbols: each one never read costs a fetch of ten years of bars inside the call, and the limit keeps that bounded. ${DEADLINE} ${STALE} sma holds the daily and weekly SMA 50 and 200 of the live row (closed days plus today's price) or the last final one; last_final.daily holds the last final close and its averages, to tell a crossing since that close. A FRED series is an observation with a null price.`,
       parameters: [
@@ -152,6 +162,7 @@ export const paths = {
     get: {
       tags: ["market data"],
       operationId: "history",
+      security: READ_AUTH,
       summary: "Daily or weekly bars with their averages",
       description: `One symbol's bars from from to to, oldest first, all of them: the server keeps up to ten years, about 2,520 daily bars. Each bar has its close, whether it is final, and the SMA 50 and 200 of that date's signal row, null where it has none. A bar is final once its source shows a later session, so a closed day's bar stays not final until the next session opens. The latest session's bar is its live quote's, with the live row's averages, even before the source has a bar for it. session is the market's last regular session, as the quote tool answers it: state open or closed, start and end in UTC; crypto is always open with null bounds, a FRED series null. Prices are split-adjusted; dividends and FX conversion are excluded (basis). ${DEADLINE} ${STALE} A range whose bars are all final, ending before today in the instrument's own zone, with no benchmark, may be kept by the client for an hour, since final bars change only by a split or a revision; every other answer is no-store.`,
       parameters: [
@@ -178,6 +189,7 @@ export const paths = {
     get: {
       tags: ["market data"],
       operationId: "search",
+      security: READ_AUTH,
       summary: "Instruments by name or symbol",
       description:
         "Every match: stored instruments first, then the regional feeds that are on, then Yahoo's listings, each with the id to pass to the other routes; a regional feed's listings add their ISIN and the type the feed gives. It fetches no prices and counts nothing as read, so a search never keeps an instrument synced. A source that failed is in errors beside what the others found. A FRED series not stored yet is found only as FRED:<series id>.",
@@ -189,6 +201,7 @@ export const paths = {
     get: {
       tags: ["market data"],
       operationId: "research",
+      security: READ_AUTH,
       summary: "Quotes with research summaries and a week of news",
       description: `For each share, its brief quote as /quotes answers it, a Finnhub summary (metrics, analysts, earnings and insider sentiment with their newest rows, the next earnings event) and the stored news of the window (counts by sentiment and the ${WEEK_ITEMS} items that take a side first). Up to ${MAX_RESEARCH_SYMBOLS} symbols: a share never fetched costs five Finnhub calls, and the free key allows 60 a minute shared with the server's own jobs. Sections never fetched are fetched inside the call; news is read as stored. Finnhub covers US shares only. ${DEADLINE}`,
       parameters: [
@@ -215,6 +228,7 @@ export const paths = {
     get: {
       tags: ["market data"],
       operationId: "events",
+      security: READ_AUTH,
       summary: "Earnings events between two dates",
       description: `Earnings events of the tracked US shares, or of the shares named, by date. Company events only: no macro dates. unavailable says why a share has no calendar to show; no_event lists a named share with nothing in the range, with its nearest stored events either side, so an empty list is never read as missing data. ${DEADLINE}`,
       parameters: [
@@ -232,6 +246,7 @@ export const paths = {
     get: {
       tags: ["market data"],
       operationId: "movers",
+      security: READ_AUTH,
       summary: "The day's movers among the symbols named",
       description: `Every match, largest absolute change first, then the symbols unavailable and the errors; counts cover them all. min_move_pct is the live change from the previous close; an average with a relation compares the live price with it, and crossed_up or crossed_down compare the last final close with the average then and the live price with it now. Give a move, an average or both. A symbol with a stale or missing input is unavailable with why, never a match: only a match can be wrong in silence. ${DEADLINE}`,
       parameters: [
@@ -281,6 +296,7 @@ export const paths = {
     get: {
       tags: ["rules"],
       operationId: "listRules",
+      security: READ_AUTH,
       summary: "Every price rule",
       description:
         "Every rule by id, with its condition, pause, whether it is armed, and its last result.",
@@ -341,6 +357,7 @@ export const paths = {
     get: {
       tags: ["rules"],
       operationId: "alerts",
+      security: READ_AUTH,
       summary: "The alerts feed",
       description: `A feed polled on a schedule, not a list: the ETag W/"alerts-<id>" names the last alert answered, sent back in If-None-Match. A page holds whole alerts oldest first and stays under ${ALERT_PAGE_BYTES} bytes, so a client that fell behind catches up over polls (more). The same alerts answer the same bytes. Delivery is at least once: deduplicate by id.`,
       parameters: [
@@ -372,9 +389,32 @@ export const paths = {
       tags: ["admin"],
       operationId: "adminStatus",
       summary: "What the server and its sources are doing",
-      security: [{ admin: [] }],
+      security: ADMIN_AUTH,
       responses: {
         200: ok("The status", ref("Status")),
+        400: r("BadArguments"),
+        401: r("Unauthorized"),
+        500: r("Internal"),
+      },
+    },
+  },
+  "/admin/instruments": {
+    get: {
+      tags: ["admin"],
+      operationId: "adminInstruments",
+      summary: "The stored instruments and why each is tracked",
+      description: `Paged by id, since the stored set grows with use and a page is a screen of rows: pass the last id answered as after while more is true. total counts every match. tracked_by names what keeps each one synced: a rule reading it, a read within the tracking window (read_until is when that ends), or a --track flag. Listing is no read and tracks nothing.`,
+      security: ADMIN_AUTH,
+      parameters: [
+        query(
+          "query",
+          "Keeps the instruments whose id or name holds it, ignoring case.",
+        ),
+        query("after", "The last id of the page before."),
+        query("limit", `1 to ${MAX_PAGE}; ${DEFAULT_PAGE} by default.`, int),
+      ],
+      responses: {
+        200: ok("A page of instruments", ref("AdminInstruments")),
         400: r("BadArguments"),
         401: r("Unauthorized"),
         500: r("Internal"),
@@ -387,12 +427,13 @@ export const paths = {
       operationId: "adminRefetch",
       summary: "Ask the sources again for stored instruments",
       description: `For after a parser fix. Stored ids only, at most ${ADMIN_SYMBOLS}, in a body of at most ${ADMIN_BODY_BYTES} bytes: the operator's routes are bounded tighter since they spend the free sources' limits. Its calls queue with the tools' own under the ${DEADLINE_S}-second deadline.`,
-      security: [{ admin: [] }],
+      security: ADMIN_AUTH,
       requestBody: body(ref("RefetchArgs")),
       responses: {
         200: ok("Each part's outcome per symbol", ref("Refetched")),
         400: r("BadArguments"),
         401: r("Unauthorized"),
+        403: r("Forbidden"),
         413: r("TooLarge"),
         415: r("UnsupportedType"),
         500: r("Internal"),
@@ -405,7 +446,7 @@ export const paths = {
       operationId: "adminDelete",
       summary: "Remove an instrument and every row of it",
       description: "Refused (conflict) while a rule reads it.",
-      security: [{ admin: [] }],
+      security: ADMIN_AUTH,
       parameters: [
         {
           name: "id",
@@ -419,6 +460,7 @@ export const paths = {
         200: ok("What was deleted", ref("Deleted")),
         400: r("BadArguments"),
         401: r("Unauthorized"),
+        403: r("Forbidden"),
         404: r("NotFound"),
         409: r("Conflict"),
         500: r("Internal"),

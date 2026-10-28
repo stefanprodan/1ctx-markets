@@ -13,6 +13,7 @@ import { withLive } from "../src/operations/history.ts";
 import { CALL_MS, markets } from "../src/operations/markets.ts";
 import { DAY_MS } from "../src/runtime/clock.ts";
 import { silent } from "../src/runtime/log.ts";
+import { COOKIE, sessions } from "../src/server/session.ts";
 import { finnhub } from "../src/sources/finnhub/client.ts";
 import { fred } from "../src/sources/fred/client.ts";
 import { yahoo } from "../src/sources/yahoo/client.ts";
@@ -539,7 +540,38 @@ describe("every operation", () => {
       await t.call("/admin/status", wrong),
       401,
     );
+    await check(
+      "GET",
+      "/admin/instruments",
+      await t.call("/admin/instruments?limit=2"),
+      200,
+    );
+    await check(
+      "GET",
+      "/admin/instruments",
+      await t.call("/admin/instruments?limit=0"),
+      400,
+    );
+    await check(
+      "GET",
+      "/admin/instruments",
+      await t.call("/admin/instruments", wrong),
+      401,
+    );
+    // signed in by the UI's cookie, without this server's Origin
+    const cookie = {
+      cookie: `${COOKIE}=${sessions(ADMIN_KEY).issue(t.clock.now())}`,
+    };
     const refetch = { symbols: ["US:NOPE"], fetch: ["quotes"] };
+    await check(
+      "POST",
+      "/admin/refetch",
+      await t.call("/admin/refetch", {
+        ...json(refetch),
+        headers: { "content-type": "application/json", ...cookie },
+      }),
+      403,
+    );
     await check(
       "POST",
       "/admin/refetch",
@@ -581,6 +613,12 @@ describe("every operation", () => {
     await check("DELETE", path, await del("FRED:DGS10"), 404);
     await check("DELETE", path, await del("<b>"), 400);
     await check("DELETE", path, await del("US:NVDA", wrong), 401);
+    await check(
+      "DELETE",
+      path,
+      await del("US:NVDA", { headers: { ...cookie, origin: "http://x.test" } }),
+      403,
+    );
 
     // rules delete last: its alert stays
     await check(

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Apart from main.ts so a test runs it with a fake clock, log and fetch.
 
+import type { HTMLBundle } from "bun";
 import type { SourceState } from "./admin/http.ts";
 import { alertsHandler } from "./api/alerts.ts";
 import { routes } from "./api/routes.ts";
@@ -15,6 +16,7 @@ import { errorFields, type LogFactory, type LogFields } from "./runtime/log.ts";
 import { type Scheduler, scheduler } from "./runtime/scheduler.ts";
 import { router, serve } from "./server/http.ts";
 import { mcpHandler } from "./server/mcp.ts";
+import { sessions } from "./server/session.ts";
 import { type Bvb, bvb } from "./sources/bvb/client.ts";
 import { type BvbJobs, bvbJobs } from "./sources/bvb/jobs.ts";
 import {
@@ -49,6 +51,10 @@ export type AppOptions = {
   bearer: string;
   // /api/v1/admin/* answers only while there is one
   adminKey?: string | null;
+  // the web UI's sign-in, which needs the admin key; off with --no-ui
+  ui?: boolean;
+  // the page served at the UI's paths while ui is on
+  page?: HTMLBundle | null;
   clock: Clock;
   log: LogFactory;
   version: string;
@@ -276,9 +282,11 @@ export function start(options: AppOptions): App {
     },
   ];
   const adminKey = options.adminKey ?? null;
+  const ui = options.ui === true;
   const server = serve({
     hostname: options.hostname,
     port: options.port,
+    page: ui ? (options.page ?? null) : null,
     handle: router({
       bearer: options.bearer,
       mcp,
@@ -297,6 +305,7 @@ export function start(options: AppOptions): App {
         log: options.log("api"),
       }),
       adminKey,
+      sessions: ui ? sessions(adminKey) : null,
       clock,
       log: options.log("http"),
     }),
