@@ -3,11 +3,15 @@
 // Every instrument a read answers counts as read, which is what tracks it.
 
 import { dailyRange } from "../market/bars.ts";
-import { type Instrument, readInstrument } from "../market/instruments.ts";
+import {
+  type Instrument,
+  readBySourceSymbol,
+  readInstrument,
+} from "../market/instruments.ts";
 import { isTracked, markRead } from "../market/tracking.ts";
 import { errorFields } from "../runtime/log.ts";
 import type { Bvb } from "../sources/bvb/client.ts";
-import { resolveBoth } from "../sources/bvb/resolve.ts";
+import { readByFeedSymbol, resolveBoth } from "../sources/bvb/resolve.ts";
 import {
   NO_DATA as BVB_NO_DATA,
   catchUp as bvbCatchUp,
@@ -308,6 +312,24 @@ async function step(
     run: (live) =>
       fetchInstrument(yahooCtx(m, live), r.sourceSymbol, r.id, live),
   };
+}
+
+// the instrument step() finds stored for an input, asking no source;
+// null when only a source can answer
+export function storedInstrument(
+  db: Db,
+  input: string,
+  bvb: boolean,
+): Instrument | null {
+  const given = input.trim();
+  const upper = given.toUpperCase();
+  if (upper.includes(":")) return readInstrument(db, upper);
+  if (!bvb) return readBySourceSymbol(db, YAHOO, upper);
+  const stored = [
+    readByFeedSymbol(db, given),
+    readBySourceSymbol(db, YAHOO, upper),
+  ].filter((i) => i !== null);
+  return stored.length === 1 ? stored[0]! : null;
 }
 
 const candidates = (list: readonly Candidate[]): Step => ({

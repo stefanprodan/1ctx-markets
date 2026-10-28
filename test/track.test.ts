@@ -18,6 +18,8 @@ import {
 
 // the index and futures charts were recorded at 07:45 UTC on 28 October
 const NOW = Date.parse("2026-10-28T08:00:00Z");
+// the Dow open, so each quote pass asks for it
+const OPEN = Date.parse("2026-10-28T14:00:00Z");
 const PERIOD = 5 * MINUTE_MS;
 const DJI = "DJI:^DJI";
 const GOLD = "CMX:GC=F";
@@ -187,5 +189,89 @@ describe("--track", () => {
     } finally {
       db.close();
     }
+  });
+
+  test("a restart with the value stored keeps its news and asks no chart", async () => {
+    const s = await sources({ charts: await charts() });
+    const { db } = open(":memory:", fakeClock(NOW));
+    const news = () =>
+      db.query<{ n: number }, []>("select count(*) as n from news").get()!.n;
+    try {
+      await withApp(
+        async (t) => {
+          await t.app.tracker.settled();
+          await t.app.writer.write((d) => {
+            d.query(
+              `insert into news (instrument, id, published_at, title, url,
+                 fetched_at) values (?, 'n1', ?, 't', 'u', ?)`,
+            ).run(DJI, NOW - 3_600_000, NOW);
+          });
+        },
+        { fetch: s.fetch, start: NOW, track: ["^DJI"], db },
+      );
+      const asked = s.calls.charts("^DJI").length;
+      await withApp(
+        async (t) => {
+          // tracked before any call: the startup prune and reads see it
+          expect((await status(t)).track).toEqual([
+            { value: "^DJI", id: DJI, state: "tracked" },
+          ]);
+          await t.app.tracker.settled();
+          await t.app.writer.write(() => {});
+          expect(news()).toBe(1);
+          expect(s.calls.charts("^DJI").length).toBe(asked);
+          expect(lastReadAt(t.db, DJI)).toBeNull();
+        },
+        { fetch: s.fetch, start: NOW, track: ["^DJI"], db },
+      );
+    } finally {
+      db.close();
+    }
+  });
+
+  test("a flagged instrument deleted by the operator is fetched again", async () => {
+    const s = await sources({ charts: await charts() });
+    await withApp(
+      async (t) => {
+        await t.app.tracker.settled();
+        const deleted = await fetch(
+          `${t.url}/api/v1/admin/instruments/${encodeURIComponent(DJI)}`,
+          {
+            method: "DELETE",
+            headers: { authorization: `Bearer ${t.admin}` },
+          },
+        );
+        expect(deleted.status).toBe(200);
+        expect(bars(t, DJI)).toBe(0);
+        await t.clock.advance(PERIOD);
+        await t.app.tracker.settled();
+        expect(bars(t, DJI)).toBeGreaterThan(0);
+        expect((await status(t)).track).toEqual([
+          { value: "^DJI", id: DJI, state: "tracked" },
+        ]);
+        expect(trackedIds(t.db, t.clock.now(), t.app.markets.tracking)).toEqual(
+          new Set([DJI]),
+        );
+      },
+      { fetch: s.fetch, start: NOW, track: ["^DJI"] },
+    );
+  });
+
+  test("the quote job asks for a flagged instrument with no read or rule", async () => {
+    const s = await sources({ charts: await charts() });
+    await withApp(
+      async (t) => {
+        await t.app.tracker.settled();
+        const before = s.calls.sparks().length;
+        await t.clock.advance(PERIOD);
+        const asked = s.calls
+          .sparks()
+          .slice(before)
+          .flatMap((u) => u.searchParams.get("symbols")!.split(","));
+        expect(asked).toContain("^DJI");
+        expect(lastReadAt(t.db, DJI)).toBeNull();
+      },
+      { fetch: s.fetch, start: OPEN, track: ["^DJI"] },
+    );
   });
 });

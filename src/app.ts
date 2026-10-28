@@ -7,7 +7,7 @@ import { alertsHandler } from "./api/alerts.ts";
 import { routes } from "./api/routes.ts";
 import { TRACK_DAYS, type Tracking, trackedIds } from "./market/tracking.ts";
 import { type Markets, markets } from "./operations/markets.ts";
-import { type Tracker, tracker } from "./operations/track.ts";
+import { seed, type Tracker, tracker } from "./operations/track.ts";
 import { ruleEngine } from "./rules/evaluate.ts";
 import { pruneAlerts } from "./rules/store.ts";
 import { type Clock, DAY_MS } from "./runtime/clock.ts";
@@ -101,6 +101,13 @@ export function start(options: AppOptions): App {
     readMs: (options.trackDays ?? TRACK_DAYS) * DAY_MS,
     flagged,
   };
+  // before the startup write, whose prune reads what is tracked
+  const trackStates = seed(
+    db,
+    options.track ?? [],
+    { bvb: options.bvb === true, fred: (options.fredKey ?? null) !== null },
+    flagged,
+  );
   const write = writer(db);
   const rules = ruleEngine({
     quoteEveryMs: options.quoteEveryMs,
@@ -233,7 +240,7 @@ export function start(options: AppOptions): App {
   });
   const track = tracker({
     m: reads,
-    values: options.track ?? [],
+    states: trackStates,
     flagged,
     periodMs: options.quoteEveryMs,
     log: options.log("track"),
