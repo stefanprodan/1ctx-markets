@@ -112,6 +112,14 @@ export type Detail = {
       weekly?: { sma200?: number | null } | null;
     } | null;
     session: Session | null;
+    // pre or post trading while the regular session is closed
+    extended?: {
+      session: "pre" | "post";
+      price: number | null;
+      change: number | null;
+      change_percent: number | null;
+      time: string;
+    } | null;
   };
 };
 
@@ -359,6 +367,8 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
   function intraday(id: string, range: IntradayRange, from: string) {
     const q = new URLSearchParams({ symbol: id, interval: "5m" });
     if (range === "5D") q.set("from", from);
+    // the pre and post trading around the day, as a chart site draws it
+    else q.set("extended", "true");
     return call<Intraday>(`${HISTORY_PATH}?${q}`);
   }
 

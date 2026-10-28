@@ -14,6 +14,7 @@ import { Page } from "../ui/Page.tsx";
 import { SettingDelete } from "../ui/SettingDelete.tsx";
 import { CHART_CREDIT, Chart } from "./Chart.tsx";
 import {
+  afterHours,
   type Choice,
   choices,
   deleteLine,
@@ -33,20 +34,38 @@ const tone = (dir: -1 | 0 | 1) =>
 
 export function Head({ detail, now }: { detail: Detail; now: number }) {
   const h = headline(detail);
+  const x = afterHours(detail);
   const r = detail.quote?.returns ?? null;
   const w200 = weekly200(detail);
   return (
     <section class="card ins-head" aria-label="Price">
       <span class="label">{about(detail.instrument)}</span>
-      <div class="ins-figure">
-        <span class="ins-big">{h.price}</span>
-        {h.change.text && (
-          <span class={`ins-move ${tone(h.change.dir) ?? ""}`}>
-            {h.change.text}
-          </span>
+      <div class="ins-quotes">
+        <div class="ins-quote">
+          <div class="ins-figure">
+            <span class="ins-big">{h.price}</span>
+            {h.change.text && (
+              <span class={`ins-move ${tone(h.change.dir) ?? ""}`}>
+                {h.change.text}
+              </span>
+            )}
+          </div>
+          <span class="ins-state">{priceState(detail, now)}</span>
+        </div>
+        {x !== null && (
+          <div class="ins-quote">
+            <div class="ins-figure">
+              <span class="ins-big">{x.price}</span>
+              {x.change.text && (
+                <span class={`ins-move ${tone(x.change.dir) ?? ""}`}>
+                  {x.change.text}
+                </span>
+              )}
+            </div>
+            <span class="ins-state">{x.label}</span>
+          </div>
         )}
       </div>
-      <span class="ins-state">{priceState(detail, now)}</span>
       {r !== null && (
         <dl class="ins-returns">
           {RETURNS.map(({ key, label }) => {

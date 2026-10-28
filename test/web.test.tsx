@@ -43,6 +43,7 @@ import {
   candles,
   changeText,
   DEFAULT_SETTINGS,
+  extendedLines,
   fromOf,
   type History,
   hasCandles,
@@ -62,6 +63,7 @@ import {
 } from "../src/web/views/Chart.model.ts";
 import { LegendLine } from "../src/web/views/Chart.tsx";
 import {
+  afterHours,
   choices,
   headline,
   labelOf,
@@ -345,9 +347,10 @@ describe("the data layer", () => {
     expect(s.status.value).toBeNull();
   });
 
-  test("1D asks for the newest session, 5D for every one kept", async () => {
-    const one = `${HISTORY_PATH}?symbol=US%3AA&interval=5m`;
-    const five = `${one}&from=2016-10-28`;
+  test("1D asks for the newest session with its extended trading, 5D for every one kept", async () => {
+    const base = `${HISTORY_PATH}?symbol=US%3AA&interval=5m`;
+    const one = `${base}&extended=true`;
+    const five = `${base}&from=2016-10-28`;
     const answer = { id: "US:A", interval: "5m", points: [] };
     const f = fake({ [`GET ${one}`]: ok(answer), [`GET ${five}`]: ok(answer) });
     const s = store(f.fetch);
@@ -937,6 +940,37 @@ describe("the instrument model", () => {
     expect(returnCell(null)).toEqual({ text: "—", dir: 0 });
   });
 
+  test("after hours stands beside the close, said with its time", () => {
+    expect(afterHours(detail())).toBeNull();
+    const after = afterHours(
+      detail({
+        extended: {
+          session: "post",
+          price: 290.14,
+          change: -34.75,
+          change_percent: -10.7,
+          time: "2026-10-28T22:05:00Z",
+        },
+      }),
+    )!;
+    expect(after.price).toBe("290.14 USD");
+    expect(after.change).toEqual({ text: "−10.70%", dir: -1 });
+    expect(after.label).toMatch(/^After hours · \d\d:\d\d$/);
+    const pre = afterHours(
+      detail({
+        extended: {
+          session: "pre",
+          price: 220,
+          change: 2.76,
+          change_percent: 1.27,
+          time: "2026-10-29T12:00:00Z",
+        },
+      }),
+    )!;
+    expect(pre.label).toMatch(/^Pre-market · /);
+    expect(afterHours(detail({ extended: null }))).toBeNull();
+  });
+
   test("the refetch menu lists what a source holds for it, everything first", () => {
     expect(
       choices(listed("BVB:H2O", { market: "BVB" })).map((c) => c.label),
@@ -1366,9 +1400,70 @@ describe("the chart model", () => {
       range: "6M",
       line: true,
     });
-    expect(readSettings(JSON.stringify({ range: "1D" })).range).toBe(
-      DEFAULT_SETTINGS.range,
-    );
+    // a fresh browser opens on 1D as a line; 1D and 5D are kept like any range
+    expect(DEFAULT_SETTINGS).toMatchObject({ range: "1D", line: true });
+    expect(readSettings(JSON.stringify({ range: "5D" })).range).toBe("5D");
+    expect(readSettings(JSON.stringify({ range: "2D" })).range).toBe("1D");
+  });
+
+  test("pre and post trading join the session at its ends, never at the same time", () => {
+    const session = [
+      { time: 100, value: 10 },
+      { time: 200, value: 11 },
+    ];
+    const outside = [
+      { time: 50, value: 9, session: "pre" as const },
+      { time: 100, value: 9.5, session: "pre" as const },
+      // the closing trade and the first post bar share a minute
+      { time: 200, value: 12, session: "post" as const },
+      { time: 300, value: 8, session: "post" as const },
+    ];
+    expect(extendedLines(session, outside)).toEqual({
+      pre: [
+        { time: 50, value: 9 },
+        { time: 100, value: 10 },
+      ],
+      post: [
+        { time: 200, value: 11 },
+        { time: 300, value: 8 },
+      ],
+    });
+    expect(extendedLines(session, [])).toEqual({ pre: [], post: [] });
+    expect(extendedLines([], outside)).toEqual({ pre: [], post: [] });
+  });
+
+  test("the legend under the crosshair reads an extended point too", () => {
+    const h: Intraday = {
+      id: "US:A",
+      unit: "per_share",
+      interval: "5m",
+      session: { state: "closed" },
+      previous_close: 100,
+      points: [
+        {
+          at: "2026-10-28T19:55:00Z",
+          session: "2026-10-28",
+          close: 102,
+          final: true,
+        },
+      ],
+      extended_points: [
+        { at: "2026-10-28T21:00:00Z", session: "post", close: 90 },
+      ],
+    };
+    const t = Date.parse("2026-10-28T21:00:00Z") / 1000;
+    expect(pointLegendOf(h, t, "UTC")).toMatchObject({
+      close: 90,
+      live: false,
+      change: -10,
+    });
+    // at rest the newest price is the after-hours one, as the axis label
+    expect(pointLegendOf(h, null, "UTC")).toMatchObject({
+      time: "21:00",
+      close: 90,
+    });
+    const regular = { ...h, extended_points: [] };
+    expect(pointLegendOf(regular, null, "UTC")).toMatchObject({ close: 102 });
   });
 
   test("the legend names each average beside its stroke", () => {

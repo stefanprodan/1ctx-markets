@@ -35,6 +35,16 @@
     gap: 6px;
     padding: var(--space-4);
   }
+  .ins-quotes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-6);
+  }
+  .ins-quote {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
   .ins-figure {
     display: flex;
     align-items: baseline;

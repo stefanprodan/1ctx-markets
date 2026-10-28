@@ -45,6 +45,8 @@ export type Intraday = {
   session: { state: "open" | "closed" } | null;
   previous_close: number | null;
   points: Point[];
+  // pre and post trading, asked for 1D only
+  extended_points?: { at: string; session: "pre" | "post"; close: number }[];
 };
 
 export const INTRADAY = ["1D", "5D"] as const;
@@ -64,7 +66,7 @@ export type DailyRange = (typeof DAILY)[number];
 
 export const RANGES = [...INTRADAY, ...DAILY] as const;
 export type Range = (typeof RANGES)[number];
-export const DEFAULT_RANGE: DailyRange = "1Y";
+export const DEFAULT_RANGE: Range = "1D";
 
 export const isIntraday = (r: Range): r is IntradayRange =>
   (INTRADAY as readonly string[]).includes(r);
@@ -168,7 +170,7 @@ export function volumes(bars: readonly HistoryBar[]) {
 }
 
 // real UTC seconds, so a clock change never reorders or drops a point
-export const pointLine = (points: readonly Point[]) =>
+export const pointLine = (points: readonly { at: string; close: number }[]) =>
   points.map((p) => ({ time: Date.parse(p.at) / 1000, value: p.close }));
 
 const clocks = new Map<string, Intl.DateTimeFormat>();
@@ -293,10 +295,23 @@ export function pointLegendOf(
   time: number | null,
   zone?: string,
 ): Legend | null {
+  const near = (p: { at: string }) => Date.parse(p.at) / 1000 === time;
+  const outside =
+    time === null ? undefined : h.extended_points?.find((p) => near(p));
+  // at rest the newest price, an after-hours one when it is later
+  const newest = h.points.at(-1);
+  const after = h.extended_points?.findLast(
+    (p) =>
+      p.session === "post" &&
+      newest !== undefined &&
+      Date.parse(p.at) > Date.parse(newest.at),
+  );
   const point =
     time === null
-      ? h.points.at(-1)
-      : h.points.find((p) => Date.parse(p.at) / 1000 === time);
+      ? after
+        ? { ...after, final: true }
+        : newest
+      : (h.points.find(near) ?? (outside && { ...outside, final: true }));
   if (point === undefined) return null;
   const first = h.previous_close ?? h.points[0]?.close ?? null;
   const points = h.unit === "percent";
@@ -370,7 +385,7 @@ export function changeText(v: number | null, points = false): string {
 
 // the chart's choices, kept for the next chart this browser draws
 export type Settings = {
-  range: DailyRange;
+  range: Range;
   line: boolean;
   log: boolean;
   sma50: boolean;
@@ -379,7 +394,7 @@ export type Settings = {
 
 export const DEFAULT_SETTINGS: Settings = {
   range: DEFAULT_RANGE,
-  line: false,
+  line: true,
   log: false,
   sma50: true,
   sma200: true,
@@ -401,12 +416,36 @@ export function readSettings(raw: string | null): Settings {
       ? (v[k] as boolean)
       : (DEFAULT_SETTINGS[k] as boolean);
   return {
-    range: DAILY.includes(v.range as DailyRange)
-      ? (v.range as DailyRange)
+    range: RANGES.includes(v.range as Range)
+      ? (v.range as Range)
       : DEFAULT_RANGE,
     line: flag("line"),
     log: flag("log"),
     sma50: flag("sma50"),
     sma200: flag("sma200"),
+  };
+}
+
+type Value<T> = { time: T; value: number };
+
+// each joined to the session's nearest close; the closing trade can share
+// the first post bar's minute, which the library refuses twice
+export function extendedLines<T extends number>(
+  session: readonly Value<T>[],
+  outside: readonly (Value<T> & { session: "pre" | "post" })[],
+): { pre: Value<T>[]; post: Value<T>[] } {
+  const first = session[0];
+  const last = session.at(-1);
+  if (first === undefined || last === undefined) return { pre: [], post: [] };
+  const plain = ({ time, value }: Value<T>) => ({ time, value });
+  const before = outside
+    .filter((p) => p.session === "pre" && p.time < first.time)
+    .map(plain);
+  const after = outside
+    .filter((p) => p.session === "post" && p.time > last.time)
+    .map(plain);
+  return {
+    pre: before.length > 0 ? [...before, first] : [],
+    post: after.length > 0 ? [last, ...after] : [],
   };
 }

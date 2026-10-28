@@ -194,7 +194,7 @@ signed in with the admin key alone.
   not split the page, so the library ships in its bundle either way. Its
   data comes from `GET /api/v1/history?ohlc=true`, a read; the bars
   are shaped in `Chart.model.ts`, which has no DOM and is tested.
-- **Ranges** 1D, 5D, then 1M to Max (`RANGES`, 1Y by default); 3Y
+- **Ranges** 1D, 5D, then 1M to Max (`RANGES`, 1D by default); 3Y
   and up read weekly bars (`intervalOf`), so the averages read
   "50-week" and "200-week". Max is the ten years the server keeps.
 - **1D and 5D read `history?interval=5m`**: the newest stored session,
@@ -205,7 +205,17 @@ signed in with the admin key alone.
   the crosshair's day label for daily bars kept as the library writes
   it. No candles, averages or volume, so their toggles hide. The legend gives the day and time,
   the close and the change from the answer's `previous_close`, else the first close.
-- **Candles or a line**, the toggle only where the bars have an open;
+- **1D is a baseline at the previous close**, green above and red
+  below, with the previous close dashed and labelled, as a chart site
+  draws a day; the scale keeps the previous close in view. 1D asks
+  `extended=true`: pre and post trading are drawn faded, joined to the
+  session's first and last close (`extendedLines`, which drops a bar
+  sharing the closing trade's time), and the latest price label is the
+  newest post bar's. 5D is one area in the colour of its move, with no
+  reference line, as the daily ranges are.
+- **A line is a filled area in the colour of its move**: green when the
+  range ends at or above where it starts, red below.
+- **Line or candles**, the toggle only where the bars have an open;
   a series (FRED) is a line. A bar the live quote made with no open
   takes the last close. **Volume** is its own pane (price 4 : volume
   1, by stretch, which a redraw keeps), by the bar's direction; none
@@ -230,13 +240,19 @@ signed in with the admin key alone.
 - **On a phone the head's row is the floating menu button's height**,
   centred, so the button, title and actions share one middle.
 - **The bar still trading is drawn faded**; the last price has its
-  line. Log is a toggle; a range change fits the content.
+  line. Log is a toggle; a range change fits the content, and any other
+  redraw (the minute refresh, a toggle, a theme flip) keeps the times in
+  view, never the bar positions: 1D's three series would shift them.
 - **Colours are read from the tokens on every draw**, and a theme flip
   draws again.
 - **Settings are kept in `localStorage`** (`chart`): the range, line,
   log and both averages, one set for every instrument; a blocked or
-  broken value starts from the defaults, field by field. 1D and 5D are
-  never kept, so the daily chart's settings stay as they were.
+  broken value starts from the defaults, field by field: 1D, a line,
+  both averages. 1D and 5D are kept like any range.
+- **After hours beside the close**: the instrument route asks the quote
+  with `extended`, so outside regular hours a listing with pre or post
+  trading shows that price, its change from the close and its time
+  (`afterHours`), "After hours" or "Pre-market".
 - **The credits are the page's footer**: "Data by <source> · Charts
   by TradingView", each name linking its site. The source (Yahoo, BVB,
   FRED) and its site come from the server's `credit`, since the public
