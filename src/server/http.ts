@@ -152,6 +152,8 @@ export function serve(options: {
   handle: Handle;
   // the web UI, bundled by Bun with its assets; none with --no-ui
   page?: HTMLBundle | null;
+  // a local preview's: rebuilt after an edit, without the reload script
+  pageDev?: boolean;
 }): Bun.Server<undefined> {
   const page = options.page ?? null;
   return Bun.serve({
@@ -159,8 +161,9 @@ export function serve(options: {
     port: options.port,
     maxRequestBodySize: MAX_BODY_BYTES,
     idleTimeout: IDLE_TIMEOUT_S,
-    // the bundle as the binary serves it, never Bun's dev server and its reload
-    development: false,
+    // the bundle as the binary serves it, never Bun's dev server and its
+    // reload, but for a local preview that rebuilds it after an edit
+    development: options.pageDev === true ? { hmr: false } : false,
     routes:
       page === null
         ? {}

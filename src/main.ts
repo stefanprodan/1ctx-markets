@@ -107,6 +107,9 @@ const app = start({
   adminKey,
   ui: config.ui,
   page,
+  // a local preview rebuilds the page as its sources change, so an edit
+  // never needs a restart; never set where the binary runs
+  pageDev: process.env.MARKETS_PAGE_DEV === "1",
   clock: wallClock,
   log,
   version: VERSION,

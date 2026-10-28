@@ -23,6 +23,10 @@ signed in with the admin key alone.
   the router's, so an unknown one keeps the bearer's 401.
 - **`development: false`**, so a run from source serves the bundle the
   binary does, never Bun's dev server and its reload script.
+  `MARKETS_PAGE_DEV=1` (a local preview's, never set where the binary
+  runs) serves `{ hmr: false }` instead: Bun rebuilds the bundle after
+  an edit, with no reload script, so a UI change needs a browser
+  reload, not a server restart.
 - **`UI_PATHS` and the client's `ROUTES` (with `ALIASES`) name the same
   paths**; `test/web.test.tsx` holds them equal. A new page adds its
   path to both.

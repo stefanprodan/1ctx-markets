@@ -55,6 +55,8 @@ export type AppOptions = {
   ui?: boolean;
   // the page served at the UI's paths while ui is on
   page?: HTMLBundle | null;
+  // Bun bundles the page on request and again after an edit
+  pageDev?: boolean;
   clock: Clock;
   log: LogFactory;
   version: string;
@@ -287,6 +289,7 @@ export function start(options: AppOptions): App {
     hostname: options.hostname,
     port: options.port,
     page: ui ? (options.page ?? null) : null,
+    pageDev: options.pageDev === true,
     handle: router({
       bearer: options.bearer,
       mcp,
