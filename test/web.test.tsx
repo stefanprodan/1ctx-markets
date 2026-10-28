@@ -478,6 +478,13 @@ describe("the status model", () => {
     expect(jobTone(daily!)).toBe("failed");
     // a good last run still reads failing while another scope failed
     expect(jobTone({ ...live!, failing_scopes: 1 })).toBe("failed");
+    const running = {
+      ...live!,
+      last: { ...live!.last, status: "running" as const },
+    };
+    expect(jobTone(running)).toBe("running");
+    // a failing scope outranks a run in progress
+    expect(jobTone({ ...running, failing_scopes: 1 })).toBe("failed");
     expect(STATUS.track.map(trackLine)).toEqual(["SNP:^GSPC", "not found"]);
     expect(STATUS.track.map(trackFailed)).toEqual([false, true]);
   });

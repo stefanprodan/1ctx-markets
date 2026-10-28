@@ -198,10 +198,17 @@ describe("the queue", () => {
     let answer = limited;
     const f = fakeFetch(() => answer);
     const client = yahoo({ clock, fetch: f.fetch });
-    const run = runJob(writer(db), clock, "yahoo", "bars", async () => {
-      await client.chart("NVDA", 0, clock.now());
-      return 1;
-    });
+    const run = runJob(
+      writer(db),
+      clock,
+      "yahoo",
+      "bars",
+      async () => {
+        await client.chart("NVDA", 0, clock.now());
+        return 1;
+      },
+      "US",
+    );
     expect(await phrase(run)).toBe("rate limited");
     expect(lastRun(db, "yahoo", "bars")).toMatchObject({
       status: "failed",
@@ -221,7 +228,7 @@ describe("the queue", () => {
     await next;
     expect(f.urls).toHaveLength(2);
 
-    await runJob(writer(db), clock, "yahoo", "bars", async () => 3);
+    await runJob(writer(db), clock, "yahoo", "bars", async () => 3, "US");
     expect(isStale(db, "yahoo")).toBe(false);
   });
 

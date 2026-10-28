@@ -34,7 +34,8 @@ export function startRun(
   source: string,
   job: string,
   now: number,
-  scope: string | null = null,
+  // a run with no scope would never show among a job's counts
+  scope: string,
 ): number {
   return Number(
     db
@@ -84,7 +85,7 @@ export async function runJob(
   source: string,
   job: string,
   fn: () => Promise<number>,
-  scope: string | null = null,
+  scope: string,
 ): Promise<number> {
   const id = await writer.write((db) =>
     startRun(db, source, job, clock.now(), scope),

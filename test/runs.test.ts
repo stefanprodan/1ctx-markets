@@ -21,7 +21,7 @@ describe("sync runs", () => {
     const clock = fakeClock();
     const { db } = open(":memory:", clock);
     expect(
-      await runJob(writer(db), clock, "yahoo", "quotes", async () => 7),
+      await runJob(writer(db), clock, "yahoo", "quotes", async () => 7, "US"),
     ).toBe(7);
     expect(lastRun(db, "yahoo", "quotes")).toMatchObject({
       status: "ok",
@@ -31,18 +31,32 @@ describe("sync runs", () => {
       endedAt: clock.now(),
     });
     await expect(
-      runJob(writer(db), clock, "yahoo", "bars", async () => {
-        throw new Error("https://example.test/secret detail");
-      }),
+      runJob(
+        writer(db),
+        clock,
+        "yahoo",
+        "bars",
+        async () => {
+          throw new Error("https://example.test/secret detail");
+        },
+        "US",
+      ),
     ).rejects.toThrow();
     expect(lastRun(db, "yahoo", "bars")).toMatchObject({
       status: "failed",
       error: "failed",
     });
     await expect(
-      runJob(writer(db), clock, "yahoo", "bars", async () => {
-        throw new SourceError("timed out", "NVDA");
-      }),
+      runJob(
+        writer(db),
+        clock,
+        "yahoo",
+        "bars",
+        async () => {
+          throw new SourceError("timed out", "NVDA");
+        },
+        "US",
+      ),
     ).rejects.toThrow();
     expect(lastRun(db, "yahoo", "bars")!.error).toBe("timed out");
   });
@@ -53,11 +67,11 @@ describe("sync runs", () => {
     const fail = async () => {
       throw new SourceError("rate limited");
     };
-    await runJob(writer(db), clock, "yahoo", "quotes", async () => 1);
+    await runJob(writer(db), clock, "yahoo", "quotes", async () => 1, "US");
     await expect(
-      runJob(writer(db), clock, "yahoo", "bars", fail),
+      runJob(writer(db), clock, "yahoo", "bars", fail, "US"),
     ).rejects.toThrow();
-    await runJob(writer(db), clock, "finnhub", "research", async () => 1);
+    await runJob(writer(db), clock, "finnhub", "research", async () => 1, "US");
     expect(staleJobs(db, "yahoo")).toEqual(["bars"]);
     expect(isStale(db, "yahoo")).toBe(true);
     expect(isStale(db, "yahoo", "quotes")).toBe(false);
@@ -66,17 +80,17 @@ describe("sync runs", () => {
 
     // a run still going does not hide the failure before it
     await clock.advance(1);
-    startRun(db, "yahoo", "bars", clock.now());
+    startRun(db, "yahoo", "bars", clock.now(), "US");
     expect(isStale(db, "yahoo", "bars")).toBe(true);
     await clock.advance(1);
-    await runJob(writer(db), clock, "yahoo", "bars", async () => 2);
+    await runJob(writer(db), clock, "yahoo", "bars", async () => 2, "US");
     expect(staleJobs(db, "yahoo")).toEqual([]);
   });
 
   test("are kept 30 days", async () => {
     const clock = fakeClock();
     const { db } = open(":memory:", clock);
-    await runJob(writer(db), clock, "yahoo", "quotes", async () => 1);
+    await runJob(writer(db), clock, "yahoo", "quotes", async () => 1, "US");
     await clock.advance(30 * DAY_MS);
     expect(pruneRuns(db, clock.now())).toBe(0);
     await clock.advance(1);

@@ -32,7 +32,7 @@ function setup() {
   // runs a job to its end, a step after the last; a quote pass that
   // ends well answers every instrument of its market
   let at = clock.now();
-  const run = (job: string, scope: string | null, error?: unknown) => {
+  const run = (job: string, scope: string, error?: unknown) => {
     at += MINUTE_MS;
     const id = startRun(db, "yahoo", job, at, scope);
     if (error === undefined) {
@@ -102,7 +102,7 @@ describe("staleness", () => {
     run(JOBS.quotes, "US");
     expect(quoteStale(db, us)).toEqual([]);
     run(JOBS.quotes, "US", new SourceError("rate limited"));
-    run("search", null);
+    run("search", "US");
     run(JOBS.quotes, "OTHER");
     expect(quoteStale(db, us)).toEqual(["quote sync failed"]);
     expect(quoteStale(db, other)).toEqual([]);

@@ -292,6 +292,12 @@ describe("the admin routes' guard", () => {
           markets: 0,
           failing_instruments: 1,
         });
+        // only a backfill settles: a failed bars run of the same instrument stays
+        db.query(
+          `insert into sync_runs (source, job, scope, started_at, ended_at,
+             status, rows, error)
+           values ('yahoo', 'bars', 'US:X', ?1, ?1, 'failed', 0, 'timeout')`,
+        ).run(NOW);
         instrument(db, "US:X");
         bar(db, "US:X", "1d", "2026-10-24", 10, true);
         expect(await backfill()).toMatchObject({
@@ -299,6 +305,16 @@ describe("the admin routes' guard", () => {
           failing_instruments: 0,
           failing_scopes: 0,
           failing: [],
+        });
+        const res = await fetch(`${url}/api/v1/admin/status`, {
+          headers: { authorization: `Bearer ${admin}` },
+        });
+        const bars = (await res.json()).jobs.find(
+          (j: { job: string }) => j.job === "bars",
+        );
+        expect(bars).toMatchObject({
+          failing_instruments: 1,
+          failing_scopes: 1,
         });
       },
       { start: NOW },
