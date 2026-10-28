@@ -1,0 +1,760 @@
+@layer tokens, base, owners;
+
+@layer owners {
+  .rows {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    width: 960px;
+    max-width: 100%;
+  }
+
+  .rows-card {
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    overflow: hidden;
+  }
+  /* no row of it fills to the corners, so a menu may leave it */
+  .rows-card-menus {
+    overflow: visible;
+  }
+  .rows-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    min-height: 44px;
+    padding: 0 var(--space-4);
+    border-bottom: 1px solid var(--line);
+  }
+  .rows-head-search {
+    padding-left: 0;
+  }
+  .rows-hint {
+    margin-left: auto;
+    font-family: var(--mono);
+    font-size: var(--text-label);
+    color: var(--faint);
+  }
+  .rows-head-tabs {
+    align-items: stretch;
+  }
+  .rows-head-tabs .rows-hint {
+    align-self: center;
+    flex-shrink: 0;
+  }
+  @media (max-width: 719px) {
+    .rows-head-tabs .rows-hint {
+      display: none;
+    }
+  }
+  /* the count grows to the left, so typing moves only the search */
+  .rows-count {
+    flex-shrink: 0;
+    margin-left: auto;
+    font-size: var(--text-ui);
+    font-variant-numeric: tabular-nums;
+    color: var(--faint);
+  }
+  @media (max-width: 719px) {
+    .rows-head-below {
+      flex-wrap: wrap;
+      row-gap: 0;
+      padding-top: var(--space-2);
+      padding-bottom: var(--space-2);
+    }
+    .rows-head-below .rows-hint {
+      flex-basis: 100%;
+      min-height: 1.5em;
+      margin-left: 0;
+    }
+  }
+  .rows-add {
+    margin-left: auto;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  .rows-filters {
+    flex-wrap: nowrap;
+    flex-shrink: 0;
+    margin-left: auto;
+  }
+  /* the phone's dropdown of the same filters */
+  .rows-filters-pick {
+    display: none;
+    flex-shrink: 0;
+    width: 104px;
+    margin-left: auto;
+  }
+  /* the hidden dropdown sits between the count and the segments */
+  .rows-count + .rows-filters-pick,
+  .rows-count + .rows-filters-pick + .rows-filters,
+  .rows-hint ~ .rows-filters-pick {
+    margin-left: 0;
+  }
+  @media (max-width: 719px) {
+    .rows-filters {
+      display: none;
+    }
+    .rows-filters-pick {
+      display: block;
+    }
+    /* a head's add button keeps its plus, and its name for readers */
+    .rows-head .rows-add-words {
+      display: none;
+    }
+  }
+  .rows-count + .rows-add,
+  .rows-count + .rows-filters,
+  .rows-filters ~ .rows-add {
+    margin-left: 0;
+  }
+  .rows-hint ~ .rows-add,
+  .rows-hint ~ .rows-filters,
+  .rows-hint ~ .seg {
+    margin-left: 0;
+  }
+  .rows-note {
+    margin: 0;
+    padding: var(--space-3) var(--space-4);
+    font-size: var(--text-ui);
+    color: var(--faint);
+  }
+
+  /* what reveal() keeps clear when a row opens: the sticky page head
+     above and its card's edge below */
+  .rows-item {
+    border-bottom: 1px solid var(--line);
+    scroll-margin-top: calc(2 * var(--space-6));
+    scroll-margin-bottom: var(--space-5);
+  }
+  .rows-item:last-child {
+    border-bottom: 0;
+  }
+  .rows-item-open {
+    background: var(--page);
+  }
+
+  /* before .rows-line, so a toggle that is the whole line takes the
+     line's padding */
+  .rows-toggle {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    flex-grow: 1;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--dim);
+    text-align: left;
+    cursor: pointer;
+  }
+  .rows-toggle:hover {
+    color: var(--fg);
+  }
+  .rows-line {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    width: 100%;
+    min-height: 56px;
+    padding: var(--space-2) var(--space-4);
+  }
+  .rows-line-static {
+    padding-left: calc(var(--space-4) + 14px + var(--space-3));
+    color: var(--dim);
+  }
+  /* as tall as its lines, still a touch target */
+  .rows-line.rows-go-compact {
+    min-height: 44px;
+  }
+
+  .rows-toggle.rows-line:hover,
+  .rows-line-end:hover,
+  .rows-line-pick:hover,
+  .rows-go:hover,
+  .rows-button:hover {
+    background: var(--hover);
+  }
+  .rows-line-pick {
+    cursor: pointer;
+  }
+  .rows-item-off .rows-line-pick {
+    cursor: default;
+  }
+  .rows-item-off .rows-line-pick:hover {
+    background: transparent;
+  }
+  .rows-button {
+    border: 0;
+    background: transparent;
+    color: var(--dim);
+    text-align: left;
+    cursor: pointer;
+  }
+  .rows-more {
+    display: flex;
+    justify-content: center;
+  }
+  /* the word is small, its padding keeps the tap target a row's height */
+  .rows-more .btn-text {
+    padding: var(--space-2) var(--space-3);
+  }
+  .rows-button:disabled {
+    background: transparent;
+    color: var(--faint);
+    cursor: default;
+  }
+  /* inside, so a list's clipped edge never cuts the ring */
+  .rows-button:focus-visible {
+    outline-offset: -1px;
+  }
+
+  .rows-go {
+    color: var(--dim);
+    text-decoration: none;
+  }
+  .rows-go-part {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    flex: 1 1 0;
+    min-width: 0;
+    align-self: stretch;
+  }
+  .rows-go-arrow {
+    flex-shrink: 0;
+    color: var(--faint);
+  }
+  .rows-go:hover .rows-go-arrow {
+    color: var(--fg);
+  }
+  .rows-button-edit {
+    flex-shrink: 0;
+    color: var(--faint);
+  }
+  .rows-button:hover:not(:disabled) .rows-button-edit {
+    color: var(--fg);
+  }
+
+  .rows-chevron {
+    flex-shrink: 0;
+    color: var(--faint);
+    transform: rotate(-90deg);
+    transition: transform 120ms;
+  }
+  .rows-chevron-open {
+    transform: rotate(0);
+  }
+
+  .rows-body {
+    padding: var(--space-4);
+    border-top: 1px solid var(--line);
+  }
+  .rows-body-avatar {
+    padding-left: calc(
+      var(--space-4) +
+      14px +
+      var(--space-3) +
+      28px +
+      var(--space-3)
+    );
+  }
+  .rows-body-chevron {
+    padding-left: calc(var(--space-4) + 14px + var(--space-3));
+  }
+  .rows-body-new {
+    border-top: 0;
+  }
+
+  .rows-avatar-lit {
+    color: var(--fg);
+  }
+
+  /* a zero basis, so a long sub ellipsizes instead of wrapping the
+     title off the avatar's line, and a floor, so the title keeps a
+     share of the row and a long meta gives way first */
+  .rows-title {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1 1 0;
+    min-width: min(40%, 240px);
+  }
+  .rows-name {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--text-ui);
+    font-weight: 500;
+    color: var(--fg);
+  }
+  .rows-name-mono {
+    font-family: var(--mono);
+    font-size: var(--text-mono);
+  }
+  .rows-item-off .rows-name {
+    color: var(--faint);
+  }
+  .rows-sub {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--mono);
+    font-size: var(--text-label);
+    color: var(--faint);
+  }
+  .rows-sub-wrap {
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+  .rows-sub-prose {
+    font-family: var(--sans);
+    font-size: var(--text-small);
+  }
+  .rows-meta {
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-family: var(--mono);
+    font-size: var(--text-label);
+    color: var(--faint);
+    white-space: nowrap;
+  }
+  .rows-meta-keep {
+    flex-shrink: 0;
+  }
+  .rows-meta-bad {
+    color: var(--failed);
+  }
+  .rows-meta-brand {
+    color: var(--brand);
+  }
+  .rows-meta-short {
+    display: none;
+  }
+  .rows-meta-two {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+    font-family: var(--sans);
+  }
+  .rows-meta-under {
+    color: var(--faint);
+  }
+  /* a touch takes 44px around the X */
+  @media (pointer: coarse) {
+    .rows-remove.btn-icon {
+      width: 44px;
+      height: 44px;
+      margin: -6px -6px -6px 0;
+    }
+  }
+
+  .rows-handle {
+    color: var(--brand);
+  }
+  .rows-handle-gone {
+    color: var(--faint);
+  }
+  .rows-bad {
+    color: var(--failed);
+  }
+
+  .rows-list {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--inset);
+    overflow: hidden;
+  }
+  .rows-list .rows-line {
+    min-height: 48px;
+    padding: var(--space-2) var(--space-3);
+  }
+  .rows-list .rows-line-static {
+    padding-left: calc(var(--space-3) + 14px + var(--space-3));
+  }
+  .rows-list .rows-body {
+    padding: var(--space-3);
+  }
+  .rows-list .rows-body-chevron {
+    padding-left: calc(var(--space-3) + 14px + var(--space-3));
+  }
+  .rows-list .rows-item-open {
+    background: var(--card);
+  }
+  /* a list of one row is a field, not a list: it keeps its ground on
+     hover and open, and the chevron and the words light instead */
+  .rows-list > .rows-item:only-child,
+  .rows-list > .rows-item:only-child .rows-line-end:hover {
+    background: transparent;
+  }
+  .rows-list > .rows-item:only-child .rows-toggle:hover .rows-chevron,
+  .rows-list > .rows-item:only-child .rows-toggle:hover .rows-sub {
+    color: var(--fg);
+  }
+  .rows-list .rows-note {
+    padding: var(--space-3);
+  }
+  .rows-list-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+  .rows-log {
+    display: flex;
+    flex-direction: column;
+    padding: 6px 0;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--inset);
+    font-size: var(--text-small);
+    line-height: 20px;
+  }
+  .rows-log-group {
+    padding: 4px var(--space-3) 0;
+    color: var(--faint);
+    font-size: var(--text-label);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    overflow-wrap: anywhere;
+  }
+  .rows-log-group:not(:first-child) {
+    margin-top: 6px;
+    padding-top: 8px;
+    border-top: 1px solid var(--line);
+  }
+  .rows-log-line {
+    display: flex;
+    flex-wrap: wrap;
+    column-gap: var(--space-3);
+    padding: 0 var(--space-3);
+  }
+  .rows-log-name {
+    flex: 1 1 120px;
+    max-width: 100%;
+    font-family: var(--mono);
+    color: var(--fg);
+  }
+  .rows-log-note {
+    max-width: 100%;
+    margin-left: auto;
+    text-align: right;
+    overflow-wrap: anywhere;
+    min-width: 0;
+    color: var(--faint);
+  }
+  .rows-log-running {
+    color: var(--running);
+  }
+  .rows-log-bad .rows-log-name,
+  .rows-log-bad .rows-log-note {
+    color: var(--failed);
+  }
+  .rows-log-more {
+    align-self: flex-start;
+    margin: 4px var(--space-3) 0;
+  }
+  .rows-log-bare {
+    padding: 4px 0 6px;
+    border: 0;
+    border-top: 1px solid var(--line);
+    border-radius: 0;
+    background: transparent;
+  }
+  /* the button sits in room every line keeps, so a note that wraps
+     never pushes it onto a line of its own */
+  .rows-log-ends .rows-log-line {
+    position: relative;
+    padding-right: 38px;
+  }
+  .rows-log-drop {
+    position: absolute;
+    top: 0;
+    right: 8px;
+    width: 20px;
+    height: 20px;
+  }
+  @media (max-width: 719px) {
+    .rows-log-ends .rows-log-line {
+      padding-right: 44px;
+    }
+    .rows-log-line-end {
+      min-height: 28px;
+      align-items: center;
+    }
+    .rows-log-drop {
+      width: 28px;
+      height: 28px;
+    }
+  }
+  .rows-list-hint {
+    font-family: var(--mono);
+    font-size: var(--text-label);
+    color: var(--faint);
+  }
+
+  .rows-block {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .rows-end {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-shrink: 0;
+  }
+  .rows-end-words {
+    font-size: var(--text-ui);
+    color: var(--dim);
+  }
+  .rows-end-error {
+    font-size: var(--text-small);
+  }
+
+  .rows-radio {
+    flex-shrink: 0;
+    width: 14px;
+    margin: 0;
+    accent-color: var(--brand);
+  }
+
+  .rows-check {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+  }
+  .rows-check-words {
+    gap: var(--space-2);
+    font-size: var(--text-small);
+    color: var(--dim);
+    cursor: pointer;
+  }
+  .rows-check-faint {
+    color: var(--faint);
+    cursor: default;
+  }
+  .rows-check-note {
+    font-size: var(--text-label);
+    color: var(--faint);
+  }
+  .rows-check-input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .rows-check-box {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius);
+    background: var(--card);
+    color: var(--on-brand);
+  }
+  .rows-check-on {
+    border-color: var(--brand);
+    background: var(--brand);
+  }
+  .rows-check-input:focus-visible + .rows-check-box {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+  }
+  .rows-item-off .rows-check-box {
+    opacity: 0.5;
+  }
+
+  .rows-tree {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .rows-tree-node {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    width: 100%;
+    min-height: 34px;
+    padding: 0 var(--space-4) 0
+      calc(var(--space-4) + var(--rows-depth, 0) * 18px);
+    border: 0;
+    background: transparent;
+    color: var(--dim);
+    font-family: var(--sans);
+    font-size: var(--text-ui);
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .rows-tree-node:hover {
+    background: var(--hover);
+    color: var(--fg);
+  }
+  .rows-tree-node:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: -2px;
+  }
+  .rows-tree-chevron {
+    flex-shrink: 0;
+    color: var(--faint);
+    transform: rotate(-90deg);
+    transition: transform 0.12s;
+  }
+  .rows-tree-chevron-open {
+    transform: none;
+  }
+  /* a file's room for the chevron, so its icon lines up with a
+     folder's */
+  .rows-tree-gap {
+    flex-shrink: 0;
+    width: 14px;
+  }
+  .rows-tree-icon {
+    flex-shrink: 0;
+    color: var(--faint);
+  }
+  .rows-tree-name {
+    font-family: var(--mono);
+    font-size: var(--text-mono);
+    color: var(--fg);
+  }
+  .rows-tree-folder .rows-tree-name {
+    color: var(--dim);
+  }
+  .rows-tree-folder:hover .rows-tree-name {
+    color: var(--fg);
+  }
+  .rows-tree-meta {
+    flex-shrink: 0;
+    margin-left: auto;
+    padding-left: var(--space-3);
+    font-size: var(--text-small);
+    color: var(--faint);
+    white-space: nowrap;
+  }
+  .rows-tree-lit {
+    color: var(--brand);
+  }
+  .rows-tree-more {
+    color: var(--faint);
+    font-size: var(--text-small);
+  }
+
+  @media (max-width: 719px) {
+    .rows-tree-node {
+      padding-left: calc(var(--space-4) + var(--rows-depth, 0) * 12px);
+    }
+    .rows-tree-file .rows-tree-meta {
+      display: none;
+    }
+    .rows-line {
+      padding-block: var(--space-3);
+      row-gap: var(--space-1);
+    }
+    .rows-line,
+    .rows-toggle,
+    .rows-go-part {
+      flex-wrap: wrap;
+    }
+    /* the head keeps room for its name: an end that does not fit
+       beside it wraps to its own line */
+    .rows-title {
+      min-width: min(160px, 100%);
+    }
+    .rows-line-end > .rows-toggle {
+      flex: 1 1 0;
+      min-width: min(200px, 100%);
+    }
+    .rows-end {
+      flex-shrink: 1;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      min-width: 0;
+      margin-left: auto;
+    }
+    .rows-line-static {
+      padding-left: var(--space-4);
+    }
+    .rows-meta {
+      flex-basis: 100%;
+      order: 6;
+      white-space: normal;
+    }
+    .rows-meta-long,
+    .rows-meta-wide,
+    .rows-sub-wide {
+      display: none;
+    }
+    .rows-meta-short {
+      display: inline;
+    }
+    .rows-meta-two {
+      flex-direction: row;
+      align-items: baseline;
+      gap: var(--space-2);
+    }
+    .rows-line > .rows-meta,
+    .rows-toggle > .rows-meta {
+      padding-left: calc(14px + var(--space-3));
+    }
+    .rows-line-static > .rows-meta,
+    .rows-go > .rows-meta,
+    .rows-line > .rows-title:first-child ~ .rows-meta {
+      padding-left: 0;
+    }
+    .rows-line:has(> .avatar) > .rows-meta,
+    .rows-go-part:has(> .avatar) > .rows-meta {
+      padding-left: calc(28px + var(--space-3));
+    }
+    .rows-toggle:has(> .avatar) > .rows-meta {
+      padding-left: calc(14px + var(--space-3) + 28px + var(--space-3));
+    }
+    .rows-body-avatar,
+    .rows-body-chevron {
+      padding: var(--space-4);
+    }
+    .rows-list .rows-line-static {
+      padding-left: var(--space-3);
+    }
+    .rows-list .rows-body-chevron {
+      padding: var(--space-3);
+    }
+    .rows-line:not(.rows-line-end) > .rows-end-ask {
+      flex-basis: 100%;
+      order: 7;
+      justify-content: flex-end;
+    }
+    /* a side row never wraps: the title gives way to the meta */
+    .rows-go-side {
+      flex-wrap: nowrap;
+    }
+    .rows-go-side > .rows-title {
+      min-width: 0;
+    }
+    .rows-go.rows-go-side > .rows-meta {
+      flex-basis: auto;
+      order: 0;
+      padding-left: 0;
+      white-space: nowrap;
+    }
+    .rows-go-side > .rows-go-arrow {
+      display: none;
+    }
+  }
+}

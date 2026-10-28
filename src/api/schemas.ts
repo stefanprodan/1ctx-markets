@@ -500,6 +500,7 @@ export const schemas: Record<string, Schema> = {
     sources: list(
       object({
         name: str,
+        label: str,
         state: values(["on", "off"]),
         why: str,
         backing_off: nullable(object({ until: nstr, after: str })),

@@ -1,22 +1,25 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { ComponentChildren } from "preact";
 import { markets, type Status as StatusAnswer } from "../data/store.ts";
 import { Icon } from "../lib/icons.tsx";
 import { Page } from "../ui/Page.tsx";
+import { Rows, RowsCard, RowsLine, RowsMeta, RowsTitle } from "../ui/Rows.tsx";
 import {
   bytes,
   clockTime,
   count,
-  failingLine,
+  failures,
+  groupName,
+  groups,
   jobLine,
   jobTone,
-  sourceLine,
+  jobWhen,
+  type SourceGroup,
+  sourceState,
   sourcesOn,
-  sourceTone,
+  trackFailed,
   trackLine,
-  trackTone,
 } from "./Status.model.ts";
 import "./status.css";
 
@@ -24,38 +27,59 @@ function Tile({
   label,
   figure,
   sub,
+  bad,
 }: {
   label: string;
   figure: string;
   sub?: string;
+  bad?: boolean;
 }) {
   return (
     <div class="card srv-tile">
       <span class="label">{label}</span>
       <span class="srv-figure">{figure}</span>
-      {sub && <span class="srv-sub">{sub}</span>}
+      {sub && (
+        <span class={`srv-sub${bad ? " status-failed" : ""}`}>{sub}</span>
+      )}
     </div>
   );
 }
 
-function Dot({ tone }: { tone: string }) {
-  return <span class={`srv-dot status-${tone}`} aria-hidden="true" />;
-}
-
-function Card({
-  title,
-  children,
-}: {
-  title: string;
-  children: ComponentChildren;
-}) {
+function SourceCard({ group, now }: { group: SourceGroup; now: number }) {
+  const off = group.source?.state === "off";
+  const backing = group.source?.backing_off != null;
   return (
-    <section class="card srv-card">
-      <header class="srv-card-head">
-        <h2 class="srv-card-title">{title}</h2>
-      </header>
-      {children}
-    </section>
+    <RowsCard
+      label={groupName(group)}
+      count={group.source === null ? undefined : sourceState(group.source, now)}
+      class={`srv-source${backing ? " srv-source-bad" : ""}`}
+    >
+      {group.jobs.length === 0 ? (
+        <RowsLine off>
+          <RowsTitle name="No runs yet" />
+        </RowsLine>
+      ) : (
+        group.jobs.map((j) => {
+          const failed = jobTone(j) === "failed";
+          const lines = failed ? failures(j) : [];
+          return (
+            <RowsLine key={j.job} off={off} flush>
+              <span
+                class={`srv-mark status-${off ? "stopped" : jobTone(j)}`}
+                aria-hidden="true"
+              />
+              <RowsTitle
+                name={j.label}
+                sub={jobLine(j) || undefined}
+                lines={lines.map((text) => ({ text, bad: true }))}
+                wrap
+              />
+              <RowsMeta>{jobWhen(j, now)}</RowsMeta>
+            </RowsLine>
+          );
+        })
+      )}
+    </RowsCard>
   );
 }
 
@@ -84,6 +108,7 @@ export function StatusBody({
           label="Jobs"
           figure={count(s.jobs.length)}
           sub={failing === 0 ? "none failing" : `${failing} failing`}
+          bad={failing > 0}
         />
         <Tile
           label="Database"
@@ -91,64 +116,27 @@ export function StatusBody({
           sub={s.version}
         />
       </div>
-      <Card title="Sources">
-        <ul class="srv-rows">
-          {s.sources.map((src) => (
-            <li key={src.name} class="srv-row">
-              <Dot tone={sourceTone(src)} />
-              <span class="srv-name">{src.name}</span>
-              <span
-                class={`srv-line${src.backing_off ? " status-failed" : ""}`}
-              >
-                {sourceLine(src, now)}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </Card>
-      <Card title="Jobs">
-        {s.jobs.length === 0 ? (
-          <p class="srv-empty">No runs yet.</p>
-        ) : (
-          <ul class="srv-rows">
-            {s.jobs.map((j) => {
-              const failingScopes = failingLine(j);
-              return (
-                <li key={`${j.source}/${j.job}`} class="srv-row srv-row-wrap">
-                  <Dot tone={jobTone(j)} />
-                  <span class="srv-name">
-                    {j.source}
-                    <span class="srv-job"> {j.job}</span>
+      <Rows>
+        {groups(s.sources, s.jobs).map((g) => (
+          <SourceCard key={g.id} group={g} now={now} />
+        ))}
+        {s.track.length > 0 && (
+          <RowsCard label="Always tracked" count={count(s.track.length)}>
+            <ul class="srv-track">
+              {s.track.map((t) => (
+                <li key={t.value} class="srv-track-item">
+                  <span class="srv-track-value">{t.value}</span>
+                  <span
+                    class={`srv-track-id${trackFailed(t) ? " status-failed" : ""}`}
+                  >
+                    {trackLine(t)}
                   </span>
-                  <span class="srv-line">{jobLine(j, now)}</span>
-                  {(j.last.error !== null || failingScopes !== null) && (
-                    <span class="srv-error status-failed">
-                      {[j.last.error, failingScopes]
-                        .filter((x) => x !== null)
-                        .join(" · ")}
-                    </span>
-                  )}
                 </li>
-              );
-            })}
-          </ul>
+              ))}
+            </ul>
+          </RowsCard>
         )}
-      </Card>
-      <Card title="Tracked by flag">
-        {s.track.length === 0 ? (
-          <p class="srv-empty">None.</p>
-        ) : (
-          <ul class="srv-rows">
-            {s.track.map((t) => (
-              <li key={t.value} class="srv-row">
-                <Dot tone={trackTone(t)} />
-                <span class="srv-name">{t.value}</span>
-                <span class="srv-line">{trackLine(t)}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
+      </Rows>
     </>
   );
 }

@@ -475,7 +475,7 @@ export const paths = {
       operationId: "adminStatus",
       summary: "Server status",
       description:
-        "The version, each source's state and back-off, the jobs, the instrument counts and the database size.",
+        "The version, each source's state and back-off, the jobs, the instrument counts and the database size.\n\n- Each source and job has a `label` for people.\n- A scope is a market or an instrument a job runs for. `scopes` counts those with a run in the last 30 days, `failing_scopes` those whose latest run failed, and `failing` names up to 5 of them, newest first, with their error.",
       security: ADMIN_AUTH,
       responses: {
         200: ok("The status.", ref("Status")),

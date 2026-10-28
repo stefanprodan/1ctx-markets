@@ -37,7 +37,7 @@ is offered over MCP.
 | Route | Does |
 |---|---|
 | `GET /api/v1/admin/instruments?query=&after=&limit=` | the stored instruments by id, a page at a time (below) |
-| `GET /api/v1/admin/status` | sources on, off and why, a back-off in force, every job's last run and its failing scopes, the instrument and tracked counts, each `--track` value with its id and state (`pending`, `tracked` or the read's error code), the database size, the version |
+| `GET /api/v1/admin/status` | sources on, off and why and every job with a label for people, a back-off in force, every job's last run, its scopes (markets or instruments with a run kept) and failing scopes counted, the newest `MAX_FAILING` (5) failing named with their error, the instrument and tracked counts, each `--track` value with its id and state (`pending`, `tracked` or the read's error code), the database size, the version |
 | `POST /api/v1/admin/refetch` | `{"symbols": [...], "fetch": [...], "sections": [...]}`, answered per symbol and part |
 | `DELETE /api/v1/admin/instruments/{id}` | the instrument and every row of it |
 

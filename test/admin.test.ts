@@ -12,7 +12,13 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AdminError, runAdmin } from "../src/admin/cli.ts";
-import { INSTRUMENT_TABLES, MAX_PAGE, MAX_SYMBOLS } from "../src/admin/http.ts";
+import {
+  INSTRUMENT_TABLES,
+  jobLabel,
+  MAX_FAILING,
+  MAX_PAGE,
+  MAX_SYMBOLS,
+} from "../src/admin/http.ts";
 import { refetch } from "../src/admin/refetch.ts";
 import { iso } from "../src/market/format.ts";
 import { readInstrument, upsertInstrument } from "../src/market/instruments.ts";
@@ -225,6 +231,43 @@ describe("the admin routes' guard", () => {
       }
     }));
 
+  test("jobs read as words, an unknown one by its id", () => {
+    expect(jobLabel("yahoo", "quotes")).toBe("Live prices");
+    expect(jobLabel("yahoo", "bars")).toBe("Daily prices");
+    expect(jobLabel("fred", "bars")).toBe("Daily series");
+    expect(jobLabel("x", "new-thing")).toBe("New thing");
+  });
+
+  test("status names the newest failing scopes and counts them all", () =>
+    withApp(
+      async ({ url, admin, db }) => {
+        const insert = db.query(
+          `insert into sync_runs (source, job, scope, started_at, ended_at,
+             status, rows, error)
+           values ('yahoo', 'bars', ?1, ?2, ?2, ?3, 0, ?4)`,
+        );
+        for (let i = 0; i < 7; i++) {
+          insert.run(`US:F${i}`, NOW - i * 60_000, "failed", `error ${i}`);
+        }
+        insert.run("US:OK", NOW, "ok", null);
+        const res = await fetch(`${url}/api/v1/admin/status`, {
+          headers: { authorization: `Bearer ${admin}` },
+        });
+        const [bars] = (await res.json()).jobs;
+        expect(bars.scopes).toBe(8);
+        expect(bars.failing_scopes).toBe(7);
+        expect(bars.failing).toHaveLength(MAX_FAILING);
+        expect(bars.failing.map((f: { scope: string }) => f.scope)).toEqual([
+          "US:F0",
+          "US:F1",
+          "US:F2",
+          "US:F3",
+          "US:F4",
+        ]);
+      },
+      { start: NOW },
+    ));
+
   test("status answers its fields and never a key", () =>
     withApp(
       async ({ url, admin, bearer, db }) => {
@@ -247,17 +290,26 @@ describe("the admin routes' guard", () => {
         }
         const b = JSON.parse(text);
         expect(b.version).toBe("v0.0.0-test");
-        expect(b.sources).toEqual([
-          { name: "yahoo", state: "on", why: "always", backing_off: null },
-          { name: "fred", state: "off", why: "no key", backing_off: null },
-          { name: "finnhub", state: "on", why: "key file", backing_off: null },
-          { name: "massive", state: "off", why: "no key", backing_off: null },
-          { name: "bvb", state: "off", why: "no flag", backing_off: null },
-        ]);
+        expect(b.sources).toEqual(
+          [
+            ["yahoo", "Yahoo Finance", "on", "always"],
+            ["fred", "FRED", "off", "no key"],
+            ["finnhub", "Finnhub", "on", "key file"],
+            ["massive", "Massive", "off", "no key"],
+            ["bvb", "Bucharest Stock Exchange", "off", "no flag"],
+          ].map(([name, label, state, why]) => ({
+            name,
+            label,
+            state,
+            why,
+            backing_off: null,
+          })),
+        );
         expect(b.jobs).toEqual([
           {
             source: "finnhub",
             job: "metric",
+            label: "Key figures",
             last: {
               scope: "US:B",
               started_at: "2026-10-25T21:05:00Z",
@@ -266,11 +318,16 @@ describe("the admin routes' guard", () => {
               rows: 1,
               error: null,
             },
+            scopes: 2,
             failing_scopes: 1,
+            failing: [
+              { scope: "US:A", error: "not found", at: "2026-10-25T21:04:00Z" },
+            ],
           },
           {
             source: "yahoo",
             job: "quotes",
+            label: "Live prices",
             last: {
               scope: "US",
               started_at: "2026-10-25T21:05:00Z",
@@ -279,7 +336,16 @@ describe("the admin routes' guard", () => {
               rows: 0,
               error: "rate limited",
             },
+            // one scope, whose latest run failed
+            scopes: 1,
             failing_scopes: 1,
+            failing: [
+              {
+                scope: "US",
+                error: "rate limited",
+                at: "2026-10-25T21:05:00Z",
+              },
+            ],
           },
         ]);
         expect(b.instruments).toBe(0);

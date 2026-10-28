@@ -63,6 +63,49 @@ const bad = (message: string) => failed({ error: "bad_arguments", message });
 
 class ArgError extends Error {}
 
+// names for people, sent only to a signed-in page so the public bundle
+// names no source
+const SOURCE_LABELS: Record<string, string> = {
+  yahoo: "Yahoo Finance",
+  bvb: "Bucharest Stock Exchange",
+  fred: "FRED",
+  finnhub: "Finnhub",
+  massive: "Massive",
+};
+
+const JOB_LABELS: Record<string, string> = {
+  quotes: "Live prices",
+  bars: "Daily prices",
+  "fred/bars": "Daily series",
+  backfill: "History",
+  check: "Market hours",
+  owed: "Missing closes",
+  metric: "Key figures",
+  analysts: "Analyst ratings",
+  earnings: "Earnings",
+  insider: "Insider trades",
+  calendar: "Next earnings",
+  "market-calendar": "Earnings calendar",
+  news: "News",
+  switch: "Source change",
+};
+
+export function jobLabel(source: string, job: string): string {
+  const known = JOB_LABELS[`${source}/${job}`] ?? JOB_LABELS[job];
+  if (known !== undefined) return known;
+  const words = job.replaceAll(/[-_]/g, " ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+// a page shows a few; the count says how many more
+export const MAX_FAILING = 5;
+
+type Failed = {
+  scope: string | null;
+  error: string | null;
+  endedAt: number | null;
+};
+
 type Row = {
   source: string;
   job: string;
@@ -83,21 +126,29 @@ function jobs(db: Db) {
        from sync_runs group by source, job order by source, job`,
     )
     .all();
-  const failing = new Map(
-    db
-      .query<{ source: string; job: string; n: number }, []>(
-        `select source, job, count(*) as n from (
-           select source, job, status, max(started_at)
-           from sync_runs where status <> 'running'
-           group by source, job, scope)
-         where status = 'failed' group by source, job`,
-      )
-      .all()
-      .map((r) => [`${r.source}|${r.job}`, r.n]),
-  );
+  // each scope's latest ended run, over the runs kept
+  const scopes = new Map<string, number>();
+  const failing = new Map<string, Failed[]>();
+  for (const r of db
+    .query<Failed & { source: string; job: string; status: string }, []>(
+      `select source, job, scope, status, error,
+         ended_at as endedAt, max(started_at)
+       from sync_runs where status <> 'running'
+       group by source, job, scope
+       order by source, job, endedAt desc`,
+    )
+    .all()) {
+    const key = `${r.source}|${r.job}`;
+    scopes.set(key, (scopes.get(key) ?? 0) + 1);
+    if (r.status !== "failed") continue;
+    const list = failing.get(key) ?? [];
+    list.push(r);
+    failing.set(key, list);
+  }
   return last.map((r) => ({
     source: r.source,
     job: r.job,
+    label: jobLabel(r.source, r.job),
     last: {
       scope: r.scope,
       started_at: iso(r.startedAt),
@@ -106,8 +157,12 @@ function jobs(db: Db) {
       rows: r.rows,
       error: r.error,
     },
+    scopes: scopes.get(`${r.source}|${r.job}`) ?? 0,
     // scopes whose latest ended run failed, which read as stale
-    failing_scopes: failing.get(`${r.source}|${r.job}`) ?? 0,
+    failing_scopes: (failing.get(`${r.source}|${r.job}`) ?? []).length,
+    failing: (failing.get(`${r.source}|${r.job}`) ?? [])
+      .slice(0, MAX_FAILING)
+      .map((x) => ({ scope: x.scope, error: x.error, at: iso(x.endedAt) })),
   }));
 }
 
@@ -125,6 +180,7 @@ export function adminStatus(d: AdminDeps, url: URL): Response {
         const b = s.on ? s.backoff() : null;
         return {
           name: s.name,
+          label: SOURCE_LABELS[s.name] ?? s.name,
           state: s.on ? "on" : "off",
           why: s.why,
           backing_off:

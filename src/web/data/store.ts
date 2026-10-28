@@ -6,6 +6,7 @@ import { ApiError, client, type Fetch, failure, says } from "./api.ts";
 
 export type SourceStatus = {
   name: string;
+  label: string;
   state: "on" | "off";
   why: string;
   backing_off: { until: string | null; after: string } | null;
@@ -14,6 +15,7 @@ export type SourceStatus = {
 export type JobStatus = {
   source: string;
   job: string;
+  label: string;
   last: {
     scope: string | null;
     started_at: string | null;
@@ -22,7 +24,9 @@ export type JobStatus = {
     rows: number;
     error: string | null;
   };
+  scopes: number;
   failing_scopes: number;
+  failing: { scope: string | null; error: string | null; at: string | null }[];
 };
 
 export type TrackStatus = { value: string; id: string | null; state: string };

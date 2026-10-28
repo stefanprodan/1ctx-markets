@@ -28,10 +28,14 @@ import {
   ago,
   bytes,
   clockTime,
+  failures,
+  groupName,
+  groups,
   jobLine,
   jobTone,
-  sourceLine,
-  sourceTone,
+  jobWhen,
+  sourceState,
+  trackFailed,
   trackLine,
   until,
 } from "../src/web/views/Status.model.ts";
@@ -42,19 +46,33 @@ const NOW = Date.parse("2026-10-28T12:00:00Z");
 const STATUS: Status = {
   version: "v1.2.3",
   sources: [
-    { name: "yahoo", state: "on", why: "always", backing_off: null },
+    {
+      name: "yahoo",
+      label: "Casey Prices",
+      state: "on",
+      why: "always",
+      backing_off: null,
+    },
     {
       name: "finnhub",
+      label: "Casey Research",
       state: "on",
       why: "key file",
       backing_off: { until: "2026-10-28T12:05:00Z", after: "rate limited" },
     },
-    { name: "massive", state: "off", why: "no key", backing_off: null },
+    {
+      name: "massive",
+      label: "Casey News",
+      state: "off",
+      why: "no key",
+      backing_off: null,
+    },
   ],
   jobs: [
     {
       source: "yahoo",
       job: "quotes",
+      label: "Live prices",
       last: {
         scope: "US",
         started_at: "2026-10-28T11:57:00Z",
@@ -63,11 +81,14 @@ const STATUS: Status = {
         rows: 1234,
         error: null,
       },
+      scopes: 19,
       failing_scopes: 0,
+      failing: [],
     },
     {
       source: "bvb",
       job: "bars",
+      label: "Daily prices",
       last: {
         scope: "BVB:TLV",
         started_at: "2026-10-28T09:00:00Z",
@@ -76,7 +97,28 @@ const STATUS: Status = {
         rows: 0,
         error: "the feed answered no bars",
       },
-      failing_scopes: 2,
+      scopes: 14,
+      failing_scopes: 7,
+      failing: [
+        { scope: "BVB:TLV", error: "no bars", at: "2026-10-28T09:00:01Z" },
+        { scope: "BVB:SNP", error: "timeout", at: "2026-10-28T08:00:01Z" },
+      ],
+    },
+    {
+      source: "sources",
+      job: "switch",
+      label: "Source change",
+      last: {
+        scope: "BVB",
+        started_at: "2026-10-26T09:00:00Z",
+        ended_at: "2026-10-26T09:00:01Z",
+        status: "ok",
+        rows: 0,
+        error: null,
+      },
+      scopes: 1,
+      failing_scopes: 0,
+      failing: [],
     },
   ],
   instruments: 78,
@@ -371,39 +413,63 @@ describe("the status model", () => {
     // a back-off already past never reads as a negative wait
     expect(until("2026-10-28T11:58:00Z", NOW)).toBe("for now");
     const [yahoo, finnhub, massive] = STATUS.sources;
-    expect(sourceLine(yahoo!, NOW)).toBe("on: always");
-    expect(sourceLine(finnhub!, NOW)).toBe(
-      "backing off for 5 min after rate limited",
+    expect(sourceState(yahoo!, NOW)).toBe("On");
+    expect(sourceState(finnhub!, NOW)).toBe(
+      "Backing off for 5 min · rate limited",
     );
-    expect(sourceLine(massive!, NOW)).toBe("off: no key");
-    expect(STATUS.sources.map(sourceTone)).toEqual([
-      "done",
-      "failed",
-      "stopped",
+    expect(sourceState(massive!, NOW)).toBe("Off · no key");
+    const [quotes, bars, sw] = STATUS.jobs;
+    expect(jobLine(quotes!)).toBe("19 markets · all ok");
+    expect(jobLine(bars!)).toBe("14 instruments · 7 failing");
+    expect(jobLine({ ...sw!, scopes: 1 })).toBe("1 market · ok");
+    expect(jobLine({ ...quotes!, scopes: 0 })).toBe("");
+    expect(jobWhen(quotes!, NOW)).toBe("2 min ago");
+    // the time never repeats how the run went
+    expect(jobWhen(bars!, NOW)).toBe("2 h ago");
+    expect(failures(bars!)).toEqual([
+      "BVB:TLV: no bars",
+      "BVB:SNP: timeout",
+      "5 more failing",
     ]);
-    const [quotes, bars] = STATUS.jobs;
-    expect(jobLine(quotes!, NOW)).toBe("ok 2 min ago · US · 1,234 rows");
-    expect(
-      jobLine({ ...quotes!, last: { ...quotes!.last, rows: 1 } }, NOW),
-    ).toBe("ok 2 min ago · US · 1 row");
+    // a failed run whose scope the server did not name still says why
+    expect(failures({ ...bars!, failing: [], failing_scopes: 0 })).toEqual([
+      "BVB:TLV: the feed answered no bars",
+    ]);
     expect(jobTone(quotes!)).toBe("done");
     expect(jobTone(bars!)).toBe("failed");
     // a good last run still reads failing while another scope failed
     expect(jobTone({ ...quotes!, failing_scopes: 1 })).toBe("failed");
-    const running = {
+    const g = groups(STATUS.sources, STATUS.jobs);
+    expect(g.map(groupName)).toEqual([
+      "Casey Prices",
+      "Casey Research",
+      "Casey News",
+      "bvb",
+      "Server",
+    ]);
+    expect(STATUS.track.map(trackLine)).toEqual(["SNP:^GSPC", "not found"]);
+    expect(STATUS.track.map(trackFailed)).toEqual([false, true]);
+  });
+
+  test("a source's failing jobs come first", () => {
+    const [quotes] = STATUS.jobs;
+    const failing = {
       ...quotes!,
-      last: { ...quotes!.last, status: "running" as const, ended_at: null },
+      job: "bars",
+      label: "Daily prices",
+      failing_scopes: 1,
+      failing: [{ scope: "US:A", error: "x", at: null }],
     };
-    expect(jobLine(running, NOW)).toBe("running since 3 min ago · US");
-    expect(STATUS.track.map(trackLine)).toEqual([
-      "tracked as SNP:^GSPC",
-      "not found",
+    const [yahoo] = groups(STATUS.sources, [quotes!, failing]);
+    expect(yahoo!.jobs.map((j) => j.label)).toEqual([
+      "Daily prices",
+      "Live prices",
     ]);
   });
 });
 
 describe("the views", () => {
-  test("status draws every source, job and --track value from its answer", () => {
+  test("status draws a card per source with its jobs and the tracked values", () => {
     const html = render(<StatusBody status={STATUS} now={NOW} />);
     for (const words of [
       "78",
@@ -413,24 +479,31 @@ describe("the views", () => {
       "1 failing",
       "62 MB",
       "v1.2.3",
-      "backing off for 5 min after rate limited",
-      "off: no key",
-      "the feed answered no bars · 2 scopes failing",
-      "BVB:TLV",
-      "tracked as SNP:^GSPC",
+      "Casey Prices",
+      "Backing off for 5 min · rate limited",
+      "Off · no key",
+      "Live prices",
+      "19 markets · all ok",
+      "14 instruments · 7 failing",
+      "BVB:TLV: no bars",
+      "5 more failing",
+      "Server",
+      "Always tracked",
+      "SNP:^GSPC",
       "not found",
     ]) {
       expect([words, html.includes(words)]).toEqual([words, true]);
     }
-    expect(html).toContain('class="srv-dot status-failed"');
+    expect(html).toContain('class="srv-mark status-failed"');
+    expect(html).not.toContain("rows-meta-bad");
   });
 
-  test("status says so when nothing has run and no --track is set", () => {
+  test("status draws a source with no runs and no tracked values", () => {
     const html = render(
       <StatusBody status={{ ...STATUS, jobs: [], track: [] }} now={NOW} />,
     );
-    expect(html).toContain("No runs yet.");
-    expect(html).toContain("None.");
+    expect(html).toContain("No runs yet");
+    expect(html).not.toContain("Always tracked");
   });
 
   test("sign-in asks for the admin key alone", () => {
