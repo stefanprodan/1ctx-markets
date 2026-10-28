@@ -291,6 +291,29 @@ describe("the data layer", () => {
     expect(s.status.value?.version).toBe("v3");
   });
 
+  test("an old 401 after a sign-in never signs out", async () => {
+    const releases: (() => void)[] = [];
+    let n = 0;
+    const s = store(async (_path, init) => {
+      if (init?.method === "POST") return new Response(null, { status: 204 });
+      const mine = ++n;
+      await new Promise<void>((r) => releases.push(r));
+      return mine === 1
+        ? Response.json({ error: "unauthorized" }, { status: 401 })
+        : Response.json(STATUS);
+    });
+    const before = s.loadStatus();
+    const signing = s.signIn("right");
+    while (releases.length < 2) await Bun.sleep(0);
+    releases[1]!();
+    await signing;
+    expect(s.signedIn.value).toBe(true);
+    releases[0]!();
+    await before;
+    expect(s.signedIn.value).toBe(true);
+    expect(s.status.value).toEqual(STATUS);
+  });
+
   test("an older status answer never lands over a newer one", async () => {
     const releases: (() => void)[] = [];
     let n = 0;

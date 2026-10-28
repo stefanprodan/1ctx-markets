@@ -60,17 +60,17 @@ const kib = (bytes: number) => `${bytes / 1024} KiB`;
 
 export const responses = {
   BadArguments: error(
-    "An unknown, repeated or out-of-range argument (`bad_arguments`, `mixed_units`, `no_event_source`, `no_event`).",
+    "A bad argument: unknown, repeated or out of range (`bad_arguments`), units that do not mix (`mixed_units`), no earnings source (`no_event_source`) or no event (`no_event`). The message says which.",
   ),
   Unauthorized: error("Missing or wrong key."),
   NotFound: error(
-    "No such route, rule or instrument, or a symbol that did not resolve to one (`not_found`, `candidates`, `no_data`, `refused`).",
+    "No such route, rule or instrument (`not_found`); a name with several listings (`candidates`, with ids to pick from); a symbol whose source is off (`no_data`) or refused (`refused`).",
   ),
   Conflict: error(
     "The rule or instrument refuses it in its current state (`conflict`, `split_paused`).",
   ),
   Forbidden: error(
-    "A write with the session cookie not sent from this server's own pages.",
+    "A request other than GET with the session cookie, not sent from this server's own pages.",
   ),
   TooLarge: error(
     `A body over ${kib(MAX_BODY_BYTES)} (${kib(ADMIN_BODY_BYTES)} on \`/admin\` routes). Over 1 MiB the answer is an empty body and the connection closes.`,
@@ -116,7 +116,7 @@ const csv = (
 });
 
 const FORMS =
-  "a stored id (`US:NVDA`), a Yahoo symbol (`VVSM.DE`, `^VIX`), `FRED:<series id>` or a name";
+  "a stored id (`US:NVDA`), an exchange symbol (`VVSM.DE`, `^VIX`), `FRED:<series id>` or a name";
 
 const SYMBOL = `${FORMS[0].toUpperCase()}${FORMS.slice(1)}. At most ${MAX_SYMBOL} characters.`;
 
@@ -126,9 +126,9 @@ const symbols = (max: number, extra = "") =>
 const UNSEEN =
   "- A symbol not seen before is fetched within the call. A name that matches several listings answers `candidates` to pick an id from.";
 
-const DEADLINE = `- The call has a ${DEADLINE_S}-second deadline. A symbol not done by then answers \`timeout\`. Ask again.`;
+const DEADLINE = `- The call has a ${DEADLINE_S}-second deadline. A symbol not done by then answers \`timeout\`. Retry later.`;
 
-const READ = `- Each symbol answered counts as a read and is kept up to date for ${TRACK_DAYS} days by default.`;
+const READ = `- Each symbol answered counts as a read and is kept up to date for ${TRACK_DAYS} days after its last read, by default.`;
 
 const STALE =
   "- `stale` lists why a value may be out of date. An empty list means current.";
@@ -186,10 +186,10 @@ export const paths = {
         "One symbol's daily or weekly bars, oldest first, with SMA 50 and SMA 200.",
         "",
         "- Up to ten years of history.",
-        "- The latest session's bar is the live quote. `final` stays false until the next session starts.",
+        "- The latest session's bar is the live quote. `final` stays false until the source reports a later session.",
         "- Prices are split-adjusted, without dividends or currency conversion.",
         "- `session` is the market's last regular session.",
-        "- A range of final bars ending before today, without `benchmark`, may be cached for an hour.",
+        "- A range with `to` before today and only final bars, without `benchmark`, may be cached for an hour.",
         STALE,
         UNSEEN,
         DEADLINE,
@@ -244,7 +244,7 @@ export const paths = {
       security: READ_AUTH,
       summary: "Research and news",
       description: lines(
-        "For each US share: its quote, a research summary and recent news.",
+        "For each symbol: its quote, and for a US share a research summary and recent news. US ETFs get news only.",
         "",
         "- The summary holds metrics, analysts, earnings and insider sentiment with their newest rows, and the next earnings event.",
         `- News gives counts by sentiment and the ${WEEK_ITEMS} articles that take a side first.`,
@@ -300,7 +300,7 @@ export const paths = {
       security: READ_AUTH,
       summary: "Today's movers",
       description: lines(
-        "The symbols that moved at least `min_move_pct` today, or sit above, below or across an average. Largest absolute change first, then `unavailable` and errors.",
+        "The symbols that moved at least `min_move_pct` today, or stand above, below or across an average. With both given, both must hold. Largest absolute change first, then `unavailable` and errors.",
         "",
         "- Give `min_move_pct`, `average` with `relation`, or both.",
         "- The move is the live change from the previous close.",
@@ -424,7 +424,7 @@ export const paths = {
       tags: ["rules"],
       operationId: "deleteRule",
       summary: "Delete a rule",
-      description: `Its alerts are kept until they are ${ALERTS_KEPT_DAYS} days old.`,
+      description: `Deletes the rule. Its alerts are kept until they are ${ALERTS_KEPT_DAYS} days old.`,
       responses: reads({
         204: { description: "Deleted." },
         404: r("NotFound"),
@@ -438,7 +438,7 @@ export const paths = {
       security: READ_AUTH,
       summary: "Alerts feed",
       description: lines(
-        "The alerts fired after the last poll, oldest first. Meant to be polled on a schedule.",
+        "The alerts after the `If-None-Match` cursor, oldest first, or all kept alerts without one. Meant to be polled on a schedule.",
         "",
         '- Send the last `ETag` (`W/"alerts-<id>"`) back as `If-None-Match` to get only newer alerts.',
         `- A page stays under ${kib(ALERT_PAGE_BYTES)}. \`more\` is true when more alerts wait for the next poll.`,
@@ -574,7 +574,7 @@ export const paths = {
       responses: {
         200: {
           description: "The OpenAPI 3.1 document.",
-          content: content(freeForm("the OpenAPI 3.1 specification")),
+          content: content(freeForm),
         },
         400: r("BadArguments"),
       },

@@ -215,8 +215,9 @@ answer; 1ctx (an agent workspace whose scheduled tasks poll it) is one.
   movers and screen items are `oneOf` a result with its fields
   required, `Unavailable` where the tool has it, and `ItemError`, each
   closed to other fields, so an item with only `input` fails.
-- **A free-form object names the doc that gives its fields** (a rule's
-  condition, a job row, an event) rather than a second copy here.
+- **A free-form object is left open** (a rule's condition, a job row,
+  an event): its fields are in the docs here, which a Swagger reader
+  cannot open, so the spec names none of them.
 - **`test/api.test.ts` holds the spec to the code**: every routed
   method and path is an operation and every operation is routed; every
   schema keeps to the subset; one call per operation for its success

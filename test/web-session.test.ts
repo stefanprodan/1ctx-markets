@@ -272,20 +272,18 @@ describe("what the cookie opens", () => {
     // past both checks, the route answers the unknown symbol as its item
     const passed = async (headers: Record<string, string>) => {
       const res = await screen(headers);
-      const body = (await res.json()) as { items: { error: string }[] };
-      return [res.status, body.items[0]?.error];
+      const body = (await res.json()) as {
+        items: { input: string; error?: string }[];
+      };
+      const item = body.items[0]!;
+      return [res.status, item.input, typeof item.error];
     };
-    expect(await passed({ "sec-fetch-site": "same-origin" })).toEqual([
-      200,
-      "source_error",
-    ]);
+    const answered = [200, "US:NOPE", "string"];
+    expect(await passed({ "sec-fetch-site": "same-origin" })).toEqual(answered);
     expect((await screen({ "sec-fetch-site": "cross-site" })).status).toBe(403);
     // without Sec-Fetch-Site the Origin decides
     expect((await screen({})).status).toBe(403);
-    expect(await passed({ origin: "http://127.0.0.1:1" })).toEqual([
-      200,
-      "source_error",
-    ]);
+    expect(await passed({ origin: "http://127.0.0.1:1" })).toEqual(answered);
     expect((await screen({ origin: "http://x.test" })).status).toBe(403);
     const bare = await t.at(`${PREFIX}/screen`, {
       method: "POST",
@@ -463,10 +461,24 @@ describe("the served UI", () => {
         await read("/api/v1/admin/instruments");
         const ui = seen.length;
         await read("/api/v1/openapi.json");
+        const spec = seen.at(-1)!;
+        // a flag reads as one wherever a word may start
+        expect(spec.match(/(^|[\s(`])--[a-z][\w-]*/g)).toBeNull();
         await read("/api/v1/docs");
-        // the UI's bundle reads event.key, so a key file is looked for here
+        // the bundles read event.key, so a key file is looked for here
         const docs = seen.slice(ui).join("\n");
         expect(docs.includes(".key")).toBe(false);
+        const docsPage = seen.at(-1)!;
+        const files = [
+          ...docsPage.matchAll(/(?:src|href)="(\/api\/v1\/docs\/[^"]+)"/g),
+        ];
+        expect(files.length).toBe(3);
+        let ours = seen.join("\n");
+        for (const file of files) {
+          await read(file[1]!);
+          // Swagger UI's own files are checked for secrets, not for words
+          if (file[1]!.includes("/init.js")) ours += `\n${seen.at(-1)}`;
+        }
         expect(seen.length).toBeGreaterThan(20);
         const all = seen.join("\n");
         for (const secret of [
@@ -476,16 +488,16 @@ describe("the served UI", () => {
           "bearer.key",
           "v0.0.0-test",
           "/Users/",
-          "sourceMappingURL",
           "--track",
+
           "--source",
         ]) {
           expect([secret, all.includes(secret)]).toEqual([secret, false]);
         }
-        // the spec names these two only as symbol syntax
-        const named = all
-          .replaceAll("a Yahoo symbol (`VVSM.DE`, `^VIX`)", "")
-          .replaceAll("`FRED:<series id>`", "");
+        // Swagger UI's bundle names its own map, never one of this server
+        expect(ours.includes("sourceMappingURL")).toBe(false);
+        // the spec names FRED only as symbol syntax
+        const named = ours.replaceAll("`FRED:<series id>`", "");
         for (const name of [
           "yahoo",
           "fred",

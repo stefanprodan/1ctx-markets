@@ -57,6 +57,9 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
       statusError.value = null;
     });
   const call = client(fetchFn, signedOut);
+  // a superseded load's 401 must not sign out a newer sign-in, so the
+  // status load signs out itself, only while it is the latest
+  const quiet = client(fetchFn, () => {});
   // a later load supersedes one in flight, and a superseded one answers
   // with the latest's outcome, so a sign-in never reads a stale result
   let latest = 0;
@@ -70,7 +73,7 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
   async function load(mine: number): Promise<boolean> {
     loading.value = true;
     try {
-      const s = await call<Status>(STATUS_PATH);
+      const s = await quiet<Status>(STATUS_PATH);
       if (mine !== latest) return current;
       batch(() => {
         signedIn.value = true;
@@ -81,9 +84,8 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
       return true;
     } catch (error) {
       if (mine !== latest) return current;
-      if (!(error instanceof ApiError && error.status === 401)) {
-        statusError.value = says(error);
-      }
+      if (error instanceof ApiError && error.status === 401) signedOut();
+      else statusError.value = says(error);
       return false;
     } finally {
       if (mine === latest) loading.value = false;

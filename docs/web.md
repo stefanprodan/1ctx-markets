@@ -133,6 +133,7 @@ signed in with the admin key alone.
   cookie's attributes, the identical refusals, what the cookie opens,
   the `Origin` check, the page and its assets served, and what an
   anonymous visitor reads, the API spec and docs page included: no
-  key file, flag, build version or source name, but Yahoo and FRED
-  in symbol syntax. `scripts/smoke.sh` checks the binary serves
+  key file, flag, build version or source name, but FRED in symbol
+  syntax. Swagger UI's own files are checked for secrets only, since
+  its bundle names Yahoo among web domains and carries a source map. `scripts/smoke.sh` checks the binary serves
   the page, its assets and the sign-in.

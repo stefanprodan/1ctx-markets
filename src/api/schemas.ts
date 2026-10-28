@@ -42,15 +42,8 @@ export const num: Schema = { type: "number" };
 const nnum: Schema = { type: ["number", "null"] };
 export const int: Schema = { type: "integer" };
 export const bool: Schema = { type: "boolean" };
-// an object whose fields a doc gives, not this spec
-export const freeForm = (doc: string): Schema => ({
-  type: "object",
-  description: `Fields: see ${doc}.`,
-});
-const described = (s: Schema, doc: string): Schema => ({
-  ...s,
-  description: `More fields: see ${doc}.`,
-});
+// an object whose fields this spec leaves open
+export const freeForm: Schema = { type: "object" };
 export const list = (items: Schema): Schema => ({ type: "array", items });
 export const values = (allowed: readonly (string | number)[]): Schema => ({
   type: typeof allowed[0] === "number" ? "integer" : "string",
@@ -76,11 +69,6 @@ const note = (s: Schema, description: string): Schema => ({
 });
 
 export const DEADLINE_S = CALL_MS / 1000;
-
-const TOOLS = "`docs/tools.md`";
-const RESEARCH = "`docs/research.md`";
-const RULES = "`docs/rules.md`";
-const ADMIN = "`docs/admin.md`";
 
 const itemError = object(
   {
@@ -139,21 +127,18 @@ const brief = {
 const briefRequired = Object.keys(brief).filter((k) => k !== "observation");
 
 // a $ref takes no null beside it, so an alert that may be null is inline
-const alert = described(
-  object(
-    {
-      id: int,
-      rule_id: int,
-      fired_at: str,
-      truncated: note(
-        bool,
-        "Too large for a page: only the id, rule and time are kept.",
-      ),
-    },
-    ["id", "rule_id", "fired_at"],
-    true,
-  ),
-  RULES,
+const alert = object(
+  {
+    id: int,
+    rule_id: int,
+    fired_at: str,
+    truncated: note(
+      bool,
+      "Too large for a page: only the id, rule and time are kept.",
+    ),
+  },
+  ["id", "rule_id", "fired_at"],
+  true,
 );
 
 const unavailable = object(
@@ -171,10 +156,7 @@ const unavailable = object(
 const oneOf = (...names: string[]): Schema => ({ oneOf: names.map(ref) });
 
 export const schemas: Record<string, Schema> = {
-  Error: described(
-    object({ error: str, message: str }, ["error", "message"], true),
-    "docs/api.md",
-  ),
+  Error: object({ error: str, message: str }, ["error", "message"], true),
   Candidate: object({
     id: str,
     name: nstr,
@@ -205,7 +187,7 @@ export const schemas: Record<string, Schema> = {
   Bar: object({
     date: str,
     close: nnum,
-    final: note(bool, "False until the next session starts."),
+    final: note(bool, "False until the source reports a later session."),
     sma50: nnum,
     sma200: nnum,
   }),
@@ -236,10 +218,7 @@ export const schemas: Record<string, Schema> = {
         "The last regular session, in UTC. Crypto is always open with null times. Null for a `FRED:<series id>` symbol.",
       ),
       interval: values(["1d", "1wk"]),
-      relative: described(
-        object({ benchmark: freeForm(TOOLS) }, ["benchmark"], true),
-        TOOLS,
-      ),
+      relative: object({ benchmark: freeForm }, ["benchmark"], true),
       bars: list(ref("Bar")),
     },
     [
@@ -293,8 +272,8 @@ export const schemas: Record<string, Schema> = {
   ResearchResult: object(
     {
       ...brief,
-      research: described(object({ source: str }, ["source"], true), RESEARCH),
-      news: described(object({ source: str }, ["source"], true), RESEARCH),
+      research: object({ source: str }, ["source"], true),
+      news: object({ source: str }, ["source"], true),
     },
     briefRequired,
   ),
@@ -309,27 +288,21 @@ export const schemas: Record<string, Schema> = {
       source: str,
       message: str,
       unavailable: list(
-        described(
-          object({ input: str, message: str }, ["input", "message"], true),
-          RESEARCH,
-        ),
+        object({ input: str, message: str }, ["input", "message"], true),
       ),
       no_event: list(
         object(
           {
             input: str,
             id: str,
-            last: nullable(freeForm(RESEARCH)),
-            next: nullable(freeForm(RESEARCH)),
+            last: nullable(freeForm),
+            next: nullable(freeForm),
           },
           ["input", "id"],
         ),
       ),
       events: list(
-        described(
-          object({ id: str, date: str, status: str }, ["id", "date"], true),
-          RESEARCH,
-        ),
+        object({ id: str, date: str, status: str }, ["id", "date"], true),
       ),
     },
     ["from", "to", "events"],
@@ -355,7 +328,7 @@ export const schemas: Record<string, Schema> = {
       change_percent: nnum,
       trade_time: nstr,
       fetched_at: nstr,
-      average: freeForm(TOOLS),
+      average: freeForm,
     },
     [
       "input",
@@ -428,7 +401,7 @@ export const schemas: Record<string, Schema> = {
   ),
   Screen: object(
     {
-      benchmark: freeForm(TOOLS),
+      benchmark: freeForm,
       sort: object({ field: str, order: values(["asc", "desc"]) }),
       attribution: str,
       counts: ref("Counts"),
@@ -461,7 +434,7 @@ export const schemas: Record<string, Schema> = {
     {
       id: int,
       symbol: str,
-      condition: freeForm(RULES),
+      condition: freeForm,
       note: nstr,
       paused: {
         type: ["string", "null"],
@@ -473,7 +446,7 @@ export const schemas: Record<string, Schema> = {
       created_at: str,
       last_result: nstr,
       last_evaluated_at: nstr,
-      after_earnings: freeForm(RULES),
+      after_earnings: freeForm,
     },
     [
       "id",
@@ -488,19 +461,16 @@ export const schemas: Record<string, Schema> = {
     ],
   ),
   Rules: object({ rules: list(ref("Rule")) }),
-  RuleArgs: object({ symbol: str, condition: freeForm(RULES), note: nstr }, [
+  RuleArgs: object({ symbol: str, condition: freeForm, note: nstr }, [
     "symbol",
     "condition",
   ]),
   Created: object({
     rule: ref("Rule"),
-    evaluation: described(
-      object(
-        { result: str, values: list(freeForm(RULES)), reasons: list(str) },
-        ["result", "reasons"],
-        true,
-      ),
-      RULES,
+    evaluation: object(
+      { result: str, values: list(freeForm), reasons: list(str) },
+      ["result", "reasons"],
+      true,
     ),
     alert: nullable(alert),
   }),
@@ -532,7 +502,7 @@ export const schemas: Record<string, Schema> = {
         backing_off: nullable(object({ until: nstr, after: str })),
       }),
     ),
-    jobs: list(freeForm(ADMIN)),
+    jobs: list(freeForm),
     instruments: int,
     tracked: int,
     track: list(
@@ -576,7 +546,7 @@ export const schemas: Record<string, Schema> = {
     ["symbols", "fetch"],
   ),
   Refetched: object({
-    results: list(described(object({ symbol: str }, ["symbol"], true), ADMIN)),
+    results: list(object({ symbol: str }, ["symbol"], true)),
   }),
   Deleted: object({
     deleted: str,

@@ -15,8 +15,8 @@ export const spec = {
     license: { name: "Apache-2.0" },
     description: `Market data and price rules, the same answers as the MCP tools.
 
-- Reads take the bearer key, \`/admin\` routes the admin key.
-- Results are not paged, except the admin instrument list.
+- Market data and rules routes take the read key, \`/admin\` routes the admin key.
+- Results are not paged, except the admin instrument list and the alerts feed.
 - Errors are \`{"error": code, "message": text}\`.`,
   },
   servers: [{ url: "/api/v1" }],
@@ -24,7 +24,11 @@ export const spec = {
   tags: [
     { name: "market data", description: "Quotes, bars, research and screens." },
     { name: "rules", description: "Price rules and their alerts." },
-    { name: "admin", description: "Operator routes, admin key only." },
+    {
+      name: "admin",
+      description:
+        "Operator routes, for the admin key or the web UI's sign-in.",
+    },
     { name: "docs", description: "This page and its OpenAPI document." },
   ],
   paths,
