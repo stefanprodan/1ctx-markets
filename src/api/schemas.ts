@@ -286,6 +286,10 @@ export const schemas: Record<string, Schema> = {
       list(object({ session: str, fetched_at: str })),
       "Each session's newest answer.",
     ),
+    previous_close: note(
+      nullable(num),
+      "What a move is measured from: the quote's previous close when the range starts at the newest session, else the last daily close before the first session.",
+    ),
     points: list(ref("Point")),
   }),
   HistoryAnswer: oneOf("History", "Intraday"),

@@ -43,6 +43,7 @@ export type Intraday = {
   unit: string;
   interval: "5m";
   session: { state: "open" | "closed" } | null;
+  previous_close: number | null;
   points: Point[];
 };
 
@@ -297,7 +298,7 @@ export function pointLegendOf(
       ? h.points.at(-1)
       : h.points.find((p) => Date.parse(p.at) / 1000 === time);
   if (point === undefined) return null;
-  const first = h.points[0]?.close ?? null;
+  const first = h.previous_close ?? h.points[0]?.close ?? null;
   const points = h.unit === "percent";
   const local = localTime(Date.parse(point.at) / 1000, zone);
   return {

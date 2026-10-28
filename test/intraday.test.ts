@@ -313,6 +313,26 @@ describe("history with interval 5m", () => {
     expect(friday.body.points.every((p: any) => p.final)).toBe(true);
   });
 
+  test("measures from the quote's previous close for the newest session, else the daily close before the first", async () => {
+    const t = setup(Date.parse("2026-10-25T21:04:01Z"));
+    await pass(t, "spark-v7-batch");
+    await pass(t, "spark-v7-batch-live-1430");
+    const quoted = t.db
+      .query<{ p: number }, []>(
+        "select previous_close as p from quotes where instrument = 'XETRA:VVSM'",
+      )
+      .get()!.p;
+    const today = await history(t.m, { symbol: "XETRA:VVSM", interval: "5m" });
+    expect(today.body.previous_close).toBe(quoted);
+    const both = await history(t.m, {
+      symbol: "XETRA:VVSM",
+      interval: "5m",
+      from: "2026-10-20",
+    });
+    // the bar the world helper stores on 2026-10-01
+    expect(both.body.previous_close).toBe(1);
+  });
+
   test("a closed session's newest point is final; crypto's newest never is", async () => {
     const t = setup(Date.parse("2026-10-27T21:22:55Z"));
     await pass(t, "spark-v7-extended-post-2122");

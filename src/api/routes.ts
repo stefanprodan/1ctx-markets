@@ -143,6 +143,7 @@ async function intraday(
       session: s.session,
       fetched_at: iso(s.fetchedAt),
     })),
+    previous_close: price(read.previousClose),
     points: read.points.map((p) => ({
       at: iso(p.at),
       session: p.session,

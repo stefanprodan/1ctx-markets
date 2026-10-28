@@ -1317,6 +1317,7 @@ describe("the chart model", () => {
       unit: "per_unit",
       interval: "5m",
       session: { state: "open" },
+      previous_close: null,
       points,
     };
     const line = pointLine(h.points);
@@ -1340,6 +1341,10 @@ describe("the chart model", () => {
       open: null,
       sma50: null,
     });
+    // a day's move is from the previous close, as the quote's change is
+    expect(
+      pointLegendOf({ ...h, previous_close: 125 }, null, zone)!.change,
+    ).toBeCloseTo(4);
     // the crosshair's time is the point's own
     const low = pointLegendOf(h, line[15]!.time, zone)!;
     expect(low).toMatchObject({ time: "03:15", close: 90, live: false });

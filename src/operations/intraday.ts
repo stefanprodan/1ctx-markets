@@ -58,9 +58,37 @@ export type IntradayRead =
       to: string;
       points: IntradayPoint[];
       sessions: { session: string; fetchedAt: number }[];
+      previousClose: number | null;
       session: ReturnType<typeof sessionOf>;
       stale: StaleReason[];
     };
+
+// the newest session takes the quote's previous close, so its move is the
+// quote's change; Yahoo's FX previous close is not the prior daily bar's
+function previousClose(
+  db: Db,
+  id: string,
+  first: string,
+  newest: string | null,
+): number | null {
+  if (first === newest) {
+    const q = db
+      .query<{ close: number | null }, [string]>(
+        "select previous_close as close from quotes where instrument = ?",
+      )
+      .get(id);
+    if (q?.close != null) return q.close;
+  }
+  return (
+    db
+      .query<{ close: number }, [string, string]>(
+        `select close from bars
+         where instrument = ? and interval = '1d' and date < ?
+         order by date desc limit 1`,
+      )
+      .get(id, first)?.close ?? null
+  );
+}
 
 const noData = (input: string, message: string): IntradayRead => ({
   input,
@@ -115,12 +143,19 @@ export async function readIntradayHistory(
   }
   const now = m.clock.now();
   const moving = movingAt(db, instrument, now);
+  const sessions = intradaySessions(db, instrument.id, from, to);
   return {
     instrument,
     from,
     to,
     points: stored.map((p) => ({ ...p, final: p.at !== moving })),
-    sessions: intradaySessions(db, instrument.id, from, to),
+    sessions,
+    previousClose: previousClose(
+      db,
+      instrument.id,
+      sessions[0]?.session ?? from,
+      newest,
+    ),
     session: sessionOf(m, instrument, now),
     stale: readLatest(db, instrument, now, m.quoteEveryMs).stale,
   };
@@ -167,6 +202,7 @@ export async function intradayAnswer(
         session: s.session,
         fetched_at: iso(s.fetchedAt),
       })),
+      previous_close: price(read.previousClose),
       stale: read.stale,
       next:
         count < points.length
