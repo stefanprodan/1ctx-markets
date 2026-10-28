@@ -156,12 +156,15 @@ export function upsertEvents(
        reported_seen_at = coalesce(events.reported_seen_at,
          excluded.reported_seen_at),
        listing = excluded.listing,
-       fetched_at = excluded.fetched_at`,
+       fetched_at = excluded.fetched_at
+     where excluded.fetched_at >= events.fetched_at`,
   );
   const reported: EventKey[] = [];
   for (const e of events) {
     const was = before.get(instrument, e.fiscalYear, e.fiscalQuarter);
-    upsert.run(
+    // the research pass and the market calendar fetch apart and write in
+    // either order; an answer older than the stored one is not newer news
+    const { changes } = upsert.run(
       instrument,
       e.fiscalYear,
       e.fiscalQuarter,
@@ -175,6 +178,7 @@ export function upsertEvents(
       e.reported ? 1 : 0,
       listing,
     );
+    if (changes === 0) continue;
     if (e.reported && (was === null || was.seen === null)) {
       reported.push({
         instrument,

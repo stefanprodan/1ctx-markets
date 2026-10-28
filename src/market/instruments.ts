@@ -83,6 +83,14 @@ export function checkSource(
   }
 }
 
+// research is keyed to the instrument, not its source; a fetch that outlived
+// an admin delete would leave runs that make the key, added again, look fetched
+export function checkStored(db: Db, id: string): void {
+  if (readInstrument(db, id) === null) {
+    throw new SourceError("source error", `${id} was deleted`);
+  }
+}
+
 // a key stored from another source is the switch's to move, never a fetch's
 export function checkOwner(db: Db, id: string, source: string): void {
   const stored = readInstrument(db, id);

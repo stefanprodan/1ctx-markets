@@ -1,7 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { Instrument } from "../../market/instruments.ts";
+import { checkStored, type Instrument } from "../../market/instruments.ts";
 import { addDays, dateOfWall } from "../../market/zone.ts";
 import type { Clock } from "../../runtime/clock.ts";
 import { exclusive } from "../../runtime/lock.ts";
@@ -149,6 +149,7 @@ export async function refreshResearch(
   function store(outcomes: readonly Outcome[]): Promise<SectionResult[]> {
     return ctx.writer.write((db) => {
       if (!live()) throw new DeadlinePassed();
+      checkStored(db, instrument.id);
       const now = ctx.clock.now();
       return outcomes.map((o): SectionResult => {
         if ("error" in o) {

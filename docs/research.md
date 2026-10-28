@@ -160,6 +160,9 @@ route's transport in `docs/api.md`; rules that wait on events in
   Yesterday too, since many reporters have no actuals a day later. Its
   run is `market-calendar` scoped to `US` (`MARKET_CALENDAR`), never an
   instrument.
+- **An event row keeps the newest answer** (`upsertEvents`): a share's
+  research pass and the whole-market calendar fetch apart and write in
+  either order, so an answer fetched before the stored one is skipped.
 - **The whole-market answer only updates events already stored** of
   tracked shares' own listing, matched by `finnhubSymbol`, fiscal year
   and quarter, through the write a share's calendar uses, so a first
