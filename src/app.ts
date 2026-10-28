@@ -349,6 +349,10 @@ export function start(options: AppOptions): App {
       await settled;
       await switcher.settled();
       await track.settled();
+      // a fetch past its caller's deadline still runs: no answer after close
+      await Promise.allSettled(
+        [...reads.inflight.values()].map((f) => f.promise),
+      );
       await mcp.close();
       await write.close();
     },

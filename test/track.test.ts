@@ -584,6 +584,86 @@ describe("--track at start", () => {
     }
   });
 
+  test("an unrelated read held in flight delays no value", async () => {
+    const held = gate();
+    const s = await sources({
+      charts: await charts(),
+      hold: (url) =>
+        url.pathname === "/v1/finance/search" ? held.hold() : undefined,
+    });
+    await withApp(
+      async (t) => {
+        try {
+          const read = readTargets(t.app.markets, ["NVDA"]);
+          await held.arrived;
+          await t.app.tracker.settled();
+          expect(t.app.tracker.status().map((x) => x.state)).toEqual([
+            "tracked",
+            "tracked",
+          ]);
+          expect([...t.app.markets.tracking.flagged].sort()).toEqual(
+            [GOLD, DJI].sort(),
+          );
+          held.release();
+          await read;
+        } finally {
+          held.release();
+        }
+      },
+      { fetch: s.fetch, start: OPEN, track: ["^DJI", "GC=F"] },
+    );
+  });
+
+  test("stop waits for a read's fetch past its deadline", async () => {
+    const held = gate();
+    const clock = fakeClock(OPEN);
+    const { db } = open(":memory:", clock);
+    const errors: string[] = [];
+    const s = await sources({
+      hold: (url) =>
+        url.pathname === "/v1/finance/search" ? held.hold() : undefined,
+    });
+    const app = start({
+      hostname: "127.0.0.1",
+      port: 0,
+      bearer: "made-up-bearer-for-the-stop-test-000000",
+      clock,
+      db,
+      version: "v0.0.0-test",
+      quoteEveryMs: PERIOD,
+      fetch: s.fetch,
+      log: () => ({
+        info() {},
+        warn() {},
+        error(msg) {
+          errors.push(msg);
+        },
+      }),
+    });
+    try {
+      const read = readTargets(app.markets, ["NVDA"]);
+      await held.arrived;
+      await clock.advance(20_000);
+      const [target] = await read;
+      expect(target && "error" in target && target.error.error).toBe("timeout");
+      let stopped = false;
+      const stopping = app.stop().then(() => {
+        stopped = true;
+      });
+      for (let k = 0; k < 20; k++) {
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+      expect(stopped).toBe(false);
+      held.release();
+      await stopping;
+      expect(app.markets.inflight.size).toBe(0);
+      expect(errors).toEqual([]);
+    } finally {
+      held.release();
+      db.close();
+    }
+  });
+
   test("stop waits for the tracker's fetch in flight", async () => {
     const held = gate();
     const clock = fakeClock(OPEN);
@@ -613,8 +693,6 @@ describe("--track at start", () => {
     });
     try {
       await held.arrived;
-      // past the value's deadline, its fetch still running
-      await clock.advance(60_000);
       let stopped = false;
       const stopping = app.stop().then(() => {
         stopped = true;

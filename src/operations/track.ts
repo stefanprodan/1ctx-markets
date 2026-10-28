@@ -28,7 +28,7 @@ export type Tracker = {
   schedule(jobs: Scheduler): void;
   // no value starts after this
   stop(): void;
-  // the current value's fetches included, so none outlives the database
+  // the current value's resolution; app.stop() drains fetches past it
   settled(): Promise<void>;
 };
 
@@ -108,10 +108,6 @@ export function tracker(options: {
 
   async function resolveOne(s: TrackState): Promise<void> {
     const [t] = await resolveTargets(one, [s.value]);
-    // a fetch past the deadline still runs; wait it out, so stop() can
-    await Promise.all(
-      [...m.inflight.values()].map((f) => f.promise.catch(() => {})),
-    );
     if (t === undefined) return;
     if ("instrument" in t) {
       s.id = t.instrument.id;

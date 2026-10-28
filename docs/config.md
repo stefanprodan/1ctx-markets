@@ -134,13 +134,17 @@ the `--help` text, and a flag changes there in the same commit.
 exit 0, or exit 1 with the error logged; a second signal during
 shutdown is ignored. The order in `stop()` holds:
 
-1. Stop the scheduler, so no new run starts.
+1. Stop the `--track` tracker between values and the scheduler, so no
+   new value or run starts.
 2. Close every source queue, so a call waiting out a back-off fails at
    once; calls already sent finish.
 3. Stop the HTTP server, so no new request starts.
-4. Wait for the runs still going to settle, the source switch's too.
-5. Close the MCP handler.
-6. Close the writer, which refuses new writes and drains the queued
+4. Wait for the runs still going to settle, the source switch's and
+   the tracker's too.
+5. Wait for every shared fetch still in flight, a read's past its
+   deadline included, so no answer lands after the database closes.
+6. Close the MCP handler.
+7. Close the writer, which refuses new writes and drains the queued
    ones.
 
 The database closes only after the writer drained, so no write is lost

@@ -131,7 +131,6 @@ export function storeSwitched(
   return instrument;
 }
 
-// one write while live() holds, or nothing
 // bars with no quote would answer an old price as the live one
 function requireQuote(answer: SparkAnswer, symbol: string): void {
   const upper = symbol.toUpperCase();
@@ -140,6 +139,7 @@ function requireQuote(answer: SparkAnswer, symbol: string): void {
   }
 }
 
+// one write while live() holds, or nothing
 export async function fetchInstrument(
   ctx: YahooContext,
   sourceSymbol: string,

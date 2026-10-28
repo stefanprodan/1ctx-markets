@@ -177,8 +177,7 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   quote period, so an unknown symbol is fetched with its backfill as in
   a call. It asks one value at a time in the reads' lane, so a read
   waits behind one of its calls at most, and a value is tracked as soon
-  as it resolves. Each value has twice a call's deadline; stop() waits
-  for its fetch.
+  as it resolves. Each value has twice a call's deadline.
 - **A value that does not resolve never stops the server:** it is
   logged once per reason and retried, except `candidates` and
   `refused`, which only the operator can change. `no_data` is final
