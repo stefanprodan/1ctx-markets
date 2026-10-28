@@ -13,6 +13,7 @@ import { instrumentsOf } from "../rules/format.ts";
 import { readRules, ruleInstruments } from "../rules/store.ts";
 import { sourceFile } from "../runtime/keys.ts";
 import type { Backoff } from "../sources/source.ts";
+import { BACKFILL_JOB } from "../sources/yahoo/jobs.ts";
 import type { Db } from "../storage/db/index.ts";
 import {
   PARTS,
@@ -126,7 +127,7 @@ const JOB_LABELS: Record<string, string> = {
 
 const JOB_ABOUT: Record<string, string> = {
   quotes: "Quotes each open market, every 5 minutes by default.",
-  bars: "Fetches the last 30 days of daily prices for each market once its next session has started, and an instrument's whole history after a split.",
+  bars: "Fetches the last 30 days of daily prices for each market once its next session has started, and an instrument's whole history after a split or rescale.",
   "fred/bars": "Fetches each series' daily values once a day, after 23:00 UTC.",
   backfill:
     "Fetches ten years of daily prices for a tracked instrument that has none.",
@@ -137,7 +138,7 @@ const JOB_ABOUT: Record<string, string> = {
   analysts:
     "Refreshes each US share's analyst ratings once a day, after 23:00 UTC.",
   earnings:
-    "Refreshes each US share's earnings results once a day, after 23:00 UTC.",
+    "Refreshes each US share's earnings results once a day, after 23:00 UTC, and when it reports.",
   insider:
     "Refreshes each US share's insider trades once a day, after 23:00 UTC.",
   calendar:
@@ -189,8 +190,17 @@ function jobs(db: Db) {
     )
     .all();
   // each scope's latest ended run, over the runs kept
-  const scopes = new Map<string, { instruments: number; markets: number }>();
+  type Counts = {
+    instruments: number;
+    markets: number;
+    failing_instruments: number;
+    failing_markets: number;
+  };
+  const scopes = new Map<string, Counts>();
   const failing = new Map<string, Failed[]>();
+  const hasBars = db.query<{ n: number }, [string]>(
+    "select 1 as n from bars where instrument = ? and interval = '1d' limit 1",
+  );
   for (const r of db
     .query<Failed & { source: string; job: string; status: string }, []>(
       `select source, job, scope, status, error,
@@ -200,12 +210,24 @@ function jobs(db: Db) {
        order by source, job, endedAt desc`,
     )
     .all()) {
+    // a run from before backfill runs had a scope names nothing
+    if (r.scope === null) continue;
+    // a read fetches a history without a backfill run, which settles it
+    const settled = r.job === BACKFILL_JOB && hasBars.get(r.scope) !== null;
     const key = `${r.source}|${r.job}`;
-    const n = scopes.get(key) ?? { instruments: 0, markets: 0 };
-    if (r.scope?.includes(":")) n.instruments++;
+    const n = scopes.get(key) ?? {
+      instruments: 0,
+      markets: 0,
+      failing_instruments: 0,
+      failing_markets: 0,
+    };
+    const instrument = r.scope.includes(":");
+    if (instrument) n.instruments++;
     else n.markets++;
     scopes.set(key, n);
-    if (r.status !== "failed") continue;
+    if (r.status !== "failed" || settled) continue;
+    if (instrument) n.failing_instruments++;
+    else n.failing_markets++;
     const list = failing.get(key) ?? [];
     list.push(r);
     failing.set(key, list);
@@ -224,7 +246,12 @@ function jobs(db: Db) {
       error: r.error,
     },
     // a bars job runs per market and per instrument: the page counts each
-    ...(scopes.get(`${r.source}|${r.job}`) ?? { instruments: 0, markets: 0 }),
+    ...(scopes.get(`${r.source}|${r.job}`) ?? {
+      instruments: 0,
+      markets: 0,
+      failing_instruments: 0,
+      failing_markets: 0,
+    }),
     // scopes whose latest ended run failed, which read as stale
     failing_scopes: (failing.get(`${r.source}|${r.job}`) ?? []).length,
     failing: (failing.get(`${r.source}|${r.job}`) ?? [])

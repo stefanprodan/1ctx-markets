@@ -78,6 +78,8 @@ const job = (
   },
   instruments: 0,
   markets: 1,
+  failing_instruments: 0,
+  failing_markets: 0,
   failing_scopes: 0,
   failing: [],
   ...more,
@@ -115,6 +117,7 @@ const STATUS: Status = {
       },
       instruments: 14,
       markets: 0,
+      failing_instruments: 7,
       failing_scopes: 7,
       failing: [
         { scope: "FEED:TLV", error: "no bars", at: "2026-10-28T09:00:01Z" },
@@ -448,6 +451,26 @@ describe("the status model", () => {
     expect(jobLine({ ...live!, instruments: 50, markets: 19 })).toBe(
       "50 instruments · all ok",
     );
+    // its market run failing reads apart, so a count never exceeds the one shown
+    expect(
+      jobLine({
+        ...live!,
+        instruments: 3,
+        markets: 2,
+        failing_instruments: 3,
+        failing_markets: 1,
+        failing_scopes: 4,
+      }),
+    ).toBe("3 instruments · 3 failing · 1 market failing");
+    expect(
+      jobLine({
+        ...live!,
+        instruments: 50,
+        markets: 19,
+        failing_markets: 2,
+        failing_scopes: 2,
+      }),
+    ).toBe("50 instruments · 2 markets failing");
     expect(jobWhen(live!, NOW)).toBe("2 min ago");
     // the time never says how the run went
     expect(jobWhen(daily!, NOW)).toBe("2 h ago");

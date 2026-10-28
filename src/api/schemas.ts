@@ -525,6 +525,8 @@ export const schemas: Record<string, Schema> = {
         }),
         instruments: int,
         markets: int,
+        failing_instruments: int,
+        failing_markets: int,
         failing_scopes: int,
         failing: list(object({ scope: nstr, error: nstr, at: nstr })),
       }),

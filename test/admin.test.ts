@@ -55,7 +55,7 @@ import { fakeClock } from "./helpers/clock.ts";
 import { drive, pacedOf } from "./helpers/drive.ts";
 import { FINNHUB_KEY, finnhubAnswer } from "./helpers/finnhub.ts";
 import { gate, NOW, sources } from "./helpers/sources.ts";
-import { instrument, world } from "./helpers/world.ts";
+import { bar, instrument, world } from "./helpers/world.ts";
 import type { Recorded } from "./helpers/yahoo.ts";
 
 const tempDir = () => mkdtempSync(join(tmpdir(), "markets-admin-"));
@@ -269,6 +269,41 @@ describe("the admin routes' guard", () => {
       { start: NOW },
     ));
 
+  test("a failed backfill settles once a read stored the history", () =>
+    withApp(
+      async ({ url, admin, db }) => {
+        db.query(
+          `insert into sync_runs (source, job, scope, started_at, ended_at,
+             status, rows, error)
+           values ('yahoo', 'backfill', 'US:X', ?1, ?1, 'failed', 0, 'timeout'),
+             ('yahoo', 'backfill', null, ?1, ?1, 'failed', 0, 'old')`,
+        ).run(NOW);
+        const backfill = async () => {
+          const res = await fetch(`${url}/api/v1/admin/status`, {
+            headers: { authorization: `Bearer ${admin}` },
+          });
+          return (await res.json()).jobs.find(
+            (j: { job: string }) => j.job === "backfill",
+          );
+        };
+        // a run from before backfill runs had a scope is not counted
+        expect(await backfill()).toMatchObject({
+          instruments: 1,
+          markets: 0,
+          failing_instruments: 1,
+        });
+        instrument(db, "US:X");
+        bar(db, "US:X", "1d", "2026-10-24", 10, true);
+        expect(await backfill()).toMatchObject({
+          instruments: 1,
+          failing_instruments: 0,
+          failing_scopes: 0,
+          failing: [],
+        });
+      },
+      { start: NOW },
+    ));
+
   test("status answers its fields and never a key", () =>
     withApp(
       async ({ url, admin, bearer, db }) => {
@@ -340,6 +375,8 @@ describe("the admin routes' guard", () => {
             },
             instruments: 2,
             markets: 0,
+            failing_instruments: 1,
+            failing_markets: 0,
             failing_scopes: 1,
             failing: [
               { scope: "US:A", error: "not found", at: "2026-10-25T21:04:00Z" },
@@ -361,6 +398,8 @@ describe("the admin routes' guard", () => {
             // one scope, whose latest run failed
             instruments: 0,
             markets: 1,
+            failing_instruments: 0,
+            failing_markets: 1,
             failing_scopes: 1,
             failing: [
               {

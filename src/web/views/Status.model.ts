@@ -74,24 +74,30 @@ export function sourceState(s: SourceStatus, now: number): string {
   return `Backing off ${until(s.backing_off.until, now)} · ${s.backing_off.after}`;
 }
 
+const counted = (n: number, one: string): string =>
+  `${count(n)} ${n === 1 ? one : `${one}s`}`;
+
 // what a job covers: its instruments, else the markets it runs per
-function covers(j: JobStatus): { n: number; words: string } {
+function covers(j: JobStatus) {
   const instruments = j.instruments > 0;
   const n = instruments ? j.instruments : j.markets;
-  const one = instruments ? "instrument" : "market";
-  return { n, words: `${count(n)} ${n === 1 ? one : `${one}s`}` };
+  return {
+    n,
+    words: counted(n, instruments ? "instrument" : "market"),
+    failing: instruments ? j.failing_instruments : j.failing_markets,
+    // a bars job's market run fails apart from its instruments
+    others: instruments ? j.failing_markets : 0,
+  };
 }
 
 export function jobLine(j: JobStatus): string {
-  const { n, words } = covers(j);
+  const { n, words, failing, others } = covers(j);
   if (n === 0) return "";
-  const state =
-    j.failing_scopes > 0
-      ? `${count(j.failing_scopes)} failing`
-      : n === 1
-        ? "ok"
-        : "all ok";
-  return `${words} · ${state}`;
+  const parts = [words];
+  if (failing > 0) parts.push(`${count(failing)} failing`);
+  else if (others === 0) parts.push(n === 1 ? "ok" : "all ok");
+  if (others > 0) parts.push(`${counted(others, "market")} failing`);
+  return parts.join(" · ");
 }
 
 export function allOk(j: JobStatus): string {

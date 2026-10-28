@@ -16,8 +16,8 @@ export type Run = {
   id: number;
   source: string;
   job: string;
-  // a Yahoo pass's or Finnhub market calendar's market, else the
-  // instrument; null for Yahoo's backfill
+  // a market, else an instrument; null only in runs from before
+  // backfill runs were scoped
   scope: string | null;
   startedAt: number;
   endedAt: number | null;

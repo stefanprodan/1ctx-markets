@@ -31,6 +31,8 @@ export type JobStatus = {
   };
   instruments: number;
   markets: number;
+  failing_instruments: number;
+  failing_markets: number;
   failing_scopes: number;
   failing: { scope: string | null; error: string | null; at: string | null }[];
 };
