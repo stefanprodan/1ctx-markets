@@ -1,9 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// What every source shares: its errors carry a fixed phrase, which is
-// all a sync run or an answer repeats, and its calls go through one
-// queue that backs off after a failure instead of retrying.
 
 import { type Clock, MINUTE_MS } from "../runtime/clock.ts";
 
@@ -56,9 +52,7 @@ export function phraseOf(error: unknown): string {
   return error instanceof SourceError ? error.phrase : "failed";
 }
 
-// A body that is not the source's format at all, such as a proxy or
-// consent page: the source is unwell. An answer of an odd shape is that
-// answer's fault alone, so it fails its call and the queue runs on.
+// not the source's format at all, such as a consent page: the source is unwell
 export class Unreadable extends SourceError {
   constructor(detail = "not JSON") {
     super("malformed answer", detail);

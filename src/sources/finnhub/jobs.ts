@@ -94,9 +94,8 @@ export function windowEvents(
   return out;
 }
 
-// The market calendar's range for the unreported events of the shares'
-// own listings; null when none waits. Another listing's events are not
-// in that answer under the share's symbol.
+// the range for the shares' own unreported events, null when none waits;
+// another listing's events are not in the market answer under its symbol
 export function reportingWindow(
   events: readonly WindowEvent[],
   now: number,
@@ -166,11 +165,8 @@ export function finnhubJobs(options: {
     }));
   };
 
-  // A share whose event was seen reported after its last good earnings
-  // run started is asked its earnings, so the surprises carry the new
-  // quarter the same hour. From stored state, so a tick cut by its
-  // budget leaves the rest to the next; a pass asking both sections
-  // fetches the calendar first, so its earnings start after the sighting.
+  // seen reported since its last good earnings run started: asked its earnings,
+  // so surprises carry the quarter that hour; stored state resumes a cut tick
   const sightedEarnings = (events: readonly WindowEvent[], now: number) => {
     const seen = new Map<string, { instrument: Instrument; at: number }>();
     for (const e of events) {
@@ -192,8 +188,7 @@ export function finnhubJobs(options: {
       }));
   };
 
-  // One call for every tracked share reporting, however many there are;
-  // true when it was asked.
+  // one call for every tracked share reporting; true when it was asked
   async function market(
     shares: readonly Instrument[],
     window: { from: string; to: string } | null,

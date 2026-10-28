@@ -27,7 +27,6 @@ import {
 
 export const JOB = "news";
 export const KEPT_MS = 30 * DAY_MS;
-// each ticker is asked this often
 export const EVERY_MS = 30 * MINUTE_MS;
 // for an article published late with an earlier time
 export const OVERLAP_MS = 2 * 60 * MINUTE_MS;
@@ -46,7 +45,7 @@ export const STALE_NEWS = {
   older: "older news pending",
 } as const;
 
-// db is for reads; writes go through writer; null while the source is off
+// null while the source is off
 export type MassiveContext = {
   db: Db;
   clock: Clock;
@@ -125,7 +124,6 @@ export function readWalks(db: Db, instrument: string): Walks {
   return { top: of("top"), history: of("history") };
 }
 
-// whether a run of the instrument's news ever ended well
 export function newsAsked(db: Db, instrument: string): boolean {
   return lastStarted(db, SOURCE, JOB, instrument, "ok") !== null;
 }
@@ -404,9 +402,8 @@ const asRow = (r: StoredRow): NewsRow => ({
   truncated: r.truncated === 1,
 });
 
-// Newest first, ties by id, from below the cursor when one is given and
-// published at or after since; only the last 30 days, whether or not
-// retention has run.
+// newest first, ties by id, below the cursor when given, from since on; only
+// the last 30 days, whether or not retention has run
 export function readNews(
   db: Db,
   instrument: string,

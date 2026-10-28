@@ -1,8 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// There is no documented API, so every page is read by its table ids and
-// labels, and one that does not read is an error, never empty rows.
+// no documented API: a page that does not read is an error, never empty rows
 
 import { checkZone, dateOfWall } from "../../market/zone.ts";
 import { SourceError } from "../source.ts";
@@ -210,7 +209,6 @@ export function parseIndices(html: string, fetchedAt: number): IndicesPage {
   };
 }
 
-// a two-cell row's value by its label, in the table with this id
 function labelled(html: string, id: string): Map<string, string[]> {
   const out = new Map<string, string[]>();
   const table = tableById(html, id);

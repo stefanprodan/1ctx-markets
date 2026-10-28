@@ -1,9 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// FRED's series and observations answers. FRED takes its key only in
-// the URL, so no URL, error or answer text this client makes carries
-// one: errors hold a fixed phrase and nothing FRED or fetch said.
+// FRED takes its key only in the URL, so no error or text made here carries one
 
 import { wallOfDate } from "../../market/zone.ts";
 import type { Clock } from "../../runtime/clock.ts";

@@ -1,11 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// Turning the feed on or off moves the Bucharest market's prices to the
-// other source and refetches its whole history from it, so stored bars
-// never mix Yahoo's closes with the feed's. The price sources on at the
-// last start are written only once the switch landed, so a restart
-// during one redoes it.
 
 import { dailyRange } from "../../market/bars.ts";
 import { weekOf } from "../../market/calendars.ts";
@@ -43,7 +37,6 @@ import {
 
 const TICK_MS = MINUTE_MS;
 
-// the price sources a start with these flags has on
 export const priceSources = (feed: boolean): string[] =>
   feed ? [SOURCE, YAHOO] : [YAHOO];
 

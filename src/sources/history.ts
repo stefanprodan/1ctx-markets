@@ -1,7 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// The history rules every source with daily bars follows.
 
 import type { Bar } from "../market/bars.ts";
 import { weekOf } from "../market/calendars.ts";
@@ -39,10 +37,8 @@ export type Rescale = { ratio: number; dates: string[] };
 export const sameRatio = (a: number, b: number) =>
   Math.abs(a / b - 1) <= SAME_RATIO;
 
-// Stored final days the answer prices again, moved by one ratio though
-// the answer has no split: past prices adjusted in place. An adjustment
-// moves every day before its date, so the oldest days show it; a run of
-// unmoved days means none came before them.
+// final days repriced by one ratio with no split: past prices adjusted in
+// place; an adjustment moves every day before its date, so the oldest show it
 export function rescaleOf(
   db: Db,
   instrument: Pick<Instrument, "id">,

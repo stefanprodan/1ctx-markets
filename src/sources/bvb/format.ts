@@ -1,8 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// The exchange's Romanian formats and its HTML tables, read in one place.
-// Anything that does not match exactly is an error, never a guess.
+// what does not match a format exactly is an error, never a guess
 
 import { SourceError } from "../source.ts";
 
@@ -70,7 +69,6 @@ const ENTITIES: Record<string, string> = {
   reg: "®",
 };
 
-// a cell's text: tags dropped, entities read, spaces collapsed
 export function textOf(html: string): string {
   return html
     .replace(/<[^>]*>/g, " ")
@@ -103,7 +101,6 @@ export function rowsOf(table: string): string[][] {
   );
 }
 
-// the index of the column whose header starts with label
 export function column(headers: readonly string[], label: string): number {
   const k = headers.findIndex((h) => h.startsWith(label));
   if (k < 0) throw malformed(`no ${label} column`);

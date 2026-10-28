@@ -1,7 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// Stored research and events as the reads answer them, and why stale.
 
 import type { Instrument } from "../../market/instruments.ts";
 import { addDays, localDate } from "../../market/zone.ts";
@@ -147,9 +145,8 @@ export function readEvent(db: Db, key: EventKey): EventRow | null {
 // days a passed event still counts as next while it awaits results
 export const AWAITING_DAYS = 7;
 
-// The instrument's earliest event dated from its exchange's today on,
-// or one of the last week still awaiting its results; unreported skips
-// any whose actuals were seen, which a gate waiting on it would pass.
+// the earliest event from the exchange's today, or one of the last week
+// awaiting results; unreported skips any with actuals seen, as a gate would
 export function nextEvent(
   db: Db,
   instrument: Pick<Instrument, "id" | "zone">,

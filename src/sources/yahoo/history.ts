@@ -1,7 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// Chart answers to stored bars, splits and rescales, in the caller's write.
 
 import {
   type Bar,
@@ -144,9 +142,8 @@ export function checkAnswer(instrument: Instrument, answer: ChartMeta): void {
   }
 }
 
-// An index is in points, a yield index's (^TNX) being its yield in
-// percent; FUTURE holds both per-barrel and per-bond prices, so is not
-// guessed.
+// an index is in points, a yield index's (^TNX) its yield in percent; FUTURE
+// holds both per-barrel and per-bond prices, so is not guessed
 export function unitOf(type: string): Unit {
   switch (type.toUpperCase()) {
     case "EQUITY":

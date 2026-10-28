@@ -1,7 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// Research and calendar fetches, each section's answers stored in one write.
 
 import type { Instrument } from "../../market/instruments.ts";
 import { addDays, dateOfWall } from "../../market/zone.ts";
@@ -36,7 +34,7 @@ import {
   upsertEvents,
 } from "./store.ts";
 
-// db is for reads; writes go through writer; null while the source is off
+// null while the source is off
 export type FinnhubContext = {
   db: Db;
   clock: Clock;
@@ -172,8 +170,7 @@ export async function refreshResearch(
   }
 }
 
-// The whole-market calendar's run: Finnhub's market calendar holds US
-// listings only, which is all eligible() lets it research.
+// Finnhub's market calendar holds US listings only, all that eligible() admits
 export const MARKET_CALENDAR = { job: "market-calendar", scope: "US" } as const;
 
 export type MarketCalendarResult =
@@ -185,10 +182,8 @@ export type MarketCalendarResult =
     }
   | { status: "failed"; error: unknown };
 
-// Only events already stored for these shares, of their own listing, are
-// updated, through the write a share's calendar uses; a row of any other
-// symbol or quarter is ignored, and a missing row deletes nothing, since
-// the list changes between calls.
+// only these shares' stored events of their own listing are updated; a missing
+// row deletes nothing, since the list changes between calls
 export function storeMarketCalendar(
   ctx: FinnhubContext,
   shares: readonly Instrument[],

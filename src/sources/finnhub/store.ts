@@ -209,9 +209,8 @@ function dropEvents(
   return n;
 }
 
-// One section's answer into its rows; no data writes none. An answer
-// naming a listing replaces the kind's rows of any other, so no figure
-// of one listing is read as another's.
+// no data writes no row; an answer naming a listing replaces the kind's rows of
+// any other, so no figure of one listing is read as another's
 export function storeSection(
   db: Db,
   instrument: string,
