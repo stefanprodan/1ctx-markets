@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# Prints the Bun version .bun-version pins, so CI and the release binaries
-# are built by the same Bun. It fails rather than print nothing, since
-# setup-bun takes an empty version as the latest.
+# Fails rather than print nothing: setup-bun reads an empty version as latest.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
