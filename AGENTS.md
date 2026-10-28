@@ -2,25 +2,22 @@
 
 A self-hosted market data server for AI agents. It syncs free market
 data (Yahoo, and optionally FRED, Finnhub, Massive and the Bucharest
-Stock Exchange's own feed) into one SQLite
-file, computes signals, evaluates price rules, and serves them over the
-Model Context Protocol (MCP, Streamable HTTP) and a REST API under
-`/api/v1` with an OpenAPI spec, both behind one bearer key. It holds
-market data and price rules only, never holdings, orders or a
-portfolio.
+Stock Exchange's own feed) into one SQLite file, computes signals,
+evaluates price rules, and serves them over the Model Context Protocol
+(MCP, Streamable HTTP) and a REST API under `/api/v1` with an OpenAPI
+spec, both behind one bearer key. It holds market data and price rules
+only, never holdings, orders or a portfolio.
 
-- **Runtime:** Bun only, TypeScript run directly, `bun:sqlite`, one
-  standalone binary. No Node. The Bun version is pinned in
-  `.bun-version`.
+- **Runtime:** Bun only (pinned in `.bun-version`), TypeScript run
+  directly, `bun:sqlite`, one standalone binary. No Node.
 - **Packages** are devDependencies bundled at build time: exact pins,
   official npm only, `bun install --ignore-scripts`. A new package
   needs the owner's explicit go-ahead. In `src/`, only `server/mcp.ts`,
   `server/http.ts` and `tools/index.ts` import
   `@modelcontextprotocol/server` (`server/http.ts` a type only); the
   MCP client is for tests. `swagger-ui-dist` is the one package
-  `src/api/` imports, and only its
-  `swagger-ui-bundle.js` and `swagger-ui.css`, embedded as files
-  (`docs/api.md`).
+  `src/api/` imports, and only its `swagger-ui-bundle.js` and
+  `swagger-ui.css`, embedded as files (`docs/api.md`).
 
 ## The dev loop
 
@@ -109,7 +106,8 @@ the same commit as the code that changes a rule.
 | `docs/deploy.md` | the `service` command, launchd, the kill timeout, the log, staging deploys, backups and keys |
 | `docs/storage.md` | the database, migrations, the writer, instruments, times and prices, the clock, runs and staleness, tracking, retention |
 | `docs/calendars.md` | market sessions from the source, quoting and checks, bar dates and finality, weeks, wall time, crypto |
-| `docs/yahoo.md` | Yahoo's endpoints, parsing, the source queue and phrases, resolution, bars, splits and rescales, quotes, the lock, the jobs |
+| `docs/sources.md` | the source queue, deadlines, retries, backfill, splits and rescales, refusals and source ids every source shares |
+| `docs/yahoo.md` | Yahoo's endpoints, parsing, phrases, resolution, bars, splits and rescales, quotes, the lock, the jobs |
 | `docs/fred.md` | FRED: its key, limits, answer checks, series as instruments, bars, the daily job, attribution |
 | `docs/bvb.md` | the Bucharest feed: its pages and chart feed, parsing, the session, quotes, bars and rescales, resolution, switching sources |
 | `docs/research.md` | Finnhub research and earnings events, Massive news, the `research` and `events` tools |
@@ -121,14 +119,14 @@ the same commit as the code that changes a rule.
 ## Rules the code follows
 
 - **A schema change is an appended migration** in
-  `src/storage/db/migrations/`, renames and retypes included. A migration on
-  `main` is never edited: running servers hold real data.
+  `src/storage/db/migrations/`, renames and retypes included. A
+  migration on `main` is never edited: running servers hold real data.
 - **Every runtime write goes through the one writer queue**
   (`writer(db).write(fn)`), a synchronous closure that never awaits.
   Fetch first, then write.
 - **Keys are files beside the database**, one bare value per
-  `secrets/<name>.key`, read in `src/` only by `src/runtime/keys.ts` (the
-  recorders use `readKey()`, `docs/testing.md`). A key is never
+  `secrets/<name>.key`, read in `src/` only by `src/runtime/keys.ts`
+  (the recorders use `readKey()`, `docs/testing.md`). A key is never
   printed, logged, stored in a row, put in an error or answered.
 - **Market hours come from the sources' answers and the exchange's
   IANA zone**, never fixed UTC hours, opening times or holiday lists
@@ -139,8 +137,8 @@ the same commit as the code that changes a rule.
   without its `--source` flag for a keyless one.
 - **A change that adds or renames a tool, an argument or an answer
   field an agent chooses by updates the server instructions**
-  (`src/server/instructions.ts`, `docs/tools.md`) in the same PR: they are
-  the only guidance across tools a client keeps whole.
+  (`src/server/instructions.ts`, `docs/tools.md`) in the same PR: they
+  are the only guidance across tools a client keeps whole.
 - **No SQL, expression or query tool, ever.** The tools are fixed;
   `screen` is the only open-ended read.
 - **Live prices drive the answers.** Averages are on closed days plus
