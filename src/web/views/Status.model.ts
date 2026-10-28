@@ -106,8 +106,8 @@ export function jobLine(j: JobStatus): string {
   const { n, words, failing, others } = covers(j);
   if (n === 0) return "";
   const parts = [words];
+  // all well needs no words: the green dot says it
   if (failing > 0) parts.push(`${count(failing)} failing`);
-  else if (others === 0) parts.push(n === 1 ? "ok" : "all ok");
   if (others > 0) parts.push(`${counted(others, "market")} failing`);
   return parts.join(" · ");
 }

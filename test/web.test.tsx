@@ -481,15 +481,15 @@ describe("the status model", () => {
     );
     expect(plain("something new")).toBe("something new");
     const [live, daily, figures] = STATUS.jobs;
-    expect(jobLine(live!)).toBe("19 markets · all ok");
+    expect(jobLine(live!)).toBe("19 markets");
     expect(jobLine(daily!)).toBe("14 instruments · 7 failing");
-    expect(jobLine({ ...live!, markets: 1 })).toBe("1 market · ok");
+    expect(jobLine({ ...live!, markets: 1 })).toBe("1 market");
     expect(jobLine({ ...live!, markets: 0 })).toBe("");
     expect(allOk(figures!)).toBe("All 19 instruments ok.");
     expect(allOk({ ...live!, markets: 1 })).toBe("1 market ok.");
     // a bars job runs per market and per instrument: it reads as instruments
     expect(jobLine({ ...live!, instruments: 50, markets: 19 })).toBe(
-      "50 instruments · all ok",
+      "50 instruments",
     );
     // its market run failing reads apart, so a count never exceeds the one shown
     expect(
@@ -573,7 +573,7 @@ describe("the views", () => {
       "62 MB",
       "v1.2.3",
       "Casey prices",
-      "19 markets · all ok",
+      "19 markets",
       "14 instruments · 7 failing",
       "Add a source",
       "News for shares.",
@@ -586,6 +586,8 @@ describe("the views", () => {
     ]) {
       expect([words, html.includes(words)]).toEqual([words, true]);
     }
+    // a job row that is well says nothing more: the dot does
+    expect(html).not.toContain(" ok<");
     // an off source has no card, only its row to add
     expect(html).not.toMatch(/class="label"[^>]*>Casey news</);
     expect(html).not.toContain(">switch<");
