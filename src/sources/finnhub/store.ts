@@ -305,13 +305,15 @@ export function storeSection(
       const events = f.answer.data ?? [];
       const reported = upsertEvents(db, instrument, events, listing, at);
       if (reported.length > 0) hooks.reported?.(db, reported, at);
+      // a row newer than this answer was kept by upsertEvents; never drop it
       const stale = db
-        .query<EventKey, [string, string | null]>(
+        .query<EventKey, [string, string | null, number]>(
           `select instrument, fiscal_year as fiscalYear,
              fiscal_quarter as fiscalQuarter
-           from events where instrument = ? and listing is not ?`,
+           from events where instrument = ? and listing is not ?
+             and fetched_at <= ?`,
         )
-        .all(instrument, listing);
+        .all(instrument, listing, at);
       if (stale.length > 0) dropEvents(db, stale, hooks.waited(db, at));
       return events.length;
     }

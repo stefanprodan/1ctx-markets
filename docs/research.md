@@ -25,9 +25,9 @@ route's transport in `docs/api.md`; rules that wait on events in
 - **Every Massive text kept is scrubbed of the key** (`scrubbed` in
   `src/sources/massive/client.ts`: id, title, URL, publisher, tickers,
   reasoning), before a text is cut to its cap, so a key across the cap
-  leaves no prefix. Finnhub keeps only numbers, checked dates and an hour
-  label matching `^[a-z]{0,8}$`, so nothing of its answer can carry
-  text.
+  leaves no prefix. Finnhub keeps only numbers, checked dates and an
+  hour label matching `^[a-z]{0,8}$`, so nothing of its answer can
+  carry text.
 - **A Massive `next_url` is followed only when it is Massive's own news
   path** (`checkCursor`): https, the same origin, `NEWS_PATH`, no user
   or password, no key-named parameter, and the key in no decoding of

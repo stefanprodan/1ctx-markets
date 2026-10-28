@@ -135,8 +135,9 @@ Examples, each created with `symbol` set to the rule's own share:
   `docs/sources.md`, "Splits and rescales").
 - **Until the new session's bars are in, split-sensitive comparisons
   are unknown** (`BARS_PENDING`), since the opening quote may already
-  be on the new scale. The instrument's own failed bars run counts as
-  not in, though the market's pass succeeded on other listings.
+  be on the new scale. The instrument's own failed bars run keeps them
+  unknown too (`BARS_FAILED`), though the market's pass succeeded on
+  other listings.
 - **A split pause is final.** `paused` becomes `split` even on a rule
   paused by hand; resuming it answers `split_paused`. The levels are
   from before the split: delete the rule and create it with new ones.

@@ -85,6 +85,7 @@ export type GateItem = {
 
 export const BARS_PENDING =
   "bars of the new session not refetched yet, so a split may be unseen";
+export const BARS_FAILED = "its bars refetch failed, so a split may be unseen";
 export const WAITING = "waiting for the earnings results";
 export const BEFORE_RESULTS = "prices from before the earnings results";
 export const UNTIMED =
@@ -215,14 +216,15 @@ function reader(db: Db, now: number, quoteEveryMs: number) {
     },
     // its own failed refetch counts too: the market's pass can succeed
     // without this listing's bars, which are what would show a split
-    barsPending(id: string): boolean {
+    barsUnsettled(id: string): string | null {
       const i = instrument(id);
-      return (
-        i !== null &&
-        hasQuote(i) &&
-        (barsStale(db, i, now).includes(STALE.barsPending) ||
-          lastRun(db, i.source, JOBS.bars, i.id)?.status === "failed")
-      );
+      if (i === null || !hasQuote(i)) return null;
+      if (barsStale(db, i, now).includes(STALE.barsPending)) {
+        return BARS_PENDING;
+      }
+      return lastRun(db, i.source, JOBS.bars, i.id)?.status === "failed"
+        ? BARS_FAILED
+        : null;
     },
   };
 }
@@ -282,9 +284,8 @@ function evaluateWith(r: Reader, db: Db, rule: RuleRow): Evaluation {
       c.left.symbol,
       ...(right ? [(c.right as Operand).symbol] : []),
     ])) {
-      if (splitSensitive(c, id) && r.barsPending(id)) {
-        own.push(`${id}: ${BARS_PENDING}`);
-      }
+      const unsettled = splitSensitive(c, id) ? r.barsUnsettled(id) : null;
+      if (unsettled !== null) own.push(`${id}: ${unsettled}`);
     }
     const rv = typeof c.right === "number" ? c.right : right!.value;
     const ok = own.length === 0 && left.value !== null && rv !== null;

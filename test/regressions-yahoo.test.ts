@@ -30,6 +30,7 @@ import { dailyBars } from "../src/sources/yahoo/history.ts";
 import { keyOf } from "../src/sources/yahoo/resolve.ts";
 import {
   addInstrument,
+  catchUp,
   fetchQuotes,
   refetch,
 } from "../src/sources/yahoo/sync.ts";
@@ -105,25 +106,28 @@ test("a quote whose listing differs from the stored one is refused", async () =>
 
     await clock.advance(1000);
     quote = wrong;
-    let answer: Awaited<ReturnType<typeof fetchQuotes>> | null = null;
-    try {
-      answer = await fetchQuotes(ctx, [instrument]);
-    } catch (error) {
-      expect(error).toBeInstanceOf(SourceError);
-      expect((error as SourceError).phrase).toBe("malformed answer");
-    }
+    const answer = await fetchQuotes(ctx, [instrument]);
+    expect(answer.quotes).toEqual([]);
+    expect(answer.skipped).toEqual([
+      { symbol: "NVDA", phrase: "malformed answer" },
+    ]);
     expect(f.urls.map((url) => url.pathname)).toEqual([
       "/v8/finance/chart/NVDA",
       "/v7/finance/spark",
       "/v7/finance/spark",
     ]);
-
-    // Refusal may skip the entry or reject the write, but cannot change its key.
-    expect(readQuote(db, instrument.id)!.price).toBe(previous.price);
     expect(readQuote(db, instrument.id)).toEqual(previous);
     expect(signalRows(db, instrument.id)).toEqual(signals);
     expect(readInstrument(db, "XETRA:NVDA")).toBeNull();
-    expect(answer?.quotes ?? []).toEqual([]);
+
+    // a path that needs the quote fails rather than keep the old price as live
+    const caught = await catchUp(ctx, instrument, () => true).then(
+      () => null,
+      (error: unknown) => error,
+    );
+    expect(caught).toBeInstanceOf(SourceError);
+    expect((caught as SourceError).phrase).toBe("malformed answer");
+    expect(readQuote(db, instrument.id)).toEqual(previous);
   } finally {
     await write.close();
     db.close();

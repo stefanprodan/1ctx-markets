@@ -16,7 +16,12 @@ import { fetchInstrument } from "../src/sources/bvb/sync.ts";
 import { finnhub } from "../src/sources/finnhub/client.ts";
 import { finnhubJobs } from "../src/sources/finnhub/jobs.ts";
 import { readEvents, readResearch } from "../src/sources/finnhub/read.ts";
-import { SECTIONS } from "../src/sources/finnhub/store.ts";
+import {
+  NO_HOOKS,
+  SECTIONS,
+  storeSection,
+  upsertEvents,
+} from "../src/sources/finnhub/store.ts";
 import { refreshResearch } from "../src/sources/finnhub/sync.ts";
 import {
   MAX_PUBLISHER,
@@ -385,6 +390,43 @@ test("an invalid fiscal year fails only the calendar and preserves valid researc
   } finally {
     client.close();
     await write.close();
+    db.close();
+  }
+});
+
+test("an older answer under another listing keeps the newer events", () => {
+  const { db } = open(":memory:", fakeClock(NOW));
+  try {
+    const instrument = share(db, NOW);
+    const event = (date: string) => ({
+      fiscalYear: 2026,
+      fiscalQuarter: 3,
+      date,
+      hour: "amc",
+      epsEstimate: 1,
+      epsActual: null,
+      revenueEstimate: null,
+      revenueActual: null,
+      reported: false,
+    });
+    upsertEvents(db, instrument.id, [event("2026-11-05")], null, NOW + 3000);
+    storeSection(
+      db,
+      instrument.id,
+      {
+        section: "calendar",
+        answer: {
+          data: [{ ...event("2026-11-01"), epsEstimate: null }],
+          listing: "NVDA.MX",
+          fetchedAt: NOW + 2000,
+        },
+      },
+      NO_HOOKS,
+    );
+    expect(readEvents(db, "2026-10-01", "2026-12-31")).toMatchObject([
+      { date: "2026-11-05", listing: null, fetchedAt: NOW + 3000 },
+    ]);
+  } finally {
     db.close();
   }
 });

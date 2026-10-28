@@ -119,7 +119,7 @@ export function sourceSwitch(options: {
     }
     const quote = await yahoo.yahoo.spark([answer.symbol]);
     // the old source's quote is cleared with its bars
-    requireQuote(quote, answer.symbol);
+    requireQuote(quote, answer.symbol, i.id);
     const dates = dailyBars(answer, null)
       .map((b) => b.date)
       .filter((d) => d >= monday);
