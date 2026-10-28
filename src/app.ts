@@ -108,7 +108,6 @@ export function start(options: AppOptions): App {
     db,
     values: options.track ?? [],
     on: { bvb: options.bvb === true, fred: (options.fredKey ?? null) !== null },
-    readMs: tracking.readMs,
     flagged,
     owed,
     now: clock.now(),
@@ -339,6 +338,7 @@ export function start(options: AppOptions): App {
     async stop() {
       // no new run or request starts, no job waits out a back-off, runs settle,
       // then queued writes drain before main closes the database
+      track.stop();
       const settled = jobs.stop();
       yahooQueue.close();
       fredClient?.close();

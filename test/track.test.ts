@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
+import { start } from "../src/app.ts";
 import { dailyRange, upsertBars } from "../src/market/bars.ts";
 import { recordSession } from "../src/market/calendars.ts";
 import { readInstrument, upsertInstrument } from "../src/market/instruments.ts";
@@ -11,6 +12,7 @@ import { seed } from "../src/operations/track.ts";
 import { DAY_MS, MINUTE_MS } from "../src/runtime/clock.ts";
 import { writeSources } from "../src/sources/bvb/switch.ts";
 import { type Db, open } from "../src/storage/db/index.ts";
+import { endRun, startRun } from "../src/storage/runs.ts";
 import { type TestApp, withApp } from "./helpers/app.ts";
 import { bothSources } from "./helpers/bvb.ts";
 import { fakeClock } from "./helpers/clock.ts";
@@ -37,6 +39,18 @@ async function charts(): Promise<Record<string, Recorded>> {
     "^DJI": listed(await recorded("chart-dji-5d-1d")),
     "GC=F": listed(await recorded("chart-gc-f-5d-1d")),
   };
+}
+
+// the recorded Dow chart answered under each of these symbols
+async function renamed(names: string[]): Promise<Record<string, Recorded>> {
+  const chart = listed(await recorded("chart-dji-5d-1d"));
+  return Object.fromEntries(
+    names.map((name) => {
+      const fx = clone(chart);
+      fx.body.chart.result[0].meta.symbol = name;
+      return [name, fx];
+    }),
+  );
 }
 
 const bars = (t: TestApp, id: string): number =>
@@ -457,79 +471,234 @@ describe("--track at start", () => {
     }
   });
 
-  test("a read goes ahead of the tracker's queued fetches", async () => {
-    const running = gate();
-    const waiting = gate();
-    const names = ["^FIRST", "^SECOND", "^THIRD", "^FOURTH"];
-    const chart = listed(await recorded("chart-dji-5d-1d"));
-    const charts = Object.fromEntries(
-      names.map((name) => {
-        const fx = clone(chart);
-        fx.body.chart.result[0].meta.symbol = name;
-        return [name, fx];
-      }),
-    );
+  test("the tracker asks one value at a time, so a read waits behind one call at most", async () => {
+    const held = gate();
+    const names = ["^FIRST", "^SECOND", "^THIRD"];
     const s = await sources({
-      charts,
-      hold: (url) => {
-        const symbol = chartSymbol(url);
-        if (symbol === "^FIRST" || symbol === "^SECOND") return running.hold();
-        if (symbol === "^THIRD" || symbol === "^FOURTH") return waiting.hold();
-        return undefined;
-      },
+      charts: await renamed(names),
+      hold: (url) => (chartSymbol(url) === "^FIRST" ? held.hold() : undefined),
     });
     await withApp(
       async (t) => {
         try {
-          // both slots hold tracker calls, two more wait behind them
-          await running.arrived;
-          const read = readTargets(t.app.markets, ["NVDA"]);
-          running.release();
-          await waiting.arrived;
-          const order = s.calls.urls.map(
-            (u) => chartSymbol(u) ?? u.searchParams.get("q"),
-          );
-          // the read's search took the first freed slot
-          expect(order.slice(0, 3)).toEqual(["^FIRST", "^SECOND", "NVDA"]);
-          waiting.release();
-          const [target] = await read;
+          await held.arrived;
+          const [target] = await readTargets(t.app.markets, ["NVDA"]);
           expect(target && "instrument" in target).toBe(true);
+          // the next value waits for the one in flight
+          expect(s.calls.charts("^SECOND")).toHaveLength(0);
+          held.release();
           await t.app.tracker.settled();
+          expect(t.app.tracker.status().map((x) => x.state)).toEqual([
+            "tracked",
+            "tracked",
+            "tracked",
+          ]);
         } finally {
-          // a held call would hold the stop
-          running.release();
-          waiting.release();
+          held.release();
         }
       },
       { fetch: s.fetch, start: OPEN, track: names },
     );
   });
-});
 
-describe("seed", () => {
-  const seeded = (db: Db, values: string[], on = { bvb: true, fred: true }) => {
-    const flagged = new Set<string>();
-    const owed = new Set<string>();
-    const states = seed({
-      db,
-      values,
-      on,
-      readMs: 30 * DAY_MS,
-      flagged,
-      owed,
-      now: OPEN,
+  test("a read of the value being fetched joins it and does not time out", async () => {
+    const held = gate();
+    const s = await sources({
+      charts: await renamed(["^FIRST"]),
+      hold: (url) => (chartSymbol(url) === "^FIRST" ? held.hold() : undefined),
     });
-    return { states, flagged, owed };
-  };
+    await withApp(
+      async (t) => {
+        try {
+          await held.arrived;
+          const read = readTargets(t.app.markets, ["^FIRST"]);
+          await t.clock.advance(10_000);
+          held.release();
+          const [target] = await read;
+          expect(target && "instrument" in target).toBe(true);
+        } finally {
+          held.release();
+          await t.app.tracker.settled();
+        }
+      },
+      { fetch: s.fetch, start: OPEN, track: ["^FIRST"] },
+    );
+  });
 
-  test("a value read within the window owes no catch-up", () => {
+  test("a value resolved is tracked while a later one is still fetching", async () => {
+    const held = gate();
+    const s = await sources({
+      charts: { ...(await charts()), ...(await renamed(["^SLOW"])) },
+      hold: (url) => (chartSymbol(url) === "^SLOW" ? held.hold() : undefined),
+    });
+    await withApp(
+      async (t) => {
+        try {
+          await held.arrived;
+          expect(t.app.tracker.status()[0]).toEqual({
+            value: "^DJI",
+            id: DJI,
+            state: "tracked",
+          });
+          expect(t.app.markets.tracking.flagged.has(DJI)).toBe(true);
+        } finally {
+          held.release();
+          await t.app.tracker.settled();
+        }
+      },
+      { fetch: s.fetch, start: OPEN, track: ["^DJI", "^SLOW"] },
+    );
+  });
+
+  test("a read's catch-up of an owed value pays its debt", async () => {
     const { db } = open(":memory:", fakeClock(OPEN));
     stored(db, NVDA, "2026-10-05");
     recordSession(db, "US", US_SESSION, OPEN);
-    markRead(db, [NVDA], OPEN - DAY_MS);
+    let failing = true;
+    const s = await sources({
+      hold: async (url) =>
+        failing && chartSymbol(url) === "NVDA"
+          ? { recordedAt: "", status: 500, headers: {}, body: {} }
+          : undefined,
+    });
+    try {
+      await withApp(
+        async (t) => {
+          await t.app.tracker.settled();
+          expect(t.app.tracker.status()[0]!.state).toBe("source_error");
+          expect(t.app.markets.tracking.owed.has(NVDA)).toBe(true);
+          failing = false;
+          // past the queue's back-off after the failed call
+          await t.clock.advance(MINUTE_MS);
+          const [first] = await readTargets(t.app.markets, ["NVDA"]);
+          expect(first && "instrument" in first).toBe(true);
+          expect(t.app.markets.tracking.owed.size).toBe(0);
+          const asked = s.calls.charts("NVDA").length;
+          await readTargets(t.app.markets, ["NVDA"]);
+          expect(s.calls.charts("NVDA")).toHaveLength(asked);
+        },
+        { fetch: s.fetch, start: OPEN, track: ["NVDA"], db },
+      );
+    } finally {
+      db.close();
+    }
+  });
+
+  test("stop waits for the tracker's fetch in flight", async () => {
+    const held = gate();
+    const clock = fakeClock(OPEN);
+    const { db } = open(":memory:", clock);
+    const errors: string[] = [];
+    const s = await sources({
+      charts: await renamed(["^ONE", "^TWO"]),
+      hold: (url) => (chartSymbol(url) === "^ONE" ? held.hold() : undefined),
+    });
+    const app = start({
+      hostname: "127.0.0.1",
+      port: 0,
+      bearer: "made-up-bearer-for-the-stop-test-000000",
+      clock,
+      db,
+      version: "v0.0.0-test",
+      quoteEveryMs: PERIOD,
+      track: ["^ONE", "^TWO"],
+      fetch: s.fetch,
+      log: () => ({
+        info() {},
+        warn() {},
+        error(msg) {
+          errors.push(msg);
+        },
+      }),
+    });
+    try {
+      await held.arrived;
+      // past the value's deadline, its fetch still running
+      await clock.advance(60_000);
+      let stopped = false;
+      const stopping = app.stop().then(() => {
+        stopped = true;
+      });
+      for (let k = 0; k < 20; k++) {
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+      expect(stopped).toBe(false);
+      held.release();
+      await stopping;
+      expect(app.markets.inflight.size).toBe(0);
+      // the next value never started
+      expect(s.calls.charts("^TWO")).toHaveLength(0);
+      expect(errors).toEqual([]);
+    } finally {
+      held.release();
+      db.close();
+    }
+  });
+});
+
+describe("seed", () => {
+  const seeded = (
+    db: Db,
+    values: string[],
+    on = { bvb: true, fred: true },
+    now = OPEN,
+  ) => {
+    const flagged = new Set<string>();
+    const owed = new Set<string>();
+    const states = seed({ db, values, on, flagged, owed, now });
+    return { states, flagged, owed };
+  };
+
+  test("a value read within the window still owes the sessions it missed", () => {
+    const { db } = open(":memory:", fakeClock(OPEN));
+    stored(db, NVDA, "2026-10-05");
+    recordSession(db, "US", US_SESSION, OPEN);
+    markRead(db, [NVDA], OPEN - 20 * DAY_MS);
     const s = seeded(db, ["NVDA"]);
-    expect(s.states).toEqual([{ value: "NVDA", id: NVDA, state: "tracked" }]);
+    expect(s.states).toEqual([{ value: "NVDA", id: NVDA, state: "pending" }]);
     expect([...s.flagged]).toEqual([NVDA]);
+    expect([...s.owed]).toEqual([NVDA]);
+    db.close();
+  });
+
+  test("a lone market's old session owes a catch-up once a check is due", () => {
+    const now = Date.parse("2026-10-28T15:00:00Z");
+    const { db } = open(":memory:", fakeClock(now));
+    stored(db, NVDA, "2026-09-18");
+    // its bars changed in that session, and no check ran since
+    const at = Date.parse("2026-09-18T15:00:00Z");
+    db.query("update bars set fetched_at = ? where instrument = ?").run(
+      at,
+      NVDA,
+    );
+    recordSession(
+      db,
+      "US",
+      {
+        zone: "America/New_York",
+        start: Date.parse("2026-09-18T13:30:00Z"),
+        end: Date.parse("2026-09-18T20:00:00Z"),
+      },
+      at,
+    );
+    expect([...seeded(db, ["NVDA"], undefined, now).owed]).toEqual([NVDA]);
+    // the same state within that session owes nothing
+    expect(seeded(db, ["NVDA"], undefined, at + MINUTE_MS).owed.size).toBe(0);
+    db.close();
+  });
+
+  test("a FRED series owes a catch-up only while its own runs say it is due", () => {
+    const { db } = open(":memory:", fakeClock(OPEN));
+    stored(db, "FRED:DGS10", "2026-10-27", "fred", "DGS10");
+    expect(seeded(db, ["FRED:DGS10"]).owed.size).toBe(1);
+    endRun(
+      db,
+      startRun(db, "fred", "bars", OPEN - MINUTE_MS, "FRED:DGS10"),
+      OPEN - MINUTE_MS,
+      1,
+    );
+    const s = seeded(db, ["FRED:DGS10"]);
+    expect(s.states[0]!.state).toBe("tracked");
     expect(s.owed.size).toBe(0);
     db.close();
   });

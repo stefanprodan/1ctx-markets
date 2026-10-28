@@ -80,6 +80,9 @@ is offered over MCP.
   condition: delete the rule first. The check is in the same write.
 - **Its alerts stay** until retention, since alerts have no foreign key
   and a hole would read as a retention gap on the alerts feed.
+- **A `--track` value's instrument is fetched again** on the next track
+  pass, since the flag still names it; to stop it, drop the flag and
+  restart.
 - **Not built:** deleting alerts, untracking (tracking ends by itself),
   key rotation (replace the file and restart).
 

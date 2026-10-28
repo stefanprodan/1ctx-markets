@@ -15,8 +15,8 @@ export type Tracking = {
   readMs: number;
   // ids the --track values resolved to, filled in as they resolve
   flagged: ReadonlySet<string>;
-  // flagged ids that missed a session, until their catch-up lands
-  owed: ReadonlySet<string>;
+  // flagged ids that missed a session, until a catch-up of theirs lands
+  owed: Set<string>;
 };
 
 export const BY_USE: Tracking = {

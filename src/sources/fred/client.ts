@@ -62,8 +62,6 @@ export type Fred = {
   observations(id: string, range: ObservationRange): Promise<Observations>;
   failFast(): Fred;
   within(live: () => boolean): Fred;
-  // calls queued behind the reads', as a job's, deadline kept
-  background(): Fred;
   backoff(): Backoff | null;
   close(): void;
 };
@@ -328,9 +326,8 @@ export function fred(options: FredOptions): Fred {
         parseObservations(body, at, "start" in range),
       );
     },
-    failFast: () => client({ ...run, failFast: true }),
-    within: (live) => client({ ...run, failFast: true, live }),
-    background: () => client({ ...run, background: true }),
+    failFast: () => client({ failFast: true }),
+    within: (live) => client({ failFast: true, live }),
     backoff: () => calls.backoff(),
     close() {
       closed = true;

@@ -395,7 +395,11 @@ async function resolveAll(
       fetches.set(s.key, fetched);
     }
     return fetched.then(
-      (instrument): Target => ({ input, instrument }),
+      (instrument): Target => {
+        // a landed fetch catches it up, whoever asked
+        m.tracking.owed.delete(instrument.id);
+        return { input, instrument };
+      },
       (error: unknown): Target => ({ input, error: itemError(m, error) }),
     );
   };

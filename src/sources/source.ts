@@ -103,8 +103,6 @@ export type RunOptions = {
   failFast?: boolean;
   // false once the caller's deadline passed, so a waiting call never starts
   live?: () => boolean;
-  // job work with a deadline: it keeps the jobs' place behind every read
-  background?: boolean;
 };
 
 // a back-off in force: when calls go again and the phrase that started it
@@ -204,11 +202,11 @@ export function queue(clock: Clock, concurrency: number): Queue {
           start,
           failFast: options.failFast === true,
           live: options.live ?? (() => true),
-          deadline: options.live !== undefined && options.background !== true,
+          deadline: options.live !== undefined,
           reject,
         };
-        // a read's call goes ahead of the jobs' calls, in order among its
-        // own, so a read never times out behind a pass
+        // a call with a deadline goes ahead of the jobs' calls, in order
+        // among its own, so a read never times out behind a pass
         const behind = call.deadline
           ? waiting.findIndex((w) => !w.deadline)
           : -1;
