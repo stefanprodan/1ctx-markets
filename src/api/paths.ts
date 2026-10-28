@@ -1,7 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// The spec's paths: each route's arguments, answers and limits.
 
 import {
   MAX_BODY_BYTES as ADMIN_BODY_BYTES,

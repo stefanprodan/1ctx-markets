@@ -1,7 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// The spec's schemas: the JSON Schema subset the contract test checks.
 
 import {
   PARTS,
@@ -80,7 +78,6 @@ const RESEARCH = "docs/research.md";
 const RULES = "docs/rules.md";
 const ADMIN = "docs/admin.md";
 
-// what an item holds when its symbol did not resolve or fetch in time
 const itemError = object(
   {
     input: str,

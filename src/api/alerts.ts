@@ -1,8 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// For a client polling /api/v1/alerts: the alert id is the cursor, and
-// the same alerts must answer the same bytes.
+// The alert id is the cursor, and the same alerts must answer the same bytes.
 
 import { iso } from "../market/format.ts";
 import { alertItem } from "../operations/rules.ts";
@@ -44,13 +43,10 @@ function cursorOf(req: Request): number | null | undefined {
 
 type Page = {
   body: string;
-  // the last alert in the page
   last: number;
 };
 
-// Whole alerts, oldest first, while the body stays under the limit; one
-// alert that cannot fit alone goes out without its values, so the feed
-// never stalls on it.
+// an alert too big alone goes out without its values, so the feed never stalls
 export function alertPage(
   rows: readonly {
     id: number;
