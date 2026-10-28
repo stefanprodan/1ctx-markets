@@ -1,0 +1,198 @@
+{
+  "recordedAt": "2026-10-28T08:30:13.000Z",
+  "request": {
+    "method": "GET",
+    "url": "https://query1.finance.yahoo.com/v8/finance/chart/TLV.RO?range=1d&interval=1m&includePrePost=true"
+  },
+  "status": 200,
+  "headers": {
+    "age": "3",
+    "cache-control": "public, max-age=10, stale-while-revalidate=20",
+    "content-type": "application/json;charset=utf-8"
+  },
+  "body": {
+    "chart": {
+      "result": [
+        {
+          "meta": {
+            "currency": "RON",
+            "symbol": "TLV.RO",
+            "exchangeName": "BVB",
+            "fullExchangeName": "BVB",
+            "instrumentType": "EQUITY",
+            "firstTradeDate": 1198224000,
+            "regularMarketTime": 1793175165,
+            "hasPrePostMarketData": false,
+            "gmtoffset": 7200,
+            "timezone": "EET",
+            "exchangeTimezoneName": "Europe/Bucharest",
+            "regularMarketPrice": 36.3,
+            "regularMarketChangePercent": 0.11,
+            "fulldayPrice": 36.3,
+            "fulldayChange": 0.04,
+            "fulldayChangePercent": 0.11,
+            "fiftyTwoWeekHigh": 38.28,
+            "fiftyTwoWeekLow": 24.349,
+            "regularMarketDayHigh": 36.3,
+            "regularMarketDayLow": 36.12,
+            "regularMarketVolume": 7816,
+            "longName": "Banca Transilvania S.A.",
+            "shortName": "BANCA TRANSILVANIA CLUJ NAPOCA",
+            "chartPreviousClose": 36.26,
+            "previousClose": 36.26,
+            "scale": 3,
+            "priceHint": 2,
+            "currentTradingPeriod": {
+              "pre": {
+                "timezone": "EET",
+                "end": 1793174400,
+                "start": 1793174400,
+                "gmtoffset": 7200
+              },
+              "regular": {
+                "timezone": "EET",
+                "end": 1793203200,
+                "start": 1793174400,
+                "gmtoffset": 7200
+              },
+              "post": {
+                "timezone": "EET",
+                "end": 1793203200,
+                "start": 1793203200,
+                "gmtoffset": 7200
+              }
+            },
+            "tradingPeriods": [
+              [
+                {
+                  "timezone": "EET",
+                  "end": 1793203200,
+                  "start": 1793174400,
+                  "gmtoffset": 7200
+                }
+              ]
+            ],
+            "dataGranularity": "1m",
+            "range": "1d",
+            "validRanges": [
+              "1d",
+              "5d",
+              "1mo",
+              "3mo",
+              "6mo",
+              "1y",
+              "2y",
+              "5y",
+              "10y",
+              "ytd",
+              "max"
+            ]
+          },
+          "timestamp": [
+            1793174400,
+            1793174460,
+            1793174520,
+            1793174580,
+            1793174640,
+            1793174700,
+            1793174760,
+            1793174820,
+            1793174880,
+            1793174940,
+            1793175000,
+            1793175060,
+            1793175120,
+            1793175165
+          ],
+          "indicators": {
+            "quote": [
+              {
+                "high": [
+                  36.15999984741211,
+                  36.15999984741211,
+                  36.15999984741211,
+                  null,
+                  36.15999984741211,
+                  36.15999984741211,
+                  36.119998931884766,
+                  36.13999938964844,
+                  36.13999938964844,
+                  36.18000030517578,
+                  36.20000076293945,
+                  36.2599983215332,
+                  null,
+                  36.29999923706055
+                ],
+                "volume": [
+                  0,
+                  100,
+                  30,
+                  null,
+                  317,
+                  33,
+                  230,
+                  362,
+                  2131,
+                  434,
+                  497,
+                  1066,
+                  null,
+                  0
+                ],
+                "low": [
+                  36.119998931884766,
+                  36.15999984741211,
+                  36.119998931884766,
+                  null,
+                  36.119998931884766,
+                  36.15999984741211,
+                  36.119998931884766,
+                  36.119998931884766,
+                  36.119998931884766,
+                  36.13999938964844,
+                  36.18000030517578,
+                  36.13999938964844,
+                  null,
+                  36.29999923706055
+                ],
+                "open": [
+                  36.13999938964844,
+                  36.15999984741211,
+                  36.119998931884766,
+                  null,
+                  36.119998931884766,
+                  36.15999984741211,
+                  36.119998931884766,
+                  36.13999938964844,
+                  36.119998931884766,
+                  36.15999984741211,
+                  36.18000030517578,
+                  36.18000030517578,
+                  null,
+                  36.29999923706055
+                ],
+                "close": [
+                  36.15999984741211,
+                  36.15999984741211,
+                  36.15999984741211,
+                  null,
+                  36.119998931884766,
+                  36.15999984741211,
+                  36.119998931884766,
+                  36.119998931884766,
+                  36.13999938964844,
+                  36.18000030517578,
+                  36.20000076293945,
+                  36.2599983215332,
+                  null,
+                  36.29999923706055
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "error": null
+    }
+  }
+}
