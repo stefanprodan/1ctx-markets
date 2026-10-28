@@ -8,7 +8,7 @@ import { NO_RULES, type RuleHooks } from "../../rules/hooks.ts";
 import { pruneLive, refreshLive } from "../../signals/store.ts";
 import type { Db } from "../../storage/db/index.ts";
 import { type ChartMeta, SOURCE, type SparkAnswer } from "./client.ts";
-import { marketOf } from "./resolve.ts";
+import { keyOf, marketOf } from "./resolve.ts";
 
 // The day change is worked out from price and previous close, never
 // Yahoo's own change field, which disagreed with both for SOL-USD.
@@ -44,13 +44,31 @@ export function quoteOf(
   };
 }
 
+// A symbol can move listing on Yahoo's side; an answer naming another
+// key than the stored one is that other listing's price, never ours.
+export function refuseForeign(db: Db, answer: SparkAnswer): SparkAnswer {
+  const quotes: ChartMeta[] = [];
+  const skipped = [...answer.skipped];
+  for (const meta of answer.quotes) {
+    const instrument = readBySourceSymbol(db, SOURCE, meta.symbol);
+    if (
+      instrument !== null &&
+      keyOf(meta.exchange, meta.symbol) !== instrument.id
+    ) {
+      skipped.push({ symbol: meta.symbol, phrase: "malformed answer" });
+    } else quotes.push(meta);
+  }
+  return { ...answer, quotes, skipped };
+}
+
 // sessions are recorded before quotes, so live rows never depend on order
 export function storeQuotes(
   db: Db,
-  answer: SparkAnswer,
+  checked: SparkAnswer,
   rules: RuleHooks = NO_RULES,
-  now: number = answer.fetchedAt,
+  now: number = checked.fetchedAt,
 ): QuoteRow[] {
+  const answer = refuseForeign(db, checked);
   const written: QuoteRow[] = [];
   // one session per market and answer, the latest its listings show,
   // since before the open some still show the previous day's

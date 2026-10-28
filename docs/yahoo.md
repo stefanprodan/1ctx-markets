@@ -92,7 +92,8 @@ Phrases from Yahoo (`docs/sources.md`, Refusals):
   off** (`docs/bvb.md`); on, the same `BVB:` key is served by the feed,
   and a Yahoo symbol naming one (`TLV.RO`) resolves to it there.
 - **Every stored answer must name the key it is stored under.**
-  `checkAnswer()` and the `expected` argument of `addInstrument()` and
+  `checkAnswer()` (bars and extended hours), `refuseForeign()` (quotes)
+  and the `expected` argument of `addInstrument()` and
   `fetchInstrument()` refuse an answer whose exchange and symbol make
   another key (`malformed answer`).
 

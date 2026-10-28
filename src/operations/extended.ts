@@ -10,6 +10,7 @@ import { MINUTE_MS } from "../runtime/clock.ts";
 import { YAHOO } from "../sources/ids.ts";
 import { SourceError } from "../sources/source.ts";
 import type { IntradayAnswer, Window } from "../sources/yahoo/client.ts";
+import { checkAnswer } from "../sources/yahoo/history.ts";
 import { type ExtendedRead, type Markets, shared } from "./markets.ts";
 
 const none = (reason: StaleReason): ExtendedRead => ({
@@ -78,6 +79,7 @@ async function readOne(
       deadline,
       (live) => m.yahoo.within(live).intraday(instrument.sourceSymbol),
     );
+    checkAnswer(instrument, answer);
     const read = latestExtended(answer, answer.fetchedAt);
     m.extended.set(instrument.id, {
       slot: Math.floor(answer.fetchedAt / m.quoteEveryMs),

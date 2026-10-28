@@ -41,7 +41,7 @@ import {
   store,
   unapplied,
 } from "./history.ts";
-import { storeQuotes } from "./quotes.ts";
+import { refuseForeign, storeQuotes } from "./quotes.ts";
 import { keyOf } from "./resolve.ts";
 
 export type YahooContext = {
@@ -378,7 +378,11 @@ export async function fetchQuotes(
     }
   }
   const quotes = await ctx.writer.write((db) => {
-    const stored = answers.flatMap((answer) => storeQuotes(db, answer));
+    const checked = answers.map((answer) => refuseForeign(db, answer));
+    checked.forEach((a, k) => {
+      skipped.push(...a.skipped.slice(answers[k]!.skipped.length));
+    });
+    const stored = checked.flatMap((answer) => storeQuotes(db, answer));
     ctx.rules?.evaluate(
       db,
       stored.map((q) => q.instrument),
