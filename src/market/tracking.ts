@@ -15,9 +15,25 @@ export type Tracking = {
   readMs: number;
   // ids the --track values resolved to, filled in as they resolve
   flagged: ReadonlySet<string>;
+  // flagged ids that missed a session, until their catch-up lands
+  owed: ReadonlySet<string>;
 };
 
-export const BY_USE: Tracking = { readMs: TRACK_MS, flagged: new Set() };
+export const BY_USE: Tracking = {
+  readMs: TRACK_MS,
+  flagged: new Set(),
+  owed: new Set(),
+};
+
+// tracked and whole, so a read takes it as it is; else it catches up
+export function isKept(
+  db: Db,
+  id: string,
+  now: number,
+  tracking: Tracking = BY_USE,
+): boolean {
+  return !tracking.owed.has(id) && isTracked(db, id, now, tracking);
+}
 
 // Runs inside a writer transaction; never moves a read back in time.
 export function markRead(db: Db, ids: Iterable<string>, now: number): void {

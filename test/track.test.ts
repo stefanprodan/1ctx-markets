@@ -2,13 +2,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
-import { readInstrument } from "../src/market/instruments.ts";
-import { lastReadAt, trackedIds } from "../src/market/tracking.ts";
-import { MINUTE_MS } from "../src/runtime/clock.ts";
-import { open } from "../src/storage/db/index.ts";
+import { dailyRange, upsertBars } from "../src/market/bars.ts";
+import { recordSession } from "../src/market/calendars.ts";
+import { readInstrument, upsertInstrument } from "../src/market/instruments.ts";
+import { lastReadAt, markRead, trackedIds } from "../src/market/tracking.ts";
+import { readTargets, storedInstrument } from "../src/operations/targets.ts";
+import { seed } from "../src/operations/track.ts";
+import { DAY_MS, MINUTE_MS } from "../src/runtime/clock.ts";
+import { writeSources } from "../src/sources/bvb/switch.ts";
+import { type Db, open } from "../src/storage/db/index.ts";
 import { type TestApp, withApp } from "./helpers/app.ts";
+import { bothSources } from "./helpers/bvb.ts";
 import { fakeClock } from "./helpers/clock.ts";
-import { sources } from "./helpers/sources.ts";
+import { gate, sources } from "./helpers/sources.ts";
 import {
   backTo,
   chartSymbol,
@@ -193,9 +199,9 @@ describe("--track", () => {
     }
   });
 
-  test("a restart with the value stored keeps its news and asks no chart", async () => {
+  test("a restart in the session it was synced in keeps its news and asks no chart", async () => {
     const s = await sources({ charts: await charts() });
-    const { db } = open(":memory:", fakeClock(NOW));
+    const { db } = open(":memory:", fakeClock(OPEN));
     const news = () =>
       db.query<{ n: number }, []>("select count(*) as n from news").get()!.n;
     try {
@@ -206,10 +212,10 @@ describe("--track", () => {
             d.query(
               `insert into news (instrument, id, published_at, title, url,
                  fetched_at) values (?, 'n1', ?, 't', 'u', ?)`,
-            ).run(DJI, NOW - 3_600_000, NOW);
+            ).run(DJI, OPEN - 3_600_000, OPEN);
           });
         },
-        { fetch: s.fetch, start: NOW, track: ["^DJI"], db },
+        { fetch: s.fetch, start: OPEN, track: ["^DJI"], db },
       );
       const asked = s.calls.charts("^DJI").length;
       await withApp(
@@ -224,14 +230,14 @@ describe("--track", () => {
           expect(s.calls.charts("^DJI").length).toBe(asked);
           expect(lastReadAt(t.db, DJI)).toBeNull();
         },
-        { fetch: s.fetch, start: NOW, track: ["^DJI"], db },
+        { fetch: s.fetch, start: OPEN, track: ["^DJI"], db },
       );
     } finally {
       db.close();
     }
   });
 
-  test("a stored value further behind than the refetch window is caught up at start", async () => {
+  test("a stored value that missed sessions is flagged at once and caught up", async () => {
     const then = Date.parse("2026-07-01T08:00:00Z");
     const full = listed(
       backTo(await recorded("chart-dji-5d-1d"), "2026-05-04"),
@@ -265,11 +271,13 @@ describe("--track", () => {
       const s = await sources({ charts: { "^DJI": full } });
       await withApp(
         async (t) => {
-          // not seeded, checked before the first pass can land
+          // flagged for the prune and the jobs, owed for the reads, before
+          // the first pass can land
           expect(t.app.tracker.status()).toEqual([
-            { value: "^DJI", id: null, state: "pending" },
+            { value: "^DJI", id: DJI, state: "pending" },
           ]);
-          expect(t.app.markets.tracking.flagged.size).toBe(0);
+          expect([...t.app.markets.tracking.flagged]).toEqual([DJI]);
+          expect([...t.app.markets.tracking.owed]).toEqual([DJI]);
           await t.app.tracker.settled();
           expect(lastDate()).toBe("2026-10-27");
           const [asked] = s.calls.charts("^DJI");
@@ -279,6 +287,7 @@ describe("--track", () => {
           expect((await status(t)).track).toEqual([
             { value: "^DJI", id: DJI, state: "tracked" },
           ]);
+          expect(t.app.markets.tracking.owed.size).toBe(0);
           expect(lastReadAt(t.db, DJI)).toBeNull();
         },
         { fetch: s.fetch, start: NOW, track: ["^DJI"], db },
@@ -332,5 +341,243 @@ describe("--track", () => {
       },
       { fetch: s.fetch, start: OPEN, track: ["^DJI"] },
     );
+  });
+});
+
+// one daily bar on date, written 60 days before OPEN, as a read long ago left it
+function stored(
+  db: Db,
+  id: string,
+  date: string,
+  source = "yahoo",
+  sourceSymbol = id.slice(id.indexOf(":") + 1),
+) {
+  const [market, symbol] = id.split(":") as [string, string];
+  const bvb = market === "BVB";
+  upsertInstrument(
+    db,
+    {
+      market,
+      symbol,
+      source,
+      sourceSymbol,
+      exchange: market,
+      name: "made up",
+      type: "EQUITY",
+      currency: bvb ? "RON" : "USD",
+      unit: "per_share",
+      zone: bvb ? "Europe/Bucharest" : "America/New_York",
+    },
+    OPEN - 60 * DAY_MS,
+  );
+  const bar = { date, open: 10, high: 10, low: 10, close: 10, volume: 100 };
+  upsertBars(db, id, "1d", [{ ...bar, final: true }], OPEN - 60 * DAY_MS);
+}
+
+const NVDA = "US:NVDA";
+// the US session the reviewers' probes ran in
+const US_SESSION = {
+  zone: "America/New_York",
+  start: Date.parse("2026-10-28T13:30:00Z"),
+  end: Date.parse("2026-10-28T20:00:00Z"),
+};
+
+const count = (db: Db, table: string): number =>
+  db.query<{ n: number }, []>(`select count(*) as n from ${table}`).get()!.n;
+
+describe("--track at start", () => {
+  test("a value that missed sessions keeps its news and is caught up before a read answers", async () => {
+    const { db } = open(":memory:", fakeClock(OPEN));
+    stored(db, NVDA, "2026-10-05");
+    recordSession(db, "US", US_SESSION, OPEN);
+    db.query(
+      `insert into news (instrument, id, published_at, title, url, fetched_at)
+       values (?, 'recent', ?, 't', 'u', ?)`,
+    ).run(NVDA, OPEN - DAY_MS, OPEN);
+    db.query(
+      `insert into news_walks (instrument, walk, cursor, after)
+       values (?, 'history', 'cursor', null)`,
+    ).run(NVDA);
+    const s = await sources();
+    try {
+      await withApp(
+        async (t) => {
+          // a read at once, before the tracker's catch-up can land
+          const read = readTargets(t.app.markets, ["NVDA"]);
+          expect(t.app.tracker.status()).toEqual([
+            { value: "NVDA", id: NVDA, state: "pending" },
+          ]);
+          await t.app.writer.write(() => {});
+          expect(count(db, "news")).toBe(1);
+          expect(count(db, "news_walks")).toBe(1);
+          const [target] = await read;
+          expect(target && "instrument" in target).toBe(true);
+          expect(dailyRange(db, NVDA)!.last > "2026-10-05").toBe(true);
+          await t.app.tracker.settled();
+          expect(t.app.tracker.status()[0]!.state).toBe("tracked");
+          expect(t.app.markets.tracking.owed.size).toBe(0);
+        },
+        { fetch: s.fetch, start: OPEN, track: ["NVDA"], db },
+      );
+    } finally {
+      db.close();
+    }
+  });
+
+  test("a value whose source is off waits for a source switch", async () => {
+    const { db } = open(":memory:", fakeClock(OPEN));
+    stored(db, "BVB:TLV", "2026-07-01", "bvb", "TLV");
+    // the last start had the feed; this one has not
+    writeSources(db, ["bvb", "yahoo"], OPEN - DAY_MS);
+    const s = await sources({
+      charts: { "TLV.RO": listed(await recorded("chart-tlv-ro-bonus-2026")) },
+    });
+    try {
+      await withApp(
+        async (t) => {
+          expect(t.app.tracker.status()[0]!.id).toBeNull();
+          expect(t.app.markets.tracking.flagged.size).toBe(0);
+          await t.app.tracker.settled();
+          await t.app.sourceSwitch.settled();
+          expect(readInstrument(db, "BVB:TLV")!.source).toBe("yahoo");
+          await t.clock.advance(PERIOD);
+          await t.app.tracker.settled();
+          expect(t.app.tracker.status()).toEqual([
+            { value: "BVB:TLV", id: "BVB:TLV", state: "tracked" },
+          ]);
+          const now = t.clock.now();
+          expect(
+            trackedIds(db, now, t.app.markets.tracking).has("BVB:TLV"),
+          ).toBe(true);
+        },
+        { fetch: s.fetch, start: OPEN, track: ["BVB:TLV"], db },
+      );
+    } finally {
+      db.close();
+    }
+  });
+
+  test("a read goes ahead of the tracker's queued fetches", async () => {
+    const running = gate();
+    const waiting = gate();
+    const names = ["^FIRST", "^SECOND", "^THIRD", "^FOURTH"];
+    const chart = listed(await recorded("chart-dji-5d-1d"));
+    const charts = Object.fromEntries(
+      names.map((name) => {
+        const fx = clone(chart);
+        fx.body.chart.result[0].meta.symbol = name;
+        return [name, fx];
+      }),
+    );
+    const s = await sources({
+      charts,
+      hold: (url) => {
+        const symbol = chartSymbol(url);
+        if (symbol === "^FIRST" || symbol === "^SECOND") return running.hold();
+        if (symbol === "^THIRD" || symbol === "^FOURTH") return waiting.hold();
+        return undefined;
+      },
+    });
+    await withApp(
+      async (t) => {
+        try {
+          // both slots hold tracker calls, two more wait behind them
+          await running.arrived;
+          const read = readTargets(t.app.markets, ["NVDA"]);
+          running.release();
+          await waiting.arrived;
+          const order = s.calls.urls.map(
+            (u) => chartSymbol(u) ?? u.searchParams.get("q"),
+          );
+          // the read's search took the first freed slot
+          expect(order.slice(0, 3)).toEqual(["^FIRST", "^SECOND", "NVDA"]);
+          waiting.release();
+          const [target] = await read;
+          expect(target && "instrument" in target).toBe(true);
+          await t.app.tracker.settled();
+        } finally {
+          // a held call would hold the stop
+          running.release();
+          waiting.release();
+        }
+      },
+      { fetch: s.fetch, start: OPEN, track: names },
+    );
+  });
+});
+
+describe("seed", () => {
+  const seeded = (db: Db, values: string[], on = { bvb: true, fred: true }) => {
+    const flagged = new Set<string>();
+    const owed = new Set<string>();
+    const states = seed({
+      db,
+      values,
+      on,
+      readMs: 30 * DAY_MS,
+      flagged,
+      owed,
+      now: OPEN,
+    });
+    return { states, flagged, owed };
+  };
+
+  test("a value read within the window owes no catch-up", () => {
+    const { db } = open(":memory:", fakeClock(OPEN));
+    stored(db, NVDA, "2026-10-05");
+    recordSession(db, "US", US_SESSION, OPEN);
+    markRead(db, [NVDA], OPEN - DAY_MS);
+    const s = seeded(db, ["NVDA"]);
+    expect(s.states).toEqual([{ value: "NVDA", id: NVDA, state: "tracked" }]);
+    expect([...s.flagged]).toEqual([NVDA]);
+    expect(s.owed.size).toBe(0);
+    db.close();
+  });
+
+  test("a value whose source is off or not stored is left to the tracker", () => {
+    const { db } = open(":memory:", fakeClock(OPEN));
+    stored(db, "BVB:TLV", "2026-10-27", "bvb", "TLV");
+    stored(db, "FRED:DGS10", "2026-10-27", "fred", "DGS10");
+    const s = seeded(db, ["BVB:TLV", "FRED:DGS10", "^NOPE"], {
+      bvb: false,
+      fred: false,
+    });
+    expect(s.states.map((x) => [x.id, x.state])).toEqual([
+      [null, "pending"],
+      [null, "pending"],
+      [null, "pending"],
+    ]);
+    expect(s.flagged.size).toBe(0);
+    db.close();
+  });
+
+  test("with the feed on, a feed symbol is found in any case", () => {
+    const { db } = open(":memory:", fakeClock(OPEN));
+    stored(db, "BVB:BETPLUS", "2026-10-27", "bvb", "BETPlus");
+    expect(storedInstrument(db, "betplus", true)?.id).toBe("BVB:BETPLUS");
+    expect(storedInstrument(db, "betplus", false)).toBeNull();
+    db.close();
+  });
+
+  test("a symbol stored by both sources stays pending, then answers candidates", async () => {
+    const { db } = open(":memory:", fakeClock(OPEN));
+    stored(db, "BVB:TLV", "2026-10-27", "bvb", "TLV");
+    stored(db, "US:TLV", "2026-10-27");
+    expect(storedInstrument(db, "TLV", true)).toBeNull();
+    const f = await bothSources();
+    try {
+      await withApp(
+        async (t) => {
+          expect(t.app.tracker.status()[0]!.id).toBeNull();
+          await t.app.tracker.settled();
+          expect(t.app.tracker.status()).toEqual([
+            { value: "TLV", id: null, state: "candidates" },
+          ]);
+        },
+        { fetch: f.fetch, start: OPEN, track: ["TLV"], bvb: true, db },
+      );
+    } finally {
+      db.close();
+    }
   });
 });

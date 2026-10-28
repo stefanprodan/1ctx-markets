@@ -2,16 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // The --track values: resolved as a read would, tracked without one.
 
-import { dailyRange } from "../market/bars.ts";
+import { nextCheck, readSession } from "../market/calendars.ts";
 import { type Instrument, readInstrument } from "../market/instruments.ts";
+import { JOBS } from "../market/stale.ts";
 import { trackedIds } from "../market/tracking.ts";
-import { startOfDate } from "../market/zone.ts";
-import { DAY_MS } from "../runtime/clock.ts";
 import { errorFields, type Log } from "../runtime/log.ts";
 import type { Scheduler } from "../runtime/scheduler.ts";
-import { REFETCH_DAYS } from "../sources/history.ts";
 import { BVB, FRED } from "../sources/ids.ts";
 import type { Db } from "../storage/db/index.ts";
+import { lastStarted } from "../storage/runs.ts";
 import type { Markets } from "./markets.ts";
 import { type ItemError, resolveTargets, storedInstrument } from "./targets.ts";
 
@@ -37,39 +36,48 @@ const FINAL = new Set<TrackState["state"]>([
   "no_data",
 ]);
 
-// tracked by use, or behind by no more than the bar jobs' own refetch asks,
-// so the jobs keep it whole with no catch-up
-function current(db: Db, i: Instrument, byUse: Set<string>, now: number) {
-  if (byUse.has(i.id)) return true;
-  const range = dailyRange(db, i.id);
-  if (range === null) return false;
-  const since = startOfDate(i.zone, range.lastFinal ?? range.first);
-  return since >= now - REFETCH_DAYS * DAY_MS;
+// synced in its market's latest session, and no newer one can be unseen
+function whole(db: Db, i: Instrument, now: number): boolean {
+  const session = readSession(db, i.market);
+  const changed = db
+    .query<{ at: number | null }, [string]>(
+      "select max(fetched_at) as at from bars where instrument = ? and interval = '1d'",
+    )
+    .get(i.id)!.at;
+  if (session === null || changed === null || changed < session.start) {
+    return false;
+  }
+  const checked = lastStarted(db, i.source, JOBS.check, i.market);
+  const since = Math.max(session.fetchedAt, checked?.startedAt ?? 0);
+  return now < nextCheck(session, since);
 }
 
-// Stored values are tracked before the startup prune, which would take
-// their news; one further behind, or whose source is off, is left to the
-// tracker, which catches it up as a read would or answers no_data.
+// each stored value whose source is on is flagged before the startup prune
 export function seed(options: {
   db: Db;
   values: readonly string[];
   on: { bvb: boolean; fred: boolean };
   readMs: number;
   flagged: Set<string>;
+  owed: Set<string>;
   now: number;
 }): TrackState[] {
-  const { db, on, readMs, flagged, now } = options;
-  const byUse = trackedIds(db, now, { readMs, flagged: new Set() });
+  const { db, on, readMs, flagged, owed, now } = options;
+  const none = new Set<string>();
+  const byUse = trackedIds(db, now, { readMs, flagged: none, owed: none });
   return options.values.map((value) => {
     const stored = storedInstrument(db, value, on.bvb);
     const off =
       (stored?.source === BVB && !on.bvb) ||
       (stored?.source === FRED && !on.fred);
-    if (stored === null || off || !current(db, stored, byUse, now)) {
-      return { value, id: null, state: "pending" };
-    }
+    if (stored === null || off) return { value, id: null, state: "pending" };
     flagged.add(stored.id);
-    return { value, id: stored.id, state: "tracked" };
+    if (byUse.has(stored.id) || whole(db, stored, now)) {
+      return { value, id: stored.id, state: "tracked" };
+    }
+    // the tracker's first pass catches it up, as a read would
+    owed.add(stored.id);
+    return { value, id: stored.id, state: "pending" };
   });
 }
 
@@ -77,38 +85,56 @@ export function tracker(options: {
   m: Markets;
   // seed()'s, one per value
   states: TrackState[];
-  // the set trackedIds() reads, filled in as values resolve
+  // the sets trackedIds() and the reads see, kept as values resolve
   flagged: Set<string>;
+  owed: Set<string>;
   // a run's deadline and the retry period
   periodMs: number;
   log: Log;
 }): Tracker {
-  const { m, states, flagged, periodMs, log } = options;
+  const { m, states, flagged, owed, periodMs, log } = options;
   let running: Promise<void> | null = null;
+  // a stored value's no_data asks no source, and a source switch can end it
+  const final = (state: TrackState["state"], value: string) =>
+    FINAL.has(state) &&
+    !(
+      state === "no_data" &&
+      storedInstrument(m.db, value, m.bvb !== null) !== null
+    );
+  // background work: its calls wait behind every read's
+  const behind: Markets = {
+    ...m,
+    callMs: periodMs,
+    yahoo: m.yahoo.background(),
+    bvb: m.bvb?.background() ?? null,
+    fred: m.fred?.background() ?? null,
+  };
 
   async function pass(): Promise<void> {
     // deleted by the operator: the flag still names it, so fetch it again
     for (const s of states) {
       if (s.id === null || readInstrument(m.db, s.id) !== null) continue;
       flagged.delete(s.id);
+      owed.delete(s.id);
       s.id = null;
       s.state = "pending";
     }
-    const owed = states.filter(
-      (s) => s.state !== "tracked" && !FINAL.has(s.state),
+    const due = states.filter(
+      (s) => s.state !== "tracked" && !final(s.state, s.value),
     );
-    if (owed.length === 0) return;
+    if (due.length === 0) return;
     // no caller waits on it, so it may take the whole period
     const targets = await resolveTargets(
-      { ...m, callMs: periodMs },
-      owed.map((s) => s.value),
+      behind,
+      due.map((s) => s.value),
     );
     targets.forEach((t, k) => {
-      const s = owed[k]!;
+      const s = due[k]!;
       if ("instrument" in t) {
         s.id = t.instrument.id;
         s.state = "tracked";
         flagged.add(s.id);
+        owed.delete(s.id);
         log.info("track value resolved", { value: s.value, id: s.id });
         return;
       }
@@ -119,7 +145,7 @@ export function tracker(options: {
           error: t.error.error,
           message: t.error.message,
           candidates: t.error.candidates?.map((c) => c.id).join(","),
-          retried: !FINAL.has(t.error.error),
+          retried: !final(t.error.error, s.value),
         });
       }
       s.state = t.error.error;

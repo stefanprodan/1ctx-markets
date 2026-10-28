@@ -62,7 +62,8 @@ pauses in `docs/rules.md`.
   off. The deadline itself is the tool call's (`docs/tools.md`).
 - **A call with a deadline goes ahead of waiting job calls,** first in
   first out among its own, so a read never times out behind a pass; a
-  limiter keeps its spacing.
+  limiter keeps its spacing. Background work with a deadline
+  (`background()`, the `--track` tracker's) keeps the jobs' place.
 
 ## Retries
 

@@ -8,7 +8,7 @@ import {
   readBySourceSymbol,
   readInstrument,
 } from "../market/instruments.ts";
-import { isTracked, markRead } from "../market/tracking.ts";
+import { isKept, markRead } from "../market/tracking.ts";
 import { errorFields } from "../runtime/log.ts";
 import type { Bvb } from "../sources/bvb/client.ts";
 import { readByFeedSymbol, resolveBoth } from "../sources/bvb/resolve.ts";
@@ -162,7 +162,7 @@ function fredStep(m: Markets, id: string): Step {
   });
   const stored = readInstrument(m.db, id);
   if (stored !== null && hasBars(m.db, id)) {
-    if (isTracked(m.db, id, m.clock.now(), m.tracking)) {
+    if (isKept(m.db, id, m.clock.now(), m.tracking)) {
       return { kind: "ready", instrument: stored };
     }
     return {
@@ -215,7 +215,7 @@ function bvbStep(m: Markets, instrument: Instrument): Step {
   if (!hasBars(m.db, instrument.id)) {
     return bvbFetchStep(m, instrument.sourceSymbol, instrument.id);
   }
-  if (isTracked(m.db, instrument.id, m.clock.now(), m.tracking)) {
+  if (isKept(m.db, instrument.id, m.clock.now(), m.tracking)) {
     return { kind: "ready", instrument };
   }
   return {
@@ -242,7 +242,7 @@ function storedStep(m: Markets, instrument: Instrument): Step {
         ),
     };
   }
-  if (isTracked(m.db, instrument.id, m.clock.now(), m.tracking)) {
+  if (isKept(m.db, instrument.id, m.clock.now(), m.tracking)) {
     return { kind: "ready", instrument };
   }
   return {

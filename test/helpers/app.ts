@@ -35,6 +35,8 @@ export type TestOptions = {
   massiveKey?: string;
   start?: number;
   track?: string[];
+  // the Bucharest feed, on as with --source bvb
+  bvb?: boolean;
   // kept open after the app stops, so a second start reads it
   db?: Db;
 };
@@ -65,6 +67,7 @@ export async function withApp(
     finnhubKey: options.finnhubKey ?? null,
     massiveKey: options.massiveKey ?? null,
     track: options.track,
+    bvb: options.bvb,
     // no test reaches a network
     fetch:
       options.fetch ??

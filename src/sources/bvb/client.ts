@@ -73,6 +73,8 @@ export type Bvb = {
   listedAt(kind: ListKind): number | null;
   failFast(): Bvb;
   within(live: () => boolean): Bvb;
+  // calls queued behind the reads', as a job's, deadline kept
+  background(): Bvb;
   due(): number | null;
   backoff(): Backoff | null;
   close(): void;
@@ -300,8 +302,9 @@ export function bvb(options: BvbOptions): Bvb {
           ? null
           : new Set([...lists.values()].flatMap((l) => [...l.symbols])),
       listedAt: (kind) => lists.get(kind)?.at ?? null,
-      failFast: () => client({ failFast: true }),
-      within: (live) => client({ failFast: true, live }),
+      failFast: () => client({ ...run, failFast: true }),
+      within: (live) => client({ ...run, failFast: true, live }),
+      background: () => client({ ...run, background: true }),
       due: () => calls.due(),
       backoff: () => calls.backoff(),
       close: () => calls.close(),

@@ -97,9 +97,11 @@ export type App = {
 export function start(options: AppOptions): App {
   const { clock, db } = options;
   const flagged = new Set<string>();
+  const owed = new Set<string>();
   const tracking: Tracking = {
     readMs: (options.trackDays ?? TRACK_DAYS) * DAY_MS,
     flagged,
+    owed,
   };
   // before the startup write, whose prune reads what is tracked
   const trackStates = seed({
@@ -108,6 +110,7 @@ export function start(options: AppOptions): App {
     on: { bvb: options.bvb === true, fred: (options.fredKey ?? null) !== null },
     readMs: tracking.readMs,
     flagged,
+    owed,
     now: clock.now(),
   });
   const write = writer(db);
@@ -244,6 +247,7 @@ export function start(options: AppOptions): App {
     m: reads,
     states: trackStates,
     flagged,
+    owed,
     periodMs: options.quoteEveryMs,
     log: options.log("track"),
   });

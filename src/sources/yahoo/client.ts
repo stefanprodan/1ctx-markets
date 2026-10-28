@@ -113,6 +113,8 @@ export type Yahoo = {
   search(query: string): Promise<Listing[]>;
   failFast(): Yahoo;
   within(live: () => boolean): Yahoo;
+  // calls queued behind the reads', as a job's, deadline kept
+  background(): Yahoo;
   backoff(): Backoff | null;
 };
 
@@ -512,8 +514,9 @@ export function yahoo(options: YahooOptions): Yahoo {
         });
         return get(`${host}/v1/finance/search?${params}`, run, parseSearch);
       },
-      failFast: () => client({ failFast: true }),
-      within: (live) => client({ failFast: true, live }),
+      failFast: () => client({ ...run, failFast: true }),
+      within: (live) => client({ ...run, failFast: true, live }),
+      background: () => client({ ...run, background: true }),
       backoff: () => calls.backoff(),
     };
   };

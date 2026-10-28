@@ -163,16 +163,24 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
 - **`--track` values live in memory only** (`Tracking.flagged`, filled
   by `tracker()` in `src/operations/track.ts`): no column, so the flag
   is the one source of truth and a value dropped from it is untracked
-  at the next start, its history kept (Retention). A stored value
-  tracked by use or no further behind than the bar jobs' 30-day refetch
-  is tracked at start, before the startup prune and with no call
-  (`seed()`); another resolves through `resolveTargets()`, the read
-  path without `markRead()`, on start and on the `track` job each quote
-  period, so an unknown symbol is fetched with its backfill as in a
-  call; the run's deadline is the period, since no caller waits on it.
-  One that does not resolve never stops the server: it is logged once
-  per reason and retried, except `candidates`, `refused` and `no_data`,
-  which only the operator can change.
+  at the next start, its history kept (Retention).
+- **A stored value whose source is on is flagged at start, before the
+  startup prune** (`seed()`), so its news stays. One that may have
+  missed a session (no bar changed since its market's latest known
+  session began, or the quote job's next check for a newer one is
+  already due, `nextCheck()`) is also owed a catch-up
+  (`Tracking.owed`): a read takes it as untracked and catches it up, as
+  does the tracker's first pass, which then clears it.
+- **The tracker resolves the rest through `resolveTargets()`**, the
+  read path without `markRead()`, on start and on the `track` job each
+  quote period, so an unknown symbol is fetched with its backfill as in
+  a call. Its source calls are background work (`background()`): they
+  queue behind every read's, and the run's deadline is the period.
+- **A value that does not resolve never stops the server:** it is
+  logged once per reason and retried, except `candidates` and
+  `refused`, which only the operator can change. `no_data` is final
+  only for a value not stored: a stored one asks no source to answer it,
+  and a source switch can end it.
 - **Only reads count.** `markRead()` runs in the writer after a tool's
   targets resolve (`readTargets()` in `src/operations/targets.ts`), and
   only before the call's deadline; it never moves `last_read_at` back.
