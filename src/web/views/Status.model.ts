@@ -69,10 +69,23 @@ export const jobTone = (j: JobStatus): Tone =>
       ? "running"
       : "done";
 
-// the state in an on source's card head
-export function sourceState(s: SourceStatus, now: number): string {
-  if (s.backing_off === null) return "On";
-  return `Backing off ${until(s.backing_off.until, now)} · ${s.backing_off.after}`;
+// the server's error phrases, as someone who runs it reads them
+const PLAIN: Record<string, string> = {
+  "rate limited": "too many requests",
+  "not found": "not found",
+  "bad request": "request refused",
+  "source error": "the source failed",
+  "network error": "no connection",
+  "timed out": "no answer in time",
+  "malformed answer": "answer not readable",
+  "key refused": "key not accepted",
+  failed: "failed",
+};
+
+export function plain(error: string | null): string {
+  if (error === null) return "failed";
+  const phrase = Object.keys(PLAIN).find((p) => error.startsWith(p));
+  return phrase === undefined ? error : PLAIN[phrase]!;
 }
 
 const counted = (n: number, one: string): string =>
@@ -139,7 +152,7 @@ export function switchFailure(jobs: readonly JobStatus[]): string | null {
   const f = j.failing[0];
   if (f === undefined) return null;
   const market = f.scope === null ? "a market" : `market ${f.scope}`;
-  return `Source change for ${market} failed: ${f.error ?? "failed"}. Its prices stay stale until a retry succeeds.`;
+  return `Source change for ${market} failed: ${plain(f.error)}. Its prices stay stale until a retry succeeds.`;
 }
 
 export const trackFailed = (t: TrackStatus): boolean =>

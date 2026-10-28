@@ -3,14 +3,13 @@
 // Staleness is read from runs: a failed last run marks only its job and scope.
 
 import { type Clock, DAY_MS } from "../runtime/clock.ts";
-import { phraseOf } from "../sources/source.ts";
+import { INTERRUPTED, phraseOf } from "../sources/source.ts";
 import type { Db } from "./db/index.ts";
 import type { Writer } from "./writer.ts";
 
 export const RUNS_KEPT_MS = 30 * DAY_MS;
 
-// the phrase a run left running by a crash is failed with at startup
-export const INTERRUPTED = "interrupted";
+export { INTERRUPTED };
 
 export type Run = {
   id: number;

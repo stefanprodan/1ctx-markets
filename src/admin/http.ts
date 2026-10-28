@@ -14,6 +14,7 @@ import { readRules, ruleInstruments } from "../rules/store.ts";
 import { sourceFile } from "../runtime/keys.ts";
 import { YAHOO } from "../sources/ids.ts";
 import type { Backoff } from "../sources/source.ts";
+import { INTERRUPTED } from "../sources/source.ts";
 import { BACKFILL_JOB } from "../sources/yahoo/jobs.ts";
 import type { Db } from "../storage/db/index.ts";
 import {
@@ -230,7 +231,8 @@ function jobs(db: Db) {
     if (instrument) n.instruments++;
     else n.markets++;
     scopes.set(key, n);
-    if (r.status !== "failed" || settled) continue;
+    // the next run settles a run cut by shutdown or a crash
+    if (r.status !== "failed" || settled || r.error === INTERRUPTED) continue;
     if (instrument) n.failing_instruments++;
     else n.failing_markets++;
     const list = failing.get(key) ?? [];

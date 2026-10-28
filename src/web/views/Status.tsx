@@ -20,9 +20,9 @@ import {
   jobLine,
   jobTone,
   jobWhen,
+  plain,
   runTime,
   type SourceGroup,
-  sourceState,
   sourcesOn,
   switchFailure,
   trackFailed,
@@ -59,7 +59,7 @@ export function JobDetails({ job: j }: { job: JobStatus }) {
           {j.failing.map((x) => (
             <li key={x.scope ?? ""}>
               <span class="srv-failing-scope">{x.scope ?? ""}</span>
-              <span class="status-failed">{x.error ?? "failed"}</span>
+              <span class="status-failed">{plain(x.error)}</span>
               <span class="srv-failing-at">{runTime(x.at)}</span>
             </li>
           ))}
@@ -85,12 +85,11 @@ function SourceCard({
   opened: ReadonlySet<string>;
   toggle: (key: string) => void;
 }) {
-  const backing = group.source.backing_off !== null;
   return (
     <RowsCard
       label={group.source.label}
-      count={sourceState(group.source, now)}
-      class={`srv-source${backing ? " srv-source-bad" : ""}`}
+      count={group.jobs.length === 1 ? "1 job" : `${group.jobs.length} jobs`}
+      class="srv-source"
     >
       {group.jobs.length === 0 ? (
         <RowsLine off>
@@ -136,6 +135,9 @@ export function StatusBody({
   const jobs = shown.flatMap((g) => g.jobs);
   const failing = jobs.filter((j) => jobTone(j) === "failed").length;
   const switched = switchFailure(s.jobs);
+  const backing = s.sources.filter(
+    (x) => x.state === "on" && x.backing_off !== null,
+  ).length;
   const [opened, setOpened] = useState<ReadonlySet<string>>(new Set());
   const toggle = (key: string) =>
     setOpened((was) => {
@@ -154,15 +156,12 @@ export function StatusBody({
         <Tile
           label="Sources"
           figure={String(sourcesOn(s.sources))}
-          sub={s.sources
-            .filter((x) => x.state === "on")
-            .map((x) => x.short)
-            .join(", ")}
+          sub={backing === 0 ? "all ok" : `${backing} paused`}
         />
         <Tile
           label="Jobs"
           figure={count(jobs.length)}
-          sub={failing === 0 ? "none failing" : `${failing} failing`}
+          sub={failing === 0 ? "all ok" : `${failing} failing`}
         />
         <Tile
           label="Database"

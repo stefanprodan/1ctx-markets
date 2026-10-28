@@ -33,8 +33,8 @@ import {
   jobLine,
   jobTone,
   jobWhen,
+  plain,
   runTime,
-  sourceState,
   switchFailure,
   trackFailed,
   trackLine,
@@ -435,11 +435,11 @@ describe("the status model", () => {
   });
 
   test("a source and its jobs read as counts, never a single run", () => {
-    const [prices, , research] = STATUS.sources;
-    expect(sourceState(prices!, NOW)).toBe("On");
-    expect(sourceState(research!, NOW)).toBe(
-      "Backing off for 5 min · rate limited",
-    );
+    // the server's phrases read as plain words
+    expect(plain("rate limited")).toBe("too many requests");
+    expect(plain("timed out")).toBe("no answer in time");
+    expect(plain(null)).toBe("failed");
+    expect(plain("something new")).toBe("something new");
     const [live, daily, figures] = STATUS.jobs;
     expect(jobLine(live!)).toBe("19 markets · all ok");
     expect(jobLine(daily!)).toBe("14 instruments · 7 failing");
@@ -527,12 +527,12 @@ describe("the views", () => {
     for (const words of [
       "78",
       "61 tracked",
-      "PRICES, FEED, RESEARCH",
+      "1 paused",
       "1 failing",
+      "1 job",
       "62 MB",
       "v1.2.3",
       "Casey prices",
-      "Backing off for 5 min · rate limited",
       "19 markets · all ok",
       "14 instruments · 7 failing",
       "Add a source",

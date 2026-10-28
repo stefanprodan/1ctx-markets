@@ -3,9 +3,10 @@
 
 import { describe, expect, test } from "bun:test";
 import { DAY_MS } from "../src/runtime/clock.ts";
-import { SourceError } from "../src/sources/source.ts";
+import { QueueClosed, SourceError } from "../src/sources/source.ts";
 import { open } from "../src/storage/db/index.ts";
 import {
+  INTERRUPTED,
   isStale,
   lastRun,
   pruneRuns,
@@ -59,6 +60,20 @@ describe("sync runs", () => {
       ),
     ).rejects.toThrow();
     expect(lastRun(db, "yahoo", "bars")!.error).toBe("timed out");
+    // shutdown closes the queue under a run: interrupted, not a source failure
+    await expect(
+      runJob(
+        writer(db),
+        clock,
+        "yahoo",
+        "quotes",
+        async () => {
+          throw new QueueClosed();
+        },
+        "US",
+      ),
+    ).rejects.toThrow();
+    expect(lastRun(db, "yahoo", "quotes")!.error).toBe(INTERRUPTED);
   });
 
   test("a job whose last run failed is stale, per source and per job", async () => {

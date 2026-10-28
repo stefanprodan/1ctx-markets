@@ -276,7 +276,8 @@ describe("the admin routes' guard", () => {
           `insert into sync_runs (source, job, scope, started_at, ended_at,
              status, rows, error)
            values ('yahoo', 'backfill', 'US:X', ?1, ?1, 'failed', 0, 'timeout'),
-             ('yahoo', 'backfill', null, ?1, ?1, 'failed', 0, 'old')`,
+             ('yahoo', 'backfill', null, ?1, ?1, 'failed', 0, 'old'),
+             ('bvb', 'quotes', 'BVB', ?1, ?1, 'failed', 0, 'interrupted')`,
         ).run(NOW);
         const backfill = async () => {
           const res = await fetch(`${url}/api/v1/admin/status`, {
@@ -286,6 +287,18 @@ describe("the admin routes' guard", () => {
             (j: { job: string }) => j.job === "backfill",
           );
         };
+        // a run cut by shutdown is no failure: the next run settles it
+        const res0 = await fetch(`${url}/api/v1/admin/status`, {
+          headers: { authorization: `Bearer ${admin}` },
+        });
+        const quotes = (await res0.json()).jobs.find(
+          (j: { source: string }) => j.source === "bvb",
+        );
+        expect(quotes).toMatchObject({
+          markets: 1,
+          failing_scopes: 0,
+          failing: [],
+        });
         // a run from before backfill runs had a scope is not counted
         expect(await backfill()).toMatchObject({
           instruments: 1,

@@ -116,14 +116,19 @@ signed in with the admin key alone.
 ## Pages
 
 - **Status:** `GET /api/v1/admin/status` drawn as tiles (instruments,
-  the sources on by short name, the jobs shown and how many fail, the
-  database) and a card per source that is on, never one that is off:
+  the sources on and how many are paused, the jobs shown and how many
+  fail, the database) and a card per source that is on, headed by its
+  name and job count alone, never one that is off:
   most servers never turn a regional source on, and an off source has
   nothing to fix. A job is a two-line row (its label, then how many
   markets or instruments it covers and how many fail) with its last
   run's time, which never repeats the outcome; opened, it says what the
   job does, then its failing scopes with error and time, or that all
   are ok. Failing jobs come first. Missing closes (`owed`) never shows: it only marks a day for the bars job to ask again, so it cannot fail.
+- **Readers are not technical.** A server phrase shows in plain words
+  (`plain()`: "rate limited" reads "too many requests"), and a pause
+  shows only as a count in the Sources tile, since the job that hit it
+  shows the error.
 - **Names come from the server** (`label`, `short`, `mark`, `about`):
   the bundle is public, so it names no source (`docs/admin.md`).
 - **The source switch shows only when it failed,** as one line above

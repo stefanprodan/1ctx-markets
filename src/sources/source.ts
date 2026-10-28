@@ -48,7 +48,11 @@ export function scrub(value: string, key: string): string {
 }
 
 // the phrase a run records for any error, so no message text is stored
+// a run cut by a crash or by shutdown, never a sign the source is unwell
+export const INTERRUPTED = "interrupted";
+
 export function phraseOf(error: unknown): string {
+  if (error instanceof QueueClosed) return INTERRUPTED;
   return error instanceof SourceError ? error.phrase : "failed";
 }
 

@@ -97,10 +97,6 @@
     color: var(--fg);
   }
 
-  .srv-source-bad .rows-count {
-    color: var(--failed);
-  }
-
   .srv-track {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
