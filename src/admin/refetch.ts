@@ -16,9 +16,9 @@ import { storeBvbQuotes } from "../sources/bvb/quotes.ts";
 import { backfill as bvbBackfill, quoteNow } from "../sources/bvb/sync.ts";
 import {
   eligible as finnhubEligible,
-  refreshResearch,
   type Section,
 } from "../sources/finnhub/store.ts";
+import { refreshResearch } from "../sources/finnhub/sync.ts";
 import { refetchSeries } from "../sources/fred/sync.ts";
 import { BVB, FRED, YAHOO } from "../sources/ids.ts";
 import {

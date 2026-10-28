@@ -10,12 +10,14 @@ import { trackedInstruments } from "../market/tracking.ts";
 import { localDate } from "../market/zone.ts";
 import {
   type EventStatus,
-  eligible,
   eventStatus,
+  readEvents,
+} from "../sources/finnhub/read.ts";
+import {
+  eligible,
   NO_DATA,
   NO_EVENTS,
   NOT_COVERED,
-  readEvents,
 } from "../sources/finnhub/store.ts";
 import { FINNHUB as SOURCE } from "../sources/ids.ts";
 import { lastStarted } from "../storage/runs.ts";

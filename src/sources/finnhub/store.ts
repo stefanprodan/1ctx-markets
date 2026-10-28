@@ -4,22 +4,16 @@
 // a run per section, scoped to the instrument, so one failure is stale alone
 
 import type { Instrument } from "../../market/instruments.ts";
-import { addDays, dateOfWall, localDate } from "../../market/zone.ts";
-import type { Clock } from "../../runtime/clock.ts";
+import { dateOfWall } from "../../market/zone.ts";
 import { DAY_MS, MINUTE_MS } from "../../runtime/clock.ts";
-import { exclusive } from "../../runtime/lock.ts";
 import { monthsBack } from "../../signals/relative.ts";
 import type { Db } from "../../storage/db/index.ts";
-import { lastStarted } from "../../storage/runs.ts";
-import type { Writer } from "../../storage/writer.ts";
-import { WriterClosed } from "../../storage/writer.ts";
-import { DeadlinePassed, Paused, phraseOf, QueueClosed } from "../source.ts";
+import { phraseOf } from "../source.ts";
 import {
   type Analysts,
   type Answer,
   type CalendarEvent,
   type Earnings,
-  type Finnhub,
   type Insider,
   METRIC_FIELDS,
   type Metric,
@@ -51,22 +45,6 @@ export const CALENDAR_BACK_DAYS = 120;
 export const CALENDAR_AHEAD_DAYS = 90;
 export const INSIDER_MONTHS = 12;
 
-export const STALE_RESEARCH = {
-  failed: "research sync failed",
-  pending: "research sync pending",
-  none: "no research yet",
-  // the rows shown are from an earlier answer
-  noData: "no data in the last answer",
-} as const;
-
-// db is for reads; writes go through writer; null while the source is off
-export type FinnhubContext = {
-  db: Db;
-  clock: Clock;
-  writer: Writer;
-  finnhub: Finnhub | null;
-};
-
 // rules answer these, so retention keeps them
 export type EventKey = {
   instrument: string;
@@ -92,56 +70,12 @@ export function eligible(i: Pick<Instrument, "market" | "type">): boolean {
 export const finnhubSymbol = (i: Pick<Instrument, "symbol">): string =>
   i.symbol.replaceAll("-", ".");
 
-export type SectionResult =
-  | { section: Section; status: "ok"; rows: number; startedAt: number }
-  | { section: Section; status: "failed"; error: unknown; startedAt: number };
-
-type Fetched =
+export type Fetched =
   | { section: "metric"; answer: Answer<Metric> }
   | { section: "analysts"; answer: Answer<Analysts[]> }
   | { section: "earnings"; answer: Answer<Earnings[]> }
   | { section: "insider"; answer: Answer<Insider[]> }
   | { section: "calendar"; answer: Answer<CalendarEvent[]> };
-
-type Outcome =
-  | { fetched: Fetched; startedAt: number }
-  | { section: Section; error: unknown; startedAt: number };
-
-function ask(
-  client: Finnhub,
-  symbol: string,
-  section: Section,
-  now: number,
-): Promise<Fetched> {
-  const today = dateOfWall(now);
-  switch (section) {
-    case "metric":
-      return client.metric(symbol).then((answer) => ({ section, answer }));
-    case "analysts":
-      return client.analysts(symbol).then((answer) => ({ section, answer }));
-    case "earnings":
-      return client.earnings(symbol).then((answer) => ({ section, answer }));
-    case "insider":
-      return client
-        .insider(symbol, monthsBack(today, INSIDER_MONTHS), today)
-        .then((answer) => ({ section, answer }));
-    case "calendar":
-      return client
-        .calendar(
-          symbol,
-          addDays(today, -CALENDAR_BACK_DAYS),
-          addDays(today, CALENDAR_AHEAD_DAYS),
-        )
-        .then((answer) => ({ section, answer }));
-  }
-}
-
-// a closing server or a read past its deadline says nothing about the
-// source, so no run is recorded for it
-const aborts = (error: unknown): boolean =>
-  error instanceof QueueClosed ||
-  error instanceof WriterClosed ||
-  error instanceof DeadlinePassed;
 
 // columns in kept hold a value once seen when a later answer leaves it
 // out, as an earnings actual does
@@ -174,7 +108,7 @@ const upsertResearch = (
 // an actual, and the surprise worked out from it, never go back to null
 const EARNINGS_KEPT = ["eps_actual", "surprise", "surprise_percent"];
 
-const METRIC_COLUMNS: Record<keyof Metric, string> = {
+export const METRIC_COLUMNS: Record<keyof Metric, string> = {
   forwardPE: "forward_pe",
   forwardPEG: "forward_peg",
   peTTM: "pe_ttm",
@@ -192,7 +126,7 @@ const METRIC_COLUMNS: Record<keyof Metric, string> = {
 
 // By fiscal quarter, so a moved date updates the event; actuals are
 // kept, but never across listings, whose figures are another currency's.
-function upsertEvents(
+export function upsertEvents(
   db: Db,
   instrument: string,
   events: readonly CalendarEvent[],
@@ -278,7 +212,7 @@ function dropEvents(
 // One section's answer into its rows; no data writes none. An answer
 // naming a listing replaces the kind's rows of any other, so no figure
 // of one listing is read as another's.
-function storeSection(
+export function storeSection(
   db: Db,
   instrument: string,
   f: Fetched,
@@ -386,7 +320,7 @@ function storeSection(
   return rows;
 }
 
-function recordRun(
+export function recordRun(
   db: Db,
   scope: string,
   job: string,
@@ -411,157 +345,6 @@ function recordRun(
   );
 }
 
-// fetched sections land in one write; a Paused refusal stores those before
-// it, a passed deadline none
-export async function refreshResearch(
-  ctx: FinnhubContext,
-  instrument: Instrument,
-  sections: readonly Section[] = SECTIONS,
-  options: {
-    live?: () => boolean;
-    hooks?: Hooks;
-    client?: Finnhub;
-    // only those still without a good run once the lock is held, so a
-    // call that waited on another's fetch asks nothing it stored
-    unfetched?: boolean;
-  } = {},
-): Promise<SectionResult[]> {
-  const client = options.client ?? ctx.finnhub;
-  if (client === null) throw new Error("finnhub is off");
-  const live = options.live ?? (() => true);
-  const hooks = options.hooks ?? NO_HOOKS;
-  const symbol = finnhubSymbol(instrument);
-  // its own lock key, so research never waits on the instrument's bar fetch
-  return exclusive(ctx.db, `${SOURCE}:${instrument.id}`, async () => {
-    const asked = options.unfetched
-      ? unfetched(ctx.db, instrument.id, sections)
-      : sections;
-    if (asked.length === 0) return [];
-    const outcomes: Outcome[] = [];
-    let paused: Paused | null = null;
-    // the calendar first, so earnings asked in the same pass are fetched
-    // after any report the calendar first sees; results come back in SECTIONS order
-    const fetchOrder = asked.toSorted(
-      (a, b) => Number(b === "calendar") - Number(a === "calendar"),
-    );
-    for (const section of fetchOrder) {
-      if (!live()) throw new DeadlinePassed();
-      const startedAt = ctx.clock.now();
-      try {
-        const fetched = await ask(client, symbol, section, startedAt);
-        outcomes.push({ fetched, startedAt });
-      } catch (error) {
-        if (aborts(error)) throw error;
-        // no run: it would hold off the job's retry
-        if (error instanceof Paused) {
-          paused = error;
-          break;
-        }
-        outcomes.push({ section, error, startedAt });
-      }
-    }
-    if (paused === null) return inOrder(await store(outcomes));
-    if (outcomes.length > 0) await store(outcomes);
-    throw paused;
-  });
-
-  function inOrder(results: SectionResult[]): SectionResult[] {
-    return results.toSorted(
-      (a, b) => SECTIONS.indexOf(a.section) - SECTIONS.indexOf(b.section),
-    );
-  }
-
-  function store(outcomes: readonly Outcome[]): Promise<SectionResult[]> {
-    return ctx.writer.write((db) => {
-      if (!live()) throw new DeadlinePassed();
-      const now = ctx.clock.now();
-      return outcomes.map((o): SectionResult => {
-        if ("error" in o) {
-          recordRun(db, instrument.id, o.section, o.startedAt, now, o);
-          return { ...o, status: "failed" };
-        }
-        const rows = storeSection(db, instrument.id, o.fetched, hooks);
-        recordRun(db, instrument.id, o.fetched.section, o.startedAt, now, {
-          rows,
-        });
-        return {
-          section: o.fetched.section,
-          status: "ok",
-          rows,
-          startedAt: o.startedAt,
-        };
-      });
-    });
-  }
-}
-
-// The whole-market calendar's run: Finnhub's market calendar holds US
-// listings only, which is all eligible() lets it research.
-export const MARKET_CALENDAR = { job: "market-calendar", scope: "US" } as const;
-
-export type MarketCalendarResult =
-  | {
-      status: "ok";
-      rows: number;
-      // instruments with an event first seen reported in this answer
-      reported: string[];
-    }
-  | { status: "failed"; error: unknown };
-
-// Only events already stored for these shares, of their own listing, are
-// updated, through the write a share's calendar uses; a row of any other
-// symbol or quarter is ignored, and a missing row deletes nothing, since
-// the list changes between calls.
-export function storeMarketCalendar(
-  ctx: FinnhubContext,
-  shares: readonly Instrument[],
-  outcome:
-    | { answer: Answer<Map<string, CalendarEvent[]>>; startedAt: number }
-    | { error: unknown; startedAt: number },
-  hooks: Hooks = NO_HOOKS,
-): Promise<MarketCalendarResult> {
-  const { job, scope } = MARKET_CALENDAR;
-  return ctx.writer.write((db): MarketCalendarResult => {
-    const now = ctx.clock.now();
-    if ("error" in outcome) {
-      recordRun(db, scope, job, outcome.startedAt, now, outcome);
-      return { status: "failed", error: outcome.error };
-    }
-    const { answer } = outcome;
-    const stored = db.query<
-      { fiscalYear: number; fiscalQuarter: number },
-      [string]
-    >(
-      `select fiscal_year as fiscalYear, fiscal_quarter as fiscalQuarter
-       from events where instrument = ? and listing is null`,
-    );
-    const reported: EventKey[] = [];
-    let rows = 0;
-    for (const share of shares) {
-      const answered = answer.data?.get(finnhubSymbol(share));
-      if (answered === undefined) continue;
-      const own = new Set(
-        stored.all(share.id).map((k) => `${k.fiscalYear} Q${k.fiscalQuarter}`),
-      );
-      const events = answered.filter((e) =>
-        own.has(`${e.fiscalYear} Q${e.fiscalQuarter}`),
-      );
-      if (events.length === 0) continue;
-      reported.push(
-        ...upsertEvents(db, share.id, events, null, answer.fetchedAt),
-      );
-      rows += events.length;
-    }
-    if (reported.length > 0) hooks.reported?.(db, reported, answer.fetchedAt);
-    recordRun(db, scope, job, outcome.startedAt, now, { rows });
-    return {
-      status: "ok",
-      rows,
-      reported: [...new Set(reported.map((k) => k.instrument))],
-    };
-  });
-}
-
 // the time of day, UTC, the daily refresh is due: after the US close
 // and the after-market reports
 export const DAILY_AT_MS = 23 * 60 * MINUTE_MS;
@@ -569,196 +352,6 @@ export const DAILY_AT_MS = 23 * 60 * MINUTE_MS;
 // the latest 23:00 UTC at or before now
 export function dueAt(now: number): number {
   return Math.floor((now - DAILY_AT_MS) / DAY_MS) * DAY_MS + DAILY_AT_MS;
-}
-
-// due when no run of the section has ended well since the latest 23:00
-export function sectionDue(
-  db: Db,
-  instrument: string,
-  section: Section,
-  now: number,
-): boolean {
-  const ok = lastStarted(db, SOURCE, section, instrument, "ok");
-  return ok === null || ok.startedAt < dueAt(now);
-}
-
-// the sections of these that never ended well
-export function unfetched(
-  db: Db,
-  instrument: string,
-  sections: readonly Section[],
-): Section[] {
-  return sections.filter(
-    (s) => lastStarted(db, SOURCE, s, instrument, "ok") === null,
-  );
-}
-
-export type SectionState = {
-  // when the section's last good run ended, null before the first
-  fetchedAt: number | null;
-  // the last good run answered no data
-  noData: boolean;
-  stale: string[];
-};
-
-function hasRows(db: Db, instrument: string, section: Section): boolean {
-  const sql =
-    section === "calendar"
-      ? "select count(*) as n from events where instrument = ?"
-      : "select count(*) as n from research where instrument = ? and kind = ?";
-  const args = section === "calendar" ? [instrument] : [instrument, section];
-  return (db.query(sql).get(...args) as { n: number }).n > 0;
-}
-
-export function sectionState(
-  db: Db,
-  instrument: string,
-  section: Section,
-  now: number,
-): SectionState {
-  const ok = lastStarted(db, SOURCE, section, instrument, "ok");
-  const last = lastStarted(db, SOURCE, section, instrument);
-  const stale: string[] = [];
-  if (ok === null) stale.push(STALE_RESEARCH.none);
-  if (last?.status === "failed") stale.push(STALE_RESEARCH.failed);
-  else if (ok !== null && ok.startedAt < dueAt(now)) {
-    stale.push(STALE_RESEARCH.pending);
-  }
-  const noData = ok !== null && ok.rows === 0;
-  if (noData && hasRows(db, instrument, section)) {
-    stale.push(STALE_RESEARCH.noData);
-  }
-  return {
-    fetchedAt: ok?.endedAt ?? null,
-    noData: ok !== null && ok.rows === 0,
-    stale,
-  };
-}
-
-export type ResearchRow = {
-  period: string;
-  listing: string | null;
-  fetchedAt: number;
-} & Record<string, number | string | null>;
-
-const KIND: Record<"analysts" | "earnings" | "insider" | "metric", string[]> = {
-  analysts: ["strong_buy", "buy", "hold", "sell", "strong_sell"],
-  earnings: ["eps_estimate", "eps_actual", "surprise", "surprise_percent"],
-  insider: ["insider_change", "mspr"],
-  metric: Object.values(METRIC_COLUMNS),
-};
-
-export type ResearchKind = keyof typeof KIND;
-export const kindColumns = (kind: ResearchKind): readonly string[] =>
-  KIND[kind];
-
-// newest first
-export function readResearch(
-  db: Db,
-  instrument: string,
-  kind: ResearchKind,
-  limit = -1,
-): ResearchRow[] {
-  return db
-    .query<ResearchRow, [string, string, number]>(
-      `select period, ${KIND[kind].join(", ")}, listing,
-         fetched_at as fetchedAt
-       from research where instrument = ? and kind = ?
-       order by period desc limit ?`,
-    )
-    .all(instrument, kind, limit);
-}
-
-export type EventRow = {
-  instrument: string;
-  fiscalYear: number;
-  fiscalQuarter: number;
-  date: string;
-  hour: string;
-  epsEstimate: number | null;
-  epsActual: number | null;
-  revenueEstimate: number | null;
-  revenueActual: number | null;
-  reportedSeenAt: number | null;
-  listing: string | null;
-  fetchedAt: number;
-};
-
-const EVENT_SELECT = `select instrument, fiscal_year as fiscalYear,
-  fiscal_quarter as fiscalQuarter, date, hour, eps_estimate as epsEstimate,
-  eps_actual as epsActual, revenue_estimate as revenueEstimate,
-  revenue_actual as revenueActual, reported_seen_at as reportedSeenAt,
-  listing, fetched_at as fetchedAt from events`;
-
-// by date, then instrument and fiscal key
-export function readEvents(
-  db: Db,
-  from: string,
-  to: string,
-  instruments: readonly string[] | null = null,
-): EventRow[] {
-  const rows = db
-    .query<EventRow, [string, string]>(
-      `${EVENT_SELECT} where date >= ? and date <= ?
-       order by date, instrument, fiscal_year, fiscal_quarter`,
-    )
-    .all(from, to);
-  if (instruments === null) return rows;
-  const want = new Set(instruments);
-  return rows.filter((r) => want.has(r.instrument));
-}
-
-export function readEvent(db: Db, key: EventKey): EventRow | null {
-  return (
-    db
-      .query<EventRow, [string, number, number]>(
-        `${EVENT_SELECT} where instrument = ? and fiscal_year = ?
-           and fiscal_quarter = ?`,
-      )
-      .get(key.instrument, key.fiscalYear, key.fiscalQuarter) ?? null
-  );
-}
-
-// days a passed event still counts as next while it awaits results
-export const AWAITING_DAYS = 7;
-
-// The instrument's earliest event dated from its exchange's today on,
-// or one of the last week still awaiting its results; unreported skips
-// any whose actuals were seen, which a gate waiting on it would pass.
-export function nextEvent(
-  db: Db,
-  instrument: Pick<Instrument, "id" | "zone">,
-  now: number,
-  unreported = false,
-): EventRow | null {
-  const today = localDate(instrument.zone, now);
-  return (
-    db
-      .query<EventRow, [string, string, string, number]>(
-        `${EVENT_SELECT} where instrument = ?1
-           and (date >= ?2 or (reported_seen_at is null and date >= ?3))
-           and (?4 = 0 or reported_seen_at is null)
-         order by date limit 1`,
-      )
-      .get(
-        instrument.id,
-        today,
-        addDays(today, -AWAITING_DAYS),
-        unreported ? 1 : 0,
-      ) ?? null
-  );
-}
-
-export type EventStatus = "scheduled" | "awaiting results" | "reported";
-
-// Only actuals report an event, stored or, for another listing, only
-// seen: a passed date or an amc label never do.
-export function eventStatus(
-  e: Pick<EventRow, "date" | "reportedSeenAt">,
-  today: string,
-): EventStatus {
-  if (e.reportedSeenAt !== null) return "reported";
-  return e.date > today ? "scheduled" : "awaiting results";
 }
 
 export function pruneResearch(

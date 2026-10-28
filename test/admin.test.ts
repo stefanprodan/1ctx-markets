@@ -32,7 +32,7 @@ import {
 } from "../src/runtime/keys.ts";
 import { silent } from "../src/runtime/log.ts";
 import { finnhub, SPACING_MS } from "../src/sources/finnhub/client.ts";
-import { refreshResearch } from "../src/sources/finnhub/store.ts";
+import { refreshResearch } from "../src/sources/finnhub/sync.ts";
 import {
   queue,
   RATE_LIMIT_BACKOFF_MS,

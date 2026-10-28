@@ -33,12 +33,8 @@ import {
   readRules,
   setPaused,
 } from "../rules/store.ts";
-import {
-  eligible,
-  eventStatus,
-  NOT_COVERED,
-  nextEvent,
-} from "../sources/finnhub/store.ts";
+import { eventStatus, nextEvent } from "../sources/finnhub/read.ts";
+import { eligible, NOT_COVERED } from "../sources/finnhub/store.ts";
 import {
   cursor,
   errorResult,

@@ -16,11 +16,9 @@ import { DAY_MS } from "../src/runtime/clock.ts";
 import { silent } from "../src/runtime/log.ts";
 import { refreshLive } from "../src/signals/store.ts";
 import { finnhubJobs } from "../src/sources/finnhub/jobs.ts";
-import {
-  pruneResearch,
-  readEvents,
-  refreshResearch,
-} from "../src/sources/finnhub/store.ts";
+import { readEvents } from "../src/sources/finnhub/read.ts";
+import { pruneResearch } from "../src/sources/finnhub/store.ts";
+import { refreshResearch } from "../src/sources/finnhub/sync.ts";
 import { DeadlinePassed, SourceError } from "../src/sources/source.ts";
 import { yahooJobs } from "../src/sources/yahoo/jobs.ts";
 import { catchUp, refetch } from "../src/sources/yahoo/sync.ts";

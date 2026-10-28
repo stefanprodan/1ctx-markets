@@ -31,15 +31,14 @@ import { DAY_MS, MINUTE_MS } from "../src/runtime/clock.ts";
 import { silent } from "../src/runtime/log.ts";
 import { finnhub } from "../src/sources/finnhub/client.ts";
 import { finnhubJobs } from "../src/sources/finnhub/jobs.ts";
+import { kindColumns, STALE_RESEARCH } from "../src/sources/finnhub/read.ts";
 import {
-  kindColumns,
   NO_DATA,
   NO_EVENTS,
   NOT_COVERED,
   OTHER_LISTING,
-  refreshResearch,
-  STALE_RESEARCH,
 } from "../src/sources/finnhub/store.ts";
+import { refreshResearch } from "../src/sources/finnhub/sync.ts";
 import {
   MAX_PUBLISHER,
   MAX_REASONING,

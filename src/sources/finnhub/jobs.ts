@@ -16,16 +16,18 @@ import { Paused, phraseOf, QueueClosed } from "../source.ts";
 import { SOURCE } from "./client.ts";
 import {
   eligible,
-  type FinnhubContext,
   type Hooks,
-  MARKET_CALENDAR,
   NO_HOOKS,
-  refreshResearch,
   SECTIONS,
   type Section,
+} from "./store.ts";
+import {
+  type FinnhubContext,
+  MARKET_CALENDAR,
+  refreshResearch,
   sectionDue,
   storeMarketCalendar,
-} from "./store.ts";
+} from "./sync.ts";
 
 export const TICK_MS = MINUTE_MS;
 // a failed section is asked again after this, not each tick

@@ -7,22 +7,23 @@ import { dateOfWall, localDate, wallOfDate } from "../market/zone.ts";
 import { DAY_MS } from "../runtime/clock.ts";
 import {
   type EventRow,
-  eligible,
   eventStatus,
   kindColumns,
-  NO_DATA,
-  NOT_COVERED,
   nextEvent,
-  OTHER_LISTING,
   type ResearchKind,
   type ResearchRow,
   readResearch,
-  refreshResearch,
+  sectionState,
+} from "../sources/finnhub/read.ts";
+import {
+  eligible,
+  NO_DATA,
+  NOT_COVERED,
+  OTHER_LISTING,
   SECTIONS,
   type Section,
-  sectionState,
-  unfetched,
 } from "../sources/finnhub/store.ts";
+import { refreshResearch, unfetched } from "../sources/finnhub/sync.ts";
 import { ATTRIBUTION } from "../sources/fred/sync.ts";
 import { cut } from "../sources/massive/client.ts";
 import {

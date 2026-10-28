@@ -13,12 +13,8 @@ import {
   readRelativeReturn,
   readSignals,
 } from "../signals/read.ts";
-import {
-  type EventKey,
-  type EventRow,
-  type Hooks,
-  readEvent,
-} from "../sources/finnhub/store.ts";
+import { type EventRow, readEvent } from "../sources/finnhub/read.ts";
+import type { EventKey, Hooks } from "../sources/finnhub/store.ts";
 import type { Db } from "../storage/db/index.ts";
 import {
   type Comparison,
