@@ -249,6 +249,11 @@ Phrases from Yahoo (`docs/sources.md`, Refusals):
 
 - **The check instrument rotates per market** (`checkTurn`), so one
   that never answers cannot hide a new session from the rest.
+- **A market closed before the process started gets one check of every
+  instrument without its last session's 5-minute closes** (`filled` in
+  `plan()`), in the same spark batches, once a process: its quote
+  passes ran before the start, so a deploy never leaves 1D empty until
+  the next open. A market this process quotes needs none.
 - **A quote or check run is per market** (scope), failing when a call
   failed or none of its symbols came back; a missing symbol is logged
   and stale on its own. The rules are evaluated after the runs end, so

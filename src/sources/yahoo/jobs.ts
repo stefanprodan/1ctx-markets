@@ -6,12 +6,14 @@ import {
   isQuoted,
   nextCheck,
   readSession,
+  sessionDate,
 } from "../../market/calendars.ts";
 import {
   type Instrument,
   Moved,
   readInstrument,
 } from "../../market/instruments.ts";
+import { newestSession } from "../../market/intraday.ts";
 import type { QuoteRow } from "../../market/quotes.ts";
 import { barsDue, JOBS, owedDue } from "../../market/stale.ts";
 import {
@@ -102,6 +104,7 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
     return [instruments[k % instruments.length]!];
   };
   const backfillMissed = new Map<string, number>();
+  const filled = new Set<string>();
 
   function plan(
     markets: Map<string, Instrument[]>,
@@ -114,6 +117,8 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
       const turn = quotePass && !passed(market);
       const s = readSession(db, market);
       if (isQuoted(market, s, now)) {
+        // a pass this process runs brings the session's closes itself
+        filled.add(market);
         if (turn) work.push({ market, job: JOBS.quotes, instruments });
         continue;
       }
@@ -129,7 +134,21 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
       if (close !== null && now >= close) {
         const last = lastStarted(db, SOURCE, JOBS.quotes, market);
         if (last === null || last.startedAt < close) {
+          filled.add(market);
           work.push({ market, job: JOBS.quotes, instruments });
+          continue;
+        }
+      }
+      // closed before this process ran: one check for every instrument
+      // without the last session's 5-minute closes, which its answer holds
+      if (!filled.has(market)) {
+        filled.add(market);
+        const day = sessionDate(s);
+        const missing = instruments.filter(
+          (i) => (newestSession(db, i.id) ?? "") < day,
+        );
+        if (missing.length > 0) {
+          work.push({ market, job: JOBS.check, instruments: missing });
           continue;
         }
       }

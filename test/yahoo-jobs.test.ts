@@ -21,12 +21,13 @@ import { silent } from "../src/runtime/log.ts";
 import { scheduler } from "../src/runtime/scheduler.ts";
 import { readSignals } from "../src/signals/read.ts";
 import { STOPPED } from "../src/sources/source.ts";
-import { yahoo } from "../src/sources/yahoo/client.ts";
+import { parseSpark, yahoo } from "../src/sources/yahoo/client.ts";
 import {
   RETRY_MS,
   type TickReport,
   yahooJobs,
 } from "../src/sources/yahoo/jobs.ts";
+import { storeQuotes } from "../src/sources/yahoo/quotes.ts";
 import { catchUp } from "../src/sources/yahoo/sync.ts";
 import { open } from "../src/storage/db/index.ts";
 import { endRun, INTERRUPTED, lastRun, startRun } from "../src/storage/runs.ts";
@@ -368,6 +369,97 @@ describe("a closed market's check", () => {
     expect(quoteStale(t.db, readInstrument(t.db, "US:U0")!)).toEqual([
       "no quote yet",
     ]);
+  });
+});
+
+describe("a market closed before the start", () => {
+  test("gets its last session's 5-minute closes in one check, and a restart with them asks nothing", async () => {
+    const fx = clone(await recorded("spark-v7-extended-post-2122"));
+    // a second Xetra listing, so one check for all tells from one at a time
+    const copy = clone(
+      fx.body.spark.result.find((r: any) => r.symbol === "VWCE.DE"),
+    );
+    copy.symbol = "XDWD.DE";
+    copy.response[0].meta.symbol = "XDWD.DE";
+    fx.body.spark.result.push(copy);
+    const at = Date.parse(fx.recordedAt);
+    const route = (url: URL): Recorded | undefined => {
+      if (url.pathname !== "/v7/finance/spark") return undefined;
+      const out = clone(fx);
+      const asked = new Set(symbolsOf(url));
+      out.body.spark.result = out.body.spark.result.filter((r: any) =>
+        asked.has(r.symbol),
+      );
+      return out;
+    };
+    const t = setup(at, route);
+    // stored by an earlier process whose answers kept no points
+    const bare = clone(fx);
+    for (const r of bare.body.spark.result) {
+      delete r.response[0].timestamp;
+      r.response[0].indicators = { quote: [{}] };
+    }
+    const xetra = bare.body.spark.result.filter((r: any) =>
+      r.symbol.endsWith(".DE"),
+    );
+    bare.body.spark.result = xetra;
+    for (const r of xetra) {
+      const meta = r.response[0].meta;
+      const symbol = meta.symbol.replace(/\.DE$/, "");
+      upsertInstrument(
+        t.db,
+        {
+          market: "XETRA",
+          symbol,
+          source: "yahoo",
+          sourceSymbol: meta.symbol,
+          exchange: meta.exchangeName,
+          name: symbol,
+          type: meta.instrumentType,
+          currency: meta.currency,
+          unit: "per_share",
+          zone: meta.exchangeTimezoneName,
+        },
+        at,
+      );
+      t.db
+        .query(
+          `insert into bars (instrument, interval, date, close, final, fetched_at)
+           values (?, '1d', '2026-10-27', 1, 1, ?)`,
+        )
+        .run(`XETRA:${symbol}`, at);
+      markRead(t.db, [`XETRA:${symbol}`], at);
+    }
+    storeQuotes(t.db, parseSpark(bare.body, at));
+    endRun(t.db, startRun(t.db, "yahoo", JOBS.quotes, at, "XETRA"), at, 1);
+    endRun(t.db, startRun(t.db, "yahoo", JOBS.bars, at, "XETRA"), at, 2);
+    const ids = xetra.map((r: any) => `XETRA:${r.symbol.replace(/\.DE$/, "")}`);
+    const stored = () =>
+      t.db
+        .query<{ n: number }, []>(
+          `select count(distinct instrument) as n from intraday
+           where instrument like 'XETRA:%' and session = '2026-10-27'`,
+        )
+        .get()!.n;
+    expect(stored()).toBe(0);
+    await t.runTo(at + MINUTE_MS);
+    const asked = sparks(t.f.urls).filter((u) =>
+      symbolsOf(u).some((s) => s.endsWith(".DE")),
+    );
+    expect(asked).toHaveLength(1);
+    expect(symbolsOf(asked[0]!).sort()).toEqual(
+      xetra.map((r: any) => r.symbol).sort(),
+    );
+    expect(stored()).toBe(ids.length);
+    const again = yahooJobs({ ctx: t.ctx, quoteEveryMs: EVERY, log: silent });
+    const before = sparks(t.f.urls).length;
+    await t.clock.advance(MINUTE_MS);
+    await again.tick();
+    expect(
+      sparks(t.f.urls)
+        .slice(before)
+        .filter((u) => symbolsOf(u).some((s) => s.endsWith(".DE"))),
+    ).toHaveLength(0);
   });
 });
 
