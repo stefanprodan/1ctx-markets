@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { dailyRange, type Written } from "../../market/bars.ts";
-import { weekOf } from "../../market/calendars.ts";
+import { readSession, weekOf } from "../../market/calendars.ts";
 import {
   checkOwner,
   checkSource,
   type Instrument,
   upsertInstrument,
 } from "../../market/instruments.ts";
+import { addIntraday } from "../../market/intraday.ts";
 import type { QuoteRow } from "../../market/quotes.ts";
 import { startOfDate } from "../../market/zone.ts";
 import { NO_RULES, type RuleHooks } from "../../rules/hooks.ts";
@@ -37,6 +38,8 @@ import {
   fields,
   type Landed,
   read,
+  settle,
+  settleBars,
   startsShort,
   store,
   unapplied,
@@ -323,9 +326,11 @@ async function refetchAnswer(
   const answer = await ctx.yahoo.chart(instrument.sourceSymbol, from, now);
   checkAnswer(instrument, answer);
   const split = unapplied(db, instrument, [answer]).length > 0;
+  // settled as store() settles them, so a pair's own closes never differ
+  const bars = read(answer, readSession(db, instrument.market)).bars;
   const rescale = split
     ? null
-    : rescaleOf(db, instrument, read(answer, null).bars);
+    : rescaleOf(db, instrument, settle(db, instrument, bars).bars);
   if (split || rescale !== null) {
     // old price levels stop now, since the whole history may be refused
     await ctx.writer.write((w) => {
@@ -362,6 +367,30 @@ async function refetchAnswer(
     checkSource(db, instrument);
     return store(db, ctx.clock.now(), instrument, answer, null, ctx.rules);
   };
+}
+
+// held like a refetch, so a rescale's clear never meets an older answer
+export function fillSessions(
+  ctx: YahooContext,
+  instrument: Instrument,
+): Promise<string[]> {
+  return exclusive(ctx.db, instrument.id, async () => {
+    checkSource(ctx.db, instrument);
+    const answer = await ctx.yahoo.points(instrument.sourceSymbol);
+    checkAnswer(instrument, answer);
+    return ctx.writer.write((db) => {
+      checkSource(db, instrument);
+      const added = addIntraday(
+        db,
+        instrument.id,
+        instrument.zone,
+        answer.points,
+        answer.fetchedAt,
+      );
+      if (added.length > 0) settleBars(db, instrument, ctx.clock.now());
+      return added;
+    });
+  });
 }
 
 export async function fetchQuotes(

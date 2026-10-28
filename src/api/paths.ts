@@ -7,6 +7,7 @@ import {
   DEFAULT_PAGE,
   MAX_PAGE,
 } from "../admin/http.ts";
+import { INTRADAY_SESSIONS } from "../market/intraday.ts";
 import { TRACK_DAYS } from "../market/tracking.ts";
 import { MAX_SYMBOL } from "../operations/args.ts";
 import { MAX_EVENT_SYMBOLS } from "../operations/events.ts";
@@ -181,15 +182,16 @@ export const paths = {
       tags: ["market data"],
       operationId: "history",
       security: READ_AUTH,
-      summary: "Daily or weekly bars",
+      summary: "Daily or weekly bars, or 5-minute closes",
       description: lines(
-        "One symbol's daily or weekly bars, oldest first, with SMA 50 and SMA 200.",
+        "One symbol's daily or weekly bars, oldest first, with SMA 50 and SMA 200; or with `interval` `5m`, its 5-minute closes.",
         "",
         "- Up to ten years of history.",
         "- The latest session's bar is the live quote. `final` stays false until the source reports a later session.",
         "- Prices are split-adjusted, without dividends or currency conversion.",
         "- `session` is the market's last regular session.",
         "- A range with `to` before today and only final bars, without `benchmark`, may be cached for an hour.",
+        `- \`5m\` answers \`points\` instead of \`bars\`: the regular session's closes as the quote passes stored them, up to the last ${INTRADAY_SESSIONS} sessions, without averages, and \`previous_close\`, what a move is measured from. \`from\` and \`to\` are session dates, the newest stored session by default. A source with no such closes, or none stored in the range, answers \`no_data\`.`,
         STALE,
         UNSEEN,
         DEADLINE,
@@ -199,26 +201,34 @@ export const paths = {
         query("symbol", SYMBOL, str, true),
         query(
           "interval",
-          "`1d` or `1wk`. Default: `1d`.",
-          values(["1d", "1wk"]),
+          "`1d`, `1wk` or `5m`. Default: `1d`.",
+          values(["1d", "1wk", "5m"]),
         ),
         query(
           "from",
           `\`YYYY-MM-DD\`. Default: ${DEFAULT_MONTHS["1d"]} months before \`to\` for \`1d\`, ${DEFAULT_MONTHS["1wk"]} months for \`1wk\`.`,
         ),
-        query("to", "`YYYY-MM-DD`. Default: the latest bar."),
+        query(
+          "to",
+          "`YYYY-MM-DD`. Default: the latest bar; with `5m`, the newest stored session.",
+        ),
         query(
           "benchmark",
-          "A symbol to compare with. Adds `relative`: the 1- and 3-month return against it, in percentage points.",
+          "A symbol to compare with. Adds `relative`: the 1- and 3-month return against it, in percentage points. Not taken with `5m`.",
         ),
         query(
           "ohlc",
-          "`true` adds each bar's open, high, low and volume, for a chart. Default: `false`.",
+          "`true` adds each bar's open, high, low and volume, for a chart. Default: `false`. Not taken with `5m`.",
+          bool,
+        ),
+        query(
+          "extended",
+          "With `5m` only: `true` adds `extended_points`, the pre- and post-market closes of the sessions answered, read while the regular session is closed. Default: `false`.",
           bool,
         ),
       ],
       responses: reads({
-        200: ok("The bars.", ref("History")),
+        200: ok("The bars, or the points.", ref("HistoryAnswer")),
         404: r("NotFound"),
         503: r("Unavailable"),
       }),

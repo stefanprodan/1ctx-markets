@@ -31,7 +31,28 @@ export type History = {
   bars: HistoryBar[];
 };
 
-export const RANGES = [
+export type Point = {
+  at: string;
+  session: string;
+  close: number;
+  final: boolean;
+};
+
+export type Intraday = {
+  id: string;
+  unit: string;
+  interval: "5m";
+  session: { state: "open" | "closed" } | null;
+  previous_close: number | null;
+  points: Point[];
+  // pre and post trading, asked for 1D only
+  extended_points?: { at: string; session: "pre" | "post"; close: number }[];
+};
+
+export const INTRADAY = ["1D", "5D"] as const;
+export type IntradayRange = (typeof INTRADAY)[number];
+
+export const DAILY = [
   "1M",
   "3M",
   "6M",
@@ -41,10 +62,16 @@ export const RANGES = [
   "5Y",
   "Max",
 ] as const;
-export type Range = (typeof RANGES)[number];
-export const DEFAULT_RANGE: Range = "1Y";
+export type DailyRange = (typeof DAILY)[number];
 
-const MONTHS: Record<Exclude<Range, "YTD" | "Max">, number> = {
+export const RANGES = [...INTRADAY, ...DAILY] as const;
+export type Range = (typeof RANGES)[number];
+export const DEFAULT_RANGE: Range = "1D";
+
+export const isIntraday = (r: Range): r is IntradayRange =>
+  (INTRADAY as readonly string[]).includes(r);
+
+const MONTHS: Record<Exclude<DailyRange, "YTD" | "Max">, number> = {
   "1M": 1,
   "3M": 3,
   "6M": 6,
@@ -55,14 +82,14 @@ const MONTHS: Record<Exclude<Range, "YTD" | "Max">, number> = {
 
 // past two years a range reads weekly bars: a few hundred pixels never
 // need thousands of days
-export const intervalOf = (range: Range): Interval =>
+export const intervalOf = (range: DailyRange): Interval =>
   range === "3Y" || range === "5Y" || range === "Max" ? "1wk" : "1d";
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 
 // the first day a range asks for, from today's date in UTC; Max is the
 // ten years the server keeps
-export function fromOf(range: Range, today: string): string {
+export function fromOf(range: DailyRange, today: string): string {
   if (range === "YTD") return `${today.slice(0, 4)}-01-01`;
   const months = range === "Max" ? 120 : MONTHS[range];
   const [y, m, day] = today.split("-").map(Number) as [number, number, number];
@@ -142,6 +169,64 @@ export function volumes(bars: readonly HistoryBar[]) {
   return out;
 }
 
+// real UTC seconds, so a clock change never reorders or drops a point
+export const pointLine = (points: readonly { at: string; close: number }[]) =>
+  points.map((p) => ({ time: Date.parse(p.at) / 1000, value: p.close }));
+
+const clocks = new Map<string, Intl.DateTimeFormat>();
+
+// no zone is the viewer's; the library would label every time in UTC
+export function localTime(
+  seconds: number,
+  zone?: string,
+): { date: string; time: string } {
+  const key = zone ?? "";
+  let f = clocks.get(key);
+  if (f === undefined) {
+    f = new Intl.DateTimeFormat("en-US", {
+      timeZone: zone,
+      hourCycle: "h23",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    clocks.set(key, f);
+  }
+  const p: Record<string, string> = {};
+  for (const part of f.formatToParts(seconds * 1000)) p[part.type] = part.value;
+  return {
+    date: `${p.year}-${p.month}-${p.day}`,
+    time: `${p.hour}:${p.minute}`,
+  };
+}
+
+// a day as the library writes one (dd MMM 'yy), since a formatter replaces it
+export function timeLabel(
+  time: unknown,
+  zone?: string,
+  locale?: string,
+): string {
+  if (typeof time === "number") {
+    const t = localTime(time, zone);
+    return `${dayOf(t.date)} ${t.time}`;
+  }
+  const date =
+    typeof time === "string"
+      ? time
+      : (() => {
+          const d = time as { year: number; month: number; day: number };
+          const two = (n: number) => String(n).padStart(2, "0");
+          return `${d.year}-${two(d.month)}-${two(d.day)}`;
+        })();
+  const [y, m, d] = date.split("-").map(Number) as [number, number, number];
+  const month = new Date(y, m - 1, 1).toLocaleString(locale, {
+    month: "short",
+  });
+  return `${String(d).padStart(2, "0")} ${month} '${String(y % 100).padStart(2, "0")}`;
+}
+
 // the last bar is still trading while its market is open
 export const isLive = (h: History): boolean =>
   h.session?.state === "open" && h.bars.at(-1)?.final === false;
@@ -156,6 +241,7 @@ export function dayOf(date: string): string {
 
 export type Legend = {
   date: string;
+  time?: string;
   live: boolean;
   open: number | null;
   high: number | null;
@@ -201,6 +287,56 @@ export function legendOf(h: History, date: string | null): Legend | null {
     // at rest a week still open has no average yet: the last one stands
     sma50: bar.sma50 ?? (date === null ? lastOf(h.bars, "sma50") : null),
     sma200: bar.sma200 ?? (date === null ? lastOf(h.bars, "sma200") : null),
+  };
+}
+
+export function pointLegendOf(
+  h: Intraday,
+  time: number | null,
+  zone?: string,
+): Legend | null {
+  const near = (p: { at: string }) => Date.parse(p.at) / 1000 === time;
+  const outside =
+    time === null ? undefined : h.extended_points?.find((p) => near(p));
+  // at rest the newest price, an after-hours one when it is later
+  const newest = h.points.at(-1);
+  const after = h.extended_points?.findLast(
+    (p) =>
+      p.session === "post" &&
+      newest !== undefined &&
+      Date.parse(p.at) > Date.parse(newest.at),
+  );
+  const point =
+    time === null
+      ? after
+        ? { ...after, final: true }
+        : newest
+      : (h.points.find(near) ?? (outside && { ...outside, final: true }));
+  if (point === undefined) return null;
+  const first = h.previous_close ?? h.points[0]?.close ?? null;
+  const points = h.unit === "percent";
+  const local = localTime(Date.parse(point.at) / 1000, zone);
+  return {
+    date: local.date,
+    time: local.time,
+    live:
+      h.session?.state === "open" && !point.final && point === h.points.at(-1),
+    open: null,
+    high: null,
+    low: null,
+    close: point.close,
+    volume: null,
+    change:
+      first === null
+        ? null
+        : points
+          ? point.close - first
+          : first === 0
+            ? null
+            : ((point.close - first) / first) * 100,
+    points,
+    sma50: null,
+    sma200: null,
   };
 }
 
@@ -258,7 +394,7 @@ export type Settings = {
 
 export const DEFAULT_SETTINGS: Settings = {
   range: DEFAULT_RANGE,
-  line: false,
+  line: true,
   log: false,
   sma50: true,
   sma200: true,
@@ -287,5 +423,29 @@ export function readSettings(raw: string | null): Settings {
     log: flag("log"),
     sma50: flag("sma50"),
     sma200: flag("sma200"),
+  };
+}
+
+type Value<T> = { time: T; value: number };
+
+// each joined to the session's nearest close; the closing trade can share
+// the first post bar's minute, which the library refuses twice
+export function extendedLines<T extends number>(
+  session: readonly Value<T>[],
+  outside: readonly (Value<T> & { session: "pre" | "post" })[],
+): { pre: Value<T>[]; post: Value<T>[] } {
+  const first = session[0];
+  const last = session.at(-1);
+  if (first === undefined || last === undefined) return { pre: [], post: [] };
+  const plain = ({ time, value }: Value<T>) => ({ time, value });
+  const before = outside
+    .filter((p) => p.session === "pre" && p.time < first.time)
+    .map(plain);
+  const after = outside
+    .filter((p) => p.session === "post" && p.time > last.time)
+    .map(plain);
+  return {
+    pre: before.length > 0 ? [...before, first] : [],
+    post: after.length > 0 ? [last, ...after] : [],
   };
 }

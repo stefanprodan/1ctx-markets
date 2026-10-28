@@ -66,7 +66,9 @@ is offered over MCP.
   BVB, FRED), which the instrument page's footer links.
 - **One instrument is a read**, as the UI's instrument page is one:
   `GET /api/v1/admin/instruments/{id}` reads it through `quoteRows()`
-  as the quote tool does, so it is tracked and a due price is fetched.
+  as the quote tool does, so it is tracked and a due price is fetched,
+  with `extended` asked, so the page shows pre or post trading; that
+  read is cached per quote period and skipped while the session is open.
   The public `/quotes` leaves returns and session out to stay cheap
   for many symbols; one instrument can afford them. A stored id only:
   an unknown one is 404 and nothing is fetched. A read that fails (a

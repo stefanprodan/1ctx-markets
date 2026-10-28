@@ -7,6 +7,7 @@ import {
   type jsonSchemaValidator,
   type McpServer,
 } from "@modelcontextprotocol/server";
+import { INTRADAY_SESSIONS } from "../market/intraday.ts";
 import {
   errorResult,
   type ToolResult,
@@ -90,7 +91,7 @@ const day: JsonSchemaType = {
 const quoteDescription = (m: Markets) =>
   `Live quotes and signals for 1 to ${MAX_SYMBOLS} symbols: a stored id (US:NVDA), a Yahoo symbol (VVSM.DE, ^VIX), FRED:<series id> or a name; several listings answer candidates. One never read is fetched in ${m.callMs / 1000} seconds, else timeout: call again. Each item: price, previous close, change, day range, volume, trade_time, fetched_at, daily and weekly signal rows (live or final: SMA 50/200, EMA 20, RSI, MACD, ATR, volatility, Bollinger, 52w range, drawdown, volume ratio), stale. returns: 1w, 1m, 3m, ytd percent (points for a yield) to the live price or last final close (live says which), null if too few bars. session: open or closed (regular; closed briefly at an open), start, end. benchmark (one symbol) adds relative_return_1m, _3m in percentage points. extended true adds extended: the last pre- or post-market price (session, price, change, change_percent from the regular close, time), or null with why in stale. FRED: last observation, price null. Errors are items. When next is set, call again with the same arguments and next.`;
 
-const HISTORY = `Daily (1d) or weekly (1wk) bars of one symbol, oldest first, each with its final flag and that date's signal row. from and to are YYYY-MM-DD; to defaults to the latest bar, from to ${DEFAULT_MONTHS["1d"]} months before to for 1d and ${DEFAULT_MONTHS["1wk"]} months for 1wk. Prices are split-adjusted; averages and returns are on price, with dividends and FX conversion excluded. With a benchmark (any symbol, e.g. QQQ or ^GDAXI), it adds the 1- and 3-month return relative to it at to, in percentage points (points for a yield or spread), naming both currencies. Symbols resolve and are fetched as in quote. When next is set, call again with the same arguments and next.`;
+const HISTORY = `Daily (1d) or weekly (1wk) bars of one symbol, oldest first, each with its final flag and that date's signal row. from and to are YYYY-MM-DD; to defaults to the latest bar, from to ${DEFAULT_MONTHS["1d"]} months before to for 1d and ${DEFAULT_MONTHS["1wk"]} months for 1wk. Prices are split-adjusted; averages and returns are on price, with dividends and FX conversion excluded. With a benchmark (any symbol, e.g. QQQ or ^GDAXI), it adds the 1- and 3-month return relative to it at to, in percentage points (points for a yield or spread), naming both currencies. interval 5m: today's or the last ${INTRADAY_SESSIONS} sessions' 5-minute closes, regular hours, as fresh as the quote pass: points (at UTC, session date, close, final), each session's fetched_at, previous_close (a move's base); from and to are session dates, the newest stored by default; no signals or benchmark. extended true adds extended_points: pre- and post-market 5-minute closes while the session is closed. Symbols resolve and are fetched as in quote. When next is set, call again with the same arguments and next.`;
 
 const MOVERS = `The day's movers among 1 to ${MAX_SYMBOLS} symbols. min_move_pct (0 or more) is the live change from the previous close, in percent, with direction up, down or either (default). average (daily_sma50, daily_sma200, daily_ema20, weekly_sma50, weekly_sma200) with relation above or below compares the live price with it; crossed_up or crossed_down compares the last final close with the average then, and the live price with the average now. Give a move, an average or both; all given must hold. Matches come largest absolute change first. A symbol with a stale or missing quote or average is unavailable, never a match; a FRED series has no live quote and never moves. Symbols resolve and are fetched as in quote. When next is set, call again with the same arguments and next; each page is a fresh view, so matches may shift.`;
 
@@ -141,10 +142,15 @@ export function tools(m: Markets): Tool[] {
       inputSchema: schema(
         {
           symbol,
-          interval: { type: "string", enum: ["1d", "1wk"], default: "1d" },
+          interval: {
+            type: "string",
+            enum: ["1d", "1wk", "5m"],
+            default: "1d",
+          },
           from: day,
           to: day,
           benchmark: symbol,
+          extended: { type: "boolean", default: false },
           next,
         },
         ["symbol"],

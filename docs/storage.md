@@ -3,7 +3,7 @@
 Governs the database and what every table shares: `src/storage/db/`
 (connection and migrations), `src/storage/writer.ts`,
 `src/market/instruments.ts`, `src/market/quotes.ts`,
-`src/storage/runs.ts`, `src/market/stale.ts`, `src/market/tracking.ts`,
+`src/market/intraday.ts`, `src/storage/runs.ts`, `src/market/stale.ts`, `src/market/tracking.ts`,
 `src/runtime/clock.ts` and the retention turn in `src/app.ts`. Market
 sessions and bar dates are in `docs/calendars.md`; how a source's
 answers become rows is in its own doc and `docs/sources.md`; signal
@@ -193,6 +193,38 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   it** (`catchUp()` in `src/sources/yahoo/sync.ts`), and an unknown
   symbol is fetched inside the call (`docs/tools.md`).
 
+## Intraday closes
+
+- **`intraday` holds the 5-minute closes of the spark answers**
+  (`src/market/intraday.ts`, `docs/yahoo.md`): `session` the point's
+  local date in the instrument's zone (`localDate()`), never the
+  answer's current period, `at` UTC, `close`, `fetched_at` the
+  answer's. The key `(instrument, session, at)` serves replacing and
+  pruning a session.
+- **An answer replaces each session it holds; one with no points
+  deletes nothing.** Each answer holds its session so far, so a missed
+  pass or a restart leaves no hole once the next pass runs; a
+  session's last minutes are lost only when no pass ran between its
+  last trade and the next session's start (crypto at 00:00 UTC).
+- **`INTRADAY_SESSIONS` (5) per instrument:** a write drops sessions
+  older than the newest five. An instrument holding fewer is filled
+  once a process from a five-day chart, which adds only sessions not
+  stored (`addIntraday()`, `docs/yahoo.md`, Jobs); a day missing
+  inside five stored sessions stays missing.
+- **Cleared with the prices:** a source switch's `clear()`, a confirmed
+  rescale (`store()` in `src/sources/yahoo/history.ts`; the next quote
+  pass refills the session, no ratio is guessed), and the operator's
+  delete (`INSTRUMENT_TABLES`).
+- **No session before the instrument's newest split is stored**
+  (`splits`): a quote pass holds no per-instrument lock, so an answer
+  fetched before a rescale and written after it would bring old-scale
+  points back. A rescale with no split still clears every session.
+- **Only history's `5m`, the chart's 1D and 5D, and a currency pair's
+  daily close read it** (`docs/yahoo.md`, Daily bars); signals, rules,
+  movers and screen never do, and the live price stays the quote's. A
+  pair's close taken from a session's points is marked in
+  `bars.point_close`, so it outlives their prune.
+
 ## Retention
 
 - **One prune runs in the startup write and on the daily `retention`
@@ -207,6 +239,7 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
 | `news` | 30 days by `published_at`, which reads filter to whether or not retention ran; all of an untracked instrument |
 | `news_walks` | all of an untracked instrument (`pruneNews`) |
 | `alerts` | 90 days by `fired_at` (`ALERTS_KEPT_DAYS`) |
+| `intraday` | the newest `INTRADAY_SESSIONS` sessions per instrument, on each write (above) |
 
 - **Instruments, bars, splits, quotes, signals and markets are never
   pruned.** An instrument that stops being tracked keeps its history,

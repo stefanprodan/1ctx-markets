@@ -26,7 +26,7 @@ import { fetchInstrument as fetchBvb } from "../src/sources/bvb/sync.ts";
 import { backfillStart } from "../src/sources/history.ts";
 import { SourceError } from "../src/sources/source.ts";
 import { parseChart, parseSpark, yahoo } from "../src/sources/yahoo/client.ts";
-import { dailyBars } from "../src/sources/yahoo/history.ts";
+import { dailyBars, settle } from "../src/sources/yahoo/history.ts";
 import { keyOf } from "../src/sources/yahoo/resolve.ts";
 import {
   addInstrument,
@@ -259,7 +259,13 @@ test("a rescaled FX history covering the live-minute day is accepted", async () 
     expect(before.filter((bar) => bar.final)).toHaveLength(4);
     const whole = parseChart(scaled.body, clock.now());
     expect(whole.rows.at(-1)!.at).toBe(whole.time);
-    const expected = dailyBars(whole, whole.session);
+    // a rescale settles each final day at the next day's open
+    const expected = settle(
+      db,
+      instrument,
+      dailyBars(whole, whole.session),
+      false,
+    ).bars;
     expect(expected.map((bar) => bar.date)).toEqual(
       before.map((bar) => bar.date),
     );

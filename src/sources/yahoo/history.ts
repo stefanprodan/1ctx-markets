@@ -18,7 +18,12 @@ import {
   type Session,
   sessionDate,
 } from "../../market/calendars.ts";
-import type { Instrument, Unit } from "../../market/instruments.ts";
+import {
+  type Instrument,
+  readInstrument,
+  type Unit,
+} from "../../market/instruments.ts";
+import { clearIntraday } from "../../market/intraday.ts";
 import { JOBS } from "../../market/stale.ts";
 import { addDays, wallTime } from "../../market/zone.ts";
 import { NO_RULES, type RuleHooks } from "../../rules/hooks.ts";
@@ -80,7 +85,7 @@ export function read(answer: ChartAnswer, latest: Session | null): Read {
     const date = barDate(zone, trailing.at);
     if (
       date === sessionDate(answer.session) &&
-      (byDate.has(date) || ownsToday(answer.type))
+      (byDate.has(date) || isCurrency(answer.type))
     ) {
       // an FX day held only by this row is still a day the answer covers
       days.add(date);
@@ -92,7 +97,93 @@ export function read(answer: ChartAnswer, latest: Session | null): Read {
 
 // FX answers stamp today's row at the live minute; CL=F's Sunday evening
 // trades belong to Monday's bar, though its Sunday session has their date
-const ownsToday = (type: string) => type.toUpperCase() === "CURRENCY";
+const isCurrency = (type: string) => type.toUpperCase() === "CURRENCY";
+
+type Settled = { bars: Bar[]; pointCloses: Set<string> };
+
+// Yahoo's FX daily close is about its open; untrusted: old-scale closes
+export function settle(
+  db: Db,
+  instrument: Pick<Instrument, "id" | "type">,
+  bars: readonly Bar[],
+  trusted = true,
+): Settled {
+  const pointCloses = new Set<string>();
+  if (!isCurrency(instrument.type)) return { bars: [...bars], pointCloses };
+  const closes = new Map<string, number>();
+  if (trusted) {
+    // a stored point close outlives its pruned points
+    for (const r of db
+      .query<{ date: string; close: number }, [string]>(
+        `select date, close from bars where instrument = ?
+         and interval = '1d' and point_close = 1`,
+      )
+      .all(instrument.id)) {
+      closes.set(r.date, r.close);
+    }
+    for (const r of db
+      .query<{ session: string; close: number }, [string]>(
+        `select session, close from intraday i where instrument = ?1
+         and at = (select max(at) from intraday
+           where instrument = ?1 and session = i.session)`,
+      )
+      .all(instrument.id)) {
+      closes.set(r.session, r.close);
+    }
+  }
+  const last = bars.at(-1);
+  const after =
+    last === undefined
+      ? null
+      : (db
+          .query<{ open: number | null }, [string, string]>(
+            `select open from bars where instrument = ? and interval = '1d'
+             and date > ? order by date limit 1`,
+          )
+          .get(instrument.id, last.date)?.open ?? null);
+  const out = bars.map((b, k) => {
+    if (!b.final) return b;
+    const point = closes.get(b.date);
+    if (point !== undefined) {
+      pointCloses.add(b.date);
+      return { ...b, close: point };
+    }
+    const next = k + 1 < bars.length ? bars[k + 1]!.open : after;
+    return next === null ? b : { ...b, close: next };
+  });
+  return { bars: out, pointCloses };
+}
+
+// a window's first open can revise the stored day before it
+function settleBefore(
+  db: Db,
+  instrument: Pick<Instrument, "id" | "type">,
+  bars: readonly Bar[],
+): Bar | null {
+  const first = bars[0];
+  if (!isCurrency(instrument.type) || first?.open == null) return null;
+  const stored = db
+    .query<
+      Omit<Bar, "final"> & { final: number; pointClose: number },
+      [string, string]
+    >(
+      `select date, open, high, low, close, volume, final,
+         point_close as pointClose
+       from bars where instrument = ? and interval = '1d' and date < ?
+       order by date desc limit 1`,
+    )
+    .get(instrument.id, first.date);
+  if (
+    stored === null ||
+    stored.final !== 1 ||
+    stored.pointClose === 1 ||
+    stored.close === first.open
+  ) {
+    return null;
+  }
+  const { pointClose, ...bar } = stored;
+  return { ...bar, close: first.open, final: true };
+}
 
 function add(
   byDate: Map<string, Bar>,
@@ -330,20 +421,25 @@ function storeBars(
   recordSession(db, instrument.market, answer.session, answer.fetchedAt);
   const latest = readSession(db, instrument.market);
   const answered = read(answer, latest);
-  const { bars, days } = answered;
+  const { days } = answered;
   const owed = unclosed(db, instrument, latest, answered);
+  const { bars, pointCloses } = settle(db, instrument, answered.bars);
   if (whole) {
-    const kept = bars.filter((b) => b.date >= whole.since);
+    const since = (b: Bar) => b.date >= whole.since;
     const span = [...days].filter((d) => d >= whole.since).sort();
     const splits = unapplied(db, instrument, whole.splits);
-    const found = rescaleOf(db, instrument, kept);
+    const found = rescaleOf(db, instrument, bars.filter(since));
     if (
       whole.rescale !== undefined &&
-      !confirms(found, whole.rescale, db, instrument, kept)
+      !confirms(found, whole.rescale, db, instrument, bars.filter(since))
     ) {
       throw unconfirmed();
     }
     const rescaled = splits.length > 0 || found !== null;
+    const settled = rescaled
+      ? settle(db, instrument, answered.bars, false)
+      : { bars, pointCloses };
+    const kept = settled.bars.filter(since);
     const range = dailyRange(db, instrument.id);
     if (range === null) {
       if (startsShort(answer, whole.since)) throw cutShort();
@@ -366,7 +462,14 @@ function storeBars(
       span.length === 0
         ? null
         : deleteDailyBars(db, instrument.id, span[0]!, span.at(-1)!, keep);
-    const written = upsertBars(db, instrument.id, "1d", kept, answer.fetchedAt);
+    const written = upsertBars(
+      db,
+      instrument.id,
+      "1d",
+      kept,
+      answer.fetchedAt,
+      settled.pointCloses,
+    );
     recordSplits(db, instrument, splits, now);
     rebuildWeeks(db, instrument.id, latest, now);
     return {
@@ -376,15 +479,24 @@ function storeBars(
       rescaled,
     };
   }
-  const written = upsertBars(db, instrument.id, "1d", bars, answer.fetchedAt);
+  const before = settleBefore(db, instrument, bars);
+  const written = upsertBars(
+    db,
+    instrument.id,
+    "1d",
+    before === null ? bars : [before, ...bars],
+    answer.fetchedAt,
+    pointCloses,
+  );
   const span = [...days].sort();
   let deleted: string | null = null;
   if (span.length > 0) {
     const keep = new Set(bars.map((b) => b.date));
     if (owed !== null) keep.add(owed);
     deleted = deleteDailyBars(db, instrument.id, span[0]!, span.at(-1)!, keep);
-    rebuildWeeks(db, instrument.id, latest, now, span[0]!);
   }
+  const from = earliest(before?.date ?? null, span[0] ?? null);
+  if (from !== null) rebuildWeeks(db, instrument.id, latest, now, from);
   return {
     rows: written.rows,
     changedFrom: earliest(deleted, written.changedFrom),
@@ -410,10 +522,61 @@ export function store(
     answer,
     whole,
   );
-  if (rescaled) rules.rescaled(db, instrument.id, now);
+  if (rescaled) {
+    rules.rescaled(db, instrument.id, now);
+    // no ratio is guessed: the next quote pass refills the session
+    clearIntraday(db, instrument.id);
+  }
   signalsAfterBars(db, instrument, written.changedFrom, now);
   rules.evaluate(db, [instrument.id], now);
   return written;
+}
+
+// at start, so stored pairs follow settle() with no manual step
+export function settleStored(db: Db, now: number): void {
+  const pairs = db
+    .query<{ id: string }, [string]>(
+      `select id from instruments where source = ?
+       and upper(type) = 'CURRENCY' order by id`,
+    )
+    .all(SOURCE);
+  for (const { id } of pairs) settleBars(db, readInstrument(db, id)!, now);
+}
+
+export function settleBars(db: Db, instrument: Instrument, now: number): void {
+  if (!isCurrency(instrument.type)) return;
+  const id = instrument.id;
+  const update = db.query(
+    `update bars set close = ?, point_close = ?
+     where instrument = ? and interval = '1d' and date = ?`,
+  );
+  const stored = db
+    .query<
+      Omit<Bar, "final"> & { final: number; pointClose: number },
+      [string]
+    >(
+      `select date, open, high, low, close, volume, final,
+         point_close as pointClose
+       from bars where instrument = ? and interval = '1d' order by date`,
+    )
+    .all(id);
+  const { bars, pointCloses } = settle(
+    db,
+    instrument,
+    stored.map((b) => ({ ...b, final: b.final === 1 })),
+  );
+  let changedFrom: string | null = null;
+  bars.forEach((b, k) => {
+    const s = stored[k]!;
+    const point = pointCloses.has(b.date) ? 1 : 0;
+    if (b.close === s.close && point === s.pointClose) return;
+    update.run(b.close, point, id, b.date);
+    if (b.close !== s.close) changedFrom ??= b.date;
+  });
+  if (changedFrom === null) return;
+  const latest = readSession(db, instrument.market);
+  rebuildWeeks(db, id, latest, now, changedFrom);
+  signalsAfterBars(db, instrument, changedFrom, now);
 }
 
 // an ok run in the instrument's scope clears only its own failed refetch;

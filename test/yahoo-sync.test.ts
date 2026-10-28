@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
-import { readBars } from "../src/market/bars.ts";
-import { readSessions } from "../src/market/calendars.ts";
+import { readBars, rebuildWeeks } from "../src/market/bars.ts";
+import { readSession, readSessions } from "../src/market/calendars.ts";
 import { readInstrument, upsertInstrument } from "../src/market/instruments.ts";
+import { storeIntraday } from "../src/market/intraday.ts";
 import { readQuote } from "../src/market/quotes.ts";
 import { startOfDate } from "../src/market/zone.ts";
 import { DAY_MS } from "../src/runtime/clock.ts";
+import { recomputeSignals } from "../src/signals/store.ts";
 import { backfillStart, RETRY_MS } from "../src/sources/history.ts";
 import {
   type ChartAnswer,
@@ -15,12 +17,18 @@ import {
   parseSpark,
   yahoo,
 } from "../src/sources/yahoo/client.ts";
-import { dailyBars, unitOf } from "../src/sources/yahoo/history.ts";
+import {
+  dailyBars,
+  settle,
+  settleStored,
+  unitOf,
+} from "../src/sources/yahoo/history.ts";
 import { storeQuotes } from "../src/sources/yahoo/quotes.ts";
 import { marketOf, symbolOf } from "../src/sources/yahoo/resolve.ts";
 import { addInstrument, backfill, refetch } from "../src/sources/yahoo/sync.ts";
 import { type Db, open } from "../src/storage/db/index.ts";
 import { writer } from "../src/storage/writer.ts";
+import { withApp } from "./helpers/app.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import {
   backTo,
@@ -988,4 +996,258 @@ describe("quotes from a spark answer", () => {
 test("ten years before 29 February backfills from 28 February", () => {
   // 2018-02-28 is a Wednesday
   expect(backfillStart(Date.UTC(2028, 1, 29, 12)).monday).toBe("2018-02-26");
+});
+
+describe("a currency pair's daily close", () => {
+  const EUR = "CCY:EURUSD=X";
+  const SUNDAY = "chart-eurusd-x-5d-1d";
+  const MONDAY = "chart-eurusd-x-5d-1d-open-0800";
+  const SPARK = "spark-v7-batch";
+  // the recordings' opens: Friday's bar closes 1.12215 at Yahoo
+  const OPENS = {
+    "2026-10-20": 1.1214282512664795,
+    "2026-10-21": 1.1225864887237549,
+    "2026-10-22": 1.1233556270599365,
+    "2026-10-23": 1.122158169746399,
+    "2026-10-26": 1.121956706047058,
+  };
+  const YAHOO_FRIDAY = 1.1221455335617065;
+
+  // any write rebuilds weeks with a new fetch time, so weeks compare by value
+  const rows = (db: Db) => ({
+    days: db
+      .query(
+        `select * from bars where instrument = ? and interval = '1d'
+         order by date`,
+      )
+      .all(EUR),
+    weeks: db
+      .query(
+        `select date, open, high, low, close, volume, final, point_close
+         from bars where instrument = ? and interval = '1wk' order by date`,
+      )
+      .all(EUR),
+  });
+  const close = (db: Db, date: string) =>
+    db
+      .query<{ close: number; point: number }, [string, string]>(
+        `select close, point_close as point from bars where instrument = ?
+         and interval = '1d' and date = ?`,
+      )
+      .get(EUR, date);
+
+  // added on Sunday in Friday's session; Sunday evening's quote has its points
+  async function friday(points: boolean) {
+    const answers = new Map<string, Recorded>([
+      [SUNDAY, listed(await recorded(SUNDAY))],
+      [MONDAY, await recorded(MONDAY)],
+    ]);
+    let next = SUNDAY;
+    const t = setup(Date.parse(answers.get(SUNDAY)!.recordedAt), () =>
+      answers.get(next),
+    );
+    const { instrument } = await addInstrument(t.ctx, "EURUSD=X", EUR);
+    const spark = await recorded(SPARK);
+    await t.clock.advance(Date.parse(spark.recordedAt) - t.clock.now());
+    if (points) {
+      await t.writer.write((db) =>
+        storeQuotes(db, parseSpark(spark.body, t.clock.now())),
+      );
+    }
+    const monday = answers.get(MONDAY)!.recordedAt;
+    await t.clock.advance(Date.parse(monday) - t.clock.now());
+    next = MONDAY;
+    return { ...t, instrument };
+  }
+
+  test("a final day closes at its session's last 5-minute close", async () => {
+    const t = await friday(true);
+    const written = await refetch(t.ctx, t.instrument);
+    expect(written.changedFrom).toBe("2026-10-23");
+    expect(close(t.db, "2026-10-23")).toEqual({ close: 1.1204, point: 1 });
+    // a weekday without points closes at the next day's open
+    expect(close(t.db, "2026-10-22")).toEqual({
+      close: OPENS["2026-10-23"],
+      point: 0,
+    });
+    // the live day keeps the quote's price
+    expect(readBars(t.db, EUR, "1d").at(-1)).toMatchObject({
+      date: "2026-10-26",
+      open: OPENS["2026-10-26"],
+      close: 1.120824933052063,
+      final: false,
+    });
+    expect(readBars(t.db, EUR, "1wk")[0]).toMatchObject({
+      date: "2026-10-19",
+      close: 1.1204,
+    });
+  });
+
+  test("without points a final day closes at the next day's open", async () => {
+    const t = await friday(false);
+    await refetch(t.ctx, t.instrument);
+    expect(close(t.db, "2026-10-23")).toEqual({
+      close: OPENS["2026-10-26"],
+      point: 0,
+    });
+    const days = readBars(t.db, EUR, "1d");
+    expect(days.map((b) => [b.date, b.close])).toEqual([
+      ["2026-10-19", OPENS["2026-10-20"]],
+      ["2026-10-20", OPENS["2026-10-21"]],
+      ["2026-10-21", OPENS["2026-10-22"]],
+      ["2026-10-22", OPENS["2026-10-23"]],
+      ["2026-10-23", OPENS["2026-10-26"]],
+      ["2026-10-26", 1.120824933052063],
+    ]);
+  });
+
+  test("the newest final day keeps Yahoo's close until the next day arrives", async () => {
+    const t = await friday(false);
+    const monday = await recorded(MONDAY);
+    const cut = clone(monday);
+    const result = cut.body.chart.result[0];
+    result.timestamp.pop();
+    for (const k of ["open", "high", "low", "close", "volume"]) {
+      result.indicators.quote[0][k].pop();
+    }
+    const answers = [cut, monday];
+    const f = fakeFetch(() => answers.shift());
+    const ctx = { ...t.ctx, yahoo: yahoo({ clock: t.clock, fetch: f.fetch }) };
+    await refetch(ctx, t.instrument);
+    expect(close(t.db, "2026-10-23")).toEqual({
+      close: YAHOO_FRIDAY,
+      point: 0,
+    });
+    const written = await refetch(ctx, t.instrument);
+    expect(written.changedFrom).toBe("2026-10-23");
+    expect(close(t.db, "2026-10-23")!.close).toBe(OPENS["2026-10-26"]);
+  });
+
+  test("a window whose first open is revised settles the stored day before it", async () => {
+    const revised = clone(await recorded(MONDAY));
+    revised.body.chart.result[0].indicators.quote[0].open[0] = 1.13;
+    const refetched = async (t: Awaited<ReturnType<typeof friday>>) => {
+      const f = fakeFetch(() => revised);
+      const ctx = {
+        ...t.ctx,
+        yahoo: yahoo({ clock: t.clock, fetch: f.fetch }),
+      };
+      return refetch(ctx, t.instrument);
+    };
+    const t = await friday(false);
+    expect(close(t.db, "2026-10-19")!.close).toBe(OPENS["2026-10-20"]);
+    const written = await refetched(t);
+    expect(written.changedFrom).toBe("2026-10-19");
+    expect(close(t.db, "2026-10-19")).toEqual({ close: 1.13, point: 0 });
+    // a close kept from points stays
+    const kept = await friday(false);
+    kept.db
+      .query(
+        `update bars set close = 1.2, point_close = 1 where instrument = ?
+         and interval = '1d' and date = '2026-10-19'`,
+      )
+      .run(EUR);
+    await refetched(kept);
+    expect(close(kept.db, "2026-10-19")).toEqual({ close: 1.2, point: 1 });
+  });
+
+  test("a close from points outlives them; an unchanged answer changes nothing", async () => {
+    const t = await friday(true);
+    await refetch(t.ctx, t.instrument);
+    const before = rows(t.db);
+    const asked = t.f.urls.length;
+    // the five-session prune took Friday's points
+    t.db.query("delete from intraday where instrument = ?").run(EUR);
+    await t.clock.advance(60_000);
+    const again = await refetch(t.ctx, t.instrument);
+    expect(again.changedFrom).toBeNull();
+    // no rescale: no whole history was asked
+    expect(t.f.urls).toHaveLength(asked + 1);
+    expect(rows(t.db)).toEqual(before);
+    const whole = await backfill(t.ctx, t.instrument);
+    expect(whole.changedFrom).toBeNull();
+    expect(close(t.db, "2026-10-23")).toEqual({ close: 1.1204, point: 1 });
+    expect(rows(t.db)).toEqual(before);
+  });
+
+  test("at start, stored closes are settled and weeks and signals follow", async () => {
+    // a ten-week history, so the daily signals have values
+    const monday = listed(backTo(await recorded(MONDAY), "2026-08-03"));
+    const nvda = listed(await recorded("chart-nvda-5d-1d"));
+    const t = setup(Date.parse(monday.recordedAt), (url) =>
+      decodeURIComponent(url.pathname).endsWith("EURUSD=X") ? monday : nvda,
+    );
+    await addInstrument(t.ctx, "EURUSD=X", EUR);
+    await addInstrument(t.ctx, "NVDA");
+    const signals = (id: string) =>
+      t.db
+        .query(
+          `select * from signals where instrument = ? and kind = 'final'
+           order by interval, date`,
+        )
+        .all(id)
+        .map((r: any) => ({ ...r, computed_at: 0 }));
+    const all = (id: string) => ({
+      bars: t.db
+        .query("select * from bars where instrument = ? order by 1, 2, 3")
+        .all(id),
+      signals: t.db
+        .query("select * from signals where instrument = ? order by 1, 2, 3, 4")
+        .all(id),
+    });
+    // as an older build stored them: Yahoo's closes, and Friday's points
+    const answer = parseChart(monday.body, t.clock.now());
+    const spark = await recorded(SPARK);
+    await t.writer.write((db) => {
+      for (const b of dailyBars(answer, answer.session)) {
+        db.query(
+          `update bars set close = ? where instrument = ?
+           and interval = '1d' and date = ?`,
+        ).run(b.close, EUR, b.date);
+      }
+      rebuildWeeks(db, EUR, readSession(db, "CCY"), t.clock.now());
+      recomputeSignals(db, EUR, t.clock.now());
+      const eur = parseSpark(spark.body, 1).quotes.find(
+        (q) => q.symbol === "EURUSD=X",
+      )!;
+      storeIntraday(db, EUR, "Europe/London", eur.points, 1);
+    });
+    expect(close(t.db, "2026-10-23")!.close).toBe(YAHOO_FRIDAY);
+    const stale = signals(EUR);
+    const shares = all("US:NVDA");
+
+    await withApp(
+      async (a) => {
+        // queued after the startup writes
+        await a.app.writer.write(() => {});
+      },
+      { db: t.db, start: t.clock.now() },
+    );
+    expect(close(t.db, "2026-10-23")).toEqual({ close: 1.1204, point: 1 });
+    expect(close(t.db, "2026-10-22")!.close).toBe(OPENS["2026-10-23"]);
+    expect(readBars(t.db, EUR, "1wk").at(-2)).toMatchObject({
+      date: "2026-10-19",
+      close: 1.1204,
+    });
+    const settled = signals(EUR);
+    expect(settled).not.toEqual(stale);
+    await t.writer.write((db) => recomputeSignals(db, EUR, t.clock.now()));
+    expect(signals(EUR)).toEqual(settled);
+    expect(all("US:NVDA")).toEqual(shares);
+
+    // a second start changes no row
+    const once = all(EUR);
+    await t.clock.advance(60_000);
+    await t.writer.write((db) => settleStored(db, t.clock.now()));
+    expect(all(EUR)).toEqual(once);
+  });
+
+  test("never for another type", async () => {
+    const a = await answer("chart-nvda-5d-1d");
+    const bars = dailyBars(a, a.session);
+    const { db } = open(":memory:", fakeClock());
+    expect(settle(db, { id: "US:NVDA", type: "EQUITY" }, bars).bars).toEqual(
+      bars,
+    );
+  });
 });

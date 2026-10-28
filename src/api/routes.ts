@@ -10,11 +10,12 @@ import {
   adminRefetch,
   adminStatus,
 } from "../admin/http.ts";
-import { price } from "../market/format.ts";
+import { iso, price } from "../market/format.ts";
 import { localDate } from "../market/zone.ts";
 import { ArgError, fields } from "../operations/args.ts";
 import { parseEvents, readEventsOf } from "../operations/events.ts";
 import { basisOf, parseHistory, readHistory } from "../operations/history.ts";
+import { extendedOut, readIntradayHistory } from "../operations/intraday.ts";
 import type { ExtendedRead, Markets } from "../operations/markets.ts";
 import { parseMovers, readMovers } from "../operations/movers.ts";
 import {
@@ -117,6 +118,42 @@ function brief(
   };
 }
 
+// a point is not a daily bar, so it has its own schema
+async function intraday(
+  m: Markets,
+  args: Parameters<typeof readIntradayHistory>[1],
+): Promise<Response> {
+  const read = await readIntradayHistory(m, args, null);
+  if ("error" in read) return failed({ input: read.input, ...read.error });
+  const i = read.instrument;
+  return json({
+    id: i.id,
+    name: i.name,
+    exchange: i.exchange,
+    type: i.type,
+    currency: i.currency,
+    unit: i.unit,
+    source: i.source,
+    stale: read.stale,
+    from: read.from,
+    to: read.to,
+    session: read.session,
+    interval: args.interval,
+    sessions: read.sessions.map((s) => ({
+      session: s.session,
+      fetched_at: iso(s.fetchedAt),
+    })),
+    previous_close: price(read.previousClose),
+    ...extendedOut(read.extended),
+    points: read.points.map((p) => ({
+      at: iso(p.at),
+      session: p.session,
+      close: price(p.close),
+      final: p.final,
+    })),
+  });
+}
+
 function reads(m: Markets): Route[] {
   return [
     {
@@ -148,11 +185,18 @@ function reads(m: Markets): Route[] {
           to: "text",
           benchmark: "text",
           ohlc: "boolean",
+          extended: "boolean",
         });
         // a chart's candles and volume; the tools' bars stay close only,
         // so an agent's page holds more of them
         const full = ohlc === true;
         const args = parseHistory(rest);
+        if (args.interval === "5m") {
+          if (ohlc !== undefined) {
+            throw new ArgError("ohlc is not taken with interval 5m");
+          }
+          return intraday(m, args);
+        }
         const read = await readHistory(m, args, null);
         if ("error" in read) {
           return failed({ input: read.input, ...read.error });

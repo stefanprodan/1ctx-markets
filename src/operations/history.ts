@@ -23,6 +23,7 @@ import {
   textResult,
 } from "./answer.ts";
 import { ArgError, date, fields, oneOf, optionalText, text } from "./args.ts";
+import { type IntradayArgs, intradayAnswer } from "./intraday.ts";
 import type { Markets } from "./markets.ts";
 import {
   quoteItem,
@@ -42,14 +43,11 @@ export const FRED_BASIS =
 // months back when from is left out
 export const DEFAULT_MONTHS: Record<Interval, number> = { "1d": 3, "1wk": 24 };
 
-export type HistoryArgs = {
-  symbol: string;
+export type DailyArgs = Omit<IntradayArgs, "interval"> & {
   interval: Interval;
-  from: string | null;
-  to: string | null;
-  benchmark: string | null;
-  next: string | null;
 };
+
+export type HistoryArgs = DailyArgs | IntradayArgs;
 
 export function parseHistory(input: unknown): HistoryArgs {
   const f = fields(input, [
@@ -58,18 +56,33 @@ export function parseHistory(input: unknown): HistoryArgs {
     "from",
     "to",
     "benchmark",
+    "extended",
     "next",
   ]);
+  if (
+    f.extended !== undefined &&
+    f.extended !== null &&
+    typeof f.extended !== "boolean"
+  ) {
+    throw new ArgError("extended must be true or false");
+  }
   const args = {
     symbol: text(f.symbol, "symbol"),
-    interval: oneOf(f.interval, "interval", ["1d", "1wk"] as const, "1d"),
+    interval: oneOf(f.interval, "interval", ["1d", "1wk", "5m"] as const, "1d"),
     from: date(f.from, "from"),
     to: date(f.to, "to"),
     benchmark: optionalText(f.benchmark, "benchmark"),
+    extended: f.extended === true,
     next: optionalText(f.next, "next", 200),
   };
   if (args.from !== null && args.to !== null && args.from > args.to) {
     throw new ArgError("from is after to");
+  }
+  if (args.interval === "5m" && args.benchmark !== null) {
+    throw new ArgError("benchmark is not taken with interval 5m");
+  }
+  if (args.interval !== "5m" && args.extended) {
+    throw new ArgError("extended is taken with interval 5m only");
   }
   return args;
 }
@@ -220,7 +233,7 @@ export type HistoryRead =
 // a null start is from; the one bar not final carries its live row
 export async function readHistory(
   m: Markets,
-  args: HistoryArgs,
+  args: DailyArgs,
   start: string | null,
 ): Promise<HistoryRead> {
   const names =
@@ -282,7 +295,9 @@ export async function historyAnswer(
   m: Markets,
   args: HistoryArgs,
 ): Promise<ToolResult> {
-  const { next, ...asked } = args;
+  if (args.interval === "5m") return intradayAnswer(m, args);
+  // extended is 5m's alone, so a daily cursor reads as it always has
+  const { next, extended: _, ...asked } = args;
   let start: string | null = null;
   if (next !== null) {
     start = readCursor(next, asked);

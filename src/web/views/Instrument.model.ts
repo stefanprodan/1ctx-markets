@@ -31,6 +31,33 @@ export function headline(d: Detail): {
   return { price: price(row), change: change(row) };
 }
 
+// pre or post trading beside the close, in the viewer's clock
+export function afterHours(d: Detail): {
+  label: string;
+  price: string;
+  change: { text: string; dir: -1 | 0 | 1 };
+} | null {
+  const x = d.quote?.extended;
+  if (!x || x.price === null) return null;
+  const row: Listed = {
+    ...d.instrument,
+    price: x.price,
+    change: x.change,
+    change_percent: x.change_percent,
+  };
+  const at = CLOCK.format(new Date(x.time));
+  return {
+    label: `${x.session === "pre" ? "Pre-market" : "After hours"} · ${at}`,
+    price: price(row),
+    change: change(row),
+  };
+}
+
+const CLOCK = new Intl.DateTimeFormat("en-GB", {
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
 const DAY = new Intl.DateTimeFormat("en-GB", {
   day: "numeric",
   month: "short",

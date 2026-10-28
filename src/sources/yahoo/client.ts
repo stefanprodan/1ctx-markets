@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { type Session, sessionFromChartMeta } from "../../market/calendars.ts";
+import type { Point } from "../../market/intraday.ts";
 import type { Clock } from "../../runtime/clock.ts";
 import { YAHOO } from "../ids.ts";
 import {
@@ -82,8 +83,12 @@ export type IntradayAnswer = ChartAnswer & {
 // its windows, while two keep the last post bars until the next open
 export const INTRADAY_RANGE = "2d";
 
+export type SparkQuote = ChartMeta & { points: Point[] };
+
+export type PointsAnswer = ChartMeta & { points: Point[]; fetchedAt: number };
+
 export type SparkAnswer = {
-  quotes: ChartMeta[];
+  quotes: SparkQuote[];
   skipped: { symbol: string | null; phrase: Phrase }[];
   fetchedAt: number;
 };
@@ -105,6 +110,7 @@ export type Yahoo = {
   // from and to in UTC epoch ms
   chart(symbol: string, from: number, to: number): Promise<ChartAnswer>;
   intraday(symbol: string): Promise<IntradayAnswer>;
+  points(symbol: string): Promise<PointsAnswer>;
   // the listing's hasPrePostMarketData from the last answer naming it
   prePost(symbol: string): boolean | undefined;
   spark(symbols: readonly string[]): Promise<SparkAnswer>;
@@ -344,6 +350,36 @@ export function parseIntraday(
   };
 }
 
+// a stamp outside these years cannot be dated in a zone
+const FIRST_POINT = Date.UTC(1970, 0, 1);
+const LAST_POINT = Date.UTC(2200, 0, 1);
+
+function closesOf(rows: readonly ChartRow[]): Point[] {
+  const out: Point[] = [];
+  for (const row of rows) {
+    if (row.at < FIRST_POINT || row.at >= LAST_POINT) {
+      throw malformed("timestamp out of range");
+    }
+    if (row.close !== null) out.push({ at: row.at, close: row.close });
+  }
+  return out;
+}
+
+// a bad series never costs the price: it gives no points
+function sparkPoints(response: Obj): Point[] {
+  try {
+    return closesOf(parseRows(response));
+  } catch (error) {
+    if (error instanceof SourceError) return [];
+    throw error;
+  }
+}
+
+export function parsePoints(body: unknown, fetchedAt: number): PointsAnswer {
+  const { rows, splits, firstTrade, ...meta } = parseChart(body, fetchedAt);
+  return { ...meta, points: closesOf(rows) };
+}
+
 // Each entry is read on its own, so one bad symbol skips only itself;
 // a symbol without data comes back without a response.
 export function parseSpark(body: unknown, fetchedAt: number): SparkAnswer {
@@ -352,7 +388,7 @@ export function parseSpark(body: unknown, fetchedAt: number): SparkAnswer {
     throw new SourceError("source error", "spark error");
   }
   if (!Array.isArray(spark.result)) throw malformed("no spark results");
-  const quotes: ChartMeta[] = [];
+  const quotes: SparkQuote[] = [];
   const skipped: SparkAnswer["skipped"] = [];
   for (const entry of spark.result) {
     const symbol = isObj(entry) ? optionalText(entry.symbol) : null;
@@ -366,7 +402,8 @@ export function parseSpark(body: unknown, fetchedAt: number): SparkAnswer {
     }
     try {
       if (!Array.isArray(response)) throw malformed("spark response");
-      quotes.push(parseMeta(obj(response[0], "spark response").meta));
+      const first = obj(response[0], "spark response");
+      quotes.push({ ...parseMeta(first.meta), points: sparkPoints(first) });
     } catch (error) {
       if (!(error instanceof SourceError)) throw error;
       skipped.push({ symbol, phrase: error.phrase });
@@ -486,6 +523,15 @@ export function yahoo(options: YahooOptions): Yahoo {
         });
         const url = `${host}/v8/finance/chart/${encodeURIComponent(symbol)}?${params}`;
         return seen(await get(url, run, parseIntraday));
+      },
+      async points(symbol) {
+        const params = new URLSearchParams({
+          range: "5d",
+          interval: "5m",
+          includePrePost: "false",
+        });
+        const url = `${host}/v8/finance/chart/${encodeURIComponent(symbol)}?${params}`;
+        return seen(await get(url, run, parsePoints));
       },
       prePost: (symbol) => prePost.get(symbol),
       spark,

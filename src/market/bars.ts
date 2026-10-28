@@ -63,7 +63,7 @@ export type Written = { rows: number; changedFrom: string | null };
 export const earliest = (a: string | null, b: string | null) =>
   a === null ? b : b === null ? a : a < b ? a : b;
 
-type Stored = Omit<Bar, "final"> & { final: number };
+type Stored = Omit<Bar, "final"> & { final: number; pointClose: number };
 
 const sameValues = (a: Stored, b: Bar) =>
   a.open === b.open &&
@@ -79,34 +79,38 @@ export function upsertBars(
   interval: Interval,
   bars: readonly Bar[],
   fetchedAt: number,
+  pointCloses: ReadonlySet<string> = new Set(),
 ): Written {
   const read = db.query<Stored, [string, string, string]>(
-    `select date, open, high, low, close, volume, final from bars
-     where instrument = ? and interval = ? and date = ?`,
+    `select date, open, high, low, close, volume, final,
+       point_close as pointClose
+     from bars where instrument = ? and interval = ? and date = ?`,
   );
   const insert = db.query(
     `insert into bars (instrument, interval, date, open, high, low, close,
-       volume, final, fetched_at)
-     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       volume, final, point_close, fetched_at)
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   const update = db.query(
     `update bars set open = ?, high = ?, low = ?, close = ?, volume = ?,
-       final = ?, fetched_at = ?
+       final = ?, point_close = ?, fetched_at = ?
      where instrument = ? and interval = ? and date = ?`,
   );
   let changedFrom: string | null = null;
   for (const b of bars) {
     const stored = read.get(instrument, interval, b.date);
     const final = b.final || stored?.final === 1 ? 1 : 0;
+    const point = pointCloses.has(b.date) ? 1 : 0;
     const values = [b.open, b.high, b.low, b.close, volumeOf(b.volume)];
+    const rest = [final, point, fetchedAt] as const;
     if (stored === null) {
-      insert.run(instrument, interval, b.date, ...values, final, fetchedAt);
+      insert.run(instrument, interval, b.date, ...values, ...rest);
       changedFrom = earliest(changedFrom, b.date);
     } else if (!sameValues(stored, b)) {
-      update.run(...values, final, fetchedAt, instrument, interval, b.date);
+      update.run(...values, ...rest, instrument, interval, b.date);
       changedFrom = earliest(changedFrom, b.date);
-    } else if (final !== stored.final) {
-      update.run(...values, final, fetchedAt, instrument, interval, b.date);
+    } else if (final !== stored.final || point !== stored.pointClose) {
+      update.run(...values, ...rest, instrument, interval, b.date);
     }
   }
   return { rows: bars.length, changedFrom };

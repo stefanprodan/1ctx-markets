@@ -10,10 +10,13 @@
 
 import { batch, useSignal } from "@preact/signals";
 import type {
+  AutoscaleInfo,
   IChartApi,
   ISeriesApi,
   MouseEventParams,
   SeriesType,
+  Time,
+  UTCTimestamp,
 } from "lightweight-charts";
 import { useEffect, useLayoutEffect, useRef } from "preact/hooks";
 import { theme } from "../app/theme.ts";
@@ -28,20 +31,27 @@ import {
   changeText,
   closes,
   dayOf,
+  extendedLines,
   figure,
   fromOf,
   type History,
   hasCandles,
   hasVolume,
+  type Intraday,
   intervalOf,
+  isIntraday,
   isLive,
   type Legend,
   legendOf,
+  localTime,
+  pointLegendOf,
+  pointLine,
   RANGES,
   type Range,
   readSettings,
   type Settings,
   tick,
+  timeLabel,
   volumes,
   volumeText,
 } from "./Chart.model.ts";
@@ -121,7 +131,7 @@ export function LegendLine({
   show,
 }: {
   legend: Legend;
-  interval: History["interval"];
+  interval: History["interval"] | Intraday["interval"];
   range: Range;
   show: { sma50: boolean; sma200: boolean };
 }) {
@@ -134,7 +144,10 @@ export function LegendLine({
   return (
     <div class="chart-legend">
       <span class="chart-legend-row">
-        <span class="chart-date">{dayOf(legend.date)}</span>
+        <span class="chart-date">
+          {dayOf(legend.date)}
+          {legend.time !== undefined && ` ${legend.time}`}
+        </span>
         {legend.live && <span class="chart-live">Live</span>}
         {legend.open !== null && (
           <>
@@ -163,18 +176,20 @@ export function LegendLine({
           </span>
         )}
       </span>
-      <span class="chart-legend-row">
-        {show.sma50 && legend.sma50 !== null && (
-          <span class="chart-avg chart-avg-50">
-            {averageLabel(interval, 50)} {figure(legend.sma50)}
-          </span>
-        )}
-        {show.sma200 && legend.sma200 !== null && (
-          <span class="chart-avg chart-avg-200">
-            {averageLabel(interval, 200)} {figure(legend.sma200)}
-          </span>
-        )}
-      </span>
+      {interval !== "5m" && (
+        <span class="chart-legend-row">
+          {show.sma50 && legend.sma50 !== null && (
+            <span class="chart-avg chart-avg-50">
+              {averageLabel(interval, 50)} {figure(legend.sma50)}
+            </span>
+          )}
+          {show.sma200 && legend.sma200 !== null && (
+            <span class="chart-avg chart-avg-200">
+              {averageLabel(interval, 200)} {figure(legend.sma200)}
+            </span>
+          )}
+        </span>
+      )}
     </div>
   );
 }
@@ -185,7 +200,7 @@ export function Chart({ id }: { id: string }) {
   const tallest = useRef({ shape: "", px: 0 });
   const kept = useRef(loadSettings()).current;
   const range = useSignal<Range>(kept.range);
-  const data = useSignal<History | null>(null);
+  const data = useSignal<History | Intraday | null>(null);
   const error = useSignal<string | null>(null);
   const line = useSignal(kept.line);
   const log = useSignal(kept.log);
@@ -200,7 +215,7 @@ export function Chart({ id }: { id: string }) {
       sma200: sma200.value,
     });
   }, [range.value, line.value, log.value, sma50.value, sma200.value]);
-  const hover = useSignal<string | null>(null);
+  const hover = useSignal<string | number | null>(null);
   const lib = useRef<Lib | null>(null);
   const chart = useRef<IChartApi | null>(null);
   const series = useRef<ISeriesApi<SeriesType>[]>([]);
@@ -214,7 +229,9 @@ export function Chart({ id }: { id: string }) {
     const mine = ++asked.current;
     const r = range.value;
     try {
-      const h = await markets.history(id, fromOf(r, today()), intervalOf(r));
+      const h = isIntraday(r)
+        ? await markets.intraday(id, r, fromOf("Max", today()))
+        : await markets.history(id, fromOf(r, today()), intervalOf(r));
       if (mine !== asked.current) return;
       batch(() => {
         data.value = h;
@@ -223,7 +240,18 @@ export function Chart({ id }: { id: string }) {
       error.value = null;
       draw(fit);
     } catch (e) {
-      if (mine === asked.current) error.value = says(e);
+      if (mine !== asked.current) return;
+      error.value = says(e);
+      // a refresh that fails keeps its bars; another range's never stand in
+      if (r !== shown.value) {
+        batch(() => {
+          data.value = null;
+          shown.value = r;
+        });
+        const c = chart.current;
+        if (c !== null) for (const s of series.current) c.removeSeries(s);
+        series.current = [];
+      }
     }
   };
 
@@ -241,7 +269,11 @@ export function Chart({ id }: { id: string }) {
       });
       c.subscribeCrosshairMove((p: MouseEventParams) => {
         hover.value =
-          p.time === undefined || p.point === undefined ? null : dateOf(p.time);
+          p.time === undefined || p.point === undefined
+            ? null
+            : typeof p.time === "number"
+              ? p.time
+              : dateOf(p.time);
       });
       chart.current = c;
       draw(true);
@@ -294,23 +326,148 @@ export function Chart({ id }: { id: string }) {
         borderVisible: false,
         fixLeftEdge: true,
         fixRightEdge: true,
-        tickMarkFormatter: (time: unknown, type: number) =>
-          tick(
-            dateOf(time),
+        timeVisible: h.interval === "5m",
+        tickMarkFormatter: (time: unknown, type: number) => {
+          const at = typeof time === "number" ? localTime(time) : null;
+          if (at !== null && type >= l.TickMarkType.Time) return at.time;
+          return tick(
+            at?.date ?? dateOf(time),
             type === l.TickMarkType.Year
               ? "year"
               : type === l.TickMarkType.Month
                 ? "month"
                 : "day",
-          ),
+          );
+        },
+      },
+      localization: {
+        timeFormatter: (time: unknown) =>
+          timeLabel(time, undefined, navigator.language),
       },
       crosshair: {
         vertLine: { color: k.faint, labelBackgroundColor: k.faint },
         horzLine: { color: k.faint, labelBackgroundColor: k.faint },
       },
     });
+    // a redraw keeps the times in view: its bars may sit at other positions
+    const kept = fit ? null : c.timeScale().getVisibleRange();
     for (const s of series.current) c.removeSeries(s);
     series.current = [];
+    // a kept range off the new data (a new session) would collapse the view
+    const settle = (shown: readonly { time: Time }[]) => {
+      const a = shown[0]?.time;
+      const b = shown.at(-1)?.time;
+      const before = (x: Time, y: Time) =>
+        typeof x === "number" && typeof y === "number"
+          ? x < y
+          : String(x) < String(y);
+      if (
+        kept === null ||
+        a === undefined ||
+        b === undefined ||
+        before(kept.to, a) ||
+        before(b, kept.from)
+      ) {
+        c.timeScale().fitContent();
+      } else c.timeScale().setVisibleRange(kept);
+    };
+
+    // up or down from where the range starts, as Yahoo colours a line
+    const area = (
+      values: { time: Time; value: number }[],
+      base: number | null,
+    ) => {
+      const last = values.at(-1)?.value;
+      const tone =
+        base === null || last === undefined || last >= base ? k.up : k.down;
+      const s = c.addSeries(l.AreaSeries, {
+        lineColor: tone,
+        lineWidth: 2,
+        topColor: alpha(tone, 0.28),
+        bottomColor: alpha(tone, 0.02),
+        priceLineColor: k.faint,
+        crosshairMarkerRadius: 4,
+        priceFormat: PRICE,
+      });
+      s.setData(values);
+      return s;
+    };
+
+    if (h.interval === "5m") {
+      const line5 = (p: readonly { at: string; close: number }[]) =>
+        pointLine(p).map((v) => ({
+          time: v.time as UTCTimestamp,
+          value: v.value,
+        }));
+      const values = line5(h.points);
+      const base = h.previous_close ?? values[0]?.value ?? null;
+      if (base === null) return;
+      // 5D reads as one move, as the daily ranges do
+      if (shown.value !== "1D") {
+        series.current.push(area(values, base));
+        settle(values);
+        return;
+      }
+      // green above the previous close and red below, as a chart site draws a day
+      const day = (data: typeof values, faded: boolean, latest: boolean) => {
+        const f = faded ? 0.5 : 1;
+        const s = c.addSeries(l.BaselineSeries, {
+          baseValue: { type: "price", price: base },
+          topLineColor: alpha(k.up, f),
+          topFillColor1: alpha(k.up, 0.28 * f),
+          topFillColor2: alpha(k.up, 0.02),
+          bottomLineColor: alpha(k.down, f),
+          bottomFillColor1: alpha(k.down, 0.02),
+          bottomFillColor2: alpha(k.down, 0.28 * f),
+          lineWidth: 2,
+          priceLineVisible: latest,
+          lastValueVisible: latest,
+          priceLineColor: k.faint,
+          crosshairMarkerRadius: 4,
+          priceFormat: PRICE,
+          // the previous close stays in view, as its line is the base
+          autoscaleInfoProvider: (own: () => AutoscaleInfo | null) => {
+            const r = own();
+            if (r?.priceRange == null) return r;
+            return {
+              ...r,
+              priceRange: {
+                minValue: Math.min(r.priceRange.minValue, base),
+                maxValue: Math.max(r.priceRange.maxValue, base),
+              },
+            };
+          },
+        });
+        s.setData(data);
+        series.current.push(s);
+        return s;
+      };
+      const { pre, post } = extendedLines(
+        values,
+        line5(h.extended_points ?? []).map((v, i) => ({
+          ...v,
+          session: h.extended_points![i]!.session,
+        })),
+      );
+      const s = day(values, false, post.length === 0);
+      // the day's reference only: 5D starts days before it
+      if (h.previous_close !== null && shown.value === "1D") {
+        s.createPriceLine({
+          price: h.previous_close,
+          color: k.faint,
+          lineWidth: 1,
+          lineStyle: l.LineStyle.Dashed,
+          axisLabelVisible: true,
+          axisLabelColor: k.faint,
+          title: "",
+        });
+      }
+      // pre and post trading, faded
+      if (pre.length > 0) day(pre, true, false);
+      if (post.length > 0) day(post, true, true);
+      settle([...pre, ...values, ...post]);
+      return;
+    }
 
     const live = isLive(h);
     const asCandles = !line.value && hasCandles(h.bars);
@@ -337,14 +494,8 @@ export function Chart({ id }: { id: string }) {
       });
       price.setData(data);
     } else {
-      price = c.addSeries(l.LineSeries, {
-        color: k.fg,
-        lineWidth: 2,
-        priceLineColor: k.faint,
-        crosshairMarkerRadius: 4,
-        priceFormat: PRICE,
-      });
-      price.setData(closes(h.bars));
+      const values = closes(h.bars);
+      price = area(values, values[0]?.value ?? null);
     }
     series.current.push(price);
 
@@ -388,17 +539,24 @@ export function Chart({ id }: { id: string }) {
       c.panes()[0]?.setStretchFactor(4);
       c.panes()[1]?.setStretchFactor(1);
     }
-    if (fit) c.timeScale().fitContent();
+    settle(closes(h.bars));
   }
 
   const h = data.value;
-  const legend = h === null ? null : legendOf(h, hover.value);
+  const legend =
+    h === null
+      ? null
+      : h.interval === "5m"
+        ? pointLegendOf(h, typeof hover.value === "number" ? hover.value : null)
+        : legendOf(h, typeof hover.value === "string" ? hover.value : null);
   // what the legend can hold changes with the averages shown and the
   // bars' kind: then the held height starts again
   const shape =
     h === null
       ? "loading"
-      : `${sma50.value}${sma200.value}${hasCandles(h.bars)}`;
+      : h.interval === "5m"
+        ? "points"
+        : `${sma50.value}${sma200.value}${hasCandles(h.bars)}`;
   useLayoutEffect(() => {
     const box = legendBox.current;
     if (box === null) return;
@@ -412,7 +570,9 @@ export function Chart({ id }: { id: string }) {
       box.style.minHeight = `${px}px`;
     }
   });
-  const candlesOk = h !== null && hasCandles(h.bars);
+  const intraday = isIntraday(range.value);
+  const candlesOk =
+    !intraday && h !== null && h.interval !== "5m" && hasCandles(h.bars);
   return (
     <section class="card chart-card" aria-label="Chart">
       <div class="chart-head">
@@ -436,16 +596,6 @@ export function Chart({ id }: { id: string }) {
             <fieldset class="seg seg-small" aria-label="Style">
               <button
                 type="button"
-                class={`seg-option${!line.value ? " seg-on" : ""}`}
-                aria-pressed={!line.value}
-                onClick={() => {
-                  line.value = false;
-                }}
-              >
-                Candles
-              </button>
-              <button
-                type="button"
                 class={`seg-option${line.value ? " seg-on" : ""}`}
                 aria-pressed={line.value}
                 onClick={() => {
@@ -454,29 +604,43 @@ export function Chart({ id }: { id: string }) {
               >
                 Line
               </button>
+              <button
+                type="button"
+                class={`seg-option${!line.value ? " seg-on" : ""}`}
+                aria-pressed={!line.value}
+                onClick={() => {
+                  line.value = false;
+                }}
+              >
+                Candles
+              </button>
             </fieldset>
           )}
           <fieldset class="seg seg-small" aria-label="Lines">
-            <button
-              type="button"
-              class={`seg-option chart-toggle-50${sma50.value ? " seg-on" : ""}`}
-              aria-pressed={sma50.value}
-              onClick={() => {
-                sma50.value = !sma50.value;
-              }}
-            >
-              50
-            </button>
-            <button
-              type="button"
-              class={`seg-option chart-toggle-200${sma200.value ? " seg-on" : ""}`}
-              aria-pressed={sma200.value}
-              onClick={() => {
-                sma200.value = !sma200.value;
-              }}
-            >
-              200
-            </button>
+            {!intraday && (
+              <>
+                <button
+                  type="button"
+                  class={`seg-option chart-toggle-50${sma50.value ? " seg-on" : ""}`}
+                  aria-pressed={sma50.value}
+                  onClick={() => {
+                    sma50.value = !sma50.value;
+                  }}
+                >
+                  50
+                </button>
+                <button
+                  type="button"
+                  class={`seg-option chart-toggle-200${sma200.value ? " seg-on" : ""}`}
+                  aria-pressed={sma200.value}
+                  onClick={() => {
+                    sma200.value = !sma200.value;
+                  }}
+                >
+                  200
+                </button>
+              </>
+            )}
             <button
               type="button"
               class={`seg-option${log.value ? " seg-on" : ""}`}

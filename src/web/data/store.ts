@@ -2,7 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { batch, signal } from "@preact/signals";
-import type { History, Interval } from "../views/Chart.model.ts";
+import type {
+  History,
+  Interval,
+  Intraday,
+  IntradayRange,
+} from "../views/Chart.model.ts";
 import { ApiError, client, type Fetch, failure, says } from "./api.ts";
 
 export type SourceStatus = {
@@ -107,6 +112,14 @@ export type Detail = {
       weekly?: { sma200?: number | null } | null;
     } | null;
     session: Session | null;
+    // pre or post trading while the regular session is closed
+    extended?: {
+      session: "pre" | "post";
+      price: number | null;
+      change: number | null;
+      change_percent: number | null;
+      time: string;
+    } | null;
   };
 };
 
@@ -350,8 +363,18 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
     return call<History>(`${HISTORY_PATH}?${q}`);
   }
 
+  // 5D asks from before any session kept; 1D takes the server's default
+  function intraday(id: string, range: IntradayRange, from: string) {
+    const q = new URLSearchParams({ symbol: id, interval: "5m" });
+    if (range === "5D") q.set("from", from);
+    // the pre and post trading around the day, as a chart site draws it
+    else q.set("extended", "true");
+    return call<Intraday>(`${HISTORY_PATH}?${q}`);
+  }
+
   return {
     history,
+    intraday,
     detail,
     detailId,
     detailError,

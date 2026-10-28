@@ -8,6 +8,7 @@ import { MAX_BODY_BYTES, PREFIX } from "../src/api/http.ts";
 import { spec } from "../src/api/openapi.ts";
 import { routes } from "../src/api/routes.ts";
 import { round } from "../src/market/format.ts";
+import { storeIntraday } from "../src/market/intraday.ts";
 import { lastReadAt } from "../src/market/tracking.ts";
 import { withLive } from "../src/operations/history.ts";
 import { CALL_MS, markets } from "../src/operations/markets.ts";
@@ -299,6 +300,46 @@ describe("every operation", () => {
       "GET",
       "/history",
       await t.call("/history?symbol=NVDA&ohlc=1"),
+      400,
+    );
+    // the whole range of 5-minute closes, past a tool's page, in its own schema
+    for (const d of ["19", "20", "21", "22", "23"]) {
+      const day = Date.parse(`2026-10-${d}T13:30:00Z`);
+      storeIntraday(
+        t.db,
+        "US:NVDA",
+        "America/New_York",
+        Array.from({ length: 288 }, (_, k) => ({
+          at: day + k * 60_000,
+          close: 180.123456 + k,
+        })),
+        NOW,
+      );
+    }
+    const five = await check(
+      "GET",
+      "/history",
+      await t.call("/history?symbol=NVDA&interval=5m&from=2026-10-01"),
+      200,
+    );
+    expect(five).toMatchObject({
+      interval: "5m",
+      from: "2026-10-01",
+      to: "2026-10-23",
+    });
+    expect(five.points).toHaveLength(5 * 288);
+    expect(five.sessions).toHaveLength(5);
+    expect(five.next).toBeUndefined();
+    await check(
+      "GET",
+      "/history",
+      await t.call("/history?symbol=NVDA&interval=5m&ohlc=true"),
+      400,
+    );
+    await check(
+      "GET",
+      "/history",
+      await t.call("/history?symbol=NVDA&interval=5m&benchmark=^GSPC"),
       400,
     );
     await check("GET", "/history", await t.call("/history?interval=1h"), 400);

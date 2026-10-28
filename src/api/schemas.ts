@@ -248,6 +248,79 @@ export const schemas: Record<string, Schema> = {
       "bars",
     ],
   ),
+  Point: object({
+    at: note(str, "UTC, to the second."),
+    session: note(str, "The session's date in the market's zone."),
+    close: num,
+    final: note(
+      bool,
+      "False only for the newest point while its session trades; crypto's newest point never is.",
+    ),
+  }),
+  Intraday: object(
+    {
+      id: str,
+      name: nstr,
+      exchange: str,
+      type: str,
+      currency: nstr,
+      unit: values(UNITS),
+      source: str,
+      stale: note(
+        list(str),
+        "Why a value may be out of date. Empty means current.",
+      ),
+      from: note(str, "The first session date."),
+      to: note(str, "The last session date."),
+      session: note(
+        nullable(
+          object(
+            { state: values(["open", "closed"]), start: nstr, end: nstr },
+            ["state", "start", "end"],
+          ),
+        ),
+        "The last regular session, in UTC. Crypto is always open with null times.",
+      ),
+      interval: values(["5m"]),
+      sessions: note(
+        list(object({ session: str, fetched_at: str })),
+        "Each session's newest answer.",
+      ),
+      previous_close: note(
+        nullable(num),
+        "What a move is measured from: the quote's previous close when the quote's trade date is the first session's, else the last daily close before the first session.",
+      ),
+      points: list(ref("Point")),
+      extended_points: note(
+        list(
+          object({
+            at: note(str, "UTC, the start of its 5 minutes."),
+            session: values(["pre", "post"]),
+            close: num,
+          }),
+        ),
+        "With `extended=true`: the pre- and post-market closes of the sessions answered, read while the regular session is closed, never stored.",
+      ),
+    },
+    [
+      "id",
+      "name",
+      "exchange",
+      "type",
+      "currency",
+      "unit",
+      "source",
+      "stale",
+      "from",
+      "to",
+      "session",
+      "interval",
+      "sessions",
+      "previous_close",
+      "points",
+    ],
+  ),
+  HistoryAnswer: oneOf("History", "Intraday"),
   Search: object(
     {
       query: str,
@@ -629,6 +702,18 @@ export const schemas: Record<string, Schema> = {
               session: note(
                 nullable(freeForm),
                 "The market's last regular session: `state` open or closed, `start` and `end` in UTC. Null for a series.",
+              ),
+              extended: note(
+                nullable(
+                  object({
+                    session: values(["pre", "post"]),
+                    price: nnum,
+                    change: nnum,
+                    change_percent: nnum,
+                    time: nstr,
+                  }),
+                ),
+                "Pre or post trading while the regular session is closed, as the quote tool's `extended`; null with the reason in `stale`.",
               ),
               stale: brief.stale,
             },

@@ -5,6 +5,7 @@ import { describe, expect, test } from "bun:test";
 import { type App, start } from "../src/app.ts";
 import { readBars } from "../src/market/bars.ts";
 import { Moved, readInstrument } from "../src/market/instruments.ts";
+import { storeIntraday } from "../src/market/intraday.ts";
 import { readQuote } from "../src/market/quotes.ts";
 import { barsStale, quoteStale, STALE, SWITCH } from "../src/market/stale.ts";
 import { readTargets } from "../src/operations/targets.ts";
@@ -93,6 +94,16 @@ describe("switching the Bucharest market's source", () => {
     await withTlv(clock, db, f.fetch);
     expect(readSources(db)).toEqual(["yahoo"]);
     const yahooBars = readBars(db, "BVB:TLV", "1d").length;
+    const points = () =>
+      db.query("select count(*) as n from intraday").get() as { n: number };
+    storeIntraday(
+      db,
+      "BVB:TLV",
+      "Europe/Bucharest",
+      [{ at: NOW, close: 1 }],
+      NOW,
+    );
+    expect(points().n).toBe(1);
 
     const on = boot(db, clock, f.fetch, true);
     await settle(on, clock);
@@ -103,6 +114,7 @@ describe("switching the Bucharest market's source", () => {
     });
     // the whole history is the feed's, none of Yahoo's left
     expect(readBars(db, "BVB:TLV", "1d").length).toBe(30);
+    expect(points().n).toBe(0);
     expect(readQuote(db, "BVB:TLV")!.source).toBe("bvb");
     expect(readSources(db)).toEqual(["bvb", "yahoo"]);
     expect(wapi(f.exchange, "/api/history")).toHaveLength(1);

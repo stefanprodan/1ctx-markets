@@ -66,7 +66,7 @@ export function writeSources(db: Db, names: readonly string[], now: number) {
 
 // its prices and bars came from the other source; the identity stays
 function clear(db: Db, id: string, splits: boolean): void {
-  for (const table of ["bars", "signals", "quotes"]) {
+  for (const table of ["bars", "signals", "quotes", "intraday"]) {
     db.query(`delete from ${table} where instrument = ?`).run(id);
   }
   if (splits) db.query("delete from splits where instrument = ?").run(id);

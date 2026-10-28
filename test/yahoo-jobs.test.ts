@@ -6,6 +6,7 @@ import { start } from "../src/app.ts";
 import { readBars } from "../src/market/bars.ts";
 import { readSession } from "../src/market/calendars.ts";
 import { readInstrument, upsertInstrument } from "../src/market/instruments.ts";
+import { readIntraday, storeIntraday } from "../src/market/intraday.ts";
 import { readQuote } from "../src/market/quotes.ts";
 import {
   barsStale,
@@ -21,14 +22,17 @@ import { silent } from "../src/runtime/log.ts";
 import { scheduler } from "../src/runtime/scheduler.ts";
 import { readSignals } from "../src/signals/read.ts";
 import { STOPPED } from "../src/sources/source.ts";
-import { yahoo } from "../src/sources/yahoo/client.ts";
+import { parseChart, parseSpark, yahoo } from "../src/sources/yahoo/client.ts";
+import { fields } from "../src/sources/yahoo/history.ts";
 import {
+  FILLS_PER_TURN,
   RETRY_MS,
   type TickReport,
   yahooJobs,
 } from "../src/sources/yahoo/jobs.ts";
+import { storeQuotes } from "../src/sources/yahoo/quotes.ts";
 import { catchUp } from "../src/sources/yahoo/sync.ts";
-import { open } from "../src/storage/db/index.ts";
+import { type Db, open } from "../src/storage/db/index.ts";
 import { endRun, INTERRUPTED, lastRun, startRun } from "../src/storage/runs.ts";
 import { writer } from "../src/storage/writer.ts";
 import { fakeClock } from "./helpers/clock.ts";
@@ -76,6 +80,8 @@ function setup(
 const sparks = (urls: URL[]) =>
   urls.filter((u) => u.pathname === "/v7/finance/spark");
 const charts = (urls: URL[]) => urls.filter((u) => chartSymbol(u) !== null);
+const daily = (urls: URL[]) =>
+  charts(urls).filter((u) => u.searchParams.get("interval") === "1d");
 const symbolsOf = (u: URL) => u.searchParams.get("symbols")!.split(",");
 
 // a recorded spark entry, answered for whichever symbols are asked
@@ -368,6 +374,97 @@ describe("a closed market's check", () => {
     expect(quoteStale(t.db, readInstrument(t.db, "US:U0")!)).toEqual([
       "no quote yet",
     ]);
+  });
+});
+
+describe("a market closed before the start", () => {
+  test("gets its last session's 5-minute closes in one check, and a restart with them asks nothing", async () => {
+    const fx = clone(await recorded("spark-v7-extended-post-2122"));
+    // a second Xetra listing, so one check for all tells from one at a time
+    const copy = clone(
+      fx.body.spark.result.find((r: any) => r.symbol === "VWCE.DE"),
+    );
+    copy.symbol = "XDWD.DE";
+    copy.response[0].meta.symbol = "XDWD.DE";
+    fx.body.spark.result.push(copy);
+    const at = Date.parse(fx.recordedAt);
+    const route = (url: URL): Recorded | undefined => {
+      if (url.pathname !== "/v7/finance/spark") return undefined;
+      const out = clone(fx);
+      const asked = new Set(symbolsOf(url));
+      out.body.spark.result = out.body.spark.result.filter((r: any) =>
+        asked.has(r.symbol),
+      );
+      return out;
+    };
+    const t = setup(at, route);
+    // stored by an earlier process whose answers kept no points
+    const bare = clone(fx);
+    for (const r of bare.body.spark.result) {
+      delete r.response[0].timestamp;
+      r.response[0].indicators = { quote: [{}] };
+    }
+    const xetra = bare.body.spark.result.filter((r: any) =>
+      r.symbol.endsWith(".DE"),
+    );
+    bare.body.spark.result = xetra;
+    for (const r of xetra) {
+      const meta = r.response[0].meta;
+      const symbol = meta.symbol.replace(/\.DE$/, "");
+      upsertInstrument(
+        t.db,
+        {
+          market: "XETRA",
+          symbol,
+          source: "yahoo",
+          sourceSymbol: meta.symbol,
+          exchange: meta.exchangeName,
+          name: symbol,
+          type: meta.instrumentType,
+          currency: meta.currency,
+          unit: "per_share",
+          zone: meta.exchangeTimezoneName,
+        },
+        at,
+      );
+      t.db
+        .query(
+          `insert into bars (instrument, interval, date, close, final, fetched_at)
+           values (?, '1d', '2026-10-27', 1, 1, ?)`,
+        )
+        .run(`XETRA:${symbol}`, at);
+      markRead(t.db, [`XETRA:${symbol}`], at);
+    }
+    storeQuotes(t.db, parseSpark(bare.body, at));
+    endRun(t.db, startRun(t.db, "yahoo", JOBS.quotes, at, "XETRA"), at, 1);
+    endRun(t.db, startRun(t.db, "yahoo", JOBS.bars, at, "XETRA"), at, 2);
+    const ids = xetra.map((r: any) => `XETRA:${r.symbol.replace(/\.DE$/, "")}`);
+    const stored = () =>
+      t.db
+        .query<{ n: number }, []>(
+          `select count(distinct instrument) as n from intraday
+           where instrument like 'XETRA:%' and session = '2026-10-27'`,
+        )
+        .get()!.n;
+    expect(stored()).toBe(0);
+    await t.runTo(at + MINUTE_MS);
+    const asked = sparks(t.f.urls).filter((u) =>
+      symbolsOf(u).some((s) => s.endsWith(".DE")),
+    );
+    expect(asked).toHaveLength(1);
+    expect(symbolsOf(asked[0]!).sort()).toEqual(
+      xetra.map((r: any) => r.symbol).sort(),
+    );
+    expect(stored()).toBe(ids.length);
+    const again = yahooJobs({ ctx: t.ctx, quoteEveryMs: EVERY, log: silent });
+    const before = sparks(t.f.urls).length;
+    await t.clock.advance(MINUTE_MS);
+    await again.tick();
+    expect(
+      sparks(t.f.urls)
+        .slice(before)
+        .filter((u) => symbolsOf(u).some((s) => s.endsWith(".DE"))),
+    ).toHaveLength(0);
   });
 });
 
@@ -842,7 +939,7 @@ describe("a slow bar pass", () => {
     }
     await jobs.stop();
     const urls = t.f.urls.slice(before);
-    expect(charts(urls)).toHaveLength(16);
+    expect(daily(urls)).toHaveLength(16);
     const turns = sparks(urls).map((u) => Number(u.searchParams.get("_")));
     for (const at of ["13:35", "13:40", "13:45"]) {
       expect(turns).toContain(utc(`2026-10-26T${at}`));
@@ -926,6 +1023,276 @@ describe("backfill", () => {
     ]);
     await t.clock.advance(RETRY_MS);
     expect(await t.jobs.backfillTurn()).toBe("US:U0");
+  });
+});
+
+describe("five sessions from the start", () => {
+  const AAPL = "chart-aapl-5d-5m";
+  const EURUSD = "chart-eurusd-x-5d-5m";
+  const BTC = "chart-btc-usd-5d-5m";
+  const fives = (urls: URL[]) =>
+    charts(urls).filter((u) => u.searchParams.get("interval") === "5m");
+  const sessions = (db: Db, id: string) =>
+    db
+      .query<{ session: string; n: number }, [string]>(
+        `select session, count(*) as n from intraday where instrument = ?
+         group by session order by session`,
+      )
+      .all(id)
+      .map((r) => [r.session, r.n]);
+
+  // a recorded 5-minute chart, answered as the symbol asked
+  function as(fx: Recorded, url: URL): Recorded | undefined {
+    if (url.searchParams.get("interval") !== "5m") return undefined;
+    const out = clone(fx);
+    out.body.chart.result[0].meta.symbol = chartSymbol(url);
+    return out;
+  }
+
+  // stored and read, as a tool's read leaves it
+  function listing(db: Db, fx: Recorded, symbol: string, now: number) {
+    const url = new URL(`https://x/v8/finance/chart/${symbol}?interval=5m`);
+    const answer = parseChart(as(fx, url)!.body, now);
+    const instrument = upsertInstrument(db, fields(answer), now);
+    markRead(db, [instrument.id], now);
+    return instrument;
+  }
+
+  test("fill a listing's missing sessions in one call, never replacing a stored one, once a process", async () => {
+    const fx = await recorded(AAPL);
+    const at = Date.parse(fx.recordedAt);
+    const t = setup(at, (url) => as(fx, url));
+    listing(t.db, fx, "AAPL", at);
+    // the quote passes' session, stored before the fill
+    storeIntraday(
+      t.db,
+      "US:AAPL",
+      "America/New_York",
+      [{ at: utc("2026-10-28T14:00"), close: 1 }],
+      at,
+    );
+    expect(await t.jobs.fillTurn()).toEqual(["US:AAPL"]);
+    const asked = fives(t.f.urls);
+    expect(asked).toHaveLength(1);
+    expect(Object.fromEntries(asked[0]!.searchParams)).toEqual({
+      range: "5d",
+      interval: "5m",
+      includePrePost: "false",
+    });
+    expect(sessions(t.db, "US:AAPL")).toEqual([
+      ["2026-10-22", 78],
+      ["2026-10-23", 78],
+      ["2026-10-26", 78],
+      ["2026-10-27", 78],
+      ["2026-10-28", 1],
+    ]);
+    expect(readIntraday(t.db, "US:AAPL", "2026-10-28", "2026-10-28")).toEqual([
+      { session: "2026-10-28", at: utc("2026-10-28T14:00"), close: 1 },
+    ]);
+    // regular hours only: 9:30 to 16:00 New York
+    const points = readIntraday(t.db, "US:AAPL", "2026-10-22", "2026-10-27");
+    expect(points[0]!.at).toBe(utc("2026-10-22T13:30"));
+    expect(points.at(-1)!.at).toBe(utc("2026-10-27T19:55"));
+    expect(await t.jobs.fillTurn()).toEqual([]);
+    // still short of five, it is not asked again this process
+    t.db
+      .query("delete from intraday where instrument = ? and session < ?")
+      .run("US:AAPL", "2026-10-26");
+    await t.clock.advance(RETRY_MS);
+    expect(await t.jobs.fillTurn()).toEqual([]);
+    expect(fives(t.f.urls)).toHaveLength(1);
+    // a new process asks it once more
+    const again = yahooJobs({ ctx: t.ctx, quoteEveryMs: EVERY, log: silent });
+    expect(await again.fillTurn()).toEqual(["US:AAPL"]);
+    expect(sessions(t.db, "US:AAPL").map(([s]) => s)).toHaveLength(5);
+    expect(await again.fillTurn()).toEqual([]);
+  });
+
+  test("keep no session before the newest split, nor more than five", async () => {
+    const fx = await recorded(BTC);
+    const at = Date.parse(fx.recordedAt);
+    const t = setup(at, (url) => as(fx, url));
+    listing(t.db, fx, "BTC-USD", at);
+    listing(t.db, fx, "ETH-USD", at);
+    t.db
+      .query(
+        `insert into splits (instrument, date, numerator, denominator, ratio,
+           applied_at) values ('CRYPTO:BTC-USD', '2026-10-26', 2, 1, '2:1', ?)`,
+      )
+      .run(at);
+    storeIntraday(
+      t.db,
+      "CRYPTO:ETH-USD",
+      "UTC",
+      [{ at: utc("2026-10-19T12:00"), close: 1 }],
+      at,
+    );
+    await t.jobs.fillTurn();
+    // crypto's sessions are UTC days
+    expect(sessions(t.db, "CRYPTO:BTC-USD")).toEqual([
+      ["2026-10-26", 288],
+      ["2026-10-27", 288],
+      ["2026-10-28", 263],
+    ]);
+    expect(sessions(t.db, "CRYPTO:ETH-USD")).toEqual([
+      ["2026-10-24", 288],
+      ["2026-10-25", 288],
+      ["2026-10-26", 288],
+      ["2026-10-27", 288],
+      ["2026-10-28", 263],
+    ]);
+  });
+
+  test("a failed or empty answer is not asked again this process", async () => {
+    const fx = await recorded(AAPL);
+    const at = Date.parse(fx.recordedAt);
+    const t = setup(at, (url) => {
+      const symbol = chartSymbol(url);
+      if (symbol === "U0") return { ...fx, status: 404, body: "" };
+      const out = as(fx, url)!;
+      const result = out.body.chart.result[0];
+      delete result.timestamp;
+      result.indicators.quote = [{}];
+      return out;
+    });
+    listing(t.db, fx, "U0", at);
+    listing(t.db, fx, "U1", at);
+    expect(await t.jobs.fillTurn()).toEqual(["US:U0", "US:U1"]);
+    expect(sessions(t.db, "US:U0")).toEqual([]);
+    expect(sessions(t.db, "US:U1")).toEqual([]);
+    await t.clock.advance(RETRY_MS);
+    expect(await t.jobs.fillTurn()).toEqual([]);
+    expect(fives(t.f.urls).map(chartSymbol)).toEqual(["U0", "U1"]);
+  });
+
+  test("ask a few listings a turn, one call at a time, oldest first", async () => {
+    const fx = await recorded(AAPL);
+    const at = Date.parse(fx.recordedAt);
+    let flight = 0;
+    let most = 0;
+    const t = setup(at, async (url) => {
+      flight++;
+      most = Math.max(most, flight);
+      await Promise.resolve();
+      flight--;
+      return as(fx, url)!;
+    });
+    const symbols = Array.from(
+      { length: FILLS_PER_TURN + 2 },
+      (_, i) => `U${i}`,
+    );
+    for (const [k, s] of symbols.entries()) listing(t.db, fx, s, at + k);
+    // untracked: no read names it
+    upsertInstrument(t.db, fields(parseChart(fx.body, at)), at);
+    const first = await t.jobs.fillTurn();
+    expect(first).toEqual(
+      symbols.slice(0, FILLS_PER_TURN).map((s) => `US:${s}`),
+    );
+    expect(fives(t.f.urls)).toHaveLength(FILLS_PER_TURN);
+    expect(most).toBe(1);
+    expect(await t.jobs.fillTurn()).toEqual(["US:U5", "US:U6"]);
+    expect(await t.jobs.fillTurn()).toEqual([]);
+    expect(fives(t.f.urls)).toHaveLength(FILLS_PER_TURN + 2);
+  });
+
+  test("run in the backfill lane after a pending history, never on the quote path", async () => {
+    const s = sim([US("U0"), US("U1")]);
+    const fx = await recorded(AAPL);
+    const t = setup(utc("2026-10-26T17:58"), (url, now) =>
+      url.searchParams.get("interval") === "5m"
+        ? as(fx, url)
+        : s.route(url, now),
+    );
+    await added(t.ctx, "U0");
+    await added(t.ctx, "U1");
+    t.db.query("delete from bars where instrument = 'US:U0'").run();
+    const before = t.f.urls.length;
+    await t.runTo(utc("2026-10-26T18:05"));
+    // ticks quote and refetch, and ask no 5-minute chart
+    expect(sparks(t.f.urls.slice(before)).length).toBeGreaterThan(0);
+    expect(fives(t.f.urls)).toHaveLength(0);
+    const jobs = scheduler(t.clock, silent);
+    t.jobs.schedule(jobs);
+    const mark = t.f.urls.length;
+    await t.clock.advance(MINUTE_MS);
+    await t.clock.advance(MINUTE_MS);
+    await jobs.stop();
+    const asked = charts(t.f.urls.slice(mark)).map((u) => [
+      chartSymbol(u),
+      u.searchParams.get("interval"),
+    ]);
+    // the history first, alone in its turn; then the sessions of both
+    const history = asked.findIndex(([s, i]) => s === "U0" && i === "1d");
+    expect(history).toBeGreaterThanOrEqual(0);
+    expect(history).toBeLessThan(asked.findIndex(([, i]) => i === "5m"));
+    expect(asked.filter(([, i]) => i === "5m").map(([s]) => s)).toEqual([
+      "U0",
+      "U1",
+    ]);
+  });
+
+  test("a currency pair's filled final days close at their session's last point", async () => {
+    const monday = listed(await recorded("chart-eurusd-x-5d-1d-open-0800"));
+    const fx = await recorded(EURUSD);
+    const nvda = listed(await recorded("chart-nvda-5d-1d"));
+    const t = setup(Date.parse(monday.recordedAt), (url) => {
+      if (url.searchParams.get("interval") === "5m") return as(fx, url);
+      return chartSymbol(url) === "EURUSD=X" ? monday : nvda;
+    });
+    const EUR = "CCY:EURUSD=X";
+    await added(t.ctx, "EURUSD=X");
+    await added(t.ctx, "NVDA");
+    const shares = () =>
+      t.db
+        .query(
+          "select * from bars where instrument = 'US:NVDA' order by 1, 2, 3",
+        )
+        .all();
+    const before = shares();
+    const close = (date: string) =>
+      t.db
+        .query<{ close: number; point: number }, [string, string]>(
+          `select close, point_close as point from bars where instrument = ?
+           and interval = '1d' and date = ?`,
+        )
+        .get(EUR, date);
+    const live = readBars(t.db, EUR, "1d").at(-1)!;
+    const signals = () =>
+      t.db
+        .query("select * from signals where instrument = ? order by 1, 2, 3, 4")
+        .all(EUR);
+    const stale = signals();
+    await t.clock.advance(Date.parse(fx.recordedAt) - t.clock.now());
+    await t.jobs.fillTurn();
+    // London dates: the Friday ran from Thursday 23:00 UTC to 21:25
+    expect(sessions(t.db, EUR).map(([s]) => s)).toEqual([
+      "2026-10-22",
+      "2026-10-23",
+      "2026-10-26",
+      "2026-10-27",
+      "2026-10-28",
+    ]);
+    const last = (session: string) =>
+      readIntraday(t.db, EUR, session, session).at(-1)!;
+    expect(last("2026-10-23")).toMatchObject({
+      at: utc("2026-10-23T21:25"),
+      close: 1.1204482316970825,
+    });
+    expect(close("2026-10-23")).toEqual({
+      close: 1.1204482316970825,
+      point: 1,
+    });
+    expect(close("2026-10-22")).toEqual({
+      close: last("2026-10-22").close,
+      point: 1,
+    });
+    expect(
+      readBars(t.db, EUR, "1wk").find((w) => w.date === "2026-10-19"),
+    ).toMatchObject({ close: 1.1204482316970825 });
+    // the live day keeps the quote's price
+    expect(readBars(t.db, EUR, "1d").at(-1)).toEqual(live);
+    expect(signals()).not.toEqual(stale);
+    expect(shares()).toEqual(before);
   });
 });
 

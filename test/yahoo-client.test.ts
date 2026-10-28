@@ -10,6 +10,7 @@ import {
 } from "../src/sources/source.ts";
 import {
   parseChart,
+  parsePoints,
   parseSpark,
   SPARK_MAX,
   yahoo,
@@ -186,6 +187,36 @@ describe("chart", () => {
       },
     };
     expect(parseChart(body, 0).rows).toEqual([]);
+  });
+});
+
+describe("five sessions of 5-minute closes", () => {
+  test("are each recording's regular-hours closes, nulls dropped", async () => {
+    const counts: Record<string, number> = {};
+    for (const name of [
+      "chart-aapl-5d-5m",
+      "chart-eurusd-x-5d-5m",
+      "chart-btc-usd-5d-5m",
+    ]) {
+      const fx = await recorded(name);
+      const answer = parsePoints(fx.body, Date.parse(fx.recordedAt));
+      const result = fx.body.chart.result[0];
+      expect(answer.symbol).toBe(result.meta.symbol);
+      expect(answer.points.at(-1)!.at).toBe(result.timestamp.at(-1) * 1000);
+      expect(answer.points.every((p) => p.close !== null)).toBe(true);
+      counts[name] = answer.points.length;
+    }
+    expect(counts).toEqual({
+      "chart-aapl-5d-5m": 391,
+      "chart-eurusd-x-5d-5m": 1397,
+      "chart-btc-usd-5d-5m": 1415,
+    });
+  });
+
+  test("a series that does not parse fails the call", async () => {
+    const fx = clone(await recorded("chart-aapl-5d-5m"));
+    fx.body.chart.result[0].indicators.quote[0].close.pop();
+    expect(() => parsePoints(fx.body, 0)).toThrow(SourceError);
   });
 });
 

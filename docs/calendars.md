@@ -78,6 +78,10 @@ session are in `docs/yahoo.md`; tables, times and staleness in
   closing auction, land before that. Finality is never decided by the
   clock alone. `isBarFinal()` validates the date first, since a
   malformed string would compare and pass.
+- **A 5-minute close is final unless it is the instrument's newest
+  point, its session is the stored one and the market is quoted now**
+  (`isQuoted()`); crypto's newest point is never final. Its `session`
+  is the point's local date, as a bar's (`docs/storage.md`).
 - **A stored final bar stays final** (`upsertBars()` in
   `src/market/bars.ts`), while its values still follow the source's
   corrections.

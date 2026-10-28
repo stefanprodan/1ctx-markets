@@ -744,6 +744,8 @@ describe("delete", () => {
        values (?, '2026-10-23', 2, 1, '2:1', ?)`);
     q(`insert into quotes (instrument, price, time, source, fetched_at)
        values (?1, 1, ?2, 'yahoo', ?2)`);
+    q(`insert into intraday (instrument, session, at, close, fetched_at)
+       values (?1, '2026-10-23', ?2, 1, ?2)`);
     q(`insert into signals (instrument, interval, date, kind, computed_at)
        values (?, '1d', '2026-10-23', 'final', ?)`);
     q(`insert into research (instrument, kind, period, fetched_at)
