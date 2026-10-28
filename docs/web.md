@@ -35,13 +35,14 @@ signed in with the admin key alone.
 - **`POST /ui/session` with `{"key": "<admin key>"}`** compares the
   trimmed key in constant time (both sides hashed, `timingSafeEqual`)
   and answers 204 with the cookie. `DELETE /ui/session` answers 204
-  and clears it.
+  and clears it; any other method is 405 with `Allow`.
 - **Every failed sign-in answers the same 401**,
   `{"error":"unauthorized","message":"wrong admin key"}`, with no
-  cookie: a wrong or empty key, a malformed or oversized body, a body
-  that is not JSON, and a server with no admin key
-  (`sessions(null)`). The page faces the internet, so no answer tells
-  one failure from another.
+  cookie: a wrong or empty key, a malformed body, a body over the
+  route's 8 KiB cap, a body that is not JSON, and a server with no
+  admin key (`sessions(null)`). The page faces the internet, so no
+  answer tells one failure from another. A body over the server's
+  1 MiB limit gets Bun's empty 413 before any route runs.
 - **No rate limit:** the admin key is 32 random bytes, so guessing it
   is no threat, and a limiter would be state for nothing.
 - **The cookie holds no key.** `markets_session=v1.<expiry>.<mac>`:
@@ -50,11 +51,15 @@ signed in with the admin key alone.
   constant time. No table and no migration; replacing `admin.key` and
   restarting refuses every cookie made before.
 - **`HttpOnly; SameSite=Strict; Path=/`, 30 days (`SESSION_MS`), and
-  `Secure` unless the request is plain HTTP to a loopback host**
-  (`cookieAttributes()`). A browser keeps a `Secure` cookie over plain
-  HTTP only on loopback, and a TLS proxy in front sends the public
-  host, so the cookie is `Secure` there. Plain HTTP to a LAN or tailnet
-  address therefore cannot sign in: use loopback or TLS.
+  `Secure` unless the sign-in's `Origin` is plain HTTP to a loopback
+  host** (`cookieAttributes()`); no `Origin` is `Secure`. A browser
+  keeps a `Secure` cookie over plain HTTP only on loopback. The
+  browser's `Origin` decides, never `Host`, which a proxy may rewrite
+  to loopback. Plain HTTP to a LAN or tailnet address cannot sign in:
+  use loopback or TLS.
+- **A proxy in front needs nothing special:** the cookie and the write
+  check read what the browser sends, `Host` only as the fallback below,
+  and no forwarded header.
 
 ## What the cookie opens
 
@@ -64,19 +69,22 @@ signed in with the admin key alone.
   takes is missing or wrong.
 - **Never `/mcp`, and never a write outside the admin routes** (rules
   stay the bearer's).
-- **A write by cookie needs an `Origin` whose host is the request's
-  `Host`**, or it is 403 `forbidden` (`sameOrigin()`). The scheme is
-  not compared, since a TLS proxy hands the request on as `http`. A
-  request with the admin key needs no `Origin`, as a script sends
-  none.
+- **A write by cookie must come from this server's own pages**, or it
+  is 403 `forbidden` (`sameOrigin()`): `Sec-Fetch-Site` is
+  `same-origin` when the browser sends it, which a proxy leaves alone;
+  a browser without it is held to an `Origin` whose host is the
+  request's `Host`, the scheme not compared since a TLS proxy hands
+  the request on as `http`. A request with the admin key needs neither,
+  as a script sends none.
 
 ## What an anonymous visitor sees
 
 - **The page, its assets and the sign-in's 401, and nothing about the
-  server**: no file path or key name, no data directory, no version, no
-  source or flag name, no instrument data, no config in `index.html`,
-  no source map. The bundle holds view code only; every value is read
-  after sign-in. `test/web-session.test.ts` reads each anonymous answer
+  server**: no host path, key or key file name, no data directory, no
+  version, no source or flag name, no instrument data, no config in
+  `index.html`, no source map. The bundle holds view code only, with
+  Bun's comments naming each module by its path in this repository, as
+  1ctx's bundle does; every value is read after sign-in. `test/web-session.test.ts` reads each anonymous answer
   and fails on any of them.
 - **No help text on the page.** Where the key lives and how the UI
   works are for this doc, never the page.

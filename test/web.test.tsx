@@ -244,6 +244,23 @@ describe("the data layer", () => {
     });
   });
 
+  test("a sign-in the status then refuses says why", async () => {
+    for (const [answer, words] of [
+      [status(401, {}), "Signed out."],
+      [status(502), "The server failed."],
+    ] as const) {
+      const s = store(
+        fake({
+          [`POST ${SESSION_PATH}`]: status(204),
+          [`GET ${STATUS_PATH}`]: answer,
+        }).fetch,
+      );
+      const err = await s.signIn("right").catch((e: unknown) => e);
+      expect([words, says(err)]).toEqual([words, words]);
+      expect(s.signedIn.value).not.toBe(true);
+    }
+  });
+
   test("an older status answer never lands over a newer one", async () => {
     const releases: (() => void)[] = [];
     let n = 0;
@@ -275,6 +292,8 @@ describe("the status model", () => {
     expect(ago("2026-10-26T12:00:00Z", NOW)).toBe("2 d ago");
     expect(until("2026-10-28T12:05:00Z", NOW)).toBe("for 5 min");
     expect(until(null, NOW)).toBe("for now");
+    // a back-off already past never reads as a negative wait
+    expect(until("2026-10-28T11:58:00Z", NOW)).toBe("for now");
     const [yahoo, finnhub, massive] = STATUS.sources;
     expect(sourceLine(yahoo!, NOW)).toBe("on: always");
     expect(sourceLine(finnhub!, NOW)).toBe(

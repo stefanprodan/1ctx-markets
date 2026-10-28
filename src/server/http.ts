@@ -62,7 +62,7 @@ const unauthorized = () =>
 const forbidden = () =>
   failed({
     error: "forbidden",
-    message: "a write signed in by cookie needs this server's Origin",
+    message: "forbidden",
   });
 
 const isAdmin = (path: string) =>

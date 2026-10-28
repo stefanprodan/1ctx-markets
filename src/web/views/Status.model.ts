@@ -42,7 +42,7 @@ export function ago(at: string | null, now: number): string {
 export function until(at: string | null, now: number): string {
   if (at === null) return "for now";
   const ms = Date.parse(at) - now;
-  if (!Number.isFinite(ms)) return "for now";
+  if (!Number.isFinite(ms) || ms <= 0) return "for now";
   if (ms < HOUR) return `for ${Math.ceil(ms / MINUTE)} min`;
   return `for ${Math.ceil(ms / HOUR)} h`;
 }

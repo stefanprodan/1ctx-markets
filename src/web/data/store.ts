@@ -2,7 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { batch, signal } from "@preact/signals";
-import { ApiError, client, type Fetch, failure, says } from "./api.ts";
+import {
+  ApiError,
+  client,
+  type Fetch,
+  failure,
+  says,
+  statusWords,
+} from "./api.ts";
 
 export type SourceStatus = {
   name: string;
@@ -110,6 +117,10 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
         throw failure(res.status, await res.json().catch(() => null));
       }
       await loadStatus();
+      // the cookie set but the status refused, so the form says why
+      if (signedIn.value !== true) {
+        throw new ApiError(0, statusError.value ?? statusWords(401));
+      }
     },
     async signOut(): Promise<void> {
       await call(SESSION_PATH, "DELETE");

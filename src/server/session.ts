@@ -67,23 +67,33 @@ const isLoopback = (host: string): boolean =>
   host === "[::1]" ||
   /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host);
 
-// a browser keeps a Secure cookie over plain HTTP only on loopback, and a TLS
-// proxy in front sends its public host, so only loopback goes without
+const originOf = (req: Request): URL | null => {
+  try {
+    return new URL(req.headers.get("origin") ?? "");
+  } catch {
+    return null;
+  }
+};
+
+// the browser's Origin, never the Host a proxy may rewrite to loopback: a
+// browser keeps a Secure cookie over plain HTTP only on loopback
 export function cookieAttributes(req: Request): string {
-  const url = new URL(req.url);
-  const plain = url.protocol === "http:" && isLoopback(url.hostname);
+  const origin = originOf(req);
+  const plain =
+    origin !== null &&
+    origin.protocol === "http:" &&
+    isLoopback(origin.hostname);
   return `Path=/; HttpOnly; SameSite=Strict${plain ? "" : "; Secure"}`;
 }
 
-// the scheme is left out, since a TLS proxy hands the request on as http
+// the browser says where a request came from in Sec-Fetch-Site; an older one
+// sends only Origin, whose host is compared with Host, the scheme left out
+// since a TLS proxy hands the request on as http
 export function sameOrigin(req: Request): boolean {
-  const origin = req.headers.get("origin");
-  if (origin === null) return false;
-  try {
-    return new URL(origin).host === new URL(req.url).host;
-  } catch {
-    return false;
-  }
+  const site = req.headers.get("sec-fetch-site");
+  if (site !== null) return site === "same-origin";
+  const origin = originOf(req);
+  return origin !== null && origin.host === new URL(req.url).host;
 }
 
 const NO_STORE = { "cache-control": "no-store" };

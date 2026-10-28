@@ -48,8 +48,8 @@ is offered over MCP.
   before, `more` true while ids are past the page. A page is a screen
   of rows, and the stored set grows with use; paging by id never skips
   a row when one is deleted between pages. `total` counts every match.
-- **`query` keeps ids or names holding it**, ignoring case, at most 64
-  characters.
+- **`query` keeps ids or names holding it**, ignoring ASCII case only
+  (SQLite's `lower()`), at most 64 characters.
 - **Each row says what tracks it** in `tracked_by`: `rule` (a rule
   reads it), `read` (read within the tracking window, with `read_at`
   and `read_until`), `track` (a `--track` value resolved to it);

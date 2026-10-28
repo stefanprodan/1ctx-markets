@@ -66,7 +66,7 @@ export const responses = {
   ),
   Conflict: error("conflict or split_paused: the stored state refuses it."),
   Forbidden: error(
-    "forbidden: a write signed in by the web UI's cookie without an Origin naming this server's host, which a page on another site would send.",
+    "forbidden: a write signed in by the web UI's cookie that the browser did not send from this server's own pages (Sec-Fetch-Site, else the Origin's host against Host).",
   ),
   TooLarge: error(
     `payload_too_large: a body over ${MAX_BODY_BYTES} bytes, as this JSON. A body over 1 MiB is refused by the HTTP server before any route runs: status 413 with an empty body and the connection closed.`,

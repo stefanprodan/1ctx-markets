@@ -22,10 +22,17 @@ import { world } from "./helpers/world.ts";
 
 const OTHER_KEY = "test-other-admin-key-0123456789abcdef0123";
 
-const signIn = (key: unknown, url = "http://127.0.0.1:1") =>
+const signIn = (
+  key: unknown,
+  url = "http://127.0.0.1:1",
+  origin: string | null = url,
+) =>
   new Request(`${url}/ui/session`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      ...(origin === null ? {} : { origin }),
+    },
     body: JSON.stringify({ key }),
   });
 
@@ -90,6 +97,25 @@ describe("the session token", () => {
       expect([origin, sameOrigin(req({ origin }))]).toEqual([origin, false]);
     }
     expect(sameOrigin(req({}))).toBe(false);
+    // the browser's own word wins over Origin and Host
+    const behind = "http://127.0.0.1:11238/x";
+    expect(
+      sameOrigin(
+        req(
+          {
+            "sec-fetch-site": "same-origin",
+            origin: "https://markets.example",
+          },
+          behind,
+        ),
+      ),
+    ).toBe(true);
+    for (const site of ["same-site", "cross-site", "none"]) {
+      expect([
+        site,
+        sameOrigin(req({ "sec-fetch-site": site, origin: "http://a.test" })),
+      ]).toEqual([site, false]);
+    }
   });
 });
 
@@ -113,22 +139,34 @@ describe("sign-in", () => {
     }
   });
 
-  test("the cookie is Secure unless the request is loopback plain HTTP", async () => {
+  test("the cookie is Secure unless the page is plain HTTP on loopback", async () => {
     const t = setup();
-    const secure = async (url: string) =>
-      (await t.handle(signIn(ADMIN_KEY, url))).headers
+    const secure = async (origin: string | null, url = "http://127.0.0.1:1") =>
+      (await t.handle(signIn(ADMIN_KEY, url, origin))).headers
         .get("set-cookie")!
         .includes("Secure");
-    for (const url of [
+    for (const origin of [
       "http://127.0.0.1:11238",
       "http://localhost:11238",
       "http://[::1]:11238",
     ]) {
-      expect([url, await secure(url)]).toEqual([url, false]);
+      expect([origin, await secure(origin, origin)]).toEqual([origin, false]);
     }
-    for (const url of ["http://markets.example", "http://192.168.1.2:11238"]) {
-      expect([url, await secure(url)]).toEqual([url, true]);
+    for (const origin of [
+      "http://markets.example",
+      "http://192.168.1.2:11238",
+      "https://127.0.0.1:11238",
+      "null",
+      null,
+    ]) {
+      expect([origin, await secure(origin, "http://markets.example")]).toEqual([
+        origin,
+        true,
+      ]);
     }
+    // a proxy that rewrites Host to loopback still gets a Secure cookie
+    expect(await secure("https://markets.example")).toBe(true);
+    expect(await secure(null)).toBe(true);
   });
 
   test("every failed sign-in answers the same 401, a server without a key too", async () => {
@@ -261,9 +299,27 @@ describe("what the cookie opens", () => {
     for (const origin of [null, "http://evil.example", "null"]) {
       const res = await refetch(origin === null ? {} : { origin });
       expect([origin, res.status]).toEqual([origin, 403]);
-      expect(((await res.json()) as any).error).toBe("forbidden");
+      expect(await res.json()).toEqual({
+        error: "forbidden",
+        message: "forbidden",
+      });
     }
     expect((await refetch({ origin: "http://127.0.0.1:1" })).status).toBe(200);
+    // behind a proxy that rewrote Host to loopback, the browser's word holds
+    for (const [site, status] of [
+      ["same-origin", 200],
+      ["cross-site", 403],
+      ["same-site", 403],
+    ] as const) {
+      const res = await refetch({
+        "sec-fetch-site": site,
+        origin: "https://markets.example",
+      });
+      expect([site, res.status]).toEqual([site, status]);
+    }
+    expect((await refetch({ origin: "https://markets.example" })).status).toBe(
+      403,
+    );
     // the admin key alone needs no Origin, as a script sends none
     const keyed = await t.at(`${PREFIX}/admin/refetch`, {
       method: "POST",
