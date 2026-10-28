@@ -16,7 +16,7 @@ import {
   type Yahoo,
   yahoo,
 } from "../../src/sources/yahoo/client.ts";
-import { storeQuotes } from "../../src/sources/yahoo/sync.ts";
+import { storeQuotes } from "../../src/sources/yahoo/quotes.ts";
 import { type Db, open } from "../../src/storage/db/index.ts";
 import { type Writer, writer } from "../../src/storage/writer.ts";
 import { call, tools } from "../../src/tools/index.ts";

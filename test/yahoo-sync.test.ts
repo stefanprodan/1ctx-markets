@@ -15,15 +15,10 @@ import {
   parseSpark,
   yahoo,
 } from "../src/sources/yahoo/client.ts";
+import { dailyBars, unitOf } from "../src/sources/yahoo/history.ts";
+import { storeQuotes } from "../src/sources/yahoo/quotes.ts";
 import { marketOf, symbolOf } from "../src/sources/yahoo/resolve.ts";
-import {
-  addInstrument,
-  backfill,
-  dailyBars,
-  refetch,
-  storeQuotes,
-  unitOf,
-} from "../src/sources/yahoo/sync.ts";
+import { addInstrument, backfill, refetch } from "../src/sources/yahoo/sync.ts";
 import { type Db, open } from "../src/storage/db/index.ts";
 import { writer } from "../src/storage/writer.ts";
 import { fakeClock } from "./helpers/clock.ts";

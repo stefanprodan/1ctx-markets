@@ -26,7 +26,7 @@ import {
   parseSpark,
   yahoo,
 } from "../src/sources/yahoo/client.ts";
-import { storeQuotes } from "../src/sources/yahoo/sync.ts";
+import { storeQuotes } from "../src/sources/yahoo/quotes.ts";
 import { open } from "../src/storage/db/index.ts";
 import { writer } from "../src/storage/writer.ts";
 import { api } from "./helpers/api.ts";

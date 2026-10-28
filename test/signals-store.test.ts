@@ -33,12 +33,8 @@ import { finalPrefix, refreshLive, selectList } from "../src/signals/store.ts";
 import { liveWeekly, weeklySeries } from "../src/signals/weekly.ts";
 import { parseSpark, yahoo } from "../src/sources/yahoo/client.ts";
 import { yahooJobs } from "../src/sources/yahoo/jobs.ts";
-import {
-  addInstrument,
-  backfill,
-  refetch,
-  storeQuotes,
-} from "../src/sources/yahoo/sync.ts";
+import { storeQuotes } from "../src/sources/yahoo/quotes.ts";
+import { addInstrument, backfill, refetch } from "../src/sources/yahoo/sync.ts";
 import { type Db, open } from "../src/storage/db/index.ts";
 import { endRun, failRun, startRun } from "../src/storage/runs.ts";
 import { writer } from "../src/storage/writer.ts";

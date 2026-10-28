@@ -26,8 +26,9 @@ import { endRun, failRun, lastStarted, startRun } from "../../storage/runs.ts";
 import { backfillStart, RETRY_MS } from "../history.ts";
 import { YAHOO } from "../ids.ts";
 import { phraseOf, Refused, SourceError } from "../source.ts";
+import { dailyBars } from "../yahoo/history.ts";
 import { keyOf as yahooKey } from "../yahoo/resolve.ts";
-import { dailyBars, storeSwitched, type YahooContext } from "../yahoo/sync.ts";
+import { storeSwitched, type YahooContext } from "../yahoo/sync.ts";
 import { MARKET, SOURCE } from "./client.ts";
 import {
   type BvbContext,

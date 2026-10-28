@@ -35,10 +35,8 @@ import {
   QueueClosed,
   SourceError,
 } from "../sources/source.ts";
-import {
-  storeQuotes,
-  backfill as yahooBackfill,
-} from "../sources/yahoo/sync.ts";
+import { storeQuotes } from "../sources/yahoo/quotes.ts";
+import { backfill as yahooBackfill } from "../sources/yahoo/sync.ts";
 import { endRun, failRun, startRun } from "../storage/runs.ts";
 import { WriterClosed } from "../storage/writer.ts";
 

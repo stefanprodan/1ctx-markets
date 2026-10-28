@@ -32,7 +32,8 @@ import {
 import { RETRY_MS } from "../history.ts";
 import { type Phrase, phraseOf, SourceError } from "../source.ts";
 import { SOURCE, type SparkAnswer } from "./client.ts";
-import { backfill, refetch, storeQuotes, type YahooContext } from "./sync.ts";
+import { storeQuotes } from "./quotes.ts";
+import { backfill, refetch, type YahooContext } from "./sync.ts";
 
 export const TICK_MS = MINUTE_MS;
 export { RETRY_MS };
