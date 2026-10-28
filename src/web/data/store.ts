@@ -2,14 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { batch, signal } from "@preact/signals";
-import {
-  ApiError,
-  client,
-  type Fetch,
-  failure,
-  says,
-  statusWords,
-} from "./api.ts";
+import { ApiError, client, type Fetch, failure, says } from "./api.ts";
 
 export type SourceStatus = {
   name: string;
@@ -64,25 +57,34 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
       statusError.value = null;
     });
   const call = client(fetchFn, signedOut);
-  // a later load supersedes one in flight
+  // a later load supersedes one in flight, and a superseded one answers
+  // with the latest's outcome, so a sign-in never reads a stale result
   let latest = 0;
+  let current: Promise<boolean> = Promise.resolve(false);
 
-  async function loadStatus(): Promise<void> {
-    const mine = ++latest;
+  function loadStatus(): Promise<boolean> {
+    current = load(++latest);
+    return current;
+  }
+
+  async function load(mine: number): Promise<boolean> {
     loading.value = true;
     try {
       const s = await call<Status>(STATUS_PATH);
-      if (mine !== latest) return;
+      if (mine !== latest) return current;
       batch(() => {
         signedIn.value = true;
         status.value = s;
         statusAt.value = now();
         statusError.value = null;
       });
+      return true;
     } catch (error) {
-      if (mine !== latest) return;
-      if (error instanceof ApiError && error.status === 401) return;
-      statusError.value = says(error);
+      if (mine !== latest) return current;
+      if (!(error instanceof ApiError && error.status === 401)) {
+        statusError.value = says(error);
+      }
+      return false;
     } finally {
       if (mine === latest) loading.value = false;
     }
@@ -116,10 +118,10 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
       if (!res.ok) {
         throw failure(res.status, await res.json().catch(() => null));
       }
-      await loadStatus();
-      // the cookie set but the status refused, so the form says why
-      if (signedIn.value !== true) {
-        throw new ApiError(0, statusError.value ?? statusWords(401));
+      // the cookie set but the status refused, so the form says why; a
+      // 401 here is a cookie the browser dropped, never a session ended
+      if (!(await loadStatus())) {
+        throw new ApiError(0, statusError.value ?? "not signed in");
       }
     },
     async signOut(): Promise<void> {

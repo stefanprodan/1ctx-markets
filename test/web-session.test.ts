@@ -267,12 +267,26 @@ describe("what the cookie opens", () => {
       t.at(`${PREFIX}/screen`, {
         method: "POST",
         headers: { cookie, "content-type": "application/json", ...headers },
-        body: JSON.stringify({ symbols: ["US:NOPE"] }),
+        body: JSON.stringify({ symbols: ["US:NOPE"], sort: "rsi14" }),
       });
-    const own = await screen({ "sec-fetch-site": "same-origin" });
-    expect(own.status).not.toBe(401);
-    expect(own.status).not.toBe(403);
+    // past both checks, the route answers the unknown symbol as its item
+    const passed = async (headers: Record<string, string>) => {
+      const res = await screen(headers);
+      const body = (await res.json()) as { items: { error: string }[] };
+      return [res.status, body.items[0]?.error];
+    };
+    expect(await passed({ "sec-fetch-site": "same-origin" })).toEqual([
+      200,
+      "source_error",
+    ]);
     expect((await screen({ "sec-fetch-site": "cross-site" })).status).toBe(403);
+    // without Sec-Fetch-Site the Origin decides
+    expect((await screen({})).status).toBe(403);
+    expect(await passed({ origin: "http://127.0.0.1:1" })).toEqual([
+      200,
+      "source_error",
+    ]);
+    expect((await screen({ origin: "http://x.test" })).status).toBe(403);
     const bare = await t.at(`${PREFIX}/screen`, {
       method: "POST",
       headers: {
@@ -447,7 +461,13 @@ describe("the served UI", () => {
         }
         await read("/api/v1/admin/status");
         await read("/api/v1/admin/instruments");
-        expect(seen.length).toBeGreaterThan(16);
+        const ui = seen.length;
+        await read("/api/v1/openapi.json");
+        await read("/api/v1/docs");
+        // the UI's bundle reads event.key, so a key file is looked for here
+        const docs = seen.slice(ui).join("\n");
+        expect(docs.includes(".key")).toBe(false);
+        expect(seen.length).toBeGreaterThan(20);
         const all = seen.join("\n");
         for (const secret of [
           SECRETS,
@@ -462,8 +482,19 @@ describe("the served UI", () => {
         ]) {
           expect([secret, all.includes(secret)]).toEqual([secret, false]);
         }
-        for (const name of ["yahoo", "fred", "finnhub", "massive", "bvb"]) {
-          const said = new RegExp(`\\b${name}\\b`, "i").test(all);
+        // the spec names these two only as symbol syntax
+        const named = all
+          .replaceAll("a Yahoo symbol (`VVSM.DE`, `^VIX`)", "")
+          .replaceAll("`FRED:<series id>`", "");
+        for (const name of [
+          "yahoo",
+          "fred",
+          "finnhub",
+          "massive",
+          "bucharest",
+          "bvb",
+        ]) {
+          const said = new RegExp(`\\b${name}\\b`, "i").test(named);
           expect([name, said]).toEqual([name, false]);
         }
       },

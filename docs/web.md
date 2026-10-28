@@ -132,5 +132,7 @@ signed in with the admin key alone.
 - **The server side** (`test/web-session.test.ts`): the token, the
   cookie's attributes, the identical refusals, what the cookie opens,
   the `Origin` check, the page and its assets served, and what an
-  anonymous visitor reads. `scripts/smoke.sh` checks the binary serves
+  anonymous visitor reads, the API spec and docs page included: no
+  key file, flag, build version or source name, but Yahoo and FRED
+  in symbol syntax. `scripts/smoke.sh` checks the binary serves
   the page, its assets and the sign-in.

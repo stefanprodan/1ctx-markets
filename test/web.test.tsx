@@ -246,7 +246,8 @@ describe("the data layer", () => {
 
   test("a sign-in the status then refuses says why", async () => {
     for (const [answer, words] of [
-      [status(401, {}), "Signed out."],
+      // the browser dropped the cookie: no session ever held
+      [status(401, {}), "Not signed in."],
       [status(502), "The server failed."],
     ] as const) {
       const s = store(
@@ -259,6 +260,35 @@ describe("the data layer", () => {
       expect([words, says(err)]).toEqual([words, words]);
       expect(s.signedIn.value).not.toBe(true);
     }
+  });
+
+  test("a sign-in waits for the latest status load", async () => {
+    const releases: (() => void)[] = [];
+    let n = 0;
+    const s = store(async (_path, init) => {
+      if (init?.method === "POST") return new Response(null, { status: 204 });
+      const mine = ++n;
+      await new Promise<void>((r) => releases.push(r));
+      // the load before the sign-in answers a 401, the later ones the status
+      return mine === 1
+        ? Response.json({ error: "unauthorized" }, { status: 401 })
+        : Response.json({ ...STATUS, version: `v${mine}` });
+    });
+    const before = s.loadStatus();
+    const signing = s.signIn("right");
+    while (releases.length < 2) await Bun.sleep(0);
+    // a refresh supersedes the sign-in's own load
+    const after = s.loadStatus();
+    // the sign-in's load answers first and the refresh last
+    releases[1]!();
+    await Bun.sleep(0);
+    releases[0]!();
+    await Bun.sleep(0);
+    releases[2]!();
+    await Promise.all([before, after]);
+    await signing;
+    expect(s.signedIn.value).toBe(true);
+    expect(s.status.value?.version).toBe("v3");
   });
 
   test("an older status answer never lands over a newer one", async () => {

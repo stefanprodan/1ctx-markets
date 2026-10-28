@@ -24,7 +24,9 @@ export const ROUTES: readonly Route[] = [
     label: "Status",
     icon: "status",
     view: Status,
-    load: () => markets.loadStatus(),
+    load: async () => {
+      await markets.loadStatus();
+    },
   },
   {
     path: "/instruments",
