@@ -8,6 +8,7 @@ import {
   readBySourceSymbol,
   readInstrument,
 } from "../market/instruments.ts";
+import { JOBS } from "../market/stale.ts";
 import { isKept, markRead } from "../market/tracking.ts";
 import { errorFields } from "../runtime/log.ts";
 import type { Bvb } from "../sources/bvb/client.ts";
@@ -38,6 +39,7 @@ import {
 } from "../sources/yahoo/resolve.ts";
 import { catchUp, fetchInstrument } from "../sources/yahoo/sync.ts";
 import type { Db } from "../storage/db/index.ts";
+import { endRun, startRun } from "../storage/runs.ts";
 import { WriterClosed } from "../storage/writer.ts";
 import { type Markets, shared } from "./markets.ts";
 
@@ -169,7 +171,14 @@ function fredStep(m: Markets, id: string): Step {
       kind: "fetch",
       key: id,
       run: async (live) => {
-        await refetchSeries(ctx(live), stored, live);
+        const at = m.clock.now();
+        const written = await refetchSeries(ctx(live), stored, live);
+        // as the series pass: the run ends, so the series is not due again
+        await m.writer.write((db) => {
+          const now = m.clock.now();
+          endRun(db, startRun(db, FRED, JOBS.bars, at, id), now, written.rows);
+          m.rules.evaluate(db, [id], now);
+        });
         return stored;
       },
     };

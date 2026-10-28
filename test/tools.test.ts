@@ -3,6 +3,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { readInstrument, upsertInstrument } from "../src/market/instruments.ts";
+import { STALE } from "../src/market/stale.ts";
 import {
   lastReadAt,
   markRead,
@@ -26,7 +27,7 @@ import { DAY_MS, MINUTE_MS } from "../src/runtime/clock.ts";
 import { exclusive } from "../src/runtime/lock.ts";
 import { silent } from "../src/runtime/log.ts";
 import { fred } from "../src/sources/fred/client.ts";
-import { fredJobs } from "../src/sources/fred/jobs.ts";
+import { fredJobs, seriesStale } from "../src/sources/fred/jobs.ts";
 import { addSeries } from "../src/sources/fred/sync.ts";
 import { yahoo } from "../src/sources/yahoo/client.ts";
 import { yahooJobs } from "../src/sources/yahoo/jobs.ts";
@@ -370,6 +371,19 @@ describe("tracking", () => {
     expect(errorOf(target)).toMatchObject({ error: "source_error" });
     expect(stored(t.db, "bars")).toBe(bars);
     expect(lastReadAt(t.db, "US:NVDA")).toBe(NOW);
+  });
+
+  test("a FRED series caught up by a read is not due again", async () => {
+    const t = await setup();
+    await readTargets(t.m, ["FRED:DGS10"]);
+    await t.clock.advance(TRACK_MS + DAY_MS);
+    const series = readInstrument(t.db, "FRED:DGS10")!;
+    expect(seriesStale(t.db, series, t.clock.now())).toEqual([
+      STALE.barsPending,
+    ]);
+    const [target] = await readTargets(t.m, ["FRED:DGS10"]);
+    expect(idOf(target)).toBe("FRED:DGS10");
+    expect(seriesStale(t.db, series, t.clock.now())).toEqual([]);
   });
 
   describe("a catch-up past the deadline writes nothing", () => {
