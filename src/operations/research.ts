@@ -199,7 +199,12 @@ export async function researchTargets(
           client: client.within(live),
           unfetched: true,
         },
-      ),
+      ).then((results) => {
+        // a section's failure is recorded as its run and resolves, not
+        // rejects; read as stored it answers a missing value as none
+        const failed = results.find((r) => r.status === "failed");
+        if (failed !== undefined && "error" in failed) throw failed.error;
+      }),
     );
     settle(inline, instrument.id, fetch);
   }

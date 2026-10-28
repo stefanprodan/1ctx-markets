@@ -67,13 +67,16 @@ is offered over MCP.
   source, as the bar pass does; research and news record their own; a
   quote records none, since a quote run is the market's pass. Nothing
   is marked due, no run is deleted, and a refetch is no read, so it
-  tracks nothing.
+  tracks nothing. Bars evaluate the instrument's rules after the run
+  ends, so a failure the refetch repaired no longer holds them unknown.
 
 ## Delete
 
 - **One write removes the instrument, every row keyed to it
   (`INSTRUMENT_TABLES`) and its own runs**, so the key added again
-  starts unfetched; nothing of another instrument goes. A new table
+  starts unfetched; nothing of another instrument goes. A research or
+  news fetch still in flight finds the key gone and writes nothing
+  (`checkStored()`). A new table
   referencing `instruments` goes into `INSTRUMENT_TABLES`; a test fails
   until it does.
 - **Refused with 409 while a rule reads it**, its own or another's

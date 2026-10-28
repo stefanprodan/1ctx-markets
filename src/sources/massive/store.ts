@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // a run per walk, scoped to the instrument, so one failure is stale alone
 
-import type { Instrument } from "../../market/instruments.ts";
+import { checkStored, type Instrument } from "../../market/instruments.ts";
 import { type Clock, DAY_MS, MINUTE_MS } from "../../runtime/clock.ts";
 import { exclusive } from "../../runtime/lock.ts";
 import type { Db } from "../../storage/db/index.ts";
@@ -255,6 +255,7 @@ export async function refreshNews(
 
     const result = await ctx.writer.write((db): NewsResult => {
       if (!live()) throw new DeadlinePassed();
+      checkStored(db, instrument.id);
       const now = ctx.clock.now();
       const stored = storeRows(db, instrument.id, rows);
       saveWalk(db, instrument.id, "top", top);

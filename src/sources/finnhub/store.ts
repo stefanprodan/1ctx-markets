@@ -156,12 +156,15 @@ export function upsertEvents(
        reported_seen_at = coalesce(events.reported_seen_at,
          excluded.reported_seen_at),
        listing = excluded.listing,
-       fetched_at = excluded.fetched_at`,
+       fetched_at = excluded.fetched_at
+     where excluded.fetched_at >= events.fetched_at`,
   );
   const reported: EventKey[] = [];
   for (const e of events) {
     const was = before.get(instrument, e.fiscalYear, e.fiscalQuarter);
-    upsert.run(
+    // the research pass and the market calendar fetch apart and write in
+    // either order; an answer older than the stored one is not newer news
+    const { changes } = upsert.run(
       instrument,
       e.fiscalYear,
       e.fiscalQuarter,
@@ -175,6 +178,7 @@ export function upsertEvents(
       e.reported ? 1 : 0,
       listing,
     );
+    if (changes === 0) continue;
     if (e.reported && (was === null || was.seen === null)) {
       reported.push({
         instrument,
@@ -301,13 +305,15 @@ export function storeSection(
       const events = f.answer.data ?? [];
       const reported = upsertEvents(db, instrument, events, listing, at);
       if (reported.length > 0) hooks.reported?.(db, reported, at);
+      // a row newer than this answer was kept by upsertEvents; never drop it
       const stale = db
-        .query<EventKey, [string, string | null]>(
+        .query<EventKey, [string, string | null, number]>(
           `select instrument, fiscal_year as fiscalYear,
              fiscal_quarter as fiscalQuarter
-           from events where instrument = ? and listing is not ?`,
+           from events where instrument = ? and listing is not ?
+             and fetched_at <= ?`,
         )
-        .all(instrument, listing);
+        .all(instrument, listing, at);
       if (stale.length > 0) dropEvents(db, stale, hooks.waited(db, at));
       return events.length;
     }

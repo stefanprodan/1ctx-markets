@@ -78,6 +78,8 @@ exchange: one client, its parsers, its session, the same tables.
   (`malformed answer`): a missing table, column or status, an empty
   table, a short row, a number or time that does not match. The quote
   pass fails and the stored rows stay as they were.
+- **A detail page must name the symbol asked for** (`detailQuote()`):
+  another symbol's page is its price, never ours (`malformed answer`).
 - **Romanian formats are read in one place** (`format.ts`): numbers
   with a thousands dot and a decimal comma (`34.678,23`), times
   `dd.mm.yyyy HH:mm[:ss]` as wall times. The site writes local time
@@ -222,10 +224,12 @@ exchange: one client, its parsers, its session, the same tables.
   (`checkCovers()`); a listing whose new history is cut short keeps its
   old history and source, as one the new source lacks does, and the
   switch lands for the rest; a kept listing moves only at the next
-  change of flags. Moving to Yahoo finds the listing through Yahoo's
-  search, never a guessed suffix; the stored splits are dropped and
-  Yahoo's recorded from its answer. Moving to the feed keeps them,
-  since they date where raw volumes change scale.
+  change of flags. Moving to Yahoo needs Yahoo's quote of the same
+  listing, since the old source's quote is cleared with its bars, and
+  finds the listing through Yahoo's search, never a guessed suffix;
+  the stored splits are dropped and Yahoo's recorded from its answer.
+  Moving to the feed keeps them, since they date where raw volumes
+  change scale.
 - **A listing the new source lacks stays where it is** (an index or
   bond on Yahoo answers `no_data`). With the feed off it is `source off`
   once the switch landed, so rules on it are unknown, never driven by

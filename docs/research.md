@@ -24,14 +24,17 @@ route's transport in `docs/api.md`; rules that wait on events in
   in errors and logs; a header does not.
 - **Every Massive text kept is scrubbed of the key** (`scrubbed` in
   `src/sources/massive/client.ts`: id, title, URL, publisher, tickers,
-  reasoning). Finnhub keeps only numbers, checked dates and an hour
-  label matching `^[a-z]{0,8}$`, so nothing of its answer can carry
-  text.
+  reasoning), before a text is cut to its cap, so a key across the cap
+  leaves no prefix. Finnhub keeps only numbers, checked dates and an
+  hour label matching `^[a-z]{0,8}$`, so nothing of its answer can
+  carry text.
 - **A Massive `next_url` is followed only when it is Massive's own news
   path** (`checkCursor`): https, the same origin, `NEWS_PATH`, no user
   or password, no key-named parameter, and the key in no decoding of
   it. It is checked on receipt and before it is sent, and never
   rewritten, because it goes out with the key in its header.
+- **A Massive page without `status: "OK"` is malformed** (`parseNews`),
+  never an empty last page that would end a history walk.
 
 ## Eligibility
 
@@ -108,7 +111,7 @@ route's transport in `docs/api.md`; rules that wait on events in
   | `metric` | `COMPANY_METRICS`: growth, net margin, ROE, current ratio, debt to equity | P/E, PEG, P/S, P/B, yield and beta are on that listing's price |
   | `earnings` | nothing: no data | EPS in its currency per its share; its actuals and estimates can disagree |
   | `insider` | nothing: no data | share counts of its shares |
-  | `calendar` | date, hour, fiscal year and quarter, and whether actuals came | estimates and actuals in its currency |
+  | `calendar` | date, hour, fiscal year (1900 to 2200, as stored) and quarter, and whether actuals came | estimates and actuals in its currency |
 
   A part naming no symbol is the asked one's. Parts naming two symbols
   are no data, as a 403 is, since neither can be trusted; a symbol not
@@ -157,6 +160,9 @@ route's transport in `docs/api.md`; rules that wait on events in
   Yesterday too, since many reporters have no actuals a day later. Its
   run is `market-calendar` scoped to `US` (`MARKET_CALENDAR`), never an
   instrument.
+- **An event row keeps the newest answer** (`upsertEvents`): a share's
+  research pass and the whole-market calendar fetch apart and write in
+  either order, so an answer fetched before the stored one is skipped.
 - **The whole-market answer only updates events already stored** of
   tracked shares' own listing, matched by `finnhubSymbol`, fiscal year
   and quarter, through the write a share's calendar uses, so a first
@@ -191,7 +197,8 @@ route's transport in `docs/api.md`; rules that wait on events in
 - **The `events` tool lists events between two dates** of the tracked
   US shares, or of the named symbols once resolved; of those, only a
   named covered share whose calendar has no good run is fetched
-  inline. A symbol not covered or not resolved is listed under
+  inline; a section that fails there is the share's error, never an
+  empty answer. A symbol not covered or not resolved is listed under
   `unavailable`, and so is every share whose calendar has no good run,
   with why (never fetched, its fetch failed, timed out), and every
   share whose last good calendar run was no data (`NO_DATA`), its

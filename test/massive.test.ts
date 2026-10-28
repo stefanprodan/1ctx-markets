@@ -743,7 +743,7 @@ describe("what an article keeps", () => {
     });
     long.title = "t".repeat(5_000);
     long.publisher = { name: "p".repeat(5_000) };
-    const [article] = parseNews({ results: [long] }).articles;
+    const [article] = parseNews({ status: "OK", results: [long] }).articles;
     expect(article!.title).toHaveLength(MAX_TITLE);
     expect(article!.publisher).toHaveLength(MAX_PUBLISHER);
     expect(article!.insights[0]!.reasoning).toHaveLength(MAX_REASONING);

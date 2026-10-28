@@ -97,6 +97,34 @@ describe("migrations", () => {
     ]);
   });
 
+  test("runs stored before it are kept and a deleted id is never reused", () => {
+    const db = new Database(":memory:", { strict: true });
+    const clock = fakeClock();
+    const at = MIGRATIONS.findIndex((m) => m.id === "0014-run-ids");
+    migrate(db, clock, MIGRATIONS.slice(0, at));
+    const add = db.query(
+      `insert into sync_runs (source, job, scope, started_at, ended_at,
+         status, rows, error)
+       values ('yahoo', 'bars', ?, 1, 2, ?, 3, ?)`,
+    );
+    add.run("US", "ok", null);
+    add.run("US:A", "failed", "not found");
+    add.run("US:B", "ok", null);
+    db.exec("delete from sync_runs where id = 3");
+    migrate(db, clock);
+    expect(
+      db.query("select id, scope, status, rows, error from sync_runs").all(),
+    ).toEqual([
+      { id: 1, scope: "US", status: "ok", rows: 3, error: null },
+      { id: 2, scope: "US:A", status: "failed", rows: 3, error: "not found" },
+    ]);
+    db.exec("delete from sync_runs where id = 2");
+    add.run("US", "ok", null);
+    expect(db.query("select max(id) as id from sync_runs").get()).toEqual({
+      id: 3,
+    });
+  });
+
   test("a Yahoo index stored with no unit takes index points", () => {
     const db = new Database(":memory:", { strict: true });
     const clock = fakeClock();

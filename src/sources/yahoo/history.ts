@@ -82,6 +82,8 @@ export function read(answer: ChartAnswer, latest: Session | null): Read {
       date === sessionDate(answer.session) &&
       (byDate.has(date) || ownsToday(answer.type))
     ) {
+      // an FX day held only by this row is still a day the answer covers
+      days.add(date);
       add(byDate, date, trailing, latest);
     }
   }

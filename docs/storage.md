@@ -105,7 +105,9 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   `startRun`/`endRun`/`failRun`). Its `scope` is the market for a
   Yahoo quote, check or bar pass and Finnhub's whole-market calendar,
   the instrument key for FRED, Finnhub and Massive runs, null
-  otherwise. At startup `failInterrupted()` fails runs a crash left
+  otherwise. Ids are `autoincrement`, never reused: an admin delete
+  removes an instrument's runs while a job may still hold one's id.
+  At startup `failInterrupted()` fails runs a crash left
   `running`, in the first queued write, so no job's run is taken for
   one of those.
 - **A run's error is a fixed phrase, never an error's text**

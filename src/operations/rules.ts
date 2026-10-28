@@ -3,7 +3,7 @@
 // The only write tool: a failed create leaves no rule.
 
 import { iso } from "../market/format.ts";
-import type { Instrument } from "../market/instruments.ts";
+import { type Instrument, readInstrument } from "../market/instruments.ts";
 import { localDate } from "../market/zone.ts";
 import {
   applyRule,
@@ -291,10 +291,23 @@ export async function createRule(
     if (error instanceof RuleError) throw new ArgError(error.message);
     throw error;
   }
-  const done = await m.writer.write((db) => {
+  const done = await m.writer.write<
+    Failure | { rule: RuleRow; outcome: ReturnType<typeof applyRule> } | null
+  >((db) => {
     const now = m.clock.now();
     // a write queued past the call's deadline stores no rule
     if (now >= deadline) return null;
+    // an operand deleted while another was fetched would leave the rule
+    // unknown for good, since no job adds an instrument back
+    for (const id of instruments.keys()) {
+      if (readInstrument(db, id) === null) {
+        const gone: Failure = {
+          error: "not_found",
+          message: `${id}: deleted while the rule was created`,
+        };
+        return gone;
+      }
+    }
     const id = insertRule(
       db,
       {
@@ -308,6 +321,7 @@ export async function createRule(
     return { rule: readRule(db, id)!, outcome };
   });
   if (done === null) return timeout(m);
+  if ("error" in done) return done;
   return {
     rule: ruleItem(m, done.rule),
     evaluation: done.outcome.evaluation,

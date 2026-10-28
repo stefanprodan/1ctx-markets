@@ -29,7 +29,10 @@ import {
   SourceError,
 } from "../sources/source.ts";
 import { storeQuotes } from "../sources/yahoo/quotes.ts";
-import { backfill as yahooBackfill } from "../sources/yahoo/sync.ts";
+import {
+  requireQuote,
+  backfill as yahooBackfill,
+} from "../sources/yahoo/sync.ts";
 import { endRun, failRun, startRun } from "../storage/runs.ts";
 import { WriterClosed } from "../storage/writer.ts";
 
@@ -146,11 +149,13 @@ async function bars(
   const at = m.clock.now();
   let written: Written;
   try {
-    if (i.source === YAHOO) {
-      written = await yahooBackfill(yahooCtx(m, live), i, live);
-    } else if (i.source === BVB) {
-      if (m.bvb === null) return OFF;
-      written = await bvbBackfill(bvbCtx(m, m.bvb, live), i, live);
+    if (i.source === YAHOO || i.source === BVB) {
+      if (i.source === YAHOO) {
+        written = await yahooBackfill(yahooCtx(m, live), i, live);
+      } else {
+        if (m.bvb === null) return OFF;
+        written = await bvbBackfill(bvbCtx(m, m.bvb, live), i, live);
+      }
     } else if (i.source === FRED) {
       const fred = m.fred;
       if (fred === null) return OFF;
@@ -173,6 +178,13 @@ async function bars(
     await failBars(m, i.source, i.id, at, error);
     return failed(m, error);
   }
+  if (i.source !== FRED) {
+    // the store's own evaluation ran before its run cleared a failed one;
+    // outside the try, since the bars landed whatever this write does
+    await m.writer
+      .write((db) => m.rules.evaluate(db, [i.id], m.clock.now()))
+      .catch(() => {});
+  }
   return fetched(written.rows);
 }
 
@@ -192,6 +204,7 @@ async function quotes(
         );
         throw new SourceError(skipped?.phrase ?? "source error");
       }
+      requireQuote(answer, i.sourceSymbol, i.id);
       return fetched(
         await m.writer.write((db) => {
           if (!live()) throw expired();

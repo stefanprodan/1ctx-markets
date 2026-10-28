@@ -9,6 +9,7 @@ import { NO_RULES, type RuleHooks } from "../../rules/hooks.ts";
 import { DAY_MS, MINUTE_MS } from "../../runtime/clock.ts";
 import { pruneLive, refreshLive } from "../../signals/store.ts";
 import type { Db } from "../../storage/db/index.ts";
+import { SourceError } from "../source.ts";
 import { MARKET, SOURCE } from "./client.ts";
 import type { Detail, IndexRow, ListRow, Schedule } from "./parse.ts";
 
@@ -57,6 +58,13 @@ export function detailQuote(
   instrument: Instrument,
   d: Detail,
 ): QuoteRow | null {
+  // the page of another symbol is that listing's price, never ours
+  if (d.symbol.toUpperCase() !== instrument.sourceSymbol.toUpperCase()) {
+    throw new SourceError(
+      "malformed answer",
+      `${instrument.id} answered as ${d.symbol}`,
+    );
+  }
   if (d.price === null || d.at === null) return null;
   return quoteRow(
     instrument,

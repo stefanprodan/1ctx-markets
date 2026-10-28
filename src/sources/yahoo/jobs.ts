@@ -33,7 +33,7 @@ import {
 import { RETRY_MS } from "../history.ts";
 import { type Phrase, phraseOf, SourceError } from "../source.ts";
 import { SOURCE, type SparkAnswer } from "./client.ts";
-import { storeQuotes } from "./quotes.ts";
+import { refuseForeign, storeQuotes } from "./quotes.ts";
 import { backfill, refetch, type YahooContext } from "./sync.ts";
 
 export const TICK_MS = MINUTE_MS;
@@ -174,7 +174,17 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
         }
       }
       return await writer.write((db) => {
-        const quotes = answers.flatMap((a) => storeQuotes(db, a));
+        const checked = answers.map((a) => refuseForeign(db, a));
+        checked.forEach((a, k) => {
+          for (const s of a.skipped.slice(answers[k]!.skipped.length)) {
+            missing.set(s.symbol!, s.phrase);
+            log.warn("yahoo quote missing", {
+              symbol: s.symbol!,
+              error: s.phrase,
+            });
+          }
+        });
+        const quotes = checked.flatMap((a) => storeQuotes(db, a));
         const now = clock.now();
         work.forEach((w, k) => {
           const mine = new Set(w.instruments.map((i) => i.id));

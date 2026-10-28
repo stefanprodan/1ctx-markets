@@ -361,10 +361,13 @@ function calendarRow(r: Obj, own: boolean): CalendarEvent {
   if (typeof hour !== "string" || !HOUR.test(hour)) {
     throw malformed("no hour");
   }
+  // the stored range; past it the insert fails the whole research write
+  const year = count(r.year, "year");
+  if (year < 1900 || year > 2200) throw malformed("no year");
   const epsActual = optionalNum(r.epsActual, "epsActual");
   const revenueActual = optionalNum(r.revenueActual, "revenueActual");
   return {
-    fiscalYear: count(r.year, "year"),
+    fiscalYear: year,
     fiscalQuarter: quarter,
     date: day(r.date, "date"),
     hour,

@@ -41,7 +41,7 @@ import {
   store,
   unapplied,
 } from "./history.ts";
-import { storeQuotes } from "./quotes.ts";
+import { refuseForeign, storeQuotes } from "./quotes.ts";
 import { keyOf } from "./resolve.ts";
 
 export type YahooContext = {
@@ -131,11 +131,20 @@ export function storeSwitched(
   return instrument;
 }
 
-// bars with no quote would answer an old price as the live one
-function requireQuote(answer: SparkAnswer, symbol: string): void {
+// bars with no quote, or another listing's, would answer an old price as live
+export function requireQuote(
+  answer: SparkAnswer,
+  symbol: string,
+  id: string,
+): void {
   const upper = symbol.toUpperCase();
-  if (!answer.quotes.some((q) => q.symbol.toUpperCase() === upper)) {
+  const q = answer.quotes.find((q) => q.symbol.toUpperCase() === upper);
+  if (q === undefined) {
     throw new SourceError("source error", `no quote for ${symbol}`);
+  }
+  const answered = keyOf(q.exchange, q.symbol);
+  if (answered !== id) {
+    throw new SourceError("malformed answer", `${id} answered as ${answered}`);
   }
 }
 
@@ -155,7 +164,7 @@ export async function fetchInstrument(
   if (!live()) throw expired();
   // a chart's previous close is the one before its range, ten years back
   const quote = await ctx.yahoo.spark([answer.symbol]);
-  requireQuote(quote, answer.symbol);
+  requireQuote(quote, answer.symbol, id);
   return exclusive(ctx.db, id, async () => {
     // the lock may have been held past the deadline
     if (!live()) throw expired();
@@ -206,7 +215,7 @@ export async function catchUp(
     const bars = await refetchAnswer(ctx, instrument, live);
     if (!live()) throw expired();
     const quote = await ctx.yahoo.spark([instrument.sourceSymbol]);
-    requireQuote(quote, instrument.sourceSymbol);
+    requireQuote(quote, instrument.sourceSymbol, instrument.id);
     return ctx.writer.write((db) => {
       if (!live()) throw expired();
       barsAnswered(db, instrument, bars(db), ctx.clock.now());
@@ -378,7 +387,11 @@ export async function fetchQuotes(
     }
   }
   const quotes = await ctx.writer.write((db) => {
-    const stored = answers.flatMap((answer) => storeQuotes(db, answer));
+    const checked = answers.map((answer) => refuseForeign(db, answer));
+    checked.forEach((a, k) => {
+      skipped.push(...a.skipped.slice(answers[k]!.skipped.length));
+    });
+    const stored = checked.flatMap((answer) => storeQuotes(db, answer));
     ctx.rules?.evaluate(
       db,
       stored.map((q) => q.instrument),
