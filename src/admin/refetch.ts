@@ -1,10 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Asks a source again for stored instruments, as after a parser fix, with
-// each source's own fetch code, client and limiter, under one deadline.
-// Nothing is marked due by hand: the runs these fetches record are the
-// ones the jobs read.
+// Each source's own fetch code; the runs it records are the ones the jobs read.
 
 import type { Written } from "../market/bars.ts";
 import { checkSource, type Instrument, Moved } from "../market/instruments.ts";

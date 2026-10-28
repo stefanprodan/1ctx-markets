@@ -1,8 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// The wiring main.ts starts, kept apart so a test runs the same with a
-// fake clock, a captured log and a fake fetch.
+// Apart from main.ts so a test runs it with a fake clock, log and fetch.
 
 import type { SourceState } from "./admin/http.ts";
 import { alertsHandler } from "./api/alerts.ts";
@@ -39,7 +38,7 @@ import type { Db } from "./storage/db/index.ts";
 import { failInterrupted, pruneRuns } from "./storage/runs.ts";
 import { type Writer, writer } from "./storage/writer.ts";
 
-// Yahoo calls in flight at once, jobs and tools together
+// Yahoo calls in flight at once, shared by jobs and tools
 const YAHOO_CONCURRENCY = 2;
 
 type Paced = { backoff(): Backoff | null };
@@ -66,7 +65,6 @@ export type AppOptions = {
   bvb?: boolean;
   // what the research jobs ask of the rules, the rules' own by default
   hooks?: Hooks;
-  // tests answer every source call from recordings
   fetch?: Fetch;
 };
 
@@ -88,9 +86,7 @@ export type App = {
   bvbJobs: BvbJobs | null;
   // moves the Bucharest market between Yahoo and the feed
   sourceSwitch: SourceSwitch;
-  // what the tools and the API read through
   markets: Markets;
-  // one field per source with its state and why, for the start log
   sources: LogFields;
   stop(): Promise<void>;
 };
@@ -104,7 +100,6 @@ export function start(options: AppOptions): App {
     log: options.log("rules"),
   });
   const hooks = options.hooks ?? rules.finnhub;
-  // every table's retention, at start and once a day
   const prune = (db: Db) => {
     const now = clock.now();
     pruneRuns(db, now);
@@ -311,9 +306,8 @@ export function start(options: AppOptions): App {
       ]),
     ),
     async stop() {
-      // no new run or request starts, no job waits out a back-off, every
-      // run settles, then the queued writes drain before main closes the
-      // database
+      // no new run or request starts, no job waits out a back-off, runs settle,
+      // then queued writes drain before main closes the database
       const settled = jobs.stop();
       yahooQueue.close();
       fredClient?.close();

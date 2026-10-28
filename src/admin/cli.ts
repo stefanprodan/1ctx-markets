@@ -1,9 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// `1ctx-markets admin`: calls the running server on this machine with
-// the admin key from its data directory, so it works over ssh without
-// stopping the service. It opens no database and prints no key.
+// Calls the running server with the admin key; opens no db and prints no key.
 
 import { homedir } from "node:os";
 import { join } from "node:path";

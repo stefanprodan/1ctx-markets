@@ -1,8 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// `1ctx-markets service`: the binary installs itself with the platform's
-// service manager. The commands here know no platform; the backend does.
+// Platform-free commands; the backend holds the service manager's part.
 
 import { rm } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -30,8 +29,7 @@ export class ServiceError extends Error {}
 
 export type ServiceDeps = {
   home?: string;
-  // Bun.main and the running executable: a service runs the compiled
-  // binary, never the source
+  // Bun.main and the running executable: a service runs the binary, not source
   main?: string;
   execPath?: string;
   cwd?: string;
@@ -104,7 +102,6 @@ function storedConfig(args: string[], home: string): Config | null {
   return configOf(options, home);
 }
 
-// where a client on this machine reaches the server
 export function urlOf(config: Config): string {
   let host = config.hostname;
   if (host === "0.0.0.0" || host === "::" || host === "[::]") {

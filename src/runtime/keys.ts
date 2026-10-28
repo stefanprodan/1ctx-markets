@@ -1,8 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// The only reader of key files; a value goes to its caller and the log
-// mask, nowhere else.
+// The only reader of key files: a value reaches its caller and the log mask.
 
 import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -24,7 +23,7 @@ export type Keys = {
   bearer(): string | null;
   admin(): string | null;
   source(name: string): string | null;
-  // every value read so far, for the logger to mask
+  // every value read so far, for the log mask
   values(): string[];
 };
 
