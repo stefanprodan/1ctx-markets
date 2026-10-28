@@ -88,6 +88,19 @@ const SOURCE_SHORT: Record<string, string> = {
   massive: "Massive",
 };
 
+// the price sources' own sites, for the instrument page's credit
+const SOURCE_SITES: Record<string, string> = {
+  yahoo: "https://finance.yahoo.com/",
+  bvb: "https://www.bvb.ro/",
+  fred: "https://fred.stlouisfed.org/",
+};
+
+// who the instrument's prices are from, named and linked on its page
+const creditOf = (source: string) => {
+  const url = SOURCE_SITES[source];
+  return url === undefined ? null : { name: SOURCE_SHORT[source]!, url };
+};
+
 // letters in a tile, since no free logo set holds these sources
 const SOURCE_MARKS: Record<string, string> = {
   yahoo: "Y",
@@ -454,6 +467,7 @@ export async function adminInstrument(
   const failure = "error" in item ? (item as ErrorItem) : null;
   return json({
     ...(stored.source === FRED ? { attribution: ATTRIBUTION } : {}),
+    credit: creditOf(stored.source),
     instrument: listRow(d.m, ruleInstruments(d.m.db), now)(stored),
     quote: failure === null ? item : null,
     error:

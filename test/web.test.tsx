@@ -860,6 +860,7 @@ const detail = (
   row: Partial<Listed> = {},
 ): Detail => ({
   instrument: listed("US:NVDA", { name: "NVIDIA", ...row }),
+  credit: { name: "Casey", url: "https://example.com/" },
   error: null,
   quote: {
     id: "US:NVDA",

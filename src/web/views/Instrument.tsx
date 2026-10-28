@@ -200,13 +200,19 @@ export function Instrument({ params }: { params: Params }) {
       foot={
         detail !== null && (
           <>
+            {detail.credit && (
+              <>
+                Data by{" "}
+                <a href={detail.credit.url} target="_blank" rel="noopener">
+                  {detail.credit.name}
+                </a>
+                {" · "}
+              </>
+            )}
             Charts by{" "}
             <a href={CHART_CREDIT} target="_blank" rel="noopener">
               TradingView
             </a>
-            {detail.attribution && (
-              <span class="page-foot-note">{detail.attribution}</span>
-            )}
           </>
         )
       }

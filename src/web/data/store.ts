@@ -85,6 +85,8 @@ export type Returns = {
 export type Detail = {
   // FRED's notice, which its terms ask wherever its values show
   attribution?: string;
+  // who the prices are from: the source's name and site
+  credit: { name: string; url: string } | null;
   instrument: Listed;
   // null when the read failed; error says why
   error: { error: string; message: string } | null;

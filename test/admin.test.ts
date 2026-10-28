@@ -1155,6 +1155,8 @@ describe("the instrument list", () => {
     expect(body.quote).toHaveProperty("returns");
     expect(body.quote).toHaveProperty("session");
     expect(body.error).toBeNull();
+    // a source with no site of its own is credited by no one
+    expect(body.credit).toBeNull();
     expect(lastReadAt(w.db, "US:AAA")).not.toBeNull();
 
     const missing = await one("US%3ANOPE");
@@ -1177,6 +1179,11 @@ describe("the instrument list", () => {
     const body = (await res.json()) as any;
     expect(body.instrument.id).toBe("FRED:DGS10");
     expect(body.attribution).toContain("FRED");
+    // the page names who the prices are from and links its site
+    expect(body.credit).toEqual({
+      name: "FRED",
+      url: "https://fred.stlouisfed.org/",
+    });
     expect(body.quote).toBeNull();
     expect(body.error).toMatchObject({ error: "source_error" });
   });

@@ -591,6 +591,10 @@ export const schemas: Record<string, Schema> = {
         str,
         "A source's required notice, when the series is one of its.",
       ),
+      credit: note(
+        nullable(object({ name: str, url: str })),
+        "Who the prices are from, with a link to its site.",
+      ),
       instrument: ref("AdminInstrumentRow"),
       quote: note(
         nullable(
@@ -662,7 +666,7 @@ export const schemas: Record<string, Schema> = {
         "Why the read failed, else null.",
       ),
     },
-    ["instrument", "quote", "error"],
+    ["instrument", "credit", "quote", "error"],
   ),
   RefetchArgs: object(
     {

@@ -61,8 +61,9 @@ is offered over MCP.
   UI's list shows these rather than calling `/quotes`, which is a read.
 - **A listing is no read**: it tracks nothing and fetches nothing.
 - **FRED's `attribution`** comes with a page that holds a FRED series,
-  and with one FRED instrument, as on the public routes; the UI shows
-  it in the instrument page's footer.
+  and with one FRED instrument, as on the public routes. One instrument
+  also has `credit`, its price source's short name and site (Yahoo,
+  BVB, FRED), which the instrument page's footer links.
 - **One instrument is a read**, as the UI's instrument page is one:
   `GET /api/v1/admin/instruments/{id}` reads it through `quoteRows()`
   as the quote tool does, so it is tracked and a due price is fetched.

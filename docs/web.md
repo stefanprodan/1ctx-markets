@@ -229,13 +229,14 @@ signed in with the admin key alone.
 - **Settings are kept in `localStorage`** (`chart`): the range, line,
   log and both averages, one set for every instrument; a blocked or
   broken value starts from the defaults, field by field.
-- **TradingView's credit is the page's footer** ("Charts by
-  TradingView", linking tradingview.com), which the licence accepts
-  in place of the logo; the logo sat on the volume. The NOTICE text is
+- **The credits are the page's footer**: "Data by <source> · Charts
+  by TradingView", each name linking its site. The source (Yahoo, BVB,
+  FRED) and its site come from the server's `credit`, since the public
+  bundle names no source; TradingView's link is what its licence
+  accepts in place of the logo, which sat on the volume. The NOTICE text is
   in `Chart.tsx`, the package shipping none. The footer shows on the
   instrument page only, with "1ctx Markets" (the repository) and the
-  version on its left; a FRED series adds FRED's notice under the
-  credit, as its terms ask.
+  version on its left.
 
 ## Tests
 
