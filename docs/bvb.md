@@ -1,12 +1,13 @@
 # The Bucharest feed
 
 Governs the Bucharest Stock Exchange (BVB) source, read directly from
-the exchange: `src/sources/bvb/client.ts` (calls), `parse.ts` (parsing),
-`format.ts` (Romanian formats and HTML tables), `sync.ts` (fetches),
-`history.ts` and `quotes.ts` (answers into rows), `jobs.ts` (the
-schedule), `resolve.ts` (the exchange's search beside Yahoo's) and
-`switch.ts` (moving the market between sources). The shared queue,
-phrases and the lock are in `docs/yahoo.md`; sessions in
+the exchange: `src/sources/bvb/client.ts` (calls), `parse.ts`
+(parsing), `format.ts` (Romanian formats and HTML tables), `sync.ts`
+(fetches), `history.ts` and `quotes.ts` (answers into rows), `jobs.ts`
+(the schedule), `resolve.ts` (the exchange's search beside Yahoo's)
+and `switch.ts` (moving the market between sources). The queue,
+deadlines, retries, backfill, rescales, phrases and the lock every
+source shares are in `docs/sources.md`; sessions in
 `docs/calendars.md`; tables and staleness in `docs/storage.md`; the
 tools in `docs/tools.md`. It is the pattern for a source of another
 exchange: one client, its parsers, its session, the same tables.
@@ -25,7 +26,7 @@ exchange: one client, its parsers, its session, the same tables.
   key Yahoo lacks answers `no_data` with `NO_DATA`, never an error.
 - **AeRO, the junior market, is left out.** Its list needs an ASP.NET
   partial postback; a plain request answers the regulated market's. A
-  share the regulated list lacks is refused when fetched
+  share the regulated list lacks is `Refused` when fetched
   (`checkListed()`, `AERO`), since no quote pass could quote it, and
   the switch keeps it on Yahoo. A fund unit the fund units list lacks
   is refused the same way (`UNLISTED`).
@@ -51,19 +52,17 @@ exchange: one client, its parsers, its session, the same tables.
 - **The chart feed wants the page key or the site's Referer.** Every
   feed call sends `Referer: https://bvb.ro/` and, once an instrument
   page was read, its `sk` key as `X-SK-API`. A 401 reads the
-  instrument's page for a fresh key and asks once more; a second 401 is
-  `key refused`. The 401 resolves inside its queued call, so the
-  refresh never waits out a back-off; the second 401 fails inside its
-  queued call, so it backs the queue off like any refusal.
-- **`countback` is required and wins over `from`,** uncapped: 3660
-  answers trading days back 14 years whatever `from` says. It is set to
-  the window's weekdays and a margin (about 252 a year), and the feed
-  answers bars outside the window too, as it does for a window with no
-  trading, so `parseHistory()` drops bars before `from` and after
-  `to`. Daily bars are stamped 00:00 UTC of the trading date;
-  any other stamp is malformed. An unknown symbol is `"s":"no_data"`
-  (`not found`). Indices are asked with `currencyCode=-` and have no
-  volume.
+  instrument's page for a fresh key and asks once more, inside the
+  same queued call, so the refresh never waits out a back-off; a
+  second 401 is `key refused` and backs the queue off like any
+  refusal.
+- **`countback` is required and wins over `from`,** uncapped. It is
+  set to the window's weekdays and a margin, and the feed answers bars
+  outside the window too, so `parseHistory()` drops bars before `from`
+  and after `to`. Daily bars are stamped 00:00 UTC of the trading
+  date; any other stamp is malformed. An unknown symbol is
+  `"s":"no_data"` (`not found`). Indices are asked with
+  `currencyCode=-` and have no volume.
 - **The feed's `session` field (`0700-1830`) is not the market's
   hours** and is never read.
 
@@ -79,23 +78,20 @@ exchange: one client, its parsers, its session, the same tables.
   (`malformed answer`): a missing table, column or status, an empty
   table, a short row, a number or time that does not match. The quote
   pass fails and the stored rows stay as they were.
-- **Romanian formats are read in one place** (`src/sources/bvb/format.ts`):
-  numbers with a thousands dot and a decimal comma (`34.678,23`),
-  times `dd.mm.yyyy HH:mm[:ss]` as wall times. The site writes local
-  time with no offset, so each becomes an instant through the
-  instrument's zone (`fromWallTime()`). An empty cell is no value: a
-  listing that has not traded.
+- **Romanian formats are read in one place** (`format.ts`): numbers
+  with a thousands dot and a decimal comma (`34.678,23`), times
+  `dd.mm.yyyy HH:mm[:ss]` as wall times. The site writes local time
+  with no offset, so each becomes an instant through the instrument's
+  zone (`fromWallTime()`). An empty cell is no value: a listing that
+  has not traded.
 
 ## The queue
 
-- **One call at a time, starts `SPACING_MS` (2 seconds) apart**
-  (`limiter()` in `src/sources/source.ts`), the probes' pace, for jobs and
-  tools together; a tool's call goes ahead of the jobs' waiting ones.
-  A failure backs the queue off as for Yahoo; a tool fails fast
-  meanwhile and starts nothing past its deadline (`within(live)`).
-  A page that does not read backs off whatever failed in it, since a
-  proxy or consent page is HTML too (`Unreadable`); a feed or search
-  answer backs off only when it is not JSON.
+- **A limiter: one call at a time, starts `SPACING_MS` (2 seconds)
+  apart,** the pace the recorders were taken at.
+- **A page that does not read backs off whatever failed in it,**
+  since a proxy or consent page is HTML too (`Unreadable`); a feed or
+  search answer backs off only when it is not JSON.
 
 ## Instruments
 
@@ -110,17 +106,17 @@ exchange: one client, its parsers, its session, the same tables.
   quoted from its list and the instrument page and its bars come from
   the chart feed, as a share's; the list also holds fund units that are
   not exchange-traded funds, typed `ETF` too. Any other type is
-  `refused` (`ONLY`). An expired symbol is `not found`. The zone and
+  `Refused` (`ONLY`). An expired symbol is `not found`. The zone and
   currency are the answer's; an index has no currency.
 
 ## The session
 
 - **The session is the trading schedule page's, on the day the page
   reads open** (`check()` in `jobs.ts`, `sessionOf()`): continuous
-  trading's start (10:00) to the close after the closing auction and
-  trading at the last price (18:00), in the instrument's zone, since
-  prices move until 18:00. It is recorded through `recordSession()` and
-  follows `docs/calendars.md` from there.
+  trading's start to the close after the closing auction and trading
+  at the last price, in the instrument's zone, since prices move until
+  then. It is recorded through `recordSession()` and follows
+  `docs/calendars.md` from there.
 - **A closed status records no session, so no quote pass follows.**
   The market is checked again at the stored session's local start and
   hourly after (`nextCheck()`), as for Yahoo; with no stored session,
@@ -136,15 +132,14 @@ exchange: one client, its parsers, its session, the same tables.
   delayed.
 - **Every list page is read at least once an exchange day while the
   feed is on, tracked or not, and at start** (`readLists()`, `warm()`),
-  so a new symbol need not wait on the exchange's search. The day is the
-  stored session's or a stored listing's zone, or with neither 24
+  so a new symbol need not wait on the exchange's search. The day is
+  the stored session's or a stored listing's zone, or with neither 24
   hours; a quote pass's read counts, and a failed read waits
   `RETRY_MS`.
 - **A quote's time is the time the exchange gives,** so a delayed
   price shows its age. The shares list is a snapshot 15 minutes behind
-  and every row carries the snapshot's time (all rows 11:15 at 11:30),
-  so a share's list quote is dated by the snapshot, not its own last
-  trade. Yahoo's `.RO` prices are 15 minutes behind too. The list writes
+  and every row carries the snapshot's time, so a share's list quote
+  is dated by the snapshot, not its own last trade. The list writes
   minutes and the instrument page seconds; a list row in the stored
   trade's minute is that trade.
 - **The previous close is the instrument page's reference price,**
@@ -166,26 +161,24 @@ exchange: one client, its parsers, its session, the same tables.
 - **Daily bars are adjusted (`ajust=1`),** so averages do not drop on a
   bonus issue; volumes stay as the feed gives them, raw. Weeks are
   built from them (`docs/calendars.md`).
-- **The bar pass refetches the last 30 days once a new session shows**
-  (`barsDue()`), finalising the previous day, as for Yahoo; a failed
-  instrument is its own run and is retried after `RETRY_MS`.
-- **A stored final close that moved (by more than 0.01%) refetches the
-  whole history** (`refetchAnswer()`): the feed announces no corporate
-  action and rewrites past prices in place.
-- **A rescale is Yahoo's rule** (`rescaleOf()`, `docs/yahoo.md`): the
-  oldest final days moved by one ratio, at least 3 in a row and more
-  than 0.1% from 1. Other moved days are corrections: refetched, no
-  pause, no split. On a rescale, rules on old price levels pause first
-  (`rules.rescaled`, `docs/rules.md`), even before the action's first
-  bar, and the action's day is kept in `splits` with its factor
+- **The bar pass runs once a new session shows** (`barsDue()`); a
+  failed instrument is its own run.
+- **A stored final close that moved refetches the whole history**
+  (`refetchAnswer()`, `MOVED` in `history.ts`): the feed announces no
+  corporate action and rewrites past prices in place.
+- **A rescale follows the shared rule** (`docs/sources.md`, Splits and
+  rescales). Other moved days are corrections: refetched, no pause, no
+  split. On a rescale, rules pause even before the action's first bar,
+  and the action's day is kept in `splits` with its factor
   (`rescaleIn()`): the first day after the last stored day, final or
   not, on the old ratio; with no later bar yet, the stored session's
   day.
 - **A whole history replaces every stored day** (`storeWhole()`) and is
-  refused when it ends more than 10 days before the stored last day, or
-  starts more than 10 days after both the asked start and the stored
-  first day (`checkCovers()`); one whose final closes moved must cover
-  every stored day, first and last. Nothing is written then.
+  cut short (`checkCovers()`) when it ends more than
+  `SHORT_HISTORY_DAYS` (10) days before the stored last day, or starts
+  more than 10 days after both the asked start and the stored first
+  day; one whose final closes moved must cover every stored day, first
+  and last.
 - **Volume ratios never span a split of a feed instrument**
   (`volumeBreaks()` in `src/signals/store.ts`), since raw volumes
   change scale there.
@@ -206,12 +199,11 @@ exchange: one client, its parsers, its session, the same tables.
   exact on both answers both as candidates.
 - **Yahoo's exact match skips the exchange's search only when the
   exchange lacks the symbol:** the symbols on the list pages the client
-  last read (`listed()`, kept by the jobs' reads) do not
-  hold it and Yahoo's results name no Bucharest listing (`.RO`). The
-  exchange is asked while any of the four lists (shares, fund units,
-  bonds, indices) is unread, or when the lists hold the symbol though
-  Yahoo's top results lack its `.RO` listing (`EL`, `M`), so a bare
-  symbol on both answers both as candidates, never a guess.
+  last read (`listed()`, kept by the jobs' reads) do not hold it and
+  Yahoo's results name no Bucharest listing (`.RO`). The exchange is
+  asked while any of the four lists is unread, or when the lists hold
+  the symbol though Yahoo's top results lack its `.RO` listing, so a
+  bare symbol on both answers both as candidates, never a guess.
 - **A `BVB:` key is the feed's while it is on,** asked by its symbol
   answer; a Yahoo symbol naming a Bucharest listing (`TLV.RO`) resolves
   to the same key and is fetched from the feed.
@@ -230,17 +222,17 @@ exchange: one client, its parsers, its session, the same tables.
   (`checkCovers()`); a listing whose new history is cut short keeps its
   old history and source, as one the new source lacks does, and the
   switch lands for the rest; a kept listing moves only at the next
-  change of flags. Moving to Yahoo finds the
-  listing through Yahoo's search, never a guessed suffix; the stored
-  splits are dropped and Yahoo's recorded from its answer. Moving to the
-  feed keeps them, since they date where raw volumes change scale.
+  change of flags. Moving to Yahoo finds the listing through Yahoo's
+  search, never a guessed suffix; the stored splits are dropped and
+  Yahoo's recorded from its answer. Moving to the feed keeps them,
+  since they date where raw volumes change scale.
 - **A listing the new source lacks stays where it is** (an index or
   bond on Yahoo answers `no_data`). With the feed off it is `source off`
   once the switch landed, so rules on it are unknown, never driven by
   its last quote; the switch's write re-evaluates the market's rules.
 - **Only the switch moves an instrument between sources.** Work from
   the old source that began before it is refused under the lock
-  (`checkSource()`, `docs/yahoo.md`), and an inline fetch of a key
+  (`checkSource()`, `docs/sources.md`), and an inline fetch of a key
   stored from Yahoo is refused, since flipping its source would keep
   Yahoo's bars under the feed's name.
 - **The `sources` table is written only once the switch completed,**
@@ -248,14 +240,3 @@ exchange: one client, its parsers, its session, the same tables.
   is redone too. Until it lands the market's instruments are
   `source switch pending`. A failed switch is retried after
   `RETRY_MS`; the same flags twice refetch nothing.
-
-## Calls per day
-
-For 10 Bucharest instruments (8 shares, 1 bond, 1 index) on a trading
-day at the default 5-minute quote period: 1 schedule page, 98 quote
-passes (97 in session and one after the close) of 3 list pages (294),
-the fund units list once, 9 instrument pages, 10 histories: about 315
-calls, one every 95 seconds of the session on average. A tracked fund
-unit adds its list to every pass. A holiday costs up to 8 schedule
-pages; with nothing tracked, a day is the 4 list pages.
-Inline fetches add 3 calls per new index or bond and 4 per new share.

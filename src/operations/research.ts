@@ -81,7 +81,7 @@ export const SECTION_OF: Record<ResearchKind, Section> = {
 // five never-fetched shares cost 25 of the free key's 60 calls a minute
 export const MAX_RESEARCH_SYMBOLS = 5;
 
-// fixed so five summaries stay short; the reasons are in docs/api.md
+// fixed so five summaries stay short; the reasons are in docs/research.md
 export const HTTP_HISTORY = { analysts: 2, earnings: 4, insider: 3 } as const;
 type HistoryKind = keyof typeof HTTP_HISTORY;
 

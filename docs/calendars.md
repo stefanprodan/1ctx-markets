@@ -1,8 +1,8 @@
 # Calendars
 
 Governs market hours, bar dates and weeks: `src/market/calendars.ts`,
-`src/market/zone.ts` and the `markets` table. The jobs that act on a session
-are in `docs/yahoo.md`; tables, times and staleness in
+`src/market/zone.ts` and the `markets` table. The jobs that act on a
+session are in `docs/yahoo.md`; tables, times and staleness in
 `docs/storage.md`.
 
 ## Sessions come from the source
@@ -12,23 +12,18 @@ are in `docs/yahoo.md`; tables, times and staleness in
   exchange the source carries works. A holiday is a day the source
   shows no new session and no bar for; nothing announces it ahead.
 - **A session is one regular trading period** (`Session`: IANA zone,
-  `start` and `end` in UTC epoch ms), read from a chart meta's
-  `exchangeTimezoneName` and `currentTradingPeriod.regular`
-  (`sessionFromChartMeta()`). Every chart and v7 spark answer carries
-  it. `session()` refuses an end not after its start, or a period
-  longer than 25 hours (`MAX_SESSION_MS`): that is no single day.
-- **A source with a schedule of its own supplies the session itself.**
-  The Bucharest feed records its trading schedule page's session, on a
-  day its market status reads open, ending at 18:00 since prices move
-  until then (`docs/bvb.md`).
+  `start` and `end` in UTC epoch ms), read from Yahoo's chart meta
+  (`sessionFromChartMeta()`, `docs/yahoo.md`) or a source's own
+  schedule (`docs/bvb.md`). `session()` refuses an end not after its
+  start, or a period over 25 hours (`MAX_SESSION_MS`): that is no
+  single day.
 - **The zone is an IANA name, never an offset.** `checkZone()` rejects
   `+02:00`-style values and unknown zones and returns the canonical
   name: an offset cannot follow a clock change, and every local date
   and wall time is computed from the zone.
 - **`markets` holds each market's latest session, one row per
-  market.** It is the only stored calendar; every decision about
-  quoting, checks, finality and staleness reads it through
-  `readSession()`.
+  market**, the only stored calendar: quoting, checks, finality and
+  staleness read it through `readSession()`.
 
 ## The stored session
 
@@ -42,11 +37,11 @@ are in `docs/yahoo.md`; tables, times and staleness in
   (`markets.session_start > fetched_at` of the new answer). That undoes
   a bad answer that announced a session too early, before anything
   could have relied on it.
-- **One answer records one session per market, its latest.**
-  `storeQuotes()` in `src/sources/yahoo/quotes.ts` takes the latest start across
-  the answer's listings of each market and records every market first,
-  so the live rows written after never depend on the order of entries.
-  Every answer's session is recorded, known instrument or not.
+- **One answer records one session per market, its latest start
+  across its listings, before any live row is written**
+  (`storeQuotes()` in `src/sources/yahoo/quotes.ts`), so live rows never
+  depend on the order of entries. Every answer's session is recorded,
+  known instrument or not.
 
 ## Quoting and closes
 
@@ -58,8 +53,8 @@ are in `docs/yahoo.md`; tables, times and staleness in
   (`closeQuoteAt()`): a closing auction can print after the end, and
   the day's last price must land. Crypto has none, since it never
   closes.
-- **A closed market is checked, not quoted.** `nextCheck(s, since)` is
-  the next time to ask the source with one instrument:
+- **A closed market is checked, not quoted.** `nextCheck()` is the
+  next time to ask the source with one instrument:
   - the stored session's start, if it is still ahead of `since`;
   - otherwise the session's local start time on each following day,
     then hourly until its local end time, because the source can keep
@@ -81,42 +76,39 @@ are in `docs/yahoo.md`; tables, times and staleness in
 - **A daily bar is final once an answer shows a later session**
   (`isBarFinal(date, latest)`): late prints after the end, such as a
   closing auction, land before that. Finality is never decided by the
-  clock alone. `isBarFinal` validates the date first, since a malformed
-  string would compare and pass.
-- **A stored final bar stays final** (`upsertBars()` in `src/market/bars.ts`),
-  while its values still follow the source's corrections.
+  clock alone. `isBarFinal()` validates the date first, since a
+  malformed string would compare and pass.
+- **A stored final bar stays final** (`upsertBars()` in
+  `src/market/bars.ts`), while its values still follow the source's
+  corrections.
 
 ## Weeks
 
 - **Weeks run Monday to Sunday by the exchange's date and are built
-  from stored daily bars, never fetched** (`weekOf()` in
-  `src/market/calendars.ts`; `weeksOf()` and `rebuildWeeks()` in
-  `src/market/bars.ts`). An open crypto week from Yahoo
-  holds Monday to Saturday only. A week's date is its Monday.
+  from stored daily bars, never fetched** (`weekOf()`; `weeksOf()` in
+  `src/market/bars.ts`). An open crypto week from Yahoo holds Monday
+  to Saturday only. A week's date is its Monday.
 - **A week is final once its Sunday has ended in the market's zone and
   every daily bar in it is final** (`weeksOf()`, `isWeekFinal()`).
 
 ## Wall time
 
 - **A wall time is epoch ms read as if the zone were UTC** (`wallTime()`
-  in `src/market/zone.ts`), so day and hour steps are plain arithmetic across
-  clock changes. Never add `DAY_MS` to an instant to reach the next
-  local day; step the wall time and convert back.
-- **`fromWallTime()` maps a wall time back to an instant.** An hour
+  in `src/market/zone.ts`), so day and hour steps are plain arithmetic
+  across clock changes. Never add `DAY_MS` to an instant to reach the
+  next local day; step the wall time and convert back.
+- **`fromWallTime()` maps a wall time back to an instant**: an hour
   that occurs twice takes its first instant; one a clock change skips
-  moves past the gap. `startOfDate()` is the instant a local date
-  begins.
+  moves past the gap.
 - **Dates go through `wallOfDate()`,** which throws on anything not a
-  real `YYYY-MM-DD` date; `addDays()`, `startOfDate()` and
-  `isBarFinal()` build on it.
+  real `YYYY-MM-DD` date.
 
 ## Crypto
 
 - **`CRYPTO` is one market for every crypto pair** (Yahoo's `CCC`,
-  through `ALIASES` in `src/sources/yahoo/resolve.ts`). It is always quoted,
-  has no post-close quote and is never checked; its session is still
-  recorded from the answers, and bar dates, finality and the bar pass
-  follow that session as for any market.
-- **A quote for crypto is due at every pass**: `lastQuoteDue()` in
-  `src/market/stale.ts` reads now, so a crypto quote two periods old is
-  `quote overdue`.
+  through `ALIASES` in `src/sources/yahoo/resolve.ts`). It is always
+  quoted, has no post-close quote and is never checked; its session is
+  still recorded, and bar dates, finality and the bar pass follow it as
+  for any market.
+- **A crypto quote is due at every pass**, so one two periods old is
+  `quote overdue` (`docs/storage.md`).

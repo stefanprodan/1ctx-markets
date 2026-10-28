@@ -11,11 +11,11 @@ serves them to agents over the [Model Context Protocol](https://modelcontextprot
 (MCP) and a REST API with an OpenAPI description, both behind one
 bearer key.
 
-It works for any country and any exchange Yahoo Finance carries:
-shares, ETFs, indices, futures, currencies and crypto. Nothing is
-preset: there is no ticker list and no default market, benchmark or
-currency. An instrument is fetched the first time an agent names it and
-kept in sync while agents keep reading it or a rule watches it.
+It works for any exchange Yahoo Finance carries: shares, ETFs,
+indices, futures, currencies and crypto. Nothing is preset: no ticker
+list and no default market, benchmark or currency. An instrument is
+fetched the first time an agent names it and kept in sync while agents
+read it or a rule watches it.
 
 It holds market data and the price rules agents set, nothing else: no
 holdings, orders or portfolio, and it makes no model calls.
@@ -45,9 +45,9 @@ holdings, orders or portfolio, and it makes no model calls.
   turns true. `GET /api/v1/alerts` is a feed a scheduled job can poll,
   answering 304 when nothing is new.
 - **Units and staleness on every quote.** Each quote carries its unit,
-  currency and times, and a list of stale reasons when a source failed
-  or a sync is behind. Market hours come from the source, so
-  holidays and clock changes need no table.
+  currency and times, and stale reasons when a source failed or a sync
+  is behind. Market hours come from the source, so holidays and clock
+  changes need no table.
 - **Free sources, each optional.** Yahoo needs no key and is always on.
   FRED, Finnhub and Massive turn on when their free key file is present.
   The Bucharest Stock Exchange's own feed, with its shares, fund units,
@@ -103,9 +103,9 @@ keeps `markets.db` in `~/.1ctx-markets`. `--listen`, `--data`,
 `--quote-every` (minutes between quote syncs, 5 by default) and
 `--track-days` (how long an instrument stays synced after its last
 read, 30 by default) change that, and `--source bvb` turns on the
-Bucharest Stock Exchange's feed; `--help` lists them. It
-speaks plain HTTP, so keep it on loopback, on a private network such
-as Tailscale, or behind a TLS proxy.
+Bucharest Stock Exchange's feed; `--help` lists them. It speaks plain
+HTTP, so keep it on loopback, on a private network such as Tailscale,
+or behind a TLS proxy.
 
 On macOS, the binary can run itself as a service of your user,
 started at login and restarted if it exits, with any of the options
