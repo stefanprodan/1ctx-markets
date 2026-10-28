@@ -8,7 +8,14 @@ import { UI_PATHS } from "../src/server/http.ts";
 import { Shell } from "../src/web/app/App.tsx";
 import { Rail } from "../src/web/app/Rail.tsx";
 import { inApp } from "../src/web/app/router.ts";
-import { ALIASES, HOME, match, ROUTES } from "../src/web/app/routes.ts";
+import {
+  ALIASES,
+  HOME,
+  lit,
+  match,
+  RAIL,
+  ROUTES,
+} from "../src/web/app/routes.ts";
 import { Strip } from "../src/web/app/Strip.tsx";
 import { resolveTheme } from "../src/web/app/theme.ts";
 import {
@@ -18,6 +25,7 @@ import {
   failure,
   says,
 } from "../src/web/data/api.ts";
+import type { Detail } from "../src/web/data/store.ts";
 import {
   INSTRUMENTS_PATH,
   type Listed,
@@ -26,6 +34,16 @@ import {
   type Status,
   store,
 } from "../src/web/data/store.ts";
+import { SettingDelete } from "../src/web/ui/SettingDelete.tsx";
+import {
+  choices,
+  headline,
+  labelOf,
+  priceState,
+  returnCell,
+  summary,
+} from "../src/web/views/Instrument.model.ts";
+import { Head, RefetchMenu } from "../src/web/views/Instrument.tsx";
 import {
   about,
   bySymbol,
@@ -188,9 +206,20 @@ describe("the routes", () => {
   test("are the paths the server answers with the page", () => {
     const paths = [...Object.keys(ALIASES), ...ROUTES.map((r) => r.path)];
     expect(paths.sort()).toEqual([...UI_PATHS].sort());
-    expect(match(HOME)?.label).toBe("Status");
-    expect(match("/instruments")?.label).toBe("Instruments");
+    expect(match(HOME)?.route.label).toBe("Status");
+    expect(match("/instruments")?.route.label).toBe("Instruments");
     expect(match("/nothing")).toBeNull();
+    // an instrument's page takes its id from the path, decoded
+    expect(match("/instruments/US%3ANVDA")).toMatchObject({
+      route: { label: "Instrument" },
+      params: { id: "US:NVDA" },
+    });
+    expect(match("/instruments/%E0%A4%A")).toBeNull();
+    expect(match("/instruments/a/b")).toBeNull();
+    // the rail names the pages without a parameter and lights the parent
+    expect(RAIL.map((r) => r.label)).toEqual(["Status", "Instruments"]);
+    expect(lit("/instruments/US%3ANVDA", "/instruments")).toBe(true);
+    expect(lit("/instrumentsx", "/instruments")).toBe(false);
     expect(match(ALIASES["/"]!)).not.toBeNull();
   });
 
@@ -638,7 +667,7 @@ describe("the views", () => {
   test("the folded rail keeps the pages as icons", () => {
     const html = render(<Strip here="/status" />);
     expect(html).toContain('aria-label="Show the menu"');
-    for (const r of ROUTES) expect(html).toContain(`aria-label="${r.label}"`);
+    for (const r of RAIL) expect(html).toContain(`aria-label="${r.label}"`);
     expect(html).toContain('class="strip-item strip-item-on"');
   });
 
@@ -802,5 +831,284 @@ describe("the instruments list", () => {
     await s.loadInstruments();
     expect(s.instruments.value?.map((r) => r.id)).toEqual(["US:A"]);
     expect(s.instrumentsError.value).toBe("The server failed.");
+  });
+});
+
+const detail = (
+  more: Partial<Detail["quote"]> = {},
+  row: Partial<Listed> = {},
+): Detail => ({
+  instrument: listed("US:NVDA", { name: "NVIDIA", ...row }),
+  quote: {
+    id: "US:NVDA",
+    price: 217.24,
+    change: -0.7,
+    change_percent: -0.32,
+    unit: "per_share",
+    currency: "USD",
+    fetched_at: "2026-10-28T11:59:30Z",
+    stale: [],
+    returns: {
+      "1w": -2.13,
+      "1m": -5.08,
+      "3m": 10.27,
+      ytd: 16.48,
+      to: "2026-10-28",
+      live: true,
+    },
+    session: {
+      state: "open",
+      start: "2026-10-28T13:30:00Z",
+      end: "2026-10-28T20:00:00Z",
+    },
+    ...more,
+  },
+});
+
+describe("the instrument model", () => {
+  test("the head says live or the close, and when it was fetched", () => {
+    expect(headline(detail()).price).toBe("217.24 USD");
+    expect(priceState(detail(), NOW)).toBe(
+      "Live · market open · updated just now",
+    );
+    expect(
+      priceState(
+        detail({ session: { state: "closed", start: null, end: null } }),
+        NOW,
+      ),
+    ).toBe("Close · market closed · updated just now");
+    const series = detail(
+      {
+        price: null,
+        observation: { date: "2026-10-26", value: 5 },
+        session: null,
+        unit: "percent",
+        currency: null,
+      },
+      { id: "FRED:DGS10", unit: "percent", currency: null },
+    );
+    expect(headline(series).price).toBe("5.00%");
+    expect(priceState(series, NOW)).toBe(
+      "Latest value, 26 Oct · updated just now",
+    );
+    expect(returnCell(10.27)).toEqual({ text: "+10.27%", dir: 1 });
+    expect(returnCell(null)).toEqual({ text: "—", dir: 0 });
+  });
+
+  test("the refetch menu lists what a source holds for it, everything first", () => {
+    expect(
+      choices(listed("BVB:H2O", { market: "BVB" })).map((c) => c.label),
+    ).toEqual(["Everything", "Price", "Daily history"]);
+    const share = choices(listed("US:NVDA"));
+    expect(share.map((c) => c.label)).toEqual([
+      "Everything",
+      "Price",
+      "Daily history",
+      "Key figures",
+      "Analyst ratings",
+      "Earnings",
+      "Insider trades",
+      "Next earnings",
+      "News",
+    ]);
+    expect(share[0]).toEqual({
+      label: "Everything",
+      parts: ["quotes", "bars", "research", "calendar", "news"],
+      sections: ["metric", "analysts", "earnings", "insider"],
+    });
+    expect(
+      choices(listed("US:QQQ", { kind: "ETF" })).map((c) => c.label),
+    ).toEqual(["Everything", "Price", "Daily history", "News"]);
+  });
+
+  test("a refetch reads as one short word, a failure in words", () => {
+    const all = choices(listed("US:NVDA"));
+    const ok = (part: any, section?: any) => ({
+      symbol: "US:NVDA",
+      part,
+      section,
+      status: "fetched" as const,
+      rows: 1,
+    });
+    expect(summary([ok("quotes")], all, "NVDA")).toEqual({
+      text: "Updated",
+      bad: false,
+    });
+    // a part no source holds is no failure
+    expect(
+      summary(
+        [
+          ok("quotes"),
+          { symbol: "US:NVDA", part: "news", status: "not covered" },
+        ],
+        all,
+        "NVDA",
+      ),
+    ).toEqual({ text: "Updated", bad: false });
+    expect(
+      summary(
+        [{ symbol: "US:NVDA", part: "news", status: "not covered" }],
+        all,
+        "NVDA",
+      ),
+    ).toEqual({ text: "Not available", bad: false });
+    const failed = {
+      symbol: "US:NVDA",
+      part: "research" as const,
+      section: "insider" as const,
+      status: "failed" as const,
+      error: "rate limited",
+    };
+    expect(labelOf(failed, all)).toBe("Insider trades");
+    expect(summary([ok("quotes"), failed], all, "NVDA")).toEqual({
+      text: "Insider trades failed: too many requests.",
+      bad: true,
+    });
+    expect(
+      summary(
+        [{ symbol: "US:NVDA", part: "quotes", status: "source off" }],
+        all,
+        "NVDA",
+      ),
+    ).toEqual({ text: "Its source is off.", bad: true });
+    expect(
+      summary([{ symbol: "US:NVDA", status: "not found" }], all, "NVDA").bad,
+    ).toBe(true);
+  });
+});
+
+describe("the instrument page", () => {
+  test("the head draws the price, its state and the four returns", () => {
+    const html = render(<Head detail={detail()} now={NOW} />);
+    expect(html).toContain("Stock · US");
+    expect(html).toContain("217.24 USD");
+    expect(html).toContain("−0.32%");
+    expect(html).toContain("Live · market open");
+    for (const label of ["1 week", "1 month", "3 months", "Year to date"]) {
+      expect(html).toContain(label);
+    }
+    expect(html).toContain("+16.48%");
+    expect(
+      render(<Head detail={detail({ returns: null })} now={NOW} />),
+    ).not.toContain("1 week");
+  });
+
+  test("the refetch button says how it went in the same place", () => {
+    const options = choices(listed("US:NVDA"));
+    const on = (html: string) =>
+      [
+        ...html.matchAll(/class="ins-label ins-label-on[^"]*">(.*?)<\/span>/g),
+      ].map((m) => m[1]!.replace(/<[^>]+>/g, ""));
+    const idle = render(
+      <RefetchMenu
+        options={options}
+        busy={false}
+        done={null}
+        onPick={() => {}}
+      />,
+    );
+    expect(on(idle)).toEqual(["Refetch"]);
+    const busy = render(
+      <RefetchMenu options={options} busy done={null} onPick={() => {}} />,
+    );
+    expect(on(busy)).toEqual(["Fetching"]);
+    expect(busy).toContain("disabled");
+    const done = render(
+      <RefetchMenu
+        options={options}
+        busy={false}
+        done="Updated"
+        onPick={() => {}}
+      />,
+    );
+    expect(on(done)).toEqual(["Updated"]);
+    // every label is drawn, so the button keeps its width
+    expect(done).toContain("Not available");
+  });
+
+  test("the delete card asks first and says why it was refused", () => {
+    const html = render(
+      <SettingDelete
+        title="Delete NVDA"
+        line="Gone."
+        ask="Delete NVDA?"
+        refused={null}
+        busy={false}
+        onDelete={() => {}}
+      />,
+    );
+    expect(html).toContain("setting-danger");
+    expect(html).toContain("Delete NVDA");
+    expect(html).not.toContain("Delete NVDA?");
+    const refused = render(
+      <SettingDelete
+        title="Delete NVDA"
+        line="Gone."
+        ask="Delete NVDA?"
+        refused="A rule uses NVDA. Delete the rule first."
+        busy={false}
+        onDelete={() => {}}
+      />,
+    );
+    expect(refused).toContain("A rule uses NVDA. Delete the rule first.");
+  });
+
+  test("an instrument loads by id; an older answer never lands over a newer id", async () => {
+    const slow = Promise.withResolvers<Response>();
+    const s = store(async (path) =>
+      path.endsWith("US%3AOLD") ? slow.promise : Response.json(detail()),
+    );
+    const old = s.loadInstrument("US:OLD");
+    await s.loadInstrument("US:NVDA");
+    slow.resolve(Response.json(detail({ id: "US:OLD" })));
+    await old;
+    expect(s.detailId.value).toBe("US:NVDA");
+    expect(s.detail.value?.quote.id).toBe("US:NVDA");
+  });
+
+  test("refetch posts the parts, sections only with research", async () => {
+    const f = fake({
+      "POST /api/v1/admin/refetch": ok({ results: [] }),
+      "GET /api/v1/admin/instruments/US%3ANVDA": ok(detail()),
+    });
+    const s = store(f.fetch);
+    await s.refetch("US:NVDA", ["quotes"], []);
+    await s.refetch("US:NVDA", ["research"], ["insider"]);
+    const bodies = f.asked
+      .filter((a) => a.init?.method === "POST")
+      .map((a) => JSON.parse(String(a.init!.body)));
+    expect(bodies).toEqual([
+      { symbols: ["US:NVDA"], fetch: ["quotes"] },
+      { symbols: ["US:NVDA"], fetch: ["research"], sections: ["insider"] },
+    ]);
+  });
+
+  test("a delete a rule holds names the rules; one that goes leaves the list", async () => {
+    const held = store(
+      fake({
+        "DELETE /api/v1/admin/instruments/US%3ANVDA": status(409, {
+          error: "conflict",
+          message: "rules read this instrument; delete them first",
+          rules: [3],
+        }),
+      }).fetch,
+    );
+    expect(await held.remove("US:NVDA")).toEqual({ ok: false, rules: [3] });
+    const s = store(
+      fake({
+        [`GET ${INSTRUMENTS_PATH}?limit=200`]: ok({
+          total: 2,
+          more: false,
+          instruments: [listed("US:NVDA"), listed("US:AMD")],
+        }),
+        "DELETE /api/v1/admin/instruments/US%3ANVDA": ok({
+          deleted: "US:NVDA",
+          rows: {},
+        }),
+      }).fetch,
+    );
+    await s.loadInstruments();
+    expect(await s.remove("US:NVDA")).toEqual({ ok: true });
+    expect(s.instruments.value?.map((r) => r.id)).toEqual(["US:AMD"]);
   });
 });

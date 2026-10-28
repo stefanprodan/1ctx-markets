@@ -5,6 +5,7 @@
 import {
   type AdminDeps,
   adminDelete,
+  adminInstrument,
   adminInstruments,
   adminRefetch,
   adminStatus,
@@ -390,6 +391,12 @@ export function routes(deps: ApiDeps): Route[] {
         path: "/admin/refetch",
         key: "admin",
         handle: (req, url) => adminRefetch(admin, req, url),
+      },
+      {
+        method: "GET",
+        path: "/admin/instruments/{id}",
+        key: "admin",
+        handle: (_req, url, params) => adminInstrument(admin, url, params.id!),
       },
       {
         method: "DELETE",

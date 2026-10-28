@@ -145,9 +145,30 @@ signed in with the admin key alone.
   "No longer updated" only when nothing tracks it. On the right, the
   stored price with its currency and the day's change. The list never
   quotes: a quote is a read and would keep every row tracked.
+- **An instrument** (`/instruments/<id>`, the id encoded) reads
+  `GET /api/v1/admin/instruments/{id}`, a read as any client's, so
+  opening it keeps it tracked. The title is the symbol with the name
+  beside it; a card holds the kind and market, the price and day's
+  change, "Live · market open" or "Close · market closed" (a series:
+  "Latest value" and its date) with when it was fetched, and the 1
+  week, 1 month, 3 months and year-to-date returns from the quote, never
+  recomputed.
+- **Refetch is a button with a menu** in the page head (1ctx's More):
+  Everything, then each part a source holds for it (research, earnings
+  dates and news only for US shares, news for US ETFs too). A pick
+  runs at once; the button reads Fetching, then "Updated" or "Not
+  available" for `SAID_MS`, every label in one cell so it keeps its
+  width. A failure names the part and its error in plain words in the
+  page's notice.
+- **Delete is 1ctx's delete card:** a red edge, what goes, and a foot
+  whose Delete asks once beside Keep; a rule reading it is refused with
+  that said in the foot. A delete returns to the list.
+- **Pages with a parameter** (`/instruments/:id` in `ROUTES` and
+  `UI_PATHS`) stay off the rail, which lights their parent.
 - **The list re-reads every minute** (`REFRESH_MS`) while the tab is
   visible, and at once when it comes back; a load in flight answers a
-  second ask, and a failed one keeps the rows and shows the error.
+  second ask, and a failed one keeps the rows and shows the error. An
+  instrument's page re-reads the same way (`lib/refresh.ts`).
 
 ## Tests
 

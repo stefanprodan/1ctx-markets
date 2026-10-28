@@ -538,6 +538,33 @@ export const paths = {
     },
   },
   "/admin/instruments/{id}": {
+    get: {
+      tags: ["admin"],
+      operationId: "adminInstrument",
+      summary: "One instrument",
+      description: lines(
+        "A stored instrument with its quote, returns and market session.",
+        "",
+        "- Counts as a read: keeps the instrument up to date and fetches a price that is due.",
+      ),
+      security: ADMIN_AUTH,
+      parameters: [
+        {
+          name: "id",
+          in: "path",
+          description: "A stored instrument id, such as `US:NVDA`.",
+          required: true,
+          schema: str,
+        },
+      ],
+      responses: {
+        200: ok("The instrument.", ref("AdminInstrument")),
+        400: r("BadArguments"),
+        401: r("Unauthorized"),
+        404: r("NotFound"),
+        500: r("Internal"),
+      },
+    },
     delete: {
       tags: ["admin"],
       operationId: "adminDelete",

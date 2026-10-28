@@ -66,9 +66,69 @@ export type Listed = {
   fetched_at: string | null;
 };
 
+export type Session = {
+  state: "open" | "closed";
+  start: string | null;
+  end: string | null;
+};
+
+export type Returns = {
+  "1w": number | null;
+  "1m": number | null;
+  "3m": number | null;
+  ytd: number | null;
+  to: string;
+  live: boolean;
+};
+
+export type Detail = {
+  instrument: Listed;
+  quote: {
+    id: string;
+    price: number | null;
+    observation?: { date: string; value: number } | null;
+    change: number | null;
+    change_percent: number | null;
+    unit: string;
+    currency: string | null;
+    fetched_at: string | null;
+    stale: string[];
+    returns: Returns | null;
+    session: Session | null;
+  };
+};
+
+export const PARTS = [
+  "quotes",
+  "bars",
+  "research",
+  "calendar",
+  "news",
+] as const;
+export type Part = (typeof PARTS)[number];
+export const SECTIONS = ["metric", "analysts", "earnings", "insider"] as const;
+export type Section = (typeof SECTIONS)[number];
+
+export type Fetched = {
+  symbol: string;
+  part?: Part;
+  section?: Section;
+  status: "fetched" | "not covered" | "source off" | "failed" | "not found";
+  rows?: number;
+  error?: string;
+};
+
+// a delete a rule holds names the rules; any other refusal is its sentence
+export type Removed =
+  | { ok: true }
+  | { ok: false; rules: number[] }
+  | { ok: false; error: string };
+
 type ListedPage = { total: number; more: boolean; instruments: Listed[] };
 
 export const INSTRUMENTS_PATH = "/api/v1/admin/instruments";
+export const REFETCH_PATH = "/api/v1/admin/refetch";
+const one = (id: string) => `${INSTRUMENTS_PATH}/${encodeURIComponent(id)}`;
 export const STATUS_PATH = "/api/v1/admin/status";
 export const SESSION_PATH = "/ui/session";
 
@@ -82,6 +142,10 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
   const loading = signal(false);
   const instruments = signal<Listed[] | null>(null);
   const instrumentsError = signal<string | null>(null);
+  // the instrument page's, by the id asked last
+  const detail = signal<Detail | null>(null);
+  const detailId = signal<string | null>(null);
+  const detailError = signal<string | null>(null);
 
   const signedOut = () =>
     batch(() => {
@@ -91,6 +155,9 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
       statusError.value = null;
       instruments.value = null;
       instrumentsError.value = null;
+      detail.value = null;
+      detailId.value = null;
+      detailError.value = null;
     });
   const call = client(fetchFn, signedOut);
   // a superseded load's 401 must not sign out a newer sign-in, so the
@@ -160,7 +227,75 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
     }
   }
 
+  // a later id supersedes one in flight; the same id reloads in place
+  async function loadInstrument(id: string): Promise<void> {
+    if (detailId.value !== id) {
+      batch(() => {
+        detailId.value = id;
+        detail.value = null;
+        detailError.value = null;
+      });
+    }
+    try {
+      const d = await call<Detail>(one(id));
+      if (detailId.value !== id) return;
+      batch(() => {
+        detail.value = d;
+        detailError.value = null;
+      });
+    } catch (error) {
+      if (detailId.value !== id) return;
+      if (!(error instanceof ApiError && error.status === 401)) {
+        detailError.value = says(error);
+      }
+    }
+  }
+
+  async function refetch(
+    id: string,
+    parts: readonly Part[],
+    sections: readonly Section[],
+  ): Promise<Fetched[]> {
+    const done = await call<{ results: Fetched[] }>(REFETCH_PATH, "POST", {
+      symbols: [id],
+      fetch: parts,
+      ...(parts.includes("research") ? { sections } : {}),
+    });
+    // what changed shows at once
+    void loadInstrument(id);
+    return done.results;
+  }
+
+  async function remove(id: string): Promise<Removed> {
+    try {
+      await call(one(id), "DELETE");
+    } catch (error) {
+      if (
+        error instanceof ApiError &&
+        error.status === 409 &&
+        typeof error.body === "object" &&
+        error.body !== null &&
+        "rules" in error.body &&
+        Array.isArray(error.body.rules)
+      ) {
+        return { ok: false, rules: error.body.rules as number[] };
+      }
+      return { ok: false, error: says(error) };
+    }
+    batch(() => {
+      instruments.value = instruments.value?.filter((r) => r.id !== id) ?? null;
+      if (detailId.value === id) detail.value = null;
+    });
+    return { ok: true };
+  }
+
   return {
+    detail,
+    detailId,
+    detailError,
+    loadInstrument,
+    refetch,
+    remove,
     instruments,
     instrumentsError,
     loadInstruments,

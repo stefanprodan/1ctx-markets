@@ -25,7 +25,12 @@ export type Handle = (req: Request) => Promise<Response>;
 
 // the web UI's own paths, each answered with its page; src/web/app/routes.ts
 // routes the same
-export const UI_PATHS = ["/", "/status", "/instruments"] as const;
+export const UI_PATHS = [
+  "/",
+  "/status",
+  "/instruments",
+  "/instruments/:id",
+] as const;
 
 // both sides hashed, so the compare takes the same time whatever was sent
 const digest = (value: string): Buffer =>

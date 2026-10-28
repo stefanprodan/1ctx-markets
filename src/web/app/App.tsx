@@ -89,7 +89,8 @@ export function Shell({
 export function App({ store = markets }: { store?: Store }) {
   const signedIn = store.signedIn.value;
   const here = path.value;
-  const route = match(here);
+  const found = match(here);
+  const route = found?.route ?? null;
   const arrived = useRef<string | null>(null);
 
   // the first status answer is also the check of the cookie
@@ -106,7 +107,7 @@ export function App({ store = markets }: { store?: Store }) {
     if (signedIn !== true || route === null) return;
     const first = arrived.current === null;
     if (arrived.current !== here && !(first && route.path === "/status")) {
-      void route.load?.();
+      void route.load?.(found!.params);
     }
     arrived.current = here;
   }, [here, signedIn, route]);
@@ -124,11 +125,11 @@ export function App({ store = markets }: { store?: Store }) {
     );
   }
   if (!signedIn) return <SignIn store={store} />;
-  if (route === null) return null;
-  const View = route.view;
+  if (found === null) return null;
+  const View = found.route.view;
   return (
     <Shell here={here}>
-      <View />
+      <View params={found.params} />
     </Shell>
   );
 }

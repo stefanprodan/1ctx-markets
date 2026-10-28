@@ -34,6 +34,7 @@ consumer each.
 | `GET /api/v1/alerts` | read | `alertsHandler()` | the alerts feed (below) |
 | `GET /api/v1/admin/status` | admin | `adminStatus()` | `docs/admin.md` |
 | `GET /api/v1/admin/instruments?query=&after=&limit=` | admin | `adminInstruments()` | a page of stored instruments and what tracks each (`docs/admin.md`) |
+| `GET /api/v1/admin/instruments/{id}` | admin | `adminInstrument()` | one instrument and its full quote, a read (`docs/admin.md`) |
 | `POST /api/v1/admin/refetch` | admin | `adminRefetch()` | `docs/admin.md` |
 | `DELETE /api/v1/admin/instruments/{id}` | admin | `adminDelete()` | `docs/admin.md` |
 | `GET /api/v1/openapi.json` | none | `spec` | the OpenAPI document |

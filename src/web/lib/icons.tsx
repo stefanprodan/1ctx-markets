@@ -69,6 +69,7 @@ const PATHS = {
   list: "M5.5 4h8M5.5 8h8M5.5 12h8M2.5 4h.01M2.5 8h.01M2.5 12h.01",
   chevron: "M5 6.5l3 3 3-3",
   "chevron-right": "M6.5 5l3 3-3 3",
+  check: "M3 8.5l3 3 7-7",
   search: "M7 11.5a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9zM10.3 10.3l3.2 3.2",
   alert: "M8 14a6 6 0 1 0 0-12 6 6 0 0 0 0 12zM8 4.75v3.75M8 11h.01",
   "sign-out": "M6.5 3H3v10h3.5M10 5l3 3-3 3M13 8H6",

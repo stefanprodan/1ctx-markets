@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Icon, Mark } from "../lib/icons.tsx";
-import { HOME, ROUTES } from "./routes.ts";
+import { HOME, lit, RAIL } from "./routes.ts";
 import { showRail } from "./shell.ts";
 import { toggleUserMenu, UserMenu, userMenuOpen } from "./UserMenu.tsx";
 import "./strip.css";
@@ -23,11 +23,11 @@ export function Strip({ here }: { here: string }) {
         <Mark />
       </a>
       <nav class="strip-nav">
-        {ROUTES.map((r) => (
+        {RAIL.map((r) => (
           <a
             key={r.path}
             href={r.path}
-            class={`strip-item${here === r.path ? " strip-item-on" : ""}`}
+            class={`strip-item${lit(here, r.path) ? " strip-item-on" : ""}`}
             aria-current={here === r.path ? "page" : undefined}
             aria-label={r.label}
             title={r.label}

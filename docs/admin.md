@@ -38,6 +38,7 @@ is offered over MCP.
 |---|---|
 | `GET /api/v1/admin/instruments?query=&after=&limit=` | the stored instruments by id, a page at a time (below) |
 | `GET /api/v1/admin/status` | sources on, off and why, and every job, with names for people (a source's `label`, `short` and `mark`, a job's `label` and `about`; a keyed source's `key`: its file, what it adds, where to get one), a back-off in force, every job's last run, its scopes (markets or instruments with a run kept) and failing scopes counted, the newest `MAX_FAILING` (5) failing named with their error (a run cut by shutdown, error `stopped`, never counts, since the next run settles it; one cut by a crash, `interrupted`, does, since a run that kills the server would otherwise never show; a failed Yahoo backfill is settled once the instrument has daily bars, since a read fetches a history without a backfill run; runs with no scope, from before backfill runs had one, are skipped; the page reads failure from these counts, never the last run), the instrument and tracked counts, each `--track` value with its id and state (`pending`, `tracked` or the read's error code), the database size, the version |
+| `GET /api/v1/admin/instruments/{id}` | one stored instrument's list row and its quote as the quote tool gives it, returns and session included; a read (below) |
 | `POST /api/v1/admin/refetch` | `{"symbols": [...], "fetch": [...], "sections": [...]}`, answered per symbol and part |
 | `DELETE /api/v1/admin/instruments/{id}` | the instrument and every row of it |
 
@@ -59,6 +60,12 @@ is offered over MCP.
   series' newest daily close with no change (FRED has no quote). The
   UI's list shows these rather than calling `/quotes`, which is a read.
 - **A listing is no read**: it tracks nothing and fetches nothing.
+- **One instrument is a read**, as the UI's instrument page is one:
+  `GET /api/v1/admin/instruments/{id}` reads it through `quoteRows()`
+  as the quote tool does, so it is tracked and a due price is fetched.
+  The public `/quotes` leaves returns and session out to stay cheap
+  for many symbols; one instrument can afford them. A stored id only:
+  an unknown one is 404 and nothing is fetched.
 
 ## Refetch
 

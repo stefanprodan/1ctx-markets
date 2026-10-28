@@ -623,6 +623,12 @@ describe("every operation", () => {
         ...init,
       });
     const path = "/admin/instruments/{id}";
+    const one = (id: string, init: RequestInit = {}) =>
+      t.call(`/admin/instruments/${encodeURIComponent(id)}`, init);
+    await check("GET", path, await one("US:NVDA"), 200);
+    await check("GET", path, await one("<b>"), 400);
+    await check("GET", path, await one("US:NOPE"), 404);
+    await check("GET", path, await one("US:NVDA", wrong), 401);
     await check("DELETE", path, await del("US:NVDA"), 409);
     await check("DELETE", path, await del("FRED:DGS10"), 200);
     await check("DELETE", path, await del("FRED:DGS10"), 404);

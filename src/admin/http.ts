@@ -8,6 +8,7 @@ import { type Instrument, readInstrument } from "../market/instruments.ts";
 import { trackedIds } from "../market/tracking.ts";
 import { ArgError as QueryError } from "../operations/args.ts";
 import type { Markets } from "../operations/markets.ts";
+import { parseQuote, quoteRows } from "../operations/quote.ts";
 import type { TrackState } from "../operations/track.ts";
 import { instrumentsOf } from "../rules/format.ts";
 import { readRules, ruleInstruments } from "../rules/store.ts";
@@ -347,7 +348,7 @@ function parseList(url: URL) {
 // by id, after the last one a page answered, so a delete never skips a row
 export function adminInstruments(d: AdminDeps, url: URL): Response {
   const { query, after, limit } = parseList(url);
-  const { db, clock, tracking } = d.m;
+  const { db, clock } = d.m;
   const now = clock.now();
   const where =
     "(?1 = '' or instr(lower(i.id), lower(?1)) > 0 or instr(lower(coalesce(i.name, '')), lower(?1)) > 0)";
@@ -360,52 +361,89 @@ export function adminInstruments(d: AdminDeps, url: URL): Response {
   ).n;
   const rows = db
     .query<Stored, [string, string, number]>(
-      // the stored quote, else the newest daily close (a FRED series has
-      // no quote): a list is no read, so it never fetches
-      `select i.id, i.name, i.market, i.exchange, i.currency, i.type, i.unit,
-         i.source, i.last_read_at as readAt,
-         coalesce(q.price, b.close) as price,
-         q.change, q.change_percent as changePercent,
-         coalesce(q.fetched_at, b.fetched_at) as fetchedAt
-       from instruments i
-       left join quotes q on q.instrument = i.id
-       left join bars b on b.instrument = i.id and b.interval = '1d'
-         and b.date = (select max(date) from bars
-           where instrument = i.id and interval = '1d')
-       where ${where} and i.id > ?2 order by i.id limit ?3`,
+      `${STORED} where ${where} and i.id > ?2 order by i.id limit ?3`,
     )
     .all(query, after ?? "", limit + 1);
-  const ruled = ruleInstruments(db);
-  const page = rows.slice(0, limit);
+  const row = listRow(d.m, ruleInstruments(db), now);
   return json({
     total,
     more: rows.length > limit,
-    instruments: page.map((r) => {
-      const read = r.readAt !== null && r.readAt > now - tracking.readMs;
-      const by = [
-        ...(ruled.has(r.id) ? ["rule"] : []),
-        ...(read ? ["read"] : []),
-        ...(tracking.flagged.has(r.id) ? ["track"] : []),
-      ];
-      return {
-        id: r.id,
-        name: r.name,
-        market: r.market,
-        exchange: r.exchange,
-        currency: r.currency,
-        kind: r.type,
-        unit: r.unit,
-        source: r.source,
-        tracked: by.length > 0,
-        tracked_by: by,
-        read_at: iso(r.readAt),
-        read_until: read ? iso(r.readAt! + tracking.readMs) : null,
-        price: r.price,
-        change: r.change,
-        change_percent: r.changePercent,
-        fetched_at: iso(r.fetchedAt),
-      };
-    }),
+    instruments: rows.slice(0, limit).map(row),
+  });
+}
+
+// the stored quote, else the newest daily close (a FRED series has no
+// quote): a list is no read, so it never fetches
+const STORED = `select i.id, i.name, i.market, i.exchange, i.currency,
+    i.type, i.unit, i.source, i.last_read_at as readAt,
+    coalesce(q.price, b.close) as price,
+    q.change, q.change_percent as changePercent,
+    coalesce(q.fetched_at, b.fetched_at) as fetchedAt
+  from instruments i
+  left join quotes q on q.instrument = i.id
+  left join bars b on b.instrument = i.id and b.interval = '1d'
+    and b.date = (select max(date) from bars
+      where instrument = i.id and interval = '1d')`;
+
+const listRow =
+  (m: Markets, ruled: ReadonlySet<string>, now: number) => (r: Stored) => {
+    const { tracking } = m;
+    const read = r.readAt !== null && r.readAt > now - tracking.readMs;
+    const by = [
+      ...(ruled.has(r.id) ? ["rule"] : []),
+      ...(read ? ["read"] : []),
+      ...(tracking.flagged.has(r.id) ? ["track"] : []),
+    ];
+    return {
+      id: r.id,
+      name: r.name,
+      market: r.market,
+      exchange: r.exchange,
+      currency: r.currency,
+      kind: r.type,
+      unit: r.unit,
+      source: r.source,
+      tracked: by.length > 0,
+      tracked_by: by,
+      read_at: iso(r.readAt),
+      read_until: read ? iso(r.readAt! + tracking.readMs) : null,
+      price: r.price,
+      change: r.change,
+      change_percent: r.changePercent,
+      fetched_at: iso(r.fetchedAt),
+    };
+  };
+
+// one stored instrument and its quote as the tools give it, returns and
+// session included: opening it is a read, so it fetches when due and
+// keeps it tracked, as any client's read does
+export async function adminInstrument(
+  d: AdminDeps,
+  url: URL,
+  raw: string,
+): Promise<Response> {
+  if (url.search !== "") return bad("an instrument takes no arguments");
+  let id: string;
+  try {
+    id = keyOf(decodeURIComponent(raw));
+  } catch {
+    return bad("the path ends with a stored instrument id");
+  }
+  if (readInstrument(d.m.db, id) === null) {
+    return failed({ error: "not_found", message: "no such instrument" });
+  }
+  const { rows } = await quoteRows(d.m, parseQuote({ symbols: [id] }));
+  const now = d.m.clock.now();
+  const stored = d.m.db
+    .query<Stored, [string]>(`${STORED} where i.id = ?1`)
+    .get(id);
+  // deleted while the quote was read
+  if (stored === null) {
+    return failed({ error: "not_found", message: "no such instrument" });
+  }
+  return json({
+    instrument: listRow(d.m, ruleInstruments(d.m.db), now)(stored),
+    quote: rows[0]!.item,
   });
 }
 

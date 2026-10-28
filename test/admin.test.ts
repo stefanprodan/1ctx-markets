@@ -55,7 +55,7 @@ import { fakeClock } from "./helpers/clock.ts";
 import { drive, pacedOf } from "./helpers/drive.ts";
 import { FINNHUB_KEY, finnhubAnswer } from "./helpers/finnhub.ts";
 import { gate, NOW, sources } from "./helpers/sources.ts";
-import { bar, instrument, quote, world } from "./helpers/world.ts";
+import { bar, instrument, listing, quote, world } from "./helpers/world.ts";
 import type { Recorded } from "./helpers/yahoo.ts";
 
 const tempDir = () => mkdtempSync(join(tmpdir(), "markets-admin-"));
@@ -859,7 +859,9 @@ describe("delete", () => {
     expect(
       (
         await handle(
-          new Request("http://markets.test/api/v1/admin/instruments/%E0%A4%A"),
+          new Request("http://markets.test/api/v1/admin/instruments/%E0%A4%A", {
+            method: "PATCH",
+          }),
         )
       ).status,
     ).toBe(405);
@@ -1121,6 +1123,41 @@ describe("the instrument list", () => {
       fetched_at: null,
     });
     expect(lastReadAt(w.db, "US:AAA")).toBeNull();
+  });
+
+  test("one instrument answers its row and the tools' quote, as a read", async () => {
+    const w = world();
+    listing(w.db, "US:AAA", {
+      price: 110,
+      previousClose: 100,
+      name: "Aaa Inc.",
+    });
+    const one = (path: string) =>
+      api(w.m)(
+        new Request(`http://markets.test/api/v1/admin/instruments/${path}`),
+      );
+    const res = await one("US%3AAAA");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as any;
+    expect(body.instrument).toMatchObject({
+      id: "US:AAA",
+      name: "Aaa Inc.",
+      price: 110,
+      tracked: true,
+      tracked_by: ["read"],
+    });
+    expect(body.quote).toMatchObject({ id: "US:AAA", price: 110, change: 10 });
+    expect(body.quote).toHaveProperty("returns");
+    expect(body.quote).toHaveProperty("session");
+    expect(lastReadAt(w.db, "US:AAA")).not.toBeNull();
+
+    const missing = await one("US%3ANOPE");
+    expect(missing.status).toBe(404);
+    expect(((await missing.json()) as any).error).toBe("not_found");
+    // never a fetch of a symbol not stored
+    expect(readInstrument(w.db, "US:NOPE")).toBeNull();
+    expect((await one("US%3AAAA?x=1")).status).toBe(400);
+    expect((await one("%3Cb%3E")).status).toBe(400);
   });
 
   test("parses strictly", async () => {

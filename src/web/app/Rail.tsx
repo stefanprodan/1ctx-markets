@@ -3,7 +3,7 @@
 
 import { useEffect, useRef } from "preact/hooks";
 import { Icon, Logo } from "../lib/icons.tsx";
-import { HOME, ROUTES } from "./routes.ts";
+import { HOME, lit, RAIL } from "./routes.ts";
 import { toggleUserMenu, UserMenu, userMenuOpen } from "./UserMenu.tsx";
 import "./rail.css";
 
@@ -41,11 +41,11 @@ export function Rail({
           </button>
         </div>
         <nav class="rail-nav">
-          {ROUTES.map((r) => (
+          {RAIL.map((r) => (
             <a
               key={r.path}
               href={r.path}
-              class={`rail-item${here === r.path ? " rail-item-on" : ""}`}
+              class={`rail-item${lit(here, r.path) ? " rail-item-on" : ""}`}
               aria-current={here === r.path ? "page" : undefined}
               onClick={follow}
             >
