@@ -132,6 +132,14 @@ export function storeSwitched(
 }
 
 // one write while live() holds, or nothing
+// bars with no quote would answer an old price as the live one
+function requireQuote(answer: SparkAnswer, symbol: string): void {
+  const upper = symbol.toUpperCase();
+  if (!answer.quotes.some((q) => q.symbol.toUpperCase() === upper)) {
+    throw new SourceError("source error", `no quote for ${symbol}`);
+  }
+}
+
 export async function fetchInstrument(
   ctx: YahooContext,
   sourceSymbol: string,
@@ -147,14 +155,7 @@ export async function fetchInstrument(
   if (!live()) throw expired();
   // a chart's previous close is the one before its range, ten years back
   const quote = await ctx.yahoo.spark([answer.symbol]);
-  // bars with no quote would answer an old price as the live one
-  if (
-    !quote.quotes.some(
-      (q) => q.symbol.toUpperCase() === answer.symbol.toUpperCase(),
-    )
-  ) {
-    throw new SourceError("source error", `no quote for ${answer.symbol}`);
-  }
+  requireQuote(quote, answer.symbol);
   return exclusive(ctx.db, id, async () => {
     // the lock may have been held past the deadline
     if (!live()) throw expired();
@@ -205,6 +206,7 @@ export async function catchUp(
     const bars = await refetchAnswer(ctx, instrument, live);
     if (!live()) throw expired();
     const quote = await ctx.yahoo.spark([instrument.sourceSymbol]);
+    requireQuote(quote, instrument.sourceSymbol);
     return ctx.writer.write((db) => {
       if (!live()) throw expired();
       barsAnswered(db, instrument, bars(db), ctx.clock.now());

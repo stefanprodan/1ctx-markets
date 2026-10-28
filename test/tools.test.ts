@@ -36,7 +36,13 @@ import { writer } from "../src/storage/writer.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { sim, US, XETRA } from "./helpers/sim.ts";
 import { FRED_KEY, gate, NOW, sources } from "./helpers/sources.ts";
-import { chartSymbol, fakeFetch, type Recorded } from "./helpers/yahoo.ts";
+import {
+  chartSymbol,
+  clone,
+  fakeFetch,
+  type Recorded,
+  recorded,
+} from "./helpers/yahoo.ts";
 
 async function setup(
   options: {
@@ -346,6 +352,24 @@ describe("tracking", () => {
     expect(t.calls.charts("NVDA")).toHaveLength(charts + 1);
     expect(t.calls.sparks()).toHaveLength(sparks + 1);
     expect(lastReadAt(t.db, "US:NVDA")).toBe(t.clock.now());
+  });
+
+  test("a catch-up whose quote did not come back fails and writes nothing", async () => {
+    let missing = false;
+    const empty = clone(await recorded("spark-v7-batch"));
+    empty.body.spark.result = [{ symbol: "NVDA", response: [] }];
+    const t = await setup({
+      hold: async (url) =>
+        missing && url.pathname === "/v7/finance/spark" ? empty : undefined,
+    });
+    await readTargets(t.m, ["NVDA"]);
+    await t.clock.advance(TRACK_MS + DAY_MS);
+    const bars = stored(t.db, "bars");
+    missing = true;
+    const [target] = await readTargets(t.m, ["US:NVDA"]);
+    expect(errorOf(target)).toMatchObject({ error: "source_error" });
+    expect(stored(t.db, "bars")).toBe(bars);
+    expect(lastReadAt(t.db, "US:NVDA")).toBe(NOW);
   });
 
   describe("a catch-up past the deadline writes nothing", () => {
