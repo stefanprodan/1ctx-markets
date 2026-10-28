@@ -1315,18 +1315,12 @@ describe("the chart model", () => {
   });
 
   test("the 200-week average says how far the price is from it", () => {
-    const d = detail({ price: 150, signals: { weekly: { sma200: 100 } } });
-    expect(weekly200(d)).toEqual({
-      value: "100.00 USD",
-      gap: { text: "50.00% above", dir: 1 },
-    });
-    expect(
-      weekly200(detail({ price: 90, signals: { weekly: { sma200: 100 } } }))
-        .gap,
-    ).toEqual({
-      text: "10.00% below",
-      dir: -1,
-    });
+    const at = (price: number, sma200: number | null) =>
+      weekly200(detail({ price, signals: { weekly: { sma200 } } }));
+    expect(at(150, 100)).toEqual({ text: "50.00% above", dir: 1 });
+    expect(at(90, 100)).toEqual({ text: "10.00% below", dir: -1 });
+    // too young for one: nothing to say
+    expect(at(90, null)).toBeNull();
     // a yield is apart from its average by points
     const y = detail(
       {
@@ -1336,17 +1330,7 @@ describe("the chart model", () => {
       },
       { id: "FRED:DGS10", unit: "percent", currency: null },
     );
-    expect(weekly200(y)).toEqual({
-      value: "4.20%",
-      gap: { text: "0.80 pts above", dir: 1 },
-    });
-    // too young for one: nothing to say
-    expect(
-      weekly200(detail({ signals: { weekly: { sma200: null } } })),
-    ).toEqual({
-      value: "—",
-      gap: null,
-    });
+    expect(weekly200(y)).toEqual({ text: "0.80 pts above", dir: 1 });
   });
 
   test("a yield's returns are points; a page footer only where one is asked", () => {

@@ -81,9 +81,6 @@
     font-variant-numeric: tabular-nums;
     color: var(--fg);
   }
-  .ins-return dd.ins-gap {
-    font-size: var(--text-small);
-  }
   .ins-return dd.ins-up {
     color: var(--done);
   }

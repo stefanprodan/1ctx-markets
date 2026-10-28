@@ -63,12 +63,9 @@ export function Head({ detail, now }: { detail: Detail; now: number }) {
           })}
           <div class="ins-return">
             <dt>200-week average</dt>
-            <dd>{w200.value}</dd>
-            {w200.gap && (
-              <dd class={`ins-gap ${tone(w200.gap.dir) ?? ""}`}>
-                {w200.gap.text}
-              </dd>
-            )}
+            <dd class={w200 ? tone(w200.dir) : undefined}>
+              {w200?.text ?? "—"}
+            </dd>
           </div>
         </dl>
       )}

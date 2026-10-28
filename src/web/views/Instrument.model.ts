@@ -58,25 +58,20 @@ export function priceState(d: Detail, now: number): string {
 // a failed read's own words are for agents; the page says it plainly
 export const UNREAD = "Couldn't get a new price. Showing the last one stored.";
 
-// the 200-week average as the quote gives it, in the price's own format,
-// and how far the price is from it: in percent, or in points for a series
-// that is itself a percent (a yield)
-export function weekly200(d: Detail): {
-  value: string;
-  gap: { text: string; dir: -1 | 0 | 1 } | null;
-} {
+// how far the price is from the quote's 200-week average: in percent, or
+// in points for a series that is itself a percent (a yield); null when
+// the listing is too young for one
+export function weekly200(d: Detail): { text: string; dir: -1 | 0 | 1 } | null {
   const avg = d.quote?.signals?.weekly?.sma200 ?? null;
-  if (avg === null) return { value: "—", gap: null };
-  const value = price({ ...d.instrument, price: avg });
   const now =
     d.quote?.price ?? d.quote?.observation?.value ?? d.instrument.price;
-  if (now === null || avg === 0) return { value, gap: null };
+  if (avg === null || avg === 0 || now === null) return null;
   const points = d.instrument.unit === "percent";
   const by = points ? now - avg : ((now - avg) / Math.abs(avg)) * 100;
   const n = Math.abs(by).toFixed(2);
   const dir = Number(n) === 0 ? 0 : by > 0 ? 1 : -1;
   const side = dir > 0 ? " above" : dir < 0 ? " below" : "";
-  return { value, gap: { text: `${n}${points ? " pts" : "%"}${side}`, dir } };
+  return { text: `${n}${points ? " pts" : "%"}${side}`, dir };
 }
 
 export const RETURNS: readonly { key: keyof Returns; label: string }[] = [
