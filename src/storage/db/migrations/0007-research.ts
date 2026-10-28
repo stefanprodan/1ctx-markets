@@ -3,11 +3,8 @@
 
 import type { Migration } from "../migration.ts";
 
-// Finnhub's research rows, one per instrument, kind and period, each
-// kind's own columns only; the metric kind holds one row per instrument,
-// dated by its fetch. Earnings events are keyed by fiscal quarter, so a
-// moved date updates the event, and reported_seen_at is when actuals
-// were first seen, never cleared.
+// earnings events keyed by fiscal quarter, so a moved date updates the event;
+// reported_seen_at is when actuals were first seen, never cleared
 export const m0007: Migration = {
   id: "0007-research",
   up(db) {

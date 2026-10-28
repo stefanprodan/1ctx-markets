@@ -1,9 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// The one writer: every runtime write is a short synchronous closure,
-// run in its own transaction, first in first out. Network calls happen
-// before a write is queued, never inside one.
+// One FIFO of short synchronous transactions; network calls never run inside.
 
 import type { Db } from "./db/index.ts";
 

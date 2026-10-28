@@ -6,10 +6,8 @@ import type { Migration } from "../migration.ts";
 const SHAPE = `length(listing) between 1 and 20
   and listing not glob '*[^A-Za-z0-9.-]*'`;
 
-// The other listing Finnhub answered a share for (an ADR as its home
-// listing), null for the share's own; rows stored before are its own.
-// Another listing's rows hold no figure per share, which is in its
-// currency, and no earnings or insider rows.
+// the other listing Finnhub answered a share for (an ADR's home), null for its
+// own; its rows hold no per-share figure (in its currency), earnings, insiders
 export const m0012: Migration = {
   id: "0012-listing",
   up(db) {

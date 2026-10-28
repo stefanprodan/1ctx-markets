@@ -3,9 +3,8 @@
 
 import type { Migration } from "../migration.ts";
 
-// A Yahoo index is in index points, as one resolved from now on is; a
-// stored one was left unknown and would keep it, since only a fetch of
-// a new listing sets the unit.
+// Yahoo indexes are in points; a stored one was left unknown and would keep
+// it, since only a fetch of a new listing sets the unit
 export const m0013: Migration = {
   id: "0013-index-units",
   up(db) {

@@ -3,8 +3,7 @@
 
 import type { Migration } from "../migration.ts";
 
-// Instruments keyed market:symbol, their daily and weekly bars, the
-// latest quote, splits already applied, and one row per job run.
+// instruments, daily and weekly bars, quotes and runs; splits already applied
 export const m0003: Migration = {
   id: "0003-yahoo",
   up(db) {

@@ -1,9 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// One row per source job run, which is where staleness is read from:
-// a job whose last run in its scope failed marks that scope's rows
-// stale, and never another job's, scope's or source's.
+// Staleness is read from runs: a failed last run marks only its job and scope.
 
 import { type Clock, DAY_MS } from "../runtime/clock.ts";
 import { phraseOf } from "../sources/source.ts";

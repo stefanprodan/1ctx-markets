@@ -18,9 +18,8 @@ export function open(path: string, clock: Clock): OpenedDb {
   return { db, migrations: migrate(db, clock) };
 }
 
-// Applies, in list order, each migration not yet recorded, and returns
-// their ids. The first migration creates the record itself, so a fresh
-// database has none applied.
+// applies unrecorded migrations in list order; the first creates the record
+// itself, so a fresh database has none applied
 export function migrate(
   db: Db,
   clock: Clock,

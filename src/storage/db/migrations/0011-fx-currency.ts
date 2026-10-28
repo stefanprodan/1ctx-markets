@@ -3,9 +3,8 @@
 
 import type { Migration } from "../migration.ts";
 
-// Yahoo answers no currency for some pairs (EURRON=X), and no later fetch
-// of a stored instrument rewrites it, so a pair stored before the client
-// read it from the symbol gets it here: AAABBB=X and BBB=X quote in BBB.
+// Yahoo gives no currency for some pairs (EURRON=X) and no fetch rewrites a
+// stored one, so it comes from the symbol: AAABBB=X and BBB=X quote in BBB
 export const m0011: Migration = {
   id: "0011-fx-currency",
   up(db) {
