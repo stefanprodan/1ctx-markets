@@ -187,7 +187,10 @@ export const schemas: Record<string, Schema> = {
   Bar: object({
     date: str,
     close: nnum,
-    final: note(bool, "False until the source reports a later session."),
+    final: note(
+      bool,
+      "False until the source reports a later session; a weekly bar also waits for its week to end.",
+    ),
     sma50: nnum,
     sma200: nnum,
   }),

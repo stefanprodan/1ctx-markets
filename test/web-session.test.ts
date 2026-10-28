@@ -41,6 +41,15 @@ const tokenOf = (res: Response): string => {
   return set.slice(COOKIE.length + 1, set.indexOf(";"));
 };
 
+// a flag reads as one wherever a word may start, in any string of a JSON
+const FLAG = /(^|[\s(`])--[a-z][\w-]*/g;
+const flagsIn = (value: unknown): string[] =>
+  typeof value === "string"
+    ? [...value.matchAll(FLAG)].map((m) => m[0].trim())
+    : typeof value === "object" && value !== null
+      ? Object.values(value).flatMap(flagsIn)
+      : [];
+
 function setup() {
   const w = world();
   const handle = api(w.m);
@@ -387,6 +396,12 @@ describe("what the cookie opens", () => {
 });
 
 describe("the served UI", () => {
+  test("a flag is found in any string of a JSON answer", () => {
+    const decoded = JSON.parse('{"a":"--db first","b":["line\\n--db"]}');
+    expect(flagsIn(decoded)).toEqual(["--db", "--db"]);
+    expect(flagsIn({ a: "a-b--c", b: "x --" })).toEqual([]);
+  });
+
   test("answers its paths with the page and its assets, the key never logged", () =>
     withApp(
       async ({ url, admin, lines }) => {
@@ -461,13 +476,8 @@ describe("the served UI", () => {
         await read("/api/v1/admin/instruments");
         const ui = seen.length;
         await read("/api/v1/openapi.json");
-        const spec = seen.at(-1)!;
-        // a flag reads as one wherever a word may start
-        expect(spec.match(/(^|[\s(`])--[a-z][\w-]*/g)).toBeNull();
+        expect(flagsIn(JSON.parse(seen.at(-1)!))).toEqual([]);
         await read("/api/v1/docs");
-        // the bundles read event.key, so a key file is looked for here
-        const docs = seen.slice(ui).join("\n");
-        expect(docs.includes(".key")).toBe(false);
         const docsPage = seen.at(-1)!;
         const files = [
           ...docsPage.matchAll(/(?:src|href)="(\/api\/v1\/docs\/[^"]+)"/g),
@@ -476,9 +486,13 @@ describe("the served UI", () => {
         let ours = seen.join("\n");
         for (const file of files) {
           await read(file[1]!);
-          // Swagger UI's own files are checked for secrets, not for words
+          // Swagger UI's own bodies are checked for secrets, not for words
+          ours += `\n${seen.at(-2)}`;
           if (file[1]!.includes("/init.js")) ours += `\n${seen.at(-1)}`;
         }
+        // the bundles read event.key, so a key file is looked for elsewhere
+        const docs = ours.slice(seen.slice(0, ui).join("\n").length);
+        expect(docs.includes(".key")).toBe(false);
         expect(seen.length).toBeGreaterThan(20);
         const all = seen.join("\n");
         for (const secret of [
@@ -489,12 +503,11 @@ describe("the served UI", () => {
           "v0.0.0-test",
           "/Users/",
           "--track",
-
           "--source",
         ]) {
           expect([secret, all.includes(secret)]).toEqual([secret, false]);
         }
-        // Swagger UI's bundle names its own map, never one of this server
+        // Swagger UI's stylesheet names its own map, never one of this server
         expect(ours.includes("sourceMappingURL")).toBe(false);
         // the spec names FRED only as symbol syntax
         const named = ours.replaceAll("`FRED:<series id>`", "");

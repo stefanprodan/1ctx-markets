@@ -64,13 +64,13 @@ export const responses = {
   ),
   Unauthorized: error("Missing or wrong key."),
   NotFound: error(
-    "No such route, rule or instrument (`not_found`); a name with several listings (`candidates`, with ids to pick from); a symbol whose source is off (`no_data`) or refused (`refused`).",
+    "No such route, rule, instrument or symbol (`not_found`); a name with several listings (`candidates`, with ids to pick from); a symbol whose source is off (`no_data`) or that this server does not serve (`refused`).",
   ),
   Conflict: error(
     "The rule or instrument refuses it in its current state (`conflict`, `split_paused`).",
   ),
   Forbidden: error(
-    "A request other than GET with the session cookie, not sent from this server's own pages.",
+    "A request other than GET or HEAD with the session cookie, not sent from this server's own pages.",
   ),
   TooLarge: error(
     `A body over ${kib(MAX_BODY_BYTES)} (${kib(ADMIN_BODY_BYTES)} on \`/admin\` routes). Over 1 MiB the answer is an empty body and the connection closes.`,
@@ -116,7 +116,7 @@ const csv = (
 });
 
 const FORMS =
-  "a stored id (`US:NVDA`), an exchange symbol (`VVSM.DE`, `^VIX`), `FRED:<series id>` or a name";
+  "a stored id (`US:NVDA`), a symbol with its exchange suffix (`VVSM.DE`), an index (`^VIX`), `FRED:<series id>` or a name";
 
 const SYMBOL = `${FORMS[0].toUpperCase()}${FORMS.slice(1)}. At most ${MAX_SYMBOL} characters.`;
 

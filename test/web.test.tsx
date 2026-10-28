@@ -314,6 +314,24 @@ describe("the data layer", () => {
     expect(s.status.value).toEqual(STATUS);
   });
 
+  test("a status load in flight at sign-out never signs back in", async () => {
+    const releases: (() => void)[] = [];
+    const s = store(async (_path, init) => {
+      if (init?.method === "DELETE") {
+        return new Response(null, { status: 204 });
+      }
+      await new Promise<void>((r) => releases.push(r));
+      return Response.json(STATUS);
+    });
+    const inFlight = s.loadStatus();
+    await s.signOut();
+    releases[0]!();
+    await inFlight;
+    expect(s.signedIn.value).toBe(false);
+    expect(s.status.value).toBeNull();
+    expect(s.loading.value).toBe(false);
+  });
+
   test("an older status answer never lands over a newer one", async () => {
     const releases: (() => void)[] = [];
     let n = 0;

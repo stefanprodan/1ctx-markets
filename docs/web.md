@@ -135,5 +135,6 @@ signed in with the admin key alone.
   anonymous visitor reads, the API spec and docs page included: no
   key file, flag, build version or source name, but FRED in symbol
   syntax. Swagger UI's own files are checked for secrets only, since
-  its bundle names Yahoo among web domains and carries a source map. `scripts/smoke.sh` checks the binary serves
-  the page, its assets and the sign-in.
+  its bundle names Yahoo among web domains and its stylesheet names a
+  source map. `scripts/smoke.sh` checks the binary serves the page,
+  its assets and the sign-in.

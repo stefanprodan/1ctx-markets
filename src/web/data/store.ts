@@ -128,6 +128,10 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
     },
     async signOut(): Promise<void> {
       await call(SESSION_PATH, "DELETE");
+      // a status load still in flight must not sign back in
+      latest++;
+      current = Promise.resolve(false);
+      loading.value = false;
       signedOut();
     },
   };
