@@ -52,13 +52,6 @@ export function ago(at: string | null, now: number): string {
   return `${Math.floor(ms / DAY)} d ago`;
 }
 
-export function until(at: string | null, now: number): string {
-  if (at === null) return "for now";
-  const ms = Date.parse(at) - now;
-  if (!Number.isFinite(ms) || ms <= 0) return "for now";
-  if (ms < HOUR) return `for ${Math.ceil(ms / MINUTE)} min`;
-  return `for ${Math.ceil(ms / HOUR)} h`;
-}
 export type Tone = "done" | "failed" | "running" | "stopped";
 
 // from the counts, not the last run: they skip what a later run settled
@@ -79,6 +72,11 @@ const PLAIN: Record<string, string> = {
   "timed out": "no answer in time",
   "malformed answer": "answer not readable",
   "key refused": "key not accepted",
+  // a --track value's read
+  timeout: "no answer in time",
+  candidates: "several matches",
+  "no data": "no data",
+  refused: "not supported",
   failed: "failed",
 };
 
@@ -116,7 +114,7 @@ export function jobLine(j: JobStatus): string {
 
 export function allOk(j: JobStatus): string {
   const { n, words } = covers(j);
-  if (n === 0) return "No runs kept.";
+  if (n === 0) return "Not run yet.";
   return n === 1 ? `${words} ok.` : `All ${words} ok.`;
 }
 
@@ -163,7 +161,7 @@ export const trackLine = (t: TrackStatus): string =>
     ? (t.id ?? "")
     : t.state === "pending"
       ? "pending"
-      : t.state.replaceAll("_", " ");
+      : plain(t.state.replaceAll("_", " "));
 
 export const sourcesOn = (list: readonly SourceStatus[]): number =>
   list.filter((s) => s.state === "on").length;

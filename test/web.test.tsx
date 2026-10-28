@@ -38,7 +38,6 @@ import {
   switchFailure,
   trackFailed,
   trackLine,
-  until,
 } from "../src/web/views/Status.model.ts";
 import { JobDetails, StatusBody } from "../src/web/views/Status.tsx";
 
@@ -426,10 +425,6 @@ describe("the status model", () => {
     expect(ago("2026-10-28T11:57:00Z", NOW)).toBe("3 min ago");
     expect(ago("2026-10-28T09:00:00Z", NOW)).toBe("3 h ago");
     expect(ago("2026-10-26T12:00:00Z", NOW)).toBe("2 d ago");
-    expect(until("2026-10-28T12:05:00Z", NOW)).toBe("for 5 min");
-    expect(until(null, NOW)).toBe("for now");
-    // a back-off already past never reads as a negative wait
-    expect(until("2026-10-28T11:58:00Z", NOW)).toBe("for now");
     expect(runTime(null)).toBe("never");
     expect(runTime("2026-10-28T13:05:00Z")).not.toMatch(/AM|PM/i);
   });
@@ -439,6 +434,10 @@ describe("the status model", () => {
     expect(plain("rate limited")).toBe("too many requests");
     expect(plain("timed out")).toBe("no answer in time");
     expect(plain(null)).toBe("failed");
+    expect(STATUS.track.map(trackLine)).toEqual(["SNP:^GSPC", "not found"]);
+    expect(trackLine({ value: "X", id: null, state: "candidates" })).toBe(
+      "several matches",
+    );
     expect(plain("something new")).toBe("something new");
     const [live, daily, figures] = STATUS.jobs;
     expect(jobLine(live!)).toBe("19 markets · all ok");
@@ -516,7 +515,7 @@ describe("the status model", () => {
         : j,
     );
     expect(switchFailure(failed)).toBe(
-      "Source change for market BVB failed: timeout. Its prices stay stale until a retry succeeds.",
+      "Source change for market BVB failed: no answer in time. Its prices stay stale until a retry succeeds.",
     );
   });
 });

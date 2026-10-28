@@ -3,10 +3,10 @@
 
 import { describe, expect, test } from "bun:test";
 import { DAY_MS } from "../src/runtime/clock.ts";
-import { QueueClosed, SourceError } from "../src/sources/source.ts";
+import { QueueClosed, SourceError, STOPPED } from "../src/sources/source.ts";
 import { open } from "../src/storage/db/index.ts";
 import {
-  INTERRUPTED,
+  failedRun,
   isStale,
   lastRun,
   pruneRuns,
@@ -73,7 +73,8 @@ describe("sync runs", () => {
         "US",
       ),
     ).rejects.toThrow();
-    expect(lastRun(db, "yahoo", "quotes")!.error).toBe(INTERRUPTED);
+    expect(lastRun(db, "yahoo", "quotes")!.error).toBe(STOPPED);
+    expect(failedRun(lastRun(db, "yahoo", "quotes"))).toBe(false);
   });
 
   test("a job whose last run failed is stale, per source and per job", async () => {

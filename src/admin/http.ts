@@ -14,9 +14,9 @@ import { readRules, ruleInstruments } from "../rules/store.ts";
 import { sourceFile } from "../runtime/keys.ts";
 import { YAHOO } from "../sources/ids.ts";
 import type { Backoff } from "../sources/source.ts";
-import { INTERRUPTED } from "../sources/source.ts";
 import { BACKFILL_JOB } from "../sources/yahoo/jobs.ts";
 import type { Db } from "../storage/db/index.ts";
+import { failedRun, type Run } from "../storage/runs.ts";
 import {
   PARTS,
   type Part,
@@ -204,7 +204,7 @@ function jobs(db: Db) {
     "select 1 as n from bars where instrument = ? and interval = '1d' limit 1",
   );
   for (const r of db
-    .query<Failed & { source: string; job: string; status: string }, []>(
+    .query<Failed & { source: string; job: string; status: Run["status"] }, []>(
       `select source, job, scope, status, error,
          ended_at as endedAt, max(started_at)
        from sync_runs where status <> 'running'
@@ -231,8 +231,7 @@ function jobs(db: Db) {
     if (instrument) n.instruments++;
     else n.markets++;
     scopes.set(key, n);
-    // the next run settles a run cut by shutdown or a crash
-    if (r.status !== "failed" || settled || r.error === INTERRUPTED) continue;
+    if (!failedRun(r) || settled) continue;
     if (instrument) n.failing_instruments++;
     else n.failing_markets++;
     const list = failing.get(key) ?? [];

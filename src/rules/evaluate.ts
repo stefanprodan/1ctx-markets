@@ -14,7 +14,7 @@ import {
 import { type EventRow, readEvent } from "../sources/finnhub/read.ts";
 import type { EventKey, Hooks } from "../sources/finnhub/store.ts";
 import type { Db } from "../storage/db/index.ts";
-import { lastRun } from "../storage/runs.ts";
+import { failedRun, lastRun } from "../storage/runs.ts";
 import {
   type Comparison,
   comparisons,
@@ -222,7 +222,7 @@ function reader(db: Db, now: number, quoteEveryMs: number) {
       if (barsStale(db, i, now).includes(STALE.barsPending)) {
         return BARS_PENDING;
       }
-      return lastRun(db, i.source, JOBS.bars, i.id)?.status === "failed"
+      return failedRun(lastRun(db, i.source, JOBS.bars, i.id))
         ? BARS_FAILED
         : null;
     },

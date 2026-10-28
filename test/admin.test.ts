@@ -277,7 +277,8 @@ describe("the admin routes' guard", () => {
              status, rows, error)
            values ('yahoo', 'backfill', 'US:X', ?1, ?1, 'failed', 0, 'timeout'),
              ('yahoo', 'backfill', null, ?1, ?1, 'failed', 0, 'old'),
-             ('bvb', 'quotes', 'BVB', ?1, ?1, 'failed', 0, 'interrupted')`,
+             ('bvb', 'quotes', 'BVB', ?1, ?1, 'failed', 0, 'stopped'),
+             ('bvb', 'bars', 'BVB', ?1, ?1, 'failed', 0, 'interrupted')`,
         ).run(NOW);
         const backfill = async () => {
           const res = await fetch(`${url}/api/v1/admin/status`, {
@@ -291,13 +292,21 @@ describe("the admin routes' guard", () => {
         const res0 = await fetch(`${url}/api/v1/admin/status`, {
           headers: { authorization: `Bearer ${admin}` },
         });
-        const quotes = (await res0.json()).jobs.find(
+        const bvb = (await res0.json()).jobs.filter(
           (j: { source: string }) => j.source === "bvb",
         );
-        expect(quotes).toMatchObject({
+        expect(
+          bvb.find((j: { job: string }) => j.job === "quotes"),
+        ).toMatchObject({
           markets: 1,
           failing_scopes: 0,
           failing: [],
+        });
+        // a crash's cut counts: a run that kills the server would never show
+        expect(
+          bvb.find((j: { job: string }) => j.job === "bars"),
+        ).toMatchObject({
+          failing_markets: 1,
         });
         // a run from before backfill runs had a scope is not counted
         expect(await backfill()).toMatchObject({
@@ -323,7 +332,8 @@ describe("the admin routes' guard", () => {
           headers: { authorization: `Bearer ${admin}` },
         });
         const bars = (await res.json()).jobs.find(
-          (j: { job: string }) => j.job === "bars",
+          (j: { source: string; job: string }) =>
+            j.source === "yahoo" && j.job === "bars",
         );
         expect(bars).toMatchObject({
           failing_instruments: 1,

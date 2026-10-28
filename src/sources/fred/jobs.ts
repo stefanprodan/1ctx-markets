@@ -15,6 +15,7 @@ import type { Scheduler } from "../../runtime/scheduler.ts";
 import type { Db } from "../../storage/db/index.ts";
 import {
   endRun,
+  failedRun,
   failRun,
   lastRun,
   lastStarted,
@@ -78,7 +79,7 @@ export function seriesStale(
     .get(instrument.id)!.n;
   if (has === 0) return [STALE.noHistory];
   const reasons: StaleReason[] = [];
-  if (lastRun(db, SOURCE, JOBS.bars, instrument.id)?.status === "failed") {
+  if (failedRun(lastRun(db, SOURCE, JOBS.bars, instrument.id))) {
     reasons.push(STALE.barsFailed);
   }
   if (seriesDue(db, instrument, now)) reasons.push(STALE.barsPending);
@@ -141,7 +142,7 @@ export function fredJobs(options: {
     const due = series(db, now, tracking).filter((i) => {
       if (!seriesDue(db, i, now)) return false;
       const last = lastStarted(db, SOURCE, JOBS.bars, i.id);
-      return !(last?.status === "failed" && now - last.startedAt < RETRY_MS);
+      return !(failedRun(last) && now - last!.startedAt < RETRY_MS);
     });
     return due.length === 0 ? null : pass(due);
   }
