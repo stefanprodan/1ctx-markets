@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // Only actuals mark an event reported, never its date or after-close label.
 
 import { type Instrument, readInstrument } from "../market/instruments.ts";

@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // A made-up Yahoo: a session shows from its start on, as Friday's on Sunday.
 
 import {

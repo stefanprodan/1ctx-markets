@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // only closed days: a bar is final once fetched, and a revision replaces it
 
 import {

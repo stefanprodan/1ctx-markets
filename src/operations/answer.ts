@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // One text part within a client's untouched 32 KiB default; no item is cut.
 
 import { createHash } from "node:crypto";

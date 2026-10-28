@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // An unknown argument is refused, not ignored, before anything is fetched.
 
 import { wallOfDate } from "../market/zone.ts";

@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // Nothing is paged: a script that never follows a cursor loses what is past it.
 
 import {

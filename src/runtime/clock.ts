@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // The only reader of the wall clock, so a test steps a fake one instead.
 
 export type Clock = {

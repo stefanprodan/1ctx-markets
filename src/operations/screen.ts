@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // Fixed fields only: one is checked once, an agent's formula never is.
 
 import { round } from "../market/format.ts";

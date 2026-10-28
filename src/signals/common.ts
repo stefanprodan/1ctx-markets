@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // Seeds and steps only go through here, so a recompute matches the stepped one.
 
 export type Close = { date: string; close: number };

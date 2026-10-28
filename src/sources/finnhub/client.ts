@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // the key only in a header; a 403 or empty answer is no data, not an error
 
 import { wallOfDate } from "../../market/zone.ts";

@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // Each row is one step from the last, so the live row cannot drift from final.
 
 import { addDays } from "../market/zone.ts";

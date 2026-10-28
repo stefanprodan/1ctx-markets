@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // One FIFO of short synchronous transactions; network calls never run inside.
 
 import type { Db } from "./db/index.ts";

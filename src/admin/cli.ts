@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // Calls the running server with the admin key; opens no db and prints no key.
 
 import { homedir } from "node:os";

@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // A fixed JSON tree of comparisons, never an expression language.
 
 import type { Instrument } from "../market/instruments.ts";

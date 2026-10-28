@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // A missing, null or stale input never matches: only a match misleads unseen.
 
 import type { Instrument } from "../market/instruments.ts";

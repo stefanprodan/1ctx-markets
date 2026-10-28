@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // Relative return is computed on read, not stored for every benchmark pair.
 
 import type { Interval } from "../market/bars.ts";

@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // Embedded in the binary, so the page works on a box with no internet.
 
 import css from "swagger-ui-dist/swagger-ui.css" with { type: "file" };

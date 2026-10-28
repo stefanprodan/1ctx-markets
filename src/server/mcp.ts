@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // Stateless as 1ctx serves its own, so no session outlives a request.
 
 import {

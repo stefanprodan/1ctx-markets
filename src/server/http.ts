@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // The bearer is checked before route lookup, so an unknown path answers 401.
 
 import { createHash, timingSafeEqual } from "node:crypto";

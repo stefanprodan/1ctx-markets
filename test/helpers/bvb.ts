@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // recorded closed on a Sunday, key stripped: an open market and key are made up
 
 import { join } from "node:path";

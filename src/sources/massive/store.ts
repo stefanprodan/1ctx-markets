@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // a run per walk, scoped to the instrument, so one failure is stale alone
 
 import type { Instrument } from "../../market/instruments.ts";

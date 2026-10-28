@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // Every instrument answered counts as read, which is what tracks it.
 
 import { dailyRange } from "../market/bars.ts";

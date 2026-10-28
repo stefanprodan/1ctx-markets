@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // A benchmark's relative return is computed on read, at the range's end.
 
 import { type Bar, type Interval, readBars } from "../market/bars.ts";

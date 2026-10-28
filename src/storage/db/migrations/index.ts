@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // Append only, renames included; never edit one on main: servers hold data.
 
 import type { Migration } from "../migration.ts";

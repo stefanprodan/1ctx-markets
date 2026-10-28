@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // Free of the engine's imports: tracking reads rule instruments from here.
 
 import { DAY_MS } from "../runtime/clock.ts";

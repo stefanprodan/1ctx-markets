@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // Staleness is read from runs: a failed last run marks only its job and scope.
 
 import { type Clock, DAY_MS } from "../runtime/clock.ts";

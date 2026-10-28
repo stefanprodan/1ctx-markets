@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // A fixture of these pins every tool answer, page by page, through a refactor.
 
 import { PREFIX } from "../../src/api/http.ts";

@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // Apart from main.ts so a test runs it with a fake clock, log and fetch.
 
 import type { SourceState } from "./admin/http.ts";

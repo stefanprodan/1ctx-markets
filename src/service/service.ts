@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // Platform-free commands; the backend holds the service manager's part.
 
 import { rm } from "node:fs/promises";

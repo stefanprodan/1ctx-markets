@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // Each source's own fetch code; the runs it records are the ones the jobs read.
 
 import type { Written } from "../market/bars.ts";

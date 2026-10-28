@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // The one text a client keeps whole each turn; tool descriptions get cut.
 
 // clients cut from the end, so the cap stops a new line pushing an old one out

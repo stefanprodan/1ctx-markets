@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // what does not match a format exactly is an error, never a guess
 
 import { SourceError } from "../source.ts";

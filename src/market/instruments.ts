@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // Keyed market:symbol, not the source's symbol, so a switch keeps the identity.
 
 import { SourceError } from "../sources/source.ts";

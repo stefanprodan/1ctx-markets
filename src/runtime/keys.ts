@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // The only reader of key files: a value reaches its caller and the log mask.
 
 import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";

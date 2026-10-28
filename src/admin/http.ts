@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // May face the internet: admin key only, strict input, errors echo nothing.
 
 import { failed, json, readBody } from "../api/http.ts";

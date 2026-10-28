@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // a minute tick decides what is due, so a day missed while down runs on start
 
 import type { Instrument } from "../../market/instruments.ts";

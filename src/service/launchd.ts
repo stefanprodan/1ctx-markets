@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // The macOS LaunchAgent backend; effects are injected so tests run anywhere.
 
 import {

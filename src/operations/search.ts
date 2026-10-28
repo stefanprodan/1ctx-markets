@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // Tracks nothing, so a search never keeps an instrument synced.
 
 import { type Instrument, readInstrument } from "../market/instruments.ts";

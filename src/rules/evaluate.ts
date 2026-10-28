@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // Rules run inside the write that moved their inputs, in one transaction.
 
 import { iso, price, round } from "../market/format.ts";

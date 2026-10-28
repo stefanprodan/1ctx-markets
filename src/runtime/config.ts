@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // Parsing only, so `service install` refuses exactly what a start would.
 
 import { homedir } from "node:os";

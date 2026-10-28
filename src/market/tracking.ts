@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // Tracked means read within the window or by a rule; searches and jobs don't.
 
 import { ruleInstruments } from "../rules/store.ts";

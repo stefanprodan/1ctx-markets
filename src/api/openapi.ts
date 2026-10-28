@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // By hand, so each limit carries its reason; schemas keep to the tested subset.
 
 import { paths, responses } from "./paths.ts";

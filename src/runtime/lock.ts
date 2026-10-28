@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // Held across fetch and write, so an older answer never lands after a newer.
 
 import type { Db } from "../storage/db/index.ts";

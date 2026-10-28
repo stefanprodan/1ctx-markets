@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // once a day on the server's clock: a FRED-only server may know no market
 
 import type { Instrument } from "../../market/instruments.ts";

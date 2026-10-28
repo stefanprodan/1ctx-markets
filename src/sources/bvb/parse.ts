@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // no documented API: a page that does not read is an error, never empty rows
 
 import { checkZone, dateOfWall } from "../../market/zone.ts";

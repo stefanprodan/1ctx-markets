@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // The only write tool: a failed create leaves no rule.
 
 import { iso } from "../market/format.ts";

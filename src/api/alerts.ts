@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // The alert id is the cursor, and the same alerts must answer the same bytes.
 
 import { iso } from "../market/format.ts";

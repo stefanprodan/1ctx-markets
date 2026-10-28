@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // Scoped by source, job and market: one market's failure never marks another.
 
 import { MINUTE_MS } from "../runtime/clock.ts";

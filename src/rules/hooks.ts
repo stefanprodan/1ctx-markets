@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // Apart from the engine, so the sync modules depend on a type, not on it.
 
 import type { Db } from "../storage/db/index.ts";

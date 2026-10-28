@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // FRED takes its key only in the URL, so no error or text made here carries one
 
 import { wallOfDate } from "../../market/zone.ts";

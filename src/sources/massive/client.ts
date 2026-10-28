@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // the key only in a header; a next_url only to Massive's own news path
 
 import type { Clock } from "../../runtime/clock.ts";

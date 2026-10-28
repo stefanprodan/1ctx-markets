@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // Never stored: signals, movers, screen and rules stay on the regular session.
 
 import { CRYPTO, isQuoted, readSession } from "../market/calendars.ts";

@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // An unknown keyword is refused, not skipped; description checks nothing.
 
 const KEYWORDS = new Set([

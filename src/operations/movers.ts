@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // A cross compares the last final close with the live quote; FRED never moves.
 
 import { price, round } from "../market/format.ts";

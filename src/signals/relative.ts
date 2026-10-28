@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // Anchors are dates on the benchmark's days, not row offsets: calendars differ.
 
 import { addDays, wallOfDate } from "../market/zone.ts";

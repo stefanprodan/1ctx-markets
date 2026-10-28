@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // Every key value read is masked before a line is written.
 
 import type { Clock } from "./clock.ts";

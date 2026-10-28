@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // Rules over the recorded sources, quotes stored through the quote job's write.
 
 import { type Markets, markets } from "../../src/operations/markets.ts";

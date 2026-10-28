@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // Weekly bars are built from daily ones: Yahoo's open crypto week ends Sat.
 
 import type { Db } from "../storage/db/index.ts";

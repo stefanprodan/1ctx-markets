@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // The real router without a server or a port, each request with its key.
 
 import type { SourceState } from "../../src/admin/http.ts";

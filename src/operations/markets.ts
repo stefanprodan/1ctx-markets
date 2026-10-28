@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // The context every read takes, so no read imports another for it.
 
 import type { StaleReason } from "../market/stale.ts";

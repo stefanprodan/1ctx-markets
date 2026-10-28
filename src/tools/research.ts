@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // The research tool's page: one section of one share, paged by cursor.
 
 import { iso } from "../market/format.ts";

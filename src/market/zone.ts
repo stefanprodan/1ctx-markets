@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // A wall time is epoch ms read as if the zone were UTC: day steps stay simple.
 
 import { DAY_MS } from "../runtime/clock.ts";
