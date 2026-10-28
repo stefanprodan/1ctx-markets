@@ -30,17 +30,14 @@ import { dailyBars } from "../yahoo/history.ts";
 import { keyOf as yahooKey } from "../yahoo/resolve.ts";
 import { storeSwitched, type YahooContext } from "../yahoo/sync.ts";
 import { MARKET, SOURCE } from "./client.ts";
+import { barsAnswered, CutShort, checkCovers, storeWhole } from "./history.ts";
+import { storeBvbQuotes } from "./quotes.ts";
 import {
   type BvbContext,
-  barsAnswered,
-  CutShort,
-  checkCovers,
   checkListed,
   draft,
   fieldsOf,
   quoteNow,
-  storeBvbQuotes,
-  storeWhole,
   wholeHistory,
 } from "./sync.ts";
 

@@ -12,11 +12,8 @@ import { JOBS } from "../market/stale.ts";
 import type { Markets } from "../operations/markets.ts";
 import { errorFields } from "../runtime/log.ts";
 import type { Bvb } from "../sources/bvb/client.ts";
-import {
-  backfill as bvbBackfill,
-  quoteNow,
-  storeBvbQuotes,
-} from "../sources/bvb/sync.ts";
+import { storeBvbQuotes } from "../sources/bvb/quotes.ts";
+import { backfill as bvbBackfill, quoteNow } from "../sources/bvb/sync.ts";
 import {
   eligible as finnhubEligible,
   refreshResearch,

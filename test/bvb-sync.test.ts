@@ -18,12 +18,12 @@ import { keys, requireBearer } from "../src/runtime/keys.ts";
 import { logger, silent } from "../src/runtime/log.ts";
 import { bvb, MARKET } from "../src/sources/bvb/client.ts";
 import { bvbJobs } from "../src/sources/bvb/jobs.ts";
+import { sessionOf } from "../src/sources/bvb/quotes.ts";
 import {
   AERO,
   type BvbContext,
   fetchInstrument,
   refetch,
-  sessionOf,
   UNLISTED,
 } from "../src/sources/bvb/sync.ts";
 import { Refused } from "../src/sources/source.ts";

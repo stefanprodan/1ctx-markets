@@ -34,14 +34,13 @@ import {
   SOURCE,
 } from "./client.ts";
 import {
-  type BvbContext,
   detailQuote,
   indexQuote,
   listQuote,
-  refetch,
   sessionOf,
   storeBvbQuotes,
-} from "./sync.ts";
+} from "./quotes.ts";
+import { type BvbContext, refetch } from "./sync.ts";
 
 export const TICK_MS = MINUTE_MS;
 const HOUR_MS = 60 * MINUTE_MS;
