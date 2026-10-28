@@ -1,7 +1,7 @@
 # Calendars
 
-Governs market hours, bar dates and weeks: `src/calendars.ts`,
-`src/zone.ts` and the `markets` table. The jobs that act on a session
+Governs market hours, bar dates and weeks: `src/market/calendars.ts`,
+`src/market/zone.ts` and the `markets` table. The jobs that act on a session
 are in `docs/yahoo.md`; tables, times and staleness in
 `docs/storage.md`.
 
@@ -43,7 +43,7 @@ are in `docs/yahoo.md`; tables, times and staleness in
   a bad answer that announced a session too early, before anything
   could have relied on it.
 - **One answer records one session per market, its latest.**
-  `storeQuotes()` in `src/yahoo/sync.ts` takes the latest start across
+  `storeQuotes()` in `src/sources/yahoo/quotes.ts` takes the latest start across
   the answer's listings of each market and records every market first,
   so the live rows written after never depend on the order of entries.
   Every answer's session is recorded, known instrument or not.
@@ -83,15 +83,15 @@ are in `docs/yahoo.md`; tables, times and staleness in
   closing auction, land before that. Finality is never decided by the
   clock alone. `isBarFinal` validates the date first, since a malformed
   string would compare and pass.
-- **A stored final bar stays final** (`upsertBars()` in `src/bars.ts`),
+- **A stored final bar stays final** (`upsertBars()` in `src/market/bars.ts`),
   while its values still follow the source's corrections.
 
 ## Weeks
 
 - **Weeks run Monday to Sunday by the exchange's date and are built
   from stored daily bars, never fetched** (`weekOf()` in
-  `src/calendars.ts`; `weeksOf()` and `rebuildWeeks()` in
-  `src/bars.ts`). An open crypto week from Yahoo
+  `src/market/calendars.ts`; `weeksOf()` and `rebuildWeeks()` in
+  `src/market/bars.ts`). An open crypto week from Yahoo
   holds Monday to Saturday only. A week's date is its Monday.
 - **A week is final once its Sunday has ended in the market's zone and
   every daily bar in it is final** (`weeksOf()`, `isWeekFinal()`).
@@ -99,7 +99,7 @@ are in `docs/yahoo.md`; tables, times and staleness in
 ## Wall time
 
 - **A wall time is epoch ms read as if the zone were UTC** (`wallTime()`
-  in `src/zone.ts`), so day and hour steps are plain arithmetic across
+  in `src/market/zone.ts`), so day and hour steps are plain arithmetic across
   clock changes. Never add `DAY_MS` to an instant to reach the next
   local day; step the wall time and convert back.
 - **`fromWallTime()` maps a wall time back to an instant.** An hour
@@ -113,10 +113,10 @@ are in `docs/yahoo.md`; tables, times and staleness in
 ## Crypto
 
 - **`CRYPTO` is one market for every crypto pair** (Yahoo's `CCC`,
-  through `ALIASES` in `src/yahoo/resolve.ts`). It is always quoted,
+  through `ALIASES` in `src/sources/yahoo/resolve.ts`). It is always quoted,
   has no post-close quote and is never checked; its session is still
   recorded from the answers, and bar dates, finality and the bar pass
   follow that session as for any market.
 - **A quote for crypto is due at every pass**: `lastQuoteDue()` in
-  `src/stale.ts` reads now, so a crypto quote two periods old is
+  `src/market/stale.ts` reads now, so a crypto quote two periods old is
   `quote overdue`.

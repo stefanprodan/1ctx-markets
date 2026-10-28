@@ -1,10 +1,11 @@
 # Research, events and news
 
-Governs Finnhub's research and earnings events (`src/finnhub/*`),
-Massive's news (`src/massive/*`), the `research` and `events` tools
-(`src/tools/research.ts`, `src/tools/events.ts`), and the `research`,
+Governs Finnhub's research and earnings events (`src/sources/finnhub/*`),
+Massive's news (`src/sources/massive/*`), the `research` and `events` tools
+(`src/tools/research.ts`, `src/operations/research.ts`,
+`src/operations/events.ts`), and the `research`,
 `events`, `news` and `news_walks` tables
-(`src/db/migrations/0007-research.ts`, `0008-news.ts`,
+(`src/storage/db/migrations/0007-research.ts`, `0008-news.ts`,
 `0012-listing.ts`). The shared
 source queue is in `docs/yahoo.md`; resolution, tracking and the answer
 contract in `docs/tools.md`; the research route over HTTP in
@@ -19,10 +20,10 @@ contract in `docs/tools.md`; the research route over HTTP in
 - **Keys travel only in a header, never in a URL**: Finnhub's
   `X-Finnhub-Token`, Massive's `Authorization: Bearer`. A URL ends up
   in errors and logs; a header does not.
-- **Errors hold a fixed phrase from `PHRASES` (`src/source.ts`), never
+- **Errors hold a fixed phrase from `PHRASES` (`src/sources/source.ts`), never
   text the source or fetch sent.**
 - **Every Massive text kept is scrubbed of the key** (`scrubbed` in
-  `src/massive/client.ts`: id, title, URL, publisher, tickers,
+  `src/sources/massive/client.ts`: id, title, URL, publisher, tickers,
   reasoning), since an answer can echo it. Finnhub keeps only numbers,
   checked dates and an hour label matching `^[a-z]{0,8}$`, so nothing
   of its answer can carry text.
@@ -49,14 +50,14 @@ contract in `docs/tools.md`; the research route over HTTP in
 ## Limits and budgets
 
 - **Each source has one limiter shared by its jobs and tools**
-  (`limiter` in `src/source.ts`): one call at a time, each start
+  (`limiter` in `src/sources/source.ts`): one call at a time, each start
   `SPACING_MS` after the last, 1.1 s for Finnhub (free key: 60 a
   minute) and 13 s for Massive (5 a minute, no rate-limit headers).
   A second client would break the source's limit.
 - **After a failure the queue backs off** (30 s, 5 minutes after a
   429) and never retries the call. "Not found", "bad request", a
   malformed answer that parsed as JSON and a passed deadline leave it
-  running (`backsOff` in `src/source.ts`): a 404, Massive's 400, one
+  running (`backsOff` in `src/sources/source.ts`): a 404, Massive's 400, one
   share's odd answer. A body that is not JSON (`Unreadable`) backs
   off. Finnhub answers a 400 as "source error", which backs off. A
   tool's call fails at once while paused (`Paused`), answered as the
@@ -66,7 +67,7 @@ contract in `docs/tools.md`; the research route over HTTP in
   (`TICK_BUDGET_MS`: 45 s Finnhub, 30 s Massive), and Massive no new
   page; work already started finishes, so a tick can run past it. A
   tick that finds the last one still running is skipped
-  (`src/scheduler.ts`); cut work goes on next tick.
+  (`src/runtime/scheduler.ts`); cut work goes on next tick.
 - **A tool fetches inside its own deadline** (`researchTargets`,
   `m.callMs`) the sections it reads that have no good run
   (`unfetched`), so a pass cut short is finished by the next call
@@ -103,7 +104,7 @@ contract in `docs/tools.md`; the research route over HTTP in
   with no rows stored it carries `NO_DATA` ("no data from Finnhub")
   instead (`hasRows` in `sectionState`). A 401 is "key refused", a 404
   "not found", a 429 "rate limited", any other status "source error"
-  (`src/finnhub/client.ts`); any other shape is "malformed answer".
+  (`src/sources/finnhub/client.ts`); any other shape is "malformed answer".
 - **An answer whose every part names one other symbol is that
   listing's** (`listingOf`): an ADR is answered as its home listing
   (TSM as `2330.TW`, its EPS in TWD per local share). Only what holds
@@ -128,7 +129,7 @@ contract in `docs/tools.md`; the research route over HTTP in
   stays, as retention keeps it. A 403 or an empty answer names none
   and replaces nothing.
 - **A Massive 403 is "key refused", like its 401**
-  (`src/massive/client.ts`): unlike Finnhub's, it is never no data.
+  (`src/sources/massive/client.ts`): unlike Finnhub's, it is never no data.
 - **A key answered twice with the same values is one row**; with
   different values the section is refused (`collapse`), since either
   could be wrong.
@@ -153,17 +154,17 @@ contract in `docs/tools.md`; the research route over HTTP in
   so rules waiting on the event see it atomically.
 - **A tracked share reporting yesterday or today is refreshed hourly
   from one whole-market call** (`market` and `reportingWindow` in
-  `src/finnhub/jobs.ts`, `storeMarketCalendar`), rule or not: a reader
-  needs the new quarter on the report date, and the 23:00 UTC refresh
-  can come before Finnhub posts an after-close actual. While any
-  tracked eligible share has an unreported stored event of its own
-  listing dated its exchange's yesterday or today (`localDate`,
-  `windowEvents`), the job asks
-  `calendar/earnings` from yesterday to today with no symbol, at most
-  once every `MARKET_EVERY_MS` (60 minutes), a failure waiting
-  `RETRY_MS`. Yesterday too, since many reporters have no actuals a
-  day later. Its run is `market-calendar` scoped to `US`
-  (`MARKET_CALENDAR`), never an instrument.
+  `src/sources/finnhub/jobs.ts`, `storeMarketCalendar` in `sync.ts`),
+  rule or not: a reader needs the new quarter on the report date, and
+  the 23:00 UTC refresh can come before Finnhub posts an after-close
+  actual. While any tracked eligible share has an unreported stored
+  event of its own listing dated its exchange's yesterday or today
+  (`localDate`, `windowEvents`), the job asks `calendar/earnings` from
+  yesterday to today with no symbol, at most once every
+  `MARKET_EVERY_MS` (60 minutes), a failure waiting `RETRY_MS`.
+  Yesterday too, since many reporters have no actuals a day later. Its
+  run is `market-calendar` scoped to `US` (`MARKET_CALENDAR`), never an
+  instrument.
 - **The whole-market answer only updates events already stored** of
   tracked shares' own listing, matched by `finnhubSymbol`, fiscal year
   and quarter, through the write a share's calendar uses, so a first
@@ -206,7 +207,7 @@ contract in `docs/tools.md`; the research route over HTTP in
   kept events still shown, so an empty list means no earnings in the
   range. A failed fetch is listed there too, while its stored events
   still show. The list is capped at 8 KiB with the rest counted, and
-  appears on the first page only (`src/tools/events.ts`).
+  appears on the first page only (`src/operations/events.ts`).
 - **A named share with a calendar and nothing in the range is listed
   under `no_event`**, so an empty answer for it is never read as
   missing data: `input`, `id`, `last` (the newest stored event before

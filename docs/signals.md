@@ -4,7 +4,7 @@ Governs the technical signals computed from stored bars and quotes:
 `src/signals/common.ts`, `daily.ts` and `weekly.ts` (the maths),
 `store.ts` (final and live rows), `read.ts` (what tools read, with
 stale reasons) and `relative.ts` (relative return), and the `signals`
-table (`src/db/migrations/0005-signals.ts`). Sessions, bar dates and
+table (`src/storage/db/migrations/0005-signals.ts`). Sessions, bar dates and
 finality are in `docs/calendars.md`; the bar writes that call these in
 `docs/yahoo.md` and `docs/fred.md`; stale reasons in
 `docs/storage.md`.
@@ -65,7 +65,7 @@ bar's close, or the live price on the live row.
   on weekly closes**, dated by the week's Monday (`weekly.ts`); the
   schema's checks keep every other column null on `1wk` rows.
 - **A week's bar is final once its Sunday has ended in the market's
-  zone and every daily bar in it is final** (`weeksOf` in `src/bars.ts`),
+  zone and every daily bar in it is final** (`weeksOf` in `src/market/bars.ts`),
   and weekly rows follow the same final and live rules as daily ones.
 
 ## Final rows
@@ -117,7 +117,7 @@ bar's close, or the live price on the live row.
   daily market and SMA 200; the rest is stepped from the running values the final row stores:
   `ema12`, `ema26`, `rsi_gain`, `rsi_loss` and `prev_histogram` (the
   previous histogram, for `macd_turn`). These are never shown to a
-  caller (`RUNNING` in `src/tools/quote.ts`).
+  caller (`RUNNING` in `src/operations/quote.ts`).
 - **A quote that moved recomputes the live rows; for the rest of its
   market `pruneLive` drops or recomputes a row the session moved past.**
   A live row stores the quote's trade time (`quote_time`).
@@ -125,14 +125,14 @@ bar's close, or the live price on the live row.
 ## Reading
 
 - **A reader takes the live row when one exists, else the last final
-  row** (`readLatest`, `src/tools/quote.ts`), each tagged `kind`.
-- **Stale reasons are fixed phrases from `STALE` in `src/stale.ts`.**
+  row** (`readLatest`, `src/operations/quote.ts`), each tagged `kind`.
+- **Stale reasons are fixed phrases from `STALE` in `src/market/stale.ts`.**
   `readSignals` adds "signals pending" when final rows lag the final
   bars or the live rows lag the quote (another date or trade time), and
   "previous day not final" when a live row stepped over a stored day not
   yet final. FRED uses the final list only (`docs/fred.md`).
 - **Values are rounded to six significant digits on output** (`round`
-  in `src/tools/answer.ts`); stored rows keep full precision, and a
+  in `src/market/format.ts`); stored rows keep full precision, and a
   reader that computes on them takes the unrounded rows (`Latest`).
 
 ## Relative return

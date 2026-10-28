@@ -1,17 +1,18 @@
 # Storage
 
-Governs the database and what every table shares: `src/db/`
-(connection and migrations), `src/writer.ts`, `src/instruments.ts`,
-`src/quotes.ts`, `src/runs.ts`, `src/stale.ts`, `src/tracking.ts`,
-`src/clock.ts` and the retention turn in `src/app.ts`. Market sessions and bar dates are
-in `docs/calendars.md`; how Yahoo's answers become rows is in
-`docs/yahoo.md`; signal rows in `docs/signals.md`; key files and flags
-in `docs/config.md`.
+Governs the database and what every table shares: `src/storage/db/`
+(connection and migrations), `src/storage/writer.ts`,
+`src/market/instruments.ts`, `src/market/quotes.ts`,
+`src/storage/runs.ts`, `src/market/stale.ts`, `src/market/tracking.ts`,
+`src/runtime/clock.ts` and the retention turn in `src/app.ts`. Market
+sessions and bar dates are in `docs/calendars.md`; how Yahoo's answers
+become rows is in `docs/yahoo.md`; signal rows in `docs/signals.md`; key
+files and flags in `docs/config.md`.
 
 ## The file
 
 - **One SQLite file, `markets.db` in the data directory, opened once.**
-  `open()` in `src/db/index.ts` sets `journal_mode = wal`,
+  `open()` in `src/storage/db/index.ts` sets `journal_mode = wal`,
   `foreign_keys = on` and `busy_timeout = 5000`, then migrates. The
   process holds this one connection for reads and writes; tools read it
   synchronously while the writer queue is the only path that changes
@@ -19,13 +20,13 @@ in `docs/config.md`.
   or stop the server before copying `markets.db`.
 - **Keys never enter the database.** Each key is a file in `secrets/`
   beside `markets.db` (`bearer.key`, `source-<name>.key`), read only by
-  `src/keys.ts`. A key never goes in a row, a log line, an error or an
+  `src/runtime/keys.ts`. A key never goes in a row, a log line, an error or an
   answer; a run's error column holds a fixed phrase for this reason.
 
 ## Migrations
 
 - **Every schema change is a new migration appended to `MIGRATIONS`**
-  in `src/db/migrations/index.ts`, a rename or a retype included. A
+  in `src/storage/db/migrations/index.ts`, a rename or a retype included. A
   migration on `main` is never edited: a running server has already
   recorded its id and holds real data, so an edit never runs there.
 - **`migrate()` runs each unrecorded migration in its own
@@ -53,7 +54,7 @@ in `docs/config.md`.
 - **A closure never awaits.** A closure returning a promise is refused
   (`a write closure must not return a promise`): the transaction would
   commit before the awaited writes ran. Fetch first, then queue one
-  write with everything it needs (`Answered` in `src/yahoo/sync.ts`).
+  write with everything it needs (`Answered` in `src/sources/yahoo/sync.ts`).
 - **A write that must not land late checks its deadline inside the
   closure.** A queued write can start after the caller gave up, so
   reads that fetch test `live()` again in the closure.
@@ -69,7 +70,7 @@ in `docs/config.md`.
   source), so a source change keeps the key.
 - **A market is the source's exchange code, through an alias table
   where several codes are one market.** `ALIASES` and `marketOf()` in
-  `src/yahoo/resolve.ts` map NMS, NGM, NCM, NAS, NYQ, ASE, PCX, BTS and
+  `src/sources/yahoo/resolve.ts` map NMS, NGM, NCM, NAS, NYQ, ASE, PCX, BTS and
   PNK to `US`, GER to `XETRA` and CCC to `CRYPTO`; any other code is a
   market of its own, so a new exchange needs no change. Adding an
   alias moves stored keys, so it ships with a migration that re-keys
@@ -79,7 +80,7 @@ in `docs/config.md`.
   re-keying migration fixes. Name and currency keep the stored value
   when an answer omits them.
 - **Each instrument has a unit, and an unknown one stays `unknown`.**
-  `instruments.unit` is one of `UNITS` in `src/instruments.ts`:
+  `instruments.unit` is one of `UNITS` in `src/market/instruments.ts`:
   `per_share`, `percent_of_par`, `index_points`, `percent`,
   `per_unit`, `unknown`. Yahoo's `INDEX` is `index_points`, ^VIX's
   and ^TNX's too, a yield index's points being its yield in percent;
@@ -93,7 +94,7 @@ in `docs/config.md`.
 
 - **Every instant is UTC epoch milliseconds in an `integer` column**
   (`*_at`, `time`, `session_start`, `session_end`, `quote_time`).
-  Only `src/clock.ts` reads the wall clock; every component takes a
+  Only `src/runtime/clock.ts` reads the wall clock; every component takes a
   `Clock`, and tests step a fake one.
 - **Every date is `YYYY-MM-DD` in the exchange's zone, never UTC.**
   A bar's date is the local date its session starts on (`barDate()`);
@@ -102,11 +103,11 @@ in `docs/config.md`.
   `glob`.
 - **Prices are `real` as the source gives them, never rounded or
   scaled.** The rescale check and the signals compare ratios of stored
-  closes (`rescaleOf()` in `src/yahoo/sync.ts` treats ratios within
+  closes (`rescaleOf()` in `src/sources/history.ts` treats ratios within
   0.0001 as one). Volumes are whole numbers (`Math.round`).
 - **A quote's `time` is the trade time, null when the source gives
   none** (the Bucharest index page), never the fetch time
-  (`src/quotes.ts`). A quote without a time replaces the stored one
+  (`src/market/quotes.ts`). A quote without a time replaces the stored one
   only when fetched later; a live signal row dates it by its fetch, at
   most its stored session's end, so the pass after the close keeps the
   session's row (`liveTarget()`).
@@ -130,7 +131,7 @@ in `docs/config.md`.
   At startup `failInterrupted()` fails runs a crash left `running`, in
   the first queued write, so no job's run is taken for one of those.
 - **A run's error is a fixed phrase, never an error's text.**
-  `phraseOf()` in `src/source.ts` gives the source phrase, `failed`
+  `phraseOf()` in `src/sources/source.ts` gives the source phrase, `failed`
   for anything else, `interrupted` for a run cut by a crash. Messages
   can echo a key or a URL.
 - **Staleness is read from the instrument's own source, job and
@@ -147,7 +148,7 @@ in `docs/config.md`.
   A refetch that left the last finished session's close owed adds an
   ok `owed` run in the same scope (`docs/yahoo.md`), since only a
   failed run may carry an error.
-- **The reasons are fixed phrases in `STALE`** (`src/stale.ts`); a
+- **The reasons are fixed phrases in `STALE`** (`src/market/stale.ts`); a
   tool answers the phrase, never prose of its own. Add a reason there.
 
 | Phrase | Set by | When |
@@ -182,15 +183,15 @@ in `docs/config.md`.
 
 - **There is no ticker list.** An instrument is tracked while a read
   named it within `TRACK_DAYS` (30, `--track-days`) or any rule reads
-  it, paused or not (`trackedIds()` in `src/tracking.ts`). Every
+  it, paused or not (`trackedIds()` in `src/market/tracking.ts`). Every
   scheduled job syncs only tracked instruments, so all jobs follow the
   same set.
 - **Only reads count.** `markRead()` runs in the writer after a tool's
-  targets resolve (`readTargets()` in `src/tools/targets.ts`), and only
+  targets resolve (`readTargets()` in `src/operations/targets.ts`), and only
   before the call's deadline. Searches and jobs never mark a read.
   `markRead()` never moves `last_read_at` back.
 - **An untracked instrument is caught up inside the read that names
-  it** (`catchUp()` in `src/yahoo/sync.ts`); an unknown symbol is
+  it** (`catchUp()` in `src/sources/yahoo/sync.ts`); an unknown symbol is
   fetched inside the call (`fetchInstrument()`).
 
 ## Retention

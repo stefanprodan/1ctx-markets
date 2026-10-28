@@ -26,7 +26,7 @@ recorders under `scripts/probe/`. The clock contract is in
 ## No network
 
 - **No test reaches a network.** Every source client takes a `fetch`
-  (`Fetch` in `src/source.ts`) and falls back to the global one only
+  (`Fetch` in `src/sources/source.ts`) and falls back to the global one only
   when none is passed, so a test always passes its own. `withApp()` in
   `test/helpers/app.ts` defaults to a fetch that throws `no network in
   tests`; a test that wants answers passes one.
@@ -69,7 +69,7 @@ recorders under `scripts/probe/`. The clock contract is in
 ## No elapsed time
 
 - **No test asserts elapsed time or waits on a real timer.** Only
-  `src/clock.ts` reads the wall clock; every component takes a `Clock`.
+  `src/runtime/clock.ts` reads the wall clock; every component takes a `Clock`.
   A test passes `fakeClock()` from `test/helpers/clock.ts` and steps
   it: `advance(ms)` fires each due timer in time order and lets its
   promises settle before the next; `next()` is the earliest due timer.
@@ -83,7 +83,7 @@ recorders under `scripts/probe/`. The clock contract is in
 - **Work paced by a limiter settles with `drive()`**
   (`test/helpers/drive.ts`). It moves the fake clock only to a
   limiter's or queue's next due time (`due()` on `Limiter` and `Queue`
-  in `src/source.ts`), spacing or back-off end, and otherwise yields a
+  in `src/sources/source.ts`), spacing or back-off end, and otherwise yields a
   turn, so a fetch's 30-second timeout or a call's deadline never fires
   under work still in flight. `pacedOf(m)` lists a read's limiters.
   Never advance the clock by a guessed amount to get a limited call
@@ -142,7 +142,7 @@ Never run one from a test or CI.
   names or the data directory's. `record()` drops `set-cookie`,
   `authorization` and `x-finnhub-token`, replaces a key-named query
   parameter with `REDACTED`, and replaces the key in every form, encoded too
-  (`scrub()` in `src/source.ts`), in every string of the output before
+  (`scrub()` in `src/sources/source.ts`), in every string of the output before
   writing (a cursor URL can echo it). `bvb.ts`
   strips the page key and ASP.NET form state (`scrub()`); `yahoo.ts`
   keeps only the headers a client acts on.

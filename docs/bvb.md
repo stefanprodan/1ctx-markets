@@ -1,11 +1,12 @@
 # The Bucharest feed
 
 Governs the Bucharest Stock Exchange (BVB) source, read directly from
-the exchange: `src/bvb/client.ts` (calls and parsing), `format.ts`
-(Romanian formats and HTML tables), `sync.ts` (answers into rows),
-`jobs.ts` (the schedule), `resolve.ts` (the exchange's search beside
-Yahoo's) and `switch.ts` (moving the market between sources). The
-shared queue, phrases and the lock are in `docs/yahoo.md`; sessions in
+the exchange: `src/sources/bvb/client.ts` (calls), `parse.ts` (parsing),
+`format.ts` (Romanian formats and HTML tables), `sync.ts` (fetches),
+`history.ts` and `quotes.ts` (answers into rows), `jobs.ts` (the
+schedule), `resolve.ts` (the exchange's search beside Yahoo's) and
+`switch.ts` (moving the market between sources). The shared queue,
+phrases and the lock are in `docs/yahoo.md`; sessions in
 `docs/calendars.md`; tables and staleness in `docs/storage.md`; the
 tools in `docs/tools.md`. It is the pattern for a source of another
 exchange: one client, its parsers, its session, the same tables.
@@ -78,7 +79,7 @@ exchange: one client, its parsers, its session, the same tables.
   (`malformed answer`): a missing table, column or status, an empty
   table, a short row, a number or time that does not match. The quote
   pass fails and the stored rows stay as they were.
-- **Romanian formats are read in one place** (`src/bvb/format.ts`):
+- **Romanian formats are read in one place** (`src/sources/bvb/format.ts`):
   numbers with a thousands dot and a decimal comma (`34.678,23`),
   times `dd.mm.yyyy HH:mm[:ss]` as wall times. The site writes local
   time with no offset, so each becomes an instant through the
@@ -88,7 +89,7 @@ exchange: one client, its parsers, its session, the same tables.
 ## The queue
 
 - **One call at a time, starts `SPACING_MS` (2 seconds) apart**
-  (`limiter()` in `src/source.ts`), the probes' pace, for jobs and
+  (`limiter()` in `src/sources/source.ts`), the probes' pace, for jobs and
   tools together; a tool's call goes ahead of the jobs' waiting ones.
   A failure backs the queue off as for Yahoo; a tool fails fast
   meanwhile and starts nothing past its deadline (`within(live)`).

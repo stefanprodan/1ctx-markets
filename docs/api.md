@@ -1,12 +1,13 @@
 # The HTTP API
 
-Governs the REST API under `/api/v1`: `src/api/` (`routes.ts`, `http.ts`,
-`openapi.ts`, `docs.ts`, `docs/`), the router's part in `src/http.ts`,
-the alerts feed (`src/tools/alerts.ts`) and the operator's routes
-(`src/admin/http.ts`). What each route reads is its tool's, in
-`docs/tools.md`, `docs/research.md` and `docs/rules.md`; the admin key
-and what refetch and delete do in `docs/admin.md`; the server, bearer
-and flags in `docs/config.md`.
+Governs the REST API under `/api/v1`: `src/api/` (`routes.ts`,
+`http.ts`, `openapi.ts`, `schemas.ts`, `paths.ts`, `docs.ts`, `docs/`),
+the router's part in `src/server/http.ts`, the alerts feed
+(`src/api/alerts.ts`) and the operator's routes (`src/admin/http.ts`).
+What each route reads is its tool's, in `docs/tools.md`,
+`docs/research.md` and `docs/rules.md`; the admin key and what refetch
+and delete do in `docs/admin.md`; the server, bearer and flags in
+`docs/config.md`.
 
 ## Why
 
@@ -204,7 +205,7 @@ answer; 1ctx (an agent workspace whose scheduled tasks poll it) is one.
   last answer; never add a time, counter or other changing field to a
   page.
 - **Items are rebuilt from each alert's stored `snapshot`**
-  (`alertItem()` in `src/tools/rules.ts`). A change to `Snapshot` or
+  (`alertItem()` in `src/operations/rules.ts`). A change to `Snapshot` or
   `alertItem()` must still read 90 days of old snapshots, and it
   changes the bytes of pages already answered, which starts the
   check's run again.
