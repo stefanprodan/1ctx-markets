@@ -1,9 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Reads with rules over the recorded sources: NVDA, ^GSPC and any chart
-// a test adds, Finnhub when asked for, and quotes a test makes from the
-// recorded metas, stored through the same write the quote job uses.
+// Rules over the recorded sources, quotes stored through the quote job's write.
 
 import { type Markets, markets } from "../../src/operations/markets.ts";
 import { type Engine, ruleEngine } from "../../src/rules/evaluate.ts";

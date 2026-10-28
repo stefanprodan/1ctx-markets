@@ -78,8 +78,7 @@ describe("staleness", () => {
     expect(quoteStale(db, us, due(start + 2 * every + 1))).toEqual([
       "quote overdue",
     ]);
-    // without the period, as the jobs read it, and for a market with no
-    // session, never
+    // without the period, as the jobs read it, and with no session, never
     expect(quoteStale(db, us)).toEqual([]);
     expect(quoteStale(db, other, due(start + DAY_MS))).toEqual([]);
     // a quote that missed the close stays overdue after it, until the

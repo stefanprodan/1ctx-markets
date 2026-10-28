@@ -1,9 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// A made-up Yahoo for whole simulated days: each listing's session is
-// shown from its start on, as the recordings showed Friday's on Sunday,
-// and its chart and spark answers have the recorded shape.
+// A made-up Yahoo: a session shows from its start on, as Friday's on Sunday.
 
 import {
   addDays,
@@ -174,7 +172,6 @@ export function sim(listings: readonly SimListing[]) {
         },
       });
     },
-    // answers both kinds of call by URL
     route(url: URL, now: number): Recorded | undefined {
       if (url.pathname === "/v7/finance/spark") {
         return this.spark(url.searchParams.get("symbols")!.split(","), now);
