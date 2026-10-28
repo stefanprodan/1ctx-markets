@@ -1,0 +1,135 @@
+{
+  "recordedAt": "2026-10-28T07:46:12.599Z",
+  "request": {
+    "method": "GET",
+    "url": "https://query1.finance.yahoo.com/v8/finance/chart/GC%3DF?range=5d&interval=1d"
+  },
+  "status": 200,
+  "headers": {
+    "age": "0",
+    "cache-control": "public, max-age=10, stale-while-revalidate=20",
+    "content-type": "application/json;charset=utf-8"
+  },
+  "body": {
+    "chart": {
+      "result": [
+        {
+          "meta": {
+            "currency": "USD",
+            "symbol": "GC=F",
+            "exchangeName": "CMX",
+            "fullExchangeName": "COMEX",
+            "instrumentType": "FUTURE",
+            "firstTradeDate": 967608000,
+            "regularMarketTime": 1793172967,
+            "hasPrePostMarketData": false,
+            "gmtoffset": -14400,
+            "timezone": "EDT",
+            "exchangeTimezoneName": "America/New_York",
+            "regularMarketPrice": 4052.6,
+            "regularMarketChangePercent": -0.54,
+            "fulldayPrice": 4052.6,
+            "fulldayChange": -22,
+            "fulldayChangePercent": -0.54,
+            "fiftyTwoWeekHigh": 5586.2,
+            "fiftyTwoWeekLow": 3901.3,
+            "regularMarketDayHigh": 4084.1,
+            "regularMarketDayLow": 4040.5,
+            "regularMarketVolume": 30478,
+            "shortName": "Gold Dec 26",
+            "chartPreviousClose": 4007.9,
+            "priceHint": 2,
+            "currentTradingPeriod": {
+              "pre": {
+                "timezone": "EDT",
+                "end": 1793160000,
+                "start": 1793160000,
+                "gmtoffset": -14400
+              },
+              "regular": {
+                "timezone": "EDT",
+                "end": 1793246340,
+                "start": 1793160000,
+                "gmtoffset": -14400
+              },
+              "post": {
+                "timezone": "EDT",
+                "end": 1793246340,
+                "start": 1793246340,
+                "gmtoffset": -14400
+              }
+            },
+            "dataGranularity": "1d",
+            "range": "5d",
+            "validRanges": [
+              "1d",
+              "5d",
+              "1mo",
+              "3mo",
+              "6mo",
+              "1y",
+              "2y",
+              "5y",
+              "10y",
+              "ytd",
+              "max"
+            ]
+          },
+          "timestamp": [
+            1792728000,
+            1792987200,
+            1793073600,
+            1793160000
+          ],
+          "indicators": {
+            "quote": [
+              {
+                "volume": [
+                  180320,
+                  126007,
+                  126007,
+                  30478
+                ],
+                "open": [
+                  4042.199951171875,
+                  4012.199951171875,
+                  4032.800048828125,
+                  4073.60009765625
+                ],
+                "low": [
+                  3989.10009765625,
+                  3990.89990234375,
+                  4001.60009765625,
+                  4040.5
+                ],
+                "close": [
+                  4007.89990234375,
+                  4038.39990234375,
+                  4074.60009765625,
+                  4052.60009765625
+                ],
+                "high": [
+                  4050.199951171875,
+                  4044,
+                  4079.39990234375,
+                  4084.10009765625
+                ]
+              }
+            ],
+            "adjclose": [
+              {
+                "adjclose": [
+                  4007.89990234375,
+                  4038.39990234375,
+                  4074.60009765625,
+                  4052.60009765625
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "error": null
+    }
+  }
+}

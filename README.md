@@ -116,6 +116,21 @@ above, logging to `markets.log` beside the database; `service status`,
 ./bin/1ctx-markets service install --source bvb
 ```
 
+An instrument is synced while something reads it. To keep some synced
+whether read or not, such as an overview of the world's markets, name
+each with `--track` as the `quote` tool takes it, and quote `^`, which
+zsh's extended globbing reads as a pattern. This one holds the main
+US, European and Asian indices, Bucharest's BET (feed only, so with
+`--source bvb`), gold, silver and WTI oil:
+
+```sh
+./bin/1ctx-markets service install --source bvb \
+  --track '^GSPC' --track '^DJI' --track '^NDX' --track '^SOX' \
+  --track '^VIX' --track '^STOXX' --track '^GDAXI' --track '^FTSE' \
+  --track '^FCHI' --track '^N225' --track '^HSI' --track '^KS11' \
+  --track '^TWII' --track BVB:BET --track GC=F --track SI=F --track CL=F
+```
+
 Connect an MCP client over Streamable HTTP with the bearer in the
 `Authorization` header. For Claude Code:
 

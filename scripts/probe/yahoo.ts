@@ -168,6 +168,15 @@ const CASES: Case[] = [
     url: chart(Q1, "^NDX", { range: "5d", interval: "1d" }),
   },
   {
+    name: "chart-dji-5d-1d",
+    url: chart(Q1, "^DJI", { range: "5d", interval: "1d" }),
+  },
+  // a future other than oil, on another exchange
+  {
+    name: "chart-gc-f-5d-1d",
+    url: chart(Q1, "GC=F", { range: "5d", interval: "1d" }),
+  },
+  {
     name: "chart-eurusd-x-5d-1d",
     url: chart(Q1, "EURUSD=X", { range: "5d", interval: "1d" }),
   },

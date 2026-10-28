@@ -5,8 +5,9 @@
 import type { SourceState } from "./admin/http.ts";
 import { alertsHandler } from "./api/alerts.ts";
 import { routes } from "./api/routes.ts";
-import { TRACK_DAYS, trackedIds } from "./market/tracking.ts";
+import { TRACK_DAYS, type Tracking, trackedIds } from "./market/tracking.ts";
 import { type Markets, markets } from "./operations/markets.ts";
+import { seed, type Tracker, tracker } from "./operations/track.ts";
 import { ruleEngine } from "./rules/evaluate.ts";
 import { pruneAlerts } from "./rules/store.ts";
 import { type Clock, DAY_MS } from "./runtime/clock.ts";
@@ -56,6 +57,8 @@ export type AppOptions = {
   quoteEveryMs: number;
   // an instrument read within this many days stays tracked
   trackDays?: number;
+  // --track: tracked whether read or not
+  track?: readonly string[];
   // a source is on while its key file holds a key
   fredKey?: string | null;
   finnhubKey?: string | null;
@@ -86,13 +89,29 @@ export type App = {
   // moves the Bucharest market between Yahoo and the feed
   sourceSwitch: SourceSwitch;
   markets: Markets;
+  tracker: Tracker;
   sources: LogFields;
   stop(): Promise<void>;
 };
 
 export function start(options: AppOptions): App {
   const { clock, db } = options;
-  const trackMs = (options.trackDays ?? TRACK_DAYS) * DAY_MS;
+  const flagged = new Set<string>();
+  const owed = new Set<string>();
+  const tracking: Tracking = {
+    readMs: (options.trackDays ?? TRACK_DAYS) * DAY_MS,
+    flagged,
+    owed,
+  };
+  // before the startup write, whose prune reads what is tracked
+  const trackStates = seed({
+    db,
+    values: options.track ?? [],
+    on: { bvb: options.bvb === true, fred: (options.fredKey ?? null) !== null },
+    flagged,
+    owed,
+    now: clock.now(),
+  });
   const write = writer(db);
   const rules = ruleEngine({
     quoteEveryMs: options.quoteEveryMs,
@@ -103,7 +122,7 @@ export function start(options: AppOptions): App {
     const now = clock.now();
     pruneRuns(db, now);
     pruneResearch(db, now, hooks.waited(db, now));
-    pruneNews(db, now, trackedIds(db, now, trackMs));
+    pruneNews(db, now, trackedIds(db, now, tracking));
     pruneAlerts(db, now);
   };
   // first, so no run is taken for a crashed one; prunes too, since a
@@ -125,7 +144,7 @@ export function start(options: AppOptions): App {
     ctx: yahooCtx,
     quoteEveryMs: options.quoteEveryMs,
     log: options.log("yahoo"),
-    trackMs,
+    tracking,
   });
 
   const bvbClient =
@@ -141,7 +160,7 @@ export function start(options: AppOptions): App {
           ctx: bvbCtx,
           quoteEveryMs: options.quoteEveryMs,
           log: options.log("bvb"),
-          trackMs,
+          tracking,
         });
   const switcher = sourceSwitch({
     yahoo: yahooCtx,
@@ -176,7 +195,7 @@ export function start(options: AppOptions): App {
       : fredJobs({
           ctx: { db, clock, writer: write, fred: fredClient, rules },
           log: options.log("fred"),
-          trackMs,
+          tracking,
         });
 
   const finnhubKey = options.finnhubKey ?? null;
@@ -190,7 +209,7 @@ export function start(options: AppOptions): App {
       : finnhubJobs({
           ctx: { db, clock, writer: write, finnhub: finnhubClient },
           log: options.log("finnhub"),
-          trackMs,
+          tracking,
           hooks,
         });
 
@@ -205,7 +224,7 @@ export function start(options: AppOptions): App {
       : massiveJobs({
           ctx: { db, clock, writer: write, massive: massiveClient },
           log: options.log("massive"),
-          trackMs,
+          tracking,
         });
 
   const reads = markets({
@@ -220,9 +239,18 @@ export function start(options: AppOptions): App {
     hooks,
     rules,
     log: options.log("tools"),
-    trackMs,
+    tracking,
     quoteEveryMs: options.quoteEveryMs,
   });
+  const track = tracker({
+    m: reads,
+    states: trackStates,
+    flagged,
+    owed,
+    periodMs: options.quoteEveryMs,
+    log: options.log("track"),
+  });
+  void track.run();
   const mcp = mcpHandler(options.version, options.log("mcp"), reads);
   const keyed = (name: string, key: string | null, client: Paced | null) => ({
     name,
@@ -264,6 +292,7 @@ export function start(options: AppOptions): App {
                 m: { ...reads, log: options.log("admin") },
                 version: options.version,
                 sources: states,
+                track: track.status,
               },
         log: options.log("api"),
       }),
@@ -279,6 +308,7 @@ export function start(options: AppOptions): App {
   massiveSync?.schedule(jobs);
   bvbSync?.schedule(jobs);
   switcher.schedule(jobs);
+  track.schedule(jobs);
   jobs.every("retention", DAY_MS, async () => {
     await write.write(prune);
   });
@@ -298,6 +328,7 @@ export function start(options: AppOptions): App {
     bvbJobs: bvbSync,
     sourceSwitch: switcher,
     markets: reads,
+    tracker: track,
     sources: Object.fromEntries(
       states.map((s) => [
         s.name,
@@ -307,6 +338,7 @@ export function start(options: AppOptions): App {
     async stop() {
       // no new run or request starts, no job waits out a back-off, runs settle,
       // then queued writes drain before main closes the database
+      track.stop();
       const settled = jobs.stop();
       yahooQueue.close();
       fredClient?.close();
@@ -316,6 +348,11 @@ export function start(options: AppOptions): App {
       await server.stop();
       await settled;
       await switcher.settled();
+      await track.settled();
+      // a fetch past its caller's deadline still runs: no answer after close
+      await Promise.allSettled(
+        [...reads.inflight.values()].map((f) => f.promise),
+      );
       await mcp.close();
       await write.close();
     },

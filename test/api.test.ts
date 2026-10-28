@@ -105,7 +105,7 @@ describe("the spec", () => {
     const list = routes({
       m: w.m,
       alerts: async () => new Response(),
-      admin: { m: w.m, version: "v", sources: [] },
+      admin: { m: w.m, version: "v", sources: [], track: () => [] },
       log: silent,
     });
     const routed = list.map((r) => `${r.method} ${r.path}`).sort();

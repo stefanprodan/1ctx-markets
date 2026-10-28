@@ -15,7 +15,8 @@ import {
 import type { QuoteRow } from "../../market/quotes.ts";
 import { barsDue, JOBS, owedDue } from "../../market/stale.ts";
 import {
-  TRACK_MS,
+  BY_USE,
+  type Tracking,
   trackedIds,
   trackedInstruments,
 } from "../../market/tracking.ts";
@@ -43,7 +44,7 @@ export type JobsOptions = {
   ctx: YahooContext;
   quoteEveryMs: number;
   log: Log;
-  trackMs?: number;
+  tracking?: Tracking;
 };
 
 type Work = {
@@ -89,8 +90,8 @@ function byMarket(
 export function yahooJobs(options: JobsOptions): YahooJobs {
   const { ctx, quoteEveryMs, log } = options;
   const { db, clock, yahoo, writer } = ctx;
-  const trackMs = options.trackMs ?? TRACK_MS;
-  const tracked = () => byMarket(trackedInstruments(db, clock.now(), trackMs));
+  const tracking = options.tracking ?? BY_USE;
+  const tracked = () => byMarket(trackedInstruments(db, clock.now(), tracking));
   let lastSlot: number | null = null;
   // rotated, so one instrument that never answers cannot hide a new session
   const checkTurn = new Map<string, number>();
@@ -347,7 +348,7 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
   // tracked only: an untracked instrument is fetched inside the read naming it
   async function backfillTurn(): Promise<string | null> {
     const now = clock.now();
-    const wanted = trackedIds(db, now, trackMs);
+    const wanted = trackedIds(db, now, tracking);
     const waiting = db
       .query<{ id: string }, [string]>(
         `select id from instruments i where source = ?

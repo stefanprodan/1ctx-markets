@@ -26,7 +26,12 @@ export function api(m: Markets, options: { sources?: SourceState[] } = {}) {
     api: routes({
       m,
       alerts: alertsHandler({ db: m.db, log: silent }),
-      admin: { m, version: "v0.0.0-test", sources: options.sources ?? [] },
+      admin: {
+        m,
+        version: "v0.0.0-test",
+        sources: options.sources ?? [],
+        track: () => [],
+      },
       log: silent,
     }),
     clock: m.clock,

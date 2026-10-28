@@ -1,0 +1,143 @@
+{
+  "recordedAt": "2026-10-28T07:45:44.411Z",
+  "request": {
+    "method": "GET",
+    "url": "https://query1.finance.yahoo.com/v8/finance/chart/%5EDJI?range=5d&interval=1d"
+  },
+  "status": 200,
+  "headers": {
+    "age": "0",
+    "cache-control": "public, max-age=10, stale-while-revalidate=20",
+    "content-type": "application/json;charset=utf-8"
+  },
+  "body": {
+    "chart": {
+      "result": [
+        {
+          "meta": {
+            "currency": "USD",
+            "symbol": "^DJI",
+            "exchangeName": "DJI",
+            "fullExchangeName": "DJI",
+            "instrumentType": "INDEX",
+            "firstTradeDate": 694362600,
+            "regularMarketTime": 1793131200,
+            "hasPrePostMarketData": false,
+            "gmtoffset": -14400,
+            "timezone": "EDT",
+            "exchangeTimezoneName": "America/New_York",
+            "regularMarketPrice": 52377.6,
+            "regularMarketChangePercent": 0.031,
+            "fulldayPrice": 52377.6,
+            "fulldayChange": 16,
+            "fulldayChangePercent": 0.031,
+            "fiftyTwoWeekHigh": 54744.33,
+            "fiftyTwoWeekLow": 45057.28,
+            "regularMarketDayHigh": 52477.91,
+            "regularMarketDayLow": 52231.84,
+            "regularMarketVolume": 401210066,
+            "longName": "Dow Jones Industrial Average",
+            "shortName": "Dow Jones Industrial Average",
+            "chartPreviousClose": 52495.88,
+            "priceHint": 2,
+            "currentTradingPeriod": {
+              "pre": {
+                "timezone": "EDT",
+                "end": 1793194200,
+                "start": 1793174400,
+                "gmtoffset": -14400
+              },
+              "regular": {
+                "timezone": "EDT",
+                "end": 1793217600,
+                "start": 1793194200,
+                "gmtoffset": -14400
+              },
+              "post": {
+                "timezone": "EDT",
+                "end": 1793232000,
+                "start": 1793217600,
+                "gmtoffset": -14400
+              }
+            },
+            "dataGranularity": "1d",
+            "range": "5d",
+            "validRanges": [
+              "1d",
+              "5d",
+              "1mo",
+              "3mo",
+              "6mo",
+              "1y",
+              "2y",
+              "5y",
+              "10y",
+              "ytd",
+              "max"
+            ]
+          },
+          "timestamp": [
+            1792589400,
+            1792675800,
+            1792762200,
+            1793021400,
+            1793107800
+          ],
+          "indicators": {
+            "quote": [
+              {
+                "low": [
+                  52392.28125,
+                  52508.37890625,
+                  52055.1015625,
+                  52263.25,
+                  52231.83984375
+                ],
+                "open": [
+                  52652.8515625,
+                  52788.41015625,
+                  52696.69921875,
+                  52320.44921875,
+                  52277.48828125
+                ],
+                "volume": [
+                  359380000,
+                  506190000,
+                  348500000,
+                  387910000,
+                  401210000
+                ],
+                "high": [
+                  52860.109375,
+                  52927.87890625,
+                  52696.69921875,
+                  52620.19140625,
+                  52477.91015625
+                ],
+                "close": [
+                  52856.08984375,
+                  52867.98046875,
+                  52215.16015625,
+                  52361.578125,
+                  52377.5703125
+                ]
+              }
+            ],
+            "adjclose": [
+              {
+                "adjclose": [
+                  52856.08984375,
+                  52867.98046875,
+                  52215.16015625,
+                  52361.578125,
+                  52377.5703125
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "error": null
+    }
+  }
+}

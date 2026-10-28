@@ -1,13 +1,18 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-// Every instrument answered counts as read, which is what tracks it.
+// Every instrument a read answers counts as read, which is what tracks it.
 
 import { dailyRange } from "../market/bars.ts";
-import { type Instrument, readInstrument } from "../market/instruments.ts";
-import { isTracked, markRead } from "../market/tracking.ts";
+import {
+  type Instrument,
+  readBySourceSymbol,
+  readInstrument,
+} from "../market/instruments.ts";
+import { JOBS } from "../market/stale.ts";
+import { isKept, markRead } from "../market/tracking.ts";
 import { errorFields } from "../runtime/log.ts";
 import type { Bvb } from "../sources/bvb/client.ts";
-import { resolveBoth } from "../sources/bvb/resolve.ts";
+import { readByFeedSymbol, resolveBoth } from "../sources/bvb/resolve.ts";
 import {
   NO_DATA as BVB_NO_DATA,
   catchUp as bvbCatchUp,
@@ -34,6 +39,7 @@ import {
 } from "../sources/yahoo/resolve.ts";
 import { catchUp, fetchInstrument } from "../sources/yahoo/sync.ts";
 import type { Db } from "../storage/db/index.ts";
+import { endRun, startRun } from "../storage/runs.ts";
 import { WriterClosed } from "../storage/writer.ts";
 import { type Markets, shared } from "./markets.ts";
 
@@ -158,14 +164,21 @@ function fredStep(m: Markets, id: string): Step {
   });
   const stored = readInstrument(m.db, id);
   if (stored !== null && hasBars(m.db, id)) {
-    if (isTracked(m.db, id, m.clock.now(), m.trackMs)) {
+    if (isKept(m.db, id, m.clock.now(), m.tracking)) {
       return { kind: "ready", instrument: stored };
     }
     return {
       kind: "fetch",
       key: id,
       run: async (live) => {
-        await refetchSeries(ctx(live), stored, live);
+        const at = m.clock.now();
+        const written = await refetchSeries(ctx(live), stored, live);
+        // as the series pass: the run ends, so the series is not due again
+        await m.writer.write((db) => {
+          const now = m.clock.now();
+          endRun(db, startRun(db, FRED, JOBS.bars, at, id), now, written.rows);
+          m.rules.evaluate(db, [id], now);
+        });
         return stored;
       },
     };
@@ -211,7 +224,7 @@ function bvbStep(m: Markets, instrument: Instrument): Step {
   if (!hasBars(m.db, instrument.id)) {
     return bvbFetchStep(m, instrument.sourceSymbol, instrument.id);
   }
-  if (isTracked(m.db, instrument.id, m.clock.now(), m.trackMs)) {
+  if (isKept(m.db, instrument.id, m.clock.now(), m.tracking)) {
     return { kind: "ready", instrument };
   }
   return {
@@ -238,7 +251,7 @@ function storedStep(m: Markets, instrument: Instrument): Step {
         ),
     };
   }
-  if (isTracked(m.db, instrument.id, m.clock.now(), m.trackMs)) {
+  if (isKept(m.db, instrument.id, m.clock.now(), m.tracking)) {
     return { kind: "ready", instrument };
   }
   return {
@@ -310,6 +323,24 @@ async function step(
   };
 }
 
+// the instrument step() finds stored for an input, asking no source;
+// null when only a source can answer
+export function storedInstrument(
+  db: Db,
+  input: string,
+  bvb: boolean,
+): Instrument | null {
+  const given = input.trim();
+  const upper = given.toUpperCase();
+  if (upper.includes(":")) return readInstrument(db, upper);
+  if (!bvb) return readBySourceSymbol(db, YAHOO, upper);
+  const stored = [
+    readByFeedSymbol(db, given),
+    readBySourceSymbol(db, YAHOO, upper),
+  ].filter((i) => i !== null);
+  return stored.length === 1 ? stored[0]! : null;
+}
+
 const candidates = (list: readonly Candidate[]): Step => ({
   kind: "error",
   error: {
@@ -322,10 +353,28 @@ const candidates = (list: readonly Candidate[]): Step => ({
 const EXPIRED = Symbol("expired");
 
 // each input resolves on its own under one deadline; the queue paces fetches
-export async function readTargets(
+export function readTargets(
   m: Markets,
   inputs: readonly string[],
   deadline = m.clock.now() + m.callMs,
+): Promise<Target[]> {
+  return resolveAll(m, inputs, deadline, true);
+}
+
+// as a read resolves, fetching what is new, but no read is marked
+export function resolveTargets(
+  m: Markets,
+  inputs: readonly string[],
+  deadline = m.clock.now() + m.callMs,
+): Promise<Target[]> {
+  return resolveAll(m, inputs, deadline, false);
+}
+
+async function resolveAll(
+  m: Markets,
+  inputs: readonly string[],
+  deadline: number,
+  read: boolean,
 ): Promise<Target[]> {
   let cancel = () => {};
   const expired = new Promise<typeof EXPIRED>((resolve) => {
@@ -346,7 +395,11 @@ export async function readTargets(
       fetches.set(s.key, fetched);
     }
     return fetched.then(
-      (instrument): Target => ({ input, instrument }),
+      (instrument): Target => {
+        // a landed fetch catches it up, whoever asked
+        m.tracking.owed.delete(instrument.id);
+        return { input, instrument };
+      },
       (error: unknown): Target => ({ input, error: itemError(m, error) }),
     );
   };
@@ -360,7 +413,7 @@ export async function readTargets(
     const ids = targets.flatMap((t) =>
       "instrument" in t ? [t.instrument.id] : [],
     );
-    if (ids.length > 0) {
+    if (read && ids.length > 0) {
       // queued behind other writes, it waits no longer than the call
       const wrote = m.writer
         .write((db) => {

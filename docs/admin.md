@@ -33,7 +33,7 @@ is offered over MCP.
 
 | Route | Does |
 |---|---|
-| `GET /api/v1/admin/status` | sources on, off and why, a back-off in force, every job's last run and its failing scopes, the instrument and tracked counts, the database size, the version |
+| `GET /api/v1/admin/status` | sources on, off and why, a back-off in force, every job's last run and its failing scopes, the instrument and tracked counts, each `--track` value with its id and state (`pending`, `tracked` or the read's error code), the database size, the version |
 | `POST /api/v1/admin/refetch` | `{"symbols": [...], "fetch": [...], "sections": [...]}`, answered per symbol and part |
 | `DELETE /api/v1/admin/instruments/{id}` | the instrument and every row of it |
 
@@ -80,6 +80,9 @@ is offered over MCP.
   condition: delete the rule first. The check is in the same write.
 - **Its alerts stay** until retention, since alerts have no foreign key
   and a hole would read as a retention gap on the alerts feed.
+- **A `--track` value's instrument is fetched again** on the next track
+  pass, since the flag still names it; to stop it, drop the flag and
+  restart.
 - **Not built:** deleting alerts, untracking (tracking ends by itself),
   key rotation (replace the file and restart).
 
