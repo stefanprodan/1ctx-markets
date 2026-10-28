@@ -1,9 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// Yahoo and FRED answered from the recordings by URL, for reads that
-// fetch inside the call: NVDA's five years and its spark quote, ^GSPC
-// as a benchmark, the recorded searches and the FRED series.
 
 import { join } from "node:path";
 import type { Fetch } from "../../src/sources/source.ts";

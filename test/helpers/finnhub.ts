@@ -1,11 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// Finnhub answered from the recordings by path and symbol: NVDA in
-// full, VVSM.DE refused with 403, TLV.RO empty and TSM, an ADR, as its
-// home listing 2330.TW but for insiders. Made-up US symbols answer as
-// one of them, under their own symbol. The calendar asked with no
-// symbol is the whole market's, two days or a week as recorded.
 
 import { join } from "node:path";
 import { clone, type Recorded } from "./yahoo.ts";

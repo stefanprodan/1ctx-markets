@@ -1,8 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Massive's news faked from recorded articles; next_url is opaque and holds
-// no key, as Massive's own.
+// next_url is opaque and holds no key, as Massive's own
 
 import { join } from "node:path";
 import { clone, type Recorded } from "./yahoo.ts";
