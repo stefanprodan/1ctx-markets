@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { dailyRange, type Written } from "../../market/bars.ts";
-import { weekOf } from "../../market/calendars.ts";
+import { readSession, weekOf } from "../../market/calendars.ts";
 import {
   checkOwner,
   checkSource,
@@ -37,6 +37,7 @@ import {
   fields,
   type Landed,
   read,
+  settle,
   startsShort,
   store,
   unapplied,
@@ -323,9 +324,11 @@ async function refetchAnswer(
   const answer = await ctx.yahoo.chart(instrument.sourceSymbol, from, now);
   checkAnswer(instrument, answer);
   const split = unapplied(db, instrument, [answer]).length > 0;
+  // settled as store() settles them, so a pair's own closes never differ
+  const bars = read(answer, readSession(db, instrument.market)).bars;
   const rescale = split
     ? null
-    : rescaleOf(db, instrument, read(answer, null).bars);
+    : rescaleOf(db, instrument, settle(db, instrument, bars).bars);
   if (split || rescale !== null) {
     // old price levels stop now, since the whole history may be refused
     await ctx.writer.write((w) => {

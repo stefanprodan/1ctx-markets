@@ -217,9 +217,11 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   (`splits`): a quote pass holds no per-instrument lock, so an answer
   fetched before a rescale and written after it would bring old-scale
   points back. A rescale with no split still clears every session.
-- **Only history's `5m` and the chart's 1D and 5D read it**; signals,
-  rules, movers and screen never do, and the live price stays the
-  quote's.
+- **Only history's `5m`, the chart's 1D and 5D, and a currency pair's
+  daily close read it** (`docs/yahoo.md`, Daily bars); signals, rules,
+  movers and screen never do, and the live price stays the quote's. A
+  pair's close taken from a session's points is marked in
+  `bars.point_close`, so it outlives their prune.
 
 ## Retention
 

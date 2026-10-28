@@ -35,6 +35,7 @@ import { type MassiveJobs, massiveJobs } from "./sources/massive/jobs.ts";
 import { pruneNews } from "./sources/massive/store.ts";
 import { type Backoff, type Fetch, queue } from "./sources/source.ts";
 import { type Yahoo, yahoo } from "./sources/yahoo/client.ts";
+import { settleStored } from "./sources/yahoo/history.ts";
 import { type YahooJobs, yahooJobs } from "./sources/yahoo/jobs.ts";
 import type { Db } from "./storage/db/index.ts";
 import { failInterrupted, pruneRuns } from "./storage/runs.ts";
@@ -144,6 +145,12 @@ export function start(options: AppOptions): App {
       options
         .log("markets")
         .error("startup cleanup failed", errorFields(error));
+    });
+  // before any job's write, so a refetch compares settled closes
+  void write
+    .write((db) => settleStored(db, clock.now()))
+    .catch((error: unknown) => {
+      options.log("yahoo").error("closes settle failed", errorFields(error));
     });
   const yahooQueue = queue(clock, YAHOO_CONCURRENCY);
   const client = yahoo({ clock, fetch: options.fetch, queue: yahooQueue });

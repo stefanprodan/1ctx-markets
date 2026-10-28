@@ -3,7 +3,9 @@
 
 import type { Migration } from "../migration.ts";
 
-// the session leads the key, so replacing and pruning one read it
+// the session leads the key, so replacing and pruning one read it;
+// point_close marks a currency pair's close taken from its session's last
+// 5-minute close, kept after the points are pruned
 export const m0015: Migration = {
   id: "0015-intraday",
   up(db) {
@@ -16,6 +18,9 @@ export const m0015: Migration = {
         fetched_at integer not null,
         primary key (instrument, session, at)
       ) strict, without rowid;
+
+      alter table bars add column point_close integer not null default 0
+        check (point_close in (0, 1));
     `);
   },
 };

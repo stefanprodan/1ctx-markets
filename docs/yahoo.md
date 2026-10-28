@@ -145,6 +145,21 @@ Phrases from Yahoo (`docs/sources.md`, Refusals):
   the one it became newest in starts; that session's full pass decides
   again, and a day the source never closed is deleted as above once it
   is no longer newest.
+- **A currency pair's final day closes at its session's end, not
+  Yahoo's close** (`settle()` in `history.ts`), since Yahoo's daily
+  close for a `CURRENCY` is about the day's open. The close is the
+  session's last stored 5-minute close when the server holds that
+  session's points, else the next day's open (equal within a pip on
+  weekdays; a Friday carries the weekend gap), else Yahoo's close until
+  the next day arrives. Open, high, low and volume stay Yahoo's, and
+  the live day keeps the quote's price. A close taken from points is
+  marked (`bars.point_close`) and kept by every later write, so a
+  refetch or the five-session prune never replaces it; a rescale drops
+  it with the points. The refetch's rescale check compares settled
+  closes, so an unchanged answer changes no row. At start
+  `settleStored()` applies the same rule to stored pairs, rebuilding
+  weeks and signals from the first day it changed, so a deploy needs no
+  manual step.
 - **The bars, their signals and the rule evaluation land in one
   transaction** (`store()`), so nothing reads bars without their
   signals.
