@@ -3,8 +3,9 @@
 Governs the operator's routes and command: `src/admin/http.ts`
 (`/api/v1/admin/*`), `src/admin/refetch.ts` and `src/admin/cli.ts`
 (`1ctx-markets admin`). The routes, their errors and the spec are in
-`docs/api.md`; key files in `docs/config.md`; runs, tracking and retention in `docs/storage.md`;
-each source's fetch code in its own doc.
+`docs/api.md`; key files in `docs/config.md`; runs, tracking and
+retention in `docs/storage.md`; the source queue and deadlines in
+`docs/sources.md`; each source's fetch code in its own doc.
 
 ## Why
 
@@ -16,20 +17,19 @@ is offered over MCP.
 ## The key and the guard
 
 - **`secrets/admin.key` is written at the first start beside the
-  bearer** (`createAdmin()`), prefixed `1ctx-markets-admin-`, the same
-  way: 32 random bytes in base64url, mode 600, never replaced. One
-  that is unusable or equal to the bearer stops the start
-  (`requireAdmin()`); the message names the file only.
+  bearer, the same way** (`docs/config.md`, Keys), prefixed
+  `1ctx-markets-admin-`. One that is unusable or equal to the bearer
+  stops the start; the message names the file only.
 - **`/api/v1/admin` and `/api/v1/admin/*` take the admin key alone**,
-  checked as the bearer is (`router()` in `src/server/http.ts`): the bearer is
-  refused there and the admin key on every other path, `/mcp`
-  included. With no admin key they refuse every caller.
+  checked as the bearer is (`router()` in `src/server/http.ts`): the
+  bearer is refused there and the admin key on every other path,
+  `/mcp` included. With no admin key they refuse every caller.
 - **The routes are on the server's own port, so treat them as
-  internet-facing** wherever the server is reachable (staging is,
-  through a tunnel). Arguments are parsed strictly and refused whole,
-  bodies are at most 16 KiB (`MAX_BODY_BYTES`), a request names at most
-  20 instruments (`MAX_SYMBOLS`), an id matches `KEY`, and every error
-  is a fixed phrase that echoes nothing sent.
+  internet-facing** wherever the server is reachable. Arguments are
+  parsed strictly and refused whole, bodies are at most 16 KiB
+  (`MAX_BODY_BYTES`), a request names at most 20 instruments
+  (`MAX_SYMBOLS`), an id matches `KEY`, and every error is a fixed
+  phrase that echoes nothing sent.
 
 | Route | Does |
 |---|---|
@@ -45,37 +45,37 @@ is offered over MCP.
   found`, and nothing is resolved or added.
 - **Each part runs through its source's own fetch code, client and
   queue or limiter** (`within(live)`, so a back-off fails at once),
-  every part at once under one deadline of `callMs` (15 s). Its calls
-  queue with the tools' own, first come first served, so a large
-  refetch can hold an agent's call for up to that deadline: refetch few
+  every part at once under one call deadline (15 s). Its calls queue
+  with the tools' own, first come first served, so a large refetch can
+  hold an agent's call for up to that deadline: refetch few
   instruments at a time.
 
 | Part | Source | Asks |
 |---|---|---|
-| `bars` | Yahoo, the Bucharest feed, FRED | the whole history from the first stored week (`backfill()`, `refetchSeries(…, true)`), so every stored day is written again |
+| `bars` | Yahoo, the Bucharest feed, FRED | the whole history from the first stored week, so every stored day is written again |
 | `quotes` | Yahoo, the Bucharest feed | one quote; a FRED series has none |
-| `research` | Finnhub | each of `sections` (`metric`, `analysts`, `earnings`, `insider`, default all) on its own `refreshResearch()` call, a good run or not |
+| `research` | Finnhub | each of `sections` (`metric`, `analysts`, `earnings`, `insider`, default all) on its own call, a good run or not |
 | `calendar` | Finnhub | the earnings calendar |
 | `news` | Massive | one page, as a tool asks |
 
 - **Each part answers `fetched` with its rows, `not covered`, `source
-  off`, or `failed` with a fixed phrase** (a source phrase, `backing off
-  after <phrase>`, `timed out`, `moved to another source`, `the server
-  is stopping`, `failed`).
+  off`, or `failed` with a fixed phrase** (a source phrase, `backing
+  off after <phrase>`, `timed out`, `moved to another source`, `the
+  server is stopping`, `failed`).
 - **It records the runs the jobs record, never one by hand.** Bars end
-  the instrument's own `bars` run; a failure that reached the source
-  fails it, as the bar pass does. Research and news record their own.
-  A quote records none: a quote run is the market's pass. Nothing is
-  marked due, no run is deleted, and a refetch is no read, so it
+  the instrument's own `bars` run, failed when the failure reached the
+  source, as the bar pass does; research and news record their own; a
+  quote records none, since a quote run is the market's pass. Nothing
+  is marked due, no run is deleted, and a refetch is no read, so it
   tracks nothing.
 
 ## Delete
 
-- **One write removes the instrument and every row keyed to it**
-  (`INSTRUMENT_TABLES`) and its own runs (`sync_runs` scoped to its
-  id), so the key added again starts unfetched; nothing of another
-  instrument goes. A new table referencing `instruments` goes into
-  `INSTRUMENT_TABLES`; a test fails until it does.
+- **One write removes the instrument, every row keyed to it
+  (`INSTRUMENT_TABLES`) and its own runs**, so the key added again
+  starts unfetched; nothing of another instrument goes. A new table
+  referencing `instruments` goes into `INSTRUMENT_TABLES`; a test fails
+  until it does.
 - **Refused with 409 while a rule reads it**, its own or another's
   condition: delete the rule first. The check is in the same write.
 - **Its alerts stay** until retention, since alerts have no foreign key
@@ -86,9 +86,9 @@ is offered over MCP.
 ## The command
 
 - **`1ctx-markets admin status|refetch|delete` calls the running
-  server on this machine** with the key from `<data>/secrets/admin.key`,
-  so it works over ssh without stopping the service. `--listen` and
-  `--data` default to the installed service's, else the server's
-  defaults; a wildcard bind is called on loopback (`urlOf()`).
+  server on this machine** with `<data>/secrets/admin.key`, so it works
+  over ssh without stopping the service. `--listen` and `--data`
+  default to the installed service's, else the server's defaults; a
+  wildcard bind is called on loopback (`urlOf()`).
 - **It prints the server's JSON and never the key**, and exits 1 on a
   status other than 2xx or no answer.
