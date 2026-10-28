@@ -28,12 +28,7 @@ import {
 import type { Markets } from "../operations/markets.ts";
 import { AVERAGES, moversAnswer, parseMovers } from "../operations/movers.ts";
 import { MAX_SYMBOLS, parseQuote, quotePage } from "../operations/quote.ts";
-import {
-  parseResearch,
-  RESEARCH_SECTIONS,
-  researchAnswer,
-  SINCE_DAYS,
-} from "../operations/research.ts";
+import { SINCE_DAYS } from "../operations/research.ts";
 import { parseRules, RULE_ACTIONS, rulesAnswer } from "../operations/rules.ts";
 import {
   FIELD_NAMES,
@@ -51,6 +46,11 @@ import {
 } from "../rules/format.ts";
 import { errorFields } from "../runtime/log.ts";
 import { CALENDAR_AHEAD_DAYS } from "../sources/finnhub/store.ts";
+import {
+  parseResearch,
+  RESEARCH_SECTIONS,
+  researchAnswer,
+} from "./research.ts";
 
 // the tools check their own arguments, with errors in their own words
 const permissive = {

@@ -18,8 +18,6 @@ import {
   HEADLINES,
   HTTP_HISTORY,
   MAX_RESEARCH_SYMBOLS,
-  parseResearch,
-  researchAnswer,
   researchTargets,
   WEEK_ITEMS,
   WEEK_PUBLISHER,
@@ -58,6 +56,7 @@ import { yahoo } from "../src/sources/yahoo/client.ts";
 import { open } from "../src/storage/db/index.ts";
 import { endRun, startRun } from "../src/storage/runs.ts";
 import { writer } from "../src/storage/writer.ts";
+import { parseResearch, researchAnswer } from "../src/tools/research.ts";
 import { api } from "./helpers/api.ts";
 import { type TestApp, withApp } from "./helpers/app.ts";
 import { fakeClock } from "./helpers/clock.ts";
