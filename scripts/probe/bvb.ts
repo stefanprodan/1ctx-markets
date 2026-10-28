@@ -1,8 +1,4 @@
-// Records Bucharest Stock Exchange (bvb.ro) answers as test fixtures.
-// Run: bun scripts/probe/bvb.ts [case ...]   (no args records every case)
-// The exchange has no documented API: pages are ASP.NET WebForms HTML, and
-// the chart feed at wapi.bvb.ro needs the X-SK-API key that each instrument
-// details page embeds. Calls are spaced so the site is never hammered.
+// the chart feed needs the X-SK-API key each instrument details page embeds
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";

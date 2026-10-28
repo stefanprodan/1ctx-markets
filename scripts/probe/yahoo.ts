@@ -1,5 +1,3 @@
-// Records Yahoo Finance chart, search and quote answers as test fixtures.
-// Usage: bun scripts/probe/yahoo.ts [case-name ...]   (no names = all cases)
 // Requests are spaced and few on purpose: Yahoo's limits are unpublished.
 
 import { mkdirSync, writeFileSync } from "node:fs";
