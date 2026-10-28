@@ -97,6 +97,11 @@ export type Detail = {
     fetched_at: string | null;
     stale: string[];
     returns: Returns | null;
+    // the daily and weekly signals the quote tool gives; the page reads
+    // the weekly 200 average
+    signals?: {
+      weekly?: { sma200?: number | null } | null;
+    } | null;
     session: Session | null;
   };
 };

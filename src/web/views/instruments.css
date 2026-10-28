@@ -59,7 +59,7 @@
   }
   .ins-returns {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: var(--space-3);
     margin: var(--space-3) 0 0;
     padding-top: var(--space-3);
@@ -80,6 +80,9 @@
     font-family: var(--mono);
     font-variant-numeric: tabular-nums;
     color: var(--fg);
+  }
+  .ins-return dd.ins-gap {
+    font-size: var(--text-small);
   }
   .ins-return dd.ins-up {
     color: var(--done);

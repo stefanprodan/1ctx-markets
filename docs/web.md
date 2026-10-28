@@ -155,7 +155,8 @@ signed in with the admin key alone.
   change, "Live · market open" or "Close · market closed" (a series:
   "Latest value" and its date) with when it was fetched, and the 1
   week, 1 month, 3 months and year-to-date returns from the quote, never
-  recomputed. A read that failed shows the stored price as "Stored
+  recomputed, then the quote's 200-week average and how far the price
+  is above or below it (in points for a series in percent). A read that failed shows the stored price as "Stored
   price" with its age, no returns, and one notice that a new price could
   not be had; the server's phrase is for agents, not this page.
 - **Refetch is a button with a menu** in the page head (1ctx's More):

@@ -59,6 +59,7 @@ import {
   priceState,
   returnCell,
   summary,
+  weekly200,
 } from "../src/web/views/Instrument.model.ts";
 import { Head, RefetchMenu } from "../src/web/views/Instrument.tsx";
 import {
@@ -1311,6 +1312,41 @@ describe("the chart model", () => {
     expect(html).toContain("50-week average");
     expect(html).not.toContain("200-week average");
     expect(html).toContain("5Y");
+  });
+
+  test("the 200-week average says how far the price is from it", () => {
+    const d = detail({ price: 150, signals: { weekly: { sma200: 100 } } });
+    expect(weekly200(d)).toEqual({
+      value: "100.00 USD",
+      gap: { text: "50.00% above", dir: 1 },
+    });
+    expect(
+      weekly200(detail({ price: 90, signals: { weekly: { sma200: 100 } } }))
+        .gap,
+    ).toEqual({
+      text: "10.00% below",
+      dir: -1,
+    });
+    // a yield is apart from its average by points
+    const y = detail(
+      {
+        price: null,
+        observation: { date: "2026-10-26", value: 5 },
+        signals: { weekly: { sma200: 4.2 } },
+      },
+      { id: "FRED:DGS10", unit: "percent", currency: null },
+    );
+    expect(weekly200(y)).toEqual({
+      value: "4.20%",
+      gap: { text: "0.80 pts above", dir: 1 },
+    });
+    // too young for one: nothing to say
+    expect(
+      weekly200(detail({ signals: { weekly: { sma200: null } } })),
+    ).toEqual({
+      value: "—",
+      gap: null,
+    });
   });
 
   test("a yield's returns are points; a page footer only where one is asked", () => {

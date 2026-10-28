@@ -23,6 +23,7 @@ import {
   returnCell,
   summary,
   UNREAD,
+  weekly200,
 } from "./Instrument.model.ts";
 import { about, symbolOf } from "./Instruments.model.ts";
 import "./instruments.css";
@@ -33,6 +34,7 @@ const tone = (dir: -1 | 0 | 1) =>
 export function Head({ detail, now }: { detail: Detail; now: number }) {
   const h = headline(detail);
   const r = detail.quote?.returns ?? null;
+  const w200 = weekly200(detail);
   return (
     <section class="card ins-head" aria-label="Price">
       <span class="label">{about(detail.instrument)}</span>
@@ -59,6 +61,15 @@ export function Head({ detail, now }: { detail: Detail; now: number }) {
               </div>
             );
           })}
+          <div class="ins-return">
+            <dt>200-week average</dt>
+            <dd>{w200.value}</dd>
+            {w200.gap && (
+              <dd class={`ins-gap ${tone(w200.gap.dir) ?? ""}`}>
+                {w200.gap.text}
+              </dd>
+            )}
+          </div>
         </dl>
       )}
     </section>
