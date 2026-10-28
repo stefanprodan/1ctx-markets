@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // The context every read takes, so no read imports another for it.
 
 import type { StaleReason } from "../market/stale.ts";
@@ -24,7 +23,6 @@ export const CALL_MS = 15_000;
 type Flight = { promise: Promise<unknown>; deadline: number };
 
 export type Markets = {
-  // for reads; every write goes through writer
   db: Db;
   clock: Clock;
   writer: Writer;
@@ -35,18 +33,15 @@ export type Markets = {
   bvb: Bvb | null;
   finnhub: Finnhub | null;
   massive: Massive | null;
-  // what rules hand the research reads
   hooks: Hooks;
-  // told of every write a read's fetch makes
   rules: RuleHooks;
   trackMs: number;
-  // how often the quote job runs, so a quote it fell behind on is stale
+  // so a quote the job fell behind on reads stale
   quoteEveryMs: number;
   callMs: number;
   log: Log;
   // fetches in flight, shared by every call naming the same instrument
   inflight: Map<string, Flight>;
-  // quote's extended prices, one quote period each
   extended: ExtendedCache;
 };
 
@@ -102,8 +97,7 @@ export type ExtendedRead =
 // by instrument id, for the quote period it was fetched in
 export type ExtendedCache = Map<string, { slot: number; read: ExtendedRead }>;
 
-// One promise per key while it runs; a caller joining later extends the
-// deadline its write is held to, so a fetch lands while anyone waits.
+// a joining caller extends the write's deadline, so it lands while anyone waits
 export function shared<T>(
   m: Markets,
   key: string,

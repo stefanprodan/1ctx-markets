@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // the key only in a header; a next_url only to Massive's own news path
 
 import type { Clock } from "../../runtime/clock.ts";
@@ -70,13 +69,9 @@ export type Massive = {
   news(query: NewsQuery): Promise<Page>;
   // the page a previous page's next names
   next(cursor: string): Promise<Page>;
-  // fails at once while the queue backs off, for a tool
   failFast(): Massive;
-  // failing fast, and starting no call once live() is false
   within(live: () => boolean): Massive;
-  // at shutdown: fails waiting calls, so none goes out after
   close(): void;
-  // when the next waiting call may go, for a test stepping its clock
   due(): number | null;
   backoff(): Backoff | null;
 };

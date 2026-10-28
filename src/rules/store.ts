@@ -1,8 +1,6 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// The rules and alerts tables. Kept free of the engine's imports, since
-// tracking reads the instruments every rule depends on from here.
+// Free of the engine's imports: tracking reads rule instruments from here.
 
 import { DAY_MS } from "../runtime/clock.ts";
 import type { Db } from "../storage/db/index.ts";
@@ -103,8 +101,7 @@ export function recordResult(
   ).run(result, now, armed ? 1 : 0, id);
 }
 
-// Every instrument a rule reads, paused or not, so the jobs keep each
-// one synced while its rule exists.
+// paused or not, so the jobs keep each one synced while its rule exists
 export function ruleInstruments(db: Db): Set<string> {
   const out = new Set<string>();
   for (const r of db

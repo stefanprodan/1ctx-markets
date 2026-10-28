@@ -1,10 +1,6 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// /api/v1/admin/*, behind the admin key alone and reachable from the
-// internet wherever the server is: arguments are parsed strictly, bodies
-// and lists are bounded, and errors are fixed phrases that echo nothing
-// sent.
+// May face the internet: admin key only, strict input, errors echo nothing.
 
 import { failed, json, readBody } from "../api/http.ts";
 import { iso } from "../market/format.ts";

@@ -1,7 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// Settles work that waits on a source's limiter under a fake clock.
 
 import type { FakeClock } from "./clock.ts";
 

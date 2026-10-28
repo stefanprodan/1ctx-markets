@@ -1,7 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// Each tool checks its own arguments, so an error names which and why.
 
 import {
   fromJsonSchema,
@@ -288,8 +286,7 @@ export function tools(m: Markets): Tool[] {
   ];
 }
 
-// A bad argument is the caller's to fix; anything else is logged and
-// answered without its text, which can quote a source.
+// other errors are logged and answered without text that can quote a source
 export async function call(
   m: Markets,
   tool: Tool,
@@ -314,7 +311,7 @@ export async function call(
   }
 }
 
-// The tools built once, registered on each request's server instance.
+// built once, registered on each request's server instance
 export function registerTools(m: Markets): (server: McpServer) => void {
   const list = tools(m);
   return (server) => {

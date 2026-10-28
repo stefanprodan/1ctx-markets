@@ -1,8 +1,6 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// Instruments keyed market:symbol; the source's own symbol is a column,
-// so the identity holds when the source changes.
+// Keyed market:symbol, not the source's symbol, so a switch keeps the identity.
 
 import { SourceError } from "../sources/source.ts";
 import type { Db } from "../storage/db/index.ts";

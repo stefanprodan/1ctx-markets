@@ -1,10 +1,6 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// The symbols a caller passes filtered and ranked on their latest
-// signals, over a fixed list of fields: no expressions, no OR, no
-// custom periods, since a fixed field is checked once and an agent's
-// formula is not.
+// Fixed fields only: one is checked once, an agent's formula never is.
 
 import { round } from "../market/format.ts";
 import type { Instrument } from "../market/instruments.ts";
@@ -86,8 +82,6 @@ const distance = (interval: "daily" | "weekly", key: DailyKey): Field => ({
   unit: "percent",
 });
 
-// The daily signal columns as the quote names them, the weekly ones
-// prefixed, and what is computed on read.
 export const FIELDS: Readonly<Record<string, Field>> = {
   sma50: daily("sma50", PRICE),
   sma200: daily("sma200", PRICE),
@@ -275,7 +269,7 @@ type Context = {
   benchmark: { side: Side; stale: StaleReason[] } | null;
 };
 
-// what a symbol's return and relative fields read, once per symbol
+// read once per symbol
 type Reads = { side: () => Side; returns: () => ReturnType<typeof returnsOf> };
 
 function reads(ctx: Context, instrument: Instrument): Reads {
@@ -401,8 +395,6 @@ export async function screenAnswer(
   return textResult(setPage({ ...read, args: asked, offset }));
 }
 
-// The set screen found, or why the call failed as a whole: a benchmark
-// that did not resolve, or price-level fields over mixed units.
 export async function readScreen(
   m: Markets,
   args: ScreenArgs,
@@ -487,7 +479,7 @@ export async function readScreen(
   };
 }
 
-// Matched, unavailable, or null when an input it had failed a filter.
+// null when an input it had failed a filter
 function screenOne(
   ctx: Context,
   args: ScreenArgs,

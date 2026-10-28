@@ -1,7 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// Spark answers to stored quotes and sessions, in the caller's write.
 
 import { recordSession, type Session } from "../../market/calendars.ts";
 import { readBySourceSymbol } from "../../market/instruments.ts";

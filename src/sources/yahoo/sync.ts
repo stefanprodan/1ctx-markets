@@ -1,7 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// every fetch finishes before its write is queued; no write awaits a fetch
 
 import { dailyRange, type Written } from "../../market/bars.ts";
 import { weekOf } from "../../market/calendars.ts";
@@ -46,7 +44,6 @@ import {
 import { storeQuotes } from "./quotes.ts";
 import { keyOf } from "./resolve.ts";
 
-// db is for reads; every write goes through writer
 export type YahooContext = {
   db: Db;
   clock: Clock;

@@ -1,9 +1,6 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// One symbol's bars over a range, oldest first, each with that date's
-// signal row, and its return against a benchmark the caller names,
-// computed on read at the range's end.
+// A benchmark's relative return is computed on read, at the range's end.
 
 import { type Bar, type Interval, readBars } from "../market/bars.ts";
 import { weekOf } from "../market/calendars.ts";
@@ -42,7 +39,7 @@ export const BASIS =
 export const FRED_BASIS =
   "observations as FRED publishes them; a revision replaces the earlier value";
 
-// the range when from is left out
+// months back when from is left out
 export const DEFAULT_MONTHS: Record<Interval, number> = { "1d": 3, "1wk": 24 };
 
 export type HistoryArgs = {
@@ -100,8 +97,7 @@ function rowsByDate(
   };
 }
 
-// The benchmark's own staleness and fetch time go with it: a stale
-// benchmark makes the comparison stale, whatever the symbol's state.
+// a stale benchmark makes the comparison stale, whatever the symbol's state
 function relative(
   m: Markets,
   instrument: Instrument,
@@ -162,8 +158,8 @@ const widen = (
     ? null
     : f(...[v, q, price].filter((x) => x !== null));
 
-// The session's bar is the quote's, as its live row is: a stored one is
-// the last bar pass's, taken near the open, and a feed may store none.
+// the session's bar comes from the quote: a stored one is from a pass near the
+// open, and a feed may store none
 export function withLive(
   bars: readonly Bar[],
   target: LiveTarget | null,
@@ -221,8 +217,7 @@ export type HistoryRead =
       attribution: boolean;
     };
 
-// The bars from start (from without one) to to, each with that date's
-// final row, or its live row on the one bar not final.
+// a null start is from; the one bar not final carries its live row
 export async function readHistory(
   m: Markets,
   args: HistoryArgs,

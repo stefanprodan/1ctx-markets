@@ -1,8 +1,6 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// The macOS backend: a LaunchAgent of the signed-in user, driven through
-// launchctl. Every effect is injected, so a test runs it on any platform.
+// The macOS LaunchAgent backend; effects are injected so tests run anywhere.
 
 import {
   chmod,
@@ -28,8 +26,7 @@ import {
 } from "./plist.ts";
 
 export const LABEL = "dev.1ctx.markets";
-// how long a stop waits for the exit; above the kill timeout
-// (EXIT_TIMEOUT in service.ts), so launchd's kill lands inside it
+// above service.ts's EXIT_TIMEOUT, so launchd's kill lands inside the wait
 export const WAIT_MS = 60_000;
 
 export type SpawnResult = { code: number; stdout: string; stderr: string };
@@ -51,7 +48,7 @@ export type LaunchdDeps = {
   spawn?: Spawn;
   clock?: Clock;
   files?: LaunchdFiles;
-  // is this pid still a process; injected so tests never signal one
+  // injected so tests never signal a real process
   alive?: (pid: number) => boolean;
 };
 
@@ -163,10 +160,8 @@ export function launchdBackend(deps: LaunchdDeps): ServiceBackend {
     throw failure(argv, result);
   }
 
-  // Gone means both: launchd has dropped the label, and the process it
-  // ran has exited. launchd forgets the job while the server is still
-  // draining its writes and holding the port, and a bootstrap into that
-  // window fails.
+  // gone: launchd dropped the label and the process exited; launchd forgets
+  // the job while the server drains and holds the port, so a bootstrap fails
   async function waitForExit(pid: number | null): Promise<void> {
     const gone = async () =>
       (await state()) === null && (pid === null || !alive(pid));

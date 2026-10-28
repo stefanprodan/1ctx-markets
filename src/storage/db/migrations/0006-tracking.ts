@@ -3,9 +3,8 @@
 
 import type { Migration } from "../migration.ts";
 
-// When a read last named each instrument: the jobs sync only those read
-// within the tracking window. Instruments stored before tracking start
-// one window from their last update, so an upgrade stops none at once.
+// when a read last named each instrument; one stored before starts one window
+// from its last update, so an upgrade stops none at once
 export const m0006: Migration = {
   id: "0006-tracking",
   up(db) {

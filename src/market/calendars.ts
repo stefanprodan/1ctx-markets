@@ -1,8 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// Each market's hours come from its source's answers, never from a
-// table kept by hand, so any exchange the source carries works.
 
 import { DAY_MS, MINUTE_MS } from "../runtime/clock.ts";
 import type { Db } from "../storage/db/index.ts";

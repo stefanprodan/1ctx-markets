@@ -1,10 +1,6 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// The JSON Schema subset the API's spec uses, checked by hand: a keyword
-// outside it is refused rather than skipped, so no schema can claim what
-// this checker does not hold true. description annotates and checks
-// nothing.
+// An unknown keyword is refused, not skipped; description checks nothing.
 
 const KEYWORDS = new Set([
   "type",
@@ -33,7 +29,6 @@ type Schema = Record<string, unknown>;
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 
-// every problem with a schema's own form, by where it is
 export function schemaErrors(schema: unknown, at = "#"): string[] {
   if (!isObject(schema)) return [`${at}: a schema is an object`];
   const out: string[] = [];
@@ -118,7 +113,6 @@ const typeOf = (v: unknown): string =>
           : "number"
         : typeof v;
 
-// every way a value breaks a schema, by where in the value
 export function validate(
   value: unknown,
   schema: Schema,
@@ -183,7 +177,6 @@ export function validate(
   return out;
 }
 
-// every schema the spec holds, wherever OpenAPI puts one
 export function specSchemas(spec: any): [string, unknown][] {
   const out: [string, unknown][] = [];
   for (const [name, s] of Object.entries(spec.components?.schemas ?? {})) {
@@ -222,7 +215,6 @@ export function specSchemas(spec: any): [string, unknown][] {
   return out;
 }
 
-// the schema an operation documents for a status, refs followed
 export function answerSchema(
   spec: any,
   method: string,

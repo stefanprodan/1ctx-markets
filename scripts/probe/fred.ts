@@ -1,5 +1,3 @@
-// Records FRED answers as test fixtures.
-// Run: bun scripts/probe/fred.ts  (FRED_KEY_FILE overrides the key path)
 // FRED takes its key only in the URL; record() scrubs it from what it stores.
 import { homedir } from "node:os";
 import { join } from "node:path";

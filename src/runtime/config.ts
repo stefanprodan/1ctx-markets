@@ -1,8 +1,6 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// The command line, parsed without acting on it: main.ts runs what it
-// answers, and `service install` refuses exactly what the server would.
+// Parsing only, so `service install` refuses exactly what a start would.
 
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -11,18 +9,15 @@ import { MINUTE_MS } from "./clock.ts";
 export const DEFAULT_LISTEN = "127.0.0.1:11238";
 export const DEFAULT_QUOTE_EVERY = 5;
 export const DEFAULT_TRACK_DAYS = 30;
-// the keyless sources a start can turn on, each with --source <name>
 export const KNOWN_SOURCES = ["bvb"] as const;
 
 export type Config = {
   hostname: string;
   port: number;
-  // holds markets.db and secrets/
   dataDir: string;
   quoteEveryMs: number;
   // an instrument read within this many days stays tracked
   trackDays: number;
-  // keyless sources turned on, each named once
   sources: string[];
 };
 
@@ -88,7 +83,6 @@ export const HELP = `\x1b[1m1ctx-markets\x1b[0m - a self-hosted market data serv
                          source-fred.key, source-finnhub.key or
                          source-massive.key`;
 
-// the flags that take the next argument as their value
 export const VALUED_FLAGS = [
   "--listen",
   "--data",
@@ -191,8 +185,7 @@ export function parseCli(argv: string[], home: string = homedir()): Cli {
   };
 }
 
-// The arguments that start a server with this config, every one spelled
-// out, so a service definition reads back through parseCli() unchanged.
+// every flag spelled out, so a service definition parses back unchanged
 export function configToArgs(config: Config): string[] {
   const args = [
     "--listen",

@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // the key only in a header; a 403 or empty answer is no data, not an error
 
 import { wallOfDate } from "../../market/zone.ts";
@@ -100,13 +99,9 @@ export type Finnhub = {
     from: string,
     to: string,
   ): Promise<Answer<Map<string, CalendarEvent[]>>>;
-  // fails at once while the queue backs off, for a tool
   failFast(): Finnhub;
-  // failing fast, and starting no call once live() is false
   within(live: () => boolean): Finnhub;
-  // at shutdown: fails waiting calls, so none goes out after
   close(): void;
-  // when the next waiting call may go, for a test stepping its clock
   due(): number | null;
   backoff(): Backoff | null;
 };
@@ -175,10 +170,8 @@ export const COMPANY_METRICS = [
   "debtToEquityQuarterly",
 ] as const satisfies readonly (keyof Metric)[];
 
-// An ADR is answered with its home listing (TSM as 2330.TW, its EPS in
-// TWD per local share): only what holds for any listing is kept. Every
-// part naming one other symbol is that listing; parts naming two are no
-// data, since neither can be trusted; a part naming none is the asked.
+// an ADR answers as its home listing (TSM as 2330.TW, EPS in TWD): a part
+// naming one other symbol is that listing, two is no data, none is the asked
 function listingOf(parts: readonly Obj[], symbol: string): string | null {
   const named = new Set(
     parts.map((p) => (p.symbol === undefined ? symbol : p.symbol)),
@@ -206,9 +199,8 @@ function parsed<T>(parse: () => Parsed<T>): Parsed<T> {
   }
 }
 
-// A key answered twice with the same values is one row, as NVDA's
-// quarter listed under two fiscal labels; with other values the
-// section is refused, since either could be wrong.
+// a key answered twice with the same values is one row (NVDA's quarter under
+// two fiscal labels); with other values it is refused, as either may be wrong
 export function collapse<T>(rows: readonly T[], key: (row: T) => string): T[] {
   const byKey = new Map<string, { row: T; json: string }>();
   for (const row of rows) {
@@ -397,9 +389,8 @@ export const parseMarketCalendar = (
     rows.push(r);
     bySymbol.set(r.symbol, rows);
   }
-  // Each row is its own listing's. A symbol whose rows are malformed or
-  // conflict is left out alone, as a missing row is: one company's bad
-  // row says nothing of the others', and its own calendar still asks it.
+  // a symbol whose rows are malformed or conflict is left out alone, as a
+  // missing row is: one company's bad row says nothing of the others'
   const data = new Map<string, CalendarEvent[]>();
   for (const [symbol, rows] of bySymbol) {
     try {

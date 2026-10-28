@@ -1,9 +1,6 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// One fetch-and-store per instrument and database at a time, held
-// across the call and its write, so an answer fetched before another
-// write never lands after it.
+// Held across fetch and write, so an older answer never lands after a newer.
 
 import type { Db } from "../storage/db/index.ts";
 

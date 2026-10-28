@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // a run per section, scoped to the instrument, so one failure is stale alone
 
 import type { Instrument } from "../../market/instruments.ts";
@@ -209,9 +208,8 @@ function dropEvents(
   return n;
 }
 
-// One section's answer into its rows; no data writes none. An answer
-// naming a listing replaces the kind's rows of any other, so no figure
-// of one listing is read as another's.
+// no data writes no row; an answer naming a listing replaces the kind's rows of
+// any other, so no figure of one listing is read as another's
 export function storeSection(
   db: Db,
   instrument: string,

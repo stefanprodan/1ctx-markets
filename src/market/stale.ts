@@ -1,8 +1,6 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// Staleness from the instrument's own source, job and scope; one
-// market's failure never marks another.
+// Scoped by source, job and market: one market's failure never marks another.
 
 import { MINUTE_MS } from "../runtime/clock.ts";
 import { BVB } from "../sources/ids.ts";
@@ -11,17 +9,12 @@ import { lastRun, lastStarted } from "../storage/runs.ts";
 import { CRYPTO, closeQuoteAt, readSession } from "./calendars.ts";
 import type { Instrument } from "./instruments.ts";
 
-// the jobs whose runs carry a market as their scope
 export const JOBS = {
-  // every instrument of a market in session, and once after its close
   quotes: "quotes",
-  // one instrument of a closed market, to see a new session
   check: "check",
-  // the 30-day refetch when a market's session moves on, with a run per
-  // instrument scoped to its id
+  // the 30-day refetch when a market's session moves on, one run per instrument
   bars: "bars",
-  // a refetch that left the previous session's close to come, scoped to
-  // the instrument and written right after its bars run
+  // a refetch owing the previous close, per instrument, after its bars run
   owed: "owed",
 } as const;
 
@@ -70,9 +63,8 @@ function switching(db: Db, market: string): boolean {
   return run !== null && run.status !== "ok";
 }
 
-// The sources table names the price sources on at the last start once a
-// switch landed; empty, no start has written it, so none is off. Only
-// the feed can be turned off.
+// the price sources on at the last start, written once a switch landed; empty
+// means none is off. Only the feed can be turned off.
 function sourceOff(db: Db, i: Scoped): boolean {
   if (i.source !== BVB || switching(db, i.market)) return false;
   const names = db
@@ -174,9 +166,8 @@ export function barsDue(
   return ok === null || ok.startedAt < session.start;
 }
 
-// Owed in this session only: the next one starts a full pass, after which
-// a day never closed is a gap. All are asked together once the earliest
-// is due, so a market is asked at most once per OWED_RETRY_MS.
+// owed in this session only: the next starts a full pass, after which a day
+// never closed is a gap; all asked at once, at most once per OWED_RETRY_MS
 export function owedDue<T extends { id: string }>(
   db: Db,
   source: string,

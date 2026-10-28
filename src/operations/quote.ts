@@ -1,10 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// The quote reader: one item per symbol with its live quote, or a FRED
-// series' last observation, the latest signal rows and why any of it
-// may be behind. The API's quotes route answers a smaller projection of
-// the same items, and movers and screen read the same rows.
 
 import { CRYPTO, isQuoted, readSession } from "../market/calendars.ts";
 import { iso, price, round } from "../market/format.ts";
@@ -36,7 +31,7 @@ import { type ErrorItem, readTargets, type Target } from "./targets.ts";
 
 export const MAX_SYMBOLS = 100;
 
-// the running values a live row steps from, which say nothing to a caller
+// a live row's running values, which say nothing to a caller
 const RUNNING = new Set([
   "ema12",
   "ema26",
@@ -73,9 +68,7 @@ export type Signals = {
 
 export type Picked<T> = { kind: "live" | "final"; row: T } | null;
 
-// The unrounded rows a quote's signals come from, for readers that
-// compute on them: the stored rows, the one picked per interval, and
-// why they may be behind.
+// unrounded, for readers that compute on them
 export type Latest = {
   signals: InstrumentSignals | null;
   daily: Picked<DailyRow>;
@@ -90,8 +83,7 @@ const pick = <T>(rows: { live: T | null; final: T | null }): Picked<T> =>
       ? { kind: "final", row: rows.final }
       : null;
 
-// The live row when one is current, else the last final row; a FRED
-// series has final rows only, and no quote to be stale.
+// a FRED series has final rows only, and no quote to be stale
 export function readLatest(
   db: Db,
   instrument: Instrument,
@@ -129,7 +121,6 @@ export type QuoteItem = {
   currency: string | null;
   kind: "market_quote" | "observation";
   price: number | null;
-  // a FRED series' last value and its date
   observation?: { date: string; value: number } | null;
   previous_close: number | null;
   change: number | null;
@@ -216,7 +207,6 @@ export function quoteItem(
   };
 }
 
-// the close of the bar a final row was computed for
 export function closeOn(
   db: Db,
   id: string,
@@ -232,7 +222,6 @@ export function closeOn(
   );
 }
 
-// the last final close and its averages, the pair movers crosses from
 function lastFinal(db: Db, id: string, latest: Latest) {
   const row = latest.signals?.daily.final ?? null;
   const close = row === null ? null : closeOn(db, id, "1d", row.date);
@@ -252,9 +241,7 @@ const averages = (row: SignalRow | null) =>
     ? null
     : { kind: row.kind, date: row.date, sma50: row.sma50, sma200: row.sma200 };
 
-// what a script needs: the price or observation, the times, stale, the
-// daily and weekly SMA 50 and 200, and the last final day's to tell a
-// crossing since that close
+// the last final day's values tell a script a crossing since that close
 export function briefItem(db: Db, item: QuoteItem, latest: Latest) {
   return {
     input: item.input,
@@ -307,8 +294,8 @@ export function parseQuote(input: unknown): QuoteArgs {
   };
 }
 
-// a page is never continued under another benchmark; without one the
-// cursor is the one quote has always made
+// a page is never continued under another benchmark; without one the cursor
+// is the symbols alone
 const continued = (args: QuoteArgs) =>
   args.benchmark === null
     ? args.symbols
@@ -324,9 +311,8 @@ function offsetOf(args: QuoteArgs): number {
   return n;
 }
 
-// The last regular session the source reported, so it can read closed at
-// an opening until a check stores the day's; crypto never closes, and a
-// FRED series has no session.
+// the last session the source reported, so it reads closed at an opening
+// until a check stores the day's
 export function sessionOf(m: Markets, i: Instrument, now: number) {
   if (i.source === FRED) return null;
   if (i.market === CRYPTO) return { state: "open", start: null, end: null };
@@ -342,7 +328,6 @@ type Benchmark =
   | { side: Side; head: object; stale: string[]; fred: boolean }
   | { side: null; head: object; stale: string[]; fred: false };
 
-// as history gives it: its fetch time and its own stale reasons
 function benchmarkOf(m: Markets, t: Target, now: number): Benchmark {
   if ("error" in t) {
     return {
@@ -369,8 +354,7 @@ function benchmarkOf(m: Markets, t: Target, now: number): Benchmark {
   };
 }
 
-// What only the quote tool adds to an item: the quotes route, movers
-// and screen share quoteItem and never pay for these reads.
+// apart from quoteItem, so the route, movers and screen skip these reads
 function agentItem(
   m: Markets,
   q: QuoteItem,
@@ -415,10 +399,7 @@ function agentItem(
   };
 }
 
-// Every item asked from the cursor on, in the order asked, each symbol's
-// error an item of its own. Without project, the quote tool's items,
-// with returns, the session and the benchmark; extended is read for
-// either when asked.
+// each symbol's error is an item of its own, in the order asked
 export async function quoteRows(
   m: Markets,
   args: QuoteArgs,
@@ -469,8 +450,7 @@ export async function quoteRows(
   return { offset, bench, rows };
 }
 
-// One page of quoteRows(), and FRED's attribution once when the page
-// holds its values.
+// FRED's attribution once, when the page holds its values
 export async function quotePage(
   m: Markets,
   args: QuoteArgs,

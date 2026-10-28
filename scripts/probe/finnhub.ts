@@ -1,5 +1,3 @@
-// Records Finnhub free-tier answers as test fixtures.
-// Run: bun scripts/probe/finnhub.ts [case...]  (FINNHUB_KEY_FILE overrides the key path)
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { readKey, record, sleep } from "./record";

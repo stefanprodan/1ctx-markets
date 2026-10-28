@@ -1,11 +1,4 @@
 #!/usr/bin/env bash
-# The staging instance: a Mac reached over ssh that runs the binary as a
-# service (`1ctx-markets service`), with its data under ~/.1ctx-markets.
-#
-#   staging.sh deploy           build, back the db up, swap the binary, restart
-#   staging.sh status           what the service says
-#   staging.sh secrets <dir>    copy the source-*.key files the box lacks
-#
 # The host is named in scripts/staging.env, never here.
 set -euo pipefail
 
@@ -19,8 +12,7 @@ cd "$(dirname "$0")/.."
 HOST=${STAGING_SSH:?STAGING_SSH is not set in scripts/staging.env}
 # every interface, so the tailnet reaches it; WireGuard carries the bearer
 LISTEN=${STAGING_LISTEN:-0.0.0.0:11238}
-# staging always runs the Bucharest feed; STAGING_FLAGS adds to it,
-# split on spaces, never globbed
+# STAGING_FLAGS adds to the Bucharest feed, split on spaces, never globbed
 read -r -a EXTRA <<<"${STAGING_FLAGS:-}"
 INSTALL=(--listen "$LISTEN" --source bvb ${EXTRA[@]+"${EXTRA[@]}"})
 KEEP_BACKUPS=3
@@ -32,8 +24,7 @@ fail() {
   exit 1
 }
 
-# Refused here, before any ssh: the binary is swapped before the install
-# runs, so a flag the server refuses would leave the box without a service.
+# before any ssh: a flag refused after the swap would leave no service
 check_install() {
   local flag
   for flag in ${EXTRA[@]+"${EXTRA[@]}"}; do
@@ -52,8 +43,7 @@ check_install() {
 }
 
 deploy() {
-  # Staging holds real data and takes main only. A branch's migration is
-  # frozen once it ran there, so deploying one is a deliberate bypass.
+  # a branch's migration is frozen once it ran there, so a branch is a bypass
   local branch dirty sha
   branch=$(git rev-parse --abbrev-ref HEAD)
   dirty=$(git status --porcelain)
@@ -63,8 +53,7 @@ deploy() {
   fi
   check_install
   sha=$(git rev-parse --short HEAD)
-  # a dirty tree names its diff too, so two bypass deploys from one
-  # commit are two versions
+  # a dirty tree names its diff, so two bypass deploys from one commit differ
   [ -z "$dirty" ] || sha=$sha.dirty$(git diff HEAD | shasum | cut -c1-6)
   local version
   version=v$(bun -e 'console.log(require("./package.json").version)')+$sha
@@ -72,8 +61,7 @@ deploy() {
   VERSION=$version bun run build
   [ "$(bin/1ctx-markets -v)" = "$version" ] || fail "the binary does not report $version"
 
-  # Before anything is swapped: .backup is safe on a live WAL database,
-  # and the copy predates whatever migration the new binary brings.
+  # .backup is safe on a live WAL database and predates the new migration
   ssh_ KEEP="$KEEP_BACKUPS" bash -s <<'REMOTE'
 set -euo pipefail
 mkdir -p ~/.1ctx-markets/bin ~/.1ctx-markets/backups
@@ -82,8 +70,7 @@ db=~/.1ctx-markets/markets.db
 old=$(~/.1ctx-markets/bin/1ctx-markets -v 2>/dev/null || echo unknown)
 out=~/.1ctx-markets/backups/markets-$(date -u +%Y%m%dT%H%M%SZ)-$old.db
 sqlite3 "$db" ".backup '$out'"
-# The copy inherits WAL mode and would grow -shm and -wal files the
-# moment it is opened. A backup is one file: take it out of WAL first.
+# out of WAL, so the backup is one file that never grows -shm or -wal
 sqlite3 "$out" 'pragma journal_mode=delete' >/dev/null
 rm -f "$out-shm" "$out-wal"
 [ "$(sqlite3 "$out" 'pragma integrity_check')" = ok ] || {
@@ -98,12 +85,9 @@ ls -1t ~/.1ctx-markets/backups/markets-*.db | tail -n +$((KEEP + 1)) | while rea
 done
 REMOTE
 
-  # Upload beside the live binary and rename: an interrupted copy must not
-  # leave the service manager restarting a truncated executable.
+  # rename after upload: an interrupted copy must not leave a truncated binary
   scp -q -o BatchMode=yes -o ConnectTimeout=10 bin/1ctx-markets "$HOST:~/.1ctx-markets/bin/1ctx-markets.new"
-  # Each argument quoted for an explicit bash, so the box's login shell
-  # (zsh globs `[::1]`) never reparses them; the data directory is the
-  # box's own home.
+  # quoted for an explicit bash, so the box's zsh (globs `[::1]`) never reparses
   local script args
   # shellcheck disable=SC2016 # expanded by the bash on the box
   script='set -e; b=$HOME/.1ctx-markets/bin/1ctx-markets; mv -f "$b.new" "$b"
@@ -127,8 +111,7 @@ secrets() {
   done
   [ ${#keys[@]} -gt 0 ] || fail "no source-*.key files in $dir"
 
-  # One ssh per key, its value on stdin, so it never reaches an argument,
-  # a listing or the output; a key the box holds is left as it is.
+  # a key goes on stdin, never an argument, listing or output; held keys stay
   for file in "${keys[@]}"; do
     name=$(basename "$file")
     # shellcheck disable=SC2029 # the checked name is meant to expand here

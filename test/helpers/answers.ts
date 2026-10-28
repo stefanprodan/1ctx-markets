@@ -1,9 +1,6 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// Every MCP tool called over the recordings, each answer followed page
-// by page, as the bytes a client gets: a fixture of these pins the
-// tools' answers through a change that should leave them as they are.
+// A fixture of these pins every tool answer, page by page, through a refactor.
 
 import { PREFIX } from "../../src/api/http.ts";
 import { markets } from "../../src/operations/markets.ts";
@@ -209,8 +206,7 @@ const post = (method: string, body: unknown): RequestInit => ({
 
 const WRONG = { headers: { authorization: "Bearer wrong" } };
 
-// the requests, in order, since rules and deletes change what later
-// requests read
+// in order, since rules and deletes change what later requests read
 const REQUESTS: [string, RequestInit?][] = [
   ["/quotes?symbols=NVDA,FRED:DGS10,^GSPC"],
   ["/quotes?symbols=NVDA,FRED:DGS10&extended=true"],
@@ -314,8 +310,6 @@ async function restAnswer(res: Response, path: string): Promise<RestAnswer> {
   return { status: res.status, headers, body };
 }
 
-// Every /api/v1 route over the recordings, as status, headers and the
-// bytes a client gets: a fixture of these pins the routes' answers.
 export async function restAnswers(): Promise<Record<string, RestAnswer>> {
   const answers: Record<string, RestAnswer> = {};
   const clock = fakeClock(NOW);

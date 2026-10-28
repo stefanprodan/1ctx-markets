@@ -65,8 +65,7 @@ function memoryFiles(events: string[], initial: Record<string, string> = {}) {
   return { files, held };
 }
 
-// launchctl over a loaded flag: print answers while loaded, bootout
-// unloads, bootstrap loads
+// launchctl on a loaded flag: print if loaded, bootout unloads, bootstrap loads
 function launchctl(events: string[], start: { loaded: boolean }): Spawn {
   const job = { ...start };
   return async (argv) => {

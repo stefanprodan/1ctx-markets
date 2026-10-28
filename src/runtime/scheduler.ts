@@ -1,8 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// Jobs on a fixed period, run off the clock, so a test steps a fake
-// clock and sees every run without waiting.
 
 import type { Clock } from "./clock.ts";
 import { errorFields, type Log } from "./log.ts";

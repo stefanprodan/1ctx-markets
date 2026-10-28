@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // every write here runs inside a writer transaction
 
 import {
@@ -67,7 +66,6 @@ export type Kind = "final" | "live";
 const columnsOf = (interval: Interval): [string, string][] =>
   Object.entries(interval === "1d" ? DAILY_COLUMNS : WEEKLY_COLUMNS);
 
-// the select list naming each column by its row field
 export const selectList = (interval: Interval): string =>
   columnsOf(interval)
     .map(([key, column]) => `${column} as ${key}`)
@@ -238,9 +236,8 @@ export function liveTarget(db: Db, instrument: Scoped): LiveTarget | null {
   if (row === null) return null;
   const session =
     instrument.market === CRYPTO ? null : readSession(db, instrument.market);
-  // an index page gives no trade time and is current while its market
-  // trades, so its fetch, at most the session's end, dates the live row;
-  // the quote keeps no time
+  // an untimed index page is current while its market trades: its fetch, at
+  // most the session's end, dates the live row; the stored quote keeps no time
   const { fetchedAt, ...rest } = row;
   const quote: LiveQuote = {
     ...rest,

@@ -1,9 +1,6 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// A listing's pre- or post-market price for quote, fetched inside the
-// call only when asked and kept in memory for one quote period. Never
-// stored: signals, movers, screen and rules stay on the regular session.
+// Never stored: signals, movers, screen and rules stay on the regular session.
 
 import { CRYPTO, isQuoted, readSession } from "../market/calendars.ts";
 import { iso, price, round } from "../market/format.ts";
@@ -23,9 +20,7 @@ const none = (reason: StaleReason): ExtendedRead => ({
 const inside = (windows: readonly Window[], at: number) =>
   windows.some((w) => at >= w.start && at < w.end);
 
-// The latest priced bar in a pre or post window since the last regular
-// close, kept through the night until the next regular open: an evening
-// move is still the newest price before the next session.
+// kept through the night: an evening move is the newest price before the open
 export function latestExtended(
   answer: IntradayAnswer,
   now: number,
@@ -58,8 +53,7 @@ export function latestExtended(
   return none(STALE.extendedNoPrice);
 }
 
-// The flag from the spark answers decides without a call; a listing
-// not seen in one yet learns it from its chart.
+// the spark flag decides without a call; a listing never in one asks its chart
 async function readOne(
   m: Markets,
   instrument: Instrument,
@@ -100,8 +94,7 @@ async function readOne(
 
 const EXPIRED = Symbol("expired");
 
-// one chart per listing at most, paced by the source queue; one past
-// the deadline answers null and holds no other
+// a listing past the deadline answers null and holds up no other
 export async function readExtended(
   m: Markets,
   instruments: readonly Instrument[],

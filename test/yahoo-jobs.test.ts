@@ -885,9 +885,8 @@ describe("a simulated weekday", () => {
   }
 
   test("one US and one Xetra instrument", async () => {
-    // quote turns from 08:05 to 20:00 UTC, the 08:00 Xetra check and the
-    // 20:15 US post-close batch; the 13:30 US check and the 16:45 Xetra
-    // post-close batch ride turns. One refetch each.
+    // quote turns 08:05-20:00 UTC, the 08:00 Xetra check, the 20:15 US batch;
+    // the 13:30 US check and the 16:45 Xetra batch ride turns; one refetch each
     expect(await monday([US("NVDA"), XETRA("VVSM")])).toEqual({
       sparks: 144 + 1 + 1,
       charts: 2,

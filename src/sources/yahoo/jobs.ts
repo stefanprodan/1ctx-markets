@@ -43,7 +43,6 @@ export type JobsOptions = {
   ctx: YahooContext;
   quoteEveryMs: number;
   log: Log;
-  // read within this long, or held by a rule, keeps an instrument synced
   trackMs?: number;
 };
 
@@ -56,24 +55,20 @@ type Work = {
 export type BarPass = {
   market: string;
   rows: number;
-  // the first changed day per instrument, for whatever past bars feed
   changed: { instrument: string; changedFrom: string }[];
   error: string | null;
 };
 
 export type TickReport = {
-  // markets whose every instrument was asked, in session or after close
   quoted: string[];
   checked: string[];
   bars: BarPass[];
 };
 
 export type YahooJobs = {
-  // quotes and checks, then the bars due, as both jobs run in a minute
   tick(): Promise<TickReport>;
   quoteTick(): Promise<Omit<TickReport, "bars">>;
   barTick(): Promise<BarPass[]>;
-  // the instrument backfilled, if any was waiting
   backfillTurn(): Promise<string | null>;
   schedule(jobs: Scheduler): void;
 };
@@ -97,18 +92,15 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
   const trackMs = options.trackMs ?? TRACK_MS;
   const tracked = () => byMarket(trackedInstruments(db, clock.now(), trackMs));
   let lastSlot: number | null = null;
-  // each market's next check instrument, so one that never answers
-  // cannot hide a new session from the rest
+  // rotated, so one instrument that never answers cannot hide a new session
   const checkTurn = new Map<string, number>();
   const nextOne = (market: string, instruments: Instrument[]) => {
     const k = checkTurn.get(market) ?? 0;
     checkTurn.set(market, k + 1);
     return [instruments[k % instruments.length]!];
   };
-  // when each instrument's backfill last failed or answered no bars
   const backfillMissed = new Map<string, number>();
 
-  // what each market needs now; quotePass is the turn of the period
   function plan(
     markets: Map<string, Instrument[]>,
     now: number,
@@ -137,8 +129,7 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
           continue;
         }
       }
-      // from the last attempt, so a source that is down is not asked on
-      // every tick
+      // from the last attempt, so a source that is down is not asked each tick
       const checked = lastStarted(db, SOURCE, JOBS.check, market);
       const since = Math.max(s.fetchedAt, checked?.startedAt ?? 0);
       if (now >= nextCheck(s, since)) {
@@ -322,8 +313,7 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
     const bars: BarPass[] = [];
     for (const [market, instruments] of tracked()) {
       if (!barsDue(db, SOURCE, market, clock.now())) {
-        // an instrument whose own refetch failed or left a close owed is
-        // retried alone
+        // one whose own refetch failed or left a close owed is retried alone
         const owed = owedDue(db, SOURCE, market, instruments, clock.now());
         const retry = instruments.filter((i) => {
           const last = lastStarted(db, SOURCE, JOBS.bars, i.id);

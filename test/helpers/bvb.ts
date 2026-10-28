@@ -1,9 +1,6 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// The Bucharest exchange answered from its recordings by URL. The pages
-// were recorded on a Sunday with the market closed and the page key
-// stripped, so an open market and a key are made up here, in code.
+// recorded closed on a Sunday, key stripped: an open market and key are made up
 
 import { join } from "node:path";
 import type { Fetch } from "../../src/sources/source.ts";

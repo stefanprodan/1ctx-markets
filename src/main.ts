@@ -1,7 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// The entry: flags, the bearer, the db, start().
 
 import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
@@ -127,7 +125,6 @@ main.info("startup", {
   quote_every: config.quoteEveryMs / MINUTE_MS,
   track_days: config.trackDays,
 });
-// one field per source with its state and why; Yahoo needs no key
 main.info("sources", app.sources);
 
 let stopping = false;

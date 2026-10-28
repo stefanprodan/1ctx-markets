@@ -1772,9 +1772,7 @@ describe("the research news section since a date", () => {
   });
 });
 
-// Five made-up shares with a fourth quarter of earnings, with widest
-// the widest numbers research rounds to, and a week of news stored at the
-// source's caps, its text made of fill, then GET /research for all five.
+// widest: the widest numbers research rounds to; news at the source's caps
 async function fullFive(fill: string, widest: boolean) {
   const symbols = Array.from(
     { length: MAX_RESEARCH_SYMBOLS },

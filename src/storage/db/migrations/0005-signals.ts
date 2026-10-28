@@ -3,11 +3,8 @@
 
 import type { Migration } from "../migration.ts";
 
-// One row per final bar and at most one live row per instrument and
-// interval, each signal its own column; the running values let the
-// live row step from the last final row. Weekly rows hold only the
-// averages and the cross. Checks hold only what the maths guarantees,
-// so a source's odd bar never fails the bar write that computes them.
+// one row per final bar and at most one live row per instrument and interval;
+// checks hold only what the maths guarantees, so an odd bar never fails a write
 export const m0005: Migration = {
   id: "0005-signals",
   up(db) {

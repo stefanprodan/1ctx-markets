@@ -1,8 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// What the service commands need from the platform's service manager.
-// launchd answers it on macOS; another manager is another backend.
 
 export type ServiceDefinition = {
   // the binary, then the server's arguments
@@ -32,7 +29,6 @@ export interface ServiceBackend {
   start(): Promise<void>;
   // returns once the process has exited; a stopped service is no error
   stop(): Promise<void>;
-  // stop it and forget the definition
   remove(): Promise<void>;
   state(): Promise<ServiceState | null>;
 }

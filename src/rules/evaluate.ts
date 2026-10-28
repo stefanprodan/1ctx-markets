@@ -1,8 +1,6 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// Rules run inside the write that moved their inputs, so the quote,
-// signals and rule are read in one transaction.
+// Rules run inside the write that moved their inputs, in one transaction.
 
 import { iso, price, round } from "../market/format.ts";
 import { type Instrument, readInstrument } from "../market/instruments.ts";
@@ -353,7 +351,7 @@ function evaluateWith(r: Reader, db: Db, rule: RuleRow): Evaluation {
   };
 }
 
-// Evaluates one rule and moves its state, in the caller's transaction.
+// in the caller's transaction
 export function applyRule(
   db: Db,
   rule: RuleRow,
@@ -396,7 +394,6 @@ const reads = (rule: RuleRow): Set<string> => {
 };
 
 export type Engine = RuleHooks & {
-  // what the research jobs and reads ask of the rules
   finnhub: Hooks;
   quoteEveryMs: number;
 };

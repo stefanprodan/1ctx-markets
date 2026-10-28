@@ -3,11 +3,8 @@
 
 import type { Migration } from "../migration.ts";
 
-// The price sources on at the last start, written only once a switch's
-// refetch landed, so a restart during one redoes it. Quotes may have no
-// trade time (an exchange's index page gives none) and a previous close
-// from the exchange's reference price or its exact change; no table
-// points at quotes, so it is rebuilt inside the transaction.
+// sources is written only once a switch's refetch landed, so a restart redoes
+// it; no table points at quotes, so it is rebuilt inside the transaction
 export const m0010: Migration = {
   id: "0010-bvb",
   up(db) {

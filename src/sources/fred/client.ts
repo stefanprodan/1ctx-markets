@@ -1,9 +1,6 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// FRED's series and observations answers. FRED takes its key only in
-// the URL, so no URL, error or answer text this client makes carries
-// one: errors hold a fixed phrase and nothing FRED or fetch said.
+// FRED takes its key only in the URL, so no error or text made here carries one
 
 import { wallOfDate } from "../../market/zone.ts";
 import type { Clock } from "../../runtime/clock.ts";
@@ -63,12 +60,9 @@ export type ObservationRange =
 export type Fred = {
   series(id: string): Promise<SeriesMeta>;
   observations(id: string, range: ObservationRange): Promise<Observations>;
-  // fails at once while the queue backs off, for a tool
   failFast(): Fred;
-  // failing fast, and starting no call once live() is false
   within(live: () => boolean): Fred;
   backoff(): Backoff | null;
-  // at shutdown: fails waiting calls, so none goes out after
   close(): void;
 };
 

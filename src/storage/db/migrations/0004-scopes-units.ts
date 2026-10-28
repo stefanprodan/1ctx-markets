@@ -3,9 +3,8 @@
 
 import type { Migration } from "../migration.ts";
 
-// A run's scope (the market of a quote or bar pass), so one market's
-// failure marks only its own rows stale; and each instrument's unit, so
-// a price is never read as another kind of number.
+// a run's scope, so one market's failure marks only its own rows stale; a unit,
+// so a price is never read as another kind of number
 export const m0004: Migration = {
   id: "0004-scopes-units",
   up(db) {

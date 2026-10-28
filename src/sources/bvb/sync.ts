@@ -1,7 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// every fetch finishes before its write is queued; no write awaits a fetch
 
 import { dailyRange, type Written } from "../../market/bars.ts";
 import { readSession, weekOf } from "../../market/calendars.ts";
@@ -34,7 +32,6 @@ import {
 import type { History, Meta } from "./parse.ts";
 import { detailQuote, indexQuote, storeBvbQuotes } from "./quotes.ts";
 
-// db is for reads; every write goes through writer
 export type BvbContext = {
   db: Db;
   clock: Clock;
@@ -103,9 +100,8 @@ export async function wholeHistory(
 
 type Answered = (db: Db) => Written;
 
-// The 30-day window; a final close that moved there means the feed
-// adjusted past prices, so the whole history is asked again, and a
-// rescale pauses rules on old price levels before it is.
+// a final close moved in the 30-day window means past prices were adjusted:
+// the whole history is asked again, rules on old price levels paused till then
 async function refetchAnswer(
   ctx: BvbContext,
   instrument: Instrument,

@@ -1,8 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// The Bucharest Stock Exchange read directly: its site's pages (ASP.NET,
-// in Romanian) and the chart feed its pages call.
 
 import type { Clock } from "../../runtime/clock.ts";
 import { BVB, BVB_MARKET } from "../ids.ts";
@@ -94,7 +91,6 @@ export function bvb(options: BvbOptions): Bvb {
   const calls: Limiter = limiter(clock, SPACING_MS);
   // the chart feed's key, from the last instrument page read
   let key: string | null = null;
-  // each list page's symbols, from its last read
   const lists = new Map<
     ListKind,
     { symbols: ReadonlySet<string>; at: number }

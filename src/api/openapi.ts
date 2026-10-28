@@ -1,10 +1,6 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// The OpenAPI 3.1 description of /api/v1, written by hand so each limit
-// carries its reason. Schemas keep to a small subset of JSON Schema that
-// the contract test checks every answer against; a keyword outside it
-// would be one the test cannot hold true.
+// By hand, so each limit carries its reason; schemas keep to the tested subset.
 
 import { paths, responses } from "./paths.ts";
 import { schemas } from "./schemas.ts";

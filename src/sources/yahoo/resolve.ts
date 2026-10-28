@@ -1,8 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// Yahoo symbols into market:symbol keys, for any exchange it carries,
-// and which listing a caller's symbol means, never by a guess.
 
 import { CRYPTO } from "../../market/calendars.ts";
 import {

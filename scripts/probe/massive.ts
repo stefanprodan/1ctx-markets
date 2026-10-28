@@ -1,5 +1,3 @@
-// Records Massive (formerly Polygon.io) free-tier news answers as test fixtures.
-// Run: bun scripts/probe/massive.ts  (MASSIVE_KEY_FILE overrides the key path)
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { readKey, record, sleep } from "./record";

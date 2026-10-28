@@ -1,10 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// The Bucharest feed's schedule: one check of the trading schedule page
-// a day, the list pages each quote period while the session is open and
-// once an exchange day whatever is tracked, and the 30-day refetch once a
-// new session shows.
 
 import {
   closeQuoteAt,

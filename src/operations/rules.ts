@@ -1,7 +1,6 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// The only tool with write annotations; a failed create leaves no rule.
+// The only write tool: a failed create leaves no rule.
 
 import { iso } from "../market/format.ts";
 import type { Instrument } from "../market/instruments.ts";
@@ -53,7 +52,7 @@ import { type ItemError, readTargets, timeout } from "./targets.ts";
 export const RULE_ACTIONS = ["create", "list", "pause", "delete"] as const;
 type Action = (typeof RULE_ACTIONS)[number];
 
-// what a refused gate says, whether Finnhub is off or does not cover it
+// one message whether Finnhub is off or does not cover the instrument
 export const NO_EVENT_SOURCE = "no event source for this instrument";
 export const SPLIT_PAUSED =
   "paused by a split: its price levels are from before it; delete it and recreate it with new levels";
@@ -211,7 +210,6 @@ export type Created = {
   alert: ReturnType<typeof alertItem> | null;
 };
 
-// The rule as stored with its first evaluation, or why none was stored.
 export async function createRule(
   m: Markets,
   args: Extract<RulesArgs, { action: "create" }>,

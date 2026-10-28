@@ -1,9 +1,6 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// Earnings events between two dates, of the tracked shares or the ones
-// named, each scheduled, awaiting results or reported. Only actuals
-// report an event; its date or an after-close label never do.
+// Only actuals mark an event reported, never its date or after-close label.
 
 import { type Instrument, readInstrument } from "../market/instruments.ts";
 import { trackedInstruments } from "../market/tracking.ts";
@@ -66,10 +63,9 @@ type Note = { input: string; id?: string; error?: string; message: string };
 // the unavailable list's share of a page; past it, the rest are counted
 export const UNAVAILABLE_BYTES = 8 * 1024;
 
-// the no_event list's share, so neither list crowds out the other
+// its own share, so neither list crowds out the other
 export const NO_EVENT_BYTES = UNAVAILABLE_BYTES;
 
-// the notes that fit the share, in order, and how many were left out
 export function capNotes<T>(
   notes: readonly T[],
   share: number,
@@ -86,8 +82,7 @@ export function capNotes<T>(
 
 type Nearest = { date: string; hour: string; status: EventStatus } | null;
 
-// The stored events either side of the range, so a share with nothing
-// in it is never read as missing data.
+// so a share with nothing in the range is never read as missing data
 function nearest(m: Markets, i: Instrument, from: string, to: string) {
   const today = localDate(i.zone, m.clock.now());
   const one = (sql: string, date: string): Nearest => {
@@ -110,8 +105,7 @@ function nearest(m: Markets, i: Instrument, from: string, to: string) {
   };
 }
 
-// why a share has no calendar, so an empty list is never read as no
-// earnings ahead; null once its last good fetch had data
+// so an empty list is never read as no earnings ahead; null once data came
 function noCalendar(m: Markets, input: string, i: Instrument): Note | null {
   const ok = lastStarted(m.db, SOURCE, "calendar", i.id, "ok");
   if (ok !== null) {
@@ -143,9 +137,7 @@ export type EventsRead =
       quiet: object[];
     };
 
-// The events from start (the range's first without one), why a share
-// has none to show, and, on a first read of named shares, the ones
-// with nothing in the range.
+// a null start is the range's first event
 export async function readEventsOf(
   m: Markets,
   args: EventsArgs,

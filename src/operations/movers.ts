@@ -1,10 +1,6 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// The day's moves among the symbols a caller passes: past a percent
-// from the previous close, against an average, or both. Live prices
-// drive it, so a crossing compares the last final close with the live
-// quote, and a FRED series, which has no live quote, never moves.
+// A cross compares the last final close with the live quote; FRED never moves.
 
 import { price, round } from "../market/format.ts";
 import type { Instrument } from "../market/instruments.ts";
@@ -196,8 +192,7 @@ function moves(args: MoversArgs, change: number): boolean {
 // move is null when an average alone was asked and the day has no change
 type Matched = { id: string; move: number | null; item: object };
 
-// Matched, unavailable, or null when its inputs were all there and it
-// did not move as asked.
+// null when its inputs were all there and it did not move as asked
 function moverOne(
   m: Markets,
   args: MoversArgs,
@@ -275,7 +270,6 @@ export async function readMovers(
     else if ("status" in result) out.push(result);
     else matched.push(result);
   }
-  // the ones without a change after those with one, each by id on a tie
   matched.sort((a, b) => {
     if (a.move !== b.move) {
       if (a.move === null) return 1;

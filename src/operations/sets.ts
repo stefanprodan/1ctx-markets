@@ -1,10 +1,6 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// What movers and screen share: the symbols a caller passes, each once,
-// sorted into matched, not matched and unavailable, with the matches
-// paged first. Only a match can be wrong in silence, so a missing,
-// null or stale input never makes one.
+// A missing, null or stale input never matches: only a match misleads unseen.
 
 import type { Instrument } from "../market/instruments.ts";
 import type { StaleReason } from "../market/stale.ts";
@@ -68,8 +64,7 @@ type Entry = { item: object; fred: boolean };
 
 const NOT_THESE = "next does not continue these arguments";
 
-// Where a page starts, checked before anything is read or fetched: a
-// cursor is an offset made for these arguments.
+// checked before anything is read or fetched
 export function startOf(next: string | null, args: unknown): number {
   if (next === null) return 0;
   const at = readCursor(next, args);
@@ -78,7 +73,6 @@ export function startOf(next: string | null, args: unknown): number {
   return n;
 }
 
-// what a movers or screen call found, before any page
 export type SetRead = {
   matched: Entry[];
   notMatched: number;
@@ -88,7 +82,6 @@ export type SetRead = {
   attribution: string;
 };
 
-// matches first, then the unavailable by id, then the errors
 const ordered = (read: SetRead): Entry[] => [
   ...read.matched,
   ...[...read.unavailable].sort(byId).map((item) => ({ item, fred: false })),
@@ -127,7 +120,6 @@ export function setPage(
   ).text;
 }
 
-// the whole set in one answer, as setPage orders it
 export function setAll(read: SetRead): object {
   const items = ordered(read);
   return {

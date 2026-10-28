@@ -1,9 +1,6 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// FRED series as instruments of the FRED market, their observations as
-// daily bars that carry only a close. FRED publishes only closed days,
-// so a bar is final once fetched, and a revision replaces it.
+// only closed days: a bar is final once fetched, and a revision replaces it
 
 import {
   type Bar,
@@ -52,7 +49,7 @@ export const ATTRIBUTION =
 export const NO_DATA = "no data from FRED";
 export const DAILY_ONLY = "only daily FRED series are supported";
 
-// db is for reads; writes go through writer; null while the source is off
+// null while the source is off
 export type FredContext = {
   db: Db;
   clock: Clock;

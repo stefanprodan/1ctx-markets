@@ -1,5 +1,4 @@
-// One real call, one fixture; the key in any form, in the URL, a header or
-// the body, is replaced before the first write, so it never reaches disk.
+// the key in any form, URL, header or body, is replaced before the first write
 
 import { scrub } from "../../src/sources/source.ts";
 

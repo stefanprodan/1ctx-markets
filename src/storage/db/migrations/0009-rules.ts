@@ -3,9 +3,8 @@
 
 import type { Migration } from "../migration.ts";
 
-// Price rules and the alerts they fire. Ids autoincrement so an id is
-// never reused after a delete or retention, which GET /alerts relies on
-// as its cursor; an alert has no foreign key, so it outlives its rule.
+// ids autoincrement, never reused after a delete: GET /alerts pages by them;
+// an alert has no foreign key, so it outlives its rule
 export const m0009: Migration = {
   id: "0009-rules",
   up(db) {

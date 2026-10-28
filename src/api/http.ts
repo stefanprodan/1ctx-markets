@@ -1,8 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// What every /api/v1 route shares: one error shape, statuses by the
-// tools' own codes, query arguments read strictly, and bounded bodies.
 
 import { ArgError, quoted } from "../operations/args.ts";
 
@@ -25,8 +22,7 @@ export function json(
   });
 }
 
-// the tools' codes and the router's; a source that failed or ran out of
-// time is the caller's to retry, so it is told apart from a server fault
+// a failed or timed-out source is the caller's to retry, unlike a server fault
 const STATUS: Record<string, number> = {
   bad_arguments: 400,
   mixed_units: 400,
@@ -66,9 +62,8 @@ export const notAllowed = (allow: readonly string[]): Response =>
 
 export type Param = "text" | "list" | "number" | "boolean";
 
-// Query arguments to the input a tool parses: each given at most once,
-// a list comma-separated as a shell script builds it, and any name the
-// route does not take refused, next included, since nothing is paged.
+// a list is comma-separated as a shell script builds it; next is refused too,
+// since nothing is paged
 export function queryArgs(
   url: URL,
   params: Record<string, Param>,
@@ -103,8 +98,7 @@ export const noQuery = (url: URL): void => {
   if (url.search !== "") throw new ArgError("this route takes no query");
 };
 
-// A JSON body under max bytes, told by a fixed phrase when it is not;
-// Bun itself refuses one over its own cap before any route runs.
+// Bun itself refuses a body over its own cap before any route runs
 export async function readBody(
   req: Request,
   max: number,

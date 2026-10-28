@@ -1,7 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// Page answers to stored quotes and sessions, in the caller's write.
 
 import { type Session, session } from "../../market/calendars.ts";
 import { type Instrument, readInstruments } from "../../market/instruments.ts";
@@ -88,9 +86,8 @@ export function indexQuote(
   );
 }
 
-// A traded list row of the stored quote's trading day keeps its previous
-// close, and its day range widens by each price seen; one of a later day
-// needs the instrument page (null).
+// a traded row of the stored quote's day keeps its previous close and widens
+// its day range; one of a later day needs the instrument page (null)
 export function listQuote(
   db: Db,
   instrument: Instrument,

@@ -1,8 +1,6 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// The two listings trade on different calendars, so every anchor is a
-// date on the benchmark's days, never a row offset.
+// Anchors are dates on the benchmark's days, not row offsets: calendars differ.
 
 import { addDays, wallOfDate } from "../market/zone.ts";
 import { type Close, checkOrder } from "./common.ts";
@@ -77,7 +75,6 @@ export const RETURN_PERIODS = ["1w", "1m", "3m", "ytd"] as const;
 
 export type ReturnPeriod = (typeof RETURN_PERIODS)[number];
 
-// where each period starts, counted back from the end's date
 export function periodStart(end: string, period: ReturnPeriod): string {
   if (period === "1w") return addDays(end, -7);
   if (period === "1m") return monthsBack(end, 1);
@@ -94,9 +91,8 @@ export type Returns = Record<ReturnPeriod, number | null> & {
   live: boolean;
 };
 
-// From the last final close on or before each start to the end: the
-// live price when it follows the bars, else the last final close.
-// Null with neither; a period is null when the bars do not reach it.
+// from the last final close on or before each start to the end, the live price
+// if it follows the bars; null with neither, a period null if bars miss it
 export function trailingReturns(l: Listing): Returns | null {
   const series = withLive(l);
   const end = series.at(-1);

@@ -1,7 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// Chart feed histories to stored bars and rescales, in the caller's write.
 
 import {
   type Bar,
@@ -51,9 +49,8 @@ export class CutShort extends SourceError {
 
 export const cutShort = () => new CutShort();
 
-// A whole history replacing the stored days reaches the stored last day
-// and starts near the asked start or the stored first day; every: it
-// covers each stored day, as one that rescales them must.
+// a whole history must reach the stored last day and start near the asked or
+// stored first day; every: it covers each stored day, as a rescale needs
 export function checkCovers(
   db: Db,
   id: string,
@@ -99,9 +96,8 @@ export function movedDays(
   return out;
 }
 
-// Yahoo's rule finds the ratio on final days; the corporate action is
-// the first day after the last stored one on the old scale, final or not:
-// the next answered bar, or the session's day before its first bar.
+// the ratio from final days, by Yahoo's rule; the action is the day after the
+// last on the old scale, final or not: next bar, or the session's day before it
 export function rescaleIn(
   db: Db,
   id: string,
@@ -162,10 +158,8 @@ export function storeWindow(
   return { rows: written.rows, changedFrom };
 }
 
-// A whole history replaces every stored day; one that would leave a
-// stored day on the old scale is refused and nothing is written. A
-// rescale is kept as a split, which keeps volume ratios from spanning it:
-// the feed's volumes stay raw beside adjusted prices.
+// a day left on the old scale refuses the whole history, writing nothing;
+// a rescale is kept as a split so volume ratios never span it: volumes stay raw
 export function storeWhole(
   db: Db,
   now: number,

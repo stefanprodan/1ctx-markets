@@ -1,9 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// Yahoo's chart, v7 spark and search answers, read without a cookie or
-// crumb. Every call goes through one queue, and an answer that does not
-// have the expected shape is an error, never empty rows.
 
 import { type Session, sessionFromChartMeta } from "../../market/calendars.ts";
 import type { Clock } from "../../runtime/clock.ts";
@@ -106,22 +102,17 @@ export type Listing = {
 };
 
 export type Yahoo = {
-  // daily bars with split events, from and to in UTC epoch ms
+  // from and to in UTC epoch ms
   chart(symbol: string, from: number, to: number): Promise<ChartAnswer>;
-  // 1-minute bars of INTRADAY_RANGE with pre- and post-market trading
   intraday(symbol: string): Promise<IntradayAnswer>;
   // the listing's hasPrePostMarketData from the last answer naming it
   prePost(symbol: string): boolean | undefined;
-  // at most SPARK_MAX symbols
   spark(symbols: readonly string[]): Promise<SparkAnswer>;
   // in calls of SPARK_MAX; a failed call keeps the others' answers
   sparkAll(symbols: readonly string[]): Promise<SparkBatch[]>;
   search(query: string): Promise<Listing[]>;
-  // fails at once while the queue backs off, for a tool
   failFast(): Yahoo;
-  // failing fast, and starting no call once live() is false
   within(live: () => boolean): Yahoo;
-  // the shared queue's, null once it ended
   backoff(): Backoff | null;
 };
 

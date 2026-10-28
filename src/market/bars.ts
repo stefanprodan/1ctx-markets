@@ -1,9 +1,6 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// Daily bars as the source gives them, and weekly bars built from the
-// stored daily ones, never fetched: an open crypto week from Yahoo
-// holds Monday to Saturday only.
+// Weekly bars are built from daily ones: Yahoo's open crypto week ends Sat.
 
 import type { Db } from "../storage/db/index.ts";
 import { isWeekFinal, type Session, weekOf } from "./calendars.ts";

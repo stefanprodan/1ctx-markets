@@ -541,8 +541,7 @@ describe("the earnings gate", () => {
         { hooks: t.engine.finnhub },
       ),
     );
-    // after the results, a dip fetched with no trade time, as an index
-    // page answers: it may have traded before them
+    // after the results, a dip with no trade time, as an index page gives
     await t.clock.advance(Date.parse("2026-11-18T14:45:00Z") - t.clock.now());
     await t.quote("NVDA", {
       price: 195,
@@ -596,8 +595,7 @@ describe("the earnings gate", () => {
     });
     // traded after the results, so its live row may pass
     expect(rule(t, r.body.rule.id).lastResult).toBe("true");
-    // the same quote with no trade time: its live row is dated by its
-    // fetch, which says nothing of when the price traded
+    // with no trade time the live row is dated by its fetch, not by its trade
     await t.write.write((db) => {
       db.query(
         "update quotes set time = null where instrument = 'US:NVDA'",
@@ -862,8 +860,7 @@ describe("splits", () => {
     expect(rule(t, ids.trend!).lastResult).not.toBe("unknown");
     expect(rule(t, ids.price!).lastEvaluatedAt).toBe(opening.lastEvaluatedAt);
 
-    // resuming is refused; a rule with new levels runs, and the applied
-    // split does not pause it again
+    // resuming is refused; a rule with new levels runs, unpaused by the split
     const resumed = await t.rules({
       action: "pause",
       id: ids.price,

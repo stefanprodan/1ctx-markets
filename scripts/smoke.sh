@@ -1,12 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test of the compiled binary: it refuses to start on an empty
-# bearer file, writes a bearer on a first start, answers /health
-# and the API's spec and docs page with their embedded assets without
-# it, refuses any other request without it, and answers an MCP
-# initialize with it; the admin key it writes beside it serves
-# `admin status` and nothing else takes it. Each run starts
-# from a fresh directory, so it migrates a new database, and removes the
-# directory on exit.
+# Each run starts from a fresh directory, so it migrates a new database.
 set -euo pipefail
 
 BIN=${1:-bin/1ctx-markets}

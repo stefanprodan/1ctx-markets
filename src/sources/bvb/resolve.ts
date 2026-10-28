@@ -1,9 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// With the feed on, a symbol or name is resolved by the exchange's own
-// instrument search beside Yahoo's, under the same rules: one exact
-// listing is it, several are candidates, never a guess.
 
 import {
   type Instrument,
@@ -87,9 +83,8 @@ export async function resolveBoth(
   }
   const [y] = await Promise.allSettled([resolveYahoo(ctx, given)]);
   if (y.status === "fulfilled" && y.value.kind === "known") return y.value;
-  // Yahoo's exact match skips the exchange's search, which waits on the
-  // feed's spacing, only when it is a Bucharest listing or the exchange's
-  // last list pages lack the symbol and Yahoo's results name none there
+  // Yahoo's exact match skips the exchange's slow search only for a Bucharest
+  // listing, or one the list pages lack and Yahoo's results name none there
   const lists = ctx.bvb.listed();
   if (
     y.status === "fulfilled" &&

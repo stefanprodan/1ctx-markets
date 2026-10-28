@@ -54,7 +54,6 @@ const fixture = (name: string): Promise<Recorded> =>
 const isSeries = (u: URL) => u.pathname === "/fred/series";
 const isObservations = (u: URL) => u.pathname === "/fred/series/observations";
 
-// the recorded answer for the series a URL names
 async function answer(url: URL): Promise<Recorded> {
   const id = url.searchParams.get("series_id")!;
   if (!SERIES.includes(id)) return fixture("observations-unknown");
@@ -65,9 +64,8 @@ async function answer(url: URL): Promise<Recorded> {
   throw new Error(`no fixture for ${url}`);
 }
 
-// The recordings are the latest 30 of each series; asked from a start
-// date, FRED answers the whole history in one page, which the recorded
-// rows stand for.
+// the recordings are each series' latest 30; asked from a start date, FRED
+// answers the whole history in one page, which the recorded rows stand for
 function paged(url: URL, fx: Recorded): Recorded {
   if (!url.searchParams.has("observation_start")) return fx;
   const out = clone(fx);

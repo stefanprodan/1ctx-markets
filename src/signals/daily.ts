@@ -1,9 +1,6 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// Every row is one step from the previous row over the bars up to it,
-// so the live row is the same step over the final bars plus one
-// provisional bar and cannot drift from what the final row will be.
+// Each row is one step from the last, so the live row cannot drift from final.
 
 import { addDays } from "../market/zone.ts";
 import {
@@ -16,8 +13,7 @@ import {
   smaCross,
 } from "./common.ts";
 
-// What the signals read of a daily bar. FRED has closes only, and an
-// index or FX pair reports volume 0.
+// FRED has closes only; an index or FX pair reports volume 0
 export type Bar = {
   date: string;
   high: number | null;
@@ -229,8 +225,7 @@ function trueRange(bars: readonly Bar[], k: number): number | null {
   return Math.max(high - low, Math.abs(high - pc), Math.abs(low - pc));
 }
 
-// After a bar without a high or low, ATR seeds again from the next 14
-// true ranges rather than stay null until a recompute.
+// after a bar without a high or low, ATR seeds again from the next 14 ranges
 function atrOf(
   bars: readonly Bar[],
   i: number,
@@ -285,9 +280,8 @@ const NO_RANGE: Range52w = {
   daysSinceHigh: null,
 };
 
-// A final bar with neither high nor low ranges over its close (FRED,
-// a 0 range a source stored as null); a quote without them is not a
-// bar's range yet, so the live row has none rather than use the price.
+// a final bar with neither high nor low ranges over its close (FRED, a stored
+// null); a quote without them has no range yet rather than use the price
 function range52w(
   bars: readonly Bar[],
   i: number,
@@ -329,9 +323,8 @@ function range52w(
   };
 }
 
-// An instrument without volume (an index or FX reading 0, FRED) has
-// none; a 0 day for one that trades is a ratio of 0. None spans a break:
-// raw volumes beside adjusted prices change scale on a bonus issue.
+// none without volume (an index or FX reading 0, FRED); a 0 day of one that
+// trades is 0. None spans a break: raw volumes rescale on a bonus issue
 function volumeRatio(
   bars: readonly Bar[],
   i: number,

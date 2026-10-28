@@ -3,12 +3,8 @@
 
 import type { Migration } from "../migration.ts";
 
-// Massive's articles, one row per article and instrument, so each keeps
-// that ticker's own sentiment, null when Massive gave it none, and
-// truncated when its text was cut. Kept 30 days by published time.
-// news_walks holds where an unfinished walk goes on, as Massive's own
-// cursor so articles tied at a page edge are never skipped: the top walk
-// cut under a burst of news, and the history down to 30 days back.
+// one row per article and instrument, so each keeps its ticker's sentiment;
+// news_walks holds Massive's cursor, so ties at a page edge are never skipped
 export const m0008: Migration = {
   id: "0008-news",
   up(db) {

@@ -1,10 +1,6 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
-// /api/v1: each route calls the code its tool calls, with the same
-// resolution, tracking, deadline, limits and error codes, and answers
-// the whole result at once: nothing is paged, since a script that does
-// not follow a cursor loses what is past it.
+// Nothing is paged: a script that never follows a cursor loses what is past it.
 
 import {
   type AdminDeps,
@@ -61,10 +57,9 @@ export type Key = "read" | "admin" | "none";
 
 export type Route = {
   method: Method;
-  // under /api/v1, as the spec names it; {name} is one path segment
+  // {name} matches one path segment
   path: string;
   key: Key;
-  // a segment's only values, when it names a fixed set
   values?: Record<string, readonly string[]>;
   handle: (
     req: Request,
@@ -75,9 +70,8 @@ export type Route = {
 
 export type ApiDeps = {
   m: Markets;
-  // the alerts feed, as it has always answered
   alerts: (req: Request) => Promise<Response>;
-  // the operator's routes, while there is an admin key
+  // null without an admin key
   admin: AdminDeps | null;
   log: Log;
 };
@@ -398,8 +392,7 @@ export function routes(deps: ApiDeps): Route[] {
       },
     );
   }
-  // a bad argument is the caller's to fix; anything else is logged and
-  // answered without its text, which can quote a source
+  // other errors are logged and answered without text that can quote a source
   return list.map((r) => ({
     ...r,
     handle: async (req, url, params) => {
@@ -421,8 +414,6 @@ export function routes(deps: ApiDeps): Route[] {
 
 export type Found = { routes: Route[]; params: Record<string, string> };
 
-// The routes of the one path a request names, whatever their methods,
-// or null for a path no route has.
 export function match(list: readonly Route[], path: string): Found | null {
   const parts = path.split("/");
   for (const r of list) {
