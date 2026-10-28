@@ -116,8 +116,8 @@ consumer each.
   failed, backs off or ran out of the deadline is the caller's to
   retry; a 500 is not.
 - **A body is at most 64 KiB on the read routes** (`MAX_BODY_BYTES` in
-  `src/api/http.ts`) and 16 KiB on the admin routes, answered as the
-  JSON 413. **Bun refuses a body over 1 MiB before the router runs**:
+  `src/api/http.ts`; 100 symbols and 8 filters are a few KiB) and 16
+  KiB on the admin routes, answered as the JSON 413. **Bun refuses a body over 1 MiB before the router runs**:
   413 with an empty body and the connection closed, which no route can
   shape; the spec says so and `test/api.test.ts` checks both.
 

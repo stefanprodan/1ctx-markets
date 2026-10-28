@@ -23,7 +23,10 @@ finality in `docs/calendars.md`; tables, the writer and staleness in
 
 - **Never `/v7/finance/quote` or `/v8/finance/spark`.** v7 quote
   answers 401 without a cookie and crumb; v8 spark has no trade time
-  and no session. Each v7 spark entry is a full chart meta.
+  and no session. Each v7 spark entry is a full chart meta. Every
+  chart and spark answer carries the session
+  (`exchangeTimezoneName`, `currentTradingPeriod.regular`), which is
+  read for the stored session (`docs/calendars.md`).
 - **Every spark URL ends with `_=<now>`.** Yahoo caches a v7 spark
   answer for minutes, which freezes the price.
 - **A spark call takes 1 to `SPARK_MAX` (20) symbols;** more is a 400.

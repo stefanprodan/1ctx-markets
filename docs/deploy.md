@@ -13,9 +13,11 @@ at login and restarted when it exits. Only macOS (launchd) is supported
 today; any other platform answers `service is not supported on
 <platform> yet`.
 
-- **`src/service/` is CLI only**: it opens no database and reads no
-  key, and `main.ts` runs it before the bearer and the database. A new
-  service manager is a `ServiceBackend` picked in `backendFor()`.
+- **`src/service/` is CLI only**: it imports only
+  `runtime/config.ts` and `runtime/clock.ts`, opens no database and
+  reads no key, and `main.ts` runs it before the bearer and the
+  database. `service.ts` knows no platform; a new service manager is a
+  `ServiceBackend` picked in `backendFor()`.
 - **The launchd label is `dev.1ctx.markets`**, a LaunchAgent in
   `~/Library/LaunchAgents/dev.1ctx.markets.plist`, with `HOME` set and
   the data directory as its working directory.
@@ -30,7 +32,8 @@ today; any other platform answers `service is not supported on
   definition is invalid`**: `start`, `restart` and `uninstall --purge`
   refuse it, `status` shows it, `stop` and a plain `uninstall` work.
 - **`install` needs the compiled binary** and refuses to replace a
-  running service without `--restart`.
+  running service without `--restart`, which is the switch anywhere
+  but right after a flag that takes a value.
 - **A start waits for `GET /health` and a pid**, once a second for up
   to 60 tries, at the listen address (loopback for a wildcard bind):
   another listener on the port would answer `/health` for a job that

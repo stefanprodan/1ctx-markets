@@ -125,10 +125,10 @@ Never run one from a test or CI.
   names or the data directory's. `record()` drops `set-cookie`,
   `authorization` and `x-finnhub-token`, sets a key-named query
   parameter to `REDACTED`, and replaces the key in every form, encoded
-  too (`scrub()` in
-  `src/sources/source.ts`), in every string before writing, since a
-  cursor URL can echo it. `bvb.ts` strips the page key and ASP.NET form
-  state; `yahoo.ts` keeps only the headers a client acts on.
+  too (`scrub()` in `src/sources/source.ts`), in every string before
+  writing, since a cursor URL can echo it. `bvb.ts` strips the page key
+  and ASP.NET form state; `yahoo.ts` keeps only the headers a client
+  acts on.
 - **Restricted values are replaced before the first write.** A series
   whose terms forbid passing its values on is recorded with made-up
   numbers and a `note` saying so (`madeUpValues()` in `fred.ts`,

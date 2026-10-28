@@ -86,9 +86,9 @@ pauses in `docs/rules.md`.
   from the last final bar.
 - **A whole history cut short is refused, and nothing is written.**
   Writing it would drop, or leave unscaled, the stored days it omits.
-  Each bar source checks it against the stored range (Yahoo's
-  `startsShort()` and its whole-history check, the Bucharest feed's
-  `checkCovers()`).
+  Yahoo (`startsShort()` and its whole-history check) and the
+  Bucharest feed (`checkCovers()`) check it against the stored range;
+  FRED checks only that a history fits one page (`docs/fred.md`).
 
 ## Splits and rescales
 
@@ -115,10 +115,12 @@ pauses in `docs/rules.md`.
 - **A keyed source scrubs every text it keeps of its key**
   (`scrub()`): raw, percent-encoded and form-encoded, case-blind, since
   an answer can echo it.
-- **`Refused` is an instrument the server will not keep** (not daily,
-  not on a list a pass can quote, a type it does not serve). Its
-  message is said to the caller as it is, as the item error `refused`
-  (`itemError()` in `src/operations/targets.ts`).
+- **`Refused` is an instrument the server will not keep** (a source
+  turned off mid-call, a series not daily, a Bucharest share not on the
+  regulated market's list or a fund unit not on the fund units list, a
+  type the source does not serve). Its message is said to the caller as
+  it is, as the item error `refused` (`itemError()` in
+  `src/operations/targets.ts`).
 - **`Paused` is answered as the source backing off after the phrase
   that paused it** (`rate_limited` after a 429), never as if this
   call's own answer had failed; `DeadlinePassed` as the call's

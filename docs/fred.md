@@ -93,9 +93,9 @@ expected, with "malformed answer":
   same write. Weeks turn final once their Sunday has ended in UTC.
 - **A new series is backfilled from the shared ten-year Monday**
   (FRED's own `backfillStart` in `sync.ts`; `docs/sources.md`,
-  Backfill). Metadata and history are
-  stored in one write under the instrument's lock, rechecked after
-  the lock, and only while the caller's `live()` holds.
+  Backfill). Metadata and history are stored in one write under the
+  instrument's lock, rechecked after the lock, and only while the
+  caller's `live()` holds.
 - **A refetch asks the last `REFETCH_OBSERVATIONS` (30) observations**
   so late and revised values land. When the oldest one answered is
   after the last stored day, it asks again from that day so a gap is
@@ -109,9 +109,9 @@ expected, with "malformed answer":
   the server was down runs on start.
 - **Each series records its own run, scoped to its instrument key
   `FRED:<ID>`** (`JOBS.bars`), so one dead series never marks another
-  stale. A failed series waits `RETRY_MS` (FRED's own, in `jobs.ts`);
-  a series added after the latest 23:00 is not due, since its backfill
-  is newer.
+  stale. A failed series waits `RETRY_MS` (60 minutes, FRED's own, in
+  `jobs.ts`); a series added after the latest 23:00 is not due, since
+  its backfill is newer.
 - **Only tracked series are fetched** (`trackedInstruments`). A tool
   reading a stored series that is no longer tracked refetches it
   inside the call.

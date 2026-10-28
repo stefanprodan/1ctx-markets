@@ -27,8 +27,8 @@ the rules tool in `docs/rules.md`; signal rows and returns in
   tools lives here; never repeat a description's argument list.
 - **At most `INSTRUCTIONS_BYTES` (4 KB)**: clients cut long
   instructions from the end. A new line pushes an old one out, or the
-  cap is raised as a choice in review. Nothing that dates (symbol
-  lists, dates, prices).
+  cap is raised as a choice in review. Every line changes what an
+  agent does; nothing that dates (symbol lists, dates, prices).
 - **Routing first, what the server does not hold last**, so a cut drops
   the least. No portfolio, holding, market, country or default symbol:
   the text goes to every user.
@@ -177,8 +177,8 @@ the rules tool in `docs/rules.md`; signal rows and returns in
   never makes a mix of units refused.
 - **A match is never made from a missing, null or stale input.** In
   movers and screen such a symbol is `unavailable` with what it lacked,
-  listed after the matches, then the errors (`sets.ts`). Only a match
-  can be wrong in silence.
+  listed after the matches by id, then the errors (`sets.ts`). Only a
+  match can be wrong in silence.
 - **Price-level screen fields refuse a mix of units**: a used field in
   the listing's own unit and currency over symbols spanning more than
   one answers `mixed_units` with the groups, pointing at the percent

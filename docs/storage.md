@@ -68,10 +68,11 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   a re-keying migration fixes. Name and currency keep the stored value
   when an answer omits them.
 - **Each instrument has a unit (`UNITS`), and an unknown one stays
-  `unknown`.** Yahoo's `INDEX` is `index_points`, ^VIX's and ^TNX's
-  too. Price levels compare only within one unit and currency
-  (`docs/rules.md`, "Validation"; screen's `mixed_units` in
-  `docs/tools.md`).
+  `unknown`.** Yahoo's `INDEX` is `index_points`, ^VIX's and ^TNX's too,
+  a yield index's points being its yield in percent; its `FUTURE` holds
+  per-barrel and per-bond prices alike, so stays `unknown`. Price levels
+  compare only within one unit and currency (`docs/rules.md`,
+  "Validation"; screen's `mixed_units` in `docs/tools.md`).
 
 ## Times, dates and prices
 
