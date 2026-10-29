@@ -2287,8 +2287,50 @@ describe("the home page", () => {
     expect(first).toContain('href="/instruments/FRED%3ADGS10"');
     expect(first).toContain("Not found");
     expect(first).toContain("Pending");
-    expect(render(<HomeBody entries={[]} sparks={new Map()} />)).toContain(
-      "Nothing tracked yet.",
+  });
+
+  test("no values: a panel says how to track some, with a command to copy", () => {
+    const html = render(<HomeBody entries={[]} sparks={new Map()} />);
+    expect(html).toContain("Nothing tracked yet");
+    // zsh reads an unquoted ^ as a pattern
+    expect(html).toContain("--track '^VIX'");
+    expect(html).toContain("--track ETH-USD");
+    expect(html).toContain("service install --restart");
+    expect(html).toContain('aria-label="Copy the command"');
+  });
+
+  test("one value first fetched is a pending card in its place, with no panel", () => {
+    const html = render(
+      <HomeBody
+        entries={HOME_WATCH.entries as WatchEntry[]}
+        sparks={new Map()}
+      />,
     );
+    expect(html).not.toContain("Getting prices");
+    expect(html.match(/home-card-pending/g)).toHaveLength(1);
+    expect(html).toContain(">LATER<");
+  });
+
+  test("many values first fetched are a loading panel; the other cards show below it", () => {
+    const waiting = (value: string) =>
+      ({ ...(HOME_WATCH.entries[3] as WatchEntry), value }) as WatchEntry;
+    const typo = HOME_WATCH.entries.find((e) => e.value === "TYPO");
+    const entries = [
+      HOME_WATCH.entries[0],
+      waiting("^DJI"),
+      waiting("^N225"),
+      typo,
+    ] as WatchEntry[];
+    const html = render(<HomeBody entries={entries} sparks={new Map()} />);
+    expect(html).toContain("Getting prices");
+    // a failed value is never counted or coloured as ready
+    expect(html).toContain("1 of 4");
+    expect(html.match(/home-chip-pending/g)).toHaveLength(2);
+    expect(html.match(/home-chip-ready/g)).toHaveLength(1);
+    expect(html.match(/home-chip-failed/g)).toHaveLength(1);
+    // the waiting values are chips only, never cards
+    expect(html).not.toContain("home-card-pending");
+    expect(html.match(/class="card home-card"/g)).toHaveLength(1);
+    expect(html).toContain("Not found");
   });
 });

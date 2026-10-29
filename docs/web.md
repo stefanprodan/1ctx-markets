@@ -142,8 +142,21 @@ signed in with the admin key alone.
   as any card), a failed
   one as "Not found" (a source failure "Not available") with the
   value as written. A failed value with a stored row keeps its kind,
-  stored price and link, and still says it failed. No values: "Nothing
-  tracked yet."
+  stored price and link, and still says it failed. A pending card is
+  the ready card's shape with bars where its figures will land.
+- **No values: a panel says how to add some**, a `--track` command to
+  copy with seven common symbols named, and the service form; Home is
+  the first page an operator sees, so it says how to fill itself.
+- **Two or more values on their first fetch are a loading panel**
+  (Getting prices, the count ready, a chip per value, green when ready
+  and red when it failed, so a failure never reads as done), with the
+  other cards below it; that is a first start on an empty
+  database. One such value is a pending card in its place, as a value
+  added to the flag. While any is waiting the page re-reads every 3
+  seconds, not every minute, so a card fills soon after its fetch.
+- **Copy uses `copyText()` (`src/web/lib/clipboard.ts`)**, as 1ctx:
+  the clipboard exists only on loopback or HTTPS, so on plain HTTP the
+  button stays as it is and never says Copied.
 - **A card** is the name, symbol, Open or Closed, the stored price in
   its currency (a yield in percent), the day's change in its unit (a
   yield in points) and in percent, and a line; it links the instrument.
