@@ -336,6 +336,13 @@ signed in with the admin key alone.
   visible, and at once when it comes back; a load in flight answers a
   second ask, and a failed one keeps the rows and shows the error. An
   instrument's page re-reads the same way (`lib/refresh.ts`).
+- **A deploy reloads an open tab.** Every answer carries
+  `x-markets-build`, an id the server draws at each start (never the
+  version, which an anonymous visitor never reads); the client keeps
+  the first it sees and reloads the page once a later answer carries
+  another (`buildWatch()`),
+  so a tab never runs an old page against a new API. The minute's
+  re-read finds it, or the read when a hidden tab comes back.
 
 ## The chart
 

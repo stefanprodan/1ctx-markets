@@ -10,7 +10,15 @@ import {
   type Intraday,
   type IntradayRange,
 } from "../views/Chart.model.ts";
-import { ApiError, client, codeOf, type Fetch, failure, says } from "./api.ts";
+import {
+  ApiError,
+  buildWatch,
+  client,
+  codeOf,
+  type Fetch,
+  failure,
+  says,
+} from "./api.ts";
 
 export type SourceStatus = {
   name: string;
@@ -295,6 +303,7 @@ export function store(
   fetchFn: Fetch,
   now: () => number = Date.now,
   here: () => string = () => path.peek(),
+  reloadPage: () => void = () => location.reload(),
 ) {
   // undefined until the first answer says whether the cookie holds
   const signedIn = signal<boolean | undefined>(undefined);
@@ -390,7 +399,7 @@ export function store(
       keysCode.value = null;
     });
   };
-  const quiet = client(fetchFn, () => {});
+  const quiet = client(fetchFn, () => {}, buildWatch(reloadPage));
   // a 401 signs out only the session the call was made in
   async function call<T>(
     path: string,

@@ -215,6 +215,8 @@ const plainNotAllowed = (allow: readonly string[]): Response =>
     { "cache-control": "no-store", allow: allow.join(", ") },
   );
 
+export const BUILD_HEADER = "x-markets-build";
+
 export function serve(options: {
   hostname: string;
   port: number;
@@ -225,6 +227,9 @@ export function serve(options: {
   pageDev?: boolean;
 }): Bun.Server<undefined> {
   const page = options.page ?? null;
+  // stamped on every answer, so an open tab sees a deploy; random, as the
+  // version is never told to an anonymous visitor
+  const build = crypto.randomUUID();
   return Bun.serve({
     hostname: options.hostname,
     port: options.port,
@@ -237,6 +242,10 @@ export function serve(options: {
       page === null
         ? {}
         : Object.fromEntries(UI_PATHS.map((path) => [path, page])),
-    fetch: options.handle,
+    fetch: async (req) => {
+      const res = await options.handle(req);
+      res.headers.set(BUILD_HEADER, build);
+      return res;
+    },
   });
 }

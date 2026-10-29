@@ -333,6 +333,9 @@ MCP tools copied onto paths.
 - **The spec and the docs page are served before any key check**, as
   `/health` is: they hold no data and no key, and a browser opening a
   page sends no key.
+- **Every answer carries `x-markets-build`**, an id drawn at each
+  start, so the web UI reloads an open tab after a deploy
+  (`docs/web.md`).
 - **Reads answer `cache-control: no-store`**, since prices are live.
   A bars range whose bars are all final, with `to` before today in the
   instrument's own zone (`localDate()`) and no benchmark, is `private,
