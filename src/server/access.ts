@@ -157,6 +157,9 @@ export function access(deps: {
 }): Access {
   const isAdmin =
     deps.adminKey === null ? () => false : bearerCheck(deps.adminKey);
+  // when each key's last use was queued, so a burst before the write lands
+  // queues one write, not one a call
+  const queued = new Map<string, number>();
   return {
     caller(req) {
       const sent = bearerOf(req);
@@ -168,7 +171,12 @@ export function access(deps: {
         return null;
       }
       // at most once a minute, so a busy agent costs no write per call
-      if (key.lastUsedAt === null || now - key.lastUsedAt >= MINUTE_MS) {
+      const last = Math.max(
+        key.lastUsedAt ?? Number.NEGATIVE_INFINITY,
+        queued.get(key.id) ?? Number.NEGATIVE_INFINITY,
+      );
+      if (now - last >= MINUTE_MS) {
+        queued.set(key.id, now);
         void deps.writer
           .write((db) =>
             db

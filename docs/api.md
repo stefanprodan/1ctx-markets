@@ -255,7 +255,8 @@ MCP tools copied onto paths.
   `src/server/ratelimit.ts`), a fixed window per key id held in memory,
   no flag. Every `/api/v1` request counts, and on `/mcp` every JSON-RPC
   message, a batch's each. Past it the answer is 429 before the body is
-  read. The admin key is limited as a key of its own; the web UI's
+  read; a `/mcp` batch's body is read to count its members, the first
+  message having been counted before. The admin key is limited as a key of its own; the web UI's
   cookie is not limited. The windows are capped (`MAX_WINDOWS`), and
   only a valid key reaches them, so memory stays bounded.
 - **A request's log line names its key**: `key=<id> key_name=<name>`,

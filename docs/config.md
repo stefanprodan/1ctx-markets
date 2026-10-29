@@ -77,8 +77,9 @@ the `--help` text, and a flag changes there in the same commit.
   sent in a URL arrives encoded in the logged path. Pass a source its
   key through `store.source()`, so the mask knows it. An agent key made
   while running joins the mask through `store.mask()` before it is
-  answered; one made by an earlier run is in no file, so only its hash
-  exists to leak.
+  answered, and anything shaped like this server's keys
+  (`1ctx-markets-`, `admin-` or not, and 43 base64url characters) is
+  masked too, so a key made by an earlier run never reaches a line.
 - **The server never writes or checks existing files' modes.** Keep
   `secrets/` readable by the service user only (`chmod 700` on the
   directory, `chmod 600` on its files).

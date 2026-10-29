@@ -7,7 +7,7 @@ import { AdminError } from "../src/admin/cli.ts";
 import { runKeys } from "../src/admin/keys-cli.ts";
 import { PREFIX } from "../src/api/http.ts";
 import { DAY_MS, MINUTE_MS } from "../src/runtime/clock.ts";
-import { MASK, silent } from "../src/runtime/log.ts";
+import { format, MASK, silent } from "../src/runtime/log.ts";
 import { access, tokenHash } from "../src/server/access.ts";
 import { router } from "../src/server/http.ts";
 import {
@@ -16,6 +16,7 @@ import {
   RateLimit,
 } from "../src/server/ratelimit.ts";
 import { COOKIE, sessions } from "../src/server/session.ts";
+import { open } from "../src/storage/db/index.ts";
 import { ADMIN_KEY, api } from "./helpers/api.ts";
 import { SECRETS, type TestApp, withApp } from "./helpers/app.ts";
 import { fakeClock } from "./helpers/clock.ts";
@@ -215,6 +216,78 @@ describe("agent keys", () => {
       expect(t.lines.some((l) => l.includes(`path=/${MASK}`))).toBe(true);
       for (const line of t.lines) expect(line).not.toContain(token);
     }));
+
+  test("a key made by an earlier run never reaches the log", async () => {
+    const clock = fakeClock();
+    const { db } = open(":memory:", clock);
+    try {
+      let token = "";
+      await withApp(
+        async (t) => {
+          token = await tokenOf(await make(t, "earlier"));
+        },
+        { db },
+      );
+      await withApp(
+        async (t) => {
+          const res = await fetch(`${t.url}/mcp/${token}`, {
+            headers: as(t.admin),
+          });
+          expect(res.status).toBe(404);
+          expect(t.lines.some((l) => l.includes(`path=/mcp/${MASK}`))).toBe(
+            true,
+          );
+          for (const line of t.lines) expect(line).not.toContain(token);
+        },
+        { db },
+      );
+    } finally {
+      db.close();
+    }
+    for (const shape of [
+      `1ctx-markets-${"a".repeat(43)}`,
+      `1ctx-markets-admin-${"B_-".repeat(14)}x`,
+    ]) {
+      const line = format(0, "test", "info", "request", { path: `/${shape}` });
+      expect(line).not.toContain(shape);
+      expect(line).toContain(MASK);
+    }
+  });
+
+  test("a burst of calls queues one last-use write", async () => {
+    const w = world();
+    const token = "1ctx-markets-burst-test-key-0123456789abcdefABCDEF0";
+    await w.m.writer.write((db) =>
+      db
+        .query(
+          "insert into keys (id, name, token_hash, created_at) values ('burstkey0000', 'burst', ?, 0)",
+        )
+        .run(tokenHash(token)),
+    );
+    let writes = 0;
+    const a = access({
+      db: w.db,
+      writer: {
+        write: (fn) => {
+          writes++;
+          return w.m.writer.write(fn);
+        },
+        close: () => w.m.writer.close(),
+      },
+      adminKey: null,
+      now: () => w.clock.now(),
+      log: silent,
+    });
+    const req = new Request("http://markets.test/mcp", { headers: as(token) });
+    for (let n = 0; n < 50; n++) expect(a.caller(req)).not.toBeNull();
+    expect(writes).toBe(1);
+    await w.clock.advance(MINUTE_MS - 1);
+    a.caller(req);
+    expect(writes).toBe(1);
+    await w.clock.advance(1);
+    a.caller(req);
+    expect(writes).toBe(2);
+  });
 
   test("last use is written at most once a minute", async () => {
     const k = await keyed();

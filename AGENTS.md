@@ -5,8 +5,8 @@ data (Yahoo, and optionally FRED, Finnhub, Massive and the Bucharest
 Stock Exchange's own feed) into one SQLite file, computes signals,
 evaluates price rules, and serves them over the Model Context Protocol
 (MCP, Streamable HTTP) and a REST API under `/api/v1` with an OpenAPI
-spec, both behind the admin key or agents' own keys. It holds market data and price rules
-only, never holdings, orders or a portfolio.
+spec, both behind the admin key or agents' own keys. It holds market
+data and price rules only, never holdings, orders or a portfolio.
 
 - **Runtime:** Bun only (pinned in `.bun-version`), TypeScript run
   directly, `bun:sqlite`, one standalone binary. No Node.
