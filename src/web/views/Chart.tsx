@@ -50,6 +50,7 @@ import {
   type Range,
   readSettings,
   type Settings,
+  sessionSlots,
   tick,
   timeLabel,
   volumes,
@@ -339,11 +340,15 @@ export function Chart({ id }: { id: string }) {
     c.applyOptions(paintOptions(l, k, log.value));
     const h = data.value;
     if (h === null) return;
+    // a time range ends at the last price, so a day's empty slots need
+    // positions, which count them; read before the options reset the room
+    const keptSlots = fit ? null : c.timeScale().getVisibleLogicalRange();
     c.applyOptions({
       timeScale: {
         borderVisible: false,
         fixLeftEdge: true,
         fixRightEdge: true,
+        rightOffset: 0,
         timeVisible: h.interval === "5m",
         tickMarkFormatter: (time: unknown, type: number) => {
           const at = typeof time === "number" ? localTime(time) : null;
@@ -463,7 +468,17 @@ export function Chart({ id }: { id: string }) {
           session: h.extended_points![i]!.session,
         })),
       );
+      const slots = sessionSlots(
+        values.map((v) => v.time),
+        h.session,
+      ).map((t) => ({ time: t as UTCTimestamp }));
       const s = day(values, false, post.length === 0);
+      if (slots.length > 0) {
+        s.setData([...values, ...slots]);
+        // a fixed right edge pins the last price there, pushing the slots out
+        // and a little room keeps the close's label whole
+        c.applyOptions({ timeScale: { fixRightEdge: false, rightOffset: 3 } });
+      }
       // the day's reference only: 5D starts days before it
       if (h.previous_close !== null && shown.value === "1D") {
         s.createPriceLine({
@@ -479,7 +494,10 @@ export function Chart({ id }: { id: string }) {
       // pre and post trading, faded
       if (pre.length > 0) day(pre, true, false);
       if (post.length > 0) day(post, true, true);
-      settle([...pre, ...values, ...post]);
+      if (slots.length > 0 && pre.length === 0) {
+        if (keptSlots === null) c.timeScale().fitContent();
+        else c.timeScale().setVisibleLogicalRange(keptSlots);
+      } else settle([...pre, ...values, ...slots, ...post]);
       return;
     }
 

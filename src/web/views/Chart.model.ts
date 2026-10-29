@@ -178,6 +178,27 @@ export function volumes(bars: readonly HistoryBar[]) {
 export const pointLine = (points: readonly { at: string; close: number }[]) =>
   points.map((p) => ({ time: Date.parse(p.at) / 1000, value: p.close }));
 
+const SLOT_S = 300;
+
+// empty 5-minute slots to the session's end, so a day spans its whole
+// session as the home cards draw it and a morning fills only the morning
+export function sessionSlots(
+  times: readonly number[],
+  session: Intraday["session"],
+): number[] {
+  const first = times[0];
+  const last = times.at(-1);
+  const start = Date.parse(session?.start ?? "") / 1000;
+  const end = Date.parse(session?.end ?? "") / 1000;
+  if (first === undefined || last === undefined) return [];
+  if (!(start <= first && last < end)) return [];
+  const slots: number[] = [];
+  for (let t = start + SLOT_S; t <= end; t += SLOT_S) {
+    if (t > last) slots.push(t);
+  }
+  return slots;
+}
+
 const clocks = new Map<string, Intl.DateTimeFormat>();
 
 // no zone is the viewer's; the library would label every time in UTC
@@ -311,12 +332,14 @@ export function pointLegendOf(
       newest !== undefined &&
       Date.parse(p.at) > Date.parse(newest.at),
   );
+  const rest = after ? { ...after, final: true } : newest;
+  // the session's empty slots ahead hold no price: the newest stands
   const point =
     time === null
-      ? after
-        ? { ...after, final: true }
-        : newest
-      : (h.points.find(near) ?? (outside && { ...outside, final: true }));
+      ? rest
+      : (h.points.find(near) ??
+        (outside && { ...outside, final: true }) ??
+        rest);
   if (point === undefined) return null;
   const first = h.previous_close ?? h.points[0]?.close ?? null;
   const points = h.instrument.unit === "percent";
