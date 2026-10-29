@@ -14,18 +14,25 @@
       calc(var(--space-4) + env(safe-area-inset-left));
   }
 
+  /* the mark beside 1ctx over Markets, as 1ctx sets its lockup */
   .signin-brand {
     display: flex;
-    flex-direction: column;
     align-items: center;
-    gap: 18px;
+    gap: var(--space-4);
     color: var(--fg);
+  }
+
+  .signin-name {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
   }
 
   .signin-line {
     margin: 0;
-    font-size: var(--text-body);
-    color: var(--dim);
+    font-size: 26px;
+    font-weight: 500;
+    line-height: 1;
   }
 
   .signin-form {

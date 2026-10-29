@@ -8,15 +8,16 @@ import { effect } from "@preact/signals";
 import { markets } from "../data/store.ts";
 import { symbolOf } from "../views/Instruments.model.ts";
 import { path } from "./router.ts";
-import { match } from "./routes.ts";
+import { HOME, match } from "./routes.ts";
 
-export const BRAND = "Markets";
+export const BRAND = "1ctx Markets";
 
 // signedIn is the store's: undefined until the first status answer
 export function tabTitle(here: string, signedIn: boolean | undefined): string {
   if (signedIn === false) return `Sign in · ${BRAND}`;
   const found = match(here);
-  if (found === null) return BRAND;
+  // the landing page is the product itself
+  if (found === null || found.route.path === HOME) return BRAND;
   const id = found.params.id;
   const page = id === undefined ? found.route.label : symbolOf(id);
   return `${page} · ${BRAND}`;

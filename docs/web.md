@@ -28,8 +28,8 @@ signed in with the admin key alone.
   an edit, with no reload script, so a UI change needs a browser
   reload, not a server restart.
 - **The UI installs to a phone's Home Screen.** `manifest.webmanifest`
-  and its icons sit beside `index.html`, copies of 1ctx's brand files
-  (the same logo). The bundler hashes what the page links but not the
+  and its icons sit beside `index.html`, drawn as 1ctx's tiles with
+  the Markets mark. The bundler hashes what the page links but not the
   URLs inside the manifest, so the manifest names its icons by fixed
   paths that `main.ts` embeds and `serve()` answers beside the page
   (`files`), public as the page is and off with `--no-ui`. The iOS
@@ -111,9 +111,9 @@ signed in with the admin key alone.
   (`display-mode: standalone`) a page of the UI opens in place even
   from a link asking for a new tab, which would leave the app.
 - **The tab's title is the page, then the brand** (`app/title.ts`):
-  "Instruments · Markets", an instrument by the symbol in its address
-  ("AAPL · Markets"), so it needs no answer, and "Sign in · Markets"
-  while signed out.
+  "Instruments · 1ctx Markets", an instrument by the symbol in its
+  address ("AAPL · 1ctx Markets"), so it needs no answer, and "Sign in
+  · 1ctx Markets" while signed out. Home is the brand alone.
 - **Views never fetch.** `data/store.ts` owns every call and signal;
   `data/api.ts` makes the calls. Any 401 signs out (the shell gives way
   to the sign-in), and a later status load supersedes one in flight.
@@ -130,12 +130,16 @@ signed in with the admin key alone.
 - **`useRefresh` sets its timer once** and calls the latest load, so a
   redraw (a crosshair moving) never pushes the refresh back.
 - **1ctx's look, copied, not shared:** `style/tokens.css`,
-  `style/base.css`, the fonts, the rail, strip and shell styles, the
-  logo and icons, trimmed to what these pages use. The rail is the
-  logo with **Markets** beside it, the pages, and the operator's menu
-  (dark theme, sign out) at the foot; it folds to a strip on a wide
-  window and is a drawer on a phone. The theme follows the system until
-  flipped; a flip is kept in `localStorage`.
+  `style/base.css`, the fonts, the rail, strip and shell styles and
+  the icons, trimmed to what these pages use. **The mark is 1ctx's
+  chip and sparkle with a rising price line in place of the 1**
+  (`Mark` in `lib/icons.tsx`, `favicon.svg` and the manifest's icons).
+  The rail is 1ctx's logo with **Markets** beside it, the pages, and
+  the operator's menu (dark theme, sign out) at the foot; it folds to a
+  strip on a wide window, which shows the mark, and is a drawer on a
+  phone. The sign-in is the mark beside 1ctx's wordmark over
+  **Markets**. The theme follows the system until flipped; a flip is
+  kept in `localStorage`.
 - **Copy is short:** sentence case, no "you", "please" or explanations.
   An error is the server's phrase as a sentence (`says()`, as 1ctx),
   so a wrong key reads "Wrong admin key.": a problem's `detail`, the

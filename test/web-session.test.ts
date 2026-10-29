@@ -440,7 +440,7 @@ describe("the served UI", () => {
         expect(home.status).toBe(200);
         expect(home.headers.get("content-type")).toContain("text/html");
         const html = await home.text();
-        expect(html).toContain("<title>Markets</title>");
+        expect(html).toContain("<title>1ctx Markets</title>");
         expect(html).not.toMatch(/https?:\/\//);
         const linked = [...html.matchAll(/(?:src|href)="(\/[^"]+)"/g)].map(
           (m) => m[1]!,

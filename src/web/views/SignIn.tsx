@@ -4,7 +4,7 @@
 import { useSignal } from "@preact/signals";
 import { says } from "../data/api.ts";
 import type { Store } from "../data/store.ts";
-import { Logo } from "../lib/icons.tsx";
+import { Mark, Wordmark } from "../lib/icons.tsx";
 import "./signin.css";
 
 export function SignIn({ store }: { store: Store }) {
@@ -30,8 +30,11 @@ export function SignIn({ store }: { store: Store }) {
   return (
     <main class="signin">
       <div class="signin-brand">
-        <Logo height={80} />
-        <p class="signin-line">Markets</p>
+        <Mark size={64} />
+        <div class="signin-name">
+          <Wordmark height={26} />
+          <p class="signin-line">Markets</p>
+        </div>
       </div>
       <form class="signin-form card" onSubmit={submit}>
         <label class="field">

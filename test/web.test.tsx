@@ -389,13 +389,19 @@ describe("the routes", () => {
   });
 
   test("the tab names the page before the brand", () => {
-    expect(tabTitle("/", true)).toBe("Home · Markets");
-    expect(tabTitle("/status", true)).toBe("Server status · Markets");
-    expect(tabTitle("/instruments", undefined)).toBe("Instruments · Markets");
-    expect(tabTitle("/instruments/US%3ABRK-B", true)).toBe("BRK-B · Markets");
-    expect(tabTitle("/instruments/FRED:DGS10", true)).toBe("DGS10 · Markets");
-    expect(tabTitle("/status", false)).toBe("Sign in · Markets");
-    expect(tabTitle("/nothing", true)).toBe("Markets");
+    expect(tabTitle("/", true)).toBe("1ctx Markets");
+    expect(tabTitle("/status", true)).toBe("Server status · 1ctx Markets");
+    expect(tabTitle("/instruments", undefined)).toBe(
+      "Instruments · 1ctx Markets",
+    );
+    expect(tabTitle("/instruments/US%3ABRK-B", true)).toBe(
+      "BRK-B · 1ctx Markets",
+    );
+    expect(tabTitle("/instruments/FRED:DGS10", true)).toBe(
+      "DGS10 · 1ctx Markets",
+    );
+    expect(tabTitle("/status", false)).toBe("Sign in · 1ctx Markets");
+    expect(tabTitle("/nothing", true)).toBe("1ctx Markets");
   });
 
   test("the theme follows the system until a choice is kept", () => {
