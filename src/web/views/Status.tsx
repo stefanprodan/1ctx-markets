@@ -9,7 +9,7 @@ import {
   type WatchEntry,
 } from "../data/store.ts";
 import { Icon } from "../lib/icons.tsx";
-import { Page } from "../ui/Page.tsx";
+import { didNotLoad, Page } from "../ui/Page.tsx";
 import { Rows, RowsCard, RowsLine, RowsMeta, RowsTitle } from "../ui/Rows.tsx";
 import { RowsOpen } from "../ui/RowsOpen.tsx";
 import {
@@ -246,7 +246,14 @@ export function Status() {
     <Page
       title="Status"
       meta={at === null ? undefined : `as of ${clockTime(at)}`}
-      error={markets.statusError.value}
+      stale={s === null ? null : markets.statusError.value}
+      staleCount={markets.statusFailures.value}
+      failed={didNotLoad(
+        s !== null,
+        markets.statusError.value,
+        markets.statusCode.value,
+        () => void markets.loadStatus(),
+      )}
       actions={
         <button
           type="button"

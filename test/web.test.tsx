@@ -31,7 +31,7 @@ import {
   WATCHLIST_PATH,
   type WatchEntry,
 } from "../src/web/data/store.ts";
-import { Page } from "../src/web/ui/Page.tsx";
+import { didNotLoad, Page } from "../src/web/ui/Page.tsx";
 import { SettingDelete } from "../src/web/ui/SettingDelete.tsx";
 import {
   axisPrice,
@@ -1399,6 +1399,119 @@ const hbar = (
   sma50: null,
   sma200: null,
   ...more,
+});
+
+describe("page failures", () => {
+  test("a page that did not load names the code, the words and a retry", () => {
+    const html = render(
+      <Page
+        title="Status"
+        failed={{ words: "Not found.", status: 404, retry: () => {} }}
+      >
+        <p>body</p>
+      </Page>,
+    );
+    expect(html).toContain("This page did not load");
+    expect(html).toContain("HTTP 404");
+    expect(html).toContain("Not found.");
+    expect(html).toContain("Try again");
+    expect(html).not.toContain("<p>body</p>");
+  });
+
+  test("no server answering leaves the code out", () => {
+    const html = render(
+      <Page
+        title="Status"
+        failed={{
+          words: "The server did not answer.",
+          status: null,
+          retry: () => {},
+        }}
+      />,
+    );
+    expect(html).toContain("The server did not answer.");
+    expect(html).not.toContain("HTTP");
+  });
+
+  test("only a page with nothing on screen says it did not load", () => {
+    const retry = () => {};
+    expect(didNotLoad(true, "x", 500, retry)).toBeUndefined();
+    expect(didNotLoad(false, null, null, retry)).toBeUndefined();
+    expect(didNotLoad(false, "x", 500, retry)).toEqual({
+      words: "x",
+      status: 500,
+      retry,
+    });
+  });
+
+  test("a failed refresh shows over the body as one line", () => {
+    const html = render(
+      <Page title="Status" stale="The server failed.">
+        <p>body</p>
+      </Page>,
+    );
+    expect(html).toContain("The server failed.");
+    expect(html).toContain("<p>body</p>");
+    expect(html).not.toContain("This page did not load");
+  });
+
+  test("a load keeps its HTTP code until it works, and counts each failure", async () => {
+    let fail = true;
+    const s = store(async () =>
+      fail
+        ? Response.json(
+            { status: 503, code: "unavailable", detail: "x" },
+            { status: 503 },
+          )
+        : Response.json({ total: 1, instruments: [listed("US:A")] }),
+    );
+    await s.loadInstruments();
+    expect(s.instrumentsCode.value).toBe(503);
+    expect(s.instrumentsFailures.value).toBe(1);
+    await s.loadInstruments();
+    expect(s.instrumentsFailures.value).toBe(2);
+    expect(s.detailFailures.value).toBe(0);
+    fail = false;
+    await s.loadInstruments();
+    expect(s.instrumentsError.value).toBeNull();
+    expect(s.instrumentsCode.value).toBeNull();
+  });
+
+  test("no answer has no code", async () => {
+    const s = store(async () => {
+      throw new Error("offline");
+    });
+    await s.loadInstruments();
+    expect(s.instrumentsError.value).toBe("The server did not answer.");
+    expect(s.instrumentsCode.value).toBeNull();
+  });
+
+  test("an instrument the server does not hold reads as not found", async () => {
+    const s = store(async () =>
+      Response.json(
+        {
+          status: 404,
+          code: "not_found",
+          detail: "no listing found; try GET /api/v1/symbols",
+        },
+        { status: 404 },
+      ),
+    );
+    await s.loadInstrument("US:NONE");
+    expect(s.detailError.value).toBe("Instrument not found.");
+    expect(s.detailCode.value).toBe(404);
+  });
+
+  test("a 404 for another reason keeps the server's words", async () => {
+    const s = store(async () =>
+      Response.json(
+        { status: 404, code: "no_data", detail: "source is off" },
+        { status: 404 },
+      ),
+    );
+    await s.loadInstrument("US:OFF");
+    expect(s.detailError.value).toBe("Source is off.");
+  });
 });
 
 describe("the chart model", () => {

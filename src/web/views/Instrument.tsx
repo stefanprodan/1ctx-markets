@@ -10,7 +10,7 @@ import { type Detail, markets } from "../data/store.ts";
 import { Icon } from "../lib/icons.tsx";
 import { useMenu } from "../lib/menu.ts";
 import { useRefresh } from "../lib/refresh.ts";
-import { Page } from "../ui/Page.tsx";
+import { didNotLoad, Page } from "../ui/Page.tsx";
 import { SettingDelete } from "../ui/SettingDelete.tsx";
 import { CHART_CREDIT, Chart } from "./Chart.tsx";
 import {
@@ -211,8 +211,15 @@ export function Instrument({ params }: { params: Params }) {
     <Page
       title={symbol}
       meta={detail?.instrument.name ?? undefined}
+      failed={didNotLoad(
+        detail !== null,
+        markets.detailError.value,
+        markets.detailCode.value,
+        () => void load(),
+      )}
+      stale={detail === null ? null : markets.detailError.value}
+      staleCount={markets.detailFailures.value}
       error={
-        markets.detailError.value ??
         (said.value?.bad ? said.value.text : null) ??
         (detail?.error ? UNREAD : null)
       }

@@ -10,7 +10,7 @@ import {
   type Intraday,
   type IntradayRange,
 } from "../views/Chart.model.ts";
-import { ApiError, client, type Fetch, failure, says } from "./api.ts";
+import { ApiError, client, codeOf, type Fetch, failure, says } from "./api.ts";
 
 export type SourceStatus = {
   name: string;
@@ -187,18 +187,29 @@ export function store(
   // when the status on screen was answered, for the head's line
   const statusAt = signal<number | null>(null);
   const statusError = signal<string | null>(null);
+  // its HTTP code, shown beside the words; null when no server answered
+  const statusCode = signal<number | null>(null);
   const watchlist = signal<WatchEntry[] | null>(null);
   // FRED's terms ask for its notice wherever its values show
   const attribution = signal<string | null>(null);
   const sparks = signal<ReadonlyMap<string, Spark>>(new Map());
   const homeError = signal<string | null>(null);
+  const homeCode = signal<number | null>(null);
+  // each page's failed loads, so the same error again shows again and
+  // another page's failure never does
+  const statusFailures = signal(0);
+  const homeFailures = signal(0);
+  const instrumentsFailures = signal(0);
+  const detailFailures = signal(0);
   const loading = signal(false);
   const instruments = signal<Listed[] | null>(null);
   const instrumentsError = signal<string | null>(null);
+  const instrumentsCode = signal<number | null>(null);
   // the instrument page's, by the id asked last
   const detail = signal<Detail | null>(null);
   const detailId = signal<string | null>(null);
   const detailError = signal<string | null>(null);
+  const detailCode = signal<number | null>(null);
 
   // a sign-in or sign-out starts a session anew: a call from before it
   // neither lands its answer nor signs the new one out
@@ -229,15 +240,19 @@ export function store(
       status.value = null;
       statusAt.value = null;
       statusError.value = null;
+      statusCode.value = null;
       watchlist.value = null;
       attribution.value = null;
       sparks.value = new Map();
       homeError.value = null;
+      homeCode.value = null;
       instruments.value = null;
       instrumentsError.value = null;
+      instrumentsCode.value = null;
       detail.value = null;
       detailId.value = null;
       detailError.value = null;
+      detailCode.value = null;
     });
   };
   const quiet = client(fetchFn, () => {});
@@ -293,12 +308,17 @@ export function store(
         showWatchlist(asked, w.value);
         statusAt.value = now();
         statusError.value = null;
+        statusCode.value = null;
       });
       return true;
     } catch (error) {
       if (mine !== latest) return current;
       if (error instanceof ApiError && error.status === 401) signedOut();
-      else statusError.value = says(error);
+      else {
+        statusError.value = says(error);
+        statusCode.value = codeOf(error);
+        statusFailures.value++;
+      }
       return false;
     } finally {
       if (mine === latest) loading.value = false;
@@ -335,11 +355,14 @@ export function store(
       batch(() => {
         instruments.value = all;
         instrumentsError.value = null;
+        instrumentsCode.value = null;
       });
     } catch (error) {
       if (stale()) return;
       if (!(error instanceof ApiError && error.status === 401)) {
         instrumentsError.value = says(error);
+        instrumentsCode.value = codeOf(error);
+        instrumentsFailures.value++;
       }
     }
   }
@@ -355,6 +378,7 @@ export function store(
         detailId.value = id;
         detail.value = null;
         detailError.value = null;
+        detailCode.value = null;
       });
     }
     try {
@@ -363,11 +387,18 @@ export function store(
       batch(() => {
         detail.value = d;
         detailError.value = null;
+        detailCode.value = null;
       });
     } catch (error) {
       if (mine !== instrumentLoad || at !== session) return;
       if (!(error instanceof ApiError && error.status === 401)) {
-        detailError.value = says(error);
+        // the API's hint names its search endpoint, which means nothing here
+        detailError.value =
+          error instanceof ApiError && error.code === "not_found"
+            ? "Instrument not found."
+            : says(error);
+        detailCode.value = codeOf(error);
+        detailFailures.value++;
       }
     }
   }
@@ -437,6 +468,8 @@ export function store(
       if (stale()) return;
       if (!(error instanceof ApiError && error.status === 401)) {
         homeError.value = says(error);
+        homeCode.value = codeOf(error);
+        homeFailures.value++;
       }
       return;
     }
@@ -444,6 +477,7 @@ export function store(
     batch(() => {
       showWatchlist(asked, w);
       homeError.value = null;
+      homeCode.value = null;
     });
     const ids = [
       ...new Set(
@@ -496,22 +530,30 @@ export function store(
     attribution,
     sparks,
     homeError,
+    homeCode,
+    homeFailures,
     loadHome,
     history,
     intraday,
     detail,
     detailId,
     detailError,
+    detailCode,
+    detailFailures,
     loadInstrument,
     refetch,
     remove,
     instruments,
     instrumentsError,
+    instrumentsCode,
+    instrumentsFailures,
     loadInstruments,
     signedIn,
     status,
     statusAt,
     statusError,
+    statusCode,
+    statusFailures,
     watchlist,
     loading,
     loadStatus,
