@@ -117,6 +117,13 @@ for asset in $assets; do
   [[ $(status "$URL$asset") == 200 ]] || fail "$asset was not served"
 done
 grep -q '\.js$' <<<"$assets" || fail "the web UI names no script"
+manifest=$(grep '\.webmanifest$' <<<"$assets") || fail "the web UI names no manifest"
+icons=$(curl -s --max-time 5 "$URL$manifest" | grep -o '"src": *"/[^"]*"' | sed -E 's/.*"(\/[^"]*)"$/\1/')
+[[ -n $icons ]] || fail "the manifest names no icons"
+for icon in $icons; do
+  type=$(curl -s --max-time 5 -o /dev/null -w '%{http_code} %{content_type}' "$URL$icon" || true)
+  [[ $type == "200 image/png" ]] || fail "$icon was not served as a PNG"
+done
 [[ $(status -X POST "$URL/ui/session" -H 'content-type: application/json' -d '{"key":"wrong"}') == 401 ]] ||
   fail "a wrong key signed the web UI in"
 COOKIE=$(curl -s --max-time 5 -o /dev/null -D - -X POST "$URL/ui/session" \

@@ -8,6 +8,12 @@
     />
     <meta name="referrer" content="no-referrer" />
     <meta name="theme-color" content="#131314" />
+    <!-- installed on iOS: "default" paints the status bar in the
+         theme-color, which app/theme.ts keeps in the page colour, with
+         text to match; "black-translucent" keeps white text over the
+         light theme -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Markets" />
     <script>
       // the theme before the first paint; app/theme.ts takes over
       (() => {
@@ -30,6 +36,10 @@
     </script>
     <title>Markets</title>
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <!-- its icons are named by fixed paths that main.ts serves, since
+         the bundler hashes this file without rewriting what it names -->
+    <link rel="manifest" href="./manifest.webmanifest" />
   </head>
   <body>
     <div id="app"></div>

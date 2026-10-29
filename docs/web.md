@@ -27,6 +27,14 @@ signed in with the admin key alone.
   runs) serves `{ hmr: false }` instead: Bun rebuilds the bundle after
   an edit, with no reload script, so a UI change needs a browser
   reload, not a server restart.
+- **The UI installs to a phone's Home Screen.** `manifest.webmanifest`
+  and its icons sit beside `index.html`, copies of 1ctx's brand files
+  (the same logo). The bundler hashes what the page links but not the
+  URLs inside the manifest, so the manifest names its icons by fixed
+  paths that `main.ts` embeds and `serve()` answers beside the page
+  (`files`), public as the page is and off with `--no-ui`. The iOS
+  status bar style is `default`, so an installed app paints its bar in
+  the `theme-color` that `app/theme.ts` keeps in the page colour.
 - **`UI_PATHS` and the client's `ROUTES` name the same paths**; `test/web.test.tsx` holds them equal. A new page adds its
   path to both.
 - **`--no-ui` turns the UI off**: no page, no `/ui/session` (it answers
@@ -99,7 +107,13 @@ signed in with the admin key alone.
 
 - **Preact and `@preact/signals`**, rendered once from `main.tsx`;
   `app/router.ts` keeps the path in a signal and opens same-origin
-  links in place, the API's own pages excepted.
+  links in place, the API's own pages excepted. In an installed app
+  (`display-mode: standalone`) a page of the UI opens in place even
+  from a link asking for a new tab, which would leave the app.
+- **The tab's title is the page, then the brand** (`app/title.ts`):
+  "Instruments · Markets", an instrument by the symbol in its address
+  ("AAPL · Markets"), so it needs no answer, and "Sign in · Markets"
+  while signed out.
 - **Views never fetch.** `data/store.ts` owns every call and signal;
   `data/api.ts` makes the calls. Any 401 signs out (the shell gives way
   to the sign-in), and a later status load supersedes one in flight.

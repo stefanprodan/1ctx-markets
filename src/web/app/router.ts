@@ -17,19 +17,24 @@ export function navigate(to: string, replace = false): void {
 }
 
 // a same-origin link opens in place unless it asks for a download or a new
-// tab, or leaves the UI for the API's own pages
+// tab, or leaves the UI for the API's own pages. An installed app has no
+// tabs: a new one would leave it for the browser, so there a page of the
+// app opens in place even when the link asks for a new tab
 export function inApp(
   link: { origin: string; pathname: string; download: boolean; blank: boolean },
   origin: string,
+  standalone = false,
 ): boolean {
   return (
     link.origin === origin &&
     !link.download &&
-    !link.blank &&
+    (!link.blank || standalone) &&
     link.pathname !== "/api" &&
     !link.pathname.startsWith("/api/")
   );
 }
+
+const STANDALONE = "(display-mode: standalone)";
 
 function onLinkClick(event: MouseEvent): void {
   if (event.defaultPrevented || event.button !== 0) return;
@@ -42,7 +47,7 @@ function onLinkClick(event: MouseEvent): void {
     download: anchor.hasAttribute("download"),
     blank: anchor.target === "_blank",
   };
-  if (!inApp(link, location.origin)) return;
+  if (!inApp(link, location.origin, matchMedia(STANDALONE).matches)) return;
   event.preventDefault();
   navigate(anchor.pathname);
 }

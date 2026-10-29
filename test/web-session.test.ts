@@ -3,6 +3,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+import { join } from "node:path";
 import { PREFIX } from "../src/api/http.ts";
 import { silent } from "../src/runtime/log.ts";
 import { router } from "../src/server/http.ts";
@@ -417,6 +418,14 @@ describe("what the cookie opens", () => {
     }));
 });
 
+// main.ts's icons, by the paths the manifest names
+const ICONS = Object.fromEntries(
+  ["icon-192.png", "icon-512.png", "icon-maskable-512.png"].map((n) => [
+    `/${n}`,
+    join(import.meta.dir, "../src/web", n),
+  ]),
+);
+
 describe("the served UI", () => {
   test("a flag is found in any string of a JSON answer", () => {
     const decoded = JSON.parse('{"a":"--db first","b":["line\\n--db"]}');
@@ -466,6 +475,44 @@ describe("the served UI", () => {
       { ui: true, page },
     ));
 
+  test("serves the manifest's icons at the paths it names, with the UI only", async () => {
+    const files = ICONS;
+    await withApp(
+      async ({ url }) => {
+        const html = await (await fetch(url)).text();
+        const link = /rel="manifest" href="(\/[^"]+)"/.exec(html);
+        expect(link).not.toBeNull();
+        const manifest = (await (await fetch(`${url}${link![1]}`)).json()) as {
+          icons: { src: string }[];
+        };
+        expect(manifest.icons.map((i) => i.src).sort()).toEqual(
+          Object.keys(files).sort(),
+        );
+        for (const [path, file] of Object.entries(files)) {
+          const res = await fetch(`${url}${path}`);
+          expect(res.status).toBe(200);
+          expect(res.headers.get("content-type")).toBe("image/png");
+          expect(new Uint8Array(await res.arrayBuffer())).toEqual(
+            await Bun.file(file).bytes(),
+          );
+          const head = await fetch(`${url}${path}`, { method: "HEAD" });
+          expect(head.status).toBe(200);
+          expect(head.headers.get("etag")).toBeTruthy();
+          await head.arrayBuffer();
+        }
+        // a path the manifest does not name stays the router's
+        expect((await fetch(`${url}/icon-1024.png`)).status).toBe(401);
+      },
+      { ui: true, page, files },
+    );
+    await withApp(
+      async ({ url }) => {
+        expect((await fetch(`${url}/icon-192.png`)).status).toBe(401);
+      },
+      { ui: false, page, files },
+    );
+  });
+
   test("an anonymous visitor reads nothing about the server", () =>
     withApp(
       async ({ url }) => {
@@ -486,6 +533,9 @@ describe("the served UI", () => {
         }
         await read("/status");
         await read("/instruments");
+        for (const icon of Object.keys(ICONS)) {
+          expect((await read(icon)).status).toBe(200);
+        }
         await read("/ui/session");
         for (const body of ['{"key":"x"}', "{}", "x"]) {
           await read("/ui/session", {
@@ -549,6 +599,6 @@ describe("the served UI", () => {
           expect([name, said]).toEqual([name, false]);
         }
       },
-      { ui: true, page, track: [TRACKED] },
+      { ui: true, page, files: ICONS, track: [TRACKED] },
     ));
 });
