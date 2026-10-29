@@ -4,6 +4,7 @@
 import { describe, expect, test } from "bun:test";
 import { signal } from "@preact/signals";
 import { render } from "preact-render-to-string";
+import { spec } from "../src/api/openapi.ts";
 import { UI_PATHS } from "../src/server/http.ts";
 import { Shell } from "../src/web/app/App.tsx";
 import { Rail } from "../src/web/app/Rail.tsx";
@@ -100,6 +101,7 @@ import {
   trackLine,
 } from "../src/web/views/Status.model.ts";
 import { JobDetails, StatusBody } from "../src/web/views/Status.tsx";
+import { validate } from "./helpers/schema.ts";
 
 const NOW = Date.parse("2026-10-28T12:00:00Z");
 
@@ -388,25 +390,114 @@ describe("the data layer", () => {
     expect(s.watchlist.value).toBeNull();
   });
 
+  test("a 401 from either half of the status load signs out", async () => {
+    for (const [first, second] of [
+      [STATUS_PATH, WATCHLIST_PATH],
+      [WATCHLIST_PATH, STATUS_PATH],
+    ] as const) {
+      // the other half fails first, with a fault or no answer at all
+      for (const fault of [500, 0]) {
+        const late = Promise.withResolvers<Response>();
+        const s = store(async (path) => {
+          if (path === second) return late.promise;
+          if (fault === 0) throw new TypeError("offline");
+          return Response.json(
+            { status: 500, code: "internal", detail: "x" },
+            { status: 500 },
+          );
+        });
+        s.signedIn.value = true;
+        const loading = s.loadStatus();
+        await Bun.sleep(0);
+        late.resolve(
+          Response.json(
+            { status: 401, code: "unauthorized", detail: "x" },
+            { status: 401 },
+          ),
+        );
+        expect(await loading).toBe(false);
+        expect([first, fault, s.signedIn.value]).toEqual([first, fault, false]);
+        expect(s.statusError.value).toBeNull();
+      }
+    }
+    // neither is a 401: the error is said and nothing lands half
+    const s = store(
+      fake({
+        [`GET ${STATUS_PATH}`]: ok(STATUS),
+        [`GET ${WATCHLIST_PATH}`]: status(502),
+      }).fetch,
+    );
+    await s.loadStatus();
+    expect(s.signedIn.value).toBeUndefined();
+    expect(s.status.value).toBeNull();
+    expect(s.statusError.value).toBe("The server failed.");
+  });
+
   test("1D asks for the newest session with its extended trading, 5D for every one kept", async () => {
     const base = "/api/v1/instruments/US%3AA/bars?interval=5m";
     const one = `${base}&extended=true`;
     const five = `${base}&from=2016-10-28`;
     const daily = "/api/v1/instruments/US%3AA/bars?from=2026-01-01&interval=1d";
-    const answer = {
-      instrument: { id: "US:A", unit: "per_share" },
-      interval: "5m",
-      points: [],
+    const facts = {
+      id: "US:A",
+      name: "A Inc.",
+      exchange: "NMS",
+      type: "EQUITY",
+      currency: "USD",
+      unit: "per_share",
+      source: "yahoo",
     };
+    const common = {
+      input: "US:A",
+      stale: [],
+      from: "2026-10-28",
+      to: "2026-10-28",
+      session: {
+        state: "closed",
+        start: "2026-10-28T13:30:00Z",
+        end: "2026-10-28T20:00:00Z",
+      },
+    };
+    const answer = {
+      ...common,
+      instrument: facts,
+      interval: "5m",
+      sessions: [{ session: "2026-10-28", fetched_at: "2026-10-28T20:05:00Z" }],
+      previous_close: 100,
+      points: [
+        {
+          at: "2026-10-28T19:55:00Z",
+          session: "2026-10-28",
+          close: 101,
+          final: true,
+        },
+      ],
+      extended_points: [
+        { at: "2026-10-28T21:00:00Z", session: "post", close: 102 },
+      ],
+    };
+    const bars = {
+      ...common,
+      instrument: {
+        ...facts,
+        basis: "split-adjusted prices; dividends and FX conversion excluded",
+      },
+      interval: "1d",
+      bars: [hbar("2026-10-28", 101)],
+    };
+    // the fakes hold to the spec, so the chart reads what the server sends
+    const schemas = spec.components.schemas as Record<string, any>;
+    expect(validate(answer, schemas.Intraday, spec)).toEqual([]);
+    expect(validate(bars, schemas.Bars, spec)).toEqual([]);
     const f = fake({
       [`GET ${one}`]: ok(answer),
       [`GET ${five}`]: ok(answer),
-      [`GET ${daily}`]: ok({ ...answer, interval: "1d", bars: [] }),
+      [`GET ${daily}`]: ok(bars),
     });
     const s = store(f.fetch);
     expect(await s.intraday("US:A", "1D", "2016-10-28")).toEqual(answer as any);
     await s.intraday("US:A", "5D", "2016-10-28");
-    await s.history("US:A", "2026-01-01", "1d");
+    expect(await s.history("US:A", "2026-01-01", "1d")).toEqual(bars as any);
     expect(f.asked.map((a) => a.path)).toEqual([one, five, daily]);
   });
 

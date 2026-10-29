@@ -241,16 +241,26 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
   async function load(mine: number): Promise<boolean> {
     loading.value = true;
     try {
-      // the status page shows both, so they land together
-      const [s, w] = await Promise.all([
+      // the status page shows both, so they land together; a 401 from
+      // either signs out, whichever failed first
+      const [s, w] = await Promise.allSettled([
         quiet<Status>(STATUS_PATH),
         quiet<{ entries: WatchEntry[] }>(WATCHLIST_PATH),
       ]);
+      if (s.status === "rejected" || w.status === "rejected") {
+        const errors = [s, w].flatMap((r) =>
+          r.status === "rejected" ? [r.reason as unknown] : [],
+        );
+        throw (
+          errors.find((e) => e instanceof ApiError && e.status === 401) ??
+          errors[0]
+        );
+      }
       if (mine !== latest) return current;
       batch(() => {
         signedIn.value = true;
-        status.value = s;
-        watchlist.value = w.entries;
+        status.value = s.value;
+        watchlist.value = w.value.entries;
         statusAt.value = now();
         statusError.value = null;
       });

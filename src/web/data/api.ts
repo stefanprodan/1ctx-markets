@@ -33,8 +33,7 @@ export function statusWords(status: number): string {
   return "refused";
 }
 
-// /api/v1 answers problem details ({code, detail}); the sign-in keeps
-// {error, message}
+// the sign-in still answers {error, message}, not a problem
 export function failure(status: number, body: unknown): ApiError {
   const said = field(body, "detail") ?? field(body, "message");
   const message =
