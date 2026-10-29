@@ -79,6 +79,9 @@ const forbidden = (detail: string) => problem("forbidden", detail);
 
 const READS = new Set(["GET", "HEAD"]);
 
+const isApi = (path: string) =>
+  path === PREFIX || path.startsWith(`${PREFIX}/`);
+
 export function router(deps: RouterDeps): Handle {
   const authorized = bearerCheck(deps.bearer);
   const admin =
@@ -117,9 +120,7 @@ export function router(deps: RouterDeps): Handle {
     return r.handle(req, url, found.params);
   };
   const route = async (req: Request, path: string): Promise<Response> => {
-    if (path.startsWith(`${PREFIX}/`)) {
-      return apiRoute(req, path.slice(PREFIX.length));
-    }
+    if (isApi(path)) return apiRoute(req, path.slice(PREFIX.length));
     if (sessions !== null && path === SESSION_PATH) {
       return sessionRoute(sessions, req, deps.clock.now());
     }
@@ -145,7 +146,7 @@ export function router(deps: RouterDeps): Handle {
     } catch (error) {
       // a throw from the MCP handler can quote the request
       deps.log.error("request failed", { path, ...sdkErrorFields(error) });
-      res = path.startsWith(`${PREFIX}/`)
+      res = isApi(path)
         ? problem("internal", "internal error")
         : failed({ error: "internal", message: "internal error" });
     }

@@ -1009,6 +1009,29 @@ describe("the admin command", () => {
     );
   });
 
+  test("a refetch id with no answer keeps its place and the rest still run", async () => {
+    const { dir } = dataDir();
+    const calls: string[] = [];
+    const out: string[] = [];
+    const run = runAdmin(["--data", dir, "refetch", "A", "B", "C"], {
+      fetch: async (url) => {
+        const id = /instruments\/([^/]+)\/refetch$/.exec(url)![1]!;
+        calls.push(id);
+        if (id === "B") throw new Error("connection reset");
+        return new Response(`{"input":"${id}"}`, { status: 200 });
+      },
+      write: (line) => out.push(line),
+      service: async () => null,
+    });
+    await expect(run).rejects.toThrow("no answer from http://");
+    expect(calls).toEqual(["A", "B", "C"]);
+    expect(JSON.parse(out[0]!)).toEqual([
+      { input: "A" },
+      { input: "B", error: expect.stringContaining("no answer from") },
+      { input: "C" },
+    ]);
+  });
+
   test("delete prints a line for its answer with no body", async () => {
     const { dir } = dataDir();
     const out: string[] = [];

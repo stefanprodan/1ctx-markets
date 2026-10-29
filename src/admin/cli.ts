@@ -149,10 +149,11 @@ export async function runAdmin(
   const doFetch = deps.fetch ?? ((u, i) => fetch(u, i));
   const write = deps.write ?? ((line: string) => console.log(line));
   const answers: unknown[] = [];
-  const failed: number[] = [];
+  const failed: string[] = [];
   // past a failed call the next still runs, so one bad id stops no other
-  for (const { path, init } of requests(p)) {
+  for (const [k, { path, init }] of requests(p).entries()) {
     let res: Response;
+    let text: string;
     try {
       res = await doFetch(`${url}${path}`, {
         ...init,
@@ -162,11 +163,16 @@ export async function runAdmin(
         },
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
+      text = await res.text();
     } catch {
-      throw new AdminError(`no answer from ${url}`);
+      const said = `no answer from ${url}`;
+      if (p.command !== "refetch") throw new AdminError(said);
+      answers.push({ input: p.ids[k], error: said });
+      failed.push(said);
+      continue;
     }
-    answers.push(answerOf(await res.text()));
-    if (!res.ok) failed.push(res.status);
+    answers.push(answerOf(text));
+    if (!res.ok) failed.push(`the server answered ${res.status}`);
   }
   if (p.command === "delete" && failed.length === 0) {
     write(`deleted ${p.ids[0]}`);
@@ -176,6 +182,6 @@ export async function runAdmin(
     else if (out !== null) write(JSON.stringify(out, null, 2));
   }
   if (failed.length > 0) {
-    throw new AdminError(`the server answered ${failed.join(", ")}`);
+    throw new AdminError(failed.join("; "));
   }
 }

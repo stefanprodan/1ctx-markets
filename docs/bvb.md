@@ -215,7 +215,9 @@ exchange: one client, its parsers, its session, the same tables.
   names the Bucharest one. A Yahoo that fails is the call's error,
   never the feed's listing in its place. MCP keeps the rules above, since an agent
   learns the prefix from `candidates`. Delete and refetch, which ask
-  no source, take the stored Yahoo listing first, else the feed's.
+  no source, take the stored Yahoo listing first, then a `.RO` symbol's
+  stored `BVB:` row (`YAHOO_SUFFIX`, the key Yahoo's chart gives it),
+  else the feed's.
 - **A `BVB:` key is the feed's while it is on,** asked by its symbol
   answer; a Yahoo symbol naming a Bucharest listing (`TLV.RO`) resolves
   to the same key and is fetched from the feed.

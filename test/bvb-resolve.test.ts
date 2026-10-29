@@ -193,6 +193,53 @@ describe("REST's bare symbol, with the feed on", () => {
     expect(readInstrument(t.db, "BVB:TLV")).not.toBeNull();
   });
 
+  test("a failed Yahoo lookup never answers the feed's stored listing of the code", async () => {
+    const t = await setup(true);
+    const [b] = await t.read(["BVB:TLV"]);
+    expect(idOf(b)).toBe("BVB:TLV");
+    const down = {
+      ...t.m,
+      yahoo: yahoo({
+        clock: t.clock,
+        fetch: async () => {
+          throw new Error("offline");
+        },
+      }).failFast(),
+    };
+    const res = await drive(
+      t.clock,
+      t.exchange!,
+      api(down)(new Request("http://markets.test/api/v1/instruments/TLV")),
+    );
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({
+      code: "source_error",
+      input: "TLV",
+    });
+  });
+
+  test("delete and refetch take a .RO symbol as the feed's stored row, asking nothing", async () => {
+    const t = await setup(true);
+    await t.read(["BVB:TLV"]);
+    expect(readInstrument(t.db, "BVB:TLV")!.source).toBe("bvb");
+    const r = rest(t);
+    const asked = t.calls.urls.length + t.urls.length;
+    const again = await r.call("/instruments/TLV.RO/refetch", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ parts: ["calendar"] }),
+    });
+    expect(again.status).toBe(200);
+    expect(await again.json()).toMatchObject({
+      input: "TLV.RO",
+      id: "BVB:TLV",
+    });
+    const gone = await r.call("/instruments/tlv.ro", { method: "DELETE" });
+    expect(gone.status).toBe(204);
+    expect(readInstrument(t.db, "BVB:TLV")).toBeNull();
+    expect(t.calls.urls.length + t.urls.length).toBe(asked);
+  });
+
   test("is the feed's when only the feed lists it", async () => {
     const t = await setup(true);
     const [etf] = await rest(t).read(["BTBETRETF"]);

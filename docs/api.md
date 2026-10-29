@@ -75,7 +75,8 @@ MCP tools copied onto paths.
   with the Bucharest feed on, a bare `TLV` stored from both answers
   `US:TLV`, never `candidates`, since a Yahoo export's bare symbol is
   never a Bucharest one; `BVB:TLV` or `TLV.RO` names that. MCP keeps
-  `candidates`.
+  `candidates`. A bare code only the Bucharest feed lists costs a Yahoo
+  search on every call, so send `BVB:<code>`.
 
 ## One instrument
 
@@ -88,10 +89,14 @@ MCP tools copied onto paths.
 - **A stored instrument whose read fails answers 200** with its row,
   `quote` null and `error` (`{code, detail}`), so a page keeps the
   stored price; a symbol never stored has no row, so its failure is a
-  problem (404 `not_found` or `candidates`, 503 for a source).
+  problem (404 `not_found` or `candidates`, 503 for a source). The row
+  is only the one this input names under the bare-symbol rule
+  (`restStored()`): a bare code whose Yahoo lookup failed never answers
+  a stored Bucharest listing of the same code.
 - **`DELETE` and refetch never fetch.** They resolve against stored
-  instruments only (`storedInstrument()`), so a Yahoo symbol as written
-  works and one never stored is 404.
+  instruments only (`restStored()`): the stored Yahoo listing, a
+  `.RO` symbol's stored `BVB:` row, else a code only the feed holds; one
+  never stored is 404.
 
 ## Bars
 
@@ -120,7 +125,8 @@ MCP tools copied onto paths.
 - **Each entry is `value` as written, `id` (null until resolved),
   `state`** (`pending`, `tracked`, or the read's error code), the
   stored row as `GET /instruments` gives it (`instrument`, null until
-  resolved) and its market's `session`.
+  resolved) and its market's `session`, with FRED's `attribution` once
+  when an entry is a series.
 - **It is no read and fetches nothing**: the flag already keeps each
   entry tracked and quoted, and a read stamp would keep a value
   dropped from the flag tracked 30 more days.

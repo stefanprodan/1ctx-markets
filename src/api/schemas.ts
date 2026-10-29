@@ -124,6 +124,12 @@ const facts = {
 
 const STALE = "Why a value may be out of date. Empty means current.";
 
+const company = note(
+  object({ source: str }, ["source"], true),
+  "A US share's metrics, analysts, earnings, insider sentiment and next earnings event, with the sections asked.",
+);
+const news = object({ source: str }, ["source"], true);
+
 const averages = nullable(
   object({
     kind: values(["live", "final"]),
@@ -376,19 +382,16 @@ export const schemas: Record<string, Schema> = {
     },
     ["query", "candidates"],
   ),
-  ResearchResult: object(
-    {
-      input: str,
-      id: str,
-      company: note(
-        object({ source: str }, ["source"], true),
-        "A US share's metrics, analysts, earnings, insider sentiment and next earnings event, with the sections asked.",
-      ),
-      news: object({ source: str }, ["source"], true),
-    },
-    ["input", "id"],
+  // a result holds the blocks its sections asked, at least one
+  ResearchCompany: object({ input: str, id: str, company }),
+  ResearchNews: object({ input: str, id: str, news }),
+  ResearchBoth: object({ input: str, id: str, company, news }),
+  ResearchItem: oneOf(
+    "ResearchCompany",
+    "ResearchNews",
+    "ResearchBoth",
+    "ItemError",
   ),
-  ResearchItem: oneOf("ResearchResult", "ItemError"),
   Research: object({ research: list(ref("ResearchItem")) }),
   Earnings: object(
     {
@@ -751,26 +754,33 @@ export const schemas: Record<string, Schema> = {
     },
     ["input", "instrument", "credit", "quote", "error"],
   ),
-  Watchlist: object({
-    entries: list(
-      object({
-        value: note(str, "The value as configured."),
-        id: note(nstr, "The instrument it resolved to; null until it does."),
-        state: note(
-          values(["pending", "tracked", ...ERRORS]),
-          "`pending` until resolved, `tracked`, or the error that stopped it.",
-        ),
-        instrument: note(
-          nullable(instrumentRow),
-          "The stored instrument, as the instrument list gives it.",
-        ),
-        session: note(
-          session,
-          "Its market's last regular session. Null for a series or until resolved.",
-        ),
-      }),
-    ),
-  }),
+  Watchlist: object(
+    {
+      attribution: note(
+        str,
+        "A source's required notice, when an entry is one of its series.",
+      ),
+      entries: list(
+        object({
+          value: note(str, "The value as configured."),
+          id: note(nstr, "The instrument it resolved to; null until it does."),
+          state: note(
+            values(["pending", "tracked", ...ERRORS]),
+            "`pending` until resolved, `tracked`, or the error that stopped it.",
+          ),
+          instrument: note(
+            nullable(instrumentRow),
+            "The stored instrument, as the instrument list gives it.",
+          ),
+          session: note(
+            session,
+            "Its market's last regular session. Null for a series or until resolved.",
+          ),
+        }),
+      ),
+    },
+    ["entries"],
+  ),
   RefetchArgs: object(
     {
       parts: list(values(PARTS)),

@@ -36,6 +36,8 @@ import {
 
 export const SOURCE = BVB;
 export const MARKET = BVB_MARKET;
+// Yahoo's suffix for this exchange: its charts key TLV.RO as BVB:TLV
+export const YAHOO_SUFFIX = ".RO";
 export const SITE = "https://bvb.ro";
 export const WAPI = "https://wapi.bvb.ro/api";
 // the probes' pace, which the site never refused

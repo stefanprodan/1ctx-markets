@@ -142,8 +142,9 @@ is offered over MCP.
   wildcard bind is called on loopback (`urlOf()`).
 - **`refetch` with several ids makes one call each, in turn**, since
   the route takes one instrument a call: it carries on past a failed
-  one, prints one JSON array of the answers in the order given, and
-  exits 1 if any call was not 2xx. `--fetch` names the parts.
+  one, no answer included (kept as `{input, error}`), prints one JSON
+  array of the answers in the order given, and exits 1 if any call was
+  not 2xx. `--fetch` names the parts.
 - **`delete` prints `deleted <id>` for its 204**, else the problem.
 - **It prints the server's JSON and never the key**, and exits 1 on a
   status other than 2xx or no answer.

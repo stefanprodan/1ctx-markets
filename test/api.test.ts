@@ -220,6 +220,16 @@ describe("the spec", () => {
     expect(
       answer({ input: "X", error: "not_found", message: "no listing" }),
     ).not.toEqual([]);
+    // a research result holds a block its sections asked, never none
+    const research = answerSchema(spec, "GET", "/research", 200)!;
+    const item = (i: object) => validate({ research: [i] }, research, spec);
+    const block = { source: "finnhub" };
+    expect(item({ input: "X", id: "US:X" })).not.toEqual([]);
+    expect(item({ input: "X", id: "US:X", company: block })).toEqual([]);
+    expect(item({ input: "X", id: "US:X", news: block })).toEqual([]);
+    expect(
+      item({ input: "X", id: "US:X", company: block, news: block }),
+    ).toEqual([]);
     for (const path of ["/movers", "/screen"]) {
       const method = path === "/screen" ? "POST" : "GET";
       const set = answerSchema(spec, method, path, 200)!;
@@ -1272,9 +1282,17 @@ describe("access", () => {
           401,
         ]);
       }
-      for (const key of [bearer, admin]) {
-        const res = await fetch(`${url}/api/v1/nothing`, { headers: as(key) });
-        expect(res.status).toBe(404);
+      for (const [key, path] of [
+        [bearer, "/api/v1/nothing"],
+        [admin, "/api/v1/nothing"],
+        [bearer, "/api/v1"],
+        [admin, "/api/v1"],
+      ] as const) {
+        const res = await fetch(`${url}${path}`, { headers: as(key) });
+        expect([path, res.status]).toEqual([path, 404]);
+        expect(res.headers.get("content-type")).toBe(
+          "application/problem+json",
+        );
         expect(await res.json()).toEqual({
           title: "Not Found",
           status: 404,
@@ -1352,6 +1370,28 @@ describe("one instrument", () => {
       expect([path, res.status]).toEqual([path, 404]);
     }
     expect(t.s.calls.urls.length).toBe(asked);
+  });
+});
+
+describe("the watchlist", () => {
+  test("names FRED's terms once when an entry is a series", async () => {
+    const w = world();
+    instrument(w.db, "FRED:DGS10");
+    instrument(w.db, "US:AAA");
+    const ask = async (ids: string[]) => {
+      const res = await api(w.m, {
+        track: () => ids.map((id) => ({ value: id, id, state: "tracked" })),
+      })(new Request(`http://markets.test${PREFIX}/watchlist`));
+      const raw = await res.text();
+      const body = JSON.parse(raw);
+      const schema = answerSchema(spec, "GET", "/watchlist", 200)!;
+      expect(validate(body, schema, spec)).toEqual([]);
+      return { raw, body };
+    };
+    const both = await ask(["US:AAA", "FRED:DGS10"]);
+    expect(both.body.attribution).toContain("FRED");
+    expect(both.raw.split(both.body.attribution)).toHaveLength(2);
+    expect((await ask(["US:AAA"])).body).not.toHaveProperty("attribution");
   });
 });
 

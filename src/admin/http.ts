@@ -18,7 +18,7 @@ import { trackedIds } from "../market/tracking.ts";
 import { ArgError, fields } from "../operations/args.ts";
 import type { Markets } from "../operations/markets.ts";
 import { parseQuote, quoteRows, sessionOf } from "../operations/quote.ts";
-import { type ErrorItem, storedInstrument } from "../operations/targets.ts";
+import { type ErrorItem, restStored } from "../operations/targets.ts";
 import type { TrackState } from "../operations/track.ts";
 import { instrumentsOf } from "../rules/format.ts";
 import { readRules, ruleInstruments } from "../rules/store.ts";
@@ -391,7 +391,6 @@ export function instruments(m: Markets, url: URL): Response {
       : {}),
     total,
     instruments: page.map(row),
-    // the token is the page's last id; absent at the end
     ...(rows.length > size ? { next_page_token: page.at(-1)!.id } : {}),
   });
 }
@@ -441,9 +440,7 @@ const listRow =
     };
   };
 
-// one instrument and its quote as the tools give it, returns and session
-// included: a read, so an unknown symbol is fetched and a stored one kept
-// tracked, as any client's read
+// a read, as any client's: an unknown symbol is fetched
 export async function instrument(m: Markets, url: URL, raw: string) {
   noQuery(url);
   const input = pathSymbol(raw);
@@ -454,14 +451,13 @@ export async function instrument(m: Markets, url: URL, raw: string) {
   );
   const item = rows[0]!.item as Record<string, unknown>;
   const failure = "error" in item ? (item as ErrorItem) : null;
-  // a stored instrument's failed read keeps its stored row; one never
-  // stored has none, so its failure is the whole call's
+  // only the row this input names, so a failure never shows another listing
   const id =
     failure === null
       ? (item.id as string)
       : failure.error === "candidates"
         ? null
-        : (storedInstrument(m.db, input, m.bvb !== null, true)?.id ?? null);
+        : (restStored(m.db, input, m.bvb !== null, false)?.id ?? null);
   const stored = id === null ? null : storedRow(m.db, id);
   if (stored === null) {
     return failure === null
@@ -481,8 +477,7 @@ export async function instrument(m: Markets, url: URL, raw: string) {
   });
 }
 
-// the --track values in flag order, each with its stored row: no read and
-// no fetch, since the flag already keeps them tracked and quoted
+// no read: a read stamp would keep a value dropped from the flag tracked
 export function watchlist(
   m: Markets,
   track: () => readonly TrackState[],
@@ -491,18 +486,22 @@ export function watchlist(
   noQuery(url);
   const now = m.clock.now();
   const row = listRow(m, ruleInstruments(m.db), now);
+  const entries = track().map((t) => ({
+    t,
+    stored: t.id === null ? null : storedRow(m.db, t.id),
+    i: t.id === null ? null : readInstrument(m.db, t.id),
+  }));
   return json({
-    entries: track().map((t) => {
-      const stored = t.id === null ? null : storedRow(m.db, t.id);
-      const i = t.id === null ? null : readInstrument(m.db, t.id);
-      return {
-        value: t.value,
-        id: t.id,
-        state: t.state,
-        instrument: stored === null ? null : row(stored),
-        session: i === null ? null : sessionOf(m, i, now),
-      };
-    }),
+    ...(entries.some((e) => e.stored?.source === FRED)
+      ? { attribution: ATTRIBUTION }
+      : {}),
+    entries: entries.map(({ t, stored, i }) => ({
+      value: t.value,
+      id: t.id,
+      state: t.state,
+      instrument: stored === null ? null : row(stored),
+      session: i === null ? null : sessionOf(m, i, now),
+    })),
   });
 }
 
@@ -516,7 +515,7 @@ function storedOf(m: Markets, raw: string) {
   }
   return {
     input,
-    instrument: storedInstrument(m.db, input, m.bvb !== null, true),
+    instrument: restStored(m.db, input, m.bvb !== null, true),
   };
 }
 
