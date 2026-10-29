@@ -7,6 +7,7 @@
 import type { ComponentType } from "preact";
 import { markets } from "../data/store.ts";
 import type { IconName } from "../lib/icons.tsx";
+import { Home } from "../views/Home.tsx";
 import { Instrument } from "../views/Instrument.tsx";
 import { Instruments } from "../views/Instruments.tsx";
 import { Status } from "../views/Status.tsx";
@@ -24,6 +25,15 @@ export type Route = {
 };
 
 export const ROUTES: readonly Route[] = [
+  {
+    path: "/",
+    label: "Home",
+    icon: "home",
+    view: Home,
+    load: async () => {
+      await markets.loadHome();
+    },
+  },
   {
     path: "/status",
     label: "Status",
@@ -53,10 +63,7 @@ export const ROUTES: readonly Route[] = [
   },
 ];
 
-export const HOME = "/status";
-
-// an address the server serves the page at that has no page of its own
-export const ALIASES: Readonly<Record<string, string>> = { "/": HOME };
+export const HOME = "/";
 
 // the rail's pages: a page with a parameter lights its parent
 export const RAIL = ROUTES.filter((r) => !r.path.includes(":"));

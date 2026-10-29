@@ -64,6 +64,7 @@ export function Logo({ height = 26 }: { height?: number }) {
 }
 
 const PATHS = {
+  home: "M2.5 7 8 2.5 13.5 7v6a.5.5 0 0 1-.5.5H3a.5.5 0 0 1-.5-.5zM6.5 13.5v-4h3v4",
   // a pulse: what the server is doing
   status: "M1.5 8.5h3l2-5 3 9 2-4h3",
   list: "M5.5 4h8M5.5 8h8M5.5 12h8M2.5 4h.01M2.5 8h.01M2.5 12h.01",

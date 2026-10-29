@@ -1,0 +1,109 @@
+@layer tokens, base, owners;
+
+@layer owners {
+  .home-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  .home-kind {
+    margin: 0;
+  }
+  /* as many columns as fit; a phone keeps two */
+  .home-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 14px;
+  }
+  @media (max-width: 719px) {
+    .home-grid {
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: var(--space-2);
+    }
+  }
+  .home-card {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    padding: var(--space-3) var(--space-4);
+    color: var(--fg);
+  }
+  a.home-card:hover {
+    color: var(--fg);
+    border-color: var(--line-strong);
+  }
+  .home-top {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+  .home-name {
+    flex: 1;
+    font-weight: 500;
+  }
+  .home-state,
+  .home-symbol,
+  .home-note {
+    font-size: var(--text-small);
+    color: var(--faint);
+  }
+  .home-state {
+    flex: none;
+  }
+  .home-symbol,
+  .home-value {
+    font-family: var(--mono);
+    font-size: var(--text-small);
+  }
+  .home-value {
+    color: var(--fg);
+  }
+  .home-card-failed .home-note {
+    color: var(--failed);
+  }
+  .home-spark {
+    display: block;
+    width: 100%;
+    height: 36px;
+    margin: var(--space-2) 0;
+  }
+  .spark-line {
+    fill: none;
+    stroke-width: 1.5;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+    vector-effect: non-scaling-stroke;
+  }
+  .spark-up {
+    stroke: var(--done);
+  }
+  .spark-down {
+    stroke: var(--failed);
+  }
+  .spark-base {
+    stroke: var(--faint);
+    stroke-width: 1;
+    stroke-dasharray: 2 3;
+    opacity: 0.6;
+    vector-effect: non-scaling-stroke;
+  }
+  .home-price {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+  }
+  .home-move {
+    font-family: var(--mono);
+    font-size: var(--text-small);
+    font-variant-numeric: tabular-nums;
+    color: var(--faint);
+  }
+  .home-up {
+    color: var(--done);
+  }
+  .home-down {
+    color: var(--failed);
+  }
+}

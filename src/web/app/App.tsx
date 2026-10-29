@@ -8,7 +8,7 @@ import { Icon } from "../lib/icons.tsx";
 import { SignIn } from "../views/SignIn.tsx";
 import { Rail } from "./Rail.tsx";
 import { navigate, path } from "./router.ts";
-import { ALIASES, HOME, match } from "./routes.ts";
+import { HOME, match } from "./routes.ts";
 import { Strip } from "./Strip.tsx";
 import {
   closeDrawer,
@@ -98,9 +98,7 @@ export function App({ store = markets }: { store?: Store }) {
     void store.check();
   }, [store]);
   useEffect(() => {
-    const alias = ALIASES[here];
-    if (alias !== undefined) navigate(alias, true);
-    else if (route === null) navigate(HOME, true);
+    if (route === null) navigate(HOME, true);
   }, [here, route]);
   // a page's load runs on arrival; the check above is the status page's
   useEffect(() => {

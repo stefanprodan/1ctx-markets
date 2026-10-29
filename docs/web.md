@@ -27,8 +27,7 @@ signed in with the admin key alone.
   runs) serves `{ hmr: false }` instead: Bun rebuilds the bundle after
   an edit, with no reload script, so a UI change needs a browser
   reload, not a server restart.
-- **`UI_PATHS` and the client's `ROUTES` (with `ALIASES`) name the same
-  paths**; `test/web.test.tsx` holds them equal. A new page adds its
+- **`UI_PATHS` and the client's `ROUTES` name the same paths**; `test/web.test.tsx` holds them equal. A new page adds its
   path to both.
 - **`--no-ui` turns the UI off**: no page, no `/ui/session` (it answers
   the bearer's 401 as any unknown path), and a cookie opens nothing.
@@ -131,6 +130,34 @@ signed in with the admin key alone.
 
 ## Pages
 
+- **Home** (`/`, the landing page) is a card per `--track` value, from
+  one `GET /api/v1/watchlist`. The flag is the operator's own order, so
+  it sets both: cards keep flag order, grouped by kind (the Instruments
+  page's words), and the groups are ordered by their first value's place
+  in the flag; the code names no market or kind order. A value not yet
+  resolved joins the group of the value before it (else after it), so
+  it shows where the flag puts it: a pending one as "Pending", a failed
+  one as "Not found" (a transient failure "Not available") with the
+  value as written. No values: "Nothing tracked yet."
+- **A card** is the name, symbol, Open or Closed, the stored price in
+  its currency (a yield in percent), the day's change in its unit (a
+  yield in points) and in percent, and a line; it links the instrument.
+  It re-reads every minute while visible.
+- **The line is one bars call per card, in parallel**, by the entry's
+  `intraday`: `interval=5m` (the newest session, split at its
+  `previous_close`, green above and red below as the 1D chart, the
+  previous close a faint dashed line, across the whole session so a
+  morning fills only the morning), else a month of daily bars coloured
+  by its move from the first close. The bundle names no source, so the
+  server says which entries have 5-minute closes. A bars call is a
+  read: a card keeps its instrument tracked while it is drawn, and a
+  value dropped from the flag ends 30 days after its card was last
+  drawn. A Yahoo listing with no points yet draws no line; a line that
+  fails keeps the one drawn before.
+- **The line is inline SVG**, not a chart: its strokes are CSS tokens,
+  so it wears the theme from the first frame, and a redraw replaces it
+  whole. The split is the line drawn twice, each copy clipped to its
+  side of the previous close.
 - **Status:** `GET /api/v1/status` drawn as tiles (instruments,
   the sources on and how many are paused, the jobs shown and how many
   fail, the database) and a card per source that is on, headed by its

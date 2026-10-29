@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { batch, signal } from "@preact/signals";
-import type {
-  History,
-  Interval,
-  Intraday,
-  IntradayRange,
+import {
+  fromOf,
+  type History,
+  type Interval,
+  type Intraday,
+  type IntradayRange,
 } from "../views/Chart.model.ts";
 import { ApiError, client, type Fetch, failure, says } from "./api.ts";
 
@@ -82,7 +83,14 @@ export type WatchEntry = {
   state: string;
   instrument: Listed | null;
   session: Session | null;
+  // its source gives 5-minute closes; false until resolved
+  intraday: boolean;
 };
+
+type Watchlist = { attribution?: string; entries: WatchEntry[] };
+
+// a home card's line: the day's 5-minute closes, else a month of days
+export type Spark = Intraday | History;
 
 export type Returns = {
   "1w": number | null;
@@ -176,6 +184,11 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
   const statusAt = signal<number | null>(null);
   const statusError = signal<string | null>(null);
   const watchlist = signal<WatchEntry[] | null>(null);
+  // FRED's notice, while an entry is one of its series
+  const attribution = signal<string | null>(null);
+  // the home cards' lines by instrument id
+  const sparks = signal<ReadonlyMap<string, Spark>>(new Map());
+  const homeError = signal<string | null>(null);
   const loading = signal(false);
   const instruments = signal<Listed[] | null>(null);
   const instrumentsError = signal<string | null>(null);
@@ -204,6 +217,9 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
       statusAt.value = null;
       statusError.value = null;
       watchlist.value = null;
+      attribution.value = null;
+      sparks.value = new Map();
+      homeError.value = null;
       instruments.value = null;
       instrumentsError.value = null;
       detail.value = null;
@@ -245,7 +261,7 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
       // either signs out, whichever failed first
       const [s, w] = await Promise.allSettled([
         quiet<Status>(STATUS_PATH),
-        quiet<{ entries: WatchEntry[] }>(WATCHLIST_PATH),
+        quiet<Watchlist>(WATCHLIST_PATH),
       ]);
       if (s.status === "rejected" || w.status === "rejected") {
         const errors = [s, w].flatMap((r) =>
@@ -261,6 +277,7 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
         signedIn.value = true;
         status.value = s.value;
         watchlist.value = w.value.entries;
+        attribution.value = w.value.attribution ?? null;
         statusAt.value = now();
         statusError.value = null;
       });
@@ -391,6 +408,62 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
     return { ok: true };
   }
 
+  // the watchlist, then each resolved entry's line in parallel; a later
+  // load supersedes one in flight. The bars calls are reads, so a card
+  // keeps its instrument tracked while it is drawn.
+  let homeLoad = 0;
+  async function loadHome(): Promise<void> {
+    const mine = ++homeLoad;
+    const at = session;
+    const stale = () => mine !== homeLoad || at !== session;
+    let w: Watchlist;
+    try {
+      w = await call<Watchlist>(WATCHLIST_PATH);
+    } catch (error) {
+      if (stale()) return;
+      if (!(error instanceof ApiError && error.status === 401)) {
+        homeError.value = says(error);
+      }
+      return;
+    }
+    if (stale()) return;
+    batch(() => {
+      watchlist.value = w.entries;
+      attribution.value = w.attribution ?? null;
+      homeError.value = null;
+    });
+    const ids = [
+      ...new Set(
+        w.entries.flatMap((e) =>
+          e.id !== null && e.instrument !== null ? [e.id] : [],
+        ),
+      ),
+    ];
+    const day = new Set(
+      w.entries.flatMap((e) => (e.intraday && e.id !== null ? [e.id] : [])),
+    );
+    const today = new Date(now()).toISOString().slice(0, 10);
+    const lines = await Promise.allSettled(
+      ids.map((id) =>
+        day.has(id)
+          ? call<Intraday>(
+              `${instrumentPath(id)}/bars?${new URLSearchParams({ interval: "5m" })}`,
+            )
+          : history(id, fromOf("1M", today), "1d"),
+      ),
+    );
+    if (stale()) return;
+    // a line that failed keeps the one drawn before
+    const was = sparks.value;
+    const next = new Map<string, Spark>();
+    ids.forEach((id, i) => {
+      const r = lines[i]!;
+      const line = r.status === "fulfilled" ? r.value : was.get(id);
+      if (line !== undefined) next.set(id, line);
+    });
+    sparks.value = next;
+  }
+
   // a chart's bars with their candles and volume; a read, as the page is
   function history(id: string, from: string, interval: Interval) {
     const q = new URLSearchParams({ from, interval });
@@ -407,6 +480,10 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
   }
 
   return {
+    attribution,
+    sparks,
+    homeError,
+    loadHome,
     history,
     intraday,
     detail,

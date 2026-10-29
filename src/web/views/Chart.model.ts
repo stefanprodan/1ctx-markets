@@ -43,7 +43,11 @@ export type Point = {
 export type Intraday = {
   instrument: Facts;
   interval: "5m";
-  session: { state: "open" | "closed" } | null;
+  session: {
+    state: "open" | "closed";
+    start?: string | null;
+    end?: string | null;
+  } | null;
   previous_close: number | null;
   points: Point[];
   // pre and post trading, asked for 1D only
