@@ -125,11 +125,13 @@ signed in with the admin key alone.
   flipped; a flip is kept in `localStorage`.
 - **Copy is short:** sentence case, no "you", "please" or explanations.
   An error is the server's phrase as a sentence (`says()`, as 1ctx),
-  so a wrong key reads "Wrong admin key."
+  so a wrong key reads "Wrong admin key.": a problem's `detail`, the
+  sign-in's `message`. The store branches on the error's `code`, never
+  its words.
 
 ## Pages
 
-- **Status:** `GET /api/v1/admin/status` drawn as tiles (instruments,
+- **Status:** `GET /api/v1/status` drawn as tiles (instruments,
   the sources on and how many are paused, the jobs shown and how many
   fail, the database) and a card per source that is on, headed by its
   name and job count alone, never one that is off:
@@ -149,10 +151,12 @@ signed in with the admin key alone.
   the cards: it runs once per change of flags, not on a schedule.
 - **Add a source** lists the keyed sources that are off, with what each
   adds, its key file and where to get a key; it is absent when none is
-  off. The `--track` values are a grid of value and resolved id.
+  off. The `--track` values are a grid of value and resolved id, from
+  `GET /api/v1/watchlist`, loaded with the status so both land
+  together.
 - **Instruments:** every stored instrument from
-  `GET /api/v1/admin/instruments`, all pages, in one card with a search
-  over id and name, kept in the view so a refresh keeps it. Sorted by
+  `GET /api/v1/instruments`, every page by `next_page_token`, in one
+  card with a search over id and name, kept in the view so a refresh keeps it. Sorted by
   symbol, an index's `^` aside. A row is the symbol and name, then the
   kind in plain words (Stock, ETF, Index, Bond, Future, Crypto,
   Currency, Series) and the market, left out where it repeats the kind;
@@ -160,10 +164,10 @@ signed in with the admin key alone.
   stored price with its currency and the day's change. The list never
   quotes: a quote is a read and would keep every row tracked.
 - **An instrument** (`/instruments/<id>`, the id encoded) reads
-  `GET /api/v1/admin/instruments/{id}`, a read as any client's, so
-  opening it keeps it tracked. The title is the symbol with the name
-  beside it; a card holds the kind and market, the price and day's
-  change, "Live · market open" or "Close · market closed" (a series:
+  `GET /api/v1/instruments/{id}`, a read as any client's, so
+  opening it keeps it tracked and an id never stored is fetched. The
+  title is the symbol with the name beside it; a card holds the kind
+  and market, the price and day's change, "Live · market open" or "Close · market closed" (a series:
   "Latest value" and its date) with when it was fetched, and the 1
   week, 1 month, 3 months and year-to-date returns from the quote, never
   recomputed, then how far the price is above or below the quote's
@@ -171,16 +175,18 @@ signed in with the admin key alone.
   own value left out so the row stays one line. A read that failed shows the stored price as "Stored
   price" with its age, no returns, and one notice that a new price could
   not be had; the server's phrase is for agents, not this page.
-- **Refetch is a button with a menu** in the page head (1ctx's More):
+- **Refetch is a button with a menu** in the page head (1ctx's More,
+  `POST /api/v1/instruments/{id}/refetch`):
   Everything, then each part a source holds for it (research, earnings
   dates and news only for US shares, news for US ETFs too). A pick
   runs at once; the button reads Fetching, then "Updated" or "Not
   available" for `SAID_MS`, every label in one cell so it keeps its
   width. A failure names the part and its error in plain words in the
-  page's notice.
+  page's notice; a 404 `not_found` reads as no longer stored.
 - **Delete is 1ctx's delete card:** a red edge, what goes, and a foot
-  whose Delete asks once beside Keep; a rule reading it is refused with
-  that said in the foot. A delete returns to the list.
+  whose Delete asks once beside Keep; a rule reading it (409 `conflict`
+  with `rules`) is refused with that said in the foot. A delete
+  returns to the list.
 - **Pages with a parameter** (`/instruments/:id` in `ROUTES` and
   `UI_PATHS`) stay off the rail, which lights their parent.
 - **The list re-reads every minute** (`REFRESH_MS`) while the tab is
@@ -193,12 +199,12 @@ signed in with the admin key alone.
 - **TradingView Lightweight Charts 5.2.1** (`views/Chart.tsx`), run
   with the first chart (a dynamic import); the compiled binary does
   not split the page, so the library ships in its bundle either way. Its
-  data comes from `GET /api/v1/history?ohlc=true`, a read; the bars
+  data comes from `GET /api/v1/instruments/{id}/bars`, a read; the bars
   are shaped in `Chart.model.ts`, which has no DOM and is tested.
 - **Ranges** 1D, 5D, then 1M to Max (`RANGES`, 1D by default); 3Y
   and up read weekly bars (`intervalOf`), so the averages read
   "50-week" and "200-week". Max is the ten years the server keeps.
-- **1D and 5D read `history?interval=5m`**: the newest stored session,
+- **1D and 5D read `bars?interval=5m`**: the newest stored session,
   or all five kept (asked from Max's start). A line of closes on a time
   axis at the points' real UTC times (`pointLine`), so a clock change
   never reorders or drops one; only the labels (axis ticks, crosshair,

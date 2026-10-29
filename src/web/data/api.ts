@@ -8,10 +8,20 @@ export class ApiError extends Error {
     readonly status: number,
     message: string,
     readonly body: unknown = null,
+    // the code a caller branches on, never the words
+    readonly code: string | null = null,
   ) {
     super(message);
   }
 }
+
+const field = (body: unknown, name: string): string | null =>
+  typeof body === "object" &&
+  body !== null &&
+  name in body &&
+  typeof (body as Record<string, unknown>)[name] === "string"
+    ? ((body as Record<string, unknown>)[name] as string)
+    : null;
 
 // the server's errors are fixed phrases written for an operator to read
 export function statusWords(status: number): string {
@@ -23,17 +33,16 @@ export function statusWords(status: number): string {
   return "refused";
 }
 
+// /api/v1 answers problem details ({code, detail}); the sign-in keeps
+// {error, message}
 export function failure(status: number, body: unknown): ApiError {
+  const said = field(body, "detail") ?? field(body, "message");
   const message =
-    typeof body === "object" &&
-    body !== null &&
-    "message" in body &&
-    typeof body.message === "string" &&
-    status !== 401 &&
-    status < 500
-      ? body.message
+    said !== null && status !== 401 && status < 500
+      ? said
       : statusWords(status);
-  return new ApiError(status, message, body);
+  const code = field(body, "code") ?? field(body, "error");
+  return new ApiError(status, message, body, code);
 }
 
 export type Call = <T>(

@@ -200,11 +200,10 @@ export function labelOf(r: Fetched, all: readonly Choice[]): string {
     one.find((c) =>
       r.section
         ? c.sections.includes(r.section)
-        : c.parts.includes(r.part!) && c.sections.length === 0,
+        : c.parts.includes(r.part) && c.sections.length === 0,
     )?.label ??
     r.section ??
-    r.part ??
-    r.symbol
+    r.part
   );
 }
 
