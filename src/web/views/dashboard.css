@@ -655,8 +655,8 @@
     .dash-search:not(.dash-sheet) .dash-results {
       display: none;
     }
-    /* the head holds the sheet: lift it over the shell's own bars */
-    /* a blur would hold the fixed sheet inside the head */
+    /* the head holds the sheet: over the shell's bars, and unblurred, or
+       the fixed sheet would be held inside the head */
     .page-head:has(.dash-sheet) {
       z-index: 10;
       -webkit-backdrop-filter: none;
