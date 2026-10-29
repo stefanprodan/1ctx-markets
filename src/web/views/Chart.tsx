@@ -253,15 +253,13 @@ export function Chart({ id }: { id: string }) {
   const lib = useRef<Lib | null>(null);
   const chart = useRef<IChartApi | null>(null);
   const series = useRef<ISeriesApi<SeriesType>[]>([]);
-  // positions in the last day drawn with its session's slots, else null
-  const slotted = useRef<number | null>(null);
   // the range a load was asked for, so an older answer never lands
   const asked = useRef(0);
 
   // the range the bars on screen were read for, which the legend names
   const shown = useSignal<Range>(kept.range);
 
-  const load = async (fit: boolean) => {
+  const load = async () => {
     const mine = ++asked.current;
     const r = range.value;
     try {
@@ -274,7 +272,7 @@ export function Chart({ id }: { id: string }) {
         shown.value = r;
       });
       error.value = null;
-      draw(fit);
+      draw();
     } catch (e) {
       if (mine !== asked.current) return;
       error.value = says(e);
@@ -302,7 +300,9 @@ export function Chart({ id }: { id: string }) {
         ...paint,
         autoSize: true,
         crosshair: { ...paint.crosshair, mode: l.CrosshairMode.Normal },
-        handleScale: { axisPressedMouseMove: true },
+        // the range buttons choose what shows; nothing pans or zooms it
+        handleScroll: false,
+        handleScale: false,
       });
       c.subscribeCrosshairMove((p: MouseEventParams) => {
         hover.value =
@@ -313,7 +313,7 @@ export function Chart({ id }: { id: string }) {
               : dateOf(p.time);
       });
       chart.current = c;
-      draw(true);
+      draw();
     });
     return () => {
       gone = true;
@@ -324,16 +324,16 @@ export function Chart({ id }: { id: string }) {
   }, []);
 
   useEffect(() => {
-    void load(true);
+    void load();
   }, [id, range.value]);
-  useRefresh(() => load(false));
+  useRefresh(() => load());
 
   // a theme flip, a toggle: the same bars drawn again
   useEffect(() => {
-    draw(false);
+    draw();
   }, [theme.value, line.value, log.value, sma50.value, sma200.value]);
 
-  function draw(fit: boolean) {
+  function draw() {
     const l = lib.current;
     const c = chart.current;
     if (l === null || c === null) return;
@@ -342,11 +342,6 @@ export function Chart({ id }: { id: string }) {
     c.applyOptions(paintOptions(l, k, log.value));
     const h = data.value;
     if (h === null) return;
-    // a time range ends at the last price, so a day's empty slots need
-    // positions, which count them; read before the options reset the room
-    const keptSlots = fit ? null : c.timeScale().getVisibleLogicalRange();
-    const wasSlotted = slotted.current;
-    slotted.current = null;
     c.applyOptions({
       timeScale: {
         borderVisible: false,
@@ -372,28 +367,10 @@ export function Chart({ id }: { id: string }) {
           timeLabel(time, undefined, navigator.language),
       },
     });
-    // a redraw keeps the times in view: its bars may sit at other positions
-    const kept = fit ? null : c.timeScale().getVisibleRange();
     for (const s of series.current) c.removeSeries(s);
     series.current = [];
-    // a kept range off the new data (a new session) would collapse the view
-    const settle = (shown: readonly { time: Time }[]) => {
-      const a = shown[0]?.time;
-      const b = shown.at(-1)?.time;
-      const before = (x: Time, y: Time) =>
-        typeof x === "number" && typeof y === "number"
-          ? x < y
-          : String(x) < String(y);
-      if (
-        kept === null ||
-        a === undefined ||
-        b === undefined ||
-        before(kept.to, a) ||
-        before(b, kept.from)
-      ) {
-        c.timeScale().fitContent();
-      } else c.timeScale().setVisibleRange(kept);
-    };
+    // every draw shows its whole range, a day its whole session
+    const fit = () => c.timeScale().fitContent();
 
     // up or down from where the range starts, as Yahoo colours a line
     const area = (
@@ -428,7 +405,7 @@ export function Chart({ id }: { id: string }) {
       // 5D reads as one move, as the daily ranges do
       if (shown.value !== "1D") {
         series.current.push(area(values, base));
-        settle(values);
+        fit();
         return;
       }
       // green above the previous close and red below, as a chart site draws a day
@@ -498,15 +475,7 @@ export function Chart({ id }: { id: string }) {
       // pre and post trading, faded
       if (pre.length > 0) day(pre, true, false);
       if (post.length > 0) day(post, true, true);
-      if (slots.length > 0 && pre.length === 0) {
-        // positions mean the same only over the same count: a day before
-        // with pre and post, or a thin listing's gaps, change it
-        const count = values.length + slots.length + post.length;
-        if (keptSlots === null || wasSlotted !== count) {
-          c.timeScale().fitContent();
-        } else c.timeScale().setVisibleLogicalRange(keptSlots);
-        slotted.current = count;
-      } else settle([...pre, ...values, ...slots, ...post]);
+      fit();
       return;
     }
 
@@ -580,7 +549,7 @@ export function Chart({ id }: { id: string }) {
       c.panes()[0]?.setStretchFactor(4);
       c.panes()[1]?.setStretchFactor(1);
     }
-    settle(closes(h.bars));
+    fit();
   }
 
   const h = data.value;
