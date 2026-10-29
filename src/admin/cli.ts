@@ -99,29 +99,37 @@ async function configOf(p: Parsed, deps: AdminCliDeps): Promise<Config> {
   return cli.config;
 }
 
-function request(p: Parsed): { path: string; init: RequestInit } {
+type Call = { path: string; init: RequestInit };
+
+const at = (id: string) => `/api/v1/instruments/${encodeURIComponent(id)}`;
+
+// refetch is one call per instrument, in the order given
+function requests(p: Parsed): Call[] {
   if (p.command === "status") {
-    return { path: "/api/v1/admin/status", init: { method: "GET" } };
+    return [{ path: "/api/v1/status", init: { method: "GET" } }];
   }
   if (p.command === "delete") {
-    return {
-      path: `/api/v1/admin/instruments/${encodeURIComponent(p.ids[0]!)}`,
-      init: { method: "DELETE" },
-    };
+    return [{ path: at(p.ids[0]!), init: { method: "DELETE" } }];
   }
-  const body: Record<string, unknown> = {
-    symbols: p.ids,
-    fetch: p.fetch ?? [...PARTS],
-  };
+  const body: Record<string, unknown> = { parts: p.fetch ?? [...PARTS] };
   if (p.sections !== null) body.sections = p.sections;
-  return {
-    path: "/api/v1/admin/refetch",
+  return p.ids.map((id) => ({
+    path: `${at(id)}/refetch`,
     init: {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     },
-  };
+  }));
+}
+
+// the answer's JSON, its text when it is none, null when empty
+function answerOf(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text === "" ? null : text;
+  }
 }
 
 export async function runAdmin(
@@ -138,27 +146,42 @@ export async function runAdmin(
     );
   }
   const url = urlOf(config);
-  const { path, init } = request(p);
   const doFetch = deps.fetch ?? ((u, i) => fetch(u, i));
   const write = deps.write ?? ((line: string) => console.log(line));
-  let res: Response;
-  try {
-    res = await doFetch(`${url}${path}`, {
-      ...init,
-      headers: {
-        ...(init.headers as Record<string, string> | undefined),
-        authorization: `Bearer ${key}`,
-      },
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
-  } catch {
-    throw new AdminError(`no answer from ${url}`);
+  const answers: unknown[] = [];
+  const failed: string[] = [];
+  // past a failed call the next still runs, so one bad id stops no other
+  for (const [k, { path, init }] of requests(p).entries()) {
+    let res: Response;
+    let text: string;
+    try {
+      res = await doFetch(`${url}${path}`, {
+        ...init,
+        headers: {
+          ...(init.headers as Record<string, string> | undefined),
+          authorization: `Bearer ${key}`,
+        },
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+      text = await res.text();
+    } catch {
+      const said = `no answer from ${url}`;
+      if (p.command !== "refetch") throw new AdminError(said);
+      answers.push({ input: p.ids[k], error: said });
+      failed.push(said);
+      continue;
+    }
+    answers.push(answerOf(text));
+    if (!res.ok) failed.push(`the server answered ${res.status}`);
   }
-  const text = await res.text();
-  try {
-    write(JSON.stringify(JSON.parse(text), null, 2));
-  } catch {
-    if (text !== "") write(text);
+  if (p.command === "delete" && failed.length === 0) {
+    write(`deleted ${p.ids[0]}`);
+  } else {
+    const out = p.command === "refetch" ? answers : answers[0];
+    if (typeof out === "string") write(out);
+    else if (out !== null) write(JSON.stringify(out, null, 2));
   }
-  if (!res.ok) throw new AdminError(`the server answered ${res.status}`);
+  if (failed.length > 0) {
+    throw new AdminError(failed.join("; "));
+  }
 }

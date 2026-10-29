@@ -43,6 +43,9 @@ export type Markets = {
   // fetches in flight, shared by every call naming the same instrument
   inflight: Map<string, Flight>;
   extended: ExtendedCache;
+  // REST's rule: a bare symbol is Yahoo's listing, the feed's only when
+  // Yahoo has none; MCP answers both as candidates
+  yahooFirst: boolean;
 };
 
 export function markets(options: {
@@ -78,6 +81,7 @@ export function markets(options: {
     log: options.log,
     inflight: new Map(),
     extended: new Map(),
+    yahooFirst: false,
   };
 }
 

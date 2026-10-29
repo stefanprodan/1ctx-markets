@@ -13,19 +13,21 @@ export type Interval = "1d" | "1wk";
 
 export type HistoryBar = {
   date: string;
-  open?: number | null;
-  high?: number | null;
-  low?: number | null;
+  open: number | null;
+  high: number | null;
+  low: number | null;
   close: number | null;
-  volume?: number | null;
+  volume: number | null;
   final: boolean;
   sma50: number | null;
   sma200: number | null;
 };
 
+// the bars' instrument, of the facts the chart reads
+export type Facts = { id: string; unit: string };
+
 export type History = {
-  id: string;
-  unit: string;
+  instrument: Facts;
   interval: Interval;
   session: { state: "open" | "closed" } | null;
   bars: HistoryBar[];
@@ -39,8 +41,7 @@ export type Point = {
 };
 
 export type Intraday = {
-  id: string;
-  unit: string;
+  instrument: Facts;
   interval: "5m";
   session: { state: "open" | "closed" } | null;
   previous_close: number | null;
@@ -266,7 +267,7 @@ export function legendOf(h: History, date: string | null): Legend | null {
   if (bar === undefined) return null;
   const first = h.bars.find((b) => b.close !== null)?.close ?? null;
   const live = isLive(h) && bar === h.bars.at(-1);
-  const points = h.unit === "percent";
+  const points = h.instrument.unit === "percent";
   return {
     date: bar.date,
     live,
@@ -314,7 +315,7 @@ export function pointLegendOf(
       : (h.points.find(near) ?? (outside && { ...outside, final: true }));
   if (point === undefined) return null;
   const first = h.previous_close ?? h.points[0]?.close ?? null;
-  const points = h.unit === "percent";
+  const points = h.instrument.unit === "percent";
   const local = localTime(Date.parse(point.at) / 1000, zone);
   return {
     date: local.date,

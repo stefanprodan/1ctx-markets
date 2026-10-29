@@ -59,7 +59,8 @@ holdings, orders or portfolio, and it makes no model calls.
 - **One binary, one file.** A standalone binary built with Bun, one
   SQLite database and a directory of key files. MCP answers stay under
   32 KiB pages, so MCP clients need no setting changed; the REST API
-  answers whole results, unpaged.
+  answers whole results; only the stored instrument list and the
+  alerts feed page (`docs/api.md`).
 
 ## Quick Start
 

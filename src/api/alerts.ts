@@ -9,6 +9,7 @@ import { lastAlertId, readAlertsAfter } from "../rules/store.ts";
 import type { Log } from "../runtime/log.ts";
 import { errorFields } from "../runtime/log.ts";
 import type { Db } from "../storage/db/index.ts";
+import { problem } from "./http.ts";
 
 // strictly under: the whole body, in UTF-8 bytes
 export const ALERT_PAGE_BYTES = 16 * 1024;
@@ -29,8 +30,8 @@ const json = (body: string, status: number, headers = {}) =>
     headers: { "content-type": "application/json", ...HEADERS, ...headers },
   });
 
-const refused = (message: string) =>
-  json(JSON.stringify({ error: "bad_arguments", message }), 400);
+const refused = (detail: string) =>
+  problem("bad_arguments", detail, {}, HEADERS);
 
 // the cursor a check sent, null with none, undefined when malformed
 function cursorOf(req: Request): number | null | undefined {
@@ -139,10 +140,7 @@ export function alertsHandler(deps: {
       });
     } catch (error) {
       deps.log.error("alerts failed", errorFields(error));
-      return json(
-        JSON.stringify({ error: "internal", message: "internal error" }),
-        500,
-      );
+      return problem("internal", "internal error", {}, HEADERS);
     }
   };
 }

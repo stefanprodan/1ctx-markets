@@ -15,20 +15,21 @@ export const spec = {
     license: { name: "Apache-2.0" },
     description: `Market data and price rules, the same answers as the MCP tools.
 
-- Market data and rules routes take the read key, \`/admin\` routes the admin key.
-- Results are not paged, except the admin instrument list and the alerts feed.
-- Errors are \`{"error": code, "message": text}\`.`,
+- Each operation names the key it takes: the read key, or the admin key, which opens every route.
+- A symbol is taken as written, with its exchange suffix (\`VVSM.DE\`, \`BRK-B\`, \`^VIX\`, \`CL=F\`), or as a stored id (\`US:NVDA\`).
+- Results are not paged, except the stored instrument list and the alerts feed.
+- Errors are problem details (RFC 9457): \`title\`, \`status\`, \`detail\` and \`code\`, the error to branch on. An error about one symbol among several is that item's \`error\`, inside a 200.`,
   },
   servers: [{ url: "/api/v1" }],
   security: [{ read: [] }],
   tags: [
-    { name: "market data", description: "Quotes, bars, research and screens." },
-    { name: "rules", description: "Price rules and their alerts." },
+    { name: "market data", description: "Quotes, research and screens." },
     {
-      name: "admin",
-      description:
-        "Operator routes, for the admin key or the web UI's sign-in.",
+      name: "instruments",
+      description: "One instrument, its bars, and the stored instruments.",
     },
+    { name: "rules", description: "Price rules and their alerts." },
+    { name: "server", description: "The server's sources and jobs." },
     { name: "docs", description: "This page and its OpenAPI document." },
   ],
   paths,
@@ -37,19 +38,20 @@ export const spec = {
       read: {
         type: "http",
         scheme: "bearer",
-        description: "The read key, for the market data and rules routes.",
+        description: "The read key, for market data, instruments and rules.",
       },
       admin: {
         type: "http",
         scheme: "bearer",
-        description: "The admin key, for the `/admin` routes only.",
+        description:
+          "The admin key. It opens every route, the operator's included.",
       },
       session: {
         type: "apiKey",
         in: "cookie",
         name: COOKIE,
         description:
-          "The web UI's sign-in cookie. It opens the `/admin` routes, the GET reads and `POST /screen`. A request other than GET must come from this server's own pages.",
+          "The web UI's sign-in cookie. It opens what the admin key opens but the rules writes. A request other than GET must come from this server's own pages.",
       },
     },
     schemas,

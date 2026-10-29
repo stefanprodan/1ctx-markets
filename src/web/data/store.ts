@@ -43,15 +43,12 @@ export type JobStatus = {
   failing: { scope: string | null; error: string | null; at: string | null }[];
 };
 
-export type TrackStatus = { value: string; id: string | null; state: string };
-
 export type Status = {
   version: string;
   sources: SourceStatus[];
   jobs: JobStatus[];
   instruments: number;
   tracked: number;
-  track: TrackStatus[];
   database_bytes: number;
 };
 
@@ -78,6 +75,15 @@ export type Session = {
   end: string | null;
 };
 
+// a --track value; state is pending, tracked or its read's error code
+export type WatchEntry = {
+  value: string;
+  id: string | null;
+  state: string;
+  instrument: Listed | null;
+  session: Session | null;
+};
+
 export type Returns = {
   "1w": number | null;
   "1m": number | null;
@@ -94,7 +100,7 @@ export type Detail = {
   credit: { name: string; url: string } | null;
   instrument: Listed;
   // null when the read failed; error says why
-  error: { error: string; message: string } | null;
+  error: { code: string; detail: string } | null;
   quote: null | {
     id: string;
     price: number | null;
@@ -135,8 +141,7 @@ export const SECTIONS = ["metric", "analysts", "earnings", "insider"] as const;
 export type Section = (typeof SECTIONS)[number];
 
 export type Fetched = {
-  symbol: string;
-  part?: Part;
+  part: Part;
   section?: Section;
   status: "fetched" | "not covered" | "source off" | "failed" | "not found";
   rows?: number;
@@ -149,13 +154,18 @@ export type Removed =
   | { ok: false; rules: number[] }
   | { ok: false; error: string };
 
-type ListedPage = { total: number; more: boolean; instruments: Listed[] };
+type ListedPage = {
+  total: number;
+  instruments: Listed[];
+  // absent on the last page
+  next_page_token?: string;
+};
 
-export const INSTRUMENTS_PATH = "/api/v1/admin/instruments";
-export const REFETCH_PATH = "/api/v1/admin/refetch";
-export const HISTORY_PATH = "/api/v1/history";
-const one = (id: string) => `${INSTRUMENTS_PATH}/${encodeURIComponent(id)}`;
-export const STATUS_PATH = "/api/v1/admin/status";
+export const INSTRUMENTS_PATH = "/api/v1/instruments";
+export const instrumentPath = (id: string) =>
+  `${INSTRUMENTS_PATH}/${encodeURIComponent(id)}`;
+export const STATUS_PATH = "/api/v1/status";
+export const WATCHLIST_PATH = "/api/v1/watchlist";
 export const SESSION_PATH = "/ui/session";
 
 export function store(fetchFn: Fetch, now: () => number = Date.now) {
@@ -165,6 +175,7 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
   // when the status on screen was answered, for the head's line
   const statusAt = signal<number | null>(null);
   const statusError = signal<string | null>(null);
+  const watchlist = signal<WatchEntry[] | null>(null);
   const loading = signal(false);
   const instruments = signal<Listed[] | null>(null);
   const instrumentsError = signal<string | null>(null);
@@ -192,6 +203,7 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
       status.value = null;
       statusAt.value = null;
       statusError.value = null;
+      watchlist.value = null;
       instruments.value = null;
       instrumentsError.value = null;
       detail.value = null;
@@ -229,11 +241,26 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
   async function load(mine: number): Promise<boolean> {
     loading.value = true;
     try {
-      const s = await quiet<Status>(STATUS_PATH);
+      // the status page shows both, so they land together; a 401 from
+      // either signs out, whichever failed first
+      const [s, w] = await Promise.allSettled([
+        quiet<Status>(STATUS_PATH),
+        quiet<{ entries: WatchEntry[] }>(WATCHLIST_PATH),
+      ]);
+      if (s.status === "rejected" || w.status === "rejected") {
+        const errors = [s, w].flatMap((r) =>
+          r.status === "rejected" ? [r.reason as unknown] : [],
+        );
+        throw (
+          errors.find((e) => e instanceof ApiError && e.status === 401) ??
+          errors[0]
+        );
+      }
       if (mine !== latest) return current;
       batch(() => {
         signedIn.value = true;
-        status.value = s;
+        status.value = s.value;
+        watchlist.value = w.value.entries;
         statusAt.value = now();
         statusError.value = null;
       });
@@ -266,15 +293,14 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
     const stale = () => mine !== listed || at !== session;
     try {
       const all: Listed[] = [];
-      let after = "";
-      for (;;) {
-        const page = await call<ListedPage>(
-          `${INSTRUMENTS_PATH}?limit=200${after ? `&after=${encodeURIComponent(after)}` : ""}`,
-        );
+      let token: string | undefined;
+      do {
+        const q = new URLSearchParams({ page_size: "200" });
+        if (token !== undefined) q.set("page_token", token);
+        const page = await call<ListedPage>(`${INSTRUMENTS_PATH}?${q}`);
         all.push(...page.instruments);
-        if (!page.more || page.instruments.length === 0) break;
-        after = page.instruments.at(-1)!.id;
-      }
+        token = page.next_page_token;
+      } while (token !== undefined);
       if (stale()) return;
       batch(() => {
         instruments.value = all;
@@ -302,7 +328,7 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
       });
     }
     try {
-      const d = await call<Detail>(one(id));
+      const d = await call<Detail>(instrumentPath(id));
       if (mine !== instrumentLoad || at !== session) return;
       batch(() => {
         detail.value = d;
@@ -321,23 +347,31 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
     parts: readonly Part[],
     sections: readonly Section[],
   ): Promise<Fetched[]> {
-    const done = await call<{ results: Fetched[] }>(REFETCH_PATH, "POST", {
-      symbols: [id],
-      fetch: parts,
-      ...(parts.includes("research") ? { sections } : {}),
-    });
+    let done: { parts: Fetched[] };
+    try {
+      done = await call(`${instrumentPath(id)}/refetch`, "POST", {
+        parts,
+        ...(parts.includes("research") ? { sections } : {}),
+      });
+    } catch (error) {
+      // deleted meanwhile: the page says it is no longer stored
+      if (error instanceof ApiError && error.code === "not_found") {
+        return parts.map((part) => ({ part, status: "not found" }));
+      }
+      throw error;
+    }
     // what changed shows at once, if its page is still the one open
     if (detailId.value === id) void loadInstrument(id);
-    return done.results;
+    return done.parts;
   }
 
   async function remove(id: string): Promise<Removed> {
     try {
-      await call(one(id), "DELETE");
+      await call(instrumentPath(id), "DELETE");
     } catch (error) {
       if (
         error instanceof ApiError &&
-        error.status === 409 &&
+        error.code === "conflict" &&
         typeof error.body === "object" &&
         error.body !== null &&
         "rules" in error.body &&
@@ -359,17 +393,17 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
 
   // a chart's bars with their candles and volume; a read, as the page is
   function history(id: string, from: string, interval: Interval) {
-    const q = new URLSearchParams({ symbol: id, from, interval, ohlc: "true" });
-    return call<History>(`${HISTORY_PATH}?${q}`);
+    const q = new URLSearchParams({ from, interval });
+    return call<History>(`${instrumentPath(id)}/bars?${q}`);
   }
 
   // 5D asks from before any session kept; 1D takes the server's default
   function intraday(id: string, range: IntradayRange, from: string) {
-    const q = new URLSearchParams({ symbol: id, interval: "5m" });
+    const q = new URLSearchParams({ interval: "5m" });
     if (range === "5D") q.set("from", from);
     // the pre and post trading around the day, as a chart site draws it
     else q.set("extended", "true");
-    return call<Intraday>(`${HISTORY_PATH}?${q}`);
+    return call<Intraday>(`${instrumentPath(id)}/bars?${q}`);
   }
 
   return {
@@ -388,9 +422,10 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
     status,
     statusAt,
     statusError,
+    watchlist,
     loading,
     loadStatus,
-    // the status answers whether the cookie holds, so one call does both
+    // the status load answers whether the cookie holds, so one load does both
     check: loadStatus,
     // a wrong key is no session ending, so it skips the 401 hook
     async signIn(key: string): Promise<void> {

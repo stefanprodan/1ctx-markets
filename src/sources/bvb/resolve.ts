@@ -55,17 +55,29 @@ export function readByFeedSymbol(db: Db, symbol: string): Instrument | null {
 
 const marketOfId = (id: string) => id.slice(0, id.indexOf(":"));
 
+const fromBvb = (id: string): Resolution => ({
+  kind: "new",
+  source: "bvb",
+  sourceSymbol: id.slice(MARKET.length + 1),
+  id,
+});
+
+// yahooFirst: a bare symbol is Yahoo's exact listing, the feed's only when
+// Yahoo has none, so a Yahoo export's symbol never turns into a Bucharest one
 export async function resolveBoth(
   ctx: { db: Db; clock: Clock; yahoo: Yahoo; bvb: Bvb },
   input: string,
+  yahooFirst = false,
 ): Promise<Resolution> {
   const given = input.trim();
   if (given === "") throw new ResolveError(input);
-  const stored = [
-    readByFeedSymbol(ctx.db, given),
-    readBySourceSymbol(ctx.db, YAHOO, given.toUpperCase()),
-  ].filter((i) => i !== null);
-  if (stored.length === 1) return { kind: "known", instrument: stored[0]! };
+  const feed = readByFeedSymbol(ctx.db, given);
+  const yahoo = readBySourceSymbol(ctx.db, YAHOO, given.toUpperCase());
+  if (yahooFirst && yahoo !== null) return { kind: "known", instrument: yahoo };
+  const stored = [feed, yahoo].filter((i) => i !== null);
+  if (!yahooFirst && stored.length === 1) {
+    return { kind: "known", instrument: stored[0]! };
+  }
   // stored once from each source: TLV on Bucharest and elsewhere
   if (stored.length > 1) {
     return {
@@ -83,6 +95,19 @@ export async function resolveBoth(
   }
   const [y] = await Promise.allSettled([resolveYahoo(ctx, given)]);
   if (y.status === "fulfilled" && y.value.kind === "known") return y.value;
+  if (yahooFirst) {
+    if (y.status === "fulfilled" && y.value.kind === "new") {
+      const { id, sourceSymbol } = y.value;
+      return marketOfId(id) === MARKET
+        ? fromBvb(id)
+        : { kind: "new", source: "yahoo", sourceSymbol, id };
+    }
+    // a Yahoo that failed may have had the listing meant
+    if (y.status === "rejected" && !(y.reason instanceof ResolveError)) {
+      throw y.reason;
+    }
+    if (feed !== null) return { kind: "known", instrument: feed };
+  }
   // Yahoo's exact match skips the exchange's slow search only for a Bucharest
   // listing, or one the list pages lack and Yahoo's results name none there
   const lists = ctx.bvb.listed();
@@ -96,12 +121,7 @@ export async function resolveBoth(
   ) {
     const { id, sourceSymbol } = y.value;
     return marketOfId(id) === MARKET
-      ? {
-          kind: "new",
-          source: "bvb",
-          sourceSymbol: id.slice(MARKET.length + 1),
-          id,
-        }
+      ? fromBvb(id)
       : { kind: "new", source: "yahoo", sourceSymbol, id };
   }
   const [b] = await Promise.allSettled([ctx.bvb.search(given)]);

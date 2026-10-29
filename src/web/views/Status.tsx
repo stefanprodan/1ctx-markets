@@ -6,6 +6,7 @@ import {
   type JobStatus,
   markets,
   type Status as StatusAnswer,
+  type WatchEntry,
 } from "../data/store.ts";
 import { Icon } from "../lib/icons.tsx";
 import { Page } from "../ui/Page.tsx";
@@ -126,9 +127,11 @@ function SourceCard({
 
 export function StatusBody({
   status: s,
+  watchlist: track,
   now,
 }: {
   status: StatusAnswer;
+  watchlist: readonly WatchEntry[];
   now: number;
 }) {
   const shown = groups(s.sources, s.jobs);
@@ -215,10 +218,10 @@ export function StatusBody({
               ))}
           </RowsCard>
         )}
-        {s.track.length > 0 && (
-          <RowsCard label="Always tracked" count={count(s.track.length)}>
+        {track.length > 0 && (
+          <RowsCard label="Always tracked" count={count(track.length)}>
             <ul class="srv-track">
-              {s.track.map((t) => (
+              {track.map((t) => (
                 <li key={t.value} class="srv-track-item">
                   <span class="srv-track-value">{t.value}</span>
                   <span
@@ -259,7 +262,11 @@ export function Status() {
       {s === null ? (
         <p class="page-state">{markets.loading.value ? "Loading" : ""}</p>
       ) : (
-        <StatusBody status={s} now={Date.now()} />
+        <StatusBody
+          status={s}
+          watchlist={markets.watchlist.value ?? []}
+          now={Date.now()}
+        />
       )}
     </Page>
   );

@@ -4,6 +4,7 @@
 import { describe, expect, test } from "bun:test";
 import { signal } from "@preact/signals";
 import { render } from "preact-render-to-string";
+import { spec } from "../src/api/openapi.ts";
 import { UI_PATHS } from "../src/server/http.ts";
 import { Shell } from "../src/web/app/App.tsx";
 import { Rail } from "../src/web/app/Rail.tsx";
@@ -27,14 +28,15 @@ import {
 } from "../src/web/data/api.ts";
 import type { Detail } from "../src/web/data/store.ts";
 import {
-  HISTORY_PATH,
   INSTRUMENTS_PATH,
+  instrumentPath,
   type Listed,
-  REFETCH_PATH,
   SESSION_PATH,
   STATUS_PATH,
   type Status,
   store,
+  WATCHLIST_PATH,
+  type WatchEntry,
 } from "../src/web/data/store.ts";
 import { Page } from "../src/web/ui/Page.tsx";
 import { SettingDelete } from "../src/web/ui/SettingDelete.tsx";
@@ -99,6 +101,7 @@ import {
   trackLine,
 } from "../src/web/views/Status.model.ts";
 import { JobDetails, StatusBody } from "../src/web/views/Status.tsx";
+import { validate } from "./helpers/schema.ts";
 
 const NOW = Date.parse("2026-10-28T12:00:00Z");
 
@@ -199,12 +202,25 @@ const STATUS: Status = {
   ],
   instruments: 78,
   tracked: 61,
-  track: [
-    { value: "^GSPC", id: "SNP:^GSPC", state: "tracked" },
-    { value: "NOPE", id: null, state: "not_found" },
-  ],
   database_bytes: 65_515_520,
 };
+
+const WATCHLIST: WatchEntry[] = [
+  {
+    value: "^GSPC",
+    id: "SNP:^GSPC",
+    state: "tracked",
+    instrument: null,
+    session: { state: "open", start: null, end: null },
+  },
+  {
+    value: "NOPE",
+    id: null,
+    state: "not_found",
+    instrument: null,
+    session: null,
+  },
+];
 
 // answers by method and path, recording what was asked
 function fake(answers: Record<string, () => Response>): {
@@ -230,6 +246,20 @@ const status =
     body === null
       ? new Response(null, { status: code })
       : Response.json(body, { status: code });
+// /api/v1's errors, as the server writes them
+const problem = (
+  code: number,
+  body: { code: string; detail: string } & Record<string, unknown>,
+) =>
+  status(code, {
+    title: code === 404 ? "Not Found" : "Conflict",
+    status: code,
+    ...body,
+  });
+
+// the status page loads the watchlist beside the status
+const watched = ok({ entries: WATCHLIST });
+const WATCHED = { [`GET ${WATCHLIST_PATH}`]: watched };
 
 describe("the routes", () => {
   test("are the paths the server answers with the page", () => {
@@ -292,20 +322,25 @@ describe("the data layer", () => {
 
   test("a failure reads as a short sentence", () => {
     const conflict = failure(409, {
-      error: "conflict",
-      message: "rules read it",
+      title: "Conflict",
+      status: 409,
+      detail: "rules read it",
+      code: "conflict",
     });
     expect(says(conflict)).toBe("Rules read it.");
+    expect(conflict.code).toBe("conflict");
     expect(says(failure(0, null))).toBe("The server did not answer.");
     expect(says("odd")).toBe("The server did not answer.");
   });
 
   test("a refusal shows the server's message; a fault or no answer, plain words", async () => {
+    // the sign-in's own refusals keep {error, message}
     expect(
       failure(409, { error: "conflict", message: "rules read it" }).message,
     ).toBe("rules read it");
     expect(
-      failure(500, { error: "internal", message: "internal error" }).message,
+      failure(500, { status: 500, code: "internal", detail: "internal error" })
+        .message,
     ).toBe("the server failed");
     const call = client(
       async () => {
@@ -319,18 +354,23 @@ describe("the data layer", () => {
 
   test("the first status says whether the cookie holds", async () => {
     const signed = store(
-      fake({ [`GET ${STATUS_PATH}`]: ok(STATUS) }).fetch,
+      fake({ [`GET ${STATUS_PATH}`]: ok(STATUS), ...WATCHED }).fetch,
       () => NOW,
     );
     await signed.check();
     expect(signed.signedIn.value).toBe(true);
     expect(signed.status.value).toEqual(STATUS);
+    expect(signed.watchlist.value).toEqual(WATCHLIST);
     expect(signed.statusAt.value).toBe(NOW);
-    const out = store(fake({ [`GET ${STATUS_PATH}`]: status(401, {}) }).fetch);
+    const out = store(
+      fake({ [`GET ${STATUS_PATH}`]: status(401, {}), ...WATCHED }).fetch,
+    );
     await out.check();
     expect(out.signedIn.value).toBe(false);
     expect(out.statusError.value).toBeNull();
-    const down = store(fake({ [`GET ${STATUS_PATH}`]: status(502) }).fetch);
+    const down = store(
+      fake({ [`GET ${STATUS_PATH}`]: status(502), ...WATCHED }).fetch,
+    );
     await down.check();
     expect(down.signedIn.value).toBeUndefined();
     expect(down.statusError.value).toBe("The server failed.");
@@ -338,25 +378,127 @@ describe("the data layer", () => {
 
   test("a 401 after signing in drops what was shown", async () => {
     let answer = ok(STATUS);
-    const s = store(fake({ [`GET ${STATUS_PATH}`]: () => answer() }).fetch);
+    const s = store(
+      fake({ [`GET ${STATUS_PATH}`]: () => answer(), ...WATCHED }).fetch,
+    );
     await s.loadStatus();
     expect(s.signedIn.value).toBe(true);
     answer = status(401, {});
     await s.loadStatus();
     expect(s.signedIn.value).toBe(false);
     expect(s.status.value).toBeNull();
+    expect(s.watchlist.value).toBeNull();
+  });
+
+  test("a 401 from either half of the status load signs out", async () => {
+    for (const [first, second] of [
+      [STATUS_PATH, WATCHLIST_PATH],
+      [WATCHLIST_PATH, STATUS_PATH],
+    ] as const) {
+      // the other half fails first, with a fault or no answer at all
+      for (const fault of [500, 0]) {
+        const late = Promise.withResolvers<Response>();
+        const s = store(async (path) => {
+          if (path === second) return late.promise;
+          if (fault === 0) throw new TypeError("offline");
+          return Response.json(
+            { status: 500, code: "internal", detail: "x" },
+            { status: 500 },
+          );
+        });
+        s.signedIn.value = true;
+        const loading = s.loadStatus();
+        await Bun.sleep(0);
+        late.resolve(
+          Response.json(
+            { status: 401, code: "unauthorized", detail: "x" },
+            { status: 401 },
+          ),
+        );
+        expect(await loading).toBe(false);
+        expect([first, fault, s.signedIn.value]).toEqual([first, fault, false]);
+        expect(s.statusError.value).toBeNull();
+      }
+    }
+    // neither is a 401: the error is said and nothing lands half
+    const s = store(
+      fake({
+        [`GET ${STATUS_PATH}`]: ok(STATUS),
+        [`GET ${WATCHLIST_PATH}`]: status(502),
+      }).fetch,
+    );
+    await s.loadStatus();
+    expect(s.signedIn.value).toBeUndefined();
+    expect(s.status.value).toBeNull();
+    expect(s.statusError.value).toBe("The server failed.");
   });
 
   test("1D asks for the newest session with its extended trading, 5D for every one kept", async () => {
-    const base = `${HISTORY_PATH}?symbol=US%3AA&interval=5m`;
+    const base = "/api/v1/instruments/US%3AA/bars?interval=5m";
     const one = `${base}&extended=true`;
     const five = `${base}&from=2016-10-28`;
-    const answer = { id: "US:A", interval: "5m", points: [] };
-    const f = fake({ [`GET ${one}`]: ok(answer), [`GET ${five}`]: ok(answer) });
+    const daily = "/api/v1/instruments/US%3AA/bars?from=2026-01-01&interval=1d";
+    const facts = {
+      id: "US:A",
+      name: "A Inc.",
+      exchange: "NMS",
+      type: "EQUITY",
+      currency: "USD",
+      unit: "per_share",
+      source: "yahoo",
+    };
+    const common = {
+      input: "US:A",
+      stale: [],
+      from: "2026-10-28",
+      to: "2026-10-28",
+      session: {
+        state: "closed",
+        start: "2026-10-28T13:30:00Z",
+        end: "2026-10-28T20:00:00Z",
+      },
+    };
+    const answer = {
+      ...common,
+      instrument: facts,
+      interval: "5m",
+      sessions: [{ session: "2026-10-28", fetched_at: "2026-10-28T20:05:00Z" }],
+      previous_close: 100,
+      points: [
+        {
+          at: "2026-10-28T19:55:00Z",
+          session: "2026-10-28",
+          close: 101,
+          final: true,
+        },
+      ],
+      extended_points: [
+        { at: "2026-10-28T21:00:00Z", session: "post", close: 102 },
+      ],
+    };
+    const bars = {
+      ...common,
+      instrument: {
+        ...facts,
+        basis: "split-adjusted prices; dividends and FX conversion excluded",
+      },
+      interval: "1d",
+      bars: [hbar("2026-10-28", 101)],
+    };
+    // the fakes hold to the spec, so the chart reads what the server sends
+    const schemas = spec.components.schemas as Record<string, any>;
+    expect(validate(answer, schemas.Intraday, spec)).toEqual([]);
+    expect(validate(bars, schemas.Bars, spec)).toEqual([]);
+    const f = fake({
+      [`GET ${one}`]: ok(answer),
+      [`GET ${five}`]: ok(answer),
+      [`GET ${daily}`]: ok(bars),
+    });
     const s = store(f.fetch);
     expect(await s.intraday("US:A", "1D", "2016-10-28")).toEqual(answer as any);
     await s.intraday("US:A", "5D", "2016-10-28");
-    expect(f.asked.map((a) => a.path)).toEqual([one, five]);
+    expect(await s.history("US:A", "2026-01-01", "1d")).toEqual(bars as any);
+    expect(f.asked.map((a) => a.path)).toEqual([one, five, daily]);
   });
 
   test("sign-in posts the key alone; a wrong one keeps the form", async () => {
@@ -364,6 +506,7 @@ describe("the data layer", () => {
     const f = fake({
       [`POST ${SESSION_PATH}`]: () => status(key === "right" ? 204 : 401)(),
       [`GET ${STATUS_PATH}`]: ok(STATUS),
+      ...WATCHED,
       [`DELETE ${SESSION_PATH}`]: status(204),
     });
     const s = store(f.fetch);
@@ -396,6 +539,7 @@ describe("the data layer", () => {
         fake({
           [`POST ${SESSION_PATH}`]: status(204),
           [`GET ${STATUS_PATH}`]: answer,
+          ...WATCHED,
         }).fetch,
       );
       const err = await s.signIn("right").catch((e: unknown) => e);
@@ -407,8 +551,9 @@ describe("the data layer", () => {
   test("a sign-in waits for the latest status load", async () => {
     const releases: (() => void)[] = [];
     let n = 0;
-    const s = store(async (_path, init) => {
+    const s = store(async (path, init) => {
       if (init?.method === "POST") return new Response(null, { status: 204 });
+      if (path === WATCHLIST_PATH) return watched();
       const mine = ++n;
       await new Promise<void>((r) => releases.push(r));
       // the load before the sign-in answers a 401, the later ones the status
@@ -436,8 +581,9 @@ describe("the data layer", () => {
   test("an old 401 after a sign-in never signs out", async () => {
     const releases: (() => void)[] = [];
     let n = 0;
-    const s = store(async (_path, init) => {
+    const s = store(async (path, init) => {
       if (init?.method === "POST") return new Response(null, { status: 204 });
+      if (path === WATCHLIST_PATH) return watched();
       const mine = ++n;
       await new Promise<void>((r) => releases.push(r));
       return mine === 1
@@ -458,10 +604,11 @@ describe("the data layer", () => {
 
   test("a status load in flight at sign-out never signs back in", async () => {
     const releases: (() => void)[] = [];
-    const s = store(async (_path, init) => {
+    const s = store(async (path, init) => {
       if (init?.method === "DELETE") {
         return new Response(null, { status: 204 });
       }
+      if (path === WATCHLIST_PATH) return watched();
       await new Promise<void>((r) => releases.push(r));
       return Response.json(STATUS);
     });
@@ -477,7 +624,8 @@ describe("the data layer", () => {
   test("an older status answer never lands over a newer one", async () => {
     const releases: (() => void)[] = [];
     let n = 0;
-    const s = store(async () => {
+    const s = store(async (path) => {
+      if (path === WATCHLIST_PATH) return watched();
       const mine = ++n;
       await new Promise<void>((r) => releases.push(r));
       return Response.json({ ...STATUS, version: `v${mine}` });
@@ -516,8 +664,8 @@ describe("the status model", () => {
     expect(plain("rate limited")).toBe("too many requests");
     expect(plain("timed out")).toBe("no answer in time");
     expect(plain(null)).toBe("failed");
-    expect(STATUS.track.map(trackLine)).toEqual(["SNP:^GSPC", "not found"]);
-    expect(trackLine({ value: "X", id: null, state: "candidates" })).toBe(
+    expect(WATCHLIST.map(trackLine)).toEqual(["SNP:^GSPC", "not found"]);
+    expect(trackLine({ id: null, state: "candidates" })).toBe(
       "several matches",
     );
     expect(plain("something new")).toBe("something new");
@@ -566,8 +714,8 @@ describe("the status model", () => {
     expect(jobTone(running)).toBe("running");
     // a failing scope outranks a run in progress
     expect(jobTone({ ...running, failing_scopes: 1 })).toBe("failed");
-    expect(STATUS.track.map(trackLine)).toEqual(["SNP:^GSPC", "not found"]);
-    expect(STATUS.track.map(trackFailed)).toEqual([false, true]);
+    expect(WATCHLIST.map(trackLine)).toEqual(["SNP:^GSPC", "not found"]);
+    expect(WATCHLIST.map(trackFailed)).toEqual([false, true]);
   });
 
   test("only sources that are on get a card, failing jobs first", () => {
@@ -604,7 +752,9 @@ describe("the status model", () => {
 
 describe("the views", () => {
   test("status draws the on sources' cards, the keyed ones to add, and the tracked values", () => {
-    const html = render(<StatusBody status={STATUS} now={NOW} />);
+    const html = render(
+      <StatusBody status={STATUS} watchlist={WATCHLIST} now={NOW} />,
+    );
     for (const words of [
       "78",
       "61 tracked",
@@ -669,8 +819,8 @@ describe("the views", () => {
           ...STATUS,
           sources: STATUS.sources.map((x) => ({ ...x, state: "on" as const })),
           jobs: [],
-          track: [],
         }}
+        watchlist={[]}
         now={NOW}
       />,
     );
@@ -838,22 +988,22 @@ describe("the instruments list", () => {
     const asked: string[] = [];
     const s = store(async (path) => {
       asked.push(path);
-      if (path === `${INSTRUMENTS_PATH}?limit=200`) return first.promise;
-      return Response.json({
-        total: 2,
-        more: false,
-        instruments: [listed("US:B")],
-      });
+      if (path === `${INSTRUMENTS_PATH}?page_size=200`) return first.promise;
+      return Response.json({ total: 2, instruments: [listed("US:B")] });
     });
     const a = s.loadInstruments();
     const b = s.loadInstruments();
     first.resolve(
-      Response.json({ total: 2, more: true, instruments: [listed("US:A")] }),
+      Response.json({
+        total: 2,
+        instruments: [listed("US:A")],
+        next_page_token: "US:A",
+      }),
     );
     await Promise.all([a, b]);
     expect(asked).toEqual([
-      `${INSTRUMENTS_PATH}?limit=200`,
-      `${INSTRUMENTS_PATH}?limit=200&after=US%3AA`,
+      `${INSTRUMENTS_PATH}?page_size=200`,
+      `${INSTRUMENTS_PATH}?page_size=200&page_token=US%3AA`,
     ]);
     expect(s.instruments.value?.map((r) => r.id)).toEqual(["US:A", "US:B"]);
   });
@@ -862,12 +1012,11 @@ describe("the instruments list", () => {
     let fail = false;
     const s = store(async () =>
       fail
-        ? Response.json({ error: "internal", message: "x" }, { status: 500 })
-        : Response.json({
-            total: 1,
-            more: false,
-            instruments: [listed("US:A")],
-          }),
+        ? Response.json(
+            { status: 500, code: "internal", detail: "x" },
+            { status: 500 },
+          )
+        : Response.json({ total: 1, instruments: [listed("US:A")] }),
     );
     await s.loadInstruments();
     fail = true;
@@ -1000,7 +1149,6 @@ describe("the instrument model", () => {
   test("a refetch reads as one short word, a failure in words", () => {
     const all = choices(listed("US:NVDA"));
     const ok = (part: any, section?: any) => ({
-      symbol: "US:NVDA",
       part,
       section,
       status: "fetched" as const,
@@ -1013,23 +1161,15 @@ describe("the instrument model", () => {
     // a part no source holds is no failure
     expect(
       summary(
-        [
-          ok("quotes"),
-          { symbol: "US:NVDA", part: "news", status: "not covered" },
-        ],
+        [ok("quotes"), { part: "news", status: "not covered" }],
         all,
         "NVDA",
       ),
     ).toEqual({ text: "Updated", bad: false });
     expect(
-      summary(
-        [{ symbol: "US:NVDA", part: "news", status: "not covered" }],
-        all,
-        "NVDA",
-      ),
+      summary([{ part: "news", status: "not covered" }], all, "NVDA"),
     ).toEqual({ text: "Not available", bad: false });
     const failed = {
-      symbol: "US:NVDA",
       part: "research" as const,
       section: "insider" as const,
       status: "failed" as const,
@@ -1041,14 +1181,10 @@ describe("the instrument model", () => {
       bad: true,
     });
     expect(
-      summary(
-        [{ symbol: "US:NVDA", part: "quotes", status: "source off" }],
-        all,
-        "NVDA",
-      ),
+      summary([{ part: "quotes", status: "source off" }], all, "NVDA"),
     ).toEqual({ text: "Its source is off.", bad: true });
     expect(
-      summary([{ symbol: "US:NVDA", status: "not found" }], all, "NVDA").bad,
+      summary([{ part: "quotes", status: "not found" }], all, "NVDA").bad,
     ).toBe(true);
   });
 });
@@ -1165,8 +1301,8 @@ describe("the instrument page", () => {
       }),
       quote: null,
       error: {
-        error: "source_error",
-        message: "network error; retry this symbol later",
+        code: "source_error",
+        detail: "network error; retry this symbol later",
       },
     };
     expect(headline(unread).price).toBe("216.50 USD");
@@ -1177,28 +1313,50 @@ describe("the instrument page", () => {
   });
 
   test("refetch posts the parts, sections only with research", async () => {
+    const fetched = { part: "quotes", status: "fetched", rows: 1 };
     const f = fake({
-      "POST /api/v1/admin/refetch": ok({ results: [] }),
-      "GET /api/v1/admin/instruments/US%3ANVDA": ok(detail()),
+      "POST /api/v1/instruments/US%3ANVDA/refetch": ok({
+        input: "US:NVDA",
+        id: "US:NVDA",
+        parts: [fetched],
+      }),
+      "GET /api/v1/instruments/US%3ANVDA": ok(detail()),
     });
     const s = store(f.fetch);
-    await s.refetch("US:NVDA", ["quotes"], []);
+    expect(await s.refetch("US:NVDA", ["quotes"], [])).toEqual([
+      fetched as any,
+    ]);
     await s.refetch("US:NVDA", ["research"], ["insider"]);
     const bodies = f.asked
       .filter((a) => a.init?.method === "POST")
       .map((a) => JSON.parse(String(a.init!.body)));
     expect(bodies).toEqual([
-      { symbols: ["US:NVDA"], fetch: ["quotes"] },
-      { symbols: ["US:NVDA"], fetch: ["research"], sections: ["insider"] },
+      { parts: ["quotes"] },
+      { parts: ["research"], sections: ["insider"] },
     ]);
+    // deleted meanwhile, it reads as no longer stored
+    const gone = store(
+      fake({
+        "POST /api/v1/instruments/US%3ANVDA/refetch": problem(404, {
+          code: "not_found",
+          detail: "no such instrument",
+        }),
+      }).fetch,
+    );
+    const results = await gone.refetch("US:NVDA", ["quotes"], []);
+    expect(summary(results, choices(listed("US:NVDA")), "NVDA")).toEqual({
+      text: "NVDA is no longer stored.",
+      bad: true,
+    });
   });
 
   test("a delete a rule holds names the rules; one that goes leaves the list", async () => {
     const held = store(
       fake({
-        "DELETE /api/v1/admin/instruments/US%3ANVDA": status(409, {
-          error: "conflict",
-          message: "rules read this instrument; delete them first",
+        "DELETE /api/v1/instruments/US%3ANVDA": problem(409, {
+          code: "conflict",
+          detail: "rules read this instrument; delete them first",
+          input: "US:NVDA",
           rules: [3],
         }),
       }).fetch,
@@ -1206,15 +1364,11 @@ describe("the instrument page", () => {
     expect(await held.remove("US:NVDA")).toEqual({ ok: false, rules: [3] });
     const s = store(
       fake({
-        [`GET ${INSTRUMENTS_PATH}?limit=200`]: ok({
+        [`GET ${INSTRUMENTS_PATH}?page_size=200`]: ok({
           total: 2,
-          more: false,
           instruments: [listed("US:NVDA"), listed("US:AMD")],
         }),
-        "DELETE /api/v1/admin/instruments/US%3ANVDA": ok({
-          deleted: "US:NVDA",
-          rows: {},
-        }),
+        "DELETE /api/v1/instruments/US%3ANVDA": status(204),
       }).fetch,
     );
     await s.loadInstruments();
@@ -1291,8 +1445,7 @@ describe("the chart model", () => {
 
   test("the legend reads the bar under the crosshair, else the latest", () => {
     const h: History = {
-      id: "US:NVDA",
-      unit: "per_share",
+      instrument: { id: "US:NVDA", unit: "per_share" },
       interval: "1d",
       session: { state: "open" },
       bars: [
@@ -1315,7 +1468,10 @@ describe("the chart model", () => {
       false,
     );
     // a yield moves in points
-    const y = legendOf({ ...h, unit: "percent" }, null)!;
+    const y = legendOf(
+      { ...h, instrument: { ...h.instrument, unit: "percent" } },
+      null,
+    )!;
     expect(changeText(y.change, y.points)).toBe("+10.00 pts");
     expect(changeText(-0.001)).toBe("0.00%");
   });
@@ -1347,8 +1503,7 @@ describe("the chart model", () => {
       final: k < 30,
     }));
     const h: Intraday = {
-      id: "CRYPTO:BTC-USD",
-      unit: "per_unit",
+      instrument: { id: "CRYPTO:BTC-USD", unit: "per_unit" },
       interval: "5m",
       session: { state: "open" },
       previous_close: null,
@@ -1434,8 +1589,7 @@ describe("the chart model", () => {
 
   test("the legend under the crosshair reads an extended point too", () => {
     const h: Intraday = {
-      id: "US:A",
-      unit: "per_share",
+      instrument: { id: "US:A", unit: "per_share" },
       interval: "5m",
       session: { state: "closed" },
       previous_close: 100,
@@ -1468,8 +1622,7 @@ describe("the chart model", () => {
 
   test("the legend names each average beside its stroke", () => {
     const h: History = {
-      id: "US:NVDA",
-      unit: "per_share",
+      instrument: { id: "US:NVDA", unit: "per_share" },
       interval: "1wk",
       session: null,
       bars: [hbar("2026-10-26", 110, { sma50: 90, sma200: 80 })],
@@ -1545,6 +1698,7 @@ describe("the store across sessions and pages", () => {
     await detail;
     expect(s.signedIn.value).toBe(false);
     await h.answer(`GET ${STATUS_PATH}`, Response.json(STATUS));
+    await h.answer(`GET ${WATCHLIST_PATH}`, watched());
     await status;
     expect(s.signedIn.value).toBe(false);
     expect(s.status.value).toBeNull();
@@ -1558,6 +1712,7 @@ describe("the store across sessions and pages", () => {
     const signing = s.signIn("right");
     await h.answer(`POST ${SESSION_PATH}`, new Response(null, { status: 204 }));
     await h.answer(`GET ${STATUS_PATH}`, Response.json(STATUS));
+    await h.answer(`GET ${WATCHLIST_PATH}`, watched());
     await signing;
     await h.answer(
       one,
@@ -1570,13 +1725,12 @@ describe("the store across sessions and pages", () => {
   test("a list read before a delete never brings the row back", async () => {
     const h = held();
     const s = store(h.fetch);
-    const list = `GET ${INSTRUMENTS_PATH}?limit=200`;
+    const list = `GET ${INSTRUMENTS_PATH}?page_size=200`;
     const first = s.loadInstruments();
     await h.answer(
       list,
       Response.json({
         total: 2,
-        more: false,
         instruments: [listed("US:A"), listed("US:B")],
       }),
     );
@@ -1584,8 +1738,8 @@ describe("the store across sessions and pages", () => {
     const refreshing = s.loadInstruments();
     const removing = s.remove("US:A");
     await h.answer(
-      `DELETE ${INSTRUMENTS_PATH}/US%3AA`,
-      Response.json({ deleted: "US:A", rows: {} }),
+      `DELETE ${instrumentPath("US:A")}`,
+      new Response(null, { status: 204 }),
     );
     expect(await removing).toEqual({ ok: true });
     // the refresh asked before the delete answers with the row
@@ -1593,7 +1747,6 @@ describe("the store across sessions and pages", () => {
       list,
       Response.json({
         total: 2,
-        more: false,
         instruments: [listed("US:A"), listed("US:B")],
       }),
     );
@@ -1611,7 +1764,10 @@ describe("the store across sessions and pages", () => {
       Response.json(detail({ id: "US:B" })),
     );
     await b;
-    await h.answer(`POST ${REFETCH_PATH}`, Response.json({ results: [] }));
+    await h.answer(
+      `POST ${instrumentPath("US:A")}/refetch`,
+      Response.json({ input: "US:A", id: "US:A", parts: [] }),
+    );
     await fetching;
     expect(s.detailId.value).toBe("US:B");
     expect(s.detail.value?.quote?.id).toBe("US:B");

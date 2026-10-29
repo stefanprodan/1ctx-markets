@@ -239,12 +239,13 @@ describe("sign-in", () => {
 });
 
 describe("what the cookie opens", () => {
-  test("the admin routes and every read, never /mcp or a rules write", async () => {
+  test("what the admin key opens, never /mcp or a rules write", async () => {
     const t = setup();
     const c = { cookie: `${COOKIE}=${await t.cookie()}` };
     for (const path of [
-      "/admin/status",
-      "/admin/instruments",
+      "/status",
+      "/instruments",
+      "/watchlist",
       "/rules",
       "/alerts",
       "/openapi.json",
@@ -267,6 +268,18 @@ describe("what the cookie opens", () => {
       body: "{}",
     });
     expect(rule.status).toBe(401);
+    for (const method of ["PATCH", "DELETE"]) {
+      const res = await t.at(`${PREFIX}/rules/1`, {
+        method,
+        headers: {
+          ...c,
+          origin: "http://127.0.0.1:1",
+          "content-type": "application/json",
+        },
+        body: method === "PATCH" ? '{"paused":true}' : undefined,
+      });
+      expect([method, res.status]).toEqual([method, 401]);
+    }
   });
 
   test("screen's POST is a read, held to the write check", async () => {
@@ -282,12 +295,12 @@ describe("what the cookie opens", () => {
     const passed = async (headers: Record<string, string>) => {
       const res = await screen(headers);
       const body = (await res.json()) as {
-        items: { input: string; error?: string }[];
+        matches: { input: string; error?: object }[];
       };
-      const item = body.items[0]!;
+      const item = body.matches[0]!;
       return [res.status, item.input, typeof item.error];
     };
-    const answered = [200, "US:NOPE", "string"];
+    const answered = [200, "US:NOPE", "object"];
     expect(await passed({ "sec-fetch-site": "same-origin" })).toEqual(answered);
     expect((await screen({ "sec-fetch-site": "cross-site" })).status).toBe(403);
     // without Sec-Fetch-Site the Origin decides
@@ -319,7 +332,7 @@ describe("what the cookie opens", () => {
     const status = async (token: string) =>
       (
         await handle(
-          new Request(`http://127.0.0.1:1${PREFIX}/admin/status`, {
+          new Request(`http://127.0.0.1:1${PREFIX}/status`, {
             headers: { cookie: `${COOKIE}=${token}` },
           }),
         )
@@ -335,24 +348,32 @@ describe("what the cookie opens", () => {
   test("a write by cookie needs the server's own Origin", async () => {
     const t = setup();
     const cookie = `${COOKIE}=${await t.cookie()}`;
-    const refetch = (headers: Record<string, string>) =>
-      t.at(`${PREFIX}/admin/refetch`, {
-        method: "POST",
-        headers: { cookie, "content-type": "application/json", ...headers },
-        body: JSON.stringify({ symbols: ["US:NOPE"], fetch: ["quotes"] }),
-      });
-    for (const origin of [null, "http://evil.example", "null"]) {
-      const res = await refetch(origin === null ? {} : { origin });
-      expect([origin, res.status]).toEqual([origin, 403]);
-      expect(await res.json()).toEqual({
-        error: "forbidden",
-        message: "forbidden",
-      });
+    // past the check, the route answers the instrument it does not hold
+    const refetch = (headers: Record<string, string>, method = "POST") =>
+      t.at(
+        `${PREFIX}/instruments/US:NOPE${method === "POST" ? "/refetch" : ""}`,
+        {
+          method,
+          headers: { cookie, "content-type": "application/json", ...headers },
+          body:
+            method === "POST" ? JSON.stringify({ parts: ["quotes"] }) : null,
+        },
+      );
+    for (const method of ["POST", "DELETE"]) {
+      for (const origin of [null, "http://evil.example", "null"]) {
+        const res = await refetch(origin === null ? {} : { origin }, method);
+        expect([method, origin, res.status]).toEqual([method, origin, 403]);
+        expect(await res.json()).toMatchObject({
+          status: 403,
+          code: "forbidden",
+        });
+      }
+      const res = await refetch({ origin: "http://127.0.0.1:1" }, method);
+      expect([method, res.status]).toEqual([method, 404]);
     }
-    expect((await refetch({ origin: "http://127.0.0.1:1" })).status).toBe(200);
     // behind a proxy that rewrote Host to loopback, the browser's word holds
     for (const [site, status] of [
-      ["same-origin", 200],
+      ["same-origin", 404],
       ["cross-site", 403],
       ["same-site", 403],
     ] as const) {
@@ -366,15 +387,15 @@ describe("what the cookie opens", () => {
       403,
     );
     // the admin key alone needs no Origin, as a script sends none
-    const keyed = await t.at(`${PREFIX}/admin/refetch`, {
+    const keyed = await t.at(`${PREFIX}/instruments/US:NOPE/refetch`, {
       method: "POST",
       headers: {
         authorization: `Bearer ${ADMIN_KEY}`,
         "content-type": "application/json",
       },
-      body: JSON.stringify({ symbols: ["US:NOPE"], fetch: ["quotes"] }),
+      body: JSON.stringify({ parts: ["quotes"] }),
     });
-    expect(keyed.status).toBe(200);
+    expect(keyed.status).toBe(404);
   });
 
   test("with the UI off there is no sign-in and the cookie opens nothing", () =>
@@ -387,7 +408,7 @@ describe("what the cookie opens", () => {
       expect(res.status).toBe(401);
       expect(res.headers.get("set-cookie")).toBeNull();
       const token = sessions(admin).issue(NOW);
-      const status = await fetch(`${url}${PREFIX}/admin/status`, {
+      const status = await fetch(`${url}${PREFIX}/status`, {
         headers: { cookie: `${COOKIE}=${token}` },
       });
       expect(status.status).toBe(401);
@@ -433,7 +454,7 @@ describe("the served UI", () => {
           body: JSON.stringify({ key: admin }),
         });
         expect(signed.status).toBe(204);
-        const status = await fetch(`${url}${PREFIX}/admin/status`, {
+        const status = await fetch(`${url}${PREFIX}/status`, {
           headers: { cookie: `${COOKIE}=${tokenOf(signed)}` },
         });
         expect(status.status).toBe(200);
@@ -472,8 +493,8 @@ describe("the served UI", () => {
             body,
           });
         }
-        await read("/api/v1/admin/status");
-        await read("/api/v1/admin/instruments");
+        await read("/api/v1/status");
+        await read("/api/v1/instruments");
         const ui = seen.length;
         await read("/api/v1/openapi.json");
         expect(flagsIn(JSON.parse(seen.at(-1)!))).toEqual([]);

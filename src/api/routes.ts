@@ -1,14 +1,16 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-// Nothing is paged: a script that never follows a cursor loses what is past it.
+// Only the stored list pages: a script that never follows a cursor loses
+// what is past it.
 
 import {
   type AdminDeps,
-  adminDelete,
-  adminInstrument,
-  adminInstruments,
-  adminRefetch,
-  adminStatus,
+  deleteOne,
+  instrument,
+  instruments,
+  refetchOne,
+  status,
+  watchlist,
 } from "../admin/http.ts";
 import { iso, price } from "../market/format.ts";
 import { localDate } from "../market/zone.ts";
@@ -36,17 +38,22 @@ import {
 import { parseScreen, readScreen } from "../operations/screen.ts";
 import { parseSearch, searchAll } from "../operations/search.ts";
 import { setAll } from "../operations/sets.ts";
-import { readRules } from "../rules/store.ts";
+import type { TrackState } from "../operations/track.ts";
+import { readRule, readRules } from "../rules/store.ts";
 import { errorFields, type Log } from "../runtime/log.ts";
 import { NO_EVENTS } from "../sources/finnhub/store.ts";
 import { ATTRIBUTION } from "../sources/fred/sync.ts";
 import { ASSET_CACHE, DOC_FILES, docsFile, docsPage } from "./docs.ts";
 import {
-  failed,
+  itemOf,
   json,
   MAX_BODY_BYTES,
   NO_STORE,
   noQuery,
+  PREFIX,
+  pathSymbol,
+  problem,
+  problemOf,
   queryArgs,
   readBody,
 } from "./http.ts";
@@ -54,15 +61,18 @@ import { spec } from "./openapi.ts";
 
 export type Method = "GET" | "POST" | "PATCH" | "DELETE";
 
-// read: the bearer; admin: the admin key alone; none: served before
-// either, since it holds no data and a browser opening it sends no key
-export type Key = "read" | "admin" | "none";
+// read: the read key, or the admin key, which holds every scope; admin:
+// the admin key alone; none: served before either, since it holds no data
+// and a browser opening it sends no key
+export type Scope = "read" | "admin" | "none";
 
 export type Route = {
   method: Method;
   // {name} matches one path segment
   path: string;
-  key: Key;
+  scope: Scope;
+  // the web UI's cookie opens every route but these, the rules writes
+  cookie?: false;
   values?: Record<string, readonly string[]>;
   handle: (
     req: Request,
@@ -74,8 +84,9 @@ export type Route = {
 export type ApiDeps = {
   m: Markets;
   alerts: (req: Request) => Promise<Response>;
-  // null without an admin key
-  admin: AdminDeps | null;
+  admin: AdminDeps;
+  // each --track value and what it resolved to
+  track: () => readonly TrackState[];
   log: Log;
 };
 
@@ -118,22 +129,25 @@ function brief(
   };
 }
 
-// a point is not a daily bar, so it has its own schema
+// a point is a close, not a bar, so it has its own schema
 async function intraday(
   m: Markets,
   args: Parameters<typeof readIntradayHistory>[1],
 ): Promise<Response> {
   const read = await readIntradayHistory(m, args, null);
-  if ("error" in read) return failed({ input: read.input, ...read.error });
+  if ("error" in read) return problemOf({ input: read.input, ...read.error });
   const i = read.instrument;
   return json({
-    id: i.id,
-    name: i.name,
-    exchange: i.exchange,
-    type: i.type,
-    currency: i.currency,
-    unit: i.unit,
-    source: i.source,
+    input: args.symbol,
+    instrument: {
+      id: i.id,
+      name: i.name,
+      exchange: i.exchange,
+      type: i.type,
+      currency: i.currency,
+      unit: i.unit,
+      source: i.source,
+    },
     stale: read.stale,
     from: read.from,
     to: read.to,
@@ -154,12 +168,77 @@ async function intraday(
   });
 }
 
-function reads(m: Markets): Route[] {
+async function bars(m: Markets, url: URL, raw: string): Promise<Response> {
+  const args = parseHistory({
+    ...queryArgs(url, {
+      interval: "text",
+      from: "text",
+      to: "text",
+      benchmark: "text",
+      extended: "boolean",
+    }),
+    symbol: pathSymbol(raw),
+  });
+  if (args.interval === "5m") return intraday(m, args);
+  const read = await readHistory(m, args, null);
+  if ("error" in read) return problemOf({ input: read.input, ...read.error });
+  const i = read.instrument;
+  // a range ending today or later still takes the next live bar
+  const final =
+    args.to !== null &&
+    args.to < localDate(i.zone, m.clock.now()) &&
+    args.benchmark === null &&
+    read.bars.length > 0 &&
+    read.bars.every((b) => b.final);
+  return json(
+    {
+      input: args.symbol,
+      instrument: {
+        id: i.id,
+        name: i.name,
+        exchange: i.exchange,
+        type: i.type,
+        currency: i.currency,
+        unit: i.unit,
+        source: i.source,
+        basis: basisOf(i),
+      },
+      stale: read.stale,
+      ...(read.attribution ? { attribution: ATTRIBUTION } : {}),
+      from: read.from,
+      to: read.to,
+      session: read.session,
+      interval: args.interval,
+      ...(read.relative === null ? {} : { relative: read.relative }),
+      bars: read.bars.map((b) => ({
+        date: b.date,
+        open: price(b.open),
+        high: price(b.high),
+        low: price(b.low),
+        close: price(b.close),
+        volume: b.volume,
+        final: b.final,
+        sma50: (b.row?.sma50 as number | null | undefined) ?? null,
+        sma200: (b.row?.sma200 as number | null | undefined) ?? null,
+      })),
+    },
+    200,
+    final ? { "cache-control": FINAL_CACHE } : NO_STORE,
+  );
+}
+
+// a set's items, each a match, unavailable or its error, under its own name
+function set(read: object, name: string) {
+  const { items, ...rest } = read as { items: object[] };
+  return { ...rest, [name]: items.map(itemOf) };
+}
+
+function marketData(m: Markets): Route[] {
   return [
     {
       method: "GET",
       path: "/quotes",
-      key: "read",
+      scope: "read",
       handle: async (_req, url) => {
         const args = parseQuote(
           queryArgs(url, { symbols: "list", extended: "boolean" }),
@@ -169,88 +248,25 @@ function reads(m: Markets): Route[] {
         );
         return json({
           ...(rows.some((r) => r.fred) ? { attribution: ATTRIBUTION } : {}),
-          items: rows.map((r) => r.item),
+          quotes: rows.map((r) => itemOf(r.item)),
         });
       },
     },
     {
       method: "GET",
-      path: "/history",
-      key: "read",
+      path: "/research",
+      scope: "read",
       handle: async (_req, url) => {
-        const { ohlc, ...rest } = queryArgs(url, {
-          symbol: "text",
-          interval: "text",
-          from: "text",
-          to: "text",
-          benchmark: "text",
-          ohlc: "boolean",
-          extended: "boolean",
-        });
-        // a chart's candles and volume; the tools' bars stay close only,
-        // so an agent's page holds more of them
-        const full = ohlc === true;
-        const args = parseHistory(rest);
-        if (args.interval === "5m") {
-          if (ohlc !== undefined) {
-            throw new ArgError("ohlc is not taken with interval 5m");
-          }
-          return intraday(m, args);
-        }
-        const read = await readHistory(m, args, null);
-        if ("error" in read) {
-          return failed({ input: read.input, ...read.error });
-        }
-        const i = read.instrument;
-        // a range ending today or later still takes the next live bar
-        const final =
-          args.to !== null &&
-          args.to < localDate(i.zone, m.clock.now()) &&
-          args.benchmark === null &&
-          read.bars.length > 0 &&
-          read.bars.every((b) => b.final);
-        return json(
-          {
-            id: i.id,
-            name: i.name,
-            exchange: i.exchange,
-            type: i.type,
-            currency: i.currency,
-            unit: i.unit,
-            source: i.source,
-            basis: basisOf(i),
-            stale: read.stale,
-            ...(read.attribution ? { attribution: ATTRIBUTION } : {}),
-            from: read.from,
-            to: read.to,
-            session: read.session,
-            interval: args.interval,
-            ...(read.relative === null ? {} : { relative: read.relative }),
-            bars: read.bars.map((b) => ({
-              date: b.date,
-              ...(full
-                ? {
-                    open: price(b.open),
-                    high: price(b.high),
-                    low: price(b.low),
-                  }
-                : {}),
-              close: price(b.close),
-              ...(full ? { volume: b.volume } : {}),
-              final: b.final,
-              sma50: (b.row?.sma50 as number | null | undefined) ?? null,
-              sma200: (b.row?.sma200 as number | null | undefined) ?? null,
-            })),
-          },
-          200,
-          final ? { "cache-control": FINAL_CACHE } : NO_STORE,
+        const args = parseResearchList(
+          queryArgs(url, { symbols: "list", sections: "list", since: "text" }),
         );
+        return json({ research: (await researchList(m, args)).map(itemOf) });
       },
     },
     {
       method: "GET",
-      path: "/search",
-      key: "read",
+      path: "/symbols",
+      scope: "read",
       handle: async (_req, url) => {
         const args = parseSearch(queryArgs(url, { query: "text" }));
         const { notes, all } = await searchAll(m, args.query);
@@ -263,19 +279,8 @@ function reads(m: Markets): Route[] {
     },
     {
       method: "GET",
-      path: "/research",
-      key: "read",
-      handle: async (_req, url) => {
-        const args = parseResearchList(
-          queryArgs(url, { symbols: "list", sections: "list", since: "text" }),
-        );
-        return json(await researchList(m, args));
-      },
-    },
-    {
-      method: "GET",
-      path: "/events",
-      key: "read",
+      path: "/earnings",
+      scope: "read",
       handle: async (_req, url) => {
         const args = parseEvents(
           queryArgs(url, { from: "text", to: "text", symbols: "list" }),
@@ -286,7 +291,7 @@ function reads(m: Markets): Route[] {
             from: args.from,
             to: args.to,
             message: NO_EVENTS,
-            events: [],
+            earnings: [],
           });
         }
         return json({
@@ -295,14 +300,14 @@ function reads(m: Markets): Route[] {
           source: "finnhub",
           ...(read.notes.length > 0 ? { unavailable: read.notes } : {}),
           ...(read.quiet.length > 0 ? { no_event: read.quiet } : {}),
-          events: read.events.map((e) => e.item),
+          earnings: read.events.map((e) => e.item),
         });
       },
     },
     {
       method: "GET",
       path: "/movers",
-      key: "read",
+      scope: "read",
       handle: async (_req, url) => {
         const args = parseMovers(
           queryArgs(url, {
@@ -313,26 +318,44 @@ function reads(m: Markets): Route[] {
             relation: "text",
           }),
         );
-        return json(setAll(await readMovers(m, args)));
+        return json(set(setAll(await readMovers(m, args)), "movers"));
       },
     },
     {
       method: "POST",
       path: "/screen",
-      key: "read",
+      scope: "read",
       handle: async (req, url) => {
         noQuery(url);
         const read = await bodyOf(req);
         if (read instanceof Response) return read;
-        const set = await readScreen(m, parseScreen(read.body));
-        if ("error" in set) return failed(set);
-        return json(setAll(set));
+        const screened = await readScreen(m, parseScreen(read.body));
+        if ("error" in screened) return problemOf(screened);
+        return json(set(setAll(screened), "matches"));
       },
     },
     {
       method: "GET",
+      path: "/instruments/{symbol}/bars",
+      scope: "read",
+      handle: (_req, url, params) => bars(m, url, params.symbol!),
+    },
+    {
+      method: "GET",
+      path: "/instruments/{symbol}",
+      scope: "read",
+      handle: (_req, url, params) => instrument(m, url, params.symbol!),
+    },
+  ];
+}
+
+function rules(m: Markets): Route[] {
+  const noRule = (id: number) => problem("not_found", `no rule ${id}`);
+  return [
+    {
+      method: "GET",
       path: "/rules",
-      key: "read",
+      scope: "read",
       handle: async (_req, url) => {
         noQuery(url);
         return json({ rules: readRules(m.db).map((r) => ruleItem(m, r)) });
@@ -341,7 +364,8 @@ function reads(m: Markets): Route[] {
     {
       method: "POST",
       path: "/rules",
-      key: "read",
+      scope: "read",
+      cookie: false,
       handle: async (req, url) => {
         noQuery(url);
         const read = await bodyOf(req);
@@ -350,14 +374,30 @@ function reads(m: Markets): Route[] {
         const args = parseRules({ ...body, action: "create" });
         if (args.action !== "create") throw new Error("not a create");
         const made = await createRule(m, args);
-        if ("error" in made) return failed(made);
-        return json(made, 201);
+        if ("error" in made) return problemOf(made);
+        return json(made, 201, {
+          ...NO_STORE,
+          location: `${PREFIX}/rules/${made.rule.id}`,
+        });
+      },
+    },
+    {
+      method: "GET",
+      path: "/rules/{id}",
+      scope: "read",
+      handle: async (_req, url, params) => {
+        noQuery(url);
+        const id = ruleId(params.id!);
+        const rule = readRule(m.db, id);
+        if (rule === null) return noRule(id);
+        return json({ rule: ruleItem(m, rule) });
       },
     },
     {
       method: "PATCH",
       path: "/rules/{id}",
-      key: "read",
+      scope: "read",
+      cookie: false,
       handle: async (req, url, params) => {
         noQuery(url);
         const id = ruleId(params.id!);
@@ -367,39 +407,86 @@ function reads(m: Markets): Route[] {
         const args = parseRules({ ...body, action: "pause", id });
         if (args.action !== "pause") throw new Error("not a pause");
         const done = await pauseRule(m, args);
-        if ("error" in done) return failed(done);
+        if ("error" in done) return problemOf(done);
         return json(done);
       },
     },
     {
       method: "DELETE",
       path: "/rules/{id}",
-      key: "read",
+      scope: "read",
+      cookie: false,
       handle: async (_req, url, params) => {
         noQuery(url);
         const done = await deleteRuleById(m, ruleId(params.id!));
-        if ("error" in done) return failed(done);
+        if ("error" in done) return problemOf(done);
         return new Response(null, { status: 204, headers: NO_STORE });
       },
     },
   ];
 }
 
-export function routes(deps: ApiDeps): Route[] {
-  const { admin } = deps;
-  const body = JSON.stringify(spec);
-  const list: Route[] = [
-    ...reads(deps.m),
+function operator(
+  admin: AdminDeps,
+  track: () => readonly TrackState[],
+): Route[] {
+  const { m } = admin;
+  return [
     {
       method: "GET",
-      path: "/alerts",
-      key: "read",
-      handle: (req) => deps.alerts(req),
+      path: "/watchlist",
+      scope: "read",
+      handle: async (_req, url) => watchlist(m, track, url),
     },
     {
       method: "GET",
+      path: "/status",
+      scope: "admin",
+      handle: async (_req, url) => status(admin, url),
+    },
+    {
+      method: "GET",
+      path: "/instruments",
+      scope: "admin",
+      handle: async (_req, url) => instruments(m, url),
+    },
+    {
+      method: "DELETE",
+      path: "/instruments/{symbol}",
+      scope: "admin",
+      handle: (_req, url, params) => deleteOne(admin, url, params.symbol!),
+    },
+    {
+      method: "POST",
+      path: "/instruments/{symbol}/refetch",
+      scope: "admin",
+      handle: (req, url, params) => refetchOne(admin, req, url, params.symbol!),
+    },
+  ];
+}
+
+export function routes(deps: ApiDeps): Route[] {
+  // REST's bare symbol is Yahoo's, so a Yahoo export's symbols read as written
+  const m: Markets = { ...deps.m, yahooFirst: true };
+  const admin: AdminDeps = {
+    ...deps.admin,
+    m: { ...deps.admin.m, yahooFirst: true },
+  };
+  const body = JSON.stringify(spec);
+  const list: Route[] = [
+    ...marketData(m),
+    ...rules(m),
+    {
+      method: "GET",
+      path: "/alerts",
+      scope: "read",
+      handle: (req) => deps.alerts(req),
+    },
+    ...operator(admin, deps.track),
+    {
+      method: "GET",
       path: "/openapi.json",
-      key: "none",
+      scope: "none",
       handle: async (_req, url) => {
         noQuery(url);
         return new Response(body, {
@@ -413,13 +500,13 @@ export function routes(deps: ApiDeps): Route[] {
     {
       method: "GET",
       path: "/docs",
-      key: "none",
+      scope: "none",
       handle: async () => docsPage(),
     },
     {
       method: "GET",
       path: "/docs/{file}",
-      key: "none",
+      scope: "none",
       values: { file: DOC_FILES },
       handle: async (_req, url, params) => {
         queryArgs(url, { h: "text" });
@@ -427,40 +514,6 @@ export function routes(deps: ApiDeps): Route[] {
       },
     },
   ];
-  if (admin !== null) {
-    list.push(
-      {
-        method: "GET",
-        path: "/admin/status",
-        key: "admin",
-        handle: async (_req, url) => adminStatus(admin, url),
-      },
-      {
-        method: "GET",
-        path: "/admin/instruments",
-        key: "admin",
-        handle: async (_req, url) => adminInstruments(admin, url),
-      },
-      {
-        method: "POST",
-        path: "/admin/refetch",
-        key: "admin",
-        handle: (req, url) => adminRefetch(admin, req, url),
-      },
-      {
-        method: "GET",
-        path: "/admin/instruments/{id}",
-        key: "admin",
-        handle: (_req, url, params) => adminInstrument(admin, url, params.id!),
-      },
-      {
-        method: "DELETE",
-        path: "/admin/instruments/{id}",
-        key: "admin",
-        handle: (_req, url, params) => adminDelete(admin, url, params.id!),
-      },
-    );
-  }
   // other errors are logged and answered without text that can quote a source
   return list.map((r) => ({
     ...r,
@@ -469,13 +522,13 @@ export function routes(deps: ApiDeps): Route[] {
         return await r.handle(req, url, params);
       } catch (error) {
         if (error instanceof ArgError) {
-          return failed({ error: "bad_arguments", message: error.message });
+          return problem("bad_arguments", error.message);
         }
         deps.log.error("api failed", {
           path: `${r.method} ${r.path}`,
           ...errorFields(error),
         });
-        return failed({ error: "internal", message: "internal error" });
+        return problem("internal", "internal error");
       }
     },
   }));

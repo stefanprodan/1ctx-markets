@@ -1,15 +1,24 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-// May face the internet: admin key only, strict input, errors echo nothing.
+// May face the internet: strict input, errors echo nothing a source said.
 
-import { failed, json, queryArgs, readBody } from "../api/http.ts";
+import {
+  json,
+  NO_STORE,
+  noQuery,
+  pathSymbol,
+  problem,
+  problemOf,
+  queryArgs,
+  readBody,
+} from "../api/http.ts";
 import { iso } from "../market/format.ts";
-import { type Instrument, readInstrument } from "../market/instruments.ts";
+import { readInstrument } from "../market/instruments.ts";
 import { trackedIds } from "../market/tracking.ts";
-import { ArgError as QueryError } from "../operations/args.ts";
+import { ArgError, fields } from "../operations/args.ts";
 import type { Markets } from "../operations/markets.ts";
-import { parseQuote, quoteRows } from "../operations/quote.ts";
-import type { ErrorItem } from "../operations/targets.ts";
+import { parseQuote, quoteRows, sessionOf } from "../operations/quote.ts";
+import { type ErrorItem, restStored } from "../operations/targets.ts";
 import type { TrackState } from "../operations/track.ts";
 import { instrumentsOf } from "../rules/format.ts";
 import { readRules, ruleInstruments } from "../rules/store.ts";
@@ -29,7 +38,6 @@ import {
 } from "./refetch.ts";
 
 export const MAX_BODY_BYTES = 16 * 1024;
-export const MAX_SYMBOLS = 20;
 // a page of the stored list: a screen of rows, quoted a page at a time
 export const DEFAULT_PAGE = 50;
 export const MAX_PAGE = 200;
@@ -63,13 +71,7 @@ export type AdminDeps = {
   m: Markets;
   version: string;
   sources: readonly SourceState[];
-  // each --track value and what it resolved to
-  track: () => readonly TrackState[];
 };
-
-const bad = (message: string) => failed({ error: "bad_arguments", message });
-
-class ArgError extends Error {}
 
 // names for people, sent only to a signed-in page so the public bundle
 // names no source
@@ -286,43 +288,39 @@ function jobs(db: Db) {
 const count = (db: Db, sql: string): number =>
   (db.query(sql).get() as { n: number }).n;
 
-export function adminStatus(d: AdminDeps, url: URL): Response {
-  if (url.search !== "") return bad("status takes no arguments");
+export function status(d: AdminDeps, url: URL): Response {
+  noQuery(url);
   const { db, clock } = d.m;
   const now = clock.now();
-  return json(
-    {
-      version: d.version,
-      sources: d.sources.map((s) => {
-        const b = s.on ? s.backoff() : null;
-        return {
-          name: s.name,
-          label: SOURCE_LABELS[s.name] ?? s.name,
-          short: SOURCE_SHORT[s.name] ?? s.name,
-          mark: SOURCE_MARKS[s.name] ?? s.name.slice(0, 2).toUpperCase(),
-          key:
-            s.name in SOURCE_KEYS
-              ? {
-                  file: `secrets/${sourceFile(s.name)}`,
-                  ...SOURCE_KEYS[s.name],
-                }
-              : null,
-          state: s.on ? "on" : "off",
-          why: s.why,
-          backing_off:
-            b === null ? null : { until: iso(b.until), after: b.after },
-        };
-      }),
-      jobs: jobs(db),
-      instruments: count(db, "select count(*) as n from instruments"),
-      tracked: trackedIds(db, now, d.m.tracking).size,
-      track: d.track(),
-      database_bytes:
-        count(db, "select page_count as n from pragma_page_count()") *
-        count(db, "select page_size as n from pragma_page_size()"),
-    },
-    200,
-  );
+  return json({
+    version: d.version,
+    sources: d.sources.map((s) => {
+      const b = s.on ? s.backoff() : null;
+      return {
+        name: s.name,
+        label: SOURCE_LABELS[s.name] ?? s.name,
+        short: SOURCE_SHORT[s.name] ?? s.name,
+        mark: SOURCE_MARKS[s.name] ?? s.name.slice(0, 2).toUpperCase(),
+        key:
+          s.name in SOURCE_KEYS
+            ? {
+                file: `secrets/${sourceFile(s.name)}`,
+                ...SOURCE_KEYS[s.name],
+              }
+            : null,
+        state: s.on ? "on" : "off",
+        why: s.why,
+        backing_off:
+          b === null ? null : { until: iso(b.until), after: b.after },
+      };
+    }),
+    jobs: jobs(db),
+    instruments: count(db, "select count(*) as n from instruments"),
+    tracked: trackedIds(db, now, d.m.tracking).size,
+    database_bytes:
+      count(db, "select page_count as n from pragma_page_count()") *
+      count(db, "select page_size as n from pragma_page_size()"),
+  });
 }
 
 type Stored = {
@@ -342,29 +340,33 @@ type Stored = {
 };
 
 function parseList(url: URL) {
-  const q = queryArgs(url, { query: "text", after: "text", limit: "number" });
+  const q = queryArgs(url, {
+    query: "text",
+    page_size: "number",
+    page_token: "text",
+  });
   const query = q.query === undefined ? "" : String(q.query).trim();
   if (query.length > MAX_QUERY) {
-    throw new QueryError(`query is at most ${MAX_QUERY} characters`);
+    throw new ArgError(`query is at most ${MAX_QUERY} characters`);
   }
   let after: string | null = null;
-  if (q.after !== undefined) {
-    if (!KEY.test(String(q.after))) {
-      throw new QueryError("after is a stored instrument id");
+  if (q.page_token !== undefined) {
+    if (!KEY.test(String(q.page_token))) {
+      throw new ArgError("page_token is a next_page_token answered before");
     }
-    after = String(q.after).toUpperCase();
+    after = String(q.page_token).toUpperCase();
   }
-  const limit = (q.limit as number | undefined) ?? DEFAULT_PAGE;
-  if (!Number.isInteger(limit) || limit < 1 || limit > MAX_PAGE) {
-    throw new QueryError(`limit is a whole number from 1 to ${MAX_PAGE}`);
+  const size = (q.page_size as number | undefined) ?? DEFAULT_PAGE;
+  if (!Number.isInteger(size) || size < 1 || size > MAX_PAGE) {
+    throw new ArgError(`page_size is a whole number from 1 to ${MAX_PAGE}`);
   }
-  return { query, after, limit };
+  return { query, after, size };
 }
 
 // by id, after the last one a page answered, so a delete never skips a row
-export function adminInstruments(d: AdminDeps, url: URL): Response {
-  const { query, after, limit } = parseList(url);
-  const { db, clock } = d.m;
+export function instruments(m: Markets, url: URL): Response {
+  const { query, after, size } = parseList(url);
+  const { db, clock } = m;
   const now = clock.now();
   const where =
     "(?1 = '' or instr(lower(i.id), lower(?1)) > 0 or instr(lower(coalesce(i.name, '')), lower(?1)) > 0)";
@@ -379,17 +381,17 @@ export function adminInstruments(d: AdminDeps, url: URL): Response {
     .query<Stored, [string, string, number]>(
       `${STORED} where ${where} and i.id > ?2 order by i.id limit ?3`,
     )
-    .all(query, after ?? "", limit + 1);
-  const row = listRow(d.m, ruleInstruments(db), now);
-  const page = rows.slice(0, limit);
+    .all(query, after ?? "", size + 1);
+  const row = listRow(m, ruleInstruments(db), now);
+  const page = rows.slice(0, size);
   return json({
     // FRED's terms, wherever a page shows one of its values
     ...(page.some((r) => r.source === FRED)
       ? { attribution: ATTRIBUTION }
       : {}),
     total,
-    more: rows.length > limit,
     instruments: page.map(row),
+    ...(rows.length > size ? { next_page_token: page.at(-1)!.id } : {}),
   });
 }
 
@@ -405,6 +407,9 @@ const STORED = `select i.id, i.name, i.market, i.exchange, i.currency,
   left join bars b on b.instrument = i.id and b.interval = '1d'
     and b.date = (select max(date) from bars
       where instrument = i.id and interval = '1d')`;
+
+const storedRow = (db: Db, id: string): Stored | null =>
+  db.query<Stored, [string]>(`${STORED} where i.id = ?1`).get(id);
 
 const listRow =
   (m: Markets, ruled: ReadonlySet<string>, now: number) => (r: Stored) => {
@@ -435,61 +440,87 @@ const listRow =
     };
   };
 
-// one stored instrument and its quote as the tools give it, returns and
-// session included: opening it is a read, so it fetches when due and
-// keeps it tracked, as any client's read does
-export async function adminInstrument(
-  d: AdminDeps,
-  url: URL,
-  raw: string,
-): Promise<Response> {
-  if (url.search !== "") return bad("an instrument takes no arguments");
-  let id: string;
-  try {
-    id = keyOf(decodeURIComponent(raw));
-  } catch {
-    return bad("the path ends with a stored instrument id");
-  }
-  if (readInstrument(d.m.db, id) === null) {
-    return failed({ error: "not_found", message: "no such instrument" });
-  }
+// a read, as any client's: an unknown symbol is fetched
+export async function instrument(m: Markets, url: URL, raw: string) {
+  noQuery(url);
+  const input = pathSymbol(raw);
   // pre or post trading beside the close, as a chart site shows it
   const { rows } = await quoteRows(
-    d.m,
-    parseQuote({ symbols: [id], extended: true }),
+    m,
+    parseQuote({ symbols: [input], extended: true }),
   );
-  const now = d.m.clock.now();
-  const stored = d.m.db
-    .query<Stored, [string]>(`${STORED} where i.id = ?1`)
-    .get(id);
-  // deleted while the quote was read
-  if (stored === null) {
-    return failed({ error: "not_found", message: "no such instrument" });
-  }
-  // a read that failed (a source down, the deadline) keeps the stored row:
-  // the quote is null and its error says why
-  const item = rows[0]!.item;
+  const item = rows[0]!.item as Record<string, unknown>;
   const failure = "error" in item ? (item as ErrorItem) : null;
+  // only the row this input names, so a failure never shows another listing
+  const id =
+    failure === null
+      ? (item.id as string)
+      : failure.error === "candidates"
+        ? null
+        : (restStored(m.db, input, m.bvb !== null, false)?.id ?? null);
+  const stored = id === null ? null : storedRow(m.db, id);
+  if (stored === null) {
+    return failure === null
+      ? problem("not_found", "no such instrument", { input })
+      : problemOf(failure);
+  }
   return json({
+    input,
     ...(stored.source === FRED ? { attribution: ATTRIBUTION } : {}),
     credit: creditOf(stored.source),
-    instrument: listRow(d.m, ruleInstruments(d.m.db), now)(stored),
+    instrument: listRow(m, ruleInstruments(m.db), m.clock.now())(stored),
     quote: failure === null ? item : null,
     error:
       failure === null
         ? null
-        : { error: failure.error, message: failure.message },
+        : { code: failure.error, detail: failure.message },
   });
 }
 
-const keyOf = (value: unknown): string => {
-  if (typeof value !== "string" || !KEY.test(value)) {
+// no read: a read stamp would keep a value dropped from the flag tracked
+export function watchlist(
+  m: Markets,
+  track: () => readonly TrackState[],
+  url: URL,
+): Response {
+  noQuery(url);
+  const now = m.clock.now();
+  const row = listRow(m, ruleInstruments(m.db), now);
+  const entries = track().map((t) => ({
+    t,
+    stored: t.id === null ? null : storedRow(m.db, t.id),
+    i: t.id === null ? null : readInstrument(m.db, t.id),
+  }));
+  return json({
+    ...(entries.some((e) => e.stored?.source === FRED)
+      ? { attribution: ATTRIBUTION }
+      : {}),
+    entries: entries.map(({ t, stored, i }) => ({
+      value: t.value,
+      id: t.id,
+      state: t.state,
+      instrument: stored === null ? null : row(stored),
+      session: i === null ? null : sessionOf(m, i, now),
+    })),
+  });
+}
+
+// a stored instrument only, so nothing is resolved, fetched or added
+function storedOf(m: Markets, raw: string) {
+  const input = pathSymbol(raw);
+  if (!KEY.test(input)) {
     throw new ArgError(
-      "a symbol is a stored instrument id of at most 64 letters, digits and . ^ = : _ & -",
+      "the path names a symbol or id of at most 64 letters, digits and . ^ = : _ & -",
     );
   }
-  return value.toUpperCase();
-};
+  return {
+    input,
+    instrument: restStored(m.db, input, m.bvb !== null, true),
+  };
+}
+
+const noInstrument = (input: string) =>
+  problem("not_found", "no such instrument", { input });
 
 function list<T extends string>(
   value: unknown,
@@ -508,31 +539,11 @@ function list<T extends string>(
   return known.filter((k) => value.includes(k));
 }
 
-type RefetchArgs = {
-  symbols: string[];
-  parts: Part[];
-  sections: ResearchSection[];
-};
+type RefetchArgs = { parts: Part[]; sections: ResearchSection[] };
 
 function parseRefetch(body: unknown): RefetchArgs {
-  if (typeof body !== "object" || body === null || Array.isArray(body)) {
-    throw new ArgError("the body is a JSON object");
-  }
-  const b = body as Record<string, unknown>;
-  for (const k of Object.keys(b)) {
-    if (!["symbols", "fetch", "sections"].includes(k)) {
-      throw new ArgError("the body takes symbols, fetch and sections only");
-    }
-  }
-  if (
-    !Array.isArray(b.symbols) ||
-    b.symbols.length === 0 ||
-    b.symbols.length > MAX_SYMBOLS
-  ) {
-    throw new ArgError(`symbols is a list of 1 to ${MAX_SYMBOLS} ids`);
-  }
-  const symbols = [...new Set(b.symbols.map(keyOf))];
-  const parts = list(b.fetch, PARTS, "fetch");
+  const b = fields(body, ["parts", "sections"]);
+  const parts = list(b.parts, PARTS, "parts");
   let sections: ResearchSection[] = [...RESEARCH_SECTIONS];
   if (b.sections !== undefined) {
     if (!parts.includes("research")) {
@@ -540,88 +551,61 @@ function parseRefetch(body: unknown): RefetchArgs {
     }
     sections = list(b.sections, RESEARCH_SECTIONS, "sections");
   }
-  return { symbols, parts, sections };
+  return { parts, sections };
 }
 
-export async function adminRefetch(
+export async function refetchOne(
   d: AdminDeps,
   req: Request,
   url: URL,
+  raw: string,
 ): Promise<Response> {
-  if (url.search !== "") return bad("refetch takes its arguments in the body");
+  noQuery(url);
+  const { input, instrument } = storedOf(d.m, raw);
   const read = await readBody(req, MAX_BODY_BYTES);
   if (read instanceof Response) return read;
-  let args: RefetchArgs;
-  try {
-    args = parseRefetch(read.body);
-  } catch (error) {
-    if (error instanceof ArgError) return bad(error.message);
-    throw error;
-  }
-  const found: Instrument[] = [];
-  const missing: string[] = [];
-  for (const id of args.symbols) {
-    const i = readInstrument(d.m.db, id);
-    if (i === null) missing.push(id);
-    else found.push(i);
-  }
-  const results = await refetch(d.m, found, {
-    parts: args.parts,
-    sections: args.sections,
+  const args = parseRefetch(read.body);
+  if (instrument === null) return noInstrument(input);
+  const results = await refetch(d.m, [instrument], args);
+  return json({
+    input,
+    id: instrument.id,
+    parts: results.map(({ symbol: _, ...r }) => r),
   });
-  return json(
-    {
-      results: [
-        ...missing.map((symbol) => ({ symbol, status: "not found" })),
-        ...results,
-      ],
-    },
-    200,
-  );
 }
 
 // every row of one instrument in one write, never another's; a rule
 // reading it holds it, as tracking does
-export async function adminDelete(
+export async function deleteOne(
   d: AdminDeps,
   url: URL,
   raw: string,
 ): Promise<Response> {
-  if (url.search !== "") return bad("delete takes no arguments");
-  let id: string;
-  try {
-    id = keyOf(decodeURIComponent(raw));
-  } catch {
-    return bad("the path ends with a stored instrument id");
-  }
+  noQuery(url);
+  const { input, instrument } = storedOf(d.m, raw);
+  if (instrument === null) return noInstrument(input);
+  const id = instrument.id;
   const done = await d.m.writer.write((db) => {
     if (readInstrument(db, id) === null) return null;
     const rules = readRules(db)
       .filter((r) => r.instrument === id || instrumentsOf(r.condition).has(id))
       .map((r) => r.id);
     if (rules.length > 0) return { rules };
-    const rows: Record<string, number> = {};
     for (const table of INSTRUMENT_TABLES) {
-      rows[table] = db
-        .query(`delete from ${table} where instrument = ?`)
-        .run(id).changes;
+      db.query(`delete from ${table} where instrument = ?`).run(id);
     }
     // the instrument's own runs, so a key added again starts unfetched
-    rows.sync_runs = db
-      .query("delete from sync_runs where scope = ?")
-      .run(id).changes;
+    db.query("delete from sync_runs where scope = ?").run(id);
     db.query("delete from instruments where id = ?").run(id);
-    return { rows };
+    return { rules: [] };
   });
-  if (done === null) {
-    return failed({ error: "not_found", message: "no such instrument" });
+  if (done === null) return noInstrument(input);
+  if (done.rules.length > 0) {
+    return problem(
+      "conflict",
+      "rules read this instrument; delete them first",
+      { input, rules: done.rules },
+    );
   }
-  if ("rules" in done) {
-    return failed({
-      error: "conflict",
-      message: "rules read this instrument; delete them first",
-      rules: done.rules,
-    });
-  }
-  return json({ deleted: id, rows: done.rows }, 200);
+  return new Response(null, { status: 204, headers: NO_STORE });
 }

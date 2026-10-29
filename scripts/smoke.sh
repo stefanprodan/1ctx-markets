@@ -70,10 +70,28 @@ ADMIN=$(cat "$RUN/data/secrets/admin.key")
 [[ $ADMIN == 1ctx-markets-admin-* ]] || fail "the first start wrote no prefixed admin key"
 [[ $(stat -c %a "$RUN/data/secrets/admin.key" 2>/dev/null || stat -f %Lp "$RUN/data/secrets/admin.key") == 600 ]] ||
   fail "the admin key file is readable by others"
-[[ $(status "$URL/api/v1/admin/status" -H "authorization: Bearer $BEARER") == 401 ]] ||
-  fail "the bearer was taken on /api/v1/admin/status"
-[[ $(status "$URL/api/v1/quotes" -H "authorization: Bearer $ADMIN") == 401 ]] ||
-  fail "the admin key was taken on /api/v1/quotes"
+# scopes per operation: the read key is forbidden the admin ones, the admin
+# key opens every route but /mcp
+[[ $(status "$URL/api/v1/status" -H "authorization: Bearer $BEARER") == 403 ]] ||
+  fail "the bearer was taken on /api/v1/status"
+[[ $(status "$URL/api/v1/status" -H "authorization: Bearer $ADMIN") == 200 ]] ||
+  fail "the admin key did not open /api/v1/status"
+for path in rules watchlist; do
+  [[ $(status "$URL/api/v1/$path" -H "authorization: Bearer $BEARER") == 200 ]] ||
+    fail "the bearer did not open /api/v1/$path"
+  [[ $(status "$URL/api/v1/$path" -H "authorization: Bearer $ADMIN") == 200 ]] ||
+    fail "the admin key did not open /api/v1/$path"
+done
+[[ $(status -X POST "$URL/mcp" -H "authorization: Bearer $ADMIN") == 401 ]] ||
+  fail "the admin key opened /mcp"
+[[ $(status "$URL/api/v1/admin/status" -H "authorization: Bearer $ADMIN") == 404 ]] ||
+  fail "an old path still answers"
+# a raw ^ reaches the route, whose unknown argument is refused before any fetch
+[[ $(status "$URL/api/v1/instruments/^VIX/bars?x=1" -H "authorization: Bearer $BEARER") == 400 ]] ||
+  fail "a raw ^ in a path did not reach its route"
+problem=$(curl -s --max-time 5 -D - "$URL/api/v1/nothing" -H "authorization: Bearer $BEARER" || true)
+grep -qi '^content-type: application/problem+json' <<<"$problem" ||
+  fail "an error was not problem details"
 "$BIN" admin --listen "127.0.0.1:$PORT" --data "$RUN/data" status >"$RUN/admin" ||
   fail "admin status failed"
 grep -q '"version"' "$RUN/admin" || fail "admin status did not answer the version"
@@ -95,8 +113,8 @@ COOKIE=$(curl -s --max-time 5 -o /dev/null -D - -X POST "$URL/ui/session" \
   grep -i '^set-cookie:' | sed -E 's/^[^:]*: *([^;]*).*/\1/' | tr -d '\r')
 [[ $COOKIE == markets_session=v1.* ]] || fail "the admin key did not sign the web UI in"
 grep -q "$ADMIN" <<<"$COOKIE" && fail "the session cookie holds the admin key"
-[[ $(status "$URL/api/v1/admin/status" -H "cookie: $COOKIE") == 200 ]] ||
-  fail "the session cookie did not open /api/v1/admin/status"
+[[ $(status "$URL/api/v1/status" -H "cookie: $COOKIE") == 200 ]] ||
+  fail "the session cookie did not open /api/v1/status"
 [[ $(status -X POST "$URL/mcp" -H "cookie: $COOKIE") == 401 ]] ||
   fail "the session cookie opened /mcp"
 

@@ -70,15 +70,65 @@ const note = (s: Schema, description: string): Schema => ({
 
 export const DEADLINE_S = CALL_MS / 1000;
 
-const itemError = object(
-  {
-    input: str,
-    error: values(ERRORS),
-    message: str,
-    candidates: list(ref("Candidate")),
-  },
-  ["input", "error", "message"],
+const itemError = object({
+  input: str,
+  error: object(
+    {
+      code: values(ERRORS),
+      detail: str,
+      candidates: list(ref("Candidate")),
+    },
+    ["code", "detail"],
+  ),
+});
+
+const session = nullable(
+  object({ state: values(["open", "closed"]), start: nstr, end: nstr }),
 );
+
+// a stored instrument as the list gives it: no read, no fetch
+const instrumentRow = object({
+  id: str,
+  name: nstr,
+  market: str,
+  exchange: str,
+  currency: nstr,
+  kind: str,
+  unit: values(UNITS),
+  source: str,
+  tracked: bool,
+  tracked_by: note(
+    list(values(["rule", "read", "track"])),
+    "What keeps it up to date: a rule, a recent read or the watchlist.",
+  ),
+  read_at: nstr,
+  read_until: nstr,
+  price: note(
+    nnum,
+    "The stored price, or a series' latest value. Listing fetches nothing.",
+  ),
+  change: nnum,
+  change_percent: nnum,
+  fetched_at: nstr,
+});
+
+const facts = {
+  id: str,
+  name: nstr,
+  exchange: str,
+  type: str,
+  currency: nstr,
+  unit: values(UNITS),
+  source: str,
+};
+
+const STALE = "Why a value may be out of date. Empty means current.";
+
+const company = note(
+  object({ source: str }, ["source"], true),
+  "A US share's metrics, analysts, earnings, insider sentiment and next earnings event, with the sections asked.",
+);
+const news = object({ source: str }, ["source"], true);
 
 const averages = nullable(
   object({
@@ -156,7 +206,25 @@ const unavailable = object(
 const oneOf = (...names: string[]): Schema => ({ oneOf: names.map(ref) });
 
 export const schemas: Record<string, Schema> = {
-  Error: object({ error: str, message: str }, ["error", "message"], true),
+  Problem: object(
+    {
+      title: note(str, "The HTTP status's phrase."),
+      status: note(int, "The HTTP status."),
+      detail: str,
+      code: note(
+        str,
+        "The error, such as `bad_arguments`, `not_found` or `candidates`.",
+      ),
+      input: note(str, "The symbol the error is about."),
+      candidates: note(
+        list(ref("Candidate")),
+        "With `candidates`: the listings to pick an id from.",
+      ),
+      rules: note(list(int), "With `conflict`: the rules reading it."),
+    },
+    ["title", "status", "detail", "code"],
+    true,
+  ),
   Candidate: object({
     id: str,
     name: nstr,
@@ -181,50 +249,36 @@ export const schemas: Record<string, Schema> = {
     briefRequired,
   ),
   QuoteItem: oneOf("Quote", "ItemError"),
-  Quotes: object({ attribution: str, items: list(ref("QuoteItem")) }, [
-    "items",
+  Quotes: object({ attribution: str, quotes: list(ref("QuoteItem")) }, [
+    "quotes",
   ]),
-  Bar: object(
+  Bar: object({
+    date: str,
+    open: nnum,
+    high: nnum,
+    low: nnum,
+    close: nnum,
+    volume: note(nnum, "Null where the source gives none."),
+    final: note(
+      bool,
+      "False until the source reports a later session; a weekly bar also waits for its week to end.",
+    ),
+    sma50: nnum,
+    sma200: nnum,
+  }),
+  Bars: object(
     {
-      date: str,
-      open: note(nnum, "With `ohlc` only."),
-      high: note(nnum, "With `ohlc` only."),
-      low: note(nnum, "With `ohlc` only."),
-      close: nnum,
-      volume: note(nnum, "With `ohlc` only. Null where the source gives none."),
-      final: note(
-        bool,
-        "False until the source reports a later session; a weekly bar also waits for its week to end.",
-      ),
-      sma50: nnum,
-      sma200: nnum,
-    },
-    ["date", "close", "final", "sma50", "sma200"],
-  ),
-  History: object(
-    {
-      id: str,
-      name: nstr,
-      exchange: str,
-      type: str,
-      currency: nstr,
-      unit: values(UNITS),
-      source: str,
-      basis: note(str, "How prices are adjusted."),
-      stale: note(
-        list(str),
-        "Why a value may be out of date. Empty means current.",
-      ),
+      input: note(str, "The symbol as sent."),
+      instrument: object({
+        ...facts,
+        basis: note(str, "How prices are adjusted."),
+      }),
+      stale: note(list(str), STALE),
       attribution: str,
       from: str,
       to: str,
       session: note(
-        nullable(
-          object(
-            { state: values(["open", "closed"]), start: nstr, end: nstr },
-            ["state", "start", "end"],
-          ),
-        ),
+        session,
         "The last regular session, in UTC. Crypto is always open with null times. Null for a `FRED:<series id>` symbol.",
       ),
       interval: values(["1d", "1wk"]),
@@ -232,14 +286,8 @@ export const schemas: Record<string, Schema> = {
       bars: list(ref("Bar")),
     },
     [
-      "id",
-      "name",
-      "exchange",
-      "type",
-      "currency",
-      "unit",
-      "source",
-      "basis",
+      "input",
+      "instrument",
       "stale",
       "from",
       "to",
@@ -259,26 +307,13 @@ export const schemas: Record<string, Schema> = {
   }),
   Intraday: object(
     {
-      id: str,
-      name: nstr,
-      exchange: str,
-      type: str,
-      currency: nstr,
-      unit: values(UNITS),
-      source: str,
-      stale: note(
-        list(str),
-        "Why a value may be out of date. Empty means current.",
-      ),
+      input: note(str, "The symbol as sent."),
+      instrument: object(facts),
+      stale: note(list(str), STALE),
       from: note(str, "The first session date."),
       to: note(str, "The last session date."),
       session: note(
-        nullable(
-          object(
-            { state: values(["open", "closed"]), start: nstr, end: nstr },
-            ["state", "start", "end"],
-          ),
-        ),
+        session,
         "The last regular session, in UTC. Crypto is always open with null times.",
       ),
       interval: values(["5m"]),
@@ -303,13 +338,8 @@ export const schemas: Record<string, Schema> = {
       ),
     },
     [
-      "id",
-      "name",
-      "exchange",
-      "type",
-      "currency",
-      "unit",
-      "source",
+      "input",
+      "instrument",
       "stale",
       "from",
       "to",
@@ -320,8 +350,8 @@ export const schemas: Record<string, Schema> = {
       "points",
     ],
   ),
-  HistoryAnswer: oneOf("History", "Intraday"),
-  Search: object(
+  BarsAnswer: oneOf("Bars", "Intraday"),
+  Symbols: object(
     {
       query: str,
       errors: list(object({ source: str, error: str, message: str })),
@@ -352,19 +382,18 @@ export const schemas: Record<string, Schema> = {
     },
     ["query", "candidates"],
   ),
-  ResearchResult: object(
-    {
-      ...brief,
-      research: object({ source: str }, ["source"], true),
-      news: object({ source: str }, ["source"], true),
-    },
-    briefRequired,
+  // a result holds the blocks its sections asked, at least one
+  ResearchCompany: object({ input: str, id: str, company }),
+  ResearchNews: object({ input: str, id: str, news }),
+  ResearchBoth: object({ input: str, id: str, company, news }),
+  ResearchItem: oneOf(
+    "ResearchCompany",
+    "ResearchNews",
+    "ResearchBoth",
+    "ItemError",
   ),
-  ResearchItem: oneOf("ResearchResult", "ItemError"),
-  Research: object({ attribution: str, items: list(ref("ResearchItem")) }, [
-    "items",
-  ]),
-  Events: object(
+  Research: object({ research: list(ref("ResearchItem")) }),
+  Earnings: object(
     {
       from: str,
       to: str,
@@ -384,11 +413,11 @@ export const schemas: Record<string, Schema> = {
           ["input", "id"],
         ),
       ),
-      events: list(
+      earnings: list(
         object({ id: str, date: str, status: str }, ["id", "date"], true),
       ),
     },
-    ["from", "to", "events"],
+    ["from", "to", "earnings"],
   ),
   Counts: object({
     matched: int,
@@ -478,9 +507,9 @@ export const schemas: Record<string, Schema> = {
       sort: str,
       counts: ref("Counts"),
       attribution: str,
-      items: list(ref("MoverItem")),
+      movers: list(ref("MoverItem")),
     },
-    ["sort", "counts", "items"],
+    ["sort", "counts", "movers"],
   ),
   Screen: object(
     {
@@ -488,9 +517,9 @@ export const schemas: Record<string, Schema> = {
       sort: object({ field: str, order: values(["asc", "desc"]) }),
       attribution: str,
       counts: ref("Counts"),
-      items: list(ref("ScreenItem")),
+      matches: list(ref("ScreenItem")),
     },
-    ["sort", "counts", "items"],
+    ["sort", "counts", "matches"],
   ),
   ScreenArgs: object(
     {
@@ -558,7 +587,7 @@ export const schemas: Record<string, Schema> = {
     alert: nullable(alert),
   }),
   Pause: object({ paused: bool }),
-  Paused: object({ rule: ref("Rule") }),
+  OneRule: object({ rule: ref("Rule") }),
   Alert: alert,
   Alerts: object(
     {
@@ -613,53 +642,27 @@ export const schemas: Record<string, Schema> = {
     ),
     instruments: int,
     tracked: int,
-    track: list(
-      object({
-        value: str,
-        id: nstr,
-        state: values(["pending", "tracked", ...ERRORS]),
-      }),
-    ),
     database_bytes: int,
   }),
-  AdminInstrumentRow: object({
-    id: str,
-    name: nstr,
-    market: str,
-    exchange: str,
-    currency: nstr,
-    kind: str,
-    unit: values(UNITS),
-    source: str,
-    tracked: bool,
-    tracked_by: note(
-      list(values(["rule", "read", "track"])),
-      "What keeps it up to date: a rule, a recent read or the track list.",
-    ),
-    read_at: nstr,
-    read_until: nstr,
-    price: note(
-      nnum,
-      "The stored price, or a series' latest value. Listing fetches nothing.",
-    ),
-    change: nnum,
-    change_percent: nnum,
-    fetched_at: nstr,
-  }),
-  AdminInstruments: object(
+  InstrumentRow: instrumentRow,
+  Instruments: object(
     {
       attribution: note(
         str,
         "A source's required notice, when the page holds one of its values.",
       ),
       total: note(int, "Every match, across all pages."),
-      more: note(bool, "Another page follows."),
-      instruments: list(ref("AdminInstrumentRow")),
+      instruments: list(ref("InstrumentRow")),
+      next_page_token: note(
+        str,
+        "Pass as `page_token` for the next page. Absent on the last page.",
+      ),
     },
-    ["total", "more", "instruments"],
+    ["total", "instruments"],
   ),
-  AdminInstrument: object(
+  Instrument: object(
     {
+      input: note(str, "The symbol as sent."),
       attribution: note(
         str,
         "A source's required notice, when the series is one of its.",
@@ -668,7 +671,7 @@ export const schemas: Record<string, Schema> = {
         nullable(object({ name: str, url: str })),
         "Who the prices are from, with a link to its site.",
       ),
-      instrument: ref("AdminInstrumentRow"),
+      instrument: ref("InstrumentRow"),
       quote: note(
         nullable(
           object(
@@ -745,27 +748,60 @@ export const schemas: Record<string, Schema> = {
         "The quote as the quote tool gives it. Null when the read failed: `error` says why, and `instrument` keeps the stored price.",
       ),
       error: note(
-        nullable(
-          object({ error: values(ERRORS), message: str }, ["error", "message"]),
-        ),
+        nullable(object({ code: values(ERRORS), detail: str })),
         "Why the read failed, else null.",
       ),
     },
-    ["instrument", "credit", "quote", "error"],
+    ["input", "instrument", "credit", "quote", "error"],
+  ),
+  Watchlist: object(
+    {
+      attribution: note(
+        str,
+        "A source's required notice, when an entry is one of its series.",
+      ),
+      entries: list(
+        object({
+          value: note(str, "The value as configured."),
+          id: note(nstr, "The instrument it resolved to; null until it does."),
+          state: note(
+            values(["pending", "tracked", ...ERRORS]),
+            "`pending` until resolved, `tracked`, or the error that stopped it.",
+          ),
+          instrument: note(
+            nullable(instrumentRow),
+            "The stored instrument, as the instrument list gives it.",
+          ),
+          session: note(
+            session,
+            "Its market's last regular session. Null for a series or until resolved.",
+          ),
+        }),
+      ),
+    },
+    ["entries"],
   ),
   RefetchArgs: object(
     {
-      symbols: list(str),
-      fetch: list(values(PARTS)),
+      parts: list(values(PARTS)),
       sections: list(values(REFETCH_SECTIONS)),
     },
-    ["symbols", "fetch"],
+    ["parts"],
   ),
   Refetched: object({
-    results: list(object({ symbol: str }, ["symbol"], true)),
-  }),
-  Deleted: object({
-    deleted: str,
-    rows: { type: "object", additionalProperties: int },
+    input: note(str, "The symbol as sent."),
+    id: str,
+    parts: list(
+      object(
+        {
+          part: values(PARTS),
+          section: values(REFETCH_SECTIONS),
+          status: values(["fetched", "not covered", "source off", "failed"]),
+          rows: int,
+          error: str,
+        },
+        ["part", "status"],
+      ),
+    ),
   }),
 };

@@ -266,14 +266,18 @@ describe("quote", () => {
       });
       expect(a.body.attribution).toBe(ATTRIBUTION);
       expect(a.text.split(ATTRIBUTION)).toHaveLength(2);
+      // the route answers no quote, so no FRED value and no notice
       const res = await fetch(
         `${t.url}/api/v1/research?symbols=FRED:DGS10,fred:dgs10`,
         { headers: { authorization: `Bearer ${t.bearer}` } },
       );
       expect(res.status).toBe(200);
       const raw = await res.text();
-      expect(JSON.parse(raw).attribution).toBe(ATTRIBUTION);
-      expect(raw.split(ATTRIBUTION)).toHaveLength(2);
+      expect(JSON.parse(raw).research.map((r: any) => r.id)).toEqual([
+        "FRED:DGS10",
+        "FRED:DGS10",
+      ]);
+      expect(raw).not.toContain(ATTRIBUTION);
     }));
 
   test("with FRED off answers no data from FRED", () =>
@@ -699,7 +703,7 @@ describe("the quotes route", () => {
       const body: any = await res.json();
       expect(body.attribution).toBe(ATTRIBUTION);
       expect(body).not.toContainKey("next");
-      const [nvda, dgs10] = body.items;
+      const [nvda, dgs10] = body.quotes;
       expect(Object.keys(nvda).sort()).toEqual(
         [
           "input",
@@ -758,7 +762,7 @@ describe("the quotes route", () => {
         const res = await get(t, query);
         expect(res.status).toBe(400);
         expect(res.headers.get("cache-control")).toBe("no-store");
-        expect(((await res.json()) as any).error).toBe("bad_arguments");
+        expect(((await res.json()) as any).code).toBe("bad_arguments");
       }
       expect(s.calls.urls).toHaveLength(0);
     }));

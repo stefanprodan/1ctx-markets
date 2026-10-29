@@ -15,6 +15,7 @@ import type { Fetch } from "../src/sources/source.ts";
 import { yahoo } from "../src/sources/yahoo/client.ts";
 import { open } from "../src/storage/db/index.ts";
 import { writer } from "../src/storage/writer.ts";
+import { api } from "./helpers/api.ts";
 import { bvbAnswer, bvbRecorded, made } from "./helpers/bvb.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { drive } from "./helpers/drive.ts";
@@ -133,6 +134,118 @@ const idOf = (t: Target | undefined) =>
   t !== undefined && "instrument" in t ? t.instrument.id : null;
 const errorOf = (t: Target | undefined) =>
   t !== undefined && "error" in t ? t.error : null;
+
+describe("REST's bare symbol, with the feed on", () => {
+  const rest = (t: Awaited<ReturnType<typeof setup>>) => {
+    const m = { ...t.m, yahooFirst: true };
+    return {
+      read: (inputs: string[]) =>
+        drive(t.clock, t.exchange!, readTargets(m, inputs)),
+      call: async (path: string, init: RequestInit = {}) =>
+        drive(
+          t.clock,
+          t.exchange!,
+          api(t.m)(new Request(`http://markets.test/api/v1${path}`, init)),
+        ),
+    };
+  };
+
+  test("is Yahoo's exact listing, though the feed's is stored alone", async () => {
+    const t = await setup(true);
+    const [b] = await t.read(["BVB:TLV"]);
+    expect(idOf(b)).toBe("BVB:TLV");
+    const [bare] = await rest(t).read(["TLV"]);
+    expect(idOf(bare)).toBe("US:TLV");
+    expect(readInstrument(t.db, "US:TLV")!.source).toBe("yahoo");
+  });
+
+  test("is Yahoo's with both stored, on every route; MCP still answers both", async () => {
+    const t = await setup(true);
+    await t.read(["BVB:TLV", "US:TLV"]);
+    const r = rest(t);
+    const [bare, ro, prefixed] = await r.read(["TLV", "TLV.RO", "BVB:TLV"]);
+    expect([idOf(bare), idOf(ro), idOf(prefixed)]).toEqual([
+      "US:TLV",
+      "BVB:TLV",
+      "BVB:TLV",
+    ]);
+    const [mcp] = await t.read(["TLV"]);
+    expect(errorOf(mcp)?.error).toBe("candidates");
+    const quotes: any = await (
+      await r.call("/quotes?symbols=TLV,TLV.RO,BVB:TLV")
+    ).json();
+    expect(quotes.quotes.map((q: any) => q.id)).toEqual([
+      "US:TLV",
+      "BVB:TLV",
+      "BVB:TLV",
+    ]);
+    for (const path of ["/instruments/TLV", "/instruments/TLV/bars"]) {
+      const res = await r.call(path);
+      expect([path, res.status]).toEqual([path, 200]);
+      expect(((await res.json()) as any).instrument.id).toBe("US:TLV");
+    }
+    // stored only, so the stored Yahoo listing; nothing is asked
+    const asked = t.calls.urls.length + t.urls.length;
+    const gone = await r.call("/instruments/TLV", { method: "DELETE" });
+    expect(gone.status).toBe(204);
+    expect(t.calls.urls.length + t.urls.length).toBe(asked);
+    expect(readInstrument(t.db, "US:TLV")).toBeNull();
+    expect(readInstrument(t.db, "BVB:TLV")).not.toBeNull();
+  });
+
+  test("a failed Yahoo lookup never answers the feed's stored listing of the code", async () => {
+    const t = await setup(true);
+    const [b] = await t.read(["BVB:TLV"]);
+    expect(idOf(b)).toBe("BVB:TLV");
+    const down = {
+      ...t.m,
+      yahoo: yahoo({
+        clock: t.clock,
+        fetch: async () => {
+          throw new Error("offline");
+        },
+      }).failFast(),
+    };
+    const res = await drive(
+      t.clock,
+      t.exchange!,
+      api(down)(new Request("http://markets.test/api/v1/instruments/TLV")),
+    );
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({
+      code: "source_error",
+      input: "TLV",
+    });
+  });
+
+  test("delete and refetch take a .RO symbol as the feed's stored row, asking nothing", async () => {
+    const t = await setup(true);
+    await t.read(["BVB:TLV"]);
+    expect(readInstrument(t.db, "BVB:TLV")!.source).toBe("bvb");
+    const r = rest(t);
+    const asked = t.calls.urls.length + t.urls.length;
+    const again = await r.call("/instruments/TLV.RO/refetch", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ parts: ["calendar"] }),
+    });
+    expect(again.status).toBe(200);
+    expect(await again.json()).toMatchObject({
+      input: "TLV.RO",
+      id: "BVB:TLV",
+    });
+    const gone = await r.call("/instruments/tlv.ro", { method: "DELETE" });
+    expect(gone.status).toBe(204);
+    expect(readInstrument(t.db, "BVB:TLV")).toBeNull();
+    expect(t.calls.urls.length + t.urls.length).toBe(asked);
+  });
+
+  test("is the feed's when only the feed lists it", async () => {
+    const t = await setup(true);
+    const [etf] = await rest(t).read(["BTBETRETF"]);
+    expect(idOf(etf)).toBe("BVB:BTBETRETF");
+  });
+});
 
 describe("resolution with the feed on", () => {
   test("BVB:TLV and US:TLV stay apart", async () => {

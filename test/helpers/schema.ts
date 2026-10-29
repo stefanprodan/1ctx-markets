@@ -215,16 +215,18 @@ export function specSchemas(spec: any): [string, unknown][] {
   return out;
 }
 
+// an error is application/problem+json, an answer application/json
 export function answerSchema(
   spec: any,
   method: string,
   path: string,
   status: number,
+  type = status >= 400 ? "application/problem+json" : "application/json",
 ): Schema | null {
   const op = spec.paths[path]?.[method.toLowerCase()];
   if (op === undefined) throw new Error(`no operation ${method} ${path}`);
   let r = op.responses[String(status)];
   if (r === undefined) return null;
   if (r.$ref !== undefined) r = resolve(spec, r.$ref);
-  return r.content?.["application/json"]?.schema ?? null;
+  return r.content?.[type]?.schema ?? null;
 }

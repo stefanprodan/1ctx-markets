@@ -207,6 +207,17 @@ exchange: one client, its parsers, its session, the same tables.
   asked while any of the four lists is unread, or when the lists hold
   the symbol though Yahoo's top results lack its `.RO` listing, so a
   bare symbol on both answers both as candidates, never a guess.
+- **On REST a bare symbol is Yahoo's** (`yahooFirst` on `Markets`,
+  set by `routes()`; `docs/api.md`): a stored Yahoo listing is it,
+  else Yahoo's exact listing, else the feed's rules above. A script's
+  symbols come from Yahoo exports, so a bare `TLV` is `US:TLV` even
+  with `BVB:TLV` stored, never `candidates`; `BVB:TLV` or `TLV.RO`
+  names the Bucharest one. A Yahoo that fails is the call's error,
+  never the feed's listing in its place. MCP keeps the rules above, since an agent
+  learns the prefix from `candidates`. Delete and refetch, which ask
+  no source, take the stored Yahoo listing first, then a `.RO` symbol's
+  stored `BVB:` row (`YAHOO_SUFFIX`, the key Yahoo's chart gives it),
+  else the feed's.
 - **A `BVB:` key is the feed's while it is on,** asked by its symbol
   answer; a Yahoo symbol naming a Bucharest listing (`TLV.RO`) resolves
   to the same key and is fetched from the feed.

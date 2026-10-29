@@ -11,7 +11,7 @@ import {
 import { JOBS } from "../market/stale.ts";
 import { isKept, markRead } from "../market/tracking.ts";
 import { errorFields } from "../runtime/log.ts";
-import type { Bvb } from "../sources/bvb/client.ts";
+import { YAHOO_SUFFIX as BVB_SUFFIX, type Bvb } from "../sources/bvb/client.ts";
 import { readByFeedSymbol, resolveBoth } from "../sources/bvb/resolve.ts";
 import {
   NO_DATA as BVB_NO_DATA,
@@ -283,8 +283,14 @@ async function step(
     return bvbFetchStep(m, symbol, bvbKey(symbol));
   }
   if (!upper.includes(":") && bvb !== null) {
-    const both = await shared(m, `resolve:${upper}`, deadline, (live) =>
-      resolveBoth({ ...yahooCtx(m, live), bvb: bvb.within(live) }, given),
+    // the two rules answer differently, so they never share a flight
+    const key = `${m.yahooFirst ? "resolve-yahoo" : "resolve"}:${upper}`;
+    const both = await shared(m, key, deadline, (live) =>
+      resolveBoth(
+        { ...yahooCtx(m, live), bvb: bvb.within(live) },
+        given,
+        m.yahooFirst,
+      ),
     );
     if (both.kind === "known") return storedStep(m, both.instrument);
     if (both.kind === "candidates") return candidates(both.candidates);
@@ -339,6 +345,27 @@ export function storedInstrument(
     readBySourceSymbol(db, YAHOO, upper),
   ].filter((i) => i !== null);
   return stored.length === 1 ? stored[0]! : null;
+}
+
+// REST's rule asking no source: Yahoo's listing first, a feed row by its
+// Yahoo symbol; feedOnly: a code no Yahoo listing holds, which only a
+// stored-only route (delete, refetch) may take, since a read asks Yahoo
+export function restStored(
+  db: Db,
+  input: string,
+  bvb: boolean,
+  feedOnly: boolean,
+): Instrument | null {
+  const given = input.trim();
+  const upper = given.toUpperCase();
+  if (upper.includes(":")) return readInstrument(db, upper);
+  const yahoo = readBySourceSymbol(db, YAHOO, upper);
+  if (yahoo !== null || !bvb) return yahoo;
+  if (upper.endsWith(BVB_SUFFIX) && upper.length > BVB_SUFFIX.length) {
+    const row = readInstrument(db, bvbKey(upper.slice(0, -BVB_SUFFIX.length)));
+    return row?.source === BVB ? row : null;
+  }
+  return feedOnly ? readByFeedSymbol(db, given) : null;
 }
 
 const candidates = (list: readonly Candidate[]): Step => ({

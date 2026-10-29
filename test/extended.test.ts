@@ -214,7 +214,7 @@ describe("quote extended", () => {
       const body: any = await res.json();
       const schema = answerSchema(spec, "GET", "/quotes", 200)!;
       expect(validate(body, schema, spec)).toEqual([]);
-      return body.items as any[];
+      return body.quotes as any[];
     };
     const asked = await get("&extended=true");
     const tool = await ask(t.m);

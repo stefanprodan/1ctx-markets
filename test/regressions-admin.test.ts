@@ -87,7 +87,7 @@ async function setup(
 const removeInstrument = (m: Markets, id: string) =>
   api(m)(
     new Request(
-      `http://markets.test/api/v1/admin/instruments/${encodeURIComponent(id)}`,
+      `http://markets.test/api/v1/instruments/${encodeURIComponent(id)}`,
       { method: "DELETE" },
     ),
   );
@@ -198,7 +198,7 @@ test("deleting a series cannot fail an unrelated quote pass", async () => {
     const old = lastStarted(t.db, "fred", JOBS.bars, added.instrument.id)!;
     expect(old.status).toBe("running");
 
-    expect((await removeInstrument(t.m, added.instrument.id)).status).toBe(200);
+    expect((await removeInstrument(t.m, added.instrument.id)).status).toBe(204);
     expect(readInstrument(t.db, added.instrument.id)).toBeNull();
     expect(
       lastStarted(t.db, "fred", JOBS.bars, added.instrument.id),
@@ -413,7 +413,7 @@ test("readding an instrument fetches research lost during deletion", async () =>
     const i = readInstrument(t.db, "US:NVDA")!;
     pending = refreshResearch(t.m, i, ["analysts"]);
     await drive(t.clock, pacedOf(t.m), held.arrived);
-    expect((await removeInstrument(t.m, i.id)).status).toBe(200);
+    expect((await removeInstrument(t.m, i.id)).status).toBe(204);
     expect(readInstrument(t.db, i.id)).toBeNull();
     held.release();
     const late = await drive(

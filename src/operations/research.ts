@@ -24,7 +24,6 @@ import {
   type Section,
 } from "../sources/finnhub/store.ts";
 import { refreshResearch, unfetched } from "../sources/finnhub/sync.ts";
-import { ATTRIBUTION } from "../sources/fred/sync.ts";
 import { cut } from "../sources/massive/client.ts";
 import {
   countNews,
@@ -41,7 +40,6 @@ import {
 } from "../sources/massive/store.ts";
 import { ArgError, date, fields, symbols } from "./args.ts";
 import { type Markets, shared } from "./markets.ts";
-import { briefItem, quoteItem, readLatest } from "./quote.ts";
 import {
   type ItemError,
   itemError,
@@ -486,28 +484,23 @@ export async function researchList(m: Markets, args: ResearchListArgs) {
   const { targets, inline } = await researchTargets(m, args.symbols, {
     sections: finnhub.map((p) => SECTION_OF_PART[p]),
   });
-  const now = m.clock.now();
-  const items = targets.map((t) => {
+  // no quote: /quotes answers prices for many symbols in one call
+  return targets.map((t) => {
     if ("error" in t) return { input: t.input, ...t.error };
-    const latest = readLatest(m.db, t.instrument, now, m.quoteEveryMs);
-    const item = quoteItem(m.db, t.input, t.instrument, latest);
-    const quote = briefItem(m.db, item, latest);
-    const research: Record<string, unknown> = researchSummary(
+    const company: Record<string, unknown> = researchSummary(
       m,
       t.instrument,
       inline.get(t.instrument.id),
       HTTP_HISTORY,
     );
-    for (const p of left) delete research[p];
+    for (const p of left) delete company[p];
     return {
-      ...quote,
-      ...(finnhub.length > 0 ? { research } : {}),
+      input: t.input,
+      id: t.instrument.id,
+      ...(finnhub.length > 0 ? { company } : {}),
       ...(args.parts.includes("news")
         ? { news: newsWeek(m, t.instrument, since) }
         : {}),
     };
   });
-  // once per answer that holds a FRED value
-  const fred = items.some((i) => "observation" in i && i.observation);
-  return { ...(fred ? { attribution: ATTRIBUTION } : {}), items };
 }
