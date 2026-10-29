@@ -301,7 +301,7 @@ signed in with the admin key alone.
 - **The bar still trading is drawn faded**; the last price has its
   line. Log is a toggle. **The chart neither pans nor zooms**: the
   range buttons choose what shows, and every draw (a range change, the
-  minute refresh, a toggle, a theme flip) fits it. **1D spans its whole
+  minute refresh, a toggle, a theme flip) and every resize fits it. **1D spans its whole
   session**, ending in empty 5-minute slots up to the close
   (`sessionSlots()`), as the home cards draw a day, so the first minutes
   are a short line at the left, not the whole width.

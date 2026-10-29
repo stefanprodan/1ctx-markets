@@ -312,6 +312,8 @@ export function Chart({ id }: { id: string }) {
               ? p.time
               : dateOf(p.time);
       });
+      // a resize keeps the bar spacing, which would cut the newest bars off
+      c.timeScale().subscribeSizeChange(() => c.timeScale().fitContent());
       chart.current = c;
       draw();
     });
