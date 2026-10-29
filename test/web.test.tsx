@@ -14,6 +14,7 @@ import { Strip } from "../src/web/app/Strip.tsx";
 import { resolveTheme } from "../src/web/app/theme.ts";
 import {
   ApiError,
+  buildWatch,
   client,
   type Fetch,
   failure,
@@ -393,6 +394,28 @@ describe("the data layer", () => {
     expect(err).toBeInstanceOf(ApiError);
     expect((err as ApiError).status).toBe(401);
     expect(out).toBe(1);
+  });
+
+  test("a tab reloads once when the server answers from another build", async () => {
+    let reloads = 0;
+    const watch = buildWatch(() => reloads++);
+    watch("v1");
+    watch("v1");
+    expect(reloads).toBe(0);
+    watch("v2");
+    watch("v3");
+    expect(reloads).toBe(1);
+    let build = "v1";
+    const seen: string[] = [];
+    const call = client(
+      async () => Response.json({}, { headers: { "x-markets-build": build } }),
+      () => {},
+      (v) => seen.push(v),
+    );
+    await call("/x");
+    build = "v2";
+    await call("/x");
+    expect(seen).toEqual(["v1", "v2"]);
   });
 
   test("a failure reads as a short sentence", () => {

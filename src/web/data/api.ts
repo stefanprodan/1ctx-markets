@@ -51,7 +51,25 @@ export type Call = <T>(
   signal?: AbortSignal,
 ) => Promise<T>;
 
-export function client(fetchFn: Fetch, onUnauthorized: () => void): Call {
+// the tab reloads once the server answers from another start than the
+// one that shipped its page: a deploy over an open tab
+export function buildWatch(reload: () => void): (build: string) => void {
+  let first: string | null = null;
+  let gone = false;
+  return (build) => {
+    if (first === null) first = build;
+    else if (build !== first && !gone) {
+      gone = true;
+      reload();
+    }
+  };
+}
+
+export function client(
+  fetchFn: Fetch,
+  onUnauthorized: () => void,
+  onBuild: (build: string) => void = () => {},
+): Call {
   return async <T>(
     path: string,
     method = "GET",
@@ -71,6 +89,8 @@ export function client(fetchFn: Fetch, onUnauthorized: () => void): Call {
     } catch {
       throw failure(0, null);
     }
+    const build = res.headers.get("x-markets-build");
+    if (build !== null) onBuild(build);
     const data: unknown =
       res.status === 204 ? null : await res.json().catch(() => null);
     if (res.status === 401) onUnauthorized();

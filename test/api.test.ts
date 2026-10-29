@@ -1716,6 +1716,18 @@ describe("a symbol in a path", () => {
     expect(((await made.json()) as any).rule.symbol).toBe("CXI:^VIX");
   });
 
+  test("every answer names the server's start, never its version", () =>
+    withApp(async ({ url, bearer }) => {
+      const answered = await fetch(`${url}${PREFIX}/status`, {
+        headers: { authorization: `Bearer ${bearer}` },
+      });
+      const build = answered.headers.get("x-markets-build");
+      expect(build).toMatch(/^[0-9a-f-]{36}$/);
+      const refused = await fetch(`${url}${PREFIX}/status`);
+      expect(refused.status).toBe(401);
+      expect(refused.headers.get("x-markets-build")).toBe(build);
+    }));
+
   test("a raw ^ sent on the wire reaches the route", () =>
     withApp(async ({ url, bearer }) => {
       const { port } = new URL(url);
