@@ -88,10 +88,12 @@ export const candidateItem = (c: Candidate): CandidateItem => ({
   source_symbol: c.sourceSymbol,
 });
 
+export const NO_LISTING = "no listing found; try search";
+
 // anything but these fixed messages is logged and answered as a source error
 export function itemError(m: Markets, error: unknown): ItemError {
   if (error instanceof ResolveError) {
-    return { error: "not_found", message: "no listing found; try search" };
+    return { error: "not_found", message: NO_LISTING };
   }
   if (error instanceof Refused) {
     return { error: "refused", message: error.message };

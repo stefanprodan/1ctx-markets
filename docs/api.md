@@ -109,6 +109,9 @@ MCP tools copied onto paths.
 - **Daily and weekly bars always carry `open`, `high`, `low`, `close`,
   `volume`, `final`, `sma50` and `sma200`**, oldest first. A bar the
   live quote made with no open has `open` null.
+- **A bar is live only while its market's `session` is open and it is
+  not `final`**: an open market whose last bar is final has had no
+  trade yet today, so that bar is a past close.
 - **`interval=5m` answers points on the same path** (`Intraday`):
   `points[]` with `at`, `session`, `close`, `final`; `sessions[]` with
   each one's `fetched_at`; `previous_close`; and with `extended=true`

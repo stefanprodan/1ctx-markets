@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { ArgError, quoted } from "../operations/args.ts";
+import { NO_LISTING } from "../operations/targets.ts";
 
 export const PREFIX = "/api/v1";
 
@@ -89,13 +90,20 @@ export function problem(
   );
 }
 
+// the tools' hint names the search tool, which REST has as /symbols; a
+// rule's miss puts its input before it
+export const detailOf = <T>(message: T): T | string =>
+  typeof message === "string" && message.endsWith(NO_LISTING)
+    ? `${message.slice(0, -NO_LISTING.length)}no listing found; try GET ${PREFIX}/symbols`
+    : message;
+
 // a tool's error, {error, message, ...extensions}, as a problem
 export const problemOf = (
   body: { error: string; message: string } & Record<string, unknown>,
   headers: Record<string, string> = NO_STORE,
 ): Response => {
   const { error, message, ...extensions } = body;
-  return problem(error, message, extensions, headers);
+  return problem(error, detailOf(message), extensions, headers);
 };
 
 // an item's error inside a 200: {code, detail, candidates?}
@@ -109,7 +117,7 @@ export function itemOf<T extends object>(item: T): object {
     ...rest,
     error: {
       code: error,
-      detail: message,
+      detail: detailOf(message),
       ...(candidates === undefined ? {} : { candidates }),
     },
   };

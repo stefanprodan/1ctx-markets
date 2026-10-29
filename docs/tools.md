@@ -144,6 +144,8 @@ the rules tool in `docs/rules.md`; signal rows and returns in
 - **history's `session` is quote's**, so a reader tells an intraday
   bar from an unsettled close: a day's bar stays not final after its
   close until the source shows a later session (`docs/calendars.md`).
+  A bar is live only while `session` is open and it is not `final`: an
+  open market whose last bar is final has had no trade yet today.
 - **history defaults its range from the last bar**: `to` the latest
   bar, `from` 3 months back for `1d`, 24 for `1wk` (`DEFAULT_MONTHS`).
   `basis` states the price basis (`BASIS`, `FRED_BASIS`).

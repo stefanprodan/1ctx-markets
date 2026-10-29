@@ -45,6 +45,7 @@ import { NO_EVENTS } from "../sources/finnhub/store.ts";
 import { ATTRIBUTION } from "../sources/fred/sync.ts";
 import { ASSET_CACHE, DOC_FILES, docsFile, docsPage } from "./docs.ts";
 import {
+  detailOf,
   itemOf,
   json,
   MAX_BODY_BYTES,
@@ -298,7 +299,14 @@ function marketData(m: Markets): Route[] {
           from: args.from,
           to: args.to,
           source: "finnhub",
-          ...(read.notes.length > 0 ? { unavailable: read.notes } : {}),
+          ...(read.notes.length > 0
+            ? {
+                unavailable: read.notes.map((n) => ({
+                  ...n,
+                  message: detailOf(n.message),
+                })),
+              }
+            : {}),
           ...(read.quiet.length > 0 ? { no_event: read.quiet } : {}),
           earnings: read.events.map((e) => e.item),
         });
