@@ -300,6 +300,8 @@ const REQUESTS: [string, RequestInit?][] = [
   ["/instruments/FRED:DGS10", { method: "DELETE" }],
   ["/instruments/FRED:DGS10", { method: "DELETE" }],
   ["/status"],
+  ["/keys"],
+  ["/keys/nothing", { method: "DELETE" }],
   ["/nothing"],
   ["/history?symbol=NVDA"],
   ["/quotes", { method: "POST" }],

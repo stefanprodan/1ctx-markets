@@ -9,6 +9,7 @@ import { UNITS } from "../market/instruments.ts";
 import { CALL_MS } from "../operations/markets.ts";
 import { FIELD_NAMES } from "../operations/screen.ts";
 import { ERRORS } from "../operations/targets.ts";
+import { KEY_DAYS, MAX_NAME, MIN_NAME } from "../server/access.ts";
 
 type JsonType =
   | "string"
@@ -587,6 +588,34 @@ export const schemas: Record<string, Schema> = {
     alert: nullable(alert),
   }),
   Pause: object({ paused: bool }),
+  Key: object({
+    id: str,
+    name: str,
+    created_at: str,
+    last_used_at: note(nstr, "Null until first used. Kept to the minute."),
+    expires_at: note(nstr, "Null for a key that never expires."),
+  }),
+  Keys: object({
+    keys: list(ref("Key")),
+    limit: note(int, "How many keys there may be, expired ones included."),
+  }),
+  KeyArgs: object(
+    {
+      name: note(
+        str,
+        `${MIN_NAME} to ${MAX_NAME} lowercase letters, digits, dashes and underscores, starting with a letter or digit.`,
+      ),
+      expiresInDays: note(
+        { type: ["integer", "null"], enum: [...KEY_DAYS, null] },
+        "Days until the key expires, or null for never, the default.",
+      ),
+    },
+    ["name"],
+  ),
+  MadeKey: object({
+    key: ref("Key"),
+    token: note(str, "The key to send as a bearer. It is never shown again."),
+  }),
   OneRule: object({ rule: ref("Rule") }),
   Alert: alert,
   Alerts: object(

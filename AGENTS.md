@@ -5,8 +5,8 @@ data (Yahoo, and optionally FRED, Finnhub, Massive and the Bucharest
 Stock Exchange's own feed) into one SQLite file, computes signals,
 evaluates price rules, and serves them over the Model Context Protocol
 (MCP, Streamable HTTP) and a REST API under `/api/v1` with an OpenAPI
-spec, both behind one bearer key. It holds market data and price rules
-only, never holdings, orders or a portfolio.
+spec, both behind the admin key or agents' own keys. It holds market
+data and price rules only, never holdings, orders or a portfolio.
 
 - **Runtime:** Bun only (pinned in `.bun-version`), TypeScript run
   directly, `bun:sqlite`, one standalone binary. No Node.
@@ -32,7 +32,7 @@ make dev ARGS="..."    # the same, restarting on changes
 make lint              # biome check --write, then bun check; run after any code change
 make test              # bun test; run after any code change, before finishing
 make build             # standalone binary in bin/ (VERSION=v1.2.3 for a release)
-make smoke             # start the binary, check its bearer and MCP answer, stop it
+make smoke             # start the binary, check its keys and MCP answer, stop it
 make clean             # remove bin/ and Bun's build leftovers
 make staging-deploy    # build main, back up staging's db, swap its binary, restart
 make staging-status    # what the staging service says
@@ -45,10 +45,11 @@ through `tail` or `grep` (`docs/testing.md`).
 ## Layout
 
 ```
-src/main.ts                 the entry: flags, the bearer, the db, start()
+src/main.ts                 the entry: flags, the admin key, the db, start()
 src/app.ts                  the wiring: sources, queues, jobs, the server, stop()
 src/server/                 HTTP and MCP
-  http.ts                   the Bun server, the bearer check, the routes
+  http.ts                   the Bun server, the key check, the call limit, the routes
+  access.ts                 who sent a request: the admin key or an agent key row
   mcp.ts                    the stateless MCP endpoint
   instructions.ts           the server instructions every MCP client gets
   session.ts                the web UI's sign-in and its cookie
@@ -87,11 +88,11 @@ src/operations/             the reads the MCP tools and the API share, with thei
 src/tools/                  the MCP surface: the tool registry and research's page
 src/api/                    /api/v1: routes, alerts, the spec, the docs page; never imports tools/
 src/service/                `service install|start|stop|...`: launchd, CLI only
-src/admin/                  the instrument, watchlist and status routes, and the `admin` command
+src/admin/                  the instrument, watchlist, status and keys routes, the `admin` and `keys` commands
 src/web/                    the web UI, bundled from index.html (Preact)
   app/                      the shell, rail, router, routes and theme
   data/                     every call and signal; views never fetch
-  views/                    the pages: sign-in, Status, Instruments
+  views/                    the pages: sign-in, Home, Status, Connect agents, Instruments
   style/ ui/ lib/ fonts/    1ctx's tokens, primitives, icons and fonts
 test/                       one *.test.ts per area, helpers/ (fakes), fixtures/ (recordings)
 scripts/probe/              the fixture recorders, run by hand
@@ -134,10 +135,13 @@ the same commit as the code that changes a rule.
 - **Every runtime write goes through the one writer queue**
   (`writer(db).write(fn)`), a synchronous closure that never awaits.
   Fetch first, then write.
-- **Keys are files beside the database**, one bare value per
-  `secrets/<name>.key`, read in `src/` only by `src/runtime/keys.ts`
-  (the recorders use `readKey()`, `docs/testing.md`). A key is never
-  printed, logged, stored in a row, put in an error or answered.
+- **Source keys and `user-admin.key` are files beside the database**,
+  one bare value per `secrets/<name>.key`, read in `src/` only by
+  `src/runtime/keys.ts` (the recorders use `readKey()`,
+  `docs/testing.md`). Agent keys are rows holding only a SHA-256 of
+  the token (`src/server/access.ts`). A key is never printed, logged,
+  stored in a row, put in an error or answered, but a new agent key's
+  token, answered once to the admin who makes it.
 - **Market hours come from the sources' answers and the exchange's
   IANA zone**, never fixed UTC hours, opening times or holiday lists
   kept by hand.

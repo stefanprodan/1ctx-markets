@@ -9,16 +9,29 @@ import {
 import type { HTMLBundle } from "bun";
 import { type App, start } from "../../src/app.ts";
 import { MINUTE_MS } from "../../src/runtime/clock.ts";
-import { keys, requireAdmin, requireBearer } from "../../src/runtime/keys.ts";
+import { keys, requireAdmin } from "../../src/runtime/keys.ts";
 import { logger } from "../../src/runtime/log.ts";
+import { tokenHash } from "../../src/server/access.ts";
 import type { Fetch } from "../../src/sources/source.ts";
 import { type Db, open } from "../../src/storage/db/index.ts";
 import { type FakeClock, fakeClock } from "./clock.ts";
 
 export const SECRETS = join(import.meta.dir, "..", "fixtures", "secrets");
 
+// made up, as an agent key the admin made; never a real key
+export const AGENT_KEY = "1ctx-markets-test-agent-key-0123456789abcdef";
+
+// the agent key's row, kept when a test's database is started again
+export function seedAgentKey(db: Db, at: number): void {
+  db.query(
+    `insert or ignore into keys (id, name, token_hash, created_at)
+     values ('testagentkey', 'test-agent', ?, ?)`,
+  ).run(tokenHash(AGENT_KEY), at);
+}
+
 export type TestApp = {
   url: string;
+  // an agent key's token, as an agent sends it
   bearer: string;
   admin: string;
   // every log line the app wrote
@@ -54,14 +67,15 @@ export async function withApp(
   const store = keys(SECRETS);
   const clock = fakeClock(options.start);
   const lines: string[] = [];
-  const bearer = requireBearer(store);
-  const admin = requireAdmin(store, bearer);
+  const bearer = AGENT_KEY;
+  const admin = requireAdmin(store);
   const db = options.db ?? open(":memory:", clock).db;
+  seedAgentKey(db, clock.now());
   const app = start({
     hostname: "127.0.0.1",
     port: 0,
-    bearer,
     adminKey: admin,
+    mask: store.mask,
     clock,
     log: logger(clock, store.values, (line) => lines.push(line)),
     version: "v0.0.0-test",

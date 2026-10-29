@@ -20,7 +20,7 @@ signed in with the admin key alone.
   fonts and icon into the binary; nothing is loaded from another host.
   `serve()` answers each of `UI_PATHS` with the page and Bun answers
   the assets at the hashed paths the page names. Every other path is
-  the router's, so an unknown one keeps the bearer's 401.
+  the router's, so an unknown one keeps the keys' 401.
 - **`development: false`**, so a run from source serves the bundle the
   binary does, never Bun's dev server and its reload script.
   `MARKETS_PAGE_DEV=1` (a local preview's, never set where the binary
@@ -30,7 +30,7 @@ signed in with the admin key alone.
 - **`UI_PATHS` and the client's `ROUTES` name the same paths**; `test/web.test.tsx` holds them equal. A new page adds its
   path to both.
 - **`--no-ui` turns the UI off**: no page, no `/ui/session` (it answers
-  the bearer's 401 as any unknown path), and a cookie opens nothing.
+  the keys' 401 as any unknown path), and a cookie opens nothing.
   The UI is on by default.
 
 ## Sign-in
@@ -51,7 +51,7 @@ signed in with the admin key alone.
 - **The cookie holds no key.** `markets_session=v1.<expiry>.<mac>`:
   the expiry in epoch milliseconds and its HMAC-SHA256 under a key
   derived from the admin key (an HMAC of a fixed label), compared in
-  constant time. No table and no migration; replacing `admin.key` and
+  constant time. No table and no migration; replacing `user-admin.key` and
   restarting refuses every cookie made before.
 - **`HttpOnly; SameSite=Strict; Path=/`, 30 days (`SESSION_MS`), and
   `Secure` unless the sign-in's `Origin` is plain HTTP to a loopback
@@ -206,6 +206,24 @@ signed in with the admin key alone.
   off. The `--track` values are a grid of value and resolved id, from
   `GET /api/v1/watchlist`, loaded with the status so both land
   together.
+- **Connect agents** (`/connect`, beside Status in the rail), as
+  1ctx's: a Keys card from `GET /api/v1/keys` (each key's name, last
+  use and expiry, with Revoke, which asks once beside Keep, and "N of
+  5"), New key (a name, shaped as typed to the server's rule, and
+  Expires: Never, 30, 90 or 365 days), then a Setup card with a tab per
+  agent (Claude Code, Codex, OpenCode) and the line that adds this
+  server as the MCP server `markets` at the page's origin plus `/mcp`.
+  At the cap, New key goes and a line names the cap. A revoke that
+  answers 404 drops the row.
+- **A made key's token lives in the Connect agents view alone**: the
+  store keeps the key's row, never its token. It shows once, with a
+  copy button, the `export MARKETS_ACCESS_KEY=...` line and "Copy it
+  now; it is not shown again.", and goes on Done or on leaving the
+  page.
+- **No setup line carries a token.** Each reads `MARKETS_ACCESS_KEY`
+  (as 1ctx's read `ONECTX_ACCESS_KEY`): Claude Code's header in single
+  quotes, so the shell never writes the key into its config, Codex's
+  `bearer_token_env_var`, OpenCode's `{env:...}` with OAuth off.
 - **Instruments:** every stored instrument from
   `GET /api/v1/instruments`, every page by `next_page_token`, in one
   card with a search over id and name, kept in the view so a refresh keeps it. Sorted by

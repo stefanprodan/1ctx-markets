@@ -10,7 +10,7 @@ import { serviceConfig, urlOf } from "../service/index.ts";
 import { PARTS, RESEARCH_SECTIONS } from "./refetch.ts";
 
 // over the server's own 30-second idle limit, which ends a stuck request
-const TIMEOUT_MS = 40_000;
+export const TIMEOUT_MS = 40_000;
 
 const USAGE = `usage: 1ctx-markets admin [--listen <host:port>] [--data <dir>] <command>
   status                          what the server and its sources are doing
@@ -80,7 +80,11 @@ function parse(argv: string[]): Parsed {
 }
 
 // the flags first, then the installed service's options, then the defaults
-async function configOf(p: Parsed, deps: AdminCliDeps): Promise<Config> {
+async function configOf(
+  p: { listen: string | null; data: string | null },
+  deps: AdminCliDeps,
+  usage = USAGE,
+): Promise<Config> {
   const home = deps.home ?? homedir();
   const installed =
     p.listen === null || p.data === null
@@ -95,8 +99,25 @@ async function configOf(p: Parsed, deps: AdminCliDeps): Promise<Config> {
   if (data !== null) args.push("--data", data);
   const cli = parseCli(args, home);
   if (cli.kind === "error") throw new AdminError(cli.message);
-  if (cli.kind !== "run") throw new AdminError(USAGE);
+  if (cli.kind !== "run") throw new AdminError(usage);
   return cli.config;
+}
+
+// the running server's URL and user-admin.key, never printed
+export async function adminTarget(
+  p: { listen: string | null; data: string | null },
+  deps: AdminCliDeps,
+  usage: string,
+): Promise<{ url: string; key: string }> {
+  const config = await configOf(p, deps, usage);
+  const dir = secretsDir(config);
+  const key = keys(dir).admin();
+  if (key === null) {
+    throw new AdminError(
+      `${join(dir, ADMIN_FILE)} is missing or unreadable; the server writes it at its first start`,
+    );
+  }
+  return { url: urlOf(config), key };
 }
 
 type Call = { path: string; init: RequestInit };
@@ -137,15 +158,7 @@ export async function runAdmin(
   deps: AdminCliDeps = {},
 ): Promise<void> {
   const p = parse(argv);
-  const config = await configOf(p, deps);
-  const dir = secretsDir(config);
-  const key = keys(dir).admin();
-  if (key === null) {
-    throw new AdminError(
-      `${join(dir, ADMIN_FILE)} is missing or unreadable; the server writes it at its first start`,
-    );
-  }
-  const url = urlOf(config);
+  const { url, key } = await adminTarget(p, deps, USAGE);
   const doFetch = deps.fetch ?? ((u, i) => fetch(u, i));
   const write = deps.write ?? ((line: string) => console.log(line));
   const answers: unknown[] = [];

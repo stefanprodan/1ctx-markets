@@ -182,7 +182,7 @@ describe("the alerts feed", () => {
     expect((await t.get(undefined, "/api/v1/alerts?since=1")).status).toBe(400);
   });
 
-  test("is served behind the bearer, GET only", () =>
+  test("is served behind a key, GET only", () =>
     withApp(async (t) => {
       insertAlert(t.db, 1, snapshot(1), t.clock.now());
       const auth = { authorization: `Bearer ${t.bearer}` };

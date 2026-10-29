@@ -6,19 +6,11 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import pkg from "../package.json";
 import { AdminError, runAdmin } from "./admin/cli.ts";
+import { runKeys } from "./admin/keys-cli.ts";
 import { start } from "./app.ts";
 import { MINUTE_MS, wallClock } from "./runtime/clock.ts";
 import { dbPath, HELP, parseCli, secretsDir } from "./runtime/config.ts";
-import {
-  ADMIN_FILE,
-  BEARER_FILE,
-  createAdmin,
-  createBearer,
-  KeyError,
-  keys,
-  requireAdmin,
-  requireBearer,
-} from "./runtime/keys.ts";
+import { ADMIN_FILE, KeyError, keys, startKeys } from "./runtime/keys.ts";
 import { errorFields, logger } from "./runtime/log.ts";
 import { runService, ServiceError } from "./service/index.ts";
 import { open } from "./storage/db/index.ts";
@@ -56,9 +48,9 @@ if (cli.kind === "service") {
   }
   process.exit(0);
 }
-if (cli.kind === "admin") {
+if (cli.kind === "admin" || cli.kind === "keys") {
   try {
-    await runAdmin(cli.argv);
+    await (cli.kind === "admin" ? runAdmin : runKeys)(cli.argv);
   } catch (error) {
     if (!(error instanceof AdminError)) throw error;
     console.error(`error: ${error.message}`);
@@ -72,24 +64,14 @@ const store = keys(secretsDir(config));
 const log = logger(wallClock, store.values);
 const main = log("markets");
 
-let bearer: string;
 let adminKey: string;
-let created = false;
 let adminCreated = false;
 try {
-  created = createBearer(store.dir);
-  bearer = requireBearer(store);
-  adminCreated = createAdmin(store.dir);
-  adminKey = requireAdmin(store, bearer);
+  ({ admin: adminKey, created: adminCreated } = startKeys(store));
 } catch (error) {
   if (!(error instanceof KeyError)) throw error;
   console.error(`error: ${error.message}`);
   process.exit(1);
-}
-if (created) {
-  main.info("bearer key created", {
-    path: displayPath(join(store.dir, BEARER_FILE)),
-  });
 }
 if (adminCreated) {
   main.info("admin key created", {
@@ -103,8 +85,8 @@ const { db, migrations } = open(dbPath(config), wallClock);
 const app = start({
   hostname: config.hostname,
   port: config.port,
-  bearer,
   adminKey,
+  mask: store.mask,
   ui: config.ui,
   page,
   // a local preview rebuilds the page as its sources change, so an edit

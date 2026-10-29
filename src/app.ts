@@ -14,6 +14,7 @@ import { pruneAlerts } from "./rules/store.ts";
 import { type Clock, DAY_MS } from "./runtime/clock.ts";
 import { errorFields, type LogFactory, type LogFields } from "./runtime/log.ts";
 import { type Scheduler, scheduler } from "./runtime/scheduler.ts";
+import { access } from "./server/access.ts";
 import { router, serve } from "./server/http.ts";
 import { mcpHandler } from "./server/mcp.ts";
 import { sessions } from "./server/session.ts";
@@ -49,9 +50,10 @@ type Paced = { backoff(): Backoff | null };
 export type AppOptions = {
   hostname: string;
   port: number;
-  bearer: string;
-  // the admin routes open to no one without one
+  // opens /mcp and every route; without one only agent keys open anything
   adminKey?: string | null;
+  // hides each agent key made while running from the log
+  mask?: (token: string) => void;
   // the web UI's sign-in, which needs the admin key; off with --no-ui
   ui?: boolean;
   // the page served at the UI's paths while ui is on
@@ -298,7 +300,13 @@ export function start(options: AppOptions): App {
     page: ui ? (options.page ?? null) : null,
     pageDev: options.pageDev === true,
     handle: router({
-      bearer: options.bearer,
+      access: access({
+        db,
+        writer: write,
+        adminKey,
+        now: () => clock.now(),
+        log: options.log("http"),
+      }),
       mcp,
       api: routes({
         m: reads,
@@ -310,8 +318,8 @@ export function start(options: AppOptions): App {
         },
         track: track.status,
         log: options.log("api"),
+        mask: options.mask,
       }),
-      adminKey,
       sessions: ui ? sessions(adminKey) : null,
       clock,
       log: options.log("http"),

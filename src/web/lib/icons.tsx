@@ -81,6 +81,9 @@ const PATHS = {
   redo: "M14 8a6 6 0 1 1-1.8-4.3M14 2v3.5h-3.5",
   moon: "M13.5 9.6A5.75 5.75 0 1 1 6.4 2.5a4.6 4.6 0 0 0 7.1 7.1z",
   key: "M5.5 13.5a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM7.6 8.4 13.5 2.5M11.5 4.5l1.75 1.75M9.75 6.25l1.25 1.25",
+  // Connect agents: a plug
+  plug: "M8 14.5v-3M6 5.5v-4M10 5.5v-4M4 5.5h8v3a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3z",
+  plus: "M8 3v10M3 8h10",
 } satisfies Record<string, string>;
 
 export type IconName = keyof typeof PATHS;

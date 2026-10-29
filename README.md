@@ -8,8 +8,8 @@
 keeps quotes, daily history, technical signals, research and news in
 one SQLite file, syncs them on its own schedule from free sources, and
 serves them to agents over the [Model Context Protocol](https://modelcontextprotocol.io/)
-(MCP) and a REST API with an OpenAPI description, both behind one
-bearer key.
+(MCP) and a REST API with an OpenAPI description, both behind the
+admin key or an agent's own key.
 
 It works for any exchange Yahoo Finance carries: shares, ETFs,
 indices, futures, currencies and crypto. Nothing is preset: no ticker
@@ -55,8 +55,8 @@ holdings, orders or portfolio, and it makes no model calls.
   no key.
 - **A web UI for the operator.** Sign in with the admin key to see the
   tracked markets with their day's move, the sources, every job's last
-  run and the database at a glance, in the same look as 1ctx; `--no-ui`
-  turns it off.
+  run and the database at a glance, and to make and revoke agents'
+  keys, in the same look as 1ctx; `--no-ui` turns it off.
 - **One binary, one file.** A standalone binary built with Bun, one
   SQLite database and a directory of key files. MCP answers stay under
   32 KiB pages, so MCP clients need no setting changed; the REST API
@@ -99,9 +99,10 @@ make build
 ./bin/1ctx-markets
 ```
 
-The first start writes the bearer key every request carries to
-`~/.1ctx-markets/secrets/bearer.key`, readable only by you; it starts
-with `1ctx-markets-`, and an existing key is kept.
+The first start writes the admin key to
+`~/.1ctx-markets/secrets/user-admin.key`, readable only by you; it
+starts with `1ctx-markets-admin-`, and an existing one is kept. It
+signs in to the web UI and works for MCP and the REST API.
 
 The server listens on `127.0.0.1:11238`, serves MCP at `/mcp`, and
 keeps `markets.db` in `~/.1ctx-markets`. `--listen`, `--data`,
@@ -136,20 +137,27 @@ US, European and Asian indices, Bucharest's BET (feed only, so with
   --track '^TWII' --track BVB:BET --track GC=F --track SI=F --track CL=F
 ```
 
-Connect an MCP client over Streamable HTTP with the bearer in the
+Connect an MCP client over Streamable HTTP with a key in the
 `Authorization` header. For Claude Code:
 
 ```sh
 claude mcp add --transport http markets http://127.0.0.1:11238/mcp \
-  --header "Authorization: Bearer $(cat ~/.1ctx-markets/secrets/bearer.key)"
+  --header "Authorization: Bearer $(cat ~/.1ctx-markets/secrets/user-admin.key)"
 ```
 
 Scripts read the same data over the REST API with the same key:
 
 ```sh
-curl -H "Authorization: Bearer $(cat ~/.1ctx-markets/secrets/bearer.key)" \
+curl -H "Authorization: Bearer $(cat ~/.1ctx-markets/secrets/user-admin.key)" \
   'http://127.0.0.1:11238/api/v1/quotes?symbols=NVDA,VVSM.DE,BTC-USD'
 ```
+
+To give an agent a key of its own, which can be revoked without
+touching the others, make one on the web UI's Connect agents page, or
+with `1ctx-markets keys add <name>`. An agent's key reads market data
+and reads and writes price rules, but never opens the admin's routes:
+keys, status, the instrument list, and an instrument's refetch and
+delete.
 
 Every route, with its arguments, answers and errors, is browsable at
 <http://127.0.0.1:11238/api/v1/docs>, a Swagger UI page bundled in the

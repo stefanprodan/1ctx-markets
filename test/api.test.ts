@@ -17,6 +17,7 @@ import { NO_SOURCE } from "../src/operations/intraday.ts";
 import { CALL_MS, markets } from "../src/operations/markets.ts";
 import { DAY_MS } from "../src/runtime/clock.ts";
 import { silent } from "../src/runtime/log.ts";
+import { CALLS_PER_MINUTE } from "../src/server/ratelimit.ts";
 import { COOKIE, sessions } from "../src/server/session.ts";
 import { finnhub } from "../src/sources/finnhub/client.ts";
 import { fred } from "../src/sources/fred/client.ts";
@@ -838,6 +839,94 @@ describe("every operation", () => {
     await check("GET", "/docs/{file}", await t.call("/docs/init.js"), 200);
     await check("GET", "/docs/{file}", await t.call("/docs/init.js?x=1"), 400);
 
+    const madeKey = await check(
+      "POST",
+      "/keys",
+      await t.call("/keys", json({ name: "claude-code", expiresInDays: 30 })),
+      201,
+    );
+    expect(madeKey.token).toStartWith("1ctx-markets-");
+    await check(
+      "POST",
+      "/keys",
+      await t.call("/keys", json({ name: "Not A Name" })),
+      400,
+    );
+    await check(
+      "POST",
+      "/keys",
+      await t.call("/keys", json({ name: "claude-code" })),
+      409,
+    );
+    await check(
+      "POST",
+      "/keys",
+      await t.call("/keys", json({ name: "x".repeat(70_000) })),
+      413,
+    );
+    await check(
+      "POST",
+      "/keys",
+      await t.call("/keys", json({ name: "codex" }, "text/plain")),
+      415,
+    );
+    await check(
+      "POST",
+      "/keys",
+      await t.call("/keys", { ...json({ name: "codex" }), ...wrong }),
+      401,
+    );
+    await check(
+      "POST",
+      "/keys",
+      await t.call("/keys", { ...json({ name: "codex" }), ...reader }),
+      403,
+    );
+    const listedKeys = await check("GET", "/keys", await t.call("/keys"), 200);
+    expect(listedKeys.keys.map((k: { name: string }) => k.name)).toEqual([
+      "test-read",
+      "claude-code",
+    ]);
+    await check("GET", "/keys", await t.call("/keys?x=1"), 400);
+    await check("GET", "/keys", await t.call("/keys", wrong), 401);
+    await check("GET", "/keys", await t.call("/keys", reader), 403);
+    const keyAt = `/keys/${madeKey.key.id}`;
+    const revoke = (init: RequestInit = {}) =>
+      t.call(keyAt, { method: "DELETE", ...init });
+    await check("DELETE", "/keys/{id}", await revoke(wrong), 401);
+    await check("DELETE", "/keys/{id}", await revoke(reader), 403);
+    await check(
+      "DELETE",
+      "/keys/{id}",
+      await t.call(`${keyAt}?x=1`, { method: "DELETE" }),
+      400,
+    );
+    await check("DELETE", "/keys/{id}", await revoke(), 204);
+    await check("DELETE", "/keys/{id}", await revoke(), 404);
+
+    // past the minute's calls every keyed operation is refused before it
+    // runs, whatever it was sent
+    for (const key of [READ_KEY, ADMIN_KEY]) {
+      for (let k = 0; k < CALLS_PER_MINUTE; k++) {
+        await t.call("/nothing", {
+          headers: { authorization: `Bearer ${key}` },
+        });
+      }
+    }
+    for (const [path, item] of Object.entries(spec.paths)) {
+      for (const [method, op] of Object.entries(item)) {
+        if (!METHODS.includes(method)) continue;
+        if (!("429" in (op as { responses: object }).responses)) continue;
+        const at = path.replace("{symbol}", "US%3ANVDA").replace("{id}", "1");
+        await check(
+          method.toUpperCase(),
+          path,
+          await t.call(at, { method: method.toUpperCase() }),
+          429,
+        );
+      }
+    }
+
     // 500 is every route's wrapper, checked once below
     const documented = Object.entries(spec.paths).flatMap(([path, item]) =>
       Object.entries(item)
@@ -1263,7 +1352,7 @@ describe("access", () => {
       .replace("{id}", "1")
       .replace("{file}", "init.js");
 
-  test("each operation takes its scope; the admin key holds every one but /mcp", () =>
+  test("each operation takes its scope; the admin key holds every one and /mcp", () =>
     withApp(async ({ url, bearer, admin }) => {
       const as = (key: string): Record<string, string> => ({
         authorization: `Bearer ${key}`,
@@ -1291,7 +1380,7 @@ describe("access", () => {
           r.scope === "none" ? 200 : 401,
         ]);
         if (r.scope === "none") continue;
-        expect(none.headers.get("www-authenticate")).toBe("Bearer");
+        expect(none.headers.get("www-authenticate")).toBeNull();
         expect(none.headers.get("content-type")).toBe(
           "application/problem+json",
         );
@@ -1353,16 +1442,13 @@ describe("access", () => {
       expect(posted.status).toBe(405);
       expect(posted.headers.get("allow")).toBe("GET");
       expect((await posted.json()).code).toBe("method_not_allowed");
-      // /mcp is the read key's alone, its refusal in the shape it always had
-      const mcp = await fetch(`${url}/mcp`, {
-        method: "POST",
-        headers: as(admin),
-      });
+      // /mcp's refusal keeps the shape it always had
+      const mcp = await fetch(`${url}/mcp`, { method: "POST" });
       expect(mcp.status).toBe(401);
       expect(mcp.headers.get("content-type")).toBe("application/json");
       expect(await mcp.json()).toEqual({
         error: "unauthorized",
-        message: "no or wrong bearer key",
+        message: "no or wrong key",
       });
     }));
 

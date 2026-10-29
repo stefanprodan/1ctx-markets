@@ -10,7 +10,7 @@ import { readQuote } from "../src/market/quotes.ts";
 import { barsStale, quoteStale, STALE, SWITCH } from "../src/market/stale.ts";
 import { readTargets } from "../src/operations/targets.ts";
 import { MINUTE_MS } from "../src/runtime/clock.ts";
-import { keys, requireBearer } from "../src/runtime/keys.ts";
+import { keys } from "../src/runtime/keys.ts";
 import { logger } from "../src/runtime/log.ts";
 import { bvb, MARKET } from "../src/sources/bvb/client.ts";
 import { readSources } from "../src/sources/bvb/switch.ts";
@@ -59,7 +59,6 @@ function boot(db: Db, clock: FakeClock, fetch: Fetch, feed: boolean): App {
   return start({
     hostname: "127.0.0.1",
     port: 0,
-    bearer: requireBearer(store),
     clock,
     log: logger(clock, store.values, () => {}),
     version: "v0.0.0-test",

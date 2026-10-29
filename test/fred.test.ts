@@ -509,7 +509,6 @@ describe("fred source", () => {
     const app = start({
       hostname: "127.0.0.1",
       port: 0,
-      bearer: "b".repeat(32),
       clock,
       log: () => silent,
       version: "v0.0.0-test",
@@ -543,7 +542,6 @@ describe("fred source", () => {
     const app = start({
       hostname: "127.0.0.1",
       port: 0,
-      bearer: "b".repeat(32),
       clock,
       log: logger(clock, store.values, (line) => lines.push(line)),
       version: "v0.0.0-test",

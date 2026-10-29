@@ -743,7 +743,7 @@ describe("the quotes route", () => {
       expect(lastReadAt(t.db, "US:NVDA")).toBe(NOW);
     }));
 
-  test("401 without the bearer, 405 for other methods, 400 for bad arguments", () =>
+  test("401 without a key, 405 for other methods, 400 for bad arguments", () =>
     yahooApp(async (t, s) => {
       const none = await fetch(`${t.url}/api/v1/quotes?symbols=NVDA`);
       expect(none.status).toBe(401);

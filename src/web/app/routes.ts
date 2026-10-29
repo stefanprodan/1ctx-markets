@@ -7,6 +7,7 @@
 import type { ComponentType } from "preact";
 import { markets } from "../data/store.ts";
 import type { IconName } from "../lib/icons.tsx";
+import { Connect } from "../views/Connect.tsx";
 import { Home } from "../views/Home.tsx";
 import { Instrument } from "../views/Instrument.tsx";
 import { Instruments } from "../views/Instruments.tsx";
@@ -41,6 +42,15 @@ export const ROUTES: readonly Route[] = [
     view: Status,
     load: async () => {
       await markets.loadStatus();
+    },
+  },
+  {
+    path: "/connect",
+    label: "Connect agents",
+    icon: "plug",
+    view: Connect,
+    load: async () => {
+      await markets.loadKeys();
     },
   },
   {

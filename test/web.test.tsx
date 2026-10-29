@@ -19,10 +19,11 @@ import {
   failure,
   says,
 } from "../src/web/data/api.ts";
-import type { Detail } from "../src/web/data/store.ts";
+import type { AgentKey, Detail } from "../src/web/data/store.ts";
 import {
   INSTRUMENTS_PATH,
   instrumentPath,
+  KEYS_PATH,
   type Listed,
   SESSION_PATH,
   STATUS_PATH,
@@ -57,6 +58,23 @@ import {
   volumes,
 } from "../src/web/views/Chart.model.ts";
 import { LegendLine, paintOptions } from "../src/web/views/Chart.tsx";
+import {
+  AGENTS,
+  capLine,
+  expiryWords,
+  KEY_ENV,
+  SHOWN_ONCE,
+  setupLine,
+  shapeName,
+  usedWords,
+} from "../src/web/views/Connect.model.ts";
+import {
+  ConnectBody,
+  KeyRow,
+  Keys,
+  Setup,
+  ShownKey,
+} from "../src/web/views/Connect.tsx";
 import {
   cardOf,
   clipIds,
@@ -274,6 +292,7 @@ describe("the routes", () => {
     expect(match("/")?.route.label).toBe("Home");
     expect(match("/status")?.route.label).toBe("Status");
     expect(match("/instruments")?.route.label).toBe("Instruments");
+    expect(match("/connect")?.route.label).toBe("Connect agents");
     expect(match("/nothing")).toBeNull();
     // an instrument's page takes its id from the path, decoded
     expect(match("/instruments/US%3ANVDA")).toMatchObject({
@@ -283,7 +302,12 @@ describe("the routes", () => {
     expect(match("/instruments/%E0%A4%A")).toBeNull();
     expect(match("/instruments/a/b")).toBeNull();
     // the rail names the pages without a parameter and lights the parent
-    expect(RAIL.map((r) => r.label)).toEqual(["Home", "Status", "Instruments"]);
+    expect(RAIL.map((r) => r.label)).toEqual([
+      "Home",
+      "Status",
+      "Connect agents",
+      "Instruments",
+    ]);
     expect(lit("/status", "/")).toBe(false);
     expect(lit("/instruments/US%3ANVDA", "/instruments")).toBe(true);
     expect(lit("/instrumentsx", "/instruments")).toBe(false);
@@ -1381,6 +1405,197 @@ describe("the instrument page", () => {
     await s.loadInstruments();
     expect(await s.remove("US:NVDA")).toEqual({ ok: true });
     expect(s.instruments.value?.map((r) => r.id)).toEqual(["US:AMD"]);
+  });
+});
+
+const agentKey = (name: string, more: Partial<AgentKey> = {}): AgentKey => ({
+  id: `${name}-id`,
+  name,
+  created_at: "2026-10-01T10:00:00Z",
+  last_used_at: null,
+  expires_at: null,
+  ...more,
+});
+
+// made up, never a real key
+const TOKEN = "1ctx-markets-made-up-token-0123456789abcdefABCDEF012345";
+
+describe("connect agents", () => {
+  test("keys load, a made one joins the list without its token, a revoked one leaves", async () => {
+    const f = fake({
+      [`GET ${KEYS_PATH}`]: ok({ keys: [agentKey("codex")], limit: 5 }),
+      [`POST ${KEYS_PATH}`]: () =>
+        Response.json(
+          { key: agentKey("claude-code"), token: TOKEN },
+          { status: 201 },
+        ),
+      [`DELETE ${KEYS_PATH}/codex-id`]: status(204),
+      [`DELETE ${KEYS_PATH}/claude-code-id`]: problem(404, {
+        code: "not_found",
+        detail: "no such key",
+      }),
+    });
+    const s = store(f.fetch);
+    await s.loadKeys();
+    expect(s.keys.value?.map((k) => k.name)).toEqual(["codex"]);
+    expect(s.keysLimit.value).toBe(5);
+    const made = await s.createKey("claude-code", 90);
+    expect(made.token).toBe(TOKEN);
+    expect(JSON.parse(f.asked.at(-1)!.init!.body as string)).toEqual({
+      name: "claude-code",
+      expiresInDays: 90,
+    });
+    expect(s.keys.value?.map((k) => k.name)).toEqual(["codex", "claude-code"]);
+    expect(JSON.stringify(s.keys.value)).not.toContain(TOKEN);
+    expect(await s.revokeKey("codex-id")).toBeNull();
+    // one already gone is gone all the same
+    expect(await s.revokeKey("claude-code-id")).toBeNull();
+    expect(s.keys.value).toEqual([]);
+  });
+
+  test("a refused key says why in a few words", async () => {
+    const s = store(
+      fake({
+        [`POST ${KEYS_PATH}`]: problem(409, {
+          code: "conflict",
+          detail: "name taken",
+        }),
+        [`DELETE ${KEYS_PATH}/x`]: status(500),
+      }).fetch,
+    );
+    await expect(s.createKey("codex", null)).rejects.toThrow("Name taken.");
+    expect(await s.revokeKey("x")).toBe("The server failed.");
+  });
+
+  test("a name is shaped as typed into what the server takes", () => {
+    expect(shapeName("Claude Code")).toBe("claude-code");
+    expect(shapeName("-my_agent!")).toBe("my_agent");
+    expect(shapeName("x".repeat(90))).toHaveLength(80);
+  });
+
+  test("a key reads its last use and expiry in plain words", () => {
+    const now = Date.parse("2026-10-28T12:00:00Z");
+    expect(usedWords(agentKey("a"), now)).toBe("Never used");
+    expect(
+      usedWords(agentKey("a", { last_used_at: "2026-10-28T11:55:00Z" }), now),
+    ).toBe("Used 5 min ago");
+    expect(expiryWords(agentKey("a"), now)).toBe("Never expires");
+    expect(
+      expiryWords(agentKey("a", { expires_at: "2026-11-27T12:00:00Z" }), now),
+    ).toBe("Expires 27 Nov");
+    expect(
+      expiryWords(agentKey("a", { expires_at: "2027-10-28T12:00:00Z" }), now),
+    ).toBe("Expires 28 Oct 2027");
+    expect(
+      expiryWords(agentKey("a", { expires_at: "2026-10-20T12:00:00Z" }), now),
+    ).toBe("Expired 20 Oct");
+  });
+
+  test("the keys card lists each key with Revoke, its count and New key", async () => {
+    const s = store(
+      fake({
+        [`GET ${KEYS_PATH}`]: ok({
+          keys: [
+            agentKey("codex", { expires_at: "2020-01-01T00:00:00Z" }),
+            agentKey("opencode"),
+          ],
+          limit: 5,
+        }),
+      }).fetch,
+    );
+    await s.loadKeys();
+    const html = render(<Keys store={s} shown={signal(null)} />);
+    expect(html).toContain(">Keys<");
+    expect(html).toContain("2 of 5");
+    expect(html).toContain("New key");
+    expect(html).toContain("codex");
+    expect(html).toContain("opencode");
+    expect(html.match(/>Revoke</g)).toHaveLength(2);
+    expect(html).toContain('<span class="rows-bad">Expired 1 Jan 2020</span>');
+    expect(html).not.toContain("No keys yet.");
+    const page = render(<ConnectBody store={s} />);
+    expect(page).toContain("Connect agents");
+    expect(page).toContain("Setup");
+  });
+
+  test("an empty list says so, and a full one names the cap without New key", async () => {
+    const empty = store(
+      fake({ [`GET ${KEYS_PATH}`]: ok({ keys: [], limit: 5 }) }).fetch,
+    );
+    await empty.loadKeys();
+    expect(render(<Keys store={empty} shown={signal(null)} />)).toContain(
+      "No keys yet.",
+    );
+    const full = store(
+      fake({
+        [`GET ${KEYS_PATH}`]: ok({
+          keys: ["a1", "a2", "a3", "a4", "a5"].map((n) => agentKey(n)),
+          limit: 5,
+        }),
+      }).fetch,
+    );
+    await full.loadKeys();
+    const html = render(<Keys store={full} shown={signal(null)} />);
+    expect(html).toContain(capLine(5));
+    expect(html).not.toContain("New key");
+  });
+
+  test("a made key shows once with its copy and the line that exports it", async () => {
+    const s = store(
+      fake({ [`GET ${KEYS_PATH}`]: ok({ keys: [], limit: 5 }) }).fetch,
+    );
+    await s.loadKeys();
+    const html = render(<Keys store={s} shown={signal(TOKEN)} />);
+    expect(html).toContain(SHOWN_ONCE);
+    expect(html).toContain(`export ${KEY_ENV}=&quot;${TOKEN}&quot;`);
+    expect(html).toContain('aria-label="Copy Key"');
+    expect(html).toContain(">Done<");
+    expect(render(<ShownKey token={TOKEN} onDone={() => {}} />)).toContain(
+      TOKEN,
+    );
+    // the page's own draw never holds one
+    expect(render(<ConnectBody store={s} />)).not.toContain(TOKEN);
+  });
+
+  test("a row asks nothing until Revoke", () => {
+    const html = render(
+      <KeyRow
+        store={store(fake({}).fetch)}
+        row={agentKey("codex", { last_used_at: "2026-10-28T11:00:00Z" })}
+        now={Date.parse("2026-10-28T12:00:00Z")}
+      />,
+    );
+    expect(html).toContain("Used 1 h ago · ");
+    expect(html).toContain("Never expires");
+    expect(html).toContain('aria-label="Revoke codex"');
+    expect(html).not.toContain("lose access");
+  });
+
+  test("each agent's setup adds this server and reads the key from the environment", () => {
+    const origin = "https://markets.example";
+    for (const { agent } of AGENTS) {
+      const line = setupLine(origin, agent);
+      expect([agent, line.text]).toEqual([
+        agent,
+        expect.stringContaining(`${origin}/mcp`),
+      ]);
+      expect([agent, line.text]).toEqual([
+        agent,
+        expect.stringContaining(KEY_ENV),
+      ]);
+      expect(line.text).not.toContain("1ctx-markets-");
+    }
+    expect(setupLine(origin, "claude").text).toContain(
+      `--header 'Authorization: Bearer \${${KEY_ENV}}'`,
+    );
+    expect(setupLine(origin, "codex").text).toContain(
+      `bearer_token_env_var = "${KEY_ENV}"`,
+    );
+    expect(setupLine(origin, "opencode").text).toContain('"oauth": false');
+    const html = render(<Setup origin={origin} />);
+    for (const { label } of AGENTS) expect(html).toContain(`>${label}<`);
+    expect(html).toContain("claude mcp add");
+    expect(html).toContain('aria-selected="true"');
   });
 });
 

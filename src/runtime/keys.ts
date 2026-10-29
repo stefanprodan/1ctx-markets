@@ -5,12 +5,10 @@
 import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-export const BEARER_FILE = "bearer.key";
+export const MIN_KEY_LENGTH = 32;
+// opens /mcp and every /api/v1 scope
+export const ADMIN_FILE = "user-admin.key";
 // names the key's owner wherever it is pasted
-export const BEARER_PREFIX = "1ctx-markets-";
-export const MIN_BEARER_LENGTH = 32;
-// holds every /api/v1 scope but never /mcp
-export const ADMIN_FILE = "admin.key";
 export const ADMIN_PREFIX = "1ctx-markets-admin-";
 const MAX_KEY_BYTES = 4096;
 const SOURCE_NAME = /^[a-z][a-z0-9-]{0,47}$/;
@@ -19,10 +17,11 @@ export type Keys = {
   readonly dir: string;
   // the value without surrounding whitespace, or null when the file is
   // absent, empty, not a regular file or larger than a key
-  bearer(): string | null;
   admin(): string | null;
   source(name: string): string | null;
-  // every value read so far, for the log mask
+  // a key made in the running server, so the mask hides it too
+  mask(value: string): void;
+  // every value read or masked so far, for the log mask
   values(): string[];
 };
 
@@ -47,20 +46,19 @@ export function keys(dir: string): Keys {
   };
   return {
     dir,
-    bearer: () => read(BEARER_FILE),
     admin: () => read(ADMIN_FILE),
     source: (name) => read(sourceFile(name)),
+    mask: (value) => {
+      seen.add(value);
+    },
     values: () => [...seen],
   };
 }
 
 export class KeyError extends Error {}
 
-// a first start writes the bearer; an existing file, even an empty one,
+// a first start writes the admin key; an existing file, even an empty one,
 // is never replaced, so a bad key is refused rather than rotated
-export const createBearer = (dir: string): boolean =>
-  createKey(dir, BEARER_FILE, BEARER_PREFIX);
-
 export const createAdmin = (dir: string): boolean =>
   createKey(dir, ADMIN_FILE, ADMIN_PREFIX);
 
@@ -83,29 +81,22 @@ function createKey(dir: string, file: string, prefix: string): boolean {
 
 // a header token is printable ASCII, so any other key could never match
 const usable = (key: string | null): key is string =>
-  key !== null && key.length >= MIN_BEARER_LENGTH && /^[\x21-\x7e]+$/.test(key);
+  key !== null && key.length >= MIN_KEY_LENGTH && /^[\x21-\x7e]+$/.test(key);
 
 const unusable = (path: string) =>
   new KeyError(
-    `${path} is missing, unreadable, shorter than ${MIN_BEARER_LENGTH} characters or holds anything but printable ASCII; remove it and start again to have a new one made`,
+    `${path} is missing, unreadable, shorter than ${MIN_KEY_LENGTH} characters or holds anything but printable ASCII; remove it and start again to have a new one made`,
   );
 
 // the message names the file, never what it holds
-export function requireBearer(store: Keys): string {
-  const bearer = store.bearer();
-  if (!usable(bearer)) throw unusable(join(store.dir, BEARER_FILE));
-  return bearer;
+export function requireAdmin(store: Keys): string {
+  const admin = store.admin();
+  if (!usable(admin)) throw unusable(join(store.dir, ADMIN_FILE));
+  return admin;
 }
 
-// the same as the bearer would let every agent act as the admin
-export function requireAdmin(store: Keys, bearer: string): string {
-  const path = join(store.dir, ADMIN_FILE);
-  const admin = store.admin();
-  if (!usable(admin)) throw unusable(path);
-  if (admin === bearer) {
-    throw new KeyError(
-      `${path} holds the bearer; remove it and start again to have a new one made`,
-    );
-  }
-  return admin;
+// a start's one key file; agents' keys are rows the admin makes
+export function startKeys(store: Keys): { admin: string; created: boolean } {
+  const created = createAdmin(store.dir);
+  return { admin: requireAdmin(store), created };
 }

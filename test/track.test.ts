@@ -688,7 +688,6 @@ describe("--track at start", () => {
     const app = start({
       hostname: "127.0.0.1",
       port: 0,
-      bearer: "made-up-bearer-for-the-stop-test-000000",
       clock,
       db,
       version: "v0.0.0-test",
@@ -738,7 +737,6 @@ describe("--track at start", () => {
     const app = start({
       hostname: "127.0.0.1",
       port: 0,
-      bearer: "made-up-bearer-for-the-stop-test-000000",
       clock,
       db,
       version: "v0.0.0-test",

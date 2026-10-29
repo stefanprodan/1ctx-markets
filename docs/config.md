@@ -45,8 +45,7 @@ the `--help` text, and a flag changes there in the same commit.
 |---|---|
 | `markets.db` | the one SQLite database (`docs/storage.md`) |
 | `markets.log` | the service's log, when run by `service install` (`docs/deploy.md`) |
-| `secrets/bearer.key` | the bearer every request carries |
-| `secrets/admin.key` | the key of the operator's routes, which opens every `/api/v1` route, and the web UI's sign-in (`docs/admin.md`, `docs/web.md`) |
+| `secrets/user-admin.key` | the admin key: it opens `/mcp`, every `/api/v1` route and the web UI's sign-in (`docs/admin.md`, `docs/web.md`) |
 | `secrets/source-<name>.key` | a source's API key: `source-fred.key`, `source-finnhub.key`, `source-massive.key` |
 
 ## Keys
@@ -55,17 +54,19 @@ the `--help` text, and a flag changes there in the same commit.
   trimmed; one absent, empty, not a regular file or over 4,096 bytes
   reads as no key. Keys are read once at start: a changed key needs a
   restart.
-- **A first start writes the bearer** (`createBearer()`):
-  `1ctx-markets-` and 32 random bytes in base64url, mode 600, in a
-  `secrets/` made mode 700. It writes only when no file is there, so an
-  existing key, even an empty or bad one, is never replaced.
-- **The server will not start without a bearer** of at least 32
-  printable ASCII characters (`requireBearer()`); it exits 1 naming the
-  file and how to get a new one, never its contents.
-- **The admin key is written and checked the same way**
-  (`createAdmin()`, `requireAdmin()`), prefixed `1ctx-markets-admin-`,
-  and must differ from the bearer. It holds every `/api/v1` scope,
-  the admin one alone among keys, and never opens `/mcp`.
+- **A first start writes only the admin key** (`startKeys()`):
+  `user-admin.key`, `1ctx-markets-admin-` and 32 random bytes in
+  base64url, mode 600, in a `secrets/` made mode 700. It writes only
+  when no file is there, so an existing key, even an empty or bad one,
+  is never replaced. No other name is read: an `admin.key` or
+  `bearer.key` left from an older version is ignored.
+- **The server will not start without an admin key** of at least 32
+  printable ASCII characters (`requireAdmin()`); it exits 1 naming the
+  file and how to get a new one, never its contents. It opens `/mcp`
+  and holds every `/api/v1` scope.
+- **Agents' keys are rows, not files** (`docs/api.md`, "Keys and
+  caching"): the admin makes and revokes them on Connect agents
+  (`docs/web.md`) or with `1ctx-markets keys` (`docs/admin.md`).
 - **A source key turns its source on.** Yahoo needs none and is always
   on; FRED, Finnhub and Massive are on while their file holds a key,
   and every tool answers without them. A keyless optional source is on
@@ -74,15 +75,20 @@ the `--help` text, and a flag changes there in the same commit.
   answer.** The logger masks every value `keys.ts` has read (`[key]`)
   in the message and every field, percent-decoded first, since a key
   sent in a URL arrives encoded in the logged path. Pass a source its
-  key through `store.source()`, so the mask knows it.
+  key through `store.source()`, so the mask knows it. An agent key made
+  while running joins the mask through `store.mask()` before it is
+  answered, and anything shaped like this server's keys
+  (`1ctx-markets-`, `admin-` or not, and 16 or more base64url
+  characters) is masked too, so a key made by an earlier run, whole or
+  cut, never reaches a line.
 - **The server never writes or checks existing files' modes.** Keep
   `secrets/` readable by the service user only (`chmod 700` on the
   directory, `chmod 600` on its files).
 
 ## Start log
 
-- **A first start logs `bearer key created` and `admin key created`**
-  with the file's path, never the value.
+- **A first start logs `admin key created`** with the file's path,
+  never the value.
 - **One `startup` line, then one `sources` line**, on stderr in
   slog-text form. `startup` holds `version`, `listen`, `data` (`~` for
   the home directory), `migrations` (applied, or `current`),
@@ -104,16 +110,19 @@ the `--help` text, and a flag changes there in the same commit.
   with one; under `/api/v1` the route is matched first and the key
   held to its scope (`docs/api.md`). Only `GET /health`, the API's spec and its docs
   page, the web UI's page and its sign-in answer without it. The
-  compare hashes both sides with SHA-256 and uses `timingSafeEqual`,
-  so its time does not depend on what was sent.
-  A refusal carries `WWW-Authenticate: Bearer`.
+  admin key's compare hashes both sides with SHA-256 and uses
+  `timingSafeEqual`; an agent key is found by its SHA-256
+  (`src/server/access.ts`).
+  A refusal carries no `WWW-Authenticate`, so an MCP client never
+  starts an OAuth sign-in. Each key makes at most 120 calls a minute,
+  then 429 (`docs/api.md`, "Keys and caching").
 
 | Path | Method | Serves |
 |---|---|---|
 | `/mcp` | POST | MCP over Streamable HTTP, stateless |
 | `/api/v1/*` | GET, POST, PATCH, DELETE | the REST API, its spec and docs page (`docs/api.md`); each operation takes the read or the admin scope (`docs/admin.md`) |
 | `/health` | GET | 200 with no body, for the service's start check |
-| `/`, `/status`, `/instruments` | GET | the web UI's page, its assets at the paths it names (`docs/web.md`) |
+| `/`, `/status`, `/connect`, `/instruments` | GET | the web UI's page, its assets at the paths it names (`docs/web.md`) |
 | `/ui/session` | POST, DELETE | the web UI's sign-in and sign-out (`docs/web.md`) |
 
 - **Any other method is 405 with `Allow`.** `/mcp` is stateless (one
@@ -122,15 +131,15 @@ the `--help` text, and a flag changes there in the same commit.
 - **A request body over 1 MiB is refused** with an empty 413 before
   any route runs (`MAX_BODY_BYTES` in `src/server/http.ts`); the API's
   routes hold bodies to their own smaller caps (`docs/api.md`).
-- **`/health` needs no bearer and is never logged**: it holds no data,
+- **`/health` needs no key and is never logged**: it holds no data,
   and a service manager polls it while the server starts.
-- **Every other request logs one line** with method, path, status and
-  duration; an unhandled error answers 500 with no detail. An MCP SDK
+- **Every other request logs one line** with method, path, status,
+  duration and the key's id and name (`key=admin` for the admin key); an unhandled error answers 500 with no detail. An MCP SDK
   error is logged by its type and code only, since its message can
   quote the request.
-- **The default bind is loopback.** The bearer is the only access
+- **The default bind is loopback.** The keys are the only access
   control and the server speaks plain HTTP, so a bind beyond loopback
-  sends the bearer in clear unless the network encrypts it (a private
+  sends them in clear unless the network encrypts it (a private
   network such as Tailscale) or a TLS proxy fronts it.
 
 ## Shutdown
@@ -164,10 +173,12 @@ or runs against a closed connection.
 - **The binary loads no `.env` or `bunfig.toml`** from where it runs,
   so a stray file beside it never configures it.
 - **`make smoke` checks the compiled binary**: it refuses an empty
-  bearer, writes a prefixed one on a first start, answers `/health`
-  without it and 401 to anything else, answers an MCP initialize with
-  it, serves the web UI and its assets, signs in with the admin key
-  into a cookie that holds no key, creates `markets.db`, keeps the
-  bearer out of the log, and prints a `--version` starting with `v`.
+  admin key, writes only a prefixed one on a first start, answers
+  `/health` without it and 401 to anything else, answers an MCP
+  initialize with it and with an agent key `keys add` made, holds that
+  key to its scopes, lists and revokes it, serves the web UI and its
+  assets, signs in with the admin key into a cookie that holds no key,
+  creates `markets.db`, keeps every key out of the log, and prints a
+  `--version` starting with `v`.
 - **Bun is the only runtime**, at the version in `.bun-version`; there
   is no Node. `make start` and `make dev` run from source.

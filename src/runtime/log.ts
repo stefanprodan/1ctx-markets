@@ -31,13 +31,17 @@ const decoded = (text: string): string =>
     }
   });
 
+// this server's own key shape, a prefix and a long base64url run: a key
+// made by an earlier run, known to no mask, is hidden, and so is a cut one
+const KEY_SHAPE = /1ctx-markets-(?:admin-)?[A-Za-z0-9_-]{16,}/g;
+
 function masked(text: string, keys: readonly string[]): string {
   let out = decoded(text);
   // the longest first, so a key inside another leaves none of the longer
   for (const key of [...keys].sort((a, b) => b.length - a.length)) {
     out = out.replaceAll(key, MASK);
   }
-  return out;
+  return out.replace(KEY_SHAPE, MASK);
 }
 
 export function format(

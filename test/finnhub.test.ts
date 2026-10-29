@@ -1410,7 +1410,6 @@ describe("finnhub source", () => {
     const a = start({
       hostname: "127.0.0.1",
       port: 0,
-      bearer: "b".repeat(32),
       clock,
       log: logger(clock, store.values, (l) => lines.push(l)),
       version: "v0.0.0-test",

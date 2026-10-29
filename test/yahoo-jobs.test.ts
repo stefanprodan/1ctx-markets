@@ -1338,7 +1338,6 @@ describe("startup and shutdown", () => {
     const app = start({
       hostname: "127.0.0.1",
       port: 0,
-      bearer: "x".repeat(32),
       clock,
       log: () => silent,
       version: "v0.0.0-test",

@@ -40,6 +40,7 @@ const STATUS: Record<string, number> = {
   split_paused: 409,
   payload_too_large: 413,
   unsupported_media_type: 415,
+  too_many_requests: 429,
   internal: 500,
   timeout: 503,
   rate_limited: 503,
@@ -64,6 +65,7 @@ const TITLES: Record<number, string> = {
   409: "Conflict",
   413: "Content Too Large",
   415: "Unsupported Media Type",
+  429: "Too Many Requests",
   500: "Internal Server Error",
   503: "Service Unavailable",
 };

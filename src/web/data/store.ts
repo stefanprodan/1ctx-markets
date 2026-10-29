@@ -161,6 +161,21 @@ export type Removed =
   | { ok: false; rules: number[] }
   | { ok: false; error: string };
 
+// an agent's key as listed: never its token
+export type AgentKey = {
+  id: string;
+  name: string;
+  created_at: string;
+  last_used_at: string | null;
+  // null never expires
+  expires_at: string | null;
+};
+
+type KeysPage = { keys: AgentKey[]; limit: number };
+
+// the token is answered once; the view that made it holds it, never the store
+export type MadeKey = { key: AgentKey; token: string };
+
 type ListedPage = {
   total: number;
   instruments: Listed[];
@@ -174,6 +189,7 @@ export const instrumentPath = (id: string) =>
 export const STATUS_PATH = "/api/v1/status";
 export const WATCHLIST_PATH = "/api/v1/watchlist";
 export const SESSION_PATH = "/ui/session";
+export const KEYS_PATH = "/api/v1/keys";
 
 // here: the page shown, so an answer that arrives after leaving starts nothing
 export function store(
@@ -210,6 +226,11 @@ export function store(
   const detailId = signal<string | null>(null);
   const detailError = signal<string | null>(null);
   const detailCode = signal<number | null>(null);
+  const keys = signal<AgentKey[] | null>(null);
+  const keysLimit = signal<number | null>(null);
+  const keysError = signal<string | null>(null);
+  const keysCode = signal<number | null>(null);
+  const keysFailures = signal(0);
 
   // a sign-in or sign-out starts a session anew: a call from before it
   // neither lands its answer nor signs the new one out
@@ -253,6 +274,10 @@ export function store(
       detailId.value = null;
       detailError.value = null;
       detailCode.value = null;
+      keys.value = null;
+      keysLimit.value = null;
+      keysError.value = null;
+      keysCode.value = null;
     });
   };
   const quiet = client(fetchFn, () => {});
@@ -452,6 +477,62 @@ export function store(
     return { ok: true };
   }
 
+  // a create or revoke makes a list in flight stale, as a delete does
+  let keysLoad = 0;
+  async function loadKeys(): Promise<void> {
+    const mine = ++keysLoad;
+    const at = session;
+    const stale = () => mine !== keysLoad || at !== session;
+    try {
+      const page = await call<KeysPage>(KEYS_PATH);
+      if (stale()) return;
+      batch(() => {
+        keys.value = page.keys;
+        keysLimit.value = page.limit;
+        keysError.value = null;
+        keysCode.value = null;
+      });
+    } catch (error) {
+      if (stale()) return;
+      if (!(error instanceof ApiError && error.status === 401)) {
+        keysError.value = says(error);
+        keysCode.value = codeOf(error);
+        keysFailures.value++;
+      }
+    }
+  }
+
+  // throws the refusal, its words a sentence, for the form to show
+  async function createKey(
+    name: string,
+    expiresInDays: number | null,
+  ): Promise<MadeKey> {
+    let made: MadeKey;
+    try {
+      made = await call<MadeKey>(KEYS_PATH, "POST", { name, expiresInDays });
+    } catch (error) {
+      throw new Error(says(error));
+    }
+    keysLoad++;
+    keys.value = [...(keys.value ?? []), made.key];
+    return made;
+  }
+
+  // the refusal's sentence, or null once it is gone; one already gone is
+  // gone all the same
+  async function revokeKey(id: string): Promise<string | null> {
+    try {
+      await call(`${KEYS_PATH}/${encodeURIComponent(id)}`, "DELETE");
+    } catch (error) {
+      if (!(error instanceof ApiError && error.code === "not_found")) {
+        return says(error);
+      }
+    }
+    keysLoad++;
+    keys.value = keys.value?.filter((k) => k.id !== id) ?? null;
+    return null;
+  }
+
   let homeLoad = 0;
   async function loadHome(): Promise<void> {
     // the minute refresh can fire after leaving, before Preact's cleanup
@@ -527,6 +608,14 @@ export function store(
   }
 
   return {
+    keys,
+    keysLimit,
+    keysError,
+    keysCode,
+    keysFailures,
+    loadKeys,
+    createKey,
+    revokeKey,
     attribution,
     sparks,
     homeError,
