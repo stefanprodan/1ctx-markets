@@ -97,9 +97,26 @@
   .ins-return dd.ins-down {
     color: var(--failed);
   }
+  .ins-stat-row.ins-phone,
+  .ins-short {
+    display: none;
+  }
   @media (max-width: 719px) {
     .ins-returns {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: var(--space-2);
+    }
+    .ins-long {
+      display: none;
+    }
+    .ins-short {
+      display: inline;
+    }
+    .ins-return.ins-desk {
+      display: none;
+    }
+    .ins-stat-row.ins-phone {
+      display: flex;
     }
   }
 

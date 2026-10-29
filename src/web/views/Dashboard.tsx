@@ -602,6 +602,7 @@ function SearchBox({ adds }: { adds?: Adds }) {
                         setQuery("");
                       }}
                     >
+                      <span class="dash-result-lead cut">{symbolOf(c.id)}</span>
                       <span class="dash-result-name cut">
                         {c.name ?? symbolOf(c.id)}
                       </span>

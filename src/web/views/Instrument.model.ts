@@ -65,7 +65,6 @@ const DAY = new Intl.DateTimeFormat("en-GB", {
   timeZone: "UTC",
 });
 
-// live or the close, said plainly, then when it was fetched
 export function priceState(d: Detail, now: number): string {
   const q = d.quote;
   if (q === null) {
@@ -78,13 +77,11 @@ export function priceState(d: Detail, now: number): string {
       ? `Latest value, ${DAY.format(new Date(`${on}T00:00:00Z`))} · ${when}`
       : `Latest value · ${when}`;
   }
-  if (q.session.state !== "open") return `Close · market closed · ${when}`;
-  // at the open, until the first pass lands, the price is the last close
+  if (q.session.state !== "open") return `Closed · ${when}`;
+  // until the first live price after the open, the price is yesterday's
   const traded = Date.parse(q.trade_time ?? q.fetched_at ?? "");
   const start = Date.parse(q.session.start ?? "");
-  return traded < start
-    ? `Previous close · market open · ${when}`
-    : `Live · market open · ${when}`;
+  return traded < start ? `Open · previous close · ${when}` : `Open · ${when}`;
 }
 
 // a failed read's own words are for agents; the page says it plainly
@@ -106,11 +103,15 @@ export function weekly200(d: Detail): { text: string; dir: -1 | 0 | 1 } | null {
   return { text: `${n}${points ? " pts" : "%"}${side}`, dir };
 }
 
-export const RETURNS: readonly { key: keyof Returns; label: string }[] = [
-  { key: "1w", label: "1 week" },
-  { key: "1m", label: "1 month" },
-  { key: "3m", label: "3 months" },
-  { key: "ytd", label: "Year to date" },
+export const RETURNS: readonly {
+  key: keyof Returns;
+  label: string;
+  short: string;
+}[] = [
+  { key: "1w", label: "1 week", short: "1W" },
+  { key: "1m", label: "1 month", short: "1M" },
+  { key: "3m", label: "3 months", short: "3M" },
+  { key: "ytd", label: "Year to date", short: "YTD" },
 ];
 
 // a series that is itself a percent (a yield) returns in points
@@ -222,6 +223,7 @@ export type StatRow = {
   value: string;
   note?: string;
   tone?: Tone;
+  phone?: boolean;
 };
 export type Span = { low: string; high: string; at: number };
 export type StatCard = { title: string; span?: Span; rows: StatRow[] };
@@ -354,6 +356,13 @@ export function stats(d: Detail): StatCard[] {
     const a200 = besideAverage(d, "200-day average", s.sma200, now);
     if (a50) rows.push(a50);
     if (a200) rows.push(a200);
+    const w200 = besideAverage(
+      d,
+      "200-week average",
+      d.quote?.signals?.weekly?.sma200 ?? null,
+      now,
+    );
+    if (w200) rows.push({ ...w200, phone: true });
     if (s.cross !== null && s.cross !== 0) {
       const above = s.cross > 0;
       // the cross is news only on its day; after it, the side says it

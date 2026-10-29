@@ -70,19 +70,22 @@ export function Head({ detail, now }: { detail: Detail; now: number }) {
       </div>
       {r !== null && (
         <dl class="ins-returns">
-          {RETURNS.map(({ key, label }) => {
+          {RETURNS.map(({ key, label, short }) => {
             const c = returnCell(
               r[key] as number | null,
               detail.instrument.unit === "percent",
             );
             return (
               <div key={key} class="ins-return">
-                <dt>{label}</dt>
+                <dt>
+                  <span class="ins-long">{label}</span>
+                  <span class="ins-short">{short}</span>
+                </dt>
                 <dd class={tone(c.dir)}>{c.text}</dd>
               </div>
             );
           })}
-          <div class="ins-return">
+          <div class="ins-return ins-desk">
             <dt>200-week average</dt>
             <dd class={w200 ? tone(w200.dir) : undefined}>
               {w200?.text ?? "—"}
@@ -119,7 +122,10 @@ export function Stats({ cards }: { cards: readonly StatCard[] }) {
           {c.rows.length > 0 && (
             <dl class="ins-stat-rows">
               {c.rows.map((r) => (
-                <div key={r.label} class="ins-stat-row">
+                <div
+                  key={r.label}
+                  class={`ins-stat-row${r.phone ? " ins-phone" : ""}`}
+                >
                   <dt>{r.label}</dt>
                   <dd>
                     <span

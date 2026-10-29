@@ -19,6 +19,7 @@ import type {
   UTCTimestamp,
 } from "lightweight-charts";
 import { useEffect, useLayoutEffect, useRef } from "preact/hooks";
+import { railDrawer } from "../app/shell.ts";
 import { theme } from "../app/theme.ts";
 import { says } from "../data/api.ts";
 import { markets } from "../data/store.ts";
@@ -30,6 +31,7 @@ import {
   candles,
   changeText,
   closes,
+  DESK,
   dayOf,
   extendedLines,
   figure,
@@ -42,11 +44,15 @@ import {
   isIntraday,
   isLive,
   type Legend,
+  type Levels,
+  type Look,
   legendOf,
+  levelsOf,
   localTime,
+  lookOf,
+  phoneRange,
   pointLegendOf,
   pointLine,
-  RANGES,
   type Range,
   readSettings,
   type Settings,
@@ -73,9 +79,12 @@ function alpha(hex: string, a: number): string {
 
 export type Colors = ReturnType<typeof colors>;
 
+type Mark = { side: "left" | "right"; y: number; text: string };
+
 function colors() {
   return {
     card: token("--card"),
+    page: token("--page"),
     fg: token("--fg"),
     faint: token("--faint"),
     line: token("--line"),
@@ -104,10 +113,12 @@ export function paintOptions(
   l: Pick<Lib, "ColorType" | "PriceScaleMode">,
   k: Colors,
   log: boolean,
+  look: Look = DESK,
 ) {
+  const bare = !look.axis;
   return {
     layout: {
-      background: { type: l.ColorType.Solid, color: k.card },
+      background: { type: l.ColorType.Solid, color: bare ? k.page : k.card },
       textColor: k.faint,
       fontFamily: k.font,
       fontSize: 11,
@@ -116,11 +127,14 @@ export function paintOptions(
     },
     grid: {
       vertLines: { visible: false },
-      horzLines: { color: alpha(k.line, 0.7) },
+      horzLines: { visible: !bare, color: alpha(k.line, 0.7) },
     },
     rightPriceScale: {
+      visible: !bare,
       borderVisible: false,
-      scaleMargins: { top: 0.1, bottom: 0.04 },
+      scaleMargins: bare
+        ? { top: 0.12, bottom: 0.12 }
+        : { top: 0.1, bottom: 0.04 },
       mode: log ? l.PriceScaleMode.Logarithmic : l.PriceScaleMode.Normal,
     },
     crosshair: {
@@ -167,8 +181,9 @@ export function LegendLine({
   legend: Legend;
   interval: History["interval"] | Intraday["interval"];
   range: Range;
-  show: { sma50: boolean; sma200: boolean };
+  show: { sma50: boolean; sma200: boolean; ohlc?: boolean };
 }) {
+  const ohlc = show.ohlc !== false;
   const dir =
     legend.change === null || Math.abs(legend.change) < 0.005
       ? ""
@@ -183,7 +198,7 @@ export function LegendLine({
           {legend.time !== undefined && ` ${legend.time}`}
         </span>
         {legend.live && <span class="chart-live">Live</span>}
-        {legend.open !== null && (
+        {ohlc && legend.open !== null && (
           <>
             <span>
               <i>O</i> {figure(legend.open)}
@@ -197,9 +212,17 @@ export function LegendLine({
           </>
         )}
         <span>
-          <i>C</i> {figure(legend.close)}
+          {/* short, as the C it replaces */}
+          <i>
+            {legend.session === "post"
+              ? "Post"
+              : legend.session === "pre"
+                ? "Pre"
+                : "C"}
+          </i>{" "}
+          {figure(legend.close)}
         </span>
-        {legend.volume !== null && (
+        {ohlc && legend.volume !== null && (
           <span>
             <i>Vol</i> {volumeText(legend.volume)}
           </span>
@@ -210,7 +233,7 @@ export function LegendLine({
           </span>
         )}
       </span>
-      {interval !== "5m" && (
+      {interval !== "5m" && (show.sma50 || show.sma200) && (
         <span class="chart-legend-row">
           {show.sma50 && legend.sma50 !== null && (
             <span class="chart-avg chart-avg-50">
@@ -249,6 +272,18 @@ export function Chart({ id }: { id: string }) {
       sma200: sma200.value,
     });
   }, [range.value, line.value, log.value, sma50.value, sma200.value]);
+  // a kept toggle the look has no button for draws as off, never stuck on
+  const look = () => lookOf(railDrawer.value);
+  const logScale = () => log.value && look().log;
+  const show50 = () => sma50.value && look().averages;
+  const show200 = () => sma200.value && look().averages;
+  const candlesOn = () => !line.value && look().candles;
+  const marks = useSignal<Mark[]>([]);
+  const levels = useRef<{ s: ISeriesApi<SeriesType>; at: Levels } | null>(null);
+  useEffect(() => {
+    if (!look().ranges.includes(range.value))
+      range.value = phoneRange(range.value);
+  }, [railDrawer.value]);
   const hover = useSignal<string | number | null>(null);
   const lib = useRef<Lib | null>(null);
   const chart = useRef<IChartApi | null>(null);
@@ -295,7 +330,7 @@ export function Chart({ id }: { id: string }) {
     void import("lightweight-charts").then((l) => {
       if (gone || box.current === null) return;
       lib.current = l;
-      const paint = paintOptions(l, colors(), log.value);
+      const paint = paintOptions(l, colors(), logScale(), look());
       const c = l.createChart(box.current, {
         ...paint,
         autoSize: true,
@@ -313,7 +348,10 @@ export function Chart({ id }: { id: string }) {
               : dateOf(p.time);
       });
       // a resize keeps the bar spacing, which would cut the newest bars off
-      c.timeScale().subscribeSizeChange(() => c.timeScale().fitContent());
+      c.timeScale().subscribeSizeChange(() => {
+        c.timeScale().fitContent();
+        placeMarks();
+      });
       chart.current = c;
       draw();
     });
@@ -333,7 +371,32 @@ export function Chart({ id }: { id: string }) {
   // a theme flip, a toggle: the same bars drawn again
   useEffect(() => {
     draw();
-  }, [theme.value, line.value, log.value, sma50.value, sma200.value]);
+  }, [
+    theme.value,
+    line.value,
+    log.value,
+    railDrawer.value,
+    sma50.value,
+    sma200.value,
+  ]);
+
+  function placeMarks() {
+    const lv = levels.current;
+    if (look().axis || chart.current === null || lv === null) {
+      if (marks.value.length > 0) marks.value = [];
+      return;
+    }
+    const out: Mark[] = [];
+    const put = (side: Mark["side"], v: number | null) => {
+      if (v === null) return;
+      const y = lv.s.priceToCoordinate(v);
+      if (y !== null) out.push({ side, y, text: axisPrice(v) });
+    };
+    put("left", lv.at.ref);
+    put("right", lv.at.high);
+    if (lv.at.low !== lv.at.high) put("right", lv.at.low);
+    marks.value = out;
+  }
 
   function draw() {
     const l = lib.current;
@@ -341,7 +404,8 @@ export function Chart({ id }: { id: string }) {
     if (l === null || c === null) return;
     const k = colors();
     // a range with no bars (a series on 5D) keeps the page's colours too
-    c.applyOptions(paintOptions(l, k, log.value));
+    c.applyOptions(paintOptions(l, k, logScale(), look()));
+    marks.value = [];
     const h = data.value;
     if (h === null) return;
     c.applyOptions({
@@ -372,7 +436,23 @@ export function Chart({ id }: { id: string }) {
     for (const s of series.current) c.removeSeries(s);
     series.current = [];
     // every draw shows its whole range, a day its whole session
-    const fit = () => c.timeScale().fitContent();
+    levels.current = null;
+    // coordinates settle a frame after the fit
+    const fit = () => {
+      c.timeScale().fitContent();
+      requestAnimationFrame(placeMarks);
+    };
+    const refLine = (s: ISeriesApi<SeriesType>, at: Levels | null) => {
+      if (look().axis || at?.ref == null) return;
+      s.createPriceLine({
+        price: at.ref,
+        color: k.faint,
+        lineWidth: 1,
+        lineStyle: l.LineStyle.Dotted,
+        axisLabelVisible: false,
+        title: "",
+      });
+    };
 
     // up or down from where the range starts, as Yahoo colours a line
     const area = (
@@ -406,7 +486,14 @@ export function Chart({ id }: { id: string }) {
       if (base === null) return;
       // 5D reads as one move, as the daily ranges do
       if (shown.value !== "1D") {
-        series.current.push(area(values, base));
+        const s = area(values, base);
+        const at = levelsOf(
+          values[0]?.value ?? null,
+          values.map((v) => v.value),
+        );
+        if (at) levels.current = { s, at };
+        refLine(s, at);
+        series.current.push(s);
         fit();
         return;
       }
@@ -456,6 +543,11 @@ export function Chart({ id }: { id: string }) {
         h.session,
       ).map((t) => ({ time: t as UTCTimestamp }));
       const s = day(values, false, post.length === 0);
+      const at = levelsOf(
+        base,
+        [...values, ...pre, ...post].map((v) => v.value),
+      );
+      if (at) levels.current = { s, at };
       if (slots.length > 0) {
         s.setData([...values, ...slots]);
         // a fixed right edge pins the last price there, pushing the slots out
@@ -482,7 +574,7 @@ export function Chart({ id }: { id: string }) {
     }
 
     const live = isLive(h);
-    const asCandles = !line.value && hasCandles(h.bars);
+    const asCandles = candlesOn() && hasCandles(h.bars);
     let price: ISeriesApi<SeriesType>;
     if (asCandles) {
       const data = candles(h.bars).map((b, i, all) =>
@@ -505,10 +597,22 @@ export function Chart({ id }: { id: string }) {
         priceFormat: PRICE,
       });
       price.setData(data);
+      const at = levelsOf(
+        data[0]?.close ?? null,
+        data.map((b) => b.high),
+        data.map((b) => b.low),
+      );
+      if (at) levels.current = { s: price, at };
     } else {
       const values = closes(h.bars);
       price = area(values, values[0]?.value ?? null);
+      const at = levelsOf(
+        values[0]?.value ?? null,
+        values.map((v) => v.value),
+      );
+      if (at) levels.current = { s: price, at };
     }
+    refLine(price, levels.current?.at ?? null);
     series.current.push(price);
 
     const avg = (key: "sma50" | "sma200", color: string) => {
@@ -523,10 +627,10 @@ export function Chart({ id }: { id: string }) {
       s.setData(averages(h.bars, key));
       series.current.push(s);
     };
-    if (sma50.value) avg("sma50", k.sma50);
-    if (sma200.value) avg("sma200", k.sma200);
+    if (show50()) avg("sma50", k.sma50);
+    if (show200()) avg("sma200", k.sma200);
 
-    if (hasVolume(h.bars)) {
+    if (hasVolume(h.bars) && look().volume) {
       const v = c.addSeries(
         l.HistogramSeries,
         {
@@ -568,7 +672,7 @@ export function Chart({ id }: { id: string }) {
       ? "loading"
       : h.interval === "5m"
         ? "points"
-        : `${sma50.value}${sma200.value}${hasCandles(h.bars)}`;
+        : `${show50()}${show200()}${look().ohlc && hasCandles(h.bars)}`;
   useLayoutEffect(() => {
     const box = legendBox.current;
     if (box === null) return;
@@ -583,13 +687,22 @@ export function Chart({ id }: { id: string }) {
     }
   });
   const intraday = isIntraday(range.value);
+  const lk = look();
   const candlesOk =
-    !intraday && h !== null && h.interval !== "5m" && hasCandles(h.bars);
+    lk.candles &&
+    !intraday &&
+    h !== null &&
+    h.interval !== "5m" &&
+    hasCandles(h.bars);
+  const linesOk = lk.log || (lk.averages && !intraday);
   return (
-    <section class="card chart-card" aria-label="Chart">
+    <section
+      class={`card chart-card${lk.phone ? " chart-phone" : ""}`}
+      aria-label="Chart"
+    >
       <div class="chart-head">
         <fieldset class="seg seg-small chart-ranges" aria-label="Range">
-          {RANGES.map((r) => (
+          {lk.ranges.map((r) => (
             <button
               key={r}
               type="button"
@@ -603,68 +716,74 @@ export function Chart({ id }: { id: string }) {
             </button>
           ))}
         </fieldset>
-        <div class="chart-tools">
-          {candlesOk && (
-            <fieldset class="seg seg-small" aria-label="Style">
-              <button
-                type="button"
-                class={`seg-option${line.value ? " seg-on" : ""}`}
-                aria-pressed={line.value}
-                onClick={() => {
-                  line.value = true;
-                }}
-              >
-                Line
-              </button>
-              <button
-                type="button"
-                class={`seg-option${!line.value ? " seg-on" : ""}`}
-                aria-pressed={!line.value}
-                onClick={() => {
-                  line.value = false;
-                }}
-              >
-                Candles
-              </button>
-            </fieldset>
-          )}
-          <fieldset class="seg seg-small" aria-label="Lines">
-            {!intraday && (
-              <>
+        {(candlesOk || linesOk) && (
+          <div class="chart-tools">
+            {candlesOk && (
+              <fieldset class="seg seg-small" aria-label="Style">
                 <button
                   type="button"
-                  class={`seg-option chart-toggle-50${sma50.value ? " seg-on" : ""}`}
-                  aria-pressed={sma50.value}
+                  class={`seg-option${line.value ? " seg-on" : ""}`}
+                  aria-pressed={line.value}
                   onClick={() => {
-                    sma50.value = !sma50.value;
+                    line.value = true;
                   }}
                 >
-                  50
+                  Line
                 </button>
                 <button
                   type="button"
-                  class={`seg-option chart-toggle-200${sma200.value ? " seg-on" : ""}`}
-                  aria-pressed={sma200.value}
+                  class={`seg-option${!line.value ? " seg-on" : ""}`}
+                  aria-pressed={!line.value}
                   onClick={() => {
-                    sma200.value = !sma200.value;
+                    line.value = false;
                   }}
                 >
-                  200
+                  Candles
                 </button>
-              </>
+              </fieldset>
             )}
-            <button
-              type="button"
-              class={`seg-option${log.value ? " seg-on" : ""}`}
-              aria-pressed={log.value}
-              onClick={() => {
-                log.value = !log.value;
-              }}
-            >
-              Log
-            </button>
-          </fieldset>
-        </div>
+            {linesOk && (
+              <fieldset class="seg seg-small" aria-label="Lines">
+                {lk.averages && !intraday && (
+                  <>
+                    <button
+                      type="button"
+                      class={`seg-option chart-toggle-50${sma50.value ? " seg-on" : ""}`}
+                      aria-pressed={sma50.value}
+                      onClick={() => {
+                        sma50.value = !sma50.value;
+                      }}
+                    >
+                      50
+                    </button>
+                    <button
+                      type="button"
+                      class={`seg-option chart-toggle-200${sma200.value ? " seg-on" : ""}`}
+                      aria-pressed={sma200.value}
+                      onClick={() => {
+                        sma200.value = !sma200.value;
+                      }}
+                    >
+                      200
+                    </button>
+                  </>
+                )}
+                {lk.log && (
+                  <button
+                    type="button"
+                    class={`seg-option${log.value ? " seg-on" : ""}`}
+                    aria-pressed={log.value}
+                    onClick={() => {
+                      log.value = !log.value;
+                    }}
+                  >
+                    Log
+                  </button>
+                )}
+              </fieldset>
+            )}
+          </div>
+        )}
       </div>
       <div class="chart-body">
         {/* a read that failed says so over the bars still shown */}
@@ -677,14 +796,29 @@ export function Chart({ id }: { id: string }) {
               legend={legend}
               interval={h.interval}
               range={shown.value}
-              show={{ sma50: sma50.value, sma200: sma200.value }}
+              show={{
+                sma50: show50(),
+                sma200: show200(),
+                ohlc: look().ohlc,
+              }}
             />
           ) : (
             // a first guess at its room before the first answer
             <div class="chart-legend chart-legend-wait" aria-hidden="true" />
           )}
         </div>
-        <div class="chart-canvas" ref={box} />
+        <div class="chart-plot">
+          <div class="chart-canvas" ref={box} />
+          {marks.value.map((m) => (
+            <span
+              key={`${m.side}${m.text}`}
+              class={`chart-mark chart-mark-${m.side}`}
+              style={{ top: `${m.y}px` }}
+            >
+              {m.text}
+            </span>
+          ))}
+        </div>
       </div>
     </section>
   );

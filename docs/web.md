@@ -245,6 +245,11 @@ signed in with the admin key alone.
   Cancel drops it. Outside Edit, Add from search and the view switch
   save at once. A phone has no editing: Edit, the view
   switch and Add hide, and a section keeps its view.
+- **On a phone a list leads with the ticker**, the name under it small
+  and dim, as phone market apps do: the cards, the table rows and
+  search results (CSS by width; the Instruments list leads with it
+  everywhere). The top panel's tabs (movers, Trend, Earnings) name a
+  row by its ticker alone. A wider window leads with the name.
 - **A card** is the name, symbol, Open or Closed, the stored price in
   its currency (a yield in percent), the day's change in percent, and a
   line; it links the instrument. A favourite added but not answered yet
@@ -329,13 +334,17 @@ signed in with the admin key alone.
   `GET /api/v1/instruments/{id}`, a read as any client's, so
   opening it keeps it tracked and an id never stored is fetched. The
   title is the symbol with the name beside it; a card holds the kind
-  and market, the price and day's change, "Live · market open" or "Close · market closed" (a series:
-  "Latest value" and its date) with when it was fetched, and the 1
-  week, 1 month, 3 months and year-to-date returns from the quote, never
-  recomputed, then how far the price is above or below the quote's
-  200-week average (in points for a series in percent), the average's
-  own value left out so the row stays one line. A read that failed shows the stored price as "Stored
-  price" with its age, no returns, and one notice that a new price could
+  and market, the price and day's change, "Open" or "Closed" as the
+  home table says it ("Open · previous close" at the open, until the
+  first live price; a series: "Latest value" and its date) with when it
+  was fetched, and the 1 week, 1 month, 3 months and year-to-date
+  returns from the quote, never recomputed, then how far the price is
+  above or below the quote's 200-week average (in points for a series
+  in percent), the average's own value left out so the row stays one
+  line. On a phone the returns are one line of four, named 1W, 1M, 3M
+  and YTD as the chart's ranges, and the 200-week average moves to the
+  Trend card, under the 200-day. A read that
+  failed shows the stored price as "Stored price" with its age, no returns, and one notice that a new price could
   not be had; the server's phrase is for agents, not this page.
 - **Cards under the chart say the quote's daily signals in plain words**
   (`stats()`), three abreast, stacked on a phone: the 52-week range (a
@@ -382,6 +391,21 @@ signed in with the admin key alone.
 
 ## The chart
 
+- **A phone draws the chart as a phone chart app does.** What the
+  chart offers and draws is one `Look` (`Chart.model.ts`), picked from
+  the shell's phone check (`railDrawer`: narrow, or a phone on its
+  side); the card's `chart-phone` class carries it to the stylesheet,
+  which has no width rule of its own, so the drawing and the layout
+  never disagree. A phone: the price alone, as a line, edge to edge on
+  the page with no card, axis column or grid; the ranges in one row
+  under the plot (1D 5D 1M 6M YTD 1Y 5Y Max, a kept 3M or 3Y moving to
+  6M or 5Y); no toolbar, so no candles, averages, volume pane or Log
+  (a choice kept from a wider window is drawn as off, not lost); a
+  legend of one row, the date, close and range's change, as 1D's; and
+  the plot names its own levels (`levelsOf`, `placeMarks`): where the
+  range starts (a day's previous close) dotted at the left, its high
+  and low at the right, placed a frame after each fit so a redraw or
+  resize moves them.
 - **TradingView Lightweight Charts 5.2.1** (`views/Chart.tsx`), run
   with the first chart (a dynamic import); the compiled binary does
   not split the page, so the library ships in its bundle either way. Its
@@ -396,8 +420,12 @@ signed in with the admin key alone.
   never reorders or drops one; only the labels (axis ticks, crosshair,
   legend) are in the viewer's local time (`localTime`, `timeLabel`),
   the crosshair's day label for daily bars kept as the library writes
-  it. No candles, averages or volume, so their toggles hide. The legend gives the day and time,
-  the close and the change from the answer's `previous_close`, else the first close.
+  it. No candles, averages or volume, so their toggles hide. The
+  legend gives the day and time, the price and the change from the
+  answer's `previous_close`, else the first close. At rest the price
+  is the newest, an after-hours one once there is one; a price outside
+  the regular session is named Post or Pre, short as the C it stands
+  in for, which is the regular session's alone.
 - **1D is a baseline at the previous close**, green above and red
   below, with the previous close dashed and labelled, as a chart site
   draws a day; the scale keeps the previous close in view. 1D asks
@@ -433,7 +461,7 @@ signed in with the admin key alone.
 - **On a phone the head's row is the floating menu button's height**,
   centred, so the button, title and actions share one middle.
 - **The bar still trading is drawn faded**; the last price has its
-  line. Log is a toggle. **The chart neither pans nor zooms**: the
+  line. Log is a toggle (not on a phone, above). **The chart neither pans nor zooms**: the
   range buttons choose what shows, and every draw (a range change, the
   minute refresh, a toggle, a theme flip) and every resize fits it. **1D spans its whole
   session**, ending in empty 5-minute slots up to the close

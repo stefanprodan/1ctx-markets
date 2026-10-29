@@ -73,6 +73,52 @@ export const RANGES = [...INTRADAY, ...DAILY] as const;
 export type Range = (typeof RANGES)[number];
 export const DEFAULT_RANGE: Range = "1D";
 
+export const PHONE_RANGES: readonly Range[] = [
+  "1D",
+  "5D",
+  "1M",
+  "6M",
+  "YTD",
+  "1Y",
+  "5Y",
+  "Max",
+];
+export const phoneRange = (r: Range): Range =>
+  r === "3M" ? "6M" : r === "3Y" ? "5Y" : r;
+
+// one choice for the drawing and the stylesheet, so they never disagree
+export type Look = {
+  phone: boolean;
+  ranges: readonly Range[];
+  candles: boolean;
+  averages: boolean;
+  volume: boolean;
+  log: boolean;
+  axis: boolean;
+  ohlc: boolean;
+};
+export const DESK: Look = {
+  phone: false,
+  ranges: RANGES,
+  candles: true,
+  averages: true,
+  volume: true,
+  log: true,
+  axis: true,
+  ohlc: true,
+};
+export const PHONE: Look = {
+  phone: true,
+  ranges: PHONE_RANGES,
+  candles: false,
+  averages: false,
+  volume: false,
+  log: false,
+  axis: false,
+  ohlc: false,
+};
+export const lookOf = (phone: boolean): Look => (phone ? PHONE : DESK);
+
 export const isIntraday = (r: Range): r is IntradayRange =>
   (INTRADAY as readonly string[]).includes(r);
 
@@ -140,6 +186,20 @@ export function candles(bars: readonly HistoryBar[]): Candle[] {
     prev = b.close;
   }
   return out;
+}
+
+export type Levels = { ref: number | null; high: number; low: number };
+export function levelsOf(
+  ref: number | null,
+  highs: readonly number[],
+  lows: readonly number[] = highs,
+): Levels | null {
+  if (highs.length === 0 || lows.length === 0) return null;
+  let high = -Infinity;
+  let low = Infinity;
+  for (const v of highs) if (v > high) high = v;
+  for (const v of lows) if (v < low) low = v;
+  return { ref, high, low };
 }
 
 export const closes = (bars: readonly HistoryBar[]) =>
@@ -280,6 +340,8 @@ export type Legend = {
   points: boolean;
   sma50: number | null;
   sma200: number | null;
+  // C is the regular session's alone
+  session?: "pre" | "post";
 };
 
 const lastOf = (bars: readonly HistoryBar[], key: "sma50" | "sma200") =>
@@ -333,14 +395,16 @@ export function pointLegendOf(
       Date.parse(p.at) > Date.parse(newest.at),
   );
   const rest = after ? { ...after, final: true } : newest;
+  const regular = time === null ? undefined : h.points.find(near);
   // the session's empty slots ahead hold no price: the newest stands
-  const point =
-    time === null
-      ? rest
-      : (h.points.find(near) ??
-        (outside && { ...outside, final: true }) ??
-        rest);
+  const point = regular ?? (outside && { ...outside, final: true }) ?? rest;
   if (point === undefined) return null;
+  const session =
+    regular !== undefined
+      ? undefined
+      : outside !== undefined
+        ? outside.session
+        : after?.session;
   const first = h.previous_close ?? h.points[0]?.close ?? null;
   const points = h.instrument.unit === "percent";
   const local = localTime(Date.parse(point.at) / 1000, zone);
@@ -365,6 +429,7 @@ export function pointLegendOf(
     points,
     sma50: null,
     sma200: null,
+    session,
   };
 }
 

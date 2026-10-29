@@ -104,22 +104,62 @@
   .chart-legend-wait {
     min-height: 40px;
   }
-  @media (max-width: 719px) {
-    .chart-ranges {
-      flex-wrap: nowrap;
-      width: 100%;
-    }
-    .chart-ranges .seg-option {
-      flex: 1 1 0;
-      justify-content: center;
-      min-width: 0;
-      padding: 0;
-    }
-    .chart-canvas {
-      height: 300px;
-    }
-    .chart-legend-wait {
-      min-height: 76px;
-    }
+  .chart-plot {
+    position: relative;
+  }
+  .chart-mark {
+    position: absolute;
+    z-index: 2;
+    transform: translateY(-50%);
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: var(--hover);
+    pointer-events: none;
+    font-family: var(--mono);
+    font-size: var(--text-small);
+    font-variant-numeric: tabular-nums;
+    color: var(--dim);
+  }
+  .chart-mark-left {
+    left: var(--shell-left, var(--space-4));
+  }
+  .chart-mark-right {
+    right: var(--shell-right, var(--space-4));
+  }
+  /* set from the chart's Look, not a width, so it matches the drawing */
+  .chart-phone {
+    margin-left: calc(-1 * var(--shell-left, 0px));
+    margin-right: calc(-1 * var(--shell-right, 0px));
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+  .chart-phone .chart-head {
+    order: 2;
+    padding: var(--space-3) var(--shell-right, var(--space-4)) 0
+      var(--shell-left, var(--space-4));
+    border-bottom: 0;
+  }
+  .chart-phone .chart-legend,
+  .chart-phone .chart-note {
+    padding-left: var(--shell-left, var(--space-4));
+    padding-right: var(--shell-right, var(--space-4));
+  }
+  .chart-phone .chart-canvas {
+    height: 300px;
+    background: var(--page);
+  }
+  .chart-phone .chart-ranges {
+    flex-wrap: nowrap;
+    width: 100%;
+  }
+  .chart-phone .chart-ranges .seg-option {
+    flex: 1 1 0;
+    justify-content: center;
+    min-width: 0;
+    padding: 0;
+  }
+  .chart-phone .chart-legend-wait {
+    min-height: 26px;
   }
 }
