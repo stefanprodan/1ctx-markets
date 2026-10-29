@@ -251,7 +251,11 @@ signed in with the admin key alone.
   redraw (the minute refresh, a toggle, a theme flip) keeps the times in
   view, never the bar positions: 1D's three series would shift them.
 - **Colours are read from the tokens on every draw**, and a theme flip
-  draws again.
+  draws again. The page's colours (`paintOptions`) are set when the
+  chart is made and on every draw, bars or none, and the canvas box
+  wears `--card`: the library's default is white, so a dark page would
+  flash white for the whole data call, or stay white on a range with no
+  data.
 - **Settings are kept in `localStorage`** (`chart`): the range, line,
   log and both averages, one set for every instrument; a blocked or
   broken value starts from the defaults, field by field: 1D, a line,

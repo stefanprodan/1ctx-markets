@@ -70,6 +70,8 @@ function alpha(hex: string, a: number): string {
   return `rgba(${n >> 16}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
 }
 
+export type Colors = ReturnType<typeof colors>;
+
 function colors() {
   return {
     card: token("--card"),
@@ -95,6 +97,38 @@ function dateOf(time: unknown): string {
 }
 
 export const CHART_CREDIT = "https://www.tradingview.com/";
+
+// what the page's colours set, apart from any bars, so the chart wears
+// them from its first frame and on a theme flip before bars arrive
+export function paintOptions(
+  l: Pick<Lib, "ColorType" | "PriceScaleMode">,
+  k: Colors,
+  log: boolean,
+) {
+  return {
+    layout: {
+      background: { type: l.ColorType.Solid, color: k.card },
+      textColor: k.faint,
+      fontFamily: k.font,
+      fontSize: 11,
+      attributionLogo: false,
+      panes: { separatorColor: k.line, separatorHoverColor: k.line },
+    },
+    grid: {
+      vertLines: { visible: false },
+      horzLines: { color: alpha(k.line, 0.7) },
+    },
+    rightPriceScale: {
+      borderVisible: false,
+      scaleMargins: { top: 0.1, bottom: 0.04 },
+      mode: log ? l.PriceScaleMode.Logarithmic : l.PriceScaleMode.Normal,
+    },
+    crosshair: {
+      vertLine: { color: k.faint, labelBackgroundColor: k.faint },
+      horzLine: { color: k.faint, labelBackgroundColor: k.faint },
+    },
+  };
+}
 
 // the price pane's own format; volume keeps the library's
 const PRICE = {
@@ -261,10 +295,11 @@ export function Chart({ id }: { id: string }) {
     void import("lightweight-charts").then((l) => {
       if (gone || box.current === null) return;
       lib.current = l;
+      const paint = paintOptions(l, colors(), log.value);
       const c = l.createChart(box.current, {
+        ...paint,
         autoSize: true,
-        layout: { attributionLogo: false },
-        crosshair: { mode: l.CrosshairMode.Normal },
+        crosshair: { ...paint.crosshair, mode: l.CrosshairMode.Normal },
         handleScale: { axisPressedMouseMove: true },
       });
       c.subscribeCrosshairMove((p: MouseEventParams) => {
@@ -299,29 +334,13 @@ export function Chart({ id }: { id: string }) {
   function draw(fit: boolean) {
     const l = lib.current;
     const c = chart.current;
-    const h = data.value;
-    if (l === null || c === null || h === null) return;
+    if (l === null || c === null) return;
     const k = colors();
+    // a range with no bars (a series on 5D) keeps the page's colours too
+    c.applyOptions(paintOptions(l, k, log.value));
+    const h = data.value;
+    if (h === null) return;
     c.applyOptions({
-      layout: {
-        background: { type: l.ColorType.Solid, color: k.card },
-        textColor: k.faint,
-        fontFamily: k.font,
-        fontSize: 11,
-        attributionLogo: false,
-        panes: { separatorColor: k.line, separatorHoverColor: k.line },
-      },
-      grid: {
-        vertLines: { visible: false },
-        horzLines: { color: alpha(k.line, 0.7) },
-      },
-      rightPriceScale: {
-        borderVisible: false,
-        scaleMargins: { top: 0.1, bottom: 0.04 },
-        mode: log.value
-          ? l.PriceScaleMode.Logarithmic
-          : l.PriceScaleMode.Normal,
-      },
       timeScale: {
         borderVisible: false,
         fixLeftEdge: true,
@@ -343,10 +362,6 @@ export function Chart({ id }: { id: string }) {
       localization: {
         timeFormatter: (time: unknown) =>
           timeLabel(time, undefined, navigator.language),
-      },
-      crosshair: {
-        vertLine: { color: k.faint, labelBackgroundColor: k.faint },
-        horzLine: { color: k.faint, labelBackgroundColor: k.faint },
       },
     });
     // a redraw keeps the times in view: its bars may sit at other positions

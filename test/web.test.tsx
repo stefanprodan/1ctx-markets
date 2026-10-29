@@ -63,7 +63,7 @@ import {
   timeLabel,
   volumes,
 } from "../src/web/views/Chart.model.ts";
-import { LegendLine } from "../src/web/views/Chart.tsx";
+import { LegendLine, paintOptions } from "../src/web/views/Chart.tsx";
 import {
   afterHours,
   choices,
@@ -1665,6 +1665,35 @@ describe("the chart model", () => {
     const foot = render(<Page title="NVDA" foot="Charts by TradingView" />);
     expect(foot).toContain("github.com/stefanprodan/1ctx-markets");
     expect(foot).toContain("Charts by TradingView");
+  });
+
+  test("the page's colours are set with no bars, so the chart never paints white first", async () => {
+    const l = await import("lightweight-charts");
+    const k = {
+      card: "#1e1f20",
+      fg: "#eeeeee",
+      faint: "#8b8b91",
+      line: "#2a2b2d",
+      up: "#4ade80",
+      down: "#f87171",
+      sma50: "#aaaaaa",
+      sma200: "#bbbbbb",
+      font: "mono",
+    };
+    const o = paintOptions(l, k, false);
+    expect(o.layout.background).toEqual({
+      type: l.ColorType.Solid,
+      color: "#1e1f20",
+    });
+    expect(o.layout.textColor).toBe("#8b8b91");
+    expect(o.layout.fontFamily).toBe("mono");
+    expect(o.layout.attributionLogo).toBe(false);
+    expect(o.grid.horzLines.color).toBe("rgba(42, 43, 45, 0.7)");
+    expect(o.crosshair.vertLine.color).toBe("#8b8b91");
+    expect(o.rightPriceScale.mode).toBe(l.PriceScaleMode.Normal);
+    expect(paintOptions(l, k, true).rightPriceScale.mode).toBe(
+      l.PriceScaleMode.Logarithmic,
+    );
   });
 });
 
