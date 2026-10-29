@@ -59,6 +59,8 @@ export type AppOptions = {
   ui?: boolean;
   // the page served at the UI's paths while ui is on
   page?: HTMLBundle | null;
+  // a fixed path to the file served there beside the page
+  files?: Readonly<Record<string, string>>;
   // Bun bundles the page on request and again after an edit
   pageDev?: boolean;
   clock: Clock;
@@ -314,6 +316,7 @@ export function start(options: AppOptions): App {
     hostname: options.hostname,
     port: options.port,
     page: ui ? (options.page ?? null) : null,
+    files: ui ? options.files : undefined,
     pageDev: options.pageDev === true,
     handle: router({
       access: access({

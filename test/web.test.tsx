@@ -12,6 +12,7 @@ import { inApp } from "../src/web/app/router.ts";
 import { HOME, lit, match, RAIL, ROUTES } from "../src/web/app/routes.ts";
 import { Strip } from "../src/web/app/Strip.tsx";
 import { resolveTheme } from "../src/web/app/theme.ts";
+import { tabTitle } from "../src/web/app/title.ts";
 import {
   ApiError,
   buildWatch,
@@ -376,6 +377,31 @@ describe("the routes", () => {
     ]) {
       expect(inApp(other, at)).toBe(false);
     }
+    // an installed app has no tabs, so its own pages open in place
+    expect(inApp({ ...link, blank: true }, at, true)).toBe(true);
+    for (const other of [
+      { ...link, origin: "http://other.test", blank: true },
+      { ...link, download: true },
+      { ...link, pathname: "/api/v1/docs", blank: true },
+    ]) {
+      expect(inApp(other, at, true)).toBe(false);
+    }
+  });
+
+  test("the tab names the page before the brand", () => {
+    expect(tabTitle("/", true)).toBe("1ctx Markets");
+    expect(tabTitle("/status", true)).toBe("Server status · 1ctx Markets");
+    expect(tabTitle("/instruments", undefined)).toBe(
+      "Instruments · 1ctx Markets",
+    );
+    expect(tabTitle("/instruments/US%3ABRK-B", true)).toBe(
+      "BRK-B · 1ctx Markets",
+    );
+    expect(tabTitle("/instruments/FRED:DGS10", true)).toBe(
+      "DGS10 · 1ctx Markets",
+    );
+    expect(tabTitle("/status", false)).toBe("Sign in · 1ctx Markets");
+    expect(tabTitle("/nothing", true)).toBe("1ctx Markets");
   });
 
   test("the theme follows the system until a choice is kept", () => {

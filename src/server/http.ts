@@ -3,6 +3,7 @@
 // A key is checked before a path is known missing, so an unknown path
 // answers 401 without one.
 
+import { readFileSync } from "node:fs";
 import type { McpHttpHandler } from "@modelcontextprotocol/server";
 import type { HTMLBundle } from "bun";
 import { failed, notAllowed, notFound, PREFIX, problem } from "../api/http.ts";
@@ -223,6 +224,8 @@ export function serve(options: {
   handle: Handle;
   // the web UI, bundled by Bun with its assets; none with --no-ui
   page?: HTMLBundle | null;
+  // a fixed path to the file served there, public as the page is
+  files?: Readonly<Record<string, string>>;
   // a local preview's: rebuilt after an edit, without the reload script
   pageDev?: boolean;
 }): Bun.Server<undefined> {
@@ -230,6 +233,15 @@ export function serve(options: {
   // stamped on every answer, so an open tab sees a deploy; random, as the
   // version is never told to an anonymous visitor
   const build = crypto.randomUUID();
+  // static answers, read once: Bun answers HEAD and ETag for them
+  const files = Object.fromEntries(
+    Object.entries(options.files ?? {}).map(([path, file]) => [
+      path,
+      new Response(readFileSync(file), {
+        headers: { "content-type": Bun.file(file).type },
+      }),
+    ]),
+  );
   return Bun.serve({
     hostname: options.hostname,
     port: options.port,
@@ -241,7 +253,10 @@ export function serve(options: {
     routes:
       page === null
         ? {}
-        : Object.fromEntries(UI_PATHS.map((path) => [path, page])),
+        : {
+            ...files,
+            ...Object.fromEntries(UI_PATHS.map((path) => [path, page])),
+          },
     fetch: async (req) => {
       const res = await options.handle(req);
       res.headers.set(BUILD_HEADER, build);

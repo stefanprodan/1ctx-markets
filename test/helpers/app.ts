@@ -56,6 +56,8 @@ export type TestOptions = {
   // the web UI's sign-in, and the page it serves
   ui?: boolean;
   page?: HTMLBundle;
+  // a fixed path to the file served there beside the page
+  files?: Readonly<Record<string, string>>;
 };
 
 // on loopback, on a port the system picks; stopped when fn ends, since
@@ -88,6 +90,7 @@ export async function withApp(
     bvb: options.bvb,
     ui: options.ui,
     page: options.page,
+    files: options.files,
     // no test reaches a network
     fetch:
       options.fetch ??

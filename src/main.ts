@@ -14,6 +14,9 @@ import { ADMIN_FILE, KeyError, keys, startKeys } from "./runtime/keys.ts";
 import { errorFields, logger } from "./runtime/log.ts";
 import { runService, ServiceError } from "./service/index.ts";
 import { open } from "./storage/db/index.ts";
+import icon192 from "./web/icon-192.png";
+import icon512 from "./web/icon-512.png";
+import maskable from "./web/icon-maskable-512.png";
 import page from "./web/index.html";
 
 const buildVersion = process.env.MARKETS_BUILD_VERSION;
@@ -89,6 +92,13 @@ const app = start({
   mask: store.mask,
   ui: config.ui,
   page,
+  // the manifest's icons: the bundler hashes what the page links but
+  // leaves the URLs inside the manifest alone, so they keep fixed paths
+  files: {
+    "/icon-192.png": icon192,
+    "/icon-512.png": icon512,
+    "/icon-maskable-512.png": maskable,
+  },
   // a local preview rebuilds the page as its sources change, so an edit
   // never needs a restart; never set where the binary runs
   pageDev: process.env.MARKETS_PAGE_DEV === "1",

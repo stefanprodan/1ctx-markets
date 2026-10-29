@@ -110,13 +110,20 @@ grep -q "$BEARER" "$RUN/keys" && fail "keys list printed the key"
 
 # the web UI: the page and every asset it names, from the binary's bundle
 UI=$(curl -s --max-time 5 "$URL/" || true)
-grep -q '<title>Markets</title>' <<<"$UI" || fail "/ did not answer the web UI"
+grep -q '<title>1ctx Markets</title>' <<<"$UI" || fail "/ did not answer the web UI"
 assets=$(grep -o '\(src\|href\)="/[^"]*"' <<<"$UI" | sed -E 's/^(src|href)="//; s/"$//')
 [[ -n $assets ]] || fail "the web UI names no assets"
 for asset in $assets; do
   [[ $(status "$URL$asset") == 200 ]] || fail "$asset was not served"
 done
 grep -q '\.js$' <<<"$assets" || fail "the web UI names no script"
+manifest=$(grep '\.webmanifest$' <<<"$assets") || fail "the web UI names no manifest"
+icons=$(curl -s --max-time 5 "$URL$manifest" | grep -o '"src": *"/[^"]*"' | sed -E 's/.*"(\/[^"]*)"$/\1/')
+[[ -n $icons ]] || fail "the manifest names no icons"
+for icon in $icons; do
+  type=$(curl -s --max-time 5 -o /dev/null -w '%{http_code} %{content_type}' "$URL$icon" || true)
+  [[ $type == "200 image/png" ]] || fail "$icon was not served as a PNG"
+done
 [[ $(status -X POST "$URL/ui/session" -H 'content-type: application/json' -d '{"key":"wrong"}') == 401 ]] ||
   fail "a wrong key signed the web UI in"
 COOKIE=$(curl -s --max-time 5 -o /dev/null -D - -X POST "$URL/ui/session" \
