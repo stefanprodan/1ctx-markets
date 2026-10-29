@@ -13,6 +13,7 @@ import { readInstrument } from "../src/market/instruments.ts";
 import { storeIntraday } from "../src/market/intraday.ts";
 import { lastReadAt } from "../src/market/tracking.ts";
 import { withLive } from "../src/operations/history.ts";
+import { NO_SOURCE } from "../src/operations/intraday.ts";
 import { CALL_MS, markets } from "../src/operations/markets.ts";
 import { DAY_MS } from "../src/runtime/clock.ts";
 import { silent } from "../src/runtime/log.ts";
@@ -1396,12 +1397,12 @@ describe("the watchlist", () => {
 
   test("says which entries have 5-minute closes", async () => {
     const w = world();
-    instrument(w.db, "FRED:DGS10");
-    instrument(w.db, "US:AAA");
-    instrument(w.db, "US:BBB");
+    for (const id of ["FRED:DGS10", "US:AAA", "US:BBB"]) listing(w.db, id);
     w.db
       .query("update instruments set source = 'yahoo' where id = 'US:AAA'")
       .run();
+    // read lately, so the 5-minute read below fetches nothing
+    w.db.query("update instruments set last_read_at = ?").run(NOW);
     const res = await api(w.m, {
       track: () => [
         { value: "AAA", id: "US:AAA", state: "tracked" },
@@ -1422,6 +1423,17 @@ describe("the watchlist", () => {
       ["ZZNOPE", false],
       ["CCC", false],
     ]);
+    // the 5-minute read refuses exactly the entries the watchlist marks false
+    for (const id of ["US:AAA", "FRED:DGS10", "US:BBB"]) {
+      const res = await api(w.m)(
+        new Request(
+          `http://markets.test${PREFIX}/instruments/${id}/bars?interval=5m`,
+        ),
+      );
+      const refused = JSON.stringify(await res.json()).includes(NO_SOURCE);
+      const entry = body.entries.find((e: any) => e.id === id);
+      expect([id, refused]).toEqual([id, !entry.intraday]);
+    }
   });
 });
 

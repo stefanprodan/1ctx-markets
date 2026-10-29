@@ -98,8 +98,7 @@ function dateOf(time: unknown): string {
 
 export const CHART_CREDIT = "https://www.tradingview.com/";
 
-// what the page's colours set, apart from any bars, so the chart wears
-// them from its first frame and on a theme flip before bars arrive
+// apart from the bars, so no frame shows the library's white
 export function paintOptions(
   l: Pick<Lib, "ColorType" | "PriceScaleMode">,
   k: Colors,

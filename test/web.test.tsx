@@ -59,6 +59,7 @@ import {
 import { LegendLine, paintOptions } from "../src/web/views/Chart.tsx";
 import {
   cardOf,
+  clipIds,
   groupsOf,
   moveOf,
   SPARK_H,
@@ -1853,8 +1854,9 @@ const SERIES = {
   currency: null,
   source: "fred",
   price: 4.1,
-  change: 0.05,
-  change_percent: 1.23,
+  // the watchlist gives a series no day change
+  change: null,
+  change_percent: null,
 } as const;
 const HOME_WATCH = {
   attribution: "Source: a series' owner.",
@@ -2060,9 +2062,14 @@ describe("the home page", () => {
     // a yield moves in points
     expect(cardOf(dgs10!)).toMatchObject({
       price: "4.10%",
-      move: "+0.05 pts",
+      move: "",
+      percent: "",
       state: "",
     });
+    // a yield's day change, where one is given, is in points
+    expect(
+      moveOf(homeRow("X:Y", { unit: "percent", change: 0.05 }) as Listed).text,
+    ).toBe("+0.05 pts");
     expect(moveOf(homeRow("X:Y", { change: -0.0000001 }) as Listed).dir).toBe(
       0,
     );
@@ -2072,6 +2079,87 @@ describe("the home page", () => {
       value: "TYPO",
       text: "Not found",
     });
+  });
+
+  test("a failed value says so, beside its stored price where it has one", () => {
+    const stored = {
+      ...tracked("^NDX", "NAS:^NDX"),
+      state: "source_error",
+    } as WatchEntry;
+    expect(cardOf(stored)).toEqual({
+      type: "failed",
+      value: "^NDX",
+      text: "Not available",
+      href: "/instruments/NAS%3A%5ENDX",
+      price: "100.00 USD",
+    });
+    expect(cardOf({ ...stored, state: "candidates" })).toMatchObject({
+      text: "Not found",
+    });
+    // it keeps its kind and its place in the flag
+    const entries = [
+      HOME_WATCH.entries[1],
+      stored,
+      HOME_WATCH.entries[0],
+    ] as WatchEntry[];
+    expect(
+      groupsOf(entries).map((g) => [g.kind, g.entries.map((e) => e.value)]),
+    ).toEqual([
+      ["Future", ["GC=F"]],
+      ["Index", ["^NDX", "^GSPC"]],
+    ]);
+    const html = render(<HomeBody entries={entries} sparks={new Map()} />);
+    expect(html).toContain("Not available");
+    expect(html).toContain('href="/instruments/NAS%3A%5ENDX"');
+  });
+
+  test("leaving the page drops a load in flight, so no line is asked", async () => {
+    const held = Promise.withResolvers<Response>();
+    const asked: string[] = [];
+    const s = store(
+      async (path) => {
+        asked.push(path);
+        if (path === WATCHLIST_PATH) return held.promise;
+        return Response.json(dayAnswer("SNP:^GSPC", [101], 100));
+      },
+      () => NOW,
+    );
+    s.signedIn.value = true;
+    const loading = s.loadHome();
+    await Bun.sleep(0);
+    s.leaveHome();
+    held.resolve(Response.json(HOME_WATCH));
+    await loading;
+    expect(asked).toEqual([WATCHLIST_PATH]);
+    expect(s.sparks.value.size).toBe(0);
+  });
+
+  test("a line's clip ids follow its instrument, escaped and unique", () => {
+    const entries = HOME_WATCH.entries as WatchEntry[];
+    const ids = clipIds(entries);
+    const again = clipIds([...entries].reverse());
+    for (const e of entries) expect(again.get(e)).toBe(ids.get(e)!);
+    expect(ids.get(entries[0]!)).toBe("spark-SNP_3a__5e_GSPC");
+    for (const id of ids.values()) expect(id).toMatch(/^[A-Za-z][\w-]*$/);
+    expect(new Set(ids.values()).size).toBe(entries.length);
+    // the same instrument twice still gets two
+    const twice = [entries[0]!, { ...entries[0]!, value: "SNP:^GSPC" }];
+    expect([...clipIds(twice).values()]).toEqual([
+      "spark-SNP_3a__5e_GSPC",
+      "spark-SNP_3a__5e_GSPC-2",
+    ]);
+    const html = render(
+      <HomeBody
+        entries={entries}
+        sparks={
+          new Map<string, any>([
+            ["SNP:^GSPC", dayAnswer("SNP:^GSPC", [101, 99], 100)],
+          ])
+        }
+      />,
+    );
+    expect(html).toContain('id="spark-SNP_3a__5e_GSPC-up"');
+    expect(html).toContain('clip-path="url(#spark-SNP_3a__5e_GSPC-down)"');
   });
 
   test("a day line splits at the previous close across its session; a month line is one colour", () => {

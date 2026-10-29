@@ -137,12 +137,16 @@ signed in with the admin key alone.
   in the flag; the code names no market or kind order. A value not yet
   resolved joins the group of the value before it (else after it), so
   it shows where the flag puts it: a pending one as "Pending", a failed
-  one as "Not found" (a transient failure "Not available") with the
-  value as written. No values: "Nothing tracked yet."
+  one as "Not found" (a source failure "Not available") with the
+  value as written. A failed value with a stored row keeps its kind,
+  stored price and link, and still says it failed. No values: "Nothing
+  tracked yet."
 - **A card** is the name, symbol, Open or Closed, the stored price in
   its currency (a yield in percent), the day's change in its unit (a
   yield in points) and in percent, and a line; it links the instrument.
-  It re-reads every minute while visible.
+  A series has no day change in the watchlist, so it shows none, as the
+  Instruments list. It re-reads every minute while visible; leaving the
+  page drops a load in flight, so no line is asked after it.
 - **The line is one bars call per card, in parallel**, by the entry's
   `intraday`: `interval=5m` (the newest session, split at its
   `previous_close`, green above and red below as the 1D chart, the
@@ -157,7 +161,9 @@ signed in with the admin key alone.
 - **The line is inline SVG**, not a chart: its strokes are CSS tokens,
   so it wears the theme from the first frame, and a redraw replaces it
   whole. The split is the line drawn twice, each copy clipped to its
-  side of the previous close.
+  side of the previous close. The clip ids come from the instrument id,
+  escaped for XML (`clipIds`), so a reorder never hands a card
+  another's.
 - **Status:** `GET /api/v1/status` drawn as tiles (instruments,
   the sources on and how many are paused, the jobs shown and how many
   fail, the database) and a card per source that is on, headed by its
@@ -297,8 +303,9 @@ signed in with the admin key alone.
   bundle names no source; TradingView's link is what its licence
   accepts in place of the logo, which sat on the volume. The NOTICE text is
   in `Chart.tsx`, the package shipping none. The footer shows on the
-  instrument page only, with "1ctx Markets" (the repository) and the
-  version on its left.
+  instrument page, and on Home with FRED's notice when the watchlist
+  carries its `attribution`, with "1ctx Markets" (the repository) and
+  the version on its left.
 
 ## Tests
 

@@ -408,10 +408,11 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
     return { ok: true };
   }
 
-  // the watchlist, then each resolved entry's line in parallel; a later
-  // load supersedes one in flight. The bars calls are reads, so a card
-  // keeps its instrument tracked while it is drawn.
+  // a newer load, or leaving the page, drops one in flight
   let homeLoad = 0;
+  const leaveHome = () => {
+    homeLoad++;
+  };
   async function loadHome(): Promise<void> {
     const mine = ++homeLoad;
     const at = session;
@@ -484,6 +485,7 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
     sparks,
     homeError,
     loadHome,
+    leaveHome,
     history,
     intraday,
     detail,

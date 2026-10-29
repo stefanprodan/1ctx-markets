@@ -7,9 +7,7 @@ import { change, kindOf, price, symbolOf } from "./Instruments.model.ts";
 
 export type Group = { kind: string | null; entries: WatchEntry[] };
 
-// the flag orders both: groups by their first value's place, cards as
-// listed; a value with no kind yet joins the group of the one before it
-// (else after it), so it shows where the flag puts it
+// a value with no kind yet stays beside its neighbours in the flag
 export function groupsOf(entries: readonly WatchEntry[]): Group[] {
   const kinds = entries.map((e) =>
     e.instrument === null ? null : kindOf(e.instrument.kind),
@@ -48,7 +46,14 @@ export type Card =
       state: string;
     }
   | { type: "pending"; value: string }
-  | { type: "failed"; value: string; text: string };
+  // a stored row keeps its link and price beside the failure
+  | {
+      type: "failed";
+      value: string;
+      text: string;
+      href?: string;
+      price?: string;
+    };
 
 const points = (row: Listed) =>
   row.unit === "percent" || row.unit === "percent_of_par";
@@ -63,26 +68,31 @@ export function moveOf(row: Listed): { text: string; dir: Dir } {
   return { text: `${dir > 0 ? "+" : dir < 0 ? "−" : ""}${n}${unit}`, dir };
 }
 
-// a typo or an ambiguous value is not found; anything else may pass
+// a typo or an ambiguous value is not found; a source failure may pass
 const MISSING = new Set(["not_found", "candidates", "no_data"]);
+
+const hrefOf = (id: string) => `/instruments/${encodeURIComponent(id)}`;
 
 export function cardOf(e: WatchEntry): Card {
   const row = e.instrument;
-  if (e.state === "pending" || (e.state === "tracked" && row === null)) {
-    return { type: "pending", value: e.value };
-  }
-  if (row === null || e.id === null) {
+  if (e.state !== "tracked" && e.state !== "pending") {
     return {
       type: "failed",
       value: e.value,
       text: MISSING.has(e.state) ? "Not found" : "Not available",
+      ...(row !== null && e.id !== null
+        ? { href: hrefOf(e.id), price: price(row) }
+        : {}),
     };
+  }
+  if (row === null || e.id === null) {
+    return { type: "pending", value: e.value };
   }
   const pct = change(row);
   const move = moveOf(row);
   return {
     type: "ready",
-    href: `/instruments/${encodeURIComponent(e.id)}`,
+    href: hrefOf(e.id),
     name: row.name ?? symbolOf(e.id),
     symbol: symbolOf(e.id),
     price: price(row),
@@ -92,6 +102,24 @@ export function cardOf(e: WatchEntry): Card {
     state:
       e.session === null ? "" : e.session.state === "open" ? "Open" : "Closed",
   };
+}
+
+// by instrument id, escaped for XML, so a reorder keeps each card's own
+export function clipIds(
+  entries: readonly WatchEntry[],
+): Map<WatchEntry, string> {
+  const seen = new Map<string, number>();
+  const out = new Map<WatchEntry, string>();
+  for (const e of entries) {
+    const base = `spark-${(e.id ?? e.value).replace(
+      /[^A-Za-z0-9]/g,
+      (c) => `_${c.codePointAt(0)!.toString(16)}_`,
+    )}`;
+    const n = (seen.get(base) ?? 0) + 1;
+    seen.set(base, n);
+    out.set(e, n === 1 ? base : `${base}-${n}`);
+  }
+  return out;
 }
 
 export const SPARK_W = 120;

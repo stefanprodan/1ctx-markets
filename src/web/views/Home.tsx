@@ -1,11 +1,13 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 
+import { useEffect } from "preact/hooks";
 import { markets, type Spark, type WatchEntry } from "../data/store.ts";
 import { useRefresh } from "../lib/refresh.ts";
 import { Page } from "../ui/Page.tsx";
 import {
   cardOf,
+  clipIds,
   groupsOf,
   type Line,
   SPARK_H,
@@ -14,8 +16,7 @@ import {
 } from "./Home.model.ts";
 import "./home.css";
 
-// SVG painted by CSS tokens, so the line wears the theme from its first
-// frame and a redraw replaces it whole
+// CSS tokens paint it, so it wears the theme from its first frame
 export function Sparkline({ line, id }: { line: Line | null; id: string }) {
   if (line === null) return <div class="home-spark" aria-hidden="true" />;
   const box = `0 0 ${SPARK_W} ${SPARK_H}`;
@@ -90,13 +91,24 @@ function Card({
 }) {
   const c = cardOf(entry);
   if (c.type !== "ready") {
-    return (
-      <div class={`card home-card home-card-${c.type}`}>
+    const body = (
+      <>
         <span class="home-value cut">{c.value}</span>
         <span class="home-note">
           {c.type === "pending" ? "Pending" : c.text}
         </span>
-      </div>
+        {c.type === "failed" && c.price !== undefined && (
+          <span class="home-price">{c.price}</span>
+        )}
+      </>
+    );
+    const cls = `card home-card home-card-${c.type}`;
+    return c.type === "failed" && c.href !== undefined ? (
+      <a class={cls} href={c.href}>
+        {body}
+      </a>
+    ) : (
+      <div class={cls}>{body}</div>
     );
   }
   return (
@@ -127,8 +139,7 @@ export function HomeBody({
   if (entries.length === 0) {
     return <p class="page-state">Nothing tracked yet.</p>;
   }
-  // a card's clip ids, unique on the page by its place in the flag
-  const place = new Map(entries.map((e, i) => [e, i]));
+  const clips = clipIds(entries);
   return (
     <>
       {groupsOf(entries).map((g) => (
@@ -144,7 +155,7 @@ export function HomeBody({
                 key={e.value}
                 entry={e}
                 spark={e.id === null ? undefined : sparks.get(e.id)}
-                id={`spark-${place.get(e)}`}
+                id={clips.get(e)!}
               />
             ))}
           </div>
@@ -156,6 +167,7 @@ export function HomeBody({
 
 export function Home() {
   useRefresh(markets.loadHome);
+  useEffect(() => markets.leaveHome, []);
   const entries = markets.watchlist.value;
   return (
     <Page

@@ -16,6 +16,7 @@ import { iso } from "../market/format.ts";
 import { readInstrument } from "../market/instruments.ts";
 import { trackedIds } from "../market/tracking.ts";
 import { ArgError, fields } from "../operations/args.ts";
+import { hasIntraday } from "../operations/intraday.ts";
 import type { Markets } from "../operations/markets.ts";
 import { parseQuote, quoteRows, sessionOf } from "../operations/quote.ts";
 import { type ErrorItem, restStored } from "../operations/targets.ts";
@@ -501,8 +502,7 @@ export function watchlist(
       state: t.state,
       instrument: stored === null ? null : row(stored),
       session: i === null ? null : sessionOf(m, i, now),
-      // readIntradayHistory's rule: only Yahoo's listings have 5-minute closes
-      intraday: stored?.source === YAHOO,
+      intraday: stored !== null && hasIntraday(stored),
     })),
   });
 }
