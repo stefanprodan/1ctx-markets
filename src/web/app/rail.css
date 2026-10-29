@@ -93,10 +93,58 @@
     background: var(--card);
     color: var(--fg);
   }
+  /* Recent's head: quiet since it is no link, and no taller on touch
+     since it is no tap target */
+  .rail-label {
+    flex-shrink: 0;
+    height: 30px;
+    margin-top: var(--space-2);
+    padding: 0 10px;
+    color: var(--faint);
+    font-family: var(--mono);
+    font-size: var(--text-small);
+    line-height: 30px;
+  }
+
+  /* the symbol is what is looked for; the name only tells two apart */
+  .rail-recent {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    height: 32px;
+    line-height: 32px;
+    padding: 0 10px;
+    border-radius: var(--radius);
+    color: var(--dim);
+    flex-shrink: 0;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .rail-recent:hover {
+    color: var(--fg);
+  }
+  /* names start in one column for the usual symbol's length */
+  .rail-recent-symbol {
+    flex-shrink: 0;
+    min-width: 6ch;
+    font-family: var(--mono);
+    font-size: var(--text-small);
+    font-weight: 500;
+    color: var(--fg);
+  }
+  .rail-recent-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: var(--text-small);
+  }
+
   /* a finger's 44px; the nav scrolls, so the rows may grow */
   @media (pointer: coarse) {
-    .rail-item {
+    .rail-item,
+    .rail-recent {
       height: 44px;
+      line-height: 44px;
     }
   }
 

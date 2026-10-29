@@ -134,7 +134,8 @@ signed in with the admin key alone.
   the icons, trimmed to what these pages use. **The mark is 1ctx's
   chip and sparkle with a rising price line in place of the 1**
   (`Mark` in `lib/icons.tsx`, `favicon.svg` and the manifest's icons).
-  The rail is 1ctx's logo with **Markets** beside it, the pages, and
+  The rail is 1ctx's logo with **Markets** beside it, the pages,
+  **Recent** (the last five instruments opened, symbol and name), and
   the operator's menu (dark theme, sign out) at the foot; it folds to a
   strip on a wide window, which shows the mark, and is a drawer on a
   phone. The sign-in is the mark beside 1ctx's wordmark over
