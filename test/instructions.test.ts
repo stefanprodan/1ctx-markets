@@ -13,6 +13,7 @@ import { mcpClient, withApp } from "./helpers/app.ts";
 const ANSWER_FIELDS = [
   "returns",
   "session",
+  "final",
   "counts",
   "no_event",
   "stale",

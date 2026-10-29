@@ -21,7 +21,7 @@
       "cache-control": "no-store",
       "content-type": "application/json"
     },
-    "body": "{\"quotes\":[{\"input\":\"ZZNOTHING\",\"error\":{\"code\":\"not_found\",\"detail\":\"no listing found; try search\"}}]}"
+    "body": "{\"quotes\":[{\"input\":\"ZZNOTHING\",\"error\":{\"code\":\"not_found\",\"detail\":\"no listing found; try GET /api/v1/symbols\"}}]}"
   },
   "3 GET /quotes?symbols=NVDA&next=x": {
     "status": 400,
@@ -69,7 +69,7 @@
       "cache-control": "no-store",
       "content-type": "application/problem+json"
     },
-    "body": "{\"title\":\"Not Found\",\"status\":404,\"detail\":\"no listing found; try search\",\"code\":\"not_found\",\"input\":\"ZZNOTHING\"}"
+    "body": "{\"title\":\"Not Found\",\"status\":404,\"detail\":\"no listing found; try GET /api/v1/symbols\",\"code\":\"not_found\",\"input\":\"ZZNOTHING\"}"
   },
   "9 GET /symbols?query=NVDA": {
     "status": 200,

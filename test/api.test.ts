@@ -1125,13 +1125,58 @@ describe("bars", () => {
     const wanted = JSON.parse(
       (await tool.run({ symbol: "ZZNOTHING" })).content[0]!.text,
     );
+    expect(wanted.message).toBe("no listing found; try search");
     expect(await missing.json()).toEqual({
       title: "Not Found",
       status: 404,
-      detail: wanted.message,
+      detail: "no listing found; try GET /api/v1/symbols",
       code: wanted.error,
       input: wanted.input,
     });
+  });
+});
+
+describe("an unknown symbol", () => {
+  test("points to the symbols route, whole call or one item", async () => {
+    const t = await setup();
+    const hint = "no listing found; try GET /api/v1/symbols";
+    for (const path of [
+      "/instruments/ZZNOTHING",
+      "/instruments/ZZNOTHING/bars",
+      "/instruments/ZZNOTHING/bars?interval=5m",
+    ]) {
+      const res = await t.call(path);
+      expect([path, res.status]).toEqual([path, 404]);
+      expect(await res.json()).toMatchObject({
+        code: "not_found",
+        detail: hint,
+      });
+    }
+    const res = await t.call("/quotes?symbols=NVDA,ZZNOTHING");
+    const body: any = await res.json();
+    expect(body.quotes[1]).toEqual({
+      input: "ZZNOTHING",
+      error: { code: "not_found", detail: hint },
+    });
+    // a rule's miss names its input first
+    const rule = await t.call(
+      "/rules",
+      json({
+        symbol: "ZZNOTHING",
+        condition: { left: "price", op: "<", right: 1 },
+      }),
+    );
+    expect(rule.status).toBe(404);
+    expect(await rule.json()).toMatchObject({
+      code: "not_found",
+      detail: `ZZNOTHING: ${hint}`,
+    });
+    const earnings: any = await (
+      await t.call("/earnings?from=2026-01-01&to=2026-12-31&symbols=ZZNOTHING")
+    ).json();
+    expect(earnings.unavailable).toEqual([
+      expect.objectContaining({ input: "ZZNOTHING", message: hint }),
+    ]);
   });
 });
 
