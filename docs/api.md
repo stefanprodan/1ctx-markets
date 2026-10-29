@@ -126,8 +126,11 @@ MCP tools copied onto paths.
 - **Each entry is `value` as written, `id` (null until resolved),
   `state`** (`pending`, `tracked`, or the read's error code), the
   stored row as `GET /instruments` gives it (`instrument`, null until
-  resolved) and its market's `session`, with FRED's `attribution` once
-  when an entry is a series.
+  resolved), its market's `session` and `intraday`, whether its source
+  gives 5-minute closes (`readIntradayHistory()`'s rule; false until
+  resolved), so a client picks `interval=5m` or daily bars without
+  naming a source, with FRED's `attribution` once when an entry is a
+  series.
 - **It is no read and fetches nothing**: the flag already keeps each
   entry tracked and quoted, and a read stamp would keep a value
   dropped from the flag tracked 30 more days.

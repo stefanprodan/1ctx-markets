@@ -501,6 +501,8 @@ export function watchlist(
       state: t.state,
       instrument: stored === null ? null : row(stored),
       session: i === null ? null : sessionOf(m, i, now),
+      // readIntradayHistory's rule: only Yahoo's listings have 5-minute closes
+      intraday: stored?.source === YAHOO,
     })),
   });
 }

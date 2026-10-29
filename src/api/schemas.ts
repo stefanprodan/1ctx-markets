@@ -776,6 +776,10 @@ export const schemas: Record<string, Schema> = {
             session,
             "Its market's last regular session. Null for a series or until resolved.",
           ),
+          intraday: note(
+            bool,
+            "Whether its source gives 5-minute closes (`/instruments/{symbol}/bars?interval=5m`); false until resolved.",
+          ),
         }),
       ),
     },

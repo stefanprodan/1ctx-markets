@@ -1393,6 +1393,36 @@ describe("the watchlist", () => {
     expect(both.raw.split(both.body.attribution)).toHaveLength(2);
     expect((await ask(["US:AAA"])).body).not.toHaveProperty("attribution");
   });
+
+  test("says which entries have 5-minute closes", async () => {
+    const w = world();
+    instrument(w.db, "FRED:DGS10");
+    instrument(w.db, "US:AAA");
+    instrument(w.db, "US:BBB");
+    w.db
+      .query("update instruments set source = 'yahoo' where id = 'US:AAA'")
+      .run();
+    const res = await api(w.m, {
+      track: () => [
+        { value: "AAA", id: "US:AAA", state: "tracked" },
+        { value: "FRED:DGS10", id: "FRED:DGS10", state: "tracked" },
+        { value: "BBB", id: "US:BBB", state: "tracked" },
+        { value: "ZZNOPE", id: null, state: "not_found" },
+        { value: "CCC", id: null, state: "pending" },
+      ],
+    })(new Request(`http://markets.test${PREFIX}/watchlist`));
+    const body = await res.json();
+    expect(
+      validate(body, answerSchema(spec, "GET", "/watchlist", 200)!, spec),
+    ).toEqual([]);
+    expect(body.entries.map((e: any) => [e.value, e.intraday])).toEqual([
+      ["AAA", true],
+      ["FRED:DGS10", false],
+      ["BBB", false],
+      ["ZZNOPE", false],
+      ["CCC", false],
+    ]);
+  });
 });
 
 describe("a symbol in a path", () => {
