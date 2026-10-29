@@ -50,6 +50,7 @@ import {
   type Range,
   readSettings,
   type Settings,
+  sessionSlots,
   tick,
   timeLabel,
   volumes,
@@ -258,7 +259,7 @@ export function Chart({ id }: { id: string }) {
   // the range the bars on screen were read for, which the legend names
   const shown = useSignal<Range>(kept.range);
 
-  const load = async (fit: boolean) => {
+  const load = async () => {
     const mine = ++asked.current;
     const r = range.value;
     try {
@@ -271,7 +272,7 @@ export function Chart({ id }: { id: string }) {
         shown.value = r;
       });
       error.value = null;
-      draw(fit);
+      draw();
     } catch (e) {
       if (mine !== asked.current) return;
       error.value = says(e);
@@ -299,7 +300,9 @@ export function Chart({ id }: { id: string }) {
         ...paint,
         autoSize: true,
         crosshair: { ...paint.crosshair, mode: l.CrosshairMode.Normal },
-        handleScale: { axisPressedMouseMove: true },
+        // the range buttons choose what shows; nothing pans or zooms it
+        handleScroll: false,
+        handleScale: false,
       });
       c.subscribeCrosshairMove((p: MouseEventParams) => {
         hover.value =
@@ -309,8 +312,10 @@ export function Chart({ id }: { id: string }) {
               ? p.time
               : dateOf(p.time);
       });
+      // a resize keeps the bar spacing, which would cut the newest bars off
+      c.timeScale().subscribeSizeChange(() => c.timeScale().fitContent());
       chart.current = c;
-      draw(true);
+      draw();
     });
     return () => {
       gone = true;
@@ -321,16 +326,16 @@ export function Chart({ id }: { id: string }) {
   }, []);
 
   useEffect(() => {
-    void load(true);
+    void load();
   }, [id, range.value]);
-  useRefresh(() => load(false));
+  useRefresh(() => load());
 
   // a theme flip, a toggle: the same bars drawn again
   useEffect(() => {
-    draw(false);
+    draw();
   }, [theme.value, line.value, log.value, sma50.value, sma200.value]);
 
-  function draw(fit: boolean) {
+  function draw() {
     const l = lib.current;
     const c = chart.current;
     if (l === null || c === null) return;
@@ -344,6 +349,7 @@ export function Chart({ id }: { id: string }) {
         borderVisible: false,
         fixLeftEdge: true,
         fixRightEdge: true,
+        rightOffset: 0,
         timeVisible: h.interval === "5m",
         tickMarkFormatter: (time: unknown, type: number) => {
           const at = typeof time === "number" ? localTime(time) : null;
@@ -363,28 +369,10 @@ export function Chart({ id }: { id: string }) {
           timeLabel(time, undefined, navigator.language),
       },
     });
-    // a redraw keeps the times in view: its bars may sit at other positions
-    const kept = fit ? null : c.timeScale().getVisibleRange();
     for (const s of series.current) c.removeSeries(s);
     series.current = [];
-    // a kept range off the new data (a new session) would collapse the view
-    const settle = (shown: readonly { time: Time }[]) => {
-      const a = shown[0]?.time;
-      const b = shown.at(-1)?.time;
-      const before = (x: Time, y: Time) =>
-        typeof x === "number" && typeof y === "number"
-          ? x < y
-          : String(x) < String(y);
-      if (
-        kept === null ||
-        a === undefined ||
-        b === undefined ||
-        before(kept.to, a) ||
-        before(b, kept.from)
-      ) {
-        c.timeScale().fitContent();
-      } else c.timeScale().setVisibleRange(kept);
-    };
+    // every draw shows its whole range, a day its whole session
+    const fit = () => c.timeScale().fitContent();
 
     // up or down from where the range starts, as Yahoo colours a line
     const area = (
@@ -419,7 +407,7 @@ export function Chart({ id }: { id: string }) {
       // 5D reads as one move, as the daily ranges do
       if (shown.value !== "1D") {
         series.current.push(area(values, base));
-        settle(values);
+        fit();
         return;
       }
       // green above the previous close and red below, as a chart site draws a day
@@ -463,7 +451,17 @@ export function Chart({ id }: { id: string }) {
           session: h.extended_points![i]!.session,
         })),
       );
+      const slots = sessionSlots(
+        values.map((v) => v.time),
+        h.session,
+      ).map((t) => ({ time: t as UTCTimestamp }));
       const s = day(values, false, post.length === 0);
+      if (slots.length > 0) {
+        s.setData([...values, ...slots]);
+        // a fixed right edge pins the last price there, pushing the slots out
+        // and a little room keeps the close's label whole
+        c.applyOptions({ timeScale: { fixRightEdge: false, rightOffset: 3 } });
+      }
       // the day's reference only: 5D starts days before it
       if (h.previous_close !== null && shown.value === "1D") {
         s.createPriceLine({
@@ -479,7 +477,7 @@ export function Chart({ id }: { id: string }) {
       // pre and post trading, faded
       if (pre.length > 0) day(pre, true, false);
       if (post.length > 0) day(post, true, true);
-      settle([...pre, ...values, ...post]);
+      fit();
       return;
     }
 
@@ -553,7 +551,7 @@ export function Chart({ id }: { id: string }) {
       c.panes()[0]?.setStretchFactor(4);
       c.panes()[1]?.setStretchFactor(1);
     }
-    settle(closes(h.bars));
+    fit();
   }
 
   const h = data.value;

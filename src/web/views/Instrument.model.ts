@@ -77,9 +77,13 @@ export function priceState(d: Detail, now: number): string {
       ? `Latest value, ${DAY.format(new Date(`${on}T00:00:00Z`))} · ${when}`
       : `Latest value · ${when}`;
   }
-  return q.session.state === "open"
-    ? `Live · market open · ${when}`
-    : `Close · market closed · ${when}`;
+  if (q.session.state !== "open") return `Close · market closed · ${when}`;
+  // at the open, until the first pass lands, the price is the last close
+  const traded = Date.parse(q.trade_time ?? q.fetched_at ?? "");
+  const start = Date.parse(q.session.start ?? "");
+  return traded < start
+    ? `Previous close · market open · ${when}`
+    : `Live · market open · ${when}`;
 }
 
 // a failed read's own words are for agents; the page says it plainly

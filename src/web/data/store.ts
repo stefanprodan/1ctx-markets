@@ -117,6 +117,7 @@ export type Detail = {
     unit: string;
     currency: string | null;
     fetched_at: string | null;
+    trade_time?: string | null;
     stale: string[];
     returns: Returns | null;
     // the daily and weekly signals the quote tool gives; the page reads

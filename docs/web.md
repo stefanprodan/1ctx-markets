@@ -317,9 +317,12 @@ signed in with the admin key alone.
 - **On a phone the head's row is the floating menu button's height**,
   centred, so the button, title and actions share one middle.
 - **The bar still trading is drawn faded**; the last price has its
-  line. Log is a toggle; a range change fits the content, and any other
-  redraw (the minute refresh, a toggle, a theme flip) keeps the times in
-  view, never the bar positions: 1D's three series would shift them.
+  line. Log is a toggle. **The chart neither pans nor zooms**: the
+  range buttons choose what shows, and every draw (a range change, the
+  minute refresh, a toggle, a theme flip) and every resize fits it. **1D spans its whole
+  session**, ending in empty 5-minute slots up to the close
+  (`sessionSlots()`), as the home cards draw a day, so the first minutes
+  are a short line at the left, not the whole width.
 - **Colours are read from the tokens on every draw**, and a theme flip
   draws again. The page's colours (`paintOptions`) are set when the
   chart is made and on every draw, bars or none, and the canvas box

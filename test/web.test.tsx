@@ -53,6 +53,7 @@ import {
   pointLine,
   RANGES,
   readSettings,
+  sessionSlots,
   tick,
   timeLabel,
   volumes,
@@ -1083,8 +1084,8 @@ const detail = (
     },
     session: {
       state: "open",
-      start: "2026-10-28T13:30:00Z",
-      end: "2026-10-28T20:00:00Z",
+      start: "2026-10-28T08:00:00Z",
+      end: "2026-10-28T16:30:00Z",
     },
     ...more,
   },
@@ -1102,6 +1103,16 @@ describe("the instrument model", () => {
         NOW,
       ),
     ).toBe("Close · market closed · updated just now");
+    // the open before the first pass: the price is still the last close
+    expect(
+      priceState(
+        detail({
+          fetched_at: "2026-10-28T09:00:00Z",
+          trade_time: "2026-10-27T16:29:58Z",
+        }),
+        NOW,
+      ),
+    ).toBe("Previous close · market open · updated 3 h ago");
     const series = detail(
       {
         price: null,
@@ -1869,6 +1880,11 @@ describe("the chart model", () => {
     expect(
       pointLegendOf({ ...h, previous_close: 125 }, null, zone)!.change,
     ).toBeCloseTo(4);
+    // a session's empty slots ahead hold no price: the newest stands
+    expect(pointLegendOf(h, line.at(-1)!.time + 600, zone)).toMatchObject({
+      time: "04:30",
+      close: 130,
+    });
     // the crosshair's time is the point's own
     const low = pointLegendOf(h, line[15]!.time, zone)!;
     expect(low).toMatchObject({ time: "03:15", close: 90, live: false });
@@ -1878,6 +1894,33 @@ describe("the chart model", () => {
     expect(
       timeLabel({ year: 2026, month: 1, day: 9 }, undefined, "en-US"),
     ).toBe("09 Jan '26");
+  });
+
+  test("a day spans its whole session in 5-minute slots", () => {
+    const open = {
+      state: "open" as const,
+      start: "2026-10-29T13:30:00Z",
+      end: "2026-10-29T20:00:00Z",
+    };
+    const at = (hhmm: string) => Date.parse(`2026-10-29T${hhmm}:00Z`) / 1000;
+    const slots = sessionSlots([at("13:30"), at("13:35")], open);
+    expect(slots[0]).toBe(at("13:40"));
+    expect(slots.at(-1)).toBe(at("20:00"));
+    expect(slots).toHaveLength(77);
+    // a last point between slots starts them at the next one
+    expect(sessionSlots([at("13:30"), at("13:37")], open)[0]).toBe(at("13:40"));
+    // no points, a closed day ending on its close, or a session that is
+    // not the points' own: no slots
+    expect(sessionSlots([], open)).toEqual([]);
+    expect(sessionSlots([at("13:30"), at("20:00")], open)).toEqual([]);
+    expect(
+      sessionSlots([at("13:30")], {
+        state: "closed",
+        start: "2026-10-30T13:30:00Z",
+        end: "2026-10-30T20:00:00Z",
+      }),
+    ).toEqual([]);
+    expect(sessionSlots([at("13:30")], null)).toEqual([]);
   });
 
   test("kept settings fall back field by field", () => {
