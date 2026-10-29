@@ -53,8 +53,10 @@
   .chart-body {
     padding: var(--space-3) 0 0;
   }
+  /* the card's own colour until the library paints, never its white */
   .chart-canvas {
     height: 400px;
+    background: var(--card);
   }
   @media (max-width: 719px) {
     .chart-canvas {

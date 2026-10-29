@@ -27,8 +27,7 @@ signed in with the admin key alone.
   runs) serves `{ hmr: false }` instead: Bun rebuilds the bundle after
   an edit, with no reload script, so a UI change needs a browser
   reload, not a server restart.
-- **`UI_PATHS` and the client's `ROUTES` (with `ALIASES`) name the same
-  paths**; `test/web.test.tsx` holds them equal. A new page adds its
+- **`UI_PATHS` and the client's `ROUTES` name the same paths**; `test/web.test.tsx` holds them equal. A new page adds its
   path to both.
 - **`--no-ui` turns the UI off**: no page, no `/ui/session` (it answers
   the bearer's 401 as any unknown path), and a cookie opens nothing.
@@ -131,6 +130,59 @@ signed in with the admin key alone.
 
 ## Pages
 
+- **Home** (`/`, the landing page) is a card per `--track` value, from
+  one `GET /api/v1/watchlist`. The flag is the operator's own order, so
+  it sets both: cards keep flag order, grouped by kind (the Instruments
+  page's words), and the groups are ordered by their first value's place
+  in the flag; the code names no market or kind order. A value not yet
+  resolved joins the group of the value before it (else after it), so
+  it shows where the flag puts it: "Pending" only for a value with no
+  stored row yet (after a restart every value is pending while the
+  tracker catches up, and one with a stored row shows its stored price
+  as any card), a failed
+  one as "Not found" (a source failure "Not available") with the
+  value as written. A failed value with a stored row keeps its kind,
+  stored price and link, and still says it failed. A pending card is
+  the ready card's shape with bars where its figures will land.
+- **No values: a panel says how to add some**, a `--track` command to
+  copy with seven common symbols named, and the service form; Home is
+  the first page an operator sees, so it says how to fill itself.
+- **Two or more values on their first fetch are a loading panel**
+  (Getting prices, the count ready, a chip per value, green when ready
+  and red when it failed, so a failure never reads as done), with the
+  other cards below it; that is a first start on an empty
+  database. One such value is a pending card in its place, as a value
+  added to the flag. While any is waiting the page re-reads every 3
+  seconds, not every minute, so a card fills soon after its fetch.
+- **Copy uses `copyText()` (`src/web/lib/clipboard.ts`)**, as 1ctx:
+  the clipboard exists only on loopback or HTTPS, so on plain HTTP the
+  button stays as it is and never says Copied.
+- **A card** is the name, symbol, Open or Closed, the stored price in
+  its currency (a yield in percent), the day's change in its unit (a
+  yield in points) and in percent, and a line; it links the instrument.
+  A series has no day change in the watchlist, so it shows none, as the
+  Instruments list. It re-reads every minute while visible. A load is
+  stale once the router's path changes, checked when its answer lands,
+  so leaving the page asks no line after it (an effect's cleanup runs
+  too late). Status and Home both read the watchlist; an answer asked
+  before the one shown never replaces it.
+- **The line is one bars call per card, in parallel**, by the entry's
+  `intraday`: `interval=5m` (the newest session, split at its
+  `previous_close`, green above and red below as the 1D chart, the
+  previous close a faint dashed line, across the whole session so a
+  morning fills only the morning), else a month of daily bars coloured
+  by its move from the first close. The bundle names no source, so the
+  server says which entries have 5-minute closes. A bars call is a
+  read: a card keeps its instrument tracked while it is drawn, and a
+  value dropped from the flag ends 30 days after its card was last
+  drawn. A Yahoo listing with no points yet draws no line; a line that
+  fails keeps the one drawn before.
+- **The line is inline SVG**, not a chart: its strokes are CSS tokens,
+  so it wears the theme from the first frame, and a redraw replaces it
+  whole. The split is the line drawn twice, each copy clipped to its
+  side of the previous close. The clip ids come from the instrument id,
+  escaped for XML (`clipIds`), so a reorder never hands a card
+  another's.
 - **Status:** `GET /api/v1/status` drawn as tiles (instruments,
   the sources on and how many are paused, the jobs shown and how many
   fail, the database) and a card per source that is on, headed by its
@@ -251,7 +303,11 @@ signed in with the admin key alone.
   redraw (the minute refresh, a toggle, a theme flip) keeps the times in
   view, never the bar positions: 1D's three series would shift them.
 - **Colours are read from the tokens on every draw**, and a theme flip
-  draws again.
+  draws again. The page's colours (`paintOptions`) are set when the
+  chart is made and on every draw, bars or none, and the canvas box
+  wears `--card`: the library's default is white, so a dark page would
+  flash white for the whole data call, or stay white on a range with no
+  data.
 - **Settings are kept in `localStorage`** (`chart`): the range, line,
   log and both averages, one set for every instrument; a blocked or
   broken value starts from the defaults, field by field: 1D, a line,
@@ -266,8 +322,9 @@ signed in with the admin key alone.
   bundle names no source; TradingView's link is what its licence
   accepts in place of the logo, which sat on the volume. The NOTICE text is
   in `Chart.tsx`, the package shipping none. The footer shows on the
-  instrument page only, with "1ctx Markets" (the repository) and the
-  version on its left.
+  instrument page, and on Home with FRED's notice when the watchlist
+  carries its `attribution`, with "1ctx Markets" (the repository) and
+  the version on its left.
 
 ## Tests
 

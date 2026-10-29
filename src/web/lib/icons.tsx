@@ -64,12 +64,14 @@ export function Logo({ height = 26 }: { height?: number }) {
 }
 
 const PATHS = {
+  home: "M2.5 7 8 2.5 13.5 7v6a.5.5 0 0 1-.5.5H3a.5.5 0 0 1-.5-.5zM6.5 13.5v-4h3v4",
   // a pulse: what the server is doing
   status: "M1.5 8.5h3l2-5 3 9 2-4h3",
   list: "M5.5 4h8M5.5 8h8M5.5 12h8M2.5 4h.01M2.5 8h.01M2.5 12h.01",
   chevron: "M5 6.5l3 3 3-3",
   "chevron-right": "M6.5 5l3 3-3 3",
   check: "M3 8.5l3 3 7-7",
+  copy: "M6 6h7a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1zM3.5 10.5h-.5a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h6.5a1 1 0 0 1 1 1v.5",
   search: "M7 11.5a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9zM10.3 10.3l3.2 3.2",
   alert: "M8 14a6 6 0 1 0 0-12 6 6 0 0 0 0 12zM8 4.75v3.75M8 11h.01",
   "sign-out": "M6.5 3H3v10h3.5M10 5l3 3-3 3M13 8H6",

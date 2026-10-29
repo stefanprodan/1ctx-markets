@@ -47,6 +47,9 @@ const CONTINUES = "next does not continue these arguments";
 
 export const NO_SOURCE = "this instrument's source gives no 5-minute closes";
 
+export const hasIntraday = (i: { source: string }): boolean =>
+  i.source === YAHOO;
+
 export type IntradayPoint = {
   at: number;
   session: string;
@@ -127,7 +130,7 @@ export async function readIntradayHistory(
   const [target] = await readTargets(m, [args.symbol], deadline);
   if ("error" in target!) return { input: target.input, error: target.error };
   const instrument = target.instrument;
-  if (instrument.source !== YAHOO) return noData(target.input, NO_SOURCE);
+  if (!hasIntraday(instrument)) return noData(target.input, NO_SOURCE);
   const db = m.db;
   const newest = newestSession(db, instrument.id);
   const to = page?.to ?? args.to ?? newest;

@@ -9,14 +9,7 @@ import { UI_PATHS } from "../src/server/http.ts";
 import { Shell } from "../src/web/app/App.tsx";
 import { Rail } from "../src/web/app/Rail.tsx";
 import { inApp } from "../src/web/app/router.ts";
-import {
-  ALIASES,
-  HOME,
-  lit,
-  match,
-  RAIL,
-  ROUTES,
-} from "../src/web/app/routes.ts";
+import { HOME, lit, match, RAIL, ROUTES } from "../src/web/app/routes.ts";
 import { Strip } from "../src/web/app/Strip.tsx";
 import { resolveTheme } from "../src/web/app/theme.ts";
 import {
@@ -63,7 +56,16 @@ import {
   timeLabel,
   volumes,
 } from "../src/web/views/Chart.model.ts";
-import { LegendLine } from "../src/web/views/Chart.tsx";
+import { LegendLine, paintOptions } from "../src/web/views/Chart.tsx";
+import {
+  cardOf,
+  clipIds,
+  groupsOf,
+  moveOf,
+  SPARK_H,
+  sparkOf,
+} from "../src/web/views/Home.model.ts";
+import { HomeBody } from "../src/web/views/Home.tsx";
 import {
   afterHours,
   choices,
@@ -212,6 +214,7 @@ const WATCHLIST: WatchEntry[] = [
     state: "tracked",
     instrument: null,
     session: { state: "open", start: null, end: null },
+    intraday: true,
   },
   {
     value: "NOPE",
@@ -219,6 +222,7 @@ const WATCHLIST: WatchEntry[] = [
     state: "not_found",
     instrument: null,
     session: null,
+    intraday: false,
   },
 ];
 
@@ -263,9 +267,12 @@ const WATCHED = { [`GET ${WATCHLIST_PATH}`]: watched };
 
 describe("the routes", () => {
   test("are the paths the server answers with the page", () => {
-    const paths = [...Object.keys(ALIASES), ...ROUTES.map((r) => r.path)];
+    const paths = ROUTES.map((r) => r.path);
     expect(paths.sort()).toEqual([...UI_PATHS].sort());
-    expect(match(HOME)?.route.label).toBe("Status");
+    // the home page lands on /, and Status keeps its own path
+    expect(HOME).toBe("/");
+    expect(match("/")?.route.label).toBe("Home");
+    expect(match("/status")?.route.label).toBe("Status");
     expect(match("/instruments")?.route.label).toBe("Instruments");
     expect(match("/nothing")).toBeNull();
     // an instrument's page takes its id from the path, decoded
@@ -276,10 +283,10 @@ describe("the routes", () => {
     expect(match("/instruments/%E0%A4%A")).toBeNull();
     expect(match("/instruments/a/b")).toBeNull();
     // the rail names the pages without a parameter and lights the parent
-    expect(RAIL.map((r) => r.label)).toEqual(["Status", "Instruments"]);
+    expect(RAIL.map((r) => r.label)).toEqual(["Home", "Status", "Instruments"]);
+    expect(lit("/status", "/")).toBe(false);
     expect(lit("/instruments/US%3ANVDA", "/instruments")).toBe(true);
     expect(lit("/instrumentsx", "/instruments")).toBe(false);
-    expect(match(ALIASES["/"]!)).not.toBeNull();
   });
 
   test("a link opens in place unless it leaves the UI", () => {
@@ -1666,6 +1673,35 @@ describe("the chart model", () => {
     expect(foot).toContain("github.com/stefanprodan/1ctx-markets");
     expect(foot).toContain("Charts by TradingView");
   });
+
+  test("the page's colours are set with no bars, so the chart never paints white first", async () => {
+    const l = await import("lightweight-charts");
+    const k = {
+      card: "#1e1f20",
+      fg: "#eeeeee",
+      faint: "#8b8b91",
+      line: "#2a2b2d",
+      up: "#4ade80",
+      down: "#f87171",
+      sma50: "#aaaaaa",
+      sma200: "#bbbbbb",
+      font: "mono",
+    };
+    const o = paintOptions(l, k, false);
+    expect(o.layout.background).toEqual({
+      type: l.ColorType.Solid,
+      color: "#1e1f20",
+    });
+    expect(o.layout.textColor).toBe("#8b8b91");
+    expect(o.layout.fontFamily).toBe("mono");
+    expect(o.layout.attributionLogo).toBe(false);
+    expect(o.grid.horzLines.color).toBe("rgba(42, 43, 45, 0.7)");
+    expect(o.crosshair.vertLine.color).toBe("#8b8b91");
+    expect(o.rightPriceScale.mode).toBe(l.PriceScaleMode.Normal);
+    expect(paintOptions(l, k, true).rightPriceScale.mode).toBe(
+      l.PriceScaleMode.Logarithmic,
+    );
+  });
 });
 
 describe("the store across sessions and pages", () => {
@@ -1771,5 +1807,530 @@ describe("the store across sessions and pages", () => {
     await fetching;
     expect(s.detailId.value).toBe("US:B");
     expect(s.detail.value?.quote?.id).toBe("US:B");
+  });
+});
+
+// the home page's answers, built to the spec's schemas
+const homeRow = (id: string, more: Partial<Listed> = {}) => ({
+  id,
+  name: `${id} name`,
+  market: id.split(":")[0]!,
+  exchange: id.split(":")[0]!,
+  currency: "USD",
+  kind: "INDEX",
+  unit: "index_points",
+  source: "yahoo",
+  tracked: true,
+  tracked_by: ["track"],
+  read_at: null,
+  read_until: null,
+  price: 100,
+  change: 1,
+  change_percent: 1,
+  fetched_at: "2026-10-28T11:59:00Z",
+  ...more,
+});
+const SESSION = {
+  state: "open",
+  start: "2026-10-28T13:30:00Z",
+  end: "2026-10-28T20:00:00Z",
+} as const;
+const tracked = (
+  value: string,
+  id: string,
+  more: Partial<Listed> = {},
+  intraday = true,
+) => ({
+  value,
+  id,
+  state: "tracked",
+  instrument: homeRow(id, more),
+  session: intraday ? SESSION : null,
+  intraday,
+});
+const SERIES = {
+  kind: "SERIES",
+  unit: "percent",
+  currency: null,
+  source: "fred",
+  price: 4.1,
+  // the watchlist gives a series no day change
+  change: null,
+  change_percent: null,
+} as const;
+const HOME_WATCH = {
+  attribution: "Source: a series' owner.",
+  entries: [
+    tracked("^GSPC", "SNP:^GSPC"),
+    tracked("GC=F", "CMX:GC=F", { kind: "FUTURE" }),
+    tracked("FRED:DGS10", "FRED:DGS10", SERIES, false),
+    {
+      value: "LATER",
+      id: null,
+      state: "pending",
+      instrument: null,
+      session: null,
+      intraday: false,
+    },
+    tracked("^NDX", "NAS:^NDX"),
+    {
+      value: "TYPO",
+      id: null,
+      state: "not_found",
+      instrument: null,
+      session: null,
+      intraday: false,
+    },
+    tracked("BVB:BET", "BVB:BET", { source: "bvb", currency: "RON" }, false),
+  ],
+};
+const at5 = (i: number) =>
+  new Date(Date.parse(SESSION.start) + i * 300_000)
+    .toISOString()
+    .replace(".000Z", "Z");
+const dayAnswer = (id: string, closes: number[], previous: number) => ({
+  input: id,
+  stale: [],
+  from: "2026-10-28",
+  to: "2026-10-28",
+  session: SESSION,
+  instrument: {
+    id,
+    name: `${id} name`,
+    exchange: "SNP",
+    type: "INDEX",
+    currency: "USD",
+    unit: "index_points",
+    source: "yahoo",
+  },
+  interval: "5m",
+  sessions: [{ session: "2026-10-28", fetched_at: "2026-10-28T14:05:00Z" }],
+  previous_close: previous,
+  points: closes.map((close, i) => ({
+    at: at5(i),
+    session: "2026-10-28",
+    close,
+    final: true,
+  })),
+});
+const monthAnswer = (id: string, closes: number[]) => ({
+  input: id,
+  stale: [],
+  from: "2026-09-28",
+  to: "2026-10-28",
+  session: null,
+  instrument: {
+    id,
+    name: `${id} name`,
+    exchange: "FRED",
+    type: "SERIES",
+    currency: null,
+    unit: "percent",
+    source: "fred",
+    basis: "observations as published",
+  },
+  interval: "1d",
+  bars: closes.map((c, i) =>
+    hbar(`2026-10-${String(i + 1).padStart(2, "0")}`, c, {
+      open: null,
+      high: null,
+      low: null,
+      volume: null,
+    }),
+  ),
+});
+const barsOf = (id: string, q: string) =>
+  `/api/v1/instruments/${encodeURIComponent(id)}/bars?${q}`;
+const DAY = "interval=5m";
+const MONTH = "from=2026-09-28&interval=1d";
+
+describe("the home page", () => {
+  test("the fakes hold to the spec", () => {
+    const schemas = spec.components.schemas as Record<string, any>;
+    expect(validate(HOME_WATCH, schemas.Watchlist, spec)).toEqual([]);
+    expect(
+      validate(dayAnswer("SNP:^GSPC", [101], 100), schemas.Intraday, spec),
+    ).toEqual([]);
+    expect(
+      validate(monthAnswer("FRED:DGS10", [4, 4.1]), schemas.Bars, spec),
+    ).toEqual([]);
+  });
+
+  test("loads the watchlist, then each card's line in parallel; no 5-minute closes asks a month of days", async () => {
+    const answers: Record<string, () => Response> = {
+      [`GET ${WATCHLIST_PATH}`]: ok(HOME_WATCH),
+    };
+    for (const id of ["SNP:^GSPC", "CMX:GC=F", "NAS:^NDX"]) {
+      answers[`GET ${barsOf(id, DAY)}`] = ok(dayAnswer(id, [101, 99], 100));
+    }
+    for (const id of ["FRED:DGS10", "BVB:BET"]) {
+      answers[`GET ${barsOf(id, MONTH)}`] = ok(monthAnswer(id, [4, 4.1]));
+    }
+    const f = fake(answers);
+    const s = store(f.fetch, () => NOW);
+    await s.loadHome();
+    expect(f.asked.map((a) => a.path)).toEqual([
+      WATCHLIST_PATH,
+      barsOf("SNP:^GSPC", DAY),
+      barsOf("CMX:GC=F", DAY),
+      barsOf("FRED:DGS10", MONTH),
+      barsOf("NAS:^NDX", DAY),
+      barsOf("BVB:BET", MONTH),
+    ]);
+    expect(s.watchlist.value).toEqual(HOME_WATCH.entries as any);
+    expect(s.attribution.value).toBe(HOME_WATCH.attribution);
+    expect([...s.sparks.value.keys()]).toEqual([
+      "SNP:^GSPC",
+      "CMX:GC=F",
+      "FRED:DGS10",
+      "NAS:^NDX",
+      "BVB:BET",
+    ]);
+    expect(s.sparks.value.get("BVB:BET")?.interval).toBe("1d");
+  });
+
+  test("a failed line keeps the one drawn before; a 401 signs out", async () => {
+    let failing = false;
+    const one = { ...HOME_WATCH, entries: [HOME_WATCH.entries[0]!] };
+    const s = store(
+      fake({
+        [`GET ${WATCHLIST_PATH}`]: ok(one),
+        [`GET ${barsOf("SNP:^GSPC", DAY)}`]: () =>
+          failing
+            ? status(500, { status: 500, code: "internal", detail: "x" })()
+            : ok(dayAnswer("SNP:^GSPC", [101], 100))(),
+      }).fetch,
+      () => NOW,
+    );
+    s.signedIn.value = true;
+    await s.loadHome();
+    failing = true;
+    await s.loadHome();
+    expect(s.sparks.value.has("SNP:^GSPC")).toBe(true);
+    expect(s.homeError.value).toBeNull();
+    for (const path of [WATCHLIST_PATH, barsOf("SNP:^GSPC", DAY)]) {
+      const out = store(
+        fake({
+          [`GET ${WATCHLIST_PATH}`]: ok(one),
+          [`GET ${path}`]: status(401, {
+            status: 401,
+            code: "unauthorized",
+            detail: "x",
+          }),
+        }).fetch,
+        () => NOW,
+      );
+      out.signedIn.value = true;
+      await out.loadHome();
+      expect([path, out.signedIn.value]).toEqual([path, false]);
+      expect(out.homeError.value).toBeNull();
+    }
+  });
+
+  test("groups follow their first value in the flag, cards the flag, unresolved ones in place", () => {
+    const g = groupsOf(HOME_WATCH.entries as WatchEntry[]);
+    expect(g.map((x) => [x.kind, x.entries.map((e) => e.value)])).toEqual([
+      ["Index", ["^GSPC", "^NDX", "TYPO", "BVB:BET"]],
+      ["Future", ["GC=F"]],
+      ["Series", ["FRED:DGS10", "LATER"]],
+    ]);
+    // a value with no kind before it joins the first kind after it
+    const lead = groupsOf([
+      HOME_WATCH.entries[5],
+      HOME_WATCH.entries[1],
+    ] as WatchEntry[]);
+    expect(lead.map((x) => [x.kind, x.entries.length])).toEqual([
+      ["Future", 2],
+    ]);
+    expect(groupsOf([HOME_WATCH.entries[3]] as WatchEntry[])).toEqual([
+      { kind: null, entries: [HOME_WATCH.entries[3] as WatchEntry] },
+    ]);
+  });
+
+  test("a card has its price, the day's move in its unit and in percent, and its state", () => {
+    const [gspc, , dgs10, later, , typo] = HOME_WATCH.entries as WatchEntry[];
+    expect(cardOf(gspc!)).toMatchObject({
+      type: "ready",
+      href: "/instruments/SNP%3A%5EGSPC",
+      symbol: "^GSPC",
+      price: "100.00 USD",
+      move: "+1.00 USD",
+      percent: "+1.00%",
+      dir: 1,
+      state: "Open",
+    });
+    // a yield moves in points
+    expect(cardOf(dgs10!)).toMatchObject({
+      price: "4.10%",
+      move: "",
+      percent: "",
+      state: "",
+    });
+    // a yield's day change, where one is given, is in points
+    expect(
+      moveOf(homeRow("X:Y", { unit: "percent", change: 0.05 }) as Listed).text,
+    ).toBe("+0.05 pts");
+    expect(moveOf(homeRow("X:Y", { change: -0.0000001 }) as Listed).dir).toBe(
+      0,
+    );
+    expect(cardOf(later!)).toEqual({ type: "pending", value: "LATER" });
+    expect(cardOf(typo!)).toEqual({
+      type: "failed",
+      value: "TYPO",
+      text: "Not found",
+    });
+  });
+
+  test("a pending value with a stored row shows its stored price; Pending only without one", () => {
+    // after a restart every value is pending while its prices are stored
+    const restarted = {
+      ...tracked("^GSPC", "SNP:^GSPC"),
+      state: "pending",
+    } as WatchEntry;
+    expect(cardOf(restarted)).toMatchObject({
+      type: "ready",
+      price: "100.00 USD",
+    });
+    expect(cardOf(HOME_WATCH.entries[3] as WatchEntry)).toEqual({
+      type: "pending",
+      value: "LATER",
+    });
+  });
+
+  test("a failed value says so, beside its stored price where it has one", () => {
+    const stored = {
+      ...tracked("^NDX", "NAS:^NDX"),
+      state: "source_error",
+    } as WatchEntry;
+    expect(cardOf(stored)).toEqual({
+      type: "failed",
+      value: "^NDX",
+      text: "Not available",
+      href: "/instruments/NAS%3A%5ENDX",
+      price: "100.00 USD",
+    });
+    expect(cardOf({ ...stored, state: "candidates" })).toMatchObject({
+      text: "Not found",
+    });
+    // it keeps its kind and its place in the flag
+    const entries = [
+      HOME_WATCH.entries[1],
+      stored,
+      HOME_WATCH.entries[0],
+    ] as WatchEntry[];
+    expect(
+      groupsOf(entries).map((g) => [g.kind, g.entries.map((e) => e.value)]),
+    ).toEqual([
+      ["Future", ["GC=F"]],
+      ["Index", ["^NDX", "^GSPC"]],
+    ]);
+    const html = render(<HomeBody entries={entries} sparks={new Map()} />);
+    expect(html).toContain("Not available");
+    expect(html).toContain('href="/instruments/NAS%3A%5ENDX"');
+  });
+
+  test("leaving the page drops a load in flight, so no line is asked", async () => {
+    const held = Promise.withResolvers<Response>();
+    const asked: string[] = [];
+    const at = signal("/");
+    const s = store(
+      async (path) => {
+        asked.push(path);
+        if (path === WATCHLIST_PATH) return held.promise;
+        return Response.json(dayAnswer("SNP:^GSPC", [101], 100));
+      },
+      () => NOW,
+      () => at.value,
+    );
+    s.signedIn.value = true;
+    const loading = s.loadHome();
+    expect(asked).toEqual([WATCHLIST_PATH]);
+    // what a link or the back button does to the router's path
+    at.value = "/status";
+    held.resolve(Response.json(HOME_WATCH));
+    await loading;
+    expect(asked).toEqual([WATCHLIST_PATH]);
+    expect(s.sparks.value.size).toBe(0);
+  });
+
+  test("a home load asked off the home page asks nothing", async () => {
+    const asked: string[] = [];
+    const s = store(
+      async (path) => {
+        asked.push(path);
+        return Response.json(HOME_WATCH);
+      },
+      () => NOW,
+      () => "/status",
+    );
+    s.signedIn.value = true;
+    await s.loadHome();
+    expect(asked).toEqual([]);
+  });
+
+  test("an older watchlist answer never lands over a newer one, whichever page asked", async () => {
+    const pending = {
+      entries: [
+        {
+          ...HOME_WATCH.entries[0]!,
+          state: "pending",
+          id: null,
+          instrument: null,
+          session: null,
+          intraday: false,
+        },
+      ],
+    };
+    const resolved = { entries: [HOME_WATCH.entries[0]!] };
+    const watch: PromiseWithResolvers<Response>[] = [];
+    const s = store(
+      async (path) => {
+        if (path === WATCHLIST_PATH) {
+          const w = Promise.withResolvers<Response>();
+          watch.push(w);
+          return w.promise;
+        }
+        if (path === STATUS_PATH) return Response.json(STATUS);
+        return Response.json(dayAnswer("SNP:^GSPC", [101], 100));
+      },
+      () => NOW,
+    );
+    // Status asks first, Home after; Home's answer lands first
+    const statusLoad = s.loadStatus();
+    const homeLoad = s.loadHome();
+    expect(watch).toHaveLength(2);
+    watch[1]!.resolve(Response.json(resolved));
+    await homeLoad;
+    watch[0]!.resolve(Response.json(pending));
+    await statusLoad;
+    expect(s.status.value).toEqual(STATUS);
+    expect(s.watchlist.value).toEqual(resolved.entries as any);
+    // a newer Status answer still lands
+    const again = s.loadStatus();
+    watch[2]!.resolve(Response.json(pending));
+    await again;
+    expect(s.watchlist.value).toEqual(pending.entries as any);
+  });
+
+  test("a line's clip ids follow its instrument, escaped and unique", () => {
+    const entries = HOME_WATCH.entries as WatchEntry[];
+    const ids = clipIds(entries);
+    const again = clipIds([...entries].reverse());
+    for (const e of entries) expect(again.get(e)).toBe(ids.get(e)!);
+    expect(ids.get(entries[0]!)).toBe("spark-SNP_3a__5e_GSPC");
+    for (const id of ids.values()) expect(id).toMatch(/^[A-Za-z][\w-]*$/);
+    expect(new Set(ids.values()).size).toBe(entries.length);
+    // the same instrument twice still gets two
+    const twice = [entries[0]!, { ...entries[0]!, value: "SNP:^GSPC" }];
+    expect([...clipIds(twice).values()]).toEqual([
+      "spark-SNP_3a__5e_GSPC",
+      "spark-SNP_3a__5e_GSPC-2",
+    ]);
+    const html = render(
+      <HomeBody
+        entries={entries}
+        sparks={
+          new Map<string, any>([
+            ["SNP:^GSPC", dayAnswer("SNP:^GSPC", [101, 99], 100)],
+          ])
+        }
+      />,
+    );
+    expect(html).toContain('id="spark-SNP_3a__5e_GSPC-up"');
+    expect(html).toContain('clip-path="url(#spark-SNP_3a__5e_GSPC-down)"');
+  });
+
+  test("a day line splits at the previous close across its session; a month line is one colour", () => {
+    const up = sparkOf(dayAnswer("SNP:^GSPC", [101, 103], 100) as Intraday)!;
+    expect(up.base).toBe(SPARK_H - 2);
+    expect(up.tone).toBe("up");
+    // two points of a session of 78 sit at its start
+    expect(up.points.split(" ")[1]!.startsWith("1.54,")).toBe(true);
+    const down = sparkOf(dayAnswer("SNP:^GSPC", [99], 100) as Intraday)!;
+    expect(down.tone).toBe("down");
+    expect(down.points.split(" ")).toHaveLength(2);
+    expect(sparkOf(dayAnswer("SNP:^GSPC", [], 100) as Intraday)).toBeNull();
+    const month = sparkOf(monthAnswer("FRED:DGS10", [4, 3.9]) as History)!;
+    expect(month).toMatchObject({ base: null, tone: "down" });
+    expect(sparkOf(undefined)).toBeNull();
+  });
+
+  test("the minute refresh redraws every line without stacking old ones", () => {
+    const entries = HOME_WATCH.entries as WatchEntry[];
+    const draw = (shift: number) =>
+      render(
+        <HomeBody
+          entries={entries}
+          sparks={
+            new Map<string, any>([
+              ["SNP:^GSPC", dayAnswer("SNP:^GSPC", [101 + shift, 99], 100)],
+              ["CMX:GC=F", dayAnswer("CMX:GC=F", [101, 102 + shift], 100)],
+              ["NAS:^NDX", dayAnswer("NAS:^NDX", [], 100)],
+              ["FRED:DGS10", monthAnswer("FRED:DGS10", [4, 4.1 + shift])],
+              ["BVB:BET", monthAnswer("BVB:BET", [4, 3.9])],
+            ])
+          }
+        />,
+      );
+    const first = draw(0);
+    const again = draw(1);
+    for (const html of [first, again]) {
+      // two clipped copies per day line, one per month line, none without points
+      expect(html.match(/<polyline/g)).toHaveLength(2 + 2 + 1 + 1);
+      expect(html.match(/class="spark-base"/g)).toHaveLength(2);
+      expect(html.match(/class="card home-card/g)).toHaveLength(7);
+    }
+    expect(again).not.toEqual(first);
+    // groups in flag order, each card linking its instrument
+    expect(first.indexOf(">Index<")).toBeLessThan(first.indexOf(">Future<"));
+    expect(first.indexOf(">Future<")).toBeLessThan(first.indexOf(">Series<"));
+    expect(first).toContain('href="/instruments/FRED%3ADGS10"');
+    expect(first).toContain("Not found");
+    expect(first).toContain("Pending");
+  });
+
+  test("no values: a panel says how to track some, with a command to copy", () => {
+    const html = render(<HomeBody entries={[]} sparks={new Map()} />);
+    expect(html).toContain("Nothing tracked yet");
+    // zsh reads an unquoted ^ as a pattern
+    expect(html).toContain("--track '^VIX'");
+    expect(html).toContain("--track ETH-USD");
+    expect(html).toContain("service install --restart");
+    expect(html).toContain('aria-label="Copy the command"');
+  });
+
+  test("one value first fetched is a pending card in its place, with no panel", () => {
+    const html = render(
+      <HomeBody
+        entries={HOME_WATCH.entries as WatchEntry[]}
+        sparks={new Map()}
+      />,
+    );
+    expect(html).not.toContain("Getting prices");
+    expect(html.match(/home-card-pending/g)).toHaveLength(1);
+    expect(html).toContain(">LATER<");
+  });
+
+  test("many values first fetched are a loading panel; the other cards show below it", () => {
+    const waiting = (value: string) =>
+      ({ ...(HOME_WATCH.entries[3] as WatchEntry), value }) as WatchEntry;
+    const typo = HOME_WATCH.entries.find((e) => e.value === "TYPO");
+    const entries = [
+      HOME_WATCH.entries[0],
+      waiting("^DJI"),
+      waiting("^N225"),
+      typo,
+    ] as WatchEntry[];
+    const html = render(<HomeBody entries={entries} sparks={new Map()} />);
+    expect(html).toContain("Getting prices");
+    // a failed value is never counted or coloured as ready
+    expect(html).toContain("1 of 4");
+    expect(html.match(/home-chip-pending/g)).toHaveLength(2);
+    expect(html.match(/home-chip-ready/g)).toHaveLength(1);
+    expect(html.match(/home-chip-failed/g)).toHaveLength(1);
+    // the waiting values are chips only, never cards
+    expect(html).not.toContain("home-card-pending");
+    expect(html.match(/class="card home-card"/g)).toHaveLength(1);
+    expect(html).toContain("Not found");
   });
 });

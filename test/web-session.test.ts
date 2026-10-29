@@ -59,6 +59,9 @@ function setup() {
   return { ...w, handle, at, cookie };
 }
 
+// a --track value the anonymous test runs with, found nowhere else
+const TRACKED = "ZZTRACKEDVALUE";
+
 describe("the session token", () => {
   test("holds an expiry and its MAC, never the key", () => {
     const s = sessions(ADMIN_KEY);
@@ -523,7 +526,8 @@ describe("the served UI", () => {
           "bearer.key",
           "v0.0.0-test",
           "/Users/",
-          "--track",
+          // the flag's name is public help; the values it runs with are not
+          TRACKED,
           "--source",
         ]) {
           expect([secret, all.includes(secret)]).toEqual([secret, false]);
@@ -531,7 +535,10 @@ describe("the served UI", () => {
         // Swagger UI's stylesheet names its own map, never one of this server
         expect(ours.includes("sourceMappingURL")).toBe(false);
         // the spec names FRED only as symbol syntax
-        const named = ours.replaceAll("`FRED:<series id>`", "");
+        // and the home page's help names Yahoo, always on, for its symbols
+        const named = ours
+          .replaceAll("`FRED:<series id>`", "")
+          .replaceAll("as Yahoo Finance writes the symbol", "");
         for (const name of [
           "yahoo",
           "fred",
@@ -544,6 +551,6 @@ describe("the served UI", () => {
           expect([name, said]).toEqual([name, false]);
         }
       },
-      { ui: true, page },
+      { ui: true, page, track: [TRACKED] },
     ));
 });
