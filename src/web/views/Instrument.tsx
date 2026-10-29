@@ -22,6 +22,8 @@ import {
   priceState,
   RETURNS,
   returnCell,
+  type StatCard,
+  stats,
   summary,
   UNREAD,
   weekly200,
@@ -89,6 +91,57 @@ export function Head({ detail, now }: { detail: Detail; now: number }) {
         </dl>
       )}
     </section>
+  );
+}
+
+// what the chart leaves out, in a card per question
+export function Stats({ cards }: { cards: readonly StatCard[] }) {
+  if (cards.length === 0) return null;
+  return (
+    <div class="ins-stats">
+      {cards.map((c) => (
+        <section key={c.title} class="card ins-stat" aria-label={c.title}>
+          <span class="label">{c.title}</span>
+          {c.span && (
+            <div class="ins-span">
+              <div class="ins-span-track">
+                <span
+                  class="ins-span-mark"
+                  style={{ left: `${(c.span.at * 100).toFixed(1)}%` }}
+                />
+              </div>
+              <div class="ins-span-ends">
+                <span>{c.span.low}</span>
+                <span>{c.span.high}</span>
+              </div>
+            </div>
+          )}
+          {c.rows.length > 0 && (
+            <dl class="ins-stat-rows">
+              {c.rows.map((r) => (
+                <div key={r.label} class="ins-stat-row">
+                  <dt>{r.label}</dt>
+                  <dd>
+                    <span
+                      class={
+                        r.tone === "up"
+                          ? "ins-up"
+                          : r.tone === "down"
+                            ? "ins-down"
+                            : undefined
+                      }
+                    >
+                      {r.value}
+                    </span>
+                    {r.note && <span class="ins-stat-note">{r.note}</span>}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          )}
+        </section>
+      ))}
+    </div>
   );
 }
 
@@ -314,6 +367,7 @@ export function Instrument({ params }: { params: Params }) {
         <>
           <Head detail={detail} now={Date.now()} />
           <Chart id={id} />
+          <Stats cards={stats(detail)} />
         </>
       )}
     </Page>

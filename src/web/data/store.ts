@@ -173,6 +173,25 @@ export type Returns = {
   live: boolean;
 };
 
+// the quote's daily signal row, the fields the page reads
+export type Daily = {
+  sma50: number | null;
+  sma200: number | null;
+  cross: number | null;
+  cross_edge: number | null;
+  rsi14: number | null;
+  macd_histogram: number | null;
+  macd_turn: number | null;
+  atr14: number | null;
+  volatility20: number | null;
+  high52w: number | null;
+  low52w: number | null;
+  drawdown: number | null;
+  from_low: number | null;
+  days_since_high: number | null;
+  volume_ratio: number | null;
+};
+
 export type Detail = {
   // FRED's notice, which its terms ask wherever its values show
   attribution?: string;
@@ -191,11 +210,15 @@ export type Detail = {
     currency: string | null;
     fetched_at: string | null;
     trade_time?: string | null;
+    day_high?: number | null;
+    day_low?: number | null;
+    volume?: number | null;
     stale: string[];
     returns: Returns | null;
     // the daily and weekly signals the quote tool gives; the page reads
     // the weekly 200 average
     signals?: {
+      daily?: Daily | null;
       weekly?: { sma200?: number | null } | null;
     } | null;
     session: Session | null;

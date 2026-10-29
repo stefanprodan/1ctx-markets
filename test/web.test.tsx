@@ -136,10 +136,11 @@ import {
   labelOf,
   priceState,
   returnCell,
+  stats,
   summary,
   weekly200,
 } from "../src/web/views/Instrument.model.ts";
-import { Head, InstrumentMenu } from "../src/web/views/Instrument.tsx";
+import { Head, InstrumentMenu, Stats } from "../src/web/views/Instrument.tsx";
 import {
   about,
   bySymbol,
@@ -1157,7 +1158,183 @@ const detail = (
   },
 });
 
+const DAILY = {
+  sma50: 221.97,
+  sma200: 204.27,
+  cross: 1,
+  cross_edge: 0,
+  rsi14: 41.3,
+  macd_histogram: -1.1,
+  macd_turn: 0,
+  atr14: 5.72,
+  volatility20: 1.91,
+  high52w: 243.37,
+  low52w: 164.27,
+  drawdown: -12.66,
+  from_low: 29.4,
+  days_since_high: 17,
+  volume_ratio: 0.46,
+};
+
 describe("the instrument model", () => {
+  test("the cards under the chart say the signals in plain words", () => {
+    const cards = stats(
+      detail({
+        signals: { daily: DAILY },
+        day_low: 212.08,
+        day_high: 215.32,
+        volume: 46_360_000,
+      }),
+    );
+    expect(cards.map((c) => c.title)).toEqual([
+      "52-week range",
+      "Today",
+      "Trend",
+    ]);
+    const [year, today, trend] = cards;
+    expect(year!.span).toEqual({
+      low: "164.27 USD",
+      high: "243.37 USD",
+      at: (217.24 - 164.27) / (243.37 - 164.27),
+    });
+    expect(year!.rows).toEqual([
+      {
+        label: "From the high",
+        value: "12.66% below",
+        note: "17 trading days ago",
+        tone: "down",
+      },
+      { label: "From the low", value: "29.40% above", tone: "up" },
+    ]);
+    // the price past the day's high pins the dot at the end
+    expect(today!.span?.at).toBe(1);
+    expect(today!.rows.map((r) => [r.label, r.value, r.note])).toEqual([
+      ["Volume so far", "46.36M", "0.46× the 20-day average"],
+      ["Typical daily move", "1.91%", "over 20 days"],
+      ["Average daily range", "5.72 USD", "over 14 days"],
+    ]);
+    expect(trend!.rows.map((r) => [r.label, r.value, r.note])).toEqual([
+      ["50-day average", "2.13% below", "221.97 USD"],
+      ["200-day average", "6.35% above", "204.27 USD"],
+      ["50-day vs 200-day", "above", undefined],
+      ["RSI 14", "41.3", "neutral"],
+      ["Momentum", "downward", undefined],
+    ]);
+  });
+
+  test("a turn, a cross and an extreme read as the day's news", () => {
+    const trend = (more: Partial<typeof DAILY>) =>
+      stats(detail({ signals: { daily: { ...DAILY, ...more } } }))
+        .find((c) => c.title === "Trend")!
+        .rows.map(
+          (r) => `${r.label}: ${r.value}${r.note ? ` (${r.note})` : ""}`,
+        );
+    expect(
+      trend({ macd_turn: 1, rsi14: 72, cross: -1, cross_edge: -1 }),
+    ).toEqual([
+      "50-day average: 2.13% below (221.97 USD)",
+      "200-day average: 6.35% above (204.27 USD)",
+      "50-day vs 200-day: below (death cross today)",
+      "RSI 14: 72.0 (overbought)",
+      // a turn up while still below the signal: the side stays downward
+      "Momentum: downward (turning up today)",
+    ]);
+    expect(trend({ macd_histogram: 0.4, macd_turn: -1 })).toContain(
+      "Momentum: upward (turning down today)",
+    );
+    expect(trend({ macd_histogram: 0 })).toContain("Momentum: flat");
+    expect(trend({ rsi14: 25 })).toContain("RSI 14: 25.0 (oversold)");
+    expect(trend({ cross_edge: 1 })).toContain(
+      "50-day vs 200-day: above (golden cross today)",
+    );
+  });
+
+  test("a yield's distances and range read in points", () => {
+    const yieldRow = stats(
+      detail(
+        {
+          price: 4.2,
+          unit: "percent",
+          currency: null,
+          signals: {
+            daily: { ...DAILY, sma50: 4.0, sma200: 4.5, atr14: 0.07 },
+          },
+        },
+        { id: "FRED:DGS10", unit: "percent", currency: null },
+      ),
+    );
+    const rows = yieldRow.flatMap((c) => c.rows);
+    const value = (label: string) => rows.find((r) => r.label === label)?.value;
+    expect(value("50-day average")).toBe("0.20 pts above");
+    expect(value("200-day average")).toBe("0.30 pts below");
+    expect(value("Average daily range")).toBe("0.07 pts");
+  });
+
+  test("a card or row without its signals is left out", () => {
+    // no signals and no day range: nothing under the chart
+    expect(stats(detail())).toEqual([]);
+    expect(render(<Stats cards={[]} />)).toBe("");
+    // a young listing: no year, no 200-day average, no cross
+    const young = stats(
+      detail({
+        signals: {
+          daily: {
+            ...DAILY,
+            sma200: null,
+            cross: null,
+            high52w: null,
+            low52w: null,
+            drawdown: null,
+            from_low: null,
+            days_since_high: null,
+          },
+        },
+        session: null,
+      }),
+    );
+    expect(young.map((c) => c.title)).toEqual(["Last session", "Trend"]);
+    expect(young[1]!.rows.map((r) => r.label)).toEqual([
+      "50-day average",
+      "RSI 14",
+      "Momentum",
+    ]);
+    // a closed market's card is the last session, its volume the day's
+    const closed = stats(
+      detail({
+        volume: 1_000,
+        session: { state: "closed", start: null, end: null },
+      }),
+    );
+    expect(closed[0]!.title).toBe("Last session");
+    expect(closed[0]!.rows[0]!.label).toBe("Volume");
+    // open, but the price is still yesterday's until the first pass
+    const opening = stats(
+      detail({ volume: 1_000, trade_time: "2026-10-27T20:00:00Z" }),
+    );
+    expect(opening[0]!.title).toBe("Last session");
+    expect(opening[0]!.rows[0]!.label).toBe("Volume");
+    // at the high and the low, and a high made today
+    const edges = stats(
+      detail({
+        signals: {
+          daily: {
+            ...DAILY,
+            drawdown: -0.001,
+            from_low: 0,
+            days_since_high: 0,
+          },
+        },
+      }),
+    )[0]!.rows.map((r) => [r.value, r.note ?? null, r.tone ?? null]);
+    expect(edges).toEqual([
+      ["at the high", "today", null],
+      ["at the low", null, null],
+    ]);
+    const html = render(<Stats cards={young} />);
+    expect(html).toContain("Momentum");
+    expect(html).not.toContain("ins-span");
+  });
+
   test("the head says live or the close, and when it was fetched", () => {
     expect(headline(detail()).price).toBe("217.24 USD");
     expect(priceState(detail(), NOW)).toBe(

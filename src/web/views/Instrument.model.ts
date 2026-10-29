@@ -9,6 +9,7 @@ import type {
   Returns,
   Section,
 } from "../data/store.ts";
+import { volumeText } from "./Chart.model.ts";
 import { change, price } from "./Instruments.model.ts";
 import { ago, plain } from "./Status.model.ts";
 
@@ -213,3 +214,183 @@ export function labelOf(r: Fetched, all: readonly Choice[]): string {
 
 export const deleteLine =
   "Its prices, history and research are deleted. It comes back if an agent asks for it.";
+
+// the cards under the chart: plain words over the quote's daily signals
+export type Tone = "up" | "down" | null;
+export type StatRow = {
+  label: string;
+  value: string;
+  note?: string;
+  tone?: Tone;
+};
+export type Span = { low: string; high: string; at: number };
+export type StatCard = { title: string; span?: Span; rows: StatRow[] };
+
+const pct = (v: number) => `${Math.abs(v).toFixed(2)}%`;
+const toneOf = (v: number): Tone => (v > 0 ? "up" : v < 0 ? "down" : null);
+
+// where the price sits between a low and a high, 0 to 1
+function span(
+  d: Detail,
+  low: number | null,
+  high: number | null,
+  now: number | null,
+): Span | undefined {
+  if (low === null || high === null || now === null || high <= low)
+    return undefined;
+  const at = Math.min(1, Math.max(0, (now - low) / (high - low)));
+  return { low: priceOf(d, low), high: priceOf(d, high), at };
+}
+
+const priceOf = (d: Detail, v: number) => price({ ...d.instrument, price: v });
+
+// a series that is itself a percent (a yield) moves in points, as the
+// head's 200-week line says
+const inPoints = (d: Detail) => d.instrument.unit === "percent";
+const pointsOf = (v: number) => `${Math.abs(v).toFixed(2)} pts`;
+const flat = (v: number) => Number(Math.abs(v).toFixed(2)) === 0;
+
+// the price beside an average, said as above or below it
+function besideAverage(
+  d: Detail,
+  label: string,
+  avg: number | null,
+  now: number | null,
+): StatRow | null {
+  if (avg === null || avg === 0 || now === null) return null;
+  const by = inPoints(d) ? now - avg : ((now - avg) / Math.abs(avg)) * 100;
+  const side = flat(by)
+    ? "at it"
+    : `${inPoints(d) ? pointsOf(by) : pct(by)} ${by > 0 ? "above" : "below"}`;
+  return {
+    label,
+    value: side,
+    note: priceOf(d, avg),
+    tone: flat(by) ? null : toneOf(by),
+  };
+}
+
+function rsiWord(v: number): string {
+  if (v >= 70) return "overbought";
+  if (v <= 30) return "oversold";
+  return "neutral";
+}
+
+const sessionsAgo = (n: number) =>
+  n === 0 ? "today" : `${n} trading ${n === 1 ? "day" : "days"} ago`;
+
+export function stats(d: Detail): StatCard[] {
+  const q = d.quote;
+  const s = q?.signals?.daily ?? null;
+  const now = q?.price ?? q?.observation?.value ?? d.instrument.price;
+  const cards: StatCard[] = [];
+  if (s !== null) {
+    const rows: StatRow[] = [];
+    if (s.drawdown !== null) {
+      const at = flat(s.drawdown);
+      rows.push({
+        label: "From the high",
+        value: at ? "at the high" : `${pct(s.drawdown)} below`,
+        note:
+          s.days_since_high === null
+            ? undefined
+            : sessionsAgo(s.days_since_high),
+        tone: at ? null : "down",
+      });
+    }
+    if (s.from_low !== null) {
+      const at = flat(s.from_low);
+      rows.push({
+        label: "From the low",
+        value: at ? "at the low" : `${pct(s.from_low)} above`,
+        tone: at ? null : "up",
+      });
+    }
+    const y = span(d, s.low52w, s.high52w, now);
+    if (y || rows.length > 0)
+      cards.push({ title: "52-week range", span: y, rows });
+  }
+  {
+    const rows: StatRow[] = [];
+    // at the open, until the first pass lands, the quote is still the
+    // last session's
+    const traded = Date.parse(q?.trade_time ?? q?.fetched_at ?? "");
+    const today =
+      q?.session?.state === "open" &&
+      !(traded < Date.parse(q.session.start ?? ""));
+    if (q?.volume) {
+      const ratio = s?.volume_ratio ?? null;
+      rows.push({
+        label: today ? "Volume so far" : "Volume",
+        value: volumeText(q.volume),
+        note:
+          ratio === null
+            ? undefined
+            : `${ratio.toFixed(2)}× the 20-day average`,
+      });
+    }
+    if (s?.volatility20 != null) {
+      rows.push({
+        label: "Typical daily move",
+        value: `${s.volatility20.toFixed(2)}%`,
+        note: "over 20 days",
+      });
+    }
+    if (s?.atr14 != null) {
+      const pts = inPoints(d) || d.instrument.unit === "percent_of_par";
+      rows.push({
+        label: "Average daily range",
+        value: pts ? pointsOf(s.atr14) : priceOf(d, s.atr14),
+        note: "over 14 days",
+      });
+    }
+    const t = span(d, q?.day_low ?? null, q?.day_high ?? null, now);
+    if (t || rows.length > 0)
+      cards.push({ title: today ? "Today" : "Last session", span: t, rows });
+  }
+  if (s !== null) {
+    const rows: StatRow[] = [];
+    const a50 = besideAverage(d, "50-day average", s.sma50, now);
+    const a200 = besideAverage(d, "200-day average", s.sma200, now);
+    if (a50) rows.push(a50);
+    if (a200) rows.push(a200);
+    if (s.cross !== null && s.cross !== 0) {
+      const above = s.cross > 0;
+      // the cross is news only on its day; after it, the side says it
+      rows.push({
+        label: "50-day vs 200-day",
+        value: above ? "above" : "below",
+        note: s.cross_edge
+          ? `${above ? "golden" : "death"} cross today`
+          : undefined,
+        tone: above ? "up" : "down",
+      });
+    }
+    if (s.rsi14 !== null) {
+      rows.push({
+        label: "RSI 14",
+        value: s.rsi14.toFixed(1),
+        note: rsiWord(s.rsi14),
+      });
+    }
+    if (s.macd_histogram !== null) {
+      // the side is the histogram's sign; a turn is its direction changing,
+      // which can come on either side, so it is only the day's note
+      const h = s.macd_histogram;
+      const turn = s.macd_turn ?? 0;
+      rows.push({
+        label: "Momentum",
+        value: h > 0 ? "upward" : h < 0 ? "downward" : "flat",
+        note:
+          turn > 0
+            ? "turning up today"
+            : turn < 0
+              ? "turning down today"
+              : undefined,
+        tone: h > 0 ? "up" : h < 0 ? "down" : null,
+      });
+    }
+    if (rows.length > 0) cards.push({ title: "Trend", rows });
+  }
+  return cards;
+}

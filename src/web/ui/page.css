@@ -12,8 +12,8 @@
     padding-bottom: var(--shell-inset-bottom, 0px);
   }
 
-  /* bleeds across the shell's gutter, so rows scroll under a band as wide
-     as the scroll box */
+  /* bleeds across the shell's gutter and past a narrow page to the
+     window's edge, so rows scroll under a band as wide as the scroll box */
   .page-head {
     position: sticky;
     top: 0;
@@ -22,13 +22,36 @@
     align-items: flex-end;
     gap: var(--space-3);
     margin-left: calc(-1 * var(--shell-left, 0px));
-    margin-right: calc(-1 * var(--shell-right, 0px));
+    margin-right: calc(-1 * var(--shell-right, 0px) - 100vw);
     padding-top: var(--shell-inset-top, 0px);
-    padding-right: var(--shell-right, 0px);
+    padding-right: calc(var(--shell-right, 0px) + 100vw);
     padding-left: calc(var(--shell-left, 0px) + var(--page-lead, 0px));
-    padding-bottom: var(--space-2);
-    margin-bottom: calc(-1 * var(--space-2));
-    background: var(--page);
+    padding-bottom: var(--space-3);
+    margin-bottom: calc(-1 * var(--space-3));
+    background: color-mix(in srgb, var(--page) 82%, transparent);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    backdrop-filter: blur(14px) saturate(140%);
+  }
+  /* once the page scrolls, an edge and a soft shadow lift the band off
+     the rows under it; at the top it stays flat */
+  @supports (animation-timeline: scroll()) {
+    .page-head {
+      animation: page-head-lift linear both;
+      animation-timeline: scroll(nearest);
+      animation-range: 0 24px;
+    }
+  }
+  @keyframes page-head-lift {
+    from {
+      box-shadow:
+        0 1px 0 transparent,
+        0 1px 6px transparent;
+    }
+    to {
+      box-shadow:
+        0 1px 0 var(--line),
+        var(--shadow-head);
+    }
   }
 
   .page-title {

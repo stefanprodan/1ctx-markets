@@ -319,6 +319,24 @@ signed in with the admin key alone.
   own value left out so the row stays one line. A read that failed shows the stored price as "Stored
   price" with its age, no returns, and one notice that a new price could
   not be had; the server's phrase is for agents, not this page.
+- **Cards under the chart say the quote's daily signals in plain words**
+  (`stats()`), three abreast, stacked on a phone: the 52-week range (a
+  bar with the price's dot, how far below the high and how many trading
+  days ago, how far above the low), Today, or Last session until today's
+  first price (the day's range, volume against its 20-day average, "so
+  far" while today trades, the typical daily move and the average daily
+  range), and Trend (the price beside the 50- and 200-day averages, the
+  50 above or below the 200, the cross named only on its day, RSI 14 as
+  neutral, overbought from 70 or oversold to 30, and momentum as the
+  MACD histogram's sign, upward or downward, with a turn of its
+  direction as the day's note, since a turn comes on either side). A
+  yield's distances and range are in points, as the head's are. A row
+  with no signal, and a card with no row or bar, is left out, so a young
+  listing or a series shows less.
+- **The page head is a containing block for fixed elements**: its blur
+  (`backdrop-filter`) holds a fixed descendant inside it, so a sheet or
+  popover fixed to the window turns the blur off while open, as the
+  phone search does.
 - **One More button holds the page's actions** in the head (1ctx's
   More), on a phone too. Refetch data runs at once and refetches every
   part a source holds for it (`POST /api/v1/instruments/{id}/refetch`

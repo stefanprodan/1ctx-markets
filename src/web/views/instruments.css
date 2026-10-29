@@ -103,6 +103,93 @@
     }
   }
 
+  /* the cards under the chart: three abreast, stacked on a phone */
+  .ins-stats {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-4);
+  }
+  @media (max-width: 719px) {
+    .ins-stats {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+  .ins-stat {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-4);
+  }
+  .ins-span {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .ins-span-track {
+    position: relative;
+    height: 4px;
+    margin: 6px 0 2px;
+    border-radius: 2px;
+    background: var(--inset);
+  }
+  .ins-span-mark {
+    position: absolute;
+    top: 50%;
+    width: 10px;
+    height: 10px;
+    border: 2px solid var(--card);
+    border-radius: 50%;
+    background: var(--brand);
+    transform: translate(-50%, -50%);
+  }
+  .ins-span-ends {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--mono);
+    font-size: var(--text-small);
+    font-variant-numeric: tabular-nums;
+    color: var(--dim);
+  }
+  .ins-stat-rows {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+  }
+  .ins-stat-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: 7px 0;
+    border-top: 1px solid var(--line);
+  }
+  .ins-stat-row dt {
+    font-size: var(--text-small);
+    color: var(--faint);
+  }
+  .ins-stat-row dd {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 1px;
+    margin: 0;
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    color: var(--fg);
+  }
+  .ins-stat-row .ins-up {
+    color: var(--done);
+  }
+  .ins-stat-row .ins-down {
+    color: var(--failed);
+  }
+  .ins-stat-note {
+    font-family: var(--sans);
+    font-size: var(--text-small);
+    color: var(--faint);
+  }
+
   .ins-new-label {
     margin: 0;
     padding: var(--space-4) var(--space-4) var(--space-2);
