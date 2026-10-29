@@ -63,7 +63,7 @@ export type Listed = {
   unit: string;
   source: string;
   tracked: boolean;
-  tracked_by: ("rule" | "read" | "track")[];
+  tracked_by: ("rule" | "dashboard" | "read" | "track")[];
   read_until: string | null;
   price: number | null;
   change: number | null;
@@ -88,6 +88,71 @@ export type WatchEntry = {
 };
 
 type Watchlist = { attribution?: string; entries: WatchEntry[] };
+
+export type View = "cards" | "table";
+
+export type Gap = { distance_pct: number | null; crossed_today?: boolean };
+
+export type BoardItem = {
+  id: string;
+  instrument: Listed;
+  session: Session | null;
+  intraday: boolean;
+  averages: {
+    daily_sma50: Gap | null;
+    daily_sma200: Gap | null;
+    weekly_sma200: Gap | null;
+  };
+};
+
+export type Board = {
+  attribution?: string;
+  revision: number;
+  created: boolean;
+  track?: { value: string; state: "ready" | "pending" | "failed" }[];
+  sections: { name: string; view: View; items: BoardItem[] }[];
+};
+
+export type BoardSection = { name: string; view: View; ids: string[] };
+
+export const layoutOf = (b: Board): BoardSection[] =>
+  b.sections.map((s) => ({
+    name: s.name,
+    view: s.view,
+    ids: s.items.map((i) => i.id),
+  }));
+
+export const payloadOf = (
+  revision: number,
+  layout: readonly BoardSection[],
+) => ({
+  revision,
+  sections: layout.map((s) => ({
+    name: s.name,
+    view: s.view,
+    symbols: s.ids,
+  })),
+});
+
+export type Candidate = {
+  id: string;
+  name: string | null;
+  type: string | null;
+  exchange: string;
+  stored: boolean;
+};
+
+export const SYMBOLS_PATH = "/api/v1/symbols";
+
+export type Earning = {
+  id: string;
+  name: string | null;
+  date: string;
+  hour: string | null;
+  eps_estimate: number | null;
+  revenue_estimate: number | null;
+  currency: string | null;
+};
 
 export type Spark = Intraday | History;
 
@@ -136,6 +201,17 @@ export type Detail = {
     } | null;
   };
 };
+
+export function saveFailure(error: unknown): string {
+  if (error instanceof ApiError && error.status === 422) {
+    const body = error.body as { errors?: { input?: unknown }[] } | null;
+    const names = (body?.errors ?? []).flatMap((e) =>
+      typeof e.input === "string" ? [e.input] : [],
+    );
+    if (names.length > 0) return `Could not add ${names.join(", ")}.`;
+  }
+  return `Not saved. ${says(error)}`;
+}
 
 export const PARTS = [
   "quotes",
@@ -191,6 +267,28 @@ export const STATUS_PATH = "/api/v1/status";
 export const WATCHLIST_PATH = "/api/v1/watchlist";
 export const SESSION_PATH = "/ui/session";
 export const KEYS_PATH = "/api/v1/keys";
+export const DASHBOARD_PATH = "/api/v1/dashboard";
+export const EARNINGS_PATH = "/api/v1/earnings";
+// the route refuses more in one call
+export const EARNINGS_SYMBOLS = 100;
+
+// the viewer's own calendar day, as the page reads "Today"
+const dayOf = (ms: number) => {
+  const d = new Date(ms);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+};
+// the route counts both ends, so six days on is the seventh day
+const AHEAD_MS = 6 * 86_400_000;
+
+type EarningsAnswer = {
+  earnings: Earning[];
+  message?: string;
+  unavailable?: { input: string; id?: string }[];
+};
+
+// how a save ended: a failed one leaves the edit to try again
+export type Saved = "saved" | "conflict" | "failed";
 
 // here: the page shown, so an answer that arrives after leaving starts nothing
 export function store(
@@ -210,8 +308,16 @@ export function store(
   // FRED's terms ask for its notice wherever its values show
   const attribution = signal<string | null>(null);
   const sparks = signal<ReadonlyMap<string, Spark>>(new Map());
+  // a save in flight shows at once
+  const layout = signal<BoardSection[] | null>(null);
+  const items = signal<ReadonlyMap<string, BoardItem>>(new Map());
+  const earnings = signal<Earning[]>([]);
+  // none could be had, which is not the same as none reporting
+  const earningsOff = signal(false);
+  const seeding = signal<Board["track"] | null>(null);
   const homeError = signal<string | null>(null);
   const homeCode = signal<number | null>(null);
+  const saveError = signal<string | null>(null);
   // each page's failed loads, so the same error again shows again and
   // another page's failure never does
   const statusFailures = signal(0);
@@ -241,19 +347,16 @@ export function store(
   // result
   let latest = 0;
   let current: Promise<boolean> = Promise.resolve(false);
-  // Status and Home both read the watchlist: an older answer never lands
-  // over a newer one, or a resolved card would turn back to Pending
-  let watchAsked = 0;
-  let watchShown = 0;
-  const showWatchlist = (asked: number, w: Watchlist) => {
-    if (asked < watchShown) return;
-    watchShown = asked;
-    watchlist.value = w.entries;
-    attribution.value = w.attribution ?? null;
-  };
 
   const signedOut = () => {
     session++;
+    revision = 0;
+    saved = [];
+    dirty = false;
+    base = null;
+    ours.clear();
+    // a save of the old session never carries an edit of the new one
+    flight = null;
     latest++;
     current = Promise.resolve(false);
     loading.value = false;
@@ -266,6 +369,12 @@ export function store(
       watchlist.value = null;
       attribution.value = null;
       sparks.value = new Map();
+      layout.value = null;
+      items.value = new Map();
+      earnings.value = [];
+      earningsOff.value = false;
+      seeding.value = null;
+      saveError.value = null;
       homeError.value = null;
       homeCode.value = null;
       instruments.value = null;
@@ -287,10 +396,11 @@ export function store(
     path: string,
     method?: string,
     body?: unknown,
+    signal?: AbortSignal,
   ): Promise<T> {
     const mine = session;
     try {
-      return await quiet<T>(path, method, body);
+      return await quiet<T>(path, method, body, signal);
     } catch (error) {
       if (
         error instanceof ApiError &&
@@ -310,7 +420,6 @@ export function store(
 
   async function load(mine: number): Promise<boolean> {
     loading.value = true;
-    const asked = ++watchAsked;
     try {
       // the status page shows both, so they land together; a 401 from
       // either signs out, whichever failed first
@@ -331,7 +440,7 @@ export function store(
       batch(() => {
         signedIn.value = true;
         status.value = s.value;
-        showWatchlist(asked, w.value);
+        watchlist.value = w.value.entries;
         statusAt.value = now();
         statusError.value = null;
         statusCode.value = null;
@@ -534,18 +643,59 @@ export function store(
     return null;
   }
 
+  let revision = 0;
+  let saved: BoardSection[] = [];
+  // each edit counts, so a load asked before one never lands its layout
+  let edits = 0;
+  let dirty = false;
+  // the revision an edit was made on, sent so another tab's save since
+  // is refused rather than overwritten
+  let base: number | null = null;
+  // what this tab's own saves moved each revision to, so an edit begun
+  // during one is not taken for another tab's
+  const ours = new Map<number, number>();
+  const since = (r: number) => {
+    while (ours.has(r)) r = ours.get(r)!;
+    return r;
+  };
+  let flight: Promise<Saved> | null = null;
+  // by when each call was sent, so an older answer never draws over a newer
+  let asks = 0;
+  let landed = 0;
+
+  // an older answer only fills a card no newer one has drawn
+  const merge = (b: Board, ask: number) => {
+    const older = ask < landed;
+    landed = Math.max(landed, ask);
+    const next = new Map(items.value);
+    for (const s of b.sections) {
+      for (const i of s.items) if (!older || !next.has(i.id)) next.set(i.id, i);
+    }
+    items.value = next;
+  };
+  const adopt = (b: Board, ask: number) => {
+    merge(b, ask);
+    revision = b.revision;
+    saved = layoutOf(b);
+    layout.value = saved;
+    attribution.value = b.attribution ?? null;
+    seeding.value = b.track ?? null;
+  };
+  const shown = () => [...new Set((layout.value ?? []).flatMap((s) => s.ids))];
+
   let homeLoad = 0;
-  async function loadHome(): Promise<void> {
+  async function loadDashboard(): Promise<void> {
     // the minute refresh can fire after leaving, before Preact's cleanup
     if (here() !== "/") return;
     const mine = ++homeLoad;
     const at = session;
     const page = here();
+    const asked = edits;
+    const ask = ++asks;
     const stale = () => mine !== homeLoad || at !== session || here() !== page;
-    const asked = ++watchAsked;
-    let w: Watchlist;
+    let b: Board;
     try {
-      w = await call<Watchlist>(WATCHLIST_PATH);
+      b = await call<Board>(DASHBOARD_PATH);
     } catch (error) {
       if (stale()) return;
       if (!(error instanceof ApiError && error.status === 401)) {
@@ -555,26 +705,23 @@ export function store(
       }
       return;
     }
-    if (stale()) return;
+    // from before a save landed, so older than all that shows
+    if (stale() || b.revision < revision) return;
     batch(() => {
-      showWatchlist(asked, w);
+      if (asked === edits && flight === null) adopt(b, ask);
+      else merge(b, ask);
       homeError.value = null;
       homeCode.value = null;
     });
-    const ids = [
-      ...new Set(
-        w.entries.flatMap((e) =>
-          e.id !== null && e.instrument !== null ? [e.id] : [],
-        ),
-      ),
-    ];
-    const day = new Set(
-      w.entries.flatMap((e) => (e.intraday && e.id !== null ? [e.id] : [])),
-    );
+    await Promise.all([loadLines(shown(), stale), loadEarnings(stale)]);
+  }
+
+  // a failed one keeps the line drawn before
+  async function loadLines(ids: readonly string[], stale: () => boolean) {
     const today = new Date(now()).toISOString().slice(0, 10);
     const lines = await Promise.allSettled(
       ids.map((id) =>
-        day.has(id)
+        items.value.get(id)?.intraday
           ? call<Intraday>(
               `${instrumentPath(id)}/bars?${new URLSearchParams({ interval: "5m" })}`,
             )
@@ -582,15 +729,148 @@ export function store(
       ),
     );
     if (stale()) return;
-    // a line that failed keeps the one drawn before
-    const was = sparks.value;
-    const next = new Map<string, Spark>();
+    const next = new Map(sparks.value);
     ids.forEach((id, i) => {
       const r = lines[i]!;
-      const line = r.status === "fulfilled" ? r.value : was.get(id);
-      if (line !== undefined) next.set(id, line);
+      if (r.status === "fulfilled") next.set(id, r.value);
     });
     sparks.value = next;
+  }
+
+  let earningsAsk = 0;
+  async function loadEarnings(stale: () => boolean) {
+    const mine = ++earningsAsk;
+    const shares = shown().filter(
+      (id) => items.value.get(id)?.instrument.kind === "EQUITY",
+    );
+    if (shares.length === 0) {
+      batch(() => {
+        earnings.value = [];
+        earningsOff.value = false;
+      });
+      return;
+    }
+    const batches: string[][] = [];
+    for (let k = 0; k < shares.length; k += EARNINGS_SYMBOLS) {
+      batches.push(shares.slice(k, k + EARNINGS_SYMBOLS));
+    }
+    const asked = await Promise.allSettled(
+      batches.map((b) => {
+        const q = new URLSearchParams({
+          from: dayOf(now()),
+          to: dayOf(now() + AHEAD_MS),
+          symbols: b.join(","),
+        });
+        return call<EarningsAnswer>(`${EARNINGS_PATH}?${q}`);
+      }),
+    );
+    // a part that failed keeps the list shown before, never a shorter one
+    if (mine !== earningsAsk || stale()) return;
+    if (asked.some((r) => r.status === "rejected")) return;
+    const answers = asked.flatMap((r) =>
+      r.status === "fulfilled" ? [r.value] : [],
+    );
+    // a save since the ask may have removed a share
+    const kept = new Set(shown());
+    batch(() => {
+      earnings.value = answers
+        .flatMap((a) => a.earnings)
+        .filter((e) => kept.has(e.id))
+        .sort((a, b) => a.date.localeCompare(b.date));
+      // the route notes every share it has no calendar for, so only none
+      // answered at all reads as not available
+      const missing = new Set(
+        answers.flatMap((a) =>
+          (a.unavailable ?? []).map((u) => u.id ?? u.input),
+        ),
+      );
+      earningsOff.value =
+        answers.some((a) => a.message !== undefined) ||
+        shares.every((id) => missing.has(id));
+    });
+  }
+
+  // edits during a save go in the next, so none is sent on an old revision
+  function saveLayout(next: BoardSection[], on?: number): Promise<Saved> {
+    edits++;
+    if (on !== undefined) base = on;
+    batch(() => {
+      layout.value = next;
+      saveError.value = null;
+    });
+    dirty = true;
+    if (flight === null) {
+      // an old session's save ending never clears a newer one's
+      const f: Promise<Saved> = flush().finally(() => {
+        if (flight === f) flight = null;
+      });
+      flight = f;
+    }
+    return flight;
+  }
+
+  async function flush(): Promise<Saved> {
+    const at = session;
+    const before = new Set(saved.flatMap((s) => s.ids));
+    while (dirty) {
+      dirty = false;
+      let b: Board;
+      const ask = ++asks;
+      const on = base === null ? revision : since(base);
+      base = null;
+      try {
+        b = await call<Board>(
+          DASHBOARD_PATH,
+          "PUT",
+          payloadOf(on, layout.value ?? []),
+        );
+      } catch (error) {
+        if (at !== session) return "failed";
+        dirty = false;
+        base = null;
+        if (error instanceof ApiError && error.status === 401) return "failed";
+        const body = error instanceof ApiError ? error.body : null;
+        let outcome: Saved = "failed";
+        batch(() => {
+          // another tab saved first: its layout is the one kept
+          if (
+            error instanceof ApiError &&
+            error.status === 409 &&
+            typeof body === "object" &&
+            body !== null &&
+            "dashboard" in body
+          ) {
+            adopt(body.dashboard as Board, ask);
+            saveError.value = "Changed in another tab. Reloaded.";
+            outcome = "conflict";
+          } else {
+            layout.value = saved;
+            saveError.value = saveFailure(error);
+          }
+        });
+        return outcome;
+      }
+      if (at !== session) return "failed";
+      ours.set(on, b.revision);
+      batch(() => {
+        if (dirty) {
+          merge(b, ask);
+          revision = b.revision;
+          saved = layoutOf(b);
+          // the saved cards' notice, even if a later save is refused
+          attribution.value = b.attribution ?? null;
+        } else adopt(b, ask);
+      });
+    }
+    const kept = new Set(shown());
+    earnings.value = earnings.value.filter((e) => kept.has(e.id));
+    // a save that lands after leaving Home starts nothing
+    const added = [...kept].filter((id) => !before.has(id));
+    const off = () => at !== session || here() !== "/";
+    if (added.length > 0 && !off()) {
+      void Promise.all([loadLines(added, off), loadEarnings(off)]);
+    }
+    return "saved";
   }
 
   // a chart's bars with their candles and volume; a read, as the page is
@@ -622,7 +902,26 @@ export function store(
     homeError,
     homeCode,
     homeFailures,
-    loadHome,
+    layout,
+    items,
+    earnings,
+    earningsOff,
+    seeding,
+    saveError,
+    loadDashboard,
+    saveLayout,
+    // the revision the layout shown was read or saved on, for an edit to start from
+    revision: () => revision,
+    // a search is no read; upstream false asks the server's database only
+    search: (query: string, upstream = true, signal?: AbortSignal) =>
+      call<{ candidates: Candidate[] }>(
+        `${SYMBOLS_PATH}?${new URLSearchParams(
+          upstream ? { query } : { query, upstream: "false" },
+        )}`,
+        "GET",
+        undefined,
+        signal,
+      ).then((r) => r.candidates),
     history,
     intraday,
     detail,

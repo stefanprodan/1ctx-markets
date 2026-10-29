@@ -3,13 +3,14 @@
 
 import { describe, expect, test } from "bun:test";
 import { readInstrument, upsertInstrument } from "../src/market/instruments.ts";
-import { CALL_MS, markets } from "../src/operations/markets.ts";
+import { markets } from "../src/operations/markets.ts";
 import { searchPage } from "../src/operations/search.ts";
 import { readTargets, type Target } from "../src/operations/targets.ts";
 import { MINUTE_MS } from "../src/runtime/clock.ts";
 import { silent } from "../src/runtime/log.ts";
 import { bvb } from "../src/sources/bvb/client.ts";
 import { bvbJobs } from "../src/sources/bvb/jobs.ts";
+import { findListings, storeListings } from "../src/sources/bvb/listings.ts";
 import { NO_DATA } from "../src/sources/bvb/sync.ts";
 import type { Fetch } from "../src/sources/source.ts";
 import { yahoo } from "../src/sources/yahoo/client.ts";
@@ -112,8 +113,15 @@ async function setup(feed: boolean, withoutRo = false) {
       headers: answer.headers,
     });
   };
-  const exchange = feed ? bvb({ clock, fetch }) : null;
   const w = writer(db);
+  const exchange = feed
+    ? bvb({
+        clock,
+        fetch,
+        onList: (kind, rows, at) =>
+          w.write((db) => storeListings(db, kind, rows, at)),
+      })
+    : null;
   const m = markets({
     db,
     clock,
@@ -127,7 +135,35 @@ async function setup(feed: boolean, withoutRo = false) {
     exchange === null
       ? readTargets(m, inputs)
       : drive(clock, exchange, readTargets(m, inputs));
-  return { clock, db, w, m, read, urls, calls: s.calls, exchange };
+  // every list page, as the jobs read them each exchange day
+  const lists = async () => {
+    const reads: (() => Promise<unknown>)[] = [
+      () => exchange!.shares(),
+      () => exchange!.units(),
+      () => exchange!.bonds(),
+      () => exchange!.indices(),
+    ];
+    for (const read of reads) {
+      await drive(clock, exchange!, read());
+    }
+  };
+  const find = async (query: string) => {
+    const before = urls.length;
+    const page = JSON.parse(await searchPage(m, { query, next: null }));
+    return { page, asked: urls.slice(before) };
+  };
+  return {
+    clock,
+    db,
+    w,
+    m,
+    read,
+    urls,
+    calls: s.calls,
+    exchange,
+    lists,
+    find,
+  };
 }
 
 const idOf = (t: Target | undefined) =>
@@ -363,19 +399,21 @@ describe("resolution with the feed on", () => {
     expect(idOf(bond)).toBe("BVB:R2807A");
   });
 
-  test("search lists the exchange's own tradable listings", async () => {
+  test("search lists the exchange's listings from its stored list pages, asking it nothing", async () => {
     const t = await setup(true);
-    const page = JSON.parse(
-      await drive(
-        t.clock,
-        t.exchange!,
-        searchPage(t.m, { query: "TLV", next: null }),
-      ),
-    );
+    await t.lists();
+    const { page, asked } = await t.find("TLV");
+    expect(asked).toEqual([]);
     const bvbOnes = page.candidates.filter(
       (c: { source: string }) => c.source === "bvb",
     );
-    expect(bvbOnes.map((c: { id: string }) => c.id)).toEqual(["BVB:TLV"]);
+    // the exact symbol first, then the symbols it starts
+    expect(bvbOnes.map((c: { id: string }) => c.id)).toEqual([
+      "BVB:TLV",
+      "BVB:TLV28E",
+      "BVB:TLV32",
+      "BVB:TLV33E",
+    ]);
     expect(page.candidates.map((c: { id: string }) => c.id)).toContain(
       "US:TLV",
     );
@@ -385,31 +423,39 @@ describe("resolution with the feed on", () => {
     ).toHaveLength(1);
   });
 
-  test("the exchange's listings carry their ISIN and the feed's type", async () => {
+  test("before the list pages are first read, search lists no Bucharest listing", async () => {
     const t = await setup(true);
-    const page = JSON.parse(
-      await drive(
-        t.clock,
-        t.exchange!,
-        searchPage(t.m, { query: "petrom", next: null }),
-      ),
-    );
+    const { page, asked } = await t.find("petrom");
+    expect(asked).toEqual([]);
+    expect(
+      page.candidates.filter((c: { source: string }) => c.source === "bvb"),
+    ).toEqual([]);
+  });
+
+  test("the exchange's listings match by name and ISIN and carry the list's type", async () => {
+    const t = await setup(true);
+    await t.lists();
+    const { page } = await t.find("petrom");
     const bvbOnes = page.candidates.filter(
       (c: { source: string }) => c.source === "bvb",
     );
-    expect(bvbOnes).toHaveLength(10);
-    // a type the feed serves is the one its instrument takes
-    expect(bvbOnes[0]).toMatchObject({
-      id: "BVB:SNP",
-      type: "EQUITY",
-      isin: "ROSNPPACNOR9",
+    expect(bvbOnes).toEqual([
+      {
+        id: "BVB:SNP",
+        name: "OMV PETROM S.A.",
+        type: "EQUITY",
+        exchange: "BVB",
+        source: "bvb",
+        source_symbol: "SNP",
+        isin: "ROSNPPACNOR9",
+        stored: false,
+      },
+    ]);
+    const byIsin = await t.find("rotlvadbc023");
+    expect(byIsin.page.candidates[0]).toMatchObject({
+      id: "BVB:TLV28E",
+      type: "BOND",
     });
-    expect(bvbOnes[1]).toMatchObject({
-      id: "BVB:EBSNPTL15",
-      type: "Structured",
-      isin: "AT0000A31PQ4",
-    });
-    expect(bvbOnes.every((c: { isin: string }) => c.isin !== null)).toBe(true);
     // Yahoo's candidates have no ISIN
     expect(
       page.candidates.some(
@@ -419,60 +465,22 @@ describe("resolution with the feed on", () => {
     ).toBe(false);
   });
 
-  test("a slow search and a slow type answer still answer within one call", async () => {
+  test("a list page read again replaces its kind's listings", () => {
     const clock = fakeClock(NOW);
     const { db } = open(":memory:", clock);
-    const s = await sources();
-    const start = clock.now();
-    // answered once the clock reaches at
-    const late = (at: number, answer: Recorded) =>
-      new Promise<Response>((resolve) => {
-        clock.at(at, () =>
-          resolve(
-            new Response(JSON.stringify(answer.body), {
-              status: answer.status,
-            }),
-          ),
-        );
-      });
-    const site = await bvbRecorded("instruments-autocomplete-petrom");
-    const feed = await bvbRecorded("wapi-search-petrom");
-    const fetch: Fetch = async (raw, init) => {
-      const url = new URL(raw);
-      if (url.pathname === "/proxyshld.aspx/GetInstrumentsList") {
-        return late(start + 0.6 * CALL_MS, site);
-      }
-      if (url.hostname === "wapi.bvb.ro")
-        return late(start + 5 * CALL_MS, feed);
-      return s.fetch(raw, init);
-    };
-    const m = markets({
-      db,
-      clock,
-      writer: writer(db),
-      yahoo: yahoo({ clock, fetch }),
-      fred: null,
-      bvb: bvb({ clock, fetch }),
-      log: silent,
-    });
-    let page: any = null;
-    const asked = searchPage(m, { query: "petrom", next: null }).then((p) => {
-      page = JSON.parse(p);
-    });
-    for (let k = 0; k < CALL_MS / 1000 && page === null; k++) {
-      await clock.advance(1000);
-      await new Promise((r) => setImmediate(r));
-    }
-    expect(page).not.toBeNull();
-    expect(clock.now() - start).toBeLessThanOrEqual(CALL_MS);
-    const snp = page.candidates.find((c: { id: string }) => c.id === "BVB:SNP");
-    expect(snp).toMatchObject({ type: null, isin: "ROSNPPACNOR9" });
-    await asked;
-    await clock.advance(5 * CALL_MS);
+    const row = (symbol: string) => ({ symbol, isin: null, name: null });
+    storeListings(db, "shares", [row("AAA"), row("BBB")], 1);
+    storeListings(db, "bonds", [row("AAA30")], 1);
+    storeListings(db, "shares", [row("BBB")], 2);
+    expect(findListings(db, "a", 10).map((l) => l.symbol)).toEqual(["AAA30"]);
+    expect(findListings(db, "b", 10)).toEqual([
+      { symbol: "BBB", isin: null, name: null, type: "EQUITY" },
+    ]);
   });
 
   test("a fund unit resolves to the feed and searches as an ETF", async () => {
     const t = await setup(true);
+    await t.lists();
     const [etf] = await t.read(["BTBETRETF"]);
     expect(idOf(etf)).toBe("BVB:BTBETRETF");
     expect(readInstrument(t.db, "BVB:BTBETRETF")).toMatchObject({
@@ -501,6 +509,20 @@ describe("resolution with the feed on", () => {
 });
 
 describe("resolution with the feed off", () => {
+  test("search lists no stored Bucharest listing", async () => {
+    const t = await setup(false);
+    storeListings(
+      t.db,
+      "shares",
+      [{ symbol: "TLV", isin: null, name: "BANCA TRANSILVANIA S.A." }],
+      0,
+    );
+    const { page } = await t.find("transilvania");
+    expect(
+      page.candidates.filter((c: { source: string }) => c.source === "bvb"),
+    ).toEqual([]);
+  });
+
   test("a Bucharest name resolves through Yahoo under the same key", async () => {
     const t = await setup(false);
     const [tlv] = await t.read(["TLV.RO"]);

@@ -8,7 +8,7 @@ import type { ComponentType } from "preact";
 import { markets } from "../data/store.ts";
 import type { IconName } from "../lib/icons.tsx";
 import { Connect } from "../views/Connect.tsx";
-import { Home } from "../views/Home.tsx";
+import { Dashboard } from "../views/Dashboard.tsx";
 import { Instrument } from "../views/Instrument.tsx";
 import { Instruments } from "../views/Instruments.tsx";
 import { Status } from "../views/Status.tsx";
@@ -30,29 +30,12 @@ export const ROUTES: readonly Route[] = [
     path: "/",
     label: "Home",
     icon: "home",
-    view: Home,
+    view: Dashboard,
     load: async () => {
-      await markets.loadHome();
+      await markets.loadDashboard();
     },
   },
-  {
-    path: "/status",
-    label: "Status",
-    icon: "status",
-    view: Status,
-    load: async () => {
-      await markets.loadStatus();
-    },
-  },
-  {
-    path: "/connect",
-    label: "Connect agents",
-    icon: "plug",
-    view: Connect,
-    load: async () => {
-      await markets.loadKeys();
-    },
-  },
+
   {
     path: "/instruments",
     label: "Instruments",
@@ -69,6 +52,24 @@ export const ROUTES: readonly Route[] = [
     view: Instrument,
     load: async (p) => {
       await markets.loadInstrument(p.id!);
+    },
+  },
+  {
+    path: "/connect",
+    label: "Connect agents",
+    icon: "plug",
+    view: Connect,
+    load: async () => {
+      await markets.loadKeys();
+    },
+  },
+  {
+    path: "/status",
+    label: "Server status",
+    icon: "status",
+    view: Status,
+    load: async () => {
+      await markets.loadStatus();
     },
   },
 ];

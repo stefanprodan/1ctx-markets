@@ -49,7 +49,7 @@ import {
 } from "./helpers/world.ts";
 import { chartSymbol } from "./helpers/yahoo.ts";
 
-const METHODS = ["get", "post", "patch", "delete"];
+const METHODS = ["get", "post", "put", "patch", "delete"];
 
 const ANSWERS = join(import.meta.dir, "fixtures", "api", "answers.json");
 
@@ -405,6 +405,18 @@ describe("every operation", () => {
 
     await check("GET", "/symbols", await t.call("/symbols?query=NVDA"), 200);
     await check("GET", "/symbols", await t.call("/symbols"), 400);
+    await check(
+      "GET",
+      "/symbols",
+      await t.call("/symbols?query=NVDA&upstream=false"),
+      200,
+    );
+    await check(
+      "GET",
+      "/symbols",
+      await t.call("/symbols?query=NVDA&upstream=no"),
+      400,
+    );
     await check(
       "GET",
       "/symbols",
@@ -777,6 +789,33 @@ describe("every operation", () => {
       "POST",
       again,
       await t.call("/instruments/US:NVDA/refetch", json(refetch, "text/plain")),
+      415,
+    );
+    const board = "/dashboard";
+    const put = (body: unknown, init: RequestInit = {}) =>
+      t.call(board, { ...json(body), method: "PUT", ...init });
+    const layout = (revision: number, symbols: string[]) => ({
+      revision,
+      sections: [{ name: "Mine", view: "cards", symbols }],
+    });
+    await check("GET", board, await t.call(board), 200);
+    await check("GET", board, await t.call(`${board}?x=1`), 400);
+    await check("GET", board, await t.call(board, wrong), 401);
+    await check("GET", board, await t.call(board, reader), 403);
+    await check("PUT", board, await put(layout(0, ["NVDA"])), 200);
+    await check("PUT", board, await put(layout(0, ["NVDA"])), 409);
+    await check("PUT", board, await put(layout(1, ["ZZNOTHING"])), 422);
+    await check("PUT", board, await put({ revision: 1 }), 400);
+    await check("PUT", board, await put(layout(1, []), wrong), 401);
+    await check("PUT", board, await put(layout(1, []), reader), 403);
+    await check("PUT", board, await put(layout(1, ["x".repeat(70_000)])), 413);
+    await check(
+      "PUT",
+      board,
+      await t.call(board, {
+        ...json(layout(1, []), "text/plain"),
+        method: "PUT",
+      }),
       415,
     );
     const path = "/instruments/{symbol}";
@@ -1288,6 +1327,21 @@ describe("symbols", () => {
     expect(body.candidates).toEqual(pages.flatMap((p) => p.candidates));
     expect(body.candidates.length).toBeGreaterThan(0);
     for (const c of body.candidates) expect(lastReadAt(t.db, c.id)).toBeNull();
+  });
+
+  test("upstream false answers stored matches and asks no source", async () => {
+    const t = await setup();
+    expect((await t.call("/quotes?symbols=NVDA")).status).toBe(200);
+    const before = t.s.calls.urls.length;
+    const res = await t.call("/symbols?query=nvd&upstream=false");
+    const body: any = await res.json();
+    expect(t.s.calls.urls.slice(before)).toEqual([]);
+    expect(body.candidates).toEqual([
+      expect.objectContaining({ id: "US:NVDA", stored: true }),
+    ]);
+    const full: any = await (await t.call("/symbols?query=nvd")).json();
+    expect(t.s.calls.searches().length).toBeGreaterThan(0);
+    expect(full.candidates[0]).toEqual(body.candidates[0]);
   });
 });
 

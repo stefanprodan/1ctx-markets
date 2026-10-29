@@ -48,10 +48,16 @@ export type Call = <T>(
   path: string,
   method?: string,
   body?: unknown,
+  signal?: AbortSignal,
 ) => Promise<T>;
 
 export function client(fetchFn: Fetch, onUnauthorized: () => void): Call {
-  return async <T>(path: string, method = "GET", body?: unknown) => {
+  return async <T>(
+    path: string,
+    method = "GET",
+    body?: unknown,
+    signal?: AbortSignal,
+  ) => {
     let res: Response;
     try {
       res = await fetchFn(path, {
@@ -60,6 +66,7 @@ export function client(fetchFn: Fetch, onUnauthorized: () => void): Call {
         headers:
           body === undefined ? {} : { "content-type": "application/json" },
         body: body === undefined ? undefined : JSON.stringify(body),
+        signal,
       });
     } catch {
       throw failure(0, null);

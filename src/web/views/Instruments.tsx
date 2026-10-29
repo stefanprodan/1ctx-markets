@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { type Signal, useSignal } from "@preact/signals";
-import { type Listed, markets } from "../data/store.ts";
+import { useEffect, useMemo, useState } from "preact/hooks";
+import { type Candidate, type Listed, markets } from "../data/store.ts";
 import { useRefresh } from "../lib/refresh.ts";
 import { didNotLoad, Page } from "../ui/Page.tsx";
 import {
@@ -13,10 +14,12 @@ import {
   RowsTitle,
 } from "../ui/Rows.tsx";
 import { Search } from "../ui/Search.tsx";
+import { searcher, UPSTREAM_MIN } from "./Dashboard.model.ts";
 import {
   about,
   bySymbol,
   change,
+  kindOf,
   matches,
   price,
   symbolOf,
@@ -55,6 +58,51 @@ function Row({ row }: { row: Listed }) {
   );
 }
 
+// the sources' matches no row holds yet; opening one fetches it
+function NotStored({
+  query,
+  known,
+}: {
+  query: string;
+  known: ReadonlySet<string>;
+}) {
+  const [found, setFound] = useState<Candidate[] | null>(null);
+  const finder = useMemo(
+    () => searcher(markets.search, setFound, () => {}),
+    [],
+  );
+  useEffect(() => finder.stop, [finder]);
+  useEffect(
+    () => finder.ask(query.trim().length >= UPSTREAM_MIN ? query : ""),
+    [finder, query],
+  );
+  const rows = (found ?? []).filter((c) => !c.stored && !known.has(c.id));
+  if (rows.length === 0) return null;
+  return (
+    <>
+      <p class="label ins-new-label">Not stored yet</p>
+      {rows.map((c) => (
+        <RowsGo key={c.id} href={`/instruments/${encodeURIComponent(c.id)}`}>
+          <RowsTitle
+            name={
+              <>
+                <span class="ins-symbol">{symbolOf(c.id)}</span>
+                <span class="ins-name cut">{c.name ?? ""}</span>
+              </>
+            }
+            sub={[c.type ? kindOf(c.type) : null, c.exchange]
+              .filter(Boolean)
+              .join(" · ")}
+          />
+          <RowsMeta keep>
+            <span class="tag ins-new">New</span>
+          </RowsMeta>
+        </RowsGo>
+      ))}
+    </>
+  );
+}
+
 // the filter lives apart from the rows, so a refresh keeps it
 export function InstrumentsList({
   all,
@@ -74,6 +122,9 @@ export function InstrumentsList({
         <RowsNote>No instrument matches.</RowsNote>
       ) : (
         rows.map((r) => <Row key={r.id} row={r} />)
+      )}
+      {all !== null && (
+        <NotStored query={query.value} known={new Set(all.map((r) => r.id))} />
       )}
     </RowsCard>
   );

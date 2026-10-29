@@ -19,6 +19,8 @@ import { m0013 } from "./0013-index-units.ts";
 import { m0014 } from "./0014-run-ids.ts";
 import { m0015 } from "./0015-intraday.ts";
 import { m0016 } from "./0016-keys.ts";
+import { m0017 } from "./0017-dashboard.ts";
+import { m0018 } from "./0018-bvb-listings.ts";
 
 export const MIGRATIONS: readonly Migration[] = [
   m0001,
@@ -37,4 +39,6 @@ export const MIGRATIONS: readonly Migration[] = [
   m0014,
   m0015,
   m0016,
+  m0017,
+  m0018,
 ];

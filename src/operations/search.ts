@@ -3,10 +3,10 @@
 // Tracks nothing, so a search never keeps an instrument synced.
 
 import { type Instrument, readInstrument } from "../market/instruments.ts";
-import { candidateOf, TRADABLE } from "../sources/bvb/resolve.ts";
-import { KINDS } from "../sources/bvb/sync.ts";
+import { findListings } from "../sources/bvb/listings.ts";
+import { keyOf as bvbKey } from "../sources/bvb/sync.ts";
 import { NO_DATA, seriesId } from "../sources/fred/sync.ts";
-import { BVB, FRED_MARKET, YAHOO } from "../sources/ids.ts";
+import { BVB, BVB_MARKET, FRED_MARKET, YAHOO } from "../sources/ids.ts";
 import { keyOf } from "../sources/yahoo/resolve.ts";
 import { cursor, fitPage, readCursor } from "./answer.ts";
 import { ArgError, fields, optionalText, text } from "./args.ts";
@@ -32,7 +32,7 @@ type Found = {
   exchange: string;
   source: string;
   source_symbol: string;
-  // the Bucharest feed's listings only
+  // the Bucharest exchange's listings only
   isin?: string | null;
   stored: boolean;
   note?: string;
@@ -165,87 +165,51 @@ async function yahooCandidates(
   }
 }
 
-// The site's search has no type, so the chart feed names it; a failed or
-// late answer leaves it null, within what is left of the search's deadline.
-async function typesOf(
-  m: Markets,
-  bvb: NonNullable<Markets["bvb"]>,
-  query: string,
-  symbol: string,
-  deadline: number,
-): Promise<Map<string, string>> {
-  try {
-    const types = await within(
-      m,
-      (live) => bvb.within(live).types(query, symbol),
-      deadline,
-    );
-    return types === EXPIRED ? new Map() : types;
-  } catch {
-    return new Map();
-  }
-}
-
-async function bvbCandidates(
-  m: Markets,
-  query: string,
-): Promise<{ found: Found[]; notes: SourceNote[] }> {
-  const bvb = m.bvb;
-  if (bvb === null) return { found: [], notes: [] };
-  const deadline = m.clock.now() + m.callMs;
-  try {
-    const listings = await within(
-      m,
-      (live) => bvb.within(live).search(query),
-      deadline,
-    );
-    if (listings === EXPIRED) return { found: [], notes: [late(m, BVB)] };
-    const tradable = listings.filter((l) => l.status === TRADABLE);
-    const types =
-      tradable.length === 0
-        ? new Map<string, string>()
-        : await typesOf(m, bvb, query, tradable[0]!.symbol, deadline);
+// the list pages as last read, so a search waits on no exchange call;
+// none until they are first read
+function bvbCandidates(m: Markets, query: string): Found[] {
+  if (m.bvb === null) return [];
+  return findListings(m.db, query, STORED).map((l) => {
+    const id = bvbKey(l.symbol);
     return {
-      found: tradable.map((l) => {
-        const c = candidateOf(l);
-        const type = types.get(l.symbol.toUpperCase()) ?? null;
-        return {
-          id: c.id,
-          name: c.name,
-          type: type === null ? null : (KINDS[type]?.type ?? type),
-          exchange: c.exchange,
-          source: BVB,
-          source_symbol: c.sourceSymbol,
-          isin: l.isin,
-          stored: readInstrument(m.db, c.id) !== null,
-        };
-      }),
-      notes: [],
+      id,
+      name: l.name,
+      type: l.type,
+      exchange: BVB_MARKET,
+      source: BVB,
+      source_symbol: l.symbol,
+      isin: l.isin,
+      stored: readInstrument(m.db, id) !== null,
     };
-  } catch (error) {
-    return { found: [], notes: [{ source: BVB, ...itemError(m, error) }] };
-  }
+  });
 }
 
+const NONE = { found: [] as Found[], notes: [] as SourceNote[] };
+
+// upstream false asks no source: stored instruments and stored listings
 export async function searchAll(
   m: Markets,
   query: string,
+  upstream = true,
 ): Promise<{ notes: SourceNote[]; all: Found[] }> {
   const fredQuery = query.toUpperCase().startsWith(`${FRED_MARKET}:`);
-  const local = fredQuery ? [] : stored(m, query);
-  const [exchange, remote] = await Promise.all([
-    fredQuery ? { found: [], notes: [] } : bvbCandidates(m, query),
-    fredQuery ? fredCandidates(m, query) : yahooCandidates(m, query),
-  ]);
-  const notes = [...exchange.notes, ...remote.notes];
+  // a stored series matches by id here, as the FRED side would find it
+  const local = fredQuery && upstream ? [] : stored(m, query);
+  const listed = fredQuery ? [] : bvbCandidates(m, query);
+  const remote = !upstream
+    ? NONE
+    : fredQuery
+      ? await fredCandidates(m, query)
+      : await yahooCandidates(m, query);
+  const notes = remote.notes;
   const seen = new Set<string>();
-  // the instrument stores no ISIN, so a stored listing takes the feed's
-  const isins = new Map(exchange.found.map((c) => [c.id, c.isin]));
+  // the instrument stores no ISIN, so a stored listing takes the list's
+  const isins = new Map(listed.map((c) => [c.id, c.isin]));
   const known = local.map((c) =>
     isins.has(c.id) ? { ...c, isin: isins.get(c.id) } : c,
   );
-  // a Bucharest listing is the feed's while it is on
-  const all = [...known, ...exchange.found, ...remote.found].filter((c) => {
+  // a Bucharest listing is the exchange's while its source is on
+  const all = [...known, ...listed, ...remote.found].filter((c) => {
     if (seen.has(c.id)) return false;
     seen.add(c.id);
     return true;

@@ -1,6 +1,3 @@
-/* The chart card: ranges and toggles in its head, the legend in its own
-   rows above the canvas, the canvas as wide as the card. */
-
 @layer tokens, base, owners;
 
 @layer owners {
@@ -22,8 +19,7 @@
     flex-wrap: wrap;
     gap: var(--space-2);
   }
-  /* a line's toggle wears its colour as a short stroke, so the legend's
-     words and the line agree without colour alone */
+  /* a stroke beside the words, so colour is never alone */
   .chart-toggle-50::before,
   .chart-toggle-200::before,
   .chart-avg::before {
@@ -58,13 +54,7 @@
     height: 400px;
     background: var(--card);
   }
-  @media (max-width: 719px) {
-    .chart-canvas {
-      height: 300px;
-    }
-  }
-  /* its own rows above the plot, so it never covers a bar or a line;
-     its height is held, so the plot never moves as it changes */
+  /* held above the plot, so it never covers a bar or moves the plot */
   .chart-legend {
     display: flex;
     padding: 0 var(--space-4) var(--space-2);
@@ -110,11 +100,24 @@
     font-size: var(--text-ui);
     color: var(--faint);
   }
-  /* before the first answer: about two rows, a phone's about four */
+  /* the rows a first answer takes, so nothing jumps when it lands */
   .chart-legend-wait {
     min-height: 40px;
   }
   @media (max-width: 719px) {
+    .chart-ranges {
+      flex-wrap: nowrap;
+      width: 100%;
+    }
+    .chart-ranges .seg-option {
+      flex: 1 1 0;
+      justify-content: center;
+      min-width: 0;
+      padding: 0;
+    }
+    .chart-canvas {
+      height: 300px;
+    }
     .chart-legend-wait {
       min-height: 76px;
     }

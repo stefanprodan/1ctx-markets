@@ -291,6 +291,29 @@ describe("migrations", () => {
     ).toThrow();
   });
 
+  test("the Bucharest listings start empty and take only a list page's kind", () => {
+    const db = new Database(":memory:", { strict: true });
+    const clock = fakeClock();
+    const at = MIGRATIONS.findIndex((m) => m.id === "0018-bvb-listings");
+    migrate(db, clock, MIGRATIONS.slice(0, at));
+    expect(
+      db
+        .query("select name from sqlite_master where name = 'bvb_listings'")
+        .all(),
+    ).toEqual([]);
+    migrate(db, clock);
+    expect(db.query("select * from bvb_listings").all()).toEqual([]);
+    const insert = db.query(
+      `insert into bvb_listings (kind, symbol, isin, name, type, listed_at)
+       values (?, ?, null, null, 'EQUITY', 0)`,
+    );
+    insert.run("shares", "TLV");
+    expect(() => insert.run("shares", "TLV")).toThrow();
+    expect(() => insert.run("structured", "EBTLV")).toThrow();
+    expect(() => insert.run("bonds", "")).toThrow();
+    db.close();
+  });
+
   test("open applies the shipped list to a new database", () => {
     const { db, migrations } = open(":memory:", fakeClock());
     expect(migrations).toEqual(MIGRATIONS.map((m) => m.id));

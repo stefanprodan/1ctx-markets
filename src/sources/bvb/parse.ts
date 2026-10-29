@@ -407,16 +407,3 @@ export function parseSearch(body: unknown): Listing[] {
   }
   return out;
 }
-
-// symbols uppercased to the feed's type: Shares, Units, Structured, ...
-export function parseTypes(body: unknown): Map<string, string> {
-  if (!Array.isArray(body)) throw malformed("no search list");
-  const out = new Map<string, string>();
-  for (const d of body) {
-    if (!isObj(d)) continue;
-    const symbol = typeof d.symbol === "string" ? d.symbol.trim() : "";
-    const type = typeof d.type === "string" ? d.type.trim() : "";
-    if (symbol !== "" && type !== "") out.set(symbol.toUpperCase(), type);
-  }
-  return out;
-}

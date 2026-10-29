@@ -244,7 +244,7 @@ export function Status() {
   const at = markets.statusAt.value;
   return (
     <Page
-      title="Status"
+      title="Server status"
       meta={at === null ? undefined : `as of ${clockTime(at)}`}
       stale={s === null ? null : markets.statusError.value}
       staleCount={markets.statusFailures.value}

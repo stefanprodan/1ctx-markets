@@ -79,9 +79,9 @@ log and cut off without touching the others.
 - **`query` keeps ids or names holding it**, ignoring ASCII case only
   (SQLite's `lower()`), at most 64 characters.
 - **Each row says what tracks it** in `tracked_by`: `rule` (a rule
-  reads it), `read` (read within the tracking window, with `read_at`
-  and `read_until`), `track` (a `--track` value resolved to it);
-  `tracked` is true when any holds.
+  reads it), `dashboard` (it is on the saved dashboard), `read` (read
+  within the tracking window, with `read_at` and `read_until`), `track`
+  (a `--track` value resolved to it); `tracked` is true when any holds.
 - **Each row carries its stored price**: `price`, `change`,
   `change_percent` and `fetched_at` from the stored quote, or a
   series' newest daily close with no change (FRED has no quote). The
@@ -146,9 +146,13 @@ log and cut off without touching the others.
   (`INSTRUMENT_TABLES`) and its own runs**, so the key added again
   starts unfetched; nothing of another instrument goes. A research or
   news fetch still in flight finds the key gone and writes nothing
-  (`checkStored()`). A new table
-  referencing `instruments` goes into `INSTRUMENT_TABLES`; a test fails
-  until it does.
+  (`checkStored()`). A new table referencing `instruments` either goes
+  into `INSTRUMENT_TABLES` or cascades, as the dashboard's items do; a
+  test lists every such table, so one added to neither fails it.
+- **Its dashboard card goes by the cascade**, never in
+  `INSTRUMENT_TABLES`: a favourite never blocks a delete. The same
+  write moves the dashboard's revision, so a tab still holding the card
+  reloads at its next save instead of fetching it back.
 - **Refused with 409 while a rule reads it**, its own or another's
   condition: delete the rule first. The check is in the same write.
 - **Its alerts stay** until retention, since alerts have no foreign key

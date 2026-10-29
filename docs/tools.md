@@ -98,7 +98,7 @@ the rules tool in `docs/rules.md`; signal rows and returns in
 |---|---|---|
 | `quote` | `symbols`, `benchmark`, `extended`, `next` | per symbol a `QuoteItem` (`quote.ts`) with `returns`, `session`, with a benchmark `relative_return_1m` and `_3m`, with `extended` true `extended` |
 | `history` | `symbol`, `interval`, `from`, `to`, `benchmark`, `extended`, `next` | bars oldest first with `final` and signals; `session`; `relative`; with `5m`, `points` and `sessions`, and `extended_points` when `extended` |
-| `search` | `query`, `next` | up to 20 stored matches, then the Bucharest feed's tradable listings while it is on, then Yahoo's, each with id, exchange, type, name, `source`, `stored`; a Bucharest listing adds its `isin` |
+| `search` | `query`, `next` | up to 20 stored matches, then up to 20 Bucharest listings from the stored list pages while the feed is on, then Yahoo's, each with id, exchange, type, name, `source`, `stored`; a Bucharest listing adds its `isin` |
 | `movers` | `symbols`, `min_move_pct`, `direction`, `average`, `relation`, `next` | matches by absolute change, largest first; `counts` |
 | `screen` | `symbols`, `filters`, `benchmark`, `sort`, `order`, `fields`, `next` | matches with each used and asked field's value, unit, kind and date; `counts` |
 | `research`, `events` | see `docs/research.md` | |
@@ -177,13 +177,14 @@ the rules tool in `docs/rules.md`; signal rows and returns in
   bounds. A cursor whose point is no longer stored (replaced, pruned or
   cleared) is `bad_arguments`, so the client starts again rather than
   reading an empty last page.
-- **A Bucharest search candidate's type is the chart feed's**
-  (`types`, `docs/bvb.md`), since the site's search gives none: the
-  type its instrument would take, else the feed's own. That is one
-  more feed call per search with a tradable listing, within what is
-  left of the search's own deadline, so search answers within one
-  call's time; failed or late, the type is null. Its `isin`
-  is the site's, kept on a stored candidate too.
+- **A Bucharest search candidate comes from the database, never the
+  exchange** (`bvb_listings`, `docs/bvb.md`): the list pages the jobs
+  read each exchange day, matched case-blind anywhere in the symbol,
+  name or ISIN, an exact symbol first, then symbols that start with
+  the query. Its type is the one its list gives, the type its
+  instrument would take; its `isin` is the list's, kept on a stored
+  candidate too. Before the list pages are first read there are no
+  Bucharest candidates.
 - **search fetches no prices and tracks nothing.** FRED is asked only
   for `FRED:<series id>`, with a note when the series is not daily; a
   stored series also matches by symbol or name. A source that failed

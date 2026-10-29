@@ -106,6 +106,18 @@ const NO_LIVE = "no live row: no trade in the current session yet";
 
 type Side = { kind: "live" | "final"; date: string; value: number };
 
+// one rule for every reader, so a crossing never differs between answers
+export function crossing(
+  close: number,
+  then: number,
+  last: number,
+  now: number,
+): "crossed_up" | "crossed_down" | null {
+  if (close <= then && last > now) return "crossed_up";
+  if (close >= then && last < now) return "crossed_down";
+  return null;
+}
+
 type Relation =
   | { ok: true; holds: boolean; shown: object }
   | { ok: false; reason?: string };
@@ -146,10 +158,7 @@ function relate(
   if (final.date >= live.date) return { ok: false };
   const close = closeOn(db, instrument.id, interval, final.date);
   if (close === null) return { ok: false };
-  const holds =
-    args.relation === "crossed_up"
-      ? close <= avgThen && last > avgNow
-      : close >= avgThen && last < avgNow;
+  const holds = crossing(close, avgThen, last, avgNow) === args.relation;
   return {
     ok: true,
     holds,

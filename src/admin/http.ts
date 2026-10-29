@@ -14,7 +14,7 @@ import {
 } from "../api/http.ts";
 import { iso } from "../market/format.ts";
 import { readInstrument } from "../market/instruments.ts";
-import { trackedIds } from "../market/tracking.ts";
+import { dashboardInstruments, trackedIds } from "../market/tracking.ts";
 import { ArgError, fields } from "../operations/args.ts";
 import { hasIntraday } from "../operations/intraday.ts";
 import type { Markets } from "../operations/markets.ts";
@@ -324,7 +324,7 @@ export function status(d: AdminDeps, url: URL): Response {
   });
 }
 
-type Stored = {
+export type Stored = {
   id: string;
   name: string | null;
   market: string;
@@ -383,7 +383,7 @@ export function instruments(m: Markets, url: URL): Response {
       `${STORED} where ${where} and i.id > ?2 order by i.id limit ?3`,
     )
     .all(query, after ?? "", size + 1);
-  const row = listRow(m, ruleInstruments(db), now);
+  const row = listRow(m, now);
   const page = rows.slice(0, size);
   return json({
     // FRED's terms, wherever a page shows one of its values
@@ -409,15 +409,18 @@ const STORED = `select i.id, i.name, i.market, i.exchange, i.currency,
     and b.date = (select max(date) from bars
       where instrument = i.id and interval = '1d')`;
 
-const storedRow = (db: Db, id: string): Stored | null =>
+export const storedRow = (db: Db, id: string): Stored | null =>
   db.query<Stored, [string]>(`${STORED} where i.id = ?1`).get(id);
 
-const listRow =
-  (m: Markets, ruled: ReadonlySet<string>, now: number) => (r: Stored) => {
+export const listRow = (m: Markets, now: number) => {
+  const ruled = ruleInstruments(m.db);
+  const faved = dashboardInstruments(m.db);
+  return (r: Stored) => {
     const { tracking } = m;
     const read = r.readAt !== null && r.readAt > now - tracking.readMs;
     const by = [
       ...(ruled.has(r.id) ? ["rule"] : []),
+      ...(faved.has(r.id) ? ["dashboard"] : []),
       ...(read ? ["read"] : []),
       ...(tracking.flagged.has(r.id) ? ["track"] : []),
     ];
@@ -440,6 +443,7 @@ const listRow =
       fetched_at: iso(r.fetchedAt),
     };
   };
+};
 
 // a read, as any client's: an unknown symbol is fetched
 export async function instrument(m: Markets, url: URL, raw: string) {
@@ -469,7 +473,7 @@ export async function instrument(m: Markets, url: URL, raw: string) {
     input,
     ...(stored.source === FRED ? { attribution: ATTRIBUTION } : {}),
     credit: creditOf(stored.source),
-    instrument: listRow(m, ruleInstruments(m.db), m.clock.now())(stored),
+    instrument: listRow(m, m.clock.now())(stored),
     quote: failure === null ? item : null,
     error:
       failure === null
@@ -486,7 +490,7 @@ export function watchlist(
 ): Response {
   noQuery(url);
   const now = m.clock.now();
-  const row = listRow(m, ruleInstruments(m.db), now);
+  const row = listRow(m, now);
   const entries = track().map((t) => ({
     t,
     stored: t.id === null ? null : storedRow(m.db, t.id),
@@ -593,6 +597,11 @@ export async function deleteOne(
       .filter((r) => r.instrument === id || instrumentsOf(r.condition).has(id))
       .map((r) => r.id);
     if (rules.length > 0) return { rules };
+    // a tab still holding the card reloads at its next save
+    db.query(
+      `update dashboards set revision = revision + 1, updated_at = ?1
+       where owner in (select owner from dashboard_items where instrument = ?2)`,
+    ).run(d.m.clock.now(), id);
     for (const table of INSTRUMENT_TABLES) {
       db.query(`delete from ${table} where instrument = ?`).run(id);
     }

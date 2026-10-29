@@ -4,6 +4,11 @@
 // what is past it.
 
 import {
+  parseLayout,
+  readDashboard,
+  saveDashboard,
+} from "../admin/dashboard.ts";
+import {
   type AdminDeps,
   deleteOne,
   instrument,
@@ -66,7 +71,7 @@ import {
 } from "./http.ts";
 import { spec } from "./openapi.ts";
 
-export type Method = "GET" | "POST" | "PATCH" | "DELETE";
+export type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 // read: an agent key, or the admin key, which holds every scope; admin:
 // the admin key alone; none: served before either, since it holds no data
@@ -278,8 +283,16 @@ function marketData(m: Markets): Route[] {
       path: "/symbols",
       scope: "read",
       handle: async (_req, url) => {
-        const args = parseSearch(queryArgs(url, { query: "text" }));
-        const { notes, all } = await searchAll(m, args.query);
+        const { upstream, ...rest } = queryArgs(url, {
+          query: "text",
+          upstream: "boolean",
+        });
+        const args = parseSearch(rest);
+        const { notes, all } = await searchAll(
+          m,
+          args.query,
+          upstream !== false,
+        );
         return json({
           query: args.query,
           ...(notes.length > 0 ? { errors: notes } : {}),
@@ -454,6 +467,26 @@ function operator(
       path: "/watchlist",
       scope: "read",
       handle: async (_req, url) => watchlist(m, track, url),
+    },
+    {
+      method: "GET",
+      path: "/dashboard",
+      scope: "admin",
+      handle: async (_req, url) => {
+        noQuery(url);
+        return json(readDashboard(m, track));
+      },
+    },
+    {
+      method: "PUT",
+      path: "/dashboard",
+      scope: "admin",
+      handle: async (req, url) => {
+        noQuery(url);
+        const read = await bodyOf(req);
+        if (read instanceof Response) return read;
+        return saveDashboard(m, track, parseLayout(read.body));
+      },
     },
     {
       method: "GET",

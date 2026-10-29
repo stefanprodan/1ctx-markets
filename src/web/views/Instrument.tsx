@@ -11,8 +11,8 @@ import { Icon } from "../lib/icons.tsx";
 import { useMenu } from "../lib/menu.ts";
 import { useRefresh } from "../lib/refresh.ts";
 import { didNotLoad, Page } from "../ui/Page.tsx";
-import { SettingDelete } from "../ui/SettingDelete.tsx";
 import { CHART_CREDIT, Chart } from "./Chart.tsx";
+import { HeadSearch } from "./Dashboard.tsx";
 import {
   afterHours,
   type Choice,
@@ -92,69 +92,118 @@ export function Head({ detail, now }: { detail: Detail; now: number }) {
   );
 }
 
-// a button with its menu, as 1ctx's More: picking a part runs it at once
-// the button says how it went, as 1ctx's Saved, then reads Refetch again;
-// every label shares one cell, so the button keeps its width
-export const SAID_MS = 2500;
+// the page's actions under one button, as 1ctx's More: Refetch data runs
+// at once, Delete asks once inside the menu
+export const SAID_MS = 2000;
 
-export function RefetchMenu({
-  options,
+export function InstrumentMenu({
+  symbol,
   busy,
   done,
-  onPick,
+  removing,
+  onRefetch,
+  onDelete,
 }: {
-  options: readonly Choice[];
+  symbol: string;
   busy: boolean;
-  // a short outcome while it shows, else null
-  done: string | null;
-  onPick: (c: Choice) => void;
+  // a refetch just fetched: a green check for SAID_MS
+  done: boolean;
+  removing: boolean;
+  onRefetch: () => void;
+  onDelete: () => void;
 }) {
-  const { open, root } = useMenu();
-  const on = (yes: boolean) => `ins-label${yes ? " ins-label-on" : ""}`;
+  const asking = useSignal(false);
+  // Escape leaves the question for the menu before it closes the menu
+  const { open, root } = useMenu(() => {
+    if (!asking.value) return false;
+    asking.value = false;
+    return true;
+  });
+  // swapping the pane drops the clicked button, which the menu would
+  // read as a click outside it
+  const swap = (ev: MouseEvent, to: boolean) => {
+    ev.stopPropagation();
+    asking.value = to;
+  };
   return (
     <div class="ins-more" ref={root}>
       <button
         type="button"
-        class="btn"
+        class="btn ins-more-btn"
+        title="More"
+        aria-label="More"
         aria-haspopup="menu"
         aria-expanded={open.value}
-        disabled={busy}
+        disabled={busy || removing}
         onClick={() => {
+          asking.value = false;
           open.value = !open.value;
         }}
       >
-        <span class="ins-labels" aria-live="polite">
-          <span class={on(!busy && done === null)}>
-            <Icon name="redo" size={14} />
-            Refetch
-            <Icon name="chevron" size={12} />
-          </span>
-          <span class={on(busy)}>Fetching</span>
-          <span class={`${on(!busy && done === "Updated")} ins-label-done`}>
-            <Icon name="check" size={14} />
-            Updated
-          </span>
-          <span class={on(!busy && done === "Not available")}>
-            Not available
-          </span>
-        </span>
+        {busy ? (
+          <span
+            class="home-spinner ins-spin"
+            role="img"
+            aria-label="Fetching"
+          />
+        ) : done ? (
+          <Icon name="check" size={16} class="ins-done" />
+        ) : (
+          <Icon name="more" size={16} />
+        )}
       </button>
       {open.value && (
         <div class="menu ins-menu" role="menu">
-          {options.map((c, i) => (
-            <button
-              key={c.label}
-              type="button"
-              class={`menu-item${i === 0 ? " ins-menu-all" : ""}`}
-              role="menuitem"
-              onClick={() => {
-                open.value = false;
-                onPick(c);
-              }}
-            >
-              <span class="cut">{c.label}</span>
-            </button>
-          ))}
+          {asking.value ? (
+            <div class="ins-ask">
+              <p class="ins-ask-title">Delete {symbol}?</p>
+              <p class="ins-ask-line">{deleteLine}</p>
+              <div class="ins-ask-foot">
+                <button
+                  type="button"
+                  class="btn btn-small"
+                  onClick={(ev) => swap(ev, false)}
+                >
+                  Keep
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-small btn-danger"
+                  onClick={() => {
+                    open.value = false;
+                    asking.value = false;
+                    onDelete();
+                  }}
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <button
+                type="button"
+                class="menu-item"
+                role="menuitem"
+                onClick={() => {
+                  open.value = false;
+                  onRefetch();
+                }}
+              >
+                <Icon name="redo" size={14} />
+                Refetch data
+              </button>
+              <button
+                type="button"
+                class="menu-item ins-menu-delete"
+                role="menuitem"
+                onClick={(ev) => swap(ev, true)}
+              >
+                <Icon name="trash" size={14} />
+                Delete
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -220,7 +269,10 @@ export function Instrument({ params }: { params: Params }) {
       stale={detail === null ? null : markets.detailError.value}
       staleCount={markets.detailFailures.value}
       error={
-        (said.value?.bad ? said.value.text : null) ??
+        (said.value?.bad || said.value?.text === "Not available"
+          ? said.value.text
+          : null) ??
+        refused.value ??
         (detail?.error ? UNREAD : null)
       }
       foot={
@@ -243,30 +295,25 @@ export function Instrument({ params }: { params: Params }) {
         )
       }
       actions={
-        detail !== null && (
-          <RefetchMenu
-            options={options}
-            busy={fetching.value}
-            done={
-              said.value !== null && !said.value.bad ? said.value.text : null
-            }
-            onPick={(c) => void run(c)}
-          />
-        )
+        <>
+          <HeadSearch />
+          {detail !== null && (
+            <InstrumentMenu
+              symbol={symbol}
+              busy={fetching.value}
+              done={said.value?.text === "Updated"}
+              removing={removing.value}
+              onRefetch={() => void run(options[0]!)}
+              onDelete={() => void remove()}
+            />
+          )}
+        </>
       }
     >
       {detail !== null && (
         <>
           <Head detail={detail} now={Date.now()} />
           <Chart id={id} />
-          <SettingDelete
-            title={`Delete ${symbol}`}
-            line={deleteLine}
-            ask={`Delete ${symbol}?`}
-            refused={refused.value}
-            busy={removing.value}
-            onDelete={() => void remove()}
-          />
         </>
       )}
     </Page>

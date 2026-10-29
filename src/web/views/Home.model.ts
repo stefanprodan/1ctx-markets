@@ -3,32 +3,7 @@
 
 import type { Listed, Spark, WatchEntry } from "../data/store.ts";
 import { closes, figure } from "./Chart.model.ts";
-import { change, kindOf, price, symbolOf } from "./Instruments.model.ts";
-
-export type Group = { kind: string | null; entries: WatchEntry[] };
-
-// a value with no kind yet stays beside its neighbours in the flag
-export function groupsOf(entries: readonly WatchEntry[]): Group[] {
-  const kinds = entries.map((e) =>
-    e.instrument === null ? null : kindOf(e.instrument.kind),
-  );
-  const first = kinds.find((k) => k !== null) ?? null;
-  let last: string | null = null;
-  const groups: Group[] = [];
-  const at = new Map<string | null, Group>();
-  entries.forEach((e, i) => {
-    last = kinds[i] ?? last;
-    const kind = last ?? first;
-    let g = at.get(kind);
-    if (g === undefined) {
-      g = { kind, entries: [] };
-      at.set(kind, g);
-      groups.push(g);
-    }
-    g.entries.push(e);
-  });
-  return groups;
-}
+import { change, price, symbolOf } from "./Instruments.model.ts";
 
 type Dir = -1 | 0 | 1;
 
@@ -102,24 +77,6 @@ export function cardOf(e: WatchEntry): Card {
     state:
       e.session === null ? "" : e.session.state === "open" ? "Open" : "Closed",
   };
-}
-
-// by instrument id, escaped for XML, so a reorder keeps each card's own
-export function clipIds(
-  entries: readonly WatchEntry[],
-): Map<WatchEntry, string> {
-  const seen = new Map<string, number>();
-  const out = new Map<WatchEntry, string>();
-  for (const e of entries) {
-    const base = `spark-${(e.id ?? e.value).replace(
-      /[^A-Za-z0-9]/g,
-      (c) => `_${c.codePointAt(0)!.toString(16)}_`,
-    )}`;
-    const n = (seen.get(base) ?? 0) + 1;
-    seen.set(base, n);
-    out.set(e, n === 1 ? base : `${base}-${n}`);
-  }
-  return out;
 }
 
 export const SPARK_W = 120;
