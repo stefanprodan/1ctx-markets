@@ -82,3 +82,7 @@ export function sentence(text: string): string {
 
 export const says = (error: unknown): string =>
   sentence(error instanceof Error ? error.message : statusWords(0));
+
+// the HTTP code a failure shows beside its words; none when no server answered
+export const codeOf = (error: unknown): number | null =>
+  error instanceof ApiError && error.status > 0 ? error.status : null;

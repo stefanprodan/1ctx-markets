@@ -4,7 +4,7 @@
 import { type Signal, useSignal } from "@preact/signals";
 import { type Listed, markets } from "../data/store.ts";
 import { useRefresh } from "../lib/refresh.ts";
-import { Page } from "../ui/Page.tsx";
+import { didNotLoad, Page } from "../ui/Page.tsx";
 import {
   RowsCard,
   RowsGo,
@@ -82,8 +82,19 @@ export function InstrumentsList({
 export function Instruments() {
   const query = useSignal("");
   useRefresh(markets.loadInstruments);
+  const held = markets.instruments.value !== null;
   return (
-    <Page title="Instruments" error={markets.instrumentsError.value}>
+    <Page
+      title="Instruments"
+      stale={held ? markets.instrumentsError.value : null}
+      staleCount={markets.instrumentsFailures.value}
+      failed={didNotLoad(
+        held,
+        markets.instrumentsError.value,
+        markets.instrumentsCode.value,
+        () => void markets.loadInstruments(),
+      )}
+    >
       <InstrumentsList all={markets.instruments.value} query={query} />
     </Page>
   );

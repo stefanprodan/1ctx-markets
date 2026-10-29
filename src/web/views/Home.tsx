@@ -6,7 +6,7 @@ import { markets, type Spark, type WatchEntry } from "../data/store.ts";
 import { copyText } from "../lib/clipboard.ts";
 import { Icon } from "../lib/icons.tsx";
 import { useRefresh } from "../lib/refresh.ts";
-import { Page } from "../ui/Page.tsx";
+import { didNotLoad, Page } from "../ui/Page.tsx";
 import {
   cardOf,
   clipIds,
@@ -306,7 +306,14 @@ export function Home() {
   return (
     <Page
       title="Home"
-      error={markets.homeError.value}
+      stale={entries === null ? null : markets.homeError.value}
+      staleCount={markets.homeFailures.value}
+      failed={didNotLoad(
+        entries !== null,
+        markets.homeError.value,
+        markets.homeCode.value,
+        () => void markets.loadHome(),
+      )}
       foot={markets.attribution.value ?? undefined}
     >
       {entries === null ? (

@@ -69,6 +69,67 @@
     color: var(--failed);
   }
 
+  /* as 1ctx's: what failed, the server's words, and a retry */
+  .page-load-failed {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: var(--space-3);
+    max-width: 640px;
+    padding: var(--space-4);
+    border-radius: var(--radius-card);
+    line-height: 1.5;
+  }
+  .page-load-failed .page-failed-icon {
+    margin-top: 1px;
+  }
+  .page-failed-words {
+    display: flex;
+    flex: 1 1 200px;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: 0;
+  }
+  .page-failed-retry {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  .page-failed-title {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0;
+    font-size: var(--text-body);
+    color: var(--fg);
+  }
+  .page-failed-text {
+    margin: 0;
+    font-size: var(--text-ui);
+    line-height: 1.5;
+    color: var(--dim);
+  }
+  /* the HTTP status, small and in mono, so it reads as a reference and
+     never as the message */
+  .code-tag {
+    display: inline-flex;
+    align-items: center;
+    height: 18px;
+    padding: 0 6px;
+    border: 1px solid var(--failed-line);
+    border-radius: var(--radius);
+    font-family: var(--mono);
+    font-size: var(--text-label);
+    line-height: 1;
+    color: var(--failed);
+    white-space: nowrap;
+  }
+  @media (max-width: 719px) {
+    .page-failed-retry {
+      margin-left: calc(20px + var(--space-3));
+    }
+  }
+
   .page-state {
     margin: 0;
     color: var(--faint);

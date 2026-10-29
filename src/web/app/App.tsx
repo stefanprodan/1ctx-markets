@@ -5,6 +5,7 @@ import type { ComponentChildren } from "preact";
 import { useEffect, useRef } from "preact/hooks";
 import { markets, type Store } from "../data/store.ts";
 import { Icon } from "../lib/icons.tsx";
+import { Page } from "../ui/Page.tsx";
 import { SignIn } from "../views/SignIn.tsx";
 import { Rail } from "./Rail.tsx";
 import { navigate, path } from "./router.ts";
@@ -115,13 +116,19 @@ export function App({ store = markets }: { store?: Store }) {
   if (signedIn === undefined) {
     const failed = store.statusError.value;
     if (failed === null) return null;
+    // the page asked for keeps its place in the rail and its title, so a
+    // failed first load reads as that page failing, not a blank site
     return (
-      <main class="shell-fail">
-        <p class="error">{failed}</p>
-        <button type="button" class="btn" onClick={() => void store.check()}>
-          Try again
-        </button>
-      </main>
+      <Shell here={here}>
+        <Page
+          title={route?.label ?? "Home"}
+          failed={{
+            words: failed,
+            status: store.statusCode.value,
+            retry: () => void store.check(),
+          }}
+        />
+      </Shell>
     );
   }
   if (!signedIn) return <SignIn store={store} />;
