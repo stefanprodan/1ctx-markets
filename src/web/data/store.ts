@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { batch, signal } from "@preact/signals";
+import { path } from "../app/router.ts";
 import {
   fromOf,
   type History,
@@ -83,13 +84,11 @@ export type WatchEntry = {
   state: string;
   instrument: Listed | null;
   session: Session | null;
-  // its source gives 5-minute closes; false until resolved
   intraday: boolean;
 };
 
 type Watchlist = { attribution?: string; entries: WatchEntry[] };
 
-// a home card's line: the day's 5-minute closes, else a month of days
 export type Spark = Intraday | History;
 
 export type Returns = {
@@ -176,7 +175,12 @@ export const STATUS_PATH = "/api/v1/status";
 export const WATCHLIST_PATH = "/api/v1/watchlist";
 export const SESSION_PATH = "/ui/session";
 
-export function store(fetchFn: Fetch, now: () => number = Date.now) {
+// here: the page shown, so an answer that arrives after leaving starts nothing
+export function store(
+  fetchFn: Fetch,
+  now: () => number = Date.now,
+  here: () => string = () => path.peek(),
+) {
   // undefined until the first answer says whether the cookie holds
   const signedIn = signal<boolean | undefined>(undefined);
   const status = signal<Status | null>(null);
@@ -184,9 +188,8 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
   const statusAt = signal<number | null>(null);
   const statusError = signal<string | null>(null);
   const watchlist = signal<WatchEntry[] | null>(null);
-  // FRED's notice, while an entry is one of its series
+  // FRED's terms ask for its notice wherever its values show
   const attribution = signal<string | null>(null);
-  // the home cards' lines by instrument id
   const sparks = signal<ReadonlyMap<string, Spark>>(new Map());
   const homeError = signal<string | null>(null);
   const loading = signal(false);
@@ -205,6 +208,16 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
   // result
   let latest = 0;
   let current: Promise<boolean> = Promise.resolve(false);
+  // Status and Home both read the watchlist: an older answer never lands
+  // over a newer one, or a resolved card would turn back to Pending
+  let watchAsked = 0;
+  let watchShown = 0;
+  const showWatchlist = (asked: number, w: Watchlist) => {
+    if (asked < watchShown) return;
+    watchShown = asked;
+    watchlist.value = w.entries;
+    attribution.value = w.attribution ?? null;
+  };
 
   const signedOut = () => {
     session++;
@@ -256,6 +269,7 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
 
   async function load(mine: number): Promise<boolean> {
     loading.value = true;
+    const asked = ++watchAsked;
     try {
       // the status page shows both, so they land together; a 401 from
       // either signs out, whichever failed first
@@ -276,8 +290,7 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
       batch(() => {
         signedIn.value = true;
         status.value = s.value;
-        watchlist.value = w.value.entries;
-        attribution.value = w.value.attribution ?? null;
+        showWatchlist(asked, w.value);
         statusAt.value = now();
         statusError.value = null;
       });
@@ -408,15 +421,13 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
     return { ok: true };
   }
 
-  // a newer load, or leaving the page, drops one in flight
   let homeLoad = 0;
-  const leaveHome = () => {
-    homeLoad++;
-  };
   async function loadHome(): Promise<void> {
     const mine = ++homeLoad;
     const at = session;
-    const stale = () => mine !== homeLoad || at !== session;
+    const page = here();
+    const stale = () => mine !== homeLoad || at !== session || here() !== page;
+    const asked = ++watchAsked;
     let w: Watchlist;
     try {
       w = await call<Watchlist>(WATCHLIST_PATH);
@@ -429,8 +440,7 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
     }
     if (stale()) return;
     batch(() => {
-      watchlist.value = w.entries;
-      attribution.value = w.attribution ?? null;
+      showWatchlist(asked, w);
       homeError.value = null;
     });
     const ids = [
@@ -485,7 +495,6 @@ export function store(fetchFn: Fetch, now: () => number = Date.now) {
     sparks,
     homeError,
     loadHome,
-    leaveHome,
     history,
     intraday,
     detail,

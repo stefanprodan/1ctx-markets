@@ -136,7 +136,10 @@ signed in with the admin key alone.
   page's words), and the groups are ordered by their first value's place
   in the flag; the code names no market or kind order. A value not yet
   resolved joins the group of the value before it (else after it), so
-  it shows where the flag puts it: a pending one as "Pending", a failed
+  it shows where the flag puts it: "Pending" only for a value with no
+  stored row yet (after a restart every value is pending while the
+  tracker catches up, and one with a stored row shows its stored price
+  as any card), a failed
   one as "Not found" (a source failure "Not available") with the
   value as written. A failed value with a stored row keeps its kind,
   stored price and link, and still says it failed. No values: "Nothing
@@ -145,8 +148,11 @@ signed in with the admin key alone.
   its currency (a yield in percent), the day's change in its unit (a
   yield in points) and in percent, and a line; it links the instrument.
   A series has no day change in the watchlist, so it shows none, as the
-  Instruments list. It re-reads every minute while visible; leaving the
-  page drops a load in flight, so no line is asked after it.
+  Instruments list. It re-reads every minute while visible. A load is
+  stale once the router's path changes, checked when its answer lands,
+  so leaving the page asks no line after it (an effect's cleanup runs
+  too late). Status and Home both read the watchlist; an answer asked
+  before the one shown never replaces it.
 - **The line is one bars call per card, in parallel**, by the entry's
   `intraday`: `interval=5m` (the newest session, split at its
   `previous_close`, green above and red below as the 1D chart, the

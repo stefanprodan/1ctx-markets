@@ -129,8 +129,6 @@ const PAD = 2;
 
 export type Line = {
   points: string;
-  // the previous close's height, a day line being split at it; null for a
-  // month line, coloured whole by its move
   base: number | null;
   tone: "up" | "down";
 };

@@ -1,7 +1,6 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 
-import { useEffect } from "preact/hooks";
 import { markets, type Spark, type WatchEntry } from "../data/store.ts";
 import { useRefresh } from "../lib/refresh.ts";
 import { Page } from "../ui/Page.tsx";
@@ -167,7 +166,6 @@ export function HomeBody({
 
 export function Home() {
   useRefresh(markets.loadHome);
-  useEffect(() => markets.leaveHome, []);
   const entries = markets.watchlist.value;
   return (
     <Page

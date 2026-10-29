@@ -2081,6 +2081,22 @@ describe("the home page", () => {
     });
   });
 
+  test("a pending value with a stored row shows its stored price; Pending only without one", () => {
+    // after a restart every value is pending while its prices are stored
+    const restarted = {
+      ...tracked("^GSPC", "SNP:^GSPC"),
+      state: "pending",
+    } as WatchEntry;
+    expect(cardOf(restarted)).toMatchObject({
+      type: "ready",
+      price: "100.00 USD",
+    });
+    expect(cardOf(HOME_WATCH.entries[3] as WatchEntry)).toEqual({
+      type: "pending",
+      value: "LATER",
+    });
+  });
+
   test("a failed value says so, beside its stored price where it has one", () => {
     const stored = {
       ...tracked("^NDX", "NAS:^NDX"),
@@ -2116,6 +2132,7 @@ describe("the home page", () => {
   test("leaving the page drops a load in flight, so no line is asked", async () => {
     const held = Promise.withResolvers<Response>();
     const asked: string[] = [];
+    const at = signal("/");
     const s = store(
       async (path) => {
         asked.push(path);
@@ -2123,15 +2140,61 @@ describe("the home page", () => {
         return Response.json(dayAnswer("SNP:^GSPC", [101], 100));
       },
       () => NOW,
+      () => at.value,
     );
     s.signedIn.value = true;
     const loading = s.loadHome();
-    await Bun.sleep(0);
-    s.leaveHome();
+    expect(asked).toEqual([WATCHLIST_PATH]);
+    // what a link or the back button does to the router's path
+    at.value = "/status";
     held.resolve(Response.json(HOME_WATCH));
     await loading;
     expect(asked).toEqual([WATCHLIST_PATH]);
     expect(s.sparks.value.size).toBe(0);
+  });
+
+  test("an older watchlist answer never lands over a newer one, whichever page asked", async () => {
+    const pending = {
+      entries: [
+        {
+          ...HOME_WATCH.entries[0]!,
+          state: "pending",
+          id: null,
+          instrument: null,
+          session: null,
+          intraday: false,
+        },
+      ],
+    };
+    const resolved = { entries: [HOME_WATCH.entries[0]!] };
+    const watch: PromiseWithResolvers<Response>[] = [];
+    const s = store(
+      async (path) => {
+        if (path === WATCHLIST_PATH) {
+          const w = Promise.withResolvers<Response>();
+          watch.push(w);
+          return w.promise;
+        }
+        if (path === STATUS_PATH) return Response.json(STATUS);
+        return Response.json(dayAnswer("SNP:^GSPC", [101], 100));
+      },
+      () => NOW,
+    );
+    // Status asks first, Home after; Home's answer lands first
+    const statusLoad = s.loadStatus();
+    const homeLoad = s.loadHome();
+    expect(watch).toHaveLength(2);
+    watch[1]!.resolve(Response.json(resolved));
+    await homeLoad;
+    watch[0]!.resolve(Response.json(pending));
+    await statusLoad;
+    expect(s.status.value).toEqual(STATUS);
+    expect(s.watchlist.value).toEqual(resolved.entries as any);
+    // a newer Status answer still lands
+    const again = s.loadStatus();
+    watch[2]!.resolve(Response.json(pending));
+    await again;
+    expect(s.watchlist.value).toEqual(pending.entries as any);
   });
 
   test("a line's clip ids follow its instrument, escaped and unique", () => {
