@@ -15,7 +15,7 @@ today; any other platform answers `service is not supported on
 
 - **`src/service/` is CLI only**: it imports only
   `runtime/config.ts` and `runtime/clock.ts`, opens no database and
-  reads no key, and `main.ts` runs it before the bearer and the
+  reads no key, and `main.ts` runs it before the admin key and the
   database. `service.ts` knows no platform; a new service manager is a
   `ServiceBackend` picked in `backendFor()`.
 - **The launchd label is `dev.1ctx.markets`**, a LaunchAgent in
@@ -78,7 +78,7 @@ under `~/.1ctx-markets` and the binary in `~/.1ctx-markets/bin`.
   gitignored `scripts/staging.env`, copied from `staging.env.example`
   with `STAGING_LISTEN` and `STAGING_FLAGS`.
 - **Staging binds `0.0.0.0:11238`** so clients on the tailnet reach it;
-  Tailscale encrypts the plain HTTP, and the bearer still guards every
+  Tailscale encrypts the plain HTTP, and the keys still guard every
   route but `/health`. 1ctx on the same box uses `127.0.0.1:11238`.
 - **Staging always runs `--source bvb` and `--data ~/.1ctx-markets`.**
   `STAGING_FLAGS` holds extra server flags only; one holding `--data`
@@ -108,8 +108,8 @@ under `~/.1ctx-markets` and the binary in `~/.1ctx-markets/bin`.
 - **`make staging-secrets DIR=<dir>` copies only the `source-*.key`
   files the box lacks** into `~/.1ctx-markets/secrets` (700, files
   600). Each value goes over ssh stdin, never in an argument or the
-  output, which names files only. The bearer and the admin key are
-  never copied: the box's first start writes its own.
+  output, which names files only. The admin key is never copied: the
+  box's first start writes its own, and its agents' keys are made there.
 - **Admin actions run on the box over ssh** with `1ctx-markets admin
   status|refetch|delete` (`docs/admin.md`), which calls the installed
   service on loopback, so it keeps running.

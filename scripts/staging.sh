@@ -10,7 +10,7 @@ cd "$(dirname "$0")/.."
 # shellcheck source=/dev/null
 . scripts/staging.env
 HOST=${STAGING_SSH:?STAGING_SSH is not set in scripts/staging.env}
-# every interface, so the tailnet reaches it; WireGuard carries the bearer
+# every interface, so the tailnet reaches it; WireGuard carries the keys
 LISTEN=${STAGING_LISTEN:-0.0.0.0:11238}
 # STAGING_FLAGS adds to the Bucharest feed, split on spaces, never globbed
 read -r -a EXTRA <<<"${STAGING_FLAGS:-}"
@@ -101,7 +101,7 @@ secrets() {
   local dir=${1:-}
   [ -n "$dir" ] || fail "secrets needs DIR=<dir>"
   [ -d "$dir" ] || fail "$dir is not a directory"
-  # the bearer is never copied: the first start writes the box's own
+  # the admin key is never copied: the first start writes the box's own
   local keys=() file name
   for file in "$dir"/source-*.key; do
     [ -f "$file" ] || continue

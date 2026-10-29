@@ -9,7 +9,7 @@ Governs the Model Context Protocol (MCP) tools: `src/server/mcp.ts`,
 the rules tool in `docs/rules.md`; signal rows and returns in
 `docs/signals.md`; units, stale reasons and tracking in
 `docs/storage.md`; the source queue and deadlines in
-`docs/sources.md`; the server, bearer and flags in `docs/config.md`.
+`docs/sources.md`; the server, keys and flags in `docs/config.md`.
 
 ## The MCP endpoint
 

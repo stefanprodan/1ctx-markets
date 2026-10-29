@@ -23,7 +23,7 @@ const digest = (value: string): Buffer =>
   createHash("sha256").update(value).digest();
 
 // derived, so a cookie's MAC never doubles as anything the admin key signs;
-// a new admin.key refuses every cookie made under the old one. Without an
+// a new user-admin.key refuses every cookie made under the old one. Without an
 // admin key nothing signs in, and the route still answers as for a wrong one
 export function sessions(adminKey: string | null): Sessions {
   if (adminKey === null) {

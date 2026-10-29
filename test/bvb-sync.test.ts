@@ -14,7 +14,7 @@ import { historyAnswer, parseHistory } from "../src/operations/history.ts";
 import { markets } from "../src/operations/markets.ts";
 import type { RuleHooks } from "../src/rules/hooks.ts";
 import { MINUTE_MS } from "../src/runtime/clock.ts";
-import { keys, requireBearer } from "../src/runtime/keys.ts";
+import { keys } from "../src/runtime/keys.ts";
 import { logger, silent } from "../src/runtime/log.ts";
 import { bvb, MARKET } from "../src/sources/bvb/client.ts";
 import { bvbJobs } from "../src/sources/bvb/jobs.ts";
@@ -517,7 +517,6 @@ describe("the list pages at start", () => {
     const app = start({
       hostname: "127.0.0.1",
       port: 0,
-      bearer: requireBearer(store),
       clock,
       log: logger(clock, store.values, (line) => lines.push(line)),
       version: "v0.0.0-test",

@@ -22,6 +22,8 @@ import {
 import { MAX_FIELDS, MAX_FILTERS } from "../operations/screen.ts";
 import { MAX_NOTE } from "../rules/format.ts";
 import { ALERTS_KEPT_DAYS } from "../rules/store.ts";
+import { MAX_KEYS } from "../server/access.ts";
+import { CALLS_PER_MINUTE } from "../server/ratelimit.ts";
 import { ALERT_PAGE_BYTES } from "./alerts.ts";
 import { DOC_FILES } from "./docs.ts";
 import { MAX_BODY_BYTES, PROBLEM_TYPE } from "./http.ts";
@@ -38,8 +40,8 @@ import {
   values,
 } from "./schemas.ts";
 
-// the admin key holds every scope; the web UI's cookie opens every route
-// but the rules writes
+// read is an agent key's scope; the admin key holds every scope; the web
+// UI's cookie opens every route but the rules writes
 const READ_AUTH = [{ read: [] }, { admin: [] }, { session: [] }];
 const WRITE_AUTH = [{ read: [] }, { admin: [] }];
 const ADMIN_AUTH = [{ admin: [] }, { session: [] }];
@@ -64,9 +66,9 @@ export const responses = {
   BadArguments: error(
     "A bad argument: unknown, repeated or out of range (`bad_arguments`), units that do not mix (`mixed_units`), no earnings source (`no_event_source`) or no event (`no_event`). The message says which.",
   ),
-  Unauthorized: error("Missing or wrong key."),
+  Unauthorized: error("Missing, wrong, revoked or expired key."),
   NotFound: error(
-    "No such route, rule, instrument or symbol (`not_found`); a name with several listings (`candidates`, with ids to pick from); a symbol whose source is off (`no_data`) or that this server does not serve (`refused`).",
+    "No such route, rule, key, instrument or symbol (`not_found`); a name with several listings (`candidates`, with ids to pick from); a symbol whose source is off (`no_data`) or that this server does not serve (`refused`).",
   ),
   NotStored: error(
     "No stored instrument for the symbol (`not_found`). Nothing is fetched.",
@@ -78,8 +80,14 @@ export const responses = {
     "A request other than GET or HEAD with the session cookie, not sent from this server's own pages (`forbidden`).",
   ),
   AdminOnly: error(
-    "A key without this route's scope: the read key on an admin route, or a cookie request not sent from this server's own pages (`forbidden`).",
+    "A key without this route's scope: an agent key on an admin route, or a cookie request not sent from this server's own pages (`forbidden`).",
   ),
+  TooMany: {
+    ...error(
+      `Over ${CALLS_PER_MINUTE} calls in a minute with this key (\`too_many_requests\`). \`Retry-After\` says how many seconds until it opens again.`,
+    ),
+    headers: { "Retry-After": { schema: int } },
+  },
   TooLarge: error(
     `A body over ${kib(MAX_BODY_BYTES)} (${kib(ADMIN_BODY_BYTES)} on refetch). Over 1 MiB the answer is an empty body and the connection closes.`,
   ),
@@ -157,6 +165,7 @@ const lines = (...parts: string[]) => parts.join("\n");
 const reads = (extra: object = {}) => ({
   400: r("BadArguments"),
   401: r("Unauthorized"),
+  429: r("TooMany"),
   500: r("Internal"),
   ...extra,
 });
@@ -165,6 +174,7 @@ const admins = (extra: object = {}) => ({
   400: r("BadArguments"),
   401: r("Unauthorized"),
   403: r("AdminOnly"),
+  429: r("TooMany"),
   500: r("Internal"),
   ...extra,
 });
@@ -622,8 +632,64 @@ export const paths = {
         },
         400: r("BadArguments"),
         401: r("Unauthorized"),
+        429: r("TooMany"),
         500: r("Internal"),
       },
+    },
+  },
+  "/keys": {
+    get: {
+      tags: ["keys"],
+      operationId: "listKeys",
+      security: ADMIN_AUTH,
+      summary: "Agent keys",
+      description:
+        "Every agent key, expired ones included, with when it was made, last used and expires. Never a key's token.",
+      responses: admins({ 200: ok("The keys.", ref("Keys")) }),
+    },
+    post: {
+      tags: ["keys"],
+      operationId: "createKey",
+      security: ADMIN_AUTH,
+      summary: "Make an agent key",
+      description: lines(
+        "Makes a key for an agent and answers its token, once.",
+        "",
+        "- An agent key opens what the read scope opens: market data, instruments, rules, the alerts feed and MCP. Never an admin route.",
+        `- At most ${MAX_KEYS} keys, expired ones included. Revoke one to make another.`,
+        "- A name is unique among the keys (`conflict`).",
+      ),
+      requestBody: body(ref("KeyArgs")),
+      responses: admins({
+        201: ok("The key and its token.", ref("MadeKey")),
+        409: error(
+          "The name is taken, or there are already as many keys as allowed (`conflict`).",
+        ),
+        413: r("TooLarge"),
+        415: r("UnsupportedType"),
+      }),
+    },
+  },
+  "/keys/{id}": {
+    delete: {
+      tags: ["keys"],
+      operationId: "revokeKey",
+      security: ADMIN_AUTH,
+      summary: "Revoke an agent key",
+      description: "Deletes the key. Its next call is refused.",
+      parameters: [
+        {
+          name: "id",
+          in: "path",
+          description: "The key's id.",
+          required: true,
+          schema: str,
+        },
+      ],
+      responses: admins({
+        204: { description: "Revoked." },
+        404: r("NotFound"),
+      }),
     },
   },
   "/status": {

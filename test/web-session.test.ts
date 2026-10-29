@@ -14,7 +14,7 @@ import {
   sessions,
 } from "../src/server/session.ts";
 import page from "../src/web/index.html";
-import { ADMIN_KEY, api, READ_KEY } from "./helpers/api.ts";
+import { ADMIN_KEY, api, keyAccess, READ_KEY } from "./helpers/api.ts";
 import { SECRETS, withApp } from "./helpers/app.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { NOW } from "./helpers/sources.ts";
@@ -90,7 +90,7 @@ describe("the session token", () => {
     }
     expect(s.valid(null, NOW)).toBe(false);
     expect(s.valid(token, NOW + SESSION_MS)).toBe(false);
-    // a new admin.key signs every browser out
+    // a new user-admin.key signs every browser out
     expect(sessions(OTHER_KEY).valid(token, NOW)).toBe(false);
   });
 
@@ -196,8 +196,7 @@ describe("sign-in", () => {
         }),
       );
     const keyless = router({
-      bearer: READ_KEY,
-      adminKey: null,
+      access: keyAccess(null),
       sessions: sessions(null),
       mcp: {} as never,
       clock: fakeClock(NOW),
@@ -324,8 +323,7 @@ describe("what the cookie opens", () => {
   test("a forged, expired or other key's cookie opens nothing", async () => {
     const clock = fakeClock(NOW);
     const handle = router({
-      bearer: READ_KEY,
-      adminKey: ADMIN_KEY,
+      access: keyAccess(ADMIN_KEY),
       sessions: sessions(ADMIN_KEY),
       mcp: {} as never,
       api: [],
@@ -449,7 +447,7 @@ describe("the served UI", () => {
           expect([path, res.status]).toEqual([path, 200]);
           expect(await res.text()).toBe(html);
         }
-        // an unknown path is no page: it keeps the bearer's 401
+        // an unknown path is no page: it keeps the keys' 401
         expect((await fetch(`${url}/nothing`)).status).toBe(401);
         const signed = await fetch(`${url}/ui/session`, {
           method: "POST",
@@ -522,7 +520,7 @@ describe("the served UI", () => {
         for (const secret of [
           SECRETS,
           "secrets",
-          "admin.key",
+          "user-admin.key",
           "bearer.key",
           "v0.0.0-test",
           "/Users/",

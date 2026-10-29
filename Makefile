@@ -29,7 +29,7 @@ lint: ## Format and lint with Biome, then type-check with bun check
 build: ## Compile a standalone binary into bin/ (release: VERSION=v1.2.3)
 	@bun run build
 
-smoke: ## Start the compiled binary, check its bearer and MCP answer, stop it
+smoke: ## Start the compiled binary, check its keys and MCP answer, stop it
 	@bun run smoke
 
 clean: ## Remove the build artifacts

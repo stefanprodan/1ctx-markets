@@ -29,13 +29,10 @@ import { DEFAULT_LISTEN, parseCli } from "../src/runtime/config.ts";
 import {
   ADMIN_FILE,
   ADMIN_PREFIX,
-  BEARER_FILE,
   createAdmin,
-  createBearer,
   KeyError,
   keys,
   requireAdmin,
-  requireBearer,
 } from "../src/runtime/keys.ts";
 import { silent } from "../src/runtime/log.ts";
 import { finnhub, SPACING_MS } from "../src/sources/finnhub/client.ts";
@@ -145,7 +142,6 @@ const post = (
 describe("the admin key", () => {
   test("a first start writes it once, prefixed and private", () => {
     const dir = join(tempDir(), "secrets");
-    expect(createBearer(dir)).toBe(true);
     expect(createAdmin(dir)).toBe(true);
     const value = readFileSync(join(dir, ADMIN_FILE), "utf8");
     expect(value.startsWith(ADMIN_PREFIX)).toBe(true);
@@ -155,21 +151,16 @@ describe("the admin key", () => {
     expect(createAdmin(dir)).toBe(false);
     expect(readFileSync(join(dir, ADMIN_FILE), "utf8")).toBe(value);
     const store = keys(dir);
-    expect(requireAdmin(store, requireBearer(store))).toBe(value);
+    expect(requireAdmin(store)).toBe(value);
   });
 
-  test("one equal to the bearer, or too short, stops the start without its value", () => {
+  test("one too short stops the start without its value", () => {
     const dir = join(tempDir(), "secrets");
-    createBearer(dir);
-    const bearer = readFileSync(join(dir, BEARER_FILE), "utf8");
-    writeFileSync(join(dir, ADMIN_FILE), bearer);
-    const store = keys(dir);
-    expect(() => requireAdmin(store, bearer)).toThrow(KeyError);
-    expect(() => requireAdmin(store, bearer)).toThrow("holds the bearer");
-    expect(() => requireAdmin(store, bearer)).not.toThrow(bearer);
+    createAdmin(dir);
     writeFileSync(join(dir, ADMIN_FILE), "short");
-    expect(() => requireAdmin(keys(dir), bearer)).toThrow("shorter than");
-    expect(() => requireAdmin(keys(dir), bearer)).not.toThrow("short\n");
+    expect(() => requireAdmin(keys(dir))).toThrow(KeyError);
+    expect(() => requireAdmin(keys(dir))).toThrow("shorter than");
+    expect(() => requireAdmin(keys(dir))).not.toThrow("short\n");
   });
 });
 
@@ -185,13 +176,13 @@ describe("the admin scope", () => {
     },
   });
 
-  test("the read key is forbidden the admin routes; the admin key opens every route but /mcp", () =>
+  test("an agent key is forbidden the admin routes; the admin key opens every route and /mcp", () =>
     withApp(async ({ url, bearer, admin, lines }) => {
       const as = (key: string) => ({ authorization: `Bearer ${key}` });
       for (const path of ["/api/v1/status", "/api/v1/instruments"]) {
         const none = await fetch(`${url}${path}`);
         expect([path, none.status]).toEqual([path, 401]);
-        expect(none.headers.get("www-authenticate")).toBe("Bearer");
+        expect(none.headers.get("www-authenticate")).toBeNull();
         const read = await fetch(`${url}${path}`, { headers: as(bearer) });
         expect([path, read.status]).toEqual([path, 403]);
         expect(await read.json()).toMatchObject({ code: "forbidden" });
@@ -209,13 +200,14 @@ describe("the admin scope", () => {
       expect(
         (await fetch(`${url}/api/v1/alerts`, { headers: as(admin) })).status,
       ).toBe(204);
-      for (const path of ["/api/v1/nothing", "/api/v1/admin/status"]) {
+      for (const path of [
+        "/api/v1/nothing",
+        "/api/v1/admin/status",
+        "/admin/status",
+        "/anything",
+      ]) {
         const res = await fetch(`${url}${path}`, { headers: as(admin) });
         expect([path, res.status]).toEqual([path, 404]);
-      }
-      for (const path of ["/admin/status", "/anything"]) {
-        const res = await fetch(`${url}${path}`, { headers: as(admin) });
-        expect([path, res.status]).toEqual([path, 401]);
       }
       const mcp = await fetch(`${url}/mcp`, {
         method: "POST",
@@ -226,7 +218,7 @@ describe("the admin scope", () => {
         },
         body: initialize,
       });
-      expect(mcp.status).toBe(401);
+      expect(mcp.status).toBe(200);
       expect(lines.some((l) => l.includes("path=/api/v1/status"))).toBe(true);
       for (const line of lines) {
         expect(line).not.toContain(admin);

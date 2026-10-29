@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // By hand, for people reading the docs page; schemas keep to the tested subset.
 
+import { CALLS_PER_MINUTE } from "../server/ratelimit.ts";
 import { COOKIE } from "../server/session.ts";
 import { paths, responses } from "./paths.ts";
 import { schemas } from "./schemas.ts";
@@ -15,7 +16,8 @@ export const spec = {
     license: { name: "Apache-2.0" },
     description: `Market data and price rules, the same answers as the MCP tools.
 
-- Each operation names the key it takes: the read key, or the admin key, which opens every route.
+- Each operation names the key it takes: an agent key, made by the admin, or the admin key, which opens every route.
+- Each key makes at most ${CALLS_PER_MINUTE} calls a minute.
 - A symbol is taken as written, with its exchange suffix (\`VVSM.DE\`, \`BRK-B\`, \`^VIX\`, \`CL=F\`), or as a stored id (\`US:NVDA\`).
 - Results are not paged, except the stored instrument list and the alerts feed.
 - Errors are problem details (RFC 9457): \`title\`, \`status\`, \`detail\` and \`code\`, the error to branch on. An error about one symbol among several is that item's \`error\`, inside a 200.`,
@@ -30,6 +32,7 @@ export const spec = {
     },
     { name: "rules", description: "Price rules and their alerts." },
     { name: "server", description: "The server's sources and jobs." },
+    { name: "keys", description: "The agents' keys." },
     { name: "docs", description: "This page and its OpenAPI document." },
   ],
   paths,
@@ -38,7 +41,8 @@ export const spec = {
       read: {
         type: "http",
         scheme: "bearer",
-        description: "The read key, for market data, instruments and rules.",
+        description:
+          "An agent key, made by the admin, for market data, instruments and rules.",
       },
       admin: {
         type: "http",

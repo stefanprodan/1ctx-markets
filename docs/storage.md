@@ -17,8 +17,10 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   synchronously; only the writer queue changes it. Back it up with
   SQLite's own backup (`.backup`, `vacuum into`), or stop the server
   before copying `markets.db`.
-- **Keys never enter the database** (`docs/config.md`, Keys): a run's
-  error column holds a fixed phrase for this reason.
+- **Key values never enter the database** (`docs/config.md`, Keys): a
+  run's error column holds a fixed phrase for this reason. Agent keys
+  are rows in `keys` holding only a SHA-256 of the token, never the
+  token (`docs/api.md`, "Keys and caching").
 
 ## Migrations
 

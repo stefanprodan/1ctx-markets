@@ -34,6 +34,7 @@ export type Cli =
   | { kind: "run"; config: Config }
   | { kind: "service"; argv: string[] }
   | { kind: "admin"; argv: string[] }
+  | { kind: "keys"; argv: string[] }
   | { kind: "help" }
   | { kind: "version" }
   | { kind: "error"; message: string };
@@ -48,6 +49,9 @@ export const HELP = `\x1b[1m1ctx-markets\x1b[0m - a self-hosted market data serv
   1ctx-markets admin [--listen <host:port>] [--data <dir>] status
   1ctx-markets admin ... refetch [--fetch <parts>] [--sections <list>] <id>...
   1ctx-markets admin ... delete <id>
+  1ctx-markets keys [--listen <host:port>] [--data <dir>] list
+  1ctx-markets keys ... add <name> [--expires 30|90|365]
+  1ctx-markets keys ... revoke <name>
 
 \x1b[1mService:\x1b[0m
   install                run 1ctx-markets with these options as a service
@@ -63,8 +67,15 @@ export const HELP = `\x1b[1m1ctx-markets\x1b[0m - a self-hosted market data serv
                          parts: bars,quotes,research,calendar,news
   delete                 remove an instrument and all its rows
                          The running server is called on this machine with
-                         admin.key; --listen and --data default to the
+                         user-admin.key; --listen and --data default to the
                          installed service's, else the defaults below
+
+\x1b[1mKeys:\x1b[0m
+  list                   the agent keys, never their tokens
+  add                    make an agent key and print it once; it never
+                         expires unless --expires gives days
+  revoke                 revoke an agent key by its name
+                         The server is called as for admin
 
 \x1b[1mOptions:\x1b[0m
   --listen <host:port>   bind address (default: ${DEFAULT_LISTEN})
@@ -82,11 +93,10 @@ export const HELP = `\x1b[1m1ctx-markets\x1b[0m - a self-hosted market data serv
   -h, --help             show this help
 
 \x1b[1mSecrets:\x1b[0m
-  bearer.key             the bearer every request carries, at least 32
-                         characters; the first start writes one
-  admin.key              the key of the operator's routes, which also
-                         opens every /api/v1 route, and the web UI's
-                         sign-in; the first start writes one
+  user-admin.key         the admin's key, which opens /mcp, every /api/v1
+                         route and the web UI's sign-in; the first start
+                         writes one. Agents get keys of their own from
+                         the web UI or the keys command
   source-<name>.key      a source's API key, which turns it on:
                          source-fred.key, source-finnhub.key or
                          source-massive.key`;
@@ -122,6 +132,7 @@ const count = (value: string): number | null =>
 export function parseCli(argv: string[], home: string = homedir()): Cli {
   if (argv[0] === "service") return { kind: "service", argv: argv.slice(1) };
   if (argv[0] === "admin") return { kind: "admin", argv: argv.slice(1) };
+  if (argv[0] === "keys") return { kind: "keys", argv: argv.slice(1) };
   let listen = DEFAULT_LISTEN;
   let dataDir = defaultDataDir(home);
   let quoteEvery = DEFAULT_QUOTE_EVERY;

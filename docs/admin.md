@@ -1,8 +1,10 @@
 # Admin
 
 Governs the operator's routes and command: `src/admin/http.ts` (the
-instrument, watchlist and status handlers), `src/admin/refetch.ts` and
-`src/admin/cli.ts` (`1ctx-markets admin`). The routes, their errors
+instrument, watchlist and status handlers), `src/admin/refetch.ts`,
+`src/admin/keys.ts` (the agent keys' routes), `src/admin/cli.ts`
+(`1ctx-markets admin`) and `src/admin/keys-cli.ts` (`1ctx-markets
+keys`). The routes, their errors
 and the spec are in `docs/api.md`; key files in `docs/config.md`;
 runs, tracking and retention in `docs/storage.md`; the source queue
 and deadlines in `docs/sources.md`; each source's fetch code in its
@@ -10,22 +12,23 @@ own doc.
 
 ## Why
 
-The one bearer goes to every agent, so it never forces a fetch or
-deletes a row: an agent could spend the free sources' limits or break
-another's reads. The operator's actions take their own key, and none
-is offered over MCP.
+An agent's key never forces a fetch, deletes a row or makes a key: an
+agent could spend the free sources' limits or break another's reads.
+The operator's actions take the admin key, and none is offered over
+MCP. Each agent has a key of its own, so one can be told apart in the
+log and cut off without touching the others.
 
 ## The key and the guard
 
-- **`secrets/admin.key` is written at the first start beside the
-  bearer, the same way** (`docs/config.md`, Keys), prefixed
-  `1ctx-markets-admin-`. One that is unusable or equal to the bearer
-  stops the start; the message names the file only.
-- **The admin scope takes the admin key alone**, checked as the read
-  key is (`router()` in `src/server/http.ts`), after the route is
-  matched: the read key there is 403. The admin key also holds the
-  read scope, so it opens every route but `/mcp`, which stays the read
-  key's. With no admin key the admin routes refuse every caller.
+- **`secrets/user-admin.key` is the one key file a first start
+  writes** (`docs/config.md`, Keys), prefixed `1ctx-markets-admin-`.
+  One that is unusable stops the start; the message names the file
+  only. It is rotated by replacing the file and restarting.
+- **The admin scope takes the admin key alone**, checked after the
+  route is matched (`router()` in `src/server/http.ts`): an agent key
+  there is 403. The admin key also holds the read scope and opens
+  `/mcp`, so it opens everything. With no admin key the admin routes
+  refuse every caller.
 - **The web UI's session cookie opens them too**, made by signing in
   with the admin key (`docs/web.md`); a write by cookie needs this
   server's `Origin`, or it is 403.
@@ -41,7 +44,30 @@ is offered over MCP.
 | `GET /api/v1/status` | sources on, off and why, and every job, with names for people (a source's `label`, `short` and `mark`, a job's `label` and `about`; a keyed source's `key`: its file, what it adds, where to get one), a back-off in force, every job's last run, its scopes (markets or instruments with a run kept) and failing scopes counted, the newest `MAX_FAILING` (5) failing named with their error (a run cut by shutdown, error `stopped`, never counts, since the next run settles it; one cut by a crash, `interrupted`, does, since a run that kills the server would otherwise never show; a failed Yahoo backfill is settled once the instrument has daily bars, since a read fetches a history without a backfill run; runs with no scope, from before backfill runs had one, are skipped; the page reads failure from these counts, never the last run), the instrument and tracked counts, the database size, the version. The `--track` values are `GET /api/v1/watchlist`'s (`docs/api.md`) |
 | `POST /api/v1/instruments/{symbol}/refetch` | `{"parts": [...], "sections": [...]}`, answered per part |
 | `DELETE /api/v1/instruments/{symbol}` | the instrument and every row of it; 204 |
+| `GET /api/v1/keys` | the agent keys (below) |
+| `POST /api/v1/keys` | `{"name", "expiresInDays"}`: a new agent key, its token answered once |
+| `DELETE /api/v1/keys/{id}` | revokes an agent key; 204 |
 
+## Agent keys
+
+- **An agent key opens what the read scope opens**: `/mcp`, the read
+  routes, the rules writes and the alerts feed; never an admin route,
+  so an agent never makes or lists keys.
+- **A name follows 1ctx's agent name rule**: 2 to 80 lowercase
+  letters, digits, dashes and underscores, starting with a letter or
+  digit, unique (409 `conflict`, "name taken").
+- **At most 5 keys** (`MAX_KEYS`), expired ones included, as 1ctx's
+  default cap (409 `conflict`, "too many keys"). The name and the cap
+  are checked in the same write as the insert.
+- **Expiry is optional**: null (never, the default), 30, 90 or 365
+  days. An expired key is 401 and stays listed until revoked.
+- **The token is answered once** by `POST`, with `cache-control:
+  no-store`, after it joins the log mask; the row holds only its
+  SHA-256, and no list or log line names it. A made or revoked key is
+  logged by id and name.
+- **A revoke holds on the key's next call**: nothing caches a lookup,
+  and `/mcp` is stateless, so there is no session to close; a call
+  already in flight finishes.
 ## The instrument list
 
 - **Paged by id, the one paged route:** `page_size` 1 to `MAX_PAGE`
@@ -65,7 +91,7 @@ is offered over MCP.
   and with one FRED instrument, as on the public routes. One instrument
   also has `credit`, its price source's short name and site (Yahoo,
   BVB, FRED), which the instrument page's footer links.
-- **One instrument is a read, for the read key too**:
+- **One instrument is a read, for an agent key too**:
   `GET /api/v1/instruments/{symbol}` (`docs/api.md`, "One instrument")
   reads it through `quoteRows()` as the quote tool does, so an unknown
   symbol is fetched, a stored one tracked and a due price fetched,
@@ -136,7 +162,7 @@ is offered over MCP.
 ## The command
 
 - **`1ctx-markets admin status|refetch|delete` calls the running
-  server on this machine** with `<data>/secrets/admin.key`, so it works
+  server on this machine** with `<data>/secrets/user-admin.key`, so it works
   over ssh without stopping the service. `--listen` and `--data`
   default to the installed service's, else the server's defaults; a
   wildcard bind is called on loopback (`urlOf()`).
@@ -148,3 +174,9 @@ is offered over MCP.
 - **`delete` prints `deleted <id>` for its 204**, else the problem.
 - **It prints the server's JSON and never the key**, and exits 1 on a
   status other than 2xx or no answer.
+- **`1ctx-markets keys list|add|revoke` calls the same way**, with the
+  same `--listen` and `--data`. `list` prints `GET /api/v1/keys`'s
+  JSON; `add <name> [--expires 30|90|365]` prints the new token alone
+  on stdout, once, so `$(...)` can take it, and nothing else; `revoke
+  <name>` finds the key's id by name and prints `revoked <name>`. A
+  refusal exits 1 with the server's detail and status.

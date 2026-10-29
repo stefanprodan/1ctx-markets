@@ -12,6 +12,12 @@ import {
   status,
   watchlist,
 } from "../admin/http.ts";
+import {
+  createOne,
+  type KeysDeps,
+  listAnswer,
+  revokeOne,
+} from "../admin/keys.ts";
 import { iso, price } from "../market/format.ts";
 import { localDate } from "../market/zone.ts";
 import { ArgError, fields } from "../operations/args.ts";
@@ -62,7 +68,7 @@ import { spec } from "./openapi.ts";
 
 export type Method = "GET" | "POST" | "PATCH" | "DELETE";
 
-// read: the read key, or the admin key, which holds every scope; admin:
+// read: an agent key, or the admin key, which holds every scope; admin:
 // the admin key alone; none: served before either, since it holds no data
 // and a browser opening it sends no key
 export type Scope = "read" | "admin" | "none";
@@ -89,6 +95,9 @@ export type ApiDeps = {
   // each --track value and what it resolved to
   track: () => readonly TrackState[];
   log: Log;
+  // hides a key made through POST /keys from the log; none in tests that
+  // read no log
+  mask?: (token: string) => void;
 };
 
 // a body is the tool's arguments, never a cursor
@@ -473,6 +482,40 @@ function operator(
   ];
 }
 
+function keys(d: KeysDeps): Route[] {
+  return [
+    {
+      method: "GET",
+      path: "/keys",
+      scope: "admin",
+      handle: async (_req, url) => {
+        noQuery(url);
+        return listAnswer(d.m);
+      },
+    },
+    {
+      method: "POST",
+      path: "/keys",
+      scope: "admin",
+      handle: async (req, url) => {
+        noQuery(url);
+        const read = await bodyOf(req);
+        if (read instanceof Response) return read;
+        return createOne(d, read.body);
+      },
+    },
+    {
+      method: "DELETE",
+      path: "/keys/{id}",
+      scope: "admin",
+      handle: async (_req, url, params) => {
+        noQuery(url);
+        return revokeOne(d, params.id!);
+      },
+    },
+  ];
+}
+
 export function routes(deps: ApiDeps): Route[] {
   // REST's bare symbol is Yahoo's, so a Yahoo export's symbols read as written
   const m: Markets = { ...deps.m, yahooFirst: true };
@@ -491,6 +534,7 @@ export function routes(deps: ApiDeps): Route[] {
       handle: (req) => deps.alerts(req),
     },
     ...operator(admin, deps.track),
+    ...keys({ m: deps.admin.m, mask: deps.mask ?? (() => {}) }),
     {
       method: "GET",
       path: "/openapi.json",

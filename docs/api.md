@@ -38,6 +38,9 @@ MCP tools copied onto paths.
 | `PATCH /rules/{id}` | read | `pauseRule()` | `{"paused": bool}` sets or clears the manual pause; `{rule}` |
 | `DELETE /rules/{id}` | read | `deleteRuleById()` | 204; its alerts stay |
 | `GET /alerts` | read | `alertsHandler()` | the alerts feed (below) |
+| `GET /keys` | admin | `listAnswer()` | `keys[]` (id, name, created, last used, expires; never a token) and `limit` (`docs/admin.md`) |
+| `POST /keys` | admin | `createOne()` | `{name, expiresInDays}` (null, 30, 90 or 365); 201 with `key` and its `token`, once; 409 for a taken name or past the cap of 5 |
+| `DELETE /keys/{id}` | admin | `revokeOne()` | 204; 404 for an unknown id |
 | `GET /status` | admin | `status()` | `docs/admin.md` |
 | `GET /openapi.json` | none | `spec` | the OpenAPI document |
 | `GET /docs`, `GET /docs/{file}` | none | `docs.ts` | the bundled Swagger UI page and its files |
@@ -206,13 +209,14 @@ MCP tools copied onto paths.
 | Status | Codes |
 |---|---|
 | 400 | `bad_arguments`, `mixed_units`, `no_event_source`, `no_event` |
-| 401 | `unauthorized`: no key, or a wrong one |
+| 401 | `unauthorized`: no key, or a wrong, revoked or expired one; no `WWW-Authenticate`, so an MCP client never starts an OAuth sign-in |
 | 403 | `forbidden`: a key without the route's scope, or a cookie request other than `GET` not sent from this server's own pages |
-| 404 | `not_found` (route, rule, instrument or symbol), `candidates`, `no_data`, `refused` |
+| 404 | `not_found` (route, rule, key, instrument or symbol), `candidates`, `no_data`, `refused` |
 | 405 | `method_not_allowed`, with `Allow` |
 | 409 | `conflict`, `split_paused` |
 | 413 | `payload_too_large` |
 | 415 | `unsupported_media_type` |
+| 429 | `too_many_requests`: past a key's calls a minute, with `Retry-After` in seconds |
 | 500 | `internal`, logged with the error's type and first line only |
 | 503 | `timeout`, `rate_limited`, `source_error`: ask again later |
 
@@ -230,17 +234,33 @@ MCP tools copied onto paths.
 - **Scopes are per operation, never a path prefix.** The router
   (`router()` in `src/server/http.ts`) matches the method and path
   first, then holds the key to that operation's `scope` (`Route` in
-  `routes.ts`): `read` takes the read key, `admin` the admin key alone,
+  `routes.ts`): `read` takes an agent key, `admin` the admin key alone,
   `none` no key. Matching first is what tells `GET` from `DELETE` on
   one path.
+- **Agent keys are rows the admin makes** (`src/server/access.ts`,
+  table `keys`): `1ctx-markets-` and 32 random bytes as base64url,
+  stored only as its SHA-256. A bearer is hashed and looked up on every
+  request, never cached, so a revoke holds on the next call; an expired
+  key is refused as an unknown one and stays listed until revoked. Its
+  last use is written through the writer at most once a minute.
 - **The admin key holds every scope**, so it opens every read route,
   rules writes and the alerts feed included, as a wider scope holds a
-  narrower one; the UI and the `admin` command keep one credential.
-  `/mcp` stays the read key's alone.
-- **A valid key without the scope is 403 `forbidden`**: the read key
-  on `GET /instruments`, `DELETE /instruments/{symbol}`, refetch and
-  `/status`. A missing or wrong key is 401. Any other `/api/v1/` path,
-  unknown ones included, answers 401 without a key and 404 with one.
+  narrower one, and `/mcp`: a single-user install needs no other key.
+- **A valid key without the scope is 403 `forbidden`**: an agent key
+  on `GET /instruments`, `DELETE /instruments/{symbol}`, refetch,
+  `/status` and `/keys`. A missing, wrong, revoked or expired key is
+  401. Any other `/api/v1/` path, unknown ones included, answers 401
+  without a key and 404 with one.
+- **Each key makes at most 120 calls a minute** (`CALLS_PER_MINUTE`,
+  `src/server/ratelimit.ts`), a fixed window per key id held in memory,
+  no flag. Every `/api/v1` request counts, and on `/mcp` every JSON-RPC
+  message, a batch's each. Past it the answer is 429 before the body is
+  read. The admin key is limited as a key of its own; the web UI's
+  cookie is not limited. The windows are capped (`MAX_WINDOWS`), and
+  only a valid key reaches them, so memory stays bounded.
+- **A request's log line names its key**: `key=<id> key_name=<name>`,
+  or `key=admin`; never a token. A token made by `POST /keys` joins the
+  log mask before it is answered (`mask()` in `src/runtime/keys.ts`).
 - **The web UI's session cookie opens what the admin key opens but
   the rules writes** (`cookie: false` on `POST /rules`, `PATCH` and
   `DELETE /rules/{id}`); a cookie request that is not a `GET` must come
@@ -249,7 +269,7 @@ MCP tools copied onto paths.
   `read`, `admin` and `session` per operation.
 - **The spec and the docs page are served before any key check**, as
   `/health` is: they hold no data and no key, and a browser opening a
-  page sends no bearer.
+  page sends no key.
 - **Reads answer `cache-control: no-store`**, since prices are live.
   A bars range whose bars are all final, with `to` before today in the
   instrument's own zone (`localDate()`) and no benchmark, is `private,
