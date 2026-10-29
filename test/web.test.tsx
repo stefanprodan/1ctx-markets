@@ -11,6 +11,7 @@ import { Rail } from "../src/web/app/Rail.tsx";
 import { inApp } from "../src/web/app/router.ts";
 import { HOME, lit, match, RAIL, ROUTES } from "../src/web/app/routes.ts";
 import { Strip } from "../src/web/app/Strip.tsx";
+import { railDrawer } from "../src/web/app/shell.ts";
 import { resolveTheme } from "../src/web/app/theme.ts";
 import { tabTitle } from "../src/web/app/title.ts";
 import {
@@ -48,6 +49,8 @@ import {
   candles,
   changeText,
   DEFAULT_SETTINGS,
+  DESK,
+  drawnRange,
   extendedLines,
   fromOf,
   type History,
@@ -57,7 +60,12 @@ import {
   intervalOf,
   isIntraday,
   legendOf,
+  levelsOf,
   localTime,
+  lookOf,
+  PHONE,
+  PHONE_RANGES,
+  phoneRange,
   pointLegendOf,
   pointLine,
   RANGES,
@@ -67,7 +75,7 @@ import {
   timeLabel,
   volumes,
 } from "../src/web/views/Chart.model.ts";
-import { LegendLine, paintOptions } from "../src/web/views/Chart.tsx";
+import { Chart, LegendLine, paintOptions } from "../src/web/views/Chart.tsx";
 import {
   AGENTS,
   capLine,
@@ -1248,6 +1256,20 @@ describe("the instrument model", () => {
     ]);
   });
 
+  test("on a phone Trend holds the 200-week average the head leaves out", () => {
+    const trend = stats(
+      detail({ signals: { daily: DAILY, weekly: { sma200: 180 } } }),
+    ).find((c) => c.title === "Trend")!;
+    expect(trend.rows.find((r) => r.label === "200-week average")).toEqual({
+      label: "200-week average",
+      value: "20.69% above",
+      note: "180.00 USD",
+      tone: "up",
+      phone: true,
+    });
+    expect(trend.rows.filter((r) => r.phone).length).toBe(1);
+  });
+
   test("a turn, a cross and an extreme read as the day's news", () => {
     const trend = (more: Partial<typeof DAILY>) =>
       stats(detail({ signals: { daily: { ...DAILY, ...more } } }))
@@ -1361,17 +1383,15 @@ describe("the instrument model", () => {
     expect(html).not.toContain("ins-span");
   });
 
-  test("the head says live or the close, and when it was fetched", () => {
+  test("the head says open or closed, and when it was fetched", () => {
     expect(headline(detail()).price).toBe("217.24 USD");
-    expect(priceState(detail(), NOW)).toBe(
-      "Live · market open · updated just now",
-    );
+    expect(priceState(detail(), NOW)).toBe("Open · updated just now");
     expect(
       priceState(
         detail({ session: { state: "closed", start: null, end: null } }),
         NOW,
       ),
-    ).toBe("Close · market closed · updated just now");
+    ).toBe("Closed · updated just now");
     // the open before the first pass: the price is still the last close
     expect(
       priceState(
@@ -1381,7 +1401,7 @@ describe("the instrument model", () => {
         }),
         NOW,
       ),
-    ).toBe("Previous close · market open · updated 3 h ago");
+    ).toBe("Open · previous close · updated 3 h ago");
     const series = detail(
       {
         price: null,
@@ -1506,7 +1526,7 @@ describe("the instrument page", () => {
     expect(html).toContain("Stock · US");
     expect(html).toContain("217.24 USD");
     expect(html).toContain("−0.32%");
-    expect(html).toContain("Live · market open");
+    expect(html).toContain("Open · updated");
     for (const label of ["1 week", "1 month", "3 months", "Year to date"]) {
       expect(html).toContain(label);
     }
@@ -1972,6 +1992,22 @@ describe("page failures", () => {
 });
 
 describe("the chart model", () => {
+  test("a phone has no toolbar and draws edge to edge; a wider window keeps Log", () => {
+    // no storage in tests, so the chart opens on its default, 1D
+    try {
+      railDrawer.value = true;
+      const phone = render(<Chart id="US:AAPL" />);
+      expect(phone).not.toContain("chart-tools");
+      expect(phone).toContain("chart-phone");
+      railDrawer.value = false;
+      const desk = render(<Chart id="US:AAPL" />);
+      expect(desk).toContain(">Log</button>");
+      expect(desk).not.toContain("chart-phone");
+    } finally {
+      railDrawer.value = false;
+    }
+  });
+
   test("a range asks from its first day, weekly past two years", () => {
     expect(fromOf("1M", "2026-10-28")).toBe("2026-09-28");
     expect(fromOf("YTD", "2026-10-28")).toBe("2026-01-01");
@@ -2219,14 +2255,39 @@ describe("the chart model", () => {
       close: 90,
       live: false,
       change: -10,
+      session: "post",
     });
-    // at rest the newest price is the after-hours one, as the axis label
+    // at rest the newest price is the after-hours one
     expect(pointLegendOf(h, null, "UTC")).toMatchObject({
       time: "21:00",
       close: 90,
+      session: "post",
     });
+    const at = Date.parse("2026-10-28T19:55:00Z") / 1000;
+    expect(pointLegendOf(h, at, "UTC")?.session).toBeUndefined();
     const regular = { ...h, extended_points: [] };
     expect(pointLegendOf(regular, null, "UTC")).toMatchObject({ close: 102 });
+    expect(pointLegendOf(regular, null, "UTC")?.session).toBeUndefined();
+    const label = (legend: ReturnType<typeof pointLegendOf>) =>
+      render(
+        <LegendLine
+          legend={legend!}
+          interval="5m"
+          range="1D"
+          show={{ sma50: false, sma200: false }}
+        />,
+      );
+    expect(label(pointLegendOf(h, null, "UTC"))).toContain("<i>Post</i>");
+    expect(label(pointLegendOf(h, null, "UTC"))).not.toContain("<i>C</i>");
+    expect(label(pointLegendOf(regular, null, "UTC"))).toContain("<i>C</i>");
+    const early = {
+      ...h,
+      extended_points: [
+        { at: "2026-10-28T12:00:00Z", session: "pre" as const, close: 99 },
+      ],
+    };
+    const pre = Date.parse("2026-10-28T12:00:00Z") / 1000;
+    expect(label(pointLegendOf(early, pre, "UTC"))).toContain("<i>Pre</i>");
   });
 
   test("the legend names each average beside its stroke", () => {
@@ -2247,6 +2308,31 @@ describe("the chart model", () => {
     expect(html).toContain("50-week average");
     expect(html).not.toContain("200-week average");
     expect(html).toContain("5Y");
+  });
+
+  test("a phone's legend is the date, the close and the range's change", () => {
+    const h: History = {
+      instrument: { id: "US:NVDA", unit: "per_share" },
+      interval: "1d",
+      session: null,
+      bars: [
+        hbar("2026-10-26", 100),
+        hbar("2026-10-27", 110, { sma50: 90, sma200: 80 }),
+      ],
+    };
+    const html = render(
+      <LegendLine
+        legend={legendOf(h, null)!}
+        interval="1d"
+        range="1M"
+        show={{ sma50: false, sma200: false, ohlc: false }}
+      />,
+    );
+    expect(html).toContain("<i>C</i>");
+    expect(html).toContain("1M");
+    for (const gone of ["<i>O</i>", "<i>H</i>", "<i>L</i>", "<i>Vol</i>"])
+      expect(html).not.toContain(gone);
+    expect(html.match(/chart-legend-row/g)?.length).toBe(1);
   });
 
   test("the 200-week average says how far the price is from it", () => {
@@ -2280,6 +2366,7 @@ describe("the chart model", () => {
     const l = await import("lightweight-charts");
     const k = {
       card: "#1e1f20",
+      page: "#131314",
       fg: "#eeeeee",
       faint: "#8b8b91",
       line: "#2a2b2d",
@@ -2303,6 +2390,69 @@ describe("the chart model", () => {
     expect(paintOptions(l, k, true).rightPriceScale.mode).toBe(
       l.PriceScaleMode.Logarithmic,
     );
+    expect(o.rightPriceScale.visible).toBe(true);
+    const phone = paintOptions(l, k, false, PHONE);
+    expect(phone.layout.background.color).toBe("#131314");
+    expect(phone.rightPriceScale.visible).toBe(false);
+    expect(phone.grid.horzLines.visible).toBe(false);
+  });
+
+  test("a phone's plot names where the range starts, its high and its low", () => {
+    expect(levelsOf(100, [100, 104, 98, 101])).toEqual({
+      ref: 100,
+      high: 104,
+      low: 98,
+    });
+    expect(levelsOf(10, [12, 15], [9, 11])).toEqual({
+      ref: 10,
+      high: 15,
+      low: 9,
+    });
+    expect(levelsOf(null, [])).toBeNull();
+  });
+
+  test("a phone offers one row of ranges, and a wider window's range moves to its neighbour", () => {
+    expect(PHONE_RANGES).toEqual([
+      "1D",
+      "5D",
+      "1M",
+      "6M",
+      "YTD",
+      "1Y",
+      "5Y",
+      "Max",
+    ]);
+    expect(phoneRange("3M")).toBe("6M");
+    expect(phoneRange("3Y")).toBe("5Y");
+    expect(phoneRange("1M")).toBe("1M");
+    // drawn as its neighbour on a phone, kept as chosen
+    expect(drawnRange(PHONE, "3M")).toBe("6M");
+    expect(drawnRange(DESK, "3M")).toBe("3M");
+    expect(drawnRange(PHONE, "1Y")).toBe("1Y");
+    for (const r of PHONE_RANGES) expect(RANGES).toContain(r);
+  });
+
+  test("a phone draws the price alone, a wider window everything", () => {
+    expect(lookOf(false)).toBe(DESK);
+    expect(lookOf(true)).toBe(PHONE);
+    expect(PHONE).toEqual({
+      phone: true,
+      ranges: PHONE_RANGES,
+      candles: false,
+      averages: false,
+      volume: false,
+      log: false,
+      axis: false,
+      ohlc: false,
+    });
+    expect(DESK.ranges).toBe(RANGES);
+    expect([
+      DESK.candles,
+      DESK.averages,
+      DESK.volume,
+      DESK.log,
+      DESK.axis,
+    ]).toEqual([true, true, true, true, true]);
   });
 });
 
@@ -2626,6 +2776,21 @@ describe("the home page's cards", () => {
     const html = render(<Card entry={stored} spark={undefined} id="x" />);
     expect(html).toContain("Not available");
     expect(html).toContain('href="/instruments/NAS%3A%5ENDX"');
+  });
+
+  test("a card leads with the name on a wide window and the ticker on a phone", () => {
+    const html = render(
+      <Card
+        entry={tracked("^NDX", "NAS:^NDX") as WatchEntry}
+        spark={undefined}
+        id="x"
+      />,
+    );
+    expect(html).toMatch(/home-name cut home-wide">[^<]+<\/span>/);
+    expect(html).toMatch(/home-lead cut home-narrow">\^NDX<\/span>/);
+    expect(html).toMatch(/home-symbol cut home-wide">\^NDX<\/span>/);
+    expect(html).toMatch(/home-under cut home-narrow">[^<]+<\/span>/);
+    expect(html.indexOf("home-lead")).toBeLessThan(html.indexOf("home-under"));
   });
 
   test("a day line splits at the previous close across its session; a month line is one colour", () => {

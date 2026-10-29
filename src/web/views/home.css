@@ -34,6 +34,26 @@
     flex: 1;
     font-weight: 500;
   }
+  .home-lead {
+    flex: 1;
+    font-family: var(--mono);
+    font-weight: 500;
+  }
+  .home-under {
+    font-size: var(--text-small);
+    color: var(--faint);
+  }
+  .home-narrow {
+    display: none;
+  }
+  @media (max-width: 719px) {
+    .home-wide {
+      display: none;
+    }
+    .home-narrow {
+      display: block;
+    }
+  }
   .home-state,
   .home-symbol,
   .home-note {

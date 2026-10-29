@@ -118,10 +118,12 @@ export function Card({
   return (
     <a class="card home-card" href={c.href}>
       <div class="home-top">
-        <span class="home-name cut">{c.name}</span>
+        <span class="home-name cut home-wide">{c.name}</span>
+        <span class="home-lead cut home-narrow">{c.symbol}</span>
         {c.state && <span class="home-state">{c.state}</span>}
       </div>
-      <span class="home-symbol cut">{c.symbol}</span>
+      <span class="home-symbol cut home-wide">{c.symbol}</span>
+      <span class="home-under cut home-narrow">{c.name}</span>
       <Sparkline line={sparkOf(spark)} id={id} />
       <span class="home-price">{c.price}</span>
       <span class={`home-move${tone(c.dir)}`}>
