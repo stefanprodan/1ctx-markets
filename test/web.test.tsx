@@ -2153,6 +2153,21 @@ describe("the home page", () => {
     expect(s.sparks.value.size).toBe(0);
   });
 
+  test("a home load asked off the home page asks nothing", async () => {
+    const asked: string[] = [];
+    const s = store(
+      async (path) => {
+        asked.push(path);
+        return Response.json(HOME_WATCH);
+      },
+      () => NOW,
+      () => "/status",
+    );
+    s.signedIn.value = true;
+    await s.loadHome();
+    expect(asked).toEqual([]);
+  });
+
   test("an older watchlist answer never lands over a newer one, whichever page asked", async () => {
     const pending = {
       entries: [

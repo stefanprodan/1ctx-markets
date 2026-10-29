@@ -423,6 +423,8 @@ export function store(
 
   let homeLoad = 0;
   async function loadHome(): Promise<void> {
+    // the minute refresh can fire after leaving, before Preact's cleanup
+    if (here() !== "/") return;
     const mine = ++homeLoad;
     const at = session;
     const page = here();
