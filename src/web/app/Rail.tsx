@@ -3,6 +3,8 @@
 
 import { useEffect, useRef } from "preact/hooks";
 import { Icon, Logo } from "../lib/icons.tsx";
+import { symbolOf } from "../views/Instruments.model.ts";
+import { pickRecent, recent, recentHref } from "./recent.ts";
 import { HOME, lit, RAIL } from "./routes.ts";
 import { toggleUserMenu, UserMenu, userMenuOpen } from "./UserMenu.tsx";
 import "./rail.css";
@@ -53,6 +55,7 @@ export function Rail({
               <span>{r.label}</span>
             </a>
           ))}
+          <Recent here={here} follow={follow} />
         </nav>
       </div>
       <UserMenu wrap="rail-user" place="rail-menu">
@@ -70,5 +73,35 @@ export function Rail({
         </button>
       </UserMenu>
     </aside>
+  );
+}
+
+function Recent({ here, follow }: { here: string; follow?: () => void }) {
+  const rows = recent.value;
+  if (rows.length === 0) return null;
+  return (
+    <>
+      <span class="rail-label">Recent</span>
+      {rows.map((row) => {
+        const href = recentHref(row.id);
+        const symbol = symbolOf(row.id);
+        return (
+          <a
+            key={row.id}
+            href={href}
+            class={`rail-recent${here === href ? " rail-item-on" : ""}`}
+            aria-current={here === href ? "page" : undefined}
+            title={row.name ? `${symbol} · ${row.name}` : symbol}
+            onClick={() => {
+              pickRecent(row.id);
+              follow?.();
+            }}
+          >
+            <span class="rail-recent-symbol">{symbol}</span>
+            {row.name && <span class="rail-recent-name">{row.name}</span>}
+          </a>
+        );
+      })}
+    </>
   );
 }

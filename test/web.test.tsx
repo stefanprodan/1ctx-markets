@@ -8,6 +8,12 @@ import { spec } from "../src/api/openapi.ts";
 import { UI_PATHS } from "../src/server/http.ts";
 import { Shell } from "../src/web/app/App.tsx";
 import { Rail } from "../src/web/app/Rail.tsx";
+import {
+  putRecent,
+  RECENT_MAX,
+  readRecent,
+  recent,
+} from "../src/web/app/recent.ts";
 import { inApp } from "../src/web/app/router.ts";
 import { HOME, lit, match, RAIL, ROUTES } from "../src/web/app/routes.ts";
 import { Strip } from "../src/web/app/Strip.tsx";
@@ -988,6 +994,57 @@ describe("the views", () => {
     const drawer = render(<Rail here="/status" narrow onHide={() => {}} />);
     expect(drawer).toContain("rail-drawer");
     expect(drawer).toContain("Close the menu");
+  });
+
+  test("the rail lists the recent instruments, the one on screen lit", () => {
+    expect(
+      render(<Rail here="/" narrow={false} onHide={() => {}} />),
+    ).not.toContain("Recent");
+    recent.value = [
+      { id: "US:AMD", name: "Advanced Micro Devices, Inc." },
+      { id: "US:AAPL", name: null },
+    ];
+    try {
+      const html = render(
+        <Rail here="/instruments/US%3AAAPL" narrow={false} onHide={() => {}} />,
+      );
+      expect(html).toContain('<span class="rail-label">Recent</span>');
+      expect(html).toContain('href="/instruments/US%3AAMD"');
+      expect(html).toContain(
+        '<span class="rail-recent-name">Advanced Micro Devices, Inc.</span>',
+      );
+      expect(html).toMatch(
+        /class="rail-recent rail-item-on"[^>]*><span class="rail-recent-symbol">AAPL<\/span><\/a>/,
+      );
+    } finally {
+      recent.value = [];
+    }
+  });
+
+  test("a recent instrument opened goes first, one opened from Recent keeps its place", () => {
+    const a = { id: "US:A", name: "A" };
+    const b = { id: "US:B", name: "B" };
+    const c = { id: "US:C", name: "C" };
+    expect(putRecent([a, b], c, false)).toEqual([c, a, b]);
+    expect(putRecent([a, b, c], c, false)).toEqual([c, a, b]);
+    const renamed = { id: "US:C", name: "C2" };
+    expect(putRecent([a, b, c], renamed, true)).toEqual([a, b, renamed]);
+    expect(putRecent([a, b], c, true)).toEqual([c, a, b]);
+    const many = Array.from({ length: RECENT_MAX }, (_, i) => ({
+      id: `US:${i}`,
+      name: null,
+    }));
+    expect(putRecent(many, c, false)).toHaveLength(RECENT_MAX);
+    expect(putRecent(many, c, false)[0]).toEqual(c);
+  });
+
+  test("a stored Recent list that is not one reads as empty", () => {
+    expect(readRecent(null)).toEqual([]);
+    expect(readRecent("{")).toEqual([]);
+    expect(readRecent('{"id":"x"}')).toEqual([]);
+    expect(readRecent('[{"id":"US:A","name":null},{"id":3},null]')).toEqual([
+      { id: "US:A", name: null },
+    ]);
   });
 
   test("the folded rail keeps the pages as icons", () => {
