@@ -9,7 +9,7 @@ keeps quotes, daily history, technical signals, research and news in
 one SQLite file, syncs them on its own schedule from free sources, and
 serves them to agents over the [Model Context Protocol](https://modelcontextprotocol.io/)
 (MCP) and a REST API with an OpenAPI description, both behind the
-admin key or a key of each agent's own.
+admin key or an agent's own key.
 
 It works for any exchange Yahoo Finance carries: shares, ETFs,
 indices, futures, currencies and crypto. Nothing is preset: no ticker
@@ -155,7 +155,8 @@ curl -H "Authorization: Bearer $(cat ~/.1ctx-markets/secrets/user-admin.key)" \
 To give an agent a key of its own, which can be revoked without
 touching the others, make one on the web UI's Connect agents page, or
 with `1ctx-markets keys add <name>`. An agent's key reads market data
-and rules but never the operator's routes.
+and reads and writes price rules, but never opens the admin's routes:
+keys, status, the instrument list, refetch and delete.
 
 Every route, with its arguments, answers and errors, is browsable at
 <http://127.0.0.1:11238/api/v1/docs>, a Swagger UI page bundled in the
