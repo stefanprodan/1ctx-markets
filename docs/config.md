@@ -78,8 +78,9 @@ the `--help` text, and a flag changes there in the same commit.
   key through `store.source()`, so the mask knows it. An agent key made
   while running joins the mask through `store.mask()` before it is
   answered, and anything shaped like this server's keys
-  (`1ctx-markets-`, `admin-` or not, and 43 base64url characters) is
-  masked too, so a key made by an earlier run never reaches a line.
+  (`1ctx-markets-`, `admin-` or not, and 16 or more base64url
+  characters) is masked too, so a key made by an earlier run, whole or
+  cut, never reaches a line.
 - **The server never writes or checks existing files' modes.** Keep
   `secrets/` readable by the service user only (`chmod 700` on the
   directory, `chmod 600` on its files).

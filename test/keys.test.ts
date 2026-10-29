@@ -247,10 +247,17 @@ describe("agent keys", () => {
     for (const shape of [
       `1ctx-markets-${"a".repeat(43)}`,
       `1ctx-markets-admin-${"B_-".repeat(14)}x`,
+      // a key cut short is still most of a secret
+      `1ctx-markets-${"c".repeat(42)}`,
     ]) {
       const line = format(0, "test", "info", "request", { path: `/${shape}` });
-      expect(line).not.toContain(shape);
+      expect(line).not.toContain(shape.slice(-16));
       expect(line).toContain(MASK);
+    }
+    // names that merely start with the prefix stay readable
+    for (const plain of ["1ctx-markets-darwin-arm64", "1ctx-markets-v1.2.3"]) {
+      const line = format(0, "test", "info", "request", { path: `/${plain}` });
+      expect(line).toContain(plain);
     }
   });
 

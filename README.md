@@ -156,7 +156,8 @@ To give an agent a key of its own, which can be revoked without
 touching the others, make one on the web UI's Connect agents page, or
 with `1ctx-markets keys add <name>`. An agent's key reads market data
 and reads and writes price rules, but never opens the admin's routes:
-keys, status, the instrument list, refetch and delete.
+keys, status, the instrument list, and an instrument's refetch and
+delete.
 
 Every route, with its arguments, answers and errors, is browsable at
 <http://127.0.0.1:11238/api/v1/docs>, a Swagger UI page bundled in the
