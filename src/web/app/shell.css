@@ -33,6 +33,8 @@
     flex-direction: column;
     padding: 0 var(--shell-right) 0 var(--shell-left);
     overflow-y: auto;
+    /* the page head's band reaches the window's edge past the page */
+    overflow-x: hidden;
     /* a focused field scrolls into view below the stuck page head, its
        label included, never under it */
     scroll-padding-top: 96px;

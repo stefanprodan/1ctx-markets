@@ -656,8 +656,11 @@
       display: none;
     }
     /* the head holds the sheet: lift it over the shell's own bars */
+    /* a blur would hold the fixed sheet inside the head */
     .page-head:has(.dash-sheet) {
       z-index: 10;
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
     }
     .dash-sheet {
       position: fixed;
