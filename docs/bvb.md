@@ -4,9 +4,10 @@ Governs the Bucharest Stock Exchange (BVB) source, read directly from
 the exchange: `src/sources/bvb/client.ts` (calls), `parse.ts`
 (parsing), `format.ts` (Romanian formats and HTML tables), `sync.ts`
 (fetches), `history.ts` and `quotes.ts` (answers into rows), `jobs.ts`
-(the schedule), `resolve.ts` (the exchange's search beside Yahoo's)
-and `switch.ts` (moving the market between sources). The queue,
-deadlines, retries, backfill, rescales, phrases and the lock every
+(the schedule), `listings.ts` (the list pages kept for search),
+`resolve.ts` (the exchange's search beside Yahoo's) and `switch.ts`
+(moving the market between sources). The queue, deadlines, retries,
+backfill, rescales, phrases and the lock every
 source shares are in `docs/sources.md`; sessions in
 `docs/calendars.md`; tables and staleness in `docs/storage.md`; the
 tools in `docs/tools.md`. It is the pattern for a source of another
@@ -43,8 +44,7 @@ exchange: one client, its parsers, its session, the same tables.
 | `schedule` | `bvb.ro/TradingAndStatistics/TradingSessionSchedule` | the regular market's continuous start and its close |
 | `meta` | `wapi.bvb.ro/api/symbols?symbol=` | type, currency, the IANA zone, name |
 | `history` | `wapi.bvb.ro/api/history?…&rs=1D&ajust=1&countback=N` | adjusted daily bars as column arrays |
-| `search` | `POST bvb.ro/proxyshld.aspx/GetInstrumentsList` | up to 10 listings: symbol, ISIN, name, status |
-| `types` | `wapi.bvb.ro/api/search?limit=30&query=` | up to 30 listings with their type (`Shares`, `Units`, `Structured`, ...), which the site's search lacks |
+| `search` | `POST bvb.ro/proxyshld.aspx/GetInstrumentsList` | up to 10 listings: symbol, ISIN, name, status; asked only to resolve a symbol, never by the search tool |
 
 - **Every page carries the market status** (`#statusMarket`,
   `statusOf()`); `INCHISA` is closed, anything else open (`DESCHISA`
@@ -139,6 +139,18 @@ exchange: one client, its parsers, its session, the same tables.
   the stored session's or a stored listing's zone, or with neither 24
   hours; a quote pass's read counts, and a failed read waits
   `RETRY_MS`.
+- **Every list page read is stored in `bvb_listings`**
+  (`storeListings()`, through the client's `onList`, in the writer's
+  queue): one row per listing with its symbol, ISIN, name and the type
+  its list gives (`LIST_TYPES`: shares `EQUITY`, fund units `ETF`,
+  bonds `BOND`, indices `INDEX`, as `KINDS` types them). A page
+  read again replaces its kind's rows, so a delisted symbol goes. The
+  rows outlive a restart, and the search tool and `/symbols` read
+  only them (`findListings()`): a search never waits on the
+  exchange's 2-second call spacing. Until the pages are first read
+  there are no Bucharest results; while the feed is off there are
+  none either, whatever is stored. A listing on a page the client
+  never reads (AeRO, structured products) is not found.
 - **A quote's time is the time the exchange gives,** so a delayed
   price shows its age. The shares list is a snapshot 15 minutes behind
   and every row carries the snapshot's time, so a share's list quote

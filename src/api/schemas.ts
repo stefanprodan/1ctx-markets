@@ -99,8 +99,8 @@ const instrumentRow = object({
   source: str,
   tracked: bool,
   tracked_by: note(
-    list(values(["rule", "read", "track"])),
-    "What keeps it up to date: a rule, a recent read or the watchlist.",
+    list(values(["rule", "dashboard", "read", "track"])),
+    "What keeps it up to date: a rule, a dashboard, a recent read or the watchlist.",
   ),
   read_at: nstr,
   read_until: nstr,
@@ -206,6 +206,15 @@ const unavailable = object(
 
 const oneOf = (...names: string[]): Schema => ({ oneOf: names.map(ref) });
 
+const gap = (daily: boolean): Schema =>
+  nullable(
+    object(
+      daily
+        ? { distance_pct: nnum, crossed_today: bool }
+        : { distance_pct: nnum },
+    ),
+  );
+
 export const schemas: Record<string, Schema> = {
   Problem: object(
     {
@@ -222,6 +231,11 @@ export const schemas: Record<string, Schema> = {
         "With `candidates`: the listings to pick an id from.",
       ),
       rules: note(list(int), "With `conflict`: the rules reading it."),
+      dashboard: ref("Dashboard"),
+      errors: note(
+        list(itemError),
+        "With `unresolved`: each symbol that did not resolve.",
+      ),
     },
     ["title", "status", "detail", "code"],
     true,
@@ -814,6 +828,67 @@ export const schemas: Record<string, Schema> = {
     },
     ["entries"],
   ),
+  Dashboard: object(
+    {
+      attribution: note(
+        str,
+        "A source's required notice, when an item is one of its series.",
+      ),
+      revision: note(int, "Send it back with the next save. 0 until saved."),
+      created: note(bool, "False until the first save."),
+      track: note(
+        list(
+          object({
+            value: str,
+            state: values(["ready", "pending", "failed"]),
+          }),
+        ),
+        "Until the first save: each watchlist value and whether the sections hold it (`ready`), it is still resolving (`pending`), or it is left out (`failed`).",
+      ),
+      sections: list(
+        object({
+          name: str,
+          view: values(["cards", "table"]),
+          items: list(
+            object({
+              id: str,
+              instrument: note(
+                instrumentRow,
+                "The stored instrument, as the instrument list gives it.",
+              ),
+              session: note(
+                session,
+                "Its market's last regular session. Null for a series.",
+              ),
+              intraday: note(
+                bool,
+                "Whether its source gives 5-minute closes (`/instruments/{symbol}/bars?interval=5m`).",
+              ),
+              averages: note(
+                object({
+                  daily_sma50: gap(true),
+                  daily_sma200: gap(true),
+                  weekly_sma200: gap(false),
+                }),
+                "The price's distance from each average, in percent; null without a price or an average.",
+              ),
+            }),
+          ),
+        }),
+      ),
+    },
+    ["revision", "created", "sections"],
+  ),
+  DashboardArgs: object({
+    revision: int,
+    sections: list(
+      object({
+        name: str,
+        view: values(["cards", "table"]),
+        symbols: list(str),
+      }),
+    ),
+  }),
   RefetchArgs: object(
     {
       parts: list(values(PARTS)),

@@ -103,41 +103,66 @@
     }
   }
 
-  /* the refetch menu hangs under its button, as 1ctx's More */
+  .ins-new-label {
+    margin: 0;
+    padding: var(--space-4) var(--space-4) var(--space-2);
+    border-top: 1px solid var(--line);
+  }
+  .ins-new {
+    color: var(--running);
+  }
+
+  /* the actions menu hangs under its button, as 1ctx's More */
   .ins-more {
     position: relative;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .ins-more-btn {
+    width: 32px;
+    padding: 0;
+  }
+  .ins-spin {
+    width: 14px;
+    height: 14px;
+  }
+  .ins-done {
+    color: var(--done);
   }
   .ins-menu {
     position: absolute;
     top: calc(100% + 4px);
     right: 0;
     z-index: 3;
-    min-width: 200px;
-    max-width: min(320px, calc(100vw - 32px));
+    min-width: 180px;
   }
-  /* Everything stands apart from the single parts under it */
-  .ins-menu-all {
-    margin-bottom: 3px;
-    border-bottom: 1px solid var(--line);
-    border-radius: var(--radius) var(--radius) 0 0;
+  .ins-menu:has(.ins-ask) {
+    width: min(280px, calc(100vw - 32px));
   }
-
-  /* the labels share one cell; the hidden ones still take their width */
-  .ins-labels {
-    display: grid;
+  .ins-menu-delete {
+    color: var(--failed);
   }
-  .ins-label {
-    grid-area: 1 / 1;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    visibility: hidden;
+  .ins-ask {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-2);
   }
-  .ins-label-on {
-    visibility: visible;
+  .ins-ask-title {
+    margin: 0;
+    font-size: var(--text-ui);
+    font-weight: 500;
+    color: var(--fg);
   }
-  .ins-label-done svg {
-    color: var(--done);
+  .ins-ask-line {
+    margin: 0;
+    font-size: var(--text-small);
+    color: var(--dim);
+  }
+  .ins-ask-foot {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-2);
   }
 }

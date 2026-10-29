@@ -4,7 +4,8 @@ Governs the REST API under `/api/v1`: `src/api/` (`routes.ts`,
 `http.ts`, `openapi.ts`, `schemas.ts`, `paths.ts`, `docs.ts`, `docs/`),
 the router's part in `src/server/http.ts`, the alerts feed
 (`src/api/alerts.ts`) and the instrument, watchlist and status
-handlers (`src/admin/http.ts`). What each route reads is its tool's,
+handlers (`src/admin/http.ts`), and the dashboard's
+(`src/admin/dashboard.ts`). What each route reads is its tool's,
 in `docs/tools.md`, `docs/research.md` and `docs/rules.md`; what an
 alert is in `docs/rules.md`; the admin key and what refetch and delete
 do in `docs/admin.md`; the server, keys and flags in `docs/config.md`.
@@ -22,7 +23,7 @@ MCP tools copied onto paths.
 |---|---|---|---|
 | `GET /quotes?symbols=&extended=` | read | `quoteRows()` with `briefItem()` | `quotes[]`: every symbol asked, up to `MAX_SYMBOLS` (100); `extended=true` adds the quote tool's `extended` per item |
 | `GET /research?symbols=&sections=&since=` | read | `researchList()` | `research[]`: up to `MAX_RESEARCH_SYMBOLS` (5) items of `input`, `id`, `company` and `news` (below) |
-| `GET /symbols?query=` | read | `searchAll()` | the search tool's `candidates[]`, and `errors[]` for a source that failed |
+| `GET /symbols?query=&upstream=` | read | `searchAll()` | the search tool's `candidates[]`, and `errors[]` for a source that failed; `upstream=false` answers only the stored instruments and the stored Bucharest listings, asking no source |
 | `GET /earnings?from=&to=&symbols=` | read | `readEventsOf()` | `earnings[]`, with `no_event[]` and `unavailable[]` uncapped |
 | `GET /movers?symbols=&min_move_pct=&direction=&average=&relation=` | read | `readMovers()`, `setAll()` | `movers[]`: every match, unavailable and error, with `counts` |
 | `POST /screen` | read | `readScreen()`, `setAll()` | `matches[]`, the same; the body is the tool's arguments, since `filters` is a structure; 200, it creates nothing |
@@ -32,6 +33,8 @@ MCP tools copied onto paths.
 | `POST /instruments/{symbol}/refetch` | admin | `refetchOne()` | `input`, `id`, `parts[]` (`docs/admin.md`) |
 | `GET /instruments/{symbol}/bars?interval=&from=&to=&benchmark=&extended=` | read | `readHistory()`, `readIntradayHistory()` | bars or 5-minute points (below) |
 | `GET /watchlist` | read | `watchlist()` | `entries[]`, the `--track` values (below) |
+| `GET /dashboard` | admin | `readDashboard()` | the web UI's home page: `revision`, `created`, `sections[]` of `items[]` (below) |
+| `PUT /dashboard` | admin | `saveDashboard()` | `{revision, sections: [{name, view, symbols}]}` replaces the layout; the saved dashboard; 409 with `dashboard`, 422 with `errors` (below) |
 | `GET /rules` | read | `readRules()`, `ruleItem()` | `rules[]` |
 | `POST /rules` | read | `createRule()` | 201, `Location: /api/v1/rules/{id}`, the rule, its first evaluation and any alert it fired |
 | `GET /rules/{id}` | read | `readRule()`, `ruleItem()` | `{rule}` |
@@ -81,6 +84,11 @@ MCP tools copied onto paths.
   never a Bucharest one; `BVB:TLV` or `TLV.RO` names that. MCP keeps
   `candidates`. A bare code only the Bucharest feed lists costs a Yahoo
   search on every call, so send `BVB:<code>`.
+- **`/symbols?upstream=false` answers at once from the database**:
+  the stored instruments that match, then the Bucharest exchange's
+  listings stored from its list pages (below in `docs/bvb.md`), with
+  no call to Yahoo, FRED or the exchange. A page that searches as the
+  user types asks it first, then the full search for the rest.
 
 ## One instrument
 
@@ -141,6 +149,58 @@ MCP tools copied onto paths.
   entry tracked and quoted, and a read stamp would keep a value
   dropped from the flag tracked 30 more days.
 
+## The dashboard
+
+- **`GET /dashboard` is the web UI's home page**: named sections, each
+  shown as `cards` or a `table`, of instruments the admin chose. The
+  server holds one dashboard.
+- **Each item is `id`, `instrument`, `session`, `intraday` and
+  `averages`.** `instrument` is the stored row as `GET /instruments`
+  gives it; `session` its market's last regular session (null for a
+  series); `intraday` whether its source gives 5-minute closes.
+  `averages` holds the price's distance in percent from its daily
+  50-day and 200-day and its weekly 200-week simple moving averages,
+  read from the stored signal rows, never recomputed. A daily one
+  carries `crossed_today`, by the `movers` tool's own rule (`crossing()`
+  in `src/operations/movers.ts`): the last final close on or below the
+  average and the price above it, or the reverse. The weekly one never
+  carries it. A FRED series has no live quote to measure, so all three
+  are null.
+- **Before the first save `created` is false, `revision` 0, and the
+  sections are the `--track` values grouped by kind** (Indices, Stocks,
+  ETFs, Futures, Crypto and so on, any other kind by its own name), in
+  the order its first value has in the flag, each shown as cards; a
+  value not resolved is left out. Nothing is stored by a read, so a
+  value that resolves later still joins it. Until then `track` lists
+  each `--track` value with its state: `ready` (in the sections),
+  `pending` (still resolving, as on a first start) or `failed` (left
+  out). A client waits for none to be pending before it saves, since a
+  save ends the seed. Once saved, `track` is absent and only a save or
+  deleting an instrument on it changes it: an empty dashboard is a
+  dashboard, never seeded again. The seed keeps to the save limits
+  below, so its first edit can be saved.
+- **It is no read and fetches nothing**, as the watchlist: the page
+  asks every minute.
+- **`PUT /dashboard` replaces the whole layout in one write**: a move,
+  a rename, an add or a remove is one call. A stored instrument's id
+  is taken as it is, asking no source, so a source that is off never
+  refuses a rename. Any other symbol resolves as a read does, an
+  unknown one fetched inside the call under its deadline, but no read
+  is marked: an instrument on a saved dashboard is tracked while it is
+  there (`tracked_by` says `dashboard`). An instrument named twice
+  keeps its first place.
+- **Any symbol that does not resolve answers 422 `unresolved`** with
+  `errors[]`, each `{"input", "error": {"code", "detail"}}`, and
+  nothing is saved.
+- **`revision` must be the one stored** (0 before the first save), or
+  409 `conflict` answers with the stored `dashboard`, so a second tab
+  never overwrites a change it has not seen. A save moves it by one, as
+  deleting an instrument on it does.
+- **Limits** (`src/admin/dashboard.ts`): at most 20 sections, 100
+  symbols in one and 200 in all; a name is 1 to 40 characters after
+  trimming, unique ignoring case; `view` is `cards` or `table`. Past
+  any, 400 `bad_arguments`, before anything is resolved.
+
 ## The quotes projection
 
 - **`briefItem()` is what a script needs**: price or observation,
@@ -194,7 +254,8 @@ MCP tools copied onto paths.
   `title` (the status's phrase), `status` (the HTTP status), `detail`,
   and `code`, the one short string a script branches on. `input`,
   `candidates`, `groups`, `rules` and `benchmark` are extensions where
-  the tool gives them. No `type`: RFC 9457 reads a missing one as
+  the tool gives them, and `dashboard` and `errors` where a dashboard
+  save is refused. No `type`: RFC 9457 reads a missing one as
   `about:blank`, and a self-hosted server has no fixed address to name.
 - **An error about one symbol among several is that item's**, inside
   the 200: `{"input", "error": {"code", "detail", "candidates"?}}`
@@ -214,6 +275,7 @@ MCP tools copied onto paths.
 | 404 | `not_found` (route, rule, key, instrument or symbol), `candidates`, `no_data`, `refused` |
 | 405 | `method_not_allowed`, with `Allow` |
 | 409 | `conflict`, `split_paused` |
+| 422 | `unresolved`: a dashboard save naming a symbol that did not resolve |
 | 413 | `payload_too_large` |
 | 415 | `unsupported_media_type` |
 | 429 | `too_many_requests`: past a key's calls a minute, with `Retry-After` in seconds |

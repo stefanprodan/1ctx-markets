@@ -1,15 +1,6 @@
 @layer tokens, base, owners;
 
 @layer owners {
-  .home-group {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-  }
-  .home-kind {
-    margin: 0;
-  }
-  /* as many columns as fit; a phone keeps two */
   .home-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -19,13 +10,6 @@
     .home-grid {
       grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
       gap: var(--space-2);
-    }
-    .home-panel {
-      padding: var(--space-4);
-    }
-    .home-code pre {
-      padding: var(--space-3) 40px var(--space-3) var(--space-3);
-      font-size: var(--text-small);
     }
   }
   .home-card {
@@ -62,9 +46,9 @@
   .home-symbol,
   .home-value {
     font-family: var(--mono);
-    font-size: var(--text-small);
   }
   .home-value {
+    font-size: var(--text-small);
     color: var(--fg);
   }
   .home-card-failed .home-note {
@@ -113,7 +97,15 @@
   .home-down {
     color: var(--failed);
   }
-
+  .home-spinner {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--line-strong);
+    border-top-color: var(--brand);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
   .home-panel {
     display: flex;
     flex-direction: column;
@@ -126,7 +118,6 @@
     font-size: var(--text-title);
     font-weight: 500;
   }
-  .home-panel-text,
   .home-panel-note {
     margin: 0;
     line-height: 1.55;
@@ -135,33 +126,6 @@
   .home-panel-note {
     font-size: var(--text-small);
     color: var(--faint);
-  }
-  .home-panel code {
-    white-space: nowrap;
-    font-family: var(--mono);
-    font-size: 0.92em;
-    color: var(--fg);
-  }
-  .home-code {
-    position: relative;
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    background: var(--inset);
-  }
-  .home-code pre {
-    margin: 0;
-    padding: var(--space-3) 40px var(--space-3) var(--space-4);
-    overflow-x: auto;
-    font-family: var(--mono);
-    font-size: var(--text-mono);
-    line-height: 1.6;
-    color: var(--fg);
-  }
-  /* the copy button sits in the box's corner, the text clear of it */
-  .home-copy {
-    position: absolute;
-    top: 2px;
-    right: 2px;
   }
   .home-legend {
     display: flex;
@@ -197,15 +161,6 @@
     font-variant-numeric: tabular-nums;
     color: var(--faint);
   }
-  .home-spinner {
-    flex: none;
-    width: 16px;
-    height: 16px;
-    border: 2px solid var(--line-strong);
-    border-top-color: var(--brand);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-  }
   .home-progress {
     height: 4px;
     border-radius: 2px;
@@ -236,7 +191,6 @@
   .home-chip-ready .home-legend-symbol {
     color: var(--done);
   }
-
   .home-bone {
     display: block;
     border-radius: var(--radius-cell);
@@ -250,7 +204,6 @@
   .home-card-pending .home-state {
     margin-left: auto;
   }
-  /* a flat line where the day line will be drawn */
   .home-bone-line {
     display: flex;
     align-items: center;

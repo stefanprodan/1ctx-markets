@@ -84,6 +84,15 @@ const PATHS = {
   // Connect agents: a plug
   plug: "M8 14.5v-3M6 5.5v-4M10 5.5v-4M4 5.5h8v3a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3z",
   plus: "M8 3v10M3 8h10",
+  grid: "M2.5 2.5h4.5v4.5h-4.5zM9 2.5h4.5v4.5H9zM2.5 9h4.5v4.5h-4.5zM9 9h4.5v4.5H9z",
+  rows: "M2.5 4h11M2.5 8h11M2.5 12h11",
+  more: "M3.5 8h.01M8 8h.01M12.5 8h.01",
+  grip: "M6 4h.01M10 4h.01M6 8h.01M10 8h.01M6 12h.01M10 12h.01",
+  "arrow-up": "M8 13V3M4 7l4-4 4 4",
+  "arrow-down": "M8 3v10M4 9l4 4 4-4",
+  trash: "M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.5 9h6l.5-9",
+  pencil: "M10.5 2.5l3 3-8 8H2.5v-3z",
+  star: "M8 2l1.8 3.9 4.2.5-3.1 2.9.8 4.2L8 11.4l-3.7 2.1.8-4.2L2 6.4l4.2-.5z",
 } satisfies Record<string, string>;
 
 export type IconName = keyof typeof PATHS;

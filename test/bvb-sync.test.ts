@@ -535,6 +535,27 @@ describe("the list pages at start", () => {
       await drive(t.clock, t.app.bvb!, t.app.bvbJobs!.warm());
       expect(t.pages()).toEqual(LIST_PATHS);
       expect(t.app.bvb!.listed()).not.toBeNull();
+      const kinds = t.db
+        .query<{ kind: string; type: string; n: number }, []>(
+          "select kind, type, count(*) as n from bvb_listings group by kind order by kind",
+        )
+        .all();
+      expect(kinds).toEqual([
+        { kind: "bonds", type: "BOND", n: 226 },
+        { kind: "indices", type: "INDEX", n: 13 },
+        { kind: "shares", type: "EQUITY", n: 89 },
+        { kind: "units", type: "ETF", n: 13 },
+      ]);
+      expect(
+        t.db.query("select * from bvb_listings where symbol = 'TLV'").get(),
+      ).toEqual({
+        kind: "shares",
+        symbol: "TLV",
+        isin: "ROTLVAACNOR1",
+        name: "BANCA TRANSILVANIA S.A.",
+        type: "EQUITY",
+        listed_at: t.app.bvb!.listedAt("shares"),
+      });
     } finally {
       await t.app.stop();
       t.db.close();

@@ -31,6 +31,7 @@ export const spec = {
       description: "One instrument, its bars, and the stored instruments.",
     },
     { name: "rules", description: "Price rules and their alerts." },
+    { name: "dashboard", description: "The web UI's home page." },
     { name: "server", description: "The server's sources and jobs." },
     { name: "keys", description: "The agents' keys." },
     { name: "docs", description: "This page and its OpenAPI document." },

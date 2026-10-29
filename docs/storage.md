@@ -161,7 +161,8 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
 
 - **There is no ticker list.** An instrument is tracked while a read
   named it within `--track-days` (30), any rule reads it, paused or
-  not, or the operator names it with `--track` (`trackedIds()`). Every
+  not, it is on the saved dashboard, or the operator names it with
+  `--track` (`trackedIds()`). Every
   scheduled job syncs only tracked instruments, so all jobs follow the
   same set.
 - **`--track` values live in memory only** (`Tracking.flagged`, filled
@@ -194,6 +195,32 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
 - **An untracked instrument is caught up inside the read that names
   it** (`catchUp()` in `src/sources/yahoo/sync.ts`), and an unknown
   symbol is fetched inside the call (`docs/tools.md`).
+
+## The dashboard
+
+- **Three tables hold the web UI's home page** (`0017-dashboard`):
+  `dashboards` (one row per owner with its `revision`),
+  `dashboard_sections` (`name` and `view` by `position`) and
+  `dashboard_items` (each section's instruments by `position`). The
+  one owner is `operator`.
+- **An item references `instruments(id)` on delete cascade**, so
+  deleting an instrument drops its card and a favourite never blocks
+  the delete (a rule still does); a section's items go with it the same
+  way.
+- **A save replaces the whole layout in one write** and moves the
+  revision by one (`saveDashboard()` in `src/admin/dashboard.ts`).
+
+## Bucharest listings
+
+- **`bvb_listings` holds the Bucharest exchange's list pages as last
+  read** (`0018-bvb-listings`): `kind` (`shares`, `units`, `bonds`,
+  `indices`), `symbol`, `isin`, `name`, `type` and `listed_at`, keyed
+  by kind and symbol. A page read again replaces its kind's rows in
+  one write. It refers to no instrument: a listing is not stored as one
+  until fetched.
+- **Search matches it by substring, so a full scan is the plan:** a
+  few hundred rows, well under a millisecond; no index would serve a
+  match inside a name.
 
 ## Intraday closes
 

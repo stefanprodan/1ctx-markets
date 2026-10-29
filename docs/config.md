@@ -22,7 +22,7 @@ the `--help` text, and a flag changes there in the same commit.
 | `--quote-every <min>` | 5 | minutes between quote passes; a quote two periods behind is `quote overdue` |
 | `--track-days <days>` | 30 | an instrument read within this many days stays tracked; news of an untracked one is pruned |
 | `--source <name>` | none | turns on a keyless source, repeated for each; `bvb` is the Bucharest feed (`docs/bvb.md`) |
-| `--track <symbol>` | none | keeps an instrument tracked whether read or not, repeated for each; a value is what `quote` takes (`docs/storage.md`, Tracking) |
+| `--track <symbol>` | none | keeps an instrument tracked whether read or not, repeated for each; a value is what `quote` takes (`docs/storage.md`, Tracking). Until the dashboard is first saved, the web UI's home page shows these values; after that only the dashboard's own saves, or deleting an instrument on it, change it (`docs/web.md`) |
 | `--no-ui` | the UI on | serves no web UI and refuses its sign-in (`docs/web.md`) |
 | `-v`, `--version` | | prints the version |
 | `-h`, `--help` | | prints the help |

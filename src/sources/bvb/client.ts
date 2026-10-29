@@ -29,7 +29,6 @@ import {
   parseSchedule,
   parseSearch,
   parseShares,
-  parseTypes,
   type Schedule,
   type SharesPage,
 } from "./parse.ts";
@@ -65,9 +64,6 @@ export type Bvb = {
     to: number,
   ): Promise<History>;
   search(text: string): Promise<Listing[]>;
-  // the chart feed's search, for each listing's type, which the site's
-  // search lacks; symbol is a listing whose page gives a key if refused
-  types(text: string, symbol: string): Promise<Map<string, string>>;
   // the symbols, uppercased, on the list pages last read; null until all
   // are read, as an unread kind may hold the symbol
   listed(): ReadonlySet<string> | null;
@@ -83,7 +79,16 @@ export type Bvb = {
 export const LISTS = ["shares", "units", "bonds", "indices"] as const;
 export type ListKind = (typeof LISTS)[number];
 
-export type BvbOptions = { clock: Clock; fetch?: Fetch };
+export type BvbOptions = {
+  clock: Clock;
+  fetch?: Fetch;
+  // each list page read, before the client counts it read
+  onList?: (
+    kind: ListKind,
+    rows: { symbol: string; isin: string | null; name: string | null }[],
+    at: number,
+  ) => Promise<unknown>;
+};
 
 type Raw = { status: number; text: string; fetchedAt: number };
 
@@ -97,10 +102,24 @@ export function bvb(options: BvbOptions): Bvb {
     ListKind,
     { symbols: ReadonlySet<string>; at: number }
   >();
-  const keep = <T extends { rows: { symbol: string }[]; fetchedAt: number }>(
+  const keep = async <
+    T extends {
+      rows: { symbol: string; isin?: string | null; name?: string | null }[];
+      fetchedAt: number;
+    },
+  >(
     kind: ListKind,
     page: T,
-  ): T => {
+  ): Promise<T> => {
+    await options.onList?.(
+      kind,
+      page.rows.map((r) => ({
+        symbol: r.symbol,
+        isin: r.isin ?? null,
+        name: r.name ?? null,
+      })),
+      page.fetchedAt,
+    );
     lists.set(kind, {
       symbols: new Set(page.rows.map((r) => r.symbol.toUpperCase())),
       at: page.fetchedAt,
@@ -287,16 +306,6 @@ export function bvb(options: BvbOptions): Bvb {
           refuse(raw.status);
           return parseSearch(json(raw));
         }, run),
-      types: (text, symbol) => {
-        const params = new URLSearchParams({
-          // the most the feed takes
-          limit: "30",
-          query: text.slice(0, MAX_SEARCH),
-          type: "",
-          exchange: "",
-        });
-        return feed(`/search?${params}`, symbol, parseTypes);
-      },
       listed: () =>
         !LISTS.every((k) => lists.has(k))
           ? null

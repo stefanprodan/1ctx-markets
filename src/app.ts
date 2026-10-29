@@ -20,6 +20,7 @@ import { mcpHandler } from "./server/mcp.ts";
 import { sessions } from "./server/session.ts";
 import { type Bvb, bvb } from "./sources/bvb/client.ts";
 import { type BvbJobs, bvbJobs } from "./sources/bvb/jobs.ts";
+import { storeListings } from "./sources/bvb/listings.ts";
 import {
   priceSources,
   type SourceSwitch,
@@ -165,7 +166,22 @@ export function start(options: AppOptions): App {
   });
 
   const bvbClient =
-    options.bvb === true ? bvb({ clock, fetch: options.fetch }) : null;
+    options.bvb === true
+      ? bvb({
+          clock,
+          fetch: options.fetch,
+          // search's copy of a list page never fails the read that brought it
+          onList: (kind, rows, at) =>
+            write
+              .write((db) => storeListings(db, kind, rows, at))
+              .catch((error) =>
+                options.log("bvb").warn("listings write failed", {
+                  kind,
+                  ...errorFields(error),
+                }),
+              ),
+        })
+      : null;
   const bvbCtx =
     bvbClient === null
       ? null

@@ -789,7 +789,9 @@ describe("delete", () => {
       )
       .all()
       .map((r) => r.name);
-    expect(keyed).toEqual([...INSTRUMENT_TABLES, "rules"].sort());
+    expect(keyed).toEqual(
+      [...INSTRUMENT_TABLES, "rules", "dashboard_items"].sort(),
+    );
   });
 
   test("removes every row of the instrument and nothing of another", async () => {

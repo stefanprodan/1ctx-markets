@@ -588,7 +588,7 @@ export function Chart({ id }: { id: string }) {
   return (
     <section class="card chart-card" aria-label="Chart">
       <div class="chart-head">
-        <fieldset class="seg seg-small" aria-label="Range">
+        <fieldset class="seg seg-small chart-ranges" aria-label="Range">
           {RANGES.map((r) => (
             <button
               key={r}

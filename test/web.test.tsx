@@ -19,12 +19,20 @@ import {
   failure,
   says,
 } from "../src/web/data/api.ts";
-import type { AgentKey, Detail } from "../src/web/data/store.ts";
+import type { AgentKey, Candidate, Detail } from "../src/web/data/store.ts";
 import {
+  type Board,
+  type BoardItem,
+  type BoardSection,
+  DASHBOARD_PATH,
+  EARNINGS_PATH,
+  EARNINGS_SYMBOLS,
   INSTRUMENTS_PATH,
   instrumentPath,
   KEYS_PATH,
   type Listed,
+  layoutOf,
+  payloadOf,
   SESSION_PATH,
   STATUS_PATH,
   type Status,
@@ -33,7 +41,6 @@ import {
   type WatchEntry,
 } from "../src/web/data/store.ts";
 import { didNotLoad, Page } from "../src/web/ui/Page.tsx";
-import { SettingDelete } from "../src/web/ui/SettingDelete.tsx";
 import {
   axisPrice,
   candles,
@@ -77,14 +84,50 @@ import {
   ShownKey,
 } from "../src/web/views/Connect.tsx";
 import {
+  addRefusal,
+  addSection,
+  addTo,
+  afterSave,
+  bySort,
+  clipOf,
+  crossedToday,
+  DEFAULT_SORT,
+  draftOf,
+  dropSection,
+  earningRows,
+  editOf,
+  entryOf,
+  escapeFrom,
+  gapText,
+  isSort,
+  money,
+  moversOf,
+  moveTo,
+  nameError,
+  nextSort,
+  removeFrom,
+  rename,
+  renameOf,
+  type Search,
+  type Sort,
+  savedDraft,
+  saveOf,
+  searcher,
+  shortName,
+  swap,
+  trendsOf,
+  UPSTREAM_WAIT_MS,
+  waiting,
+  withView,
+} from "../src/web/views/Dashboard.model.ts";
+import { Earnings, Glance, LoadingPanel } from "../src/web/views/Dashboard.tsx";
+import {
   cardOf,
-  clipIds,
-  groupsOf,
   moveOf,
   SPARK_H,
   sparkOf,
 } from "../src/web/views/Home.model.ts";
-import { HomeBody } from "../src/web/views/Home.tsx";
+import { Card } from "../src/web/views/Home.tsx";
 import {
   afterHours,
   choices,
@@ -95,7 +138,7 @@ import {
   summary,
   weekly200,
 } from "../src/web/views/Instrument.model.ts";
-import { Head, RefetchMenu } from "../src/web/views/Instrument.tsx";
+import { Head, InstrumentMenu } from "../src/web/views/Instrument.tsx";
 import {
   about,
   bySymbol,
@@ -291,7 +334,7 @@ describe("the routes", () => {
     // the home page lands on /, and Status keeps its own path
     expect(HOME).toBe("/");
     expect(match("/")?.route.label).toBe("Home");
-    expect(match("/status")?.route.label).toBe("Status");
+    expect(match("/status")?.route.label).toBe("Server status");
     expect(match("/instruments")?.route.label).toBe("Instruments");
     expect(match("/connect")?.route.label).toBe("Connect agents");
     expect(match("/nothing")).toBeNull();
@@ -305,9 +348,9 @@ describe("the routes", () => {
     // the rail names the pages without a parameter and lights the parent
     expect(RAIL.map((r) => r.label)).toEqual([
       "Home",
-      "Status",
-      "Connect agents",
       "Instruments",
+      "Connect agents",
+      "Server status",
     ]);
     expect(lit("/status", "/")).toBe(false);
     expect(lit("/instruments/US%3ANVDA", "/instruments")).toBe(true);
@@ -1247,64 +1290,26 @@ describe("the instrument page", () => {
     ).not.toContain("1 week");
   });
 
-  test("the refetch button says how it went in the same place", () => {
-    const options = choices(listed("US:NVDA"));
-    const on = (html: string) =>
-      [
-        ...html.matchAll(/class="ins-label ins-label-on[^"]*">(.*?)<\/span>/g),
-      ].map((m) => m[1]!.replace(/<[^>]+>/g, ""));
-    const idle = render(
-      <RefetchMenu
-        options={options}
-        busy={false}
-        done={null}
-        onPick={() => {}}
-      />,
-    );
-    expect(on(idle)).toEqual(["Refetch"]);
-    const busy = render(
-      <RefetchMenu options={options} busy done={null} onPick={() => {}} />,
-    );
-    expect(on(busy)).toEqual(["Fetching"]);
+  test("the actions button checks a refetch that fetched and waits while busy", () => {
+    const menu = (busy: boolean, done: boolean) =>
+      render(
+        <InstrumentMenu
+          symbol="NVDA"
+          busy={busy}
+          done={done}
+          removing={false}
+          onRefetch={() => {}}
+          onDelete={() => {}}
+        />,
+      );
+    const idle = menu(false, false);
+    expect(idle).toContain('aria-label="More"');
+    expect(idle).not.toContain("disabled");
+    expect(idle).not.toContain("ins-done");
+    const busy = menu(true, false);
     expect(busy).toContain("disabled");
-    const done = render(
-      <RefetchMenu
-        options={options}
-        busy={false}
-        done="Updated"
-        onPick={() => {}}
-      />,
-    );
-    expect(on(done)).toEqual(["Updated"]);
-    // every label is drawn, so the button keeps its width
-    expect(done).toContain("Not available");
-  });
-
-  test("the delete card asks first and says why it was refused", () => {
-    const html = render(
-      <SettingDelete
-        title="Delete NVDA"
-        line="Gone."
-        ask="Delete NVDA?"
-        refused={null}
-        busy={false}
-        onDelete={() => {}}
-      />,
-    );
-    expect(html).toContain("setting-danger");
-    expect(html).toContain("Delete NVDA");
-    expect(html).not.toContain("Delete NVDA?");
-    const refused = render(
-      <SettingDelete
-        title="Delete NVDA"
-        line="Gone."
-        ask="Delete NVDA?"
-        refused="A rule uses NVDA. Delete the rule first."
-        busy={false}
-        onDelete={() => {}}
-      />,
-    );
-    expect(refused).toContain("A rule uses NVDA. Delete the rule first.");
+    expect(busy).toContain('aria-label="Fetching"');
+    expect(menu(false, true)).toContain("ins-done");
   });
 
   test("an instrument loads by id; an older answer never lands over a newer id", async () => {
@@ -2315,7 +2320,7 @@ const barsOf = (id: string, q: string) =>
 const DAY = "interval=5m";
 const MONTH = "from=2026-09-28&interval=1d";
 
-describe("the home page", () => {
+describe("the home page's cards", () => {
   test("the fakes hold to the spec", () => {
     const schemas = spec.components.schemas as Record<string, any>;
     expect(validate(HOME_WATCH, schemas.Watchlist, spec)).toEqual([]);
@@ -2325,97 +2330,7 @@ describe("the home page", () => {
     expect(
       validate(monthAnswer("FRED:DGS10", [4, 4.1]), schemas.Bars, spec),
     ).toEqual([]);
-  });
-
-  test("loads the watchlist, then each card's line in parallel; no 5-minute closes asks a month of days", async () => {
-    const answers: Record<string, () => Response> = {
-      [`GET ${WATCHLIST_PATH}`]: ok(HOME_WATCH),
-    };
-    for (const id of ["SNP:^GSPC", "CMX:GC=F", "NAS:^NDX"]) {
-      answers[`GET ${barsOf(id, DAY)}`] = ok(dayAnswer(id, [101, 99], 100));
-    }
-    for (const id of ["FRED:DGS10", "BVB:BET"]) {
-      answers[`GET ${barsOf(id, MONTH)}`] = ok(monthAnswer(id, [4, 4.1]));
-    }
-    const f = fake(answers);
-    const s = store(f.fetch, () => NOW);
-    await s.loadHome();
-    expect(f.asked.map((a) => a.path)).toEqual([
-      WATCHLIST_PATH,
-      barsOf("SNP:^GSPC", DAY),
-      barsOf("CMX:GC=F", DAY),
-      barsOf("FRED:DGS10", MONTH),
-      barsOf("NAS:^NDX", DAY),
-      barsOf("BVB:BET", MONTH),
-    ]);
-    expect(s.watchlist.value).toEqual(HOME_WATCH.entries as any);
-    expect(s.attribution.value).toBe(HOME_WATCH.attribution);
-    expect([...s.sparks.value.keys()]).toEqual([
-      "SNP:^GSPC",
-      "CMX:GC=F",
-      "FRED:DGS10",
-      "NAS:^NDX",
-      "BVB:BET",
-    ]);
-    expect(s.sparks.value.get("BVB:BET")?.interval).toBe("1d");
-  });
-
-  test("a failed line keeps the one drawn before; a 401 signs out", async () => {
-    let failing = false;
-    const one = { ...HOME_WATCH, entries: [HOME_WATCH.entries[0]!] };
-    const s = store(
-      fake({
-        [`GET ${WATCHLIST_PATH}`]: ok(one),
-        [`GET ${barsOf("SNP:^GSPC", DAY)}`]: () =>
-          failing
-            ? status(500, { status: 500, code: "internal", detail: "x" })()
-            : ok(dayAnswer("SNP:^GSPC", [101], 100))(),
-      }).fetch,
-      () => NOW,
-    );
-    s.signedIn.value = true;
-    await s.loadHome();
-    failing = true;
-    await s.loadHome();
-    expect(s.sparks.value.has("SNP:^GSPC")).toBe(true);
-    expect(s.homeError.value).toBeNull();
-    for (const path of [WATCHLIST_PATH, barsOf("SNP:^GSPC", DAY)]) {
-      const out = store(
-        fake({
-          [`GET ${WATCHLIST_PATH}`]: ok(one),
-          [`GET ${path}`]: status(401, {
-            status: 401,
-            code: "unauthorized",
-            detail: "x",
-          }),
-        }).fetch,
-        () => NOW,
-      );
-      out.signedIn.value = true;
-      await out.loadHome();
-      expect([path, out.signedIn.value]).toEqual([path, false]);
-      expect(out.homeError.value).toBeNull();
-    }
-  });
-
-  test("groups follow their first value in the flag, cards the flag, unresolved ones in place", () => {
-    const g = groupsOf(HOME_WATCH.entries as WatchEntry[]);
-    expect(g.map((x) => [x.kind, x.entries.map((e) => e.value)])).toEqual([
-      ["Index", ["^GSPC", "^NDX", "TYPO", "BVB:BET"]],
-      ["Future", ["GC=F"]],
-      ["Series", ["FRED:DGS10", "LATER"]],
-    ]);
-    // a value with no kind before it joins the first kind after it
-    const lead = groupsOf([
-      HOME_WATCH.entries[5],
-      HOME_WATCH.entries[1],
-    ] as WatchEntry[]);
-    expect(lead.map((x) => [x.kind, x.entries.length])).toEqual([
-      ["Future", 2],
-    ]);
-    expect(groupsOf([HOME_WATCH.entries[3]] as WatchEntry[])).toEqual([
-      { kind: null, entries: [HOME_WATCH.entries[3] as WatchEntry] },
-    ]);
+    expect(validate(BOARD, schemas.Dashboard, spec)).toEqual([]);
   });
 
   test("a card has its price, the day's move in its unit and in percent, and its state", () => {
@@ -2453,7 +2368,6 @@ describe("the home page", () => {
   });
 
   test("a pending value with a stored row shows its stored price; Pending only without one", () => {
-    // after a restart every value is pending while its prices are stored
     const restarted = {
       ...tracked("^GSPC", "SNP:^GSPC"),
       state: "pending",
@@ -2483,132 +2397,9 @@ describe("the home page", () => {
     expect(cardOf({ ...stored, state: "candidates" })).toMatchObject({
       text: "Not found",
     });
-    // it keeps its kind and its place in the flag
-    const entries = [
-      HOME_WATCH.entries[1],
-      stored,
-      HOME_WATCH.entries[0],
-    ] as WatchEntry[];
-    expect(
-      groupsOf(entries).map((g) => [g.kind, g.entries.map((e) => e.value)]),
-    ).toEqual([
-      ["Future", ["GC=F"]],
-      ["Index", ["^NDX", "^GSPC"]],
-    ]);
-    const html = render(<HomeBody entries={entries} sparks={new Map()} />);
+    const html = render(<Card entry={stored} spark={undefined} id="x" />);
     expect(html).toContain("Not available");
     expect(html).toContain('href="/instruments/NAS%3A%5ENDX"');
-  });
-
-  test("leaving the page drops a load in flight, so no line is asked", async () => {
-    const held = Promise.withResolvers<Response>();
-    const asked: string[] = [];
-    const at = signal("/");
-    const s = store(
-      async (path) => {
-        asked.push(path);
-        if (path === WATCHLIST_PATH) return held.promise;
-        return Response.json(dayAnswer("SNP:^GSPC", [101], 100));
-      },
-      () => NOW,
-      () => at.value,
-    );
-    s.signedIn.value = true;
-    const loading = s.loadHome();
-    expect(asked).toEqual([WATCHLIST_PATH]);
-    // what a link or the back button does to the router's path
-    at.value = "/status";
-    held.resolve(Response.json(HOME_WATCH));
-    await loading;
-    expect(asked).toEqual([WATCHLIST_PATH]);
-    expect(s.sparks.value.size).toBe(0);
-  });
-
-  test("a home load asked off the home page asks nothing", async () => {
-    const asked: string[] = [];
-    const s = store(
-      async (path) => {
-        asked.push(path);
-        return Response.json(HOME_WATCH);
-      },
-      () => NOW,
-      () => "/status",
-    );
-    s.signedIn.value = true;
-    await s.loadHome();
-    expect(asked).toEqual([]);
-  });
-
-  test("an older watchlist answer never lands over a newer one, whichever page asked", async () => {
-    const pending = {
-      entries: [
-        {
-          ...HOME_WATCH.entries[0]!,
-          state: "pending",
-          id: null,
-          instrument: null,
-          session: null,
-          intraday: false,
-        },
-      ],
-    };
-    const resolved = { entries: [HOME_WATCH.entries[0]!] };
-    const watch: PromiseWithResolvers<Response>[] = [];
-    const s = store(
-      async (path) => {
-        if (path === WATCHLIST_PATH) {
-          const w = Promise.withResolvers<Response>();
-          watch.push(w);
-          return w.promise;
-        }
-        if (path === STATUS_PATH) return Response.json(STATUS);
-        return Response.json(dayAnswer("SNP:^GSPC", [101], 100));
-      },
-      () => NOW,
-    );
-    // Status asks first, Home after; Home's answer lands first
-    const statusLoad = s.loadStatus();
-    const homeLoad = s.loadHome();
-    expect(watch).toHaveLength(2);
-    watch[1]!.resolve(Response.json(resolved));
-    await homeLoad;
-    watch[0]!.resolve(Response.json(pending));
-    await statusLoad;
-    expect(s.status.value).toEqual(STATUS);
-    expect(s.watchlist.value).toEqual(resolved.entries as any);
-    // a newer Status answer still lands
-    const again = s.loadStatus();
-    watch[2]!.resolve(Response.json(pending));
-    await again;
-    expect(s.watchlist.value).toEqual(pending.entries as any);
-  });
-
-  test("a line's clip ids follow its instrument, escaped and unique", () => {
-    const entries = HOME_WATCH.entries as WatchEntry[];
-    const ids = clipIds(entries);
-    const again = clipIds([...entries].reverse());
-    for (const e of entries) expect(again.get(e)).toBe(ids.get(e)!);
-    expect(ids.get(entries[0]!)).toBe("spark-SNP_3a__5e_GSPC");
-    for (const id of ids.values()) expect(id).toMatch(/^[A-Za-z][\w-]*$/);
-    expect(new Set(ids.values()).size).toBe(entries.length);
-    // the same instrument twice still gets two
-    const twice = [entries[0]!, { ...entries[0]!, value: "SNP:^GSPC" }];
-    expect([...clipIds(twice).values()]).toEqual([
-      "spark-SNP_3a__5e_GSPC",
-      "spark-SNP_3a__5e_GSPC-2",
-    ]);
-    const html = render(
-      <HomeBody
-        entries={entries}
-        sparks={
-          new Map<string, any>([
-            ["SNP:^GSPC", dayAnswer("SNP:^GSPC", [101, 99], 100)],
-          ])
-        }
-      />,
-    );
-    expect(html).toContain('id="spark-SNP_3a__5e_GSPC-up"');
-    expect(html).toContain('clip-path="url(#spark-SNP_3a__5e_GSPC-down)"');
   });
 
   test("a day line splits at the previous close across its session; a month line is one colour", () => {
@@ -2626,82 +2417,1246 @@ describe("the home page", () => {
     expect(sparkOf(undefined)).toBeNull();
   });
 
-  test("the minute refresh redraws every line without stacking old ones", () => {
-    const entries = HOME_WATCH.entries as WatchEntry[];
-    const draw = (shift: number) =>
+  test("a card shows only the day's percent where asked; the minute refresh redraws its line", () => {
+    const e = HOME_WATCH.entries[0] as WatchEntry;
+    const draw = (shift: number, percentOnly: boolean) =>
       render(
-        <HomeBody
-          entries={entries}
-          sparks={
-            new Map<string, any>([
-              ["SNP:^GSPC", dayAnswer("SNP:^GSPC", [101 + shift, 99], 100)],
-              ["CMX:GC=F", dayAnswer("CMX:GC=F", [101, 102 + shift], 100)],
-              ["NAS:^NDX", dayAnswer("NAS:^NDX", [], 100)],
-              ["FRED:DGS10", monthAnswer("FRED:DGS10", [4, 4.1 + shift])],
-              ["BVB:BET", monthAnswer("BVB:BET", [4, 3.9])],
-            ])
-          }
+        <Card
+          entry={e}
+          spark={dayAnswer("SNP:^GSPC", [101 + shift, 99], 100) as Intraday}
+          id="dash-0-SNP"
+          percentOnly={percentOnly}
         />,
       );
-    const first = draw(0);
-    const again = draw(1);
-    for (const html of [first, again]) {
-      // two clipped copies per day line, one per month line, none without points
-      expect(html.match(/<polyline/g)).toHaveLength(2 + 2 + 1 + 1);
-      expect(html.match(/class="spark-base"/g)).toHaveLength(2);
-      expect(html.match(/class="card home-card/g)).toHaveLength(7);
-    }
-    expect(again).not.toEqual(first);
-    // groups in flag order, each card linking its instrument
-    expect(first.indexOf(">Index<")).toBeLessThan(first.indexOf(">Future<"));
-    expect(first.indexOf(">Future<")).toBeLessThan(first.indexOf(">Series<"));
-    expect(first).toContain('href="/instruments/FRED%3ADGS10"');
-    expect(first).toContain("Not found");
-    expect(first).toContain("Pending");
+    expect(draw(0, false)).toContain("+1.00 USD");
+    const first = draw(0, true);
+    expect(first).not.toContain("+1.00 USD");
+    expect(first).toContain("+1.00%");
+    expect(first.match(/<polyline/g)).toHaveLength(2);
+    expect(draw(1, true)).not.toEqual(first);
+  });
+});
+
+// the dashboard's answers, built to the spec's schema
+const NO_AVERAGES = {
+  daily_sma50: null,
+  daily_sma200: null,
+  weekly_sma200: null,
+};
+const boardItem = (
+  id: string,
+  more: Partial<Listed> = {},
+  averages: BoardItem["averages"] = NO_AVERAGES,
+  intraday = true,
+) => ({
+  id,
+  instrument: homeRow(id, more) as Listed,
+  session: intraday ? SESSION : null,
+  intraday,
+  averages,
+});
+const BOARD: Board = {
+  revision: 3,
+  created: true,
+  sections: [
+    {
+      name: "Indices",
+      view: "cards",
+      items: [
+        boardItem("SNP:^GSPC"),
+        boardItem(
+          "BVB:BET",
+          { source: "bvb", currency: "RON" },
+          NO_AVERAGES,
+          false,
+        ),
+      ],
+    },
+    {
+      name: "Shares",
+      view: "table",
+      items: [
+        boardItem(
+          "US:AAA",
+          { kind: "EQUITY", change_percent: 2.5 },
+          {
+            daily_sma50: { distance_pct: 4.2, crossed_today: true },
+            daily_sma200: { distance_pct: -1.5, crossed_today: false },
+            weekly_sma200: { distance_pct: 30 },
+          },
+        ),
+      ],
+    },
+  ],
+};
+const itemsOf = (b: Board) =>
+  new Map(b.sections.flatMap((s) => s.items.map((i) => [i.id, i] as const)));
+const local = (ms: number) => {
+  const d = new Date(ms);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+};
+const earningsOf = (ids: string[]) =>
+  `${EARNINGS_PATH}?${new URLSearchParams({
+    from: local(NOW),
+    to: local(NOW + 6 * 86_400_000),
+    symbols: ids.join(","),
+  })}`;
+const EARNING = {
+  id: "US:AAA",
+  name: "AAA Inc.",
+  date: "2026-10-28",
+  hour: "amc",
+  eps_estimate: 1.234,
+  revenue_estimate: 206_300_000_000,
+  currency: "USD",
+};
+
+describe("the dashboard's search", () => {
+  const cand = (id: string, stored: boolean): Candidate => ({
+    id,
+    name: null,
+    type: "EQUITY",
+    exchange: id.slice(0, id.indexOf(":")),
+    stored,
   });
 
-  test("no values: a panel says how to track some, with a command to copy", () => {
-    const html = render(<HomeBody entries={[]} sparks={new Map()} />);
-    expect(html).toContain("Nothing tracked yet");
-    // zsh reads an unquoted ^ as a pattern
-    expect(html).toContain("--track '^VIX'");
-    expect(html).toContain("--track ETH-USD");
-    expect(html).toContain("service install --restart");
-    expect(html).toContain('aria-label="Copy the command"');
-  });
-
-  test("one value first fetched is a pending card in its place, with no panel", () => {
-    const html = render(
-      <HomeBody
-        entries={HOME_WATCH.entries as WatchEntry[]}
-        sparks={new Map()}
-      />,
+  // each ask held until the test answers it, timers run by hand
+  function rig() {
+    const asks: {
+      query: string;
+      upstream: boolean;
+      signal: AbortSignal;
+      answer: (c: Candidate[]) => Promise<void>;
+    }[] = [];
+    const search: Search = (query, upstream, signal) =>
+      new Promise((resolve) => {
+        asks.push({
+          query,
+          upstream,
+          signal,
+          answer: async (c) => {
+            resolve(c);
+            await Promise.resolve();
+            await Promise.resolve();
+          },
+        });
+      });
+    const timers: { fn: () => void; ms: number; cleared: boolean }[] = [];
+    const shown: (Candidate[] | null)[] = [];
+    const busy: boolean[] = [];
+    const s = searcher(
+      search,
+      (f) => shown.push(f),
+      (b) => busy.push(b),
+      {
+        set: (fn, ms) => {
+          const t = { fn, ms, cleared: false };
+          timers.push(t);
+          return t;
+        },
+        clear: (t) => {
+          (t as { cleared: boolean }).cleared = true;
+        },
+      },
     );
-    expect(html).not.toContain("Getting prices");
-    expect(html.match(/home-card-pending/g)).toHaveLength(1);
-    expect(html).toContain(">LATER<");
+    const fire = () => {
+      for (const t of timers.splice(0)) if (!t.cleared) t.fn();
+    };
+    return { s, asks, timers, shown, busy, fire };
+  }
+
+  test("one letter asks the database only", async () => {
+    const r = rig();
+    r.s.ask("a");
+    expect(r.asks.map((a) => [a.query, a.upstream])).toEqual([["a", false]]);
+    expect(r.timers).toEqual([]);
+    expect(r.busy).toEqual([false]);
+    await r.asks[0]!.answer([cand("US:AAPL", true)]);
+    expect(r.shown).toEqual([[cand("US:AAPL", true)]]);
   });
 
-  test("many values first fetched are a loading panel; the other cards show below it", () => {
-    const waiting = (value: string) =>
-      ({ ...(HOME_WATCH.entries[3] as WatchEntry), value }) as WatchEntry;
-    const typo = HOME_WATCH.entries.find((e) => e.value === "TYPO");
-    const entries = [
-      HOME_WATCH.entries[0],
-      waiting("^DJI"),
-      waiting("^N225"),
-      typo,
-    ] as WatchEntry[];
-    const html = render(<HomeBody entries={entries} sparks={new Map()} />);
+  test("stored matches draw at once and upstream's join under them", async () => {
+    const r = rig();
+    r.s.ask(" aap ");
+    expect(r.busy).toEqual([true]);
+    await r.asks[0]!.answer([cand("US:AAPL", true)]);
+    expect(r.shown).toEqual([[cand("US:AAPL", true)]]);
+    // upstream waits out the pause before its call
+    expect(r.asks).toHaveLength(1);
+    expect(r.timers.map((t) => t.ms)).toEqual([UPSTREAM_WAIT_MS]);
+    r.fire();
+    expect(r.asks.map((a) => [a.query, a.upstream])).toEqual([
+      ["aap", false],
+      ["aap", true],
+    ]);
+    await r.asks[1]!.answer([cand("US:AAPL", true), cand("MEX:AAPL", false)]);
+    expect(r.shown.at(-1)).toEqual([
+      cand("US:AAPL", true),
+      cand("MEX:AAPL", false),
+    ]);
+    expect(r.busy).toEqual([true, false]);
+  });
+
+  test("a newer query aborts the older, whose late answers draw nothing", async () => {
+    const r = rig();
+    r.s.ask("aa");
+    r.fire();
+    r.s.ask("aap");
+    const [oldStored, oldUpstream, newStored] = r.asks;
+    expect(oldStored!.signal.aborted).toBe(true);
+    expect(oldUpstream!.signal.aborted).toBe(true);
+    expect(newStored!.signal.aborted).toBe(false);
+    await oldUpstream!.answer([cand("US:AA", false)]);
+    await oldStored!.answer([cand("US:AAL", true)]);
+    expect(r.shown).toEqual([]);
+    // the old query's upstream ended busy only for itself
+    expect(r.busy).toEqual([true, true]);
+    await newStored!.answer([cand("US:AAPL", true)]);
+    expect(r.shown).toEqual([[cand("US:AAPL", true)]]);
+    // a query changed within the pause never asks upstream
+    r.s.ask("aapl");
+    expect(r.timers.filter((t) => !t.cleared)).toHaveLength(1);
+    r.fire();
+    expect(r.asks.filter((a) => a.upstream).map((a) => a.query)).toEqual([
+      "aa",
+      "aapl",
+    ]);
+  });
+
+  test("an emptied box clears the results and stops what is in flight", () => {
+    const r = rig();
+    r.s.ask("aap");
+    r.s.ask("  ");
+    expect(r.asks[0]!.signal.aborted).toBe(true);
+    expect(r.shown).toEqual([null]);
+    expect(r.busy).toEqual([true, false]);
+  });
+
+  test("the store asks the database only with upstream false, and passes the signal", async () => {
+    const f = fake({
+      "GET /api/v1/symbols?query=aap&upstream=false": ok({ candidates: [] }),
+      "GET /api/v1/symbols?query=aap": ok({ candidates: [] }),
+    });
+    const s = store(f.fetch);
+    const abort = new AbortController();
+    await s.search("aap", false, abort.signal);
+    await s.search("aap");
+    expect(f.asked.map((a) => a.path)).toEqual([
+      "/api/v1/symbols?query=aap&upstream=false",
+      "/api/v1/symbols?query=aap",
+    ]);
+    expect(f.asked[0]!.init?.signal).toBe(abort.signal);
+  });
+});
+
+describe("the dashboard's model", () => {
+  test("movers are the four biggest each way, scaled to the biggest move", () => {
+    const pct = [5, -3, 0.001, 2, 1, 0.5, -8, null];
+    const items = new Map(
+      pct.map((p, i) => [
+        `US:S${i}`,
+        boardItem(`US:S${i}`, { kind: "EQUITY", change_percent: p }),
+      ]),
+    );
+    const m = moversOf([...items.keys(), "US:GONE"], items);
+    expect(m.up.map((r) => r.change_percent)).toEqual([5, 2, 1, 0.5]);
+    expect(m.down.map((r) => r.change_percent)).toEqual([-8, -3]);
+    expect(m.top).toBe(8);
+    expect(moversOf([], items)).toEqual({ up: [], down: [], top: 1 });
+    expect(shortName(homeRow("US:A", { name: "Apple Inc." }) as Listed)).toBe(
+      "Apple",
+    );
+    expect(
+      shortName(
+        homeRow("BVB:R2809A", { kind: "BOND", name: "Fidelis" }) as Listed,
+      ),
+    ).toBe("R2809A");
+  });
+
+  test("the trend lists what is bought, by its gaps, deepest below its 50SMA first", () => {
+    const g = (sma50: number | null, crossed = false) => ({
+      daily_sma50:
+        sma50 === null ? null : { distance_pct: sma50, crossed_today: crossed },
+      daily_sma200: { distance_pct: 1, crossed_today: false },
+      weekly_sma200: { distance_pct: 2 },
+    });
+    const items = new Map([
+      ["US:A", boardItem("US:A", { kind: "EQUITY" }, g(3))],
+      ["US:B", boardItem("US:B", { kind: "ETF" }, g(-4, true))],
+      ["US:C", boardItem("US:C", { kind: "CRYPTOCURRENCY" }, g(null))],
+      ["X:IDX", boardItem("X:IDX", { kind: "INDEX" }, g(-9))],
+      ["US:NONE", boardItem("US:NONE", { kind: "EQUITY" })],
+      ["US:NOP", boardItem("US:NOP", { kind: "EQUITY", price: null }, g(1))],
+    ]);
+    const t = trendsOf([...items.keys()], items);
+    expect(t.map((x) => x.id)).toEqual(["US:A", "US:B", "US:C"]);
+    expect(t.filter(crossedToday).map((x) => x.id)).toEqual(["US:B"]);
+    expect(t[0]!.wma200).toEqual({ gap: 2, crossed: false });
+    const sorted = (s: Sort) => [...t].sort(bySort(s)).map((x) => x.id);
+    expect(sorted(DEFAULT_SORT)).toEqual(["US:B", "US:A", "US:C"]);
+    const flipped = nextSort(DEFAULT_SORT, "sma50");
+    expect(flipped).toEqual({ key: "sma50", dir: -1 });
+    expect(sorted(flipped)).toEqual(["US:A", "US:B", "US:C"]);
+    expect(nextSort(flipped, "wma200")).toEqual({ key: "wma200", dir: 1 });
+    expect(isSort({ key: "sma50", dir: -1 })).toBe(true);
+    expect(isSort({ key: "rsi", dir: 1 })).toBe(false);
+    expect([
+      gapText(0.456),
+      gapText(-0.4),
+      gapText(12.34),
+      gapText(-3),
+    ]).toEqual(["+0.46%", "−0.40%", "+12.3%", "−3.0%"]);
+  });
+
+  test("earnings read as days, times and short money", () => {
+    const rows = earningRows(
+      [
+        EARNING,
+        { ...EARNING, date: "2026-10-29", hour: "bmo", eps_estimate: null },
+        { ...EARNING, date: "2026-10-31", hour: "", revenue_estimate: null },
+      ],
+      "2026-10-28",
+    );
+    expect(rows.map((r) => [r.day, r.today, r.time, r.eps, r.revenue])).toEqual(
+      [
+        ["Today", true, "After close", "1.23", "206.3B"],
+        ["Tomorrow", false, "Before open", "—", "206.3B"],
+        ["Sat 31 Oct", false, "—", "1.23", "—"],
+      ],
+    );
+    expect([money(1.5e12), money(870e6), money(1234)]).toEqual([
+      "1.50T",
+      "870M",
+      "1,234",
+    ]);
+  });
+
+  test("a layout edit is whole, and one that changes nothing is null", () => {
+    const l = layoutOf(BOARD);
+    expect(l).toEqual([
+      { name: "Indices", view: "cards", ids: ["SNP:^GSPC", "BVB:BET"] },
+      { name: "Shares", view: "table", ids: ["US:AAA"] },
+    ]);
+    expect(addTo([], 0, "US:A")).toEqual([
+      { name: "Favourites", view: "cards", ids: ["US:A"] },
+    ]);
+    expect(addTo(l, 1, "US:B")![1]!.ids).toEqual(["US:AAA", "US:B"]);
+    expect(addTo(l, 1, "BVB:BET")).toBeNull();
+    const full = [
+      {
+        name: "A",
+        view: "cards" as const,
+        ids: Array.from({ length: 100 }, (_, i) => `X:${i}`),
+      },
+    ];
+    expect(addTo(full, 0, "US:B")).toBeNull();
+    expect(moveTo(l, 0, "BVB:BET", 0, "SNP:^GSPC")![0]!.ids).toEqual([
+      "BVB:BET",
+      "SNP:^GSPC",
+    ]);
+    const moved = moveTo(l, 0, "SNP:^GSPC", 1, null)!;
+    expect(moved.map((s) => s.ids)).toEqual([
+      ["BVB:BET"],
+      ["US:AAA", "SNP:^GSPC"],
+    ]);
+    expect(moveTo(l, 0, "BVB:BET", 0, "BVB:BET")).toBeNull();
+    expect(removeFrom(l, 0, "BVB:BET")[0]!.ids).toEqual(["SNP:^GSPC"]);
+    expect(swap(l, 0, 1).map((s) => s.name)).toEqual(["Shares", "Indices"]);
+    expect(withView(l, 0, "table")[0]!.view).toBe("table");
+    expect(dropSection(l, 0).map((s) => s.name)).toEqual(["Shares"]);
+    expect(l[0]!.ids).toEqual(["SNP:^GSPC", "BVB:BET"]);
+    expect(addSection(l)!.at(-1)).toEqual({
+      name: "Section 3",
+      view: "cards",
+      ids: [],
+    });
+    expect(
+      addSection([...l, { name: "section 3", view: "cards", ids: [] }])!.at(-1)!
+        .name,
+    ).toBe("Section 4");
+    const twenty = Array.from({ length: 20 }, (_, i) => ({
+      name: `S${i}`,
+      view: "cards" as const,
+      ids: [],
+    }));
+    expect(addSection(twenty)).toBeNull();
+    expect(nameError(l, 0, " ")).toBe("Give it a name.");
+    expect(nameError(l, 0, "x".repeat(41))).toBe("At most 40 characters.");
+    expect(nameError(l, 0, "shares")).toBe("Another section has this name.");
+    expect(nameError(l, 0, "indices")).toBeNull();
+    expect(rename(l, 0, " Markets ")![0]!.name).toBe("Markets");
+    expect(rename(l, 0, "Indices")).toBeNull();
+    expect(rename(l, 0, "Shares")).toBeNull();
+    expect(payloadOf(3, l)).toEqual({
+      revision: 3,
+      sections: [
+        { name: "Indices", view: "cards", symbols: ["SNP:^GSPC", "BVB:BET"] },
+        { name: "Shares", view: "table", symbols: ["US:AAA"] },
+      ],
+    });
+  });
+
+  test("a drop that changes nothing, or names what a refresh took away, is no edit", () => {
+    const l = layoutOf(BOARD);
+    expect(moveTo(l, 0, "BVB:BET", 0, null)).toBeNull();
+    expect(moveTo(l, 0, "US:AAA", 1, null)).toBeNull();
+    expect(moveTo(l, 5, "BVB:BET", 0, null)).toBeNull();
+    expect(moveTo(l, 0, "BVB:BET", 5, null)).toBeNull();
+  });
+
+  test("an add the server would refuse says why", () => {
+    const l = layoutOf(BOARD);
+    expect(addRefusal(l, 0, "US:NEW")).toBeNull();
+    expect(addRefusal([], 0, "US:NEW")).toBeNull();
+    expect(addRefusal(l, 0, "US:AAA")).toBe("Already on your dashboard.");
+    expect(addRefusal(l, 7, "US:NEW")).toBe("That section is gone.");
+    const full = [
+      {
+        name: "A",
+        view: "cards" as const,
+        ids: Array.from({ length: 100 }, (_, i) => `X:${i}`),
+      },
+    ];
+    expect(addRefusal(full, 0, "US:NEW")).toBe("This section is full.");
+    const both = [
+      ...full,
+      { ...full[0]!, name: "B", ids: full[0]!.ids.map((i) => `Y${i}`) },
+    ];
+    expect(addRefusal(both, 0, "US:NEW")).toBe("Your dashboard is full.");
+  });
+
+  test("Escape closes the section picker first, then the results", () => {
+    expect(escapeFrom("US:AAA")).toBe("picker");
+    expect(escapeFrom(null)).toBe("results");
+  });
+
+  test("an edit is a draft apart from the layout; an unchanged one saves nothing", () => {
+    const l = layoutOf(BOARD);
+    const d = draftOf(l);
+    expect(savedDraft(d, l)).toBeNull();
+    d[0]!.ids.pop();
+    expect(l[0]!.ids).toEqual(["SNP:^GSPC", "BVB:BET"]);
+    expect(savedDraft(d, l)).toEqual(d);
+  });
+
+  test("Save compares the draft to the layout it was copied from, on its revision", () => {
+    const l = layoutOf(BOARD);
+    const e = editOf(l, 3);
+    expect(saveOf(e)).toBeNull();
+    e.draft[0]!.ids.pop();
+    expect(e.base[0]!.ids).toEqual(["SNP:^GSPC", "BVB:BET"]);
+    expect(saveOf(e)).toEqual({ next: e.draft, revision: 3 });
+  });
+
+  test("a save ends only the edit it saved, and keeps it when it failed", () => {
+    const l = layoutOf(BOARD);
+    const saved = editOf(l, 3);
+    const later = editOf(l, 3);
+    expect(afterSave(saved, saved, "saved")).toBeNull();
+    expect(afterSave(saved, saved, "conflict")).toBeNull();
+    expect(afterSave(saved, saved, "failed")).toBe(saved);
+    expect(afterSave(later, saved, "saved")).toBe(later);
+    expect(afterSave(null, saved, "saved")).toBeNull();
+  });
+
+  test("a name left in the field saves, says why it cannot, or does nothing", () => {
+    const l = layoutOf(BOARD);
+    expect(renameOf(l, 0, " Markets ")).toEqual({
+      next: [{ ...l[0]!, name: "Markets" }, l[1]!],
+    });
+    expect(renameOf(l, 0, "Indices")).toBeNull();
+    expect(renameOf(l, 0, "")).toEqual({ error: "Give it a name." });
+    expect(renameOf(l, 0, "SHARES")).toEqual({
+      error: "Another section has this name.",
+    });
+  });
+
+  test("while a seed value is still fetched the page waits, with a chip per value", () => {
+    const track = [
+      { value: "^GSPC", state: "ready" as const },
+      { value: "AAPL", state: "pending" as const },
+      { value: "TYPO", state: "failed" as const },
+    ];
+    expect(waiting(track)).toBe(true);
+    expect(waiting([track[0]!, track[2]!])).toBe(false);
+    expect(waiting(null)).toBe(false);
+    const html = render(<LoadingPanel track={track} />);
     expect(html).toContain("Getting prices");
-    // a failed value is never counted or coloured as ready
-    expect(html).toContain("1 of 4");
-    expect(html.match(/home-chip-pending/g)).toHaveLength(2);
-    expect(html.match(/home-chip-ready/g)).toHaveLength(1);
-    expect(html.match(/home-chip-failed/g)).toHaveLength(1);
-    // the waiting values are chips only, never cards
-    expect(html).not.toContain("home-card-pending");
-    expect(html.match(/class="card home-card"/g)).toHaveLength(1);
-    expect(html).toContain("Not found");
+    expect(html).toContain("1 of 3");
+    for (const state of ["ready", "pending", "failed"]) {
+      expect(html.match(new RegExp(`home-chip-${state}`, "g"))).toHaveLength(1);
+    }
+  });
+
+  test("a card not answered yet draws as pending; clip ids are escaped and apart", () => {
+    expect(entryOf("US:NEW", undefined)).toMatchObject({
+      value: "NEW",
+      state: "pending",
+      instrument: null,
+    });
+    expect(cardOf(entryOf("US:NEW", undefined)).type).toBe("pending");
+    const item = itemsOf(BOARD).get("SNP:^GSPC");
+    expect(cardOf(entryOf("SNP:^GSPC", item))).toMatchObject({
+      type: "ready",
+      state: "Open",
+    });
+    expect(clipOf(0, "SNP:^GSPC")).toBe("dash-0-SNP_3a__5e_GSPC");
+    expect(clipOf(1, "A.B")).not.toBe(clipOf(1, "A_B"));
+    expect(clipOf(1, "SNP:^GSPC")).toMatch(/^[A-Za-z][\w-]*$/);
+  });
+
+  test("the top card counts today's crossings, hidden at none, and the week's earnings", () => {
+    const items = itemsOf(BOARD);
+    const ids = [...items.keys()];
+    const html = render(
+      <Glance ids={ids} items={items} earnings={[EARNING]} />,
+    );
+    expect(html).toContain("Today's movers");
+    expect(html.match(/dash-tab-count/g)).toHaveLength(2);
+    const calm = new Map(items);
+    calm.set("US:AAA", boardItem("US:AAA", { kind: "EQUITY" }));
+    const none = render(<Glance ids={ids} items={calm} earnings={[]} />);
+    expect(none.match(/dash-tab-count/g)).toHaveLength(1);
+    expect(none).toContain("dash-tab-zero");
+    const off = render(<Glance ids={ids} items={calm} earnings={[]} off />);
+    expect(off.match(/dash-tab-count/g)).toBeNull();
+    expect(render(<Earnings earnings={[]} off />)).toContain(
+      "Earnings are not available.",
+    );
+    expect(render(<Earnings earnings={[]} off={false} />)).toContain(
+      "None of your stocks reports",
+    );
+  });
+});
+
+describe("the dashboard's store", () => {
+  // answers held until released, by method and path
+  function held() {
+    const waits = new Map<string, ((r: Response) => void)[]>();
+    const asked: { key: string; body: any }[] = [];
+    const fetch: Fetch = (path, init) =>
+      new Promise<Response>((resolve) => {
+        const key = `${init?.method ?? "GET"} ${path}`;
+        asked.push({
+          key,
+          body: typeof init?.body === "string" ? JSON.parse(init.body) : null,
+        });
+        waits.set(key, [...(waits.get(key) ?? []), resolve]);
+      });
+    const answer = async (key: string, res: Response) => {
+      while (!(waits.get(key)?.length ?? 0)) await Bun.sleep(0);
+      waits.get(key)!.shift()!(res);
+      await Bun.sleep(0);
+    };
+    const puts = () => asked.filter((a) => a.key === `PUT ${DASHBOARD_PATH}`);
+    return { fetch, answer, asked, puts };
+  }
+
+  const PUT = `PUT ${DASHBOARD_PATH}`;
+  const lines: Record<string, () => Response> = {
+    [`GET ${barsOf("SNP:^GSPC", DAY)}`]: ok(dayAnswer("SNP:^GSPC", [101], 100)),
+    [`GET ${barsOf("US:AAA", DAY)}`]: ok(dayAnswer("US:AAA", [101], 100)),
+    [`GET ${barsOf("BVB:BET", MONTH)}`]: ok(monthAnswer("BVB:BET", [4, 4.1])),
+    [`GET ${earningsOf(["US:AAA"])}`]: ok({ earnings: [EARNING] }),
+  };
+
+  test("loads the layout, each card's line and the favourite shares' earnings", async () => {
+    const f = fake({ [`GET ${DASHBOARD_PATH}`]: ok(BOARD), ...lines });
+    const s = store(
+      f.fetch,
+      () => NOW,
+      () => "/",
+    );
+    await s.loadDashboard();
+    expect(f.asked.map((a) => a.path)).toEqual([
+      DASHBOARD_PATH,
+      barsOf("SNP:^GSPC", DAY),
+      barsOf("BVB:BET", MONTH),
+      barsOf("US:AAA", DAY),
+      earningsOf(["US:AAA"]),
+    ]);
+    expect(s.layout.value).toEqual(layoutOf(BOARD));
+    expect([...s.items.value.keys()]).toEqual([
+      "SNP:^GSPC",
+      "BVB:BET",
+      "US:AAA",
+    ]);
+    expect(s.sparks.value.get("BVB:BET")?.interval).toBe("1d");
+    expect(s.earnings.value).toEqual([EARNING]);
+    const off = fake({});
+    await store(
+      off.fetch,
+      () => NOW,
+      () => "/status",
+    ).loadDashboard();
+    expect(off.asked).toEqual([]);
+  });
+
+  test("the watchlist's seed shows until the first save, which sends revision 0", async () => {
+    const seed = { ...BOARD, revision: 0, created: false };
+    const h = held();
+    const s = store(
+      h.fetch,
+      () => NOW,
+      () => "/",
+    );
+    const load = s.loadDashboard();
+    await h.answer(`GET ${DASHBOARD_PATH}`, Response.json(seed));
+    expect(s.layout.value).toEqual(layoutOf(seed));
+    const next = removeFrom(s.layout.value!, 0, "BVB:BET");
+    const saving = s.saveLayout(next);
+    expect(s.layout.value).toEqual(next);
+    const saved = {
+      ...seed,
+      revision: 1,
+      created: true,
+      sections: [
+        { ...seed.sections[0]!, items: [seed.sections[0]!.items[0]!] },
+        seed.sections[1]!,
+      ],
+    };
+    await h.answer(PUT, Response.json(saved));
+    await saving;
+    expect(h.puts()[0]!.body).toEqual(payloadOf(0, next));
+    expect(s.layout.value).toEqual(layoutOf(saved));
+    expect(s.saveError.value).toBeNull();
+    const again = s.saveLayout(removeFrom(s.layout.value!, 1, "US:AAA"));
+    await h.answer(PUT, Response.json({ ...saved, revision: 2 }));
+    await again;
+    expect(h.puts()[1]!.body.revision).toBe(1);
+    void load;
+  });
+
+  test("a refused save puts the saved layout back and says why", async () => {
+    const cases: [Response, string][] = [
+      [
+        Response.json(
+          { status: 500, code: "internal", detail: "internal error" },
+          { status: 500 },
+        ),
+        "Not saved. The server failed.",
+      ],
+      [
+        Response.json(
+          {
+            status: 422,
+            code: "unresolved",
+            detail: "some symbols did not resolve; nothing was saved",
+            errors: [
+              { input: "ZZZ", error: { code: "not_found", detail: "x" } },
+            ],
+          },
+          { status: 422 },
+        ),
+        "Could not add ZZZ.",
+      ],
+    ];
+    for (const [res, words] of cases) {
+      const h = held();
+      const s = store(
+        h.fetch,
+        () => NOW,
+        () => "/",
+      );
+      void s.loadDashboard();
+      await h.answer(`GET ${DASHBOARD_PATH}`, Response.json(BOARD));
+      const next = addTo(s.layout.value!, 1, "ZZZ")!;
+      const saving = s.saveLayout(next);
+      expect(s.layout.value).toEqual(next);
+      await h.answer(PUT, res);
+      await saving;
+      expect(s.layout.value).toEqual(layoutOf(BOARD));
+      expect(s.saveError.value).toBe(words);
+      const after = s.saveLayout(swap(s.layout.value!, 0, 1));
+      expect(s.saveError.value).toBeNull();
+      await h.answer(PUT, Response.json(BOARD));
+      await after;
+      expect(h.puts()[1]!.body.revision).toBe(3);
+    }
+  });
+
+  test("a save another tab beat takes the stored dashboard and its revision", async () => {
+    const h = held();
+    const s = store(
+      h.fetch,
+      () => NOW,
+      () => "/",
+    );
+    void s.loadDashboard();
+    await h.answer(`GET ${DASHBOARD_PATH}`, Response.json(BOARD));
+    const other: Board = {
+      ...BOARD,
+      revision: 7,
+      sections: [BOARD.sections[1]!],
+    };
+    const saving = s.saveLayout(dropSection(s.layout.value!, 1));
+    await h.answer(
+      PUT,
+      Response.json(
+        {
+          status: 409,
+          code: "conflict",
+          detail: "the dashboard changed since that revision",
+          dashboard: other,
+        },
+        { status: 409 },
+      ),
+    );
+    await saving;
+    expect(s.layout.value).toEqual(layoutOf(other));
+    expect(s.saveError.value).toBe("Changed in another tab. Reloaded.");
+    const next = s.saveLayout(withView(s.layout.value!, 0, "cards"));
+    await h.answer(PUT, Response.json({ ...other, revision: 8 }));
+    await next;
+    expect(h.puts()[1]!.body.revision).toBe(7);
+  });
+
+  test("edits while a save is in flight go in one more, on the revision it answered", async () => {
+    const h = held();
+    const s = store(
+      h.fetch,
+      () => NOW,
+      () => "/",
+    );
+    void s.loadDashboard();
+    await h.answer(`GET ${DASHBOARD_PATH}`, Response.json(BOARD));
+    const l = s.layout.value!;
+    const first = s.saveLayout(withView(l, 0, "table"));
+    const a = withView(withView(l, 0, "table"), 1, "cards");
+    void s.saveLayout(a);
+    const b = swap(a, 0, 1);
+    const last = s.saveLayout(b);
+    expect(s.layout.value).toEqual(b);
+    await h.answer(PUT, Response.json({ ...BOARD, revision: 4 }));
+    expect(s.layout.value).toEqual(b);
+    const saved = {
+      ...BOARD,
+      revision: 5,
+      sections: [
+        { ...BOARD.sections[1]!, view: "cards" as const },
+        { ...BOARD.sections[0]!, view: "table" as const },
+      ],
+    };
+    await h.answer(PUT, Response.json(saved));
+    await Promise.all([first, last]);
+    expect(h.puts().map((p) => p.body.revision)).toEqual([3, 4]);
+    expect(h.puts()[1]!.body).toEqual(payloadOf(4, b));
+    expect(s.layout.value).toEqual(layoutOf(saved));
+  });
+
+  test("a load asked before an edit never lands its layout over it", async () => {
+    const h = held();
+    const s = store(
+      h.fetch,
+      () => NOW,
+      () => "/",
+    );
+    void s.loadDashboard();
+    await h.answer(`GET ${DASHBOARD_PATH}`, Response.json(BOARD));
+    const tick = s.loadDashboard();
+    const next = dropSection(s.layout.value!, 0);
+    const saving = s.saveLayout(next);
+    await h.answer(
+      PUT,
+      Response.json({ ...BOARD, revision: 4, sections: [BOARD.sections[1]!] }),
+    );
+    await saving;
+    await h.answer(`GET ${DASHBOARD_PATH}`, Response.json(BOARD));
+    void tick;
+    await Bun.sleep(0);
+    expect(s.layout.value).toEqual(next);
+    const again = s.saveLayout(addSection(next)!);
+    await h.answer(PUT, Response.json({ ...BOARD, revision: 5 }));
+    await again;
+    expect(h.puts()[1]!.body.revision).toBe(4);
+  });
+
+  test("a load asked during a save but answered after it never lands the older layout", async () => {
+    const h = held();
+    const s = store(
+      h.fetch,
+      () => NOW,
+      () => "/",
+    );
+    void s.loadDashboard();
+    await h.answer(`GET ${DASHBOARD_PATH}`, Response.json(BOARD));
+    const next = dropSection(s.layout.value!, 0);
+    const saving = s.saveLayout(next);
+    void s.loadDashboard();
+    const saved = { ...BOARD, revision: 4, sections: [BOARD.sections[1]!] };
+    await h.answer(PUT, Response.json(saved));
+    await saving;
+    await h.answer(`GET ${DASHBOARD_PATH}`, Response.json(BOARD));
+    expect(s.layout.value).toEqual(layoutOf(saved));
+    const again = s.saveLayout(addSection(s.layout.value!)!);
+    await h.answer(PUT, Response.json({ ...saved, revision: 5 }));
+    await again;
+    expect(h.puts()[1]!.body.revision).toBe(4);
+    expect(s.saveError.value).toBeNull();
+  });
+
+  test("the seed's values while it was never saved, gone once it is", async () => {
+    const track = [
+      { value: "^GSPC", state: "ready" as const },
+      { value: "AAPL", state: "pending" as const },
+    ];
+    const h = held();
+    const s = store(
+      h.fetch,
+      () => NOW,
+      () => "/",
+    );
+    void s.loadDashboard();
+    await h.answer(
+      `GET ${DASHBOARD_PATH}`,
+      Response.json({ ...BOARD, revision: 0, created: false, track }),
+    );
+    expect(s.seeding.value).toEqual(track);
+    void s.loadDashboard();
+    await h.answer(`GET ${DASHBOARD_PATH}`, Response.json(BOARD));
+    expect(s.seeding.value).toBeNull();
+  });
+
+  test("more favourite shares than one earnings call takes go in several, merged by date", async () => {
+    const n = EARNINGS_SYMBOLS + 20;
+    const shares = Array.from({ length: n }, (_, i) => `US:S${i}`);
+    const board: Board = {
+      revision: 1,
+      created: true,
+      sections: [
+        {
+          name: "Shares",
+          view: "table",
+          items: shares.map((id) => boardItem(id, { kind: "EQUITY" })),
+        },
+      ],
+    };
+    const late = { ...EARNING, id: "US:S0", date: "2026-11-02" };
+    const soon = { ...EARNING, id: `US:S${n - 1}`, date: "2026-10-29" };
+    const first = earningsOf(shares.slice(0, EARNINGS_SYMBOLS));
+    const second = earningsOf(shares.slice(EARNINGS_SYMBOLS));
+    const asked: string[] = [];
+    const s = store(
+      async (path) => {
+        asked.push(path);
+        if (path === DASHBOARD_PATH) return Response.json(board);
+        if (path === first) return Response.json({ earnings: [late] });
+        if (path === second) return Response.json({ earnings: [soon] });
+        return Response.json(dayAnswer("US:S0", [101], 100));
+      },
+      () => NOW,
+      () => "/",
+    );
+    await s.loadDashboard();
+    expect(asked.filter((p) => p.startsWith(EARNINGS_PATH))).toEqual([
+      first,
+      second,
+    ]);
+    expect(s.earnings.value).toEqual([soon, late]);
+  });
+
+  test("an edit after signing out and back in is saved, whatever the old save did", async () => {
+    const h = held();
+    const s = store(
+      h.fetch,
+      () => NOW,
+      () => "/",
+    );
+    void s.loadDashboard();
+    await h.answer(`GET ${DASHBOARD_PATH}`, Response.json(BOARD));
+    void s.saveLayout(dropSection(s.layout.value!, 0));
+    const out = s.signOut();
+    await h.answer(
+      `DELETE ${SESSION_PATH}`,
+      new Response(null, { status: 204 }),
+    );
+    await out;
+    void s.loadDashboard();
+    await h.answer(`GET ${DASHBOARD_PATH}`, Response.json(BOARD));
+    const saving = s.saveLayout(swap(s.layout.value!, 0, 1));
+    expect(h.puts()).toHaveLength(2);
+    expect(h.puts()[1]!.body.revision).toBe(3);
+    await h.answer(PUT, Response.json({ ...BOARD, revision: 9 }));
+    await h.answer(PUT, Response.json({ ...BOARD, revision: 4 }));
+    await saving;
+    const again = s.saveLayout(addSection(s.layout.value!)!);
+    expect(h.puts()).toHaveLength(3);
+    await h.answer(PUT, Response.json({ ...BOARD, revision: 5 }));
+    await again;
+    expect(h.puts()[2]!.body.revision).toBe(4);
+  });
+
+  test("Save sends one write with every edit of the draft; Cancel sends nothing", async () => {
+    const h = held();
+    const s = store(
+      h.fetch,
+      () => NOW,
+      () => "/",
+    );
+    void s.loadDashboard();
+    await h.answer(`GET ${DASHBOARD_PATH}`, Response.json(BOARD));
+    const l = s.layout.value!;
+    let d = (renameOf(draftOf(l), 0, "Markets") as { next: BoardSection[] })
+      .next;
+    d = swap(d, 0, 1);
+    d = withView(d, 0, "cards");
+    d = removeFrom(d, 1, "BVB:BET");
+    expect(h.puts()).toHaveLength(0);
+    expect(s.layout.value).toEqual(l);
+    expect(s.layout.value).toEqual(layoutOf(BOARD));
+    const saving = s.saveLayout(savedDraft(d, l)!);
+    await h.answer(PUT, Response.json({ ...BOARD, revision: 4 }));
+    await saving;
+    expect(h.puts()).toHaveLength(1);
+    expect(h.puts()[0]!.body).toEqual(payloadOf(3, d));
+    expect(d.map((x) => x.name)).toEqual(["Shares", "Markets"]);
+  });
+
+  test("the earnings window is today and the six days after it", async () => {
+    const f = fake({ [`GET ${DASHBOARD_PATH}`]: ok(BOARD), ...lines });
+    const s = store(
+      f.fetch,
+      () => NOW,
+      () => "/",
+    );
+    await s.loadDashboard();
+    const asked = new URL(
+      f.asked.find((a) => a.path.startsWith(EARNINGS_PATH))!.path,
+      "http://x",
+    );
+    expect(
+      Date.parse(asked.searchParams.get("to")!) -
+        Date.parse(asked.searchParams.get("from")!),
+    ).toBe(6 * 86_400_000);
+  });
+
+  test("earnings none could be had are not available, never none reporting", async () => {
+    for (const answer of [
+      { earnings: [], message: "no earnings source" },
+      {
+        earnings: [],
+        unavailable: [{ input: "US:AAA", id: "US:AAA", message: "x" }],
+      },
+    ]) {
+      const f = fake({
+        ...lines,
+        [`GET ${DASHBOARD_PATH}`]: ok(BOARD),
+        [`GET ${earningsOf(["US:AAA"])}`]: ok(answer),
+      });
+      const s = store(
+        f.fetch,
+        () => NOW,
+        () => "/",
+      );
+      await s.loadDashboard();
+      expect(s.earningsOff.value).toBe(true);
+    }
+    const good = store(
+      fake({ [`GET ${DASHBOARD_PATH}`]: ok(BOARD), ...lines }).fetch,
+      () => NOW,
+      () => "/",
+    );
+    await good.loadDashboard();
+    expect(good.earningsOff.value).toBe(false);
+  });
+
+  test("a share with no calendar among others answering is a note, not earnings off", async () => {
+    const both: Board = {
+      ...BOARD,
+      sections: [
+        BOARD.sections[0]!,
+        {
+          ...BOARD.sections[1]!,
+          items: [
+            ...BOARD.sections[1]!.items,
+            boardItem(
+              "BVB:TLV",
+              { kind: "EQUITY", source: "bvb" },
+              NO_AVERAGES,
+              false,
+            ),
+          ],
+        },
+      ],
+    };
+    const f = fake({
+      ...lines,
+      [`GET ${DASHBOARD_PATH}`]: ok(both),
+      [`GET ${barsOf("BVB:TLV", MONTH)}`]: ok(monthAnswer("BVB:TLV", [1, 2])),
+      [`GET ${earningsOf(["US:AAA", "BVB:TLV"])}`]: ok({
+        earnings: [],
+        unavailable: [{ input: "BVB:TLV", id: "BVB:TLV", message: "x" }],
+      }),
+    });
+    const s = store(
+      f.fetch,
+      () => NOW,
+      () => "/",
+    );
+    await s.loadDashboard();
+    expect(s.earnings.value).toEqual([]);
+    expect(s.earningsOff.value).toBe(false);
+  });
+
+  test("an older answer never draws its prices over a newer one", async () => {
+    const h = held();
+    const s = store(
+      h.fetch,
+      () => NOW,
+      () => "/",
+    );
+    void s.loadDashboard();
+    await h.answer(`GET ${DASHBOARD_PATH}`, Response.json(BOARD));
+    const priced = (revision: number, price: number): Board => ({
+      ...BOARD,
+      revision,
+      sections: BOARD.sections.map((x) => ({
+        ...x,
+        items: x.items.map((i) => ({
+          ...i,
+          instrument: { ...i.instrument, price },
+        })),
+      })),
+    });
+    void s.loadDashboard();
+    const saving = s.saveLayout(swap(s.layout.value!, 0, 1));
+    await h.answer(PUT, Response.json(priced(4, 200)));
+    await saving;
+    await h.answer(`GET ${DASHBOARD_PATH}`, Response.json(priced(3, 50)));
+    expect(s.items.value.get("US:AAA")!.instrument.price).toBe(200);
+    const next = s.saveLayout(swap(s.layout.value!, 0, 1));
+    void s.loadDashboard();
+    await h.answer(`GET ${DASHBOARD_PATH}`, Response.json(priced(5, 300)));
+    await h.answer(PUT, Response.json(priced(5, 250)));
+    await next;
+    expect(s.items.value.get("US:AAA")!.instrument.price).toBe(300);
+  });
+
+  test("an older earnings answer never lands over a newer one; a removed share's go at once", async () => {
+    const h = held();
+    const s = store(
+      h.fetch,
+      () => NOW,
+      () => "/",
+    );
+    void s.loadDashboard();
+    await h.answer(`GET ${DASHBOARD_PATH}`, Response.json(BOARD));
+    const bbb = boardItem("US:BBB", { kind: "EQUITY" });
+    const withB: Board = {
+      ...BOARD,
+      revision: 4,
+      sections: [
+        BOARD.sections[0]!,
+        { ...BOARD.sections[1]!, items: [...BOARD.sections[1]!.items, bbb] },
+      ],
+    };
+    const saving = s.saveLayout(addTo(s.layout.value!, 1, "US:BBB")!);
+    await h.answer(PUT, Response.json(withB));
+    await saving;
+    const newer = { ...EARNING, id: "US:BBB" };
+    await h.answer(
+      `GET ${earningsOf(["US:AAA", "US:BBB"])}`,
+      Response.json({ earnings: [EARNING, newer] }),
+    );
+    await h.answer(
+      `GET ${earningsOf(["US:AAA"])}`,
+      Response.json({ earnings: [] }),
+    );
+    expect(s.earnings.value).toEqual([EARNING, newer]);
+    const removing = s.saveLayout(removeFrom(s.layout.value!, 1, "US:BBB"));
+    await h.answer(PUT, Response.json({ ...BOARD, revision: 5 }));
+    await removing;
+    expect(s.earnings.value).toEqual([EARNING]);
+  });
+
+  test("the notice follows each save that landed, even when a later one is refused", async () => {
+    const h = held();
+    const s = store(
+      h.fetch,
+      () => NOW,
+      () => "/",
+    );
+    void s.loadDashboard();
+    await h.answer(`GET ${DASHBOARD_PATH}`, Response.json(BOARD));
+    expect(s.attribution.value).toBeNull();
+    const l = s.layout.value!;
+    const first = s.saveLayout(swap(l, 0, 1));
+    void s.saveLayout(withView(swap(l, 0, 1), 0, "cards"));
+    await h.answer(
+      PUT,
+      Response.json({ ...BOARD, revision: 4, attribution: "A notice." }),
+    );
+    await h.answer(
+      PUT,
+      Response.json(
+        { status: 500, code: "internal", detail: "x" },
+        { status: 500 },
+      ),
+    );
+    await first;
+    expect(s.saveError.value).toBe("Not saved. The server failed.");
+    expect(s.attribution.value).toBe("A notice.");
+  });
+
+  test("a save that lands after leaving Home asks for no lines", async () => {
+    const h = held();
+    let page = "/";
+    const s = store(
+      h.fetch,
+      () => NOW,
+      () => page,
+    );
+    void s.loadDashboard();
+    await h.answer(`GET ${DASHBOARD_PATH}`, Response.json(BOARD));
+    const saving = s.saveLayout(addTo(s.layout.value!, 1, "US:NEW")!);
+    page = "/status";
+    const before = h.asked.length;
+    const added = {
+      ...BOARD.sections[1]!,
+      items: [...BOARD.sections[1]!.items, boardItem("US:NEW")],
+    };
+    await h.answer(
+      PUT,
+      Response.json({
+        ...BOARD,
+        revision: 4,
+        sections: [BOARD.sections[0]!, added],
+      }),
+    );
+    await saving;
+    expect(h.asked.slice(before)).toEqual([]);
+  });
+  test("a Save made on an older revision is refused, never sent over a newer one", async () => {
+    const h = held();
+    const s = store(
+      h.fetch,
+      () => NOW,
+      () => "/",
+    );
+    void s.loadDashboard();
+    await h.answer(`GET ${DASHBOARD_PATH}`, Response.json(BOARD));
+    const e = editOf(s.layout.value!, s.revision());
+    const other: Board = {
+      ...BOARD,
+      revision: 5,
+      sections: [
+        { ...BOARD.sections[0]!, items: [BOARD.sections[0]!.items[0]!] },
+        BOARD.sections[1]!,
+      ],
+    };
+    void s.loadDashboard();
+    await h.answer(`GET ${DASHBOARD_PATH}`, Response.json(other));
+    expect(s.layout.value![0]!.ids).toEqual(["SNP:^GSPC"]);
+    expect(saveOf(e)).toBeNull();
+    e.draft = withView(e.draft, 0, "table");
+    const { next, revision } = saveOf(e)!;
+    const saving = s.saveLayout(next, revision);
+    expect(h.puts()[0]!.body.revision).toBe(3);
+    await h.answer(
+      PUT,
+      Response.json(
+        { status: 409, code: "conflict", detail: "x", dashboard: other },
+        { status: 409 },
+      ),
+    );
+    expect(await saving).toBe("conflict");
+    expect(s.layout.value).toEqual(layoutOf(other));
+    expect(s.saveError.value).toBe("Changed in another tab. Reloaded.");
+  });
+
+  test("an edit begun while this tab's own save is in flight saves on the revision it answered", async () => {
+    const h = held();
+    const s = store(
+      h.fetch,
+      () => NOW,
+      () => "/",
+    );
+    void s.loadDashboard();
+    await h.answer(`GET ${DASHBOARD_PATH}`, Response.json(BOARD));
+    const first = s.saveLayout(withView(s.layout.value!, 0, "table"));
+    const e = editOf(s.layout.value!, s.revision());
+    await h.answer(PUT, Response.json({ ...BOARD, revision: 4 }));
+    expect(await first).toBe("saved");
+    e.draft = swap(e.draft, 0, 1);
+    const { next, revision } = saveOf(e)!;
+    const saving = s.saveLayout(next, revision);
+    expect(h.puts()[1]!.body.revision).toBe(4);
+    await h.answer(PUT, Response.json({ ...BOARD, revision: 5 }));
+    expect(await saving).toBe("saved");
+    void s.saveLayout(withView(s.layout.value!, 0, "cards"));
+    expect(h.puts()[2]!.body.revision).toBe(5);
+  });
+
+  test("a save that fails says so and leaves the edit to try again", async () => {
+    const h = held();
+    const s = store(
+      h.fetch,
+      () => NOW,
+      () => "/",
+    );
+    void s.loadDashboard();
+    await h.answer(`GET ${DASHBOARD_PATH}`, Response.json(BOARD));
+    const e = editOf(s.layout.value!, s.revision());
+    e.draft = swap(e.draft, 0, 1);
+    const { next, revision } = saveOf(e)!;
+    const saving = s.saveLayout(next, revision);
+    await h.answer(
+      PUT,
+      Response.json(
+        { status: 422, code: "bad_arguments", detail: "x" },
+        { status: 422 },
+      ),
+    );
+    expect(await saving).toBe("failed");
+    expect(s.saveError.value).not.toBeNull();
+    expect(s.layout.value).toEqual(layoutOf(BOARD));
+    const again = s.saveLayout(next, revision);
+    expect(h.puts()[1]!.body).toEqual(payloadOf(3, next));
+    await h.answer(PUT, Response.json({ ...BOARD, revision: 4 }));
+    expect(await again).toBe("saved");
+    expect(s.saveError.value).toBeNull();
+  });
+
+  test("an earnings answer asked before a save never brings back a share it removed", async () => {
+    const h = held();
+    const s = store(
+      h.fetch,
+      () => NOW,
+      () => "/",
+    );
+    void s.loadDashboard();
+    await h.answer(`GET ${DASHBOARD_PATH}`, Response.json(BOARD));
+    const removing = s.saveLayout(removeFrom(s.layout.value!, 1, "US:AAA"));
+    const without: Board = {
+      ...BOARD,
+      revision: 4,
+      sections: [BOARD.sections[0]!, { ...BOARD.sections[1]!, items: [] }],
+    };
+    await h.answer(PUT, Response.json(without));
+    await removing;
+    await h.answer(
+      `GET ${earningsOf(["US:AAA"])}`,
+      Response.json({ earnings: [EARNING] }),
+    );
+    expect(s.earnings.value).toEqual([]);
+  });
+  test("a save during the first load keeps the earnings answer it did not change", async () => {
+    const h = held();
+    const s = store(
+      h.fetch,
+      () => NOW,
+      () => "/",
+    );
+    void s.loadDashboard();
+    await h.answer(`GET ${DASHBOARD_PATH}`, Response.json(BOARD));
+    const saving = s.saveLayout(withView(s.layout.value!, 0, "table"));
+    await h.answer(PUT, Response.json({ ...BOARD, revision: 4 }));
+    await saving;
+    await h.answer(
+      `GET ${earningsOf(["US:AAA"])}`,
+      Response.json({ earnings: [EARNING] }),
+    );
+    expect(s.earnings.value).toEqual([EARNING]);
   });
 });

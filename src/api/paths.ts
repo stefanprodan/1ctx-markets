@@ -2,6 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
+  MAX_DASHBOARD_SYMBOLS,
+  MAX_SECTION_NAME,
+  MAX_SECTION_SYMBOLS,
+  MAX_SECTIONS,
+} from "../admin/dashboard.ts";
+import {
   MAX_BODY_BYTES as ADMIN_BODY_BYTES,
   DEFAULT_PAGE,
   MAX_PAGE,
@@ -256,8 +262,16 @@ export const paths = {
         "- Fetches no prices and does not count as a read.",
         "- A source that failed is listed in `errors`, beside the other matches.",
         "- A series not stored yet is found only as `FRED:<series id>`.",
+        "- A regional source's listings come from the lists it last read, none before its first read.",
       ),
-      parameters: [query("query", "A name or symbol.", str, true)],
+      parameters: [
+        query("query", "A name or symbol.", str, true),
+        query(
+          "upstream",
+          "`false` answers only what is stored: instruments and a regional source's listings, asking no source, for an answer at once. Default: `true`.",
+          bool,
+        ),
+      ],
       responses: reads({ 200: ok("The matches.", ref("Symbols")) }),
     },
   },
@@ -364,7 +378,7 @@ export const paths = {
         "",
         "- Pass `next_page_token` as `page_token` for the next page; it is absent on the last.",
         "- `total` counts every match.",
-        "- `tracked_by`: a rule, a recent read (until `read_until`), or the watchlist.",
+        "- `tracked_by`: a rule, a dashboard, a recent read (until `read_until`), or the watchlist.",
         "- Listing does not count as a read and fetches nothing.",
       ),
       parameters: [
@@ -689,6 +703,50 @@ export const paths = {
       responses: admins({
         204: { description: "Revoked." },
         404: r("NotFound"),
+      }),
+    },
+  },
+  "/dashboard": {
+    get: {
+      tags: ["dashboard"],
+      operationId: "getDashboard",
+      security: ADMIN_AUTH,
+      summary: "The dashboard",
+      description: lines(
+        "The web UI's home page: named sections of instruments, each item with its stored price, its market's session and its distance from its averages.",
+        "",
+        "- Until the first save, `created` is false and the sections are the watchlist's values grouped by kind, in their order. A value that did not resolve is left out. `track` says which values are in, still `pending` or left out; a save while one is pending would leave it out for good.",
+        "- Each instrument on a saved dashboard is kept up to date while it is there; `tracked_by` says `dashboard`.",
+        "- `averages` are in percent from the price to the daily 50 and 200 day and the weekly 200 week simple moving averages; `crossed_today` follows `movers`: the last final close on or below the average and the price above it, or the reverse.",
+        "- Fetches nothing and does not count as a read.",
+      ),
+      responses: admins({ 200: ok("The dashboard.", ref("Dashboard")) }),
+    },
+    put: {
+      tags: ["dashboard"],
+      operationId: "saveDashboard",
+      security: ADMIN_AUTH,
+      summary: "Save the dashboard",
+      description: lines(
+        "Replaces the whole layout and answers the saved dashboard.",
+        "",
+        "- `revision` is the one the dashboard last answered; another answers `conflict` with the stored dashboard, so a second tab never overwrites a change unseen.",
+        `- At most ${MAX_SECTIONS} sections, ${MAX_SECTION_SYMBOLS} symbols in one and ${MAX_DASHBOARD_SYMBOLS} in all. A name is 1 to ${MAX_SECTION_NAME} characters, unique ignoring case. \`view\` is \`cards\` or \`table\`.`,
+        `- Each symbol is ${FORMS}. An instrument named twice keeps its first place.`,
+        "- A symbol not seen before is fetched within the call. If any symbol does not resolve, nothing is saved and `errors` says why for each.",
+        `- The call has a ${DEADLINE_S}-second deadline.`,
+      ),
+      requestBody: body(ref("DashboardArgs")),
+      responses: admins({
+        200: ok("The saved dashboard.", ref("Dashboard")),
+        409: error(
+          "The dashboard changed since `revision` (`conflict`); `dashboard` is the stored one.",
+        ),
+        413: r("TooLarge"),
+        415: r("UnsupportedType"),
+        422: error(
+          "A symbol did not resolve (`unresolved`); `errors` holds each one's input and error. Nothing is saved.",
+        ),
       }),
     },
   },

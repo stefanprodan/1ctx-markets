@@ -1,7 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-// Tracked means read within the window, by a rule or by --track; searches
-// and jobs don't.
 
 import { ruleInstruments } from "../rules/store.ts";
 import { DAY_MS } from "../runtime/clock.ts";
@@ -44,8 +42,6 @@ export function markRead(db: Db, ids: Iterable<string>, now: number): void {
   for (const id of new Set(ids)) update.run(now, id);
 }
 
-// read within the window, every one a rule reads, paused or not, and each
-// --track id
 export function trackedIds(
   db: Db,
   now: number,
@@ -60,8 +56,20 @@ export function trackedIds(
       .map((r) => r.id),
   );
   for (const id of ruleInstruments(db)) ids.add(id);
+  for (const id of dashboardInstruments(db)) ids.add(id);
   for (const id of tracking.flagged) ids.add(id);
   return ids;
+}
+
+export function dashboardInstruments(db: Db): Set<string> {
+  return new Set(
+    db
+      .query<{ id: string }, []>(
+        "select distinct instrument as id from dashboard_items",
+      )
+      .all()
+      .map((r) => r.id),
+  );
 }
 
 export function isTracked(

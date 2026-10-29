@@ -130,60 +130,128 @@ signed in with the admin key alone.
 
 ## Pages
 
-- **Home** (`/`, the landing page) is a card per `--track` value, from
-  one `GET /api/v1/watchlist`. The flag is the operator's own order, so
-  it sets both: cards keep flag order, grouped by kind (the Instruments
-  page's words), and the groups are ordered by their first value's place
-  in the flag; the code names no market or kind order. A value not yet
-  resolved joins the group of the value before it (else after it), so
-  it shows where the flag puts it: "Pending" only for a value with no
-  stored row yet (after a restart every value is pending while the
-  tracker catches up, and one with a stored row shows its stored price
-  as any card), a failed
-  one as "Not found" (a source failure "Not available") with the
-  value as written. A failed value with a stored row keeps its kind,
-  stored price and link, and still says it failed. A pending card is
-  the ready card's shape with bars where its figures will land.
-- **No values: a panel says how to add some**, a `--track` command to
-  copy with seven common symbols named, and the service form; Home is
-  the first page an operator sees, so it says how to fill itself.
-- **Two or more values on their first fetch are a loading panel**
-  (Getting prices, the count ready, a chip per value, green when ready
-  and red when it failed, so a failure never reads as done), with the
-  other cards below it; that is a first start on an empty
-  database. One such value is a pending card in its place, as a value
-  added to the flag. While any is waiting the page re-reads every 3
-  seconds, not every minute, so a card fills soon after its fetch.
-- **Copy uses `copyText()` (`src/web/lib/clipboard.ts`)**, as 1ctx:
-  the clipboard exists only on loopback or HTTPS, so on plain HTTP the
-  button stays as it is and never says Copied.
+- **Home** (`/`, the landing page) is the admin's dashboard, from one
+  `GET /api/v1/dashboard` (`docs/api.md`, The dashboard): named
+  sections the admin creates and orders, each shown as cards or as a
+  table, with a top card of three tabs above them. `Dashboard.tsx` is
+  the view; the rankings, rows and layout edits are
+  `Dashboard.model.ts`, which has no DOM and is tested.
+- **Seeded from `--track` until the first save.** Before it, the
+  server answers the flag's values grouped by kind in flag order, so
+  a new server's Home is what the flag names; the first edit saves
+  that layout with the edit, and from then on only its own saves, or
+  deleting an instrument on it, change it. Removing everything leaves
+  an empty dashboard, never the seed again. The flag still keeps its
+  values tracked.
+- **A first start waits for the seed.** While any `--track` value is
+  still resolving (the answer's `track`), the page shows a loading
+  panel (Getting prices, the count ready, a chip per value, green when
+  ready and red when it failed) above the cards already there, re-reads
+  every 3 seconds while visible, and offers no search, Edit or view
+  switch: a save then would end the seed without the values still on
+  their way. A value that failed is left out, as the seed leaves it.
+- **A save sends the whole layout** with
+  `PUT /api/v1/dashboard` (`saveLayout()` in the store): the page shows
+  the edit before the answer, and edits made while a save is in flight
+  go in one more save on the revision it answered, so none is sent on
+  an old one. A refused save puts the last saved layout back and says
+  why over the page ("Could not add ZZZZ." for a symbol that did not
+  resolve); a 409 takes the stored dashboard another tab saved and says
+  "Changed in another tab. Reloaded." A load asked before an edit, or
+  answered with an older revision than the one held, never lands its
+  layout over it. A sign-out drops a save in flight, so the next
+  session's edits start a save of their own.
+- **The top card has three tabs**, the last chosen kept per browser
+  (`markets-dashboard-tab` in `localStorage`). Browser storage is a
+  convenience: a browser that keeps nothing starts from the defaults.
+- **Today's movers**: the four biggest gainers and losers among the
+  favourites by the day's percent, each bar scaled to the biggest move,
+  a company by its short name and a bond by its symbol.
+- **Trend**: shares, ETFs and coins only. An arrow for the side of the
+  50-day average, the price, then the distance to the 50-day, 200-day
+  and 200-week averages from the server's `averages`, two decimals
+  under 1%. Each header sorts, the 50-day deepest below first by
+  default, and a second click flips it (kept as
+  `markets-dashboard-trend-sort`). Eight rows, then "Show all N".
+  "Crossed today" comes from the server's `crossed_today` and is
+  counted on the tab's badge, which hides at none.
+- **Earnings this week**: the favourite shares reporting today and the
+  six days after it in the viewer's own calendar, from
+  `GET /api/v1/earnings`, 100 shares a call (the route's cap) merged by
+  date, with Today in amber. The badge is the count, grey at 0. A call
+  that fails keeps the list shown before, an answer older than the
+  newest asked never lands, and a share a save removes leaves the list
+  at once, even from an answer asked before it. The route lists a share
+  with no calendar (a non-US share, for one) under `unavailable` as a
+  note; only a source that is off, or no share answered at all, makes
+  the tab say "Earnings are not available." with no count, never that
+  none report.
+- **Search in the head** asks `GET /api/v1/symbols` twice per query
+  (`searcher()` in `Dashboard.model.ts`): with `upstream=false` at
+  once, so the stored matches draw without waiting on any source, and
+  from two characters, after a 250 ms pause, the full search, whose
+  further matches join under the stored ones (no duplicates). One
+  character asks the database only. A newer query aborts both calls
+  of the older (`AbortController`), so its answer never waits behind
+  them; the spinner shows only while the full search is pending. An
+  upstream match is marked New. A result opens its
+  instrument page, which fetches it; Add picks a section from a list
+  under the result and saves at once, and the save fetches a symbol
+  never seen before its card lands. With no section yet, Add makes
+  "Favourites". An add the server would refuse says why in the results
+  ("This section is full.", "Your dashboard is full."), and Escape
+  closes the section picker before the results. On a phone the head is
+  a search icon that opens a full-screen search.
+- **No favourites**: the tabs hide and a panel says "Build your
+  dashboard" with example chips (`^GSPC`, `AAPL`, `VWCE.DE`,
+  `BTC-USD`, `GC=F`) that fill the search. They are examples only:
+  nothing is added, and the code names no default instrument or
+  market.
+- **A section** is its name, count and a cards or table switch. A card
+  shows the price and the day's percent; a table row the name and
+  symbol, the day line, the price, the day's percent with the change in
+  its unit under it, and Open or Closed. Open or Closed is the server's
+  `session`, from the source's own answers, never hours kept here.
+- **Edit is a draft** (desktop only, the pencil in the head): it copies
+  the layout and its revision (`editOf()`), hides search, and shows
+  Cancel and Save. Rename (a name that cannot be saved goes back and
+  says why beside the field, such as "Another section has this
+  name."), move a section up or down, delete one, drag cards and rows
+  within and between sections, remove one, switch a view and Add
+  section all change the draft only. Save sends it in one save on the
+  revision it was copied from, or nothing when it matches that copy
+  (`saveOf()`): a save from another tab since, even one a minute
+  refresh already shows, is a 409 that ends the edit and shows that
+  save, never overwritten. Save and Cancel wait for the answer; any
+  other failure keeps the draft and says why, to try again or Cancel.
+  Cancel drops it. Outside Edit, Add from search and the view switch
+  save at once. A phone has no editing: Edit, the view
+  switch and Add hide, and a section keeps its view.
 - **A card** is the name, symbol, Open or Closed, the stored price in
-  its currency (a yield in percent), the day's change in its unit (a
-  yield in points) and in percent, and a line; it links the instrument.
-  A series has no day change in the watchlist, so it shows none, as the
-  Instruments list. It re-reads every minute while visible. A load is
-  stale once the router's path changes, checked when its answer lands,
-  so leaving the page asks no line after it (an effect's cleanup runs
-  too late). Status and Home both read the watchlist; an answer asked
-  before the one shown never replaces it.
-- **The line is one bars call per card, in parallel**, by the entry's
+  its currency (a yield in percent), the day's change in percent, and a
+  line; it links the instrument. A favourite added but not answered yet
+  is the card's shape with bars where its figures will land. The page
+  re-reads every minute while visible. A load is stale once the
+  router's path changes, checked when its answer lands, and a save that
+  lands after leaving starts no load, so leaving the page asks no line
+  after it (an effect's cleanup runs too late).
+- **The line is one bars call per card, in parallel**, by the item's
   `intraday`: `interval=5m` (the newest session, split at its
   `previous_close`, green above and red below as the 1D chart, the
   previous close a faint dashed line, across the whole session so a
   morning fills only the morning), else a month of daily bars coloured
   by its move from the first close. The bundle names no source, so the
-  server says which entries have 5-minute closes. A bars call is a
-  read: a card keeps its instrument tracked while it is drawn, and a
-  value dropped from the flag ends 30 days after its card was last
-  drawn. A Yahoo listing with no points yet draws no line; a line that
-  fails keeps the one drawn before.
+  server says which items have 5-minute closes. A Yahoo listing with no
+  points yet draws no line; a line that fails keeps the one drawn
+  before.
 - **The line is inline SVG**, not a chart: its strokes are CSS tokens,
   so it wears the theme from the first frame, and a redraw replaces it
   whole. The split is the line drawn twice, each copy clipped to its
-  side of the previous close. The clip ids come from the instrument id,
-  escaped for XML (`clipIds`), so a reorder never hands a card
-  another's.
-- **Status:** `GET /api/v1/status` drawn as tiles (instruments,
+  side of the previous close. The clip ids come from the section and
+  the instrument id, escaped for XML (`clipOf`), so a move never hands
+  a card another's.
+- **Server status** (`/status`, last in the rail, after Home,
+  Instruments and Connect agents): `GET /api/v1/status` drawn as tiles (instruments,
   the sources on and how many are paused, the jobs shown and how many
   fail, the database) and a card per source that is on, headed by its
   name and job count alone, never one that is off:
@@ -206,7 +274,7 @@ signed in with the admin key alone.
   off. The `--track` values are a grid of value and resolved id, from
   `GET /api/v1/watchlist`, loaded with the status so both land
   together.
-- **Connect agents** (`/connect`, beside Status in the rail), as
+- **Connect agents** (`/connect`, before Server status in the rail), as
   1ctx's: a Keys card from `GET /api/v1/keys` (each key's name, last
   use and expiry, with Revoke, which asks once beside Keep, and "N of
   5"), New key (a name, shaped as typed to the server's rule, and
@@ -215,6 +283,9 @@ signed in with the admin key alone.
   server as the MCP server `markets` at the page's origin plus `/mcp`.
   At the cap, New key goes and a line names the cap. A revoke that
   answers 404 drops the row.
+- **Copy uses `copyText()` (`src/web/lib/clipboard.ts`)**, as 1ctx:
+  the clipboard exists only on loopback or HTTPS, so on plain HTTP the
+  button stays as it is and never says Copied.
 - **A made key's token lives in the Connect agents view alone**: the
   store keeps the key's row, never its token. It shows once, with a
   copy button, the `export MARKETS_ACCESS_KEY=...` line and "Copy it
@@ -232,7 +303,10 @@ signed in with the admin key alone.
   Currency, Series) and the market, left out where it repeats the kind;
   "No longer updated" only when nothing tracks it. On the right, the
   stored price with its currency and the day's change. The list never
-  quotes: a quote is a read and would keep every row tracked.
+  quotes: a quote is a read and would keep every row tracked. From two
+  characters the search also asks `/symbols` and lists the sources'
+  matches no row holds under "Not stored yet", marked New; opening one
+  fetches it. It is the page's only search, so the head has none.
 - **An instrument** (`/instruments/<id>`, the id encoded) reads
   `GET /api/v1/instruments/{id}`, a read as any client's, so
   opening it keeps it tracked and an id never stored is fetched. The
@@ -245,18 +319,17 @@ signed in with the admin key alone.
   own value left out so the row stays one line. A read that failed shows the stored price as "Stored
   price" with its age, no returns, and one notice that a new price could
   not be had; the server's phrase is for agents, not this page.
-- **Refetch is a button with a menu** in the page head (1ctx's More,
-  `POST /api/v1/instruments/{id}/refetch`):
-  Everything, then each part a source holds for it (research, earnings
-  dates and news only for US shares, news for US ETFs too). A pick
-  runs at once; the button reads Fetching, then "Updated" or "Not
-  available" for `SAID_MS`, every label in one cell so it keeps its
-  width. A failure names the part and its error in plain words in the
-  page's notice; a 404 `not_found` reads as no longer stored.
-- **Delete is 1ctx's delete card:** a red edge, what goes, and a foot
-  whose Delete asks once beside Keep; a rule reading it (409 `conflict`
-  with `rules`) is refused with that said in the foot. A delete
-  returns to the list.
+- **One More button holds the page's actions** in the head (1ctx's
+  More), on a phone too. Refetch data runs at once and refetches every
+  part a source holds for it (`POST /api/v1/instruments/{id}/refetch`
+  with every part `choices()` lists); the button spins while it runs,
+  then shows a green check for `SAID_MS` once it fetched; "Not
+  available" shows in the page's notice as long. A failure names the
+  part and its error in plain words in the page's notice; a 404
+  `not_found` reads as no longer stored. Delete asks once inside the
+  menu, what goes beside Keep; a rule reading it (409 `conflict` with
+  `rules`) is refused in the page's notice. A delete returns to the
+  list.
 - **Pages with a parameter** (`/instruments/:id` in `ROUTES` and
   `UI_PATHS`) stay off the rail, which lights their parent.
 - **The list re-reads every minute** (`REFRESH_MS`) while the tab is
@@ -343,7 +416,7 @@ signed in with the admin key alone.
   bundle names no source; TradingView's link is what its licence
   accepts in place of the logo, which sat on the volume. The NOTICE text is
   in `Chart.tsx`, the package shipping none. The footer shows on the
-  instrument page, and on Home with FRED's notice when the watchlist
+  instrument page, and on Home with FRED's notice when the dashboard
   carries its `attribution`, with "1ctx Markets" (the repository) and
   the version on its left.
 
