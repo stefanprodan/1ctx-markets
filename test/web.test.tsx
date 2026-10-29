@@ -50,6 +50,7 @@ import {
   changeText,
   DEFAULT_SETTINGS,
   DESK,
+  drawnRange,
   extendedLines,
   fromOf,
   type History,
@@ -2424,6 +2425,10 @@ describe("the chart model", () => {
     expect(phoneRange("3M")).toBe("6M");
     expect(phoneRange("3Y")).toBe("5Y");
     expect(phoneRange("1M")).toBe("1M");
+    // drawn as its neighbour on a phone, kept as chosen
+    expect(drawnRange(PHONE, "3M")).toBe("6M");
+    expect(drawnRange(DESK, "3M")).toBe("3M");
+    expect(drawnRange(PHONE, "1Y")).toBe("1Y");
     for (const r of PHONE_RANGES) expect(RANGES).toContain(r);
   });
 

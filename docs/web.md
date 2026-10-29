@@ -398,14 +398,16 @@ signed in with the admin key alone.
   which has no width rule of its own, so the drawing and the layout
   never disagree. A phone: the price alone, as a line, edge to edge on
   the page with no card, axis column or grid; the ranges in one row
-  under the plot (1D 5D 1M 6M YTD 1Y 5Y Max, a kept 3M or 3Y moving to
+  under the plot (1D 5D 1M 6M YTD 1Y 5Y Max, a kept 3M or 3Y drawn as
   6M or 5Y); no toolbar, so no candles, averages, volume pane or Log
   (a choice kept from a wider window is drawn as off, not lost); a
   legend of one row, the date, close and range's change, as 1D's; and
-  the plot names its own levels (`levelsOf`, `placeMarks`): where the
-  range starts (a day's previous close) dotted at the left, its high
-  and low at the right, placed a frame after each fit so a redraw or
-  resize moves them.
+  the plot names its own levels (`levelsOf`, `placeMarks`): what the
+  range's change is measured from (the previous close on 1D, dashed,
+  and 5D; the first close otherwise, dotted) at the left, its high and
+  low at the right, placed a frame after each fit so a redraw or resize
+  moves them. A kept range a phone does not offer stays kept: the phone
+  draws its neighbour.
 - **TradingView Lightweight Charts 5.2.1** (`views/Chart.tsx`), run
   with the first chart (a dynamic import); the compiled binary does
   not split the page, so the library ships in its bundle either way. Its

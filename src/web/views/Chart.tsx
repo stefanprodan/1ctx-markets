@@ -33,6 +33,7 @@ import {
   closes,
   DESK,
   dayOf,
+  drawnRange,
   extendedLines,
   figure,
   fromOf,
@@ -50,7 +51,6 @@ import {
   levelsOf,
   localTime,
   lookOf,
-  phoneRange,
   pointLegendOf,
   pointLine,
   type Range,
@@ -79,7 +79,12 @@ function alpha(hex: string, a: number): string {
 
 export type Colors = ReturnType<typeof colors>;
 
-type Mark = { side: "left" | "right"; y: number; text: string };
+type Mark = {
+  role: "ref" | "high" | "low";
+  side: "left" | "right";
+  y: number;
+  text: string;
+};
 
 function colors() {
   return {
@@ -280,10 +285,7 @@ export function Chart({ id }: { id: string }) {
   const candlesOn = () => !line.value && look().candles;
   const marks = useSignal<Mark[]>([]);
   const levels = useRef<{ s: ISeriesApi<SeriesType>; at: Levels } | null>(null);
-  useEffect(() => {
-    if (!look().ranges.includes(range.value))
-      range.value = phoneRange(range.value);
-  }, [railDrawer.value]);
+  const active = () => drawnRange(look(), range.value);
   const hover = useSignal<string | number | null>(null);
   const lib = useRef<Lib | null>(null);
   const chart = useRef<IChartApi | null>(null);
@@ -296,7 +298,7 @@ export function Chart({ id }: { id: string }) {
 
   const load = async () => {
     const mine = ++asked.current;
-    const r = range.value;
+    const r = active();
     try {
       const h = isIntraday(r)
         ? await markets.intraday(id, r, fromOf("Max", today()))
@@ -320,6 +322,8 @@ export function Chart({ id }: { id: string }) {
         const c = chart.current;
         if (c !== null) for (const s of series.current) c.removeSeries(s);
         series.current = [];
+        levels.current = null;
+        marks.value = [];
       }
     }
   };
@@ -365,7 +369,7 @@ export function Chart({ id }: { id: string }) {
 
   useEffect(() => {
     void load();
-  }, [id, range.value]);
+  }, [id, range.value, railDrawer.value]);
   useRefresh(() => load());
 
   // a theme flip, a toggle: the same bars drawn again
@@ -387,14 +391,15 @@ export function Chart({ id }: { id: string }) {
       return;
     }
     const out: Mark[] = [];
-    const put = (side: Mark["side"], v: number | null) => {
+    const put = (role: Mark["role"], v: number | null) => {
       if (v === null) return;
       const y = lv.s.priceToCoordinate(v);
-      if (y !== null) out.push({ side, y, text: axisPrice(v) });
+      const side = role === "ref" ? "left" : "right";
+      if (y !== null) out.push({ role, side, y, text: axisPrice(v) });
     };
-    put("left", lv.at.ref);
-    put("right", lv.at.high);
-    if (lv.at.low !== lv.at.high) put("right", lv.at.low);
+    put("ref", lv.at.ref);
+    put("high", lv.at.high);
+    if (lv.at.low !== lv.at.high) put("low", lv.at.low);
     marks.value = out;
   }
 
@@ -488,7 +493,7 @@ export function Chart({ id }: { id: string }) {
       if (shown.value !== "1D") {
         const s = area(values, base);
         const at = levelsOf(
-          values[0]?.value ?? null,
+          base,
           values.map((v) => v.value),
         );
         if (at) levels.current = { s, at };
@@ -686,7 +691,7 @@ export function Chart({ id }: { id: string }) {
       box.style.minHeight = `${px}px`;
     }
   });
-  const intraday = isIntraday(range.value);
+  const intraday = isIntraday(active());
   const lk = look();
   const candlesOk =
     lk.candles &&
@@ -706,8 +711,8 @@ export function Chart({ id }: { id: string }) {
             <button
               key={r}
               type="button"
-              class={`seg-option${range.value === r ? " seg-on" : ""}`}
-              aria-pressed={range.value === r}
+              class={`seg-option${active() === r ? " seg-on" : ""}`}
+              aria-pressed={active() === r}
               onClick={() => {
                 range.value = r;
               }}
@@ -811,7 +816,7 @@ export function Chart({ id }: { id: string }) {
           <div class="chart-canvas" ref={box} />
           {marks.value.map((m) => (
             <span
-              key={`${m.side}${m.text}`}
+              key={m.role}
               class={`chart-mark chart-mark-${m.side}`}
               style={{ top: `${m.y}px` }}
             >

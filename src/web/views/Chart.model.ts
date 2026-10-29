@@ -119,6 +119,10 @@ export const PHONE: Look = {
 };
 export const lookOf = (phone: boolean): Look => (phone ? PHONE : DESK);
 
+// the kept range stays as chosen; a look without it draws its neighbour
+export const drawnRange = (look: Look, r: Range): Range =>
+  look.ranges.includes(r) ? r : phoneRange(r);
+
 export const isIntraday = (r: Range): r is IntradayRange =>
   (INTRADAY as readonly string[]).includes(r);
 
