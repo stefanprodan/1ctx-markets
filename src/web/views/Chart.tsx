@@ -253,6 +253,8 @@ export function Chart({ id }: { id: string }) {
   const lib = useRef<Lib | null>(null);
   const chart = useRef<IChartApi | null>(null);
   const series = useRef<ISeriesApi<SeriesType>[]>([]);
+  // positions in the last day drawn with its session's slots, else null
+  const slotted = useRef<number | null>(null);
   // the range a load was asked for, so an older answer never lands
   const asked = useRef(0);
 
@@ -343,6 +345,8 @@ export function Chart({ id }: { id: string }) {
     // a time range ends at the last price, so a day's empty slots need
     // positions, which count them; read before the options reset the room
     const keptSlots = fit ? null : c.timeScale().getVisibleLogicalRange();
+    const wasSlotted = slotted.current;
+    slotted.current = null;
     c.applyOptions({
       timeScale: {
         borderVisible: false,
@@ -495,8 +499,13 @@ export function Chart({ id }: { id: string }) {
       if (pre.length > 0) day(pre, true, false);
       if (post.length > 0) day(post, true, true);
       if (slots.length > 0 && pre.length === 0) {
-        if (keptSlots === null) c.timeScale().fitContent();
-        else c.timeScale().setVisibleLogicalRange(keptSlots);
+        // positions mean the same only over the same count: a day before
+        // with pre and post, or a thin listing's gaps, change it
+        const count = values.length + slots.length + post.length;
+        if (keptSlots === null || wasSlotted !== count) {
+          c.timeScale().fitContent();
+        } else c.timeScale().setVisibleLogicalRange(keptSlots);
+        slotted.current = count;
       } else settle([...pre, ...values, ...slots, ...post]);
       return;
     }

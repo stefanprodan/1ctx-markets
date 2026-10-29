@@ -1083,12 +1083,12 @@ describe("the instrument model", () => {
     expect(
       priceState(
         detail({
-          fetched_at: "2026-10-27T20:00:00Z",
-          trade_time: "2026-10-27T19:59:58Z",
+          fetched_at: "2026-10-28T09:00:00Z",
+          trade_time: "2026-10-27T16:29:58Z",
         }),
         NOW,
       ),
-    ).toBe("Previous close · market open · updated 16 h ago");
+    ).toBe("Previous close · market open · updated 3 h ago");
     const series = detail(
       {
         price: null,
