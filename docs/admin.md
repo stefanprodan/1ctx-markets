@@ -82,7 +82,7 @@ is offered over MCP.
 - **For after a parser fix:** a run recorded by old code holds a
   section or history off until it is next due; this asks again now.
 - **One stored instrument a call**, named by its id or a symbol as
-  written (`storedInstrument()`, the stored Yahoo listing first); one
+  written (`restStored()`: the stored Yahoo listing first, then the feed's); one
   not stored is 404, and nothing is resolved, fetched or added.
 - **Each part runs through its source's own fetch code, client and
   queue or limiter** (`within(live)`, so a back-off fails at once),

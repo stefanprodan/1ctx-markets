@@ -49,8 +49,9 @@ MCP tools copied onto paths.
   smaller projection (below), bars the one below; every other route
   answers its tool's fields. A projection grows only when a script
   needs a field.
-- **Lists are named for what they hold**, never `items`; item order
-  is request order, duplicates kept.
+- **Lists are named for what they hold**, never `items`; quotes and research
+  keep request order and duplicates, movers and screen answer each
+  instrument once in their own sort.
 - **Query parameters for reads, a JSON body for a structure.** A list
   is one comma-separated value (`symbols=A,B`), as a shell script
   builds it; each parameter is given once; a boolean is `true` or

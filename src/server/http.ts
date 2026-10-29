@@ -90,7 +90,7 @@ export function router(deps: RouterDeps): Handle {
   const sessions = deps.sessions ?? null;
   const signedIn = (req: Request) =>
     sessions?.valid(cookieOf(req), deps.clock.now()) === true;
-  // the route is matched first, then the key held against its scope
+  // one path holds operations of different scopes (GET and DELETE)
   const allowed = (req: Request, r: Route | null): Response | null => {
     if (admin(req)) return null;
     if (authorized(req)) {
