@@ -3,7 +3,9 @@
 // 1ctx's fixed window per key, in memory: one counter and one start per
 // key, and a cap on keys, so the map stays bounded whatever is sent.
 
-export const CALLS_PER_MINUTE = 120;
+// an import adds one lot per call, so a portfolio of a few hundred lots
+// fits in one window
+export const CALLS_PER_MINUTE = 600;
 export const MAX_WINDOWS = 10_000;
 
 type Window = { start: number; count: number };
@@ -17,8 +19,8 @@ export class RateLimit {
     private readonly windowMs: number,
   ) {}
 
-  // counted even when refused, so a flood stays refused until its window
-  // ends
+  // a refused call counts too; the window still ends a minute after it
+  // started
   hit(key: string, now: number): boolean {
     let w = this.windows.get(key);
     if (w === undefined || now - w.start >= this.windowMs) {
