@@ -1,17 +1,8 @@
-/* Portfolios: the filters, a total card per currency, the holdings,
-   exposure and trades cards, and the add, import and settings panels. A
-   phone stacks every row of a form and keeps two short fields abreast. */
+/* A phone stacks a form's rows and keeps two short fields abreast. */
 
 @layer tokens, base, owners;
 
 @layer owners {
-  .pf {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
-    width: 960px;
-    max-width: 100%;
-  }
   .pf-dim {
     color: var(--faint);
   }
@@ -47,6 +38,9 @@
     display: flex;
     gap: var(--space-2);
     margin-left: auto;
+  }
+  .pf-portfolio-pick {
+    display: none;
   }
   /* as tall as the portfolio tabs beside it */
   .pf-drop {
@@ -86,17 +80,24 @@
     flex: 1;
     max-width: 360px;
   }
-  .pf-currency .pf-drop-btn {
-    justify-content: space-between;
-    width: 100%;
-    max-width: none;
-  }
   .pf-currency-menu {
     left: 0;
     right: auto;
     width: 100%;
     max-height: none;
     overflow: visible;
+  }
+  /* in a form the list opens in place across the row, so a phone's
+     sheet scrolls to it rather than clipping it */
+  .pf-add .field:has(.pf-currency-menu) {
+    grid-column: 1 / -1;
+  }
+  .pf-add .pf-currency {
+    flex-direction: column;
+  }
+  .pf-add .pf-currency-menu {
+    position: static;
+    margin-top: var(--space-1);
   }
   .pf-currency-find {
     height: 32px;
@@ -232,6 +233,13 @@
     display: flex;
     gap: var(--space-3);
   }
+  /* a removed trade or a holding sold today reads as gone */
+  .pf-sold .rows-title,
+  .rows-item-off .pf-side-word,
+  .rows-item-off .ins-symbol,
+  .rows-item-off .rows-sub {
+    opacity: 0.55;
+  }
   .pf-side-word {
     flex-shrink: 0;
     font-family: var(--mono);
@@ -294,6 +302,10 @@
   .pf-parts td:first-child {
     text-align: left;
   }
+  .pf-part-portfolio {
+    display: block;
+    font-size: var(--text-small);
+  }
   .pf-purchases {
     margin: 0 0 var(--space-3);
     padding: 0;
@@ -315,6 +327,10 @@
     align-items: center;
     gap: var(--space-2);
     margin-bottom: var(--space-3);
+  }
+  /* the row's own padding closes it; actions last add none */
+  .rows-body > .pf-row-actions:last-child {
+    margin-bottom: 0;
   }
   .pf-edit {
     display: grid;
@@ -374,6 +390,13 @@
     text-align: right;
     font-variant-numeric: tabular-nums;
     color: var(--dim);
+  }
+  .pf-bars-gain li {
+    grid-template-columns: minmax(80px, 160px) minmax(0, 1fr) 56px 72px;
+  }
+  .pf-bar-gain {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
   }
   .pf-switch-line {
     display: flex;
@@ -442,30 +465,12 @@
     padding: var(--space-3) var(--space-4);
     border-top: 1px solid var(--line);
   }
-  .pf-hint {
-    margin: 0;
-    font-size: var(--text-small);
-    color: var(--dim);
-  }
   .pf-summary {
     margin: 0;
     font-family: var(--mono);
     font-size: var(--text-label);
     font-variant-numeric: tabular-nums;
     color: var(--fg);
-  }
-  .pf-listing {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    margin-top: calc(-1 * var(--space-2));
-    font-size: var(--text-small);
-    color: var(--dim);
-  }
-  .pf-listing-facts {
-    font-family: var(--mono);
-    font-size: var(--text-label);
-    color: var(--faint);
   }
   /* one height with or without a button, so paired labels line up */
   .pf-field-head {
@@ -480,12 +485,51 @@
     font-size: var(--text-small);
     line-height: 1;
   }
-  .pf-more {
+  .pf-field-label {
     display: inline-flex;
     align-items: center;
-    gap: var(--space-1);
-    align-self: flex-start;
-    font-size: var(--text-small);
+    gap: var(--space-2);
+    min-width: 0;
+  }
+  .pf-paid {
+    position: relative;
+    display: inline-flex;
+  }
+  .pf-paid-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 1px 4px 1px 6px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: none;
+    font-family: var(--mono);
+    font-size: var(--text-label);
+    line-height: 14px;
+    color: var(--dim);
+    cursor: pointer;
+  }
+  .pf-paid-btn:hover,
+  .pf-paid-btn[aria-expanded="true"] {
+    color: var(--fg);
+    border-color: var(--line-strong);
+  }
+  .pf-paid-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    z-index: 4;
+    min-width: 110px;
+  }
+  .pf-paid-menu-right {
+    right: 0;
+    left: auto;
+  }
+  .pf-total-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
   }
   /* a form's menu fills its field and looks like the inputs beside it */
   .pf-form-pick .pf-drop,
@@ -493,10 +537,13 @@
     max-width: none;
   }
   .pf-form-pick .pf-drop-btn,
-  .pf-add .pf-currency .pf-drop-btn {
+  .pf-currency .pf-drop-btn {
     justify-content: space-between;
     width: 100%;
     max-width: none;
+  }
+  .pf-form-pick .pf-drop-btn,
+  .pf-add .pf-currency .pf-drop-btn {
     height: 36px;
     background: var(--inset);
   }
@@ -505,9 +552,6 @@
     right: 0;
   }
   @media (max-width: 719px) {
-    .pf-kinds .seg-option {
-      padding: var(--space-1) var(--space-2);
-    }
     /* a sheet from the bottom, the page's top still in sight */
     .pf-sheet-wrap {
       align-items: flex-end;
@@ -538,18 +582,85 @@
     width: 100%;
     min-width: 0;
   }
-  .pf-kinds,
   .pf-side {
     width: 100%;
   }
-  .pf-kinds .seg-option,
   .pf-side .seg-option {
     flex: 1;
     justify-content: center;
     white-space: nowrap;
   }
-  .pf-kinds {
-    flex-wrap: nowrap;
+  /* the kinds read as a heading's tabs, so Buy and Sell keep the weight */
+  .pf-kind-tabs {
+    display: flex;
+    gap: var(--space-4);
+    margin-top: calc(-1 * var(--space-2));
+    border-bottom: 1px solid var(--line);
+  }
+  .pf-kind-tab {
+    margin-bottom: -1px;
+    padding: var(--space-2) 0;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    background: none;
+    color: var(--faint);
+    cursor: pointer;
+  }
+  .pf-kind-tab:hover {
+    color: var(--fg);
+  }
+  .pf-kind-on {
+    border-bottom-color: var(--fg);
+    color: var(--fg);
+  }
+  .pf-side .seg-on.pf-side-buy {
+    background: color-mix(in srgb, var(--done) 16%, transparent);
+    color: var(--done);
+  }
+  .pf-side .seg-on.pf-side-sell {
+    background: color-mix(in srgb, var(--failed) 16%, transparent);
+    color: var(--failed);
+  }
+  .pf-chosen {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    min-height: 36px;
+    padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--inset);
+  }
+  .pf-chosen-main {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+  .pf-chosen-x {
+    flex-shrink: 0;
+    margin-left: auto;
+  }
+  .pf-chosen .pf-listing-facts {
+    padding-right: var(--space-2);
+    padding-bottom: 2px;
+  }
+  .pf-new {
+    position: relative;
+    display: flex;
+  }
+  .pf-new input {
+    flex: 1;
+    width: 100%;
+    min-width: 0;
+    padding-right: 36px;
+  }
+  .pf-new-back {
+    position: absolute;
+    top: 50%;
+    right: 4px;
+    transform: translateY(-50%);
   }
   .pf-symbol {
     position: relative;
@@ -563,18 +674,9 @@
     max-height: 280px;
     overflow-y: auto;
   }
-  .pf-found .menu-item {
-    gap: var(--space-2);
-  }
   .pf-found-where {
     margin-left: auto;
     flex-shrink: 0;
-    font-size: var(--text-small);
-    color: var(--faint);
-  }
-  .pf-picked {
-    display: block;
-    margin-top: 4px;
     font-size: var(--text-small);
     color: var(--faint);
   }
@@ -620,6 +722,11 @@
   .pf-preview-bad .pf-preview-status {
     color: var(--failed);
   }
+  /* a line not read has no item, so its reason takes the item's place */
+  .pf-preview-bad .pf-preview-status {
+    grid-column: 2 / -1;
+    text-align: left;
+  }
   .pf-preview-saved .pf-preview-status {
     color: var(--done);
   }
@@ -633,6 +740,37 @@
     gap: 6px;
     color: var(--dim);
   }
+  .pf-welcome {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    max-width: 640px;
+    padding: var(--space-5) var(--space-4);
+  }
+  .pf-welcome-title {
+    margin: 0;
+    font-size: var(--text-title);
+    font-weight: 500;
+  }
+  .pf-welcome p {
+    margin: 0;
+  }
+  .pf-welcome .field input {
+    width: 100%;
+    min-width: 0;
+  }
+  .pf-welcome-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+  .pf-settings-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+  .pf-welcome-form,
   .pf-settings {
     display: flex;
     flex-direction: column;
@@ -660,6 +798,30 @@
   }
 
   @media (max-width: 719px) {
+    .pf-portfolios {
+      display: none;
+    }
+    .pf-portfolio-pick {
+      display: flex;
+      flex: 1;
+      min-width: 0;
+    }
+    .pf-tabs {
+      flex: 1;
+      padding-top: var(--space-1);
+      flex-wrap: wrap;
+      gap: var(--space-2);
+      overflow: visible;
+    }
+    .pf-tabs .seg {
+      flex: 1 1 100%;
+      width: 100%;
+    }
+    .pf-tabs .seg-option {
+      flex: 1;
+      justify-content: center;
+      padding: 0 var(--space-1);
+    }
     .pf-picks {
       width: 100%;
       margin-left: 0;
@@ -701,8 +863,14 @@
     .pf-bars li {
       grid-template-columns: minmax(64px, 110px) minmax(0, 1fr) 52px;
     }
-    .pf-part-portfolio {
-      display: none;
+    .pf-bars-gain li {
+      grid-template-columns: 44px minmax(0, 1fr) 48px 64px;
+    }
+    /* even pairs, never a fact left alone on its line */
+    .pf-facts {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: var(--space-2) var(--space-3);
     }
     .pf-add-words {
       display: none;
@@ -710,11 +878,18 @@
     .pf-preview li {
       grid-template-columns: minmax(0, 1fr) auto;
     }
+    .pf-preview-bad .pf-preview-status {
+      grid-column: 1 / -1;
+    }
     .pf-preview-line {
       grid-column: 1 / -1;
     }
     .pf-panel {
       padding: var(--space-3);
+    }
+    .pf-welcome .pf-pair,
+    .pf-pair-stack {
+      grid-template-columns: minmax(0, 1fr);
     }
   }
 }

@@ -88,6 +88,11 @@ export function percent(v: number | null): Signed {
   return { text: `${dir > 0 ? "+" : dir < 0 ? "−" : ""}${n}%`, dir };
 }
 
+// a currency's gain in its own money, the rate's move left out
+export function currencyGain(totals: readonly Total[], code: string | null) {
+  return percent(totals.find((t) => t.currency === code)?.pl_percent ?? null);
+}
+
 // "5 Jan", the year only when it is not this one
 export function day(date: string, now = Date.now()): string {
   const [y, m, d] = date.split("-").map(Number) as [number, number, number];
@@ -122,12 +127,15 @@ export const holdingTitle = (h: Holding): string =>
 
 export function holdingSub(h: Holding, now = Date.now()): string {
   if (h.kind === "cash") {
-    return [h.dry_powder ? "Dry powder" : "Cash", h.as_of && day(h.as_of, now)]
+    return [
+      h.dry_powder ? "Dry powder" : "Reserve",
+      h.as_of && day(h.as_of, now),
+    ]
       .filter(Boolean)
       .join(" · ");
   }
   if (h.kind === "manual") {
-    return h.as_of ? `Fund · NAV ${day(h.as_of, now)}` : "Fund";
+    return h.as_of ? `Fund · priced ${day(h.as_of, now)}` : "Fund";
   }
   if (h.kind === "bond") {
     const parts = [
@@ -189,6 +197,13 @@ export function tradeLine(t: TradeRow): string {
   }`;
 }
 
+// a phone wraps between facts, never inside one
+export const whole = (line: string): string =>
+  line
+    .split(" · ")
+    .map((f) => f.replace(/ /g, "\u00a0"))
+    .join(" · ");
+
 export function tradeSub(t: TradeRow, now = Date.now()): string {
   return [
     day(t.date, now),
@@ -209,7 +224,7 @@ export function splitOf(t: Total) {
       value: t.invested,
       weight: t.invested_weight,
     },
-    { key: "cash", label: "Cash", value: t.cash, weight: t.cash_weight },
+    { key: "cash", label: "Reserve", value: t.cash, weight: t.cash_weight },
     {
       key: "dry",
       label: "Dry powder",
@@ -335,6 +350,12 @@ const STATUS_WORDS: Record<string, string> = {
 export const importStatus = (s: string): string => STATUS_WORDS[s] ?? s;
 
 // a row of the preview in a line: what it would save
+// the server's advice is for an agent, not the reader
+export const importReason = (reason: string): string =>
+  reason
+    .replace(/; try search\.?$/, "")
+    .replace(/: no listing found$/, ": not found");
+
 export function importLine(item: Record<string, unknown> | undefined): string {
   if (item === undefined) return "";
   const n = (k: string) =>
@@ -343,7 +364,7 @@ export function importLine(item: Record<string, unknown> | undefined): string {
     typeof item[k] === "string" ? (item[k] as string) : null;
   if (s("side") !== null) {
     return `${s("side") === "buy" ? "Buy" : "Sell"} ${symbolOf(s("symbol") ?? "")} · ${quantity(n("quantity"))} × ${price(n("price"), s("currency"))}${
-      s("date") ? ` · ${s("date")}` : ""
+      s("date") ? ` · ${day(s("date")!)}` : ""
     }`;
   }
   const what = s("name") ?? "";

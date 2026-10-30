@@ -111,6 +111,8 @@ const PATHS = {
   "arrow-down": "M8 3v10M4 9l4 4 4-4",
   trash: "M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.5 9h6l.5-9",
   pencil: "M10.5 2.5l3 3-8 8H2.5v-3z",
+  // Settings: three sliders
+  sliders: "M2.5 4.5h11M2.5 8h11M2.5 11.5h11M5.5 3v3M10.5 6.5v3M7 10v3",
   star: "M8 2l1.8 3.9 4.2.5-3.1 2.9.8 4.2L8 11.4l-3.7 2.1.8-4.2L2 6.4l4.2-.5z",
 } satisfies Record<string, string>;
 

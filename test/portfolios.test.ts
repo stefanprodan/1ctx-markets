@@ -157,6 +157,46 @@ describe("average cost", () => {
     expect(a.day_change).toBe(17 * 2);
   });
 
+  test("today's move counts a share bought today from its price and one sold today to its price", async () => {
+    const { m } = await setup();
+    await buy(m, { quantity: 10, price: 100 });
+    await buy(m, { quantity: 4, price: 119, date: LIVE });
+    await sell(m, { quantity: 2, price: 121, date: LIVE });
+    const a = row(await holdingsOf(m), "US:AAA");
+    expect(a.quantity).toBe(12);
+    // 10 held at the open, 2 of them sold: 8 × 2 + 4 × 1 + 2 × 3
+    expect(a.day_change).toBe(8 * 2 + 4 * 1 + 2 * 3);
+  });
+
+  test("a buy today at the live price has no move today", async () => {
+    const { m } = await setup();
+    await buy(m, { quantity: 10, price: 120, date: LIVE });
+    const h = await holdingsOf(m);
+    expect(row(h, "US:AAA").day_change).toBe(0);
+    expect(h.totals.find((t) => t.currency === "USD")!.day_change).toBe(0);
+  });
+
+  test("a holding sold out today stays at nothing until the day is over, its move counted", async () => {
+    const { m } = await setup();
+    await buy(m, { quantity: 10, price: 100 });
+    await sell(m, { quantity: 10, price: 121, date: LIVE });
+    const h = await holdingsOf(m);
+    const a = row(h, "US:AAA");
+    expect(a).toMatchObject({ quantity: 0, value: 0, sold_today: true });
+    // closed at 118, sold at 121
+    expect(a.day_change).toBe(10 * 3);
+    expect(h.totals.find((t) => t.currency === "USD")!.day_change).toBe(30);
+    expect(h.exposure[0]!.market).toEqual([]);
+  });
+
+  test("a holding sold out on an earlier day is gone", async () => {
+    const { m } = await setup();
+    await buy(m, { quantity: 10, price: 100 });
+    await sell(m, { quantity: 10, price: 110, date: "2026-03-17" });
+    const h = await holdingsOf(m);
+    expect(h.holdings).toEqual([]);
+  });
+
   test("a sell of more than a broker holds is refused, the other parts aside", async () => {
     const { m } = await setup();
     await buy(m, { quantity: 3, price: 100, broker: "North" });
@@ -624,7 +664,10 @@ describe("dry powder", () => {
       ["North", 3, 201],
       ["South", 2, 201],
     ]);
-    expect(row(await holdingsOf(m), "US:AAA")).toBeUndefined();
+    expect(row(await holdingsOf(m), "US:AAA")).toMatchObject({
+      quantity: 0,
+      sold_today: true,
+    });
     const put = await updatePosition(m, CASEY, dry.position.id, {
       by: { amount: 1000, currency: "USD" },
     });

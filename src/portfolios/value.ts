@@ -6,8 +6,9 @@
 
 import { iso } from "../market/format.ts";
 import { type Instrument, readInstrument } from "../market/instruments.ts";
-import { readQuote } from "../market/quotes.ts";
+import { type QuoteRow, readQuote } from "../market/quotes.ts";
 import { quoteStale, STALE } from "../market/stale.ts";
+import { localDate } from "../market/zone.ts";
 import type { Db } from "../storage/db/index.ts";
 import { type Rate, type Rates, rates as ratesOf } from "./fx.ts";
 import {
@@ -186,6 +187,44 @@ export function partsOf(
   return [...parts.values()];
 }
 
+// a trade on the quote's day moves from its own price, so a buy at the
+// live price shows no move it never had
+export function dayChangeOf(
+  trades: readonly Trade[],
+  instrument: Instrument,
+  splits: readonly Split[],
+  q: QuoteRow,
+  held: number,
+  fx: Rates,
+): number | null {
+  if (q.change === null) return null;
+  const day = localDate(instrument.zone, q.time ?? q.fetchedAt);
+  let open = held;
+  let flows = 0;
+  for (const t of trades) {
+    if (t.date < day) continue;
+    const f = splitFactor(splits, statedOf(t));
+    const shares = t.quantity * f;
+    const r =
+      instrument.currency === null
+        ? null
+        : fx.rate(t.currency, instrument.currency, t.date).rate;
+    if (r === null) return null;
+    const money = shares * (t.price / f) * r;
+    if (t.side === "buy") {
+      open -= shares;
+      flows -= money;
+    } else {
+      open += shares;
+      flows += money;
+    }
+  }
+  const before = q.price - q.change;
+  return (
+    (held * q.price - Math.max(0, open) * before + flows) * perUnit(instrument)
+  );
+}
+
 export type Converted = {
   currency: string;
   rate: number | null;
@@ -242,6 +281,8 @@ export type Row = {
   maturity?: string | null;
   // cash kept for buying
   dry_powder?: boolean;
+  // all of it sold on the quote's day: kept until then for the day's move
+  sold_today?: boolean;
   note?: string | null;
   trade_time: string | null;
   fetched_at: string | null;
@@ -391,17 +432,22 @@ export function readHoldingRows(
   for (const [id, list] of byInstrument) {
     const instrument = readInstrument(db, id);
     if (instrument === null) continue;
-    const parts = partsOf(
-      list,
-      instrument,
-      splitsOf(db, id),
-      fx,
-      scope.currency,
-    ).filter((p) => p.quantity > 0 || p.oversold);
+    const splits = splitsOf(db, id);
+    const parts = partsOf(list, instrument, splits, fx, scope.currency).filter(
+      (p) => p.quantity > 0 || p.oversold,
+    );
     const held = parts.filter((p) => p.quantity > 0);
-    // sold past what was bought: kept at nothing, with why
-    if (parts.length === 0) continue;
     const q = readQuote(db, id);
+    const soldToday =
+      parts.length === 0 &&
+      q !== null &&
+      list.some(
+        (t) =>
+          t.side === "sell" &&
+          t.date >= localDate(instrument.zone, q.time ?? q.fetchedAt),
+      );
+    // sold past what was bought: kept at nothing, with why
+    if (parts.length === 0 && !soldToday) continue;
     const unit = perUnit(instrument);
     const quantity = held.reduce((s, p) => s + p.quantity, 0);
     const cost = held.reduce<number | null>((s, p) => add(s, p.cost), 0);
@@ -439,11 +485,12 @@ export function readHoldingRows(
       pl: finite(plOf(value, cost)),
       pl_percent: pct(plPct(value, cost)),
       day_change:
-        q === null || q.change === null
+        q === null
           ? null
-          : finite(q.change * quantity * unit),
+          : finite(dayChangeOf(list, instrument, splits, q, quantity, fx)),
       change_percent: pct(q?.changePercent ?? null),
       weight: null,
+      ...(soldToday ? { sold_today: true } : {}),
       ...(otherPaid
         ? {
             paid: [...paid].map(([c, v]) => ({
@@ -760,7 +807,7 @@ const sharesOf = (
 ): Share[] => {
   const sums = new Map<string | null, number>();
   for (const e of entries) {
-    if (e.value === null) continue;
+    if (e.value === null || e.value === 0) continue;
     sums.set(e.key, (sums.get(e.key) ?? 0) + e.value);
   }
   const all = [...sums.values()].reduce((a, b) => a + b, 0);
