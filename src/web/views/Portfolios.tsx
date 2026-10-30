@@ -45,6 +45,7 @@ import {
   IMPORT_KINDS,
   importLine,
   importStatus,
+  largestFirst,
   listingWords,
   missingWords,
   percent,
@@ -578,7 +579,7 @@ function HoldingsCard({
       {h.holdings.length === 0 ? (
         <RowsNote>Nothing held yet.</RowsNote>
       ) : (
-        h.holdings.map((x) => (
+        largestFirst(h.holdings).map((x) => (
           <HoldingRow
             key={`${x.kind}/${x.id ?? ""}/${x.position ?? ""}`}
             store={store}

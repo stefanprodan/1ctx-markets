@@ -439,3 +439,16 @@ export function dryPowderFor(
     (d.currency === currency ? 2 : 0) + (d.portfolio === portfolio ? 1 : 0);
   return [...all].sort((a, b) => score(b) - score(a))[0] ?? null;
 }
+
+// one ranking across currencies by the converted value; a row with no
+// rate goes last, and the server's order breaks ties
+export function largestFirst(rows: Holding[]): Holding[] {
+  const v = (r: Holding) => r.converted?.value ?? null;
+  return [...rows].sort((a, b) => {
+    const x = v(a);
+    const y = v(b);
+    if (x === null || y === null)
+      return (x === null ? 1 : 0) - (y === null ? 1 : 0);
+    return y - x;
+  });
+}

@@ -345,7 +345,9 @@ signed in with the admin key alone.
 - **Filters:** All or one portfolio (tabs that scroll sideways), a
   broker, and the currency picker; a portfolio or broker gone elsewhere
   falls back to all.
-- **Holdings** are rows that open: an instrument by its symbol with
+- **Holdings** are rows that open, ranked by their value in the display
+  currency across currencies (the server groups by currency; the page
+  does not), rows with no rate last: an instrument by its symbol with
   quantity × average cost under it, a position by its name (cash, "Dry
   powder", a fund as "Fund · NAV" with its date (the words "priced by hand" appear nowhere in the UI), a bond with its coupon,
   maturity and "at face" when no listing prices it). Opened: price,

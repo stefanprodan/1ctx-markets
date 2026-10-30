@@ -6,6 +6,7 @@ import { describe, expect, test } from "bun:test";
 import { render } from "preact-render-to-string";
 import type { Fetch } from "../src/web/data/api.ts";
 import type {
+  Holding,
   Holdings,
   Overview,
   TradeRow,
@@ -22,6 +23,7 @@ import {
   heldAt,
   holdingSub,
   importLine,
+  largestFirst,
   listingWords,
   ranked,
   rateLine,
@@ -628,6 +630,40 @@ describe("the add panel", () => {
     expect(shownIn(h, 100, "USD")).toEqual({ value: 90, currency: "EUR" });
     expect(shownIn(h, 100, "EUR")).toBeNull();
     expect(shownIn(h, 100, "JPY")).toBeNull();
+  });
+
+  test("holdings rank by their converted value, whatever their currency", () => {
+    const row = (id: string, currency: string, value: number | null) =>
+      ({
+        ...HOLDINGS.holdings[0]!,
+        id,
+        currency,
+        converted:
+          value === null
+            ? undefined
+            : {
+                currency: "EUR",
+                rate: 1,
+                rate_at: null,
+                value,
+                cost: null,
+                pl: null,
+              },
+      }) as Holding;
+    const rows = [
+      row("A", "EUR", 50),
+      row("B", "EUR", 10),
+      row("C", "USD", null),
+      row("D", "USD", 90),
+      row("E", "RON", 50),
+    ];
+    expect(largestFirst(rows).map((r) => r.id)).toEqual([
+      "D",
+      "A",
+      "E",
+      "B",
+      "C",
+    ]);
   });
 
   test("where a listing is held: every portfolio and broker of it", () => {
