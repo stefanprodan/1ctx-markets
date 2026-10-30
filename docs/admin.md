@@ -45,7 +45,7 @@ log and cut off without touching the others.
 | `POST /api/v1/instruments/{symbol}/refetch` | `{"parts": [...], "sections": [...]}`, answered per part |
 | `DELETE /api/v1/instruments/{symbol}` | the instrument and every row of it; 204 |
 | `GET /api/v1/keys` | the agent keys (below) |
-| `POST /api/v1/keys` | `{"name", "expiresInDays"}`: a new agent key, its token answered once |
+| `POST /api/v1/keys` | `{"name", "expiresInDays", "portfolio"}`: a new agent key, its token answered once; `portfolio` is `none` (the default), `read` or `write` |
 | `DELETE /api/v1/keys/{id}` | revokes an agent key; 204 |
 
 ## Agent keys
@@ -53,6 +53,11 @@ log and cut off without touching the others.
 - **An agent key opens what the read scope opens**: `/mcp`, the read
   routes, the rules writes and the alerts feed; never an admin route,
   so an agent never makes or lists keys.
+- **Portfolio access is the admin's to give** (`portfolio`: `none`,
+  `read` or `write`, on `POST /keys` and `keys add --portfolio`),
+  `none` by default, since holdings are private; a key's access is
+  answered in the list. It opens the portfolio routes and the
+  `portfolio` tool (`docs/portfolios.md`).
 - **A name follows 1ctx's agent name rule**: 2 to 80 lowercase
   letters, digits, dashes and underscores, starting with a letter or
   digit, unique (409 `conflict`, "name taken").
@@ -155,6 +160,10 @@ log and cut off without touching the others.
   reloads at its next save instead of fetching it back.
 - **Refused with 409 while a rule reads it**, its own or another's
   condition: delete the rule first. The check is in the same write.
+- **Refused with 409 while a trade or position names it**, removed
+  ones included, so a restore never finds it gone (`portfolioHolds()`,
+  `docs/portfolios.md`); `rules` is empty then and the detail names
+  no figure.
 - **Its alerts stay** until retention, since alerts have no foreign key
   and a hole would read as a retention gap on the alerts feed.
 - **A `--track` value's instrument is fetched again** on the next track
@@ -180,7 +189,8 @@ log and cut off without touching the others.
   status other than 2xx or no answer.
 - **`1ctx-markets keys list|add|revoke` calls the same way**, with the
   same `--listen` and `--data`. `list` prints `GET /api/v1/keys`'s
-  JSON; `add <name> [--expires 30|90|365]` prints the new token alone
+  JSON; `add <name> [--expires 30|90|365] [--portfolio none|read|write]`
+  (portfolio access, `none` by default) prints the new token alone
   on stdout, once, so `$(...)` can take it, and nothing else; `revoke
   <name>` finds the key's id by name and prints `revoked <name>`. A
   refusal exits 1 with the server's detail and status.

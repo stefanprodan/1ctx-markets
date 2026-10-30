@@ -272,6 +272,10 @@ export const schemas: Record<string, Schema> = {
         "With `candidates`: the listings to pick an id from.",
       ),
       rules: note(list(int), "With `conflict`: the rules reading it."),
+      positions: note(
+        list(freeForm),
+        "With several dry powder positions: each one's id, name, currency and portfolio.",
+      ),
       dashboard: ref("Dashboard"),
       errors: note(
         list(itemError),
@@ -681,6 +685,10 @@ export const schemas: Record<string, Schema> = {
     created_at: str,
     last_used_at: note(nstr, "Null until first used. Kept to the minute."),
     expires_at: note(nstr, "Null for a key that never expires."),
+    portfolio: note(
+      values(["none", "read", "write"]),
+      "What the key may do with portfolios.",
+    ),
   }),
   Keys: object({
     keys: list(ref("Key")),
@@ -688,6 +696,10 @@ export const schemas: Record<string, Schema> = {
   }),
   KeyArgs: object(
     {
+      portfolio: note(
+        values(["none", "read", "write"]),
+        "What the key may do with portfolios; none by default.",
+      ),
       name: note(
         str,
         `${MIN_NAME} to ${MAX_NAME} lowercase letters, digits, dashes and underscores, starting with a letter or digit.`,

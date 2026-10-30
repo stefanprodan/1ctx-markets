@@ -6,7 +6,7 @@
 export const INSTRUCTIONS_BYTES = 4096;
 
 // Most important first, what the server lacks last: a cut drops the least.
-export const INSTRUCTIONS = `Market data and price rules. Which tool answers what:
+export const INSTRUCTIONS = `Market data, price rules and portfolios. Which tool answers what:
 - Prices now, and how a symbol did over a week, a month, three months or the year so far (ytd): \`quote\`, whose \`returns\` hold those periods and \`session\` whether its market is open; \`benchmark\` adds relative strength. The benchmark's own returns come from quoting it as a symbol too, never derived from the relative figures.
 - A US share's move before the open or after the close: \`quote\` with \`extended\`; a null \`extended\` gives its reason in \`stale\`, and it never drives a rule or signal.
 - Bars, a chart's data, a full year or any other period: \`history\`; its \`session\` says whether the market is open; the last bar still trades only while it is open and the bar's \`final\` is false. How a symbol moved today or over the last five sessions: \`history\` with \`interval\` 5m, regular-hours closes as fresh as the quote pass, a move measured from its \`previous_close\`; \`extended\` adds the pre- and post-market closes while the session is closed.
@@ -15,6 +15,7 @@ export const INSTRUCTIONS = `Market data and price rules. Which tool answers wha
 - A US share's SEC filings, late filings, restatements or new securities registered or offered: \`research\`, \`section\` filings; its overview carries the flags.
 - Earnings dates: \`events\`. A named share under \`no_event\` had no earnings in the window: that is an answer, not missing data.
 - A level to be told about later: \`rules\`, rather than asking again by hand.
+- The owner's trades, holdings, cash and dry powder, and any question on what they hold ("my stocks", "my ETF", "my portfolio", a portfolio they name): \`portfolio\` holdings first, then its symbols to \`quote\`, \`history\` and \`research\`; never guess a symbol. Amounts stay in their own currency; never assume one, ask or say it.
 - An unknown or ambiguous name: \`search\`.
 Answer from these tools, not the server's HTTP endpoints, and never recompute an average or return a tool already gives.
 
@@ -30,4 +31,4 @@ Units: prices are in the listing's own \`currency\`. A series whose \`unit\` is 
 
 Paging: never change the arguments to avoid a page.
 
-What this server does not hold, so look elsewhere and never read its silence as none: macro dates (central banks, data releases, elections), ETF constituents, prices of funds Yahoo does not list, options, and analyst estimate revisions.`;
+What this server does not hold, so look elsewhere and never read its silence as none: macro dates (central banks, data releases, elections), ETF constituents, prices of funds Yahoo does not list (but \`portfolio\` holds the owner's hand-priced ones), options, and analyst estimate revisions.`;

@@ -6,8 +6,8 @@ Bucharest Stock Exchange's own feed) into one SQLite file, computes
 signals, evaluates price rules, and serves them over the Model Context
 Protocol (MCP, Streamable HTTP) and a REST API under `/api/v1` with an
 OpenAPI spec, both behind the admin key or agents' own keys. It holds
-market data and price rules only, never holdings, orders or a
-portfolio.
+market data, price rules and the owner's portfolios of trades and
+positions; never orders, broker connections, dividends or tax.
 
 - **Runtime:** Bun only (pinned in `.bun-version`), TypeScript run
   directly, `bun:sqlite`, one standalone binary. No Node.
@@ -86,6 +86,7 @@ src/sources/                what every source shares, each provider under it
   edgar/                    SEC filings, their flags, events' filed_at
 src/signals/                daily, weekly, live and relative signals
 src/rules/                  rule conditions, evaluation, alerts
+src/portfolios/             trades and positions, holdings, rates, CSV
 src/operations/             the reads the MCP tools and the API share, with their MCP pages
 src/tools/                  the MCP surface: the tool registry and research's page
 src/api/                    /api/v1: routes, alerts, the spec, the docs page; never imports tools/
@@ -126,6 +127,7 @@ the same commit as the code that changes a rule.
 | `docs/research.md` | Finnhub research and earnings events, Massive news, their keys and budgets, the `research` and `events` tools, the research route's contents |
 | `docs/signals.md` | the daily and weekly signals, final and live rows, reading, relative return |
 | `docs/rules.md` | rule conditions, validation, evaluation, the earnings gate, split pauses, the `rules` tool |
+| `docs/portfolios.md` | portfolios, brokers, trades and positions, dry powder, the holdings arithmetic, currencies and rates, the `portfolio` tool, CSV import and export, privacy |
 | `docs/tools.md` | the answer contract, arguments, each tool, units and staleness, resolution and the inline fetch, the reads the API shares, tool descriptions |
 | `docs/web.md` | the web UI: serving, the sign-in and its cookie, what the cookie opens, what an anonymous visitor sees, the client's rules, the pages |
 | `docs/testing.md` | the test suite, fakes, the fake clock, fixtures and the recorders |
@@ -156,6 +158,9 @@ the same commit as the code that changes a rule.
   field an agent chooses by updates the server instructions**
   (`src/server/instructions.ts`, `docs/tools.md`) in the same PR: they
   are the only guidance across tools a client keeps whole.
+- **Holdings are private**: never in a log line, an error message or
+  admin status, and no currency is a default anywhere
+  (`docs/portfolios.md`).
 - **No SQL, expression or query tool, ever.** The tools are fixed;
   `screen` is the only open-ended read.
 - **Live prices drive the answers.** Averages are on closed days plus

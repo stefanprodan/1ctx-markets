@@ -5,6 +5,7 @@
 import { CALLS_PER_MINUTE } from "../server/ratelimit.ts";
 import { COOKIE } from "../server/session.ts";
 import { paths, responses } from "./paths.ts";
+import { portfolioPaths, portfolioSchemas } from "./portfolio-spec.ts";
 import { schemas } from "./schemas.ts";
 
 export const spec = {
@@ -14,9 +15,9 @@ export const spec = {
     version: "v1",
     // no identifier or url: the page would link to another host
     license: { name: "Apache-2.0" },
-    description: `Market data and price rules, the same answers as the MCP tools.
+    description: `Market data, price rules and portfolios, the same answers as the MCP tools.
 
-- Each operation names the key it takes: an agent key, made by the admin, or the admin key, which opens every route.
+- Each operation names the key it takes: an agent key, made by the admin, or the admin key, which opens every route. Portfolio routes take an agent key only when the admin gave it portfolio access.
 - Each key makes at most ${CALLS_PER_MINUTE} calls a minute.
 - A symbol is taken as written, with its exchange suffix (\`VVSM.DE\`, \`BRK-B\`, \`^VIX\`, \`CL=F\`), or as a stored id (\`US:NVDA\`).
 - Results are not paged, except the stored instrument list and the alerts feed.
@@ -31,12 +32,16 @@ export const spec = {
       description: "One instrument, its bars, and the stored instruments.",
     },
     { name: "rules", description: "Price rules and their alerts." },
+    {
+      name: "portfolios",
+      description: "Trades, positions and holdings, valued live.",
+    },
     { name: "dashboard", description: "The web UI's home page." },
     { name: "server", description: "The server's sources and jobs." },
     { name: "keys", description: "The agents' keys." },
     { name: "docs", description: "This page and its OpenAPI document." },
   ],
-  paths,
+  paths: { ...paths, ...portfolioPaths },
   components: {
     securitySchemes: {
       read: {
@@ -44,6 +49,17 @@ export const spec = {
         scheme: "bearer",
         description:
           "An agent key, made by the admin, for market data, instruments and rules.",
+      },
+      portfolioRead: {
+        type: "http",
+        scheme: "bearer",
+        description:
+          "An agent key the admin gave portfolio read or write access.",
+      },
+      portfolioWrite: {
+        type: "http",
+        scheme: "bearer",
+        description: "An agent key the admin gave portfolio write access.",
       },
       admin: {
         type: "http",
@@ -59,7 +75,7 @@ export const spec = {
           "The web UI's sign-in cookie. It opens what the admin key opens but the rules writes. A request other than GET must come from this server's own pages.",
       },
     },
-    schemas,
+    schemas: { ...schemas, ...portfolioSchemas },
     responses,
   },
 };

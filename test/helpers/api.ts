@@ -37,6 +37,7 @@ export function keyAccess(adminKey: string | null): Access {
           createdAt: 0,
           expiresAt: null,
           lastUsedAt: null,
+          portfolio: "none",
         },
       };
     },
@@ -87,11 +88,11 @@ export function api(
     if (req.headers.has("authorization") || req.headers.has("cookie")) {
       return handle(req);
     }
-    // the narrowest key the route takes
+    // the narrowest key the route takes; the read key opens no portfolio
     const path = new URL(req.url).pathname.slice(PREFIX.length);
     const found = match(list, path);
     const admin = found?.routes.some(
-      (r) => r.method === req.method && r.scope === "admin",
+      (r) => r.method === req.method && r.scope !== "read",
     );
     const headers = new Headers(req.headers);
     headers.set("authorization", `Bearer ${admin ? ADMIN_KEY : READ_KEY}`);

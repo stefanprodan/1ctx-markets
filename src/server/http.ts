@@ -8,6 +8,7 @@ import type { McpHttpHandler } from "@modelcontextprotocol/server";
 import type { HTMLBundle } from "bun";
 import { failed, notAllowed, notFound, PREFIX, problem } from "../api/http.ts";
 import { match, type Route } from "../api/routes.ts";
+import { ADMIN, NO_ACCESS, WEB, type Who } from "../operations/portfolio.ts";
 import { type Clock, MINUTE_MS } from "../runtime/clock.ts";
 import { type Log, type LogFields, sdkErrorFields } from "../runtime/log.ts";
 import type { Access, Caller } from "./access.ts";
@@ -34,6 +35,7 @@ export const UI_PATHS = [
   "/connect",
   "/instruments",
   "/instruments/:id",
+  "/portfolios",
 ] as const;
 
 export type RouterDeps = {
@@ -75,6 +77,14 @@ async function messages(req: Request): Promise<number> {
     return 1;
   }
 }
+
+// a cookie is the web UI's, which writes as the admin does
+export const whoOf = (c: Caller | null): Who =>
+  c === null
+    ? WEB
+    : c.kind === "admin"
+      ? ADMIN
+      : { name: c.key.name, access: c.key.portfolio };
 
 const keyFields = (c: Caller | null): LogFields =>
   c === null
@@ -126,6 +136,12 @@ export function router(deps: RouterDeps): Handle {
       const over = limited(c, apiOver);
       if (over !== null) return over;
       if (c.kind === "admin" || r === null || r.scope === "read") return null;
+      if (r.scope === "portfolio:read" && c.key.portfolio !== "none") {
+        return null;
+      }
+      if (r.scope === "portfolio:write" && c.key.portfolio === "write") {
+        return null;
+      }
       return forbidden("this key does not open this route");
     }
     if (!signedIn(req) || r?.cookie === false) return apiUnauthorized();
@@ -144,14 +160,14 @@ export function router(deps: RouterDeps): Handle {
     if (found?.routes.every((r) => r.scope === "none") === true) {
       const r = found.routes.find((x) => x.method === req.method);
       if (r === undefined) return notAllowed(found.routes.map((x) => x.method));
-      return r.handle(req, url, found.params);
+      return r.handle(req, url, found.params, NO_ACCESS);
     }
     const r = found?.routes.find((x) => x.method === req.method) ?? null;
     const refused = allowed(req, c, r);
     if (refused !== null) return refused;
     if (found === null) return notFound();
     if (r === null) return notAllowed(found.routes.map((x) => x.method));
-    return r.handle(req, url, found.params);
+    return r.handle(req, url, found.params, whoOf(c));
   };
   const route = async (
     req: Request,
@@ -176,7 +192,14 @@ export function router(deps: RouterDeps): Handle {
       const batch = limited(c, mcpOver, more);
       if (batch !== null) return batch;
     }
-    return deps.mcp.fetch(req);
+    const who = whoOf(c);
+    return deps.mcp.fetch(req, {
+      authInfo: {
+        token: "",
+        clientId: who.name,
+        scopes: [`portfolio:${who.access}`],
+      },
+    });
   };
   return async (req) => {
     const started = deps.clock.now();

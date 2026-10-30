@@ -4,7 +4,8 @@ Governs the REST API under `/api/v1`: `src/api/` (`routes.ts`,
 `http.ts`, `openapi.ts`, `schemas.ts`, `paths.ts`, `docs.ts`, `docs/`),
 the router's part in `src/server/http.ts`, the alerts feed
 (`src/api/alerts.ts`) and the instrument, watchlist and status
-handlers (`src/admin/http.ts`), and the dashboard's
+handlers (`src/admin/http.ts`), the portfolio routes
+(`src/api/portfolios.ts`, `docs/portfolios.md`), and the dashboard's
 (`src/admin/dashboard.ts`). What each route reads is its tool's,
 in `docs/tools.md`, `docs/research.md` and `docs/rules.md`; what an
 alert is in `docs/rules.md`; the admin key and what refetch and delete
@@ -41,8 +42,24 @@ MCP tools copied onto paths.
 | `PATCH /rules/{id}` | read | `pauseRule()` | `{"paused": bool}` sets or clears the manual pause; `{rule}` |
 | `DELETE /rules/{id}` | read | `deleteRuleById()` | 204; its alerts stay |
 | `GET /alerts` | read | `alertsHandler()` | the alerts feed (below) |
+| `GET /portfolios` | portfolio:read | `listAll()` | `portfolios[]` with their counts, `brokers[]`, `display_currency` |
+| `POST /portfolios`, `PATCH`, `DELETE /portfolios/{id}` | portfolio:write | `createPortfolio()`, `updatePortfolio()`, `removePortfolio()` | `{name}`; 201 with `Location`; 409 for a taken name or a portfolio holding live rows (removed ones are deleted with it) |
+| `GET /portfolios/{id}` | portfolio:read | `portfolioItem()` | `{portfolio}` |
+| `GET /portfolios/{id}/holdings?broker=&currency=`, `GET /holdings?broker=&currency=` | portfolio:read | `readHoldings()` | one portfolio's or all holdings, totals per currency, `converted` and `rates` with a named or display currency, `exposure` (`docs/portfolios.md`) |
+| `GET /portfolios/{id}/export` | portfolio:read | `exportCsv()` | `text/csv`, the trades in the portfolio CSV export format |
+| `POST /portfolios/{id}/import` | portfolio:write | `importCsv()` | `{csv, broker, currency, confirm, dry_powder}`; every row's status, saved only with `confirm` |
+| `GET /trades?portfolio=&broker=&symbol=&from=&to=&removed=` | portfolio:read | `readTradeList()` | `trades[]`, newest first, whole |
+| `POST /trades` | portfolio:write | `addTrade()` | the tool's `add` arguments; 201 with `trade`, or `trades` for a sell of all |
+| `DELETE /trades/{id}`, `POST /trades/{id}/restore` | portfolio:write | `setTradeState()` | `{trade}`, removed or back; never a delete |
+| `GET /positions?portfolio=&broker=&removed=` | portfolio:read | `readPositions()` | `positions[]` |
+| `POST /positions` | portfolio:write | `addPosition()` | `{kind, ...}`; 201 with `position` and `replaced` |
+| `PATCH /positions/{id}` | portfolio:write | `updatePosition()` | the tool's `update` arguments; the new row, `replaced`, and `rate` for a converted amount; 409 on a removed row |
+| `DELETE /positions/{id}`, `POST /positions/{id}/restore` | portfolio:write | `setPositionState()` | `{position}` |
+| `GET /positions/{id}/history` | portfolio:read | `historyOf()` | `history[]`, every row of the position, newest first |
+| `GET /brokers`, `POST /brokers`, `PATCH`, `DELETE /brokers/{id}` | portfolio:read, write | `listAll()`, `createBroker()`, `updateBroker()`, `removeBroker()` | `{name}`; 409 for a taken name or a broker a live row names (removed rows lose the name) |
+| `GET /portfolio-settings`, `PUT /portfolio-settings` | portfolio:read, write | `settingsItem()`, `saveSettings()` | `{display_currency}`, a code or null |
 | `GET /keys` | admin | `listAnswer()` | `keys[]` (id, name, created, last used, expires; never a token) and `limit` (`docs/admin.md`) |
-| `POST /keys` | admin | `createOne()` | `{name, expiresInDays}` (null, 30, 90 or 365); 201 with `key` and its `token`, once; 409 for a taken name or past the cap of 5 |
+| `POST /keys` | admin | `createOne()` | `{name, expiresInDays, portfolio}` (days null, 30, 90 or 365; portfolio `none`, the default, `read` or `write`); 201 with `key` and its `token`, once; 409 for a taken name or past the cap of 5 |
 | `DELETE /keys/{id}` | admin | `revokeOne()` | 204; 404 for an unknown id |
 | `GET /status` | admin | `status()` | `docs/admin.md` |
 | `GET /openapi.json` | none | `spec` | the OpenAPI document |
@@ -310,7 +327,13 @@ MCP tools copied onto paths.
   narrower one, and `/mcp`: a single-user install needs no other key.
 - **A valid key without the scope is 403 `forbidden`**: an agent key
   on `GET /instruments`, `DELETE /instruments/{symbol}`, refetch,
-  `/status` and `/keys`. A missing, wrong, revoked or expired key is
+  `/status` and `/keys`, and on a portfolio route without that access.
+- **Portfolio routes take the key's portfolio access** (`keys.portfolio`,
+  `none` by default): `portfolio:read` opens with `read` or `write`,
+  `portfolio:write` with `write`. Holdings are private, so the read
+  scope never opens them. The handler gets the caller (`Who`), whose
+  name a write records: `web` for the cookie, `admin`, or the key's
+  name. The spec names `portfolioRead` and `portfolioWrite`. A missing, wrong, revoked or expired key is
   401. Any other `/api/v1/` path, unknown ones included, answers 401
   without a key and 404 with one.
 - **Each key makes at most 120 calls a minute** (`CALLS_PER_MINUTE`,
@@ -325,7 +348,7 @@ MCP tools copied onto paths.
   or `key=admin`; never a token. A token made by `POST /keys` joins the
   log mask before it is answered (`mask()` in `src/runtime/keys.ts`).
 - **The web UI's session cookie opens what the admin key opens but
-  the rules writes** (`cookie: false` on `POST /rules`, `PATCH` and
+  the rules writes**, portfolio writes included, (`cookie: false` on `POST /rules`, `PATCH` and
   `DELETE /rules/{id}`); a cookie request that is not a `GET` must come
   from this server's own pages, or it is 403 (`docs/web.md`). A key is
   tried first, the cookie only when no key is valid. The spec names

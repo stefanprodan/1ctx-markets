@@ -26,6 +26,14 @@ import {
 } from "../operations/history.ts";
 import type { Markets } from "../operations/markets.ts";
 import { AVERAGES, moversAnswer, parseMovers } from "../operations/movers.ts";
+import {
+  ADD_KINDS,
+  NO_ACCESS,
+  PORTFOLIO_ACTIONS,
+  parsePortfolio,
+  portfolioAnswer,
+  type Who,
+} from "../operations/portfolio.ts";
 import { MAX_SYMBOLS, parseQuote, quotePage } from "../operations/quote.ts";
 import { SINCE_DAYS } from "../operations/research.ts";
 import { parseRules, RULE_ACTIONS, rulesAnswer } from "../operations/rules.ts";
@@ -106,11 +114,13 @@ const EVENTS = `Earnings events dated from to to (YYYY-MM-DD, inclusive) of the 
 
 const RULES = `Price rules on live quotes. Turning true writes one alert; again only after false. create: symbol, condition, note; answers its first evaluation. condition: {left, op, right} (op < <= > >=; right a number or operand) or {all: [...]}/{any: [...]}; ≤${MAX_COMPARISONS} comparisons, ${MAX_DEPTH} levels, ${MAX_INSTRUMENTS} instruments. Operand: a field of symbol, or {field, symbol} (^VIX). Fields: price changePct dayHigh dayLow previousClose sma50 sma200 ema20 rsi14 macd macdSignal macdHistogram macdTurn atr14 moveAtr volatility20 bollingerLower high52w low52w drawdown fromLow daysSinceHigh volumeRatio cross crossEdge weeklySma50 weeklySma200 weeklyCross weeklyCrossEdge, and {field: relativeReturn1m|relativeReturn3m, benchmark}. Each comparison reads a live value, in one unit. Example: {"all":[{"left":"rsi14","op":"<","right":30},{"left":"price","op":">","right":"sma200"}]}. "afterEarnings": "<US share>" on the root waits for its next results. A stale input changes nothing. A split pauses price-vs-number rules. list: next; pause: id, paused; delete: id.`;
 
+const PORTFOLIO = `For "my stocks", "my ETF", "my portfolio" or a portfolio the owner names: holdings first, then its symbols to quote, history, research. Values and totals per currency, converted only into currency (else display_currency). list: portfolios, brokers. holdings: portfolio, broker, currency, next: value, pl, weight, parts; totals with invested, cash, dry_powder. trades: portfolio, broker, symbol, from, to, removed, next. add (kind trade): symbol, side, quantity (a bond's face; all: what each broker holds that day, less what later sells need), price or total (fees in), fees, date, currency paid, broker (known), note; neither: live price, shown back. cash: name, amount, currency, dry_powder; manual: name, units, price, currency, cost; bond: name, amount (face), symbol, coupon, maturity, currency, cost. update position (id or dry_powder): amount or by (+/-), in currency or its own; units, price, cost, date, note. Into dry powder: add, then update it. Say amounts with currency. remove, restore: trade or position.`;
+
 type Tool = {
   name: string;
   description: string;
   inputSchema: ReturnType<typeof schema>;
-  run: (input: unknown) => Promise<ToolResult>;
+  run: (input: unknown, who?: Who) => Promise<ToolResult>;
   // read-only unless said otherwise
   writes?: true;
 };
@@ -289,6 +299,45 @@ export function tools(m: Markets): Tool[] {
       run: (input) => rulesAnswer(m, parseRules(input)),
       writes: true,
     },
+    {
+      name: "portfolio",
+      description: PORTFOLIO,
+      inputSchema: schema(
+        {
+          action: { type: "string", enum: [...PORTFOLIO_ACTIONS] },
+          kind: { type: "string", enum: [...ADD_KINDS], default: "trade" },
+          portfolio: { type: ["string", "integer"] },
+          symbol,
+          side: { type: "string", enum: ["buy", "sell"] },
+          quantity: { type: ["number", "string"] },
+          price: { type: "number", minimum: 0 },
+          total: { type: "number", minimum: 0 },
+          fees: { type: "number", minimum: 0 },
+          date: day,
+          currency: { type: "string" },
+          broker: { type: "string" },
+          note: { type: "string", maxLength: MAX_NOTE },
+          name: { type: "string" },
+          amount: { type: "number", minimum: 0 },
+          units: { type: "number", exclusiveMinimum: 0 },
+          cost: { type: "number", minimum: 0 },
+          coupon: { type: "number" },
+          maturity: day,
+          dry_powder: { type: "boolean" },
+          by: { type: "number" },
+          trade: { type: "integer", minimum: 1 },
+          position: { type: ["integer", "string"] },
+          from: day,
+          to: day,
+          removed: { type: "boolean", default: false },
+          next,
+        },
+        ["action"],
+      ),
+      run: (input, who) =>
+        portfolioAnswer(m, who ?? NO_ACCESS, parsePortfolio(input)),
+      writes: true,
+    },
   ];
 }
 
@@ -297,10 +346,11 @@ export async function call(
   m: Markets,
   tool: Tool,
   input: unknown,
+  who: Who = NO_ACCESS,
 ): Promise<ToolResult> {
   const started = m.clock.now();
   try {
-    const result = await tool.run(input);
+    const result = await tool.run(input, who);
     m.log.info("tool call", {
       tool: tool.name,
       status: result.isError ? "error" : "ok",
@@ -318,9 +368,11 @@ export async function call(
 }
 
 // built once, registered on each request's server instance
-export function registerTools(m: Markets): (server: McpServer) => void {
+export function registerTools(
+  m: Markets,
+): (server: McpServer, who: Who) => void {
   const list = tools(m);
-  return (server) => {
+  return (server, who) => {
     for (const tool of list) {
       server.registerTool(
         tool.name,
@@ -336,7 +388,7 @@ export function registerTools(m: Markets): (server: McpServer) => void {
               }
             : { readOnlyHint: true, openWorldHint: true },
         },
-        (input: unknown) => call(m, tool, input),
+        (input: unknown) => call(m, tool, input, who),
       );
     }
   };

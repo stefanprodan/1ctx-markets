@@ -19,6 +19,8 @@ import {
   MAX_KEYS,
   MAX_NAME,
   MIN_NAME,
+  PORTFOLIO_ACCESS,
+  type PortfolioAccess,
   revokeKey,
 } from "../server/access.ts";
 
@@ -34,13 +36,18 @@ export const keyItem = (k: KeyRow) => ({
   created_at: iso(k.createdAt),
   last_used_at: k.lastUsedAt === null ? null : iso(k.lastUsedAt),
   expires_at: k.expiresAt === null ? null : iso(k.expiresAt),
+  portfolio: k.portfolio,
 });
 
 export const listAnswer = (m: Markets) =>
   json({ keys: listKeys(m.db).map(keyItem), limit: MAX_KEYS });
 
-function parseCreate(body: unknown): { name: string; days: KeyDays | null } {
-  const b = fields(body, ["name", "expiresInDays"]);
+function parseCreate(body: unknown): {
+  name: string;
+  days: KeyDays | null;
+  portfolio: PortfolioAccess;
+} {
+  const b = fields(body, ["name", "expiresInDays", "portfolio"]);
   if (!isKeyName(b.name)) {
     throw new ArgError(
       `name is ${MIN_NAME} to ${MAX_NAME} lowercase letters, digits, dashes and underscores, starting with a letter or digit`,
@@ -50,7 +57,15 @@ function parseCreate(body: unknown): { name: string; days: KeyDays | null } {
   if (days !== null && !(KEY_DAYS as readonly unknown[]).includes(days)) {
     throw new ArgError(`expiresInDays is null, ${KEY_DAYS.join(", ")}`);
   }
-  return { name: b.name, days: days as KeyDays | null };
+  const portfolio = b.portfolio ?? "none";
+  if (!(PORTFOLIO_ACCESS as readonly unknown[]).includes(portfolio)) {
+    throw new ArgError(`portfolio is ${PORTFOLIO_ACCESS.join(", ")}`);
+  }
+  return {
+    name: b.name,
+    days: days as KeyDays | null,
+    portfolio: portfolio as PortfolioAccess,
+  };
 }
 
 export async function createOne(d: KeysDeps, body: unknown) {

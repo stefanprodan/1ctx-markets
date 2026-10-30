@@ -15,6 +15,7 @@ import { lastReadAt } from "../src/market/tracking.ts";
 import { withLive } from "../src/operations/history.ts";
 import { NO_SOURCE } from "../src/operations/intraday.ts";
 import { CALL_MS, markets } from "../src/operations/markets.ts";
+import { MAX_IMPORT_BODY } from "../src/operations/portfolio-import.ts";
 import { DAY_MS } from "../src/runtime/clock.ts";
 import { silent } from "../src/runtime/log.ts";
 import { CALLS_PER_MINUTE } from "../src/server/ratelimit.ts";
@@ -959,6 +960,8 @@ describe("every operation", () => {
     await check("DELETE", "/keys/{id}", await revoke(), 204);
     await check("DELETE", "/keys/{id}", await revoke(), 404);
 
+    await portfolioOperations(t, check, wrong, reader);
+
     // past the minute's calls every keyed operation is refused before it
     // runs, whatever it was sent
     for (const key of [READ_KEY, ADMIN_KEY]) {
@@ -1455,7 +1458,8 @@ describe("access", () => {
           "application/problem+json",
         );
         const read = await fetch(at, { method, headers: as(bearer) });
-        const forbidden = r.scope === "admin";
+        // the agent key here has no portfolio access
+        const forbidden = r.scope !== "read";
         expect([method, path, read.status === 403]).toEqual([
           method,
           path,
@@ -1890,3 +1894,529 @@ describe("the routes' answers", () => {
     }
   });
 });
+
+type Check = (
+  method: string,
+  path: string,
+  res: Response,
+  status: number,
+) => Promise<any>;
+
+// every portfolio operation's success and documented errors, on made-up rows
+async function portfolioOperations(
+  t: Awaited<ReturnType<typeof setup>>,
+  check: Check,
+  wrong: RequestInit,
+  reader: RequestInit,
+) {
+  const send = (method: string, body: unknown, type = "application/json") => ({
+    method,
+    headers: { "content-type": type },
+    body: typeof body === "string" ? body : JSON.stringify(body),
+  });
+  const as = (init: RequestInit, key: RequestInit): RequestInit => ({
+    ...init,
+    headers: { ...(init.headers as object), ...(key.headers as object) },
+  });
+  // a key's minute of calls opens again, so this many fit
+  const call = t.call;
+  let calls = 0;
+  t = {
+    ...t,
+    call: async (path: string, init?: RequestInit) => {
+      if (++calls % 50 === 0) await t.clock.advance(60_000);
+      return call(path, init);
+    },
+  };
+  await t.clock.advance(60_000);
+  // each refusal any keyed portfolio operation shares
+  const refusals = async (
+    method: string,
+    path: string,
+    at: string,
+    init: RequestInit = { method },
+  ) => {
+    await check(method, path, await t.call(at, as(init, wrong)), 401);
+    await check(method, path, await t.call(at, as(init, reader)), 403);
+  };
+
+  const P = "/portfolios";
+  const made = await check(
+    "POST",
+    P,
+    await t.call(P, send("POST", { name: "Casey" })),
+    201,
+  );
+  const pid = made.portfolio.id;
+  await check("POST", P, await t.call(P, send("POST", { name: "casey" })), 409);
+  await check("POST", P, await t.call(P, send("POST", {})), 400);
+  await check("POST", P, await t.call(P, send("POST", "x", "text/plain")), 415);
+  await refusals("POST", P, P, send("POST", { name: "Other" }));
+  await check("GET", P, await t.call(P), 200);
+  await check("GET", P, await t.call(`${P}?x=1`), 400);
+  await refusals("GET", P, P);
+
+  const one = `${P}/{id}`;
+  const at = `${P}/${pid}`;
+  await check("GET", one, await t.call(at), 200);
+  await check("GET", one, await t.call(`${P}/x`), 400);
+  await check("GET", one, await t.call(`${P}/999`), 404);
+  await refusals("GET", one, at);
+  const spare = (
+    await t.call(P, send("POST", { name: "Spare" })).then((r) => r.json())
+  ).portfolio.id;
+  await check(
+    "PATCH",
+    one,
+    await t.call(`${P}/${spare}`, send("PATCH", { name: "Spare two" })),
+    200,
+  );
+  await check(
+    "PATCH",
+    one,
+    await t.call(`${P}/${spare}`, send("PATCH", { name: "Casey" })),
+    409,
+  );
+  await check(
+    "PATCH",
+    one,
+    await t.call(`${P}/${spare}`, send("PATCH", { nope: 1 })),
+    400,
+  );
+  await check(
+    "PATCH",
+    one,
+    await t.call(`${P}/999`, send("PATCH", { name: "Z" })),
+    404,
+  );
+  await check(
+    "PATCH",
+    one,
+    await t.call(`${P}/${spare}`, send("PATCH", "x", "text/plain")),
+    415,
+  );
+  await refusals("PATCH", one, at, send("PATCH", { name: "Z" }));
+
+  const B = "/brokers";
+  const north = (
+    await check(
+      "POST",
+      B,
+      await t.call(B, send("POST", { name: "North" })),
+      201,
+    )
+  ).broker.id;
+  await check("POST", B, await t.call(B, send("POST", { name: "NORTH" })), 409);
+  await check("POST", B, await t.call(B, send("POST", { name: "" })), 400);
+  await check("POST", B, await t.call(B, send("POST", "x", "text/plain")), 415);
+  await refusals("POST", B, B, send("POST", { name: "South" }));
+  await check("GET", B, await t.call(B), 200);
+  await check("GET", B, await t.call(`${B}?x=1`), 400);
+  await refusals("GET", B, B);
+  const south = (
+    await t.call(B, send("POST", { name: "South" })).then((r) => r.json())
+  ).broker.id;
+  const bone = `${B}/{id}`;
+  await check(
+    "PATCH",
+    bone,
+    await t.call(`${B}/${south}`, send("PATCH", { name: "South two" })),
+    200,
+  );
+  await check(
+    "PATCH",
+    bone,
+    await t.call(`${B}/${south}`, send("PATCH", { name: "north" })),
+    409,
+  );
+  await check(
+    "PATCH",
+    bone,
+    await t.call(`${B}/${south}`, send("PATCH", { x: 1 })),
+    400,
+  );
+  await check(
+    "PATCH",
+    bone,
+    await t.call(`${B}/999`, send("PATCH", { name: "Q" })),
+    404,
+  );
+  await check(
+    "PATCH",
+    bone,
+    await t.call(`${B}/${south}`, send("PATCH", "x", "text/plain")),
+    415,
+  );
+  await refusals("PATCH", bone, `${B}/${south}`, send("PATCH", { name: "Q" }));
+
+  const T = "/trades";
+  const trade = {
+    portfolio: pid,
+    symbol: "NVDA",
+    side: "buy",
+    quantity: 2,
+    price: 100,
+    broker: "north",
+    date: "2026-10-01",
+  };
+  const bought = await check(
+    "POST",
+    T,
+    await t.call(T, send("POST", trade)),
+    201,
+  );
+  const tid = bought.trade.id;
+  await check(
+    "POST",
+    T,
+    await t.call(T, send("POST", { ...trade, side: "hold" })),
+    400,
+  );
+  await check(
+    "POST",
+    T,
+    await t.call(T, send("POST", { ...trade, broker: "Nowhere" })),
+    404,
+  );
+  await check("POST", T, await t.call(T, send("POST", "x", "text/plain")), 415);
+  const slowTrade = await t.late(
+    "SLOWE.DE",
+    T,
+    send("POST", { ...trade, symbol: "SLOWE.DE" }),
+  );
+  expect((await check("POST", T, slowTrade, 503)).code).toBe("timeout");
+  await refusals("POST", T, T, send("POST", trade));
+  await check(
+    "GET",
+    T,
+    await t.call(`${T}?portfolio=Casey&broker=North&symbol=NVDA&removed=true`),
+    200,
+  );
+  await check("GET", T, await t.call(`${T}?removed=maybe`), 400);
+  await check("GET", T, await t.call(`${T}?portfolio=Nowhere`), 404);
+  await refusals("GET", T, T);
+  const tone = `${T}/{id}`;
+  const back = `${T}/{id}/restore`;
+  // a later sale of what the buy brought: the buy cannot go before it
+  const sold = await t.call(
+    T,
+    send("POST", { ...trade, side: "sell", date: "2026-10-02" }),
+  );
+  const sid0 = (await sold.json()).trade.id;
+  await check(
+    "DELETE",
+    tone,
+    await t.call(`${T}/${tid}`, { method: "DELETE" }),
+    409,
+  );
+  await t.call(`${T}/${sid0}`, { method: "DELETE" });
+  await check(
+    "DELETE",
+    tone,
+    await t.call(`${T}/${tid}`, { method: "DELETE" }),
+    200,
+  );
+  await check(
+    "POST",
+    back,
+    await t.call(`${T}/${sid0}/restore`, { method: "POST" }),
+    409,
+  );
+  await check(
+    "DELETE",
+    tone,
+    await t.call(`${T}/x`, { method: "DELETE" }),
+    400,
+  );
+  await check(
+    "DELETE",
+    tone,
+    await t.call(`${T}/999`, { method: "DELETE" }),
+    404,
+  );
+  await refusals("DELETE", tone, `${T}/${tid}`);
+  await check(
+    "POST",
+    back,
+    await t.call(`${T}/${tid}/restore`, { method: "POST" }),
+    200,
+  );
+  await check(
+    "POST",
+    back,
+    await t.call(`${T}/x/restore`, { method: "POST" }),
+    400,
+  );
+  await check(
+    "POST",
+    back,
+    await t.call(`${T}/999/restore`, { method: "POST" }),
+    404,
+  );
+  await refusals("POST", back, `${T}/${tid}/restore`);
+
+  const H = `${P}/{id}/holdings`;
+  await check(
+    "GET",
+    H,
+    await t.call(`${at}/holdings?broker=North&currency=USD`),
+    200,
+  );
+  await check("GET", H, await t.call(`${at}/holdings?currency=usd`), 400);
+  await check("GET", H, await t.call(`${P}/999/holdings`), 404);
+  await refusals("GET", H, `${at}/holdings`);
+  await check("GET", "/holdings", await t.call("/holdings"), 200);
+  await check("GET", "/holdings", await t.call("/holdings?x=1"), 400);
+  await check(
+    "GET",
+    "/holdings",
+    await t.call("/holdings?broker=Nowhere"),
+    404,
+  );
+  await refusals("GET", "/holdings", "/holdings");
+
+  const E = `${P}/{id}/export`;
+  const csv = await t.call(`${at}/export`);
+  expect(csv.headers.get("content-type")).toBe("text/csv; charset=utf-8");
+  expect(await check("GET", E, csv, 200)).toContain("NVDA,");
+  await check("GET", E, await t.call(`${at}/export?x=1`), 400);
+  await check("GET", E, await t.call(`${P}/999/export`), 404);
+  await refusals("GET", E, `${at}/export`);
+
+  const I = `${P}/{id}/import`;
+  const file =
+    "Item,Amount (USD),As Of,Note\nKept for buying,500,2026-10-01,\n";
+  const imported = await check(
+    "POST",
+    I,
+    await t.call(
+      `${at}/import`,
+      send("POST", { csv: file, dry_powder: [2], confirm: true }),
+    ),
+    200,
+  );
+  expect(imported.counts.saved).toBe(1);
+  await check(
+    "POST",
+    I,
+    await t.call(`${at}/import`, send("POST", { csv: "a,b\n1,2" })),
+    400,
+  );
+  await check(
+    "POST",
+    I,
+    await t.call(`${P}/999/import`, send("POST", { csv: file })),
+    404,
+  );
+  await check(
+    "POST",
+    I,
+    await t.call(
+      `${at}/import`,
+      send("POST", { csv: "x".repeat(MAX_IMPORT_BODY) }),
+    ),
+    413,
+  );
+  await check(
+    "POST",
+    I,
+    await t.call(`${at}/import`, send("POST", "x", "text/plain")),
+    415,
+  );
+  await refusals("POST", I, `${at}/import`, send("POST", { csv: file }));
+
+  const S = "/positions";
+  const fund = {
+    kind: "manual",
+    portfolio: pid,
+    name: "Made Up Fund",
+    units: 3,
+    price: 10,
+    currency: "USD",
+  };
+  const added = await check(
+    "POST",
+    S,
+    await t.call(S, send("POST", fund)),
+    201,
+  );
+  const sid = added.position.id;
+  await check(
+    "POST",
+    S,
+    await t.call(S, send("POST", { ...fund, kind: "stock" })),
+    400,
+  );
+  await check(
+    "POST",
+    S,
+    await t.call(S, send("POST", { ...fund, broker: "Nowhere" })),
+    404,
+  );
+  await check("POST", S, await t.call(S, send("POST", "x", "text/plain")), 415);
+  const slowBond = await t.late(
+    "SLOWF.DE",
+    S,
+    send("POST", {
+      kind: "bond",
+      portfolio: pid,
+      name: "Made Up Bond",
+      symbol: "SLOWF.DE",
+      amount: 100,
+      currency: "EUR",
+    }),
+  );
+  expect((await check("POST", S, slowBond, 503)).code).toBe("timeout");
+  await refusals("POST", S, S, send("POST", fund));
+  await check(
+    "GET",
+    S,
+    await t.call(`${S}?portfolio=${pid}&removed=true`),
+    200,
+  );
+  await check("GET", S, await t.call(`${S}?removed=1`), 400);
+  await check("GET", S, await t.call(`${S}?portfolio=Nowhere`), 404);
+  await refusals("GET", S, S);
+  const sone = `${S}/{id}`;
+  const updated = await check(
+    "PATCH",
+    sone,
+    await t.call(`${S}/${sid}`, send("PATCH", { price: 11 })),
+    200,
+  );
+  const newer = updated.position.id;
+  await check(
+    "PATCH",
+    sone,
+    await t.call(`${S}/${sid}`, send("PATCH", { price: 12 })),
+    409,
+  );
+  await check(
+    "PATCH",
+    sone,
+    await t.call(`${S}/${newer}`, send("PATCH", {})),
+    400,
+  );
+  await check(
+    "PATCH",
+    sone,
+    await t.call(`${S}/999`, send("PATCH", { price: 1 })),
+    404,
+  );
+  await check(
+    "PATCH",
+    sone,
+    await t.call(`${S}/${newer}`, send("PATCH", "x", "text/plain")),
+    415,
+  );
+  await refusals("PATCH", sone, `${S}/${newer}`, send("PATCH", { price: 1 }));
+  const hist = `${S}/{id}/history`;
+  expect(
+    (await check("GET", hist, await t.call(`${S}/${newer}/history`), 200))
+      .history,
+  ).toHaveLength(2);
+  await check("GET", hist, await t.call(`${S}/x/history`), 400);
+  await check("GET", hist, await t.call(`${S}/999/history`), 404);
+  await refusals("GET", hist, `${S}/${newer}/history`);
+  await check(
+    "DELETE",
+    sone,
+    await t.call(`${S}/${newer}`, { method: "DELETE" }),
+    200,
+  );
+  await check(
+    "DELETE",
+    sone,
+    await t.call(`${S}/x`, { method: "DELETE" }),
+    400,
+  );
+  await check(
+    "DELETE",
+    sone,
+    await t.call(`${S}/999`, { method: "DELETE" }),
+    404,
+  );
+  await refusals("DELETE", sone, `${S}/${newer}`);
+  const sback = `${S}/{id}/restore`;
+  await check(
+    "POST",
+    sback,
+    await t.call(`${S}/${sid}/restore`, { method: "POST" }),
+    200,
+  );
+  await check(
+    "POST",
+    sback,
+    await t.call(`${S}/x/restore`, { method: "POST" }),
+    400,
+  );
+  await check(
+    "POST",
+    sback,
+    await t.call(`${S}/999/restore`, { method: "POST" }),
+    404,
+  );
+  await refusals("POST", sback, `${S}/${sid}/restore`);
+
+  const G = "/portfolio-settings";
+  await check(
+    "PUT",
+    G,
+    await t.call(G, send("PUT", { display_currency: "USD" })),
+    200,
+  );
+  await check(
+    "PUT",
+    G,
+    await t.call(G, send("PUT", { display_currency: "usd" })),
+    400,
+  );
+  await check("PUT", G, await t.call(G, send("PUT", "x", "text/plain")), 415);
+  await refusals("PUT", G, G, send("PUT", { display_currency: null }));
+  expect((await check("GET", G, await t.call(G), 200)).display_currency).toBe(
+    "USD",
+  );
+  await check("GET", G, await t.call(`${G}?x=1`), 400);
+  await refusals("GET", G, G);
+
+  await check(
+    "DELETE",
+    bone,
+    await t.call(`${B}/${north}`, { method: "DELETE" }),
+    409,
+  );
+  await check(
+    "DELETE",
+    bone,
+    await t.call(`${B}/${south}`, { method: "DELETE" }),
+    204,
+  );
+  await check(
+    "DELETE",
+    bone,
+    await t.call(`${B}/x`, { method: "DELETE" }),
+    400,
+  );
+  await check(
+    "DELETE",
+    bone,
+    await t.call(`${B}/999`, { method: "DELETE" }),
+    404,
+  );
+  await refusals("DELETE", bone, `${B}/${north}`);
+  await check("DELETE", one, await t.call(at, { method: "DELETE" }), 409);
+  await check(
+    "DELETE",
+    one,
+    await t.call(`${P}/${spare}`, { method: "DELETE" }),
+    204,
+  );
+  await check("DELETE", one, await t.call(`${P}/x`, { method: "DELETE" }), 400);
+  await check(
+    "DELETE",
+    one,
+    await t.call(`${P}/999`, { method: "DELETE" }),
+    404,
+  );
+  await refusals("DELETE", one, at);
+}

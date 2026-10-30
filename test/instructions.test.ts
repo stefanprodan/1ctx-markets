@@ -20,21 +20,12 @@ const ANSWER_FIELDS = [
   "unavailable",
   "listing",
   "fetched_at",
-  "currency",
   "unit",
   "previous_close",
 ];
 
-// the text goes to every user: no one's holdings, place or workspace
-const DENIED = [
-  "portfolio",
-  "holding",
-  "1ctx",
-  "project",
-  "Bucharest",
-  "BVB",
-  "Romania",
-];
+// the text goes to every user: no one's place or workspace
+const DENIED = ["1ctx", "project", "Bucharest", "BVB", "Romania"];
 
 const GROUPS = [
   "Which tool answers what",
@@ -102,6 +93,23 @@ describe("the server instructions", () => {
         (x) => !names.has(x) && !args.has(x) && !ANSWER_FIELDS.includes(x),
       );
       expect(unknown).toEqual([]);
+    }));
+
+  test("send a question on the owner's holdings to portfolio first", () =>
+    withApp(async (t) => {
+      const line = INSTRUCTIONS.split("\n").find((l) =>
+        l.includes("`portfolio`"),
+      )!;
+      const client = await mcpClient(t);
+      const { tools } = await client.listTools();
+      await client.close();
+      const tool = tools.find((x) => x.name === "portfolio")!.description!;
+      for (const text of [line, tool]) {
+        for (const said of ['"my stocks"', '"my ETF"', '"my portfolio"']) {
+          expect(text).toContain(said);
+        }
+        expect(text).toMatch(/holdings first, then its symbols to/);
+      }
     }));
 
   test("name no holding, place or workspace", () => {

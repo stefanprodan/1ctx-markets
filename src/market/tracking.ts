@@ -1,6 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 
+import { portfolioInstruments } from "../portfolios/store.ts";
 import { ruleInstruments } from "../rules/store.ts";
 import { DAY_MS } from "../runtime/clock.ts";
 import type { Db } from "../storage/db/index.ts";
@@ -57,6 +58,7 @@ export function trackedIds(
   );
   for (const id of ruleInstruments(db)) ids.add(id);
   for (const id of dashboardInstruments(db)) ids.add(id);
+  for (const id of portfolioInstruments(db)) ids.add(id);
   for (const id of tracking.flagged) ids.add(id);
   return ids;
 }

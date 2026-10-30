@@ -798,7 +798,14 @@ describe("delete", () => {
       .all()
       .map((r) => r.name);
     expect(keyed).toEqual(
-      [...INSTRUMENT_TABLES, "rules", "dashboard_items"].sort(),
+      // a rule, a trade or a position refuses the delete instead
+      [
+        ...INSTRUMENT_TABLES,
+        "rules",
+        "dashboard_items",
+        "trades",
+        "positions",
+      ].sort(),
     );
   });
 

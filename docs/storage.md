@@ -161,8 +161,10 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
 
 - **There is no ticker list.** An instrument is tracked while a read
   named it within `--track-days` (30), any rule reads it, paused or
-  not, it is on the saved dashboard, or the operator names it with
-  `--track` (`trackedIds()`). Every
+  not, it is on the saved dashboard, a trade or position not removed
+  names it (`portfolioInstruments()`), or the operator names it with
+  `--track` (`trackedIds()`). The instrument list counts a held one as
+  tracked without naming why, since holdings are private. Every
   scheduled job syncs only tracked instruments, so all jobs follow the
   same set.
 - **`--track` values live in memory only** (`Tracking.flagged`, filled
@@ -195,6 +197,19 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
 - **An untracked instrument is caught up inside the read that names
   it** (`catchUp()` in `src/sources/yahoo/sync.ts`), and an unknown
   symbol is fetched inside the call (`docs/tools.md`).
+
+## Portfolios
+
+- **Five tables and a key column** (`0020-portfolios`): `portfolios`
+  and `brokers` (names), `trades` and `positions` (each with who
+  entered it and when, and a removal stamp), `portfolio_settings` (the
+  owner's display currency) and `keys.portfolio` (`none`, `read`,
+  `write`); `0021-stated-on` adds `trades.stated_on`, the day a trade's
+  figures are stated as of; `0022-trade-indexes` indexes live trades by
+  date and trades by broker, so holdings never scan and sort the table.
+  Rows are never deleted but a portfolio with no live row, its removed
+  rows with it, and a broker no live row names; what they mean is
+  `docs/portfolios.md`.
 
 ## The dashboard
 

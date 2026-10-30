@@ -31,6 +31,7 @@ import { basisOf, parseHistory, readHistory } from "../operations/history.ts";
 import { extendedOut, readIntradayHistory } from "../operations/intraday.ts";
 import type { ExtendedRead, Markets } from "../operations/markets.ts";
 import { parseMovers, readMovers } from "../operations/movers.ts";
+import type { Who } from "../operations/portfolio.ts";
 import {
   briefItem,
   type Latest,
@@ -70,13 +71,20 @@ import {
   readBody,
 } from "./http.ts";
 import { spec } from "./openapi.ts";
+import { portfolioRoutes } from "./portfolios.ts";
 
 export type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 // read: an agent key, or the admin key, which holds every scope; admin:
 // the admin key alone; none: served before either, since it holds no data
-// and a browser opening it sends no key
-export type Scope = "read" | "admin" | "none";
+// and a browser opening it sends no key; portfolio:read and :write: an
+// agent key the admin gave that access, holdings being private
+export type Scope =
+  | "read"
+  | "admin"
+  | "none"
+  | "portfolio:read"
+  | "portfolio:write";
 
 export type Route = {
   method: Method;
@@ -90,6 +98,8 @@ export type Route = {
     req: Request,
     url: URL,
     params: Record<string, string>,
+    // who asked, named on what they write
+    who: Who,
   ) => Promise<Response>;
 };
 
@@ -560,6 +570,7 @@ export function routes(deps: ApiDeps): Route[] {
   const list: Route[] = [
     ...marketData(m),
     ...rules(m),
+    ...portfolioRoutes(m),
     {
       method: "GET",
       path: "/alerts",
@@ -602,9 +613,9 @@ export function routes(deps: ApiDeps): Route[] {
   // other errors are logged and answered without text that can quote a source
   return list.map((r) => ({
     ...r,
-    handle: async (req, url, params) => {
+    handle: async (req, url, params, who) => {
       try {
-        return await r.handle(req, url, params);
+        return await r.handle(req, url, params, who);
       } catch (error) {
         if (error instanceof ArgError) {
           return problem("bad_arguments", error.message);

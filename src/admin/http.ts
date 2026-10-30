@@ -21,6 +21,7 @@ import type { Markets } from "../operations/markets.ts";
 import { parseQuote, quoteRows, sessionOf } from "../operations/quote.ts";
 import { type ErrorItem, restStored } from "../operations/targets.ts";
 import type { TrackState } from "../operations/track.ts";
+import { portfolioHolds, portfolioInstruments } from "../portfolios/store.ts";
 import { instrumentsOf } from "../rules/format.ts";
 import { readRules, ruleInstruments } from "../rules/store.ts";
 import { sourceFile } from "../runtime/keys.ts";
@@ -431,6 +432,8 @@ export const storedRow = (db: Db, id: string): Stored | null =>
 export const listRow = (m: Markets, now: number) => {
   const ruled = ruleInstruments(m.db);
   const faved = dashboardInstruments(m.db);
+  // tracked, never named: a key without portfolio access reads this row
+  const held = portfolioInstruments(m.db);
   return (r: Stored) => {
     const { tracking } = m;
     const read = r.readAt !== null && r.readAt > now - tracking.readMs;
@@ -449,7 +452,7 @@ export const listRow = (m: Markets, now: number) => {
       kind: r.type,
       unit: r.unit,
       source: r.source,
-      tracked: by.length > 0,
+      tracked: by.length > 0 || held.has(r.id),
       tracked_by: by,
       read_at: iso(r.readAt),
       read_until: read ? iso(r.readAt! + tracking.readMs) : null,
@@ -613,6 +616,7 @@ export async function deleteOne(
       .filter((r) => r.instrument === id || instrumentsOf(r.condition).has(id))
       .map((r) => r.id);
     if (rules.length > 0) return { rules };
+    if (portfolioHolds(db, id)) return { held: true as const };
     // a tab still holding the card reloads at its next save
     db.query(
       `update dashboards set revision = revision + 1, updated_at = ?1
@@ -627,6 +631,13 @@ export async function deleteOne(
     return { rules: [] };
   });
   if (done === null) return noInstrument(input);
+  if ("held" in done) {
+    return problem(
+      "conflict",
+      "a portfolio's trades or positions name this instrument",
+      { input, rules: [] },
+    );
+  }
   if (done.rules.length > 0) {
     return problem(
       "conflict",
