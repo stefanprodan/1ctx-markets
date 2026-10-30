@@ -27,6 +27,9 @@ import {
   sourceSwitch,
   writeSources,
 } from "./sources/bvb/switch.ts";
+import { type Edgar, edgar } from "./sources/edgar/client.ts";
+import { type EdgarJobs, edgarJobs } from "./sources/edgar/jobs.ts";
+import { pruneFilings } from "./sources/edgar/store.ts";
 import { type Finnhub, finnhub } from "./sources/finnhub/client.ts";
 import { type FinnhubJobs, finnhubJobs } from "./sources/finnhub/jobs.ts";
 import { type Hooks, pruneResearch } from "./sources/finnhub/store.ts";
@@ -77,6 +80,8 @@ export type AppOptions = {
   fredKey?: string | null;
   finnhubKey?: string | null;
   massiveKey?: string | null;
+  // SEC's contact line, a name and an email, held as a key
+  edgarKey?: string | null;
   // the Bucharest exchange's feed, on with --source bvb
   bvb?: boolean;
   // what the research jobs ask of the rules, the rules' own by default
@@ -98,6 +103,8 @@ export type App = {
   finnhubJobs: FinnhubJobs | null;
   massive: Massive | null;
   massiveJobs: MassiveJobs | null;
+  edgar: Edgar | null;
+  edgarJobs: EdgarJobs | null;
   bvb: Bvb | null;
   bvbJobs: BvbJobs | null;
   // moves the Bucharest market between Yahoo and the feed
@@ -137,6 +144,7 @@ export function start(options: AppOptions): App {
     pruneRuns(db, now);
     pruneResearch(db, now, hooks.waited(db, now));
     pruneNews(db, now, trackedIds(db, now, tracking));
+    pruneFilings(db, now);
     pruneAlerts(db, now);
   };
   // first, so no run is taken for a crashed one; prunes too, since a
@@ -262,6 +270,20 @@ export function start(options: AppOptions): App {
           tracking,
         });
 
+  const edgarKey = options.edgarKey ?? null;
+  const edgarClient =
+    edgarKey === null
+      ? null
+      : edgar({ clock, contact: edgarKey, fetch: options.fetch });
+  const edgarSync =
+    edgarClient === null
+      ? null
+      : edgarJobs({
+          ctx: { db, clock, writer: write, edgar: edgarClient },
+          log: options.log("edgar"),
+          tracking,
+        });
+
   const reads = markets({
     db,
     clock,
@@ -271,6 +293,7 @@ export function start(options: AppOptions): App {
     bvb: bvbClient,
     finnhub: finnhubClient,
     massive: massiveClient,
+    edgar: edgarClient,
     hooks,
     rules,
     log: options.log("tools"),
@@ -303,6 +326,7 @@ export function start(options: AppOptions): App {
     keyed("fred", fredKey, fredClient),
     keyed("finnhub", finnhubKey, finnhubClient),
     keyed("massive", massiveKey, massiveClient),
+    keyed("edgar", edgarKey, edgarClient),
     {
       name: "bvb",
       on: bvbClient !== null,
@@ -349,6 +373,7 @@ export function start(options: AppOptions): App {
   fredSync?.schedule(jobs);
   finnhubSync?.schedule(jobs);
   massiveSync?.schedule(jobs);
+  edgarSync?.schedule(jobs);
   bvbSync?.schedule(jobs);
   switcher.schedule(jobs);
   track.schedule(jobs);
@@ -367,6 +392,8 @@ export function start(options: AppOptions): App {
     finnhubJobs: finnhubSync,
     massive: massiveClient,
     massiveJobs: massiveSync,
+    edgar: edgarClient,
+    edgarJobs: edgarSync,
     bvb: bvbClient,
     bvbJobs: bvbSync,
     sourceSwitch: switcher,
@@ -387,6 +414,7 @@ export function start(options: AppOptions): App {
       fredClient?.close();
       finnhubClient?.close();
       massiveClient?.close();
+      edgarClient?.close();
       bvbClient?.close();
       await server.stop();
       await settled;

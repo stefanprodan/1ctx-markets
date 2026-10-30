@@ -5,6 +5,20 @@ import { iso, round } from "../market/format.ts";
 import type { Instrument } from "../market/instruments.ts";
 import { dateOfWall, localDate, wallOfDate } from "../market/zone.ts";
 import { DAY_MS } from "../runtime/clock.ts";
+import { itemName } from "../sources/edgar/items.ts";
+import {
+  NOT_COVERED as EDGAR_NOT_COVERED,
+  eligible as edgarEligible,
+  type FilingRow,
+  filedAt,
+  filerState,
+  filingsFetched,
+  flags,
+  NO_DATA as NO_EDGAR,
+  NO_FLAGS,
+  readFilings,
+} from "../sources/edgar/store.ts";
+import { refreshFilings } from "../sources/edgar/sync.ts";
 import {
   type EventRow,
   eventStatus,
@@ -96,16 +110,22 @@ const EXPIRED = Symbol("expired");
 export async function researchTargets(
   m: Markets,
   inputs: readonly string[],
-  options: { news?: boolean; sections?: readonly Section[] } = {},
+  options: {
+    news?: boolean;
+    filings?: boolean;
+    sections?: readonly Section[];
+  } = {},
 ): Promise<{
   targets: Target[];
   inline: Map<string, Inline>;
   news: Map<string, Inline>;
+  filings: Map<string, Inline>;
 }> {
   const deadline = m.clock.now() + m.callMs;
   const targets = await readTargets(m, inputs);
   const inline = new Map<string, Inline>();
   const news = new Map<string, Inline>();
+  const filings = new Map<string, Inline>();
   const work: Promise<void>[] = [];
   let cancel = () => {};
   const expired = new Promise<typeof EXPIRED>((resolve) => {
@@ -162,6 +182,42 @@ export async function researchTargets(
     settle(news, instrument.id, fetch);
   }
   for (const t of targets) {
+    if (
+      !options.filings ||
+      !("instrument" in t) ||
+      filings.has(t.instrument.id)
+    ) {
+      continue;
+    }
+    const instrument = t.instrument;
+    const client = m.edgar;
+    if (client === null) {
+      filings.set(instrument.id, { kind: "off" });
+      continue;
+    }
+    if (!edgarEligible(instrument)) {
+      filings.set(instrument.id, { kind: "not covered" });
+      continue;
+    }
+    filings.set(instrument.id, { kind: "stored" });
+    if (filingsFetched(m.db, instrument.id)) continue;
+    if (m.clock.now() >= deadline) {
+      filings.set(instrument.id, { kind: "failed", error: timeout(m) });
+      continue;
+    }
+    const fetch = shared(m, `filings:${instrument.id}`, deadline, (live) =>
+      refreshFilings(
+        { db: m.db, clock: m.clock, writer: m.writer, edgar: client },
+        instrument,
+        { live, client: client.within(live), unfetched: true },
+      ).then((r) => {
+        // the run's own failure, recorded as its run, is this answer's
+        if (r.status === "failed") throw r.error;
+      }),
+    );
+    settle(filings, instrument.id, fetch);
+  }
+  for (const t of targets) {
     if (!("instrument" in t) || inline.has(t.instrument.id)) continue;
     const instrument = t.instrument;
     const client = m.finnhub;
@@ -211,7 +267,7 @@ export async function researchTargets(
   } finally {
     cancel();
   }
-  return { targets, inline, news };
+  return { targets, inline, news, filings };
 }
 
 type Values = Record<string, number | string | null>;
@@ -289,6 +345,7 @@ export function eventItem(m: Markets, instrument: Instrument, e: EventRow) {
     revenue_estimate: e.revenueEstimate,
     revenue_actual: e.revenueActual,
     reported_seen_at: iso(e.reportedSeenAt),
+    filed_at: m.edgar === null ? null : iso(filedAt(m.db, instrument, e.date)),
     fetched_at: iso(e.fetchedAt),
     stale: state.stale,
     ...listingFields(e.listing),
@@ -416,6 +473,70 @@ function weekItem(r: NewsRow) {
   };
 }
 
+// the overview's few: a flag says what to read, the section has the rest
+export const FILINGS_RECENT = 5;
+// rows a filings page reads before fitting them under 32 KiB
+export const FILINGS_PAGE_ROWS = 50;
+
+export const filingsMessage = (f: Inline | undefined): string | null =>
+  f?.kind === "off"
+    ? NO_EDGAR
+    : f?.kind === "not covered"
+      ? EDGAR_NOT_COVERED
+      : null;
+
+export const filingItem = (r: FilingRow) => ({
+  accession: r.accession,
+  form: r.form,
+  accepted_at: iso(r.acceptedAt),
+  filed: r.filed,
+  period: r.period,
+  items: r.items.map((code) => ({ code, name: itemName(code) })),
+  url: r.url,
+});
+
+// the head every filings answer shares: off, not covered, no CIK and a
+// foreign filer each answer no data with no flags, never false ones
+export function filingsHead(
+  m: Markets,
+  instrument: Instrument,
+  f: Inline | undefined,
+) {
+  const message = filingsMessage(f);
+  if (message !== null) {
+    return { head: { source: "edgar", message, ...NO_FLAGS }, rows: false };
+  }
+  const now = m.clock.now();
+  const state = filerState(m.db, instrument, now);
+  return {
+    head: {
+      source: "edgar",
+      ...(f?.kind === "failed" ? f.error : {}),
+      ...(state.reason === null
+        ? {}
+        : { message: NO_EDGAR, reason: state.reason }),
+      fetched_at: iso(state.fetchedAt),
+      stale: state.stale,
+      ...flags(m.db, instrument.id, state, now),
+    },
+    rows: state.reason === null,
+  };
+}
+
+export function filingsSummary(
+  m: Markets,
+  instrument: Instrument,
+  f: Inline | undefined,
+) {
+  const { head, rows } = filingsHead(m, instrument, f);
+  return {
+    ...head,
+    recent: rows
+      ? readFilings(m.db, instrument.id, FILINGS_RECENT).map(filingItem)
+      : [],
+  };
+}
+
 export const RESEARCH_PARTS = [
   "metric",
   "analysts",
@@ -423,10 +544,11 @@ export const RESEARCH_PARTS = [
   "insider",
   "next_event",
   "news",
+  "filings",
 ] as const;
 export type ResearchPart = (typeof RESEARCH_PARTS)[number];
 
-type FinnhubPart = Exclude<ResearchPart, "news">;
+type FinnhubPart = Exclude<ResearchPart, "news" | "filings">;
 
 const SECTION_OF_PART: Record<FinnhubPart, Section> = {
   metric: "metric",
@@ -477,12 +599,16 @@ export async function researchList(m: Markets, args: ResearchListArgs) {
     }
     since = wallOfDate(args.since);
   }
-  const finnhub = args.parts.filter((p): p is FinnhubPart => p !== "news");
+  const finnhub = args.parts.filter(
+    (p): p is FinnhubPart => p !== "news" && p !== "filings",
+  );
   const left = (Object.keys(SECTION_OF_PART) as FinnhubPart[]).filter(
     (p) => !finnhub.includes(p),
   );
-  const { targets, inline } = await researchTargets(m, args.symbols, {
+  const withFilings = args.parts.includes("filings");
+  const { targets, inline, filings } = await researchTargets(m, args.symbols, {
     sections: finnhub.map((p) => SECTION_OF_PART[p]),
+    filings: withFilings,
   });
   // no quote: /quotes answers prices for many symbols in one call
   return targets.map((t) => {
@@ -500,6 +626,15 @@ export async function researchList(m: Markets, args: ResearchListArgs) {
       ...(finnhub.length > 0 ? { company } : {}),
       ...(args.parts.includes("news")
         ? { news: newsWeek(m, t.instrument, since) }
+        : {}),
+      ...(withFilings
+        ? {
+            filings: filingsSummary(
+              m,
+              t.instrument,
+              filings.get(t.instrument.id),
+            ),
+          }
         : {}),
     };
   });

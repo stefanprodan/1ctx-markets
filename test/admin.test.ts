@@ -374,6 +374,7 @@ describe("the admin scope", () => {
           ["fred", "FRED", "FRED", "FR"],
           ["finnhub", "Finnhub", "Finnhub", "FH"],
           ["massive", "Massive", "Massive", "M"],
+          ["edgar", "SEC EDGAR", "EDGAR", "SEC"],
           ["bvb", "Bucharest Stock Exchange", "BVB", "BVB"],
         ]);
         const [yahoo, fred] = b.sources;
@@ -387,7 +388,9 @@ describe("the admin scope", () => {
         expect(fred).toMatchObject({ state: "off", why: "no key" });
         expect(fred.key.file).toBe("secrets/source-fred.key");
         expect(fred.key.signup).toStartWith("https://");
-        expect(b.sources[4]).toMatchObject({
+        expect(b.sources[4]).toMatchObject({ state: "off", why: "no key" });
+        expect(b.sources[4].key.file).toBe("secrets/source-edgar.key");
+        expect(b.sources[5]).toMatchObject({
           state: "off",
           why: "no flag",
           key: null,
@@ -755,6 +758,11 @@ describe("delete", () => {
        values (?1, 'a', ?2, 't', 'https://example.com', ?2)`);
     q(`insert into news_walks (instrument, walk, cursor, after)
        values (?, 'history', null, ?)`);
+    q(`insert into filings (instrument, accession, form, accepted_at, filed, url, fetched_at)
+       values (?1, '0000000001-26-000001', '8-K', ?2, '2026-10-23', 'https://www.sec.gov/', ?2)`);
+    q(
+      `insert into edgar_filers (instrument, cik, fetched_at) values (?, 1, ?)`,
+    );
     q(`insert into sync_runs (source, job, scope, started_at, ended_at, status)
        values ('finnhub', 'metric', ?1, ?2, ?2, 'ok')`);
   }

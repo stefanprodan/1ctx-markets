@@ -22,7 +22,7 @@ MCP tools copied onto paths.
 | Method and path | Scope | Calls | Answers |
 |---|---|---|---|
 | `GET /quotes?symbols=&extended=` | read | `quoteRows()` with `briefItem()` | `quotes[]`: every symbol asked, up to `MAX_SYMBOLS` (100); `extended=true` adds the quote tool's `extended` per item |
-| `GET /research?symbols=&sections=&since=` | read | `researchList()` | `research[]`: up to `MAX_RESEARCH_SYMBOLS` (5) items of `input`, `id`, `company` and `news` (below) |
+| `GET /research?symbols=&sections=&since=` | read | `researchList()` | `research[]`: up to `MAX_RESEARCH_SYMBOLS` (5) items of `input`, `id`, `company`, `news` and `filings` (below) |
 | `GET /symbols?query=&upstream=` | read | `searchAll()` | the search tool's `candidates[]`, and `errors[]` for a source that failed; `upstream=false` answers only the stored instruments and the stored Bucharest listings, asking no source |
 | `GET /earnings?from=&to=&symbols=` | read | `readEventsOf()` | `earnings[]`, with `no_event[]` and `unavailable[]` uncapped |
 | `GET /movers?symbols=&min_move_pct=&direction=&average=&relation=` | read | `readMovers()`, `setAll()` | `movers[]`: every match, unavailable and error, with `counts` |
@@ -223,11 +223,11 @@ MCP tools copied onto paths.
 ## The research route
 
 - **`symbols` takes up to `MAX_RESEARCH_SYMBOLS` (5), `sections` a
-  list of `metric`, `analysts`, `earnings`, `insider`, `next_event`
-  and `news` (all by default), and `since` a UTC date, with `news`
-  asked.** Each item is `input`, `id`, `company` (the Finnhub summary
-  with each asked section's `history`) and `news` (the news week), or
-  its error; no quote, since `/quotes` answers prices in one call.
+  list of `metric`, `analysts`, `earnings`, `insider`, `next_event`,
+  `news` and `filings` (all by default), and `since` a UTC date, with
+  `news` asked.** Each item is `input`, `id`, `company` (the Finnhub
+  summary with each asked section's `history`), `news` (the news week)
+  and `filings` (EDGAR's summary, the tool overview's), or its error; no quote, since `/quotes` answers prices in one call.
   What each holds and why is in `docs/research.md` ("The research
   route").
 

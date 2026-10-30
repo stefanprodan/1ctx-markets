@@ -1,0 +1,20 @@
+{
+  "recordedAt": "2026-10-29T23:57:19.598Z",
+  "request": {
+    "method": "GET",
+    "url": "https://data.sec.gov/submissions/CIK9999999999.json"
+  },
+  "status": 404,
+  "headers": {
+    "access-control-allow-origin": "*",
+    "connection": "keep-alive",
+    "content-length": "301",
+    "content-type": "application/xml",
+    "date": "Thu, 29 Oct 2026 23:57:20 GMT",
+    "strict-transport-security": "max-age=31536000 ; preload",
+    "x-amz-apigw-id": "GB-HDEi7oAMEmVg=",
+    "x-amzn-requestid": "e23734c5-6fce-428f-83a9-48ac6238035c",
+    "x-amzn-trace-id": "Root=1-6ae3dd5f-5ccf93f34f9653179aa0a513"
+  },
+  "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Error><Code>NoSuchKey</Code><Message>The specified key does not exist.</Message><Key>submissions/CIK9999999999.json</Key><RequestId>HR309JSH26ZH0GC1</RequestId><HostId>B4Q21vXj0Pb1QS6oG5a3gXkY6hNAvHBLg25B2tc8SiMCokrmDiLH1ZTMIixS9Mxjef0YSPbVk8o=</HostId></Error>"
+}

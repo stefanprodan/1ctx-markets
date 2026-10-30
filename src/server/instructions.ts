@@ -12,6 +12,7 @@ export const INSTRUCTIONS = `Market data and price rules. Which tool answers wha
 - Bars, a chart's data, a full year or any other period: \`history\`; its \`session\` says whether the market is open; the last bar still trades only while it is open and the bar's \`final\` is false. How a symbol moved today or over the last five sessions: \`history\` with \`interval\` 5m, regular-hours closes as fresh as the quote pass, a move measured from its \`previous_close\`; \`extended\` adds the pre- and post-market closes while the session is closed.
 - Many symbols at once: \`movers\` for today's moves and average crossings, \`screen\` to filter and rank on signals and returns, with \`fields\` for more columns than the ones filtered or sorted on.
 - A US share's fundamentals, analysts, earnings, insiders and news, or a US ETF's news: \`research\`, for the few symbols that matter. For news, \`section\` news with \`since\` keeps to a recent window; read its \`counts\` by sentiment before the articles.
+- A US share's SEC filings, late filings, restatements or offerings: \`research\`, \`section\` filings; its overview carries the flags.
 - Earnings dates: \`events\`. A named share under \`no_event\` had no earnings in the window: that is an answer, not missing data.
 - A level to be told about later: \`rules\`, rather than asking again by hand.
 - An unknown or ambiguous name: \`search\`.

@@ -1,12 +1,13 @@
 # 1ctx-markets
 
 A self-hosted market data server for AI agents. It syncs free market
-data (Yahoo, and optionally FRED, Finnhub, Massive and the Bucharest
-Stock Exchange's own feed) into one SQLite file, computes signals,
-evaluates price rules, and serves them over the Model Context Protocol
-(MCP, Streamable HTTP) and a REST API under `/api/v1` with an OpenAPI
-spec, both behind the admin key or agents' own keys. It holds market
-data and price rules only, never holdings, orders or a portfolio.
+data (Yahoo, and optionally FRED, Finnhub, Massive, SEC EDGAR and the
+Bucharest Stock Exchange's own feed) into one SQLite file, computes
+signals, evaluates price rules, and serves them over the Model Context
+Protocol (MCP, Streamable HTTP) and a REST API under `/api/v1` with an
+OpenAPI spec, both behind the admin key or agents' own keys. It holds
+market data and price rules only, never holdings, orders or a
+portfolio.
 
 - **Runtime:** Bun only (pinned in `.bun-version`), TypeScript run
   directly, `bun:sqlite`, one standalone binary. No Node.
@@ -82,6 +83,7 @@ src/sources/                what every source shares, each provider under it
   fred/                     FRED series as close-only daily bars
   finnhub/                  research sections and earnings events
   massive/                  news
+  edgar/                    SEC filings: 8-K items, filing flags, events' filed_at
 src/signals/                daily, weekly, live and relative signals
 src/rules/                  rule conditions, evaluation, alerts
 src/operations/             the reads the MCP tools and the API share, with their MCP pages
@@ -120,6 +122,7 @@ the same commit as the code that changes a rule.
 | `docs/yahoo.md` | Yahoo's endpoints, parsing, its phrases, resolution, bars, its backfill and split checks, quotes and extended hours, its first fetch and the lock, the jobs |
 | `docs/fred.md` | FRED: its key, its call limit, answer checks, series as instruments, bars, the daily job, attribution |
 | `docs/bvb.md` | the Bucharest feed: its pages and chart feed, parsing, the session, quotes, bars and its rescale checks, resolution, switching sources |
+| `docs/edgar.md` | SEC EDGAR: its contact line, its call limit, the ticker map, kept forms and their checks, foreign filers, the daily pass, the filing flags, events' `filed_at` |
 | `docs/research.md` | Finnhub research and earnings events, Massive news, their keys and budgets, the `research` and `events` tools, the research route's contents |
 | `docs/signals.md` | the daily and weekly signals, final and live rows, reading, relative return |
 | `docs/rules.md` | rule conditions, validation, evaluation, the earnings gate, split pauses, the `rules` tool |

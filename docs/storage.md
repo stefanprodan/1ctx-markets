@@ -105,9 +105,9 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
 
 - **Every source job run is a `sync_runs` row** (`runJob()`, or
   `startRun`/`endRun`/`failRun`). Its `scope` is the market for a
-  Yahoo quote, check or bar pass and Finnhub's whole-market calendar,
-  the instrument key for FRED, Finnhub and Massive runs, null
-  otherwise. Ids are `autoincrement`, never reused: an admin delete
+  Yahoo quote, check or bar pass, Finnhub's whole-market calendar and
+  EDGAR's ticker map, the instrument key for FRED, Finnhub, Massive
+  and EDGAR filings runs, null otherwise. Ids are `autoincrement`, never reused: an admin delete
   removes an instrument's runs while a job may still hold one's id.
   At startup `failInterrupted()` fails runs a crash left
   `running`, in the first queued write, so no job's run is taken for
@@ -267,6 +267,7 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
 | `events` | 24 months by date, unless a rule waits on the event |
 | `news` | 30 days by `published_at`, which reads filter to whether or not retention ran; all of an untracked instrument |
 | `news_walks` | all of an untracked instrument (`pruneNews`) |
+| `filings` | two years by `accepted_at` (`pruneFilings`), the restatement flag's year and the one before it |
 | `alerts` | 90 days by `fired_at` (`ALERTS_KEPT_DAYS`) |
 | `intraday` | the newest `INTRADAY_SESSIONS` sessions per instrument, on each write (above) |
 

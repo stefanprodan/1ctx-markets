@@ -37,7 +37,10 @@ holdings, orders or portfolio, and it makes no model calls.
   recommendations, earnings history and calendar, and insider sentiment
   for US shares. With a Massive key: 30 days of news with per-ticker
   sentiment for US shares and ETFs. With a FRED key: daily economic
-  series such as Treasury yields, as instruments of their own.
+  series such as Treasury yields, as instruments of their own. With a
+  contact line for SEC EDGAR: US shares' filings with their 8-K items,
+  flags for a late filing, a restatement or an offering, and when each
+  earnings release was filed.
 - **Rules and alerts.** Agents set conditions on a symbol's price or
   signals, other symbols included: price below 200, RSI under 30 while
   above the 200-day average, the VIX above 30, a drop after the next
@@ -49,7 +52,8 @@ holdings, orders or portfolio, and it makes no model calls.
   is behind. Market hours come from the source, so holidays and clock
   changes need no table.
 - **Free sources, each optional.** Yahoo needs no key and is always on.
-  FRED, Finnhub and Massive turn on when their free key file is present.
+  FRED, Finnhub and Massive turn on when their free key file is present,
+  SEC EDGAR when its file holds a contact line.
   The Bucharest Stock Exchange's own feed, with its shares, fund units,
   government bonds and indices, turns on with `--source bvb` and needs
   no key.
@@ -86,6 +90,15 @@ printf '%s' '<your FRED key>' > ~/.1ctx-markets/secrets/source-fred.key
 printf '%s' '<your Finnhub key>' > ~/.1ctx-markets/secrets/source-finnhub.key
 printf '%s' '<your Massive key>' > ~/.1ctx-markets/secrets/source-massive.key
 chmod 600 ~/.1ctx-markets/secrets/*.key
+```
+
+SEC EDGAR needs no key, but SEC asks every client to declare who it
+is: its file holds a name and an email, sent only as the User-Agent of
+SEC calls and never logged or answered:
+
+```sh
+printf '%s' 'Your Name you@example.com' > ~/.1ctx-markets/secrets/source-edgar.key
+chmod 600 ~/.1ctx-markets/secrets/source-edgar.key
 ```
 
 Keys are read at start; restart the server after adding one.

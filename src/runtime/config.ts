@@ -99,7 +99,8 @@ export const HELP = `\x1b[1m1ctx-markets\x1b[0m - a self-hosted market data serv
                          the web UI or the keys command
   source-<name>.key      a source's API key, which turns it on:
                          source-fred.key, source-finnhub.key or
-                         source-massive.key`;
+                         source-massive.key; source-edgar.key holds
+                         a name and an email for SEC instead`;
 
 export const VALUED_FLAGS = [
   "--listen",

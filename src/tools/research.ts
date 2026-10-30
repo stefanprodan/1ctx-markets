@@ -25,6 +25,10 @@ import {
 import type { Markets } from "../operations/markets.ts";
 import { quoteItem, readLatest } from "../operations/quote.ts";
 import {
+  FILINGS_PAGE_ROWS,
+  filingItem,
+  filingsHead,
+  filingsSummary,
   KINDS,
   listingFields,
   messageOf,
@@ -38,6 +42,7 @@ import {
   SECTION_OF,
   SINCE_DAYS,
 } from "../operations/research.ts";
+import { type FilingCursor, readFilings } from "../sources/edgar/store.ts";
 import { readResearch, sectionState } from "../sources/finnhub/read.ts";
 import { NO_DATA, SECTIONS, type Section } from "../sources/finnhub/store.ts";
 import { ATTRIBUTION } from "../sources/fred/sync.ts";
@@ -56,16 +61,18 @@ export const RESEARCH_SECTIONS = [
   "earnings",
   "insiders",
   "news",
+  "filings",
 ] as const;
 export type ResearchSection = (typeof RESEARCH_SECTIONS)[number];
 
-// Finnhub sections each research section reads; news reads none
+// Finnhub sections each research section reads; news and filings none
 export const SECTIONS_OF: Record<ResearchSection, readonly Section[]> = {
   overview: SECTIONS,
   analysts: ["analysts"],
   earnings: ["earnings"],
   insiders: ["insider"],
   news: [],
+  filings: [],
 };
 
 // a news page goes on below the last article it showed
@@ -74,6 +81,15 @@ const newsPosition = (r: NewsRow): string => `${r.publishedAt}.${r.id}`;
 function readNewsPosition(position: string): NewsCursor | null {
   const m = /^(\d{1,15})\.(.+)$/.exec(position);
   return m === null ? null : { publishedAt: Number(m[1]), id: m[2]! };
+}
+
+// a filings page goes on below the last filing it showed
+const filingPosition = (r: { acceptedAt: number; accession: string }) =>
+  `${r.acceptedAt}.${r.accession}`;
+
+function readFilingPosition(position: string): FilingCursor | null {
+  const m = /^(\d{1,15})\.(\d{10}-\d{2}-\d{6})$/.exec(position);
+  return m === null ? null : { acceptedAt: Number(m[1]), accession: m[2]! };
 }
 
 export type ResearchArgs = {
@@ -122,16 +138,23 @@ export async function researchAnswer(
     start = readCursor(next, asked);
     if (
       start === null ||
-      (args.section === "news" && readNewsPosition(start) === null)
+      (args.section === "news" && readNewsPosition(start) === null) ||
+      (args.section === "filings" && readFilingPosition(start) === null)
     ) {
       throw new ArgError("next does not continue these arguments");
     }
   }
   const withNews = args.section === "overview" || args.section === "news";
-  const { targets, inline, news } = await researchTargets(m, [args.symbol], {
-    news: withNews,
-    sections: SECTIONS_OF[args.section],
-  });
+  const withFilings = args.section === "overview" || args.section === "filings";
+  const { targets, inline, news, filings } = await researchTargets(
+    m,
+    [args.symbol],
+    {
+      news: withNews,
+      filings: withFilings,
+      sections: SECTIONS_OF[args.section],
+    },
+  );
   const target = targets[0]!;
   if ("error" in target) {
     return errorResult({ input: target.input, ...target.error });
@@ -159,6 +182,7 @@ export async function researchAnswer(
         quote,
         research: researchSummary(m, instrument, inline.get(instrument.id)),
         news: summary,
+        filings: filingsSummary(m, instrument, filings.get(instrument.id)),
         ...(quote.observation != null ? { attribution: ATTRIBUTION } : {}),
       });
     // headlines are dropped first to fit the page
@@ -205,6 +229,42 @@ export async function researchAnswer(
             : null,
       }),
       "articles",
+    );
+    return textResult(page.text);
+  }
+  if (args.section === "filings") {
+    const { head: own, rows: any } = filingsHead(
+      m,
+      instrument,
+      filings.get(instrument.id),
+    );
+    const from = start === null ? null : readFilingPosition(start);
+    const rows = any
+      ? readFilings(m.db, instrument.id, FILINGS_PAGE_ROWS + 1, from)
+      : [];
+    const items = rows.slice(0, FILINGS_PAGE_ROWS).map(filingItem);
+    // the flags on the first page only, as news counts are
+    const first =
+      from === null
+        ? own
+        : {
+            source: own.source,
+            ...("message" in own ? { message: own.message } : {}),
+            ...("fetched_at" in own
+              ? { fetched_at: own.fetched_at, stale: own.stale }
+              : {}),
+          };
+    const page = fitPage(
+      items,
+      (count) => ({
+        ...head,
+        ...first,
+        next:
+          count > 0 && count < rows.length
+            ? cursor(filingPosition(rows[count - 1]!), asked)
+            : null,
+      }),
+      "filings",
     );
     return textResult(page.text);
   }

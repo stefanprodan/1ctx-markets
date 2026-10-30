@@ -37,4 +37,6 @@ export async function drive<T>(
 export const pacedOf = (m: {
   finnhub: Paced | null;
   massive: Paced | null;
-}): Paced[] => [m.finnhub, m.massive].filter((p) => p !== null);
+  edgar?: Paced | null;
+}): Paced[] =>
+  [m.finnhub, m.massive, m.edgar ?? null].filter((p) => p !== null);
