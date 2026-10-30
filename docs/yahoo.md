@@ -12,7 +12,7 @@ finality in `docs/calendars.md`; tables, the writer and staleness in
 
 ## Endpoints
 
-- **Five calls on `query1.finance.yahoo.com`, no cookie or crumb:**
+- **Six calls on `query1.finance.yahoo.com`, no cookie or crumb:**
 
 | Call | Path | Used for |
 | --- | --- | --- |
@@ -20,6 +20,7 @@ finality in `docs/calendars.md`; tables, the writer and staleness in
 | `intraday` | `/v8/finance/chart/<symbol>?interval=1m&range=2d&includePrePost=true` | quote's `extended`: minute bars with pre and post trading, and each window |
 | `points` | `/v8/finance/chart/<symbol>?range=5d&interval=5m&includePrePost=false` | up to five sessions of regular-hours 5-minute closes, for the fill |
 | `spark` | `/v7/finance/spark?symbols=<list>&range=1d&interval=5m&_=<now>` | quotes, sessions and 5-minute closes, up to 20 symbols |
+| quote chart | `/v8/finance/chart/<symbol>?range=1d&interval=5m` | one spark entry, for a symbol spark failed on alone |
 | `search` | `/v1/finance/search?q&quotesCount=10&newsCount=0&listsCount=0` | listings for a bare symbol or a name |
 
 - **Never `/v7/finance/quote` or `/v8/finance/spark`.** v7 quote
@@ -33,6 +34,17 @@ finality in `docs/calendars.md`; tables, the writer and staleness in
 - **A spark call takes 1 to `SPARK_MAX` (20) symbols;** more is a 400.
   `sparkAll()` splits a list into calls of 20, and a failed call keeps
   the others' answers.
+- **A spark call one symbol may have broken is split in halves**
+  (`sparkSplit()`): Yahoo has answered a 500 for every batch holding
+  one symbol while its chart answered. Only `source error`, `bad
+  request` and a JSON `malformed answer` split; a rate limit, timeout,
+  network error, page that is not JSON or closed queue fails the batch
+  at once. Both halves of a split failing is the source: that batch
+  fails whole, so an outage costs two more calls. Otherwise the failed
+  half is split again down to one symbol, about 2·log2(20) calls,
+  which is asked once as a quote chart and fails alone if that fails
+  too. The split is one queued task, so its calls never wait out a
+  back-off and only a batch failing whole backs off.
 - **The User-Agent is `Mozilla/5.0`;** Yahoo answers a full browser
   User-Agent with 429.
 - **Bars come from `open`, `high`, `low`, `close`, `volume`,** which
@@ -71,7 +83,7 @@ Phrases from Yahoo (`docs/sources.md`, Refusals):
 | --- | --- |
 | `rate limited` | HTTP 429 |
 | `bad request` | HTTP 400 |
-| `not found` | HTTP 404, `chart.error.code` `Not Found`, or a spark entry with no response |
+| `not found` | HTTP 404, a chart or spark error code `Not Found`, or a spark entry with no response |
 | `source error` | any other non-2xx, a chart or spark error body, no quote for a fetched symbol |
 | `network error` | the fetch or body read threw |
 | `timed out` | the call's timeout, or the caller's deadline |
@@ -265,7 +277,7 @@ Phrases from Yahoo (`docs/sources.md`, Refusals):
 | --- | --- |
 | `yahoo` (`quoteTick`) | quote pass for markets in session, once per quote period (`--quote-every`, default 5 minutes), one spark per 20 symbols across all markets |
 | `yahoo` post-close | one quote pass at `closeQuoteAt()` if none started since |
-| `yahoo` check | one instrument per closed market at `nextCheck()`, round-robin; a market with no session on each period; in the same spark calls |
+| `yahoo` check | one instrument per closed market at `nextCheck()`, round-robin; a market with no session on each period; in the same spark calls; one that sees the session open quotes its whole market in the same tick |
 | `yahoo-bars` (`barTick`) | 30-day refetch per market whose session moved on (`barsDue()`), plus one whole history per split or rescale; owed instruments again every `OWED_RETRY_MS` (`owedDue()`) |
 | `yahoo-backfill` (`backfillTurn`) | one tracked instrument with no bars per turn, one 10-year chart; a failure or empty answer waits `RETRY_MS` |
 | `yahoo-backfill` (`fillTurn`) | in a turn with no 10-year chart due, up to `FILLS_PER_TURN` (5) tracked instruments holding fewer than `INTRADAY_SESSIONS` sessions, one `points` call each, one at a time |
@@ -293,7 +305,8 @@ Phrases from Yahoo (`docs/sources.md`, Refusals):
   the next open. A market this process quotes needs none.
 - **A quote or check run is per market** (scope), failing when a call
   failed or none of its symbols came back; a missing symbol is logged
-  and stale on its own. The rules are evaluated after the runs end, so
+  and stale on its own, and a failed run marks only the quotes it did
+  not store (`docs/storage.md`). The rules are evaluated after the runs end, so
   a quote's staleness is this pass's.
 - **Bars are their own job,** so a slow refetch never takes a quote
   turn; backfill takes its own turns too. All three share the queue

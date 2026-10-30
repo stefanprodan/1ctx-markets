@@ -325,19 +325,28 @@ describe("evaluation", () => {
     const t = await rulesTest();
     const r = await create(t, "NVDA", { left: "price", op: "<", right: 200 });
     const id = r.body.rule.id;
-    await pass(t, "failed");
+    await pass(t, "failed", "check");
     await t.quote("NVDA", { price: 190 });
     expect(rule(t, id)).toMatchObject({ armed: true, lastResult: "unknown" });
     expect(alerts(t)).toBe(0);
-    await pass(t, "ok");
+    await pass(t, "ok", "check");
     await t.quote("NVDA", { price: 190 });
     expect(alerts(t)).toBe(1);
-    await pass(t, "failed");
+    await pass(t, "failed", "check");
     await t.quote("NVDA", { price: 205 });
     // still disarmed: a stale false is no false
     expect(rule(t, id)).toMatchObject({ armed: false, lastResult: "unknown" });
-    await pass(t, "ok");
+    await pass(t, "ok", "check");
     await t.quote("NVDA", { price: 190 });
+    expect(alerts(t)).toBe(1);
+  });
+
+  test("a quote the failed pass stored is read fresh", async () => {
+    const t = await rulesTest();
+    const r = await create(t, "NVDA", { left: "price", op: "<", right: 200 });
+    await pass(t, "failed");
+    await t.quote("NVDA", { price: 190 });
+    expect(rule(t, r.body.rule.id)).toMatchObject({ lastResult: "true" });
     expect(alerts(t)).toBe(1);
   });
 

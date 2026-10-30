@@ -184,6 +184,12 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
       for (const b of batches) {
         if (!b.answer) {
           for (const s of b.symbols) failed.set(s, b.error);
+          if (b.symbols.length === 1) {
+            log.warn("yahoo quote failed", {
+              symbol: b.symbols[0]!,
+              error: phraseOf(b.error),
+            });
+          }
           continue;
         }
         answers.push(b.answer);
@@ -345,10 +351,24 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
       first &&
       (lastPassAt(db, SOURCE, [JOBS.quotes, JOBS.check], market) ?? -1) >=
         slot * quoteEveryMs;
-    const work = plan(tracked(), now, quotePass, passed);
+    const markets = tracked();
+    const work = plan(markets, now, quotePass, passed);
     if (work.length > 0) await sparkPass(work);
+    // a check that saw the session open quotes its market now, not a
+    // period later; the checked ones again, so no quote predates the pass
+    const opened: Work[] = [];
+    for (const w of work) {
+      if (w.job !== JOBS.check) continue;
+      const all = markets.get(w.market) ?? [];
+      if (all.length <= w.instruments.length) continue;
+      if (!isQuoted(w.market, readSession(db, w.market), clock.now())) continue;
+      opened.push({ market: w.market, job: JOBS.quotes, instruments: all });
+    }
+    if (opened.length > 0) await sparkPass(opened);
     return {
-      quoted: work.filter((w) => w.job === JOBS.quotes).map((w) => w.market),
+      quoted: [...work, ...opened]
+        .filter((w) => w.job === JOBS.quotes)
+        .map((w) => w.market),
       checked: work.filter((w) => w.job === JOBS.check).map((w) => w.market),
     };
   }

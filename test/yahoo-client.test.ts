@@ -4,6 +4,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   FAILURE_BACKOFF_MS,
+  QueueClosed,
   queue,
   RATE_LIMIT_BACKOFF_MS,
   SourceError,
@@ -19,6 +20,7 @@ import { open } from "../src/storage/db/index.ts";
 import { isStale, lastRun, runJob } from "../src/storage/runs.ts";
 import { writer } from "../src/storage/writer.ts";
 import { fakeClock } from "./helpers/clock.ts";
+import { sim, US } from "./helpers/sim.ts";
 import {
   chartSymbol,
   clone,
@@ -339,6 +341,15 @@ describe("the queue", () => {
         true,
       ],
       [
+        {
+          ...spark,
+          body: { spark: { result: null, error: { code: "Not Found" } } },
+        },
+        (y) => y.spark(["NVDA"]),
+        "not found",
+        false,
+      ],
+      [
         { ...search, body: { quotes: "none" } },
         (y) => y.search("NVDA"),
         "malformed answer",
@@ -498,6 +509,110 @@ describe("spark", () => {
     const batches = await yahoo({ clock, fetch: f.fetch }).sparkAll(symbols);
     expect(batches[0]!.answer?.quotes).toHaveLength(5);
     expect((batches[1]!.error as SourceError).phrase).toBe("rate limited");
+  });
+});
+
+describe("a failed spark batch", () => {
+  // Yahoo's answer, on 2026-10-30, to any batch holding AMD
+  const broken: Recorded = {
+    recordedAt: "",
+    status: 500,
+    headers: { "content-type": "application/json" },
+    body: {
+      finance: {
+        result: null,
+        error: {
+          code: "Internal Server Error",
+          description: "Server caught an exception",
+        },
+      },
+    },
+  };
+  const symbols = Array.from({ length: 20 }, (_, i) => `S${i}`);
+  const now = Date.parse("2026-10-26T15:00:00Z");
+
+  function setup(route: (url: URL) => Recorded | undefined) {
+    const s = sim(symbols.map((symbol) => US(symbol)));
+    const clock = fakeClock(now);
+    const f = fakeFetch((url) => route(url) ?? s.route(url, clock.now()));
+    const sparks = () => f.urls.filter((u) => u.pathname.includes("spark"));
+    const charts = () => f.urls.filter((u) => chartSymbol(u) !== null);
+    return { y: yahoo({ clock, fetch: f.fetch }), sparks, charts };
+  }
+  const answered = (batches: { answer?: { quotes: { symbol: string }[] } }[]) =>
+    batches.flatMap((b) => b.answer?.quotes.map((q) => q.symbol) ?? []).sort();
+
+  test("is split in halves down to the symbol that breaks it, which the chart quotes", async () => {
+    const t = setup((url) =>
+      url.searchParams.get("symbols")?.split(",").includes("S7")
+        ? broken
+        : undefined,
+    );
+    const batches = await t.y.sparkAll(symbols);
+    expect(answered(batches)).toEqual([...symbols].sort());
+    // 20, then 10 and 10, 5 and 5, 3 and 2, 2 and 1: two calls a level
+    expect(t.sparks().map((u) => u.searchParams.get("symbols"))).toHaveLength(
+      9,
+    );
+    expect(t.charts().map(chartSymbol)).toEqual(["S7"]);
+    expect(t.charts()[0]!.searchParams.get("range")).toBe("1d");
+    expect(t.charts()[0]!.searchParams.get("interval")).toBe("5m");
+    expect(t.y.backoff()).toBeNull();
+  });
+
+  test("leaves the symbol failed alone when its chart fails too, with no back-off", async () => {
+    const t = setup((url) =>
+      url.searchParams.get("symbols")?.split(",").includes("S7") ||
+      chartSymbol(url) === "S7"
+        ? broken
+        : undefined,
+    );
+    const batches = await t.y.sparkAll(symbols);
+    expect(answered(batches)).toEqual(symbols.filter((s) => s !== "S7").sort());
+    const failed = batches.filter((b) => b.error !== undefined);
+    expect(failed.map((b) => b.symbols)).toEqual([["S7"]]);
+    expect((failed[0]!.error as SourceError).phrase).toBe("source error");
+    expect(t.y.backoff()).toBeNull();
+  });
+
+  test("stops when both halves fail, failing the batch and backing off", async () => {
+    const t = setup((url) =>
+      url.pathname.includes("spark") ? broken : undefined,
+    );
+    const batches = await t.y.sparkAll(symbols);
+    expect(batches.map((b) => b.symbols)).toEqual([symbols]);
+    expect((batches[0]!.error as SourceError).phrase).toBe("source error");
+    expect(t.sparks()).toHaveLength(3);
+    expect(t.charts()).toHaveLength(0);
+    expect(t.y.backoff()).toMatchObject({ until: now + FAILURE_BACKOFF_MS });
+  });
+
+  test("asks nothing more once its queue is closed", async () => {
+    const clock = fakeClock(now);
+    const calls = queue(clock, 2);
+    const f = fakeFetch(() => {
+      calls.close();
+      return broken;
+    });
+    const batches = await yahoo({
+      clock,
+      fetch: f.fetch,
+      queue: calls,
+    }).sparkAll(symbols);
+    expect(batches[0]!.error).toBeInstanceOf(QueueClosed);
+    expect(f.urls).toHaveLength(1);
+  });
+
+  test("is never split on a rate limit", async () => {
+    const t = setup((url) =>
+      url.pathname.includes("spark")
+        ? { recordedAt: "", status: 429, headers: {}, body: "" }
+        : undefined,
+    );
+    const batches = await t.y.sparkAll(symbols);
+    expect((batches[0]!.error as SourceError).phrase).toBe("rate limited");
+    expect(t.sparks()).toHaveLength(1);
+    expect(t.y.backoff()).toMatchObject({ until: now + RATE_LIMIT_BACKOFF_MS });
   });
 });
 

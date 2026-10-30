@@ -121,7 +121,9 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   only that scope's rows. A search succeeding never clears a failed
   quote pass, and one market's failure never marks another.
 - **A quote pass that answered is judged per instrument**, so one
-  symbol that never answers marks only itself.
+  symbol that never answers marks only itself. A failed pass marks
+  only the quotes fetched before it started: one it stored is fresh,
+  though the run stays failed for the status page and the log.
 - **A failed refetch is its instrument's own `bars` run** and marks
   only it; the market's run fails only when no instrument answered. A
   refetch that left a close owed adds an ok `owed` run in the same
@@ -131,7 +133,7 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
 
 | Phrase | Set by | When |
 | --- | --- | --- |
-| `quote sync failed` | `quoteStale` | the market's last quote pass failed |
+| `quote sync failed` | `quoteStale` | the market's last quote pass failed, and the quote predates its start |
 | `no quote in the last pass` | `quoteStale` | last pass ok, this instrument (added before it) not in it |
 | `no quote yet` | `quoteStale` | no quote stored |
 | `quote overdue` | `quoteStale` with `due` | quote older than two quote periods before the last time one was due |

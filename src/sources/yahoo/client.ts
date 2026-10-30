@@ -7,9 +7,11 @@ import type { Clock } from "../../runtime/clock.ts";
 import { YAHOO } from "../ids.ts";
 import {
   type Backoff,
+  DeadlinePassed,
   type Fetch,
   type Phrase,
   type Queue,
+  QueueClosed,
   queue,
   type RunOptions,
   SourceError,
@@ -116,7 +118,8 @@ export type Yahoo = {
   // the listing's hasPrePostMarketData from the last answer naming it
   prePost(symbol: string): boolean | undefined;
   spark(symbols: readonly string[]): Promise<SparkAnswer>;
-  // in calls of SPARK_MAX; a failed call keeps the others' answers
+  // in calls of SPARK_MAX; a failed call keeps the others' answers, and
+  // one a single symbol may have broken is split to find it
   sparkAll(symbols: readonly string[]): Promise<SparkBatch[]>;
   search(query: string): Promise<Listing[]>;
   failFast(): Yahoo;
@@ -387,6 +390,10 @@ export function parsePoints(body: unknown, fetchedAt: number): PointsAnswer {
 export function parseSpark(body: unknown, fetchedAt: number): SparkAnswer {
   const spark = obj(obj(body, "body").spark, "spark");
   if (spark.error !== null && spark.error !== undefined) {
+    // one unknown symbol asked alone answers this, which is no outage
+    if (isObj(spark.error) && spark.error.code === "Not Found") {
+      throw new SourceError("not found");
+    }
     throw new SourceError("source error", "spark error");
   }
   if (!Array.isArray(spark.result)) throw malformed("no spark results");
@@ -413,6 +420,33 @@ export function parseSpark(body: unknown, fetchedAt: number): SparkAnswer {
   }
   return { quotes, skipped, fetchedAt };
 }
+
+// a one-day chart is one spark entry, for a symbol spark failed on
+export function parseQuoteChart(body: unknown, fetchedAt: number): SparkAnswer {
+  const { rows, splits, firstTrade, ...meta } = parseChart(body, fetchedAt);
+  let points: Point[];
+  try {
+    points = closesOf(rows);
+  } catch (error) {
+    if (!(error instanceof SourceError)) throw error;
+    points = [];
+  }
+  return { quotes: [{ ...meta, points }], skipped: [], fetchedAt };
+}
+
+// an answer one bad symbol in the call can cause; a rate limit, a timeout,
+// a network failure or a page that is not JSON says the source is unwell
+const brokenBy = (error: unknown): boolean =>
+  error instanceof SourceError &&
+  !(error instanceof Unreadable) &&
+  (error.phrase === "source error" ||
+    error.phrase === "malformed answer" ||
+    error.phrase === "bad request");
+
+// an answer about the symbols asked, so the split goes on past it
+const ownError = (error: unknown): boolean =>
+  brokenBy(error) ||
+  (error instanceof SourceError && error.phrase === "not found");
 
 export function parseSearch(body: unknown): Listing[] {
   const quotes = obj(body, "body").quotes;
@@ -449,63 +483,142 @@ export function yahoo(options: YahooOptions): Yahoo {
     return meta;
   };
 
+  const call = async <T>(
+    url: string,
+    parse: (body: unknown, fetchedAt: number) => T,
+  ): Promise<T> => {
+    const abort = new AbortController();
+    let timedOut = false;
+    const cancel = clock.at(clock.now() + TIMEOUT_MS, () => {
+      timedOut = true;
+      abort.abort();
+    });
+    try {
+      let res: Response;
+      let raw: string;
+      try {
+        res = await doFetch(url, {
+          headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
+          signal: abort.signal,
+        });
+        raw = await res.text();
+      } catch {
+        throw new SourceError(timedOut ? "timed out" : "network error");
+      }
+      const fetchedAt = clock.now();
+      if (res.status === 429) throw new SourceError("rate limited");
+      if (res.status === 400) throw new SourceError("bad request");
+      let body: unknown;
+      try {
+        body = JSON.parse(raw);
+      } catch {
+        body = undefined;
+      }
+      // an unknown symbol is a 404 with a chart error in the body
+      if (res.status === 404) throw new SourceError("not found");
+      if (!res.ok) throw new SourceError("source error", `HTTP ${res.status}`);
+      if (body === undefined) throw new Unreadable();
+      return parse(body, fetchedAt);
+    } finally {
+      cancel();
+    }
+  };
+
   // parsed inside the queued task, so a body that is not JSON backs the
   // queue off
   const get = <T>(
     url: string,
     run: RunOptions,
     parse: (body: unknown, fetchedAt: number) => T,
-  ): Promise<T> =>
-    calls.run(async () => {
-      const abort = new AbortController();
-      let timedOut = false;
-      const cancel = clock.at(clock.now() + TIMEOUT_MS, () => {
-        timedOut = true;
-        abort.abort();
+  ): Promise<T> => calls.run(() => call(url, parse), run);
+
+  // a cached answer freezes the price for minutes; _ makes each URL new
+  const sparkUrl = (symbols: readonly string[]) =>
+    `${host}/v7/finance/spark?symbols=${symbols.map(encodeURIComponent).join(",")}&range=1d&interval=5m&_=${clock.now()}`;
+
+  const quoteChartUrl = (symbol: string) =>
+    `${host}/v8/finance/chart/${encodeURIComponent(symbol)}?${new URLSearchParams({ range: "1d", interval: "5m" })}`;
+
+  const seenAll = (answer: SparkAnswer): SparkAnswer => {
+    for (const quote of answer.quotes) seen(quote);
+    return answer;
+  };
+
+  // one queued task, so only a failure the split cannot narrow backs off
+  const sparkSplit = (batch: string[], run: RunOptions) =>
+    calls
+      .run(async (): Promise<SparkBatch[]> => {
+        const next = <T>(url: string, parse: (b: unknown, at: number) => T) => {
+          if (calls.isClosed()) throw new QueueClosed();
+          if (run.live !== undefined && !run.live()) throw new DeadlinePassed();
+          return call(url, parse);
+        };
+        const ask = async (
+          symbols: string[],
+        ): Promise<{ answer?: SparkAnswer; error?: unknown }> => {
+          try {
+            return { answer: await next(sparkUrl(symbols), parseSpark) };
+          } catch (error) {
+            if (!ownError(error)) throw error;
+            return { error };
+          }
+        };
+        // the symbol that broke its calls, asked once on the chart
+        const alone = async (symbol: string, error: unknown) => {
+          if (!brokenBy(error)) return { error };
+          try {
+            return {
+              answer: await next(quoteChartUrl(symbol), parseQuoteChart),
+            };
+          } catch (e) {
+            if (!ownError(e)) throw e;
+            return { error };
+          }
+        };
+        const out: SparkBatch[] = [];
+        // both halves failing is the source, so that batch fails whole
+        const narrow = async (symbols: string[]) => {
+          const mid = Math.ceil(symbols.length / 2);
+          const halves = [symbols.slice(0, mid), symbols.slice(mid)];
+          const tries = [];
+          for (const half of halves) tries.push(await ask(half));
+          if (tries.every((t) => t.answer === undefined)) return false;
+          for (const [k, half] of halves.entries()) {
+            const t = tries[k]!;
+            if (t.answer !== undefined) {
+              out.push({ symbols: half, answer: t.answer });
+            } else if (half.length > 1 && brokenBy(t.error)) {
+              if (!(await narrow(half))) {
+                out.push({ symbols: half, error: t.error });
+              }
+            } else if (half.length === 1) {
+              out.push({ symbols: half, ...(await alone(half[0]!, t.error)) });
+            } else out.push({ symbols: half, error: t.error });
+          }
+          return true;
+        };
+        const first = await ask(batch);
+        if (first.answer !== undefined) return [{ symbols: batch, ...first }];
+        if (!brokenBy(first.error)) throw first.error;
+        if (batch.length === 1) {
+          const one = await alone(batch[0]!, first.error);
+          if (one.answer === undefined) throw first.error;
+          return [{ symbols: batch, ...one }];
+        }
+        if (!(await narrow(batch))) throw first.error;
+        return out;
+      }, run)
+      .then((batches) => {
+        for (const b of batches) if (b.answer) seenAll(b.answer);
+        return batches;
       });
-      try {
-        let res: Response;
-        let raw: string;
-        try {
-          res = await doFetch(url, {
-            headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
-            signal: abort.signal,
-          });
-          raw = await res.text();
-        } catch {
-          throw new SourceError(timedOut ? "timed out" : "network error");
-        }
-        const fetchedAt = clock.now();
-        if (res.status === 429) throw new SourceError("rate limited");
-        if (res.status === 400) throw new SourceError("bad request");
-        let body: unknown;
-        try {
-          body = JSON.parse(raw);
-        } catch {
-          body = undefined;
-        }
-        // an unknown symbol is a 404 with a chart error in the body
-        if (res.status === 404) throw new SourceError("not found");
-        if (!res.ok)
-          throw new SourceError("source error", `HTTP ${res.status}`);
-        if (body === undefined) throw new Unreadable();
-        return parse(body, fetchedAt);
-      } finally {
-        cancel();
-      }
-    }, run);
 
   const client = (run: RunOptions): Yahoo => {
     const spark = async (symbols: readonly string[]): Promise<SparkAnswer> => {
       if (symbols.length === 0 || symbols.length > SPARK_MAX) {
         throw new Error(`a spark call takes 1 to ${SPARK_MAX} symbols`);
       }
-      // a cached answer freezes the price for minutes; _ makes each URL new
-      const list = symbols.map(encodeURIComponent).join(",");
-      const url = `${host}/v7/finance/spark?symbols=${list}&range=1d&interval=5m&_=${clock.now()}`;
-      const answer = await get(url, run, parseSpark);
-      for (const quote of answer.quotes) seen(quote);
-      return answer;
+      return seenAll(await get(sparkUrl(symbols), run, parseSpark));
     };
 
     return {
@@ -544,14 +657,14 @@ export function yahoo(options: YahooOptions): Yahoo {
         for (let i = 0; i < symbols.length; i += SPARK_MAX) {
           batches.push(symbols.slice(i, i + SPARK_MAX));
         }
-        return Promise.all(
+        const answered = await Promise.all(
           batches.map((batch) =>
-            spark(batch).then(
-              (answer): SparkBatch => ({ symbols: batch, answer }),
-              (error: unknown): SparkBatch => ({ symbols: batch, error }),
-            ),
+            sparkSplit(batch, run).catch((error: unknown): SparkBatch[] => [
+              { symbols: batch, error },
+            ]),
           ),
         );
+        return answered.flat();
       },
       async search(query) {
         const params = new URLSearchParams({

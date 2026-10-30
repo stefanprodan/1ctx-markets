@@ -36,7 +36,8 @@ Each provider's own behaviour is in its doc: `docs/yahoo.md`,
   run would hold off the job's own retry.
 - **`close()` fails every waiting call,** a limiter's parked one
   included, so nothing goes out after shutdown begins
-  (`QueueClosed`, `docs/config.md`).
+  (`QueueClosed`, `docs/config.md`); a queued task that makes several
+  calls checks `isClosed()` before each.
 - **One fetch-and-store per instrument at a time** (`exclusive()` in
   `src/runtime/lock.ts`), held across the call and its write, so an
   answer fetched before another write never lands after it. Every
