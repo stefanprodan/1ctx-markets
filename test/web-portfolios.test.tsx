@@ -310,13 +310,15 @@ describe("the Portfolios page", () => {
     await s.portfolios.load();
     const html = render(<PortfoliosBody store={s.portfolios} />);
     expect(html).toContain("Create your first portfolio");
-    expect(html).toContain('aria-label="Display currency: USD"');
+    // the most traded currencies are one tap each, the one set pressed
+    expect(html).toMatch(/aria-pressed="true"[^>]*>USD</);
+    expect(html).toContain("Other…");
     expect(html).not.toContain("Holdings");
     expect(html).not.toContain('aria-label="Add"');
     expect(html).not.toContain('aria-label="More"');
   });
 
-  test("a portfolio with nothing in it offers a trade or an import, under its name", async () => {
+  test("a portfolio with nothing in it offers each way to add holdings, under its name", async () => {
     const f = fake({
       "GET /api/v1/portfolios": {
         ...OVERVIEW,
@@ -338,10 +340,17 @@ describe("the Portfolios page", () => {
     );
     await s.portfolios.load();
     const html = render(<PortfoliosBody store={s.portfolios} />);
-    expect(html).toContain(">Shares</h2>");
-    expect(html).toContain("No trades yet.");
-    expect(html).toContain("Add a trade");
-    expect(html).toContain("Import a CSV");
+    expect(html).toContain("Shares · totals in USD");
+    expect(html).toContain("Add your holdings");
+    for (const way of [
+      "Add a trade",
+      "Add cash, a fund or a bond",
+      "Import a CSV",
+      "Let an agent do it",
+    ]) {
+      expect(html).toContain(way);
+    }
+    expect(html).toContain('href="/connect"');
     expect(html).not.toContain('aria-label="Add"');
     expect(html).toContain('aria-label="More"');
   });
@@ -363,7 +372,7 @@ describe("the Portfolios page", () => {
     // portfolios exist, so only the currency is asked
     expect(html).toContain("Pick a currency for totals");
     expect(html).not.toContain('placeholder="Long term"');
-    expect(html).toContain('aria-label="Display currency: none"');
+    expect(html).not.toContain('aria-pressed="true"');
     expect(html).not.toContain("Holdings");
     expect(html).not.toContain('aria-label="Add"');
   });
@@ -509,6 +518,7 @@ describe("the page's words", () => {
       ),
     ).toEqual({ kind: "cash" });
     expect(readRemembered("{oops")).toEqual({ kind: "trade" });
+    expect(readRemembered('{"kind":"manual"}')).toEqual({ kind: "fund" });
   });
 
   test("a bond bought twice lists each purchase with its own edit and remove", async () => {

@@ -832,7 +832,7 @@ async function planPositions(
       : [];
   const found = await resolveAll(m, symbols);
   const posKind: PositionKind =
-    kind === "cash" ? "cash" : kind === "funds" ? "manual" : "bond";
+    kind === "cash" ? "cash" : kind === "funds" ? "fund" : "bond";
   const out: Planned[] = [];
   const taken = new Set<number>();
   for (const { line, get } of rows) {

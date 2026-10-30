@@ -36,8 +36,11 @@ export type Trade = {
   removedBy: string | null;
 };
 
-export const POSITION_KINDS = ["cash", "manual", "bond"] as const;
+export const POSITION_KINDS = ["cash", "fund", "bond"] as const;
 export type PositionKind = (typeof POSITION_KINDS)[number];
+// migration 0020's check names a fund "manual"; a table rebuild to rename
+// it would copy every owner's positions for a word
+const stored = (k: PositionKind): string => (k === "fund" ? "manual" : k);
 
 export type Position = {
   id: number;
@@ -290,7 +293,8 @@ export function setTradeRemoved(
   );
 }
 
-const POSITION = `select id, portfolio, kind, name, currency, instrument,
+const POSITION = `select id, portfolio,
+  case kind when 'manual' then 'fund' else kind end as kind, name, currency, instrument,
   amount, units, price, cost, coupon, maturity, as_of as asOf, broker, note,
   dry_powder as dryPowder, replaces, entered_by as enteredBy, entered_at as enteredAt, removed_at as removedAt,
   removed_by as removedBy from positions`;
@@ -311,7 +315,7 @@ export function insertPosition(db: Db, p: NewPosition, now: number): number {
       )
       .run(
         p.portfolio,
-        p.kind,
+        stored(p.kind),
         p.name,
         p.currency,
         p.instrument,
@@ -428,7 +432,7 @@ export function samePosition(
             `${POSITION} where portfolio = ? and kind = ? and name = ? collate nocase
              and broker is ? and removed_at is null`,
           )
-          .get(p.portfolio, p.kind, p.name, p.broker);
+          .get(p.portfolio, stored(p.kind), p.name, p.broker);
   return r === null ? null : positionOf(r);
 }
 
@@ -544,6 +548,6 @@ export function positionHistory(
       `${POSITION} where portfolio = ? and kind = ? and name = ? collate nocase
        and broker is ? order by entered_at desc, id desc`,
     )
-    .all(p.portfolio, p.kind, p.name, p.broker)
+    .all(p.portfolio, stored(p.kind), p.name, p.broker)
     .map(positionOf);
 }

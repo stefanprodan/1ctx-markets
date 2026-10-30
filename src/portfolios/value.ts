@@ -251,7 +251,7 @@ export type PartItem = {
 };
 
 export type Row = {
-  kind: "holding" | "cash" | "manual" | "bond";
+  kind: "holding" | "cash" | "fund" | "bond";
   // the instrument's id, null for a position with no listing
   id: string | null;
   position: number | null;
@@ -661,7 +661,7 @@ function convert(
   return out;
 }
 
-const KIND_TYPES = { cash: "CASH", manual: "FUND", bond: "BOND" } as const;
+const KIND_TYPES = { cash: "CASH", fund: "FUND", bond: "BOND" } as const;
 
 function positionRow(
   db: Db,
@@ -684,7 +684,7 @@ function positionRow(
   if (p.kind === "cash") {
     value = p.amount;
     cost = null;
-  } else if (p.kind === "manual") {
+  } else if (p.kind === "fund") {
     price = p.price;
     value = (p.units ?? 0) * (p.price ?? 0);
     priced = "hand";
@@ -720,9 +720,9 @@ function positionRow(
     market: instrument?.market ?? null,
     currency: p.currency,
     unit: instrument?.unit ?? null,
-    quantity: p.kind === "manual" ? qty(p.units) : null,
+    quantity: p.kind === "fund" ? qty(p.units) : null,
     average_cost:
-      p.kind === "manual" && cost !== null && p.units
+      p.kind === "fund" && cost !== null && p.units
         ? money(cost / p.units)
         : null,
     cost: finite(cost),
@@ -745,13 +745,13 @@ function positionRow(
       {
         portfolio: names.get(p.portfolio) ?? String(p.portfolio),
         broker: p.broker === null ? null : (brokers.get(p.broker) ?? null),
-        quantity: p.kind === "manual" ? qty(p.units) : null,
+        quantity: p.kind === "fund" ? qty(p.units) : null,
         average_cost: null,
         cost: finite(cost),
         value: finite(value),
         position: p.id,
         as_of: p.asOf,
-        ...(p.kind === "manual" ? {} : { amount: p.amount }),
+        ...(p.kind === "fund" ? {} : { amount: p.amount }),
       },
     ],
   };

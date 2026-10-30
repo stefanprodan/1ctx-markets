@@ -376,7 +376,7 @@ describe("currencies", () => {
     const named = [
       trade,
       { action: "add", kind: "cash", name: "Cash", amount: 1 },
-      { action: "add", kind: "manual", name: "Fund", units: 1, price: 1 },
+      { action: "add", kind: "fund", name: "Fund", units: 1, price: 1 },
       {
         action: "add",
         kind: "bond",
@@ -415,9 +415,9 @@ const money = (v: number) => Math.round(v * 100) / 100;
 
 describe("positions", () => {
   test("a hand price is shown with its date", async () => {
-    const { m } = await setup();
+    const { m, db } = await setup();
     await addPosition(m, CASEY, {
-      kind: "manual",
+      kind: "fund",
       portfolio: "Shares",
       name: "Made Up Fund",
       symbol: null,
@@ -433,7 +433,13 @@ describe("positions", () => {
       note: null,
       dryPowder: false,
     });
-    const f = (await holdingsOf(m)).holdings.find((r) => r.kind === "manual")!;
+    const f = (await holdingsOf(m)).holdings.find((r) => r.kind === "fund")!;
+    // migration 0020's check keeps the old word in the table
+    expect(
+      db
+        .query("select count(*) as n from positions where kind = 'manual'")
+        .get(),
+    ).toEqual({ n: 1 });
     expect(f).toMatchObject({
       priced: "hand",
       as_of: "2026-04-17",
@@ -485,6 +491,41 @@ const cash = (m: Markets, amount: number, currency = "EUR", dry = true) =>
     note: null,
     dryPowder: dry,
   });
+
+describe("a fund, kept under its old word", () => {
+  test("adding it again replaces it, and a removal restores", async () => {
+    const { m } = await setup();
+    const fund = (units: number) =>
+      addPosition(m, CASEY, {
+        kind: "fund",
+        portfolio: "Shares",
+        name: "Made Up Fund",
+        symbol: null,
+        currency: "EUR",
+        amount: null,
+        units,
+        price: 10,
+        cost: null,
+        coupon: null,
+        maturity: null,
+        date: "2026-04-17",
+        broker: "North",
+        note: null,
+        dryPowder: false,
+      });
+    const first = await fund(5);
+    const second = await fund(8);
+    if ("error" in first || "error" in second) throw new Error("refused");
+    expect(second.replaced).toBe(first.position.id);
+    const funds = () =>
+      holdingsOf(m).then((h) => h.holdings.filter((r) => r.kind === "fund"));
+    expect((await funds()).map((r) => r.quantity)).toEqual([8]);
+    await setPositionState(m, CASEY, second.position.id, true);
+    expect(await funds()).toEqual([]);
+    await setPositionState(m, CASEY, second.position.id, false);
+    expect((await funds()).map((r) => r.quantity)).toEqual([8]);
+  });
+});
 
 describe("dry powder", () => {
   test("is answered per currency beside invested value and other cash", async () => {
@@ -741,6 +782,77 @@ describe("trades", () => {
       parsePortfolio({ action: "list" }),
     );
     expect(JSON.parse(read.content[0]!.text).error).toBe("forbidden");
+  });
+});
+
+describe("setup", () => {
+  const ask = async (m: Markets, args: object, who: Who = CASEY) => {
+    const r = await portfolioAnswer(
+      m,
+      who,
+      parsePortfolio({ action: "setup", ...args }),
+    );
+    return { error: r.isError === true, body: JSON.parse(r.content[0]!.text) };
+  };
+
+  test("a new owner's agent sets the currency, a portfolio and a broker in one call", async () => {
+    const { m } = world();
+    instrument(m.db, "US:AAA", { currency: "USD", name: "Alpha Made Up" });
+    quote(m.db, "US:AAA", 120, 118);
+    const refused = await ask(m, { portfolio: "Long term" });
+    expect(refused.error).toBe(true);
+    expect(refused.body.message).toContain("display_currency");
+    expect(() => parsePortfolio({ action: "setup" })).toThrow("one or more");
+    const done = await ask(m, {
+      display_currency: "EUR",
+      portfolio: "Long term",
+      broker: "North",
+    });
+    expect(done.error).toBe(false);
+    expect(done.body).toMatchObject({
+      display_currency: "EUR",
+      made: ["portfolio Long term", "broker North"],
+      brokers: [{ name: "North" }],
+    });
+    expect(done.body.portfolios.map((p: { name: string }) => p.name)).toEqual([
+      "Long term",
+    ]);
+    // the owner's currency is set once: the same is a no-op, another refused
+    const changed = await ask(m, { display_currency: "USD", broker: "South" });
+    expect(changed.error).toBe(true);
+    expect(changed.body.message).toContain("EUR");
+    expect((await ask(m, { display_currency: "EUR" })).body.made).toEqual([]);
+    // a retry makes nothing twice
+    const again = await ask(m, { portfolio: "Long term", broker: "North" });
+    expect(again.body.made).toEqual([]);
+    expect(again.body.portfolios).toHaveLength(1);
+    // the one portfolio and the broker made take a trade at once
+    const added = await portfolioAnswer(
+      m,
+      CASEY,
+      parsePortfolio({
+        action: "add",
+        symbol: "US:AAA",
+        side: "buy",
+        quantity: 10,
+        price: 100,
+        broker: "North",
+      }),
+    );
+    expect(added.isError).toBeUndefined();
+  });
+
+  test("setup is a write and takes only its own arguments", async () => {
+    const { m } = world();
+    const reader: Who = { name: "reader", access: "read" };
+    const r = await ask(m, { display_currency: "EUR" }, reader);
+    expect(r.body.error).toBe("forbidden");
+    expect(() =>
+      parsePortfolio({ action: "setup", display_currency: "ABC" }),
+    ).toThrow("in circulation");
+    expect(() => parsePortfolio({ action: "setup", name: "X" })).toThrow(
+      "not an argument of setup",
+    );
   });
 });
 

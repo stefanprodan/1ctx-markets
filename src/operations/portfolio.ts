@@ -91,6 +91,7 @@ export const ADMIN: Who = { name: "admin", access: "write" };
 export const NO_ACCESS: Who = { name: "none", access: "none" };
 
 export const PORTFOLIO_ACTIONS = [
+  "setup",
   "list",
   "holdings",
   "trades",
@@ -101,7 +102,7 @@ export const PORTFOLIO_ACTIONS = [
 ] as const;
 type Action = (typeof PORTFOLIO_ACTIONS)[number];
 
-export const ADD_KINDS = ["trade", "cash", "manual", "bond"] as const;
+export const ADD_KINDS = ["trade", "cash", "fund", "bond"] as const;
 export type AddKind = (typeof ADD_KINDS)[number];
 
 // no larger number is a real holding, and none can round to another
@@ -185,6 +186,12 @@ export type TradesArgs = {
 };
 
 export type PortfolioArgs =
+  | {
+      action: "setup";
+      currency: string | null;
+      portfolio: string | null;
+      broker: string | null;
+    }
   | { action: "list" }
   | ({ action: "holdings"; next: string | null } & HoldingsArgs)
   | ({ action: "trades"; next: string | null } & TradesArgs)
@@ -337,7 +344,7 @@ export function parsePosition(
       dryPowder: f.dry_powder === true,
     };
   }
-  if (kind === "manual") {
+  if (kind === "fund") {
     return {
       ...base,
       units: amount(f.units, "units", { positive: true }),
@@ -364,6 +371,7 @@ export function parsePosition(
 }
 
 const ARGS: Record<Action, readonly string[]> = {
+  setup: ["action", "display_currency", "portfolio", "broker"],
   list: ["action"],
   holdings: ["action", "portfolio", "broker", "currency", "next"],
   trades: [
@@ -490,7 +498,7 @@ export const KIND_ARGS: Record<AddKind, readonly string[]> = {
     "note",
   ],
   cash: ["name", "amount", "currency", "date", "broker", "note", "dry_powder"],
-  manual: [
+  fund: [
     "name",
     "units",
     "price",
@@ -545,6 +553,24 @@ export function parsePortfolio(input: unknown): PortfolioArgs {
     }
   }
   switch (action) {
+    case "setup": {
+      const made = {
+        action,
+        currency: namedCurrency(f.display_currency, "display_currency"),
+        portfolio: optionalName(f.portfolio, "portfolio"),
+        broker: optionalName(f.broker, "broker"),
+      };
+      if (
+        made.currency === null &&
+        made.portfolio === null &&
+        made.broker === null
+      ) {
+        throw new ArgError(
+          "setup takes one or more of display_currency, portfolio, broker",
+        );
+      }
+      return made;
+    }
     case "list":
       return { action };
     case "holdings":
@@ -1236,7 +1262,7 @@ export async function updatePosition(
     ) {
       return { error: "bad_arguments", message: "cash takes an amount" };
     }
-    if (old.kind === "manual" && change.amount !== undefined) {
+    if (old.kind === "fund" && change.amount !== undefined) {
       return {
         error: "bad_arguments",
         message: "a fund takes units and a NAV per unit",
@@ -1529,6 +1555,49 @@ export async function saveSettings(m: Markets, body: unknown) {
 
 // ---- the tool ------------------------------------------------------------
 
+// a new owner's first steps in one call; a name already there is kept,
+// so a retried setup makes nothing twice
+async function setup(
+  m: Markets,
+  args: Extract<PortfolioArgs, { action: "setup" }>,
+) {
+  const made: string[] = [];
+  const done = await m.writer.write((db): Failure | null => {
+    const now = m.clock.now();
+    // the owner's own setting: an agent passing one out of habit never
+    // changes it, only sets the first
+    const shown = displayCurrency(db);
+    if (args.currency !== null && shown !== null && shown !== args.currency) {
+      return conflict(
+        `the display currency is ${shown}; the owner changes it in the web UI's settings`,
+      );
+    }
+    if (args.currency !== null && shown === null) {
+      setDisplayCurrency(db, args.currency, now);
+    }
+    if (
+      args.portfolio !== null &&
+      portfolioByName(db, args.portfolio) === null
+    ) {
+      // every total converts into it, and none is assumed for the owner
+      if (displayCurrency(db) === null) {
+        return conflict(
+          "name display_currency too, the currency totals are shown in: ask the owner, never assume one",
+        );
+      }
+      insertPortfolio(db, args.portfolio, now);
+      made.push(`portfolio ${args.portfolio}`);
+    }
+    if (args.broker !== null && brokerByName(db, args.broker) === null) {
+      insertBroker(db, args.broker, now);
+      made.push(`broker ${args.broker}`);
+    }
+    return null;
+  });
+  if (done !== null) return done;
+  return { ...listAll(m), made };
+}
+
 const answered = (body: object | Failure): ToolResult =>
   isFailure(body) ? errorResult(body) : textResult(JSON.stringify(body));
 
@@ -1590,6 +1659,7 @@ export async function portfolioAnswer(
   args: PortfolioArgs,
 ): Promise<ToolResult> {
   const writes =
+    args.action === "setup" ||
     args.action === "add" ||
     args.action === "update" ||
     args.action === "remove" ||
@@ -1598,6 +1668,8 @@ export async function portfolioAnswer(
     return errorResult(forbidden(writes));
   }
   switch (args.action) {
+    case "setup":
+      return answered(await setup(m, args));
     case "list":
       return textResult(JSON.stringify(listAll(m)));
     case "holdings":

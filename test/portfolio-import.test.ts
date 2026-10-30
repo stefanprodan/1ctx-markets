@@ -296,7 +296,7 @@ describe("position imports", () => {
       expect(r.counts.saved).toBe(1);
     }
     const [bond, fund] = readPositions(db);
-    expect(fund).toMatchObject({ kind: "manual", units: 10, price: 12.5 });
+    expect(fund).toMatchObject({ kind: "fund", units: 10, price: 12.5 });
     expect(bond).toMatchObject({
       kind: "bond",
       amount: 1000,

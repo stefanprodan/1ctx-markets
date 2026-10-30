@@ -134,7 +134,7 @@ export function holdingSub(h: Holding, now = Date.now()): string {
       .filter(Boolean)
       .join(" · ");
   }
-  if (h.kind === "manual") {
+  if (h.kind === "fund") {
     return h.as_of ? `Fund · priced ${day(h.as_of, now)}` : "Fund";
   }
   if (h.kind === "bond") {
@@ -156,7 +156,7 @@ export function costLine(h: Holding): string {
     return h.priced === "listing" ? `${price(h.price)}% of face` : "";
   }
   // a fund shows the NAV it was given
-  const each = h.kind === "manual" ? h.price : h.average_cost;
+  const each = h.kind === "fund" ? h.price : h.average_cost;
   return `${quantity(h.quantity)} × ${priceOf(each, h.currency, h.unit)}`;
 }
 
@@ -314,7 +314,7 @@ export const ADD_KEY = "markets-portfolio-add";
 // only the kind: a portfolio or broker carried from the last add files
 // the next one wrongly when it is for something else
 export type Remembered = {
-  kind: "trade" | "cash" | "manual" | "bond";
+  kind: "trade" | "cash" | "fund" | "bond";
 };
 
 export const FORGOTTEN: Remembered = { kind: "trade" };
@@ -323,8 +323,10 @@ export function readRemembered(raw: string | null): Remembered {
   try {
     const v = JSON.parse(raw ?? "null") as Partial<Remembered> | null;
     if (v === null || typeof v !== "object") return FORGOTTEN;
+    // saved before a fund was called a fund
+    if ((v.kind as string) === "manual") return { kind: "fund" };
     return {
-      kind: ["trade", "cash", "manual", "bond"].includes(v.kind as string)
+      kind: ["trade", "cash", "fund", "bond"].includes(v.kind as string)
         ? (v.kind as Remembered["kind"])
         : "trade",
     };
@@ -370,7 +372,7 @@ export function importLine(item: Record<string, unknown> | undefined): string {
   const what = s("name") ?? "";
   if (s("kind") === "cash")
     return `${what} · ${amount(n("amount"), s("currency"))}`;
-  if (s("kind") === "manual") {
+  if (s("kind") === "fund") {
     return `${what} · ${quantity(n("units"))} × ${price(n("price"), s("currency"))}`;
   }
   return `${what} · ${amount(n("amount"), s("currency"))}`;

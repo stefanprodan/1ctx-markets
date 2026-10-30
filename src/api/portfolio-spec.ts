@@ -138,7 +138,7 @@ const trade = object(
 const position = object(
   {
     id: int,
-    kind: values(["cash", "manual", "bond"]),
+    kind: values(["cash", "fund", "bond"]),
     portfolio: nstr,
     portfolio_id: int,
     name: str,
@@ -199,7 +199,7 @@ const named = object({ name: note(str, `1 to ${MAX_NAME} characters.`) });
 
 const holding = object(
   {
-    kind: values(["holding", "cash", "manual", "bond"]),
+    kind: values(["holding", "cash", "fund", "bond"]),
     id: nstr,
     position: { type: ["integer", "null"] },
     name: nstr,
@@ -313,7 +313,7 @@ export const portfolioSchemas: Record<string, Schema> = {
   PositionHistory: object({ history: list(position) }),
   PositionArgs: object(
     {
-      kind: values(["cash", "manual", "bond"]),
+      kind: values(["cash", "fund", "bond"]),
       portfolio: { type: ["string", "integer"] },
       name: str,
       symbol: note(str, "A bond's listing."),

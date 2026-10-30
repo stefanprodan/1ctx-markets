@@ -15,7 +15,7 @@ export const INSTRUCTIONS = `Market data, price rules and portfolios. Which tool
 - A US share's SEC filings, late filings, restatements or new securities registered or offered: \`research\`, \`section\` filings; its overview carries the flags.
 - Earnings dates: \`events\`. A named share under \`no_event\` had no earnings in the window: that is an answer, not missing data.
 - A level to be told about later: \`rules\`, rather than asking again by hand.
-- The owner's trades, holdings, cash and dry powder, and any question on what they hold ("my stocks", "my ETF", "my portfolio", a portfolio they name): \`portfolio\` holdings first, then its symbols to \`quote\`, \`history\` and \`research\`; never guess a symbol. Amounts stay in their own currency; never assume one, ask or say it.
+- The owner's trades, holdings, cash and dry powder, and any question on what they hold ("my stocks", "my ETF", "my portfolio", a portfolio they name): \`portfolio\` holdings first, then its symbols to \`quote\`, \`history\` and \`research\`; never guess a symbol. Amounts stay in their own currency; never assume one, ask or say it. With no portfolio yet, \`portfolio\` setup makes the first, its broker and the currency totals are shown in.
 - An unknown or ambiguous name: \`search\`.
 Answer from these tools, not the server's HTTP endpoints, and never recompute an average or return a tool already gives.
 

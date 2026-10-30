@@ -48,7 +48,7 @@ export type Converted = {
 };
 
 export type Holding = {
-  kind: "holding" | "cash" | "manual" | "bond";
+  kind: "holding" | "cash" | "fund" | "bond";
   id: string | null;
   position: number | null;
   name: string | null;
@@ -187,7 +187,7 @@ export type Listing = {
 };
 
 export type PositionIn = {
-  kind: "cash" | "manual" | "bond";
+  kind: "cash" | "fund" | "bond";
   portfolio: number;
   name: string;
   currency?: string;
