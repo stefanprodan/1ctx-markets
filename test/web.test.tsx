@@ -366,6 +366,7 @@ describe("the routes", () => {
     expect(RAIL.map((r) => r.label)).toEqual([
       "Home",
       "Instruments",
+      "Portfolios",
       "Connect agents",
       "Server status",
     ]);
@@ -1763,6 +1764,7 @@ describe("connect agents", () => {
     expect(JSON.parse(f.asked.at(-1)!.init!.body as string)).toEqual({
       name: "claude-code",
       expiresInDays: 90,
+      portfolio: "none",
     });
     expect(s.keys.value?.map((k) => k.name)).toEqual(["codex", "claude-code"]);
     expect(JSON.stringify(s.keys.value)).not.toContain(TOKEN);

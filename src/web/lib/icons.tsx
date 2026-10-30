@@ -96,6 +96,10 @@ const PATHS = {
   redo: "M14 8a6 6 0 1 1-1.8-4.3M14 2v3.5h-3.5",
   moon: "M13.5 9.6A5.75 5.75 0 1 1 6.4 2.5a4.6 4.6 0 0 0 7.1 7.1z",
   key: "M5.5 13.5a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM7.6 8.4 13.5 2.5M11.5 4.5l1.75 1.75M9.75 6.25l1.25 1.25",
+  // Portfolios: a briefcase
+  briefcase: "M2.5 5.5h11v8h-11zM6 5.5v-2h4v2M2.5 9h11",
+  download: "M8 2.5v8M4.5 7 8 10.5 11.5 7M3 13.5h10",
+  upload: "M8 10.5v-8M4.5 6 8 2.5 11.5 6M3 13.5h10",
   // Connect agents: a plug
   plug: "M8 14.5v-3M6 5.5v-4M10 5.5v-4M4 5.5h8v3a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3z",
   plus: "M8 3v10M3 8h10",

@@ -3,7 +3,7 @@
 // Connect agents' words and setup lines, as 1ctx's. No setup line holds a
 // key: each reads KEY_ENV, so they stay on the page.
 
-import type { AgentKey } from "../data/store.ts";
+import type { AgentKey, KeyAccess } from "../data/store.ts";
 import { ago } from "./Status.model.ts";
 
 // every setup reads the key from this variable
@@ -19,6 +19,19 @@ export const EXPIRY_OPTIONS: { value: number | null; label: string }[] = [
   { value: 90, label: "90 days" },
   { value: 365, label: "365 days" },
 ];
+
+export const ACCESS_OPTIONS: { value: KeyAccess; label: string }[] = [
+  { value: "none", label: "No access" },
+  { value: "read", label: "Read" },
+  { value: "write", label: "Read and write" },
+];
+
+// said only when it has any, as most keys never reach portfolios
+export function accessWords(k: AgentKey): string | null {
+  if (k.portfolio === "read") return "Reads portfolios";
+  if (k.portfolio === "write") return "Writes portfolios";
+  return null;
+}
 
 // as the server's rule, typed: a space becomes a dash, what it refuses goes
 export const shapeName = (typed: string): string =>

@@ -6,14 +6,21 @@
 
 import { type Signal, useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
-import { type AgentKey, markets, type Store } from "../data/store.ts";
+import {
+  type AgentKey,
+  type KeyAccess,
+  markets,
+  type Store,
+} from "../data/store.ts";
 import { copyText } from "../lib/clipboard.ts";
 import { Icon } from "../lib/icons.tsx";
 import { didNotLoad, Page } from "../ui/Page.tsx";
 import { Rows, RowsCard, RowsLine, RowsNote, RowsTitle } from "../ui/Rows.tsx";
 import {
+  ACCESS_OPTIONS,
   AGENTS,
   type Agent,
+  accessWords,
   capLine,
   EXPIRY_OPTIONS,
   expired,
@@ -108,6 +115,7 @@ export function NewKey({
 }) {
   const name = useSignal("");
   const days = useSignal<number | null>(null);
+  const access = useSignal<KeyAccess>("none");
   const busy = useSignal(false);
   const error = useSignal<string | null>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -118,7 +126,7 @@ export function NewKey({
     busy.value = true;
     error.value = null;
     try {
-      const made = await store.createKey(name.value, days.value);
+      const made = await store.createKey(name.value, days.value, access.value);
       onMade(made.token);
     } catch (err) {
       error.value = (err as Error).message;
@@ -166,6 +174,25 @@ export function NewKey({
           </div>
         </fieldset>
       </div>
+      <fieldset class="field connect-set">
+        <legend class="label">Portfolios</legend>
+        <div class="seg">
+          {ACCESS_OPTIONS.map((o) => (
+            <button
+              key={o.value}
+              type="button"
+              aria-pressed={access.value === o.value}
+              class={`seg-option${access.value === o.value ? " seg-on" : ""}`}
+              disabled={busy.value}
+              onClick={() => {
+                access.value = o.value;
+              }}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+      </fieldset>
       <div class="connect-foot">
         {error.value !== null && (
           <p class="connect-error" role="alert">
@@ -216,6 +243,7 @@ export function KeyRow({
             <span class={gone ? "rows-bad" : undefined}>
               {expiryWords(row, now)}
             </span>
+            {accessWords(row) && ` · ${accessWords(row)}`}
           </>
         }
         prose

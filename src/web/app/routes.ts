@@ -11,6 +11,7 @@ import { Connect } from "../views/Connect.tsx";
 import { Dashboard } from "../views/Dashboard.tsx";
 import { Instrument } from "../views/Instrument.tsx";
 import { Instruments } from "../views/Instruments.tsx";
+import { Portfolios } from "../views/Portfolios.tsx";
 import { Status } from "../views/Status.tsx";
 
 export type Params = Record<string, string>;
@@ -52,6 +53,15 @@ export const ROUTES: readonly Route[] = [
     view: Instrument,
     load: async (p) => {
       await markets.loadInstrument(p.id!);
+    },
+  },
+  {
+    path: "/portfolios",
+    label: "Portfolios",
+    icon: "briefcase",
+    view: Portfolios,
+    load: async () => {
+      await markets.portfolios.load();
     },
   },
   {

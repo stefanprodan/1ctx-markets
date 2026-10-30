@@ -19,6 +19,7 @@ import {
   failure,
   says,
 } from "./api.ts";
+import { portfolioStore } from "./portfolios.ts";
 
 export type SourceStatus = {
   name: string;
@@ -147,6 +148,10 @@ export type Candidate = {
   name: string | null;
   type: string | null;
   exchange: string;
+  // the exchange in words, when the source's search gives them
+  exchange_name?: string;
+  // a stored listing's
+  currency?: string | null;
   stored: boolean;
 };
 
@@ -277,7 +282,11 @@ export type AgentKey = {
   last_used_at: string | null;
   // null never expires
   expires_at: string | null;
+  // what it may do with portfolios
+  portfolio?: KeyAccess;
 };
+
+export type KeyAccess = "none" | "read" | "write";
 
 type KeysPage = { keys: AgentKey[]; limit: number };
 
@@ -421,6 +430,7 @@ export function store(
       keysError.value = null;
       keysCode.value = null;
     });
+    portfolios.clear();
   };
   const quiet = client(fetchFn, () => {}, buildWatch(reloadPage));
   // a 401 signs out only the session the call was made in
@@ -444,6 +454,8 @@ export function store(
       throw error;
     }
   }
+
+  const portfolios = portfolioStore(call, () => session);
 
   function loadStatus(): Promise<boolean> {
     current = load(++latest);
@@ -648,10 +660,15 @@ export function store(
   async function createKey(
     name: string,
     expiresInDays: number | null,
+    portfolio: KeyAccess = "none",
   ): Promise<MadeKey> {
     let made: MadeKey;
     try {
-      made = await call<MadeKey>(KEYS_PATH, "POST", { name, expiresInDays });
+      made = await call<MadeKey>(KEYS_PATH, "POST", {
+        name,
+        expiresInDays,
+        portfolio,
+      });
     } catch (error) {
       throw new Error(says(error));
     }
@@ -921,6 +938,7 @@ export function store(
   }
 
   return {
+    portfolios,
     keys,
     keysLimit,
     keysError,
