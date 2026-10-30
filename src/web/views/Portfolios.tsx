@@ -1106,7 +1106,8 @@ export function AddForm({
       if (
         (px.value === "" || pxLive.value) &&
         l.price !== null &&
-        !paid.value
+        !paid.value &&
+        !byTotal.value
       ) {
         px.value = String(l.price);
         pxLive.value = true;
@@ -1151,8 +1152,9 @@ export function AddForm({
   const heldHere = inPortfolio.filter((p) => (p.broker ?? "") === broker.value);
   const heldQty = heldHere.reduce((s, p) => s + (p.quantity ?? 0), 0);
   // the server's all with no broker sells every broker's part too, so
-  // it goes only when the parts shown are all there are
-  const allMeansHere = heldHere.length === inPortfolio.length;
+  // then it goes only when the parts shown are all there are
+  const allMeansHere =
+    broker.value !== "" || heldHere.length === inPortfolio.length;
   const drys = dryPowders(all.value);
   const dryUse =
     side.value === "buy" ? dryPowderFor(drys, portfolioName, cur) : null;
