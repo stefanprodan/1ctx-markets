@@ -252,7 +252,8 @@ export function PositionEdit({
     String(fund ? (h.price ?? "") : (h.parts[0]?.amount ?? "")),
   );
   const units = useSignal(String(h.quantity ?? ""));
-  const date = useSignal(h.as_of ?? today());
+  // a new figure is true today; a bond's date is its purchase, kept
+  const date = useSignal(h.kind === "bond" ? (h.as_of ?? today()) : today());
   const busy = useSignal(false);
   const error = useSignal<string | null>(null);
   const save = async (ev: Event) => {

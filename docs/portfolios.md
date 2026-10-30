@@ -72,6 +72,10 @@ once and valued on the live price the server already keeps.
   and broker, while a bond keeps a live equal purchase, since two equal
   purchases are two bonds; so a restored bond can sit beside an equal
   purchase imported again after its removal, and the owner removes one).
+  An update with no date that changes what cash or a fund is worth
+  (amount, `by`, units, price) is dated today, as its figure is true
+  now; a bond keeps its purchase date, and a note, dry powder or cost
+  alone keeps the date.
   A position added with the identity of a kept one replaces it the same
   way. A bond's history follows that chain, since an update may change
   its face or date; cash's and a hand price's is every row of their name
