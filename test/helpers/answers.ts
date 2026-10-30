@@ -4,6 +4,7 @@
 
 import { PREFIX } from "../../src/api/http.ts";
 import { markets } from "../../src/operations/markets.ts";
+import { ADMIN } from "../../src/operations/who.ts";
 import { silent } from "../../src/runtime/log.ts";
 import { finnhub } from "../../src/sources/finnhub/client.ts";
 import { fred } from "../../src/sources/fred/client.ts";
@@ -126,7 +127,7 @@ export async function mcpAnswers(): Promise<Answers> {
   for (const [k, [name, input]] of CALLS.entries()) {
     const tool = list.find((t) => t.name === name)!;
     answers[`${k} ${name} ${JSON.stringify(input)}`] = await pages(
-      (args) => drive(clock, pacedOf(m), call(m, tool, args)),
+      (args) => drive(clock, pacedOf(m), call(m, tool, args, ADMIN)),
       input,
     );
   }

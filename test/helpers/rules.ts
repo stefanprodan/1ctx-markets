@@ -3,6 +3,7 @@
 // Rules over the recorded sources, quotes stored through the quote job's write.
 
 import { type Markets, markets } from "../../src/operations/markets.ts";
+import { ADMIN } from "../../src/operations/who.ts";
 import { type Engine, ruleEngine } from "../../src/rules/evaluate.ts";
 import { MINUTE_MS } from "../../src/runtime/clock.ts";
 import { silent } from "../../src/runtime/log.ts";
@@ -128,7 +129,11 @@ export async function rulesTest(
     calendar,
     calls: s.calls.urls,
     async rules(input) {
-      const result = await drive(clock, pacedOf(m), call(m, tool, input));
+      const result = await drive(
+        clock,
+        pacedOf(m),
+        call(m, tool, input, ADMIN),
+      );
       return {
         error: result.isError === true,
         body: JSON.parse(result.content[0]!.text),

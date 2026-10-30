@@ -314,6 +314,30 @@ describe("migrations", () => {
     db.close();
   });
 
+  test("keys made before rules access keep writing rules, new ones none", () => {
+    const db = new Database(":memory:", { strict: true });
+    const clock = fakeClock();
+    const at = MIGRATIONS.findIndex((m) => m.id === "0023-key-rules");
+    migrate(db, clock, MIGRATIONS.slice(0, at));
+    db.exec(
+      `insert into keys (id, name, token_hash, created_at)
+       values ('oldkey000000', 'old', 'h1', 0)`,
+    );
+    migrate(db, clock, MIGRATIONS.slice(0, at + 1));
+    db.exec(
+      `insert into keys (id, name, token_hash, created_at)
+       values ('newkey000000', 'new', 'h2', 0)`,
+    );
+    expect(
+      db.query("select name, rules from keys order by name").all(),
+    ).toEqual([
+      { name: "new", rules: "none" },
+      { name: "old", rules: "write" },
+    ]);
+    expect(() => db.exec("update keys set rules = 'all'")).toThrow();
+    db.close();
+  });
+
   test("open applies the shipped list to a new database", () => {
     const { db, migrations } = open(":memory:", fakeClock());
     expect(migrations).toEqual(MIGRATIONS.map((m) => m.id));

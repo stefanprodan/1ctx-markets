@@ -22,6 +22,7 @@ import {
   type KeysDeps,
   listAnswer,
   revokeOne,
+  setOne,
 } from "../admin/keys.ts";
 import { iso, price } from "../market/format.ts";
 import { localDate } from "../market/zone.ts";
@@ -31,7 +32,6 @@ import { basisOf, parseHistory, readHistory } from "../operations/history.ts";
 import { extendedOut, readIntradayHistory } from "../operations/intraday.ts";
 import type { ExtendedRead, Markets } from "../operations/markets.ts";
 import { parseMovers, readMovers } from "../operations/movers.ts";
-import type { Who } from "../operations/portfolio.ts";
 import {
   briefItem,
   type Latest,
@@ -51,6 +51,7 @@ import { parseScreen, readScreen } from "../operations/screen.ts";
 import { parseSearch, searchAll } from "../operations/search.ts";
 import { setAll } from "../operations/sets.ts";
 import type { TrackState } from "../operations/track.ts";
+import type { Who } from "../operations/who.ts";
 import { readRule, readRules } from "../rules/store.ts";
 import { errorFields, type Log } from "../runtime/log.ts";
 import { NO_EVENTS } from "../sources/finnhub/store.ts";
@@ -77,14 +78,16 @@ export type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 // read: an agent key, or the admin key, which holds every scope; admin:
 // the admin key alone; none: served before either, since it holds no data
-// and a browser opening it sends no key; portfolio:read and :write: an
-// agent key the admin gave that access, holdings being private
+// and a browser opening it sends no key; portfolio: and rules: an agent key
+// the admin gave that access, holdings being private and rules the owner's
 export type Scope =
   | "read"
   | "admin"
   | "none"
   | "portfolio:read"
-  | "portfolio:write";
+  | "portfolio:write"
+  | "rules:read"
+  | "rules:write";
 
 export type Route = {
   method: Method;
@@ -395,7 +398,7 @@ function rules(m: Markets): Route[] {
     {
       method: "GET",
       path: "/rules",
-      scope: "read",
+      scope: "rules:read",
       handle: async (_req, url) => {
         noQuery(url);
         return json({ rules: readRules(m.db).map((r) => ruleItem(m, r)) });
@@ -404,7 +407,7 @@ function rules(m: Markets): Route[] {
     {
       method: "POST",
       path: "/rules",
-      scope: "read",
+      scope: "rules:write",
       cookie: false,
       handle: async (req, url) => {
         noQuery(url);
@@ -424,7 +427,7 @@ function rules(m: Markets): Route[] {
     {
       method: "GET",
       path: "/rules/{id}",
-      scope: "read",
+      scope: "rules:read",
       handle: async (_req, url, params) => {
         noQuery(url);
         const id = ruleId(params.id!);
@@ -436,7 +439,7 @@ function rules(m: Markets): Route[] {
     {
       method: "PATCH",
       path: "/rules/{id}",
-      scope: "read",
+      scope: "rules:write",
       cookie: false,
       handle: async (req, url, params) => {
         noQuery(url);
@@ -454,7 +457,7 @@ function rules(m: Markets): Route[] {
     {
       method: "DELETE",
       path: "/rules/{id}",
-      scope: "read",
+      scope: "rules:write",
       cookie: false,
       handle: async (_req, url, params) => {
         noQuery(url);
@@ -548,6 +551,17 @@ function keys(d: KeysDeps): Route[] {
       },
     },
     {
+      method: "PATCH",
+      path: "/keys/{id}",
+      scope: "admin",
+      handle: async (req, url, params) => {
+        noQuery(url);
+        const read = await bodyOf(req);
+        if (read instanceof Response) return read;
+        return setOne(d, params.id!, read.body);
+      },
+    },
+    {
       method: "DELETE",
       path: "/keys/{id}",
       scope: "admin",
@@ -574,7 +588,7 @@ export function routes(deps: ApiDeps): Route[] {
     {
       method: "GET",
       path: "/alerts",
-      scope: "read",
+      scope: "rules:read",
       handle: (req) => deps.alerts(req),
     },
     ...operator(admin, deps.track),

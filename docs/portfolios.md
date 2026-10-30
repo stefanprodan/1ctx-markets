@@ -287,7 +287,8 @@ restore(trade?: number, position?: number, portfolio?: Portfolio);
   is refused, since its value would be relabelled, not converted.
 - **Access is the key's** (`Who`): the router hands the MCP handler the
   caller as `authInfo` (`whoOf()`), and the tool refuses `forbidden`
-  without read, and a write without write. The admin key holds write.
+  without read, and a write without write (`Who.portfolio`). The admin
+  key holds write.
 - **holdings and trades page** by offset with a cursor bound to their
   arguments; totals, rates and exposure ride on every page.
 - **add answers the stored row resolved to its instrument**, so the

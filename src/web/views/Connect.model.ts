@@ -26,11 +26,20 @@ export const ACCESS_OPTIONS: { value: KeyAccess; label: string }[] = [
   { value: "write", label: "Read and write" },
 ];
 
-// said only when it has any, as most keys never reach portfolios
+const VERB: Record<KeyAccess, string | null> = {
+  none: null,
+  read: "Reads",
+  write: "Writes",
+};
+
+// said only for what it has, as many keys reach neither
 export function accessWords(k: AgentKey): string | null {
-  if (k.portfolio === "read") return "Reads portfolios";
-  if (k.portfolio === "write") return "Writes portfolios";
-  return null;
+  const said: string[] = [];
+  const portfolio = VERB[k.portfolio ?? "none"];
+  if (portfolio !== null) said.push(`${portfolio} portfolios`);
+  const rules = VERB[k.rules ?? "none"];
+  if (rules !== null) said.push(`${rules} alert rules`);
+  return said.length === 0 ? null : said.join(" · ");
 }
 
 // as the server's rule, typed: a space becomes a dash, what it refuses goes

@@ -71,7 +71,7 @@ answer=$(initialize "$ADMIN") || fail "initialize with the admin key failed"
 grep -q '"name":"1ctx-markets"' <<<"$answer" || fail "initialize did not name the server"
 
 # an agent key, made by the admin through the keys command, printed once
-BEARER=$("$BIN" keys --listen "127.0.0.1:$PORT" --data "$RUN/data" add smoke) ||
+BEARER=$("$BIN" keys --listen "127.0.0.1:$PORT" --data "$RUN/data" add smoke --rules read) ||
   fail "keys add failed"
 [[ $BEARER == 1ctx-markets-* && $BEARER != 1ctx-markets-admin-* ]] || fail "keys add printed no agent key"
 initialize "$BEARER" >/dev/null || fail "initialize with an agent key failed"

@@ -16,6 +16,7 @@ import { withLive } from "../src/operations/history.ts";
 import { NO_SOURCE } from "../src/operations/intraday.ts";
 import { CALL_MS, markets } from "../src/operations/markets.ts";
 import { MAX_IMPORT_BODY } from "../src/operations/portfolio-import.ts";
+import { ADMIN } from "../src/operations/who.ts";
 import { DAY_MS } from "../src/runtime/clock.ts";
 import { silent } from "../src/runtime/log.ts";
 import { CALLS_PER_MINUTE } from "../src/server/ratelimit.ts";
@@ -700,6 +701,33 @@ describe("every operation", () => {
       400,
     );
     await check("GET", "/alerts", await t.call("/alerts", wrong), 401);
+    // the read key has no rules access
+    await check("GET", "/alerts", await t.call("/alerts", reader), 403);
+    await check("GET", "/rules", await t.call("/rules", reader), 403);
+    await check(
+      "POST",
+      "/rules",
+      await t.call("/rules", { ...json(rule), ...reader }),
+      403,
+    );
+    await check(
+      "GET",
+      "/rules/{id}",
+      await t.call(`/rules/${id}`, reader),
+      403,
+    );
+    await check(
+      "PATCH",
+      "/rules/{id}",
+      await t.call(`/rules/${id}`, { ...patch({ paused: true }), ...reader }),
+      403,
+    );
+    await check(
+      "DELETE",
+      "/rules/{id}",
+      await t.call(`/rules/${id}`, { method: "DELETE", ...reader }),
+      403,
+    );
 
     await check("GET", "/watchlist", await t.call("/watchlist"), 200);
     await check("GET", "/watchlist", await t.call("/watchlist?x=1"), 400);
@@ -947,6 +975,53 @@ describe("every operation", () => {
     await check("GET", "/keys", await t.call("/keys", wrong), 401);
     await check("GET", "/keys", await t.call("/keys", reader), 403);
     const keyAt = `/keys/${madeKey.key.id}`;
+    const access = (body: unknown, init: RequestInit = {}) =>
+      t.call(keyAt, { ...json(body), method: "PATCH", ...init });
+    const changed = await check(
+      "PATCH",
+      "/keys/{id}",
+      await access({ rules: "read" }),
+      200,
+    );
+    expect(changed.key).toMatchObject({ portfolio: "none", rules: "read" });
+    await check("PATCH", "/keys/{id}", await access({}), 400);
+    await check("PATCH", "/keys/{id}", await access({ rules: "all" }), 400);
+    await check(
+      "PATCH",
+      "/keys/{id}",
+      await access({ rules: "x".repeat(70_000) }),
+      413,
+    );
+    await check(
+      "PATCH",
+      "/keys/{id}",
+      await t.call(keyAt, {
+        ...json({ rules: "read" }, "text/plain"),
+        method: "PATCH",
+      }),
+      415,
+    );
+    await check(
+      "PATCH",
+      "/keys/{id}",
+      await access({ rules: "read" }, wrong),
+      401,
+    );
+    await check(
+      "PATCH",
+      "/keys/{id}",
+      await access({ rules: "read" }, reader),
+      403,
+    );
+    await check(
+      "PATCH",
+      "/keys/{id}",
+      await t.call("/keys/zzzzzzzzzzzz", {
+        ...json({ rules: "read" }),
+        method: "PATCH",
+      }),
+      404,
+    );
     const revoke = (init: RequestInit = {}) =>
       t.call(keyAt, { method: "DELETE", ...init });
     await check("DELETE", "/keys/{id}", await revoke(wrong), 401);
@@ -1371,8 +1446,8 @@ describe("rules", () => {
     const tool = tools(mcp.m).find((x) => x.name === "rules")!;
     const run = async (args: object) =>
       JSON.parse(
-        (await drive(mcp.clock, pacedOf(mcp.m), tool.run(args))).content[0]!
-          .text,
+        (await drive(mcp.clock, pacedOf(mcp.m), tool.run(args, ADMIN)))
+          .content[0]!.text,
       );
     const rule = {
       symbol: "NVDA",
@@ -1458,8 +1533,11 @@ describe("access", () => {
           "application/problem+json",
         );
         const read = await fetch(at, { method, headers: as(bearer) });
-        // the agent key here has no portfolio access
-        const forbidden = r.scope !== "read";
+        // the agent key here writes rules and has no portfolio access
+        const forbidden =
+          r.scope !== "read" &&
+          r.scope !== "rules:read" &&
+          r.scope !== "rules:write";
         expect([method, path, read.status === 403]).toEqual([
           method,
           path,

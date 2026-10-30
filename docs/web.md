@@ -308,11 +308,16 @@ signed in with the admin key alone.
   together.
 - **Connect agents** (`/connect`, before Server status in the rail), as
   1ctx's: a Keys card from `GET /api/v1/keys` (each key's name, last
-  use and expiry, with Revoke, which asks once beside Keep, and "N of
-  5"), New key (a name, shaped as typed to the server's rule, and
-  Expires: Never, 30, 90 or 365 days, and Portfolios: No access,
-  Read, or Read and write, no access by default; a key's row says
-  "Reads portfolios" or "Writes portfolios" only when it has any), then a Setup card with a tab per
+  use and expiry, and "N of 5"), New key (a name, shaped as typed to
+  the server's rule, and Expires: Never, 30, 90 or 365 days, and
+  Portfolios and Alert rules, each No access, Read, or Read and write,
+  no access by default; a key's row says "Reads portfolios", "Writes
+  portfolios", "Reads alert rules" or "Writes alert rules" only for
+  what it has, and not on a phone, where the row keeps one line). A
+  row has no buttons: it opens to the same two picks, set to what the
+  key has, with Revoke at the start, which asks once beside Keep, and
+  Cancel and Save (`PATCH /api/v1/keys/{id}`, waiting on a change) at
+  the end. Then a Setup card with a tab per
   agent (Claude Code, Codex, OpenCode) and the line that adds this
   server as the MCP server `markets` at the page's origin plus `/mcp`.
   At the cap, New key goes and a line names the cap. A revoke that

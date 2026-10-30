@@ -23,8 +23,8 @@ import {
   setPositionState,
   setTradeState,
   updatePosition,
-  type Who,
 } from "../src/operations/portfolio.ts";
+import type { Who } from "../src/operations/who.ts";
 import { splitFactor } from "../src/portfolios/value.ts";
 import { tokenHash } from "../src/server/access.ts";
 import type { Db } from "../src/storage/db/index.ts";
@@ -32,7 +32,7 @@ import { withApp } from "./helpers/app.ts";
 import { portfolioBefore } from "./helpers/portfolio.ts";
 import { bar, instrument, LIVE, NOW, quote, world } from "./helpers/world.ts";
 
-const CASEY: Who = { name: "casey-agent", access: "write" };
+const CASEY: Who = { name: "casey-agent", portfolio: "write", rules: "none" };
 
 // a currency pair as Yahoo lists it, with its closes and a live quote
 function pair(
@@ -767,8 +767,8 @@ describe("trades", () => {
 
   test("a key that reads cannot write, one without access cannot read", async () => {
     const { m } = await setup();
-    const reader: Who = { name: "reader", access: "read" };
-    const none: Who = { name: "none", access: "none" };
+    const reader: Who = { name: "reader", portfolio: "read", rules: "none" };
+    const none: Who = { name: "none", portfolio: "none", rules: "none" };
     const write = await portfolioAnswer(
       m,
       reader,
@@ -844,7 +844,7 @@ describe("setup", () => {
 
   test("setup is a write and takes only its own arguments", async () => {
     const { m } = world();
-    const reader: Who = { name: "reader", access: "read" };
+    const reader: Who = { name: "reader", portfolio: "read", rules: "none" };
     const r = await ask(m, { display_currency: "EUR" }, reader);
     expect(r.body.error).toBe("forbidden");
     expect(() =>

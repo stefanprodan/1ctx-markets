@@ -48,7 +48,7 @@ export const spec = {
         type: "http",
         scheme: "bearer",
         description:
-          "An agent key, made by the admin, for market data, instruments and rules.",
+          "An agent key, made by the admin, for market data and instruments.",
       },
       portfolioRead: {
         type: "http",
@@ -60,6 +60,17 @@ export const spec = {
         type: "http",
         scheme: "bearer",
         description: "An agent key the admin gave portfolio write access.",
+      },
+      rulesRead: {
+        type: "http",
+        scheme: "bearer",
+        description:
+          "An agent key the admin gave rules read or write access: the rules and the alerts feed.",
+      },
+      rulesWrite: {
+        type: "http",
+        scheme: "bearer",
+        description: "An agent key the admin gave rules write access.",
       },
       admin: {
         type: "http",

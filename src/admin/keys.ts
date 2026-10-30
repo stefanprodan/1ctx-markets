@@ -12,6 +12,7 @@ import {
   isKeyId,
   isKeyName,
   KEY_DAYS,
+  type KeyAccess,
   KeyConflict,
   type KeyDays,
   type KeyRow,
@@ -21,7 +22,10 @@ import {
   MIN_NAME,
   PORTFOLIO_ACCESS,
   type PortfolioAccess,
+  RULES_ACCESS,
+  type RulesAccess,
   revokeKey,
+  setKeyAccess,
 } from "../server/access.ts";
 
 export type KeysDeps = {
@@ -37,17 +41,33 @@ export const keyItem = (k: KeyRow) => ({
   last_used_at: k.lastUsedAt === null ? null : iso(k.lastUsedAt),
   expires_at: k.expiresAt === null ? null : iso(k.expiresAt),
   portfolio: k.portfolio,
+  rules: k.rules,
 });
 
 export const listAnswer = (m: Markets) =>
   json({ keys: listKeys(m.db).map(keyItem), limit: MAX_KEYS });
 
+function portfolioOf(value: unknown): PortfolioAccess {
+  if (!(PORTFOLIO_ACCESS as readonly unknown[]).includes(value)) {
+    throw new ArgError(`portfolio is ${PORTFOLIO_ACCESS.join(", ")}`);
+  }
+  return value as PortfolioAccess;
+}
+
+function rulesOf(value: unknown): RulesAccess {
+  if (!(RULES_ACCESS as readonly unknown[]).includes(value)) {
+    throw new ArgError(`rules is ${RULES_ACCESS.join(", ")}`);
+  }
+  return value as RulesAccess;
+}
+
 function parseCreate(body: unknown): {
   name: string;
   days: KeyDays | null;
   portfolio: PortfolioAccess;
+  rules: RulesAccess;
 } {
-  const b = fields(body, ["name", "expiresInDays", "portfolio"]);
+  const b = fields(body, ["name", "expiresInDays", "portfolio", "rules"]);
   if (!isKeyName(b.name)) {
     throw new ArgError(
       `name is ${MIN_NAME} to ${MAX_NAME} lowercase letters, digits, dashes and underscores, starting with a letter or digit`,
@@ -57,14 +77,24 @@ function parseCreate(body: unknown): {
   if (days !== null && !(KEY_DAYS as readonly unknown[]).includes(days)) {
     throw new ArgError(`expiresInDays is null, ${KEY_DAYS.join(", ")}`);
   }
-  const portfolio = b.portfolio ?? "none";
-  if (!(PORTFOLIO_ACCESS as readonly unknown[]).includes(portfolio)) {
-    throw new ArgError(`portfolio is ${PORTFOLIO_ACCESS.join(", ")}`);
-  }
   return {
     name: b.name,
     days: days as KeyDays | null,
-    portfolio: portfolio as PortfolioAccess,
+    portfolio: portfolioOf(b.portfolio ?? "none"),
+    rules: rulesOf(b.rules ?? "none"),
+  };
+}
+
+function parseAccess(body: unknown): KeyAccess {
+  const b = fields(body, ["portfolio", "rules"]);
+  if (b.portfolio === undefined && b.rules === undefined) {
+    throw new ArgError("give portfolio, rules or both");
+  }
+  return {
+    ...(b.portfolio === undefined
+      ? {}
+      : { portfolio: portfolioOf(b.portfolio) }),
+    ...(b.rules === undefined ? {} : { rules: rulesOf(b.rules) }),
   };
 }
 
@@ -83,6 +113,22 @@ export async function createOne(d: KeysDeps, body: unknown) {
     key_name: made.key.name,
   });
   return json({ key: keyItem(made.key), token: made.token }, 201);
+}
+
+// the key's next request reads the new access, as a revoke holds
+export async function setOne(d: KeysDeps, id: string, body: unknown) {
+  const change = parseAccess(body);
+  const key = isKeyId(id)
+    ? await d.m.writer.write((db) => setKeyAccess(db, id, change))
+    : null;
+  if (key === null) return problem("not_found", "no such key");
+  d.m.log.info("key access set", {
+    key: key.id,
+    key_name: key.name,
+    portfolio: key.portfolio,
+    rules: key.rules,
+  });
+  return json({ key: keyItem(key) });
 }
 
 export async function revokeOne(d: KeysDeps, id: string) {

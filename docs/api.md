@@ -36,12 +36,12 @@ MCP tools copied onto paths.
 | `GET /watchlist` | read | `watchlist()` | `entries[]`, the `--track` values (below) |
 | `GET /dashboard` | admin | `readDashboard()` | the web UI's home page: `revision`, `created`, `sections[]` of `items[]` (below) |
 | `PUT /dashboard` | admin | `saveDashboard()` | `{revision, sections: [{name, view, symbols}]}` replaces the layout; the saved dashboard; 409 with `dashboard`, 422 with `errors` (below) |
-| `GET /rules` | read | `readRules()`, `ruleItem()` | `rules[]` |
-| `POST /rules` | read | `createRule()` | 201, `Location: /api/v1/rules/{id}`, the rule, its first evaluation and any alert it fired |
-| `GET /rules/{id}` | read | `readRule()`, `ruleItem()` | `{rule}` |
-| `PATCH /rules/{id}` | read | `pauseRule()` | `{"paused": bool}` sets or clears the manual pause; `{rule}` |
-| `DELETE /rules/{id}` | read | `deleteRuleById()` | 204; its alerts stay |
-| `GET /alerts` | read | `alertsHandler()` | the alerts feed (below) |
+| `GET /rules` | rules:read | `readRules()`, `ruleItem()` | `rules[]` |
+| `POST /rules` | rules:write | `createRule()` | 201, `Location: /api/v1/rules/{id}`, the rule, its first evaluation and any alert it fired |
+| `GET /rules/{id}` | rules:read | `readRule()`, `ruleItem()` | `{rule}` |
+| `PATCH /rules/{id}` | rules:write | `pauseRule()` | `{"paused": bool}` sets or clears the manual pause; `{rule}` |
+| `DELETE /rules/{id}` | rules:write | `deleteRuleById()` | 204; its alerts stay |
+| `GET /alerts` | rules:read | `alertsHandler()` | the alerts feed (below) |
 | `GET /portfolios` | portfolio:read | `listAll()` | `portfolios[]` with their counts, `brokers[]`, `display_currency` |
 | `POST /portfolios`, `PATCH`, `DELETE /portfolios/{id}` | portfolio:write | `createPortfolio()`, `updatePortfolio()`, `removePortfolio()` | `{name}`; 201 with `Location`; 409 while no display currency is set, for a taken name or a portfolio holding live rows (removed ones are deleted with it) |
 | `GET /portfolios/{id}` | portfolio:read | `portfolioItem()` | `{portfolio}` |
@@ -327,13 +327,20 @@ MCP tools copied onto paths.
   narrower one, and `/mcp`: a single-user install needs no other key.
 - **A valid key without the scope is 403 `forbidden`**: an agent key
   on `GET /instruments`, `DELETE /instruments/{symbol}`, refetch,
-  `/status` and `/keys`, and on a portfolio route without that access.
+  `/status` and `/keys`, and on a portfolio or rules route without
+  that access.
 - **Portfolio routes take the key's portfolio access** (`keys.portfolio`,
   `none` by default): `portfolio:read` opens with `read` or `write`,
   `portfolio:write` with `write`. Holdings are private, so the read
   scope never opens them. The handler gets the caller (`Who`), whose
   name a write records: `web` for the cookie, `admin`, or the key's
-  name. The spec names `portfolioRead` and `portfolioWrite`. A missing, wrong, revoked or expired key is
+  name. The spec names `portfolioRead` and `portfolioWrite`.
+- **Rules routes and the alerts feed take the key's rules access**
+  (`keys.rules`, `none` by default) the same way: `rules:read` (the
+  list, one rule, the feed) opens with `read` or `write`,
+  `rules:write` (create, pause, delete) with `write`. A rule acts for
+  the owner, so the read scope never opens them. The spec names
+  `rulesRead` and `rulesWrite`. A missing, wrong, revoked or expired key is
   401. Any other `/api/v1/` path, unknown ones included, answers 401
   without a key and 404 with one.
 - **Each key makes at most 120 calls a minute** (`CALLS_PER_MINUTE`,

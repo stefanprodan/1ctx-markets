@@ -8,23 +8,31 @@ import {
   McpServer,
 } from "@modelcontextprotocol/server";
 import type { Markets } from "../operations/markets.ts";
-import { type Access, NO_ACCESS, type Who } from "../operations/portfolio.ts";
+import { type Access, NO_ACCESS, type Who } from "../operations/who.ts";
 import { type Log, sdkErrorFields } from "../runtime/log.ts";
 import { registerTools } from "../tools/index.ts";
 
 const ACCESS = ["none", "read", "write"];
 
+function scoped(scopes: string[], area: string): Access {
+  const access = scopes
+    .find((s) => s.startsWith(`${area}:`))
+    ?.slice(area.length + 1);
+  return access !== undefined && ACCESS.includes(access)
+    ? (access as Access)
+    : "none";
+}
+
 // the router's caller, handed on as authInfo; none without it
 function whoFrom(
   info: { clientId: string; scopes: string[] } | undefined,
 ): Who {
-  const access = info?.scopes
-    .find((s) => s.startsWith("portfolio:"))
-    ?.slice("portfolio:".length);
-  if (info === undefined || access === undefined || !ACCESS.includes(access)) {
-    return NO_ACCESS;
-  }
-  return { name: info.clientId, access: access as Access };
+  if (info === undefined) return NO_ACCESS;
+  return {
+    name: info.clientId,
+    portfolio: scoped(info.scopes, "portfolio"),
+    rules: scoped(info.scopes, "rules"),
+  };
 }
 
 import { INSTRUCTIONS } from "./instructions.ts";

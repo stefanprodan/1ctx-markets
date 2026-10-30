@@ -21,7 +21,6 @@ import {
   setPositionState,
   setTradeState,
   updatePosition,
-  type Who,
 } from "../src/operations/portfolio.ts";
 import {
   commentOf,
@@ -32,6 +31,7 @@ import {
   readComment,
 } from "../src/operations/portfolio-import.ts";
 import { searchAll } from "../src/operations/search.ts";
+import type { Who } from "../src/operations/who.ts";
 import {
   portfolioByName,
   readPosition,
@@ -46,8 +46,8 @@ import { api } from "./helpers/api.ts";
 import { portfolioBefore } from "./helpers/portfolio.ts";
 import { bar, instrument, LIVE, NOW, quote, world } from "./helpers/world.ts";
 
-const CASEY: Who = { name: "casey-agent", access: "write" };
-const OTHER: Who = { name: "riley-agent", access: "write" };
+const CASEY: Who = { name: "casey-agent", portfolio: "write", rules: "none" };
+const OTHER: Who = { name: "riley-agent", portfolio: "write", rules: "none" };
 
 function pair(
   db: Db,

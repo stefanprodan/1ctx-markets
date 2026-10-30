@@ -36,7 +36,6 @@ import {
   updateBroker,
   updatePortfolio,
   updatePosition,
-  type Who,
 } from "../operations/portfolio.ts";
 import {
   exportCsv,
@@ -44,6 +43,7 @@ import {
   MAX_IMPORT_BODY,
   parseImport,
 } from "../operations/portfolio-import.ts";
+import type { Who } from "../operations/who.ts";
 import { readPositions } from "../portfolios/store.ts";
 import {
   json,
