@@ -58,6 +58,8 @@ export const INSTRUMENT_TABLES = [
   "events",
   "news",
   "news_walks",
+  "filings",
+  "edgar_filers",
 ] as const;
 
 export type SourceState = {
@@ -82,6 +84,7 @@ const SOURCE_LABELS: Record<string, string> = {
   fred: "FRED",
   finnhub: "Finnhub",
   massive: "Massive",
+  edgar: "SEC EDGAR",
 };
 
 const SOURCE_SHORT: Record<string, string> = {
@@ -90,6 +93,7 @@ const SOURCE_SHORT: Record<string, string> = {
   fred: "FRED",
   finnhub: "Finnhub",
   massive: "Massive",
+  edgar: "EDGAR",
 };
 
 // the price sources' own sites, for the instrument page's credit
@@ -112,6 +116,7 @@ const SOURCE_MARKS: Record<string, string> = {
   fred: "FR",
   finnhub: "FH",
   massive: "M",
+  edgar: "SEC",
 };
 
 // how an operator turns on a source that needs a key
@@ -127,6 +132,12 @@ const SOURCE_KEYS: Record<string, { adds: string; signup: string }> = {
   massive: {
     adds: "News for US shares and ETFs.",
     signup: "https://massive.com/dashboard/signup?redirect=%2Fdashboard%2Fkeys",
+  },
+  // no key to sign up for: the file holds a name and an email for SEC
+  edgar: {
+    adds: "SEC filings for US shares: results releases, late filings, restatements and new securities registered or offered.",
+    signup:
+      "https://www.sec.gov/search-filings/edgar-search-assistance/accessing-edgar-data",
   },
 };
 
@@ -144,6 +155,8 @@ const JOB_LABELS: Record<string, string> = {
   calendar: "Next earnings",
   "market-calendar": "Earnings calendar",
   news: "News",
+  filings: "Filings",
+  tickers: "SEC tickers",
   switch: "Source change",
 };
 
@@ -168,6 +181,9 @@ const JOB_ABOUT: Record<string, string> = {
   "market-calendar":
     "Checks the US earnings calendar hourly while a tracked share reports today or yesterday.",
   news: "Fetches news for each tracked US share and ETF every 30 minutes.",
+  filings:
+    "Refreshes each US share's SEC filings once a day, two hours after the US market closes.",
+  tickers: "Refreshes SEC's list of tickers and company numbers once a week.",
   switch:
     "Moves a market's instruments to another source when the start options change.",
 };

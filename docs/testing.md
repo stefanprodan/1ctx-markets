@@ -39,6 +39,7 @@ doc; key files in `docs/config.md`.
 | `sim.ts` | a made-up Yahoo for whole simulated days, sessions from each listing's zone |
 | `finnhub.ts` | Finnhub by path and symbol, recorded and made-up answers |
 | `massive.ts` | Massive's news, filtered, ordered and paged with an opaque `next_url` |
+| `edgar.ts` | SEC's ticker map and submissions by URL, a made-up contact line, `share()` for a stored US share |
 | `rules.ts` | reads with rules over the recorded sources |
 | `app.ts` | the whole server on loopback (`withApp()`) and an MCP SDK client on it (`mcpClient()`) |
 | `api.ts` | `/api/v1` through the real router over a test's own `Markets`, each request with the right made-up key (`api()`) |
@@ -116,6 +117,7 @@ Never run one from a test or CI.
 | `fred.ts` | daily series' metadata and recent observations, an unknown series, a refused key | `FRED_KEY_FILE` or `~/.1ctx-markets/secrets/source-fred.key` |
 | `finnhub.ts` | the research sections, the whole-market calendar, a price target | `FINNHUB_KEY_FILE` or `source-finnhub.key` |
 | `massive.ts` | the latest news and its next page, older news | `MASSIVE_KEY_FILE` or `source-massive.key` |
+| `edgar.ts` | the ticker map trimmed to the tests' symbols, two years of submissions per company (a bank's note prospectuses sampled), an unknown CIK | `EDGAR_KEY_FILE` or `source-edgar.key`, the contact line |
 | `bvb.ts` | the Bucharest exchange's pages and chart feed, trimmed to the fragments that hold data; a case name records one | none; the page key is stripped |
 
 - **Calls are spaced and few** (`GAP_MS`), under each source's limit,
@@ -126,7 +128,9 @@ Never run one from a test or CI.
   `authorization` and `x-finnhub-token`, sets a key-named query
   parameter to `REDACTED`, and replaces the key in every form, encoded
   too (`scrub()` in `src/sources/source.ts`), in every string before
-  writing, since a cursor URL can echo it. `bvb.ts` strips the page key
+  writing, since a cursor URL can echo it. Request headers are never
+  stored, so EDGAR's contact line, sent as the User-Agent, stays out
+  too. `bvb.ts` strips the page key
   and ASP.NET form state; `yahoo.ts` keeps only the headers a client
   acts on.
 - **Restricted values are replaced before the first write.** A series

@@ -20,6 +20,7 @@ import { DEFAULT_MONTHS } from "../operations/history.ts";
 import { AVERAGES } from "../operations/movers.ts";
 import { MAX_SYMBOLS } from "../operations/quote.ts";
 import {
+  FILINGS_RECENT,
   MAX_RESEARCH_SYMBOLS,
   RESEARCH_PARTS,
   SINCE_DAYS,
@@ -230,6 +231,7 @@ export const paths = {
         "",
         "- `company` holds metrics, analysts, earnings and insider sentiment with their newest rows, and the next earnings event.",
         `- News gives counts by sentiment and the ${WEEK_ITEMS} articles that take a side first.`,
+        `- \`filings\` holds a US share's ${FILINGS_RECENT} newest SEC filings and three flags: a late filing, a restatement, new securities registered or offered.`,
         "- A share not researched before is fetched within the call, from a rate-limited source.",
         DEADLINE,
         READ,

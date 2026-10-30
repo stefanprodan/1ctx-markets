@@ -47,6 +47,7 @@ export type TestOptions = {
   fredKey?: string;
   finnhubKey?: string;
   massiveKey?: string;
+  edgarKey?: string;
   start?: number;
   track?: string[];
   // the Bucharest feed, on as with --source bvb
@@ -86,6 +87,7 @@ export async function withApp(
     fredKey: options.fredKey ?? null,
     finnhubKey: options.finnhubKey ?? null,
     massiveKey: options.massiveKey ?? null,
+    edgarKey: options.edgarKey ?? null,
     track: options.track,
     bvb: options.bvb,
     ui: options.ui,

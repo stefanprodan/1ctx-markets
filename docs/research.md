@@ -7,7 +7,9 @@ the `research` and `events` tools and the research route's contents
 `src/operations/events.ts`), and the
 `research`, `events`, `news` and `news_walks` tables
 (`src/storage/db/migrations/0007-research.ts`, `0008-news.ts`,
-`0012-listing.ts`). The queue, deadlines, retries, phrases, scrubbing
+`0012-listing.ts`). EDGAR's filings, their flags and events'
+`filed_at` are in `docs/edgar.md`; the sections that answer them are
+here. The queue, deadlines, retries, phrases, scrubbing
 and the lock every source shares are in `docs/sources.md`; resolution,
 tracking and the answer contract in `docs/tools.md`; the research
 route's transport in `docs/api.md`; rules that wait on events in
@@ -69,11 +71,16 @@ route's transport in `docs/api.md`; rules that wait on events in
   per share), the `research` overview all five and the research route
   those its `sections` ask, a history section its own (`SECTIONS_OF`).
   For the `overview` and `news` sections only, a covered instrument
-  never asked for news gets one page. The rest come with the jobs.
-  Concurrent calls naming one instrument and sections share one fetch
-  (`shared`); the sections are checked again inside the instrument's
-  lock, so a call that waited asks none another stored. A deadline that
-  passes stores nothing.
+  never asked for news gets one page; for `overview` and `filings`, and
+  the route's `filings`, a US share never fetched from EDGAR gets its
+  filings, the ticker map first when none is stored. The rest come with
+  the jobs. Events' `filed_at` reads stored filings only, so it fills
+  once the share's filings were fetched, by the daily pass or a research
+  call: `events` and the earnings route never call SEC, since one call
+  can name 100 symbols. Concurrent calls naming one instrument and
+  sections share one fetch (`shared`); the sections are checked again
+  inside the instrument's lock, so a call that waited asks none another
+  stored. A deadline that passes stores nothing.
 
 ## Finnhub sections
 
@@ -267,10 +274,27 @@ route's transport in `docs/api.md`; rules that wait on events in
 ## Answers
 
 - **The `research` tool's sections** are `overview` (quote, signals,
-  each Finnhub section's latest row, the next event, five headlines),
-  `analysts`, `earnings`, `insiders` and `news`, paged newest first.
-  The overview drops headlines first to fit one page; `overview` has
-  no next page.
+  each Finnhub section's latest row, the next event, five headlines,
+  `filings`), `analysts`, `earnings`, `insiders`, `news` and `filings`,
+  paged newest first. The overview drops headlines first to fit one
+  page; `overview` has no next page.
+- **The overview's `filings`** is EDGAR's summary (`filingsSummary()`):
+  `source`, `fetched_at`, `stale`, the three flags (`late_filing`,
+  `restatement`, `offering`: new securities, shares or debt,
+  registered or offered; `docs/edgar.md`) and `recent`, the
+  `FILINGS_RECENT` (5) newest filings. A flag says which filing to
+  read; the section holds the rest. Off, not covered, no CIK and a
+  foreign filer answer `message` (and `reason` for the last two) with
+  every flag null, never false.
+- **The `filings` section pages filings newest first** by accepted
+  time, at most `FILINGS_PAGE_ROWS` (50) a page, each with
+  `accession`, `form`, `accepted_at`, `filed`, `period`, `items`
+  (`code` and `name`) and `url`. Its first page carries the flags, as
+  news carries counts; later pages carry none.
+- **An event's `filed_at`** (the events tool, the overview's
+  `next_event`, the earnings route) is when its results 8-K was
+  accepted, from EDGAR (`docs/edgar.md`), null without one; status
+  and `reported_seen_at` stay as above.
 - **`news` takes `since`**, a UTC date as published times are, at
   most 30 days back (`SINCE_DAYS`, what is kept), else
   `bad_arguments`; without it the section answers all 30 days. Its
@@ -291,12 +315,12 @@ is fixed, never an argument, to keep five summaries short.
 - **Five symbols** (`MAX_RESEARCH_SYMBOLS`): a share never fetched
   costs five Finnhub calls, and the free key allows 60 a minute,
   shared with the jobs.
-- **`sections` picks what each share answers; a Finnhub section left
-  out is not fetched.** Each item is `input`, `id`, `company` (the
-  Finnhub summary, with its `source`, `message` and partial-failure
-  fields) and `news` (the news week), under the tool's deadline and
-  tracking. No quote: `/quotes` answers prices for many symbols in one
-  call. The research tool keeps its own names.
+- **`sections` picks what each share answers; a Finnhub section left out
+  is not fetched.** Each item is `input`, `id`, `company` (the Finnhub
+  summary, with its `source`, `message` and partial-failure fields),
+  `news` (the news week) and `filings` (EDGAR's summary), under the
+  tool's deadline and tracking. No quote: `/quotes` answers prices for
+  many symbols in one call. The research tool keeps its own names.
 - **Each Finnhub section but `metric` adds `history`**: its newest
   rows as the section's page shows them, so a script reads a trend
   without paging the tool (`HTTP_HISTORY`): `analysts` two months, the
@@ -306,6 +330,8 @@ is fixed, never an argument, to keep five summaries short.
   listing follow the section's rules, so `earnings` and `insider` hold
   none, and `listing` is on the section, not each row. The tool's
   `overview` carries no history.
+- **`filings` is the overview's filings summary**, the flags and the
+  five newest, fetched as the tool fetches it; five shares stay short.
 - **`news` is the stored summary of a window; it fetches no news**
   (`newsWeek()`). The window starts seven days before the call
   (`WEEK_MS`, the span a daily reader needs) or at `since`, at most

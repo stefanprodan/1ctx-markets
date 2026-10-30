@@ -101,7 +101,8 @@ the rules tool in `docs/rules.md`; signal rows and returns in
 | `search` | `query`, `next` | up to 20 stored matches, then up to 20 Bucharest listings from the stored list pages while the feed is on, then Yahoo's, each with id, exchange, type, name, `source`, `stored`; a Bucharest listing adds its `isin` |
 | `movers` | `symbols`, `min_move_pct`, `direction`, `average`, `relation`, `next` | matches by absolute change, largest first; `counts` |
 | `screen` | `symbols`, `filters`, `benchmark`, `sort`, `order`, `fields`, `next` | matches with each used and asked field's value, unit, kind and date; `counts` |
-| `research`, `events` | see `docs/research.md` | |
+| `research` | `symbol`, `section`, `since`, `next` | `overview` (quote, Finnhub sections, next event, headlines, `filings` with three flags), or one section paged: `analysts`, `earnings`, `insiders`, `news`, `filings` (`docs/research.md`, `docs/edgar.md`) |
+| `events` | `from`, `to`, `symbols`, `next` | events by date with `status`, `reported_seen_at` and `filed_at`; `unavailable`, `no_event` (`docs/research.md`) |
 | `rules` | see `docs/rules.md` | |
 
 - **quote's `returns` answer "how did it do" without `history`**

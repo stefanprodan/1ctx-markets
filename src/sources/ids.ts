@@ -9,3 +9,4 @@ export const FRED = "fred";
 export const FRED_MARKET = "FRED";
 export const FINNHUB = "finnhub";
 export const MASSIVE = "massive";
+export const EDGAR = "edgar";

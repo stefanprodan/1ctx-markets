@@ -46,7 +46,7 @@ the `--help` text, and a flag changes there in the same commit.
 | `markets.db` | the one SQLite database (`docs/storage.md`) |
 | `markets.log` | the service's log, when run by `service install` (`docs/deploy.md`) |
 | `secrets/user-admin.key` | the admin key: it opens `/mcp`, every `/api/v1` route and the web UI's sign-in (`docs/admin.md`, `docs/web.md`) |
-| `secrets/source-<name>.key` | a source's API key: `source-fred.key`, `source-finnhub.key`, `source-massive.key` |
+| `secrets/source-<name>.key` | a source's API key: `source-fred.key`, `source-finnhub.key`, `source-massive.key`; `source-edgar.key` holds the contact line SEC asks for, a name and an email (`docs/edgar.md`) |
 
 ## Keys
 
@@ -68,9 +68,9 @@ the `--help` text, and a flag changes there in the same commit.
   caching"): the admin makes and revokes them on Connect agents
   (`docs/web.md`) or with `1ctx-markets keys` (`docs/admin.md`).
 - **A source key turns its source on.** Yahoo needs none and is always
-  on; FRED, Finnhub and Massive are on while their file holds a key,
-  and every tool answers without them. A keyless optional source is on
-  only with its `--source` flag.
+  on; FRED, Finnhub, Massive and EDGAR are on while their file holds a
+  key, and every tool answers without them. A keyless optional source
+  is on only with its `--source` flag.
 - **A key value never reaches a row, a log line, an error or an
   answer.** The logger masks every value `keys.ts` has read (`[key]`)
   in the message and every field, percent-decoded first, since a key
@@ -93,8 +93,9 @@ the `--help` text, and a flag changes there in the same commit.
   slog-text form. `startup` holds `version`, `listen`, `data` (`~` for
   the home directory), `migrations` (applied, or `current`),
   `quote_every`, `track_days` and `ui` (`on` or `off`). `sources` has one field per source:
-  `yahoo=on`, the keyed ones `on (key file)` or `off (no key)`, `bvb`
-  `on (flag)` or `off (no flag)`.
+  `yahoo=on`, the keyed ones `on (key file)` or `off (no key)`, `edgar`
+  also `off (bad contact line)` (`docs/edgar.md`), `bvb` `on (flag)` or
+  `off (no flag)`.
 - **Log fields are fixed names and short values.** `errorFields()`
   keeps an error's type and first line only, so a stack stays out; a
   `SourceError` message is a fixed phrase, so a source's own text

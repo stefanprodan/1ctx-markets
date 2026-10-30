@@ -9,6 +9,7 @@ import { type Clock, MINUTE_MS } from "../runtime/clock.ts";
 import { DEFAULT_QUOTE_EVERY } from "../runtime/config.ts";
 import type { Log } from "../runtime/log.ts";
 import type { Bvb } from "../sources/bvb/client.ts";
+import type { Edgar } from "../sources/edgar/client.ts";
 import type { Finnhub } from "../sources/finnhub/client.ts";
 import { type Hooks, NO_HOOKS } from "../sources/finnhub/store.ts";
 import type { Fred } from "../sources/fred/client.ts";
@@ -33,6 +34,7 @@ export type Markets = {
   bvb: Bvb | null;
   finnhub: Finnhub | null;
   massive: Massive | null;
+  edgar: Edgar | null;
   hooks: Hooks;
   rules: RuleHooks;
   tracking: Tracking;
@@ -57,6 +59,7 @@ export function markets(options: {
   bvb?: Bvb | null;
   finnhub?: Finnhub | null;
   massive?: Massive | null;
+  edgar?: Edgar | null;
   hooks?: Hooks;
   rules?: RuleHooks;
   log: Log;
@@ -73,6 +76,7 @@ export function markets(options: {
     bvb: options.bvb?.failFast() ?? null,
     finnhub: options.finnhub?.failFast() ?? null,
     massive: options.massive?.failFast() ?? null,
+    edgar: options.edgar?.failFast() ?? null,
     hooks: options.hooks ?? NO_HOOKS,
     rules: options.rules ?? NO_RULES,
     tracking: options.tracking ?? BY_USE,

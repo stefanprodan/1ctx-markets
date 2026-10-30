@@ -130,6 +130,47 @@ const company = note(
   "A US share's metrics, analysts, earnings, insider sentiment and next earnings event, with the sections asked.",
 );
 const news = object({ source: str }, ["source"], true);
+const flag = (what: string) =>
+  note(
+    { type: ["boolean", "null"] },
+    `${what}; null when EDGAR is off or has no data for the share.`,
+  );
+const filings = note(
+  object(
+    {
+      source: str,
+      message: str,
+      reason: note(
+        str,
+        "Why EDGAR has no data: `foreign filer` or `not in SEC's ticker list`.",
+      ),
+      fetched_at: nstr,
+      stale: note(list(str), STALE),
+      late_filing: flag("An NT 10-K or NT 10-Q in the last 90 days"),
+      restatement: flag("An 8-K with item 4.02 in the last 365 days"),
+      offering: flag(
+        "New securities, shares or debt, registered or offered (an S-1, S-3, 424B1, 424B4 or 424B5) in the last 90 days; the filing's link says which",
+      ),
+      recent: note(
+        list(
+          object({
+            accession: str,
+            form: str,
+            accepted_at: note(str, "UTC, to the second."),
+            filed: str,
+            period: nstr,
+            items: list(object({ code: str, name: nstr })),
+            url: str,
+          }),
+        ),
+        "The newest filings, newest first.",
+      ),
+    },
+    ["source", "late_filing", "restatement", "offering"],
+    true,
+  ),
+  "A US share's SEC filings: the newest few and three flags.",
+);
 
 const averages = nullable(
   object({
@@ -398,13 +439,28 @@ export const schemas: Record<string, Schema> = {
     ["query", "candidates"],
   ),
   // a result holds the blocks its sections asked, at least one
-  ResearchCompany: object({ input: str, id: str, company }),
-  ResearchNews: object({ input: str, id: str, news }),
-  ResearchBoth: object({ input: str, id: str, company, news }),
+  ResearchCompany: object({ input: str, id: str, company, filings }, [
+    "input",
+    "id",
+    "company",
+  ]),
+  ResearchNews: object({ input: str, id: str, news, filings }, [
+    "input",
+    "id",
+    "news",
+  ]),
+  ResearchBoth: object({ input: str, id: str, company, news, filings }, [
+    "input",
+    "id",
+    "company",
+    "news",
+  ]),
+  ResearchFilings: object({ input: str, id: str, filings }),
   ResearchItem: oneOf(
     "ResearchCompany",
     "ResearchNews",
     "ResearchBoth",
+    "ResearchFilings",
     "ItemError",
   ),
   Research: object({ research: list(ref("ResearchItem")) }),
@@ -429,7 +485,19 @@ export const schemas: Record<string, Schema> = {
         ),
       ),
       earnings: list(
-        object({ id: str, date: str, status: str }, ["id", "date"], true),
+        object(
+          {
+            id: str,
+            date: str,
+            status: str,
+            filed_at: note(
+              nstr,
+              "When the 8-K with results (item 2.02) nearest the date, from a day before it to three after, was accepted, UTC; null when none or EDGAR is off.",
+            ),
+          },
+          ["id", "date"],
+          true,
+        ),
       ),
     },
     ["from", "to", "earnings"],

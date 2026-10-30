@@ -232,6 +232,22 @@ describe("the spec", () => {
     expect(
       item({ input: "X", id: "US:X", company: block, news: block }),
     ).toEqual([]);
+    const filings = {
+      source: "edgar",
+      late_filing: null,
+      restatement: null,
+      offering: null,
+    };
+    expect(item({ input: "X", id: "US:X", filings })).toEqual([]);
+    expect(item({ input: "X", id: "US:X", company: block, filings })).toEqual(
+      [],
+    );
+    expect(
+      item({ input: "X", id: "US:X", company: block, news: block, filings }),
+    ).toEqual([]);
+    expect(
+      item({ input: "X", id: "US:X", filings: { source: "edgar" } }),
+    ).not.toEqual([]);
     for (const path of ["/movers", "/screen"]) {
       const method = path === "/screen" ? "POST" : "GET";
       const set = answerSchema(spec, method, path, 200)!;
