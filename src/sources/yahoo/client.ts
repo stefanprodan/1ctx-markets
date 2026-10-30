@@ -9,6 +9,7 @@ import {
   type Backoff,
   DeadlinePassed,
   type Fetch,
+  Paused,
   type Phrase,
   type Queue,
   QueueClosed,
@@ -387,16 +388,20 @@ export function parsePoints(body: unknown, fetchedAt: number): PointsAnswer {
   return { ...meta, points: closesOf(rows) };
 }
 
+// Yahoo's own answer about the symbols asked, as for one it has no spark
+// for while its chart answers; never a sign the source is down
+class SparkRefused extends SourceError {
+  constructor() {
+    super("source error", "spark error");
+  }
+}
+
 // Each entry is read on its own, so one bad symbol skips only itself;
 // a symbol without data comes back without a response.
 export function parseSpark(body: unknown, fetchedAt: number): SparkAnswer {
   const spark = obj(obj(body, "body").spark, "spark");
   if (spark.error !== null && spark.error !== undefined) {
-    // one unknown symbol asked alone answers this, which is no outage
-    if (isObj(spark.error) && spark.error.code === "Not Found") {
-      throw new SourceError("not found");
-    }
-    throw new SourceError("source error", "spark error");
+    throw new SparkRefused();
   }
   if (!Array.isArray(spark.result)) throw malformed("no spark results");
   const quotes: SparkQuote[] = [];
@@ -441,6 +446,7 @@ export function parseQuoteChart(body: unknown, fetchedAt: number): SparkAnswer {
 const brokenBy = (error: unknown): boolean =>
   error instanceof SourceError &&
   !(error instanceof Unreadable) &&
+  !(error instanceof Paused) &&
   (error.phrase === "source error" ||
     error.phrase === "malformed answer" ||
     error.phrase === "bad request");
@@ -448,7 +454,9 @@ const brokenBy = (error: unknown): boolean =>
 // an answer about the symbols asked, so the split goes on past it
 const ownError = (error: unknown): boolean =>
   brokenBy(error) ||
-  (error instanceof SourceError && error.phrase === "not found");
+  (error instanceof SourceError &&
+    !(error instanceof Paused) &&
+    error.phrase === "not found");
 
 export function parseSearch(body: unknown): Listing[] {
   const quotes = obj(body, "body").quotes;
@@ -553,6 +561,9 @@ export function yahoo(options: YahooOptions): Yahoo {
         const next = <T>(url: string, parse: (b: unknown, at: number) => T) => {
           if (calls.isClosed()) throw new QueueClosed();
           if (run.live !== undefined && !run.live()) throw new DeadlinePassed();
+          // another call's back-off holds the split too
+          const paused = calls.backoff();
+          if (paused !== null) throw new Paused(paused.after);
           return call(url, parse);
         };
         const ask = async (
@@ -578,13 +589,18 @@ export function yahoo(options: YahooOptions): Yahoo {
           }
         };
         const out: SparkBatch[] = [];
-        // both halves failing is the source, so that batch fails whole
+        // both halves failing as a broken call would is the source, so
+        // that batch fails whole; Yahoo's answer about a half is its own
         const narrow = async (symbols: string[]) => {
           const mid = Math.ceil(symbols.length / 2);
           const halves = [symbols.slice(0, mid), symbols.slice(mid)];
           const tries = [];
           for (const half of halves) tries.push(await ask(half));
-          if (tries.every((t) => t.answer === undefined)) return false;
+          const down = (e: unknown) =>
+            brokenBy(e) && !(e instanceof SparkRefused);
+          if (tries.every((t) => t.answer === undefined && down(t.error))) {
+            return false;
+          }
           for (const [k, half] of halves.entries()) {
             const t = tries[k]!;
             if (t.answer !== undefined) {

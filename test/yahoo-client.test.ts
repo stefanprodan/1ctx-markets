@@ -341,15 +341,6 @@ describe("the queue", () => {
         true,
       ],
       [
-        {
-          ...spark,
-          body: { spark: { result: null, error: { code: "Not Found" } } },
-        },
-        (y) => y.spark(["NVDA"]),
-        "not found",
-        false,
-      ],
-      [
         { ...search, body: { quotes: "none" } },
         (y) => y.search("NVDA"),
         "malformed answer",
@@ -601,6 +592,53 @@ describe("a failed spark batch", () => {
     }).sparkAll(symbols);
     expect(batches[0]!.error).toBeInstanceOf(QueueClosed);
     expect(f.urls).toHaveLength(1);
+  });
+
+  test("stops when another batch's call starts a back-off", async () => {
+    const s = sim(Array.from({ length: 40 }, (_, i) => US(`S${i}`)));
+    const clock = fakeClock(now);
+    const f = fakeFetch(async (url) => {
+      const asked = url.searchParams.get("symbols")?.split(",") ?? [];
+      if (asked.includes("S30")) {
+        return { recordedAt: "", status: 429, headers: {}, body: "" };
+      }
+      // answered once the other batch's rate limit is in force
+      await settle();
+      await settle();
+      return asked.includes("S7") ? broken : s.route(url, clock.now());
+    });
+    const y = yahoo({ clock, fetch: f.fetch });
+    const batches = await y.sparkAll(
+      Array.from({ length: 40 }, (_, i) => `S${i}`),
+    );
+    expect(batches.map((b) => b.symbols.length)).toEqual([20, 20]);
+    expect(batches.map((b) => (b.error as SourceError).phrase)).toEqual([
+      "rate limited",
+      "rate limited",
+    ]);
+    // only each batch's first call went out
+    expect(f.urls).toHaveLength(2);
+    expect(y.backoff()).toMatchObject({ until: now + RATE_LIMIT_BACKOFF_MS });
+  });
+
+  test("never takes a lone symbol's own answer for an outage", async () => {
+    // S6 breaks spark; S5 asked alone answers spark's Not Found, as EL did
+    const notFound: Recorded = {
+      recordedAt: "",
+      status: 200,
+      headers: { "content-type": "application/json" },
+      body: { spark: { result: null, error: { code: "Not Found" } } },
+    };
+    const t = setup((url) => {
+      const asked = url.searchParams.get("symbols")?.split(",");
+      if (asked?.includes("S6")) return broken;
+      if (asked?.length === 1 && asked[0] === "S5") return notFound;
+      return undefined;
+    });
+    const batches = await t.y.sparkAll(symbols);
+    expect(answered(batches)).toEqual([...symbols].sort());
+    expect(t.charts().map(chartSymbol).sort()).toEqual(["S5", "S6"]);
+    expect(t.y.backoff()).toBeNull();
   });
 
   test("is never split on a rate limit", async () => {

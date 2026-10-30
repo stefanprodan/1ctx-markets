@@ -94,6 +94,8 @@ export class Refused extends Error {
 const backsOff = (error: unknown): boolean =>
   !(
     error instanceof DeadlinePassed ||
+    // it never reached the source, and the back-off it met is in force
+    error instanceof Paused ||
     (error instanceof SourceError &&
       (error.phrase === "not found" ||
         error.phrase === "bad request" ||

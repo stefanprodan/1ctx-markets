@@ -38,13 +38,19 @@ finality in `docs/calendars.md`; tables, the writer and staleness in
   (`sparkSplit()`): Yahoo has answered a 500 for every batch holding
   one symbol while its chart answered. Only `source error`, `bad
   request` and a JSON `malformed answer` split; a rate limit, timeout,
-  network error, page that is not JSON or closed queue fails the batch
-  at once. Both halves of a split failing is the source: that batch
-  fails whole, so an outage costs two more calls. Otherwise the failed
-  half is split again down to one symbol, about 2·log2(20) calls,
-  which is asked once as a quote chart and fails alone if that fails
-  too. The split is one queued task, so its calls never wait out a
-  back-off and only a batch failing whole backs off.
+  network error, page that is not JSON, closed queue or back-off in
+  force fails the batch at once. Both halves of a split failing with
+  errors that would split is the source: that batch fails whole, so an
+  outage costs two more calls. A spark error body is Yahoo's answer
+  about the half asked, never an outage. Otherwise the failed half is
+  split again down to one symbol, about 2·log2(20) calls, which is
+  asked once as a quote chart and fails alone if that fails too. The
+  split is one queued task, so only a batch failing whole backs off.
+- **Accepted limits of the split:** a one-symbol batch whose spark and
+  chart both fail backs the queue off as before; a rate limit, timeout
+  or network error mid-split fails the batch whole, dropping halves
+  already answered; two bad symbols in different halves fail it as an
+  outage.
 - **The User-Agent is `Mozilla/5.0`;** Yahoo answers a full browser
   User-Agent with 429.
 - **Bars come from `open`, `high`, `low`, `close`, `volume`,** which
@@ -83,7 +89,7 @@ Phrases from Yahoo (`docs/sources.md`, Refusals):
 | --- | --- |
 | `rate limited` | HTTP 429 |
 | `bad request` | HTTP 400 |
-| `not found` | HTTP 404, a chart or spark error code `Not Found`, or a spark entry with no response |
+| `not found` | HTTP 404, `chart.error.code` `Not Found`, or a spark entry with no response |
 | `source error` | any other non-2xx, a chart or spark error body, no quote for a fetched symbol |
 | `network error` | the fetch or body read threw |
 | `timed out` | the call's timeout, or the caller's deadline |
