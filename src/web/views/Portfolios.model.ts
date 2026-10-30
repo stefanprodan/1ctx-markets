@@ -2,7 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // The Portfolios page's words and numbers, with no DOM, so they are tested.
 
-import type { Holding, Holdings, Total, TradeRow } from "../data/portfolios.ts";
+import type {
+  Holding,
+  Holdings,
+  Part,
+  Total,
+  TradeRow,
+} from "../data/portfolios.ts";
+import type { Candidate } from "../data/store.ts";
 import { kindOf, symbolOf } from "./Instruments.model.ts";
 
 const decimals = (v: number) => {
@@ -119,7 +126,7 @@ export function holdingSub(h: Holding, now = Date.now()): string {
       .join(" · ");
   }
   if (h.kind === "manual") {
-    return `Priced by hand · ${h.as_of ? day(h.as_of, now) : ""}`;
+    return h.as_of ? `Fund · NAV ${day(h.as_of, now)}` : "Fund";
   }
   if (h.kind === "bond") {
     const parts = [
@@ -139,7 +146,7 @@ export function costLine(h: Holding): string {
   if (h.kind === "bond") {
     return h.priced === "listing" ? `${price(h.price)}% of face` : "";
   }
-  // a hand-priced holding shows the price it was given
+  // a fund shows the NAV it was given
   const each = h.kind === "manual" ? h.price : h.average_cost;
   return `${quantity(h.quantity)} × ${priceOf(each, h.currency, h.unit)}`;
 }
@@ -287,19 +294,13 @@ export function shareLabel(tab: ExposureTab, key: string | null): string {
 // what the add form remembers between visits, per browser
 export const ADD_KEY = "markets-portfolio-add";
 
+// only the kind: a portfolio or broker carried from the last add files
+// the next one wrongly when it is for something else
 export type Remembered = {
   kind: "trade" | "cash" | "manual" | "bond";
-  side: "buy" | "sell";
-  portfolio: number | null;
-  broker: string | null;
 };
 
-export const FORGOTTEN: Remembered = {
-  kind: "trade",
-  side: "buy",
-  portfolio: null,
-  broker: null,
-};
+export const FORGOTTEN: Remembered = { kind: "trade" };
 
 export function readRemembered(raw: string | null): Remembered {
   try {
@@ -309,9 +310,6 @@ export function readRemembered(raw: string | null): Remembered {
       kind: ["trade", "cash", "manual", "bond"].includes(v.kind as string)
         ? (v.kind as Remembered["kind"])
         : "trade",
-      side: v.side === "sell" ? "sell" : "buy",
-      portfolio: typeof v.portfolio === "number" ? v.portfolio : null,
-      broker: typeof v.broker === "string" ? v.broker : null,
     };
   } catch {
     return FORGOTTEN;
@@ -353,4 +351,89 @@ export function importLine(item: Record<string, unknown> | undefined): string {
     return `${what} · ${quantity(n("units"))} × ${price(n("price"), s("currency"))}`;
   }
   return `${what} · ${amount(n("amount"), s("currency"))}`;
+}
+
+// ---- the add panel ---------------------------------------------------------
+
+// what a person buys outright comes before futures, options and the like
+const PLAIN = new Set(["EQUITY", "ETF", "MUTUALFUND", "CRYPTOCURRENCY"]);
+
+export const ranked = (found: readonly Candidate[]): Candidate[] =>
+  found
+    .map((c, i) => ({
+      c,
+      i,
+      r: PLAIN.has((c.type ?? "").toUpperCase()) ? 0 : 1,
+    }))
+    .sort((a, b) => a.r - b.r || a.i - b.i)
+    .map((x) => x.c);
+
+// a trade's money: the gross, plus fees on a buy, less them on a sell; a
+// price per hundred of face counts a hundredth
+export function tradeMoney(
+  side: "buy" | "sell",
+  quantity: number,
+  price: number,
+  fees: number,
+  unit: string | null | undefined,
+): number {
+  const gross = quantity * price * (unit === "percent_of_par" ? 0.01 : 1);
+  return side === "buy" ? gross + fees : gross - fees;
+}
+
+// an amount in the display currency, by the rate the holdings used
+export function shownIn(
+  h: Holdings | null,
+  value: number,
+  currency: string,
+): { value: number; currency: string } | null {
+  const to = h?.display_currency;
+  if (!h || !to || to === currency) return null;
+  const r = h.rates.find((x) => x.from === currency && x.to === to);
+  return r?.rate == null ? null : { value: value * r.rate, currency: to };
+}
+
+// where a listing is held now: each portfolio and broker with its quantity
+export const heldAt = (h: Holdings | null, id: string): Part[] =>
+  h?.holdings.find((x) => x.kind === "holding" && x.id === id)?.parts ?? [];
+
+export type DryPowder = {
+  position: number;
+  portfolio: string;
+  currency: string;
+};
+
+// every dry powder position, each part on its own
+export function dryPowders(h: Holdings | null): DryPowder[] {
+  return (h?.holdings ?? [])
+    .filter((x) => x.kind === "cash" && x.dry_powder)
+    .flatMap((x) =>
+      x.parts.length > 0
+        ? x.parts.flatMap((p) =>
+            p.position === undefined
+              ? []
+              : [
+                  {
+                    position: p.position,
+                    portfolio: p.portfolio,
+                    currency: x.currency,
+                  },
+                ],
+          )
+        : x.position === null
+          ? []
+          : [{ position: x.position, portfolio: "", currency: x.currency }],
+    );
+}
+
+// the dry powder a buy is paid from: its own portfolio's in its currency
+// first, then its currency, then its portfolio's, then any
+export function dryPowderFor(
+  all: readonly DryPowder[],
+  portfolio: string | null,
+  currency: string | null,
+): DryPowder | null {
+  const score = (d: DryPowder) =>
+    (d.currency === currency ? 2 : 0) + (d.portfolio === portfolio ? 1 : 0);
+  return [...all].sort((a, b) => score(b) - score(a))[0] ?? null;
 }

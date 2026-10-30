@@ -129,6 +129,10 @@ signed in with the admin key alone.
   reloads its instrument only while that page is still open.
 - **`useRefresh` sets its timer once** and calls the latest load, so a
   redraw (a crosshair moving) never pushes the refresh back.
+- **The page imports outside `src/web/` only from `src/shared/`**,
+  plain files that import nothing but each other, so no server-only
+  code (a package, `bun:`, the database) reaches the browser bundle;
+  `test/imports.test.ts` fails on any other import.
 - **1ctx's look, copied, not shared:** `style/tokens.css`,
   `style/base.css`, the fonts, the rail, strip and shell styles and
   the icons, trimmed to what these pages use. **The mark is 1ctx's
@@ -327,18 +331,21 @@ signed in with the admin key alone.
   load (`data/portfolios.ts`), every minute while visible. The words
   and numbers are `Portfolios.model.ts`, which has no DOM and is
   tested (`test/web-portfolios.test.tsx`).
-- **No currency is built in.** A card per currency with its value,
-  gain, today's change and a bar of invested, cash and dry powder, each
-  with its share; never a sum across currencies. The "Show in" picker
-  lists only the currencies held and the display currency; picking one,
-  or a display currency set in Settings, adds an "All in" card first
-  with each rate and its time under it.
+- **No currency is built in.** The display currency set in Settings
+  gives an "All in" card first, full width, with its value, gain,
+  today's change, the one bar of invested, cash and dry powder with
+  each share, and each rate and its time at its foot. Under it a short
+  card per currency (value, gain, today's change), never summed; a card
+  per currency keeps its own bar only when no "All in" card is shown.
+  The "Show in" picker is the app's menu, not a native select, and
+  lists the currencies held once each; the broker picker shows only
+  when a broker exists.
 - **Filters:** All or one portfolio (tabs that scroll sideways), a
   broker, and the currency picker; a portfolio or broker gone elsewhere
   falls back to all.
 - **Holdings** are rows that open: an instrument by its symbol with
   quantity × average cost under it, a position by its name (cash, "Dry
-  powder", "Priced by hand" with its date, a bond with its coupon,
+  powder", a fund as "Fund · NAV" with its date (the words "priced by hand" appear nowhere in the UI), a bond with its coupon,
   maturity and "at face" when no listing prices it). Opened: price,
   cost, gain, what was paid in another currency, weight, and a table of
   the parts per broker; a position has Edit (amount, or units and
@@ -359,19 +366,33 @@ signed in with the admin key alone.
   symbol, quantity × price and fees, date, portfolio, broker and who
   entered it ("Web", "Admin" or the key's name); Remove asks once, and
   the Removed switch shows removed ones with Restore.
-- **Add** opens a form at the top, short enough for a phone: Trade,
-  Cash, Fund or Bond; a trade is a symbol search (the head search's
-  `searcher()`; each result names its exchange in the source's words, or
-  its market, and a stored one's currency (`listingWords()`), since one
-  fund lists on several exchanges under one symbol; a pick shows its
-  symbol, keeps its exchange under it and sends its id, and typing over
-  it drops the picked listing and its currency), Buy or Sell,
-  Quantity and Price ("Live price" when left empty), Fees and Date
-  (the viewer's today), Paid in (the listing's currency by default,
-  read from the instrument when a symbol is picked, else one held or
-  the display currency), Price and Fees labelled with it, Portfolio and
-  Broker, two fields abreast even on a phone. The kind, side, portfolio
-  and broker are remembered per browser (`markets-portfolio-add`). A
+- **Add** opens a panel beside the page (a sheet from the bottom on a
+  phone; Escape, the backdrop or the close button shut it), so the page
+  stays where it was: Trade, Cash, Fund (a fund
+  bought from its manager and valued at the NAV per unit given, with a line
+  saying so; a fund with a symbol, an ETF among them, is a trade) or Bond. A trade starts from a symbol search
+  (the head search's `searcher()`, shares, ETFs, funds and crypto ranked
+  before futures and the like (`ranked()`), each result naming its
+  exchange (`listingWords()`)). A pick reads the listing
+  (`GET /api/v1/instruments/{id}`) and shows its name, live price and
+  where it is held now, from every portfolio whatever the page filters
+  on; the price field takes the live price, so what is saved is what is
+  shown. The portfolio is where the listing is already held, else the
+  tab on, else "Pick a portfolio": never a silent first one. Then Buy or
+  Sell (a sell offers All with the quantity held there), Quantity and
+  Price or Total paid ("Use total", fees in, as the server's `total`),
+  Date and Portfolio; fees, the currency paid, the broker (only when
+  one exists) and a note fold under one line. A buy may pay from dry
+  powder: after the trade saves, the dry powder in its currency and
+  portfolio (else the nearest, `dryPowderFor()`) is lowered by the
+  trade's cost (`PATCH /positions/{id}` with `by` and the trade's
+  currency, which the server converts); a failure there says the buy
+  is saved and the dry powder was not changed. A line above the buttons
+  reads back the trade ("Buy 5 NVDA at 213.66 · 1,068.30 USD (≈ 954.52
+  EUR) · Stocks"). An instrument holding's opened row has Buy and Sell,
+  which open the panel on it. A position's currency is the currency
+  picker. Only the kind is remembered per browser
+  (`markets-portfolio-add`). A
   refusal shows beside the buttons in plain words, its ids taken out
   (`plainError()` in `data/portfolios.ts`).
 - **More** holds Import, Export trades (a link to the CSV of the
@@ -382,8 +403,12 @@ signed in with the admin key alone.
   ones. Changing the portfolio or broker clears the file and its
   preview, so a preview read for another is never saved. Settings lists portfolios and brokers with rename, delete
   (asking once; refused while a live row is in it or names it, removed
-  rows going with it) and add, and the display currency (three letters, empty
-  for none). With no portfolio yet the page opens on Settings.
+  rows going with it) and add, after the display currency (required):
+  a picker over the ISO 4217 currencies in circulation
+  (`src/shared/currencies.ts`, codes only, names from `Intl.DisplayNames`),
+  found by code or name, saved on pick. With no display currency the page shows only
+  that field, without Add or the menu; with no portfolio yet it opens on
+  Settings.
 - **The bundle names no source:** the import kinds read Trades, Cash,
   Funds and Bonds.
 - **Instruments:** every stored instrument from
