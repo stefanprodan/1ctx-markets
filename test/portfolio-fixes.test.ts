@@ -1690,6 +1690,28 @@ describe("an update's date", () => {
     }
   });
 
+  test("a fund's cost converts at the day its cost was set", async () => {
+    const { m, db } = await setup();
+    pair(db, "EURUSD=X", 1.3, {
+      "2026-05-03": [1.1, true],
+      "2026-09-14": [1.2, true],
+      [LIVE]: [1.3, false],
+    });
+    const costIn = async () =>
+      (await holdingsOf(m, "USD")).holdings.find((x) => x.kind === "fund")!
+        .converted!.cost;
+    const id = await added(m, fund({ cost: 40 }));
+    expect(await costIn()).toBe(44);
+    const repriced = await updated(m, id, { price: 11 });
+    expect(await costIn()).toBe(44);
+    const recosted = await updated(m, repriced.position.id, {
+      cost: 50,
+      date: "2026-09-14",
+    });
+    await updated(m, recosted.position.id, { price: 12 });
+    expect(await costIn()).toBe(60);
+  });
+
   test("a given date wins, and a future one is refused", async () => {
     const { m, db } = await setup();
     const id = await added(m, position({}));

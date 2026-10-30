@@ -13,6 +13,7 @@ import type { Db } from "../storage/db/index.ts";
 import { type Rate, type Rates, rates as ratesOf } from "./fx.ts";
 import {
   type Broker,
+  chainOf,
   type Portfolio,
   type Position,
   readPositions,
@@ -541,7 +542,7 @@ export function readHoldingRows(
         raw.cost === null
           ? null
           : (() => {
-              const r = fx.rate(p.currency, scope.currency!, p.asOf);
+              const r = fx.rate(p.currency, scope.currency!, costSetOn(db, p));
               return r.rate === null ? null : raw.cost * r.rate;
             })();
       row.converted = convert(
@@ -662,6 +663,19 @@ function convert(
 }
 
 const KIND_TYPES = { cash: "CASH", fund: "FUND", bond: "BOND" } as const;
+
+// a fund repriced today still cost what it did when the cost was set, so
+// its cost converts at that day: the oldest row back with the same cost
+function costSetOn(db: Db, p: Position): string {
+  if (p.kind !== "fund") return p.asOf;
+  const rows = new Map(chainOf(db, p.id).map((r) => [r.id, r]));
+  let at = p;
+  for (;;) {
+    const prev = at.replaces === null ? undefined : rows.get(at.replaces);
+    if (prev === undefined || prev.cost !== p.cost) return at.asOf;
+    at = prev;
+  }
+}
 
 function positionRow(
   db: Db,
