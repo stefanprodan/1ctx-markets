@@ -1,21 +1,23 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-// Connect agents, as 1ctx's: the keys with Revoke and New key, then a setup
-// tab per agent. A made key's token lives in this view alone, so Done or
-// leaving the page drops it.
+// Connect agents, as 1ctx's: the keys, each opening to its access and Revoke,
+// and New key, then a setup tab per agent. A made key's token lives in this
+// view alone, so Done or leaving the page drops it.
 
 import { type Signal, useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import {
   type AgentKey,
   type KeyAccess,
+  type KeyAccesses,
   markets,
   type Store,
 } from "../data/store.ts";
 import { copyText } from "../lib/clipboard.ts";
 import { Icon } from "../lib/icons.tsx";
 import { didNotLoad, Page } from "../ui/Page.tsx";
-import { Rows, RowsCard, RowsLine, RowsNote, RowsTitle } from "../ui/Rows.tsx";
+import { Rows, RowsCard, RowsNote, RowsTitle } from "../ui/Rows.tsx";
+import { RowsOpen } from "../ui/RowsOpen.tsx";
 import {
   ACCESS_OPTIONS,
   AGENTS,
@@ -104,6 +106,57 @@ export function ShownKey({
   );
 }
 
+function AccessPick({
+  label,
+  value,
+  busy,
+}: {
+  label: string;
+  value: Signal<KeyAccess>;
+  busy: boolean;
+}) {
+  return (
+    <fieldset class="field connect-set">
+      <legend class="label">{label}</legend>
+      <div class="seg">
+        {ACCESS_OPTIONS.map((o) => (
+          <button
+            key={o.value}
+            type="button"
+            aria-pressed={value.value === o.value}
+            class={`seg-option${value.value === o.value ? " seg-on" : ""}`}
+            disabled={busy}
+            onClick={() => {
+              value.value = o.value;
+            }}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+// what a key opens beyond market data: portfolios, and rules with their
+// alerts
+export function AccessPicks({
+  portfolio,
+  rules,
+  busy,
+}: {
+  portfolio: Signal<KeyAccess>;
+  rules: Signal<KeyAccess>;
+  busy: boolean;
+}) {
+  return (
+    <div class="connect-access">
+      <AccessPick label="Portfolios" value={portfolio} busy={busy} />
+      <AccessPick label="Alert rules" value={rules} busy={busy} />
+    </div>
+  );
+}
+
 export function NewKey({
   store,
   onMade,
@@ -115,7 +168,8 @@ export function NewKey({
 }) {
   const name = useSignal("");
   const days = useSignal<number | null>(null);
-  const access = useSignal<KeyAccess>("none");
+  const portfolio = useSignal<KeyAccess>("none");
+  const rules = useSignal<KeyAccess>("none");
   const busy = useSignal(false);
   const error = useSignal<string | null>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -126,7 +180,10 @@ export function NewKey({
     busy.value = true;
     error.value = null;
     try {
-      const made = await store.createKey(name.value, days.value, access.value);
+      const made = await store.createKey(name.value, days.value, {
+        portfolio: portfolio.value,
+        rules: rules.value,
+      });
       onMade(made.token);
     } catch (err) {
       error.value = (err as Error).message;
@@ -174,25 +231,7 @@ export function NewKey({
           </div>
         </fieldset>
       </div>
-      <fieldset class="field connect-set">
-        <legend class="label">Portfolios</legend>
-        <div class="seg">
-          {ACCESS_OPTIONS.map((o) => (
-            <button
-              key={o.value}
-              type="button"
-              aria-pressed={access.value === o.value}
-              class={`seg-option${access.value === o.value ? " seg-on" : ""}`}
-              disabled={busy.value}
-              onClick={() => {
-                access.value = o.value;
-              }}
-            >
-              {o.label}
-            </button>
-          ))}
-        </div>
-      </fieldset>
+      <AccessPicks portfolio={portfolio} rules={rules} busy={busy.value} />
       <div class="connect-foot">
         {error.value !== null && (
           <p class="connect-error" role="alert">
@@ -219,6 +258,114 @@ export function NewKey({
   );
 }
 
+// a key's details: its picks, saved on the kept key, and Revoke, asked
+// once before it cuts the agents off
+export function KeyDetails({
+  store,
+  row,
+  onDone,
+}: {
+  store: Store;
+  row: AgentKey;
+  onDone: () => void;
+}) {
+  const portfolio = useSignal<KeyAccess>(row.portfolio ?? "none");
+  const rules = useSignal<KeyAccess>(row.rules ?? "none");
+  const busy = useSignal(false);
+  const asking = useSignal(false);
+  const error = useSignal<string | null>(null);
+  const next: KeyAccesses = { portfolio: portfolio.value, rules: rules.value };
+  const same =
+    next.portfolio === (row.portfolio ?? "none") &&
+    next.rules === (row.rules ?? "none");
+  const submit = async (event: Event) => {
+    event.preventDefault();
+    if (busy.value || same) return;
+    busy.value = true;
+    error.value = null;
+    try {
+      await store.setKeyAccess(row.id, next);
+      onDone();
+    } catch (err) {
+      error.value = (err as Error).message;
+      busy.value = false;
+    }
+  };
+  const revoke = async () => {
+    busy.value = true;
+    error.value = await store.revokeKey(row.id);
+    busy.value = false;
+    asking.value = false;
+  };
+  return (
+    <form class="connect-details" onSubmit={submit}>
+      <AccessPicks portfolio={portfolio} rules={rules} busy={busy.value} />
+      {error.value !== null && (
+        <p class="connect-error" role="alert">
+          {error.value}
+        </p>
+      )}
+      <div class="connect-foot connect-foot-split">
+        {asking.value ? (
+          <span class="connect-ask">
+            <span class="connect-ask-words">Agents using it lose access.</span>
+            <button
+              type="button"
+              class="btn btn-danger"
+              disabled={busy.value}
+              onClick={revoke}
+            >
+              {busy.value ? "Revoking" : "Revoke"}
+            </button>
+            <button
+              type="button"
+              class="btn"
+              disabled={busy.value}
+              onClick={() => {
+                asking.value = false;
+              }}
+            >
+              Keep
+            </button>
+          </span>
+        ) : (
+          <>
+            <button
+              type="button"
+              class="btn"
+              aria-label={`Revoke ${row.name}`}
+              disabled={busy.value}
+              onClick={() => {
+                error.value = null;
+                asking.value = true;
+              }}
+            >
+              Revoke
+            </button>
+            <span class="connect-foot-end">
+              <button
+                type="button"
+                class="btn"
+                disabled={busy.value}
+                onClick={onDone}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                class="btn btn-primary"
+                disabled={busy.value || same}
+              >
+                {busy.value ? "Saving" : "Save"}
+              </button>
+            </span>
+          </>
+        )}
+      </div>
+    </form>
+  );
+}
+
 export function KeyRow({
   store,
   row,
@@ -228,74 +375,41 @@ export function KeyRow({
   row: AgentKey;
   now: number;
 }) {
-  const asking = useSignal(false);
-  const busy = useSignal(false);
-  const error = useSignal<string | null>(null);
+  const open = useSignal(false);
   const gone = expired(row, now);
   return (
-    <RowsLine flush>
-      <Icon name="key" size={14} class="connect-key-icon" />
-      <RowsTitle
-        name={<span class="cut connect-key-name">{row.name}</span>}
-        sub={
-          <>
-            {`${usedWords(row, now)} · `}
-            <span class={gone ? "rows-bad" : undefined}>
-              {expiryWords(row, now)}
-            </span>
-            {accessWords(row) && ` · ${accessWords(row)}`}
-          </>
-        }
-        prose
+    <RowsOpen
+      open={open.value}
+      onToggle={() => {
+        open.value = !open.value;
+      }}
+      indent="chevron"
+      head={
+        <RowsTitle
+          name={<span class="cut connect-key-name">{row.name}</span>}
+          sub={
+            <>
+              {`${usedWords(row, now)} · `}
+              <span class={gone ? "rows-bad" : undefined}>
+                {expiryWords(row, now)}
+              </span>
+              {accessWords(row) && (
+                <span class="connect-key-access">{` · ${accessWords(row)}`}</span>
+              )}
+            </>
+          }
+          prose
+        />
+      }
+    >
+      <KeyDetails
+        store={store}
+        row={row}
+        onDone={() => {
+          open.value = false;
+        }}
       />
-      <span class="rows-end">
-        {error.value !== null && (
-          <span class="rows-end-words rows-bad" role="alert">
-            {error.value}
-          </span>
-        )}
-        {asking.value ? (
-          <>
-            <span class="rows-end-words">Agents using it lose access.</span>
-            <button
-              type="button"
-              class="btn btn-small btn-danger"
-              disabled={busy.value}
-              onClick={async () => {
-                busy.value = true;
-                error.value = await store.revokeKey(row.id);
-                busy.value = false;
-                asking.value = false;
-              }}
-            >
-              {busy.value ? "Revoking" : "Revoke"}
-            </button>
-            <button
-              type="button"
-              class="btn btn-small"
-              disabled={busy.value}
-              onClick={() => {
-                asking.value = false;
-              }}
-            >
-              Keep
-            </button>
-          </>
-        ) : (
-          <button
-            type="button"
-            class="btn btn-small"
-            aria-label={`Revoke ${row.name}`}
-            onClick={() => {
-              error.value = null;
-              asking.value = true;
-            }}
-          >
-            Revoke
-          </button>
-        )}
-      </span>
-    </RowsLine>
+    </RowsOpen>
   );
 }
 

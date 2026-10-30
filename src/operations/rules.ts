@@ -48,6 +48,7 @@ import { ArgError, fields, quoted, text } from "./args.ts";
 import type { Markets } from "./markets.ts";
 import { researchTargets } from "./research.ts";
 import { type ItemError, readTargets, timeout } from "./targets.ts";
+import { opens, type Who } from "./who.ts";
 
 export const RULE_ACTIONS = ["create", "list", "pause", "delete"] as const;
 type Action = (typeof RULE_ACTIONS)[number];
@@ -415,10 +416,21 @@ const answered = (body: object | Failure): ToolResult =>
     ? errorResult(body as Failure)
     : textResult(JSON.stringify(body));
 
+const NO_READ = "this key has no rules access; the admin grants it";
+const NO_WRITE = "this key reads rules only; the admin grants write";
+
+const forbidden = (write: boolean): Failure => ({
+  error: "forbidden",
+  message: write ? NO_WRITE : NO_READ,
+});
+
 export async function rulesAnswer(
   m: Markets,
+  who: Who,
   args: RulesArgs,
 ): Promise<ToolResult> {
+  const writes = args.action !== "list";
+  if (!opens(who.rules, writes)) return errorResult(forbidden(writes));
   switch (args.action) {
     case "create":
       return create(m, args);

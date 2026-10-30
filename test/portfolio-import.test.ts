@@ -4,22 +4,19 @@
 
 import { describe, expect, test } from "bun:test";
 import { upsertInstrument } from "../src/market/instruments.ts";
-import {
-  createBroker,
-  readTradeList,
-  type Who,
-} from "../src/operations/portfolio.ts";
+import { createBroker, readTradeList } from "../src/operations/portfolio.ts";
 import {
   exportCsv,
   importCsv,
   parseImport,
 } from "../src/operations/portfolio-import.ts";
+import type { Who } from "../src/operations/who.ts";
 import { parseCsv, parseDay, parseNumber } from "../src/portfolios/csv.ts";
 import { portfolioByName, readPositions } from "../src/portfolios/store.ts";
 import { portfolioBefore } from "./helpers/portfolio.ts";
 import { instrument, NOW, quote, world } from "./helpers/world.ts";
 
-const CASEY: Who = { name: "casey-agent", access: "write" };
+const CASEY: Who = { name: "casey-agent", portfolio: "write", rules: "none" };
 
 const HEADER =
   "Symbol,Current Price,Date,Time,Change,Open,High,Low,Volume,Trade Date,Purchase Price,Quantity,Commission,High Limit,Low Limit,Comment,Transaction Type";

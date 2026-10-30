@@ -689,7 +689,25 @@ export const schemas: Record<string, Schema> = {
       values(["none", "read", "write"]),
       "What the key may do with portfolios.",
     ),
+    rules: note(
+      values(["none", "read", "write"]),
+      "What the key may do with rules: read opens the list and the alerts feed.",
+    ),
   }),
+  OneKey: object({ key: ref("Key") }),
+  KeyAccess: object(
+    {
+      portfolio: note(
+        values(["none", "read", "write"]),
+        "What the key may do with portfolios.",
+      ),
+      rules: note(
+        values(["none", "read", "write"]),
+        "What the key may do with rules. At least one of the two.",
+      ),
+    },
+    [],
+  ),
   Keys: object({
     keys: list(ref("Key")),
     limit: note(int, "How many keys there may be, expired ones included."),
@@ -699,6 +717,10 @@ export const schemas: Record<string, Schema> = {
       portfolio: note(
         values(["none", "read", "write"]),
         "What the key may do with portfolios; none by default.",
+      ),
+      rules: note(
+        values(["none", "read", "write"]),
+        "What the key may do with rules: read opens the list and the alerts feed; none by default.",
       ),
       name: note(
         str,

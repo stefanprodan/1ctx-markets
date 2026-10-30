@@ -80,15 +80,7 @@ import {
 import { ArgError, date, fields, quoted, text } from "./args.ts";
 import type { Markets } from "./markets.ts";
 import { readTargets } from "./targets.ts";
-
-export type Access = "none" | "read" | "write";
-
-// who asked: entered_by names them; access is the key's portfolio scope
-export type Who = { name: string; access: Access };
-
-export const WEB: Who = { name: "web", access: "write" };
-export const ADMIN: Who = { name: "admin", access: "write" };
-export const NO_ACCESS: Who = { name: "none", access: "none" };
+import { opens, type Who } from "./who.ts";
 
 export const PORTFOLIO_ACTIONS = [
   "setup",
@@ -1664,7 +1656,7 @@ export async function portfolioAnswer(
     args.action === "update" ||
     args.action === "remove" ||
     args.action === "restore";
-  if (who.access === "none" || (writes && who.access !== "write")) {
+  if (!opens(who.portfolio, writes)) {
     return errorResult(forbidden(writes));
   }
   switch (args.action) {

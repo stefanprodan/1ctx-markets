@@ -30,9 +30,12 @@ export const isKeyName = (value: unknown): value is string =>
 
 export const isKeyId = (value: string): boolean => ID.test(value);
 
-// what a key may do with portfolios; none unless the admin says
+// what a key may do with portfolios, and with rules and their alerts; none
+// unless the admin says
 export const PORTFOLIO_ACCESS = ["none", "read", "write"] as const;
 export type PortfolioAccess = (typeof PORTFOLIO_ACCESS)[number];
+export const RULES_ACCESS = ["none", "read", "write"] as const;
+export type RulesAccess = (typeof RULES_ACCESS)[number];
 
 export type KeyRow = {
   id: string;
@@ -42,6 +45,7 @@ export type KeyRow = {
   expiresAt: number | null;
   lastUsedAt: number | null;
   portfolio: PortfolioAccess;
+  rules: RulesAccess;
 };
 
 export type Caller = { kind: "admin" } | { kind: "agent"; key: KeyRow };
@@ -53,9 +57,11 @@ type Raw = {
   expires_at: number | null;
   last_used_at: number | null;
   portfolio: PortfolioAccess;
+  rules: RulesAccess;
 };
 
-const COLUMNS = "id, name, created_at, expires_at, last_used_at, portfolio";
+const COLUMNS =
+  "id, name, created_at, expires_at, last_used_at, portfolio, rules";
 
 const rowOf = (raw: Raw): KeyRow => ({
   id: raw.id,
@@ -64,6 +70,7 @@ const rowOf = (raw: Raw): KeyRow => ({
   expiresAt: raw.expires_at,
   lastUsedAt: raw.last_used_at,
   portfolio: raw.portfolio,
+  rules: raw.rules,
 });
 
 // a token is 32 random bytes, so a plain hash cannot be reversed
@@ -92,7 +99,12 @@ export class KeyConflict extends Error {}
 // inside a write, so the cap and the name hold against a concurrent create
 export function createKey(
   db: Db,
-  args: { name: string; days: KeyDays | null; portfolio?: PortfolioAccess },
+  args: {
+    name: string;
+    days: KeyDays | null;
+    portfolio?: PortfolioAccess;
+    rules?: RulesAccess;
+  },
   now: number,
 ): { key: KeyRow; token: string } {
   const keys = listKeys(db);
@@ -107,11 +119,13 @@ export function createKey(
     expiresAt: args.days === null ? null : now + args.days * DAY_MS,
     lastUsedAt: null,
     portfolio: args.portfolio ?? "none",
+    rules: args.rules ?? "none",
   };
   const token = newToken();
   db.query(
-    `insert into keys (id, name, token_hash, created_at, expires_at, portfolio)
-     values (?, ?, ?, ?, ?, ?)`,
+    `insert into keys
+       (id, name, token_hash, created_at, expires_at, portfolio, rules)
+     values (?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     key.id,
     key.name,
@@ -119,8 +133,27 @@ export function createKey(
     key.createdAt,
     key.expiresAt,
     key.portfolio,
+    key.rules,
   );
   return { key, token };
+}
+
+export type KeyAccess = { portfolio?: PortfolioAccess; rules?: RulesAccess };
+
+// the token, name and expiry stay; an expired key changes too
+export function setKeyAccess(
+  db: Db,
+  id: string,
+  change: KeyAccess,
+): KeyRow | null {
+  const raw = db
+    .query<Raw, [string | null, string | null, string]>(
+      `update keys set portfolio = coalesce(?, portfolio),
+         rules = coalesce(?, rules)
+       where id = ? returning ${COLUMNS}`,
+    )
+    .get(change.portfolio ?? null, change.rules ?? null, id);
+  return raw === null ? null : rowOf(raw);
 }
 
 export function revokeKey(db: Db, id: string): KeyRow | null {

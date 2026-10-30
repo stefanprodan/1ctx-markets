@@ -99,13 +99,20 @@ describe("agent keys", () => {
       const token = await tokenOf(made);
       expect(token).toMatch(/^1ctx-markets-[A-Za-z0-9_-]{43}$/);
       expect((await mcp(t, token)).status).toBe(200);
-      for (const path of ["/rules", "/watchlist", "/alerts"]) {
+      for (const path of ["/watchlist"]) {
         const res = await fetch(`${t.url}${PREFIX}${path}`, {
           headers: as(token),
         });
         expect([path, res.status < 300]).toEqual([path, true]);
       }
-      for (const path of ["/status", "/instruments", "/keys"]) {
+      // rules and the alerts feed are opened by the admin, as holdings are
+      for (const path of [
+        "/status",
+        "/instruments",
+        "/keys",
+        "/rules",
+        "/alerts",
+      ]) {
         const res = await fetch(`${t.url}${PREFIX}${path}`, {
           headers: as(token),
         });
@@ -300,23 +307,29 @@ describe("agent keys", () => {
     const k = await keyed();
     expect(await k.lastUsed()).toBeNull();
     const first = k.clock.now();
-    expect((await k.call("/rules", { headers: as(k.token) })).status).toBe(200);
+    expect((await k.call("/watchlist", { headers: as(k.token) })).status).toBe(
+      200,
+    );
     expect(await k.lastUsed()).toBe(first);
     await k.clock.advance(MINUTE_MS - 1);
-    await k.call("/rules", { headers: as(k.token) });
+    await k.call("/watchlist", { headers: as(k.token) });
     expect(await k.lastUsed()).toBe(first);
     await k.clock.advance(1);
-    await k.call("/rules", { headers: as(k.token) });
+    await k.call("/watchlist", { headers: as(k.token) });
     expect(await k.lastUsed()).toBe(first + MINUTE_MS);
   });
 
   test("an expired key is refused and stays listed", async () => {
     const k = await keyed(30);
-    expect((await k.call("/rules", { headers: as(k.token) })).status).toBe(200);
+    expect((await k.call("/watchlist", { headers: as(k.token) })).status).toBe(
+      200,
+    );
     await k.clock.advance(30 * DAY_MS - 1);
-    expect((await k.call("/rules", { headers: as(k.token) })).status).toBe(200);
+    expect((await k.call("/watchlist", { headers: as(k.token) })).status).toBe(
+      200,
+    );
     await k.clock.advance(1);
-    const refused = await k.call("/rules", { headers: as(k.token) });
+    const refused = await k.call("/watchlist", { headers: as(k.token) });
     expect(refused.status).toBe(401);
     const listed = (await (await k.call("/keys")).json()) as {
       keys: { name: string; expires_at: string }[];
@@ -330,7 +343,7 @@ describe("agent keys", () => {
 describe("the call limit", () => {
   test("the call past the minute's limit is refused until the window ends", async () => {
     const k = await keyed();
-    const read = () => k.call("/rules", { headers: as(k.token) });
+    const read = () => k.call("/watchlist", { headers: as(k.token) });
     for (let n = 0; n < CALLS_PER_MINUTE; n++) {
       expect((await read()).status).toBe(200);
     }
@@ -339,12 +352,12 @@ describe("the call limit", () => {
     expect(over.headers.get("retry-after")).toBe("60");
     expect(await over.json()).toMatchObject({ code: "too_many_requests" });
     // the admin key has its own window, and the signed-in UI none
-    expect((await k.call("/rules", { headers: as(ADMIN_KEY) })).status).toBe(
-      200,
-    );
+    expect(
+      (await k.call("/watchlist", { headers: as(ADMIN_KEY) })).status,
+    ).toBe(200);
     const cookie = `${COOKIE}=${sessions(ADMIN_KEY).issue(k.clock.now())}`;
     for (let n = 0; n <= CALLS_PER_MINUTE; n++) {
-      expect((await k.call("/rules", { headers: { cookie } })).status).toBe(
+      expect((await k.call("/watchlist", { headers: { cookie } })).status).toBe(
         200,
       );
     }
@@ -554,7 +567,7 @@ describe("portfolio access", () => {
     expect((await post(writer.body.token)).status).toBe(201);
     // a market read never needed it
     expect(
-      (await call("/rules", { headers: as(none.body.token) })).status,
+      (await call("/watchlist", { headers: as(none.body.token) })).status,
     ).toBe(200);
   });
 

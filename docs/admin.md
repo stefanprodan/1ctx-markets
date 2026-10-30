@@ -45,19 +45,31 @@ log and cut off without touching the others.
 | `POST /api/v1/instruments/{symbol}/refetch` | `{"parts": [...], "sections": [...]}`, answered per part |
 | `DELETE /api/v1/instruments/{symbol}` | the instrument and every row of it; 204 |
 | `GET /api/v1/keys` | the agent keys (below) |
-| `POST /api/v1/keys` | `{"name", "expiresInDays", "portfolio"}`: a new agent key, its token answered once; `portfolio` is `none` (the default), `read` or `write` |
+| `POST /api/v1/keys` | `{"name", "expiresInDays", "portfolio", "rules"}`: a new agent key, its token answered once; `portfolio` and `rules` are `none` (the default), `read` or `write` |
+| `PATCH /api/v1/keys/{id}` | `{"portfolio", "rules"}`, at least one: changes the key's access, the token, name and expiry kept; the key as listed; 400 for none or a bad value, 404 for an unknown id |
 | `DELETE /api/v1/keys/{id}` | revokes an agent key; 204 |
 
 ## Agent keys
 
-- **An agent key opens what the read scope opens**: `/mcp`, the read
-  routes, the rules writes and the alerts feed; never an admin route,
-  so an agent never makes or lists keys.
+- **An agent key opens what the read scope opens**: `/mcp` and the
+  market data routes; never an admin route, so an agent never makes or
+  lists keys.
 - **Portfolio access is the admin's to give** (`portfolio`: `none`,
   `read` or `write`, on `POST /keys` and `keys add --portfolio`),
   `none` by default, since holdings are private; a key's access is
   answered in the list. It opens the portfolio routes and the
   `portfolio` tool (`docs/portfolios.md`).
+- **Rules access is the admin's to give the same way** (`rules`, `keys
+  add --rules`), `none` by default, since a rule acts for the owner.
+  `read` opens the rules list and the alerts feed, `write` also
+  creates, pauses and deletes rules (`docs/rules.md`). A feed reader is
+  a rules reader: alerts have no access of their own. Keys made before
+  rules access existed were given `write` (migration 0023), what they
+  had.
+- **Access changes on a kept key** (`PATCH /keys/{id}`, `keys set`):
+  the token, name and expiry stay, an expired key changes too, and the
+  key's next request reads the new access, as a revoke holds on the
+  next request, since the row is read on every request.
 - **A name follows 1ctx's agent name rule**: 2 to 80 lowercase
   letters, digits, dashes and underscores, starting with a letter or
   digit, unique (409 `conflict`, "name taken").
@@ -187,10 +199,12 @@ log and cut off without touching the others.
 - **`delete` prints `deleted <id>` for its 204**, else the problem.
 - **It prints the server's JSON and never the key**, and exits 1 on a
   status other than 2xx or no answer.
-- **`1ctx-markets keys list|add|revoke` calls the same way**, with the
-  same `--listen` and `--data`. `list` prints `GET /api/v1/keys`'s
-  JSON; `add <name> [--expires 30|90|365] [--portfolio none|read|write]`
-  (portfolio access, `none` by default) prints the new token alone
-  on stdout, once, so `$(...)` can take it, and nothing else; `revoke
-  <name>` finds the key's id by name and prints `revoked <name>`. A
-  refusal exits 1 with the server's detail and status.
+- **`1ctx-markets keys list|add|set|revoke` calls the same way**, with
+  the same `--listen` and `--data`. `list` prints `GET
+  /api/v1/keys`'s JSON; `add <name> [--expires 30|90|365] [--portfolio
+  none|read|write] [--rules none|read|write]` (each access `none` by
+  default) prints the new token alone on stdout, once, so `$(...)` can
+  take it, and nothing else; `set <name> [--portfolio ...] [--rules
+  ...]`, one at least, finds the key's id by name and prints `set
+  <name>`; `revoke <name>` finds it the same way and prints `revoked
+  <name>`. A refusal exits 1 with the server's detail and status.

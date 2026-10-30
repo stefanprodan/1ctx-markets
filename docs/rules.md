@@ -152,6 +152,15 @@ Examples, each created with `symbol` set to the rule's own share:
 
 - **Actions are `create`, `list`, `pause` and `delete`**, each taking
   only its own arguments (`ARGS`).
+- **Access is the key's rules access** (`Who.rules`, `docs/admin.md`):
+  `list` needs `read`, `create`, `pause` and `delete` need `write`;
+  without it the tool answers `forbidden` before reading anything, in
+  the portfolio tool's words ("this key has no rules access; the admin
+  grants it", "this key reads rules only; the admin grants write"). The
+  tool stays listed for every key, so an agent learns why it is
+  refused. The same access opens the rules routes and the alerts feed
+  (`docs/api.md`); the admin key holds `write`, and the web UI's
+  cookie the reads only.
 - **create leaves no rule on any failure.** Every symbol resolves and
   is stored inside the call (`readTargets()`, and `researchTargets()`
   for the gate, under one deadline); any error answers without a write.

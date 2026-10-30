@@ -18,7 +18,9 @@ the rules tool in `docs/rules.md`; the portfolio tool in
   (`mcpHandler()`), so no tool may keep per-session state. A new tool
   is added to `tools()` in `src/tools/index.ts`.
 - **The caller rides in `authInfo`**: the router passes the key's name
-  and portfolio access (`whoOf()` in `src/server/http.ts`), the factory
+  and its portfolio and rules access as the scopes `portfolio:<access>`
+  and `rules:<access>` (`whoOf()` in `src/server/http.ts`, `Who` in
+  `src/operations/who.ts`), the factory
   registers the tools with it, and a tool that needs it reads it from
   its second argument; a tool that needs none ignores it.
 - **SDK errors are logged with type and code only**

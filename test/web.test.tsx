@@ -85,6 +85,7 @@ import {
 import { Chart, LegendLine, paintOptions } from "../src/web/views/Chart.tsx";
 import {
   AGENTS,
+  accessWords,
   capLine,
   expiryWords,
   KEY_ENV,
@@ -95,8 +96,10 @@ import {
 } from "../src/web/views/Connect.model.ts";
 import {
   ConnectBody,
+  KeyDetails,
   KeyRow,
   Keys,
+  NewKey,
   Setup,
   ShownKey,
 } from "../src/web/views/Connect.tsx";
@@ -1812,6 +1815,7 @@ describe("connect agents", () => {
       name: "claude-code",
       expiresInDays: 90,
       portfolio: "none",
+      rules: "none",
     });
     expect(s.keys.value?.map((k) => k.name)).toEqual(["codex", "claude-code"]);
     expect(JSON.stringify(s.keys.value)).not.toContain(TOKEN);
@@ -1833,6 +1837,81 @@ describe("connect agents", () => {
     );
     await expect(s.createKey("codex", null)).rejects.toThrow("Name taken.");
     expect(await s.revokeKey("x")).toBe("The server failed.");
+  });
+
+  test("a kept key's access changes in place, its refusal said in a few words", async () => {
+    const f = fake({
+      [`GET ${KEYS_PATH}`]: ok({
+        keys: [agentKey("codex"), agentKey("opencode")],
+        limit: 5,
+      }),
+      [`PATCH ${KEYS_PATH}/codex-id`]: ok({
+        key: agentKey("codex", { portfolio: "read", rules: "write" }),
+      }),
+      [`PATCH ${KEYS_PATH}/gone-id`]: problem(404, {
+        code: "not_found",
+        detail: "no such key",
+      }),
+    });
+    const s = store(f.fetch);
+    await s.loadKeys();
+    await s.setKeyAccess("codex-id", { portfolio: "read", rules: "write" });
+    expect(JSON.parse(f.asked.at(-1)!.init!.body as string)).toEqual({
+      portfolio: "read",
+      rules: "write",
+    });
+    expect(s.keys.value?.map((k) => [k.name, k.portfolio, k.rules])).toEqual([
+      ["codex", "read", "write"],
+      ["opencode", undefined, undefined],
+    ]);
+    await expect(
+      s.setKeyAccess("gone-id", { portfolio: "none", rules: "read" }),
+    ).rejects.toThrow();
+  });
+
+  test("a key says what it opens beyond market data", () => {
+    expect(accessWords(agentKey("a"))).toBeNull();
+    expect(
+      accessWords(agentKey("a", { portfolio: "none", rules: "none" })),
+    ).toBeNull();
+    expect(accessWords(agentKey("a", { rules: "read" }))).toBe(
+      "Reads alert rules",
+    );
+    expect(
+      accessWords(agentKey("a", { portfolio: "write", rules: "write" })),
+    ).toBe("Writes portfolios · Writes alert rules");
+    expect(accessWords(agentKey("a", { portfolio: "read" }))).toBe(
+      "Reads portfolios",
+    );
+  });
+
+  test("New key and a key's details pick portfolios and alert rules with the app's own buttons", () => {
+    const s = store(fake({}).fetch);
+    const made = render(
+      <NewKey store={s} onMade={() => {}} onCancel={() => {}} />,
+    );
+    const changed = render(
+      <KeyDetails
+        store={s}
+        row={agentKey("codex", { portfolio: "read", rules: "write" })}
+        onDone={() => {}}
+      />,
+    );
+    for (const html of [made, changed]) {
+      expect(html).toContain(">Portfolios<");
+      expect(html).toContain(">Alert rules<");
+      expect(html.match(/>Read and write</g)).toHaveLength(2);
+      expect(html).not.toContain("<select");
+    }
+    // the kept key's picks start at what it has, Save waiting on a change
+    expect(changed.match(/aria-pressed="true"/g)).toHaveLength(2);
+    expect(changed).toMatch(/aria-pressed="true"[^>]*>Read</);
+    expect(changed).toMatch(/aria-pressed="true"[^>]*>Read and write</);
+    expect(changed).toContain(" disabled>Save<");
+    // Revoke leads the details, asking nothing until pressed
+    expect(changed).toContain('aria-label="Revoke codex"');
+    expect(changed.indexOf(">Revoke<")).toBeLessThan(changed.indexOf(">Save<"));
+    expect(changed).not.toContain("lose access");
   });
 
   test("a name is shaped as typed into what the server takes", () => {
@@ -1859,7 +1938,7 @@ describe("connect agents", () => {
     ).toBe("Expired 20 Oct");
   });
 
-  test("the keys card lists each key with Revoke, its count and New key", async () => {
+  test("the keys card lists each key closed, its count and New key", async () => {
     const s = store(
       fake({
         [`GET ${KEYS_PATH}`]: ok({
@@ -1878,7 +1957,8 @@ describe("connect agents", () => {
     expect(html).toContain("New key");
     expect(html).toContain("codex");
     expect(html).toContain("opencode");
-    expect(html.match(/>Revoke</g)).toHaveLength(2);
+    expect(html.match(/aria-expanded="false"/g)).toHaveLength(2);
+    expect(html).not.toContain(">Revoke<");
     expect(html).toContain('<span class="rows-bad">Expired 1 Jan 2020</span>');
     expect(html).not.toContain("No keys yet.");
     const page = render(<ConnectBody store={s} />);
@@ -1925,7 +2005,7 @@ describe("connect agents", () => {
     expect(render(<ConnectBody store={s} />)).not.toContain(TOKEN);
   });
 
-  test("a row asks nothing until Revoke", () => {
+  test("a closed row shows its use and expiry, its details shut", () => {
     const html = render(
       <KeyRow
         store={store(fake({}).fetch)}
@@ -1935,8 +2015,9 @@ describe("connect agents", () => {
     );
     expect(html).toContain("Used 1 h ago · ");
     expect(html).toContain("Never expires");
-    expect(html).toContain('aria-label="Revoke codex"');
-    expect(html).not.toContain("lose access");
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).not.toContain(">Revoke<");
+    expect(html).not.toContain(">Save<");
   });
 
   test("each agent's setup adds this server and reads the key from the environment", () => {

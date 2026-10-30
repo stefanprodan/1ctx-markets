@@ -8,7 +8,7 @@ import type { McpHttpHandler } from "@modelcontextprotocol/server";
 import type { HTMLBundle } from "bun";
 import { failed, notAllowed, notFound, PREFIX, problem } from "../api/http.ts";
 import { match, type Route } from "../api/routes.ts";
-import { ADMIN, NO_ACCESS, WEB, type Who } from "../operations/portfolio.ts";
+import { ADMIN, NO_ACCESS, opens, WEB, type Who } from "../operations/who.ts";
 import { type Clock, MINUTE_MS } from "../runtime/clock.ts";
 import { type Log, type LogFields, sdkErrorFields } from "../runtime/log.ts";
 import type { Access, Caller } from "./access.ts";
@@ -84,7 +84,7 @@ export const whoOf = (c: Caller | null): Who =>
     ? WEB
     : c.kind === "admin"
       ? ADMIN
-      : { name: c.key.name, access: c.key.portfolio };
+      : { name: c.key.name, portfolio: c.key.portfolio, rules: c.key.rules };
 
 const keyFields = (c: Caller | null): LogFields =>
   c === null
@@ -136,12 +136,14 @@ export function router(deps: RouterDeps): Handle {
       const over = limited(c, apiOver);
       if (over !== null) return over;
       if (c.kind === "admin" || r === null || r.scope === "read") return null;
-      if (r.scope === "portfolio:read" && c.key.portfolio !== "none") {
-        return null;
-      }
-      if (r.scope === "portfolio:write" && c.key.portfolio === "write") {
-        return null;
-      }
+      const [area, level] = r.scope.split(":");
+      const held =
+        area === "portfolio"
+          ? c.key.portfolio
+          : area === "rules"
+            ? c.key.rules
+            : null;
+      if (held !== null && opens(held, level === "write")) return null;
       return forbidden("this key does not open this route");
     }
     if (!signedIn(req) || r?.cookie === false) return apiUnauthorized();
@@ -197,7 +199,7 @@ export function router(deps: RouterDeps): Handle {
       authInfo: {
         token: "",
         clientId: who.name,
-        scopes: [`portfolio:${who.access}`],
+        scopes: [`portfolio:${who.portfolio}`, `rules:${who.rules}`],
       },
     });
   };

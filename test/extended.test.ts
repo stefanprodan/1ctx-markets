@@ -18,6 +18,7 @@ import { CALL_MS, type Markets, markets } from "../src/operations/markets.ts";
 import { moversAnswer, parseMovers } from "../src/operations/movers.ts";
 import { parseQuote, quotePage } from "../src/operations/quote.ts";
 import { parseRules, rulesAnswer } from "../src/operations/rules.ts";
+import { ADMIN } from "../src/operations/who.ts";
 import { silent } from "../src/runtime/log.ts";
 import { recomputeSignals, refreshLive } from "../src/signals/store.ts";
 import {
@@ -406,6 +407,7 @@ describe("quote extended", () => {
       (
         await rulesAnswer(
           t.m,
+          ADMIN,
           parseRules({
             action: "create",
             symbol: "US:HOOD",

@@ -44,9 +44,9 @@ import {
   latestDay,
   MAX_AMOUNT,
   ref,
-  type Who,
 } from "./portfolio.ts";
 import { readTargets } from "./targets.ts";
+import type { Who } from "./who.ts";
 
 export const IMPORT_KINDS = ["trades", "cash", "funds", "bonds"] as const;
 export type ImportKind = (typeof IMPORT_KINDS)[number];

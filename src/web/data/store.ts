@@ -282,11 +282,14 @@ export type AgentKey = {
   last_used_at: string | null;
   // null never expires
   expires_at: string | null;
-  // what it may do with portfolios
+  // what it may do with portfolios, and with rules and their alerts
   portfolio?: KeyAccess;
+  rules?: KeyAccess;
 };
 
 export type KeyAccess = "none" | "read" | "write";
+
+export type KeyAccesses = { portfolio: KeyAccess; rules: KeyAccess };
 
 type KeysPage = { keys: AgentKey[]; limit: number };
 
@@ -670,14 +673,14 @@ export function store(
   async function createKey(
     name: string,
     expiresInDays: number | null,
-    portfolio: KeyAccess = "none",
+    access: KeyAccesses = { portfolio: "none", rules: "none" },
   ): Promise<MadeKey> {
     let made: MadeKey;
     try {
       made = await call<MadeKey>(KEYS_PATH, "POST", {
         name,
         expiresInDays,
-        portfolio,
+        ...access,
       });
     } catch (error) {
       throw new Error(says(error));
@@ -685,6 +688,23 @@ export function store(
     keysLoad++;
     keys.value = [...(keys.value ?? []), made.key];
     return made;
+  }
+
+  // throws the refusal, its words a sentence, for the form to show
+  async function setKeyAccess(id: string, access: KeyAccesses): Promise<void> {
+    let changed: { key: AgentKey };
+    try {
+      changed = await call<{ key: AgentKey }>(
+        `${KEYS_PATH}/${encodeURIComponent(id)}`,
+        "PATCH",
+        access,
+      );
+    } catch (error) {
+      throw new Error(says(error));
+    }
+    keysLoad++;
+    keys.value =
+      keys.value?.map((k) => (k.id === id ? changed.key : k)) ?? null;
   }
 
   // the refusal's sentence, or null once it is gone; one already gone is
@@ -956,6 +976,7 @@ export function store(
     keysFailures,
     loadKeys,
     createKey,
+    setKeyAccess,
     revokeKey,
     attribution,
     sparks,

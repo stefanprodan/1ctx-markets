@@ -21,11 +21,12 @@ export const SECRETS = join(import.meta.dir, "..", "fixtures", "secrets");
 // made up, as an agent key the admin made; never a real key
 export const AGENT_KEY = "1ctx-markets-test-agent-key-0123456789abcdef";
 
-// the agent key's row, kept when a test's database is started again
+// the agent key's row, kept when a test's database is started again; it
+// sets rules, as the tests drive them over MCP
 export function seedAgentKey(db: Db, at: number): void {
   db.query(
-    `insert or ignore into keys (id, name, token_hash, created_at)
-     values ('testagentkey', 'test-agent', ?, ?)`,
+    `insert or ignore into keys (id, name, token_hash, created_at, rules)
+     values ('testagentkey', 'test-agent', ?, ?, 'write')`,
   ).run(tokenHash(AGENT_KEY), at);
 }
 

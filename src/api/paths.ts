@@ -50,7 +50,8 @@ import {
 // read is an agent key's scope; the admin key holds every scope; the web
 // UI's cookie opens every route but the rules writes
 const READ_AUTH = [{ read: [] }, { admin: [] }, { session: [] }];
-const WRITE_AUTH = [{ read: [] }, { admin: [] }];
+const RULES_READ_AUTH = [{ rulesRead: [] }, { admin: [] }, { session: [] }];
+const RULES_WRITE_AUTH = [{ rulesWrite: [] }, { admin: [] }];
 const ADMIN_AUTH = [{ admin: [] }, { session: [] }];
 
 const content = (schema: Schema) => ({
@@ -85,6 +86,9 @@ export const responses = {
   ),
   Forbidden: error(
     "A request other than GET or HEAD with the session cookie, not sent from this server's own pages (`forbidden`).",
+  ),
+  NoRules: error(
+    "A key without rules access, or one that reads only on a write (`forbidden`).",
   ),
   AdminOnly: error(
     "A key without this route's scope: an agent key on an admin route, or a cookie request not sent from this server's own pages (`forbidden`).",
@@ -176,6 +180,8 @@ const reads = (extra: object = {}) => ({
   500: r("Internal"),
   ...extra,
 });
+
+const ruled = (extra: object = {}) => reads({ 403: r("NoRules"), ...extra });
 
 const admins = (extra: object = {}) => ({
   400: r("BadArguments"),
@@ -528,16 +534,16 @@ export const paths = {
     get: {
       tags: ["rules"],
       operationId: "listRules",
-      security: READ_AUTH,
+      security: RULES_READ_AUTH,
       summary: "List price rules",
       description:
         "Every rule with its condition, pause, whether it is armed, and its last result.",
-      responses: reads({ 200: ok("The rules.", ref("Rules")) }),
+      responses: ruled({ 200: ok("The rules.", ref("Rules")) }),
     },
     post: {
       tags: ["rules"],
       operationId: "createRule",
-      security: WRITE_AUTH,
+      security: RULES_WRITE_AUTH,
       summary: "Create a price rule",
       description: lines(
         "Creates a rule on live quotes. Answers the rule, its first evaluation and any alert it fired, with the rule's path in `Location`.",
@@ -549,7 +555,7 @@ export const paths = {
         DEADLINE,
       ),
       requestBody: body(ref("RuleArgs")),
-      responses: reads({
+      responses: ruled({
         201: {
           ...ok("The rule created.", ref("Created")),
           headers: { Location: { schema: str } },
@@ -574,11 +580,11 @@ export const paths = {
     get: {
       tags: ["rules"],
       operationId: "getRule",
-      security: READ_AUTH,
+      security: RULES_READ_AUTH,
       summary: "One price rule",
       description:
         "The rule with its condition, pause, whether it is armed, and its last result.",
-      responses: reads({
+      responses: ruled({
         200: ok("The rule.", ref("OneRule")),
         404: r("NotFound"),
       }),
@@ -586,7 +592,7 @@ export const paths = {
     patch: {
       tags: ["rules"],
       operationId: "pauseRule",
-      security: WRITE_AUTH,
+      security: RULES_WRITE_AUTH,
       summary: "Pause or resume a rule",
       description: lines(
         "Sets or clears the rule's manual pause.",
@@ -594,7 +600,7 @@ export const paths = {
         "- A rule paused by a split cannot be resumed (`split_paused`): its levels predate the split. Delete it and create it again.",
       ),
       requestBody: body(ref("Pause")),
-      responses: reads({
+      responses: ruled({
         200: ok("The rule.", ref("OneRule")),
         404: r("NotFound"),
         409: r("Conflict"),
@@ -605,10 +611,10 @@ export const paths = {
     delete: {
       tags: ["rules"],
       operationId: "deleteRule",
-      security: WRITE_AUTH,
+      security: RULES_WRITE_AUTH,
       summary: "Delete a rule",
       description: `Deletes the rule. Its alerts are kept until they are ${ALERTS_KEPT_DAYS} days old.`,
-      responses: reads({
+      responses: ruled({
         204: { description: "Deleted." },
         404: r("NotFound"),
       }),
@@ -618,7 +624,7 @@ export const paths = {
     get: {
       tags: ["rules"],
       operationId: "alerts",
-      security: READ_AUTH,
+      security: RULES_READ_AUTH,
       summary: "Alerts feed",
       description: lines(
         "The alerts after the `If-None-Match` cursor, oldest first, or all kept alerts without one. Meant to be polled on a schedule.",
@@ -648,6 +654,7 @@ export const paths = {
         },
         400: r("BadArguments"),
         401: r("Unauthorized"),
+        403: r("NoRules"),
         429: r("TooMany"),
         500: r("Internal"),
       },
@@ -671,8 +678,9 @@ export const paths = {
       description: lines(
         "Makes a key for an agent and answers its token, once.",
         "",
-        "- An agent key opens what the read scope opens: market data, instruments, rules, the alerts feed and MCP. Never an admin route.",
+        "- An agent key opens what the read scope opens: market data, instruments and MCP. Never an admin route.",
         "- `portfolio` is `read` or `write` to open the portfolio routes and the portfolio tool; `none` by default.",
+        "- `rules` is `read` to open the rules list and the alerts feed, `write` to also create, pause and delete rules, over the routes and the rules tool; `none` by default.",
         `- At most ${MAX_KEYS} keys, expired ones included. Revoke one to make another.`,
         "- A name is unique among the keys (`conflict`).",
       ),
@@ -688,6 +696,34 @@ export const paths = {
     },
   },
   "/keys/{id}": {
+    patch: {
+      tags: ["keys"],
+      operationId: "setKeyAccess",
+      security: ADMIN_AUTH,
+      summary: "Change an agent key's access",
+      description: lines(
+        "Sets the key's portfolio access, rules access or both. Answers the key as the list does.",
+        "",
+        "- The token, name and expiry stay. An expired key changes too.",
+        "- The key's next call is held to the new access.",
+      ),
+      parameters: [
+        {
+          name: "id",
+          in: "path",
+          description: "The key's id.",
+          required: true,
+          schema: str,
+        },
+      ],
+      requestBody: body(ref("KeyAccess")),
+      responses: admins({
+        200: ok("The key.", ref("OneKey")),
+        404: r("NotFound"),
+        413: r("TooLarge"),
+        415: r("UnsupportedType"),
+      }),
+    },
     delete: {
       tags: ["keys"],
       operationId: "revokeKey",

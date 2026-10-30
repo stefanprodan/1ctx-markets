@@ -28,11 +28,9 @@ import type { Markets } from "../operations/markets.ts";
 import { AVERAGES, moversAnswer, parseMovers } from "../operations/movers.ts";
 import {
   ADD_KINDS,
-  NO_ACCESS,
   PORTFOLIO_ACTIONS,
   parsePortfolio,
   portfolioAnswer,
-  type Who,
 } from "../operations/portfolio.ts";
 import { MAX_SYMBOLS, parseQuote, quotePage } from "../operations/quote.ts";
 import { SINCE_DAYS } from "../operations/research.ts";
@@ -45,6 +43,7 @@ import {
   screenAnswer,
 } from "../operations/screen.ts";
 import { parseSearch, searchPage } from "../operations/search.ts";
+import { NO_ACCESS, type Who } from "../operations/who.ts";
 import {
   MAX_COMPARISONS,
   MAX_DEPTH,
@@ -296,7 +295,7 @@ export function tools(m: Markets): Tool[] {
         },
         ["action"],
       ),
-      run: (input) => rulesAnswer(m, parseRules(input)),
+      run: (input, who) => rulesAnswer(m, who ?? NO_ACCESS, parseRules(input)),
       writes: true,
     },
     {
