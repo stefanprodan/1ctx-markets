@@ -29,6 +29,7 @@ import { splitFactor } from "../src/portfolios/value.ts";
 import { tokenHash } from "../src/server/access.ts";
 import type { Db } from "../src/storage/db/index.ts";
 import { withApp } from "./helpers/app.ts";
+import { portfolioBefore } from "./helpers/portfolio.ts";
 import { bar, instrument, LIVE, NOW, quote, world } from "./helpers/world.ts";
 
 const CASEY: Who = { name: "casey-agent", access: "write" };
@@ -75,8 +76,8 @@ async function setup() {
   quote(db, "US:AAA", 120, 118);
   quote(db, "XETRA:BBB", 50, 50);
   quote(db, "CRYPTO:CCC-USD", 2000, 1900);
-  await createPortfolio(w.m, { name: "Shares" });
-  await createPortfolio(w.m, { name: "Coins" });
+  await portfolioBefore(w.m, "Shares");
+  await portfolioBefore(w.m, "Coins");
   for (const name of ["North", "South", "East"]) {
     await createBroker(w.m, { name });
   }
@@ -308,8 +309,65 @@ describe("currencies", () => {
     expect((await holdingsOf(m, { currency: "EUR" })).converted?.currency).toBe(
       "EUR",
     );
-    await saveSettings(m, { display_currency: null });
-    expect((await holdingsOf(m)).converted).toBeNull();
+    // it can be changed, never cleared
+    for (const bad of [null, "ABC", "usd", "GBp"]) {
+      await expect(saveSettings(m, { display_currency: bad })).rejects.toThrow(
+        "in circulation",
+      );
+    }
+    await expect(saveSettings(m, {})).rejects.toThrow("in circulation");
+    // a conversion named by the caller takes the same list
+    expect(() =>
+      parsePortfolio({ action: "holdings", currency: "ABC" }),
+    ).toThrow("in circulation");
+    expect((await holdingsOf(m)).display_currency).toBe("USD");
+  });
+
+  test("every currency a person names is in circulation, or a listing's hundredth", () => {
+    const trade = {
+      action: "add",
+      kind: "trade",
+      symbol: "AAA",
+      side: "buy",
+      quantity: 1,
+      price: 1,
+      date: "2026-01-02",
+    };
+    const named = [
+      trade,
+      { action: "add", kind: "cash", name: "Cash", amount: 1 },
+      { action: "add", kind: "manual", name: "Fund", units: 1, price: 1 },
+      {
+        action: "add",
+        kind: "bond",
+        name: "Bond",
+        amount: 1,
+        coupon: 5,
+        maturity: "2030-01-02",
+      },
+      { action: "update", position: "dry_powder", by: 1 },
+    ];
+    for (const args of named) {
+      expect(() => parsePortfolio({ ...args, currency: "ABC" })).toThrow(
+        "in circulation",
+      );
+      expect(() => parsePortfolio({ ...args, currency: "EUR" })).not.toThrow();
+    }
+    expect(parsePortfolio({ ...trade, currency: "GBp" })).toMatchObject({
+      trade: { currency: "GBp" },
+    });
+  });
+
+  test("a portfolio needs a display currency set first", async () => {
+    const { m } = world();
+    expect(await createPortfolio(m, { name: "Shares" })).toEqual({
+      error: "conflict",
+      message: "Set a display currency first.",
+    });
+    await saveSettings(m, { display_currency: "EUR" });
+    expect(await createPortfolio(m, { name: "Shares" })).toMatchObject({
+      portfolio: { name: "Shares" },
+    });
   });
 });
 
@@ -667,6 +725,12 @@ describe("over MCP and REST", () => {
         )
         .run(tokenHash(WRITER), t.clock.now());
       const admin = { authorization: `Bearer ${t.admin}` };
+      const set = await fetch(`${t.url}/api/v1/portfolio-settings`, {
+        method: "PUT",
+        headers: { ...admin, "content-type": "application/json" },
+        body: JSON.stringify({ display_currency: "USD" }),
+      });
+      expect(set.status).toBe(200);
       const made = await fetch(`${t.url}/api/v1/portfolios`, {
         method: "POST",
         headers: { ...admin, "content-type": "application/json" },

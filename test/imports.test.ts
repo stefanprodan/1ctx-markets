@@ -114,6 +114,87 @@ describe("imports", () => {
   });
 });
 
+// every import of every file under root: a file under src by its path
+// from src, anything else (a package, bun:, node:) as written
+type Import = { file: boolean; to: string };
+
+async function imports(root: string): Promise<Map<string, Import[]>> {
+  const out = new Map<string, Import[]>();
+  for await (const f of new Bun.Glob("**/*.{ts,tsx}").scan(root)) {
+    const text = await Bun.file(join(root, f)).text();
+    out.set(
+      f,
+      specifiers(text).map((s) =>
+        s.startsWith(".")
+          ? { file: true, to: relative(root, join(root, dirname(f), s)) }
+          : { file: false, to: s },
+      ),
+    );
+  }
+  return out;
+}
+
+const crossings = (
+  all: Map<string, Import[]>,
+  from: string,
+  allowed: (i: Import) => boolean,
+) =>
+  [...all]
+    .filter(([f]) => f.startsWith(from))
+    .flatMap(([f, to]) =>
+      to.filter((i) => !allowed(i)).map((i) => `${f} -> ${i.to}`),
+    );
+
+describe("shared", () => {
+  test("a shared file imports only other shared files", async () => {
+    const all = await imports(SRC);
+    expect(
+      crossings(all, "shared/", (i) => i.file && i.to.startsWith("shared/")),
+    ).toEqual([]);
+  });
+
+  test("the web UI imports outside itself only from shared", async () => {
+    const all = await imports(SRC);
+    expect(
+      crossings(
+        all,
+        "web/",
+        (i) => !i.file || i.to.startsWith("web/") || i.to.startsWith("shared/"),
+      ),
+    ).toEqual([]);
+  });
+
+  test("a crossing is found for a file, never for a package", () => {
+    const all = new Map<string, Import[]>([
+      [
+        "web/a.tsx",
+        [
+          { file: false, to: "preact/hooks" },
+          { file: true, to: "shared/c.ts" },
+          { file: true, to: "market/format.ts" },
+        ],
+      ],
+      [
+        "shared/c.ts",
+        [
+          { file: false, to: "bun:sqlite" },
+          { file: true, to: "shared/d.ts" },
+        ],
+      ],
+    ]);
+    expect(
+      crossings(
+        all,
+        "web/",
+        (i) => !i.file || i.to.startsWith("web/") || i.to.startsWith("shared/"),
+      ),
+    ).toEqual(["web/a.tsx -> market/format.ts"]);
+    expect(
+      crossings(all, "shared/", (i) => i.file && i.to.startsWith("shared/")),
+    ).toEqual(["shared/c.ts -> bun:sqlite"]);
+  });
+});
+
 describe("layers", () => {
   test("the REST API never imports the MCP tools", async () => {
     const edges = await graph(SRC);

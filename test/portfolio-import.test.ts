@@ -6,7 +6,6 @@ import { describe, expect, test } from "bun:test";
 import { upsertInstrument } from "../src/market/instruments.ts";
 import {
   createBroker,
-  createPortfolio,
   readTradeList,
   type Who,
 } from "../src/operations/portfolio.ts";
@@ -17,6 +16,7 @@ import {
 } from "../src/operations/portfolio-import.ts";
 import { parseCsv, parseDay, parseNumber } from "../src/portfolios/csv.ts";
 import { portfolioByName, readPositions } from "../src/portfolios/store.ts";
+import { portfolioBefore } from "./helpers/portfolio.ts";
 import { instrument, NOW, quote, world } from "./helpers/world.ts";
 
 const CASEY: Who = { name: "casey-agent", access: "write" };
@@ -38,8 +38,8 @@ async function setup() {
   instrument(w.db, "US:AAA", { currency: "USD", name: "Alpha Made Up" });
   instrument(w.db, "XETRA:BBB", { currency: "EUR", name: "Beta Made Up" });
   quote(w.db, "US:AAA", 120, 118);
-  await createPortfolio(w.m, { name: "Shares" });
-  await createPortfolio(w.m, { name: "Copy" });
+  await portfolioBefore(w.m, "Shares");
+  await portfolioBefore(w.m, "Copy");
   await createBroker(w.m, { name: "North" });
   return w;
 }
@@ -200,6 +200,43 @@ describe("the Yahoo import", () => {
     expect(exportCsv(m, portfolioByName(db, "Shares")!)).toContain(
       "[broker North][paid EUR]",
     );
+  });
+});
+
+describe("an import's currencies", () => {
+  test("each must be in circulation, or a listing's hundredth", async () => {
+    const { m } = await setup();
+    expect(() =>
+      parseImport({ portfolio: "Shares", csv: HEADER, currency: "ABC" }),
+    ).toThrow("in circulation");
+    const files = [
+      [
+        HEADER,
+        "US:AAA,,,,,,,,,20260105,90,1,0,,,[paid ABC],Buy",
+        "US:AAA,,,,,,,,,20260105,90,1,0,,,[paid GBp],Buy",
+      ],
+      ["Item,Amount (ABC),As Of,Note", "Account,10,2026-04-17,"],
+      [
+        "Fund,Currency,Units,Value,Cost Basis,As Of,Note",
+        "Made Up Fund,ABC,10,125,100,2026-04-17,",
+        "Made Up Fund,eur,10,125,100,2026-04-17,",
+      ],
+      [
+        "Item,Symbol,Currency,Amount,Rate (%),Purchase Date,Maturity,Note",
+        "Made Up Bond,,ABC,1000,5.5,2026-01-02,2030-01-02,",
+      ],
+    ];
+    const statuses = [];
+    for (const lines of files) {
+      const r = await importCsv(
+        m,
+        CASEY,
+        parseImport({ portfolio: "Shares", csv: lines.join("\n") }),
+      );
+      if ("error" in r) throw new Error(r.message);
+      statuses.push(r.rows.map((row) => row.status));
+    }
+    expect(statuses).toEqual([["bad", "ok"], ["bad"], ["bad", "ok"], ["bad"]]);
   });
 });
 

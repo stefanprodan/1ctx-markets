@@ -92,6 +92,11 @@ src/tools/                  the MCP surface: the tool registry and research's pa
 src/api/                    /api/v1: routes, alerts, the spec, the docs page; never imports tools/
 src/service/                `service install|start|stop|...`: launchd, CLI only
 src/admin/                  the instrument, watchlist, status and keys routes, the `admin` and `keys` commands
+src/shared/                 plain data and functions the server and the web UI both
+                            import; a file here imports only shared/ (no package,
+                            bun:, node:, database or network), and web/ imports
+                            nothing else outside itself (test/imports.test.ts)
+  currencies.ts             the ISO 4217 codes in circulation, names from Intl
 src/web/                    the web UI, bundled from index.html (Preact)
   app/                      the shell, rail, router, routes and theme
   data/                     every call and signal; views never fetch
