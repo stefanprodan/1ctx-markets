@@ -97,10 +97,13 @@ phrases and the lock every source shares are in `docs/sources.md`; the
   (`dueAt`): due while its last good fetch is older than the latest
   finished US session's end plus `AFTER_CLOSE_MS` (two hours), when
   after-close results are filed, and stale ("filings sync pending")
-  meanwhile. While the stored session runs, the finished one is the
-  trading day before it, read from the market's stored bars, so a pass
-  missed overnight is caught up the next day during the session; with
-  no bars, the calendar day before. The session comes from the
+  meanwhile. While the stored session runs, in the two hours after its
+  close, and for a session stored before it starts, the finished one
+  is the trading day before it, read from the market's stored bars by
+  a seek per instrument, or the calendar day before with none; a day
+  whose close plus two hours is still ahead steps back another, so the
+  due time is never later than now. A pass missed overnight is caught
+  up the next day during the session. The pass reads it once a tick. The session comes from the
   calendar (`docs/calendars.md`), never a fixed hour; with none stored
   a fetch is due a day after the last.
 - **Cost**: one call per tracked US share a day, plus the ticker map

@@ -25,6 +25,8 @@ import {
 } from "../src/sources/edgar/client.ts";
 import { edgarJobs } from "../src/sources/edgar/jobs.ts";
 import {
+  BAR_BEFORE,
+  dueAt,
   filerState,
   filingsDue,
   flags,
@@ -772,6 +774,60 @@ describe("the daily pass", () => {
       .run(j.id, Date.parse("2026-10-29T22:05:00Z"));
     expect(filingsDue(u.db, j, u.clock.now())).toBe(false);
     expect(filerState(u.db, j, u.clock.now()).stale).toEqual([]);
+  });
+
+  test("a session stored before it starts never sets a due time ahead of now", async () => {
+    // Monday 2 November's session, announced on Friday evening and Sunday
+    const monday = session(
+      "America/New_York",
+      Date.parse("2026-11-02T14:30:00Z"),
+      Date.parse("2026-11-02T21:00:00Z"),
+    );
+    for (const [start, bars] of [
+      ["2026-10-30T21:00:00Z", ["2026-10-29", "2026-10-30"]],
+      ["2026-11-01T18:00:00Z", []],
+    ] as const) {
+      const t = pass(Date.parse(start));
+      recordSession(t.db, "US", monday, t.clock.now());
+      const i = share(t.db, "AAPL", RECORDED);
+      markRead(t.db, [i.id], t.clock.now());
+      for (const date of bars) {
+        t.db
+          .query(
+            `insert into bars (instrument, interval, date, close, final,
+               fetched_at) values (?1, '1d', ?2, 1, 1, ?3)`,
+          )
+          .run(i.id, date, RECORDED);
+      }
+      t.db
+        .query(
+          `insert into sync_runs (source, job, scope, started_at, ended_at,
+             status, rows) values ('edgar', 'filings', ?1, ?2, ?2, 'ok', 1)`,
+        )
+        .run(i.id, Date.parse("2026-10-28T22:30:00Z"));
+      for (let k = 0; k < 60; k++) {
+        expect(dueAt(t.db, "US", t.clock.now())).toBeLessThanOrEqual(
+          t.clock.now(),
+        );
+        await t.tick();
+        await t.clock.advance(MINUTE_MS);
+      }
+      expect([start, t.submissionCalls().length]).toEqual([start, 1]);
+    }
+  });
+
+  test("the trading day before is read by a seek per instrument", () => {
+    const { db } = open(":memory:", fakeClock(RECORDED));
+    const plan = db
+      .query<{ detail: string }, [string, string]>(
+        `explain query plan ${BAR_BEFORE}`,
+      )
+      .all("US", "2026-11-02")
+      .map((r) => r.detail);
+    expect(plan).toContain(
+      "SEARCH b USING PRIMARY KEY (instrument=? AND interval=? AND date<?)",
+    );
+    expect(plan.some((d) => d.startsWith("SCAN b"))).toBe(false);
   });
 
   test("a share's stale reason says pending once the next close passed", async () => {

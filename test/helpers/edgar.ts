@@ -14,7 +14,8 @@ const DIR = join(import.meta.dir, "..", "fixtures", "edgar");
 // made up, in the shape SEC asks for; no real contact is ever read by a test
 export const EDGAR_CONTACT = "Test Operator test-operator@example.invalid";
 
-// the recordings were made at 23:57 UTC on Thursday 29 October
+// most recordings were made at 23:57 UTC on Thursday 29 October, NVDA's
+// and TSM's at 00:29 UTC on the 30th
 export const RECORDED = Date.parse("2026-10-29T23:58:00Z");
 
 export const CIKS: Record<string, number> = {

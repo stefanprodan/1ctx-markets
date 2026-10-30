@@ -16,6 +16,7 @@ import { WriterClosed } from "../../storage/writer.ts";
 import { Paused, phraseOf, QueueClosed } from "../source.ts";
 import { SOURCE } from "./client.ts";
 import {
+  dueAt,
   eligible,
   FILINGS_JOB,
   filingsDue,
@@ -79,9 +80,11 @@ export function edgarJobs(options: {
       }
       // without a map each share would ask for it again
       const mapped = tickersFetched(db);
+      // every eligible share is a US one, so one due time serves the pass
+      const due = dueAt(db, "US", started);
       for (const share of mapped ? shares : []) {
         if (clock.now() - started >= TICK_BUDGET_MS) break;
-        if (!filingsDue(db, share, started)) continue;
+        if (!filingsDue(db, share, started, due)) continue;
         if (retrying(FILINGS_JOB, share.id, started)) continue;
         const r = await refreshFilings(ctx, share);
         pass.asked.push(share.id);

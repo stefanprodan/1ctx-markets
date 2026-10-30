@@ -162,35 +162,52 @@ export function recordRun(
   );
 }
 
-// AFTER_CLOSE_MS past the end of the market's latest finished session.
-// While the stored session runs, that is the trading day before it, read
-// from the market's bars since no holiday list is kept; with none, the
-// calendar day before. With no session stored yet, a day after the last.
+// a seek per instrument on the bars key, never a scan of every bar
+export const BAR_BEFORE = `select max(d) as date from (
+  select (select max(b.date) from bars b where b.instrument = i.id
+    and b.interval = '1d' and b.date < ?2) as d
+  from instruments i where i.market = ?1)`;
+
+// the market's last trading day before this date, from its bars since no
+// holiday list is kept; with none, the calendar day before
+export function dayBefore(db: Db, market: string, day: string): string {
+  return (
+    db
+      .query<{ date: string | null }, [string, string]>(BAR_BEFORE)
+      .get(market, day)?.date ?? addDays(day, -1)
+  );
+}
+
+// past far enough to reach any market's previous session, holidays included
+const MAX_STEPS = 14;
+
+// AFTER_CLOSE_MS past the end of the market's latest finished session,
+// never later than now: while the stored session runs, in the hours after
+// its close, or when it was stored before it starts, the trading days
+// before it are tried in turn. With no session stored, a day ago.
 export function dueAt(db: Db, market: string, now: number): number {
   const s = readSession(db, market);
   if (s === null) return now - DAY_MS;
   if (s.end + AFTER_CLOSE_MS <= now) return s.end + AFTER_CLOSE_MS;
-  const day = localDate(s.zone, s.start);
-  const before =
-    db
-      .query<{ date: string | null }, [string, string]>(
-        `select max(b.date) as date from bars b
-         join instruments i on i.id = b.instrument
-         where i.market = ?1 and b.interval = '1d' and b.date < ?2`,
-      )
-      .get(market, day)?.date ?? addDays(day, -1);
   const close = wallTime(s.zone, s.end) - wallOfDate(localDate(s.zone, s.end));
-  return fromWallTime(s.zone, wallOfDate(before) + close) + AFTER_CLOSE_MS;
+  let day = localDate(s.zone, s.start);
+  for (let k = 0; k < MAX_STEPS; k++) {
+    day = dayBefore(db, market, day);
+    const due = fromWallTime(s.zone, wallOfDate(day) + close) + AFTER_CLOSE_MS;
+    if (due <= now) return due;
+  }
+  return now - DAY_MS;
 }
 
+// due, when given, is the market's dueAt, read once for a pass of shares
 export function filingsDue(
   db: Db,
   i: Pick<Instrument, "id" | "market">,
   now: number,
+  due: number = dueAt(db, i.market, now),
 ): boolean {
   const ok = lastStarted(db, SOURCE, FILINGS_JOB, i.id, "ok");
-  if (ok === null) return true;
-  return ok.startedAt < dueAt(db, i.market, now);
+  return ok === null || ok.startedAt < due;
 }
 
 export const filingsFetched = (db: Db, instrument: string): boolean =>
