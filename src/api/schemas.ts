@@ -418,6 +418,11 @@ export const schemas: Record<string, Schema> = {
             name: nstr,
             type: nstr,
             exchange: str,
+            exchange_name: note(
+              str,
+              "The exchange in words, as the source's search writes it.",
+            ),
+            currency: note(nstr, "A stored listing's currency."),
             source: str,
             source_symbol: str,
             isin: note(nstr, "A regional listing's ISIN."),

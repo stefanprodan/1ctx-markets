@@ -98,7 +98,7 @@ the rules tool in `docs/rules.md`; signal rows and returns in
 |---|---|---|
 | `quote` | `symbols`, `benchmark`, `extended`, `next` | per symbol a `QuoteItem` (`quote.ts`) with `returns`, `session`, with a benchmark `relative_return_1m` and `_3m`, with `extended` true `extended` |
 | `history` | `symbol`, `interval`, `from`, `to`, `benchmark`, `extended`, `next` | bars oldest first with `final` and signals; `session`; `relative`; with `5m`, `points` and `sessions`, and `extended_points` when `extended` |
-| `search` | `query`, `next` | up to 20 stored matches, then up to 20 Bucharest listings from the stored list pages while the feed is on, then Yahoo's, each with id, exchange, type, name, `source`, `stored`; a Bucharest listing adds its `isin` |
+| `search` | `query`, `next` | up to 20 stored matches, then up to 20 Bucharest listings from the stored list pages while the feed is on, then Yahoo's, each with id, exchange, type, name, `source`, `stored`; a listing Yahoo found adds `exchange_name`, the exchange in Yahoo's words, the stored copy of it too, and a stored one its `currency`, so one fund on several exchanges reads apart; a Bucharest listing adds its `isin` |
 | `movers` | `symbols`, `min_move_pct`, `direction`, `average`, `relation`, `next` | matches by absolute change, largest first; `counts` |
 | `screen` | `symbols`, `filters`, `benchmark`, `sort`, `order`, `fields`, `next` | matches with each used and asked field's value, unit, kind and date; `counts` |
 | `research` | `symbol`, `section`, `since`, `next` | `overview` (quote, Finnhub sections, next event, headlines, `filings` with three flags), or one section paged: `analysts`, `earnings`, `insiders`, `news`, `filings` (`docs/research.md`, `docs/edgar.md`) |

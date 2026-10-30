@@ -500,6 +500,7 @@ describe("resolution with the feed on", () => {
       name: "FONDUL DESCHIS DE INVESTITII BT INDEX ROMANIA ETF BET TR",
       type: "ETF",
       exchange: "BVB",
+      currency: "RON",
       source: "bvb",
       source_symbol: "BTBETRETF",
       isin: "ROGEF1KGQBE5",

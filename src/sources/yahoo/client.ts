@@ -102,6 +102,8 @@ export type SparkBatch = {
 export type Listing = {
   sourceSymbol: string;
   exchange: string;
+  // the exchange as Yahoo writes it for people (Milan, XETRA), when given
+  exchangeName?: string;
   type: string | null;
   name: string | null;
 };
@@ -422,9 +424,11 @@ export function parseSearch(body: unknown): Listing[] {
     const exchange = optionalText(q.exchange);
     // entries without a listing, such as private companies
     if (symbol === null || exchange === null) continue;
+    const shown = optionalText(q.exchDisp);
     listings.push({
       sourceSymbol: symbol,
       exchange,
+      ...(shown === null ? {} : { exchangeName: shown }),
       type: optionalText(q.quoteType),
       name: optionalText(q.longname) ?? optionalText(q.shortname),
     });

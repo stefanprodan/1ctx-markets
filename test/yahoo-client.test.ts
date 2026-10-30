@@ -511,6 +511,7 @@ describe("search", () => {
     expect(listings[0]).toEqual({
       sourceSymbol: "VVSM.DE",
       exchange: "GER",
+      exchangeName: "XETRA",
       type: "ETF",
       name: "VanEck Semiconductor UCITS ETF",
     });
@@ -522,6 +523,11 @@ describe("search", () => {
       "CXE",
       "HAN",
       "DUS",
+    ]);
+    // one fund on several exchanges reads apart by the exchange in words
+    expect(listings.map((l) => l.exchangeName).slice(0, 2)).toEqual([
+      "XETRA",
+      "Munich",
     ]);
   });
 });
