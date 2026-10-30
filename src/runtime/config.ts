@@ -50,7 +50,7 @@ export const HELP = `\x1b[1m1ctx-markets\x1b[0m - a self-hosted market data serv
   1ctx-markets admin ... refetch [--fetch <parts>] [--sections <list>] <id>...
   1ctx-markets admin ... delete <id>
   1ctx-markets keys [--listen <host:port>] [--data <dir>] list
-  1ctx-markets keys ... add <name> [--expires 30|90|365]
+  1ctx-markets keys ... add <name> [--expires 30|90|365] [--portfolio read|write]
   1ctx-markets keys ... revoke <name>
 
 \x1b[1mService:\x1b[0m
@@ -73,7 +73,8 @@ export const HELP = `\x1b[1m1ctx-markets\x1b[0m - a self-hosted market data serv
 \x1b[1mKeys:\x1b[0m
   list                   the agent keys, never their tokens
   add                    make an agent key and print it once; it never
-                         expires unless --expires gives days
+                         expires unless --expires gives days, and reaches
+                         no portfolio unless --portfolio says so
   revoke                 revoke an agent key by its name
                          The server is called as for admin
 

@@ -275,7 +275,7 @@ signed in with the admin key alone.
   the instrument id, escaped for XML (`clipOf`), so a move never hands
   a card another's.
 - **Server status** (`/status`, last in the rail, after Home,
-  Instruments and Connect agents): `GET /api/v1/status` drawn as tiles (instruments,
+  Instruments, Portfolios and Connect agents): `GET /api/v1/status` drawn as tiles (instruments,
   the sources on and how many are paused, the jobs shown and how many
   fail, the database) and a card per source that is on, headed by its
   name and job count alone, never one that is off:
@@ -302,7 +302,9 @@ signed in with the admin key alone.
   1ctx's: a Keys card from `GET /api/v1/keys` (each key's name, last
   use and expiry, with Revoke, which asks once beside Keep, and "N of
   5"), New key (a name, shaped as typed to the server's rule, and
-  Expires: Never, 30, 90 or 365 days), then a Setup card with a tab per
+  Expires: Never, 30, 90 or 365 days, and Portfolios: No access,
+  Read, or Read and write, no access by default; a key's row says
+  "Reads portfolios" or "Writes portfolios" only when it has any), then a Setup card with a tab per
   agent (Claude Code, Codex, OpenCode) and the line that adds this
   server as the MCP server `markets` at the page's origin plus `/mcp`.
   At the cap, New key goes and a line names the cap. A revoke that
@@ -319,6 +321,71 @@ signed in with the admin key alone.
   (as 1ctx's read `ONECTX_ACCESS_KEY`): Claude Code's header in single
   quotes, so the shell never writes the key into its config, Codex's
   `bearer_token_env_var`, OpenCode's `{env:...}` with OAuth off.
+- **Portfolios** (`/portfolios`, after Instruments in the rail) reads
+  `GET /api/v1/portfolios`, the holdings (`/holdings` or
+  `/portfolios/{id}/holdings`) and the trades with removed ones in one
+  load (`data/portfolios.ts`), every minute while visible. The words
+  and numbers are `Portfolios.model.ts`, which has no DOM and is
+  tested (`test/web-portfolios.test.tsx`).
+- **No currency is built in.** A card per currency with its value,
+  gain, today's change and a bar of invested, cash and dry powder, each
+  with its share; never a sum across currencies. The "Show in" picker
+  lists only the currencies held and the display currency; picking one,
+  or a display currency set in Settings, adds an "All in" card first
+  with each rate and its time under it.
+- **Filters:** All or one portfolio (tabs that scroll sideways), a
+  broker, and the currency picker; a portfolio or broker gone elsewhere
+  falls back to all.
+- **Holdings** are rows that open: an instrument by its symbol with
+  quantity × average cost under it, a position by its name (cash, "Dry
+  powder", "Priced by hand" with its date, a bond with its coupon,
+  maturity and "at face" when no listing prices it). Opened: price,
+  cost, gain, what was paid in another currency, weight, and a table of
+  the parts per broker; a position has Edit (amount, or units and
+  price, and as of; saved as an update the server keeps) and Remove,
+  which asks once. A bond bought several times is one row listing each
+  purchase (date, face, broker) with its own Edit and Remove, since the
+  merged row has no one position. Amounts show in their currency's
+  minor units (`minorUnits()`: 0 for JPY, 3 for KWD), a bond's price as a
+  percent of face, and an edit starts from the stored amount, never the
+  value rounded for show. A row with a stale reason is tagged in a few plain
+  words (`staleWords()`): "Sold more than bought", "No EUR rate", else
+  "Not current"; what a converted total left out reads by symbol or as
+  "No EUR to JPY rate" (`missingWords()`), never an id.
+- **Exposure** is bars by market, kind, portfolio and broker within one
+  currency (a picker when there are several), and by currency with a
+  named one.
+- **Trades** newest first, twenty then "Show all", each with its side,
+  symbol, quantity × price and fees, date, portfolio, broker and who
+  entered it ("Web", "Admin" or the key's name); Remove asks once, and
+  the Removed switch shows removed ones with Restore.
+- **Add** opens a form at the top, short enough for a phone: Trade,
+  Cash, Fund or Bond; a trade is a symbol search (the head search's
+  `searcher()`; each result names its exchange in the source's words, or
+  its market, and a stored one's currency (`listingWords()`), since one
+  fund lists on several exchanges under one symbol; a pick shows its
+  symbol, keeps its exchange under it and sends its id, and typing over
+  it drops the picked listing and its currency), Buy or Sell,
+  Quantity and Price ("Live price" when left empty), Fees and Date
+  (the viewer's today), Paid in (the listing's currency by default,
+  read from the instrument when a symbol is picked, else one held or
+  the display currency), Price and Fees labelled with it, Portfolio and
+  Broker, two fields abreast even on a phone. The kind, side, portfolio
+  and broker are remembered per browser (`markets-portfolio-add`). A
+  refusal shows beside the buttons in plain words, its ids taken out
+  (`plainError()` in `data/portfolios.ts`).
+- **More** holds Import, Export trades (a link to the CSV of the
+  portfolio picked, off on All) and Settings. Import picks a portfolio,
+  a broker for the file or "From the file", and a CSV; the preview
+  lists every line as Ready, Not read with why, or Skipped, a cash
+  file's lines each with a Dry powder box; "Import N" saves the ready
+  ones. Changing the portfolio or broker clears the file and its
+  preview, so a preview read for another is never saved. Settings lists portfolios and brokers with rename, delete
+  (asking once; refused while a live row is in it or names it, removed
+  rows going with it) and add, and the display currency (three letters, empty
+  for none). With no portfolio yet the page opens on Settings.
+- **The bundle names no source:** the import kinds read Trades, Cash,
+  Funds and Bonds.
 - **Instruments:** every stored instrument from
   `GET /api/v1/instruments`, every page by `next_page_token`, in one
   card with a search over id and name, kept in the view so a refresh keeps it. Sorted by

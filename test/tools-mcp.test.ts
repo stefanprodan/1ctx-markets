@@ -64,7 +64,7 @@ const yahooApp = async (
 };
 
 describe("the tool list", () => {
-  test("names the eight tools, each short and refusing other arguments", () =>
+  test("names the nine tools, each short and refusing other arguments", () =>
     withApp(async (t) => {
       const client = await mcpClient(t);
       const { tools } = await client.listTools();
@@ -78,6 +78,7 @@ describe("the tool list", () => {
         "research",
         "events",
         "rules",
+        "portfolio",
       ]);
       // the schema lists every field the description points at
       const screen = tools.find((x) => x.name === "screen")!;
@@ -98,8 +99,10 @@ describe("the tool list", () => {
         // 1ctx cuts a description at 1,024
         expect(tool.description!.length).toBeLessThanOrEqual(1024);
         expect(tool.inputSchema.additionalProperties).toBe(false);
-        // rules is the one tool that changes what a caller sees
-        expect(tool.annotations?.readOnlyHint).toBe(tool.name !== "rules");
+        // rules and portfolio change what a caller sees
+        expect(tool.annotations?.readOnlyHint).toBe(
+          tool.name !== "rules" && tool.name !== "portfolio",
+        );
       }
     }));
 });

@@ -6,7 +6,8 @@ Governs the Model Context Protocol (MCP) tools: `src/server/mcp.ts`,
 `history.ts`, `search.ts`, `movers.ts`, `screen.ts` and `sets.ts` under
 `src/operations/`. The HTTP API that calls the same reads is in
 `docs/api.md`; the research and events tools in `docs/research.md`;
-the rules tool in `docs/rules.md`; signal rows and returns in
+the rules tool in `docs/rules.md`; the portfolio tool in
+`docs/portfolios.md`; signal rows and returns in
 `docs/signals.md`; units, stale reasons and tracking in
 `docs/storage.md`; the source queue and deadlines in
 `docs/sources.md`; the server, keys and flags in `docs/config.md`.
@@ -16,6 +17,10 @@ the rules tool in `docs/rules.md`; signal rows and returns in
 - **The handler is stateless: a new `McpServer` per request**
   (`mcpHandler()`), so no tool may keep per-session state. A new tool
   is added to `tools()` in `src/tools/index.ts`.
+- **The caller rides in `authInfo`**: the router passes the key's name
+  and portfolio access (`whoOf()` in `src/server/http.ts`), the factory
+  registers the tools with it, and a tool that needs it reads it from
+  its second argument; a tool that needs none ignores it.
 - **SDK errors are logged with type and code only**
   (`sdkErrorFields()`), since an SDK message can quote the request.
 
@@ -30,8 +35,8 @@ the rules tool in `docs/rules.md`; signal rows and returns in
   cap is raised as a choice in review. Every line changes what an
   agent does; nothing that dates (symbol lists, dates, prices).
 - **Routing first, what the server does not hold last**, so a cut drops
-  the least. No portfolio, holding, market, country or default symbol:
-  the text goes to every user.
+  the least. No one's holding, market, country, currency or default
+  symbol: the text goes to every user.
 - **`test/instructions.test.ts` holds it to that**: under the cap, the
   groups in order, every tool named, every backticked name a tool, an
   argument or a listed answer field, and a deny list. Whether those
@@ -88,7 +93,7 @@ the rules tool in `docs/rules.md`; signal rows and returns in
   A symbol is 1 to 100 characters (`MAX_SYMBOL`), a list 1 to 100
   symbols (`MAX_SYMBOLS`), a date `YYYY-MM-DD`. Text quoted back in an
   error is cut at 64 characters (`quoted()`).
-- **Only rules carries write annotations.** Every other tool is
+- **Only rules and portfolio carry write annotations.** Every other tool is
   `readOnlyHint: true`, `openWorldHint: true`: an inline fetch only
   adds market data.
 
@@ -98,12 +103,13 @@ the rules tool in `docs/rules.md`; signal rows and returns in
 |---|---|---|
 | `quote` | `symbols`, `benchmark`, `extended`, `next` | per symbol a `QuoteItem` (`quote.ts`) with `returns`, `session`, with a benchmark `relative_return_1m` and `_3m`, with `extended` true `extended` |
 | `history` | `symbol`, `interval`, `from`, `to`, `benchmark`, `extended`, `next` | bars oldest first with `final` and signals; `session`; `relative`; with `5m`, `points` and `sessions`, and `extended_points` when `extended` |
-| `search` | `query`, `next` | up to 20 stored matches, then up to 20 Bucharest listings from the stored list pages while the feed is on, then Yahoo's, each with id, exchange, type, name, `source`, `stored`; a Bucharest listing adds its `isin` |
+| `search` | `query`, `next` | up to 20 stored matches, then up to 20 Bucharest listings from the stored list pages while the feed is on, then Yahoo's, each with id, exchange, type, name, `source`, `stored`; a listing Yahoo found adds `exchange_name`, the exchange in Yahoo's words, the stored copy of it too, and a stored one its `currency`, so one fund on several exchanges reads apart; a Bucharest listing adds its `isin` |
 | `movers` | `symbols`, `min_move_pct`, `direction`, `average`, `relation`, `next` | matches by absolute change, largest first; `counts` |
 | `screen` | `symbols`, `filters`, `benchmark`, `sort`, `order`, `fields`, `next` | matches with each used and asked field's value, unit, kind and date; `counts` |
 | `research` | `symbol`, `section`, `since`, `next` | `overview` (quote, Finnhub sections, next event, headlines, `filings` with three flags), or one section paged: `analysts`, `earnings`, `insiders`, `news`, `filings` (`docs/research.md`, `docs/edgar.md`) |
 | `events` | `from`, `to`, `symbols`, `next` | events by date with `status`, `reported_seen_at` and `filed_at`; `unavailable`, `no_event` (`docs/research.md`) |
 | `rules` | see `docs/rules.md` | |
+| `portfolio` | see `docs/portfolios.md` | |
 
 - **quote's `returns` answer "how did it do" without `history`**
   (`docs/signals.md`, "Trailing returns").

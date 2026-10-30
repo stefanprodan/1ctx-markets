@@ -521,3 +521,75 @@ describe("the keys command", () => {
     expect(calls).toEqual([]);
   });
 });
+
+describe("portfolio access", () => {
+  test("is none unless asked, read opens reads, write opens writes", async () => {
+    const w = world();
+    const handle = api(w.m);
+    const call = (path: string, init: RequestInit = {}) =>
+      handle(new Request(`http://markets.test${PREFIX}${path}`, init));
+    const make = async (name: string, portfolio?: string) => {
+      const res = await call("/keys", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...as(ADMIN_KEY) },
+        body: JSON.stringify({ name, ...(portfolio ? { portfolio } : {}) }),
+      });
+      return { status: res.status, body: (await res.json()) as any };
+    };
+    const none = await make("plain");
+    expect(none.body.key.portfolio).toBe("none");
+    const reader = await make("reader", "read");
+    const writer = await make("writer", "write");
+    expect((await make("odd", "admin")).status).toBe(400);
+    const post = (token: string) =>
+      call("/brokers", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...as(token) },
+        body: JSON.stringify({ name: "North" }),
+      });
+    const get = (token: string) => call("/brokers", { headers: as(token) });
+    expect((await get(none.body.token)).status).toBe(403);
+    expect((await get(reader.body.token)).status).toBe(200);
+    expect((await post(reader.body.token)).status).toBe(403);
+    expect((await post(writer.body.token)).status).toBe(201);
+    // a market read never needed it
+    expect(
+      (await call("/rules", { headers: as(none.body.token) })).status,
+    ).toBe(200);
+  });
+
+  test("the keys command passes --portfolio", async () => {
+    const sent: unknown[] = [];
+    const lines: string[] = [];
+    await runKeys(
+      [
+        "--data",
+        join(SECRETS, ".."),
+        "--listen",
+        "127.0.0.1:9",
+        "add",
+        "casey",
+        "--portfolio",
+        "write",
+      ],
+      {
+        fetch: async (_url, init) => {
+          sent.push(JSON.parse(String(init?.body)));
+          return new Response(JSON.stringify({ token: "made-up" }), {
+            status: 201,
+          });
+        },
+        write: (l) => lines.push(l),
+        service: async () => null,
+      },
+    );
+    expect(sent).toEqual([
+      { name: "casey", expiresInDays: null, portfolio: "write" },
+    ]);
+    await expect(
+      runKeys(["add", "casey", "--portfolio", "all"], {
+        service: async () => null,
+      }),
+    ).rejects.toThrow("--portfolio is none, read, write");
+  });
+});

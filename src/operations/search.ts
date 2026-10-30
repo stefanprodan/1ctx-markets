@@ -30,6 +30,10 @@ type Found = {
   name: string | null;
   type: string | null;
   exchange: string;
+  // the exchange in words, from the source's search, when it gives one
+  exchange_name?: string;
+  // a stored listing's, so one fund on several exchanges reads apart
+  currency?: string | null;
   source: string;
   source_symbol: string;
   // the Bucharest exchange's listings only
@@ -43,6 +47,7 @@ const fromStored = (i: Instrument): Found => ({
   name: i.name,
   type: i.type,
   exchange: i.exchange,
+  currency: i.currency,
   source: i.source,
   source_symbol: i.sourceSymbol,
   stored: true,
@@ -153,6 +158,9 @@ async function yahooCandidates(
           name: l.name,
           type: l.type,
           exchange: l.exchange,
+          ...(l.exchangeName === undefined
+            ? {}
+            : { exchange_name: l.exchangeName }),
           source: YAHOO,
           source_symbol: l.sourceSymbol,
           stored: readInstrument(m.db, id) !== null,
@@ -205,9 +213,21 @@ export async function searchAll(
   const seen = new Set<string>();
   // the instrument stores no ISIN, so a stored listing takes the list's
   const isins = new Map(listed.map((c) => [c.id, c.isin]));
-  const known = local.map((c) =>
-    isins.has(c.id) ? { ...c, isin: isins.get(c.id) } : c,
+  // nor the exchange in words, so a stored listing takes Yahoo's
+  const words = new Map(
+    remote.found.flatMap((c) =>
+      c.exchange_name === undefined ? [] : [[c.id, c.exchange_name] as const],
+    ),
   );
+  const known = local.map((c) => {
+    const isin = isins.has(c.id) ? { isin: isins.get(c.id) } : {};
+    const said = words.get(c.id);
+    return {
+      ...c,
+      ...isin,
+      ...(said === undefined ? {} : { exchange_name: said }),
+    };
+  });
   // a Bucharest listing is the exchange's while its source is on
   const all = [...known, ...listed, ...remote.found].filter((c) => {
     if (seen.has(c.id)) return false;

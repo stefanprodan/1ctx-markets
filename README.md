@@ -15,10 +15,11 @@ It works for any exchange Yahoo Finance carries: shares, ETFs,
 indices, futures, currencies and crypto. Nothing is preset: no ticker
 list and no default market, benchmark or currency. An instrument is
 fetched the first time an agent names it and kept in sync while agents
-read it or a rule watches it.
+read it, a rule watches it or a portfolio holds it.
 
-It holds market data and the price rules agents set, nothing else: no
-holdings, orders or portfolio, and it makes no model calls.
+It holds market data, the price rules agents set and the owner's
+portfolios of trades, nothing else: no orders, broker connections,
+dividends or tax, and it makes no model calls.
 
 ## Highlights
 
@@ -27,7 +28,7 @@ holdings, orders or portfolio, and it makes no model calls.
   benchmark, `search` for listings, `movers` for the day's moves and
   average crossings, `screen` to filter and sort a list of symbols on a
   fixed set of fields, `research` and `events` for fundamentals,
-  analysts, earnings and news, and `rules` for price alerts. There is
+  analysts, earnings and news, `rules` for price alerts, and `portfolio` for trades and holdings. There is
   no SQL or query tool.
 - **Signals on live prices.** Moving averages (SMA 50 and 200, EMA 20),
   MACD, RSI 14, ATR 14, the lower Bollinger band, 52-week high, low
@@ -47,6 +48,15 @@ holdings, orders or portfolio, and it makes no model calls.
   earnings report. Each rule fires one alert each time its condition
   turns true. `GET /api/v1/alerts` is a feed a scheduled job can poll,
   answering 304 when nothing is new.
+- **Portfolios.** Trades by broker and positions (cash, funds priced
+  by hand, bonds) entered in the web UI or by an agent with the
+  `portfolio` tool, valued live: average cost, value and profit or
+  loss in each instrument's own currency, totals per currency, and
+  converted into a currency the owner names, every rate answered.
+  Cash kept for buying shows as dry powder. Removals and updates are
+  kept, so a mistake is undone. Trades import from and export to a
+  portfolio CSV export; agent keys read or write portfolios only when
+  the admin allows it.
 - **Units and staleness on every quote.** Each quote carries its unit,
   currency and times, and stale reasons when a source failed or a sync
   is behind. Market hours come from the source, so holidays and clock

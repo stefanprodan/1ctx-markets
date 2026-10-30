@@ -672,6 +672,7 @@ export const paths = {
         "Makes a key for an agent and answers its token, once.",
         "",
         "- An agent key opens what the read scope opens: market data, instruments, rules, the alerts feed and MCP. Never an admin route.",
+        "- `portfolio` is `read` or `write` to open the portfolio routes and the portfolio tool; `none` by default.",
         `- At most ${MAX_KEYS} keys, expired ones included. Revoke one to make another.`,
         "- A name is unique among the keys (`conflict`).",
       ),

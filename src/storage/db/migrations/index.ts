@@ -22,6 +22,9 @@ import { m0016 } from "./0016-keys.ts";
 import { m0017 } from "./0017-dashboard.ts";
 import { m0018 } from "./0018-bvb-listings.ts";
 import { m0019 } from "./0019-edgar.ts";
+import { m0020 } from "./0020-portfolios.ts";
+import { m0021 } from "./0021-stated-on.ts";
+import { m0022 } from "./0022-trade-indexes.ts";
 
 export const MIGRATIONS: readonly Migration[] = [
   m0001,
@@ -43,4 +46,7 @@ export const MIGRATIONS: readonly Migration[] = [
   m0017,
   m0018,
   m0019,
+  m0020,
+  m0021,
+  m0022,
 ];
