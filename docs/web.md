@@ -399,8 +399,8 @@ signed in with the admin key alone.
   closes, so a second press never records the buy twice. While a save
   is on its way the panel stays open; Escape closes an open menu or the
   symbol's list first, the panel only when none is open. A line above the buttons
-  reads back the trade ("Buy 5 NVDA at 213.66 · 1,068.30 USD (≈ 954.52
-  EUR) · Stocks"). An instrument holding's opened row has Buy and Sell,
+  reads back the trade ("Buy 5 KO at 60.00 · 300.00 USD (≈ 270.00 EUR) ·
+  Shares"). An instrument holding's opened row has Buy and Sell,
   which open the panel on it. A position's currency is the currency
   picker. Only the kind is remembered per browser
   (`markets-portfolio-add`). A
