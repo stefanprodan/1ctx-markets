@@ -227,6 +227,10 @@ const holding = object(
     coupon: nnum,
     maturity: nstr,
     dry_powder: bool,
+    sold_today: note(
+      bool,
+      "All of it sold on the quote's day: kept at nothing until then, so the day's change counts the sale.",
+    ),
     note: nstr,
     trade_time: nstr,
     fetched_at: nstr,
