@@ -87,7 +87,10 @@ export function quoteStale(
     )
     .get(instrument.id);
   const pass = lastRun(db, instrument.source, JOBS.quotes, instrument.market);
-  if (failedRun(pass)) reasons.push(STALE.quotesFailed);
+  // a quote the failed pass stored is as fresh as any
+  if (failedRun(pass) && (quote === null || quote.fetchedAt < pass.startedAt)) {
+    reasons.push(STALE.quotesFailed);
+  }
   if (quote === null) reasons.push(STALE.noQuoteYet);
   else if (
     pass?.status === "ok" &&

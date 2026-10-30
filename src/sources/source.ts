@@ -94,6 +94,8 @@ export class Refused extends Error {
 const backsOff = (error: unknown): boolean =>
   !(
     error instanceof DeadlinePassed ||
+    // it never reached the source, and the back-off it met is in force
+    error instanceof Paused ||
     (error instanceof SourceError &&
       (error.phrase === "not found" ||
         error.phrase === "bad request" ||
@@ -118,6 +120,8 @@ export type Queue = {
   run<T>(task: () => Promise<T>, options?: RunOptions): Promise<T>;
   // at shutdown: fails waiting calls, so none goes out after
   close(): void;
+  // for a task that makes more than one call, so none goes out after close
+  isClosed(): boolean;
   // when calls waiting out a back-off resume, null with none waiting
   due(): number | null;
   // null once it ended, whether or not a call waits
@@ -227,6 +231,7 @@ export function queue(clock: Clock, concurrency: number): Queue {
       waiting = [];
       for (const w of left) w.reject(new QueueClosed());
     },
+    isClosed: () => closed,
     due: () => (armed ? until : null),
     backoff: () => (clock.now() < until ? { until, after: pausedBy } : null),
   };

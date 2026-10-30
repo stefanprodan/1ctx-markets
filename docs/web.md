@@ -142,7 +142,10 @@ signed in with the admin key alone.
   **Recent** (the last five instruments opened, symbol and name), and
   the operator's menu (dark theme, sign out) at the foot; it folds to a
   strip on a wide window, which shows the mark, and is a drawer on a
-  phone. The sign-in is the mark beside 1ctx's wordmark over
+  phone. Server status's icon, in the rail and the strip, turns red and
+  pulses (steady under reduced motion) while that page shows a job failing
+  or a source backing off (`troubled`), read once a minute while
+  signed in. The sign-in is the mark beside 1ctx's wordmark over
   **Markets**. The theme follows the system until flipped; a flip is
   kept in `localStorage`.
 - **Copy is short:** sentence case, no "you", "please" or explanations.
@@ -287,8 +290,9 @@ signed in with the admin key alone.
   nothing to fix. A job is a two-line row (its label, then how many
   markets or instruments it covers and how many fail) with its last
   run's time, which never repeats the outcome; opened, it says what the
-  job does, then its failing scopes with error and time, or that all
-  are ok. Failing jobs come first. Missing closes (`owed`) never shows: it only marks a day for the bars job to ask again, so it cannot fail.
+  job does, then its failing scopes with error and time ("AMD: the
+  source failed" when a run names the symbols that failed it), or that
+  all are ok. Failing jobs come first. Missing closes (`owed`) never shows: it only marks a day for the bars job to ask again, so it cannot fail.
 - **Readers are not technical.** A server phrase shows in plain words
   (`plain()`: "rate limited" reads "too many requests"), and a pause
   shows only as a count in the Sources tile, since the job that hit it
@@ -439,8 +443,9 @@ signed in with the admin key alone.
   opening it keeps it tracked and an id never stored is fetched. The
   title is the symbol with the name beside it; a card holds the kind
   and market, the price and day's change, "Open" or "Closed" as the
-  home table says it ("Open · previous close" at the open, until the
-  first live price; a series: "Latest value" and its date) with when it
+  home table says it ("Opening · last close" from the open until the
+  first pass, without the fetch time, then "Open · no trade yet" until
+  the first trade; a series: "Latest value" and its date) with when it
   was fetched, and the 1 week, 1 month, 3 months and year-to-date
   returns from the quote, never recomputed, then how far the price is
   above or below the quote's 200-week average (in points for a series
@@ -534,7 +539,8 @@ signed in with the admin key alone.
   in for, which is the regular session's alone.
 - **1D is a baseline at the previous close**, green above and red
   below, with the previous close dashed and labelled, as a chart site
-  draws a day; the scale keeps the previous close in view. 1D asks
+  draws a day; the scale keeps the previous close in view. A scale
+  number a price tag would cover is left blank (`clearOfTags`). 1D asks
   `extended=true`: pre and post trading are drawn faded, joined to the
   session's first and last close (`extendedLines`, which drops a bar
   sharing the closing trade's time), and the latest price label is the

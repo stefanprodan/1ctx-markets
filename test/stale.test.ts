@@ -117,6 +117,24 @@ describe("staleness", () => {
     expect(quoteStale(db, us)).toEqual(["session check failed"]);
   });
 
+  test("a failed quote pass marks only the quotes it did not store", () => {
+    const { db, us, run, now } = setup();
+    run(JOBS.quotes, "US");
+    const amd = upsertInstrument(db, instrument("US", "AMD"), now());
+    db.query(
+      `insert into quotes (instrument, price, time, source, fetched_at)
+       values (?, 1, ?2, 'yahoo', ?2)`,
+    ).run(amd.id, now());
+    run(JOBS.quotes, "US", new SourceError("source error"));
+    // the failed pass stored NVDA's quote, never AMD's
+    db.query("update quotes set fetched_at = ? where instrument = ?").run(
+      now(),
+      us.id,
+    );
+    expect(quoteStale(db, us)).toEqual([]);
+    expect(quoteStale(db, amd)).toEqual([STALE.quotesFailed]);
+  });
+
   test("a quote pass that answered marks only the instrument left out", () => {
     const { db, us, run, now } = setup();
     run(JOBS.quotes, "US");

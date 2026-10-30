@@ -346,6 +346,8 @@ export function store(
   // its HTTP code, shown beside the words; null when no server answered
   const statusCode = signal<number | null>(null);
   const watchlist = signal<WatchEntry[] | null>(null);
+  // the rail's own read of the status, apart from the page's
+  const pulse = signal<Status | null>(null);
   // FRED's terms ask for its notice wherever its values show
   const attribution = signal<string | null>(null);
   const sparks = signal<ReadonlyMap<string, Spark>>(new Map());
@@ -457,6 +459,13 @@ export function store(
 
   const portfolios = portfolioStore(call, () => session);
 
+  // a quiet read: a failure leaves the last answer, never a sign-out
+  async function checkPulse(): Promise<void> {
+    try {
+      pulse.value = await quiet<Status>(STATUS_PATH);
+    } catch {}
+  }
+
   function loadStatus(): Promise<boolean> {
     current = load(++latest);
     return current;
@@ -484,6 +493,7 @@ export function store(
       batch(() => {
         signedIn.value = true;
         status.value = s.value;
+        pulse.value = s.value;
         watchlist.value = w.value.entries;
         statusAt.value = now();
         statusError.value = null;
@@ -989,6 +999,8 @@ export function store(
     loadInstruments,
     signedIn,
     status,
+    pulse,
+    checkPulse,
     statusAt,
     statusError,
     statusCode,

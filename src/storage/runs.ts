@@ -59,18 +59,31 @@ export function endRun(db: Db, id: number, now: number, rows: number): void {
   ).run(now, rows, id);
 }
 
-// only the fixed phrase is kept, never an error's own text
+export const MAX_NAMED = 3;
+
+// the phrase first, so a reader matching its start still reads it
+export function runError(error: unknown, symbols: readonly string[] = []) {
+  const phrase = phraseOf(error);
+  if (symbols.length === 0) return phrase;
+  const more = symbols.length - MAX_NAMED;
+  const named = symbols.slice(0, MAX_NAMED).join(", ");
+  return `${phrase}: ${named}${more > 0 ? ` +${more} more` : ""}`;
+}
+
+// only the fixed phrase is kept, never an error's own text; the symbols
+// the failure is down to, when there are some, follow it
 export function failRun(
   db: Db,
   id: number,
   now: number,
   error: unknown,
   rows = 0,
+  symbols: readonly string[] = [],
 ): void {
   db.query(
     `update sync_runs set status = 'failed', ended_at = ?, rows = ?, error = ?
      where id = ? and status = 'running'`,
-  ).run(now, rows, phraseOf(error), id);
+  ).run(now, rows, runError(error, symbols), id);
 }
 
 // a run still running at startup was cut by a crash or a kill

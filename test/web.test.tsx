@@ -54,6 +54,7 @@ import {
   axisPrice,
   candles,
   changeText,
+  clearOfTags,
   DEFAULT_SETTINGS,
   DESK,
   drawnRange,
@@ -180,6 +181,7 @@ import {
   switchFailure,
   trackFailed,
   trackLine,
+  troubled,
 } from "../src/web/views/Status.model.ts";
 import { JobDetails, StatusBody } from "../src/web/views/Status.tsx";
 import { validate } from "./helpers/schema.ts";
@@ -809,6 +811,10 @@ describe("the status model", () => {
       "several matches",
     );
     expect(plain("something new")).toBe("something new");
+    expect(plain("source error: AMD")).toBe("AMD: the source failed");
+    expect(plain("source error: AMD, EL +2 more")).toBe(
+      "AMD, EL +2 more: the source failed",
+    );
     const [live, daily, figures] = STATUS.jobs;
     expect(jobLine(live!)).toBe("19 markets");
     expect(jobLine(daily!)).toBe("14 instruments · 7 failing");
@@ -856,6 +862,37 @@ describe("the status model", () => {
     expect(jobTone({ ...running, failing_scopes: 1 })).toBe("failed");
     expect(WATCHLIST.map(trackLine)).toEqual(["SNP:^GSPC", "not found"]);
     expect(WATCHLIST.map(trackFailed)).toEqual([false, true]);
+  });
+
+  test("the rail turns red when a job fails or a source backs off", () => {
+    const ok = { sources: [source("prices")], jobs: [job("prices", "quotes")] };
+    expect(troubled(ok)).toBe(false);
+    expect(
+      troubled({
+        ...ok,
+        jobs: [job("prices", "quotes", { failing_scopes: 1 })],
+      }),
+    ).toBe(true);
+    expect(
+      troubled({
+        ...ok,
+        sources: [
+          source("prices", {
+            backing_off: {
+              until: "2026-10-28T12:05:00Z",
+              after: "rate limited",
+            },
+          }),
+        ],
+      }),
+    ).toBe(true);
+    // a source that is off shows nothing on the page, so it is no alarm
+    expect(
+      troubled({
+        sources: [source("prices", { state: "off" })],
+        jobs: [job("prices", "quotes", { failing_scopes: 1 })],
+      }),
+    ).toBe(false);
   });
 
   test("only sources that are on get a card, failing jobs first", () => {
@@ -1454,12 +1491,22 @@ describe("the instrument model", () => {
     expect(
       priceState(
         detail({
+          fetched_at: "2026-10-27T16:35:00Z",
+          trade_time: "2026-10-27T16:29:58Z",
+        }),
+        NOW,
+      ),
+    ).toBe("Opening · last close");
+    // read since the open, but nothing has traded yet
+    expect(
+      priceState(
+        detail({
           fetched_at: "2026-10-28T09:00:00Z",
           trade_time: "2026-10-27T16:29:58Z",
         }),
         NOW,
       ),
-    ).toBe("Open · previous close · updated 3 h ago");
+    ).toBe("Open · no trade yet · updated 3 h ago");
     const series = detail(
       {
         price: null,
@@ -2153,6 +2200,19 @@ describe("the chart model", () => {
     expect(axisPrice(80684.99)).toBe("80,685");
     expect(axisPrice(1661.62)).toBe("1,661.62");
     expect(axisPrice(5)).toBe("5.00");
+  });
+
+  test("a scale number under a price tag is left blank", () => {
+    // 30 px per unit, the top at 100
+    const y = (p: number) => (100 - p) * 30;
+    expect(clearOfTags([99, 98, 97, 96], [97.9], y)).toEqual([
+      "99.00",
+      "",
+      "97.00",
+      "96.00",
+    ]);
+    expect(clearOfTags([99, 98], [], y)).toEqual(["99.00", "98.00"]);
+    expect(clearOfTags([99], [99], () => null)).toEqual(["99.00"]);
   });
 
   test("the axis says a month or a day with its month, never a bare day", () => {

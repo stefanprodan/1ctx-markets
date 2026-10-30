@@ -260,8 +260,21 @@ describe("quotes", () => {
     ]);
     expect(lastRun(t.db, "yahoo", JOBS.quotes, "CRYPTO")!.status).toBe("ok");
 
-    edit = () => [];
+    // a market whose every symbol was left out names them
+    edit = (result) => {
+      for (const r of result) {
+        if (r.symbol === "C0-USD") r.response = null;
+      }
+      return result;
+    };
     await t.runTo(utc("2026-10-26T18:10"));
+    expect(lastRun(t.db, "yahoo", JOBS.quotes, "CRYPTO")!.error).toBe(
+      "not found: C0-USD",
+    );
+
+    // an empty answer is no one symbol's doing
+    edit = () => [];
+    await t.runTo(utc("2026-10-26T18:15"));
     for (const market of ["US", "CRYPTO"]) {
       expect(lastRun(t.db, "yahoo", JOBS.quotes, market)).toMatchObject({
         status: "failed",
@@ -272,17 +285,111 @@ describe("quotes", () => {
   });
 });
 
+describe("a spark batch one symbol breaks", () => {
+  const broken = {
+    recordedAt: "",
+    status: 500,
+    headers: { "content-type": "application/json" },
+    body: {
+      finance: {
+        result: null,
+        error: {
+          code: "Internal Server Error",
+          description: "Server caught an exception",
+        },
+      },
+    },
+  };
+
+  test("is split to find it: the rest is stored, only its quote is stale", async () => {
+    const s = sim([
+      ...Array.from({ length: 5 }, (_, i) => US(`U${i}`)),
+      CRYPTO("C0-USD"),
+    ]);
+    let bad = false;
+    let chartDown = false;
+    let down = false;
+    const t = setup(utc("2026-10-26T17:58"), (url, now) => {
+      if (url.pathname === "/v7/finance/spark") {
+        if (down || (bad && symbolsOf(url).includes("U2"))) return broken;
+      }
+      if (chartDown && chartSymbol(url) === "U2") return broken;
+      return s.route(url, now);
+    });
+    for (const symbol of ["U0", "U1", "U2", "U3", "U4", "C0-USD"]) {
+      await added(t.ctx, symbol);
+    }
+    await t.runTo(utc("2026-10-26T18:00"));
+    const us = (symbol: string) => readInstrument(t.db, `US:${symbol}`)!;
+
+    bad = true;
+    chartDown = true;
+    let before = t.f.urls.length;
+    await t.runTo(utc("2026-10-26T18:05"));
+    // two calls a level, then the chart for the one that fails alone
+    expect(
+      sparks(t.f.urls.slice(before)).map((u) => u.searchParams.get("symbols")),
+    ).toEqual([
+      "C0-USD,U0,U1,U2,U3,U4",
+      "C0-USD,U0,U1",
+      "U2,U3,U4",
+      "U2,U3",
+      "U4",
+      "U2",
+      "U3",
+    ]);
+    expect(charts(t.f.urls.slice(before)).map(chartSymbol)).toEqual(["U2"]);
+    // the run names the symbol that failed it
+    expect(lastRun(t.db, "yahoo", JOBS.quotes, "US")).toMatchObject({
+      status: "failed",
+      error: "source error: U2",
+      rows: 4,
+    });
+    expect(lastRun(t.db, "yahoo", JOBS.quotes, "CRYPTO")!.status).toBe("ok");
+    expect(readQuote(t.db, "US:U0")!.fetchedAt).toBe(utc("2026-10-26T18:05"));
+    expect(readQuote(t.db, "US:U2")!.fetchedAt).toBe(utc("2026-10-26T18:00"));
+    for (const symbol of ["U0", "U1", "U3", "U4"]) {
+      expect(quoteStale(t.db, us(symbol))).toEqual([]);
+    }
+    expect(quoteStale(t.db, us("U2"))).toEqual(["quote sync failed"]);
+    expect(t.ctx.yahoo.backoff()).toBeNull();
+
+    // the chart answers for it, so the pass ends well
+    chartDown = false;
+    await t.runTo(utc("2026-10-26T18:10"));
+    expect(readQuote(t.db, "US:U2")!.fetchedAt).toBe(utc("2026-10-26T18:10"));
+    expect(lastRun(t.db, "yahoo", JOBS.quotes, "US")).toMatchObject({
+      status: "ok",
+      rows: 5,
+    });
+    expect(quoteStale(t.db, us("U2"))).toEqual([]);
+
+    // both halves failing is an outage: one split, then the batch fails
+    down = true;
+    before = t.f.urls.length;
+    await t.runTo(utc("2026-10-26T18:15"));
+    expect(sparks(t.f.urls.slice(before))).toHaveLength(3);
+    expect(charts(t.f.urls.slice(before))).toHaveLength(0);
+    expect(quoteStale(t.db, us("U0"))).toEqual(["quote sync failed"]);
+    // no one symbol is to blame
+    for (const market of ["US", "CRYPTO"]) {
+      expect(lastRun(t.db, "yahoo", JOBS.quotes, market)!.error).toBe(
+        "source error",
+      );
+    }
+  });
+});
+
 describe("closed markets", () => {
   test("are checked from the last attempt, and quoting restarts once a later session shows", async () => {
     const chart = listed(await recorded("chart-vvsm-de-5d-1d"));
     const spark = await sparkFrom();
     const vvsm = spark.metas.get("VVSM.DE");
     let chartAnswer = chart;
-    let sparkDown = false;
+    let down = false;
     const t = setup(utc("2026-10-25T19:40"), (url) => {
+      if (down) return { recordedAt: "", status: 500, headers: {}, body: "" };
       if (chartSymbol(url) !== null) return chartAnswer;
-      if (sparkDown)
-        return { recordedAt: "", status: 500, headers: {}, body: "" };
       return spark.route(url);
     });
     await added(t.ctx, "VVSM.DE");
@@ -307,18 +414,19 @@ describe("closed markets", () => {
     await t.runTo(utc("2026-10-26T08:59"));
     expect(t.f.urls).toHaveLength(settled + 1);
 
-    // a failed check counts as an attempt: none again before 10:00
-    sparkDown = true;
+    // a failed check, its spark and its chart, counts as an attempt: none
+    // again before 10:00
+    down = true;
     await t.runTo(utc("2026-10-26T09:00"));
-    expect(t.f.urls).toHaveLength(settled + 2);
+    expect(t.f.urls).toHaveLength(settled + 3);
     const instrument = readInstrument(t.db, "XETRA:VVSM")!;
     expect(quoteStale(t.db, instrument)).toEqual(["session check failed"]);
     await t.runTo(utc("2026-10-26T09:59"));
-    expect(t.f.urls).toHaveLength(settled + 2);
+    expect(t.f.urls).toHaveLength(settled + 3);
 
     // Monday's session shows: the bars are refetched in the same tick and
     // Friday's bar is final
-    sparkDown = false;
+    down = false;
     moveSession(
       vvsm,
       "2026-10-26T08:00",
@@ -374,6 +482,44 @@ describe("a closed market's check", () => {
     expect(quoteStale(t.db, readInstrument(t.db, "US:U0")!)).toEqual([
       "no quote yet",
     ]);
+  });
+});
+
+describe("a check that sees the session open", () => {
+  test("quotes its market in the same tick; one that sees none adds no call", async () => {
+    const s = sim([US("U0"), US("U1"), US("U2")]);
+    // as on a holiday, Yahoo still shows Friday's session
+    let holiday = true;
+    const friday = utc("2026-10-23T21:00");
+    const t = setup(utc("2026-10-25T20:00"), (url, now) =>
+      s.route(url, holiday ? friday : now),
+    );
+    for (const symbol of ["U0", "U1", "U2"]) await added(t.ctx, symbol);
+    await t.runTo(utc("2026-10-26T13:29"));
+    let before = t.f.urls.length;
+    let reports = await t.runTo(utc("2026-10-26T13:30"));
+    expect(reports.at(-1)).toMatchObject({ checked: ["US"], quoted: [] });
+    expect(sparks(t.f.urls.slice(before))).toHaveLength(1);
+
+    holiday = false;
+    await t.runTo(utc("2026-10-26T14:29"));
+    before = t.f.urls.length;
+    reports = await t.runTo(utc("2026-10-26T14:30"));
+    expect(reports.at(-1)).toMatchObject({ checked: ["US"], quoted: ["US"] });
+    const asked = sparks(t.f.urls.slice(before));
+    expect(asked).toHaveLength(2);
+    expect(symbolsOf(asked[1]!).sort()).toEqual(["U0", "U1", "U2"]);
+    for (const symbol of ["U0", "U1", "U2"]) {
+      expect(readQuote(t.db, `US:${symbol}`)!.fetchedAt).toBe(
+        utc("2026-10-26T14:30"),
+      );
+      expect(quoteStale(t.db, readInstrument(t.db, `US:${symbol}`)!)).toEqual(
+        [],
+      );
+    }
+    // the period's next turn quotes it, never the ticks between
+    reports = await t.runTo(utc("2026-10-26T14:35"));
+    expect(reports.map((r) => r.quoted)).toEqual([[], [], [], [], ["US"]]);
   });
 });
 
@@ -1325,8 +1471,9 @@ describe("a simulated weekday", () => {
       ...Array.from({ length: 10 }, (_, i) => BVB(`B${i}`)),
       ...Array.from({ length: 5 }, (_, i) => CRYPTO(`C${i}-USD`)),
     ];
-    // one call a turn while 20 or fewer symbols are due, two above
-    expect(await monday(listings)).toEqual({ sparks: 391, charts: 40 });
+    // one call a turn while 20 or fewer symbols are due, two above, and
+    // one at 08:00 and 13:30 for the markets a check saw open
+    expect(await monday(listings)).toEqual({ sparks: 391 + 2, charts: 40 });
   });
 });
 

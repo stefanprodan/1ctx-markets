@@ -93,6 +93,22 @@
     background: var(--card);
     color: var(--fg);
   }
+  /* something on the status page is failing; a slow pulse draws the
+     eye without flashing */
+  .rail-icon-failed {
+    color: var(--failed);
+    animation: rail-pulse 2s ease-in-out infinite;
+  }
+  @keyframes rail-pulse {
+    50% {
+      opacity: 0.35;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .rail-icon-failed {
+      animation: none;
+    }
+  }
   /* Recent's head: quiet since it is no link, and no taller on touch
      since it is no tap target */
   .rail-label {

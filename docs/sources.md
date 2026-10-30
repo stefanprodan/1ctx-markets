@@ -24,8 +24,9 @@ Each provider's own behaviour is in its doc: `docs/yahoo.md`,
   for `RATE_LIMIT_BACKOFF_MS` (5 minutes), any other failure for
   `FAILURE_BACKOFF_MS` (30 seconds).
 - **Some failures never back off** (`backsOff`): `not found`, `bad
-  request`, a malformed answer that parsed as JSON, and a passed
-  deadline. An unknown symbol, a wrong request or one odd answer is no
+  request`, a malformed answer that parsed as JSON, a passed
+  deadline, and a call refused for a back-off already in force. An
+  unknown symbol, a wrong request or one odd answer is no
   sign the source is unwell, so one symbol never pauses the rest.
   Every answer parses inside its queued call, so a body that is not
   the source's format at all (`Unreadable`: a proxy or consent page)
@@ -36,7 +37,8 @@ Each provider's own behaviour is in its doc: `docs/yahoo.md`,
   run would hold off the job's own retry.
 - **`close()` fails every waiting call,** a limiter's parked one
   included, so nothing goes out after shutdown begins
-  (`QueueClosed`, `docs/config.md`).
+  (`QueueClosed`, `docs/config.md`); a queued task that makes several
+  calls checks `isClosed()` before each.
 - **One fetch-and-store per instrument at a time** (`exclusive()` in
   `src/runtime/lock.ts`), held across the call and its write, so an
   answer fetched before another write never lands after it. Every

@@ -78,10 +78,15 @@ export function priceState(d: Detail, now: number): string {
       : `Latest value · ${when}`;
   }
   if (q.session.state !== "open") return `Closed · ${when}`;
-  // until the first live price after the open, the price is yesterday's
+  // until the first pass after the open, the price is the last close and
+  // its fetch time (often last night) says nothing useful; a thin listing
+  // fetched since with no trade yet still shows the price is being read
   const traded = Date.parse(q.trade_time ?? q.fetched_at ?? "");
   const start = Date.parse(q.session.start ?? "");
-  return traded < start ? `Open · previous close · ${when}` : `Open · ${when}`;
+  if (!(traded < start)) return `Open · ${when}`;
+  return Date.parse(q.fetched_at ?? "") >= start
+    ? `Open · no trade yet · ${when}`
+    : "Opening · last close";
 }
 
 // a failed read's own words are for agents; the page says it plainly

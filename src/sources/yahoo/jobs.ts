@@ -179,11 +179,19 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
       ];
       const batches = await yahoo.sparkAll(symbols);
       const failed = new Map<string, unknown>();
+      const alone = new Set<string>();
       const missing = new Map<string, Phrase>();
       const answers: SparkAnswer[] = [];
       for (const b of batches) {
         if (!b.answer) {
           for (const s of b.symbols) failed.set(s, b.error);
+          if (b.alone) alone.add(b.symbols[0]!);
+          if (b.symbols.length === 1) {
+            log.warn("yahoo quote failed", {
+              symbol: b.symbols[0]!,
+              error: phraseOf(b.error),
+            });
+          }
           continue;
         }
         answers.push(b.answer);
@@ -211,6 +219,8 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
           }
         });
         const quotes = checked.flatMap((a) => storeQuotes(db, a));
+        // an answer with no quote at all is no one symbol's doing
+        const someAnswered = checked.some((a) => a.quotes.length > 0);
         const now = clock.now();
         work.forEach((w, k) => {
           const mine = new Set(w.instruments.map((i) => i.id));
@@ -218,12 +228,33 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
           // the run fails on a failed call, or when no quote came back
           const symbols = w.instruments.map((i) => i.sourceSymbol);
           const none = symbols.every((s) => missing.has(s));
+          // a call that failed whole has no one symbol to blame
+          const whole = symbols.find((s) => failed.has(s) && !alone.has(s));
+          const own = symbols.filter((s) => alone.has(s));
           const error =
-            symbols.map((s) => failed.get(s)).find((e) => e !== undefined) ??
-            (none ? new SourceError(missing.get(symbols[0]!)!) : undefined);
+            whole !== undefined
+              ? failed.get(whole)
+              : own.length > 0
+                ? failed.get(own[0]!)
+                : none
+                  ? new SourceError(missing.get(symbols[0]!)!)
+                  : undefined;
+          const phrase = phraseOf(error);
+          const blamed =
+            whole !== undefined
+              ? []
+              : own.length > 0
+                ? own.filter((s) => phraseOf(failed.get(s)) === phrase)
+                : someAnswered
+                  ? symbols.filter((s) => missing.get(s) === phrase)
+                  : [];
+          const shown = new Map(
+            w.instruments.map((i) => [i.sourceSymbol, i.symbol]),
+          );
+          const named = blamed.map((s) => shown.get(s) ?? s);
           if (error === undefined) endRun(db, ids[k]!, now, rows);
           else {
-            failRun(db, ids[k]!, now, error, rows);
+            failRun(db, ids[k]!, now, error, rows, named);
             log.warn("yahoo quotes failed", {
               market: w.market,
               job: w.job,
@@ -345,10 +376,24 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
       first &&
       (lastPassAt(db, SOURCE, [JOBS.quotes, JOBS.check], market) ?? -1) >=
         slot * quoteEveryMs;
-    const work = plan(tracked(), now, quotePass, passed);
+    const markets = tracked();
+    const work = plan(markets, now, quotePass, passed);
     if (work.length > 0) await sparkPass(work);
+    // a check that saw the session open quotes its market now, not a
+    // period later; the checked ones again, so no quote predates the pass
+    const opened: Work[] = [];
+    for (const w of work) {
+      if (w.job !== JOBS.check) continue;
+      const all = markets.get(w.market) ?? [];
+      if (all.length <= w.instruments.length) continue;
+      if (!isQuoted(w.market, readSession(db, w.market), clock.now())) continue;
+      opened.push({ market: w.market, job: JOBS.quotes, instruments: all });
+    }
+    if (opened.length > 0) await sparkPass(opened);
     return {
-      quoted: work.filter((w) => w.job === JOBS.quotes).map((w) => w.market),
+      quoted: [...work, ...opened]
+        .filter((w) => w.job === JOBS.quotes)
+        .map((w) => w.market),
       checked: work.filter((w) => w.job === JOBS.check).map((w) => w.market),
     };
   }
