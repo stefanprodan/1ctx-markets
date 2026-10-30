@@ -120,8 +120,8 @@ describe("a run's error", () => {
     const e = new SourceError("source error", "HTTP 500");
     expect(runError(e)).toBe("source error");
     expect(runError(e, ["AMD"])).toBe("source error: AMD");
-    expect(runError(e, ["AMD", "EL", "SMCI", "A", "B"])).toBe(
-      "source error: AMD, EL, SMCI +2 more",
+    expect(runError(e, ["AMD", "EL", "KO", "A", "B"])).toBe(
+      "source error: AMD, EL, KO +2 more",
     );
     expect(runError(new QueueClosed(), [])).toBe(STOPPED);
   });
