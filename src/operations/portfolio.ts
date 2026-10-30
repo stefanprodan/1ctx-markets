@@ -8,7 +8,7 @@ import { type Instrument, readInstrument } from "../market/instruments.ts";
 import { readQuote } from "../market/quotes.ts";
 import { markRead } from "../market/tracking.ts";
 import { localDate } from "../market/zone.ts";
-import { isCurrency, missingPairs, rates } from "../portfolios/fx.ts";
+import { missingPairs, rates } from "../portfolios/fx.ts";
 import {
   type Broker,
   brokerByName,
@@ -65,6 +65,7 @@ import {
   statedOf,
 } from "../portfolios/value.ts";
 import { errorFields } from "../runtime/log.ts";
+import { inCirculation, isCurrencyCode } from "../shared/currencies.ts";
 import { FRED } from "../sources/ids.ts";
 import type { Db } from "../storage/db/index.ts";
 import {
@@ -227,22 +228,26 @@ const optionalAmount = (value: unknown, name: string): number | null =>
 
 export function currencyArg(value: unknown, name = "currency"): string | null {
   if (value === undefined || value === null) return null;
-  if (typeof value === "string" && isCurrency(value.trim())) {
+  if (typeof value === "string" && isCurrencyCode(value.trim())) {
     return value.trim();
   }
-  throw new ArgError(`${name} must be a currency code such as the listing's`);
+  throw new ArgError(
+    `${name} must be an ISO 4217 currency code in circulation, such as EUR, or the listing's own (GBp)`,
+  );
 }
 
-// a code named for a conversion: three capitals only
+// a code named for a conversion: an ISO 4217 currency in circulation
 export function namedCurrency(
   value: unknown,
   name = "currency",
 ): string | null {
   if (value === undefined || value === null) return null;
-  if (typeof value === "string" && /^[A-Z]{3}$/.test(value.trim())) {
+  if (typeof value === "string" && inCirculation(value.trim())) {
     return value.trim();
   }
-  throw new ArgError(`${name} must be a three-letter currency code`);
+  throw new ArgError(
+    `${name} must be an ISO 4217 currency code in circulation, such as EUR`,
+  );
 }
 
 export function ref(value: unknown, name = "portfolio"): Ref | null {
@@ -1234,7 +1239,7 @@ export async function updatePosition(
     if (old.kind === "manual" && change.amount !== undefined) {
       return {
         error: "bad_arguments",
-        message: "a hand-priced holding takes units and a price",
+        message: "a fund takes units and a NAV per unit",
       };
     }
     if (
@@ -1418,6 +1423,10 @@ export async function createPortfolio(m: Markets, body: unknown) {
   const f = fields(body, ["name"]);
   const name = nameArg(f.name);
   const done = await m.writer.write((db): number | Failure => {
+    // every total converts into it, and none is assumed for the owner
+    if (displayCurrency(db) === null) {
+      return conflict("Set a display currency first.");
+    }
     if (portfolioByName(db, name) !== null) {
       return conflict("a portfolio has this name");
     }
@@ -1507,10 +1516,13 @@ export const settingsItem = (db: Db) => ({
 
 export async function saveSettings(m: Markets, body: unknown) {
   const f = fields(body, ["display_currency"]);
-  if (!("display_currency" in f)) {
-    throw new ArgError("display_currency is a currency code or null");
-  }
+  // it can be changed, never cleared
   const c = namedCurrency(f.display_currency, "display_currency");
+  if (c === null) {
+    throw new ArgError(
+      "display_currency must be an ISO 4217 currency code in circulation, such as EUR",
+    );
+  }
   await m.writer.write((db) => setDisplayCurrency(db, c, m.clock.now()));
   return settingsItem(m.db);
 }

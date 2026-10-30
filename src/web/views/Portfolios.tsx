@@ -4,13 +4,16 @@
 // and trades, an add form short enough for a phone, import and settings.
 
 import { type Signal, useSignal } from "@preact/signals";
+import type { ComponentChildren } from "preact";
 import { useEffect, useId, useMemo, useRef } from "preact/hooks";
+import { currencyName, findCurrencies } from "../../shared/currencies.ts";
 import type {
   BrokerRow,
   Exposure,
   Holding,
   Holdings,
   Imported,
+  Listing,
   PortfolioStore,
   Total,
   TradeRow,
@@ -23,7 +26,7 @@ import { didNotLoad, Page } from "../ui/Page.tsx";
 import { Rows, RowsCard, RowsLine, RowsNote, RowsTitle } from "../ui/Rows.tsx";
 import { RowsOpen } from "../ui/RowsOpen.tsx";
 import { searcher } from "./Dashboard.model.ts";
-import { symbolOf } from "./Instruments.model.ts";
+import { kindOf, symbolOf } from "./Instruments.model.ts";
 import {
   ADD_KEY,
   amount,
@@ -32,26 +35,33 @@ import {
   costLine,
   currencies,
   day,
+  dryPowderFor,
+  dryPowders,
   EXPOSURE_TABS,
   type ExposureTab,
+  heldAt,
   holdingSub,
   holdingTitle,
   IMPORT_KINDS,
   importLine,
   importStatus,
+  largestFirst,
   listingWords,
   missingWords,
   percent,
   price,
   quantity,
   type Remembered,
+  ranked,
   rateLine,
   readRemembered,
   shareLabel,
+  shownIn,
   splitOf,
   staleWords,
   today,
   tradeLine,
+  tradeMoney,
   tradeSub,
   tradeTitle,
   typed,
@@ -78,13 +88,28 @@ function remember(r: Remembered): void {
 
 // ---- totals ---------------------------------------------------------------
 
-function TotalCard({ t, label }: { t: Total; label?: string }) {
+function TotalCard({
+  t,
+  label,
+  wide,
+  foot,
+  noSplit,
+}: {
+  t: Total;
+  label?: string;
+  wide?: boolean;
+  foot?: string[];
+  noSplit?: boolean;
+}) {
   const pl = change(t.pl, t.currency);
   const plp = percent(t.pl_percent);
   const day = change(t.day_change, t.currency);
   const split = splitOf(t);
   return (
-    <section class="card pf-total" aria-label={`Total in ${t.currency}`}>
+    <section
+      class={`card pf-total${wide ? " pf-total-wide" : ""}`}
+      aria-label={`Total in ${t.currency}`}
+    >
       <span class="label">{label ?? t.currency}</span>
       <span class="pf-big">{amount(t.value, t.currency)}</span>
       <div class="pf-total-lines">
@@ -103,7 +128,7 @@ function TotalCard({ t, label }: { t: Total; label?: string }) {
           </span>
         )}
       </div>
-      {split.length > 1 && (
+      {!noSplit && split.length > 1 && (
         <>
           <div
             class="pf-split"
@@ -129,6 +154,13 @@ function TotalCard({ t, label }: { t: Total; label?: string }) {
           </ul>
         </>
       )}
+      {foot && foot.length > 0 && (
+        <p class="pf-rates">
+          {foot.map((f) => (
+            <span key={f}>{f}</span>
+          ))}
+        </p>
+      )}
     </section>
   );
 }
@@ -139,21 +171,23 @@ function Totals({ h }: { h: Holdings }) {
     .map((r) => rateLine(r))
     .filter((r): r is string => r !== null);
   return (
-    <div class="pf-totals">
+    <>
       {h.converted !== null && (
-        <div class="pf-converted">
-          <TotalCard t={h.converted} label={`All in ${h.converted.currency}`} />
-          {(rates.length > 0 || h.converted.missing.length > 0) && (
-            <p class="pf-rates">
-              {[...rates, ...h.converted.missing.map(missingWords)].join(" · ")}
-            </p>
-          )}
-        </div>
+        <TotalCard
+          t={h.converted}
+          label={`All in ${h.converted.currency}`}
+          wide
+          foot={[...rates, ...h.converted.missing.map(missingWords)]}
+        />
       )}
-      {h.totals.map((t) => (
-        <TotalCard key={t.currency} t={t} />
-      ))}
-    </div>
+      <div class="pf-totals">
+        {h.totals.map((t) => (
+          // the converted total carries the one split, so it is not
+          // repeated per currency
+          <TotalCard key={t.currency} t={t} noSplit={h.converted !== null} />
+        ))}
+      </div>
+    </>
   );
 }
 
@@ -213,7 +247,7 @@ export function PositionEdit({
       )}
       <label class="field">
         <span class="label">
-          {manual ? "Price" : h.kind === "bond" ? "Face" : "Amount"}
+          {manual ? "NAV" : h.kind === "bond" ? "Face" : "Amount"}
         </span>
         <input
           inputMode="decimal"
@@ -369,7 +403,15 @@ export function Purchases({ store, h }: { store: PortfolioStore; h: Holding }) {
   );
 }
 
-function HoldingRow({ store, h }: { store: PortfolioStore; h: Holding }) {
+function HoldingRow({
+  store,
+  h,
+  onTrade,
+}: {
+  store: PortfolioStore;
+  h: Holding;
+  onTrade: (s: AddStart) => void;
+}) {
   const open = useSignal(false);
   const pl = percent(h.pl_percent);
   const line = costLine(h);
@@ -386,23 +428,42 @@ function HoldingRow({ store, h }: { store: PortfolioStore; h: Holding }) {
           <RowsTitle
             name={
               <>
-                <span class={h.kind === "holding" ? "ins-symbol" : "cut"}>
-                  {holdingTitle(h)}
-                </span>
+                {h.kind === "holding" ? (
+                  <>
+                    <span class="ins-symbol">{holdingTitle(h)}</span>
+                    <span class="ins-name cut">{h.name ?? ""}</span>
+                  </>
+                ) : (
+                  <span class="cut">{holdingTitle(h)}</span>
+                )}
                 {h.stale.length > 0 && (
                   <span class="tag">{staleWords(h.stale.at(-1)!)}</span>
                 )}
               </>
             }
-            sub={holdingSub(h)}
-            lines={line ? [{ text: line }] : undefined}
+            sub={[
+              h.kind === "holding"
+                ? h.type
+                  ? kindOf(h.type)
+                  : null
+                : holdingSub(h),
+              line,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
           />
           <span class="pf-row-end">
             <span class="pf-value">{amount(h.value, h.currency)}</span>
-            {shown && shown.value !== null && shown.currency !== h.currency && (
-              <span class="pf-dim">{amount(shown.value, shown.currency)}</span>
-            )}
-            {pl.text && <span class={tone(pl.dir)}>{pl.text}</span>}
+            <span class="pf-row-under">
+              {shown &&
+                shown.value !== null &&
+                shown.currency !== h.currency && (
+                  <span class="pf-dim pf-row-shown">
+                    {amount(shown.value, shown.currency)}
+                  </span>
+                )}
+              {pl.text && <span class={tone(pl.dir)}>{pl.text}</span>}
+            </span>
           </span>
         </span>
       }
@@ -410,7 +471,7 @@ function HoldingRow({ store, h }: { store: PortfolioStore; h: Holding }) {
       <dl class="pf-facts">
         {h.price !== null && (
           <div>
-            <dt>{h.priced === "hand" ? "Hand price" : "Price"}</dt>
+            <dt>{h.priced === "hand" ? "NAV" : "Price"}</dt>
             <dd>
               {price(h.price, h.kind === "bond" ? null : h.currency)}
               {h.kind === "bond" ? "%" : ""}
@@ -469,6 +530,31 @@ function HoldingRow({ store, h }: { store: PortfolioStore; h: Holding }) {
           </tbody>
         </table>
       )}
+      {h.kind === "holding" && h.id !== null && (
+        <div class="pf-row-actions">
+          {(["buy", "sell"] as const).map((side) => (
+            <button
+              key={side}
+              type="button"
+              class="btn btn-small"
+              onClick={() =>
+                onTrade({
+                  symbol: h.id!,
+                  side,
+                  ...(h.parts.length === 1
+                    ? {
+                        portfolio: h.parts[0]!.portfolio,
+                        broker: h.parts[0]!.broker,
+                      }
+                    : {}),
+                })
+              }
+            >
+              {side === "buy" ? "Buy" : "Sell"}
+            </button>
+          ))}
+        </div>
+      )}
       {h.kind !== "holding" && h.position !== null && (
         <PositionActions store={store} h={h} />
       )}
@@ -479,17 +565,26 @@ function HoldingRow({ store, h }: { store: PortfolioStore; h: Holding }) {
   );
 }
 
-function HoldingsCard({ store, h }: { store: PortfolioStore; h: Holdings }) {
+function HoldingsCard({
+  store,
+  h,
+  onTrade,
+}: {
+  store: PortfolioStore;
+  h: Holdings;
+  onTrade: (s: AddStart) => void;
+}) {
   return (
     <RowsCard label="Holdings" count={String(h.holdings.length)}>
       {h.holdings.length === 0 ? (
         <RowsNote>Nothing held yet.</RowsNote>
       ) : (
-        h.holdings.map((x) => (
+        largestFirst(h.holdings).map((x) => (
           <HoldingRow
             key={`${x.kind}/${x.id ?? ""}/${x.position ?? ""}`}
             store={store}
             h={x}
+            onTrade={onTrade}
           />
         ))
       )}
@@ -533,22 +628,20 @@ function ExposureCard({ h }: { h: Holdings }) {
           </div>
         </div>
       }
+      menus
       action={
         h.exposure.length > 1 ? (
-          <select
-            class="pf-select-small"
-            aria-label="Currency"
+          <Dropdown
+            label="Currency"
             value={String(which.value)}
-            onChange={(ev) => {
-              which.value = Number(ev.currentTarget.value);
+            options={h.exposure.map((x, k) => ({
+              value: String(k),
+              text: x.currency,
+            }))}
+            onPick={(v) => {
+              which.value = Number(v);
             }}
-          >
-            {h.exposure.map((x, k) => (
-              <option key={x.currency} value={String(k)}>
-                {x.currency}
-              </option>
-            ))}
-          </select>
+          />
         ) : undefined
       }
     >
@@ -579,15 +672,23 @@ function TradeItem({ store, t }: { store: PortfolioStore; t: TradeRow }) {
       <RowsTitle
         name={
           <>
-            <span class={t.side === "buy" ? "pf-buy" : "pf-sell"}>
-              {tradeTitle(t)}
+            <span
+              class={`pf-side-word ${t.side === "buy" ? "pf-buy" : "pf-sell"}`}
+            >
+              {t.side === "buy" ? "Buy" : "Sell"}
             </span>
+            <span class="ins-symbol">{symbolOf(t.symbol)}</span>
             {removed && <span class="tag">Removed</span>}
           </>
         }
-        sub={tradeLine(t)}
-        lines={[{ text: tradeSub(t) }]}
+        sub={
+          <>
+            <span class="pf-trade-size-sub">{tradeLine(t)} · </span>
+            {tradeSub(t)}
+          </>
+        }
       />
+      <span class="pf-trade-size">{tradeLine(t)}</span>
       <span class="rows-end">
         {error.value && (
           <span class="rows-end-words rows-bad" role="alert">
@@ -636,13 +737,14 @@ function TradeItem({ store, t }: { store: PortfolioStore; t: TradeRow }) {
         ) : (
           <button
             type="button"
-            class="btn btn-small"
+            class="btn-icon pf-trade-remove"
             aria-label={`Remove ${tradeTitle(t)}`}
+            title="Remove"
             onClick={() => {
               asking.value = true;
             }}
           >
-            Remove
+            <Icon name="trash" size={14} />
           </button>
         )}
       </span>
@@ -718,21 +820,23 @@ export function FoundList({
   onPick: (c: Candidate) => void;
 }) {
   return (
-    <ul class="menu pf-found">
-      {found.slice(0, 8).map((c) => (
-        <li key={c.id}>
-          <button
-            type="button"
-            class="menu-item"
-            onMouseDown={(ev) => ev.preventDefault()}
-            onClick={() => onPick(c)}
-          >
-            <span class="ins-symbol">{symbolOf(c.id)}</span>
-            <span class="cut pf-dim">{c.name ?? ""}</span>
-            <span class="pf-found-where">{listingWords(c)}</span>
-          </button>
-        </li>
-      ))}
+    <ul class="menu pf-found" id="pf-symbol-found">
+      {ranked(found)
+        .slice(0, 8)
+        .map((c) => (
+          <li key={c.id}>
+            <button
+              type="button"
+              class="menu-item"
+              onMouseDown={(ev) => ev.preventDefault()}
+              onClick={() => onPick(c)}
+            >
+              <span class="ins-symbol">{symbolOf(c.id)}</span>
+              <span class="cut pf-dim">{c.name ?? ""}</span>
+              <span class="pf-found-where">{listingWords(c)}</span>
+            </button>
+          </li>
+        ))}
     </ul>
   );
 }
@@ -741,20 +845,18 @@ export function SymbolPick({
   value,
   onPick,
   onEdit,
-  currency,
+  autoFocus,
 }: {
   value: Signal<string>;
   onPick: (c: Candidate) => void;
   // typed over a pick: the picked listing no longer applies
   onEdit: () => void;
-  // the picked listing's, once read
-  currency?: string | null;
+  autoFocus?: boolean;
 }) {
   const found = useSignal<Candidate[] | null>(null);
-  const picked = useSignal<Candidate | null>(null);
   const open = useSignal(false);
   // the symbol shown; value holds the picked listing's id, sent as is
-  const text = useSignal(value.value);
+  const text = useSignal(value.value === "" ? "" : symbolOf(value.value));
   const finder = useMemo(
     () =>
       searcher(
@@ -778,11 +880,23 @@ export function SymbolPick({
         autocomplete="off"
         spellcheck={false}
         autocapitalize="characters"
-        placeholder="AAPL"
+        placeholder="Symbol or name"
+        role="combobox"
+        aria-autocomplete="list"
+        aria-controls="pf-symbol-found"
+        aria-expanded={open.value && (found.value ?? []).length > 0}
+        onKeyDown={(ev) => {
+          if (ev.key === "Escape") open.value = false;
+        }}
+        ref={(el) => {
+          if (autoFocus && el && !el.dataset.focused) {
+            el.dataset.focused = "1";
+            el.focus({ preventScroll: true });
+          }
+        }}
         onInput={(ev) => {
           text.value = ev.currentTarget.value;
           value.value = text.value;
-          picked.value = null;
           onEdit();
           open.value = true;
           finder.ask(text.value);
@@ -793,21 +907,12 @@ export function SymbolPick({
           }, 150)
         }
       />
-      {picked.value && (
-        <span class="pf-picked">
-          {listingWords({
-            ...picked.value,
-            currency: picked.value.currency ?? currency,
-          })}
-        </span>
-      )}
       {open.value && (found.value ?? []).length > 0 && (
         <FoundList
           found={found.value!}
           onPick={(c) => {
             value.value = c.id;
             text.value = symbolOf(c.id);
-            picked.value = c;
             open.value = false;
             onPick(c);
           }}
@@ -830,19 +935,27 @@ function Field({
   placeholder,
   type = "text",
   decimal,
+  after,
+  onEdit,
 }: {
   label: string;
   value: Signal<string>;
   placeholder?: string;
   type?: "text" | "date";
   decimal?: boolean;
+  onEdit?: () => void;
+  // a control beside the label, such as All on a sell
+  after?: ComponentChildren;
 }) {
   const id = useId();
   return (
     <div class="field">
-      <label class="label" for={id}>
-        {label}
-      </label>
+      <span class="pf-field-head">
+        <label class="label" for={id}>
+          {label}
+        </label>
+        {after}
+      </span>
       {type === "date" ? (
         <input
           id={id}
@@ -862,6 +975,7 @@ function Field({
           autocomplete="off"
           onInput={(ev) => {
             value.value = ev.currentTarget.value;
+            onEdit?.();
           }}
         />
       )}
@@ -869,99 +983,199 @@ function Field({
   );
 }
 
-function Pick({
+// a labelled menu for a form, the app's own rather than a native select
+function FormPick({
   label,
   value,
   options,
-  none,
 }: {
   label: string;
   value: Signal<string>;
-  options: { value: string; label: string }[];
-  none?: string;
+  options: { value: string; text: string }[];
 }) {
   return (
-    <label class="field">
+    <div class="field pf-form-pick">
       <span class="label">{label}</span>
-      <select
+      <Dropdown
+        label={label}
         value={value.value}
-        onChange={(ev) => {
-          value.value = ev.currentTarget.value;
+        options={options}
+        onPick={(v) => {
+          value.value = v ?? "";
         }}
-      >
-        {none !== undefined && <option value="">{none}</option>}
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-    </label>
+      />
+    </div>
   );
 }
 
 const inCurrency = (label: string, c: string | null): string =>
   c ? `${label} (${c})` : label;
 
-// the currencies a trade may be paid in: those held, the display one
+// the currencies a trade may be paid in: the listing's, those held, the
+// display one
 function paidChoices(store: PortfolioStore, listing: string | null) {
   const codes = new Set(currencies(store.holdings.value));
   const shown = store.overview.value?.display_currency;
   if (shown) codes.add(shown);
   if (listing) codes.delete(listing);
-  return [...codes].sort().map((c) => ({ value: c, label: c }));
+  return [listing ?? "", ...[...codes].sort()];
 }
+
+// a trade to start from: Buy or Sell on a holding's row
+export type AddStart = {
+  symbol: string;
+  side: "buy" | "sell";
+  portfolio?: string;
+  broker?: string | null;
+};
 
 export function AddForm({
   store,
   onDone,
+  start,
+  saving,
 }: {
   store: PortfolioStore;
   onDone: () => void;
+  start?: AddStart | null;
+  // the panel's, so it stays open while a save is on its way
+  saving?: Signal<boolean>;
 }) {
   const kept = remembered();
   const o = store.overview.value;
   const portfolios = o?.portfolios ?? [];
   const brokers = o?.brokers ?? [];
-  const firstPortfolio =
-    portfolios.find((p) => p.id === kept.portfolio)?.id ??
-    store.portfolio.value ??
-    portfolios[0]?.id ??
-    null;
-  const kind = useSignal<Remembered["kind"]>(kept.kind);
-  const side = useSignal<Remembered["side"]>(kept.side);
-  const portfolio = useSignal(
-    firstPortfolio === null ? "" : String(firstPortfolio),
-  );
-  const broker = useSignal(
-    kept.broker !== null && brokers.some((b) => b.name === kept.broker)
-      ? kept.broker
-      : "",
-  );
-  const symbol = useSignal("");
+  const byName = (n: string | undefined) =>
+    portfolios.find((p) => p.name === n)?.id;
+  // the tab on, else nothing: a wrong portfolio picked silently is worse
+  // than one asked for
+  const tab = store.portfolio.value;
+  const kind = useSignal<Remembered["kind"]>(start ? "trade" : kept.kind);
+  const side = useSignal<"buy" | "sell">(start?.side ?? "buy");
+  const portfolio = useSignal(String(byName(start?.portfolio) ?? tab ?? ""));
+  const broker = useSignal(start?.broker ?? "");
+  const symbol = useSignal(start?.symbol ?? "");
   const qty = useSignal("");
   const px = useSignal("");
+  // the price came from the live quote, so a new pick may replace it
+  const pxLive = useSignal(false);
+  const byTotal = useSignal(false);
   const fees = useSignal("");
   const date = useSignal(today());
+  const note = useSignal("");
   const name = useSignal("");
   const amountText = useSignal("");
   const currency = useSignal("");
-  // a trade's: the listing's own unless another is picked
-  const listing = useSignal<string | null>(null);
+  const picked = useSignal<Listing | null>(null);
   const paid = useSignal("");
   const cost = useSignal("");
   const coupon = useSignal("");
   const maturity = useSignal("");
   const dry = useSignal(false);
-  const busy = useSignal(false);
+  const fromDry = useSignal(false);
+  const more = useSignal(false);
+  const own = useSignal(false);
+  const busy = saving ?? own;
   const error = useSignal<string | null>(null);
+  // the trade saved but its dry powder step failed: saving again would
+  // record the trade twice, so the form only closes from here
+  const half = useSignal(false);
+  // the sell's quantity is the All figure: sent as "all", so the server
+  // sells what is sellable on the trade's date
+  const sellAll = useSignal(false);
+  // a price filled from the quote is in the listing's currency: paid in
+  // another, the server converts the live price itself
+  useEffect(() => {
+    if (pxLive.value) {
+      px.value = "";
+      pxLive.value = false;
+    }
+  }, [paid.value]);
+  // every portfolio's holdings, whatever the page filters on
+  const all = useSignal<Holdings | null>(null);
+  useEffect(() => {
+    void store.everything().then((h) => {
+      all.value = h;
+    });
+  }, [store]);
+  const pick = (id: string) => {
+    picked.value = null;
+    void store.listing(id).then((l) => {
+      if (symbol.value !== id || l === null) return;
+      picked.value = l;
+      if (
+        (px.value === "" || pxLive.value) &&
+        l.price !== null &&
+        !paid.value &&
+        !byTotal.value
+      ) {
+        px.value = String(l.price);
+        pxLive.value = true;
+      }
+      // where it is held already says where more of it goes
+      const parts = heldAt(all.value ?? store.holdings.value, id);
+      if (parts.length === 1) {
+        const pid = byName(parts[0]!.portfolio);
+        if (pid !== undefined) portfolio.value = String(pid);
+        if (parts[0]!.broker) broker.value = parts[0]!.broker;
+      }
+    });
+  };
+  useEffect(() => {
+    if (start?.symbol) pick(start.symbol);
+  }, []);
+  // the holdings arrive after a start pick: place it once they do
+  useEffect(() => {
+    if (!all.value || !start?.symbol || start.portfolio) return;
+    const parts = heldAt(all.value, start.symbol);
+    if (parts.length === 1) {
+      const pid = byName(parts[0]!.portfolio);
+      if (pid !== undefined) portfolio.value = String(pid);
+    }
+  }, [all.value]);
   if (portfolios.length === 0) {
     return (
-      <div class="card pf-panel">
+      <div class="pf-panel">
         <RowsNote>Make a portfolio first, in Settings.</RowsNote>
       </div>
     );
   }
+  const listingCur = picked.value?.currency ?? null;
+  const cur = paid.value || listingCur;
+  const portfolioName =
+    portfolios.find((p) => String(p.id) === portfolio.value)?.name ?? null;
+  const parts =
+    kind.value === "trade" && picked.value
+      ? heldAt(all.value ?? store.holdings.value, picked.value.id)
+      : [];
+  const inPortfolio = parts.filter((p) => p.portfolio === portfolioName);
+  const heldHere = inPortfolio.filter((p) => (p.broker ?? "") === broker.value);
+  const heldQty = heldHere.reduce((s, p) => s + (p.quantity ?? 0), 0);
+  // the server's all with no broker sells every broker's part too, so
+  // then it goes only when the parts shown are all there are
+  const allMeansHere =
+    broker.value !== "" || heldHere.length === inPortfolio.length;
+  const drys = dryPowders(all.value);
+  const dryUse =
+    side.value === "buy" ? dryPowderFor(drys, portfolioName, cur) : null;
+  // the money the form will save, shown before it is
+  const q = typed(qty.value);
+  const p = typed(px.value);
+  const f = typed(fees.value) ?? 0;
+  const money =
+    q === null ||
+    Number.isNaN(q) ||
+    p === null ||
+    Number.isNaN(p) ||
+    Number.isNaN(f)
+      ? null
+      : byTotal.value
+        ? p
+        : tradeMoney(side.value, q, p, f, picked.value?.unit);
+  const moneyShown =
+    money !== null && cur
+      ? shownIn(all.value ?? store.holdings.value, money, cur)
+      : null;
   const num = (s: Signal<string>, label: string, required: boolean) => {
     const v = typed(s.value);
     if (v === null && !required) return undefined;
@@ -971,36 +1185,63 @@ export function AddForm({
   };
   const submit = async (ev: Event) => {
     ev.preventDefault();
-    if (busy.value) return;
+    if (busy.value || half.value) return;
     error.value = null;
+    if (portfolio.value === "") {
+      error.value = "Pick a portfolio.";
+      return;
+    }
     const pid = Number(portfolio.value);
     const b = broker.value === "" ? undefined : broker.value;
-    let refused: string | null;
+    let refused: string | null = null;
     busy.value = true;
     try {
       if (kind.value === "trade") {
         if (symbol.value.trim() === "") throw new Error("Pick a symbol.");
-        refused = await store.addTrade({
+        const r = await store.addTrade({
           portfolio: pid,
           symbol: symbol.value.trim(),
           side: side.value,
-          quantity: num(qty, "Quantity", true)!,
-          price: num(px, "Price", false),
+          quantity:
+            side.value === "sell" &&
+            sellAll.value &&
+            allMeansHere &&
+            qty.value === String(heldQty)
+              ? "all"
+              : num(qty, "Quantity", true)!,
+          ...(byTotal.value
+            ? { total: num(px, "Total paid", true) }
+            : { price: num(px, "Price", false) }),
           fees: num(fees, "Fees", false),
           ...(paid.value === "" ? {} : { currency: paid.value }),
           date: date.value,
           broker: b,
+          ...(note.value.trim() ? { note: note.value.trim() } : {}),
         });
+        if ("refused" in r) {
+          refused = r.refused;
+        } else if (fromDry.value && dryUse) {
+          const t = r.trade;
+          const spent = tradeMoney("buy", t.quantity, t.price, t.fees, t.unit);
+          const left = await store.updatePosition(dryUse.position, {
+            by: -spent,
+            currency: t.currency,
+          });
+          if (left !== null) {
+            refused = `The buy is saved, but the dry powder was not changed: ${left}`;
+            half.value = true;
+          }
+        }
       } else {
         if (name.value.trim() === "") throw new Error("Name it.");
-        const cur = currency.value.trim().toUpperCase();
+        const c = currency.value;
         refused = await store.addPosition({
           kind: kind.value,
           portfolio: pid,
           name: name.value.trim(),
-          ...(cur === "" ? {} : { currency: cur }),
+          ...(c === "" ? {} : { currency: c }),
           ...(kind.value === "manual"
-            ? { units: num(qty, "Units", true), price: num(px, "Price", true) }
+            ? { units: num(qty, "Units", true), price: num(px, "NAV", true) }
             : {
                 amount: num(
                   amountText,
@@ -1029,184 +1270,390 @@ export function AddForm({
       error.value = refused;
       return;
     }
-    remember({
-      kind: kind.value,
-      side: side.value,
-      portfolio: pid,
-      broker: b ?? null,
-    });
+    remember({ kind: kind.value });
     onDone();
   };
+  const portfolioOptions = [
+    ...(portfolio.value === ""
+      ? [{ value: "", text: "Pick a portfolio" }]
+      : []),
+    ...portfolios.map((x) => ({ value: String(x.id), text: x.name })),
+  ];
+  const brokerPick =
+    brokers.length > 0 ? (
+      <FormPick
+        label="Broker"
+        value={broker}
+        options={[
+          { value: "", text: "No broker" },
+          ...brokers.map((x) => ({ value: x.name, text: x.name })),
+        ]}
+      />
+    ) : null;
+  const what =
+    kind.value !== "trade"
+      ? null
+      : q === null || Number.isNaN(q) || !picked.value
+        ? null
+        : `${side.value === "buy" ? "Buy" : "Sell"} ${quantity(q)} ${symbolOf(
+            picked.value.id,
+          )}${
+            byTotal.value
+              ? ""
+              : p !== null && !Number.isNaN(p)
+                ? ` at ${price(p)}`
+                : " at the live price"
+          }${money !== null && cur ? ` · ${amount(money, cur)}` : ""}${
+            moneyShown
+              ? ` (≈ ${amount(moneyShown.value, moneyShown.currency)})`
+              : ""
+          }${portfolioName ? ` · ${portfolioName}` : ""}`;
   return (
-    <form class="card pf-panel pf-add" onSubmit={submit} aria-label="Add">
-      <div class="seg pf-kinds" role="tablist" aria-label="What to add">
-        {KIND_LABELS.map((k) => (
-          <button
-            key={k.key}
-            type="button"
-            role="tab"
-            aria-selected={kind.value === k.key}
-            class={`seg-option${kind.value === k.key ? " seg-on" : ""}`}
-            onClick={() => {
-              kind.value = k.key;
-              error.value = null;
-            }}
-          >
-            {k.label}
-          </button>
-        ))}
-      </div>
-      {kind.value === "trade" ? (
-        <>
-          <SymbolPick
-            value={symbol}
-            onPick={(c) => {
-              listing.value = null;
-              paid.value = "";
-              void store.listingCurrency(c.id).then((cur) => {
-                if (symbol.value === c.id) listing.value = cur;
-              });
-            }}
-            onEdit={() => {
-              listing.value = null;
-            }}
-            currency={listing.value}
-          />
-          <div class="seg pf-side">
-            {(["buy", "sell"] as const).map((s) => (
-              <button
-                key={s}
-                type="button"
-                aria-pressed={side.value === s}
-                class={`seg-option${side.value === s ? " seg-on" : ""}`}
-                onClick={() => {
-                  side.value = s;
-                }}
-              >
-                {s === "buy" ? "Buy" : "Sell"}
-              </button>
-            ))}
-          </div>
-          <div class="pf-pair">
-            <Field label="Quantity" value={qty} decimal />
-            <Field
-              label={inCurrency("Price", paid.value || listing.value)}
-              value={px}
-              placeholder="Live price"
-              decimal
+    <form class="pf-add" onSubmit={submit} aria-label="Add">
+      <div class="pf-add-body">
+        <div class="seg pf-kinds" role="tablist" aria-label="What to add">
+          {KIND_LABELS.map((k) => (
+            <button
+              key={k.key}
+              type="button"
+              role="tab"
+              aria-selected={kind.value === k.key}
+              class={`seg-option${kind.value === k.key ? " seg-on" : ""}`}
+              onClick={() => {
+                kind.value = k.key;
+                error.value = null;
+              }}
+            >
+              {k.label}
+            </button>
+          ))}
+        </div>
+        {kind.value === "trade" ? (
+          <>
+            <SymbolPick
+              value={symbol}
+              autoFocus={!start}
+              onPick={(c) => pick(c.id)}
+              onEdit={() => {
+                picked.value = null;
+                if (pxLive.value) {
+                  px.value = "";
+                  pxLive.value = false;
+                }
+              }}
             />
-          </div>
-          <div class="pf-pair">
-            <Field
-              label={inCurrency("Fees", paid.value || listing.value)}
-              value={fees}
-              placeholder="0"
-              decimal
-            />
-            <Field label="Date" value={date} type="date" />
-          </div>
-          <Pick
-            label="Paid in"
-            value={paid}
-            none={listing.value ?? "Listing's currency"}
-            options={paidChoices(store, listing.value)}
-          />
-        </>
-      ) : (
-        <>
-          <Field label="Name" value={name} />
-          {kind.value === "manual" ? (
-            <div class="pf-pair">
-              <Field label="Units" value={qty} decimal />
-              <Field label="Price" value={px} decimal />
-            </div>
-          ) : (
-            <Field
-              label={kind.value === "bond" ? "Face" : "Amount"}
-              value={amountText}
-              decimal
-            />
-          )}
-          <div class="pf-pair">
-            <Field
-              label="Currency"
-              value={currency}
-              placeholder={kind.value === "bond" ? "Listing's" : "Code"}
-            />
-            <Field label="As of" value={date} type="date" />
-          </div>
-          {kind.value === "bond" && (
-            <>
-              <Field label="Symbol" value={symbol} placeholder="Optional" />
-              <div class="pf-pair">
-                <Field label="Coupon %" value={coupon} decimal />
-                <Field label="Maturity" value={maturity} type="date" />
+            {picked.value && (
+              <div class="pf-listing">
+                <span class="cut">{picked.value.name ?? ""}</span>
+                <span class="pf-listing-facts">
+                  {picked.value.price !== null &&
+                    `${price(picked.value.price, picked.value.currency)} live`}
+                  {parts.length > 0 &&
+                    ` · you hold ${parts
+                      .map(
+                        (x) =>
+                          `${quantity(x.quantity)} in ${x.portfolio}${
+                            x.broker ? ` at ${x.broker}` : ""
+                          }`,
+                      )
+                      .join(", ")}`}
+                </span>
               </div>
-            </>
-          )}
-          {kind.value !== "cash" && (
-            <Field label="Cost" value={cost} placeholder="Optional" decimal />
-          )}
-          {kind.value === "cash" && (
-            <label class="pf-switch-line">
-              <button
-                type="button"
-                class={`switch${dry.value ? " switch-on" : ""}`}
-                role="switch"
-                aria-checked={dry.value}
-                aria-label="Dry powder"
-                onClick={() => {
-                  dry.value = !dry.value;
+            )}
+            <div class="seg pf-side">
+              {(["buy", "sell"] as const).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  aria-pressed={side.value === s}
+                  class={`seg-option${side.value === s ? " seg-on" : ""}`}
+                  onClick={() => {
+                    side.value = s;
+                  }}
+                >
+                  {s === "buy" ? "Buy" : "Sell"}
+                </button>
+              ))}
+            </div>
+            <div class="pf-pair">
+              <Field
+                label="Quantity"
+                value={qty}
+                onEdit={() => {
+                  sellAll.value = false;
                 }}
-              >
-                <span class="switch-knob" />
-              </button>
-              <span>Dry powder</span>
-            </label>
-          )}
-        </>
-      )}
-      <div class="pf-pair">
-        <Pick
-          label="Portfolio"
-          value={portfolio}
-          options={portfolios.map((p) => ({
-            value: String(p.id),
-            label: p.name,
-          }))}
-        />
-        <Pick
-          label="Broker"
-          value={broker}
-          none="None"
-          options={brokers.map((b) => ({ value: b.name, label: b.name }))}
-        />
+                decimal
+                after={
+                  side.value === "sell" && heldQty > 0 ? (
+                    <button
+                      type="button"
+                      class="btn-text pf-all"
+                      onClick={() => {
+                        qty.value = String(heldQty);
+                        sellAll.value = true;
+                      }}
+                    >
+                      All {quantity(heldQty)}
+                    </button>
+                  ) : undefined
+                }
+              />
+              <Field
+                label={inCurrency(byTotal.value ? "Total paid" : "Price", cur)}
+                value={px}
+                placeholder={byTotal.value ? "Fees in" : "Live price"}
+                decimal
+                onEdit={() => {
+                  pxLive.value = false;
+                }}
+                after={
+                  <button
+                    type="button"
+                    class="btn-text pf-all"
+                    onClick={() => {
+                      byTotal.value = !byTotal.value;
+                      px.value = "";
+                      pxLive.value = false;
+                    }}
+                  >
+                    {byTotal.value ? "Use price" : "Use total"}
+                  </button>
+                }
+              />
+            </div>
+            <Field label="Date" value={date} type="date" />
+            <FormPick
+              label="Portfolio"
+              value={portfolio}
+              options={portfolioOptions}
+            />
+            {dryUse && (
+              <label class="pf-switch-line">
+                <button
+                  type="button"
+                  class={`switch${fromDry.value ? " switch-on" : ""}`}
+                  role="switch"
+                  aria-checked={fromDry.value}
+                  aria-label="Pay from dry powder"
+                  onClick={() => {
+                    fromDry.value = !fromDry.value;
+                  }}
+                >
+                  <span class="switch-knob" />
+                </button>
+                <span>
+                  Pay from dry powder ({dryUse.currency}
+                  {dryUse.portfolio ? `, ${dryUse.portfolio}` : ""})
+                </span>
+              </label>
+            )}
+            <button
+              type="button"
+              class="btn-text pf-more"
+              aria-expanded={more.value}
+              onClick={() => {
+                more.value = !more.value;
+              }}
+            >
+              <Icon
+                name="chevron"
+                size={14}
+                class={`rows-chevron${more.value ? " rows-chevron-open" : ""}`}
+              />
+              Fees, currency{brokers.length > 0 ? ", broker" : ""} and note
+            </button>
+            {more.value && (
+              <>
+                <div class="pf-pair">
+                  <Field
+                    label={inCurrency("Fees", cur)}
+                    value={fees}
+                    placeholder="0"
+                    decimal
+                  />
+                  <FormPick
+                    label="Paid in"
+                    value={paid}
+                    options={paidChoices(store, listingCur).map((c) => ({
+                      value: c === listingCur ? "" : c,
+                      text: c === "" ? "Listing's currency" : c,
+                    }))}
+                  />
+                </div>
+                {brokerPick}
+                <Field label="Note" value={note} placeholder="Optional" />
+              </>
+            )}
+          </>
+        ) : (
+          <>
+            {kind.value === "manual" && (
+              <p class="pf-hint">
+                Enter its NAV per unit. A fund with a symbol is a trade.
+              </p>
+            )}
+            <Field label="Name" value={name} />
+            {kind.value === "manual" ? (
+              <div class="pf-pair">
+                <Field label="Units" value={qty} decimal />
+                <Field label="NAV" value={px} decimal />
+              </div>
+            ) : (
+              <Field
+                label={kind.value === "bond" ? "Face" : "Amount"}
+                value={amountText}
+                decimal
+              />
+            )}
+            <div class="pf-pair">
+              <div class="field">
+                <span class="label">Currency</span>
+                <CurrencyPick
+                  value={currency.value || null}
+                  onPick={(c) => {
+                    currency.value = c;
+                  }}
+                />
+              </div>
+              <Field label="As of" value={date} type="date" />
+            </div>
+            {kind.value === "bond" && (
+              <>
+                <Field label="Symbol" value={symbol} placeholder="Optional" />
+                <div class="pf-pair">
+                  <Field label="Coupon %" value={coupon} decimal />
+                  <Field label="Maturity" value={maturity} type="date" />
+                </div>
+              </>
+            )}
+            {kind.value !== "cash" && (
+              <Field label="Cost" value={cost} placeholder="Optional" decimal />
+            )}
+            {kind.value === "cash" && (
+              <label class="pf-switch-line">
+                <button
+                  type="button"
+                  class={`switch${dry.value ? " switch-on" : ""}`}
+                  role="switch"
+                  aria-checked={dry.value}
+                  aria-label="Dry powder"
+                  onClick={() => {
+                    dry.value = !dry.value;
+                  }}
+                >
+                  <span class="switch-knob" />
+                </button>
+                <span>Dry powder</span>
+              </label>
+            )}
+            <FormPick
+              label="Portfolio"
+              value={portfolio}
+              options={portfolioOptions}
+            />
+            {brokerPick}
+          </>
+        )}
       </div>
-      <div class="pf-form-foot">
+      <div class="pf-add-foot">
+        {what && <p class="pf-summary">{what}</p>}
         {error.value && (
           <p class="pf-error" role="alert">
             {error.value}
           </p>
         )}
-        <button
-          type="button"
-          class="btn"
-          onClick={onDone}
-          disabled={busy.value}
-        >
-          Cancel
-        </button>
-        <button type="submit" class="btn btn-primary" disabled={busy.value}>
-          {busy.value
-            ? "Saving"
-            : kind.value === "trade"
-              ? side.value === "buy"
-                ? "Add buy"
-                : "Add sell"
-              : "Add"}
-        </button>
+        <div class="pf-form-foot">
+          {half.value ? (
+            <button type="button" class="btn" onClick={onDone}>
+              Close
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                class="btn"
+                onClick={onDone}
+                disabled={busy.value}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                class="btn btn-primary"
+                disabled={busy.value}
+              >
+                {busy.value
+                  ? "Saving"
+                  : kind.value === "trade"
+                    ? side.value === "buy"
+                      ? "Add buy"
+                      : "Add sell"
+                    : "Add"}
+              </button>
+            </>
+          )}
+        </div>
       </div>
     </form>
+  );
+}
+
+// the add form beside the page, a sheet from the bottom on a phone
+function AddSheet({
+  store,
+  start,
+  onDone,
+}: {
+  store: PortfolioStore;
+  start: AddStart | null;
+  onDone: () => void;
+}) {
+  const saving = useSignal(false);
+  // the latest one, so a parent's inline function never rebinds the keys
+  const done = useRef(onDone);
+  done.current = onDone;
+  // a save on its way finishes in sight, its outcome shown
+  const close = () => {
+    if (!saving.value) done.current();
+  };
+  useEffect(() => {
+    // capture sees a menu or list still open, before its own handler
+    // closes it: Escape closes that first, never the form under it
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key !== "Escape") return;
+      const open = document.querySelector(
+        '.pf-sheet [aria-haspopup][aria-expanded="true"], .pf-sheet [role="combobox"][aria-expanded="true"]',
+      );
+      if (open) return;
+      close();
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, []);
+  return (
+    <div class="pf-sheet-wrap">
+      <button
+        type="button"
+        class="pf-sheet-back"
+        aria-label="Close"
+        tabIndex={-1}
+        onClick={close}
+      />
+      <aside class="pf-sheet" aria-label="Add">
+        <div class="pf-sheet-head">
+          <h2 class="pf-sheet-title">Add</h2>
+          <button
+            type="button"
+            class="btn-icon"
+            aria-label="Close"
+            onClick={close}
+          >
+            <Icon name="close" size={16} />
+          </button>
+        </div>
+        <AddForm store={store} onDone={onDone} start={start} saving={saving} />
+      </aside>
+    </div>
   );
 }
 
@@ -1222,9 +1669,8 @@ export function ImportPanel({
   const o = store.overview.value;
   const portfolios = o?.portfolios ?? [];
   const brokers = o?.brokers ?? [];
-  const portfolio = useSignal(
-    String(store.portfolio.value ?? portfolios[0]?.id ?? ""),
-  );
+  // the tab on, else asked: never a silent first one
+  const portfolio = useSignal(String(store.portfolio.value ?? ""));
   const broker = useSignal("");
   const csv = useSignal<string | null>(null);
   const file = useSignal("");
@@ -1250,6 +1696,10 @@ export function ImportPanel({
   }
   const run = async (confirm: boolean) => {
     if (csv.value === null) return;
+    if (portfolio.value === "") {
+      error.value = "Pick a portfolio.";
+      return;
+    }
     busy.value = true;
     error.value = null;
     const r = await store.importFile({
@@ -1270,19 +1720,23 @@ export function ImportPanel({
   return (
     <section class="card pf-panel" aria-label="Import">
       <div class="pf-pair">
-        <Pick
+        <FormPick
           label="Portfolio"
           value={portfolio}
-          options={portfolios.map((x) => ({
-            value: String(x.id),
-            label: x.name,
-          }))}
+          options={[
+            ...(portfolio.value === ""
+              ? [{ value: "", text: "Pick a portfolio" }]
+              : []),
+            ...portfolios.map((x) => ({ value: String(x.id), text: x.name })),
+          ]}
         />
-        <Pick
+        <FormPick
           label="Broker for the file"
           value={broker}
-          none="From the file"
-          options={brokers.map((b) => ({ value: b.name, label: b.name }))}
+          options={[
+            { value: "", text: "From the file" },
+            ...brokers.map((b) => ({ value: b.name, text: b.name })),
+          ]}
         />
       </div>
       <div class="field">
@@ -1528,6 +1982,87 @@ function AddName({
   );
 }
 
+// the currencies in circulation, found by code or name as typed
+function CurrencyPick({
+  value,
+  onPick,
+}: {
+  value: string | null;
+  onPick: (code: string) => void;
+}) {
+  const { open, root } = useMenu();
+  const query = useSignal("");
+  const found = findCurrencies(query.value);
+  const named = (c: string) => {
+    const n = currencyName(c);
+    return n ? `${c} · ${n}` : c;
+  };
+  const pick = (c: string) => {
+    open.value = false;
+    query.value = "";
+    if (c !== value) onPick(c);
+  };
+  return (
+    <div class="pf-drop pf-currency" ref={root}>
+      <button
+        type="button"
+        class="btn pf-drop-btn"
+        aria-label={`Display currency: ${value ?? "none"}`}
+        aria-haspopup="menu"
+        aria-expanded={open.value}
+        onClick={() => {
+          open.value = !open.value;
+          query.value = "";
+        }}
+      >
+        <span class="cut">{value ? named(value) : "Pick a currency"}</span>
+        <Icon name="chevron" size={14} class="pf-drop-chevron" />
+      </button>
+      {open.value && (
+        <div class="menu pf-drop-menu pf-currency-menu">
+          <input
+            class="pf-currency-find"
+            value={query.value}
+            placeholder="Code or name"
+            aria-label="Find a currency"
+            ref={(el) => el?.focus({ preventScroll: true })}
+            onInput={(e) => {
+              query.value = e.currentTarget.value;
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && found[0]) {
+                e.preventDefault();
+                pick(found[0]);
+              }
+            }}
+          />
+          <div class="pf-currency-list" role="menu" aria-label="Currencies">
+            {found.length === 0 && (
+              <span class="pf-currency-none">No currency matches.</span>
+            )}
+            {found.map((c) => (
+              <button
+                key={c}
+                type="button"
+                class={`menu-item${c === value ? " menu-item-on" : ""}`}
+                role="menuitemradio"
+                aria-checked={c === value}
+                onClick={() => pick(c)}
+              >
+                <span class="pf-currency-code">{c}</span>
+                <span class="cut pf-dim">{currencyName(c) ?? ""}</span>
+                {c === value && (
+                  <Icon name="check" size={14} class="pf-drop-check" />
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function SettingsPanel({
   store,
   onDone,
@@ -1536,71 +2071,72 @@ export function SettingsPanel({
   onDone: () => void;
 }) {
   const o = store.overview.value;
-  const display = useSignal(o?.display_currency ?? "");
   const error = useSignal<string | null>(null);
-  const saved = useSignal(false);
+  // every total converts into it, so it comes before any portfolio
+  const unset = !o?.display_currency;
   return (
     <section class="pf-settings" aria-label="Settings">
       <Rows>
-        <RowsCard label="Portfolios" count={String(o?.portfolios.length ?? 0)}>
-          {(o?.portfolios ?? []).map((p) => (
-            <NameRow
-              key={p.id}
-              name={p.name}
-              onRename={(to) => store.renamePortfolio(p.id, to)}
-              onDelete={() => store.deletePortfolio(p.id)}
-            />
-          ))}
-          <AddName placeholder="New portfolio" onAdd={store.createPortfolio} />
-        </RowsCard>
-        <RowsCard label="Brokers" count={String(o?.brokers.length ?? 0)}>
-          {(o?.brokers ?? []).map((b: BrokerRow) => (
-            <NameRow
-              key={b.id}
-              name={b.name}
-              onRename={(to) => store.renameBroker(b.id, to)}
-              onDelete={() => store.deleteBroker(b.id)}
-            />
-          ))}
-          <AddName placeholder="New broker" onAdd={store.createBroker} />
-        </RowsCard>
-        <RowsCard label="Display currency">
-          <form
-            class="rows-item pf-inline pf-add-name"
-            onSubmit={async (ev) => {
-              ev.preventDefault();
-              const c = display.value.trim().toUpperCase();
-              error.value = await store.saveDisplay(c === "" ? null : c);
-              saved.value = error.value === null;
-            }}
-          >
-            <input
-              value={display.value}
-              placeholder="None"
-              aria-label="Display currency"
-              maxLength={3}
-              autocapitalize="characters"
-              onInput={(e) => {
-                display.value = e.currentTarget.value;
-                saved.value = false;
+        <RowsCard label="Display currency" menus>
+          {unset && (
+            <RowsNote>
+              Totals are shown in this currency. Set it first.
+            </RowsNote>
+          )}
+          <div class="rows-item pf-inline pf-add-name">
+            <CurrencyPick
+              value={o?.display_currency ?? null}
+              onPick={async (c) => {
+                error.value = await store.saveDisplay(c);
               }}
             />
-            <button type="submit" class="btn btn-small">
-              {saved.value ? "Saved" : "Save"}
-            </button>
             {error.value && (
               <span class="pf-error" role="alert">
                 {error.value}
               </span>
             )}
-          </form>
+          </div>
         </RowsCard>
+        {!unset && (
+          <>
+            <RowsCard
+              label="Portfolios"
+              count={String(o?.portfolios.length ?? 0)}
+            >
+              {(o?.portfolios ?? []).map((p) => (
+                <NameRow
+                  key={p.id}
+                  name={p.name}
+                  onRename={(to) => store.renamePortfolio(p.id, to)}
+                  onDelete={() => store.deletePortfolio(p.id)}
+                />
+              ))}
+              <AddName
+                placeholder="New portfolio"
+                onAdd={store.createPortfolio}
+              />
+            </RowsCard>
+            <RowsCard label="Brokers" count={String(o?.brokers.length ?? 0)}>
+              {(o?.brokers ?? []).map((b: BrokerRow) => (
+                <NameRow
+                  key={b.id}
+                  name={b.name}
+                  onRename={(to) => store.renameBroker(b.id, to)}
+                  onDelete={() => store.deleteBroker(b.id)}
+                />
+              ))}
+              <AddName placeholder="New broker" onAdd={store.createBroker} />
+            </RowsCard>
+          </>
+        )}
       </Rows>
-      <div class="pf-form-foot">
-        <button type="button" class="btn" onClick={onDone}>
-          Done
-        </button>
-      </div>
+      {!unset && (o?.portfolios.length ?? 0) > 0 && (
+        <div class="pf-form-foot">
+          <button type="button" class="btn" onClick={onDone}>
+            Done
+          </button>
+        </div>
+      )}
     </section>
   );
 }
@@ -1691,10 +2227,70 @@ function PageMenu({
   );
 }
 
+// the app's own menu in place of a native select, whose list the
+// system draws
+function Dropdown({
+  label,
+  value,
+  options,
+  onPick,
+}: {
+  label: string;
+  value: string | null;
+  options: { value: string | null; text: string }[];
+  onPick: (v: string | null) => void;
+}) {
+  const { open, root } = useMenu();
+  const picked = options.find((x) => x.value === value) ?? options[0]!;
+  return (
+    <div class="pf-drop" ref={root}>
+      <button
+        type="button"
+        class="btn pf-drop-btn"
+        aria-label={`${label}: ${picked.text}`}
+        aria-haspopup="menu"
+        aria-expanded={open.value}
+        onClick={() => {
+          open.value = !open.value;
+        }}
+      >
+        <span class="cut">{picked.text}</span>
+        <Icon name="chevron" size={14} class="pf-drop-chevron" />
+      </button>
+      {open.value && (
+        <div class="menu pf-drop-menu" role="menu" aria-label={label}>
+          {options.map((x) => (
+            <button
+              key={x.value ?? ""}
+              type="button"
+              class={`menu-item${x === picked ? " menu-item-on" : ""}`}
+              role="menuitemradio"
+              aria-checked={x === picked}
+              onClick={() => {
+                open.value = false;
+                if (x !== picked) onPick(x.value);
+              }}
+            >
+              <span class="cut">{x.text}</span>
+              {x === picked && (
+                <Icon name="check" size={14} class="pf-drop-check" />
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Filters({ store }: { store: PortfolioStore }) {
   const o = store.overview.value;
   const h = store.holdings.value;
   const codes = currencies(h);
+  const brokers = o?.brokers ?? [];
+  const fallback = h?.display_currency ?? null;
+  const shownIn =
+    store.currency.value === fallback ? null : store.currency.value;
   return (
     <div class="pf-filters">
       <div class="seg pf-portfolios" role="tablist" aria-label="Portfolio">
@@ -1715,41 +2311,32 @@ function Filters({ store }: { store: PortfolioStore }) {
         ))}
       </div>
       <div class="pf-picks">
-        <select
-          class="pf-select-small"
-          aria-label="Broker"
-          value={store.broker.value ?? ""}
-          onChange={(ev) =>
-            void store.pick({ broker: ev.currentTarget.value || null })
-          }
-        >
-          <option value="">All brokers</option>
-          {(o?.brokers ?? []).map((b) => (
-            <option key={b.id} value={b.name}>
-              {b.name}
-            </option>
-          ))}
-        </select>
+        {brokers.length > 0 && (
+          <Dropdown
+            label="Broker"
+            value={store.broker.value}
+            options={[
+              { value: null, text: "All brokers" },
+              ...brokers.map((b) => ({ value: b.name, text: b.name })),
+            ]}
+            onPick={(v) => void store.pick({ broker: v })}
+          />
+        )}
         {codes.length > 1 && (
-          <select
-            class="pf-select-small"
-            aria-label="Show in"
-            value={store.currency.value ?? ""}
-            onChange={(ev) =>
-              void store.pick({ currency: ev.currentTarget.value || null })
-            }
-          >
-            <option value="">
-              {h?.display_currency
-                ? `In ${h.display_currency}`
-                : "Own currencies"}
-            </option>
-            {codes.map((c) => (
-              <option key={c} value={c}>
-                In {c}
-              </option>
-            ))}
-          </select>
+          <Dropdown
+            label="Show in"
+            value={shownIn}
+            options={[
+              ...(fallback ? [] : [{ value: null, text: "Own currencies" }]),
+              ...codes.map((c) => ({
+                // the settings' currency is the default, so picking it
+                // clears the choice rather than listing it twice
+                value: c === fallback ? null : c,
+                text: `In ${c}`,
+              })),
+            ]}
+            onPick={(v) => void store.pick({ currency: v })}
+          />
         )}
       </div>
     </div>
@@ -1758,13 +2345,22 @@ function Filters({ store }: { store: PortfolioStore }) {
 
 export function PortfoliosBody({ store }: { store: PortfolioStore }) {
   const panel = useSignal<Panel>(null);
+  // a holding's Buy or Sell opens the add panel on it
+  const start = useSignal<AddStart | null>(null);
   const held = store.holdings.value !== null;
   const h = store.holdings.value;
-  const empty = (store.overview.value?.portfolios.length ?? 0) === 0;
+  // settings stay up until a currency and a portfolio exist
+  const empty =
+    (store.overview.value?.portfolios.length ?? 0) === 0 ||
+    !store.overview.value?.display_currency;
   return (
     <Page
       title="Portfolios"
-      actions={held ? <PageMenu store={store} panel={panel} /> : undefined}
+      actions={
+        held && store.overview.value?.display_currency ? (
+          <PageMenu store={store} panel={panel} />
+        ) : undefined
+      }
       stale={held ? store.error.value : null}
       staleCount={store.failures.value}
       failed={didNotLoad(
@@ -1777,10 +2373,17 @@ export function PortfoliosBody({ store }: { store: PortfolioStore }) {
       {held && h !== null && (
         <div class="pf">
           {panel.value === "add" && (
-            <AddForm
+            <AddSheet
+              key={
+                start.value
+                  ? `${start.value.symbol}/${start.value.side}`
+                  : "new"
+              }
               store={store}
+              start={start.value}
               onDone={() => {
                 panel.value = null;
+                start.value = null;
               }}
             />
           )}
@@ -1804,7 +2407,14 @@ export function PortfoliosBody({ store }: { store: PortfolioStore }) {
               <Filters store={store} />
               <Totals h={h} />
               <Rows>
-                <HoldingsCard store={store} h={h} />
+                <HoldingsCard
+                  store={store}
+                  h={h}
+                  onTrade={(s) => {
+                    start.value = s;
+                    panel.value = "add";
+                  }}
+                />
                 <ExposureCard h={h} />
                 <TradesCard store={store} trades={store.trades.value ?? []} />
               </Rows>

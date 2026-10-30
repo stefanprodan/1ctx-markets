@@ -1941,6 +1941,16 @@ async function portfolioOperations(
   };
 
   const P = "/portfolios";
+  await check("POST", P, await t.call(P, send("POST", { name: "Casey" })), 409);
+  await check(
+    "PUT",
+    "/portfolio-settings",
+    await t.call(
+      "/portfolio-settings",
+      send("PUT", { display_currency: "EUR" }),
+    ),
+    200,
+  );
   const made = await check(
     "POST",
     P,
@@ -2372,7 +2382,15 @@ async function portfolioOperations(
     400,
   );
   await check("PUT", G, await t.call(G, send("PUT", "x", "text/plain")), 415);
-  await refusals("PUT", G, G, send("PUT", { display_currency: null }));
+  for (const bad of [null, "ABC"]) {
+    await check(
+      "PUT",
+      G,
+      await t.call(G, send("PUT", { display_currency: bad })),
+      400,
+    );
+  }
+  await refusals("PUT", G, G, send("PUT", { display_currency: "USD" }));
   expect((await check("GET", G, await t.call(G), 200)).display_currency).toBe(
     "USD",
   );

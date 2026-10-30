@@ -440,7 +440,10 @@ export const portfolioSchemas: Record<string, Schema> = {
     ),
   }),
   Settings: object({
-    display_currency: note(nstr, "A three-letter code, or null for none."),
+    display_currency: note(
+      nstr,
+      "An ISO 4217 code in circulation. Null only while none is set; a save needs a code, and a portfolio needs one set.",
+    ),
   }),
 };
 
@@ -533,7 +536,8 @@ export const portfolioPaths = {
       operationId: "createPortfolio",
       security: WRITES,
       summary: "Make a portfolio",
-      description: "A portfolio is a name. It has no currency.",
+      description:
+        "A portfolio is a name. It has no currency. Refused (409) until a display currency is set.",
       requestBody: bodyOf(ref("Named")),
       responses: base({
         201: {

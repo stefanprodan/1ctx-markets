@@ -6,6 +6,7 @@ import { describe, expect, test } from "bun:test";
 import { render } from "preact-render-to-string";
 import type { Fetch } from "../src/web/data/api.ts";
 import type {
+  Holding,
   Holdings,
   Overview,
   TradeRow,
@@ -17,14 +18,21 @@ import {
   change,
   costLine,
   currencies,
+  dryPowderFor,
+  dryPowders,
+  heldAt,
   holdingSub,
   importLine,
+  largestFirst,
   listingWords,
+  ranked,
   rateLine,
   readRemembered,
   shareLabel,
+  shownIn,
   splitOf,
   tradeLine,
+  tradeMoney,
   tradeSub,
   typed,
 } from "../src/web/views/Portfolios.model.ts";
@@ -41,7 +49,7 @@ import {
 const NOW = Date.parse("2026-10-28T12:00:00Z");
 
 const OVERVIEW: Overview = {
-  display_currency: null,
+  display_currency: "USD",
   portfolios: [
     { id: 1, name: "Shares", trades: 2, positions: 1 },
     { id: 2, name: "Coins", trades: 0, positions: 0 },
@@ -302,7 +310,47 @@ describe("the Portfolios page", () => {
     expect(html).toContain("Display currency");
   });
 
-  test("the add form has a trade's fields and every portfolio and broker", async () => {
+  test("with no display currency it asks for one before anything else", async () => {
+    const f = fake({
+      "GET /api/v1/portfolios": { ...OVERVIEW, display_currency: null },
+      "GET /api/v1/holdings": HOLDINGS,
+      "GET /api/v1/trades": { trades: [] },
+    });
+    const s = store(
+      f.fetch,
+      () => NOW,
+      () => "/portfolios",
+      () => {},
+    );
+    await s.portfolios.load();
+    const html = render(<PortfoliosBody store={s.portfolios} />);
+    expect(html).toContain("Set it first.");
+    expect(html).not.toContain("New portfolio");
+    expect(html).not.toContain("Holdings");
+    expect(html).not.toContain('aria-label="Add"');
+  });
+
+  test("every pick is the app's own menu, never a native select", async () => {
+    const { s } = await loaded({
+      ...HOLDINGS,
+      exposure: [
+        HOLDINGS.exposure[0]!,
+        { ...HOLDINGS.exposure[0]!, currency: "USD" },
+      ],
+    });
+    const page = render(<PortfoliosBody store={s.portfolios} />);
+    expect(page).toContain('aria-label="Currency: EUR"');
+    for (const html of [
+      page,
+      render(<AddForm store={s.portfolios} onDone={() => {}} />),
+      render(<ImportPanel store={s.portfolios} onDone={() => {}} />),
+      render(<SettingsPanel store={s.portfolios} onDone={() => {}} />),
+    ]) {
+      expect(html).not.toContain("<select");
+    }
+  });
+
+  test("the add form leads with a trade's fields and asks for a portfolio", async () => {
     const { s } = await loaded();
     const html = render(<AddForm store={s.portfolios} onDone={() => {}} />);
     for (const word of [
@@ -311,16 +359,12 @@ describe("the Portfolios page", () => {
       "Sell",
       "Quantity",
       "Price",
-      "Fees",
+      "Use total",
       "Date",
       "Portfolio",
-      "Broker",
-      "Live price",
-      "Paid in",
-      "Shares",
-      "Coins",
-      "North",
-      "South",
+      "Pick a portfolio",
+      "Fees, currency, broker and note",
+      "Fund",
     ]) {
       expect([word, html.includes(word)]).toEqual([word, true]);
     }
@@ -411,16 +455,13 @@ describe("the page's words", () => {
     ).toBe("Writes portfolios");
   });
 
-  test("a remembered pick survives a broken value", () => {
+  test("only the kind is remembered, and a broken value forgets it", () => {
     expect(
       readRemembered(
         '{"kind":"cash","side":"sell","portfolio":2,"broker":"North"}',
       ),
-    ).toEqual({ kind: "cash", side: "sell", portfolio: 2, broker: "North" });
-    expect(readRemembered("{oops")).toMatchObject({
-      kind: "trade",
-      side: "buy",
-    });
+    ).toEqual({ kind: "cash" });
+    expect(readRemembered("{oops")).toEqual({ kind: "trade" });
   });
 
   test("a bond bought twice lists each purchase with its own edit and remove", async () => {
@@ -535,5 +576,134 @@ describe("the page's words", () => {
     expect(listingWords({ id: "MIL:MADE", exchange_name: "Milan" })).toBe(
       "Milan",
     );
+  });
+});
+
+describe("the add panel", () => {
+  test("plain listings come before futures, each keeping the source's order", () => {
+    const c = (id: string, type: string) => ({
+      id,
+      name: null,
+      type,
+      exchange: "",
+      stored: false,
+    });
+    expect(
+      ranked([
+        c("CME:AAA=F", "FUTURE"),
+        c("US:AAA", "EQUITY"),
+        c("US:BBB", "ETF"),
+        c("X:AAA", "OPTION"),
+        c("CRYPTO:CCC-USD", "CRYPTOCURRENCY"),
+      ]).map((x) => x.id),
+    ).toEqual(["US:AAA", "US:BBB", "CRYPTO:CCC-USD", "CME:AAA=F", "X:AAA"]);
+  });
+
+  test("Show in offers only currencies the server converts into", () => {
+    expect(
+      currencies({
+        ...HOLDINGS,
+        display_currency: "EUR",
+        totals: [
+          ...HOLDINGS.totals,
+          { ...HOLDINGS.totals[0]!, currency: "BGN" },
+          { ...HOLDINGS.totals[0]!, currency: "GBp" },
+        ],
+      }),
+    ).toEqual(["EUR", "USD"]);
+  });
+
+  test("a buy costs its fees on top, a sell nets them, a bond counts per hundred", () => {
+    expect(tradeMoney("buy", 5, 10, 1, "per_share")).toBe(51);
+    expect(tradeMoney("sell", 5, 10, 1, "per_share")).toBe(49);
+    expect(tradeMoney("buy", 1000, 98, 0, "percent_of_par")).toBe(980);
+  });
+
+  test("an amount is shown in the display currency by the rate the holdings used", () => {
+    const h = {
+      ...HOLDINGS,
+      display_currency: "EUR",
+      rates: [
+        { from: "USD", to: "EUR", rate: 0.9, at: "2026-10-28T11:55:00Z" },
+      ],
+    } as Holdings;
+    expect(shownIn(h, 100, "USD")).toEqual({ value: 90, currency: "EUR" });
+    expect(shownIn(h, 100, "EUR")).toBeNull();
+    expect(shownIn(h, 100, "JPY")).toBeNull();
+  });
+
+  test("holdings rank by their converted value, whatever their currency", () => {
+    const row = (id: string, currency: string, value: number | null) =>
+      ({
+        ...HOLDINGS.holdings[0]!,
+        id,
+        currency,
+        converted:
+          value === null
+            ? undefined
+            : {
+                currency: "EUR",
+                rate: 1,
+                rate_at: null,
+                value,
+                cost: null,
+                pl: null,
+              },
+      }) as Holding;
+    const rows = [
+      row("A", "EUR", 50),
+      row("B", "EUR", 10),
+      row("C", "USD", null),
+      row("D", "USD", 90),
+      row("E", "RON", 50),
+    ];
+    expect(largestFirst(rows).map((r) => r.id)).toEqual([
+      "D",
+      "A",
+      "E",
+      "B",
+      "C",
+    ]);
+  });
+
+  test("where a listing is held: every portfolio and broker of it", () => {
+    expect(
+      heldAt(HOLDINGS, "XETRA:AAA").map((p) => [p.broker, p.quantity]),
+    ).toEqual([
+      ["North", 4],
+      ["South", 3],
+    ]);
+    expect(heldAt(HOLDINGS, "US:NOT")).toEqual([]);
+  });
+
+  test("a buy pays from its own currency's dry powder, its portfolio's first", () => {
+    const all = [
+      { position: 1, portfolio: "Cash", currency: "EUR" },
+      { position: 2, portfolio: "Shares", currency: "USD" },
+      { position: 3, portfolio: "Cash", currency: "USD" },
+    ];
+    expect(dryPowderFor(all, "Shares", "USD")?.position).toBe(2);
+    expect(dryPowderFor(all, "Cash", "USD")?.position).toBe(3);
+    expect(dryPowderFor(all, "Coins", "USD")?.currency).toBe("USD");
+    expect(dryPowderFor(all, "Cash", "JPY")?.position).toBe(1);
+    expect(dryPowderFor([], "Cash", "EUR")).toBeNull();
+    expect(dryPowders(HOLDINGS)).toEqual([
+      { position: 5, portfolio: "", currency: "EUR" },
+    ]);
+  });
+
+  test("a holding's Buy or Sell opens the panel on it", async () => {
+    const { s } = await loaded();
+    const html = render(
+      <AddForm
+        store={s.portfolios}
+        onDone={() => {}}
+        start={{ symbol: "XETRA:AAA", side: "sell", portfolio: "Shares" }}
+      />,
+    );
+    expect(html).toContain('value="AAA"');
+    expect(html).toMatch(/aria-pressed="true"[^>]*>Sell/);
+    expect(html).toContain("Add sell");
+    expect(html).not.toContain("Pick a portfolio");
   });
 });

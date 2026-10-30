@@ -7,22 +7,11 @@ import { iso } from "../market/format.ts";
 import { readBySourceSymbol } from "../market/instruments.ts";
 import { readQuote } from "../market/quotes.ts";
 import { quoteStale } from "../market/stale.ts";
+import { HUNDREDTHS } from "../shared/currencies.ts";
 import { YAHOO } from "../sources/ids.ts";
 import type { Db } from "../storage/db/index.ts";
 
-// listings priced in a currency's hundredth
-const MINOR: Record<string, [string, number]> = {
-  GBp: ["GBP", 0.01],
-  GBX: ["GBP", 0.01],
-  ZAc: ["ZAR", 0.01],
-  ILA: ["ILS", 0.01],
-};
-
-const major = (c: string): [string, number] => MINOR[c] ?? [c, 1];
-
-// a currency a pair is named by: three capitals, or a hundredth above
-export const isCurrency = (c: string): boolean =>
-  /^[A-Z]{3}$/.test(c) || c in MINOR;
+const major = (c: string): [string, number] => HUNDREDTHS[c] ?? [c, 1];
 
 export type Rate =
   | {

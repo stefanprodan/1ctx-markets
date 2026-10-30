@@ -10,7 +10,6 @@ import {
   addPosition,
   addTrade,
   createBroker,
-  createPortfolio,
   type HoldingsAnswer,
   historyOf,
   latestDay,
@@ -44,6 +43,7 @@ import { sentence } from "../src/web/data/api.ts";
 import { plainError } from "../src/web/data/portfolios.ts";
 import { missingWords, staleWords } from "../src/web/views/Portfolios.model.ts";
 import { api } from "./helpers/api.ts";
+import { portfolioBefore } from "./helpers/portfolio.ts";
 import { bar, instrument, LIVE, NOW, quote, world } from "./helpers/world.ts";
 
 const CASEY: Who = { name: "casey-agent", access: "write" };
@@ -84,7 +84,7 @@ async function setup() {
   instrument(w.db, "KW:KKK", { currency: "KWD", name: "Kilo Made Up" });
   quote(w.db, "US:AAA", 100, 100);
   quote(w.db, "KW:KKK", 1, 1);
-  await createPortfolio(w.m, { name: "Shares" });
+  await portfolioBefore(w.m, "Shares");
   await createBroker(w.m, { name: "North" });
   await createBroker(w.m, { name: "South" });
   return w;
@@ -405,7 +405,7 @@ describe("import and export", () => {
     expect(plain(1e-7)).toBe("0.0000001");
     const csv = exportCsv(m, portfolioByName(db, "Shares")!);
     expect(csv).toContain(",0.0000001,");
-    await createPortfolio(m, { name: "Copy" });
+    await portfolioBefore(m, "Copy");
     const r = await importCsv(
       m,
       CASEY,
@@ -579,7 +579,7 @@ describe("files as owners keep them", () => {
     );
     if ("error" in again) throw new Error(again.message);
     expect(again.counts.skipped).toBe(1);
-    await createPortfolio(m, { name: "Copy" });
+    await portfolioBefore(m, "Copy");
     await importCsv(
       m,
       CASEY,
@@ -925,7 +925,7 @@ describe("imports, rounding and removals as typed", () => {
       handle(
         new Request(`http://markets.test/api/v1${path}`, { method: "DELETE" }),
       );
-    await createPortfolio(m, { name: "Mistake" });
+    await portfolioBefore(m, "Mistake");
     const t = idOf(await trade(m, { portfolio: "Mistake", broker: "South" }));
     const live = await del("/portfolios/2");
     expect(live.status).toBe(409);
@@ -947,7 +947,7 @@ describe("imports, rounding and removals as typed", () => {
     if ("error" in r) throw new Error(r.message);
     const stored = readTrade(db, r.trade!.id)!.price;
     const csv = exportCsv(m, portfolioByName(db, "Shares")!);
-    await createPortfolio(m, { name: "Copy" });
+    await portfolioBefore(m, "Copy");
     await importCsv(
       m,
       CASEY,
@@ -1131,7 +1131,7 @@ describe("a review's second pass", () => {
     ).run();
     await clock.advance(5 * 86_400_000);
     const quantityIn = async (name: string, text: string) => {
-      await createPortfolio(m, { name });
+      await portfolioBefore(m, name);
       await run(m, text, name);
       const h = await readHoldings(m, {
         portfolio: name,
@@ -1416,7 +1416,7 @@ describe("a review's fourth pass", () => {
     if ("error" in r) throw new Error(r.message);
     const csv = exportCsv(m, portfolioByName(db, "Shares")!);
     expect(csv).toContain(`[as of ${ahead}]`);
-    await createPortfolio(m, { name: "Copy" });
+    await portfolioBefore(m, "Copy");
     const back = await importCsv(
       m,
       CASEY,
@@ -1462,7 +1462,7 @@ describe("refusals an agent can act on", () => {
 
   test("remove, restore and update take the row's own portfolio", async () => {
     const { m } = await setup();
-    await createPortfolio(m, { name: "Other" });
+    await portfolioBefore(m, "Other");
     const t = idOf(await trade(m, { date: "2026-01-27" }));
     const ok = await call(m, {
       action: "remove",

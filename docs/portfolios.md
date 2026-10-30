@@ -74,8 +74,19 @@ once and valued on the live price the server already keeps.
   its face or date; cash's and a hand price's is every row of their name
   at their broker.
 - **The display currency** (`portfolio_settings`, one row per owner,
-  `admin` until people sign in) is none until the owner sets one.
-  Nothing in code, docs or tests defaults to a currency.
+  `admin` until people sign in) is required: a portfolio is refused
+  (409, "Set a display currency first.") until the owner sets one, and
+  a save without a code is refused, so it changes but never clears.
+  It and a currency a caller names for a conversion must be an ISO
+  4217 code in circulation (`src/shared/currencies.ts`).
+- **Every currency a person or a file names is checked the same way**
+  (`isCurrencyCode()`): a trade's currency paid, a position's, an
+  update's, and an import's file-wide, paid and row currencies must be
+  in circulation, or one of the hundredths a listing is priced in
+  (`HUNDREDTHS`: GBp, GBX, ZAc, ILA), which a trade keeps as written.
+  A conversion target takes no hundredth.
+  Nothing in code, docs or tests defaults to a currency. An install
+  with portfolios from before answers per currency until one is set.
 
 ## The arithmetic
 

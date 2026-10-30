@@ -153,14 +153,36 @@ export type TradeIn = {
   portfolio: number;
   symbol: string;
   side: "buy" | "sell";
-  quantity: number;
+  // "all": what is sellable on the trade's date, the server's reckoning
+  quantity: number | "all";
   price?: number;
+  // the whole cost, fees in, in place of a price
+  total?: number;
   fees?: number;
   // what it was paid in, the listing's when left out
   currency?: string;
   date: string;
   broker?: string;
   note?: string;
+};
+
+export type SavedTrade = {
+  id: number;
+  quantity: number;
+  price: number;
+  fees: number;
+  currency: string;
+  unit: string | null;
+};
+
+// a picked listing: its currency and live price, as the form shows them
+export type Listing = {
+  id: string;
+  name: string | null;
+  currency: string | null;
+  unit: string | null;
+  price: number | null;
+  fetched_at: string | null;
 };
 
 export type PositionIn = {
@@ -182,6 +204,9 @@ export type PositionIn = {
 
 export type PositionChange = {
   amount?: number;
+  // a change to the amount, in currency when it is not the position's own
+  by?: number;
+  currency?: string;
   units?: number;
   price?: number;
   date?: string;
@@ -349,8 +374,13 @@ export function portfolioStore(call: Call, session: () => number) {
       });
       return load();
     },
-    addTrade: async (t: TradeIn) =>
-      refusal(await write("/api/v1/trades", "POST", t)),
+    // the saved trade, for a step that follows it
+    addTrade: async (
+      t: TradeIn,
+    ): Promise<{ trade: SavedTrade } | { refused: string }> => {
+      const r = await write<{ trade: SavedTrade }>("/api/v1/trades", "POST", t);
+      return "refused" in r ? r : { trade: r.done.trade };
+    },
     addPosition: async (p: PositionIn) =>
       refusal(await write("/api/v1/positions", "POST", p)),
     updatePosition: async (id: number, change: PositionChange) =>
@@ -379,7 +409,7 @@ export function portfolioStore(call: Call, session: () => number) {
       refusal(await write(`/api/v1/brokers/${id}`, "PATCH", { name })),
     deleteBroker: async (id: number) =>
       refusal(await write(`/api/v1/brokers/${id}`, "DELETE")),
-    saveDisplay: async (display: string | null) =>
+    saveDisplay: async (display: string) =>
       refusal(
         await write("/api/v1/portfolio-settings", "PUT", {
           display_currency: display,
@@ -399,11 +429,15 @@ export function portfolioStore(call: Call, session: () => number) {
     },
     exportHref: (id: number) => `${PORTFOLIOS_PATH}/${id}/export`,
     // the currency a picked listing trades in, for the form's label
-    listingCurrency: (id: string): Promise<string | null> =>
-      call<{ instrument: { currency: string | null } }>(
+    // every portfolio and broker at once, whatever the page filters on:
+    // where a listing is held and the dry powder a buy may pay from
+    everything: (): Promise<Holdings | null> =>
+      call<Holdings>("/api/v1/holdings").catch(() => null),
+    listing: (id: string): Promise<Listing | null> =>
+      call<{ instrument: Listing }>(
         `/api/v1/instruments/${encodeURIComponent(id)}`,
       )
-        .then((r) => r.instrument.currency)
+        .then((r) => r.instrument)
         .catch(() => null),
     clear() {
       loads++;

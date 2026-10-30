@@ -11,7 +11,6 @@ import {
   parseDay,
   parseNumber,
 } from "../portfolios/csv.ts";
-import { isCurrency } from "../portfolios/fx.ts";
 import {
   type Broker,
   insertPosition,
@@ -33,6 +32,7 @@ import {
   type Trade,
 } from "../portfolios/store.ts";
 import { sellStep, splitFactor, statedOf } from "../portfolios/value.ts";
+import { isCurrencyCode } from "../shared/currencies.ts";
 import { FRED, YAHOO } from "../sources/ids.ts";
 import type { Db } from "../storage/db/index.ts";
 import type { Failure } from "./answer.ts";
@@ -184,9 +184,11 @@ export function parseImport(body: unknown): ImportArgs {
   const currency = f.currency ?? null;
   if (
     currency !== null &&
-    (typeof currency !== "string" || !isCurrency(currency))
+    (typeof currency !== "string" || !isCurrencyCode(currency))
   ) {
-    throw new ArgError("currency must be a currency code");
+    throw new ArgError(
+      "currency must be an ISO 4217 currency code in circulation, such as EUR",
+    );
   }
   return {
     portfolio,
@@ -329,8 +331,8 @@ function yahooRow(
   }
   // a hundredth's code (GBp) is kept as written: GBP would be 100 times it
   const currency = said.paid;
-  if (currency !== null && !isCurrency(currency)) {
-    throw new Bad("the currency paid is not a code");
+  if (currency !== null && !isCurrencyCode(currency)) {
+    throw new Bad("the currency paid is not a currency in circulation");
   }
   const date = day(get("trade date"), "trade date", true)!;
   // figures are restated after the trade, never before it
@@ -841,8 +843,10 @@ async function planPositions(
       let currency =
         kind === "cash" ? (fromHeader ?? ctx.currency) : get("currency");
       if (!currency) throw new Bad("no currency");
-      if (!isCurrency(currency)) currency = currency.toUpperCase();
-      if (!isCurrency(currency)) throw new Bad("currency is not a code");
+      if (!isCurrencyCode(currency)) currency = currency.toUpperCase();
+      if (!isCurrencyCode(currency)) {
+        throw new Bad("currency is not a currency in circulation");
+      }
       let warning: string | undefined;
       let undated = false;
       const position: NewPosition = {
