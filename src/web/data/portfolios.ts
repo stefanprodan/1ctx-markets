@@ -73,6 +73,7 @@ export type Holding = {
   coupon?: number | null;
   maturity?: string | null;
   dry_powder?: boolean;
+  sold_today?: boolean;
   note?: string | null;
   stale: string[];
   parts: Part[];

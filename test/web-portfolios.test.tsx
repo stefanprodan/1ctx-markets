@@ -18,6 +18,7 @@ import {
   change,
   costLine,
   currencies,
+  currencyGain,
   dryPowderFor,
   dryPowders,
   heldAt,
@@ -231,7 +232,7 @@ async function loaded(
 }
 
 describe("the Portfolios page", () => {
-  test("shows a total per currency, never summed, with its dry powder", async () => {
+  test("with nothing converted, a total per currency, never summed", async () => {
     const { s } = await loaded();
     const html = render(<PortfoliosBody store={s.portfolios} />);
     expect(html).toContain("1,000.00 EUR");
@@ -270,7 +271,7 @@ describe("the Portfolios page", () => {
     void s;
   });
 
-  test("with a named currency, the converted total and its rate come first", async () => {
+  test("with a converted total, it is the one total shown, with its rate", async () => {
     const { s } = await loaded({
       ...HOLDINGS,
       currency: "USD",
@@ -281,13 +282,15 @@ describe("the Portfolios page", () => {
       ],
     });
     const html = render(<PortfoliosBody store={s.portfolios} />);
-    expect(html).toContain("All in USD");
+    expect(html).toContain('<span class="label">Total</span>');
     expect(html).toContain("2,250.00 USD");
     expect(html).toContain("1 EUR = 1.25 USD");
-    expect(html.indexOf("All in USD")).toBeLessThan(html.indexOf(">EUR<"));
+    expect(html).not.toContain('aria-label="Total in EUR"');
+    expect(currencyGain(HOLDINGS.totals, "EUR").text).toBe("+25.00%");
+    expect(currencyGain(HOLDINGS.totals, "JPY").text).toBe("");
   });
 
-  test("with no portfolio yet it opens on the settings", async () => {
+  test("with no portfolio yet it asks for one, the display currency kept", async () => {
     const f = fake({
       "GET /api/v1/portfolios": { ...OVERVIEW, portfolios: [] },
       "GET /api/v1/holdings": {
@@ -306,8 +309,41 @@ describe("the Portfolios page", () => {
     );
     await s.portfolios.load();
     const html = render(<PortfoliosBody store={s.portfolios} />);
-    expect(html).toContain("New portfolio");
-    expect(html).toContain("Display currency");
+    expect(html).toContain("Create your first portfolio");
+    expect(html).toContain('aria-label="Display currency: USD"');
+    expect(html).not.toContain("Holdings");
+    expect(html).not.toContain('aria-label="Add"');
+    expect(html).not.toContain('aria-label="More"');
+  });
+
+  test("a portfolio with nothing in it offers a trade or an import, under its name", async () => {
+    const f = fake({
+      "GET /api/v1/portfolios": {
+        ...OVERVIEW,
+        portfolios: [OVERVIEW.portfolios[0]!],
+      },
+      "GET /api/v1/holdings": {
+        ...HOLDINGS,
+        totals: [],
+        holdings: [],
+        exposure: [],
+      },
+      "GET /api/v1/trades": { trades: [] },
+    });
+    const s = store(
+      f.fetch,
+      () => NOW,
+      () => "/portfolios",
+      () => {},
+    );
+    await s.portfolios.load();
+    const html = render(<PortfoliosBody store={s.portfolios} />);
+    expect(html).toContain(">Shares</h2>");
+    expect(html).toContain("No trades yet.");
+    expect(html).toContain("Add a trade");
+    expect(html).toContain("Import a CSV");
+    expect(html).not.toContain('aria-label="Add"');
+    expect(html).toContain('aria-label="More"');
   });
 
   test("with no display currency it asks for one before anything else", async () => {
@@ -324,8 +360,10 @@ describe("the Portfolios page", () => {
     );
     await s.portfolios.load();
     const html = render(<PortfoliosBody store={s.portfolios} />);
-    expect(html).toContain("Set it first.");
-    expect(html).not.toContain("New portfolio");
+    // portfolios exist, so only the currency is asked
+    expect(html).toContain("Pick a currency for totals");
+    expect(html).not.toContain('placeholder="Long term"');
+    expect(html).toContain('aria-label="Display currency: none"');
     expect(html).not.toContain("Holdings");
     expect(html).not.toContain('aria-label="Add"');
   });
@@ -361,13 +399,16 @@ describe("the Portfolios page", () => {
       "Price",
       "Use total",
       "Date",
+      "Fees",
       "Portfolio",
       "Pick a portfolio",
-      "Fees, currency, broker and note",
+      "Broker",
+      "Note",
       "Fund",
     ]) {
       expect([word, html.includes(word)]).toEqual([word, true]);
     }
+    expect(html).toMatch(/<button[^>]*disabled[^>]*>Sell</);
     expect(
       render(<ImportPanel store={s.portfolios} onDone={() => {}} />),
     ).toContain("Choose CSV");
@@ -418,6 +459,9 @@ describe("the page's words", () => {
     expect(typed("")).toBeNull();
     expect(Number.isNaN(typed("abc")!)).toBe(true);
     expect(holdingSub(HOLDINGS.holdings[1]!, NOW)).toBe("Dry powder · 1 Oct");
+    expect(
+      holdingSub({ ...HOLDINGS.holdings[1]!, dry_powder: false }, NOW),
+    ).toBe("Reserve · 1 Oct");
     expect(tradeLine(trade())).toBe("4 × 80.00 EUR + 1.50 fees");
     expect(tradeSub(trade(), NOW)).toBe(
       "2 Mar · Shares · North · by casey-agent",
@@ -427,6 +471,9 @@ describe("the page's words", () => {
       "Invested",
       "Dry powder",
     ]);
+    expect(
+      splitOf(total("EUR", { cash: 100, cash_weight: 10 })).map((p) => p.label),
+    ).toEqual(["Invested", "Reserve", "Dry powder"]);
     expect(currencies(HOLDINGS)).toEqual(["EUR", "USD"]);
     expect(rateLine({ from: "EUR", to: "JPY", rate: null, at: null })).toBe(
       "No EUR to JPY rate",
@@ -440,9 +487,9 @@ describe("the page's words", () => {
         quantity: 2,
         price: 10,
         currency: "USD",
-        date: "2026-01-05",
+        date: `${new Date().getFullYear()}-01-05`,
       }),
-    ).toBe("Buy AAA · 2 × 10.00 USD · 2026-01-05");
+    ).toBe("Buy AAA · 2 × 10.00 USD · 5 Jan");
     expect(
       accessWords({
         id: "a",
@@ -692,6 +739,32 @@ describe("the add panel", () => {
     ]);
   });
 
+  test("the only portfolio is picked for an add and an import", async () => {
+    const f = fake({
+      "GET /api/v1/portfolios": {
+        ...OVERVIEW,
+        portfolios: [OVERVIEW.portfolios[0]!],
+        brokers: [OVERVIEW.brokers[0]!],
+      },
+      "GET /api/v1/holdings": HOLDINGS,
+      "GET /api/v1/trades": { trades: [] },
+    });
+    const s = store(
+      f.fetch,
+      () => NOW,
+      () => "/portfolios",
+      () => {},
+    );
+    await s.portfolios.load();
+    const add = render(<AddForm store={s.portfolios} onDone={() => {}} />);
+    expect(add).toContain('aria-label="Portfolio: Shares"');
+    expect(add).toContain('aria-label="Broker: North"');
+    expect(add).not.toContain("Pick a portfolio");
+    expect(
+      render(<ImportPanel store={s.portfolios} onDone={() => {}} />),
+    ).toContain('aria-label="Portfolio: Shares"');
+  });
+
   test("a holding's Buy or Sell opens the panel on it", async () => {
     const { s } = await loaded();
     const html = render(
@@ -701,7 +774,8 @@ describe("the add panel", () => {
         start={{ symbol: "XETRA:AAA", side: "sell", portfolio: "Shares" }}
       />,
     );
-    expect(html).toContain('value="AAA"');
+    expect(html).toContain('<span class="ins-symbol">AAA</span>');
+    expect(html).toContain('aria-label="Change symbol"');
     expect(html).toMatch(/aria-pressed="true"[^>]*>Sell/);
     expect(html).toContain("Add sell");
     expect(html).not.toContain("Pick a portfolio");
