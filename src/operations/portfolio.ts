@@ -1278,6 +1278,12 @@ export async function updatePosition(
       };
     }
     const now = m.clock.now();
+    // as_of says when the figure was true; a bond's is its purchase date
+    const revalued =
+      (old.kind === "cash" && given !== undefined) ||
+      (old.kind === "fund" &&
+        (change.units !== undefined || change.price !== undefined));
+    const asOf = change.date ?? (revalued ? localDate("UTC", now) : old.asOf);
     setPositionRemoved(db, id, who.name, now);
     const {
       id: _,
@@ -1295,7 +1301,7 @@ export async function updatePosition(
         units: change.units ?? old.units,
         price: change.price ?? old.price,
         cost: change.cost === undefined ? old.cost : change.cost,
-        asOf: change.date ?? old.asOf,
+        asOf,
         note: change.note === undefined ? old.note : change.note,
         dryPowder: change.dryPowder ?? old.dryPowder,
         replaces: id,

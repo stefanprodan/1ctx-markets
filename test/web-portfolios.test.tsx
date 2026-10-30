@@ -32,6 +32,7 @@ import {
   shareLabel,
   shownIn,
   splitOf,
+  today,
   tradeLine,
   tradeMoney,
   tradeSub,
@@ -575,6 +576,18 @@ describe("the page's words", () => {
       <PositionEdit store={st.portfolios} h={cash} onDone={() => {}} />,
     );
     expect(html).toContain('value="123.4"');
+  });
+
+  test("an edit starts on today, a bond's on its purchase date", async () => {
+    const { s: st } = await loaded();
+    const dateOf = (h: Holding) =>
+      render(
+        <PositionEdit store={st.portfolios} h={h} onDone={() => {}} />,
+      ).match(/type="date" value="([^"]*)"/)?.[1];
+    const cash = { ...HOLDINGS.holdings[1]!, as_of: "2026-01-13" };
+    const bond = { ...cash, kind: "bond" as const };
+    expect(dateOf(cash)).toBe(today());
+    expect(dateOf(bond)).toBe("2026-01-13");
   });
 
   test("a bond's price reads as a percent of face", () => {

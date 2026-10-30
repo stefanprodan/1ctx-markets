@@ -1573,3 +1573,164 @@ describe("refusals an agent can act on", () => {
     });
   });
 });
+
+describe("an update's date", () => {
+  const position = (more: Partial<PositionArgs>): PositionArgs => ({
+    kind: "cash",
+    portfolio: "Shares",
+    name: "Made Up Cash",
+    symbol: null,
+    currency: "USD",
+    amount: 1000,
+    units: null,
+    price: null,
+    cost: null,
+    coupon: null,
+    maturity: null,
+    date: "2026-05-03",
+    broker: null,
+    note: null,
+    dryPowder: false,
+    ...more,
+  });
+  const fund = (more: Partial<PositionArgs> = {}) =>
+    position({
+      kind: "fund",
+      name: "Made Up Fund",
+      currency: "EUR",
+      amount: null,
+      units: 5,
+      price: 10,
+      ...more,
+    });
+  const bond = () =>
+    position({
+      kind: "bond",
+      name: "Made Up Bond",
+      currency: "RON",
+      coupon: 6,
+      maturity: "2030-01-13",
+    });
+  const added = async (m: Markets, args: PositionArgs) => {
+    const r = await addPosition(m, CASEY, args);
+    if ("error" in r) throw new Error(r.message);
+    return r.position.id;
+  };
+  const updated = async (
+    m: Markets,
+    id: number,
+    change: Parameters<typeof updatePosition>[3],
+  ) => {
+    const r = await updatePosition(m, CASEY, id, change);
+    if ("error" in r) throw new Error(r.message);
+    return r;
+  };
+
+  test("cash moved by an amount is dated today, its old row kept", async () => {
+    const { m, db } = await setup();
+    const id = await added(m, position({ dryPowder: true }));
+    const up = await updated(m, id, {
+      by: { amount: -606, currency: "USD" },
+    });
+    const now = readPosition(db, up.position.id)!;
+    expect([now.amount, now.asOf]).toEqual([394, LIVE]);
+    const row = (await holdingsOf(m)).holdings.find((x) => x.kind === "cash")!;
+    expect(row.as_of).toBe(LIVE);
+    const h = historyOf(m, up.position.id);
+    if ("error" in h) throw new Error(h.message);
+    expect(h.history.map((x) => [x.id, x.as_of]).sort()).toEqual(
+      [
+        [id, "2026-05-03"],
+        [up.position.id, LIVE],
+      ].sort(),
+    );
+  });
+
+  test("cash set in another currency is dated today, with its rate", async () => {
+    const { m, db } = await setup();
+    pair(db, "EURUSD=X", 1.2);
+    const id = await added(m, position({}));
+    const up = await updated(m, id, {
+      amount: { amount: 100, currency: "EUR" },
+    });
+    expect(up.rate!.rate).toBe(1.2);
+    expect(readPosition(db, up.position.id)!.asOf).toBe(LIVE);
+  });
+
+  test("a fund's new price is dated today", async () => {
+    const { m, db } = await setup();
+    const id = await added(m, fund());
+    const up = await updated(m, id, { price: 11 });
+    expect(readPosition(db, up.position.id)!.asOf).toBe(LIVE);
+  });
+
+  test("a bond's new face keeps its purchase date", async () => {
+    const { m, db } = await setup();
+    const id = await added(m, bond());
+    const up = await updated(m, id, {
+      amount: { amount: 1500, currency: null },
+    });
+    expect(readPosition(db, up.position.id)!.asOf).toBe("2026-05-03");
+  });
+
+  test("a change that moves no value keeps the date", async () => {
+    const cases: [PositionArgs, Parameters<typeof updatePosition>[3]][] = [
+      [position({}), { note: "kept aside" }],
+      [position({}), { dryPowder: true }],
+      [fund(), { cost: 40 }],
+    ];
+    for (const [args, change] of cases) {
+      const { m, db } = await setup();
+      const id = await added(m, args);
+      const up = await updated(m, id, change);
+      expect([change, readPosition(db, up.position.id)!.asOf]).toEqual([
+        change,
+        "2026-05-03",
+      ]);
+    }
+  });
+
+  test("a fund's cost converts at the day its cost was set", async () => {
+    const { m, db } = await setup();
+    pair(db, "EURUSD=X", 1.3, {
+      "2026-05-03": [1.1, true],
+      "2026-09-14": [1.2, true],
+      [LIVE]: [1.3, false],
+    });
+    const costIn = async () =>
+      (await holdingsOf(m, "USD")).holdings.find((x) => x.kind === "fund")!
+        .converted!.cost;
+    const id = await added(m, fund({ cost: 40 }));
+    expect(await costIn()).toBe(44);
+    const repriced = await updated(m, id, { price: 11 });
+    expect(await costIn()).toBe(44);
+    const recosted = await updated(m, repriced.position.id, {
+      cost: 50,
+      date: "2026-09-14",
+    });
+    await updated(m, recosted.position.id, { price: 12 });
+    expect(await costIn()).toBe(60);
+  });
+
+  test("a given date wins, and a future one is refused", async () => {
+    const { m, db } = await setup();
+    const id = await added(m, position({}));
+    const up = await updated(m, id, {
+      by: { amount: -6, currency: null },
+      date: "2026-09-14",
+    });
+    expect(readPosition(db, up.position.id)!.asOf).toBe("2026-09-14");
+    const later = latestDay(m.clock.now()).replace(/^\d{4}/, (y) =>
+      String(Number(y) + 1),
+    );
+    expect(
+      await updatePosition(m, CASEY, up.position.id, {
+        amount: { amount: 5, currency: null },
+        date: later,
+      }),
+    ).toMatchObject({
+      error: "bad_arguments",
+      message: "date is in the future",
+    });
+  });
+});
