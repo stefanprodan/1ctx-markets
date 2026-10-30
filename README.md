@@ -39,8 +39,8 @@ holdings, orders or portfolio, and it makes no model calls.
   sentiment for US shares and ETFs. With a FRED key: daily economic
   series such as Treasury yields, as instruments of their own. With a
   contact line for SEC EDGAR: US shares' filings with their 8-K items,
-  flags for a late filing, a restatement or an offering, and when each
-  earnings release was filed.
+  flags for a late filing, a restatement or new securities registered
+  or offered, and when each earnings release was filed.
 - **Rules and alerts.** Agents set conditions on a symbol's price or
   signals, other symbols included: price below 200, RSI under 30 while
   above the 200-day average, the VIX above 30, a drop after the next

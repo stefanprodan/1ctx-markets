@@ -22,8 +22,8 @@ export const TICKERS_PATH = "/files/company_tickers.json";
 export const SPACING_MS = 200;
 const TIMEOUT_MS = 30_000;
 
-// a new share offering's registration or prospectus; 424B2 and 424B3 are
-// left out: banks file thousands a year for notes, never shares
+// new securities registered or offered, shares or debt; 424B2 and 424B3
+// are left out: banks file thousands a year for structured notes
 export const OFFERING_FORMS = [
   "S-1",
   "S-1/A",
@@ -69,6 +69,14 @@ export type Submissions = {
 };
 
 export type Tickers = { ciks: Map<string, number>; fetchedAt: number };
+
+// a header value must be printable ASCII, or every call fails as a
+// network error while the source reads on
+export const usableContact = (line: string): boolean =>
+  /^[\x20-\x7e]+$/.test(line) && line.includes("@");
+
+// why a key file that holds no usable contact line leaves EDGAR off
+export const BAD_CONTACT = "bad contact line";
 
 export type Edgar = {
   tickers(): Promise<Tickers>;

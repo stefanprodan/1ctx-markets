@@ -5,14 +5,22 @@ import { checkStored, type Instrument } from "../../market/instruments.ts";
 import type { Clock } from "../../runtime/clock.ts";
 import { exclusive } from "../../runtime/lock.ts";
 import type { Db } from "../../storage/db/index.ts";
+import { failedRun, lastStarted } from "../../storage/runs.ts";
 import type { Writer } from "../../storage/writer.ts";
 import { WriterClosed } from "../../storage/writer.ts";
-import { DeadlinePassed, Paused, QueueClosed } from "../source.ts";
+import {
+  DeadlinePassed,
+  Paused,
+  PHRASES,
+  QueueClosed,
+  SourceError,
+} from "../source.ts";
 import { type Edgar, SOURCE, type Submissions } from "./client.ts";
 import {
   cikOf,
   FILINGS_JOB,
   filingsFetched,
+  RETRY_MS,
   recordRun,
   storeFilings,
   storeTickers,
@@ -51,6 +59,17 @@ export function refreshTickers(
   return exclusive(ctx.db, `${SOURCE}:tickers`, async () => {
     if (options.missing && tickersFetched(ctx.db)) {
       return { status: "ok", rows: 0 };
+    }
+    // a call's own fetch waits out a failure as the job does, or every
+    // share in every call would ask for the whole map again
+    const last = lastStarted(ctx.db, SOURCE, TICKERS.job, TICKERS.scope);
+    if (
+      options.missing &&
+      failedRun(last) &&
+      ctx.clock.now() - last.startedAt < RETRY_MS
+    ) {
+      const phrase = PHRASES.find((p) => p === last.error) ?? "source error";
+      return { status: "failed", error: new SourceError(phrase) };
     }
     if (!live()) throw new DeadlinePassed();
     const startedAt = ctx.clock.now();

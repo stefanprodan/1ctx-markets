@@ -2,13 +2,13 @@
 
 Governs what every source shares: `src/sources/source.ts` (phrases,
 errors, the queue and the limiter), `src/sources/ids.ts` (source and
-market ids) and `src/sources/history.ts` (the backfill window, the
-retry wait, rescales), with the per-instrument lock in
-`src/runtime/lock.ts`. Each provider's own behaviour is in its doc:
-`docs/yahoo.md`, `docs/bvb.md`, `docs/fred.md`, `docs/research.md`
-(Finnhub and Massive), `docs/edgar.md`. The tool call's deadline and the inline fetch
-are in `docs/tools.md`; runs and staleness in `docs/storage.md`; rule
-pauses in `docs/rules.md`.
+market ids) and `src/sources/history.ts` (the backfill window, the retry
+wait, rescales), with the per-instrument lock in `src/runtime/lock.ts`.
+Each provider's own behaviour is in its doc: `docs/yahoo.md`,
+`docs/bvb.md`, `docs/fred.md`, `docs/research.md` (Finnhub and Massive),
+`docs/edgar.md`. The tool call's deadline and the inline fetch are in
+`docs/tools.md`; runs and staleness in `docs/storage.md`; rule pauses in
+`docs/rules.md`.
 
 ## The source queue
 

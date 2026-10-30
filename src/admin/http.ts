@@ -135,7 +135,7 @@ const SOURCE_KEYS: Record<string, { adds: string; signup: string }> = {
   },
   // no key to sign up for: the file holds a name and an email for SEC
   edgar: {
-    adds: "SEC filings for US shares: results releases, late filings, restatements and offerings.",
+    adds: "SEC filings for US shares: results releases, late filings, restatements and new securities registered or offered.",
     signup:
       "https://www.sec.gov/search-filings/edgar-search-assistance/accessing-edgar-data",
   },

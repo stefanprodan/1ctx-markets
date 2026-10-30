@@ -278,7 +278,8 @@ route's transport in `docs/api.md`; rules that wait on events in
   page; `overview` has no next page.
 - **The overview's `filings`** is EDGAR's summary (`filingsSummary()`):
   `source`, `fetched_at`, `stale`, the three flags (`late_filing`,
-  `restatement`, `offering`, `docs/edgar.md`) and `recent`, the
+  `restatement`, `offering`: new securities, shares or debt,
+  registered or offered; `docs/edgar.md`) and `recent`, the
   `FILINGS_RECENT` (5) newest filings. A flag says which filing to
   read; the section holds the rest. Off, not covered, no CIK and a
   foreign filer answer `message` (and `reason` for the last two) with
@@ -312,12 +313,12 @@ is fixed, never an argument, to keep five summaries short.
 - **Five symbols** (`MAX_RESEARCH_SYMBOLS`): a share never fetched
   costs five Finnhub calls, and the free key allows 60 a minute,
   shared with the jobs.
-- **`sections` picks what each share answers; a Finnhub section left
-  out is not fetched.** Each item is `input`, `id`, `company` (the
-  Finnhub summary, with its `source`, `message` and partial-failure
-  fields), `news` (the news week) and `filings` (EDGAR's summary), under the tool's deadline and
-  tracking. No quote: `/quotes` answers prices for many symbols in one
-  call. The research tool keeps its own names.
+- **`sections` picks what each share answers; a Finnhub section left out
+  is not fetched.** Each item is `input`, `id`, `company` (the Finnhub
+  summary, with its `source`, `message` and partial-failure fields),
+  `news` (the news week) and `filings` (EDGAR's summary), under the
+  tool's deadline and tracking. No quote: `/quotes` answers prices for
+  many symbols in one call. The research tool keeps its own names.
 - **Each Finnhub section but `metric` adds `history`**: its newest
   rows as the section's page shows them, so a script reads a trend
   without paging the tool (`HTTP_HISTORY`): `analysts` two months, the

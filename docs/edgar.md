@@ -13,11 +13,14 @@ phrases and the lock every source shares are in `docs/sources.md`; the
 ## On and off
 
 - **EDGAR is on only while `secrets/source-edgar.key` holds a contact
-  line**: a name and an email, which SEC asks every client to declare
-  in its User-Agent. It needs no key, but the line holds an email, so
-  it is read, masked and never answered like a key, and one on/off
-  mechanism serves every source. The start log says `edgar=on (key
-  file)`.
+  line**: a name and an email, which SEC asks every client to declare in
+  its User-Agent. A line that is not printable ASCII with an `@`
+  (`usableContact()`) leaves EDGAR off as `off (bad contact line)` on
+  the start log and the status page, never printing it: a header with
+  any other character fails every call as a network error. It needs no
+  key, but the line holds an email, so it is read, masked and never
+  answered like a key, and one on/off mechanism serves every source. The
+  start log says `edgar=on (key file)`.
 - **Off is an answer, never an error**: `NO_DATA` ("no data from
   EDGAR") with every flag null.
 - **The contact line goes only in the User-Agent header.** Nothing of
@@ -45,9 +48,15 @@ phrases and the lock every source shares are in `docs/sources.md`; the
   `edgar_tickers` and replaced each fetch. SEC writes a class share as
   Yahoo does (`BRK-B`), so the instrument's symbol is the lookup.
 - **The map is fetched weekly** (`TICKERS_EVERY_MS`) by the job, and
-  inside a call when none was ever stored. It runs as `tickers`, scope
-  `US`. An answer with no valid entry is malformed and replaces
-  nothing; a single odd entry is skipped.
+  inside a call when none was ever stored. A failed map waits `RETRY_MS`
+  on both paths, so a bad answer is not asked again (800 KB) for each
+  share of each call; a job tick with no map asks no share. It runs as
+  `tickers`, scope `US`. An answer with no valid entry is malformed and
+  replaces nothing; a single odd entry is skipped.
+- **Share classes of one company share its CIK** (`GOOG` and `GOOGL`):
+  each tracked class is its own share, so tracking both costs two calls
+  a day and stores the same filings twice. Filings are kept per
+  instrument so each answers on its own.
 - **A share the map lacks is stored without a CIK**, a good run with
   no rows, and answers `NO_DATA` with the reason `not in SEC's ticker
   list`. The weekly map picks up new listings.
@@ -56,9 +65,10 @@ phrases and the lock every source shares are in `docs/sources.md`; the
 
 - **Kept forms** (`KEPT_FORMS`): 10-K, 10-Q, 8-K and their amendments,
   NT 10-K and NT 10-Q, and the offering forms S-1, S-1/A, S-3, S-3/A,
-  S-3ASR, 424B1, 424B4 and 424B5. 424B2 and 424B3 are left out: a bank
-  files thousands a year for notes, never shares, and they would bury
-  every other filing and set the offering flag every day.
+  S-3ASR, 424B1, 424B4 and 424B5, which register or offer new
+  securities, shares or debt. 424B2 and 424B3 are left out: a bank
+  files thousands a year for structured notes, which would bury every
+  other filing and set the offering flag every day.
 - **Stored per filing** (`filings`, keyed by instrument and accession):
   form, accepted time (UTC ms), filed date, period, 8-K item codes and
   the filing index URL. Two years are kept (`KEPT_MS`), pruned by
@@ -99,18 +109,24 @@ phrases and the lock every source shares are in `docs/sources.md`; the
 ## Flags
 
 Read from stored filings by accepted time; null when EDGAR is off, the
-share was never fetched, has no CIK or is a foreign filer, never false:
+share was never fetched, has no CIK or is a foreign filer, never false.
+A flag says which filing to read, never what it holds: whether an
+offering is shares or debt is in the filing behind its link.
 
 | Flag | True when | Why the window |
 |---|---|---|
 | `late_filing` | an NT 10-K or NT 10-Q in the last 90 days | one quarter, as a 10-Q is due within one |
 | `restatement` | an 8-K or 8-K/A with item 4.02 in the last 365 days | a year of reports leans on the restated ones |
-| `offering` | an S-1, S-3 or 424B1/4/5 in the last 90 days | a new share offering dilutes within the quarter |
+| `offering` | new securities, shares or debt, registered or offered: an S-1, S-3 or 424B1/4/5 in the last 90 days | new shares dilute and new debt adds leverage within the quarter |
 
 ## Events
 
-- **An event's `filed_at`** is the acceptance time of the first 8-K
-  with item 2.02 (results) whose date in the exchange's zone is within
-  `FILED_WINDOW_DAYS` (three) of the event's date: when results went
-  out. It is null without one or while EDGAR is off. It never changes
-  `reported_seen_at` or the status, which stay Finnhub's actuals.
+- **An event's `filed_at`** is the acceptance time of the 8-K with
+  item 2.02 (results) whose date in the exchange's zone is nearest the
+  event's date, the earlier on a tie, from a day before it
+  (`FILED_BEFORE_DAYS`, a date set late) to three after
+  (`FILED_AFTER_DAYS`, results that slipped): when results went out.
+  Nearest, since a preliminary release and the final one can both fall
+  in the window. It is null without one or while EDGAR is off. It
+  never changes `reported_seen_at` or the status, which stay Finnhub's
+  actuals.

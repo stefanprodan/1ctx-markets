@@ -27,7 +27,12 @@ import {
   sourceSwitch,
   writeSources,
 } from "./sources/bvb/switch.ts";
-import { type Edgar, edgar } from "./sources/edgar/client.ts";
+import {
+  BAD_CONTACT,
+  type Edgar,
+  edgar,
+  usableContact,
+} from "./sources/edgar/client.ts";
 import { type EdgarJobs, edgarJobs } from "./sources/edgar/jobs.ts";
 import { pruneFilings } from "./sources/edgar/store.ts";
 import { type Finnhub, finnhub } from "./sources/finnhub/client.ts";
@@ -272,7 +277,7 @@ export function start(options: AppOptions): App {
 
   const edgarKey = options.edgarKey ?? null;
   const edgarClient =
-    edgarKey === null
+    edgarKey === null || !usableContact(edgarKey)
       ? null
       : edgar({ clock, contact: edgarKey, fetch: options.fetch });
   const edgarSync =
@@ -313,7 +318,7 @@ export function start(options: AppOptions): App {
   const keyed = (name: string, key: string | null, client: Paced | null) => ({
     name,
     on: client !== null,
-    why: key === null ? "no key" : "key file",
+    why: key === null ? "no key" : client === null ? BAD_CONTACT : "key file",
     backoff: () => client?.backoff() ?? null,
   });
   const states: SourceState[] = [

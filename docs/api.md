@@ -222,14 +222,14 @@ MCP tools copied onto paths.
 
 ## The research route
 
-- **`symbols` takes up to `MAX_RESEARCH_SYMBOLS` (5), `sections` a
-  list of `metric`, `analysts`, `earnings`, `insider`, `next_event`,
-  `news` and `filings` (all by default), and `since` a UTC date, with
-  `news` asked.** Each item is `input`, `id`, `company` (the Finnhub
-  summary with each asked section's `history`), `news` (the news week)
-  and `filings` (EDGAR's summary, the tool overview's), or its error; no quote, since `/quotes` answers prices in one call.
-  What each holds and why is in `docs/research.md` ("The research
-  route").
+- **`symbols` takes up to `MAX_RESEARCH_SYMBOLS` (5), `sections` a list
+  of `metric`, `analysts`, `earnings`, `insider`, `next_event`, `news`
+  and `filings` (all by default), and `since` a UTC date, with `news`
+  asked.** Each item is `input`, `id`, `company` (the Finnhub summary
+  with each asked section's `history`), `news` (the news week) and
+  `filings` (EDGAR's summary, the tool overview's), or its error; no
+  quote, since `/quotes` answers prices in one call. What each holds and
+  why is in `docs/research.md` ("The research route").
 
 ## Paging
 

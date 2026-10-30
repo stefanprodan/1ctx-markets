@@ -93,8 +93,9 @@ the `--help` text, and a flag changes there in the same commit.
   slog-text form. `startup` holds `version`, `listen`, `data` (`~` for
   the home directory), `migrations` (applied, or `current`),
   `quote_every`, `track_days` and `ui` (`on` or `off`). `sources` has one field per source:
-  `yahoo=on`, the keyed ones `on (key file)` or `off (no key)`, `bvb`
-  `on (flag)` or `off (no flag)`.
+  `yahoo=on`, the keyed ones `on (key file)` or `off (no key)`, `edgar`
+  also `off (bad contact line)` (`docs/edgar.md`), `bvb` `on (flag)` or
+  `off (no flag)`.
 - **Log fields are fixed names and short values.** `errorFields()`
   keeps an error's type and first line only, so a stack stays out; a
   `SourceError` message is a fixed phrase, so a source's own text

@@ -4,7 +4,7 @@
 
 import { readSession } from "../../market/calendars.ts";
 import type { Instrument } from "../../market/instruments.ts";
-import { addDays, localDate } from "../../market/zone.ts";
+import { addDays, localDate, wallOfDate } from "../../market/zone.ts";
 import { DAY_MS, MINUTE_MS } from "../../runtime/clock.ts";
 import type { Db } from "../../storage/db/index.ts";
 import { failedRun, lastStarted } from "../../storage/runs.ts";
@@ -35,8 +35,10 @@ export const KEPT_MS = 730 * DAY_MS;
 export const LATE_DAYS = 90;
 export const RESTATEMENT_DAYS = 365;
 export const OFFERING_DAYS = 90;
-// what results going out within this of an event's date is taken for
-export const FILED_WINDOW_DAYS = 3;
+// an 8-K with results from a day before an event's date (a date set
+// late) to three after it (results that slipped) is taken for its release
+export const FILED_BEFORE_DAYS = 1;
+export const FILED_AFTER_DAYS = 3;
 
 // what a read answers while the source is off, never an error
 export const NO_DATA = "no data from EDGAR";
@@ -300,8 +302,9 @@ export function flags(
   };
 }
 
-// The first 8-K with results accepted within FILED_WINDOW_DAYS of the
-// event's date in the exchange's zone: when results went out.
+// The 8-K with results whose date in the exchange's zone is nearest the
+// event's, the earlier on a tie: a preliminary release and the final
+// one can both fall in the window.
 export function filedAt(
   db: Db,
   i: Pick<Instrument, "id" | "zone">,
@@ -314,13 +317,18 @@ export function filedAt(
        order by accepted_at`,
     )
     .all(i.id, RESULTS);
-  const from = addDays(date, -FILED_WINDOW_DAYS);
-  const to = addDays(date, FILED_WINDOW_DAYS);
+  const from = addDays(date, -FILED_BEFORE_DAYS);
+  const to = addDays(date, FILED_AFTER_DAYS);
+  const event = wallOfDate(date);
+  let best: { at: number; off: number } | null = null;
   for (const r of rows) {
     const day = localDate(i.zone, r.at);
-    if (day >= from && day <= to) return r.at;
+    if (day < from || day > to) continue;
+    const off = Math.abs(wallOfDate(day) - event);
+    // rows come oldest first, so a tie keeps the earlier
+    if (best === null || off < best.off) best = { at: r.at, off };
   }
-  return null;
+  return best?.at ?? null;
 }
 
 export function pruneFilings(db: Db, now: number): number {

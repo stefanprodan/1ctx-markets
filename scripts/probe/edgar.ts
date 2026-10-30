@@ -37,11 +37,13 @@ function trimTickers(fx: Fixture) {
   fx.body = kept;
 }
 
-// the forms a test reads; others are sampled so a skip is still tested
-const KEPT = /^(10-K|10-Q|8-K|NT 10-[KQ]|S-1|S-3|424B[145])/;
+// the forms a test reads, the periodic reports that tell a foreign filer
+// included; others are sampled so a skip is still tested
+const KEPT = /^(10-K|10-Q|8-K|NT 10-[KQ]|S-1|S-3|424B[145]|20-F|40-F|6-K)/;
 const SAMPLE = 20;
 
-function trimFilings(years: number, sampleOthers: boolean) {
+// sampled is why the other forms are cut, said in the fixture's note
+function trimFilings(years: number, sampled: string | null) {
   return (fx: Fixture) => {
     const recent = fx.body?.filings?.recent;
     if (recent === undefined) return;
@@ -52,17 +54,21 @@ function trimFilings(years: number, sampleOthers: boolean) {
     let others = 0;
     recent.form.forEach((form: string, i: number) => {
       if (recent.filingDate[i] < since) return;
-      if (sampleOthers && !KEPT.test(form) && others++ >= SAMPLE) return;
+      if (sampled !== null && !KEPT.test(form) && others++ >= SAMPLE) return;
       keep.push(i);
     });
     for (const k of Object.keys(recent)) {
       recent[k] = keep.map((i) => recent[k][i]);
     }
-    fx.note = sampleOthers
-      ? `filings since ${since} only, and of the other forms the first ${SAMPLE}: the whole answer is over 4 MB`
-      : `filings since ${since} only`;
+    fx.note =
+      sampled !== null
+        ? `filings since ${since} only, and of the other forms the first ${SAMPLE}: ${sampled}`
+        : `filings since ${since} only`;
   };
 }
+
+// most of a large filer's answer is insiders' Form 3, 4 and 144 filings
+const INSIDERS = "the rest are mostly insiders' forms no test reads";
 
 const sub = (cik: number) =>
   `https://data.sec.gov/submissions/CIK${String(cik).padStart(10, "0")}.json`;
@@ -74,18 +80,25 @@ const cases: [string, string, ((fx: Fixture) => void) | undefined][] = [
     trimTickers,
   ],
   // a calendar-year and a non-calendar-year US filer, a bank, a 20-F filer
-  ["submissions-aapl", sub(320193), trimFilings(2, false)],
-  ["submissions-nvda", sub(1045810), trimFilings(2, false)],
-  ["submissions-jpm", sub(19617), trimFilings(2, true)],
-  ["submissions-tsm", sub(1046179), trimFilings(2, false)],
+  ["submissions-aapl", sub(320193), trimFilings(2, null)],
+  ["submissions-nvda", sub(1045810), trimFilings(2, INSIDERS)],
+  [
+    "submissions-jpm",
+    sub(19617),
+    trimFilings(2, "the whole answer is over 4 MB"),
+  ],
+  ["submissions-tsm", sub(1046179), trimFilings(2, INSIDERS)],
   // an NT 10-Q and a 424B5 within 90 days of the recording
-  ["submissions-surg", sub(1392694), trimFilings(2, false)],
+  ["submissions-surg", sub(1392694), trimFilings(2, null)],
   // an 8-K with items 2.02 and 4.02 within a year
-  ["submissions-optu", sub(1702780), trimFilings(2, false)],
+  ["submissions-optu", sub(1702780), trimFilings(2, null)],
   ["submissions-unknown", sub(9999999999), undefined],
 ];
 
+// case names record only those, so the others keep their recording time
+const only = new Set(process.argv.slice(2));
 for (const [name, url, edit] of cases) {
+  if (only.size > 0 && !only.has(name)) continue;
   await record(
     join(dir, `${name}.json`),
     url,

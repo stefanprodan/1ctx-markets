@@ -83,7 +83,7 @@ src/sources/                what every source shares, each provider under it
   fred/                     FRED series as close-only daily bars
   finnhub/                  research sections and earnings events
   massive/                  news
-  edgar/                    SEC filings: 8-K items, filing flags, events' filed_at
+  edgar/                    SEC filings, their flags, events' filed_at
 src/signals/                daily, weekly, live and relative signals
 src/rules/                  rule conditions, evaluation, alerts
 src/operations/             the reads the MCP tools and the API share, with their MCP pages

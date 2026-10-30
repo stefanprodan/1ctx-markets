@@ -149,7 +149,7 @@ const filings = note(
       late_filing: flag("An NT 10-K or NT 10-Q in the last 90 days"),
       restatement: flag("An 8-K with item 4.02 in the last 365 days"),
       offering: flag(
-        "An S-1, S-3 or 424B1, 424B4 or 424B5 in the last 90 days",
+        "New securities, shares or debt, registered or offered (an S-1, S-3, 424B1, 424B4 or 424B5) in the last 90 days; the filing's link says which",
       ),
       recent: note(
         list(
@@ -492,7 +492,7 @@ export const schemas: Record<string, Schema> = {
             status: str,
             filed_at: note(
               nstr,
-              "When an 8-K with results (item 2.02) was accepted within three days of the date, UTC; null when none or EDGAR is off.",
+              "When the 8-K with results (item 2.02) nearest the date, from a day before it to three after, was accepted, UTC; null when none or EDGAR is off.",
             ),
           },
           ["id", "date"],

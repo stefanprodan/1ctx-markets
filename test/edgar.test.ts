@@ -20,6 +20,7 @@ import {
   KEPT_FORMS,
   parseSubmissions,
   parseTickers,
+  usableContact,
 } from "../src/sources/edgar/client.ts";
 import { edgarJobs } from "../src/sources/edgar/jobs.ts";
 import {
@@ -30,6 +31,7 @@ import {
   NOT_COVERED,
   pruneFilings,
   REASONS,
+  RETRY_MS,
   readFilings,
   STALE_FILINGS,
   storeFilings,
@@ -446,6 +448,38 @@ describe("filings inside the call", () => {
     ).toEqual([{ job: "tickers" }]);
   });
 
+  test("a malformed map is not asked again within the hour, whichever call needs it", async () => {
+    const t = setup({
+      hold: (url) =>
+        url.hostname === "www.sec.gov"
+          ? { recordedAt: "", status: 200, headers: {}, body: {} }
+          : undefined,
+    });
+    for (const s of ["AAPL", "JPM", "SURG"]) share(t.db, s, RECORDED);
+    const read = (symbol: string) =>
+      drive(
+        t.clock,
+        t.paced,
+        researchAnswer(t.m, parseResearch({ symbol, section: "filings" })),
+      ).then(body);
+    expect(await read("US:AAPL")).toMatchObject({
+      error: "source_error",
+      late_filing: null,
+    });
+    expect(t.tickerCalls()).toHaveLength(1);
+    await researchList(t.m, {
+      symbols: ["US:AAPL", "US:JPM", "US:SURG"],
+      parts: ["filings"],
+      since: null,
+    });
+    await read("US:JPM");
+    expect(t.tickerCalls()).toHaveLength(1);
+    expect(t.submissionCalls()).toHaveLength(0);
+    await t.clock.advance(RETRY_MS);
+    await read("US:JPM");
+    expect(t.tickerCalls()).toHaveLength(2);
+  });
+
   test("a failed fetch is the answer's error and the section's stale reason", async () => {
     const t = setup({
       hold: (url) =>
@@ -539,7 +573,7 @@ describe("the flags", () => {
     expect(at(filed + 366 * DAY_MS).restatement).toBe(false);
   });
 
-  test("a late filing and an offering count for 90 days", async () => {
+  test("a late filing and new securities registered or offered count for 90 days", async () => {
     const t = setup();
     const i = share(t.db, "SURG", RECORDED);
     await drive(t.clock, t.paced, refreshFilings(t.ctx, i));
@@ -555,7 +589,7 @@ describe("the flags", () => {
 });
 
 describe("events gain filed_at", () => {
-  test("an 8-K with results within three days of the date sets it; none, or EDGAR off, is null", async () => {
+  test("an 8-K with results from a day before the date to three after sets it; none, or EDGAR off, is null", async () => {
     const t = setup();
     const i = share(t.db, "OPTU", RECORDED);
     await drive(t.clock, t.paced, refreshFilings(t.ctx, i));
@@ -564,8 +598,9 @@ describe("events gain filed_at", () => {
          hour, fetched_at) values ('US:OPTU', 2026, ?, ?, 'bmo', ?)`,
     );
     insert.run(2, "2026-08-06", RECORDED);
-    // three days from the 8-K accepted on 21 September
-    insert.run(3, "2026-09-24", RECORDED);
+    // three days before the 8-K accepted on 21 September, and three after
+    insert.run(3, "2026-09-18", RECORDED);
+    insert.run(1, "2026-09-24", RECORDED);
     insert.run(4, "2026-11-05", RECORDED);
     const item = (q: number, m = t.m) =>
       eventItem(
@@ -579,9 +614,54 @@ describe("events gain filed_at", () => {
       ).filed_at;
     expect(item(2)).toBe("2026-08-06T11:31:53Z");
     expect(item(3)).toBe("2026-09-21T21:00:26Z");
+    expect(item(1)).toBeNull();
     expect(item(4)).toBeNull();
     const off = markets({ ...t.m, edgar: null, log: silent });
     expect(item(2, off)).toBeNull();
+  });
+
+  test("of two 8-Ks with results in the window, the nearest the date wins, the earlier on a tie", async () => {
+    const t = setup();
+    const i = share(t.db, "OPTU", RECORDED);
+    await drive(t.clock, t.paced, refreshFilings(t.ctx, i));
+    // made up: a preliminary release the day before, and one two days on
+    const filing = t.db.query(
+      `insert into filings (instrument, accession, form, accepted_at, filed,
+         items, url, fetched_at)
+       values ('US:OPTU', ?, '8-K', ?, ?, '2.02,9.01', 'https://www.sec.gov/', ?)`,
+    );
+    filing.run(
+      "0000000001-26-000001",
+      Date.parse("2026-08-05T20:00:00Z"),
+      "2026-08-05",
+      RECORDED,
+    );
+    filing.run(
+      "0000000001-26-000002",
+      Date.parse("2026-08-08T12:00:00Z"),
+      "2026-08-08",
+      RECORDED,
+    );
+    const at = (date: string) =>
+      eventItem(t.m, i, {
+        instrument: i.id,
+        fiscalYear: 2026,
+        fiscalQuarter: 2,
+        date,
+        hour: "bmo",
+        epsEstimate: null,
+        epsActual: null,
+        revenueEstimate: null,
+        revenueActual: null,
+        reportedSeenAt: null,
+        listing: null,
+        fetchedAt: RECORDED,
+      }).filed_at;
+    // the recorded release on the date beats the preliminary one before it
+    expect(at("2026-08-06")).toBe("2026-08-06T11:31:53Z");
+    // a day before and a day after are a tie: the earlier
+    expect(at("2026-08-07")).toBe("2026-08-06T11:31:53Z");
+    expect(at("2026-08-08")).toBe("2026-08-08T12:00:00Z");
   });
 });
 
@@ -779,6 +859,41 @@ describe("the contact line", () => {
       },
       { edgarKey: EDGAR_CONTACT, fetch: f.fetch, start: RECORDED },
     );
+  });
+});
+
+describe("a contact line that cannot be a header", () => {
+  test("leaves EDGAR off with its reason on the start log and the status, never the line", async () => {
+    for (const line of [
+      "Test Ș Operator test-operator@example.invalid",
+      "Test Operator\ntest-operator@example.invalid",
+      "Test Operator without an email",
+    ]) {
+      expect(usableContact(line)).toBe(false);
+      await withApp(
+        async ({ url, app, admin, lines }) => {
+          expect(app.sources.edgar).toBe("off (bad contact line)");
+          expect(app.edgar).toBeNull();
+          expect(app.markets.edgar).toBeNull();
+          const res = await fetch(`${url}/api/v1/status`, {
+            headers: { authorization: `Bearer ${admin}` },
+          });
+          const text = await res.text();
+          const edgarState = JSON.parse(text).sources.find(
+            (s: { name: string }) => s.name === "edgar",
+          );
+          expect(edgarState).toMatchObject({
+            state: "off",
+            why: "bad contact line",
+          });
+          for (const s of [text, ...lines]) {
+            expect(s).not.toContain("test-operator@example.invalid");
+          }
+        },
+        { edgarKey: line, start: RECORDED },
+      );
+    }
+    expect(usableContact(EDGAR_CONTACT)).toBe(true);
   });
 });
 
