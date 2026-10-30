@@ -179,11 +179,13 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
       ];
       const batches = await yahoo.sparkAll(symbols);
       const failed = new Map<string, unknown>();
+      const alone = new Set<string>();
       const missing = new Map<string, Phrase>();
       const answers: SparkAnswer[] = [];
       for (const b of batches) {
         if (!b.answer) {
           for (const s of b.symbols) failed.set(s, b.error);
+          if (b.alone) alone.add(b.symbols[0]!);
           if (b.symbols.length === 1) {
             log.warn("yahoo quote failed", {
               symbol: b.symbols[0]!,
@@ -217,6 +219,8 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
           }
         });
         const quotes = checked.flatMap((a) => storeQuotes(db, a));
+        // an answer with no quote at all is no one symbol's doing
+        const someAnswered = checked.some((a) => a.quotes.length > 0);
         const now = clock.now();
         work.forEach((w, k) => {
           const mine = new Set(w.instruments.map((i) => i.id));
@@ -224,12 +228,33 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
           // the run fails on a failed call, or when no quote came back
           const symbols = w.instruments.map((i) => i.sourceSymbol);
           const none = symbols.every((s) => missing.has(s));
+          // a call that failed whole has no one symbol to blame
+          const whole = symbols.find((s) => failed.has(s) && !alone.has(s));
+          const own = symbols.filter((s) => alone.has(s));
           const error =
-            symbols.map((s) => failed.get(s)).find((e) => e !== undefined) ??
-            (none ? new SourceError(missing.get(symbols[0]!)!) : undefined);
+            whole !== undefined
+              ? failed.get(whole)
+              : own.length > 0
+                ? failed.get(own[0]!)
+                : none
+                  ? new SourceError(missing.get(symbols[0]!)!)
+                  : undefined;
+          const phrase = phraseOf(error);
+          const blamed =
+            whole !== undefined
+              ? []
+              : own.length > 0
+                ? own.filter((s) => phraseOf(failed.get(s)) === phrase)
+                : someAnswered
+                  ? symbols.filter((s) => missing.get(s) === phrase)
+                  : [];
+          const shown = new Map(
+            w.instruments.map((i) => [i.sourceSymbol, i.symbol]),
+          );
+          const named = blamed.map((s) => shown.get(s) ?? s);
           if (error === undefined) endRun(db, ids[k]!, now, rows);
           else {
-            failRun(db, ids[k]!, now, error, rows);
+            failRun(db, ids[k]!, now, error, rows, named);
             log.warn("yahoo quotes failed", {
               market: w.market,
               job: w.job,

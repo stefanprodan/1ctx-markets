@@ -10,6 +10,7 @@ import {
   isStale,
   lastRun,
   pruneRuns,
+  runError,
   runJob,
   staleJobs,
   startRun,
@@ -111,5 +112,17 @@ describe("sync runs", () => {
     expect(pruneRuns(db, clock.now())).toBe(0);
     await clock.advance(1);
     expect(pruneRuns(db, clock.now())).toBe(1);
+  });
+});
+
+describe("a run's error", () => {
+  test("is its phrase, then up to three symbols it is down to", () => {
+    const e = new SourceError("source error", "HTTP 500");
+    expect(runError(e)).toBe("source error");
+    expect(runError(e, ["AMD"])).toBe("source error: AMD");
+    expect(runError(e, ["AMD", "EL", "SMCI", "A", "B"])).toBe(
+      "source error: AMD, EL, SMCI +2 more",
+    );
+    expect(runError(new QueueClosed(), [])).toBe(STOPPED);
   });
 });

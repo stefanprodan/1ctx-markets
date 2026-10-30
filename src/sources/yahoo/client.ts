@@ -99,6 +99,8 @@ export type SparkBatch = {
   symbols: string[];
   answer?: SparkAnswer;
   error?: unknown;
+  // one symbol that failed on its own while the rest of its call answered
+  alone?: boolean;
 };
 
 export type Listing = {
@@ -592,7 +594,12 @@ export function yahoo(options: YahooOptions): Yahoo {
                 out.push({ symbols: half, error: t.error });
               }
             } else if (half.length === 1) {
-              out.push({ symbols: half, ...(await alone(half[0]!, t.error)) });
+              const one = await alone(half[0]!, t.error);
+              out.push({
+                symbols: half,
+                ...one,
+                ...(one.answer === undefined ? { alone: true } : {}),
+              });
             } else out.push({ symbols: half, error: t.error });
           }
           return true;

@@ -260,8 +260,21 @@ describe("quotes", () => {
     ]);
     expect(lastRun(t.db, "yahoo", JOBS.quotes, "CRYPTO")!.status).toBe("ok");
 
-    edit = () => [];
+    // a market whose every symbol was left out names them
+    edit = (result) => {
+      for (const r of result) {
+        if (r.symbol === "C0-USD") r.response = null;
+      }
+      return result;
+    };
     await t.runTo(utc("2026-10-26T18:10"));
+    expect(lastRun(t.db, "yahoo", JOBS.quotes, "CRYPTO")!.error).toBe(
+      "not found: C0-USD",
+    );
+
+    // an empty answer is no one symbol's doing
+    edit = () => [];
+    await t.runTo(utc("2026-10-26T18:15"));
     for (const market of ["US", "CRYPTO"]) {
       expect(lastRun(t.db, "yahoo", JOBS.quotes, market)).toMatchObject({
         status: "failed",
@@ -326,9 +339,10 @@ describe("a spark batch one symbol breaks", () => {
       "U3",
     ]);
     expect(charts(t.f.urls.slice(before)).map(chartSymbol)).toEqual(["U2"]);
+    // the run names the symbol that failed it
     expect(lastRun(t.db, "yahoo", JOBS.quotes, "US")).toMatchObject({
       status: "failed",
-      error: "source error",
+      error: "source error: U2",
       rows: 4,
     });
     expect(lastRun(t.db, "yahoo", JOBS.quotes, "CRYPTO")!.status).toBe("ok");
@@ -357,6 +371,12 @@ describe("a spark batch one symbol breaks", () => {
     expect(sparks(t.f.urls.slice(before))).toHaveLength(3);
     expect(charts(t.f.urls.slice(before))).toHaveLength(0);
     expect(quoteStale(t.db, us("U0"))).toEqual(["quote sync failed"]);
+    // no one symbol is to blame
+    for (const market of ["US", "CRYPTO"]) {
+      expect(lastRun(t.db, "yahoo", JOBS.quotes, market)!.error).toBe(
+        "source error",
+      );
+    }
   });
 });
 

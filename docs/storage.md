@@ -18,7 +18,8 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   SQLite's own backup (`.backup`, `vacuum into`), or stop the server
   before copying `markets.db`.
 - **Key values never enter the database** (`docs/config.md`, Keys): a
-  run's error column holds a fixed phrase for this reason. Agent keys
+  run's error column holds a fixed phrase, and at most the stored
+  symbols it names, for this reason. Agent keys
   are rows in `keys` holding only a SHA-256 of the token, never the
   token (`docs/api.md`, "Keys and caching").
 
@@ -115,7 +116,11 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
 - **A run's error is a fixed phrase, never an error's text**
   (`phraseOf()` in `src/sources/source.ts`, `failed` otherwise,
   `interrupted` after a crash, `stopped` for a run cut by shutdown, which no stale reason, retry wait or status count reads as a failure), since messages can echo a key or a
-  URL.
+  URL. A Yahoo quote or check run that failed by its own symbols, ones
+  a split narrowed to or a pass left out while others answered, names
+  them after the phrase, at most `MAX_NAMED` (3) then `+N more`
+  (`runError()`, `source error: AMD`); a call that failed whole keeps
+  the bare phrase. Readers match the phrase by its start.
 - **Staleness is read from the instrument's own source, job and
   scope** (`lastRun()`): a failure newer than the last success marks
   only that scope's rows. A search succeeding never clears a failed
