@@ -115,7 +115,7 @@ the `--help` text, and a flag changes there in the same commit.
   `timingSafeEqual`; an agent key is found by its SHA-256
   (`src/server/access.ts`).
   A refusal carries no `WWW-Authenticate`, so an MCP client never
-  starts an OAuth sign-in. Each key makes at most 120 calls a minute,
+  starts an OAuth sign-in. Each key makes at most 600 calls a minute,
   then 429 (`docs/api.md`, "Keys and caching").
 
 | Path | Method | Serves |

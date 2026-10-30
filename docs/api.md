@@ -343,14 +343,16 @@ MCP tools copied onto paths.
   `rulesRead` and `rulesWrite`. A missing, wrong, revoked or expired key is
   401. Any other `/api/v1/` path, unknown ones included, answers 401
   without a key and 404 with one.
-- **Each key makes at most 120 calls a minute** (`CALLS_PER_MINUTE`,
+- **Each key makes at most 600 calls a minute** (`CALLS_PER_MINUTE`,
   `src/server/ratelimit.ts`), a fixed window per key id held in memory,
   no flag. Every `/api/v1` request counts, and on `/mcp` every JSON-RPC
   message, a batch's each. Past it the answer is 429 before the body is
   read; a `/mcp` batch's body is read to count its members, the first
   message already counted. The admin key is limited as a key of its
   own; the web UI's cookie is not limited. The windows are capped (`MAX_WINDOWS`), and
-  only a valid key reaches them, so memory stays bounded.
+  only a valid key reaches them, so memory stays bounded. 600, not
+  1ctx's 120: an agent adding a portfolio makes one call per lot, and a
+  few hundred lots must fit in one window.
 - **A request's log line names its key**: `key=<id> key_name=<name>`,
   or `key=admin`; never a token. A token made by `POST /keys` joins the
   log mask before it is answered (`mask()` in `src/runtime/keys.ts`).
