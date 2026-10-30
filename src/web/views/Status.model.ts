@@ -83,7 +83,10 @@ const PLAIN: Record<string, string> = {
 export function plain(error: string | null): string {
   if (error === null) return "failed";
   const phrase = Object.keys(PLAIN).find((p) => error.startsWith(p));
-  return phrase === undefined ? error : PLAIN[phrase]!;
+  if (phrase === undefined) return error;
+  // a run some symbols failed names them after its phrase: "source error: AMD"
+  const who = /^: (.+)$/.exec(error.slice(phrase.length))?.[1];
+  return who ? `${who}: ${PLAIN[phrase]!}` : PLAIN[phrase]!;
 }
 
 const counted = (n: number, one: string): string =>
@@ -165,3 +168,17 @@ export const trackLine = (t: Pick<WatchEntry, "id" | "state">): string =>
 
 export const sourcesOn = (list: readonly SourceStatus[]): number =>
   list.filter((s) => s.state === "on").length;
+
+// what turns the rail's status icon red: what this page shows red or
+// backing off
+export function troubled(s: {
+  sources: readonly SourceStatus[];
+  jobs: readonly JobStatus[];
+}): boolean {
+  const jobs = groups(s.sources, s.jobs).flatMap((g) => g.jobs);
+  return (
+    jobs.some((j) => jobTone(j) === "failed") ||
+    switchFailure(s.jobs) !== null ||
+    s.sources.some((x) => x.state === "on" && x.backing_off !== null)
+  );
+}

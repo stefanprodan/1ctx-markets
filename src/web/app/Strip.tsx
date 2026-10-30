@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Icon, Mark } from "../lib/icons.tsx";
-import { HOME, lit, RAIL } from "./routes.ts";
+import { useServerFailing } from "./failing.ts";
+import { HOME, lit, RAIL, STATUS } from "./routes.ts";
 import { showRail } from "./shell.ts";
 import { toggleUserMenu, UserMenu, userMenuOpen } from "./UserMenu.tsx";
 import "./strip.css";
 
 export function Strip({ here }: { here: string }) {
+  const failing = useServerFailing();
   return (
     <aside class="strip">
       <button
@@ -23,18 +25,24 @@ export function Strip({ here }: { here: string }) {
         <Mark />
       </a>
       <nav class="strip-nav">
-        {RAIL.map((r) => (
-          <a
-            key={r.path}
-            href={r.path}
-            class={`strip-item${lit(here, r.path) ? " strip-item-on" : ""}`}
-            aria-current={here === r.path ? "page" : undefined}
-            aria-label={r.label}
-            title={r.label}
-          >
-            <Icon name={r.icon} />
-          </a>
-        ))}
+        {RAIL.map((r) => {
+          const red = r.path === STATUS && failing;
+          return (
+            <a
+              key={r.path}
+              href={r.path}
+              class={`strip-item${lit(here, r.path) ? " strip-item-on" : ""}`}
+              aria-current={here === r.path ? "page" : undefined}
+              aria-label={red ? `${r.label}: something is failing` : r.label}
+              title={red ? `${r.label}: something is failing` : r.label}
+            >
+              <Icon
+                name={r.icon}
+                class={red ? "rail-icon-failed" : undefined}
+              />
+            </a>
+          );
+        })}
       </nav>
       <div class="strip-foot">
         <UserMenu wrap="strip-user" place="strip-menu">

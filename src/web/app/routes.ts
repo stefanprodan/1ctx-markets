@@ -85,6 +85,7 @@ export const ROUTES: readonly Route[] = [
 ];
 
 export const HOME = "/";
+export const STATUS = "/status";
 
 // the rail's pages: a page with a parameter lights its parent
 export const RAIL = ROUTES.filter((r) => !r.path.includes(":"));

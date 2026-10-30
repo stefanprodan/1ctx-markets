@@ -4,8 +4,9 @@
 import { useEffect, useRef } from "preact/hooks";
 import { Icon, Logo } from "../lib/icons.tsx";
 import { symbolOf } from "../views/Instruments.model.ts";
+import { useServerFailing } from "./failing.ts";
 import { pickRecent, recent, recentHref } from "./recent.ts";
-import { HOME, lit, RAIL } from "./routes.ts";
+import { HOME, lit, RAIL, STATUS } from "./routes.ts";
 import { toggleUserMenu, UserMenu, userMenuOpen } from "./UserMenu.tsx";
 import "./rail.css";
 
@@ -22,6 +23,7 @@ export function Rail({
   useEffect(() => {
     if (narrow) hide.current?.focus();
   }, [narrow]);
+  const failing = useServerFailing();
   // a link to the page on screen is no navigation, so it closes the drawer
   const follow = narrow ? onHide : undefined;
   return (
@@ -49,9 +51,24 @@ export function Rail({
               href={r.path}
               class={`rail-item${lit(here, r.path) ? " rail-item-on" : ""}`}
               aria-current={here === r.path ? "page" : undefined}
+              title={
+                r.path === STATUS && failing
+                  ? "Something is failing"
+                  : undefined
+              }
+              aria-label={
+                r.path === STATUS && failing
+                  ? `${r.label}: something is failing`
+                  : undefined
+              }
               onClick={follow}
             >
-              <Icon name={r.icon} />
+              <Icon
+                name={r.icon}
+                class={
+                  r.path === STATUS && failing ? "rail-icon-failed" : undefined
+                }
+              />
               <span>{r.label}</span>
             </a>
           ))}
