@@ -332,7 +332,7 @@ export function portfolioRoutes(m: Markets): Route[] {
           kind === "trade" ||
           !ADD_KINDS.includes(kind)
         ) {
-          throw new ArgError("kind must be one of cash, manual, bond");
+          throw new ArgError("kind must be one of cash, fund, bond");
         }
         const f = fields(read.body, ["kind", "portfolio", ...KIND_ARGS[kind]]);
         const done = await addPosition(m, who, parsePosition(kind, f));

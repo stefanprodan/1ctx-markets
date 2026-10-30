@@ -42,9 +42,12 @@ once and valued on the live price the server already keeps.
   position names, removed ones included, refuses its admin delete
   (409), so a restore never finds it gone.
 - **Positions** (`positions`) hold what has no listing or no free
-  price: `cash` (an amount), `manual` (units and a hand price, with its
+  price: `cash` (an amount), `fund` (units and a hand price, with its
   date) and `bond` (face amount, coupon, maturity, and its listing when
-  the server has one). Each has its currency and `as_of` date.
+  the server has one). Each has its currency and `as_of` date. The
+  table keeps a fund as `manual`, the word migration `0020-portfolios`
+  checks; the store reads and writes it as `fund` (`stored()`), since a
+  table rebuild to rename it would copy every owner's positions.
 - **A position's identity** (`samePosition()`): cash and a hand-priced
   holding by kind, name and broker, so a snapshot read again updates
   them; a bond by its listing or name, purchase date, face and broker,
@@ -107,6 +110,16 @@ once and valued on the live price the server already keeps.
   split again would multiply them. A trade on the split's date is
   already in the new shares. A trade answers `stated_on` and, when the
   figures differ, `split_adjusted`.
+- **The day's change counts a trade on the quote's day from its own
+  price** (`dayChangeOf()`): what is held now at the live price, less
+  what was held at the open at the previous close, less what that day's
+  buys cost, plus what its sells brought. A buy at the live price shows
+  no move it never had. The quote's day is the listing's local date of
+  the quote's time.
+- **A holding sold out on the quote's day stays** as a row at nothing,
+  `sold_today` true, until the quote moves to the next day, so the
+  sale's move stays in the day's total; it adds no weight to the
+  exposure.
 - **A bond priced in percent of par** values at `quantity × price ×
   0.01`, the quantity being its face amount, and its average cost is
   in percent too.
@@ -188,7 +201,76 @@ once and valued on the live price the server already keeps.
 
 ## The tool
 
-- **Actions `list`, `holdings`, `trades`, `add`, `update`, `remove`
+One MCP tool, `portfolio`, its action named in `action`. Written as
+functions, `?` marks an optional argument:
+
+```ts
+type Portfolio = string | number; // a name or an id
+type Day = string; // YYYY-MM-DD
+type Currency = string; // ISO 4217 (EUR), or a listing's own (GBp)
+
+// a new owner's first steps, one or more at once: the currency totals
+// are shown in (asked of the owner, never assumed; set only while none
+// is), a portfolio and a broker to make; a name already there is kept,
+// `made` says what was
+setup(display_currency?: Currency, portfolio?: string, broker?: string):
+  { portfolios; brokers; display_currency; made };
+
+// the portfolios and brokers, and the display currency
+list(): { portfolios; brokers; display_currency };
+
+// one row per instrument or position, its parts per broker; totals per
+// currency, converted into `currency`, else the display currency
+holdings(portfolio?: Portfolio, broker?: string, currency?: Currency,
+  next?: string): { holdings; totals; converted; exposure; rates; next };
+
+// newest first; removed: true lists the removed ones too
+trades(portfolio?: Portfolio, broker?: string, symbol?: string,
+  from?: Day, to?: Day, removed?: boolean, next?: string): { trades; next };
+
+// a trade (kind defaults to trade); portfolio is needed unless there is
+// one; neither price nor total takes the live price; a broker must be
+// on the list
+add(kind: "trade", portfolio?: Portfolio, symbol: string,
+  side: "buy" | "sell", quantity: number | "all", price?: number,
+  total?: number, fees?: number, date?: Day, currency?: Currency,
+  broker?: string, note?: string): { trade | trades; live_price?; total? };
+
+// a position with no trades: cash, a fund priced by hand, a bond
+add(kind: "cash", portfolio?: Portfolio, name: string, amount: number,
+  currency: Currency, date?: Day, broker?: string, note?: string,
+  dry_powder?: boolean): { position };
+add(kind: "fund", portfolio?: Portfolio, name: string, units: number,
+  price: number, currency: Currency, cost?: number, date?: Day,
+  broker?: string, note?: string): { position };
+// a bond's currency is its listing's when a symbol names one, else needed
+add(kind: "bond", portfolio?: Portfolio, name: string, amount: number,
+  symbol?: string, coupon?: number, maturity?: Day, currency?: Currency,
+  cost?: number, date?: Day, broker?: string, note?: string): { position };
+
+// a position changed: amount set outright or moved by `by`, in
+// `currency` or its own; at least one change
+update(position: number | "dry_powder", amount?: number, by?: number,
+  currency?: Currency, units?: number, price?: number, cost?: number,
+  date?: Day, note?: string, dry_powder?: boolean,
+  portfolio?: Portfolio): { position; rate? };
+
+// one of trade or position, by id
+remove(trade?: number, position?: number, portfolio?: Portfolio);
+restore(trade?: number, position?: number, portfolio?: Portfolio);
+```
+
+- **`setup` is how an agent starts a new owner**: a portfolio is
+  refused until the display currency is set, with a message telling the
+  agent to ask the owner, and a broker is made only here, so a typo in
+  `add` is still refused with the list. It is one write, and a name
+  already there is kept, so a retried call makes nothing twice. It sets
+  the display currency only while none is set: agents pass one out of
+  habit, and the same one is a no-op while another
+  is refused, so an agent never changes the owner's setting; the web
+  UI's settings change it. The
+  server instructions route a new owner to it.
+- **Actions `setup`, `list`, `holdings`, `trades`, `add`, `update`, `remove`
   and `restore`**, each taking only its own arguments (`ARGS`); `add`'s
   arguments are its kind's (`KIND_ARGS`). The description is within a
   few characters of 1,024; a word more needs another cut. `remove`,

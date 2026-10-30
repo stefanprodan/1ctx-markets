@@ -2237,7 +2237,7 @@ async function portfolioOperations(
 
   const S = "/positions";
   const fund = {
-    kind: "manual",
+    kind: "fund",
     portfolio: pid,
     name: "Made Up Fund",
     units: 3,
