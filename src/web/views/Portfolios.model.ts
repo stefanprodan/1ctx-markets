@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // The Portfolios page's words and numbers, with no DOM, so they are tested.
 
+import { inCirculation } from "../../shared/currencies.ts";
 import type {
   Holding,
   Holdings,
@@ -224,7 +225,8 @@ export function currencies(h: Holdings | null): string[] {
   const all = new Set(h.totals.map((t) => t.currency));
   if (h.display_currency) all.add(h.display_currency);
   if (h.currency) all.add(h.currency);
-  return [...all].filter((c) => /^[A-Z]{3}$/.test(c)).sort();
+  // the server converts only into a currency in circulation
+  return [...all].filter(inCirculation).sort();
 }
 
 // "1 EUR = 1.25 USD · 14:05", the rate a converted figure used

@@ -338,8 +338,10 @@ signed in with the admin key alone.
   card per currency (value, gain, today's change), never summed; a card
   per currency keeps its own bar only when no "All in" card is shown.
   The "Show in" picker is the app's menu, not a native select, and
-  lists the currencies held once each; the broker picker shows only
-  when a broker exists.
+  lists, once each, the currencies held, the display one and the one
+  picked, only those in circulation (`currencies()`), since the server
+  converts into no other; the broker picker shows only when a broker
+  exists.
 - **Filters:** All or one portfolio (tabs that scroll sideways), a
   broker, and the currency picker; a portfolio or broker gone elsewhere
   falls back to all.
@@ -377,9 +379,13 @@ signed in with the admin key alone.
   (`GET /api/v1/instruments/{id}`) and shows its name, live price and
   where it is held now, from every portfolio whatever the page filters
   on; the price field takes the live price, so what is saved is what is
-  shown. The portfolio is where the listing is already held, else the
+  shown. A price taken from the quote is in the listing's currency, so
+  picking another Paid in clears it, and the server converts the live
+  price itself ("at the live price" in the read-back). The portfolio is where the listing is already held, else the
   tab on, else "Pick a portfolio": never a silent first one. Then Buy or
-  Sell (a sell offers All with the quantity held there), Quantity and
+  Sell (a sell offers All with the quantity held in that portfolio, at
+  the broker picked or at every one, sent as `"all"` while left as is,
+  so the server sells what is sellable on the trade's date), Quantity and
   Price or Total paid ("Use total", fees in, as the server's `total`),
   Date and Portfolio; fees, the currency paid, the broker (only when
   one exists) and a note fold under one line. A buy may pay from dry
@@ -387,7 +393,10 @@ signed in with the admin key alone.
   portfolio (else the nearest, `dryPowderFor()`) is lowered by the
   trade's cost (`PATCH /positions/{id}` with `by` and the trade's
   currency, which the server converts); a failure there says the buy
-  is saved and the dry powder was not changed. A line above the buttons
+  is saved and the dry powder was not changed, and the form then only
+  closes, so a second press never records the buy twice. While a save
+  is on its way the panel stays open; Escape closes an open menu or the
+  symbol's list first, the panel only when none is open. A line above the buttons
   reads back the trade ("Buy 5 NVDA at 213.66 · 1,068.30 USD (≈ 954.52
   EUR) · Stocks"). An instrument holding's opened row has Buy and Sell,
   which open the panel on it. A position's currency is the currency

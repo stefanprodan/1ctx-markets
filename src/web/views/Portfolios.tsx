@@ -819,7 +819,7 @@ export function FoundList({
   onPick: (c: Candidate) => void;
 }) {
   return (
-    <ul class="menu pf-found">
+    <ul class="menu pf-found" id="pf-symbol-found">
       {ranked(found)
         .slice(0, 8)
         .map((c) => (
@@ -880,6 +880,13 @@ export function SymbolPick({
         spellcheck={false}
         autocapitalize="characters"
         placeholder="Symbol or name"
+        role="combobox"
+        aria-autocomplete="list"
+        aria-controls="pf-symbol-found"
+        aria-expanded={open.value && (found.value ?? []).length > 0}
+        onKeyDown={(ev) => {
+          if (ev.key === "Escape") open.value = false;
+        }}
         ref={(el) => {
           if (autoFocus && el && !el.dataset.focused) {
             el.dataset.focused = "1";
@@ -928,12 +935,14 @@ function Field({
   type = "text",
   decimal,
   after,
+  onEdit,
 }: {
   label: string;
   value: Signal<string>;
   placeholder?: string;
   type?: "text" | "date";
   decimal?: boolean;
+  onEdit?: () => void;
   // a control beside the label, such as All on a sell
   after?: ComponentChildren;
 }) {
@@ -965,6 +974,7 @@ function Field({
           autocomplete="off"
           onInput={(ev) => {
             value.value = ev.currentTarget.value;
+            onEdit?.();
           }}
         />
       )}
@@ -1022,10 +1032,13 @@ export function AddForm({
   store,
   onDone,
   start,
+  saving,
 }: {
   store: PortfolioStore;
   onDone: () => void;
   start?: AddStart | null;
+  // the panel's, so it stays open while a save is on its way
+  saving?: Signal<boolean>;
 }) {
   const kept = remembered();
   const o = store.overview.value;
@@ -1060,8 +1073,23 @@ export function AddForm({
   const dry = useSignal(false);
   const fromDry = useSignal(false);
   const more = useSignal(false);
-  const busy = useSignal(false);
+  const own = useSignal(false);
+  const busy = saving ?? own;
   const error = useSignal<string | null>(null);
+  // the trade saved but its dry powder step failed: saving again would
+  // record the trade twice, so the form only closes from here
+  const half = useSignal(false);
+  // the sell's quantity is the All figure: sent as "all", so the server
+  // sells what is sellable on the trade's date
+  const sellAll = useSignal(false);
+  // a price filled from the quote is in the listing's currency: paid in
+  // another, the server converts the live price itself
+  useEffect(() => {
+    if (pxLive.value) {
+      px.value = "";
+      pxLive.value = false;
+    }
+  }, [paid.value]);
   // every portfolio's holdings, whatever the page filters on
   const all = useSignal<Holdings | null>(null);
   useEffect(() => {
@@ -1118,10 +1146,12 @@ export function AddForm({
     kind.value === "trade" && picked.value
       ? heldAt(all.value ?? store.holdings.value, picked.value.id)
       : [];
+  // with no broker named, the server's all sells every part in the
+  // portfolio, so the figure counts them all
   const heldHere = parts.filter(
     (p) =>
       p.portfolio === portfolioName &&
-      (broker.value === "" ? p.broker === null : p.broker === broker.value),
+      (broker.value === "" || p.broker === broker.value),
   );
   const heldQty = heldHere.reduce((s, p) => s + (p.quantity ?? 0), 0);
   const drys = dryPowders(all.value);
@@ -1154,7 +1184,7 @@ export function AddForm({
   };
   const submit = async (ev: Event) => {
     ev.preventDefault();
-    if (busy.value) return;
+    if (busy.value || half.value) return;
     error.value = null;
     if (portfolio.value === "") {
       error.value = "Pick a portfolio.";
@@ -1171,7 +1201,12 @@ export function AddForm({
           portfolio: pid,
           symbol: symbol.value.trim(),
           side: side.value,
-          quantity: num(qty, "Quantity", true)!,
+          quantity:
+            side.value === "sell" &&
+            sellAll.value &&
+            qty.value === String(heldQty)
+              ? "all"
+              : num(qty, "Quantity", true)!,
           ...(byTotal.value
             ? { total: num(px, "Total paid", true) }
             : { price: num(px, "Price", false) }),
@@ -1192,6 +1227,7 @@ export function AddForm({
           });
           if (left !== null) {
             refused = `The buy is saved, but the dry powder was not changed: ${left}`;
+            half.value = true;
           }
         }
       } else {
@@ -1260,9 +1296,11 @@ export function AddForm({
         : `${side.value === "buy" ? "Buy" : "Sell"} ${quantity(q)} ${symbolOf(
             picked.value.id,
           )}${
-            !byTotal.value && p !== null && !Number.isNaN(p)
-              ? ` at ${price(p)}`
-              : ""
+            byTotal.value
+              ? ""
+              : p !== null && !Number.isNaN(p)
+                ? ` at ${price(p)}`
+                : " at the live price"
           }${money !== null && cur ? ` · ${amount(money, cur)}` : ""}${
             moneyShown
               ? ` (≈ ${amount(moneyShown.value, moneyShown.currency)})`
@@ -1339,6 +1377,9 @@ export function AddForm({
               <Field
                 label="Quantity"
                 value={qty}
+                onEdit={() => {
+                  sellAll.value = false;
+                }}
                 decimal
                 after={
                   side.value === "sell" && heldQty > 0 ? (
@@ -1347,6 +1388,7 @@ export function AddForm({
                       class="btn-text pf-all"
                       onClick={() => {
                         qty.value = String(heldQty);
+                        sellAll.value = true;
                       }}
                     >
                       All {quantity(heldQty)}
@@ -1357,7 +1399,7 @@ export function AddForm({
               <Field
                 label={inCurrency(byTotal.value ? "Total paid" : "Price", cur)}
                 value={px}
-                placeholder={byTotal.value ? "Fees in" : ""}
+                placeholder={byTotal.value ? "Fees in" : "Live price"}
                 decimal
                 after={
                   <button
@@ -1516,23 +1558,35 @@ export function AddForm({
           </p>
         )}
         <div class="pf-form-foot">
-          <button
-            type="button"
-            class="btn"
-            onClick={onDone}
-            disabled={busy.value}
-          >
-            Cancel
-          </button>
-          <button type="submit" class="btn btn-primary" disabled={busy.value}>
-            {busy.value
-              ? "Saving"
-              : kind.value === "trade"
-                ? side.value === "buy"
-                  ? "Add buy"
-                  : "Add sell"
-                : "Add"}
-          </button>
+          {half.value ? (
+            <button type="button" class="btn" onClick={onDone}>
+              Close
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                class="btn"
+                onClick={onDone}
+                disabled={busy.value}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                class="btn btn-primary"
+                disabled={busy.value}
+              >
+                {busy.value
+                  ? "Saving"
+                  : kind.value === "trade"
+                    ? side.value === "buy"
+                      ? "Add buy"
+                      : "Add sell"
+                    : "Add"}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </form>
@@ -1549,9 +1603,17 @@ function AddSheet({
   start: AddStart | null;
   onDone: () => void;
 }) {
+  const saving = useSignal(false);
+  // a save on its way finishes in sight, its outcome shown
+  const close = () => {
+    if (!saving.value) onDone();
+  };
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
-      if (ev.key === "Escape") onDone();
+      if (ev.key !== "Escape") return;
+      // Escape closes an open menu or list first, never the form under it
+      if (document.querySelector('.pf-sheet [aria-expanded="true"]')) return;
+      close();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -1563,7 +1625,7 @@ function AddSheet({
         class="pf-sheet-back"
         aria-label="Close"
         tabIndex={-1}
-        onClick={onDone}
+        onClick={close}
       />
       <aside class="pf-sheet" aria-label="Add">
         <div class="pf-sheet-head">
@@ -1572,12 +1634,12 @@ function AddSheet({
             type="button"
             class="btn-icon"
             aria-label="Close"
-            onClick={onDone}
+            onClick={close}
           >
             <Icon name="close" size={16} />
           </button>
         </div>
-        <AddForm store={store} onDone={onDone} start={start} />
+        <AddForm store={store} onDone={onDone} start={start} saving={saving} />
       </aside>
     </div>
   );

@@ -153,7 +153,8 @@ export type TradeIn = {
   portfolio: number;
   symbol: string;
   side: "buy" | "sell";
-  quantity: number;
+  // "all": what is sellable on the trade's date, the server's reckoning
+  quantity: number | "all";
   price?: number;
   // the whole cost, fees in, in place of a price
   total?: number;

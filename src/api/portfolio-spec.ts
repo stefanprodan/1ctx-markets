@@ -536,7 +536,8 @@ export const portfolioPaths = {
       operationId: "createPortfolio",
       security: WRITES,
       summary: "Make a portfolio",
-      description: "A portfolio is a name. It has no currency.",
+      description:
+        "A portfolio is a name. It has no currency. Refused (409) until a display currency is set.",
       requestBody: bodyOf(ref("Named")),
       responses: base({
         201: {

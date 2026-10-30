@@ -597,6 +597,20 @@ describe("the add panel", () => {
     ).toEqual(["US:AAA", "US:BBB", "CRYPTO:CCC-USD", "CME:AAA=F", "X:AAA"]);
   });
 
+  test("Show in offers only currencies the server converts into", () => {
+    expect(
+      currencies({
+        ...HOLDINGS,
+        display_currency: "EUR",
+        totals: [
+          ...HOLDINGS.totals,
+          { ...HOLDINGS.totals[0]!, currency: "BGN" },
+          { ...HOLDINGS.totals[0]!, currency: "GBp" },
+        ],
+      }),
+    ).toEqual(["EUR", "USD"]);
+  });
+
   test("a buy costs its fees on top, a sell nets them, a bond counts per hundred", () => {
     expect(tradeMoney("buy", 5, 10, 1, "per_share")).toBe(51);
     expect(tradeMoney("sell", 5, 10, 1, "per_share")).toBe(49);
