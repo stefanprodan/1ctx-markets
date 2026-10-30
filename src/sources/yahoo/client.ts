@@ -590,15 +590,20 @@ export function yahoo(options: YahooOptions): Yahoo {
         };
         const out: SparkBatch[] = [];
         // both halves failing as a broken call would is the source, so
-        // that batch fails whole; Yahoo's answer about a half is its own
+        // that batch fails whole; Yahoo refusing one lone symbol is about
+        // that symbol, but refusing a whole half is the source again
         const narrow = async (symbols: string[]) => {
           const mid = Math.ceil(symbols.length / 2);
           const halves = [symbols.slice(0, mid), symbols.slice(mid)];
           const tries = [];
           for (const half of halves) tries.push(await ask(half));
-          const down = (e: unknown) =>
-            brokenBy(e) && !(e instanceof SparkRefused);
-          if (tries.every((t) => t.answer === undefined && down(t.error))) {
+          const down = (e: unknown, half: string[]) =>
+            brokenBy(e) && !(e instanceof SparkRefused && half.length === 1);
+          if (
+            tries.every(
+              (t, k) => t.answer === undefined && down(t.error, halves[k]!),
+            )
+          ) {
             return false;
           }
           for (const [k, half] of halves.entries()) {

@@ -641,6 +641,23 @@ describe("a failed spark batch", () => {
     expect(t.y.backoff()).toBeNull();
   });
 
+  test("takes Yahoo refusing every half for an outage", async () => {
+    const refused: Recorded = {
+      recordedAt: "",
+      status: 200,
+      headers: { "content-type": "application/json" },
+      body: { spark: { result: null, error: { code: "Internal" } } },
+    };
+    const t = setup((url) =>
+      url.pathname.includes("spark") ? refused : undefined,
+    );
+    const batches = await t.y.sparkAll(symbols);
+    expect(batches[0]!.answer).toBeUndefined();
+    expect(t.sparks()).toHaveLength(3);
+    expect(t.charts()).toHaveLength(0);
+    expect(t.y.backoff()).not.toBeNull();
+  });
+
   test("is never split on a rate limit", async () => {
     const t = setup((url) =>
       url.pathname.includes("spark")

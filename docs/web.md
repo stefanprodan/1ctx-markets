@@ -444,7 +444,8 @@ signed in with the admin key alone.
   title is the symbol with the name beside it; a card holds the kind
   and market, the price and day's change, "Open" or "Closed" as the
   home table says it ("Opening · last close" from the open until the
-  first live price, without the fetch time; a series: "Latest value" and its date) with when it
+  first pass, without the fetch time, then "Open · no trade yet" until
+  the first trade; a series: "Latest value" and its date) with when it
   was fetched, and the 1 week, 1 month, 3 months and year-to-date
   returns from the quote, never recomputed, then how far the price is
   above or below the quote's 200-week average (in points for a series

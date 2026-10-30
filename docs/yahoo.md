@@ -41,8 +41,8 @@ finality in `docs/calendars.md`; tables, the writer and staleness in
   network error, page that is not JSON, closed queue or back-off in
   force fails the batch at once. Both halves of a split failing with
   errors that would split is the source: that batch fails whole, so an
-  outage costs two more calls. A spark error body is Yahoo's answer
-  about the half asked, never an outage. Otherwise the failed half is
+  outage costs two more calls. A spark error body for one lone symbol
+  is about that symbol, never an outage; for a bigger half it counts. Otherwise the failed half is
   split again down to one symbol, about 2·log2(20) calls, which is
   asked once as a quote chart and fails alone if that fails too. The
   split is one queued task, so only a batch failing whole backs off.
