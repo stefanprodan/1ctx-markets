@@ -546,3 +546,22 @@ export function extendedLines<T extends number>(
     post: after.length > 0 ? [last, ...after] : [],
   };
 }
+
+// a price tag on the right scale is about this tall; a scale number
+// closer than this to a tag's middle sits under it
+export const TAG_PX = 18;
+
+// the scale's numbers, blank where a price tag would cover one
+export function clearOfTags(
+  ticks: readonly number[],
+  tags: readonly number[],
+  y: (price: number) => number | null,
+): string[] {
+  const at = tags.map(y).filter((v): v is number => v !== null);
+  return ticks.map((p) => {
+    const py = y(p);
+    return py !== null && at.some((t) => Math.abs(t - py) < TAG_PX)
+      ? ""
+      : axisPrice(p);
+  });
+}

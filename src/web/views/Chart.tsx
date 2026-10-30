@@ -30,6 +30,7 @@ import {
   axisPrice,
   candles,
   changeText,
+  clearOfTags,
   closes,
   DESK,
   dayOf,
@@ -290,6 +291,29 @@ export function Chart({ id }: { id: string }) {
   const lib = useRef<Lib | null>(null);
   const chart = useRef<IChartApi | null>(null);
   const series = useRef<ISeriesApi<SeriesType>[]>([]);
+  // read at paint, so the tags are the ones on screen then
+  const priceFormat = useRef({
+    ...PRICE,
+    tickmarksFormatter: (ticks: readonly number[]) => {
+      const own = series.current.filter(
+        (s) => s.options().priceFormat.type === "custom",
+      );
+      const tags: number[] = [];
+      for (const s of own) {
+        if (s.options().lastValueVisible) {
+          const last = s.lastValueData(false);
+          if (!last.noData) tags.push(last.price);
+        }
+        for (const p of s.priceLines()) {
+          if (p.options().axisLabelVisible) tags.push(p.options().price);
+        }
+      }
+      const first = own[0];
+      return first
+        ? clearOfTags(ticks, tags, (p) => first.priceToCoordinate(p))
+        : ticks.map(axisPrice);
+    },
+  }).current;
   // the range a load was asked for, so an older answer never lands
   const asked = useRef(0);
 
@@ -474,7 +498,7 @@ export function Chart({ id }: { id: string }) {
         bottomColor: alpha(tone, 0.02),
         priceLineColor: k.faint,
         crosshairMarkerRadius: 4,
-        priceFormat: PRICE,
+        priceFormat,
       });
       s.setData(values);
       return s;
@@ -518,7 +542,7 @@ export function Chart({ id }: { id: string }) {
           lastValueVisible: latest,
           priceLineColor: k.faint,
           crosshairMarkerRadius: 4,
-          priceFormat: PRICE,
+          priceFormat,
           // the previous close stays in view, as its line is the base
           autoscaleInfoProvider: (own: () => AutoscaleInfo | null) => {
             const r = own();
@@ -599,7 +623,7 @@ export function Chart({ id }: { id: string }) {
         wickDownColor: k.down,
         borderVisible: false,
         priceLineColor: k.faint,
-        priceFormat: PRICE,
+        priceFormat,
       });
       price.setData(data);
       const at = levelsOf(
@@ -627,7 +651,7 @@ export function Chart({ id }: { id: string }) {
         priceLineVisible: false,
         lastValueVisible: false,
         crosshairMarkerVisible: false,
-        priceFormat: PRICE,
+        priceFormat,
       });
       s.setData(averages(h.bars, key));
       series.current.push(s);

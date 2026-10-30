@@ -54,6 +54,7 @@ import {
   axisPrice,
   candles,
   changeText,
+  clearOfTags,
   DEFAULT_SETTINGS,
   DESK,
   drawnRange,
@@ -1459,7 +1460,7 @@ describe("the instrument model", () => {
         }),
         NOW,
       ),
-    ).toBe("Open · previous close · updated 3 h ago");
+    ).toBe("Opening · last close");
     const series = detail(
       {
         price: null,
@@ -2153,6 +2154,19 @@ describe("the chart model", () => {
     expect(axisPrice(80684.99)).toBe("80,685");
     expect(axisPrice(1661.62)).toBe("1,661.62");
     expect(axisPrice(5)).toBe("5.00");
+  });
+
+  test("a scale number under a price tag is left blank", () => {
+    // 30 px per unit, the top at 100
+    const y = (p: number) => (100 - p) * 30;
+    expect(clearOfTags([99, 98, 97, 96], [97.9], y)).toEqual([
+      "99.00",
+      "",
+      "97.00",
+      "96.00",
+    ]);
+    expect(clearOfTags([99, 98], [], y)).toEqual(["99.00", "98.00"]);
+    expect(clearOfTags([99], [99], () => null)).toEqual(["99.00"]);
   });
 
   test("the axis says a month or a day with its month, never a bare day", () => {
