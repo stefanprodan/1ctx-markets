@@ -1,6 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-// a minute tick decides what is due, so a day missed while down runs on start
+// due is read from the last finished session, so a pass missed while down
+// runs on the next tick
 
 import {
   BY_USE,
@@ -26,7 +27,7 @@ import {
 import { type EdgarContext, refreshFilings, refreshTickers } from "./sync.ts";
 
 export const TICK_MS = MINUTE_MS;
-// no share starts after this much of a tick, so one ends in its minute
+// no share starts after this much of a tick; the rest wait for the next
 export const TICK_BUDGET_MS = 45_000;
 
 export type FilingsPass = {

@@ -108,6 +108,8 @@ const isObj = (v: unknown): v is Obj =>
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const ACCESSION = /^\d{10}-\d{2}-\d{6}$/;
 const ITEM = /^\d{1,2}\.\d{2}$/;
+// SEC lists a few per 8-K; a cap keeps any answer's filing within a page
+export const MAX_ITEMS = 20;
 // Yahoo's form of a class share, BRK-B, is SEC's too
 const TICKER = /^[A-Z0-9][A-Z0-9.-]{0,19}$/;
 // SEC's time is UTC to the second; the filing index shows it in Eastern
@@ -209,7 +211,7 @@ export function parseSubmissions(
             .map((c) => c.trim())
             .filter((c) => ITEM.test(c)),
         ),
-      ],
+      ].slice(0, MAX_ITEMS),
     });
   }
   kept.sort(

@@ -83,7 +83,6 @@ function readNewsPosition(position: string): NewsCursor | null {
   return m === null ? null : { publishedAt: Number(m[1]), id: m[2]! };
 }
 
-// a filings page goes on below the last filing it showed
 const filingPosition = (r: { acceptedAt: number; accession: string }) =>
   `${r.acceptedAt}.${r.accession}`;
 

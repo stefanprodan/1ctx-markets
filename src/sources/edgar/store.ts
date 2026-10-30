@@ -4,7 +4,13 @@
 
 import { readSession } from "../../market/calendars.ts";
 import type { Instrument } from "../../market/instruments.ts";
-import { addDays, localDate, wallOfDate } from "../../market/zone.ts";
+import {
+  addDays,
+  fromWallTime,
+  localDate,
+  wallOfDate,
+  wallTime,
+} from "../../market/zone.ts";
 import { DAY_MS, MINUTE_MS } from "../../runtime/clock.ts";
 import type { Db } from "../../storage/db/index.ts";
 import { failedRun, lastStarted } from "../../storage/runs.ts";
@@ -156,14 +162,25 @@ export function recordRun(
   );
 }
 
-// The daily fetch is due once the market's latest session has ended and
-// AFTER_CLOSE_MS passed; before that, the last one stands. With no session
-// stored yet, a day after the last.
-export function dueAt(db: Db, market: string, now: number): number | null {
+// AFTER_CLOSE_MS past the end of the market's latest finished session.
+// While the stored session runs, that is the trading day before it, read
+// from the market's bars since no holiday list is kept; with none, the
+// calendar day before. With no session stored yet, a day after the last.
+export function dueAt(db: Db, market: string, now: number): number {
   const s = readSession(db, market);
   if (s === null) return now - DAY_MS;
-  const after = s.end + AFTER_CLOSE_MS;
-  return after <= now ? after : null;
+  if (s.end + AFTER_CLOSE_MS <= now) return s.end + AFTER_CLOSE_MS;
+  const day = localDate(s.zone, s.start);
+  const before =
+    db
+      .query<{ date: string | null }, [string, string]>(
+        `select max(b.date) as date from bars b
+         join instruments i on i.id = b.instrument
+         where i.market = ?1 and b.interval = '1d' and b.date < ?2`,
+      )
+      .get(market, day)?.date ?? addDays(day, -1);
+  const close = wallTime(s.zone, s.end) - wallOfDate(localDate(s.zone, s.end));
+  return fromWallTime(s.zone, wallOfDate(before) + close) + AFTER_CLOSE_MS;
 }
 
 export function filingsDue(
@@ -173,8 +190,7 @@ export function filingsDue(
 ): boolean {
   const ok = lastStarted(db, SOURCE, FILINGS_JOB, i.id, "ok");
   if (ok === null) return true;
-  const due = dueAt(db, i.market, now);
-  return due !== null && ok.startedAt < due;
+  return ok.startedAt < dueAt(db, i.market, now);
 }
 
 export const filingsFetched = (db: Db, instrument: string): boolean =>
@@ -200,8 +216,9 @@ export function filerState(
   // a run cut by shutdown is no failure: the next run settles it
   if (failedRun(last)) stale.push(STALE_FILINGS.failed);
   else if (ok !== null) {
-    const due = dueAt(db, i.market, now);
-    if (due !== null && ok.startedAt < due) stale.push(STALE_FILINGS.pending);
+    if (ok.startedAt < dueAt(db, i.market, now)) {
+      stale.push(STALE_FILINGS.pending);
+    }
   }
   const filer = db
     .query<{ cik: number | null; abroad: number }, [string]>(
@@ -231,7 +248,6 @@ const asRow = (r: Stored): FilingRow => ({
   items: r.items === "" ? [] : r.items.split(","),
 });
 
-// where a page of filings starts: older than this one
 export type FilingCursor = { acceptedAt: number; accession: string };
 
 // newest first, ties by accession, below the cursor when given

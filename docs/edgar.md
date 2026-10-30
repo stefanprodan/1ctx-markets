@@ -68,7 +68,9 @@ phrases and the lock every source shares are in `docs/sources.md`; the
   S-3ASR, 424B1, 424B4 and 424B5, which register or offer new
   securities, shares or debt. 424B2 and 424B3 are left out: a bank
   files thousands a year for structured notes, which would bury every
-  other filing and set the offering flag every day.
+  other filing and set the offering flag every day. 424B7 and 424B8
+  are left out too: resales by holders and late-filed copies, never
+  new securities.
 - **Stored per filing** (`filings`, keyed by instrument and accession):
   form, accepted time (UTC ms), filed date, period, 8-K item codes and
   the filing index URL. Two years are kept (`KEPT_MS`), pruned by
@@ -86,14 +88,19 @@ phrases and the lock every source shares are in `docs/sources.md`; the
   one's filings**: a store drops rows whose URL names another CIK.
 - **8-K items carry names** from a fixed table of SEC's item list
   (`ITEM_NAMES`); a code SEC adds later has a null name, never a
-  guessed one.
+  guessed one. A filing keeps at most `MAX_ITEMS` (20) distinct codes:
+  SEC lists a few, and a cap keeps any answer's filing within a page.
 
 ## Jobs
 
 - **Each tracked US share is fetched once a day after the US close**
-  (`dueAt`): due once the market's stored session has ended and
-  `AFTER_CLOSE_MS` (two hours) passed, when after-close results are
-  filed; until then the last fetch stands. The session comes from the
+  (`dueAt`): due while its last good fetch is older than the latest
+  finished US session's end plus `AFTER_CLOSE_MS` (two hours), when
+  after-close results are filed, and stale ("filings sync pending")
+  meanwhile. While the stored session runs, the finished one is the
+  trading day before it, read from the market's stored bars, so a pass
+  missed overnight is caught up the next day during the session; with
+  no bars, the calendar day before. The session comes from the
   calendar (`docs/calendars.md`), never a fixed hour; with none stored
   a fetch is due a day after the last.
 - **Cost**: one call per tracked US share a day, plus the ticker map
@@ -117,7 +124,7 @@ offering is shares or debt is in the filing behind its link.
 |---|---|---|
 | `late_filing` | an NT 10-K or NT 10-Q in the last 90 days | one quarter, as a 10-Q is due within one |
 | `restatement` | an 8-K or 8-K/A with item 4.02 in the last 365 days | a year of reports leans on the restated ones |
-| `offering` | new securities, shares or debt, registered or offered: an S-1, S-3 or 424B1/4/5 in the last 90 days | new shares dilute and new debt adds leverage within the quarter |
+| `offering` | new securities, shares or debt, registered or offered: an S-1, S-1/A, S-3, S-3/A, S-3ASR, 424B1, 424B4 or 424B5 in the last 90 days | new shares dilute and new debt adds leverage within the quarter |
 
 ## Events
 

@@ -73,12 +73,14 @@ route's transport in `docs/api.md`; rules that wait on events in
   For the `overview` and `news` sections only, a covered instrument
   never asked for news gets one page; for `overview` and `filings`, and
   the route's `filings`, a US share never fetched from EDGAR gets its
-  filings, the ticker map first when none is stored. The rest come
-  with the jobs.
-  Concurrent calls naming one instrument and sections share one fetch
-  (`shared`); the sections are checked again inside the instrument's
-  lock, so a call that waited asks none another stored. A deadline that
-  passes stores nothing.
+  filings, the ticker map first when none is stored. The rest come with
+  the jobs. Events' `filed_at` reads stored filings only, so it fills
+  once the share's filings were fetched, by the daily pass or a research
+  call: `events` and the earnings route never call SEC, since one call
+  can name 100 symbols. Concurrent calls naming one instrument and
+  sections share one fetch (`shared`); the sections are checked again
+  inside the instrument's lock, so a call that waited asks none another
+  stored. A deadline that passes stores nothing.
 
 ## Finnhub sections
 

@@ -18,6 +18,7 @@ import { silent } from "../src/runtime/log.ts";
 import {
   edgar,
   KEPT_FORMS,
+  MAX_ITEMS,
   parseSubmissions,
   parseTickers,
   usableContact,
@@ -25,6 +26,7 @@ import {
 import { edgarJobs } from "../src/sources/edgar/jobs.ts";
 import {
   filerState,
+  filingsDue,
   flags,
   KEPT_MS,
   NO_DATA,
@@ -195,6 +197,20 @@ describe("the EDGAR client", () => {
       (x) => x.accession === raw.filings.recent.accessionNumber[at],
     );
     expect(f?.items).toEqual(["2.02", "9.01"]);
+  });
+
+  test("a filing keeps at most twenty item codes", async () => {
+    const raw = clone(await recent("aapl"));
+    const at = (raw.filings.recent.form as string[]).indexOf("8-K");
+    raw.filings.recent.items[at] = Array.from(
+      { length: 40 },
+      (_, k) => `${k + 1}.01`,
+    ).join(",");
+    const f = parseSubmissions(raw, CIKS.AAPL!).filings.find(
+      (x) => x.accession === raw.filings.recent.accessionNumber[at],
+    );
+    expect(f?.items).toHaveLength(MAX_ITEMS);
+    expect(f?.items[0]).toBe("1.01");
   });
 
   test("the ticker map reads a class share as Yahoo writes it", async () => {
@@ -716,6 +732,46 @@ describe("the daily pass", () => {
     markRead(t.db, ["US:AAPL"], t.clock.now());
     expect((await t.tick()).tickers).toMatchObject({ rows: 9 });
     expect(t.tickerCalls()).toHaveLength(2);
+  });
+
+  test("a pass missed in the evening is due and stale during the next day's session", async () => {
+    // Friday 11:00 in New York, Friday's session open and stored
+    const t = pass(Date.parse("2026-10-30T15:00:00Z"));
+    recordSession(t.db, "US", friday, friday.start);
+    const i = share(t.db, "AAPL", RECORDED);
+    markRead(t.db, [i.id], t.clock.now());
+    t.db
+      .query(
+        `insert into bars (instrument, interval, date, close, final, fetched_at)
+         values (?1, '1d', '2026-10-29', 1, 1, ?2)`,
+      )
+      .run(i.id, RECORDED);
+    const ran = (at: string) =>
+      t.db
+        .query(
+          `insert into sync_runs (source, job, scope, started_at, ended_at,
+             status, rows) values ('edgar', 'filings', ?1, ?2, ?2, 'ok', 1)`,
+        )
+        .run(i.id, Date.parse(at));
+    // the last good fetch was Wednesday evening: Thursday's was missed
+    ran("2026-10-28T22:30:00Z");
+    expect(filingsDue(t.db, i, t.clock.now())).toBe(true);
+    expect(filerState(t.db, i, t.clock.now()).stale).toEqual([
+      STALE_FILINGS.pending,
+    ]);
+    expect((await t.tick()).asked).toEqual([i.id]);
+    // a fetch after Thursday's close plus two hours stands for the day
+    const u = pass(Date.parse("2026-10-30T15:00:00Z"));
+    recordSession(u.db, "US", friday, friday.start);
+    const j = share(u.db, "AAPL", RECORDED);
+    u.db
+      .query(
+        `insert into sync_runs (source, job, scope, started_at, ended_at,
+           status, rows) values ('edgar', 'filings', ?1, ?2, ?2, 'ok', 1)`,
+      )
+      .run(j.id, Date.parse("2026-10-29T22:05:00Z"));
+    expect(filingsDue(u.db, j, u.clock.now())).toBe(false);
+    expect(filerState(u.db, j, u.clock.now()).stale).toEqual([]);
   });
 
   test("a share's stale reason says pending once the next close passed", async () => {
