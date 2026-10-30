@@ -1146,14 +1146,12 @@ export function AddForm({
     kind.value === "trade" && picked.value
       ? heldAt(all.value ?? store.holdings.value, picked.value.id)
       : [];
-  // with no broker named, the server's all sells every part in the
-  // portfolio, so the figure counts them all
-  const heldHere = parts.filter(
-    (p) =>
-      p.portfolio === portfolioName &&
-      (broker.value === "" || p.broker === broker.value),
-  );
+  const inPortfolio = parts.filter((p) => p.portfolio === portfolioName);
+  const heldHere = inPortfolio.filter((p) => (p.broker ?? "") === broker.value);
   const heldQty = heldHere.reduce((s, p) => s + (p.quantity ?? 0), 0);
+  // the server's all with no broker sells every broker's part too, so
+  // it goes only when the parts shown are all there are
+  const allMeansHere = heldHere.length === inPortfolio.length;
   const drys = dryPowders(all.value);
   const dryUse =
     side.value === "buy" ? dryPowderFor(drys, portfolioName, cur) : null;
@@ -1204,6 +1202,7 @@ export function AddForm({
           quantity:
             side.value === "sell" &&
             sellAll.value &&
+            allMeansHere &&
             qty.value === String(heldQty)
               ? "all"
               : num(qty, "Quantity", true)!,
@@ -1401,6 +1400,9 @@ export function AddForm({
                 value={px}
                 placeholder={byTotal.value ? "Fees in" : "Live price"}
                 decimal
+                onEdit={() => {
+                  pxLive.value = false;
+                }}
                 after={
                   <button
                     type="button"
@@ -1604,20 +1606,27 @@ function AddSheet({
   onDone: () => void;
 }) {
   const saving = useSignal(false);
+  // the latest one, so a parent's inline function never rebinds the keys
+  const done = useRef(onDone);
+  done.current = onDone;
   // a save on its way finishes in sight, its outcome shown
   const close = () => {
-    if (!saving.value) onDone();
+    if (!saving.value) done.current();
   };
   useEffect(() => {
+    // capture sees a menu or list still open, before its own handler
+    // closes it: Escape closes that first, never the form under it
     const onKey = (ev: KeyboardEvent) => {
       if (ev.key !== "Escape") return;
-      // Escape closes an open menu or list first, never the form under it
-      if (document.querySelector('.pf-sheet [aria-expanded="true"]')) return;
+      const open = document.querySelector(
+        '.pf-sheet [aria-haspopup][aria-expanded="true"], .pf-sheet [role="combobox"][aria-expanded="true"]',
+      );
+      if (open) return;
       close();
     };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onDone]);
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, []);
   return (
     <div class="pf-sheet-wrap">
       <button
