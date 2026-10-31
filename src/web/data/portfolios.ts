@@ -279,7 +279,7 @@ export function plainError(said: string): string {
   if (/is listed in .*a bond takes its listing's currency/.test(t)) {
     return "Use the bond's own currency.";
   }
-  if (/^the same trade was saved as trade \d+ in the last/.test(t)) {
+  if (/^the same trade was saved as trade \d+ in the last/i.test(t)) {
     return JUST_SAVED;
   }
   return t.charAt(0).toUpperCase() + t.slice(1);

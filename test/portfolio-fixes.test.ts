@@ -42,7 +42,7 @@ import { money } from "../src/portfolios/value.ts";
 import type { Db } from "../src/storage/db/index.ts";
 import { tools } from "../src/tools/index.ts";
 import { sentence } from "../src/web/data/api.ts";
-import { plainError } from "../src/web/data/portfolios.ts";
+import { JUST_SAVED, plainError } from "../src/web/data/portfolios.ts";
 import { missingWords, staleWords } from "../src/web/views/Portfolios.model.ts";
 import { api } from "./helpers/api.ts";
 import { portfolioBefore } from "./helpers/portfolio.ts";
@@ -536,6 +536,11 @@ describe("bonds, restore and removals", () => {
       "The source has no such symbol",
     );
     expect(staleWords("sells more than bought")).toBe("Sold more than bought");
+    expect(
+      plainError(
+        "The same trade was saved as trade 7 in the last 10 minutes, so a retry adds nothing; again: true saves a second fill",
+      ),
+    ).toBe(JUST_SAVED);
   });
 });
 
