@@ -268,8 +268,9 @@ describe("the Portfolios page", () => {
   test("reads the totals whole and the list at the broker picked", async () => {
     const { s, asked } = await loaded();
     const f = fake({
-      "GET /api/v1/portfolios": OVERVIEW,
+      // the longer path first: the fake answers by prefix
       "GET /api/v1/portfolios/1/holdings": HOLDINGS,
+      "GET /api/v1/portfolios": OVERVIEW,
       "GET /api/v1/trades": { trades: [] },
     });
     const t = store(
@@ -288,6 +289,57 @@ describe("the Portfolios page", () => {
     expect(f.asked).toContain("GET /api/v1/trades?removed=true&portfolio=1");
     expect(t.portfolios.atBroker.value).not.toBeNull();
     void s;
+  });
+
+  // the list's broker read fails as a broker renamed or deleted elsewhere
+  const brokerGone = (): Fetch => async (path) => {
+    if (path.includes("broker=")) {
+      return Response.json(
+        { code: "not_found", detail: "no such broker" },
+        {
+          status: 404,
+          headers: { "content-type": "application/problem+json" },
+        },
+      );
+    }
+    if (path.startsWith("/api/v1/trades")) return Response.json({ trades: [] });
+    if (path.includes("/holdings")) return Response.json(HOLDINGS);
+    return Response.json(OVERVIEW);
+  };
+
+  test("a broker gone elsewhere clears the broker, never the portfolio", async () => {
+    const t = store(
+      brokerGone(),
+      () => NOW,
+      () => "/portfolios",
+      () => {},
+    );
+    await t.portfolios.pick({ portfolio: 1, broker: "North" });
+    expect(t.portfolios.portfolio.value).toBe(1);
+    expect(t.portfolios.broker.value).toBeNull();
+    expect(t.portfolios.atBroker.value).toBeNull();
+    expect(t.portfolios.error.value).toBeNull();
+  });
+
+  test("a broker no longer in the list is cleared, so no menu holds it", async () => {
+    const f = fake({
+      // the longer path first: the fake answers by prefix
+      "GET /api/v1/portfolios/1/holdings": HOLDINGS,
+      "GET /api/v1/portfolios": OVERVIEW,
+      "GET /api/v1/trades": { trades: [] },
+    });
+    const t = store(
+      f.fetch,
+      () => NOW,
+      () => "/portfolios",
+      () => {},
+    );
+    await t.portfolios.pick({ portfolio: 1, broker: "Nowhere" });
+    expect(t.portfolios.broker.value).toBeNull();
+    expect(t.portfolios.atBroker.value).toBeNull();
+    await t.portfolios.pick({ broker: "North" });
+    expect(t.portfolios.broker.value).toBe("North");
+    expect(t.portfolios.atBroker.value).not.toBeNull();
   });
 
   test("with a converted total, it is the one total shown, with its rate", async () => {

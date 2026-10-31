@@ -424,10 +424,16 @@ export function portfolioStore(call: Call, session: () => number) {
           : call<Holdings>(`${where}?${bq}`),
       ]);
       if (stale()) return;
+      // a broker left with nothing in the list leaves the menu too, so the
+      // pick would be stuck where no menu can clear it
+      const held =
+        broker.value === null ||
+        h.holdings.some((x) => x.parts.some((p) => p.broker === broker.value));
       batch(() => {
         overview.value = o;
         holdings.value = h;
-        atBroker.value = b;
+        atBroker.value = held ? b : null;
+        if (!held) broker.value = null;
         trades.value = t.trades;
         error.value = null;
         code.value = null;
@@ -435,12 +441,14 @@ export function portfolioStore(call: Call, session: () => number) {
     } catch (e) {
       if (stale()) return;
       if (e instanceof ApiError && e.status === 401) return;
-      // a portfolio or broker picked here and gone elsewhere: show all
+      // gone elsewhere: a broker narrows only its list, so it goes first
+      // and the portfolio stays unless it is the one gone
       if (e instanceof ApiError && e.code === "not_found") {
-        if (portfolio.value !== null || broker.value !== null) {
+        if (broker.value !== null || portfolio.value !== null) {
           batch(() => {
-            portfolio.value = null;
-            broker.value = null;
+            if (broker.value !== null) broker.value = null;
+            else portfolio.value = null;
+            atBroker.value = null;
           });
           return load();
         }
@@ -488,6 +496,7 @@ export function portfolioStore(call: Call, session: () => number) {
       batch(() => {
         portfolio.value = v.portfolio;
         broker.value = null;
+        atBroker.value = null;
         currency.value = v.currency;
       });
       return load();
@@ -499,7 +508,11 @@ export function portfolioStore(call: Call, session: () => number) {
     }) {
       batch(() => {
         if (next.portfolio !== undefined) portfolio.value = next.portfolio;
-        if (next.broker !== undefined) broker.value = next.broker;
+        // another broker's rows never stand in while its own load
+        if (next.broker !== undefined && next.broker !== broker.value) {
+          broker.value = next.broker;
+          atBroker.value = null;
+        }
         if (next.currency !== undefined) currency.value = next.currency;
       });
       return load();
