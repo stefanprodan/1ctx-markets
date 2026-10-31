@@ -49,7 +49,7 @@ MCP tools copied onto paths.
 | `GET /portfolios/{id}/export` | portfolio:read | `exportCsv()` | `text/csv`, the trades in the portfolio CSV export format, LF line ends, no BOM |
 | `POST /portfolios/{id}/import` | portfolio:write | `importCsv()` | `{csv, broker, currency, confirm, dry_powder}`; every row's status, saved only with `confirm` |
 | `GET /trades?portfolio=&broker=&symbol=&from=&to=&removed=` | portfolio:read | `readTradeList()` | `trades[]`, newest first, whole |
-| `POST /trades` | portfolio:write | `addTrade()` | the tool's `add` arguments; 201 with `trade`, or `trades` for a sell of all; 409 with the saved one's id in `trade` for the same trade entered in the last 10 minutes, unless `again` is true |
+| `POST /trades` | portfolio:write | `addTrade()` | the tool's `add` arguments; 201 with `trade`, or `trades` for a sell of all; 409 with the saved one's id in `trade` for a trade with the same figures entered in the last 10 minutes, unless `again` is true |
 | `DELETE /trades/{id}`, `POST /trades/{id}/restore` | portfolio:write | `setTradeState()` | `{trade}`, removed or back; never a delete |
 | `GET /positions?portfolio=&broker=&removed=` | portfolio:read | `readPositions()` | `positions[]` |
 | `POST /positions` | portfolio:write | `addPosition()` | `{kind, ...}`; 201 with `position` and `replaced` |

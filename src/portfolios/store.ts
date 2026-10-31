@@ -3,6 +3,8 @@
 // Rows only; what they are worth is value.ts. Holdings are private: no
 // function here logs, and no error quotes a row.
 
+import { CRYPTO } from "../market/calendars.ts";
+import { FRED_MARKET } from "../sources/ids.ts";
 import type { Db } from "../storage/db/index.ts";
 
 export const MAX_NAME = 40;
@@ -479,17 +481,23 @@ export function portfolioHolds(db: Db, id: string): boolean {
 
 export type Split = { date: string; ratio: number };
 
-// shares after a split are shares before times the ratio
-// the markets stored instruments are in, as their ids spell them
+// the markets a fund's or cash's money can be in, as instrument ids spell
+// them: where a share, an ETF or a bond is listed, and crypto; currency
+// pairs (Yahoo's CCY), FRED series and index-only or futures markets
+// hold nothing a fund buys
 export function knownMarkets(db: Db): string[] {
   return db
-    .query<{ market: string }, []>(
-      "select distinct market from instruments order by market",
+    .query<{ market: string }, [string, string]>(
+      `select distinct market from instruments
+       where (unit in ('per_share', 'percent_of_par') or market = ?1)
+       and market not in (?2, 'CCY')
+       order by market`,
     )
-    .all()
+    .all(CRYPTO, FRED_MARKET)
     .map((r) => r.market);
 }
 
+// shares after a split are shares before times the ratio
 export function splitsOf(db: Db, instrument: string): Split[] {
   return db
     .query<{ date: string; ratio: number }, [string]>(

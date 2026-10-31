@@ -49,11 +49,16 @@ once and valued on the live price the server already keeps.
   and a fund may name a market (`market`, migration
   `0025-position-market`), so a fund holding one market's shares counts
   in that market in the exposure and its row answers it; none is
-  assumed. The name must be a market a stored instrument is in
-  (`knownMarkets()`, `markets` in `list` and `GET /portfolios`), matched
+  assumed. The name must be a market a fund's or cash's money can be in
+  (`knownMarkets()`, `markets` in `list` and `GET /portfolios`): one
+  where a stored share, ETF or bond is listed (`per_share`,
+  `percent_of_par`), or crypto; never currency pairs (`CCY`), FRED
+  series, or a market of only indexes or futures. It is matched
   ignoring case and stored as the instruments spell it; another is
   refused (`not_found`) with the known ones. A bond's market is its
-  listing's, so a bond takes none. The
+  listing's, so a bond takes none. A row that replaces a kept one (an
+  add of the same cash or fund, an import) keeps the kept row's market
+  unless it names another, since a file has no market column. The
   table keeps a fund as `manual`, the word migration `0020-portfolios`
   checks; the store reads and writes it as `fund` (`stored()`), since a
   table rebuild to rename it would copy every owner's positions.
@@ -327,7 +332,9 @@ rename_broker(broker: string, name: string): { broker };
   `entered_at` against the clock) in its portfolio, instrument, side,
   date, quantity, price, fees, currency paid and broker is refused
   (`conflict`, 409 over REST) naming that trade's id, in the message and
-  in `trade`, so an agent retrying after a timeout never doubles a lot.
+  in `trade`, so a retry with the same figures after a timeout never
+  doubles a lot. An add with no price or total takes the live quote, so
+  a retry after the quote moved has other figures and is saved.
   `again: true` saves it, for two real fills that are the same. The tool
   and `POST /trades` share it; the import has its own duplicate check.
 - **`rename_broker`** renames a broker by its name, as `PATCH

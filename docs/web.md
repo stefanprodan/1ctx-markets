@@ -438,7 +438,8 @@ signed in with the admin key alone.
   opens on Settings. Date fields start on the owner's today in that zone,
   the UTC day until one is set (`today()`), as the server dates a
   position. A retried trade the server refuses reads "This trade was
-  just saved."
+  just saved." with a "Save again" button beside it, which sends the
+  same trade with `again`, for a second fill that is the same.
 - **The bundle names no source:** the import kinds read Trades, Cash,
   Funds and Bonds.
 - **Instruments:** every stored instrument from

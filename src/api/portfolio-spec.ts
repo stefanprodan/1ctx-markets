@@ -730,7 +730,7 @@ export const portfolioPaths = {
         "- An unknown symbol is fetched within the call.",
         "- A sell of more than its broker holds is refused.",
         "- A broker is one the list has; an unknown one is refused with the list.",
-        "- The same trade (instrument, side, date, quantity, price, fees, currency paid, broker) as a live one entered in the last 10 minutes is refused (409) with that trade's id in `trade`, unless `again` is true: a retry after a timeout never doubles a lot.",
+        "- A retry with the same figures (instrument, side, date, quantity, price, fees, currency paid, broker) as a live trade entered in the last 10 minutes is refused (409) with that trade's id in `trade`, unless `again` is true. One with no price or total takes the live quote, so after the quote moves it is another trade.",
       ),
       requestBody: bodyOf(ref("TradeArgs")),
       responses: base({

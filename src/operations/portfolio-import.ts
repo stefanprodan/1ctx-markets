@@ -512,7 +512,12 @@ export async function importCsv(
           if (old !== null) setPositionRemoved(db, old.id, who.name, now);
           const id = insertPosition(
             db,
-            { ...x.position, replaces: old?.id ?? null },
+            {
+              ...x.position,
+              // a file has no market column: a kept one stays
+              market: x.position.market ?? old?.market ?? null,
+              replaces: old?.id ?? null,
+            },
             now,
           );
           added.add(id);

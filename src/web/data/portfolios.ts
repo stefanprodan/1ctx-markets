@@ -170,6 +170,8 @@ export type TradeIn = {
   date: string;
   broker?: string;
   note?: string;
+  // a second fill equal to one just saved
+  again?: boolean;
 };
 
 export type SavedTrade = {
@@ -248,6 +250,9 @@ export type ImportIn = {
 };
 
 // the server's refusal without ids, as a reader says it
+// a retry refused, which a second equal fill saves with again
+export const JUST_SAVED = "This trade was just saved.";
+
 export function plainError(said: string): string {
   const t = said.replace(/^[A-Z0-9]+:[^\s:]+: /, "");
   if (/was removed or updated; restore it first/.test(t)) {
@@ -275,7 +280,7 @@ export function plainError(said: string): string {
     return "Use the bond's own currency.";
   }
   if (/^the same trade was saved as trade \d+ in the last/.test(t)) {
-    return "This trade was just saved.";
+    return JUST_SAVED;
   }
   return t.charAt(0).toUpperCase() + t.slice(1);
 }

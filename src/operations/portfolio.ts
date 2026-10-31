@@ -1290,7 +1290,16 @@ export async function addPosition(
     const old = samePosition(db, row);
     if (old !== null) setPositionRemoved(db, old.id, who.name, now);
     return {
-      id: insertPosition(db, { ...row, replaces: old?.id ?? null }, now),
+      // a market named before stays unless this add names another
+      id: insertPosition(
+        db,
+        {
+          ...row,
+          market: row.market ?? old?.market ?? null,
+          replaces: old?.id ?? null,
+        },
+        now,
+      ),
       replaced: old?.id ?? null,
     };
   });
@@ -1702,6 +1711,7 @@ async function setup(
   const made: string[] = [];
   const done = await m.writer.write((db): Failure | null => {
     const now = m.clock.now();
+    // every check before any write, so a refused setup saves nothing
     // the owner's own setting: an agent passing one out of habit never
     // changes it, only sets the first
     const shown = displayCurrency(db);
@@ -1710,9 +1720,6 @@ async function setup(
         `the display currency is ${shown}; the owner changes it in the web UI's settings`,
       );
     }
-    if (args.currency !== null && shown === null) {
-      setDisplayCurrency(db, args.currency, now);
-    }
     // the same rule for the owner's zone
     const zone = timeZone(db);
     if (args.zone !== null && zone !== null && zone !== args.zone) {
@@ -1720,18 +1727,20 @@ async function setup(
         `the time zone is ${zone}; the owner changes it in the web UI's settings`,
       );
     }
+    const newPortfolio =
+      args.portfolio !== null && portfolioByName(db, args.portfolio) === null;
+    // every total converts into it, and none is assumed for the owner
+    if (newPortfolio && (shown ?? args.currency) === null) {
+      return conflict(
+        "name display_currency too, the currency totals are shown in: ask the owner, never assume one",
+      );
+    }
+    if (args.currency !== null && shown === null) {
+      setDisplayCurrency(db, args.currency, now);
+    }
     if (args.zone !== null && zone === null) setTimeZone(db, args.zone, now);
-    if (
-      args.portfolio !== null &&
-      portfolioByName(db, args.portfolio) === null
-    ) {
-      // every total converts into it, and none is assumed for the owner
-      if (displayCurrency(db) === null) {
-        return conflict(
-          "name display_currency too, the currency totals are shown in: ask the owner, never assume one",
-        );
-      }
-      insertPortfolio(db, args.portfolio, now);
+    if (newPortfolio) {
+      insertPortfolio(db, args.portfolio!, now);
       made.push(`portfolio ${args.portfolio}`);
     }
     for (const name of args.brokers) {

@@ -2080,8 +2080,9 @@ describe("the tool's description", () => {
   test("says a bond's as_of is its purchase and its price its listing's", () => {
     const { m } = world();
     const d = tools(m).find((t) => t.name === "portfolio")!.description;
-    expect(d).toContain("as_of is its purchase");
-    expect(d).toContain("its listing's as of fetched_at");
+    expect(d).toContain("as_of: bought");
+    expect(d).toContain("price: listing's, see fetched_at");
+    expect(d).toContain("list: portfolios, brokers, markets.");
     expect(d.length).toBeLessThanOrEqual(1024);
   });
 });
@@ -2197,5 +2198,89 @@ describe("a position's market", () => {
     expect(
       ((await up.json()) as { position: { market: string } }).position.market,
     ).toBe("KW");
+  });
+});
+
+describe("gaps the import fixes left", () => {
+  const ask = async (m: Markets, args: object) => {
+    const r = await portfolioAnswer(m, CASEY, parsePortfolio(args));
+    return { error: r.isError === true, body: JSON.parse(r.content[0]!.text) };
+  };
+
+  test("only markets a fund's money can be in are offered", async () => {
+    const { m, db } = await setup();
+    pair(db, "EURUSD=X", 1.2);
+    instrument(db, "FRED:DGS10");
+    instrument(db, "SNP:GSPC", { unit: "index_points" });
+    instrument(db, "NYM:CL", { unit: "per_unit" });
+    instrument(db, "CRYPTO:BTC", { unit: "per_unit" });
+    expect((await ask(m, { action: "list" })).body.markets).toEqual([
+      "CRYPTO",
+      "KW",
+      "US",
+    ]);
+    for (const market of ["CCY", "FRED", "SNP", "NYM"]) {
+      const r = await ask(m, {
+        action: "add",
+        kind: "cash",
+        portfolio: "Shares",
+        name: "Made Up Cash",
+        amount: 1,
+        currency: "USD",
+        market,
+      });
+      expect([market, r.body.error]).toEqual([market, "not_found"]);
+    }
+  });
+
+  test("a row that replaces a kept one keeps its market", async () => {
+    const { m } = await setup();
+    const cash = {
+      action: "add",
+      kind: "cash",
+      portfolio: "Shares",
+      name: "Made Up Cash",
+      amount: 100,
+      currency: "USD",
+    };
+    const first = await ask(m, { ...cash, market: "US" });
+    const again = await ask(m, { ...cash, amount: 120 });
+    expect(again.body).toMatchObject({
+      replaced: first.body.position.id,
+      position: { market: "US" },
+    });
+    const r = await importCsv(
+      m,
+      CASEY,
+      parseImport({
+        portfolio: "Shares",
+        csv: "Item,Amount (USD),As Of,Note\nMade Up Cash,130,2026-10-01,",
+        confirm: true,
+      }),
+    );
+    if ("error" in r) throw new Error(r.message);
+    const kept = (await holdingsOf(m)).holdings.find((x) => x.kind === "cash")!;
+    expect([kept.value, kept.market]).toEqual([130, "US"]);
+    const named = await ask(m, { ...cash, amount: 140, market: "KW" });
+    expect(named.body.position.market).toBe("KW");
+  });
+
+  test("a refused setup saves nothing", async () => {
+    const { m } = world();
+    await saveSettings(m, { time_zone: "Asia/Tokyo" });
+    const r = await ask(m, {
+      action: "setup",
+      display_currency: "EUR",
+      time_zone: "Europe/Paris",
+      portfolio: "Long term",
+      broker: "North",
+    });
+    expect(r.body).toMatchObject({ error: "conflict" });
+    expect((await ask(m, { action: "list" })).body).toMatchObject({
+      display_currency: null,
+      time_zone: "Asia/Tokyo",
+      portfolios: [],
+      brokers: [],
+    });
   });
 });

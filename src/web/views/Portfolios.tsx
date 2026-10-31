@@ -20,6 +20,7 @@ import type {
   TradeIn,
   TradeRow,
 } from "../data/portfolios.ts";
+import { JUST_SAVED } from "../data/portfolios.ts";
 import { type Candidate, markets } from "../data/store.ts";
 import { Icon } from "../lib/icons.tsx";
 import { useMenu } from "../lib/menu.ts";
@@ -1136,6 +1137,36 @@ function FormPick({
   );
 }
 
+// a refused retry offers to save a second equal fill
+export function Refusal({
+  text,
+  busy,
+  onAgain,
+}: {
+  text: string;
+  busy: boolean;
+  onAgain: (ev: Event) => void;
+}) {
+  return (
+    <p class="pf-error" role="alert">
+      {text}
+      {text === JUST_SAVED && (
+        <>
+          {" "}
+          <button
+            type="button"
+            class="btn btn-small"
+            disabled={busy}
+            onClick={onAgain}
+          >
+            Save again
+          </button>
+        </>
+      )}
+    </p>
+  );
+}
+
 // the markets instruments are in, so a fund counts in the one it holds
 function MarketPick({
   value,
@@ -1521,7 +1552,8 @@ export function AddForm({
       },
     };
   };
-  const submit = async (ev: Event) => {
+  // twice: the owner said a refused equal trade is a second fill
+  const submit = async (ev: Event, twice = false) => {
     ev.preventDefault();
     if (busy.value || half.value) return;
     error.value = null;
@@ -1583,6 +1615,7 @@ export function AddForm({
         ...out.trade,
         portfolio: pid,
         broker: b,
+        ...(twice ? { again: true } : {}),
       });
       if ("refused" in r) {
         refused = r.refused;
@@ -1996,9 +2029,11 @@ export function AddForm({
       <div class="pf-add-foot">
         {what && <p class="pf-summary">{what}</p>}
         {error.value && (
-          <p class="pf-error" role="alert">
-            {error.value}
-          </p>
+          <Refusal
+            text={error.value}
+            busy={busy.value}
+            onAgain={(ev) => void submit(ev, true)}
+          />
         )}
         <div class="pf-form-foot">
           {half.value ? (

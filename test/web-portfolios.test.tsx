@@ -11,7 +11,7 @@ import type {
   Overview,
   TradeRow,
 } from "../src/web/data/portfolios.ts";
-import { plainError } from "../src/web/data/portfolios.ts";
+import { JUST_SAVED, plainError } from "../src/web/data/portfolios.ts";
 import { store } from "../src/web/data/store.ts";
 import { accessWords } from "../src/web/views/Connect.model.ts";
 import {
@@ -48,6 +48,7 @@ import {
   PortfoliosBody,
   PositionEdit,
   Purchases,
+  Refusal,
   SettingsPanel,
 } from "../src/web/views/Portfolios.tsx";
 
@@ -920,5 +921,47 @@ describe("a position's market", () => {
       />,
     );
     expect(edit).toContain('aria-label="Market: BVB"');
+  });
+});
+
+describe("a refused retry", () => {
+  test("offers Save again, which sends the trade with again", async () => {
+    const html = render(
+      <Refusal text={JUST_SAVED} busy={false} onAgain={() => {}} />,
+    );
+    expect(html).toContain("This trade was just saved.");
+    expect(html).toContain("Save again");
+    expect(
+      render(
+        <Refusal text="Pick a portfolio." busy={false} onAgain={() => {}} />,
+      ),
+    ).not.toContain("Save again");
+    const bodies: unknown[] = [];
+    const f = fake({
+      "GET /api/v1/portfolios": OVERVIEW,
+      "GET /api/v1/holdings": HOLDINGS,
+      "GET /api/v1/trades": { trades: [] },
+      "POST /api/v1/trades": { trade: trade() },
+    });
+    const s = store(
+      async (path, init) => {
+        if (init?.method === "POST") bodies.push(JSON.parse(String(init.body)));
+        return f.fetch(path, init);
+      },
+      () => NOW,
+      () => "/portfolios",
+      () => {},
+    );
+    await s.portfolios.load();
+    await s.portfolios.addTrade({
+      portfolio: 1,
+      symbol: "XETRA:AAA",
+      side: "buy",
+      quantity: 1,
+      price: 10,
+      date: "2026-10-28",
+      again: true,
+    });
+    expect(bodies).toEqual([expect.objectContaining({ again: true })]);
   });
 });
