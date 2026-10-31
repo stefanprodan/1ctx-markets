@@ -294,7 +294,7 @@ describe("a fund's holding", () => {
       pl: 38,
     });
     // an earlier day's price never values the holding over the latest
-    await updateFund(m, CASEY, ONE, { price: 1, date: "2026-05-01" });
+    await updateFund(m, CASEY, ONE, { price: 1, date: "2026-05-03" });
     expect((await fundRow(m)).value).toBe(150);
   });
 
@@ -326,11 +326,11 @@ describe("a fund's holding", () => {
     await fund(
       m,
       { isin: ONE },
-      { total: 70, quantity: 10, price: null, fees: 0, date: "2026-04-02" },
+      { total: 70, quantity: 10, price: null, fees: 0, date: "2026-04-05" },
     );
     expect(fundPrices(db, `fund:${ONE}`).map((p) => [p.date, p.price])).toEqual(
       [
-        ["2026-04-02", 7],
+        ["2026-04-05", 7],
         ["2026-04-01", 6],
         ["2026-03-02", 5],
       ],
@@ -484,7 +484,7 @@ describe("a fund's name and currency", () => {
     });
     expect(r).toMatchObject({ error: "bad_arguments" });
     // the same name in another case is the fund's own
-    await fund(m, { isin: ONE, name: "MADE UP FUND" }, { date: "2026-04-02" });
+    await fund(m, { isin: ONE, name: "MADE UP FUND" }, { date: "2026-04-05" });
     expect((await fundRow(m)).quantity).toBe(20);
   });
 
@@ -640,7 +640,7 @@ describe("migration 0026-fund-trades", () => {
       null,
       null,
       null,
-      "2026-02-02",
+      "2026-02-08",
       1,
       1,
       1,
@@ -680,7 +680,7 @@ describe("migration 0026-fund-trades", () => {
       990,
       6,
       "2030-01-02",
-      "2025-12-01",
+      "2025-12-07",
       1,
       0,
       null,
@@ -700,7 +700,7 @@ describe("migration 0026-fund-trades", () => {
       40,
       null,
       null,
-      "2026-02-02",
+      "2026-02-08",
       null,
       0,
       3,
