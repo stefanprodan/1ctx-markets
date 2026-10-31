@@ -426,9 +426,17 @@ signed in with the admin key alone.
   rows going with it) and add, after the display currency (required):
   a picker over the ISO 4217 currencies in circulation
   (`src/shared/currencies.ts`, codes only, names from `Intl.DisplayNames`),
-  found by code or name, saved on pick. With no display currency the page shows only
-  that field, without Add or the menu; with no portfolio yet it opens on
-  Settings.
+  found by code or name, saved on pick, then the owner's time zone: the
+  app's own menu over every zone the browser knows
+  (`Intl.supportedValuesOf("timeZone")`), found by city or area
+  (`findZones()`), saved on pick. With no display currency the page shows only
+  the first card, without Add or the menu, asking for the currency and
+  the time zone, the zone filled with the browser's as a suggestion the
+  owner sees before saving (`browserZone()`); with no portfolio yet it
+  opens on Settings. Date fields start on the owner's today in that zone,
+  the UTC day until one is set (`today()`), as the server dates a
+  position. A retried trade the server refuses reads "This trade was
+  just saved."
 - **The bundle names no source:** the import kinds read Trades, Cash,
   Funds and Bonds.
 - **Instruments:** every stored instrument from

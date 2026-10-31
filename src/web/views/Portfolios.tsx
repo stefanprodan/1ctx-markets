@@ -40,6 +40,7 @@ import {
   ADD_KEY,
   amount,
   brokerName,
+  browserZone,
   change,
   costLine,
   currencies,
@@ -49,6 +50,7 @@ import {
   dryPowders,
   EXPOSURE_TABS,
   type ExposureTab,
+  findZones,
   heldAt,
   holdingSub,
   holdingTitle,
@@ -77,6 +79,7 @@ import {
   tradeTitle,
   typed,
   whole,
+  zoneWords,
 } from "./Portfolios.model.ts";
 import "./instruments.css";
 import "./portfolios.css";
@@ -253,7 +256,8 @@ export function PositionEdit({
   );
   const units = useSignal(String(h.quantity ?? ""));
   // a new figure is true today; a bond's date is its purchase, kept
-  const date = useSignal(h.kind === "bond" ? (h.as_of ?? today()) : today());
+  const now = today(store.overview.value?.time_zone ?? null);
+  const date = useSignal(h.kind === "bond" ? (h.as_of ?? now) : now);
   const busy = useSignal(false);
   const error = useSignal<string | null>(null);
   const save = async (ev: Event) => {
@@ -1267,7 +1271,7 @@ export function AddForm({
   const pxLive = useSignal(false);
   const byTotal = useSignal(false);
   const fees = useSignal("");
-  const date = useSignal(today());
+  const date = useSignal(today(o?.time_zone ?? null));
   const note = useSignal("");
   const name = useSignal("");
   const amountText = useSignal("");
@@ -2486,6 +2490,93 @@ function CurrencyPick({
   );
 }
 
+// every zone the browser knows, found by city or area as typed
+function ZonePick({
+  value,
+  onPick,
+  label = "Time zone",
+}: {
+  value: string | null;
+  onPick: (zone: string) => void;
+  label?: string;
+}) {
+  const { open, root } = useMenu();
+  const query = useSignal("");
+  const found = open.value ? findZones(query.value) : [];
+  const named = (z: string) => {
+    const w = zoneWords(z);
+    return w.area ? `${w.city} · ${w.area}` : w.city;
+  };
+  const pick = (z: string) => {
+    open.value = false;
+    query.value = "";
+    if (z !== value) onPick(z);
+  };
+  return (
+    <div class="pf-drop pf-currency" ref={root}>
+      <button
+        type="button"
+        class="btn pf-drop-btn"
+        aria-label={`${label}: ${value ?? "none"}`}
+        aria-haspopup="menu"
+        aria-expanded={open.value}
+        onClick={() => {
+          open.value = !open.value;
+          query.value = "";
+        }}
+      >
+        <span class="cut">{value ? named(value) : "Pick a time zone"}</span>
+        <Icon name="chevron" size={14} class="pf-drop-chevron" />
+      </button>
+      {open.value && (
+        <div class="menu pf-drop-menu pf-currency-menu">
+          <input
+            class="pf-currency-find"
+            value={query.value}
+            placeholder="City or region"
+            aria-label="Find a time zone"
+            ref={(el) => {
+              if (!el) return;
+              el.focus({ preventScroll: true });
+              el.parentElement?.scrollIntoView({ block: "nearest" });
+            }}
+            onInput={(e) => {
+              query.value = e.currentTarget.value;
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && found[0]) {
+                e.preventDefault();
+                pick(found[0]);
+              }
+            }}
+          />
+          <div class="pf-currency-list" role="menu" aria-label="Time zones">
+            {found.length === 0 && (
+              <span class="pf-currency-none">No time zone matches.</span>
+            )}
+            {found.map((z) => (
+              <button
+                key={z}
+                type="button"
+                class={`menu-item${z === value ? " menu-item-on" : ""}`}
+                role="menuitemradio"
+                aria-checked={z === value}
+                onClick={() => pick(z)}
+              >
+                <span class="cut">{zoneWords(z).city}</span>
+                <span class="cut pf-dim">{zoneWords(z).area}</span>
+                {z === value && (
+                  <Icon name="check" size={14} class="pf-drop-check" />
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function SettingsPanel({
   store,
   onDone,
@@ -2495,6 +2586,7 @@ export function SettingsPanel({
 }) {
   const o = store.overview.value;
   const error = useSignal<string | null>(null);
+  const zoneError = useSignal<string | null>(null);
   return (
     <section class="pf-settings" aria-label="Settings">
       <div class="pf-settings-head">
@@ -2515,6 +2607,21 @@ export function SettingsPanel({
             {error.value && (
               <span class="pf-error" role="alert">
                 {error.value}
+              </span>
+            )}
+          </div>
+        </RowsCard>
+        <RowsCard label="Time zone" menus>
+          <div class="rows-item pf-inline pf-add-name">
+            <ZonePick
+              value={o?.time_zone ?? null}
+              onPick={async (z) => {
+                zoneError.value = await store.saveSettings({ time_zone: z });
+              }}
+            />
+            {zoneError.value && (
+              <span class="pf-error" role="alert">
+                {zoneError.value}
               </span>
             )}
           </div>
@@ -2555,6 +2662,8 @@ function Welcome({ store }: { store: PortfolioStore }) {
   // portfolios made before a currency was required need only the currency
   const has = (o?.portfolios.length ?? 0) > 0;
   const cur = useSignal(o?.display_currency ?? "");
+  // the browser's zone is a suggestion the owner sees before saving
+  const zone = useSignal(o?.time_zone ?? browserZone() ?? "");
   const name = useSignal("");
   const other = useSignal(false);
   const query = useSignal("");
@@ -2579,12 +2688,22 @@ function Welcome({ store }: { store: PortfolioStore }) {
       error.value = "Pick a currency.";
       return;
     }
+    if (zone.value === "") {
+      error.value = "Pick a time zone.";
+      return;
+    }
     busy.value = true;
     // a portfolio is refused until the display currency is set
+    const changed = {
+      ...(cur.value === o?.display_currency
+        ? {}
+        : { display_currency: cur.value }),
+      ...(zone.value === o?.time_zone ? {} : { time_zone: zone.value }),
+    };
     error.value =
-      cur.value === o?.display_currency
+      Object.keys(changed).length === 0
         ? null
-        : await store.saveDisplay(cur.value);
+        : await store.saveSettings(changed);
     if (error.value === null && !has) {
       error.value = await store.createPortfolio(name.value.trim());
     }
@@ -2668,6 +2787,16 @@ function Welcome({ store }: { store: PortfolioStore }) {
             </div>
           )}
         </fieldset>
+        <div class="field">
+          <span class="label">Time zone</span>
+          <ZonePick
+            value={zone.value === "" ? null : zone.value}
+            onPick={(z) => {
+              zone.value = z;
+              error.value = null;
+            }}
+          />
+        </div>
         {error.value && (
           <p class="pf-error" role="alert">
             {error.value}

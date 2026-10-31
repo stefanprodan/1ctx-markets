@@ -338,6 +338,27 @@ describe("migrations", () => {
     db.close();
   });
 
+  test("the owner's settings gain a time zone, none until named", () => {
+    const db = new Database(":memory:", { strict: true });
+    const clock = fakeClock();
+    const at = MIGRATIONS.findIndex((m) => m.id === "0024-time-zone");
+    migrate(db, clock, MIGRATIONS.slice(0, at));
+    db.exec(
+      `insert into portfolio_settings (owner, display_currency, updated_at)
+       values ('admin', 'EUR', 0)`,
+    );
+    migrate(db, clock, MIGRATIONS.slice(0, at + 1));
+    expect(
+      db
+        .query("select display_currency, time_zone from portfolio_settings")
+        .all(),
+    ).toEqual([{ display_currency: "EUR", time_zone: null }]);
+    expect(() =>
+      db.exec("update portfolio_settings set time_zone = ''"),
+    ).toThrow();
+    db.close();
+  });
+
   test("open applies the shipped list to a new database", () => {
     const { db, migrations } = open(":memory:", fakeClock());
     expect(migrations).toEqual(MIGRATIONS.map((m) => m.id));

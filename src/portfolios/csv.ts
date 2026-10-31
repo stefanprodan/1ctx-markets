@@ -1,6 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 // RFC 4180 as spreadsheets write it: quotes, doubled quotes, CRLF, a BOM.
+// Written with LF and no BOM, as Yahoo writes its own export.
 
 export function parseCsv(text: string): string[][] {
   const rows: string[][] = [];
@@ -43,7 +44,7 @@ const field = (v: string): string =>
   /[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
 
 export const formatCsv = (rows: readonly (readonly string[])[]): string =>
-  `${rows.map((r) => r.map(field).join(",")).join("\r\n")}\r\n`;
+  `${rows.map((r) => r.map(field).join(",")).join("\n")}\n`;
 
 // a plain number, thousands commas allowed only with a dot decimal form
 export function parseNumber(raw: string): number | null | "bad" {

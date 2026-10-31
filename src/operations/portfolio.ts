@@ -7,7 +7,7 @@ import { iso } from "../market/format.ts";
 import { type Instrument, readInstrument } from "../market/instruments.ts";
 import { readQuote } from "../market/quotes.ts";
 import { markRead } from "../market/tracking.ts";
-import { localDate } from "../market/zone.ts";
+import { checkZone, localDate } from "../market/zone.ts";
 import { missingPairs, rates } from "../portfolios/fx.ts";
 import {
   type Broker,
@@ -40,14 +40,17 @@ import {
   readPositions,
   readTrade,
   readTrades,
+  recentSameTrade,
   renameBroker,
   renamePortfolio,
   samePosition,
   setDisplayCurrency,
   setPositionRemoved,
+  setTimeZone,
   setTradeRemoved,
   splitsOf,
   type Trade,
+  timeZone,
 } from "../portfolios/store.ts";
 import {
   addsOversell,
@@ -91,6 +94,7 @@ export const PORTFOLIO_ACTIONS = [
   "update",
   "remove",
   "restore",
+  "rename_broker",
 ] as const;
 type Action = (typeof PORTFOLIO_ACTIONS)[number];
 
@@ -127,6 +131,8 @@ export type TradeArgs = {
   currency: string | null;
   broker: string | null;
   note: string | null;
+  // a second fill equal to one just saved, never a retry
+  again?: boolean;
 };
 
 export type PositionArgs = {
@@ -181,8 +187,9 @@ export type PortfolioArgs =
   | {
       action: "setup";
       currency: string | null;
+      zone: string | null;
       portfolio: string | null;
-      broker: string | null;
+      brokers: string[];
     }
   | { action: "list" }
   | ({ action: "holdings"; next: string | null } & HoldingsArgs)
@@ -196,6 +203,7 @@ export type PortfolioArgs =
       portfolio: Ref | null;
       change: PositionChange;
     }
+  | { action: "rename_broker"; broker: string; name: string }
   | {
       action: "remove" | "restore";
       trade: number | null;
@@ -247,6 +255,18 @@ export function namedCurrency(
   throw new ArgError(
     `${name} must be an ISO 4217 currency code in circulation, such as EUR`,
   );
+}
+
+// an IANA zone, never an offset, which cannot follow a clock change
+export function zoneArg(value: unknown, name = "time_zone"): string | null {
+  if (value === undefined || value === null) return null;
+  try {
+    return checkZone(typeof value === "string" ? value.trim() : value);
+  } catch {
+    throw new ArgError(
+      `${name} must be an IANA time zone, such as America/New_York`,
+    );
+  }
 }
 
 export function ref(value: unknown, name = "portfolio"): Ref | null {
@@ -301,6 +321,12 @@ export function parseTrade(f: Record<string, unknown>): TradeArgs {
     currency: currencyArg(f.currency),
     broker: optionalName(f.broker, "broker"),
     note: note(f.note),
+    again: (() => {
+      if (f.again !== undefined && typeof f.again !== "boolean") {
+        throw new ArgError("again must be true or false");
+      }
+      return f.again === true;
+    })(),
   };
 }
 
@@ -363,7 +389,7 @@ export function parsePosition(
 }
 
 const ARGS: Record<Action, readonly string[]> = {
-  setup: ["action", "display_currency", "portfolio", "broker"],
+  setup: ["action", "display_currency", "time_zone", "portfolio", "broker"],
   list: ["action"],
   holdings: ["action", "portfolio", "broker", "currency", "next"],
   trades: [
@@ -397,6 +423,7 @@ const ARGS: Record<Action, readonly string[]> = {
     "coupon",
     "maturity",
     "dry_powder",
+    "again",
   ],
   update: [
     "action",
@@ -417,6 +444,7 @@ const ARGS: Record<Action, readonly string[]> = {
   // be a known one: agents pass both out of habit from add
   remove: ["action", "trade", "position", "portfolio", "kind"],
   restore: ["action", "trade", "position", "portfolio", "kind"],
+  rename_broker: ["action", "broker", "name"],
 };
 
 export const UPDATE_FIELDS = ARGS.update.filter(
@@ -488,6 +516,7 @@ export const KIND_ARGS: Record<AddKind, readonly string[]> = {
     "currency",
     "broker",
     "note",
+    "again",
   ],
   cash: ["name", "amount", "currency", "date", "broker", "note", "dry_powder"],
   fund: [
@@ -513,6 +542,25 @@ export const KIND_ARGS: Record<AddKind, readonly string[]> = {
     "note",
   ],
 };
+
+export const MAX_SETUP_BROKERS = 20;
+
+// a name or a list of names, each once
+function brokerNames(value: unknown): string[] {
+  if (value === undefined || value === null) return [];
+  const list = Array.isArray(value) ? value : [value];
+  if (list.length > MAX_SETUP_BROKERS) {
+    throw new ArgError(`broker is at most ${MAX_SETUP_BROKERS} names`);
+  }
+  const out: string[] = [];
+  for (const v of list) {
+    const name = text(v, "broker", MAX_NAME);
+    if (!out.some((x) => x.toLowerCase() === name.toLowerCase())) {
+      out.push(name);
+    }
+  }
+  return out;
+}
 
 const nextOf = (v: unknown): string | null => {
   if (v === undefined || v === null) return null;
@@ -549,20 +597,28 @@ export function parsePortfolio(input: unknown): PortfolioArgs {
       const made = {
         action,
         currency: namedCurrency(f.display_currency, "display_currency"),
+        zone: zoneArg(f.time_zone),
         portfolio: optionalName(f.portfolio, "portfolio"),
-        broker: optionalName(f.broker, "broker"),
+        brokers: brokerNames(f.broker),
       };
       if (
         made.currency === null &&
+        made.zone === null &&
         made.portfolio === null &&
-        made.broker === null
+        made.brokers.length === 0
       ) {
         throw new ArgError(
-          "setup takes one or more of display_currency, portfolio, broker",
+          "setup takes one or more of display_currency, time_zone, portfolio, broker",
         );
       }
       return made;
     }
+    case "rename_broker":
+      return {
+        action,
+        broker: text(f.broker, "broker", MAX_NAME),
+        name: text(f.name, "name", MAX_NAME),
+      };
     case "list":
       return { action };
     case "holdings":
@@ -707,6 +763,7 @@ export const brokerItem = (b: Broker) => ({ id: b.id, name: b.name });
 export function listAll(m: Markets) {
   return {
     display_currency: displayCurrency(m.db),
+    time_zone: timeZone(m.db),
     portfolios: listPortfolios(m.db).map((p) => portfolioItem(m.db, p)),
     brokers: listBrokers(m.db).map(brokerItem),
   };
@@ -917,6 +974,14 @@ async function instrumentOf(
 // a day ahead of the exchange's own today
 export const latestDay = (now: number): string => localDate("Etc/GMT-14", now);
 
+// the owner's today, the UTC day until the owner names a zone: the day a
+// position with no date is true on
+export const ownerToday = (db: Db, now: number): string =>
+  localDate(timeZone(db) ?? "UTC", now);
+
+// a retry within this of the first add is the same trade
+export const RETRY_MS = 10 * 60_000;
+
 export type Added = {
   trade?: ReturnType<typeof tradeItem>;
   // a sell of all with no broker: one per broker's part
@@ -1057,6 +1122,20 @@ export async function addTrade(
     if (readInstrument(db, i.id) === null) {
       return notFound(`${i.id}: deleted while the trade was added`);
     }
+    if (!args.again) {
+      const since = m.clock.now() - RETRY_MS;
+      for (const row of rows) {
+        const same = recentSameTrade(db, row, since);
+        if (same !== null) {
+          return {
+            ...conflict(
+              `the same trade was saved as trade ${same.id} in the last ${RETRY_MS / 60_000} minutes, so a retry adds nothing; again: true saves a second fill`,
+            ),
+            trade: same.id,
+          };
+        }
+      }
+    }
     if (oversells(db, rows)) {
       return { error: "bad_arguments", message: OVERSOLD };
     }
@@ -1145,8 +1224,7 @@ export async function addPosition(
       message: `${instrument.id} is listed in ${instrument.currency ?? "no currency"}; a bond takes its listing's currency`,
     };
   }
-  const today = localDate("UTC", m.clock.now());
-  const day = args.date ?? today;
+  const day = args.date ?? ownerToday(m.db, m.clock.now());
   if (day > latestDay(m.clock.now())) {
     return { error: "bad_arguments", message: "date is in the future" };
   }
@@ -1283,7 +1361,7 @@ export async function updatePosition(
       (old.kind === "cash" && given !== undefined) ||
       (old.kind === "fund" &&
         (change.units !== undefined || change.price !== undefined));
-    const asOf = change.date ?? (revalued ? localDate("UTC", now) : old.asOf);
+    const asOf = change.date ?? (revalued ? ownerToday(db, now) : old.asOf);
     setPositionRemoved(db, id, who.name, now);
     const {
       id: _,
@@ -1536,18 +1614,32 @@ export async function removeBroker(m: Markets, id: number) {
 
 export const settingsItem = (db: Db) => ({
   display_currency: displayCurrency(db),
+  time_zone: timeZone(db),
 });
 
+// each can be changed, never cleared; one left out is kept
 export async function saveSettings(m: Markets, body: unknown) {
-  const f = fields(body, ["display_currency"]);
-  // it can be changed, never cleared
+  const f = fields(body, ["display_currency", "time_zone"]);
+  if (f.display_currency === undefined && f.time_zone === undefined) {
+    throw new ArgError("settings take display_currency, time_zone or both");
+  }
   const c = namedCurrency(f.display_currency, "display_currency");
-  if (c === null) {
+  if (f.display_currency !== undefined && c === null) {
     throw new ArgError(
       "display_currency must be an ISO 4217 currency code in circulation, such as EUR",
     );
   }
-  await m.writer.write((db) => setDisplayCurrency(db, c, m.clock.now()));
+  const z = zoneArg(f.time_zone);
+  if (f.time_zone !== undefined && z === null) {
+    throw new ArgError(
+      "time_zone must be an IANA time zone, such as America/New_York",
+    );
+  }
+  await m.writer.write((db) => {
+    const now = m.clock.now();
+    if (c !== null) setDisplayCurrency(db, c, now);
+    if (z !== null) setTimeZone(db, z, now);
+  });
   return settingsItem(m.db);
 }
 
@@ -1573,6 +1665,14 @@ async function setup(
     if (args.currency !== null && shown === null) {
       setDisplayCurrency(db, args.currency, now);
     }
+    // the same rule for the owner's zone
+    const zone = timeZone(db);
+    if (args.zone !== null && zone !== null && zone !== args.zone) {
+      return conflict(
+        `the time zone is ${zone}; the owner changes it in the web UI's settings`,
+      );
+    }
+    if (args.zone !== null && zone === null) setTimeZone(db, args.zone, now);
     if (
       args.portfolio !== null &&
       portfolioByName(db, args.portfolio) === null
@@ -1586,14 +1686,25 @@ async function setup(
       insertPortfolio(db, args.portfolio, now);
       made.push(`portfolio ${args.portfolio}`);
     }
-    if (args.broker !== null && brokerByName(db, args.broker) === null) {
-      insertBroker(db, args.broker, now);
-      made.push(`broker ${args.broker}`);
+    for (const name of args.brokers) {
+      if (brokerByName(db, name) !== null) continue;
+      insertBroker(db, name, now);
+      made.push(`broker ${name}`);
     }
     return null;
   });
   if (done !== null) return done;
   return { ...listAll(m), made };
+}
+
+// by its name, as an agent knows it; the routes' rename and its refusals
+async function renameBrokerNamed(
+  m: Markets,
+  args: Extract<PortfolioArgs, { action: "rename_broker" }>,
+) {
+  const b = findBroker(m.db, args.broker);
+  if (isFailure(b)) return b;
+  return updateBroker(m, b!.id, { name: args.name });
 }
 
 const answered = (body: object | Failure): ToolResult =>
@@ -1661,7 +1772,8 @@ export async function portfolioAnswer(
     args.action === "add" ||
     args.action === "update" ||
     args.action === "remove" ||
-    args.action === "restore";
+    args.action === "restore" ||
+    args.action === "rename_broker";
   if (!opens(who.portfolio, writes)) {
     return errorResult(forbidden(writes));
   }
@@ -1670,6 +1782,8 @@ export async function portfolioAnswer(
       return answered(await setup(m, args));
     case "list":
       return textResult(JSON.stringify(listAll(m)));
+    case "rename_broker":
+      return answered(await renameBrokerNamed(m, args));
     case "holdings":
       return holdingsPage(m, args);
     case "trades":

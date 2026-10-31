@@ -105,11 +105,58 @@ export function day(date: string, now = Date.now()): string {
   });
 }
 
-// the viewer's own today, as a date field takes it
-export function today(now = Date.now()): string {
-  const d = new Date(now);
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+// the owner's today, as a date field takes it: the date in their zone,
+// the UTC day until they name one, as the server dates a position
+export function today(zone: string | null, now = Date.now()): string {
+  const p: Record<string, string> = {};
+  for (const x of new Intl.DateTimeFormat("en-US", {
+    timeZone: zone ?? "UTC",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now)) {
+    p[x.type] = x.value;
+  }
+  return `${p.year}-${p.month}-${p.day}`;
+}
+
+// every zone the browser knows, UTC among them
+export function zones(): string[] {
+  const all = Intl.supportedValuesOf("timeZone");
+  return all.includes("UTC") ? all : ["UTC", ...all];
+}
+
+// "Europe/Bucharest" as "Bucharest" in "Europe"
+export function zoneWords(zone: string): { city: string; area: string } {
+  const at = zone.lastIndexOf("/");
+  const words = (t: string) => t.replace(/_/g, " ");
+  return at < 0
+    ? { city: words(zone), area: "" }
+    : { city: words(zone.slice(at + 1)), area: words(zone.slice(0, at)) };
+}
+
+// zones whose city or area holds every word typed, cities first
+export function findZones(query: string, all = zones()): string[] {
+  const q = query.trim().toLowerCase().replace(/_/g, " ");
+  if (q === "") return all;
+  const terms = q.split(/[\s/]+/).filter((t) => t !== "");
+  const scored = all.flatMap((z) => {
+    const { city, area } = zoneWords(z);
+    const text = `${area} ${city}`.toLowerCase();
+    if (!terms.every((t) => text.includes(t))) return [];
+    return [{ z, first: city.toLowerCase().startsWith(terms[0]!) ? 0 : 1 }];
+  });
+  return scored.sort((a, b) => a.first - b.first).map((x) => x.z);
+}
+
+// the browser's own zone, offered for the owner to confirm, never saved
+// unasked
+export function browserZone(): string | null {
+  try {
+    return new Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+  } catch {
+    return null;
+  }
 }
 
 // a typed number: a dot or a lone comma for decimals, spaces and

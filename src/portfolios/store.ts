@@ -513,6 +513,77 @@ export function setDisplayCurrency(
   ).run(owner, currency, now);
 }
 
+export function timeZone(db: Db, owner = OWNER): string | null {
+  return (
+    db
+      .query<{ z: string | null }, [string]>(
+        "select time_zone as z from portfolio_settings where owner = ?",
+      )
+      .get(owner)?.z ?? null
+  );
+}
+
+export function setTimeZone(
+  db: Db,
+  zone: string,
+  now: number,
+  owner = OWNER,
+): void {
+  db.query(
+    `insert into portfolio_settings (owner, time_zone, updated_at)
+     values (?, ?, ?) on conflict (owner) do update set
+       time_zone = excluded.time_zone,
+       updated_at = excluded.updated_at`,
+  ).run(owner, zone, now);
+}
+
+// a live trade equal to one being added, entered since a moment: a retry
+// after a timeout, not a second fill
+export function recentSameTrade(
+  db: Db,
+  t: NewTrade,
+  since: number,
+): Trade | null {
+  return (
+    db
+      .query<
+        Trade,
+        [
+          number,
+          string,
+          string,
+          string,
+          number,
+          number,
+          number,
+          string,
+          number | null,
+          string | null,
+          number,
+        ]
+      >(
+        `${TRADE} where portfolio = ? and instrument = ? and side = ?
+         and date = ? and quantity = ? and price = ? and fees = ?
+         and currency = ? and broker is ? and stated_on is ?
+         and removed_at is null and entered_at >= ?
+         order by id desc limit 1`,
+      )
+      .get(
+        t.portfolio,
+        t.instrument,
+        t.side,
+        t.date,
+        t.quantity,
+        t.price,
+        t.fees,
+        t.currency,
+        t.broker,
+        t.statedOn,
+        since,
+      ) ?? null
+  );
+}
+
 // every row a position's updates chained, both ways, the latest first: a
 // bond's update may change its face or date, so its name never ties them
 export function chainOf(db: Db, id: number): Position[] {

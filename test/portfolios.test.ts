@@ -355,7 +355,7 @@ describe("currencies", () => {
         "in circulation",
       );
     }
-    await expect(saveSettings(m, {})).rejects.toThrow("in circulation");
+    await expect(saveSettings(m, {})).rejects.toThrow("display_currency");
     // a conversion named by the caller takes the same list
     expect(() =>
       parsePortfolio({ action: "holdings", currency: "ABC" }),

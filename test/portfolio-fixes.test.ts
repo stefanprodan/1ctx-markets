@@ -18,6 +18,7 @@ import {
   portfolioAnswer,
   readHoldings,
   readTradeList,
+  saveSettings,
   setPositionState,
   setTradeState,
   updatePosition,
@@ -425,9 +426,13 @@ describe("import and export", () => {
       null,
     ]) {
       for (const broker of [null, "Odd ] Name"]) {
-        for (const paid of [null, "EUR"]) {
+        for (const [paid, paidPrice] of [
+          [null, null],
+          ["EUR", null],
+          ["EUR", "9.5"],
+        ]) {
           for (const statedOn of [null, "2026-04-17"]) {
-            const t = { broker, paid, note, statedOn };
+            const t = { broker, paid, paidPrice, note, statedOn };
             expect(readComment(commentOf(t))).toEqual(t);
           }
         }
@@ -436,6 +441,7 @@ describe("import and export", () => {
     expect(readComment("bought on a whim")).toEqual({
       broker: null,
       paid: null,
+      paidPrice: null,
       note: "bought on a whim",
       statedOn: null,
     });
@@ -748,6 +754,7 @@ describe("sells of all, precision, and rates by pair", () => {
     expect(readComment("\\server\\share")).toEqual({
       broker: null,
       paid: null,
+      paidPrice: null,
       note: "\\server\\share",
       statedOn: null,
     });
@@ -824,7 +831,12 @@ describe("imports, rounding and removals as typed", () => {
   test("300 lots sum to their cost exactly", async () => {
     const { m } = await setup();
     for (let k = 0; k < 300; k++) {
-      await trade(m, { quantity: 1, price: 1234.57, date: "2026-03-02" });
+      await trade(m, {
+        quantity: 1,
+        price: 1234.57,
+        date: "2026-03-02",
+        again: true,
+      });
     }
     const h = await holdingsOf(m);
     expect(h.holdings.find((x) => x.id === "US:AAA")!.cost).toBe(370371);
@@ -1082,7 +1094,7 @@ describe("a review's second pass", () => {
   test("each kept fill absorbs one file row, and each kept bond one line", async () => {
     const { m, db } = await setup();
     await trade(m, { date: "2026-01-13" });
-    await trade(m, { date: "2026-01-13" });
+    await trade(m, { date: "2026-01-13", again: true });
     const row = "US:AAA,20260113,10,1,0,[broker North],Buy";
     const r = await run(m, [head, row, row, row].join("\n"));
     expect(r.counts).toMatchObject({ skipped: 2, saved: 1 });
@@ -1732,5 +1744,296 @@ describe("an update's date", () => {
       error: "bad_arguments",
       message: "date is in the future",
     });
+  });
+});
+
+describe("a retried add", () => {
+  test("the same trade within minutes is refused, naming the saved one", async () => {
+    const { m, clock } = await setup();
+    const first = idOf(await trade(m, {}));
+    const retry = await trade(m, {});
+    expect(retry).toMatchObject({ error: "conflict", trade: first });
+    expect((retry as { message: string }).message).toContain(`trade ${first}`);
+    expect(readTradeList(m, all)).toHaveLength(1);
+    // a field that differs is another trade
+    idOf(await trade(m, { price: 11 }));
+    idOf(await trade(m, { broker: "South" }));
+    // a second fill equal to the first is saved when said so
+    idOf(await trade(m, { again: true }));
+    expect(readTradeList(m, all)).toHaveLength(4);
+    await clock.advance(10 * 60_000 + 1);
+    idOf(await trade(m, {}));
+  });
+
+  test("a removed trade never refuses its retry", async () => {
+    const { m } = await setup();
+    const first = idOf(await trade(m, {}));
+    await setTradeState(m, CASEY, first, true);
+    idOf(await trade(m, {}));
+  });
+
+  test("the tool and the REST add take again", async () => {
+    const { m } = await setup();
+    const add = (more: object) =>
+      portfolioAnswer(
+        m,
+        CASEY,
+        parsePortfolio({
+          action: "add",
+          portfolio: "Shares",
+          symbol: "US:AAA",
+          side: "buy",
+          quantity: 1,
+          price: 10,
+          date: "2026-03-02",
+          broker: "North",
+          ...more,
+        }),
+      );
+    expect((await add({})).isError).toBeUndefined();
+    const refused = await add({});
+    expect(refused.isError).toBe(true);
+    expect(JSON.parse(refused.content[0]!.text).error).toBe("conflict");
+    expect((await add({ again: true })).isError).toBeUndefined();
+    expect(() => parsePortfolio({ action: "add", again: "yes" })).toThrow();
+    const post = (body: object) =>
+      api(m)(
+        new Request("http://markets.test/api/v1/trades", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            portfolio: "Shares",
+            symbol: "US:AAA",
+            side: "buy",
+            quantity: 2,
+            price: 10,
+            date: "2026-03-02",
+            ...body,
+          }),
+        }),
+      );
+    expect((await post({})).status).toBe(201);
+    const again = await post({});
+    expect(again.status).toBe(409);
+    expect(((await again.json()) as { trade: number }).trade).toBeNumber();
+    expect((await post({ again: true })).status).toBe(201);
+  });
+});
+
+describe("an export of a lot paid in another currency", () => {
+  test("writes the listing's price at the cost's close, and reads back as paid", async () => {
+    const { m, db } = await setup();
+    pair(db, "EURUSD=X", 1.3, { "2026-02-27": [1.25, true] });
+    const id = idOf(await trade(m, { currency: "EUR", price: 8 }));
+    const csv = exportCsv(m, portfolioByName(db, "Shares")!);
+    const line = csv.split("\n")[1]!;
+    expect(line).toContain(",20260302,10,1,0,,,");
+    expect(line).toContain("[paid EUR 8]");
+    // read back here, the trade is already kept
+    const same = await importCsv(
+      m,
+      CASEY,
+      parseImport({ portfolio: "Shares", csv }),
+    );
+    if ("error" in same) throw new Error(same.message);
+    expect(same.counts).toMatchObject({ skipped: 1, ok: 0 });
+    await portfolioBefore(m, "Copy");
+    await importCsv(
+      m,
+      CASEY,
+      parseImport({ portfolio: "Copy", csv, confirm: true }),
+    );
+    const copy = readTradeList(m, { ...all, portfolio: "Copy" });
+    if ("error" in copy) throw new Error(copy.message);
+    const kept = readTrade(db, id)!;
+    expect(copy.map((t) => [t.currency, t.price])).toEqual([
+      [kept.currency, kept.price],
+    ]);
+  });
+
+  test("with no close to convert at, it is written as paid", async () => {
+    const { m, db } = await setup();
+    pair(db, "EURUSD=X", 1.3);
+    await trade(m, { currency: "EUR", price: 8 });
+    const line = exportCsv(m, portfolioByName(db, "Shares")!).split("\n")[1]!;
+    expect(line).toContain(",20260302,8,1,0,,,");
+    expect(line).toContain("[paid EUR][as of");
+  });
+
+  test("a paid tag's price must be a number", async () => {
+    const { m } = await setup();
+    const csv = [
+      "Symbol,Trade Date,Purchase Price,Quantity,Commission,Comment,Transaction Type",
+      "US:AAA,20260302,10,1,0,[broker North][paid EUR eight],Buy",
+    ].join("\r\n");
+    const r = await importCsv(
+      m,
+      CASEY,
+      parseImport({ portfolio: "Shares", csv }),
+    );
+    if ("error" in r) throw new Error(r.message);
+    expect(r.rows[0]).toMatchObject({ status: "bad" });
+    expect(r.rows[0]!.reason).toContain("paid tag");
+  });
+
+  test("a file with CRLF line ends still reads", async () => {
+    const { m } = await setup();
+    const csv = [
+      "Symbol,Trade Date,Purchase Price,Quantity,Commission,Comment,Transaction Type",
+      "US:AAA,20260302,10,1,0,[broker North],Buy",
+      "",
+    ].join("\r\n");
+    const r = await importCsv(
+      m,
+      CASEY,
+      parseImport({ portfolio: "Shares", csv }),
+    );
+    if ("error" in r) throw new Error(r.message);
+    expect(r.counts.ok).toBe(1);
+  });
+});
+
+describe("the owner's time zone", () => {
+  // UTC+14: its day is ahead of UTC's at the fake clock's evening
+  const EAST = "Pacific/Kiritimati";
+  const cash = (date: string | null = null): PositionArgs => ({
+    kind: "cash",
+    portfolio: "Shares",
+    name: "Made Up Cash",
+    symbol: null,
+    currency: "USD",
+    amount: 1000,
+    units: null,
+    price: null,
+    cost: null,
+    coupon: null,
+    maturity: null,
+    date,
+    broker: null,
+    note: null,
+    dryPowder: false,
+  });
+  const asOf = async (m: Markets) => {
+    const r = await addPosition(m, CASEY, cash());
+    if ("error" in r) throw new Error(r.message);
+    return r.position.as_of;
+  };
+
+  test("a position with no date is the UTC day until a zone is set", async () => {
+    const { m } = await setup();
+    expect(await asOf(m)).toBe(LIVE);
+    await saveSettings(m, { time_zone: EAST });
+    expect(await asOf(m)).toBe("2026-10-24");
+  });
+
+  test("an update and an import with no date use it too", async () => {
+    const { m, db } = await setup();
+    await saveSettings(m, { time_zone: EAST });
+    const r = await addPosition(m, CASEY, cash("2026-05-03"));
+    if ("error" in r) throw new Error(r.message);
+    const up = await updatePosition(m, CASEY, r.position.id, {
+      by: { amount: -6, currency: null },
+    });
+    if ("error" in up) throw new Error(up.message);
+    expect(readPosition(db, up.position.id)!.asOf).toBe("2026-10-24");
+    const file = await importCsv(
+      m,
+      CASEY,
+      parseImport({
+        portfolio: "Shares",
+        csv: "Item,Amount (USD),As Of,Note\nOther Made Up Cash,10,,",
+      }),
+    );
+    if ("error" in file) throw new Error(file.message);
+    expect(file.rows[0]!.item).toMatchObject({ as_of: "2026-10-24" });
+  });
+
+  test("settings keep one when the other is saved, and refuse a bad zone", async () => {
+    const { m } = await setup();
+    await saveSettings(m, { display_currency: "EUR", time_zone: EAST });
+    expect(await saveSettings(m, { display_currency: "USD" })).toEqual({
+      display_currency: "USD",
+      time_zone: EAST,
+    });
+    for (const bad of [null, "", "+02:00", "Nowhere/Made_Up", 3]) {
+      await expect(saveSettings(m, { time_zone: bad })).rejects.toThrow(
+        "IANA time zone",
+      );
+    }
+    expect(
+      (await saveSettings(m, { time_zone: "america/new_york" })).time_zone,
+    ).toBe("America/New_York");
+  });
+});
+
+describe("setup and brokers over the tool", () => {
+  const ask = async (m: Markets, args: object) => {
+    const r = await portfolioAnswer(m, CASEY, parsePortfolio(args));
+    return { error: r.isError === true, body: JSON.parse(r.content[0]!.text) };
+  };
+
+  test("setup takes the owner's zone and several brokers", async () => {
+    const { m } = world();
+    const done = await ask(m, {
+      action: "setup",
+      display_currency: "EUR",
+      time_zone: "Asia/Tokyo",
+      portfolio: "Long term",
+      broker: ["North", "South", "north"],
+    });
+    expect(done.error).toBe(false);
+    expect(done.body).toMatchObject({
+      time_zone: "Asia/Tokyo",
+      made: ["portfolio Long term", "broker North", "broker South"],
+    });
+    // set once, as the display currency: the same is a no-op, another refused
+    expect(
+      (await ask(m, { action: "setup", time_zone: "Asia/Tokyo" })).error,
+    ).toBe(false);
+    const other = await ask(m, { action: "setup", time_zone: "Europe/Paris" });
+    expect(other.error).toBe(true);
+    expect(other.body.message).toContain("Asia/Tokyo");
+    expect(() =>
+      parsePortfolio({ action: "setup", time_zone: "+09:00" }),
+    ).toThrow("IANA time zone");
+    expect(() => parsePortfolio({ action: "setup", broker: [] })).toThrow(
+      "one or more",
+    );
+    expect(() =>
+      parsePortfolio({ action: "setup", broker: ["North", 7] }),
+    ).toThrow("broker");
+  });
+
+  test("rename_broker renames by name, with the routes' refusals", async () => {
+    const { m } = await setup();
+    const done = await ask(m, {
+      action: "rename_broker",
+      broker: "north",
+      name: "East",
+    });
+    expect(done).toMatchObject({
+      error: false,
+      body: { broker: { name: "East" } },
+    });
+    const taken = await ask(m, {
+      action: "rename_broker",
+      broker: "East",
+      name: "South",
+    });
+    expect(taken.body).toMatchObject({ error: "conflict" });
+    const unknown = await ask(m, {
+      action: "rename_broker",
+      broker: "West",
+      name: "Far",
+    });
+    expect(unknown.body).toMatchObject({ error: "not_found" });
+    expect(unknown.body.message).toContain("East");
+    const reader: Who = { name: "reader", portfolio: "read", rules: "none" };
+    const r = await portfolioAnswer(
+      m,
+      reader,
+      parsePortfolio({ action: "rename_broker", broker: "East", name: "X" }),
+    );
+    expect(JSON.parse(r.content[0]!.text).error).toBe("forbidden");
   });
 });

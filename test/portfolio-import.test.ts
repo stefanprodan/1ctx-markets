@@ -144,7 +144,9 @@ describe("the Yahoo import", () => {
       parseImport({ portfolio: "Shares", csv: YAHOO, confirm: true }),
     );
     const csv = exportCsv(m, portfolioByName(db, "Shares")!);
-    expect(csv.split("\r\n")[0]).toBe(HEADER);
+    // LF and no BOM, as Yahoo writes its own
+    expect(csv.split("\n")[0]).toBe(HEADER);
+    expect(csv).not.toContain("\r");
     await importCsv(
       m,
       CASEY,

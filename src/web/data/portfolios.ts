@@ -19,6 +19,8 @@ export type BrokerRow = { id: number; name: string };
 
 export type Overview = {
   display_currency: string | null;
+  // the owner's IANA zone, none until they name one
+  time_zone?: string | null;
   portfolios: PortfolioRow[];
   brokers: BrokerRow[];
 };
@@ -266,6 +268,9 @@ export function plainError(said: string): string {
   if (/is listed in .*a bond takes its listing's currency/.test(t)) {
     return "Use the bond's own currency.";
   }
+  if (/^the same trade was saved as trade \d+ in the last/.test(t)) {
+    return "This trade was just saved.";
+  }
   return t.charAt(0).toUpperCase() + t.slice(1);
 }
 
@@ -416,6 +421,11 @@ export function portfolioStore(call: Call, session: () => number) {
           display_currency: display,
         }),
       ),
+    // one left out is kept
+    saveSettings: async (s: {
+      display_currency?: string;
+      time_zone?: string;
+    }) => refusal(await write("/api/v1/portfolio-settings", "PUT", s)),
     // a preview saves nothing; a confirm saves the good rows
     importFile: async (
       args: ImportIn,

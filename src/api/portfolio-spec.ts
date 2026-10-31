@@ -259,6 +259,7 @@ export const portfolioSchemas: Record<string, Schema> = {
   OnePortfolio: object({ portfolio }),
   Portfolios: object({
     display_currency: nstr,
+    time_zone: note(nstr, "The owner's IANA time zone, null until set."),
     portfolios: list(portfolio),
     brokers: list(broker),
   }),
@@ -290,6 +291,10 @@ export const portfolioSchemas: Record<string, Schema> = {
       currency: note(str, "What it was paid in; the listing's by default."),
       broker: note(str, "A broker's name, as the list has it."),
       note: note(str, `At most ${MAX_NOTE} characters.`),
+      again: note(
+        bool,
+        "True saves a second fill equal to one saved in the last 10 minutes; without it that add is refused as a retry.",
+      ),
     },
     ["symbol", "side", "quantity"],
   ),
@@ -446,7 +451,11 @@ export const portfolioSchemas: Record<string, Schema> = {
   Settings: object({
     display_currency: note(
       nstr,
-      "An ISO 4217 code in circulation. Null only while none is set; a save needs a code, and a portfolio needs one set.",
+      "An ISO 4217 code in circulation. Null only while none is set; a save left without it keeps it, and a portfolio needs one set.",
+    ),
+    time_zone: note(
+      nstr,
+      "The owner's IANA time zone, such as America/New_York: a position with no date is dated today there. Null until set, the UTC day meanwhile; a save left without it keeps it.",
     ),
   }),
 };
@@ -631,7 +640,7 @@ export const portfolioPaths = {
       security: READS,
       summary: "Export trades as CSV",
       description:
-        "The portfolio's trades as a portfolio CSV export (`Symbol`, `Trade Date`, `Purchase Price`, `Quantity`, `Commission`, `Comment`, `Transaction Type` and the market columns, left empty), oldest first, price and quantity as stored in today's shares. `Comment` starts with `[broker <name>]`, `[paid <currency>]` for a trade paid in another currency and `[as of <day>]`, the day the figures are stated as of, then the note.",
+        "The portfolio's trades as a portfolio CSV export (`Symbol`, `Trade Date`, `Purchase Price`, `Quantity`, `Commission`, `Comment`, `Transaction Type` and the market columns, left empty), oldest first, price and quantity in today's shares, with LF line ends and no BOM. A trade paid in another currency has `Purchase Price` in the listing's currency at the close its cost converts at, and `[paid <currency> <price paid>]` in `Comment`, which an import reads back as paid; with no close it is written as paid, tagged `[paid <currency>]`. `Comment` starts with `[broker <name>]`, the paid tag and `[as of <day>]`, the day the figures are stated as of, then the note.",
       responses: base({
         200: {
           description: "The CSV.",
@@ -698,6 +707,7 @@ export const portfolioPaths = {
         "- An unknown symbol is fetched within the call.",
         "- A sell of more than its broker holds is refused.",
         "- A broker is one the list has; an unknown one is refused with the list.",
+        "- The same trade (instrument, side, date, quantity, price, fees, currency paid, broker) as a live one entered in the last 10 minutes is refused (409) with that trade's id in `trade`, unless `again` is true: a retry after a timeout never doubles a lot.",
       ),
       requestBody: bodyOf(ref("TradeArgs")),
       responses: base({
@@ -709,6 +719,7 @@ export const portfolioPaths = {
           headers: { Location: { schema: str } },
         },
         404: missing,
+        409: conflict,
         ...json415,
         503: r("Unavailable"),
       }),
@@ -906,7 +917,8 @@ export const portfolioPaths = {
       operationId: "portfolioSettings",
       security: READS,
       summary: "Portfolio settings",
-      description: "The display currency, or null for none.",
+      description:
+        "The display currency and the owner's time zone, each null until set.",
       responses: base({ 200: ok("The settings.", ref("Settings")) }),
     },
     put: {
@@ -915,7 +927,7 @@ export const portfolioPaths = {
       security: WRITES,
       summary: "Save portfolio settings",
       description:
-        "Sets the display currency: totals are also shown converted into it when a caller names none. Null for none.",
+        "Sets the display currency, the time zone or both: totals are also shown converted into the currency when a caller names none, and a position with no date is dated today in the zone. Either can be changed, never cleared; one left out is kept.",
       requestBody: bodyOf(ref("Settings")),
       responses: base({
         200: ok("The settings.", ref("Settings")),
