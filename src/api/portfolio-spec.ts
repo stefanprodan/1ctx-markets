@@ -377,7 +377,7 @@ export const portfolioSchemas: Record<string, Schema> = {
       name: note(str, "A new name, not another fund's."),
       currency: note(
         str,
-        "A new currency, only while the fund has no live trades.",
+        "A new currency, only while the fund has no live trades; it drops the fund's prices, which were in the old one.",
       ),
     },
     [],
@@ -390,6 +390,7 @@ export const portfolioSchemas: Record<string, Schema> = {
         { ...fundPrice, type: ["object", "null"] },
         "The price that day had before, null when none.",
       ),
+      renamed_from: note(str, "The fund's name before this update renamed it."),
     },
     ["fund"],
   ),

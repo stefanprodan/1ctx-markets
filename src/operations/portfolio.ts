@@ -1548,6 +1548,7 @@ export async function updateFund(
       fund: ReturnType<typeof fundItem>;
       price?: { date: string; price: number };
       replaced?: ReturnType<typeof priceItem> | null;
+      renamed_from?: string;
     }
   | Failure
 > {
@@ -1564,7 +1565,7 @@ export async function updateFund(
     } as const;
   }
   const replaced = await m.writer.write(
-    (db): { before: FundPrice | null } | Failure => {
+    (db): { before: FundPrice | null; name: string } | Failure => {
       const now = m.clock.now();
       const fund = readFund(db, kept.id)!;
       // every check before any write, so a refused update changes nothing
@@ -1584,24 +1585,28 @@ export async function updateFund(
         return {
           error: "bad_arguments",
           message:
-            "a fund's currency changes only while it has no live trades: remove them first",
+            "a fund's currency changes only while it has no live trades; its owner removes them first",
         };
       }
       const before =
         change.price === undefined ? null : priceOn(db, kept.id, day);
+      // a new currency drops the old prices, so a price sent with it comes after
+      if (change.name !== undefined || change.currency !== undefined) {
+        setFundDetails(db, kept.id, change, now);
+      }
       if (change.price !== undefined) {
         setFundPrice(db, kept.id, day, change.price, who.name, now);
       }
       if (market !== undefined) setFundMarket(db, kept.id, market);
-      if (change.name !== undefined || change.currency !== undefined) {
-        setFundDetails(db, kept.id, change, now);
-      }
-      return { before };
+      return { before, name: fund.name };
     },
   );
   if (isFailure(replaced)) return replaced;
+  const after = readFund(m.db, kept.id)!;
   return {
-    fund: fundItem(m.db, readFund(m.db, kept.id)!),
+    fund: fundItem(m.db, after),
+    // said back, so a name sent beside the ISIN is seen to rename it
+    ...(after.name === replaced.name ? {} : { renamed_from: replaced.name }),
     ...(change.price === undefined
       ? {}
       : {

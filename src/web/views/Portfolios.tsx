@@ -351,8 +351,11 @@ export function FundPriceEdit({
   const error = useSignal<string | null>(null);
   const save = async (ev: Event) => {
     ev.preventDefault();
+    // only a price typed or a day picked is sent, so a rename or a market
+    // alone never turns the shown price into one the owner entered
+    const repriced = px.value !== String(h.price ?? "") || date.value !== now;
     const n = typed(px.value);
-    if (n === null || Number.isNaN(n)) {
+    if (repriced && (n === null || Number.isNaN(n))) {
       error.value = "Not a number.";
       return;
     }
@@ -362,16 +365,16 @@ export function FundPriceEdit({
       return;
     }
     const renamed = named !== (h.name ?? "");
-    // a rename alone keeps the price's day as it was
-    const repriced =
-      !renamed || px.value !== String(h.price ?? "") || date.value !== now;
+    const moved = market.value !== (h.market ?? "");
+    if (!repriced && !renamed && !moved) {
+      onDone();
+      return;
+    }
     busy.value = true;
     error.value = await store.setFundPrice(h.isin!, {
-      ...(repriced ? { price: n, date: date.value } : {}),
+      ...(repriced ? { price: n!, date: date.value } : {}),
       ...(renamed ? { name: named } : {}),
-      ...(market.value === (h.market ?? "")
-        ? {}
-        : { market: market.value === "" ? null : market.value }),
+      ...(moved ? { market: market.value === "" ? null : market.value } : {}),
     });
     busy.value = false;
     if (error.value === null) onDone();
@@ -434,7 +437,7 @@ export function FundPriceEdit({
   );
 }
 
-// Buy and Sell as a share's, and its price set by hand
+// Buy and Sell as a share's, and its price set by its owner
 export function FundActions({
   h,
   store,

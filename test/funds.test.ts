@@ -112,6 +112,9 @@ async function holdingsOf(m: Markets): Promise<HoldingsAnswer> {
 const fundRow = async (m: Markets) =>
   (await holdingsOf(m)).holdings.find((r) => r.kind === "fund")!;
 
+const prices = (db: Database) =>
+  fundPrices(db, `fund:${ONE}`).map((p) => [p.date, p.price, p.trade]);
+
 const ask = async (m: Markets, args: object) => {
   const r = await portfolioAnswer(m, CASEY, parsePortfolio(args));
   return { error: r.isError === true, body: JSON.parse(r.content[0]!.text) };
@@ -378,9 +381,6 @@ describe("a fund's holding", () => {
 });
 
 describe("a buy's price", () => {
-  const prices = (db: Database) =>
-    fundPrices(db, `fund:${ONE}`).map((p) => [p.date, p.price, p.trade]);
-
   test("goes with its buy, so a buy put right on the same day is valued right", async () => {
     const { m, db } = await setup();
     const wrong = await fund(
@@ -432,6 +432,10 @@ describe("a fund's name and currency", () => {
       name: "Made Up Growth Fund",
     });
     expect(renamed.body.fund.name).toBe("Made Up Growth Fund");
+    // said back, so a name sent beside the ISIN is seen to rename it
+    expect(renamed.body.renamed_from).toBe("Made Up Fund");
+    const same = await ask(m, { action: "update", isin: ONE, price: 6 });
+    expect("renamed_from" in same.body).toBe(false);
     expect(
       await updateFund(m, CASEY, ONE, { name: "made up other fund" }),
     ).toMatchObject({ error: "conflict" });
@@ -451,6 +455,22 @@ describe("a fund's name and currency", () => {
     await setTradeState(m, CASEY, one.trade!.id, true);
     const set = await updateFund(m, CASEY, ONE, { currency: "USD" });
     expect(set).toMatchObject({ fund: { currency: "USD" } });
+  });
+
+  test("a new currency drops the prices in the old one", async () => {
+    const { m, db } = await setup();
+    const one = await fund(m, { isin: ONE, name: "Made Up Fund" });
+    await updateFund(m, CASEY, ONE, { price: 6, date: "2026-03-03" });
+    await setTradeState(m, CASEY, one.trade!.id, true);
+    await updateFund(m, CASEY, ONE, { currency: "USD" });
+    expect(prices(db)).toEqual([]);
+    // a price sent with the new currency is kept
+    await updateFund(m, CASEY, ONE, {
+      currency: "EUR",
+      price: 7,
+      date: "2026-03-04",
+    });
+    expect(prices(db)).toEqual([["2026-03-04", 7, null]]);
   });
 
   test("a later buy naming another name beside the ISIN is refused", async () => {

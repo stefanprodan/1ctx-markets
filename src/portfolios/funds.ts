@@ -188,13 +188,20 @@ export function dropBuyPrice(db: Db, t: Buy, now: number): void {
 }
 
 // a name or a currency set right; the caller checks the name is free and
-// the currency has no live trade priced in it
+// the currency has no live trade priced in it. Prices were in the old
+// currency, so a new one drops them
 export function setFundDetails(
   db: Db,
   id: string,
   change: { name?: string; currency?: string },
   now: number,
 ): void {
+  if (
+    change.currency !== undefined &&
+    change.currency !== readFund(db, id)?.currency
+  ) {
+    db.query("delete from fund_prices where instrument = ?").run(id);
+  }
   db.query(
     `update instruments set name = coalesce(?, name),
        currency = coalesce(?, currency), updated_at = ? where id = ?`,

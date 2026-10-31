@@ -80,7 +80,9 @@ once and valued on the live price the server already keeps.
 - **A fund's name and currency can be set right** (`update` with its
   `isin`, `PATCH /funds/{isin}`): the name to one no other fund has,
   the currency only while no live trade is on it, since every cost and
-  price was paid in the old one.
+  price was paid in the old one; a new currency drops the fund's prices,
+  which were in the old one. A rename answers `renamed_from`, so an
+  agent that sent a name beside the ISIN sees it renamed the fund.
 - **No source ever fetches a fund the owner prices.** It is never
   tracked (`trackedIds()` and `portfolioInstruments()` leave out source
   `owner`), so no job asks for it; `quote`, `history` and every other
@@ -391,7 +393,8 @@ rename_broker(broker: string, name: string): { broker };
   arguments are its kind's (`KIND_ARGS`), and `update` with `isin` or
   `name` is a fund's, taking only `price`, `date`, `market`, `name`
   and `currency` (`FUND_UPDATE`); `name` is a new name only beside
-  `isin`, else it finds the fund. The description is at 1,024 characters; a word more
+  `isin` (the answer's `renamed_from` says so), else it finds the
+  fund. The description is at 1,024 characters; a word more
   needs another cut. It says a fund's trades come one per
   confirmation, so an agent never sums a manager's statement into one
   buy. `remove`,
