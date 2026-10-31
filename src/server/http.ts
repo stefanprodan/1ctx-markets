@@ -36,6 +36,7 @@ export const UI_PATHS = [
   "/instruments",
   "/instruments/:id",
   "/portfolios",
+  "/portfolios/:id",
 ] as const;
 
 export type RouterDeps = {

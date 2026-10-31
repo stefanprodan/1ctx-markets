@@ -231,10 +231,6 @@ export const tradeName = (t: TradeRow): string =>
 
 export const isFundId = (id: string): boolean => id.startsWith("fund:");
 
-export function tradeTitle(t: TradeRow): string {
-  return `${t.side === "buy" ? "Buy" : "Sell"} ${tradeName(t)}`;
-}
-
 // a bond's price is a percent of its face, never an amount
 const priceOf = (
   v: number | null,
@@ -242,11 +238,11 @@ const priceOf = (
   unit: string | null | undefined,
 ): string => (unit === "percent_of_par" ? `${price(v)}%` : price(v, currency));
 
-export function tradeLine(t: TradeRow): string {
-  return `${quantity(t.quantity)} × ${priceOf(t.price, t.currency, t.unit)}${
-    t.fees > 0 ? ` + ${amount(t.fees)} fees` : ""
-  }`;
-}
+export const tradePrice = (t: TradeRow): string =>
+  priceOf(t.price, t.currency, t.unit);
+
+export const tradeLine = (t: TradeRow): string =>
+  `${quantity(t.quantity)} × ${tradePrice(t)}`;
 
 // a phone wraps between facts, never inside one
 export const whole = (line: string): string =>
@@ -255,15 +251,9 @@ export const whole = (line: string): string =>
     .map((f) => f.replace(/ /g, "\u00a0"))
     .join(" · ");
 
+// a trade's row: the rest is in the row once opened
 export function tradeSub(t: TradeRow, now = Date.now()): string {
-  return [
-    day(t.date, now),
-    t.portfolio,
-    t.broker,
-    `by ${enteredBy(t.entered_by)}`,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  return [tradeLine(t), day(t.date, now), t.broker].filter(Boolean).join(" · ");
 }
 
 // the three parts of a total, each with its share
@@ -525,4 +515,41 @@ export function largestFirst(rows: Holding[]): Holding[] {
       return (x === null ? 1 : 0) - (y === null ? 1 : 0);
     return y - x;
   });
+}
+
+// a list's broker menu offers only the brokers in that list, so no pick
+// empties it
+export function brokersIn(names: (string | null)[]): string[] {
+  return [...new Set(names.filter((n): n is string => n !== null))].sort(
+    (a, b) => a.localeCompare(b),
+  );
+}
+
+// every word typed matches some field, so "nvda xtb" finds NVDA at XTB
+const has = (q: string, ...fields: (string | null | undefined)[]) => {
+  const text = fields.map((f) => (f ?? "").toLowerCase());
+  return q
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((w) => w !== "")
+    .every((w) => text.some((f) => f.includes(w)));
+};
+
+export const holdingMatches = (h: Holding, q: string): boolean =>
+  has(q, h.id === null ? null : symbolOf(h.id), h.name, h.isin);
+
+export const tradeMatches = (t: TradeRow, q: string): boolean =>
+  has(q, t.side, symbolOf(t.symbol), t.name, t.broker, t.note);
+
+// a broker's share of a holding: its gain from the server's own value
+// and cost, which the part carries without the difference
+export function partGain(p: Part): { pl: Signed; pct: Signed } {
+  if (p.value === null || p.cost === null) {
+    return { pl: change(null), pct: percent(null) };
+  }
+  const pl = p.value - p.cost;
+  return {
+    pl: change(pl),
+    pct: percent(p.cost > 0 ? (pl / p.cost) * 100 : null),
+  };
 }

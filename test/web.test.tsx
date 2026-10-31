@@ -421,6 +421,7 @@ describe("the routes", () => {
     expect(tabTitle("/instruments/FRED:DGS10", true)).toBe(
       "DGS10 · 1ctx Markets",
     );
+    expect(tabTitle("/portfolios/5", true)).toBe("Portfolios · 1ctx Markets");
     expect(tabTitle("/status", false)).toBe("Sign in · 1ctx Markets");
     expect(tabTitle("/nothing", true)).toBe("1ctx Markets");
   });

@@ -42,39 +42,8 @@
   .pf-portfolio-pick {
     display: none;
   }
-  /* as tall as the portfolio tabs beside it */
-  .pf-drop {
-    position: relative;
-    display: flex;
-    min-width: 0;
-  }
   .pf-picks {
     align-self: stretch;
-  }
-  .pf-drop-btn {
-    height: auto;
-    min-height: 34px;
-    gap: var(--space-2);
-    max-width: 200px;
-    color: var(--dim);
-  }
-  .pf-drop-btn:hover,
-  .pf-drop-btn[aria-expanded="true"] {
-    color: var(--fg);
-  }
-  .pf-drop-chevron {
-    flex-shrink: 0;
-    color: var(--faint);
-  }
-  .pf-drop-menu {
-    position: absolute;
-    top: calc(100% + 4px);
-    right: 0;
-    z-index: 3;
-    min-width: 100%;
-    max-height: 320px;
-    overflow-y: auto;
-    white-space: nowrap;
   }
   .pf-currency {
     flex: 1;
@@ -124,14 +93,6 @@
     padding: var(--space-2);
     font-size: var(--text-small);
     color: var(--faint);
-  }
-  .pf-drop-check {
-    flex-shrink: 0;
-    margin-left: auto;
-    color: var(--brand);
-  }
-  .rows-head .pf-drop {
-    margin-left: auto;
   }
 
   /* auto-fit, so two or three currencies share one row */
@@ -245,24 +206,6 @@
     font-family: var(--mono);
     font-size: var(--text-label);
   }
-  .pf-trade-size {
-    flex-shrink: 0;
-    margin-left: auto;
-    font-family: var(--mono);
-    font-size: var(--text-label);
-    font-variant-numeric: tabular-nums;
-    color: var(--fg);
-    white-space: nowrap;
-  }
-  .pf-trade-size-sub {
-    display: none;
-  }
-  .pf-trade-remove {
-    color: var(--faint);
-  }
-  .pf-trade-remove:hover {
-    color: var(--failed);
-  }
   .pf-value {
     color: var(--fg);
   }
@@ -305,6 +248,14 @@
   .pf-part-portfolio {
     display: block;
     font-size: var(--text-small);
+  }
+  /* numbers as the row above draws them */
+  .pf-parts td:not(:first-child) {
+    font-family: var(--mono);
+    font-size: var(--text-label);
+  }
+  .pf-part-pct {
+    display: block;
   }
   .pf-purchases {
     margin: 0 0 var(--space-3);
@@ -398,13 +349,6 @@
     text-align: right;
     font-variant-numeric: tabular-nums;
   }
-  .pf-switch-line {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    font-size: var(--text-small);
-    color: var(--dim);
-  }
 
   /* the add panel: beside the page, which stays where it was */
   .pf-sheet-wrap {
@@ -491,40 +435,6 @@
     gap: var(--space-2);
     min-width: 0;
   }
-  .pf-paid {
-    position: relative;
-    display: inline-flex;
-  }
-  .pf-paid-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 2px;
-    padding: 1px 4px 1px 6px;
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    background: none;
-    font-family: var(--mono);
-    font-size: var(--text-label);
-    line-height: 14px;
-    color: var(--dim);
-    cursor: pointer;
-  }
-  .pf-paid-btn:hover,
-  .pf-paid-btn[aria-expanded="true"] {
-    color: var(--fg);
-    border-color: var(--line-strong);
-  }
-  .pf-paid-menu {
-    position: absolute;
-    top: calc(100% + 4px);
-    left: 0;
-    z-index: 4;
-    min-width: 110px;
-  }
-  .pf-paid-menu-right {
-    right: 0;
-    left: auto;
-  }
   .pf-total-head {
     display: flex;
     align-items: center;
@@ -532,22 +442,22 @@
     gap: var(--space-2);
   }
   /* a form's menu fills its field and looks like the inputs beside it */
-  .pf-form-pick .pf-drop,
+  .pf-form-pick .drop,
   .pf-add .pf-currency {
     max-width: none;
   }
-  .pf-form-pick .pf-drop-btn,
-  .pf-currency .pf-drop-btn {
+  .pf-form-pick .drop-btn,
+  .pf-currency .drop-btn {
     justify-content: space-between;
     width: 100%;
     max-width: none;
   }
-  .pf-form-pick .pf-drop-btn,
-  .pf-add .pf-currency .pf-drop-btn {
+  .pf-form-pick .drop-btn,
+  .pf-add .pf-currency .drop-btn {
     height: 36px;
     background: var(--inset);
   }
-  .pf-form-pick .pf-drop-menu {
+  .pf-form-pick .drop-menu {
     left: 0;
     right: 0;
   }
@@ -641,10 +551,6 @@
   .pf-chosen-x {
     flex-shrink: 0;
     margin-left: auto;
-  }
-  .pf-chosen .pf-listing-facts {
-    padding-right: var(--space-2);
-    padding-bottom: 2px;
   }
   .pf-new {
     position: relative;
@@ -880,11 +786,6 @@
     width: 100%;
     min-width: 0;
   }
-  .pf-welcome-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2);
-  }
   .pf-settings-head {
     display: flex;
     align-items: center;
@@ -947,10 +848,10 @@
       width: 100%;
       margin-left: 0;
     }
-    .pf-picks .pf-drop {
+    .pf-picks .drop {
       flex: 1;
     }
-    .pf-drop-btn {
+    .drop-btn {
       justify-content: space-between;
       width: 100%;
       max-width: none;
@@ -966,13 +867,6 @@
     }
     .pf-totals .pf-big {
       font-size: var(--text-ui);
-    }
-    /* the size joins the line under the trade, so the bin keeps its row */
-    .pf-trade-size {
-      display: none;
-    }
-    .pf-trade-size-sub {
-      display: inline;
     }
     /* the value in the shown currency gives way to the gain */
     .pf-row-shown {
@@ -992,6 +886,10 @@
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: var(--space-2) var(--space-3);
+    }
+    /* the broker table keeps what each share is worth and made */
+    .pf-part-cost {
+      display: none;
     }
     .pf-add-words {
       display: none;

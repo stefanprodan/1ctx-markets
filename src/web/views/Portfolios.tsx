@@ -7,6 +7,7 @@ import { type Signal, useSignal } from "@preact/signals";
 import type { ComponentChildren } from "preact";
 import { useEffect, useId, useMemo, useRef } from "preact/hooks";
 import { currencyName, findCurrencies } from "../../shared/currencies.ts";
+import { navigate } from "../app/router.ts";
 import type {
   BrokerRow,
   Exposure,
@@ -21,11 +22,12 @@ import type {
   TradeIn,
   TradeRow,
 } from "../data/portfolios.ts";
-import { JUST_SAVED } from "../data/portfolios.ts";
+import { addressOf, JUST_SAVED } from "../data/portfolios.ts";
 import { type Candidate, markets } from "../data/store.ts";
 import { Icon } from "../lib/icons.tsx";
 import { useMenu } from "../lib/menu.ts";
 import { useRefresh } from "../lib/refresh.ts";
+import { Dropdown, ListFilter } from "../ui/Dropdown.tsx";
 import { didNotLoad, Page } from "../ui/Page.tsx";
 import {
   Rows,
@@ -36,12 +38,14 @@ import {
   RowsTitle,
 } from "../ui/Rows.tsx";
 import { RowsOpen } from "../ui/RowsOpen.tsx";
+import { Search } from "../ui/Search.tsx";
 import { searcher } from "./Dashboard.model.ts";
 import { kindOf, symbolOf } from "./Instruments.model.ts";
 import {
   ADD_KEY,
   amount,
   brokerName,
+  brokersIn,
   browserZone,
   change,
   costLine,
@@ -52,17 +56,21 @@ import {
   dryPowders,
   EXPOSURE_TABS,
   type ExposureTab,
+  enteredBy,
   findZones,
   heldAt,
+  holdingMatches,
   holdingSub,
   holdingTitle,
   IMPORT_KINDS,
   importLine,
   importReason,
   importStatus,
+  isFundId,
   largestFirst,
   listingWords,
   missingWords,
+  partGain,
   percent,
   price,
   quantity,
@@ -75,11 +83,10 @@ import {
   splitOf,
   staleWords,
   today,
-  tradeLine,
+  tradeMatches,
   tradeMoney,
   tradeName,
   tradeSub,
-  tradeTitle,
   typed,
   whole,
   zoneWords,
@@ -761,22 +768,37 @@ function HoldingRow({
             <tr>
               <th>Broker</th>
               <th>Quantity</th>
-              <th>Average cost</th>
-              <th>Value</th>
+              <th class="pf-part-cost">Average cost</th>
+              <th>Value ({h.currency})</th>
+              <th>Gain</th>
             </tr>
           </thead>
           <tbody>
-            {h.parts.map((p) => (
-              <tr key={`${p.portfolio}/${p.broker ?? ""}`}>
-                <td>
-                  {brokerName(p.broker)}
-                  <span class="pf-dim pf-part-portfolio">{p.portfolio}</span>
-                </td>
-                <td>{quantity(p.quantity)}</td>
-                <td>{price(p.average_cost)}</td>
-                <td>{amount(p.value, h.currency, true)}</td>
-              </tr>
-            ))}
+            {h.parts.map((p) => {
+              const g = partGain(p);
+              return (
+                <tr key={`${p.portfolio}/${p.broker ?? ""}`}>
+                  <td>
+                    {brokerName(p.broker)}
+                    {/* a portfolio's own tab already names it */}
+                    {store.portfolio.value === null && (
+                      <span class="pf-dim pf-part-portfolio">
+                        {p.portfolio}
+                      </span>
+                    )}
+                  </td>
+                  <td>{quantity(p.quantity)}</td>
+                  <td class="pf-part-cost">{price(p.average_cost)}</td>
+                  <td>{amount(p.value, h.currency, true)}</td>
+                  <td class={tone(g.pl.dir)}>
+                    {g.pl.text}
+                    {g.pct.text && (
+                      <span class="pf-part-pct">{g.pct.text}</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}
@@ -829,12 +851,42 @@ function HoldingsCard({
   h: Holdings;
   onTrade: (s: AddStart) => void;
 }) {
+  const query = useSignal("");
+  const brokers = brokersIn(
+    h.holdings.flatMap((x) => x.parts.map((p) => p.broker)),
+  );
+  const broker = store.broker.value;
+  const from = broker === null ? h : (store.atBroker.value ?? h);
+  const rows = largestFirst(from.holdings).filter((x) =>
+    holdingMatches(x, query.value),
+  );
   return (
-    <RowsCard label="Holdings" count={String(h.holdings.length)}>
+    <RowsCard
+      label="Holdings"
+      search={<Search query={query} placeholder="Search holdings" />}
+      count={String(rows.length)}
+      menus
+      action={
+        brokers.length > 1 ? (
+          <Dropdown
+            quiet
+            label="Broker"
+            value={broker}
+            options={[
+              { value: null, text: "All brokers" },
+              ...brokers.map((b) => ({ value: b, text: b })),
+            ]}
+            onPick={(b) => void store.pick({ broker: b })}
+          />
+        ) : undefined
+      }
+    >
       {h.holdings.length === 0 ? (
         <RowsNote>Nothing held yet.</RowsNote>
+      ) : rows.length === 0 ? (
+        <RowsNote>No holding matches.</RowsNote>
       ) : (
-        largestFirst(h.holdings).map((x) => (
+        rows.map((x) => (
           <HoldingRow
             key={`${x.kind}/${x.id ?? ""}/${x.position ?? ""}`}
             store={store}
@@ -931,39 +983,88 @@ function ExposureCard({ h }: { h: Holdings }) {
 // ---- trades ---------------------------------------------------------------
 
 function TradeItem({ store, t }: { store: PortfolioStore; t: TradeRow }) {
+  const open = useSignal(false);
   const asking = useSignal(false);
   const busy = useSignal(false);
   const error = useSignal<string | null>(null);
   const removed = t.removed_at !== null;
+  const total = tradeMoney(t.side, t.quantity, t.price, t.fees, t.unit);
   return (
-    <RowsLine flush off={removed}>
-      <RowsTitle
-        wrap
-        name={
-          <>
-            <span
-              class={`pf-side-word ${t.side === "buy" ? "pf-buy" : "pf-sell"}`}
-            >
-              {t.side === "buy" ? "Buy" : "Sell"}
-            </span>
-            <span class="ins-symbol">{tradeName(t)}</span>
-            {removed && <span class="tag">Removed</span>}
-          </>
-        }
-        sub={
-          <>
-            <span class="pf-trade-size-sub">{whole(tradeLine(t))} · </span>
-            {whole(tradeSub(t))}
-          </>
-        }
-      />
-      <span class="pf-trade-size">{tradeLine(t)}</span>
-      <span class="rows-end">
-        {error.value && (
-          <span class="rows-end-words rows-bad" role="alert">
-            {error.value}
+    <RowsOpen
+      open={open.value}
+      onToggle={() => {
+        open.value = !open.value;
+      }}
+      indent="chevron"
+      off={removed}
+      head={
+        <span class="pf-row">
+          <RowsTitle
+            wrap
+            name={
+              <>
+                <span
+                  class={`pf-side-word ${t.side === "buy" ? "pf-buy" : "pf-sell"}`}
+                >
+                  {t.side === "buy" ? "Buy" : "Sell"}
+                </span>
+                <span class="ins-symbol">{tradeName(t)}</span>
+                {!isFundId(t.symbol) && t.name && (
+                  <span class="ins-name cut">{t.name}</span>
+                )}
+                {removed && <span class="tag">Removed</span>}
+              </>
+            }
+            sub={whole(tradeSub(t))}
+          />
+          <span class="pf-row-end">
+            <span class="pf-value">{amount(total, t.currency)}</span>
           </span>
+        </span>
+      }
+    >
+      {/* what the row does not already say */}
+      <dl class="pf-facts">
+        {t.fees > 0 && (
+          <div>
+            <dt>Fees</dt>
+            <dd>{amount(t.fees, t.currency)}</dd>
+          </div>
         )}
+        {/* a portfolio's own tab already names it */}
+        {store.portfolio.value === null && t.portfolio && (
+          <div>
+            <dt>Portfolio</dt>
+            <dd>{t.portfolio}</dd>
+          </div>
+        )}
+        <div>
+          <dt>Added by</dt>
+          <dd>
+            {enteredBy(t.entered_by)}
+            {t.entered_at ? ` · ${day(t.entered_at.slice(0, 10), 0)}` : ""}
+          </dd>
+        </div>
+        {removed && (
+          <div>
+            <dt>Removed</dt>
+            <dd>
+              {day(t.removed_at!.slice(0, 10), 0)}
+              {t.removed_by ? ` · ${enteredBy(t.removed_by)}` : ""}
+            </dd>
+          </div>
+        )}
+      </dl>
+      {/* a note runs long, so it takes a line of its own */}
+      {t.note && (
+        <dl class="pf-facts">
+          <div>
+            <dt>Note</dt>
+            <dd>{t.note}</dd>
+          </div>
+        </dl>
+      )}
+      <div class="pf-row-actions">
         {removed ? (
           <button
             type="button"
@@ -979,6 +1080,7 @@ function TradeItem({ store, t }: { store: PortfolioStore; t: TradeRow }) {
           </button>
         ) : asking.value ? (
           <>
+            <span class="rows-end-words">Remove this trade?</span>
             <button
               type="button"
               class="btn btn-small"
@@ -1006,18 +1108,21 @@ function TradeItem({ store, t }: { store: PortfolioStore; t: TradeRow }) {
         ) : (
           <button
             type="button"
-            class="btn-icon pf-trade-remove"
-            aria-label={`Remove ${tradeTitle(t)}`}
-            title="Remove"
+            class="btn btn-small"
             onClick={() => {
               asking.value = true;
             }}
           >
-            <Icon name="trash" size={14} />
+            <Icon name="trash" size={14} /> Remove
           </button>
         )}
-      </span>
-    </RowsLine>
+        {error.value && (
+          <span class="pf-error" role="alert">
+            {error.value}
+          </span>
+        )}
+      </div>
+    </RowsOpen>
   );
 }
 
@@ -1030,33 +1135,41 @@ function TradesCard({
   store: PortfolioStore;
   trades: TradeRow[];
 }) {
-  const removed = useSignal(false);
+  const show = useSignal<"all" | "removed">("all");
   const all = useSignal(false);
-  const list = trades.filter((t) => removed.value || t.removed_at === null);
+  const query = useSignal("");
+  const kept = trades.filter(
+    (t) => (t.removed_at !== null) === (show.value === "removed"),
+  );
+  const list = kept.filter((t) => tradeMatches(t, query.value));
   const shown = all.value ? list : list.slice(0, SHOWN_TRADES);
   return (
     <RowsCard
       label="Trades"
+      search={<Search query={query} placeholder="Search trades" />}
       count={String(list.length)}
+      menus
       action={
-        <label class="pf-switch-line">
-          <span>Removed</span>
-          <button
-            type="button"
-            class={`switch${removed.value ? " switch-on" : ""}`}
-            role="switch"
-            aria-checked={removed.value}
-            aria-label="Show removed"
-            onClick={() => {
-              removed.value = !removed.value;
-            }}
-          >
-            <span class="switch-knob" />
-          </button>
-        </label>
+        <ListFilter
+          label="Show"
+          value={show.value}
+          options={[
+            { value: "all", text: "All" },
+            { value: "removed", text: "Removed" },
+          ]}
+          onPick={(v) => {
+            show.value = v;
+          }}
+        />
       }
     >
-      {list.length === 0 && <RowsNote>No trades yet.</RowsNote>}
+      {kept.length === 0 ? (
+        <RowsNote>
+          {show.value === "removed" ? "No removed trades." : "No trades yet."}
+        </RowsNote>
+      ) : (
+        list.length === 0 && <RowsNote>No trade matches.</RowsNote>
+      )}
       {shown.map((t) => (
         <TradeItem key={t.id} store={store} t={t} />
       ))}
@@ -2761,10 +2874,10 @@ function CurrencyPick({
     if (c !== value) onPick(c);
   };
   return (
-    <div class="pf-drop pf-currency" ref={root}>
+    <div class="drop pf-currency" ref={root}>
       <button
         type="button"
-        class="btn pf-drop-btn"
+        class="btn drop-btn"
         aria-label={`${label}: ${value ?? "none"}`}
         aria-haspopup="menu"
         aria-expanded={open.value}
@@ -2774,10 +2887,10 @@ function CurrencyPick({
         }}
       >
         <span class="cut">{value ? named(value) : "Pick a currency"}</span>
-        <Icon name="chevron" size={14} class="pf-drop-chevron" />
+        <Icon name="chevron" size={14} class="drop-chevron" />
       </button>
       {open.value && (
-        <div class="menu pf-drop-menu pf-currency-menu">
+        <div class="menu drop-menu pf-currency-menu">
           <input
             class="pf-currency-find"
             value={query.value}
@@ -2814,7 +2927,7 @@ function CurrencyPick({
                 <span class="pf-currency-code">{c}</span>
                 <span class="cut pf-dim">{currencyName(c) ?? ""}</span>
                 {c === value && (
-                  <Icon name="check" size={14} class="pf-drop-check" />
+                  <Icon name="check" size={14} class="drop-check" />
                 )}
               </button>
             ))}
@@ -2848,10 +2961,10 @@ function ZonePick({
     if (z !== value) onPick(z);
   };
   return (
-    <div class="pf-drop pf-currency" ref={root}>
+    <div class="drop pf-currency" ref={root}>
       <button
         type="button"
-        class="btn pf-drop-btn"
+        class="btn drop-btn"
         aria-label={`${label}: ${value ?? "none"}`}
         aria-haspopup="menu"
         aria-expanded={open.value}
@@ -2861,10 +2974,10 @@ function ZonePick({
         }}
       >
         <span class="cut">{value ? named(value) : "Pick a time zone"}</span>
-        <Icon name="chevron" size={14} class="pf-drop-chevron" />
+        <Icon name="chevron" size={14} class="drop-chevron" />
       </button>
       {open.value && (
-        <div class="menu pf-drop-menu pf-currency-menu">
+        <div class="menu drop-menu pf-currency-menu">
           <input
             class="pf-currency-find"
             value={query.value}
@@ -2901,7 +3014,7 @@ function ZonePick({
                 <span class="cut">{zoneWords(z).city}</span>
                 <span class="cut pf-dim">{zoneWords(z).area}</span>
                 {z === value && (
-                  <Icon name="check" size={14} class="pf-drop-check" />
+                  <Icon name="check" size={14} class="drop-check" />
                 )}
               </button>
             ))}
@@ -3294,75 +3407,12 @@ function PageMenu({
 
 // the app's own menu in place of a native select, whose list the
 // system draws
-function Dropdown({
-  label,
-  value,
-  options,
-  onPick,
-  chip,
-  right,
-}: {
-  label: string;
-  value: string | null;
-  options: { value: string | null; text: string }[];
-  onPick: (v: string | null) => void;
-  // small, on the line it changes: a price's currency, the total's
-  chip?: boolean;
-  right?: boolean;
-}) {
-  const { open, root } = useMenu();
-  const picked = options.find((x) => x.value === value) ?? options[0]!;
-  const menu = chip
-    ? `pf-paid-menu${right ? " pf-paid-menu-right" : ""}`
-    : "pf-drop-menu";
-  return (
-    <div class={chip ? "pf-paid" : "pf-drop"} ref={root}>
-      <button
-        type="button"
-        class={chip ? "pf-paid-btn" : "btn pf-drop-btn"}
-        aria-label={`${label}: ${picked.text}`}
-        aria-haspopup="menu"
-        aria-expanded={open.value}
-        onClick={() => {
-          open.value = !open.value;
-        }}
-      >
-        <span class="cut">{picked.text}</span>
-        {chip ? (
-          <Icon name="chevron" size={12} />
-        ) : (
-          <Icon name="chevron" size={14} class="pf-drop-chevron" />
-        )}
-      </button>
-      {open.value && (
-        <div class={`menu ${menu}`} role="menu" aria-label={label}>
-          {options.map((x) => (
-            <button
-              key={x.value ?? ""}
-              type="button"
-              class={`menu-item${x === picked ? " menu-item-on" : ""}`}
-              role="menuitemradio"
-              aria-checked={x === picked}
-              onClick={() => {
-                open.value = false;
-                if (x !== picked) onPick(x.value);
-              }}
-            >
-              <span class="cut">{x.text}</span>
-              {x === picked && (
-                <Icon name="check" size={14} class="pf-drop-check" />
-              )}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function Filters({ store }: { store: PortfolioStore }) {
   const o = store.overview.value;
-  const brokers = o?.brokers ?? [];
+  // a portfolio picked is a step Back returns from; the currency picked
+  // goes with it
+  const open = (id: number | null) =>
+    navigate(addressOf({ portfolio: id, currency: store.currency.value }));
   return (
     <div class="pf-filters">
       <div class="seg pf-portfolios" role="tablist" aria-label="Portfolio">
@@ -3376,7 +3426,7 @@ function Filters({ store }: { store: PortfolioStore }) {
             role="tab"
             aria-selected={store.portfolio.value === p.id}
             class={`seg-option${store.portfolio.value === p.id ? " seg-on" : ""}`}
-            onClick={() => void store.pick({ portfolio: p.id })}
+            onClick={() => open(p.id)}
           >
             {p.name}
           </button>
@@ -3399,22 +3449,9 @@ function Filters({ store }: { store: PortfolioStore }) {
                 text: p.name,
               })),
             ]}
-            onPick={(v) =>
-              void store.pick({ portfolio: v === null ? null : Number(v) })
-            }
+            onPick={(v) => open(v === null ? null : Number(v))}
           />
         </span>
-        {brokers.length > 0 && (
-          <Dropdown
-            label="Broker"
-            value={store.broker.value}
-            options={[
-              { value: null, text: "All brokers" },
-              ...brokers.map((b) => ({ value: b.name, text: b.name })),
-            ]}
-            onPick={(v) => void store.pick({ broker: v })}
-          />
-        )}
       </div>
     </div>
   );
@@ -3510,6 +3547,7 @@ export function PortfoliosBody({ store }: { store: PortfolioStore }) {
               <Totals store={store} h={h} />
               <Rows>
                 <HoldingsCard
+                  key={store.portfolio.value ?? "all"}
                   store={store}
                   h={h}
                   onTrade={(s) => {
@@ -3518,7 +3556,11 @@ export function PortfoliosBody({ store }: { store: PortfolioStore }) {
                   }}
                 />
                 <ExposureCard h={h} />
-                <TradesCard store={store} trades={store.trades.value ?? []} />
+                <TradesCard
+                  key={store.portfolio.value ?? "all"}
+                  store={store}
+                  trades={store.trades.value ?? []}
+                />
               </Rows>
             </>
           )}
