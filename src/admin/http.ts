@@ -26,7 +26,7 @@ import { instrumentsOf } from "../rules/format.ts";
 import { readRules, ruleInstruments } from "../rules/store.ts";
 import { sourceFile } from "../runtime/keys.ts";
 import { ATTRIBUTION } from "../sources/fred/sync.ts";
-import { FRED, YAHOO } from "../sources/ids.ts";
+import { FRED, FUND_SOURCE, YAHOO } from "../sources/ids.ts";
 import type { Backoff } from "../sources/source.ts";
 import { BACKFILL_JOB } from "../sources/yahoo/jobs.ts";
 import type { Db } from "../storage/db/index.ts";
@@ -333,7 +333,10 @@ export function status(d: AdminDeps, url: URL): Response {
       };
     }),
     jobs: jobs(db),
-    instruments: count(db, "select count(*) as n from instruments"),
+    instruments: count(
+      db,
+      `select count(*) as n from instruments where source <> '${FUND_SOURCE}'`,
+    ),
     tracked: trackedIds(db, now, d.m.tracking).size,
     database_bytes:
       count(db, "select page_count as n from pragma_page_count()") *
@@ -386,7 +389,9 @@ export function instruments(m: Markets, url: URL): Response {
   const { query, after, size } = parseList(url);
   const { db, clock } = m;
   const now = clock.now();
+  // a fund the owner prices is a holding, private to portfolio access
   const where =
+    `i.source <> '${FUND_SOURCE}' and ` +
     "(?1 = '' or instr(lower(i.id), lower(?1)) > 0 or instr(lower(coalesce(i.name, '')), lower(?1)) > 0)";
   const total = (
     db

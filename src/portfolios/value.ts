@@ -10,10 +10,10 @@ import { type QuoteRow, readQuote } from "../market/quotes.ts";
 import { quoteStale, STALE } from "../market/stale.ts";
 import { localDate } from "../market/zone.ts";
 import type { Db } from "../storage/db/index.ts";
+import { isFund, latestPrice, readFund } from "./funds.ts";
 import { type Rate, type Rates, rates as ratesOf } from "./fx.ts";
 import {
   type Broker,
-  chainOf,
   type Portfolio,
   type Position,
   readPositions,
@@ -259,13 +259,15 @@ export type Row = {
   name: string | null;
   type: string;
   market: string | null;
+  // a fund the owner prices
+  isin?: string;
   currency: string;
   // the listing's unit: percent_of_par prices are a percent of face
   unit: string | null;
   quantity: number | null;
   average_cost: number | null;
   cost: number | null;
-  // live, or the hand price with its date, or a bond's listing
+  // live, a fund's latest price with its date, or a bond's listing
   price: number | null;
   priced: "quote" | "hand" | "listing" | "face" | "amount";
   as_of: string | null;
@@ -438,7 +440,11 @@ export function readHoldingRows(
       (p) => p.quantity > 0 || p.oversold,
     );
     const held = parts.filter((p) => p.quantity > 0);
-    const q = readQuote(db, id);
+    // a fund the owner prices: its latest price, never a quote
+    const fund = isFund(instrument) ? readFund(db, id) : null;
+    const hand = fund === null ? null : latestPrice(db, id);
+    const q = fund === null ? readQuote(db, id) : null;
+    const px = fund === null ? (q?.price ?? null) : (hand?.price ?? null);
     const soldToday =
       parts.length === 0 &&
       q !== null &&
@@ -452,8 +458,13 @@ export function readHoldingRows(
     const unit = perUnit(instrument);
     const quantity = held.reduce((s, p) => s + p.quantity, 0);
     const cost = held.reduce<number | null>((s, p) => add(s, p.cost), 0);
-    const value = q === null ? null : quantity * q.price * unit;
-    const stale: string[] = [...quoteStale(db, instrument, { now, everyMs })];
+    const value = px === null ? null : quantity * px * unit;
+    const stale: string[] =
+      fund === null
+        ? [...quoteStale(db, instrument, { now, everyMs })]
+        : hand === null
+          ? [NO_PRICE]
+          : [];
     const reasons = new Set<string>();
     for (const p of parts) {
       for (const r of p.reasons) reasons.add(r);
@@ -467,21 +478,23 @@ export function readHoldingRows(
     const currency = instrument.currency ?? "";
     const otherPaid = [...paid.keys()].some((c) => c !== currency);
     const row: Row = {
-      kind: "holding",
+      kind: fund === null ? "holding" : "fund",
       id,
       position: null,
       name: instrument.name,
       type: instrument.type,
-      market: instrument.market,
+      // a fund's key is no market: the one its money is in, when named
+      market: fund === null ? instrument.market : fund.market,
+      ...(fund === null ? {} : { isin: fund.isin }),
       currency,
       unit: instrument.unit,
       quantity: qty(quantity),
       average_cost:
         cost === null || quantity === 0 ? null : money(cost / quantity / unit),
       cost: finite(cost),
-      price: q?.price ?? null,
-      priced: "quote",
-      as_of: null,
+      price: px,
+      priced: fund === null ? "quote" : "hand",
+      as_of: hand?.date ?? null,
       value: finite(value),
       pl: finite(plOf(value, cost)),
       pl_percent: pct(plPct(value, cost)),
@@ -512,7 +525,7 @@ export function readHoldingRows(
             ? null
             : money(p.cost / p.quantity / unit),
         cost: finite(p.cost),
-        value: q === null ? null : finite(p.quantity * q.price * unit),
+        value: px === null ? null : finite(p.quantity * px * unit),
       })),
     };
     if (scope.currency !== null) {
@@ -526,7 +539,7 @@ export function readHoldingRows(
       parts.map((p) => ({
         portfolio: p.portfolio,
         broker: p.broker,
-        value: q === null ? null : p.quantity * q.price * unit,
+        value: px === null ? null : p.quantity * px * unit,
       })),
     );
   }
@@ -542,7 +555,7 @@ export function readHoldingRows(
         raw.cost === null
           ? null
           : (() => {
-              const r = fx.rate(p.currency, scope.currency!, costSetOn(db, p));
+              const r = fx.rate(p.currency, scope.currency!, p.asOf);
               return r.rate === null ? null : raw.cost * r.rate;
             })();
       row.converted = convert(
@@ -662,20 +675,11 @@ function convert(
   return out;
 }
 
-const KIND_TYPES = { cash: "CASH", fund: "FUND", bond: "BOND" } as const;
+const KIND_TYPES = { cash: "CASH", bond: "BOND" } as const;
 
-// a fund repriced today still cost what it did when the cost was set, so
-// its cost converts at that day: the oldest row back with the same cost
-function costSetOn(db: Db, p: Position): string {
-  if (p.kind !== "fund") return p.asOf;
-  const rows = new Map(chainOf(db, p.id).map((r) => [r.id, r]));
-  let at = p;
-  for (;;) {
-    const prev = at.replaces === null ? undefined : rows.get(at.replaces);
-    if (prev === undefined || prev.cost !== p.cost) return at.asOf;
-    at = prev;
-  }
-}
+// a fund the owner prices with no price yet: a buy in another currency
+// gives none
+export const NO_PRICE = "no price entered";
 
 function positionRow(
   db: Db,
@@ -698,10 +702,6 @@ function positionRow(
   if (p.kind === "cash") {
     value = p.amount;
     cost = null;
-  } else if (p.kind === "fund") {
-    price = p.price;
-    value = (p.units ?? 0) * (p.price ?? 0);
-    priced = "hand";
   } else {
     instrument =
       p.instrument === null ? null : readInstrument(db, p.instrument);
@@ -725,22 +725,18 @@ function positionRow(
       if (instrument !== null) stale.push(STALE.noQuoteYet);
     }
   }
-  const average =
-    p.kind === "fund" && cost !== null && p.units
-      ? money(cost / p.units)
-      : null;
   const row: Row = {
     kind: p.kind,
     id: instrument?.id ?? p.instrument,
     position: p.id,
     name: p.name,
     type: KIND_TYPES[p.kind],
-    // a bond's is its listing's; cash's or a fund's, the one named
+    // a bond's is its listing's; cash's, the one named
     market: instrument?.market ?? p.market,
     currency: p.currency,
     unit: instrument?.unit ?? null,
-    quantity: p.kind === "fund" ? qty(p.units) : null,
-    average_cost: average,
+    quantity: null,
+    average_cost: null,
     cost: finite(cost),
     price,
     priced,
@@ -761,13 +757,13 @@ function positionRow(
       {
         portfolio: names.get(p.portfolio) ?? String(p.portfolio),
         broker: p.broker === null ? null : (brokers.get(p.broker) ?? null),
-        quantity: p.kind === "fund" ? qty(p.units) : null,
-        average_cost: average,
+        quantity: null,
+        average_cost: null,
         cost: finite(cost),
         value: finite(value),
         position: p.id,
         as_of: p.asOf,
-        ...(p.kind === "fund" ? {} : { amount: p.amount }),
+        amount: p.amount,
       },
     ],
   };

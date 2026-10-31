@@ -798,13 +798,15 @@ describe("delete", () => {
       .all()
       .map((r) => r.name);
     expect(keyed).toEqual(
-      // a rule, a trade or a position refuses the delete instead
+      // a rule, a trade or a position refuses the delete instead; a fund
+      // the owner prices is no admin's to delete, as no id finds it
       [
         ...INSTRUMENT_TABLES,
         "rules",
         "dashboard_items",
         "trades",
         "positions",
+        "funds",
       ].sort(),
     );
   });

@@ -135,28 +135,26 @@ const trade = object(
   ],
 );
 
+const MARKET_NOTE =
+  "The market its money is in, as instruments name it (`markets` in the list), so the exposure counts it there; none unless named.";
+
 const position = object(
   {
     id: int,
-    kind: values(["cash", "fund", "bond"]),
+    kind: values(["cash", "bond"]),
     portfolio: nstr,
     portfolio_id: int,
     name: str,
     symbol: nstr,
-    market: note(
-      nstr,
-      "Cash's or a fund's market, as instruments name it (`markets` in the list), so the exposure counts it there; none unless named.",
-    ),
+    market: note(nstr, `Cash's market. ${MARKET_NOTE}`),
     currency: str,
     amount: note(nnum, "Cash's amount, or a bond's face."),
-    units: nnum,
-    price: note(nnum, "A hand price per unit."),
     cost: nnum,
     coupon: nnum,
     maturity: nstr,
     as_of: note(
       str,
-      "Cash's and a fund's figure is as of this day; a bond's is the day it was bought, its listed price dated by `fetched_at`.",
+      "Cash's amount is as of this day; a bond's is the day it was bought, its listed price dated by `fetched_at`.",
     ),
     dry_powder: bool,
     broker: nstr,
@@ -177,8 +175,6 @@ const position = object(
     "market",
     "currency",
     "amount",
-    "units",
-    "price",
     "cost",
     "coupon",
     "maturity",
@@ -203,16 +199,44 @@ const portfolio = object({
 
 const broker = object({ id: int, name: str });
 
+const fund = object({
+  id: note(str, "`fund:<isin>`, as holdings and trades name it."),
+  isin: str,
+  name: str,
+  currency: str,
+  market: note(nstr, MARKET_NOTE),
+  price: note(nnum, "Its latest price per unit, null before the first."),
+  as_of: note(nstr, "The day its latest price is for."),
+});
+
+const fundPrice = object({
+  date: note(str, "The day the price is for."),
+  price: num,
+  trade: note(
+    { type: ["integer", "null"] },
+    "The buy whose price stands for the day while the owner has entered none; it goes with the buy's removal. Null: the owner's, which no trade changes.",
+  ),
+  entered_by: str,
+  entered_at: nstr,
+});
+
 const named = object({ name: note(str, `1 to ${MAX_NAME} characters.`) });
 
 const holding = object(
   {
-    kind: values(["holding", "cash", "fund", "bond"]),
+    kind: note(
+      values(["holding", "cash", "fund", "bond"]),
+      "`fund`: a fund the owner prices, held through its trades.",
+    ),
     id: nstr,
     position: { type: ["integer", "null"] },
     name: nstr,
     type: str,
-    market: nstr,
+    market: note(
+      nstr,
+      "The listing's market; a fund's or cash's, the one its money is in.",
+    ),
+    isin: note(str, "A fund's."),
     currency: str,
     unit: note(
       nstr,
@@ -222,10 +246,13 @@ const holding = object(
     average_cost: nnum,
     cost: nnum,
     price: nnum,
-    priced: values(["quote", "hand", "listing", "face", "amount"]),
+    priced: note(
+      values(["quote", "hand", "listing", "face", "amount"]),
+      "`hand`: a fund's latest price, entered by the owner or taken from a buy.",
+    ),
     as_of: note(
       nstr,
-      "Cash's and a fund's figure is as of this day; a bond's is the day it was bought, its listed price dated by `fetched_at`.",
+      "The day a fund's price is for, or cash's amount is true on; a bond's is the day it was bought, its listed price dated by `fetched_at`.",
     ),
     value: nnum,
     pl: nnum,
@@ -278,9 +305,95 @@ export const portfolioSchemas: Record<string, Schema> = {
     brokers: list(broker),
     markets: note(
       list(str),
-      "The markets stored instruments are in: what a cash or fund position can name.",
+      "The markets stored instruments are in: what cash or a fund can name.",
     ),
+    funds: note(list(fund), "The funds the owner prices."),
   }),
+  Fund: fund,
+  Funds: object({ funds: list(fund) }),
+  FundDetail: object({
+    fund,
+    prices: note(list(fundPrice), "Every price it was given, newest first."),
+    trades: note(list(trade), "Its live trades, newest first."),
+  }),
+  FundTradeArgs: object(
+    {
+      portfolio: note(
+        { type: ["string", "integer"] },
+        "A name or an id; may be left out while there is one portfolio.",
+      ),
+      isin: note(
+        str,
+        "The fund's ISIN, its check digit checked; its first buy makes it.",
+      ),
+      name: note(
+        str,
+        "The fund's name: needed on its first buy, and enough alone after it.",
+      ),
+      side: values(["buy", "sell"]),
+      units: note({ type: ["number", "string"] }, "Units, or `all` on a sell."),
+      price: note(
+        num,
+        "Per unit; it or `total` is needed, a fund has no live price.",
+      ),
+      total: note(num, "What left or reached the account, fees in it."),
+      fees: num,
+      date: note(str, "The trade date, the owner's today by default."),
+      currency: note(
+        str,
+        "What it was paid in; needed on the first buy, which makes it the fund's.",
+      ),
+      broker: note(str, "A broker's name, as the list has it."),
+      market: note(str, MARKET_NOTE),
+      note: note(str, `At most ${MAX_NOTE} characters.`),
+      again: note(
+        bool,
+        "True saves a second fill equal to one saved in the last 10 minutes.",
+      ),
+    },
+    ["side", "units"],
+  ),
+  AddedFundTrade: object(
+    {
+      trade,
+      trades: list(trade),
+      total: object({
+        amount: num,
+        currency: str,
+        includes_fees: bool,
+      }),
+      fund,
+    },
+    ["fund"],
+  ),
+  FundChange: object(
+    {
+      price: note(num, "Per unit, in the fund's currency."),
+      date: note(
+        str,
+        "The day the price is for, the owner's today by default; a price for a day already priced replaces it.",
+      ),
+      market: note(nstr, `${MARKET_NOTE} Null takes it off.`),
+      name: note(str, "A new name, not another fund's."),
+      currency: note(
+        str,
+        "A new currency, only while the fund has no live trades; it drops the fund's prices, which were in the old one.",
+      ),
+    },
+    [],
+  ),
+  UpdatedFund: object(
+    {
+      fund,
+      price: object({ date: str, price: num }),
+      replaced: note(
+        { ...fundPrice, type: ["object", "null"] },
+        "The price that day had before, null when none.",
+      ),
+      renamed_from: note(str, "The fund's name before this update renamed it."),
+    },
+    ["fund"],
+  ),
   Named: named,
   Broker: broker,
   OneBroker: object({ broker }),
@@ -336,23 +449,18 @@ export const portfolioSchemas: Record<string, Schema> = {
   PositionHistory: object({ history: list(position) }),
   PositionArgs: object(
     {
-      kind: values(["cash", "fund", "bond"]),
+      kind: values(["cash", "bond"]),
       portfolio: { type: ["string", "integer"] },
       name: str,
       symbol: note(str, "A bond's listing."),
       currency: str,
       amount: note(num, "Cash's amount, or a bond's face."),
-      units: num,
-      price: note(num, "A hand price per unit."),
       cost: num,
       coupon: num,
       maturity: str,
       date: note(str, "As of; today by default."),
       dry_powder: note(bool, "Cash kept for buying."),
-      market: note(
-        str,
-        "Cash's or a fund's market, as instruments name it (`markets` in the list), so the exposure counts it there; none unless named.",
-      ),
+      market: note(str, `Cash's market. ${MARKET_NOTE}`),
       broker: str,
       note: str,
     },
@@ -367,13 +475,11 @@ export const portfolioSchemas: Record<string, Schema> = {
         "Cash moved by this much, in `currency` or the position's own.",
       ),
       currency: str,
-      units: num,
-      price: num,
       cost: { type: ["number", "null"] },
       date: str,
       note: nstr,
       dry_powder: bool,
-      market: note(nstr, "Cash's or a fund's market; null takes it off."),
+      market: note(nstr, "Cash's market; null takes it off."),
     },
     [],
   ),
@@ -452,7 +558,7 @@ export const portfolioSchemas: Record<string, Schema> = {
     ["csv"],
   ),
   Import: object({
-    kind: values(["trades", "cash", "funds", "bonds"]),
+    kind: values(["trades", "cash", "bonds"]),
     portfolio: str,
     broker: nstr,
     saved: bool,
@@ -507,7 +613,7 @@ const forbidden = err(
   "A key without portfolio access, or one that reads only on a write (`forbidden`).",
 );
 const missing = err(
-  "No such portfolio, trade, position or broker (`not_found`).",
+  "No such portfolio, trade, position, broker or fund (`not_found`).",
 );
 const conflict = err("A name is taken, or the row is in use (`conflict`).");
 
@@ -545,7 +651,7 @@ const CURRENCY = q(
 const BROKER = q("broker", "Only this broker's parts.");
 
 const HOLDINGS = lines(
-  "One row per instrument with its parts per broker, then cash, funds priced by hand and bonds.",
+  "One row per instrument with its parts per broker, a fund the owner prices among them (`kind` `fund`, valued at its latest price), then cash and bonds.",
   "",
   "- Values and profit or loss are in each instrument's own currency. Totals are per currency and never summed across currencies.",
   "- A named currency, or the display currency, adds `converted` on each row and in total, with every rate used and its time in `rates`. A pair with no price is null with its reason.",
@@ -681,11 +787,11 @@ export const portfolioPaths = {
       security: WRITES,
       summary: "Import a CSV",
       description: lines(
-        "Reads a portfolio CSV export of trades, or a cash, funds or bonds list, and answers every row as `ok`, `bad` with why, or `skipped`. Nothing is saved unless `confirm` is true; then the good rows are saved.",
+        "Reads a portfolio CSV export of trades, or a cash or bonds list, and answers every row as `ok`, `bad` with why, or `skipped`. Nothing is saved unless `confirm` is true; then the good rows are saved.",
         "",
-        "- Trades: `Symbol`, `Trade Date`, `Purchase Price`, `Quantity`, `Commission`, `Comment`, `Transaction Type`. A trade already saved is skipped.",
-        "- Cash: `Item`, `Amount (<currency>)`, `As Of`, `Note`. Funds: `Fund`, `Currency`, `Units`, `Value`, `Cost Basis`, `As Of`, `Note`. Bonds: `Item`, `Symbol`, `Currency`, `Amount`, `Rate (%)`, `Purchase Date`, `Maturity`, `Note`.",
-        "- Cash and a fund priced by hand replace the kept one with their name and broker. A bond with the listing (or name), purchase date, face and broker of a kept one is skipped; with no purchase date, any date matches.",
+        "- Trades: `Symbol`, `Trade Date`, `Purchase Price`, `Quantity`, `Commission`, `Comment`, `Transaction Type`. A trade already saved is skipped. A fund's key (`fund:<isin>`, as an export writes it) names a fund kept; a fund is made by its first buy, never by a file.",
+        "- Cash: `Item`, `Amount (<currency>)`, `As Of`, `Note`. Bonds: `Item`, `Symbol`, `Currency`, `Amount`, `Rate (%)`, `Purchase Date`, `Maturity`, `Note`. A list of fund totals is refused: a fund's buys are added one by one.",
+        "- Cash replaces the kept one with its name and broker. A bond with the listing (or name), purchase date, face and broker of a kept one is skipped; with no purchase date, any date matches.",
         "- A date after today is bad; a month (`YYYY-MM`) is its last day, or today in the current month.",
       ),
       requestBody: bodyOf(ref("ImportArgs")),
@@ -786,7 +892,7 @@ export const portfolioPaths = {
       operationId: "listPositions",
       security: READS,
       summary: "Positions",
-      description: "Cash, funds priced by hand and bonds.",
+      description: "Cash and bonds.",
       parameters: [
         q("portfolio", "A portfolio's name or id."),
         BROKER,
@@ -803,7 +909,7 @@ export const portfolioPaths = {
       security: WRITES,
       summary: "Add a position",
       description:
-        "Saves cash, a fund priced by hand or a bond. Cash or a fund with the same kind, name and broker replaces the kept one, a bond the one with its listing (or name), purchase date, face and broker; the old row is kept as replaced. A date after today is refused.",
+        "Saves cash or a bond; a fund is bought as a trade (`POST /funds/trades`). Cash with the same name and broker replaces the kept one, a bond the one with its listing (or name), purchase date, face and broker; the old row is kept as replaced. A date after today is refused.",
       requestBody: bodyOf(ref("PositionArgs")),
       responses: base({
         201: {
@@ -824,7 +930,7 @@ export const portfolioPaths = {
       security: WRITES,
       summary: "Update a position",
       description: lines(
-        "Changes an amount, units, a price or the date. The old row is kept as replaced, so a change can be set back by restoring it.",
+        "Changes an amount, a cost, the date, the note or the market. The old row is kept as replaced, so a change can be set back by restoring it.",
         "",
         "- `by` moves a cash balance. An amount in another currency converts at the live rate, answered in `rate`.",
       ),
@@ -875,6 +981,84 @@ export const portfolioPaths = {
       responses: base({
         200: ok("The rows.", ref("PositionHistory")),
         404: missing,
+      }),
+    },
+  },
+  "/funds": {
+    get: {
+      tags,
+      operationId: "listFunds",
+      security: READS,
+      summary: "Funds",
+      description:
+        "The funds the owner prices, each with its latest price and the day it is for.",
+      responses: base({ 200: ok("The funds.", ref("Funds")) }),
+    },
+  },
+  "/funds/trades": {
+    post: {
+      tags,
+      operationId: "addFundTrade",
+      security: WRITES,
+      summary: "Buy or sell a fund",
+      description: lines(
+        "Saves a buy or sell of a fund the owner prices, one per confirmation, as a trade on the fund: average cost, parts per broker, removal and restore and the trades list work as a share's.",
+        "",
+        "- Its first buy makes the fund, with its `isin` (its check digit checked), `name` and `currency`; a later trade names it by `isin` or `name`.",
+        "- A buy in the fund's currency also becomes that day's price when the owner has entered none for it, so a fund added from one confirmation is valued at once; the day's latest live buy stands, and a removed buy's price goes with it.",
+        "- A `name` that is not the fund's, beside its `isin`, is refused.",
+        "- A fund has no live price: `price` or `total` is needed. No source is ever asked for it.",
+        "- A retry with the same figures as a live trade entered in the last 10 minutes is refused (409), unless `again` is true.",
+      ),
+      requestBody: bodyOf(ref("FundTradeArgs")),
+      responses: base({
+        201: {
+          ...ok(
+            "The trade, or one per broker for a sell of all, and the fund.",
+            ref("AddedFundTrade"),
+          ),
+          headers: { Location: { schema: str } },
+        },
+        404: missing,
+        409: conflict,
+        ...json415,
+      }),
+    },
+  },
+  "/funds/{isin}": {
+    parameters: [
+      {
+        name: "isin",
+        in: "path" as const,
+        description: "The fund's ISIN.",
+        required: true,
+        schema: str,
+      },
+    ],
+    get: {
+      tags,
+      operationId: "getFund",
+      security: READS,
+      summary: "A fund, its prices and trades",
+      description:
+        "The fund with every price it was given, newest first, and its live trades.",
+      responses: base({
+        200: ok("The fund.", ref("FundDetail")),
+        404: missing,
+      }),
+    },
+    patch: {
+      tags,
+      operationId: "updateFund",
+      security: WRITES,
+      summary: "Set a fund's price",
+      description:
+        "Sets its price per unit for a day, the owner's today by default: a price for a day already priced replaces it, a buy's too, and earlier days are kept. The latest values the holding. Also sets the market its money is in, and corrects its name (not another fund's) or its currency (only while it has no live trades).",
+      requestBody: bodyOf(ref("FundChange")),
+      responses: base({
+        200: ok("The fund.", ref("UpdatedFund")),
+        404: missing,
+        ...json415,
       }),
     },
   },

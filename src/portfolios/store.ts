@@ -4,7 +4,7 @@
 // function here logs, and no error quotes a row.
 
 import { CRYPTO } from "../market/calendars.ts";
-import { FRED_MARKET } from "../sources/ids.ts";
+import { FRED_MARKET, FUND_SOURCE } from "../sources/ids.ts";
 import type { Db } from "../storage/db/index.ts";
 
 export const MAX_NAME = 40;
@@ -38,11 +38,8 @@ export type Trade = {
   removedBy: string | null;
 };
 
-export const POSITION_KINDS = ["cash", "fund", "bond"] as const;
+export const POSITION_KINDS = ["cash", "bond"] as const;
 export type PositionKind = (typeof POSITION_KINDS)[number];
-// migration 0020's check names a fund "manual"; a table rebuild to rename
-// it would copy every owner's positions for a word
-const stored = (k: PositionKind): string => (k === "fund" ? "manual" : k);
 
 export type Position = {
   id: number;
@@ -52,13 +49,10 @@ export type Position = {
   currency: string;
   // a bond's listing, when the server prices one
   instrument: string | null;
-  // cash's or a fund's market, as an instrument's: none unless named
+  // cash's market, as an instrument's: none unless named
   market: string | null;
   // cash: the amount; bond: the face amount
   amount: number | null;
-  units: number | null;
-  // a hand price per unit
-  price: number | null;
   cost: number | null;
   coupon: number | null;
   maturity: string | null;
@@ -298,8 +292,8 @@ export function setTradeRemoved(
 }
 
 const POSITION = `select id, portfolio,
-  case kind when 'manual' then 'fund' else kind end as kind, name, currency, instrument, market,
-  amount, units, price, cost, coupon, maturity, as_of as asOf, broker, note,
+  kind, name, currency, instrument, market,
+  amount, cost, coupon, maturity, as_of as asOf, broker, note,
   dry_powder as dryPowder, replaces, entered_by as enteredBy, entered_at as enteredAt, removed_at as removedAt,
   removed_by as removedBy from positions`;
 
@@ -313,20 +307,18 @@ export function insertPosition(db: Db, p: NewPosition, now: number): number {
     db
       .query(
         `insert into positions (portfolio, kind, name, currency, instrument,
-           market, amount, units, price, cost, coupon, maturity, as_of,
-           broker, note, dry_powder, replaces, entered_by, entered_at)
-         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           market, amount, cost, coupon, maturity, as_of, broker, note,
+           dry_powder, replaces, entered_by, entered_at)
+         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         p.portfolio,
-        stored(p.kind),
+        p.kind,
         p.name,
         p.currency,
         p.instrument,
         p.market,
         p.amount,
-        p.units,
-        p.price,
         p.cost,
         p.coupon,
         p.maturity,
@@ -437,7 +429,7 @@ export function samePosition(
             `${POSITION} where portfolio = ? and kind = ? and name = ? collate nocase
              and broker is ? and removed_at is null`,
           )
-          .get(p.portfolio, stored(p.kind), p.name, p.broker);
+          .get(p.portfolio, p.kind, p.name, p.broker);
   return r === null ? null : positionOf(r);
 }
 
@@ -452,16 +444,19 @@ export function setPositionRemoved(
   ).run(by === null ? null : now, by, id);
 }
 
-// held or with a position, removed rows aside: tracked as a rule's are
+// held or with a position, removed rows aside: tracked as a rule's are;
+// a fund the owner prices is never fetched, so never tracked
 export function portfolioInstruments(db: Db): Set<string> {
   return new Set(
     db
-      .query<{ id: string }, []>(
-        `select instrument as id from trades where removed_at is null
+      .query<{ id: string }, [string]>(
+        `select instrument as id from trades t where removed_at is null
+           and not exists (select 1 from instruments i
+             where i.id = t.instrument and i.source = ?1)
          union select instrument from positions
          where removed_at is null and instrument is not null`,
       )
-      .all()
+      .all(FUND_SOURCE)
       .map((r) => r.id),
   );
 }
@@ -484,16 +479,16 @@ export type Split = { date: string; ratio: number };
 // the markets a fund's or cash's money can be in, as instrument ids spell
 // them: where a share, an ETF or a bond is listed, and crypto; currency
 // pairs (Yahoo's CCY), FRED series and index-only or futures markets
-// hold nothing a fund buys
+// hold nothing a fund buys; a fund's own key is no market
 export function knownMarkets(db: Db): string[] {
   return db
-    .query<{ market: string }, [string, string]>(
+    .query<{ market: string }, [string, string, string]>(
       `select distinct market from instruments
        where (unit in ('per_share', 'percent_of_par') or market = ?1)
-       and market not in (?2, 'CCY')
+       and market not in (?2, 'CCY') and source <> ?3
        order by market`,
     )
-    .all(CRYPTO, FRED_MARKET)
+    .all(CRYPTO, FRED_MARKET, FUND_SOURCE)
     .map((r) => r.market);
 }
 
@@ -628,7 +623,7 @@ export function chainOf(db: Db, id: number): Position[] {
 }
 
 // every row of a position, the latest entry first: its updates, who made
-// them and when; cash and a hand price by name at its broker, a bond by
+// them and when; cash by name at its broker, a bond by
 // its chain of updates
 export function positionHistory(
   db: Db,
@@ -640,6 +635,6 @@ export function positionHistory(
       `${POSITION} where portfolio = ? and kind = ? and name = ? collate nocase
        and broker is ? order by entered_at desc, id desc`,
     )
-    .all(p.portfolio, stored(p.kind), p.name, p.broker)
+    .all(p.portfolio, p.kind, p.name, p.broker)
     .map(positionOf);
 }

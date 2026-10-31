@@ -282,8 +282,6 @@ describe("totals and costs", () => {
       symbol: null,
       currency: "USD",
       amount: 50,
-      units: null,
-      price: null,
       cost: null,
       coupon: null,
       maturity: null,
@@ -483,8 +481,6 @@ describe("bonds, restore and removals", () => {
       symbol: "BVB:BND",
       currency: "EUR",
       amount: 1000,
-      units: null,
-      price: null,
       cost: null,
       coupon: 5,
       maturity: null,
@@ -646,14 +642,10 @@ describe("files as owners keep them", () => {
 
   test("a month's as of reads as its last day", async () => {
     const { m, db } = await setup();
-    const funds = [
-      "Fund,Currency,Units,Value,Cost Basis,As Of,Note",
-      "Made Up Fund,EUR,10,125,100,2026-02,",
-    ].join("\n");
     const cash = ["Item,Amount (EUR),As Of,Note", "Spare,50,2026-09,"].join(
       "\n",
     );
-    for (const csv of [funds, cash]) {
+    for (const csv of [cash]) {
       const r = await importCsv(
         m,
         CASEY,
@@ -665,10 +657,7 @@ describe("files as owners keep them", () => {
     const kept = db
       .query("select name, as_of as asOf from positions order by name")
       .all();
-    expect(kept).toEqual([
-      { name: "Made Up Fund", asOf: "2026-02-28" },
-      { name: "Spare", asOf: "2026-09-30" },
-    ]);
+    expect(kept).toEqual([{ name: "Spare", asOf: "2026-09-30" }]);
   });
 });
 
@@ -1000,8 +989,6 @@ describe("imports, rounding and removals as typed", () => {
       symbol: null,
       currency: "EUR",
       amount: 5,
-      units: null,
-      price: null,
       cost: null,
       coupon: null,
       maturity: null,
@@ -1038,8 +1025,6 @@ describe("a review's second pass", () => {
     symbol: null,
     currency: "RON",
     amount: 1000,
-    units: null,
-    price: null,
     cost: null,
     coupon: 6,
     maturity: "2030-01-13",
@@ -1308,8 +1293,6 @@ describe("a review's third pass", () => {
     symbol: null,
     currency: "RON",
     amount,
-    units: null,
-    price: null,
     cost: null,
     coupon: 4,
     maturity: "2031-06-17",
@@ -1516,8 +1499,6 @@ describe("refusals an agent can act on", () => {
       symbol: null,
       currency: "USD",
       amount: 40,
-      units: null,
-      price: null,
       cost: null,
       coupon: null,
       maturity: null,
@@ -1600,8 +1581,6 @@ describe("an update's date", () => {
     symbol: null,
     currency: "USD",
     amount: 1000,
-    units: null,
-    price: null,
     cost: null,
     coupon: null,
     maturity: null,
@@ -1611,16 +1590,6 @@ describe("an update's date", () => {
     dryPowder: false,
     ...more,
   });
-  const fund = (more: Partial<PositionArgs> = {}) =>
-    position({
-      kind: "fund",
-      name: "Made Up Fund",
-      currency: "EUR",
-      amount: null,
-      units: 5,
-      price: 10,
-      ...more,
-    });
   const bond = () =>
     position({
       kind: "bond",
@@ -1675,13 +1644,6 @@ describe("an update's date", () => {
     expect(readPosition(db, up.position.id)!.asOf).toBe(LIVE);
   });
 
-  test("a fund's new price is dated today", async () => {
-    const { m, db } = await setup();
-    const id = await added(m, fund());
-    const up = await updated(m, id, { price: 11 });
-    expect(readPosition(db, up.position.id)!.asOf).toBe(LIVE);
-  });
-
   test("a bond's new face keeps its purchase date", async () => {
     const { m, db } = await setup();
     const id = await added(m, bond());
@@ -1695,7 +1657,6 @@ describe("an update's date", () => {
     const cases: [PositionArgs, Parameters<typeof updatePosition>[3]][] = [
       [position({}), { note: "kept aside" }],
       [position({}), { dryPowder: true }],
-      [fund(), { cost: 40 }],
     ];
     for (const [args, change] of cases) {
       const { m, db } = await setup();
@@ -1706,28 +1667,6 @@ describe("an update's date", () => {
         "2026-05-03",
       ]);
     }
-  });
-
-  test("a fund's cost converts at the day its cost was set", async () => {
-    const { m, db } = await setup();
-    pair(db, "EURUSD=X", 1.3, {
-      "2026-05-03": [1.1, true],
-      "2026-09-14": [1.2, true],
-      [LIVE]: [1.3, false],
-    });
-    const costIn = async () =>
-      (await holdingsOf(m, "USD")).holdings.find((x) => x.kind === "fund")!
-        .converted!.cost;
-    const id = await added(m, fund({ cost: 40 }));
-    expect(await costIn()).toBe(44);
-    const repriced = await updated(m, id, { price: 11 });
-    expect(await costIn()).toBe(44);
-    const recosted = await updated(m, repriced.position.id, {
-      cost: 50,
-      date: "2026-09-14",
-    });
-    await updated(m, recosted.position.id, { price: 12 });
-    expect(await costIn()).toBe(60);
   });
 
   test("a given date wins, and a future one is refused", async () => {
@@ -1909,8 +1848,6 @@ describe("the owner's time zone", () => {
     symbol: null,
     currency: "USD",
     amount: 1000,
-    units: null,
-    price: null,
     cost: null,
     coupon: null,
     maturity: null,
@@ -2045,31 +1982,6 @@ describe("setup and brokers over the tool", () => {
 });
 
 describe("a holding's figures", () => {
-  test("a fund's part carries the fund's average cost", async () => {
-    const { m } = await setup();
-    const r = await addPosition(m, CASEY, {
-      kind: "fund",
-      portfolio: "Shares",
-      name: "Made Up Fund",
-      symbol: null,
-      currency: "EUR",
-      amount: null,
-      units: 4,
-      price: 12,
-      cost: 40,
-      coupon: null,
-      maturity: null,
-      date: "2026-05-03",
-      broker: "North",
-      note: null,
-      dryPowder: false,
-    });
-    if ("error" in r) throw new Error(r.message);
-    const fund = (await holdingsOf(m)).holdings.find((x) => x.kind === "fund")!;
-    expect(fund.average_cost).toBe(10);
-    expect(fund.parts.map((p) => p.average_cost)).toEqual([10]);
-  });
-
   test("a holding's weight is its share of its own currency", async () => {
     const { m } = await setup();
     await trade(m, {});
@@ -2087,7 +1999,7 @@ describe("the tool's description", () => {
     const d = tools(m).find((t) => t.name === "portfolio")!.description;
     expect(d).toContain("as_of: bought");
     expect(d).toContain("price: listing's, see fetched_at");
-    expect(d).toContain("list: portfolios, brokers, markets.");
+    expect(d).toContain("list: portfolios, brokers, markets, funds.");
     expect(d.length).toBeLessThanOrEqual(1024);
   });
 });
@@ -2101,7 +2013,9 @@ describe("a position's market", () => {
     action: "add",
     kind: "fund",
     portfolio: "Shares",
+    isin: "ZZFUND000011",
     name: "Made Up Fund",
+    side: "buy",
     units: 10,
     price: 5,
     currency: "USD",
@@ -2114,10 +2028,14 @@ describe("a position's market", () => {
       "KW",
       "US",
     ]);
-    const plain = await ask(m, { ...fund, name: "Unplaced Made Up Fund" });
-    expect(plain.body.position.market).toBeNull();
+    const plain = await ask(m, {
+      ...fund,
+      isin: "ZZFUND000029",
+      name: "Unplaced Made Up Fund",
+    });
+    expect(plain.body.fund.market).toBeNull();
     const placed = await ask(m, { ...fund, market: "us" });
-    expect(placed.body.position.market).toBe("US");
+    expect(placed.body.fund.market).toBe("US");
     const h = await holdingsOf(m);
     const rows = h.holdings.filter((x) => x.kind === "fund");
     expect(rows.map((x) => [x.name, x.market]).sort()).toEqual([
@@ -2147,15 +2065,19 @@ describe("a position's market", () => {
 
   test("an update sets it or takes it off; a bond's is its listing's", async () => {
     const { m } = await setup();
-    const id = (await ask(m, fund)).body.position.id;
-    const set = await ask(m, { action: "update", position: id, market: "KW" });
-    expect(set.body.position.market).toBe("KW");
+    await ask(m, fund);
+    const set = await ask(m, {
+      action: "update",
+      isin: fund.isin,
+      market: "KW",
+    });
+    expect(set.body.fund.market).toBe("KW");
     const off = await ask(m, {
       action: "update",
-      position: set.body.position.id,
+      name: fund.name,
       market: null,
     });
-    expect(off.body.position.market).toBeNull();
+    expect(off.body.fund.market).toBeNull();
     const bond = await ask(m, {
       action: "add",
       kind: "bond",

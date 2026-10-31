@@ -17,12 +17,24 @@ export type PortfolioRow = {
 
 export type BrokerRow = { id: number; name: string };
 
+// a fund the owner prices, with its latest price and that price's day
+export type FundRow = {
+  id: string;
+  isin: string;
+  name: string;
+  currency: string;
+  market: string | null;
+  price: number | null;
+  as_of: string | null;
+};
+
 export type Overview = {
   display_currency: string | null;
   // the owner's IANA zone, none until they name one
   time_zone?: string | null;
-  // what a cash or fund position can name as its market
+  // what cash or a fund can name as the market its money is in
   markets?: string[];
+  funds?: FundRow[];
   portfolios: PortfolioRow[];
   brokers: BrokerRow[];
 };
@@ -58,6 +70,8 @@ export type Holding = {
   name: string | null;
   type: string;
   market: string | null;
+  // a fund's
+  isin?: string;
   currency: string;
   unit?: string | null;
   quantity: number | null;
@@ -174,6 +188,32 @@ export type TradeIn = {
   again?: boolean;
 };
 
+// a buy or sell of a fund, by its ISIN; its first buy names it
+export type FundTradeIn = {
+  portfolio: number;
+  isin: string;
+  name?: string;
+  side: "buy" | "sell";
+  units: number | "all";
+  price?: number;
+  total?: number;
+  currency?: string;
+  date: string;
+  broker?: string;
+  market?: string;
+  note?: string;
+  again?: boolean;
+};
+
+export type FundPriceIn = {
+  price?: number;
+  // the day the price is for
+  date?: string;
+  name?: string;
+  // null takes it off
+  market?: string | null;
+};
+
 export type SavedTrade = {
   id: number;
   quantity: number;
@@ -194,13 +234,11 @@ export type Listing = {
 };
 
 export type PositionIn = {
-  kind: "cash" | "fund" | "bond";
+  kind: "cash" | "bond";
   portfolio: number;
   name: string;
   currency?: string;
   amount?: number;
-  units?: number;
-  price?: number;
   cost?: number;
   coupon?: number;
   maturity?: string;
@@ -216,8 +254,6 @@ export type PositionChange = {
   // a change to the amount, in currency when it is not the position's own
   by?: number;
   currency?: string;
-  units?: number;
-  price?: number;
   date?: string;
   // null takes it off
   market?: string | null;
@@ -233,7 +269,7 @@ export type ImportRow = {
 };
 
 export type Imported = {
-  kind: "trades" | "cash" | "funds" | "bonds";
+  kind: "trades" | "cash" | "bonds";
   portfolio: string;
   broker: string | null;
   saved: boolean;
@@ -282,6 +318,20 @@ export function plainError(said: string): string {
   if (/^the same trade was saved as trade \d+ in the last/i.test(t)) {
     return JUST_SAVED;
   }
+  if (/^isin must be an ISIN/i.test(t)) return "Not a valid ISIN.";
+  if (/^the fund \S+ has this name/i.test(t)) {
+    return "Another fund has this name.";
+  }
+  if (/^no fund \S+ yet; its first buy names it$/i.test(t)) {
+    return "Name the fund.";
+  }
+  if (/^no fund \S+ yet; its first buy names its currency$/i.test(t)) {
+    return "Pick a currency.";
+  }
+  if (/^no fund \S+; its first trade is a buy$/i.test(t)) {
+    return "Nothing of this fund is held.";
+  }
+  if (/a fund has no live price/i.test(t)) return "Give the price or total.";
   return t.charAt(0).toUpperCase() + t.slice(1);
 }
 
@@ -398,6 +448,12 @@ export function portfolioStore(call: Call, session: () => number) {
       const r = await write<{ trade: SavedTrade }>("/api/v1/trades", "POST", t);
       return "refused" in r ? r : { trade: r.done.trade };
     },
+    addFundTrade: async (t: FundTradeIn) =>
+      refusal(await write("/api/v1/funds/trades", "POST", t)),
+    setFundPrice: async (isin: string, p: FundPriceIn) =>
+      refusal(
+        await write(`/api/v1/funds/${encodeURIComponent(isin)}`, "PATCH", p),
+      ),
     addPosition: async (p: PositionIn) =>
       refusal(await write("/api/v1/positions", "POST", p)),
     updatePosition: async (id: number, change: PositionChange) =>

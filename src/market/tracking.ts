@@ -4,6 +4,7 @@
 import { portfolioInstruments } from "../portfolios/store.ts";
 import { ruleInstruments } from "../rules/store.ts";
 import { DAY_MS } from "../runtime/clock.ts";
+import { FUND_SOURCE } from "../sources/ids.ts";
 import type { Db } from "../storage/db/index.ts";
 import { type Instrument, readInstruments } from "./instruments.ts";
 
@@ -50,10 +51,10 @@ export function trackedIds(
 ): Set<string> {
   const ids = new Set(
     db
-      .query<{ id: string }, [number]>(
-        "select id from instruments where last_read_at > ?",
+      .query<{ id: string }, [number, string]>(
+        "select id from instruments where last_read_at > ? and source <> ?",
       )
-      .all(now - tracking.readMs)
+      .all(now - tracking.readMs, FUND_SOURCE)
       .map((r) => r.id),
   );
   for (const id of ruleInstruments(db)) ids.add(id);

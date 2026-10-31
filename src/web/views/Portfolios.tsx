@@ -10,6 +10,7 @@ import { currencyName, findCurrencies } from "../../shared/currencies.ts";
 import type {
   BrokerRow,
   Exposure,
+  FundTradeIn,
   Holding,
   Holdings,
   Imported,
@@ -76,6 +77,7 @@ import {
   today,
   tradeLine,
   tradeMoney,
+  tradeName,
   tradeSub,
   tradeTitle,
   typed,
@@ -250,12 +252,8 @@ export function PositionEdit({
   h: Holding;
   onDone: () => void;
 }) {
-  const fund = h.kind === "fund";
   // the stored amount, never the value rounded for show
-  const first = useSignal(
-    String(fund ? (h.price ?? "") : (h.parts[0]?.amount ?? "")),
-  );
-  const units = useSignal(String(h.quantity ?? ""));
+  const first = useSignal(String(h.parts[0]?.amount ?? ""));
   // a new figure is true today; a bond's date is its purchase, kept
   const now = today(store.overview.value?.time_zone ?? null);
   const date = useSignal(h.kind === "bond" ? (h.as_of ?? now) : now);
@@ -266,18 +264,13 @@ export function PositionEdit({
   const save = async (ev: Event) => {
     ev.preventDefault();
     const n = typed(first.value);
-    const u = typed(units.value);
-    if (
-      n === null ||
-      Number.isNaN(n) ||
-      (fund && (u === null || Number.isNaN(u)))
-    ) {
+    if (n === null || Number.isNaN(n)) {
       error.value = "Not a number.";
       return;
     }
     busy.value = true;
     error.value = await store.updatePosition(h.position!, {
-      ...(fund ? { price: n, units: u! } : { amount: n }),
+      amount: n,
       date: date.value,
       ...(market.value === (h.market ?? "")
         ? {}
@@ -288,22 +281,8 @@ export function PositionEdit({
   };
   return (
     <form class="pf-edit" onSubmit={save}>
-      {fund && (
-        <label class="field">
-          <span class="label">Units</span>
-          <input
-            inputMode="decimal"
-            value={units.value}
-            onInput={(e) => {
-              units.value = e.currentTarget.value;
-            }}
-          />
-        </label>
-      )}
       <label class="field">
-        <span class="label">
-          {fund ? "Price per unit" : h.kind === "bond" ? "Face" : "Amount"}
-        </span>
+        <span class="label">{h.kind === "bond" ? "Face" : "Amount"}</span>
         <input
           inputMode="decimal"
           value={first.value}
@@ -348,6 +327,177 @@ export function PositionEdit({
         </button>
       </div>
     </form>
+  );
+}
+
+// a fund's price for a day (a day already priced takes the new one), and
+// its name set right
+export function FundPriceEdit({
+  store,
+  h,
+  onDone,
+}: {
+  store: PortfolioStore;
+  h: Holding;
+  onDone: () => void;
+}) {
+  const px = useSignal(String(h.price ?? ""));
+  const now = today(store.overview.value?.time_zone ?? null);
+  const date = useSignal(now);
+  const name = useSignal(h.name ?? "");
+  const markets = store.overview.value?.markets ?? [];
+  const market = useSignal(h.market ?? "");
+  const busy = useSignal(false);
+  const error = useSignal<string | null>(null);
+  const save = async (ev: Event) => {
+    ev.preventDefault();
+    // only a price typed or a day picked is sent, so a rename or a market
+    // alone never turns the shown price into one the owner entered
+    const repriced = px.value !== String(h.price ?? "") || date.value !== now;
+    const n = typed(px.value);
+    if (repriced && (n === null || Number.isNaN(n))) {
+      error.value = "Not a number.";
+      return;
+    }
+    const named = name.value.trim();
+    if (named === "") {
+      error.value = "Name the fund.";
+      return;
+    }
+    const renamed = named !== (h.name ?? "");
+    const moved = market.value !== (h.market ?? "");
+    if (!repriced && !renamed && !moved) {
+      onDone();
+      return;
+    }
+    busy.value = true;
+    error.value = await store.setFundPrice(h.isin!, {
+      ...(repriced ? { price: n!, date: date.value } : {}),
+      ...(renamed ? { name: named } : {}),
+      ...(moved ? { market: market.value === "" ? null : market.value } : {}),
+    });
+    busy.value = false;
+    if (error.value === null) onDone();
+  };
+  return (
+    <form class="pf-edit" onSubmit={save}>
+      <label class="field">
+        <span class="label">Name</span>
+        <input
+          value={name.value}
+          onInput={(e) => {
+            name.value = e.currentTarget.value;
+          }}
+        />
+      </label>
+      <label class="field">
+        <span class="label">Price per unit</span>
+        <input
+          inputMode="decimal"
+          value={px.value}
+          onInput={(e) => {
+            px.value = e.currentTarget.value;
+          }}
+        />
+      </label>
+      <label class="field">
+        <span class="label">Date</span>
+        <input
+          type="date"
+          value={date.value}
+          onInput={(e) => {
+            date.value = e.currentTarget.value;
+          }}
+        />
+      </label>
+      {markets.length > 0 && <MarketPick value={market} markets={markets} />}
+      <div class="pf-form-foot">
+        {error.value && (
+          <p class="pf-error" role="alert">
+            {error.value}
+          </p>
+        )}
+        <button
+          type="button"
+          class="btn btn-small"
+          onClick={onDone}
+          disabled={busy.value}
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          class="btn btn-small btn-primary"
+          disabled={busy.value}
+        >
+          {busy.value ? "Saving" : "Save"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+// Buy and Sell as a share's, and its price set by its owner
+export function FundActions({
+  h,
+  store,
+  onTrade,
+}: {
+  h: Holding;
+  store: PortfolioStore;
+  onTrade: (s: AddStart) => void;
+}) {
+  const pricing = useSignal(false);
+  if (pricing.value) {
+    return (
+      <div class="pf-row-actions">
+        <FundPriceEdit
+          store={store}
+          h={h}
+          onDone={() => {
+            pricing.value = false;
+          }}
+        />
+      </div>
+    );
+  }
+  const where =
+    h.parts.length === 1
+      ? { portfolio: h.parts[0]!.portfolio, broker: h.parts[0]!.broker }
+      : {};
+  return (
+    <div class="pf-row-actions">
+      {(["buy", "sell"] as const).map((side) => (
+        <button
+          key={side}
+          type="button"
+          class="btn btn-small"
+          onClick={() =>
+            onTrade({
+              symbol: h.id!,
+              side,
+              fund: {
+                isin: h.isin!,
+                name: h.name ?? h.isin!,
+                market: h.market,
+              },
+              ...where,
+            })
+          }
+        >
+          {side === "buy" ? "Buy" : "Sell"}
+        </button>
+      ))}
+      <button
+        type="button"
+        class="btn btn-small"
+        onClick={() => {
+          pricing.value = true;
+        }}
+      >
+        Set price
+      </button>
+    </div>
   );
 }
 
@@ -605,7 +755,7 @@ function HoldingRow({
           </>
         )}
       </dl>
-      {h.kind === "holding" && h.parts.length > 1 && (
+      {(h.kind === "holding" || h.kind === "fund") && h.parts.length > 1 && (
         <table class="pf-parts">
           <thead>
             <tr>
@@ -656,6 +806,9 @@ function HoldingRow({
             ),
           )}
         </div>
+      )}
+      {h.kind === "fund" && h.id !== null && h.isin && (
+        <FundActions h={h} store={store} onTrade={onTrade} />
       )}
       {h.kind !== "holding" && h.position !== null && (
         <PositionActions store={store} h={h} />
@@ -793,7 +946,7 @@ function TradeItem({ store, t }: { store: PortfolioStore; t: TradeRow }) {
             >
               {t.side === "buy" ? "Buy" : "Sell"}
             </span>
-            <span class="ins-symbol">{symbolOf(t.symbol)}</span>
+            <span class="ins-symbol">{tradeName(t)}</span>
             {removed && <span class="tag">Removed</span>}
           </>
         }
@@ -1271,12 +1424,14 @@ function paidChoices(store: PortfolioStore, listing: string | null) {
   return [listing ?? "", ...[...codes].sort()];
 }
 
-// a trade to start from: Buy or Sell on a holding's row
+// a trade to start from: Buy or Sell on a holding's row; a fund's opens
+// the Fund tab on it
 export type AddStart = {
   symbol: string;
   side: "buy" | "sell";
   portfolio?: string;
   broker?: string | null;
+  fund?: { isin: string; name: string; market: string | null };
 };
 
 export function AddForm({
@@ -1307,7 +1462,7 @@ export function AddForm({
   const tab = store.portfolio.value;
   const only = portfolios.length === 1 ? portfolios[0]!.id : undefined;
   const kind = useSignal<Remembered["kind"]>(
-    start ? "trade" : (opened ?? kept.kind),
+    start ? (start.fund ? "fund" : "trade") : (opened ?? kept.kind),
   );
   const side = useSignal<"buy" | "sell">(start?.side ?? "buy");
   const portfolio = useSignal(
@@ -1343,7 +1498,8 @@ export function AddForm({
   // cash set aside for buying is what is added most
   const dry = useSignal(true);
   // the market a fund's shares are in; none unless picked
-  const market = useSignal("");
+  const market = useSignal(start?.fund?.market ?? "");
+  const isin = useSignal(start?.fund?.isin ?? "");
   const payFrom = useSignal("");
   const own = useSignal(false);
   const busy = saving ?? own;
@@ -1400,7 +1556,8 @@ export function AddForm({
     });
   };
   useEffect(() => {
-    if (start?.symbol) pick(start.symbol);
+    // a fund has no listing to read
+    if (start?.symbol && !start.fund) pick(start.symbol);
   }, []);
   // the holdings arrive after a start pick: place it once they do
   useEffect(() => {
@@ -1428,22 +1585,38 @@ export function AddForm({
       ? newPortfolio.value.trim() || null
       : (portfolios.find((p) => String(p.id) === portfolio.value)?.name ??
         null);
-  const parts =
-    kind.value === "trade" && picked.value
-      ? heldAt(all.value ?? store.holdings.value, picked.value.id)
-      : [];
+  // a fund kept, named by the ISIN typed: its name and currency stand
+  const code = isin.value.trim().toUpperCase();
+  const knownFund =
+    code === ""
+      ? null
+      : ((o?.funds ?? []).find((x) => x.isin === code) ?? null);
+  const heldId =
+    kind.value === "trade"
+      ? picked.value?.id
+      : kind.value === "fund"
+        ? knownFund?.id
+        : undefined;
+  const shown = all.value ?? store.holdings.value;
+  const parts = heldId ? heldAt(shown, heldId) : [];
   const inPortfolio = parts.filter((p) => p.portfolio === portfolioName);
   const heldHere = inPortfolio.filter((p) => (p.broker ?? "") === broker.value);
   const heldQty = heldHere.reduce((s, p) => s + (p.quantity ?? 0), 0);
   // the server refuses a sell of what is not held; a holding's own Sell
   // is trusted until its listing loads
   const sellable =
-    kind.value !== "trade" ||
-    (picked.value === null
-      ? Boolean(start?.symbol) && chosen.value
-      : (portfolio.value === "" ? parts : inPortfolio).some(
-          (x) => (x.quantity ?? 0) > 0,
-        ));
+    kind.value === "fund"
+      ? shown === null
+        ? Boolean(start?.fund)
+        : (portfolio.value === "" ? parts : inPortfolio).some(
+            (x) => (x.quantity ?? 0) > 0,
+          )
+      : kind.value !== "trade" ||
+        (picked.value === null
+          ? Boolean(start?.symbol) && chosen.value
+          : (portfolio.value === "" ? parts : inPortfolio).some(
+              (x) => (x.quantity ?? 0) > 0,
+            ));
   useEffect(() => {
     if (!sellable && side.value === "sell") side.value = "buy";
   }, [sellable]);
@@ -1467,7 +1640,9 @@ export function AddForm({
       ? null
       : byTotal.value
         ? p
-        : tradeMoney(side.value, q, p, f, picked.value?.unit);
+        : kind.value === "fund"
+          ? q * p
+          : tradeMoney(side.value, q, p, f, picked.value?.unit);
   const moneyShown =
     money !== null && cur
       ? shownIn(all.value ?? store.holdings.value, money, cur)
@@ -1490,7 +1665,41 @@ export function AddForm({
   // what is saved, read once: fields edited while it saves change nothing
   const body = ():
     | { trade: Omit<TradeIn, "portfolio" | "broker"> }
+    | { fund: Omit<FundTradeIn, "portfolio" | "broker"> }
     | { position: Omit<PositionIn, "portfolio" | "broker"> } => {
+    if (kind.value === "fund") {
+      if (code === "") throw new Error("Give the ISIN.");
+      if (!knownFund && name.value.trim() === "") {
+        throw new Error("Name the fund.");
+      }
+      if (!knownFund && currency.value === "") {
+        throw new Error("Pick a currency.");
+      }
+      const all =
+        side.value === "sell" &&
+        sellAll.value &&
+        allMeansHere &&
+        qty.value === String(heldQty);
+      const units = num(qty, "Units", true, "above")!;
+      return {
+        fund: {
+          isin: code,
+          ...(knownFund
+            ? {}
+            : { name: name.value.trim(), currency: currency.value }),
+          side: side.value,
+          units: all ? "all" : units,
+          ...(byTotal.value
+            ? { total: num(px, "Total paid", true) }
+            : { price: num(px, "Price per unit", true) }),
+          date: date.value,
+          ...(market.value !== "" && market.value !== (knownFund?.market ?? "")
+            ? { market: market.value }
+            : {}),
+          ...(note.value.trim() ? { note: note.value.trim() } : {}),
+        },
+      };
+    }
     if (kind.value === "trade") {
       if (symbol.value.trim() === "") throw new Error("Pick a symbol.");
       const all =
@@ -1523,19 +1732,12 @@ export function AddForm({
         kind: kind.value,
         name: name.value.trim(),
         ...(c === "" ? {} : { currency: c }),
-        ...(kind.value === "fund"
-          ? {
-              units: num(qty, "Units", true, "above"),
-              price: num(px, "Price per unit", true),
-            }
-          : {
-              amount: num(
-                amountText,
-                kind.value === "bond" ? "Face" : "Amount",
-                true,
-                kind.value === "bond" ? "above" : "zero",
-              ),
-            }),
+        amount: num(
+          amountText,
+          kind.value === "bond" ? "Face" : "Amount",
+          true,
+          kind.value === "bond" ? "above" : "zero",
+        ),
         ...(kind.value !== "cash" ? { cost: num(cost, "Cost", false) } : {}),
         ...(kind.value === "bond"
           ? {
@@ -1631,6 +1833,13 @@ export function AddForm({
           half.value = true;
         }
       }
+    } else if ("fund" in out) {
+      refused = await store.addFundTrade({
+        ...out.fund,
+        portfolio: pid,
+        broker: b,
+        ...(twice ? { again: true } : {}),
+      });
     } else {
       refused = await store.addPosition({
         ...out.position,
@@ -1720,12 +1929,18 @@ export function AddForm({
             }${place}`
           : null
         : kind.value === "fund"
-          ? named &&
-            q !== null &&
-            !Number.isNaN(q) &&
-            p !== null &&
-            !Number.isNaN(p)
-            ? `${named} · ${quantity(q)} units at ${price(p, posCur || null)}${place}`
+          ? (knownFund?.name ?? named) && q !== null && !Number.isNaN(q)
+            ? `${side.value === "buy" ? "Buy" : "Sell"} ${quantity(q)} ${q === 1 ? "unit" : "units"} of ${
+                knownFund?.name ?? named
+              }${
+                byTotal.value || p === null || Number.isNaN(p)
+                  ? ""
+                  : ` at ${price(p, knownFund?.currency ?? (posCur || null))}`
+              }${
+                money !== null && (knownFund?.currency ?? posCur)
+                  ? ` · ${amount(money, knownFund?.currency ?? posCur)}`
+                  : ""
+              }${place}`
             : null
           : named && nOk && posCur
             ? `${named} · ${amount(n, posCur)} face${place}`
@@ -1743,6 +1958,50 @@ export function AddForm({
         }}
       />
     </div>
+  );
+  const sides = (
+    <div class="seg pf-side">
+      {(["buy", "sell"] as const).map((s) => (
+        <button
+          key={s}
+          type="button"
+          aria-pressed={side.value === s}
+          disabled={s === "sell" && !sellable}
+          class={`seg-option${side.value === s ? ` seg-on pf-side-${s}` : ""}`}
+          onClick={() => {
+            side.value = s;
+          }}
+        >
+          {s === "buy" ? "Buy" : "Sell"}
+        </button>
+      ))}
+    </div>
+  );
+  const allButton =
+    side.value === "sell" && heldQty > 0 ? (
+      <button
+        type="button"
+        class="btn-text pf-all"
+        onClick={() => {
+          qty.value = String(heldQty);
+          sellAll.value = true;
+        }}
+      >
+        All {quantity(heldQty)}
+      </button>
+    ) : undefined;
+  const totalToggle = (
+    <button
+      type="button"
+      class="btn-text pf-all"
+      onClick={() => {
+        byTotal.value = !byTotal.value;
+        px.value = "";
+        pxLive.value = false;
+      }}
+    >
+      {byTotal.value ? "Use price" : "Use total"}
+    </button>
   );
   const unpick = () => {
     chosen.value = false;
@@ -1848,24 +2107,7 @@ export function AddForm({
                 }}
               />
             )}
-            <div class="seg pf-side">
-              {(["buy", "sell"] as const).map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  aria-pressed={side.value === s}
-                  disabled={s === "sell" && !sellable}
-                  class={`seg-option${
-                    side.value === s ? ` seg-on pf-side-${s}` : ""
-                  }`}
-                  onClick={() => {
-                    side.value = s;
-                  }}
-                >
-                  {s === "buy" ? "Buy" : "Sell"}
-                </button>
-              ))}
-            </div>
+            {sides}
             <div class="pf-pair">
               <Field
                 label="Quantity"
@@ -1874,20 +2116,7 @@ export function AddForm({
                   sellAll.value = false;
                 }}
                 decimal
-                after={
-                  side.value === "sell" && heldQty > 0 ? (
-                    <button
-                      type="button"
-                      class="btn-text pf-all"
-                      onClick={() => {
-                        qty.value = String(heldQty);
-                        sellAll.value = true;
-                      }}
-                    >
-                      All {quantity(heldQty)}
-                    </button>
-                  ) : undefined
-                }
+                after={allButton}
               />
               <Field
                 label={byTotal.value ? "Total paid" : "Price"}
@@ -1913,19 +2142,7 @@ export function AddForm({
                 onEdit={() => {
                   pxLive.value = false;
                 }}
-                after={
-                  <button
-                    type="button"
-                    class="btn-text pf-all"
-                    onClick={() => {
-                      byTotal.value = !byTotal.value;
-                      px.value = "";
-                      pxLive.value = false;
-                    }}
-                  >
-                    {byTotal.value ? "Use price" : "Use total"}
-                  </button>
-                }
+                after={totalToggle}
               />
             </div>
             <div class="pf-pair">
@@ -1989,20 +2206,59 @@ export function AddForm({
           </>
         ) : kind.value === "fund" ? (
           <>
-            <Field label="Name" value={name} />
+            {sides}
             <div class="pf-pair">
-              <Field label="Units" value={qty} decimal />
-              <Field label="Price per unit" value={px} decimal />
+              <Field
+                label="ISIN"
+                value={isin}
+                onEdit={() => {
+                  sellAll.value = false;
+                  error.value = null;
+                }}
+              />
+              {knownFund ? (
+                <div class="field">
+                  <span class="pf-field-head">
+                    <span class="label">Name</span>
+                  </span>
+                  <div class="pf-chosen">
+                    <span class="pf-chosen-main">
+                      <span class="cut">{knownFund.name}</span>
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <Field label="Name" value={name} />
+              )}
             </div>
             <div class="pf-pair">
-              {currencyField}
-              <Field label="As of" value={date} type="date" />
+              <Field
+                label="Units"
+                value={qty}
+                onEdit={() => {
+                  sellAll.value = false;
+                }}
+                decimal
+                after={allButton}
+              />
+              <Field
+                label={inCurrency(
+                  byTotal.value ? "Total paid" : "Price per unit",
+                  knownFund?.currency ?? (currency.value || null),
+                )}
+                value={px}
+                placeholder={byTotal.value ? "Fees in" : undefined}
+                decimal
+                after={totalToggle}
+              />
             </div>
             <div class="pf-pair">
-              <Field label="Cost" value={cost} placeholder="Optional" decimal />
+              <Field label="Date" value={date} type="date" />
+              {knownFund ? null : currencyField}
             </div>
             {marketPick}
             {placePicks}
+            <Field label="Note" value={note} placeholder="Optional" />
           </>
         ) : (
           <>
@@ -2061,7 +2317,11 @@ export function AddForm({
                     ? side.value === "buy"
                       ? "Add buy"
                       : "Add sell"
-                    : KIND_TITLES[kind.value]}
+                    : kind.value === "fund"
+                      ? side.value === "buy"
+                        ? "Add buy"
+                        : "Add sell"
+                      : KIND_TITLES[kind.value]}
               </button>
             </>
           )}

@@ -216,11 +216,6 @@ describe("an import's currencies", () => {
       ],
       ["Item,Amount (ABC),As Of,Note", "Account,10,2026-04-17,"],
       [
-        "Fund,Currency,Units,Value,Cost Basis,As Of,Note",
-        "Made Up Fund,ABC,10,125,100,2026-04-17,",
-        "Made Up Fund,eur,10,125,100,2026-04-17,",
-      ],
-      [
         "Item,Symbol,Currency,Amount,Rate (%),Purchase Date,Maturity,Note",
         "Made Up Bond,,ABC,1000,5.5,2026-01-02,2030-01-02,",
       ],
@@ -235,7 +230,7 @@ describe("an import's currencies", () => {
       if ("error" in r) throw new Error(r.message);
       statuses.push(r.rows.map((row) => row.status));
     }
-    expect(statuses).toEqual([["bad", "ok"], ["bad"], ["bad", "ok"], ["bad"]]);
+    expect(statuses).toEqual([["bad", "ok"], ["bad"], ["bad"]]);
   });
 });
 
@@ -275,17 +270,13 @@ describe("position imports", () => {
     );
   });
 
-  test("funds are priced by hand and bonds at face without a listing", async () => {
+  test("bonds are valued at face without a listing", async () => {
     const { m, db } = await setup();
-    const funds = [
-      "Fund,Currency,Units,Value,Cost Basis,As Of,Note",
-      "Made Up Fund,EUR,10,125,100,2026-04-17,",
-    ].join("\n");
     const bonds = [
       "Item,Symbol,Currency,Amount,Rate (%),Purchase Date,Maturity,Note",
       "Made Up Bond,,EUR,1000,5.5,2026-01-02,2030-01-02,",
     ].join("\n");
-    for (const csv of [funds, bonds]) {
+    for (const csv of [bonds]) {
       const r = await importCsv(
         m,
         CASEY,
@@ -294,8 +285,7 @@ describe("position imports", () => {
       if ("error" in r) throw new Error(r.message);
       expect(r.counts.saved).toBe(1);
     }
-    const [bond, fund] = readPositions(db);
-    expect(fund).toMatchObject({ kind: "fund", units: 10, price: 12.5 });
+    const [bond] = readPositions(db);
     expect(bond).toMatchObject({
       kind: "bond",
       amount: 1000,

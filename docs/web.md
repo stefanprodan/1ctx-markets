@@ -357,13 +357,19 @@ signed in with the admin key alone.
 - **Holdings** are rows that open, ranked by their value in the display
   currency across currencies (the server groups by currency; the page
   does not), rows with no rate last: an instrument by its symbol with
-  quantity × average cost under it, a position by its name (cash, "Dry
-  powder", a fund as "Fund · NAV" with its date (the words "priced by hand" appear nowhere in the UI), a bond with its coupon,
-  maturity and "at face" when no listing prices it). Opened: price,
+  quantity × average cost under it, a fund the owner prices and a
+  position by its name (cash, "Dry powder", a fund as "Fund · priced"
+  with its price's day (the words "priced by hand" appear nowhere in
+  the UI), a bond with its coupon, maturity and "at face" when no
+  listing prices it). Opened: price ("Price per unit" for a fund),
   cost, gain, what was paid in another currency, weight, and a table of
-  the parts per broker; a position has Edit (amount, or units and
-  price, and as of; saved as an update the server keeps) and Remove,
-  which asks once. A bond bought several times is one row listing each
+  the parts per broker; a fund has Buy and Sell, which open the add
+  panel's Fund tab on it, and Set price (its name, price per unit, the
+  day it is for, starting on the owner's today, and its market; a day
+  already priced takes the new price, and a changed name alone sends no
+  price, `PATCH /api/v1/funds/{isin}`); a position
+  has Edit (amount and as of; saved as an update the server keeps) and
+  Remove, which asks once. A bond bought several times is one row listing each
   purchase (date, face, broker) with its own Edit and Remove, since the
   merged row has no one position. Amounts show in their currency's
   minor units (`minorUnits()`: 0 for JPY, 3 for KWD), a bond's price as a
@@ -376,14 +382,20 @@ signed in with the admin key alone.
   currency (a picker when there are several), and by currency with a
   named one.
 - **Trades** newest first, twenty then "Show all", each with its side,
-  symbol, quantity × price and fees, date, portfolio, broker and who
+  symbol (a fund's name), quantity × price and fees, date, portfolio, broker and who
   entered it ("Web", "Admin" or the key's name); Remove asks once, and
   the Removed switch shows removed ones with Restore.
 - **Add** opens a panel beside the page (a sheet from the bottom on a
   phone; Escape, the backdrop or the close button shut it), so the page
-  stays where it was: Trade, Cash, Fund (a fund
-  bought from its manager and valued at the NAV per unit given, with a line
-  saying so; a fund with a symbol, an ETF among them, is a trade) or Bond. A trade starts from a symbol search
+  stays where it was: Trade, Cash, Fund or Bond. Fund records a buy or
+  sell of a fund bought from its manager, one per confirmation
+  (`POST /api/v1/funds/trades`; a fund with a symbol, an ETF among
+  them, is a trade): Buy or Sell, ISIN and name, units, price per unit
+  or the total paid ("Use total", fees in), date, the currency on a
+  new fund, market, portfolio, broker and note. An ISIN the server
+  keeps (`funds` in `GET /api/v1/portfolios`) shows the fund's name and
+  hides the name and currency, which a first buy gives; a sell offers
+  All as a trade's does. A trade starts from a symbol search
   (the head search's `searcher()`, shares, ETFs, funds and crypto ranked
   before futures and the like (`ranked()`), each result naming its
   exchange (`listingWords()`)). A pick reads the listing
@@ -412,8 +424,8 @@ signed in with the admin key alone.
   Shares"). An instrument holding's opened row has Buy and Sell,
   which open the panel on it. A position's currency is the currency
   picker. Cash and a fund pick a market, "None" first, from the
-  markets the server lists, in the add form and the edit, so a fund
-  holding one market's shares counts in it. Only the kind is remembered per browser
+  markets the server lists, in the add form, cash's edit and a fund's
+  Set price, so a fund holding one market's shares counts in it. Only the kind is remembered per browser
   (`markets-portfolio-add`). A
   refusal shows beside the buttons in plain words, its ids taken out
   (`plainError()` in `data/portfolios.ts`).
@@ -440,8 +452,8 @@ signed in with the admin key alone.
   position. A retried trade the server refuses reads "This trade was
   just saved." with a "Save again" button beside it, which sends the
   same trade with `again`, for a second fill that is the same.
-- **The bundle names no source:** the import kinds read Trades, Cash,
-  Funds and Bonds.
+- **The bundle names no source:** the import kinds read Trades, Cash
+  and Bonds.
 - **Instruments:** every stored instrument from
   `GET /api/v1/instruments`, every page by `next_page_token`, in one
   card with a search over id and name, kept in the view so a refresh keeps it. Sorted by

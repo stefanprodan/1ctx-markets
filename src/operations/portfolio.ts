@@ -8,6 +8,27 @@ import { type Instrument, readInstrument } from "../market/instruments.ts";
 import { readQuote } from "../market/quotes.ts";
 import { markRead } from "../market/tracking.ts";
 import { checkZone, localDate } from "../market/zone.ts";
+import {
+  buyPrice,
+  dropBuyPrice,
+  type Fund,
+  type FundPrice,
+  fundByIsin,
+  fundByName,
+  fundKey,
+  fundPrices,
+  insertFund,
+  isFund,
+  isFundKey,
+  latestPrice,
+  listFunds,
+  type NewFund,
+  priceOn,
+  readFund,
+  setFundDetails,
+  setFundMarket,
+  setFundPrice,
+} from "../portfolios/funds.ts";
 import { missingPairs, rates } from "../portfolios/fx.ts";
 import {
   type Broker,
@@ -70,7 +91,8 @@ import {
 } from "../portfolios/value.ts";
 import { errorFields } from "../runtime/log.ts";
 import { inCirculation, isCurrencyCode } from "../shared/currencies.ts";
-import { FRED } from "../sources/ids.ts";
+import { isIsin } from "../shared/isin.ts";
+import { FRED, FUND_MARKET, FUND_SOURCE } from "../sources/ids.ts";
 import type { Db } from "../storage/db/index.ts";
 import {
   cursor,
@@ -136,17 +158,38 @@ export type TradeArgs = {
   again?: boolean;
 };
 
+// a buy or sell of a fund the owner prices, named by its ISIN or, once
+// made, its name; the first buy makes it
+export type FundTradeArgs = {
+  isin: string | null;
+  name: string | null;
+  // the market its money is in; null leaves it as it is
+  market: string | null;
+  trade: Omit<TradeArgs, "symbol">;
+};
+
+// a fund's price for a day, the market its money is in, and its name and
+// currency set right
+export type FundChange = {
+  price?: number;
+  // the day the price is for, the owner's today by default
+  date?: string;
+  // null takes it off
+  market?: string | null;
+  name?: string;
+  // only while no live trade is priced in it
+  currency?: string;
+};
+
 export type PositionArgs = {
   kind: PositionKind;
   portfolio: Ref | null;
   name: string;
   symbol: string | null;
   currency: string | null;
-  // cash's or a fund's market, as an instrument's
+  // cash's market, as an instrument's
   market?: string | null;
   amount: number | null;
-  units: number | null;
-  price: number | null;
   cost: number | null;
   coupon: number | null;
   maturity: string | null;
@@ -163,7 +206,7 @@ export type PositionChange = {
   amount?: { amount: number; currency: string | null };
   // a cash balance moved by this much, in its own or another currency
   by?: { amount: number; currency: string | null };
-  units?: number;
+  // refused: only a fund takes a price
   price?: number;
   cost?: number | null;
   date?: string;
@@ -200,6 +243,7 @@ export type PortfolioArgs =
   | ({ action: "holdings"; next: string | null } & HoldingsArgs)
   | ({ action: "trades"; next: string | null } & TradesArgs)
   | { action: "add"; kind: "trade"; trade: TradeArgs }
+  | { action: "add"; kind: "fund"; fund: FundTradeArgs }
   | { action: "add"; kind: PositionKind; position: PositionArgs }
   | {
       action: "update";
@@ -207,6 +251,12 @@ export type PortfolioArgs =
       position: number | "dry_powder";
       portfolio: Ref | null;
       change: PositionChange;
+    }
+  | {
+      action: "update";
+      // its ISIN or name
+      fund: string;
+      change: FundChange;
     }
   | { action: "rename_broker"; broker: string; name: string }
   | {
@@ -298,21 +348,28 @@ export function rowId(value: unknown, name: string): number {
 }
 
 export function parseTrade(f: Record<string, unknown>): TradeArgs {
+  return { symbol: text(f.symbol, "symbol"), ...tradeFigures(f, "quantity") };
+}
+
+// a trade's figures, its quantity under a share's word or a fund's
+function tradeFigures(
+  f: Record<string, unknown>,
+  units: "quantity" | "units",
+): Omit<TradeArgs, "symbol"> {
   if (f.side !== "buy" && f.side !== "sell") {
     throw new ArgError("side must be buy or sell");
   }
   return {
     portfolio: ref(f.portfolio),
-    symbol: text(f.symbol, "symbol"),
     side: f.side,
     quantity:
-      f.quantity === "all"
+      f[units] === "all"
         ? f.side === "sell"
           ? "all"
           : (() => {
-              throw new ArgError("quantity all is a sell's");
+              throw new ArgError(`${units} all is a sell's`);
             })()
-        : amount(f.quantity, "quantity", { positive: true }),
+        : amount(f[units], units, { positive: true }),
     price: optionalAmount(f.price, "price"),
     total: (() => {
       const t = optionalAmount(f.total, "total");
@@ -335,6 +392,77 @@ export function parseTrade(f: Record<string, unknown>): TradeArgs {
   };
 }
 
+// upper case, its check digit checked, so a typo never makes a fund
+export function isinArg(value: unknown, name = "isin"): string | null {
+  if (value === undefined || value === null) return null;
+  const isin = text(value, name, 12).toUpperCase();
+  if (!isIsin(isin)) {
+    throw new ArgError(
+      `${name} must be an ISIN: 2 letters, 9 letters or digits, and a check digit that matches`,
+    );
+  }
+  return isin;
+}
+
+export function parseFundTrade(f: Record<string, unknown>): FundTradeArgs {
+  const isin = isinArg(f.isin);
+  const name = optionalName(f.name, "name", MAX_POSITION_NAME);
+  if (isin === null && name === null) {
+    throw new ArgError("a fund's trade names the fund by isin or name");
+  }
+  return {
+    isin,
+    name,
+    market: optionalName(f.market, "market"),
+    trade: tradeFigures(f, "units"),
+  };
+}
+
+// renames: the fund is named by its ISIN, so a name is a new one; named
+// by its name alone, the name only finds it
+export function parseFundChange(
+  f: Record<string, unknown>,
+  renames: boolean,
+): FundChange {
+  const c: FundChange = {};
+  for (const name of Object.keys(f)) {
+    if (!FUND_UPDATE.includes(name)) {
+      throw new ArgError(
+        `a fund's update takes ${FUND_UPDATE.filter((n) => n !== "isin").join(", ")}, not ${quoted(name)}`,
+      );
+    }
+  }
+  if (renames && f.name !== undefined) {
+    c.name = text(f.name, "name", MAX_POSITION_NAME);
+  }
+  if (f.currency !== undefined) {
+    const code = currencyArg(f.currency);
+    if (code === null) throw new ArgError("currency must be a currency code");
+    c.currency = code;
+  }
+  if (f.price !== undefined) c.price = amount(f.price, "price");
+  if (f.date !== undefined) {
+    const d = date(f.date, "date");
+    if (d === null) throw new ArgError("date must be a date, YYYY-MM-DD");
+    if (c.price === undefined) throw new ArgError("date goes with price");
+    c.date = d;
+  }
+  if (f.market !== undefined) c.market = optionalName(f.market, "market");
+  if (
+    c.price === undefined &&
+    c.market === undefined &&
+    c.name === undefined &&
+    c.currency === undefined
+  ) {
+    throw new ArgError(
+      renames
+        ? "a fund's update changes price, market, name or currency"
+        : "a fund's update changes price, market or currency; named by its isin, its name too",
+    );
+  }
+  return c;
+}
+
 export function parsePosition(
   kind: PositionKind,
   f: Record<string, unknown>,
@@ -346,8 +474,6 @@ export function parsePosition(
     symbol: null,
     currency: currencyArg(f.currency),
     amount: null,
-    units: null,
-    price: null,
     cost: optionalAmount(f.cost, "cost"),
     coupon: null,
     maturity: null,
@@ -366,13 +492,6 @@ export function parsePosition(
       ...base,
       amount: amount(f.amount, "amount"),
       dryPowder: f.dry_powder === true,
-    };
-  }
-  if (kind === "fund") {
-    return {
-      ...base,
-      units: amount(f.units, "units", { positive: true }),
-      price: amount(f.price, "price"),
     };
   }
   let coupon: number | null = null;
@@ -431,12 +550,14 @@ const ARGS: Record<Action, readonly string[]> = {
     "dry_powder",
     "again",
     "market",
+    "isin",
   ],
   update: [
     "action",
     "position",
+    "isin",
+    "name",
     "amount",
-    "units",
     "price",
     "cost",
     "date",
@@ -459,10 +580,28 @@ export const UPDATE_FIELDS = ARGS.update.filter(
   (n) =>
     n !== "action" &&
     n !== "position" &&
+    n !== "isin" &&
+    n !== "name" &&
+    // a fund's, refused for a position
+    n !== "price" &&
     n !== "currency" &&
     n !== "portfolio" &&
     n !== "kind",
 );
+
+// a fund's update: its price for a day and its market; kind and
+// portfolio are passed out of habit
+const FUND_UPDATE = [
+  "action",
+  "isin",
+  "name",
+  "price",
+  "date",
+  "market",
+  "currency",
+  "kind",
+  "portfolio",
+];
 
 export function parseChange(f: Record<string, unknown>): PositionChange {
   const c: PositionChange = {};
@@ -486,9 +625,6 @@ export function parseChange(f: Record<string, unknown>): PositionChange {
     c.by = { amount: f.by, currency: paid };
   } else if (f.currency !== undefined && f.amount === undefined) {
     throw new ArgError("currency goes with amount or by");
-  }
-  if (f.units !== undefined) {
-    c.units = amount(f.units, "units", { positive: true });
   }
   if (f.price !== undefined) c.price = amount(f.price, "price");
   if (f.cost !== undefined) c.cost = optionalAmount(f.cost, "cost");
@@ -538,15 +674,19 @@ export const KIND_ARGS: Record<AddKind, readonly string[]> = {
     "market",
   ],
   fund: [
+    "isin",
     "name",
+    "side",
     "units",
     "price",
-    "currency",
-    "cost",
+    "total",
+    "fees",
     "date",
+    "currency",
     "broker",
     "note",
     "market",
+    "again",
   ],
   bond: [
     "name",
@@ -678,9 +818,23 @@ export function parsePortfolio(input: unknown): PortfolioArgs {
         }
       }
       if (kind === "trade") return { action, kind, trade: parseTrade(f) };
+      if (kind === "fund") return { action, kind, fund: parseFundTrade(f) };
       return { action, kind, position: parsePosition(kind, f) };
     }
     case "update":
+      if (f.isin !== undefined || f.name !== undefined) {
+        if (f.position !== undefined) {
+          throw new ArgError(
+            "update takes a position, or a fund's isin or name",
+          );
+        }
+        const isin = isinArg(f.isin);
+        return {
+          action,
+          fund: isin ?? text(f.name, "name", MAX_POSITION_NAME),
+          change: parseFundChange(f, isin !== null),
+        };
+      }
       return {
         action,
         position:
@@ -792,14 +946,37 @@ export const portfolioItem = (db: Db, p: Portfolio) => ({
 
 export const brokerItem = (b: Broker) => ({ id: b.id, name: b.name });
 
+// a fund the owner prices, with its latest price and that price's day
+export function fundItem(db: Db, f: Fund) {
+  const p = latestPrice(db, f.id);
+  return {
+    id: f.id,
+    isin: f.isin,
+    name: f.name,
+    currency: f.currency,
+    market: f.market,
+    price: p?.price ?? null,
+    as_of: p?.date ?? null,
+  };
+}
+
+const priceItem = (p: FundPrice) => ({
+  date: p.date,
+  price: p.price,
+  trade: p.trade,
+  entered_by: p.enteredBy,
+  entered_at: iso(p.enteredAt),
+});
+
 export function listAll(m: Markets) {
   return {
     display_currency: displayCurrency(m.db),
     time_zone: timeZone(m.db),
     portfolios: listPortfolios(m.db).map((p) => portfolioItem(m.db, p)),
     brokers: listBrokers(m.db).map(brokerItem),
-    // what a cash or fund position can name as its market
+    // what cash or a fund can name as the market its money is in
     markets: knownMarkets(m.db),
+    funds: listFunds(m.db).map((f) => fundItem(m.db, f)),
   };
 }
 
@@ -856,8 +1033,6 @@ export function positionItem(db: Db, p: Position) {
     market: p.market,
     currency: p.currency,
     amount: p.amount,
-    units: p.units,
-    price: p.price,
     cost: p.cost,
     coupon: p.coupon,
     maturity: p.maturity,
@@ -956,7 +1131,7 @@ export function readTradeList(
       readTrades(m.db, { removed: true }).map((t) => t.instrument),
     );
     instrument =
-      [...ids].find((id) => id === upper) ??
+      [...ids].find((id) => id.toUpperCase() === upper) ??
       [...ids].find((id) => id.slice(id.indexOf(":") + 1) === upper) ??
       [...ids].find((id) => readInstrument(m.db, id)?.sourceSymbol === upper) ??
       `${upper}\u0000`;
@@ -1061,13 +1236,37 @@ export async function addTrade(
   who: Who,
   args: TradeArgs,
 ): Promise<Added | Failure> {
+  // a fund's key, as holdings and trades answer it, names the fund
+  if (isFundKey(args.symbol)) {
+    const f = fundByIsin(m.db, args.symbol);
+    if (f === null) return notFound(`${quoted(args.symbol)}: ${NO_FUND}`);
+    return addTradeOn(m, who, args, readInstrument(m.db, f.id)!, null);
+  }
+  const i = await instrumentOf(m, args.symbol);
+  if (isFailure(i)) return i;
+  return addTradeOn(m, who, args, i, null);
+}
+
+const NO_FUND = "no such fund; its first buy makes it, with its isin";
+
+// make: a fund new with this trade, made in the trade's own write after
+// every check, so a refused trade makes none
+async function addTradeOn(
+  m: Markets,
+  who: Who,
+  args: TradeArgs,
+  i: Instrument,
+  make: { fund: NewFund } | { market: string | null } | null,
+): Promise<Added | Failure> {
   const p = portfolioFor(m.db, args.portfolio);
   if (isFailure(p)) return p;
   const b = findBroker(m.db, args.broker);
   if (isFailure(b)) return b;
-  const i = await instrumentOf(m, args.symbol);
-  if (isFailure(i)) return i;
-  const day = args.date ?? localDate(i.zone, m.clock.now());
+  const fund = isFund(i);
+  // a fund's day is the owner's: it trades on no exchange
+  const day =
+    args.date ??
+    (fund ? ownerToday(m.db, m.clock.now()) : localDate(i.zone, m.clock.now()));
   if (day > latestDay(m.clock.now())) {
     return { error: "bad_arguments", message: "date is in the future" };
   }
@@ -1114,6 +1313,11 @@ export async function addTrade(
     // shares costs 100, never 99.9999999999999
     price = net / shares / (i.unit === "percent_of_par" ? 0.01 : 1);
     total = { amount: args.total, currency, includes_fees: true };
+  } else if (price === null && fund) {
+    return {
+      error: "bad_arguments",
+      message: "a fund has no live price; name its price or total",
+    };
   } else if (price === null) {
     const q = readQuote(m.db, i.id);
     if (q === null || i.currency === null) {
@@ -1154,11 +1358,24 @@ export async function addTrade(
     enteredBy: who.name,
   }));
   const done = await m.writer.write((db): number[] | Failure => {
-    if (readInstrument(db, i.id) === null) {
+    const now = m.clock.now();
+    // made by another call since this one looked: that one stands
+    const making =
+      make !== null && "fund" in make && readFund(db, i.id) === null
+        ? make.fund
+        : null;
+    if (making !== null) {
+      const taken = fundByName(db, making.name);
+      if (taken !== null) {
+        return conflict(
+          `the fund ${taken.isin} has this name; name a new fund apart`,
+        );
+      }
+    } else if (readInstrument(db, i.id) === null) {
       return notFound(`${i.id}: deleted while the trade was added`);
     }
     if (!args.again) {
-      const since = m.clock.now() - RETRY_MS;
+      const since = now - RETRY_MS;
       for (const row of rows) {
         const same = recentSameTrade(db, row, since);
         if (same !== null) {
@@ -1171,10 +1388,17 @@ export async function addTrade(
         }
       }
     }
-    if (oversells(db, rows)) {
+    if (oversells(db, rows, i)) {
       return { error: "bad_arguments", message: OVERSOLD };
     }
-    return rows.map((row) => insertTrade(db, row, m.clock.now()));
+    if (making !== null) insertFund(db, making, who.name, now);
+    const ids = rows.map((row) => insertTrade(db, row, now));
+    if (make !== null && "market" in make && make.market !== null) {
+      setFundMarket(db, i.id, make.market);
+    }
+    // a fund added from one confirmation is valued at once
+    if (fund) for (const id of ids) buyPrice(db, readTrade(db, id)!, now);
+    return ids;
   });
   if (isFailure(done)) {
     // a sell of a number with no broker, of a share held at brokers: say
@@ -1212,10 +1436,203 @@ export async function addTrade(
   };
 }
 
+// a fund named by its ISIN or name; an unknown name lists the funds kept
+export function findFund(db: Db, named: string): Fund | Failure {
+  const f =
+    isIsin(named.trim().toUpperCase()) || isFundKey(named)
+      ? fundByIsin(db, named)
+      : fundByName(db, named);
+  if (f !== null) return f;
+  const all = listFunds(db);
+  return notFound(
+    all.length === 0
+      ? `no fund ${quoted(named)}; none is kept yet`
+      : `no fund ${quoted(named)}; funds: ${all.map((x) => `${x.name} (${x.isin})`).join(", ")}`,
+  );
+}
+
+// a buy or sell of a fund the owner prices; its first buy makes it, with
+// its ISIN, name and currency
+export async function addFundTrade(
+  m: Markets,
+  who: Who,
+  args: FundTradeArgs,
+): Promise<(Added & { fund: ReturnType<typeof fundItem> }) | Failure> {
+  const market = findMarket(m.db, args.market);
+  if (isFailure(market)) return market;
+  const kept =
+    args.isin === null
+      ? findFund(m.db, args.name!)
+      : fundByIsin(m.db, args.isin);
+  if (kept !== null && isFailure(kept)) return kept;
+  // a name that is not the fund's is a mistake, never ignored
+  if (
+    kept !== null &&
+    args.isin !== null &&
+    args.name !== null &&
+    args.name.toLowerCase() !== kept.name.toLowerCase()
+  ) {
+    return {
+      error: "bad_arguments",
+      message: `the fund ${kept.isin} is named ${quoted(kept.name)}; leave name out, or rename it with update`,
+    };
+  }
+  let done: Added | Failure;
+  if (kept !== null) {
+    done = await addTradeOn(
+      m,
+      who,
+      { ...args.trade, symbol: kept.id },
+      readInstrument(m.db, kept.id)!,
+      market === kept.market ? null : { market },
+    );
+  } else {
+    if (args.trade.side === "sell") {
+      return notFound(`no fund ${args.isin}; its first trade is a buy`);
+    }
+    if (args.name === null) {
+      return {
+        error: "bad_arguments",
+        message: `no fund ${args.isin} yet; its first buy names it`,
+      };
+    }
+    if (args.trade.currency === null) {
+      return {
+        error: "bad_arguments",
+        message: `no fund ${args.isin} yet; its first buy names its currency`,
+      };
+    }
+    const fund: NewFund = {
+      isin: args.isin!,
+      name: args.name,
+      currency: args.trade.currency,
+      market,
+    };
+    const now = m.clock.now();
+    done = await addTradeOn(
+      m,
+      who,
+      { ...args.trade, symbol: fundKey(fund.isin) },
+      {
+        id: fundKey(fund.isin),
+        market: FUND_MARKET,
+        symbol: fund.isin,
+        source: FUND_SOURCE,
+        sourceSymbol: fund.isin,
+        exchange: "",
+        name: fund.name,
+        type: "FUND",
+        currency: fund.currency,
+        unit: "per_share",
+        zone: "UTC",
+        addedAt: now,
+        updatedAt: now,
+      },
+      { fund },
+    );
+  }
+  if (isFailure(done)) return done;
+  const id = kept?.id ?? fundKey(args.isin!);
+  return { ...done, fund: fundItem(m.db, readFund(m.db, id)!) };
+}
+
+// a price for a day: an entry for a day already priced replaces it, and
+// earlier days are kept; a name or currency set right
+export async function updateFund(
+  m: Markets,
+  who: Who,
+  named: string,
+  change: FundChange,
+): Promise<
+  | {
+      fund: ReturnType<typeof fundItem>;
+      price?: { date: string; price: number };
+      replaced?: ReturnType<typeof priceItem> | null;
+      renamed_from?: string;
+    }
+  | Failure
+> {
+  const kept = findFund(m.db, named);
+  if (isFailure(kept)) return kept;
+  const market =
+    change.market === undefined ? undefined : findMarket(m.db, change.market);
+  if (isFailure(market)) return market;
+  const day = change.date ?? ownerToday(m.db, m.clock.now());
+  if (day > latestDay(m.clock.now())) {
+    return {
+      error: "bad_arguments",
+      message: "date is in the future",
+    } as const;
+  }
+  const replaced = await m.writer.write(
+    (db): { before: FundPrice | null; name: string } | Failure => {
+      const now = m.clock.now();
+      const fund = readFund(db, kept.id)!;
+      // every check before any write, so a refused update changes nothing
+      if (change.name !== undefined) {
+        const taken = fundByName(db, change.name);
+        if (taken !== null && taken.id !== fund.id) {
+          return conflict(
+            `the fund ${taken.isin} has this name; name a new fund apart`,
+          );
+        }
+      }
+      if (
+        change.currency !== undefined &&
+        change.currency !== fund.currency &&
+        readTrades(db, { instrument: fund.id }).length > 0
+      ) {
+        return {
+          error: "bad_arguments",
+          message:
+            "a fund's currency changes only while it has no live trades; its owner removes them first",
+        };
+      }
+      const before =
+        change.price === undefined ? null : priceOn(db, kept.id, day);
+      // a new currency drops the old prices, so a price sent with it comes after
+      if (change.name !== undefined || change.currency !== undefined) {
+        setFundDetails(db, kept.id, change, now);
+      }
+      if (change.price !== undefined) {
+        setFundPrice(db, kept.id, day, change.price, who.name, now);
+      }
+      if (market !== undefined) setFundMarket(db, kept.id, market);
+      return { before, name: fund.name };
+    },
+  );
+  if (isFailure(replaced)) return replaced;
+  const after = readFund(m.db, kept.id)!;
+  return {
+    fund: fundItem(m.db, after),
+    // said back, so a name sent beside the ISIN is seen to rename it
+    ...(after.name === replaced.name ? {} : { renamed_from: replaced.name }),
+    ...(change.price === undefined
+      ? {}
+      : {
+          price: { date: day, price: change.price },
+          replaced:
+            replaced.before === null ? null : priceItem(replaced.before),
+        }),
+  };
+}
+
+// a fund with every price it was given, newest first, and its trades
+export function fundDetail(m: Markets, named: string) {
+  const f = findFund(m.db, named);
+  if (isFailure(f)) return f;
+  return {
+    fund: fundItem(m.db, f),
+    prices: fundPrices(m.db, f.id).map(priceItem),
+    trades: readTrades(m.db, { instrument: f.id }).map((t) =>
+      tradeItem(m.db, t),
+    ),
+  };
+}
+
 // the part these rows touch, replayed whole with them added
-function oversells(db: Db, rows: readonly NewTrade[]): boolean {
+function oversells(db: Db, rows: readonly NewTrade[], i: Instrument): boolean {
   const first = rows[0]!;
-  const i = readInstrument(db, first.instrument)!;
   const splits = splitsOf(db, i.id);
   const brokers = new Set(rows.map((r) => r.broker));
   for (const broker of brokers) {
@@ -1273,8 +1690,6 @@ export async function addPosition(
     instrument: instrument?.id ?? null,
     market,
     amount: args.amount,
-    units: args.units,
-    price: args.price,
     cost: args.cost,
     coupon: args.coupon,
     maturity: args.maturity,
@@ -1382,22 +1797,11 @@ export async function updatePosition(
     }
     if (
       old.kind === "cash" &&
-      (change.units !== undefined ||
-        change.price !== undefined ||
-        (change.cost ?? null) !== null)
+      (change.price !== undefined || (change.cost ?? null) !== null)
     ) {
       return { error: "bad_arguments", message: "cash takes an amount" };
     }
-    if (old.kind === "fund" && change.amount !== undefined) {
-      return {
-        error: "bad_arguments",
-        message: "a fund takes units and a NAV per unit",
-      };
-    }
-    if (
-      old.kind === "bond" &&
-      (change.units !== undefined || change.price !== undefined)
-    ) {
+    if (old.kind === "bond" && change.price !== undefined) {
       return {
         error: "bad_arguments",
         message: "a bond takes its face amount",
@@ -1413,10 +1817,7 @@ export async function updatePosition(
     }
     const now = m.clock.now();
     // as_of says when the figure was true; a bond's is its purchase date
-    const revalued =
-      (old.kind === "cash" && given !== undefined) ||
-      (old.kind === "fund" &&
-        (change.units !== undefined || change.price !== undefined));
+    const revalued = old.kind === "cash" && given !== undefined;
     const asOf = change.date ?? (revalued ? ownerToday(db, now) : old.asOf);
     setPositionRemoved(db, id, who.name, now);
     const {
@@ -1432,8 +1833,6 @@ export async function updatePosition(
         ...kept,
         amount:
           moved !== null ? Math.max(0, moved) : to !== null ? to : old.amount,
-        units: change.units ?? old.units,
-        price: change.price ?? old.price,
         cost: change.cost === undefined ? old.cost : change.cost,
         asOf,
         note: change.note === undefined ? old.note : change.note,
@@ -1514,7 +1913,13 @@ export async function setTradeState(
       if (sale !== undefined) return conflict(undoesSale(sale));
       if (sales.length > 0) return conflict(SELLS_PAST);
     }
-    setTradeRemoved(db, id, removed ? who.name : null, m.clock.now());
+    const now = m.clock.now();
+    setTradeRemoved(db, id, removed ? who.name : null, now);
+    // a buy's price for its day goes and comes back with it
+    if (i !== null && isFund(i)) {
+      if (removed) dropBuyPrice(db, t, now);
+      else buyPrice(db, t, now);
+    }
     return id;
   });
   if (done === null) return notFound(`no trade ${id}`);
@@ -1535,8 +1940,8 @@ export async function setPositionState(
     if (removed === (p.removedAt !== null)) return id;
     if (!removed) {
       // a restore puts every other live row of its chain out of the way,
-      // whatever the updates changed; cash and a hand price also a live
-      // row of their name, while two equal bond purchases are two bonds
+      // whatever the updates changed; cash also a live row of its name,
+      // while two equal bond purchases are two bonds
       const out = new Set(
         chainOf(db, id)
           .filter((x) => x.removedAt === null)
@@ -1849,9 +2254,14 @@ export async function portfolioAnswer(
       return answered(
         "trade" in args
           ? await addTrade(m, who, args.trade)
-          : await addPosition(m, who, args.position),
+          : "fund" in args
+            ? await addFundTrade(m, who, args.fund)
+            : await addPosition(m, who, args.position),
       );
     case "update": {
+      if ("fund" in args) {
+        return answered(await updateFund(m, who, args.fund, args.change));
+      }
       const id =
         args.position === "dry_powder"
           ? dryPowderOf(m, args.portfolio, args.change)

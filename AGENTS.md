@@ -86,7 +86,7 @@ src/sources/                what every source shares, each provider under it
   edgar/                    SEC filings, their flags, events' filed_at
 src/signals/                daily, weekly, live and relative signals
 src/rules/                  rule conditions, evaluation, alerts
-src/portfolios/             trades and positions, holdings, rates, CSV
+src/portfolios/             trades, positions, owner-priced funds, holdings, rates, CSV
 src/operations/             the reads the MCP tools and the API share, with their MCP pages
 src/tools/                  the MCP surface: the tool registry and research's page
 src/api/                    /api/v1: routes, alerts, the spec, the docs page; never imports tools/
@@ -97,6 +97,7 @@ src/shared/                 plain data and functions the server and the web UI b
                             bun:, node:, database or network), and web/ imports
                             nothing else outside itself (test/imports.test.ts)
   currencies.ts             the ISO 4217 codes in circulation, names from Intl
+  isin.ts                   the ISIN check digit
 src/web/                    the web UI, bundled from index.html (Preact)
   app/                      the shell, rail, router, routes and theme
   data/                     every call and signal; views never fetch
@@ -132,7 +133,7 @@ the same commit as the code that changes a rule.
 | `docs/research.md` | Finnhub research and earnings events, Massive news, their keys and budgets, the `research` and `events` tools, the research route's contents |
 | `docs/signals.md` | the daily and weekly signals, final and live rows, reading, relative return |
 | `docs/rules.md` | rule conditions, validation, evaluation, the earnings gate, split pauses, the `rules` tool |
-| `docs/portfolios.md` | portfolios, brokers, trades and positions, dry powder, the holdings arithmetic, currencies and rates, the `portfolio` tool, CSV import and export, privacy |
+| `docs/portfolios.md` | portfolios, brokers, trades and positions, funds the owner prices and their prices, dry powder, the holdings arithmetic, currencies and rates, the `portfolio` tool, CSV import and export, privacy |
 | `docs/tools.md` | the answer contract, arguments, each tool, units and staleness, resolution and the inline fetch, the reads the API shares, tool descriptions |
 | `docs/web.md` | the web UI: serving, the sign-in and its cookie, what the cookie opens, what an anonymous visitor sees, the client's rules, the pages |
 | `docs/testing.md` | the test suite, fakes, the fake clock, fixtures and the recorders |

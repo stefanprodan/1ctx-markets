@@ -376,7 +376,15 @@ describe("currencies", () => {
     const named = [
       trade,
       { action: "add", kind: "cash", name: "Cash", amount: 1 },
-      { action: "add", kind: "fund", name: "Fund", units: 1, price: 1 },
+      {
+        action: "add",
+        kind: "fund",
+        isin: "ZZFUND000011",
+        name: "Fund",
+        side: "buy",
+        units: 1,
+        price: 1,
+      },
       {
         action: "add",
         kind: "bond",
@@ -414,41 +422,6 @@ describe("currencies", () => {
 const money = (v: number) => Math.round(v * 100) / 100;
 
 describe("positions", () => {
-  test("a hand price is shown with its date", async () => {
-    const { m, db } = await setup();
-    await addPosition(m, CASEY, {
-      kind: "fund",
-      portfolio: "Shares",
-      name: "Made Up Fund",
-      symbol: null,
-      currency: "EUR",
-      amount: null,
-      units: 10,
-      price: 12.5,
-      cost: 100,
-      coupon: null,
-      maturity: null,
-      date: "2026-04-17",
-      broker: null,
-      note: null,
-      dryPowder: false,
-    });
-    const f = (await holdingsOf(m)).holdings.find((r) => r.kind === "fund")!;
-    // migration 0020's check keeps the old word in the table
-    expect(
-      db
-        .query("select count(*) as n from positions where kind = 'manual'")
-        .get(),
-    ).toEqual({ n: 1 });
-    expect(f).toMatchObject({
-      priced: "hand",
-      as_of: "2026-04-17",
-      price: 12.5,
-      value: 125,
-      pl: 25,
-    });
-  });
-
   test("a bond with no listing is valued at face, said so", async () => {
     const { m } = await setup();
     await addPosition(m, CASEY, {
@@ -458,8 +431,6 @@ describe("positions", () => {
       symbol: null,
       currency: "EUR",
       amount: 1000,
-      units: null,
-      price: null,
       cost: 990,
       coupon: 5,
       maturity: "2030-01-01",
@@ -481,8 +452,6 @@ const cash = (m: Markets, amount: number, currency = "EUR", dry = true) =>
     symbol: null,
     currency,
     amount,
-    units: null,
-    price: null,
     cost: null,
     coupon: null,
     maturity: null,
@@ -491,41 +460,6 @@ const cash = (m: Markets, amount: number, currency = "EUR", dry = true) =>
     note: null,
     dryPowder: dry,
   });
-
-describe("a fund, kept under its old word", () => {
-  test("adding it again replaces it, and a removal restores", async () => {
-    const { m } = await setup();
-    const fund = (units: number) =>
-      addPosition(m, CASEY, {
-        kind: "fund",
-        portfolio: "Shares",
-        name: "Made Up Fund",
-        symbol: null,
-        currency: "EUR",
-        amount: null,
-        units,
-        price: 10,
-        cost: null,
-        coupon: null,
-        maturity: null,
-        date: "2026-04-17",
-        broker: "North",
-        note: null,
-        dryPowder: false,
-      });
-    const first = await fund(5);
-    const second = await fund(8);
-    if ("error" in first || "error" in second) throw new Error("refused");
-    expect(second.replaced).toBe(first.position.id);
-    const funds = () =>
-      holdingsOf(m).then((h) => h.holdings.filter((r) => r.kind === "fund"));
-    expect((await funds()).map((r) => r.quantity)).toEqual([8]);
-    await setPositionState(m, CASEY, second.position.id, true);
-    expect(await funds()).toEqual([]);
-    await setPositionState(m, CASEY, second.position.id, false);
-    expect((await funds()).map((r) => r.quantity)).toEqual([8]);
-  });
-});
 
 describe("dry powder", () => {
   test("is answered per currency beside invested value and other cash", async () => {
@@ -539,8 +473,6 @@ describe("dry powder", () => {
       symbol: null,
       currency: "EUR",
       amount: 500,
-      units: null,
-      price: null,
       cost: null,
       coupon: null,
       maturity: null,
@@ -646,8 +578,6 @@ describe("dry powder", () => {
       symbol: null,
       currency: "USD",
       amount: 500,
-      units: null,
-      price: null,
       cost: null,
       coupon: null,
       maturity: null,

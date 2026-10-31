@@ -38,12 +38,15 @@ import {
   tradeLine,
   tradeMoney,
   tradeSub,
+  tradeTitle,
   typed,
   zoneWords,
 } from "../src/web/views/Portfolios.model.ts";
 import {
   AddForm,
   FoundList,
+  FundActions,
+  FundPriceEdit,
   ImportPanel,
   PortfoliosBody,
   PositionEdit,
@@ -963,5 +966,175 @@ describe("a refused retry", () => {
       again: true,
     });
     expect(bodies).toEqual([expect.objectContaining({ again: true })]);
+  });
+});
+
+describe("a fund the owner prices", () => {
+  const ISIN = "ZZFUND000011";
+  const fundRow: Holding = {
+    ...HOLDINGS.holdings[0]!,
+    kind: "fund",
+    id: `fund:${ISIN}`,
+    isin: ISIN,
+    name: "Made Up World Fund",
+    type: "FUND",
+    market: "BVB",
+    quantity: 10,
+    average_cost: 5,
+    cost: 50,
+    price: 6,
+    priced: "hand",
+    as_of: "2026-09-30",
+    value: 60,
+    day_change: null,
+    change_percent: null,
+    parts: [
+      {
+        portfolio: "Shares",
+        broker: "North",
+        quantity: 10,
+        average_cost: 5,
+        cost: 50,
+        value: 60,
+      },
+    ],
+  };
+  const withFund = async () => {
+    const bodies: [string, unknown][] = [];
+    const f = fake({
+      "GET /api/v1/portfolios": {
+        ...OVERVIEW,
+        markets: ["BVB", "US"],
+        funds: [
+          {
+            id: `fund:${ISIN}`,
+            isin: ISIN,
+            name: "Made Up World Fund",
+            currency: "EUR",
+            market: "BVB",
+            price: 6,
+            as_of: "2026-09-30",
+          },
+        ],
+      },
+      "GET /api/v1/holdings": {
+        ...HOLDINGS,
+        holdings: [...HOLDINGS.holdings, fundRow],
+      },
+      "GET /api/v1/trades": { trades: [] },
+      "POST /api/v1/funds/trades": { trade: trade(), fund: {} },
+      "PATCH /api/v1/funds/": { fund: {} },
+    });
+    const s = store(
+      async (path, init) => {
+        if (init?.method && init.method !== "GET") {
+          bodies.push([
+            `${init.method} ${path}`,
+            JSON.parse(String(init.body)),
+          ]);
+        }
+        return f.fetch(path, init);
+      },
+      () => NOW,
+      () => "/portfolios",
+      () => {},
+    );
+    await s.portfolios.load();
+    return { s, bodies };
+  };
+
+  test("its row offers Buy, Sell and Set price", async () => {
+    const { s } = await withFund();
+    const html = render(
+      <FundActions h={fundRow} store={s.portfolios} onTrade={() => {}} />,
+    );
+    expect(html).toContain(">Buy<");
+    expect(html).toContain(">Sell<");
+    expect(html).toContain("Set price");
+    expect(holdingSub(fundRow, NOW)).toContain("Fund");
+    expect(costLine(fundRow)).toMatch(/^10 × /);
+  });
+
+  test("its price form asks the day the price is for", async () => {
+    const { s, bodies } = await withFund();
+    const html = render(
+      <FundPriceEdit store={s.portfolios} h={fundRow} onDone={() => {}} />,
+    );
+    expect(html).toContain("Price per unit");
+    expect(html).toContain('value="Made Up World Fund"');
+    expect(html).toContain(`type="date" value="${today(null)}"`);
+    expect(html).toContain('aria-label="Market: BVB"');
+    expect(html).not.toContain("<select");
+    expect(
+      await s.portfolios.setFundPrice(ISIN, { price: 6.5, date: "2026-10-27" }),
+    ).toBeNull();
+    expect(
+      await s.portfolios.setFundPrice(ISIN, { name: "Made Up Globe Fund" }),
+    ).toBeNull();
+    expect(bodies).toEqual([
+      [`PATCH /api/v1/funds/${ISIN}`, { price: 6.5, date: "2026-10-27" }],
+      [`PATCH /api/v1/funds/${ISIN}`, { name: "Made Up Globe Fund" }],
+    ]);
+  });
+
+  test("the Fund tab records a buy, a new fund named with its currency", async () => {
+    const { s, bodies } = await withFund();
+    const html = render(
+      <AddForm store={s.portfolios} kind="fund" onDone={() => {}} />,
+    );
+    for (const label of ["ISIN", "Name", "Units", "Price per unit", "Date"]) {
+      expect(html).toContain(`>${label}<`);
+    }
+    expect(html).toContain("Currency");
+    expect(html).toContain("Add buy");
+    expect(html).not.toContain("<select");
+    expect(
+      await s.portfolios.addFundTrade({
+        portfolio: 1,
+        isin: "ZZFUND000029",
+        name: "Made Up Bond Fund",
+        currency: "EUR",
+        side: "buy",
+        units: 3,
+        price: 10,
+        date: "2026-10-27",
+      }),
+    ).toBeNull();
+    expect(bodies[0]![0]).toBe("POST /api/v1/funds/trades");
+  });
+
+  test("its Sell opens the Fund tab on it, its name kept", async () => {
+    const { s } = await withFund();
+    const html = render(
+      <AddForm
+        store={s.portfolios}
+        onDone={() => {}}
+        start={{
+          symbol: `fund:${ISIN}`,
+          side: "sell",
+          portfolio: "Shares",
+          broker: "North",
+          fund: { isin: ISIN, name: "Made Up World Fund", market: "BVB" },
+        }}
+      />,
+    );
+    expect(html).toMatch(/aria-selected="true"[^>]*>Fund</);
+    expect(html).toContain(`value="${ISIN}"`);
+    expect(html).toContain("Made Up World Fund");
+    expect(html).toMatch(/aria-pressed="true"[^>]*>Sell/);
+    expect(html).toContain("Add sell");
+  });
+
+  test("its trades read by name, and its refusals plainly", () => {
+    const t = trade({ symbol: `fund:${ISIN}`, name: "Made Up World Fund" });
+    expect(tradeTitle(t)).toBe("Buy Made Up World Fund");
+    expect(
+      plainError(
+        "isin must be an ISIN: 2 letters, 9 letters or digits, and a check digit that matches",
+      ),
+    ).toBe("Not a valid ISIN.");
+    expect(
+      plainError("the fund ZZFUND000011 has this name; name a new fund apart"),
+    ).toBe("Another fund has this name.");
   });
 });
