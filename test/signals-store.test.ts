@@ -8,7 +8,11 @@ import {
   recordSession,
   session,
 } from "../src/market/calendars.ts";
-import { type Unit, upsertInstrument } from "../src/market/instruments.ts";
+import {
+  readInstrument,
+  type Unit,
+  upsertInstrument,
+} from "../src/market/instruments.ts";
 import { JOBS, STALE } from "../src/market/stale.ts";
 import {
   addDays,
@@ -29,7 +33,12 @@ import {
   RETURN_NOTE,
   relativeReturn,
 } from "../src/signals/relative.ts";
-import { finalPrefix, refreshLive, selectList } from "../src/signals/store.ts";
+import {
+  finalPrefix,
+  liveTarget,
+  refreshLive,
+  selectList,
+} from "../src/signals/store.ts";
 import { liveWeekly, weeklySeries } from "../src/signals/weekly.ts";
 import { parseSpark, yahoo } from "../src/sources/yahoo/client.ts";
 import { yahooJobs } from "../src/sources/yahoo/jobs.ts";
@@ -561,13 +570,18 @@ function cryptoRoute(clock: { now(): number }) {
     headers: { "content-type": "application/json" },
     body,
   });
+  let chartOf: (now: number) => unknown = chart;
   return {
     spark,
+    chart,
+    answerChart: (f: (now: number) => unknown) => {
+      chartOf = f;
+    },
     route: (url: URL) =>
       ok(
         url.pathname === "/v7/finance/spark"
           ? spark(clock.now())
-          : chart(clock.now()),
+          : chartOf(clock.now()),
       ),
   };
 }
@@ -592,7 +606,23 @@ async function crypto(start: number) {
          order by date`,
       )
       .all(interval, kind) as any[];
-  return { db, clock, ctx, spark: c.spark, read };
+  return {
+    db,
+    clock,
+    ctx,
+    spark: c.spark,
+    chart: c.chart,
+    answerChart: c.answerChart,
+    read,
+  };
+}
+
+// Sunday's period and day fields, the trade already Monday's: Yahoo's
+// answer for the first minutes past midnight
+function pastMidnight(spark: (now: number) => any, at: string) {
+  const body = spark(utc("2026-10-25T23:59"));
+  body.spark.result[0].response[0].meta.regularMarketTime = utc(at) / 1000;
+  return body;
 }
 
 describe("a tick at a session's rollover", () => {
@@ -658,21 +688,75 @@ describe("a tick at a session's rollover", () => {
     expect(read("1wk", "live")).toEqual(earlyWeek);
   });
 
-  test("a crypto trade is dated by its UTC day, past midnight included", async () => {
+  test("a crypto trade is dated by the period its day fields belong to", async () => {
     const { db, clock, ctx, spark, read } = await crypto(
       utc("2026-10-25T23:52"),
     );
-    // Sunday's session still shown, the trade already Monday's
-    const body = spark(utc("2026-10-25T23:59"));
-    body.spark.result[0].response[0].meta.regularMarketTime =
-      utc("2026-10-26T00:05") / 1000;
+    await clock.advance(utc("2026-10-26T00:00:17") - clock.now());
+    const body = pastMidnight(spark, "2026-10-26T00:00:12");
     await ctx.writer.write((db) =>
-      storeQuotes(db, parseSpark(body, utc("2026-10-26T00:05"))),
+      storeQuotes(db, parseSpark(body, clock.now())),
+    );
+    const target = liveTarget(db, readInstrument(db, "CRYPTO:C0-USD")!);
+    expect(target?.date).toBe("2026-10-25");
+    expect(read("1d", "live").map((r) => r.date)).toEqual(["2026-10-25"]);
+    expect(read("1wk", "live").map((r) => r.date)).toEqual(["2026-10-19"]);
+    expect(readBars(db, "CRYPTO:C0-USD", "1d").at(-1)!.date).toBe("2026-10-25");
+  });
+
+  test("a crypto trade gets the new day's live row once the period rolls", async () => {
+    const { clock, ctx, spark, read } = await crypto(utc("2026-10-25T23:52"));
+    await clock.advance(utc("2026-10-26T00:00:17") - clock.now());
+    await ctx.writer.write((db) =>
+      storeQuotes(
+        db,
+        parseSpark(pastMidnight(spark, "2026-10-26T00:00:12"), clock.now()),
+      ),
+    );
+    await clock.advance(utc("2026-10-26T00:10") - clock.now());
+    await ctx.writer.write((db) =>
+      storeQuotes(db, parseSpark(spark(clock.now()), clock.now())),
     );
     expect(read("1d", "live").map((r) => r.date)).toEqual(["2026-10-26"]);
     expect(read("1wk", "live").map((r) => r.date)).toEqual(["2026-10-26"]);
-    expect(readBars(db, "CRYPTO:C0-USD", "1d").at(-1)!.date).toBe("2026-10-25");
-    expect(clock.now()).toBe(utc("2026-10-25T23:52"));
+  });
+
+  test("a crypto trade with no period stored is dated by its UTC day", async () => {
+    const { db, clock, ctx, spark, read } = await crypto(
+      utc("2026-10-25T23:52"),
+    );
+    await clock.advance(utc("2026-10-26T00:00:17") - clock.now());
+    await ctx.writer.write((db) =>
+      storeQuotes(
+        db,
+        parseSpark(pastMidnight(spark, "2026-10-26T00:00:12"), clock.now()),
+      ),
+    );
+    db.query("delete from markets where market = 'CRYPTO'").run();
+    const instrument = readInstrument(db, "CRYPTO:C0-USD")!;
+    expect(liveTarget(db, instrument)?.date).toBe("2026-10-26");
+    refreshLive(db, instrument, clock.now());
+    expect(read("1d", "live").map((r) => r.date)).toEqual(["2026-10-26"]);
+  });
+
+  test("a crypto chart's next-day row is left out until the period rolls", async () => {
+    const { db, clock, ctx, chart, answerChart } = await crypto(
+      utc("2026-10-25T23:52"),
+    );
+    await clock.advance(utc("2026-10-26T00:00:20") - clock.now());
+    // Monday's row on the grid, opening at Sunday's open with its range
+    answerChart(() => {
+      const body = chart(utc("2026-10-25T23:59")) as any;
+      const result = body.chart.result[0];
+      const q = result.indicators.quote[0];
+      result.timestamp.push(utc("2026-10-26T00:00") / 1000);
+      for (const k of ["open", "high", "low", "volume"]) q[k].push(q[k].at(-1));
+      q.close.push(q.close.at(-1) - 3);
+      return body;
+    });
+    await refetch(ctx, readInstrument(db, "CRYPTO:C0-USD")!);
+    const days = readBars(db, "CRYPTO:C0-USD", "1d");
+    expect(days.at(-1)).toMatchObject({ date: "2026-10-25", final: false });
   });
 });
 

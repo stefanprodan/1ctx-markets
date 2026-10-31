@@ -101,7 +101,7 @@ export function quoteStale(
     reasons.push(STALE.noQuote);
   }
   if (due !== null && quote !== null) {
-    const expected = lastQuoteDue(db, instrument.market, due.now);
+    const expected = lastQuoteDue(db, instrument.market, due);
     if (expected !== null && quote.fetchedAt < expected - 2 * due.everyMs) {
       reasons.push(STALE.quoteOverdue);
     }
@@ -113,12 +113,22 @@ export function quoteStale(
   return reasons;
 }
 
-// a Friday session still stored on Monday is left to the failed checks
-function lastQuoteDue(db: Db, market: string, now: number): number | null {
+// A Friday session still stored on Monday is left to the failed checks.
+// Passes stop at the session's end and the closing pass runs 15 minutes
+// after it, so the last quote is due by the end until the closing pass is
+// two periods late.
+function lastQuoteDue(
+  db: Db,
+  market: string,
+  { now, everyMs }: { now: number; everyMs: number },
+): number | null {
   if (market === CRYPTO) return now;
   const s = readSession(db, market);
   if (s === null || now < s.start) return null;
-  return Math.min(now, closeQuoteAt(market, s) ?? now);
+  const close = closeQuoteAt(market, s);
+  if (close === null) return now;
+  const late = close + 2 * everyMs;
+  return now < late ? Math.min(now, s.end) : late;
 }
 
 // one added since the session began came with its whole history

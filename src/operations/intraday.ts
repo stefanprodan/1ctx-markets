@@ -16,6 +16,7 @@ import {
 } from "../market/intraday.ts";
 import type { StaleReason } from "../market/stale.ts";
 import { localDate } from "../market/zone.ts";
+import { liveTarget } from "../signals/store.ts";
 import { YAHOO } from "../sources/ids.ts";
 import type { Db } from "../storage/db/index.ts";
 import {
@@ -78,11 +79,15 @@ function previousClose(db: Db, i: Instrument, first: string): number | null {
       "select previous_close as close, time from quotes where instrument = ?",
     )
     .get(i.id);
-  if (
-    q?.close != null &&
-    q.time != null &&
-    localDate(i.zone, q.time) === first
-  ) {
+  // past midnight, until the period rolls, a crypto quote's previous
+  // close is the old day's base, dated as its live row is
+  const dated =
+    q?.time == null
+      ? null
+      : i.market === CRYPTO
+        ? (liveTarget(db, i)?.date ?? localDate(i.zone, q.time))
+        : localDate(i.zone, q.time);
+  if (q?.close != null && dated === first) {
     return q.close;
   }
   return (

@@ -358,6 +358,26 @@ describe("history with interval 5m", () => {
     expect(btc.body.points.filter((p: any) => !p.final)).toHaveLength(1);
   });
 
+  test("a crypto day's move is measured from its trading day, past midnight", async () => {
+    const t = setup(Date.parse("2026-10-28T00:00:17Z"));
+    // the old day's period and previous close, the trade and a point already
+    // the new day's
+    await pass(t, "spark-v7-extended-post-2122", (fx) => {
+      const raw = entry(fx, "BTC-USD");
+      const midnight = Date.parse("2026-10-28T00:00:00Z") / 1000;
+      raw.meta.regularMarketTime = midnight + 12;
+      raw.timestamp.push(midnight);
+      raw.indicators.quote[0].close.push(80100);
+    });
+    const btc = await history(t.m, {
+      symbol: "CRYPTO:BTC-USD",
+      interval: "5m",
+    });
+    expect(btc.body.to).toBe("2026-10-28");
+    // the last close before it, never the quote's base for Oct 27
+    expect(btc.body.previous_close).toBe(1);
+  });
+
   test("pages past 32 KiB with next, no point repeated or lost", async () => {
     const t = setup(Date.parse("2026-10-30T12:00:00Z"));
     await pass(t, "spark-v7-batch");

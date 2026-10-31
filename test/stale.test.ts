@@ -99,6 +99,42 @@ describe("staleness", () => {
     expect(quoteStale(db, us, due(end + DAY_MS))).toEqual([]);
   });
 
+  test("a quote is due by the session's end until the closing pass is late", () => {
+    const { db, us, run, now } = setup();
+    const every = 5 * MINUTE_MS;
+    run(JOBS.quotes, "US");
+    const start = now() + 60 * MINUTE_MS;
+    const end = start + 390 * MINUTE_MS;
+    const close = end + 15 * MINUTE_MS;
+    recordSession(db, "US", { zone: "America/New_York", start, end }, now());
+    const due = (at: number) => ({ now: at, everyMs: every });
+    const fetched = (at: number) =>
+      db
+        .query("update quotes set fetched_at = ? where instrument = ?")
+        .run(at, us.id);
+    // the last pass in session, read before the closing pass runs
+    fetched(end - 4 * MINUTE_MS);
+    expect(quoteStale(db, us, due(end + 10 * MINUTE_MS))).toEqual([]);
+    expect(quoteStale(db, us, due(close + 2 * every - 1))).toEqual([]);
+    // the closing pass missed
+    expect(quoteStale(db, us, due(close + 2 * every + 1))).toEqual([
+      "quote overdue",
+    ]);
+    expect(quoteStale(db, us, due(end + DAY_MS))).toEqual(["quote overdue"]);
+    // the closing pass ran
+    fetched(close + 17_000);
+    expect(quoteStale(db, us, due(close + 20 * MINUTE_MS))).toEqual([]);
+    expect(quoteStale(db, us, due(end + DAY_MS))).toEqual([]);
+    // passes stopped mid-session
+    fetched(start + 60 * MINUTE_MS);
+    expect(quoteStale(db, us, due(start + 120 * MINUTE_MS))).toEqual([
+      "quote overdue",
+    ]);
+    expect(quoteStale(db, us, due(end + 10 * MINUTE_MS))).toEqual([
+      "quote overdue",
+    ]);
+  });
+
   test("is per job and scope: a successful search never clears a failed quote pass", () => {
     const { db, us, other, run, now } = setup();
     run(JOBS.quotes, "US");

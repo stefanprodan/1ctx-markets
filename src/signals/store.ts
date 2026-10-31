@@ -221,7 +221,9 @@ export function liveUntil(s: Session): number {
   return Math.max(s.end + LIVE_AFTER_END_MS, next - 1);
 }
 
-// dated by the market's stored session, never UTC hours; crypto's by UTC day
+// dated by the market's stored session, never the trade's own day: past
+// midnight Yahoo's crypto trade is the new day's while its day fields are
+// the old one's until the period rolls
 export function liveTarget(db: Db, instrument: Scoped): LiveTarget | null {
   const row = db
     .query<
@@ -234,8 +236,7 @@ export function liveTarget(db: Db, instrument: Scoped): LiveTarget | null {
     )
     .get(instrument.id);
   if (row === null) return null;
-  const session =
-    instrument.market === CRYPTO ? null : readSession(db, instrument.market);
+  const session = readSession(db, instrument.market);
   // an untimed index page is current while its market trades: its fetch, at
   // most the session's end, dates the live row; the stored quote keeps no time
   const { fetchedAt, ...rest } = row;
@@ -245,7 +246,8 @@ export function liveTarget(db: Db, instrument: Scoped): LiveTarget | null {
       row.time ??
       (session === null ? fetchedAt : Math.min(fetchedAt, session.end)),
   };
-  if (instrument.market === CRYPTO) {
+  // a crypto market with no period stored yet still gets its live row
+  if (session === null && instrument.market === CRYPTO) {
     return { date: localDate("UTC", quote.time), quote };
   }
   if (
