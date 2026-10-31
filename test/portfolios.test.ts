@@ -168,6 +168,15 @@ describe("average cost", () => {
     expect(a.day_change).toBe(8 * 2 + 4 * 1 + 2 * 3);
   });
 
+  test("a buy today at no cost moves only with the price, as if held at the open", async () => {
+    const { m } = await setup();
+    await buy(m, { quantity: 10, price: 100 });
+    await buy(m, { quantity: 2, price: 0, date: LIVE });
+    const h = await holdingsOf(m);
+    expect(row(h, "US:AAA").day_change).toBe(12 * 2);
+    expect(h.totals.find((t) => t.currency === "USD")!.day_change).toBe(24);
+  });
+
   test("a buy today at the live price has no move today", async () => {
     const { m } = await setup();
     await buy(m, { quantity: 10, price: 120, date: LIVE });

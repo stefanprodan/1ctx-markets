@@ -251,6 +251,8 @@ export function tools(m: Markets): Tool[] {
             type: "string",
             enum: [...RESEARCH_SECTIONS],
             default: "overview",
+            description:
+              "earnings and overview: an earnings period is Finnhub's quarter label, not its report date; the first (newest) row is the latest report",
           },
           since: day,
           next,
@@ -340,7 +342,11 @@ export function tools(m: Markets): Tool[] {
           position: { type: ["integer", "string"] },
           from: day,
           to: day,
-          removed: { type: "boolean", default: false },
+          removed: {
+            type: "boolean",
+            default: false,
+            description: "trades: include removed ones",
+          },
           next,
         },
         ["action"],
