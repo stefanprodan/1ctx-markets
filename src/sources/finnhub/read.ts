@@ -143,6 +143,29 @@ export function readEvent(db: Db, key: EventKey): EventRow | null {
   );
 }
 
+// a quarter's report lands in the next quarter
+export const REPORT_WINDOW_DAYS = 100;
+
+// the share's own reported events, by date; another listing stores no actuals
+export function reportedEvents(db: Db, instrument: string): EventRow[] {
+  return db
+    .query<EventRow, [string]>(
+      `${EVENT_SELECT} where instrument = ?
+         and (eps_actual is not null or revenue_actual is not null)
+       order by date`,
+    )
+    .all(instrument);
+}
+
+// the report of the quarter ending on period: the first after it, in the window
+export function reportOf(
+  reported: readonly EventRow[],
+  period: string,
+): EventRow | null {
+  const last = addDays(period, REPORT_WINDOW_DAYS);
+  return reported.find((e) => e.date > period && e.date <= last) ?? null;
+}
+
 // days a passed event still counts as next while it awaits results
 export const AWAITING_DAYS = 7;
 

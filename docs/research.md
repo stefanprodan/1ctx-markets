@@ -99,6 +99,12 @@ route's transport in `docs/api.md`; rules that wait on events in
   one failing section is stale alone. The sections fetched land in one
   write, failures as their own runs; a `Paused` refusal stores the
   sections fetched before it, and a passed deadline stores none.
+- **An earnings row whose period ends after its fetch's UTC date is
+  not stored** nor counted in the run's rows, never an error or a stale
+  mark: a quarter has no actual before it ends, and Finnhub has
+  labelled a fresh report a later quarter for a night, a row that
+  would stay as the newest quarter, since actuals once seen are kept.
+  Migration `0027-earnings-ahead` deleted the rows stored before.
 - **A Finnhub 403 or an empty answer is no data, never an error**: the
   stored rows stay and the section reads "no data in the last answer";
   with no rows stored it carries `NO_DATA` ("no data from Finnhub")
@@ -198,6 +204,16 @@ route's transport in `docs/api.md`; rules that wait on events in
   another listing, however many shares are tracked; asking each
   reporting share by symbol would be one call an hour per share.
   The answer is US listings only and uncut.
+- **An earnings row carries its quarter's revenue from `events`**
+  (`revenue_estimate`, `revenue_actual`, `revenue_surprise_percent`:
+  (actual − estimate) / |estimate| × 100), read at answer time, nothing
+  stored: Finnhub's earnings hold EPS only, and an EPS beat can be a
+  revenue miss. The event is the share's own with actuals dated after
+  the period's end and within `REPORT_WINDOW_DAYS` (100, a report lands
+  in the next quarter), the nearest if two (`reportOf`); none, or a
+  missing figure, is null. Only quarters whose report the calendar
+  still holds carry revenue, in practice the newest reported one.
+  Another listing has no earnings rows and its events no figures.
 - **The next event is the earliest dated from the exchange's today, or
   one up to `AWAITING_DAYS` (7) past still awaiting results**
   (`nextEvent`).
@@ -274,10 +290,10 @@ route's transport in `docs/api.md`; rules that wait on events in
 ## Answers
 
 - **The `research` tool's sections** are `overview` (quote, signals,
-  each Finnhub section's latest row, the next event, five headlines,
-  `filings`), `analysts`, `earnings`, `insiders`, `news` and `filings`,
-  paged newest first. The overview drops headlines first to fit one
-  page; `overview` has no next page.
+  each Finnhub section's latest row, earnings with its revenue, the
+  next event, five headlines, `filings`), `analysts`, `earnings`,
+  `insiders`, `news` and `filings`, paged newest first. The overview
+  drops headlines first to fit one page; `overview` has no next page.
 - **The overview's `filings`** is EDGAR's summary (`filingsSummary()`):
   `source`, `fetched_at`, `stale`, the three flags (`late_filing`,
   `restatement`, `offering`: new securities, shares or debt,

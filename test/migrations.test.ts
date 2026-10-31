@@ -255,7 +255,7 @@ describe("migrations", () => {
       insert into research (instrument, kind, period, pe_ttm, fetched_at)
       values ('US:TSM', 'metric', '2026-10-01', 20, 0);
       insert into research (instrument, kind, period, eps_actual, fetched_at)
-      values ('US:TSM', 'earnings', '2026-09-30', 148.9, 0);
+      values ('US:TSM', 'earnings', '2026-09-30', 148.9, 1792108800000);
       insert into events (instrument, fiscal_year, fiscal_quarter, date, hour,
         eps_actual, reported_seen_at, fetched_at)
       values ('US:TSM', 2026, 3, '2026-10-15', 'bmo', 148.9, 0, 0);
@@ -375,6 +375,39 @@ describe("migrations", () => {
       { market: null },
     ]);
     expect(() => db.exec("update positions set market = ''")).toThrow();
+    db.close();
+  });
+
+  test("earnings rows of a quarter ending after their fetch day are deleted", () => {
+    const db = new Database(":memory:", { strict: true });
+    const clock = fakeClock();
+    const at = MIGRATIONS.findIndex((m) => m.id === "0027-earnings-ahead");
+    migrate(db, clock, MIGRATIONS.slice(0, at));
+    const fetched = Date.UTC(2026, 9, 28, 23, 1);
+    db.exec(`
+      insert into instruments (id, market, symbol, source, source_symbol,
+        exchange, type, currency, zone, added_at, updated_at)
+      values ('US:ZZZ', 'US', 'ZZZ', 'yahoo', 'ZZZ', 'NMS', 'EQUITY', 'USD',
+        'America/New_York', 0, 0);
+    `);
+    const insert = db.query(
+      `insert into research (instrument, kind, period, eps_actual, mspr,
+         strong_buy, fetched_at) values ('US:ZZZ', ?, ?, ?, ?, ?, ?)`,
+    );
+    insert.run("earnings", "2027-03-31", 4.1, null, null, fetched);
+    insert.run("earnings", "2026-10-28", 4.1, null, null, fetched);
+    insert.run("earnings", "2026-06-30", 3.6, null, null, fetched);
+    insert.run("insider", "2027-01-01", null, -10, null, fetched);
+    insert.run("analysts", "2027-01-01", null, null, 3, fetched);
+    migrate(db, clock, MIGRATIONS.slice(0, at + 1));
+    expect(
+      db.query("select kind, period from research order by kind, period").all(),
+    ).toEqual([
+      { kind: "analysts", period: "2027-01-01" },
+      { kind: "earnings", period: "2026-06-30" },
+      { kind: "earnings", period: "2026-10-28" },
+      { kind: "insider", period: "2027-01-01" },
+    ]);
     db.close();
   });
 

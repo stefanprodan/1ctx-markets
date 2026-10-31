@@ -36,6 +36,7 @@ import {
   newsItem,
   newsMessage,
   newsSummary,
+  reportsFor,
   researchSummary,
   researchTargets,
   rowItem,
@@ -282,7 +283,8 @@ export async function researchAnswer(
           (r) => start === null || r.period <= start,
         )
       : [];
-  const items = rows.map((r) => rowItem(kind, r));
+  const reported = reportsFor(m, instrument.id, kind);
+  const items = rows.map((r) => rowItem(kind, r, reported));
   const page = fitPage(
     items,
     (count) => ({

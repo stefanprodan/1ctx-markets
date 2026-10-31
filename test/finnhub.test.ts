@@ -752,6 +752,45 @@ describe("research rows", () => {
     });
   });
 
+  test("an earnings row of a quarter ending after the fetch day is not stored", async () => {
+    const t = setup({
+      route: edited("/api/v1/stock/earnings", "NVDA", (b) => {
+        b[0].period = "2026-12-31";
+      }),
+    });
+    const nvda = share(t.db, "NVDA", NOW);
+    await drive(t.clock, t.client, refreshResearch(t.ctx, nvda, ["earnings"]));
+    expect(
+      readResearch(t.db, nvda.id, "earnings").map((r) => r.period),
+    ).toEqual(["2026-06-30", "2026-03-31"]);
+    expect(lastRun(t.db, "finnhub", "earnings", nvda.id)).toMatchObject({
+      status: "ok",
+      rows: 2,
+    });
+    expect(sectionState(t.db, nvda.id, "earnings", NOW).stale).toEqual([]);
+  });
+
+  test("a report labelled a later quarter one night and its own the next leaves one row", async () => {
+    let ahead = true;
+    const t = setup({
+      route: edited("/api/v1/stock/earnings", "NVDA", (b) => {
+        if (ahead) b[0].period = "2027-03-31";
+      }),
+    });
+    const nvda = share(t.db, "NVDA", NOW);
+    await drive(t.clock, t.client, refreshResearch(t.ctx, nvda, ["earnings"]));
+    ahead = false;
+    await t.clock.advance(DAY_MS);
+    await drive(t.clock, t.client, refreshResearch(t.ctx, nvda, ["earnings"]));
+    const rows = readResearch(t.db, nvda.id, "earnings");
+    expect(rows.map((r) => r.period)).toEqual([
+      "2026-09-30",
+      "2026-06-30",
+      "2026-03-31",
+    ]);
+    expect(rows[0]!.eps_actual).toBe(2.22);
+  });
+
   test("rows kept from an earlier answer say the last one had no data", async () => {
     let refused = false;
     const t = setup({

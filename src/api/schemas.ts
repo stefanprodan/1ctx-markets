@@ -125,8 +125,32 @@ const facts = {
 
 const STALE = "Why a value may be out of date. Empty means current.";
 
+const quarter = object({
+  period: str,
+  eps_estimate: nnum,
+  eps_actual: nnum,
+  surprise: nnum,
+  surprise_percent: nnum,
+  revenue_estimate: note(
+    nnum,
+    "From the quarter's reported earnings event; null when the calendar holds none.",
+  ),
+  revenue_actual: nnum,
+  revenue_surprise_percent: note(
+    nnum,
+    "Revenue actual against estimate, in percent.",
+  ),
+  fetched_at: str,
+});
+const earnings = object(
+  {
+    history: note(list(quarter), "The newest quarters, newest first."),
+  },
+  ["history"],
+  true,
+);
 const company = note(
-  object({ source: str }, ["source"], true),
+  object({ source: str, earnings }, ["source"], true),
   "A US share's metrics, analysts, earnings, insider sentiment and next earnings event, with the sections asked.",
 );
 const news = object({ source: str }, ["source"], true);
