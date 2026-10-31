@@ -189,7 +189,8 @@ export function partsOf(
 }
 
 // a trade on the quote's day moves from its own price, so a buy at the
-// live price shows no move it never had
+// live price shows no move it never had; a buy at no cost (a staking reward)
+// is held from the day's start, as it brings no money that day
 export function dayChangeOf(
   trades: readonly Trade[],
   instrument: Instrument,
@@ -203,7 +204,7 @@ export function dayChangeOf(
   let open = held;
   let flows = 0;
   for (const t of trades) {
-    if (t.date < day) continue;
+    if (t.date < day || (t.side === "buy" && t.price === 0)) continue;
     const f = splitFactor(splits, statedOf(t));
     const shares = t.quantity * f;
     const r =

@@ -193,8 +193,10 @@ once and valued on the live price the server already keeps.
   price** (`dayChangeOf()`): what is held now at the live price, less
   what was held at the open at the previous close, less what that day's
   buys cost, plus what its sells brought. A buy at the live price shows
-  no move it never had. The quote's day is the listing's local date of
-  the quote's time.
+  no move it never had. A buy at price 0 (a staking reward, an airdrop)
+  counts as held at the open: it brings no money that day, so only the
+  price moves it. The quote's day is the listing's local date of the
+  quote's time.
 - **A holding sold out on the quote's day stays** as a row at nothing,
   `sold_today` true, until the quote moves to the next day, so the
   sale's move stays in the day's total; it adds no weight to the
