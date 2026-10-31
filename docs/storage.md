@@ -215,7 +215,8 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   figures are stated as of; `0022-trade-indexes` indexes live trades by
   date and trades by broker, so holdings never scan and sort the table;
   `0024-time-zone` adds `portfolio_settings.time_zone`, the owner's IANA
-  zone, null until named.
+  zone, null until named; `0025-position-market` adds
+  `positions.market`, the market cash or a fund names, null unless named.
   Rows are never deleted but a portfolio with no live row, its removed
   rows with it, and a broker no live row names; what they mean is
   `docs/portfolios.md`.

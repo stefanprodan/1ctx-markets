@@ -886,3 +886,39 @@ describe("the owner's time zone", () => {
     ).toBe("This trade was just saved.");
   });
 });
+
+describe("a position's market", () => {
+  test("cash and fund forms pick one from the app's own menu", async () => {
+    const f = fake({
+      "GET /api/v1/portfolios": { ...OVERVIEW, markets: ["BVB", "US"] },
+      "GET /api/v1/holdings": HOLDINGS,
+      "GET /api/v1/trades": { trades: [] },
+    });
+    const s = store(
+      f.fetch,
+      () => NOW,
+      () => "/portfolios",
+      () => {},
+    );
+    await s.portfolios.load();
+    for (const kind of ["cash", "fund"] as const) {
+      const html = render(
+        <AddForm store={s.portfolios} kind={kind} onDone={() => {}} />,
+      );
+      expect(html).toContain('aria-label="Market: None"');
+      expect(html).not.toContain("<select");
+    }
+    const bond = render(
+      <AddForm store={s.portfolios} kind="bond" onDone={() => {}} />,
+    );
+    expect(bond).not.toContain("Market:");
+    const edit = render(
+      <PositionEdit
+        store={s.portfolios}
+        h={{ ...HOLDINGS.holdings[1]!, market: "BVB" }}
+        onDone={() => {}}
+      />,
+    );
+    expect(edit).toContain('aria-label="Market: BVB"');
+  });
+});

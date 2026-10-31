@@ -50,6 +50,8 @@ export type Position = {
   currency: string;
   // a bond's listing, when the server prices one
   instrument: string | null;
+  // cash's or a fund's market, as an instrument's: none unless named
+  market: string | null;
   // cash: the amount; bond: the face amount
   amount: number | null;
   units: number | null;
@@ -294,7 +296,7 @@ export function setTradeRemoved(
 }
 
 const POSITION = `select id, portfolio,
-  case kind when 'manual' then 'fund' else kind end as kind, name, currency, instrument,
+  case kind when 'manual' then 'fund' else kind end as kind, name, currency, instrument, market,
   amount, units, price, cost, coupon, maturity, as_of as asOf, broker, note,
   dry_powder as dryPowder, replaces, entered_by as enteredBy, entered_at as enteredAt, removed_at as removedAt,
   removed_by as removedBy from positions`;
@@ -309,9 +311,9 @@ export function insertPosition(db: Db, p: NewPosition, now: number): number {
     db
       .query(
         `insert into positions (portfolio, kind, name, currency, instrument,
-           amount, units, price, cost, coupon, maturity, as_of, broker, note,
-           dry_powder, replaces, entered_by, entered_at)
-         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           market, amount, units, price, cost, coupon, maturity, as_of,
+           broker, note, dry_powder, replaces, entered_by, entered_at)
+         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         p.portfolio,
@@ -319,6 +321,7 @@ export function insertPosition(db: Db, p: NewPosition, now: number): number {
         p.name,
         p.currency,
         p.instrument,
+        p.market,
         p.amount,
         p.units,
         p.price,
@@ -477,6 +480,16 @@ export function portfolioHolds(db: Db, id: string): boolean {
 export type Split = { date: string; ratio: number };
 
 // shares after a split are shares before times the ratio
+// the markets stored instruments are in, as their ids spell them
+export function knownMarkets(db: Db): string[] {
+  return db
+    .query<{ market: string }, []>(
+      "select distinct market from instruments order by market",
+    )
+    .all()
+    .map((r) => r.market);
+}
+
 export function splitsOf(db: Db, instrument: string): Split[] {
   return db
     .query<{ date: string; ratio: number }, [string]>(

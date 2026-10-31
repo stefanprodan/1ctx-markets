@@ -735,7 +735,8 @@ function positionRow(
     position: p.id,
     name: p.name,
     type: KIND_TYPES[p.kind],
-    market: instrument?.market ?? null,
+    // a bond's is its listing's; cash's or a fund's, the one named
+    market: instrument?.market ?? p.market,
     currency: p.currency,
     unit: instrument?.unit ?? null,
     quantity: p.kind === "fund" ? qty(p.units) : null,

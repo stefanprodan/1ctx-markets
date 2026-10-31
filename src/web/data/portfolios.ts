@@ -21,6 +21,8 @@ export type Overview = {
   display_currency: string | null;
   // the owner's IANA zone, none until they name one
   time_zone?: string | null;
+  // what a cash or fund position can name as its market
+  markets?: string[];
   portfolios: PortfolioRow[];
   brokers: BrokerRow[];
 };
@@ -204,6 +206,7 @@ export type PositionIn = {
   date?: string;
   dry_powder?: boolean;
   broker?: string;
+  market?: string;
 };
 
 export type PositionChange = {
@@ -214,6 +217,8 @@ export type PositionChange = {
   units?: number;
   price?: number;
   date?: string;
+  // null takes it off
+  market?: string | null;
 };
 
 export type ImportRow = {

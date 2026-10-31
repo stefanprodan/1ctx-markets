@@ -21,6 +21,7 @@ import {
   insertPortfolio,
   insertPosition,
   insertTrade,
+  knownMarkets,
   listBrokers,
   listPortfolios,
   MAX_NAME,
@@ -141,6 +142,8 @@ export type PositionArgs = {
   name: string;
   symbol: string | null;
   currency: string | null;
+  // cash's or a fund's market, as an instrument's
+  market?: string | null;
   amount: number | null;
   units: number | null;
   price: number | null;
@@ -166,6 +169,8 @@ export type PositionChange = {
   date?: string;
   note?: string | null;
   dryPowder?: boolean;
+  // null takes it off
+  market?: string | null;
 };
 
 export type HoldingsArgs = {
@@ -350,6 +355,7 @@ export function parsePosition(
     broker: optionalName(f.broker, "broker"),
     note: note(f.note),
     dryPowder: false,
+    market: optionalName(f.market, "market"),
   };
   if (kind === "cash") {
     if (base.cost !== null) throw new ArgError("cash has no cost");
@@ -424,6 +430,7 @@ const ARGS: Record<Action, readonly string[]> = {
     "maturity",
     "dry_powder",
     "again",
+    "market",
   ],
   update: [
     "action",
@@ -435,6 +442,7 @@ const ARGS: Record<Action, readonly string[]> = {
     "date",
     "note",
     "dry_powder",
+    "market",
     "by",
     "currency",
     "portfolio",
@@ -496,6 +504,7 @@ export function parseChange(f: Record<string, unknown>): PositionChange {
     }
     c.dryPowder = f.dry_powder;
   }
+  if (f.market !== undefined) c.market = optionalName(f.market, "market");
   if (Object.keys(c).length === 0) {
     throw new ArgError(
       `update changes at least one of ${UPDATE_FIELDS.join(", ")}`,
@@ -518,7 +527,16 @@ export const KIND_ARGS: Record<AddKind, readonly string[]> = {
     "note",
     "again",
   ],
-  cash: ["name", "amount", "currency", "date", "broker", "note", "dry_powder"],
+  cash: [
+    "name",
+    "amount",
+    "currency",
+    "date",
+    "broker",
+    "note",
+    "dry_powder",
+    "market",
+  ],
   fund: [
     "name",
     "units",
@@ -528,6 +546,7 @@ export const KIND_ARGS: Record<AddKind, readonly string[]> = {
     "date",
     "broker",
     "note",
+    "market",
   ],
   bond: [
     "name",
@@ -748,6 +767,19 @@ export function findBroker(
 const isFailure = (v: unknown): v is Failure =>
   typeof v === "object" && v !== null && "error" in v;
 
+// a market a stored instrument is in, spelled as its id spells it; none
+// is assumed for a position
+export function findMarket(
+  db: Db,
+  name: string | null,
+): string | Failure | null {
+  if (name === null) return null;
+  const known = knownMarkets(db);
+  const found = known.find((k) => k.toLowerCase() === name.toLowerCase());
+  if (found !== undefined) return found;
+  return notFound(`no market ${quoted(name)}; markets: ${known.join(", ")}`);
+}
+
 // ---- answers -------------------------------------------------------------
 
 export const portfolioItem = (db: Db, p: Portfolio) => ({
@@ -766,6 +798,8 @@ export function listAll(m: Markets) {
     time_zone: timeZone(m.db),
     portfolios: listPortfolios(m.db).map((p) => portfolioItem(m.db, p)),
     brokers: listBrokers(m.db).map(brokerItem),
+    // what a cash or fund position can name as its market
+    markets: knownMarkets(m.db),
   };
 }
 
@@ -819,6 +853,7 @@ export function positionItem(db: Db, p: Position) {
     portfolio_id: p.portfolio,
     name: p.name,
     symbol: p.instrument,
+    market: p.market,
     currency: p.currency,
     amount: p.amount,
     units: p.units,
@@ -1207,6 +1242,8 @@ export async function addPosition(
   if (isFailure(p)) return p;
   const b = findBroker(m.db, args.broker);
   if (isFailure(b)) return b;
+  const market = findMarket(m.db, args.market ?? null);
+  if (isFailure(market)) return market;
   let instrument: Instrument | null = null;
   if (args.symbol !== null) {
     const i = await instrumentOf(m, args.symbol);
@@ -1234,6 +1271,7 @@ export async function addPosition(
     name: args.name,
     currency,
     instrument: instrument?.id ?? null,
+    market,
     amount: args.amount,
     units: args.units,
     price: args.price,
@@ -1280,6 +1318,9 @@ export async function updatePosition(
   if (change.date !== undefined && change.date > latestDay(m.clock.now())) {
     return { error: "bad_arguments", message: "date is in the future" };
   }
+  const market =
+    change.market === undefined ? undefined : findMarket(m.db, change.market);
+  if (isFailure(market)) return market;
   const before = readPosition(m.db, id);
   let rate:
     | { from: string; to: string; rate: number; at: string | null }
@@ -1323,6 +1364,12 @@ export async function updatePosition(
     }
     if (change.dryPowder === true && old.kind !== "cash") {
       return { error: "bad_arguments", message: "only cash is dry powder" };
+    }
+    if (market !== undefined && old.kind === "bond") {
+      return {
+        error: "bad_arguments",
+        message: "a bond's market is its listing's",
+      };
     }
     if (
       old.kind === "cash" &&
@@ -1382,6 +1429,7 @@ export async function updatePosition(
         asOf,
         note: change.note === undefined ? old.note : change.note,
         dryPowder: change.dryPowder ?? old.dryPowder,
+        market: market === undefined ? old.market : market,
         replaces: id,
         enteredBy: who.name,
       },

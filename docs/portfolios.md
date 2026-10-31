@@ -45,7 +45,15 @@ once and valued on the live price the server already keeps.
 - **Positions** (`positions`) hold what has no listing or no free
   price: `cash` (an amount), `fund` (units and a hand price, with its
   date) and `bond` (face amount, coupon, maturity, and its listing when
-  the server has one). Each has its currency and `as_of` date. The
+  the server has one). Each has its currency and `as_of` date. Cash
+  and a fund may name a market (`market`, migration
+  `0025-position-market`), so a fund holding one market's shares counts
+  in that market in the exposure and its row answers it; none is
+  assumed. The name must be a market a stored instrument is in
+  (`knownMarkets()`, `markets` in `list` and `GET /portfolios`), matched
+  ignoring case and stored as the instruments spell it; another is
+  refused (`not_found`) with the known ones. A bond's market is its
+  listing's, so a bond takes none. The
   table keeps a fund as `manual`, the word migration `0020-portfolios`
   checks; the store reads and writes it as `fund` (`stored()`), since a
   table rebuild to rename it would copy every owner's positions.
@@ -241,8 +249,9 @@ setup(display_currency?: Currency, time_zone?: string, portfolio?: string,
   broker?: string | string[]):
   { portfolios; brokers; display_currency; time_zone; made };
 
-// the portfolios and brokers, the display currency and time zone
-list(): { portfolios; brokers; display_currency; time_zone };
+// the portfolios and brokers, the display currency and time zone, and
+// the markets a cash or fund position can name
+list(): { portfolios; brokers; display_currency; time_zone; markets };
 
 // one row per instrument or position, its parts per broker; totals per
 // currency, converted into `currency`, else the display currency
@@ -265,21 +274,21 @@ add(kind: "trade", portfolio?: Portfolio, symbol: string,
 // a position with no trades: cash, a fund priced by hand, a bond
 add(kind: "cash", portfolio?: Portfolio, name: string, amount: number,
   currency: Currency, date?: Day, broker?: string, note?: string,
-  dry_powder?: boolean): { position };
+  dry_powder?: boolean, market?: string): { position };
 add(kind: "fund", portfolio?: Portfolio, name: string, units: number,
   price: number, currency: Currency, cost?: number, date?: Day,
-  broker?: string, note?: string): { position };
+  broker?: string, note?: string, market?: string): { position };
 // a bond's currency is its listing's when a symbol names one, else needed
 add(kind: "bond", portfolio?: Portfolio, name: string, amount: number,
   symbol?: string, coupon?: number, maturity?: Day, currency?: Currency,
   cost?: number, date?: Day, broker?: string, note?: string): { position };
 
 // a position changed: amount set outright or moved by `by`, in
-// `currency` or its own; at least one change
+// `currency` or its own; at least one change; market null takes it off
 update(position: number | "dry_powder", amount?: number, by?: number,
   currency?: Currency, units?: number, price?: number, cost?: number,
   date?: Day, note?: string, dry_powder?: boolean,
-  portfolio?: Portfolio): { position; rate? };
+  market?: string | null, portfolio?: Portfolio): { position; rate? };
 
 // one of trade or position, by id
 remove(trade?: number, position?: number, portfolio?: Portfolio);

@@ -27,6 +27,7 @@ import { m0021 } from "./0021-stated-on.ts";
 import { m0022 } from "./0022-trade-indexes.ts";
 import { m0023 } from "./0023-key-rules.ts";
 import { m0024 } from "./0024-time-zone.ts";
+import { m0025 } from "./0025-position-market.ts";
 
 export const MIGRATIONS: readonly Migration[] = [
   m0001,
@@ -53,4 +54,5 @@ export const MIGRATIONS: readonly Migration[] = [
   m0022,
   m0023,
   m0024,
+  m0025,
 ];

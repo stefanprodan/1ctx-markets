@@ -411,7 +411,9 @@ signed in with the admin key alone.
   reads back the trade ("Buy 5 KO at 60.00 · 300.00 USD (≈ 270.00 EUR) ·
   Shares"). An instrument holding's opened row has Buy and Sell,
   which open the panel on it. A position's currency is the currency
-  picker. Only the kind is remembered per browser
+  picker. Cash and a fund pick a market, "None" first, from the
+  markets the server lists, in the add form and the edit, so a fund
+  holding one market's shares counts in it. Only the kind is remembered per browser
   (`markets-portfolio-add`). A
   refusal shows beside the buttons in plain words, its ids taken out
   (`plainError()` in `data/portfolios.ts`).

@@ -2085,3 +2085,117 @@ describe("the tool's description", () => {
     expect(d.length).toBeLessThanOrEqual(1024);
   });
 });
+
+describe("a position's market", () => {
+  const ask = async (m: Markets, args: object) => {
+    const r = await portfolioAnswer(m, CASEY, parsePortfolio(args));
+    return { error: r.isError === true, body: JSON.parse(r.content[0]!.text) };
+  };
+  const fund = {
+    action: "add",
+    kind: "fund",
+    portfolio: "Shares",
+    name: "Made Up Fund",
+    units: 10,
+    price: 5,
+    currency: "USD",
+  };
+
+  test("a fund naming a market counts in it; none is assumed", async () => {
+    const { m } = await setup();
+    await trade(m, { quantity: 1, price: 10 });
+    expect((await ask(m, { action: "list" })).body.markets).toEqual([
+      "KW",
+      "US",
+    ]);
+    const plain = await ask(m, { ...fund, name: "Unplaced Made Up Fund" });
+    expect(plain.body.position.market).toBeNull();
+    const placed = await ask(m, { ...fund, market: "us" });
+    expect(placed.body.position.market).toBe("US");
+    const h = await holdingsOf(m);
+    const rows = h.holdings.filter((x) => x.kind === "fund");
+    expect(rows.map((x) => [x.name, x.market]).sort()).toEqual([
+      ["Made Up Fund", "US"],
+      ["Unplaced Made Up Fund", null],
+    ]);
+    const usd = h.exposure.find((x) => x.currency === "USD")!;
+    expect(usd.market.find((x) => x.key === "US")!.value).toBe(150);
+  });
+
+  test("an unknown market is refused with the known ones", async () => {
+    const { m } = await setup();
+    const r = await ask(m, { ...fund, market: "Nowhere" });
+    expect(r.body).toMatchObject({ error: "not_found" });
+    expect(r.body.message).toContain("US");
+    expect(() =>
+      parsePortfolio({
+        action: "add",
+        kind: "bond",
+        name: "Made Up Bond",
+        amount: 1000,
+        currency: "USD",
+        market: "US",
+      }),
+    ).toThrow("not an argument of bond");
+  });
+
+  test("an update sets it or takes it off; a bond's is its listing's", async () => {
+    const { m } = await setup();
+    const id = (await ask(m, fund)).body.position.id;
+    const set = await ask(m, { action: "update", position: id, market: "KW" });
+    expect(set.body.position.market).toBe("KW");
+    const off = await ask(m, {
+      action: "update",
+      position: set.body.position.id,
+      market: null,
+    });
+    expect(off.body.position.market).toBeNull();
+    const bond = await ask(m, {
+      action: "add",
+      kind: "bond",
+      portfolio: "Shares",
+      name: "Made Up Bond",
+      amount: 1000,
+      currency: "USD",
+    });
+    const refused = await ask(m, {
+      action: "update",
+      position: bond.body.position.id,
+      market: "US",
+    });
+    expect(refused.body).toMatchObject({ error: "bad_arguments" });
+  });
+
+  test("REST adds and updates take it", async () => {
+    const { m } = await setup();
+    const handle = api(m);
+    const send = (method: string, path: string, body: object) =>
+      handle(
+        new Request(`http://markets.test/api/v1${path}`, {
+          method,
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        }),
+      );
+    const made = await send("POST", "/positions", {
+      kind: "cash",
+      portfolio: "Shares",
+      name: "Made Up Cash",
+      amount: 100,
+      currency: "USD",
+      market: "US",
+    });
+    expect(made.status).toBe(201);
+    const { position } = (await made.json()) as {
+      position: { id: number; market: string };
+    };
+    expect(position.market).toBe("US");
+    const up = await send("PATCH", `/positions/${position.id}`, {
+      market: "KW",
+    });
+    expect(up.status).toBe(200);
+    expect(
+      ((await up.json()) as { position: { market: string } }).position.market,
+    ).toBe("KW");
+  });
+});

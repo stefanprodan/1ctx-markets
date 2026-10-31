@@ -258,6 +258,8 @@ export function PositionEdit({
   // a new figure is true today; a bond's date is its purchase, kept
   const now = today(store.overview.value?.time_zone ?? null);
   const date = useSignal(h.kind === "bond" ? (h.as_of ?? now) : now);
+  const markets = store.overview.value?.markets ?? [];
+  const market = useSignal(h.market ?? "");
   const busy = useSignal(false);
   const error = useSignal<string | null>(null);
   const save = async (ev: Event) => {
@@ -276,6 +278,9 @@ export function PositionEdit({
     error.value = await store.updatePosition(h.position!, {
       ...(fund ? { price: n, units: u! } : { amount: n }),
       date: date.value,
+      ...(market.value === (h.market ?? "")
+        ? {}
+        : { market: market.value === "" ? null : market.value }),
     });
     busy.value = false;
     if (error.value === null) onDone();
@@ -316,6 +321,9 @@ export function PositionEdit({
           }}
         />
       </label>
+      {h.kind !== "bond" && markets.length > 0 && (
+        <MarketPick value={market} markets={markets} />
+      )}
       <div class="pf-form-foot">
         {error.value && (
           <p class="pf-error" role="alert">
@@ -1128,6 +1136,26 @@ function FormPick({
   );
 }
 
+// the markets instruments are in, so a fund counts in the one it holds
+function MarketPick({
+  value,
+  markets,
+}: {
+  value: Signal<string>;
+  markets: readonly string[];
+}) {
+  return (
+    <FormPick
+      label="Market"
+      value={value}
+      options={[
+        { value: "", text: "None" },
+        ...markets.map((x) => ({ value: x, text: x })),
+      ]}
+    />
+  );
+}
+
 // back: what closing the name field returns to, null with nothing to pick
 function PickOrNew({
   label,
@@ -1283,6 +1311,8 @@ export function AddForm({
   const maturity = useSignal("");
   // cash set aside for buying is what is added most
   const dry = useSignal(true);
+  // the market a fund's shares are in; none unless picked
+  const market = useSignal("");
   const payFrom = useSignal("");
   const own = useSignal(false);
   const busy = saving ?? own;
@@ -1484,6 +1514,9 @@ export function AddForm({
             }
           : {}),
         ...(kind.value === "cash" && dry.value ? { dry_powder: true } : {}),
+        ...(kind.value !== "bond" && market.value
+          ? { market: market.value }
+          : {}),
         date: date.value,
       },
     };
@@ -1588,6 +1621,11 @@ export function AddForm({
     { value: NEW, text: "New portfolio…" },
   ];
   const portfolioBack = only !== undefined ? String(only) : "";
+  const marketPick = (o?.markets ?? []).length > 0 && (
+    <div class="pf-pair">
+      <MarketPick value={market} markets={o?.markets ?? []} />
+    </div>
+  );
   const placePicks = (
     <div class="pf-pair">
       <PickOrNew
@@ -1913,6 +1951,7 @@ export function AddForm({
               {currencyField}
               <Field label="As of" value={date} type="date" />
             </div>
+            {marketPick}
             {placePicks}
           </>
         ) : kind.value === "fund" ? (
@@ -1929,6 +1968,7 @@ export function AddForm({
             <div class="pf-pair">
               <Field label="Cost" value={cost} placeholder="Optional" decimal />
             </div>
+            {marketPick}
             {placePicks}
           </>
         ) : (

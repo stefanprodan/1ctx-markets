@@ -881,6 +881,7 @@ async function planPositions(
         name,
         currency,
         instrument: null,
+        market: null,
         amount: null,
         units: null,
         price: null,
