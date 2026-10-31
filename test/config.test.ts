@@ -77,6 +77,21 @@ describe("--no-ui", () => {
   });
 });
 
+describe("--no-sync", () => {
+  test("sync is on unless the flag turns it off, and a service keeps it", () => {
+    const on = parseCli([], "/home/x");
+    if (on.kind !== "run") throw new Error(on.kind);
+    expect(on.config.sync).toBe(true);
+    expect(configToArgs(on.config)).not.toContain("--no-sync");
+    const off = parseCli(["--no-sync"], "/home/x");
+    if (off.kind !== "run") throw new Error(off.kind);
+    expect(off.config.sync).toBe(false);
+    expect(configToArgs(off.config)).toContain("--no-sync");
+    expect(parseCli(configToArgs(off.config), "/home/y")).toEqual(off);
+    expect(HELP).toContain("--no-sync");
+  });
+});
+
 describe("service arguments", () => {
   test("a config written out reads back unchanged", () => {
     const cli = parseCli(

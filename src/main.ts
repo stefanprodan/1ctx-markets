@@ -91,6 +91,7 @@ const app = start({
   adminKey,
   mask: store.mask,
   ui: config.ui,
+  sync: config.sync,
   page,
   // the manifest's icons: the bundler hashes what the page links but
   // leaves the URLs inside the manifest alone, so they keep fixed paths
@@ -125,6 +126,7 @@ main.info("startup", {
   quote_every: config.quoteEveryMs / MINUTE_MS,
   track_days: config.trackDays,
   ui: config.ui ? "on" : "off",
+  sync: config.sync ? "on" : "off",
 });
 main.info("sources", app.sources);
 

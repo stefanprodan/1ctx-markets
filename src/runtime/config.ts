@@ -23,6 +23,8 @@ export type Config = {
   track: string[];
   // the web UI at / and its sign-in
   ui: boolean;
+  // the source jobs; off, the server answers from the database as it is
+  sync: boolean;
 };
 
 export const dbPath = (config: Config): string =>
@@ -95,6 +97,8 @@ export const HELP = `\x1b[1m1ctx-markets\x1b[0m - a self-hosted market data serv
   --track <symbol>       keep an instrument tracked whether read or not,
                          repeated for each; a symbol as quote takes it
   --no-ui                serve no web UI at / and refuse its sign-in
+  --no-sync              run no sync job and serve the database as it is;
+                         a read still fetches a symbol not stored
   -v, --version          show version
   -h, --help             show this help
 
@@ -147,6 +151,7 @@ export function parseCli(argv: string[], home: string = homedir()): Cli {
   const sources = new Set<string>();
   const track = new Set<string>();
   let ui = true;
+  let sync = true;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
@@ -199,6 +204,9 @@ export function parseCli(argv: string[], home: string = homedir()): Cli {
       case "--no-ui":
         ui = false;
         break;
+      case "--no-sync":
+        sync = false;
+        break;
       case "-v":
       case "--version":
         return { kind: "version" };
@@ -222,6 +230,7 @@ export function parseCli(argv: string[], home: string = homedir()): Cli {
       sources: [...sources].sort(),
       track: [...track],
       ui,
+      sync,
     },
   };
 }
@@ -241,5 +250,6 @@ export function configToArgs(config: Config): string[] {
   for (const name of config.sources) args.push("--source", name);
   for (const value of config.track) args.push("--track", value);
   if (!config.ui) args.push("--no-ui");
+  if (!config.sync) args.push("--no-sync");
   return args;
 }

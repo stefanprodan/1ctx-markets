@@ -71,6 +71,8 @@ export type AppOptions = {
   files?: Readonly<Record<string, string>>;
   // Bun bundles the page on request and again after an edit
   pageDev?: boolean;
+  // off with --no-sync: no source job runs, reads still fetch what is missing
+  sync?: boolean;
   clock: Clock;
   log: LogFactory;
   version: string;
@@ -122,6 +124,7 @@ export type App = {
 
 export function start(options: AppOptions): App {
   const { clock, db } = options;
+  const syncing = options.sync !== false;
   const flagged = new Set<string>();
   const owed = new Set<string>();
   const tracking: Tracking = {
@@ -216,8 +219,9 @@ export function start(options: AppOptions): App {
     log: options.log("sources"),
   });
   // after the startup write, so its interrupted runs are failed first
-  if (switcher.needed()) void switcher.run();
-  else {
+  if (switcher.needed()) {
+    if (syncing) void switcher.run();
+  } else {
     void write
       .write((db) =>
         writeSources(db, priceSources(bvbClient !== null), clock.now()),
@@ -230,7 +234,7 @@ export function start(options: AppOptions): App {
   }
 
   // the exchange's lists at once, so a new symbol skips its search
-  void bvbSync?.warm();
+  if (syncing) void bvbSync?.warm();
 
   const fredKey = options.fredKey ?? null;
   const fredClient =
@@ -313,7 +317,7 @@ export function start(options: AppOptions): App {
     periodMs: options.quoteEveryMs,
     log: options.log("track"),
   });
-  void track.run();
+  if (syncing) void track.run();
   const mcp = mcpHandler(options.version, options.log("mcp"), reads);
   const keyed = (name: string, key: string | null, client: Paced | null) => ({
     name,
@@ -363,6 +367,7 @@ export function start(options: AppOptions): App {
           m: { ...reads, log: options.log("admin") },
           version: options.version,
           sources: states,
+          sync: syncing,
         },
         track: track.status,
         log: options.log("api"),
@@ -374,14 +379,16 @@ export function start(options: AppOptions): App {
     }),
   });
   const jobs = scheduler(clock, options.log("scheduler"));
-  sync.schedule(jobs);
-  fredSync?.schedule(jobs);
-  finnhubSync?.schedule(jobs);
-  massiveSync?.schedule(jobs);
-  edgarSync?.schedule(jobs);
-  bvbSync?.schedule(jobs);
-  switcher.schedule(jobs);
-  track.schedule(jobs);
+  if (syncing) {
+    sync.schedule(jobs);
+    fredSync?.schedule(jobs);
+    finnhubSync?.schedule(jobs);
+    massiveSync?.schedule(jobs);
+    edgarSync?.schedule(jobs);
+    bvbSync?.schedule(jobs);
+    switcher.schedule(jobs);
+    track.schedule(jobs);
+  }
   jobs.every("retention", DAY_MS, async () => {
     await write.write(prune);
   });

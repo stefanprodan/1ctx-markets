@@ -56,6 +56,7 @@ export function api(
       m,
       version: "v0.0.0-test",
       sources: options.sources ?? [],
+      sync: true,
     },
     track: options.track ?? (() => []),
     log: silent,

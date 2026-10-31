@@ -173,6 +173,7 @@ export function StatusBody({
         />
       </div>
       <Rows>
+        {!s.sync && <p class="srv-off">Sync is off.</p>}
         {switched !== null && (
           <p class="notice-failed" role="alert">
             {switched}

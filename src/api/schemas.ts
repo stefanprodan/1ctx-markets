@@ -760,6 +760,7 @@ export const schemas: Record<string, Schema> = {
   ),
   Status: object({
     version: str,
+    sync: bool,
     sources: list(
       object({
         name: str,

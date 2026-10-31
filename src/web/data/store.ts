@@ -56,6 +56,8 @@ export type JobStatus = {
 
 export type Status = {
   version: string;
+  // false while the server runs with --no-sync
+  sync: boolean;
   sources: SourceStatus[];
   jobs: JobStatus[];
   instruments: number;

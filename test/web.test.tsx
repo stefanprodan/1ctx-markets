@@ -234,6 +234,7 @@ const job = (
 
 const STATUS: Status = {
   version: "v1.2.3",
+  sync: true,
   sources: [
     source("prices"),
     source("feed"),
@@ -1008,6 +1009,18 @@ describe("the views", () => {
     expect(html).not.toContain("Add a source");
     expect(html).not.toContain("Always tracked");
     expect(html).not.toContain("notice-failed");
+    expect(html).not.toContain("Sync is off.");
+  });
+
+  test("status says when sync is off", () => {
+    const html = render(
+      <StatusBody
+        status={{ ...STATUS, sync: false }}
+        watchlist={[]}
+        now={NOW}
+      />,
+    );
+    expect(html).toContain('<p class="srv-off">Sync is off.</p>');
   });
 
   test("sign-in asks for the admin key alone", () => {
