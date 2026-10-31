@@ -88,10 +88,7 @@ export function read(answer: ChartAnswer, latest: Session | null): Read {
   }
   if (trailing !== null && trailing.close !== null) {
     const date = barDate(zone, trailing.at);
-    if (
-      date === sessionDate(answer.session) &&
-      (byDate.has(date) || isCurrency(answer.type))
-    ) {
+    if (date === today && (byDate.has(date) || isCurrency(answer.type))) {
       // an FX day held only by this row is still a day the answer covers
       days.add(date);
       add(byDate, date, trailing, latest);

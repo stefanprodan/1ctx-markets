@@ -114,8 +114,9 @@ export function quoteStale(
 }
 
 // A Friday session still stored on Monday is left to the failed checks.
-// Passes stop at the end and the closing pass runs at close, so the last
-// quote is due by the end until the closing pass is two periods late.
+// Passes stop at the session's end and the closing pass runs 15 minutes
+// after it, so the last quote is due by the end until the closing pass is
+// two periods late.
 function lastQuoteDue(
   db: Db,
   market: string,
