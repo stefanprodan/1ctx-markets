@@ -52,7 +52,8 @@
     gap: var(--space-3);
   }
   .srv-about,
-  .srv-ok {
+  .srv-ok,
+  .srv-off {
     margin: 0;
     color: var(--dim);
   }

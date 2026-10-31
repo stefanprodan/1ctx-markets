@@ -75,6 +75,8 @@ export type AdminDeps = {
   m: Markets;
   version: string;
   sources: readonly SourceState[];
+  // false with --no-sync, so old runs read as paused, not broken
+  sync: boolean;
 };
 
 // names for people, sent only to a signed-in page so the public bundle
@@ -312,6 +314,7 @@ export function status(d: AdminDeps, url: URL): Response {
   const now = clock.now();
   return json({
     version: d.version,
+    sync: d.sync,
     sources: d.sources.map((s) => {
       const b = s.on ? s.backoff() : null;
       return {

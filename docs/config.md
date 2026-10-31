@@ -24,6 +24,7 @@ the `--help` text, and a flag changes there in the same commit.
 | `--source <name>` | none | turns on a keyless source, repeated for each; `bvb` is the Bucharest feed (`docs/bvb.md`) |
 | `--track <symbol>` | none | keeps an instrument tracked whether read or not, repeated for each; a value is what `quote` takes (`docs/storage.md`, Tracking). Until the dashboard is first saved, the web UI's home page shows these values; after that only the dashboard's own saves, or deleting an instrument on it, change it (`docs/web.md`) |
 | `--no-ui` | the UI on | serves no web UI and refuses its sign-in (`docs/web.md`) |
+| `--no-sync` | sync on | runs no source job and no fetch at start (`--track` values, a source switch, the Bucharest feed's lists), so a second server on a copy of the database spends none of the first's source rate limits; retention still runs, a read still fetches a symbol not stored (`docs/tools.md`), and `GET /api/v1/status` answers `sync: false` |
 | `-v`, `--version` | | prints the version |
 | `-h`, `--help` | | prints the help |
 
@@ -92,7 +93,7 @@ the `--help` text, and a flag changes there in the same commit.
 - **One `startup` line, then one `sources` line**, on stderr in
   slog-text form. `startup` holds `version`, `listen`, `data` (`~` for
   the home directory), `migrations` (applied, or `current`),
-  `quote_every`, `track_days` and `ui` (`on` or `off`). `sources` has one field per source:
+  `quote_every`, `track_days`, `ui` and `sync` (each `on` or `off`). `sources` has one field per source:
   `yahoo=on`, the keyed ones `on (key file)` or `off (no key)`, `edgar`
   also `off (bad contact line)` (`docs/edgar.md`), `bvb` `on (flag)` or
   `off (no flag)`.

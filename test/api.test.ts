@@ -127,7 +127,7 @@ describe("the spec", () => {
     const list = routes({
       m: w.m,
       alerts: async () => new Response(),
-      admin: { m: w.m, version: "v", sources: [] },
+      admin: { m: w.m, version: "v", sources: [], sync: true },
       track: () => [],
       log: silent,
     });
@@ -1508,7 +1508,7 @@ describe("access", () => {
       const list = routes({
         m: world().m,
         alerts: async () => new Response(),
-        admin: { m: world().m, version: "v", sources: [] },
+        admin: { m: world().m, version: "v", sources: [], sync: true },
         track: () => [],
         log: silent,
       });

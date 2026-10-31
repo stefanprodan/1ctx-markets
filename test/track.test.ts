@@ -16,7 +16,10 @@ import { endRun, startRun } from "../src/storage/runs.ts";
 import { type TestApp, withApp } from "./helpers/app.ts";
 import { bothSources } from "./helpers/bvb.ts";
 import { fakeClock } from "./helpers/clock.ts";
-import { gate, sources } from "./helpers/sources.ts";
+import { EDGAR_CONTACT } from "./helpers/edgar.ts";
+import { FINNHUB_KEY } from "./helpers/finnhub.ts";
+import { MASSIVE_KEY } from "./helpers/massive.ts";
+import { FRED_KEY, gate, sources } from "./helpers/sources.ts";
 import {
   backTo,
   chartSymbol,
@@ -886,5 +889,50 @@ describe("seed", () => {
     } finally {
       db.close();
     }
+  });
+});
+
+describe("--no-sync", () => {
+  test("no source job runs, retention still does, and a read still fetches", async () => {
+    const s = await sources({ charts: await charts() });
+    await withApp(
+      async (t) => {
+        // retention, a day out, is the only timer armed
+        expect(t.clock.next()).toBe(OPEN + DAY_MS);
+        await t.app.writer.write(() => {});
+        const old = startRun(t.db, "yahoo", "quotes", OPEN - 31 * DAY_MS, DJI);
+        endRun(t.db, old, OPEN - 31 * DAY_MS, 0);
+        await t.clock.advance(DAY_MS);
+        await t.app.writer.write(() => {});
+        expect(s.calls.urls).toHaveLength(0);
+        expect(t.app.tracker.status()[0]!.state).toBe("pending");
+        const kept = t.db
+          .query<{ n: number }, [number]>(
+            "select count(*) as n from sync_runs where id = ?",
+          )
+          .get(old)!.n;
+        expect(kept).toBe(0);
+        expect((await get(t, "/status")).sync).toBe(false);
+        await readTargets(t.app.markets, ["NVDA"]);
+        expect(s.calls.charts("NVDA").length).toBeGreaterThan(0);
+      },
+      {
+        fetch: s.fetch,
+        start: OPEN,
+        track: ["^DJI"],
+        fredKey: FRED_KEY,
+        finnhubKey: FINNHUB_KEY,
+        massiveKey: MASSIVE_KEY,
+        edgarKey: EDGAR_CONTACT,
+        bvb: true,
+        sync: false,
+      },
+    );
+  });
+
+  test("the status says sync is on by default", async () => {
+    await withApp(async (t) => {
+      expect((await get(t, "/status")).sync).toBe(true);
+    });
   });
 });

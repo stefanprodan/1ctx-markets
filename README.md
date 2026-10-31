@@ -132,8 +132,10 @@ The server listens on `127.0.0.1:11238`, serves MCP at `/mcp`, and
 keeps `markets.db` in `~/.1ctx-markets`. `--listen`, `--data`,
 `--quote-every` (minutes between quote syncs, 5 by default) and
 `--track-days` (how long an instrument stays synced after its last
-read, 30 by default) change that, and `--source bvb` turns on the
-Bucharest Stock Exchange's feed; `--help` lists them. It speaks plain
+read, 30 by default) change that, `--source bvb` turns on the
+Bucharest Stock Exchange's feed, and `--no-sync` serves the database
+without syncing it, for a second server on a copy; `--help` lists
+them. It speaks plain
 HTTP, so keep it on loopback, on a private network such as Tailscale,
 or behind a TLS proxy.
 

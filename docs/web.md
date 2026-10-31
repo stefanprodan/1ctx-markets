@@ -284,7 +284,8 @@ signed in with the admin key alone.
 - **Server status** (`/status`, last in the rail, after Home,
   Instruments, Portfolios and Connect agents): `GET /api/v1/status` drawn as tiles (instruments,
   the sources on and how many are paused, the jobs shown and how many
-  fail, the database) and a card per source that is on, headed by its
+  fail, the database), "Sync is off." while `sync` is false
+  (`--no-sync`, `docs/config.md`), and a card per source that is on, headed by its
   name and job count alone, never one that is off:
   most servers never turn a regional source on, and an off source has
   nothing to fix. A job is a two-line row (its label, then how many

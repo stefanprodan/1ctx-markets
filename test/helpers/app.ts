@@ -53,6 +53,8 @@ export type TestOptions = {
   track?: string[];
   // the Bucharest feed, on as with --source bvb
   bvb?: boolean;
+  // false as with --no-sync
+  sync?: boolean;
   // kept open after the app stops, so a second start reads it
   db?: Db;
   // the web UI's sign-in, and the page it serves
@@ -91,6 +93,7 @@ export async function withApp(
     edgarKey: options.edgarKey ?? null,
     track: options.track,
     bvb: options.bvb,
+    sync: options.sync,
     ui: options.ui,
     page: options.page,
     files: options.files,
