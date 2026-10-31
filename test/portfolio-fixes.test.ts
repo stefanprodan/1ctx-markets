@@ -2037,3 +2037,15 @@ describe("setup and brokers over the tool", () => {
     expect(JSON.parse(r.content[0]!.text).error).toBe("forbidden");
   });
 });
+
+describe("a holding's figures", () => {
+  test("a holding's weight is its share of its own currency", async () => {
+    const { m } = await setup();
+    await trade(m, {});
+    const row = (await holdingsOf(m, "EUR")).holdings.find(
+      (x) => x.id === "US:AAA",
+    )!;
+    expect(row.currency_weight).toBe(100);
+    expect("weight" in row).toBe(false);
+  });
+});

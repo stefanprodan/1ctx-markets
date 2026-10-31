@@ -131,7 +131,7 @@ const HOLDINGS: Holdings = {
       pl_percent: 25,
       day_change: 5,
       change_percent: 0.5,
-      weight: 70,
+      currency_weight: 70,
       stale: [],
       parts: [
         {
@@ -171,7 +171,7 @@ const HOLDINGS: Holdings = {
       pl_percent: null,
       day_change: null,
       change_percent: null,
-      weight: 30,
+      currency_weight: 30,
       dry_powder: true,
       stale: [],
       parts: [],

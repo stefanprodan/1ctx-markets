@@ -185,7 +185,9 @@ once and valued on the live price the server already keeps.
   P/L over the rows with a cost (null when none has one), the day's
   change, and the value split into invested, cash and dry powder, each
   with its share. Weights and exposure (market, type, portfolio,
-  broker) are within one currency. A total is rounded from the
+  broker) are within one currency: a holding's `currency_weight` is its
+  share of the value in its own currency, never of the total, which is
+  `converted.weight`. A total is rounded from the
   unrounded sum, so it can differ by a minor unit from the sum of the
   rounded rows shown.
 - **A named currency converts**: the caller's `currency`, else the

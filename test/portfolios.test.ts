@@ -273,8 +273,8 @@ describe("currencies", () => {
       ["USD", 240],
     ]);
     // weights only within one currency
-    expect(row(h, "US:AAA").weight).toBe(100);
-    expect(row(h, "XETRA:BBB").weight).toBe(100);
+    expect(row(h, "US:AAA").currency_weight).toBe(100);
+    expect(row(h, "XETRA:BBB").currency_weight).toBe(100);
     expect(h.exposure.map((e) => e.currency)).toEqual(["EUR", "USD"]);
   });
 

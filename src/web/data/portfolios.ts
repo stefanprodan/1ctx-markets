@@ -69,7 +69,8 @@ export type Holding = {
   pl_percent: number | null;
   day_change: number | null;
   change_percent: number | null;
-  weight: number | null;
+  // of the value in its own currency
+  currency_weight: number | null;
   paid?: { currency: string; amount: number | null }[];
   converted?: Converted;
   coupon?: number | null;

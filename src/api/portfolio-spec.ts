@@ -78,7 +78,7 @@ const converted = object({
   cost: nnum,
   pl: nnum,
   pl_percent: nnum,
-  weight: nnum,
+  weight: note(nnum, "Its share of the converted total, in percent."),
 });
 
 const trade = object(
@@ -221,7 +221,10 @@ const holding = object(
     pl_percent: nnum,
     day_change: nnum,
     change_percent: nnum,
-    weight: note(nnum, "Of the value in its own currency."),
+    currency_weight: note(
+      nnum,
+      "Its share of the value in its own currency, in percent; `converted.weight` is its share of the converted total.",
+    ),
     paid: list(object({ currency: str, amount: nnum })),
     converted,
     coupon: nnum,
@@ -248,7 +251,7 @@ const holding = object(
     "priced",
     "value",
     "pl",
-    "weight",
+    "currency_weight",
     "stale",
     "parts",
   ],

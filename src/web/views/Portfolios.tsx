@@ -567,10 +567,10 @@ function HoldingRow({
             <dd>{amount(p.amount, p.currency)}</dd>
           </div>
         ))}
-        {!sold && h.weight !== null && (
+        {!sold && h.currency_weight !== null && (
           <div>
             <dt>Weight</dt>
-            <dd>{h.weight.toFixed(1)}%</dd>
+            <dd>{h.currency_weight.toFixed(1)}%</dd>
           </div>
         )}
         {h.kind === "cash" && h.as_of && (
