@@ -930,6 +930,35 @@ describe("--no-sync", () => {
     );
   });
 
+  test("a source switch due at start does not run", async () => {
+    const { db } = open(":memory:", fakeClock(OPEN));
+    stored(db, "BVB:TLV", "2026-10-27");
+    const asked: string[] = [];
+    try {
+      await withApp(
+        async (t) => {
+          await t.app.sourceSwitch.settled();
+          await t.app.writer.write(() => {});
+          expect(t.app.sourceSwitch.needed()).toBe(true);
+          expect(asked).toEqual([]);
+          expect(readInstrument(t.db, "BVB:TLV")?.source).toBe("yahoo");
+        },
+        {
+          fetch: async (url) => {
+            asked.push(url);
+            throw new Error(`no network in tests: ${url}`);
+          },
+          start: OPEN,
+          bvb: true,
+          sync: false,
+          db,
+        },
+      );
+    } finally {
+      db.close();
+    }
+  });
+
   test("the status says sync is on by default", async () => {
     await withApp(async (t) => {
       expect((await get(t, "/status")).sync).toBe(true);
