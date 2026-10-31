@@ -20,6 +20,7 @@ import type {
   TradeIn,
   TradeRow,
 } from "../data/portfolios.ts";
+import { JUST_SAVED } from "../data/portfolios.ts";
 import { type Candidate, markets } from "../data/store.ts";
 import { Icon } from "../lib/icons.tsx";
 import { useMenu } from "../lib/menu.ts";
@@ -40,6 +41,7 @@ import {
   ADD_KEY,
   amount,
   brokerName,
+  browserZone,
   change,
   costLine,
   currencies,
@@ -49,6 +51,7 @@ import {
   dryPowders,
   EXPOSURE_TABS,
   type ExposureTab,
+  findZones,
   heldAt,
   holdingSub,
   holdingTitle,
@@ -77,6 +80,7 @@ import {
   tradeTitle,
   typed,
   whole,
+  zoneWords,
 } from "./Portfolios.model.ts";
 import "./instruments.css";
 import "./portfolios.css";
@@ -253,7 +257,10 @@ export function PositionEdit({
   );
   const units = useSignal(String(h.quantity ?? ""));
   // a new figure is true today; a bond's date is its purchase, kept
-  const date = useSignal(h.kind === "bond" ? (h.as_of ?? today()) : today());
+  const now = today(store.overview.value?.time_zone ?? null);
+  const date = useSignal(h.kind === "bond" ? (h.as_of ?? now) : now);
+  const markets = store.overview.value?.markets ?? [];
+  const market = useSignal(h.market ?? "");
   const busy = useSignal(false);
   const error = useSignal<string | null>(null);
   const save = async (ev: Event) => {
@@ -272,6 +279,9 @@ export function PositionEdit({
     error.value = await store.updatePosition(h.position!, {
       ...(fund ? { price: n, units: u! } : { amount: n }),
       date: date.value,
+      ...(market.value === (h.market ?? "")
+        ? {}
+        : { market: market.value === "" ? null : market.value }),
     });
     busy.value = false;
     if (error.value === null) onDone();
@@ -312,6 +322,9 @@ export function PositionEdit({
           }}
         />
       </label>
+      {h.kind !== "bond" && markets.length > 0 && (
+        <MarketPick value={market} markets={markets} />
+      )}
       <div class="pf-form-foot">
         {error.value && (
           <p class="pf-error" role="alert">
@@ -563,10 +576,10 @@ function HoldingRow({
             <dd>{amount(p.amount, p.currency)}</dd>
           </div>
         ))}
-        {!sold && h.weight !== null && (
+        {!sold && h.currency_weight !== null && (
           <div>
             <dt>Weight</dt>
-            <dd>{h.weight.toFixed(1)}%</dd>
+            <dd>{h.currency_weight.toFixed(1)}%</dd>
           </div>
         )}
         {h.kind === "cash" && h.as_of && (
@@ -1124,6 +1137,56 @@ function FormPick({
   );
 }
 
+// a refused retry offers to save a second equal fill
+export function Refusal({
+  text,
+  busy,
+  onAgain,
+}: {
+  text: string;
+  busy: boolean;
+  onAgain: (ev: Event) => void;
+}) {
+  return (
+    <p class="pf-error" role="alert">
+      {text}
+      {text === JUST_SAVED && (
+        <>
+          {" "}
+          <button
+            type="button"
+            class="btn btn-small"
+            disabled={busy}
+            onClick={onAgain}
+          >
+            Save again
+          </button>
+        </>
+      )}
+    </p>
+  );
+}
+
+// the markets instruments are in, so a fund counts in the one it holds
+function MarketPick({
+  value,
+  markets,
+}: {
+  value: Signal<string>;
+  markets: readonly string[];
+}) {
+  return (
+    <FormPick
+      label="Market"
+      value={value}
+      options={[
+        { value: "", text: "None" },
+        ...markets.map((x) => ({ value: x, text: x })),
+      ]}
+    />
+  );
+}
+
 // back: what closing the name field returns to, null with nothing to pick
 function PickOrNew({
   label,
@@ -1267,7 +1330,7 @@ export function AddForm({
   const pxLive = useSignal(false);
   const byTotal = useSignal(false);
   const fees = useSignal("");
-  const date = useSignal(today());
+  const date = useSignal(today(o?.time_zone ?? null));
   const note = useSignal("");
   const name = useSignal("");
   const amountText = useSignal("");
@@ -1279,6 +1342,8 @@ export function AddForm({
   const maturity = useSignal("");
   // cash set aside for buying is what is added most
   const dry = useSignal(true);
+  // the market a fund's shares are in; none unless picked
+  const market = useSignal("");
   const payFrom = useSignal("");
   const own = useSignal(false);
   const busy = saving ?? own;
@@ -1480,11 +1545,15 @@ export function AddForm({
             }
           : {}),
         ...(kind.value === "cash" && dry.value ? { dry_powder: true } : {}),
+        ...(kind.value !== "bond" && market.value
+          ? { market: market.value }
+          : {}),
         date: date.value,
       },
     };
   };
-  const submit = async (ev: Event) => {
+  // twice: the owner said a refused equal trade is a second fill
+  const submit = async (ev: Event, twice = false) => {
     ev.preventDefault();
     if (busy.value || half.value) return;
     error.value = null;
@@ -1546,6 +1615,7 @@ export function AddForm({
         ...out.trade,
         portfolio: pid,
         broker: b,
+        ...(twice ? { again: true } : {}),
       });
       if ("refused" in r) {
         refused = r.refused;
@@ -1584,6 +1654,11 @@ export function AddForm({
     { value: NEW, text: "New portfolio…" },
   ];
   const portfolioBack = only !== undefined ? String(only) : "";
+  const marketPick = (o?.markets ?? []).length > 0 && (
+    <div class="pf-pair">
+      <MarketPick value={market} markets={o?.markets ?? []} />
+    </div>
+  );
   const placePicks = (
     <div class="pf-pair">
       <PickOrNew
@@ -1909,6 +1984,7 @@ export function AddForm({
               {currencyField}
               <Field label="As of" value={date} type="date" />
             </div>
+            {marketPick}
             {placePicks}
           </>
         ) : kind.value === "fund" ? (
@@ -1925,6 +2001,7 @@ export function AddForm({
             <div class="pf-pair">
               <Field label="Cost" value={cost} placeholder="Optional" decimal />
             </div>
+            {marketPick}
             {placePicks}
           </>
         ) : (
@@ -1952,9 +2029,11 @@ export function AddForm({
       <div class="pf-add-foot">
         {what && <p class="pf-summary">{what}</p>}
         {error.value && (
-          <p class="pf-error" role="alert">
-            {error.value}
-          </p>
+          <Refusal
+            text={error.value}
+            busy={busy.value}
+            onAgain={(ev) => void submit(ev, true)}
+          />
         )}
         <div class="pf-form-foot">
           {half.value ? (
@@ -2486,6 +2565,93 @@ function CurrencyPick({
   );
 }
 
+// every zone the browser knows, found by city or area as typed
+function ZonePick({
+  value,
+  onPick,
+  label = "Time zone",
+}: {
+  value: string | null;
+  onPick: (zone: string) => void;
+  label?: string;
+}) {
+  const { open, root } = useMenu();
+  const query = useSignal("");
+  const found = open.value ? findZones(query.value) : [];
+  const named = (z: string) => {
+    const w = zoneWords(z);
+    return w.area ? `${w.city} · ${w.area}` : w.city;
+  };
+  const pick = (z: string) => {
+    open.value = false;
+    query.value = "";
+    if (z !== value) onPick(z);
+  };
+  return (
+    <div class="pf-drop pf-currency" ref={root}>
+      <button
+        type="button"
+        class="btn pf-drop-btn"
+        aria-label={`${label}: ${value ?? "none"}`}
+        aria-haspopup="menu"
+        aria-expanded={open.value}
+        onClick={() => {
+          open.value = !open.value;
+          query.value = "";
+        }}
+      >
+        <span class="cut">{value ? named(value) : "Pick a time zone"}</span>
+        <Icon name="chevron" size={14} class="pf-drop-chevron" />
+      </button>
+      {open.value && (
+        <div class="menu pf-drop-menu pf-currency-menu">
+          <input
+            class="pf-currency-find"
+            value={query.value}
+            placeholder="City or region"
+            aria-label="Find a time zone"
+            ref={(el) => {
+              if (!el) return;
+              el.focus({ preventScroll: true });
+              el.parentElement?.scrollIntoView({ block: "nearest" });
+            }}
+            onInput={(e) => {
+              query.value = e.currentTarget.value;
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && found[0]) {
+                e.preventDefault();
+                pick(found[0]);
+              }
+            }}
+          />
+          <div class="pf-currency-list" role="menu" aria-label="Time zones">
+            {found.length === 0 && (
+              <span class="pf-currency-none">No time zone matches.</span>
+            )}
+            {found.map((z) => (
+              <button
+                key={z}
+                type="button"
+                class={`menu-item${z === value ? " menu-item-on" : ""}`}
+                role="menuitemradio"
+                aria-checked={z === value}
+                onClick={() => pick(z)}
+              >
+                <span class="cut">{zoneWords(z).city}</span>
+                <span class="cut pf-dim">{zoneWords(z).area}</span>
+                {z === value && (
+                  <Icon name="check" size={14} class="pf-drop-check" />
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function SettingsPanel({
   store,
   onDone,
@@ -2495,6 +2661,7 @@ export function SettingsPanel({
 }) {
   const o = store.overview.value;
   const error = useSignal<string | null>(null);
+  const zoneError = useSignal<string | null>(null);
   return (
     <section class="pf-settings" aria-label="Settings">
       <div class="pf-settings-head">
@@ -2515,6 +2682,21 @@ export function SettingsPanel({
             {error.value && (
               <span class="pf-error" role="alert">
                 {error.value}
+              </span>
+            )}
+          </div>
+        </RowsCard>
+        <RowsCard label="Time zone" menus>
+          <div class="rows-item pf-inline pf-add-name">
+            <ZonePick
+              value={o?.time_zone ?? null}
+              onPick={async (z) => {
+                zoneError.value = await store.saveSettings({ time_zone: z });
+              }}
+            />
+            {zoneError.value && (
+              <span class="pf-error" role="alert">
+                {zoneError.value}
               </span>
             )}
           </div>
@@ -2555,6 +2737,8 @@ function Welcome({ store }: { store: PortfolioStore }) {
   // portfolios made before a currency was required need only the currency
   const has = (o?.portfolios.length ?? 0) > 0;
   const cur = useSignal(o?.display_currency ?? "");
+  // the browser's zone is a suggestion the owner sees before saving
+  const zone = useSignal(o?.time_zone ?? browserZone() ?? "");
   const name = useSignal("");
   const other = useSignal(false);
   const query = useSignal("");
@@ -2579,12 +2763,22 @@ function Welcome({ store }: { store: PortfolioStore }) {
       error.value = "Pick a currency.";
       return;
     }
+    if (zone.value === "") {
+      error.value = "Pick a time zone.";
+      return;
+    }
     busy.value = true;
     // a portfolio is refused until the display currency is set
+    const changed = {
+      ...(cur.value === o?.display_currency
+        ? {}
+        : { display_currency: cur.value }),
+      ...(zone.value === o?.time_zone ? {} : { time_zone: zone.value }),
+    };
     error.value =
-      cur.value === o?.display_currency
+      Object.keys(changed).length === 0
         ? null
-        : await store.saveDisplay(cur.value);
+        : await store.saveSettings(changed);
     if (error.value === null && !has) {
       error.value = await store.createPortfolio(name.value.trim());
     }
@@ -2668,6 +2862,16 @@ function Welcome({ store }: { store: PortfolioStore }) {
             </div>
           )}
         </fieldset>
+        <div class="field">
+          <span class="label">Time zone</span>
+          <ZonePick
+            value={zone.value === "" ? null : zone.value}
+            onPick={(z) => {
+              zone.value = z;
+              error.value = null;
+            }}
+          />
+        </div>
         {error.value && (
           <p class="pf-error" role="alert">
             {error.value}

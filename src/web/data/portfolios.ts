@@ -19,6 +19,10 @@ export type BrokerRow = { id: number; name: string };
 
 export type Overview = {
   display_currency: string | null;
+  // the owner's IANA zone, none until they name one
+  time_zone?: string | null;
+  // what a cash or fund position can name as its market
+  markets?: string[];
   portfolios: PortfolioRow[];
   brokers: BrokerRow[];
 };
@@ -67,7 +71,8 @@ export type Holding = {
   pl_percent: number | null;
   day_change: number | null;
   change_percent: number | null;
-  weight: number | null;
+  // of the value in its own currency
+  currency_weight: number | null;
   paid?: { currency: string; amount: number | null }[];
   converted?: Converted;
   coupon?: number | null;
@@ -165,6 +170,8 @@ export type TradeIn = {
   date: string;
   broker?: string;
   note?: string;
+  // a second fill equal to one just saved
+  again?: boolean;
 };
 
 export type SavedTrade = {
@@ -201,6 +208,7 @@ export type PositionIn = {
   date?: string;
   dry_powder?: boolean;
   broker?: string;
+  market?: string;
 };
 
 export type PositionChange = {
@@ -211,6 +219,8 @@ export type PositionChange = {
   units?: number;
   price?: number;
   date?: string;
+  // null takes it off
+  market?: string | null;
 };
 
 export type ImportRow = {
@@ -240,6 +250,9 @@ export type ImportIn = {
 };
 
 // the server's refusal without ids, as a reader says it
+// a retry refused, which a second equal fill saves with again
+export const JUST_SAVED = "This trade was just saved.";
+
 export function plainError(said: string): string {
   const t = said.replace(/^[A-Z0-9]+:[^\s:]+: /, "");
   if (/was removed or updated; restore it first/.test(t)) {
@@ -265,6 +278,9 @@ export function plainError(said: string): string {
   }
   if (/is listed in .*a bond takes its listing's currency/.test(t)) {
     return "Use the bond's own currency.";
+  }
+  if (/^the same trade was saved as trade \d+ in the last/i.test(t)) {
+    return JUST_SAVED;
   }
   return t.charAt(0).toUpperCase() + t.slice(1);
 }
@@ -416,6 +432,11 @@ export function portfolioStore(call: Call, session: () => number) {
           display_currency: display,
         }),
       ),
+    // one left out is kept
+    saveSettings: async (s: {
+      display_currency?: string;
+      time_zone?: string;
+    }) => refusal(await write("/api/v1/portfolio-settings", "PUT", s)),
     // a preview saves nothing; a confirm saves the good rows
     importFile: async (
       args: ImportIn,

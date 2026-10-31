@@ -11,6 +11,7 @@ import {
   parseDay,
   parseNumber,
 } from "../portfolios/csv.ts";
+import { rates } from "../portfolios/fx.ts";
 import {
   type Broker,
   insertPosition,
@@ -43,6 +44,7 @@ import {
   findPortfolio,
   latestDay,
   MAX_AMOUNT,
+  ownerToday,
   ref,
 } from "./portfolio.ts";
 import { readTargets } from "./targets.ts";
@@ -81,9 +83,10 @@ export const YAHOO_HEADER = [
 
 // Yahoo has no column for a broker, the currency paid or the day an
 // export restated its lots, so they ride in Comment as leading tags,
-// [broker North][paid EUR][as of 2026-04-17], the note after them as
-// written; a note starting with [ or a backslash gets a backslash first,
-// so any note reads back as it was
+// [broker North][paid EUR 9.5][as of 2026-04-17], the note after them as
+// written; the paid tag's price is the price paid when Purchase Price
+// holds the listing's; a note starting with [ or a backslash gets a
+// backslash first, so any note reads back as it was
 const TAG = /^\[(broker|paid|as of) ((?:[^\]\\]|\\.)*)\]/;
 const unmark = (v: string) => v.replace(/\\(.)/g, "$1");
 const mark = (v: string) => v.replace(/[\]\\]/g, "\\$&");
@@ -91,11 +94,14 @@ const mark = (v: string) => v.replace(/[\]\\]/g, "\\$&");
 export function commentOf(t: {
   broker: string | null;
   paid: string | null;
+  paidPrice?: string | null;
   note: string | null;
   statedOn?: string | null;
 }): string {
   const tags = `${t.broker === null ? "" : `[broker ${mark(t.broker)}]`}${
-    t.paid === null ? "" : `[paid ${mark(t.paid)}]`
+    t.paid === null
+      ? ""
+      : `[paid ${mark(t.paid)}${t.paidPrice ? ` ${mark(t.paidPrice)}` : ""}]`
   }${t.statedOn ? `[as of ${t.statedOn}]` : ""}`;
   const note = t.note ?? "";
   const lead = tags !== "" && note !== "" ? " " : "";
@@ -106,12 +112,14 @@ export function commentOf(t: {
 export function readComment(raw: string): {
   broker: string | null;
   paid: string | null;
+  paidPrice: string | null;
   note: string | null;
   statedOn: string | null;
 } {
   let rest = raw;
   let broker: string | null = null;
   let paid: string | null = null;
+  let paidPrice: string | null = null;
   let statedOn: string | null = null;
   let tagged = false;
   for (;;) {
@@ -119,8 +127,13 @@ export function readComment(raw: string): {
     if (m === null) break;
     tagged = true;
     if (m[1] === "broker") broker = unmark(m[2]!);
-    else if (m[1] === "paid") paid = unmark(m[2]!);
-    else statedOn = unmark(m[2]!);
+    else if (m[1] === "paid") {
+      // a code has no space: what follows one is the price paid
+      const v = unmark(m[2]!);
+      const at = v.indexOf(" ");
+      paid = at < 0 ? v : v.slice(0, at);
+      paidPrice = at < 0 ? null : v.slice(at + 1);
+    } else statedOn = unmark(m[2]!);
     rest = rest.slice(m[0].length);
   }
   if (tagged && rest.startsWith(" ")) rest = rest.slice(1);
@@ -128,7 +141,13 @@ export function readComment(raw: string): {
   // any other backslash is the note's own
   if (/^\\[[\\]/.test(rest)) rest = rest.slice(1);
   // only spaces is no note
-  return { broker, paid, note: rest.trim() === "" ? null : rest, statedOn };
+  return {
+    broker,
+    paid,
+    paidPrice,
+    note: rest.trim() === "" ? null : rest,
+    statedOn,
+  };
 }
 
 type Status = "ok" | "bad" | "skipped" | "saved";
@@ -347,7 +366,14 @@ function yahooRow(
       required: true,
       positive: true,
     })!,
-    price: num(get("purchase price"), "purchase price", { required: true })!,
+    price: (() => {
+      const listed = num(get("purchase price"), "purchase price", {
+        required: true,
+      })!;
+      if (said.paidPrice === null) return listed;
+      if (currency === null) throw new Bad("the paid tag's price has no code");
+      return num(said.paidPrice, "the paid tag's price", { required: true })!;
+    })(),
     fees: num(get("commission"), "commission") ?? 0,
     currency,
     broker,
@@ -486,7 +512,12 @@ export async function importCsv(
           if (old !== null) setPositionRemoved(db, old.id, who.name, now);
           const id = insertPosition(
             db,
-            { ...x.position, replaces: old?.id ?? null },
+            {
+              ...x.position,
+              // a file has no market column: a kept one stays
+              market: x.position.market ?? old?.market ?? null,
+              replaces: old?.id ?? null,
+            },
             now,
           );
           added.add(id);
@@ -820,7 +851,7 @@ async function planPositions(
     .find((c) => c !== undefined);
   const amountColumn =
     header.map(norm).find((h) => /^amount( \(.+\))?$/.test(h)) ?? "amount";
-  const today = localDate("UTC", m.clock.now());
+  const today = ownerToday(m.db, m.clock.now());
   const latest = latestDay(m.clock.now());
   const rows = body.map((cells, k) => ({
     line: k + 2,
@@ -855,6 +886,7 @@ async function planPositions(
         name,
         currency,
         instrument: null,
+        market: null,
         amount: null,
         units: null,
         price: null,
@@ -970,6 +1002,7 @@ export function plain(n: number): string {
 export function exportCsv(m: Markets, portfolio: Portfolio): string {
   const trades = readTrades(m.db, { portfolio: portfolio.id }).reverse();
   const rows: string[][] = [[...YAHOO_HEADER]];
+  const fx = rates(m.db, m.clock.now(), m.quoteEveryMs);
   for (const t of trades) {
     const i = readInstrument(m.db, t.instrument);
     const symbol = i?.source === YAHOO ? i.sourceSymbol : t.instrument;
@@ -977,9 +1010,19 @@ export function exportCsv(m: Markets, portfolio: Portfolio): string {
     // stated as of today, as the export restates every lot, and tagged so,
     // so a split between export and import applies once
     const f = splitFactor(splitsOf(m.db, t.instrument), statedOf(t));
+    const paid = t.price / f;
+    const other = i !== null && t.currency !== i.currency;
+    // a Yahoo reader takes Purchase Price as the listing's: a lot paid in
+    // another currency is written at the close its cost converts at, the
+    // price paid kept in its tag; with no close, as paid, as before
+    const rate =
+      other && i.currency !== null
+        ? fx.rate(t.currency, i.currency, t.date).rate
+        : null;
     const comment = commentOf({
       broker: broker?.name ?? null,
-      paid: i !== null && t.currency !== i.currency ? t.currency : null,
+      paid: other ? t.currency : null,
+      paidPrice: rate === null ? null : plain(paid),
       note: t.note,
       // a trade dated ahead of the listing's today is stated on its date
       statedOn: [localDate(i?.zone ?? "UTC", m.clock.now()), t.date].sort()[1],
@@ -988,7 +1031,7 @@ export function exportCsv(m: Markets, portfolio: Portfolio): string {
       Symbol: symbol,
       "Trade Date": t.date.replace(/-/g, ""),
       // as stored, so export then import gives the same trade back
-      "Purchase Price": plain(t.price / f),
+      "Purchase Price": plain(rate === null ? paid : paid * rate),
       Quantity: plain(t.quantity * f),
       Commission: plain(t.fees),
       Comment: comment,

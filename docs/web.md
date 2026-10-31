@@ -411,7 +411,9 @@ signed in with the admin key alone.
   reads back the trade ("Buy 5 KO at 60.00 · 300.00 USD (≈ 270.00 EUR) ·
   Shares"). An instrument holding's opened row has Buy and Sell,
   which open the panel on it. A position's currency is the currency
-  picker. Only the kind is remembered per browser
+  picker. Cash and a fund pick a market, "None" first, from the
+  markets the server lists, in the add form and the edit, so a fund
+  holding one market's shares counts in it. Only the kind is remembered per browser
   (`markets-portfolio-add`). A
   refusal shows beside the buttons in plain words, its ids taken out
   (`plainError()` in `data/portfolios.ts`).
@@ -426,9 +428,18 @@ signed in with the admin key alone.
   rows going with it) and add, after the display currency (required):
   a picker over the ISO 4217 currencies in circulation
   (`src/shared/currencies.ts`, codes only, names from `Intl.DisplayNames`),
-  found by code or name, saved on pick. With no display currency the page shows only
-  that field, without Add or the menu; with no portfolio yet it opens on
-  Settings.
+  found by code or name, saved on pick, then the owner's time zone: the
+  app's own menu over every zone the browser knows
+  (`Intl.supportedValuesOf("timeZone")`), found by city or area
+  (`findZones()`), saved on pick. With no display currency the page shows only
+  the first card, without Add or the menu, asking for the currency and
+  the time zone, the zone filled with the browser's as a suggestion the
+  owner sees before saving (`browserZone()`); with no portfolio yet it
+  opens on Settings. Date fields start on the owner's today in that zone,
+  the UTC day until one is set (`today()`), as the server dates a
+  position. A retried trade the server refuses reads "This trade was
+  just saved." with a "Save again" button beside it, which sends the
+  same trade with `again`, for a second fill that is the same.
 - **The bundle names no source:** the import kinds read Trades, Cash,
   Funds and Bonds.
 - **Instruments:** every stored instrument from

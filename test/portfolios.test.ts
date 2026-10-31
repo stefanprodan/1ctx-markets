@@ -273,8 +273,8 @@ describe("currencies", () => {
       ["USD", 240],
     ]);
     // weights only within one currency
-    expect(row(h, "US:AAA").weight).toBe(100);
-    expect(row(h, "XETRA:BBB").weight).toBe(100);
+    expect(row(h, "US:AAA").currency_weight).toBe(100);
+    expect(row(h, "XETRA:BBB").currency_weight).toBe(100);
     expect(h.exposure.map((e) => e.currency)).toEqual(["EUR", "USD"]);
   });
 
@@ -355,7 +355,7 @@ describe("currencies", () => {
         "in circulation",
       );
     }
-    await expect(saveSettings(m, {})).rejects.toThrow("in circulation");
+    await expect(saveSettings(m, {})).rejects.toThrow("display_currency");
     // a conversion named by the caller takes the same list
     expect(() =>
       parsePortfolio({ action: "holdings", currency: "ABC" }),

@@ -46,10 +46,10 @@ MCP tools copied onto paths.
 | `POST /portfolios`, `PATCH`, `DELETE /portfolios/{id}` | portfolio:write | `createPortfolio()`, `updatePortfolio()`, `removePortfolio()` | `{name}`; 201 with `Location`; 409 while no display currency is set, for a taken name or a portfolio holding live rows (removed ones are deleted with it) |
 | `GET /portfolios/{id}` | portfolio:read | `portfolioItem()` | `{portfolio}` |
 | `GET /portfolios/{id}/holdings?broker=&currency=`, `GET /holdings?broker=&currency=` | portfolio:read | `readHoldings()` | one portfolio's or all holdings, totals per currency, `converted` and `rates` with a named or display currency, `exposure` (`docs/portfolios.md`) |
-| `GET /portfolios/{id}/export` | portfolio:read | `exportCsv()` | `text/csv`, the trades in the portfolio CSV export format |
+| `GET /portfolios/{id}/export` | portfolio:read | `exportCsv()` | `text/csv`, the trades in the portfolio CSV export format, LF line ends, no BOM |
 | `POST /portfolios/{id}/import` | portfolio:write | `importCsv()` | `{csv, broker, currency, confirm, dry_powder}`; every row's status, saved only with `confirm` |
 | `GET /trades?portfolio=&broker=&symbol=&from=&to=&removed=` | portfolio:read | `readTradeList()` | `trades[]`, newest first, whole |
-| `POST /trades` | portfolio:write | `addTrade()` | the tool's `add` arguments; 201 with `trade`, or `trades` for a sell of all |
+| `POST /trades` | portfolio:write | `addTrade()` | the tool's `add` arguments; 201 with `trade`, or `trades` for a sell of all; 409 with the saved one's id in `trade` for a trade with the same figures entered in the last 10 minutes, unless `again` is true |
 | `DELETE /trades/{id}`, `POST /trades/{id}/restore` | portfolio:write | `setTradeState()` | `{trade}`, removed or back; never a delete |
 | `GET /positions?portfolio=&broker=&removed=` | portfolio:read | `readPositions()` | `positions[]` |
 | `POST /positions` | portfolio:write | `addPosition()` | `{kind, ...}`; 201 with `position` and `replaced` |
@@ -57,7 +57,7 @@ MCP tools copied onto paths.
 | `DELETE /positions/{id}`, `POST /positions/{id}/restore` | portfolio:write | `setPositionState()` | `{position}` |
 | `GET /positions/{id}/history` | portfolio:read | `historyOf()` | `history[]`, every row of the position, newest first |
 | `GET /brokers`, `POST /brokers`, `PATCH`, `DELETE /brokers/{id}` | portfolio:read, write | `listAll()`, `createBroker()`, `updateBroker()`, `removeBroker()` | `{name}`; 409 for a taken name or a broker a live row names (removed rows lose the name) |
-| `GET /portfolio-settings`, `PUT /portfolio-settings` | portfolio:read, write | `settingsItem()`, `saveSettings()` | `{display_currency}`, an ISO 4217 code in circulation (`src/shared/currencies.ts`); null only while none is set, and a save needs a code |
+| `GET /portfolio-settings`, `PUT /portfolio-settings` | portfolio:read, write | `settingsItem()`, `saveSettings()` | `{display_currency, time_zone}`: an ISO 4217 code in circulation (`src/shared/currencies.ts`) and an IANA zone, each null only while none is set; a save takes either or both, keeps the one left out, and never clears one |
 | `GET /keys` | admin | `listAnswer()` | `keys[]` (id, name, created, last used, expires; never a token) and `limit` (`docs/admin.md`) |
 | `POST /keys` | admin | `createOne()` | `{name, expiresInDays, portfolio}` (days null, 30, 90 or 365; portfolio `none`, the default, `read` or `write`); 201 with `key` and its `token`, once; 409 for a taken name or past the cap of 5 |
 | `DELETE /keys/{id}` | admin | `revokeOne()` | 204; 404 for an unknown id |

@@ -3,6 +3,8 @@
 // Rows only; what they are worth is value.ts. Holdings are private: no
 // function here logs, and no error quotes a row.
 
+import { CRYPTO } from "../market/calendars.ts";
+import { FRED_MARKET } from "../sources/ids.ts";
 import type { Db } from "../storage/db/index.ts";
 
 export const MAX_NAME = 40;
@@ -50,6 +52,8 @@ export type Position = {
   currency: string;
   // a bond's listing, when the server prices one
   instrument: string | null;
+  // cash's or a fund's market, as an instrument's: none unless named
+  market: string | null;
   // cash: the amount; bond: the face amount
   amount: number | null;
   units: number | null;
@@ -294,7 +298,7 @@ export function setTradeRemoved(
 }
 
 const POSITION = `select id, portfolio,
-  case kind when 'manual' then 'fund' else kind end as kind, name, currency, instrument,
+  case kind when 'manual' then 'fund' else kind end as kind, name, currency, instrument, market,
   amount, units, price, cost, coupon, maturity, as_of as asOf, broker, note,
   dry_powder as dryPowder, replaces, entered_by as enteredBy, entered_at as enteredAt, removed_at as removedAt,
   removed_by as removedBy from positions`;
@@ -309,9 +313,9 @@ export function insertPosition(db: Db, p: NewPosition, now: number): number {
     db
       .query(
         `insert into positions (portfolio, kind, name, currency, instrument,
-           amount, units, price, cost, coupon, maturity, as_of, broker, note,
-           dry_powder, replaces, entered_by, entered_at)
-         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           market, amount, units, price, cost, coupon, maturity, as_of,
+           broker, note, dry_powder, replaces, entered_by, entered_at)
+         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         p.portfolio,
@@ -319,6 +323,7 @@ export function insertPosition(db: Db, p: NewPosition, now: number): number {
         p.name,
         p.currency,
         p.instrument,
+        p.market,
         p.amount,
         p.units,
         p.price,
@@ -476,6 +481,22 @@ export function portfolioHolds(db: Db, id: string): boolean {
 
 export type Split = { date: string; ratio: number };
 
+// the markets a fund's or cash's money can be in, as instrument ids spell
+// them: where a share, an ETF or a bond is listed, and crypto; currency
+// pairs (Yahoo's CCY), FRED series and index-only or futures markets
+// hold nothing a fund buys
+export function knownMarkets(db: Db): string[] {
+  return db
+    .query<{ market: string }, [string, string]>(
+      `select distinct market from instruments
+       where (unit in ('per_share', 'percent_of_par') or market = ?1)
+       and market not in (?2, 'CCY')
+       order by market`,
+    )
+    .all(CRYPTO, FRED_MARKET)
+    .map((r) => r.market);
+}
+
 // shares after a split are shares before times the ratio
 export function splitsOf(db: Db, instrument: string): Split[] {
   return db
@@ -511,6 +532,77 @@ export function setDisplayCurrency(
        display_currency = excluded.display_currency,
        updated_at = excluded.updated_at`,
   ).run(owner, currency, now);
+}
+
+export function timeZone(db: Db, owner = OWNER): string | null {
+  return (
+    db
+      .query<{ z: string | null }, [string]>(
+        "select time_zone as z from portfolio_settings where owner = ?",
+      )
+      .get(owner)?.z ?? null
+  );
+}
+
+export function setTimeZone(
+  db: Db,
+  zone: string,
+  now: number,
+  owner = OWNER,
+): void {
+  db.query(
+    `insert into portfolio_settings (owner, time_zone, updated_at)
+     values (?, ?, ?) on conflict (owner) do update set
+       time_zone = excluded.time_zone,
+       updated_at = excluded.updated_at`,
+  ).run(owner, zone, now);
+}
+
+// a live trade equal to one being added, entered since a moment: a retry
+// after a timeout, not a second fill
+export function recentSameTrade(
+  db: Db,
+  t: NewTrade,
+  since: number,
+): Trade | null {
+  return (
+    db
+      .query<
+        Trade,
+        [
+          number,
+          string,
+          string,
+          string,
+          number,
+          number,
+          number,
+          string,
+          number | null,
+          string | null,
+          number,
+        ]
+      >(
+        `${TRADE} where portfolio = ? and instrument = ? and side = ?
+         and date = ? and quantity = ? and price = ? and fees = ?
+         and currency = ? and broker is ? and stated_on is ?
+         and removed_at is null and entered_at >= ?
+         order by id desc limit 1`,
+      )
+      .get(
+        t.portfolio,
+        t.instrument,
+        t.side,
+        t.date,
+        t.quantity,
+        t.price,
+        t.fees,
+        t.currency,
+        t.broker,
+        t.statedOn,
+        since,
+      ) ?? null
+  );
 }
 
 // every row a position's updates chained, both ways, the latest first: a

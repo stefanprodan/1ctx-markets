@@ -274,8 +274,8 @@ export type Row = {
   pl_percent: number | null;
   day_change: number | null;
   change_percent: number | null;
-  // of the value in its currency, or in the named one
-  weight: number | null;
+  // of the value in its own currency; converted.weight is of the total
+  currency_weight: number | null;
   paid?: { currency: string; amount: number | null }[];
   converted?: Converted;
   coupon?: number | null;
@@ -490,7 +490,7 @@ export function readHoldingRows(
           ? null
           : finite(dayChangeOf(list, instrument, splits, q, quantity, fx)),
       change_percent: pct(q?.changePercent ?? null),
-      weight: null,
+      currency_weight: null,
       ...(soldToday ? { sold_today: true } : {}),
       ...(otherPaid
         ? {
@@ -725,20 +725,22 @@ function positionRow(
       if (instrument !== null) stale.push(STALE.noQuoteYet);
     }
   }
+  const average =
+    p.kind === "fund" && cost !== null && p.units
+      ? money(cost / p.units)
+      : null;
   const row: Row = {
     kind: p.kind,
     id: instrument?.id ?? p.instrument,
     position: p.id,
     name: p.name,
     type: KIND_TYPES[p.kind],
-    market: instrument?.market ?? null,
+    // a bond's is its listing's; cash's or a fund's, the one named
+    market: instrument?.market ?? p.market,
     currency: p.currency,
     unit: instrument?.unit ?? null,
     quantity: p.kind === "fund" ? qty(p.units) : null,
-    average_cost:
-      p.kind === "fund" && cost !== null && p.units
-        ? money(cost / p.units)
-        : null,
+    average_cost: average,
     cost: finite(cost),
     price,
     priced,
@@ -748,7 +750,7 @@ function positionRow(
     pl_percent: p.kind === "cash" ? null : pct(plPct(value, cost)),
     day_change: dayChange,
     change_percent: pct(changePercent),
-    weight: null,
+    currency_weight: null,
     ...(p.kind === "bond" ? { coupon: p.coupon, maturity: p.maturity } : {}),
     ...(p.kind === "cash" ? { dry_powder: p.dryPowder } : {}),
     note: p.note,
@@ -760,7 +762,7 @@ function positionRow(
         portfolio: names.get(p.portfolio) ?? String(p.portfolio),
         broker: p.broker === null ? null : (brokers.get(p.broker) ?? null),
         quantity: p.kind === "fund" ? qty(p.units) : null,
-        average_cost: null,
+        average_cost: average,
         cost: finite(cost),
         value: finite(value),
         position: p.id,
@@ -871,7 +873,7 @@ export function holdings(
     const all = inC.reduce((a, r) => a + (rawOf(r).value ?? 0), 0);
     for (const r of inC) {
       const v = rawOf(r).value;
-      r.weight = v === null || all === 0 ? null : pct((v / all) * 100);
+      r.currency_weight = v === null || all === 0 ? null : pct((v / all) * 100);
     }
   }
   const dims = (

@@ -2154,6 +2154,8 @@ async function portfolioOperations(
     201,
   );
   const tid = bought.trade.id;
+  // a retry of the same trade within minutes saves nothing
+  await check("POST", T, await t.call(T, send("POST", trade)), 409);
   await check(
     "POST",
     T,

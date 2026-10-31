@@ -27,7 +27,8 @@ once and valued on the live price the server already keeps.
 - **A broker is a name the owner keeps** (`brokers`), matched ignoring
   case. A trade or position names one or none; an unknown name is
   refused with the known ones, so a typo never makes a broker. Brokers
-  are added only by `POST /brokers` (the web UI), renamed in place,
+  are added only by `POST /brokers` (the web UI) or the tool's `setup`,
+  renamed in place (`PATCH /brokers/{id}`, the tool's `rename_broker`),
   and deleted only while no live row names them; removed rows that name
   one lose the name in the same write.
 - **A trade** (`trades`): portfolio, instrument id, buy or sell, trade
@@ -44,7 +45,20 @@ once and valued on the live price the server already keeps.
 - **Positions** (`positions`) hold what has no listing or no free
   price: `cash` (an amount), `fund` (units and a hand price, with its
   date) and `bond` (face amount, coupon, maturity, and its listing when
-  the server has one). Each has its currency and `as_of` date. The
+  the server has one). Each has its currency and `as_of` date. Cash
+  and a fund may name a market (`market`, migration
+  `0025-position-market`), so a fund holding one market's shares counts
+  in that market in the exposure and its row answers it; none is
+  assumed. The name must be a market a fund's or cash's money can be in
+  (`knownMarkets()`, `markets` in `list` and `GET /portfolios`): one
+  where a stored share, ETF or bond is listed (`per_share`,
+  `percent_of_par`), or crypto; never currency pairs (`CCY`), FRED
+  series, or a market of only indexes or futures. It is matched
+  ignoring case and stored as the instruments spell it; another is
+  refused (`not_found`) with the known ones. A bond's market is its
+  listing's, so a bond takes none. A row that replaces a kept one (an
+  add of the same cash or fund, an import) keeps the kept row's market
+  unless it names another, since a file has no market column. The
   table keeps a fund as `manual`, the word migration `0020-portfolios`
   checks; the store reads and writes it as `fund` (`stored()`), since a
   table rebuild to rename it would copy every owner's positions.
@@ -73,8 +87,8 @@ once and valued on the live price the server already keeps.
   purchases are two bonds; so a restored bond can sit beside an equal
   purchase imported again after its removal, and the owner removes one).
   An update with no date that changes what cash or a fund is worth
-  (amount, `by`, units, price) is dated today, as its figure is true
-  now; a bond keeps its purchase date, and a note, dry powder or cost
+  (amount, `by`, units, price) is dated the owner's today, as its figure
+  is true now; a bond keeps its purchase date, and a note, dry powder or cost
   alone keeps the date.
   A position added with the identity of a kept one replaces it the same
   way. A bond's history follows that chain, since an update may change
@@ -86,6 +100,16 @@ once and valued on the live price the server already keeps.
   a save without a code is refused, so it changes but never clears.
   It and a currency a caller names for a conversion must be an ISO
   4217 code in circulation (`src/shared/currencies.ts`).
+- **The owner's time zone** (`portfolio_settings.time_zone`, migration
+  `0024-time-zone`) is an IANA zone the owner names, never assumed: the
+  tool's `setup` and the web UI's first card ask for it (the card
+  suggests the browser's zone, which the owner confirms), and the web
+  UI's settings or `PUT /portfolio-settings` change it. An offset
+  (`+02:00`) is refused, as it cannot follow a clock change; a zone is
+  stored as Intl spells it. The owner's today (`ownerToday()`) is the
+  date there, the UTC day until one is set: a position added, updated
+  or imported with no date is dated on it, and the web UI's date fields
+  start on it. A trade's default date stays the exchange's today.
 - **Every currency a person or a file names is checked the same way**
   (`isCurrencyCode()`): a trade's currency paid, a position's, an
   update's, and an import's file-wide, paid and row currencies must be
@@ -174,7 +198,9 @@ once and valued on the live price the server already keeps.
   P/L over the rows with a cost (null when none has one), the day's
   change, and the value split into invested, cash and dry powder, each
   with its share. Weights and exposure (market, type, portfolio,
-  broker) are within one currency. A total is rounded from the
+  broker) are within one currency: a holding's `currency_weight` is its
+  share of the value in its own currency, never of the total, which is
+  `converted.weight`. A total is rounded from the
   unrounded sum, so it can differ by a minor unit from the sum of the
   rounded rows shown.
 - **A named currency converts**: the caller's `currency`, else the
@@ -197,8 +223,14 @@ once and valued on the live price the server already keeps.
   fetched inside the call, once; one that fails stays null with its
   reason, never a guess. Hundredths (`GBp`, `ZAc`, `ILA`) convert by
   their factor.
+- **A position's `as_of`** is the day cash's or a fund's figure is true
+  on; a bond's is the day it was bought, never its price's date: a
+  listed bond's price is its listing's quote, dated by `fetched_at`. The
+  tool description and the spec's field notes say so, so an agent
+  never reads a bond's `as_of` as its price's date.
 - **Cash is worth its amount; a hand price its units × price**, shown
-  with its date (`priced: hand`); a bond its listing's percent of par,
+  with its date (`priced: hand`); a fund's average cost, on its row
+  and its part, is its cost over its units; a bond its listing's percent of par,
   with the listing's day change on its face,
   when the listing has a quote (`priced: listing`), else its face
   (`priced: face`), said so.
@@ -217,11 +249,14 @@ type Currency = string; // ISO 4217 (EUR), or a listing's own (GBp)
 // are shown in (asked of the owner, never assumed; set only while none
 // is), a portfolio and a broker to make; a name already there is kept,
 // `made` says what was
-setup(display_currency?: Currency, portfolio?: string, broker?: string):
-  { portfolios; brokers; display_currency; made };
+// time_zone is IANA (America/New_York); broker a name or a list of names
+setup(display_currency?: Currency, time_zone?: string, portfolio?: string,
+  broker?: string | string[]):
+  { portfolios; brokers; display_currency; time_zone; made };
 
-// the portfolios and brokers, and the display currency
-list(): { portfolios; brokers; display_currency };
+// the portfolios and brokers, the display currency and time zone, and
+// the markets a cash or fund position can name
+list(): { portfolios; brokers; display_currency; time_zone; markets };
 
 // one row per instrument or position, its parts per broker; totals per
 // currency, converted into `currency`, else the display currency
@@ -234,34 +269,38 @@ trades(portfolio?: Portfolio, broker?: string, symbol?: string,
 
 // a trade (kind defaults to trade); portfolio is needed unless there is
 // one; neither price nor total takes the live price; a broker must be
-// on the list
+// on the list; again: a second fill equal to one just saved
 add(kind: "trade", portfolio?: Portfolio, symbol: string,
   side: "buy" | "sell", quantity: number | "all", price?: number,
   total?: number, fees?: number, date?: Day, currency?: Currency,
-  broker?: string, note?: string): { trade | trades; live_price?; total? };
+  broker?: string, note?: string, again?: boolean):
+  { trade | trades; live_price?; total? };
 
 // a position with no trades: cash, a fund priced by hand, a bond
 add(kind: "cash", portfolio?: Portfolio, name: string, amount: number,
   currency: Currency, date?: Day, broker?: string, note?: string,
-  dry_powder?: boolean): { position };
+  dry_powder?: boolean, market?: string): { position };
 add(kind: "fund", portfolio?: Portfolio, name: string, units: number,
   price: number, currency: Currency, cost?: number, date?: Day,
-  broker?: string, note?: string): { position };
+  broker?: string, note?: string, market?: string): { position };
 // a bond's currency is its listing's when a symbol names one, else needed
 add(kind: "bond", portfolio?: Portfolio, name: string, amount: number,
   symbol?: string, coupon?: number, maturity?: Day, currency?: Currency,
   cost?: number, date?: Day, broker?: string, note?: string): { position };
 
 // a position changed: amount set outright or moved by `by`, in
-// `currency` or its own; at least one change
+// `currency` or its own; at least one change; market null takes it off
 update(position: number | "dry_powder", amount?: number, by?: number,
   currency?: Currency, units?: number, price?: number, cost?: number,
   date?: Day, note?: string, dry_powder?: boolean,
-  portfolio?: Portfolio): { position; rate? };
+  market?: string | null, portfolio?: Portfolio): { position; rate? };
 
 // one of trade or position, by id
 remove(trade?: number, position?: number, portfolio?: Portfolio);
 restore(trade?: number, position?: number, portfolio?: Portfolio);
+
+// a broker renamed, by its current name
+rename_broker(broker: string, name: string): { broker };
 ```
 
 - **`setup` is how an agent starts a new owner**: a portfolio is
@@ -269,13 +308,14 @@ restore(trade?: number, position?: number, portfolio?: Portfolio);
   agent to ask the owner, and a broker is made only here, so a typo in
   `add` is still refused with the list. It is one write, and a name
   already there is kept, so a retried call makes nothing twice. It sets
-  the display currency only while none is set: agents pass one out of
-  habit, and the same one is a no-op while another
+  the display currency and the time zone only while none is set: agents
+  pass one out of habit, and the same one is a no-op while another
   is refused, so an agent never changes the owner's setting; the web
-  UI's settings change it. The
+  UI's settings change them. `broker` is a name or a list of up to 20,
+  so a new owner's brokers are made in one call. The
   server instructions route a new owner to it.
-- **Actions `setup`, `list`, `holdings`, `trades`, `add`, `update`, `remove`
-  and `restore`**, each taking only its own arguments (`ARGS`); `add`'s
+- **Actions `setup`, `list`, `holdings`, `trades`, `add`, `update`, `remove`,
+  `restore` and `rename_broker`**, each taking only its own arguments (`ARGS`); `add`'s
   arguments are its kind's (`KIND_ARGS`). The description is within a
   few characters of 1,024; a word more needs another cut. `remove`,
   `restore` and `update` take an optional `portfolio`, since agents name
@@ -287,6 +327,19 @@ restore(trade?: number, position?: number, portfolio?: Portfolio);
   guessing; the caller has write access, so it reads those figures
   anyway.
 - **A second removal keeps who removed it first.**
+- **A retried add is refused** (`recentSameTrade()`): an add equal to a
+  live trade entered in the last 10 minutes (`RETRY_MS`, by the row's
+  `entered_at` against the clock) in its portfolio, instrument, side,
+  date, quantity, price, fees, currency paid and broker is refused
+  (`conflict`, 409 over REST) naming that trade's id, in the message and
+  in `trade`, so a retry with the same figures after a timeout never
+  doubles a lot. An add with no price or total takes the live quote, so
+  a retry after the quote moved has other figures and is saved.
+  `again: true` saves it, for two real fills that are the same. The tool
+  and `POST /trades` share it; the import has its own duplicate check.
+- **`rename_broker`** renames a broker by its name, as `PATCH
+  /brokers/{id}` does, with the same refusals (an unknown name with the
+  list, a taken one `conflict`).
 - **A listed bond takes its listing's currency**: a position in another
   is refused, since its value would be relabelled, not converted.
 - **Access is the key's** (`Who`): the router hands the MCP handler the
@@ -305,7 +358,8 @@ restore(trade?: number, position?: number, portfolio?: Portfolio);
 - **A trade's date defaults to the exchange's today and is refused
   only past today anywhere on earth** (`latestDay()`, UTC+14), since an
   owner east of the exchange dates a trade a day ahead of it. A
-  position's date (add, update, import) is refused past the same day.
+  position's date (add, update, import) defaults to the owner's today
+  and is refused past the same day.
 - **A sell's `quantity: "all"`** sells what each broker part can sell
   on its date: the least it holds from that day on, the later trades
   replayed (`sellableOn()`, the running total floored at zero as
@@ -360,7 +414,7 @@ restore(trade?: number, position?: number, portfolio?: Portfolio);
   `MAX_CSV_BYTES` (448 KiB) in a body up to `MAX_IMPORT_BODY`, twice
   that and room, under Bun's 1 MiB.
 - **`Comment` carries what the format has no column for** as leading
-  tags, `[broker North][paid EUR][as of 2026-04-17]`, then a space and
+  tags, `[broker North][paid EUR 9.5][as of 2026-04-17]`, then a space and
   the note as written, its own spaces kept, since the cell is read
   untrimmed (`commentOf()`, `readComment()`). `as of` is the day an
   export of ours restated the trade's figures (the export's day in the
@@ -374,7 +428,12 @@ restore(trade?: number, position?: number, portfolio?: Portfolio);
   `\` before anything else is the note's own. An untagged comment is all
   note. A tagged broker must be a known one, else the row is bad; a
   broker for the whole file (`broker`) wins over it. The paid code is
-  kept as written, so a hundredth (`GBp`) never becomes its unit.
+  kept as written, so a hundredth (`GBp`) never becomes its unit. A
+  price after the paid code is the price paid, read in place of
+  `Purchase Price`, which then holds the listing's; one that is not a
+  number makes the row bad. `[paid EUR]` alone keeps `Purchase Price`
+  as the price paid. A file with CRLF or LF line ends, and a BOM, reads
+  the same.
 - **Position files**: cash `Item, Amount (<currency>), As Of, Note` (or
   `currency` in the body when the header names none); funds `Fund,
   Currency, Units, Value, Cost Basis, As Of, Note` (price = value /
@@ -404,8 +463,15 @@ restore(trade?: number, position?: number, portfolio?: Portfolio);
   it (else the stored id), numbers as plain decimals (`plain()`, never
   `1e-7`), quantity and price in today's shares as the export's own
   format states them and never rounded, so export then import gives the
-  same trades back exactly. Positions are
-  not exported.
+  same trades back exactly. Lines end with LF and there is no BOM, as
+  Yahoo writes its own export. A trade paid in another currency writes
+  `Purchase Price` in the listing's currency, at the close its cost
+  converts at (the trade date's pair close, as the holdings cost), since
+  a Yahoo reader takes that column as the listing's price, and keeps the
+  price paid in its tag (`[paid EUR 9.5]`), so the import restores the
+  currency and price paid exactly; with no such close the lot is written
+  as paid, tagged `[paid EUR]`, as before. Commission stays in the
+  currency paid. Positions are not exported.
 
 ## Privacy
 

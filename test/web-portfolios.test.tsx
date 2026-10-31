@@ -11,6 +11,7 @@ import type {
   Overview,
   TradeRow,
 } from "../src/web/data/portfolios.ts";
+import { JUST_SAVED, plainError } from "../src/web/data/portfolios.ts";
 import { store } from "../src/web/data/store.ts";
 import { accessWords } from "../src/web/views/Connect.model.ts";
 import {
@@ -21,6 +22,7 @@ import {
   currencyGain,
   dryPowderFor,
   dryPowders,
+  findZones,
   heldAt,
   holdingSub,
   importLine,
@@ -37,6 +39,7 @@ import {
   tradeMoney,
   tradeSub,
   typed,
+  zoneWords,
 } from "../src/web/views/Portfolios.model.ts";
 import {
   AddForm,
@@ -45,6 +48,7 @@ import {
   PortfoliosBody,
   PositionEdit,
   Purchases,
+  Refusal,
   SettingsPanel,
 } from "../src/web/views/Portfolios.tsx";
 
@@ -128,7 +132,7 @@ const HOLDINGS: Holdings = {
       pl_percent: 25,
       day_change: 5,
       change_percent: 0.5,
-      weight: 70,
+      currency_weight: 70,
       stale: [],
       parts: [
         {
@@ -168,7 +172,7 @@ const HOLDINGS: Holdings = {
       pl_percent: null,
       day_change: null,
       change_percent: null,
-      weight: 30,
+      currency_weight: 30,
       dry_powder: true,
       stale: [],
       parts: [],
@@ -586,7 +590,7 @@ describe("the page's words", () => {
       ).match(/type="date" value="([^"]*)"/)?.[1];
     const cash = { ...HOLDINGS.holdings[1]!, as_of: "2026-01-13" };
     const bond = { ...cash, kind: "bond" as const };
-    expect(dateOf(cash)).toBe(today());
+    expect(dateOf(cash)).toBe(today(null));
     expect(dateOf(bond)).toBe("2026-01-13");
   });
 
@@ -802,5 +806,162 @@ describe("the add panel", () => {
     expect(html).toMatch(/aria-pressed="true"[^>]*>Sell/);
     expect(html).toContain("Add sell");
     expect(html).not.toContain("Pick a portfolio");
+  });
+});
+
+describe("the owner's time zone", () => {
+  const at = (zone: string | null) => {
+    const f = fake({
+      "GET /api/v1/portfolios": { ...OVERVIEW, time_zone: zone },
+      "GET /api/v1/holdings": HOLDINGS,
+      "GET /api/v1/trades": { trades: [] },
+    });
+    return store(
+      f.fetch,
+      () => NOW,
+      () => "/portfolios",
+      () => {},
+    );
+  };
+
+  test("today is the owner's day, the UTC day until one is named", () => {
+    const evening = Date.parse("2026-10-23T18:00:00Z");
+    expect(today(null, evening)).toBe("2026-10-23");
+    expect(today("Pacific/Kiritimati", evening)).toBe("2026-10-24");
+    expect(
+      today("America/Los_Angeles", Date.parse("2026-10-24T03:00:00Z")),
+    ).toBe("2026-10-23");
+  });
+
+  test("zones are found by city or area as typed", () => {
+    expect(findZones("bucha")[0]).toBe("Europe/Bucharest");
+    expect(findZones("new york")).toContain("America/New_York");
+    expect(findZones("europe paris")).toEqual(["Europe/Paris"]);
+    expect(findZones("nowhere made up")).toEqual([]);
+    expect(zoneWords("America/Argentina/Buenos_Aires")).toEqual({
+      city: "Buenos Aires",
+      area: "America/Argentina",
+    });
+  });
+
+  test("the first card asks for it, and Settings changes it", async () => {
+    const s = at(null);
+    await s.portfolios.load();
+    s.portfolios.overview.value = {
+      ...s.portfolios.overview.value!,
+      display_currency: null,
+    };
+    const first = render(<PortfoliosBody store={s.portfolios} />);
+    expect(first).toContain("Time zone");
+    expect(first).toContain('aria-label="Time zone:');
+    const saved = at("Asia/Tokyo");
+    await saved.portfolios.load();
+    const settings = render(
+      <SettingsPanel store={saved.portfolios} onDone={() => {}} />,
+    );
+    expect(settings).toContain('aria-label="Time zone: Asia/Tokyo"');
+    expect(settings).toContain("Tokyo · Asia");
+    expect(settings).not.toContain("<select");
+  });
+
+  test("an edit starts on the owner's today", async () => {
+    const s = at("Pacific/Kiritimati");
+    await s.portfolios.load();
+    const html = render(
+      <PositionEdit
+        store={s.portfolios}
+        h={{ ...HOLDINGS.holdings[1]!, as_of: "2026-01-13" }}
+        onDone={() => {}}
+      />,
+    );
+    expect(html.match(/type="date" value="([^"]*)"/)?.[1]).toBe(
+      today("Pacific/Kiritimati"),
+    );
+  });
+
+  test("a refused retry reads plainly", () => {
+    expect(
+      plainError(
+        "the same trade was saved as trade 12 in the last 10 minutes, so a retry adds nothing; again: true saves a second fill",
+      ),
+    ).toBe("This trade was just saved.");
+  });
+});
+
+describe("a position's market", () => {
+  test("cash and fund forms pick one from the app's own menu", async () => {
+    const f = fake({
+      "GET /api/v1/portfolios": { ...OVERVIEW, markets: ["BVB", "US"] },
+      "GET /api/v1/holdings": HOLDINGS,
+      "GET /api/v1/trades": { trades: [] },
+    });
+    const s = store(
+      f.fetch,
+      () => NOW,
+      () => "/portfolios",
+      () => {},
+    );
+    await s.portfolios.load();
+    for (const kind of ["cash", "fund"] as const) {
+      const html = render(
+        <AddForm store={s.portfolios} kind={kind} onDone={() => {}} />,
+      );
+      expect(html).toContain('aria-label="Market: None"');
+      expect(html).not.toContain("<select");
+    }
+    const bond = render(
+      <AddForm store={s.portfolios} kind="bond" onDone={() => {}} />,
+    );
+    expect(bond).not.toContain("Market:");
+    const edit = render(
+      <PositionEdit
+        store={s.portfolios}
+        h={{ ...HOLDINGS.holdings[1]!, market: "BVB" }}
+        onDone={() => {}}
+      />,
+    );
+    expect(edit).toContain('aria-label="Market: BVB"');
+  });
+});
+
+describe("a refused retry", () => {
+  test("offers Save again, which sends the trade with again", async () => {
+    const html = render(
+      <Refusal text={JUST_SAVED} busy={false} onAgain={() => {}} />,
+    );
+    expect(html).toContain("This trade was just saved.");
+    expect(html).toContain("Save again");
+    expect(
+      render(
+        <Refusal text="Pick a portfolio." busy={false} onAgain={() => {}} />,
+      ),
+    ).not.toContain("Save again");
+    const bodies: unknown[] = [];
+    const f = fake({
+      "GET /api/v1/portfolios": OVERVIEW,
+      "GET /api/v1/holdings": HOLDINGS,
+      "GET /api/v1/trades": { trades: [] },
+      "POST /api/v1/trades": { trade: trade() },
+    });
+    const s = store(
+      async (path, init) => {
+        if (init?.method === "POST") bodies.push(JSON.parse(String(init.body)));
+        return f.fetch(path, init);
+      },
+      () => NOW,
+      () => "/portfolios",
+      () => {},
+    );
+    await s.portfolios.load();
+    await s.portfolios.addTrade({
+      portfolio: 1,
+      symbol: "XETRA:AAA",
+      side: "buy",
+      quantity: 1,
+      price: 10,
+      date: "2026-10-28",
+      again: true,
+    });
+    expect(bodies).toEqual([expect.objectContaining({ again: true })]);
   });
 });

@@ -78,7 +78,7 @@ const converted = object({
   cost: nnum,
   pl: nnum,
   pl_percent: nnum,
-  weight: nnum,
+  weight: note(nnum, "Its share of the converted total, in percent."),
 });
 
 const trade = object(
@@ -143,6 +143,10 @@ const position = object(
     portfolio_id: int,
     name: str,
     symbol: nstr,
+    market: note(
+      nstr,
+      "Cash's or a fund's market, as instruments name it (`markets` in the list), so the exposure counts it there; none unless named.",
+    ),
     currency: str,
     amount: note(nnum, "Cash's amount, or a bond's face."),
     units: nnum,
@@ -150,7 +154,10 @@ const position = object(
     cost: nnum,
     coupon: nnum,
     maturity: nstr,
-    as_of: str,
+    as_of: note(
+      str,
+      "Cash's and a fund's figure is as of this day; a bond's is the day it was bought, its listed price dated by `fetched_at`.",
+    ),
     dry_powder: bool,
     broker: nstr,
     note: nstr,
@@ -167,6 +174,7 @@ const position = object(
     "portfolio_id",
     "name",
     "symbol",
+    "market",
     "currency",
     "amount",
     "units",
@@ -215,13 +223,19 @@ const holding = object(
     cost: nnum,
     price: nnum,
     priced: values(["quote", "hand", "listing", "face", "amount"]),
-    as_of: nstr,
+    as_of: note(
+      nstr,
+      "Cash's and a fund's figure is as of this day; a bond's is the day it was bought, its listed price dated by `fetched_at`.",
+    ),
     value: nnum,
     pl: nnum,
     pl_percent: nnum,
     day_change: nnum,
     change_percent: nnum,
-    weight: note(nnum, "Of the value in its own currency."),
+    currency_weight: note(
+      nnum,
+      "Its share of the value in its own currency, in percent; `converted.weight` is its share of the converted total.",
+    ),
     paid: list(object({ currency: str, amount: nnum })),
     converted,
     coupon: nnum,
@@ -248,7 +262,7 @@ const holding = object(
     "priced",
     "value",
     "pl",
-    "weight",
+    "currency_weight",
     "stale",
     "parts",
   ],
@@ -259,8 +273,13 @@ export const portfolioSchemas: Record<string, Schema> = {
   OnePortfolio: object({ portfolio }),
   Portfolios: object({
     display_currency: nstr,
+    time_zone: note(nstr, "The owner's IANA time zone, null until set."),
     portfolios: list(portfolio),
     brokers: list(broker),
+    markets: note(
+      list(str),
+      "The markets stored instruments are in: what a cash or fund position can name.",
+    ),
   }),
   Named: named,
   Broker: broker,
@@ -290,6 +309,10 @@ export const portfolioSchemas: Record<string, Schema> = {
       currency: note(str, "What it was paid in; the listing's by default."),
       broker: note(str, "A broker's name, as the list has it."),
       note: note(str, `At most ${MAX_NOTE} characters.`),
+      again: note(
+        bool,
+        "True saves a second fill equal to one saved in the last 10 minutes; without it that add is refused as a retry.",
+      ),
     },
     ["symbol", "side", "quantity"],
   ),
@@ -326,6 +349,10 @@ export const portfolioSchemas: Record<string, Schema> = {
       maturity: str,
       date: note(str, "As of; today by default."),
       dry_powder: note(bool, "Cash kept for buying."),
+      market: note(
+        str,
+        "Cash's or a fund's market, as instruments name it (`markets` in the list), so the exposure counts it there; none unless named.",
+      ),
       broker: str,
       note: str,
     },
@@ -346,6 +373,7 @@ export const portfolioSchemas: Record<string, Schema> = {
       date: str,
       note: nstr,
       dry_powder: bool,
+      market: note(nstr, "Cash's or a fund's market; null takes it off."),
     },
     [],
   ),
@@ -446,7 +474,11 @@ export const portfolioSchemas: Record<string, Schema> = {
   Settings: object({
     display_currency: note(
       nstr,
-      "An ISO 4217 code in circulation. Null only while none is set; a save needs a code, and a portfolio needs one set.",
+      "An ISO 4217 code in circulation. Null only while none is set; a save left without it keeps it, and a portfolio needs one set.",
+    ),
+    time_zone: note(
+      nstr,
+      "The owner's IANA time zone, such as America/New_York: a position with no date is dated today there. Null until set, the UTC day meanwhile; a save left without it keeps it.",
     ),
   }),
 };
@@ -631,7 +663,7 @@ export const portfolioPaths = {
       security: READS,
       summary: "Export trades as CSV",
       description:
-        "The portfolio's trades as a portfolio CSV export (`Symbol`, `Trade Date`, `Purchase Price`, `Quantity`, `Commission`, `Comment`, `Transaction Type` and the market columns, left empty), oldest first, price and quantity as stored in today's shares. `Comment` starts with `[broker <name>]`, `[paid <currency>]` for a trade paid in another currency and `[as of <day>]`, the day the figures are stated as of, then the note.",
+        "The portfolio's trades as a portfolio CSV export (`Symbol`, `Trade Date`, `Purchase Price`, `Quantity`, `Commission`, `Comment`, `Transaction Type` and the market columns, left empty), oldest first, price and quantity in today's shares, with LF line ends and no BOM. A trade paid in another currency has `Purchase Price` in the listing's currency at the close its cost converts at, and `[paid <currency> <price paid>]` in `Comment`, which an import reads back as paid; with no close it is written as paid, tagged `[paid <currency>]`. `Comment` starts with `[broker <name>]`, the paid tag and `[as of <day>]`, the day the figures are stated as of, then the note.",
       responses: base({
         200: {
           description: "The CSV.",
@@ -698,6 +730,7 @@ export const portfolioPaths = {
         "- An unknown symbol is fetched within the call.",
         "- A sell of more than its broker holds is refused.",
         "- A broker is one the list has; an unknown one is refused with the list.",
+        "- A retry with the same figures (instrument, side, date, quantity, price, fees, currency paid, broker) as a live trade entered in the last 10 minutes is refused (409) with that trade's id in `trade`, unless `again` is true. One with no price or total takes the live quote, so after the quote moves it is another trade.",
       ),
       requestBody: bodyOf(ref("TradeArgs")),
       responses: base({
@@ -709,6 +742,7 @@ export const portfolioPaths = {
           headers: { Location: { schema: str } },
         },
         404: missing,
+        409: conflict,
         ...json415,
         503: r("Unavailable"),
       }),
@@ -906,7 +940,8 @@ export const portfolioPaths = {
       operationId: "portfolioSettings",
       security: READS,
       summary: "Portfolio settings",
-      description: "The display currency, or null for none.",
+      description:
+        "The display currency and the owner's time zone, each null until set.",
       responses: base({ 200: ok("The settings.", ref("Settings")) }),
     },
     put: {
@@ -915,7 +950,7 @@ export const portfolioPaths = {
       security: WRITES,
       summary: "Save portfolio settings",
       description:
-        "Sets the display currency: totals are also shown converted into it when a caller names none. Null for none.",
+        "Sets the display currency, the time zone or both: totals are also shown converted into the currency when a caller names none, and a position with no date is dated today in the zone. Either can be changed, never cleared; one left out is kept.",
       requestBody: bodyOf(ref("Settings")),
       responses: base({
         200: ok("The settings.", ref("Settings")),

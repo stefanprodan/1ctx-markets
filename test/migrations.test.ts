@@ -338,6 +338,46 @@ describe("migrations", () => {
     db.close();
   });
 
+  test("the owner's settings gain a time zone, none until named", () => {
+    const db = new Database(":memory:", { strict: true });
+    const clock = fakeClock();
+    const at = MIGRATIONS.findIndex((m) => m.id === "0024-time-zone");
+    migrate(db, clock, MIGRATIONS.slice(0, at));
+    db.exec(
+      `insert into portfolio_settings (owner, display_currency, updated_at)
+       values ('admin', 'EUR', 0)`,
+    );
+    migrate(db, clock, MIGRATIONS.slice(0, at + 1));
+    expect(
+      db
+        .query("select display_currency, time_zone from portfolio_settings")
+        .all(),
+    ).toEqual([{ display_currency: "EUR", time_zone: null }]);
+    expect(() =>
+      db.exec("update portfolio_settings set time_zone = ''"),
+    ).toThrow();
+    db.close();
+  });
+
+  test("positions gain a market, none on the rows kept", () => {
+    const db = new Database(":memory:", { strict: true });
+    const clock = fakeClock();
+    const at = MIGRATIONS.findIndex((m) => m.id === "0025-position-market");
+    migrate(db, clock, MIGRATIONS.slice(0, at));
+    db.exec(
+      `insert into portfolios (name, created_at) values ('Made Up', 0);
+       insert into positions (portfolio, kind, name, currency, amount, as_of,
+         entered_by, entered_at)
+       values (1, 'cash', 'Made Up Cash', 'EUR', 10, '2026-01-02', 'web', 0)`,
+    );
+    migrate(db, clock, MIGRATIONS.slice(0, at + 1));
+    expect(db.query("select market from positions").all()).toEqual([
+      { market: null },
+    ]);
+    expect(() => db.exec("update positions set market = ''")).toThrow();
+    db.close();
+  });
+
   test("open applies the shipped list to a new database", () => {
     const { db, migrations } = open(":memory:", fakeClock());
     expect(migrations).toEqual(MIGRATIONS.map((m) => m.id));

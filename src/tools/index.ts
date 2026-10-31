@@ -28,6 +28,7 @@ import type { Markets } from "../operations/markets.ts";
 import { AVERAGES, moversAnswer, parseMovers } from "../operations/movers.ts";
 import {
   ADD_KINDS,
+  MAX_SETUP_BROKERS,
   PORTFOLIO_ACTIONS,
   parsePortfolio,
   portfolioAnswer,
@@ -113,7 +114,7 @@ const EVENTS = `Earnings events dated from to to (YYYY-MM-DD, inclusive) of the 
 
 const RULES = `Price rules on live quotes. Turning true writes one alert; again only after false. create: symbol, condition, note; answers its first evaluation. condition: {left, op, right} (op < <= > >=; right a number or operand) or {all: [...]}/{any: [...]}; ≤${MAX_COMPARISONS} comparisons, ${MAX_DEPTH} levels, ${MAX_INSTRUMENTS} instruments. Operand: a field of symbol, or {field, symbol} (^VIX). Fields: price changePct dayHigh dayLow previousClose sma50 sma200 ema20 rsi14 macd macdSignal macdHistogram macdTurn atr14 moveAtr volatility20 bollingerLower high52w low52w drawdown fromLow daysSinceHigh volumeRatio cross crossEdge weeklySma50 weeklySma200 weeklyCross weeklyCrossEdge, and {field: relativeReturn1m|relativeReturn3m, benchmark}. Each comparison reads a live value, in one unit. Example: {"all":[{"left":"rsi14","op":"<","right":30},{"left":"price","op":">","right":"sma200"}]}. "afterEarnings": "<US share>" on the root waits for its next results. A stale input changes nothing. A split pauses price-vs-number rules. list: next; pause: id, paused; delete: id.`;
 
-const PORTFOLIO = `For "my stocks", "my ETF", "my portfolio" or a portfolio the owner names: holdings first, then its symbols to quote, history, research. Values and totals per currency, converted only into currency (else display_currency). No portfolio or broker yet: setup with display_currency (ask the owner, never assume), portfolio, broker. list: portfolios, brokers. holdings: portfolio, broker, currency, next. trades: portfolio, broker, symbol, from, to, removed, next. add (kind trade): symbol, side, quantity (all: what each broker can sell), price or total (fees in), fees, date, currency paid, broker (known), note; neither: live price, shown back. cash: name, amount, currency, dry_powder; fund: name, units, price, currency, cost; bond: name, amount (face), symbol, coupon, maturity, currency, cost. update position (id or dry_powder): amount or by (+/-), in currency or its own; units, price, cost, date, note. Into dry powder: add, then update it. Say amounts with currency. remove, restore: trade or position.`;
+const PORTFOLIO = `For "my stocks", "my ETF", "my portfolio" or a portfolio the owner names: holdings first, then its symbols to quote, history, research. Totals per currency; currency (else display_currency) converts. New owner: setup display_currency, time_zone (ask, never assume), portfolio, broker (or a list). list: portfolios, brokers, markets. holdings: portfolio, broker, currency. trades: portfolio, broker, symbol, from, to, removed. add: symbol, side, quantity (or all), price or total (fees in), fees, date, currency paid, broker, note; neither: live price; a repeat in 10 min needs again: true. kind cash, fund, bond: name, currency; cash: amount, dry_powder, market; fund: units, price, cost, market; bond: amount (face), symbol, coupon, maturity, cost; as_of: bought; price: listing's, see fetched_at. update position (id or dry_powder): amount or by (+/-) in currency or its own; units, price, cost, date, note, market. Dry powder: add, then update. remove, restore: trade or position. rename_broker: broker, name. next pages.`;
 
 type Tool = {
   name: string;
@@ -315,7 +316,13 @@ export function tools(m: Markets): Tool[] {
           date: day,
           currency: { type: "string" },
           display_currency: { type: "string" },
-          broker: { type: "string" },
+          time_zone: { type: "string" },
+          // setup takes several; every other action one
+          broker: {
+            type: ["string", "array"],
+            items: { type: "string" },
+            maxItems: MAX_SETUP_BROKERS,
+          },
           note: { type: "string", maxLength: MAX_NOTE },
           name: { type: "string" },
           amount: { type: "number", minimum: 0 },
@@ -324,6 +331,8 @@ export function tools(m: Markets): Tool[] {
           coupon: { type: "number" },
           maturity: day,
           dry_powder: { type: "boolean" },
+          market: { type: ["string", "null"] },
+          again: { type: "boolean", default: false },
           by: { type: "number" },
           trade: { type: "integer", minimum: 1 },
           position: { type: ["integer", "string"] },

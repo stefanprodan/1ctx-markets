@@ -272,6 +272,10 @@ export const schemas: Record<string, Schema> = {
         "With `candidates`: the listings to pick an id from.",
       ),
       rules: note(list(int), "With `conflict`: the rules reading it."),
+      trade: note(
+        int,
+        "With `conflict` on adding a trade: the equal trade saved in the last 10 minutes.",
+      ),
       positions: note(
         list(freeForm),
         "With several dry powder positions: each one's id, name, currency and portfolio.",
