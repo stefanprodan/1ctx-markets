@@ -2039,6 +2039,31 @@ describe("setup and brokers over the tool", () => {
 });
 
 describe("a holding's figures", () => {
+  test("a fund's part carries the fund's average cost", async () => {
+    const { m } = await setup();
+    const r = await addPosition(m, CASEY, {
+      kind: "fund",
+      portfolio: "Shares",
+      name: "Made Up Fund",
+      symbol: null,
+      currency: "EUR",
+      amount: null,
+      units: 4,
+      price: 12,
+      cost: 40,
+      coupon: null,
+      maturity: null,
+      date: "2026-05-03",
+      broker: "North",
+      note: null,
+      dryPowder: false,
+    });
+    if ("error" in r) throw new Error(r.message);
+    const fund = (await holdingsOf(m)).holdings.find((x) => x.kind === "fund")!;
+    expect(fund.average_cost).toBe(10);
+    expect(fund.parts.map((p) => p.average_cost)).toEqual([10]);
+  });
+
   test("a holding's weight is its share of its own currency", async () => {
     const { m } = await setup();
     await trade(m, {});

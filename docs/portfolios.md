@@ -211,7 +211,8 @@ once and valued on the live price the server already keeps.
   reason, never a guess. Hundredths (`GBp`, `ZAc`, `ILA`) convert by
   their factor.
 - **Cash is worth its amount; a hand price its units × price**, shown
-  with its date (`priced: hand`); a bond its listing's percent of par,
+  with its date (`priced: hand`); a fund's average cost, on its row
+  and its part, is its cost over its units; a bond its listing's percent of par,
   with the listing's day change on its face,
   when the listing has a quote (`priced: listing`), else its face
   (`priced: face`), said so.

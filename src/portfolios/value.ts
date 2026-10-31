@@ -761,7 +761,7 @@ function positionRow(
         portfolio: names.get(p.portfolio) ?? String(p.portfolio),
         broker: p.broker === null ? null : (brokers.get(p.broker) ?? null),
         quantity: p.kind === "fund" ? qty(p.units) : null,
-        average_cost: null,
+        average_cost: average,
         cost: finite(cost),
         value: finite(value),
         position: p.id,
