@@ -27,6 +27,8 @@ import {
   type ResearchKind,
   type ResearchRow,
   readResearch,
+  reportedEvents,
+  reportOf,
   sectionState,
 } from "../sources/finnhub/read.ts";
 import {
@@ -287,9 +289,43 @@ const valuesOf = (kind: ResearchKind, row: Values): Values => {
   return out;
 };
 
-export const rowItem = (kind: ResearchKind, r: ResearchRow) => ({
+// the events read for earnings rows' revenue, none for another kind
+export const reportsFor = (
+  m: Markets,
+  instrument: string,
+  kind: ResearchKind,
+): EventRow[] => (kind === "earnings" ? reportedEvents(m.db, instrument) : []);
+
+const surprisePercent = (actual: number | null, estimate: number | null) =>
+  actual === null || estimate === null || estimate === 0
+    ? null
+    : round(((actual - estimate) / Math.abs(estimate)) * 100);
+
+// Finnhub's earnings carry EPS only; revenue is the quarter's report's
+const revenueOf = (
+  kind: ResearchKind,
+  period: string,
+  reported: readonly EventRow[],
+) => {
+  if (kind !== "earnings") return {};
+  const e = reportOf(reported, period);
+  const estimate = e?.revenueEstimate ?? null;
+  const actual = e?.revenueActual ?? null;
+  return {
+    revenue_estimate: estimate,
+    revenue_actual: actual,
+    revenue_surprise_percent: surprisePercent(actual, estimate),
+  };
+};
+
+export const rowItem = (
+  kind: ResearchKind,
+  r: ResearchRow,
+  reported: readonly EventRow[],
+) => ({
   period: r.period,
   ...valuesOf(kind, r),
+  ...revenueOf(kind, r.period, reported),
   fetched_at: iso(r.fetchedAt),
 });
 
@@ -306,9 +342,10 @@ function latestSection(
     m.clock.now(),
   );
   const rows = readResearch(m.db, instrument.id, kind, Math.max(history, 1));
+  const reported = reportsFor(m, instrument.id, kind);
   // a fetch replaces the kind's rows, so the section's listing is its rows'
   const past =
-    history > 0 ? { history: rows.map((r) => rowItem(kind, r)) } : {};
+    history > 0 ? { history: rows.map((r) => rowItem(kind, r, reported)) } : {};
   const row = rows[0];
   if (row === undefined) {
     return {
@@ -325,6 +362,7 @@ function latestSection(
     stale: state.stale,
     ...listingFields(row.listing),
     ...valuesOf(kind, row),
+    ...revenueOf(kind, row.period, reported),
     ...past,
   };
 }

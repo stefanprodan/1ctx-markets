@@ -854,6 +854,7 @@ describe("events inside the call", () => {
       expect.objectContaining({ period: null, message: NO_DATA }),
     );
     expect(overview.research.earnings).not.toContainKey("listing");
+    expect(overview.research.earnings).not.toContainKey("revenue_actual");
     expect(overview.research.insider).not.toContainKey("listing");
     expect(overview.research.next_event).toMatchObject({
       date: "2027-01-13",
@@ -1433,6 +1434,65 @@ describe("the research route's history", () => {
     expect(overview.research.earnings).not.toContainKey("history");
   });
 
+  test("an earnings row carries the revenue of its quarter's nearest report in the window", async () => {
+    const t = await setup();
+    await drive(t.clock, pacedOf(t.m), researchTargets(t.m, ["NVDA"]));
+    const event = t.db.query(
+      `insert into events (instrument, fiscal_year, fiscal_quarter, date, hour,
+         eps_estimate, eps_actual, revenue_estimate, revenue_actual,
+         reported_seen_at, listing, fetched_at)
+       values ('US:NVDA', ?, ?, ?, 'amc', 1, ?, ?, ?, ?, ?, ?)`,
+    );
+    // the quarter ending 2026-09-30: two reports in its window, one past it
+    event.run(
+      2027,
+      1,
+      "2026-10-20",
+      1.1,
+      1_450_000_000,
+      1_421_000_000,
+      NOW,
+      null,
+      NOW,
+    );
+    event.run(2026, 4, "2026-11-10", 1.1, 900, 1_000, NOW, null, NOW);
+    event.run(2026, 3, "2027-01-09", 1.1, 800, 1_000, NOW, null, NOW);
+    // not reported: never matched
+    event.run(2026, 2, "2026-07-01", null, 500, null, null, null, NOW);
+    const matched = {
+      revenue_estimate: 1_450_000_000,
+      revenue_actual: 1_421_000_000,
+      revenue_surprise_percent: -2,
+    };
+    const none = {
+      revenue_estimate: null,
+      revenue_actual: null,
+      revenue_surprise_percent: null,
+    };
+    const tool = body(
+      await researchAnswer(
+        t.m,
+        parseResearch({ symbol: "NVDA", section: "earnings" }),
+      ),
+    );
+    expect(tool.rows).toEqual([
+      expect.objectContaining({ period: "2026-09-30", ...matched }),
+      expect.objectContaining({ period: "2026-06-30", ...none }),
+      expect.objectContaining({ period: "2026-03-31", ...none }),
+    ]);
+    const overview = body(
+      await researchAnswer(t.m, parseResearch({ symbol: "NVDA" })),
+    );
+    expect(overview.research.earnings).toMatchObject({
+      period: "2026-09-30",
+      surprise_percent: 3.8159,
+      ...matched,
+    });
+    const { items } = await ask(t, "NVDA");
+    expect(items[0].company.earnings).toMatchObject(matched);
+    expect(items[0].company.earnings.history).toEqual(tool.rows);
+  });
+
   test("five shares with full history and the longest numbers fit a page", async () => {
     const symbols = ["ZZA", "ZZB", "ZZC", "ZZD", "ZZE"];
     const t = await setup({
@@ -1445,6 +1505,17 @@ describe("the research route's history", () => {
       await drive(t.clock, pacedOf(t.m), researchTargets(t.m, [s]));
     }
     for (const s of symbols) addQuarters(t.db, `US:${s}`, ["2025-12-31"]);
+    // a report for each quarter, its revenue at its widest
+    const report = t.db.query(
+      `insert into events (instrument, fiscal_year, fiscal_quarter, date, hour,
+         revenue_estimate, revenue_actual, reported_seen_at, fetched_at)
+       values (?, 2030, ?, ?, 'amc', -1.234567890123e-15, 1.234567890123e15,
+         0, 0)`,
+    );
+    const dates = ["2026-10-20", "2026-07-20", "2026-04-20", "2026-01-20"];
+    for (const s of symbols) {
+      for (const [k, d] of dates.entries()) report.run(`US:${s}`, k + 1, d);
+    }
     // six significant digits at their widest; counts are whole
     for (const kind of ["metric", "analysts", "earnings", "insider"] as const) {
       const value = kind === "analysts" ? 123456789 : -1.23457e-15;
@@ -1461,6 +1532,7 @@ describe("the research route's history", () => {
       expect(r.earnings.history).toHaveLength(HTTP_HISTORY.earnings);
       expect(r.insider.history).toHaveLength(HTTP_HISTORY.insider);
       expect(r.insider.mspr).toBe(-1.23457e-15);
+      expect(r.earnings.history[3].revenue_actual).toBe(1.234567890123e15);
     }
   });
 });

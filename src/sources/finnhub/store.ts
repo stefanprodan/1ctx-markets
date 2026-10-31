@@ -3,7 +3,7 @@
 // a run per section, scoped to the instrument, so one failure is stale alone
 
 import type { Instrument } from "../../market/instruments.ts";
-import { dateOfWall } from "../../market/zone.ts";
+import { dateOfWall, localDate } from "../../market/zone.ts";
 import { DAY_MS, MINUTE_MS } from "../../runtime/clock.ts";
 import { monthsBack } from "../../signals/relative.ts";
 import type { Db } from "../../storage/db/index.ts";
@@ -269,6 +269,8 @@ export function storeSection(
       break;
     case "earnings":
       for (const r of f.answer.data ?? []) {
+        // a quarter not ended by its fetch day is a mislabelled report
+        if (r.period > localDate("UTC", at)) continue;
         upsertResearch(
           db,
           instrument,
