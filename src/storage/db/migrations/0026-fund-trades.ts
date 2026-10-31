@@ -5,8 +5,9 @@ import type { Migration } from "../migration.ts";
 
 // a fund is an instrument the owner prices, bought and sold as trades so
 // each purchase keeps its date, priced by dated rows; fund positions are
-// dropped, not moved. The new positions points at itself, so the old one
-// drops with nothing pointing at it, and its ids go on, never reused.
+// dropped, not moved, with the units and price only they used. The new
+// positions points at itself, so the old one drops with nothing pointing
+// at it, and its ids go on, never reused.
 export const m0026: Migration = {
   id: "0026-fund-trades",
   up(db) {
@@ -24,6 +25,9 @@ export const m0026: Migration = {
         date text not null
           check (date glob '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
         price real not null check (price >= 0),
+        -- the buy whose price stands for its day; null: the owner's, which
+        -- no trade ever changes
+        trade integer references trades (id) on delete cascade,
         entered_by text not null,
         entered_at integer not null,
         primary key (instrument, date)
@@ -43,8 +47,6 @@ export const m0026: Migration = {
         currency text not null,
         instrument text references instruments (id),
         amount real check (amount is null or amount >= 0),
-        units real check (units is null or units > 0),
-        price real check (price is null or price >= 0),
         cost real check (cost is null or cost >= 0),
         coupon real,
         maturity text,
@@ -67,12 +69,12 @@ export const m0026: Migration = {
       ) strict;
 
       insert into positions_next (id, portfolio, kind, name, currency,
-        instrument, amount, units, price, cost, coupon, maturity, as_of,
-        broker, dry_powder, replaces, note, entered_by, entered_at,
-        removed_at, removed_by, market)
-      select id, portfolio, kind, name, currency, instrument, amount, units,
-        price, cost, coupon, maturity, as_of, broker, dry_powder, replaces,
-        note, entered_by, entered_at, removed_at, removed_by, market
+        instrument, amount, cost, coupon, maturity, as_of, broker,
+        dry_powder, replaces, note, entered_by, entered_at, removed_at,
+        removed_by, market)
+      select id, portfolio, kind, name, currency, instrument, amount, cost,
+        coupon, maturity, as_of, broker, dry_powder, replaces, note,
+        entered_by, entered_at, removed_at, removed_by, market
       from positions order by id;
 
       delete from sqlite_sequence where name = 'positions_next';

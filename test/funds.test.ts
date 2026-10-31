@@ -377,6 +377,118 @@ describe("a fund's holding", () => {
   });
 });
 
+describe("a buy's price", () => {
+  const prices = (db: Database) =>
+    fundPrices(db, `fund:${ONE}`).map((p) => [p.date, p.price, p.trade]);
+
+  test("goes with its buy, so a buy put right on the same day is valued right", async () => {
+    const { m, db } = await setup();
+    const wrong = await fund(
+      m,
+      { isin: ONE, name: "Made Up Fund" },
+      { quantity: 10, price: 50 },
+    );
+    await setTradeState(m, CASEY, wrong.trade!.id, true);
+    expect(prices(db)).toEqual([]);
+    const right = await fund(m, { isin: ONE }, { quantity: 10, price: 5 });
+    expect(await fundRow(m)).toMatchObject({
+      price: 5,
+      value: 50,
+      cost: 50,
+      stale: [],
+    });
+    expect(prices(db)).toEqual([["2026-03-02", 5, right.trade!.id]]);
+    // the day's latest live buy stands: a restored earlier one waits
+    await setTradeState(m, CASEY, wrong.trade!.id, false);
+    expect(prices(db)).toEqual([["2026-03-02", 5, right.trade!.id]]);
+    await setTradeState(m, CASEY, right.trade!.id, true);
+    expect(prices(db)).toEqual([["2026-03-02", 50, wrong.trade!.id]]);
+  });
+
+  test("a later buy's replaces it; the owner's is never touched by a trade", async () => {
+    const { m, db } = await setup();
+    await fund(m, { isin: ONE, name: "Made Up Fund" }, { price: 5 });
+    const later = await fund(m, { isin: ONE }, { price: 5.5 });
+    expect(prices(db)).toEqual([["2026-03-02", 5.5, later.trade!.id]]);
+    await updateFund(m, CASEY, ONE, { price: 6, date: "2026-04-01" });
+    const buy = await fund(m, { isin: ONE }, { price: 7, date: "2026-04-01" });
+    await setTradeState(m, CASEY, buy.trade!.id, true);
+    await setTradeState(m, CASEY, buy.trade!.id, false);
+    expect(prices(db)).toEqual([
+      ["2026-04-01", 6, null],
+      ["2026-03-02", 5.5, later.trade!.id],
+    ]);
+  });
+});
+
+describe("a fund's name and currency", () => {
+  test("a name is set right by its ISIN, never to another fund's", async () => {
+    const { m } = await setup();
+    await fund(m, { isin: ONE, name: "Made Up Fund" });
+    await fund(m, { isin: TWO, name: "Made Up Other Fund" });
+    const renamed = await ask(m, {
+      action: "update",
+      isin: ONE,
+      name: "Made Up Growth Fund",
+    });
+    expect(renamed.body.fund.name).toBe("Made Up Growth Fund");
+    expect(
+      await updateFund(m, CASEY, ONE, { name: "made up other fund" }),
+    ).toMatchObject({ error: "conflict" });
+    // named by its name alone, the name only finds it
+    expect(() =>
+      parsePortfolio({ action: "update", name: "Made Up Growth Fund" }),
+    ).toThrow("changes price, market or currency");
+    expect((await fundRow(m)).name).toBe("Made Up Growth Fund");
+  });
+
+  test("its currency changes only while it has no live trades", async () => {
+    const { m } = await setup();
+    const one = await fund(m, { isin: ONE, name: "Made Up Fund" });
+    expect(await updateFund(m, CASEY, ONE, { currency: "USD" })).toMatchObject({
+      error: "bad_arguments",
+    });
+    await setTradeState(m, CASEY, one.trade!.id, true);
+    const set = await updateFund(m, CASEY, ONE, { currency: "USD" });
+    expect(set).toMatchObject({ fund: { currency: "USD" } });
+  });
+
+  test("a later buy naming another name beside the ISIN is refused", async () => {
+    const { m } = await setup();
+    await fund(m, { isin: ONE, name: "Made Up Fund" });
+    const r = await addFundTrade(m, CASEY, {
+      isin: ONE,
+      name: "Made Up Different Fund",
+      market: null,
+      trade: fundTrade({ date: "2026-04-01" }),
+    });
+    expect(r).toMatchObject({ error: "bad_arguments" });
+    // the same name in another case is the fund's own
+    await fund(m, { isin: ONE, name: "MADE UP FUND" }, { date: "2026-04-02" });
+    expect((await fundRow(m)).quantity).toBe(20);
+  });
+
+  test("a refused first buy makes no fund", async () => {
+    const { m, db } = await setup();
+    await fund(m, { isin: ONE, name: "Made Up Fund" });
+    const r = await addFundTrade(m, CASEY, {
+      isin: TWO,
+      name: "Made Up Fund",
+      market: null,
+      trade: fundTrade(),
+    });
+    expect(r).toMatchObject({ error: "conflict" });
+    expect(
+      db.query("select instrument from funds order by instrument").all(),
+    ).toEqual([{ instrument: `fund:${ONE}` }]);
+    expect(
+      db
+        .query("select count(*) as n from instruments where id = ?")
+        .get(`fund:${TWO}`),
+    ).toEqual({ n: 0 });
+  });
+});
+
 describe("a fund's trades", () => {
   test("are listed and exported, and an export imports back", async () => {
     const { m, db } = await setup();
@@ -578,11 +690,23 @@ describe("migration 0026-fund-trades", () => {
       null,
       "BVB",
     );
+    // every column the rebuilt table keeps, so a dropped one fails here
+    const columns = `id, portfolio, kind, name, currency, instrument, amount,
+      cost, coupon, maturity, as_of, broker, dry_powder, replaces, note,
+      entered_by, entered_at, removed_at, removed_by, market`;
     const kept = db
-      .query("select * from positions where kind <> 'manual' order by id")
+      .query(
+        `select ${columns} from positions where kind <> 'manual' order by id`,
+      )
       .all();
     expect(kept).toHaveLength(3);
     migrate(db, clock);
+    expect(
+      db
+        .query("select name from pragma_table_info('positions') order by cid")
+        .all()
+        .map((c) => (c as { name: string }).name),
+    ).toEqual(columns.split(",").map((c) => c.trim()));
     expect(db.query("select * from positions order by id").all()).toEqual(kept);
     expect(db.query("pragma foreign_key_check").all()).toEqual([]);
     expect(() =>

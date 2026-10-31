@@ -6,6 +6,7 @@
 import { type Instrument, upsertInstrument } from "../market/instruments.ts";
 import { FUND_MARKET, FUND_SOURCE } from "../sources/ids.ts";
 import type { Db } from "../storage/db/index.ts";
+import type { Trade } from "./store.ts";
 
 export type Fund = {
   id: string;
@@ -19,6 +20,8 @@ export type Fund = {
 export type FundPrice = {
   date: string;
   price: number;
+  // the buy whose price stands for the day; null: the owner's
+  trade: number | null;
   enteredBy: string;
   enteredAt: number;
 };
@@ -31,6 +34,9 @@ export const isFundKey = (input: string): boolean =>
 
 export const isFund = (i: Pick<Instrument, "source">): boolean =>
   i.source === FUND_SOURCE;
+
+const PRICE = `select date, price, trade, entered_by as enteredBy,
+  entered_at as enteredAt from fund_prices`;
 
 const FUND = `select i.id, i.symbol as isin, i.name, i.currency, f.market
   from funds f join instruments i on i.id = f.instrument`;
@@ -64,7 +70,8 @@ export function fundByIsin(db: Db, input: string): Fund | null {
 
 export type NewFund = Omit<Fund, "id">;
 
-// in the caller's write, so a refused first trade makes no fund
+// in its first trade's write, after every check, so a refused one makes
+// no fund
 export function insertFund(db: Db, f: NewFund, by: string, now: number): Fund {
   const i = upsertInstrument(
     db,
@@ -97,8 +104,7 @@ export function latestPrice(db: Db, id: string): FundPrice | null {
   return (
     db
       .query<FundPrice, [string]>(
-        `select date, price, entered_by as enteredBy, entered_at as enteredAt
-         from fund_prices where instrument = ? order by date desc limit 1`,
+        `${PRICE} where instrument = ? order by date desc limit 1`,
       )
       .get(id) ?? null
   );
@@ -108,8 +114,7 @@ export function latestPrice(db: Db, id: string): FundPrice | null {
 export function fundPrices(db: Db, id: string): FundPrice[] {
   return db
     .query<FundPrice, [string]>(
-      `select date, price, entered_by as enteredBy, entered_at as enteredAt
-       from fund_prices where instrument = ? order by date desc`,
+      `${PRICE} where instrument = ? order by date desc`,
     )
     .all(id);
 }
@@ -118,14 +123,13 @@ export function priceOn(db: Db, id: string, date: string): FundPrice | null {
   return (
     db
       .query<FundPrice, [string, string]>(
-        `select date, price, entered_by as enteredBy, entered_at as enteredAt
-         from fund_prices where instrument = ? and date = ?`,
+        `${PRICE} where instrument = ? and date = ?`,
       )
       .get(id, date) ?? null
   );
 }
 
-// one price a day: a second entry for the day replaces the first
+// one price a day: the owner's replaces any for the day, a buy's too
 export function setFundPrice(
   db: Db,
   id: string,
@@ -135,24 +139,64 @@ export function setFundPrice(
   now: number,
 ): void {
   db.query(
-    `insert into fund_prices (instrument, date, price, entered_by, entered_at)
-     values (?, ?, ?, ?, ?) on conflict (instrument, date) do update set
-       price = excluded.price, entered_by = excluded.entered_by,
-       entered_at = excluded.entered_at`,
+    `insert into fund_prices (instrument, date, price, trade, entered_by,
+       entered_at)
+     values (?, ?, ?, null, ?, ?) on conflict (instrument, date) do update set
+       price = excluded.price, trade = null,
+       entered_by = excluded.entered_by, entered_at = excluded.entered_at`,
   ).run(id, date, price, by, now);
 }
 
-// a buy's price stands for its day until the owner enters one
-export function priceIfNone(
+type Buy = Pick<
+  Trade,
+  "id" | "instrument" | "side" | "date" | "price" | "currency" | "enteredBy"
+>;
+
+// the day's latest live buy in the fund's own currency stands for it
+// while the owner has entered none; another currency's price is not the
+// fund's
+export function buyPrice(db: Db, t: Buy, now: number): void {
+  if (t.side !== "buy" || t.currency !== readFund(db, t.instrument)?.currency)
+    return;
+  db.query(
+    `insert into fund_prices (instrument, date, price, trade, entered_by,
+       entered_at)
+     values (?, ?, ?, ?, ?, ?) on conflict (instrument, date) do update set
+       price = excluded.price, trade = excluded.trade,
+       entered_by = excluded.entered_by, entered_at = excluded.entered_at
+     where fund_prices.trade < excluded.trade`,
+  ).run(t.instrument, t.date, t.price, t.id, t.enteredBy, now);
+}
+
+// a removed buy's price goes with it; the day's latest live buy, if any,
+// stands in its place
+export function dropBuyPrice(db: Db, t: Buy, now: number): void {
+  const gone = db
+    .query("delete from fund_prices where trade = ?")
+    .run(t.id).changes;
+  if (gone === 0) return;
+  const next = db
+    .query<Buy, [string, string]>(
+      `select id, instrument, side, date, price, currency,
+         entered_by as enteredBy
+       from trades where instrument = ? and date = ? and side = 'buy'
+         and removed_at is null order by id desc`,
+    )
+    .all(t.instrument, t.date)
+    .find((x) => x.currency === readFund(db, x.instrument)?.currency);
+  if (next !== undefined) buyPrice(db, next, now);
+}
+
+// a name or a currency set right; the caller checks the name is free and
+// the currency has no live trade priced in it
+export function setFundDetails(
   db: Db,
   id: string,
-  date: string,
-  price: number,
-  by: string,
+  change: { name?: string; currency?: string },
   now: number,
 ): void {
   db.query(
-    `insert into fund_prices (instrument, date, price, entered_by, entered_at)
-     values (?, ?, ?, ?, ?) on conflict (instrument, date) do nothing`,
-  ).run(id, date, price, by, now);
+    `update instruments set name = coalesce(?, name),
+       currency = coalesce(?, currency), updated_at = ? where id = ?`,
+  ).run(change.name ?? null, change.currency ?? null, now, id);
 }

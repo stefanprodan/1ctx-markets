@@ -330,7 +330,8 @@ export function PositionEdit({
   );
 }
 
-// a fund's price for a day: a day already priced takes the new one
+// a fund's price for a day (a day already priced takes the new one), and
+// its name set right
 export function FundPriceEdit({
   store,
   h,
@@ -341,7 +342,9 @@ export function FundPriceEdit({
   onDone: () => void;
 }) {
   const px = useSignal(String(h.price ?? ""));
-  const date = useSignal(today(store.overview.value?.time_zone ?? null));
+  const now = today(store.overview.value?.time_zone ?? null);
+  const date = useSignal(now);
+  const name = useSignal(h.name ?? "");
   const markets = store.overview.value?.markets ?? [];
   const market = useSignal(h.market ?? "");
   const busy = useSignal(false);
@@ -353,10 +356,19 @@ export function FundPriceEdit({
       error.value = "Not a number.";
       return;
     }
+    const named = name.value.trim();
+    if (named === "") {
+      error.value = "Name the fund.";
+      return;
+    }
+    const renamed = named !== (h.name ?? "");
+    // a rename alone keeps the price's day as it was
+    const repriced =
+      !renamed || px.value !== String(h.price ?? "") || date.value !== now;
     busy.value = true;
     error.value = await store.setFundPrice(h.isin!, {
-      price: n,
-      date: date.value,
+      ...(repriced ? { price: n, date: date.value } : {}),
+      ...(renamed ? { name: named } : {}),
       ...(market.value === (h.market ?? "")
         ? {}
         : { market: market.value === "" ? null : market.value }),
@@ -366,6 +378,15 @@ export function FundPriceEdit({
   };
   return (
     <form class="pf-edit" onSubmit={save}>
+      <label class="field">
+        <span class="label">Name</span>
+        <input
+          value={name.value}
+          onInput={(e) => {
+            name.value = e.currentTarget.value;
+          }}
+        />
+      </label>
       <label class="field">
         <span class="label">Price per unit</span>
         <input

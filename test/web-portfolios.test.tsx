@@ -1061,14 +1061,19 @@ describe("a fund the owner prices", () => {
       <FundPriceEdit store={s.portfolios} h={fundRow} onDone={() => {}} />,
     );
     expect(html).toContain("Price per unit");
+    expect(html).toContain('value="Made Up World Fund"');
     expect(html).toContain(`type="date" value="${today(null)}"`);
     expect(html).toContain('aria-label="Market: BVB"');
     expect(html).not.toContain("<select");
     expect(
       await s.portfolios.setFundPrice(ISIN, { price: 6.5, date: "2026-10-27" }),
     ).toBeNull();
+    expect(
+      await s.portfolios.setFundPrice(ISIN, { name: "Made Up Globe Fund" }),
+    ).toBeNull();
     expect(bodies).toEqual([
       [`PATCH /api/v1/funds/${ISIN}`, { price: 6.5, date: "2026-10-27" }],
+      [`PATCH /api/v1/funds/${ISIN}`, { name: "Made Up Globe Fund" }],
     ]);
   });
 

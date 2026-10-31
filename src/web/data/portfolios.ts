@@ -206,9 +206,10 @@ export type FundTradeIn = {
 };
 
 export type FundPriceIn = {
-  price: number;
+  price?: number;
   // the day the price is for
-  date: string;
+  date?: string;
+  name?: string;
   // null takes it off
   market?: string | null;
 };

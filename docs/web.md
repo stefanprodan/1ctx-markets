@@ -364,9 +364,10 @@ signed in with the admin key alone.
   listing prices it). Opened: price ("Price per unit" for a fund),
   cost, gain, what was paid in another currency, weight, and a table of
   the parts per broker; a fund has Buy and Sell, which open the add
-  panel's Fund tab on it, and Set price (price per unit, the day it is
-  for, starting on the owner's today, and its market; a day already
-  priced takes the new price, `PATCH /api/v1/funds/{isin}`); a position
+  panel's Fund tab on it, and Set price (its name, price per unit, the
+  day it is for, starting on the owner's today, and its market; a day
+  already priced takes the new price, and a changed name alone sends no
+  price, `PATCH /api/v1/funds/{isin}`); a position
   has Edit (amount and as of; saved as an update the server keeps) and
   Remove, which asks once. A bond bought several times is one row listing each
   purchase (date, face, broker) with its own Edit and Remove, since the

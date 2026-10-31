@@ -55,7 +55,9 @@ once and valued on the live price the server already keeps.
   first buy makes it, with its ISIN, name and currency, in the trade's
   own write, so a refused trade makes none; a later trade names it by
   ISIN, by key or by name (ignoring case; a second fund's name may not
-  be another's). Its first trade must be a buy. A trade on it has no
+  be another's); a name beside a kept ISIN that is not the fund's is
+  refused, never ignored, so a confirmation of another fund is never
+  booked on this one. Its first trade must be a buy. A trade on it has no
   live price, so a price or a total is needed, and its date defaults to
   the owner's today, since it trades on no exchange.
 - **A fund's prices are dated rows** (`fund_prices`, one per fund and
@@ -64,10 +66,21 @@ once and valued on the live price the server already keeps.
   An entry for a day already priced replaces it (`setFundPrice()`),
   answered as `replaced`; earlier days are kept, so a value on a past
   date can be read later. A buy paid in the fund's currency also
-  becomes its day's price when none is entered for that day
-  (`priceIfNone()`), so a fund added from one confirmation is valued at
-  once; a buy in another currency sets none, its price not being the
-  fund's. An import's buy does the same.
+  becomes its day's price while the owner has entered none for that
+  day (`buyPrice()`), so a fund added from one confirmation is valued at
+  once. The row names that buy (`fund_prices.trade`): the day's latest
+  live buy stands, a later one's replacing an earlier one's, and a price
+  the owner entered (`trade` null) is never changed by a trade. A buy
+  removed takes its price with it, the day's latest live buy left
+  standing in when there is one (`dropBuyPrice()`), and a restored buy
+  stands again while no later buy or owner's price holds the day, so a
+  mistaken buy never leaves its price behind.
+  A buy in another currency sets none, its price not being the fund's.
+  An import's buy does the same.
+- **A fund's name and currency can be set right** (`update` with its
+  `isin`, `PATCH /funds/{isin}`): the name to one no other fund has,
+  the currency only while no live trade is on it, since every cost and
+  price was paid in the old one.
 - **No source ever fetches a fund the owner prices.** It is never
   tracked (`trackedIds()` and `portfolioInstruments()` leave out source
   `owner`), so no job asks for it; `quote`, `history` and every other
@@ -348,9 +361,11 @@ update(position: number | "dry_powder", amount?: number, by?: number,
   { position; rate? };
 
 // a fund's price per unit for a day (the owner's today by default), a
-// day already priced replaced; market null takes it off
+// day already priced replaced; market null takes it off; named by its
+// isin, name and currency set it right (currency while no live trade)
 update(isin?: string, name?: string, price?: number, date?: Day,
-  market?: string | null): { fund; price?; replaced? };
+  market?: string | null, currency?: Currency):
+  { fund; price?; replaced? };
 
 // one of trade or position, by id
 remove(trade?: number, position?: number, portfolio?: Portfolio);
@@ -374,8 +389,9 @@ rename_broker(broker: string, name: string): { broker };
 - **Actions `setup`, `list`, `holdings`, `trades`, `add`, `update`, `remove`,
   `restore` and `rename_broker`**, each taking only its own arguments (`ARGS`); `add`'s
   arguments are its kind's (`KIND_ARGS`), and `update` with `isin` or
-  `name` is a fund's, taking only `price`, `date` and `market`
-  (`FUND_UPDATE`). The description is at 1,024 characters; a word more
+  `name` is a fund's, taking only `price`, `date`, `market`, `name`
+  and `currency` (`FUND_UPDATE`); `name` is a new name only beside
+  `isin`, else it finds the fund. The description is at 1,024 characters; a word more
   needs another cut. It says a fund's trades come one per
   confirmation, so an agent never sums a manager's statement into one
   buy. `remove`,
@@ -498,7 +514,10 @@ rename_broker(broker: string, name: string): { broker };
 - **A fund's trades import as a share's**: a trades file names one by
   its key (`fund:<ISIN>`, as the export writes it), which finds the
   fund kept without asking a source; an unknown one is bad, since a
-  file never makes a fund (it has no name or currency column). A list
+  file never makes a fund (it has no name or currency column). So an
+  exported fund trade imports back only where that fund is already
+  kept: into another portfolio of the same server, or after its first
+  buy is added by hand elsewhere. A list
   of fund totals (a `Fund` column) is refused whole: it holds no
   purchase dates or ISINs.
 - **Position files**: cash `Item, Amount (<currency>), As Of, Note` (or

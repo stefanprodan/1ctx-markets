@@ -9,6 +9,8 @@ import { readQuote } from "../market/quotes.ts";
 import { markRead } from "../market/tracking.ts";
 import { checkZone, localDate } from "../market/zone.ts";
 import {
+  buyPrice,
+  dropBuyPrice,
   type Fund,
   type FundPrice,
   fundByIsin,
@@ -21,9 +23,9 @@ import {
   latestPrice,
   listFunds,
   type NewFund,
-  priceIfNone,
   priceOn,
   readFund,
+  setFundDetails,
   setFundMarket,
   setFundPrice,
 } from "../portfolios/funds.ts";
@@ -166,13 +168,17 @@ export type FundTradeArgs = {
   trade: Omit<TradeArgs, "symbol">;
 };
 
-// a fund's price for a day, and the market its money is in
+// a fund's price for a day, the market its money is in, and its name and
+// currency set right
 export type FundChange = {
   price?: number;
   // the day the price is for, the owner's today by default
   date?: string;
   // null takes it off
   market?: string | null;
+  name?: string;
+  // only while no live trade is priced in it
+  currency?: string;
 };
 
 export type PositionArgs = {
@@ -412,14 +418,27 @@ export function parseFundTrade(f: Record<string, unknown>): FundTradeArgs {
   };
 }
 
-export function parseFundChange(f: Record<string, unknown>): FundChange {
+// renames: the fund is named by its ISIN, so a name is a new one; named
+// by its name alone, the name only finds it
+export function parseFundChange(
+  f: Record<string, unknown>,
+  renames: boolean,
+): FundChange {
   const c: FundChange = {};
   for (const name of Object.keys(f)) {
     if (!FUND_UPDATE.includes(name)) {
       throw new ArgError(
-        `a fund's update takes ${FUND_UPDATE.filter((n) => n !== "isin" && n !== "name").join(", ")}, not ${quoted(name)}`,
+        `a fund's update takes ${FUND_UPDATE.filter((n) => n !== "isin").join(", ")}, not ${quoted(name)}`,
       );
     }
+  }
+  if (renames && f.name !== undefined) {
+    c.name = text(f.name, "name", MAX_POSITION_NAME);
+  }
+  if (f.currency !== undefined) {
+    const code = currencyArg(f.currency);
+    if (code === null) throw new ArgError("currency must be a currency code");
+    c.currency = code;
   }
   if (f.price !== undefined) c.price = amount(f.price, "price");
   if (f.date !== undefined) {
@@ -429,8 +448,17 @@ export function parseFundChange(f: Record<string, unknown>): FundChange {
     c.date = d;
   }
   if (f.market !== undefined) c.market = optionalName(f.market, "market");
-  if (c.price === undefined && c.market === undefined) {
-    throw new ArgError("a fund's update changes price or market");
+  if (
+    c.price === undefined &&
+    c.market === undefined &&
+    c.name === undefined &&
+    c.currency === undefined
+  ) {
+    throw new ArgError(
+      renames
+        ? "a fund's update changes price, market, name or currency"
+        : "a fund's update changes price, market or currency; named by its isin, its name too",
+    );
   }
   return c;
 }
@@ -570,6 +598,7 @@ const FUND_UPDATE = [
   "price",
   "date",
   "market",
+  "currency",
   "kind",
   "portfolio",
 ];
@@ -803,7 +832,7 @@ export function parsePortfolio(input: unknown): PortfolioArgs {
         return {
           action,
           fund: isin ?? text(f.name, "name", MAX_POSITION_NAME),
-          change: parseFundChange(f),
+          change: parseFundChange(f, isin !== null),
         };
       }
       return {
@@ -934,6 +963,7 @@ export function fundItem(db: Db, f: Fund) {
 const priceItem = (p: FundPrice) => ({
   date: p.date,
   price: p.price,
+  trade: p.trade,
   entered_by: p.enteredBy,
   entered_at: iso(p.enteredAt),
 });
@@ -1219,8 +1249,8 @@ export async function addTrade(
 
 const NO_FUND = "no such fund; its first buy makes it, with its isin";
 
-// make: a fund new with this trade, made in the trade's own write, so a
-// refused trade makes none
+// make: a fund new with this trade, made in the trade's own write after
+// every check, so a refused trade makes none
 async function addTradeOn(
   m: Markets,
   who: Who,
@@ -1330,16 +1360,18 @@ async function addTradeOn(
   const done = await m.writer.write((db): number[] | Failure => {
     const now = m.clock.now();
     // made by another call since this one looked: that one stands
-    if (make !== null && "fund" in make && readFund(db, i.id) === null) {
-      const taken = fundByName(db, make.fund.name);
+    const making =
+      make !== null && "fund" in make && readFund(db, i.id) === null
+        ? make.fund
+        : null;
+    if (making !== null) {
+      const taken = fundByName(db, making.name);
       if (taken !== null) {
         return conflict(
           `the fund ${taken.isin} has this name; name a new fund apart`,
         );
       }
-      insertFund(db, make.fund, who.name, now);
-    }
-    if (readInstrument(db, i.id) === null) {
+    } else if (readInstrument(db, i.id) === null) {
       return notFound(`${i.id}: deleted while the trade was added`);
     }
     if (!args.again) {
@@ -1356,17 +1388,16 @@ async function addTradeOn(
         }
       }
     }
-    if (oversells(db, rows)) {
+    if (oversells(db, rows, i)) {
       return { error: "bad_arguments", message: OVERSOLD };
     }
+    if (making !== null) insertFund(db, making, who.name, now);
     const ids = rows.map((row) => insertTrade(db, row, now));
     if (make !== null && "market" in make && make.market !== null) {
       setFundMarket(db, i.id, make.market);
     }
     // a fund added from one confirmation is valued at once
-    if (fund && args.side === "buy" && currency === i.currency) {
-      priceIfNone(db, i.id, day, price!, who.name, now);
-    }
+    if (fund) for (const id of ids) buyPrice(db, readTrade(db, id)!, now);
     return ids;
   });
   if (isFailure(done)) {
@@ -1434,6 +1465,18 @@ export async function addFundTrade(
       ? findFund(m.db, args.name!)
       : fundByIsin(m.db, args.isin);
   if (kept !== null && isFailure(kept)) return kept;
+  // a name that is not the fund's is a mistake, never ignored
+  if (
+    kept !== null &&
+    args.isin !== null &&
+    args.name !== null &&
+    args.name.toLowerCase() !== kept.name.toLowerCase()
+  ) {
+    return {
+      error: "bad_arguments",
+      message: `the fund ${kept.isin} is named ${quoted(kept.name)}; leave name out, or rename it with update`,
+    };
+  }
   let done: Added | Failure;
   if (kept !== null) {
     done = await addTradeOn(
@@ -1494,13 +1537,20 @@ export async function addFundTrade(
 }
 
 // a price for a day: an entry for a day already priced replaces it, and
-// earlier days are kept
+// earlier days are kept; a name or currency set right
 export async function updateFund(
   m: Markets,
   who: Who,
   named: string,
   change: FundChange,
-) {
+): Promise<
+  | {
+      fund: ReturnType<typeof fundItem>;
+      price?: { date: string; price: number };
+      replaced?: ReturnType<typeof priceItem> | null;
+    }
+  | Failure
+> {
   const kept = findFund(m.db, named);
   if (isFailure(kept)) return kept;
   const market =
@@ -1513,23 +1563,51 @@ export async function updateFund(
       message: "date is in the future",
     } as const;
   }
-  const replaced = await m.writer.write((db) => {
-    const now = m.clock.now();
-    const before =
-      change.price === undefined ? null : priceOn(db, kept.id, day);
-    if (change.price !== undefined) {
-      setFundPrice(db, kept.id, day, change.price, who.name, now);
-    }
-    if (market !== undefined) setFundMarket(db, kept.id, market);
-    return before;
-  });
+  const replaced = await m.writer.write(
+    (db): { before: FundPrice | null } | Failure => {
+      const now = m.clock.now();
+      const fund = readFund(db, kept.id)!;
+      // every check before any write, so a refused update changes nothing
+      if (change.name !== undefined) {
+        const taken = fundByName(db, change.name);
+        if (taken !== null && taken.id !== fund.id) {
+          return conflict(
+            `the fund ${taken.isin} has this name; name a new fund apart`,
+          );
+        }
+      }
+      if (
+        change.currency !== undefined &&
+        change.currency !== fund.currency &&
+        readTrades(db, { instrument: fund.id }).length > 0
+      ) {
+        return {
+          error: "bad_arguments",
+          message:
+            "a fund's currency changes only while it has no live trades: remove them first",
+        };
+      }
+      const before =
+        change.price === undefined ? null : priceOn(db, kept.id, day);
+      if (change.price !== undefined) {
+        setFundPrice(db, kept.id, day, change.price, who.name, now);
+      }
+      if (market !== undefined) setFundMarket(db, kept.id, market);
+      if (change.name !== undefined || change.currency !== undefined) {
+        setFundDetails(db, kept.id, change, now);
+      }
+      return { before };
+    },
+  );
+  if (isFailure(replaced)) return replaced;
   return {
     fund: fundItem(m.db, readFund(m.db, kept.id)!),
     ...(change.price === undefined
       ? {}
       : {
           price: { date: day, price: change.price },
-          replaced: replaced === null ? null : priceItem(replaced),
+          replaced:
+            replaced.before === null ? null : priceItem(replaced.before),
         }),
   };
 }
@@ -1548,9 +1626,8 @@ export function fundDetail(m: Markets, named: string) {
 }
 
 // the part these rows touch, replayed whole with them added
-function oversells(db: Db, rows: readonly NewTrade[]): boolean {
+function oversells(db: Db, rows: readonly NewTrade[], i: Instrument): boolean {
   const first = rows[0]!;
-  const i = readInstrument(db, first.instrument)!;
   const splits = splitsOf(db, i.id);
   const brokers = new Set(rows.map((r) => r.broker));
   for (const broker of brokers) {
@@ -1831,7 +1908,13 @@ export async function setTradeState(
       if (sale !== undefined) return conflict(undoesSale(sale));
       if (sales.length > 0) return conflict(SELLS_PAST);
     }
-    setTradeRemoved(db, id, removed ? who.name : null, m.clock.now());
+    const now = m.clock.now();
+    setTradeRemoved(db, id, removed ? who.name : null, now);
+    // a buy's price for its day goes and comes back with it
+    if (i !== null && isFund(i)) {
+      if (removed) dropBuyPrice(db, t, now);
+      else buyPrice(db, t, now);
+    }
     return id;
   });
   if (done === null) return notFound(`no trade ${id}`);

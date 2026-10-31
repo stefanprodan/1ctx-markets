@@ -12,10 +12,10 @@ import {
   parseNumber,
 } from "../portfolios/csv.ts";
 import {
+  buyPrice,
   fundByIsin,
   isFund,
   isFundKey,
-  priceIfNone,
 } from "../portfolios/funds.ts";
 import { rates } from "../portfolios/fx.ts";
 import {
@@ -31,6 +31,7 @@ import {
   type Position,
   type PositionKind,
   readBroker,
+  readTrade,
   readTrades,
   type Split,
   samePosition,
@@ -522,12 +523,9 @@ export async function importCsv(
             x.row.reason = "its instrument was deleted";
             continue;
           }
-          insertTrade(db, x.trade, now);
+          const id = insertTrade(db, x.trade, now);
           // as a typed buy's: its price stands for its day until one is set
-          const t = x.trade;
-          if (isFund(i) && t.side === "buy" && t.currency === i.currency) {
-            priceIfNone(db, i.id, t.date, t.price, who.name, now);
-          }
+          if (isFund(i)) buyPrice(db, readTrade(db, id)!, now);
         } else {
           let old: Position | null = null;
           if (x.position.kind === "bond") {

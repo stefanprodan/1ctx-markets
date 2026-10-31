@@ -441,8 +441,14 @@ export function portfolioRoutes(m: Markets): Route[] {
         const isin = isinOf(params.isin!);
         const read = await body(req);
         if (read instanceof Response) return read;
-        const f = fields(read.body, ["price", "date", "market"]);
-        return answer(await updateFund(m, who, isin, parseFundChange(f)));
+        const f = fields(read.body, [
+          "price",
+          "date",
+          "market",
+          "name",
+          "currency",
+        ]);
+        return answer(await updateFund(m, who, isin, parseFundChange(f, true)));
       },
     },
     {

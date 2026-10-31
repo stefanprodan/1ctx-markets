@@ -234,10 +234,11 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   `positions.market`, the market cash names, null unless named;
   `0026-fund-trades` adds `funds` (a fund the owner prices: its
   instrument and the market its money is in) and `fund_prices` (a price
-  per unit per fund and day, with who entered it and when), drops fund
-  positions and rebuilds `positions` with kinds `cash` and `bond`, its
-  other rows, columns (`units` and `price` stay, unset), indexes and
-  ids as they were.
+  per unit per fund and day, the buy it came from or null for the
+  owner's, and who entered it and when), drops fund positions and
+  rebuilds `positions` with kinds `cash` and `bond` and without
+  `units` and `price`, which only funds used, its other rows, columns,
+  indexes and ids as they were.
   Rows are never deleted but a portfolio with no live row, its removed
   rows with it, and a broker no live row names; what they mean is
   `docs/portfolios.md`.

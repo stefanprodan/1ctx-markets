@@ -212,6 +212,10 @@ const fund = object({
 const fundPrice = object({
   date: note(str, "The day the price is for."),
   price: num,
+  trade: note(
+    { type: ["integer", "null"] },
+    "The buy whose price stands for the day while the owner has entered none; it goes with the buy's removal. Null: the owner's, which no trade changes.",
+  ),
   entered_by: str,
   entered_at: nstr,
 });
@@ -370,6 +374,11 @@ export const portfolioSchemas: Record<string, Schema> = {
         "The day the price is for, the owner's today by default; a price for a day already priced replaces it.",
       ),
       market: note(nstr, `${MARKET_NOTE} Null takes it off.`),
+      name: note(str, "A new name, not another fund's."),
+      currency: note(
+        str,
+        "A new currency, only while the fund has no live trades.",
+      ),
     },
     [],
   ),
@@ -995,7 +1004,8 @@ export const portfolioPaths = {
         "Saves a buy or sell of a fund the owner prices, one per confirmation, as a trade on the fund: average cost, parts per broker, removal and restore and the trades list work as a share's.",
         "",
         "- Its first buy makes the fund, with its `isin` (its check digit checked), `name` and `currency`; a later trade names it by `isin` or `name`.",
-        "- A buy in the fund's currency also becomes that day's price when none is entered for it, so a fund added from one confirmation is valued at once.",
+        "- A buy in the fund's currency also becomes that day's price when the owner has entered none for it, so a fund added from one confirmation is valued at once; the day's latest live buy stands, and a removed buy's price goes with it.",
+        "- A `name` that is not the fund's, beside its `isin`, is refused.",
         "- A fund has no live price: `price` or `total` is needed. No source is ever asked for it.",
         "- A retry with the same figures as a live trade entered in the last 10 minutes is refused (409), unless `again` is true.",
       ),
@@ -1042,7 +1052,7 @@ export const portfolioPaths = {
       security: WRITES,
       summary: "Set a fund's price",
       description:
-        "Sets its price per unit for a day, the owner's today by default: a price for a day already priced replaces it, and earlier days are kept. The latest values the holding. Also sets the market its money is in.",
+        "Sets its price per unit for a day, the owner's today by default: a price for a day already priced replaces it, a buy's too, and earlier days are kept. The latest values the holding. Also sets the market its money is in, and corrects its name (not another fund's) or its currency (only while it has no live trades).",
       requestBody: bodyOf(ref("FundChange")),
       responses: base({
         200: ok("The fund.", ref("UpdatedFund")),
