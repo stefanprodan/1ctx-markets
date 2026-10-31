@@ -204,7 +204,8 @@ async function atCryptoRollover(
       final: true,
     });
     expect(finalPending(db, instrument.id)).toBe(false);
-    expect(liveTarget(db, instrument)!.date).toBe("2026-10-25");
+    // a trade before the stored period's start dates no live row
+    expect(liveTarget(db, instrument)).toBeNull();
     const s = readSignals(db, instrument.id, clock.now(), EVERY_MS)!;
     expect(s.daily.final!.date).toBe("2026-10-25");
     expect(s.daily.final!.rsi14).not.toBeNull();

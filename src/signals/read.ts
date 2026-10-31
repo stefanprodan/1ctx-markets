@@ -114,8 +114,7 @@ export function readSignals(
   }
   const target = liveTarget(db, i);
   if (target !== null && !live.includes(STALE.noHistory)) {
-    // a quote dated a bar already final has no live row by design
-    // (liveBase), as when crypto's Sunday trade is read after Monday's rollover
+    // a quote dated a bar already final has no live row by design (liveBase)
     const final = (interval: Interval, date: string) =>
       db
         .query<{ n: number }, [string, string, string]>(

@@ -75,8 +75,13 @@ export function read(answer: ChartAnswer, latest: Session | null): Read {
   }
   const byDate = new Map<string, Bar>();
   const days = new Set<string>();
+  const crypto = isCrypto(answer.type);
+  const today = sessionDate(answer.session);
   for (const row of regular) {
     const date = barDate(zone, row.at);
+    // past midnight, before the period rolls, Yahoo builds the new day's
+    // crypto row from the old day's open, high and low
+    if (crypto && date > today) continue;
     days.add(date);
     if (row.close === null) continue;
     add(byDate, date, row, latest);
@@ -98,6 +103,7 @@ export function read(answer: ChartAnswer, latest: Session | null): Read {
 // FX answers stamp today's row at the live minute; CL=F's Sunday evening
 // trades belong to Monday's bar, though its Sunday session has their date
 const isCurrency = (type: string) => type.toUpperCase() === "CURRENCY";
+const isCrypto = (type: string) => type.toUpperCase() === "CRYPTOCURRENCY";
 
 type Settled = { bars: Bar[]; pointCloses: Set<string> };
 
