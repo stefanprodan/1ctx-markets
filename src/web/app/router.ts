@@ -8,11 +8,19 @@ export const path = signal(
   typeof location === "undefined" ? "/" : location.pathname,
 );
 
+// a step to a new address or back through history, never one corrected
+// in place, so a page loads again on the same path with another query
+export const visits = signal(0);
+
 export function navigate(to: string, replace = false): void {
   const url = new URL(to, location.origin);
-  if (url.pathname === path.value) return;
-  if (replace) history.replaceState(null, "", url.pathname);
-  else history.pushState(null, "", url.pathname);
+  const next = url.pathname + url.search;
+  if (next === location.pathname + location.search) return;
+  if (replace) history.replaceState(null, "", next);
+  else {
+    history.pushState(null, "", next);
+    visits.value++;
+  }
   path.value = url.pathname;
 }
 
@@ -49,12 +57,13 @@ function onLinkClick(event: MouseEvent): void {
   };
   if (!inApp(link, location.origin, matchMedia(STANDALONE).matches)) return;
   event.preventDefault();
-  navigate(anchor.pathname);
+  navigate(anchor.pathname + anchor.search);
 }
 
 export function boot(): void {
   window.addEventListener("popstate", () => {
     path.value = location.pathname;
+    visits.value++;
   });
   document.addEventListener("click", onLinkClick);
 }

@@ -8,7 +8,7 @@ import { Icon } from "../lib/icons.tsx";
 import { Page } from "../ui/Page.tsx";
 import { SignIn } from "../views/SignIn.tsx";
 import { Rail } from "./Rail.tsx";
-import { navigate, path } from "./router.ts";
+import { navigate, path, visits } from "./router.ts";
 import { HOME, match } from "./routes.ts";
 import { Strip } from "./Strip.tsx";
 import {
@@ -90,6 +90,7 @@ export function Shell({
 export function App({ store = markets }: { store?: Store }) {
   const signedIn = store.signedIn.value;
   const here = path.value;
+  const visit = `${here} ${visits.value}`;
   const found = match(here);
   const route = found?.route ?? null;
   const arrived = useRef<string | null>(null);
@@ -107,11 +108,11 @@ export function App({ store = markets }: { store?: Store }) {
     if (signedIn === false) arrived.current = null;
     if (signedIn !== true || route === null) return;
     const first = arrived.current === null;
-    if (arrived.current !== here && !(first && route.path === "/status")) {
+    if (arrived.current !== visit && !(first && route.path === "/status")) {
       void route.load?.(found!.params);
     }
-    arrived.current = here;
-  }, [here, signedIn, route]);
+    arrived.current = visit;
+  }, [visit, signedIn, route]);
 
   if (signedIn === undefined) {
     const failed = store.statusError.value;

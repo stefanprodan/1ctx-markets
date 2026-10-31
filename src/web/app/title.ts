@@ -19,7 +19,10 @@ export function tabTitle(here: string, signedIn: boolean | undefined): string {
   // the landing page is the product itself
   if (found === null || found.route.path === HOME) return BRAND;
   const id = found.params.id;
-  const page = id === undefined ? found.route.label : symbolOf(id);
+  const page =
+    id === undefined || found.route.path !== "/instruments/:id"
+      ? found.route.label
+      : symbolOf(id);
   return `${page} · ${BRAND}`;
 }
 

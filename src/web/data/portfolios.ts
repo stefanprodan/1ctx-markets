@@ -4,9 +4,46 @@
 // sentence, or null once saved, and reloads what it changed.
 
 import { batch, signal } from "@preact/signals";
+import { inCirculation } from "../../shared/currencies.ts";
+import { navigate } from "../app/router.ts";
 import { ApiError, type Call, codeOf, says } from "./api.ts";
 
 export const PORTFOLIOS_PATH = "/api/v1/portfolios";
+export const PORTFOLIOS_PAGE = "/portfolios";
+
+export type View = {
+  portfolio: number | null;
+  currency: string | null;
+};
+
+// the view lives in the page's address, so a reload or a link opens on it:
+// the portfolio in the path, the currency in the query. A list's broker
+// and search narrow that list alone, so they stay out of it
+export function addressOf(v: View): string {
+  const q = new URLSearchParams();
+  if (v.currency !== null) q.set("currency", v.currency);
+  const path =
+    v.portfolio === null
+      ? PORTFOLIOS_PAGE
+      : `${PORTFOLIOS_PAGE}/${v.portfolio}`;
+  return q.size > 0 ? `${path}?${q}` : path;
+}
+
+// anything but an id in the path is all; a portfolio gone elsewhere
+// falls back on load, as a pick on the page would
+export function viewOf(id: string | undefined, search: string): View {
+  const q = new URLSearchParams(search);
+  const currency = q.get("currency")?.toUpperCase() ?? null;
+  return {
+    portfolio: id !== undefined && /^\d+$/.test(id) ? Number(id) : null,
+    currency: currency !== null && inCirculation(currency) ? currency : null,
+  };
+}
+
+const onPage = (): boolean =>
+  typeof location !== "undefined" &&
+  (location.pathname === PORTFOLIOS_PAGE ||
+    location.pathname.startsWith(`${PORTFOLIOS_PAGE}/`));
 
 export type PortfolioRow = {
   id: number;
@@ -340,12 +377,15 @@ export function plainError(said: string): string {
 export function portfolioStore(call: Call, session: () => number) {
   const overview = signal<Overview | null>(null);
   const holdings = signal<Holdings | null>(null);
+  // the holdings list's broker: the server splits a holding by broker,
+  // so the list reads its share there while the totals stay whole
+  const atBroker = signal<Holdings | null>(null);
   const trades = signal<TradeRow[] | null>(null);
   const error = signal<string | null>(null);
   const code = signal<number | null>(null);
   const failures = signal(0);
-  // what the page shows: a portfolio or all, a broker or all, and a
-  // currency to convert into, none built in
+  // what the page shows: a portfolio or all, the holdings list's broker
+  // or all, and a currency to convert into, none built in
   const portfolio = signal<number | null>(null);
   const broker = signal<string | null>(null);
   const currency = signal<string | null>(null);
@@ -353,28 +393,41 @@ export function portfolioStore(call: Call, session: () => number) {
   let loads = 0;
   async function load(): Promise<void> {
     const mine = ++loads;
+    // a currency pick or a fallback to all corrects the address in
+    // place: only a portfolio picked is a step to go back from
+    if (onPage()) {
+      const here = addressOf({
+        portfolio: portfolio.value,
+        currency: currency.value,
+      });
+      if (here !== location.pathname + location.search) navigate(here, true);
+    }
     const at = session();
     const stale = () => mine !== loads || at !== session();
     const q = new URLSearchParams();
-    if (broker.value !== null) q.set("broker", broker.value);
     if (currency.value !== null) q.set("currency", currency.value);
+    const bq = new URLSearchParams(q);
+    if (broker.value !== null) bq.set("broker", broker.value);
     const where =
       portfolio.value === null
         ? "/api/v1/holdings"
         : `${PORTFOLIOS_PATH}/${portfolio.value}/holdings`;
     const tq = new URLSearchParams({ removed: "true" });
     if (portfolio.value !== null) tq.set("portfolio", String(portfolio.value));
-    if (broker.value !== null) tq.set("broker", broker.value);
     try {
-      const [o, h, t] = await Promise.all([
+      const [o, h, t, b] = await Promise.all([
         call<Overview>(PORTFOLIOS_PATH),
         call<Holdings>(`${where}${q.size > 0 ? `?${q}` : ""}`),
         call<{ trades: TradeRow[] }>(`/api/v1/trades?${tq}`),
+        broker.value === null
+          ? Promise.resolve(null)
+          : call<Holdings>(`${where}?${bq}`),
       ]);
       if (stale()) return;
       batch(() => {
         overview.value = o;
         holdings.value = h;
+        atBroker.value = b;
         trades.value = t.trades;
         error.value = null;
         code.value = null;
@@ -421,6 +474,7 @@ export function portfolioStore(call: Call, session: () => number) {
   return {
     overview,
     holdings,
+    atBroker,
     trades,
     error,
     code,
@@ -429,6 +483,15 @@ export function portfolioStore(call: Call, session: () => number) {
     broker,
     currency,
     load,
+    // the view the address names, on arrival, a reload or a step back
+    open(v: View) {
+      batch(() => {
+        portfolio.value = v.portfolio;
+        broker.value = null;
+        currency.value = v.currency;
+      });
+      return load();
+    },
     pick(next: {
       portfolio?: number | null;
       broker?: string | null;
@@ -522,6 +585,7 @@ export function portfolioStore(call: Call, session: () => number) {
       batch(() => {
         overview.value = null;
         holdings.value = null;
+        atBroker.value = null;
         trades.value = null;
         error.value = null;
         code.value = null;

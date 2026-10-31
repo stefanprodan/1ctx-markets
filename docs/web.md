@@ -335,7 +335,8 @@ signed in with the admin key alone.
   (as 1ctx's read `ONECTX_ACCESS_KEY`): Claude Code's header in single
   quotes, so the shell never writes the key into its config, Codex's
   `bearer_token_env_var`, OpenCode's `{env:...}` with OAuth off.
-- **Portfolios** (`/portfolios`, after Instruments in the rail) reads
+- **Portfolios** (`/portfolios` and `/portfolios/{id}`, after
+  Instruments in the rail) reads
   `GET /api/v1/portfolios`, the holdings (`/holdings` or
   `/portfolios/{id}/holdings`) and the trades with removed ones in one
   load (`data/portfolios.ts`), every minute while visible. The words
@@ -350,11 +351,27 @@ signed in with the admin key alone.
   The "Show in" picker is the app's menu, not a native select, and
   lists, once each, the currencies held, the display one and the one
   picked, only those in circulation (`currencies()`), since the server
-  converts into no other; the broker picker shows only when a broker
-  exists.
-- **Filters:** All or one portfolio (tabs that scroll sideways), a
-  broker, and the currency picker; a portfolio or broker gone elsewhere
-  falls back to all.
+  converts into no other.
+- **Filters:** All or one portfolio (tabs that scroll sideways) and the
+  currency picker; a portfolio gone elsewhere falls back to all. The
+  totals and Exposure always count the whole portfolio.
+- **The view is the address** (`addressOf`, `viewOf`), so a reload or
+  a link opens on it: the portfolio's id in the path, `currency` in the
+  query, left out when it is the display currency. A portfolio picked
+  is a new history entry and keeps the currency, so Back returns to the
+  one before; a currency picked, or a fallback to all, replaces the
+  address in place. The rail's link opens All. Anything in the address
+  the page cannot use reads as all.
+- **Each list narrows itself** and stays out of the address, cleared
+  when the portfolio changes: a search where every word typed must
+  match some field (`holdingMatches`, `tradeMatches`), so "nvda xtb"
+  finds NVDA at XTB. Holdings also has a broker menu, offering only the
+  brokers in the list (`brokersIn`) and shown when there are two or
+  more; a broker picked reads the holdings again with `broker`, so a
+  holding held at several brokers shows that broker's share, as the
+  server splits it. Trades has none: a trade's broker is in its search.
+  A list head's filter is drawn as 1ctx draws one: an outline with no
+  fill, segments on a wide screen and a menu on a phone.
 - **Holdings** are rows that open, ranked by their value in the display
   currency across currencies (the server groups by currency; the page
   does not), rows with no rate last: an instrument by its symbol with
@@ -364,7 +381,10 @@ signed in with the admin key alone.
   the UI), a bond with its coupon, maturity and "at face" when no
   listing prices it). Opened: price ("Price per unit" for a fund),
   cost, gain, what was paid in another currency, weight, and a table of
-  the parts per broker; a fund has Buy and Sell, which open the add
+  the parts per broker (quantity, average cost, value, and its gain:
+  the part's value less its cost, `partGain()`, since a part carries
+  no gain of its own; the portfolio under the broker only on All;
+  average cost left out on a phone); a fund has Buy and Sell, which open the add
   panel's Fund tab on it, and Set price (its name, price per unit, the
   day it is for, starting on the owner's today, and its market; a day
   already priced takes the new price, and a changed name alone sends no
@@ -382,10 +402,15 @@ signed in with the admin key alone.
 - **Exposure** is bars by market, kind, portfolio and broker within one
   currency (a picker when there are several), and by currency with a
   named one.
-- **Trades** newest first, twenty then "Show all", each with its side,
-  symbol (a fund's name), quantity × price and fees, date, portfolio, broker and who
-  entered it ("Web", "Admin" or the key's name); Remove asks once, and
-  the Removed switch shows removed ones with Restore.
+- **Trades** newest first, twenty then "Show all", rows that open as
+  holdings do: side, symbol (a fund's name) and name, quantity × price,
+  date and broker, and what was paid or received. Opened: only what the
+  row does not say, so fees, portfolio (on All), who added it ("Web",
+  "Admin" or the key's name) and when, when it was removed and by whom,
+  then the note on a line of its own, since a note runs long; Remove
+  sits there and asks once. Search also matches the side.
+  All | Removed shows the live trades or only the removed ones, each
+  with Restore.
 - **Add** opens a panel beside the page (a sheet from the bottom on a
   phone; Escape, the backdrop or the close button shut it), so the page
   stays where it was: Trade, Cash, Fund or Bond. Fund records a buy or

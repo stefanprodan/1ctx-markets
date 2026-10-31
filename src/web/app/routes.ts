@@ -5,6 +5,7 @@
 // parameter.
 
 import type { ComponentType } from "preact";
+import { viewOf } from "../data/portfolios.ts";
 import { markets } from "../data/store.ts";
 import type { IconName } from "../lib/icons.tsx";
 import { Connect } from "../views/Connect.tsx";
@@ -61,7 +62,16 @@ export const ROUTES: readonly Route[] = [
     icon: "briefcase",
     view: Portfolios,
     load: async () => {
-      await markets.portfolios.load();
+      await markets.portfolios.open(viewOf(undefined, location.search));
+    },
+  },
+  {
+    path: "/portfolios/:id",
+    label: "Portfolios",
+    icon: "briefcase",
+    view: Portfolios,
+    load: async (p) => {
+      await markets.portfolios.open(viewOf(p.id, location.search));
     },
   },
   {

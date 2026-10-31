@@ -11,23 +11,32 @@ import type {
   Overview,
   TradeRow,
 } from "../src/web/data/portfolios.ts";
-import { JUST_SAVED, plainError } from "../src/web/data/portfolios.ts";
+import {
+  addressOf,
+  JUST_SAVED,
+  plainError,
+  viewOf,
+} from "../src/web/data/portfolios.ts";
 import { store } from "../src/web/data/store.ts";
 import { accessWords } from "../src/web/views/Connect.model.ts";
 import {
   amount,
+  brokersIn,
   change,
   costLine,
   currencies,
   currencyGain,
   dryPowderFor,
   dryPowders,
+  enteredBy,
   findZones,
   heldAt,
+  holdingMatches,
   holdingSub,
   importLine,
   largestFirst,
   listingWords,
+  partGain,
   ranked,
   rateLine,
   readRemembered,
@@ -36,9 +45,10 @@ import {
   splitOf,
   today,
   tradeLine,
+  tradeMatches,
   tradeMoney,
+  tradeName,
   tradeSub,
-  tradeTitle,
   typed,
   zoneWords,
 } from "../src/web/views/Portfolios.model.ts";
@@ -255,7 +265,7 @@ describe("the Portfolios page", () => {
     expect(html).not.toContain("XETRA:AAA");
   });
 
-  test("asks the holdings of the portfolio, broker and currency picked", async () => {
+  test("reads the totals whole and the list at the broker picked", async () => {
     const { s, asked } = await loaded();
     const f = fake({
       "GET /api/v1/portfolios": OVERVIEW,
@@ -270,12 +280,13 @@ describe("the Portfolios page", () => {
     );
     await t.portfolios.pick({ portfolio: 1, broker: "North", currency: "USD" });
     expect(asked).toContain("GET /api/v1/holdings");
+    // the totals and trades never narrow to the list's broker
+    expect(f.asked).toContain("GET /api/v1/portfolios/1/holdings?currency=USD");
     expect(f.asked).toContain(
-      "GET /api/v1/portfolios/1/holdings?broker=North&currency=USD",
+      "GET /api/v1/portfolios/1/holdings?currency=USD&broker=North",
     );
-    expect(f.asked).toContain(
-      "GET /api/v1/trades?removed=true&portfolio=1&broker=North",
-    );
+    expect(f.asked).toContain("GET /api/v1/trades?removed=true&portfolio=1");
+    expect(t.portfolios.atBroker.value).not.toBeNull();
     void s;
   });
 
@@ -479,11 +490,9 @@ describe("the page's words", () => {
     expect(
       holdingSub({ ...HOLDINGS.holdings[1]!, dry_powder: false }, NOW),
     ).toBe("Reserve · 1 Oct");
-    expect(tradeLine(trade())).toBe("4 × 80.00 EUR + 1.50 fees");
-    expect(tradeSub(trade(), NOW)).toBe(
-      "2 Mar · Shares · North · by casey-agent",
-    );
-    expect(tradeSub(trade({ entered_by: "web" }), NOW)).toContain("by Web");
+    expect(tradeLine(trade())).toBe("4 × 80.00 EUR");
+    expect(tradeSub(trade(), NOW)).toBe("4 × 80.00 EUR · 2 Mar · North");
+    expect(enteredBy("web")).toBe("Web");
     expect(splitOf(total("EUR")).map((p) => p.label)).toEqual([
       "Invested",
       "Dry powder",
@@ -1127,7 +1136,7 @@ describe("a fund the owner prices", () => {
 
   test("its trades read by name, and its refusals plainly", () => {
     const t = trade({ symbol: `fund:${ISIN}`, name: "Made Up World Fund" });
-    expect(tradeTitle(t)).toBe("Buy Made Up World Fund");
+    expect(tradeName(t)).toBe("Made Up World Fund");
     expect(
       plainError(
         "isin must be an ISIN: 2 letters, 9 letters or digits, and a check digit that matches",
@@ -1136,5 +1145,72 @@ describe("a fund the owner prices", () => {
     expect(
       plainError("the fund ZZFUND000011 has this name; name a new fund apart"),
     ).toBe("Another fund has this name.");
+  });
+});
+
+describe("the view in the address", () => {
+  test("names the portfolio in the path and the currency in the query", () => {
+    expect(addressOf({ portfolio: null, currency: null })).toBe("/portfolios");
+    expect(addressOf({ portfolio: 5, currency: null })).toBe("/portfolios/5");
+    expect(addressOf({ portfolio: 5, currency: "RON" })).toBe(
+      "/portfolios/5?currency=RON",
+    );
+  });
+
+  test("reads back what it wrote, and anything else as all", () => {
+    expect(viewOf("5", "?currency=RON")).toEqual({
+      portfolio: 5,
+      currency: "RON",
+    });
+    // a list's broker is no longer part of the address
+    expect(viewOf("abc", "?broker=North&currency=XYZ")).toEqual({
+      portfolio: null,
+      currency: null,
+    });
+    expect(viewOf(undefined, "?currency=ron").currency).toBe("RON");
+  });
+});
+
+describe("a holding's share at one broker", () => {
+  const part = {
+    portfolio: "Shares",
+    broker: "North",
+    quantity: 10,
+    average_cost: 50,
+    cost: 500,
+    value: 750,
+  };
+  test("gains its value less its cost", () => {
+    const g = partGain(part);
+    expect(g.pl.text).toBe("+250.00");
+    expect(g.pct.text).toBe("+50.00%");
+    expect(g.pl.dir).toBe(1);
+  });
+  test("says nothing when the value or cost is missing", () => {
+    expect(partGain({ ...part, value: null }).pl.text).toBe("");
+    expect(partGain({ ...part, cost: 0 }).pct.text).toBe("");
+  });
+});
+
+describe("a list's search and broker", () => {
+  test("offer only the brokers in the list, once each", () => {
+    expect(brokersIn(["South", null, "North", "South"])).toEqual([
+      "North",
+      "South",
+    ]);
+  });
+
+  test("match every word typed against some field", () => {
+    const t = trade({ symbol: "US:MADE", name: "Made Up Corp", note: null });
+    expect(tradeMatches(t, "")).toBe(true);
+    expect(tradeMatches(t, "made north")).toBe(true);
+    expect(tradeMatches(t, "MADE  corp")).toBe(true);
+    expect(tradeMatches(t, "made south")).toBe(false);
+    // the side the row shows is searched too
+    expect(tradeMatches(t, "buy made")).toBe(true);
+    expect(tradeMatches(t, "sell made")).toBe(false);
+    const h = HOLDINGS.holdings[0]!;
+    expect(holdingMatches(h, h.name!.split(" ")[0]!)).toBe(true);
+    expect(holdingMatches(h, "nothing-like-it")).toBe(false);
   });
 });
