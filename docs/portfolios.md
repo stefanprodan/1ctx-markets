@@ -210,6 +210,11 @@ once and valued on the live price the server already keeps.
   fetched inside the call, once; one that fails stays null with its
   reason, never a guess. Hundredths (`GBp`, `ZAc`, `ILA`) convert by
   their factor.
+- **A position's `as_of`** is the day cash's or a fund's figure is true
+  on; a bond's is the day it was bought, never its price's date: a
+  listed bond's price is its listing's quote, dated by `fetched_at`. The
+  tool description and the spec's field notes say so, so an agent
+  never reads a bond's `as_of` as its price's date.
 - **Cash is worth its amount; a hand price its units × price**, shown
   with its date (`priced: hand`); a fund's average cost, on its row
   and its part, is its cost over its units; a bond its listing's percent of par,

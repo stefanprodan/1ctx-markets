@@ -40,6 +40,7 @@ import {
 } from "../src/portfolios/store.ts";
 import { money } from "../src/portfolios/value.ts";
 import type { Db } from "../src/storage/db/index.ts";
+import { tools } from "../src/tools/index.ts";
 import { sentence } from "../src/web/data/api.ts";
 import { plainError } from "../src/web/data/portfolios.ts";
 import { missingWords, staleWords } from "../src/web/views/Portfolios.model.ts";
@@ -2072,5 +2073,15 @@ describe("a holding's figures", () => {
     )!;
     expect(row.currency_weight).toBe(100);
     expect("weight" in row).toBe(false);
+  });
+});
+
+describe("the tool's description", () => {
+  test("says a bond's as_of is its purchase and its price its listing's", () => {
+    const { m } = world();
+    const d = tools(m).find((t) => t.name === "portfolio")!.description;
+    expect(d).toContain("as_of is its purchase");
+    expect(d).toContain("its listing's as of fetched_at");
+    expect(d.length).toBeLessThanOrEqual(1024);
   });
 });

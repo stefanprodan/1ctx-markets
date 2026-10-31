@@ -150,7 +150,10 @@ const position = object(
     cost: nnum,
     coupon: nnum,
     maturity: nstr,
-    as_of: str,
+    as_of: note(
+      str,
+      "Cash's and a fund's figure is as of this day; a bond's is the day it was bought, its listed price dated by `fetched_at`.",
+    ),
     dry_powder: bool,
     broker: nstr,
     note: nstr,
@@ -215,7 +218,10 @@ const holding = object(
     cost: nnum,
     price: nnum,
     priced: values(["quote", "hand", "listing", "face", "amount"]),
-    as_of: nstr,
+    as_of: note(
+      nstr,
+      "Cash's and a fund's figure is as of this day; a bond's is the day it was bought, its listed price dated by `fetched_at`.",
+    ),
     value: nnum,
     pl: nnum,
     pl_percent: nnum,
