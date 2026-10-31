@@ -194,7 +194,8 @@ the rules tool in `docs/rules.md`; the portfolio tool in
   instrument would take; its `isin` is the list's, kept on a stored
   candidate too. Before the list pages are first read there are no
   Bucharest candidates.
-- **search fetches no prices and tracks nothing.** FRED is asked only
+- **search fetches no prices and tracks nothing**, and never answers a
+  fund the owner prices (`docs/portfolios.md`). FRED is asked only
   for `FRED:<series id>`, with a note when the series is not daily; a
   stored series also matches by symbol or name. A source that failed
   or timed out is in `errors`, beside what the other side found.
@@ -249,7 +250,10 @@ the rules tool in `docs/rules.md`; the portfolio tool in
   for the caller to pick an id from. Each source's rules are in
   `docs/yahoo.md` and `docs/bvb.md` ("Resolution") and
   `docs/fred.md`; with the Bucharest feed off, a `BVB:` key Yahoo
-  lacks answers `no_data`.
+  lacks answers `no_data`. A fund's key (`fund:<ISIN>`, any case)
+  answers `not_found` saying the owner prices it and the holdings have
+  its price, before any lookup, the same held or not, so no source is
+  asked for it and a key without portfolio access learns nothing.
 - **What the server lacks is fetched inside the call**: an instrument
   with no bars gets ten years of history, its signals and a fresh
   quote in one write (`fetchInstrument()`); one no longer tracked is

@@ -202,9 +202,7 @@ export function costLine(h: Holding): string {
   if (h.kind === "bond") {
     return h.priced === "listing" ? `${price(h.price)}% of face` : "";
   }
-  // a fund shows the NAV it was given
-  const each = h.kind === "fund" ? h.price : h.average_cost;
-  return `${quantity(h.quantity)} × ${priceOf(each, h.currency, h.unit)}`;
+  return `${quantity(h.quantity)} × ${priceOf(h.average_cost, h.currency, h.unit)}`;
 }
 
 export const brokerName = (b: string | null): string => b ?? "No broker";
@@ -227,8 +225,14 @@ export function enteredBy(by: string): string {
   return by;
 }
 
+// a fund by its name, which its owner knows it by, never its ISIN
+export const tradeName = (t: TradeRow): string =>
+  isFundId(t.symbol) ? (t.name ?? symbolOf(t.symbol)) : symbolOf(t.symbol);
+
+export const isFundId = (id: string): boolean => id.startsWith("fund:");
+
 export function tradeTitle(t: TradeRow): string {
-  return `${t.side === "buy" ? "Buy" : "Sell"} ${symbolOf(t.symbol)}`;
+  return `${t.side === "buy" ? "Buy" : "Sell"} ${tradeName(t)}`;
 }
 
 // a bond's price is a percent of its face, never an amount
@@ -385,7 +389,7 @@ export function readRemembered(raw: string | null): Remembered {
 export const IMPORT_KINDS: Record<string, string> = {
   trades: "Trades",
   cash: "Cash",
-  funds: "Funds",
+
   bonds: "Bonds",
 };
 
@@ -419,9 +423,7 @@ export function importLine(item: Record<string, unknown> | undefined): string {
   const what = s("name") ?? "";
   if (s("kind") === "cash")
     return `${what} · ${amount(n("amount"), s("currency"))}`;
-  if (s("kind") === "fund") {
-    return `${what} · ${quantity(n("units"))} × ${price(n("price"), s("currency"))}`;
-  }
+
   return `${what} · ${amount(n("amount"), s("currency"))}`;
 }
 
@@ -467,7 +469,9 @@ export function shownIn(
 
 // where a listing is held now: each portfolio and broker with its quantity
 export const heldAt = (h: Holdings | null, id: string): Part[] =>
-  h?.holdings.find((x) => x.kind === "holding" && x.id === id)?.parts ?? [];
+  h?.holdings.find(
+    (x) => (x.kind === "holding" || x.kind === "fund") && x.id === id,
+  )?.parts ?? [];
 
 export type DryPowder = {
   position: number;

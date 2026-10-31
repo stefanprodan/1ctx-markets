@@ -2316,31 +2316,32 @@ async function portfolioOperations(
   await refusals("POST", I, `${at}/import`, send("POST", { csv: file }));
 
   const S = "/positions";
-  const fund = {
-    kind: "fund",
+  const cash = {
+    kind: "cash",
     portfolio: pid,
-    name: "Made Up Fund",
-    units: 3,
-    price: 10,
+    name: "Made Up Cash",
+    amount: 30,
     currency: "USD",
   };
   const added = await check(
     "POST",
     S,
-    await t.call(S, send("POST", fund)),
+    await t.call(S, send("POST", cash)),
     201,
   );
   const sid = added.position.id;
+  for (const kind of ["stock", "fund"]) {
+    await check(
+      "POST",
+      S,
+      await t.call(S, send("POST", { ...cash, kind })),
+      400,
+    );
+  }
   await check(
     "POST",
     S,
-    await t.call(S, send("POST", { ...fund, kind: "stock" })),
-    400,
-  );
-  await check(
-    "POST",
-    S,
-    await t.call(S, send("POST", { ...fund, broker: "Nowhere" })),
+    await t.call(S, send("POST", { ...cash, broker: "Nowhere" })),
     404,
   );
   await check("POST", S, await t.call(S, send("POST", "x", "text/plain")), 415);
@@ -2357,7 +2358,7 @@ async function portfolioOperations(
     }),
   );
   expect((await check("POST", S, slowBond, 503)).code).toBe("timeout");
-  await refusals("POST", S, S, send("POST", fund));
+  await refusals("POST", S, S, send("POST", cash));
   await check(
     "GET",
     S,
@@ -2371,14 +2372,14 @@ async function portfolioOperations(
   const updated = await check(
     "PATCH",
     sone,
-    await t.call(`${S}/${sid}`, send("PATCH", { price: 11 })),
+    await t.call(`${S}/${sid}`, send("PATCH", { amount: 11 })),
     200,
   );
   const newer = updated.position.id;
   await check(
     "PATCH",
     sone,
-    await t.call(`${S}/${sid}`, send("PATCH", { price: 12 })),
+    await t.call(`${S}/${sid}`, send("PATCH", { amount: 12 })),
     409,
   );
   await check(
@@ -2390,7 +2391,7 @@ async function portfolioOperations(
   await check(
     "PATCH",
     sone,
-    await t.call(`${S}/999`, send("PATCH", { price: 1 })),
+    await t.call(`${S}/999`, send("PATCH", { amount: 1 })),
     404,
   );
   await check(
@@ -2399,7 +2400,7 @@ async function portfolioOperations(
     await t.call(`${S}/${newer}`, send("PATCH", "x", "text/plain")),
     415,
   );
-  await refusals("PATCH", sone, `${S}/${newer}`, send("PATCH", { price: 1 }));
+  await refusals("PATCH", sone, `${S}/${newer}`, send("PATCH", { amount: 1 }));
   const hist = `${S}/{id}/history`;
   expect(
     (await check("GET", hist, await t.call(`${S}/${newer}/history`), 200))
@@ -2447,6 +2448,96 @@ async function portfolioOperations(
     404,
   );
   await refusals("POST", sback, `${S}/${sid}/restore`);
+
+  const F = "/funds";
+  const FT = "/funds/trades";
+  const FONE = "/funds/{isin}";
+  const isin = "ZZFUND000011";
+  const fundBuy = {
+    portfolio: pid,
+    isin,
+    name: "Made Up Fund",
+    side: "buy",
+    units: 3,
+    price: 10,
+    currency: "USD",
+    date: "2026-10-01",
+  };
+  const fundBought = await check(
+    "POST",
+    FT,
+    await t.call(FT, send("POST", fundBuy)),
+    201,
+  );
+  expect(fundBought.fund).toMatchObject({
+    isin,
+    price: 10,
+    as_of: "2026-10-01",
+  });
+  await check("POST", FT, await t.call(FT, send("POST", fundBuy)), 409);
+  await check(
+    "POST",
+    FT,
+    await t.call(FT, send("POST", { ...fundBuy, isin: "ZZFUND000012" })),
+    400,
+  );
+  await check(
+    "POST",
+    FT,
+    await t.call(
+      FT,
+      send("POST", { portfolio: pid, name: "Nowhere", side: "buy", units: 1 }),
+    ),
+    404,
+  );
+  await check(
+    "POST",
+    FT,
+    await t.call(FT, send("POST", "x", "text/plain")),
+    415,
+  );
+  await refusals("POST", FT, FT, send("POST", fundBuy));
+  await check("GET", F, await t.call(F), 200);
+  await check("GET", F, await t.call(`${F}?x=1`), 400);
+  await refusals("GET", F, F);
+  const priced = await check(
+    "PATCH",
+    FONE,
+    await t.call(
+      `${F}/${isin}`,
+      send("PATCH", { price: 11, date: "2026-10-02" }),
+    ),
+    200,
+  );
+  expect(priced.replaced).toBeNull();
+  await check(
+    "PATCH",
+    FONE,
+    await t.call(`${F}/${isin}`, send("PATCH", { units: 1 })),
+    400,
+  );
+  await check(
+    "PATCH",
+    FONE,
+    await t.call(`${F}/ZZFUND000029`, send("PATCH", { price: 1 })),
+    404,
+  );
+  await check(
+    "PATCH",
+    FONE,
+    await t.call(`${F}/${isin}`, send("PATCH", "x", "text/plain")),
+    415,
+  );
+  await refusals("PATCH", FONE, `${F}/${isin}`, send("PATCH", { price: 1 }));
+  const detail = await check("GET", FONE, await t.call(`${F}/${isin}`), 200);
+  expect(detail.prices.map((p: { date: string }) => p.date)).toEqual([
+    "2026-10-02",
+    "2026-10-01",
+  ]);
+  expect(detail.trades).toHaveLength(1);
+  await check("GET", FONE, await t.call(`${F}/not-an-isin`), 400);
+  await check("GET", FONE, await t.call(`${F}/ZZFUND000029`), 404);
+  await refusals("GET", FONE, `${F}/${isin}`);
 
   const G = "/portfolio-settings";
   await check(

@@ -38,6 +38,14 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
 - **A migration that moves data writes it in SQL from the rows
   present**, a value a changed rule derives included, since only a new
   listing's fetch would write it (`0006-tracking`, `0013-index-units`).
+- **A check is changed by rebuilding the table in the migration**, as
+  SQLite alters none in place: a `_next` table with every column, check
+  and index, the rows copied by id, the old table dropped and the new
+  renamed (`0014-run-ids`, `0026-fund-trades`). A table that points at
+  itself (`positions.replaces`) points the new one at itself, so the
+  old one drops with nothing pointing at it under `foreign_keys`, and
+  its `sqlite_sequence` row is carried over, so an id is never given
+  twice.
 
 ## The writer
 
@@ -61,6 +69,12 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
 - **An instrument's key is `market:symbol`, and the key is its
   identity.** The source's own symbol is a column (`source_symbol`,
   unique per source), so a source change keeps the key.
+- **A fund the owner prices is keyed `fund:<ISIN>`** with source
+  `owner` (`FUND_MARKET`, `FUND_SOURCE` in `src/sources/ids.ts`): every
+  source's market is upper case (`marketOf()` upper-cases the code), so
+  the lower-case `fund` is never a listing's, and every read that
+  upper-cases a key (`readTargets()`, `restStored()`) never finds it.
+  No source fetches it and no job tracks it (`docs/portfolios.md`).
 - **A market is the source's exchange code, through `ALIASES`** in
   `src/sources/yahoo/resolve.ts` where several codes are one market;
   any other code is a market of its own, so a new exchange needs no
@@ -169,7 +183,8 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
 - **There is no ticker list.** An instrument is tracked while a read
   named it within `--track-days` (30), any rule reads it, paused or
   not, it is on the saved dashboard, a trade or position not removed
-  names it (`portfolioInstruments()`), or the operator names it with
+  names it (`portfolioInstruments()`), a fund the owner prices aside,
+  or the operator names it with
   `--track` (`trackedIds()`). The instrument list counts a held one as
   tracked without naming why, since holdings are private. Every
   scheduled job syncs only tracked instruments, so all jobs follow the
@@ -216,7 +231,13 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   date and trades by broker, so holdings never scan and sort the table;
   `0024-time-zone` adds `portfolio_settings.time_zone`, the owner's IANA
   zone, null until named; `0025-position-market` adds
-  `positions.market`, the market cash or a fund names, null unless named.
+  `positions.market`, the market cash names, null unless named;
+  `0026-fund-trades` adds `funds` (a fund the owner prices: its
+  instrument and the market its money is in) and `fund_prices` (a price
+  per unit per fund and day, with who entered it and when), drops fund
+  positions and rebuilds `positions` with kinds `cash` and `bond`, its
+  other rows, columns (`units` and `price` stay, unset), indexes and
+  ids as they were.
   Rows are never deleted but a portfolio with no live row, its removed
   rows with it, and a broker no live row names; what they mean is
   `docs/portfolios.md`.

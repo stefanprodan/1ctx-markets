@@ -93,6 +93,9 @@ log and cut off without touching the others.
   `next_page_token` absent on the last page. A page is a screen of
   rows, and the stored set grows with use; paging by id never skips a
   row when one is deleted between pages. `total` counts every match.
+  A fund the owner prices (source `owner`) is never listed or counted,
+  in the list or the status: its existence says the owner holds it,
+  and a key without portfolio access reads both.
 - **`query` keeps ids or names holding it**, ignoring ASCII case only
   (SQLite's `lower()`), at most 64 characters.
 - **Each row says what tracks it** in `tracked_by`: `rule` (a rule
@@ -166,6 +169,8 @@ log and cut off without touching the others.
   (`checkStored()`). A new table referencing `instruments` either goes
   into `INSTRUMENT_TABLES` or cascades, as the dashboard's items do; a
   test lists every such table, so one added to neither fails it.
+  `funds` is the one exception: no id an admin route takes finds a
+  fund the owner prices, its key being lower case, so none deletes it.
 - **Its dashboard card goes by the cascade**, never in
   `INSTRUMENT_TABLES`: a favourite never blocks a delete. The same
   write moves the dashboard's revision, so a tab still holding the card

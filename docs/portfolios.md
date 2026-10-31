@@ -1,8 +1,10 @@
 # Portfolios
 
-Governs portfolios, brokers, trades and positions: the tables of
-migration `0020-portfolios`, `src/portfolios/` (`store.ts` rows,
-`value.ts` the holdings arithmetic, `fx.ts` rates, `csv.ts`),
+Governs portfolios, brokers, trades, positions and the funds the owner
+prices: the tables of migrations `0020-portfolios` and
+`0026-fund-trades`, `src/portfolios/` (`store.ts` rows, `funds.ts` a
+fund and its prices, `value.ts` the holdings arithmetic, `fx.ts`
+rates, `csv.ts`), `src/shared/isin.ts` (the ISIN check),
 `src/operations/portfolio.ts` (the `portfolio` tool and every read and
 write the routes share), `src/operations/portfolio-import.ts` (CSV
 import and export) and `src/api/portfolios.ts` with its spec in
@@ -37,34 +39,69 @@ once and valued on the live price the server already keeps.
   keeps the instrument id it resolved to, so a later symbol change
   never moves it. Only instruments with a price a holding can be
   valued at take trades: units `per_share`, `per_unit` and
-  `percent_of_par`; a FRED series or an index is refused.
+  `percent_of_par`, and a fund the owner prices; a FRED series or an
+  index is refused.
+- **A fund the owner prices is an instrument with trades** (migration
+  `0026-fund-trades`), so each purchase keeps its date, units and
+  price, and a sale reduces the average cost as a share's does. It is
+  keyed `fund:<ISIN>` (`fundKey()`): every source's market is upper
+  case, so the lower-case `fund` is never a listing's and a fund never
+  collides with one. Its instrument row has source `owner`, unit
+  `per_share`, type `FUND`, the fund's name and currency; `funds` holds
+  the market its money is in (the same market rule as cash's, below),
+  separate from the key, so exposure counts it there. The ISIN is
+  checked by its check digit (`isIsin()`, ISO 6166's Luhn sum, letters
+  read as two digits), upper-cased, so a typo never makes a fund. The
+  first buy makes it, with its ISIN, name and currency, in the trade's
+  own write, so a refused trade makes none; a later trade names it by
+  ISIN, by key or by name (ignoring case; a second fund's name may not
+  be another's). Its first trade must be a buy. A trade on it has no
+  live price, so a price or a total is needed, and its date defaults to
+  the owner's today, since it trades on no exchange.
+- **A fund's prices are dated rows** (`fund_prices`, one per fund and
+  day): the price per unit the owner enters from the manager's
+  statement, the bank app or a confirmation, with the day it is for.
+  An entry for a day already priced replaces it (`setFundPrice()`),
+  answered as `replaced`; earlier days are kept, so a value on a past
+  date can be read later. A buy paid in the fund's currency also
+  becomes its day's price when none is entered for that day
+  (`priceIfNone()`), so a fund added from one confirmation is valued at
+  once; a buy in another currency sets none, its price not being the
+  fund's. An import's buy does the same.
+- **No source ever fetches a fund the owner prices.** It is never
+  tracked (`trackedIds()` and `portfolioInstruments()` leave out source
+  `owner`), so no job asks for it; `quote`, `history` and every other
+  read refuse its key without asking a source (`OWNER_PRICED` in
+  `src/operations/targets.ts`), the same answer held or not; the admin
+  instrument list, its count and `search` leave it out, since its
+  existence says the owner holds it.
 - **A removal is a stamp** (`removed_at`, `removed_by`), never a
   delete: a mistake is seen and restored. An instrument any trade or
   position names, removed ones included, refuses its admin delete
   (409), so a restore never finds it gone.
-- **Positions** (`positions`) hold what has no listing or no free
-  price: `cash` (an amount), `fund` (units and a hand price, with its
-  date) and `bond` (face amount, coupon, maturity, and its listing when
-  the server has one). Each has its currency and `as_of` date. Cash
-  and a fund may name a market (`market`, migration
-  `0025-position-market`), so a fund holding one market's shares counts
-  in that market in the exposure and its row answers it; none is
+- **Positions** (`positions`) hold what has no trades: `cash` (an
+  amount) and `bond` (face amount, coupon, maturity, and its listing
+  when the server has one). Each has its currency and `as_of` date. A
+  fund was a position (units, one hand price, total cost) until
+  migration `0026-fund-trades`, which drops fund positions and the
+  kind, moving nothing: the owner adds each fund again as its buys.
+  Cash may name a market (`market`, migration `0025-position-market`),
+  as a fund may (`funds.market`), so a fund holding one market's shares
+  counts in that market in the exposure and its row answers it; none is
   assumed. The name must be a market a fund's or cash's money can be in
   (`knownMarkets()`, `markets` in `list` and `GET /portfolios`): one
   where a stored share, ETF or bond is listed (`per_share`,
-  `percent_of_par`), or crypto; never currency pairs (`CCY`), FRED
-  series, or a market of only indexes or futures. It is matched
-  ignoring case and stored as the instruments spell it; another is
-  refused (`not_found`) with the known ones. A bond's market is its
-  listing's, so a bond takes none. A row that replaces a kept one (an
-  add of the same cash or fund, an import) keeps the kept row's market
-  unless it names another, since a file has no market column. The
-  table keeps a fund as `manual`, the word migration `0020-portfolios`
-  checks; the store reads and writes it as `fund` (`stored()`), since a
-  table rebuild to rename it would copy every owner's positions.
-- **A position's identity** (`samePosition()`): cash and a hand-priced
-  holding by kind, name and broker, so a snapshot read again updates
-  them; a bond by its listing or name, purchase date, face and broker,
+  `percent_of_par`), or crypto, a fund's own key aside; never currency
+  pairs (`CCY`), FRED series, or a market of only indexes or futures.
+  It is matched ignoring case and stored as the instruments spell it;
+  another is refused (`not_found`) with the known ones. A bond's market
+  is its listing's, so a bond takes none. A row that replaces a kept
+  one (an add of the same cash, an import) keeps the kept row's market
+  unless it names another, since a file has no market column; a fund's
+  later trade that names none keeps the fund's.
+- **A position's identity** (`samePosition()`): cash by name and
+  broker, so a snapshot read again updates it; a bond by its listing or
+  name, purchase date, face and broker,
   since one name often covers several bonds and purchases. The name
   matches when either row has no listing, so a listing that resolves on
   a later import still finds the row saved unresolved; a bond imported
@@ -82,18 +119,17 @@ once and valued on the live price the server already keeps.
   restoring an old row sets a wrong update back (restoring takes out of
   the way every other live row of its chain through `replaces`, up to
   the first row and down, whatever the updates changed, so a purchase is
-  never live twice; cash and a hand price also a live row of their name
-  and broker, while a bond keeps a live equal purchase, since two equal
-  purchases are two bonds; so a restored bond can sit beside an equal
-  purchase imported again after its removal, and the owner removes one).
-  An update with no date that changes what cash or a fund is worth
-  (amount, `by`, units, price) is dated the owner's today, as its figure
-  is true now; a bond keeps its purchase date, and a note, dry powder or cost
-  alone keeps the date.
+  never live twice; cash also a live row of its name and broker, while
+  a bond keeps a live equal purchase, since two equal purchases are two
+  bonds; so a restored bond can sit beside an equal purchase imported
+  again after its removal, and the owner removes one).
+  An update with no date that changes what cash is worth (amount,
+  `by`) is dated the owner's today, as its figure is true now; a bond
+  keeps its purchase date, and a note, dry powder or cost alone keeps
+  the date. A price is a fund's: a position refuses one.
   A position added with the identity of a kept one replaces it the same
   way. A bond's history follows that chain, since an update may change
-  its face or date; cash's and a hand price's is every row of their name
-  at their broker.
+  its face or date; cash's is every row of its name at its broker.
 - **The display currency** (`portfolio_settings`, one row per owner,
   `admin` until people sign in) is required: a portfolio is refused
   (409, "Set a display currency first.") until the owner sets one, and
@@ -223,14 +259,22 @@ once and valued on the live price the server already keeps.
   fetched inside the call, once; one that fails stays null with its
   reason, never a guess. Hundredths (`GBp`, `ZAc`, `ILA`) convert by
   their factor.
-- **A position's `as_of`** is the day cash's or a fund's figure is true
-  on; a bond's is the day it was bought, never its price's date: a
-  listed bond's price is its listing's quote, dated by `fetched_at`. The
-  tool description and the spec's field notes say so, so an agent
-  never reads a bond's `as_of` as its price's date.
-- **Cash is worth its amount; a hand price its units × price**, shown
-  with its date (`priced: hand`); a fund's average cost, on its row
-  and its part, is its cost over its units; a bond its listing's percent of par,
+- **A row's `as_of`** is the day cash's figure is true on, or the day
+  a fund's latest price is for; a bond's is the day it was bought,
+  never its price's date: a listed bond's price is its listing's quote,
+  dated by `fetched_at`. The tool description and the spec's field
+  notes say so, so an agent never reads a bond's `as_of` as its price's
+  date.
+- **A fund the owner prices is a holding from its trades** (`kind`
+  `fund`, its `isin` on the row, `market` the one its money is in):
+  quantity, average cost, cost, parts per broker and a cost converted
+  at each trade day's close, as a share's, valued at its latest price
+  (`latestPrice()`, the latest day's) with that day in `as_of`
+  (`priced: hand`). A buy before the first price entered is valued by
+  its own price until one is. It has no day change, and with no price
+  at all (a buy in another currency only) its value is null with "no
+  price entered" in `stale`.
+- **Cash is worth its amount**; a bond its listing's percent of par,
   with the listing's day change on its face,
   when the listing has a quote (`priced: listing`), else its face
   (`priced: face`), said so.
@@ -254,9 +298,11 @@ setup(display_currency?: Currency, time_zone?: string, portfolio?: string,
   broker?: string | string[]):
   { portfolios; brokers; display_currency; time_zone; made };
 
-// the portfolios and brokers, the display currency and time zone, and
-// the markets a cash or fund position can name
-list(): { portfolios; brokers; display_currency; time_zone; markets };
+// the portfolios and brokers, the display currency and time zone, the
+// markets cash or a fund can name, and the funds the owner prices, each
+// with its latest price and its day
+list(): { portfolios; brokers; display_currency; time_zone; markets;
+  funds };
 
 // one row per instrument or position, its parts per broker; totals per
 // currency, converted into `currency`, else the display currency
@@ -276,13 +322,19 @@ add(kind: "trade", portfolio?: Portfolio, symbol: string,
   broker?: string, note?: string, again?: boolean):
   { trade | trades; live_price?; total? };
 
-// a position with no trades: cash, a fund priced by hand, a bond
+// a buy or sell of a fund the owner prices, one per confirmation; the
+// first buy makes it with isin, name and currency, a later trade names
+// it by isin or name; price or total is needed; date the owner's today
+add(kind: "fund", portfolio?: Portfolio, isin?: string, name?: string,
+  side: "buy" | "sell", units: number | "all", price?: number,
+  total?: number, fees?: number, date?: Day, currency?: Currency,
+  broker?: string, note?: string, market?: string, again?: boolean):
+  { trade | trades; total?; fund };
+
+// a position with no trades: cash, a bond
 add(kind: "cash", portfolio?: Portfolio, name: string, amount: number,
   currency: Currency, date?: Day, broker?: string, note?: string,
   dry_powder?: boolean, market?: string): { position };
-add(kind: "fund", portfolio?: Portfolio, name: string, units: number,
-  price: number, currency: Currency, cost?: number, date?: Day,
-  broker?: string, note?: string, market?: string): { position };
 // a bond's currency is its listing's when a symbol names one, else needed
 add(kind: "bond", portfolio?: Portfolio, name: string, amount: number,
   symbol?: string, coupon?: number, maturity?: Day, currency?: Currency,
@@ -291,9 +343,14 @@ add(kind: "bond", portfolio?: Portfolio, name: string, amount: number,
 // a position changed: amount set outright or moved by `by`, in
 // `currency` or its own; at least one change; market null takes it off
 update(position: number | "dry_powder", amount?: number, by?: number,
-  currency?: Currency, units?: number, price?: number, cost?: number,
-  date?: Day, note?: string, dry_powder?: boolean,
-  market?: string | null, portfolio?: Portfolio): { position; rate? };
+  currency?: Currency, cost?: number, date?: Day, note?: string,
+  dry_powder?: boolean, market?: string | null, portfolio?: Portfolio):
+  { position; rate? };
+
+// a fund's price per unit for a day (the owner's today by default), a
+// day already priced replaced; market null takes it off
+update(isin?: string, name?: string, price?: number, date?: Day,
+  market?: string | null): { fund; price?; replaced? };
 
 // one of trade or position, by id
 remove(trade?: number, position?: number, portfolio?: Portfolio);
@@ -316,8 +373,12 @@ rename_broker(broker: string, name: string): { broker };
   server instructions route a new owner to it.
 - **Actions `setup`, `list`, `holdings`, `trades`, `add`, `update`, `remove`,
   `restore` and `rename_broker`**, each taking only its own arguments (`ARGS`); `add`'s
-  arguments are its kind's (`KIND_ARGS`). The description is within a
-  few characters of 1,024; a word more needs another cut. `remove`,
+  arguments are its kind's (`KIND_ARGS`), and `update` with `isin` or
+  `name` is a fund's, taking only `price`, `date` and `market`
+  (`FUND_UPDATE`). The description is at 1,024 characters; a word more
+  needs another cut. It says a fund's trades come one per
+  confirmation, so an agent never sums a manager's statement into one
+  buy. `remove`,
   `restore` and `update` take an optional `portfolio`, since agents name
   one out of habit: ignored when it is the row's, refused with the
   row's portfolio named when not.
@@ -434,13 +495,18 @@ rename_broker(broker: string, name: string): { broker };
   number makes the row bad. `[paid EUR]` alone keeps `Purchase Price`
   as the price paid. A file with CRLF or LF line ends, and a BOM, reads
   the same.
+- **A fund's trades import as a share's**: a trades file names one by
+  its key (`fund:<ISIN>`, as the export writes it), which finds the
+  fund kept without asking a source; an unknown one is bad, since a
+  file never makes a fund (it has no name or currency column). A list
+  of fund totals (a `Fund` column) is refused whole: it holds no
+  purchase dates or ISINs.
 - **Position files**: cash `Item, Amount (<currency>), As Of, Note` (or
-  `currency` in the body when the header names none); funds `Fund,
-  Currency, Units, Value, Cost Basis, As Of, Note` (price = value /
-  units, units 1 when blank); bonds `Item, Symbol, Currency, Amount,
-  Rate (%), Purchase Date, Maturity, Note` (a symbol that does not
-  resolve warns and the bond is valued at face; one listed in another
-  currency is bad). A cash row is dry powder only when its line is in
+  `currency` in the body when the header names none); bonds `Item,
+  Symbol, Currency, Amount, Rate (%), Purchase Date, Maturity, Note` (a
+  symbol that does not resolve warns and the bond is valued at face;
+  one listed in another currency, or a fund's key, is bad). A cash row
+  is dry powder only when its line is in
   `dry_powder`, picked in the preview. Rows of one file never replace
   each other; a bond already kept (its identity above, each kept row
   matching one line, and a line saved in the same write matching none
@@ -448,8 +514,8 @@ rename_broker(broker: string, name: string): { broker };
   read again adds nothing, unless the kept row has no listing and the
   line's symbol now resolves: then the line replaces it with the listing
   set (its purchase date kept when the line has none), so it is valued
-  by the listing. Cash and hand-priced rows replace the kept ones of
-  their name and broker. A cash or fund `As Of` given as a month
+  by the listing. Cash rows replace the kept ones of their name and
+  broker. A cash `As Of` given as a month
   (`YYYY-MM`) is that month's last day, as a month-end bulletin states
   it, but never past today (`latestDay()`), so the current month reads
   as today; a later month or day is bad, as a typed position date after
@@ -463,7 +529,8 @@ rename_broker(broker: string, name: string): { broker };
   it (else the stored id), numbers as plain decimals (`plain()`, never
   `1e-7`), quantity and price in today's shares as the export's own
   format states them and never rounded, so export then import gives the
-  same trades back exactly. Lines end with LF and there is no BOM, as
+  same trades back exactly; a fund's trades are written under its key,
+  its prices not at all. Lines end with LF and there is no BOM, as
   Yahoo writes its own export. A trade paid in another currency writes
   `Purchase Price` in the listing's currency, at the close its cost
   converts at (the trade date's pair close, as the holdings cost), since

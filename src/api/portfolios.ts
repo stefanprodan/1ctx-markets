@@ -9,17 +9,22 @@ import type { Markets } from "../operations/markets.ts";
 import {
   ADD_KINDS,
   type AddKind,
+  addFundTrade,
   addPosition,
   addTrade,
   createBroker,
   createPortfolio,
   findBroker,
   findPortfolio,
+  fundDetail,
   historyOf,
+  isinArg,
   KIND_ARGS,
   listAll,
   namedCurrency,
   parseChange,
+  parseFundChange,
+  parseFundTrade,
   parsePosition,
   parseTrade,
   portfolioItem,
@@ -34,6 +39,7 @@ import {
   settingsItem,
   UPDATE_FIELDS,
   updateBroker,
+  updateFund,
   updatePortfolio,
   updatePosition,
 } from "../operations/portfolio.ts";
@@ -71,6 +77,11 @@ type Route = {
 };
 
 const ID = /^[1-9]\d{0,14}$/;
+
+// a fund's ISIN, its check digit checked, so a typo is a 400, not a 404
+function isinOf(raw: string): string {
+  return isinArg(raw, "the path's isin")!;
+}
 
 function idOf(raw: string, what: string): number {
   if (!ID.test(raw)) {
@@ -327,12 +338,17 @@ export function portfolioRoutes(m: Markets): Route[] {
         const kind = (
           typeof raw === "object" && raw !== null ? raw.kind : undefined
         ) as AddKind | undefined;
+        if (kind === "fund") {
+          throw new ArgError(
+            "a fund is bought as a trade: POST /funds/trades, one per confirmation",
+          );
+        }
         if (
           kind === undefined ||
           kind === "trade" ||
           !ADD_KINDS.includes(kind)
         ) {
-          throw new ArgError("kind must be one of cash, fund, bond");
+          throw new ArgError("kind must be one of cash, bond");
         }
         const f = fields(read.body, ["kind", "portfolio", ...KIND_ARGS[kind]]);
         const done = await addPosition(m, who, parsePosition(kind, f));
@@ -381,6 +397,52 @@ export function portfolioRoutes(m: Markets): Route[] {
       handle: async (_req, url, params) => {
         noQuery(url);
         return answer(historyOf(m, idOf(params.id!, "position")));
+      },
+    },
+    {
+      method: "GET",
+      path: "/funds",
+      scope: R,
+      handle: async (_req, url) => {
+        noQuery(url);
+        return json({ funds: listAll(m).funds });
+      },
+    },
+    {
+      method: "POST",
+      path: "/funds/trades",
+      scope: W,
+      handle: async (req, url, _params, who) => {
+        noQuery(url);
+        const read = await body(req);
+        if (read instanceof Response) return read;
+        const f = fields(read.body, ["portfolio", ...KIND_ARGS.fund]);
+        const done = await addFundTrade(m, who, parseFundTrade(f));
+        return created(done, (v) =>
+          v.trade === undefined ? "/trades" : `/trades/${v.trade.id}`,
+        );
+      },
+    },
+    {
+      method: "GET",
+      path: "/funds/{isin}",
+      scope: R,
+      handle: async (_req, url, params) => {
+        noQuery(url);
+        return answer(fundDetail(m, isinOf(params.isin!)));
+      },
+    },
+    {
+      method: "PATCH",
+      path: "/funds/{isin}",
+      scope: W,
+      handle: async (req, url, params, who) => {
+        noQuery(url);
+        const isin = isinOf(params.isin!);
+        const read = await body(req);
+        if (read instanceof Response) return read;
+        const f = fields(read.body, ["price", "date", "market"]);
+        return answer(await updateFund(m, who, isin, parseFundChange(f)));
       },
     },
     {

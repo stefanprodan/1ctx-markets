@@ -11,6 +11,12 @@ import {
   parseDay,
   parseNumber,
 } from "../portfolios/csv.ts";
+import {
+  fundByIsin,
+  isFund,
+  isFundKey,
+  priceIfNone,
+} from "../portfolios/funds.ts";
 import { rates } from "../portfolios/fx.ts";
 import {
   type Broker,
@@ -50,7 +56,7 @@ import {
 import { readTargets } from "./targets.ts";
 import type { Who } from "./who.ts";
 
-export const IMPORT_KINDS = ["trades", "cash", "funds", "bonds"] as const;
+export const IMPORT_KINDS = ["trades", "cash", "bonds"] as const;
 export type ImportKind = (typeof IMPORT_KINDS)[number];
 
 // a Yahoo export of a few thousand trades
@@ -229,7 +235,6 @@ export function kindOf(header: readonly string[]): ImportKind | null {
   const has = (...names: string[]) => names.every((n) => h.has(n));
   if (has("symbol", "trade date", "purchase price", "quantity"))
     return "trades";
-  if (has("fund", "currency", "units", "value")) return "funds";
   if (has("item", "symbol", "currency", "amount", "rate (%)")) return "bonds";
   if (
     has("item", "as of") &&
@@ -384,12 +389,28 @@ function yahooRow(
 
 const PRICED = new Set(["per_share", "per_unit", "percent_of_par"]);
 
+// funds: a fund's key, as an export writes it, names the fund kept
 async function resolveAll(
   m: Markets,
   symbols: readonly string[],
+  funds = false,
 ): Promise<Map<string, Instrument | string>> {
   const out = new Map<string, Instrument | string>();
-  const unique = [...new Set(symbols)];
+  const asked: string[] = [];
+  for (const s of new Set(symbols)) {
+    if (!isFundKey(s)) asked.push(s);
+    else if (!funds) out.set(s, "a fund is not a bond's listing");
+    else {
+      const f = fundByIsin(m.db, s);
+      out.set(
+        s,
+        f === null
+          ? "no such fund; add its first buy with its isin"
+          : readInstrument(m.db, f.id)!,
+      );
+    }
+  }
+  const unique = asked;
   const targets = unique.length === 0 ? [] : await readTargets(m, unique);
   for (const t of targets) {
     if ("error" in t) out.set(t.input, t.error.message);
@@ -462,8 +483,14 @@ export async function importCsv(
   const header = table[0]!;
   const kind = kindOf(header);
   if (kind === null) {
+    // a list of fund totals has no purchase dates or ISINs to make trades of
+    if (new Set(header.map(norm)).has("fund")) {
+      throw new ArgError(
+        "a funds list is not read: add each fund's buys, one per confirmation, with its isin",
+      );
+    }
     throw new ArgError(
-      "csv's header is not a Yahoo portfolio export, nor a cash, funds or bonds list",
+      "csv's header is not a Yahoo portfolio export, nor a cash or bonds list",
     );
   }
   const brokers = listBrokers(m.db);
@@ -489,12 +516,18 @@ export async function importCsv(
       for (const x of plan) {
         if (x.row.status !== "ok") continue;
         if (x.kind === "trade") {
-          if (readInstrument(db, x.trade.instrument) === null) {
+          const i = readInstrument(db, x.trade.instrument);
+          if (i === null) {
             x.row.status = "bad";
             x.row.reason = "its instrument was deleted";
             continue;
           }
           insertTrade(db, x.trade, now);
+          // as a typed buy's: its price stands for its day until one is set
+          const t = x.trade;
+          if (isFund(i) && t.side === "buy" && t.currency === i.currency) {
+            priceIfNone(db, i.id, t.date, t.price, who.name, now);
+          }
         } else {
           let old: Position | null = null;
           if (x.position.kind === "bond") {
@@ -594,6 +627,7 @@ async function planTrades(
   const found = await resolveAll(
     m,
     drafts.flatMap((x) => ("d" in x && !("skip" in x.d) ? [x.d.symbol] : [])),
+    true,
   );
   const out: Planned[] = [];
   for (const x of drafts) {
@@ -862,13 +896,12 @@ async function planPositions(
       ? rows.map((r) => r.get("symbol")).filter((s) => s !== "")
       : [];
   const found = await resolveAll(m, symbols);
-  const posKind: PositionKind =
-    kind === "cash" ? "cash" : kind === "funds" ? "fund" : "bond";
+  const posKind: PositionKind = kind === "cash" ? "cash" : "bond";
   const out: Planned[] = [];
   const taken = new Set<number>();
   for (const { line, get } of rows) {
     try {
-      const name = get(kind === "funds" ? "fund" : "item");
+      const name = get("item");
       if (name === "") throw new Bad("no name");
       if (name.length > MAX_POSITION_NAME) throw new Bad("name is too long");
       let currency =
@@ -888,8 +921,6 @@ async function planPositions(
         instrument: null,
         market: null,
         amount: null,
-        units: null,
-        price: null,
         cost: null,
         coupon: null,
         maturity: null,
@@ -904,13 +935,6 @@ async function planPositions(
         position.amount = num(get(amountColumn), "amount", { required: true });
         position.asOf = asOf(get("as of"), "as of", today, latest);
         position.dryPowder = ctx.dryPowder.has(line);
-      } else if (kind === "funds") {
-        const value = num(get("value"), "value", { required: true })!;
-        const units = num(get("units"), "units", { positive: true }) ?? 1;
-        position.units = units;
-        position.price = value / units;
-        position.cost = num(get("cost basis"), "cost basis");
-        position.asOf = asOf(get("as of"), "as of", today, latest);
       } else {
         position.amount = num(get("amount"), "amount", {
           required: true,
@@ -956,8 +980,6 @@ async function planPositions(
         currency,
         symbol: position.instrument,
         amount: position.amount,
-        units: position.units,
-        price: position.price,
         cost: position.cost,
         coupon: position.coupon,
         maturity: position.maturity,

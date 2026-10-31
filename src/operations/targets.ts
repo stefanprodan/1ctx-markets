@@ -25,7 +25,14 @@ import {
   refetchSeries,
   seriesId,
 } from "../sources/fred/sync.ts";
-import { BVB, BVB_MARKET, FRED, FRED_MARKET, YAHOO } from "../sources/ids.ts";
+import {
+  BVB,
+  BVB_MARKET,
+  FRED,
+  FRED_MARKET,
+  FUND_MARKET,
+  YAHOO,
+} from "../sources/ids.ts";
 import {
   Paused,
   QueueClosed,
@@ -89,6 +96,10 @@ export const candidateItem = (c: Candidate): CandidateItem => ({
 });
 
 export const NO_LISTING = "no listing found; try search";
+
+// a fund the owner prices has no quote; its price is in the holdings
+export const OWNER_PRICED =
+  "a fund the owner prices has no quote; portfolio holdings has its price";
 
 // anything but these fixed messages is logged and answered as a source error
 export function itemError(m: Markets, error: unknown): ItemError {
@@ -271,6 +282,13 @@ async function step(
 ): Promise<Step> {
   const given = input.trim();
   const upper = given.toUpperCase();
+  // the same answer held or not, and no source is asked for it
+  if (upper.startsWith(`${FUND_MARKET.toUpperCase()}:`)) {
+    return {
+      kind: "error",
+      error: { error: "not_found", message: OWNER_PRICED },
+    };
+  }
   if (upper.includes(":")) {
     const stored = readInstrument(m.db, upper);
     if (stored !== null) return storedStep(m, stored);

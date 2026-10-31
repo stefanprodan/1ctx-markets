@@ -48,11 +48,12 @@ dividends or tax, and it makes no model calls.
   earnings report. Each rule fires one alert each time its condition
   turns true. `GET /api/v1/alerts` is a feed a scheduled job can poll,
   answering 304 when nothing is new.
-- **Portfolios.** Trades by broker and positions (cash, funds priced
-  by hand, bonds) entered in the web UI or by an agent with the
-  `portfolio` tool, valued live: average cost, value and profit or
-  loss in each instrument's own currency, totals per currency, and
-  converted into a currency the owner names, every rate answered.
+- **Portfolios.** Trades by broker, funds bought and sold as trades and
+  priced by hand, and positions (cash, bonds) entered in the web UI or
+  by an agent with the `portfolio` tool, valued live: average cost,
+  value and profit or loss in each instrument's own currency, totals
+  per currency, and converted into a currency the owner names, every
+  rate answered.
   Cash kept for buying shows as dry powder. Removals and updates are
   kept, so a mistake is undone. Trades import from and export to a
   portfolio CSV export; agent keys read or write portfolios only when

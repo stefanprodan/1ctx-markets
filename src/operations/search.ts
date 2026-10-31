@@ -6,7 +6,13 @@ import { type Instrument, readInstrument } from "../market/instruments.ts";
 import { findListings } from "../sources/bvb/listings.ts";
 import { keyOf as bvbKey } from "../sources/bvb/sync.ts";
 import { NO_DATA, seriesId } from "../sources/fred/sync.ts";
-import { BVB, BVB_MARKET, FRED_MARKET, YAHOO } from "../sources/ids.ts";
+import {
+  BVB,
+  BVB_MARKET,
+  FRED_MARKET,
+  FUND_SOURCE,
+  YAHOO,
+} from "../sources/ids.ts";
 import { keyOf } from "../sources/yahoo/resolve.ts";
 import { cursor, fitPage, readCursor } from "./answer.ts";
 import { ArgError, fields, optionalText, text } from "./args.ts";
@@ -56,13 +62,13 @@ const fromStored = (i: Instrument): Found => ({
 function stored(m: Markets, query: string): Found[] {
   const q = query.toUpperCase();
   return m.db
-    .query<{ id: string }, [string, number]>(
+    .query<{ id: string }, [string, number, string]>(
       `select id from instruments
-       where instr(upper(id), ?1) > 0 or instr(upper(source_symbol), ?1) > 0
-         or instr(upper(coalesce(name, '')), ?1) > 0
+       where (instr(upper(id), ?1) > 0 or instr(upper(source_symbol), ?1) > 0
+         or instr(upper(coalesce(name, '')), ?1) > 0) and source <> ?3
        order by id limit ?2`,
     )
-    .all(q, STORED)
+    .all(q, STORED, FUND_SOURCE)
     .map((r) => fromStored(readInstrument(m.db, r.id)!));
 }
 
