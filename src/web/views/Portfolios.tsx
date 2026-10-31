@@ -1930,7 +1930,7 @@ export function AddForm({
           : null
         : kind.value === "fund"
           ? (knownFund?.name ?? named) && q !== null && !Number.isNaN(q)
-            ? `${side.value === "buy" ? "Buy" : "Sell"} ${quantity(q)} units of ${
+            ? `${side.value === "buy" ? "Buy" : "Sell"} ${quantity(q)} ${q === 1 ? "unit" : "units"} of ${
                 knownFund?.name ?? named
               }${
                 byTotal.value || p === null || Number.isNaN(p)
