@@ -702,6 +702,7 @@ export const paths = {
         "- An agent key opens what the read scope opens: market data, instruments and MCP. Never an admin route.",
         "- `portfolio` is `read` or `write` to open the portfolio routes and the portfolio tool; `none` by default.",
         "- `rules` is `read` to open the rules list and the alerts feed, `write` to also create, pause and delete rules, over the routes and the rules tool; `none` by default.",
+        "- `profile` is `read` to open the profile routes and the `profile` tool, `write` to also save it and list `profile_edit`; `none` by default.",
         `- At most ${MAX_KEYS} keys, expired ones included. Revoke one to make another.`,
         "- A name is unique among the keys (`conflict`).",
       ),
@@ -709,7 +710,7 @@ export const paths = {
       responses: admins({
         201: ok("The key and its token.", ref("MadeKey")),
         409: error(
-          "The name is taken, or there are already as many keys as allowed (`conflict`).",
+          "The name is taken or reserved, or there are already as many keys as allowed (`conflict`).",
         ),
         413: r("TooLarge"),
         415: r("UnsupportedType"),
@@ -723,7 +724,7 @@ export const paths = {
       security: ADMIN_AUTH,
       summary: "Change an agent key's access",
       description: lines(
-        "Sets the key's portfolio access, rules access or both. Answers the key as the list does.",
+        "Sets the key's portfolio, rules or profile access, or more than one. Answers the key as the list does.",
         "",
         "- The token, name and expiry stay. An expired key changes too.",
         "- The key's next call is held to the new access.",

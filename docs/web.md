@@ -514,23 +514,59 @@ The parts:
   `--track` values beside their resolved ids, from
   `GET /api/v1/watchlist`, loaded with the status so both land
   together.
+- **Profile** (`/profile`, between Portfolios and Connect agents in the
+  rail) is the owner's profile (`docs/profile.md`): how they invest, one
+  Markdown document agents read before any work on the portfolio.
+  `Profile.tsx` is the view, `data/profile.ts` its calls; the size,
+  the outline and what each toolbar button types are
+  `Profile.model.ts`, which has no DOM and is tested. The page shows
+  the `html` of `GET /api/v1/profile` in a card, drawn on the server so
+  the bundle ships no Markdown parser and any HTML in the text comes
+  back escaped; the head says when and by whom it was saved, with
+  History and Edit. A save by the web UI or the admin key (recorded
+  `web` and `admin`) reads "you" here and in History.
+- **No profile yet** is a panel (Write your profile) whose Write it
+  opens the editor on an outline: Goals, Risk, Trading style and
+  Analysis defaults, one hint line each, generic for any investor.
+  Save is on for the outline as it is, since a first profile has
+  nothing to be unchanged from.
+- **The editor** is a card with Write and Preview tabs. Write is a
+  monospace text box down to the page's foot and a toolbar (Heading,
+  Bold, Italic; Quote, Code, Link; Bulleted and Numbered list) that
+  wraps the selection or marks each line it touches. A button types
+  through `execCommand("insertText")`, so the browser's undo takes it
+  back. On a phone the toolbar sits under the tabs. Preview asks
+  `POST /api/v1/profile/preview`, which draws the draft as a save
+  would and keeps nothing, so the preview is the server's own drawing.
+  The foot counts the UTF-8 size against the 24 KB cap (red over it);
+  Save waits on a change and sends the revision it opened. A stale
+  save keeps the typed text and says "Changed since you opened it.
+  Copy your text, then reload.", so nothing typed is lost to a newer
+  save.
+- **History** is the drawer listing the kept revisions, newest first,
+  with author, age and size, the live one marked Current. A row opens
+  that revision drawn; Restore (not on the current one) saves its text
+  on the live revision, so a newer save refuses it instead of being
+  overwritten, and the profile is read again before a second try.
 - **Connect agents** (`/connect`, before Server status in the rail), as
-  1ctx's: a Keys card from `GET /api/v1/keys` ("N of 5", New key in
-  its head), a table of each key's name, last use, expiry and access.
-  The Access column says "Reads portfolios", "Writes portfolios",
-  "Reads alert rules" or "Writes alert rules" only for what a key has,
-  shows only when some key has any, and drops on a phone with the last
-  use. A row opens the key's drawer: its last use and expiry, then
-  Portfolios and Alert rules, each No access, Read, or Read and write,
-  set to what it has; Revoke at the foot's start asks once beside
-  Keep, and Cancel and Save (`PATCH /api/v1/keys/{id}`, waiting on a
-  change) at its end. New key opens the same drawer: a name, shaped
-  as typed to the server's rule, Expires (Never, 30, 90 or 365 days)
-  and the two picks, no access by default. Then a Setup card with the
-  agent picked in its head (Claude Code, Codex, OpenCode) and the line
-  that adds this server as the MCP server `markets` at the page's
-  origin plus `/mcp`. At the cap, New key goes and a line names the
-  cap. A revoke that answers 404 drops the row and its drawer.
+  1ctx's: a Keys card from `GET /api/v1/keys` ("N of 5", New key in its
+  head), a table of each key's name, last use, expiry and access. The
+  Access column says "Reads portfolios", "Writes portfolios", "Reads
+  alert rules", "Writes alert rules", "Reads the profile" or "Writes the
+  profile" only for what a key has, shows only when some key has any,
+  and drops on a phone with the last use. A row opens the key's drawer:
+  its last use and expiry, then Portfolios, Alert rules and Profile,
+  each No access, Read, or Read and write, set to what it has; Revoke at
+  the foot's start asks once beside Keep, and Cancel and Save (`PATCH
+  /api/v1/keys/{id}`, waiting on a change) at its end. New key opens the
+  same drawer: a name, shaped as typed to the server's rule, Expires
+  (Never, 30, 90 or 365 days) and the three picks, no access by default
+  (the profile is personal, so a key reaches it only when the admin
+  picks it). Then a Setup card with the agent picked in its head (Claude
+  Code, Codex, OpenCode) and the line that adds this server as the MCP
+  server `markets` at the page's origin plus `/mcp`. At the cap, New key
+  goes and a line names the cap. A revoke that answers 404 drops the row
+  and its drawer.
 - **Copy uses `copyText()` (`src/web/lib/clipboard.ts`)**, as 1ctx:
   the clipboard exists only on loopback or HTTPS, so on plain HTTP the
   button stays as it is and never says Copied.

@@ -21,11 +21,12 @@ const quotedBytes = (text: string): number => bytes(JSON.stringify(text)) - 2;
 const resultBytes = (text: string): number =>
   bytes(JSON.stringify({ content: [{ type: "text", text }] }));
 
+// the larger of the two sizes fits() holds to the page, envelope included
+export const sentBytes = (text: string): number =>
+  Math.max(bytes(text), resultBytes(text) + ENVELOPE_BYTES);
+
 export function fits(text: string): boolean {
-  return (
-    bytes(text) <= PAGE_BYTES &&
-    resultBytes(text) + ENVELOPE_BYTES <= PAGE_BYTES
-  );
+  return sentBytes(text) <= PAGE_BYTES;
 }
 
 // a whole call's failure, in the tool's own error codes

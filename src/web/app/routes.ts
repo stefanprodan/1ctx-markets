@@ -13,6 +13,7 @@ import { Dashboard } from "../views/Dashboard.tsx";
 import { Instrument } from "../views/Instrument.tsx";
 import { Instruments } from "../views/Instruments.tsx";
 import { Portfolios } from "../views/Portfolios.tsx";
+import { Profile } from "../views/Profile.tsx";
 import { Status } from "../views/Status.tsx";
 
 export type Params = Record<string, string>;
@@ -72,6 +73,15 @@ export const ROUTES: readonly Route[] = [
     view: Portfolios,
     load: async (p) => {
       await markets.portfolios.open(viewOf(p.id, location.search));
+    },
+  },
+  {
+    path: "/profile",
+    label: "Profile",
+    icon: "user",
+    view: Profile,
+    load: async () => {
+      await markets.profile.load();
     },
   },
   {

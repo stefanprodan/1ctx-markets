@@ -37,6 +37,7 @@ export const UI_PATHS = [
   "/instruments/:id",
   "/portfolios",
   "/portfolios/:id",
+  "/profile",
 ] as const;
 
 export type RouterDeps = {
@@ -85,7 +86,12 @@ export const whoOf = (c: Caller | null): Who =>
     ? WEB
     : c.kind === "admin"
       ? ADMIN
-      : { name: c.key.name, portfolio: c.key.portfolio, rules: c.key.rules };
+      : {
+          name: c.key.name,
+          portfolio: c.key.portfolio,
+          rules: c.key.rules,
+          profile: c.key.profile,
+        };
 
 const keyFields = (c: Caller | null): LogFields =>
   c === null
@@ -143,7 +149,9 @@ export function router(deps: RouterDeps): Handle {
           ? c.key.portfolio
           : area === "rules"
             ? c.key.rules
-            : null;
+            : area === "profile"
+              ? c.key.profile
+              : null;
       if (held !== null && opens(held, level === "write")) return null;
       return forbidden("this key does not open this route");
     }
@@ -200,7 +208,11 @@ export function router(deps: RouterDeps): Handle {
       authInfo: {
         token: "",
         clientId: who.name,
-        scopes: [`portfolio:${who.portfolio}`, `rules:${who.rules}`],
+        scopes: [
+          `portfolio:${who.portfolio}`,
+          `rules:${who.rules}`,
+          `profile:${who.profile}`,
+        ],
       },
     });
   };

@@ -139,13 +139,14 @@ export async function mcpClient(
 export function seedKey(
   t: TestApp,
   name: string,
-  opens: { portfolio: Access; rules: Access },
+  opens: { portfolio: Access; rules: Access; profile?: Access },
 ): string {
   const token = `1ctx-markets-test-${name}-key-0123456789abcdef`;
   t.db
     .query(
-      `insert into keys (id, name, token_hash, created_at, portfolio, rules)
-       values (?, ?, ?, ?, ?, ?)`,
+      `insert into keys
+         (id, name, token_hash, created_at, portfolio, rules, profile)
+       values (?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       `key-${name}`,
@@ -154,16 +155,23 @@ export function seedKey(
       t.clock.now(),
       opens.portfolio,
       opens.rules,
+      opens.profile ?? "none",
     );
   return token;
 }
 
-// every portfolio access with no rules and with rules, as keys are made
-export const ACCESS_LEVELS: { portfolio: Access; rules: Access }[] = [
-  { portfolio: "none", rules: "none" },
-  { portfolio: "read", rules: "none" },
-  { portfolio: "write", rules: "none" },
-  { portfolio: "none", rules: "read" },
-  { portfolio: "read", rules: "write" },
-  { portfolio: "write", rules: "write" },
+// every portfolio and profile access with no rules and with rules, as keys
+// are made; the last opens everything, the longest instructions
+export const ACCESS_LEVELS: {
+  portfolio: Access;
+  rules: Access;
+  profile: Access;
+}[] = [
+  { portfolio: "none", rules: "none", profile: "none" },
+  { portfolio: "read", rules: "none", profile: "read" },
+  { portfolio: "write", rules: "none", profile: "write" },
+  { portfolio: "none", rules: "read", profile: "write" },
+  { portfolio: "read", rules: "write", profile: "none" },
+  { portfolio: "write", rules: "write", profile: "read" },
+  { portfolio: "write", rules: "write", profile: "write" },
 ];

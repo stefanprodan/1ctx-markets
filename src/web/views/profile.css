@@ -1,0 +1,198 @@
+/* The profile drawn as a document, its editor and its history. */
+
+@layer tokens, base, owners;
+
+@layer owners {
+  /* a reading measure: long lines tire the eye */
+  .profile-doc {
+    max-width: 760px;
+    font-size: var(--text-body);
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+  }
+  .profile-doc > :first-child {
+    margin-top: 0;
+  }
+  .profile-doc h1 {
+    font-size: var(--text-title);
+    margin: var(--space-5) 0 var(--space-3);
+  }
+  .profile-doc h2 {
+    font-size: var(--text-ui);
+    font-weight: 600;
+    margin: var(--space-5) 0 var(--space-2);
+    padding-bottom: var(--space-1);
+    border-bottom: 1px solid var(--line);
+  }
+  .profile-doc h3 {
+    font-size: var(--text-ui);
+    margin: var(--space-4) 0 var(--space-2);
+  }
+  .profile-doc p,
+  .profile-doc ul,
+  .profile-doc ol {
+    margin: 0 0 var(--space-3);
+  }
+  .profile-doc ul,
+  .profile-doc ol {
+    padding-left: var(--space-5);
+  }
+  .profile-doc li + li {
+    margin-top: var(--space-1);
+  }
+  .profile-doc blockquote {
+    margin: 0 0 var(--space-3);
+    padding-left: var(--space-3);
+    border-left: 3px solid var(--line-strong);
+    color: var(--dim);
+  }
+  .profile-doc code {
+    font-family: var(--mono);
+    font-size: var(--text-mono);
+  }
+  /* a long line of code scrolls inside the card; the shell clips the page */
+  .profile-doc pre {
+    margin: 0 0 var(--space-3);
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: var(--text-mono);
+  }
+  /* a wide table scrolls inside the document, never the page */
+  .profile-doc table {
+    display: block;
+    overflow-x: auto;
+    border-collapse: collapse;
+    margin: 0 0 var(--space-3);
+    font-size: var(--text-small);
+  }
+  .profile-doc th,
+  .profile-doc td {
+    padding: var(--space-1) var(--space-3);
+    border-bottom: 1px solid var(--line);
+    text-align: left;
+  }
+  .profile-doc th {
+    color: var(--dim);
+    font-weight: 500;
+  }
+
+  /* the tabs' own line moves to the head, under the toolbar too */
+  .profile-edit-head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: var(--space-3);
+    margin-bottom: var(--space-3);
+    border-bottom: 1px solid var(--line);
+  }
+  .profile-edit-head .tabs {
+    border-bottom: 0;
+  }
+  .profile-toolbar {
+    display: flex;
+    gap: var(--space-3);
+    padding-bottom: var(--space-1);
+  }
+  .profile-tools {
+    display: flex;
+    gap: var(--space-hair);
+  }
+  .profile-tool {
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-sm);
+    color: var(--dim);
+  }
+  /* down to the page's foot, the save row below it in sight: a refusal
+     shrinks the text box rather than pushing Save out of view */
+  .profile-edit-box {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    height: calc(100dvh - 230px);
+    min-height: 320px;
+  }
+  .profile-editor {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    resize: none;
+    padding: var(--space-3);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--page);
+    font-family: var(--mono);
+    font-size: var(--text-input);
+    line-height: 1.5;
+  }
+  .profile-preview {
+    overflow-y: auto;
+    font-family: var(--sans);
+  }
+  .profile-edit-foot {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-top: var(--space-3);
+  }
+  .profile-size {
+    margin-right: auto;
+    color: var(--faint);
+    font-size: var(--text-small);
+  }
+  .profile-size.over {
+    color: var(--failed);
+  }
+
+  .profile-history {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .profile-history-row {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-hair);
+    width: 100%;
+    padding: var(--space-2) 0;
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+  }
+  .profile-history-row:hover {
+    background: var(--hover);
+  }
+  .profile-history-title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-weight: 500;
+  }
+  .profile-current {
+    padding: 0 var(--space-2);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-pill);
+    color: var(--dim);
+    font-size: var(--text-tiny);
+  }
+
+  /* a phone has no room beside the tabs: the toolbar goes under their
+     line, its groups spread across */
+  @media (max-width: 719px) {
+    .profile-edit-head {
+      flex-direction: column;
+      align-items: stretch;
+      gap: var(--space-2);
+      border-bottom: 0;
+    }
+    .profile-edit-head .tabs {
+      border-bottom: 1px solid var(--line);
+    }
+    .profile-toolbar {
+      justify-content: space-between;
+      padding-bottom: 0;
+    }
+  }
+}

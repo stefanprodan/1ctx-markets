@@ -16,7 +16,12 @@ import { portfolioByName, readPositions } from "../src/portfolios/store.ts";
 import { cashBefore, portfolioBefore } from "./helpers/portfolio.ts";
 import { instrument, NOW, quote, world } from "./helpers/world.ts";
 
-const CASEY: Who = { name: "casey-agent", portfolio: "write", rules: "none" };
+const CASEY: Who = {
+  name: "casey-agent",
+  portfolio: "write",
+  rules: "none",
+  profile: "none",
+};
 
 const HEADER =
   "Symbol,Current Price,Date,Time,Change,Open,High,Low,Volume,Trade Date,Purchase Price,Quantity,Commission,High Limit,Low Limit,Comment,Transaction Type";

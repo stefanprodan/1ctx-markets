@@ -17,9 +17,9 @@ list and no default market, benchmark or currency. An instrument is
 fetched the first time an agent names it and kept in sync while agents
 read it, a rule watches it or a portfolio holds it.
 
-It holds market data, the price rules agents set and the owner's
-portfolios of trades, nothing else: no orders, broker connections,
-dividends or tax, and it makes no model calls.
+It holds market data, the price rules agents set, the owner's
+portfolios of trades and the owner's profile, nothing else: no orders,
+broker connections, dividends or tax, and it makes no model calls.
 
 ## Highlights
 
@@ -31,8 +31,9 @@ dividends or tax, and it makes no model calls.
   analysts, earnings and news, `rules` for price alerts, and `portfolio`
   for trades and holdings, with `portfolio_trade`, `portfolio_cash`,
   `portfolio_bond`, `portfolio_fund` and `portfolio_setup` to change
-  them, listed only to a key allowed to write. There is no SQL or query
-  tool.
+  them, listed only to a key allowed to write, and `profile` for how the
+  owner invests (goals, risk, trading style, rules), with `profile_edit`
+  to change it. There is no SQL or query tool.
 - **Signals on live prices.** Moving averages (SMA 50 and 200, EMA 20),
   MACD, RSI 14, ATR 14, the lower Bollinger band, 52-week high, low
   and drawdown, volatility, volume ratio, and daily and weekly crossings,
@@ -187,10 +188,11 @@ curl -H "Authorization: Bearer $(cat ~/.1ctx-markets/secrets/user-admin.key)" \
 To give an agent a key of its own, which can be revoked without
 touching the others, make one on the web UI's Connect agents page, or
 with `1ctx-markets keys add <name>`. An agent's key reads market data,
-and price rules and portfolios only as far as the admin allows
-(`--rules` and `--portfolio`: none, read or write, changed later with
-`keys set`), but never opens the admin's routes: keys, status, the
-instrument list, and an instrument's refetch and delete.
+and price rules, portfolios and the profile only as far as the admin
+allows (`--rules`, `--portfolio` and `--profile`: none, read or write,
+changed later with `keys set`), but never opens the admin's routes:
+keys, status, the instrument list, and an instrument's refetch and
+delete.
 
 Every route, with its arguments, answers and errors, is browsable at
 <http://127.0.0.1:11238/api/v1/docs>, a Swagger UI page bundled in the

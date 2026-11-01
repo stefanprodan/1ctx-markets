@@ -43,6 +43,11 @@ MCP tools copied onto paths.
 | `PATCH /rules/{id}` | rules:write | `pauseRule()` | `{"paused": bool}` sets or clears the manual pause; `{rule}` |
 | `DELETE /rules/{id}` | rules:write | `deleteRuleById()` | 204; its alerts stay |
 | `GET /alerts` | rules:read | `alertsHandler()` | the alerts feed (below) |
+| `GET /profile` | profile:read | `readProfile()`, `renderMarkdown()` | `text`, `html` (the text drawn on the server), `revision`, `author`, `updated_at`, `bytes`; every one null with no profile yet (`docs/profile.md`) |
+| `PUT /profile` | profile:write | `saveProfile()` | `{revision?, text}` replaces it, `{revision, edits}` changes part of it; the new `revision`, `author`, `bytes`, `updated_at`, never the text, with `unchanged` when the text equals the live one; 409 with the live `revision` for a stale one |
+| `POST /profile/preview` | profile:write | `profileText()`, `renderMarkdown()` | `{text}`, well-formed UTF-8 with no NUL (the size cap applies on save), answered as `html` drawn as `GET /profile` draws it; nothing is saved and no revision is made (the web UI editor's Preview) |
+| `GET /profile/versions` | profile:read | `profileVersions()` | `revisions[]`, the kept ones newest first, without their text |
+| `GET /profile/versions/{revision}` | profile:read | `profileVersion()` | that revision as `GET /profile` answers it; 404 for one never made or no longer kept |
 | `GET /portfolios` | portfolio:read | `listAll()` | `portfolios[]` with their counts and `cash` (true on Cash, the one that holds all cash and only cash), `brokers[]`, `display_currency`, `time_zone`, `markets[]`, `funds[]` |
 | `POST /portfolios`, `PATCH`, `DELETE /portfolios/{id}` | portfolio:write | `createPortfolio()`, `updatePortfolio()`, `removePortfolio()` | `{name}`; 201 with `Location`; 409 while no display currency is set, for a taken name or the name Cash, for any rename or delete of Cash, or for a portfolio holding live rows (removed ones are deleted with it) |
 | `GET /portfolios/{id}` | portfolio:read | `portfolioItem()` | `{portfolio}` |
@@ -343,8 +348,8 @@ MCP tools copied onto paths.
   narrower one, and `/mcp`: a single-user install needs no other key.
 - **A valid key without the scope is 403 `forbidden`**: an agent key
   on `GET /instruments`, `DELETE /instruments/{symbol}`, refetch,
-  `/status` and `/keys`, and on a portfolio or rules route without
-  that access.
+  `/status` and `/keys`, and on a portfolio, rules or profile route
+  without that access.
 - **Portfolio routes take the key's portfolio access** (`keys.portfolio`,
   `none` by default): `portfolio:read` opens with `read` or `write`,
   `portfolio:write` with `write`. Holdings are private, so the read
@@ -356,9 +361,16 @@ MCP tools copied onto paths.
   list, one rule, the feed) opens with `read` or `write`,
   `rules:write` (create, pause, delete) with `write`. A rule acts for
   the owner, so the read scope never opens them. The spec names
-  `rulesRead` and `rulesWrite`. A missing, wrong, revoked or expired key is
-  401. Any other `/api/v1/` path, unknown ones included, answers 401
-  without a key and 404 with one.
+  `rulesRead` and `rulesWrite`.
+- **Profile routes take the key's profile access** (`keys.profile`,
+  `none` by default) the same way: `profile:read` (the profile, its
+  revisions) opens with `read` or `write`, `profile:write` (`PUT
+  /profile`, `POST /profile/preview`) with `write`. The profile is
+  private, so the read scope never opens it; the cookie writes it,
+  recorded as `web`. The spec names `profileRead` and `profileWrite`. A
+  missing, wrong, revoked or expired key is 401. Any other `/api/v1/`
+  path, unknown ones included, answers 401 without a key and 404 with
+  one.
 - **Each key makes at most 600 calls a minute** (`CALLS_PER_MINUTE`,
   `src/server/ratelimit.ts`), a fixed window per key id held in memory,
   no flag. Every `/api/v1` request counts, and on `/mcp` every JSON-RPC

@@ -22,6 +22,8 @@ import {
   MIN_NAME,
   PORTFOLIO_ACCESS,
   type PortfolioAccess,
+  PROFILE_ACCESS,
+  type ProfileAccess,
   RULES_ACCESS,
   type RulesAccess,
   revokeKey,
@@ -42,6 +44,7 @@ export const keyItem = (k: KeyRow) => ({
   expires_at: k.expiresAt === null ? null : iso(k.expiresAt),
   portfolio: k.portfolio,
   rules: k.rules,
+  profile: k.profile,
 });
 
 export const listAnswer = (m: Markets) =>
@@ -61,13 +64,27 @@ function rulesOf(value: unknown): RulesAccess {
   return value as RulesAccess;
 }
 
+function profileOf(value: unknown): ProfileAccess {
+  if (!(PROFILE_ACCESS as readonly unknown[]).includes(value)) {
+    throw new ArgError(`profile is ${PROFILE_ACCESS.join(", ")}`);
+  }
+  return value as ProfileAccess;
+}
+
 function parseCreate(body: unknown): {
   name: string;
   days: KeyDays | null;
   portfolio: PortfolioAccess;
   rules: RulesAccess;
+  profile: ProfileAccess;
 } {
-  const b = fields(body, ["name", "expiresInDays", "portfolio", "rules"]);
+  const b = fields(body, [
+    "name",
+    "expiresInDays",
+    "portfolio",
+    "rules",
+    "profile",
+  ]);
   if (!isKeyName(b.name)) {
     throw new ArgError(
       `name is ${MIN_NAME} to ${MAX_NAME} lowercase letters, digits, dashes and underscores, starting with a letter or digit`,
@@ -82,19 +99,25 @@ function parseCreate(body: unknown): {
     days: days as KeyDays | null,
     portfolio: portfolioOf(b.portfolio ?? "none"),
     rules: rulesOf(b.rules ?? "none"),
+    profile: profileOf(b.profile ?? "none"),
   };
 }
 
 function parseAccess(body: unknown): KeyAccess {
-  const b = fields(body, ["portfolio", "rules"]);
-  if (b.portfolio === undefined && b.rules === undefined) {
-    throw new ArgError("give portfolio, rules or both");
+  const b = fields(body, ["portfolio", "rules", "profile"]);
+  if (
+    b.portfolio === undefined &&
+    b.rules === undefined &&
+    b.profile === undefined
+  ) {
+    throw new ArgError("give portfolio, rules, profile or more than one");
   }
   return {
     ...(b.portfolio === undefined
       ? {}
       : { portfolio: portfolioOf(b.portfolio) }),
     ...(b.rules === undefined ? {} : { rules: rulesOf(b.rules) }),
+    ...(b.profile === undefined ? {} : { profile: profileOf(b.profile) }),
   };
 }
 
@@ -127,6 +150,7 @@ export async function setOne(d: KeysDeps, id: string, body: unknown) {
     key_name: key.name,
     portfolio: key.portfolio,
     rules: key.rules,
+    profile: key.profile,
   });
   return json({ key: keyItem(key) });
 }

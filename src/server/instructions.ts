@@ -20,11 +20,16 @@ const PORTFOLIO_LINE: Record<Access, string> = {
 const RULES_LINE = `
 - A level to be told about later: \`rules\`, rather than asking again by hand.`;
 
+// profile_edit is named by profile's own description, for want of room here
+const PROFILE_LINE = `
+- How the owner invests (goals, risk, trading style, rules): \`profile\`, read before any work on their portfolio.`;
+
 // Most important first, what the server lacks last: a cut drops the least.
 // Only the tools the key lists are named.
 export const instructions = (opens: {
   portfolio: Access;
   rules: Access;
+  profile: Access;
 }): string => `Market data, price rules and portfolios. Which tool answers what:
 - Prices now, and how a symbol did over a week, a month, three months or the year so far (ytd): \`quote\`, whose \`returns\` hold those periods and \`session\` whether its market is open; \`benchmark\` adds relative strength. The benchmark's own returns come from quoting it too, never from the relative figures.
 - A US share's move before the open or after the close: \`quote\` with \`extended\`; a null \`extended\` gives its reason in \`stale\`, and it never drives a rule or signal.
@@ -33,15 +38,15 @@ export const instructions = (opens: {
 - A US share's fundamentals, analysts, earnings, insiders and news, or a US ETF's news: \`research\`, for the few symbols that matter. For news, \`section\` news with \`since\` keeps to a recent window; read its \`counts\` by sentiment before the articles.
 - A US share's SEC filings, late filings, restatements or new securities registered or offered: \`research\`, \`section\` filings; its overview carries the flags.
 - What an ETF or fund holds: \`research\`, \`section\` top_holdings, its ten largest and sectors.
-- Earnings dates: \`events\`. A named share under \`no_event\` had no earnings in the window: that is an answer, not missing data.${opens.rules === "none" ? "" : RULES_LINE}${PORTFOLIO_LINE[opens.portfolio]}
+- Earnings dates: \`events\`. A named share under \`no_event\` had no earnings in the window: that is an answer, not missing data.${opens.rules === "none" ? "" : RULES_LINE}${opens.profile === "none" ? "" : PROFILE_LINE}${PORTFOLIO_LINE[opens.portfolio]}
 - An unknown or ambiguous name: \`search\`.
 Answer from these tools, not the HTTP API, and never recompute an average or return a tool already gives.
 
-Missing is not false: a \`stale\` reason, \`unavailable\`, "no data" or a null field means the value is missing, never that a condition failed or a figure is zero. Research covers US shares, news US ETFs too, top holdings any fund; a section answered from another listing names it in \`listing\`; a foreign one leaves out per-share figures, and \`valuation\` gives them per US share.
+Missing is not false: a \`stale\` reason, \`unavailable\`, "no data" or a null field means the value is missing, never that a condition failed or a figure is zero. A section answered from another listing names it in \`listing\`; a foreign one leaves out per-share figures, and \`valuation\` gives them per US share.
 
 Symbols: Yahoo's forms (AAPL, VWCE.DE, BTC-USD, EURUSD=X), FRED:<series id>, a market:symbol id as answers give it, or a regional source's own codes while that source is on; \`search\` when unsure. An unknown symbol is fetched inside the call.
 
-Live prices: a quote is the live price while its market is open, and the day's close after. Signals and \`returns\` already count today's price. Say whether a price is live or a close; never warn that a live price is not a close. \`session\` can read closed in a session's first minutes.
+Live prices: a quote is the live price while its market is open, and the day's close after. Signals and \`returns\` already count today's price. Say whether a price is live or a close; never warn that a live price is not a close.
 
 Freshness: answers carry \`fetched_at\`; read it before calling a figure current. Research refreshes daily after the US close, earnings around a share's report date, news through the day.
 

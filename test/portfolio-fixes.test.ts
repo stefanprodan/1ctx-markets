@@ -52,8 +52,18 @@ import { api } from "./helpers/api.ts";
 import { ask, cashBefore, portfolioBefore } from "./helpers/portfolio.ts";
 import { bar, instrument, LIVE, NOW, quote, world } from "./helpers/world.ts";
 
-const CASEY: Who = { name: "casey-agent", portfolio: "write", rules: "none" };
-const OTHER: Who = { name: "riley-agent", portfolio: "write", rules: "none" };
+const CASEY: Who = {
+  name: "casey-agent",
+  portfolio: "write",
+  rules: "none",
+  profile: "none",
+};
+const OTHER: Who = {
+  name: "riley-agent",
+  portfolio: "write",
+  rules: "none",
+  profile: "none",
+};
 
 function pair(
   db: Db,
@@ -1937,7 +1947,12 @@ describe("setup and brokers over the tool", () => {
     });
     expect(unknown.body).toMatchObject({ error: "not_found" });
     expect(unknown.body.message).toContain("East");
-    const reader: Who = { name: "reader", portfolio: "read", rules: "none" };
+    const reader: Who = {
+      name: "reader",
+      portfolio: "read",
+      rules: "none",
+      profile: "none",
+    };
     const r = await ask(m, reader, "portfolio_setup", {
       action: "rename_broker",
       broker: "East",

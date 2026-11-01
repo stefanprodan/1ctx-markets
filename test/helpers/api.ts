@@ -39,6 +39,7 @@ export function keyAccess(adminKey: string | null): Access {
           lastUsedAt: null,
           portfolio: "none",
           rules: "none",
+          profile: "none",
         },
       };
     },

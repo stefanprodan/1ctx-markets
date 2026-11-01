@@ -8,7 +8,11 @@ import {
 } from "../src/server/instructions.ts";
 import { ACCESS_LEVELS, mcpClient, seedKey, withApp } from "./helpers/app.ts";
 
-const ALL = instructions({ portfolio: "write", rules: "write" });
+const ALL = instructions({
+  portfolio: "write",
+  rules: "write",
+  profile: "write",
+});
 
 // Backticked names that are answer fields, checked in review; every other
 // backticked name must be a registered tool or one of its arguments.
@@ -72,7 +76,11 @@ async function perKey(
   ) => void,
 ) {
   for (const level of ACCESS_LEVELS) {
-    const token = seedKey(t, `${level.portfolio}-${level.rules}`, level);
+    const token = seedKey(
+      t,
+      `${level.portfolio}-${level.rules}-${level.profile}`,
+      level,
+    );
     const client = await mcpClient(t, token);
     const text = client.getInstructions()!;
     const { tools } = await client.listTools();
@@ -105,8 +113,11 @@ describe("the server instructions", () => {
         for (const tool of tools) propertyNames(tool.inputSchema, args);
 
         const named = backticked(text);
-        for (const tool of names)
+        // profile's description names profile_edit, for want of room here
+        for (const tool of names) {
+          if (tool === "profile_edit") continue;
           expect([level, named.has(tool)]).toEqual([level, true]);
+        }
         for (const field of ANSWER_FIELDS) {
           expect(named).toContain(field);
           // an argument is checked against the schemas, never listed here

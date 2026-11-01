@@ -32,6 +32,7 @@ function whoFrom(
     name: info.clientId,
     portfolio: scoped(info.scopes, "portfolio"),
     rules: scoped(info.scopes, "rules"),
+    profile: scoped(info.scopes, "profile"),
   };
 }
 

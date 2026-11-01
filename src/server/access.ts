@@ -28,14 +28,20 @@ export const isKeyName = (value: unknown): value is string =>
   value.length <= MAX_NAME &&
   NAME.test(value);
 
+// the authors the server records for the web UI and the admin key, so a
+// key by either name would read as the owner
+export const RESERVED_NAMES: readonly string[] = ["web", "admin"];
+
 export const isKeyId = (value: string): boolean => ID.test(value);
 
-// what a key may do with portfolios, and with rules and their alerts; none
-// unless the admin says
+// what a key may do with portfolios, with rules and their alerts, and with
+// the owner's profile; none unless the admin says
 export const PORTFOLIO_ACCESS = ["none", "read", "write"] as const;
 export type PortfolioAccess = (typeof PORTFOLIO_ACCESS)[number];
 export const RULES_ACCESS = ["none", "read", "write"] as const;
 export type RulesAccess = (typeof RULES_ACCESS)[number];
+export const PROFILE_ACCESS = ["none", "read", "write"] as const;
+export type ProfileAccess = (typeof PROFILE_ACCESS)[number];
 
 export type KeyRow = {
   id: string;
@@ -46,6 +52,7 @@ export type KeyRow = {
   lastUsedAt: number | null;
   portfolio: PortfolioAccess;
   rules: RulesAccess;
+  profile: ProfileAccess;
 };
 
 export type Caller = { kind: "admin" } | { kind: "agent"; key: KeyRow };
@@ -58,10 +65,11 @@ type Raw = {
   last_used_at: number | null;
   portfolio: PortfolioAccess;
   rules: RulesAccess;
+  profile: ProfileAccess;
 };
 
 const COLUMNS =
-  "id, name, created_at, expires_at, last_used_at, portfolio, rules";
+  "id, name, created_at, expires_at, last_used_at, portfolio, rules, profile";
 
 const rowOf = (raw: Raw): KeyRow => ({
   id: raw.id,
@@ -71,6 +79,7 @@ const rowOf = (raw: Raw): KeyRow => ({
   lastUsedAt: raw.last_used_at,
   portfolio: raw.portfolio,
   rules: raw.rules,
+  profile: raw.profile,
 });
 
 // a token is 32 random bytes, so a plain hash cannot be reversed
@@ -104,9 +113,12 @@ export function createKey(
     days: KeyDays | null;
     portfolio?: PortfolioAccess;
     rules?: RulesAccess;
+    profile?: ProfileAccess;
   },
   now: number,
 ): { key: KeyRow; token: string } {
+  if (RESERVED_NAMES.includes(args.name))
+    throw new KeyConflict("name reserved");
   const keys = listKeys(db);
   if (keys.some((k) => k.name === args.name)) {
     throw new KeyConflict("name taken");
@@ -120,12 +132,14 @@ export function createKey(
     lastUsedAt: null,
     portfolio: args.portfolio ?? "none",
     rules: args.rules ?? "none",
+    profile: args.profile ?? "none",
   };
   const token = newToken();
   db.query(
     `insert into keys
-       (id, name, token_hash, created_at, expires_at, portfolio, rules)
-     values (?, ?, ?, ?, ?, ?, ?)`,
+       (id, name, token_hash, created_at, expires_at, portfolio, rules,
+        profile)
+     values (?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     key.id,
     key.name,
@@ -134,11 +148,16 @@ export function createKey(
     key.expiresAt,
     key.portfolio,
     key.rules,
+    key.profile,
   );
   return { key, token };
 }
 
-export type KeyAccess = { portfolio?: PortfolioAccess; rules?: RulesAccess };
+export type KeyAccess = {
+  portfolio?: PortfolioAccess;
+  rules?: RulesAccess;
+  profile?: ProfileAccess;
+};
 
 // the token, name and expiry stay; an expired key changes too
 export function setKeyAccess(
@@ -147,12 +166,17 @@ export function setKeyAccess(
   change: KeyAccess,
 ): KeyRow | null {
   const raw = db
-    .query<Raw, [string | null, string | null, string]>(
+    .query<Raw, [string | null, string | null, string | null, string]>(
       `update keys set portfolio = coalesce(?, portfolio),
-         rules = coalesce(?, rules)
+         rules = coalesce(?, rules), profile = coalesce(?, profile)
        where id = ? returning ${COLUMNS}`,
     )
-    .get(change.portfolio ?? null, change.rules ?? null, id);
+    .get(
+      change.portfolio ?? null,
+      change.rules ?? null,
+      change.profile ?? null,
+      id,
+    );
   return raw === null ? null : rowOf(raw);
 }
 

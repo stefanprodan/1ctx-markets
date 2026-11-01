@@ -34,6 +34,13 @@ import { extendedOut, readIntradayHistory } from "../operations/intraday.ts";
 import type { ExtendedRead, Markets } from "../operations/markets.ts";
 import { parseMovers, readMovers } from "../operations/movers.ts";
 import {
+  missingRevision,
+  parseSave,
+  revisionItem,
+  saveAnswer,
+  savedItem,
+} from "../operations/profile.ts";
+import {
   briefItem,
   type Latest,
   parseQuote,
@@ -53,6 +60,14 @@ import { parseSearch, searchAll } from "../operations/search.ts";
 import { setAll } from "../operations/sets.ts";
 import type { TrackState } from "../operations/track.ts";
 import type { Who } from "../operations/who.ts";
+import { renderMarkdown } from "../profile/markdown.ts";
+import type { Revision } from "../profile/read.ts";
+import {
+  profileText,
+  profileVersion,
+  profileVersions,
+  readProfile,
+} from "../profile/store.ts";
 import { readRule, readRules } from "../rules/store.ts";
 import { errorFields, type Log } from "../runtime/log.ts";
 import { NO_EVENTS } from "../sources/finnhub/store.ts";
@@ -79,8 +94,9 @@ export type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 // read: an agent key, or the admin key, which holds every scope; admin:
 // the admin key alone; none: served before either, since it holds no data
-// and a browser opening it sends no key; portfolio: and rules: an agent key
-// the admin gave that access, holdings being private and rules the owner's
+// and a browser opening it sends no key; portfolio:, rules: and profile: an
+// agent key the admin gave that access, holdings and the profile being
+// private and rules the owner's
 export type Scope =
   | "read"
   | "admin"
@@ -88,7 +104,9 @@ export type Scope =
   | "portfolio:read"
   | "portfolio:write"
   | "rules:read"
-  | "rules:write";
+  | "rules:write"
+  | "profile:read"
+  | "profile:write";
 
 export type Route = {
   method: Method;
@@ -131,10 +149,10 @@ async function bodyOf(req: Request): Promise<{ body: unknown } | Response> {
 }
 
 // 15 digits stay under Number.MAX_SAFE_INTEGER, so no id rounds to another
-const RULE_ID = /^[1-9]\d{0,14}$/;
+const PATH_ID = /^[1-9]\d{0,14}$/;
 
 function ruleId(raw: string): number {
-  if (!RULE_ID.test(raw)) {
+  if (!PATH_ID.test(raw)) {
     throw new ArgError("the path ends with a rule id, a positive integer");
   }
   return Number(raw);
@@ -470,6 +488,92 @@ function rules(m: Markets): Route[] {
   ];
 }
 
+// the text drawn as HTML too, so the web UI ships no Markdown parser
+const profileItem = (r: Revision | null) =>
+  r === null
+    ? {
+        text: null,
+        html: null,
+        revision: null,
+        author: null,
+        updated_at: null,
+        bytes: null,
+      }
+    : { text: r.text, html: renderMarkdown(r.text), ...revisionItem(r) };
+
+// the profile is private as holdings are: every route takes a profile scope
+function profile(m: Markets): Route[] {
+  return [
+    {
+      method: "GET",
+      path: "/profile",
+      scope: "profile:read",
+      handle: async (_req, url) => {
+        noQuery(url);
+        return json(profileItem(readProfile(m.db)));
+      },
+    },
+    {
+      method: "PUT",
+      path: "/profile",
+      scope: "profile:write",
+      handle: async (req, url, _params, who) => {
+        noQuery(url);
+        const read = await bodyOf(req);
+        if (read instanceof Response) return read;
+        const save = parseSave(
+          fields(read.body, ["revision", "text", "edits"]),
+        );
+        const done = await saveAnswer(m, who, save);
+        if ("error" in done) return problemOf(done);
+        return json(savedItem(done));
+      },
+    },
+    // the editor's Preview: a draft drawn as a save would draw it, never kept
+    {
+      method: "POST",
+      path: "/profile/preview",
+      scope: "profile:write",
+      handle: async (req, url) => {
+        noQuery(url);
+        const read = await bodyOf(req);
+        if (read instanceof Response) return read;
+        const f = fields(read.body, ["text"]);
+        if (typeof f.text !== "string") {
+          throw new ArgError("text must be a string");
+        }
+        return json({ html: renderMarkdown(profileText(f.text)) });
+      },
+    },
+    {
+      method: "GET",
+      path: "/profile/versions",
+      scope: "profile:read",
+      handle: async (_req, url) => {
+        noQuery(url);
+        return json({ revisions: profileVersions(m.db).map(revisionItem) });
+      },
+    },
+    {
+      method: "GET",
+      path: "/profile/versions/{revision}",
+      scope: "profile:read",
+      handle: async (_req, url, params) => {
+        noQuery(url);
+        if (!PATH_ID.test(params.revision!)) {
+          throw new ArgError(
+            "the path ends with a revision, a positive integer",
+          );
+        }
+        const n = Number(params.revision);
+        const r = profileVersion(m.db, n);
+        if (r === null) return problemOf(missingRevision(m, n));
+        return json(profileItem(r));
+      },
+    },
+  ];
+}
+
 function operator(
   admin: AdminDeps,
   track: () => readonly TrackState[],
@@ -592,6 +696,7 @@ export function routes(deps: ApiDeps): Route[] {
     ...marketData(m),
     ...rules(m),
     ...portfolioRoutes(m),
+    ...profile(m),
     {
       method: "GET",
       path: "/alerts",
