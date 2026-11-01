@@ -7,9 +7,9 @@ the `research` and `events` tools and the research route's contents
 `src/operations/events.ts`), and the
 `research`, `events`, `news` and `news_walks` tables
 (`src/storage/db/migrations/0007-research.ts`, `0008-news.ts`,
-`0012-listing.ts`). EDGAR's filings, their flags and events'
-`filed_at` are in `docs/edgar.md`; the sections that answer them are
-here. The queue, deadlines, retries, phrases, scrubbing
+`0012-listing.ts`, `0028-share-class-listing.ts`). EDGAR's filings,
+their flags and events' `filed_at` are in `docs/edgar.md`; the
+sections that answer them are here. The queue, deadlines, retries, phrases, scrubbing
 and the lock every source shares are in `docs/sources.md`; resolution,
 tracking and the answer contract in `docs/tools.md`; the research
 route's transport in `docs/api.md`; rules that wait on events in
@@ -126,6 +126,14 @@ route's transport in `docs/api.md`; rules that wait on events in
   | `insider` | nothing: no data | share counts of its shares |
   | `calendar` | date, hour, fiscal year (1900 to 2200, as stored) and quarter, and whether actuals came | estimates and actuals in its currency |
 
+  A listing with no `.` is another US share class of the company
+  (`shareClass`; GOOG answered as GOOGL): equal shares in the same
+  currency, so every section keeps what the asked symbol's own answer
+  would, but `insider` (share counts of the other class), with `listing`
+  set and the note `SHARE_CLASS`. Finnhub dots foreign listings
+  (`2330.TW`) and class letters (`BRK.B`), whose per-share figures can
+  differ; both keep the table above. The tables' checks hold the same split (`0028`).
+
   A part naming no symbol is the asked one's. Parts naming two symbols
   are no data, as a 403 is, since neither can be trusted; a symbol not
   1 to 20 letters, digits, `.` or `-` is "malformed answer". A metric
@@ -152,7 +160,7 @@ route's transport in `docs/api.md`; rules that wait on events in
   moved date updates the event instead of adding one.
 - **Only actuals confirm an event.** `reported_seen_at` is set the first
   time an EPS or revenue actual appears and never moves, also for
-  another listing, whose actuals are not stored; actuals once seen are
+  a foreign listing, whose actuals are not stored; actuals once seen are
   kept when a later answer of the same listing omits them. `eventStatus`
   is "reported" only then, else "scheduled" when the date is after the
   exchange's today, else "awaiting results". A passed date or an
@@ -188,9 +196,10 @@ route's transport in `docs/api.md`; rules that wait on events in
   out alone (`parseMarketCalendar`).
 - **An unreported event of another listing in the same window is asked
   by the share's own calendar hourly** (`otherListings`): the market
-  answer names the share's symbol, never the listing Finnhub answers it
-  as, so it is not counted for the market call.
-  These are few, US listings of foreign companies; spaced by the
+  pass updates only a share's own events (`storeMarketCalendar`), so
+  another listing's is not counted for the market call.
+  These are few: US listings of foreign companies, and share classes;
+  spaced by the
   share's last `calendar` run (`MARKET_EVERY_MS`) and `RETRY_MS`.
 - **A share whose event in the window was seen reported after its last
   good `earnings` run started is asked its `earnings`**
@@ -213,7 +222,8 @@ route's transport in `docs/api.md`; rules that wait on events in
   in the next quarter), the nearest if two (`reportOf`); none, or a
   missing figure, is null. Only quarters whose report the calendar
   still holds carry revenue, in practice the newest reported one.
-  Another listing has no earnings rows and its events no figures.
+  A foreign listing has no earnings rows and its events no figures; a
+  share class has both, so its rows carry revenue as the share's own.
 - **The next event is the earliest dated from the exchange's today, or
   one up to `AWAITING_DAYS` (7) past still awaiting results**
   (`nextEvent`).
@@ -319,8 +329,8 @@ route's transport in `docs/api.md`; rules that wait on events in
   carry none. `since` with another section is refused.
 - **Every section carries its period, `fetched_at` and `stale`**; a
   section with no row says why. A section or event of another listing
-  also carries `listing` and the note `OTHER_LISTING`; a share's own
-  carries neither.
+  also carries `listing` and the note `OTHER_LISTING`, or `SHARE_CLASS`
+  for a share class; a share's own carries neither.
 
 ## The research route
 

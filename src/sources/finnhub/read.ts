@@ -146,7 +146,7 @@ export function readEvent(db: Db, key: EventKey): EventRow | null {
 // a quarter's report lands in the next quarter
 export const REPORT_WINDOW_DAYS = 100;
 
-// the share's own reported events, by date; another listing stores no actuals
+// the share's reported events, by date; a foreign listing stores no actuals
 export function reportedEvents(db: Db, instrument: string): EventRow[] {
   return db
     .query<EventRow, [string]>(
@@ -197,7 +197,7 @@ export function nextEvent(
 
 export type EventStatus = "scheduled" | "awaiting results" | "reported";
 
-// Only actuals report an event, stored or, for another listing, only
+// Only actuals report an event, stored or, for a foreign listing, only
 // seen: a passed date or an amc label never do.
 export function eventStatus(
   e: Pick<EventRow, "date" | "reportedSeenAt">,

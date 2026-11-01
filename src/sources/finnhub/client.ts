@@ -170,6 +170,15 @@ export const COMPANY_METRICS = [
   "debtToEquityQuarterly",
 ] as const satisfies readonly (keyof Metric)[];
 
+// Finnhub dots a foreign listing (2330.TW) and a class letter (BRK.B),
+// whose figures can differ; a dotless one is another US class: same EPS
+export const shareClass = (listing: string | null): boolean =>
+  listing !== null && !listing.includes(".");
+
+// the asked symbol's own figures, or another class's that equal them
+const perShare = (listing: string | null) =>
+  listing === null || shareClass(listing);
+
 // an ADR answers as its home listing (TSM as 2330.TW, EPS in TWD): a part
 // naming one other symbol is that listing, two is no data, none is the asked
 function listingOf(parts: readonly Obj[], symbol: string): string | null {
@@ -220,8 +229,9 @@ function metricOf(body: unknown, symbol: string): Parsed<Metric> {
   const b = obj(body, "body");
   const listing = listingOf([b], symbol);
   const m = obj(b.metric, "metric");
-  const kept: readonly string[] =
-    listing === null ? Object.keys(METRIC_FIELDS) : COMPANY_METRICS;
+  const kept: readonly string[] = perShare(listing)
+    ? Object.keys(METRIC_FIELDS)
+    : COMPANY_METRICS;
   const out = {} as Metric;
   let any = false;
   for (const [column, field] of Object.entries(METRIC_FIELDS)) {
@@ -265,14 +275,14 @@ export const parseEarnings = (
   symbol: string,
 ): Parsed<Earnings[]> => parsed(() => earningsOf(body, symbol));
 
-// Another listing's EPS is in its currency per its share, and its rows
+// A foreign listing's EPS is in its currency per its share, and its rows
 // can disagree with each other: nothing of it is kept.
 function earningsOf(body: unknown, symbol: string): Parsed<Earnings[]> {
   const entries = list(body, "earnings").map((entry) =>
     obj(entry, "earnings row"),
   );
   const listing = listingOf(entries, symbol);
-  if (listing !== null) return { data: null, listing };
+  if (!perShare(listing)) return { data: null, listing };
   const rows = entries.map((r): Earnings => {
     // the fiscal labels are not kept: they disagree for one period
     return {
@@ -294,7 +304,8 @@ export const parseInsider = (
   symbol: string,
 ): Parsed<Insider[]> => parsed(() => insiderOf(body, symbol));
 
-// another listing's share counts are of its shares: nothing is kept
+// another listing's share counts are of its shares, a class's too: nothing
+// is kept
 function insiderOf(body: unknown, symbol: string): Parsed<Insider[]> {
   const b = obj(body, "body");
   const entries = list(b.data, "insider data").map((entry) =>
@@ -328,13 +339,13 @@ export const parseCalendar = (
   symbol: string,
 ): Parsed<CalendarEvent[]> => parsed(() => calendarOf(body, symbol));
 
-// Another listing's dates are the company's; its estimates and actuals
+// A foreign listing's dates are the company's; its estimates and actuals
 // are in its currency per its share, so only whether actuals came is kept.
 function calendarOf(body: unknown, symbol: string): Parsed<CalendarEvent[]> {
   const b = obj(body, "body");
   const entries = calendarEntries(b);
   const listing = listingOf(entries, symbol);
-  const own = listing === null;
+  const own = perShare(listing);
   const rows = entries.map((r) => calendarRow(r, own));
   return {
     data: rows.length === 0 ? null : collapseQuarters(rows),

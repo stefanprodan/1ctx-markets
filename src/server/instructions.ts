@@ -19,7 +19,7 @@ export const INSTRUCTIONS = `Market data, price rules and portfolios. Which tool
 - An unknown or ambiguous name: \`search\`.
 Answer from these tools, not the server's HTTP endpoints, and never recompute an average or return a tool already gives.
 
-Missing is not false: a \`stale\` reason, \`unavailable\`, "no data" or a null field means the value is missing, never that a condition failed or a figure is zero. Research covers US shares, news US ETFs too; a section answered from another listing names it in \`listing\` and leaves out per-share figures.
+Missing is not false: a \`stale\` reason, \`unavailable\`, "no data" or a null field means the value is missing, never that a condition failed or a figure is zero. Research covers US shares, news US ETFs too; a section answered from another listing names it in \`listing\`; a foreign one leaves out per-share figures.
 
 Symbols: Yahoo's forms (AAPL, VWCE.DE, BTC-USD, EURUSD=X), FRED:<series id>, a market:symbol id as answers give it, or a regional source's own codes while that source is on; \`search\` when unsure. An unknown symbol is fetched inside the call.
 

@@ -56,6 +56,7 @@ import {
   FINNHUB_KEY,
   finnhubAnswer,
   finnhubFixture,
+  otherListing,
 } from "./helpers/finnhub.ts";
 import { NOW } from "./helpers/sources.ts";
 import { clone, fakeFetch, type Recorded } from "./helpers/yahoo.ts";
@@ -604,6 +605,61 @@ describe("research rows", () => {
     ]);
     await drive(t.clock, t.client, refreshResearch(t.ctx, nvda, ["metric"]));
     expect(t.starts[5]! - t.starts[4]!).toBe(SPACING_MS);
+  });
+
+  test("a share answered as another US share class keeps all but insiders", async () => {
+    const t = setup({
+      route: otherListing("GOOG", "nvda", "GOOGL", {
+        eps: 2.6,
+        revenue: 1.2e11,
+      }),
+    });
+    const goog = share(t.db, "GOOG", NOW);
+    const results = await drive(
+      t.clock,
+      t.client,
+      refreshResearch(t.ctx, goog),
+    );
+    expect(
+      results.map((r) => [r.section, r.status === "ok" ? r.rows : r.status]),
+    ).toEqual([
+      ["metric", 1],
+      ["analysts", 4],
+      ["earnings", 3],
+      ["insider", 0],
+      ["calendar", 1],
+    ]);
+    const [metric] = readResearch(t.db, goog.id, "metric");
+    expect(metric).toMatchObject({
+      listing: "GOOGL",
+      forward_pe: 17.02191,
+      forward_peg: 0.3021,
+      pe_ttm: 26.3592,
+      ps_ttm: 16.781,
+      pb: 22.203,
+      roe_ttm: 110.11,
+      dividend_yield_ttm: 0.1333,
+      beta: 2.269422,
+    });
+    const earnings = readResearch(t.db, goog.id, "earnings");
+    expect(earnings.map((r) => [r.period, r.listing, r.eps_actual])).toEqual([
+      ["2026-09-30", "GOOGL", 2.22],
+      ["2026-06-30", "GOOGL", 1.87],
+      ["2026-03-31", "GOOGL", 1.62],
+    ]);
+    expect(readResearch(t.db, goog.id, "insider")).toEqual([]);
+    expect(readEvents(t.db, "2000-01-01", "2100-01-01")).toMatchObject([
+      {
+        fiscalYear: 2027,
+        fiscalQuarter: 3,
+        listing: "GOOGL",
+        epsEstimate: 2.5263,
+        epsActual: 2.6,
+        revenueEstimate: 111356225808,
+        revenueActual: 1.2e11,
+        reportedSeenAt: NOW,
+      },
+    ]);
   });
 
   test("rows of another listing replace the share's own, and the reverse", async () => {

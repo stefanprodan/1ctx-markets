@@ -153,8 +153,9 @@ export function finnhubJobs(options: {
     );
   };
 
-  // A share's event of another listing is not in the market answer, so
-  // its own calendar is asked hourly; these are few, foreign companies.
+  // The market pass updates only a share's own events, so one of another
+  // listing is asked by its own calendar hourly; these are few: foreign
+  // companies and share classes.
   const otherListings = (events: readonly WindowEvent[], now: number) => {
     const due = new Map<string, Instrument>();
     for (const e of events) {
