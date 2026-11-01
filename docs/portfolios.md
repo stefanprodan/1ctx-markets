@@ -5,8 +5,8 @@ prices: the tables of migrations `0020-portfolios` and
 `0026-fund-trades`, `src/portfolios/` (`store.ts` rows, `funds.ts` a
 fund and its prices, `value.ts` the holdings arithmetic, `fx.ts`
 rates, `csv.ts`), `src/shared/isin.ts` (the ISIN check),
-`src/operations/portfolio.ts` (the `portfolio` tool and every read and
-write the routes share), `src/operations/portfolio-import.ts` (CSV
+`src/operations/portfolio.ts` (every read and write the tools and the
+routes share), `src/tools/portfolio.ts` (the portfolio tools), `src/operations/portfolio-import.ts` (CSV
 import and export) and `src/api/portfolios.ts` with its spec in
 `src/api/portfolio-spec.ts`. The routes' conventions are `docs/api.md`;
 keys and their portfolio access `docs/admin.md`; the web page
@@ -31,7 +31,7 @@ once and valued on the live price the server already keeps.
   index keeping it to one). The code, `list`, `GET /portfolios` (each
   portfolio's `cash`) and the web UI find it by the mark, never the
   name. It is made with the display currency (`ensureCash()`, by the
-  first `PUT /portfolio-settings` or the tool's `setup`), so a new owner
+  first `PUT /portfolio-settings` or `portfolio_setup`), so a new owner
   has a place for cash before anything else; it is never renamed or
   deleted (409), and no other portfolio takes the name, ignoring case
   (409), so `setup` naming it makes nothing more. The name is English,
@@ -58,8 +58,8 @@ once and valued on the live price the server already keeps.
 - **A broker is a name the owner keeps** (`brokers`), matched ignoring
   case. A trade or position names one or none; an unknown name is
   refused with the known ones, so a typo never makes a broker. Brokers
-  are added only by `POST /brokers` (the web UI) or the tool's `setup`,
-  renamed in place (`PATCH /brokers/{id}`, the tool's `rename_broker`),
+  are added only by `POST /brokers` (the web UI) or `portfolio_setup`,
+  renamed in place (`PATCH /brokers/{id}`, `portfolio_setup`'s `rename_broker`),
   and deleted only while no live row names them; removed rows that name
   one lose the name in the same write.
 - **A trade** (`trades`): portfolio, instrument id, buy or sell, trade
@@ -298,7 +298,7 @@ once and valued on the live price the server already keeps.
   unrounded sum, so it can differ by a minor unit from the sum of the
   rounded rows shown.
 - **Across portfolios reserve stays out** (`isReserve()`): a read with
-  no portfolio (`/holdings`, the tool's `holdings` without one, with or
+  no portfolio (`/holdings`, the `portfolio` tool's `holdings` without one, with or
   without a broker) counts invested and dry powder only in its value,
   every weight (`currency_weight`, `converted.weight`, the split's
   shares, null for reserve), and the exposure, since money kept apart
@@ -353,122 +353,166 @@ once and valued on the live price the server already keeps.
   when the listing has a quote (`priced: listing`), else its face
   (`priced: face`), said so.
 
-## The tool
+## The tools
 
-One MCP tool, `portfolio`, its action named in `action`. Written as
-functions, `?` marks an optional argument:
+Six MCP tools, listed per key (`portfolioTools()` in
+`src/tools/portfolio.ts`): a key with portfolio access `none` lists
+none of them, `read` only `portfolio`, `write` all six. A key told it
+may only read never sees a write it would be refused, and an agent
+sees which tool changes what. Each tool maps its arguments onto the
+operations the routes share (`portfolioAnswer()`, `addTrade()`,
+`addFundTrade()`, `addPosition()`, `updatePosition()`, `updateFund()`,
+`setTradeState()`, `setPositionState()`), so the REST bodies and the
+web UI keep their own words (a fund's `units`, a sell's
+`quantity: "all"`). Written as functions, `?` marks an optional
+argument:
 
 ```ts
 type Portfolio = string | number; // a name or an id
 type Day = string; // YYYY-MM-DD
 type Currency = string; // ISO 4217 (EUR), or a listing's own (GBp)
 
-// a new owner's first steps, one or more at once: the currency totals
-// are shown in (asked of the owner, never assumed; set only while none
-// is; Cash is made with it), a portfolio and a broker to make; a name
-// already there is kept, `made` says what was
-// time_zone is IANA (America/New_York); broker a name or a list of names
-setup(display_currency?: Currency, time_zone?: string, portfolio?: string,
-  broker?: string | string[]):
-  { portfolios; brokers; display_currency; time_zone; made };
-
+// portfolio: reads only, marked read-only
 // the portfolios and brokers, the display currency and time zone, the
 // markets a fund can name, and the funds the owner prices, each with its
 // latest price and its day
 list(): { portfolios; brokers; display_currency; time_zone; markets;
   funds };
-
 // one row per instrument or position, its parts per broker; totals per
 // currency, converted into `currency`, else the display currency; with
-// no portfolio, reserve is out of the value and in net_worth
+// no portfolio, reserve is out of the value and in net_worth; removed:
+// true adds `removed`, the cash and bond rows removed and not replaced
 holdings(portfolio?: Portfolio, broker?: string, currency?: Currency,
-  next?: string): { holdings; totals; converted; exposure; rates; next };
-
+  removed?: boolean, next?: string):
+  { holdings; totals; converted; exposure; rates; removed?; next };
 // newest first; removed: true lists the removed ones too
 trades(portfolio?: Portfolio, broker?: string, symbol?: string,
   from?: Day, to?: Day, removed?: boolean, next?: string): { trades; next };
 
-// a trade (kind defaults to trade); never Cash; portfolio is needed
-// unless there is one besides Cash; neither price nor total takes the
-// live price; a broker must be on the list; again: a second fill equal
-// to one just saved
-add(kind: "trade", portfolio?: Portfolio, symbol: string,
-  side: "buy" | "sell", quantity: number | "all", price?: number,
-  total?: number, fees?: number, date?: Day, currency?: Currency,
-  broker?: string, note?: string, again?: boolean):
-  { trade | trades; live_price?; total? };
+// portfolio_trade: a share, ETF, crypto or fund; never Cash; portfolio
+// is needed unless there is one besides Cash; neither price nor total
+// takes the live price (a fund has none); a broker must be on the list;
+// again: a second fill equal to one just saved. A fund is named by
+// isin, its key as symbol (fund:<ISIN>) or name; its first buy makes it
+// with isin, name and currency; market is a fund's only
+add(symbol?: string, isin?: string, name?: string,
+  side: "buy" | "sell", quantity?: number, all?: true,
+  price?: number, total?: number, fees?: number, date?: Day,
+  currency?: Currency, broker?: string, portfolio?: Portfolio,
+  note?: string, market?: string | null, again?: boolean):
+  { trade | trades; live_price?; total?; fund? };
+// portfolio, named out of habit, is checked to be the trade's
+remove(trade: number, portfolio?: Portfolio): { trade };
+restore(trade: number, portfolio?: Portfolio): { trade };
 
-// a buy or sell of a fund the owner prices, one per confirmation; the
-// first buy makes it with isin, name and currency, a later trade names
-// it by isin or name; price or total is needed; date the owner's today
-add(kind: "fund", portfolio?: Portfolio, isin?: string, name?: string,
-  side: "buy" | "sell", units: number | "all", price?: number,
-  total?: number, fees?: number, date?: Day, currency?: Currency,
-  broker?: string, note?: string, market?: string, again?: boolean):
-  { trade | trades; total?; fund };
+// portfolio_cash: cash lives in Cash, so it takes no portfolio; cash is
+// reserve unless dry_powder (ready to invest)
+add(name: string, amount: number, currency: Currency, date?: Day,
+  broker?: string, note?: string, dry_powder?: boolean): { position };
+// amount set outright or moved by `by`, in `currency` or its own; at
+// least one change; broker null takes it off, note null clears it
+update(position: number, amount?: number, by?: number,
+  currency?: Currency, date?: Day, note?: string | null,
+  dry_powder?: boolean, name?: string, broker?: string | null):
+  { position; replaced; rate? };
+remove(position: number): { position };
+restore(position: number): { position };
 
-// a position with no trades: cash, a bond; cash goes to Cash, a bond as
-// a trade does; cash is reserve unless dry_powder (ready to invest)
-add(kind: "cash", portfolio?: Portfolio, name: string, amount: number,
-  currency: Currency, date?: Day, broker?: string, note?: string,
-  dry_powder?: boolean): { position };
-// a bond's currency is its listing's when a symbol names one, else needed
-add(kind: "bond", portfolio?: Portfolio, name: string, amount: number,
-  symbol?: string, coupon?: number, maturity?: Day, currency?: Currency,
-  cost?: number, date?: Day, broker?: string, note?: string): { position };
+// portfolio_bond: a bond's currency is its listing's when a symbol
+// names one, else needed; placed as a trade is
+add(name: string, amount: number, symbol?: string, coupon?: number,
+  maturity?: Day, currency?: Currency, cost?: number, date?: Day,
+  broker?: string, portfolio?: Portfolio, note?: string): { position };
+update(position: number, amount?: number, currency?: Currency,
+  cost?: number, date?: Day, note?: string | null, name?: string,
+  broker?: string | null): { position; replaced };
+remove(position: number): { position };
+restore(position: number): { position };
 
-// a position changed: amount set outright or moved by `by`, in
-// `currency` or its own; at least one change; a new name, broker null
-// takes it off, note null clears it; with dry_powder, broker and
-// currency pick the row instead, and name is refused
-update(position: number | "dry_powder", amount?: number, by?: number,
-  currency?: Currency, cost?: number, date?: Day, note?: string | null,
-  dry_powder?: boolean, name?: string, broker?: string | null,
-  portfolio?: Portfolio): { position; rate? };
+// portfolio_fund, no action: a fund's price per unit for a day (the
+// owner's today by default), a day already priced replaced; market null
+// takes it off; picked by isin or symbol, else by name; with a pick,
+// name renames it; currency only while no live trade is priced in it
+(isin?: string, symbol?: string, name?: string, price?: number,
+  date?: Day, market?: string | null, currency?: Currency):
+  { fund; price?; replaced?; renamed_from? };
 
-// a fund's price per unit for a day (the owner's today by default), a
-// day already priced replaced; market null takes it off; named by its
-// isin, name and currency set it right (currency while no live trade)
-update(isin?: string, name?: string, price?: number, date?: Day,
-  market?: string | null, currency?: Currency):
-  { fund; price?; replaced? };
-
-// one of trade or position, by id
-remove(trade?: number, position?: number, portfolio?: Portfolio);
-restore(trade?: number, position?: number, portfolio?: Portfolio);
-
+// portfolio_setup: a new owner's first steps, one or more at once: the
+// currency totals are shown in (asked of the owner, never assumed; set
+// only while none is; Cash is made with it), the time zone (IANA,
+// America/New_York), a portfolio and brokers to make; a name already
+// there is kept, `made` says what was
+setup(display_currency?: Currency, time_zone?: string, portfolio?: string,
+  broker?: string | string[]):
+  { portfolios; brokers; display_currency; time_zone; made };
 // a broker renamed, by its current name
 rename_broker(broker: string, name: string): { broker };
 ```
 
-- **`setup` is how an agent starts a new owner**: a portfolio is
-  refused until the display currency is set, with a message telling the
-  agent to ask the owner, and a broker is made only here, so a typo in
-  `add` is still refused with the list. It is one write, and a name
-  already there is kept, so a retried call makes nothing twice. It sets
-  the display currency and the time zone only while none is set: agents
-  pass one out of habit, and the same one is a no-op while another
-  is refused, so an agent never changes the owner's setting; the web
-  UI's settings change them. `broker` is a name or a list of up to 20,
-  so a new owner's brokers are made in one call. The
-  server instructions route a new owner to it.
-- **Actions `setup`, `list`, `holdings`, `trades`, `add`, `update`, `remove`,
-  `restore` and `rename_broker`**, each taking only its own arguments (`ARGS`); `add`'s
-  arguments are its kind's (`KIND_ARGS`), and `update` with `isin`, or
-  `name` without `position`, is a fund's, taking only `price`, `date`,
-  `market`, `name` and `currency` (`FUND_UPDATE`); `name` is a new name
-  only beside `isin` (the answer's `renamed_from` says so), else it
-  finds the fund; beside `position` it renames the position. The
-  description is at 1,022 of 1,024 characters; a word more needs
-  another cut.
-  It says a fund's trades come one per confirmation, so an agent never
-  sums a manager's statement into one buy, that cash lives in Cash,
-  dry powder being ready to invest and the rest reserve, and that with
-  `dry_powder` the broker and currency pick the row, a rename or move
-  needing its id. `remove`,
-  `restore` and `update` take an optional `portfolio`, since agents name
-  one out of habit: ignored when it is the row's, refused with the
-  row's portfolio named when not.
+- **One handle per row.** A holdings row's instrument is `symbol` in
+  the tool's answer: what `quote` takes, or a fund's key, null for
+  cash and a bond with no listing; trades answer `symbol` too. The
+  REST holdings and the web UI keep it as `id`, since a script reading
+  `id` would read a renamed field as null in silence. `position` is a
+  cash or bond row's id, what `portfolio_cash` and `portfolio_bond`
+  take, and a write answer's row names its id `position` too (REST
+  keeps `id`); a trade's `id` is what `portfolio_trade` removes. A
+  share, ETF, crypto or fund row has `position` null and changes
+  through its trades, so removing all of a holding is removing its
+  trades; a merged bond row has `position` null and each purchase's in
+  `parts[].position`.
+- **Typed arguments, each meaning one thing.** An id is an integer;
+  `portfolio` (a name or an id) is the one union. A sell of all is
+  `all: true`, a fund's units are `quantity` as a share's are, and a
+  cash or bond row is picked by `position` only: `name`, `broker`,
+  `currency` and `dry_powder` only change it. Numbers, ids and
+  true/false sent as text still read as their values (`textValues()`,
+  `docs/tools.md`).
+- **Each action takes only its own arguments**, refused by name
+  otherwise ("coupon is not an argument of update"); cash and a bond
+  refuse `market` with its reason (`NO_POSITION_MARKET`), and a bond's
+  update refuses its coupon, maturity and listing, which a remove and
+  add change.
+- **A position is checked against its tool before the write**
+  (`positionFor()`): another kind's row is refused naming the right
+  tool ("position 7 is a bond; portfolio_bond changes it"); an unknown
+  one lists the live rows of the kind, at most `NAMED_ROWS` (10), then
+  how many more ("no cash row at position 1; Cash holds 2 (Spare,
+  North, EUR, dry powder), 3 (Savings, South, RON)", the name, broker,
+  currency and dry powder, never an amount); one an update replaced
+  names the live row of its chain (`chainOf()`), so a retry uses the
+  live id ("position 1 was updated; it is position 4 now"), for an
+  update and a remove alike; a removed one says a restore brings it
+  back. A restore takes any row of the kind, as setting a wrong update
+  back restores an old row.
+- **Removed rows can be found**: `holdings` with `removed: true` adds
+  `removed`, the `MAX_REMOVED` (20) latest cash and bond rows removed
+  and not replaced by an update (no row's `replaces` names them),
+  scoped to the portfolio and broker asked, each with its `position`,
+  kind, portfolio, name, broker, currency and `removed_at`; unvalued,
+  and never in a total or weight.
+- **`portfolio_setup` is how an agent starts a new owner**: a portfolio
+  is refused until the display currency is set, with a message telling
+  the agent to ask the owner, and a broker is made only here, so a typo
+  in an add is still refused with the list. It is one write, and a
+  name already there is kept, so a retried call makes nothing twice. It
+  sets the display currency and the time zone only while none is set:
+  agents pass one out of habit, and the same one is a no-op while
+  another is refused, so an agent never changes the owner's setting;
+  the web UI's settings change them. `broker` is a name or a list of up
+  to 20 (`MAX_SETUP_BROKERS`), so a new owner's brokers are made in one
+  call. The server instructions route a new owner to it.
+- **The descriptions** each open with what the tool changes and carry
+  an example call, within 1,024 characters: `portfolio_trade` has a
+  share buy and a fund's first buy, since a schema cannot require name
+  and currency on the first buy only, and says `again` in full;
+  `portfolio_cash` says dry powder is ready to invest and the rest
+  reserve; `portfolio` names the write tools only to a key that lists
+  them. A fund's trades come one per confirmation, so an agent never
+  sums a manager's statement into one buy.
+- **Annotations are per tool**: `portfolio` is read-only, so a client
+  that runs reads without asking never asks for holdings; every write
+  tool is destructive, so an add asks as a remove does.
 - **A sell of a number with no broker, of a share held at brokers**, is
   refused with what each part holds ("held at North 10 and South 5:
   name a broker or sell all"), so the agent picks one instead of
@@ -483,20 +527,23 @@ rename_broker(broker: string, name: string): { broker };
   in `trade`, so a retry with the same figures after a timeout never
   doubles a lot. An add with no price or total takes the live quote, so
   a retry after the quote moved has other figures and is saved.
-  `again: true` saves it, for two real fills that are the same. The tool
-  and `POST /trades` share it; the import has its own duplicate check.
+  `again: true` saves it, for two real fills that are the same.
+  `portfolio_trade` and `POST /trades` share it; the import has its own
+  duplicate check.
 - **`rename_broker`** renames a broker by its name, as `PATCH
   /brokers/{id}` does, with the same refusals (an unknown name with the
   list, a taken one `conflict`).
 - **A listed bond takes its listing's currency**: a position in another
   is refused, since its value would be relabelled, not converted.
 - **Access is the key's** (`Who`): the router hands the MCP handler the
-  caller as `authInfo` (`whoOf()`), and the tool refuses `forbidden`
-  without read, and a write without write (`Who.portfolio`). The admin
-  key holds write.
+  caller as `authInfo` (`whoOf()`), the tools listed follow it, and
+  each call is checked again (`forbidden` without read, and a write
+  without write, `Who.portfolio`), since a client may hold a list from
+  before the admin changed the key; a tool the key no longer lists
+  answers the SDK's tool not found. The admin key holds write.
 - **holdings and trades page** by offset with a cursor bound to their
-  arguments; totals, rates and exposure ride on every page.
-- **add answers the stored row resolved to its instrument**, so the
+  arguments; totals, rates, exposure and `removed` ride on every page.
+- **An add answers the stored row resolved to its instrument**, so the
   agent shows the owner what was saved. With no `price` and no `total`
   the live quote's price is used (converted when paid in another
   currency) and answered in `live_price` with its time. A `total` is
@@ -508,39 +555,30 @@ rename_broker(broker: string, name: string): { broker };
   owner east of the exchange dates a trade a day ahead of it. A
   position's date (add, update, import) defaults to the owner's today
   and is refused past the same day.
-- **A sell's `quantity: "all"`** sells what each broker part can sell
-  on its date: the least it holds from that day on, the later trades
-  replayed (`sellableOn()`, the running total floored at zero as
-  `partsOf()` floors it), so it never sells what a later sell sold; the
-  amount is the unrounded sellable amount, never more, so the part
-  reaches zero (rounding a large fractional holding to fewer digits left
-  a remainder); only noise far below what a part counts as nothing
-  (`0.1 + 0.2`) is trimmed, never up (`trimDown()`), and a part sold to
-  within a billionth of what it held is nothing;
+- **A sell of all** (`all: true`, REST's `quantity: "all"`) sells what
+  each broker part can sell on its date: the least it holds from that
+  day on, the later trades replayed (`sellableOn()`, the running total
+  floored at zero as `partsOf()` floors it), so it never sells what a
+  later sell sold; the amount is the unrounded sellable amount, never
+  more, so the part reaches zero (rounding a large fractional holding
+  to fewer digits left a remainder); only noise far below what a part
+  counts as nothing (`0.1 + 0.2`) is trimmed, never up (`trimDown()`),
+  and a part sold to within a billionth of what it held is nothing;
   at the broker named, else one sell per broker part, fees split by
   quantity, all answered in `trades`.
 - **An amount with no currency takes its target's**: a trade's price
   or total the listing's, an update's `amount` or `by` the position's.
   A named currency converts at the live rate, answered in `rate`.
-- **update's `position` is an id or `dry_powder`**: Cash's one dry
-  powder row, picked by `broker` (null: the row at none) and the
-  currency named when there are several, `currency` alone picking when
-  there is no `amount` or `by`, so a note reaches one currency's row; still ambiguous, it is refused
-  with each one's id, name, currency, broker and portfolio, never their
-  amounts, so the agent asks. There `broker` only picks, since an agent
-  paying for a buy names the trade's broker, which must never move the
-  row; a new name or broker needs the row's id, so `name` is refused. A
-  portfolio other than Cash is refused ("dry powder lives in Cash; leave
-  portfolio out"), as agents pass the trade's.
 - **One line of the server instructions routes to it**: a question on
-  what the owner holds ("my stocks", "my ETF", "my portfolio", a
-  portfolio they name) starts with `holdings`, whose symbols then go to
-  `quote`, `history` and `research`, since agents asked about "my ETF"
-  guessed symbols instead; it also says an amount's currency is never
-  assumed, that all cash is in the Cash portfolio, and that across
-  portfolios reserve counts only in net worth (the tool description
-  says dry powder is ready to invest, the rest reserve). The tool
-  description opens with the same routing.
+  what the owner holds or trades ("my stocks", "my ETF", "my
+  portfolio") starts with `holdings`, whose symbols then go to `quote`,
+  `history` and `research`, since agents asked about "my ETF" guessed
+  symbols instead; it also says an amount's currency is never assumed,
+  that all cash is in the Cash portfolio, and that across portfolios
+  reserve counts only in net worth. For a key that writes it names the
+  write tools and that with no portfolio yet `portfolio_setup` makes
+  one; a key without portfolio access has no such line. The read
+  tool's description opens with the same routing.
 
 ## Import and export
 

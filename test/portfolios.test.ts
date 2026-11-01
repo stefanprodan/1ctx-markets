@@ -15,10 +15,7 @@ import {
   addTrade,
   createBroker,
   createPortfolio,
-  DRY_POWDER_CHANGES,
   type HoldingsAnswer,
-  parsePortfolio,
-  portfolioAnswer,
   readHoldings,
   readTradeList,
   removePortfolio,
@@ -32,8 +29,15 @@ import type { Who } from "../src/operations/who.ts";
 import { splitFactor } from "../src/portfolios/value.ts";
 import { tokenHash } from "../src/server/access.ts";
 import type { Db } from "../src/storage/db/index.ts";
+import {
+  parseBondTool,
+  parseCashTool,
+  parsePortfolioRead,
+  parseSetupTool,
+  parseTradeTool,
+} from "../src/tools/portfolio.ts";
 import { withApp } from "./helpers/app.ts";
-import { cashBefore, portfolioBefore } from "./helpers/portfolio.ts";
+import { ask, cashBefore, portfolioBefore } from "./helpers/portfolio.ts";
 import { bar, instrument, LIVE, NOW, quote, world } from "./helpers/world.ts";
 
 const CASEY: Who = { name: "casey-agent", portfolio: "write", rules: "none" };
@@ -372,7 +376,7 @@ describe("currencies", () => {
     await expect(saveSettings(m, {})).rejects.toThrow("display_currency");
     // a conversion named by the caller takes the same list
     expect(() =>
-      parsePortfolio({ action: "holdings", currency: "ABC" }),
+      parsePortfolioRead({ action: "holdings", currency: "ABC" }),
     ).toThrow("in circulation");
     expect((await holdingsOf(m)).display_currency).toBe("USD");
   });
@@ -380,42 +384,45 @@ describe("currencies", () => {
   test("every currency a person names is in circulation, or a listing's hundredth", () => {
     const trade = {
       action: "add",
-      kind: "trade",
       symbol: "AAA",
       side: "buy",
       quantity: 1,
       price: 1,
       date: "2026-01-02",
     };
-    const named = [
-      trade,
-      { action: "add", kind: "cash", name: "Cash", amount: 1 },
-      {
-        action: "add",
-        kind: "fund",
-        isin: "ZZFUND000011",
-        name: "Fund",
-        side: "buy",
-        units: 1,
-        price: 1,
-      },
-      {
-        action: "add",
-        kind: "bond",
-        name: "Bond",
-        amount: 1,
-        coupon: 5,
-        maturity: "2030-01-02",
-      },
-      { action: "update", position: "dry_powder", by: 1 },
+    const named: [(input: unknown) => unknown, object][] = [
+      [parseTradeTool, trade],
+      [parseCashTool, { action: "add", name: "Cash", amount: 1 }],
+      [
+        parseTradeTool,
+        {
+          action: "add",
+          isin: "ZZFUND000011",
+          name: "Fund",
+          side: "buy",
+          quantity: 1,
+          price: 1,
+        },
+      ],
+      [
+        parseBondTool,
+        {
+          action: "add",
+          name: "Bond",
+          amount: 1,
+          coupon: 5,
+          maturity: "2030-01-02",
+        },
+      ],
+      [parseCashTool, { action: "update", position: 1, by: 1 }],
     ];
-    for (const args of named) {
-      expect(() => parsePortfolio({ ...args, currency: "ABC" })).toThrow(
+    for (const [parse, args] of named) {
+      expect(() => parse({ ...args, currency: "ABC" })).toThrow(
         "in circulation",
       );
-      expect(() => parsePortfolio({ ...args, currency: "EUR" })).not.toThrow();
+      expect(() => parse({ ...args, currency: "EUR" })).not.toThrow();
     }
-    expect(parsePortfolio({ ...trade, currency: "GBp" })).toMatchObject({
+    expect(parseTradeTool({ ...trade, currency: "GBp" })).toMatchObject({
       trade: { currency: "GBp" },
     });
   });
@@ -588,11 +595,9 @@ describe("dry powder", () => {
     pair(db, "EURUSD=X", 1.25);
     const dry = await cash(m, 2000);
     if ("error" in dry) throw new Error(dry.message);
-    const tool = (input: object) =>
-      portfolioAnswer(m, CASEY, parsePortfolio(input)).then((r) =>
-        JSON.parse(r.content[0]!.text),
-      );
-    const bought = await tool({
+    const tool = (name: string, input: object) =>
+      ask(m, CASEY, name, input).then((r) => r.body);
+    const bought = await tool("portfolio_trade", {
       action: "add",
       portfolio: "Shares",
       symbol: "US:AAA",
@@ -604,7 +609,7 @@ describe("dry powder", () => {
     // no price: the live one, shown back
     expect(bought.live_price).toMatchObject({ price: 120 });
     expect(bought.trade).toMatchObject({ price: 120, broker: "North" });
-    const moved = await tool({
+    const moved = await tool("portfolio_cash", {
       action: "update",
       position: dry.position.id,
       by: -600,
@@ -627,21 +632,19 @@ describe("dry powder", () => {
     const { m } = await setup();
     const dry = await cash(m, 2000);
     if ("error" in dry) throw new Error(dry.message);
-    const tool = (input: object) =>
-      portfolioAnswer(m, CASEY, parsePortfolio(input)).then((r) =>
-        JSON.parse(r.content[0]!.text),
-      );
+    const tool = (name: string, input: object) =>
+      ask(m, CASEY, name, input).then((r) => r.body);
     // the dry powder's own currency, and no rate to answer
-    const moved = await tool({
+    const moved = await tool("portfolio_cash", {
       action: "update",
-      position: "dry_powder",
+      position: dry.position.id,
       by: 450,
     });
     expect(moved.rate).toBeUndefined();
     expect(moved.position).toMatchObject({ amount: 2450, currency: "EUR" });
     // a total in the listing's currency
     await buy(m, { quantity: 4, price: 100 });
-    const sold = await tool({
+    const sold = await tool("portfolio_trade", {
       action: "add",
       portfolio: "Shares",
       symbol: "US:AAA",
@@ -655,94 +658,6 @@ describe("dry powder", () => {
       currency: "USD",
       includes_fees: true,
     });
-  });
-
-  test("dry powder in two currencies, none named, is refused with both", async () => {
-    const { m } = await setup();
-    await cash(m, 2000, "EUR");
-    await addPosition(m, CASEY, {
-      kind: "cash",
-      portfolio: null,
-      name: "Kept for coins",
-      symbol: null,
-      currency: "USD",
-      amount: 500,
-      cost: null,
-      coupon: null,
-      maturity: null,
-      date: LIVE,
-      broker: null,
-      note: null,
-      dryPowder: true,
-    });
-    const r = await portfolioAnswer(
-      m,
-      CASEY,
-      parsePortfolio({ action: "update", position: "dry_powder", by: 100 }),
-    );
-    expect(r.isError).toBe(true);
-    const body = JSON.parse(r.content[0]!.text);
-    expect(body.positions.map((p: { currency: string }) => p.currency)).toEqual(
-      ["EUR", "USD"],
-    );
-    expect(JSON.stringify(body)).not.toContain("2000");
-    // naming the currency picks one
-    const picked = await portfolioAnswer(
-      m,
-      CASEY,
-      parsePortfolio({
-        action: "update",
-        position: "dry_powder",
-        by: 100,
-        currency: "USD",
-      }),
-    );
-    expect(JSON.parse(picked.content[0]!.text).position.amount).toBe(600);
-    // a note alone: the currency picks the row
-    const noted = await portfolioAnswer(
-      m,
-      CASEY,
-      parsePortfolio({
-        action: "update",
-        position: "dry_powder",
-        currency: "EUR",
-        note: "for the dip",
-      }),
-    );
-    expect(JSON.parse(noted.content[0]!.text).position).toMatchObject({
-      currency: "EUR",
-      amount: 2000,
-      note: "for the dip",
-    });
-    // and by its position sent as text
-    const id = JSON.parse(noted.content[0]!.text).position.id;
-    const again = await portfolioAnswer(
-      m,
-      CASEY,
-      parsePortfolio({ action: "update", position: String(id), note: "kept" }),
-    );
-    expect(JSON.parse(again.content[0]!.text).position.note).toBe("kept");
-  });
-
-  test("a currency that only picks never lands on another currency's row", async () => {
-    const { m } = await setup();
-    await cash(m, 2000, "EUR");
-    const r = await portfolioAnswer(
-      m,
-      CASEY,
-      parsePortfolio({
-        action: "update",
-        position: "dry_powder",
-        currency: "USD",
-        note: "x",
-      }),
-    );
-    expect(r.isError).toBe(true);
-    expect(JSON.parse(r.content[0]!.text).message).toContain(
-      "no dry powder in USD",
-    );
-    const row = (await holdingsOf(m)).holdings.find((x) => x.kind === "cash")!;
-    expect(row.note ?? null).toBeNull();
   });
 
   test("a sell of all across two brokers, then the proceeds into dry powder", async () => {
@@ -833,41 +748,30 @@ describe("trades", () => {
     const { m } = await setup();
     const reader: Who = { name: "reader", portfolio: "read", rules: "none" };
     const none: Who = { name: "none", portfolio: "none", rules: "none" };
-    const write = await portfolioAnswer(
-      m,
-      reader,
-      parsePortfolio({ action: "remove", trade: 1 }),
-    );
-    expect(write.isError).toBe(true);
-    expect(JSON.parse(write.content[0]!.text).error).toBe("forbidden");
-    const read = await portfolioAnswer(
-      m,
-      none,
-      parsePortfolio({ action: "list" }),
-    );
-    expect(JSON.parse(read.content[0]!.text).error).toBe("forbidden");
+    const write = await ask(m, reader, "portfolio_trade", {
+      action: "remove",
+      trade: 1,
+    });
+    expect(write.error).toBe(true);
+    expect(write.body.error).toBe("forbidden");
+    const read = await ask(m, none, "portfolio", { action: "list" });
+    expect(read.body.error).toBe("forbidden");
   });
 });
 
 describe("setup", () => {
-  const ask = async (m: Markets, args: object, who: Who = CASEY) => {
-    const r = await portfolioAnswer(
-      m,
-      who,
-      parsePortfolio({ action: "setup", ...args }),
-    );
-    return { error: r.isError === true, body: JSON.parse(r.content[0]!.text) };
-  };
+  const setUp = (m: Markets, args: object, who: Who = CASEY) =>
+    ask(m, who, "portfolio_setup", { action: "setup", ...args });
 
   test("a new owner's agent sets the currency, a portfolio and a broker in one call", async () => {
     const { m } = world();
     instrument(m.db, "US:AAA", { currency: "USD", name: "Alpha Made Up" });
     quote(m.db, "US:AAA", 120, 118);
-    const refused = await ask(m, { portfolio: "Long term" });
+    const refused = await setUp(m, { portfolio: "Long term" });
     expect(refused.error).toBe(true);
     expect(refused.body.message).toContain("display_currency");
-    expect(() => parsePortfolio({ action: "setup" })).toThrow("one or more");
-    const done = await ask(m, {
+    expect(() => parseSetupTool({ action: "setup" })).toThrow("one or more");
+    const done = await setUp(m, {
       display_currency: "EUR",
       portfolio: "Long term",
       broker: "North",
@@ -888,39 +792,38 @@ describe("setup", () => {
       ["Long term", false],
     ]);
     // the owner's currency is set once: the same is a no-op, another refused
-    const changed = await ask(m, { display_currency: "USD", broker: "South" });
+    const changed = await setUp(m, {
+      display_currency: "USD",
+      broker: "South",
+    });
     expect(changed.error).toBe(true);
     expect(changed.body.message).toContain("EUR");
-    expect((await ask(m, { display_currency: "EUR" })).body.made).toEqual([]);
+    expect((await setUp(m, { display_currency: "EUR" })).body.made).toEqual([]);
     // a retry makes nothing twice
-    const again = await ask(m, { portfolio: "Long term", broker: "North" });
+    const again = await setUp(m, { portfolio: "Long term", broker: "North" });
     expect(again.body.made).toEqual([]);
     expect(again.body.portfolios).toHaveLength(2);
     // the one portfolio besides Cash and the broker made take a trade at once
-    const added = await portfolioAnswer(
-      m,
-      CASEY,
-      parsePortfolio({
-        action: "add",
-        symbol: "US:AAA",
-        side: "buy",
-        quantity: 10,
-        price: 100,
-        broker: "North",
-      }),
-    );
-    expect(added.isError).toBeUndefined();
+    const added = await ask(m, CASEY, "portfolio_trade", {
+      action: "add",
+      symbol: "US:AAA",
+      side: "buy",
+      quantity: 10,
+      price: 100,
+      broker: "North",
+    });
+    expect(added.error).toBe(false);
   });
 
   test("setup is a write and takes only its own arguments", async () => {
     const { m } = world();
     const reader: Who = { name: "reader", portfolio: "read", rules: "none" };
-    const r = await ask(m, { display_currency: "EUR" }, reader);
+    const r = await setUp(m, { display_currency: "EUR" }, reader);
     expect(r.body.error).toBe("forbidden");
     expect(() =>
-      parsePortfolio({ action: "setup", display_currency: "ABC" }),
+      parseSetupTool({ action: "setup", display_currency: "ABC" }),
     ).toThrow("in circulation");
-    expect(() => parsePortfolio({ action: "setup", name: "X" })).toThrow(
+    expect(() => parseSetupTool({ action: "setup", name: "X" })).toThrow(
       "not an argument of setup",
     );
   });
@@ -968,14 +871,13 @@ describe("over MCP and REST", () => {
         body: JSON.stringify({ name: "North" }),
       });
 
-      // the seeded agent key has no portfolio access
+      // the seeded agent key has no portfolio access: no tool is listed
       const plain = await client(t.url, t.bearer);
-      const refused = await plain.callTool({
-        name: "portfolio",
-        arguments: { action: "list" },
-      });
-      expect(refused.isError).toBe(true);
-      expect(JSON.stringify(refused.content)).toContain("forbidden");
+      const listed = (await plain.listTools()).tools.map((x) => x.name);
+      expect(listed.filter((x) => x.startsWith("portfolio"))).toEqual([]);
+      await expect(
+        plain.callTool({ name: "portfolio", arguments: { action: "list" } }),
+      ).rejects.toThrow("not found");
       await plain.close();
       const rest = await fetch(`${t.url}/api/v1/holdings`, {
         headers: { authorization: `Bearer ${t.bearer}` },
@@ -984,7 +886,7 @@ describe("over MCP and REST", () => {
 
       const writer = await client(t.url, WRITER);
       const added = await writer.callTool({
-        name: "portfolio",
+        name: "portfolio_trade",
         arguments: {
           action: "add",
           symbol: "US:AAA",
@@ -1012,10 +914,9 @@ describe("over MCP and REST", () => {
       );
       // null takes a cash row's broker and note off, as the schema allows
       const kept = await writer.callTool({
-        name: "portfolio",
+        name: "portfolio_cash",
         arguments: {
           action: "add",
-          kind: "cash",
           name: "Spare",
           amount: 5,
           currency: "USD",
@@ -1026,10 +927,10 @@ describe("over MCP and REST", () => {
       const spare = JSON.parse((kept.content as { text: string }[])[0]!.text);
       expect(spare.position.portfolio).toBe("Cash");
       const off = await writer.callTool({
-        name: "portfolio",
+        name: "portfolio_cash",
         arguments: {
           action: "update",
-          position: spare.position.id,
+          position: spare.position.position,
           broker: null,
           note: null,
         },
@@ -1082,10 +983,7 @@ describe("the Cash portfolio", () => {
       }),
     ).toEqual({ display_currency: "EUR", time_zone: "Europe/Paris" });
     await saveSettings(m, { display_currency: "USD" });
-    const list = JSON.parse(
-      (await portfolioAnswer(m, CASEY, parsePortfolio({ action: "list" })))
-        .content[0]!.text,
-    );
+    const list = (await ask(m, CASEY, "portfolio", { action: "list" })).body;
     expect(list.portfolios).toMatchObject([{ name: "Cash", cash: true }]);
   });
 
@@ -1114,15 +1012,12 @@ describe("the Cash portfolio", () => {
       await updatePortfolio(m, made.portfolio.id, { name: "Cash" }),
     ).toMatchObject({ error: "conflict" });
     // setup naming it makes nothing more
-    const again = JSON.parse(
-      (
-        await portfolioAnswer(
-          m,
-          CASEY,
-          parsePortfolio({ action: "setup", portfolio: "cash" }),
-        )
-      ).content[0]!.text,
-    );
+    const again = (
+      await ask(m, CASEY, "portfolio_setup", {
+        action: "setup",
+        portfolio: "cash",
+      })
+    ).body;
     expect(again.made).toEqual([]);
     expect(again.portfolios).toHaveLength(2);
   });
@@ -1194,78 +1089,6 @@ describe("the Cash portfolio", () => {
       error: "bad_arguments",
       message: "name a portfolio: Coins, Stocks",
     });
-  });
-});
-
-describe("dry powder named by its broker", () => {
-  const dryAt = (m: Markets, broker: string, amount: number) =>
-    addPosition(m, CASEY, {
-      kind: "cash",
-      portfolio: null,
-      name: "Kept",
-      symbol: null,
-      currency: "EUR",
-      amount,
-      cost: null,
-      coupon: null,
-      maturity: null,
-      date: LIVE,
-      broker,
-      note: null,
-      dryPowder: true,
-    });
-  const tool = async (m: Markets, input: object) => {
-    const r = await portfolioAnswer(
-      m,
-      CASEY,
-      parsePortfolio({ action: "update", position: "dry_powder", ...input }),
-    );
-    return { error: r.isError === true, body: JSON.parse(r.content[0]!.text) };
-  };
-
-  test("broker picks the row and never moves it", async () => {
-    const { m } = await setup();
-    await dryAt(m, "North", 500);
-    await dryAt(m, "South", 300);
-    const paid = await tool(m, { by: -100, broker: "South" });
-    expect(paid.body.position).toMatchObject({
-      broker: "South",
-      amount: 200,
-      portfolio: "Cash",
-    });
-    const north = (await holdingsOf(m, { broker: "North" })).holdings.find(
-      (r) => r.kind === "cash",
-    )!;
-    expect(north.value).toBe(500);
-    const asked = await tool(m, { by: -100 });
-    expect(
-      asked.body.positions.map((p: { broker: string }) => p.broker),
-    ).toEqual(["North", "South"]);
-    expect((await tool(m, { by: -1, broker: "East" })).body.message).toBe(
-      "no dry powder at that broker; name one by its id",
-    );
-  });
-
-  test("a rename, a broker alone and another portfolio are refused", async () => {
-    const { m } = await setup();
-    await dryAt(m, "North", 500);
-    expect((await tool(m, { name: "Other", by: 1 })).body.message).toBe(
-      "with position dry_powder, broker picks the row; a new name or broker needs its id",
-    );
-    expect(() =>
-      parsePortfolio({
-        action: "update",
-        position: "dry_powder",
-        broker: "North",
-      }),
-    ).toThrow(DRY_POWDER_CHANGES);
-    expect((await tool(m, { by: 1, portfolio: "Shares" })).body).toEqual({
-      error: "bad_arguments",
-      message: "dry powder lives in Cash; leave portfolio out",
-    });
-    expect(
-      (await tool(m, { by: 1, portfolio: "Cash" })).body.position.amount,
-    ).toBe(501);
   });
 });
 

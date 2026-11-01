@@ -46,9 +46,11 @@ async function client(t: TestApp, token: string): Promise<Client> {
   return c;
 }
 
-// each rules action over MCP, its error code or ok
+// each rules action over MCP, its error code or ok; unlisted when the key
+// does not list the tool, as the SDK refuses an unknown tool
 async function toolCodes(t: TestApp, token: string) {
   const c = await client(t, token);
+  const listed = (await c.listTools()).tools.some((x) => x.name === "rules");
   const out: Record<string, string> = {};
   for (const args of [
     { action: "list" },
@@ -60,7 +62,15 @@ async function toolCodes(t: TestApp, token: string) {
     { action: "pause", id: 999, paused: true },
     { action: "delete", id: 999 },
   ]) {
-    const r = await c.callTool({ name: "rules", arguments: args });
+    const r = await c
+      .callTool({ name: "rules", arguments: args })
+      .catch((error: Error) => error);
+    if (r instanceof Error) {
+      expect(listed).toBe(false);
+      expect(r.message).toContain("not found");
+      out[args.action] = "unlisted";
+      continue;
+    }
     const text = (r.content as { text: string }[])[0]!.text;
     out[args.action] = r.isError ? JSON.parse(text).error : "ok";
   }
@@ -102,10 +112,10 @@ describe("rules access", () => {
         delete: 403,
       });
       expect(await toolCodes(t, none.token)).toEqual({
-        list: "forbidden",
-        create: "forbidden",
-        pause: "forbidden",
-        delete: "forbidden",
+        list: "unlisted",
+        create: "unlisted",
+        pause: "unlisted",
+        delete: "unlisted",
       });
 
       expect(await routeCodes(t, reader.token)).toEqual({
@@ -204,7 +214,7 @@ describe("changing a key's access", () => {
 
       expect((await set({ rules: "none" })).status).toBe(200);
       expect(await rules()).toBe(403);
-      expect((await toolCodes(t, made.token)).list).toBe("forbidden");
+      expect((await toolCodes(t, made.token)).list).toBe("unlisted");
 
       for (const bad of [{}, { rules: "all" }, { portfolio: null }, []]) {
         expect([bad, (await set(bad)).status]).toEqual([bad, 400]);

@@ -59,7 +59,8 @@ log and cut off without touching the others.
   `read` or `write`, on `POST /keys` and `keys add --portfolio`),
   `none` by default, since holdings are private; a key's access is
   answered in the list. It opens the portfolio routes and the
-  `portfolio` tool (`docs/portfolios.md`).
+  portfolio tools: `read` lists the `portfolio` read tool, `write` the
+  write tools too, and `none` lists none (`docs/portfolios.md`).
 - **Rules access is the admin's to give the same way** (`rules`, `keys
   add --rules`), `none` by default, since a rule acts for the owner.
   `read` opens the rules list and the alerts feed, `write` also

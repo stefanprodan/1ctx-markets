@@ -1,12 +1,13 @@
 # Tools
 
 Governs the Model Context Protocol (MCP) tools: `src/server/mcp.ts`,
-`src/server/instructions.ts`, `src/tools/index.ts`, and `answer.ts`,
+`src/server/instructions.ts`, `src/tools/index.ts`,
+`src/tools/schema.ts`, and `answer.ts`,
 `args.ts`, `markets.ts`, `targets.ts`, `quote.ts`, `extended.ts`,
 `history.ts`, `search.ts`, `movers.ts`, `screen.ts` and `sets.ts` under
 `src/operations/`. The HTTP API that calls the same reads is in
 `docs/api.md`; the research and events tools in `docs/research.md`;
-the rules tool in `docs/rules.md`; the portfolio tool in
+the rules tool in `docs/rules.md`; the portfolio tools in
 `docs/portfolios.md`; signal rows and returns in
 `docs/signals.md`; units, stale reasons and tracking in
 `docs/storage.md`; the source queue and deadlines in
@@ -23,25 +24,37 @@ the rules tool in `docs/rules.md`; the portfolio tool in
   `src/operations/who.ts`), the factory
   registers the tools with it, and a tool that needs it reads it from
   its second argument; a tool that needs none ignores it.
+- **A key lists only the tools its access opens** (`tools(m, opens)`,
+  built once per access in `registerTools()`): no `rules` for rules
+  access `none`, no portfolio tool for portfolio access `none`, only
+  the `portfolio` read for `read`, and the write tools for `write`. An
+  agent shown a write it would be refused tries it, and a read-only key
+  must be read-only to the agent too. The call-time check stays, since
+  a client may hold an older list; a tool no longer listed answers the
+  SDK's "Tool … not found".
 - **SDK errors are logged with type and code only**
   (`sdkErrorFields()`), since an SDK message can quote the request.
 
 ## Server instructions
 
-- **One text sent on initialize** (`INSTRUCTIONS`) says which tool
-  answers what and what holds across tools. A client may list a tool
+- **One text sent on initialize, per key** (`instructions()`), says
+  which tool answers what and what holds across tools, and names only
+  the tools the key lists: the rules line goes for rules access `none`,
+  the portfolio line for portfolio access `none`, and its writes and
+  `portfolio_setup` for `read`. A client may list a tool
   by one line and cuts its description (below), so guidance across
   tools lives here; never repeat a description's argument list.
-- **At most `INSTRUCTIONS_BYTES` (4 KB)**: clients cut long
-  instructions from the end. A new line pushes an old one out, or the
+- **At most `INSTRUCTIONS_BYTES` (4 KB) at every access level**, the
+  write key's the longest: clients cut long instructions from the end. A new line pushes an old one out, or the
   cap is raised as a choice in review. Every line changes what an
   agent does; nothing that dates (symbol lists, dates, prices).
 - **Routing first, what the server does not hold last**, so a cut drops
   the least. No one's holding, market, country, currency or default
   symbol: the text goes to every user.
-- **`test/instructions.test.ts` holds it to that**: under the cap, the
-  groups in order, every tool named, every backticked name a tool, an
-  argument or a listed answer field, and a deny list. Whether those
+- **`test/instructions.test.ts` holds it to that** for each access
+  level: under the cap, the groups in order, every listed tool named,
+  every backticked name a listed tool, its argument or a listed answer
+  field, and a deny list. Whether those
   fields are still answered is left to review.
 
 ## The answer contract
@@ -96,14 +109,19 @@ the rules tool in `docs/rules.md`; the portfolio tool in
   symbols (`MAX_SYMBOLS`), a date `YYYY-MM-DD`. Text quoted back in an
   error is cut at 64 characters (`quoted()`).
 - **A write argument's number, id or true/false may come as text.**
-  Some clients send a field typed `["integer", "string"]` as text, so
-  `portfolio` and `rules` read `"1"`, `"2.5"` and `"true"` as their
-  values (`textValues()`), a rule's condition as JSON text and a
-  comparison's `right` as a number's text; other text is refused as
-  before.
-- **Only rules and portfolio carry write annotations.** Every other tool is
-  `readOnlyHint: true`, `openWorldHint: true`: an inline fetch only
-  adds market data.
+  Some clients send a number as text, so the portfolio tools and
+  `rules` read `"1"`, `"2.5"` and `"true"` as their values
+  (`textValues()`), a rule's condition as JSON text and a comparison's
+  `right` as a number's text; other text is refused as before.
+- **Arguments are typed, each meaning one thing**: an id is an
+  integer, never a union with a string, a mode is its own boolean
+  (`all: true`), and an argument that changes a row never also picks
+  it. Only an argument that is a name or an id (`portfolio`) is a
+  union.
+- **Write annotations are per tool**: `rules` and the portfolio write
+  tools are `destructiveHint: true`, so an add asks as a remove does.
+  Every other tool, `portfolio` included, is `readOnlyHint: true`,
+  `openWorldHint: true`: an inline fetch only adds market data.
 
 ## The tools
 
@@ -117,7 +135,7 @@ the rules tool in `docs/rules.md`; the portfolio tool in
 | `research` | `symbol`, `section`, `since`, `next` | `overview` (quote, a fund's `top_holdings`, Finnhub sections, an ADR's `valuation` from Yahoo, next event, headlines, `filings` with three flags), or one section paged: `analysts`, `earnings`, `insiders`, `news`, `filings`; or `top_holdings` unpaged, a fund's on any exchange from Yahoo (`docs/research.md`, `docs/edgar.md`) |
 | `events` | `from`, `to`, `symbols`, `next` | events by date with `status`, `reported_seen_at` and `filed_at`; `unavailable`, `no_event` (`docs/research.md`) |
 | `rules` | see `docs/rules.md` | |
-| `portfolio` | see `docs/portfolios.md` | |
+| `portfolio`, `portfolio_trade`, `portfolio_cash`, `portfolio_bond`, `portfolio_fund`, `portfolio_setup` | see `docs/portfolios.md` | |
 
 - **quote's `returns` answer "how did it do" without `history`**
   (`docs/signals.md`, "Trailing returns").
@@ -308,7 +326,9 @@ the rules tool in `docs/rules.md`; the portfolio tool in
 - **A description is for an agent choosing a tool**: what it answers,
   every argument's form and limit, the fields and units an agent
   filters on, and how to continue with `next`. No history, marketing
-  or repetition of the schema's types.
+  or repetition of the schema's types. A write tool opens with what it
+  changes and carries an example call as compact JSON, with made-up
+  names.
 - **At most 1,024 characters**: 1ctx cuts a description there, and
   `test/tools-mcp.test.ts` asserts it. Shorten wording before adding a
   field. screen names its field groups and points at its schema's enum

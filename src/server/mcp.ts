@@ -35,7 +35,7 @@ function whoFrom(
   };
 }
 
-import { INSTRUCTIONS } from "./instructions.ts";
+import { instructions } from "./instructions.ts";
 
 export const SERVER_NAME = "1ctx-markets";
 
@@ -47,15 +47,17 @@ export function mcpHandler(
   const register = markets === null ? null : registerTools(markets);
   return createMcpHandler(
     (ctx) => {
+      const who = whoFrom(ctx.authInfo);
       // declaring tools answers tools/list even with none registered
       const server = new McpServer(
         { name: SERVER_NAME, version },
         {
           capabilities: { tools: { listChanged: false } },
-          instructions: INSTRUCTIONS,
+          // names only the tools this key lists
+          instructions: instructions(who),
         },
       );
-      register?.(server, whoFrom(ctx.authInfo));
+      register?.(server, who);
       return server;
     },
     {

@@ -13,8 +13,6 @@ import {
   createBroker,
   type FundTradeArgs,
   type HoldingsAnswer,
-  parsePortfolio,
-  portfolioAnswer,
   readHoldings,
   readTradeList,
   setTradeState,
@@ -36,8 +34,9 @@ import { migrate, open } from "../src/storage/db/index.ts";
 import { MIGRATIONS } from "../src/storage/db/migrations/index.ts";
 import { writer } from "../src/storage/writer.ts";
 import { tools } from "../src/tools/index.ts";
+import { parseFundTool, parseTradeTool } from "../src/tools/portfolio.ts";
 import { fakeClock } from "./helpers/clock.ts";
-import { portfolioBefore } from "./helpers/portfolio.ts";
+import { ask as askTool, portfolioBefore } from "./helpers/portfolio.ts";
 import { instrument, NOW, quote } from "./helpers/world.ts";
 
 const CASEY: Who = { name: "casey-agent", portfolio: "write", rules: "none" };
@@ -115,10 +114,8 @@ const fundRow = async (m: Markets) =>
 const prices = (db: Database) =>
   fundPrices(db, `fund:${ONE}`).map((p) => [p.date, p.price, p.trade]);
 
-const ask = async (m: Markets, args: object) => {
-  const r = await portfolioAnswer(m, CASEY, parsePortfolio(args));
-  return { error: r.isError === true, body: JSON.parse(r.content[0]!.text) };
-};
+const ask = (m: Markets, name: string, args: object) =>
+  askTool(m, CASEY, name, args);
 
 describe("an ISIN", () => {
   test("is checked by its check digit", () => {
@@ -131,13 +128,12 @@ describe("an ISIN", () => {
   test("with a wrong check digit is refused, and no fund is made", async () => {
     const { db } = await setup();
     expect(() =>
-      parsePortfolio({
+      parseTradeTool({
         action: "add",
-        kind: "fund",
         isin: "ZZFUND000012",
         name: "Made Up Fund",
         side: "buy",
-        units: 1,
+        quantity: 1,
         price: 1,
         currency: "EUR",
       }),
@@ -148,13 +144,12 @@ describe("an ISIN", () => {
         .get(),
     ).toEqual({ n: 0 });
     // the same check on the lower-case spelling an agent may send
-    const lower = parsePortfolio({
+    const lower = parseTradeTool({
       action: "add",
-      kind: "fund",
       isin: ONE.toLowerCase(),
       name: "Made Up Fund",
       side: "buy",
-      units: 1,
+      quantity: 1,
       price: 1,
       currency: "EUR",
     });
@@ -186,7 +181,7 @@ describe("a fund's first buy", () => {
       `fund:${ONE}`,
     ]);
     expect((await fundRow(m)).quantity).toBe(30);
-    const list = (await ask(m, { action: "list" })).body.funds;
+    const list = (await ask(m, "portfolio", { action: "list" })).body.funds;
     expect(list.map((f: { isin: string }) => f.isin)).toEqual([ONE]);
   });
 
@@ -219,14 +214,13 @@ describe("a fund's first buy", () => {
 
   test("has no live price to fall back on", async () => {
     const { m } = await setup();
-    const r = await ask(m, {
+    const r = await ask(m, "portfolio_trade", {
       action: "add",
-      kind: "fund",
       portfolio: "Shares",
       isin: ONE,
       name: "Made Up Fund",
       side: "buy",
-      units: 3,
+      quantity: 3,
       currency: "EUR",
     });
     expect(r.body).toMatchObject({ error: "bad_arguments" });
@@ -376,7 +370,9 @@ describe("a fund's holding", () => {
     expect(h.holdings.find((r) => r.kind === "fund")!.market).toBe("US");
     const eur = h.exposure.find((x) => x.currency === "EUR")!;
     expect(eur.market.map((x) => x.key)).toEqual(["US"]);
-    expect((await ask(m, { action: "list" })).body.markets).toEqual(["US"]);
+    expect(
+      (await ask(m, "portfolio", { action: "list" })).body.markets,
+    ).toEqual(["US"]);
   });
 });
 
@@ -426,23 +422,22 @@ describe("a fund's name and currency", () => {
     const { m } = await setup();
     await fund(m, { isin: ONE, name: "Made Up Fund" });
     await fund(m, { isin: TWO, name: "Made Up Other Fund" });
-    const renamed = await ask(m, {
-      action: "update",
+    const renamed = await ask(m, "portfolio_fund", {
       isin: ONE,
       name: "Made Up Growth Fund",
     });
     expect(renamed.body.fund.name).toBe("Made Up Growth Fund");
     // said back, so a name sent beside the ISIN is seen to rename it
     expect(renamed.body.renamed_from).toBe("Made Up Fund");
-    const same = await ask(m, { action: "update", isin: ONE, price: 6 });
+    const same = await ask(m, "portfolio_fund", { isin: ONE, price: 6 });
     expect("renamed_from" in same.body).toBe(false);
     expect(
       await updateFund(m, CASEY, ONE, { name: "made up other fund" }),
     ).toMatchObject({ error: "conflict" });
     // named by its name alone, the name only finds it
-    expect(() =>
-      parsePortfolio({ action: "update", name: "Made Up Growth Fund" }),
-    ).toThrow("changes price, market or currency");
+    expect(() => parseFundTool({ name: "Made Up Growth Fund" })).toThrow(
+      "changes price, market or currency",
+    );
     expect((await fundRow(m)).name).toBe("Made Up Growth Fund");
   });
 

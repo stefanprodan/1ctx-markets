@@ -10,7 +10,13 @@ import { BASIS, DEFAULT_MONTHS } from "../src/operations/history.ts";
 import { MAX_SYMBOLS } from "../src/operations/quote.ts";
 import { FIELD_NAMES } from "../src/operations/screen.ts";
 import { ATTRIBUTION, NO_DATA } from "../src/sources/fred/sync.ts";
-import { mcpClient, type TestApp, withApp } from "./helpers/app.ts";
+import {
+  ACCESS_LEVELS,
+  mcpClient,
+  seedKey,
+  type TestApp,
+  withApp,
+} from "./helpers/app.ts";
 import { FRED_KEY, NOW, sources } from "./helpers/sources.ts";
 
 type Answer = { isError: boolean; text: string; body: any; bytes: number };
@@ -63,23 +69,70 @@ const yahooApp = async (
   });
 };
 
+const MARKET_TOOLS = [
+  "quote",
+  "history",
+  "movers",
+  "search",
+  "screen",
+  "research",
+  "events",
+];
+
 describe("the tool list", () => {
-  test("names the nine tools, each short and refusing other arguments", () =>
+  test("lists what the key's access opens, each short and refusing other arguments", () =>
+    withApp(async (t) => {
+      const want = (level: (typeof ACCESS_LEVELS)[number]) => [
+        ...MARKET_TOOLS,
+        ...(level.rules === "none" ? [] : ["rules"]),
+        ...(level.portfolio === "none" ? [] : ["portfolio"]),
+        ...(level.portfolio === "write"
+          ? [
+              "portfolio_trade",
+              "portfolio_cash",
+              "portfolio_bond",
+              "portfolio_fund",
+              "portfolio_setup",
+            ]
+          : []),
+      ];
+      for (const level of ACCESS_LEVELS) {
+        const token = seedKey(t, `${level.portfolio}-${level.rules}`, level);
+        const client = await mcpClient(t, token);
+        const { tools } = await client.listTools();
+        await client.close();
+        expect([level, tools.map((x) => x.name)]).toEqual([level, want(level)]);
+        for (const tool of tools) {
+          // 1ctx cuts a description at 1,024
+          expect(tool.description!.length).toBeLessThanOrEqual(1024);
+          expect(tool.inputSchema.additionalProperties).toBe(false);
+          // a write asks as a remove does; the read never asks
+          const writes =
+            tool.name === "rules" || tool.name.startsWith("portfolio_");
+          expect([tool.name, tool.annotations?.readOnlyHint]).toEqual([
+            tool.name,
+            !writes,
+          ]);
+          expect([tool.name, tool.annotations?.destructiveHint]).toEqual([
+            tool.name,
+            writes ? true : undefined,
+          ]);
+        }
+        // the read names the write tools only to a key that lists them
+        const read = tools.find((x) => x.name === "portfolio");
+        if (read !== undefined) {
+          expect(read.description!.includes("portfolio_trade")).toBe(
+            level.portfolio === "write",
+          );
+        }
+      }
+    }));
+
+  test("names its fields and limits from the code", () =>
     withApp(async (t) => {
       const client = await mcpClient(t);
       const { tools } = await client.listTools();
       await client.close();
-      expect(tools.map((x) => x.name)).toEqual([
-        "quote",
-        "history",
-        "movers",
-        "search",
-        "screen",
-        "research",
-        "events",
-        "rules",
-        "portfolio",
-      ]);
       // the schema lists every field the description points at
       const screen = tools.find((x) => x.name === "screen")!;
       const props = screen.inputSchema.properties as any;
@@ -95,15 +148,6 @@ describe("the tool list", () => {
       expect(history.description).toContain(
         `${DEFAULT_MONTHS["1d"]} months before to for 1d and ${DEFAULT_MONTHS["1wk"]} months for 1wk`,
       );
-      for (const tool of tools) {
-        // 1ctx cuts a description at 1,024
-        expect(tool.description!.length).toBeLessThanOrEqual(1024);
-        expect(tool.inputSchema.additionalProperties).toBe(false);
-        // rules and portfolio change what a caller sees
-        expect(tool.annotations?.readOnlyHint).toBe(
-          tool.name !== "rules" && tool.name !== "portfolio",
-        );
-      }
     }));
 });
 
