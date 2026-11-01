@@ -93,10 +93,13 @@
   }
   /* the head's one button style: an icon, an icon with words, the ⋯;
      none inside a menu or the search's sheet. No specificity, so a
-     page's own state colour (the eye's) stays over it */
+     page's own state colour (the eye's) stays over it. Chained :not()s
+     and no :is() lists: the bundler lowers those to :-moz-any(), which
+     Safari's forgiving :where() turns into a match for every element */
   :where(
+    .page-actions .btn:not(.menu *):not(.drawer-wrap *):not(.ssearch-sheet *),
     .page-actions
-      :is(.btn, .btn-icon):not(.menu *, .drawer-wrap *, .ssearch-sheet *)
+      .btn-icon:not(.menu *):not(.drawer-wrap *):not(.ssearch-sheet *)
   ) {
     height: 32px;
     border: 1px solid var(--line);
@@ -105,25 +108,26 @@
     color: var(--dim);
   }
   /* an icon alone carries no frame: four framed squares crowd a phone */
-  :where(.page-actions .btn-icon:not(.menu *, .drawer-wrap *)) {
+  :where(.page-actions .btn-icon:not(.menu *):not(.drawer-wrap *)) {
     width: 32px;
   }
   :where(
-    .page-actions :is(.btn-icon, .menu-btn-head):not(.menu *, .drawer-wrap *)
+    .page-actions .btn-icon:not(.menu *):not(.drawer-wrap *),
+    .page-actions .menu-btn-head:not(.menu *):not(.drawer-wrap *)
   ) {
     border-color: transparent;
   }
   :where(
+    .page-actions .btn:not(.menu *):not(.drawer-wrap *):hover,
+    .page-actions .btn:not(.menu *):not(.drawer-wrap *)[aria-expanded="true"],
+    .page-actions .btn-icon:not(.menu *):not(.drawer-wrap *):hover,
     .page-actions
-      :is(.btn, .btn-icon):not(.menu *, .drawer-wrap *):is(
-        :hover,
-        [aria-expanded="true"]
-      )
+      .btn-icon:not(.menu *):not(.drawer-wrap *)[aria-expanded="true"]
   ) {
     background: var(--hover);
     color: var(--fg);
   }
-  :where(.page-actions .btn-primary:not(.menu *, .drawer-wrap *)) {
+  :where(.page-actions .btn-primary:not(.menu *):not(.drawer-wrap *)) {
     border-color: var(--line-strong);
     background: var(--hover);
     color: var(--fg);
@@ -131,7 +135,9 @@
   @media (pointer: coarse) {
     :where(
         .page-actions
-          :is(.btn, .btn-icon):not(.menu *, .drawer-wrap *, .ssearch-sheet *)
+          .btn:not(.menu *):not(.drawer-wrap *):not(.ssearch-sheet *),
+        .page-actions
+          .btn-icon:not(.menu *):not(.drawer-wrap *):not(.ssearch-sheet *)
       ) {
       min-width: 44px;
       height: 44px;
