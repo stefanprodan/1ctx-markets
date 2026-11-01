@@ -2317,6 +2317,63 @@ describe("a cash row's name and broker", () => {
     });
   });
 
+  test("one name at one broker holds a row per currency", async () => {
+    const { m } = await setup();
+    const usd = (await ask(m, cash)).body.position.id as number;
+    const kwd = await ask(m, { ...cash, amount: 5, currency: "KWD" });
+    expect(kwd.body.replaced).toBeNull();
+    const again = await ask(m, { ...cash, amount: 150 });
+    expect(again.body.replaced).toBe(usd);
+    expect(readPosition(m.db, kwd.body.position.id)!.removedAt).toBeNull();
+    // restoring the first USD row leaves the KWD row live
+    await setPositionState(m, CASEY, usd, false);
+    expect(readPosition(m.db, usd)!.removedAt).toBeNull();
+    expect(
+      readPosition(m.db, again.body.position.id)!.removedAt,
+    ).not.toBeNull();
+    expect(readPosition(m.db, kwd.body.position.id)!.removedAt).toBeNull();
+  });
+
+  test("a change onto another currency's row is allowed, onto its own refused", async () => {
+    const { m } = await setup();
+    await ask(m, cash);
+    const other = (
+      await ask(m, {
+        ...cash,
+        name: "Current",
+        broker: "South",
+        currency: "KWD",
+      })
+    ).body.position.id as number;
+    const apart = await ask(m, {
+      action: "update",
+      position: other,
+      name: "Savings",
+      broker: "North",
+    });
+    expect(apart.body.position).toMatchObject({
+      name: "Savings",
+      broker: "North",
+      currency: "KWD",
+    });
+    const kwd = (
+      await ask(m, { ...cash, name: "Spare", broker: "South", currency: "KWD" })
+    ).body.position.id as number;
+    const onto = await ask(m, {
+      action: "update",
+      position: kwd,
+      name: "Savings",
+      broker: "North",
+    });
+    expect(onto.body).toMatchObject({ error: "conflict" });
+    expect(onto.body.message).toBe(
+      `position ${apart.body.position.id} has this name, broker and currency; update or remove it instead`,
+    );
+    expect(plainError(sentence(onto.body.message))).toBe(
+      "Other cash has this name, broker and currency.",
+    );
+  });
+
   test("an unknown broker is refused with the known ones", async () => {
     const { m } = await setup();
     const id = (await ask(m, cash)).body.position.id as number;

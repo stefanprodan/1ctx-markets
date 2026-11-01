@@ -303,6 +303,40 @@ describe("position imports", () => {
     );
   });
 
+  test("cash of one name and broker keeps a row per currency", async () => {
+    const { m, db } = await setup();
+    const file = (currency: string, amount: number) =>
+      [
+        `Item,Amount (${currency}),As Of,Note`,
+        `Spare,${amount},2026-04-17,`,
+      ].join("\n");
+    for (const [currency, amount] of [
+      ["EUR", 10],
+      ["USD", 20],
+      ["EUR", 30],
+    ] as const) {
+      const r = await importCsv(
+        m,
+        CASEY,
+        parseImport({
+          portfolio: "Shares",
+          broker: "North",
+          csv: file(currency, amount),
+          confirm: true,
+        }),
+      );
+      if ("error" in r) throw new Error(r.message);
+    }
+    expect(
+      readPositions(db)
+        .map((p) => [p.currency, p.amount])
+        .sort(),
+    ).toEqual([
+      ["EUR", 30],
+      ["USD", 20],
+    ]);
+  });
+
   test("bonds are valued at face without a listing", async () => {
     const { m, db } = await setup();
     const bonds = [

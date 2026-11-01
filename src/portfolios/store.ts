@@ -405,13 +405,20 @@ export function readPositions(
     .map(positionOf);
 }
 
-// the one a new position of the same kind and name at the same broker
+// the one a new position of the same kind, name, broker and currency
 // replaces, so an updated balance is one row, the old one restorable
 export function samePosition(
   db: Db,
   p: Pick<
     Position,
-    "portfolio" | "kind" | "name" | "broker" | "instrument" | "asOf" | "amount"
+    | "portfolio"
+    | "kind"
+    | "name"
+    | "broker"
+    | "currency"
+    | "instrument"
+    | "asOf"
+    | "amount"
   >,
   // undated: a bond read with no purchase date, any date matches; skip:
   // rows another line of the same file already matched
@@ -454,11 +461,11 @@ export function samePosition(
             JSON.stringify(opts.skip ?? []),
           )
       : db
-          .query<RawPosition, [number, string, string, number | null]>(
+          .query<RawPosition, [number, string, string, number | null, string]>(
             `${POSITION} where portfolio = ? and kind = ? and name = ? collate nocase
-             and broker is ? and removed_at is null`,
+             and broker is ? and currency = ? and removed_at is null`,
           )
-          .get(p.portfolio, p.kind, p.name, p.broker);
+          .get(p.portfolio, p.kind, p.name, p.broker, p.currency);
   return r === null ? null : positionOf(r);
 }
 
