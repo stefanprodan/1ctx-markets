@@ -6,14 +6,18 @@
 
 import { effect } from "@preact/signals";
 import { markets } from "../data/store.ts";
-import { symbolOf } from "../lib/names.ts";
+import { tickerOf } from "../lib/names.ts";
 import { path } from "./router.ts";
 import { HOME, match } from "./routes.ts";
 
 export const BRAND = "1ctx Markets";
 
 // signedIn is the store's: undefined until the first status answer
-export function tabTitle(here: string, signedIn: boolean | undefined): string {
+export function tabTitle(
+  here: string,
+  signedIn: boolean | undefined,
+  kind?: string,
+): string {
   if (signedIn === false) return `Sign in · ${BRAND}`;
   const found = match(here);
   // the landing page is the product itself
@@ -22,13 +26,18 @@ export function tabTitle(here: string, signedIn: boolean | undefined): string {
   const page =
     id === undefined || found.route.path !== "/instruments/:id"
       ? found.route.label
-      : symbolOf(id);
+      : tickerOf(id, kind);
   return `${page} · ${BRAND}`;
 }
 
 export function watchTitle(): () => void {
   return effect(() => {
-    const title = tabTitle(path.value, markets.signedIn.value);
+    const id = markets.detailId.value;
+    const kind =
+      id !== null && match(path.value)?.params.id === id
+        ? markets.detail.value?.instrument.kind
+        : undefined;
+    const title = tabTitle(path.value, markets.signedIn.value, kind);
     if (document.title !== title) document.title = title;
   });
 }

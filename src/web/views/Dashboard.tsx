@@ -20,9 +20,10 @@ import { Change, Num } from "../ui/Figures.tsx";
 import { MenuButton, type MenuItem } from "../ui/Menu.tsx";
 import { Notice } from "../ui/Notice.tsx";
 import { didNotLoad, Page } from "../ui/Page.tsx";
+import { Placeholder, WaitWords } from "../ui/Placeholder.tsx";
 import { Segmented } from "../ui/Segmented.tsx";
 import { Spark } from "../ui/Spark.tsx";
-import { SymbolName } from "../ui/Symbol.tsx";
+import { SymbolName, SymbolWaiting } from "../ui/Symbol.tsx";
 import { seedSearch } from "../ui/SymbolSearch.tsx";
 import { type Column, Table } from "../ui/Table.tsx";
 import { Tabs } from "../ui/Tabs.tsx";
@@ -93,19 +94,24 @@ function remember(key: string, value: string) {
 
 const pctText = (p: number) => `${p > 0 ? "+" : "−"}${Math.abs(p).toFixed(2)}%`;
 
+const MOVERS = 4;
+
 function MoverList({
   label,
   rows,
   top,
+  waiting,
 }: {
   label: string;
   rows: readonly Listed[];
   top: number;
+  waiting?: boolean;
 }) {
   const columns: Column<Listed>[] = [
     {
       key: "name",
       width: "minmax(0, 1fr)",
+      wait: <SymbolWaiting compact />,
       cell: (r) => (
         <SymbolName
           compact
@@ -152,17 +158,26 @@ function MoverList({
         head={false}
         dense
         empty="None"
+        waiting={waiting ? MOVERS : undefined}
       />
     </div>
   );
 }
 
-function Movers({ ids, items }: { ids: readonly string[]; items: Items }) {
+function Movers({
+  ids,
+  items,
+  waiting,
+}: {
+  ids: readonly string[];
+  items: Items;
+  waiting?: boolean;
+}) {
   const { up, down, top } = moversOf(ids, items);
   return (
     <div class="dash-movers">
-      <MoverList label="Up" rows={up} top={top} />
-      <MoverList label="Down" rows={down} top={top} />
+      <MoverList label="Up" rows={up} top={top} waiting={waiting} />
+      <MoverList label="Down" rows={down} top={top} waiting={waiting} />
     </div>
   );
 }
@@ -197,10 +212,10 @@ function Gap({ side, name }: { side: Side | null; name: string }) {
 
 const SHOWN = 8;
 
-function Trends({ trends }: { trends: Trend[] }) {
+function Trends({ trends, waiting }: { trends: Trend[]; waiting?: boolean }) {
   const [all, setAll] = useState(false);
   const [sort, setSort] = useState<Sort>(loadSort);
-  if (trends.length === 0) {
+  if (trends.length === 0 && !waiting) {
     return <Notice>No stock, ETF or coin among your favourites yet.</Notice>;
   }
   const sorted = [...trends].sort(bySort(sort));
@@ -229,6 +244,7 @@ function Trends({ trends }: { trends: Trend[] }) {
       key: "name",
       head: "Instrument",
       width: { base: "minmax(0, 2fr)", phone: "minmax(0, 1fr)" },
+      wait: <SymbolWaiting />,
       cell: (t) => (
         <SymbolName
           ticker={
@@ -289,6 +305,7 @@ function Trends({ trends }: { trends: Trend[] }) {
           remember(SORT_KEY, JSON.stringify(next));
         }}
         dense
+        waiting={waiting ? MOVERS : undefined}
       />
       {sorted.length > SHOWN && (
         <button
@@ -314,6 +331,7 @@ const EARNING_COLUMNS: Column<EarningRow>[] = [
     key: "name",
     head: "Instrument",
     width: { base: "minmax(0, 1.6fr)", phone: "minmax(0, 1fr)" },
+    wait: <SymbolWaiting />,
     cell: (e) => <SymbolName ticker={e.symbol} name={e.name} />,
   },
   {
@@ -343,10 +361,23 @@ const EARNING_COLUMNS: Column<EarningRow>[] = [
 export function Earnings({
   earnings,
   off,
+  waiting,
 }: {
   earnings: readonly Earning[];
   off: boolean;
+  waiting?: boolean;
 }) {
+  if (waiting) {
+    return (
+      <Table
+        label="Earnings this week"
+        columns={EARNING_COLUMNS}
+        rowKey={(e) => e.id + e.day}
+        dense
+        waiting={MOVERS}
+      />
+    );
+  }
   if (earnings.length === 0 && off) {
     return <Notice>Earnings are not available.</Notice>;
   }
@@ -379,11 +410,13 @@ export function Glance({
   items,
   earnings,
   off = false,
+  waiting,
 }: {
   ids: readonly string[];
   items: Items;
   earnings: readonly Earning[];
   off?: boolean;
+  waiting?: boolean;
 }) {
   const [tab, setTab] = useState<Tab>(() => {
     const t = remembered(TAB_KEY);
@@ -398,13 +431,15 @@ export function Glance({
   // the trend counts only today's crossings; earnings count even none,
   // unless they cannot be known
   const countOf = (t: Tab) =>
-    t === "earnings"
-      ? earnings.length === 0 && off
-        ? null
-        : earnings.length
-      : t === "trend" && crossed > 0
-        ? crossed
-        : null;
+    waiting
+      ? null
+      : t === "earnings"
+        ? earnings.length === 0 && off
+          ? null
+          : earnings.length
+        : t === "trend" && crossed > 0
+          ? crossed
+          : null;
   return (
     <Card label="At a glance">
       <Tabs
@@ -424,11 +459,11 @@ export function Glance({
       />
       <div role="tabpanel" class="dash-panel">
         {tab === "movers" ? (
-          <Movers ids={ids} items={items} />
+          <Movers ids={ids} items={items} waiting={waiting} />
         ) : tab === "trend" ? (
-          <Trends trends={trends} />
+          <Trends trends={trends} waiting={waiting} />
         ) : (
-          <Earnings earnings={earnings} off={off} />
+          <Earnings earnings={earnings} off={off} waiting={waiting} />
         )}
       </div>
     </Card>
@@ -520,9 +555,11 @@ const ROW_LINE = 28;
 function Line({
   spark,
   height,
+  waiting,
 }: {
   spark: SparkData | undefined;
   height: number;
+  waiting?: boolean;
 }) {
   const s = sparkOf(spark);
   return (
@@ -532,6 +569,7 @@ function Line({
       slots={s?.slots}
       width="fluid"
       height={height}
+      waiting={waiting && spark === undefined}
     />
   );
 }
@@ -541,9 +579,11 @@ function Line({
 export function Tile({
   entry,
   spark,
+  waiting,
 }: {
   entry: WatchEntry;
   spark: SparkData | undefined;
+  waiting?: boolean;
 }) {
   const c = cardOf(entry);
   if (c.type === "pending") {
@@ -582,7 +622,7 @@ export function Tile({
         <SymbolName ticker={c.symbol} name={c.name} />
         {c.state && <span class="small faint dash-state">{c.state}</span>}
       </div>
-      <Line spark={spark} height={TILE_LINE} />
+      <Line spark={spark} height={TILE_LINE} waiting={waiting} />
       <div class="dash-tile-figs">
         <Num currency={c.currency}>{c.price}</Num>
         <Change s={{ text: c.percent, dir: c.dir }} class="small" />
@@ -696,6 +736,8 @@ export function SectionView({
   editing,
   items,
   sparks,
+  lining = new Set(),
+  slow = false,
   drag,
   setDrag,
   save,
@@ -708,6 +750,8 @@ export function SectionView({
   locked: boolean;
   items: Items;
   sparks: ReadonlyMap<string, SparkData>;
+  lining?: ReadonlySet<string>;
+  slow?: boolean;
   drag: Drag;
   setDrag: (d: Drag) => void;
   save: Save;
@@ -792,7 +836,7 @@ export function SectionView({
       hide: "phone",
       cell: (l) =>
         l.card.type === "ready" ? (
-          <Line spark={l.spark} height={ROW_LINE} />
+          <Line spark={l.spark} height={ROW_LINE} waiting={lining.has(l.id)} />
         ) : null,
     },
     {
@@ -863,6 +907,11 @@ export function SectionView({
           )
         }
         count={n}
+        note={
+          <WaitWords show={slow && section.ids.some((id) => lining.has(id))}>
+            Loading charts
+          </WaitWords>
+        }
         actions={
           (!locked || editing) && (
             <div class="dash-section-tools hide-phone">
@@ -902,7 +951,11 @@ export function SectionView({
         >
           {lines.map((l) => (
             <div key={l.id} {...dragOf(l.id)}>
-              <Tile entry={entryOf(l.id, items.get(l.id))} spark={l.spark} />
+              <Tile
+                entry={entryOf(l.id, items.get(l.id))}
+                spark={l.spark}
+                waiting={lining.has(l.id)}
+              />
               {editing && remove(l.id)}
             </div>
           ))}
@@ -922,6 +975,49 @@ export function SectionView({
         </Card>
       )}
     </section>
+  );
+}
+
+function TileWaiting() {
+  return (
+    <div class="card dash-tile" aria-hidden="true">
+      <div class="dash-tile-top">
+        <SymbolWaiting />
+      </div>
+      <Line spark={undefined} height={TILE_LINE} waiting />
+      <div class="dash-tile-figs">
+        <Placeholder chars={9} />
+        <Placeholder chars={6} />
+      </div>
+    </div>
+  );
+}
+
+const WAITING_TILES = 4;
+
+export function HomeWaiting({ slow }: { slow: boolean }) {
+  return (
+    <>
+      <Glance ids={[]} items={new Map()} earnings={[]} waiting />
+      <section class="dash-section">
+        <SectionHead
+          title={<Placeholder chars={9} />}
+          note={<WaitWords show={slow}>Loading prices</WaitWords>}
+        />
+        <div
+          class="dash-tiles"
+          style={{
+            "--tiles": tileColumns(WAITING_TILES, 4),
+            "--tiles-tablet": tileColumns(WAITING_TILES, 3),
+            "--tiles-phone": tileColumns(WAITING_TILES, 2),
+          }}
+        >
+          {Array.from({ length: WAITING_TILES }, (_, i) => (
+            <TileWaiting key={i} />
+          ))}
+        </div>
+      </section>
+    </>
   );
 }
 
@@ -1029,9 +1125,7 @@ export function Dashboard() {
       foot={markets.attribution.value ?? undefined}
     >
       {layout === null ? (
-        <Card>
-          <Notice>Loading…</Notice>
-        </Card>
+        <HomeWaiting slow={markets.homeSlow.value} />
       ) : (
         <>
           {locked ? (
@@ -1054,6 +1148,8 @@ export function Dashboard() {
               editing={editing && !locked}
               items={items}
               sparks={markets.sparks.value}
+              lining={markets.lining.value}
+              slow={markets.linesSlow.value}
               drag={drag}
               setDrag={setDrag}
               save={editing ? stage : save}

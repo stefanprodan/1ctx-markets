@@ -28,13 +28,17 @@ function pngSize(bytes: Buffer): string {
   return `${bytes.readUInt32BE(16)}x${bytes.readUInt32BE(20)}`;
 }
 
-function pageColour(block: string): string {
+function tokenOf(block: string, name: string): string {
   const tokens = read("style/tokens.css");
   const start = tokens.indexOf(block);
-  const found = /--page:\s*(#[0-9a-f]{6});/.exec(tokens.slice(start));
-  if (start === -1 || found === null) throw new Error(`no --page in ${block}`);
+  const found = new RegExp(`${name}:\\s*(#[0-9a-f]{6});`).exec(
+    tokens.slice(start),
+  );
+  if (start === -1 || found === null) throw new Error(`no ${name} in ${block}`);
   return found[1]!;
 }
+
+const pageColour = (block: string) => tokenOf(block, "--page");
 
 describe("the manifest", () => {
   test("opens the whole UI on its start page, without the browser", () => {
@@ -78,6 +82,26 @@ describe("the page", () => {
     expect(pngSize(readFileSync(join(WEB, "apple-touch-icon.png")))).toBe(
       "180x180",
     );
+  });
+
+  test("draws its frame before the script in each theme's colours", () => {
+    const html = read("index.html");
+    const style = html.slice(html.indexOf("@layer boot"));
+    const dark = ":root {";
+    const light = ':root[data-theme="light"]';
+    expect(style).toContain(
+      `html {\n          background: ${pageColour(dark)};`,
+    );
+    expect(style).toContain(
+      `.boot {\n          display: none;\n          color: ${tokenOf(dark, "--fg")};\n          --sparkle: ${tokenOf(dark, "--sparkle")};`,
+    );
+    expect(style).toContain(
+      `${light} {\n          background: ${pageColour(light)};`,
+    );
+    expect(style).toContain(
+      `${light} .boot {\n          color: ${tokenOf(light, "--fg")};\n          --sparkle: ${tokenOf(light, "--sparkle")};`,
+    );
+    expect(html).toContain('<div id="app"></div>\n    <div class="boot">');
   });
 
   test("starts the browser's bar in the theme's page colour", () => {

@@ -169,7 +169,8 @@ or runs against a closed connection.
 ## Build
 
 - **`make build` compiles one standalone binary** to
-  `bin/1ctx-markets` with `bun build --compile`. `VERSION=v1.2.3`
+  `bin/1ctx-markets` through `scripts/build.ts` (`Bun.build` with
+  `compile`, whitespace and syntax minified). `VERSION=v1.2.3`
   sets what `--version` prints; without it, `v` plus `package.json`'s
   version. `TARGET` cross-compiles.
 - **The binary loads no `.env` or `bunfig.toml`** from where it runs,

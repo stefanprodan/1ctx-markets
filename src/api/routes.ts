@@ -15,6 +15,7 @@ import {
   instruments,
   refetchOne,
   status,
+  storedCheck,
   watchlist,
 } from "../admin/http.ts";
 import {
@@ -518,6 +519,12 @@ function operator(
       path: "/instruments/{symbol}",
       scope: "admin",
       handle: (_req, url, params) => deleteOne(admin, url, params.symbol!),
+    },
+    {
+      method: "GET",
+      path: "/instruments/{symbol}/stored",
+      scope: "admin",
+      handle: async (_req, url, params) => storedCheck(m, url, params.symbol!),
     },
     {
       method: "POST",

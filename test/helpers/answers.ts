@@ -285,6 +285,8 @@ const REQUESTS: [string, RequestInit?][] = [
   ["/watchlist"],
   ["/status"],
   ["/instruments/US:NVDA"],
+  ["/instruments/US:NVDA/stored"],
+  ["/instruments/ZZNOTHING/stored"],
   [
     "/instruments/US:NVDA/refetch",
     post("POST", {

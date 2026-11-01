@@ -9,8 +9,11 @@ import { says } from "../data/api.ts";
 import { markets } from "../data/store.ts";
 import { nameOf, tickerOf } from "../lib/names.ts";
 import { useRefresh } from "../lib/refresh.ts";
+import { Card } from "../ui/Card.tsx";
+import { Facts, HeroWaiting } from "../ui/Figures.tsx";
 import { didNotLoad, Page } from "../ui/Page.tsx";
-import { CHART_CREDIT, Chart } from "./Chart.tsx";
+import { Placeholder, WaitWords } from "../ui/Placeholder.tsx";
+import { CHART_CREDIT, Chart, ChartWaiting } from "./Chart.tsx";
 import { type Choice, choices, summary, UNREAD } from "./Instrument.model.ts";
 import { InstrumentCards } from "./InstrumentCards.tsx";
 import { Head } from "./InstrumentHead.tsx";
@@ -78,7 +81,7 @@ export function Instrument({ params }: { params: Params }) {
         detail !== null,
         markets.detailError.value,
         markets.detailCode.value,
-        () => void load(),
+        () => void markets.loadInstrument(id, true),
       )}
       stale={detail === null ? null : markets.detailError.value}
       staleCount={markets.detailFailures.value}
@@ -121,13 +124,62 @@ export function Instrument({ params }: { params: Params }) {
         )
       }
     >
-      {detail !== null && (
+      {detail !== null ? (
         <>
           <Head detail={detail} now={Date.now()} />
           <Chart id={id} intraday={detail.intraday} />
           <InstrumentCards detail={detail} held={held} />
         </>
+      ) : (
+        <InstrumentWaiting
+          symbol={symbol}
+          first={markets.firstFetch.value === id}
+          slow={markets.detailSlow.value}
+        />
       )}
     </Page>
+  );
+}
+
+function CardWaiting() {
+  return (
+    <Card title={<Placeholder chars={11} />}>
+      <Facts
+        items={[9, 12, 8, 10].map((chars) => ({
+          label: <Placeholder chars={chars} />,
+          value: <Placeholder chars={7} />,
+        }))}
+      />
+    </Card>
+  );
+}
+
+// a first fetch takes seconds, so it is said at once
+export function InstrumentWaiting({
+  symbol,
+  first,
+  slow,
+}: {
+  symbol: string;
+  first: boolean;
+  slow: boolean;
+}) {
+  return (
+    <>
+      <HeroWaiting />
+      <ChartWaiting>
+        {first ? (
+          <WaitWords show spin>
+            {`Fetching ${symbol} for the first time`}
+          </WaitWords>
+        ) : (
+          <WaitWords show={slow}>Loading the chart</WaitWords>
+        )}
+      </ChartWaiting>
+      <div class="ins-cards">
+        <CardWaiting />
+        <CardWaiting />
+      </div>
+    </>
   );
 }

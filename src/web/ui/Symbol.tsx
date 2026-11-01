@@ -4,6 +4,7 @@
 // through lib/names.ts first (a coin without its quote currency).
 
 import type { ComponentChildren } from "preact";
+import { Placeholder } from "./Placeholder.tsx";
 import "./symbol.css";
 
 export function SymbolName({
@@ -33,5 +34,15 @@ export function SymbolName({
       {t}
       {shown && <span class="sym-name">{name}</span>}
     </span>
+  );
+}
+
+export function SymbolWaiting({ compact }: { compact?: boolean }) {
+  return (
+    <SymbolName
+      compact={compact}
+      ticker={<Placeholder chars={5} />}
+      name={<Placeholder chars={compact ? 10 : 14} />}
+    />
   );
 }

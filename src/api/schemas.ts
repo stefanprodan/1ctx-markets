@@ -1141,6 +1141,10 @@ export const schemas: Record<string, Schema> = {
     },
     ["parts"],
   ),
+  Stored: object({
+    input: note(str, "The symbol as sent."),
+    stored: bool,
+  }),
   Refetched: object({
     input: note(str, "The symbol as sent."),
     id: str,

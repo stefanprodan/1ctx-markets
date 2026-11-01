@@ -40,6 +40,8 @@ const KINDS: Record<string, string> = {
   INDEX: "Index",
   BOND: "Bond",
   FUTURE: "Future",
+  // Yahoo's type for another contract of a future, such as a micro one
+  ALTSYMBOL: "Future",
   CRYPTOCURRENCY: "Crypto",
   CURRENCY: "Currency",
   SERIES: "Series",

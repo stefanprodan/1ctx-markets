@@ -500,6 +500,15 @@ export function pointLegendOf(
   };
 }
 
+// a pointer resting where a clicked link was picks no bar until it moves
+export type Rest = { x: number; y: number } | "moved" | null;
+
+export function pointerAt(rest: Rest, x: number, y: number): Rest {
+  if (rest === "moved") return rest;
+  if (rest === null || (rest.x === x && rest.y === y)) return { x, y };
+  return "moved";
+}
+
 // the price axis and its labels: separators, and no cents where a
 // price runs to five figures, so a phone's axis stays narrow
 export function axisPrice(v: number): string {

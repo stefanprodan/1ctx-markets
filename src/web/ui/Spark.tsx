@@ -3,6 +3,7 @@
 // A sparkline: green above its dotted base, red below.
 
 import { useId } from "preact/hooks";
+import { Placeholder } from "./Placeholder.tsx";
 import "./spark.css";
 
 const W = 96;
@@ -56,6 +57,7 @@ export function Spark({
   width = W,
   height = H,
   slots,
+  waiting,
 }: {
   closes: readonly number[];
   base?: "start" | number;
@@ -64,6 +66,7 @@ export function Spark({
   // fluid fills its box's width, stretched, its strokes kept thin
   width?: number | "fluid";
   height?: number;
+  waiting?: boolean;
 }) {
   const id = useId();
   const fluid = width === "fluid";
@@ -75,7 +78,9 @@ export function Spark({
         class={`spark${fluid ? " spark-fluid" : ""}`}
         style={{ height: `${height}px` }}
         aria-hidden="true"
-      />
+      >
+        {waiting && <Placeholder band />}
+      </span>
     );
   return (
     <svg

@@ -5,12 +5,14 @@ import "./style/tokens.css";
 import "./style/base.css";
 import { render } from "preact";
 import { App } from "./app/App.tsx";
+import { addFonts } from "./app/fonts.ts";
 import { watchRecent } from "./app/recent.ts";
 import { boot } from "./app/router.ts";
 import { watchScreen } from "./app/shell.ts";
 import { watchTheme } from "./app/theme.ts";
 import { watchTitle } from "./app/title.ts";
 
+addFonts();
 watchTheme();
 boot();
 watchScreen();

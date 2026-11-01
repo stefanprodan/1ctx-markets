@@ -16,6 +16,7 @@ import { Drawer } from "../ui/Drawer.tsx";
 import { Facts, Stats } from "../ui/Figures.tsx";
 import { Notice } from "../ui/Notice.tsx";
 import { didNotLoad, Page } from "../ui/Page.tsx";
+import { Placeholder } from "../ui/Placeholder.tsx";
 import { type Column, Table, type TableGroup } from "../ui/Table.tsx";
 import {
   allOk,
@@ -214,6 +215,32 @@ const ADD: Column<SourceStatus>[] = [
   },
 ];
 
+const FIGURES = ["Instruments", "Sources", "Jobs", "Database"] as const;
+type Figure = (typeof FIGURES)[number];
+
+export function StatusWaiting() {
+  return (
+    <div class="srv">
+      <Stats
+        label="Server"
+        items={FIGURES.map((label) => ({
+          label,
+          value: <Placeholder chars={4} />,
+          note: <Placeholder chars={7} />,
+        }))}
+      />
+      <Card title="Jobs">
+        <Table
+          label="Jobs"
+          columns={jobColumns(Date.now())}
+          rowKey={jobKey}
+          waiting={6}
+        />
+      </Card>
+    </div>
+  );
+}
+
 export function StatusBody({
   status: s,
   watchlist: track,
@@ -231,6 +258,24 @@ export function StatusBody({
     (x) => x.state === "on" && x.backing_off !== null,
   ).length;
   const off = s.sources.filter((x) => x.state === "off" && x.key !== null);
+  const figures: Record<Figure, { value: string; note: string }> = {
+    Instruments: {
+      value: count(s.instruments),
+      note: `${count(s.tracked)} tracked`,
+    },
+    Sources: {
+      value: String(sourcesOn(s.sources)),
+      note: backing === 0 ? "all ok" : `${backing} paused`,
+    },
+    Jobs: {
+      value: count(jobs.length),
+      note: failing === 0 ? "all ok" : `${failing} failing`,
+    },
+    Database: {
+      value: bytes(s.database_bytes),
+      note: s.version,
+    },
+  };
   const [opened, setOpened] = useState<string | null>(null);
   // a job gone from a later answer takes its drawer with it
   const open = shown
@@ -240,28 +285,7 @@ export function StatusBody({
     <div class="srv">
       <Stats
         label="Server"
-        items={[
-          {
-            label: "Instruments",
-            value: count(s.instruments),
-            note: `${count(s.tracked)} tracked`,
-          },
-          {
-            label: "Sources",
-            value: String(sourcesOn(s.sources)),
-            note: backing === 0 ? "all ok" : `${backing} paused`,
-          },
-          {
-            label: "Jobs",
-            value: count(jobs.length),
-            note: failing === 0 ? "all ok" : `${failing} failing`,
-          },
-          {
-            label: "Database",
-            value: bytes(s.database_bytes),
-            note: s.version,
-          },
-        ]}
+        items={FIGURES.map((label) => ({ label, ...figures[label] }))}
       />
       {!s.sync && <Notice>Sync is off.</Notice>}
       {switched !== null && <Notice error>{switched}</Notice>}
@@ -331,7 +355,7 @@ export function Status() {
       }
     >
       {s === null ? (
-        markets.loading.value && <p class="page-state">Loading</p>
+        <StatusWaiting />
       ) : (
         <StatusBody
           status={s}

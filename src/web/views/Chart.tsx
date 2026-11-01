@@ -18,14 +18,17 @@ import type {
   Time,
   UTCTimestamp,
 } from "lightweight-charts";
-import { useEffect, useLayoutEffect, useRef } from "preact/hooks";
+import type { ComponentChildren, Ref } from "preact";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "preact/hooks";
 import { railDrawer } from "../app/shell.ts";
 import { theme } from "../app/theme.ts";
 import { says } from "../data/api.ts";
 import { markets } from "../data/store.ts";
 import { figure, signedChange, volumeText } from "../lib/format.ts";
 import { useRefresh } from "../lib/refresh.ts";
+import { slowFlag } from "../lib/slow.ts";
 import { Card } from "../ui/Card.tsx";
+import { Placeholder, WaitWords } from "../ui/Placeholder.tsx";
 import { Segmented } from "../ui/Segmented.tsx";
 import {
   averageLabel,
@@ -53,9 +56,11 @@ import {
   levelsOf,
   localTime,
   lookOf,
+  pointerAt,
   pointLegendOf,
   pointLine,
   type Range,
+  type Rest,
   rangesOf,
   readRange,
   readSettings,
@@ -263,6 +268,63 @@ export function LegendLine({
   );
 }
 
+function ChartFrame({
+  head,
+  note,
+  legend,
+  legendRef,
+  canvasRef,
+  wait,
+  children,
+}: {
+  head: ComponentChildren;
+  note?: ComponentChildren;
+  legend?: ComponentChildren;
+  legendRef?: Ref<HTMLDivElement>;
+  canvasRef?: Ref<HTMLDivElement>;
+  wait?: ComponentChildren;
+  children?: ComponentChildren;
+}) {
+  return (
+    <Card
+      flush
+      label="Chart"
+      class={`chart-card${lookOf(railDrawer.value).phone ? " chart-phone" : ""}`}
+    >
+      <div class="card-head chart-head">{head}</div>
+      <div class="chart-body">
+        {note}
+        {/* holds the tallest the legend has been, so the plot never
+            moves as the crosshair changes its rows */}
+        <div ref={legendRef}>
+          {legend || (
+            // a first guess at its room before the first answer
+            <div class="chart-legend chart-legend-wait" aria-hidden="true" />
+          )}
+        </div>
+        <div class={`chart-plot${wait ? " chart-plot-wait" : ""}`}>
+          <div class="chart-canvas" ref={canvasRef} />
+          {wait && <p class="chart-wait">{wait}</p>}
+          {children}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+export function ChartWaiting({ children }: { children: ComponentChildren }) {
+  return (
+    <ChartFrame
+      head={
+        <div class="chart-ranges">
+          <Placeholder chars={28} />
+        </div>
+      }
+      wait={children}
+    />
+  );
+}
+
 export function Chart({ id, intraday }: { id: string; intraday: boolean }) {
   const box = useRef<HTMLDivElement>(null);
   const legendBox = useRef<HTMLDivElement>(null);
@@ -294,6 +356,9 @@ export function Chart({ id, intraday }: { id: string; intraday: boolean }) {
   const levels = useRef<{ s: ISeriesApi<SeriesType>; at: Levels } | null>(null);
   const active = () => drawnFor(look(), range.value, intraday);
   const hover = useSignal<string | number | null>(null);
+  const rest = useRef<Rest>(null);
+  const reading = useSignal(true);
+  const wait = useMemo(() => slowFlag(), []);
   const lib = useRef<Lib | null>(null);
   const chart = useRef<IChartApi | null>(null);
   const series = useRef<ISeriesApi<SeriesType>[]>([]);
@@ -330,27 +395,34 @@ export function Chart({ id, intraday }: { id: string; intraday: boolean }) {
   const load = async () => {
     const mine = ++asked.current;
     const r = active();
+    const fresh = data.value === null || r !== shown.value;
+    if (fresh) reading.value = true;
+    const ask: Promise<{
+      history: History | Intraday;
+      since: string | null;
+    }> = isIntraday(r)
+      ? markets
+          .intraday(id, r, fromOf("Max", today()))
+          .then((history) => ({ history, since: null }))
+      : readRange(
+          (from) => markets.history(id, from, intervalOf(r)),
+          r,
+          today(),
+        );
     try {
-      const read = isIntraday(r)
-        ? {
-            history: await markets.intraday(id, r, fromOf("Max", today())),
-            since: null,
-          }
-        : await readRange(
-            (from) => markets.history(id, from, intervalOf(r)),
-            r,
-            today(),
-          );
+      const read = await (fresh ? wait.track(ask) : ask);
       if (mine !== asked.current) return;
       batch(() => {
         data.value = read.history;
         shown.value = r;
         since.value = read.since;
+        reading.value = false;
       });
       error.value = null;
       draw();
     } catch (e) {
       if (mine !== asked.current) return;
+      reading.value = false;
       error.value = says(e);
       // a refresh that fails keeps its bars; another range's never stand in
       if (r !== shown.value) {
@@ -371,7 +443,25 @@ export function Chart({ id, intraday }: { id: string; intraday: boolean }) {
   // the library runs with the first chart; a page without one never starts it
   useEffect(() => {
     let gone = false;
-    void import("lightweight-charts").then((l) => {
+    const el = box.current;
+    // before the library's own handlers, so a move counts on its first event
+    const moved = (e: PointerEvent) => {
+      rest.current =
+        e.type === "pointerdown"
+          ? "moved"
+          : pointerAt(rest.current, e.clientX, e.clientY);
+    };
+    const left = () => {
+      rest.current = null;
+    };
+    el?.addEventListener("pointermove", moved, { capture: true });
+    el?.addEventListener("pointerdown", moved, { capture: true });
+    el?.addEventListener("pointerleave", left);
+    // the canvas takes the mono face at its first draw, so it waits for it
+    void Promise.all([
+      import("lightweight-charts"),
+      document.fonts?.load(`11px ${token("--mono")}`).catch(() => {}),
+    ]).then(([l]) => {
       if (gone || box.current === null) return;
       lib.current = l;
       const paint = paintOptions(l, colors(), logScale(), look());
@@ -385,7 +475,9 @@ export function Chart({ id, intraday }: { id: string; intraday: boolean }) {
       });
       c.subscribeCrosshairMove((p: MouseEventParams) => {
         hover.value =
-          p.time === undefined || p.point === undefined
+          rest.current !== "moved" ||
+          p.time === undefined ||
+          p.point === undefined
             ? null
             : typeof p.time === "number"
               ? p.time
@@ -401,6 +493,9 @@ export function Chart({ id, intraday }: { id: string; intraday: boolean }) {
     });
     return () => {
       gone = true;
+      el?.removeEventListener("pointermove", moved, { capture: true });
+      el?.removeEventListener("pointerdown", moved, { capture: true });
+      el?.removeEventListener("pointerleave", left);
       chart.current?.remove();
       chart.current = null;
       series.current = [];
@@ -741,116 +836,118 @@ export function Chart({ id, intraday }: { id: string; intraday: boolean }) {
     hasCandles(h.bars);
   const linesOk = lk.log || (lk.averages && !minutes);
   return (
-    <Card
-      flush
-      label="Chart"
-      class={`chart-card${lk.phone ? " chart-phone" : ""}`}
-    >
-      <div class="card-head chart-head">
-        <div class="chart-ranges">
-          <Segmented
-            small
-            label="Range"
-            options={rangesOf(lk, intraday).map((r) => ({ value: r, text: r }))}
-            value={active()}
-            onPick={(r) => {
-              range.value = r;
-            }}
-          />
-        </div>
-        {(candlesOk || linesOk) && (
-          <div class="chart-tools">
-            {candlesOk && (
-              <Segmented
-                small
-                label="Style"
-                options={[
-                  { value: "line", text: "Line" },
-                  { value: "candles", text: "Candles" },
-                ]}
-                value={line.value ? "line" : "candles"}
-                onPick={(v) => {
-                  line.value = v === "line";
-                }}
-              />
-            )}
-            {lk.averages && !minutes && (
-              <fieldset class="seg seg-small" aria-label="Averages">
-                <button
-                  type="button"
-                  class={`seg-option chart-toggle-50${sma50.value ? " seg-on" : ""}`}
-                  aria-pressed={sma50.value}
-                  onClick={() => {
-                    sma50.value = !sma50.value;
-                  }}
-                >
-                  50
-                </button>
-                <button
-                  type="button"
-                  class={`seg-option chart-toggle-200${sma200.value ? " seg-on" : ""}`}
-                  aria-pressed={sma200.value}
-                  onClick={() => {
-                    sma200.value = !sma200.value;
-                  }}
-                >
-                  200
-                </button>
-              </fieldset>
-            )}
-            {lk.log && (
-              <fieldset class="seg seg-small" aria-label="Scale">
-                <button
-                  type="button"
-                  class={`seg-option${log.value ? " seg-on" : ""}`}
-                  aria-pressed={log.value}
-                  onClick={() => {
-                    log.value = !log.value;
-                  }}
-                >
-                  Log
-                </button>
-              </fieldset>
-            )}
-          </div>
-        )}
-      </div>
-      <div class="chart-body">
-        {/* a read that failed says so over the bars still shown */}
-        {error.value !== null && <p class="chart-note">{error.value}</p>}
-        {/* holds the tallest the legend has been, so the plot never
-            moves as the crosshair changes its rows */}
-        <div ref={legendBox}>
-          {legend !== null && h !== null ? (
-            <LegendLine
-              legend={legend}
-              interval={h.interval}
-              range={shown.value}
-              since={since.value}
-              show={{
-                sma50: show50(),
-                sma200: show200(),
-                ohlc: look().ohlc,
+    <ChartFrame
+      head={
+        <>
+          <div class="chart-ranges">
+            <Segmented
+              small
+              label="Range"
+              options={rangesOf(lk, intraday).map((r) => ({
+                value: r,
+                text: r,
+              }))}
+              value={active()}
+              onPick={(r) => {
+                range.value = r;
               }}
             />
-          ) : (
-            // a first guess at its room before the first answer
-            <div class="chart-legend chart-legend-wait" aria-hidden="true" />
+          </div>
+          {(candlesOk || linesOk) && (
+            <div class="chart-tools">
+              {candlesOk && (
+                <Segmented
+                  small
+                  label="Style"
+                  options={[
+                    { value: "line", text: "Line" },
+                    { value: "candles", text: "Candles" },
+                  ]}
+                  value={line.value ? "line" : "candles"}
+                  onPick={(v) => {
+                    line.value = v === "line";
+                  }}
+                />
+              )}
+              {lk.averages && !minutes && (
+                <fieldset class="seg seg-small" aria-label="Averages">
+                  <button
+                    type="button"
+                    class={`seg-option chart-toggle-50${sma50.value ? " seg-on" : ""}`}
+                    aria-pressed={sma50.value}
+                    onClick={() => {
+                      sma50.value = !sma50.value;
+                    }}
+                  >
+                    50
+                  </button>
+                  <button
+                    type="button"
+                    class={`seg-option chart-toggle-200${sma200.value ? " seg-on" : ""}`}
+                    aria-pressed={sma200.value}
+                    onClick={() => {
+                      sma200.value = !sma200.value;
+                    }}
+                  >
+                    200
+                  </button>
+                </fieldset>
+              )}
+              {lk.log && (
+                <fieldset class="seg seg-small" aria-label="Scale">
+                  <button
+                    type="button"
+                    class={`seg-option${log.value ? " seg-on" : ""}`}
+                    aria-pressed={log.value}
+                    onClick={() => {
+                      log.value = !log.value;
+                    }}
+                  >
+                    Log
+                  </button>
+                </fieldset>
+              )}
+            </div>
           )}
-        </div>
-        <div class="chart-plot">
-          <div class="chart-canvas" ref={box} />
-          {marks.value.map((m) => (
-            <span
-              key={m.role}
-              class={`chart-mark chart-mark-${m.side}`}
-              style={{ top: `${m.y}px` }}
-            >
-              {m.text}
-            </span>
-          ))}
-        </div>
-      </div>
-    </Card>
+        </>
+      }
+      // a read that failed says so over the bars still shown
+      note={error.value !== null && <p class="chart-note">{error.value}</p>}
+      legendRef={legendBox}
+      legend={
+        legend !== null &&
+        h !== null &&
+        !reading.value && (
+          <LegendLine
+            legend={legend}
+            interval={h.interval}
+            range={shown.value}
+            since={since.value}
+            show={{
+              sma50: show50(),
+              sma200: show200(),
+              ohlc: look().ohlc,
+            }}
+          />
+        )
+      }
+      canvasRef={box}
+      wait={
+        reading.value && (
+          <WaitWords show={wait.slow.value}>Loading the chart</WaitWords>
+        )
+      }
+    >
+      {!reading.value &&
+        marks.value.map((m) => (
+          <span
+            key={m.role}
+            class={`chart-mark chart-mark-${m.side}`}
+            style={{ top: `${m.y}px` }}
+          >
+            {m.text}
+          </span>
+        ))}
+    </ChartFrame>
   );
 }
