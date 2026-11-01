@@ -470,39 +470,115 @@ const cash = (m: Markets, amount: number, currency = "EUR", dry = true) =>
     dryPowder: dry,
   });
 
-describe("dry powder", () => {
-  test("is answered per currency beside invested value and other cash", async () => {
+const kept = (
+  m: Markets,
+  o: { amount: number; portfolio?: string; broker?: string; dry?: boolean },
+) =>
+  addPosition(m, CASEY, {
+    kind: "cash",
+    portfolio: o.portfolio ?? "Shares",
+    name: o.dry ? "Kept for buying" : "Savings",
+    symbol: null,
+    currency: "EUR",
+    amount: o.amount,
+    cost: null,
+    coupon: null,
+    maturity: null,
+    date: LIVE,
+    broker: o.broker ?? null,
+    note: null,
+    dryPowder: o.dry === true,
+  });
+
+describe("dry powder and reserve", () => {
+  test("one portfolio counts its reserve in its value", async () => {
     const { m } = await setup();
     await buy(m, { symbol: "XETRA:BBB", quantity: 4, price: 40 });
-    await cash(m, 300);
-    await addPosition(m, CASEY, {
-      kind: "cash",
-      portfolio: "Shares",
-      name: "Current account",
-      symbol: null,
-      currency: "EUR",
-      amount: 500,
-      cost: null,
-      coupon: null,
-      maturity: null,
-      date: LIVE,
-      broker: null,
-      note: null,
-      dryPowder: false,
-    });
-    const eur = (await holdingsOf(m)).totals[0]!;
+    await kept(m, { amount: 300, dry: true });
+    await kept(m, { amount: 500 });
+    const eur = (await holdingsOf(m, { portfolio: "Shares" })).totals[0]!;
     expect(eur).toMatchObject({
       currency: "EUR",
       value: 1000,
       invested: 200,
-      cash: 500,
+      reserve: 500,
       dry_powder: 300,
       invested_weight: 20,
-      cash_weight: 50,
+      reserve_weight: 50,
       dry_powder_weight: 30,
+    });
+    expect("net_worth" in eur).toBe(false);
+  });
+
+  test("across portfolios reserve is outside the value, weights and exposure; net worth counts it", async () => {
+    const { m } = await setup();
+    await buy(m, { symbol: "XETRA:BBB", quantity: 4, price: 40 });
+    await kept(m, { amount: 300, dry: true });
+    await kept(m, { amount: 500, portfolio: "Coins", broker: "North" });
+    const h = await holdingsOf(m, { currency: "EUR" });
+    const expected = {
+      currency: "EUR",
+      value: 500,
+      net_worth: 1000,
+      invested: 200,
+      reserve: 500,
+      dry_powder: 300,
+      invested_weight: 40,
+      reserve_weight: null,
+      dry_powder_weight: 60,
+    };
+    expect(h.totals[0]).toMatchObject(expected);
+    expect(h.converted).toMatchObject(expected);
+    const reserve = h.holdings.find((r) => r.name === "Savings")!;
+    expect(reserve).toMatchObject({ value: 500, currency_weight: null });
+    expect(reserve.converted?.weight).toBeNull();
+    expect(row(h, "XETRA:BBB").converted?.weight).toBe(40);
+    const exposure = h.exposure[0]!;
+    expect(exposure.portfolio.map((x) => x.key)).toEqual(["Shares"]);
+    expect(exposure.broker.map((x) => x.key)).toEqual([null]);
+    expect(exposure.currency_weights).toEqual([
+      { key: "EUR", value: 500, weight: 100 },
+    ]);
+  });
+
+  test("a broker filter across portfolios leaves reserve out the same way", async () => {
+    const { m } = await setup();
+    await buy(m, {
+      symbol: "XETRA:BBB",
+      quantity: 2,
+      price: 40,
+      broker: "North",
+    });
+    await kept(m, { amount: 50, dry: true, broker: "North" });
+    await kept(m, { amount: 400, portfolio: "Coins", broker: "North" });
+    await kept(m, { amount: 900, broker: "South" });
+    const eur = (await holdingsOf(m, { broker: "North" })).totals[0]!;
+    expect(eur).toMatchObject({
+      value: 150,
+      net_worth: 550,
+      reserve: 400,
+      dry_powder: 50,
+      reserve_weight: null,
     });
   });
 
+  test("an owner with reserve only has nothing in the value and the reserve as net worth", async () => {
+    const { m } = await setup();
+    await kept(m, { amount: 700 });
+    const eur = (await holdingsOf(m)).totals[0]!;
+    expect(eur).toMatchObject({
+      value: 0,
+      net_worth: 700,
+      reserve: 700,
+      invested: 0,
+      dry_powder: 0,
+      invested_weight: null,
+      dry_powder_weight: null,
+    });
+  });
+});
+
+describe("dry powder", () => {
   test("a buy paid from it is add, then update by its cost in another currency", async () => {
     const { m, db } = await setup();
     pair(db, "EURUSD=X", 1.25);

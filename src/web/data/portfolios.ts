@@ -70,7 +70,7 @@ export type Overview = {
   display_currency: string | null;
   // the owner's IANA zone, none until they name one
   time_zone?: string | null;
-  // what cash or a fund can name as the market its money is in
+  // what a fund can name as the market its money is in
   markets?: string[];
   funds?: FundRow[];
   portfolios: PortfolioRow[];
@@ -136,18 +136,20 @@ export type Holding = {
   parts: Part[];
 };
 
+// across portfolios value leaves reserve out; the page shows no net worth
 export type Total = {
   currency: string;
   value: number | null;
+  net_worth?: number | null;
   cost: number | null;
   pl: number | null;
   pl_percent: number | null;
   day_change: number | null;
   invested: number | null;
-  cash: number | null;
+  reserve: number | null;
   dry_powder: number | null;
   invested_weight: number | null;
-  cash_weight: number | null;
+  reserve_weight: number | null;
   dry_powder_weight: number | null;
 };
 
@@ -286,7 +288,7 @@ export type PositionIn = {
   date?: string;
   dry_powder?: boolean;
   broker?: string;
-  market?: string;
+  note?: string;
 };
 
 export type PositionChange = {
@@ -295,8 +297,10 @@ export type PositionChange = {
   by?: number;
   currency?: string;
   date?: string;
+  name?: string;
   // null takes it off
-  market?: string | null;
+  broker?: string | null;
+  note?: string | null;
 };
 
 export type ImportRow = {
@@ -351,6 +355,9 @@ export function plainError(said: string): string {
   }
   if (/^sells more than that broker holds/i.test(t)) {
     return "More than that broker holds.";
+  }
+  if (/^position \d+ has this name and broker/.test(t)) {
+    return "Other cash has this name and broker.";
   }
   if (/is listed in .*a bond takes its listing's currency/.test(t)) {
     return "Use the bond's own currency.";

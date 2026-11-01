@@ -7,6 +7,7 @@ import type {
   Holding,
   Holdings,
   Part,
+  PositionChange,
   Total,
   TradeRow,
 } from "../data/portfolios.ts";
@@ -337,7 +338,22 @@ const has = (q: string, ...fields: (string | null | undefined)[]) => {
 };
 
 export const holdingMatches = (h: Holding, q: string): boolean =>
-  has(q, holdingTicker(h), h.name, h.isin, ...h.parts.map((p) => p.broker));
+  has(
+    q,
+    holdingTicker(h),
+    h.name,
+    h.isin,
+    h.kind === "cash" ? h.note : null,
+    ...h.parts.map((p) => p.broker),
+  );
+
+// reserve is cash kept apart: All's value leaves it out, so its rows are
+// listed only in their own portfolio
+export const isReserve = (h: Holding): boolean =>
+  h.kind === "cash" && h.dry_powder !== true;
+
+export const cashWord = (h: Holding): string =>
+  h.dry_powder ? "Dry powder" : "Reserve";
 
 export const tradeMatches = (t: TradeRow, q: string): boolean =>
   has(q, t.side, symbolOf(t.symbol), t.name, t.broker, t.note);
@@ -366,11 +382,41 @@ export function holdingTicker(h: Holding): string {
   return tickerOf(h.id, h.type);
 }
 
+// what an edit of cash changed besides its amount: only what differs is
+// sent, no broker or an emptied note as null, which takes it off
+export function cashEdits(
+  h: Holding,
+  edited: { name: string; broker: string; note: string },
+): Pick<PositionChange, "name" | "broker" | "note"> {
+  const name = edited.name.trim();
+  const note = edited.note.trim();
+  return {
+    ...(name !== (h.name ?? "") ? { name } : {}),
+    ...(edited.broker !== (h.parts[0]?.broker ?? "")
+      ? { broker: edited.broker === "" ? null : edited.broker }
+      : {}),
+    ...(note !== (h.note ?? "") ? { note: note === "" ? null : note } : {}),
+  };
+}
+
+// cash's line under its name in parts, so a row can drop what its group
+// label says or what a phone has no room for
+export function cashLine(
+  h: Holding,
+  now = Date.now(),
+): { what: string; broker: string | null; date: string | null } {
+  return {
+    what: cashWord(h),
+    broker: h.parts.length === 1 ? h.parts[0]!.broker : null,
+    date: h.as_of ? day(h.as_of, now) : null,
+  };
+}
+
 // the line under the ticker
 export function holdingName(h: Holding, now = Date.now()): string {
   if (h.kind === "cash") {
-    const what = h.dry_powder ? "Dry powder" : "Reserve";
-    return h.as_of ? `${what} · ${day(h.as_of, now)}` : what;
+    const c = cashLine(h, now);
+    return [c.what, c.broker, c.date].filter(Boolean).join(" · ");
   }
   if (h.kind === "fund") return h.isin ? `Fund · ${h.isin}` : "Fund";
   if (h.kind === "bond") {
@@ -429,19 +475,32 @@ export function sums(rows: readonly Holding[]): Sums {
 
 export type HoldingGroup = { key: string; rows: Holding[]; value: number };
 
-// on All by portfolio, inside one by kind; the largest first
+const CASH_GROUPS = ["Dry powder", "Reserve"];
+
+// on All by portfolio, inside one by kind, cash by what it is for; the
+// largest first, but dry powder always before reserve, as the bar reads
 export function groupsOf(
   rows: readonly Holding[],
   all: boolean,
 ): HoldingGroup[] {
   const by = new Map<string, Holding[]>();
   for (const r of rows) {
-    const k = all ? portfolioOf(r) : kindName(r.type);
+    const k = all
+      ? portfolioOf(r)
+      : r.kind === "cash"
+        ? cashWord(r)
+        : kindName(r.type);
     by.set(k, [...(by.get(k) ?? []), r]);
   }
+  const pinned = (k: string) => (all ? -1 : CASH_GROUPS.indexOf(k));
   return [...by.entries()]
     .map(([key, rs]) => ({ key, rows: rs, value: sums(rs).value }))
-    .sort((a, b) => b.value - a.value);
+    .sort(
+      (a, b) =>
+        (pinned(a.key) >= 0 && pinned(b.key) >= 0
+          ? pinned(a.key) - pinned(b.key)
+          : 0) || b.value - a.value,
+    );
 }
 
 // a group's share of the whole view
@@ -528,14 +587,20 @@ export type BarSide = {
   pct: number;
 };
 
-// with money invested, invested against all cash; with cash alone, the
-// cash to invest against the cash kept; shown only when both are above 0
-export function barOf(t: Total): BarSide[] | null {
+// All: invested against dry powder, its value's two parts, reserve being
+// outside it; one portfolio with money invested, invested against all its
+// cash; with cash alone, the cash to invest against the cash kept; shown
+// only when both are above 0
+export function barOf(t: Total, all = false): BarSide[] | null {
   const inv = t.invested ?? 0;
   const dry = t.dry_powder ?? 0;
-  const reserve = t.cash ?? 0;
-  const sides: Omit<BarSide, "pct">[] =
-    inv > 0
+  const reserve = t.reserve ?? 0;
+  const sides: Omit<BarSide, "pct">[] = all
+    ? [
+        { key: "invested", label: "Invested", value: inv },
+        { key: "dry", label: "Dry powder", value: dry },
+      ]
+    : inv > 0
       ? [
           { key: "invested", label: "Invested", value: inv },
           { key: "cash", label: "Cash", value: dry + reserve },

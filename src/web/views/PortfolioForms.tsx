@@ -34,6 +34,7 @@ import { Tabs } from "../ui/Tabs.tsx";
 import {
   ADD_KEY,
   browserZone,
+  cashEdits,
   currencies,
   dryPowderFor,
   dryPowders,
@@ -160,8 +161,12 @@ export function PositionEdit({
   // a new figure is true today; a bond's date is its purchase, kept
   const now = today(store.overview.value?.time_zone ?? null);
   const date = useSignal(h.kind === "bond" ? (h.as_of ?? now) : now);
-  const markets = store.overview.value?.markets ?? [];
-  const market = useSignal(h.market ?? "");
+  const cash = h.kind === "cash";
+  const brokers = store.overview.value?.brokers ?? [];
+  const name = useSignal(h.name ?? "");
+  const broker = useSignal(h.parts[0]?.broker ?? "");
+  const newBroker = useSignal("");
+  const note = useSignal(h.note ?? "");
   const busy = useSignal(false);
   const error = useSignal<string | null>(null);
   const save = async (ev: Event) => {
@@ -171,13 +176,33 @@ export function PositionEdit({
       error.value = "Not a number.";
       return;
     }
+    if (cash && name.value.trim() === "") {
+      error.value = "Name it.";
+      return;
+    }
+    if (broker.value === NEW && newBroker.value.trim() === "") {
+      error.value = "Name the broker.";
+      return;
+    }
     busy.value = true;
+    let at = broker.value;
+    if (at === NEW) {
+      at = newBroker.value.trim();
+      const no = await store.createBroker(at);
+      if (no !== null) {
+        busy.value = false;
+        error.value = no;
+        return;
+      }
+      broker.value = at;
+      newBroker.value = "";
+    }
     error.value = await store.updatePosition(h.position!, {
       amount: n,
       date: date.value,
-      ...(market.value === (h.market ?? "")
-        ? {}
-        : { market: market.value === "" ? null : market.value }),
+      ...(cash
+        ? cashEdits(h, { name: name.value, broker: at, note: note.value })
+        : {}),
     });
     busy.value = false;
     if (error.value === null) onDone();
@@ -192,6 +217,7 @@ export function PositionEdit({
       onSubmit={save}
       onCancel={onDone}
     >
+      {cash && <Field label="Name" value={name} />}
       <label class="field">
         <span class="label">{h.kind === "bond" ? "Face" : "Amount"}</span>
         <input
@@ -212,8 +238,19 @@ export function PositionEdit({
           }}
         />
       </label>
-      {h.kind !== "bond" && markets.length > 0 && (
-        <MarketPick value={market} markets={markets} />
+      {cash && (
+        <>
+          <BrokerPick
+            value={broker}
+            name={newBroker}
+            brokers={brokers}
+            back={h.parts[0]?.broker ?? ""}
+            onEdit={() => {
+              error.value = null;
+            }}
+          />
+          <Field label="Note" value={note} placeholder="Optional" />
+        </>
       )}
     </EditFrame>
   );
@@ -794,6 +831,38 @@ function PickOrNew({
 // the picker's choice that names a new portfolio or broker in the form
 const NEW = "\u0000new";
 
+// a broker kept, none, or a new one named in place; back: what closing
+// the name returns to
+function BrokerPick({
+  value,
+  name,
+  brokers,
+  back = "",
+  onEdit,
+}: {
+  value: Signal<string>;
+  name: Signal<string>;
+  brokers: readonly BrokerRow[];
+  back?: string;
+  onEdit: () => void;
+}) {
+  return (
+    <PickOrNew
+      label="Broker"
+      value={value}
+      name={name}
+      placeholder="Name"
+      back={back}
+      options={[
+        { value: "", text: "No broker" },
+        ...brokers.map((x) => ({ value: x.name, text: x.name })),
+        { value: NEW, text: "New broker…" },
+      ]}
+      onEdit={onEdit}
+    />
+  );
+}
+
 const inCurrency = (label: string, c: string | null): string =>
   c ? `${label} (${c})` : label;
 
@@ -1130,8 +1199,8 @@ export function AddForm({
             }
           : {}),
         ...(kind.value === "cash" && dry.value ? { dry_powder: true } : {}),
-        ...(kind.value !== "bond" && market.value
-          ? { market: market.value }
+        ...(kind.value === "cash" && note.value.trim()
+          ? { note: note.value.trim() }
           : {}),
         date: date.value,
       },
@@ -1262,17 +1331,10 @@ export function AddForm({
         options={portfolioOptions}
         onEdit={clear}
       />
-      <PickOrNew
-        label="Broker"
+      <BrokerPick
         value={broker}
         name={newBroker}
-        placeholder="Name"
-        back=""
-        options={[
-          { value: "", text: "No broker" },
-          ...brokers.map((x) => ({ value: x.name, text: x.name })),
-          { value: NEW, text: "New broker…" },
-        ]}
+        brokers={brokers}
         onEdit={clear}
       />
     </div>
@@ -1586,8 +1648,8 @@ export function AddForm({
               {currencyField}
               <Field label="As of" value={date} type="date" />
             </div>
-            {marketPick}
             {placePicks}
+            <Field label="Note" value={note} placeholder="Optional" />
           </>
         ) : kind.value === "fund" ? (
           <>

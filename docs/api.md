@@ -46,7 +46,7 @@ MCP tools copied onto paths.
 | `GET /portfolios` | portfolio:read | `listAll()` | `portfolios[]` with their counts, `brokers[]`, `display_currency`, `time_zone`, `markets[]`, `funds[]` |
 | `POST /portfolios`, `PATCH`, `DELETE /portfolios/{id}` | portfolio:write | `createPortfolio()`, `updatePortfolio()`, `removePortfolio()` | `{name}`; 201 with `Location`; 409 while no display currency is set, for a taken name or a portfolio holding live rows (removed ones are deleted with it) |
 | `GET /portfolios/{id}` | portfolio:read | `portfolioItem()` | `{portfolio}` |
-| `GET /portfolios/{id}/holdings?broker=&currency=`, `GET /holdings?broker=&currency=` | portfolio:read | `readHoldings()` | one portfolio's or all holdings, totals per currency, `converted` and `rates` with a named or display currency, `exposure` (`docs/portfolios.md`) |
+| `GET /portfolios/{id}/holdings?broker=&currency=`, `GET /holdings?broker=&currency=` | portfolio:read | `readHoldings()` | one portfolio's or all holdings, totals per currency, `converted` and `rates` with a named or display currency, `exposure`; across portfolios reserve is out of the value and weights, and `net_worth` counts it (`docs/portfolios.md`) |
 | `GET /portfolios/{id}/export` | portfolio:read | `exportCsv()` | `text/csv`, the trades in the portfolio CSV export format, LF line ends, no BOM |
 | `POST /portfolios/{id}/import` | portfolio:write | `importCsv()` | `{csv, broker, currency, confirm, dry_powder}`; every row's status, saved only with `confirm` |
 | `GET /trades?portfolio=&broker=&symbol=&from=&to=&removed=` | portfolio:read | `readTradeList()` | `trades[]`, newest first, whole |
@@ -54,9 +54,9 @@ MCP tools copied onto paths.
 | `DELETE /trades/{id}`, `POST /trades/{id}/restore` | portfolio:write | `setTradeState()` | `{trade}`, removed or back; never a delete |
 | `GET /positions?portfolio=&broker=&removed=` | portfolio:read | `readPositions()` | `positions[]` |
 | `POST /positions` | portfolio:write | `addPosition()` | `{kind, ...}`, kind `cash` or `bond` (a fund is bought as a trade); 201 with `position` and `replaced` |
-| `PATCH /positions/{id}` | portfolio:write | `updatePosition()` | the tool's `update` arguments; the new row, `replaced`, and `rate` for a converted amount; 409 on a removed row |
+| `PATCH /positions/{id}` | portfolio:write | `updatePosition()` | the tool's `update` arguments, `name` and `broker` among them; the new row, `replaced`, and `rate` for a converted amount; 409 on a removed row or on cash given another live cash row's name and broker |
 | `DELETE /positions/{id}`, `POST /positions/{id}/restore` | portfolio:write | `setPositionState()` | `{position}` |
-| `GET /positions/{id}/history` | portfolio:read | `historyOf()` | `history[]`, every row of the position, newest first |
+| `GET /positions/{id}/history` | portfolio:read | `historyOf()` | `history[]`, every row of the position's chain of updates, newest first |
 | `GET /funds` | portfolio:read | `listAll()` | `funds[]`: each fund the owner prices with its latest price and that price's day |
 | `POST /funds/trades` | portfolio:write | `addFundTrade()` | the tool's `add` arguments of kind `fund`; 201 with `trade` (or `trades`) and `fund`; the first buy makes the fund; 409 for a retry, as `POST /trades` |
 | `GET /funds/{isin}` | portfolio:read | `fundDetail()` | `{fund, prices, trades}`: every price, newest first, beside its live trades; 400 for an ISIN whose check digit fails, 404 for one not kept |

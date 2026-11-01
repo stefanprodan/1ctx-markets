@@ -569,9 +569,12 @@ The parts:
   today, only when something in view moves within a day (a quoted or
   listed price; cash, a hand-priced fund and a face-value bond never
   do), and all time, only when a cost gives a gain. Then one bar
-  (`barOf()`): Invested against Cash with money invested, Dry powder
-  against Reserve with cash alone, shown only when both sides are
-  above 0.
+  (`barOf()`): on All, Invested against Dry powder, the two parts of
+  All's value, which leaves reserve out (`docs/portfolios.md`); in a
+  portfolio, Invested against Cash with money invested, Dry powder
+  against Reserve with cash alone; shown only when both sides are
+  above 0. The page shows no net worth: All portfolios is not net
+  worth, which only the API and the tool answer.
 - **The view is the address** (`addressOf`, `viewOf`): the portfolio's
   id in the path, `currency` in the query, left out when it is the
   display currency. The tabs are links, so a
@@ -581,15 +584,23 @@ The parts:
   Anything else in the address reads as all; a broker in an old link
   is ignored (there is no broker filter).
 - **Holdings** is a `Table` in a card with a search over the ticker,
-  name, ISIN and the brokers a holding is held at (`holdingMatches`,
-  every word typed must match some field). Grouped (`groupsOf()`) on
-  All by portfolio, inside one by kind, the largest group first, each
-  a folding `GroupLabel` with its count, value and share of the view;
-  one group shows no label; a row the server could not convert (no
-  rate) shows its own currency only and counts in no group total. Columns: Holding (`holdingTicker()` over
-  `holdingName()`: a coin without its quote currency, cash as Dry
-  powder or Reserve with its date, a fund with its ISIN, a bond with
-  coupon and maturity; a stale reason as a tag in plain words,
+  name, ISIN, cash's note and the brokers a holding is held at
+  (`holdingMatches`, every word typed must match some field). Reserve
+  rows are not listed on All (`isReserve()`), since All's value leaves
+  them out; they are seen and edited in their portfolio's tab. Grouped
+  (`groupsOf()`) on All by portfolio, inside one by kind and cash by
+  what it is for, Dry powder then Reserve whatever their sums, as the
+  bar reads, the largest group first otherwise, each a folding
+  `GroupLabel` with its count, value and share of the view; one group
+  shows no label; a row the server could not convert (no rate) shows
+  its own currency only and counts in no group total. Columns: Holding
+  (`holdingTicker()` over `holdingName()`: a coin without its quote
+  currency, cash as Dry powder or Reserve with its broker and date
+  (`cashLine()`), under a Dry powder or Reserve label without the word
+  ("North · 30 Oct"), on All "Dry powder" alone on a phone (the broker
+  and date in `.hide-phone`, as the Gain column leaves no room), a
+  fund with its ISIN, a bond with coupon and maturity; a stale reason
+  as a tag in plain words,
   `staleWords()`), 3M (a `Spark` from each listed holding's daily bars,
   cached for the page's life), Change (price and today's percent; a
   hand price with its day, a bond's as a percent of face,
@@ -609,12 +620,15 @@ The parts:
   merged bond its Purchases. Its ⋯ (`rowActions()`): Buy and Sell (Sell
   not on a holding sold today) open the add drawer on it, in its one
   portfolio and broker; Set price for a hand-priced fund; Edit for a
-  position; Purchases for a bond bought several times; Instrument page
-  when there is one. Amounts show whole from 1,000 up (`money()`),
+  position, kept on cash though the row opens it too, so a cash list
+  looks like the others; Purchases for a bond bought several times;
+  Instrument page when there is one. Amounts show whole from 1,000 up (`money()`),
   else in the currency's minor units (`minorUnits()`).
 - **Drawers:** every form and detail opens in the one `Drawer`. Edit
-  (amount, as of, and cash's market; Remove at the foot's start asks
-  once), Set price (name, price per unit, the day it is for, starting
+  (amount and as of; cash also its name, broker, "New broker…"
+  included, and note, each sent only when changed (`cashEdits()`), no
+  broker or an emptied note as null, which takes it off; Remove at the
+  foot's start asks once), Set price (name, price per unit, the day it is for, starting
   on the owner's today, and the market; a day already priced takes the
   new price, and a changed name alone sends no price, `PATCH
   /api/v1/funds/{isin}`), Purchases (each purchase's date, face and
@@ -674,9 +688,10 @@ The parts:
   symbol's list first, the drawer only when none is open. A line above the buttons
   reads back the trade ("Buy 5 KO at 60.00 · 300.00 USD (≈ 270.00 EUR) ·
   Shares"). A position's currency is the currency
-  picker. Cash and a fund pick a market, "None" first, from the
-  markets the server lists, in the add form, cash's edit and a fund's
-  Set price, so a fund holding one market's shares counts in it. Only the kind is remembered per browser
+  picker. Cash has a note; it has no market, as its money counts by its
+  currency. A fund picks a market, "None" first, from the markets the
+  server lists, in the add form and its Set price, so a fund holding
+  one market's shares counts in it. Only the kind is remembered per browser
   (`markets-portfolio-add`). A
   refusal shows beside the buttons in plain words, its ids taken out
   (`plainError()` in `data/portfolios.ts`).

@@ -350,7 +350,13 @@ export function portfolioRoutes(m: Markets): Route[] {
         ) {
           throw new ArgError("kind must be one of cash, bond");
         }
-        const f = fields(read.body, ["kind", "portfolio", ...KIND_ARGS[kind]]);
+        // market is read so its refusal says why
+        const f = fields(read.body, [
+          "kind",
+          "portfolio",
+          ...KIND_ARGS[kind],
+          "market",
+        ]);
         const done = await addPosition(m, who, parsePosition(kind, f));
         return created(done, (v) => `/positions/${v.position.id}`);
       },
@@ -364,7 +370,7 @@ export function portfolioRoutes(m: Markets): Route[] {
         const id = idOf(params.id!, "position");
         const read = await body(req);
         if (read instanceof Response) return read;
-        const f = fields(read.body, [...UPDATE_FIELDS, "currency"]);
+        const f = fields(read.body, [...UPDATE_FIELDS, "currency", "market"]);
         return answer(await updatePosition(m, who, id, parseChange(f)));
       },
     },

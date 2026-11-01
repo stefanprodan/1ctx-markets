@@ -55,7 +55,6 @@ import {
   type PositionKind,
   portfolioByName,
   portfolioRows,
-  positionHistory,
   readBroker,
   readPortfolio,
   readPosition,
@@ -187,8 +186,6 @@ export type PositionArgs = {
   name: string;
   symbol: string | null;
   currency: string | null;
-  // cash's market, as an instrument's
-  market?: string | null;
   amount: number | null;
   cost: number | null;
   coupon: number | null;
@@ -212,8 +209,9 @@ export type PositionChange = {
   date?: string;
   note?: string | null;
   dryPowder?: boolean;
+  name?: string;
   // null takes it off
-  market?: string | null;
+  broker?: string | null;
 };
 
 export type HoldingsArgs = {
@@ -339,6 +337,10 @@ const optionalName = (value: unknown, name: string, max = MAX_NAME) =>
   value === undefined || value === null ? null : text(value, name, max);
 
 const note = (value: unknown) => optionalName(value, "note", MAX_NOTE);
+
+// a fund names the market of the shares it holds; cash and a bond never do
+export const NO_POSITION_MARKET =
+  "cash has no market, it counts by its currency; a bond's is its listing's";
 
 export function rowId(value: unknown, name: string): number {
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1) {
@@ -481,8 +483,8 @@ export function parsePosition(
     broker: optionalName(f.broker, "broker"),
     note: note(f.note),
     dryPowder: false,
-    market: optionalName(f.market, "market"),
   };
+  if (f.market !== undefined) throw new ArgError(NO_POSITION_MARKET);
   if (kind === "cash") {
     if (base.cost !== null) throw new ArgError("cash has no cost");
     if (f.dry_powder !== undefined && typeof f.dry_powder !== "boolean") {
@@ -566,6 +568,7 @@ const ARGS: Record<Action, readonly string[]> = {
     "market",
     "by",
     "currency",
+    "broker",
     "portfolio",
     "kind",
   ],
@@ -576,18 +579,17 @@ const ARGS: Record<Action, readonly string[]> = {
   rename_broker: ["action", "broker", "name"],
 };
 
-export const UPDATE_FIELDS = ARGS.update.filter(
-  (n) =>
-    n !== "action" &&
-    n !== "position" &&
-    n !== "isin" &&
-    n !== "name" &&
-    // a fund's, refused for a position
-    n !== "price" &&
-    n !== "currency" &&
-    n !== "portfolio" &&
-    n !== "kind",
-);
+// what a position's update changes; currency goes with amount or by
+export const UPDATE_FIELDS = [
+  "amount",
+  "by",
+  "cost",
+  "date",
+  "note",
+  "dry_powder",
+  "name",
+  "broker",
+] as const;
 
 // a fund's update: its price for a day and its market; kind and
 // portfolio are passed out of habit
@@ -640,7 +642,9 @@ export function parseChange(f: Record<string, unknown>): PositionChange {
     }
     c.dryPowder = f.dry_powder;
   }
-  if (f.market !== undefined) c.market = optionalName(f.market, "market");
+  if (f.market !== undefined) throw new ArgError(NO_POSITION_MARKET);
+  if (f.name !== undefined) c.name = text(f.name, "name", MAX_POSITION_NAME);
+  if (f.broker !== undefined) c.broker = optionalName(f.broker, "broker");
   if (Object.keys(c).length === 0) {
     throw new ArgError(
       `update changes at least one of ${UPDATE_FIELDS.join(", ")}`,
@@ -663,16 +667,7 @@ export const KIND_ARGS: Record<AddKind, readonly string[]> = {
     "note",
     "again",
   ],
-  cash: [
-    "name",
-    "amount",
-    "currency",
-    "date",
-    "broker",
-    "note",
-    "dry_powder",
-    "market",
-  ],
+  cash: ["name", "amount", "currency", "date", "broker", "note", "dry_powder"],
   fund: [
     "isin",
     "name",
@@ -813,6 +808,9 @@ export function parsePortfolio(input: unknown): PortfolioArgs {
       }
       for (const name of Object.keys(f)) {
         if (["action", "kind", "portfolio"].includes(name)) continue;
+        if (name === "market" && kind !== "fund" && kind !== "trade") {
+          throw new ArgError(NO_POSITION_MARKET);
+        }
         if (!KIND_ARGS[kind].includes(name)) {
           throw new ArgError(`${quoted(name)} is not an argument of ${kind}`);
         }
@@ -822,7 +820,11 @@ export function parsePortfolio(input: unknown): PortfolioArgs {
       return { action, kind, position: parsePosition(kind, f) };
     }
     case "update":
-      if (f.isin !== undefined || f.name !== undefined) {
+      // beside a position, name is its new name
+      if (
+        f.isin !== undefined ||
+        (f.name !== undefined && f.position === undefined)
+      ) {
         if (f.position !== undefined) {
           throw new ArgError(
             "update takes a position, or a fund's isin or name",
@@ -974,7 +976,7 @@ export function listAll(m: Markets) {
     time_zone: timeZone(m.db),
     portfolios: listPortfolios(m.db).map((p) => portfolioItem(m.db, p)),
     brokers: listBrokers(m.db).map(brokerItem),
-    // what cash or a fund can name as the market its money is in
+    // what a fund can name as the market its money is in
     markets: knownMarkets(m.db),
     funds: listFunds(m.db).map((f) => fundItem(m.db, f)),
   };
@@ -1030,7 +1032,6 @@ export function positionItem(db: Db, p: Position) {
     portfolio_id: p.portfolio,
     name: p.name,
     symbol: p.instrument,
-    market: p.market,
     currency: p.currency,
     amount: p.amount,
     cost: p.cost,
@@ -1659,8 +1660,6 @@ export async function addPosition(
   if (isFailure(p)) return p;
   const b = findBroker(m.db, args.broker);
   if (isFailure(b)) return b;
-  const market = findMarket(m.db, args.market ?? null);
-  if (isFailure(market)) return market;
   let instrument: Instrument | null = null;
   if (args.symbol !== null) {
     const i = await instrumentOf(m, args.symbol);
@@ -1688,7 +1687,6 @@ export async function addPosition(
     name: args.name,
     currency,
     instrument: instrument?.id ?? null,
-    market,
     amount: args.amount,
     cost: args.cost,
     coupon: args.coupon,
@@ -1705,16 +1703,7 @@ export async function addPosition(
     const old = samePosition(db, row);
     if (old !== null) setPositionRemoved(db, old.id, who.name, now);
     return {
-      // a market named before stays unless this add names another
-      id: insertPosition(
-        db,
-        {
-          ...row,
-          market: row.market ?? old?.market ?? null,
-          replaces: old?.id ?? null,
-        },
-        now,
-      ),
+      id: insertPosition(db, { ...row, replaces: old?.id ?? null }, now),
       replaced: old?.id ?? null,
     };
   });
@@ -1742,9 +1731,9 @@ export async function updatePosition(
   if (change.date !== undefined && change.date > latestDay(m.clock.now())) {
     return { error: "bad_arguments", message: "date is in the future" };
   }
-  const market =
-    change.market === undefined ? undefined : findMarket(m.db, change.market);
-  if (isFailure(market)) return market;
+  const broker =
+    change.broker === undefined ? undefined : findBroker(m.db, change.broker);
+  if (isFailure(broker)) return broker;
   const before = readPosition(m.db, id);
   let rate:
     | { from: string; to: string; rate: number; at: string | null }
@@ -1789,11 +1778,16 @@ export async function updatePosition(
     if (change.dryPowder === true && old.kind !== "cash") {
       return { error: "bad_arguments", message: "only cash is dry powder" };
     }
-    if (market !== undefined && old.kind === "bond") {
-      return {
-        error: "bad_arguments",
-        message: "a bond's market is its listing's",
-      };
+    const name = change.name ?? old.name;
+    const at = broker === undefined ? old.broker : (broker?.id ?? null);
+    // add takes cash of one name at one broker as one row
+    if (old.kind === "cash" && (name !== old.name || at !== old.broker)) {
+      const same = samePosition(db, { ...old, name, broker: at });
+      if (same !== null && same.id !== id) {
+        return conflict(
+          `position ${same.id} has this name and broker; update or remove it instead`,
+        );
+      }
     }
     if (
       old.kind === "cash" &&
@@ -1837,7 +1831,8 @@ export async function updatePosition(
         asOf,
         note: change.note === undefined ? old.note : change.note,
         dryPowder: change.dryPowder ?? old.dryPowder,
-        market: market === undefined ? old.market : market,
+        name,
+        broker: at,
         replaces: id,
         enteredBy: who.name,
       },
@@ -1857,7 +1852,7 @@ export function historyOf(m: Markets, id: number) {
   const p = readPosition(m.db, id);
   if (p === null) return notFound(`no position ${id}`);
   return {
-    history: positionHistory(m.db, p).map((r) => positionItem(m.db, r)),
+    history: chainOf(m.db, p.id).map((r) => positionItem(m.db, r)),
   };
 }
 

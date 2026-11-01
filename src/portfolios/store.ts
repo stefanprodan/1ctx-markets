@@ -49,8 +49,6 @@ export type Position = {
   currency: string;
   // a bond's listing, when the server prices one
   instrument: string | null;
-  // cash's market, as an instrument's: none unless named
-  market: string | null;
   // cash: the amount; bond: the face amount
   amount: number | null;
   cost: number | null;
@@ -292,7 +290,7 @@ export function setTradeRemoved(
 }
 
 const POSITION = `select id, portfolio,
-  kind, name, currency, instrument, market,
+  kind, name, currency, instrument,
   amount, cost, coupon, maturity, as_of as asOf, broker, note,
   dry_powder as dryPowder, replaces, entered_by as enteredBy, entered_at as enteredAt, removed_at as removedAt,
   removed_by as removedBy from positions`;
@@ -307,9 +305,9 @@ export function insertPosition(db: Db, p: NewPosition, now: number): number {
     db
       .query(
         `insert into positions (portfolio, kind, name, currency, instrument,
-           market, amount, cost, coupon, maturity, as_of, broker, note,
+           amount, cost, coupon, maturity, as_of, broker, note,
            dry_powder, replaces, entered_by, entered_at)
-         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         p.portfolio,
@@ -317,7 +315,6 @@ export function insertPosition(db: Db, p: NewPosition, now: number): number {
         p.name,
         p.currency,
         p.instrument,
-        p.market,
         p.amount,
         p.cost,
         p.coupon,
@@ -476,7 +473,7 @@ export function portfolioHolds(db: Db, id: string): boolean {
 
 export type Split = { date: string; ratio: number };
 
-// the markets a fund's or cash's money can be in, as instrument ids spell
+// the markets a fund's money can be in, as instrument ids spell
 // them: where a share, an ETF or a bond is listed, and crypto; currency
 // pairs (Yahoo's CCY), FRED series and index-only or futures markets
 // hold nothing a fund buys; a fund's own key is no market
@@ -600,8 +597,9 @@ export function recentSameTrade(
   );
 }
 
-// every row a position's updates chained, both ways, the latest first: a
-// bond's update may change its face or date, so its name never ties them
+// every row a position's updates chained, both ways, the latest first: an
+// update may rename it, move it to another broker or change a bond's face
+// or date, so no field of its own ties them
 export function chainOf(db: Db, id: number): Position[] {
   return db
     .query<RawPosition, [number]>(
@@ -619,22 +617,5 @@ export function chainOf(db: Db, id: number): Position[] {
        order by entered_at desc, id desc`,
     )
     .all(id)
-    .map(positionOf);
-}
-
-// every row of a position, the latest entry first: its updates, who made
-// them and when; cash by name at its broker, a bond by
-// its chain of updates
-export function positionHistory(
-  db: Db,
-  p: Pick<Position, "id" | "portfolio" | "kind" | "name" | "broker">,
-): Position[] {
-  if (p.kind === "bond") return chainOf(db, p.id);
-  return db
-    .query<RawPosition, [number, string, string, number | null]>(
-      `${POSITION} where portfolio = ? and kind = ? and name = ? collate nocase
-       and broker is ? order by entered_at desc, id desc`,
-    )
-    .all(p.portfolio, p.kind, p.name, p.broker)
     .map(positionOf);
 }

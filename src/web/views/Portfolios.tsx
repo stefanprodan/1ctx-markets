@@ -61,6 +61,7 @@ import {
 import {
   activityOf,
   barOf,
+  cashLine,
   columnsFor,
   currencies,
   type EditWhat,
@@ -73,6 +74,7 @@ import {
   holdingTicker,
   homeOf,
   isFundId,
+  isReserve,
   isReward,
   missingWords,
   mixed,
@@ -517,7 +519,7 @@ function ValueBand({ store, h }: { store: PortfolioStore; h: Holdings }) {
   const hero = heroOf(h);
   if (hero === null) return null;
   const t = hero.total;
-  const bar = barOf(t);
+  const bar = barOf(t, id === null);
   const moveList: Move[] = [
     ...(hero.today
       ? [
@@ -624,9 +626,32 @@ export function rowMenu(
   return rowActionsOf(x).map((a) => run[a]);
 }
 
+// cash's line: under a Dry powder or Reserve label without the word; on
+// All beside the gain column a phone has room for what it is only
+function rowName(x: Holding, all: boolean, labelled: boolean) {
+  if (x.kind !== "cash") return holdingName(x);
+  const c = cashLine(x);
+  if (all) {
+    return (
+      <>
+        {c.what}
+        <span class="hide-phone">
+          {c.broker && ` · ${c.broker}`}
+          {c.date && ` · ${c.date}`}
+        </span>
+      </>
+    );
+  }
+  return labelled
+    ? [c.broker, c.date].filter(Boolean).join(" · ") || c.what
+    : holdingName(x);
+}
+
 export function holdingColumns(
   cols: ReturnType<typeof columnsFor>,
   sparks: Record<string, Close[]>,
+  all = false,
+  labelled = false,
 ): Column<Holding>[] {
   return [
     {
@@ -645,10 +670,10 @@ export function holdingColumns(
             x.stale.length > 0 ? (
               <>
                 <span class="tag">{staleWords(x.stale.at(-1)!)}</span>{" "}
-                {holdingName(x)}
+                {rowName(x, all, labelled)}
               </>
             ) : (
-              holdingName(x)
+              rowName(x, all, labelled)
             )
           }
         />
@@ -761,10 +786,11 @@ function HoldingsCard({
   const [sort, setSort] = useState<SortKey>("value");
   const [dir, setDir] = useState<SortDir>("desc");
   const [shut, setShut] = useState<Set<string>>(new Set());
-  const rows = h.holdings.filter((x) => holdingMatches(x, q));
+  const listed = all ? h.holdings.filter((x) => !isReserve(x)) : h.holdings;
+  const rows = listed.filter((x) => holdingMatches(x, q));
   const groups = groupsOf(rows, all);
   const flat = groups.length <= 1;
-  const columns = holdingColumns(columnsFor(rows), sparks);
+  const columns = holdingColumns(columnsFor(rows), sparks, all, !flat);
   const tableGroups: TableGroup<Holding>[] = groups.map((g) => {
     const closed = shut.has(g.key);
     return {
@@ -828,7 +854,7 @@ function HoldingsCard({
         menu={(x) => rowMenu(x, onTrade, (w) => onEdit(x, w))}
         menuLabel={(x) => `Actions for ${holdingTicker(x)}`}
         empty={
-          h.holdings.length === 0
+          listed.length === 0
             ? "Nothing held yet."
             : `No holding matches “${q}”.`
         }

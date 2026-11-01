@@ -39,6 +39,7 @@ import {
 import {
   activityOf,
   barOf,
+  cashEdits,
   columnsFor,
   currencies,
   dryPowderFor,
@@ -108,10 +109,10 @@ const total = (currency: string, more: object = {}) => ({
   pl_percent: 25,
   day_change: 5,
   invested: 700,
-  cash: 0,
+  reserve: 0,
   dry_powder: 300,
   invested_weight: 70,
-  cash_weight: 0,
+  reserve_weight: 0,
   dry_powder_weight: 30,
   ...more,
 });
@@ -992,8 +993,8 @@ describe("the owner's time zone", () => {
   });
 });
 
-describe("a position's market", () => {
-  test("cash and fund forms pick one from the app's own menu", async () => {
+describe("a fund's market", () => {
+  test("the fund form picks one from the app's own menu; cash and bonds have none", async () => {
     const f = fake({
       "GET /api/v1/portfolios": { ...OVERVIEW, markets: ["BVB", "US"] },
       "GET /api/v1/holdings": HOLDINGS,
@@ -1006,25 +1007,201 @@ describe("a position's market", () => {
       () => {},
     );
     await s.portfolios.load();
-    for (const kind of ["cash", "fund"] as const) {
+    const fund = render(
+      <AddForm store={s.portfolios} kind="fund" onDone={() => {}} />,
+    );
+    expect(fund).toContain('aria-label="Market: None"');
+    expect(fund).not.toContain("<select");
+    for (const kind of ["cash", "bond"] as const) {
       const html = render(
         <AddForm store={s.portfolios} kind={kind} onDone={() => {}} />,
       );
-      expect(html).toContain('aria-label="Market: None"');
-      expect(html).not.toContain("<select");
+      expect(html).not.toContain("Market:");
     }
-    const bond = render(
-      <AddForm store={s.portfolios} kind="bond" onDone={() => {}} />,
-    );
-    expect(bond).not.toContain("Market:");
     const edit = render(
       <PositionEdit
         store={s.portfolios}
-        h={{ ...HOLDINGS.holdings[1]!, market: "BVB" }}
+        h={HOLDINGS.holdings[1]!}
         onDone={() => {}}
       />,
     );
-    expect(edit).toContain('aria-label="Market: BVB"');
+    expect(edit).not.toContain("Market:");
+  });
+});
+
+describe("cash: dry powder, reserve, broker and note", () => {
+  const cashRow = (more: Partial<Holding>): Holding => ({
+    ...HOLDINGS.holdings[1]!,
+    parts: [
+      {
+        portfolio: "Shares",
+        broker: "North",
+        quantity: null,
+        average_cost: null,
+        cost: null,
+        value: 300,
+        position: 5,
+        as_of: "2026-10-01",
+        amount: 300,
+      },
+    ],
+    ...more,
+  });
+  const dry = cashRow({});
+  const reserve = cashRow({
+    position: 6,
+    name: "Savings",
+    dry_powder: false,
+    value: 900,
+    note: "Made up deposit at 3%",
+  });
+  const allView: Holdings = {
+    ...HOLDINGS,
+    totals: [total("EUR", { reserve: 900, net_worth: 1900 })],
+    holdings: [HOLDINGS.holdings[0]!, dry, reserve],
+  };
+
+  test("All lists no reserve, its bar reads Invested and Dry powder, and no net worth shows", async () => {
+    const { s } = await loaded(allView);
+    const html = render(<PortfoliosBody store={s.portfolios} />);
+    expect(html).not.toContain("Savings");
+    expect(html).toContain("Kept for buying");
+    expect(html).toContain('aria-label="Invested 70%, Dry powder 30%"');
+    expect(html).not.toContain("1,900");
+    expect(html.toLowerCase()).not.toContain("net worth");
+    // on a phone All's cash line is what it is, nothing more
+    expect(html).toContain(
+      'Dry powder<span class="hide-phone"> · North · 1 Oct</span>',
+    );
+  });
+
+  test("a portfolio's tab groups dry powder then reserve, their lines without the word", async () => {
+    const f = fake({
+      "GET /api/v1/portfolios/1/holdings": {
+        ...HOLDINGS,
+        totals: [
+          total("EUR", {
+            value: 1200,
+            invested: 0,
+            dry_powder: 300,
+            reserve: 900,
+          }),
+        ],
+        holdings: [reserve, dry],
+      },
+      "GET /api/v1/portfolios": OVERVIEW,
+      "GET /api/v1/trades": { trades: [] },
+    });
+    const t = store(
+      f.fetch,
+      () => NOW,
+      () => "/portfolios/1",
+      () => {},
+    );
+    await t.portfolios.open(viewOf("1", ""));
+    const html = render(<PortfoliosBody store={t.portfolios} />);
+    expect(html).toContain('aria-label="Dry powder 25%, Reserve 75%"');
+    const dryAt = html.indexOf(">Dry powder</");
+    const reserveAt = html.indexOf(">Reserve</");
+    expect(dryAt).toBeGreaterThan(-1);
+    expect(reserveAt).toBeGreaterThan(dryAt);
+    expect(html).toContain("North · 1 Oct");
+    expect(html).not.toContain("Reserve · North");
+    expect(html).toContain("Savings");
+    expect(groupsOf([reserve, dry], false).map((g) => g.key)).toEqual([
+      "Dry powder",
+      "Reserve",
+    ]);
+  });
+
+  test("one kind of cash has no label and keeps the word", async () => {
+    const f = fake({
+      "GET /api/v1/portfolios/1/holdings": {
+        ...HOLDINGS,
+        totals: [total("EUR", { value: 900, invested: 0, reserve: 900 })],
+        holdings: [reserve],
+      },
+      "GET /api/v1/portfolios": OVERVIEW,
+      "GET /api/v1/trades": { trades: [] },
+    });
+    const t = store(
+      f.fetch,
+      () => NOW,
+      () => "/portfolios/1",
+      () => {},
+    );
+    await t.portfolios.open(viewOf("1", ""));
+    const html = render(<PortfoliosBody store={t.portfolios} />);
+    expect(html).toContain("Reserve · North · 1 Oct");
+  });
+
+  test("a cash row names its broker and keeps its menu", () => {
+    expect(holdingName(reserve, NOW)).toBe("Reserve · North · 1 Oct");
+    expect(
+      rowMenu(
+        reserve,
+        () => {},
+        () => {},
+      ).map((x) => x.label),
+    ).toEqual(["Edit"]);
+  });
+
+  test("Edit cash has its name, broker with New broker, note, and no market", async () => {
+    const { s } = await loaded();
+    const html = render(
+      <PositionEdit store={s.portfolios} h={reserve} onDone={() => {}} />,
+    );
+    expect(html).toContain('value="Savings"');
+    expect(html).toContain('aria-label="Broker: North"');
+    expect(html).toContain('value="Made up deposit at 3%"');
+    expect(html).not.toContain("Market:");
+    expect(html).not.toContain("<select");
+    const head = render(
+      <EditSheet
+        store={s.portfolios}
+        h={reserve}
+        what="edit"
+        onDone={() => {}}
+      />,
+    );
+    expect(head).toContain("Reserve · North · 1 Oct");
+  });
+
+  test("an edit sends only what changed; no broker and an emptied note as null", () => {
+    expect(
+      cashEdits(reserve, {
+        name: "Savings",
+        broker: "North",
+        note: "Made up deposit at 3%",
+      }),
+    ).toEqual({});
+    expect(
+      cashEdits(reserve, { name: " Rainy day ", broker: "West", note: "" }),
+    ).toEqual({ name: "Rainy day", broker: "West", note: null });
+    expect(
+      cashEdits(dry, { name: "Kept for buying", broker: "", note: "Kept" }),
+    ).toEqual({ broker: null, note: "Kept" });
+  });
+
+  test("Add cash sends its note", async () => {
+    const { s } = await loaded();
+    const html = render(
+      <AddForm store={s.portfolios} kind="cash" onDone={() => {}} />,
+    );
+    expect(html).toContain(">Note</label>");
+  });
+
+  test("the search finds cash by its note", () => {
+    expect(holdingMatches(reserve, "deposit")).toBe(true);
+    expect(holdingMatches(dry, "deposit")).toBe(false);
+  });
+
+  test("a clash with another cash row reads plainly", () => {
+    expect(
+      plainError(
+        "position 12 has this name and broker; update or remove it instead",
+      ),
+    ).toBe("Other cash has this name and broker.");
   });
 });
 
@@ -1313,7 +1490,7 @@ describe("the page's model", () => {
     expect(groupsOf(rows, false).map((g) => [g.key, g.value])).toEqual([
       ["ETFs", 300],
       ["Stocks", 100],
-      ["Cash", 50],
+      ["Dry powder", 50],
     ]);
     expect(groupsOf(rows, true).map((g) => [g.key, g.rows.length])).toEqual([
       ["Coins", 1],
@@ -1365,11 +1542,20 @@ describe("the page's model", () => {
     ]);
     expect(barOf(total("EUR", { dry_powder: 0 }))).toBeNull();
     expect(
-      barOf(total("EUR", { invested: 0, dry_powder: 300, cash: 100 }))!.map(
+      barOf(total("EUR", { invested: 0, dry_powder: 300, reserve: 100 }))!.map(
         (x) => x.label,
       ),
     ).toEqual(["Dry powder", "Reserve"]);
-    expect(barOf(total("EUR", { invested: 0, cash: 0 }))).toBeNull();
+    expect(barOf(total("EUR", { invested: 0, reserve: 0 }))).toBeNull();
+  });
+
+  test("All's bar reads invested against dry powder, its value's two parts", () => {
+    const all = total("EUR", { value: 1000, reserve: 5000, net_worth: 6000 });
+    expect(barOf(all, true)!.map((x) => [x.label, x.value, x.pct])).toEqual([
+      ["Invested", 700, 70],
+      ["Dry powder", 300, 30],
+    ]);
+    expect(barOf(total("EUR", { invested: 0, reserve: 100 }), true)).toBeNull();
   });
 
   test("fills of one order fold into one row; months read newest first", () => {

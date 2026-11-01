@@ -378,6 +378,34 @@ describe("migrations", () => {
     db.close();
   });
 
+  test("a position's market is cleared, a fund's kept", () => {
+    const db = new Database(":memory:", { strict: true });
+    const clock = fakeClock();
+    const at = MIGRATIONS.findIndex((m) => m.id === "0031-cash-no-market");
+    migrate(db, clock, MIGRATIONS.slice(0, at));
+    db.exec(
+      `insert into portfolios (name, created_at) values ('Made Up', 0);
+       insert into positions (portfolio, kind, name, currency, amount, as_of,
+         market, entered_by, entered_at)
+       values (1, 'cash', 'Made Up Cash', 'EUR', 10, '2026-01-02', 'US',
+         'web', 0);
+       insert into instruments (id, market, symbol, source, source_symbol,
+         exchange, type, currency, zone, added_at, updated_at)
+       values ('fund:XX0000000000', 'fund', 'XX0000000000', 'owner',
+         'XX0000000000', 'fund', 'FUND', 'EUR', 'UTC', 0, 0);
+       insert into funds (instrument, market, entered_by, entered_at)
+       values ('fund:XX0000000000', 'US', 'web', 0)`,
+    );
+    migrate(db, clock, MIGRATIONS.slice(0, at + 1));
+    expect(db.query("select market from positions").all()).toEqual([
+      { market: null },
+    ]);
+    expect(db.query("select market from funds").all()).toEqual([
+      { market: "US" },
+    ]);
+    db.close();
+  });
+
   test("earnings rows of a quarter ending after their fetch day are deleted", () => {
     const db = new Database(":memory:", { strict: true });
     const clock = fakeClock();
