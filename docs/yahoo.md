@@ -111,15 +111,20 @@ finality in `docs/calendars.md`; tables, the writer and staleness in
   `holdingPercent`), `sectorWeightings`, `bondRatings` and the six
   `*Position` fields, and `price` `symbol`.** Weights are fractions
   (0.0837 is 8.37 percent). An answer naming another symbol is
-  `malformed answer`; a `topHoldings` that is not an object too.
+  `malformed answer`; a `topHoldings` that is not an object too, and a
+  `holdings`, `sectorWeightings` or `bondRatings` present but not a
+  list, never read as an empty one. An empty list is an answer.
   `equityHoldings`, `bondHoldings` and `fundProfile` are never read:
   their ratios are wrong (a P/E of 0.09) and duration and maturity
   were never checked against an issuer.
 - **No holdings is an answer, not a failure**: with `price` asked
   Yahoo answers a share or a fund it describes no holdings of with
   `price` alone (a 404 only when `topHoldings` is asked alone), and
-  either is an ok run that deletes the stored rows. Any other failure
-  keeps them.
+  either is an ok run that deletes the stored rows. But a fund with
+  rows stored whose answer lacks `topHoldings` is a failed run
+  (`malformed answer`) that keeps them, stale and asked again after
+  `RETRY_MS`: Yahoo dropping the module never wipes a good list as a
+  fresh none. Any other failure keeps them too.
 - **What is kept** (`parseTopHoldings()`): the first ten holdings in
   Yahoo's order, each sector and rating above 0, each key once, and
   `us_government` on its own, since it overlaps the ratings that sum

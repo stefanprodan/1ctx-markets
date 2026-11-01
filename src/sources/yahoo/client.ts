@@ -618,16 +618,26 @@ function holdingSymbol(v: unknown): string | null {
   return s === null || BARE_CODE.test(s) || !YAHOO_SYMBOL.test(s) ? null : s;
 }
 
+// missing is none; anything else that is not a list is no answer, so it
+// never replaces stored rows as an empty one
+function rowsOf(v: unknown, what: string): unknown[] {
+  if (v === undefined || v === null) return [];
+  if (!Array.isArray(v)) throw malformed(`${what} is not a list`);
+  return v;
+}
+
 // [{key: {raw}}], each key once, weights above 0
-function weights(v: unknown): {
+function weights(
+  v: unknown,
+  what: string,
+): {
   kept: FundWeight[];
   government: number | null;
 } {
   const kept: FundWeight[] = [];
   let government: number | null = null;
-  if (!Array.isArray(v)) return { kept, government };
   const seen = new Set<string>();
-  for (const entry of v) {
+  for (const entry of rowsOf(v, what)) {
     if (!isObj(entry)) continue;
     for (const [key, value] of Object.entries(entry)) {
       const weight = weightOf(value);
@@ -656,7 +666,7 @@ export function parseTopHoldings(
   }
   const t = obj(result.topHoldings, "top holdings");
   const holdings: FundHolding[] = [];
-  for (const h of Array.isArray(t.holdings) ? t.holdings : []) {
+  for (const h of rowsOf(t.holdings, "holdings")) {
     if (holdings.length === TOP_HOLDINGS) break;
     if (!isObj(h)) continue;
     const weight = weightOf(h.holdingPercent);
@@ -667,8 +677,8 @@ export function parseTopHoldings(
     if (weight === null || name === null) continue;
     holdings.push({ symbol: own, name, weight });
   }
-  const sectors = weights(t.sectorWeightings).kept;
-  const ratings = weights(t.bondRatings);
+  const sectors = weights(t.sectorWeightings, "sectorWeightings").kept;
+  const ratings = weights(t.bondRatings, "bondRatings");
   return {
     symbol,
     fund: {

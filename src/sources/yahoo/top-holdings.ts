@@ -175,6 +175,13 @@ const clear = (db: Db, instrument: string) => {
   }
 };
 
+const hasRows = (db: Db, instrument: string): boolean =>
+  db
+    .query<{ n: number }, [string]>(
+      "select 1 as n from fund_top_holdings where instrument = ?",
+    )
+    .get(instrument) !== null;
+
 // one write replaces the three; none from Yahoo deletes them
 function store(db: Db, instrument: string, answer: TopHoldings): number {
   clear(db, instrument);
@@ -251,13 +258,17 @@ export async function refreshTopHoldings(
       if (!live()) throw new DeadlinePassed();
       const startedAt = ctx.clock.now();
       let outcome: { answer: TopHoldings } | { error: unknown };
+      // a 404 says none outright; an answer without the module may be
+      // Yahoo dropping it, which must never wipe a stored list
+      let notFound = false;
       try {
         outcome = {
           answer: await client.topHoldings(instrument.sourceSymbol),
         };
       } catch (error) {
         if (aborts(error)) throw error;
-        outcome = none(error)
+        notFound = none(error);
+        outcome = notFound
           ? {
               answer: {
                 symbol: instrument.sourceSymbol,
@@ -268,7 +279,9 @@ export async function refreshTopHoldings(
           : { error };
       }
       return ctx.writer.write((db): TopHoldingsResult => {
-        if (!live()) throw new DeadlinePassed();
+        // a late failure still reached Yahoo, so its run holds the retry
+        // wait; a late answer stores nothing
+        if (!live() && !("error" in outcome)) throw new DeadlinePassed();
         checkStored(db, instrument.id);
         const now = ctx.clock.now();
         const id = startRun(
@@ -278,6 +291,16 @@ export async function refreshTopHoldings(
           startedAt,
           instrument.id,
         );
+        if (
+          !("error" in outcome) &&
+          outcome.answer.fund === null &&
+          !notFound &&
+          hasRows(db, instrument.id)
+        ) {
+          outcome = {
+            error: new SourceError("malformed answer", "no top holdings"),
+          };
+        }
         if ("error" in outcome) {
           failRun(db, id, now, outcome.error);
           return { status: "failed", error: outcome.error };

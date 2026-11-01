@@ -32,6 +32,7 @@ import {
   readResearch,
   reportedEvents,
   reportOf,
+  STALE_RESEARCH,
   sectionState,
 } from "../sources/finnhub/read.ts";
 import {
@@ -430,6 +431,13 @@ export function topHoldingsSummary(
   const state = topHoldingsState(m.db, instrument.id, m.clock.now());
   const row = readTopHoldings(m.db, instrument.id);
   const failure = v?.kind === "failed" ? v.error : {};
+  // a fetch the deadline cut may still land: the sync is pending
+  const stale =
+    v?.kind === "failed" &&
+    v.error.error === "timeout" &&
+    !state.stale.includes(STALE_RESEARCH.pending)
+      ? [...state.stale, STALE_RESEARCH.pending]
+      : state.stale;
   // an ok run that kept nothing: Yahoo has none for this fund
   if (row === null && topHoldingsFetched(m.db, instrument.id)) {
     return {
@@ -451,7 +459,7 @@ export function topHoldingsSummary(
     source: "yahoo",
     ...failure,
     fetched_at: iso(row?.fetchedAt ?? state.fetchedAt),
-    stale: state.stale,
+    stale,
     top,
     top_weight_percent:
       row === null || row.holdings.length === 0

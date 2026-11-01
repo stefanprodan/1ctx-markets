@@ -385,12 +385,17 @@ route's transport in `docs/api.md`; rules that wait on events in
     resolved or fetched, which would be ten calls per fund.
   - **Yahoo having none is an answer**: an ok run that kept nothing,
     or a fund another source prices, answers `NO_TOP_HOLDINGS` ("Yahoo
-    has no top holdings for this fund."), asked again the next day.
+    has no top holdings for this fund."), asked again the next day. A
+    fund with rows stored keeps them when an answer lacks the module
+    (`docs/yahoo.md`).
   - **Fetched inline, in `research` and the instrument route, only
     for a fund with no ok run and no failed one within `RETRY_MS`**
     (`inlineDue()`), under the call's deadline; past it the stored
-    answer stands with its `stale`. An inline failure is carried as
-    `error` and `message`, and a failure keeps the stored rows.
+    answer stands, its `stale` adding `research sync pending`. A fetch
+    that reached Yahoo and fails after the deadline still records its
+    failed run, with no data, so the gate holds for a slow failure; a
+    late answer stores nothing. An inline failure is carried as `error`
+    and `message`, and a failure keeps the stored rows.
   - **Stale reasons are research's** (`topHoldingsState`,
     `STALE_RESEARCH`), on the 23:00 UTC schedule; `fetched_at` is the
     stored row's, so it outlives the runs' pruning.

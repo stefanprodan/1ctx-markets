@@ -30,12 +30,13 @@ import {
   topHoldingsJobs,
 } from "../src/sources/yahoo/top-holdings.ts";
 import { type Db, open } from "../src/storage/db/index.ts";
+import { lastStarted } from "../src/storage/runs.ts";
 import { writer } from "../src/storage/writer.ts";
 import { parseResearch, researchAnswer } from "../src/tools/research.ts";
 import { api } from "./helpers/api.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { drive, pacedOf } from "./helpers/drive.ts";
-import { NOW, sources } from "./helpers/sources.ts";
+import { gate, NOW, sources } from "./helpers/sources.ts";
 import {
   CRUMB,
   clone,
@@ -194,6 +195,18 @@ describe("the top holdings read", () => {
     const keys = answer.fund!.sectors.map((s) => s.key);
     expect(keys).not.toContain("real estate");
     expect(keys).not.toContain("Energy");
+  });
+
+  test("a list that is not a list is malformed, an empty one an answer", async () => {
+    for (const field of ["holdings", "sectorWeightings", "bondRatings"]) {
+      const fx = clone(await recorded("topholdings-qqq"));
+      fx.body.quoteSummary.result[0].topHoldings[field] = "not an array";
+      expect(() => parseTopHoldings(fx.body, NOW)).toThrow(field);
+    }
+    const empty = await edited("topholdings-qqq", (t) => {
+      t.holdings = [];
+    });
+    expect(empty.fund!.holdings).toEqual([]);
   });
 
   test("an answer without a top holdings object is malformed", async () => {
@@ -410,6 +423,30 @@ describe("the top holdings job", () => {
     });
   });
 
+  test("a fund with rows stored keeps them when Yahoo drops the module", async () => {
+    let dropped = false;
+    const t = setup(async (url) =>
+      dropped && summarySymbol(url) === "QQQ"
+        ? recorded("topholdings-tvbetetf-ro").then((fx) => {
+            const out = clone(fx);
+            out.body.quoteSummary.result[0].price.symbol = "QQQ";
+            return out;
+          })
+        : undefined,
+    );
+    await t.jobs.tick();
+    await t.clock.advance(DAY_MS);
+    dropped = true;
+    expect((await t.jobs.tick()).failed).toEqual([
+      { instrument: "US:QQQ", error: "malformed answer" },
+    ]);
+    expect(readTopHoldings(t.db, "US:QQQ")?.holdings).toHaveLength(10);
+    const qqq = readInstrumentOf(t.db, "US:QQQ");
+    expect(topHoldingsSummary(t.m, qqq, undefined)).toMatchObject({
+      stale: [STALE_RESEARCH.failed],
+    });
+  });
+
   test("a failure keeps the rows and their time, waits an hour and logs no session", async () => {
     let down = false;
     const t = setup((url) =>
@@ -615,6 +652,30 @@ describe("the top holdings answer", () => {
     await t.clock.advance(RETRY_MS);
     expect((await t.tool("QQQ", "top_holdings")).top).toHaveLength(10);
     expect(t.holdings()).toEqual(["QQQ", "QQQ"]);
+  });
+
+  test("a fetch past the deadline says it is pending, and its late failure gates the next", async () => {
+    const held = gate();
+    const t = await setup({
+      hold: async (url) => {
+        if (!holdingsAsked(url)) return undefined;
+        await held.hold();
+        return failing;
+      },
+    });
+    const call = t.ask({ symbol: "QQQ", section: "top_holdings" });
+    await held.arrived;
+    await t.clock.advance(t.m.callMs);
+    const late = body(await call);
+    expect(late).toMatchObject({ error: "timeout", top: [] });
+    expect(late.stale).toEqual([STALE_RESEARCH.none, STALE_RESEARCH.pending]);
+    held.release();
+    await t.m.inflight.get("top_holdings:US:QQQ")?.promise.catch(() => {});
+    expect(lastStarted(t.db, "yahoo", "top_holdings", "US:QQQ")?.status).toBe(
+      "failed",
+    );
+    await t.tool("QQQ", "top_holdings");
+    expect(t.holdings()).toEqual(["QQQ"]);
   });
 
   test("the instrument route fetches a fund's top holdings beside its quote", async () => {
