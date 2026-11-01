@@ -5,6 +5,8 @@ import { useSignal } from "@preact/signals";
 import { says } from "../data/api.ts";
 import type { Store } from "../data/store.ts";
 import { Mark, Wordmark } from "../lib/icons.tsx";
+import { Card } from "../ui/Card.tsx";
+import { Notice } from "../ui/Notice.tsx";
 import "./signin.css";
 
 export function SignIn({ store }: { store: Store }) {
@@ -36,24 +38,26 @@ export function SignIn({ store }: { store: Store }) {
           <p class="signin-line">Markets</p>
         </div>
       </div>
-      <form class="signin-form card" onSubmit={submit}>
-        <label class="field">
-          <span class="label">Admin key</span>
-          <input
-            name="key"
-            type="password"
-            autocomplete="current-password"
-            value={key.value}
-            onInput={(e) => {
-              key.value = (e.currentTarget as HTMLInputElement).value;
-            }}
-          />
-        </label>
-        {error.value && <p class="signin-error error">{error.value}</p>}
-        <button type="submit" class="btn btn-primary" disabled={busy.value}>
-          Sign in
-        </button>
-      </form>
+      <Card class="signin-card">
+        <form class="signin-form" onSubmit={submit}>
+          <label class="field">
+            <span class="label">Admin key</span>
+            <input
+              name="key"
+              type="password"
+              autocomplete="current-password"
+              value={key.value}
+              onInput={(e) => {
+                key.value = (e.currentTarget as HTMLInputElement).value;
+              }}
+            />
+          </label>
+          {error.value && <Notice error>{error.value}</Notice>}
+          <button type="submit" class="btn btn-primary" disabled={busy.value}>
+            Sign in
+          </button>
+        </form>
+      </Card>
     </main>
   );
 }

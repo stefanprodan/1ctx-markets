@@ -35,6 +35,9 @@
     --running: #60a5fa;
     --done: #4ade80;
     --failed: #f87171;
+    /* a market move, apart from a job's done and failed */
+    --up: #4ade80;
+    --down: #f87171;
     --failed-line: rgba(248, 113, 113, 0.45);
     --failed-wash: rgba(248, 113, 113, 0.08);
     /* the chart's two averages, checked for colour blindness on --card */
@@ -48,6 +51,14 @@
     --shadow-pop: 0 6px 20px rgba(0, 0, 0, 0.45);
     /* the slash between a crumb's parts */
     --separator: #35363a;
+    /* the page dimmed behind a drawer */
+    --backdrop: rgba(0, 0, 0, 0.35);
+    /* the value band's split: money invested in a slate blue that never
+       reads as up, down or a link; cash in a gold deeper than the link
+       yellow; cash kept in reserve a paler gold */
+    --invested: oklch(0.7 0.072 255);
+    --cash: oklch(0.72 0.11 78);
+    --reserve: color-mix(in oklch, var(--cash) 45%, var(--inset));
 
     --sans: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
     --mono: "JetBrains Mono", "SF Mono", Menlo, monospace;
@@ -64,10 +75,30 @@
     --text-touch: 16px;
     /* a stat tile's figure, the one size above the title */
     --text-figure: 28px;
+    /* the hero's figure, smaller on a phone */
+    --text-display: 34px;
+    --text-display-phone: 28px;
+    /* the currency beside the hero's figure */
+    --text-display-unit: 16px;
 
     --radius: 6px;
     --radius-cell: 2px;
     --radius-card: 10px;
+    --radius-sm: 4px;
+    --radius-xs: 2px;
+    --radius-pill: 999px;
+
+    /* the layers, lowest first: a row's control over its link, a list's
+       sticky label, the page's sticky head, the shell's bars, a menu, a
+       drawer, a phone's full-screen sheet */
+    --z-raise: 1;
+    --z-label: 2;
+    --z-head: 3;
+    --z-shell: 4;
+    --z-rail: 5;
+    --z-menu: 6;
+    --z-drawer: 10;
+    --z-sheet: 50;
 
     --space-1: 4px;
     --space-2: 8px;
@@ -98,6 +129,8 @@
     --running: #1d5fd6;
     --done: #1b7a3d;
     --failed: #c62828;
+    --up: #1b7a3d;
+    --down: #c62828;
     --failed-line: rgba(198, 40, 40, 0.4);
     --failed-wash: rgba(198, 40, 40, 0.06);
     --chart-sma50: #1d5fd6;
@@ -106,5 +139,8 @@
     --on-brand: #fbfaf7;
     --shadow-pop: 0 6px 20px rgba(19, 19, 20, 0.12);
     --separator: #aeaaa0;
+    --backdrop: rgba(19, 19, 20, 0.3);
+    --invested: oklch(0.48 0.08 255);
+    --cash: oklch(0.64 0.118 75);
   }
 }

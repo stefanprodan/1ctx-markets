@@ -1,0 +1,188 @@
+@layer tokens, base, owners;
+
+@layer owners {
+  /* a real table for its semantics, laid out as one grid per row */
+  .table {
+    --table-more: 32px;
+    display: block;
+    width: auto;
+    border-collapse: collapse;
+  }
+  .table thead,
+  .table tbody,
+  .table-empty,
+  .table-empty > td {
+    display: block;
+  }
+  /* a label's box sits in its group's, so a sticky one stays in sight
+     while the group's rows scroll */
+  .table-label,
+  .table-label > td {
+    display: contents;
+  }
+  .table th {
+    font-weight: 400;
+    text-align: left;
+  }
+  .table td,
+  .table th {
+    padding: 0;
+  }
+  /* named for a screen reader, out of sight */
+  .table-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  /* in a padded card the rows reach nearer its edge, their text in line
+     with the head's */
+  .card-box:not(.card-flush) > .table {
+    margin: 0 calc(-1 * var(--space-3));
+  }
+  .table-row {
+    position: relative;
+    display: grid;
+    grid-template-columns: var(--table-cols);
+    align-items: center;
+    gap: var(--space-3);
+    width: 100%;
+    min-height: 58px;
+    padding: 0 var(--space-3);
+    border-bottom: 1px solid var(--line);
+    color: var(--fg);
+    font-size: var(--text-ui);
+  }
+  .table-dense .table-row {
+    min-height: 52px;
+    padding-block: 6px;
+  }
+  .table-group:last-of-type > .table-row:last-child {
+    border-bottom: 0;
+  }
+  .table .table-head {
+    min-height: 32px;
+    padding-block: 0;
+    font-size: var(--text-small);
+    color: var(--faint);
+  }
+  .table-dense .table-head {
+    min-height: 36px;
+  }
+  /* a flush card's rows line up with its head's title */
+  .card-flush > .table .table-row,
+  .card-flush > .table .table-empty > td {
+    padding-inline: var(--space-5);
+  }
+  .card-flush > .table .group-label,
+  .card-flush > .table .period-label {
+    padding-inline: var(--space-5);
+  }
+  .table-cell {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .table-end {
+    align-items: flex-end;
+    text-align: right;
+  }
+  .table-head .table-cell {
+    flex-direction: row;
+  }
+  .table-head .table-end {
+    justify-content: flex-end;
+  }
+  .table-sort {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--faint);
+    font-size: var(--text-small);
+    cursor: pointer;
+  }
+  .table-sort:hover,
+  .table-sort-on {
+    color: var(--fg);
+  }
+  /* a row that opens something says so by hover and pointer, no chevron */
+  .table-row-open {
+    cursor: pointer;
+  }
+  .table-row-open:hover {
+    background: var(--hover);
+  }
+  .table-open {
+    position: absolute;
+    inset: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+  }
+  .table-open:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: -2px;
+    border-radius: var(--radius);
+  }
+  /* a control in a cell sits over the row's link: the menu's cell, or
+     any cell or element given .table-raise */
+  .table-more,
+  .table-raise {
+    position: relative;
+    z-index: var(--z-raise);
+  }
+  .table-more {
+    align-items: center;
+  }
+  .table-more:has([aria-expanded="true"]) {
+    z-index: var(--z-menu);
+  }
+  .table-empty > td {
+    padding: 0 var(--space-3);
+  }
+
+  /* a finger needs 44px for the menu */
+  @media (pointer: coarse) {
+    .table {
+      --table-more: 44px;
+    }
+  }
+  @media (max-width: 1099px) {
+    .table-row {
+      grid-template-columns: var(--table-cols-tablet);
+    }
+    .table .table-hide-tablet {
+      display: none;
+    }
+  }
+  @media (max-width: 719px) {
+    .card-box:not(.card-flush) > .table {
+      margin: 0 calc(-1 * var(--space-2));
+    }
+    .table-row {
+      grid-template-columns: var(--table-cols-phone);
+      padding: 0 var(--space-2);
+    }
+    .table-dense .table-row {
+      padding-block: 6px;
+    }
+    .table .table-hide-phone {
+      display: none;
+    }
+    .table-empty > td {
+      padding: 0 var(--space-2);
+    }
+    .card-flush > .table .table-row,
+    .card-flush > .table .table-empty > td,
+    .card-flush > .table .group-label,
+    .card-flush > .table .period-label {
+      padding-inline: var(--space-4);
+    }
+  }
+}

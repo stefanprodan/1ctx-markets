@@ -139,7 +139,9 @@ signed in with the admin key alone.
   chip and sparkle with a rising price line in place of the 1**
   (`Mark` in `lib/icons.tsx`, `favicon.svg` and the manifest's icons).
   The rail is 1ctx's logo with **Markets** beside it, the pages,
-  **Recent** (the last five instruments opened, symbol and name), and
+  **Recent** (the last five instruments opened, each the ticker and
+  its name on one line as `SymbolName` draws it, a coin without its
+  quote currency), and
   the operator's menu (dark theme, sign out) at the foot; it folds to a
   strip on a wide window, which shows the mark, and is a drawer on a
   phone. Server status's icon, in the rail and the strip, turns red and
@@ -153,6 +155,109 @@ signed in with the admin key alone.
   so a wrong key reads "Wrong admin key.": a problem's `detail`, the
   sign-in's `message`. The store branches on the error's `code`, never
   its words.
+
+### Design
+
+Every page is built from the shared parts in `src/web/ui/`, each a
+component with its own CSS; a page's CSS holds only its layout. The
+Portfolios page is the reference for each part.
+
+- **Every value is a token** in `style/tokens.css`, with a light and a
+  dark value: colours, sizes, radii, spaces, shadows and layers
+  (`--z-*`). No hex, rgba, px font size, radius or z-index elsewhere,
+  but a 1px line.
+- **Colour has one meaning each:** `--up`/`--down` for a market move,
+  `--done`/`--failed` for a job's state, the brand yellow for links,
+  all else grey.
+- **Two widths:** tablet `max-width: 1099px`, phone `max-width:
+  719px`, plus `pointer: coarse` for 44px targets and reduced motion.
+  `.hide-tablet`, `.hide-phone`, `.show-tablet`, `.show-phone` in
+  `base.css` hide an element at or above them; a shown one keeps the
+  display its owner gives it.
+- **Page width 1200px, one head on every page** (`Page`): the title
+  and its meta, the symbol search, then the page's actions, the ⋯ menu
+  last. The head's buttons share one style, defined once in
+  `ui/page.css`: an icon, an icon with words, the ⋯; 32px, 44px to a
+  finger. The search shows by itself; `search={false}` leaves it out
+  (a page mid-edit). On a phone it folds to an icon, the meta gives way
+  first, and the head never wraps or scrolls sideways.
+- **A card is only around a list, a table or a form.** Its title is
+  the sans `Card` title, never a mono uppercase word; the mono label is
+  for a group inside a list.
+- **A list's search sits in its card's head** beside the title, folding
+  to an icon on a phone; never a band across the card.
+- **A row that opens something shows it by hover and pointer**, no ›
+  chevron. Nothing opens as a strip under its row: forms and details
+  open in the `Drawer`.
+- **One large figure per hero**; more lines under it are in the text's
+  size.
+- **Every number is mono tabular** (`Num`), a change coloured
+  (`Change`); a coin is named without its quote currency.
+
+The parts:
+
+- `Card.tsx`: `Card` (title, faint count, actions on the right, `flush`
+  for rows that pad themselves), `CardHead` and `SectionHead` (the same
+  head without a card, over a section of tiles), `GroupLabel` (a group
+  inside a list: mono label, fold caret, count, a trailing total),
+  `PeriodLabel` (a month or a day in a list, sticking under the page's
+  head).
+- `Tabs.tsx`: plain words underlined in the text's colour, a faint
+  count; buttons as a tablist with arrow keys, or links when each tab
+  is an address; scrolls and fades on a phone.
+- `Segmented.tsx`: a mode inside a card (chart ranges, cards or table),
+  drawn by base's `.seg`.
+- `Table.tsx`: a table from column definitions (`width` per width,
+  `align`, `headAlign`, `sortable` with `sortFirst` and a hover
+  `sortTitle`, `hide` on tablet
+  or phone, `show: false` when nothing fills it); `rows` or `groups`
+  with labels; `sort` and `dir`, `onSort` given the column and the
+  direction `nextSort` picks; `open` (a page's address or an action,
+  over the whole row); `menu` for the row's ⋯; `empty`, said only when
+  no row and no group label is left; `dense` for 52px rows; `head={false}`;
+  `rowAttrs` for a row's class and drag while a list is edited.
+  Each row is its own grid, so a width never sizes to its content
+  (`auto`, `max-content`): columns would stop lining up row to row.
+  A control in a cell takes `.table-raise` to sit over the row's link.
+- `Symbol.tsx`: `SymbolName`, the ticker over its name, or one line
+  `compact`. `lib/names.ts`: `tickerOf` and `nameOf`, for views and
+  models.
+- `Figures.tsx`: `Num`, `Change`, `Hero` (the value band: name, the
+  figure with its currency or a menu, moves, `lines`), `Stats` (a row
+  of labelled figures, no boxes), `Facts` (a detail's label-over-value
+  grid, two to a row, in a drawer).
+- `Spark.tsx`: green above its dotted base, red below; the base the
+  period's start (its box at least 10% of it) or a given value such as
+  the previous close; fixed or `fluid` width; `slots`, the points the
+  width stands for, so a session still trading fills only its share.
+- `SymbolSearch.tsx`: the head's symbol search, Home's moved to every
+  page. `SymbolSearch.model.ts` asks `GET /api/v1/symbols` as Home's
+  search does (stored matches at once, upstream from two characters
+  after a 250 ms pause, a newer query aborting the older); a result is
+  the ticker over its name with its kind and exchange, New when not
+  stored, and opens its instrument page; Escape closes the section
+  picker before the results. On a phone the icon opens a full-screen
+  sheet with Cancel. Home passes its sections (`search` on `Page`) for
+  each result's Add, and `seedSearch(q)` fills and opens it from an
+  example.
+- `Search.tsx`: the card-head search, its ✕ clearing and folding;
+  `delay` for a list asked of the server, children for a results menu.
+- `Menu.tsx`: `MenuButton` (a row's ⋯, `head` for a page head's, or
+  `text` for a word and a caret, such as a currency picked, and with
+  `field` a form's pick framed and as wide as an input) with `items` or
+  a pane of its own; `MenuItems`, an item running an action, opening a
+  link or `checked` as one choice of several; `MenuHead` and `MenuLine`
+  for a heading and a figure inside a menu.
+- `Drawer.tsx`: the one frame for forms and details: title, close,
+  body, `foot` and `footStart`, `busy`; slides in 200ms and out 180ms;
+  Escape, the close or the dimmed page closes it once (Escape in a
+  search with words clears it first), and the focus returns where it
+  was, or to the menu button that opened it.
+- `Notice.tsx`: an empty list's line, a refusal (`error`), or a panel
+  that starts a page from nothing; a page that did not load is `Page`'s
+  `failed`.
+- `base.css`: buttons, fields, `.tag` (`.tag-side` with `.tag-up` or
+  `.tag-down` for a trade's side), `.chip`, `.seg`, `.menu`.
 
 ## Pages
 
@@ -187,24 +292,29 @@ signed in with the admin key alone.
   answered with an older revision than the one held, never lands its
   layout over it. A sign-out drops a save in flight, so the next
   session's edits start a save of their own.
-- **The top card has three tabs**, the last chosen kept per browser
-  (`markets-dashboard-tab` in `localStorage`). Browser storage is a
+- **The top card has three tabs**, the shared `Tabs` in a `Card`
+  (short words on a phone), the last chosen kept per browser
+  (`markets-dashboard-tab` in `localStorage`); each list is a `Table`
+  whose rows open the instrument page. Browser storage is a
   convenience: a browser that keeps nothing starts from the defaults.
 - **Today's movers**: the four biggest gainers and losers among the
-  favourites by the day's percent, each bar scaled to the biggest move,
-  a company by its short name and a bond by its symbol.
+  favourites by the day's percent, in two columns (one on a phone),
+  each row the ticker with the short name after it (a bond its ticker
+  alone), a bar scaled to the biggest move, and the percent.
 - **Trend**: shares, ETFs and coins only. An arrow for the side of the
   50-day average, the price, then the distance to the 50-day, 200-day
   and 200-week averages from the server's `averages`, two decimals
   under 1%. Each header sorts, the 50-day deepest below first by
   default, and a second click flips it (kept as
   `markets-dashboard-trend-sort`). Eight rows, then "Show all N".
-  "Crossed today" comes from the server's `crossed_today` and is
-  counted on the tab's badge, which hides at none.
+  "Crossed today" comes from the server's `crossed_today`, a tag after
+  the ticker, and is the tab's count, which hides at none. A phone
+  drops the price.
 - **Earnings this week**: the favourite shares reporting today and the
   six days after it in the viewer's own calendar, from
   `GET /api/v1/earnings`, 100 shares a call (the route's cap) merged by
-  date, with Today in amber. The badge is the count, grey at 0. A call
+  date, Today in the text's colour and later days faint. The tab's
+  count shows even at 0. A phone drops the estimates. A call
   that fails keeps the list shown before, an answer older than the
   newest asked never lands, and a share a save removes leaves the list
   at once, even from an answer asked before it. The route lists a share
@@ -212,37 +322,33 @@ signed in with the admin key alone.
   note; only a source that is off, or no share answered at all, makes
   the tab say "Earnings are not available." with no count, never that
   none report.
-- **Search in the head** asks `GET /api/v1/symbols` twice per query
-  (`searcher()` in `Dashboard.model.ts`): with `upstream=false` at
-  once, so the stored matches draw without waiting on any source, and
-  from two characters, after a 250 ms pause, the full search, whose
-  further matches join under the stored ones (no duplicates). One
-  character asks the database only. A newer query aborts both calls
-  of the older (`AbortController`), so its answer never waits behind
-  them; the spinner shows only while the full search is pending. An
-  upstream match is marked New. A result opens its
-  instrument page, which fetches it; Add picks a section from a list
-  under the result and saves at once, and the save fetches a symbol
-  never seen before its card lands. With no section yet, Add makes
-  "Favourites". An add the server would refuse says why in the results
-  ("This section is full.", "Your dashboard is full."), and Escape
-  closes the section picker before the results. On a phone the head is
-  a search icon that opens a full-screen search.
+- **The head's symbol search** is `Page`'s shared one, given the
+  sections so each result has an Add (`search` with `sections`,
+  `onAdd`, `refuse`): Add picks a section and saves at once, the save
+  fetching a symbol never seen before its card lands; with no section
+  yet, Add makes "Favourites"; an add the server would refuse says why
+  in the results ("This section is full."). It is left out while
+  editing and while the seed still loads.
 - **No favourites**: the tabs hide and a panel says "Build your
   dashboard" with example chips (`^GSPC`, `AAPL`, `VWCE.DE`,
-  `BTC-USD`, `GC=F`) that fill the search. They are examples only:
+  `BTC-USD`, `GC=F`) that fill the search (`seedSearch`), on the shared
+  `Notice`, as is the seed's loading panel. They are examples only:
   nothing is added, and the code names no default instrument or
   market.
-- **A section** is its name, count and a cards or table switch. A card
-  shows the price and the day's percent; a table row the name and
-  symbol, the day line, the price, the day's percent with the change in
-  its unit under it, and Open or Closed. Open or Closed is the server's
+- **A section** is a `SectionHead`: its name, count and a cards or
+  table switch (`Segmented`). Its tiles are as many to a row as fit (4,
+  3 on a tablet, 2 on a phone), one fewer or more (down to one) when
+  that would leave a tile alone on the last row (`tileColumns()`). Its table is a
+  `Table` in a flush `Card`: the ticker over the name, the day line,
+  the price, the day's percent with the change in its unit under it,
+  and Open or Closed; a phone keeps the name, price and percent. Open or Closed is the server's
   `session`, from the source's own answers, never hours kept here.
 - **Edit is a draft** (desktop only, the pencil in the head): it copies
   the layout and its revision (`editOf()`), hides search, and shows
   Cancel and Save. Rename (a name that cannot be saved goes back and
   says why beside the field, such as "Another section has this
-  name."), move a section up or down, delete one, drag cards and rows
+  name."), move a section up or down or delete it (its ⋯ menu), drag
+  cards and rows
   within and between sections, remove one, switch a view and Add
   section all change the draft only. Save sends it in one save on the
   revision it was copied from, or nothing when it matches that copy
@@ -253,84 +359,88 @@ signed in with the admin key alone.
   Cancel drops it. Outside Edit, Add from search and the view switch
   save at once. A phone has no editing: Edit, the view
   switch and Add hide, and a section keeps its view.
-- **On a phone a list leads with the ticker**, the name under it small
-  and dim, as phone market apps do: the cards, the table rows and
-  search results (CSS by width; the Instruments list leads with it
-  everywhere). The top panel's tabs (movers, Trend, Earnings) name a
-  row by its ticker alone. A wider window leads with the name.
-- **A card** is the name, symbol, Open or Closed, the stored price in
-  its currency (a yield in percent), the day's change in percent, and a
-  line; it links the instrument. A favourite added but not answered yet
-  is the card's shape with bars where its figures will land. The page
+- **A card** is the ticker over its name (a coin without its quote
+  currency), Open or Closed, a line, the stored price with its currency
+  apart (a yield in percent) and the day's change in percent; it links
+  the instrument. A favourite added but not answered yet keeps the
+  card's shape, "Pending" and a dash where its figures will land. The page
   re-reads every minute while visible. A load is stale once the
   router's path changes, checked when its answer lands, and a save that
   lands after leaving starts no load, so leaving the page asks no line
   after it (an effect's cleanup runs too late).
 - **The line is one bars call per card, in parallel**, by the item's
   `intraday`: `interval=5m` (the newest session, split at its
-  `previous_close`, green above and red below as the 1D chart, the
-  previous close a faint dashed line, across the whole session so a
-  morning fills only the morning), else a month of daily bars coloured
-  by its move from the first close. The bundle names no source, so the
+  `previous_close`, green above and red below, the previous close a
+  dotted line, across the whole session so a morning fills only the
+  morning: `Spark`'s `slots` are the session's 5-minute slots when it
+  brackets the closes), else a month of daily bars split the same way
+  at its first close. The bundle names no source, so the
   server says which items have 5-minute closes. A Yahoo listing with no
   points yet draws no line; a line that fails keeps the one drawn
   before.
-- **The line is inline SVG**, not a chart: its strokes are CSS tokens,
-  so it wears the theme from the first frame, and a redraw replaces it
-  whole. The split is the line drawn twice, each copy clipped to its
-  side of the previous close. The clip ids come from the section and
-  the instrument id, escaped for XML (`clipOf`), so a move never hands
-  a card another's.
+- **The line is the shared `Spark`**, inline SVG whose strokes are
+  CSS tokens, so it wears the theme from the first frame; `sparkOf()`
+  picks its closes, base and slots.
 - **Server status** (`/status`, last in the rail, after Home,
-  Instruments, Portfolios and Connect agents): `GET /api/v1/status` drawn as tiles (instruments,
-  the sources on and how many are paused, the jobs shown and how many
-  fail, the database), "Sync is off." while `sync` is false
-  (`--no-sync`, `docs/config.md`), and a card per source that is on, headed by its
-  name and job count alone, never one that is off:
-  most servers never turn a regional source on, and an off source has
-  nothing to fix. A job is a two-line row (its label, then how many
-  markets or instruments it covers and how many fail) with its last
-  run's time, which never repeats the outcome; opened, it says what the
-  job does, then its failing scopes with error and time ("AMD: the
-  source failed" when a run names the symbols that failed it), or that
-  all are ok. Failing jobs come first. Missing closes (`owed`) never shows: it only marks a day for the bars job to ask again, so it cannot fail.
+  Instruments, Portfolios and Connect agents): `GET /api/v1/status`
+  drawn as a stat row (instruments and how many are tracked, the
+  sources on and how many are paused, the jobs shown and how many
+  fail, the database and the version), "Sync is off." under it while
+  `sync` is false (`--no-sync`, `docs/config.md`), and one Jobs card:
+  a table of every job, grouped as the holdings are, a folding label
+  per source that is on with its name and job count ("No runs yet."
+  when it has none), never one that is off: most servers never turn a
+  regional source on, and an off source has nothing to fix. A row is
+  a dot for the state, the job, what it covers (how many markets or
+  instruments and how many fail; under the job on a phone) and its
+  last run's time ("Never" before the first), which never repeats the
+  outcome. A row opens the
+  job's drawer: what it does, its source and last run, then its
+  failing scopes with error and time ("AMD: the source failed" when a
+  run names the symbols that failed it), or that all are ok. Failing
+  jobs come first. Missing closes (`owed`) never shows: it only marks
+  a day for the bars job to ask again, so it cannot fail.
 - **Readers are not technical.** A server phrase shows in plain words
   (`plain()`: "rate limited" reads "too many requests"), and a pause
-  shows only as a count in the Sources tile, since the job that hit it
+  shows only as a count under Sources, since the job that hit it
   shows the error.
-- **Names come from the server** (`label`, `short`, `mark`, `about`):
-  the bundle is public, so it names no source (`docs/admin.md`).
+- **Names come from the server** (a source's and a job's `label`, a
+  job's `about`): the bundle is public, so it names no source
+  (`docs/admin.md`).
 - **The source switch shows only when it failed,** as one line above
-  the cards: it runs once per change of flags, not on a schedule.
-- **Add a source** lists the keyed sources that are off, with what each
-  adds, its key file and where to get a key; it is absent when none is
-  off. The `--track` values are a grid of value and resolved id, from
+  the jobs: it runs once per change of flags, not on a schedule.
+- **Add a source** is a card listing the keyed sources that are off,
+  each with what it adds, its key file and a link to get a key; it is
+  absent when none is off. **Always tracked** is a card of the
+  `--track` values beside their resolved ids, from
   `GET /api/v1/watchlist`, loaded with the status so both land
   together.
 - **Connect agents** (`/connect`, before Server status in the rail), as
-  1ctx's: a Keys card from `GET /api/v1/keys` (each key's name, last
-  use and expiry, and "N of 5"), New key (a name, shaped as typed to
-  the server's rule, and Expires: Never, 30, 90 or 365 days, and
+  1ctx's: a Keys card from `GET /api/v1/keys` ("N of 5", New key in
+  its head), a table of each key's name, last use, expiry and access.
+  The Access column says "Reads portfolios", "Writes portfolios",
+  "Reads alert rules" or "Writes alert rules" only for what a key has,
+  shows only when some key has any, and drops on a phone with the last
+  use. A row opens the key's drawer: its last use and expiry, then
   Portfolios and Alert rules, each No access, Read, or Read and write,
-  no access by default; a key's row says "Reads portfolios", "Writes
-  portfolios", "Reads alert rules" or "Writes alert rules" only for
-  what it has, and not on a phone, where the row keeps one line). A
-  row has no buttons: it opens to the same two picks, set to what the
-  key has, with Revoke at the start, which asks once beside Keep, and
-  Cancel and Save (`PATCH /api/v1/keys/{id}`, waiting on a change) at
-  the end. Then a Setup card with a tab per
-  agent (Claude Code, Codex, OpenCode) and the line that adds this
-  server as the MCP server `markets` at the page's origin plus `/mcp`.
-  At the cap, New key goes and a line names the cap. A revoke that
-  answers 404 drops the row.
+  set to what it has; Revoke at the foot's start asks once beside
+  Keep, and Cancel and Save (`PATCH /api/v1/keys/{id}`, waiting on a
+  change) at its end. New key opens the same drawer: a name, shaped
+  as typed to the server's rule, Expires (Never, 30, 90 or 365 days)
+  and the two picks, no access by default. Then a Setup card with the
+  agent picked in its head (Claude Code, Codex, OpenCode) and the line
+  that adds this server as the MCP server `markets` at the page's
+  origin plus `/mcp`. At the cap, New key goes and a line names the
+  cap. A revoke that answers 404 drops the row and its drawer.
 - **Copy uses `copyText()` (`src/web/lib/clipboard.ts`)**, as 1ctx:
   the clipboard exists only on loopback or HTTPS, so on plain HTTP the
   button stays as it is and never says Copied.
 - **A made key's token lives in the Connect agents view alone**: the
-  store keeps the key's row, never its token. It shows once, with a
-  copy button, the `export MARKETS_ACCESS_KEY=...` line and "Copy it
-  now; it is not shown again.", and goes on Done or on leaving the
-  page.
+  store keeps the key's row, never its token. It shows once, in the
+  drawer that made it, with a copy button, the `export
+  MARKETS_ACCESS_KEY=...` line and "Copy it now; it is not shown
+  again.", and goes on Done, on any close of the drawer, or on leaving
+  the page.
 - **No setup line carries a token.** Each reads `MARKETS_ACCESS_KEY`
   (as 1ctx's read `ONECTX_ACCESS_KEY`): Claude Code's header in single
   quotes, so the shell never writes the key into its config, Codex's
@@ -339,81 +449,98 @@ signed in with the admin key alone.
   Instruments in the rail) reads
   `GET /api/v1/portfolios`, the holdings (`/holdings` or
   `/portfolios/{id}/holdings`) and the trades with removed ones in one
-  load (`data/portfolios.ts`), every minute while visible. The words
-  and numbers are `Portfolios.model.ts`, which has no DOM and is
-  tested (`test/web-portfolios.test.tsx`).
-- **No currency is built in.** The display currency set in Settings
-  gives an "All in" card first, full width, with its value, gain,
-  today's change, the one bar of invested, cash and dry powder with
-  each share, and each rate and its time at its foot. Under it a short
-  card per currency (value, gain, today's change), never summed; a card
-  per currency keeps its own bar only when no "All in" card is shown.
-  The "Show in" picker is the app's menu, not a native select, and
-  lists, once each, the currencies held, the display one and the one
-  picked, only those in circulation (`currencies()`), since the server
-  converts into no other.
-- **Filters:** All or one portfolio (tabs that scroll sideways) and the
-  currency picker; a portfolio gone elsewhere falls back to all. The
-  totals and Exposure always count the whole portfolio.
-- **The view is the address** (`addressOf`, `viewOf`), so a reload or
-  a link opens on it: the portfolio's id in the path, `currency` in the
-  query, left out when it is the display currency. A portfolio picked
-  is a new history entry and keeps the currency, so Back returns to the
-  one before; a currency picked, or a fallback to all, replaces the
-  address in place. The rail's link opens All. Anything in the address
-  the page cannot use reads as all.
-- **Each list narrows itself** and stays out of the address, cleared
-  when the portfolio changes: a search where every word typed must
-  match some field (`holdingMatches`, `tradeMatches`), so "nvda xtb"
-  finds NVDA at XTB. Holdings also has a broker menu, offering only the
-  brokers in the list (`brokersIn`) and shown when there are two or
-  more; a broker picked reads the holdings again with `broker`, so a
-  holding held at several brokers shows that broker's share, as the
-  server splits it. Trades has none: a trade's broker is in its search.
-  A list head's filter is drawn as 1ctx draws one: an outline with no
-  fill, segments on a wide screen and a menu on a phone.
-- **Holdings** are rows that open, ranked by their value in the display
-  currency across currencies (the server groups by currency; the page
-  does not), rows with no rate last: an instrument by its symbol with
-  quantity × average cost under it, a fund the owner prices and a
-  position by its name (cash, "Dry powder", a fund as "Fund · priced"
-  with its price's day (the words "priced by hand" appear nowhere in
-  the UI), a bond with its coupon, maturity and "at face" when no
-  listing prices it). Opened: price ("Price per unit" for a fund),
-  cost, gain, what was paid in another currency, weight, and a table of
-  the parts per broker (quantity, average cost, value, and its gain:
-  the part's value less its cost, `partGain()`, since a part carries
-  no gain of its own; the portfolio under the broker only on All;
-  average cost left out on a phone); a fund has Buy and Sell, which open the add
-  panel's Fund tab on it, and Set price (its name, price per unit, the
-  day it is for, starting on the owner's today, and its market; a day
-  already priced takes the new price, and a changed name alone sends no
-  price, `PATCH /api/v1/funds/{isin}`); a position
-  has Edit (amount and as of; saved as an update the server keeps) and
-  Remove, which asks once. A bond bought several times is one row listing each
-  purchase (date, face, broker) with its own Edit and Remove, since the
-  merged row has no one position. Amounts show in their currency's
-  minor units (`minorUnits()`: 0 for JPY, 3 for KWD), a bond's price as a
-  percent of face, and an edit starts from the stored amount, never the
-  value rounded for show. A row with a stale reason is tagged in a few plain
-  words (`staleWords()`): "Sold more than bought", "No EUR rate", else
-  "Not current"; what a converted total left out reads by symbol or as
-  "No EUR to JPY rate" (`missingWords()`), never an id.
-- **Exposure** is bars by market, kind, portfolio and broker within one
-  currency (a picker when there are several), and by currency with a
-  named one.
-- **Trades** newest first, twenty then "Show all", rows that open as
-  holdings do: side, symbol (a fund's name) and name, quantity × price,
-  date and broker, and what was paid or received. Opened: only what the
-  row does not say, so fees, portfolio (on All), who added it ("Web",
-  "Admin" or the key's name) and when, when it was removed and by whom,
-  then the note on a line of its own, since a note runs long; Remove
-  sits there and asks once. Search also matches the side.
-  All | Removed shows the live trades or only the removed ones, each
-  with Restore.
-- **Add** opens a panel beside the page (a sheet from the bottom on a
-  phone; Escape, the backdrop or the close button shut it), so the page
-  stays where it was: Trade, Cash, Fund or Bond. Fund records a buy or
+  load (`data/portfolios.ts`), every minute while visible. The page is
+  `Portfolios.tsx`, its forms `PortfolioForms.tsx`; its words, numbers
+  and rules are `Portfolios.model.ts`, which has no DOM and is tested
+  (`test/web-portfolios.test.tsx`). Top to bottom: the head (the eye
+  that hides amounts, Add, the ⋯ menu), the portfolios as tabs, the
+  value band, Holdings, Activity.
+- **No currency is built in.** The value band (`Hero`) names the tab
+  ("All portfolios" or the portfolio), the converted total large. With
+  nothing converted (no display currency) and two or more currencies,
+  the largest currency's total is the one large figure and each other's
+  a line under it in the text's size; nothing in two currencies is
+  summed, so the group labels then show no total or share (`mixed()`). Its currency is a menu (when two
+  or more are offered, or the total left something out): the
+  currencies the server converts into (`currencies()`, those held, the
+  display one and the one picked, only those in circulation), then the
+  total held in each currency with each rate and its time
+  (`rateLine()`), then what the total left out by symbol or as "No EUR
+  to JPY rate" (`missingWords()`). Under it one line (`heroOf()`):
+  today, only when something in view moves within a day (a quoted or
+  listed price; cash, a hand-priced fund and a face-value bond never
+  do), and all time, only when a cost gives a gain. Then one bar
+  (`barOf()`): Invested against Cash with money invested, Dry powder
+  against Reserve with cash alone, shown only when both sides are
+  above 0.
+- **The view is the address** (`addressOf`, `viewOf`): the portfolio's
+  id in the path, `currency` in the query, left out when it is the
+  display currency. The tabs are links, so a
+  portfolio picked is a new history entry and keeps the currency, and
+  Back returns to the one before; a currency picked, or a fallback to
+  all when the portfolio is gone, replaces the address in place.
+  Anything else in the address reads as all; a broker in an old link
+  is ignored (there is no broker filter).
+- **Holdings** is a `Table` in a card with a search over the ticker,
+  name, ISIN and the brokers a holding is held at (`holdingMatches`,
+  every word typed must match some field). Grouped (`groupsOf()`) on
+  All by portfolio, inside one by kind, the largest group first, each
+  a folding `GroupLabel` with its count, value and share of the view;
+  one group shows no label; a row the server could not convert (no
+  rate) shows its own currency only and counts in no group total. Columns: Holding (`holdingTicker()` over
+  `holdingName()`: a coin without its quote currency, cash as Dry
+  powder or Reserve with its date, a fund with its ISIN, a bond with
+  coupon and maturity; a stale reason as a tag in plain words,
+  `staleWords()`), 3M (a `Spark` from each listed holding's daily bars,
+  cached for the page's life), Change (price and today's percent; a
+  hand price with its day, a bond's as a percent of face,
+  `priceLine()`), Value (display currency, its own under it when
+  different; a holding sold today the day's move, "Sold today" under
+  its name), Gain (percent and money on one base, the display currency's
+  with the rate's move in when converted, `shownGainPercent()`; the
+  money not on a phone), Weight. Nothing in view
+  fills a column: it goes (`columnsFor()`): 3M and the day's move with
+  nothing listed (the head then reads Price), Change for cash alone,
+  Gain where no row has one. 3M and Weight go on a tablet, Change on a
+  phone. Sort by Change, Value or Gain from the heads, Value first; a
+  row with nothing to sort by, or no rate in a converted view, goes last
+  (`sortRows()`). A row opens its instrument page (`pageOf()`); with
+  none it opens what edits it (`homeOf()`): cash and a position its
+  Edit, a hand-priced fund (its `fund:` id has no page) its Set price, a
+  merged bond its Purchases. Its ⋯ (`rowActions()`): Buy and Sell (Sell
+  not on a holding sold today) open the add drawer on it, in its one
+  portfolio and broker; Set price for a hand-priced fund; Edit for a
+  position; Purchases for a bond bought several times; Instrument page
+  when there is one. Amounts show whole from 1,000 up (`money()`),
+  else in the currency's minor units (`minorUnits()`).
+- **Drawers:** every form and detail opens in the one `Drawer`. Edit
+  (amount, as of, and cash's market; Remove at the foot's start asks
+  once), Set price (name, price per unit, the day it is for, starting
+  on the owner's today, and the market; a day already priced takes the
+  new price, and a changed name alone sends no price, `PATCH
+  /api/v1/funds/{isin}`), Purchases (each purchase's date, face and
+  broker with its own Edit and Remove, since a merged bond has no one
+  position). An edit starts from the stored amount, never the value
+  rounded for show.
+- **Activity** is a dense `Table` under the holdings, hidden when the
+  view holds no trades: by month (`monthsOf()`, "11 bought · 2 sold"),
+  newest first, three months then "Show earlier months". Fills of one
+  order (one day, portfolio, symbol, side and broker) read as one row with "· 2
+  fills" and the average price (`foldFills()`, `orderOf()`); a buy at
+  price 0 is a grey Reward. Its search matches the side too
+  (`tradeMatches`). When trades were removed, a faint "Removed trades ·
+  N" at the end shows them in the same table under "Removed trades",
+  with "← All activity" back. A row opens the trade drawer: the tag, the
+  ticker (a link to its instrument page when it has one) and name, the
+  amount large, then date, quantity, price (the average across fills,
+  a bond's as a percent), fees, broker, portfolio on All, who added it
+  ("Web", "Admin" or the key's name) and when on the owner's calendar,
+  when it was removed and by whom, the note and each fill; its foot
+  has Remove (asks once; every fill
+  together), Buy and Sell (a fund's open the Fund tab on it), and a
+  removed trade's Restore. The counts are of orders, not fills.
+- **Add** opens the drawer, the page staying where it was: Trade, Cash,
+  Fund or Bond as tabs. Fund records a buy or
   sell of a fund bought from its manager, one per confirmation
   (`POST /api/v1/funds/trades`; a fund with a symbol, an ETF among
   them, is a trade): Buy or Sell, ISIN and name, units, price per unit
@@ -422,7 +549,7 @@ signed in with the admin key alone.
   keeps (`funds` in `GET /api/v1/portfolios`) shows the fund's name and
   hides the name and currency, which a first buy gives; a sell offers
   All as a trade's does. A trade starts from a symbol search
-  (the head search's `searcher()`, shares, ETFs, funds and crypto ranked
+  (`searcher()` from `ui/SymbolSearch.model.ts`, shares, ETFs, funds and crypto ranked
   before futures and the like (`ranked()`), each result naming its
   exchange (`listingWords()`)). A pick reads the listing
   (`GET /api/v1/instruments/{id}`) and shows its name, live price and
@@ -436,19 +563,18 @@ signed in with the admin key alone.
   the broker picked or at every one, sent as `"all"` while left as is,
   so the server sells what is sellable on the trade's date), Quantity and
   Price or Total paid ("Use total", fees in, as the server's `total`),
-  Date and Portfolio; fees, the currency paid, the broker (only when
-  one exists) and a note fold under one line. A buy may pay from dry
+  Date and Fees (its Paid in a small menu by the price), Portfolio and
+  Broker (each "New…" names one), and a note. A buy may pay from dry
   powder: after the trade saves, the dry powder in its currency and
   portfolio (else the nearest, `dryPowderFor()`) is lowered by the
   trade's cost (`PATCH /positions/{id}` with `by` and the trade's
   currency, which the server converts); a failure there says the buy
   is saved and the dry powder was not changed, and the form then only
   closes, so a second press never records the buy twice. While a save
-  is on its way the panel stays open; Escape closes an open menu or the
-  symbol's list first, the panel only when none is open. A line above the buttons
+  is on its way the drawer stays open; Escape closes an open menu or the
+  symbol's list first, the drawer only when none is open. A line above the buttons
   reads back the trade ("Buy 5 KO at 60.00 · 300.00 USD (≈ 270.00 EUR) ·
-  Shares"). An instrument holding's opened row has Buy and Sell,
-  which open the panel on it. A position's currency is the currency
+  Shares"). A position's currency is the currency
   picker. Cash and a fund pick a market, "None" first, from the
   markets the server lists, in the add form, cash's edit and a fund's
   Set price, so a fund holding one market's shares counts in it. Only the kind is remembered per browser
@@ -456,7 +582,7 @@ signed in with the admin key alone.
   refusal shows beside the buttons in plain words, its ids taken out
   (`plainError()` in `data/portfolios.ts`).
 - **More** holds Import, Export trades (a link to the CSV of the
-  portfolio picked, off on All) and Settings. Import picks a portfolio,
+  portfolio picked, off on All) and Settings, each in the drawer. Import picks a portfolio,
   a broker for the file or "From the file", and a CSV; the preview
   lists every line as Ready, Not read with why, or Skipped, a cash
   file's lines each with a Dry powder box; "Import N" saves the ready
@@ -469,11 +595,14 @@ signed in with the admin key alone.
   found by code or name, saved on pick, then the owner's time zone: the
   app's own menu over every zone the browser knows
   (`Intl.supportedValuesOf("timeZone")`), found by city or area
-  (`findZones()`), saved on pick. With no display currency the page shows only
-  the first card, without Add or the menu, asking for the currency and
-  the time zone, the zone filled with the browser's as a suggestion the
-  owner sees before saving (`browserZone()`); with no portfolio yet it
-  opens on Settings. Date fields start on the owner's today in that zone,
+  (`findZones()`), saved on pick. With no portfolio or no display
+  currency the page shows only the first card, without Add or the menu,
+  asking for a portfolio's name (with none yet), the currency (the most
+  traded five one tap each, any other found by code or name) and the
+  time zone, the zone filled with the browser's as a suggestion the
+  owner sees before saving (`browserZone()`). With portfolios and
+  nothing in any, a card under their names offers each way to add:
+  a trade, cash, a fund or a bond, a CSV, or an agent (Connect). Date fields start on the owner's today in that zone,
   the UTC day until one is set (`today()`), as the server dates a
   position. A retried trade the server refuses reads "This trade was
   just saved." with a "Save again" button beside it, which sends the
@@ -482,53 +611,69 @@ signed in with the admin key alone.
   and Bonds.
 - **Instruments:** every stored instrument from
   `GET /api/v1/instruments`, every page by `next_page_token`, in one
-  card with a search over id and name, kept in the view so a refresh keeps it. Sorted by
-  symbol, an index's `^` aside. A row is the symbol and name, then the
-  kind in plain words (Stock, ETF, Index, Bond, Future, Crypto,
-  Currency, Series) and the market, left out where it repeats the kind;
-  "No longer updated" only when nothing tracks it. On the right, the
-  stored price with its currency and the day's change. The list never
-  quotes: a quote is a read and would keep every row tracked. From two
-  characters the search also asks `/symbols` and lists the sources'
-  matches no row holds under "Not stored yet", marked New; opening one
-  fetches it. It is the page's only search, so the head has none.
+  `Card` titled All with its count and a search over id and name in
+  its head (the page's only search, so `Page` shows no symbol search),
+  kept in the view with the sort so a refresh keeps both. The list is
+  a `Table`: the instrument (`SymbolName`, a coin without its quote
+  currency, "No longer updated" after the name only when nothing
+  tracks it), the kind in plain words (Stock, ETF, Index, Bond,
+  Future, Crypto, Currency, Series), the market (blank where it
+  repeats the kind), the stored price with its currency, and the
+  day's change. Sorted by symbol, an index's `^` aside; Instrument,
+  Kind and Market sort A to Z first, Change high to low, a row with no
+  change last and the symbol breaking ties (`sortRows`). A phone keeps
+  the instrument and the price, the change under the price. A row
+  opens the instrument page. The list never quotes: a quote is a read
+  and would keep every row tracked. From two characters the search
+  also asks `/symbols` and lists the sources' matches no row holds
+  under a "Not stored yet" group label, tagged New; opening one
+  fetches it.
 - **An instrument** (`/instruments/<id>`, the id encoded) reads
   `GET /api/v1/instruments/{id}`, a read as any client's, so
   opening it keeps it tracked and an id never stored is fetched. The
-  title is the symbol with the name beside it; a card holds the kind
-  and market, the price and day's change, "Open" or "Closed" as the
-  home table says it ("Opening · last close" from the open until the
-  first pass, without the fetch time, then "Open · no trade yet" until
-  the first trade; a series: "Latest value" and its date) with when it
-  was fetched, and the 1 week, 1 month, 3 months and year-to-date
-  returns from the quote, never recomputed, then how far the price is
-  above or below the quote's 200-week average (in points for a series
-  in percent), the average's own value left out so the row stays one
-  line. On a phone the returns are one line of four, named 1W, 1M, 3M
-  and YTD as the chart's ranges, and the 200-week average moves to the
-  Trend card, under the 200-day. A read that
-  failed shows the stored price as "Stored price" with its age, no returns, and one notice that a new price could
-  not be had; the server's phrase is for agents, not this page.
+  title is the ticker with the name beside it. It leads with the
+  shared `Hero`, no card: the name line is the kind and market, then
+  "Open" or "Closed" as the home table says it ("Opening · last close"
+  from the open until the first pass, without the fetch time, then
+  "Open · no trade yet" until the first trade; a series: "Latest
+  value" and its date) with when it was fetched. The one large figure
+  is the price with its currency small beside it; the moves line is
+  the day's change in the price's unit and in percent, "today" once a
+  trade lands after the open and "at close" otherwise (a series in percent shows the percent
+  alone, and a series or a stored price no word). Outside regular
+  hours the pre or post price is a line under it in the text's size
+  ("After hours 205.25 +0.30% · 01:59"), never a second figure. Under
+  it a `Stats` row: the 1 week, 1 month, 3 months and year-to-date
+  returns from the quote, never recomputed, and how far the price is
+  above or below the quote's 200-week average (points for a series in
+  percent). From 1100px the row sits right of the hero, level with its
+  last line; under it they stack, and a phone names them as the
+  chart's ranges do (1W, 1M, 3M, YTD, 200W). A read that failed shows the stored
+  price as "Stored price" with its age, no returns, and one notice
+  that a new price could not be had; the server's phrase is for
+  agents, not this page.
 - **Cards under the chart say the quote's daily signals in plain words**
-  (`stats()`), three abreast, stacked on a phone: the 52-week range (a
-  bar with the price's dot, how far below the high and how many trading
-  days ago, how far above the low), Today, or Last session until today's
-  first price (the day's range, volume against its 20-day average, "so
-  far" while today trades, the typical daily move and the average daily
-  range), and Trend (the price beside the 50- and 200-day averages, the
-  50 above or below the 200, the cross named only on its day, RSI 14 as
+  (`stats()`), each a `Card` with its sans title and its rows as
+  `Facts`: three abreast, two on a tablet with an odd last one across
+  both, stacked on a phone. The 52-week range (a bar with the price's
+  dot, how far below the high and how many trading days ago, how far
+  above the low), Today, or Last session until today's first price
+  (the day's range, volume against its 20-day average, "so far" while
+  today trades, the typical daily move and the average daily range),
+  and Trend (the price beside the 50- and 200-day averages, the 50
+  above or below the 200, the cross named only on its day, RSI 14 as
   neutral, overbought from 70 or oversold to 30, and momentum as the
   MACD histogram's sign, upward or downward, with a turn of its
   direction as the day's note, since a turn comes on either side). A
-  yield's distances and range are in points, as the head's are. A row
-  with no signal, and a card with no row or bar, is left out, so a young
-  listing or a series shows less.
+  yield's distances and range are in points, as the hero's are. A row
+  with no signal, and a card with no row or bar, is left out, so a
+  young listing or a series shows less.
 - **The page head is a containing block for fixed elements**: its blur
   (`backdrop-filter`) holds a fixed descendant inside it, so a sheet or
   popover fixed to the window turns the blur off while open, as the
   phone search does.
-- **One More button holds the page's actions** in the head (1ctx's
-  More), on a phone too. Refetch data runs at once and refetches every
+- **One More button holds the page's actions** in the head (the shared
+  `MenuButton`, after the symbol search `Page` shows), on a phone too. Refetch data runs at once and refetches every
   part a source holds for it (`POST /api/v1/instruments/{id}/refetch`
   with every part `choices()` lists); the button spins while it runs,
   then shows a green check for `SAID_MS` once it fetched; "Not
@@ -626,6 +771,13 @@ signed in with the admin key alone.
   scale keeps headroom so its top label is whole.
 - **On a phone the head's row is the floating menu button's height**,
   centred, so the button, title and actions share one middle.
+- **The chart is a flush `Card`** whose head holds its tools where a
+  title would be: the ranges as the shared `Segmented` on the left,
+  then Line or Candles (`Segmented`), the 50 and 200 toggles, and Log,
+  each toggle a pressed `.seg` button; the head is the card's own
+  (`card-head`). 1D keeps the previous close in the scale, so a day
+  far from it leaves the room between them. Up and down are `--up` and
+  `--down`, read from the tokens.
 - **The bar still trading is drawn faded**; the last price has its
   line. Log is a toggle (not on a phone, above). **The chart neither pans nor zooms**: the
   range buttons choose what shows, and every draw (a range change, the

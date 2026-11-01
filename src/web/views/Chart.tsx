@@ -24,6 +24,8 @@ import { theme } from "../app/theme.ts";
 import { says } from "../data/api.ts";
 import { markets } from "../data/store.ts";
 import { useRefresh } from "../lib/refresh.ts";
+import { Card } from "../ui/Card.tsx";
+import { Segmented } from "../ui/Segmented.tsx";
 import {
   averageLabel,
   averages,
@@ -94,8 +96,8 @@ function colors() {
     fg: token("--fg"),
     faint: token("--faint"),
     line: token("--line"),
-    up: token("--done"),
-    down: token("--failed"),
+    up: token("--up"),
+    down: token("--down"),
     sma50: token("--chart-sma50"),
     sma200: token("--chart-sma200"),
     font: token("--mono"),
@@ -194,8 +196,8 @@ export function LegendLine({
     legend.change === null || Math.abs(legend.change) < 0.005
       ? ""
       : legend.change > 0
-        ? " chart-up"
-        : " chart-down";
+        ? " up"
+        : " down";
   return (
     <div class="chart-legend">
       <span class="chart-legend-row">
@@ -725,90 +727,75 @@ export function Chart({ id }: { id: string }) {
     hasCandles(h.bars);
   const linesOk = lk.log || (lk.averages && !intraday);
   return (
-    <section
-      class={`card chart-card${lk.phone ? " chart-phone" : ""}`}
-      aria-label="Chart"
+    <Card
+      flush
+      label="Chart"
+      class={`chart-card${lk.phone ? " chart-phone" : ""}`}
     >
-      <div class="chart-head">
-        <fieldset class="seg seg-small chart-ranges" aria-label="Range">
-          {lk.ranges.map((r) => (
-            <button
-              key={r}
-              type="button"
-              class={`seg-option${active() === r ? " seg-on" : ""}`}
-              aria-pressed={active() === r}
-              onClick={() => {
-                range.value = r;
-              }}
-            >
-              {r}
-            </button>
-          ))}
-        </fieldset>
+      <div class="card-head chart-head">
+        <div class="chart-ranges">
+          <Segmented
+            small
+            label="Range"
+            options={lk.ranges.map((r) => ({ value: r, text: r }))}
+            value={active()}
+            onPick={(r) => {
+              range.value = r;
+            }}
+          />
+        </div>
         {(candlesOk || linesOk) && (
           <div class="chart-tools">
             {candlesOk && (
-              <fieldset class="seg seg-small" aria-label="Style">
+              <Segmented
+                small
+                label="Style"
+                options={[
+                  { value: "line", text: "Line" },
+                  { value: "candles", text: "Candles" },
+                ]}
+                value={line.value ? "line" : "candles"}
+                onPick={(v) => {
+                  line.value = v === "line";
+                }}
+              />
+            )}
+            {lk.averages && !intraday && (
+              <fieldset class="seg seg-small" aria-label="Averages">
                 <button
                   type="button"
-                  class={`seg-option${line.value ? " seg-on" : ""}`}
-                  aria-pressed={line.value}
+                  class={`seg-option chart-toggle-50${sma50.value ? " seg-on" : ""}`}
+                  aria-pressed={sma50.value}
                   onClick={() => {
-                    line.value = true;
+                    sma50.value = !sma50.value;
                   }}
                 >
-                  Line
+                  50
                 </button>
                 <button
                   type="button"
-                  class={`seg-option${!line.value ? " seg-on" : ""}`}
-                  aria-pressed={!line.value}
+                  class={`seg-option chart-toggle-200${sma200.value ? " seg-on" : ""}`}
+                  aria-pressed={sma200.value}
                   onClick={() => {
-                    line.value = false;
+                    sma200.value = !sma200.value;
                   }}
                 >
-                  Candles
+                  200
                 </button>
               </fieldset>
             )}
-            {linesOk && (
-              <fieldset class="seg seg-small" aria-label="Lines">
-                {lk.averages && !intraday && (
-                  <>
-                    <button
-                      type="button"
-                      class={`seg-option chart-toggle-50${sma50.value ? " seg-on" : ""}`}
-                      aria-pressed={sma50.value}
-                      onClick={() => {
-                        sma50.value = !sma50.value;
-                      }}
-                    >
-                      50
-                    </button>
-                    <button
-                      type="button"
-                      class={`seg-option chart-toggle-200${sma200.value ? " seg-on" : ""}`}
-                      aria-pressed={sma200.value}
-                      onClick={() => {
-                        sma200.value = !sma200.value;
-                      }}
-                    >
-                      200
-                    </button>
-                  </>
-                )}
-                {lk.log && (
-                  <button
-                    type="button"
-                    class={`seg-option${log.value ? " seg-on" : ""}`}
-                    aria-pressed={log.value}
-                    onClick={() => {
-                      log.value = !log.value;
-                    }}
-                  >
-                    Log
-                  </button>
-                )}
+            {lk.log && (
+              <fieldset class="seg seg-small" aria-label="Scale">
+                <button
+                  type="button"
+                  class={`seg-option${log.value ? " seg-on" : ""}`}
+                  aria-pressed={log.value}
+                  onClick={() => {
+                    log.value = !log.value;
+                  }}
+                >
+                  Log
+                </button>
               </fieldset>
             )}
           </div>
@@ -819,7 +806,7 @@ export function Chart({ id }: { id: string }) {
         {error.value !== null && <p class="chart-note">{error.value}</p>}
         {/* holds the tallest the legend has been, so the plot never
             moves as the crosshair changes its rows */}
-        <div class="chart-legend-box" ref={legendBox}>
+        <div ref={legendBox}>
           {legend !== null && h !== null ? (
             <LegendLine
               legend={legend}
@@ -849,6 +836,6 @@ export function Chart({ id }: { id: string }) {
           ))}
         </div>
       </div>
-    </section>
+    </Card>
   );
 }

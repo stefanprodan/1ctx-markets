@@ -6,7 +6,7 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 28px;
+    gap: var(--space-6);
     height: 100%;
     padding: calc(var(--space-4) + env(safe-area-inset-top))
       calc(var(--space-4) + env(safe-area-inset-right))
@@ -21,35 +21,29 @@
     gap: var(--space-4);
     color: var(--fg);
   }
-
   .signin-name {
     display: flex;
     flex-direction: column;
     gap: 6px;
   }
-
   .signin-line {
     margin: 0;
-    font-size: 26px;
+    font-size: var(--text-figure);
     font-weight: 500;
     line-height: 1;
   }
 
+  .signin-card {
+    width: 340px;
+    max-width: 100%;
+  }
   .signin-form {
     display: flex;
     flex-direction: column;
     gap: var(--space-4);
-    width: 340px;
-    max-width: 100%;
-    padding: var(--space-5);
   }
-
   .signin-form .btn {
-    height: 36px;
     width: 100%;
-  }
-
-  .signin-error {
-    margin: 0;
+    height: 36px;
   }
 }

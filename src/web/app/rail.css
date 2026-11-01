@@ -17,7 +17,7 @@
   .rail-drawer {
     position: absolute;
     inset: 0;
-    z-index: 4;
+    z-index: var(--z-rail);
     width: 100%;
     padding-right: env(safe-area-inset-right);
     border-right: 0;
@@ -125,34 +125,23 @@
   /* the symbol is what is looked for; the name only tells two apart */
   .rail-recent {
     display: flex;
-    align-items: baseline;
-    gap: 10px;
+    align-items: center;
     height: 32px;
-    line-height: 32px;
     padding: 0 10px;
     border-radius: var(--radius);
-    color: var(--dim);
     flex-shrink: 0;
-    overflow: hidden;
-    white-space: nowrap;
   }
-  .rail-recent:hover {
+  /* hover lifts the text, as a page's entry does; the fill is the lit
+     page's */
+  .rail-recent:hover .sym-name {
     color: var(--fg);
+  }
+  .rail-recent .sym {
+    width: 100%;
   }
   /* names start in one column for the usual symbol's length */
-  .rail-recent-symbol {
-    flex-shrink: 0;
+  .rail-recent .sym-ticker {
     min-width: 6ch;
-    font-family: var(--mono);
-    font-size: var(--text-small);
-    font-weight: 500;
-    color: var(--fg);
-  }
-  .rail-recent-name {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    font-size: var(--text-small);
   }
 
   /* a finger's 44px; the nav scrolls, so the rows may grow */
@@ -160,7 +149,6 @@
     .rail-item,
     .rail-recent {
       height: 44px;
-      line-height: 44px;
     }
   }
 

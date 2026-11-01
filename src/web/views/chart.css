@@ -5,14 +5,9 @@
     display: flex;
     flex-direction: column;
   }
-  .chart-head {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-2);
-    padding: var(--space-3) var(--space-4);
-    border-bottom: 1px solid var(--line);
+  /* the card's head, the ranges where its title would be */
+  .chart-ranges {
+    margin-right: auto;
   }
   .chart-tools {
     display: flex;
@@ -27,7 +22,7 @@
     display: inline-block;
     width: 10px;
     height: 2px;
-    border-radius: 1px;
+    border-radius: var(--radius-xs);
     vertical-align: middle;
   }
   .chart-toggle-50::before,
@@ -47,7 +42,7 @@
   }
 
   .chart-body {
-    padding: var(--space-3) 0 0;
+    padding: 0 0 var(--space-2);
   }
   /* the card's own colour until the library paints, never its white */
   .chart-canvas {
@@ -57,7 +52,7 @@
   /* held above the plot, so it never covers a bar or moves the plot */
   .chart-legend {
     display: flex;
-    padding: 0 var(--space-4) var(--space-2);
+    padding: 0 var(--space-5) var(--space-2);
     flex-direction: column;
     gap: 2px;
     pointer-events: none;
@@ -85,18 +80,12 @@
     background: var(--hover);
     color: var(--fg);
   }
-  .chart-up {
-    color: var(--done);
-  }
-  .chart-down {
-    color: var(--failed);
-  }
   .chart-avg {
     color: var(--dim);
   }
   .chart-note {
     margin: 0;
-    padding: 0 var(--space-4) var(--space-2);
+    padding: 0 var(--space-5) var(--space-2);
     font-size: var(--text-ui);
     color: var(--faint);
   }
@@ -109,10 +98,10 @@
   }
   .chart-mark {
     position: absolute;
-    z-index: 2;
+    z-index: var(--z-raise);
     transform: translateY(-50%);
     padding: 1px 6px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: var(--hover);
     pointer-events: none;
     font-family: var(--mono);
@@ -134,11 +123,12 @@
     border-radius: 0;
     background: transparent;
   }
-  .chart-phone .chart-head {
+  .chart-phone > .card-head.chart-head {
     order: 2;
+    min-height: 0;
+    margin: 0;
     padding: var(--space-3) var(--shell-right, var(--space-4)) 0
       var(--shell-left, var(--space-4));
-    border-bottom: 0;
   }
   .chart-phone .chart-legend,
   .chart-phone .chart-note {
@@ -149,9 +139,12 @@
     height: 300px;
     background: var(--page);
   }
-  .chart-phone .chart-ranges {
-    flex-wrap: nowrap;
+  .chart-phone .chart-ranges,
+  .chart-phone .chart-ranges .seg {
     width: 100%;
+  }
+  .chart-phone .chart-ranges .seg {
+    flex-wrap: nowrap;
   }
   .chart-phone .chart-ranges .seg-option {
     flex: 1 1 0;

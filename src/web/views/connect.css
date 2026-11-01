@@ -1,5 +1,5 @@
-/* Connect agents, as 1ctx's: the keys card with a key shown once or the
-   new key's form at its top, then the setup card with a tab per agent. */
+/* Connect agents: the keys card, then the setup card; a key's details and
+   the new key's form open in the drawer. */
 
 @layer tokens, base, owners;
 
@@ -7,93 +7,20 @@
   .connect {
     display: flex;
     flex-direction: column;
-    gap: var(--space-5);
+    gap: var(--space-4);
   }
-  .connect-block {
+  .connect-form {
     display: flex;
     flex-direction: column;
     gap: var(--space-4);
-    padding: var(--space-4);
-  }
-  /* the two picks side by side, one under the other when narrow */
-  .connect-access {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-4);
-  }
-  .connect-pair {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: var(--space-4);
-    align-items: start;
-  }
-  @media (max-width: 719px) {
-    .connect-pair {
-      grid-template-columns: minmax(0, 1fr);
-    }
-    /* the row keeps one line; its details show the access */
-    .connect-key-access {
-      display: none;
-    }
-  }
-  /* the field's look, without a fieldset's frame */
-  .connect-set {
-    min-width: 0;
-    margin: 0;
-    padding: 0;
-    border: 0;
-  }
-  .connect-set legend {
-    padding: 0;
-    margin-bottom: 6px;
   }
   .connect-once {
     margin: 0;
-    font-size: var(--text-ui);
-    color: var(--fg);
   }
-  .connect-foot {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: flex-end;
-    gap: var(--space-2);
-  }
-  .connect-error {
-    margin: 0 auto 0 0;
-    font-size: var(--text-ui);
-    color: var(--failed);
-  }
-  /* a key's details: picks, then Revoke at the start and Save at the end */
-  .connect-details {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
-  }
-  .connect-foot-split {
-    justify-content: space-between;
-  }
-  .connect-foot-end,
-  .connect-ask {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-2);
-  }
-  .connect-ask-words {
-    font-size: var(--text-ui);
-    color: var(--fg);
-  }
-  .connect-hint {
-    font-size: var(--text-small);
-    color: var(--faint);
-  }
-  .connect-tabs {
-    margin-left: auto;
-  }
-  .connect-key-name {
-    font-family: var(--mono);
-    font-size: var(--text-input);
+  /* facts leading a drawer sit under its head's own line, not a second */
+  .drawer-body > .facts:first-child {
+    padding-top: 0;
+    border-top: 0;
   }
 
   /* the copy button sits in the box's corner, the text clear of it */
@@ -112,9 +39,11 @@
     overflow-x: auto;
     white-space: pre;
   }
+  /* scrolled code passes under the button, not through it */
   .connect-snippet-copy {
     position: absolute;
     top: 2px;
     right: 2px;
+    background: var(--inset);
   }
 }

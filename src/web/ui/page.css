@@ -7,9 +7,16 @@
     gap: var(--space-4);
     flex-grow: 1;
     flex-shrink: 0;
-    width: 960px;
+    width: 1200px;
     max-width: 100%;
     padding-bottom: var(--shell-inset-bottom, 0px);
+    /* the stuck head's height, for what sticks under it: its inset, the
+       title's one line and its padding */
+    --page-head-h: calc(
+      var(--shell-inset-top, 0px) +
+      var(--text-title) +
+      var(--space-3)
+    );
   }
 
   /* bleeds across the shell's gutter and past a narrow page to the
@@ -17,7 +24,7 @@
   .page-head {
     position: sticky;
     top: 0;
-    z-index: 2;
+    z-index: var(--z-head);
     display: flex;
     align-items: flex-end;
     gap: var(--space-3);
@@ -55,7 +62,9 @@
   }
 
   .page-title {
+    flex-shrink: 0;
     margin: 0;
+    white-space: nowrap;
     font-size: var(--text-title);
     font-weight: 600;
     /* as 1ctx: the title's box is its text, so its middle meets the
@@ -75,11 +84,58 @@
   /* takes no height, so a taller button never moves the title */
   .page-actions {
     display: flex;
+    flex-shrink: 0;
     align-self: center;
     align-items: center;
     gap: var(--space-2);
     height: 0;
     margin-left: auto;
+  }
+  /* the head's one button style: an icon, an icon with words, the ⋯;
+     none inside a menu or the search's sheet. No specificity, so a
+     page's own state colour (the eye's) stays over it */
+  :where(
+    .page-actions
+      :is(.btn, .btn-icon):not(.menu *, .drawer-wrap *, .ssearch-sheet *)
+  ) {
+    height: 32px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--dim);
+  }
+  /* an icon alone carries no frame: four framed squares crowd a phone */
+  :where(.page-actions .btn-icon:not(.menu *, .drawer-wrap *)) {
+    width: 32px;
+  }
+  :where(
+    .page-actions :is(.btn-icon, .menu-btn-head):not(.menu *, .drawer-wrap *)
+  ) {
+    border-color: transparent;
+  }
+  :where(
+    .page-actions
+      :is(.btn, .btn-icon):not(.menu *, .drawer-wrap *):is(
+        :hover,
+        [aria-expanded="true"]
+      )
+  ) {
+    background: var(--hover);
+    color: var(--fg);
+  }
+  :where(.page-actions .btn-primary:not(.menu *, .drawer-wrap *)) {
+    border-color: var(--line-strong);
+    background: var(--hover);
+    color: var(--fg);
+  }
+  @media (pointer: coarse) {
+    :where(
+        .page-actions
+          :is(.btn, .btn-icon):not(.menu *, .drawer-wrap *, .ssearch-sheet *)
+      ) {
+      min-width: 44px;
+      height: 44px;
+    }
   }
 
   .page-failed {
@@ -131,21 +187,6 @@
     font-size: var(--text-ui);
     line-height: 1.5;
     color: var(--dim);
-  }
-  /* the HTTP status, small and in mono, so it reads as a reference and
-     never as the message */
-  .code-tag {
-    display: inline-flex;
-    align-items: center;
-    height: 18px;
-    padding: 0 6px;
-    border: 1px solid var(--failed-line);
-    border-radius: var(--radius);
-    font-family: var(--mono);
-    font-size: var(--text-label);
-    line-height: 1;
-    color: var(--failed);
-    white-space: nowrap;
   }
   @media (max-width: 719px) {
     .page-failed-retry {

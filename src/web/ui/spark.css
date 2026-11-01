@@ -1,0 +1,31 @@
+@layer tokens, base, owners;
+
+@layer owners {
+  .spark {
+    display: block;
+    overflow: visible;
+  }
+  .spark-fluid {
+    width: 100%;
+  }
+  .spark-line {
+    fill: none;
+    stroke-width: 1.5;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+    vector-effect: non-scaling-stroke;
+  }
+  .spark-up {
+    stroke: var(--up);
+  }
+  .spark-down {
+    stroke: var(--down);
+  }
+  .spark-base {
+    stroke: var(--faint);
+    stroke-width: 1;
+    stroke-dasharray: 1 2.5;
+    opacity: 0.7;
+    vector-effect: non-scaling-stroke;
+  }
+}

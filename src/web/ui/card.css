@@ -1,0 +1,130 @@
+@layer tokens, base, owners;
+
+@layer owners {
+  .card-box {
+    min-width: 0;
+    padding: var(--space-5);
+  }
+  /* a table ends the card: its rows' own line closes it */
+  .card-box:not(.card-flush):has(> .table:last-child) {
+    padding-bottom: var(--space-3);
+  }
+  .card-flush {
+    padding: 0;
+  }
+  .card-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+    margin-bottom: var(--space-3);
+  }
+  .card-flush > .card-head {
+    min-height: 52px;
+    margin: 0;
+    padding: var(--space-2) var(--space-4) var(--space-2) var(--space-5);
+  }
+  .card-title {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    margin: 0 auto 0 0;
+    font-size: var(--text-body);
+    font-weight: 500;
+  }
+  .card-count {
+    color: var(--faint);
+  }
+
+  /* folds with its rows: hover shows it can */
+  .group-label {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px 0;
+    width: 100%;
+    padding: var(--space-5) var(--space-3) 6px;
+    border: 0;
+    background: transparent;
+    text-align: left;
+    font-family: var(--mono);
+    font-size: var(--text-label);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+  .group-fold {
+    cursor: pointer;
+  }
+  .group-fold:hover {
+    color: var(--dim);
+  }
+  .group-name {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    font-weight: 500;
+  }
+  .group-count {
+    font-size: var(--text-label);
+    font-weight: 400;
+  }
+  /* after the name, under no column, so a share never reads as a gain */
+  .group-trail {
+    font-size: var(--text-label);
+    letter-spacing: 0.04em;
+  }
+  .group-trail::before {
+    content: "·";
+    margin: 0 var(--space-2);
+  }
+  .group-caret {
+    flex-shrink: 0;
+    color: var(--faint);
+    transition: transform 0.12s;
+  }
+  .group-caret-open {
+    transform: rotate(90deg);
+  }
+
+  /* sticks under the page's head, over its group's rows */
+  .period-label {
+    position: sticky;
+    top: var(--page-head-h, 0px);
+    z-index: var(--z-label);
+    display: flex;
+    justify-content: space-between;
+    padding: 6px var(--space-3);
+    border-bottom: 1px solid var(--line);
+    background: var(--card);
+    font-size: var(--text-small);
+    color: var(--dim);
+  }
+  .table-group + .table-group .period-label {
+    margin-top: var(--space-4);
+  }
+
+  @media (max-width: 719px) {
+    .card-box {
+      padding: var(--space-4);
+    }
+    .card-box:not(.card-flush):has(> .table:last-child) {
+      padding-bottom: var(--space-2);
+    }
+    .card-flush {
+      padding: 0;
+    }
+    .card-flush > .card-head {
+      padding: var(--space-2) var(--space-3) var(--space-2) var(--space-4);
+    }
+    .period-label {
+      padding: 6px var(--space-2);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .group-caret {
+      transition: none;
+    }
+  }
+}

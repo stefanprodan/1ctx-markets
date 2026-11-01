@@ -1,0 +1,82 @@
+@layer tokens, base, owners;
+
+@layer owners {
+  .tabs {
+    position: relative;
+    min-width: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .tabs-list {
+    display: flex;
+    gap: var(--space-5);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .tabs-list::-webkit-scrollbar {
+    display: none;
+  }
+  .tab {
+    position: relative;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    flex-shrink: 0;
+    padding: var(--space-2) 0 10px;
+    border: 0;
+    background: transparent;
+    color: var(--dim);
+    font-size: var(--text-ui);
+    white-space: nowrap;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .tab:hover,
+  .tab-on {
+    color: var(--fg);
+  }
+  .tab-on::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -1px;
+    height: 2px;
+    border-radius: var(--radius-xs);
+    background: var(--fg);
+  }
+  .tab:focus-visible {
+    outline-offset: -1px;
+  }
+  /* in a card the fade meets the card's ground */
+  .card .tabs {
+    --tabs-ground: var(--card);
+  }
+  .tab-count {
+    font-size: var(--text-small);
+    color: var(--faint);
+  }
+
+  /* the tabs bleed to the screen's edge and fade there: more to scroll */
+  @media (max-width: 719px) {
+    .tabs {
+      margin-right: calc(-1 * var(--space-4));
+    }
+    .tabs::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 1px;
+      width: var(--space-6);
+      background: linear-gradient(
+        to right,
+        transparent,
+        var(--tabs-ground, var(--page))
+      );
+      pointer-events: none;
+    }
+    .tabs-list {
+      padding-right: var(--space-6);
+    }
+  }
+}

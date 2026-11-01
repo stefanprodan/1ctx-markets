@@ -1,42 +1,102 @@
-/* The search box: fills a card's head band, the glass lit while the
-   text has the focus. */
-
 @layer tokens, base, owners;
 
 @layer owners {
-  /* the icon keeps its size when the search shares a head */
-  .search-icon {
-    flex-shrink: 0;
-  }
   .search {
     display: flex;
     align-items: center;
-    gap: 10px;
-    flex-grow: 1;
-    min-width: 0;
-    height: 40px;
-    padding: 0 var(--space-4) 0 15px;
+    gap: 6px;
+    width: 280px;
+    max-width: 100%;
+    height: 32px;
+    padding: 0 10px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
     color: var(--faint);
     cursor: text;
   }
   .search:focus-within {
+    border-color: var(--line-strong);
     color: var(--dim);
   }
-  /* on a phone the head's gap alone parts the box from what sits
-     beside it, so a placeholder keeps its last letters */
-  @media (max-width: 719px) {
-    .search:not(:last-child) {
-      padding-right: 0;
-    }
+  .search-icon {
+    flex-shrink: 0;
   }
   .search-input {
-    flex-grow: 1;
+    flex: 1;
     min-width: 0;
     height: 100%;
     padding: 0;
     border: 0;
+    outline: 0;
     background: transparent;
-    outline: none;
     color: var(--fg);
+    font-size: var(--text-ui);
+  }
+  /* the ✕ clears and folds; the browser's own would only clear */
+  .search-input::-webkit-search-cancel-button {
+    appearance: none;
+    display: none;
+  }
+  .search-x {
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    margin-right: -6px;
+    color: var(--dim);
+  }
+  .search-x-empty {
+    display: none;
+  }
+  .search-at {
+    position: relative;
+  }
+
+  @media (max-width: 719px) {
+    /* an open search takes the title's place on the same line */
+    .search,
+    .search-at {
+      flex: 1;
+      width: auto;
+    }
+    .search {
+      height: 44px;
+      margin: -6px 0;
+      padding-right: 0;
+    }
+    .card-head:has(.search:not(.search-shut)) .card-title {
+      display: none;
+    }
+    .search-at.search-at-shut,
+    .search.search-shut {
+      flex: 0 0 auto;
+      margin-left: auto;
+    }
+    .search.search-shut {
+      position: relative;
+      width: 44px;
+      margin: -6px -10px -6px auto;
+      padding: 0;
+      justify-content: center;
+      border-color: transparent;
+      color: var(--dim);
+      cursor: pointer;
+    }
+    /* the field itself takes the tap, so a phone raises its keyboard */
+    .search-shut .search-input {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      padding: 0;
+      opacity: 0;
+      cursor: pointer;
+    }
+    .search-x,
+    .search-x-empty {
+      display: inline-flex;
+      width: 42px;
+      height: 42px;
+      margin: 0;
+      background: transparent;
+    }
   }
 }

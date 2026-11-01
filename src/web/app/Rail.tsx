@@ -3,7 +3,8 @@
 
 import { useEffect, useRef } from "preact/hooks";
 import { Icon, Logo } from "../lib/icons.tsx";
-import { symbolOf } from "../views/Instruments.model.ts";
+import { nameOf, tickerOf } from "../lib/names.ts";
+import { SymbolName } from "../ui/Symbol.tsx";
 import { useServerFailing } from "./failing.ts";
 import { pickRecent, recent, recentHref } from "./recent.ts";
 import { HOME, lit, RAIL, STATUS } from "./routes.ts";
@@ -101,21 +102,21 @@ function Recent({ here, follow }: { here: string; follow?: () => void }) {
       <span class="rail-label">Recent</span>
       {rows.map((row) => {
         const href = recentHref(row.id);
-        const symbol = symbolOf(row.id);
+        const symbol = tickerOf(row.id);
+        const name = nameOf(row.name, null, row.id);
         return (
           <a
             key={row.id}
             href={href}
             class={`rail-recent${here === href ? " rail-item-on" : ""}`}
             aria-current={here === href ? "page" : undefined}
-            title={row.name ? `${symbol} · ${row.name}` : symbol}
+            title={name ? `${symbol} · ${name}` : symbol}
             onClick={() => {
               pickRecent(row.id);
               follow?.();
             }}
           >
-            <span class="rail-recent-symbol">{symbol}</span>
-            {row.name && <span class="rail-recent-name">{row.name}</span>}
+            <SymbolName ticker={symbol} name={name} compact />
           </a>
         );
       })}

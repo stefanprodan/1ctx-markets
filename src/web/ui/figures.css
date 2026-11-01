@@ -1,0 +1,105 @@
+@layer tokens, base, owners;
+
+@layer owners {
+  .num-ccy {
+    color: var(--faint);
+  }
+
+  .hero {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: var(--space-2) 0 var(--space-1);
+  }
+  .hero-name {
+    margin: 0;
+    font-size: var(--text-ui);
+    font-weight: 400;
+    color: var(--dim);
+  }
+  .hero-value {
+    display: flex;
+    align-items: baseline;
+    font-family: var(--sans);
+    font-size: var(--text-display);
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+  }
+  /* the currency, or the menu standing in for it */
+  .hero-ccy {
+    margin-left: var(--space-2);
+    font-family: var(--mono);
+    font-size: var(--text-display-unit);
+    letter-spacing: 0.04em;
+    color: var(--faint);
+  }
+  .hero-line {
+    font-size: var(--text-ui);
+    color: var(--dim);
+  }
+  .hero-moves {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-4);
+    font-size: var(--text-ui);
+  }
+
+  .stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3) var(--space-6);
+    margin: 0;
+  }
+  .stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .stat dt {
+    font-size: var(--text-small);
+    color: var(--faint);
+  }
+  .stat dd {
+    margin: 0;
+    font-size: var(--text-title);
+  }
+  .stat dd .num {
+    font-size: inherit;
+  }
+  .stat .stat-note {
+    font-size: var(--text-small);
+    color: var(--faint);
+  }
+
+  .facts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-3) var(--space-4);
+    margin: 0;
+    padding: var(--space-3) 0;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+  .facts dt {
+    font-size: var(--text-small);
+    color: var(--faint);
+  }
+  .facts dd {
+    margin: 2px 0 0;
+    overflow-wrap: anywhere;
+  }
+
+  @media (max-width: 719px) {
+    .hero-value {
+      font-size: var(--text-display-phone);
+    }
+    .stats {
+      gap: var(--space-3) var(--space-4);
+    }
+    .stat dd {
+      font-size: var(--text-body);
+    }
+  }
+}

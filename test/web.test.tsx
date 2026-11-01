@@ -6,7 +6,7 @@ import { signal } from "@preact/signals";
 import { render } from "preact-render-to-string";
 import { spec } from "../src/api/openapi.ts";
 import { UI_PATHS } from "../src/server/http.ts";
-import { Shell } from "../src/web/app/App.tsx";
+import { App, Shell } from "../src/web/app/App.tsx";
 import { Rail } from "../src/web/app/Rail.tsx";
 import {
   putRecent,
@@ -28,7 +28,7 @@ import {
   failure,
   says,
 } from "../src/web/data/api.ts";
-import type { AgentKey, Candidate, Detail } from "../src/web/data/store.ts";
+import type { AgentKey, Detail } from "../src/web/data/store.ts";
 import {
   type Board,
   type BoardItem,
@@ -50,6 +50,7 @@ import {
   type WatchEntry,
 } from "../src/web/data/store.ts";
 import { didNotLoad, Page } from "../src/web/ui/Page.tsx";
+import { Segmented } from "../src/web/ui/Segmented.tsx";
 import {
   axisPrice,
   candles,
@@ -96,8 +97,8 @@ import {
 } from "../src/web/views/Connect.model.ts";
 import {
   ConnectBody,
+  dropNewKey,
   KeyDetails,
-  KeyRow,
   Keys,
   NewKey,
   Setup,
@@ -109,7 +110,7 @@ import {
   addTo,
   afterSave,
   bySort,
-  clipOf,
+  cardOf,
   crossedToday,
   DEFAULT_SORT,
   draftOf,
@@ -117,55 +118,61 @@ import {
   earningRows,
   editOf,
   entryOf,
-  escapeFrom,
   gapText,
   isSort,
   money,
+  moveOf,
   moversOf,
   moveTo,
   nameError,
-  nextSort,
   removeFrom,
   rename,
   renameOf,
-  type Search,
   type Sort,
   savedDraft,
   saveOf,
-  searcher,
   shortName,
+  sparkOf,
   swap,
+  tileColumns,
   trendsOf,
-  UPSTREAM_WAIT_MS,
   waiting,
   withView,
 } from "../src/web/views/Dashboard.model.ts";
-import { Earnings, Glance, LoadingPanel } from "../src/web/views/Dashboard.tsx";
 import {
-  cardOf,
-  moveOf,
-  SPARK_H,
-  sparkOf,
-} from "../src/web/views/Home.model.ts";
-import { Card } from "../src/web/views/Home.tsx";
+  Earnings,
+  Glance,
+  LoadingPanel,
+  SectionView,
+  sectionTools,
+  Tile,
+} from "../src/web/views/Dashboard.tsx";
 import {
   afterHours,
   choices,
   headline,
   labelOf,
+  moveLabel,
   priceState,
   returnCell,
   stats,
   summary,
   weekly200,
 } from "../src/web/views/Instrument.model.ts";
-import { Head, InstrumentMenu, Stats } from "../src/web/views/Instrument.tsx";
+import {
+  Head,
+  InstrumentMenu,
+  SignalCards,
+} from "../src/web/views/Instrument.tsx";
 import {
   about,
   bySymbol,
   change,
+  marketOf,
   matches,
   price,
+  priceParts,
+  sortRows,
   symbolOf,
 } from "../src/web/views/Instruments.model.ts";
 import { InstrumentsList } from "../src/web/views/Instruments.tsx";
@@ -802,7 +809,7 @@ describe("the status model", () => {
     expect(ago("2026-10-28T11:57:00Z", NOW)).toBe("3 min ago");
     expect(ago("2026-10-28T09:00:00Z", NOW)).toBe("3 h ago");
     expect(ago("2026-10-26T12:00:00Z", NOW)).toBe("2 d ago");
-    expect(runTime(null)).toBe("never");
+    expect(runTime(null)).toBe("Never");
     expect(runTime("2026-10-28T13:05:00Z")).not.toMatch(/AM|PM/i);
   });
 
@@ -942,7 +949,6 @@ describe("the views", () => {
       "61 tracked",
       "1 paused",
       "1 failing",
-      "1 job",
       "62 MB",
       "v1.2.3",
       "Casey prices",
@@ -962,12 +968,24 @@ describe("the views", () => {
     // a job row that is well says nothing more: the dot does
     expect(html).not.toContain(" ok<");
     // an off source has no card, only its row to add
-    expect(html).not.toMatch(/class="label"[^>]*>Casey news</);
+    // one Jobs card, a folding label per source that is on, one head row
+    expect(html).toContain(
+      '<h2 class="card-title">Jobs<span class="card-count num" aria-live="polite">3</span>',
+    );
+    expect(html.match(/class="group-label group-fold"/g)).toHaveLength(3);
+    expect(html).toMatch(/Casey feed<span class="group-count num">1<\/span>/);
+    expect(html.match(/table-head/g)).toHaveLength(2);
+    expect(html).toMatch(/<\/svg>Casey feed</);
+    expect(html).not.toMatch(/<\/svg>Casey news</);
     expect(html).not.toContain(">switch<");
-    expect(html).toContain('class="srv-mark status-failed"');
-    expect(html).not.toContain("rows-meta-bad");
-    // the jobs tile counts the jobs shown, not the off source's
-    expect(html).toMatch(/Jobs<\/span><span class="srv-figure">3</);
+    expect(html).toContain('class="srv-dot status-failed"');
+    // each job row opens its drawer; none is open yet
+    expect(html).toContain('<span class="table-hidden">Daily prices</span>');
+    expect(html).not.toContain('role="dialog"');
+    // the jobs figure counts the jobs shown, not the off source's
+    expect(html).toMatch(/<dt>Jobs<\/dt><dd class="num">3</);
+    // a stat row, no tiles
+    expect(html).toContain('<dl class="stats"');
   });
 
   test("an opened job says what it does, then its failures or that all are ok", () => {
@@ -975,8 +993,10 @@ describe("the views", () => {
     const ok = render(<JobDetails job={live!} />);
     expect(ok).toContain("What Live prices does.");
     expect(ok).toContain("All 19 markets ok.");
-    expect(ok).not.toContain("srv-failing");
-    const bad = render(<JobDetails job={daily!} />);
+    expect(ok).not.toContain("<table");
+    const bad = render(<JobDetails job={daily!} source="Casey feed" />);
+    expect(bad).toContain("Casey feed");
+    expect(bad).toContain("Last run");
     expect(bad).toContain("FEED:TLV");
     expect(bad).toContain("no bars");
     expect(bad).toContain("5 more failing");
@@ -1006,7 +1026,7 @@ describe("the views", () => {
         now={NOW}
       />,
     );
-    expect(html).toContain("No runs yet");
+    expect(html).toContain("No runs yet.");
     expect(html).not.toContain("Add a source");
     expect(html).not.toContain("Always tracked");
     expect(html).not.toContain("notice-failed");
@@ -1021,7 +1041,7 @@ describe("the views", () => {
         now={NOW}
       />,
     );
-    expect(html).toContain('<p class="srv-off">Sync is off.</p>');
+    expect(html).toContain('<p class="notice">Sync is off.</p>');
   });
 
   test("sign-in asks for the admin key alone", () => {
@@ -1030,6 +1050,16 @@ describe("the views", () => {
     expect(html).toContain('type="password"');
     expect(html.match(/<input/g)).toHaveLength(1);
     expect(html).toContain("Markets");
+    expect(html).not.toContain("ssearch");
+  });
+
+  test("a server that cannot be reached shows its failure without the symbol search", () => {
+    const s = store(fake({}).fetch);
+    s.statusError.value = "The server did not answer.";
+    const html = render(<App store={s} />);
+    expect(html).toContain("This page did not load");
+    expect(html).toContain("The server did not answer.");
+    expect(html).not.toContain("ssearch");
   });
 
   test("the rail is the logo, Markets, the pages lit where they are, and the menu", () => {
@@ -1066,11 +1096,24 @@ describe("the views", () => {
       expect(html).toContain('<span class="rail-label">Recent</span>');
       expect(html).toContain('href="/instruments/US%3AAMD"');
       expect(html).toContain(
-        '<span class="rail-recent-name">Advanced Micro Devices, Inc.</span>',
+        '<span class="sym sym-compact"><span class="sym-ticker">AMD</span><span class="sym-name">Advanced Micro Devices, Inc.</span></span>',
       );
       expect(html).toMatch(
-        /class="rail-recent rail-item-on"[^>]*><span class="rail-recent-symbol">AAPL<\/span><\/a>/,
+        /class="rail-recent rail-item-on"[^>]*><span class="sym sym-compact"><span class="sym-ticker">AAPL<\/span><\/span><\/a>/,
       );
+    } finally {
+      recent.value = [];
+    }
+  });
+
+  test("a recent coin is named without its quote currency", () => {
+    recent.value = [{ id: "CRYPTO:BTC-USD", name: "Bitcoin USD" }];
+    try {
+      const html = render(<Rail here="/" narrow={false} onHide={() => {}} />);
+      expect(html).toContain(
+        '<span class="sym-ticker">BTC</span><span class="sym-name">Bitcoin</span>',
+      );
+      expect(html).toContain('title="BTC · Bitcoin"');
     } finally {
       recent.value = [];
     }
@@ -1199,6 +1242,52 @@ describe("the instruments model", () => {
     expect(matches(listed("US:AAPL"), "us:aa")).toBe(true);
     expect(matches(listed("US:AAPL"), "nvda")).toBe(false);
   });
+
+  test("a column head sorts the rows, the symbol breaking a tie", () => {
+    const rows = [
+      listed("US:NVDA", { change_percent: -1 }),
+      listed("XETRA:VWCE", { kind: "ETF", market: "XETRA", change_percent: 2 }),
+      listed("US:AMD", { change_percent: null }),
+      listed("US:AAPL", { change_percent: 0.5 }),
+    ];
+    const ids = (k: Parameters<typeof sortRows>[1], d: "asc" | "desc") =>
+      sortRows(rows, k, d).map((r) => symbolOf(r.id));
+    expect(ids("symbol", "asc")).toEqual(["AAPL", "AMD", "NVDA", "VWCE"]);
+    expect(ids("symbol", "desc")).toEqual(["VWCE", "NVDA", "AMD", "AAPL"]);
+    // a row with no change goes last either way
+    expect(ids("change", "desc")).toEqual(["VWCE", "AAPL", "NVDA", "AMD"]);
+    expect(ids("change", "asc")).toEqual(["NVDA", "AAPL", "VWCE", "AMD"]);
+    expect(ids("kind", "asc")).toEqual(["VWCE", "AAPL", "AMD", "NVDA"]);
+    expect(ids("market", "desc")).toEqual(["VWCE", "AAPL", "AMD", "NVDA"]);
+    // a coin's market shows blank and sorts as blank, never mid-list
+    const coin = listed("CRYPTO:BTC-USD", {
+      kind: "CRYPTOCURRENCY",
+      market: "CRYPTO",
+    });
+    expect(
+      sortRows([...rows, coin], "market", "asc").map((r) => symbolOf(r.id))[0],
+    ).toBe("BTC-USD");
+    // the input is left as it was
+    expect(symbolOf(rows[0]!.id)).toBe("NVDA");
+  });
+
+  test("the price and its currency come apart; a market that repeats the kind is blank", () => {
+    expect(priceParts(listed("US:A", { price: 1661.62 }))).toEqual({
+      value: "1,661.62",
+      currency: "USD",
+    });
+    expect(
+      priceParts(
+        listed("FRED:X", { price: 5, unit: "percent", currency: null }),
+      ),
+    ).toEqual({ value: "5.00%", currency: null });
+    expect(
+      marketOf(
+        listed("CRYPTO:BTC-USD", { kind: "CRYPTOCURRENCY", market: "CRYPTO" }),
+      ),
+    ).toBe("");
+    expect(marketOf(listed("US:A"))).toBe("US");
+  });
 });
 
 describe("the instruments list", () => {
@@ -1215,9 +1304,12 @@ describe("the instruments list", () => {
     expect(html).toContain('placeholder="Search"');
     expect(html.indexOf("H2O")).toBeLessThan(html.indexOf("NVDA"));
     expect(html).toContain('href="/instruments/US%3ANVDA"');
-    expect(html).toContain("216.89 USD");
+    expect(html).toContain('216.89<span class="num-ccy"> USD</span>');
     expect(html).toContain("−0.48%");
-    expect(html).toContain('class="rows-count" aria-live="polite">2<');
+    expect(html).toContain('class="card-count num" aria-live="polite">2<');
+    // a row opens its page by the row itself, no chevron
+    expect(html).not.toContain("chevron");
+    expect(html).toContain('aria-sort="ascending"');
     const one = render(<InstrumentsList all={all} query={signal("nvidia")} />);
     expect(one).toContain("NVDA");
     expect(one).not.toContain("H2O");
@@ -1225,7 +1317,8 @@ describe("the instruments list", () => {
     expect(none).toContain("No instrument matches.");
     // before the first answer, no count and no rows
     const waiting = render(<InstrumentsList all={null} query={signal("")} />);
-    expect(waiting).not.toContain("rows-count");
+    expect(waiting).not.toContain("card-count");
+    expect(waiting).not.toContain("<table");
   });
 
   test("loads every page, and a second ask joins the load in flight", async () => {
@@ -1368,18 +1461,19 @@ describe("the instrument model", () => {
     ]);
   });
 
-  test("on a phone Trend holds the 200-week average the head leaves out", () => {
+  test("Trend leaves the 200-week average to the returns row", () => {
     const trend = stats(
       detail({ signals: { daily: DAILY, weekly: { sma200: 180 } } }),
     ).find((c) => c.title === "Trend")!;
-    expect(trend.rows.find((r) => r.label === "200-week average")).toEqual({
-      label: "200-week average",
-      value: "20.69% above",
-      note: "180.00 USD",
-      tone: "up",
-      phone: true,
-    });
-    expect(trend.rows.filter((r) => r.phone).length).toBe(1);
+    expect(trend.rows.map((r) => r.label)).not.toContain("200-week average");
+    const html = render(
+      <Head
+        detail={detail({ signals: { daily: DAILY, weekly: { sma200: 180 } } })}
+        now={NOW}
+      />,
+    );
+    expect(html).toContain("200-week average");
+    expect(html).toContain("20.69% above");
   });
 
   test("a turn, a cross and an extreme read as the day's news", () => {
@@ -1433,7 +1527,7 @@ describe("the instrument model", () => {
   test("a card or row without its signals is left out", () => {
     // no signals and no day range: nothing under the chart
     expect(stats(detail())).toEqual([]);
-    expect(render(<Stats cards={[]} />)).toBe("");
+    expect(render(<SignalCards cards={[]} />)).toBe("");
     // a young listing: no year, no 200-day average, no cross
     const young = stats(
       detail({
@@ -1490,8 +1584,9 @@ describe("the instrument model", () => {
       ["at the high", "today", null],
       ["at the low", null, null],
     ]);
-    const html = render(<Stats cards={young} />);
+    const html = render(<SignalCards cards={young} />);
     expect(html).toContain("Momentum");
+    expect(html).toContain('<h2 class="card-title">Trend');
     expect(html).not.toContain("ins-span");
   });
 
@@ -1555,9 +1650,10 @@ describe("the instrument model", () => {
         },
       }),
     )!;
-    expect(after.price).toBe("290.14 USD");
+    expect(after.value).toBe("290.14");
     expect(after.change).toEqual({ text: "−10.70%", dir: -1 });
-    expect(after.label).toMatch(/^After hours · \d\d:\d\d$/);
+    expect(after.word).toBe("After hours");
+    expect(after.at).toMatch(/^\d\d:\d\d$/);
     const pre = afterHours(
       detail({
         extended: {
@@ -1569,7 +1665,7 @@ describe("the instrument model", () => {
         },
       }),
     )!;
-    expect(pre.label).toMatch(/^Pre-market · /);
+    expect(pre.word).toBe("Pre-market");
     expect(afterHours(detail({ extended: null }))).toBeNull();
   });
 
@@ -1646,16 +1742,66 @@ describe("the instrument page", () => {
   test("the head draws the price, its state and the four returns", () => {
     const html = render(<Head detail={detail()} now={NOW} />);
     expect(html).toContain("Stock · US");
-    expect(html).toContain("217.24 USD");
+    expect(html).toContain('217.24<span class="hero-ccy">USD</span>');
+    expect(html).toContain("−0.70");
     expect(html).toContain("−0.32%");
+    expect(html).toContain("today");
     expect(html).toContain("Open · updated");
     for (const label of ["1 week", "1 month", "3 months", "Year to date"]) {
       expect(html).toContain(label);
     }
     expect(html).toContain("+16.48%");
+    // a phone's returns in the short words
+    expect(html).toContain("<dt>1W</dt>");
+    expect(html).toContain("<dt>200W</dt>");
+    // one large figure, ever
+    expect(html.match(/hero-value/g)?.length).toBe(1);
+    expect(html).not.toContain("hero-line");
     expect(
       render(<Head detail={detail({ returns: null })} now={NOW} />),
     ).not.toContain("1 week");
+  });
+
+  test("after hours is a line under the price, not a second figure", () => {
+    const html = render(
+      <Head
+        detail={detail({
+          session: { state: "closed", start: null, end: null },
+          extended: {
+            session: "post",
+            price: 290.14,
+            change: -34.75,
+            change_percent: -10.7,
+            time: "2026-10-28T22:05:00Z",
+          },
+        })}
+        now={NOW}
+      />,
+    );
+    expect(html.match(/hero-value/g)?.length).toBe(1);
+    expect(html).toContain('<div class="hero-line">');
+    expect(html).toContain("After hours");
+    expect(html).toContain("290.14");
+    expect(html).toContain("−10.70%");
+    expect(html).toContain("at close");
+    // open, but no trade since the open: the move is still the last close's
+    expect(
+      moveLabel(
+        detail({
+          fetched_at: "2026-10-28T09:00:00Z",
+          trade_time: "2026-10-27T16:29:58Z",
+        }),
+      ),
+    ).toBe("at close");
+    expect(moveLabel(detail())).toBe("today");
+    // a yield moves in percent alone, with no money move
+    const y = headline(
+      detail(
+        { price: 4.2, change: 0.047, unit: "percent", currency: null },
+        { id: "FRED:DGS10", unit: "percent", currency: null },
+      ),
+    );
+    expect([y.value, y.currency, y.move.text]).toEqual(["4.20%", null, ""]);
   });
 
   test("the actions button checks a refetch that fetched and waits while busy", () => {
@@ -1673,11 +1819,11 @@ describe("the instrument page", () => {
     const idle = menu(false, false);
     expect(idle).toContain('aria-label="More"');
     expect(idle).not.toContain("disabled");
-    expect(idle).not.toContain("ins-done");
+    expect(idle).not.toContain("status-done");
     const busy = menu(true, false);
     expect(busy).toContain("disabled");
     expect(busy).toContain('aria-label="Fetching"');
-    expect(menu(false, true)).toContain("ins-done");
+    expect(menu(false, true)).toContain("status-done");
   });
 
   test("an instrument loads by id; an older answer never lands over a newer id", async () => {
@@ -1723,7 +1869,7 @@ describe("the instrument page", () => {
     expect(headline(unread).price).toBe("216.50 USD");
     expect(priceState(unread, NOW)).toBe("Stored price · updated 3 h ago");
     const html = render(<Head detail={unread} now={NOW} />);
-    expect(html).toContain("216.50 USD");
+    expect(html).toContain('216.50<span class="hero-ccy">USD</span>');
     expect(html).not.toContain("1 week");
   });
 
@@ -1902,30 +2048,57 @@ describe("connect agents", () => {
   test("New key and a key's details pick portfolios and alert rules with the app's own buttons", () => {
     const s = store(fake({}).fetch);
     const made = render(
-      <NewKey store={s} onMade={() => {}} onCancel={() => {}} />,
+      <NewKey store={s} shown={signal(null)} onClose={() => {}} />,
     );
     const changed = render(
       <KeyDetails
         store={s}
         row={agentKey("codex", { portfolio: "read", rules: "write" })}
+        now={Date.parse("2026-10-28T12:00:00Z")}
         onDone={() => {}}
       />,
     );
     for (const html of [made, changed]) {
+      expect(html).toContain('role="dialog"');
       expect(html).toContain(">Portfolios<");
       expect(html).toContain(">Alert rules<");
       expect(html.match(/>Read and write</g)).toHaveLength(2);
       expect(html).not.toContain("<select");
     }
+    // the new key never expires unless picked, and reaches neither
+    expect(made).toMatch(/aria-pressed="true"[^>]*>Never</);
+    expect(made.match(/aria-pressed="true"[^>]*>No access</g)).toHaveLength(2);
+    expect(made).toContain(" disabled>Create key<");
     // the kept key's picks start at what it has, Save waiting on a change
     expect(changed.match(/aria-pressed="true"/g)).toHaveLength(2);
     expect(changed).toMatch(/aria-pressed="true"[^>]*>Read</);
     expect(changed).toMatch(/aria-pressed="true"[^>]*>Read and write</);
     expect(changed).toContain(" disabled>Save<");
-    // Revoke leads the details, asking nothing until pressed
+    // Revoke leads the foot, asking nothing until pressed
     expect(changed).toContain('aria-label="Revoke codex"');
+    expect(changed).toMatch(/drawer-foot-start"><button[^>]*>Revoke</);
     expect(changed.indexOf(">Revoke<")).toBeLessThan(changed.indexOf(">Save<"));
     expect(changed).not.toContain("lose access");
+    // Save submits the drawer's form from its foot
+    const form = changed.match(/<form id="([^"]+)"/)?.[1];
+    expect(form).toBeDefined();
+    expect(changed).toContain(`type="submit" form="${form}"`);
+    // the details say when it was used and when it ends
+    expect(changed).toContain("Last used");
+    expect(changed).toContain("<dt>Last used</dt><dd>Never</dd>");
+    expect(changed).toContain("<dt>Expires</dt><dd><span>Never</span></dd>");
+    // the new key's picks are held while it is made
+    expect(
+      render(
+        <Segmented
+          label="Expires"
+          options={[{ value: "never", text: "Never" }]}
+          value="never"
+          onPick={() => {}}
+          disabled
+        />,
+      ),
+    ).toContain('aria-pressed="true" disabled>Never<');
   });
 
   test("a name is shaped as typed into what the server takes", () => {
@@ -1936,23 +2109,23 @@ describe("connect agents", () => {
 
   test("a key reads its last use and expiry in plain words", () => {
     const now = Date.parse("2026-10-28T12:00:00Z");
-    expect(usedWords(agentKey("a"), now)).toBe("Never used");
+    expect(usedWords(agentKey("a"), now)).toBe("Never");
     expect(
       usedWords(agentKey("a", { last_used_at: "2026-10-28T11:55:00Z" }), now),
-    ).toBe("Used 5 min ago");
-    expect(expiryWords(agentKey("a"), now)).toBe("Never expires");
+    ).toBe("5 min ago");
+    expect(expiryWords(agentKey("a"), now)).toBe("Never");
     expect(
       expiryWords(agentKey("a", { expires_at: "2026-11-27T12:00:00Z" }), now),
-    ).toBe("Expires 27 Nov");
+    ).toBe("27 Nov");
     expect(
       expiryWords(agentKey("a", { expires_at: "2027-10-28T12:00:00Z" }), now),
-    ).toBe("Expires 28 Oct 2027");
+    ).toBe("28 Oct 2027");
     expect(
       expiryWords(agentKey("a", { expires_at: "2026-10-20T12:00:00Z" }), now),
     ).toBe("Expired 20 Oct");
   });
 
-  test("the keys card lists each key closed, its count and New key", async () => {
+  test("the keys card is a table of keys that open their drawer, its count and New key", async () => {
     const s = store(
       fake({
         [`GET ${KEYS_PATH}`]: ok({
@@ -1971,9 +2144,18 @@ describe("connect agents", () => {
     expect(html).toContain("New key");
     expect(html).toContain("codex");
     expect(html).toContain("opencode");
-    expect(html.match(/aria-expanded="false"/g)).toHaveLength(2);
+    expect(html).toContain('<table class="table" aria-label="Keys"');
+    // each row opens its key's drawer; none is open yet
+    expect(
+      html.match(/<button type="button" class="table-open">/g),
+    ).toHaveLength(2);
+    expect(html).toContain('<span class="table-hidden">codex</span>');
+    expect(html).not.toContain('role="dialog"');
     expect(html).not.toContain(">Revoke<");
-    expect(html).toContain('<span class="rows-bad">Expired 1 Jan 2020</span>');
+    expect(html).toContain('<span class="error">Expired 1 Jan 2020</span>');
+    expect(html).toContain(">Last used<");
+    // no key reaches more than market data, so no Access column
+    expect(html).not.toContain(">Access<");
     expect(html).not.toContain("No keys yet.");
     const page = render(<ConnectBody store={s} />);
     expect(page).toContain("Connect agents");
@@ -2008,29 +2190,45 @@ describe("connect agents", () => {
     );
     await s.loadKeys();
     const html = render(<Keys store={s} shown={signal(TOKEN)} />);
+    expect(html).toContain('role="dialog"');
     expect(html).toContain(SHOWN_ONCE);
     expect(html).toContain(`export ${KEY_ENV}=&quot;${TOKEN}&quot;`);
     expect(html).toContain('aria-label="Copy Key"');
     expect(html).toContain(">Done<");
-    expect(render(<ShownKey token={TOKEN} onDone={() => {}} />)).toContain(
-      TOKEN,
-    );
+    expect(html).not.toContain("Create key");
+    expect(render(<ShownKey token={TOKEN} />)).toContain(TOKEN);
+    // closing the drawer drops the token with it
+    const adding = signal(true);
+    const shown = signal<string | null>(TOKEN);
+    dropNewKey(adding, shown);
+    expect(adding.value).toBe(false);
+    expect(shown.value).toBeNull();
+    expect(render(<Keys store={s} shown={shown} />)).not.toContain(TOKEN);
     // the page's own draw never holds one
     expect(render(<ConnectBody store={s} />)).not.toContain(TOKEN);
   });
 
-  test("a closed row shows its use and expiry, its details shut", () => {
-    const html = render(
-      <KeyRow
-        store={store(fake({}).fetch)}
-        row={agentKey("codex", { last_used_at: "2026-10-28T11:00:00Z" })}
-        now={Date.parse("2026-10-28T12:00:00Z")}
-      />,
+  test("a key row shows its use, expiry and access; a phone keeps name and expiry", async () => {
+    const s = store(
+      fake({
+        [`GET ${KEYS_PATH}`]: ok({
+          keys: [
+            agentKey("codex", {
+              last_used_at: new Date(Date.now() - 3_600_000).toISOString(),
+              portfolio: "read",
+            }),
+          ],
+          limit: 5,
+        }),
+      }).fetch,
     );
-    expect(html).toContain("Used 1 h ago · ");
-    expect(html).toContain("Never expires");
-    expect(html).toContain('aria-expanded="false"');
-    expect(html).not.toContain(">Revoke<");
+    await s.loadKeys();
+    const html = render(<Keys store={s} shown={signal(null)} />);
+    expect(html).toContain('<span class="faint">1 h ago</span>');
+    expect(html).toContain('<span class="faint">Never</span>');
+    expect(html).toContain(">Access<");
+    expect(html).toContain("Reads portfolios");
+    expect(html.match(/table-hide-phone/g)?.length).toBe(4);
     expect(html).not.toContain(">Save<");
   });
 
@@ -2058,7 +2256,9 @@ describe("connect agents", () => {
     const html = render(<Setup origin={origin} />);
     for (const { label } of AGENTS) expect(html).toContain(`>${label}<`);
     expect(html).toContain("claude mcp add");
-    expect(html).toContain('aria-selected="true"');
+    expect(html).toContain('<h2 class="card-title">Setup</h2>');
+    expect(html).toMatch(/aria-pressed="true"[^>]*>Claude Code</);
+    expect(html).not.toContain("<select");
   });
 });
 
@@ -2929,7 +3129,8 @@ describe("the home page's cards", () => {
       type: "ready",
       href: "/instruments/SNP%3A%5EGSPC",
       symbol: "^GSPC",
-      price: "100.00 USD",
+      price: "100.00",
+      currency: "USD",
       move: "+1.00 USD",
       percent: "+1.00%",
       dir: 1,
@@ -2938,6 +3139,7 @@ describe("the home page's cards", () => {
     // a yield moves in points
     expect(cardOf(dgs10!)).toMatchObject({
       price: "4.10%",
+      currency: null,
       move: "",
       percent: "",
       state: "",
@@ -2964,7 +3166,8 @@ describe("the home page's cards", () => {
     } as WatchEntry;
     expect(cardOf(restarted)).toMatchObject({
       type: "ready",
-      price: "100.00 USD",
+      price: "100.00",
+      currency: "USD",
     });
     expect(cardOf(HOME_WATCH.entries[3] as WatchEntry)).toEqual({
       type: "pending",
@@ -2987,58 +3190,81 @@ describe("the home page's cards", () => {
     expect(cardOf({ ...stored, state: "candidates" })).toMatchObject({
       text: "Not found",
     });
-    const html = render(<Card entry={stored} spark={undefined} id="x" />);
+    const html = render(<Tile entry={stored} spark={undefined} />);
     expect(html).toContain("Not available");
     expect(html).toContain('href="/instruments/NAS%3A%5ENDX"');
   });
 
-  test("a card leads with the name on a wide window and the ticker on a phone", () => {
+  test("a card leads with the ticker over its name; a coin drops its quote currency", () => {
     const html = render(
-      <Card
+      <Tile
         entry={tracked("^NDX", "NAS:^NDX") as WatchEntry}
         spark={undefined}
-        id="x"
       />,
     );
-    expect(html).toMatch(/home-name cut home-wide">[^<]+<\/span>/);
-    expect(html).toMatch(/home-lead cut home-narrow">\^NDX<\/span>/);
-    expect(html).toMatch(/home-symbol cut home-wide">\^NDX<\/span>/);
-    expect(html).toMatch(/home-under cut home-narrow">[^<]+<\/span>/);
-    expect(html.indexOf("home-lead")).toBeLessThan(html.indexOf("home-under"));
+    expect(html).toMatch(/sym-ticker">\^NDX<\/span><span class="sym-name">/);
+    const coin = {
+      ...tracked("BTC-USD", "CRYPTO:BTC-USD"),
+    } as WatchEntry;
+    coin.instrument = {
+      ...coin.instrument!,
+      name: "Bitcoin USD",
+      kind: "CRYPTOCURRENCY",
+    };
+    expect(cardOf(coin)).toMatchObject({ symbol: "BTC", name: "Bitcoin" });
   });
 
-  test("a day line splits at the previous close across its session; a month line is one colour", () => {
+  test("a day line splits at the previous close across its session; a month line starts from its first close", () => {
+    // two closes of a session of 78 five-minute steps sit at its start
     const up = sparkOf(dayAnswer("SNP:^GSPC", [101, 103], 100) as Intraday)!;
-    expect(up.base).toBe(SPARK_H - 2);
-    expect(up.tone).toBe("up");
-    // two points of a session of 78 sit at its start
-    expect(up.points.split(" ")[1]!.startsWith("1.54,")).toBe(true);
-    const down = sparkOf(dayAnswer("SNP:^GSPC", [99], 100) as Intraday)!;
-    expect(down.tone).toBe("down");
-    expect(down.points.split(" ")).toHaveLength(2);
+    expect(up).toEqual({ closes: [101, 103], base: 100, slots: 79 });
+    const html = render(
+      <Tile
+        entry={HOME_WATCH.entries[0] as WatchEntry}
+        spark={dayAnswer("SNP:^GSPC", [101, 103], 100) as Intraday}
+      />,
+    );
+    expect(html).toMatch(/points="0\.0,[\d.]+ 1\.5,2\.0"/);
+    // a session not bracketing the closes spans what it has
+    const late = dayAnswer("SNP:^GSPC", [101, 103], 100) as Intraday;
+    expect(
+      sparkOf({ ...late, session: { ...SESSION, start: at5(1) } }),
+    ).toEqual({ closes: [101, 103], base: 100 });
     expect(sparkOf(dayAnswer("SNP:^GSPC", [], 100) as Intraday)).toBeNull();
-    const month = sparkOf(monthAnswer("FRED:DGS10", [4, 3.9]) as History)!;
-    expect(month).toMatchObject({ base: null, tone: "down" });
+    expect(
+      sparkOf(monthAnswer("FRED:DGS10", [4, 3.9]) as History),
+    ).toMatchObject({ base: "start" });
     expect(sparkOf(undefined)).toBeNull();
   });
 
-  test("a card shows only the day's percent where asked; the minute refresh redraws its line", () => {
+  test("a card shows the day's percent, not its move; the minute refresh redraws its line", () => {
     const e = HOME_WATCH.entries[0] as WatchEntry;
-    const draw = (shift: number, percentOnly: boolean) =>
+    const draw = (shift: number) =>
       render(
-        <Card
+        <Tile
           entry={e}
           spark={dayAnswer("SNP:^GSPC", [101 + shift, 99], 100) as Intraday}
-          id="dash-0-SNP"
-          percentOnly={percentOnly}
         />,
       );
-    expect(draw(0, false)).toContain("+1.00 USD");
-    const first = draw(0, true);
+    const first = draw(0);
     expect(first).not.toContain("+1.00 USD");
     expect(first).toContain("+1.00%");
     expect(first.match(/<polyline/g)).toHaveLength(2);
-    expect(draw(1, true)).not.toEqual(first);
+    expect(draw(1)).not.toEqual(first);
+  });
+
+  test("tiles fill a row, one fewer or more when that would leave one alone", () => {
+    expect([1, 2, 4, 6, 8].map((n) => tileColumns(n, 4))).toEqual([
+      4, 4, 4, 4, 4,
+    ]);
+    expect(tileColumns(5, 4)).toBe(3);
+    expect(tileColumns(9, 4)).toBe(3);
+    expect(tileColumns(13, 4)).toBe(5);
+    expect(tileColumns(7, 3)).toBe(4);
+    // a phone's two to a row, or one when an odd count would strand one
+    expect([1, 2, 3, 4, 5].map((n) => tileColumns(n, 2))).toEqual([
+      2, 2, 1, 2, 1,
+    ]);
   });
 });
 
@@ -3117,144 +3343,6 @@ const EARNING = {
   currency: "USD",
 };
 
-describe("the dashboard's search", () => {
-  const cand = (id: string, stored: boolean): Candidate => ({
-    id,
-    name: null,
-    type: "EQUITY",
-    exchange: id.slice(0, id.indexOf(":")),
-    stored,
-  });
-
-  // each ask held until the test answers it, timers run by hand
-  function rig() {
-    const asks: {
-      query: string;
-      upstream: boolean;
-      signal: AbortSignal;
-      answer: (c: Candidate[]) => Promise<void>;
-    }[] = [];
-    const search: Search = (query, upstream, signal) =>
-      new Promise((resolve) => {
-        asks.push({
-          query,
-          upstream,
-          signal,
-          answer: async (c) => {
-            resolve(c);
-            await Promise.resolve();
-            await Promise.resolve();
-          },
-        });
-      });
-    const timers: { fn: () => void; ms: number; cleared: boolean }[] = [];
-    const shown: (Candidate[] | null)[] = [];
-    const busy: boolean[] = [];
-    const s = searcher(
-      search,
-      (f) => shown.push(f),
-      (b) => busy.push(b),
-      {
-        set: (fn, ms) => {
-          const t = { fn, ms, cleared: false };
-          timers.push(t);
-          return t;
-        },
-        clear: (t) => {
-          (t as { cleared: boolean }).cleared = true;
-        },
-      },
-    );
-    const fire = () => {
-      for (const t of timers.splice(0)) if (!t.cleared) t.fn();
-    };
-    return { s, asks, timers, shown, busy, fire };
-  }
-
-  test("one letter asks the database only", async () => {
-    const r = rig();
-    r.s.ask("a");
-    expect(r.asks.map((a) => [a.query, a.upstream])).toEqual([["a", false]]);
-    expect(r.timers).toEqual([]);
-    expect(r.busy).toEqual([false]);
-    await r.asks[0]!.answer([cand("US:AAPL", true)]);
-    expect(r.shown).toEqual([[cand("US:AAPL", true)]]);
-  });
-
-  test("stored matches draw at once and upstream's join under them", async () => {
-    const r = rig();
-    r.s.ask(" aap ");
-    expect(r.busy).toEqual([true]);
-    await r.asks[0]!.answer([cand("US:AAPL", true)]);
-    expect(r.shown).toEqual([[cand("US:AAPL", true)]]);
-    // upstream waits out the pause before its call
-    expect(r.asks).toHaveLength(1);
-    expect(r.timers.map((t) => t.ms)).toEqual([UPSTREAM_WAIT_MS]);
-    r.fire();
-    expect(r.asks.map((a) => [a.query, a.upstream])).toEqual([
-      ["aap", false],
-      ["aap", true],
-    ]);
-    await r.asks[1]!.answer([cand("US:AAPL", true), cand("MEX:AAPL", false)]);
-    expect(r.shown.at(-1)).toEqual([
-      cand("US:AAPL", true),
-      cand("MEX:AAPL", false),
-    ]);
-    expect(r.busy).toEqual([true, false]);
-  });
-
-  test("a newer query aborts the older, whose late answers draw nothing", async () => {
-    const r = rig();
-    r.s.ask("aa");
-    r.fire();
-    r.s.ask("aap");
-    const [oldStored, oldUpstream, newStored] = r.asks;
-    expect(oldStored!.signal.aborted).toBe(true);
-    expect(oldUpstream!.signal.aborted).toBe(true);
-    expect(newStored!.signal.aborted).toBe(false);
-    await oldUpstream!.answer([cand("US:AA", false)]);
-    await oldStored!.answer([cand("US:AAL", true)]);
-    expect(r.shown).toEqual([]);
-    // the old query's upstream ended busy only for itself
-    expect(r.busy).toEqual([true, true]);
-    await newStored!.answer([cand("US:AAPL", true)]);
-    expect(r.shown).toEqual([[cand("US:AAPL", true)]]);
-    // a query changed within the pause never asks upstream
-    r.s.ask("aapl");
-    expect(r.timers.filter((t) => !t.cleared)).toHaveLength(1);
-    r.fire();
-    expect(r.asks.filter((a) => a.upstream).map((a) => a.query)).toEqual([
-      "aa",
-      "aapl",
-    ]);
-  });
-
-  test("an emptied box clears the results and stops what is in flight", () => {
-    const r = rig();
-    r.s.ask("aap");
-    r.s.ask("  ");
-    expect(r.asks[0]!.signal.aborted).toBe(true);
-    expect(r.shown).toEqual([null]);
-    expect(r.busy).toEqual([true, false]);
-  });
-
-  test("the store asks the database only with upstream false, and passes the signal", async () => {
-    const f = fake({
-      "GET /api/v1/symbols?query=aap&upstream=false": ok({ candidates: [] }),
-      "GET /api/v1/symbols?query=aap": ok({ candidates: [] }),
-    });
-    const s = store(f.fetch);
-    const abort = new AbortController();
-    await s.search("aap", false, abort.signal);
-    await s.search("aap");
-    expect(f.asked.map((a) => a.path)).toEqual([
-      "/api/v1/symbols?query=aap&upstream=false",
-      "/api/v1/symbols?query=aap",
-    ]);
-    expect(f.asked[0]!.init?.signal).toBe(abort.signal);
-  });
-});
-
 describe("the dashboard's model", () => {
   test("movers are the four biggest each way, scaled to the biggest move", () => {
     const pct = [5, -3, 0.001, 2, 1, 0.5, -8, null];
@@ -3300,10 +3388,7 @@ describe("the dashboard's model", () => {
     expect(t[0]!.wma200).toEqual({ gap: 2, crossed: false });
     const sorted = (s: Sort) => [...t].sort(bySort(s)).map((x) => x.id);
     expect(sorted(DEFAULT_SORT)).toEqual(["US:B", "US:A", "US:C"]);
-    const flipped = nextSort(DEFAULT_SORT, "sma50");
-    expect(flipped).toEqual({ key: "sma50", dir: -1 });
-    expect(sorted(flipped)).toEqual(["US:A", "US:B", "US:C"]);
-    expect(nextSort(flipped, "wma200")).toEqual({ key: "wma200", dir: 1 });
+    expect(sorted({ key: "sma50", dir: -1 })).toEqual(["US:A", "US:B", "US:C"]);
     expect(isSort({ key: "sma50", dir: -1 })).toBe(true);
     expect(isSort({ key: "rsi", dir: 1 })).toBe(false);
     expect([
@@ -3402,6 +3487,61 @@ describe("the dashboard's model", () => {
     });
   });
 
+  test("a table row shows the day's change in percent and in its own unit", () => {
+    const l = layoutOf(BOARD);
+    const html = render(
+      <SectionView
+        index={1}
+        layout={l}
+        editing={false}
+        locked={false}
+        items={itemsOf(BOARD)}
+        sparks={new Map()}
+        drag={null}
+        setDrag={() => {}}
+        save={() => Promise.resolve()}
+      />,
+    );
+    expect(html).toContain('href="/instruments/US%3AAAA"');
+    expect(html).toMatch(
+      />\+2\.50%<\/span><span class="num up small hide-phone">\+1\.00 USD</,
+    );
+    expect(html).not.toContain('draggable="true"');
+  });
+
+  test("an edited section drags its rows whole, removes one, and moves only inward", () => {
+    const l = layoutOf(BOARD);
+    const props = {
+      layout: l,
+      editing: true,
+      locked: false,
+      items: itemsOf(BOARD),
+      sparks: new Map(),
+      drag: null,
+      setDrag: () => {},
+      save: () => Promise.resolve(),
+    };
+    const table = render(<SectionView index={1} {...props} />);
+    expect(table).toMatch(/<tr draggable="true" class="table-row dash-item"/);
+    expect(table).toContain('aria-label="Remove AAA"');
+    expect(table).toContain('aria-label="Edit Shares"');
+    expect(table).toContain('aria-label="Section name"');
+    expect(table).not.toContain("table-open");
+    const cards = render(<SectionView index={0} {...props} />);
+    expect(cards.match(/draggable="true"/g)).toHaveLength(2);
+    expect(cards).toContain('aria-label="Remove ^GSPC"');
+    const saved: (BoardSection[] | null)[] = [];
+    const save = (n: BoardSection[] | null) => {
+      saved.push(n);
+      return Promise.resolve();
+    };
+    const labels = (i: number) => sectionTools(l, i, save).map((t) => t.label);
+    expect(labels(0)).toEqual(["Move down", "Delete section"]);
+    expect(labels(1)).toEqual(["Move up", "Delete section"]);
+    sectionTools(l, 1, save)[0]!.run!();
+    expect(saved[0]!.map((x) => x.name)).toEqual(["Shares", "Indices"]);
+  });
+
   test("a drop that changes nothing, or names what a refresh took away, is no edit", () => {
     const l = layoutOf(BOARD);
     expect(moveTo(l, 0, "BVB:BET", 0, null)).toBeNull();
@@ -3429,11 +3569,6 @@ describe("the dashboard's model", () => {
       { ...full[0]!, name: "B", ids: full[0]!.ids.map((i) => `Y${i}`) },
     ];
     expect(addRefusal(both, 0, "US:NEW")).toBe("Your dashboard is full.");
-  });
-
-  test("Escape closes the section picker first, then the results", () => {
-    expect(escapeFrom("US:AAA")).toBe("picker");
-    expect(escapeFrom(null)).toBe("results");
   });
 
   test("an edit is a draft apart from the layout; an unchanged one saves nothing", () => {
@@ -3489,12 +3624,13 @@ describe("the dashboard's model", () => {
     const html = render(<LoadingPanel track={track} />);
     expect(html).toContain("Getting prices");
     expect(html).toContain("1 of 3");
-    for (const state of ["ready", "pending", "failed"]) {
-      expect(html.match(new RegExp(`home-chip-${state}`, "g"))).toHaveLength(1);
+    for (const cls of ["status-done", "dash-seed-pending", "status-failed"]) {
+      expect(html.match(new RegExp(`"tag ${cls}"`, "g"))).toHaveLength(1);
     }
+    expect(html).toContain('class="spinner dash-seed-spin"');
   });
 
-  test("a card not answered yet draws as pending; clip ids are escaped and apart", () => {
+  test("a card not answered yet draws as pending", () => {
     expect(entryOf("US:NEW", undefined)).toMatchObject({
       value: "NEW",
       state: "pending",
@@ -3506,9 +3642,6 @@ describe("the dashboard's model", () => {
       type: "ready",
       state: "Open",
     });
-    expect(clipOf(0, "SNP:^GSPC")).toBe("dash-0-SNP_3a__5e_GSPC");
-    expect(clipOf(1, "A.B")).not.toBe(clipOf(1, "A_B"));
-    expect(clipOf(1, "SNP:^GSPC")).toMatch(/^[A-Za-z][\w-]*$/);
   });
 
   test("the top card counts today's crossings, hidden at none, and the week's earnings", () => {
@@ -3518,24 +3651,47 @@ describe("the dashboard's model", () => {
       <Glance ids={ids} items={items} earnings={[EARNING]} />,
     );
     expect(html).toContain("Today's movers");
-    expect(html.match(/dash-tab-count/g)).toHaveLength(2);
+    expect(html).toContain('role="tablist"');
+    expect(html.match(/tab-count/g)).toHaveLength(2);
     const calm = new Map(items);
     calm.set("US:AAA", boardItem("US:AAA", { kind: "EQUITY" }));
     const none = render(<Glance ids={ids} items={calm} earnings={[]} />);
-    expect(none.match(/dash-tab-count/g)).toHaveLength(1);
-    expect(none).toContain("dash-tab-zero");
+    expect(none.match(/tab-count/g)).toHaveLength(1);
+    expect(none).toContain('tab-count num">0<');
     const off = render(<Glance ids={ids} items={calm} earnings={[]} off />);
-    expect(off.match(/dash-tab-count/g)).toBeNull();
+    expect(off.match(/tab-count/g)).toBeNull();
     expect(render(<Earnings earnings={[]} off />)).toContain(
       "Earnings are not available.",
     );
     expect(render(<Earnings earnings={[]} off={false} />)).toContain(
       "None of your stocks reports",
     );
+    const week = render(<Earnings earnings={[EARNING]} off={false} />);
+    expect(week).toContain('href="/instruments/US%3AAAA"');
+    expect(week).toMatch(
+      /sym-ticker">AAA<\/span><span class="sym-name">AAA Inc\./,
+    );
+    expect(week).toContain("After close");
   });
 });
 
 describe("the dashboard's store", () => {
+  test("the store asks the database only with upstream false, and passes the signal", async () => {
+    const f = fake({
+      "GET /api/v1/symbols?query=aap&upstream=false": ok({ candidates: [] }),
+      "GET /api/v1/symbols?query=aap": ok({ candidates: [] }),
+    });
+    const s = store(f.fetch);
+    const abort = new AbortController();
+    await s.search("aap", false, abort.signal);
+    await s.search("aap");
+    expect(f.asked.map((a) => a.path)).toEqual([
+      "/api/v1/symbols?query=aap&upstream=false",
+      "/api/v1/symbols?query=aap",
+    ]);
+    expect(f.asked[0]!.init?.signal).toBe(abort.signal);
+  });
+
   // answers held until released, by method and path
   function held() {
     const waits = new Map<string, ((r: Response) => void)[]>();
