@@ -42,6 +42,7 @@ import {
   rowItem,
   SECTION_OF,
   SINCE_DAYS,
+  valuationSummary,
 } from "../operations/research.ts";
 import { type FilingCursor, readFilings } from "../sources/edgar/store.ts";
 import { readResearch, sectionState } from "../sources/finnhub/read.ts";
@@ -146,13 +147,14 @@ export async function researchAnswer(
   }
   const withNews = args.section === "overview" || args.section === "news";
   const withFilings = args.section === "overview" || args.section === "filings";
-  const { targets, inline, news, filings } = await researchTargets(
+  const { targets, inline, news, filings, valuation } = await researchTargets(
     m,
     [args.symbol],
     {
       news: withNews,
       filings: withFilings,
       sections: SECTIONS_OF[args.section],
+      valuation: args.section === "overview",
     },
   );
   const target = targets[0]!;
@@ -176,11 +178,13 @@ export async function researchAnswer(
       latest,
     );
     const summary = newsSummary(m, instrument, news.get(instrument.id));
+    const value = valuationSummary(m, instrument, valuation.get(instrument.id));
     const answer = () =>
       JSON.stringify({
         ...head,
         quote,
         research: researchSummary(m, instrument, inline.get(instrument.id)),
+        ...(value === undefined ? {} : { valuation: value }),
         news: summary,
         filings: filingsSummary(m, instrument, filings.get(instrument.id)),
         ...(quote.observation != null ? { attribution: ATTRIBUTION } : {}),

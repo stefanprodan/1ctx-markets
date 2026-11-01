@@ -763,6 +763,8 @@ describe("delete", () => {
     q(
       `insert into edgar_filers (instrument, cik, fetched_at) values (?, 1, ?)`,
     );
+    q(`insert into valuations (instrument, eps_ttm, currency, fetched_at)
+       values (?, 1, 'USD', ?)`);
     q(`insert into sync_runs (source, job, scope, started_at, ended_at, status)
        values ('finnhub', 'metric', ?1, ?2, ?2, 'ok')`);
   }

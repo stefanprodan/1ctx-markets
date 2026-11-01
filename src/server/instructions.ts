@@ -7,7 +7,7 @@ export const INSTRUCTIONS_BYTES = 4096;
 
 // Most important first, what the server lacks last: a cut drops the least.
 export const INSTRUCTIONS = `Market data, price rules and portfolios. Which tool answers what:
-- Prices now, and how a symbol did over a week, a month, three months or the year so far (ytd): \`quote\`, whose \`returns\` hold those periods and \`session\` whether its market is open; \`benchmark\` adds relative strength. The benchmark's own returns come from quoting it as a symbol too, never derived from the relative figures.
+- Prices now, and how a symbol did over a week, a month, three months or the year so far (ytd): \`quote\`, whose \`returns\` hold those periods and \`session\` whether its market is open; \`benchmark\` adds relative strength. The benchmark's own returns come from quoting it too, never from the relative figures.
 - A US share's move before the open or after the close: \`quote\` with \`extended\`; a null \`extended\` gives its reason in \`stale\`, and it never drives a rule or signal.
 - Bars, a chart's data, a full year or any other period: \`history\`; its \`session\` says whether the market is open; the last bar still trades only while it is open and the bar's \`final\` is false. How a symbol moved today or over the last five sessions: \`history\` with \`interval\` 5m, regular-hours closes as fresh as the quote pass, a move measured from its \`previous_close\`; \`extended\` adds the pre- and post-market closes while the session is closed.
 - Many symbols at once: \`movers\` for today's moves and average crossings, \`screen\` to filter and rank on signals and returns, with \`fields\` for more columns than the ones filtered or sorted on.
@@ -19,7 +19,7 @@ export const INSTRUCTIONS = `Market data, price rules and portfolios. Which tool
 - An unknown or ambiguous name: \`search\`.
 Answer from these tools, not the server's HTTP endpoints, and never recompute an average or return a tool already gives.
 
-Missing is not false: a \`stale\` reason, \`unavailable\`, "no data" or a null field means the value is missing, never that a condition failed or a figure is zero. Research covers US shares, news US ETFs too; a section answered from another listing names it in \`listing\`; a foreign one leaves out per-share figures.
+Missing is not false: a \`stale\` reason, \`unavailable\`, "no data" or a null field means the value is missing, never that a condition failed or a figure is zero. Research covers US shares, news US ETFs too; a section answered from another listing names it in \`listing\`; a foreign one leaves out per-share figures, and \`valuation\` gives them per US share.
 
 Symbols: Yahoo's forms (AAPL, VWCE.DE, BTC-USD, EURUSD=X), FRED:<series id>, a market:symbol id as answers give it, or a regional source's own codes while that source is on; \`search\` when unsure. An unknown symbol is fetched inside the call.
 

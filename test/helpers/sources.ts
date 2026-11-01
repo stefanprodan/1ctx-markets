@@ -11,6 +11,8 @@ import {
   listed,
   type Recorded,
   recorded,
+  summarySymbol,
+  yahooSession,
 } from "./yahoo.ts";
 
 const FRED = join(import.meta.dir, "..", "fixtures", "fred");
@@ -55,6 +57,7 @@ export type Calls = {
   searches: () => URL[];
   charts: (symbol?: string) => URL[];
   sparks: () => URL[];
+  summaries: () => URL[];
 };
 
 export async function sources(
@@ -88,7 +91,8 @@ export async function sources(
       }));
     return out;
   };
-  const f = fakeFetch(async (url) => {
+  const session = yahooSession();
+  const f = fakeFetch(async (url, headers) => {
     const held = await options.hold?.(url);
     if (held !== undefined) return held;
     if (url.hostname === "api.stlouisfed.org") return fredAnswer(url);
@@ -97,6 +101,8 @@ export async function sources(
       return charts[symbol] ?? (await recorded("chart-unknown-symbol"));
     }
     if (url.pathname === "/v7/finance/spark") return spark(url);
+    const summary = await session.answer(url, headers);
+    if (summary !== undefined) return summary;
     if (url.pathname === "/v1/finance/search") {
       const name = SEARCHES[(url.searchParams.get("q") ?? "").toUpperCase()];
       return name === undefined
@@ -123,6 +129,7 @@ export async function sources(
           return s !== null && (symbol === undefined || s === symbol);
         }),
       sparks: () => yahoo().filter((u) => u.pathname === "/v7/finance/spark"),
+      summaries: () => yahoo().filter((u) => summarySymbol(u) !== null),
     },
   };
 }

@@ -236,6 +236,7 @@ export const paths = {
         "For each symbol, in the order asked: a US share's `company` research and its recent `news`; a US ETF's news only. Each item is a result or its own `error`.",
         "",
         "- `company` holds metrics, analysts, earnings and insider sentiment with their newest rows, and the next earnings event.",
+        "- `valuation`, for a share whose metrics come from a foreign listing, holds its P/E, forward P/E, PEG and EPS per US share.",
         `- News gives counts by sentiment and the ${WEEK_ITEMS} articles that take a side first.`,
         `- \`filings\` holds a US share's ${FILINGS_RECENT} newest SEC filings and three flags: a late filing, a restatement, new securities registered or offered.`,
         "- A share not researched before is fetched within the call, from a rate-limited source.",

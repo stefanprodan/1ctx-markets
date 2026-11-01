@@ -2,6 +2,7 @@
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { scrub } from "../../src/sources/source.ts";
 
 const OUT = join(import.meta.dir, "..", "..", "test", "fixtures", "yahoo");
 const GAP_MS = 3000;
@@ -28,7 +29,11 @@ const chart = (
 const search = (q: string) =>
   `${Q1}/v1/finance/search?${new URLSearchParams({ q, quotesCount: "10", newsCount: "0", listsCount: "0" })}`;
 
-type Case = { name: string; url: string };
+// session: asked with the cookie and crumb, which are scrubbed before writing
+type Case = { name: string; url: string; session?: boolean };
+
+const summary = (symbol: string) =>
+  `${Q2}/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=defaultKeyStatistics,price`;
 
 const CASES: Case[] = [
   // Access without cookie or crumb, both hosts, and the UA quirk.
@@ -253,6 +258,10 @@ const CASES: Case[] = [
       includePrePost: false,
     }),
   })),
+  // The quote summary needs the session a browser gets; without it, 401.
+  { name: "quotesummary-tsm", url: summary("TSM"), session: true },
+  { name: "quotesummary-asml", url: summary("ASML"), session: true },
+  { name: "quotesummary-no-crumb", url: summary("TSM") },
   // Yahoo caps a spark call at 20 symbols; 21 is a 400.
   {
     name: "spark-v7-21-symbols",
@@ -264,27 +273,113 @@ const CASES: Case[] = [
 const KEEP =
   /^(content-type|cache-control|retry-after|x-ratelimit-.*|ratelimit.*|age)$/i;
 
-async function record(c: Case) {
-  const res = await fetch(c.url, {
-    headers: { "User-Agent": UA, Accept: "application/json" },
+type Session = { cookie: string; crumb: string };
+let session: Session | null = null;
+
+// a fetch error can quote the URL, which holds the crumb: none is printed
+async function get(
+  what: string,
+  url: string,
+  init: RequestInit,
+): Promise<{ res: Response; text: string }> {
+  try {
+    const res = await fetch(url, init);
+    return { res, text: await res.text() };
+  } catch {
+    throw new Error(`${what}: request failed`);
+  }
+}
+
+// fc.yahoo.com sets the cookie whatever its status; getcrumb answers the
+// crumb as text. Neither value is printed or written.
+async function startSession(): Promise<Session> {
+  const fc = await get("fc.yahoo.com", "https://fc.yahoo.com/", {
+    headers: { "User-Agent": UA },
+    redirect: "manual",
   });
-  const text = await res.text();
+  const cookie = fc.res.headers
+    .getSetCookie()
+    .map((c) => c.split(";")[0]!.trim())
+    .join("; ");
+  if (cookie === "") throw new Error(`no cookie (HTTP ${fc.res.status})`);
+  console.log(`${fc.res.status} fc.yahoo.com`);
+  await Bun.sleep(GAP_MS);
+  const res = await get("getcrumb", `${Q1}/v1/test/getcrumb`, {
+    headers: { "User-Agent": UA, Cookie: cookie },
+  });
+  const crumb = res.text.trim();
+  console.log(`${res.res.status} getcrumb`);
+  if (!res.res.ok || crumb === "") {
+    throw new Error(`no crumb (HTTP ${res.res.status})`);
+  }
+  await Bun.sleep(GAP_MS);
+  return { cookie, crumb };
+}
+
+// the crumb, the cookie, each of its pairs and each value, raw and
+// JSON-escaped; scrub() adds the URL- and form-encoded forms of each
+function secrets(s: Session): string[] {
+  const pairs = s.cookie.split(";").map((p) => p.trim());
+  const values = pairs.map((p) => p.slice(p.indexOf("=") + 1));
+  const out = new Set<string>();
+  for (const v of [s.crumb, s.cookie, ...pairs, ...values]) {
+    if (v.length < 4) continue;
+    const json = JSON.stringify(v).slice(1, -1);
+    for (const f of [v, json, json.replaceAll("/", "\\/")]) out.add(f);
+  }
+  return [...out].sort((a, b) => b.length - a.length);
+}
+
+const hide = (text: string, s: Session | null) =>
+  s === null ? text : secrets(s).reduce((t, f) => scrub(t, f), text);
+
+function clean(value: unknown, s: Session | null): unknown {
+  if (typeof value === "string") return hide(value, s);
+  if (Array.isArray(value)) return value.map((v) => clean(v, s));
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([k, v]) => [hide(k, s), clean(v, s)]),
+    );
+  }
+  return value;
+}
+
+async function record(c: Case) {
+  if (c.session && session === null) session = await startSession();
+  const s = c.session ? session : null;
+  const url =
+    s === null ? c.url : `${c.url}&crumb=${encodeURIComponent(s.crumb)}`;
+  const { res, text: raw } = await get(c.name, url, {
+    headers: {
+      "User-Agent": UA,
+      Accept: "application/json",
+      ...(s === null ? {} : { Cookie: s.cookie }),
+    },
+  });
+  // the text before parsing, for escaped forms; the values after, for raw
+  const text = hide(raw, s);
   const headers: Record<string, string> = {};
   res.headers.forEach((v, k) => {
-    if (KEEP.test(k)) headers[k] = v;
+    if (KEEP.test(k)) headers[k] = hide(v, s);
   });
   let body: unknown = text;
   try {
-    body = JSON.parse(text);
+    body = clean(JSON.parse(text), s);
   } catch {}
   const fixture = {
     recordedAt: new Date().toISOString(),
-    request: { method: "GET", url: c.url },
+    request: {
+      method: "GET",
+      url: s === null ? c.url : `${c.url}&crumb=REDACTED`,
+    },
     status: res.status,
     headers,
     body,
   };
   const out = JSON.stringify(fixture, null, 2) + "\n";
+  if (s !== null && secrets(s).some((f) => out.includes(f))) {
+    throw new Error(`${c.name}: the session is still in the fixture`);
+  }
   writeFileSync(join(OUT, `${c.name}${SUFFIX}.json`), out);
   const extra = Object.entries(headers)
     .filter(([k]) => !/^(content-type|cache-control|age)$/.test(k))

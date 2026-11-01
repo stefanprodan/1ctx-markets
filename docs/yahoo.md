@@ -2,8 +2,9 @@
 
 Governs the Yahoo source: `src/sources/yahoo/client.ts` (calls and
 parsing), `resolve.ts` (symbols into keys), `sync.ts` (fetches),
-`history.ts` and `quotes.ts` (answers into rows) and `jobs.ts` (the
-schedule), all under `src/sources/yahoo/`. The queue, back-off,
+`history.ts` and `quotes.ts` (answers into rows), `jobs.ts` (the
+schedule) and `valuation.ts` (an ADR's quote summary), all under
+`src/sources/yahoo/`. The queue, back-off,
 deadlines, retries, backfill, rescales, phrases and the lock every
 source shares are in `docs/sources.md`; sessions, bar dates and
 finality in `docs/calendars.md`; tables, the writer and staleness in
@@ -57,6 +58,46 @@ finality in `docs/calendars.md`; tables, the writer and staleness in
   Yahoo split-adjusts. `adjclose` is also dividend-adjusted and is
   never read, since averages are on price.
 
+## The quote summary
+
+- **One more call, behind a session** (`valuation()`):
+  `query2.finance.yahoo.com/v10/finance/quoteSummary/<symbol>?modules=defaultKeyStatistics,price&crumb=<crumb>`
+  with the session's cookie. Without them Yahoo answers 401
+  `Unauthorized` ("Invalid Crumb"); the six calls above need neither.
+- **The session is a cookie and a crumb, held in memory only**
+  (`newSession()`): `https://fc.yahoo.com/` sets the cookie whatever
+  its status (often 404), and `/v1/test/getcrumb` on query1, sent that
+  cookie, answers the crumb as plain text. It is fetched on first use
+  and shared by every call; a restart starts a new one. Neither value
+  is stored, logged, put in an error, a run or a fixture.
+- **A refused session is fetched again once.** A 401 or an
+  `Unauthorized` body drops it, and the call fetches a new one and asks
+  again; a second refusal is `source error`, the share's failed run.
+  The session, the call and its retry are one queued task; before each
+  of its requests it checks shutdown, the caller's deadline and a
+  back-off another call set (`ready()`), which it meets as `Paused`.
+- **A failed quote summary never backs the queue off**: the task hands
+  its failure back as a value, so the queue prices share sees none, and
+  the share waits `RETRY_MS` on its own failed run. Prices never use the
+  session and never wait on it.
+- **Read: `defaultKeyStatistics` `trailingEps`, `forwardEps` and
+  `pegRatio`, and `price` `currency` and `symbol`.** Each figure is
+  `{raw, fmt}`, `{}` or missing; anything but a finite `raw` is null,
+  never 0. An answer naming another symbol is `malformed answer`.
+  `priceToBook` and the yields are never read: Yahoo divides the US
+  price by a book value in the reporting currency.
+- **Asked only for a US share Finnhub answers from a foreign listing**
+  (`covered()` in `valuation.ts`: its stored `metric` names a listing
+  with a `.`), the one share whose P/E Finnhub cannot give
+  (`docs/research.md`): Yahoo's EPS is per US share in its currency,
+  depositary ratio and exchange rate included, which no free source
+  gives to work out by hand. A share Finnhub answers as itself or as
+  another US class is never asked.
+- **An answer is kept only in the instrument's currency**
+  (`refreshValuation()`): another currency, or no figure at all, deletes
+  the stored row and keeps nothing; a failure keeps it. One row per
+  instrument (`valuations`, `docs/storage.md`), replaced, no history.
+
 ## Parsing
 
 - **An answer without the expected shape is an error, never empty
@@ -90,7 +131,7 @@ Phrases from Yahoo (`docs/sources.md`, Refusals):
 | `rate limited` | HTTP 429 |
 | `bad request` | HTTP 400 |
 | `not found` | HTTP 404, `chart.error.code` `Not Found`, or a spark entry with no response |
-| `source error` | any other non-2xx, a chart or spark error body, no quote for a fetched symbol |
+| `source error` | any other non-2xx, a chart or spark error body, no quote for a fetched symbol, no session cookie or crumb, a quote summary refused twice |
 | `network error` | the fetch or body read threw |
 | `timed out` | the call's timeout, or the caller's deadline |
 | `malformed answer` | not JSON, an unexpected shape, an answer naming another key, a history refused |
@@ -264,7 +305,9 @@ Phrases from Yahoo (`docs/sources.md`, Refusals):
 ## Jobs
 
 - **Three scheduled jobs tick every minute** (`TICK_MS`, `schedule()`
-  in `jobs.ts`), each over tracked instruments only. A tick that finds
+  in `jobs.ts`), each over tracked instruments only, and a fourth,
+  `yahoo-valuation` (`valuationJobs()` in `valuation.ts`), while
+  Finnhub is on. A tick that finds
   the job's last run still going is skipped (`job skipped`,
   `src/runtime/scheduler.ts`), so a source is never asked twice at
   once by the same job. What is due is read from the stored sessions
@@ -287,6 +330,7 @@ Phrases from Yahoo (`docs/sources.md`, Refusals):
 | `yahoo-bars` (`barTick`) | 30-day refetch per market whose session moved on (`barsDue()`), plus one whole history per split or rescale; owed instruments again every `OWED_RETRY_MS` (`owedDue()`) |
 | `yahoo-backfill` (`backfillTurn`) | one tracked instrument with no bars per turn, one 10-year chart; a failure or empty answer waits `RETRY_MS` |
 | `yahoo-backfill` (`fillTurn`) | in a turn with no 10-year chart due, up to `FILLS_PER_TURN` (5) tracked instruments holding fewer than `INTRADAY_SESSIONS` sessions, one `points` call each, one at a time |
+| `yahoo-valuation` | one quote summary a day per tracked share Finnhub answers from a foreign listing, once its `metric` ran well since the latest 23:00 UTC (`valuationDue()`), so after the research refresh; a failure waits `RETRY_MS` |
 
 - **The fill adds only sessions not stored** (`fillSessions()` in
   `sync.ts`, `addIntraday()`): a session the quote passes stored is
