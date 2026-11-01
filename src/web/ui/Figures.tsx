@@ -4,6 +4,7 @@
 
 import type { ComponentChildren } from "preact";
 import type { Signed } from "../lib/format.ts";
+import { Placeholder } from "./Placeholder.tsx";
 import "./figures.css";
 
 const cx = (...c: (string | false | null | undefined)[]) =>
@@ -109,6 +110,16 @@ export function Hero({
   );
 }
 
+export function HeroWaiting() {
+  return (
+    <Hero
+      name={<Placeholder chars={20} />}
+      value={<Placeholder chars={7} />}
+      lines={[<Placeholder key="moves" chars={16} />]}
+    />
+  );
+}
+
 // figures in a row, a small label over each, no boxes; wraps on a phone
 export function Stats({
   items,
@@ -143,7 +154,7 @@ export function Facts({
   four,
 }: {
   items: readonly {
-    label: string;
+    label: ComponentChildren;
     value: ComponentChildren;
     // a figure, in the mono face
     num?: boolean;
@@ -153,8 +164,8 @@ export function Facts({
 }) {
   const list = (
     <dl class={cx("facts", four && "facts-four")}>
-      {items.map((x) => (
-        <div key={x.label}>
+      {items.map((x, i) => (
+        <div key={i}>
           <dt>{x.label}</dt>
           <dd class={x.num ? "num" : undefined}>{x.value}</dd>
           {x.note !== undefined && <dd class="facts-note">{x.note}</dd>}

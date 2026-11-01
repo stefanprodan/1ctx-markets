@@ -774,6 +774,31 @@ describe("every operation", () => {
       }),
       403,
     );
+    const stored = "/instruments/{symbol}/stored";
+    await check(
+      "GET",
+      stored,
+      await t.call("/instruments/US:NVDA/stored"),
+      200,
+    );
+    await check(
+      "GET",
+      stored,
+      await t.call("/instruments/US:NVDA/stored?x=1"),
+      400,
+    );
+    await check(
+      "GET",
+      stored,
+      await t.call("/instruments/US:NVDA/stored", wrong),
+      401,
+    );
+    await check(
+      "GET",
+      stored,
+      await t.call("/instruments/US:NVDA/stored", reader),
+      403,
+    );
     const again = "/instruments/{symbol}/refetch";
     const refetch = { parts: ["quotes"] };
     await check(
@@ -1654,6 +1679,28 @@ describe("one instrument", () => {
       expect([path, res.status]).toEqual([path, 404]);
     }
     expect(t.s.calls.urls.length).toBe(asked);
+  });
+
+  test("the stored check asks no source and marks no read", async () => {
+    const t = await setup();
+    const stored = async (symbol: string) => {
+      const res = await t.call(`/instruments/${symbol}/stored`);
+      expect([symbol, res.status]).toEqual([symbol, 200]);
+      return res.json();
+    };
+    const asked = t.s.calls.urls.length;
+    expect(await stored("AMD")).toEqual({ input: "AMD", stored: false });
+    expect(t.s.calls.urls.length).toBe(asked);
+    await t.call("/instruments/NVDA");
+    const read = lastReadAt(t.db, "US:NVDA");
+    const after = t.s.calls.urls.length;
+    expect(await stored("NVDA")).toEqual({ input: "NVDA", stored: true });
+    expect(await stored("US:NVDA")).toEqual({
+      input: "US:NVDA",
+      stored: true,
+    });
+    expect(t.s.calls.urls.length).toBe(after);
+    expect(lastReadAt(t.db, "US:NVDA")).toBe(read);
   });
 });
 

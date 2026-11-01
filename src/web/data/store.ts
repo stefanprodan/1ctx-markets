@@ -3,6 +3,7 @@
 
 import { batch, signal } from "@preact/signals";
 import { path } from "../app/router.ts";
+import { type Later, slowFlag, timer } from "../lib/slow.ts";
 import {
   fromOf,
   type History,
@@ -360,12 +361,26 @@ type EarningsAnswer = {
 // how a save ended: a failed one leaves the edit to try again
 export type Saved = "saved" | "conflict" | "failed";
 
+// by the problem's code: its detail is written for agents
+const UNREAD: Record<string, string> = {
+  not_found: "Instrument not found.",
+  timeout: "The source did not answer in time.",
+  rate_limited: "Too many requests to the source.",
+  source_error: "The source failed.",
+};
+
+export const unread = (error: unknown): string =>
+  (error instanceof ApiError && error.code !== null
+    ? UNREAD[error.code]
+    : undefined) ?? says(error);
+
 // here: the page shown, so an answer that arrives after leaving starts nothing
 export function store(
   fetchFn: Fetch,
   now: () => number = Date.now,
   here: () => string = () => path.peek(),
   reloadPage: () => void = () => location.reload(),
+  later: Later = timer,
 ) {
   // undefined until the first answer says whether the cookie holds
   const signedIn = signal<boolean | undefined>(undefined);
@@ -381,6 +396,9 @@ export function store(
   // FRED's terms ask for its notice wherever its values show
   const attribution = signal<string | null>(null);
   const sparks = signal<ReadonlyMap<string, Spark>>(new Map());
+  const lining = signal<ReadonlySet<string>>(new Set());
+  const homeWait = slowFlag(later);
+  const linesWait = slowFlag(later);
   // a save in flight shows at once
   const layout = signal<BoardSection[] | null>(null);
   const items = signal<ReadonlyMap<string, BoardItem>>(new Map());
@@ -406,6 +424,8 @@ export function store(
   const detailId = signal<string | null>(null);
   const detailError = signal<string | null>(null);
   const detailCode = signal<number | null>(null);
+  const detailWait = slowFlag(later);
+  const firstFetch = signal<string | null>(null);
   const keys = signal<AgentKey[] | null>(null);
   const keysLimit = signal<number | null>(null);
   const keysError = signal<string | null>(null);
@@ -442,6 +462,7 @@ export function store(
       watchlist.value = null;
       attribution.value = null;
       sparks.value = new Map();
+      lining.value = new Set();
       layout.value = null;
       items.value = new Map();
       earnings.value = [];
@@ -457,6 +478,7 @@ export function store(
       detailId.value = null;
       detailError.value = null;
       detailCode.value = null;
+      firstFetch.value = null;
       keys.value = null;
       keysLimit.value = null;
       keysError.value = null;
@@ -589,36 +611,49 @@ export function store(
   // a later load supersedes one in flight, even of the same id, so a
   // refresh tick never lands over the reload after a refetch
   let instrumentLoad = 0;
-  async function loadInstrument(id: string): Promise<void> {
+  async function loadInstrument(id: string, again = false): Promise<void> {
     const mine = ++instrumentLoad;
     const at = session;
-    if (detailId.value !== id) {
+    if (detailId.value !== id || again) {
       batch(() => {
+        if (detailId.value !== id) detail.value = null;
         detailId.value = id;
-        detail.value = null;
         detailError.value = null;
         detailCode.value = null;
       });
     }
+    let out = true;
+    const read = call<Detail>(instrumentPath(id));
+    // beside the read, never before it, so a stored symbol waits on nothing
+    if (detail.value === null) {
+      void call<{ stored: boolean }>(`${instrumentPath(id)}/stored`).then(
+        (s) => {
+          if (out && !s.stored && mine === instrumentLoad) {
+            firstFetch.value = id;
+          }
+        },
+        () => {},
+      );
+    }
     try {
-      const d = await call<Detail>(instrumentPath(id));
+      const d = await detailWait.track(read);
       if (mine !== instrumentLoad || at !== session) return;
       batch(() => {
         detail.value = d;
         detailError.value = null;
         detailCode.value = null;
+        firstFetch.value = null;
       });
     } catch (error) {
       if (mine !== instrumentLoad || at !== session) return;
+      firstFetch.value = null;
       if (!(error instanceof ApiError && error.status === 401)) {
-        // the API's hint names its search endpoint, which means nothing here
-        detailError.value =
-          error instanceof ApiError && error.code === "not_found"
-            ? "Instrument not found."
-            : says(error);
+        detailError.value = unread(error);
         detailCode.value = codeOf(error);
         detailFailures.value++;
       }
+    } finally {
+      out = false;
     }
   }
 
@@ -801,7 +836,7 @@ export function store(
     const stale = () => mine !== homeLoad || at !== session || here() !== page;
     let b: Board;
     try {
-      b = await call<Board>(DASHBOARD_PATH);
+      b = await homeWait.track(call<Board>(DASHBOARD_PATH));
     } catch (error) {
       if (stale()) return;
       if (!(error instanceof ApiError && error.status === 401)) {
@@ -824,23 +859,32 @@ export function store(
 
   // a failed one keeps the line drawn before
   async function loadLines(ids: readonly string[], stale: () => boolean) {
+    const at = session;
     const today = new Date(now()).toISOString().slice(0, 10);
-    const lines = await Promise.allSettled(
-      ids.map((id) =>
-        items.value.get(id)?.intraday
-          ? call<Intraday>(
-              `${instrumentPath(id)}/bars?${new URLSearchParams({ interval: "5m" })}`,
-            )
-          : history(id, fromOf("1M", today), "1d"),
+    const fresh = ids.filter((id) => !sparks.value.has(id));
+    if (fresh.length > 0) lining.value = new Set([...lining.value, ...fresh]);
+    const landed = (id: string) => {
+      if (at !== session || !lining.value.has(id)) return;
+      const next = new Set(lining.value);
+      next.delete(id);
+      lining.value = next;
+    };
+    await linesWait.track(
+      Promise.allSettled(
+        ids.map(async (id) => {
+          try {
+            const line = await (items.value.get(id)?.intraday
+              ? call<Intraday>(
+                  `${instrumentPath(id)}/bars?${new URLSearchParams({ interval: "5m" })}`,
+                )
+              : history(id, fromOf("1M", today), "1d"));
+            if (!stale()) sparks.value = new Map(sparks.value).set(id, line);
+          } finally {
+            landed(id);
+          }
+        }),
       ),
     );
-    if (stale()) return;
-    const next = new Map(sparks.value);
-    ids.forEach((id, i) => {
-      const r = lines[i]!;
-      if (r.status === "fulfilled") next.set(id, r.value);
-    });
-    sparks.value = next;
   }
 
   let earningsAsk = 0;
@@ -1007,6 +1051,9 @@ export function store(
     revokeKey,
     attribution,
     sparks,
+    lining,
+    homeSlow: homeWait.slow,
+    linesSlow: linesWait.slow,
     homeError,
     homeCode,
     homeFailures,
@@ -1037,6 +1084,8 @@ export function store(
     detailError,
     detailCode,
     detailFailures,
+    detailSlow: detailWait.slow,
+    firstFetch,
     loadInstrument,
     refetch,
     remove,

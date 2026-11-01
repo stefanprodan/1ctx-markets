@@ -442,6 +442,24 @@ export const paths = {
       }),
     },
   },
+  "/instruments/{symbol}/stored": {
+    get: {
+      tags: ["instruments"],
+      operationId: "instrumentStored",
+      security: ADMIN_AUTH,
+      summary: "Whether an instrument is stored",
+      description: lines(
+        "Whether reading this symbol answers from what the server already holds (`stored: true`), or first fetches it from its source (`false`), which can take seconds.",
+        "",
+        "- Asks no source, fetches nothing and does not count as a read.",
+        "- A symbol never seen answers `false`.",
+      ),
+      parameters: [symbolParam(STORED_SYMBOL)],
+      responses: admins({
+        200: ok("Whether it is stored.", ref("Stored")),
+      }),
+    },
+  },
   "/instruments/{symbol}/refetch": {
     post: {
       tags: ["instruments"],

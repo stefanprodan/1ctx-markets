@@ -574,6 +574,19 @@ export function Setup({ origin }: { origin: string }) {
   );
 }
 
+function KeysWaiting() {
+  return (
+    <Card title="Keys">
+      <Table
+        label="Keys"
+        columns={keyColumns([], Date.now())}
+        rowKey={(k) => k.id}
+        waiting={2}
+      />
+    </Card>
+  );
+}
+
 export function ConnectBody({ store }: { store: Store }) {
   // the token made here, gone on Done or when the view goes
   const shown = useSignal<string | null>(null);
@@ -591,12 +604,10 @@ export function ConnectBody({ store }: { store: Store }) {
         () => void store.loadKeys(),
       )}
     >
-      {held && (
-        <div class="connect">
-          <Keys store={store} shown={shown} />
-          <Setup origin={origin} />
-        </div>
-      )}
+      <div class="connect">
+        {held ? <Keys store={store} shown={shown} /> : <KeysWaiting />}
+        <Setup origin={origin} />
+      </div>
     </Page>
   );
 }

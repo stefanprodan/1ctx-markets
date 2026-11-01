@@ -21,7 +21,14 @@ import { useRefresh } from "../lib/refresh.ts";
 import { HideAmounts, hiddenClass, useHideAmounts } from "../ui/Amounts.tsx";
 import { Card, GroupLabel, PeriodLabel } from "../ui/Card.tsx";
 import { Drawer } from "../ui/Drawer.tsx";
-import { Change, Facts, Hero, type Move, Num } from "../ui/Figures.tsx";
+import {
+  Change,
+  Facts,
+  Hero,
+  HeroWaiting,
+  type Move,
+  Num,
+} from "../ui/Figures.tsx";
 import {
   MenuButton,
   MenuHead,
@@ -32,7 +39,7 @@ import {
 import { didNotLoad, Page } from "../ui/Page.tsx";
 import { Search } from "../ui/Search.tsx";
 import { Spark } from "../ui/Spark.tsx";
-import { SymbolName } from "../ui/Symbol.tsx";
+import { SymbolName, SymbolWaiting } from "../ui/Symbol.tsx";
 import {
   type Column,
   type SortDir,
@@ -324,8 +331,32 @@ export function PortfoliosBody({ store }: { store: PortfolioStore }) {
               />
             </>
           ))}
+        {!held && <PortfoliosWaiting store={store} />}
       </div>
     </Page>
+  );
+}
+
+// every column a holding can fill, so the rows wait in the widest shape
+const WAITING_COLUMNS = holdingColumns(
+  { spark: true, price: true, priceHead: "Change", gain: true },
+  {},
+);
+
+function PortfoliosWaiting({ store }: { store: PortfolioStore }) {
+  return (
+    <>
+      <Switcher store={store} />
+      <HeroWaiting />
+      <Card title="Holdings">
+        <Table
+          label="Holdings"
+          columns={WAITING_COLUMNS}
+          rowKey={() => ""}
+          waiting={6}
+        />
+      </Card>
+    </>
   );
 }
 
@@ -593,32 +624,15 @@ export function rowMenu(
   return rowActionsOf(x).map((a) => run[a]);
 }
 
-function HoldingsCard({
-  h,
-  all,
-  sparks,
-  onTrade,
-  onEdit,
-}: {
-  h: Holdings;
-  all: boolean;
-  sparks: Record<string, Close[]>;
-  onTrade: (s: AddStart) => void;
-  onEdit: (x: Holding, what: EditWhat) => void;
-}) {
-  const ccy = h.converted?.currency ?? h.totals[0]?.currency ?? null;
-  const [q, setQ] = useState("");
-  const [sort, setSort] = useState<SortKey>("value");
-  const [dir, setDir] = useState<SortDir>("desc");
-  const [shut, setShut] = useState<Set<string>>(new Set());
-  const rows = h.holdings.filter((x) => holdingMatches(x, q));
-  const groups = groupsOf(rows, all);
-  const flat = groups.length <= 1;
-  const cols = columnsFor(rows);
-  const columns: Column<Holding>[] = [
+export function holdingColumns(
+  cols: ReturnType<typeof columnsFor>,
+  sparks: Record<string, Close[]>,
+): Column<Holding>[] {
+  return [
     {
       key: "name",
       head: "Holding",
+      wait: <SymbolWaiting />,
       width: {
         base: "minmax(0, 2.4fr)",
         tablet: "minmax(0, 2fr)",
@@ -727,6 +741,30 @@ function HoldingsCard({
       },
     },
   ];
+}
+
+function HoldingsCard({
+  h,
+  all,
+  sparks,
+  onTrade,
+  onEdit,
+}: {
+  h: Holdings;
+  all: boolean;
+  sparks: Record<string, Close[]>;
+  onTrade: (s: AddStart) => void;
+  onEdit: (x: Holding, what: EditWhat) => void;
+}) {
+  const ccy = h.converted?.currency ?? h.totals[0]?.currency ?? null;
+  const [q, setQ] = useState("");
+  const [sort, setSort] = useState<SortKey>("value");
+  const [dir, setDir] = useState<SortDir>("desc");
+  const [shut, setShut] = useState<Set<string>>(new Set());
+  const rows = h.holdings.filter((x) => holdingMatches(x, q));
+  const groups = groupsOf(rows, all);
+  const flat = groups.length <= 1;
+  const columns = holdingColumns(columnsFor(rows), sparks);
   const tableGroups: TableGroup<Holding>[] = groups.map((g) => {
     const closed = shut.has(g.key);
     return {

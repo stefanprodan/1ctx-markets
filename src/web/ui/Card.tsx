@@ -44,11 +44,13 @@ export function Card({
 export function CardHead({
   title,
   count,
+  note,
   actions,
   section,
 }: {
   title: ComponentChildren;
   count?: number | string | null;
+  note?: ComponentChildren;
   actions?: ComponentChildren;
   section?: boolean;
 }) {
@@ -62,6 +64,7 @@ export function CardHead({
           </span>
         )}
       </h2>
+      {note}
       {actions}
     </div>
   );
@@ -70,6 +73,7 @@ export function CardHead({
 export function SectionHead(props: {
   title: ComponentChildren;
   count?: number | string | null;
+  note?: ComponentChildren;
   actions?: ComponentChildren;
 }) {
   return <CardHead {...props} section />;

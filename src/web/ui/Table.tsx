@@ -8,6 +8,7 @@ import type { ComponentChildren, HTMLAttributes } from "preact";
 import { Icon } from "../lib/icons.tsx";
 import { MenuButton, type MenuItem } from "./Menu.tsx";
 import { Notice } from "./Notice.tsx";
+import { Placeholder } from "./Placeholder.tsx";
 import "./table.css";
 
 // a track at each width; a narrower one falls back to the wider
@@ -31,6 +32,7 @@ export type Column<R> = {
   // false drops it at every width: nothing in view fills it
   show?: boolean;
   cell: (row: R) => ComponentChildren;
+  wait?: ComponentChildren;
 };
 
 export type TableGroup<R> = {
@@ -127,6 +129,7 @@ export function Table<R>({
   dense,
   head = true,
   label,
+  waiting,
 }: {
   columns: readonly Column<R>[];
   // a flat list, or groups with their labels
@@ -152,11 +155,11 @@ export function Table<R>({
   // false leaves the head row out, for a list that needs no names
   head?: boolean;
   label?: string;
+  waiting?: number;
 }) {
   const cols = columns.filter((c) => c.show !== false);
-  const all: readonly TableGroup<R>[] = groups ?? [
-    { key: "", rows: rows ?? [] },
-  ];
+  const all: readonly TableGroup<R>[] =
+    waiting !== undefined ? [] : (groups ?? [{ key: "", rows: rows ?? [] }]);
   const style = {
     "--table-cols": tracks(columns, "base", menu !== undefined),
     "--table-cols-tablet": tracks(columns, "tablet", menu !== undefined),
@@ -262,7 +265,21 @@ export function Table<R>({
           })}
         </tbody>
       ))}
-      {empty !== undefined && showsEmpty(all) && (
+      {waiting !== undefined && (
+        <tbody class="table-group" aria-hidden="true">
+          {Array.from({ length: waiting }, (_, i) => (
+            <tr key={i} class="table-row">
+              {cols.map((c) => (
+                <td key={c.key} class={cellClass(c as Column<unknown>)}>
+                  {c.wait ?? <Placeholder chars={6} />}
+                </td>
+              ))}
+              {menu && <td class="table-cell table-more" />}
+            </tr>
+          ))}
+        </tbody>
+      )}
+      {waiting === undefined && empty !== undefined && showsEmpty(all) && (
         <tbody class="table-group">
           <tr class="table-empty">
             <td colSpan={span}>

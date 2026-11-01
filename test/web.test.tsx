@@ -1311,10 +1311,10 @@ describe("the instruments list", () => {
     expect(one).not.toContain("H2O");
     const none = render(<InstrumentsList all={all} query={signal("zzz")} />);
     expect(none).toContain("No instrument matches.");
-    // before the first answer, no count and no rows
+    // before the first answer, no count and rows of placeholders
     const waiting = render(<InstrumentsList all={null} query={signal("")} />);
     expect(waiting).not.toContain("card-count");
-    expect(waiting).not.toContain("<table");
+    expect(waiting).not.toContain("No instrument matches.");
   });
 
   test("loads every page, and a second ask joins the load in flight", async () => {

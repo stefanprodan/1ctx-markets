@@ -32,6 +32,7 @@ MCP tools copied onto paths.
 | `GET /instruments/{symbol}` | read | `instrument()` | the instrument, what tracks it, its full quote and a fund's `top_holdings`; a read (below) |
 | `DELETE /instruments/{symbol}` | admin | `deleteOne()` | 204; 409 with `rules` (`docs/admin.md`) |
 | `POST /instruments/{symbol}/refetch` | admin | `refetchOne()` | `input`, `id`, `parts[]` (`docs/admin.md`) |
+| `GET /instruments/{symbol}/stored` | admin | `storedCheck()` | `input`, `stored`: whether a read answers from the database or fetches the symbol first (`docs/admin.md`) |
 | `GET /instruments/{symbol}/bars?interval=&from=&to=&benchmark=&extended=` | read | `readHistory()`, `readIntradayHistory()` | bars or 5-minute points (below) |
 | `GET /watchlist` | read | `watchlist()` | `entries[]`, the `--track` values (below) |
 | `GET /dashboard` | admin | `readDashboard()` | the web UI's home page: `revision`, `created`, `sections[]` of `items[]` (below) |

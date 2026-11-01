@@ -12,6 +12,7 @@ import {
   queryArgs,
   readBody,
 } from "../api/http.ts";
+import { dailyRange } from "../market/bars.ts";
 import { iso } from "../market/format.ts";
 import { readInstrument } from "../market/instruments.ts";
 import { dashboardInstruments, trackedIds } from "../market/tracking.ts";
@@ -542,6 +543,17 @@ export async function instrument(m: Markets, url: URL, raw: string) {
   });
 }
 
+// the instrument route's own lookup: stored means its read fetches nothing
+export function storedCheck(m: Markets, url: URL, raw: string): Response {
+  noQuery(url);
+  const input = keyed(raw);
+  const row = restStored(m.db, input, m.bvb !== null, false);
+  return json({
+    input,
+    stored: row !== null && dailyRange(m.db, row.id) !== null,
+  });
+}
+
 // no read: a read stamp would keep a value dropped from the flag tracked
 export function watchlist(
   m: Markets,
@@ -571,14 +583,19 @@ export function watchlist(
   });
 }
 
-// a stored instrument only, so nothing is resolved, fetched or added
-function storedOf(m: Markets, raw: string) {
+function keyed(raw: string): string {
   const input = pathSymbol(raw);
   if (!KEY.test(input)) {
     throw new ArgError(
       "the path names a symbol or id of at most 64 letters, digits and . ^ = : _ & -",
     );
   }
+  return input;
+}
+
+// a stored instrument only, so nothing is resolved, fetched or added
+function storedOf(m: Markets, raw: string) {
+  const input = keyed(raw);
   return {
     input,
     instrument: restStored(m.db, input, m.bvb !== null, true),

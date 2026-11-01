@@ -96,6 +96,17 @@
   .chart-plot {
     position: relative;
   }
+  .chart-plot-wait .chart-canvas {
+    visibility: hidden;
+  }
+  .chart-wait {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+  }
   .chart-mark {
     position: absolute;
     z-index: var(--z-raise);

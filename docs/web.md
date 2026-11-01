@@ -112,8 +112,10 @@ signed in with the admin key alone.
   from a link asking for a new tab, which would leave the app.
 - **The tab's title is the page, then the brand** (`app/title.ts`):
   "Instruments · 1ctx Markets", an instrument by the symbol in its
-  address ("AAPL · 1ctx Markets"), so it needs no answer, and "Sign in
-  · 1ctx Markets" while signed out. Home is the brand alone.
+  address ("AAPL · 1ctx Markets"), so it needs no answer, a coin
+  without its quote currency ("BTC", by a `CRYPTO:` id or once the
+  answer names it a coin), and "Sign in · 1ctx Markets" while signed
+  out. Home is the brand alone.
 - **Views never fetch.** `data/store.ts` owns every call and signal;
   `data/api.ts` makes the calls. Any 401 signs out (the shell gives way
   to the sign-in), and a later status load supersedes one in flight.
@@ -129,6 +131,29 @@ signed in with the admin key alone.
   reloads its instrument only while that page is still open.
 - **`useRefresh` sets its timer once** and calls the latest load, so a
   redraw (a crosshair moving) never pushes the refresh back.
+- **A wait never looks like a broken page, and there are two.** An
+  answer travelling to the browser (data the server holds, read in
+  milliseconds; a slow connection makes it seconds) shows the page's
+  own shape: what has never been drawn waits behind placeholders the
+  size of what will land, inside the parts it will fill (`Placeholder`),
+  never a full-page spinner or one per card. Only after `SLOW_MS` (a
+  second) still waiting do a few words show ("Loading prices",
+  "Loading charts", "Loading the chart"; `slowFlag()` in
+  `lib/slow.ts`, its timer passed into the store so tests drive it
+  with the fake clock). The minute's refresh never puts a placeholder
+  over what is drawn. A symbol the server fetches from its source for
+  the first time (seconds, up to the call's deadline) says so at once:
+  "Fetching TEL for the first time" with the spinner, in the chart's
+  box. The page cannot tell the two apart from the read itself, which
+  answers only once the fetch is done, so the instrument page asks
+  `GET /api/v1/instruments/{symbol}/stored` (admin, from the database
+  alone) beside the read whenever it has nothing drawn; the public
+  routes stay as they are. The words never name a source, which the
+  bundle does not know for a bare symbol. A read that failed is
+  `Page`'s `failed`: a timeout reads "The source did not answer in
+  time.", a source's failure a sentence by the problem's `code`
+  (`unread()`; its `detail` is written for agents and names no source),
+  and Try again reads, and so fetches, again.
 - **The page imports outside `src/web/` only from `src/shared/`**,
   plain files that import nothing but each other, so no server-only
   code (a package, `bun:`, the database) reaches the browser bundle;
@@ -199,7 +224,8 @@ The parts:
 - `Card.tsx`: `Card` (title, faint count, actions on the right, a head
   as tall as a control with or without them, `flush` for rows that pad
   themselves), `CardHead` and `SectionHead` (the same head without a
-  card, over a section of tiles), `GroupLabel` (a group
+  card, over a section of tiles; `note` after the count, where a slow
+  read's words go), `GroupLabel` (a group
   inside a list: mono label, fold caret, count, a trailing total),
   `PeriodLabel` (a month or a day in a list, sticking under the page's
   head), `CardLabel` (a part of a card under a small name in the
@@ -217,13 +243,17 @@ The parts:
   direction `nextSort` picks; `open` (a page's address or an action,
   over the whole row); `menu` for the row's ⋯; `empty`, said only when
   no row and no group label is left; `dense` for 52px rows; `head={false}`;
-  `rowAttrs` for a row's class and drag while a list is edited.
+  `rowAttrs` for a row's class and drag while a list is edited;
+  `waiting` for rows still on their way, that many rows of each
+  column's `wait` (a six-character placeholder by default) under the
+  real heads.
   Each row is its own grid, so a width never sizes to its content
   (`auto`, `max-content`): columns would stop lining up row to row.
   A control in a cell takes `.table-raise` to sit over the row's link.
 - `Symbol.tsx`: `SymbolName`, the ticker over its name, or one line
-  `compact`. `lib/names.ts`: how an instrument is named (`tickerOf`,
-  `nameOf`, `symbolOf`, `kindOf`, `marketOf`, `stopped`, `about`).
+  `compact`; `SymbolWaiting` its placeholder. `lib/names.ts`: how an
+  instrument is named (`tickerOf`, `nameOf`, `symbolOf`, `kindOf`,
+  `marketOf`, `stopped`, `about`).
 - `lib/format.ts`: the numbers and words more than one page writes
   (`figure`, `price`, `priceParts`, `change`, `volumeText`, `money`,
   `signedMoney`, `amount`, `percent`, `quantity`, `briefQuantity`,
@@ -233,10 +263,10 @@ The parts:
   `sessionSlots` from `Chart.model.ts`).
 - `Figures.tsx`: `Num`, `Change`, `Hero` (the value band: name, the
   figure with its currency or a menu, moves, `lines`; `compact` at a
-  card title's size inside a card), `Stats` (a row of labelled figures,
-  no boxes), `Facts` (a detail's label-over-value grid, two to a row,
-  `four` for short figures, never broken, two by two in a narrow card; a
-  faint `note` under a value).
+  card title's size inside a card), `HeroWaiting` (its placeholder),
+  `Stats` (a row of labelled figures, no boxes), `Facts` (a detail's
+  label-over-value grid, two to a row, `four` for short figures, never
+  broken, two by two in a narrow card; a faint `note` under a value).
 - `Amounts.tsx`: Hide amounts, one setting for every page with the
   owner's amounts (`markets-portfolio-hide` in `localStorage`):
   `useHideAmounts()`, the eye (`HideAmounts`), and `hiddenClass()` on
@@ -249,7 +279,14 @@ The parts:
   longest, up to a name's width. Rows that link are 44px to a finger.
 - `RangeBar.tsx`: where a price sits between a low and a high, the ends
   under it.
-- `Spark.tsx`: green above its dotted base, red below; the base the
+- `Placeholder.tsx`: `Placeholder`, a band in the line colour pulsing
+  softly (still under reduced motion), as wide as `chars` of its
+  parent's text and a line of it high, or a `band` across its box at
+  half its height for a line or a chart; `WaitWords`, the words a wait
+  shows once `show` (always rendered, as a status for a screen reader),
+  with `spin` for a source being asked.
+- `Spark.tsx`: `waiting` puts a band where a line's first read has not
+  landed; green above its dotted base, red below; the base the
   period's start (its box at least 10% of it) or a given value such as
   the previous close; fixed or `fluid` width; `slots`, the points the
   width stands for, so a session still trading fills only its share.
@@ -391,7 +428,13 @@ The parts:
   router's path changes, checked when its answer lands, and a save that
   lands after leaving starts no load, so leaving the page asks no line
   after it (an effect's cleanup runs too late).
-- **The line is one bars call per card, in parallel**, by the item's
+- **Before the layout's first answer** the page shows its shape: the
+  top card's tabs over rows of placeholders, and a section of four
+  placeholder tiles, "Loading prices" after its head once slow.
+- **The line is one bars call per card, in parallel**, each drawn as it
+  lands, never held for the slowest (a band holds the place of a line
+  not drawn yet, "Loading charts" after the section's count once
+  slow), by the item's
   `intraday`: `interval=5m` (the newest session, split at its
   `previous_close`, green above and red below, the previous close a
   dotted line, across the whole session so a morning fills only the
@@ -404,6 +447,8 @@ The parts:
 - **The line is the shared `Spark`**, inline SVG whose strokes are
   CSS tokens, so it wears the theme from the first frame; `sparkOf()`
   picks its closes, base and slots.
+- **Before its first answer Server status shows** its figures row
+  with the four labels over placeholders, and the Jobs card's rows.
 - **Server status** (`/status`, last in the rail, after Home,
   Instruments, Portfolios and Connect agents): `GET /api/v1/status`
   drawn as a stat row (instruments and how many are tracked, the
@@ -651,6 +696,12 @@ The parts:
   also asks `/symbols` and lists the sources' matches no row holds
   under a "Not stored yet" group label, tagged New; opening one
   fetches it.
+- **Before its first answer an instrument page** shows the symbol from
+  its address as the title, the value band's placeholder, the chart's
+  box with its words (above) and two cards of placeholder facts.
+  Connect agents draws its Setup card at once and placeholder rows in
+  Keys; Portfolios the All tab, the value band's placeholder and rows
+  in Holdings; Instruments rows in its card.
 - **An instrument** (`/instruments/<id>`, the id encoded) reads
   `GET /api/v1/instruments/{id}`, a read as any client's, so
   opening it keeps it tracked and an id never stored is fetched. The
@@ -830,8 +881,16 @@ The parts:
   open and the bar not final, O H L C, volume, the change from the
   range's first close (points for a series in percent), named by the
   range or "since" its first day, then the
-  averages. It follows the crosshair; at rest the latest bar, whose
-  averages fall back to the last there are (an open week has none).
+  averages. It follows the crosshair only once the pointer moves over
+  the chart (`pointerAt()`): a pointer resting where a clicked link was
+  is no bar picked, and a browser repeats a resting pointer's place
+  after a redraw. At rest the latest bar, whose averages fall back to
+  the last there are (an open week has none).
+- **A range not drawn yet** (the first, or one picked) leaves the
+  plot's box empty, its size kept, with "Loading the chart" once slow;
+  the minute's refresh keeps the bars drawn. The first draw waits for
+  mono face (`document.fonts.load`), which the canvas takes when it
+  draws.
 - **Prices on the axis** have separators, and no cents from five
   figures up (`axisPrice`), so a phone's axis stays narrow; each pane's
   scale keeps headroom so its top label is whole.

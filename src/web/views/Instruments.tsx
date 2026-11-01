@@ -11,7 +11,7 @@ import { Card, GroupLabel } from "../ui/Card.tsx";
 import { Change, Num } from "../ui/Figures.tsx";
 import { didNotLoad, Page } from "../ui/Page.tsx";
 import { Search } from "../ui/Search.tsx";
-import { SymbolName } from "../ui/Symbol.tsx";
+import { SymbolName, SymbolWaiting } from "../ui/Symbol.tsx";
 import { searcher, UPSTREAM_MIN } from "../ui/SymbolSearch.model.ts";
 import {
   type Column,
@@ -67,6 +67,7 @@ const COLUMNS: readonly Column<Item>[] = [
     width: { base: "minmax(0, 2.2fr)", phone: "minmax(0, 1fr)" },
     sortable: true,
     sortFirst: "asc",
+    wait: <SymbolWaiting />,
     cell: nameCell,
   },
   {
@@ -125,6 +126,8 @@ function useNotStored(query: string, known: ReadonlySet<string>): Candidate[] {
   return (found ?? []).filter((c) => !c.stored && !known.has(c.id));
 }
 
+const WAITING_ROWS = 8;
+
 // the filter and the order live apart from the rows, so a refresh keeps
 // them
 export function InstrumentsList({
@@ -170,27 +173,26 @@ export function InstrumentsList({
       count={rows === undefined ? undefined : rows.length}
       actions={<Search query={query} placeholder="Search" />}
     >
-      {rows !== undefined && (
-        <Table
-          label="Instruments"
-          columns={COLUMNS}
-          groups={groups}
-          rowKey={idOf}
-          open={(x) => ({ href: hrefOf(idOf(x)) })}
-          rowLabel={(x) =>
-            "listed" in x
-              ? tickerOf(x.listed.id, x.listed.kind)
-              : tickerOf(x.found.id, x.found.type)
-          }
-          sort={sort.value}
-          dir={dir.value}
-          onSort={(k, d) => {
-            sort.value = k as SortKey;
-            dir.value = d;
-          }}
-          empty="No instrument matches."
-        />
-      )}
+      <Table
+        label="Instruments"
+        columns={COLUMNS}
+        groups={groups}
+        rowKey={idOf}
+        open={(x) => ({ href: hrefOf(idOf(x)) })}
+        rowLabel={(x) =>
+          "listed" in x
+            ? tickerOf(x.listed.id, x.listed.kind)
+            : tickerOf(x.found.id, x.found.type)
+        }
+        sort={sort.value}
+        dir={dir.value}
+        onSort={(k, d) => {
+          sort.value = k as SortKey;
+          dir.value = d;
+        }}
+        empty="No instrument matches."
+        waiting={rows === undefined ? WAITING_ROWS : undefined}
+      />
     </Card>
   );
 }

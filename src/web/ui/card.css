@@ -38,6 +38,12 @@
   .card-count {
     color: var(--faint);
   }
+  .card-title:has(+ .wait-words) {
+    margin-right: 0;
+  }
+  .card-head > .wait-words {
+    margin-right: auto;
+  }
   .card-label {
     margin: var(--space-4) 0 var(--space-2);
     font-size: var(--text-small);
