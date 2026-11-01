@@ -121,8 +121,8 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
 - **Every source job run is a `sync_runs` row** (`runJob()`, or
   `startRun`/`endRun`/`failRun`). Its `scope` is the market for a Yahoo
   quote, check or bar pass, Finnhub's whole-market calendar and EDGAR's
-  ticker map, the instrument key for FRED, Finnhub, Massive and EDGAR
-  filings runs, null otherwise. Ids are `autoincrement`, never reused:
+  ticker map, the instrument key for FRED, Finnhub, Massive, EDGAR
+  filings and Yahoo valuation runs, null otherwise. Ids are `autoincrement`, never reused:
   an admin delete removes an instrument's runs while a job may still
   hold one's id. At startup `failInterrupted()` fails runs a crash left
   `running`, in the first queued write, so no job's run is taken for one
@@ -301,6 +301,17 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   pair's close taken from a session's points is marked in
   `bars.point_close`, so it outlives their prune.
 
+## Valuations
+
+- **`valuations` holds Yahoo's EPS and PEG per US share**
+  (`0029-valuations`, `src/sources/yahoo/valuation.ts`): `eps_ttm`,
+  `eps_forward`, `peg`, `currency` and `fetched_at`, one row per
+  instrument, for a share Finnhub answers from a foreign listing
+  (`docs/research.md`). A new answer replaces the row, one in another
+  currency or with no figure deletes it, and a failed one keeps it;
+  staleness is read from its runs. No history: P/E is worked out from
+  it at answer time.
+
 ## Retention
 
 - **One prune runs in the startup write and on the daily `retention`
@@ -317,6 +328,7 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
 | `filings` | two years by `accepted_at` (`pruneFilings`), the restatement flag's year and the one before it |
 | `alerts` | 90 days by `fired_at` (`ALERTS_KEPT_DAYS`) |
 | `intraday` | the newest `INTRADAY_SESSIONS` sessions per instrument, on each write (above) |
+| `valuations` | the one row per instrument, replaced by each answer |
 
 - **Instruments, bars, splits, quotes, signals and markets are never
   pruned.** An instrument that stops being tracked keeps its history,

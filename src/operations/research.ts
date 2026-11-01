@@ -3,6 +3,8 @@
 
 import { iso, round } from "../market/format.ts";
 import type { Instrument } from "../market/instruments.ts";
+import { readQuote } from "../market/quotes.ts";
+import { quoteStale } from "../market/stale.ts";
 import { dateOfWall, localDate, wallOfDate } from "../market/zone.ts";
 import { DAY_MS } from "../runtime/clock.ts";
 import { itemName } from "../sources/edgar/items.ts";
@@ -56,6 +58,14 @@ import {
   refreshNews,
   topNews,
 } from "../sources/massive/store.ts";
+import {
+  covered,
+  PER_US_SHARE,
+  readValuation,
+  refreshValuation,
+  valuationFetched,
+  valuationState,
+} from "../sources/yahoo/valuation.ts";
 import { ArgError, date, fields, symbols } from "./args.ts";
 import { type Markets, shared } from "./markets.ts";
 import {
@@ -118,18 +128,24 @@ export async function researchTargets(
     news?: boolean;
     filings?: boolean;
     sections?: readonly Section[];
+    // Yahoo's figures for a share Finnhub answers from a foreign listing
+    valuation?: boolean;
   } = {},
 ): Promise<{
   targets: Target[];
   inline: Map<string, Inline>;
   news: Map<string, Inline>;
   filings: Map<string, Inline>;
+  valuation: Map<string, Inline>;
 }> {
   const deadline = m.clock.now() + m.callMs;
   const targets = await readTargets(m, inputs);
   const inline = new Map<string, Inline>();
   const news = new Map<string, Inline>();
   const filings = new Map<string, Inline>();
+  const valuation = new Map<string, Inline>();
+  // each share's Finnhub fetch, which says whether its listing is foreign
+  const research = new Map<string, Promise<unknown>>();
   const work: Promise<void>[] = [];
   let cancel = () => {};
   const expired = new Promise<typeof EXPIRED>((resolve) => {
@@ -264,14 +280,58 @@ export async function researchTargets(
         if (failed !== undefined && "error" in failed) throw failed.error;
       }),
     );
+    research.set(instrument.id, fetch);
     settle(inline, instrument.id, fetch);
+  }
+  for (const t of targets) {
+    if (
+      !options.valuation ||
+      m.finnhub === null ||
+      !("instrument" in t) ||
+      !eligible(t.instrument) ||
+      valuation.has(t.instrument.id)
+    ) {
+      continue;
+    }
+    const instrument = t.instrument;
+    valuation.set(instrument.id, { kind: "stored" });
+    // the metric's own failure is the research summary's, not this one's
+    const fetch = (research.get(instrument.id) ?? Promise.resolve())
+      .catch(() => {})
+      .then(() => {
+        if (
+          !covered(m.db, instrument) ||
+          valuationFetched(m.db, instrument.id)
+        ) {
+          return;
+        }
+        return shared(m, `valuation:${instrument.id}`, deadline, (live) =>
+          refreshValuation(m, instrument, {
+            live,
+            client: m.yahoo.within(live),
+            due: (db) => !valuationFetched(db, instrument.id),
+          }).then((r) => {
+            if (r?.status === "failed") throw r.error;
+          }),
+        );
+      });
+    settle(valuation, instrument.id, fetch);
   }
   try {
     await Promise.all(work);
   } finally {
     cancel();
   }
-  return { targets, inline, news, filings };
+  // the share is quoted; it is the quote summary Yahoo has none of
+  for (const [id, v] of valuation) {
+    if (v.kind === "failed" && v.error.error === "not_found") {
+      valuation.set(id, {
+        kind: "failed",
+        error: { error: "not_found", message: NO_VALUATION },
+      });
+    }
+  }
+  return { targets, inline, news, filings, valuation };
 }
 
 type Values = Record<string, number | string | null>;
@@ -420,6 +480,49 @@ export function researchSummary(
     earnings: section("earnings"),
     insider: section("insider"),
     next_event: event === null ? null : eventItem(m, instrument, event),
+  };
+}
+
+export const NO_VALUATION = "Yahoo has no valuation for this share";
+
+// The quote's price over stored EPS, so P/E follows the live price; an EPS
+// of zero or below has none, as an exchange leaves P/E blank for a loss.
+const earningsMultiple = (price: number | null, eps: number | null) =>
+  price === null || eps === null || eps <= 0 ? null : round(price / eps);
+
+// only for a share Finnhub answers from a foreign listing, else undefined
+export function valuationSummary(
+  m: Markets,
+  instrument: Instrument,
+  v: Inline | undefined,
+) {
+  if (m.finnhub === null || !covered(m.db, instrument)) return undefined;
+  const state = valuationState(m.db, instrument.id, m.clock.now());
+  const row = readValuation(m.db, instrument.id);
+  const priced = row !== null && row.currency === instrument.currency;
+  const price = priced ? (readQuote(m.db, instrument.id)?.price ?? null) : null;
+  const peTtm = earningsMultiple(price, priced ? row.epsTtm : null);
+  const forwardPe = earningsMultiple(price, priced ? row.epsForward : null);
+  // a P/E on a stale price says so, as the route has no quote beside it
+  const quoted =
+    peTtm === null && forwardPe === null
+      ? []
+      : quoteStale(m.db, instrument, {
+          now: m.clock.now(),
+          everyMs: m.quoteEveryMs,
+        }).map((r) => `quote: ${r}`);
+  return {
+    source: "yahoo",
+    ...(v?.kind === "failed" ? v.error : {}),
+    fetched_at: iso(row?.fetchedAt ?? state.fetchedAt),
+    stale: [...state.stale, ...quoted],
+    currency: row?.currency ?? instrument.currency,
+    pe_ttm: peTtm,
+    forward_pe: forwardPe,
+    forward_peg: priced ? round(row.peg) : null,
+    eps_ttm: priced ? round(row.epsTtm) : null,
+    eps_forward: priced ? round(row.epsForward) : null,
+    note: PER_US_SHARE,
   };
 }
 
@@ -648,10 +751,17 @@ export async function researchList(m: Markets, args: ResearchListArgs) {
     (p) => !finnhub.includes(p),
   );
   const withFilings = args.parts.includes("filings");
-  const { targets, inline, filings } = await researchTargets(m, args.symbols, {
-    sections: finnhub.map((p) => SECTION_OF_PART[p]),
-    filings: withFilings,
-  });
+  // valuation goes with the metric, which says whether the listing is foreign
+  const withValuation = args.parts.includes("metric");
+  const { targets, inline, filings, valuation } = await researchTargets(
+    m,
+    args.symbols,
+    {
+      sections: finnhub.map((p) => SECTION_OF_PART[p]),
+      filings: withFilings,
+      valuation: withValuation,
+    },
+  );
   // no quote: /quotes answers prices for many symbols in one call
   return targets.map((t) => {
     if ("error" in t) return { input: t.input, ...t.error };
@@ -662,10 +772,14 @@ export async function researchList(m: Markets, args: ResearchListArgs) {
       HTTP_HISTORY,
     );
     for (const p of left) delete company[p];
+    const value = withValuation
+      ? valuationSummary(m, t.instrument, valuation.get(t.instrument.id))
+      : undefined;
     return {
       input: t.input,
       id: t.instrument.id,
       ...(finnhub.length > 0 ? { company } : {}),
+      ...(value === undefined ? {} : { valuation: value }),
       ...(args.parts.includes("news")
         ? { news: newsWeek(m, t.instrument, since) }
         : {}),

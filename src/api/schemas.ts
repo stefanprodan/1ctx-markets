@@ -153,6 +153,37 @@ const company = note(
   object({ source: str, earnings }, ["source"], true),
   "A US share's metrics, analysts, earnings, insider sentiment and next earnings event, with the sections asked.",
 );
+const valuation = note(
+  object(
+    {
+      source: str,
+      error: str,
+      message: str,
+      fetched_at: nstr,
+      stale: note(list(str), STALE),
+      currency: nstr,
+      pe_ttm: note(nnum, "The stored quote's price over eps_ttm."),
+      forward_pe: note(nnum, "The stored quote's price over eps_forward."),
+      forward_peg: nnum,
+      eps_ttm: nnum,
+      eps_forward: nnum,
+      note: str,
+    },
+    [
+      "source",
+      "fetched_at",
+      "stale",
+      "currency",
+      "pe_ttm",
+      "forward_pe",
+      "forward_peg",
+      "eps_ttm",
+      "eps_forward",
+      "note",
+    ],
+  ),
+  "P/E, forward P/E, PEG and EPS per US share, for a share whose metrics come from a foreign listing; with `metric` asked.",
+);
 const news = object({ source: str }, ["source"], true);
 const flag = (what: string) =>
   note(
@@ -476,22 +507,19 @@ export const schemas: Record<string, Schema> = {
     ["query", "candidates"],
   ),
   // a result holds the blocks its sections asked, at least one
-  ResearchCompany: object({ input: str, id: str, company, filings }, [
-    "input",
-    "id",
-    "company",
-  ]),
+  ResearchCompany: object(
+    { input: str, id: str, company, valuation, filings },
+    ["input", "id", "company"],
+  ),
   ResearchNews: object({ input: str, id: str, news, filings }, [
     "input",
     "id",
     "news",
   ]),
-  ResearchBoth: object({ input: str, id: str, company, news, filings }, [
-    "input",
-    "id",
-    "company",
-    "news",
-  ]),
+  ResearchBoth: object(
+    { input: str, id: str, company, valuation, news, filings },
+    ["input", "id", "company", "news"],
+  ),
   ResearchFilings: object({ input: str, id: str, filings }),
   ResearchItem: oneOf(
     "ResearchCompany",

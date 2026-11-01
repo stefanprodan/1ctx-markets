@@ -47,6 +47,7 @@ import { type Backoff, type Fetch, queue } from "./sources/source.ts";
 import { type Yahoo, yahoo } from "./sources/yahoo/client.ts";
 import { settleStored } from "./sources/yahoo/history.ts";
 import { type YahooJobs, yahooJobs } from "./sources/yahoo/jobs.ts";
+import { valuationJobs } from "./sources/yahoo/valuation.ts";
 import type { Db } from "./storage/db/index.ts";
 import { failInterrupted, pruneRuns } from "./storage/runs.ts";
 import { type Writer, writer } from "./storage/writer.ts";
@@ -264,6 +265,11 @@ export function start(options: AppOptions): App {
           tracking,
           hooks,
         });
+  // follows Finnhub's metric, so it runs only while Finnhub is on
+  const valuationSync =
+    finnhubClient === null
+      ? null
+      : valuationJobs({ ctx: yahooCtx, log: options.log("yahoo"), tracking });
 
   const massiveKey = options.massiveKey ?? null;
   const massiveClient =
@@ -383,6 +389,7 @@ export function start(options: AppOptions): App {
     sync.schedule(jobs);
     fredSync?.schedule(jobs);
     finnhubSync?.schedule(jobs);
+    valuationSync?.schedule(jobs);
     massiveSync?.schedule(jobs);
     edgarSync?.schedule(jobs);
     bvbSync?.schedule(jobs);

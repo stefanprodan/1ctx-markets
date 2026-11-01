@@ -25,15 +25,19 @@ export async function recorded(name: string): Promise<Recorded> {
 // answers each call with what route gives for its URL; a route that
 // gives nothing fails the test, so no call goes unnoticed
 export function fakeFetch(
-  route: (url: URL) => Recorded | Promise<Recorded | undefined> | undefined,
+  route: (
+    url: URL,
+    headers: Headers,
+  ) => Recorded | Promise<Recorded | undefined> | undefined,
 ): { fetch: Fetch; urls: URL[]; headers: Headers[] } {
   const urls: URL[] = [];
   const headers: Headers[] = [];
   const fetch: Fetch = async (raw, init) => {
     const url = new URL(raw);
     urls.push(url);
-    headers.push(new Headers(init.headers));
-    const answer = await route(url);
+    const sent = new Headers(init.headers);
+    headers.push(sent);
+    const answer = await route(url, sent);
     if (answer === undefined) throw new Error(`no fixture for ${raw}`);
     const body =
       typeof answer.body === "string"
@@ -94,4 +98,80 @@ export async function added(ctx: YahooContext, symbol: string) {
     markRead(db, [out.instrument.id], ctx.clock.now()),
   );
   return out;
+}
+
+// made up: the recordings carry neither the real cookie nor the crumb;
+// session n is this cookie and crumb with n after them
+export const COOKIE = "A3=d=made-up-session-";
+export const CRUMB = "madeUpCrumb.";
+const SUMMARIES: Record<string, string> = {
+  TSM: "quotesummary-tsm",
+  ASML: "quotesummary-asml",
+};
+
+// the symbol a quote summary URL asks for
+export const summarySymbol = (url: URL): string | null =>
+  url.pathname.startsWith("/v10/finance/quoteSummary/")
+    ? decodeURIComponent(
+        url.pathname.slice("/v10/finance/quoteSummary/".length),
+      )
+    : null;
+
+const notFound: Recorded = {
+  recordedAt: "",
+  status: 404,
+  headers: {},
+  body: {
+    quoteSummary: {
+      result: null,
+      error: { code: "Not Found", description: "Quote not found" },
+    },
+  },
+};
+
+// Yahoo's session and quote summary: each visit to fc is a new cookie,
+// getcrumb answers that cookie's crumb, and a summary answers only the
+// newest pair, as sent together; revoke() makes Yahoo drop the newest
+export function yahooSession() {
+  let issued = 0;
+  let valid = 0;
+  const answer = async (
+    url: URL,
+    headers: Headers,
+  ): Promise<Recorded | undefined> => {
+    if (url.hostname === "fc.yahoo.com") {
+      issued++;
+      valid = issued;
+      return {
+        recordedAt: "",
+        status: 404,
+        headers: {
+          "set-cookie": `${COOKIE}${issued}; Domain=.yahoo.com; Path=/`,
+        },
+        body: "",
+      };
+    }
+    if (url.pathname === "/v1/test/getcrumb") {
+      const n = Number(headers.get("cookie")?.slice(COOKIE.length));
+      return n > 0 && n <= issued
+        ? { recordedAt: "", status: 200, headers: {}, body: `${CRUMB}${n}` }
+        : { recordedAt: "", status: 400, headers: {}, body: "" };
+    }
+    const symbol = summarySymbol(url);
+    if (symbol === null) return undefined;
+    const paired =
+      valid > 0 &&
+      headers.get("cookie") === `${COOKIE}${valid}` &&
+      url.searchParams.get("crumb") === `${CRUMB}${valid}`;
+    if (!paired) return recorded("quotesummary-no-crumb");
+    const name = SUMMARIES[symbol];
+    return name === undefined ? notFound : recorded(name);
+  };
+  return {
+    answer,
+    revoke() {
+      valid = 0;
+    },
+    issued: () => issued,
+  };
 }

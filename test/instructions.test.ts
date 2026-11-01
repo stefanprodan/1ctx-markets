@@ -22,6 +22,7 @@ const ANSWER_FIELDS = [
   "fetched_at",
   "unit",
   "previous_close",
+  "valuation",
 ];
 
 // the text goes to every user: no one's place or workspace

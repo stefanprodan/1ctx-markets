@@ -4,10 +4,13 @@ Governs Finnhub's research and earnings events
 (`src/sources/finnhub/*`), Massive's news (`src/sources/massive/*`),
 the `research` and `events` tools and the research route's contents
 (`src/tools/research.ts`, `src/operations/research.ts`,
-`src/operations/events.ts`), and the
-`research`, `events`, `news` and `news_walks` tables
+`src/operations/events.ts`), an ADR's `valuation`
+(`src/sources/yahoo/valuation.ts`), and the
+`research`, `events`, `news`, `news_walks` and `valuations` tables
 (`src/storage/db/migrations/0007-research.ts`, `0008-news.ts`,
-`0012-listing.ts`, `0028-share-class-listing.ts`). EDGAR's filings,
+`0012-listing.ts`, `0028-share-class-listing.ts`,
+`0029-valuations.ts`). Yahoo's quote summary call and its session are
+in `docs/yahoo.md`. EDGAR's filings,
 their flags and events' `filed_at` are in `docs/edgar.md`; the
 sections that answer them are here. The queue, deadlines, retries, phrases, scrubbing
 and the lock every source shares are in `docs/sources.md`; resolution,
@@ -138,6 +141,38 @@ route's transport in `docs/api.md`; rules that wait on events in
   are no data, as a 403 is, since neither can be trusted; a symbol not
   1 to 20 letters, digits, `.` or `-` is "malformed answer". A metric
   left with nothing is no data.
+- **A share whose stored `metric` names a dotted listing gets its
+  valuation from Yahoo** (`covered()`, `docs/yahoo.md`, "The quote
+  summary"): `valuation`, its own object beside Finnhub's, whose
+  `metric` keeps its listing-bound fields null, so two sources never
+  fill one field. Yahoo's EPS is per US share in the share's currency.
+  `valuation` holds `source` (`yahoo`), `fetched_at`, `stale`,
+  `currency`, `pe_ttm`, `forward_pe`, `forward_peg`, `eps_ttm`,
+  `eps_forward` and `note` (`PER_US_SHARE`). A share Finnhub answers as
+  itself or as another US class has no `valuation`.
+  - **P/E is worked out at answer time**: the stored quote's price
+    (`readQuote()`, the overview quote's) over the stored EPS, so it
+    follows the live price. An EPS of zero or below, a missing price or
+    a row in another currency than the instrument's gives null, as an
+    exchange leaves P/E blank for a loss. `forward_peg` is Yahoo's, as
+    stored. A P/E on a price `quoteStale()` gives reasons for carries
+    them in `stale`, prefixed `quote: `, since the route has no quote
+    beside it.
+  - **Fetched once a day after the research refresh**, and inside a
+    `research` overview or a route call with `metric` for a share whose
+    valuation never ran well, after its Finnhub sections, which say
+    whether its listing is foreign (`researchTargets`). Whether it is
+    due is read again inside the share's lock, so a call and the job
+    that waited on it ask once. A failure keeps the stored row; the
+    inline failure is the valuation's, carried as `error` and `message`
+    in it, a `not_found` saying Yahoo has no valuation for the share
+    (`NO_VALUATION`), since the share itself is quoted.
+  - **Stale reasons are research's** (`valuationState`,
+    `STALE_RESEARCH`), on the same 23:00 UTC schedule: "no research
+    yet", "research sync failed", "research sync pending".
+  - **Cost: one call a day per such share**, few (US listings of
+    foreign companies Finnhub answers from home), plus two calls for
+    the session on first use after a start and on each refusal.
 - **An answer naming a listing replaces the kind's rows of any other**
   (`storeSection`), its own included, even when it keeps nothing, so no
   figure of one listing is read as another's; an event a rule waits on
@@ -300,8 +335,9 @@ route's transport in `docs/api.md`; rules that wait on events in
 ## Answers
 
 - **The `research` tool's sections** are `overview` (quote, signals,
-  each Finnhub section's latest row, earnings with its revenue, the
-  next event, five headlines, `filings`), `analysts`, `earnings`,
+  each Finnhub section's latest row, `valuation` for a share answered
+  from a foreign listing, earnings with its revenue, the next event,
+  five headlines, `filings`), `analysts`, `earnings`,
   `insiders`, `news` and `filings`, paged newest first. The overview
   drops headlines first to fit one page; `overview` has no next page.
 - **The overview's `filings`** is EDGAR's summary (`filingsSummary()`):
@@ -344,6 +380,8 @@ is fixed, never an argument, to keep five summaries short.
 - **`sections` picks what each share answers; a Finnhub section left out
   is not fetched.** Each item is `input`, `id`, `company` (the Finnhub
   summary, with its `source`, `message` and partial-failure fields),
+  `valuation` (the overview's, with `metric` asked, for a share answered
+  from a foreign listing),
   `news` (the news week) and `filings` (EDGAR's summary), under the
   tool's deadline and tracking. No quote: `/quotes` answers prices for
   many symbols in one call. The research tool keeps its own names.

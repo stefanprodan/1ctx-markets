@@ -31,6 +31,7 @@ import { m0025 } from "./0025-position-market.ts";
 import { m0026 } from "./0026-fund-trades.ts";
 import { m0027 } from "./0027-earnings-ahead.ts";
 import { m0028 } from "./0028-share-class-listing.ts";
+import { m0029 } from "./0029-valuations.ts";
 
 export const MIGRATIONS: readonly Migration[] = [
   m0001,
@@ -61,4 +62,5 @@ export const MIGRATIONS: readonly Migration[] = [
   m0026,
   m0027,
   m0028,
+  m0029,
 ];

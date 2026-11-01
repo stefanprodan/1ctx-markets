@@ -61,6 +61,7 @@ export const INSTRUMENT_TABLES = [
   "news_walks",
   "filings",
   "edgar_filers",
+  "valuations",
 ] as const;
 
 export type SourceState = {
@@ -161,6 +162,7 @@ const JOB_LABELS: Record<string, string> = {
   filings: "Filings",
   tickers: "SEC tickers",
   switch: "Source change",
+  "yahoo/valuation": "ADR valuations",
 };
 
 const JOB_ABOUT: Record<string, string> = {
@@ -189,6 +191,8 @@ const JOB_ABOUT: Record<string, string> = {
   tickers: "Refreshes SEC's list of tickers and company numbers once a week.",
   switch:
     "Moves a market's instruments to another source when the start options change.",
+  "yahoo/valuation":
+    "Refreshes P/E and EPS once a day, after 23:00 UTC, for each US share whose research comes from a foreign listing.",
 };
 
 export const jobAbout = (source: string, job: string): string | null =>

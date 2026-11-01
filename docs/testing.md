@@ -33,7 +33,7 @@ doc; key files in `docs/config.md`.
 
 | Helper | Answers |
 |---|---|
-| `yahoo.ts` | `recorded()`, `fakeFetch()`, `listed()` (a short chart read as a whole history), `backTo()` (made-up weekday rows before a recording), `added()` |
+| `yahoo.ts` | `recorded()`, `fakeFetch()`, `listed()` (a short chart read as a whole history), `backTo()` (made-up weekday rows before a recording), `added()`, `summaryAnswer()` (a made-up session and the recorded quote summaries) |
 | `bvb.ts` | the Bucharest exchange's pages and chart feed by URL (`bvbFetch()`), `opened()` (a page read as open: every recording is of a closed market), `keyed()` (a made-up page key, which the recordings strip), `bothSources()` with Yahoo |
 | `sources.ts` | Yahoo and FRED by URL for reads that fetch inside a call; `gate()` holds a call until released |
 | `sim.ts` | a made-up Yahoo for whole simulated days, sessions from each listing's zone |
@@ -113,7 +113,7 @@ Never run one from a test or CI.
 
 | Script | Records | Key |
 |---|---|---|
-| `yahoo.ts` | charts, searches, spark and quote batches; a case name records one | none |
+| `yahoo.ts` | charts, searches, spark and quote batches, quote summaries with a session; a case name records one | none |
 | `fred.ts` | daily series' metadata and recent observations, an unknown series, a refused key | `FRED_KEY_FILE` or `~/.1ctx-markets/secrets/source-fred.key` |
 | `finnhub.ts` | the research sections, the whole-market calendar, a price target | `FINNHUB_KEY_FILE` or `source-finnhub.key` |
 | `massive.ts` | the latest news and its next page, older news | `MASSIVE_KEY_FILE` or `source-massive.key` |
@@ -132,7 +132,8 @@ Never run one from a test or CI.
   stored, so EDGAR's contact line, sent as the User-Agent, stays out
   too. `bvb.ts` strips the page key
   and ASP.NET form state; `yahoo.ts` keeps only the headers a client
-  acts on.
+  acts on, and scrubs the session's cookie and crumb from every
+  quote summary it records, its URL's crumb written `REDACTED`.
 - **Restricted values are replaced before the first write.** A series
   whose terms forbid passing its values on is recorded with made-up
   numbers and a `note` saying so (`madeUpValues()` in `fred.ts`,

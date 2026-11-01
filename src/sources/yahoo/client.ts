@@ -21,6 +21,9 @@ import {
 
 export const SOURCE = YAHOO;
 export const HOST = "https://query1.finance.yahoo.com";
+// the quote summary's host; its session comes from fc and query1
+export const SUMMARY_HOST = "https://query2.finance.yahoo.com";
+export const COOKIE_URL = "https://fc.yahoo.com/";
 // a full browser User-Agent was answered 429
 const USER_AGENT = "Mozilla/5.0";
 // 21 symbols is a 400
@@ -104,6 +107,16 @@ export type SparkBatch = {
   alone?: boolean;
 };
 
+// per share of the listing asked, in currency; null when not given
+export type Valuation = {
+  symbol: string;
+  currency: string | null;
+  epsTtm: number | null;
+  epsForward: number | null;
+  peg: number | null;
+  fetchedAt: number;
+};
+
 export type Listing = {
   sourceSymbol: string;
   exchange: string;
@@ -125,6 +138,8 @@ export type Yahoo = {
   // one a single symbol may have broken is split to find it
   sparkAll(symbols: readonly string[]): Promise<SparkBatch[]>;
   search(query: string): Promise<Listing[]>;
+  // the quote summary, behind a cookie and crumb held in memory only
+  valuation(symbol: string): Promise<Valuation>;
   failFast(): Yahoo;
   within(live: () => boolean): Yahoo;
   backoff(): Backoff | null;
@@ -480,6 +495,55 @@ export function parseSearch(body: unknown): Listing[] {
   return listings;
 }
 
+// the session was refused: the crumb is asked again once
+export class Unauthorized extends SourceError {
+  constructor() {
+    super("source error", "unauthorized");
+  }
+}
+
+// {raw, fmt}, {} or missing; anything but a finite raw is null, never 0
+function raw(v: unknown): number | null {
+  if (!isObj(v)) return null;
+  return typeof v.raw === "number" && Number.isFinite(v.raw) ? v.raw : null;
+}
+
+export function parseSummary(body: unknown, fetchedAt: number): Valuation {
+  const b = obj(body, "body");
+  const summary = isObj(b.quoteSummary) ? b.quoteSummary : b.finance;
+  const top = obj(summary, "quote summary");
+  if (top.error !== null && top.error !== undefined) {
+    const code = isObj(top.error) ? top.error.code : undefined;
+    if (code === "Unauthorized") throw new Unauthorized();
+    throw code === "Not Found"
+      ? new SourceError("not found")
+      : new SourceError("source error", "quote summary error");
+  }
+  if (!Array.isArray(top.result) || top.result.length !== 1) {
+    throw malformed("not one quote summary result");
+  }
+  const result = obj(top.result[0], "quote summary result");
+  const price = obj(result.price, "price");
+  const stats =
+    result.defaultKeyStatistics === undefined ||
+    result.defaultKeyStatistics === null
+      ? {}
+      : obj(result.defaultKeyStatistics, "key statistics");
+  return {
+    symbol: text(price.symbol, "symbol"),
+    currency: optionalText(price.currency),
+    epsTtm: raw(stats.trailingEps),
+    epsForward: raw(stats.forwardEps),
+    peg: raw(stats.pegRatio),
+    fetchedAt,
+  };
+}
+
+type Crumb = { cookie: string; crumb: string };
+
+// a crumb is a short token; anything else is a page, not a crumb
+const CRUMB = /^[A-Za-z0-9./_-]{1,64}$/;
+
 export function yahoo(options: YahooOptions): Yahoo {
   const { clock } = options;
   const host = options.host ?? HOST;
@@ -493,10 +557,12 @@ export function yahoo(options: YahooOptions): Yahoo {
     return meta;
   };
 
-  const call = async <T>(
+  // the URL and headers can hold the session, so no error repeats them
+  const send = async (
     url: string,
-    parse: (body: unknown, fetchedAt: number) => T,
-  ): Promise<T> => {
+    headers: Record<string, string>,
+    redirect: RequestRedirect = "follow",
+  ): Promise<{ res: Response; raw: string; fetchedAt: number }> => {
     const abort = new AbortController();
     let timedOut = false;
     const cancel = clock.at(clock.now() + TIMEOUT_MS, () => {
@@ -504,35 +570,120 @@ export function yahoo(options: YahooOptions): Yahoo {
       abort.abort();
     });
     try {
-      let res: Response;
-      let raw: string;
-      try {
-        res = await doFetch(url, {
-          headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
-          signal: abort.signal,
-        });
-        raw = await res.text();
-      } catch {
-        throw new SourceError(timedOut ? "timed out" : "network error");
-      }
-      const fetchedAt = clock.now();
-      if (res.status === 429) throw new SourceError("rate limited");
-      if (res.status === 400) throw new SourceError("bad request");
-      let body: unknown;
-      try {
-        body = JSON.parse(raw);
-      } catch {
-        body = undefined;
-      }
-      // an unknown symbol is a 404 with a chart error in the body
-      if (res.status === 404) throw new SourceError("not found");
-      if (!res.ok) throw new SourceError("source error", `HTTP ${res.status}`);
-      if (body === undefined) throw new Unreadable();
-      return parse(body, fetchedAt);
+      const res = await doFetch(url, {
+        headers: { "User-Agent": USER_AGENT, ...headers },
+        signal: abort.signal,
+        redirect,
+      });
+      const raw = await res.text();
+      return { res, raw, fetchedAt: clock.now() };
+    } catch {
+      throw new SourceError(timedOut ? "timed out" : "network error");
     } finally {
       cancel();
     }
   };
+
+  const call = async <T>(
+    url: string,
+    parse: (body: unknown, fetchedAt: number) => T,
+    headers: Record<string, string> = {},
+  ): Promise<T> => {
+    const { res, raw, fetchedAt } = await send(url, {
+      Accept: "application/json",
+      ...headers,
+    });
+    if (res.status === 429) throw new SourceError("rate limited");
+    if (res.status === 400) throw new SourceError("bad request");
+    if (res.status === 401) throw new Unauthorized();
+    let body: unknown;
+    try {
+      body = JSON.parse(raw);
+    } catch {
+      body = undefined;
+    }
+    // an unknown symbol is a 404 with a chart error in the body
+    if (res.status === 404) throw new SourceError("not found");
+    if (!res.ok) throw new SourceError("source error", `HTTP ${res.status}`);
+    if (body === undefined) throw new Unreadable();
+    return parse(body, fetchedAt);
+  };
+
+  // memory only: never stored, logged or put in an error
+  let session: Crumb | null = null;
+
+  // before each request of a task that makes several: shutdown, the
+  // caller's deadline and a back-off another call set all hold it
+  const ready = (run: RunOptions) => {
+    if (calls.isClosed()) throw new QueueClosed();
+    if (run.live !== undefined && !run.live()) throw new DeadlinePassed();
+    const paused = calls.backoff();
+    if (paused !== null) throw new Paused(paused.after);
+  };
+
+  // fc.yahoo.com sets the cookie whatever its status, often a 404
+  const newSession = async (run: RunOptions): Promise<Crumb> => {
+    ready(run);
+    const fc = await send(COOKIE_URL, {}, "manual");
+    if (fc.res.status === 429) throw new SourceError("rate limited");
+    const cookie = fc.res.headers
+      .getSetCookie()
+      .map((c) => c.split(";")[0]!.trim())
+      .filter((c) => c.includes("="))
+      .join("; ");
+    if (cookie === "") throw new SourceError("source error", "no cookie");
+    ready(run);
+    const answer = await send(`${host}/v1/test/getcrumb`, { Cookie: cookie });
+    if (answer.res.status === 429) throw new SourceError("rate limited");
+    const crumb = answer.raw.trim();
+    if (!answer.res.ok || !CRUMB.test(crumb)) {
+      throw new SourceError("source error", "no crumb");
+    }
+    return { cookie, crumb };
+  };
+
+  const summaryUrl = (symbol: string, crumb: string) =>
+    `${SUMMARY_HOST}/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=defaultKeyStatistics,price&crumb=${encodeURIComponent(crumb)}`;
+
+  // A refused session is asked again once. One queued task whose failure
+  // comes back as a value, so it never backs off the queue prices share.
+  const valuation = (symbol: string, run: RunOptions) =>
+    calls
+      .run(async (): Promise<{ answer: Valuation } | { error: unknown }> => {
+        const ask = async (): Promise<Valuation> => {
+          const s = session ?? (await newSession(run));
+          session = s;
+          ready(run);
+          try {
+            return await call(summaryUrl(symbol, s.crumb), parseSummary, {
+              Cookie: s.cookie,
+            });
+          } catch (error) {
+            if (error instanceof Unauthorized && session === s) session = null;
+            throw error;
+          }
+        };
+        try {
+          let answer: Valuation;
+          try {
+            answer = await ask();
+          } catch (error) {
+            if (!(error instanceof Unauthorized)) throw error;
+            answer = await ask();
+          }
+          // an answer naming another listing is not this one's
+          if (answer.symbol.toUpperCase() !== symbol.toUpperCase()) {
+            throw malformed("another symbol");
+          }
+          return { answer };
+        } catch (error) {
+          return { error };
+        }
+      }, run)
+      .then((r) => {
+        if ("error" in r) throw r.error;
+        return r.answer;
+      });
 
   // parsed inside the queued task, so a body that is not JSON backs the
   // queue off
@@ -703,6 +854,7 @@ export function yahoo(options: YahooOptions): Yahoo {
         });
         return get(`${host}/v1/finance/search?${params}`, run, parseSearch);
       },
+      valuation: (symbol) => valuation(symbol, run),
       failFast: () => client({ failFast: true }),
       within: (live) => client({ failFast: true, live }),
       backoff: () => calls.backoff(),
