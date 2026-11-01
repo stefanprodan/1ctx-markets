@@ -54,7 +54,7 @@ MCP tools copied onto paths.
 | `DELETE /trades/{id}`, `POST /trades/{id}/restore` | portfolio:write | `setTradeState()` | `{trade}`, removed or back; never a delete |
 | `GET /positions?portfolio=&broker=&removed=` | portfolio:read | `readPositions()` | `positions[]` |
 | `POST /positions` | portfolio:write | `addPosition()` | `{kind, ...}`, kind `cash` or `bond` (a fund is bought as a trade); cash goes to Cash, refused naming another portfolio, and a bond never to Cash; 201 with `position` and `replaced` |
-| `PATCH /positions/{id}` | portfolio:write | `updatePosition()` | the tool's `update` arguments, `name` and `broker` among them; the new row, `replaced`, and `rate` for a converted amount; 409 on a removed row or on cash given another live cash row's name and broker |
+| `PATCH /positions/{id}` | portfolio:write | `updatePosition()` | the tool's `update` arguments, `name` and `broker` among them; the new row, `replaced`, and `rate` for a converted amount; 409 on a removed row or on cash given another live cash row's name, broker and currency |
 | `DELETE /positions/{id}`, `POST /positions/{id}/restore` | portfolio:write | `setPositionState()` | `{position}` |
 | `GET /positions/{id}/history` | portfolio:read | `historyOf()` | `history[]`, every row of the position's chain of updates, newest first |
 | `GET /funds` | portfolio:read | `listAll()` | `funds[]`: each fund the owner prices with its latest price and that price's day |

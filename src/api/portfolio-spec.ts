@@ -833,7 +833,7 @@ export const portfolioPaths = {
         "",
         "- Trades: `Symbol`, `Trade Date`, `Purchase Price`, `Quantity`, `Commission`, `Comment`, `Transaction Type`. A trade already saved is skipped. A fund's key (`fund:<isin>`, as an export writes it) names a fund kept; a fund is made by its first buy, never by a file.",
         "- Cash: `Item`, `Amount (<currency>)`, `As Of`, `Note`. Bonds: `Item`, `Symbol`, `Currency`, `Amount`, `Rate (%)`, `Purchase Date`, `Maturity`, `Note`. A list of fund totals is refused: a fund's buys are added one by one.",
-        "- A cash list goes to Cash whatever portfolio the path names; trades and bonds are refused for Cash. Cash replaces the kept one with its name and broker. A bond with the listing (or name), purchase date, face and broker of a kept one is skipped; with no purchase date, any date matches.",
+        "- A cash list goes to Cash whatever portfolio the path names; trades and bonds are refused for Cash. Cash replaces the kept one with its name, broker and currency. A bond with the listing (or name), purchase date, face and broker of a kept one is skipped; with no purchase date, any date matches.",
         "- A date after today is bad; a month (`YYYY-MM`) is its last day, or today in the current month.",
       ),
       requestBody: bodyOf(ref("ImportArgs")),
@@ -951,7 +951,7 @@ export const portfolioPaths = {
       security: WRITES,
       summary: "Add a position",
       description:
-        "Saves cash or a bond; a fund is bought as a trade (`POST /funds/trades`). Cash lives only in Cash, which holds nothing else. Cash with the same name and broker replaces the kept one, a bond the one with its listing (or name), purchase date, face and broker; the old row is kept as replaced. A date after today is refused.",
+        "Saves cash or a bond; a fund is bought as a trade (`POST /funds/trades`). Cash lives only in Cash, which holds nothing else. Cash with the same name, broker and currency replaces the kept one, a bond the one with its listing (or name), purchase date, face and broker; the old row is kept as replaced. A date after today is refused.",
       requestBody: bodyOf(ref("PositionArgs")),
       responses: base({
         201: {

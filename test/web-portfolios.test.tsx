@@ -1261,14 +1261,14 @@ describe("cash: dry powder, reserve, broker and note", () => {
   test("a clash with another cash row reads plainly", () => {
     expect(
       plainError(
-        "position 12 has this name and broker; update or remove it instead",
+        "position 12 has this name, broker and currency; update or remove it instead",
       ),
-    ).toBe("Other cash has this name and broker.");
+    ).toBe("Other cash has this name, broker and currency.");
     expect(
       plainError(
-        "Position 12 has this name and broker; update or remove it instead.",
+        "Position 12 has this name, broker and currency; update or remove it instead.",
       ),
-    ).toBe("Other cash has this name and broker.");
+    ).toBe("Other cash has this name, broker and currency.");
   });
 
   test("a fund refusal reads plainly as the page receives it", () => {

@@ -54,7 +54,7 @@ once and valued on the live price the server already keeps.
   row elsewhere moves into Cash, removed rows too, so a chain's history
   moves whole; a live row meeting a live one of its name and broker
   there takes its old portfolio's name ("Spare (Stocks)"), since add
-  treats the two as one.
+  then treated the two as one.
 - **A broker is a name the owner keeps** (`brokers`), matched ignoring
   case. A trade or position names one or none; an unknown name is
   refused with the known ones, so a typo never makes a broker. Brokers
@@ -145,18 +145,19 @@ once and valued on the live price the server already keeps.
   counted in no market in the exposure. Migration `0031-cash-no-market`
   cleared the markets cash had named (`0025-position-market` had let it,
   beside a fund's); the column is no longer read or written.
-- **A position's identity** (`samePosition()`): cash by name and
-  broker, so a snapshot read again updates it; a bond by its listing or
-  name, purchase date, face and broker,
-  since one name often covers several bonds and purchases. The name
-  matches when either row has no listing, so a listing that resolves on
-  a later import still finds the row saved unresolved; a bond imported
-  with no purchase date matches a kept one of any date, so a file read
-  again on another day adds nothing. Several purchases of one listed
-  bond are one holding in the answer, their faces, values and costs
-  summed, each purchase a part with its `position`, `as_of` and `amount`
-  (its face); that row has no `position`, as each purchase is edited or
-  removed alone (the web UI lists them).
+- **A position's identity** (`samePosition()`): cash by name, broker
+  and currency, so a snapshot read again updates it and one bank keeps
+  a row per currency; a bond by its listing or name, purchase date,
+  face and broker, since one name often covers several bonds and
+  purchases. The name matches when either row has no listing, so a
+  listing that resolves on a later import still finds the row saved
+  unresolved; a bond imported with no purchase date matches a kept one
+  of any date, so a file read again on another day adds nothing.
+  Several purchases of one listed bond are one holding in the answer,
+  their faces, values and costs summed, each purchase a part with its
+  `position`, `as_of` and `amount` (its face); that row has no
+  `position`, as each purchase is edited or removed alone (the web UI
+  lists them).
 - **Dry powder is cash ready to invest** (`dry_powder`, cash only), at
   a broker for buying; **reserve is the rest of cash**, kept apart from
   the markets (bank money, one row per bank and currency, its products
@@ -167,20 +168,21 @@ once and valued on the live price the server already keeps.
   restoring an old row sets a wrong update back (restoring takes out of
   the way every other live row of its chain through `replaces`, up to
   the first row and down, whatever the updates changed, so a purchase is
-  never live twice; cash also a live row of its name and broker, while
-  a bond keeps a live equal purchase, since two equal purchases are two
-  bonds; so a restored bond can sit beside an equal purchase imported
-  again after its removal, and the owner removes one).
+  never live twice; cash also a live row of its name, broker and
+  currency, while a bond keeps a live equal purchase, since two equal
+  purchases are two bonds; so a restored bond can sit beside an equal
+  purchase imported again after its removal, and the owner removes
+  one).
   An update with no date that changes what cash is worth (amount,
   `by`) is dated the owner's today, as its figure is true now; a bond
   keeps its purchase date, and a note, dry powder, name, broker or cost
   alone keeps the date. A price is a fund's: a position refuses one.
   An update may rename a position (`name`) or move it to another broker
   (`broker`, null takes it off); one that would give a live cash row
-  the name and broker of another live cash row in its portfolio is
-  refused (`conflict`) naming that row's id, since add treats the two
-  as one. A position added with the identity of a kept one replaces it
-  the same way. A position's history follows that chain
+  the name, broker and currency of another live cash row in its
+  portfolio is refused (`conflict`) naming that row's id, since add
+  treats the two as one. A position added with the identity of a kept
+  one replaces it the same way. A position's history follows that chain
   (`chainOf()`), since an update may rename or move it, or change a
   bond's face or date.
 - **The display currency** (`portfolio_settings`, one row per owner,

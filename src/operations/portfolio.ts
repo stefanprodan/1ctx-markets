@@ -1811,12 +1811,12 @@ export async function updatePosition(
     }
     const name = change.name ?? old.name;
     const at = broker === undefined ? old.broker : (broker?.id ?? null);
-    // add takes cash of one name at one broker as one row
+    // add takes cash of one name, broker and currency as one row
     if (old.kind === "cash" && (name !== old.name || at !== old.broker)) {
       const same = samePosition(db, { ...old, name, broker: at });
       if (same !== null && same.id !== id) {
         return conflict(
-          `position ${same.id} has this name and broker; update or remove it instead`,
+          `position ${same.id} has this name, broker and currency; update or remove it instead`,
         );
       }
     }
@@ -1992,7 +1992,7 @@ export async function setPositionState(
     if (removed === (p.removedAt !== null)) return id;
     if (!removed) {
       // a restore puts every other live row of its chain out of the way,
-      // whatever the updates changed; cash also a live row of its name,
+      // whatever the updates changed; cash also a live row of its identity,
       // while two equal bond purchases are two bonds
       const out = new Set(
         chainOf(db, id)

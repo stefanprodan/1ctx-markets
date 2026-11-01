@@ -365,8 +365,8 @@ export function plainError(said: string): string {
   if (/^the name cash is kept for cash/i.test(t)) {
     return "The name Cash is kept for cash.";
   }
-  if (/^position \d+ has this name and broker/i.test(t)) {
-    return "Other cash has this name and broker.";
+  if (/^position \d+ has this name, broker and currency/i.test(t)) {
+    return "Other cash has this name, broker and currency.";
   }
   if (/is listed in .*a bond takes its listing's currency/.test(t)) {
     return "Use the bond's own currency.";
