@@ -106,7 +106,7 @@ import {
   type ToolResult,
   textResult,
 } from "./answer.ts";
-import { ArgError, date, fields, quoted, text } from "./args.ts";
+import { ArgError, date, fields, quoted, text, textValues } from "./args.ts";
 import type { Markets } from "./markets.ts";
 import { readTargets } from "./targets.ts";
 import { opens, type Who } from "./who.ts";
@@ -252,6 +252,8 @@ export type PortfolioArgs =
       // an id, or the portfolio's one dry powder position
       position: number | "dry_powder";
       portfolio: Ref | null;
+      // picks the dry powder row when the change names no currency
+      currency: string | null;
       change: PositionChange;
     }
   | {
@@ -729,7 +731,24 @@ const nextOf = (v: unknown): string | null => {
 };
 
 export function parsePortfolio(input: unknown): PortfolioArgs {
-  const f = fields(input, [...new Set(Object.values(ARGS).flat())]);
+  const f = textValues(
+    fields(input, [...new Set(Object.values(ARGS).flat())]),
+    {
+      numbers: [
+        "quantity",
+        "units",
+        "price",
+        "total",
+        "fees",
+        "amount",
+        "cost",
+        "coupon",
+        "by",
+      ],
+      ids: ["trade", "position"],
+      flags: ["again", "dry_powder", "removed"],
+    },
+  );
   if (
     typeof f.action !== "string" ||
     !(PORTFOLIO_ACTIONS as readonly string[]).includes(f.action)
@@ -841,13 +860,36 @@ export function parsePortfolio(input: unknown): PortfolioArgs {
           change: parseFundChange(f, isin !== null),
         };
       }
+      if (f.position === undefined || f.position === null) {
+        throw new ArgError(
+          f.dry_powder === undefined ? UPDATE_TARGET : DRY_POWDER_PICK,
+        );
+      }
+      if (f.position === "dry_powder") {
+        // with no amount or by, currency picks the row, as broker does
+        const picks = f.amount === undefined && f.by === undefined;
+        const { currency, ...rest } = f;
+        // a name, a price or a market keeps its own refusal
+        if (
+          !["name", "price", "market", ...UPDATE_FIELDS].some(
+            (k) => k !== "broker" && f[k] !== undefined,
+          )
+        ) {
+          throw new ArgError(DRY_POWDER_CHANGES);
+        }
+        return {
+          action,
+          position: "dry_powder",
+          portfolio: ref(f.portfolio),
+          currency: picks ? currencyArg(currency) : null,
+          change: parseChange(picks ? rest : f),
+        };
+      }
       return {
         action,
-        position:
-          f.position === "dry_powder"
-            ? "dry_powder"
-            : rowId(f.position, "position"),
+        position: rowId(f.position, "position"),
         portfolio: ref(f.portfolio),
+        currency: null,
         change: parseChange(f),
       };
     case "remove":
@@ -1887,6 +1929,13 @@ export function historyOf(m: Markets, id: number) {
   };
 }
 
+export const UPDATE_TARGET =
+  'update takes a position: the row\'s position from holdings, or "dry_powder" with its broker and currency; a fund is named by isin or name';
+export const DRY_POWDER_PICK =
+  'dry_powder sets whether cash is ready to invest; the dry powder row is picked by position "dry_powder" with its broker and currency';
+
+export const DRY_POWDER_CHANGES = `update changes at least one of ${UPDATE_FIELDS.filter((f) => f !== "name" && f !== "broker").join(", ")}`;
+
 export const DRY_POWDER_BY_ID =
   "with position dry_powder, broker picks the row; a new name or broker needs its id";
 export const DRY_POWDER_LIVES = `dry powder lives in ${CASH_NAME}; leave portfolio out`;
@@ -1897,6 +1946,7 @@ function dryPowderOf(
   m: Markets,
   portfolio: Ref | null,
   change: PositionChange,
+  currency: string | null,
 ): number | Failure {
   const p = findPortfolio(m.db, portfolio);
   if (isFailure(p)) return p;
@@ -1908,7 +1958,7 @@ function dryPowderOf(
       ? null
       : findBroker(m.db, change.broker);
   if (isFailure(b)) return b;
-  const named = (change.by ?? change.amount)?.currency ?? null;
+  const named = currency ?? (change.by ?? change.amount)?.currency ?? null;
   const cash = cashPortfolio(m.db);
   const all =
     cash === null
@@ -1922,7 +1972,10 @@ function dryPowderOf(
       ? all
       : all.filter((x) => x.broker === (b?.id ?? null));
   const fit = named === null ? here : here.filter((x) => x.currency === named);
-  const pick = fit.length === 1 ? fit : named === null ? [] : here;
+  // an amount's currency converts, so any one row takes it; a currency
+  // that only picks must match
+  const pick =
+    fit.length === 1 ? fit : named === null || currency !== null ? [] : here;
   if (pick.length === 1) return pick[0]!.id;
   if (all.length === 0) return notFound("no dry powder is kept");
   return {
@@ -1930,7 +1983,9 @@ function dryPowderOf(
     message:
       here.length === 0
         ? "no dry powder at that broker; name one by its id"
-        : "several dry powder positions; name one by its id",
+        : currency !== null && fit.length === 0
+          ? `no dry powder in ${currency} there; name one by its id`
+          : "several dry powder positions; name one by its id",
     positions: all.map((x) => ({
       id: x.id,
       name: x.name,
@@ -2348,7 +2403,7 @@ export async function portfolioAnswer(
       }
       const id =
         args.position === "dry_powder"
-          ? dryPowderOf(m, args.portfolio, args.change)
+          ? dryPowderOf(m, args.portfolio, args.change, args.currency)
           : args.position;
       if (typeof id !== "number") return errorResult(id);
       const wrong = otherPortfolio(m, args.portfolio, "position", id);
