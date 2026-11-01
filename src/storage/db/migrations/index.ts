@@ -32,6 +32,7 @@ import { m0026 } from "./0026-fund-trades.ts";
 import { m0027 } from "./0027-earnings-ahead.ts";
 import { m0028 } from "./0028-share-class-listing.ts";
 import { m0029 } from "./0029-valuations.ts";
+import { m0030 } from "./0030-fund-top-holdings.ts";
 
 export const MIGRATIONS: readonly Migration[] = [
   m0001,
@@ -63,4 +64,5 @@ export const MIGRATIONS: readonly Migration[] = [
   m0027,
   m0028,
   m0029,
+  m0030,
 ];

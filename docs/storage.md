@@ -122,7 +122,7 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   `startRun`/`endRun`/`failRun`). Its `scope` is the market for a Yahoo
   quote, check or bar pass, Finnhub's whole-market calendar and EDGAR's
   ticker map, the instrument key for FRED, Finnhub, Massive, EDGAR
-  filings and Yahoo valuation runs, null otherwise. Ids are `autoincrement`, never reused:
+  filings, Yahoo valuation and Yahoo top holdings runs, null otherwise. Ids are `autoincrement`, never reused:
   an admin delete removes an instrument's runs while a job may still
   hold one's id. At startup `failInterrupted()` fails runs a crash left
   `running`, in the first queued write, so no job's run is taken for one
@@ -312,6 +312,21 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   staleness is read from its runs. No history: P/E is worked out from
   it at answer time.
 
+## Fund top holdings
+
+- **Three tables hold Yahoo's top ten of a listed fund**
+  (`0030-fund-top-holdings`, `src/sources/yahoo/top-holdings.ts`):
+  `fund_top_holdings`, one row per instrument with `fetched_at`, the
+  six positions and `government` (nullable); `fund_top_holding_rows`,
+  `rank` 1 to 10, `symbol` (null for a bare exchange code), `name`
+  and `weight`; and `fund_weights`, `kind` `sector` or `rating`, `key`
+  and `weight`. Weights are Yahoo's fractions. All reference
+  `instruments` and are in `INSTRUMENT_TABLES`.
+- **One write replaces the three for an instrument**; an answer with
+  none deletes them, a failed one keeps them. No history. The names
+  keep clear of the owner-priced `funds` tables, which are private
+  holdings (`docs/portfolios.md`).
+
 ## Retention
 
 - **One prune runs in the startup write and on the daily `retention`
@@ -329,6 +344,7 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
 | `alerts` | 90 days by `fired_at` (`ALERTS_KEPT_DAYS`) |
 | `intraday` | the newest `INTRADAY_SESSIONS` sessions per instrument, on each write (above) |
 | `valuations` | the one row per instrument, replaced by each answer |
+| `fund_top_holdings`, `fund_top_holding_rows`, `fund_weights` | the fund's rows, replaced by each answer, deleted with the instrument |
 
 - **Instruments, bars, splits, quotes, signals and markets are never
   pruned.** An instrument that stops being tracked keeps its history,

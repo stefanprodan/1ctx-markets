@@ -144,6 +144,7 @@ log and cut off without touching the others.
 | `research` | Finnhub | each of `sections` (`metric`, `analysts`, `earnings`, `insider`, default all) on its own call, a good run or not |
 | `calendar` | Finnhub | the earnings calendar |
 | `news` | Massive | one page, as a tool asks |
+| `top_holdings` | Yahoo | a fund's top holdings, for an ETF or mutual fund Yahoo prices; anything else is `not covered` |
 
 - **The answer is `input`, `id` and `parts[]`; each part answers
   `fetched` with its rows, `not covered`, `source off`, or `failed`
@@ -152,7 +153,7 @@ log and cut off without touching the others.
   server is stopping`, `failed`).
 - **It records the runs the jobs record, never one by hand.** Bars end
   the instrument's own `bars` run, failed when the failure reached the
-  source, as the bar pass does; research and news record their own; a
+  source, as the bar pass does; research, news and top holdings record their own; a
   quote records none, since a quote run is the market's pass. Nothing
   is marked due, no run is deleted, and a refetch is no read, so it
   tracks nothing. Bars evaluate the instrument's rules after the run

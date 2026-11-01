@@ -33,7 +33,7 @@ doc; key files in `docs/config.md`.
 
 | Helper | Answers |
 |---|---|
-| `yahoo.ts` | `recorded()`, `fakeFetch()`, `listed()` (a short chart read as a whole history), `backTo()` (made-up weekday rows before a recording), `added()`, `summaryAnswer()` (a made-up session and the recorded quote summaries) |
+| `yahoo.ts` | `recorded()`, `fakeFetch()`, `listed()` (a short chart read as a whole history), `backTo()` (made-up weekday rows before a recording), `added()`, `yahooSession()` (a made-up session and the recorded quote summaries, by symbol and modules) |
 | `bvb.ts` | the Bucharest exchange's pages and chart feed by URL (`bvbFetch()`), `opened()` (a page read as open: every recording is of a closed market), `keyed()` (a made-up page key, which the recordings strip), `bothSources()` with Yahoo |
 | `sources.ts` | Yahoo and FRED by URL for reads that fetch inside a call; `gate()` holds a call until released |
 | `sim.ts` | a made-up Yahoo for whole simulated days, sessions from each listing's zone |

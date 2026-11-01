@@ -1,0 +1,251 @@
+{
+  "recordedAt": "2026-11-01T10:33:19.287Z",
+  "request": {
+    "method": "GET",
+    "url": "https://query2.finance.yahoo.com/v10/finance/quoteSummary/AGG?modules=topHoldings,price&crumb=REDACTED"
+  },
+  "status": 200,
+  "headers": {
+    "age": "0",
+    "cache-control": "public, max-age=1, stale-while-revalidate=9",
+    "content-type": "application/json;charset=utf-8"
+  },
+  "body": {
+    "quoteSummary": {
+      "result": [
+        {
+          "price": {
+            "maxAge": 1,
+            "preMarketChange": {},
+            "preMarketPrice": {},
+            "preMarketSource": "FREE_REALTIME",
+            "postMarketChangePercent": {
+              "raw": 0.0019717978,
+              "fmt": "0.20%"
+            },
+            "postMarketChange": {
+              "raw": 0.19000244,
+              "fmt": "0.19"
+            },
+            "postMarketTime": 1793404205,
+            "postMarketPrice": {
+              "raw": 96.55,
+              "fmt": "96.55"
+            },
+            "postMarketSource": "DELAYED",
+            "regularMarketChangePercent": {
+              "raw": 0.00218408,
+              "fmt": "0.22%"
+            },
+            "regularMarketChange": {
+              "raw": 0.209999,
+              "fmt": "0.21"
+            },
+            "regularMarketTime": 1793390400,
+            "priceHint": {
+              "raw": 2,
+              "fmt": "2",
+              "longFmt": "2"
+            },
+            "regularMarketPrice": {
+              "raw": 96.36,
+              "fmt": "96.36"
+            },
+            "regularMarketDayHigh": {
+              "raw": 96.5099,
+              "fmt": "96.51"
+            },
+            "regularMarketDayLow": {
+              "raw": 96.2149,
+              "fmt": "96.21"
+            },
+            "regularMarketVolume": {
+              "raw": 18668861,
+              "fmt": "18.67M",
+              "longFmt": "18,668,861.00"
+            },
+            "averageDailyVolume10Day": {},
+            "averageDailyVolume3Month": {},
+            "regularMarketPreviousClose": {
+              "raw": 96.15,
+              "fmt": "96.15"
+            },
+            "regularMarketSource": "FREE_REALTIME",
+            "regularMarketOpen": {
+              "raw": 96.42,
+              "fmt": "96.42"
+            },
+            "strikePrice": {},
+            "openInterest": {},
+            "fulldayChangePercent": {
+              "raw": 0.004160182,
+              "fmt": "0.42%"
+            },
+            "fulldayChange": {
+              "raw": 0.40000153,
+              "fmt": "0.40"
+            },
+            "fulldayPrice": {
+              "raw": 96.36,
+              "fmt": "96.36"
+            },
+            "exchange": "PCX",
+            "exchangeName": "NYSEArca",
+            "exchangeDataDelayedBy": 0,
+            "marketState": "CLOSED",
+            "quoteType": "ETF",
+            "symbol": "AGG",
+            "underlyingSymbol": null,
+            "shortName": "iShares Core U.S. Aggregate Bon",
+            "longName": "iShares Core U.S. Aggregate Bond ETF",
+            "currency": "USD",
+            "quoteSourceName": "Delayed Quote",
+            "currencySymbol": "$",
+            "fromCurrency": null,
+            "toCurrency": null,
+            "lastMarket": null,
+            "volume24Hr": {},
+            "volumeAllCurrencies": {},
+            "circulatingSupply": {},
+            "marketCap": {}
+          },
+          "topHoldings": {
+            "maxAge": 1,
+            "cashPosition": {
+              "raw": 0.0082,
+              "fmt": "0.82%"
+            },
+            "stockPosition": {
+              "raw": 0,
+              "fmt": "0.00%"
+            },
+            "bondPosition": {
+              "raw": 0.9918,
+              "fmt": "99.18%"
+            },
+            "otherPosition": {
+              "raw": 0,
+              "fmt": "0.00%"
+            },
+            "preferredPosition": {
+              "raw": 0,
+              "fmt": "0.00%"
+            },
+            "convertiblePosition": {
+              "raw": 0,
+              "fmt": "0.00%"
+            },
+            "holdings": [
+              {
+                "symbol": "BISXX",
+                "holdingName": "BlackRock Cash Funds Instl SL Agency",
+                "holdingPercent": {
+                  "raw": 0.0292519,
+                  "fmt": "2.93%"
+                }
+              }
+            ],
+            "equityHoldings": {
+              "priceToEarnings": {
+                "raw": 0,
+                "fmt": "0"
+              },
+              "priceToBook": {
+                "raw": 0,
+                "fmt": "0"
+              },
+              "priceToSales": {
+                "raw": 0,
+                "fmt": "0"
+              },
+              "priceToCashflow": {
+                "raw": 0,
+                "fmt": "0"
+              },
+              "medianMarketCap": {},
+              "threeYearEarningsGrowth": {},
+              "priceToEarningsCat": {},
+              "priceToBookCat": {},
+              "priceToSalesCat": {},
+              "priceToCashflowCat": {},
+              "medianMarketCapCat": {},
+              "threeYearEarningsGrowthCat": {}
+            },
+            "bondHoldings": {
+              "maturity": {
+                "raw": 9.03,
+                "fmt": "9.03"
+              },
+              "duration": {
+                "raw": 3.89,
+                "fmt": "3.89"
+              },
+              "creditQuality": {},
+              "maturityCat": {},
+              "durationCat": {},
+              "creditQualityCat": {}
+            },
+            "bondRatings": [
+              {
+                "bb": {
+                  "raw": 0,
+                  "fmt": "0.00%"
+                }
+              },
+              {
+                "aa": {
+                  "raw": 0.7422,
+                  "fmt": "74.22%"
+                }
+              },
+              {
+                "aaa": {
+                  "raw": 0.0223,
+                  "fmt": "2.23%"
+                }
+              },
+              {
+                "a": {
+                  "raw": 0.119399995,
+                  "fmt": "11.94%"
+                }
+              },
+              {
+                "other": {
+                  "raw": 0,
+                  "fmt": "0.00%"
+                }
+              },
+              {
+                "b": {
+                  "raw": 0,
+                  "fmt": "0.00%"
+                }
+              },
+              {
+                "bbb": {
+                  "raw": 0.1161,
+                  "fmt": "11.61%"
+                }
+              },
+              {
+                "below_b": {
+                  "raw": 0,
+                  "fmt": "0.00%"
+                }
+              },
+              {
+                "us_government": {
+                  "raw": 0.4929,
+                  "fmt": "49.29%"
+                }
+              }
+            ],
+            "sectorWeightings": []
+          }
+        }
+      ],
+      "error": null
+    }
+  }
+}

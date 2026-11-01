@@ -5,12 +5,14 @@ Governs Finnhub's research and earnings events
 the `research` and `events` tools and the research route's contents
 (`src/tools/research.ts`, `src/operations/research.ts`,
 `src/operations/events.ts`), an ADR's `valuation`
-(`src/sources/yahoo/valuation.ts`), and the
-`research`, `events`, `news`, `news_walks` and `valuations` tables
-(`src/storage/db/migrations/0007-research.ts`, `0008-news.ts`,
+(`src/sources/yahoo/valuation.ts`), a fund's `top_holdings`
+(`src/sources/yahoo/top-holdings.ts`), and the
+`research`, `events`, `news`, `news_walks`, `valuations` and fund
+tables (`src/storage/db/migrations/0007-research.ts`, `0008-news.ts`,
 `0012-listing.ts`, `0028-share-class-listing.ts`,
-`0029-valuations.ts`). Yahoo's quote summary call and its session are
-in `docs/yahoo.md`. EDGAR's filings,
+`0029-valuations.ts`, `0030-fund-top-holdings.ts`). Yahoo's quote
+summary call, its session and what a fund's answer keeps are in
+`docs/yahoo.md`. EDGAR's filings,
 their flags and events' `filed_at` are in `docs/edgar.md`; the
 sections that answer them are here. The queue, deadlines, retries, phrases, scrubbing
 and the lock every source shares are in `docs/sources.md`; resolution,
@@ -334,12 +336,14 @@ route's transport in `docs/api.md`; rules that wait on events in
 
 ## Answers
 
-- **The `research` tool's sections** are `overview` (quote, signals,
-  each Finnhub section's latest row, `valuation` for a share answered
-  from a foreign listing, earnings with its revenue, the next event,
-  five headlines, `filings`), `analysts`, `earnings`,
-  `insiders`, `news` and `filings`, paged newest first. The overview
-  drops headlines first to fit one page; `overview` has no next page.
+- **The `research` tool's sections** are `overview` (quote,
+  `top_holdings` for a fund, signals, each Finnhub section's latest
+  row, `valuation` for a share answered from a foreign listing,
+  earnings with its revenue, the next event, five headlines,
+  `filings`), `analysts`, `earnings`, `insiders`, `news` and `filings`,
+  paged newest first, and `top_holdings`. The overview drops headlines
+  first to fit one page; `overview` and `top_holdings` have no next
+  page.
 - **The overview's `filings`** is EDGAR's summary (`filingsSummary()`):
   `source`, `fetched_at`, `stale`, the three flags (`late_filing`,
   `restatement`, `offering`: new securities, shares or debt,
@@ -363,6 +367,38 @@ route's transport in `docs/api.md`; rules that wait on events in
   first page carries `counts` for that window before the articles, so
   an agent reads the balance of a week before its text; later pages
   carry none. `since` with another section is refused.
+- **`top_holdings` is a fund's from Yahoo**: for an ETF or mutual fund
+  on any market (`isFund()`), whose Finnhub, news and filings parts
+  answer as before; a share's overview has no `top_holdings` key, and
+  the section asked for anything but a fund answers `NOT_A_FUND`
+  ("Top holdings are for ETFs and mutual funds only."). It holds
+  `source` (`yahoo`), `fetched_at`, `stale`, `top` (`rank`, `symbol`,
+  `id`, `name`, `weight_percent`), `top_weight_percent` (their sum),
+  `assets` (`stock_percent`, `bond_percent`, `cash_percent`,
+  `other_percent`, `preferred_percent`, `convertible_percent`),
+  `sectors` and `bond_ratings` (largest first),
+  `government_bonds_percent` and the note `TOP_ONLY`: the ten largest
+  as Yahoo lists them, never the full list, with no as-of date. Percent
+  to two decimals, from the stored fractions.
+  - **A holding's `id` is joined at answer time**: the stored
+    instrument whose Yahoo symbol it is, else null. A holding is never
+    resolved or fetched, which would be ten calls per fund.
+  - **Yahoo having none is an answer**: an ok run that kept nothing,
+    or a fund another source prices, answers `NO_TOP_HOLDINGS` ("Yahoo
+    has no top holdings for this fund."), asked again the next day. A
+    fund with rows stored keeps them when an answer lacks the module
+    (`docs/yahoo.md`).
+  - **Fetched inline, in `research` and the instrument route, only
+    for a fund with no ok run and no failed one within `RETRY_MS`**
+    (`inlineDue()`), under the call's deadline; past it the stored
+    answer stands, its `stale` adding `research sync pending`. A fetch
+    that reached Yahoo and fails after the deadline still records its
+    failed run, with no data, so the gate holds for a slow failure; a
+    late answer stores nothing. An inline failure is carried as `error`
+    and `message`, and a failure keeps the stored rows.
+  - **Stale reasons are research's** (`topHoldingsState`,
+    `STALE_RESEARCH`), on the 23:00 UTC schedule; `fetched_at` is the
+    stored row's, so it outlives the runs' pruning.
 - **Every section carries its period, `fetched_at` and `stale`**; a
   section with no row says why. A section or event of another listing
   also carries `listing` and the note `OTHER_LISTING`, or `SHARE_CLASS`
@@ -382,8 +418,10 @@ is fixed, never an argument, to keep five summaries short.
   summary, with its `source`, `message` and partial-failure fields),
   `valuation` (the overview's, with `metric` asked, for a share answered
   from a foreign listing),
-  `news` (the news week) and `filings` (EDGAR's summary), under the
-  tool's deadline and tracking. No quote: `/quotes` answers prices for
+  `news` (the news week), `filings` (EDGAR's summary) and
+  `top_holdings` (the tool's section), under the tool's deadline and
+  tracking. `top_holdings` is answered only when asked, never by
+  default, so a call without `sections` answers as before. No quote: `/quotes` answers prices for
   many symbols in one call. The research tool keeps its own names.
 - **Each Finnhub section but `metric` adds `history`**: its newest
   rows as the section's page shows them, so a script reads a trend

@@ -1,0 +1,323 @@
+{
+  "recordedAt": "2026-11-01T10:33:22.423Z",
+  "request": {
+    "method": "GET",
+    "url": "https://query2.finance.yahoo.com/v10/finance/quoteSummary/ICGA.DE?modules=topHoldings,price&crumb=REDACTED"
+  },
+  "status": 200,
+  "headers": {
+    "age": "0",
+    "cache-control": "public, max-age=1, stale-while-revalidate=9",
+    "content-type": "application/json;charset=utf-8"
+  },
+  "body": {
+    "quoteSummary": {
+      "result": [
+        {
+          "price": {
+            "maxAge": 1,
+            "preMarketChange": {},
+            "preMarketPrice": {},
+            "postMarketChange": {},
+            "postMarketPrice": {},
+            "regularMarketChangePercent": {
+              "raw": 0.0045475117,
+              "fmt": "0.45%"
+            },
+            "regularMarketChange": {
+              "raw": 0.020500183,
+              "fmt": "0.0205"
+            },
+            "regularMarketTime": 1793378147,
+            "priceHint": {
+              "raw": 4,
+              "fmt": "4",
+              "longFmt": "4"
+            },
+            "regularMarketPrice": {
+              "raw": 4.5285,
+              "fmt": "4.5285"
+            },
+            "regularMarketDayHigh": {
+              "raw": 4.536,
+              "fmt": "4.5360"
+            },
+            "regularMarketDayLow": {
+              "raw": 4.4875,
+              "fmt": "4.4875"
+            },
+            "regularMarketVolume": {
+              "raw": 302368,
+              "fmt": "302.37k",
+              "longFmt": "302,368.00"
+            },
+            "averageDailyVolume10Day": {},
+            "averageDailyVolume3Month": {},
+            "regularMarketPreviousClose": {
+              "raw": 4.508,
+              "fmt": "4.5080"
+            },
+            "regularMarketSource": "DELAYED",
+            "regularMarketOpen": {
+              "raw": 4.4965,
+              "fmt": "4.4965"
+            },
+            "strikePrice": {},
+            "openInterest": {},
+            "fulldayChangePercent": {
+              "raw": 0.0045475117,
+              "fmt": "0.45%"
+            },
+            "fulldayChange": {
+              "raw": 0.020500183,
+              "fmt": "0.0205"
+            },
+            "fulldayPrice": {
+              "raw": 4.5285,
+              "fmt": "4.5285"
+            },
+            "exchange": "GER",
+            "exchangeName": "XETRA",
+            "exchangeDataDelayedBy": 15,
+            "marketState": "CLOSED",
+            "quoteType": "ETF",
+            "symbol": "ICGA.DE",
+            "underlyingSymbol": null,
+            "shortName": "iShsIV-MSCI China UCITS ETF   R",
+            "longName": "iShares MSCI China UCITS ETF USD Acc",
+            "currency": "EUR",
+            "quoteSourceName": "Delayed Quote",
+            "currencySymbol": "€",
+            "fromCurrency": null,
+            "toCurrency": null,
+            "lastMarket": null,
+            "volume24Hr": {},
+            "volumeAllCurrencies": {},
+            "circulatingSupply": {},
+            "marketCap": {}
+          },
+          "topHoldings": {
+            "maxAge": 1,
+            "cashPosition": {
+              "raw": 0.00059999997,
+              "fmt": "0.06%"
+            },
+            "stockPosition": {
+              "raw": 0.9994,
+              "fmt": "99.94%"
+            },
+            "bondPosition": {
+              "raw": 0,
+              "fmt": "0.00%"
+            },
+            "otherPosition": {
+              "raw": 0,
+              "fmt": "0.00%"
+            },
+            "preferredPosition": {
+              "raw": 0,
+              "fmt": "0.00%"
+            },
+            "convertiblePosition": {
+              "raw": 0,
+              "fmt": "0.00%"
+            },
+            "holdings": [
+              {
+                "symbol": "0700.HK",
+                "holdingName": "Tencent Holdings Ltd",
+                "holdingPercent": {
+                  "raw": 0.1381589,
+                  "fmt": "13.82%"
+                }
+              },
+              {
+                "symbol": "9988.HK",
+                "holdingName": "Alibaba Group Holding Ltd Ordinary Shares",
+                "holdingPercent": {
+                  "raw": 0.093477696,
+                  "fmt": "9.35%"
+                }
+              },
+              {
+                "symbol": "00939",
+                "holdingName": "China Construction Bank Corp Class H",
+                "holdingPercent": {
+                  "raw": 0.0431594,
+                  "fmt": "4.32%"
+                }
+              },
+              {
+                "symbol": "01398",
+                "holdingName": "Industrial And Commercial Bank Of China Ltd Class H",
+                "holdingPercent": {
+                  "raw": 0.0262554,
+                  "fmt": "2.63%"
+                }
+              },
+              {
+                "symbol": "1810.HK",
+                "holdingName": "Xiaomi Corp Class B",
+                "holdingPercent": {
+                  "raw": 0.0225201,
+                  "fmt": "2.25%"
+                }
+              },
+              {
+                "symbol": "03988",
+                "holdingName": "Bank Of China Ltd Class H",
+                "holdingPercent": {
+                  "raw": 0.0212954,
+                  "fmt": "2.13%"
+                }
+              },
+              {
+                "symbol": "3690.HK",
+                "holdingName": "Meituan Class B",
+                "holdingPercent": {
+                  "raw": 0.0188445,
+                  "fmt": "1.88%"
+                }
+              },
+              {
+                "symbol": "9999.HK",
+                "holdingName": "NetEase Inc Ordinary Shares",
+                "holdingPercent": {
+                  "raw": 0.01774,
+                  "fmt": "1.77%"
+                }
+              },
+              {
+                "symbol": "02318",
+                "holdingName": "Ping An Insurance (Group) Co. of China Ltd Class H",
+                "holdingPercent": {
+                  "raw": 0.0169556,
+                  "fmt": "1.70%"
+                }
+              },
+              {
+                "symbol": "PDD",
+                "holdingName": "PDD Holdings Inc ADR",
+                "holdingPercent": {
+                  "raw": 0.0164873,
+                  "fmt": "1.65%"
+                }
+              }
+            ],
+            "equityHoldings": {
+              "priceToEarnings": {
+                "raw": 0.08782,
+                "fmt": "0.09"
+              },
+              "priceToBook": {
+                "raw": 0.75018,
+                "fmt": "0.75"
+              },
+              "priceToSales": {
+                "raw": 0.76361,
+                "fmt": "0.76"
+              },
+              "priceToCashflow": {
+                "raw": 0.11298,
+                "fmt": "0.11"
+              },
+              "medianMarketCap": {},
+              "threeYearEarningsGrowth": {},
+              "priceToEarningsCat": {},
+              "priceToBookCat": {},
+              "priceToSalesCat": {},
+              "priceToCashflowCat": {},
+              "medianMarketCapCat": {},
+              "threeYearEarningsGrowthCat": {}
+            },
+            "bondHoldings": {
+              "maturity": {},
+              "duration": {},
+              "creditQuality": {},
+              "maturityCat": {},
+              "durationCat": {},
+              "creditQualityCat": {}
+            },
+            "bondRatings": [
+              {
+                "us_government": {
+                  "raw": 0,
+                  "fmt": "0.00%"
+                }
+              }
+            ],
+            "sectorWeightings": [
+              {
+                "realestate": {
+                  "raw": 0.0153,
+                  "fmt": "1.53%"
+                }
+              },
+              {
+                "consumer_cyclical": {
+                  "raw": 0.2252,
+                  "fmt": "22.52%"
+                }
+              },
+              {
+                "basic_materials": {
+                  "raw": 0.053200003,
+                  "fmt": "5.32%"
+                }
+              },
+              {
+                "consumer_defensive": {
+                  "raw": 0.0298,
+                  "fmt": "2.98%"
+                }
+              },
+              {
+                "technology": {
+                  "raw": 0.116000004,
+                  "fmt": "11.60%"
+                }
+              },
+              {
+                "communication_services": {
+                  "raw": 0.18129998,
+                  "fmt": "18.13%"
+                }
+              },
+              {
+                "financial_services": {
+                  "raw": 0.20969999,
+                  "fmt": "20.97%"
+                }
+              },
+              {
+                "utilities": {
+                  "raw": 0.0166,
+                  "fmt": "1.66%"
+                }
+              },
+              {
+                "industrials": {
+                  "raw": 0.048600003,
+                  "fmt": "4.86%"
+                }
+              },
+              {
+                "energy": {
+                  "raw": 0.0377,
+                  "fmt": "3.77%"
+                }
+              },
+              {
+                "healthcare": {
+                  "raw": 0.066700004,
+                  "fmt": "6.67%"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "error": null
+    }
+  }
+}

@@ -32,6 +32,7 @@ import {
   readResearch,
   reportedEvents,
   reportOf,
+  STALE_RESEARCH,
   sectionState,
 } from "../sources/finnhub/read.ts";
 import {
@@ -58,6 +59,18 @@ import {
   refreshNews,
   topNews,
 } from "../sources/massive/store.ts";
+import {
+  inlineDue,
+  isFund,
+  NO_TOP_HOLDINGS,
+  NOT_A_FUND,
+  readTopHoldings,
+  refreshTopHoldings,
+  TOP_ONLY,
+  asked as topHoldingsAsked,
+  topHoldingsFetched,
+  topHoldingsState,
+} from "../sources/yahoo/top-holdings.ts";
 import {
   covered,
   PER_US_SHARE,
@@ -130,6 +143,7 @@ export async function researchTargets(
     sections?: readonly Section[];
     // Yahoo's figures for a share Finnhub answers from a foreign listing
     valuation?: boolean;
+    topHoldings?: boolean;
   } = {},
 ): Promise<{
   targets: Target[];
@@ -137,6 +151,7 @@ export async function researchTargets(
   news: Map<string, Inline>;
   filings: Map<string, Inline>;
   valuation: Map<string, Inline>;
+  topHoldings: Map<string, Inline>;
 }> {
   const deadline = m.clock.now() + m.callMs;
   const targets = await readTargets(m, inputs);
@@ -317,6 +332,17 @@ export async function researchTargets(
       });
     settle(valuation, instrument.id, fetch);
   }
+  const topHoldings = new Map<string, Inline>();
+  if (options.topHoldings) {
+    const funds = targets.flatMap((t) =>
+      "instrument" in t ? [t.instrument] : [],
+    );
+    work.push(
+      topHoldingsInline(m, funds, deadline).then((got) => {
+        for (const [id, v] of got) topHoldings.set(id, v);
+      }),
+    );
+  }
   try {
     await Promise.all(work);
   } finally {
@@ -331,8 +357,148 @@ export async function researchTargets(
       });
     }
   }
-  return { targets, inline, news, filings, valuation };
+  return { targets, inline, news, filings, valuation, topHoldings };
 }
+
+// Fetched inline only while never fetched well and not failed within the
+// retry wait, under the caller's deadline; past it the stored answer stands.
+export async function topHoldingsInline(
+  m: Markets,
+  instruments: readonly Instrument[],
+  deadline: number,
+): Promise<Map<string, Inline>> {
+  const out = new Map<string, Inline>();
+  const work: Promise<void>[] = [];
+  let cancel = () => {};
+  const expired = new Promise<typeof EXPIRED>((resolve) => {
+    cancel = m.clock.at(deadline, () => resolve(EXPIRED));
+  });
+  for (const instrument of instruments) {
+    if (!topHoldingsAsked(instrument) || out.has(instrument.id)) continue;
+    out.set(instrument.id, { kind: "stored" });
+    if (!inlineDue(m.db, instrument.id, m.clock.now())) continue;
+    if (m.clock.now() >= deadline) {
+      out.set(instrument.id, { kind: "failed", error: timeout(m) });
+      continue;
+    }
+    const fetch = shared(m, `top_holdings:${instrument.id}`, deadline, (live) =>
+      refreshTopHoldings(m, instrument, {
+        live,
+        client: m.yahoo.within(live),
+        due: (db) => inlineDue(db, instrument.id, m.clock.now()),
+      }).then((r) => {
+        if (r?.status === "failed") throw r.error;
+      }),
+    );
+    work.push(
+      Promise.race([fetch, expired]).then(
+        (done) => {
+          if (done === EXPIRED) {
+            out.set(instrument.id, { kind: "failed", error: timeout(m) });
+          }
+        },
+        (error: unknown) => {
+          out.set(instrument.id, {
+            kind: "failed",
+            error: itemError(m, error),
+          });
+        },
+      ),
+    );
+  }
+  try {
+    await Promise.all(work);
+  } finally {
+    cancel();
+  }
+  return out;
+}
+
+// weights are stored as Yahoo's fractions
+const percent = (v: number | null): number | null =>
+  v === null ? null : Math.round(v * 10_000) / 100;
+
+// for a fund only, else undefined; a share asked by name gets NOT_A_FUND
+export function topHoldingsSummary(
+  m: Markets,
+  instrument: Instrument,
+  v: Inline | undefined,
+) {
+  if (!isFund(instrument)) return undefined;
+  if (!topHoldingsAsked(instrument)) {
+    return { source: "yahoo", message: NO_TOP_HOLDINGS };
+  }
+  const state = topHoldingsState(m.db, instrument.id, m.clock.now());
+  const row = readTopHoldings(m.db, instrument.id);
+  const failure = v?.kind === "failed" ? v.error : {};
+  // a fetch the deadline cut may still land: the sync is pending
+  const stale =
+    v?.kind === "failed" &&
+    v.error.error === "timeout" &&
+    !state.stale.includes(STALE_RESEARCH.pending)
+      ? [...state.stale, STALE_RESEARCH.pending]
+      : state.stale;
+  // an ok run that kept nothing: Yahoo has none for this fund
+  if (row === null && topHoldingsFetched(m.db, instrument.id)) {
+    return {
+      source: "yahoo",
+      message: NO_TOP_HOLDINGS,
+      fetched_at: iso(state.fetchedAt),
+      stale: state.stale,
+    };
+  }
+  const top = (row?.holdings ?? []).map((h) => ({
+    rank: h.rank,
+    symbol: h.symbol,
+    id: h.id,
+    name: h.name,
+    weight_percent: percent(h.weight),
+  }));
+  const p = row?.positions;
+  return {
+    source: "yahoo",
+    ...failure,
+    fetched_at: iso(row?.fetchedAt ?? state.fetchedAt),
+    stale,
+    top,
+    top_weight_percent:
+      row === null || row.holdings.length === 0
+        ? null
+        : percent(row.holdings.reduce((sum, h) => sum + h.weight, 0)),
+    assets:
+      p === undefined
+        ? null
+        : {
+            stock_percent: percent(p.stock),
+            bond_percent: percent(p.bond),
+            cash_percent: percent(p.cash),
+            other_percent: percent(p.other),
+            preferred_percent: percent(p.preferred),
+            convertible_percent: percent(p.convertible),
+          },
+    sectors: (row?.sectors ?? []).map((s) => ({
+      sector: s.key,
+      weight_percent: percent(s.weight),
+    })),
+    bond_ratings: (row?.ratings ?? []).map((r) => ({
+      rating: r.key,
+      weight_percent: percent(r.weight),
+    })),
+    government_bonds_percent: percent(row?.government ?? null),
+    note: TOP_ONLY,
+  };
+}
+
+// the section asked by name: anything but a fund says why it has none
+export const topHoldingsOf = (
+  m: Markets,
+  instrument: Instrument,
+  v: Inline | undefined,
+) =>
+  topHoldingsSummary(m, instrument, v) ?? {
+    source: "yahoo",
+    message: NOT_A_FUND,
+  };
 
 type Values = Record<string, number | string | null>;
 
@@ -690,10 +856,14 @@ export const RESEARCH_PARTS = [
   "next_event",
   "news",
   "filings",
+  "top_holdings",
 ] as const;
 export type ResearchPart = (typeof RESEARCH_PARTS)[number];
 
-type FinnhubPart = Exclude<ResearchPart, "news" | "filings">;
+// answered only when asked, so a call without sections answers as before
+const DEFAULT_PARTS = RESEARCH_PARTS.filter((p) => p !== "top_holdings");
+
+type FinnhubPart = Exclude<ResearchPart, "news" | "filings" | "top_holdings">;
 
 const SECTION_OF_PART: Record<FinnhubPart, Section> = {
   metric: "metric",
@@ -712,7 +882,7 @@ export type ResearchListArgs = {
 export function parseResearchList(input: unknown): ResearchListArgs {
   const f = fields(input, ["symbols", "sections", "since"]);
   const list = symbols(f.symbols, "symbols", MAX_RESEARCH_SYMBOLS);
-  let parts: ResearchPart[] = [...RESEARCH_PARTS];
+  let parts: ResearchPart[] = [...DEFAULT_PARTS];
   if (f.sections !== undefined && f.sections !== null) {
     const asked = f.sections;
     if (
@@ -745,7 +915,8 @@ export async function researchList(m: Markets, args: ResearchListArgs) {
     since = wallOfDate(args.since);
   }
   const finnhub = args.parts.filter(
-    (p): p is FinnhubPart => p !== "news" && p !== "filings",
+    (p): p is FinnhubPart =>
+      p !== "news" && p !== "filings" && p !== "top_holdings",
   );
   const left = (Object.keys(SECTION_OF_PART) as FinnhubPart[]).filter(
     (p) => !finnhub.includes(p),
@@ -753,15 +924,14 @@ export async function researchList(m: Markets, args: ResearchListArgs) {
   const withFilings = args.parts.includes("filings");
   // valuation goes with the metric, which says whether the listing is foreign
   const withValuation = args.parts.includes("metric");
-  const { targets, inline, filings, valuation } = await researchTargets(
-    m,
-    args.symbols,
-    {
+  const withTopHoldings = args.parts.includes("top_holdings");
+  const { targets, inline, filings, valuation, topHoldings } =
+    await researchTargets(m, args.symbols, {
       sections: finnhub.map((p) => SECTION_OF_PART[p]),
       filings: withFilings,
       valuation: withValuation,
-    },
-  );
+      topHoldings: withTopHoldings,
+    });
   // no quote: /quotes answers prices for many symbols in one call
   return targets.map((t) => {
     if ("error" in t) return { input: t.input, ...t.error };
@@ -789,6 +959,15 @@ export async function researchList(m: Markets, args: ResearchListArgs) {
               m,
               t.instrument,
               filings.get(t.instrument.id),
+            ),
+          }
+        : {}),
+      ...(withTopHoldings
+        ? {
+            top_holdings: topHoldingsOf(
+              m,
+              t.instrument,
+              topHoldings.get(t.instrument.id),
             ),
           }
         : {}),

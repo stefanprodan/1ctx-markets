@@ -41,7 +41,10 @@ dividends or tax, and it makes no model calls.
   series such as Treasury yields, as instruments of their own. With a
   contact line for SEC EDGAR: US shares' filings with their 8-K items,
   flags for a late filing, a restatement or new securities registered
-  or offered, and when each earnings release was filed.
+  or offered, and when each earnings release was filed. Keyless, from
+  Yahoo: the ten largest holdings, asset split and sectors of an ETF or
+  mutual fund Yahoo lists, on any exchange. Beside Finnhub's metrics, from Yahoo: an
+  ADR's P/E, PEG and EPS per US share.
 - **Rules and alerts.** Agents set conditions on a symbol's price or
   signals, other symbols included: price below 200, RSI under 30 while
   above the 200-day average, the VIX above 30, a drop after the next

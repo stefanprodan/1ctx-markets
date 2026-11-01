@@ -239,6 +239,7 @@ export const paths = {
         "- `valuation`, for a share whose metrics come from a foreign listing, holds its P/E, forward P/E, PEG and EPS per US share.",
         `- News gives counts by sentiment and the ${WEEK_ITEMS} articles that take a side first.`,
         `- \`filings\` holds a US share's ${FILINGS_RECENT} newest SEC filings and three flags: a late filing, a restatement, new securities registered or offered.`,
+        "- `top_holdings`, only when asked, holds an ETF's or mutual fund's ten largest holdings, asset split and sectors, on any exchange.",
         "- A share not researched before is fetched within the call, from a rate-limited source.",
         DEADLINE,
         READ,
@@ -247,7 +248,7 @@ export const paths = {
         csv("symbols", symbols(MAX_RESEARCH_SYMBOLS), str, true),
         csv(
           "sections",
-          "Comma-separated. Default: all. A section left out is not fetched.",
+          "Comma-separated. Default: all but `top_holdings`. A section left out is not fetched.",
           values(RESEARCH_PARTS),
         ),
         query(
@@ -410,6 +411,7 @@ export const paths = {
         "One instrument with its full quote: returns, market session and any pre- or post-market price.",
         "",
         "- A stored instrument whose read fails answers its stored row, a null `quote` and the `error`.",
+        "- An ETF or mutual fund adds `top_holdings`: its ten largest holdings, asset split and sectors.",
         UNSEEN,
         DEADLINE,
         READ,

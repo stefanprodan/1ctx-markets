@@ -1,0 +1,103 @@
+{
+  "recordedAt": "2026-11-01T10:33:28.676Z",
+  "request": {
+    "method": "GET",
+    "url": "https://query2.finance.yahoo.com/v10/finance/quoteSummary/TVBETETF.RO?modules=topHoldings,price&crumb=REDACTED"
+  },
+  "status": 200,
+  "headers": {
+    "age": "0",
+    "cache-control": "public, max-age=1, stale-while-revalidate=9",
+    "content-type": "application/json;charset=utf-8"
+  },
+  "body": {
+    "quoteSummary": {
+      "result": [
+        {
+          "price": {
+            "maxAge": 1,
+            "preMarketChange": {},
+            "preMarketPrice": {},
+            "postMarketChange": {},
+            "postMarketPrice": {},
+            "regularMarketChangePercent": {
+              "raw": 0.0077689425,
+              "fmt": "0.78%"
+            },
+            "regularMarketChange": {
+              "raw": 0.45999908,
+              "fmt": "0.46"
+            },
+            "regularMarketTime": 1793375904,
+            "priceHint": {
+              "raw": 2,
+              "fmt": "2",
+              "longFmt": "2"
+            },
+            "regularMarketPrice": {
+              "raw": 59.67,
+              "fmt": "59.67"
+            },
+            "regularMarketDayHigh": {
+              "raw": 59.79,
+              "fmt": "59.79"
+            },
+            "regularMarketDayLow": {
+              "raw": 58.85,
+              "fmt": "58.85"
+            },
+            "regularMarketVolume": {
+              "raw": 21286,
+              "fmt": "21.29k",
+              "longFmt": "21,286.00"
+            },
+            "averageDailyVolume10Day": {},
+            "averageDailyVolume3Month": {},
+            "regularMarketPreviousClose": {
+              "raw": 59.21,
+              "fmt": "59.21"
+            },
+            "regularMarketSource": "DELAYED",
+            "regularMarketOpen": {
+              "raw": 59.49,
+              "fmt": "59.49"
+            },
+            "strikePrice": {},
+            "openInterest": {},
+            "fulldayChangePercent": {
+              "raw": 0.0077689425,
+              "fmt": "0.78%"
+            },
+            "fulldayChange": {
+              "raw": 0.45999908,
+              "fmt": "0.46"
+            },
+            "fulldayPrice": {
+              "raw": 59.67,
+              "fmt": "59.67"
+            },
+            "exchange": "BVB",
+            "exchangeName": "BVB",
+            "exchangeDataDelayedBy": 15,
+            "marketState": "CLOSED",
+            "quoteType": "ETF",
+            "symbol": "TVBETETF.RO",
+            "underlyingSymbol": null,
+            "shortName": "FDI ETF BET PATRIA-TRADEVILLE",
+            "longName": "ETF BET Tradeville",
+            "currency": "RON",
+            "currencySymbol": "RON",
+            "fromCurrency": null,
+            "toCurrency": null,
+            "lastMarket": null,
+            "volume24Hr": {},
+            "volumeAllCurrencies": {},
+            "circulatingSupply": {},
+            "marketCap": {}
+          }
+        }
+      ],
+      "error": null
+    }
+  }
+}
