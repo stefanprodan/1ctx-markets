@@ -11,7 +11,8 @@ import type {
   TradeRow,
 } from "../data/portfolios.ts";
 import type { Candidate } from "../data/store.ts";
-import { kindOf, symbolOf } from "./Instruments.model.ts";
+import { nameOf, tickerOf } from "../lib/names.ts";
+import { symbolOf } from "./Instruments.model.ts";
 
 const decimals = (v: number) => {
   const a = Math.abs(v);
@@ -86,11 +87,6 @@ export function percent(v: number | null): Signed {
   const n = Math.abs(v).toFixed(2);
   const dir = Number(n) === 0 ? 0 : v > 0 ? 1 : -1;
   return { text: `${dir > 0 ? "+" : dir < 0 ? "−" : ""}${n}%`, dir };
-}
-
-// a currency's gain in its own money, the rate's move left out
-export function currencyGain(totals: readonly Total[], code: string | null) {
-  return percent(totals.find((t) => t.currency === code)?.pl_percent ?? null);
 }
 
 // "5 Jan", the year only when it is not this one
@@ -169,44 +165,6 @@ export function typed(text: string): number | null {
   return /^\d*\.?\d+$|^\d+\.$/.test(t) ? Number(t) : Number.NaN;
 }
 
-export const holdingTitle = (h: Holding): string =>
-  h.kind === "holding" && h.id !== null ? symbolOf(h.id) : (h.name ?? "");
-
-export function holdingSub(h: Holding, now = Date.now()): string {
-  if (h.kind === "cash") {
-    return [
-      h.dry_powder ? "Dry powder" : "Reserve",
-      h.as_of && day(h.as_of, now),
-    ]
-      .filter(Boolean)
-      .join(" · ");
-  }
-  if (h.kind === "fund") {
-    return h.as_of ? `Fund · priced ${day(h.as_of, now)}` : "Fund";
-  }
-  if (h.kind === "bond") {
-    const parts = [
-      "Bond",
-      h.coupon != null ? `${h.coupon}%` : null,
-      h.maturity ? `until ${day(h.maturity, now)}` : null,
-      h.priced === "face" ? "at face" : null,
-    ];
-    return parts.filter(Boolean).join(" · ");
-  }
-  return [h.name, kindOf(h.type)].filter(Boolean).join(" · ");
-}
-
-// quantity × average cost, as a holding's line under its name
-export function costLine(h: Holding): string {
-  if (h.kind === "cash") return "";
-  if (h.kind === "bond") {
-    return h.priced === "listing" ? `${price(h.price)}% of face` : "";
-  }
-  return `${quantity(h.quantity)} × ${priceOf(h.average_cost, h.currency, h.unit)}`;
-}
-
-export const brokerName = (b: string | null): string => b ?? "No broker";
-
 // where a listing trades, in the source's words else its market, and its
 // currency when known
 export function listingWords(c: {
@@ -225,55 +183,19 @@ export function enteredBy(by: string): string {
   return by;
 }
 
-// a fund by its name, which its owner knows it by, never its ISIN
+// a fund by its name, which its owner knows it by, never its ISIN; a
+// coin without its quote currency
 export const tradeName = (t: TradeRow): string =>
-  isFundId(t.symbol) ? (t.name ?? symbolOf(t.symbol)) : symbolOf(t.symbol);
+  isFundId(t.symbol) ? (t.name ?? symbolOf(t.symbol)) : tickerOf(t.symbol);
 
 export const isFundId = (id: string): boolean => id.startsWith("fund:");
 
 // a bond's price is a percent of its face, never an amount
-const priceOf = (
+export const unitPrice = (
   v: number | null,
-  currency: string,
+  currency: string | null,
   unit: string | null | undefined,
 ): string => (unit === "percent_of_par" ? `${price(v)}%` : price(v, currency));
-
-export const tradePrice = (t: TradeRow): string =>
-  priceOf(t.price, t.currency, t.unit);
-
-export const tradeLine = (t: TradeRow): string =>
-  `${quantity(t.quantity)} × ${tradePrice(t)}`;
-
-// a phone wraps between facts, never inside one
-export const whole = (line: string): string =>
-  line
-    .split(" · ")
-    .map((f) => f.replace(/ /g, "\u00a0"))
-    .join(" · ");
-
-// a trade's row: the rest is in the row once opened
-export function tradeSub(t: TradeRow, now = Date.now()): string {
-  return [tradeLine(t), day(t.date, now), t.broker].filter(Boolean).join(" · ");
-}
-
-// the three parts of a total, each with its share
-export function splitOf(t: Total) {
-  return [
-    {
-      key: "invested",
-      label: "Invested",
-      value: t.invested,
-      weight: t.invested_weight,
-    },
-    { key: "cash", label: "Reserve", value: t.cash, weight: t.cash_weight },
-    {
-      key: "dry",
-      label: "Dry powder",
-      value: t.dry_powder,
-      weight: t.dry_powder_weight,
-    },
-  ].filter((p) => (p.value ?? 0) !== 0);
-}
 
 // the codes a picker offers: those held, and the display currency
 export function currencies(h: Holdings | null): string[] {
@@ -319,34 +241,6 @@ export function missingWords(m: string): string {
   const rate = /^no (\S+) to (\S+) (rate|close)/.exec(m);
   if (rate) return `No ${rate[1]} to ${rate[2]} rate`;
   return m;
-}
-
-export const EXPOSURE_TABS = [
-  { key: "market", label: "Market" },
-  { key: "type", label: "Kind" },
-  { key: "portfolio", label: "Portfolio" },
-  { key: "broker", label: "Broker" },
-  { key: "currency", label: "Currency" },
-] as const;
-
-export type ExposureTab = (typeof EXPOSURE_TABS)[number]["key"];
-
-const TYPE_WORDS: Record<string, string> = {
-  CASH: "Cash",
-  FUND: "Fund",
-  BOND: "Bond",
-};
-
-export function shareLabel(tab: ExposureTab, key: string | null): string {
-  if (key === null) {
-    return tab === "broker"
-      ? "No broker"
-      : tab === "market"
-        ? "Not listed"
-        : "—";
-  }
-  if (tab === "type") return TYPE_WORDS[key] ?? kindOf(key);
-  return key;
 }
 
 // what the add form remembers between visits, per browser
@@ -504,27 +398,6 @@ export function dryPowderFor(
   return [...all].sort((a, b) => score(b) - score(a))[0] ?? null;
 }
 
-// one ranking across currencies by the converted value; a row with no
-// rate goes last, and the server's order breaks ties
-export function largestFirst(rows: Holding[]): Holding[] {
-  const v = (r: Holding) => r.converted?.value ?? null;
-  return [...rows].sort((a, b) => {
-    const x = v(a);
-    const y = v(b);
-    if (x === null || y === null)
-      return (x === null ? 1 : 0) - (y === null ? 1 : 0);
-    return y - x;
-  });
-}
-
-// a list's broker menu offers only the brokers in that list, so no pick
-// empties it
-export function brokersIn(names: (string | null)[]): string[] {
-  return [...new Set(names.filter((n): n is string => n !== null))].sort(
-    (a, b) => a.localeCompare(b),
-  );
-}
-
 // every word typed matches some field, so "nvda xtb" finds NVDA at XTB
 const has = (q: string, ...fields: (string | null | undefined)[]) => {
   const text = fields.map((f) => (f ?? "").toLowerCase());
@@ -536,20 +409,401 @@ const has = (q: string, ...fields: (string | null | undefined)[]) => {
 };
 
 export const holdingMatches = (h: Holding, q: string): boolean =>
-  has(q, h.id === null ? null : symbolOf(h.id), h.name, h.isin);
+  has(q, holdingTicker(h), h.name, h.isin, ...h.parts.map((p) => p.broker));
 
 export const tradeMatches = (t: TradeRow, q: string): boolean =>
   has(q, t.side, symbolOf(t.symbol), t.name, t.broker, t.note);
 
-// a broker's share of a holding: its gain from the server's own value
-// and cost, which the part carries without the difference
-export function partGain(p: Part): { pl: Signed; pct: Signed } {
-  if (p.value === null || p.cost === null) {
-    return { pl: change(null), pct: percent(null) };
+// ---- the page: value band, holdings, activity -----------------------------
+
+const KINDS: Record<string, string> = {
+  EQUITY: "Stocks",
+  ETF: "ETFs",
+  FUND: "Funds",
+  MUTUALFUND: "Funds",
+  BOND: "Bonds",
+  CASH: "Cash",
+  CRYPTOCURRENCY: "Crypto",
+  INDEX: "Indices",
+};
+
+export const kindName = (t: string | null): string =>
+  t === null ? "Other" : (KINDS[t] ?? t.charAt(0) + t.slice(1).toLowerCase());
+
+// what a row is called: cash, a hand-priced fund and a bond with no
+// symbol by their names, anything listed by its ticker
+export function holdingTicker(h: Holding): string {
+  if (h.kind === "cash") return h.name ?? "Cash";
+  if (h.id === null || isFundId(h.id)) return h.name ?? "—";
+  return tickerOf(h.id, h.type);
+}
+
+// the line under the ticker
+export function holdingName(h: Holding, now = Date.now()): string {
+  if (h.kind === "cash") {
+    const what = h.dry_powder ? "Dry powder" : "Reserve";
+    return h.as_of ? `${what} · ${day(h.as_of, now)}` : what;
   }
-  const pl = p.value - p.cost;
+  if (h.kind === "fund") return h.isin ? `Fund · ${h.isin}` : "Fund";
+  if (h.kind === "bond") {
+    const c = h.coupon != null ? `${h.coupon}%` : null;
+    const m = h.maturity ? `until ${day(h.maturity, now)}` : null;
+    return ["Bond", c, m].filter(Boolean).join(" · ");
+  }
+  const name = nameOf(h.name, h.type, h.id ?? undefined);
+  return h.sold_today ? (name ? `${name} · Sold today` : "Sold today") : name;
+}
+
+export const portfolioOf = (h: Holding): string =>
+  h.parts[0]?.portfolio ?? "Other";
+
+// in the display currency when converted, else its own; a row the server
+// could not convert (no rate) has none, never its own figure in its place
+export const shownValue = (h: Holding): number | null =>
+  h.converted ? h.converted.value : h.value;
+
+export const shownGain = (h: Holding): number | null =>
+  h.converted ? h.converted.pl : h.pl;
+
+// the gain's percent on the same base as its money: the display
+// currency's, the rate's move in, when converted
+export const shownGainPercent = (h: Holding): number | null =>
+  h.converted ? h.converted.pl_percent : h.pl_percent;
+
+// with no display currency each currency stands alone: nothing in two
+// currencies is ever summed or shared out
+export const mixed = (h: Holdings): boolean =>
+  h.converted === null && h.totals.length > 1;
+
+export const shownWeight = (h: Holding): number | null =>
+  h.converted ? h.converted.weight : h.currency_weight;
+
+const dayShown = (h: Holding): number | null => {
+  if (h.day_change === null) return null;
+  if (!h.converted) return h.day_change;
+  return h.converted.rate === null ? null : h.day_change * h.converted.rate;
+};
+
+// whole units at a glance; cents only where the figure is small
+export function money(v: number | null, currency?: string | null): string {
+  if (v === null) return "—";
+  const a = Math.abs(v);
+  if (a < 1000) return amount(v, currency);
+  const n = Math.round(a).toLocaleString("en-US");
+  return `${v < 0 ? "−" : ""}${n}${currency ? ` ${currency}` : ""}`;
+}
+
+export function signedMoney(
+  v: number | null,
+  currency?: string | null,
+): Signed {
+  if (v === null) return { text: "", dir: 0 };
+  if (Math.abs(v) < 1000) return change(v, currency);
+  const r = Math.round(v);
+  const dir = r > 0 ? 1 : r < 0 ? -1 : 0;
   return {
-    pl: change(pl),
-    pct: percent(p.cost > 0 ? (pl / p.cost) * 100 : null),
+    text: `${dir > 0 ? "+" : dir < 0 ? "−" : ""}${money(Math.abs(r), currency)}`,
+    dir,
+  };
+}
+
+export type Sums = { value: number; day: number; dayKnown: boolean };
+
+export function sums(rows: readonly Holding[]): Sums {
+  const s: Sums = { value: 0, day: 0, dayKnown: false };
+  for (const h of rows) {
+    s.value += shownValue(h) ?? 0;
+    const d = dayShown(h);
+    if (d !== null) {
+      s.day += d;
+      s.dayKnown = true;
+    }
+  }
+  return s;
+}
+
+export type HoldingGroup = { key: string; rows: Holding[]; value: number };
+
+// on All by portfolio, inside one by kind; the largest first
+export function groupsOf(
+  rows: readonly Holding[],
+  all: boolean,
+): HoldingGroup[] {
+  const by = new Map<string, Holding[]>();
+  for (const r of rows) {
+    const k = all ? portfolioOf(r) : kindName(r.type);
+    by.set(k, [...(by.get(k) ?? []), r]);
+  }
+  return [...by.entries()]
+    .map(([key, rs]) => ({ key, rows: rs, value: sums(rs).value }))
+    .sort((a, b) => b.value - a.value);
+}
+
+// a group's share of the whole view
+export function groupShare(h: Holdings, value: number): string {
+  if (mixed(h)) return "";
+  const total = h.converted?.value ?? h.totals[0]?.value ?? 0;
+  return total > 0 ? `${((value / total) * 100).toFixed(1)}%` : "";
+}
+
+export type SortKey = "value" | "today" | "gain";
+
+// a row with nothing to sort by goes last either way
+export function sortRows(
+  rows: readonly Holding[],
+  key: SortKey,
+  dir: "asc" | "desc" = "desc",
+): Holding[] {
+  const of = (h: Holding): number | null =>
+    key === "today"
+      ? h.change_percent
+      : key === "gain"
+        ? shownGainPercent(h)
+        : shownValue(h);
+  const sign = dir === "asc" ? 1 : -1;
+  return [...rows].sort((a, b) => {
+    const x = of(a);
+    const y = of(b);
+    if (x === null || y === null)
+      return (x === null ? 1 : 0) - (y === null ? 1 : 0);
+    return (x - y) * sign;
+  });
+}
+
+// a quoted or listed price moves within a day; cash, a hand-priced fund
+// and a face-value bond never do
+export const moves = (h: Holding): boolean =>
+  h.priced === "quote" || h.priced === "listing";
+
+// the columns something in view fills
+export function columnsFor(rows: readonly Holding[]): {
+  spark: boolean;
+  price: boolean;
+  priceHead: "Change" | "Price";
+  gain: boolean;
+} {
+  const listed = rows.some(moves);
+  return {
+    spark: listed,
+    price: !rows.every((x) => x.kind === "cash"),
+    priceHead: listed ? "Change" : "Price",
+    gain: !rows.every((x) => x.pl === null),
+  };
+}
+
+// the value band: today only when something in view moves within a day,
+// all time only when a cost gives a gain
+export function heroOf(h: Holdings): {
+  total: Total;
+  // with nothing converted, each other currency's total, for lines in
+  // the text's size under the one large figure
+  others: Total[];
+  dayPercent: number | null;
+  today: boolean;
+  allTime: boolean;
+} | null {
+  const byValue = [...h.totals].sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
+  const t = h.converted ?? byValue[0] ?? null;
+  if (t === null) return null;
+  const before =
+    t.day_change !== null && t.value !== null ? t.value - t.day_change : 0;
+  return {
+    total: t,
+    others: h.converted ? [] : byValue.slice(1),
+    dayPercent: before !== 0 ? (t.day_change! / before) * 100 : null,
+    today: h.holdings.some(moves),
+    allTime: t.pl !== null && (t.cost ?? 0) > 0,
+  };
+}
+
+export type BarSide = {
+  key: "invested" | "cash" | "dry" | "reserve";
+  label: string;
+  value: number;
+  pct: number;
+};
+
+// with money invested, invested against all cash; with cash alone, the
+// cash to invest against the cash kept; shown only when both are above 0
+export function barOf(t: Total): BarSide[] | null {
+  const inv = t.invested ?? 0;
+  const dry = t.dry_powder ?? 0;
+  const reserve = t.cash ?? 0;
+  const sides: Omit<BarSide, "pct">[] =
+    inv > 0
+      ? [
+          { key: "invested", label: "Invested", value: inv },
+          { key: "cash", label: "Cash", value: dry + reserve },
+        ]
+      : [
+          { key: "dry", label: "Dry powder", value: dry },
+          { key: "reserve", label: "Reserve", value: reserve },
+        ];
+  if (!sides.every((x) => x.value > 0)) return null;
+  const sum = sides.reduce((a, x) => a + x.value, 0);
+  return sides.map((x) => ({ ...x, pct: Math.round((x.value / sum) * 100) }));
+}
+
+export type EditWhat = "edit" | "price" | "purchases";
+
+const instrumentHref = (id: string): string =>
+  `/instruments/${encodeURIComponent(id)}`;
+
+// a hand-priced fund has an id but no listing, so no instrument page
+export const pageOf = (h: Holding): string | null =>
+  h.id && h.priced !== "hand" && !isFundId(h.id) ? instrumentHref(h.id) : null;
+
+export const tradePage = (symbol: string): string | null =>
+  isFundId(symbol) ? null : instrumentHref(symbol);
+
+// with no instrument page, a row opens what edits it
+export function homeOf(h: Holding): EditWhat | null {
+  if (h.position !== null) return "edit";
+  if (h.kind === "fund" && h.id && h.isin) return "price";
+  if (h.kind === "bond") return "purchases";
+  return null;
+}
+
+export type RowAction =
+  | "buy"
+  | "sell"
+  | "price"
+  | "edit"
+  | "purchases"
+  | "page";
+
+// a row's ⋯: trade what trades, price what the owner prices, edit a
+// position, list a merged bond's purchases, and its page when it has one
+export function rowActions(h: Holding): RowAction[] {
+  const out: RowAction[] = [];
+  const fund = h.kind === "fund" && h.isin !== undefined && h.id !== null;
+  if (h.id && (h.kind === "holding" || fund)) {
+    out.push("buy");
+    if (!(h.kind === "holding" && h.sold_today)) out.push("sell");
+  }
+  if (fund) out.push("price");
+  if (h.kind !== "holding" && h.position !== null) out.push("edit");
+  if (h.kind === "bond" && h.position === null) out.push("purchases");
+  if (pageOf(h)) out.push("page");
+  return out;
+}
+
+// the price cell: a hand price with its day, a bond's as a percent
+export function priceLine(h: Holding, now = Date.now()): string {
+  if (h.kind === "cash") return "";
+  if (h.priced === "hand") {
+    return `${price(h.price, h.currency)}${h.as_of ? ` · ${day(h.as_of, now)}` : ""}`;
+  }
+  if (h.unit === "percent_of_par") return `${price(h.price)}% of face`;
+  return price(h.price, h.currency);
+}
+
+// the grey weight bar: a quarter of the view fills it
+export const weightBar = (w: number | null): number =>
+  Math.min(100, (w ?? 0) * 4);
+
+export const isReward = (t: TradeRow): boolean =>
+  t.side === "buy" && t.price === 0;
+
+export const sideWord = (t: TradeRow): string =>
+  isReward(t) ? "Reward" : t.side === "buy" ? "Buy" : "Sell";
+
+export const tradeAmount = (t: TradeRow): number =>
+  tradeMoney(t.side, t.quantity, t.price, t.fees, t.unit);
+
+// one order's figures across its fills
+export function orderOf(fills: readonly TradeRow[]): {
+  quantity: number;
+  amount: number;
+  fees: number;
+  price: number;
+} {
+  const q = fills.reduce((a, x) => a + x.quantity, 0);
+  return {
+    quantity: Number(q.toFixed(8)),
+    amount: fills.reduce((a, x) => a + tradeAmount(x), 0),
+    fees: fills.reduce((a, x) => a + x.fees, 0),
+    price:
+      fills.length > 1 && q !== 0
+        ? fills.reduce((a, x) => a + x.quantity * x.price, 0) / q
+        : (fills[0]?.price ?? 0),
+  };
+}
+
+// newest first, the newer id first on one day
+const newest = (a: TradeRow, b: TradeRow): number =>
+  a.date < b.date ? 1 : a.date > b.date ? -1 : b.id - a.id;
+
+// fills of one order land as several trades: one day, portfolio,
+// symbol, side, broker and reward or not read as the order they were
+export function foldFills(trades: readonly TradeRow[]): TradeRow[][] {
+  const out: TradeRow[][] = [];
+  for (const t of [...trades].sort(newest)) {
+    const same = out.find((r) => {
+      const o = r[0]!;
+      return (
+        o.date === t.date &&
+        o.portfolio === t.portfolio &&
+        o.symbol === t.symbol &&
+        o.side === t.side &&
+        o.broker === t.broker &&
+        isReward(o) === isReward(t)
+      );
+    });
+    if (same) same.push(t);
+    else out.push([t]);
+  }
+  return out;
+}
+
+export type Month = {
+  key: string;
+  label: string;
+  // "11 bought · 2 sold"
+  trail: string;
+  rows: TradeRow[][];
+};
+
+export function monthsOf(trades: readonly TradeRow[]): Month[] {
+  const by = new Map<string, TradeRow[][]>();
+  for (const order of foldFills(trades)) {
+    const k = order[0]!.date.slice(0, 7);
+    by.set(k, [...(by.get(k) ?? []), order]);
+  }
+  return [...by.entries()].map(([key, rows]) => {
+    const [y, m] = key.split("-").map(Number) as [number, number];
+    const buys = rows.filter((r) => r[0]!.side === "buy").length;
+    const sells = rows.length - buys;
+    return {
+      key,
+      label: new Date(y, m - 1, 1).toLocaleDateString("en-GB", {
+        month: "long",
+        year: "numeric",
+      }),
+      trail: [
+        buys > 0 ? `${buys} bought` : "",
+        sells > 0 ? `${sells} sold` : "",
+      ]
+        .filter(Boolean)
+        .join(" · "),
+      rows,
+    };
+  });
+}
+
+// the activity list: the live trades or the removed ones, searched
+export function activityOf(
+  trades: readonly TradeRow[],
+  removed: boolean,
+  q: string,
+): { months: Month[]; count: number; kept: number; removed: number } {
+  const kept = trades.filter((t) => (t.removed_at !== null) === removed);
+  const months = monthsOf(kept.filter((t) => tradeMatches(t, q)));
+  // counted as the rows read: one per order, not per fill
+  return {
+    months,
+    count: months.reduce((a, m) => a + m.rows.length, 0),
+    kept: kept.length,
+    removed: foldFills(trades.filter((t) => t.removed_at !== null)).length,
   };
 }

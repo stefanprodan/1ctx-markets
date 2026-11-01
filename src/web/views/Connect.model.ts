@@ -70,12 +70,18 @@ function day(at: string, now: number): string {
   });
 }
 
-export const usedWords = (k: AgentKey, now: number): string =>
-  k.last_used_at === null ? "Never used" : `Used ${ago(k.last_used_at, now)}`;
+// under a Last used head, so the words leave out "used"
+export function usedWords(k: AgentKey, now: number): string {
+  if (k.last_used_at === null) return "Never";
+  const words = ago(k.last_used_at, now);
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
 
+// under an Expires head: the day alone, but a day gone says so
 export function expiryWords(k: AgentKey, now: number): string {
-  if (k.expires_at === null) return "Never expires";
-  return `${expired(k, now) ? "Expired" : "Expires"} ${day(k.expires_at, now)}`;
+  if (k.expires_at === null) return "Never";
+  const at = day(k.expires_at, now);
+  return expired(k, now) ? `Expired ${at}` : at;
 }
 
 export const exportLine = (token: string): string =>

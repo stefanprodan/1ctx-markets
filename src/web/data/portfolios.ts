@@ -17,8 +17,8 @@ export type View = {
 };
 
 // the view lives in the page's address, so a reload or a link opens on it:
-// the portfolio in the path, the currency in the query. A list's broker
-// and search narrow that list alone, so they stay out of it
+// the portfolio in the path, the currency in the query. A list's search
+// narrows that list alone, so it stays out of it
 export function addressOf(v: View): string {
   const q = new URLSearchParams();
   if (v.currency !== null) q.set("currency", v.currency);
@@ -260,6 +260,8 @@ export type SavedTrade = {
   unit: string | null;
 };
 
+export type Close = { date: string; close: number };
+
 // a picked listing: its currency and live price, as the form shows them
 export type Listing = {
   id: string;
@@ -377,17 +379,13 @@ export function plainError(said: string): string {
 export function portfolioStore(call: Call, session: () => number) {
   const overview = signal<Overview | null>(null);
   const holdings = signal<Holdings | null>(null);
-  // the holdings list's broker: the server splits a holding by broker,
-  // so the list reads its share there while the totals stay whole
-  const atBroker = signal<Holdings | null>(null);
   const trades = signal<TradeRow[] | null>(null);
   const error = signal<string | null>(null);
   const code = signal<number | null>(null);
   const failures = signal(0);
-  // what the page shows: a portfolio or all, the holdings list's broker
-  // or all, and a currency to convert into, none built in
+  // what the page shows: a portfolio or all, and a currency to convert
+  // into, none built in
   const portfolio = signal<number | null>(null);
-  const broker = signal<string | null>(null);
   const currency = signal<string | null>(null);
 
   let loads = 0;
@@ -406,8 +404,6 @@ export function portfolioStore(call: Call, session: () => number) {
     const stale = () => mine !== loads || at !== session();
     const q = new URLSearchParams();
     if (currency.value !== null) q.set("currency", currency.value);
-    const bq = new URLSearchParams(q);
-    if (broker.value !== null) bq.set("broker", broker.value);
     const where =
       portfolio.value === null
         ? "/api/v1/holdings"
@@ -415,25 +411,15 @@ export function portfolioStore(call: Call, session: () => number) {
     const tq = new URLSearchParams({ removed: "true" });
     if (portfolio.value !== null) tq.set("portfolio", String(portfolio.value));
     try {
-      const [o, h, t, b] = await Promise.all([
+      const [o, h, t] = await Promise.all([
         call<Overview>(PORTFOLIOS_PATH),
         call<Holdings>(`${where}${q.size > 0 ? `?${q}` : ""}`),
         call<{ trades: TradeRow[] }>(`/api/v1/trades?${tq}`),
-        broker.value === null
-          ? Promise.resolve(null)
-          : call<Holdings>(`${where}?${bq}`),
       ]);
       if (stale()) return;
-      // a broker left with nothing in the list leaves the menu too, so the
-      // pick would be stuck where no menu can clear it
-      const held =
-        broker.value === null ||
-        h.holdings.some((x) => x.parts.some((p) => p.broker === broker.value));
       batch(() => {
         overview.value = o;
         holdings.value = h;
-        atBroker.value = held ? b : null;
-        if (!held) broker.value = null;
         trades.value = t.trades;
         error.value = null;
         code.value = null;
@@ -441,17 +427,14 @@ export function portfolioStore(call: Call, session: () => number) {
     } catch (e) {
       if (stale()) return;
       if (e instanceof ApiError && e.status === 401) return;
-      // gone elsewhere: a broker narrows only its list, so it goes first
-      // and the portfolio stays unless it is the one gone
-      if (e instanceof ApiError && e.code === "not_found") {
-        if (broker.value !== null || portfolio.value !== null) {
-          batch(() => {
-            if (broker.value !== null) broker.value = null;
-            else portfolio.value = null;
-            atBroker.value = null;
-          });
-          return load();
-        }
+      // a portfolio gone elsewhere falls back to all
+      if (
+        e instanceof ApiError &&
+        e.code === "not_found" &&
+        portfolio.value !== null
+      ) {
+        portfolio.value = null;
+        return load();
       }
       batch(() => {
         error.value = says(e);
@@ -482,37 +465,24 @@ export function portfolioStore(call: Call, session: () => number) {
   return {
     overview,
     holdings,
-    atBroker,
     trades,
     error,
     code,
     failures,
     portfolio,
-    broker,
     currency,
     load,
     // the view the address names, on arrival, a reload or a step back
     open(v: View) {
       batch(() => {
         portfolio.value = v.portfolio;
-        broker.value = null;
-        atBroker.value = null;
         currency.value = v.currency;
       });
       return load();
     },
-    pick(next: {
-      portfolio?: number | null;
-      broker?: string | null;
-      currency?: string | null;
-    }) {
+    pick(next: { portfolio?: number | null; currency?: string | null }) {
       batch(() => {
         if (next.portfolio !== undefined) portfolio.value = next.portfolio;
-        // another broker's rows never stand in while its own load
-        if (next.broker !== undefined && next.broker !== broker.value) {
-          broker.value = next.broker;
-          atBroker.value = null;
-        }
         if (next.currency !== undefined) currency.value = next.currency;
       });
       return load();
@@ -587,6 +557,13 @@ export function portfolioStore(call: Call, session: () => number) {
     // where a listing is held and the dry powder a buy may pay from
     everything: (): Promise<Holdings | null> =>
       call<Holdings>("/api/v1/holdings").catch(() => null),
+    // a listed holding's daily closes from a day on, for its sparkline
+    bars: (id: string, from: string): Promise<Close[]> =>
+      call<{ bars: Close[] }>(
+        `/api/v1/instruments/${encodeURIComponent(id)}/bars?interval=1d&from=${from}`,
+      )
+        .then((r) => r.bars.map((b) => ({ date: b.date, close: b.close })))
+        .catch(() => []),
     listing: (id: string): Promise<Listing | null> =>
       call<{ instrument: Listing }>(
         `/api/v1/instruments/${encodeURIComponent(id)}`,
@@ -598,12 +575,10 @@ export function portfolioStore(call: Call, session: () => number) {
       batch(() => {
         overview.value = null;
         holdings.value = null;
-        atBroker.value = null;
         trades.value = null;
         error.value = null;
         code.value = null;
         portfolio.value = null;
-        broker.value = null;
         currency.value = null;
       });
     },

@@ -10,13 +10,21 @@ import type {
   Section,
 } from "../data/store.ts";
 import { volumeText } from "./Chart.model.ts";
-import { change, price } from "./Instruments.model.ts";
+import { change, price, priceParts } from "./Instruments.model.ts";
 import { ago, plain } from "./Status.model.ts";
+
+type Signed = { text: string; dir: -1 | 0 | 1 };
 
 // the quote's figures through the list's own formats, so both read alike
 export function headline(d: Detail): {
   price: string;
-  change: { text: string; dir: -1 | 0 | 1 };
+  // the figure and its currency apart, for the hero
+  value: string;
+  currency: string | null;
+  change: Signed;
+  // the move in the price's own unit; none for a series in percent,
+  // whose percent change already says it
+  move: Signed;
 } {
   const q = d.quote;
   // a read that failed leaves the stored row's price
@@ -29,14 +37,48 @@ export function headline(d: Detail): {
           change: q.change,
           change_percent: q.change_percent,
         };
-  return { price: price(row), change: change(row) };
+  const p = priceParts(row);
+  return {
+    price: price(row),
+    value: p.value,
+    currency: p.currency,
+    change: change(row),
+    move: moveOf(row),
+  };
+}
+
+function moveOf(row: Listed): Signed {
+  const c = row.change;
+  if (c === null || row.unit === "percent" || row.unit === "percent_of_par")
+    return { text: "", dir: 0 };
+  const v = priceParts({ ...row, price: Math.abs(c) }).value;
+  const dir = Number(v.replace(/,/g, "")) === 0 ? 0 : c > 0 ? 1 : -1;
+  return { text: `${dir > 0 ? "+" : dir < 0 ? "−" : ""}${v}`, dir };
+}
+
+// the word after the day's move, as Yahoo says it; a series' move is
+// from its last value and a stored price's from its day, so neither
+// gets one
+export function moveLabel(d: Detail): string {
+  if ((d.quote?.session ?? null) === null) return "";
+  return tradesToday(d) ? "today" : "at close";
+}
+
+// open, and past the first pass after the open: until then the quote is
+// still the last session's
+function tradesToday(d: Detail): boolean {
+  const q = d.quote;
+  if (q?.session?.state !== "open") return false;
+  const traded = Date.parse(q.trade_time ?? q.fetched_at ?? "");
+  return !(traded < Date.parse(q.session.start ?? ""));
 }
 
 // pre or post trading beside the close, in the viewer's clock
 export function afterHours(d: Detail): {
-  label: string;
-  price: string;
-  change: { text: string; dir: -1 | 0 | 1 };
+  word: string;
+  at: string;
+  value: string;
+  change: Signed;
 } | null {
   const x = d.quote?.extended;
   if (!x || x.price === null) return null;
@@ -47,9 +89,11 @@ export function afterHours(d: Detail): {
     change_percent: x.change_percent,
   };
   const at = CLOCK.format(new Date(x.time));
+  const word = x.session === "pre" ? "Pre-market" : "After hours";
   return {
-    label: `${x.session === "pre" ? "Pre-market" : "After hours"} · ${at}`,
-    price: price(row),
+    word,
+    at,
+    value: priceParts(row).value,
     change: change(row),
   };
 }
@@ -228,7 +272,6 @@ export type StatRow = {
   value: string;
   note?: string;
   tone?: Tone;
-  phone?: boolean;
 };
 export type Span = { low: string; high: string; at: number };
 export type StatCard = { title: string; span?: Span; rows: StatRow[] };
@@ -319,12 +362,7 @@ export function stats(d: Detail): StatCard[] {
   }
   {
     const rows: StatRow[] = [];
-    // at the open, until the first pass lands, the quote is still the
-    // last session's
-    const traded = Date.parse(q?.trade_time ?? q?.fetched_at ?? "");
-    const today =
-      q?.session?.state === "open" &&
-      !(traded < Date.parse(q.session.start ?? ""));
+    const today = tradesToday(d);
     if (q?.volume) {
       const ratio = s?.volume_ratio ?? null;
       rows.push({
@@ -361,13 +399,6 @@ export function stats(d: Detail): StatCard[] {
     const a200 = besideAverage(d, "200-day average", s.sma200, now);
     if (a50) rows.push(a50);
     if (a200) rows.push(a200);
-    const w200 = besideAverage(
-      d,
-      "200-week average",
-      d.quote?.signals?.weekly?.sma200 ?? null,
-      now,
-    );
-    if (w200) rows.push({ ...w200, phone: true });
     if (s.cross !== null && s.cross !== 0) {
       const above = s.cross > 0;
       // the cross is news only on its day; after it, the side says it

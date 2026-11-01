@@ -123,6 +123,7 @@ export function App({ store = markets }: { store?: Store }) {
       <Shell here={here}>
         <Page
           title={route?.label ?? "Home"}
+          search={false}
           failed={{
             words: failed,
             status: store.statusCode.value,

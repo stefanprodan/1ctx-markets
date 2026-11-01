@@ -1,420 +1,184 @@
-/* A phone stacks a form's rows and keeps two short fields abreast. */
-
 @layer tokens, base, owners;
 
 @layer owners {
-  .pf-dim {
-    color: var(--faint);
+  .pf-root {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    min-width: 0;
   }
-  .pf-buy {
-    color: var(--done);
-  }
-  .pf-sell {
-    color: var(--failed);
-  }
-  .pf-error {
-    margin: 0 auto 0 0;
-    font-size: var(--text-ui);
-    color: var(--failed);
+  /* hidden amounts: every money figure and quantity carries .pf-m */
+  .pf-hide .pf-m {
+    filter: blur(7px);
+    user-select: none;
   }
 
-  .pf-filters {
+  /* the totals' currency menu sits in the hero's figure, so it takes the
+     menu's own face back */
+  .pf-ccy-menu {
+    top: calc(100% + var(--space-1));
+    left: var(--space-1);
+    min-width: 220px;
+    letter-spacing: 0;
+    font-family: var(--sans);
+    font-size: var(--text-ui);
+    line-height: 1.4;
+  }
+
+  /* one track: invested from the left, cash after it */
+  .pf-ivc {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    max-width: 520px;
+    margin-top: var(--space-3);
+  }
+  .pf-ivc-bar {
+    display: flex;
+    height: 8px;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+  }
+  .pf-ivc-bar span {
+    min-width: 3px;
+  }
+  .pf-ivc-invested {
+    background: var(--invested);
+  }
+  .pf-ivc-cash,
+  .pf-ivc-dry {
+    background: var(--cash);
+  }
+  .pf-ivc-reserve {
+    background: var(--reserve);
+  }
+  .pf-ivc-legend {
     display: flex;
     flex-wrap: wrap;
+    gap: var(--space-1) var(--space-5);
+  }
+  .pf-ivc-legend > span {
+    display: inline-flex;
     align-items: center;
-    gap: var(--space-2);
+    gap: var(--space-1);
   }
-  /* many portfolios scroll sideways rather than wrap the page */
-  .pf-portfolios {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    scrollbar-width: none;
+  .pf-ivc-legend i {
+    width: 8px;
+    height: 8px;
+    border-radius: var(--radius-xs);
   }
-  .pf-portfolios .seg-option {
-    flex-shrink: 0;
+
+  /* holdings */
+  .pf-gdot {
+    margin: 0 var(--space-1);
+  }
+  .pf-price {
     white-space: nowrap;
   }
-  .pf-picks {
-    display: flex;
-    gap: var(--space-2);
-    margin-left: auto;
-  }
-  .pf-portfolio-pick {
-    display: none;
-  }
-  .pf-picks {
-    align-self: stretch;
-  }
-  .pf-currency {
-    flex: 1;
-    max-width: 360px;
-  }
-  .pf-currency-menu {
-    left: 0;
-    right: auto;
-    width: 100%;
-    max-height: none;
-    overflow: visible;
-  }
-  /* in a form the list opens in place across the row, so a phone's
-     sheet scrolls to it rather than clipping it */
-  .pf-add .field:has(.pf-currency-menu) {
-    grid-column: 1 / -1;
-  }
-  .pf-add .pf-currency {
-    flex-direction: column;
-  }
-  .pf-add .pf-currency-menu {
-    position: static;
+  .pf-wbar {
+    width: 64px;
+    height: 3px;
     margin-top: var(--space-1);
-  }
-  .pf-currency-find {
-    height: 32px;
-    margin-bottom: var(--space-1);
-    padding: 0 var(--space-2);
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
+    border-radius: var(--radius-xs);
     background: var(--inset);
+    overflow: hidden;
   }
-  .pf-currency-list {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    max-height: 280px;
-    overflow-y: auto;
-  }
-  .pf-currency-code {
-    flex-shrink: 0;
-    width: 3.5em;
-    font-family: var(--mono);
-    color: var(--fg);
-  }
-  .pf-currency-none {
-    padding: var(--space-2);
-    font-size: var(--text-small);
-    color: var(--faint);
+  .pf-wbar i {
+    display: block;
+    height: 100%;
+    background: var(--faint);
   }
 
-  /* auto-fit, so two or three currencies share one row */
-  .pf-totals {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: var(--space-3);
+  /* activity */
+  .pf-more {
+    display: block;
+    min-height: 44px;
   }
-  .pf-total-wide {
-    border-color: var(--line-strong);
+
+  /* the trade drawer */
+  .pf-note {
+    margin-top: var(--space-1);
   }
-  /* each rate wraps whole */
-  .pf-rates {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 2px var(--space-4);
-    margin: var(--space-2) 0 0;
-    padding-top: var(--space-2);
-    border-top: 1px solid var(--line);
-    font-family: var(--mono);
-    font-size: var(--text-label);
-    color: var(--faint);
-  }
-  .pf-total {
+  .pf-trade-fills {
     display: flex;
     flex-direction: column;
     gap: var(--space-1);
-    padding: var(--space-3) var(--space-4);
   }
-  .pf-big {
-    font-size: var(--text-title);
-    font-weight: 500;
-    font-variant-numeric: tabular-nums;
-  }
-  .pf-total-lines {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-1) var(--space-4);
-    font-size: var(--text-ui);
-    font-variant-numeric: tabular-nums;
-  }
-  .pf-split {
-    display: flex;
-    height: 6px;
-    margin-top: var(--space-2);
-    overflow: hidden;
-    border-radius: 3px;
-    background: var(--inset);
-  }
-  .pf-split-invested {
-    background: var(--chart-sma50);
-  }
-  .pf-split-cash {
-    background: var(--faint);
-  }
-  .pf-split-dry {
-    background: var(--brand);
-  }
-  .pf-split-keys {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-1) var(--space-3);
-    margin: 0;
-    padding: 0;
-    list-style: none;
-    font-size: var(--text-small);
-    color: var(--dim);
-    font-variant-numeric: tabular-nums;
-  }
-  .pf-dot {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    margin-right: 6px;
-    border-radius: 50%;
+  .pf-trade-fill {
+    display: grid;
+    grid-template-columns: 64px 1fr auto;
+    gap: var(--space-3);
   }
 
-  .pf-row {
+  /* a form in the drawer: its fields are the body, its buttons the foot */
+  .pf-form {
     display: flex;
-    align-items: center;
-    gap: var(--space-3);
     flex: 1;
-    min-width: 0;
-    text-align: left;
+    flex-direction: column;
+    min-height: 0;
   }
-  .pf-row-end {
+  .pf-form p,
+  .drawer p {
+    margin: 0;
+  }
+  .pf-fields {
     display: flex;
     flex-direction: column;
-    align-items: flex-end;
-    gap: 2px;
-    flex-shrink: 0;
-    margin-left: auto;
-    font-family: var(--mono);
-    font-size: var(--text-label);
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
-  }
-  .pf-row-under {
-    display: flex;
     gap: var(--space-3);
   }
-  /* a removed trade or a holding sold today reads as gone */
-  .pf-sold .rows-title,
-  .rows-item-off .pf-side-word,
-  .rows-item-off .ins-symbol,
-  .rows-item-off .rows-sub {
-    opacity: 0.55;
+  /* a read-back or a refusal takes the foot's whole line over the buttons */
+  .pf-summary,
+  .drawer-foot > .pf-refusal {
+    flex-basis: 100%;
   }
-  .pf-side-word {
-    flex-shrink: 0;
-    font-family: var(--mono);
-    font-size: var(--text-label);
+  .pf-edit {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-3);
+    width: 100%;
   }
-  .pf-value {
-    color: var(--fg);
-  }
-  .pf-facts {
+  .pf-form-foot {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--space-2) var(--space-5);
-    margin: 0 0 var(--space-3);
+    grid-column: 1 / -1;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-2);
   }
-  .pf-facts dt {
-    font-size: var(--text-small);
-    color: var(--faint);
-  }
-  .pf-facts dd {
-    margin: 0;
-    font-variant-numeric: tabular-nums;
-  }
-  .pf-parts {
-    width: 100%;
-    margin-bottom: var(--space-3);
-    border-collapse: collapse;
-    font-size: var(--text-ui);
-    font-variant-numeric: tabular-nums;
-  }
-  .pf-parts th {
-    font-weight: 400;
-    font-size: var(--text-small);
-    color: var(--faint);
-    text-align: right;
-  }
-  .pf-parts td {
-    padding: 4px 0;
-    border-top: 1px solid var(--line);
-    text-align: right;
-  }
-  .pf-parts th:first-child,
-  .pf-parts td:first-child {
-    text-align: left;
-  }
-  .pf-part-portfolio {
-    display: block;
-    font-size: var(--text-small);
-  }
-  /* numbers as the row above draws them */
-  .pf-parts td:not(:first-child) {
-    font-family: var(--mono);
-    font-size: var(--text-label);
-  }
-  .pf-part-pct {
-    display: block;
+  .pf-form-foot > .pf-refusal {
+    margin-right: auto;
   }
   .pf-purchases {
-    margin: 0 0 var(--space-3);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    margin: 0;
     padding: 0;
     list-style: none;
   }
   .pf-purchases li {
-    padding-top: var(--space-2);
+    padding-top: var(--space-3);
     border-top: 1px solid var(--line);
   }
   .pf-purchase {
     display: block;
     margin-bottom: var(--space-2);
-    font-size: var(--text-ui);
-    font-variant-numeric: tabular-nums;
   }
   .pf-row-actions {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: var(--space-2);
-    margin-bottom: var(--space-3);
   }
-  /* the row's own padding closes it; actions last add none */
-  .rows-body > .pf-row-actions:last-child {
-    margin-bottom: 0;
-  }
-  .pf-edit {
+  .pf-pair {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: var(--space-3);
+  }
+  .pf-form .field input,
+  .pf-start .field input {
     width: 100%;
-  }
-  .pf-edit .pf-form-foot {
-    grid-column: 1 / -1;
-  }
-
-  .pf-tabs {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
     min-width: 0;
-    overflow-x: auto;
-  }
-  .pf-tabs-label {
-    flex-shrink: 0;
-  }
-  /* a phone scrolls the tabs rather than wrap them */
-  .pf-tabs .seg {
-    flex-wrap: nowrap;
-    flex-shrink: 0;
-  }
-  .pf-tabs {
-    scrollbar-width: none;
-  }
-  .pf-bars {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    margin: 0;
-    padding: var(--space-3) var(--space-4);
-    list-style: none;
-  }
-  .pf-bars li {
-    display: grid;
-    grid-template-columns: minmax(80px, 160px) minmax(0, 1fr) 56px;
-    align-items: center;
-    gap: var(--space-3);
-    font-size: var(--text-ui);
-  }
-  .pf-bar {
-    height: 8px;
-    overflow: hidden;
-    border-radius: 4px;
-    background: var(--inset);
-  }
-  .pf-bar span {
-    display: block;
-    height: 100%;
-    background: var(--chart-sma50);
-  }
-  .pf-bar-pct {
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-    color: var(--dim);
-  }
-  .pf-bars-gain li {
-    grid-template-columns: minmax(80px, 160px) minmax(0, 1fr) 56px 72px;
-  }
-  .pf-bar-gain {
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-  }
-
-  /* the add panel: beside the page, which stays where it was */
-  .pf-sheet-wrap {
-    position: fixed;
-    inset: 0;
-    z-index: 10;
-    display: flex;
-    justify-content: flex-end;
-  }
-  .pf-sheet-back {
-    position: absolute;
-    inset: 0;
-    border: 0;
-    background: rgba(0, 0, 0, 0.35);
-    cursor: default;
-  }
-  .pf-sheet {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    width: min(460px, 100vw);
-    height: 100%;
-    border-left: 1px solid var(--line);
-    background: var(--card);
-    box-shadow: var(--shadow-pop);
-  }
-  .pf-sheet-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: var(--space-3) var(--space-4);
-    border-bottom: 1px solid var(--line);
-  }
-  .pf-sheet-title {
-    margin: 0;
-    font-size: var(--text-ui);
-    font-weight: 500;
-  }
-  .pf-add {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    min-height: 0;
-  }
-  .pf-add-body {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    gap: var(--space-3);
-    min-height: 0;
-    padding: var(--space-4);
-    overflow-y: auto;
-  }
-  .pf-add-foot {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    padding: var(--space-3) var(--space-4);
-    border-top: 1px solid var(--line);
-  }
-  .pf-summary {
-    margin: 0;
-    font-family: var(--mono);
-    font-size: var(--text-label);
-    font-variant-numeric: tabular-nums;
-    color: var(--fg);
   }
   /* one height with or without a button, so paired labels line up */
   .pf-field-head {
@@ -424,73 +188,14 @@
     gap: var(--space-2);
     min-height: 18px;
   }
-  .pf-all {
-    padding: 0;
-    font-size: var(--text-small);
-    line-height: 1;
-  }
   .pf-field-label {
     display: inline-flex;
     align-items: center;
     gap: var(--space-2);
     min-width: 0;
   }
-  .pf-total-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-2);
-  }
-  /* a form's menu fills its field and looks like the inputs beside it */
-  .pf-form-pick .drop,
-  .pf-add .pf-currency {
-    max-width: none;
-  }
-  .pf-form-pick .drop-btn,
-  .pf-currency .drop-btn {
-    justify-content: space-between;
-    width: 100%;
-    max-width: none;
-  }
-  .pf-form-pick .drop-btn,
-  .pf-add .pf-currency .drop-btn {
-    height: 36px;
-    background: var(--inset);
-  }
-  .pf-form-pick .drop-menu {
-    left: 0;
-    right: 0;
-  }
-  @media (max-width: 719px) {
-    /* a sheet from the bottom, the page's top still in sight */
-    .pf-sheet-wrap {
-      align-items: flex-end;
-    }
-    .pf-sheet {
-      width: 100%;
-      height: auto;
-      max-height: 92%;
-      border-left: 0;
-      border-top: 1px solid var(--line);
-      border-radius: var(--radius-card) var(--radius-card) 0 0;
-    }
-  }
-
-  .pf-panel {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-    padding: var(--space-4);
-  }
-  .pf-pair {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-3);
-  }
-  .pf-pair .field input,
-  .pf-panel .field input {
-    width: 100%;
-    min-width: 0;
+  .pf-all {
+    line-height: 1;
   }
   .pf-side {
     width: 100%;
@@ -500,47 +205,28 @@
     justify-content: center;
     white-space: nowrap;
   }
-  /* the kinds read as a heading's tabs, so Buy and Sell keep the weight */
-  .pf-kind-tabs {
-    display: flex;
-    gap: var(--space-4);
-    margin-top: calc(-1 * var(--space-2));
-    border-bottom: 1px solid var(--line);
+  .pf-symbol {
+    position: relative;
   }
-  .pf-kind-tab {
-    margin-bottom: -1px;
-    padding: var(--space-2) 0;
-    border: 0;
-    border-bottom: 2px solid transparent;
-    background: none;
-    color: var(--faint);
-    cursor: pointer;
+  .pf-found {
+    left: 0;
+    max-height: 280px;
+    overflow-y: auto;
   }
-  .pf-kind-tab:hover {
-    color: var(--fg);
+  .pf-found-where {
+    flex-shrink: 0;
+    margin-left: auto;
   }
-  .pf-kind-on {
-    border-bottom-color: var(--fg);
-    color: var(--fg);
-  }
-  .pf-side .seg-on.pf-side-buy {
-    background: color-mix(in srgb, var(--done) 16%, transparent);
-    color: var(--done);
-  }
-  .pf-side .seg-on.pf-side-sell {
-    background: color-mix(in srgb, var(--failed) 16%, transparent);
-    color: var(--failed);
-  }
+  /* the picked symbol in the input's place, with a line under it */
   .pf-chosen {
-    display: flex;
     flex-direction: column;
+    align-items: stretch;
     justify-content: center;
     gap: 2px;
+    height: auto;
     min-height: 36px;
-    padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    background: var(--inset);
+    padding-block: var(--space-1);
+    cursor: default;
   }
   .pf-chosen-main {
     display: flex;
@@ -549,7 +235,6 @@
     min-width: 0;
   }
   .pf-chosen-x {
-    flex-shrink: 0;
     margin-left: auto;
   }
   .pf-new {
@@ -558,41 +243,39 @@
   }
   .pf-new input {
     flex: 1;
-    width: 100%;
-    min-width: 0;
     padding-right: 36px;
   }
   .pf-new-back {
     position: absolute;
     top: 50%;
-    right: 4px;
+    right: var(--space-1);
     transform: translateY(-50%);
   }
-  .pf-symbol {
-    position: relative;
+
+  /* a long list found as typed: the search over the matches */
+  .pf-find {
+    min-width: 260px;
   }
-  .pf-found {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    z-index: 4;
-    max-height: 280px;
+  .pf-find-field {
+    margin-bottom: var(--space-1);
+  }
+  .pf-find-none {
+    margin: 0;
+    padding: var(--space-2);
+  }
+  .pf-find-main {
+    flex-shrink: 0;
+    min-width: 3.5em;
+  }
+  .pf-find-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: 220px;
     overflow-y: auto;
   }
-  .pf-found-where {
-    margin-left: auto;
-    flex-shrink: 0;
-    font-size: var(--text-small);
-    color: var(--faint);
-  }
-  .pf-form-foot {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: flex-end;
-    gap: var(--space-2);
-  }
+
+  /* import */
   .pf-file {
     display: flex;
     align-items: center;
@@ -602,62 +285,89 @@
   .pf-preview {
     display: flex;
     flex-direction: column;
-    max-height: 360px;
     margin: 0;
     padding: 0;
-    overflow-y: auto;
     list-style: none;
     border: 1px solid var(--line);
     border-radius: var(--radius);
   }
   .pf-preview li {
     display: grid;
-    grid-template-columns: 64px minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     gap: var(--space-1) var(--space-3);
     padding: var(--space-2) var(--space-3);
     border-top: 1px solid var(--line);
-    font-size: var(--text-small);
   }
   .pf-preview li:first-child {
     border-top: 0;
   }
   .pf-preview-line {
-    color: var(--faint);
-  }
-  .pf-preview-bad .pf-preview-status {
-    color: var(--failed);
+    grid-column: 1 / -1;
   }
   /* a line not read has no item, so its reason takes the item's place */
   .pf-preview-bad .pf-preview-status {
-    grid-column: 2 / -1;
-    text-align: left;
-  }
-  .pf-preview-saved .pf-preview-status {
-    color: var(--done);
-  }
-  .pf-preview-skipped {
-    color: var(--faint);
+    grid-column: 1 / -1;
   }
   .pf-dry {
     display: flex;
-    grid-column: 2 / -1;
+    grid-column: 1 / -1;
     align-items: center;
-    gap: 6px;
-    color: var(--dim);
+    gap: var(--space-1);
   }
-  .pf-welcome {
+
+  /* settings */
+  .pf-section {
     display: flex;
     flex-direction: column;
-    gap: var(--space-3);
-    max-width: 640px;
-    padding: var(--space-5) var(--space-4);
+    gap: var(--space-2);
   }
-  /* the first visit is one short form, so it sits narrow and centred */
-  .pf-welcome:has(.pf-welcome-form) {
+  .pf-section .card-head {
+    margin-bottom: 0;
+  }
+  .pf-names {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .pf-name {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: 44px;
+    border-bottom: 1px solid var(--line);
+  }
+  .pf-name-text {
+    flex: 1;
+  }
+  .pf-name-end {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-left: auto;
+  }
+  .pf-inline {
+    flex: 1;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+  .pf-inline input {
+    flex: 1;
+    min-width: 120px;
+  }
+
+  /* the first visit and an empty page: one short card, narrow and
+     centred */
+  .pf-start {
     width: 100%;
     max-width: 440px;
     margin: var(--space-5) auto 0;
+  }
+  .pf-start > p {
+    margin: 0 0 var(--space-2);
   }
   .pf-chips-field {
     min-width: 0;
@@ -669,246 +379,21 @@
     margin-bottom: var(--space-2);
     padding: 0;
   }
-  .pf-welcome-form .field {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-  }
-  .pf-welcome-form .pf-currency {
-    max-width: none;
-  }
-  .pf-welcome-go {
-    width: 100%;
-    height: 40px;
-    justify-content: center;
-  }
   /* six choices, two even rows */
   .pf-chips {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: var(--space-2);
-  }
-  .pf-chip {
-    min-width: 64px;
-    height: 36px;
-    padding: 0 var(--space-3);
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    background: var(--inset);
-    color: var(--dim);
-    font-family: var(--mono);
-    font-size: var(--text-ui);
-    cursor: pointer;
-  }
-  .pf-chip-word {
-    font-family: var(--sans);
-  }
-  .pf-chip:hover {
-    color: var(--fg);
-    border-color: var(--line-strong);
-  }
-  .pf-chip-on {
-    color: var(--fg);
-    border-color: var(--brand);
-    background: var(--hover);
-  }
-  /* step two sits where step one was, the same width */
-  .pf-start {
     width: 100%;
-    max-width: 440px;
-    margin: var(--space-5) auto 0;
-    gap: var(--space-2);
   }
-  .pf-ways {
-    display: flex;
-    flex-direction: column;
-    margin-top: var(--space-2);
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    overflow: hidden;
+  .pf-chips .seg-option {
+    justify-content: center;
+    min-height: 32px;
   }
-  .pf-way {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-    column-gap: var(--space-2);
-    padding: var(--space-3);
-    border: 0;
-    border-top: 1px solid var(--line);
-    background: var(--inset);
-    color: var(--fg);
-    font: inherit;
-    text-align: left;
-    text-decoration: none;
-    cursor: pointer;
-  }
-  .pf-way:first-child {
-    border-top: 0;
-  }
-  .pf-way:hover {
-    background: var(--hover);
-  }
-  .pf-way-title {
-    grid-column: 1;
-    font-size: var(--text-body);
-  }
-  .pf-way-sub {
-    grid-column: 1;
-    font-size: var(--text-small);
-    color: var(--faint);
-  }
-  .pf-way-go {
-    grid-column: 2;
-    grid-row: 1 / span 2;
-    color: var(--faint);
-    transform: rotate(-90deg);
-  }
-  /* the search opens in the card and pushes Create down, never over it */
   .pf-other {
-    display: flex;
-    flex-direction: column;
-    padding: var(--space-2);
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
+    margin-top: var(--space-2);
   }
-  .pf-other .pf-currency-list {
-    max-height: 220px;
-  }
-  .pf-welcome-title {
-    margin: 0;
-    font-size: var(--text-title);
-    font-weight: 500;
-  }
-  .pf-welcome p {
-    margin: 0;
-  }
-  .pf-welcome .field input {
+  .pf-go {
     width: 100%;
-    min-width: 0;
-  }
-  .pf-settings-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-3);
-  }
-  .pf-welcome-form,
-  .pf-settings {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-  }
-  .pf-inline {
-    display: flex;
-    flex: 1;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-2);
-    min-width: 0;
-  }
-  .pf-inline input {
-    flex: 1;
-    min-width: 120px;
-    height: 32px;
-    padding: 0 var(--space-3);
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    background: var(--inset);
-  }
-  .pf-add-name {
-    padding: var(--space-2) var(--space-4);
-  }
-
-  @media (max-width: 719px) {
-    .pf-portfolios {
-      display: none;
-    }
-    .pf-portfolio-pick {
-      display: flex;
-      flex: 1;
-      min-width: 0;
-    }
-    .pf-tabs {
-      flex: 1;
-      padding-top: var(--space-1);
-      flex-wrap: wrap;
-      gap: var(--space-2);
-      overflow: visible;
-    }
-    .pf-tabs .seg {
-      flex: 1 1 100%;
-      width: 100%;
-    }
-    .pf-tabs .seg-option {
-      flex: 1;
-      justify-content: center;
-      padding: 0 var(--space-1);
-    }
-    .pf-picks {
-      width: 100%;
-      margin-left: 0;
-    }
-    .pf-picks .drop {
-      flex: 1;
-    }
-    .drop-btn {
-      justify-content: space-between;
-      width: 100%;
-      max-width: none;
-    }
-    /* each currency is a short card, so the holdings start within the
-       first screen */
-    .pf-totals {
-      grid-template-columns: minmax(0, 1fr);
-      gap: var(--space-2);
-    }
-    .pf-totals .pf-total {
-      padding: var(--space-3);
-    }
-    .pf-totals .pf-big {
-      font-size: var(--text-ui);
-    }
-    /* the value in the shown currency gives way to the gain */
-    .pf-row-shown {
-      display: none;
-    }
-    .pf-edit {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-    .pf-bars li {
-      grid-template-columns: minmax(64px, 110px) minmax(0, 1fr) 52px;
-    }
-    .pf-bars-gain li {
-      grid-template-columns: 44px minmax(0, 1fr) 48px 64px;
-    }
-    /* even pairs, never a fact left alone on its line */
-    .pf-facts {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: var(--space-2) var(--space-3);
-    }
-    /* the broker table keeps what each share is worth and made */
-    .pf-part-cost {
-      display: none;
-    }
-    .pf-add-words {
-      display: none;
-    }
-    .pf-preview li {
-      grid-template-columns: minmax(0, 1fr) auto;
-    }
-    .pf-preview-bad .pf-preview-status {
-      grid-column: 1 / -1;
-    }
-    .pf-preview-line {
-      grid-column: 1 / -1;
-    }
-    .pf-panel {
-      padding: var(--space-3);
-    }
-    .pf-welcome .pf-pair,
-    .pf-pair-stack {
-      grid-template-columns: minmax(0, 1fr);
-    }
+    height: 40px;
   }
 }

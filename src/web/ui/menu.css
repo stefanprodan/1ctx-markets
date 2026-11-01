@@ -1,0 +1,123 @@
+@layer tokens, base, owners;
+
+@layer owners {
+  .menu-at {
+    position: relative;
+    display: inline-flex;
+  }
+  /* an open menu floats over the rows after its own */
+  .menu-at:has([aria-expanded="true"]) {
+    z-index: var(--z-menu);
+  }
+  .menu-btn {
+    width: 28px;
+    height: 28px;
+    color: var(--faint);
+  }
+  .menu-btn[aria-expanded="true"],
+  .table-row:hover .menu-btn {
+    color: var(--fg);
+  }
+  .menu-btn-text {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px var(--space-1) 2px 6px;
+    border: 0;
+    border-radius: var(--radius);
+    background: transparent;
+    cursor: pointer;
+  }
+  .menu-btn-text:hover,
+  .menu-btn-text[aria-expanded="true"] {
+    color: var(--fg);
+    background: var(--hover);
+  }
+  /* a form's pick, framed as the inputs beside it */
+  .menu-at-field {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+  }
+  .menu-btn-field {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    width: 100%;
+    min-width: 0;
+    height: 36px;
+    padding: 0 var(--space-2) 0 var(--space-3);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--inset);
+    color: var(--fg);
+    font-size: var(--text-input);
+    text-align: left;
+    cursor: pointer;
+  }
+  .menu-btn-field > svg {
+    flex-shrink: 0;
+    color: var(--faint);
+  }
+  .menu-btn-field[aria-expanded="true"] {
+    border-color: var(--line-strong);
+  }
+  .menu-pop-field {
+    left: 0;
+    right: 0;
+    max-height: 320px;
+    overflow-y: auto;
+  }
+  .menu-btn-head {
+    width: 32px;
+    padding: 0;
+  }
+  .menu-pop {
+    position: absolute;
+    top: calc(100% + 2px);
+    right: 0;
+    z-index: var(--z-menu);
+    min-width: 160px;
+  }
+  .menu-pop-left {
+    right: auto;
+    left: 0;
+  }
+  .menu-pop .menu-item-check {
+    flex-shrink: 0;
+    margin-left: auto;
+    color: var(--fg);
+  }
+  .menu-head {
+    padding: var(--space-2) var(--space-2) var(--space-1);
+    font-size: var(--text-small);
+    color: var(--faint);
+  }
+  .menu-head:not(:first-child) {
+    margin-top: var(--space-1);
+    border-top: 1px solid var(--line);
+  }
+  .menu-line {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: 3px var(--space-2);
+    font-size: var(--text-small);
+  }
+  .menu-item-danger,
+  .menu-item-danger:hover {
+    color: var(--failed);
+  }
+  /* a finger needs 44px and has no hover to find the dots */
+  @media (pointer: coarse) {
+    .menu-btn-field {
+      height: 44px;
+    }
+    .menu-btn {
+      width: 44px;
+      height: 44px;
+      color: var(--dim);
+    }
+  }
+}

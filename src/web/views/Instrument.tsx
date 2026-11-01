@@ -8,17 +8,20 @@ import type { Params } from "../app/routes.ts";
 import { says } from "../data/api.ts";
 import { type Detail, markets } from "../data/store.ts";
 import { Icon } from "../lib/icons.tsx";
-import { useMenu } from "../lib/menu.ts";
+import { nameOf, tickerOf } from "../lib/names.ts";
 import { useRefresh } from "../lib/refresh.ts";
+import { Card } from "../ui/Card.tsx";
+import { Change, Facts, Hero, Num, Stats } from "../ui/Figures.tsx";
+import { MenuButton } from "../ui/Menu.tsx";
 import { didNotLoad, Page } from "../ui/Page.tsx";
 import { CHART_CREDIT, Chart } from "./Chart.tsx";
-import { HeadSearch } from "./Dashboard.tsx";
 import {
   afterHours,
   type Choice,
   choices,
   deleteLine,
   headline,
+  moveLabel,
   priceState,
   RETURNS,
   returnCell,
@@ -28,83 +31,79 @@ import {
   UNREAD,
   weekly200,
 } from "./Instrument.model.ts";
-import { about, symbolOf } from "./Instruments.model.ts";
+import { about } from "./Instruments.model.ts";
 import "./instruments.css";
-
-const tone = (dir: -1 | 0 | 1) =>
-  dir > 0 ? "ins-up" : dir < 0 ? "ins-down" : undefined;
 
 export function Head({ detail, now }: { detail: Detail; now: number }) {
   const h = headline(detail);
   const x = afterHours(detail);
   const r = detail.quote?.returns ?? null;
   const w200 = weekly200(detail);
+  const points = detail.instrument.unit === "percent";
+  const hero = (
+    <Hero
+      name={
+        <>
+          {about(detail.instrument)}
+          <span class="faint"> · {priceState(detail, now)}</span>
+        </>
+      }
+      value={h.value}
+      currency={h.currency ?? undefined}
+      moves={[
+        {
+          money: h.move.text ? h.move : undefined,
+          percent: h.change,
+          label: moveLabel(detail),
+        },
+      ]}
+      lines={
+        x === null
+          ? undefined
+          : [
+              <>
+                <span class="faint">{x.word}</span> <Num>{x.value}</Num>{" "}
+                <Change s={x.change} /> <span class="faint">· {x.at}</span>
+              </>,
+            ]
+      }
+    />
+  );
+  if (r === null) return hero;
+  const items = (short: boolean) => [
+    ...RETURNS.map((x) => ({
+      label: short ? x.short : x.label,
+      value: <Change s={returnCell(r[x.key] as number | null, points)} />,
+    })),
+    {
+      label: short ? "200W" : "200-week average",
+      value: w200 ? <Change s={w200} /> : "—",
+    },
+  ];
   return (
-    <section class="card ins-head" aria-label="Price">
-      <span class="label">{about(detail.instrument)}</span>
-      <div class="ins-quotes">
-        <div class="ins-quote">
-          <div class="ins-figure">
-            <span class="ins-big">{h.price}</span>
-            {h.change.text && (
-              <span class={`ins-move ${tone(h.change.dir) ?? ""}`}>
-                {h.change.text}
-              </span>
-            )}
-          </div>
-          <span class="ins-state">{priceState(detail, now)}</span>
-        </div>
-        {x !== null && (
-          <div class="ins-quote">
-            <div class="ins-figure">
-              <span class="ins-big">{x.price}</span>
-              {x.change.text && (
-                <span class={`ins-move ${tone(x.change.dir) ?? ""}`}>
-                  {x.change.text}
-                </span>
-              )}
-            </div>
-            <span class="ins-state">{x.label}</span>
-          </div>
-        )}
+    <div class="ins-top">
+      {hero}
+      {/* a phone's row in the chart ranges' short words, to fit */}
+      <div class="ins-returns hide-phone">
+        <Stats label="Returns" items={items(false)} />
       </div>
-      {r !== null && (
-        <dl class="ins-returns">
-          {RETURNS.map(({ key, label, short }) => {
-            const c = returnCell(
-              r[key] as number | null,
-              detail.instrument.unit === "percent",
-            );
-            return (
-              <div key={key} class="ins-return">
-                <dt>
-                  <span class="ins-long">{label}</span>
-                  <span class="ins-short">{short}</span>
-                </dt>
-                <dd class={tone(c.dir)}>{c.text}</dd>
-              </div>
-            );
-          })}
-          <div class="ins-return ins-desk">
-            <dt>200-week average</dt>
-            <dd class={w200 ? tone(w200.dir) : undefined}>
-              {w200?.text ?? "—"}
-            </dd>
-          </div>
-        </dl>
-      )}
-    </section>
+      <div class="ins-returns show-phone">
+        <Stats label="Returns" items={items(true)} />
+      </div>
+    </div>
   );
 }
 
+const toneClass = (t: StatCard["rows"][number]["tone"]) =>
+  t === "up" ? "num up" : t === "down" ? "num down" : "num";
+
 // what the chart leaves out, in a card per question
-export function Stats({ cards }: { cards: readonly StatCard[] }) {
+export function SignalCards({ cards }: { cards: readonly StatCard[] }) {
   if (cards.length === 0) return null;
   return (
-    <div class="ins-stats">
+    <div class="ins-cards">
       {cards.map((c) => (
-        <section key={c.title} class="card ins-stat" aria-label={c.title}>
-          <span class="label">{c.title}</span>
+        <Card key={c.title} title={c.title} label={c.title}>
           {c.span && (
             <div class="ins-span">
               <div class="ins-span-track">
@@ -113,39 +112,28 @@ export function Stats({ cards }: { cards: readonly StatCard[] }) {
                   style={{ left: `${(c.span.at * 100).toFixed(1)}%` }}
                 />
               </div>
-              <div class="ins-span-ends">
-                <span>{c.span.low}</span>
-                <span>{c.span.high}</span>
+              <div class="ins-span-ends small">
+                <Num>{c.span.low}</Num>
+                <Num>{c.span.high}</Num>
               </div>
             </div>
           )}
           {c.rows.length > 0 && (
-            <dl class="ins-stat-rows">
-              {c.rows.map((r) => (
-                <div
-                  key={r.label}
-                  class={`ins-stat-row${r.phone ? " ins-phone" : ""}`}
-                >
-                  <dt>{r.label}</dt>
-                  <dd>
-                    <span
-                      class={
-                        r.tone === "up"
-                          ? "ins-up"
-                          : r.tone === "down"
-                            ? "ins-down"
-                            : undefined
-                      }
-                    >
-                      {r.value}
-                    </span>
-                    {r.note && <span class="ins-stat-note">{r.note}</span>}
-                  </dd>
-                </div>
-              ))}
-            </dl>
+            <Facts
+              items={c.rows.map((r) => ({
+                label: r.label,
+                value: (
+                  <>
+                    <span class={toneClass(r.tone)}>{r.value}</span>
+                    {r.note && (
+                      <span class="ins-note small faint">{r.note}</span>
+                    )}
+                  </>
+                ),
+              }))}
+            />
           )}
-        </section>
+        </Card>
       ))}
     </div>
   );
@@ -172,12 +160,6 @@ export function InstrumentMenu({
   onDelete: () => void;
 }) {
   const asking = useSignal(false);
-  // Escape leaves the question for the menu before it closes the menu
-  const { open, root } = useMenu(() => {
-    if (!asking.value) return false;
-    asking.value = false;
-    return true;
-  });
   // swapping the pane drops the clicked button, which the menu would
   // read as a click outside it
   const swap = (ev: MouseEvent, to: boolean) => {
@@ -185,87 +167,81 @@ export function InstrumentMenu({
     asking.value = to;
   };
   return (
-    <div class="ins-more" ref={root}>
-      <button
-        type="button"
-        class="btn ins-more-btn"
-        title="More"
-        aria-label="More"
-        aria-haspopup="menu"
-        aria-expanded={open.value}
-        disabled={busy || removing}
-        onClick={() => {
-          asking.value = false;
-          open.value = !open.value;
-        }}
-      >
-        {busy ? (
-          <span
-            class="home-spinner ins-spin"
-            role="img"
-            aria-label="Fetching"
-          />
+    <MenuButton
+      head
+      label="More"
+      disabled={busy || removing}
+      menuClass="ins-menu"
+      onOpen={() => {
+        asking.value = false;
+      }}
+      // Escape leaves the question for the menu before it closes the menu
+      back={() => {
+        if (!asking.value) return false;
+        asking.value = false;
+        return true;
+      }}
+      face={
+        busy ? (
+          <span class="spinner ins-spin" role="img" aria-label="Fetching" />
         ) : done ? (
-          <Icon name="check" size={16} class="ins-done" />
-        ) : (
-          <Icon name="more" size={16} />
-        )}
-      </button>
-      {open.value && (
-        <div class="menu ins-menu" role="menu">
-          {asking.value ? (
-            <div class="ins-ask">
-              <p class="ins-ask-title">Delete {symbol}?</p>
-              <p class="ins-ask-line">{deleteLine}</p>
-              <div class="ins-ask-foot">
-                <button
-                  type="button"
-                  class="btn btn-small"
-                  onClick={(ev) => swap(ev, false)}
-                >
-                  Keep
-                </button>
-                <button
-                  type="button"
-                  class="btn btn-small btn-danger"
-                  onClick={() => {
-                    open.value = false;
-                    asking.value = false;
-                    onDelete();
-                  }}
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          ) : (
-            <>
+          <Icon name="check" size={16} class="status-done" />
+        ) : undefined
+      }
+    >
+      {(close) =>
+        asking.value ? (
+          <div class="ins-ask">
+            <p class="ins-ask-title">Delete {symbol}?</p>
+            <p class="ins-ask-line small faint">{deleteLine}</p>
+            <div class="ins-ask-foot">
               <button
                 type="button"
-                class="menu-item"
-                role="menuitem"
+                class="btn btn-small"
+                onClick={(ev) => swap(ev, false)}
+              >
+                Keep
+              </button>
+              <button
+                type="button"
+                class="btn btn-small btn-danger"
                 onClick={() => {
-                  open.value = false;
-                  onRefetch();
+                  close();
+                  asking.value = false;
+                  onDelete();
                 }}
               >
-                <Icon name="redo" size={14} />
-                Refetch data
-              </button>
-              <button
-                type="button"
-                class="menu-item ins-menu-delete"
-                role="menuitem"
-                onClick={(ev) => swap(ev, true)}
-              >
-                <Icon name="trash" size={14} />
                 Delete
               </button>
-            </>
-          )}
-        </div>
-      )}
-    </div>
+            </div>
+          </div>
+        ) : (
+          <>
+            <button
+              type="button"
+              class="menu-item"
+              role="menuitem"
+              onClick={() => {
+                close();
+                onRefetch();
+              }}
+            >
+              <Icon name="redo" size={14} />
+              Refetch data
+            </button>
+            <button
+              type="button"
+              class="menu-item menu-item-danger"
+              role="menuitem"
+              onClick={(ev) => swap(ev, true)}
+            >
+              <Icon name="trash" size={14} />
+              Delete
+            </button>
+          </>
+        )
+      }
+    </MenuButton>
   );
 }
 
@@ -287,7 +263,8 @@ export function Instrument({ params }: { params: Params }) {
   const refused = useSignal<string | null>(null);
 
   const detail = markets.detailId.value === id ? markets.detail.value : null;
-  const symbol = symbolOf(id);
+  const kind = detail?.instrument.kind;
+  const symbol = tickerOf(id, kind);
   const options = detail === null ? [] : choices(detail.instrument);
 
   const run = async (c: Choice) => {
@@ -318,7 +295,11 @@ export function Instrument({ params }: { params: Params }) {
   return (
     <Page
       title={symbol}
-      meta={detail?.instrument.name ?? undefined}
+      meta={
+        detail?.instrument.name
+          ? nameOf(detail.instrument.name, kind, id)
+          : undefined
+      }
       failed={didNotLoad(
         detail !== null,
         markets.detailError.value,
@@ -354,26 +335,23 @@ export function Instrument({ params }: { params: Params }) {
         )
       }
       actions={
-        <>
-          <HeadSearch />
-          {detail !== null && (
-            <InstrumentMenu
-              symbol={symbol}
-              busy={fetching.value}
-              done={said.value?.text === "Updated"}
-              removing={removing.value}
-              onRefetch={() => void run(options[0]!)}
-              onDelete={() => void remove()}
-            />
-          )}
-        </>
+        detail !== null && (
+          <InstrumentMenu
+            symbol={symbol}
+            busy={fetching.value}
+            done={said.value?.text === "Updated"}
+            removing={removing.value}
+            onRefetch={() => void run(options[0]!)}
+            onDelete={() => void remove()}
+          />
+        )
       }
     >
       {detail !== null && (
         <>
           <Head detail={detail} now={Date.now()} />
           <Chart id={id} />
-          <Stats cards={stats(detail)} />
+          <SignalCards cards={stats(detail)} />
         </>
       )}
     </Page>

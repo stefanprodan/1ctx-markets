@@ -5,15 +5,17 @@ import type {
   Board,
   BoardItem,
   BoardSection,
-  Candidate,
   Earning,
   Gap,
   Listed,
   Saved,
+  Spark,
   View,
   WatchEntry,
 } from "../data/store.ts";
-import { symbolOf } from "./Instruments.model.ts";
+import { nameOf, tickerOf } from "../lib/names.ts";
+import { closes, figure, sessionSlots } from "./Chart.model.ts";
+import { change, price, priceParts, symbolOf } from "./Instruments.model.ts";
 
 // the server's limits, so an edit past one is never sent
 export const MAX_SECTIONS = 20;
@@ -139,9 +141,6 @@ export const isSort = (v: unknown): v is Sort =>
   v !== null &&
   SORT_KEYS.includes((v as Sort).key) &&
   ((v as Sort).dir === 1 || (v as Sort).dir === -1);
-
-export const nextSort = (s: Sort, key: SortKey): Sort =>
-  s.key === key ? { key, dir: s.dir === 1 ? -1 : 1 } : { key, dir: 1 };
 
 // a missing average sorts last either way
 export const bySort = (s: Sort) => (a: Trend, b: Trend) => {
@@ -344,10 +343,6 @@ export function rename(
   return layout.map((s, i) => (i === section ? { ...s, name: n } : s));
 }
 
-// the picker first, so one Escape never loses the results
-export const escapeFrom = (picking: string | null): "picker" | "results" =>
-  picking === null ? "results" : "picker";
-
 // the saved layout stays as it was until Save
 export const draftOf = (layout: readonly BoardSection[]): BoardSection[] =>
   copy(layout);
@@ -401,92 +396,115 @@ export function renameOf(
 export const waiting = (track: Board["track"] | null): boolean =>
   track?.some((t) => t.state === "pending") ?? false;
 
-// by instrument and section, escaped for XML, so a move keeps its own
-export const clipOf = (section: number, id: string): string =>
-  `dash-${section}-${id.replace(
-    /[^A-Za-z0-9]/g,
-    (c) => `_${c.codePointAt(0)!.toString(16)}_`,
-  )}`;
+type Dir = -1 | 0 | 1;
 
-// one letter matches too much upstream to be worth a source call
-export const UPSTREAM_MIN = 2;
-export const UPSTREAM_WAIT_MS = 250;
-export const SHOWN = 12;
+export type Card =
+  | {
+      type: "ready";
+      href: string;
+      name: string;
+      symbol: string;
+      // the figure, its currency apart (none for a yield in percent)
+      price: string;
+      currency: string | null;
+      // in its unit (a yield in points), then in percent
+      move: string;
+      percent: string;
+      dir: Dir;
+      state: string;
+    }
+  | { type: "pending"; value: string }
+  // a stored row keeps its link and price beside the failure
+  | {
+      type: "failed";
+      value: string;
+      text: string;
+      href?: string;
+      price?: string;
+    };
 
-export type Search = (
-  query: string,
-  upstream: boolean,
-  signal: AbortSignal,
-) => Promise<Candidate[]>;
+const points = (row: Listed) =>
+  row.unit === "percent" || row.unit === "percent_of_par";
 
-export type Timers = {
-  set: (fn: () => void, ms: number) => unknown;
-  clear: (timer: unknown) => void;
-};
+// the day's change in the price's own unit, signed as the percent is
+export function moveOf(row: Listed): { text: string; dir: Dir } {
+  if (row.change === null) return { text: "", dir: 0 };
+  const n = figure(Math.abs(row.change));
+  const dir: Dir =
+    Number(n.replaceAll(",", "")) === 0 ? 0 : row.change > 0 ? 1 : -1;
+  const unit = points(row) ? " pts" : row.currency ? ` ${row.currency}` : "";
+  return { text: `${dir > 0 ? "+" : dir < 0 ? "−" : ""}${n}${unit}`, dir };
+}
 
-const browserTimers: Timers = {
-  set: (fn, ms) => setTimeout(fn, ms),
-  clear: (t) => clearTimeout(t as ReturnType<typeof setTimeout>),
-};
+// a typo or an ambiguous value is not found; a source failure may pass
+const MISSING = new Set(["not_found", "candidates", "no_data"]);
 
-// stored matches cost no source call, so they never wait on upstream's
-export function searcher(
-  search: Search,
-  show: (found: Candidate[] | null) => void,
-  busy: (pending: boolean) => void,
-  timers: Timers = browserTimers,
-) {
-  let abort: AbortController | null = null;
-  let timer: unknown = null;
-  const stop = () => {
-    abort?.abort();
-    abort = null;
-    if (timer !== null) timers.clear(timer);
-    timer = null;
-  };
+const hrefOf = (id: string) => `/instruments/${encodeURIComponent(id)}`;
+
+export function cardOf(e: WatchEntry): Card {
+  const row = e.instrument;
+  if (e.state !== "tracked" && e.state !== "pending") {
+    return {
+      type: "failed",
+      value: e.value,
+      text: MISSING.has(e.state) ? "Not found" : "Not available",
+      ...(row !== null && e.id !== null
+        ? { href: hrefOf(e.id), price: price(row) }
+        : {}),
+    };
+  }
+  if (row === null || e.id === null) {
+    return { type: "pending", value: e.value };
+  }
+  const pct = change(row);
+  const move = moveOf(row);
+  const p = priceParts(row);
   return {
-    ask(raw: string): void {
-      stop();
-      const query = raw.trim();
-      if (query === "") {
-        busy(false);
-        show(null);
-        return;
-      }
-      const mine = new AbortController();
-      abort = mine;
-      let stored: Candidate[] | null = null;
-      let upstream: Candidate[] | null = null;
-      const draw = () => {
-        if (mine.signal.aborted) return;
-        const seen = new Set((stored ?? []).map((c) => c.id));
-        show(
-          [
-            ...(stored ?? []),
-            ...(upstream ?? []).filter((c) => !seen.has(c.id)),
-          ].slice(0, SHOWN),
-        );
-      };
-      const wide = query.length >= UPSTREAM_MIN;
-      busy(wide);
-      void search(query, false, mine.signal)
-        .catch(() => [])
-        .then((c) => {
-          stored = c;
-          draw();
-        });
-      if (!wide) return;
-      timer = timers.set(() => {
-        timer = null;
-        void search(query, true, mine.signal)
-          .catch(() => [])
-          .then((c) => {
-            upstream = c;
-            draw();
-            if (!mine.signal.aborted) busy(false);
-          });
-      }, UPSTREAM_WAIT_MS);
-    },
-    stop,
+    type: "ready",
+    href: hrefOf(e.id),
+    name: nameOf(row.name, row.kind, e.id),
+    symbol: tickerOf(e.id, row.kind),
+    price: p.value,
+    currency: p.currency,
+    move: move.text,
+    percent: pct.text,
+    dir: pct.text === "" ? move.dir : pct.dir,
+    state:
+      e.session === null ? "" : e.session.state === "open" ? "Open" : "Closed",
   };
+}
+
+// a day split at its previous close; a month from its first close
+const SLOT_S = 300;
+
+// a day across its whole session, so a morning fills only the morning
+export function sparkOf(
+  s: Spark | undefined,
+): { closes: number[]; base: "start" | number; slots?: number } | null {
+  if (s === undefined) return null;
+  if (s.interval === "5m") {
+    const c = s.points.map((p) => p.close);
+    if (c.length === 0) return null;
+    const base = s.previous_close ?? c[0]!;
+    const times = s.points.map((p) => Date.parse(p.at) / 1000);
+    const start = Date.parse(s.session?.start ?? "") / 1000;
+    // the slots count from the session's start, so a gap before the
+    // first close would shift the line: then it spans what it has
+    if (!(times[0]! - start < SLOT_S)) return { closes: c, base };
+    const rest = sessionSlots(times, s.session).length;
+    return rest === 0
+      ? { closes: c, base }
+      : { closes: c, base, slots: c.length + rest };
+  }
+  const c = closes(s.bars).map((x) => x.value);
+  return c.length === 0 ? null : { closes: c, base: "start" };
+}
+
+// a tile alone on the last row looks stranded: one fewer or more to a
+// row, down to one, keeps it company
+export function tileColumns(n: number, most: number): number {
+  for (const c of [most, most - 1, most + 1]) {
+    if (c >= 1 && (n <= c || n % c !== 1)) return c;
+  }
+  return most;
 }

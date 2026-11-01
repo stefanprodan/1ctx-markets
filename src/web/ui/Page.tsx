@@ -5,6 +5,7 @@ import type { ComponentChildren } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { markets } from "../data/store.ts";
 import { Icon } from "../lib/icons.tsx";
+import { type SearchAdds, SymbolSearch } from "./SymbolSearch.tsx";
 import "./page.css";
 
 export const REPO = "https://github.com/stefanprodan/1ctx-markets";
@@ -32,6 +33,7 @@ export function didNotLoad(
 export function Page({
   title,
   meta,
+  search,
   actions,
   error,
   stale,
@@ -43,6 +45,10 @@ export function Page({
   title: string;
   // a short line beside the title, such as when the page was answered
   meta?: ComponentChildren;
+  // the symbol search shows on every page: false leaves it out (a page
+  // mid-edit), Home's sections give its results an Add
+  search?: false | SearchAdds;
+  // after the search, in the head's one button style, the ⋯ menu last
   actions?: ComponentChildren;
   // a failure over the body, which stays as it was answered last
   error?: string | null;
@@ -73,7 +79,10 @@ export function Page({
       <div class="page-head">
         <h1 class="page-title">{title}</h1>
         {meta && <span class="page-meta">{meta}</span>}
-        {actions && <div class="page-actions">{actions}</div>}
+        <div class="page-actions">
+          {search !== false && <SymbolSearch adds={search} />}
+          {actions}
+        </div>
       </div>
       {notice && (
         <div class="notice-failed page-failed" role="alert">

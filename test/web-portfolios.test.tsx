@@ -20,49 +20,67 @@ import {
 import { store } from "../src/web/data/store.ts";
 import { accessWords } from "../src/web/views/Connect.model.ts";
 import {
-  amount,
-  brokersIn,
-  change,
-  costLine,
-  currencies,
-  currencyGain,
-  dryPowderFor,
-  dryPowders,
-  enteredBy,
-  findZones,
-  heldAt,
-  holdingMatches,
-  holdingSub,
-  importLine,
-  largestFirst,
-  listingWords,
-  partGain,
-  ranked,
-  rateLine,
-  readRemembered,
-  shareLabel,
-  shownIn,
-  splitOf,
-  today,
-  tradeLine,
-  tradeMatches,
-  tradeMoney,
-  tradeName,
-  tradeSub,
-  typed,
-  zoneWords,
-} from "../src/web/views/Portfolios.model.ts";
-import {
   AddForm,
   FoundList,
-  FundActions,
   FundPriceEdit,
   ImportPanel,
-  PortfoliosBody,
   PositionEdit,
   Purchases,
   Refusal,
   SettingsPanel,
+} from "../src/web/views/PortfolioForms.tsx";
+import {
+  activityOf,
+  amount,
+  barOf,
+  change,
+  columnsFor,
+  currencies,
+  dryPowderFor,
+  dryPowders,
+  enteredBy,
+  findZones,
+  foldFills,
+  groupShare,
+  groupsOf,
+  heldAt,
+  heroOf,
+  holdingMatches,
+  holdingName,
+  holdingTicker,
+  homeOf,
+  importLine,
+  listingWords,
+  missingWords,
+  money,
+  monthsOf,
+  orderOf,
+  pageOf,
+  priceLine,
+  ranked,
+  rateLine,
+  readRemembered,
+  rowActions,
+  shownGainPercent,
+  shownIn,
+  shownValue,
+  signedMoney,
+  sortRows,
+  sums,
+  today,
+  tradeMatches,
+  tradeMoney,
+  tradeName,
+  typed,
+  unitPrice,
+  zoneWords,
+} from "../src/web/views/Portfolios.model.ts";
+import {
+  Activity,
+  EditSheet,
+  PortfoliosBody,
+  rowMenu,
+  TradeSheet,
 } from "../src/web/views/Portfolios.tsx";
 
 const NOW = Date.parse("2026-10-28T12:00:00Z");
@@ -250,25 +268,51 @@ async function loaded(
 }
 
 describe("the Portfolios page", () => {
-  test("with nothing converted, a total per currency, never summed", async () => {
+  test("leads with the value band, then holdings and activity", async () => {
     const { s } = await loaded();
     const html = render(<PortfoliosBody store={s.portfolios} />);
-    expect(html).toContain("1,000.00 EUR");
-    expect(html).toContain("1,000.00 USD");
-    expect(html).not.toContain("2,000.00");
-    expect(html).toContain("Dry powder");
-    expect(html).toContain("Holdings");
-    expect(html).toContain("Exposure");
-    expect(html).toContain("Trades");
+    expect(html).toContain("All portfolios");
+    // nothing converted: the first currency's total, never a sum
+    expect(html).toContain("1,000");
+    expect(html).not.toContain("2,000");
+    expect(html).toContain(">Holdings<");
+    expect(html).toContain(">Activity<");
+    expect(html).toContain('aria-label="Add"');
+    expect(html).toContain('aria-label="More"');
     // the instrument's symbol, never its id
     expect(html).toContain(">AAA<");
     expect(html).not.toContain("XETRA:AAA");
+    // the portfolios are links, so a pick is a step Back returns from
+    expect(html).toContain('href="/portfolios/1"');
+    expect(html).toContain('aria-current="page"');
   });
 
-  test("reads the totals whole and the list at the broker picked", async () => {
-    const { s, asked } = await loaded();
+  test("a cash row opens its drawer from a button, a listed row its page", async () => {
+    const { s } = await loaded();
+    const html = render(<PortfoliosBody store={s.portfolios} />);
+    expect(html).toContain(
+      '<button type="button" class="table-open"><span class="table-hidden">Kept for buying</span>',
+    );
+    expect(html).toContain(
+      '<a class="table-open" href="/instruments/XETRA%3AAAA">',
+    );
+  });
+
+  test("a holding sold today shows the day's move in place of its value", async () => {
+    const { s } = await loaded({
+      ...HOLDINGS,
+      holdings: [
+        { ...HOLDINGS.holdings[0]!, sold_today: true, day_change: -12 },
+        HOLDINGS.holdings[1]!,
+      ],
+    });
+    const html = render(<PortfoliosBody store={s.portfolios} />);
+    expect(html).toContain("Sold today");
+    expect(html).toContain("−12.00 EUR");
+  });
+
+  test("a broker in an old link is ignored", async () => {
     const f = fake({
-      // the longer path first: the fake answers by prefix
       "GET /api/v1/portfolios/1/holdings": HOLDINGS,
       "GET /api/v1/portfolios": OVERVIEW,
       "GET /api/v1/trades": { trades: [] },
@@ -279,70 +323,39 @@ describe("the Portfolios page", () => {
       () => "/portfolios",
       () => {},
     );
-    await t.portfolios.pick({ portfolio: 1, broker: "North", currency: "USD" });
-    expect(asked).toContain("GET /api/v1/holdings");
-    // the totals and trades never narrow to the list's broker
+    await t.portfolios.open(viewOf("1", "?broker=North&currency=USD"));
     expect(f.asked).toContain("GET /api/v1/portfolios/1/holdings?currency=USD");
-    expect(f.asked).toContain(
-      "GET /api/v1/portfolios/1/holdings?currency=USD&broker=North",
-    );
-    expect(f.asked).toContain("GET /api/v1/trades?removed=true&portfolio=1");
-    expect(t.portfolios.atBroker.value).not.toBeNull();
-    void s;
+    expect(f.asked.some((a) => a.includes("broker="))).toBe(false);
+    expect(t.portfolios.portfolio.value).toBe(1);
   });
 
-  // the list's broker read fails as a broker renamed or deleted elsewhere
-  const brokerGone = (): Fetch => async (path) => {
-    if (path.includes("broker=")) {
-      return Response.json(
-        { code: "not_found", detail: "no such broker" },
-        {
-          status: 404,
-          headers: { "content-type": "application/problem+json" },
-        },
-      );
-    }
-    if (path.startsWith("/api/v1/trades")) return Response.json({ trades: [] });
-    if (path.includes("/holdings")) return Response.json(HOLDINGS);
-    return Response.json(OVERVIEW);
-  };
-
-  test("a broker gone elsewhere clears the broker, never the portfolio", async () => {
+  test("a portfolio gone elsewhere falls back to all", async () => {
     const t = store(
-      brokerGone(),
+      async (path) => {
+        if (path.startsWith("/api/v1/portfolios/9/")) {
+          return Response.json(
+            { code: "not_found", detail: "no such portfolio" },
+            {
+              status: 404,
+              headers: { "content-type": "application/problem+json" },
+            },
+          );
+        }
+        if (path.startsWith("/api/v1/trades"))
+          return Response.json({ trades: [] });
+        if (path.includes("/holdings")) return Response.json(HOLDINGS);
+        return Response.json(OVERVIEW);
+      },
       () => NOW,
       () => "/portfolios",
       () => {},
     );
-    await t.portfolios.pick({ portfolio: 1, broker: "North" });
-    expect(t.portfolios.portfolio.value).toBe(1);
-    expect(t.portfolios.broker.value).toBeNull();
-    expect(t.portfolios.atBroker.value).toBeNull();
+    await t.portfolios.pick({ portfolio: 9 });
+    expect(t.portfolios.portfolio.value).toBeNull();
     expect(t.portfolios.error.value).toBeNull();
   });
 
-  test("a broker no longer in the list is cleared, so no menu holds it", async () => {
-    const f = fake({
-      // the longer path first: the fake answers by prefix
-      "GET /api/v1/portfolios/1/holdings": HOLDINGS,
-      "GET /api/v1/portfolios": OVERVIEW,
-      "GET /api/v1/trades": { trades: [] },
-    });
-    const t = store(
-      f.fetch,
-      () => NOW,
-      () => "/portfolios",
-      () => {},
-    );
-    await t.portfolios.pick({ portfolio: 1, broker: "Nowhere" });
-    expect(t.portfolios.broker.value).toBeNull();
-    expect(t.portfolios.atBroker.value).toBeNull();
-    await t.portfolios.pick({ broker: "North" });
-    expect(t.portfolios.broker.value).toBe("North");
-    expect(t.portfolios.atBroker.value).not.toBeNull();
-  });
-
-  test("with a converted total, it is the one total shown, with its rate", async () => {
+  test("with a converted total, it is the one total shown", async () => {
     const { s } = await loaded({
       ...HOLDINGS,
       currency: "USD",
@@ -353,12 +366,11 @@ describe("the Portfolios page", () => {
       ],
     });
     const html = render(<PortfoliosBody store={s.portfolios} />);
-    expect(html).toContain('<span class="label">Total</span>');
-    expect(html).toContain("2,250.00 USD");
-    expect(html).toContain("1 EUR = 1.25 USD");
-    expect(html).not.toContain('aria-label="Total in EUR"');
-    expect(currencyGain(HOLDINGS.totals, "EUR").text).toBe("+25.00%");
-    expect(currencyGain(HOLDINGS.totals, "JPY").text).toBe("");
+    expect(html).toContain("2,250");
+    expect(html).toContain('aria-label="Show totals in"');
+    expect(
+      rateLine({ from: "EUR", to: "USD", rate: 1.25, at: "2026-10-28" }, NOW),
+    ).toBe("1 EUR = 1.25 USD · 28 Oct");
   });
 
   test("with no portfolio yet it asks for one, the display currency kept", async () => {
@@ -448,21 +460,25 @@ describe("the Portfolios page", () => {
     expect(html).not.toContain('aria-label="Add"');
   });
 
-  test("every pick is the app's own menu, never a native select", async () => {
-    const { s } = await loaded({
-      ...HOLDINGS,
-      exposure: [
-        HOLDINGS.exposure[0]!,
-        { ...HOLDINGS.exposure[0]!, currency: "USD" },
-      ],
-    });
-    const page = render(<PortfoliosBody store={s.portfolios} />);
-    expect(page).toContain('aria-label="Currency: EUR"');
+  test("no native select on the page or in any of its drawers", async () => {
+    const { s } = await loaded();
+    const st = s.portfolios;
+    const cash = HOLDINGS.holdings[1]!;
     for (const html of [
-      page,
-      render(<AddForm store={s.portfolios} onDone={() => {}} />),
-      render(<ImportPanel store={s.portfolios} onDone={() => {}} />),
-      render(<SettingsPanel store={s.portfolios} onDone={() => {}} />),
+      render(<PortfoliosBody store={st} />),
+      render(<AddForm store={st} onDone={() => {}} />),
+      render(<ImportPanel store={st} onDone={() => {}} />),
+      render(<SettingsPanel store={st} onDone={() => {}} />),
+      render(<EditSheet store={st} h={cash} what="edit" onDone={() => {}} />),
+      render(
+        <TradeSheet
+          store={st}
+          fills={[trade()]}
+          all
+          onTrade={() => {}}
+          onDone={() => {}}
+        />,
+      ),
     ]) {
       expect(html).not.toContain("<select");
     }
@@ -509,8 +525,6 @@ describe("plain words on the page", () => {
   test("a row's stale reason and a total's missing listing read plainly", async () => {
     const odd = {
       ...HOLDINGS,
-      currency: "USD",
-      converted: { ...total("USD"), missing: ["US:NOQ", "no EUR to JPY rate"] },
       holdings: [
         { ...HOLDINGS.holdings[0]!, stale: ["sells more than bought"] },
         HOLDINGS.holdings[1]!,
@@ -519,9 +533,8 @@ describe("plain words on the page", () => {
     const { s } = await loaded(odd);
     const html = render(<PortfoliosBody store={s.portfolios} />);
     expect(html).toContain("Sold more than bought");
-    expect(html).toContain("NOQ");
-    expect(html).toContain("No EUR to JPY rate");
-    expect(html).not.toContain("US:NOQ");
+    expect(missingWords("US:NOQ")).toBe("NOQ");
+    expect(missingWords("no EUR to JPY rate")).toBe("No EUR to JPY rate");
   });
 });
 
@@ -538,26 +551,19 @@ describe("the page's words", () => {
     expect(typed("1,234.5")).toBe(1234.5);
     expect(typed("")).toBeNull();
     expect(Number.isNaN(typed("abc")!)).toBe(true);
-    expect(holdingSub(HOLDINGS.holdings[1]!, NOW)).toBe("Dry powder · 1 Oct");
+    expect(holdingName(HOLDINGS.holdings[1]!, NOW)).toBe("Dry powder · 1 Oct");
     expect(
-      holdingSub({ ...HOLDINGS.holdings[1]!, dry_powder: false }, NOW),
+      holdingName({ ...HOLDINGS.holdings[1]!, dry_powder: false }, NOW),
     ).toBe("Reserve · 1 Oct");
-    expect(tradeLine(trade())).toBe("4 × 80.00 EUR");
-    expect(tradeSub(trade(), NOW)).toBe("4 × 80.00 EUR · 2 Mar · North");
+    expect(holdingTicker(HOLDINGS.holdings[1]!)).toBe("Kept for buying");
+    expect(money(119743.4, "EUR")).toBe("119,743 EUR");
+    expect(money(12.5, "EUR")).toBe("12.50 EUR");
+    expect(signedMoney(-2500.6, null).text).toBe("−2,501");
     expect(enteredBy("web")).toBe("Web");
-    expect(splitOf(total("EUR")).map((p) => p.label)).toEqual([
-      "Invested",
-      "Dry powder",
-    ]);
-    expect(
-      splitOf(total("EUR", { cash: 100, cash_weight: 10 })).map((p) => p.label),
-    ).toEqual(["Invested", "Reserve", "Dry powder"]);
     expect(currencies(HOLDINGS)).toEqual(["EUR", "USD"]);
     expect(rateLine({ from: "EUR", to: "JPY", rate: null, at: null })).toBe(
       "No EUR to JPY rate",
     );
-    expect(shareLabel("market", null)).toBe("Not listed");
-    expect(shareLabel("type", "CASH")).toBe("Cash");
     expect(
       importLine({
         side: "buy",
@@ -659,25 +665,15 @@ describe("the page's words", () => {
   });
 
   test("a bond's price reads as a percent of face", () => {
+    expect(unitPrice(100, "RON", "percent_of_par")).toBe("100.00%");
+    expect(unitPrice(80, "EUR", null)).toBe("80.00 EUR");
     expect(
-      tradeLine(
-        trade({
-          quantity: 1000,
-          price: 100,
-          fees: 0,
-          currency: "RON",
-          unit: "percent_of_par",
-        }),
-      ),
-    ).toBe("1,000 × 100.00%");
-    expect(
-      costLine({
+      priceLine({
         ...HOLDINGS.holdings[0]!,
-        quantity: 1000,
-        average_cost: 98.25,
+        price: 98.25,
         unit: "percent_of_par",
       }),
-    ).toBe("1,000 × 98.25%");
+    ).toBe("98.25% of face");
   });
 
   test("search results say where each listing trades", () => {
@@ -778,7 +774,14 @@ describe("the add panel", () => {
         currency,
         converted:
           value === null
-            ? undefined
+            ? {
+                currency: "EUR",
+                rate: null,
+                rate_at: null,
+                value: null,
+                cost: null,
+                pl: null,
+              }
             : {
                 currency: "EUR",
                 rate: 1,
@@ -795,11 +798,19 @@ describe("the add panel", () => {
       row("D", "USD", 90),
       row("E", "RON", 50),
     ];
-    expect(largestFirst(rows).map((r) => r.id)).toEqual([
+    expect(sortRows(rows, "value").map((r) => r.id)).toEqual([
       "D",
       "A",
       "E",
       "B",
+      "C",
+    ]);
+    // turned round, a row with nothing to rank by still goes last
+    expect(sortRows(rows, "value", "asc").map((r) => r.id)).toEqual([
+      "B",
+      "A",
+      "E",
+      "D",
       "C",
     ]);
   });
@@ -865,7 +876,7 @@ describe("the add panel", () => {
         start={{ symbol: "XETRA:AAA", side: "sell", portfolio: "Shares" }}
       />,
     );
-    expect(html).toContain('<span class="ins-symbol">AAA</span>');
+    expect(html).toContain('<span class="sym-ticker">AAA</span>');
     expect(html).toContain('aria-label="Change symbol"');
     expect(html).toMatch(/aria-pressed="true"[^>]*>Sell/);
     expect(html).toContain("Add sell");
@@ -1104,16 +1115,26 @@ describe("a fund the owner prices", () => {
     return { s, bodies };
   };
 
-  test("its row offers Buy, Sell and Set price", async () => {
+  test("its row offers Buy, Sell and Set price, and opens its price", async () => {
     const { s } = await withFund();
-    const html = render(
-      <FundActions h={fundRow} store={s.portfolios} onTrade={() => {}} />,
+    expect(
+      rowMenu(
+        fundRow,
+        () => {},
+        () => {},
+      ).map((i) => i.label),
+    ).toEqual(["Buy", "Sell", "Set price"]);
+    expect(holdingName(fundRow, NOW)).toBe(`Fund · ${ISIN}`);
+    // ICU builds name September "Sep" or "Sept"
+    expect(priceLine(fundRow, NOW)).toMatch(/^6\.00 EUR · 30 Sept?$/);
+    expect(pageOf(fundRow)).toBeNull();
+    expect(homeOf(fundRow)).toBe("price");
+    // no instrument page: its row is a button that opens the drawer
+    const html = render(<PortfoliosBody store={s.portfolios} />);
+    expect(html).not.toContain(`/instruments/fund`);
+    expect(html).toContain(
+      '<button type="button" class="table-open"><span class="table-hidden">Made Up World Fund</span>',
     );
-    expect(html).toContain(">Buy<");
-    expect(html).toContain(">Sell<");
-    expect(html).toContain("Set price");
-    expect(holdingSub(fundRow, NOW)).toContain("Fund");
-    expect(costLine(fundRow)).toMatch(/^10 × /);
   });
 
   test("its price form asks the day the price is for", async () => {
@@ -1223,35 +1244,7 @@ describe("the view in the address", () => {
   });
 });
 
-describe("a holding's share at one broker", () => {
-  const part = {
-    portfolio: "Shares",
-    broker: "North",
-    quantity: 10,
-    average_cost: 50,
-    cost: 500,
-    value: 750,
-  };
-  test("gains its value less its cost", () => {
-    const g = partGain(part);
-    expect(g.pl.text).toBe("+250.00");
-    expect(g.pct.text).toBe("+50.00%");
-    expect(g.pl.dir).toBe(1);
-  });
-  test("says nothing when the value or cost is missing", () => {
-    expect(partGain({ ...part, value: null }).pl.text).toBe("");
-    expect(partGain({ ...part, cost: 0 }).pct.text).toBe("");
-  });
-});
-
-describe("a list's search and broker", () => {
-  test("offer only the brokers in the list, once each", () => {
-    expect(brokersIn(["South", null, "North", "South"])).toEqual([
-      "North",
-      "South",
-    ]);
-  });
-
+describe("a list's search", () => {
   test("match every word typed against some field", () => {
     const t = trade({ symbol: "US:MADE", name: "Made Up Corp", note: null });
     expect(tradeMatches(t, "")).toBe(true);
@@ -1264,5 +1257,342 @@ describe("a list's search and broker", () => {
     const h = HOLDINGS.holdings[0]!;
     expect(holdingMatches(h, h.name!.split(" ")[0]!)).toBe(true);
     expect(holdingMatches(h, "nothing-like-it")).toBe(false);
+    // the holdings search covers the brokers it is held at
+    expect(holdingMatches(h, "aaa south")).toBe(true);
+    expect(holdingMatches(h, "aaa west")).toBe(false);
+  });
+});
+
+describe("the page's model", () => {
+  const row = (more: Partial<Holding>): Holding => ({
+    ...HOLDINGS.holdings[0]!,
+    ...more,
+  });
+  const cash = HOLDINGS.holdings[1]!;
+
+  test("groups by portfolio on All and by kind in one, largest first, with totals", () => {
+    const rows = [
+      row({ id: "US:AAA", type: "EQUITY", value: 100 }),
+      row({
+        id: "US:BBB",
+        type: "ETF",
+        value: 300,
+        parts: [{ ...HOLDINGS.holdings[0]!.parts[0]!, portfolio: "Coins" }],
+      }),
+      { ...cash, value: 50 },
+    ];
+    expect(groupsOf(rows, false).map((g) => [g.key, g.value])).toEqual([
+      ["ETFs", 300],
+      ["Stocks", 100],
+      ["Cash", 50],
+    ]);
+    expect(groupsOf(rows, true).map((g) => [g.key, g.rows.length])).toEqual([
+      ["Coins", 1],
+      ["Shares", 1],
+      ["Other", 1],
+    ]);
+    expect(
+      groupShare({ ...HOLDINGS, converted: null, totals: [total("EUR")] }, 250),
+    ).toBe("25.0%");
+  });
+
+  test("drops the columns nothing in view fills", () => {
+    expect(columnsFor(HOLDINGS.holdings)).toEqual({
+      spark: true,
+      price: true,
+      priceHead: "Change",
+      gain: true,
+    });
+    expect(columnsFor([cash])).toEqual({
+      spark: false,
+      price: false,
+      priceHead: "Price",
+      gain: false,
+    });
+    const fund = row({ kind: "fund", priced: "hand", pl: null });
+    expect(columnsFor([fund, cash]).priceHead).toBe("Price");
+    expect(columnsFor([fund, cash]).price).toBe(true);
+  });
+
+  test("today shows only when something moves within a day, all time only with a gain", () => {
+    const h = heroOf(HOLDINGS)!;
+    expect(h.today).toBe(true);
+    expect(h.allTime).toBe(true);
+    expect(h.dayPercent).toBeCloseTo((5 / 995) * 100);
+    const still = heroOf({
+      ...HOLDINGS,
+      totals: [total("EUR", { cost: 0, pl: null })],
+      holdings: [cash],
+    })!;
+    expect(still.today).toBe(false);
+    expect(still.allTime).toBe(false);
+    expect(heroOf({ ...HOLDINGS, totals: [] })).toBeNull();
+  });
+
+  test("the bar splits invested from cash, or dry powder from reserve, only with both", () => {
+    expect(barOf(total("EUR"))!.map((x) => [x.label, x.pct])).toEqual([
+      ["Invested", 70],
+      ["Cash", 30],
+    ]);
+    expect(barOf(total("EUR", { dry_powder: 0 }))).toBeNull();
+    expect(
+      barOf(total("EUR", { invested: 0, dry_powder: 300, cash: 100 }))!.map(
+        (x) => x.label,
+      ),
+    ).toEqual(["Dry powder", "Reserve"]);
+    expect(barOf(total("EUR", { invested: 0, cash: 0 }))).toBeNull();
+  });
+
+  test("fills of one order fold into one row; months read newest first", () => {
+    const fills = [
+      trade({ id: 1, quantity: 1, price: 10, fees: 0 }),
+      trade({ id: 2, quantity: 3, price: 14, fees: 0 }),
+      trade({ id: 3, broker: "South" }),
+      trade({ id: 4, side: "sell", date: "2026-04-01" }),
+      trade({ id: 5, price: 0, fees: 0 }),
+    ];
+    const orders = foldFills(fills);
+    expect(orders.map((o) => o.map((t) => t.id))).toEqual([
+      [4],
+      [5],
+      [3],
+      [2, 1],
+    ]);
+    expect(orderOf(orders[3]!)).toEqual({
+      quantity: 4,
+      amount: 52,
+      fees: 0,
+      price: 13,
+    });
+    const months = monthsOf(fills);
+    expect(months.map((m) => [m.label, m.trail])).toEqual([
+      ["April 2026", "1 sold"],
+      ["March 2026", "3 bought"],
+    ]);
+    expect(tradeName(trade({ symbol: "CRYPTO:BTC-USD" }))).toBe("BTC");
+  });
+
+  test("fills in two portfolios stay two orders, so a removal hits its own", () => {
+    const orders = foldFills([
+      trade({ id: 1 }),
+      trade({ id: 2, portfolio: "Coins" }),
+    ]);
+    expect(orders.map((o) => o.map((t) => t.id))).toEqual([[2], [1]]);
+  });
+
+  test("a row with no rate shows no display value and counts in no sum", () => {
+    const conv = (value: number | null, rate: number | null) => ({
+      currency: "USD",
+      rate,
+      rate_at: null,
+      value,
+      cost: null,
+      pl: null,
+      pl_percent: null,
+      weight: null,
+    });
+    const rated = row({
+      value: 100,
+      day_change: 2,
+      converted: conv(125, 1.25),
+    });
+    const lost = row({
+      value: 700,
+      day_change: 5,
+      converted: conv(null, null),
+    });
+    expect(shownValue(lost)).toBeNull();
+    expect(shownValue(row({ value: 7 }))).toBe(7);
+    expect(sums([rated, lost])).toEqual({
+      value: 125,
+      day: 2.5,
+      dayKnown: true,
+    });
+    expect(groupsOf([rated, lost], true)[0]!.value).toBe(125);
+  });
+
+  test("a gain's percent is on its money's base, the rate's move in", () => {
+    const conv = {
+      currency: "EUR",
+      rate: 0.8,
+      rate_at: null,
+      value: 400,
+      cost: 440,
+      pl: -40,
+      pl_percent: -9.09,
+      weight: 10,
+    };
+    const usd = row({
+      currency: "USD",
+      pl: 50,
+      pl_percent: 10,
+      converted: conv,
+    });
+    expect(shownGainPercent(usd)).toBe(-9.09);
+    expect(shownGainPercent(row({ pl_percent: 10 }))).toBe(10);
+    expect(
+      shownGainPercent(
+        row({ converted: { ...conv, rate: null, pl: null, pl_percent: null } }),
+      ),
+    ).toBeNull();
+    const up = row({ id: "B", pl_percent: 5 });
+    expect(sortRows([usd, up], "gain").map((r) => r.id)).toEqual([
+      "B",
+      "XETRA:AAA",
+    ]);
+  });
+
+  test("with no display currency, two currencies are never summed", async () => {
+    const two = {
+      ...HOLDINGS,
+      totals: [total("EUR", { value: 300 }), total("USD", { value: 900 })],
+      holdings: [
+        row({ currency: "EUR", value: 300 }),
+        row({ id: "US:BBB", currency: "USD", value: 900, type: "EQUITY" }),
+      ],
+    };
+    const hero = heroOf(two)!;
+    expect(hero.total.currency).toBe("USD");
+    expect(hero.others.map((t) => t.currency)).toEqual(["EUR"]);
+    expect(groupShare(two, 1200)).toBe("");
+    const { s } = await loaded(two);
+    const html = render(<PortfoliosBody store={s.portfolios} />);
+    expect(html).toContain("300.00 EUR");
+    expect(html).not.toContain("1,200");
+    expect(html).not.toContain("300.0%");
+    // one large figure: the others are hero lines
+    expect(html.match(/class="hero-value/g)).toHaveLength(1);
+    expect(html).toContain('class="hero-line"');
+  });
+
+  test("a holding sold today says so under its name", () => {
+    expect(holdingName(row({ sold_today: true }))).toBe(
+      "Alpha Made Up · Sold today",
+    );
+  });
+
+  test("the activity counts orders, not fills", () => {
+    const list = [
+      trade({ id: 1 }),
+      trade({ id: 2 }),
+      trade({ id: 3, removed_at: "2026-03-03T10:00:00Z" }),
+      trade({ id: 4, removed_at: "2026-03-03T10:00:00Z" }),
+    ];
+    expect(activityOf(list, false, "")).toMatchObject({ count: 1, removed: 1 });
+  });
+
+  test("the activity shows live or removed trades, searched", () => {
+    const list = [
+      trade({ id: 1 }),
+      trade({ id: 2, removed_at: "2026-03-03T10:00:00Z" }),
+    ];
+    expect(activityOf(list, false, "")).toMatchObject({ count: 1, removed: 1 });
+    expect(activityOf(list, true, "")).toMatchObject({ count: 1, kept: 1 });
+    expect(activityOf(list, false, "nothing")).toMatchObject({
+      count: 0,
+      kept: 1,
+    });
+  });
+
+  test("a row with no instrument page opens what edits it", () => {
+    expect(pageOf(HOLDINGS.holdings[0]!)).toBe("/instruments/XETRA%3AAAA");
+    expect(homeOf(cash)).toBe("edit");
+    expect(homeOf(row({ kind: "bond", id: null, position: null }))).toBe(
+      "purchases",
+    );
+  });
+
+  test("the row menu's items per kind", () => {
+    expect(rowActions(HOLDINGS.holdings[0]!)).toEqual(["buy", "sell", "page"]);
+    expect(rowActions(row({ sold_today: true }))).toEqual(["buy", "page"]);
+    expect(rowActions(cash)).toEqual(["edit"]);
+    expect(
+      rowActions(
+        row({ kind: "bond", id: null, position: null, priced: "face" }),
+      ),
+    ).toEqual(["purchases"]);
+    expect(
+      rowActions(row({ kind: "bond", id: null, position: 7, priced: "face" })),
+    ).toEqual(["edit"]);
+    expect(
+      rowMenu(
+        HOLDINGS.holdings[0]!,
+        () => {},
+        () => {},
+      ).map((i) => [i.label, i.href]),
+    ).toEqual([
+      ["Buy", undefined],
+      ["Sell", undefined],
+      ["Instrument page", "/instruments/XETRA%3AAAA"],
+    ]);
+  });
+});
+
+describe("removed trades", () => {
+  const removed = trade({ id: 2, removed_at: "2026-03-03T10:00:00Z" });
+
+  test("a faint line at the list's end opens them under their own title", async () => {
+    const page = render(
+      <Activity trades={[trade(), removed]} onOpen={() => {}} />,
+    );
+    expect(page).toContain("Removed trades · 1");
+    const view = render(
+      <Activity trades={[trade(), removed]} onOpen={() => {}} removed />,
+    );
+    expect(view).toContain(">Removed trades<");
+    expect(view).toContain("← All activity");
+  });
+
+  test("a removed trade's drawer offers Restore", async () => {
+    const { s } = await loaded();
+    const html = render(
+      <TradeSheet
+        store={s.portfolios}
+        fills={[removed]}
+        all={false}
+        onTrade={() => {}}
+        onDone={() => {}}
+      />,
+    );
+    expect(html).toContain(">Restore<");
+    expect(html).toContain("Removed from the holdings.");
+    expect(html).toContain(">Removed<");
+    expect(html).toContain("3 Mar 2026");
+    expect(html).not.toContain(">Remove<");
+  });
+
+  test("a live trade's drawer offers Remove, Buy and Sell, its fills summed", async () => {
+    const { s } = await loaded();
+    const html = render(
+      <TradeSheet
+        store={s.portfolios}
+        fills={[trade({ id: 1 }), trade({ id: 3, quantity: 2 })]}
+        all
+        onTrade={() => {}}
+        onDone={() => {}}
+      />,
+    );
+    expect(html).toContain("Remove");
+    expect(html).toContain(">Buy<");
+    expect(html).toContain(">Sell<");
+    expect(html).toContain("2 fills");
+    expect(html).toContain("Average price");
+    expect(html).toContain(">Shares<");
+  });
+
+  test("a fund's trade offers Buy and Sell too", async () => {
+    const { s } = await loaded();
+    const html = render(
+      <TradeSheet
+        store={s.portfolios}
+        fills={[trade({ symbol: "fund:ZZFUND000011", name: "Made Up Fund" })]}
+        all={false}
+        onTrade={() => {}}
+        onDone={() => {}}
+      />,
+    );
+    expect(html).toContain(">Buy<");
+    expect(html).toContain(">Sell<");
+    expect(html).toContain("Made Up Fund");
   });
 });

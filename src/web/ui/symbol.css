@@ -1,0 +1,39 @@
+@layer tokens, base, owners;
+
+@layer owners {
+  .sym {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .sym-compact {
+    flex-direction: row;
+    align-items: baseline;
+    gap: var(--space-2);
+  }
+  .sym-ticker,
+  .sym-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .sym-ticker {
+    font-weight: 500;
+    color: var(--fg);
+  }
+  .sym-compact .sym-ticker {
+    flex-shrink: 0;
+  }
+  .sym-link {
+    text-decoration: none;
+  }
+  .sym-link:hover {
+    color: var(--fg);
+    text-decoration: underline;
+  }
+  .sym-name {
+    font-size: var(--text-small);
+    color: var(--faint);
+  }
+}

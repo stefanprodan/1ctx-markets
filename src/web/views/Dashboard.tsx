@@ -1,43 +1,52 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Fragment } from "preact";
-import { useEffect, useMemo, useRef, useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import {
   type Board,
   type BoardItem,
   type BoardSection,
-  type Candidate,
   type Earning,
   type Listed,
   markets,
-  type Spark,
+  type Spark as SparkData,
+  type WatchEntry,
 } from "../data/store.ts";
 import { Icon } from "../lib/icons.tsx";
+import { nameOf, tickerOf } from "../lib/names.ts";
 import { useRefresh } from "../lib/refresh.ts";
+import { Card, SectionHead } from "../ui/Card.tsx";
+import { Change, Num } from "../ui/Figures.tsx";
+import { MenuButton, type MenuItem } from "../ui/Menu.tsx";
+import { Notice } from "../ui/Notice.tsx";
 import { didNotLoad, Page } from "../ui/Page.tsx";
+import { Segmented } from "../ui/Segmented.tsx";
+import { Spark } from "../ui/Spark.tsx";
+import { SymbolName } from "../ui/Symbol.tsx";
+import { seedSearch } from "../ui/SymbolSearch.tsx";
+import { type Column, Table } from "../ui/Table.tsx";
+import { Tabs } from "../ui/Tabs.tsx";
 import {
   addRefusal,
   addSection,
   addTo,
   afterSave,
   bySort,
-  clipOf,
+  cardOf,
   crossedToday,
   DEFAULT_SORT,
   dropSection,
+  type EarningRow,
   type Editing,
   earningRows,
   editOf,
   entryOf,
-  escapeFrom,
   gapText,
   idsOf,
   isSort,
   MAX_NAME,
   moversOf,
   moveTo,
-  nextSort,
   priceText,
   removeFrom,
   renameOf,
@@ -45,27 +54,22 @@ import {
   type Sort,
   type SortKey,
   saveOf,
-  searcher,
   shortName,
+  sparkOf,
   swap,
   type Trend,
+  tileColumns,
   trendsOf,
   waiting,
   withView,
 } from "./Dashboard.model.ts";
-import { cardOf, sparkOf } from "./Home.model.ts";
-import { Card, Sparkline } from "./Home.tsx";
-import { kindOf, symbolOf } from "./Instruments.model.ts";
-import "./home.css";
+import { symbolOf } from "./Instruments.model.ts";
 import "./dashboard.css";
 
 type Items = ReadonlyMap<string, BoardItem>;
 type Save = (next: BoardSection[] | null) => Promise<void>;
 
 const hrefOf = (id: string) => `/instruments/${encodeURIComponent(id)}`;
-
-const tone = (dir: -1 | 0 | 1) =>
-  dir > 0 ? " home-up" : dir < 0 ? " home-down" : "";
 
 // the viewer's own day, as the earnings were asked
 function today(): string {
@@ -88,54 +92,84 @@ function remember(key: string, value: string) {
   } catch {}
 }
 
+const pctText = (p: number) => `${p > 0 ? "+" : "−"}${Math.abs(p).toFixed(2)}%`;
+
+function MoverList({
+  label,
+  rows,
+  top,
+}: {
+  label: string;
+  rows: readonly Listed[];
+  top: number;
+}) {
+  const columns: Column<Listed>[] = [
+    {
+      key: "name",
+      width: "minmax(0, 1fr)",
+      cell: (r) => (
+        <SymbolName
+          compact
+          ticker={tickerOf(r.id, r.kind)}
+          name={r.kind === "BOND" ? null : nameOf(shortName(r), r.kind, r.id)}
+        />
+      ),
+    },
+    {
+      key: "bar",
+      width: { base: "72px", phone: "48px" },
+      cell: (r) => (
+        <span
+          class={`dash-bar ${r.change_percent! > 0 ? "up" : "down"}`}
+          style={{ width: `${(Math.abs(r.change_percent!) / top) * 100}%` }}
+          aria-hidden="true"
+        />
+      ),
+    },
+    {
+      key: "pct",
+      width: "72px",
+      align: "end",
+      cell: (r) => (
+        <Change
+          s={{
+            text: pctText(r.change_percent!),
+            dir: r.change_percent! > 0 ? 1 : -1,
+          }}
+        />
+      ),
+    },
+  ];
+  return (
+    <div class="dash-movers-col">
+      <h3 class="label dash-movers-label">{label}</h3>
+      <Table
+        label={label}
+        columns={columns}
+        rows={rows}
+        rowKey={(r) => r.id}
+        open={(r) => ({ href: hrefOf(r.id) })}
+        rowLabel={(r) => tickerOf(r.id, r.kind)}
+        head={false}
+        dense
+        empty="None"
+      />
+    </div>
+  );
+}
+
 function Movers({ ids, items }: { ids: readonly string[]; items: Items }) {
   const { up, down, top } = moversOf(ids, items);
-  const line = (r: Listed) => (
-    <a key={r.id} class="dash-mover" href={hrefOf(r.id)}>
-      <span class="dash-mover-name cut">
-        {r.kind !== "BOND" && (
-          <span class="dash-mover-label">{shortName(r)}</span>
-        )}
-        <span
-          class={`dash-mover-symbol${r.kind === "BOND" ? " dash-mover-only" : ""}`}
-        >
-          {symbolOf(r.id)}
-        </span>
-      </span>
-      <span class="dash-mover-bar" aria-hidden="true">
-        <span
-          class={r.change_percent! > 0 ? "dash-bar-up" : "dash-bar-down"}
-          style={{ width: `${(Math.abs(r.change_percent!) / top) * 100}%` }}
-        />
-      </span>
-      <span
-        class={`dash-mover-pct${r.change_percent! > 0 ? " home-up" : " home-down"}`}
-      >
-        {r.change_percent! > 0 ? "+" : "−"}
-        {Math.abs(r.change_percent!).toFixed(2)}%
-      </span>
-    </a>
-  );
   return (
     <div class="dash-movers">
-      <div class="dash-movers-col">
-        <span class="label">Up</span>
-        {up.length === 0 ? <span class="dash-none">None</span> : up.map(line)}
-      </div>
-      <div class="dash-movers-col">
-        <span class="label">Down</span>
-        {down.length === 0 ? (
-          <span class="dash-none">None</span>
-        ) : (
-          down.map(line)
-        )}
-      </div>
+      <MoverList label="Up" rows={up} top={top} />
+      <MoverList label="Down" rows={down} top={top} />
     </div>
   );
 }
 
 const SORT_KEY = "markets-dashboard-trend-sort";
-const COLUMNS: readonly (readonly [SortKey, string])[] = [
+const AVERAGES: readonly (readonly [SortKey, string])[] = [
   ["sma50", "50SMA"],
   ["sma200", "200SMA"],
   ["wma200", "200WMA"],
@@ -150,11 +184,11 @@ function loadSort(): Sort {
 }
 
 function Gap({ side, name }: { side: Side | null; name: string }) {
-  if (side === null) return <span class="dash-cell-num dash-faint">—</span>;
+  if (side === null) return <span class="num faint">—</span>;
   const up = side.gap >= 0;
   return (
     <span
-      class={`dash-cell-num dash-mono${up ? " home-up" : " home-down"}`}
+      class={`num ${up ? "up" : "down"}`}
       title={`${Math.abs(side.gap).toFixed(2)}% ${up ? "above" : "below"} its ${name}`}
     >
       {gapText(side.gap)}
@@ -167,87 +201,96 @@ const SHOWN = 8;
 function Trends({ trends }: { trends: Trend[] }) {
   const [all, setAll] = useState(false);
   const [sort, setSort] = useState<Sort>(loadSort);
-  const pick = (key: SortKey) => {
-    const next = nextSort(sort, key);
-    setSort(next);
-    remember(SORT_KEY, JSON.stringify(next));
-  };
   if (trends.length === 0) {
-    return (
-      <span class="dash-none">
-        No stock, ETF or coin among your favourites yet.
-      </span>
-    );
+    return <Notice>No stock, ETF or coin among your favourites yet.</Notice>;
   }
   const sorted = [...trends].sort(bySort(sort));
   const shown = all ? sorted : sorted.slice(0, SHOWN);
-  return (
-    <div class="dash-trend">
-      <div class="dash-trend-head label">
-        <span />
-        <span>Ticker</span>
-        <span class="dash-cell-num">Price</span>
-        {COLUMNS.map(([key, label]) => {
-          const on = sort.key === key;
-          return (
-            <button
-              key={key}
-              type="button"
-              class={`dash-sort${on ? " dash-sort-on" : ""}`}
-              aria-pressed={on}
-              title={
-                !on
-                  ? `Sort by ${label}`
-                  : sort.dir === 1
-                    ? "Furthest below first"
-                    : "Furthest above first"
-              }
-              onClick={() => pick(key)}
-            >
-              {on && (
-                <Icon
-                  name={sort.dir === 1 ? "arrow-up" : "arrow-down"}
-                  size={11}
-                />
-              )}
-              {label}
-            </button>
-          );
-        })}
-      </div>
-      {shown.map((t) => (
-        <a
-          key={t.id}
-          class="dash-trend-row"
-          title={t.name ?? undefined}
-          href={hrefOf(t.id)}
-        >
-          {t.sma50 === null ? (
-            <span />
-          ) : (
-            <span
-              class={`dash-cross-arrow${t.sma50.gap >= 0 ? " home-up" : " home-down"}`}
-              role="img"
-              aria-label={
-                t.sma50.gap >= 0 ? "Above its 50SMA" : "Below its 50SMA"
-              }
-            >
-              <Icon
-                name={t.sma50.gap >= 0 ? "arrow-up" : "arrow-down"}
-                size={14}
-              />
-            </span>
-          )}
-          <span class="dash-ticker">
-            {symbolOf(t.id)}
-            {crossedToday(t) && <span class="dash-crossed">Crossed today</span>}
+  const columns: Column<Trend>[] = [
+    {
+      key: "side",
+      width: "16px",
+      cell: (t) =>
+        t.sma50 === null ? null : (
+          <span
+            class={`dash-arrow ${t.sma50.gap >= 0 ? "up" : "down"}`}
+            role="img"
+            aria-label={
+              t.sma50.gap >= 0 ? "Above its 50SMA" : "Below its 50SMA"
+            }
+          >
+            <Icon
+              name={t.sma50.gap >= 0 ? "arrow-up" : "arrow-down"}
+              size={14}
+            />
           </span>
-          <span class="dash-cell-num dash-mono">{priceText(t.price)}</span>
-          <Gap side={t.sma50} name="50SMA" />
-          <Gap side={t.sma200} name="200SMA" />
-          <Gap side={t.wma200} name="200WMA" />
-        </a>
-      ))}
+        ),
+    },
+    {
+      key: "name",
+      head: "Instrument",
+      width: { base: "minmax(0, 2fr)", phone: "minmax(0, 1fr)" },
+      cell: (t) => (
+        <SymbolName
+          ticker={
+            <>
+              {tickerOf(t.id)}
+              {crossedToday(t) && (
+                <span class="tag dash-crossed hide-phone">Crossed today</span>
+              )}
+            </>
+          }
+          name={nameOf(t.name, null, t.id)}
+        />
+      ),
+    },
+    {
+      key: "price",
+      head: "Price",
+      width: "minmax(0, 1fr)",
+      align: "end",
+      hide: "phone",
+      cell: (t) => <Num>{priceText(t.price)}</Num>,
+    },
+    ...AVERAGES.map(
+      ([key, label]): Column<Trend> => ({
+        key,
+        head: label,
+        width: { base: "minmax(0, 1fr)", phone: "60px" },
+        align: "end",
+        sortable: true,
+        sortFirst: "asc",
+        sortTitle: (on, dir) =>
+          !on
+            ? `Sort by ${label}`
+            : dir === "asc"
+              ? "Furthest below first"
+              : "Furthest above first",
+        cell: (t) => <Gap side={t[key]} name={label} />,
+      }),
+    ),
+  ];
+  return (
+    <>
+      <Table
+        label="Trend"
+        columns={columns}
+        rows={shown}
+        rowKey={(t) => t.id}
+        open={(t) => ({ href: hrefOf(t.id) })}
+        rowLabel={(t) => tickerOf(t.id)}
+        sort={sort.key}
+        dir={sort.dir === 1 ? "asc" : "desc"}
+        onSort={(key, dir) => {
+          const next: Sort = {
+            key: key as SortKey,
+            dir: dir === "asc" ? 1 : -1,
+          };
+          setSort(next);
+          remember(SORT_KEY, JSON.stringify(next));
+        }}
+        dense
+      />
       {sorted.length > SHOWN && (
         <button
           type="button"
@@ -257,9 +300,46 @@ function Trends({ trends }: { trends: Trend[] }) {
           {all ? "Show fewer" : `Show all ${sorted.length}`}
         </button>
       )}
-    </div>
+    </>
   );
 }
+
+const EARNING_COLUMNS: Column<EarningRow>[] = [
+  {
+    key: "day",
+    head: "Day",
+    width: { base: "minmax(0, 1fr)", phone: "88px" },
+    cell: (e) => <span class={e.today ? undefined : "faint"}>{e.day}</span>,
+  },
+  {
+    key: "name",
+    head: "Instrument",
+    width: { base: "minmax(0, 1.6fr)", phone: "minmax(0, 1fr)" },
+    cell: (e) => <SymbolName ticker={e.symbol} name={e.name} />,
+  },
+  {
+    key: "time",
+    head: "Time",
+    width: { base: "minmax(0, 1.2fr)", phone: "72px" },
+    cell: (e) => <span class="faint">{e.time}</span>,
+  },
+  {
+    key: "eps",
+    head: "EPS est.",
+    width: "minmax(0, 1fr)",
+    align: "end",
+    hide: "phone",
+    cell: (e) => <Num>{e.eps}</Num>,
+  },
+  {
+    key: "revenue",
+    head: "Revenue est.",
+    width: "minmax(0, 1fr)",
+    align: "end",
+    hide: "phone",
+    cell: (e) => <Num>{e.revenue}</Num>,
+  },
+];
 
 export function Earnings({
   earnings,
@@ -269,39 +349,21 @@ export function Earnings({
   off: boolean;
 }) {
   if (earnings.length === 0 && off) {
-    return <span class="dash-none">Earnings are not available.</span>;
+    return <Notice>Earnings are not available.</Notice>;
   }
   if (earnings.length === 0) {
-    return (
-      <span class="dash-none">
-        None of your stocks reports in the next seven days.
-      </span>
-    );
+    return <Notice>None of your stocks reports in the next seven days.</Notice>;
   }
   return (
-    <div class="dash-earn">
-      <div class="dash-earn-head label">
-        <span>Day</span>
-        <span>Ticker</span>
-        <span>Time</span>
-        <span class="dash-cell-num">EPS est.</span>
-        <span class="dash-cell-num">Revenue est.</span>
-      </div>
-      {earningRows(earnings, today()).map((e) => (
-        <a
-          key={e.id + e.day}
-          class="dash-earn-row"
-          href={hrefOf(e.id)}
-          title={e.name ?? undefined}
-        >
-          <span class={`dash-day${e.today ? " dash-today" : ""}`}>{e.day}</span>
-          <span class="dash-ticker">{e.symbol}</span>
-          <span class="dash-earn-time">{e.time}</span>
-          <span class="dash-cell-num dash-mono">{e.eps}</span>
-          <span class="dash-cell-num dash-mono">{e.revenue}</span>
-        </a>
-      ))}
-    </div>
+    <Table
+      label="Earnings this week"
+      columns={EARNING_COLUMNS}
+      rows={earningRows(earnings, today())}
+      rowKey={(e) => e.id + e.day}
+      open={(e) => ({ href: hrefOf(e.id) })}
+      rowLabel={(e) => e.symbol}
+      dense
+    />
   );
 }
 
@@ -334,41 +396,34 @@ export function Glance({
     setTab(t);
     remember(TAB_KEY, t);
   };
+  // the trend counts only today's crossings; earnings count even none,
+  // unless they cannot be known
+  const countOf = (t: Tab) =>
+    t === "earnings"
+      ? earnings.length === 0 && off
+        ? null
+        : earnings.length
+      : t === "trend" && crossed > 0
+        ? crossed
+        : null;
   return (
-    <section class="card dash-widget">
-      <div class="dash-tabs" role="tablist">
-        {TABS.map(([t, label, short]) => {
-          const n =
-            t === "earnings"
-              ? earnings.length === 0 && off
-                ? null
-                : earnings.length
-              : t === "trend" && crossed > 0
-                ? crossed
-                : null;
-          return (
-            <button
-              key={t}
-              type="button"
-              role="tab"
-              aria-selected={tab === t}
-              class={`dash-tab${tab === t ? " dash-tab-on" : ""}`}
-              onClick={() => pick(t)}
-            >
-              <span class="dash-tab-long">{label}</span>
-              <span class="dash-tab-short">{short}</span>
-              {n !== null && (
-                <span
-                  class={`dash-tab-count${n === 0 ? " dash-tab-zero" : ""}`}
-                >
-                  {n}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-      <div role="tabpanel">
+    <Card label="At a glance">
+      <Tabs
+        label="At a glance"
+        value={tab}
+        onPick={pick}
+        tabs={TABS.map(([t, long, short]) => ({
+          key: t,
+          label: (
+            <>
+              <span class="hide-phone">{long}</span>
+              <span class="show-phone">{short}</span>
+            </>
+          ),
+          count: countOf(t),
+        }))}
+      />
+      <div role="tabpanel" class="dash-panel">
         {tab === "movers" ? (
           <Movers ids={ids} items={items} />
         ) : tab === "trend" ? (
@@ -377,48 +432,46 @@ export function Glance({
           <Earnings earnings={earnings} off={off} />
         )}
       </div>
-    </section>
+    </Card>
   );
 }
 
 type Seeding = NonNullable<Board["track"]>;
 
+const SEED_CLASS = {
+  ready: "tag status-done",
+  failed: "tag status-failed",
+  pending: "tag dash-seed-pending",
+} as const;
+
 export function LoadingPanel({ track }: { track: Seeding }) {
   const total = track.length;
   const ready = track.filter((t) => t.state === "ready").length;
   return (
-    <section class="card home-panel home-loading">
-      <div class="home-loading-head">
-        <span class="home-spinner" aria-hidden="true" />
-        <h2 class="home-panel-title">Getting prices</h2>
-        <span class="home-loading-count" role="status">
-          {ready} of {total}
+    <Notice
+      title={
+        <>
+          <span class="spinner dash-seed-spin" aria-hidden="true" />
+          Getting prices{" "}
+          <span class="num faint" role="status">
+            {ready} of {total}
+          </span>
+        </>
+      }
+      actions={track.map((t) => (
+        <span key={t.value} class={SEED_CLASS[t.state]}>
+          {t.value}
         </span>
-      </div>
-      <div class="home-progress" aria-hidden="true">
-        <div style={{ width: `${(ready / total) * 100}%` }} />
-      </div>
-      <ul class="home-legend">
-        {track.map((t) => (
-          <li key={t.value} class={`home-chip-${t.state}`}>
-            <span class="home-legend-symbol">{t.value}</span>
-          </li>
-        ))}
-      </ul>
-      <p class="home-panel-note">
-        The first time, the server fetches each market's price history. This can
-        take a minute.
-      </p>
-    </section>
+      ))}
+    >
+      The first time, the server fetches each market's price history. This can
+      take a minute.
+    </Notice>
   );
 }
 
 // while a value is first fetched, the page asks again sooner than its minute
 const WAITING_MS = 3_000;
-
-const SEARCH_EVENT = "dash-search";
-const searchFor = (q: string) =>
-  window.dispatchEvent(new CustomEvent(SEARCH_EVENT, { detail: q }));
 
 // examples to try, not defaults: nothing is added until the admin picks it
 const EXAMPLES: readonly (readonly [string, string])[] = [
@@ -431,280 +484,111 @@ const EXAMPLES: readonly (readonly [string, string])[] = [
 
 function EmptyPanel() {
   return (
-    <section class="card dash-empty-panel">
-      <div class="dash-empty-icon" aria-hidden="true">
-        <Icon name="star" size={20} />
-      </div>
-      <h2 class="dash-empty-title">Build your dashboard</h2>
-      <p class="dash-empty-text">
-        Search for a stock, ETF, coin, index or currency and add it. Prices, day
-        lines, movers, trends and earnings appear as soon as you do.
-      </p>
-      <div class="dash-empty-try">
-        <span class="label">Try</span>
-        {EXAMPLES.map(([q, name]) => (
-          <button
-            key={q}
-            type="button"
-            class="dash-chip"
-            title={name}
-            onClick={(e) => {
-              // the search closes on a click outside it, this one included
-              e.stopPropagation();
-              searchFor(q);
-            }}
-          >
-            {q}
-          </button>
-        ))}
-      </div>
-    </section>
+    <Notice
+      icon="star"
+      title="Build your dashboard"
+      actions={
+        <>
+          <span class="label">Try</span>
+          {EXAMPLES.map(([q, name]) => (
+            <button
+              key={q}
+              type="button"
+              class="chip"
+              title={name}
+              onClick={(e) => {
+                // the search closes on a click outside it, this one included
+                e.stopPropagation();
+                seedSearch(q);
+              }}
+            >
+              {q}
+            </button>
+          ))}
+        </>
+      }
+    >
+      Search for a stock, ETF, coin, index or currency and add it. Prices, day
+      lines, movers, trends and earnings appear as soon as you do.
+    </Notice>
   );
 }
-
-type Adds = {
-  sections: readonly BoardSection[];
-  onAdd: (section: number, id: string) => Promise<void>;
-  refuse: (section: number, id: string) => string | null;
-};
-
-// without adds, results only open their page: Add is Home's alone
-function SearchBox({ adds }: { adds?: Adds }) {
-  const sections = adds?.sections ?? [];
-  const [query, setQuery] = useState("");
-  const [found, setFound] = useState<Candidate[] | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [picking, setPicking] = useState<string | null>(null);
-  const pickingRef = useRef<string | null>(null);
-  pickingRef.current = picking;
-  const [refused, setRefused] = useState<string | null>(null);
-  const [adding, setAdding] = useState<string | null>(null);
-  const [open, setOpen] = useState(false);
-  const [sheet, setSheet] = useState(false);
-  const root = useRef<HTMLDivElement>(null);
-  const input = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    const onSeed = (ev: Event) => {
-      const q = (ev as CustomEvent<string>).detail;
-      setQuery(q);
-      // a phone's search shows only as the sheet
-      setSheet(true);
-      setOpen(true);
-      input.current?.focus();
-    };
-    window.addEventListener(SEARCH_EVENT, onSeed);
-    return () => window.removeEventListener(SEARCH_EVENT, onSeed);
-  }, []);
-  const finder = useMemo(() => searcher(markets.search, setFound, setBusy), []);
-  useEffect(() => finder.stop, [finder]);
-  useEffect(() => finder.ask(query), [finder, query]);
-  useEffect(() => {
-    const onClick = (ev: MouseEvent) => {
-      if (!root.current?.contains(ev.target as Node)) setOpen(false);
-    };
-    const onKey = (ev: KeyboardEvent) => {
-      if (ev.key !== "Escape") return;
-      if (escapeFrom(pickingRef.current) === "picker") setPicking(null);
-      else setOpen(false);
-    };
-    document.addEventListener("click", onClick);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("click", onClick);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, []);
-  const where = (id: string) => sections.find((s) => s.ids.includes(id))?.name;
-  const add = async (section: number, id: string) => {
-    setPicking(null);
-    if (adds === undefined) return;
-    const why = adds.refuse(section, id);
-    setRefused(why);
-    if (why !== null) return;
-    setAdding(id);
-    await adds.onAdd(section, id);
-    setAdding(null);
-    setQuery("");
-    setOpen(false);
-  };
-  return (
-    <div class={`dash-search${sheet ? " dash-sheet" : ""}`} ref={root}>
-      <button
-        type="button"
-        class="btn-icon dash-search-icon"
-        aria-label="Search"
-        onClick={() => {
-          // iOS opens the keyboard only for a focus inside the tap, so the
-          // field shows before the render does
-          root.current?.classList.add("dash-sheet");
-          input.current?.focus();
-          setSheet(true);
-          setOpen(true);
-        }}
-      >
-        <Icon name="search" size={14} />
-        <span>Search</span>
-      </button>
-      <div class="dash-sheet-bar">
-        <label class="dash-search-box">
-          <Icon name="search" size={15} />
-          <input
-            ref={input}
-            type="search"
-            placeholder="Search a symbol or name"
-            value={query}
-            onInput={(e) => {
-              setQuery((e.target as HTMLInputElement).value);
-              setRefused(null);
-              setOpen(true);
-            }}
-            onFocus={() => setOpen(true)}
-          />
-          {busy && (
-            <span class="home-spinner dash-search-spin" aria-hidden="true" />
-          )}
-        </label>
-        <button
-          type="button"
-          class="btn dash-sheet-cancel"
-          onClick={() => {
-            setSheet(false);
-            setOpen(false);
-            setQuery("");
-          }}
-        >
-          Cancel
-        </button>
-      </div>
-      {open &&
-        found !== null &&
-        (found.length > 0 || !busy || refused !== null) && (
-          <div class="menu dash-results">
-            {found.length === 0 && !busy && (
-              <span class="dash-none dash-results-none">Nothing found.</span>
-            )}
-            {refused !== null && (
-              <span class="dash-none dash-results-none" role="alert">
-                {refused}
-              </span>
-            )}
-            {found.map((c) => {
-              const on = where(c.id);
-              return (
-                <Fragment key={c.id}>
-                  <div class="dash-result">
-                    <a
-                      class="dash-result-main"
-                      href={hrefOf(c.id)}
-                      onClick={() => {
-                        setOpen(false);
-                        setSheet(false);
-                        setQuery("");
-                      }}
-                    >
-                      <span class="dash-result-lead cut">{symbolOf(c.id)}</span>
-                      <span class="dash-result-name cut">
-                        {c.name ?? symbolOf(c.id)}
-                      </span>
-                      <span class="dash-result-meta">
-                        <span class="dash-mover-symbol">{symbolOf(c.id)}</span>
-                        {c.type && <span>{kindOf(c.type)}</span>}
-                        <span>{c.exchange}</span>
-                        {!c.stored && <span class="tag dash-new">New</span>}
-                      </span>
-                    </a>
-                    {adds === undefined ? null : on !== undefined ? (
-                      <span class="dash-result-on" title={`On ${on}`}>
-                        <Icon name="check" size={14} /> {on}
-                      </span>
-                    ) : adding === c.id ? (
-                      <span class="dash-result-on">Fetching…</span>
-                    ) : (
-                      <div class="dash-pick">
-                        <button
-                          type="button"
-                          class="btn btn-small"
-                          onClick={() => {
-                            if (sections.length > 0) {
-                              setPicking(picking === c.id ? null : c.id);
-                              return;
-                            }
-                            void add(0, c.id);
-                          }}
-                        >
-                          <Icon name="plus" size={14} /> Add
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                  {/* in the list, not floating: the list scrolls and would cut it */}
-                  {picking === c.id && on === undefined && adding !== c.id && (
-                    <div class="dash-pick-menu">
-                      <span class="label dash-pick-label">Add to</span>
-                      {sections.map((s, i) => (
-                        <button
-                          key={s.name}
-                          type="button"
-                          class="menu-item"
-                          onClick={() => void add(i, c.id)}
-                        >
-                          {s.name}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </Fragment>
-              );
-            })}
-          </div>
-        )}
-    </div>
-  );
-}
-
 type Drag = { from: number; id: string } | null;
 
-function Row({
-  id,
-  item,
+const TILE_LINE = 36;
+const ROW_LINE = 28;
+
+function Line({
   spark,
-  clip,
+  height,
 }: {
-  id: string;
-  item: BoardItem | undefined;
-  spark: Spark | undefined;
-  clip: string;
+  spark: SparkData | undefined;
+  height: number;
 }) {
-  const c = cardOf(entryOf(id, item));
-  if (c.type !== "ready") {
+  const s = sparkOf(spark);
+  return (
+    <Spark
+      closes={s?.closes ?? []}
+      base={s?.base ?? "start"}
+      slots={s?.slots}
+      width="fluid"
+      height={height}
+    />
+  );
+}
+
+// a value still on its way keeps the tile's shape, so nothing moves
+// when its figures land
+export function Tile({
+  entry,
+  spark,
+}: {
+  entry: WatchEntry;
+  spark: SparkData | undefined;
+}) {
+  const c = cardOf(entry);
+  if (c.type === "pending") {
     return (
+      <div class="card dash-tile dash-tile-pending">
+        <SymbolName ticker={c.value} name="Pending" />
+        <Line spark={undefined} height={TILE_LINE} />
+        <Num class="faint">—</Num>
+      </div>
+    );
+  }
+  if (c.type === "failed") {
+    const body = (
       <>
-        <span class="dash-cell-name">
-          <span class="home-symbol">{symbolOf(id)}</span>
-        </span>
-        <span />
-        <span class="dash-cell-num home-note">Loading</span>
-        <span />
-        <span />
+        <SymbolName
+          ticker={c.value}
+          name={<span class="error">{c.text}</span>}
+        />
+        <Line spark={undefined} height={TILE_LINE} />
+        <Num class={c.price === undefined ? "faint" : undefined}>
+          {c.price ?? "—"}
+        </Num>
       </>
+    );
+    return c.href !== undefined ? (
+      <a class="card dash-tile" href={c.href}>
+        {body}
+      </a>
+    ) : (
+      <div class="card dash-tile">{body}</div>
     );
   }
   return (
-    <>
-      <span class="dash-cell-name">
-        <span class="home-name cut">{c.name}</span>
-        <span class="home-symbol cut">{c.symbol}</span>
-      </span>
-      <span class="dash-cell-spark">
-        <Sparkline line={sparkOf(spark)} id={clip} />
-      </span>
-      <span class="dash-cell-num home-price">{c.price}</span>
-      <span class={`dash-cell-num home-move${tone(c.dir)}`}>
-        <span class="dash-pct-main">{c.percent}</span>
-        <span class="dash-pct">{c.move}</span>
-      </span>
-      <span class="dash-cell-state home-state">{c.state}</span>
-    </>
+    <a class="card dash-tile" href={c.href}>
+      <div class="dash-tile-top">
+        <SymbolName ticker={c.symbol} name={c.name} />
+        {c.state && <span class="small faint dash-state">{c.state}</span>}
+      </div>
+      <Line spark={spark} height={TILE_LINE} />
+      <div class="dash-tile-figs">
+        <Num currency={c.currency}>{c.price}</Num>
+        <Change s={{ text: c.percent, dir: c.dir }} class="small" />
+      </div>
+    </a>
   );
 }
 
@@ -732,9 +616,8 @@ function NameInput({
     setError(r === null ? null : r.error);
   };
   return (
-    <>
+    <span class="field dash-name">
       <input
-        class="dash-name-input"
         value={draft}
         aria-label="Section name"
         maxLength={MAX_NAME}
@@ -746,15 +629,69 @@ function NameInput({
         }}
       />
       {error !== null && (
-        <span class="dash-name-error" role="alert">
+        <span class="error small" role="alert">
           {error}
         </span>
       )}
-    </>
+    </span>
   );
 }
 
-function SectionView({
+type Entry = {
+  id: string;
+  card: ReturnType<typeof cardOf>;
+  spark: SparkData | undefined;
+};
+
+const VIEWS = [
+  {
+    value: "cards" as const,
+    text: <Icon name="grid" size={13} />,
+    title: "Cards",
+  },
+  {
+    value: "table" as const,
+    text: <Icon name="rows" size={13} />,
+    title: "Table",
+  },
+];
+
+// a section's ⋯ while editing: no move past either end
+export function sectionTools(
+  layout: readonly BoardSection[],
+  index: number,
+  save: Save,
+): MenuItem[] {
+  const count = layout.length;
+  return [
+    ...(index > 0
+      ? [
+          {
+            label: "Move up",
+            icon: "arrow-up" as const,
+            run: () => void save(swap(layout, index, index - 1)),
+          },
+        ]
+      : []),
+    ...(index < count - 1
+      ? [
+          {
+            label: "Move down",
+            icon: "arrow-down" as const,
+            run: () => void save(swap(layout, index, index + 1)),
+          },
+        ]
+      : []),
+    {
+      label: "Delete section",
+      icon: "trash",
+      danger: true,
+      run: () => void save(dropSection(layout, index)),
+    },
+  ];
+}
+
+export function SectionView({
   index,
   layout,
   editing,
@@ -771,13 +708,12 @@ function SectionView({
   // nothing is saved while the seed is still filling
   locked: boolean;
   items: Items;
-  sparks: ReadonlyMap<string, Spark>;
+  sparks: ReadonlyMap<string, SparkData>;
   drag: Drag;
   setDrag: (d: Drag) => void;
   save: Save;
 }) {
   const section = layout[index]!;
-  const count = layout.length;
   const [over, setOver] = useState<string | null>(null);
   const move = (before: string | null) => {
     if (drag === null) return;
@@ -785,81 +721,133 @@ function SectionView({
     setDrag(null);
     setOver(null);
   };
-  const item = (id: string) => {
-    const dragProps = editing
-      ? {
-          draggable: true,
-          onDragStart: (e: DragEvent) => {
-            e.dataTransfer?.setData("text/plain", id);
-            setDrag({ from: index, id });
-          },
-          onDragEnd: () => {
-            setDrag(null);
-            setOver(null);
-          },
-          onDragOver: (e: DragEvent) => {
-            e.preventDefault();
-            e.stopPropagation();
-            setOver(id);
-          },
-          onDrop: (e: DragEvent) => {
-            e.preventDefault();
-            e.stopPropagation();
-            move(id);
-          },
-        }
-      : {};
-    const cls = `dash-item${over === id && drag?.id !== id ? " dash-item-over" : ""}${drag?.id === id ? " dash-item-dragging" : ""}`;
-    const x = editing && (
-      <button
-        type="button"
-        class="btn-icon dash-remove"
-        title="Remove"
-        aria-label={`Remove ${symbolOf(id)}`}
-        onClick={(e) => {
-          e.preventDefault();
-          void save(removeFrom(layout, index, id));
-        }}
-      >
-        <Icon name="close" size={14} />
-      </button>
-    );
-    if (section.view === "cards") {
-      return (
-        <div key={id} class={cls} {...dragProps}>
-          <Card
-            entry={entryOf(id, items.get(id))}
-            spark={sparks.get(id)}
-            id={clipOf(index, id)}
-            percentOnly
-          />
-          {x}
-        </div>
-      );
-    }
-    return (
-      <a
-        key={id}
-        class={`dash-row ${cls}`}
-        href={hrefOf(id)}
-        onClick={(e) => editing && e.preventDefault()}
-        {...dragProps}
-      >
-        {editing && <Icon name="grip" size={14} class="dash-grip" />}
-        <Row
-          id={id}
-          item={items.get(id)}
-          spark={sparks.get(id)}
-          clip={clipOf(index, id)}
-        />
-        {x}
-      </a>
-    );
+  const dragOf = (id: string) => {
+    if (!editing) return { class: "dash-item" };
+    return {
+      class: `dash-item${over === id && drag?.id !== id ? " dash-item-over" : ""}${drag?.id === id ? " dash-item-dragging" : ""}`,
+      draggable: true,
+      onDragStart: (e: DragEvent) => {
+        e.dataTransfer?.setData("text/plain", id);
+        setDrag({ from: index, id });
+      },
+      onDragEnd: () => {
+        setDrag(null);
+        setOver(null);
+      },
+      onDragOver: (e: DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setOver(id);
+      },
+      onDrop: (e: DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        move(id);
+      },
+    };
   };
+  const remove = (id: string) => (
+    <button
+      type="button"
+      class="btn-icon dash-remove table-raise"
+      title="Remove"
+      aria-label={`Remove ${symbolOf(id)}`}
+      onClick={(e) => {
+        e.preventDefault();
+        void save(removeFrom(layout, index, id));
+      }}
+    >
+      <Icon name="close" size={14} />
+    </button>
+  );
+  const lines: Entry[] = section.ids.map((id) => ({
+    id,
+    card: cardOf(entryOf(id, items.get(id))),
+    spark: sparks.get(id),
+  }));
+  const columns: Column<Entry>[] = [
+    {
+      key: "name",
+      head: "Instrument",
+      width: { base: "minmax(0, 2.2fr)", phone: "minmax(0, 1fr)" },
+      cell: (l) => {
+        const name =
+          l.card.type === "ready" ? (
+            <SymbolName ticker={l.card.symbol} name={l.card.name} />
+          ) : (
+            <SymbolName ticker={symbolOf(l.id)} />
+          );
+        if (!editing) return name;
+        return (
+          <div class="dash-grab">
+            <Icon name="grip" size={14} class="faint" />
+            {name}
+          </div>
+        );
+      },
+    },
+    {
+      key: "line",
+      head: "Day",
+      width: "minmax(80px, 1fr)",
+      hide: "phone",
+      cell: (l) =>
+        l.card.type === "ready" ? (
+          <Line spark={l.spark} height={ROW_LINE} />
+        ) : null,
+    },
+    {
+      key: "price",
+      head: "Price",
+      width: { base: "minmax(0, 1.2fr)", phone: "112px" },
+      align: "end",
+      cell: (l) =>
+        l.card.type === "ready" ? (
+          <Num currency={l.card.currency}>{l.card.price}</Num>
+        ) : (
+          <span class="small faint">Loading</span>
+        ),
+    },
+    {
+      key: "change",
+      head: "Change",
+      width: { base: "minmax(0, 1.2fr)", phone: "72px" },
+      align: "end",
+      cell: (l) =>
+        l.card.type === "ready" ? (
+          <>
+            <Change s={{ text: l.card.percent, dir: l.card.dir }} />
+            <Change
+              s={{ text: l.card.move, dir: l.card.dir }}
+              class="small hide-phone"
+            />
+          </>
+        ) : null,
+    },
+    {
+      key: "state",
+      head: "Market",
+      width: "64px",
+      align: "end",
+      hide: "phone",
+      cell: (l) =>
+        l.card.type === "ready" ? (
+          <span class="small faint dash-state">{l.card.state}</span>
+        ) : null,
+    },
+    {
+      key: "remove",
+      width: "32px",
+      align: "end",
+      show: editing,
+      cell: (l) => remove(l.id),
+    },
+  ];
+  const n = section.ids.length;
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: only a drop target for a mouse drag
     <section
       class={`dash-section${editing ? " dash-editing" : ""}`}
+      aria-label={section.name}
       onDragOver={(e) => editing && e.preventDefault()}
       onDrop={(e) => {
         if (!editing) return;
@@ -867,84 +855,72 @@ function SectionView({
         move(null);
       }}
     >
-      <div class="dash-section-head">
-        {editing ? (
-          <NameInput layout={layout} index={index} save={save} />
-        ) : (
-          <h2 class="label dash-section-name">{section.name}</h2>
-        )}
-        <span class="dash-count">{section.ids.length}</span>
-        <div class="dash-section-tools">
-          {!locked && (
-            <fieldset class="seg seg-small" aria-label="Show as">
-              <button
-                type="button"
-                class={`seg-option${section.view === "cards" ? " seg-on" : ""}`}
-                title="Cards"
-                aria-label="Cards"
-                onClick={() =>
-                  section.view !== "cards" &&
-                  void save(withView(layout, index, "cards"))
-                }
-              >
-                <Icon name="grid" size={13} />
-              </button>
-              <button
-                type="button"
-                class={`seg-option${section.view === "table" ? " seg-on" : ""}`}
-                title="Table"
-                aria-label="Table"
-                onClick={() =>
-                  section.view !== "table" &&
-                  void save(withView(layout, index, "table"))
-                }
-              >
-                <Icon name="rows" size={13} />
-              </button>
-            </fieldset>
-          )}
-          {editing && (
-            <>
-              <button
-                type="button"
-                class="btn-icon"
-                title="Move up"
-                disabled={index === 0}
-                onClick={() => void save(swap(layout, index, index - 1))}
-              >
-                <Icon name="arrow-up" size={14} />
-              </button>
-              <button
-                type="button"
-                class="btn-icon"
-                title="Move down"
-                disabled={index === count - 1}
-                onClick={() => void save(swap(layout, index, index + 1))}
-              >
-                <Icon name="arrow-down" size={14} />
-              </button>
-              <button
-                type="button"
-                class="btn-icon dash-delete"
-                title="Delete section"
-                onClick={() => void save(dropSection(layout, index))}
-              >
-                <Icon name="trash" size={14} />
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-      {section.ids.length === 0 ? (
-        <div class="dash-empty">
+      <SectionHead
+        title={
+          editing ? (
+            <NameInput layout={layout} index={index} save={save} />
+          ) : (
+            section.name
+          )
+        }
+        count={n}
+        actions={
+          (!locked || editing) && (
+            <div class="dash-section-tools hide-phone">
+              {!locked && (
+                <Segmented
+                  label="Show as"
+                  small
+                  options={VIEWS}
+                  value={section.view}
+                  onPick={(v) => void save(withView(layout, index, v))}
+                />
+              )}
+              {editing && (
+                <MenuButton
+                  label={`Edit ${section.name}`}
+                  items={sectionTools(layout, index, save)}
+                />
+              )}
+            </div>
+          )
+        }
+      />
+      {n === 0 ? (
+        <Notice>
           {editing
             ? "Drag symbols here, or add them from search."
             : "Empty. Add symbols from search."}
-        </div>
+        </Notice>
       ) : section.view === "cards" ? (
-        <div class="home-grid">{section.ids.map(item)}</div>
+        <div
+          class="dash-tiles"
+          style={{
+            "--tiles": tileColumns(n, 4),
+            "--tiles-tablet": tileColumns(n, 3),
+            "--tiles-phone": tileColumns(n, 2),
+          }}
+        >
+          {lines.map((l) => (
+            <div key={l.id} {...dragOf(l.id)}>
+              <Tile entry={entryOf(l.id, items.get(l.id))} spark={l.spark} />
+              {editing && remove(l.id)}
+            </div>
+          ))}
+        </div>
       ) : (
-        <div class="card dash-table">{section.ids.map(item)}</div>
+        <Card flush>
+          <Table
+            label={section.name}
+            columns={columns}
+            rows={lines}
+            rowKey={(l) => l.id}
+            rowAttrs={editing ? (l) => dragOf(l.id) : undefined}
+            open={(l) => (editing ? null : { href: hrefOf(l.id) })}
+            rowLabel={(l) => symbolOf(l.id)}
+            dense
+          />
+        </Card>
       )}
     </section>
   );
@@ -954,10 +930,6 @@ function SectionView({
 const save: Save = async (next) => {
   if (next !== null) await markets.saveLayout(next);
 };
-
-export function HeadSearch() {
-  return <SearchBox />;
-}
 
 export function Dashboard() {
   useRefresh(markets.loadDashboard);
@@ -1001,6 +973,17 @@ export function Dashboard() {
   return (
     <Page
       title="Home"
+      search={
+        layout !== null &&
+        !locked &&
+        !editing && {
+          sections: layout,
+          onAdd: (section, id) =>
+            save(addTo(markets.layout.value ?? [], section, id)),
+          refuse: (section, id) =>
+            addRefusal(markets.layout.value ?? [], section, id),
+        }
+      }
       actions={
         layout !== null &&
         !locked &&
@@ -1008,7 +991,7 @@ export function Dashboard() {
           <>
             <button
               type="button"
-              class="btn dash-edit-action"
+              class="btn"
               disabled={saving}
               onClick={() => setEdit(null)}
             >
@@ -1016,7 +999,7 @@ export function Dashboard() {
             </button>
             <button
               type="button"
-              class="btn btn-primary dash-edit-action"
+              class="btn btn-primary"
               disabled={saving}
               onClick={() => void saveEdit(edit)}
             >
@@ -1024,26 +1007,15 @@ export function Dashboard() {
             </button>
           </>
         ) : (
-          <>
-            <SearchBox
-              adds={{
-                sections: layout,
-                onAdd: (section, id) =>
-                  save(addTo(markets.layout.value ?? [], section, id)),
-                refuse: (section, id) =>
-                  addRefusal(markets.layout.value ?? [], section, id),
-              }}
-            />
-            <button
-              type="button"
-              class="btn dash-edit"
-              title="Edit"
-              aria-label="Edit"
-              onClick={() => setEdit(editOf(layout, markets.revision()))}
-            >
-              <Icon name="pencil" size={14} />
-            </button>
-          </>
+          <button
+            type="button"
+            class="btn-icon hide-phone"
+            title="Edit"
+            aria-label="Edit"
+            onClick={() => setEdit(editOf(layout, markets.revision()))}
+          >
+            <Icon name="pencil" size={14} />
+          </button>
         ))
       }
       error={markets.saveError.value}
@@ -1058,7 +1030,9 @@ export function Dashboard() {
       foot={markets.attribution.value ?? undefined}
     >
       {layout === null ? (
-        <p class="page-state">Loading</p>
+        <Card>
+          <Notice>Loading…</Notice>
+        </Card>
       ) : (
         <>
           {locked ? (

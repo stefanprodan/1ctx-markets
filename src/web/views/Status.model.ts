@@ -30,7 +30,7 @@ export const clockTime = (ms: number): string =>
 // a run's day and time in the viewer's zone, on a 24-hour clock
 export const runTime = (at: string | null): string =>
   at === null
-    ? "never"
+    ? "Never"
     : new Date(at).toLocaleString("en-GB", {
         day: "numeric",
         month: "short",
@@ -122,8 +122,10 @@ export function allOk(j: JobStatus): string {
 }
 
 // when it last ran; the dot and the lines under the name say how it went
-export const jobWhen = (j: JobStatus, now: number): string =>
-  ago(j.last.ended_at ?? j.last.started_at, now);
+export function jobWhen(j: JobStatus, now: number): string {
+  const at = j.last.ended_at ?? j.last.started_at;
+  return at === null ? "Never" : ago(at, now);
+}
 
 export type SourceGroup = { source: SourceStatus; jobs: JobStatus[] };
 

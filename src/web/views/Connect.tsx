@@ -5,7 +5,7 @@
 // view alone, so Done or leaving the page drops it.
 
 import { type Signal, useSignal } from "@preact/signals";
-import { useEffect, useRef } from "preact/hooks";
+import { useEffect, useId, useRef } from "preact/hooks";
 import {
   type AgentKey,
   type KeyAccess,
@@ -15,9 +15,13 @@ import {
 } from "../data/store.ts";
 import { copyText } from "../lib/clipboard.ts";
 import { Icon } from "../lib/icons.tsx";
+import { Card } from "../ui/Card.tsx";
+import { Drawer } from "../ui/Drawer.tsx";
+import { Facts } from "../ui/Figures.tsx";
+import { Notice } from "../ui/Notice.tsx";
 import { didNotLoad, Page } from "../ui/Page.tsx";
-import { Rows, RowsCard, RowsNote, RowsTitle } from "../ui/Rows.tsx";
-import { RowsOpen } from "../ui/RowsOpen.tsx";
+import { Segmented } from "../ui/Segmented.tsx";
+import { type Column, Table } from "../ui/Table.tsx";
 import {
   ACCESS_OPTIONS,
   AGENTS,
@@ -74,20 +78,15 @@ export function Snippet({
           <Icon name={copied.value ? "check" : "copy"} size={14} />
         </button>
       </div>
-      {hint !== undefined && <span class="connect-hint">{hint}</span>}
+      {hint !== undefined && <span class="small faint">{hint}</span>}
     </div>
   );
 }
 
-export function ShownKey({
-  token,
-  onDone,
-}: {
-  token: string;
-  onDone: () => void;
-}) {
+// the made key, once, in the drawer it was made in
+export function ShownKey({ token }: { token: string }) {
   return (
-    <div class="rows-item rows-item-open connect-block">
+    <>
       <p class="connect-once" role="status">
         {SHOWN_ONCE}
       </p>
@@ -97,12 +96,7 @@ export function ShownKey({
         text={exportLine(token)}
         hint="In your shell profile."
       />
-      <div class="connect-foot">
-        <button type="button" class="btn btn-primary" onClick={onDone}>
-          Done
-        </button>
-      </div>
-    </div>
+    </>
   );
 }
 
@@ -116,25 +110,18 @@ function AccessPick({
   busy: boolean;
 }) {
   return (
-    <fieldset class="field connect-set">
-      <legend class="label">{label}</legend>
-      <div class="seg">
-        {ACCESS_OPTIONS.map((o) => (
-          <button
-            key={o.value}
-            type="button"
-            aria-pressed={value.value === o.value}
-            class={`seg-option${value.value === o.value ? " seg-on" : ""}`}
-            disabled={busy}
-            onClick={() => {
-              value.value = o.value;
-            }}
-          >
-            {o.label}
-          </button>
-        ))}
-      </div>
-    </fieldset>
+    <div class="field">
+      <span class="label">{label}</span>
+      <Segmented
+        label={label}
+        options={ACCESS_OPTIONS.map((o) => ({ value: o.value, text: o.label }))}
+        value={value.value}
+        disabled={busy}
+        onPick={(v) => {
+          value.value = v;
+        }}
+      />
+    </div>
   );
 }
 
@@ -150,21 +137,27 @@ export function AccessPicks({
   busy: boolean;
 }) {
   return (
-    <div class="connect-access">
+    <>
       <AccessPick label="Portfolios" value={portfolio} busy={busy} />
       <AccessPick label="Alert rules" value={rules} busy={busy} />
-    </div>
+    </>
   );
 }
 
+// Segmented picks words; the server takes days or none
+const NEVER = "never";
+const expiryKey = (days: number | null) =>
+  days === null ? NEVER : String(days);
+
+// the new key's form, then, in the same drawer, the key it made
 export function NewKey({
   store,
-  onMade,
-  onCancel,
+  shown,
+  onClose,
 }: {
   store: Store;
-  onMade: (token: string) => void;
-  onCancel: () => void;
+  shown: Signal<string | null>;
+  onClose: () => void;
 }) {
   const name = useSignal("");
   const days = useSignal<number | null>(null);
@@ -173,6 +166,7 @@ export function NewKey({
   const busy = useSignal(false);
   const error = useSignal<string | null>(null);
   const input = useRef<HTMLInputElement>(null);
+  const form = useId();
   useEffect(() => input.current?.focus(), []);
   const submit = async (event: Event) => {
     event.preventDefault();
@@ -184,96 +178,122 @@ export function NewKey({
         portfolio: portfolio.value,
         rules: rules.value,
       });
-      onMade(made.token);
+      busy.value = false;
+      shown.value = made.token;
     } catch (err) {
       error.value = (err as Error).message;
       busy.value = false;
     }
   };
   return (
-    <form class="rows-item rows-item-open connect-block" onSubmit={submit}>
-      <div class="connect-pair">
-        <label class="field">
-          <span class="label">Name</span>
-          <input
-            ref={input}
-            name="name"
-            value={name.value}
-            placeholder="claude-code"
-            autocomplete="off"
-            spellcheck={false}
-            aria-invalid={error.value !== null}
-            onInput={(e) => {
-              const el = e.currentTarget as HTMLInputElement;
-              name.value = shapeName(el.value);
-              el.value = name.value;
-              error.value = null;
-            }}
-          />
-        </label>
-        <fieldset class="field connect-set">
-          <legend class="label">Expires</legend>
-          <div class="seg">
-            {EXPIRY_OPTIONS.map((o) => (
-              <button
-                key={o.label}
-                type="button"
-                aria-pressed={days.value === o.value}
-                class={`seg-option${days.value === o.value ? " seg-on" : ""}`}
-                disabled={busy.value}
-                onClick={() => {
-                  days.value = o.value;
-                }}
-              >
-                {o.label}
-              </button>
-            ))}
+    <Drawer
+      title="New key"
+      onClose={onClose}
+      busy={busy.value}
+      foot={(close) =>
+        shown.value !== null ? (
+          <button
+            type="button"
+            class="btn btn-small btn-primary"
+            onClick={close}
+          >
+            Done
+          </button>
+        ) : (
+          <>
+            <button
+              type="button"
+              class="btn btn-small"
+              disabled={busy.value}
+              onClick={close}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              form={form}
+              class="btn btn-small btn-primary"
+              disabled={busy.value || !nameReady(name.value)}
+            >
+              {busy.value ? "Creating" : "Create key"}
+            </button>
+          </>
+        )
+      }
+    >
+      {shown.value !== null ? (
+        <ShownKey token={shown.value} />
+      ) : (
+        <form id={form} class="connect-form" onSubmit={submit}>
+          <label class="field">
+            <span class="label">Name</span>
+            <input
+              ref={input}
+              name="name"
+              value={name.value}
+              placeholder="claude-code"
+              autocomplete="off"
+              spellcheck={false}
+              aria-invalid={error.value !== null}
+              onInput={(e) => {
+                const el = e.currentTarget as HTMLInputElement;
+                name.value = shapeName(el.value);
+                el.value = name.value;
+                error.value = null;
+              }}
+            />
+          </label>
+          <div class="field">
+            <span class="label">Expires</span>
+            <Segmented
+              label="Expires"
+              options={EXPIRY_OPTIONS.map((o) => ({
+                value: expiryKey(o.value),
+                text: o.label,
+              }))}
+              value={expiryKey(days.value)}
+              disabled={busy.value}
+              onPick={(v) => {
+                days.value = v === NEVER ? null : Number(v);
+              }}
+            />
           </div>
-        </fieldset>
-      </div>
-      <AccessPicks portfolio={portfolio} rules={rules} busy={busy.value} />
-      <div class="connect-foot">
-        {error.value !== null && (
-          <p class="connect-error" role="alert">
-            {error.value}
-          </p>
-        )}
-        <button
-          type="button"
-          class="btn"
-          disabled={busy.value}
-          onClick={onCancel}
-        >
-          Cancel
-        </button>
-        <button
-          type="submit"
-          class="btn btn-primary"
-          disabled={busy.value || !nameReady(name.value)}
-        >
-          {busy.value ? "Creating" : "Create key"}
-        </button>
-      </div>
-    </form>
+          <AccessPicks portfolio={portfolio} rules={rules} busy={busy.value} />
+          {error.value !== null && <Notice error>{error.value}</Notice>}
+        </form>
+      )}
+    </Drawer>
   );
 }
 
-// a key's details: its picks, saved on the kept key, and Revoke, asked
-// once before it cuts the agents off
+// a key's details: when it was used and ends, its picks saved on the kept
+// key, and Revoke, asked once before it cuts the agents off
 export function KeyDetails({
   store,
   row,
+  now,
   onDone,
 }: {
   store: Store;
   row: AgentKey;
-  onDone: () => void;
+  now: number;
+  // told whether the key was revoked, once the drawer has slid out
+  onDone: (revoked: boolean) => void;
 }) {
   const portfolio = useSignal<KeyAccess>(row.portfolio ?? "none");
   const rules = useSignal<KeyAccess>(row.rules ?? "none");
   const busy = useSignal(false);
   const asking = useSignal(false);
   const error = useSignal<string | null>(null);
+  const form = useId();
+  // a save or a revoke done slides the drawer out as Cancel does, once
+  // the render that ends busy lets it close
+  const closer = useRef<() => void>(() => {});
+  const leaving = useSignal(false);
+  const revoked = useRef(false);
+  useEffect(() => {
+    if (leaving.value) closer.current();
+  }, [leaving.value]);
   const next: KeyAccesses = { portfolio: portfolio.value, rules: rules.value };
   const same =
     next.portfolio === (row.portfolio ?? "none") &&
@@ -285,7 +305,8 @@ export function KeyDetails({
     error.value = null;
     try {
       await store.setKeyAccess(row.id, next);
-      onDone();
+      busy.value = false;
+      leaving.value = true;
     } catch (err) {
       error.value = (err as Error).message;
       busy.value = false;
@@ -295,31 +316,43 @@ export function KeyDetails({
     busy.value = true;
     error.value = await store.revokeKey(row.id);
     busy.value = false;
+    if (error.value === null) {
+      revoked.current = true;
+      leaving.value = true;
+      return;
+    }
     asking.value = false;
   };
   return (
-    <form class="connect-details" onSubmit={submit}>
-      <AccessPicks portfolio={portfolio} rules={rules} busy={busy.value} />
-      {error.value !== null && (
-        <p class="connect-error" role="alert">
-          {error.value}
-        </p>
-      )}
-      <div class="connect-foot connect-foot-split">
-        {asking.value ? (
-          <span class="connect-ask">
-            <span class="connect-ask-words">Agents using it lose access.</span>
+    <Drawer
+      title={row.name}
+      onClose={() => onDone(revoked.current)}
+      busy={busy.value}
+      footStart={
+        asking.value ? (
+          "Agents using it lose access."
+        ) : (
+          <button
+            type="button"
+            class="btn btn-small"
+            aria-label={`Revoke ${row.name}`}
+            disabled={busy.value}
+            onClick={() => {
+              error.value = null;
+              asking.value = true;
+            }}
+          >
+            Revoke
+          </button>
+        )
+      }
+      foot={(close) => {
+        closer.current = close;
+        return asking.value ? (
+          <>
             <button
               type="button"
-              class="btn btn-danger"
-              disabled={busy.value}
-              onClick={revoke}
-            >
-              {busy.value ? "Revoking" : "Revoke"}
-            </button>
-            <button
-              type="button"
-              class="btn"
+              class="btn btn-small"
               disabled={busy.value}
               onClick={() => {
                 asking.value = false;
@@ -327,90 +360,107 @@ export function KeyDetails({
             >
               Keep
             </button>
-          </span>
+            <button
+              type="button"
+              class="btn btn-small btn-danger"
+              disabled={busy.value}
+              onClick={revoke}
+            >
+              {busy.value ? "Revoking" : "Revoke"}
+            </button>
+          </>
         ) : (
           <>
             <button
               type="button"
-              class="btn"
-              aria-label={`Revoke ${row.name}`}
+              class="btn btn-small"
               disabled={busy.value}
-              onClick={() => {
-                error.value = null;
-                asking.value = true;
-              }}
+              onClick={close}
             >
-              Revoke
+              Cancel
             </button>
-            <span class="connect-foot-end">
-              <button
-                type="button"
-                class="btn"
-                disabled={busy.value}
-                onClick={onDone}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                class="btn btn-primary"
-                disabled={busy.value || same}
-              >
-                {busy.value ? "Saving" : "Save"}
-              </button>
-            </span>
+            <button
+              type="submit"
+              form={form}
+              class="btn btn-small btn-primary"
+              disabled={busy.value || same}
+            >
+              {busy.value ? "Saving" : "Save"}
+            </button>
           </>
-        )}
-      </div>
-    </form>
+        );
+      }}
+    >
+      <Facts
+        items={[
+          { label: "Last used", value: usedWords(row, now) },
+          {
+            label: "Expires",
+            value: (
+              <span class={expired(row, now) ? "error" : undefined}>
+                {expiryWords(row, now)}
+              </span>
+            ),
+          },
+        ]}
+      />
+      <form id={form} class="connect-form" onSubmit={submit}>
+        <AccessPicks portfolio={portfolio} rules={rules} busy={busy.value} />
+      </form>
+      {error.value !== null && <Notice error>{error.value}</Notice>}
+    </Drawer>
   );
 }
 
-export function KeyRow({
-  store,
-  row,
-  now,
-}: {
-  store: Store;
-  row: AgentKey;
-  now: number;
-}) {
-  const open = useSignal(false);
-  const gone = expired(row, now);
-  return (
-    <RowsOpen
-      open={open.value}
-      onToggle={() => {
-        open.value = !open.value;
-      }}
-      indent="chevron"
-      head={
-        <RowsTitle
-          name={<span class="cut connect-key-name">{row.name}</span>}
-          sub={
-            <>
-              {`${usedWords(row, now)} · `}
-              <span class={gone ? "rows-bad" : undefined}>
-                {expiryWords(row, now)}
-              </span>
-              {accessWords(row) && (
-                <span class="connect-key-access">{` · ${accessWords(row)}`}</span>
-              )}
-            </>
-          }
-          prose
-        />
-      }
-    >
-      <KeyDetails
-        store={store}
-        row={row}
-        onDone={() => {
-          open.value = false;
-        }}
-      />
-    </RowsOpen>
-  );
+export function keyColumns(
+  keys: readonly AgentKey[],
+  now: number,
+): Column<AgentKey>[] {
+  return [
+    {
+      key: "name",
+      head: "Name",
+      width: "minmax(0, 1.4fr)",
+      cell: (k) => <span class="cut">{k.name}</span>,
+    },
+    {
+      key: "used",
+      head: "Last used",
+      width: "minmax(0, 1fr)",
+      hide: "phone",
+      cell: (k) => <span class="faint">{usedWords(k, now)}</span>,
+    },
+    {
+      key: "expires",
+      head: "Expires",
+      width: { base: "minmax(0, 1fr)", phone: "100px" },
+      align: "end",
+      cell: (k) => (
+        <span class={expired(k, now) ? "error" : "faint"}>
+          {expiryWords(k, now)}
+        </span>
+      ),
+    },
+    {
+      key: "access",
+      head: "Access",
+      width: "minmax(0, 1.4fr)",
+      align: "end",
+      hide: "phone",
+      // many keys reach neither portfolios nor rules
+      show: keys.some((k) => accessWords(k) !== null),
+      cell: (k) => <span class="faint">{accessWords(k) ?? ""}</span>,
+    },
+  ];
+}
+
+// the new key's drawer gone, and the token it showed with it
+export function dropNewKey(
+  adding: Signal<boolean>,
+  shown: Signal<string | null>,
+): void {
+  adding.value = false;
+  shown.value = null;
 }
 
 export function Keys({
@@ -423,55 +473,76 @@ export function Keys({
   const keys = store.keys.value ?? [];
   const limit = store.keysLimit.value ?? 0;
   const adding = useSignal(false);
+  // the key as opened, so its drawer slides out after a revoke drops it
+  const opened = useSignal<AgentKey | null>(null);
+  const newKey = useRef<HTMLButtonElement>(null);
+  const refocus = useSignal(false);
   const full = keys.length >= limit;
   const now = Date.now();
+  const open =
+    opened.value === null
+      ? undefined
+      : (keys.find((k) => k.id === opened.value!.id) ?? opened.value);
+  // the revoked key's row went with the focus it would return to
+  useEffect(() => {
+    if (!refocus.value || opened.value !== null) return;
+    refocus.value = false;
+    newKey.current?.focus();
+  }, [refocus.value, opened.value]);
   return (
-    <RowsCard
-      label="Keys"
+    <Card
+      title="Keys"
       count={`${keys.length} of ${limit}`}
-      action={
+      actions={
         full ? undefined : (
           <button
+            ref={newKey}
             type="button"
-            class="btn btn-small rows-add"
-            aria-label="New key"
-            disabled={adding.value || shown.value !== null}
+            class="btn btn-small"
             onClick={() => {
               adding.value = true;
             }}
           >
             <Icon name="plus" size={14} />
-            <span class="rows-add-words">New key</span>
+            New key
           </button>
         )
       }
     >
-      {shown.value !== null && (
-        <ShownKey
-          token={shown.value}
-          onDone={() => {
-            shown.value = null;
-          }}
-        />
-      )}
-      {adding.value && (
+      <Table
+        label="Keys"
+        columns={keyColumns(keys, now)}
+        rows={keys}
+        rowKey={(k) => k.id}
+        open={(k) => ({
+          run: () => {
+            opened.value = k;
+          },
+        })}
+        rowLabel={(k) => k.name}
+        empty="No keys yet."
+      />
+      {full && <Notice>{capLine(limit)}</Notice>}
+      {(adding.value || shown.value !== null) && (
         <NewKey
           store={store}
-          onMade={(token) => {
-            adding.value = false;
-            shown.value = token;
-          }}
-          onCancel={() => {
-            adding.value = false;
+          shown={shown}
+          onClose={() => dropNewKey(adding, shown)}
+        />
+      )}
+      {open !== undefined && (
+        <KeyDetails
+          key={open.id}
+          store={store}
+          row={open}
+          now={now}
+          onDone={(revoked) => {
+            opened.value = null;
+            refocus.value = revoked;
           }}
         />
       )}
-      {keys.length === 0 && !adding.value && <RowsNote>No keys yet.</RowsNote>}
-      {keys.map((k) => (
-        <KeyRow key={k.id} store={store} row={k} now={now} />
-      ))}
-      {full && <RowsNote>{capLine(limit)}</RowsNote>}
-    </RowsCard>
+    </Card>
   );
 }
 
@@ -479,40 +550,27 @@ export function Setup({ origin }: { origin: string }) {
   const agent = useSignal<Agent>("claude");
   const line = setupLine(origin, agent.value);
   return (
-    <RowsCard
-      label="Setup"
-      action={
-        <div
-          class="seg seg-small connect-tabs"
-          role="tablist"
-          aria-label="Agent"
-        >
-          {AGENTS.map((a) => (
-            <button
-              key={a.agent}
-              type="button"
-              role="tab"
-              aria-selected={agent.value === a.agent}
-              class={`seg-option${agent.value === a.agent ? " seg-on" : ""}`}
-              onClick={() => {
-                agent.value = a.agent;
-              }}
-            >
-              {a.label}
-            </button>
-          ))}
-        </div>
+    <Card
+      title="Setup"
+      actions={
+        <Segmented
+          label="Agent"
+          small
+          options={AGENTS.map((a) => ({ value: a.agent, text: a.label }))}
+          value={agent.value}
+          onPick={(v) => {
+            agent.value = v;
+          }}
+        />
       }
     >
-      <div class="rows-item connect-block">
-        <Snippet
-          key={agent.value}
-          label={line.label}
-          text={line.text}
-          hint={line.hint}
-        />
-      </div>
-    </RowsCard>
+      <Snippet
+        key={agent.value}
+        label={line.label}
+        text={line.text}
+        hint={line.hint}
+      />
+    </Card>
   );
 }
 
@@ -535,12 +593,8 @@ export function ConnectBody({ store }: { store: Store }) {
     >
       {held && (
         <div class="connect">
-          <Rows>
-            <Keys store={store} shown={shown} />
-          </Rows>
-          <Rows>
-            <Setup origin={origin} />
-          </Rows>
+          <Keys store={store} shown={shown} />
+          <Setup origin={origin} />
         </div>
       )}
     </Page>
