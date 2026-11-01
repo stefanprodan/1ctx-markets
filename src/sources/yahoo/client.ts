@@ -679,18 +679,29 @@ export function parseTopHoldings(
   }
   const sectors = weights(t.sectorWeightings, "sectorWeightings").kept;
   const ratings = weights(t.bondRatings, "bondRatings");
+  const positions: FundPositions = {
+    stock: positionOf(t.stockPosition),
+    bond: positionOf(t.bondPosition),
+    cash: positionOf(t.cashPosition),
+    other: positionOf(t.otherPosition),
+    preferred: positionOf(t.preferredPosition),
+    convertible: positionOf(t.convertiblePosition),
+  };
+  // a module with nothing in it says no more than a missing one
+  if (
+    holdings.length === 0 &&
+    sectors.length === 0 &&
+    ratings.kept.length === 0 &&
+    ratings.government === null &&
+    Object.values(positions).every((p) => p === null)
+  ) {
+    return { symbol, fund: null, fetchedAt };
+  }
   return {
     symbol,
     fund: {
       holdings,
-      positions: {
-        stock: positionOf(t.stockPosition),
-        bond: positionOf(t.bondPosition),
-        cash: positionOf(t.cashPosition),
-        other: positionOf(t.otherPosition),
-        preferred: positionOf(t.preferredPosition),
-        convertible: positionOf(t.convertiblePosition),
-      },
+      positions,
       sectors,
       ratings: ratings.kept,
       government: ratings.government,

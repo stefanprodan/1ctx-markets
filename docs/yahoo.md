@@ -121,7 +121,8 @@ finality in `docs/calendars.md`; tables, the writer and staleness in
   Yahoo answers a share or a fund it describes no holdings of with
   `price` alone (a 404 only when `topHoldings` is asked alone), and
   either is an ok run that deletes the stored rows. But a fund with
-  rows stored whose answer lacks `topHoldings` is a failed run
+  rows stored whose answer lacks `topHoldings`, or holds it with no
+  holding, sector, rating or position (`{maxAge: 1}`), is a failed run
   (`malformed answer`) that keeps them, stale and asked again after
   `RETRY_MS`: Yahoo dropping the module never wipes a good list as a
   fresh none. Any other failure keeps them too.

@@ -447,6 +447,26 @@ describe("the top holdings job", () => {
     });
   });
 
+  test("a fund with rows stored keeps them when Yahoo answers an empty module", async () => {
+    let empty = false;
+    const t = setup(async (url) => {
+      if (!empty || summarySymbol(url) !== "QQQ") return undefined;
+      const out = clone(await recorded("topholdings-qqq"));
+      out.body.quoteSummary.result[0].topHoldings = { maxAge: 1 };
+      return out;
+    });
+    await t.jobs.tick();
+    await t.clock.advance(DAY_MS);
+    empty = true;
+    expect((await t.jobs.tick()).failed).toEqual([
+      { instrument: "US:QQQ", error: "malformed answer" },
+    ]);
+    expect(readTopHoldings(t.db, "US:QQQ")?.holdings).toHaveLength(10);
+    const fx = clone(await recorded("topholdings-qqq"));
+    fx.body.quoteSummary.result[0].topHoldings = { maxAge: 1 };
+    expect(parseTopHoldings(fx.body, NOW).fund).toBeNull();
+  });
+
   test("a failure keeps the rows and their time, waits an hour and logs no session", async () => {
     let down = false;
     const t = setup((url) =>
