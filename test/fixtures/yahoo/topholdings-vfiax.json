@@ -1,0 +1,337 @@
+{
+  "recordedAt": "2026-11-01T10:33:16.152Z",
+  "request": {
+    "method": "GET",
+    "url": "https://query2.finance.yahoo.com/v10/finance/quoteSummary/VFIAX?modules=topHoldings,price&crumb=REDACTED"
+  },
+  "status": 200,
+  "headers": {
+    "age": "1",
+    "cache-control": "public, max-age=1, stale-while-revalidate=9",
+    "content-type": "application/json;charset=utf-8"
+  },
+  "body": {
+    "quoteSummary": {
+      "result": [
+        {
+          "price": {
+            "maxAge": 1,
+            "preMarketChange": {},
+            "preMarketPrice": {},
+            "postMarketChange": {},
+            "postMarketPrice": {},
+            "regularMarketChangePercent": {
+              "raw": -0.018098405,
+              "fmt": "-1.81%"
+            },
+            "regularMarketChange": {
+              "raw": -12.9,
+              "fmt": "-12.90"
+            },
+            "regularMarketTime": 1793405315,
+            "priceHint": {
+              "raw": 2,
+              "fmt": "2",
+              "longFmt": "2"
+            },
+            "regularMarketPrice": {
+              "raw": 699.87,
+              "fmt": "699.87"
+            },
+            "regularMarketDayHigh": {},
+            "regularMarketDayLow": {},
+            "regularMarketVolume": {},
+            "averageDailyVolume10Day": {},
+            "averageDailyVolume3Month": {},
+            "regularMarketPreviousClose": {
+              "raw": 712.77,
+              "fmt": "712.77"
+            },
+            "regularMarketSource": "DELAYED",
+            "regularMarketOpen": {},
+            "strikePrice": {},
+            "openInterest": {},
+            "fulldayChangePercent": {
+              "raw": -0.018098405,
+              "fmt": "-1.81%"
+            },
+            "fulldayChange": {
+              "raw": -12.9,
+              "fmt": "-12.90"
+            },
+            "fulldayPrice": {
+              "raw": 699.87,
+              "fmt": "699.87"
+            },
+            "exchange": "NAS",
+            "exchangeName": "Nasdaq",
+            "exchangeDataDelayedBy": 15,
+            "marketState": "CLOSED",
+            "quoteType": "MUTUALFUND",
+            "symbol": "VFIAX",
+            "underlyingSymbol": null,
+            "shortName": "Vanguard 500 Index Fd Admiral S",
+            "longName": "Vanguard 500 Index Admiral",
+            "currency": "USD",
+            "quoteSourceName": "Delayed Quote",
+            "currencySymbol": "$",
+            "fromCurrency": null,
+            "toCurrency": null,
+            "lastMarket": null,
+            "volume24Hr": {},
+            "volumeAllCurrencies": {},
+            "circulatingSupply": {},
+            "marketCap": {}
+          },
+          "topHoldings": {
+            "maxAge": 1,
+            "cashPosition": {
+              "raw": -0.0011999999,
+              "fmt": "-0.12%"
+            },
+            "stockPosition": {
+              "raw": 1.0004001,
+              "fmt": "100.04%"
+            },
+            "bondPosition": {
+              "raw": 0,
+              "fmt": "0.00%"
+            },
+            "otherPosition": {
+              "raw": 0.0007,
+              "fmt": "0.07%"
+            },
+            "preferredPosition": {
+              "raw": 0,
+              "fmt": "0.00%"
+            },
+            "convertiblePosition": {
+              "raw": 0,
+              "fmt": "0.00%"
+            },
+            "holdings": [
+              {
+                "symbol": "NVDA",
+                "holdingName": "NVIDIA Corp",
+                "holdingPercent": {
+                  "raw": 0.0839263,
+                  "fmt": "8.39%"
+                }
+              },
+              {
+                "symbol": "AAPL",
+                "holdingName": "Apple Inc",
+                "holdingPercent": {
+                  "raw": 0.073804595,
+                  "fmt": "7.38%"
+                }
+              },
+              {
+                "symbol": "MSFT",
+                "holdingName": "Microsoft Corp",
+                "holdingPercent": {
+                  "raw": 0.0578348,
+                  "fmt": "5.78%"
+                }
+              },
+              {
+                "symbol": "AMZN",
+                "holdingName": "Amazon.com Inc",
+                "holdingPercent": {
+                  "raw": 0.0371372,
+                  "fmt": "3.71%"
+                }
+              },
+              {
+                "symbol": "GOOGL",
+                "holdingName": "Alphabet Inc Class A",
+                "holdingPercent": {
+                  "raw": 0.0307199,
+                  "fmt": "3.07%"
+                }
+              },
+              {
+                "symbol": "AVGO",
+                "holdingName": "Broadcom Inc",
+                "holdingPercent": {
+                  "raw": 0.025373198,
+                  "fmt": "2.54%"
+                }
+              },
+              {
+                "symbol": "GOOG",
+                "holdingName": "Alphabet Inc Class C",
+                "holdingPercent": {
+                  "raw": 0.0245368,
+                  "fmt": "2.45%"
+                }
+              },
+              {
+                "symbol": "META",
+                "holdingName": "Meta Platforms Inc Class A",
+                "holdingPercent": {
+                  "raw": 0.024284301,
+                  "fmt": "2.43%"
+                }
+              },
+              {
+                "symbol": "MU",
+                "holdingName": "Micron Technology Inc",
+                "holdingPercent": {
+                  "raw": 0.0182666,
+                  "fmt": "1.83%"
+                }
+              },
+              {
+                "symbol": "TSLA",
+                "holdingName": "Tesla Inc",
+                "holdingPercent": {
+                  "raw": 0.0151844,
+                  "fmt": "1.52%"
+                }
+              }
+            ],
+            "equityHoldings": {
+              "priceToEarnings": {
+                "raw": 0.04131,
+                "fmt": "0.04"
+              },
+              "priceToBook": {
+                "raw": 0.1902,
+                "fmt": "0.19"
+              },
+              "priceToSales": {
+                "raw": 0.27439,
+                "fmt": "0.27"
+              },
+              "priceToCashflow": {
+                "raw": 0.05325,
+                "fmt": "0.05"
+              },
+              "medianMarketCap": {
+                "raw": 542960.3,
+                "fmt": "542,960.31"
+              },
+              "threeYearEarningsGrowth": {
+                "raw": 19.71,
+                "fmt": "19.71"
+              },
+              "priceToEarningsCat": {
+                "raw": 0.04351,
+                "fmt": "0.04"
+              },
+              "priceToBookCat": {
+                "raw": 0.20568,
+                "fmt": "0.21"
+              },
+              "priceToSalesCat": {
+                "raw": 0.40042,
+                "fmt": "0.4"
+              },
+              "priceToCashflowCat": {
+                "raw": 0.05945,
+                "fmt": "0.06"
+              },
+              "medianMarketCapCat": {
+                "raw": 335222.28,
+                "fmt": "335,222.28"
+              },
+              "threeYearEarningsGrowthCat": {
+                "raw": 21.25,
+                "fmt": "21.25"
+              }
+            },
+            "bondHoldings": {
+              "maturity": {},
+              "duration": {},
+              "creditQuality": {},
+              "maturityCat": {},
+              "durationCat": {
+                "raw": 4.6,
+                "fmt": "4.6"
+              },
+              "creditQualityCat": {}
+            },
+            "bondRatings": [
+              {
+                "us_government": {
+                  "raw": 0,
+                  "fmt": "0.00%"
+                }
+              }
+            ],
+            "sectorWeightings": [
+              {
+                "realestate": {
+                  "raw": 0.017,
+                  "fmt": "1.70%"
+                }
+              },
+              {
+                "consumer_cyclical": {
+                  "raw": 0.0875,
+                  "fmt": "8.75%"
+                }
+              },
+              {
+                "basic_materials": {
+                  "raw": 0.0156,
+                  "fmt": "1.56%"
+                }
+              },
+              {
+                "consumer_defensive": {
+                  "raw": 0.0433,
+                  "fmt": "4.33%"
+                }
+              },
+              {
+                "technology": {
+                  "raw": 0.4048,
+                  "fmt": "40.48%"
+                }
+              },
+              {
+                "communication_services": {
+                  "raw": 0.0995,
+                  "fmt": "9.95%"
+                }
+              },
+              {
+                "financial_services": {
+                  "raw": 0.1114,
+                  "fmt": "11.14%"
+                }
+              },
+              {
+                "utilities": {
+                  "raw": 0.0188,
+                  "fmt": "1.88%"
+                }
+              },
+              {
+                "industrials": {
+                  "raw": 0.075500004,
+                  "fmt": "7.55%"
+                }
+              },
+              {
+                "energy": {
+                  "raw": 0.034,
+                  "fmt": "3.40%"
+                }
+              },
+              {
+                "healthcare": {
+                  "raw": 0.0926,
+                  "fmt": "9.26%"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "error": null
+    }
+  }
+}

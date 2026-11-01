@@ -33,6 +33,10 @@ import {
   requireQuote,
   backfill as yahooBackfill,
 } from "../sources/yahoo/sync.ts";
+import {
+  refreshTopHoldings,
+  asked as topHoldingsAsked,
+} from "../sources/yahoo/top-holdings.ts";
 import { endRun, failRun, startRun } from "../storage/runs.ts";
 import { WriterClosed } from "../storage/writer.ts";
 
@@ -42,6 +46,7 @@ export const PARTS = [
   "research",
   "calendar",
   "news",
+  "top_holdings",
 ] as const;
 export type Part = (typeof PARTS)[number];
 
@@ -276,6 +281,25 @@ async function news(
   }
 }
 
+// a fund Yahoo lists; any other instrument has none to ask
+async function topHoldings(
+  m: Markets,
+  i: Instrument,
+  live: () => boolean,
+): Promise<Outcome> {
+  if (!topHoldingsAsked(i)) return NOT_COVERED;
+  try {
+    const r = await refreshTopHoldings(m, i, {
+      live,
+      client: m.yahoo.within(live),
+    });
+    if (r === null) return fetched(0);
+    return r.status === "ok" ? fetched(r.rows) : failed(m, r.error);
+  } catch (error) {
+    return failed(m, error);
+  }
+}
+
 const EXPIRED = Symbol("expired");
 
 // every part at once: each source's own queue or limiter paces its calls
@@ -310,7 +334,9 @@ export async function refetch(
       if (part === "bars") add(i, part, () => bars(m, i, live));
       else if (part === "quotes") add(i, part, () => quotes(m, i, live));
       else if (part === "news") add(i, part, () => news(m, i, live));
-      else if (part === "calendar") {
+      else if (part === "top_holdings") {
+        add(i, part, () => topHoldings(m, i, live));
+      } else if (part === "calendar") {
         add(i, part, () => research(m, i, "calendar", live));
       } else {
         for (const s of plan.sections) {

@@ -3,8 +3,8 @@
 Governs the Yahoo source: `src/sources/yahoo/client.ts` (calls and
 parsing), `resolve.ts` (symbols into keys), `sync.ts` (fetches),
 `history.ts` and `quotes.ts` (answers into rows), `jobs.ts` (the
-schedule) and `valuation.ts` (an ADR's quote summary), all under
-`src/sources/yahoo/`. The queue, back-off,
+schedule), `valuation.ts` (an ADR's quote summary) and
+`top-holdings.ts` (a fund's), all under `src/sources/yahoo/`. The queue, back-off,
 deadlines, retries, backfill, rescales, phrases and the lock every
 source shares are in `docs/sources.md`; sessions, bar dates and
 finality in `docs/calendars.md`; tables, the writer and staleness in
@@ -60,8 +60,10 @@ finality in `docs/calendars.md`; tables, the writer and staleness in
 
 ## The quote summary
 
-- **One more call, behind a session** (`valuation()`):
+- **One more call, behind a session**, read two ways (`summary()`,
+  one task for both): `valuation()` asks
   `query2.finance.yahoo.com/v10/finance/quoteSummary/<symbol>?modules=defaultKeyStatistics,price&crumb=<crumb>`
+  and `topHoldings()` the same with `modules=topHoldings,price`, each
   with the session's cookie. Without them Yahoo answers 401
   `Unauthorized` ("Invalid Crumb"); the six calls above need neither.
 - **The session is a cookie and a crumb, held in memory only**
@@ -78,8 +80,8 @@ finality in `docs/calendars.md`; tables, the writer and staleness in
   back-off another call set (`ready()`), which it meets as `Paused`.
 - **A failed quote summary never backs the queue off**: the task hands
   its failure back as a value, so the queue prices share sees none, and
-  the share waits `RETRY_MS` on its own failed run. Prices never use the
-  session and never wait on it.
+  the instrument waits `RETRY_MS` on its own failed run. Prices never
+  use the session and never wait on it.
 - **Read: `defaultKeyStatistics` `trailingEps`, `forwardEps` and
   `pegRatio`, and `price` `currency` and `symbol`.** Each figure is
   `{raw, fmt}`, `{}` or missing; anything but a finite `raw` is null,
@@ -97,6 +99,44 @@ finality in `docs/calendars.md`; tables, the writer and staleness in
   (`refreshValuation()`): another currency, or no figure at all, deletes
   the stored row and keeps nothing; a failure keeps it. One row per
   instrument (`valuations`, `docs/storage.md`), replaced, no history.
+
+## A fund's top holdings
+
+- **Asked for a stored instrument with source `yahoo` and type `ETF`
+  or `MUTUALFUND`** (`asked()` in `top-holdings.ts`), on any market: a
+  UCITS ETF answers as a US one does. An owner-priced fund (type
+  `FUND`) and a fund another source prices are never asked; the second
+  answers `NO_TOP_HOLDINGS` (`docs/research.md`).
+- **Read: `topHoldings` `holdings` (`symbol`, `holdingName`,
+  `holdingPercent`), `sectorWeightings`, `bondRatings` and the six
+  `*Position` fields, and `price` `symbol`.** Weights are fractions
+  (0.0837 is 8.37 percent). An answer naming another symbol is
+  `malformed answer`; a `topHoldings` that is not an object too.
+  `equityHoldings`, `bondHoldings` and `fundProfile` are never read:
+  their ratios are wrong (a P/E of 0.09) and duration and maturity
+  were never checked against an issuer.
+- **No holdings is an answer, not a failure**: with `price` asked
+  Yahoo answers a share or a fund it describes no holdings of with
+  `price` alone (a 404 only when `topHoldings` is asked alone), and
+  either is an ok run that deletes the stored rows. Any other failure
+  keeps them.
+- **What is kept** (`parseTopHoldings()`): the first ten holdings in
+  Yahoo's order, each sector and rating above 0, each key once, and
+  `us_government` on its own, since it overlaps the ratings that sum
+  to 1; null when 0. A holding, sector or rating weight that is not a
+  finite number from 0 to 1.05 drops its row; a position outside −0.5
+  to 1.5 is null (cash can be short), never 0.
+- **Texts are cleaned**: a name loses control characters and runs of
+  spaces, then is cut to `HOLDING_NAME_MAX` (120) with `cut()`; a
+  sector or rating key must match `^[a-z_]{1,32}$`. A holding's
+  symbol that is digits alone (`00939`) is null, the name kept, since
+  it names no exchange and would quote another listing. American
+  receipts answer as their US tickers, whatever listing the fund
+  holds.
+- **Cost: one call a day per tracked fund**, plus the session's two
+  on first use and on each refusal; `research` and the instrument
+  route ask inline only a fund never fetched well and not failed
+  within `RETRY_MS`, since the instrument page re-reads every minute.
 
 ## Parsing
 
@@ -305,9 +345,10 @@ Phrases from Yahoo (`docs/sources.md`, Refusals):
 ## Jobs
 
 - **Three scheduled jobs tick every minute** (`TICK_MS`, `schedule()`
-  in `jobs.ts`), each over tracked instruments only, and a fourth,
+  in `jobs.ts`), each over tracked instruments only, a fourth,
   `yahoo-valuation` (`valuationJobs()` in `valuation.ts`), while
-  Finnhub is on. A tick that finds
+  Finnhub is on, and a fifth, `yahoo-top-holdings`
+  (`topHoldingsJobs()` in `top-holdings.ts`), always. A tick that finds
   the job's last run still going is skipped (`job skipped`,
   `src/runtime/scheduler.ts`), so a source is never asked twice at
   once by the same job. What is due is read from the stored sessions
@@ -331,6 +372,7 @@ Phrases from Yahoo (`docs/sources.md`, Refusals):
 | `yahoo-backfill` (`backfillTurn`) | one tracked instrument with no bars per turn, one 10-year chart; a failure or empty answer waits `RETRY_MS` |
 | `yahoo-backfill` (`fillTurn`) | in a turn with no 10-year chart due, up to `FILLS_PER_TURN` (5) tracked instruments holding fewer than `INTRADAY_SESSIONS` sessions, one `points` call each, one at a time |
 | `yahoo-valuation` | one quote summary a day per tracked share Finnhub answers from a foreign listing, once its `metric` ran well since the latest 23:00 UTC (`valuationDue()`), so after the research refresh; a failure waits `RETRY_MS` |
+| `yahoo-top-holdings` | one quote summary a day per tracked fund Yahoo prices, once past the latest 23:00 UTC (`topHoldingsDue()`), the first on the next tick; a failure waits `RETRY_MS` |
 
 - **The fill adds only sessions not stored** (`fillSessions()` in
   `sync.ts`, `addIntraday()`): a session the quote passes stored is

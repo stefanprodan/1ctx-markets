@@ -19,6 +19,11 @@ import { ArgError, fields } from "../operations/args.ts";
 import { hasIntraday } from "../operations/intraday.ts";
 import type { Markets } from "../operations/markets.ts";
 import { parseQuote, quoteRows, sessionOf } from "../operations/quote.ts";
+import {
+  type Inline,
+  topHoldingsInline,
+  topHoldingsSummary,
+} from "../operations/research.ts";
 import { type ErrorItem, restStored } from "../operations/targets.ts";
 import type { TrackState } from "../operations/track.ts";
 import { portfolioHolds, portfolioInstruments } from "../portfolios/store.ts";
@@ -62,6 +67,9 @@ export const INSTRUMENT_TABLES = [
   "filings",
   "edgar_filers",
   "valuations",
+  "fund_top_holdings",
+  "fund_top_holding_rows",
+  "fund_weights",
 ] as const;
 
 export type SourceState = {
@@ -163,6 +171,7 @@ const JOB_LABELS: Record<string, string> = {
   tickers: "SEC tickers",
   switch: "Source change",
   "yahoo/valuation": "ADR valuations",
+  "yahoo/top_holdings": "Top holdings",
 };
 
 const JOB_ABOUT: Record<string, string> = {
@@ -193,6 +202,8 @@ const JOB_ABOUT: Record<string, string> = {
     "Moves a market's instruments to another source when the start options change.",
   "yahoo/valuation":
     "Refreshes P/E and EPS once a day, after 23:00 UTC, for each US share whose research comes from a foreign listing.",
+  "yahoo/top_holdings":
+    "Refreshes each tracked ETF's and mutual fund's ten largest holdings and sectors once a day, after 23:00 UTC.",
 };
 
 export const jobAbout = (source: string, job: string): string | null =>
@@ -480,11 +491,19 @@ export const listRow = (m: Markets, now: number) => {
 export async function instrument(m: Markets, url: URL, raw: string) {
   noQuery(url);
   const input = pathSymbol(raw);
+  // a fund's top holdings beside the quote, under one deadline, so the
+  // page needs no second call
+  const deadline = m.clock.now() + m.callMs;
+  const known = restStored(m.db, input, m.bvb !== null, false);
+  const early =
+    known === null
+      ? Promise.resolve(new Map<string, Inline>())
+      : topHoldingsInline(m, [known], deadline);
   // pre or post trading beside the close, as a chart site shows it
-  const { rows } = await quoteRows(
-    m,
-    parseQuote({ symbols: [input], extended: true }),
-  );
+  const [{ rows }, fetched] = await Promise.all([
+    quoteRows(m, parseQuote({ symbols: [input], extended: true })),
+    early,
+  ]);
   const item = rows[0]!.item as Record<string, unknown>;
   const failure = "error" in item ? (item as ErrorItem) : null;
   // only the row this input names, so a failure never shows another listing
@@ -500,6 +519,14 @@ export async function instrument(m: Markets, url: URL, raw: string) {
       ? problem("not_found", "no such instrument", { input })
       : problemOf(failure);
   }
+  const row = readInstrument(m.db, stored.id);
+  // a symbol the quote added is fetched now, in what is left of the time
+  const inline =
+    row === null || fetched.has(row.id) || known?.id === row.id
+      ? fetched
+      : await topHoldingsInline(m, [row], deadline);
+  const fund =
+    row === null ? undefined : topHoldingsSummary(m, row, inline.get(row.id));
   return json({
     input,
     ...(stored.source === FRED ? { attribution: ATTRIBUTION } : {}),
@@ -510,6 +537,7 @@ export async function instrument(m: Markets, url: URL, raw: string) {
       failure === null
         ? null
         : { code: failure.error, detail: failure.message },
+    ...(fund === undefined ? {} : { top_holdings: fund }),
   });
 }
 

@@ -1,0 +1,242 @@
+{
+  "recordedAt": "2026-11-01T10:33:25.553Z",
+  "request": {
+    "method": "GET",
+    "url": "https://query2.finance.yahoo.com/v10/finance/quoteSummary/XCHA.DE?modules=topHoldings,price&crumb=REDACTED"
+  },
+  "status": 200,
+  "headers": {
+    "age": "0",
+    "cache-control": "public, max-age=1, stale-while-revalidate=9",
+    "content-type": "application/json;charset=utf-8"
+  },
+  "body": {
+    "quoteSummary": {
+      "result": [
+        {
+          "price": {
+            "maxAge": 1,
+            "preMarketChange": {},
+            "preMarketPrice": {},
+            "postMarketChange": {},
+            "postMarketPrice": {},
+            "regularMarketChangePercent": {
+              "raw": -0.010506405,
+              "fmt": "-1.05%"
+            },
+            "regularMarketChange": {
+              "raw": -0.1779995,
+              "fmt": "-0.18"
+            },
+            "regularMarketTime": 1793378165,
+            "priceHint": {
+              "raw": 2,
+              "fmt": "2",
+              "longFmt": "2"
+            },
+            "regularMarketPrice": {
+              "raw": 16.764,
+              "fmt": "16.76"
+            },
+            "regularMarketDayHigh": {
+              "raw": 16.842,
+              "fmt": "16.84"
+            },
+            "regularMarketDayLow": {
+              "raw": 16.712,
+              "fmt": "16.71"
+            },
+            "regularMarketVolume": {
+              "raw": 61186,
+              "fmt": "61.19k",
+              "longFmt": "61,186.00"
+            },
+            "averageDailyVolume10Day": {},
+            "averageDailyVolume3Month": {},
+            "regularMarketPreviousClose": {
+              "raw": 16.942,
+              "fmt": "16.94"
+            },
+            "regularMarketSource": "DELAYED",
+            "regularMarketOpen": {
+              "raw": 16.758,
+              "fmt": "16.76"
+            },
+            "strikePrice": {},
+            "openInterest": {},
+            "fulldayChangePercent": {
+              "raw": -0.010506405,
+              "fmt": "-1.05%"
+            },
+            "fulldayChange": {
+              "raw": -0.1779995,
+              "fmt": "-0.18"
+            },
+            "fulldayPrice": {
+              "raw": 16.764,
+              "fmt": "16.76"
+            },
+            "exchange": "GER",
+            "exchangeName": "XETRA",
+            "exchangeDataDelayedBy": 15,
+            "marketState": "CLOSED",
+            "quoteType": "ETF",
+            "symbol": "XCHA.DE",
+            "underlyingSymbol": null,
+            "shortName": "Xtrackers CSI300 Swap         I",
+            "longName": "Xtrackers CSI300 Swap UCITS ETF 1C",
+            "currency": "EUR",
+            "quoteSourceName": "Delayed Quote",
+            "currencySymbol": "€",
+            "fromCurrency": null,
+            "toCurrency": null,
+            "lastMarket": null,
+            "volume24Hr": {},
+            "volumeAllCurrencies": {},
+            "circulatingSupply": {},
+            "marketCap": {}
+          },
+          "topHoldings": {
+            "maxAge": 1,
+            "cashPosition": {
+              "raw": 0,
+              "fmt": "0.00%"
+            },
+            "stockPosition": {
+              "raw": 1,
+              "fmt": "100.00%"
+            },
+            "bondPosition": {
+              "raw": 0,
+              "fmt": "0.00%"
+            },
+            "otherPosition": {
+              "raw": 0,
+              "fmt": "0.00%"
+            },
+            "preferredPosition": {
+              "raw": 0,
+              "fmt": "0.00%"
+            },
+            "convertiblePosition": {
+              "raw": 0,
+              "fmt": "0.00%"
+            },
+            "holdings": [],
+            "equityHoldings": {
+              "priceToEarnings": {
+                "raw": 0.0664,
+                "fmt": "0.07"
+              },
+              "priceToBook": {
+                "raw": 0.61416,
+                "fmt": "0.61"
+              },
+              "priceToSales": {
+                "raw": 0.61499,
+                "fmt": "0.61"
+              },
+              "priceToCashflow": {
+                "raw": 0.09057,
+                "fmt": "0.09"
+              },
+              "medianMarketCap": {},
+              "threeYearEarningsGrowth": {},
+              "priceToEarningsCat": {},
+              "priceToBookCat": {},
+              "priceToSalesCat": {},
+              "priceToCashflowCat": {},
+              "medianMarketCapCat": {},
+              "threeYearEarningsGrowthCat": {}
+            },
+            "bondHoldings": {
+              "maturity": {},
+              "duration": {},
+              "creditQuality": {},
+              "maturityCat": {},
+              "durationCat": {},
+              "creditQualityCat": {}
+            },
+            "bondRatings": [
+              {
+                "us_government": {
+                  "raw": 0,
+                  "fmt": "0.00%"
+                }
+              }
+            ],
+            "sectorWeightings": [
+              {
+                "realestate": {
+                  "raw": 0.0046,
+                  "fmt": "0.46%"
+                }
+              },
+              {
+                "consumer_cyclical": {
+                  "raw": 0.0589,
+                  "fmt": "5.89%"
+                }
+              },
+              {
+                "basic_materials": {
+                  "raw": 0.0915,
+                  "fmt": "9.15%"
+                }
+              },
+              {
+                "consumer_defensive": {
+                  "raw": 0.0661,
+                  "fmt": "6.61%"
+                }
+              },
+              {
+                "technology": {
+                  "raw": 0.2922,
+                  "fmt": "29.22%"
+                }
+              },
+              {
+                "communication_services": {
+                  "raw": 0.0198,
+                  "fmt": "1.98%"
+                }
+              },
+              {
+                "financial_services": {
+                  "raw": 0.21059999,
+                  "fmt": "21.06%"
+                }
+              },
+              {
+                "utilities": {
+                  "raw": 0.0301,
+                  "fmt": "3.01%"
+                }
+              },
+              {
+                "industrials": {
+                  "raw": 0.1479,
+                  "fmt": "14.79%"
+                }
+              },
+              {
+                "energy": {
+                  "raw": 0.0312,
+                  "fmt": "3.12%"
+                }
+              },
+              {
+                "healthcare": {
+                  "raw": 0.0471,
+                  "fmt": "4.71%"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "error": null
+    }
+  }
+}

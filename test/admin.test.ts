@@ -765,6 +765,16 @@ describe("delete", () => {
     );
     q(`insert into valuations (instrument, eps_ttm, currency, fetched_at)
        values (?, 1, 'USD', ?)`);
+    q(`insert into fund_top_holdings (instrument, fetched_at, stock)
+       values (?, ?, 1)`);
+    db.query(
+      `insert into fund_top_holding_rows (instrument, rank, symbol, name, weight)
+       values (?, 1, 'NVDA', 'NVIDIA Corp', 0.08)`,
+    ).run(id);
+    db.query(
+      `insert into fund_weights (instrument, kind, key, weight)
+       values (?, 'sector', 'technology', 0.6)`,
+    ).run(id);
     q(`insert into sync_runs (source, job, scope, started_at, ended_at, status)
        values ('finnhub', 'metric', ?1, ?2, ?2, 'ok')`);
   }

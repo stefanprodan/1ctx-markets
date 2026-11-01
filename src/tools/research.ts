@@ -42,6 +42,8 @@ import {
   rowItem,
   SECTION_OF,
   SINCE_DAYS,
+  topHoldingsOf,
+  topHoldingsSummary,
   valuationSummary,
 } from "../operations/research.ts";
 import { type FilingCursor, readFilings } from "../sources/edgar/store.ts";
@@ -64,6 +66,7 @@ export const RESEARCH_SECTIONS = [
   "insiders",
   "news",
   "filings",
+  "top_holdings",
 ] as const;
 export type ResearchSection = (typeof RESEARCH_SECTIONS)[number];
 
@@ -75,6 +78,7 @@ export const SECTIONS_OF: Record<ResearchSection, readonly Section[]> = {
   insiders: ["insider"],
   news: [],
   filings: [],
+  top_holdings: [],
 };
 
 // a news page goes on below the last article it showed
@@ -133,7 +137,7 @@ export async function researchAnswer(
   }
   let start: string | null = null;
   if (next !== null) {
-    if (args.section === "overview") {
+    if (args.section === "overview" || args.section === "top_holdings") {
       throw new ArgError(`${args.section} has no next page`);
     }
     start = readCursor(next, asked);
@@ -147,16 +151,15 @@ export async function researchAnswer(
   }
   const withNews = args.section === "overview" || args.section === "news";
   const withFilings = args.section === "overview" || args.section === "filings";
-  const { targets, inline, news, filings, valuation } = await researchTargets(
-    m,
-    [args.symbol],
-    {
+  const { targets, inline, news, filings, valuation, topHoldings } =
+    await researchTargets(m, [args.symbol], {
       news: withNews,
       filings: withFilings,
       sections: SECTIONS_OF[args.section],
       valuation: args.section === "overview",
-    },
-  );
+      topHoldings:
+        args.section === "overview" || args.section === "top_holdings",
+    });
   const target = targets[0]!;
   if ("error" in target) {
     return errorResult({ input: target.input, ...target.error });
@@ -179,10 +182,16 @@ export async function researchAnswer(
     );
     const summary = newsSummary(m, instrument, news.get(instrument.id));
     const value = valuationSummary(m, instrument, valuation.get(instrument.id));
+    const fund = topHoldingsSummary(
+      m,
+      instrument,
+      topHoldings.get(instrument.id),
+    );
     const answer = () =>
       JSON.stringify({
         ...head,
         quote,
+        ...(fund === undefined ? {} : { top_holdings: fund }),
         research: researchSummary(m, instrument, inline.get(instrument.id)),
         ...(value === undefined ? {} : { valuation: value }),
         news: summary,
@@ -195,6 +204,14 @@ export async function researchAnswer(
       summary.headlines.pop();
       text = answer();
     }
+    if (!fits(text)) throw new PageOverflow();
+    return textResult(text);
+  }
+  if (args.section === "top_holdings") {
+    const text = JSON.stringify({
+      ...head,
+      ...topHoldingsOf(m, instrument, topHoldings.get(instrument.id)),
+    });
     if (!fits(text)) throw new PageOverflow();
     return textResult(text);
   }

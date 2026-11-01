@@ -32,8 +32,10 @@ const search = (q: string) =>
 // session: asked with the cookie and crumb, which are scrubbed before writing
 type Case = { name: string; url: string; session?: boolean };
 
-const summary = (symbol: string) =>
-  `${Q2}/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=defaultKeyStatistics,price`;
+const summary = (symbol: string, modules = "defaultKeyStatistics,price") =>
+  `${Q2}/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=${modules}`;
+
+const holdings = (symbol: string) => summary(symbol, "topHoldings,price");
 
 const CASES: Case[] = [
   // Access without cookie or crumb, both hosts, and the UA quirk.
@@ -262,6 +264,20 @@ const CASES: Case[] = [
   { name: "quotesummary-tsm", url: summary("TSM"), session: true },
   { name: "quotesummary-asml", url: summary("ASML"), session: true },
   { name: "quotesummary-no-crumb", url: summary("TSM") },
+  // A fund's top holdings: an ETF, a mutual fund, a bond fund, two
+  // UCITS ETFs (one without holdings); a fund Yahoo has none for and a
+  // share answer their price alone, never a 404, since price is asked.
+  { name: "topholdings-qqq", url: holdings("QQQ"), session: true },
+  { name: "topholdings-vfiax", url: holdings("VFIAX"), session: true },
+  { name: "topholdings-agg", url: holdings("AGG"), session: true },
+  { name: "topholdings-icga-de", url: holdings("ICGA.DE"), session: true },
+  { name: "topholdings-xcha-de", url: holdings("XCHA.DE"), session: true },
+  {
+    name: "topholdings-tvbetetf-ro",
+    url: holdings("TVBETETF.RO"),
+    session: true,
+  },
+  { name: "topholdings-aapl", url: holdings("AAPL"), session: true },
   // Yahoo caps a spark call at 20 symbols; 21 is a 400.
   {
     name: "spark-v7-21-symbols",

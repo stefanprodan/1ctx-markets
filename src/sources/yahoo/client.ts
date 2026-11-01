@@ -5,6 +5,7 @@ import { type Session, sessionFromChartMeta } from "../../market/calendars.ts";
 import type { Point } from "../../market/intraday.ts";
 import type { Clock } from "../../runtime/clock.ts";
 import { YAHOO } from "../ids.ts";
+import { cut } from "../massive/client.ts";
 import {
   type Backoff,
   DeadlinePassed,
@@ -117,6 +118,38 @@ export type Valuation = {
   fetchedAt: number;
 };
 
+// weights are fractions of the fund, as Yahoo gives them
+export type FundHolding = {
+  symbol: string | null;
+  name: string;
+  weight: number;
+};
+
+export type FundWeight = { key: string; weight: number };
+
+export type FundPositions = {
+  stock: number | null;
+  bond: number | null;
+  cash: number | null;
+  other: number | null;
+  preferred: number | null;
+  convertible: number | null;
+};
+
+// fund null: Yahoo has no top holdings for the symbol
+export type TopHoldings = {
+  symbol: string;
+  fund: {
+    holdings: FundHolding[];
+    positions: FundPositions;
+    sectors: FundWeight[];
+    ratings: FundWeight[];
+    // overlaps the ratings, so never one of them
+    government: number | null;
+  } | null;
+  fetchedAt: number;
+};
+
 export type Listing = {
   sourceSymbol: string;
   exchange: string;
@@ -140,6 +173,8 @@ export type Yahoo = {
   search(query: string): Promise<Listing[]>;
   // the quote summary, behind a cookie and crumb held in memory only
   valuation(symbol: string): Promise<Valuation>;
+  // a fund's ten largest holdings, on the same session
+  topHoldings(symbol: string): Promise<TopHoldings>;
   failFast(): Yahoo;
   within(live: () => boolean): Yahoo;
   backoff(): Backoff | null;
@@ -508,7 +543,8 @@ function raw(v: unknown): number | null {
   return typeof v.raw === "number" && Number.isFinite(v.raw) ? v.raw : null;
 }
 
-export function parseSummary(body: unknown, fetchedAt: number): Valuation {
+// the one result of a quote summary, its error read first
+function summaryResult(body: unknown): Obj {
   const b = obj(body, "body");
   const summary = isObj(b.quoteSummary) ? b.quoteSummary : b.finance;
   const top = obj(summary, "quote summary");
@@ -522,7 +558,11 @@ export function parseSummary(body: unknown, fetchedAt: number): Valuation {
   if (!Array.isArray(top.result) || top.result.length !== 1) {
     throw malformed("not one quote summary result");
   }
-  const result = obj(top.result[0], "quote summary result");
+  return obj(top.result[0], "quote summary result");
+}
+
+export function parseSummary(body: unknown, fetchedAt: number): Valuation {
+  const result = summaryResult(body);
   const price = obj(result.price, "price");
   const stats =
     result.defaultKeyStatistics === undefined ||
@@ -535,6 +575,116 @@ export function parseSummary(body: unknown, fetchedAt: number): Valuation {
     epsTtm: raw(stats.trailingEps),
     epsForward: raw(stats.forwardEps),
     peg: raw(stats.pegRatio),
+    fetchedAt,
+  };
+}
+
+// a fund holds at most this much of one name, sector or rating; past it
+// the figure is not a fraction
+const MAX_WEIGHT = 1.05;
+// cash can be short and stock past 100%, as a fund borrows
+const MIN_POSITION = -0.5;
+const MAX_POSITION = 1.5;
+export const HOLDING_NAME_MAX = 120;
+// Yahoo lists a fund's ten largest, never more
+export const TOP_HOLDINGS = 10;
+const WEIGHT_KEY = /^[a-z_]{1,32}$/;
+// a bare number names a listing on an exchange Yahoo does not say
+const BARE_CODE = /^\d+$/;
+const YAHOO_SYMBOL = /^[A-Za-z0-9.^=&-]{1,32}$/;
+const GOVERNMENT = "us_government";
+
+const weightOf = (v: unknown): number | null => {
+  const w = raw(v);
+  return w !== null && w >= 0 && w <= MAX_WEIGHT ? w : null;
+};
+
+const positionOf = (v: unknown): number | null => {
+  const p = raw(v);
+  return p !== null && p >= MIN_POSITION && p <= MAX_POSITION ? p : null;
+};
+
+// one line for an agent: no control characters, no runs of spaces
+export function cleanName(v: string): string {
+  const one = v
+    .replaceAll(/\p{Cc}/gu, " ")
+    .replaceAll(/\s+/g, " ")
+    .trim();
+  return cut(one, HOLDING_NAME_MAX);
+}
+
+function holdingSymbol(v: unknown): string | null {
+  const s = optionalText(v);
+  return s === null || BARE_CODE.test(s) || !YAHOO_SYMBOL.test(s) ? null : s;
+}
+
+// [{key: {raw}}], each key once, weights above 0
+function weights(v: unknown): {
+  kept: FundWeight[];
+  government: number | null;
+} {
+  const kept: FundWeight[] = [];
+  let government: number | null = null;
+  if (!Array.isArray(v)) return { kept, government };
+  const seen = new Set<string>();
+  for (const entry of v) {
+    if (!isObj(entry)) continue;
+    for (const [key, value] of Object.entries(entry)) {
+      const weight = weightOf(value);
+      if (key === GOVERNMENT) {
+        if (weight !== null && weight > 0) government = weight;
+        continue;
+      }
+      if (!WEIGHT_KEY.test(key) || seen.has(key)) continue;
+      if (weight === null || weight === 0) continue;
+      seen.add(key);
+      kept.push({ key, weight });
+    }
+  }
+  return { kept, government };
+}
+
+export function parseTopHoldings(
+  body: unknown,
+  fetchedAt: number,
+): TopHoldings {
+  const result = summaryResult(body);
+  const symbol = text(obj(result.price, "price").symbol, "symbol");
+  // a share, or a fund Yahoo describes no holdings of
+  if (result.topHoldings === undefined || result.topHoldings === null) {
+    return { symbol, fund: null, fetchedAt };
+  }
+  const t = obj(result.topHoldings, "top holdings");
+  const holdings: FundHolding[] = [];
+  for (const h of Array.isArray(t.holdings) ? t.holdings : []) {
+    if (holdings.length === TOP_HOLDINGS) break;
+    if (!isObj(h)) continue;
+    const weight = weightOf(h.holdingPercent);
+    const own = holdingSymbol(h.symbol);
+    const given =
+      typeof h.holdingName === "string" ? cleanName(h.holdingName) : "";
+    const name = given === "" ? own : given;
+    if (weight === null || name === null) continue;
+    holdings.push({ symbol: own, name, weight });
+  }
+  const sectors = weights(t.sectorWeightings).kept;
+  const ratings = weights(t.bondRatings);
+  return {
+    symbol,
+    fund: {
+      holdings,
+      positions: {
+        stock: positionOf(t.stockPosition),
+        bond: positionOf(t.bondPosition),
+        cash: positionOf(t.cashPosition),
+        other: positionOf(t.otherPosition),
+        preferred: positionOf(t.preferredPosition),
+        convertible: positionOf(t.convertiblePosition),
+      },
+      sectors,
+      ratings: ratings.kept,
+      government: ratings.government,
+    },
     fetchedAt,
   };
 }
@@ -642,20 +792,25 @@ export function yahoo(options: YahooOptions): Yahoo {
     return { cookie, crumb };
   };
 
-  const summaryUrl = (symbol: string, crumb: string) =>
-    `${SUMMARY_HOST}/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=defaultKeyStatistics,price&crumb=${encodeURIComponent(crumb)}`;
+  const summaryUrl = (symbol: string, modules: string, crumb: string) =>
+    `${SUMMARY_HOST}/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=${modules}&crumb=${encodeURIComponent(crumb)}`;
 
   // A refused session is asked again once. One queued task whose failure
   // comes back as a value, so it never backs off the queue prices share.
-  const valuation = (symbol: string, run: RunOptions) =>
+  const summary = <T extends { symbol: string }>(
+    symbol: string,
+    modules: string,
+    parse: (body: unknown, fetchedAt: number) => T,
+    run: RunOptions,
+  ) =>
     calls
-      .run(async (): Promise<{ answer: Valuation } | { error: unknown }> => {
-        const ask = async (): Promise<Valuation> => {
+      .run(async (): Promise<{ answer: T } | { error: unknown }> => {
+        const ask = async (): Promise<T> => {
           const s = session ?? (await newSession(run));
           session = s;
           ready(run);
           try {
-            return await call(summaryUrl(symbol, s.crumb), parseSummary, {
+            return await call(summaryUrl(symbol, modules, s.crumb), parse, {
               Cookie: s.cookie,
             });
           } catch (error) {
@@ -664,7 +819,7 @@ export function yahoo(options: YahooOptions): Yahoo {
           }
         };
         try {
-          let answer: Valuation;
+          let answer: T;
           try {
             answer = await ask();
           } catch (error) {
@@ -854,7 +1009,10 @@ export function yahoo(options: YahooOptions): Yahoo {
         });
         return get(`${host}/v1/finance/search?${params}`, run, parseSearch);
       },
-      valuation: (symbol) => valuation(symbol, run),
+      valuation: (symbol) =>
+        summary(symbol, "defaultKeyStatistics,price", parseSummary, run),
+      topHoldings: (symbol) =>
+        summary(symbol, "topHoldings,price", parseTopHoldings, run),
       failFast: () => client({ failFast: true }),
       within: (live) => client({ failFast: true, live }),
       backoff: () => calls.backoff(),

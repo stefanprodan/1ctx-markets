@@ -1,0 +1,121 @@
+{
+  "recordedAt": "2026-11-01T10:33:58.977Z",
+  "request": {
+    "method": "GET",
+    "url": "https://query2.finance.yahoo.com/v10/finance/quoteSummary/AAPL?modules=topHoldings,price&crumb=REDACTED"
+  },
+  "status": 200,
+  "headers": {
+    "age": "2",
+    "cache-control": "public, max-age=1, stale-while-revalidate=9",
+    "content-type": "application/json;charset=utf-8"
+  },
+  "body": {
+    "quoteSummary": {
+      "result": [
+        {
+          "price": {
+            "maxAge": 1,
+            "preMarketChange": {},
+            "preMarketPrice": {},
+            "preMarketSource": "FREE_REALTIME",
+            "postMarketChangePercent": {
+              "raw": 0.001363785,
+              "fmt": "0.14%"
+            },
+            "postMarketChange": {
+              "raw": 0.47000122,
+              "fmt": "0.47"
+            },
+            "postMarketTime": 1793404795,
+            "postMarketPrice": {
+              "raw": 345.1,
+              "fmt": "345.10"
+            },
+            "postMarketSource": "FREE_REALTIME",
+            "regularMarketChangePercent": {
+              "raw": -0.012266801,
+              "fmt": "-1.23%"
+            },
+            "regularMarketChange": {
+              "raw": -4.28,
+              "fmt": "-4.28"
+            },
+            "regularMarketTime": 1793390401,
+            "priceHint": {
+              "raw": 2,
+              "fmt": "2",
+              "longFmt": "2"
+            },
+            "regularMarketPrice": {
+              "raw": 344.63,
+              "fmt": "344.63"
+            },
+            "regularMarketDayHigh": {
+              "raw": 349.19,
+              "fmt": "349.19"
+            },
+            "regularMarketDayLow": {
+              "raw": 342.35,
+              "fmt": "342.35"
+            },
+            "regularMarketVolume": {
+              "raw": 67842804,
+              "fmt": "67.84M",
+              "longFmt": "67,842,804.00"
+            },
+            "averageDailyVolume10Day": {},
+            "averageDailyVolume3Month": {},
+            "regularMarketPreviousClose": {
+              "raw": 348.91,
+              "fmt": "348.91"
+            },
+            "regularMarketSource": "FREE_REALTIME",
+            "regularMarketOpen": {
+              "raw": 346.685,
+              "fmt": "346.68"
+            },
+            "strikePrice": {},
+            "openInterest": {},
+            "fulldayChangePercent": {
+              "raw": -0.010919714,
+              "fmt": "-1.09%"
+            },
+            "fulldayChange": {
+              "raw": -3.8099976,
+              "fmt": "-3.81"
+            },
+            "fulldayPrice": {
+              "raw": 344.63,
+              "fmt": "344.63"
+            },
+            "exchange": "NMS",
+            "exchangeName": "NasdaqGS",
+            "exchangeDataDelayedBy": 15,
+            "marketState": "CLOSED",
+            "quoteType": "EQUITY",
+            "symbol": "AAPL",
+            "underlyingSymbol": null,
+            "shortName": "Apple Inc.",
+            "longName": "Apple Inc.",
+            "currency": "USD",
+            "quoteSourceName": "Nasdaq Real Time Price",
+            "currencySymbol": "$",
+            "fromCurrency": null,
+            "toCurrency": null,
+            "lastMarket": null,
+            "volume24Hr": {},
+            "volumeAllCurrencies": {},
+            "circulatingSupply": {},
+            "marketCap": {
+              "raw": 5029592301568,
+              "fmt": "5.03T",
+              "longFmt": "5,029,592,301,568.00"
+            }
+          }
+        }
+      ],
+      "error": null
+    }
+  }
+}

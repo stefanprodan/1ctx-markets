@@ -108,6 +108,20 @@ const SUMMARIES: Record<string, string> = {
   TSM: "quotesummary-tsm",
   ASML: "quotesummary-asml",
 };
+// asked for topHoldings,price
+export const TOP_HOLDINGS: Record<string, string> = {
+  QQQ: "topholdings-qqq",
+  VFIAX: "topholdings-vfiax",
+  AGG: "topholdings-agg",
+  "ICGA.DE": "topholdings-icga-de",
+  "XCHA.DE": "topholdings-xcha-de",
+  "TVBETETF.RO": "topholdings-tvbetetf-ro",
+  AAPL: "topholdings-aapl",
+};
+
+// whether a quote summary URL asks for a fund's top holdings
+export const holdingsAsked = (url: URL): boolean =>
+  (url.searchParams.get("modules") ?? "").split(",").includes("topHoldings");
 
 // the symbol a quote summary URL asks for
 export const summarySymbol = (url: URL): string | null =>
@@ -117,7 +131,7 @@ export const summarySymbol = (url: URL): string | null =>
       )
     : null;
 
-const notFound: Recorded = {
+export const notFound: Recorded = {
   recordedAt: "",
   status: 404,
   headers: {},
@@ -164,7 +178,7 @@ export function yahooSession() {
       headers.get("cookie") === `${COOKIE}${valid}` &&
       url.searchParams.get("crumb") === `${CRUMB}${valid}`;
     if (!paired) return recorded("quotesummary-no-crumb");
-    const name = SUMMARIES[symbol];
+    const name = (holdingsAsked(url) ? TOP_HOLDINGS : SUMMARIES)[symbol];
     return name === undefined ? notFound : recorded(name);
   };
   return {

@@ -1,0 +1,336 @@
+{
+  "recordedAt": "2026-11-01T10:33:13.014Z",
+  "request": {
+    "method": "GET",
+    "url": "https://query2.finance.yahoo.com/v10/finance/quoteSummary/QQQ?modules=topHoldings,price&crumb=REDACTED"
+  },
+  "status": 200,
+  "headers": {
+    "age": "1",
+    "cache-control": "public, max-age=1, stale-while-revalidate=9",
+    "content-type": "application/json;charset=utf-8"
+  },
+  "body": {
+    "quoteSummary": {
+      "result": [
+        {
+          "price": {
+            "maxAge": 1,
+            "preMarketChange": {},
+            "preMarketPrice": {},
+            "preMarketSource": "FREE_REALTIME",
+            "postMarketChangePercent": {
+              "raw": 0.0032585554,
+              "fmt": "0.33%"
+            },
+            "postMarketChange": {
+              "raw": 2.25,
+              "fmt": "2.25"
+            },
+            "postMarketTime": 1793404795,
+            "postMarketPrice": {
+              "raw": 692.74,
+              "fmt": "692.74"
+            },
+            "postMarketSource": "FREE_REALTIME",
+            "regularMarketChangePercent": {
+              "raw": -0.0347388,
+              "fmt": "-3.47%"
+            },
+            "regularMarketChange": {
+              "raw": -24.85,
+              "fmt": "-24.85"
+            },
+            "regularMarketTime": 1793390401,
+            "priceHint": {
+              "raw": 2,
+              "fmt": "2",
+              "longFmt": "2"
+            },
+            "regularMarketPrice": {
+              "raw": 690.49,
+              "fmt": "690.49"
+            },
+            "regularMarketDayHigh": {
+              "raw": 698.63,
+              "fmt": "698.63"
+            },
+            "regularMarketDayLow": {
+              "raw": 683.45,
+              "fmt": "683.45"
+            },
+            "regularMarketVolume": {
+              "raw": 84754440,
+              "fmt": "84.75M",
+              "longFmt": "84,754,440.00"
+            },
+            "averageDailyVolume10Day": {},
+            "averageDailyVolume3Month": {},
+            "regularMarketPreviousClose": {
+              "raw": 715.34,
+              "fmt": "715.34"
+            },
+            "regularMarketSource": "FREE_REALTIME",
+            "regularMarketOpen": {
+              "raw": 697.13,
+              "fmt": "697.13"
+            },
+            "strikePrice": {},
+            "openInterest": {},
+            "fulldayChangePercent": {
+              "raw": -0.03159342,
+              "fmt": "-3.16%"
+            },
+            "fulldayChange": {
+              "raw": -22.600037,
+              "fmt": "-22.60"
+            },
+            "fulldayPrice": {
+              "raw": 690.49,
+              "fmt": "690.49"
+            },
+            "exchange": "NGM",
+            "exchangeName": "NasdaqGM",
+            "exchangeDataDelayedBy": 15,
+            "marketState": "CLOSED",
+            "quoteType": "ETF",
+            "symbol": "QQQ",
+            "underlyingSymbol": null,
+            "shortName": "Invesco QQQ Trust, Series 1",
+            "longName": "Invesco QQQ Trust",
+            "currency": "USD",
+            "quoteSourceName": "Nasdaq Real Time Price",
+            "currencySymbol": "$",
+            "fromCurrency": null,
+            "toCurrency": null,
+            "lastMarket": null,
+            "volume24Hr": {},
+            "volumeAllCurrencies": {},
+            "circulatingSupply": {},
+            "marketCap": {}
+          },
+          "topHoldings": {
+            "maxAge": 1,
+            "cashPosition": {
+              "raw": 0.0023999999,
+              "fmt": "0.24%"
+            },
+            "stockPosition": {
+              "raw": 0.9976,
+              "fmt": "99.76%"
+            },
+            "bondPosition": {
+              "raw": 0,
+              "fmt": "0.00%"
+            },
+            "otherPosition": {
+              "raw": 0,
+              "fmt": "0.00%"
+            },
+            "preferredPosition": {
+              "raw": 0,
+              "fmt": "0.00%"
+            },
+            "convertiblePosition": {
+              "raw": 0,
+              "fmt": "0.00%"
+            },
+            "holdings": [
+              {
+                "symbol": "NVDA",
+                "holdingName": "NVIDIA Corp",
+                "holdingPercent": {
+                  "raw": 0.0832742,
+                  "fmt": "8.33%"
+                }
+              },
+              {
+                "symbol": "AAPL",
+                "holdingName": "Apple Inc",
+                "holdingPercent": {
+                  "raw": 0.073533505,
+                  "fmt": "7.35%"
+                }
+              },
+              {
+                "symbol": "MSFT",
+                "holdingName": "Microsoft Corp",
+                "holdingPercent": {
+                  "raw": 0.057623,
+                  "fmt": "5.76%"
+                }
+              },
+              {
+                "symbol": "MU",
+                "holdingName": "Micron Technology Inc",
+                "holdingPercent": {
+                  "raw": 0.050244797,
+                  "fmt": "5.02%"
+                }
+              },
+              {
+                "symbol": "AMD",
+                "holdingName": "Advanced Micro Devices Inc",
+                "holdingPercent": {
+                  "raw": 0.0417138,
+                  "fmt": "4.17%"
+                }
+              },
+              {
+                "symbol": "AMZN",
+                "holdingName": "Amazon.com Inc",
+                "holdingPercent": {
+                  "raw": 0.0406602,
+                  "fmt": "4.07%"
+                }
+              },
+              {
+                "symbol": "META",
+                "holdingName": "Meta Platforms Inc Class A",
+                "holdingPercent": {
+                  "raw": 0.032625798,
+                  "fmt": "3.26%"
+                }
+              },
+              {
+                "symbol": "GOOGL",
+                "holdingName": "Alphabet Inc Class A",
+                "holdingPercent": {
+                  "raw": 0.0305482,
+                  "fmt": "3.05%"
+                }
+              },
+              {
+                "symbol": "GOOG",
+                "holdingName": "Alphabet Inc Class C",
+                "holdingPercent": {
+                  "raw": 0.0284936,
+                  "fmt": "2.85%"
+                }
+              },
+              {
+                "symbol": "TSLA",
+                "holdingName": "Tesla Inc",
+                "holdingPercent": {
+                  "raw": 0.0282008,
+                  "fmt": "2.82%"
+                }
+              }
+            ],
+            "equityHoldings": {
+              "priceToEarnings": {
+                "raw": 0.03531,
+                "fmt": "0.04"
+              },
+              "priceToBook": {
+                "raw": 0.11223,
+                "fmt": "0.11"
+              },
+              "priceToSales": {
+                "raw": 0.15557,
+                "fmt": "0.16"
+              },
+              "priceToCashflow": {
+                "raw": 0.04394,
+                "fmt": "0.04"
+              },
+              "medianMarketCap": {},
+              "threeYearEarningsGrowth": {},
+              "priceToEarningsCat": {},
+              "priceToBookCat": {},
+              "priceToSalesCat": {},
+              "priceToCashflowCat": {},
+              "medianMarketCapCat": {},
+              "threeYearEarningsGrowthCat": {}
+            },
+            "bondHoldings": {
+              "maturity": {},
+              "duration": {},
+              "creditQuality": {},
+              "maturityCat": {},
+              "durationCat": {},
+              "creditQualityCat": {}
+            },
+            "bondRatings": [
+              {
+                "us_government": {
+                  "raw": 0,
+                  "fmt": "0.00%"
+                }
+              }
+            ],
+            "sectorWeightings": [
+              {
+                "realestate": {
+                  "raw": 0,
+                  "fmt": "0.00%"
+                }
+              },
+              {
+                "consumer_cyclical": {
+                  "raw": 0.1007,
+                  "fmt": "10.07%"
+                }
+              },
+              {
+                "basic_materials": {
+                  "raw": 0.0092,
+                  "fmt": "0.92%"
+                }
+              },
+              {
+                "consumer_defensive": {
+                  "raw": 0.0556,
+                  "fmt": "5.56%"
+                }
+              },
+              {
+                "technology": {
+                  "raw": 0.60330003,
+                  "fmt": "60.33%"
+                }
+              },
+              {
+                "communication_services": {
+                  "raw": 0.1259,
+                  "fmt": "12.59%"
+                }
+              },
+              {
+                "financial_services": {
+                  "raw": 0.0019,
+                  "fmt": "0.19%"
+                }
+              },
+              {
+                "utilities": {
+                  "raw": 0.0101,
+                  "fmt": "1.01%"
+                }
+              },
+              {
+                "industrials": {
+                  "raw": 0.0511,
+                  "fmt": "5.11%"
+                }
+              },
+              {
+                "energy": {
+                  "raw": 0.0045,
+                  "fmt": "0.45%"
+                }
+              },
+              {
+                "healthcare": {
+                  "raw": 0.0379,
+                  "fmt": "3.79%"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "error": null
+    }
+  }
+}

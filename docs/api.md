@@ -23,13 +23,13 @@ MCP tools copied onto paths.
 | Method and path | Scope | Calls | Answers |
 |---|---|---|---|
 | `GET /quotes?symbols=&extended=` | read | `quoteRows()` with `briefItem()` | `quotes[]`: every symbol asked, up to `MAX_SYMBOLS` (100); `extended=true` adds the quote tool's `extended` per item |
-| `GET /research?symbols=&sections=&since=` | read | `researchList()` | `research[]`: up to `MAX_RESEARCH_SYMBOLS` (5) items of `input`, `id`, `company`, `valuation`, `news` and `filings` (below) |
+| `GET /research?symbols=&sections=&since=` | read | `researchList()` | `research[]`: up to `MAX_RESEARCH_SYMBOLS` (5) items of `input`, `id`, `company`, `valuation`, `news`, `filings` and, asked, `top_holdings` (below) |
 | `GET /symbols?query=&upstream=` | read | `searchAll()` | the search tool's `candidates[]`, and `errors[]` for a source that failed; `upstream=false` answers only the stored instruments and the stored Bucharest listings, asking no source |
 | `GET /earnings?from=&to=&symbols=` | read | `readEventsOf()` | `earnings[]`, with `no_event[]` and `unavailable[]` uncapped |
 | `GET /movers?symbols=&min_move_pct=&direction=&average=&relation=` | read | `readMovers()`, `setAll()` | `movers[]`: every match, unavailable and error, with `counts` |
 | `POST /screen` | read | `readScreen()`, `setAll()` | `matches[]`, the same; the body is the tool's arguments, since `filters` is a structure; 200, it creates nothing |
 | `GET /instruments?query=&page_size=&page_token=` | admin | `instruments()` | a page of stored instruments and what tracks each (`docs/admin.md`) |
-| `GET /instruments/{symbol}` | read | `instrument()` | the instrument, what tracks it and its full quote; a read (below) |
+| `GET /instruments/{symbol}` | read | `instrument()` | the instrument, what tracks it, its full quote and a fund's `top_holdings`; a read (below) |
 | `DELETE /instruments/{symbol}` | admin | `deleteOne()` | 204; 409 with `rules` (`docs/admin.md`) |
 | `POST /instruments/{symbol}/refetch` | admin | `refetchOne()` | `input`, `id`, `parts[]` (`docs/admin.md`) |
 | `GET /instruments/{symbol}/bars?interval=&from=&to=&benchmark=&extended=` | read | `readHistory()`, `readIntradayHistory()` | bars or 5-minute points (below) |
@@ -119,6 +119,13 @@ MCP tools copied onto paths.
   list gives it, `tracked_by` included), `credit`, and its quote as the
   quote tool gives it, `returns` and `session` included, with
   `extended` asked so a page shows pre or post trading.
+- **An ETF or mutual fund adds `top_holdings`**, the research tool's
+  section (`docs/research.md`), absent for anything else, so the page
+  needs no second call. A fund never fetched is fetched beside the
+  quote under one deadline, gated as in `research`: the page re-reads
+  every minute, so a failing fund is asked once per `RETRY_MS`. Past
+  the deadline the answer has the stored object, its `stale` saying
+  why.
 - **A stored instrument whose read fails answers 200** with its row,
   `quote` null and `error` (`{code, detail}`), so a page keeps the
   stored price; a symbol never stored has no row, so its failure is a
@@ -244,12 +251,14 @@ MCP tools copied onto paths.
 ## The research route
 
 - **`symbols` takes up to `MAX_RESEARCH_SYMBOLS` (5), `sections` a list
-  of `metric`, `analysts`, `earnings`, `insider`, `next_event`, `news`
-  and `filings` (all by default), and `since` a UTC date, with `news`
-  asked.** Each item is `input`, `id`, `company` (the Finnhub summary
-  with each asked section's `history`), `valuation` (with `metric`, for
-  a share answered from a foreign listing), `news` (the news week) and
-  `filings` (EDGAR's summary, the tool overview's), or its error; no
+  of `metric`, `analysts`, `earnings`, `insider`, `next_event`, `news`,
+  `filings` (all by default) and `top_holdings` (only when asked), and
+  `since` a UTC date, with `news` asked.** Each item is `input`, `id`,
+  `company` (the Finnhub summary with each asked section's `history`),
+  `valuation` (with `metric`, for a share answered from a foreign
+  listing), `news` (the news week), `filings` (EDGAR's summary, the
+  tool overview's) and `top_holdings` (the tool's section,
+  `NOT_A_FUND` for anything but a fund), or its error; no
   quote, since `/quotes` answers prices in one call. What each holds and
   why is in `docs/research.md` ("The research route").
 

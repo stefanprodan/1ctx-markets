@@ -108,7 +108,7 @@ the rules tool in `docs/rules.md`; the portfolio tool in
 | `search` | `query`, `next` | up to 20 stored matches, then up to 20 Bucharest listings from the stored list pages while the feed is on, then Yahoo's, each with id, exchange, type, name, `source`, `stored`; a listing Yahoo found adds `exchange_name`, the exchange in Yahoo's words, the stored copy of it too, and a stored one its `currency`, so one fund on several exchanges reads apart; a Bucharest listing adds its `isin` |
 | `movers` | `symbols`, `min_move_pct`, `direction`, `average`, `relation`, `next` | matches by absolute change, largest first; `counts` |
 | `screen` | `symbols`, `filters`, `benchmark`, `sort`, `order`, `fields`, `next` | matches with each used and asked field's value, unit, kind and date; `counts` |
-| `research` | `symbol`, `section`, `since`, `next` | `overview` (quote, Finnhub sections, an ADR's `valuation` from Yahoo, next event, headlines, `filings` with three flags), or one section paged: `analysts`, `earnings`, `insiders`, `news`, `filings` (`docs/research.md`, `docs/edgar.md`) |
+| `research` | `symbol`, `section`, `since`, `next` | `overview` (quote, a fund's `top_holdings`, Finnhub sections, an ADR's `valuation` from Yahoo, next event, headlines, `filings` with three flags), or one section paged: `analysts`, `earnings`, `insiders`, `news`, `filings`; or `top_holdings` unpaged, a fund's on any exchange from Yahoo (`docs/research.md`, `docs/edgar.md`) |
 | `events` | `from`, `to`, `symbols`, `next` | events by date with `status`, `reported_seen_at` and `filed_at`; `unavailable`, `no_event` (`docs/research.md`) |
 | `rules` | see `docs/rules.md` | |
 | `portfolio` | see `docs/portfolios.md` | |

@@ -184,6 +184,56 @@ const valuation = note(
   ),
   "P/E, forward P/E, PEG and EPS per US share, for a share whose metrics come from a foreign listing; with `metric` asked.",
 );
+const share = (name: string) => object({ [name]: str, weight_percent: num });
+const topHoldings = note(
+  object(
+    {
+      source: str,
+      error: str,
+      message: note(
+        str,
+        "Why there are none (the source has none for the fund, or it is not a fund), or why the fetch failed, with `error`.",
+      ),
+      fetched_at: nstr,
+      stale: note(list(str), STALE),
+      top: note(
+        list(
+          object({
+            rank: int,
+            symbol: note(
+              nstr,
+              "The holding's symbol; null when the source gives a bare exchange code.",
+            ),
+            id: note(nstr, "The stored instrument with this symbol, if any."),
+            name: str,
+            weight_percent: num,
+          }),
+        ),
+        "The fund's ten largest holdings, largest first.",
+      ),
+      top_weight_percent: note(nnum, "The ten's weights summed."),
+      assets: nullable(
+        object({
+          stock_percent: nnum,
+          bond_percent: nnum,
+          cash_percent: nnum,
+          other_percent: nnum,
+          preferred_percent: nnum,
+          convertible_percent: nnum,
+        }),
+      ),
+      sectors: note(list(share("sector")), "Largest first."),
+      bond_ratings: note(list(share("rating")), "Largest first."),
+      government_bonds_percent: note(
+        nnum,
+        "US government bonds, which overlap the ratings.",
+      ),
+      note: str,
+    },
+    ["source"],
+  ),
+  "A fund's ten largest holdings, asset split, sectors and bond ratings, not its full list; with `top_holdings` asked.",
+);
 const news = object({ source: str }, ["source"], true);
 const flag = (what: string) =>
   note(
@@ -508,24 +558,47 @@ export const schemas: Record<string, Schema> = {
   ),
   // a result holds the blocks its sections asked, at least one
   ResearchCompany: object(
-    { input: str, id: str, company, valuation, filings },
+    {
+      input: str,
+      id: str,
+      company,
+      valuation,
+      filings,
+      top_holdings: topHoldings,
+    },
     ["input", "id", "company"],
   ),
-  ResearchNews: object({ input: str, id: str, news, filings }, [
-    "input",
-    "id",
-    "news",
-  ]),
+  ResearchNews: object(
+    { input: str, id: str, news, filings, top_holdings: topHoldings },
+    ["input", "id", "news"],
+  ),
   ResearchBoth: object(
-    { input: str, id: str, company, valuation, news, filings },
+    {
+      input: str,
+      id: str,
+      company,
+      valuation,
+      news,
+      filings,
+      top_holdings: topHoldings,
+    },
     ["input", "id", "company", "news"],
   ),
-  ResearchFilings: object({ input: str, id: str, filings }),
+  ResearchFilings: object(
+    { input: str, id: str, filings, top_holdings: topHoldings },
+    ["input", "id", "filings"],
+  ),
+  ResearchTopHoldings: object({
+    input: str,
+    id: str,
+    top_holdings: topHoldings,
+  }),
   ResearchItem: oneOf(
     "ResearchCompany",
     "ResearchNews",
     "ResearchBoth",
     "ResearchFilings",
+    "ResearchTopHoldings",
     "ItemError",
   ),
   Research: object({ research: list(ref("ResearchItem")) }),
@@ -957,6 +1030,10 @@ export const schemas: Record<string, Schema> = {
       error: note(
         nullable(object({ code: values(ERRORS), detail: str })),
         "Why the read failed, else null.",
+      ),
+      top_holdings: note(
+        topHoldings,
+        "For an ETF or mutual fund only, as the research route's `top_holdings`.",
       ),
     },
     ["input", "instrument", "credit", "quote", "error"],
