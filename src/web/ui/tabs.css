@@ -47,8 +47,9 @@
   .tab:focus-visible {
     outline-offset: -1px;
   }
-  /* in a card the fade meets the card's ground */
-  .card .tabs {
+  /* in a card or a drawer the fade meets its ground */
+  .card .tabs,
+  .drawer .tabs {
     --tabs-ground: var(--card);
   }
   .tab-count {
