@@ -9,6 +9,7 @@ import {
   type Status as StatusAnswer,
   type WatchEntry,
 } from "../data/store.ts";
+import { plain } from "../lib/format.ts";
 import { Icon } from "../lib/icons.tsx";
 import { Card, GroupLabel } from "../ui/Card.tsx";
 import { Drawer } from "../ui/Drawer.tsx";
@@ -25,7 +26,6 @@ import {
   jobLine,
   jobTone,
   jobWhen,
-  plain,
   runTime,
   type SourceGroup,
   sourcesOn,

@@ -5,7 +5,7 @@
 import type { Instrument } from "../../market/instruments.ts";
 import { dateOfWall, localDate } from "../../market/zone.ts";
 import { DAY_MS, MINUTE_MS } from "../../runtime/clock.ts";
-import { monthsBack } from "../../signals/relative.ts";
+import { monthsBack } from "../../shared/periods.ts";
 import type { Db } from "../../storage/db/index.ts";
 import { phraseOf } from "../source.ts";
 import {

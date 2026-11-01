@@ -13,7 +13,7 @@ import {
   type WatchEntry,
 } from "../data/store.ts";
 import { Icon } from "../lib/icons.tsx";
-import { nameOf, tickerOf } from "../lib/names.ts";
+import { nameOf, symbolOf, tickerOf } from "../lib/names.ts";
 import { useRefresh } from "../lib/refresh.ts";
 import { Card, SectionHead } from "../ui/Card.tsx";
 import { Change, Num } from "../ui/Figures.tsx";
@@ -63,7 +63,6 @@ import {
   waiting,
   withView,
 } from "./Dashboard.model.ts";
-import { symbolOf } from "./Instruments.model.ts";
 import "./dashboard.css";
 
 type Items = ReadonlyMap<string, BoardItem>;

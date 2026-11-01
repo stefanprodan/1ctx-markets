@@ -4,7 +4,8 @@
 import { type Signal, useSignal } from "@preact/signals";
 import { useEffect, useMemo, useState } from "preact/hooks";
 import { type Candidate, type Listed, markets } from "../data/store.ts";
-import { kindOf, nameOf, tickerOf } from "../lib/names.ts";
+import { change, priceParts } from "../lib/format.ts";
+import { kindOf, marketOf, nameOf, stopped, tickerOf } from "../lib/names.ts";
 import { useRefresh } from "../lib/refresh.ts";
 import { Card, GroupLabel } from "../ui/Card.tsx";
 import { Change, Num } from "../ui/Figures.tsx";
@@ -18,16 +19,7 @@ import {
   Table,
   type TableGroup,
 } from "../ui/Table.tsx";
-import {
-  change,
-  marketOf,
-  matches,
-  priceParts,
-  type SortKey,
-  sortRows,
-  stopped,
-} from "./Instruments.model.ts";
-import "./instruments.css";
+import { matches, type SortKey, sortRows } from "./Instruments.model.ts";
 
 // a stored row, or a source's match no row holds yet
 type Item = { listed: Listed } | { found: Candidate };

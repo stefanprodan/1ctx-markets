@@ -20,7 +20,9 @@ import type {
 } from "../data/portfolios.ts";
 import { JUST_SAVED } from "../data/portfolios.ts";
 import { type Candidate, markets } from "../data/store.ts";
+import { amount, day, quantity } from "../lib/format.ts";
 import { Icon } from "../lib/icons.tsx";
+import { symbolOf } from "../lib/names.ts";
 import { Card, SectionHead } from "../ui/Card.tsx";
 import { Drawer } from "../ui/Drawer.tsx";
 import { MenuButton } from "../ui/Menu.tsx";
@@ -29,13 +31,10 @@ import { SymbolName } from "../ui/Symbol.tsx";
 import { searcher } from "../ui/SymbolSearch.model.ts";
 import { Table } from "../ui/Table.tsx";
 import { Tabs } from "../ui/Tabs.tsx";
-import { symbolOf } from "./Instruments.model.ts";
 import {
   ADD_KEY,
-  amount,
   browserZone,
   currencies,
-  day,
   dryPowderFor,
   dryPowders,
   findZones,
@@ -46,7 +45,6 @@ import {
   importStatus,
   listingWords,
   price,
-  quantity,
   type Remembered,
   ranked,
   readRemembered,

@@ -11,49 +11,13 @@ import type {
   TradeRow,
 } from "../data/portfolios.ts";
 import type { Candidate } from "../data/store.ts";
-import { nameOf, tickerOf } from "../lib/names.ts";
-import { symbolOf } from "./Instruments.model.ts";
+import { amount, day, quantity } from "../lib/format.ts";
+import { nameOf, symbolOf, tickerOf } from "../lib/names.ts";
 
 const decimals = (v: number) => {
   const a = Math.abs(v);
   return a >= 1 ? 2 : a >= 0.01 ? 4 : 6;
 };
-
-let iso: Set<string> | null = null;
-
-// a currency's minor units (JPY 0, KWD 3), 2 when unknown; a coin's 8
-export function minorUnits(currency?: string | null): number {
-  if (!currency) return 2;
-  const code = currency.toUpperCase();
-  try {
-    iso ??= new Set(Intl.supportedValuesOf("currency"));
-    if (!iso.has(code)) return 8;
-    return (
-      new Intl.NumberFormat("en", {
-        style: "currency",
-        currency: code,
-      }).resolvedOptions().maximumFractionDigits ?? 2
-    );
-  } catch {
-    return 2;
-  }
-}
-
-// in the currency's minor units; bare leaves the code off
-export function amount(
-  v: number | null,
-  currency?: string | null,
-  bare = false,
-): string {
-  if (v === null) return "—";
-  const d = minorUnits(currency);
-  const n = v.toLocaleString("en-US", {
-    minimumFractionDigits: Math.min(d, 2),
-    maximumFractionDigits: d,
-  });
-  const signed = v < 0 ? `−${n.slice(1)}` : n;
-  return currency && !bare ? `${signed} ${currency}` : signed;
-}
 
 export function price(v: number | null, currency?: string | null): string {
   if (v === null) return "—";
@@ -63,42 +27,6 @@ export function price(v: number | null, currency?: string | null): string {
     maximumFractionDigits: d,
   });
   return currency ? `${n} ${currency}` : n;
-}
-
-export function quantity(v: number | null): string {
-  if (v === null) return "—";
-  return v.toLocaleString("en-US", { maximumFractionDigits: 8 });
-}
-
-export type Signed = { text: string; dir: -1 | 0 | 1 };
-
-// a gain or loss with its sign; one that rounds to nothing reads flat
-export function change(v: number | null, currency?: string | null): Signed {
-  if (v === null) return { text: "", dir: 0 };
-  const d = minorUnits(currency);
-  const r = Number(v.toFixed(d));
-  const dir = r > 0 ? 1 : r < 0 ? -1 : 0;
-  const n = amount(Math.abs(r), currency);
-  return { text: `${dir > 0 ? "+" : dir < 0 ? "−" : ""}${n}`, dir };
-}
-
-export function percent(v: number | null): Signed {
-  if (v === null) return { text: "", dir: 0 };
-  const n = Math.abs(v).toFixed(2);
-  const dir = Number(n) === 0 ? 0 : v > 0 ? 1 : -1;
-  return { text: `${dir > 0 ? "+" : dir < 0 ? "−" : ""}${n}%`, dir };
-}
-
-// "5 Jan", the year only when it is not this one
-export function day(date: string, now = Date.now()): string {
-  const [y, m, d] = date.split("-").map(Number) as [number, number, number];
-  const at = new Date(y, m - 1, d);
-  const year = y !== new Date(now).getFullYear();
-  return at.toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    ...(year ? { year: "numeric" } : {}),
-  });
 }
 
 // the owner's today, as a date field takes it: the date in their zone,
@@ -483,29 +411,6 @@ const dayShown = (h: Holding): number | null => {
   if (!h.converted) return h.day_change;
   return h.converted.rate === null ? null : h.day_change * h.converted.rate;
 };
-
-// whole units at a glance; cents only where the figure is small
-export function money(v: number | null, currency?: string | null): string {
-  if (v === null) return "—";
-  const a = Math.abs(v);
-  if (a < 1000) return amount(v, currency);
-  const n = Math.round(a).toLocaleString("en-US");
-  return `${v < 0 ? "−" : ""}${n}${currency ? ` ${currency}` : ""}`;
-}
-
-export function signedMoney(
-  v: number | null,
-  currency?: string | null,
-): Signed {
-  if (v === null) return { text: "", dir: 0 };
-  if (Math.abs(v) < 1000) return change(v, currency);
-  const r = Math.round(v);
-  const dir = r > 0 ? 1 : r < 0 ? -1 : 0;
-  return {
-    text: `${dir > 0 ? "+" : dir < 0 ? "−" : ""}${money(Math.abs(r), currency)}`,
-    dir,
-  };
-}
 
 export type Sums = { value: number; day: number; dayKnown: boolean };
 

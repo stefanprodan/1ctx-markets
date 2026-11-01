@@ -199,14 +199,38 @@ export type Daily = {
   volume_ratio: number | null;
 };
 
+// message or error alone when the fund lists none
+export type TopHoldings = {
+  source: string;
+  error?: string;
+  message?: string;
+  fetched_at?: string | null;
+  stale?: string[];
+  top?: {
+    rank: number;
+    symbol: string | null;
+    id: string | null;
+    name: string;
+    weight_percent: number;
+  }[];
+  top_weight_percent?: number | null;
+  sectors?: { sector: string; weight_percent: number }[];
+  bond_ratings?: { rating: string; weight_percent: number }[];
+  government_bonds_percent?: number | null;
+};
+
 export type Detail = {
   // FRED's notice, which its terms ask wherever its values show
   attribution?: string;
   // who the prices are from: the source's name and site
   credit: { name: string; url: string } | null;
   instrument: Listed;
+  // whether its source gives 5-minute closes, for 1D and 5D
+  intraday: boolean;
   // null when the read failed; error says why
   error: { code: string; detail: string } | null;
+  // an ETF's or mutual fund's only
+  top_holdings?: TopHoldings;
   quote: null | {
     id: string;
     price: number | null;
@@ -257,6 +281,7 @@ export const PARTS = [
   "research",
   "calendar",
   "news",
+  "top_holdings",
 ] as const;
 export type Part = (typeof PARTS)[number];
 export const SECTIONS = ["metric", "analysts", "earnings", "insider"] as const;

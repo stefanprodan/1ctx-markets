@@ -18,6 +18,13 @@ import {
   viewOf,
 } from "../src/web/data/portfolios.ts";
 import { store } from "../src/web/data/store.ts";
+import {
+  amount,
+  money,
+  signedAmount,
+  signedMoney,
+} from "../src/web/lib/format.ts";
+import { HIDE_KEY } from "../src/web/ui/Amounts.tsx";
 import { accessWords } from "../src/web/views/Connect.model.ts";
 import {
   AddForm,
@@ -31,9 +38,7 @@ import {
 } from "../src/web/views/PortfolioForms.tsx";
 import {
   activityOf,
-  amount,
   barOf,
-  change,
   columnsFor,
   currencies,
   dryPowderFor,
@@ -52,7 +57,6 @@ import {
   importLine,
   listingWords,
   missingWords,
-  money,
   monthsOf,
   orderOf,
   pageOf,
@@ -64,7 +68,6 @@ import {
   shownGainPercent,
   shownIn,
   shownValue,
-  signedMoney,
   sortRows,
   sums,
   today,
@@ -286,6 +289,32 @@ describe("the Portfolios page", () => {
     expect(html).toContain('href="/portfolios/1"');
     expect(html).toContain('aria-current="page"');
   });
+
+  // the setting is the browser's, so this one test puts a storage in place
+  test.serial(
+    "Hide amounts blurs the amounts, kept as the instrument page reads it",
+    async () => {
+      const { s } = await loaded();
+      const kept = new Map<string, string>();
+      const g = globalThis as { localStorage?: unknown };
+      g.localStorage = {
+        getItem: (k: string) => kept.get(k) ?? null,
+        setItem: (k: string, v: string) => kept.set(k, v),
+      };
+      try {
+        const shown = render(<PortfoliosBody store={s.portfolios} />);
+        expect(shown).toContain('aria-label="Hide amounts"');
+        expect(shown).not.toContain("amounts-hidden");
+        kept.set(HIDE_KEY, "1");
+        const hidden = render(<PortfoliosBody store={s.portfolios} />);
+        expect(hidden).toContain('aria-label="Show amounts"');
+        expect(hidden).toContain('class="pf-root amounts-hidden"');
+        expect(hidden).toContain('class="num amount"');
+      } finally {
+        delete g.localStorage;
+      }
+    },
+  );
 
   test("a cash row opens its drawer from a button, a listed row its page", async () => {
     const { s } = await loaded();
@@ -545,8 +574,8 @@ describe("the page's words", () => {
     expect(amount(3704, "JPY")).toBe("3,704 JPY");
     expect(amount(8.642, "KWD")).toBe("8.642 KWD");
     expect(amount(1234.5, "EUR", true)).toBe("1,234.50");
-    expect(change(-0.001).dir).toBe(0);
-    expect(change(12.3, "EUR").text).toBe("+12.30 EUR");
+    expect(signedAmount(-0.001).dir).toBe(0);
+    expect(signedAmount(12.3, "EUR").text).toBe("+12.30 EUR");
     expect(typed("1,5")).toBe(1.5);
     expect(typed("1,234.5")).toBe(1234.5);
     expect(typed("")).toBeNull();

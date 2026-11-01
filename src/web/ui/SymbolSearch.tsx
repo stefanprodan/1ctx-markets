@@ -8,7 +8,7 @@ import { Fragment } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { type BoardSection, type Candidate, markets } from "../data/store.ts";
 import { Icon } from "../lib/icons.tsx";
-import { kindOf } from "../lib/names.ts";
+import { kindOf, symbolOf } from "../lib/names.ts";
 import { SymbolName } from "./Symbol.tsx";
 import { escapeFrom, searcher, showsResults } from "./SymbolSearch.model.ts";
 import "./symbol-search.css";
@@ -27,7 +27,6 @@ export const seedSearch = (q: string) =>
   window.dispatchEvent(new CustomEvent(SEED_EVENT, { detail: q }));
 
 const hrefOf = (id: string) => `/instruments/${encodeURIComponent(id)}`;
-const symbolOf = (id: string) => id.slice(id.indexOf(":") + 1);
 
 export function SymbolResults({
   found,

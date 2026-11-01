@@ -952,6 +952,10 @@ export const schemas: Record<string, Schema> = {
         "Who the prices are from, with a link to its site.",
       ),
       instrument: ref("InstrumentRow"),
+      intraday: note(
+        bool,
+        "Whether its source gives 5-minute closes (`/instruments/{symbol}/bars?interval=5m`).",
+      ),
       quote: note(
         nullable(
           object(
@@ -1036,7 +1040,7 @@ export const schemas: Record<string, Schema> = {
         "For an ETF or mutual fund only, as the research route's `top_holdings`.",
       ),
     },
-    ["input", "instrument", "credit", "quote", "error"],
+    ["input", "instrument", "intraday", "credit", "quote", "error"],
   ),
   Watchlist: object(
     {

@@ -6,7 +6,7 @@
 
 import { effect } from "@preact/signals";
 import { markets } from "../data/store.ts";
-import { symbolOf } from "../views/Instruments.model.ts";
+import { symbolOf } from "../lib/names.ts";
 import { path } from "./router.ts";
 import { HOME, match } from "./routes.ts";
 

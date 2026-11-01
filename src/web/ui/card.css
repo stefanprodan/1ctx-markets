@@ -12,11 +12,14 @@
   .card-flush {
     padding: 0;
   }
+  /* as tall as a control, so a title sits at the same height with or
+     without actions and paired cards' titles line up */
   .card-head {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: var(--space-3);
+    min-height: var(--target);
     margin-bottom: var(--space-3);
   }
   .card-flush > .card-head {
@@ -33,6 +36,12 @@
     font-weight: 500;
   }
   .card-count {
+    color: var(--faint);
+  }
+  .card-label {
+    margin: var(--space-4) 0 var(--space-2);
+    font-size: var(--text-small);
+    font-weight: 400;
     color: var(--faint);
   }
 

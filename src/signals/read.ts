@@ -11,6 +11,7 @@ import {
   STALE,
   type StaleReason,
 } from "../market/stale.ts";
+import { monthsBack } from "../shared/periods.ts";
 import { seriesStale } from "../sources/fred/jobs.ts";
 import { FRED } from "../sources/ids.ts";
 import type { Db } from "../storage/db/index.ts";
@@ -18,7 +19,6 @@ import type { Close } from "./common.ts";
 import type { DailyRow } from "./daily.ts";
 import {
   type Listing,
-  monthsBack,
   type RelativeReturn,
   type Returns,
   relativeReturn,

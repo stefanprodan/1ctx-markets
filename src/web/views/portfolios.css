@@ -7,11 +7,6 @@
     gap: var(--space-4);
     min-width: 0;
   }
-  /* hidden amounts: every money figure and quantity carries .pf-m */
-  .pf-hide .pf-m {
-    filter: blur(7px);
-    user-select: none;
-  }
 
   /* the totals' currency menu sits in the hero's figure, so it takes the
      menu's own face back */

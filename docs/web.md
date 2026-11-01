@@ -196,12 +196,14 @@ Portfolios page is the reference for each part.
 
 The parts:
 
-- `Card.tsx`: `Card` (title, faint count, actions on the right, `flush`
-  for rows that pad themselves), `CardHead` and `SectionHead` (the same
-  head without a card, over a section of tiles), `GroupLabel` (a group
+- `Card.tsx`: `Card` (title, faint count, actions on the right, a head
+  as tall as a control with or without them, `flush` for rows that pad
+  themselves), `CardHead` and `SectionHead` (the same head without a
+  card, over a section of tiles), `GroupLabel` (a group
   inside a list: mono label, fold caret, count, a trailing total),
   `PeriodLabel` (a month or a day in a list, sticking under the page's
-  head).
+  head), `CardLabel` (a part of a card under a small name in the
+  text's face).
 - `Tabs.tsx`: plain words underlined in the text's colour, a faint
   count; buttons as a tablist with arrow keys, or links when each tab
   is an address; scrolls and fades on a phone.
@@ -220,12 +222,33 @@ The parts:
   (`auto`, `max-content`): columns would stop lining up row to row.
   A control in a cell takes `.table-raise` to sit over the row's link.
 - `Symbol.tsx`: `SymbolName`, the ticker over its name, or one line
-  `compact`. `lib/names.ts`: `tickerOf` and `nameOf`, for views and
-  models.
+  `compact`. `lib/names.ts`: how an instrument is named (`tickerOf`,
+  `nameOf`, `symbolOf`, `kindOf`, `marketOf`, `stopped`, `about`).
+- `lib/format.ts`: the numbers and words more than one page writes
+  (`figure`, `price`, `priceParts`, `change`, `volumeText`, `money`,
+  `signedMoney`, `amount`, `percent`, `quantity`, `briefQuantity`,
+  `day`, `ago`, `plain`). A formatter two pages use lives here or in
+  `lib/names.ts`, never in a page's model; a page may reuse another
+  page's data helpers (the dashboard's sparks take `closes` and
+  `sessionSlots` from `Chart.model.ts`).
 - `Figures.tsx`: `Num`, `Change`, `Hero` (the value band: name, the
-  figure with its currency or a menu, moves, `lines`), `Stats` (a row
-  of labelled figures, no boxes), `Facts` (a detail's label-over-value
-  grid, two to a row, in a drawer).
+  figure with its currency or a menu, moves, `lines`; `compact` at a
+  card title's size inside a card), `Stats` (a row of labelled figures,
+  no boxes), `Facts` (a detail's label-over-value grid, two to a row,
+  `four` for short figures, never broken, two by two in a narrow card; a
+  faint `note` under a value).
+- `Amounts.tsx`: Hide amounts, one setting for every page with the
+  owner's amounts (`markets-portfolio-hide` in `localStorage`):
+  `useHideAmounts()`, the eye (`HideAmounts`), and `hiddenClass()` on
+  the element around figures of class `amount`, which it blurs; a
+  percent stays readable.
+- `Weights.tsx`: shares of a whole as rows, a label (a ticker linking
+  its page in the ticker's style, never the link colour, its name on
+  hover and for a screen reader), a grey bar against the largest
+  (`barWidth()`), the weight; one grid, so the labels size to the
+  longest, up to a name's width. Rows that link are 44px to a finger.
+- `RangeBar.tsx`: where a price sits between a low and a high, the ends
+  under it.
 - `Spark.tsx`: green above its dotted base, red below; the base the
   period's start (its box at least 10% of it) or a given value such as
   the previous close; fixed or `fluid` width; `slots`, the points the
@@ -631,43 +654,67 @@ The parts:
 - **An instrument** (`/instruments/<id>`, the id encoded) reads
   `GET /api/v1/instruments/{id}`, a read as any client's, so
   opening it keeps it tracked and an id never stored is fetched. The
-  title is the ticker with the name beside it. It leads with the
-  shared `Hero`, no card: the name line is the kind and market, then
-  "Open" or "Closed" as the home table says it ("Opening · last close"
-  from the open until the first pass, without the fetch time, then
-  "Open · no trade yet" until the first trade; a series: "Latest
-  value" and its date) with when it was fetched. The one large figure
-  is the price with its currency small beside it; the moves line is
-  the day's change in the price's unit and in percent, "today" once a
-  trade lands after the open and "at close" otherwise (a series in percent shows the percent
-  alone, and a series or a stored price no word). Outside regular
-  hours the pre or post price is a line under it in the text's size
-  ("After hours 205.25 +0.30% · 01:59"), never a second figure. Under
-  it a `Stats` row: the 1 week, 1 month, 3 months and year-to-date
-  returns from the quote, never recomputed, and how far the price is
-  above or below the quote's 200-week average (points for a series in
-  percent). From 1100px the row sits right of the hero, level with its
-  last line; under it they stack, and a phone names them as the
-  chart's ranges do (1W, 1M, 3M, YTD, 200W). A read that failed shows the stored
-  price as "Stored price" with its age, no returns, and one notice
-  that a new price could not be had; the server's phrase is for
-  agents, not this page.
-- **Cards under the chart say the quote's daily signals in plain words**
-  (`stats()`), each a `Card` with its sans title and its rows as
-  `Facts`: three abreast, two on a tablet with an odd last one across
-  both, stacked on a phone. The 52-week range (a bar with the price's
-  dot, how far below the high and how many trading days ago, how far
-  above the low), Today, or Last session until today's first price
-  (the day's range, volume against its 20-day average, "so far" while
-  today trades, the typical daily move and the average daily range),
-  and Trend (the price beside the 50- and 200-day averages, the 50
-  above or below the 200, the cross named only on its day, RSI 14 as
-  neutral, overbought from 70 or oversold to 30, and momentum as the
-  MACD histogram's sign, upward or downward, with a turn of its
-  direction as the day's note, since a turn comes on either side). A
-  yield's distances and range are in points, as the hero's are. A row
-  with no signal, and a card with no row or bar, is left out, so a
-  young listing or a series shows less.
+  title is the ticker with the name beside it. `Instrument.tsx` is the
+  page; its head, cards, position, fund cards and menu are each their
+  own `Instrument*.tsx`, their words and numbers `Instrument*.model.ts`,
+  which have no DOM and are tested (`test/web-instrument.test.tsx`).
+- **The head is the price alone**, the shared `Hero`, no card, then the
+  chart: returns in the head pushed the chart below a phone's first
+  screen. The name line is the kind and market, then the state, never
+  "updated": "Closed" with no age (a close does not age; the move line
+  says "at close"), "Open · 2 min ago", "Opening · last close" from the
+  open until the first pass, "Open · no trade yet · 3 h ago" until the
+  first trade, a series' "Latest value, 29 Oct · 1 d ago". The one
+  large figure is the price with its currency small beside it; the
+  moves line is the day's change in the price's unit and in percent,
+  "today" once a trade lands after the open and "at close" otherwise
+  (a series in percent shows the percent alone, and a series or a
+  stored price no word). Outside regular hours the pre or post price is
+  a line under it in the text's size ("After hours 205.25 +0.30% ·
+  01:59"), never a second figure. A read that failed shows the stored
+  price as "Stored price · 3 h ago" and one notice that a new price
+  could not be had; the server's phrase is for agents, not this page.
+- **Cards under the chart, two abreast with an odd last one across
+  both, stacked on a phone**, each a `Card` whose rows are `Facts`.
+  The model answers each card's data by name (`signalsOf()`,
+  `positionOf()`, `fundOf()`), never a list the view searches by title.
+  A card with nothing in it is left out, so a young listing or a series
+  shows less. In order:
+  - **Your position**, only when held: `GET /api/v1/holdings` (every
+    portfolio, as Add's form reads it) matched on the instrument's id,
+    re-read with the page; a read that fails keeps the one before. In
+    the holding's own currency: the value (`Hero` `compact`), the all
+    time and today's gain with their percents, Quantity and Average
+    price; a bond Face value (its parts' amounts), Coupon, Matures and
+    Bought, dates as the app writes them (`day()`, no year in this
+    one). A line per portfolio and broker when there are several: a
+    bond's face amount, else the quantity, and the value. Quantities
+    to two decimals from 1, four digits under it (`briefQuantity()`).
+    Its head: the Hide amounts eye, the Portfolios page's setting, and
+    a briefcase to Portfolios ("Open Portfolios" on hover), no words.
+  - **Performance**: the 1 week, 1 month, 3 months and year-to-date
+    returns from the quote, never recomputed, four abreast, "—" where
+    the server has none (points for a series in percent); then the
+    52-week range under a `CardLabel`: a `RangeBar`, how far below the
+    high and how many trading days ago, how far above the low.
+  - **Today**, or **Last session** until today's first price: the
+    day's range, volume against its 20-day average, "so far" while
+    today trades, the typical daily move and the average daily range.
+  - **Trend**: the price beside the 50-day, 200-day and 200-week
+    averages, the 50 above or below the 200, the cross named only on
+    its day, RSI 14 as neutral, overbought from 70 or oversold to 30,
+    and momentum as the MACD histogram's sign, upward or downward, with
+    a turn of its direction as the day's note, since a turn comes on
+    either side. A yield's distances and range are in points.
+  - **A fund's Top holdings, then Sectors or Bond ratings** (an ETF or
+    mutual fund, from the answer's `top_holdings`): each a `Weights`
+    list, one decimal. "Top 10: 82.6% of the fund · fetched 1 Nov"
+    above the holdings, "· not current" when stale; each holding with
+    a symbol links its page (by `id` when stored, else by symbol,
+    fetched as the page opens). Sectors and grades in words ("Real
+    estate", "AAA"), US government bonds as a line under the ratings. A
+    fund with none: "No top holdings listed for this fund." alone; a
+    failed fetch: "Could not get its top holdings."
 - **The page head is a containing block for fixed elements**: its blur
   (`backdrop-filter`) holds a fixed descendant inside it, so a sheet or
   popover fixed to the window turns the blur off while open, as the
@@ -675,8 +722,8 @@ The parts:
 - **One More button holds the page's actions** in the head (the shared
   `MenuButton`, after the symbol search `Page` shows), on a phone too. Refetch data runs at once and refetches every
   part a source holds for it (`POST /api/v1/instruments/{id}/refetch`
-  with every part `choices()` lists); the button spins while it runs,
-  then shows a green check for `SAID_MS` once it fetched; "Not
+  with every part `choices()` lists, a fund's top holdings among
+  them); the button spins while it runs, then shows a green check for `SAID_MS` once it fetched; "Not
   available" shows in the page's notice as long. A failure names the
   part and its error in plain words in the page's notice; a 404
   `not_found` reads as no longer stored. Delete asks once inside the
@@ -724,6 +771,24 @@ The parts:
 - **Ranges** 1D, 5D, then 1M to Max (`RANGES`, 1D by default); 3Y
   and up read weekly bars (`intervalOf`), so the averages read
   "50-week" and "200-week". Max is the ten years the server keeps.
+- **1D and 5D only where the instrument route's `intraday` is true**
+  (`rangesOf`): a source with no 5-minute closes has nothing to draw.
+  There a kept 1D or 5D draws 1M (`drawnFor`) and stays kept; only a
+  range clicked is saved.
+- **A daily range's change is the server's return** for the same
+  period (`periodStart` in `src/signals/relative.ts`): from the last
+  close on or before its start, dated from the last bar, not today (the
+  same day months back, `monthsBack`; 31 Dec for YTD, `yearStart`; both
+  in `src/shared/periods.ts`), Max from the first bar. The bars are
+  asked from two weeks before the range's first day (`askedFrom`), so
+  that close is there across a weekend or holiday; a slow or stale
+  series (monthly, quarterly, suspended) with none there is read again
+  from Max's first day (`readRange`). The line starts at that close
+  (`fromStart`), so the 1M, 3M and YTD readouts equal the page's
+  returns. A range that starts before the listing's first bar (a bond
+  listed in July, on YTD) is measured from that bar and named "since 16
+  Jul" in place of the range (with its year when not the last
+  bar's), so it never claims a return the server has none of.
 - **1D and 5D read `bars?interval=5m`**: the newest stored session,
   or all five kept (asked from Max's start). A line of closes on a time
   axis at the points' real UTC times (`pointLine`), so a clock change
@@ -763,7 +828,8 @@ The parts:
   moves and a short legend leaves no gap; it names the range its bars were read for, not one
   still loading, and a failed read shows over the bars kept: date, Live while the market is
   open and the bar not final, O H L C, volume, the change from the
-  range's first close (points for a series in percent), then the
+  range's first close (points for a series in percent), named by the
+  range or "since" its first day, then the
   averages. It follows the crosshair; at rest the latest bar, whose
   averages fall back to the last there are (an open week has none).
 - **Prices on the axis** have separators, and no cents from five
@@ -794,7 +860,8 @@ The parts:
 - **Settings are kept in `localStorage`** (`chart`): the range, line,
   log and both averages, one set for every instrument; a blocked or
   broken value starts from the defaults, field by field: 1D, a line,
-  both averages. 1D and 5D are kept like any range.
+  both averages. 1D and 5D are kept like any range, though an
+  instrument without them draws 1M.
 - **After hours beside the close**: the instrument route asks the quote
   with `extended`, so outside regular hours a listing with pre or post
   trading shows that price, its change from the close and its time

@@ -1,0 +1,53 @@
+@layer tokens, base, owners;
+
+@layer owners {
+  /* one grid for every row, so a short ticker list gives its bars the room */
+  .weights {
+    display: grid;
+    grid-template-columns: fit-content(var(--col-label)) minmax(0, 1fr) auto;
+    grid-auto-rows: minmax(var(--target), auto);
+    align-items: center;
+    gap: 0 var(--space-3);
+    margin: 0;
+  }
+  .weights-row {
+    display: contents;
+  }
+  .weights dt {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--dim);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .weights dd {
+    margin: 0;
+    text-align: right;
+  }
+  .weights-bar {
+    height: var(--bar);
+    border-radius: var(--radius-xs);
+    background: var(--inset);
+    overflow: hidden;
+  }
+  .weights-bar i {
+    display: block;
+    height: 100%;
+    background: var(--faint);
+  }
+  @media (max-width: 719px) {
+    .weights {
+      grid-template-columns: fit-content(var(--col-label-phone)) minmax(0, 1fr) auto;
+    }
+  }
+  @media (pointer: coarse) {
+    .weights-links {
+      grid-auto-rows: minmax(var(--target-touch), auto);
+    }
+    .weights-links dt a {
+      display: flex;
+      align-items: center;
+      min-height: var(--target-touch);
+    }
+  }
+}

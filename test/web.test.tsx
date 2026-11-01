@@ -49,12 +49,20 @@ import {
   WATCHLIST_PATH,
   type WatchEntry,
 } from "../src/web/data/store.ts";
+import {
+  ago,
+  change,
+  plain,
+  price,
+  priceParts,
+  signedChange,
+} from "../src/web/lib/format.ts";
+import { about, marketOf, symbolOf } from "../src/web/lib/names.ts";
 import { didNotLoad, Page } from "../src/web/ui/Page.tsx";
 import { Segmented } from "../src/web/ui/Segmented.tsx";
 import {
   axisPrice,
   candles,
-  changeText,
   clearOfTags,
   DEFAULT_SETTINGS,
   DESK,
@@ -154,31 +162,20 @@ import {
   labelOf,
   moveLabel,
   priceState,
-  returnCell,
-  stats,
   summary,
-  weekly200,
 } from "../src/web/views/Instrument.model.ts";
+import { signalsOf } from "../src/web/views/InstrumentCards.model.ts";
+import { InstrumentCards } from "../src/web/views/InstrumentCards.tsx";
+import { Head } from "../src/web/views/InstrumentHead.tsx";
+import { InstrumentMenu } from "../src/web/views/InstrumentMenu.tsx";
 import {
-  Head,
-  InstrumentMenu,
-  SignalCards,
-} from "../src/web/views/Instrument.tsx";
-import {
-  about,
   bySymbol,
-  change,
-  marketOf,
   matches,
-  price,
-  priceParts,
   sortRows,
-  symbolOf,
 } from "../src/web/views/Instruments.model.ts";
 import { InstrumentsList } from "../src/web/views/Instruments.tsx";
 import { SignIn } from "../src/web/views/SignIn.tsx";
 import {
-  ago,
   allOk,
   bytes,
   clockTime,
@@ -186,7 +183,6 @@ import {
   jobLine,
   jobTone,
   jobWhen,
-  plain,
   runTime,
   switchFailure,
   trackFailed,
@@ -1370,6 +1366,7 @@ const detail = (
 ): Detail => ({
   instrument: listed("US:NVDA", { name: "NVIDIA", ...row }),
   credit: { name: "Casey", url: "https://example.com/" },
+  intraday: true,
   error: null,
   quote: {
     id: "US:NVDA",
@@ -1417,7 +1414,7 @@ const DAILY = {
 
 describe("the instrument model", () => {
   test("the cards under the chart say the signals in plain words", () => {
-    const cards = stats(
+    const s = signalsOf(
       detail({
         signals: { daily: DAILY },
         day_low: 212.08,
@@ -1425,18 +1422,15 @@ describe("the instrument model", () => {
         volume: 46_360_000,
       }),
     );
-    expect(cards.map((c) => c.title)).toEqual([
-      "52-week range",
-      "Today",
-      "Trend",
-    ]);
-    const [year, today, trend] = cards;
+    const year = s.range;
+    const today = s.session;
+    expect(today?.today).toBe(true);
     expect(year!.span).toEqual({
       low: "164.27 USD",
       high: "243.37 USD",
       at: (217.24 - 164.27) / (243.37 - 164.27),
     });
-    expect(year!.rows).toEqual([
+    expect(year!.facts).toEqual([
       {
         label: "From the high",
         value: "12.66% below",
@@ -1447,12 +1441,12 @@ describe("the instrument model", () => {
     ]);
     // the price past the day's high pins the dot at the end
     expect(today!.span?.at).toBe(1);
-    expect(today!.rows.map((r) => [r.label, r.value, r.note])).toEqual([
+    expect(today!.facts.map((r) => [r.label, r.value, r.note])).toEqual([
       ["Volume so far", "46.36M", "0.46× the 20-day average"],
       ["Typical daily move", "1.91%", "over 20 days"],
       ["Average daily range", "5.72 USD", "over 14 days"],
     ]);
-    expect(trend!.rows.map((r) => [r.label, r.value, r.note])).toEqual([
+    expect(s.trend.map((r) => [r.label, r.value, r.note])).toEqual([
       ["50-day average", "2.13% below", "221.97 USD"],
       ["200-day average", "6.35% above", "204.27 USD"],
       ["50-day vs 200-day", "above", undefined],
@@ -1461,28 +1455,41 @@ describe("the instrument model", () => {
     ]);
   });
 
-  test("Trend leaves the 200-week average to the returns row", () => {
-    const trend = stats(
-      detail({ signals: { daily: DAILY, weekly: { sma200: 180 } } }),
-    ).find((c) => c.title === "Trend")!;
-    expect(trend.rows.map((r) => r.label)).not.toContain("200-week average");
-    const html = render(
-      <Head
-        detail={detail({ signals: { daily: DAILY, weekly: { sma200: 180 } } })}
-        now={NOW}
-      />,
+  test("Trend carries the 200-week average in the daily ones' form", () => {
+    const d = detail({ signals: { daily: DAILY, weekly: { sma200: 180 } } });
+    expect(
+      signalsOf(d).trend.map((r) => [r.label, r.value, r.note, r.tone]),
+    ).toContainEqual(["200-week average", "20.69% above", "180.00 USD", "up"]);
+    expect(render(<Head detail={d} now={NOW} />)).not.toContain(
+      "200-week average",
     );
-    expect(html).toContain("200-week average");
-    expect(html).toContain("20.69% above");
+    // a yield is apart from its average by points
+    const y = detail(
+      {
+        price: null,
+        observation: { date: "2026-10-23", value: 5 },
+        signals: { daily: DAILY, weekly: { sma200: 4.2 } },
+      },
+      { id: "FRED:DGS10", unit: "percent", currency: null },
+    );
+    expect(
+      signalsOf(y).trend.find((r) => r.label === "200-week average")?.value,
+    ).toBe("0.80 pts above");
+    // too young for one: no row
+    expect(
+      signalsOf(
+        detail({ signals: { daily: DAILY, weekly: { sma200: null } } }),
+      ).trend.map((r) => r.label),
+    ).not.toContain("200-week average");
   });
 
   test("a turn, a cross and an extreme read as the day's news", () => {
     const trend = (more: Partial<typeof DAILY>) =>
-      stats(detail({ signals: { daily: { ...DAILY, ...more } } }))
-        .find((c) => c.title === "Trend")!
-        .rows.map(
-          (r) => `${r.label}: ${r.value}${r.note ? ` (${r.note})` : ""}`,
-        );
+      signalsOf(
+        detail({ signals: { daily: { ...DAILY, ...more } } }),
+      ).trend.map(
+        (r) => `${r.label}: ${r.value}${r.note ? ` (${r.note})` : ""}`,
+      );
     expect(
       trend({ macd_turn: 1, rsi14: 72, cross: -1, cross_edge: -1 }),
     ).toEqual([
@@ -1504,7 +1511,7 @@ describe("the instrument model", () => {
   });
 
   test("a yield's distances and range read in points", () => {
-    const yieldRow = stats(
+    const yieldRow = signalsOf(
       detail(
         {
           price: 4.2,
@@ -1517,7 +1524,11 @@ describe("the instrument model", () => {
         { id: "FRED:DGS10", unit: "percent", currency: null },
       ),
     );
-    const rows = yieldRow.flatMap((c) => c.rows);
+    const rows = [
+      ...yieldRow.range!.facts,
+      ...yieldRow.session!.facts,
+      ...yieldRow.trend,
+    ];
     const value = (label: string) => rows.find((r) => r.label === label)?.value;
     expect(value("50-day average")).toBe("0.20 pts above");
     expect(value("200-day average")).toBe("0.30 pts below");
@@ -1525,50 +1536,59 @@ describe("the instrument model", () => {
   });
 
   test("a card or row without its signals is left out", () => {
-    // no signals and no day range: nothing under the chart
-    expect(stats(detail())).toEqual([]);
-    expect(render(<SignalCards cards={[]} />)).toBe("");
-    // a young listing: no year, no 200-day average, no cross
-    const young = stats(
-      detail({
-        signals: {
-          daily: {
-            ...DAILY,
-            sma200: null,
-            cross: null,
-            high52w: null,
-            low52w: null,
-            drawdown: null,
-            from_low: null,
-            days_since_high: null,
-          },
-        },
-        session: null,
-      }),
+    // no returns, signals or day range: nothing under the chart
+    const bare = detail({ returns: null });
+    expect(signalsOf(bare)).toEqual({
+      returns: null,
+      range: null,
+      session: null,
+      trend: [],
+    });
+    expect(render(<InstrumentCards detail={bare} held={null} />)).toBe(
+      '<div class="ins-cards"></div>',
     );
-    expect(young.map((c) => c.title)).toEqual(["Last session", "Trend"]);
-    expect(young[1]!.rows.map((r) => r.label)).toEqual([
+    // a young listing: no year, no 200-day average, no cross
+    const young = detail({
+      returns: null,
+      signals: {
+        daily: {
+          ...DAILY,
+          sma200: null,
+          cross: null,
+          high52w: null,
+          low52w: null,
+          drawdown: null,
+          from_low: null,
+          days_since_high: null,
+        },
+      },
+      session: null,
+    });
+    const s = signalsOf(young);
+    expect(s.range).toBeNull();
+    expect(s.session?.today).toBe(false);
+    expect(s.trend.map((r) => r.label)).toEqual([
       "50-day average",
       "RSI 14",
       "Momentum",
     ]);
     // a closed market's card is the last session, its volume the day's
-    const closed = stats(
+    const closed = signalsOf(
       detail({
         volume: 1_000,
         session: { state: "closed", start: null, end: null },
       }),
-    );
-    expect(closed[0]!.title).toBe("Last session");
-    expect(closed[0]!.rows[0]!.label).toBe("Volume");
+    ).session!;
+    expect(closed.today).toBe(false);
+    expect(closed.facts[0]!.label).toBe("Volume");
     // open, but the price is still yesterday's until the first pass
-    const opening = stats(
+    const opening = signalsOf(
       detail({ volume: 1_000, trade_time: "2026-10-27T20:00:00Z" }),
-    );
-    expect(opening[0]!.title).toBe("Last session");
-    expect(opening[0]!.rows[0]!.label).toBe("Volume");
+    ).session!;
+    expect(opening.today).toBe(false);
+    expect(opening.facts[0]!.label).toBe("Volume");
     // at the high and the low, and a high made today
-    const edges = stats(
+    const edges = signalsOf(
       detail({
         signals: {
           daily: {
@@ -1579,26 +1599,28 @@ describe("the instrument model", () => {
           },
         },
       }),
-    )[0]!.rows.map((r) => [r.value, r.note ?? null, r.tone ?? null]);
+    ).range!.facts.map((r) => [r.value, r.note ?? null, r.tone ?? null]);
     expect(edges).toEqual([
       ["at the high", "today", null],
       ["at the low", null, null],
     ]);
-    const html = render(<SignalCards cards={young} />);
+    const html = render(<InstrumentCards detail={young} held={null} />);
     expect(html).toContain("Momentum");
     expect(html).toContain('<h2 class="card-title">Trend');
-    expect(html).not.toContain("ins-span");
+    expect(html).toContain('<h2 class="card-title">Last session');
+    expect(html).not.toContain("Performance");
+    expect(html).not.toContain("range-bar");
   });
 
   test("the head says open or closed, and when it was fetched", () => {
     expect(headline(detail()).price).toBe("217.24 USD");
-    expect(priceState(detail(), NOW)).toBe("Open · updated just now");
+    expect(priceState(detail(), NOW)).toBe("Open · just now");
     expect(
       priceState(
         detail({ session: { state: "closed", start: null, end: null } }),
         NOW,
       ),
-    ).toBe("Closed · updated just now");
+    ).toBe("Closed");
     // the open before the first pass: the price is still the last close
     expect(
       priceState(
@@ -1618,7 +1640,7 @@ describe("the instrument model", () => {
         }),
         NOW,
       ),
-    ).toBe("Open · no trade yet · updated 3 h ago");
+    ).toBe("Open · no trade yet · 3 h ago");
     const series = detail(
       {
         price: null,
@@ -1630,11 +1652,9 @@ describe("the instrument model", () => {
       { id: "FRED:DGS10", unit: "percent", currency: null },
     );
     expect(headline(series).price).toBe("5.00%");
-    expect(priceState(series, NOW)).toBe(
-      "Latest value, 26 Oct · updated just now",
-    );
-    expect(returnCell(10.27)).toEqual({ text: "+10.27%", dir: 1 });
-    expect(returnCell(null)).toEqual({ text: "—", dir: 0 });
+    expect(priceState(series, NOW)).toBe("Latest value, 26 Oct · just now");
+    expect(signedChange(10.27)).toEqual({ text: "+10.27%", dir: 1 });
+    expect(signedChange(null, { empty: "—" })).toEqual({ text: "—", dir: 0 });
   });
 
   test("after hours stands beside the close, said with its time", () => {
@@ -1692,7 +1712,12 @@ describe("the instrument model", () => {
     });
     expect(
       choices(listed("US:QQQ", { kind: "ETF" })).map((c) => c.label),
-    ).toEqual(["Everything", "Price", "Daily history", "News"]);
+    ).toEqual(["Everything", "Price", "Daily history", "News", "Top holdings"]);
+    expect(
+      choices(listed("XETRA:AAA", { market: "XETRA", kind: "MUTUALFUND" })).map(
+        (c) => c.label,
+      ),
+    ).toEqual(["Everything", "Price", "Daily history", "Top holdings"]);
   });
 
   test("a refetch reads as one short word, a failure in words", () => {
@@ -1739,27 +1764,31 @@ describe("the instrument model", () => {
 });
 
 describe("the instrument page", () => {
-  test("the head draws the price, its state and the four returns", () => {
+  test("the head draws the price and its state, no returns", () => {
     const html = render(<Head detail={detail()} now={NOW} />);
     expect(html).toContain("Stock · US");
     expect(html).toContain('217.24<span class="hero-ccy">USD</span>');
     expect(html).toContain("−0.70");
     expect(html).toContain("−0.32%");
     expect(html).toContain("today");
-    expect(html).toContain("Open · updated");
-    for (const label of ["1 week", "1 month", "3 months", "Year to date"]) {
-      expect(html).toContain(label);
+    expect(html).toContain("Open · just now");
+    expect(html).not.toContain("updated");
+    for (const gone of ["1 week", "1W", "Year to date", "+16.48%"]) {
+      expect(html).not.toContain(gone);
     }
-    expect(html).toContain("+16.48%");
-    // a phone's returns in the short words
-    expect(html).toContain("<dt>1W</dt>");
-    expect(html).toContain("<dt>200W</dt>");
     // one large figure, ever
     expect(html.match(/hero-value/g)?.length).toBe(1);
     expect(html).not.toContain("hero-line");
-    expect(
-      render(<Head detail={detail({ returns: null })} now={NOW} />),
-    ).not.toContain("1 week");
+    const closed = render(
+      <Head
+        detail={detail({
+          session: { state: "closed", start: null, end: null },
+        })}
+        now={NOW}
+      />,
+    );
+    expect(closed).toContain("· Closed</span>");
+    expect(closed).toContain("at close");
   });
 
   test("after hours is a line under the price, not a second figure", () => {
@@ -1867,7 +1896,7 @@ describe("the instrument page", () => {
       },
     };
     expect(headline(unread).price).toBe("216.50 USD");
-    expect(priceState(unread, NOW)).toBe("Stored price · updated 3 h ago");
+    expect(priceState(unread, NOW)).toBe("Stored price · 3 h ago");
     const html = render(<Head detail={unread} now={NOW} />);
     expect(html).toContain('216.50<span class="hero-ccy">USD</span>');
     expect(html).not.toContain("1 week");
@@ -2397,11 +2426,11 @@ describe("the chart model", () => {
     // no storage in tests, so the chart opens on its default, 1D
     try {
       railDrawer.value = true;
-      const phone = render(<Chart id="US:AAPL" />);
+      const phone = render(<Chart id="US:AAPL" intraday />);
       expect(phone).not.toContain("chart-tools");
       expect(phone).toContain("chart-phone");
       railDrawer.value = false;
-      const desk = render(<Chart id="US:AAPL" />);
+      const desk = render(<Chart id="US:AAPL" intraday />);
       expect(desk).toContain(">Log</button>");
       expect(desk).not.toContain("chart-phone");
     } finally {
@@ -2486,8 +2515,10 @@ describe("the chart model", () => {
       { ...h, instrument: { ...h.instrument, unit: "percent" } },
       null,
     )!;
-    expect(changeText(y.change, y.points)).toBe("+10.00 pts");
-    expect(changeText(-0.001)).toBe("0.00%");
+    expect(signedChange(y.change, { points: y.points }).text).toBe(
+      "+10.00 pts",
+    );
+    expect(signedChange(-0.001).text).toBe("0.00%");
   });
 
   test("a price on the axis has separators, and no cents past five figures", () => {
@@ -2749,27 +2780,8 @@ describe("the chart model", () => {
     expect(html.match(/chart-legend-row/g)?.length).toBe(1);
   });
 
-  test("the 200-week average says how far the price is from it", () => {
-    const at = (price: number, sma200: number | null) =>
-      weekly200(detail({ price, signals: { weekly: { sma200 } } }));
-    expect(at(150, 100)).toEqual({ text: "50.00% above", dir: 1 });
-    expect(at(90, 100)).toEqual({ text: "10.00% below", dir: -1 });
-    // too young for one: nothing to say
-    expect(at(90, null)).toBeNull();
-    // a yield is apart from its average by points
-    const y = detail(
-      {
-        price: null,
-        observation: { date: "2026-10-26", value: 5 },
-        signals: { weekly: { sma200: 4.2 } },
-      },
-      { id: "FRED:DGS10", unit: "percent", currency: null },
-    );
-    expect(weekly200(y)).toEqual({ text: "0.80 pts above", dir: 1 });
-  });
-
   test("a yield's returns are points; a page footer only where one is asked", () => {
-    expect(returnCell(-0.15, true).text).toBe("−0.15 pts");
+    expect(signedChange(-0.15, { points: true }).text).toBe("−0.15 pts");
     expect(render(<Page title="Status" />)).not.toContain("page-foot");
     const foot = render(<Page title="NVDA" foot="Charts by TradingView" />);
     expect(foot).toContain("github.com/stefanprodan/1ctx-markets");

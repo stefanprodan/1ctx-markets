@@ -116,8 +116,9 @@ MCP tools copied onto paths.
 - **`GET /instruments/{symbol}` is one read for both keys**: it
   resolves and fetches an unknown symbol as the tools do, tracks it as
   a read, and answers `input`, the stored row (`instrument`, as the
-  list gives it, `tracked_by` included), `credit`, and its quote as the
-  quote tool gives it, `returns` and `session` included, with
+  list gives it, `tracked_by` included), `credit`, `intraday` (whether
+  its source gives 5-minute closes, as the watchlist says) and its quote
+  as the quote tool gives it, `returns` and `session` included, with
   `extended` asked so a page shows pre or post trading.
 - **An ETF or mutual fund adds `top_holdings`**, the research tool's
   section (`docs/research.md`), absent for anything else, so the page

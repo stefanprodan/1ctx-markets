@@ -5,7 +5,7 @@ import { checkStored, type Instrument } from "../../market/instruments.ts";
 import { addDays, dateOfWall } from "../../market/zone.ts";
 import type { Clock } from "../../runtime/clock.ts";
 import { exclusive } from "../../runtime/lock.ts";
-import { monthsBack } from "../../signals/relative.ts";
+import { monthsBack } from "../../shared/periods.ts";
 import type { Db } from "../../storage/db/index.ts";
 import { lastStarted } from "../../storage/runs.ts";
 import type { Writer } from "../../storage/writer.ts";

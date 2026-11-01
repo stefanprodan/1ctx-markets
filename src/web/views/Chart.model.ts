@@ -3,6 +3,9 @@
 // The chart's data from a history answer, apart from the library, so it
 // is tested without a canvas.
 
+import { monthsBack, yearStart } from "../../shared/periods.ts";
+import { figure } from "../lib/format.ts";
+
 // three letters always: en-GB says "Sept"
 const MONTH = new Intl.DateTimeFormat("en-US", {
   month: "short",
@@ -126,6 +129,16 @@ export const drawnRange = (look: Look, r: Range): Range =>
 export const isIntraday = (r: Range): r is IntradayRange =>
   (INTRADAY as readonly string[]).includes(r);
 
+// 1D and 5D need the instrument's 5-minute closes
+export const rangesOf = (look: Look, intraday: boolean): readonly Range[] =>
+  intraday ? look.ranges : look.ranges.filter((r) => !isIntraday(r));
+
+// a kept 1D or 5D stays kept for the instruments that have them
+export function drawnFor(look: Look, kept: Range, intraday: boolean): Range {
+  const r = drawnRange(look, kept);
+  return intraday || !isIntraday(r) ? r : "1M";
+}
+
 const MONTHS: Record<Exclude<DailyRange, "YTD" | "Max">, number> = {
   "1M": 1,
   "3M": 3,
@@ -140,20 +153,70 @@ const MONTHS: Record<Exclude<DailyRange, "YTD" | "Max">, number> = {
 export const intervalOf = (range: DailyRange): Interval =>
   range === "3Y" || range === "5Y" || range === "Max" ? "1wk" : "1d";
 
-const iso = (d: Date) => d.toISOString().slice(0, 10);
-
-// the first day a range asks for, from today's date in UTC; Max is the
-// ten years the server keeps
+// a range's first day from today's date in UTC; Max is the ten years
+// the server keeps
 export function fromOf(range: DailyRange, today: string): string {
   if (range === "YTD") return `${today.slice(0, 4)}-01-01`;
-  const months = range === "Max" ? 120 : MONTHS[range];
-  const [y, m, day] = today.split("-").map(Number) as [number, number, number];
-  const at = y * 12 + (m - 1) - months;
-  const year = Math.floor(at / 12);
-  const month = at % 12;
-  // the same day, or the month's last when it is shorter (31 Mar → 28 Feb)
-  const last = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
-  return iso(new Date(Date.UTC(year, month, Math.min(day, last))));
+  return monthsBack(today, range === "Max" ? 120 : MONTHS[range]);
+}
+
+// the close a range's change is measured from lies before its first
+// day, across a weekend or a holiday
+const LEAD_DAYS = 14;
+
+export function askedFrom(range: DailyRange, today: string): string {
+  const d = new Date(`${fromOf(range, today)}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - LEAD_DAYS);
+  return d.toISOString().slice(0, 10);
+}
+
+// as the server dates a return's start (periodStart), from the last bar
+export function startOf(range: DailyRange, last: string): string | null {
+  if (range === "Max") return null;
+  if (range === "YTD") return yearStart(last);
+  return monthsBack(last, MONTHS[range]);
+}
+
+// the bars from the last close on or before the range's start, so the
+// legend's change is the server's return; a range that starts before
+// the first bar says the day it is measured from instead
+export function fromStart(
+  h: History,
+  range: DailyRange,
+): { history: History; since: string | null } {
+  const last = h.bars.at(-1);
+  const start = last === undefined ? null : startOf(range, last.date);
+  if (last === undefined || start === null) return { history: h, since: null };
+  const at = h.bars.findLastIndex((b) => b.date <= start && b.close !== null);
+  if (at === -1) {
+    const first = h.bars.find((b) => b.close !== null);
+    return {
+      history: h,
+      since: first === undefined ? null : sinceOf(first.date, last.date),
+    };
+  }
+  return { history: { ...h, bars: h.bars.slice(at) }, since: null };
+}
+
+// a slow or stale series (monthly, quarterly, suspended) can have no
+// close by the start in the window asked: the ten years kept settle it
+export async function readRange(
+  read: (from: string) => Promise<History>,
+  range: DailyRange,
+  today: string,
+): Promise<{ history: History; since: string | null }> {
+  const from = askedFrom(range, today);
+  const got = fromStart(await read(from), range);
+  const all = fromOf("Max", today);
+  const found = got.since === null && got.history.bars.length > 0;
+  return found || from <= all ? got : fromStart(await read(all), range);
+}
+
+// the year only when it is not the last bar's
+export function sinceOf(date: string, last: string): string {
+  const year = date.slice(0, 4);
+  const day = tick(date, "day");
+  return `since ${year === last.slice(0, 4) ? day : `${day} ${year}`}`;
 }
 
 // candles need an open; a series with none (FRED, an index given as
@@ -437,16 +500,6 @@ export function pointLegendOf(
   };
 }
 
-export function figure(v: number | null): string {
-  if (v === null) return "—";
-  const a = Math.abs(v);
-  const d = a >= 10 ? 2 : a >= 1 ? 3 : 4;
-  return v.toLocaleString("en-US", {
-    minimumFractionDigits: Math.min(d, 2),
-    maximumFractionDigits: d,
-  });
-}
-
 // the price axis and its labels: separators, and no cents where a
 // price runs to five figures, so a phone's axis stays narrow
 export function axisPrice(v: number): string {
@@ -456,14 +509,6 @@ export function axisPrice(v: number): string {
   return figure(v);
 }
 
-export function volumeText(v: number | null): string {
-  if (v === null) return "—";
-  if (v >= 1e9) return `${(v / 1e9).toFixed(2)}B`;
-  if (v >= 1e6) return `${(v / 1e6).toFixed(2)}M`;
-  if (v >= 1e3) return `${(v / 1e3).toFixed(1)}K`;
-  return String(v);
-}
-
 // the axis's ticks: a year, a month's name, or a day with its month,
 // never a bare day number
 export function tick(date: string, kind: "year" | "month" | "day"): string {
@@ -471,13 +516,6 @@ export function tick(date: string, kind: "year" | "month" | "day"): string {
   if (kind === "year") return date.slice(0, 4);
   const month = MONTH.format(d);
   return kind === "month" ? month : `${d.getUTCDate()} ${month}`;
-}
-
-export function changeText(v: number | null, points = false): string {
-  if (v === null) return "";
-  const n = Math.abs(v).toFixed(2);
-  const flat = Number(n) === 0;
-  return `${flat ? "" : v > 0 ? "+" : "−"}${n}${points ? " pts" : "%"}`;
 }
 
 // the chart's choices, kept for the next chart this browser draws
