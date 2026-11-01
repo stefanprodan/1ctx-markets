@@ -1720,6 +1720,31 @@ describe("the watchlist", () => {
   });
 });
 
+describe("one instrument", () => {
+  test("says whether its source gives 5-minute closes", async () => {
+    const w = world();
+    for (const id of ["US:AAA", "US:BBB", "FRED:DGS10"]) listing(w.db, id);
+    w.db
+      .query("update instruments set source = 'yahoo' where id = 'US:AAA'")
+      .run();
+    // read lately, so the read fetches nothing
+    w.db.query("update instruments set last_read_at = ?").run(NOW);
+    const schema = answerSchema(spec, "GET", "/instruments/{symbol}", 200)!;
+    for (const [id, intraday] of [
+      ["US:AAA", true],
+      ["US:BBB", false],
+      ["FRED:DGS10", false],
+    ] as const) {
+      const res = await api(w.m)(
+        new Request(`http://markets.test${PREFIX}/instruments/${id}`),
+      );
+      const body = await res.json();
+      expect(validate(body, schema, spec)).toEqual([]);
+      expect([id, body.intraday]).toEqual([id, intraday]);
+    }
+  });
+});
+
 describe("a symbol in a path", () => {
   // stored from Yahoo and read lately, so a read fetches nothing
   const FORMS: [string, string][] = [

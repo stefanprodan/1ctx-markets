@@ -532,6 +532,7 @@ export async function instrument(m: Markets, url: URL, raw: string) {
     ...(stored.source === FRED ? { attribution: ATTRIBUTION } : {}),
     credit: creditOf(stored.source),
     instrument: listRow(m, m.clock.now())(stored),
+    intraday: hasIntraday(stored),
     quote: failure === null ? item : null,
     error:
       failure === null
