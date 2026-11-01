@@ -170,6 +170,21 @@ signed in with the admin key alone.
   time.", a source's failure a sentence by the problem's `code`
   (`unread()`; its `detail` is written for agents and names no source),
   and Try again reads, and so fetches, again.
+- **A fast switch shows no placeholders.** Moving to another page or
+  symbol keeps the page left on screen until the next one's load
+  lands or `HOLD_MS` (a quarter second) passes (`hold()` in `App`),
+  dimmed only after a tenth of a second (`.shell-holding`); a desktop
+  read lands in one frame. Placeholders that do show stay `SHOW_MS`
+  (`paced()` on each page's read: the instrument, Home's board,
+  Instruments and Connect agents on every read, which only delays a slow
+  refresh; Portfolios on arrival alone, so a save never waits), so a
+  read landing just past the hold never flashes them; Home's lines and the chart's bars read
+  after their page shows and draw as they land. While held, no page
+  refreshes (`holding` in `lib/refresh.ts`): the page left's refresh
+  would supersede the next one's read. The store keeps the page left's
+  answer and error until the next one lands (`detailId` is the id they
+  are for; a refetch reloads the id asked last), so the held page never
+  empties under the reader.
 - **The page imports outside `src/web/` only from `src/shared/`**,
   plain files that import nothing but each other, so no server-only
   code (a package, `bun:`, the database) reaches the browser bundle;

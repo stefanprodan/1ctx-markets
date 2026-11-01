@@ -2,14 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { ComponentChildren } from "preact";
-import { useEffect, useRef } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { markets, type Store } from "../data/store.ts";
 import { Icon } from "../lib/icons.tsx";
+import { holding } from "../lib/refresh.ts";
+import { hold } from "../lib/slow.ts";
 import { Page } from "../ui/Page.tsx";
 import { SignIn } from "../views/SignIn.tsx";
 import { Rail } from "./Rail.tsx";
 import { navigate, path, visits } from "./router.ts";
-import { HOME, match } from "./routes.ts";
+import { HOME, type Match, match } from "./routes.ts";
 import { Strip } from "./Strip.tsx";
 import {
   closeDrawer,
@@ -46,8 +48,12 @@ export function Shell({
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [covered]);
+  // the drawer closes on the tap, the page scrolls up once it shows
+  const address = path.value;
   useEffect(() => {
     closeDrawer();
+  }, [address]);
+  useEffect(() => {
     main.current?.scrollTo(0, 0);
   }, [here]);
   useEffect(() => {
@@ -67,7 +73,7 @@ export function Shell({
       {!railShown && !phone && <Strip here={here} />}
       <main
         ref={main}
-        class={`shell-main${railShown ? "" : " shell-main-bare"}`}
+        class={`shell-main${railShown ? "" : " shell-main-bare"}${holding.value ? " shell-holding" : ""}`}
         inert={covered}
       >
         {!railShown && phone && (
@@ -94,6 +100,12 @@ export function App({ store = markets }: { store?: Store }) {
   const found = match(here);
   const route = found?.route ?? null;
   const arrived = useRef<string | null>(null);
+  // the page on screen, which stays while the next one reads (hold())
+  const [shown, setShown] = useState<{
+    visit: string;
+    here: string;
+    found: Match;
+  } | null>(null);
 
   // the first status answer is also the check of the cookie
   useEffect(() => {
@@ -105,13 +117,36 @@ export function App({ store = markets }: { store?: Store }) {
   // a page's load runs on arrival; the check above is the status page's
   useEffect(() => {
     // signed out, the page's data went; the next sign-in loads it again
-    if (signedIn === false) arrived.current = null;
+    // and holds no page from before
+    if (signedIn === false) {
+      arrived.current = null;
+      setShown(null);
+    }
     if (signedIn !== true || route === null) return;
     const first = arrived.current === null;
+    let work: Promise<void> | undefined;
     if (arrived.current !== visit && !(first && route.path === "/status")) {
-      void route.load?.(found!.params);
+      work = route.load?.(found!.params);
     }
     arrived.current = visit;
+    const arrive = () => setShown({ visit, here, found: found! });
+    if (first || work === undefined) {
+      arrive();
+      return;
+    }
+    holding.value = true;
+    const drop = hold(
+      work,
+      () => {
+        holding.value = false;
+        arrive();
+      },
+      store.later,
+    );
+    return () => {
+      drop();
+      holding.value = false;
+    };
   }, [visit, signedIn, route]);
 
   if (signedIn === undefined) {
@@ -135,10 +170,12 @@ export function App({ store = markets }: { store?: Store }) {
   }
   if (!signedIn) return <SignIn store={store} />;
   if (found === null) return null;
-  const View = found.route.view;
+  const held = shown !== null && shown.visit !== visit ? shown : null;
+  const page = held?.found ?? found;
+  const View = page.route.view;
   return (
-    <Shell here={here}>
-      <View params={found.params} />
+    <Shell here={held?.here ?? here}>
+      <View params={page.params} />
     </Shell>
   );
 }

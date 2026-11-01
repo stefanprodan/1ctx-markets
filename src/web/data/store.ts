@@ -3,7 +3,7 @@
 
 import { batch, signal } from "@preact/signals";
 import { path } from "../app/router.ts";
-import { type Later, slowFlag, timer } from "../lib/slow.ts";
+import { type Later, paced, slowFlag, timer } from "../lib/slow.ts";
 import {
   fromOf,
   type History,
@@ -419,13 +419,21 @@ export function store(
   const instruments = signal<Listed[] | null>(null);
   const instrumentsError = signal<string | null>(null);
   const instrumentsCode = signal<number | null>(null);
-  // the instrument page's, by the id asked last
+  // the instrument page's; detailId is the id the detail and its error
+  // are for, kept until the next id's answer lands so the page left
+  // stays on screen while it reads
   const detail = signal<Detail | null>(null);
   const detailId = signal<string | null>(null);
   const detailError = signal<string | null>(null);
   const detailCode = signal<number | null>(null);
   const detailWait = slowFlag(later);
   const firstFetch = signal<string | null>(null);
+  // the id asked last, whose page is open or on its way; detailId stays
+  // on the page left until this one's answer lands
+  let askedId: string | null = null;
+  // deleted while its page showed: kept on screen as the page leaves,
+  // dropped if it is opened again
+  let removedId: string | null = null;
   const keys = signal<AgentKey[] | null>(null);
   const keysLimit = signal<number | null>(null);
   const keysError = signal<string | null>(null);
@@ -476,6 +484,8 @@ export function store(
       instrumentsCode.value = null;
       detail.value = null;
       detailId.value = null;
+      askedId = null;
+      removedId = null;
       detailError.value = null;
       detailCode.value = null;
       firstFetch.value = null;
@@ -509,7 +519,7 @@ export function store(
     }
   }
 
-  const portfolios = portfolioStore(call, () => session);
+  const portfolios = portfolioStore(call, () => session, later);
 
   // a quiet read: a failure leaves the last answer, never a sign-out
   async function checkPulse(): Promise<void> {
@@ -583,15 +593,21 @@ export function store(
     const at = session;
     const stale = () => mine !== listed || at !== session;
     try {
-      const all: Listed[] = [];
-      let token: string | undefined;
-      do {
-        const q = new URLSearchParams({ page_size: "200" });
-        if (token !== undefined) q.set("page_token", token);
-        const page = await call<ListedPage>(`${INSTRUMENTS_PATH}?${q}`);
-        all.push(...page.instruments);
-        token = page.next_page_token;
-      } while (token !== undefined);
+      const all = await paced(
+        (async () => {
+          const got: Listed[] = [];
+          let token: string | undefined;
+          do {
+            const q = new URLSearchParams({ page_size: "200" });
+            if (token !== undefined) q.set("page_token", token);
+            const page = await call<ListedPage>(`${INSTRUMENTS_PATH}?${q}`);
+            got.push(...page.instruments);
+            token = page.next_page_token;
+          } while (token !== undefined);
+          return got;
+        })(),
+        later,
+      );
       if (stale()) return;
       batch(() => {
         instruments.value = all;
@@ -612,12 +628,19 @@ export function store(
   // refresh tick never lands over the reload after a refetch
   let instrumentLoad = 0;
   async function loadInstrument(id: string, again = false): Promise<void> {
+    // Try again on a page left while the next one reads: the next wins
+    if (again && askedId !== null && askedId !== id) return;
     const mine = ++instrumentLoad;
     const at = session;
-    if (detailId.value !== id || again) {
+    askedId = id;
+    if (removedId === id) {
+      removedId = null;
+      if (detailId.value === id) detail.value = null;
+    }
+    const fresh = detailId.value !== id || detail.value === null;
+    // another id's error stays with the page left while it is held
+    if (again && detailId.value === id) {
       batch(() => {
-        if (detailId.value !== id) detail.value = null;
-        detailId.value = id;
         detailError.value = null;
         detailCode.value = null;
       });
@@ -625,7 +648,7 @@ export function store(
     let out = true;
     const read = call<Detail>(instrumentPath(id));
     // beside the read, never before it, so a stored symbol waits on nothing
-    if (detail.value === null) {
+    if (fresh) {
       void call<{ stored: boolean }>(`${instrumentPath(id)}/stored`).then(
         (s) => {
           if (out && !s.stored && mine === instrumentLoad) {
@@ -640,6 +663,7 @@ export function store(
       if (mine !== instrumentLoad || at !== session) return;
       batch(() => {
         detail.value = d;
+        detailId.value = id;
         detailError.value = null;
         detailCode.value = null;
         firstFetch.value = null;
@@ -648,9 +672,14 @@ export function store(
       if (mine !== instrumentLoad || at !== session) return;
       firstFetch.value = null;
       if (!(error instanceof ApiError && error.status === 401)) {
-        detailError.value = unread(error);
-        detailCode.value = codeOf(error);
-        detailFailures.value++;
+        batch(() => {
+          // a failed refresh keeps its detail; another id's never stands in
+          if (detailId.value !== id) detail.value = null;
+          detailId.value = id;
+          detailError.value = unread(error);
+          detailCode.value = codeOf(error);
+          detailFailures.value++;
+        });
       }
     } finally {
       out = false;
@@ -676,7 +705,7 @@ export function store(
       throw error;
     }
     // what changed shows at once, if its page is still the one open
-    if (detailId.value === id) void loadInstrument(id);
+    if (askedId === id) void loadInstrument(id);
     return done.parts;
   }
 
@@ -701,7 +730,7 @@ export function store(
     listing = null;
     batch(() => {
       instruments.value = instruments.value?.filter((r) => r.id !== id) ?? null;
-      if (detailId.value === id) detail.value = null;
+      if (detailId.value === id) removedId = id;
     });
     return { ok: true };
   }
@@ -713,7 +742,7 @@ export function store(
     const at = session;
     const stale = () => mine !== keysLoad || at !== session;
     try {
-      const page = await call<KeysPage>(KEYS_PATH);
+      const page = await paced(call<KeysPage>(KEYS_PATH), later);
       if (stale()) return;
       batch(() => {
         keys.value = page.keys;
@@ -1039,6 +1068,7 @@ export function store(
   }
 
   return {
+    later,
     portfolios,
     keys,
     keysLimit,
