@@ -33,6 +33,7 @@ import { Table } from "../ui/Table.tsx";
 import { Tabs } from "../ui/Tabs.tsx";
 import {
   ADD_KEY,
+  brokerEdit,
   browserZone,
   cashDate,
   cashEdits,
@@ -166,6 +167,7 @@ export function PositionEdit({
   const date = useSignal(h.parts[0]?.as_of ?? h.as_of ?? now);
   const dateSet = useSignal(false);
   const cash = h.kind === "cash";
+  const brokered = cash || h.kind === "bond";
   const brokers = store.overview.value?.brokers ?? [];
   const name = useSignal(h.name ?? "");
   const broker = useSignal(h.parts[0]?.broker ?? "");
@@ -205,7 +207,9 @@ export function PositionEdit({
       ...figureEdits(h, { amount: n, date: date.value }),
       ...(cash
         ? cashEdits(h, { name: name.value, broker: at, note: note.value })
-        : {}),
+        : brokered
+          ? brokerEdit(h, at)
+          : {}),
     };
     error.value =
       Object.keys(change).length === 0
@@ -249,20 +253,18 @@ export function PositionEdit({
           }}
         />
       </label>
-      {cash && (
-        <>
-          <BrokerPick
-            value={broker}
-            name={newBroker}
-            brokers={brokers}
-            back={h.parts[0]?.broker ?? ""}
-            onEdit={() => {
-              error.value = null;
-            }}
-          />
-          <Field label="Note" value={note} placeholder="Optional" />
-        </>
+      {brokered && (
+        <BrokerPick
+          value={broker}
+          name={newBroker}
+          brokers={brokers}
+          back={h.parts[0]?.broker ?? ""}
+          onEdit={() => {
+            error.value = null;
+          }}
+        />
       )}
+      {cash && <Field label="Note" value={note} placeholder="Optional" />}
     </EditFrame>
   );
 }

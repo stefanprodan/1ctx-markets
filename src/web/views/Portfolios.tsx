@@ -61,6 +61,7 @@ import {
 import {
   activityOf,
   barOf,
+  bondPhoneLine,
   cashLine,
   columnsFor,
   currencies,
@@ -76,6 +77,7 @@ import {
   isFundId,
   isReserve,
   isReward,
+  matured,
   missingWords,
   mixed,
   orderOf,
@@ -629,6 +631,14 @@ export function rowMenu(
 
 // a label already says Dry powder or Reserve; a phone on All has room for that word only
 function rowName(x: Holding, all: boolean, labelled: boolean) {
+  if (x.kind === "bond") {
+    return (
+      <>
+        <span class="hide-phone">{holdingName(x)}</span>
+        <span class="show-phone">{bondPhoneLine(x)}</span>
+      </>
+    );
+  }
   if (x.kind !== "cash") return holdingName(x);
   const c = cashLine(x);
   if (all) {
@@ -663,21 +673,28 @@ export function holdingColumns(
         tablet: "minmax(0, 2fr)",
         phone: "minmax(0, 1fr)",
       },
-      cell: (x) => (
-        <SymbolName
-          ticker={holdingTicker(x)}
-          name={
-            x.stale.length > 0 ? (
-              <>
-                <span class="tag">{staleWords(x.stale.at(-1)!)}</span>{" "}
-                {rowName(x, all, labelled)}
-              </>
-            ) : (
-              rowName(x, all, labelled)
-            )
-          }
-        />
-      ),
+      cell: (x) => {
+        const m = matured(x);
+        return (
+          <SymbolName
+            ticker={holdingTicker(x)}
+            name={
+              m || x.stale.length > 0 ? (
+                <>
+                  {m ? (
+                    <span class="tag tag-side pf-matured-tag">Matured</span>
+                  ) : (
+                    <span class="tag">{staleWords(x.stale.at(-1)!)}</span>
+                  )}{" "}
+                  {rowName(x, all, labelled)}
+                </>
+              ) : (
+                rowName(x, all, labelled)
+              )
+            }
+          />
+        );
+      },
     },
     {
       key: "spark",
@@ -838,6 +855,7 @@ function HoldingsCard({
         columns={columns}
         groups={tableGroups}
         rowKey={keyOf}
+        rowAttrs={(x) => (matured(x) ? { class: "pf-matured" } : {})}
         sort={sort}
         dir={dir}
         onSort={(k, d) => {

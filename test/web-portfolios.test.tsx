@@ -39,6 +39,8 @@ import {
 import {
   activityOf,
   barOf,
+  bondPhoneLine,
+  brokerEdit,
   cashDate,
   cashEdits,
   columnsFor,
@@ -59,6 +61,7 @@ import {
   homeOf,
   importLine,
   listingWords,
+  matured,
   missingWords,
   monthsOf,
   orderOf,
@@ -706,7 +709,7 @@ describe("the page's words", () => {
         price: 98.25,
         unit: "percent_of_par",
       }),
-    ).toBe("98.25% of face");
+    ).toBe("98.25%");
   });
 
   test("search results say where each listing trades", () => {
@@ -1286,6 +1289,80 @@ describe("cash: dry powder, reserve, broker and note", () => {
   });
 });
 
+describe("a bond", () => {
+  const part = (broker: string | null) => ({
+    portfolio: "Shares",
+    broker,
+    quantity: null,
+    average_cost: null,
+    cost: null,
+    value: 1000,
+    position: 7,
+    as_of: "2026-01-05",
+    amount: 1000,
+  });
+  const bond: Holding = {
+    ...HOLDINGS.holdings[1]!,
+    kind: "bond",
+    id: null,
+    position: 7,
+    name: "Gov bond",
+    type: "BOND",
+    dry_powder: false,
+    coupon: 6.5,
+    maturity: "2099-10-01",
+    parts: [part("North"), part("North"), part("South")],
+  };
+  const old: Holding = {
+    ...bond,
+    position: 8,
+    name: "Old bond",
+    maturity: "2026-01-15",
+    parts: [part("North")],
+  };
+
+  test("its row names its brokers in place of the kind", () => {
+    expect(holdingName(bond, NOW)).toBe("North, South · 6.5% · 1 Oct 2099");
+    expect(
+      holdingName(
+        { ...bond, coupon: null, maturity: null, parts: [part(null)] },
+        NOW,
+      ),
+    ).toBe("Bond");
+    expect(holdingName(old, NOW)).toBe("North · 6.5% · 15 Jan");
+    expect(matured(old, NOW)).toBe(true);
+    expect(matured(bond, NOW)).toBe(false);
+    expect(bondPhoneLine(bond, NOW)).toBe("6.5%");
+    expect(bondPhoneLine(old, NOW)).toBe("");
+  });
+
+  test("a matured one is tagged and dimmed, a phone shows its coupon or tag only", async () => {
+    const { s } = await loaded({
+      ...HOLDINGS,
+      holdings: [bond, { ...old, stale: ["no RON to EUR rate"] }],
+    });
+    const html = render(<PortfoliosBody store={s.portfolios} />);
+    expect(html.match(/class="table-row[^"]*pf-matured/g)).toHaveLength(1);
+    expect(html).toContain(">Matured<");
+    expect(html).not.toContain("No RON rate");
+    expect(html).toContain('<span class="show-phone">6.5%</span>');
+    expect(html).toContain('<span class="show-phone"></span>');
+  });
+
+  test("Edit has its face, date and broker, and sends a broker change only", async () => {
+    const { s } = await loaded();
+    const html = render(
+      <PositionEdit store={s.portfolios} h={bond} onDone={() => {}} />,
+    );
+    expect(html).toContain(">Face<");
+    expect(html).toContain('aria-label="Broker: North"');
+    expect(html).not.toContain('value="Gov bond"');
+    expect(brokerEdit(bond, "North")).toEqual({});
+    expect(brokerEdit(bond, "West")).toEqual({ broker: "West" });
+    expect(brokerEdit(bond, "")).toEqual({ broker: null });
+  });
+});
+
 describe("a refused retry", () => {
   test("offers Save again, which sends the trade with again", async () => {
     const html = render(
@@ -1411,7 +1488,10 @@ describe("a fund the owner prices", () => {
         () => {},
       ).map((i) => i.label),
     ).toEqual(["Buy", "Sell", "Set price"]);
-    expect(holdingName(fundRow, NOW)).toBe(`Fund · ${ISIN}`);
+    expect(holdingName(fundRow, NOW)).toBe(`North · ${ISIN}`);
+    expect(holdingName({ ...fundRow, isin: undefined, parts: [] }, NOW)).toBe(
+      "Fund",
+    );
     // ICU builds name September "Sep" or "Sept"
     expect(priceLine(fundRow, NOW)).toMatch(/^6\.00 EUR · 30 Sept?$/);
     expect(pageOf(fundRow)).toBeNull();
