@@ -2241,6 +2241,10 @@ describe("connect agents", () => {
     expect(html).toContain('aria-label="Copy Key"');
     expect(html).toContain(">Done<");
     expect(html).not.toContain("Create key");
+    // beside the card, so the card keeps its padding while it is open
+    expect(html.indexOf("</section>")).toBeLessThan(
+      html.indexOf("drawer-wrap"),
+    );
     expect(render(<ShownKey token={TOKEN} />)).toContain(TOKEN);
     // closing the drawer drops the token with it
     const adding = signal(true);

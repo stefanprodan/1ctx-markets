@@ -441,6 +441,16 @@ export function cashDate(
     : (p?.as_of ?? h.as_of ?? today);
 }
 
+// "" takes the broker off
+export function brokerEdit(
+  h: Holding,
+  broker: string,
+): Pick<PositionChange, "broker"> {
+  return broker !== (h.parts[0]?.broker ?? "")
+    ? { broker: broker === "" ? null : broker }
+    : {};
+}
+
 // only what differs is sent; null takes a broker or a note off
 export function cashEdits(
   h: Holding,
@@ -450,9 +460,7 @@ export function cashEdits(
   const note = edited.note.trim();
   return {
     ...(name !== (h.name ?? "") ? { name } : {}),
-    ...(edited.broker !== (h.parts[0]?.broker ?? "")
-      ? { broker: edited.broker === "" ? null : edited.broker }
-      : {}),
+    ...brokerEdit(h, edited.broker),
     ...(note !== (h.note ?? "") ? { note: note === "" ? null : note } : {}),
   };
 }
@@ -469,20 +477,36 @@ export function cashLine(
   };
 }
 
+// repaid on its maturity day, by the viewer's date
+export const matured = (h: Holding, now = Date.now()): boolean =>
+  h.kind === "bond" && !!h.maturity && h.maturity <= today(browserZone(), now);
+
 // the line under the ticker
 export function holdingName(h: Holding, now = Date.now()): string {
   if (h.kind === "cash") {
     const c = cashLine(h, now);
     return [c.what, c.broker, c.date].filter(Boolean).join(" · ");
   }
-  if (h.kind === "fund") return h.isin ? `Fund · ${h.isin}` : "Fund";
+  // the broker, not the kind word, tells two bonds or funds apart
+  const at = [...new Set(h.parts.map((p) => p.broker).filter(Boolean))].join(
+    ", ",
+  );
+  if (h.kind === "fund") {
+    return [at, h.isin].filter(Boolean).join(" · ") || "Fund";
+  }
   if (h.kind === "bond") {
     const c = h.coupon != null ? `${h.coupon}%` : null;
-    const m = h.maturity ? `until ${day(h.maturity, now)}` : null;
-    return ["Bond", c, m].filter(Boolean).join(" · ");
+    const m = h.maturity ? day(h.maturity, now) : null;
+    return [at, c, m].filter(Boolean).join(" · ") || "Bond";
   }
   const name = nameOf(h.name, h.type, h.id ?? undefined);
   return h.sold_today ? (name ? `${name} · Sold today` : "Sold today") : name;
+}
+
+// a phone fits a bond's coupon only; a matured one's tag says all
+export function bondPhoneLine(h: Holding, now = Date.now()): string {
+  if (matured(h, now)) return "";
+  return h.coupon != null ? `${h.coupon}%` : holdingName(h, now);
 }
 
 export const portfolioOf = (h: Holding): string =>
@@ -717,7 +741,7 @@ export function priceLine(h: Holding, now = Date.now()): string {
   if (h.priced === "hand") {
     return `${price(h.price, h.currency)}${h.as_of ? ` · ${day(h.as_of, now)}` : ""}`;
   }
-  if (h.unit === "percent_of_par") return `${price(h.price)}% of face`;
+  if (h.unit === "percent_of_par") return `${price(h.price)}%`;
   return price(h.price, h.currency);
 }
 

@@ -70,6 +70,14 @@
   .pf-price {
     white-space: nowrap;
   }
+  /* repaid: its figures fade, its name and tag stay readable */
+  .pf-matured .table-end {
+    opacity: 0.4;
+  }
+  .pf-matured-tag {
+    color: var(--brand);
+    background: color-mix(in srgb, var(--brand) 14%, transparent);
+  }
   .pf-wbar {
     width: 64px;
     height: 3px;

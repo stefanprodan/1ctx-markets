@@ -510,40 +510,44 @@ export function Keys({
     refocus.value = false;
     newKey.current?.focus();
   }, [refocus.value, opened.value]);
+  // the drawers sit beside the card: inside, the table would stop being its
+  // last child and the card's bottom padding would grow while one is open
   return (
-    <Card
-      title="Keys"
-      count={`${keys.length} of ${limit}`}
-      actions={
-        full ? undefined : (
-          <button
-            ref={newKey}
-            type="button"
-            class="btn btn-small"
-            onClick={() => {
-              adding.value = true;
-            }}
-          >
-            <Icon name="plus" size={14} />
-            New key
-          </button>
-        )
-      }
-    >
-      <Table
-        label="Keys"
-        columns={keyColumns(keys, now)}
-        rows={keys}
-        rowKey={(k) => k.id}
-        open={(k) => ({
-          run: () => {
-            opened.value = k;
-          },
-        })}
-        rowLabel={(k) => k.name}
-        empty="No keys yet."
-      />
-      {full && <Notice>{capLine(limit)}</Notice>}
+    <>
+      <Card
+        title="Keys"
+        count={`${keys.length} of ${limit}`}
+        actions={
+          full ? undefined : (
+            <button
+              ref={newKey}
+              type="button"
+              class="btn btn-small"
+              onClick={() => {
+                adding.value = true;
+              }}
+            >
+              <Icon name="plus" size={14} />
+              New key
+            </button>
+          )
+        }
+      >
+        <Table
+          label="Keys"
+          columns={keyColumns(keys, now)}
+          rows={keys}
+          rowKey={(k) => k.id}
+          open={(k) => ({
+            run: () => {
+              opened.value = k;
+            },
+          })}
+          rowLabel={(k) => k.name}
+          empty="No keys yet."
+        />
+        {full && <Notice>{capLine(limit)}</Notice>}
+      </Card>
       {(adding.value || shown.value !== null) && (
         <NewKey
           store={store}
@@ -563,7 +567,7 @@ export function Keys({
           }}
         />
       )}
-    </Card>
+    </>
   );
 }
 
