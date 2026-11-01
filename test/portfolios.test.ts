@@ -10,6 +10,7 @@ import {
 import { upsertInstrument } from "../src/market/instruments.ts";
 import type { Markets } from "../src/operations/markets.ts";
 import {
+  addFundTrade,
   addPosition,
   addTrade,
   createBroker,
@@ -19,9 +20,11 @@ import {
   portfolioAnswer,
   readHoldings,
   readTradeList,
+  removePortfolio,
   saveSettings,
   setPositionState,
   setTradeState,
+  updatePortfolio,
   updatePosition,
 } from "../src/operations/portfolio.ts";
 import type { Who } from "../src/operations/who.ts";
@@ -29,7 +32,7 @@ import { splitFactor } from "../src/portfolios/value.ts";
 import { tokenHash } from "../src/server/access.ts";
 import type { Db } from "../src/storage/db/index.ts";
 import { withApp } from "./helpers/app.ts";
-import { portfolioBefore } from "./helpers/portfolio.ts";
+import { cashBefore, portfolioBefore } from "./helpers/portfolio.ts";
 import { bar, instrument, LIVE, NOW, quote, world } from "./helpers/world.ts";
 
 const CASEY: Who = { name: "casey-agent", portfolio: "write", rules: "none" };
@@ -78,6 +81,7 @@ async function setup() {
   quote(db, "CRYPTO:CCC-USD", 2000, 1900);
   await portfolioBefore(w.m, "Shares");
   await portfolioBefore(w.m, "Coins");
+  await cashBefore(w.m);
   for (const name of ["North", "South", "East"]) {
     await createBroker(w.m, { name });
   }
@@ -456,7 +460,7 @@ describe("positions", () => {
 const cash = (m: Markets, amount: number, currency = "EUR", dry = true) =>
   addPosition(m, CASEY, {
     kind: "cash",
-    portfolio: "Shares",
+    portfolio: null,
     name: "Kept for buying",
     symbol: null,
     currency,
@@ -470,39 +474,114 @@ const cash = (m: Markets, amount: number, currency = "EUR", dry = true) =>
     dryPowder: dry,
   });
 
-describe("dry powder", () => {
-  test("is answered per currency beside invested value and other cash", async () => {
+const kept = (
+  m: Markets,
+  o: { amount: number; broker?: string; dry?: boolean },
+) =>
+  addPosition(m, CASEY, {
+    kind: "cash",
+    portfolio: null,
+    name: o.dry ? "Kept for buying" : "Savings",
+    symbol: null,
+    currency: "EUR",
+    amount: o.amount,
+    cost: null,
+    coupon: null,
+    maturity: null,
+    date: LIVE,
+    broker: o.broker ?? null,
+    note: null,
+    dryPowder: o.dry === true,
+  });
+
+describe("dry powder and reserve", () => {
+  test("Cash counts its reserve in its value", async () => {
     const { m } = await setup();
     await buy(m, { symbol: "XETRA:BBB", quantity: 4, price: 40 });
-    await cash(m, 300);
-    await addPosition(m, CASEY, {
-      kind: "cash",
-      portfolio: "Shares",
-      name: "Current account",
-      symbol: null,
-      currency: "EUR",
-      amount: 500,
-      cost: null,
-      coupon: null,
-      maturity: null,
-      date: LIVE,
-      broker: null,
-      note: null,
-      dryPowder: false,
-    });
-    const eur = (await holdingsOf(m)).totals[0]!;
+    await kept(m, { amount: 300, dry: true });
+    await kept(m, { amount: 700 });
+    const eur = (await holdingsOf(m, { portfolio: "Cash" })).totals[0]!;
     expect(eur).toMatchObject({
       currency: "EUR",
       value: 1000,
-      invested: 200,
-      cash: 500,
+      invested: 0,
+      reserve: 700,
       dry_powder: 300,
-      invested_weight: 20,
-      cash_weight: 50,
+      reserve_weight: 70,
       dry_powder_weight: 30,
+    });
+    expect("net_worth" in eur).toBe(false);
+  });
+
+  test("across portfolios reserve is outside the value, weights and exposure; net worth counts it", async () => {
+    const { m } = await setup();
+    await buy(m, { symbol: "XETRA:BBB", quantity: 4, price: 40 });
+    await kept(m, { amount: 300, dry: true });
+    await kept(m, { amount: 500, broker: "North" });
+    const h = await holdingsOf(m, { currency: "EUR" });
+    const expected = {
+      currency: "EUR",
+      value: 500,
+      net_worth: 1000,
+      invested: 200,
+      reserve: 500,
+      dry_powder: 300,
+      invested_weight: 40,
+      reserve_weight: null,
+      dry_powder_weight: 60,
+    };
+    expect(h.totals[0]).toMatchObject(expected);
+    expect(h.converted).toMatchObject(expected);
+    const reserve = h.holdings.find((r) => r.name === "Savings")!;
+    expect(reserve).toMatchObject({ value: 500, currency_weight: null });
+    expect(reserve.converted?.weight).toBeNull();
+    expect(row(h, "XETRA:BBB").converted?.weight).toBe(40);
+    const exposure = h.exposure[0]!;
+    expect(exposure.portfolio.map((x) => x.key)).toEqual(["Cash", "Shares"]);
+    expect(exposure.broker.map((x) => x.key)).toEqual([null]);
+    expect(exposure.currency_weights).toEqual([
+      { key: "EUR", value: 500, weight: 100 },
+    ]);
+  });
+
+  test("a broker filter across portfolios leaves reserve out the same way", async () => {
+    const { m } = await setup();
+    await buy(m, {
+      symbol: "XETRA:BBB",
+      quantity: 2,
+      price: 40,
+      broker: "North",
+    });
+    await kept(m, { amount: 50, dry: true, broker: "North" });
+    await kept(m, { amount: 400, broker: "North" });
+    await kept(m, { amount: 900, broker: "South" });
+    const eur = (await holdingsOf(m, { broker: "North" })).totals[0]!;
+    expect(eur).toMatchObject({
+      value: 150,
+      net_worth: 550,
+      reserve: 400,
+      dry_powder: 50,
+      reserve_weight: null,
     });
   });
 
+  test("an owner with reserve only has nothing in the value and the reserve as net worth", async () => {
+    const { m } = await setup();
+    await kept(m, { amount: 700 });
+    const eur = (await holdingsOf(m)).totals[0]!;
+    expect(eur).toMatchObject({
+      value: 0,
+      net_worth: 700,
+      reserve: 700,
+      invested: 0,
+      dry_powder: 0,
+      invested_weight: null,
+      dry_powder_weight: null,
+    });
+  });
+});
+
+describe("dry powder", () => {
   test("a buy paid from it is add, then update by its cost in another currency", async () => {
     const { m, db } = await setup();
     pair(db, "EURUSD=X", 1.25);
@@ -582,7 +661,7 @@ describe("dry powder", () => {
     await cash(m, 2000, "EUR");
     await addPosition(m, CASEY, {
       kind: "cash",
-      portfolio: "Coins",
+      portfolio: null,
       name: "Kept for coins",
       symbol: null,
       currency: "USD",
@@ -750,11 +829,17 @@ describe("setup", () => {
     expect(done.error).toBe(false);
     expect(done.body).toMatchObject({
       display_currency: "EUR",
-      made: ["portfolio Long term", "broker North"],
+      made: ["portfolio Cash", "portfolio Long term", "broker North"],
       brokers: [{ name: "North" }],
     });
-    expect(done.body.portfolios.map((p: { name: string }) => p.name)).toEqual([
-      "Long term",
+    expect(
+      done.body.portfolios.map((p: { name: string; cash: boolean }) => [
+        p.name,
+        p.cash,
+      ]),
+    ).toEqual([
+      ["Cash", true],
+      ["Long term", false],
     ]);
     // the owner's currency is set once: the same is a no-op, another refused
     const changed = await ask(m, { display_currency: "USD", broker: "South" });
@@ -764,8 +849,8 @@ describe("setup", () => {
     // a retry makes nothing twice
     const again = await ask(m, { portfolio: "Long term", broker: "North" });
     expect(again.body.made).toEqual([]);
-    expect(again.body.portfolios).toHaveLength(1);
-    // the one portfolio and the broker made take a trade at once
+    expect(again.body.portfolios).toHaveLength(2);
+    // the one portfolio besides Cash and the broker made take a trade at once
     const added = await portfolioAnswer(
       m,
       CASEY,
@@ -879,6 +964,34 @@ describe("over MCP and REST", () => {
       expect((held.content as { text: string }[])[0]!.text).toContain(
         '"quantity":17',
       );
+      // null takes a cash row's broker and note off, as the schema allows
+      const kept = await writer.callTool({
+        name: "portfolio",
+        arguments: {
+          action: "add",
+          kind: "cash",
+          name: "Spare",
+          amount: 5,
+          currency: "USD",
+          broker: "North",
+          note: "made-up note",
+        },
+      });
+      const spare = JSON.parse((kept.content as { text: string }[])[0]!.text);
+      expect(spare.position.portfolio).toBe("Cash");
+      const off = await writer.callTool({
+        name: "portfolio",
+        arguments: {
+          action: "update",
+          position: spare.position.id,
+          broker: null,
+          note: null,
+        },
+      });
+      expect(off.isError).toBeUndefined();
+      expect(
+        JSON.parse((off.content as { text: string }[])[0]!.text).position,
+      ).toMatchObject({ broker: null, note: null });
       await writer.close();
 
       const logged = t.lines.join("\n");
@@ -894,4 +1007,231 @@ describe("over MCP and REST", () => {
       }
       expect(logged).toContain("tool=portfolio");
     }));
+});
+
+describe("the Cash portfolio", () => {
+  const cashIn = (m: Markets, portfolio: string | null, name = "Spare") =>
+    addPosition(m, CASEY, {
+      kind: "cash",
+      portfolio,
+      name,
+      symbol: null,
+      currency: "EUR",
+      amount: 10,
+      cost: null,
+      coupon: null,
+      maturity: null,
+      date: LIVE,
+      broker: null,
+      note: null,
+      dryPowder: false,
+    });
+
+  test("saving the display currency makes it once, with the time zone", async () => {
+    const { m } = world();
+    expect(
+      await saveSettings(m, {
+        display_currency: "EUR",
+        time_zone: "Europe/Paris",
+      }),
+    ).toEqual({ display_currency: "EUR", time_zone: "Europe/Paris" });
+    await saveSettings(m, { display_currency: "USD" });
+    const list = JSON.parse(
+      (await portfolioAnswer(m, CASEY, parsePortfolio({ action: "list" })))
+        .content[0]!.text,
+    );
+    expect(list.portfolios).toMatchObject([{ name: "Cash", cash: true }]);
+  });
+
+  test("is never renamed or removed, and no other takes its name", async () => {
+    const { m } = world();
+    await saveSettings(m, { display_currency: "EUR" });
+    const cash = m.db
+      .query("select id from portfolios where cash = 1")
+      .get() as { id: number };
+    expect(await updatePortfolio(m, cash.id, { name: "Bank" })).toMatchObject({
+      error: "conflict",
+      message: "Cash keeps its name",
+    });
+    expect(await removePortfolio(m, cash.id)).toMatchObject({
+      error: "conflict",
+    });
+    for (const name of ["cash", " CASH "]) {
+      expect(await createPortfolio(m, { name })).toMatchObject({
+        error: "conflict",
+        message: "the name Cash is kept for cash",
+      });
+    }
+    const made = await createPortfolio(m, { name: "Shares" });
+    if ("error" in made) throw new Error(made.message);
+    expect(
+      await updatePortfolio(m, made.portfolio.id, { name: "Cash" }),
+    ).toMatchObject({ error: "conflict" });
+    // setup naming it makes nothing more
+    const again = JSON.parse(
+      (
+        await portfolioAnswer(
+          m,
+          CASEY,
+          parsePortfolio({ action: "setup", portfolio: "cash" }),
+        )
+      ).content[0]!.text,
+    );
+    expect(again.made).toEqual([]);
+    expect(again.portfolios).toHaveLength(2);
+  });
+
+  test("cash goes to Cash alone, and Cash takes nothing else", async () => {
+    const { m } = await setup();
+    const landed = await cashIn(m, null);
+    expect(landed).toMatchObject({ position: { portfolio: "Cash" } });
+    expect(await cashIn(m, "cash", "Other")).toMatchObject({
+      position: { portfolio: "Cash" },
+    });
+    expect(await cashIn(m, "Shares")).toMatchObject({
+      error: "bad_arguments",
+      message: "cash lives in Cash; leave portfolio out",
+    });
+    const refused = {
+      error: "bad_arguments",
+      message: "Cash holds only cash; name another portfolio",
+    };
+    expect(await buy(m, { portfolio: "Cash" })).toMatchObject(refused);
+    expect(
+      await addFundTrade(m, CASEY, {
+        isin: "ZZFUND000011",
+        name: "Made Up Fund",
+        market: null,
+        trade: {
+          portfolio: "Cash",
+          side: "buy",
+          quantity: 1,
+          price: 10,
+          total: null,
+          fees: 0,
+          date: LIVE,
+          currency: "EUR",
+          broker: null,
+          note: null,
+        },
+      }),
+    ).toMatchObject(refused);
+    expect(
+      await addPosition(m, CASEY, {
+        kind: "bond",
+        portfolio: "Cash",
+        name: "Made Up Bond",
+        symbol: null,
+        currency: "EUR",
+        amount: 1000,
+        cost: null,
+        coupon: 5,
+        maturity: "2030-01-02",
+        date: LIVE,
+        broker: null,
+        note: null,
+        dryPowder: false,
+      }),
+    ).toMatchObject(refused);
+  });
+
+  test("a trade with no portfolio goes to the one besides Cash, asked with two", async () => {
+    const { m } = world();
+    instrument(m.db, "US:AAA", { currency: "USD", name: "Alpha Made Up" });
+    quote(m.db, "US:AAA", 120, 118);
+    await saveSettings(m, { display_currency: "EUR" });
+    await createPortfolio(m, { name: "Stocks" });
+    const one = await buy(m, { portfolio: null });
+    expect(one).toMatchObject({ trade: { portfolio: "Stocks" } });
+    await createPortfolio(m, { name: "Coins" });
+    expect(await buy(m, { portfolio: null })).toMatchObject({
+      error: "bad_arguments",
+      message: "name a portfolio: Coins, Stocks",
+    });
+  });
+});
+
+describe("dry powder named by its broker", () => {
+  const dryAt = (m: Markets, broker: string, amount: number) =>
+    addPosition(m, CASEY, {
+      kind: "cash",
+      portfolio: null,
+      name: "Kept",
+      symbol: null,
+      currency: "EUR",
+      amount,
+      cost: null,
+      coupon: null,
+      maturity: null,
+      date: LIVE,
+      broker,
+      note: null,
+      dryPowder: true,
+    });
+  const tool = async (m: Markets, input: object) => {
+    const r = await portfolioAnswer(
+      m,
+      CASEY,
+      parsePortfolio({ action: "update", position: "dry_powder", ...input }),
+    );
+    return { error: r.isError === true, body: JSON.parse(r.content[0]!.text) };
+  };
+
+  test("broker picks the row and never moves it", async () => {
+    const { m } = await setup();
+    await dryAt(m, "North", 500);
+    await dryAt(m, "South", 300);
+    const paid = await tool(m, { by: -100, broker: "South" });
+    expect(paid.body.position).toMatchObject({
+      broker: "South",
+      amount: 200,
+      portfolio: "Cash",
+    });
+    const north = (await holdingsOf(m, { broker: "North" })).holdings.find(
+      (r) => r.kind === "cash",
+    )!;
+    expect(north.value).toBe(500);
+    const asked = await tool(m, { by: -100 });
+    expect(
+      asked.body.positions.map((p: { broker: string }) => p.broker),
+    ).toEqual(["North", "South"]);
+    expect((await tool(m, { by: -1, broker: "East" })).body.message).toBe(
+      "no dry powder at that broker; name one by its id",
+    );
+  });
+
+  test("a rename, a broker alone and another portfolio are refused", async () => {
+    const { m } = await setup();
+    await dryAt(m, "North", 500);
+    expect((await tool(m, { name: "Other", by: 1 })).body.message).toBe(
+      "with position dry_powder, broker picks the row; a new name or broker needs its id",
+    );
+    expect((await tool(m, { broker: "North" })).body.message).toContain(
+      "update changes at least one of",
+    );
+    expect((await tool(m, { by: 1, portfolio: "Shares" })).body).toEqual({
+      error: "bad_arguments",
+      message: "dry powder lives in Cash; leave portfolio out",
+    });
+    expect(
+      (await tool(m, { by: 1, portfolio: "Cash" })).body.position.amount,
+    ).toBe(501);
+  });
+});
+
+describe("reserve with no rate across portfolios", () => {
+  test("is never missing from the value, and leaves reserve and net worth null", async () => {
+    const { m } = await setup();
+    await buy(m, { symbol: "XETRA:BBB", quantity: 2, price: 40 });
+    await kept(m, { amount: 200 });
+    await cash(m, 900, "JPY", false);
+    const h = await holdingsOf(m, { currency: "EUR" });
+    expect(h.converted).toMatchObject({
+      value: 100,
+      net_worth: null,
+      reserve: null,
+      reserve_weight: null,
+      missing: [],
+    });
+  });
 });

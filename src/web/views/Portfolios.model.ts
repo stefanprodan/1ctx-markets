@@ -7,6 +7,7 @@ import type {
   Holding,
   Holdings,
   Part,
+  PositionChange,
   Total,
   TradeRow,
 } from "../data/portfolios.ts";
@@ -287,11 +288,12 @@ export const heldAt = (h: Holdings | null, id: string): Part[] =>
 
 export type DryPowder = {
   position: number;
-  portfolio: string;
+  name: string;
+  broker: string | null;
   currency: string;
 };
 
-// every dry powder position, each part on its own
+// every dry powder row, each part on its own; all of it lives in Cash
 export function dryPowders(h: Holdings | null): DryPowder[] {
   return (h?.holdings ?? [])
     .filter((x) => x.kind === "cash" && x.dry_powder)
@@ -303,27 +305,58 @@ export function dryPowders(h: Holdings | null): DryPowder[] {
               : [
                   {
                     position: p.position,
-                    portfolio: p.portfolio,
+                    name: x.name ?? "",
+                    broker: p.broker,
                     currency: x.currency,
                   },
                 ],
           )
         : x.position === null
           ? []
-          : [{ position: x.position, portfolio: "", currency: x.currency }],
+          : [
+              {
+                position: x.position,
+                name: x.name ?? "",
+                broker: null,
+                currency: x.currency,
+              },
+            ],
     );
 }
 
-// the dry powder a buy is paid from: its own portfolio's in its currency
-// first, then its currency, then its portfolio's, then any
+// a buy pays from the dry powder at its broker in its currency, else in its currency
 export function dryPowderFor(
   all: readonly DryPowder[],
-  portfolio: string | null,
+  broker: string | null,
   currency: string | null,
-): DryPowder | null {
-  const score = (d: DryPowder) =>
-    (d.currency === currency ? 2 : 0) + (d.portfolio === portfolio ? 1 : 0);
-  return [...all].sort((a, b) => score(b) - score(a))[0] ?? null;
+): { pick: DryPowder | null; choices: DryPowder[] } {
+  const same = all.filter((d) => d.currency === currency);
+  const here = same.filter(
+    (d) =>
+      broker !== null &&
+      d.broker !== null &&
+      d.broker.toLowerCase() === broker.toLowerCase(),
+  );
+  const pick =
+    here.length === 1 ? here[0]! : same.length === 1 ? same[0]! : null;
+  return {
+    pick,
+    choices: pick
+      ? [pick]
+      : here.length > 1
+        ? here
+        : same.length > 0
+          ? same
+          : [...all],
+  };
+}
+
+// a menu line per row; a name two rows share adds the broker
+export function payFromLabel(d: DryPowder, choices: readonly DryPowder[]) {
+  const shared = choices.some(
+    (x) => x.position !== d.position && x.name === d.name,
+  );
+  return `Pay from ${d.name}${shared ? ` · ${d.broker ?? d.currency}` : ""}`;
 }
 
 // every word typed matches some field, so "nvda xtb" finds NVDA at XTB
@@ -337,7 +370,21 @@ const has = (q: string, ...fields: (string | null | undefined)[]) => {
 };
 
 export const holdingMatches = (h: Holding, q: string): boolean =>
-  has(q, holdingTicker(h), h.name, h.isin, ...h.parts.map((p) => p.broker));
+  has(
+    q,
+    holdingTicker(h),
+    h.name,
+    h.isin,
+    h.kind === "cash" ? h.note : null,
+    ...h.parts.map((p) => p.broker),
+  );
+
+// All's value leaves reserve out, so its rows show only in their portfolio
+export const isReserve = (h: Holding): boolean =>
+  h.kind === "cash" && h.dry_powder !== true;
+
+export const cashWord = (h: Holding): string =>
+  h.dry_powder ? "Dry powder" : "Reserve";
 
 export const tradeMatches = (t: TradeRow, q: string): boolean =>
   has(q, t.side, symbolOf(t.symbol), t.name, t.broker, t.note);
@@ -366,11 +413,67 @@ export function holdingTicker(h: Holding): string {
   return tickerOf(h.id, h.type);
 }
 
+// a new amount goes with the date shown; a name, broker or note edit keeps the date
+export function figureEdits(
+  h: Holding,
+  edited: { amount: number; date: string },
+): Pick<PositionChange, "amount" | "date"> {
+  const p = h.parts[0];
+  if (edited.amount !== (p?.amount ?? null)) {
+    return { amount: edited.amount, date: edited.date };
+  }
+  return edited.date !== (p?.as_of ?? h.as_of ?? "")
+    ? { date: edited.date }
+    : {};
+}
+
+// a new balance is true today, so a changed amount moves an untouched date
+export function cashDate(
+  h: Holding,
+  amount: number | null,
+  today: string,
+): string {
+  const p = h.parts[0];
+  return amount !== null &&
+    !Number.isNaN(amount) &&
+    amount !== (p?.amount ?? null)
+    ? today
+    : (p?.as_of ?? h.as_of ?? today);
+}
+
+// only what differs is sent; null takes a broker or a note off
+export function cashEdits(
+  h: Holding,
+  edited: { name: string; broker: string; note: string },
+): Pick<PositionChange, "name" | "broker" | "note"> {
+  const name = edited.name.trim();
+  const note = edited.note.trim();
+  return {
+    ...(name !== (h.name ?? "") ? { name } : {}),
+    ...(edited.broker !== (h.parts[0]?.broker ?? "")
+      ? { broker: edited.broker === "" ? null : edited.broker }
+      : {}),
+    ...(note !== (h.note ?? "") ? { note: note === "" ? null : note } : {}),
+  };
+}
+
+// in parts, so a row can drop what its label says or a phone cannot fit
+export function cashLine(
+  h: Holding,
+  now = Date.now(),
+): { what: string; broker: string | null; date: string | null } {
+  return {
+    what: cashWord(h),
+    broker: h.parts.length === 1 ? h.parts[0]!.broker : null,
+    date: h.as_of ? day(h.as_of, now) : null,
+  };
+}
+
 // the line under the ticker
 export function holdingName(h: Holding, now = Date.now()): string {
   if (h.kind === "cash") {
-    const what = h.dry_powder ? "Dry powder" : "Reserve";
-    return h.as_of ? `${what} · ${day(h.as_of, now)}` : what;
+    const c = cashLine(h, now);
+    return [c.what, c.broker, c.date].filter(Boolean).join(" · ");
   }
   if (h.kind === "fund") return h.isin ? `Fund · ${h.isin}` : "Fund";
   if (h.kind === "bond") {
@@ -429,19 +532,31 @@ export function sums(rows: readonly Holding[]): Sums {
 
 export type HoldingGroup = { key: string; rows: Holding[]; value: number };
 
-// on All by portfolio, inside one by kind; the largest first
+const CASH_GROUPS = ["Dry powder", "Reserve"];
+
+// on All by portfolio, inside one by kind; the largest first, dry powder before reserve
 export function groupsOf(
   rows: readonly Holding[],
   all: boolean,
 ): HoldingGroup[] {
   const by = new Map<string, Holding[]>();
   for (const r of rows) {
-    const k = all ? portfolioOf(r) : kindName(r.type);
+    const k = all
+      ? portfolioOf(r)
+      : r.kind === "cash"
+        ? cashWord(r)
+        : kindName(r.type);
     by.set(k, [...(by.get(k) ?? []), r]);
   }
+  const pinned = (k: string) => (all ? -1 : CASH_GROUPS.indexOf(k));
   return [...by.entries()]
     .map(([key, rs]) => ({ key, rows: rs, value: sums(rs).value }))
-    .sort((a, b) => b.value - a.value);
+    .sort(
+      (a, b) =>
+        (pinned(a.key) >= 0 && pinned(b.key) >= 0
+          ? pinned(a.key) - pinned(b.key)
+          : 0) || b.value - a.value,
+    );
 }
 
 // a group's share of the whole view
@@ -528,14 +643,17 @@ export type BarSide = {
   pct: number;
 };
 
-// with money invested, invested against all cash; with cash alone, the
-// cash to invest against the cash kept; shown only when both are above 0
-export function barOf(t: Total): BarSide[] | null {
+// All: invested against dry powder, reserve being outside its value; shown only when both are above 0
+export function barOf(t: Total, all = false): BarSide[] | null {
   const inv = t.invested ?? 0;
   const dry = t.dry_powder ?? 0;
-  const reserve = t.cash ?? 0;
-  const sides: Omit<BarSide, "pct">[] =
-    inv > 0
+  const reserve = t.reserve ?? 0;
+  const sides: Omit<BarSide, "pct">[] = all
+    ? [
+        { key: "invested", label: "Invested", value: inv },
+        { key: "dry", label: "Dry powder", value: dry },
+      ]
+    : inv > 0
       ? [
           { key: "invested", label: "Invested", value: inv },
           { key: "cash", label: "Cash", value: dry + reserve },

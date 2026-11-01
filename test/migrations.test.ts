@@ -378,6 +378,34 @@ describe("migrations", () => {
     db.close();
   });
 
+  test("a position's market is cleared, a fund's kept", () => {
+    const db = new Database(":memory:", { strict: true });
+    const clock = fakeClock();
+    const at = MIGRATIONS.findIndex((m) => m.id === "0031-cash-no-market");
+    migrate(db, clock, MIGRATIONS.slice(0, at));
+    db.exec(
+      `insert into portfolios (name, created_at) values ('Made Up', 0);
+       insert into positions (portfolio, kind, name, currency, amount, as_of,
+         market, entered_by, entered_at)
+       values (1, 'cash', 'Made Up Cash', 'EUR', 10, '2026-01-02', 'US',
+         'web', 0);
+       insert into instruments (id, market, symbol, source, source_symbol,
+         exchange, type, currency, zone, added_at, updated_at)
+       values ('fund:XX0000000000', 'fund', 'XX0000000000', 'owner',
+         'XX0000000000', 'fund', 'FUND', 'EUR', 'UTC', 0, 0);
+       insert into funds (instrument, market, entered_by, entered_at)
+       values ('fund:XX0000000000', 'US', 'web', 0)`,
+    );
+    migrate(db, clock, MIGRATIONS.slice(0, at + 1));
+    expect(db.query("select market from positions").all()).toEqual([
+      { market: null },
+    ]);
+    expect(db.query("select market from funds").all()).toEqual([
+      { market: "US" },
+    ]);
+    db.close();
+  });
+
   test("earnings rows of a quarter ending after their fetch day are deleted", () => {
     const db = new Database(":memory:", { strict: true });
     const clock = fakeClock();
@@ -503,6 +531,146 @@ describe("migrations", () => {
     const { db, migrations } = open(":memory:", fakeClock());
     expect(migrations).toEqual(MIGRATIONS.map((m) => m.id));
     expect(ids(db)).toEqual(migrations);
+    db.close();
+  });
+});
+
+describe("the Cash portfolio's migration", () => {
+  const at = MIGRATIONS.findIndex((m) => m.id === "0032-cash-portfolio");
+  const before = (sql: string) => {
+    const db = new Database(":memory:", { strict: true });
+    const clock = fakeClock();
+    migrate(db, clock, MIGRATIONS.slice(0, at));
+    db.exec(`
+      insert into instruments (id, market, symbol, source, source_symbol,
+        exchange, type, currency, zone, added_at, updated_at)
+      values ('US:ZZZ', 'US', 'ZZZ', 'yahoo', 'ZZZ', 'NMS', 'EQUITY', 'USD',
+        'America/New_York', 0, 0);
+      insert into brokers (name, created_at) values ('North', 0);
+      ${sql}
+    `);
+    migrate(db, clock, MIGRATIONS.slice(0, at + 1));
+    return db;
+  };
+  const cash = (
+    id: number,
+    portfolio: number,
+    name: string,
+    more: { broker?: number; removed?: boolean; replaces?: number } = {},
+  ) =>
+    `insert into positions (id, portfolio, kind, name, currency, amount,
+       as_of, broker, replaces, entered_by, entered_at, removed_at, removed_by)
+     values (${id}, ${portfolio}, 'cash', '${name}', 'EUR', 10, '2026-01-02',
+       ${more.broker ?? "null"}, ${more.replaces ?? "null"}, 'web', 0,
+       ${more.removed ? "1, 'web'" : "null, null"});`;
+  const portfolios = (db: Database) =>
+    db.query("select id, name, cash from portfolios order by id").all() as {
+      id: number;
+      name: string;
+      cash: number;
+    }[];
+  const rows = (db: Database) =>
+    db.query("select id, portfolio, name from positions order by id").all() as {
+      id: number;
+      portfolio: number;
+      name: string;
+    }[];
+
+  test("a cash portfolio of cash only is marked, its name set right", () => {
+    const db = before(`
+      insert into portfolios (name, created_at) values ('cash', 0);
+      insert into portfolios (name, created_at) values ('Stocks', 0);
+      ${cash(1, 1, "Spare")}
+    `);
+    expect(portfolios(db)).toEqual([
+      { id: 1, name: "Cash", cash: 1 },
+      { id: 2, name: "Stocks", cash: 0 },
+    ]);
+    expect(rows(db)).toEqual([{ id: 1, portfolio: 1, name: "Spare" }]);
+    expect(() =>
+      db.exec("update portfolios set cash = 1 where id = 2"),
+    ).toThrow();
+    db.close();
+  });
+
+  test("a Cash holding a trade is renamed, and every cash row moves to a new one", () => {
+    const db = before(`
+      insert into portfolio_settings (owner, display_currency, updated_at)
+        values ('admin', 'EUR', 5);
+      insert into portfolios (name, created_at) values ('Cash', 0);
+      insert into portfolios (name, created_at) values ('Stocks', 0);
+      insert into trades (portfolio, instrument, side, date, quantity, price,
+        currency, entered_by, entered_at)
+      values (1, 'US:ZZZ', 'buy', '2026-01-02', 1, 10, 'USD', 'web', 0);
+      ${cash(1, 1, "Spare", { broker: 1 })}
+      ${cash(2, 2, "Spare", { broker: 1, removed: true })}
+      ${cash(3, 2, "Spare", { broker: 1, replaces: 2 })}
+      ${cash(4, 2, "Kept")}
+    `);
+    expect(portfolios(db)).toEqual([
+      { id: 1, name: "Cash (before)", cash: 0 },
+      { id: 2, name: "Stocks", cash: 0 },
+      { id: 3, name: "Cash", cash: 1 },
+    ]);
+    // the live clash takes its old portfolio's name, its chain's rows too
+    expect(rows(db)).toEqual([
+      { id: 1, portfolio: 3, name: "Spare" },
+      { id: 2, portfolio: 3, name: "Spare (Stocks)" },
+      { id: 3, portfolio: 3, name: "Spare (Stocks)" },
+      { id: 4, portfolio: 3, name: "Kept" },
+    ]);
+    expect(
+      db.query("select replaces from positions where id = 3").get(),
+    ).toEqual({ replaces: 2 });
+    expect(
+      db.query("select count(*) as n from trades where portfolio = 1").get(),
+    ).toEqual({ n: 1 });
+    db.close();
+  });
+
+  test("a moved name already taken in Cash takes the next free one, within 80 characters", () => {
+    const long = "L".repeat(80);
+    const db = before(`
+      insert into portfolios (name, created_at) values ('Cash', 0);
+      insert into portfolios (name, created_at) values ('Stocks', 0);
+      ${cash(1, 1, "Spare")}
+      ${cash(2, 1, "Spare (Stocks)")}
+      ${cash(3, 2, "Spare")}
+      ${cash(4, 1, long)}
+      ${cash(5, 2, long)}
+    `);
+    expect(rows(db).map((r) => [r.id, r.portfolio, r.name])).toEqual([
+      [1, 1, "Spare"],
+      [2, 1, "Spare (Stocks)"],
+      [3, 1, "Spare (Stocks 2)"],
+      [4, 1, long],
+      [5, 1, `${"L".repeat(71)} (Stocks)`],
+    ]);
+    db.close();
+  });
+
+  test("a long portfolio name is cut in the suffix, so the row keeps its own", () => {
+    const from = "P".repeat(40);
+    const db = before(`
+      insert into portfolios (name, created_at) values ('Cash', 0);
+      insert into portfolios (name, created_at) values ('${from}', 0);
+      ${cash(1, 1, "Spare")}
+      ${cash(2, 2, "Spare")}
+      ${cash(3, 1, "L".repeat(80))}
+      ${cash(4, 2, "L".repeat(80))}
+    `);
+    const names = rows(db).map((r) => r.name);
+    expect(names[1]).toBe(`Spare (${"P".repeat(30)})`);
+    expect(names[3]).toBe(`${"L".repeat(47)} (${"P".repeat(30)})`);
+    expect(names[3]!.length).toBe(80);
+    db.close();
+  });
+
+  test("none is made before the display currency is set", () => {
+    const db = before(
+      "insert into portfolios (name, created_at) values ('Stocks', 0);",
+    );
+    expect(portfolios(db)).toEqual([{ id: 1, name: "Stocks", cash: 0 }]);
     db.close();
   });
 });

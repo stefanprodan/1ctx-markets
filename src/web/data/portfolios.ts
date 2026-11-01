@@ -49,6 +49,8 @@ const onPage = (): boolean =>
 export type PortfolioRow = {
   id: number;
   name: string;
+  // Cash: holds all cash and only cash, never renamed or removed
+  cash?: boolean;
   trades: number;
   positions: number;
 };
@@ -70,7 +72,7 @@ export type Overview = {
   display_currency: string | null;
   // the owner's IANA zone, none until they name one
   time_zone?: string | null;
-  // what cash or a fund can name as the market its money is in
+  // what a fund can name as the market its money is in
   markets?: string[];
   funds?: FundRow[];
   portfolios: PortfolioRow[];
@@ -136,18 +138,20 @@ export type Holding = {
   parts: Part[];
 };
 
+// across portfolios value leaves reserve out; the page shows no net worth
 export type Total = {
   currency: string;
   value: number | null;
+  net_worth?: number | null;
   cost: number | null;
   pl: number | null;
   pl_percent: number | null;
   day_change: number | null;
   invested: number | null;
-  cash: number | null;
+  reserve: number | null;
   dry_powder: number | null;
   invested_weight: number | null;
-  cash_weight: number | null;
+  reserve_weight: number | null;
   dry_powder_weight: number | null;
 };
 
@@ -275,7 +279,8 @@ export type Listing = {
 
 export type PositionIn = {
   kind: "cash" | "bond";
-  portfolio: number;
+  // cash leaves it out: it goes to Cash
+  portfolio?: number;
   name: string;
   currency?: string;
   amount?: number;
@@ -286,7 +291,7 @@ export type PositionIn = {
   date?: string;
   dry_powder?: boolean;
   broker?: string;
-  market?: string;
+  note?: string;
 };
 
 export type PositionChange = {
@@ -295,8 +300,10 @@ export type PositionChange = {
   by?: number;
   currency?: string;
   date?: string;
+  name?: string;
   // null takes it off
-  market?: string | null;
+  broker?: string | null;
+  note?: string | null;
 };
 
 export type ImportRow = {
@@ -352,6 +359,15 @@ export function plainError(said: string): string {
   if (/^sells more than that broker holds/i.test(t)) {
     return "More than that broker holds.";
   }
+  if (/^cash holds only cash/i.test(t)) {
+    return "Cash holds only cash. Pick another portfolio.";
+  }
+  if (/^the name cash is kept for cash/i.test(t)) {
+    return "The name Cash is kept for cash.";
+  }
+  if (/^position \d+ has this name and broker/i.test(t)) {
+    return "Other cash has this name and broker.";
+  }
   if (/is listed in .*a bond takes its listing's currency/.test(t)) {
     return "Use the bond's own currency.";
   }
@@ -362,13 +378,13 @@ export function plainError(said: string): string {
   if (/^the fund \S+ has this name/i.test(t)) {
     return "Another fund has this name.";
   }
-  if (/^no fund \S+ yet; its first buy names it$/i.test(t)) {
+  if (/^no fund \S+ yet; its first buy names it\.?$/i.test(t)) {
     return "Name the fund.";
   }
-  if (/^no fund \S+ yet; its first buy names its currency$/i.test(t)) {
+  if (/^no fund \S+ yet; its first buy names its currency\.?$/i.test(t)) {
     return "Pick a currency.";
   }
-  if (/^no fund \S+; its first trade is a buy$/i.test(t)) {
+  if (/^no fund \S+; its first trade is a buy\.?$/i.test(t)) {
     return "Nothing of this fund is held.";
   }
   if (/a fund has no live price/i.test(t)) return "Give the price or total.";

@@ -294,13 +294,13 @@ export type Row = {
   parts: PartItem[];
 };
 
-// the value split three ways, each with its share of the whole
+// the value split three ways; across portfolios reserve is outside the value
 export type Split3 = {
   invested: number | null;
-  cash: number | null;
+  reserve: number | null;
   dry_powder: number | null;
   invested_weight: number | null;
-  cash_weight: number | null;
+  reserve_weight: number | null;
   dry_powder_weight: number | null;
 };
 
@@ -308,6 +308,8 @@ export type Total = {
   currency: string;
   // the sum of the values known; missing names the rest
   value: number | null;
+  // across portfolios only: the value with reserve
+  net_worth?: number | null;
   // null when no row has a cost
   cost: number | null;
   pl: number | null;
@@ -316,26 +318,31 @@ export type Total = {
   missing: string[];
 } & Split3;
 
-const bucket = (r: Row): "invested" | "cash" | "dry_powder" =>
-  r.kind !== "cash" ? "invested" : r.dry_powder ? "dry_powder" : "cash";
+// across portfolios reserve stays out of the value, weights and exposure
+export const isReserve = (r: Pick<Row, "kind" | "dry_powder">): boolean =>
+  r.kind === "cash" && r.dry_powder !== true;
+
+const bucket = (r: Row): "invested" | "reserve" | "dry_powder" =>
+  r.kind !== "cash" ? "invested" : r.dry_powder ? "dry_powder" : "reserve";
 
 function split3(
   rows: readonly Row[],
   worth: (r: Row) => number | null,
+  apart: boolean,
 ): Split3 {
-  const sums = { invested: 0, cash: 0, dry_powder: 0 };
+  const sums = { invested: 0, reserve: 0, dry_powder: 0 };
   for (const r of rows) {
     const v = worth(r);
     if (v !== null) sums[bucket(r)] += v;
   }
-  const all = sums.invested + sums.cash + sums.dry_powder;
+  const all = sums.invested + sums.dry_powder + (apart ? 0 : sums.reserve);
   const w = (v: number) => (all === 0 ? null : pct((v / all) * 100));
   return {
     invested: finite(sums.invested),
-    cash: finite(sums.cash),
+    reserve: finite(sums.reserve),
     dry_powder: finite(sums.dry_powder),
     invested_weight: w(sums.invested),
-    cash_weight: w(sums.cash),
+    reserve_weight: apart ? null : w(sums.reserve),
     dry_powder_weight: w(sums.dry_powder),
   };
 }
@@ -732,8 +739,8 @@ function positionRow(
     position: p.id,
     name: p.name,
     type: KIND_TYPES[p.kind],
-    // a bond's is its listing's; cash's, the one named
-    market: instrument?.market ?? p.market,
+    // a bond's is its listing's; cash has none, counted by its currency
+    market: instrument?.market ?? null,
     currency: p.currency,
     unit: instrument?.unit ?? null,
     quantity: null,
@@ -775,13 +782,15 @@ function positionRow(
 const nameOf = (r: Row): string => r.id ?? r.name ?? "";
 
 // the known values summed, the rest named; cost and gain over the rows
-// with both a cost and a value, so cash and an unknown cost never count
+// with both a cost and a value, so cash and an unknown cost never count;
+// apart: reserve, outside the value and inside net worth
 function sumOf(
   rows: readonly Row[],
   currency: string,
   worth: (r: Row) => { value: number | null; cost: number | null },
   day: (r: Row) => number | null,
   missing: (r: Row) => string,
+  apart: boolean,
 ): Total {
   let value = 0;
   let cost = 0;
@@ -789,8 +798,14 @@ function sumOf(
   let any = false;
   let days = 0;
   const gone = new Set<string>();
+  // missing names only what the value counts; reserve unknown voids net worth
+  let unknownReserve = false;
   for (const r of rows) {
     const w = worth(r);
+    if (apart && isReserve(r)) {
+      if (w.value === null) unknownReserve = true;
+      continue;
+    }
     if (w.value === null) {
       gone.add(missing(r));
       continue;
@@ -803,15 +818,25 @@ function sumOf(
     }
     days += day(r) ?? 0;
   }
+  const split = split3(rows, (r) => worth(r).value, apart);
   return {
     currency,
     value: finite(value),
+    ...(apart
+      ? {
+          net_worth: unknownReserve
+            ? null
+            : finite(value + (split.reserve ?? 0)),
+        }
+      : {}),
     cost: any ? finite(cost) : null,
     pl: any ? finite(costed - cost) : null,
     pl_percent: any ? pct(plPct(costed, cost)) : null,
     day_change: finite(days),
     missing: [...gone],
-    ...split3(rows, (r) => worth(r).value),
+    ...split,
+    // a sum of the known part would read as the whole
+    ...(unknownReserve ? { reserve: null } : {}),
   };
 }
 
@@ -854,6 +879,9 @@ export function holdings(
       RAW.set(r, { value, cost });
     }
   }
+  // across portfolios reserve is listed but outside every sum and weight
+  const apart = scope.portfolio === null;
+  const counted = apart ? rows.filter((r) => !isReserve(r)) : rows;
   const currencies = [...new Set(rows.map((r) => r.currency))].sort();
   const totals = currencies.map((c) =>
     sumOf(
@@ -862,11 +890,12 @@ export function holdings(
       rawOf,
       (r) => r.day_change,
       nameOf,
+      apart,
     ),
   );
   // weights within one currency, never across
   for (const c of currencies) {
-    const inC = rows.filter((r) => r.currency === c);
+    const inC = counted.filter((r) => r.currency === c);
     const all = inC.reduce((a, r) => a + (rawOf(r).value ?? 0), 0);
     for (const r of inC) {
       const v = rawOf(r).value;
@@ -920,8 +949,11 @@ export function holdings(
       const rate = fxOf.get(r.currency)?.rate ?? null;
       return v === null || rate === null ? null : v * rate;
     };
-    const all = rows.reduce((a, r) => a + (valueIn(r, rawOf(r).value) ?? 0), 0);
-    for (const r of rows) {
+    const all = counted.reduce(
+      (a, r) => a + (valueIn(r, rawOf(r).value) ?? 0),
+      0,
+    );
+    for (const r of counted) {
       const v = valueIn(r, rawOf(r).value);
       if (r.converted !== undefined) {
         r.converted.weight =
@@ -949,17 +981,18 @@ export function holdings(
         const rate = fxOf.get(r.currency);
         return rate !== undefined && "reason" in rate ? rate.reason : nameOf(r);
       },
+      apart,
     );
     exposure = [
       {
         currency: to,
         currency_weights: sharesOf(
-          rows.map((r) => ({
+          counted.map((r) => ({
             key: r.currency,
             value: valueIn(r, rawOf(r).value),
           })),
         ),
-        ...dims(rows, valueIn),
+        ...dims(counted, valueIn),
       },
     ];
   } else {
@@ -967,7 +1000,7 @@ export function holdings(
       currency: c,
       currency_weights: null,
       ...dims(
-        rows.filter((r) => r.currency === c),
+        counted.filter((r) => r.currency === c),
         (_r, v) => v,
       ),
     }));
@@ -1067,8 +1100,9 @@ function roundTotal(t: Total): void {
   t.cost = cents(t.cost, d);
   t.pl = cents(t.pl, d);
   t.day_change = cents(t.day_change, d);
+  if (t.net_worth !== undefined) t.net_worth = cents(t.net_worth, d);
   t.invested = cents(t.invested, d);
-  t.cash = cents(t.cash, d);
+  t.reserve = cents(t.reserve, d);
   t.dry_powder = cents(t.dry_powder, d);
 }
 

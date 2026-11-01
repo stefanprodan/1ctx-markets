@@ -20,6 +20,8 @@ import {
 import { rates } from "../portfolios/fx.ts";
 import {
   type Broker,
+  CASH_NAME,
+  cashPortfolio,
   insertPosition,
   insertTrade,
   listBrokers,
@@ -47,6 +49,7 @@ import type { Failure } from "./answer.ts";
 import { ArgError, fields, text } from "./args.ts";
 import type { Markets } from "./markets.ts";
 import {
+  CASH_ONLY,
   findBroker,
   findPortfolio,
   latestDay,
@@ -471,9 +474,9 @@ export async function importCsv(
   who: Who,
   args: ImportArgs,
 ): Promise<ImportAnswer | Failure> {
-  const p = findPortfolio(m.db, args.portfolio);
-  if (p === null || "error" in p)
-    return p ?? { error: "not_found", message: "no portfolio" };
+  const named = findPortfolio(m.db, args.portfolio);
+  if (named === null || "error" in named)
+    return named ?? { error: "not_found", message: "no portfolio" };
   const fileBroker = findBroker(m.db, args.broker);
   if (fileBroker !== null && "error" in fileBroker) return fileBroker;
   const table = parseCsv(args.csv);
@@ -493,6 +496,16 @@ export async function importCsv(
     throw new ArgError(
       "csv's header is not a Yahoo portfolio export, nor a cash or bonds list",
     );
+  }
+  // cash goes to Cash whatever portfolio the import is for
+  let p: Portfolio | null = named;
+  if (kind === "cash") p = cashPortfolio(m.db);
+  else if (named.cash) return { error: "bad_arguments", message: CASH_ONLY };
+  if (p === null) {
+    return {
+      error: "conflict",
+      message: `no ${CASH_NAME} portfolio yet; setup makes it with the display currency`,
+    };
   }
   const brokers = listBrokers(m.db);
   const plan = await planRows(m, who, p, kind, header, table.slice(1), {
@@ -543,12 +556,7 @@ export async function importCsv(
           if (old !== null) setPositionRemoved(db, old.id, who.name, now);
           const id = insertPosition(
             db,
-            {
-              ...x.position,
-              // a file has no market column: a kept one stays
-              market: x.position.market ?? old?.market ?? null,
-              replaces: old?.id ?? null,
-            },
+            { ...x.position, replaces: old?.id ?? null },
             now,
           );
           added.add(id);
@@ -917,7 +925,6 @@ async function planPositions(
         name,
         currency,
         instrument: null,
-        market: null,
         amount: null,
         cost: null,
         coupon: null,

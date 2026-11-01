@@ -720,7 +720,7 @@ describe("migration 0026-fund-trades", () => {
       )
       .all();
     expect(kept).toHaveLength(3);
-    migrate(db, clock);
+    migrate(db, clock, MIGRATIONS.slice(0, at + 1));
     expect(
       db
         .query("select name from pragma_table_info('positions') order by cid")

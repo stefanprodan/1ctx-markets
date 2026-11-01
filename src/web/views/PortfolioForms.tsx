@@ -34,9 +34,12 @@ import { Tabs } from "../ui/Tabs.tsx";
 import {
   ADD_KEY,
   browserZone,
+  cashDate,
+  cashEdits,
   currencies,
   dryPowderFor,
   dryPowders,
+  figureEdits,
   findZones,
   heldAt,
   IMPORT_KINDS,
@@ -44,6 +47,7 @@ import {
   importReason,
   importStatus,
   listingWords,
+  payFromLabel,
   price,
   type Remembered,
   ranked,
@@ -157,11 +161,16 @@ export function PositionEdit({
 }) {
   // the stored amount, never the value rounded for show
   const first = useSignal(String(h.parts[0]?.amount ?? ""));
-  // a new figure is true today; a bond's date is its purchase, kept
+  // the row's own date; a changed amount with it untouched is dated today
   const now = today(store.overview.value?.time_zone ?? null);
-  const date = useSignal(h.kind === "bond" ? (h.as_of ?? now) : now);
-  const markets = store.overview.value?.markets ?? [];
-  const market = useSignal(h.market ?? "");
+  const date = useSignal(h.parts[0]?.as_of ?? h.as_of ?? now);
+  const dateSet = useSignal(false);
+  const cash = h.kind === "cash";
+  const brokers = store.overview.value?.brokers ?? [];
+  const name = useSignal(h.name ?? "");
+  const broker = useSignal(h.parts[0]?.broker ?? "");
+  const newBroker = useSignal("");
+  const note = useSignal(h.note ?? "");
   const busy = useSignal(false);
   const error = useSignal<string | null>(null);
   const save = async (ev: Event) => {
@@ -171,14 +180,37 @@ export function PositionEdit({
       error.value = "Not a number.";
       return;
     }
+    if (cash && name.value.trim() === "") {
+      error.value = "Name it.";
+      return;
+    }
+    if (broker.value === NEW && newBroker.value.trim() === "") {
+      error.value = "Name the broker.";
+      return;
+    }
     busy.value = true;
-    error.value = await store.updatePosition(h.position!, {
-      amount: n,
-      date: date.value,
-      ...(market.value === (h.market ?? "")
-        ? {}
-        : { market: market.value === "" ? null : market.value }),
-    });
+    let at = broker.value;
+    if (at === NEW) {
+      at = newBroker.value.trim();
+      const no = await store.createBroker(at);
+      if (no !== null) {
+        busy.value = false;
+        error.value = no;
+        return;
+      }
+      broker.value = at;
+      newBroker.value = "";
+    }
+    const change = {
+      ...figureEdits(h, { amount: n, date: date.value }),
+      ...(cash
+        ? cashEdits(h, { name: name.value, broker: at, note: note.value })
+        : {}),
+    };
+    error.value =
+      Object.keys(change).length === 0
+        ? null
+        : await store.updatePosition(h.position!, change);
     busy.value = false;
     if (error.value === null) onDone();
   };
@@ -192,6 +224,7 @@ export function PositionEdit({
       onSubmit={save}
       onCancel={onDone}
     >
+      {cash && <Field label="Name" value={name} />}
       <label class="field">
         <span class="label">{h.kind === "bond" ? "Face" : "Amount"}</span>
         <input
@@ -199,6 +232,9 @@ export function PositionEdit({
           value={first.value}
           onInput={(e) => {
             first.value = e.currentTarget.value;
+            if (cash && !dateSet.value) {
+              date.value = cashDate(h, typed(first.value), now);
+            }
           }}
         />
       </label>
@@ -209,11 +245,23 @@ export function PositionEdit({
           value={date.value}
           onInput={(e) => {
             date.value = e.currentTarget.value;
+            dateSet.value = true;
           }}
         />
       </label>
-      {h.kind !== "bond" && markets.length > 0 && (
-        <MarketPick value={market} markets={markets} />
+      {cash && (
+        <>
+          <BrokerPick
+            value={broker}
+            name={newBroker}
+            brokers={brokers}
+            back={h.parts[0]?.broker ?? ""}
+            onEdit={() => {
+              error.value = null;
+            }}
+          />
+          <Field label="Note" value={note} placeholder="Optional" />
+        </>
       )}
     </EditFrame>
   );
@@ -794,6 +842,38 @@ function PickOrNew({
 // the picker's choice that names a new portfolio or broker in the form
 const NEW = "\u0000new";
 
+// a broker kept, none, or a new one named in place; back: what closing
+// the name returns to
+function BrokerPick({
+  value,
+  name,
+  brokers,
+  back = "",
+  onEdit,
+}: {
+  value: Signal<string>;
+  name: Signal<string>;
+  brokers: readonly BrokerRow[];
+  back?: string;
+  onEdit: () => void;
+}) {
+  return (
+    <PickOrNew
+      label="Broker"
+      value={value}
+      name={name}
+      placeholder="Name"
+      back={back}
+      options={[
+        { value: "", text: "No broker" },
+        ...brokers.map((x) => ({ value: x.name, text: x.name })),
+        { value: NEW, text: "New broker…" },
+      ]}
+      onEdit={onEdit}
+    />
+  );
+}
+
 const inCurrency = (label: string, c: string | null): string =>
   c ? `${label} (${c})` : label;
 
@@ -836,13 +916,16 @@ export function AddForm({
 }) {
   const kept = remembered();
   const o = store.overview.value;
-  const portfolios = o?.portfolios ?? [];
+  // Cash takes cash alone, and cash goes nowhere else: it is never picked
+  const portfolios = (o?.portfolios ?? []).filter((p) => !p.cash);
   const brokers = o?.brokers ?? [];
   const byName = (n: string | undefined) =>
     portfolios.find((p) => p.name === n)?.id;
   // the tab on, else the only one, else asked: a wrong portfolio picked
   // silently is worse than one asked for
-  const tab = store.portfolio.value;
+  const tab = portfolios.some((p) => p.id === store.portfolio.value)
+    ? store.portfolio.value
+    : null;
   const only = portfolios.length === 1 ? portfolios[0]!.id : undefined;
   const kind = useSignal<Remembered["kind"]>(
     start ? (start.fund ? "fund" : "trade") : (opened ?? kept.kind),
@@ -1008,8 +1091,12 @@ export function AddForm({
   const allMeansHere =
     broker.value !== "" || heldHere.length === inPortfolio.length;
   const drys = dryPowders(all.value);
+  const brokerShown =
+    broker.value === NEW ? newBroker.value.trim() : broker.value;
   const dryUse =
-    side.value === "buy" && cur ? dryPowderFor(drys, portfolioName, cur) : null;
+    side.value === "buy" && cur
+      ? dryPowderFor(drys, brokerShown || null, cur).choices
+      : [];
   // the money the form will save, shown before it is
   const q = typed(qty.value);
   const p = typed(px.value);
@@ -1130,8 +1217,8 @@ export function AddForm({
             }
           : {}),
         ...(kind.value === "cash" && dry.value ? { dry_powder: true } : {}),
-        ...(kind.value !== "bond" && market.value
-          ? { market: market.value }
+        ...(kind.value === "cash" && note.value.trim()
+          ? { note: note.value.trim() }
           : {}),
         date: date.value,
       },
@@ -1142,11 +1229,12 @@ export function AddForm({
     ev.preventDefault();
     if (busy.value || half.value) return;
     error.value = null;
-    if (portfolio.value === "") {
+    const cash = kind.value === "cash";
+    if (!cash && portfolio.value === "") {
       error.value = "Pick a portfolio.";
       return;
     }
-    if (portfolio.value === NEW && newPortfolio.value.trim() === "") {
+    if (!cash && portfolio.value === NEW && newPortfolio.value.trim() === "") {
       error.value = "Name the portfolio.";
       return;
     }
@@ -1161,13 +1249,14 @@ export function AddForm({
       error.value = (e as Error).message;
       return;
     }
-    const payDry = payFrom.value === "dry" ? dryUse : null;
+    const payDry =
+      dryUse.find((d) => String(d.position) === payFrom.value) ?? null;
     let refused: string | null = null;
     busy.value = true;
     try {
       // a new portfolio or broker is made first, so a refused trade
       // leaves it picked for the next try rather than made twice
-      if (portfolio.value === NEW) {
+      if (!cash && portfolio.value === NEW) {
         const n = newPortfolio.value.trim();
         const no = await store.createPortfolio(n);
         if (no !== null) throw new Error(no);
@@ -1226,7 +1315,7 @@ export function AddForm({
     } else {
       refused = await store.addPosition({
         ...out.position,
-        portfolio: pid,
+        ...(cash ? {} : { portfolio: pid }),
         broker: b,
       });
     }
@@ -1262,28 +1351,24 @@ export function AddForm({
         options={portfolioOptions}
         onEdit={clear}
       />
-      <PickOrNew
-        label="Broker"
+      <BrokerPick
         value={broker}
         name={newBroker}
-        placeholder="Name"
-        back=""
-        options={[
-          { value: "", text: "No broker" },
-          ...brokers.map((x) => ({ value: x.name, text: x.name })),
-          { value: NEW, text: "New broker…" },
-        ]}
+        brokers={brokers}
         onEdit={clear}
       />
     </div>
   );
-  const brokerShown =
-    broker.value === NEW ? newBroker.value.trim() : broker.value;
-  const place = portfolioName
-    ? ` · ${portfolioName}${brokerShown ? ` at ${brokerShown}` : ""}`
-    : brokerShown
-      ? ` · ${brokerShown}`
-      : "";
+  const place =
+    kind.value === "cash"
+      ? brokerShown
+        ? ` · ${brokerShown}`
+        : ""
+      : portfolioName
+        ? ` · ${portfolioName}${brokerShown ? ` at ${brokerShown}` : ""}`
+        : brokerShown
+          ? ` · ${brokerShown}`
+          : "";
   const n = typed(amountText.value);
   const nOk = n !== null && !Number.isNaN(n);
   const named = name.value.trim();
@@ -1540,19 +1625,17 @@ export function AddForm({
               />
             </div>
             {placePicks}
-            {dryUse ? (
+            {dryUse.length > 0 ? (
               <div class="pf-pair">
                 <FormPick
                   label="Dry powder"
                   value={payFrom}
                   options={[
                     { value: "", text: "Not used" },
-                    {
-                      value: "dry",
-                      text: `Pay from ${dryUse.currency}${
-                        dryUse.portfolio ? ` · ${dryUse.portfolio}` : ""
-                      }`,
-                    },
+                    ...dryUse.map((d) => ({
+                      value: String(d.position),
+                      text: payFromLabel(d, dryUse),
+                    })),
                   ]}
                 />
                 <Field label="Note" value={note} placeholder="Optional" />
@@ -1586,8 +1669,15 @@ export function AddForm({
               {currencyField}
               <Field label="As of" value={date} type="date" />
             </div>
-            {marketPick}
-            {placePicks}
+            <div class="pf-pair">
+              <BrokerPick
+                value={broker}
+                name={newBroker}
+                brokers={brokers}
+                onEdit={clear}
+              />
+            </div>
+            <Field label="Note" value={note} placeholder="Optional" />
           </>
         ) : kind.value === "fund" ? (
           <>
@@ -1748,14 +1838,16 @@ export function ImportPanel({
   onDone: () => void;
 }) {
   const o = store.overview.value;
-  const portfolios = o?.portfolios ?? [];
+  // a cash file goes to Cash whatever is picked, and nothing else may, so
+  // Cash is offered only while it is the one portfolio
+  const kept = o?.portfolios ?? [];
+  const others = kept.filter((p) => !p.cash);
+  const portfolios = others.length > 0 ? others : kept;
   const brokers = o?.brokers ?? [];
   // the tab on, else the only one, else asked: never a silent first one
+  const tab = portfolios.find((p) => p.id === store.portfolio.value)?.id;
   const portfolio = useSignal(
-    String(
-      store.portfolio.value ??
-        (portfolios.length === 1 ? portfolios[0]!.id : ""),
-    ),
+    String(tab ?? (portfolios.length === 1 ? portfolios[0]!.id : "")),
   );
   const broker = useSignal("");
   const csv = useSignal<string | null>(null);
@@ -1930,14 +2022,17 @@ export function ImportPanel({
 
 // ---- settings: portfolios, brokers, the display currency ------------------
 
+// fixed: Cash, never renamed or removed
 function NameRow({
   name,
   onRename,
   onDelete,
+  fixed = false,
 }: {
   name: string;
   onRename: (to: string) => Promise<string | null>;
   onDelete: () => Promise<string | null>;
+  fixed?: boolean;
 }) {
   const editing = useSignal(false);
   const text = useSignal(name);
@@ -1979,7 +2074,7 @@ function NameRow({
         <span class="cut pf-name-text">{name}</span>
       )}
       {/* while renaming, the form's own buttons end the row */}
-      {(!editing.value || error.value) && (
+      {!fixed && (!editing.value || error.value) && (
         <span class="pf-name-end">
           {error.value && (
             <span class="error small" role="alert">
@@ -2282,6 +2377,7 @@ export function SettingsPanel({
             <NameRow
               key={p.id}
               name={p.name}
+              fixed={p.cash === true}
               onRename={(to) => store.renamePortfolio(p.id, to)}
               onDelete={() => store.deletePortfolio(p.id)}
             />
@@ -2313,8 +2409,9 @@ const COMMON_CURRENCIES = ["USD", "EUR", "GBP", "JPY", "CHF"];
 
 export function Welcome({ store }: { store: PortfolioStore }) {
   const o = store.overview.value;
-  // portfolios made before a currency was required need only the currency
-  const has = (o?.portfolios.length ?? 0) > 0;
+  // portfolios made before a currency was required need only the currency;
+  // Cash, made with the currency, is not one to invest in
+  const has = (o?.portfolios ?? []).some((p) => !p.cash);
   const cur = useSignal(o?.display_currency ?? "");
   // the browser's zone is a suggestion the owner sees before saving
   const zone = useSignal(o?.time_zone ?? browserZone() ?? "");
@@ -2336,6 +2433,10 @@ export function Welcome({ store }: { store: PortfolioStore }) {
     if (busy.value) return;
     if (!has && name.value.trim() === "") {
       error.value = "Name the portfolio.";
+      return;
+    }
+    if (!has && name.value.trim().toLowerCase() === "cash") {
+      error.value = "The name Cash is kept for cash.";
       return;
     }
     if (cur.value === "") {

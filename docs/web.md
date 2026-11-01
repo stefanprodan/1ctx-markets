@@ -569,9 +569,13 @@ The parts:
   today, only when something in view moves within a day (a quoted or
   listed price; cash, a hand-priced fund and a face-value bond never
   do), and all time, only when a cost gives a gain. Then one bar
-  (`barOf()`): Invested against Cash with money invested, Dry powder
-  against Reserve with cash alone, shown only when both sides are
-  above 0.
+  (`barOf()`): on All, Invested against Dry powder, the two parts of
+  All's value, which leaves reserve out (`docs/portfolios.md`); in the
+  Cash tab, Dry powder against Reserve, as Cash holds only cash; in a
+  portfolio, Invested against Cash with money invested, which never
+  shows now that no other portfolio holds cash; shown only when both
+  sides are above 0. The page shows no net worth: All portfolios is not net
+  worth, which only the API and the tool answer.
 - **The view is the address** (`addressOf`, `viewOf`): the portfolio's
   id in the path, `currency` in the query, left out when it is the
   display currency. The tabs are links, so a
@@ -581,15 +585,23 @@ The parts:
   Anything else in the address reads as all; a broker in an old link
   is ignored (there is no broker filter).
 - **Holdings** is a `Table` in a card with a search over the ticker,
-  name, ISIN and the brokers a holding is held at (`holdingMatches`,
-  every word typed must match some field). Grouped (`groupsOf()`) on
-  All by portfolio, inside one by kind, the largest group first, each
-  a folding `GroupLabel` with its count, value and share of the view;
-  one group shows no label; a row the server could not convert (no
-  rate) shows its own currency only and counts in no group total. Columns: Holding (`holdingTicker()` over
-  `holdingName()`: a coin without its quote currency, cash as Dry
-  powder or Reserve with its date, a fund with its ISIN, a bond with
-  coupon and maturity; a stale reason as a tag in plain words,
+  name, ISIN, cash's note and the brokers a holding is held at
+  (`holdingMatches`, every word typed must match some field). Reserve
+  rows are not listed on All (`isReserve()`), since All's value leaves
+  them out; they are seen and edited in their portfolio's tab. Grouped
+  (`groupsOf()`) on All by portfolio, inside one by kind and cash by
+  what it is for, Dry powder then Reserve whatever their sums, as the
+  bar reads, the largest group first otherwise, each a folding
+  `GroupLabel` with its count, value and share of the view; one group
+  shows no label; a row the server could not convert (no rate) shows
+  its own currency only and counts in no group total. Columns: Holding
+  (`holdingTicker()` over `holdingName()`: a coin without its quote
+  currency, cash as Dry powder or Reserve with its broker and date
+  (`cashLine()`), under a Dry powder or Reserve label without the word
+  ("North · 30 Oct"), on All "Dry powder" alone on a phone (the broker
+  and date in `.hide-phone`, as the Gain column leaves no room), a
+  fund with its ISIN, a bond with coupon and maturity; a stale reason
+  as a tag in plain words,
   `staleWords()`), 3M (a `Spark` from each listed holding's daily bars,
   cached for the page's life), Change (price and today's percent; a
   hand price with its day, a bond's as a percent of face,
@@ -609,18 +621,26 @@ The parts:
   merged bond its Purchases. Its ⋯ (`rowActions()`): Buy and Sell (Sell
   not on a holding sold today) open the add drawer on it, in its one
   portfolio and broker; Set price for a hand-priced fund; Edit for a
-  position; Purchases for a bond bought several times; Instrument page
-  when there is one. Amounts show whole from 1,000 up (`money()`),
+  position, kept on cash though the row opens it too, so a cash list
+  looks like the others; Purchases for a bond bought several times;
+  Instrument page when there is one. Amounts show whole from 1,000 up (`money()`),
   else in the currency's minor units (`minorUnits()`).
 - **Drawers:** every form and detail opens in the one `Drawer`. Edit
-  (amount, as of, and cash's market; Remove at the foot's start asks
-  once), Set price (name, price per unit, the day it is for, starting
+  (amount and as of; cash also its name, broker, "New broker…"
+  included, and note, each sent only when changed (`cashEdits()`), no
+  broker or an emptied note as null, which takes it off; Remove at the
+  foot's start asks once), Set price (name, price per unit, the day it is for, starting
   on the owner's today, and the market; a day already priced takes the
   new price, and a changed name alone sends no price, `PATCH
   /api/v1/funds/{isin}`), Purchases (each purchase's date, face and
   broker with its own Edit and Remove, since a merged bond has no one
   position). An edit starts from the stored amount, never the value
-  rounded for show.
+  rounded for show, and the row's own date. Typing a new cash amount
+  moves an untouched date field to today (`cashDate()`), as a new
+  balance is true now, and back when the amount is set back; a new
+  amount is sent with the date the field shows (`figureEdits()`), so a
+  typo fixed on the old date keeps it, and a name, broker or note alone
+  sends neither and keeps the date; nothing changed sends nothing.
 - **Activity** is a dense `Table` under the holdings, hidden when the
   view holds no trades: by month (`monthsOf()`, "11 bought · 2 sold"),
   newest first, three months then "Show earlier months". Fills of one
@@ -657,15 +677,23 @@ The parts:
   shown. A price taken from the quote is in the listing's currency, so
   picking another Paid in clears it, and the server converts the live
   price itself ("at the live price" in the read-back). The portfolio is where the listing is already held, else the
-  tab on, else "Pick a portfolio": never a silent first one. Then Buy or
+  tab on, else the only one, else "Pick a portfolio": never a silent
+  first one. The trade, fund and bond pickers leave Cash out, its tab
+  and as the only one included, since it holds only cash; Add cash has
+  no portfolio picker, only a broker, and sends none, so the server
+  puts it in Cash. Then Buy or
   Sell (a sell offers All with the quantity held in that portfolio, at
   the broker picked or at every one, sent as `"all"` while left as is,
   so the server sells what is sellable on the trade's date), Quantity and
   Price or Total paid ("Use total", fees in, as the server's `total`),
   Date and Fees (its Paid in a small menu by the price), Portfolio and
   Broker (each "New…" names one), and a note. A buy may pay from dry
-  powder: after the trade saves, the dry powder in its currency and
-  portfolio (else the nearest, `dryPowderFor()`) is lowered by the
+  powder, all of it in Cash, so a row is picked by broker
+  (`dryPowderFor()`): the one at the trade's broker in its currency,
+  else the one in its currency; with several, or none in its currency,
+  the menu lists them for the owner to pick. It names the row ("Pay
+  from Cash North", the broker added when two share a name), "Not used"
+  first. After the trade saves, the row picked is lowered by the
   trade's cost (`PATCH /positions/{id}` with `by` and the trade's
   currency, which the server converts); a failure there says the buy
   is saved and the dry powder was not changed, and the form then only
@@ -674,9 +702,10 @@ The parts:
   symbol's list first, the drawer only when none is open. A line above the buttons
   reads back the trade ("Buy 5 KO at 60.00 · 300.00 USD (≈ 270.00 EUR) ·
   Shares"). A position's currency is the currency
-  picker. Cash and a fund pick a market, "None" first, from the
-  markets the server lists, in the add form, cash's edit and a fund's
-  Set price, so a fund holding one market's shares counts in it. Only the kind is remembered per browser
+  picker. Cash has a note; it has no market, as its money counts by its
+  currency. A fund picks a market, "None" first, from the markets the
+  server lists, in the add form and its Set price, so a fund holding
+  one market's shares counts in it. Only the kind is remembered per browser
   (`markets-portfolio-add`). A
   refusal shows beside the buttons in plain words, its ids taken out
   (`plainError()` in `data/portfolios.ts`).
@@ -685,8 +714,10 @@ The parts:
   a broker for the file or "From the file", and a CSV; the preview
   lists every line as Ready, Not read with why, or Skipped, a cash
   file's lines each with a Dry powder box; "Import N" saves the ready
-  ones. Changing the portfolio or broker clears the file and its
+  ones. Its picker leaves Cash out while another portfolio is kept, as
+  a cash file goes to Cash whatever is picked. Changing the portfolio or broker clears the file and its
   preview, so a preview read for another is never saved. Settings lists portfolios and brokers with rename, delete
+  (none on Cash, which is fixed)
   (asking once; refused while a live row is in it or names it, removed
   rows going with it) and add, after the display currency (required):
   a picker over the ISO 4217 currencies in circulation
@@ -696,7 +727,8 @@ The parts:
   (`Intl.supportedValuesOf("timeZone")`), found by city or area
   (`findZones()`), saved on pick. With no portfolio or no display
   currency the page shows only the first card, without Add or the menu,
-  asking for a portfolio's name (with none yet), the currency (the most
+  asking for a portfolio's name (with none but Cash yet; "Cash" is
+  refused before anything saves), the currency (the most
   traded five one tap each, any other found by code or name) and the
   time zone, the zone filled with the browser's as a suggestion the
   owner sees before saving (`browserZone()`). With portfolios and

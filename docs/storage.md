@@ -231,14 +231,22 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   date and trades by broker, so holdings never scan and sort the table;
   `0024-time-zone` adds `portfolio_settings.time_zone`, the owner's IANA
   zone, null until named; `0025-position-market` adds
-  `positions.market`, the market cash names, null unless named;
+  `positions.market`, the market cash named, null unless named;
   `0026-fund-trades` adds `funds` (a fund the owner prices: its
   instrument and the market its money is in) and `fund_prices` (a price
   per unit per fund and day, the buy it came from or null for the
   owner's, and who entered it and when), drops fund positions and
   rebuilds `positions` with kinds `cash` and `bond` and without
   `units` and `price`, which only funds used, its other rows, columns,
-  indexes and ids as they were.
+  indexes and ids as they were; `0031-cash-no-market` clears
+  `positions.market`, since cash counts by its currency and a bond by
+  its listing: no code reads or writes the column, kept so an older
+  binary still opens the database; `0032-cash-portfolio` adds
+  `portfolios.cash`, the mark on the one portfolio that holds all cash
+  (a partial unique index keeps it to one), marks a portfolio named
+  Cash holding only cash or renames one holding more to "Cash
+  (before)", makes Cash when the display currency is set or cash is
+  kept, and moves every cash row, removed ones too, into it.
   Rows are never deleted but a portfolio with no live row, its removed
   rows with it, and a broker no live row names; what they mean is
   `docs/portfolios.md`.

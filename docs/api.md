@@ -43,26 +43,26 @@ MCP tools copied onto paths.
 | `PATCH /rules/{id}` | rules:write | `pauseRule()` | `{"paused": bool}` sets or clears the manual pause; `{rule}` |
 | `DELETE /rules/{id}` | rules:write | `deleteRuleById()` | 204; its alerts stay |
 | `GET /alerts` | rules:read | `alertsHandler()` | the alerts feed (below) |
-| `GET /portfolios` | portfolio:read | `listAll()` | `portfolios[]` with their counts, `brokers[]`, `display_currency`, `time_zone`, `markets[]`, `funds[]` |
-| `POST /portfolios`, `PATCH`, `DELETE /portfolios/{id}` | portfolio:write | `createPortfolio()`, `updatePortfolio()`, `removePortfolio()` | `{name}`; 201 with `Location`; 409 while no display currency is set, for a taken name or a portfolio holding live rows (removed ones are deleted with it) |
+| `GET /portfolios` | portfolio:read | `listAll()` | `portfolios[]` with their counts and `cash` (true on Cash, the one that holds all cash and only cash), `brokers[]`, `display_currency`, `time_zone`, `markets[]`, `funds[]` |
+| `POST /portfolios`, `PATCH`, `DELETE /portfolios/{id}` | portfolio:write | `createPortfolio()`, `updatePortfolio()`, `removePortfolio()` | `{name}`; 201 with `Location`; 409 while no display currency is set, for a taken name or the name Cash, for any rename or delete of Cash, or for a portfolio holding live rows (removed ones are deleted with it) |
 | `GET /portfolios/{id}` | portfolio:read | `portfolioItem()` | `{portfolio}` |
-| `GET /portfolios/{id}/holdings?broker=&currency=`, `GET /holdings?broker=&currency=` | portfolio:read | `readHoldings()` | one portfolio's or all holdings, totals per currency, `converted` and `rates` with a named or display currency, `exposure` (`docs/portfolios.md`) |
+| `GET /portfolios/{id}/holdings?broker=&currency=`, `GET /holdings?broker=&currency=` | portfolio:read | `readHoldings()` | one portfolio's or all holdings, totals per currency, `converted` and `rates` with a named or display currency, `exposure`; across portfolios reserve is out of the value and weights, and `net_worth` counts it (`docs/portfolios.md`) |
 | `GET /portfolios/{id}/export` | portfolio:read | `exportCsv()` | `text/csv`, the trades in the portfolio CSV export format, LF line ends, no BOM |
-| `POST /portfolios/{id}/import` | portfolio:write | `importCsv()` | `{csv, broker, currency, confirm, dry_powder}`; every row's status, saved only with `confirm` |
+| `POST /portfolios/{id}/import` | portfolio:write | `importCsv()` | `{csv, broker, currency, confirm, dry_powder}`; every row's status, saved only with `confirm`; a cash file goes to Cash whatever the path names, and a trades or bonds file for Cash is refused |
 | `GET /trades?portfolio=&broker=&symbol=&from=&to=&removed=` | portfolio:read | `readTradeList()` | `trades[]`, newest first, whole |
-| `POST /trades` | portfolio:write | `addTrade()` | the tool's `add` arguments; 201 with `trade`, or `trades` for a sell of all; 409 with the saved one's id in `trade` for a trade with the same figures entered in the last 10 minutes, unless `again` is true |
+| `POST /trades` | portfolio:write | `addTrade()` | the tool's `add` arguments, never naming Cash; 201 with `trade`, or `trades` for a sell of all; 409 with the saved one's id in `trade` for a trade with the same figures entered in the last 10 minutes, unless `again` is true |
 | `DELETE /trades/{id}`, `POST /trades/{id}/restore` | portfolio:write | `setTradeState()` | `{trade}`, removed or back; never a delete |
 | `GET /positions?portfolio=&broker=&removed=` | portfolio:read | `readPositions()` | `positions[]` |
-| `POST /positions` | portfolio:write | `addPosition()` | `{kind, ...}`, kind `cash` or `bond` (a fund is bought as a trade); 201 with `position` and `replaced` |
-| `PATCH /positions/{id}` | portfolio:write | `updatePosition()` | the tool's `update` arguments; the new row, `replaced`, and `rate` for a converted amount; 409 on a removed row |
+| `POST /positions` | portfolio:write | `addPosition()` | `{kind, ...}`, kind `cash` or `bond` (a fund is bought as a trade); cash goes to Cash, refused naming another portfolio, and a bond never to Cash; 201 with `position` and `replaced` |
+| `PATCH /positions/{id}` | portfolio:write | `updatePosition()` | the tool's `update` arguments, `name` and `broker` among them; the new row, `replaced`, and `rate` for a converted amount; 409 on a removed row or on cash given another live cash row's name and broker |
 | `DELETE /positions/{id}`, `POST /positions/{id}/restore` | portfolio:write | `setPositionState()` | `{position}` |
-| `GET /positions/{id}/history` | portfolio:read | `historyOf()` | `history[]`, every row of the position, newest first |
+| `GET /positions/{id}/history` | portfolio:read | `historyOf()` | `history[]`, every row of the position's chain of updates, newest first |
 | `GET /funds` | portfolio:read | `listAll()` | `funds[]`: each fund the owner prices with its latest price and that price's day |
 | `POST /funds/trades` | portfolio:write | `addFundTrade()` | the tool's `add` arguments of kind `fund`; 201 with `trade` (or `trades`) and `fund`; the first buy makes the fund; 409 for a retry, as `POST /trades` |
 | `GET /funds/{isin}` | portfolio:read | `fundDetail()` | `{fund, prices, trades}`: every price, newest first, beside its live trades; 400 for an ISIN whose check digit fails, 404 for one not kept |
 | `PATCH /funds/{isin}` | portfolio:write | `updateFund()` | `{price, date, market, name, currency}`: the price for a day (the owner's today by default), a day already priced replaced and answered in `replaced`; a new name no other fund has; a currency only while no live trade is on it |
 | `GET /brokers`, `POST /brokers`, `PATCH`, `DELETE /brokers/{id}` | portfolio:read, write | `listAll()`, `createBroker()`, `updateBroker()`, `removeBroker()` | `{name}`; 409 for a taken name or a broker a live row names (removed rows lose the name) |
-| `GET /portfolio-settings`, `PUT /portfolio-settings` | portfolio:read, write | `settingsItem()`, `saveSettings()` | `{display_currency, time_zone}`: an ISO 4217 code in circulation (`src/shared/currencies.ts`) and an IANA zone, each null only while none is set; a save takes either or both, keeps the one left out, and never clears one |
+| `GET /portfolio-settings`, `PUT /portfolio-settings` | portfolio:read, write | `settingsItem()`, `saveSettings()` | `{display_currency, time_zone}`: an ISO 4217 code in circulation (`src/shared/currencies.ts`) and an IANA zone, each null only while none is set; a save takes either or both, keeps the one left out, and never clears one; the first currency saved makes Cash |
 | `GET /keys` | admin | `listAnswer()` | `keys[]` (id, name, created, last used, expires; never a token) and `limit` (`docs/admin.md`) |
 | `POST /keys` | admin | `createOne()` | `{name, expiresInDays, portfolio}` (days null, 30, 90 or 365; portfolio `none`, the default, `read` or `write`); 201 with `key` and its `token`, once; 409 for a taken name or past the cap of 5 |
 | `DELETE /keys/{id}` | admin | `revokeOne()` | 204; 404 for an unknown id |

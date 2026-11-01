@@ -11,7 +11,29 @@ export const MAX_NAME = 40;
 export const MAX_POSITION_NAME = 80;
 export const MAX_NOTE = 500;
 
-export type Portfolio = { id: number; name: string; createdAt: number };
+// cash: the one portfolio that holds all cash and only cash
+export type Portfolio = {
+  id: number;
+  name: string;
+  cash: boolean;
+  createdAt: number;
+};
+
+// the cash portfolio's name, fixed; the mark, never the name, finds it
+export const CASH_NAME = "Cash";
+
+export const isCashName = (name: string): boolean =>
+  name.trim().toLowerCase() === CASH_NAME.toLowerCase();
+
+const PORTFOLIO =
+  "select id, name, cash, created_at as createdAt from portfolios";
+
+type RawPortfolio = Omit<Portfolio, "cash"> & { cash: number };
+
+const portfolioOf = (r: RawPortfolio): Portfolio => ({
+  ...r,
+  cash: r.cash === 1,
+});
 export type Broker = { id: number; name: string; createdAt: number };
 
 export type Side = "buy" | "sell";
@@ -49,8 +71,6 @@ export type Position = {
   currency: string;
   // a bond's listing, when the server prices one
   instrument: string | null;
-  // cash's market, as an instrument's: none unless named
-  market: string | null;
   // cash: the amount; bond: the face amount
   amount: number | null;
   cost: number | null;
@@ -71,38 +91,48 @@ export type Position = {
 
 export function listPortfolios(db: Db): Portfolio[] {
   return db
-    .query<Portfolio, []>(
-      "select id, name, created_at as createdAt from portfolios order by name collate nocase, id",
-    )
-    .all();
+    .query<RawPortfolio, []>(`${PORTFOLIO} order by name collate nocase, id`)
+    .all()
+    .map(portfolioOf);
 }
 
 export function readPortfolio(db: Db, id: number): Portfolio | null {
-  return (
-    db
-      .query<Portfolio, [number]>(
-        "select id, name, created_at as createdAt from portfolios where id = ?",
-      )
-      .get(id) ?? null
-  );
+  const r = db
+    .query<RawPortfolio, [number]>(`${PORTFOLIO} where id = ?`)
+    .get(id);
+  return r === null ? null : portfolioOf(r);
+}
+
+export function cashPortfolio(db: Db): Portfolio | null {
+  const r = db.query<RawPortfolio, []>(`${PORTFOLIO} where cash = 1`).get();
+  return r === null ? null : portfolioOf(r);
 }
 
 export function portfolioByName(db: Db, name: string): Portfolio | null {
-  return (
+  const r = db
+    .query<RawPortfolio, [string]>(`${PORTFOLIO} where name = ? collate nocase`)
+    .get(name);
+  return r === null ? null : portfolioOf(r);
+}
+
+export function insertPortfolio(
+  db: Db,
+  name: string,
+  now: number,
+  cash = false,
+): number {
+  return Number(
     db
-      .query<Portfolio, [string]>(
-        "select id, name, created_at as createdAt from portfolios where name = ? collate nocase",
-      )
-      .get(name) ?? null
+      .query("insert into portfolios (name, cash, created_at) values (?, ?, ?)")
+      .run(name, cash ? 1 : 0, now).lastInsertRowid,
   );
 }
 
-export function insertPortfolio(db: Db, name: string, now: number): number {
-  return Number(
-    db
-      .query("insert into portfolios (name, created_at) values (?, ?)")
-      .run(name, now).lastInsertRowid,
-  );
+// made with the display currency; true when this call made it
+export function ensureCash(db: Db, now: number): boolean {
+  if (cashPortfolio(db) !== null) return false;
+  insertPortfolio(db, CASH_NAME, now, true);
+  return true;
 }
 
 export function renamePortfolio(db: Db, id: number, name: string): void {
@@ -292,7 +322,7 @@ export function setTradeRemoved(
 }
 
 const POSITION = `select id, portfolio,
-  kind, name, currency, instrument, market,
+  kind, name, currency, instrument,
   amount, cost, coupon, maturity, as_of as asOf, broker, note,
   dry_powder as dryPowder, replaces, entered_by as enteredBy, entered_at as enteredAt, removed_at as removedAt,
   removed_by as removedBy from positions`;
@@ -307,9 +337,9 @@ export function insertPosition(db: Db, p: NewPosition, now: number): number {
     db
       .query(
         `insert into positions (portfolio, kind, name, currency, instrument,
-           market, amount, cost, coupon, maturity, as_of, broker, note,
+           amount, cost, coupon, maturity, as_of, broker, note,
            dry_powder, replaces, entered_by, entered_at)
-         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         p.portfolio,
@@ -317,7 +347,6 @@ export function insertPosition(db: Db, p: NewPosition, now: number): number {
         p.name,
         p.currency,
         p.instrument,
-        p.market,
         p.amount,
         p.cost,
         p.coupon,
@@ -476,7 +505,7 @@ export function portfolioHolds(db: Db, id: string): boolean {
 
 export type Split = { date: string; ratio: number };
 
-// the markets a fund's or cash's money can be in, as instrument ids spell
+// the markets a fund's money can be in, as instrument ids spell
 // them: where a share, an ETF or a bond is listed, and crypto; currency
 // pairs (Yahoo's CCY), FRED series and index-only or futures markets
 // hold nothing a fund buys; a fund's own key is no market
@@ -600,8 +629,7 @@ export function recentSameTrade(
   );
 }
 
-// every row a position's updates chained, both ways, the latest first: a
-// bond's update may change its face or date, so its name never ties them
+// every row of a position's chain, latest first: an update may rename or move it
 export function chainOf(db: Db, id: number): Position[] {
   return db
     .query<RawPosition, [number]>(
@@ -619,22 +647,5 @@ export function chainOf(db: Db, id: number): Position[] {
        order by entered_at desc, id desc`,
     )
     .all(id)
-    .map(positionOf);
-}
-
-// every row of a position, the latest entry first: its updates, who made
-// them and when; cash by name at its broker, a bond by
-// its chain of updates
-export function positionHistory(
-  db: Db,
-  p: Pick<Position, "id" | "portfolio" | "kind" | "name" | "broker">,
-): Position[] {
-  if (p.kind === "bond") return chainOf(db, p.id);
-  return db
-    .query<RawPosition, [number, string, string, number | null]>(
-      `${POSITION} where portfolio = ? and kind = ? and name = ? collate nocase
-       and broker is ? order by entered_at desc, id desc`,
-    )
-    .all(p.portfolio, p.kind, p.name, p.broker)
     .map(positionOf);
 }

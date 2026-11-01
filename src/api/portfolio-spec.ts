@@ -32,22 +32,41 @@ const share = object({ key: nstr, value: num, weight: num });
 
 const total = {
   currency: str,
-  value: nnum,
+  value: note(
+    nnum,
+    "The sum of the values known. Across portfolios (`/holdings`) it is invested and dry powder only: reserve is cash kept apart from the markets.",
+  ),
+  net_worth: note(
+    nnum,
+    "Only in a total across portfolios: its value with reserve added; null when a reserve row has no rate.",
+  ),
   cost: nnum,
   pl: nnum,
   pl_percent: nnum,
   day_change: nnum,
   invested: nnum,
-  cash: nnum,
-  dry_powder: note(nnum, "Cash kept for buying."),
+  reserve: note(
+    nnum,
+    "Cash kept apart, not marked dry powder; null across portfolios when a reserve row has no rate.",
+  ),
+  dry_powder: note(nnum, "Cash ready to invest."),
   invested_weight: nnum,
-  cash_weight: nnum,
+  reserve_weight: note(
+    nnum,
+    "Reserve's share of the value; null across portfolios, where the value leaves it out.",
+  ),
   dry_powder_weight: nnum,
   missing: note(
     list(str),
-    "What has no value or rate and is left out of the sum, by id or name, or the missing rate.",
+    "What has no value or rate and is left out of the sum, by id or name, or the missing rate; across portfolios never reserve, which the value leaves out.",
   ),
 };
+
+// net_worth only across portfolios
+const totalObject = object(
+  total,
+  Object.keys(total).filter((k) => k !== "net_worth"),
+);
 
 const part = object(
   {
@@ -78,7 +97,10 @@ const converted = object({
   cost: nnum,
   pl: nnum,
   pl_percent: nnum,
-  weight: note(nnum, "Its share of the converted total, in percent."),
+  weight: note(
+    nnum,
+    "Its share of the converted total, in percent; null for reserve across portfolios.",
+  ),
 });
 
 const trade = object(
@@ -138,6 +160,9 @@ const trade = object(
 const MARKET_NOTE =
   "The market its money is in, as instruments name it (`markets` in the list), so the exposure counts it there; none unless named.";
 
+const NO_MARKET =
+  "Refused: cash counts by its currency, a bond by its listing.";
+
 const position = object(
   {
     id: int,
@@ -146,7 +171,6 @@ const position = object(
     portfolio_id: int,
     name: str,
     symbol: nstr,
-    market: note(nstr, `Cash's market. ${MARKET_NOTE}`),
     currency: str,
     amount: note(nnum, "Cash's amount, or a bond's face."),
     cost: nnum,
@@ -172,7 +196,6 @@ const position = object(
     "portfolio_id",
     "name",
     "symbol",
-    "market",
     "currency",
     "amount",
     "cost",
@@ -192,6 +215,10 @@ const position = object(
 const portfolio = object({
   id: int,
   name: str,
+  cash: note(
+    bool,
+    "True on Cash, the one portfolio that holds all cash and only cash; it is never renamed or deleted.",
+  ),
   trades: int,
   positions: int,
   created_at: nstr,
@@ -234,7 +261,7 @@ const holding = object(
     type: str,
     market: note(
       nstr,
-      "The listing's market; a fund's or cash's, the one its money is in.",
+      "The listing's market; a fund's, the one its money is in; cash has none.",
     ),
     isin: note(str, "A fund's."),
     currency: str,
@@ -261,7 +288,7 @@ const holding = object(
     change_percent: nnum,
     currency_weight: note(
       nnum,
-      "Its share of the value in its own currency, in percent; `converted.weight` is its share of the converted total.",
+      "Its share of the value in its own currency, in percent; `converted.weight` is its share of the converted total. Null for reserve across portfolios, which is outside the value.",
     ),
     paid: list(object({ currency: str, amount: nnum })),
     converted,
@@ -305,7 +332,7 @@ export const portfolioSchemas: Record<string, Schema> = {
     brokers: list(broker),
     markets: note(
       list(str),
-      "The markets stored instruments are in: what cash or a fund can name.",
+      "The markets stored instruments are in: what a fund can name.",
     ),
     funds: note(list(fund), "The funds the owner prices."),
   }),
@@ -320,7 +347,7 @@ export const portfolioSchemas: Record<string, Schema> = {
     {
       portfolio: note(
         { type: ["string", "integer"] },
-        "A name or an id; may be left out while there is one portfolio.",
+        "A name or an id, never Cash; may be left out while there is one portfolio besides Cash.",
       ),
       isin: note(
         str,
@@ -404,7 +431,7 @@ export const portfolioSchemas: Record<string, Schema> = {
     {
       portfolio: note(
         { type: ["string", "integer"] },
-        "A name or an id; may be left out while there is one portfolio.",
+        "A name or an id, never Cash; may be left out while there is one portfolio besides Cash.",
       ),
       symbol: str,
       side: values(["buy", "sell"]),
@@ -450,7 +477,10 @@ export const portfolioSchemas: Record<string, Schema> = {
   PositionArgs: object(
     {
       kind: values(["cash", "bond"]),
-      portfolio: { type: ["string", "integer"] },
+      portfolio: note(
+        { type: ["string", "integer"] },
+        "A name or an id. Cash goes to Cash, left out or named; a bond never does, and may leave it out while there is one portfolio besides Cash.",
+      ),
       name: str,
       symbol: note(str, "A bond's listing."),
       currency: str,
@@ -459,8 +489,11 @@ export const portfolioSchemas: Record<string, Schema> = {
       coupon: num,
       maturity: str,
       date: note(str, "As of; today by default."),
-      dry_powder: note(bool, "Cash kept for buying."),
-      market: note(str, `Cash's market. ${MARKET_NOTE}`),
+      dry_powder: note(
+        bool,
+        "Cash ready to invest; false or left out: reserve, kept apart.",
+      ),
+      market: note(str, NO_MARKET),
       broker: str,
       note: str,
     },
@@ -477,9 +510,17 @@ export const portfolioSchemas: Record<string, Schema> = {
       currency: str,
       cost: { type: ["number", "null"] },
       date: str,
-      note: nstr,
+      note: note(nstr, "Null takes it off."),
       dry_powder: bool,
-      market: note(nstr, "Cash's market; null takes it off."),
+      name: note(
+        str,
+        "A new name; cash's may not be another live cash row's at the same broker.",
+      ),
+      broker: note(
+        nstr,
+        "A broker's name, as the list has it; null takes it off.",
+      ),
+      market: note(nstr, NO_MARKET),
     },
     [],
   ),
@@ -496,8 +537,8 @@ export const portfolioSchemas: Record<string, Schema> = {
     broker: nstr,
     display_currency: nstr,
     currency: note(nstr, "The named currency, else the display currency."),
-    totals: list(object(total)),
-    converted: { ...object(total), type: ["object", "null"] },
+    totals: list(totalObject),
+    converted: { ...totalObject, type: ["object", "null"] },
     rates: note(
       list(
         object(
@@ -580,7 +621,7 @@ export const portfolioSchemas: Record<string, Schema> = {
   Settings: object({
     display_currency: note(
       nstr,
-      "An ISO 4217 code in circulation. Null only while none is set; a save left without it keeps it, and a portfolio needs one set.",
+      "An ISO 4217 code in circulation. Null only while none is set; a save left without it keeps it, and a portfolio needs one set. The first save makes Cash, the cash portfolio.",
     ),
     time_zone: note(
       nstr,
@@ -656,6 +697,7 @@ const HOLDINGS = lines(
   "- Values and profit or loss are in each instrument's own currency. Totals are per currency and never summed across currencies.",
   "- A named currency, or the display currency, adds `converted` on each row and in total, with every rate used and its time in `rates`. A pair with no price is null with its reason.",
   "- Weights are within one currency, or within the named one.",
+  "- Dry powder is cash ready to invest, reserve cash kept apart. Across portfolios (`/holdings`) reserve rows are listed but left out of the value, every weight and the exposure; `reserve` and `net_worth` (value with reserve) answer it. In one portfolio everything counts in its value.",
   "- A trade before a split is counted in today's shares.",
   "- Money (values, costs, profit or loss, the day's change, totals) is rounded to its currency's minor units, 2 decimals for most, 0 for JPY, 3 for KWD and 8 for a code ISO 4217 lacks; prices, quantities and rates keep their digits.",
 );
@@ -679,7 +721,7 @@ export const portfolioPaths = {
       security: WRITES,
       summary: "Make a portfolio",
       description:
-        "A portfolio is a name. It has no currency. Refused (409) until a display currency is set.",
+        "A portfolio is a name. It has no currency. Refused (409) until a display currency is set, and for the name Cash, which saving the display currency gives the cash portfolio.",
       requestBody: bodyOf(ref("Named")),
       responses: base({
         201: {
@@ -709,7 +751,7 @@ export const portfolioPaths = {
       operationId: "renamePortfolio",
       security: WRITES,
       summary: "Rename a portfolio",
-      description: "Renames it; its trades stay.",
+      description: "Renames it; its trades stay. Cash keeps its name (409).",
       requestBody: bodyOf(ref("Named")),
       responses: base({
         200: ok("The portfolio.", ref("OnePortfolio")),
@@ -724,7 +766,7 @@ export const portfolioPaths = {
       security: WRITES,
       summary: "Delete an empty portfolio",
       description:
-        "Refused while it holds a trade or position that is not removed; removed ones are deleted with it.",
+        "Refused while it holds a trade or position that is not removed, and always for Cash; removed ones are deleted with it.",
       responses: base({
         204: { description: "Deleted." },
         404: missing,
@@ -791,7 +833,7 @@ export const portfolioPaths = {
         "",
         "- Trades: `Symbol`, `Trade Date`, `Purchase Price`, `Quantity`, `Commission`, `Comment`, `Transaction Type`. A trade already saved is skipped. A fund's key (`fund:<isin>`, as an export writes it) names a fund kept; a fund is made by its first buy, never by a file.",
         "- Cash: `Item`, `Amount (<currency>)`, `As Of`, `Note`. Bonds: `Item`, `Symbol`, `Currency`, `Amount`, `Rate (%)`, `Purchase Date`, `Maturity`, `Note`. A list of fund totals is refused: a fund's buys are added one by one.",
-        "- Cash replaces the kept one with its name and broker. A bond with the listing (or name), purchase date, face and broker of a kept one is skipped; with no purchase date, any date matches.",
+        "- A cash list goes to Cash whatever portfolio the path names; trades and bonds are refused for Cash. Cash replaces the kept one with its name and broker. A bond with the listing (or name), purchase date, face and broker of a kept one is skipped; with no purchase date, any date matches.",
         "- A date after today is bad; a month (`YYYY-MM`) is its last day, or today in the current month.",
       ),
       requestBody: bodyOf(ref("ImportArgs")),
@@ -909,7 +951,7 @@ export const portfolioPaths = {
       security: WRITES,
       summary: "Add a position",
       description:
-        "Saves cash or a bond; a fund is bought as a trade (`POST /funds/trades`). Cash with the same name and broker replaces the kept one, a bond the one with its listing (or name), purchase date, face and broker; the old row is kept as replaced. A date after today is refused.",
+        "Saves cash or a bond; a fund is bought as a trade (`POST /funds/trades`). Cash lives only in Cash, which holds nothing else. Cash with the same name and broker replaces the kept one, a bond the one with its listing (or name), purchase date, face and broker; the old row is kept as replaced. A date after today is refused.",
       requestBody: bodyOf(ref("PositionArgs")),
       responses: base({
         201: {
