@@ -21,6 +21,7 @@ import {
   says,
 } from "./api.ts";
 import { portfolioStore } from "./portfolios.ts";
+import { profileStore } from "./profile.ts";
 
 export type SourceStatus = {
   name: string;
@@ -310,14 +311,20 @@ export type AgentKey = {
   last_used_at: string | null;
   // null never expires
   expires_at: string | null;
-  // what it may do with portfolios, and with rules and their alerts
+  // what it may do with portfolios, with rules and their alerts, and with
+  // the owner's profile
   portfolio?: KeyAccess;
   rules?: KeyAccess;
+  profile?: KeyAccess;
 };
 
 export type KeyAccess = "none" | "read" | "write";
 
-export type KeyAccesses = { portfolio: KeyAccess; rules: KeyAccess };
+export type KeyAccesses = {
+  portfolio: KeyAccess;
+  rules: KeyAccess;
+  profile: KeyAccess;
+};
 
 type KeysPage = { keys: AgentKey[]; limit: number };
 
@@ -495,6 +502,7 @@ export function store(
       keysCode.value = null;
     });
     portfolios.clear();
+    profile.clear();
   };
   const quiet = client(fetchFn, () => {}, buildWatch(reloadPage));
   // a 401 signs out only the session the call was made in
@@ -520,6 +528,7 @@ export function store(
   }
 
   const portfolios = portfolioStore(call, () => session, later);
+  const profile = profileStore(call, () => session);
 
   // a quiet read: a failure leaves the last answer, never a sign-out
   async function checkPulse(): Promise<void> {
@@ -764,7 +773,7 @@ export function store(
   async function createKey(
     name: string,
     expiresInDays: number | null,
-    access: KeyAccesses = { portfolio: "none", rules: "none" },
+    access: KeyAccesses = { portfolio: "none", rules: "none", profile: "none" },
   ): Promise<MadeKey> {
     let made: MadeKey;
     try {
@@ -1070,6 +1079,7 @@ export function store(
   return {
     later,
     portfolios,
+    profile,
     keys,
     keysLimit,
     keysError,

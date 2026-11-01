@@ -377,6 +377,10 @@ export const schemas: Record<string, Schema> = {
         "With `candidates`: the listings to pick an id from.",
       ),
       rules: note(list(int), "With `conflict`: the rules reading it."),
+      revision: note(
+        { type: ["integer", "null"] },
+        "With `conflict` on saving the profile: its live revision, null with none.",
+      ),
       trade: note(
         int,
         "With `conflict` on adding a trade: the equal trade saved in the last 10 minutes.",
@@ -822,6 +826,10 @@ export const schemas: Record<string, Schema> = {
       values(["none", "read", "write"]),
       "What the key may do with rules: read opens the list and the alerts feed.",
     ),
+    profile: note(
+      values(["none", "read", "write"]),
+      "What the key may do with the owner's profile.",
+    ),
   }),
   OneKey: object({ key: ref("Key") }),
   KeyAccess: object(
@@ -832,7 +840,11 @@ export const schemas: Record<string, Schema> = {
       ),
       rules: note(
         values(["none", "read", "write"]),
-        "What the key may do with rules. At least one of the two.",
+        "What the key may do with rules.",
+      ),
+      profile: note(
+        values(["none", "read", "write"]),
+        "What the key may do with the owner's profile. At least one of the three.",
       ),
     },
     [],
@@ -850,6 +862,10 @@ export const schemas: Record<string, Schema> = {
       rules: note(
         values(["none", "read", "write"]),
         "What the key may do with rules: read opens the list and the alerts feed; none by default.",
+      ),
+      profile: note(
+        values(["none", "read", "write"]),
+        "What the key may do with the owner's profile; none by default.",
       ),
       name: note(
         str,

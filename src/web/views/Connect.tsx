@@ -125,21 +125,24 @@ function AccessPick({
   );
 }
 
-// what a key opens beyond market data: portfolios, and rules with their
-// alerts
+// what a key opens beyond market data: portfolios, rules with their
+// alerts, and the owner's profile
 export function AccessPicks({
   portfolio,
   rules,
+  profile,
   busy,
 }: {
   portfolio: Signal<KeyAccess>;
   rules: Signal<KeyAccess>;
+  profile: Signal<KeyAccess>;
   busy: boolean;
 }) {
   return (
     <>
       <AccessPick label="Portfolios" value={portfolio} busy={busy} />
       <AccessPick label="Alert rules" value={rules} busy={busy} />
+      <AccessPick label="Profile" value={profile} busy={busy} />
     </>
   );
 }
@@ -163,6 +166,7 @@ export function NewKey({
   const days = useSignal<number | null>(null);
   const portfolio = useSignal<KeyAccess>("none");
   const rules = useSignal<KeyAccess>("none");
+  const profile = useSignal<KeyAccess>("none");
   const busy = useSignal(false);
   const error = useSignal<string | null>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -177,6 +181,7 @@ export function NewKey({
       const made = await store.createKey(name.value, days.value, {
         portfolio: portfolio.value,
         rules: rules.value,
+        profile: profile.value,
       });
       busy.value = false;
       shown.value = made.token;
@@ -258,7 +263,12 @@ export function NewKey({
               }}
             />
           </div>
-          <AccessPicks portfolio={portfolio} rules={rules} busy={busy.value} />
+          <AccessPicks
+            portfolio={portfolio}
+            rules={rules}
+            profile={profile}
+            busy={busy.value}
+          />
           {error.value !== null && <Notice error>{error.value}</Notice>}
         </form>
       )}
@@ -282,6 +292,7 @@ export function KeyDetails({
 }) {
   const portfolio = useSignal<KeyAccess>(row.portfolio ?? "none");
   const rules = useSignal<KeyAccess>(row.rules ?? "none");
+  const profile = useSignal<KeyAccess>(row.profile ?? "none");
   const busy = useSignal(false);
   const asking = useSignal(false);
   const error = useSignal<string | null>(null);
@@ -294,10 +305,15 @@ export function KeyDetails({
   useEffect(() => {
     if (leaving.value) closer.current();
   }, [leaving.value]);
-  const next: KeyAccesses = { portfolio: portfolio.value, rules: rules.value };
+  const next: KeyAccesses = {
+    portfolio: portfolio.value,
+    rules: rules.value,
+    profile: profile.value,
+  };
   const same =
     next.portfolio === (row.portfolio ?? "none") &&
-    next.rules === (row.rules ?? "none");
+    next.rules === (row.rules ?? "none") &&
+    next.profile === (row.profile ?? "none");
   const submit = async (event: Event) => {
     event.preventDefault();
     if (busy.value || same) return;
@@ -405,7 +421,12 @@ export function KeyDetails({
         ]}
       />
       <form id={form} class="connect-form" onSubmit={submit}>
-        <AccessPicks portfolio={portfolio} rules={rules} busy={busy.value} />
+        <AccessPicks
+          portfolio={portfolio}
+          rules={rules}
+          profile={profile}
+          busy={busy.value}
+        />
       </form>
       {error.value !== null && <Notice error>{error.value}</Notice>}
     </Drawer>
@@ -447,7 +468,7 @@ export function keyColumns(
       width: "minmax(0, 1.4fr)",
       align: "end",
       hide: "phone",
-      // many keys reach neither portfolios nor rules
+      // many keys reach no portfolio, rule or profile
       show: keys.some((k) => accessWords(k) !== null),
       cell: (k) => <span class="faint">{accessWords(k) ?? ""}</span>,
     },

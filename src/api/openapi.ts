@@ -6,6 +6,7 @@ import { CALLS_PER_MINUTE } from "../server/ratelimit.ts";
 import { COOKIE } from "../server/session.ts";
 import { paths, responses } from "./paths.ts";
 import { portfolioPaths, portfolioSchemas } from "./portfolio-spec.ts";
+import { profilePaths, profileSchemas } from "./profile-spec.ts";
 import { schemas } from "./schemas.ts";
 
 export const spec = {
@@ -17,7 +18,7 @@ export const spec = {
     license: { name: "Apache-2.0" },
     description: `Market data, price rules and portfolios, the same answers as the MCP tools.
 
-- Each operation names the key it takes: an agent key, made by the admin, or the admin key, which opens every route. Portfolio routes take an agent key only when the admin gave it portfolio access.
+- Each operation names the key it takes: an agent key, made by the admin, or the admin key, which opens every route. Portfolio and profile routes take an agent key only when the admin gave it that access.
 - Each key makes at most ${CALLS_PER_MINUTE} calls a minute.
 - A symbol is taken as written, with its exchange suffix (\`VVSM.DE\`, \`BRK-B\`, \`^VIX\`, \`CL=F\`), or as a stored id (\`US:NVDA\`).
 - Results are not paged, except the stored instrument list and the alerts feed.
@@ -36,12 +37,17 @@ export const spec = {
       name: "portfolios",
       description: "Trades, positions and holdings, valued live.",
     },
+    {
+      name: "profile",
+      description:
+        "The owner's profile: one Markdown document, every save a revision.",
+    },
     { name: "dashboard", description: "The web UI's home page." },
     { name: "server", description: "The server's sources and jobs." },
     { name: "keys", description: "The agents' keys." },
     { name: "docs", description: "This page and its OpenAPI document." },
   ],
-  paths: { ...paths, ...portfolioPaths },
+  paths: { ...paths, ...portfolioPaths, ...profilePaths },
   components: {
     securitySchemes: {
       read: {
@@ -72,6 +78,17 @@ export const spec = {
         scheme: "bearer",
         description: "An agent key the admin gave rules write access.",
       },
+      profileRead: {
+        type: "http",
+        scheme: "bearer",
+        description:
+          "An agent key the admin gave profile read or write access.",
+      },
+      profileWrite: {
+        type: "http",
+        scheme: "bearer",
+        description: "An agent key the admin gave profile write access.",
+      },
       admin: {
         type: "http",
         scheme: "bearer",
@@ -86,7 +103,7 @@ export const spec = {
           "The web UI's sign-in cookie. It opens what the admin key opens but the rules writes. A request other than GET must come from this server's own pages.",
       },
     },
-    schemas: { ...schemas, ...portfolioSchemas },
+    schemas: { ...schemas, ...portfolioSchemas, ...profileSchemas },
     responses,
   },
 };

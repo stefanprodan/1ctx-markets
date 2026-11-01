@@ -1061,6 +1061,7 @@ describe("every operation", () => {
     await check("DELETE", "/keys/{id}", await revoke(), 404);
 
     await portfolioOperations(t, check, wrong, reader);
+    await profileOperations(t, check, wrong, reader);
 
     // past the minute's calls every keyed operation is refused before it
     // runs, whatever it was sent
@@ -1075,7 +1076,10 @@ describe("every operation", () => {
       for (const [method, op] of Object.entries(item)) {
         if (!METHODS.includes(method)) continue;
         if (!("429" in (op as { responses: object }).responses)) continue;
-        const at = path.replace("{symbol}", "US%3ANVDA").replace("{id}", "1");
+        const at = path
+          .replace("{symbol}", "US%3ANVDA")
+          .replace("{id}", "1")
+          .replace("{revision}", "1");
         await check(
           method.toUpperCase(),
           path,
@@ -1523,6 +1527,7 @@ describe("access", () => {
     path
       .replace("{symbol}", "US%3AA")
       .replace("{id}", "1")
+      .replace("{revision}", "1")
       .replace("{file}", "init.js");
 
   test("each operation takes its scope; the admin key holds every one and /mcp", () =>
@@ -2051,6 +2056,136 @@ type Check = (
   res: Response,
   status: number,
 ) => Promise<any>;
+
+// every profile operation's success and documented errors, on a made-up
+// profile
+async function profileOperations(
+  t: Awaited<ReturnType<typeof setup>>,
+  check: Check,
+  wrong: RequestInit,
+  reader: RequestInit,
+) {
+  await t.clock.advance(60_000);
+  const put = (body: unknown, type = "application/json"): RequestInit => ({
+    method: "PUT",
+    headers: { "content-type": type },
+    body: typeof body === "string" ? body : JSON.stringify(body),
+  });
+  const as = (init: RequestInit, key: RequestInit): RequestInit => ({
+    ...init,
+    headers: { ...(init.headers as object), ...(key.headers as object) },
+  });
+  const refusals = async (path: string, at: string, init: RequestInit) => {
+    await check(init.method!, path, await t.call(at, as(init, wrong)), 401);
+    await check(init.method!, path, await t.call(at, as(init, reader)), 403);
+  };
+  const P = "/profile";
+  const none = await check("GET", P, await t.call(P), 200);
+  expect(none).toEqual({
+    text: null,
+    html: null,
+    revision: null,
+    author: null,
+    updated_at: null,
+    bytes: null,
+  });
+  await check("PUT", P, await t.call(P, put({ revision: 1, text: "x" })), 409);
+  const made = await check(
+    "PUT",
+    P,
+    await t.call(P, put({ text: "# Made-up owner\n\nHorizon: 5 years.\n" })),
+    200,
+  );
+  expect(made).toMatchObject({ revision: 1, author: "admin" });
+  const conflict = await check(
+    "PUT",
+    P,
+    await t.call(P, put({ text: "again" })),
+    409,
+  );
+  expect(conflict).toMatchObject({ code: "conflict", revision: 1 });
+  await check(
+    "PUT",
+    P,
+    await t.call(
+      P,
+      put({ revision: 1, edits: [{ old: "5 years", new: "10 years" }] }),
+    ),
+    200,
+  );
+  await check(
+    "PUT",
+    P,
+    await t.call(P, put({ revision: 2, edits: [{ old: "nowhere", new: "" }] })),
+    400,
+  );
+  await check(
+    "PUT",
+    P,
+    await t.call(P, put({ revision: 2, text: "x".repeat(70_000) })),
+    413,
+  );
+  await check("PUT", P, await t.call(P, put({ text: "x" }, "text/plain")), 415);
+  await refusals(P, P, put({ revision: 2, text: "x" }));
+  const read = await check("GET", P, await t.call(P), 200);
+  expect(read).toMatchObject({
+    revision: 2,
+    text: "# Made-up owner\n\nHorizon: 10 years.\n",
+    html: '<h1 class="md-h1">Made-up owner</h1><p class="md-p">Horizon: 10 years.</p>',
+  });
+  await check("GET", P, await t.call(`${P}?x=1`), 400);
+  await refusals(P, P, { method: "GET" });
+
+  const D = `${P}/preview`;
+  const post = (body: unknown, type?: string): RequestInit => ({
+    ...put(body, type),
+    method: "POST",
+  });
+  const drawn = await check(
+    "POST",
+    D,
+    await t.call(D, post({ text: "# Draft\n\n<script>alert(1)</script>\n" })),
+    200,
+  );
+  expect(drawn).toEqual({
+    html: '<h1 class="md-h1">Draft</h1><p class="md-p">&lt;script&gt;alert(1)&lt;/script&gt;</p>',
+  });
+  await check("POST", D, await t.call(D, post({ text: "nul \u0000" })), 400);
+  await check("POST", D, await t.call(D, post({ text: "lone \ud800" })), 400);
+  await check("POST", D, await t.call(D, post({})), 400);
+  await check(
+    "POST",
+    D,
+    await t.call(D, post({ text: "x".repeat(70_000) })),
+    413,
+  );
+  await check(
+    "POST",
+    D,
+    await t.call(D, post({ text: "x" }, "text/plain")),
+    415,
+  );
+  await refusals(D, D, post({ text: "x" }));
+  // a preview keeps nothing
+  expect(await check("GET", P, await t.call(P), 200)).toMatchObject({
+    revision: 2,
+  });
+
+  const V = `${P}/versions`;
+  const listed = await check("GET", V, await t.call(V), 200);
+  expect(listed.revisions.map((r: { revision: number }) => r.revision)).toEqual(
+    [2, 1],
+  );
+  await check("GET", V, await t.call(`${V}?x=1`), 400);
+  await refusals(V, V, { method: "GET" });
+
+  const one = `${V}/{revision}`;
+  const first = await check("GET", one, await t.call(`${V}/1`), 200);
+  expect(first).toMatchObject({ revision: 1, author: "admin" });
+  await check("GET", one, await t.call(`${V}/x`), 400);
+  await check("GET", one, await t.call(`${V}/9`), 404);
+  await refusals(one, `${V}/1`, { method: "GET" });
+}
 
 // every portfolio operation's success and documented errors, on made-up rows
 async function portfolioOperations(

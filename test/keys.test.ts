@@ -165,6 +165,14 @@ describe("agent keys", () => {
         code: "conflict",
         detail: "name taken",
       });
+      for (const name of ["web", "admin"]) {
+        const reserved = await make(t, name);
+        expect(reserved.status).toBe(409);
+        expect(await reserved.json()).toMatchObject({
+          code: "conflict",
+          detail: "name reserved",
+        });
+      }
       const full = await make(t, "a5");
       expect(full.status).toBe(409);
       expect(await full.json()).toMatchObject({
@@ -493,6 +501,7 @@ describe("the keys command", () => {
       expect(listed.keys[1]!.expires_at).not.toBeNull();
       expect(out[0]).not.toContain(token);
       await expect(run("add", "codex")).rejects.toThrow("name taken (409)");
+      await expect(run("add", "web")).rejects.toThrow("name reserved (409)");
       out.length = 0;
       await run("revoke", "codex");
       expect(out).toEqual(["revoked codex"]);

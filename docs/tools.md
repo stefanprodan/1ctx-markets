@@ -8,9 +8,9 @@ Governs the Model Context Protocol (MCP) tools: `src/server/mcp.ts`,
 `src/operations/`. The HTTP API that calls the same reads is in
 `docs/api.md`; the research and events tools in `docs/research.md`;
 the rules tool in `docs/rules.md`; the portfolio tools in
-`docs/portfolios.md`; signal rows and returns in
-`docs/signals.md`; units, stale reasons and tracking in
-`docs/storage.md`; the source queue and deadlines in
+`docs/portfolios.md`; the profile tools in `docs/profile.md`; signal
+rows and returns in `docs/signals.md`; units, stale reasons and
+tracking in `docs/storage.md`; the source queue and deadlines in
 `docs/sources.md`; the server, keys and flags in `docs/config.md`.
 
 ## The MCP endpoint
@@ -19,19 +19,20 @@ the rules tool in `docs/rules.md`; the portfolio tools in
   (`mcpHandler()`), so no tool may keep per-session state. A new tool
   is added to `tools()` in `src/tools/index.ts`.
 - **The caller rides in `authInfo`**: the router passes the key's name
-  and its portfolio and rules access as the scopes `portfolio:<access>`
-  and `rules:<access>` (`whoOf()` in `src/server/http.ts`, `Who` in
-  `src/operations/who.ts`), the factory
-  registers the tools with it, and a tool that needs it reads it from
-  its second argument; a tool that needs none ignores it.
+  and its portfolio, rules and profile access as the scopes
+  `portfolio:<access>`, `rules:<access>` and `profile:<access>`
+  (`whoOf()` in `src/server/http.ts`, `Who` in `src/operations/who.ts`),
+  the factory registers the tools with it, and a tool that needs it
+  reads it from its second argument; a tool that needs none ignores it.
 - **A key lists only the tools its access opens** (`tools(m, opens)`,
   built once per access in `registerTools()`): no `rules` for rules
-  access `none`, no portfolio tool for portfolio access `none`, only
-  the `portfolio` read for `read`, and the write tools for `write`. An
-  agent shown a write it would be refused tries it, and a read-only key
-  must be read-only to the agent too. The call-time check stays, since
-  a client may hold an older list; a tool no longer listed answers the
-  SDK's "Tool … not found".
+  access `none`, no portfolio tool for portfolio access `none`, only the
+  `portfolio` read for `read`, and the write tools for `write`; the same
+  for the profile, `profile` for `read`, `profile_edit` too for `write`.
+  An agent shown a write it would be refused tries it, and a read-only
+  key must be read-only to the agent too. The call-time check stays,
+  since a client may hold an older list; a tool no longer listed answers
+  the SDK's "Tool … not found".
 - **SDK errors are logged with type and code only**
   (`sdkErrorFields()`), since an SDK message can quote the request.
 
@@ -41,21 +42,24 @@ the rules tool in `docs/rules.md`; the portfolio tools in
   which tool answers what and what holds across tools, and names only
   the tools the key lists: the rules line goes for rules access `none`,
   the portfolio line for portfolio access `none`, and its writes and
-  `portfolio_setup` for `read`. A client may list a tool
-  by one line and cuts its description (below), so guidance across
-  tools lives here; never repeat a description's argument list.
+  `portfolio_setup` for `read`; the profile line comes only for a key
+  that lists `profile`. It never names `profile_edit`, for want of room:
+  `profile`'s description opens with it for a write key. A client may
+  list a tool by one line and cuts its description (below), so guidance
+  across tools lives here; never repeat a description's argument list.
 - **At most `INSTRUCTIONS_BYTES` (4 KB) at every access level**, the
-  write key's the longest: clients cut long instructions from the end. A new line pushes an old one out, or the
-  cap is raised as a choice in review. Every line changes what an
-  agent does; nothing that dates (symbol lists, dates, prices).
+  write key's the longest: clients cut long instructions from the end. A
+  new line pushes an old one out, or the cap is raised as a choice in
+  review. Every line changes what an agent does; nothing that dates
+  (symbol lists, dates, prices).
 - **Routing first, what the server does not hold last**, so a cut drops
   the least. No one's holding, market, country, currency or default
   symbol: the text goes to every user.
 - **`test/instructions.test.ts` holds it to that** for each access
-  level: under the cap, the groups in order, every listed tool named,
-  every backticked name a listed tool, its argument or a listed answer
-  field, and a deny list. Whether those
-  fields are still answered is left to review.
+  level: under the cap, the groups in order, every listed tool named but
+  `profile_edit`, every backticked name a listed tool, its argument or a
+  listed answer field, and a deny list. Whether those fields are still
+  answered is left to review.
 
 ## The answer contract
 
@@ -109,18 +113,21 @@ the rules tool in `docs/rules.md`; the portfolio tools in
   symbols (`MAX_SYMBOLS`), a date `YYYY-MM-DD`. Text quoted back in an
   error is cut at 64 characters (`quoted()`).
 - **A write argument's number, id or true/false may come as text.**
-  Some clients send a number as text, so the portfolio tools and
-  `rules` read `"1"`, `"2.5"` and `"true"` as their values
-  (`textValues()`), a rule's condition as JSON text and a comparison's
-  `right` as a number's text; other text is refused as before.
+  Some clients send a number as text, so the portfolio tools, `rules`
+  and the profile tools' `revision` read `"1"`, `"2.5"` and `"true"`
+  as their values (`textValues()`); `rules` reads a condition sent as
+  JSON text and a comparison's `right` as a number's text, and
+  `profile_edit` reads `edits` sent as JSON text. Other text is
+  refused as before.
 - **Arguments are typed, each meaning one thing**: an id is an
   integer, never a union with a string, a mode is its own boolean
   (`all: true`), and an argument that changes a row never also picks
   it. Only an argument that is a name or an id (`portfolio`) is a
   union.
-- **Write annotations are per tool**: `rules` and the portfolio write
-  tools are `destructiveHint: true`, so an add asks as a remove does.
-  Every other tool, `portfolio` included, is `readOnlyHint: true`,
+- **Write annotations are per tool**: `rules`, the portfolio write
+  tools and `profile_edit` are `destructiveHint: true`, so an add asks
+  as a remove does. Every other tool, `portfolio` and `profile`
+  included, is `readOnlyHint: true`,
   `openWorldHint: true`: an inline fetch only adds market data.
 
 ## The tools
@@ -136,6 +143,7 @@ the rules tool in `docs/rules.md`; the portfolio tools in
 | `events` | `from`, `to`, `symbols`, `next` | events by date with `status`, `reported_seen_at` and `filed_at`; `unavailable`, `no_event` (`docs/research.md`) |
 | `rules` | see `docs/rules.md` | |
 | `portfolio`, `portfolio_trade`, `portfolio_cash`, `portfolio_bond`, `portfolio_fund`, `portfolio_setup` | see `docs/portfolios.md` | |
+| `profile`, `profile_edit` | see `docs/profile.md` | |
 
 - **quote's `returns` answer "how did it do" without `history`**
   (`docs/signals.md`, "Trailing returns").

@@ -39,6 +39,8 @@ export function accessWords(k: AgentKey): string | null {
   if (portfolio !== null) said.push(`${portfolio} portfolios`);
   const rules = VERB[k.rules ?? "none"];
   if (rules !== null) said.push(`${rules} alert rules`);
+  const profile = VERB[k.profile ?? "none"];
+  if (profile !== null) said.push(`${profile} the profile`);
   return said.length === 0 ? null : said.join(" · ");
 }
 

@@ -251,6 +251,15 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   rows with it, and a broker no live row names; what they mean is
   `docs/portfolios.md`.
 
+## The profile
+
+- **One table and a key column** (`0033-profile`): `profile_versions`
+  (each revision of the owner's profile: its number, full text, bytes,
+  author and time; the highest is the live one) and `keys.profile`
+  (`none`, `read`, `write`), `none` for every key, the ones made
+  before too. A save inserts a revision and deletes those past the
+  last 100 in the same write; what they mean is `docs/profile.md`.
+
 ## The dashboard
 
 - **Three tables hold the web UI's home page** (`0017-dashboard`):

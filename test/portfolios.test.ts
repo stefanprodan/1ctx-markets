@@ -40,7 +40,12 @@ import { withApp } from "./helpers/app.ts";
 import { ask, cashBefore, portfolioBefore } from "./helpers/portfolio.ts";
 import { bar, instrument, LIVE, NOW, quote, world } from "./helpers/world.ts";
 
-const CASEY: Who = { name: "casey-agent", portfolio: "write", rules: "none" };
+const CASEY: Who = {
+  name: "casey-agent",
+  portfolio: "write",
+  rules: "none",
+  profile: "none",
+};
 
 // a currency pair as Yahoo lists it, with its closes and a live quote
 function pair(
@@ -746,8 +751,18 @@ describe("trades", () => {
 
   test("a key that reads cannot write, one without access cannot read", async () => {
     const { m } = await setup();
-    const reader: Who = { name: "reader", portfolio: "read", rules: "none" };
-    const none: Who = { name: "none", portfolio: "none", rules: "none" };
+    const reader: Who = {
+      name: "reader",
+      portfolio: "read",
+      rules: "none",
+      profile: "none",
+    };
+    const none: Who = {
+      name: "none",
+      portfolio: "none",
+      rules: "none",
+      profile: "none",
+    };
     const write = await ask(m, reader, "portfolio_trade", {
       action: "remove",
       trade: 1,
@@ -817,7 +832,12 @@ describe("setup", () => {
 
   test("setup is a write and takes only its own arguments", async () => {
     const { m } = world();
-    const reader: Who = { name: "reader", portfolio: "read", rules: "none" };
+    const reader: Who = {
+      name: "reader",
+      portfolio: "read",
+      rules: "none",
+      profile: "none",
+    };
     const r = await setUp(m, { display_currency: "EUR" }, reader);
     expect(r.body.error).toBe("forbidden");
     expect(() =>

@@ -363,6 +363,7 @@ describe("the routes", () => {
     expect(match("/status")?.route.label).toBe("Server status");
     expect(match("/instruments")?.route.label).toBe("Instruments");
     expect(match("/connect")?.route.label).toBe("Connect agents");
+    expect(match("/profile")?.route.label).toBe("Profile");
     expect(match("/nothing")).toBeNull();
     // an instrument's page takes its id from the path, decoded
     expect(match("/instruments/US%3ANVDA")).toMatchObject({
@@ -376,6 +377,7 @@ describe("the routes", () => {
       "Home",
       "Instruments",
       "Portfolios",
+      "Profile",
       "Connect agents",
       "Server status",
     ]);
@@ -2005,6 +2007,7 @@ describe("connect agents", () => {
       expiresInDays: 90,
       portfolio: "none",
       rules: "none",
+      profile: "none",
     });
     expect(s.keys.value?.map((k) => k.name)).toEqual(["codex", "claude-code"]);
     expect(JSON.stringify(s.keys.value)).not.toContain(TOKEN);
@@ -2044,17 +2047,26 @@ describe("connect agents", () => {
     });
     const s = store(f.fetch);
     await s.loadKeys();
-    await s.setKeyAccess("codex-id", { portfolio: "read", rules: "write" });
+    await s.setKeyAccess("codex-id", {
+      portfolio: "read",
+      rules: "write",
+      profile: "read",
+    });
     expect(JSON.parse(f.asked.at(-1)!.init!.body as string)).toEqual({
       portfolio: "read",
       rules: "write",
+      profile: "read",
     });
     expect(s.keys.value?.map((k) => [k.name, k.portfolio, k.rules])).toEqual([
       ["codex", "read", "write"],
       ["opencode", undefined, undefined],
     ]);
     await expect(
-      s.setKeyAccess("gone-id", { portfolio: "none", rules: "read" }),
+      s.setKeyAccess("gone-id", {
+        portfolio: "none",
+        rules: "read",
+        profile: "none",
+      }),
     ).rejects.toThrow();
   });
 
@@ -2072,9 +2084,12 @@ describe("connect agents", () => {
     expect(accessWords(agentKey("a", { portfolio: "read" }))).toBe(
       "Reads portfolios",
     );
+    expect(
+      accessWords(agentKey("a", { rules: "read", profile: "write" })),
+    ).toBe("Reads alert rules · Writes the profile");
   });
 
-  test("New key and a key's details pick portfolios and alert rules with the app's own buttons", () => {
+  test("New key and a key's details pick each access with the app's own buttons", () => {
     const s = store(fake({}).fetch);
     const made = render(
       <NewKey store={s} shown={signal(null)} onClose={() => {}} />,
@@ -2091,15 +2106,16 @@ describe("connect agents", () => {
       expect(html).toContain('role="dialog"');
       expect(html).toContain(">Portfolios<");
       expect(html).toContain(">Alert rules<");
-      expect(html.match(/>Read and write</g)).toHaveLength(2);
+      expect(html).toContain(">Profile<");
+      expect(html.match(/>Read and write</g)).toHaveLength(3);
       expect(html).not.toContain("<select");
     }
     // the new key never expires unless picked, and reaches neither
     expect(made).toMatch(/aria-pressed="true"[^>]*>Never</);
-    expect(made.match(/aria-pressed="true"[^>]*>No access</g)).toHaveLength(2);
+    expect(made.match(/aria-pressed="true"[^>]*>No access</g)).toHaveLength(3);
     expect(made).toContain(" disabled>Create key<");
     // the kept key's picks start at what it has, Save waiting on a change
-    expect(changed.match(/aria-pressed="true"/g)).toHaveLength(2);
+    expect(changed.match(/aria-pressed="true"/g)).toHaveLength(3);
     expect(changed).toMatch(/aria-pressed="true"[^>]*>Read</);
     expect(changed).toMatch(/aria-pressed="true"[^>]*>Read and write</);
     expect(changed).toContain(" disabled>Save<");

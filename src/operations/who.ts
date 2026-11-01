@@ -5,15 +5,31 @@
 
 export type Access = "none" | "read" | "write";
 
-export type Who = { name: string; portfolio: Access; rules: Access };
+export type Who = {
+  name: string;
+  portfolio: Access;
+  rules: Access;
+  profile: Access;
+};
 
-// the web UI's cookie: every portfolio write, never a rules write
-export const WEB: Who = { name: "web", portfolio: "write", rules: "read" };
-export const ADMIN: Who = { name: "admin", portfolio: "write", rules: "write" };
+// the web UI's cookie: every portfolio and profile write, never a rules write
+export const WEB: Who = {
+  name: "web",
+  portfolio: "write",
+  rules: "read",
+  profile: "write",
+};
+export const ADMIN: Who = {
+  name: "admin",
+  portfolio: "write",
+  rules: "write",
+  profile: "write",
+};
 export const NO_ACCESS: Who = {
   name: "none",
   portfolio: "none",
   rules: "none",
+  profile: "none",
 };
 
 export const opens = (access: Access, write: boolean): boolean =>

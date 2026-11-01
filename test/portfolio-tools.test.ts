@@ -14,7 +14,12 @@ import { ADMIN_KEY, api } from "./helpers/api.ts";
 import { ask } from "./helpers/portfolio.ts";
 import { instrument, quote, world } from "./helpers/world.ts";
 
-const CASEY: Who = { name: "casey-agent", portfolio: "write", rules: "none" };
+const CASEY: Who = {
+  name: "casey-agent",
+  portfolio: "write",
+  rules: "none",
+  profile: "none",
+};
 const ONE = "ZZFUND000011";
 
 async function setup() {

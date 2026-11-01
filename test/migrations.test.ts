@@ -338,6 +338,31 @@ describe("migrations", () => {
     db.close();
   });
 
+  test("keys made before profile access open no profile, new ones none", () => {
+    const db = new Database(":memory:", { strict: true });
+    const clock = fakeClock();
+    const at = MIGRATIONS.findIndex((m) => m.id === "0033-profile");
+    migrate(db, clock, MIGRATIONS.slice(0, at));
+    db.exec(
+      `insert into keys (id, name, token_hash, created_at, portfolio, rules)
+       values ('oldkey000000', 'old', 'h1', 0, 'write', 'write')`,
+    );
+    migrate(db, clock, MIGRATIONS.slice(0, at + 1));
+    db.exec(
+      `insert into keys (id, name, token_hash, created_at)
+       values ('newkey000000', 'new', 'h2', 0)`,
+    );
+    expect(
+      db.query("select name, profile from keys order by name").all(),
+    ).toEqual([
+      { name: "new", profile: "none" },
+      { name: "old", profile: "none" },
+    ]);
+    expect(() => db.exec("update keys set profile = 'all'")).toThrow();
+    expect(db.query("select * from profile_versions").all()).toEqual([]);
+    db.close();
+  });
+
   test("the owner's settings gain a time zone, none until named", () => {
     const db = new Database(":memory:", { strict: true });
     const clock = fakeClock();

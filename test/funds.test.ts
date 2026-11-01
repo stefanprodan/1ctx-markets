@@ -39,7 +39,12 @@ import { fakeClock } from "./helpers/clock.ts";
 import { ask as askTool, portfolioBefore } from "./helpers/portfolio.ts";
 import { instrument, NOW, quote } from "./helpers/world.ts";
 
-const CASEY: Who = { name: "casey-agent", portfolio: "write", rules: "none" };
+const CASEY: Who = {
+  name: "casey-agent",
+  portfolio: "write",
+  rules: "none",
+  profile: "none",
+};
 
 // fictional: ZZ is no country's code
 const ONE = "ZZFUND000011";

@@ -46,8 +46,8 @@ log and cut off without touching the others.
 | `DELETE /api/v1/instruments/{symbol}` | the instrument and every row of it; 204 |
 | `GET /api/v1/instruments/{symbol}/stored` | `{input, stored}`: true when the read's bare-symbol rule (`restStored()`) finds a stored row with daily bars, so a read answers without a first fetch; asks no source and marks no read. The web UI asks it beside an instrument's first read to say which wait it is in (`docs/web.md`) |
 | `GET /api/v1/keys` | the agent keys (below) |
-| `POST /api/v1/keys` | `{"name", "expiresInDays", "portfolio", "rules"}`: a new agent key, its token answered once; `portfolio` and `rules` are `none` (the default), `read` or `write` |
-| `PATCH /api/v1/keys/{id}` | `{"portfolio", "rules"}`, at least one: changes the key's access, the token, name and expiry kept; the key as listed; 400 for none or a bad value, 404 for an unknown id |
+| `POST /api/v1/keys` | `{"name", "expiresInDays", "portfolio", "rules", "profile"}`: a new agent key, its token answered once; `portfolio`, `rules` and `profile` are `none` (the default), `read` or `write` |
+| `PATCH /api/v1/keys/{id}` | `{"portfolio", "rules", "profile"}`, at least one: changes the key's access, the token, name and expiry kept; the key as listed; 400 for none or a bad value, 404 for an unknown id |
 | `DELETE /api/v1/keys/{id}` | revokes an agent key; 204 |
 
 ## Agent keys
@@ -68,13 +68,22 @@ log and cut off without touching the others.
   a rules reader: alerts have no access of their own. Keys made before
   rules access existed were given `write` (migration 0023), what they
   had.
+- **Profile access is the admin's to give the same way** (`profile`,
+  `keys add --profile`), `none` by default, since the owner's profile is
+  personal and a script's key never needs it. `read` lists the `profile`
+  tool and opens the profile reads, `write` also lists `profile_edit`
+  and opens `PUT /profile` (`docs/profile.md`). Keys made before profile
+  access existed start at `none` too (migration 0033): the admin opts
+  each in.
 - **Access changes on a kept key** (`PATCH /keys/{id}`, `keys set`):
   the token, name and expiry stay, an expired key changes too, and the
   key's next request reads the new access, as a revoke holds on the
   next request, since the row is read on every request.
 - **A name follows 1ctx's agent name rule**: 2 to 80 lowercase
   letters, digits, dashes and underscores, starting with a letter or
-  digit, unique (409 `conflict`, "name taken").
+  digit, unique (409 `conflict`, "name taken"). `web` and `admin` are
+  reserved (409 `conflict`, "name reserved"): the server records the
+  web UI and the admin key by those names.
 - **At most 5 keys** (`MAX_KEYS`), expired ones included, as 1ctx's
   default cap (409 `conflict`, "too many keys"). The name and the cap
   are checked in the same write as the insert.
@@ -210,9 +219,10 @@ log and cut off without touching the others.
 - **`1ctx-markets keys list|add|set|revoke` calls the same way**, with
   the same `--listen` and `--data`. `list` prints `GET
   /api/v1/keys`'s JSON; `add <name> [--expires 30|90|365] [--portfolio
-  none|read|write] [--rules none|read|write]` (each access `none` by
-  default) prints the new token alone on stdout, once, so `$(...)` can
-  take it, and nothing else; `set <name> [--portfolio ...] [--rules
-  ...]`, one at least, finds the key's id by name and prints `set
+  none|read|write] [--rules none|read|write] [--profile
+  none|read|write]` (each access `none` by default) prints the new
+  token alone on stdout, once, so `$(...)` can take it, and nothing
+  else; `set <name> [--portfolio ...] [--rules ...] [--profile ...]`,
+  one at least, finds the key's id by name and prints `set
   <name>`; `revoke <name>` finds it the same way and prints `revoked
   <name>`. A refusal exits 1 with the server's detail and status.

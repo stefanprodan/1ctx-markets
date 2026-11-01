@@ -95,9 +95,15 @@ describe("the tool list", () => {
               "portfolio_setup",
             ]
           : []),
+        ...(level.profile === "none" ? [] : ["profile"]),
+        ...(level.profile === "write" ? ["profile_edit"] : []),
       ];
       for (const level of ACCESS_LEVELS) {
-        const token = seedKey(t, `${level.portfolio}-${level.rules}`, level);
+        const token = seedKey(
+          t,
+          `${level.portfolio}-${level.rules}-${level.profile}`,
+          level,
+        );
         const client = await mcpClient(t, token);
         const { tools } = await client.listTools();
         await client.close();
@@ -108,7 +114,9 @@ describe("the tool list", () => {
           expect(tool.inputSchema.additionalProperties).toBe(false);
           // a write asks as a remove does; the read never asks
           const writes =
-            tool.name === "rules" || tool.name.startsWith("portfolio_");
+            tool.name === "rules" ||
+            tool.name.startsWith("portfolio_") ||
+            tool.name === "profile_edit";
           expect([tool.name, tool.annotations?.readOnlyHint]).toEqual([
             tool.name,
             !writes,
@@ -124,6 +132,12 @@ describe("the tool list", () => {
           expect(read.description!.includes("portfolio_trade")).toBe(
             level.portfolio === "write",
           );
+        }
+        const profile = tools.find((x) => x.name === "profile");
+        if (profile !== undefined) {
+          expect(
+            profile.description!.startsWith("Changes go through profile_edit."),
+          ).toBe(level.profile === "write");
         }
       }
     }));
