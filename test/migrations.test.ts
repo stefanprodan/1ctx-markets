@@ -411,6 +411,94 @@ describe("migrations", () => {
     db.close();
   });
 
+  test("a share class listing keeps per-share figures, a dotted one none", () => {
+    const db = new Database(":memory:", { strict: true });
+    const clock = fakeClock();
+    const at = MIGRATIONS.findIndex((m) => m.id === "0028-share-class-listing");
+    migrate(db, clock, MIGRATIONS.slice(0, at));
+    db.exec(`
+      insert into instruments (id, market, symbol, source, source_symbol,
+        exchange, type, currency, zone, added_at, updated_at)
+      values ('US:TSM', 'US', 'TSM', 'yahoo', 'TSM', 'NYQ', 'EQUITY', 'USD',
+        'America/New_York', 0, 0);
+      insert into research (instrument, kind, period, roe_ttm, listing,
+        fetched_at) values ('US:TSM', 'metric', '2026-10-01', 41.2, '2330.TW', 5);
+      insert into research (instrument, kind, period, buy, listing, fetched_at)
+      values ('US:TSM', 'analysts', '2026-10-01', 28, '2330.TW', 5);
+      insert into research (instrument, kind, period, eps_actual, surprise,
+        fetched_at) values ('US:TSM', 'earnings', '2026-09-30', 2.1, 0.2, 6);
+      insert into research (instrument, kind, period, insider_change, mspr,
+        fetched_at) values ('US:TSM', 'insider', '2026-09-01', -10, -50, 7);
+      insert into events (instrument, fiscal_year, fiscal_quarter, date, hour,
+        reported_seen_at, listing, fetched_at)
+      values ('US:TSM', 2026, 3, '2026-10-21', 'bmo', 8, '2330.TW', 8);
+      insert into events (instrument, fiscal_year, fiscal_quarter, date, hour,
+        eps_estimate, eps_actual, revenue_actual, reported_seen_at, fetched_at)
+      values ('US:TSM', 2025, 3, '2025-10-22', 'bmo', 1.9, 2.0, 3e10, 9, 9);
+    `);
+    const shape = () => ({
+      schema: db
+        .query(
+          `select type, name, tbl_name, sql from sqlite_master
+           where tbl_name in ('research', 'events') and type = 'index'
+           order by name`,
+        )
+        .all(),
+      columns: ["research", "events"].map((t) =>
+        db.query(`select * from pragma_table_info('${t}')`).all(),
+      ),
+      keys: ["research", "events"].map((t) =>
+        db.query(`select * from pragma_foreign_key_list('${t}')`).all(),
+      ),
+      options: db
+        .query(
+          `select name, strict, wr from pragma_table_list
+           where name in ('research', 'events') order by name`,
+        )
+        .all(),
+    });
+    const rows = () => ({
+      research: db.query("select * from research order by kind").all(),
+      events: db.query("select * from events order by fiscal_year").all(),
+    });
+    const before = { shape: shape(), rows: rows() };
+    migrate(db, clock, MIGRATIONS.slice(0, at + 1));
+    expect(shape()).toEqual(before.shape);
+    expect(rows()).toEqual(before.rows);
+    expect(
+      db.query("select name from sqlite_master where name like '%_next'").all(),
+    ).toEqual([]);
+
+    const research = db.query(
+      `insert into research (instrument, kind, period, pe_ttm, listing,
+         fetched_at) values ('US:TSM', ?, ?, ?, ?, 0)`,
+    );
+    expect(() =>
+      research.run("analysts", "2026-11-01", 20, "2330.TW"),
+    ).toThrow();
+    db.exec("delete from research where kind = 'metric'");
+    expect(() => research.run("metric", "2026-11-01", 20, "2330.TW")).toThrow();
+    research.run("metric", "2026-11-01", 20, "GOOGL");
+    expect(() =>
+      research.run("insider", "2026-11-01", null, "GOOGL"),
+    ).toThrow();
+    expect(() => research.run("analysts", "2026-11-01", null, "A B")).toThrow();
+    const earnings = db.query(
+      `insert into research (instrument, kind, period, eps_actual, listing,
+         fetched_at) values ('US:TSM', 'earnings', ?, 2.2, ?, 0)`,
+    );
+    expect(() => earnings.run("2026-06-30", "2330.TW")).toThrow();
+    earnings.run("2026-06-30", "GOOGL");
+    const event = db.query(
+      `insert into events (instrument, fiscal_year, fiscal_quarter, date,
+         hour, eps_estimate, listing, fetched_at)
+       values ('US:TSM', 2027, ?, '2027-01-13', 'bmo', 32.2, ?, 0)`,
+    );
+    expect(() => event.run(1, "2330.TW")).toThrow();
+    event.run(1, "GOOGL");
+    db.close();
+  });
+
   test("open applies the shipped list to a new database", () => {
     const { db, migrations } = open(":memory:", fakeClock());
     expect(migrations).toEqual(MIGRATIONS.map((m) => m.id));

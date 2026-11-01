@@ -75,3 +75,32 @@ export async function finnhubAnswer(
   const fx = await finnhubFixture(`${kind}-${as}`);
   return AS_RECORDED.has(symbol) ? fx : renamed(fx, symbol);
 }
+
+// symbol answered with as's recordings, every part naming listing, as
+// Finnhub answers a share by another listing of its company; actuals
+// put into its calendar rows, which the recordings lack
+export const otherListing =
+  (
+    symbol: string,
+    as: string,
+    listing: string,
+    actuals?: { eps: number; revenue: number },
+  ) =>
+  async (url: URL): Promise<Recorded | undefined> => {
+    if (
+      url.hostname !== "finnhub.io" ||
+      url.searchParams.get("symbol") !== symbol
+    ) {
+      return undefined;
+    }
+    const fx = await finnhubAnswer(url, { [symbol]: as });
+    if (fx === undefined || fx.status !== 200) return fx;
+    const out = renamed(fx, listing);
+    if (actuals !== undefined) {
+      for (const r of out.body?.earningsCalendar ?? []) {
+        r.epsActual = actuals.eps;
+        r.revenueActual = actuals.revenue;
+      }
+    }
+    return out;
+  };

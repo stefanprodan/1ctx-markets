@@ -19,6 +19,7 @@ import {
   readFilings,
 } from "../sources/edgar/store.ts";
 import { refreshFilings } from "../sources/edgar/sync.ts";
+import { shareClass } from "../sources/finnhub/client.ts";
 import {
   type EventRow,
   eventStatus,
@@ -38,6 +39,7 @@ import {
   OTHER_LISTING,
   SECTIONS,
   type Section,
+  SHARE_CLASS,
 } from "../sources/finnhub/store.ts";
 import { refreshResearch, unfetched } from "../sources/finnhub/sync.ts";
 import { cut } from "../sources/massive/client.ts";
@@ -276,7 +278,9 @@ type Values = Record<string, number | string | null>;
 
 // a share's own rows carry neither field
 export const listingFields = (listing: string | null) =>
-  listing === null ? {} : { listing, note: OTHER_LISTING };
+  listing === null
+    ? {}
+    : { listing, note: shareClass(listing) ? SHARE_CLASS : OTHER_LISTING };
 
 const valuesOf = (kind: ResearchKind, row: Values): Values => {
   const out: Values = {};

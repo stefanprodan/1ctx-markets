@@ -35,6 +35,7 @@ import {
   NO_EVENTS,
   NOT_COVERED,
   OTHER_LISTING,
+  SHARE_CLASS,
 } from "../src/sources/finnhub/store.ts";
 import { refreshResearch } from "../src/sources/finnhub/sync.ts";
 import {
@@ -61,7 +62,7 @@ import { api } from "./helpers/api.ts";
 import { type TestApp, withApp } from "./helpers/app.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { drive, pacedOf } from "./helpers/drive.ts";
-import { FINNHUB_KEY, finnhubAnswer } from "./helpers/finnhub.ts";
+import { FINNHUB_KEY, finnhubAnswer, otherListing } from "./helpers/finnhub.ts";
 import {
   type FakeMassive,
   MASSIVE_KEY,
@@ -901,6 +902,88 @@ describe("events inside the call", () => {
       expect(items[1].company[s]).not.toContainKey("note");
     }
     expect(items[1].company.next_event).not.toContainKey("listing");
+  });
+
+  test("rows of another share class carry it, its note and every figure", async () => {
+    const t = await setup({
+      charts: await shares(["GOOG"]),
+      hold: otherListing("GOOG", "nvda", "GOOGL", {
+        eps: 2.6,
+        revenue: 1.2e11,
+      }),
+    });
+    usShare(t.db, "GOOG");
+    const other = { listing: "GOOGL", note: SHARE_CLASS };
+    const ev = body(
+      await drive(
+        t.clock,
+        pacedOf(t.m),
+        eventsAnswer(
+          t.m,
+          parseEvents({
+            from: "2026-10-01",
+            to: "2027-01-31",
+            symbols: ["GOOG"],
+          }),
+        ),
+      ),
+    );
+    expect(ev.events).toMatchObject([
+      {
+        id: "US:GOOG",
+        date: "2026-11-17",
+        status: "reported",
+        eps_estimate: 2.5263,
+        eps_actual: 2.6,
+        revenue_actual: 1.2e11,
+        ...other,
+      },
+    ]);
+
+    const overview = body(
+      await drive(
+        t.clock,
+        pacedOf(t.m),
+        researchAnswer(t.m, parseResearch({ symbol: "GOOG" })),
+      ),
+    );
+    expect(overview.research.metric).toMatchObject({
+      ...other,
+      forward_pe: 17.0219,
+      pe_ttm: 26.3592,
+      pb: 22.203,
+      beta: 2.26942,
+    });
+    expect(overview.research.earnings).toMatchObject({
+      ...other,
+      period: "2026-09-30",
+      eps_actual: 2.22,
+      revenue_actual: 1.2e11,
+    });
+    expect(overview.research.insider).not.toContainKey("listing");
+    const earnings = body(
+      await researchAnswer(
+        t.m,
+        parseResearch({ symbol: "GOOG", section: "earnings" }),
+      ),
+    );
+    expect(earnings).toMatchObject(other);
+    expect(earnings.rows).toHaveLength(3);
+    const insiders = body(
+      await researchAnswer(
+        t.m,
+        parseResearch({ symbol: "GOOG", section: "insiders" }),
+      ),
+    );
+    expect(insiders.rows).toEqual([]);
+
+    const res = await api(t.m)(
+      new Request("http://markets.test/api/v1/research?symbols=GOOG"),
+    );
+    const { research: items } = (await res.json()) as { research: any[] };
+    expect(items[0].company.metric).toMatchObject({ ...other, pb: 22.203 });
+    expect(items[0].company.earnings).toMatchObject(other);
+    expect(items[0].company.earnings.history).toHaveLength(3);
   });
 
   test("a share whose calendar turned to no data is listed beside its kept events", async () => {

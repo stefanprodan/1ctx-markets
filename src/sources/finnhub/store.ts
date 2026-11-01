@@ -36,6 +36,7 @@ export const NO_EVENTS = "no event source";
 // beside rows Finnhub answered for another listing of the share's company
 export const OTHER_LISTING =
   "from another listing of the company on Finnhub, without the values that depend on the listing";
+export const SHARE_CLASS = "from the company's other US share class on Finnhub";
 
 export const RESEARCH_KEPT_MONTHS = 24;
 export const EVENTS_KEPT_MONTHS = 24;
@@ -124,7 +125,7 @@ export const METRIC_COLUMNS: Record<keyof Metric, string> = {
 };
 
 // By fiscal quarter, so a moved date updates the event; actuals are
-// kept, but never across listings, whose figures are another currency's.
+// kept, but never across listings, whose figures may be another currency's.
 export function upsertEvents(
   db: Db,
   instrument: string,
