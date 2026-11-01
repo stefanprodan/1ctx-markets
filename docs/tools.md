@@ -95,6 +95,12 @@ the rules tool in `docs/rules.md`; the portfolio tool in
   A symbol is 1 to 100 characters (`MAX_SYMBOL`), a list 1 to 100
   symbols (`MAX_SYMBOLS`), a date `YYYY-MM-DD`. Text quoted back in an
   error is cut at 64 characters (`quoted()`).
+- **A write argument's number, id or true/false may come as text.**
+  Some clients send a field typed `["integer", "string"]` as text, so
+  `portfolio` and `rules` read `"1"`, `"2.5"` and `"true"` as their
+  values (`textValues()`), a rule's condition as JSON text and a
+  comparison's `right` as a number's text; other text is refused as
+  before.
 - **Only rules and portfolio carry write annotations.** Every other tool is
   `readOnlyHint: true`, `openWorldHint: true`: an inline fetch only
   adds market data.

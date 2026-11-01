@@ -419,8 +419,8 @@ add(kind: "bond", portfolio?: Portfolio, name: string, amount: number,
 
 // a position changed: amount set outright or moved by `by`, in
 // `currency` or its own; at least one change; a new name, broker null
-// takes it off, note null clears it; with dry_powder, broker picks the
-// row instead, and name is refused
+// takes it off, note null clears it; with dry_powder, broker and
+// currency pick the row instead, and name is refused
 update(position: number | "dry_powder", amount?: number, by?: number,
   currency?: Currency, cost?: number, date?: Day, note?: string | null,
   dry_powder?: boolean, name?: string, broker?: string | null,
@@ -524,7 +524,8 @@ rename_broker(broker: string, name: string): { broker };
   A named currency converts at the live rate, answered in `rate`.
 - **update's `position` is an id or `dry_powder`**: Cash's one dry
   powder row, picked by `broker` (null: the row at none) and the
-  currency named when there are several; still ambiguous, it is refused
+  currency named when there are several, `currency` alone picking when
+  there is no `amount` or `by`, so a note reaches one currency's row; still ambiguous, it is refused
   with each one's id, name, currency, broker and portfolio, never their
   amounts, so the agent asks. There `broker` only picks, since an agent
   paying for a buy names the trade's broker, which must never move the

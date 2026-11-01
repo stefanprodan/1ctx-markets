@@ -18,6 +18,7 @@ import {
   type Gate,
   type InputCondition,
   inputSymbols,
+  MAX_CONDITION_BYTES,
   MAX_INSTRUMENTS,
   MAX_NOTE,
   parseCondition,
@@ -44,7 +45,14 @@ import {
   type ToolResult,
   textResult,
 } from "./answer.ts";
-import { ArgError, fields, quoted, text } from "./args.ts";
+import {
+  ArgError,
+  decimalText,
+  fields,
+  quoted,
+  text,
+  textValues,
+} from "./args.ts";
 import type { Markets } from "./markets.ts";
 import { researchTargets } from "./research.ts";
 import { type ItemError, readTargets, timeout } from "./targets.ts";
@@ -76,6 +84,38 @@ export type RulesArgs =
   | { action: "pause"; id: number; paused: boolean }
   | { action: "delete"; id: number };
 
+// a condition sent as JSON text is that object; a comparison's right
+// written as a number's text is the number, since no field name is digits
+function conditionOf(value: unknown): unknown {
+  let c = value;
+  if (typeof c === "string" && c.trim().startsWith("{")) {
+    // the size limit before parsing, so deep text never reaches the walk
+    if (Buffer.byteLength(c) > MAX_CONDITION_BYTES) {
+      throw new ArgError(
+        `condition is longer than ${MAX_CONDITION_BYTES} bytes`,
+      );
+    }
+    try {
+      c = JSON.parse(c);
+    } catch {
+      return value;
+    }
+  }
+  return numericRights(c);
+}
+
+function numericRights(node: unknown): unknown {
+  if (typeof node !== "object" || node === null || Array.isArray(node)) {
+    return node;
+  }
+  const out: Record<string, unknown> = { ...node };
+  for (const key of ["all", "any"]) {
+    if (Array.isArray(out[key])) out[key] = out[key].map(numericRights);
+  }
+  if (decimalText(out.right)) out.right = Number(out.right.trim());
+  return out;
+}
+
 function ruleId(value: unknown): number {
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1) {
     throw new ArgError("id must be a rule id, a positive integer");
@@ -84,15 +124,18 @@ function ruleId(value: unknown): number {
 }
 
 export function parseRules(input: unknown): RulesArgs {
-  const f = fields(input, [
-    "action",
-    "symbol",
-    "condition",
-    "note",
-    "next",
-    "id",
-    "paused",
-  ]);
+  const f = textValues(
+    fields(input, [
+      "action",
+      "symbol",
+      "condition",
+      "note",
+      "next",
+      "id",
+      "paused",
+    ]),
+    { ids: ["id"], flags: ["paused"] },
+  );
   if (
     typeof f.action !== "string" ||
     !(RULE_ACTIONS as readonly string[]).includes(f.action)
@@ -113,7 +156,7 @@ export function parseRules(input: unknown): RulesArgs {
       }
       let condition: InputCondition;
       try {
-        condition = parseCondition(f.condition);
+        condition = parseCondition(conditionOf(f.condition));
       } catch (error) {
         if (error instanceof RuleError) throw new ArgError(error.message);
         throw error;

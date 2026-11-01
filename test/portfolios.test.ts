@@ -15,6 +15,7 @@ import {
   addTrade,
   createBroker,
   createPortfolio,
+  DRY_POWDER_CHANGES,
   type HoldingsAnswer,
   parsePortfolio,
   portfolioAnswer,
@@ -697,6 +698,51 @@ describe("dry powder", () => {
       }),
     );
     expect(JSON.parse(picked.content[0]!.text).position.amount).toBe(600);
+    // a note alone: the currency picks the row
+    const noted = await portfolioAnswer(
+      m,
+      CASEY,
+      parsePortfolio({
+        action: "update",
+        position: "dry_powder",
+        currency: "EUR",
+        note: "for the dip",
+      }),
+    );
+    expect(JSON.parse(noted.content[0]!.text).position).toMatchObject({
+      currency: "EUR",
+      amount: 2000,
+      note: "for the dip",
+    });
+    // and by its position sent as text
+    const id = JSON.parse(noted.content[0]!.text).position.id;
+    const again = await portfolioAnswer(
+      m,
+      CASEY,
+      parsePortfolio({ action: "update", position: String(id), note: "kept" }),
+    );
+    expect(JSON.parse(again.content[0]!.text).position.note).toBe("kept");
+  });
+
+  test("a currency that only picks never lands on another currency's row", async () => {
+    const { m } = await setup();
+    await cash(m, 2000, "EUR");
+    const r = await portfolioAnswer(
+      m,
+      CASEY,
+      parsePortfolio({
+        action: "update",
+        position: "dry_powder",
+        currency: "USD",
+        note: "x",
+      }),
+    );
+    expect(r.isError).toBe(true);
+    expect(JSON.parse(r.content[0]!.text).message).toContain(
+      "no dry powder in USD",
+    );
+    const row = (await holdingsOf(m)).holdings.find((x) => x.kind === "cash")!;
+    expect(row.note ?? null).toBeNull();
   });
 
   test("a sell of all across two brokers, then the proceeds into dry powder", async () => {
@@ -1206,9 +1252,13 @@ describe("dry powder named by its broker", () => {
     expect((await tool(m, { name: "Other", by: 1 })).body.message).toBe(
       "with position dry_powder, broker picks the row; a new name or broker needs its id",
     );
-    expect((await tool(m, { broker: "North" })).body.message).toContain(
-      "update changes at least one of",
-    );
+    expect(() =>
+      parsePortfolio({
+        action: "update",
+        position: "dry_powder",
+        broker: "North",
+      }),
+    ).toThrow(DRY_POWDER_CHANGES);
     expect((await tool(m, { by: 1, portfolio: "Shares" })).body).toEqual({
       error: "bad_arguments",
       message: "dry powder lives in Cash; leave portfolio out",

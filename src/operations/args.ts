@@ -32,6 +32,34 @@ export function fields(
   return input as Record<string, unknown>;
 }
 
+const DECIMAL = /^-?(\d+\.?\d*|\.\d+)$/;
+const DIGITS = /^\d+$/;
+
+export const decimalText = (value: unknown): value is string =>
+  typeof value === "string" && DECIMAL.test(value.trim());
+
+// some clients send a number or a boolean as text, mostly where the
+// schema also takes a string; read as the value, other text is left for
+// the parser to refuse in its own words
+export function textValues(
+  f: Record<string, unknown>,
+  names: { numbers?: string[]; ids?: string[]; flags?: string[] },
+): Record<string, unknown> {
+  const out = { ...f };
+  for (const name of names.numbers ?? []) {
+    if (decimalText(out[name])) out[name] = Number(String(out[name]).trim());
+  }
+  for (const name of names.ids ?? []) {
+    const v = out[name];
+    if (typeof v === "string" && DIGITS.test(v.trim())) out[name] = Number(v);
+  }
+  for (const name of names.flags ?? []) {
+    const v = out[name];
+    if (v === "true" || v === "false") out[name] = v === "true";
+  }
+  return out;
+}
+
 export function text(value: unknown, name: string, max = MAX_SYMBOL): string {
   if (typeof value !== "string" || value.trim() === "") {
     throw new ArgError(`${name} must be a non-empty string`);
