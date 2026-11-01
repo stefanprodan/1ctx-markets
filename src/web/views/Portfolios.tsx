@@ -87,15 +87,18 @@ import {
   type RowAction,
   rateLine,
   rowActions as rowActionsOf,
+  SHUT_KEY,
   type SortKey,
   shownGain,
   shownGainPercent,
   shownValue,
   shownWeight,
+  shutOf,
   sideWord,
   sortRows,
   staleWords,
   sums,
+  toggleShut,
   tradeAmount,
   tradeName,
   tradePage,
@@ -318,6 +321,10 @@ export function PortfoliosBody({ store }: { store: PortfolioStore }) {
               <ValueBand store={store} h={h} />
               <HoldingsCard
                 key={store.portfolio.value ?? "all"}
+                view={String(store.portfolio.value ?? "all")}
+                order={(store.overview.value?.portfolios ?? []).map(
+                  (p) => p.name,
+                )}
                 h={h}
                 all={all}
                 sparks={sparks}
@@ -789,13 +796,26 @@ export function holdingColumns(
   ];
 }
 
+// browser storage is a convenience: a browser that keeps nothing shows all open
+const storedShut = (): string | null => {
+  try {
+    return localStorage.getItem(SHUT_KEY);
+  } catch {
+    return null;
+  }
+};
+
 function HoldingsCard({
+  view,
+  order,
   h,
   all,
   sparks,
   onTrade,
   onEdit,
 }: {
+  view: string;
+  order: readonly string[];
   h: Holdings;
   all: boolean;
   sparks: Record<string, Close[]>;
@@ -806,14 +826,16 @@ function HoldingsCard({
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<SortKey>("value");
   const [dir, setDir] = useState<SortDir>("desc");
-  const [shut, setShut] = useState<Set<string>>(new Set());
+  const [shutText, setShutText] = useState(storedShut);
+  const shut = shutOf(shutText, view);
   const listed = all ? h.holdings.filter((x) => !isReserve(x)) : h.holdings;
   const rows = listed.filter((x) => holdingMatches(x, q));
-  const groups = groupsOf(rows, all);
+  const groups = groupsOf(rows, all, order);
   const flat = groups.length <= 1;
   const columns = holdingColumns(columnsFor(rows), sparks, all, !flat);
   const tableGroups: TableGroup<Holding>[] = groups.map((g) => {
-    const closed = shut.has(g.key);
+    // a lone group has no label to open it again
+    const closed = !flat && shut.has(g.key);
     return {
       key: g.key,
       label: flat ? undefined : (
@@ -822,10 +844,12 @@ function HoldingsCard({
           count={g.rows.length}
           open={!closed}
           onToggle={() => {
-            const n = new Set(shut);
-            if (closed) n.delete(g.key);
-            else n.add(g.key);
-            setShut(n);
+            // read again so another view's change is kept
+            const next = toggleShut(storedShut() ?? shutText, view, g.key);
+            setShutText(next);
+            try {
+              localStorage.setItem(SHUT_KEY, next);
+            } catch {}
           }}
           trail={
             // in two currencies with none to convert into, no sum

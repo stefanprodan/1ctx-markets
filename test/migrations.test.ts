@@ -3,6 +3,7 @@
 
 import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
+import { listPortfolios } from "../src/portfolios/store.ts";
 import { migrate, open } from "../src/storage/db/index.ts";
 import type { Migration } from "../src/storage/db/migration.ts";
 import { m0001 } from "../src/storage/db/migrations/0001-init.ts";
@@ -696,6 +697,40 @@ describe("the Cash portfolio's migration", () => {
       "insert into portfolios (name, created_at) values ('Stocks', 0);",
     );
     expect(portfolios(db)).toEqual([{ id: 1, name: "Stocks", cash: 0 }]);
+    db.close();
+  });
+
+  test("portfolios keep their name order as places, Cash included", () => {
+    const db = new Database(":memory:", { strict: true });
+    const clock = fakeClock();
+    const at = MIGRATIONS.findIndex((m) => m.id === "0034-portfolio-order");
+    migrate(db, clock, MIGRATIONS.slice(0, at));
+    const add = db.query(
+      "insert into portfolios (name, cash, created_at) values (?, ?, 0)",
+    );
+    for (const [name, cash] of [
+      ["zeta", 0],
+      ["Cash", 1],
+      ["Alpha", 0],
+      ["beta", 0],
+    ] as const) {
+      add.run(name, cash);
+    }
+    migrate(db, clock);
+    expect(
+      db.query("select name, position from portfolios order by id").all(),
+    ).toEqual([
+      { name: "zeta", position: 4 },
+      { name: "Cash", position: 3 },
+      { name: "Alpha", position: 1 },
+      { name: "beta", position: 2 },
+    ]);
+    expect(listPortfolios(db).map((p) => p.name)).toEqual([
+      "Cash",
+      "Alpha",
+      "beta",
+      "zeta",
+    ]);
     db.close();
   });
 });

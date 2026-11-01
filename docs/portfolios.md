@@ -55,6 +55,13 @@ once and valued on the live price the server already keeps.
   moves whole; a live row meeting a live one of its name and broker
   there takes its old portfolio's name ("Spare (Stocks)"), since add
   then treated the two as one.
+- **The owner orders the portfolios** (`portfolios.position`, migration
+  `0034-portfolio-order`, filled in the name order shown before). Every
+  list reads Cash first, then by place; a new portfolio goes last.
+  `PATCH /portfolios/{id}` with `position` moves one among the others,
+  1 first, past the end last, and renumbers them 1..n in the same write;
+  a delete closes its gap. Cash refuses a place (409, "Cash stays
+  first"). The place is never answered: the list's order is the order.
 - **A broker is a name the owner keeps** (`brokers`), matched ignoring
   case. A trade or position names one or none; an unknown name is
   refused with the known ones, so a typo never makes a broker. Brokers

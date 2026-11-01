@@ -422,6 +422,16 @@ export const portfolioSchemas: Record<string, Schema> = {
     ["fund"],
   ),
   Named: named,
+  PortfolioUpdate: object(
+    {
+      name: note(str, `1 to ${MAX_NAME} characters.`),
+      position: note(
+        int,
+        "Its place among the portfolios other than Cash, 1 first; past the end puts it last.",
+      ),
+    },
+    [],
+  ),
   Broker: broker,
   OneBroker: object({ broker }),
   Brokers: object({ brokers: list(broker) }),
@@ -712,7 +722,7 @@ export const portfolioPaths = {
       security: READS,
       summary: "Portfolios and brokers",
       description:
-        "Every portfolio with its counts, the brokers and the display currency.",
+        "Every portfolio with its counts, Cash first, then in the owner's order; the brokers and the display currency.",
       responses: base({ 200: ok("The portfolios.", ref("Portfolios")) }),
     },
     post: {
@@ -748,11 +758,12 @@ export const portfolioPaths = {
     },
     patch: {
       tags,
-      operationId: "renamePortfolio",
+      operationId: "updatePortfolio",
       security: WRITES,
-      summary: "Rename a portfolio",
-      description: "Renames it; its trades stay. Cash keeps its name (409).",
-      requestBody: bodyOf(ref("Named")),
+      summary: "Rename or move a portfolio",
+      description:
+        "Renames it, its trades staying, or moves it to `position` among the portfolios other than Cash, the others renumbered. Cash keeps its name and stays first (409).",
+      requestBody: bodyOf(ref("PortfolioUpdate")),
       responses: base({
         200: ok("The portfolio.", ref("OnePortfolio")),
         404: missing,

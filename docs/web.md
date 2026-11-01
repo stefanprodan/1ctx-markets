@@ -625,10 +625,14 @@ The parts:
   (`holdingMatches`, every word typed must match some field). Reserve
   rows are not listed on All (`isReserve()`), since All's value leaves
   them out; they are seen and edited in their portfolio's tab. Grouped
-  (`groupsOf()`) on All by portfolio, inside one by kind and cash by
+  (`groupsOf()`) on All by portfolio in the server's order (Cash first,
+  then the owner's), inside one by kind and cash by
   what it is for, Dry powder then Reserve whatever their sums, as the
   bar reads, the largest group first otherwise, each a folding
-  `GroupLabel` with its count, value and share of the view; one group
+  `GroupLabel` with its count, value and share of the view, the groups
+  shut kept per view (All or a portfolio) in `localStorage`
+  (`markets-portfolio-shut`, `shutOf()` and `toggleShut()`; text that
+  is not that opens them all); one group
   shows no label; a row the server could not convert (no rate) shows
   its own currency only and counts in no group total. Columns: Holding
   (`holdingTicker()` over `holdingName()`: a coin without its quote
@@ -753,7 +757,10 @@ The parts:
   ones. Its picker leaves Cash out while another portfolio is kept, as
   a cash file goes to Cash whatever is picked. Changing the portfolio or broker clears the file and its
   preview, so a preview read for another is never saved. Settings lists portfolios and brokers with rename, delete
-  (none on Cash, which is fixed)
+  (none on Cash, which is fixed), and portfolios but Cash with Move up
+  and Move down arrows before them (no up on the first, no down on the
+  last), saved at once; the tabs and every pick read the server's
+  order, never sorting again
   (asking once; refused while a live row is in it or names it, removed
   rows going with it) and add, after the display currency (required):
   a picker over the ISO 4217 currencies in circulation

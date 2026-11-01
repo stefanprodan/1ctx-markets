@@ -48,6 +48,7 @@ import {
   importReason,
   importStatus,
   listingWords,
+  movePlaces,
   noteEdit,
   payFromLabel,
   price,
@@ -2036,16 +2037,21 @@ export function ImportPanel({
 
 // ---- settings: portfolios, brokers, the display currency ------------------
 
-// fixed: Cash, never renamed or removed
+type Move = (() => Promise<string | null>) | null;
+
+// fixed: Cash, never renamed or removed; moves: a row that moves, a null
+// arrow keeping its slot so every row's icons line up
 function NameRow({
   name,
   onRename,
   onDelete,
+  moves,
   fixed = false,
 }: {
   name: string;
   onRename: (to: string) => Promise<string | null>;
   onDelete: () => Promise<string | null>;
+  moves?: { up: Move; down: Move };
   fixed?: boolean;
 }) {
   const editing = useSignal(false);
@@ -2120,6 +2126,29 @@ function NameRow({
               </>
             ) : (
               <>
+                {moves &&
+                  (["up", "down"] as const).map((way) => {
+                    const go = moves[way];
+                    return go ? (
+                      <button
+                        key={way}
+                        type="button"
+                        class="btn-icon"
+                        aria-label={`Move ${name} ${way}`}
+                        onClick={async () => {
+                          error.value = await go();
+                        }}
+                      >
+                        <Icon name={`arrow-${way}`} size={14} />
+                      </button>
+                    ) : (
+                      <span
+                        key={way}
+                        class="btn-icon pf-slot"
+                        aria-hidden="true"
+                      />
+                    );
+                  })}
                 <button
                   type="button"
                   class="btn-icon"
@@ -2346,6 +2375,8 @@ export function SettingsPanel({
   const o = store.overview.value;
   const error = useSignal<string | null>(null);
   const zoneError = useSignal<string | null>(null);
+  // places count only the portfolios Cash does not pin
+  const movable = (o?.portfolios ?? []).filter((p) => !p.cash);
   return (
     <Drawer
       title="Settings"
@@ -2387,15 +2418,22 @@ export function SettingsPanel({
       <section class="pf-section" aria-label="Portfolios">
         <SectionHead title="Portfolios" count={o?.portfolios.length ?? 0} />
         <ul class="pf-names">
-          {(o?.portfolios ?? []).map((p) => (
-            <NameRow
-              key={p.id}
-              name={p.name}
-              fixed={p.cash === true}
-              onRename={(to) => store.renamePortfolio(p.id, to)}
-              onDelete={() => store.deletePortfolio(p.id)}
-            />
-          ))}
+          {(o?.portfolios ?? []).map((p) => {
+            const at = movable.indexOf(p);
+            const to = at < 0 ? null : movePlaces(at, movable.length);
+            const go = (n: number | null | undefined): Move =>
+              n == null ? null : () => store.movePortfolio(p.id, n);
+            return (
+              <NameRow
+                key={p.id}
+                name={p.name}
+                fixed={p.cash === true}
+                onRename={(to) => store.renamePortfolio(p.id, to)}
+                onDelete={() => store.deletePortfolio(p.id)}
+                moves={to ? { up: go(to.up), down: go(to.down) } : undefined}
+              />
+            );
+          })}
         </ul>
         <AddName placeholder="New portfolio" onAdd={store.createPortfolio} />
       </section>

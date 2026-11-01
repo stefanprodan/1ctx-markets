@@ -26,6 +26,7 @@ import {
   updatePosition,
 } from "../src/operations/portfolio.ts";
 import type { Who } from "../src/operations/who.ts";
+import { listPortfolios } from "../src/portfolios/store.ts";
 import { splitFactor } from "../src/portfolios/value.ts";
 import { tokenHash } from "../src/server/access.ts";
 import type { Db } from "../src/storage/db/index.ts";
@@ -1107,7 +1108,7 @@ describe("the Cash portfolio", () => {
     await createPortfolio(m, { name: "Coins" });
     expect(await buy(m, { portfolio: null })).toMatchObject({
       error: "bad_arguments",
-      message: "name a portfolio: Coins, Stocks",
+      message: "name a portfolio: Stocks, Coins",
     });
   });
 });
@@ -1127,4 +1128,127 @@ describe("reserve with no rate across portfolios", () => {
       missing: [],
     });
   });
+});
+
+describe("portfolio order", () => {
+  const names = (m: Markets) => listPortfolios(m.db).map((p) => p.name);
+  const places = (m: Markets) =>
+    m.db
+      .query<{ name: string; position: number }, []>(
+        "select name, position from portfolios where cash = 0 order by position",
+      )
+      .all()
+      .map((r) => `${r.position}:${r.name}`);
+
+  async function four() {
+    const { m } = world();
+    await saveSettings(m, { display_currency: "EUR" });
+    const id: Record<string, number> = {};
+    for (const name of ["Delta", "Alpha", "Charlie", "Bravo"]) {
+      const made = await createPortfolio(m, { name });
+      if ("error" in made) throw new Error(made.message);
+      id[name] = made.portfolio.id;
+    }
+    return { m, id };
+  }
+
+  test("Cash first, then each new one last", async () => {
+    const { m } = await four();
+    expect(names(m)).toEqual(["Cash", "Delta", "Alpha", "Charlie", "Bravo"]);
+  });
+
+  test("a move up, down, to 1 and past the end renumbers without gaps", async () => {
+    const { m, id } = await four();
+    await updatePortfolio(m, id.Charlie!, { position: 2 });
+    expect(names(m)).toEqual(["Cash", "Delta", "Charlie", "Alpha", "Bravo"]);
+    await updatePortfolio(m, id.Delta!, { position: 3 });
+    expect(names(m)).toEqual(["Cash", "Charlie", "Alpha", "Delta", "Bravo"]);
+    await updatePortfolio(m, id.Bravo!, { position: 1 });
+    expect(names(m)).toEqual(["Cash", "Bravo", "Charlie", "Alpha", "Delta"]);
+    const moved = await updatePortfolio(m, id.Charlie!, { position: 99 });
+    expect(moved).toMatchObject({ portfolio: { name: "Charlie" } });
+    expect(moved).not.toHaveProperty("portfolio.position");
+    expect(places(m)).toEqual(["1:Bravo", "2:Alpha", "3:Delta", "4:Charlie"]);
+  });
+
+  test("a rename and a move in one write", async () => {
+    const { m, id } = await four();
+    await updatePortfolio(m, id.Bravo!, { name: "Echo", position: 1 });
+    expect(names(m)).toEqual(["Cash", "Echo", "Delta", "Alpha", "Charlie"]);
+  });
+
+  test("a delete closes its gap and a later move still lands right", async () => {
+    const { m, id } = await four();
+    await removePortfolio(m, id.Alpha!);
+    expect(places(m)).toEqual(["1:Delta", "2:Charlie", "3:Bravo"]);
+    await updatePortfolio(m, id.Bravo!, { position: 2 });
+    expect(names(m)).toEqual(["Cash", "Delta", "Bravo", "Charlie"]);
+  });
+
+  test("Cash stays first whatever its stored place, and refuses a move", async () => {
+    const { m } = await four();
+    m.db.exec("update portfolios set position = 99 where cash = 1");
+    expect(names(m)[0]).toBe("Cash");
+    const cash = listPortfolios(m.db)[0]!;
+    expect(await updatePortfolio(m, cash.id, { position: 2 })).toMatchObject({
+      error: "conflict",
+      message: "Cash stays first",
+    });
+    expect(names(m)).toEqual(["Cash", "Delta", "Alpha", "Charlie", "Bravo"]);
+  });
+
+  test("a place is a whole number from 1, and something must change", async () => {
+    const { m, id } = await four();
+    for (const position of [0, 1.5, "2", null]) {
+      await expect(updatePortfolio(m, id.Alpha!, { position })).rejects.toThrow(
+        "position must be a whole number from 1",
+      );
+    }
+    await expect(updatePortfolio(m, id.Alpha!, {})).rejects.toThrow(
+      "name or position is required",
+    );
+  });
+
+  test("the route moves one and the list answers in order", () =>
+    withApp(async (t) => {
+      const admin = {
+        authorization: `Bearer ${t.admin}`,
+        "content-type": "application/json",
+      };
+      const send = (method: string, path: string, body?: unknown) =>
+        fetch(`${t.url}/api/v1${path}`, {
+          method,
+          headers: admin,
+          body: body === undefined ? undefined : JSON.stringify(body),
+        });
+      await send("PUT", "/portfolio-settings", { display_currency: "EUR" });
+      const ids: number[] = [];
+      for (const name of ["Shares", "Coins"]) {
+        ids.push(
+          (
+            (await (await send("POST", "/portfolios", { name })).json()) as {
+              portfolio: { id: number };
+            }
+          ).portfolio.id,
+        );
+      }
+      expect(
+        (await send("PATCH", `/portfolios/${ids[1]}`, { position: 1 })).status,
+      ).toBe(200);
+      const list = (await (await send("GET", "/portfolios")).json()) as {
+        portfolios: { id: number; name: string }[];
+      };
+      expect(list.portfolios.map((p) => p.name)).toEqual([
+        "Cash",
+        "Coins",
+        "Shares",
+      ]);
+      const cash = list.portfolios[0]!.id;
+      expect(
+        (await send("PATCH", `/portfolios/${cash}`, { position: 1 })).status,
+      ).toBe(409);
+      expect(
+        (await send("PATCH", `/portfolios/${ids[0]}`, { position: 0 })).status,
+      ).toBe(400);
+    }));
 });

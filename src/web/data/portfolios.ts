@@ -538,6 +538,9 @@ export function portfolioStore(
       refusal(await write(PORTFOLIOS_PATH, "POST", { name })),
     renamePortfolio: async (id: number, name: string) =>
       refusal(await write(`${PORTFOLIOS_PATH}/${id}`, "PATCH", { name })),
+    // position: its place among the portfolios but Cash, 1 first
+    movePortfolio: async (id: number, position: number) =>
+      refusal(await write(`${PORTFOLIOS_PATH}/${id}`, "PATCH", { position })),
     deletePortfolio: async (id: number) => {
       const r = await write(`${PORTFOLIOS_PATH}/${id}`, "DELETE");
       if (!("refused" in r) && portfolio.value === id) {

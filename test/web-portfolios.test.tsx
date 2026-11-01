@@ -65,6 +65,7 @@ import {
   matured,
   missingWords,
   monthsOf,
+  movePlaces,
   noteEdit,
   orderOf,
   pageOf,
@@ -74,12 +75,15 @@ import {
   rateLine,
   readRemembered,
   rowActions,
+  SHUT_KEY,
   shownGainPercent,
   shownIn,
   shownValue,
+  shutOf,
   sortRows,
   sums,
   today,
+  toggleShut,
   tradeMatches,
   tradeMoney,
   tradeName,
@@ -324,6 +328,25 @@ describe("the Portfolios page", () => {
       }
     },
   );
+
+  test.serial("a lone group kept shut still lists its rows", async () => {
+    const { s } = await loaded(
+      { ...HOLDINGS, holdings: [HOLDINGS.holdings[0]!] },
+      [],
+    );
+    const g = globalThis as { localStorage?: unknown };
+    const kept = new Map([[SHUT_KEY, JSON.stringify({ all: ["Shares"] })]]);
+    g.localStorage = {
+      getItem: (k: string) => kept.get(k) ?? null,
+      setItem: (k: string, v: string) => kept.set(k, v),
+    };
+    try {
+      const html = render(<PortfoliosBody store={s.portfolios} />);
+      expect(html).toContain(">AAA<");
+    } finally {
+      delete g.localStorage;
+    }
+  });
 
   test("a cash row opens its drawer from a button, a listed row its page", async () => {
     const { s } = await loaded();
@@ -1686,6 +1709,42 @@ describe("the page's model", () => {
     ).toBe("25.0%");
   });
 
+  test("on All the groups follow the portfolios' order, not their worth", () => {
+    const rows = [
+      row({ id: "US:AAA", value: 100 }),
+      row({
+        id: "US:BBB",
+        value: 300,
+        parts: [{ ...HOLDINGS.holdings[0]!.parts[0]!, portfolio: "Coins" }],
+      }),
+      row({
+        id: "US:CCC",
+        value: 900,
+        parts: [{ ...HOLDINGS.holdings[0]!.parts[0]!, portfolio: "Spare" }],
+      }),
+      { ...cash, value: 50 },
+    ];
+    expect(
+      groupsOf(rows, true, ["Cash", "Shares", "Coins"]).map((g) => g.key),
+    ).toEqual(["Shares", "Coins", "Spare", "Other"]);
+  });
+
+  test("the groups shut are kept per view, and bad text shuts none", () => {
+    expect(shutOf(null, "all")).toEqual(new Set());
+    expect(shutOf("not json", "all")).toEqual(new Set());
+    expect(shutOf("[1]", "all")).toEqual(new Set());
+    expect(shutOf('{"all":"Shares"}', "all")).toEqual(new Set());
+    const one = toggleShut("not json", "all", "Shares");
+    expect(shutOf(one, "all")).toEqual(new Set(["Shares"]));
+    expect(shutOf(one, "1")).toEqual(new Set());
+    const two = toggleShut(one, "1", "Stocks");
+    expect(shutOf(two, "all")).toEqual(new Set(["Shares"]));
+    expect(shutOf(two, "1")).toEqual(new Set(["Stocks"]));
+    const back = toggleShut(two, "all", "Shares");
+    expect(shutOf(back, "all")).toEqual(new Set());
+    expect(shutOf(back, "1")).toEqual(new Set(["Stocks"]));
+  });
+
   test("drops the columns nothing in view fills", () => {
     expect(columnsFor(HOLDINGS.holdings)).toEqual({
       spark: true,
@@ -2050,6 +2109,79 @@ describe("the Cash portfolio", () => {
     expect(html).not.toContain('aria-label="Delete Cash"');
     expect(html).toContain('aria-label="Rename Shares"');
     expect(html).toContain('aria-label="Delete Shares"');
+  });
+
+  test("Settings moves every portfolio but Cash, never past an end", async () => {
+    const third = { id: 4, name: "Bonds", trades: 0, positions: 0 };
+    const st = await at([CASH, ...OVERVIEW.portfolios, third]);
+    const html = render(<SettingsPanel store={st} onDone={() => {}} />);
+    expect(html).not.toContain('aria-label="Move Cash up"');
+    expect(html).not.toContain('aria-label="Move Cash down"');
+    expect(html).not.toContain('aria-label="Move Shares up"');
+    expect(html).toContain('aria-label="Move Shares down"');
+    expect(html).toContain('aria-label="Move Coins up"');
+    expect(html).toContain('aria-label="Move Coins down"');
+    expect(html).toContain('aria-label="Move Bonds up"');
+    expect(html).not.toContain('aria-label="Move Bonds down"');
+    // in the server's order, and brokers are never moved
+    expect(html.indexOf(">Cash<")).toBeLessThan(html.indexOf(">Shares<"));
+    expect(html.indexOf(">Coins<")).toBeLessThan(html.indexOf(">Bonds<"));
+    expect(html).not.toContain('aria-label="Move North');
+    expect(html).not.toContain('aria-label="Move South');
+    // the missing arrows keep their slots, hidden; Cash has none
+    expect(html.match(/pf-slot/g)).toHaveLength(2);
+    expect(html).toContain(
+      '<span class="btn-icon pf-slot" aria-hidden="true">',
+    );
+  });
+
+  test("an arrow sends the place one up or one down among those but Cash", () => {
+    expect(movePlaces(0, 3)).toEqual({ up: null, down: 2 });
+    expect(movePlaces(1, 3)).toEqual({ up: 1, down: 3 });
+    expect(movePlaces(2, 3)).toEqual({ up: 2, down: null });
+    expect(movePlaces(0, 1)).toEqual({ up: null, down: null });
+  });
+
+  test("the tabs follow the server's order", async () => {
+    const st = await at([
+      CASH,
+      OVERVIEW.portfolios[1]!,
+      OVERVIEW.portfolios[0]!,
+    ]);
+    const html = render(<PortfoliosBody store={st} />);
+    const cashAt = html.indexOf(">Cash<");
+    expect(cashAt).toBeGreaterThan(-1);
+    expect(cashAt).toBeLessThan(html.indexOf(">Coins<"));
+    expect(html.indexOf(">Coins<")).toBeLessThan(html.indexOf(">Shares<"));
+  });
+
+  test("a move sends the place among the portfolios but Cash", async () => {
+    const sent: { path: string; body: unknown }[] = [];
+    const f = fake({
+      "GET /api/v1/portfolios": {
+        ...OVERVIEW,
+        portfolios: [CASH, ...OVERVIEW.portfolios],
+      },
+      "GET /api/v1/holdings": HOLDINGS,
+      "GET /api/v1/trades": { trades: [] },
+      "PATCH /api/v1/portfolios/2": { portfolio: OVERVIEW.portfolios[1] },
+    });
+    const s = store(
+      async (url, init) => {
+        if (init?.method === "PATCH") {
+          sent.push({ path: String(url), body: JSON.parse(String(init.body)) });
+        }
+        return f.fetch(url, init);
+      },
+      () => NOW,
+      () => "/portfolios",
+      () => {},
+    );
+    await s.portfolios.open({ portfolio: null, currency: null });
+    expect(await s.portfolios.movePortfolio(2, 1)).toBeNull();
+    expect(sent).toEqual([
+      { path: "/api/v1/portfolios/2", body: { position: 1 } },
+    ]);
   });
 
   test("its refusals read plainly", () => {
