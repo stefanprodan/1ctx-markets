@@ -26,6 +26,35 @@ once and valued on the live price the server already keeps.
   ignoring case, 1 to 40 characters. A portfolio with a live row cannot
   be deleted (409); one whose rows are all removed can, its removed rows
   deleted in the same write, so a test or mistaken portfolio can go.
+- **One portfolio, Cash, holds all cash and only cash**, marked by
+  `portfolios.cash` (migration `0032-cash-portfolio`, a partial unique
+  index keeping it to one). The code, `list`, `GET /portfolios` (each
+  portfolio's `cash`) and the web UI find it by the mark, never the
+  name. It is made with the display currency (`ensureCash()`, by the
+  first `PUT /portfolio-settings` or the tool's `setup`), so a new owner
+  has a place for cash before anything else; it is never renamed or
+  deleted (409), and no other portfolio takes the name, ignoring case
+  (409), so `setup` naming it makes nothing more. The name is English,
+  as the rest of the web UI is.
+- **Strict both ways**, so every caller has one rule: cash added with no
+  portfolio goes to Cash, and cash naming another portfolio is refused
+  ("cash lives in Cash; leave portfolio out"); a trade, fund trade or
+  bond naming Cash is refused ("Cash holds only cash; name another
+  portfolio"). A trade, fund trade or bond with no portfolio goes to the
+  only portfolio besides Cash, and is refused naming the others when
+  there are two or more (`portfolioFor()`), so an owner with Cash and
+  one other never names it. Every other portfolio is investments only,
+  so its tab shows no Invested against Dry powder bar, and the reserve
+  rule across portfolios never reaches it.
+- **The migration** marks a portfolio named Cash in any case that holds
+  only cash, its name set to `Cash`; one holding a trade or bond, removed
+  rows included, is renamed `Cash (before)` and a new Cash is made. With
+  none, Cash is made when the display currency is set or any cash is
+  kept (it needs a place), else at the first currency save. Every cash
+  row elsewhere moves into Cash, removed rows too, so a chain's history
+  moves whole; a live row meeting a live one of its name and broker
+  there takes its old portfolio's name ("Spare (Stocks)"), since add
+  treats the two as one.
 - **A broker is a name the owner keeps** (`brokers`), matched ignoring
   case. A trade or position names one or none; an unknown name is
   refused with the known ones, so a typo never makes a broker. Brokers
@@ -158,6 +187,7 @@ once and valued on the live price the server already keeps.
   `admin` until people sign in) is required: a portfolio is refused
   (409, "Set a display currency first.") until the owner sets one, and
   a save without a code is refused, so it changes but never clears.
+  Its first save makes Cash.
   It and a currency a caller names for a conversion must be an ISO
   4217 code in circulation (`src/shared/currencies.ts`).
 - **The owner's time zone** (`portfolio_settings.time_zone`, migration
@@ -273,7 +303,11 @@ once and valued on the live price the server already keeps.
   from the markets would swell every share of what is invested.
   Reserve rows are still listed, with no weight, so an agent sees the
   money behind `reserve`; each such total, converted too, answers
-  `net_worth`, its value plus reserve, and `reserve_weight` null. Inside
+  `net_worth`, its value plus reserve, and `reserve_weight` null; its
+  `missing` never names a reserve row, as the value leaves reserve out,
+  and a reserve row with no rate makes the converted `reserve` and
+  `net_worth` null, never a sum of the rows known.
+  Inside
   one portfolio everything in it counts in its value, as a portfolio's
   own balance, and no `net_worth` is answered. The web UI shows no net
   worth (`docs/web.md`).
@@ -329,8 +363,8 @@ type Currency = string; // ISO 4217 (EUR), or a listing's own (GBp)
 
 // a new owner's first steps, one or more at once: the currency totals
 // are shown in (asked of the owner, never assumed; set only while none
-// is), a portfolio and a broker to make; a name already there is kept,
-// `made` says what was
+// is; Cash is made with it), a portfolio and a broker to make; a name
+// already there is kept, `made` says what was
 // time_zone is IANA (America/New_York); broker a name or a list of names
 setup(display_currency?: Currency, time_zone?: string, portfolio?: string,
   broker?: string | string[]):
@@ -352,9 +386,10 @@ holdings(portfolio?: Portfolio, broker?: string, currency?: Currency,
 trades(portfolio?: Portfolio, broker?: string, symbol?: string,
   from?: Day, to?: Day, removed?: boolean, next?: string): { trades; next };
 
-// a trade (kind defaults to trade); portfolio is needed unless there is
-// one; neither price nor total takes the live price; a broker must be
-// on the list; again: a second fill equal to one just saved
+// a trade (kind defaults to trade); never Cash; portfolio is needed
+// unless there is one besides Cash; neither price nor total takes the
+// live price; a broker must be on the list; again: a second fill equal
+// to one just saved
 add(kind: "trade", portfolio?: Portfolio, symbol: string,
   side: "buy" | "sell", quantity: number | "all", price?: number,
   total?: number, fees?: number, date?: Day, currency?: Currency,
@@ -370,8 +405,8 @@ add(kind: "fund", portfolio?: Portfolio, isin?: string, name?: string,
   broker?: string, note?: string, market?: string, again?: boolean):
   { trade | trades; total?; fund };
 
-// a position with no trades: cash, a bond; cash is reserve unless
-// dry_powder (ready to invest)
+// a position with no trades: cash, a bond; cash goes to Cash, a bond as
+// a trade does; cash is reserve unless dry_powder (ready to invest)
 add(kind: "cash", portfolio?: Portfolio, name: string, amount: number,
   currency: Currency, date?: Day, broker?: string, note?: string,
   dry_powder?: boolean): { position };
@@ -382,7 +417,8 @@ add(kind: "bond", portfolio?: Portfolio, name: string, amount: number,
 
 // a position changed: amount set outright or moved by `by`, in
 // `currency` or its own; at least one change; a new name, broker null
-// takes it off, note null clears it
+// takes it off, note null clears it; with dry_powder, broker picks the
+// row instead, and name is refused
 update(position: number | "dry_powder", amount?: number, by?: number,
   currency?: Currency, cost?: number, date?: Day, note?: string | null,
   dry_powder?: boolean, name?: string, broker?: string | null,
@@ -421,10 +457,13 @@ rename_broker(broker: string, name: string): { broker };
   `market`, `name` and `currency` (`FUND_UPDATE`); `name` is a new name
   only beside `isin` (the answer's `renamed_from` says so), else it
   finds the fund; beside `position` it renames the position. The
-  description is at 1,024 characters; a word more needs another cut.
+  description is at 1,022 of 1,024 characters; a word more needs
+  another cut.
   It says a fund's trades come one per confirmation, so an agent never
-  sums a manager's statement into one buy, and that dry powder is
-  ready to invest, reserve kept apart, and `net_worth` counts both. `remove`,
+  sums a manager's statement into one buy, that cash lives in Cash,
+  dry powder being ready to invest and the rest reserve, and that with
+  `dry_powder` the broker and currency pick the row, a rename or move
+  needing its id. `remove`,
   `restore` and `update` take an optional `portfolio`, since agents name
   one out of habit: ignored when it is the row's, refused with the
   row's portfolio named when not.
@@ -481,18 +520,24 @@ rename_broker(broker: string, name: string): { broker };
 - **An amount with no currency takes its target's**: a trade's price
   or total the listing's, an update's `amount` or `by` the position's.
   A named currency converts at the live rate, answered in `rate`.
-- **update's `position` is an id or `dry_powder`**: the portfolio's one
-  dry powder position, picked by the currency named when there are
-  several; still ambiguous, it is refused with each one's id, name,
-  currency and portfolio, never their amounts, so the agent asks.
+- **update's `position` is an id or `dry_powder`**: Cash's one dry
+  powder row, picked by `broker` (null: the row at none) and the
+  currency named when there are several; still ambiguous, it is refused
+  with each one's id, name, currency, broker and portfolio, never their
+  amounts, so the agent asks. There `broker` only picks, since an agent
+  paying for a buy names the trade's broker, which must never move the
+  row; a new name or broker needs the row's id, so `name` is refused. A
+  portfolio other than Cash is refused ("dry powder lives in Cash; leave
+  portfolio out"), as agents pass the trade's.
 - **One line of the server instructions routes to it**: a question on
   what the owner holds ("my stocks", "my ETF", "my portfolio", a
   portfolio they name) starts with `holdings`, whose symbols then go to
   `quote`, `history` and `research`, since agents asked about "my ETF"
   guessed symbols instead; it also says an amount's currency is never
-  assumed, and that dry powder is cash ready to invest, reserve cash
-  kept apart, totals across portfolios leaving reserve out while net
-  worth counts both. The tool description opens with the same routing.
+  assumed, that all cash is in the Cash portfolio, and that across
+  portfolios reserve counts only in net worth (the tool description
+  says dry powder is ready to invest, the rest reserve). The tool
+  description opens with the same routing.
 
 ## Import and export
 
@@ -556,7 +601,9 @@ rename_broker(broker: string, name: string): { broker };
   `currency` in the body when the header names none); bonds `Item,
   Symbol, Currency, Amount, Rate (%), Purchase Date, Maturity, Note` (a
   symbol that does not resolve warns and the bond is valued at face;
-  one listed in another currency, or a fund's key, is bad). A cash row
+  one listed in another currency, or a fund's key, is bad). A cash file
+  goes to Cash whatever portfolio the import is for, and the answer
+  names Cash; a trades or bonds file for Cash is refused. A cash row
   is dry powder only when its line is in
   `dry_powder`, picked in the preview. Rows of one file never replace
   each other; a bond already kept (its identity above, each kept row

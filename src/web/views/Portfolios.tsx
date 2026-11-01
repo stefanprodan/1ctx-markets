@@ -372,8 +372,8 @@ export function PageMenu({
   panel: Signal<Panel>;
 }) {
   const id = store.portfolio.value;
-  const name =
-    store.overview.value?.portfolios.find((p) => p.id === id)?.name ?? "";
+  const shown = store.overview.value?.portfolios.find((p) => p.id === id);
+  const name = shown?.name ?? "";
   return (
     <MenuButton
       head
@@ -386,7 +386,8 @@ export function PageMenu({
             panel.value = "import";
           },
         },
-        ...(id !== null
+        // Cash never holds a trade, so it has none to export
+        ...(id !== null && !shown?.cash
           ? [
               {
                 label: `Export ${name} trades`,
@@ -626,8 +627,7 @@ export function rowMenu(
   return rowActionsOf(x).map((a) => run[a]);
 }
 
-// cash's line: under a Dry powder or Reserve label without the word; on
-// All beside the gain column a phone has room for what it is only
+// a label already says Dry powder or Reserve; a phone on All has room for that word only
 function rowName(x: Holding, all: boolean, labelled: boolean) {
   if (x.kind !== "cash") return holdingName(x);
   const c = cashLine(x);

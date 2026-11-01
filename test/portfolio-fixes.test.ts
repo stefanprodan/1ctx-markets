@@ -45,7 +45,7 @@ import { sentence } from "../src/web/data/api.ts";
 import { JUST_SAVED, plainError } from "../src/web/data/portfolios.ts";
 import { missingWords, staleWords } from "../src/web/views/Portfolios.model.ts";
 import { api } from "./helpers/api.ts";
-import { portfolioBefore } from "./helpers/portfolio.ts";
+import { cashBefore, portfolioBefore } from "./helpers/portfolio.ts";
 import { bar, instrument, LIVE, NOW, quote, world } from "./helpers/world.ts";
 
 const CASEY: Who = { name: "casey-agent", portfolio: "write", rules: "none" };
@@ -87,6 +87,7 @@ async function setup() {
   quote(w.db, "US:AAA", 100, 100);
   quote(w.db, "KW:KKK", 1, 1);
   await portfolioBefore(w.m, "Shares");
+  await cashBefore(w.m);
   await createBroker(w.m, { name: "North" });
   await createBroker(w.m, { name: "South" });
   return w;
@@ -277,7 +278,7 @@ describe("totals and costs", () => {
     const { m } = await setup();
     const p: PositionArgs = {
       kind: "cash",
-      portfolio: "Shares",
+      portfolio: null,
       name: "Spare",
       symbol: null,
       currency: "USD",
@@ -934,7 +935,8 @@ describe("imports, rounding and removals as typed", () => {
       );
     await portfolioBefore(m, "Mistake");
     const t = idOf(await trade(m, { portfolio: "Mistake", broker: "South" }));
-    const live = await del("/portfolios/2");
+    const mistake = `/portfolios/${portfolioByName(db, "Mistake")!.id}`;
+    const live = await del(mistake);
     expect(live.status).toBe(409);
     expect(((await live.json()) as { detail: string }).detail).toContain(
       "holds trades or positions",
@@ -943,7 +945,7 @@ describe("imports, rounding and removals as typed", () => {
     await setTradeState(m, CASEY, t, true);
     expect((await del("/brokers/2")).status).toBe(204);
     expect(readTrade(db, t)!.broker).toBeNull();
-    expect((await del("/portfolios/2")).status).toBe(204);
+    expect((await del(mistake)).status).toBe(204);
     expect(readTrade(db, t)).toBeNull();
     expect(portfolioByName(db, "Mistake")).toBeNull();
   });
@@ -961,8 +963,8 @@ describe("imports, rounding and removals as typed", () => {
       parseImport({ portfolio: "Copy", csv, confirm: true }),
     );
     const copy = db
-      .query("select price from trades where portfolio = 2")
-      .get() as { price: number };
+      .query("select price from trades where portfolio = ?")
+      .get(portfolioByName(db, "Copy")!.id) as { price: number };
     expect(copy.price).toBe(stored);
   });
 
@@ -984,7 +986,7 @@ describe("imports, rounding and removals as typed", () => {
     }
     const typed = await addPosition(m, CASEY, {
       kind: "cash",
-      portfolio: "Shares",
+      portfolio: null,
       name: "Later",
       symbol: null,
       currency: "EUR",
@@ -1173,6 +1175,7 @@ describe("a review's second pass", () => {
       await addPosition(m, CASEY, {
         ...bond(),
         kind: "cash",
+        portfolio: null,
         name: "Spare",
         amount: 1,
         coupon: null,
@@ -1226,6 +1229,7 @@ describe("a review's second pass", () => {
       await addPosition(m, CASEY, {
         ...bond(),
         kind: "cash",
+        portfolio: null,
         name: "Spare",
         currency: "USD",
         amount: 1,
@@ -1494,7 +1498,7 @@ describe("refusals an agent can act on", () => {
     ).rejects.toThrow("kind must be one of");
     const cash = await addPosition(m, CASEY, {
       kind: "cash",
-      portfolio: "Shares",
+      portfolio: null,
       name: "Spare",
       symbol: null,
       currency: "USD",
@@ -1514,7 +1518,7 @@ describe("refusals an agent can act on", () => {
       amount: 45,
       portfolio: "Other",
     });
-    expect(up.text).toContain("is in Shares, not Other");
+    expect(up.text).toContain("is in Cash, not Other");
   });
 
   test("a removal a later sale needs names that sale", async () => {
@@ -1576,7 +1580,7 @@ describe("refusals an agent can act on", () => {
 describe("an update's date", () => {
   const position = (more: Partial<PositionArgs>): PositionArgs => ({
     kind: "cash",
-    portfolio: "Shares",
+    portfolio: null,
     name: "Made Up Cash",
     symbol: null,
     currency: "USD",
@@ -1843,7 +1847,7 @@ describe("the owner's time zone", () => {
   const EAST = "Pacific/Kiritimati";
   const cash = (date: string | null = null): PositionArgs => ({
     kind: "cash",
-    portfolio: "Shares",
+    portfolio: null,
     name: "Made Up Cash",
     symbol: null,
     currency: "USD",
@@ -1927,7 +1931,12 @@ describe("setup and brokers over the tool", () => {
     expect(done.error).toBe(false);
     expect(done.body).toMatchObject({
       time_zone: "Asia/Tokyo",
-      made: ["portfolio Long term", "broker North", "broker South"],
+      made: [
+        "portfolio Cash",
+        "portfolio Long term",
+        "broker North",
+        "broker South",
+      ],
     });
     // set once, as the display currency: the same is a no-op, another refused
     expect(
@@ -2108,7 +2117,7 @@ describe("a fund's market", () => {
       );
     const made = await send("POST", "/positions", {
       kind: "cash",
-      portfolio: "Shares",
+      portfolio: null,
       name: "Made Up Cash",
       amount: 100,
       currency: "USD",
@@ -2118,7 +2127,7 @@ describe("a fund's market", () => {
     expect(await made.text()).toContain("counts by its currency");
     const { market: _, ...plain } = {
       kind: "cash",
-      portfolio: "Shares",
+      portfolio: null,
       name: "Made Up Cash",
       amount: 100,
       currency: "USD",
@@ -2177,7 +2186,7 @@ describe("gaps the import fixes left", () => {
     const cash = {
       action: "add",
       kind: "cash",
-      portfolio: "Shares",
+      portfolio: null,
       name: "Made Up Cash",
       amount: 100,
       currency: "USD",
@@ -2223,7 +2232,7 @@ describe("a cash row's name and broker", () => {
   const cash = {
     action: "add",
     kind: "cash",
-    portfolio: "Shares",
+    portfolio: null,
     name: "Savings",
     amount: 100,
     currency: "USD",

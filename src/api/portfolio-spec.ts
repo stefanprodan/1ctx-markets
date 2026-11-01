@@ -38,14 +38,17 @@ const total = {
   ),
   net_worth: note(
     nnum,
-    "Only in a total across portfolios: its value with reserve added.",
+    "Only in a total across portfolios: its value with reserve added; null when a reserve row has no rate.",
   ),
   cost: nnum,
   pl: nnum,
   pl_percent: nnum,
   day_change: nnum,
   invested: nnum,
-  reserve: note(nnum, "Cash kept apart, not marked dry powder."),
+  reserve: note(
+    nnum,
+    "Cash kept apart, not marked dry powder; null across portfolios when a reserve row has no rate.",
+  ),
   dry_powder: note(nnum, "Cash ready to invest."),
   invested_weight: nnum,
   reserve_weight: note(
@@ -55,7 +58,7 @@ const total = {
   dry_powder_weight: nnum,
   missing: note(
     list(str),
-    "What has no value or rate and is left out of the sum, by id or name, or the missing rate.",
+    "What has no value or rate and is left out of the sum, by id or name, or the missing rate; across portfolios never reserve, which the value leaves out.",
   ),
 };
 
@@ -212,6 +215,10 @@ const position = object(
 const portfolio = object({
   id: int,
   name: str,
+  cash: note(
+    bool,
+    "True on Cash, the one portfolio that holds all cash and only cash; it is never renamed or deleted.",
+  ),
   trades: int,
   positions: int,
   created_at: nstr,
@@ -340,7 +347,7 @@ export const portfolioSchemas: Record<string, Schema> = {
     {
       portfolio: note(
         { type: ["string", "integer"] },
-        "A name or an id; may be left out while there is one portfolio.",
+        "A name or an id, never Cash; may be left out while there is one portfolio besides Cash.",
       ),
       isin: note(
         str,
@@ -424,7 +431,7 @@ export const portfolioSchemas: Record<string, Schema> = {
     {
       portfolio: note(
         { type: ["string", "integer"] },
-        "A name or an id; may be left out while there is one portfolio.",
+        "A name or an id, never Cash; may be left out while there is one portfolio besides Cash.",
       ),
       symbol: str,
       side: values(["buy", "sell"]),
@@ -470,7 +477,10 @@ export const portfolioSchemas: Record<string, Schema> = {
   PositionArgs: object(
     {
       kind: values(["cash", "bond"]),
-      portfolio: { type: ["string", "integer"] },
+      portfolio: note(
+        { type: ["string", "integer"] },
+        "A name or an id. Cash goes to Cash, left out or named; a bond never does, and may leave it out while there is one portfolio besides Cash.",
+      ),
       name: str,
       symbol: note(str, "A bond's listing."),
       currency: str,
@@ -611,7 +621,7 @@ export const portfolioSchemas: Record<string, Schema> = {
   Settings: object({
     display_currency: note(
       nstr,
-      "An ISO 4217 code in circulation. Null only while none is set; a save left without it keeps it, and a portfolio needs one set.",
+      "An ISO 4217 code in circulation. Null only while none is set; a save left without it keeps it, and a portfolio needs one set. The first save makes Cash, the cash portfolio.",
     ),
     time_zone: note(
       nstr,
@@ -711,7 +721,7 @@ export const portfolioPaths = {
       security: WRITES,
       summary: "Make a portfolio",
       description:
-        "A portfolio is a name. It has no currency. Refused (409) until a display currency is set.",
+        "A portfolio is a name. It has no currency. Refused (409) until a display currency is set, and for the name Cash, which saving the display currency gives the cash portfolio.",
       requestBody: bodyOf(ref("Named")),
       responses: base({
         201: {
@@ -741,7 +751,7 @@ export const portfolioPaths = {
       operationId: "renamePortfolio",
       security: WRITES,
       summary: "Rename a portfolio",
-      description: "Renames it; its trades stay.",
+      description: "Renames it; its trades stay. Cash keeps its name (409).",
       requestBody: bodyOf(ref("Named")),
       responses: base({
         200: ok("The portfolio.", ref("OnePortfolio")),
@@ -756,7 +766,7 @@ export const portfolioPaths = {
       security: WRITES,
       summary: "Delete an empty portfolio",
       description:
-        "Refused while it holds a trade or position that is not removed; removed ones are deleted with it.",
+        "Refused while it holds a trade or position that is not removed, and always for Cash; removed ones are deleted with it.",
       responses: base({
         204: { description: "Deleted." },
         404: missing,
@@ -823,7 +833,7 @@ export const portfolioPaths = {
         "",
         "- Trades: `Symbol`, `Trade Date`, `Purchase Price`, `Quantity`, `Commission`, `Comment`, `Transaction Type`. A trade already saved is skipped. A fund's key (`fund:<isin>`, as an export writes it) names a fund kept; a fund is made by its first buy, never by a file.",
         "- Cash: `Item`, `Amount (<currency>)`, `As Of`, `Note`. Bonds: `Item`, `Symbol`, `Currency`, `Amount`, `Rate (%)`, `Purchase Date`, `Maturity`, `Note`. A list of fund totals is refused: a fund's buys are added one by one.",
-        "- Cash replaces the kept one with its name and broker. A bond with the listing (or name), purchase date, face and broker of a kept one is skipped; with no purchase date, any date matches.",
+        "- A cash list goes to Cash whatever portfolio the path names; trades and bonds are refused for Cash. Cash replaces the kept one with its name and broker. A bond with the listing (or name), purchase date, face and broker of a kept one is skipped; with no purchase date, any date matches.",
         "- A date after today is bad; a month (`YYYY-MM`) is its last day, or today in the current month.",
       ),
       requestBody: bodyOf(ref("ImportArgs")),
@@ -941,7 +951,7 @@ export const portfolioPaths = {
       security: WRITES,
       summary: "Add a position",
       description:
-        "Saves cash or a bond; a fund is bought as a trade (`POST /funds/trades`). Cash with the same name and broker replaces the kept one, a bond the one with its listing (or name), purchase date, face and broker; the old row is kept as replaced. A date after today is refused.",
+        "Saves cash or a bond; a fund is bought as a trade (`POST /funds/trades`). Cash lives only in Cash, which holds nothing else. Cash with the same name and broker replaces the kept one, a bond the one with its listing (or name), purchase date, face and broker; the old row is kept as replaced. A date after today is refused.",
       requestBody: bodyOf(ref("PositionArgs")),
       responses: base({
         201: {

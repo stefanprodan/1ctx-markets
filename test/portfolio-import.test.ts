@@ -13,7 +13,7 @@ import {
 import type { Who } from "../src/operations/who.ts";
 import { parseCsv, parseDay, parseNumber } from "../src/portfolios/csv.ts";
 import { portfolioByName, readPositions } from "../src/portfolios/store.ts";
-import { portfolioBefore } from "./helpers/portfolio.ts";
+import { cashBefore, portfolioBefore } from "./helpers/portfolio.ts";
 import { instrument, NOW, quote, world } from "./helpers/world.ts";
 
 const CASEY: Who = { name: "casey-agent", portfolio: "write", rules: "none" };
@@ -37,6 +37,7 @@ async function setup() {
   quote(w.db, "US:AAA", 120, 118);
   await portfolioBefore(w.m, "Shares");
   await portfolioBefore(w.m, "Copy");
+  await cashBefore(w.m);
   await createBroker(w.m, { name: "North" });
   return w;
 }
@@ -235,6 +236,38 @@ describe("an import's currencies", () => {
 });
 
 describe("position imports", () => {
+  test("cash goes to Cash whatever the import is for, and nothing else may", async () => {
+    const { m, db } = await setup();
+    const csv = ["Item,Amount (EUR),As Of,Note", "Spare,10,2026-04-17,"].join(
+      "\n",
+    );
+    const r = await importCsv(
+      m,
+      CASEY,
+      parseImport({ portfolio: "Shares", csv, confirm: true }),
+    );
+    if ("error" in r) throw new Error(r.message);
+    expect(r).toMatchObject({ portfolio: "Cash", counts: { saved: 1 } });
+    const cash = portfolioByName(db, "Cash")!;
+    expect(readPositions(db).map((p) => p.portfolio)).toEqual([cash.id]);
+    const bonds = [
+      "Item,Symbol,Currency,Amount,Rate (%),Purchase Date,Maturity,Note",
+      "Made Up Bond,,EUR,1000,5.5,2026-01-02,2030-01-02,",
+    ].join("\n");
+    for (const file of [bonds, YAHOO]) {
+      const refused = await importCsv(
+        m,
+        CASEY,
+        parseImport({ portfolio: "Cash", csv: file, confirm: true }),
+      );
+      expect(refused).toMatchObject({
+        error: "bad_arguments",
+        message: "Cash holds only cash; name another portfolio",
+      });
+    }
+    expect(readPositions(db)).toHaveLength(1);
+  });
+
   test("cash takes its header's currency and dry powder only where picked", async () => {
     const { m, db } = await setup();
     const csv = [

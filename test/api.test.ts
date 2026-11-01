@@ -2156,6 +2156,17 @@ async function portfolioOperations(
     415,
   );
   await refusals("PATCH", one, at, send("PATCH", { name: "Z" }));
+  // Cash, made with the display currency, keeps its name and its place
+  const kept = (await t.call(P).then((r) => r.json())).portfolios.find(
+    (p: { cash: boolean }) => p.cash,
+  ).id;
+  await check(
+    "PATCH",
+    one,
+    await t.call(`${P}/${kept}`, send("PATCH", { name: "Bank" })),
+    409,
+  );
+  await check("POST", P, await t.call(P, send("POST", { name: "CASH" })), 409);
 
   const B = "/brokers";
   const north = (
@@ -2388,9 +2399,9 @@ async function portfolioOperations(
   await refusals("POST", I, `${at}/import`, send("POST", { csv: file }));
 
   const S = "/positions";
+  // cash names no portfolio: it goes to Cash
   const cash = {
     kind: "cash",
-    portfolio: pid,
     name: "Made Up Cash",
     amount: 30,
     currency: "USD",
@@ -2666,6 +2677,12 @@ async function portfolioOperations(
   );
   await refusals("DELETE", bone, `${B}/${north}`);
   await check("DELETE", one, await t.call(at, { method: "DELETE" }), 409);
+  await check(
+    "DELETE",
+    one,
+    await t.call(`${P}/${kept}`, { method: "DELETE" }),
+    409,
+  );
   await check(
     "DELETE",
     one,

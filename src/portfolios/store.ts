@@ -11,7 +11,29 @@ export const MAX_NAME = 40;
 export const MAX_POSITION_NAME = 80;
 export const MAX_NOTE = 500;
 
-export type Portfolio = { id: number; name: string; createdAt: number };
+// cash: the one portfolio that holds all cash and only cash
+export type Portfolio = {
+  id: number;
+  name: string;
+  cash: boolean;
+  createdAt: number;
+};
+
+// the cash portfolio's name, fixed; the mark, never the name, finds it
+export const CASH_NAME = "Cash";
+
+export const isCashName = (name: string): boolean =>
+  name.trim().toLowerCase() === CASH_NAME.toLowerCase();
+
+const PORTFOLIO =
+  "select id, name, cash, created_at as createdAt from portfolios";
+
+type RawPortfolio = Omit<Portfolio, "cash"> & { cash: number };
+
+const portfolioOf = (r: RawPortfolio): Portfolio => ({
+  ...r,
+  cash: r.cash === 1,
+});
 export type Broker = { id: number; name: string; createdAt: number };
 
 export type Side = "buy" | "sell";
@@ -69,38 +91,48 @@ export type Position = {
 
 export function listPortfolios(db: Db): Portfolio[] {
   return db
-    .query<Portfolio, []>(
-      "select id, name, created_at as createdAt from portfolios order by name collate nocase, id",
-    )
-    .all();
+    .query<RawPortfolio, []>(`${PORTFOLIO} order by name collate nocase, id`)
+    .all()
+    .map(portfolioOf);
 }
 
 export function readPortfolio(db: Db, id: number): Portfolio | null {
-  return (
-    db
-      .query<Portfolio, [number]>(
-        "select id, name, created_at as createdAt from portfolios where id = ?",
-      )
-      .get(id) ?? null
-  );
+  const r = db
+    .query<RawPortfolio, [number]>(`${PORTFOLIO} where id = ?`)
+    .get(id);
+  return r === null ? null : portfolioOf(r);
+}
+
+export function cashPortfolio(db: Db): Portfolio | null {
+  const r = db.query<RawPortfolio, []>(`${PORTFOLIO} where cash = 1`).get();
+  return r === null ? null : portfolioOf(r);
 }
 
 export function portfolioByName(db: Db, name: string): Portfolio | null {
-  return (
+  const r = db
+    .query<RawPortfolio, [string]>(`${PORTFOLIO} where name = ? collate nocase`)
+    .get(name);
+  return r === null ? null : portfolioOf(r);
+}
+
+export function insertPortfolio(
+  db: Db,
+  name: string,
+  now: number,
+  cash = false,
+): number {
+  return Number(
     db
-      .query<Portfolio, [string]>(
-        "select id, name, created_at as createdAt from portfolios where name = ? collate nocase",
-      )
-      .get(name) ?? null
+      .query("insert into portfolios (name, cash, created_at) values (?, ?, ?)")
+      .run(name, cash ? 1 : 0, now).lastInsertRowid,
   );
 }
 
-export function insertPortfolio(db: Db, name: string, now: number): number {
-  return Number(
-    db
-      .query("insert into portfolios (name, created_at) values (?, ?)")
-      .run(name, now).lastInsertRowid,
-  );
+// made with the display currency; true when this call made it
+export function ensureCash(db: Db, now: number): boolean {
+  if (cashPortfolio(db) !== null) return false;
+  insertPortfolio(db, CASH_NAME, now, true);
+  return true;
 }
 
 export function renamePortfolio(db: Db, id: number, name: string): void {
@@ -597,9 +629,7 @@ export function recentSameTrade(
   );
 }
 
-// every row a position's updates chained, both ways, the latest first: an
-// update may rename it, move it to another broker or change a bond's face
-// or date, so no field of its own ties them
+// every row of a position's chain, latest first: an update may rename or move it
 export function chainOf(db: Db, id: number): Position[] {
   return db
     .query<RawPosition, [number]>(

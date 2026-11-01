@@ -294,8 +294,7 @@ export type Row = {
   parts: PartItem[];
 };
 
-// the value split three ways, each with its share of the value; across
-// portfolios reserve is outside the value, so it has no share of it
+// the value split three ways; across portfolios reserve is outside the value
 export type Split3 = {
   invested: number | null;
   reserve: number | null;
@@ -319,8 +318,7 @@ export type Total = {
   missing: string[];
 } & Split3;
 
-// cash kept apart from the markets: a view across portfolios leaves it
-// out of its value, weights and exposure
+// across portfolios reserve stays out of the value, weights and exposure
 export const isReserve = (r: Pick<Row, "kind" | "dry_powder">): boolean =>
   r.kind === "cash" && r.dry_powder !== true;
 
@@ -785,7 +783,7 @@ const nameOf = (r: Row): string => r.id ?? r.name ?? "";
 
 // the known values summed, the rest named; cost and gain over the rows
 // with both a cost and a value, so cash and an unknown cost never count;
-// apart: reserve is outside the value, and net worth counts it
+// apart: reserve, outside the value and inside net worth
 function sumOf(
   rows: readonly Row[],
   currency: string,
@@ -800,13 +798,18 @@ function sumOf(
   let any = false;
   let days = 0;
   const gone = new Set<string>();
+  // missing names only what the value counts; reserve unknown voids net worth
+  let unknownReserve = false;
   for (const r of rows) {
     const w = worth(r);
+    if (apart && isReserve(r)) {
+      if (w.value === null) unknownReserve = true;
+      continue;
+    }
     if (w.value === null) {
       gone.add(missing(r));
       continue;
     }
-    if (apart && isReserve(r)) continue;
     value += w.value;
     if (r.kind !== "cash" && w.cost !== null) {
       cost += w.cost;
@@ -819,13 +822,21 @@ function sumOf(
   return {
     currency,
     value: finite(value),
-    ...(apart ? { net_worth: finite(value + (split.reserve ?? 0)) } : {}),
+    ...(apart
+      ? {
+          net_worth: unknownReserve
+            ? null
+            : finite(value + (split.reserve ?? 0)),
+        }
+      : {}),
     cost: any ? finite(cost) : null,
     pl: any ? finite(costed - cost) : null,
     pl_percent: any ? pct(plPct(costed, cost)) : null,
     day_change: finite(days),
     missing: [...gone],
     ...split,
+    // a sum of the known part would read as the whole
+    ...(unknownReserve ? { reserve: null } : {}),
   };
 }
 

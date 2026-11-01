@@ -4,7 +4,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { render } from "preact-render-to-string";
-import type { Fetch } from "../src/web/data/api.ts";
+import { type Fetch, sentence } from "../src/web/data/api.ts";
 import type {
   Holding,
   Holdings,
@@ -39,12 +39,14 @@ import {
 import {
   activityOf,
   barOf,
+  cashDate,
   cashEdits,
   columnsFor,
   currencies,
   dryPowderFor,
   dryPowders,
   enteredBy,
+  figureEdits,
   findZones,
   foldFills,
   groupShare,
@@ -61,6 +63,7 @@ import {
   monthsOf,
   orderOf,
   pageOf,
+  payFromLabel,
   priceLine,
   ranked,
   rateLine,
@@ -682,7 +685,7 @@ describe("the page's words", () => {
     expect(html).toContain('value="123.4"');
   });
 
-  test("an edit starts on today, a bond's on its purchase date", async () => {
+  test("an edit starts on the row's own date", async () => {
     const { s: st } = await loaded();
     const dateOf = (h: Holding) =>
       render(
@@ -690,7 +693,7 @@ describe("the page's words", () => {
       ).match(/type="date" value="([^"]*)"/)?.[1];
     const cash = { ...HOLDINGS.holdings[1]!, as_of: "2026-01-13" };
     const bond = { ...cash, kind: "bond" as const };
-    expect(dateOf(cash)).toBe(today(null));
+    expect(dateOf(cash)).toBe("2026-01-13");
     expect(dateOf(bond)).toBe("2026-01-13");
   });
 
@@ -855,19 +858,44 @@ describe("the add panel", () => {
     expect(heldAt(HOLDINGS, "US:NOT")).toEqual([]);
   });
 
-  test("a buy pays from its own currency's dry powder, its portfolio's first", () => {
+  test("a buy pays from the dry powder at its broker, then in its currency", () => {
+    const row = (
+      position: number,
+      broker: string | null,
+      currency: string,
+      name = `Cash ${broker ?? "kept"}`,
+    ) => ({ position, name, broker, currency });
     const all = [
-      { position: 1, portfolio: "Cash", currency: "EUR" },
-      { position: 2, portfolio: "Shares", currency: "USD" },
-      { position: 3, portfolio: "Cash", currency: "USD" },
+      row(1, "North", "EUR"),
+      row(2, "North", "USD"),
+      row(3, "South", "USD"),
+      row(4, null, "JPY"),
     ];
-    expect(dryPowderFor(all, "Shares", "USD")?.position).toBe(2);
-    expect(dryPowderFor(all, "Cash", "USD")?.position).toBe(3);
-    expect(dryPowderFor(all, "Coins", "USD")?.currency).toBe("USD");
-    expect(dryPowderFor(all, "Cash", "JPY")?.position).toBe(1);
-    expect(dryPowderFor([], "Cash", "EUR")).toBeNull();
+    const at = (broker: string | null, currency: string) =>
+      dryPowderFor(all, broker, currency);
+    expect(at("north", "USD").pick?.position).toBe(2);
+    expect(at("South", "USD").pick?.position).toBe(3);
+    // none at the broker: the one in its currency
+    expect(at("West", "EUR").pick?.position).toBe(1);
+    expect(at(null, "JPY").pick?.position).toBe(4);
+    // several in its currency, none at the broker: the owner picks
+    const asked = at("West", "USD");
+    expect(asked.pick).toBeNull();
+    expect(asked.choices.map((d) => d.position)).toEqual([2, 3]);
+    // none in its currency: any of them
+    expect(at("North", "GBP").choices).toHaveLength(4);
+    expect(dryPowderFor([], "North", "EUR")).toEqual({
+      pick: null,
+      choices: [],
+    });
+    expect(payFromLabel(all[0]!, [all[0]!])).toBe("Pay from Cash North");
+    const twins = [
+      row(5, "North", "EUR", "Spare"),
+      row(6, "South", "EUR", "Spare"),
+    ];
+    expect(payFromLabel(twins[1]!, twins)).toBe("Pay from Spare · South");
     expect(dryPowders(HOLDINGS)).toEqual([
-      { position: 5, portfolio: "", currency: "EUR" },
+      { position: 5, name: "Kept for buying", broker: null, currency: "EUR" },
     ]);
   });
 
@@ -969,13 +997,13 @@ describe("the owner's time zone", () => {
     expect(settings).not.toContain("<select");
   });
 
-  test("an edit starts on the owner's today", async () => {
+  test("an edit of a row with no date starts on the owner's today", async () => {
     const s = at("Pacific/Kiritimati");
     await s.portfolios.load();
     const html = render(
       <PositionEdit
         store={s.portfolios}
-        h={{ ...HOLDINGS.holdings[1]!, as_of: "2026-01-13" }}
+        h={{ ...HOLDINGS.holdings[1]!, as_of: null }}
         onDone={() => {}}
       />,
     );
@@ -1183,12 +1211,46 @@ describe("cash: dry powder, reserve, broker and note", () => {
     ).toEqual({ broker: null, note: "Kept" });
   });
 
-  test("Add cash sends its note", async () => {
+  test("Add cash has a note field", async () => {
     const { s } = await loaded();
     const html = render(
       <AddForm store={s.portfolios} kind="cash" onDone={() => {}} />,
     );
     expect(html).toContain(">Note</label>");
+  });
+
+  test("an edit sends a new amount with the date shown, and nothing for a name alone", () => {
+    const row = {
+      ...dry,
+      as_of: "2026-01-13",
+      parts: [
+        {
+          portfolio: "Cash",
+          broker: "North",
+          quantity: null,
+          average_cost: null,
+          cost: null,
+          value: 300,
+          position: 5,
+          as_of: "2026-01-13",
+          amount: 300,
+        },
+      ],
+    };
+    // a name, broker or note alone keeps the row's date
+    expect(figureEdits(row, { amount: 300, date: "2026-01-13" })).toEqual({});
+    // a typo fixed on the row's own date keeps it, as the form shows
+    expect(figureEdits(row, { amount: 250, date: "2026-01-13" })).toEqual({
+      amount: 250,
+      date: "2026-01-13",
+    });
+    expect(figureEdits(row, { amount: 300, date: "2026-02-01" })).toEqual({
+      date: "2026-02-01",
+    });
+    // the date field moves to today with a new amount, back with the old
+    expect(cashDate(row, 250, "2026-10-28")).toBe("2026-10-28");
+    expect(cashDate(row, 300, "2026-10-28")).toBe("2026-01-13");
+    expect(cashDate(row, null, "2026-10-28")).toBe("2026-01-13");
   });
 
   test("the search finds cash by its note", () => {
@@ -1202,6 +1264,25 @@ describe("cash: dry powder, reserve, broker and note", () => {
         "position 12 has this name and broker; update or remove it instead",
       ),
     ).toBe("Other cash has this name and broker.");
+    expect(
+      plainError(
+        "Position 12 has this name and broker; update or remove it instead.",
+      ),
+    ).toBe("Other cash has this name and broker.");
+  });
+
+  test("a fund refusal reads plainly as the page receives it", () => {
+    expect(
+      plainError(sentence("no fund ZZFUND000011 yet; its first buy names it")),
+    ).toBe("Name the fund.");
+    expect(
+      plainError(
+        sentence("no fund ZZFUND000011 yet; its first buy names its currency"),
+      ),
+    ).toBe("Pick a currency.");
+    expect(
+      plainError(sentence("no fund ZZFUND000011; its first trade is a buy")),
+    ).toBe("Nothing of this fund is held.");
   });
 });
 
@@ -1809,5 +1890,71 @@ describe("removed trades", () => {
     expect(html).toContain(">Buy<");
     expect(html).toContain(">Sell<");
     expect(html).toContain("Made Up Fund");
+  });
+});
+
+describe("the Cash portfolio", () => {
+  const CASH = { id: 3, name: "Cash", cash: true, trades: 0, positions: 1 };
+  const at = async (
+    portfolios: Overview["portfolios"],
+    tab: number | null = null,
+  ) => {
+    const f = fake({
+      "GET /api/v1/portfolios": { ...OVERVIEW, portfolios },
+      "GET /api/v1/holdings": HOLDINGS,
+      "GET /api/v1/portfolios/": HOLDINGS,
+      "GET /api/v1/trades": { trades: [] },
+    });
+    const s = store(
+      f.fetch,
+      () => NOW,
+      () => "/portfolios",
+      () => {},
+    );
+    await s.portfolios.open({ portfolio: tab, currency: null });
+    return s.portfolios;
+  };
+
+  test("Add cash has no portfolio picker", async () => {
+    const st = await at([CASH, ...OVERVIEW.portfolios]);
+    const html = render(<AddForm store={st} kind="cash" onDone={() => {}} />);
+    expect(html).not.toContain('aria-label="Portfolio');
+    expect(html).not.toContain("Pick a portfolio");
+    expect(html).toContain('aria-label="Broker:');
+  });
+
+  test("the trade form's picker leaves Cash out, its tab and as the only one", async () => {
+    const one = await at([CASH, OVERVIEW.portfolios[0]!], CASH.id);
+    for (const kind of ["trade", "fund", "bond"] as const) {
+      const html = render(
+        <AddForm store={one} kind={kind} onDone={() => {}} />,
+      );
+      expect(html).toContain('aria-label="Portfolio: Shares"');
+    }
+    const two = await at([CASH, ...OVERVIEW.portfolios], CASH.id);
+    const html = render(<AddForm store={two} kind="trade" onDone={() => {}} />);
+    expect(html).toContain('aria-label="Portfolio: Pick a portfolio"');
+    expect(render(<ImportPanel store={two} onDone={() => {}} />)).toContain(
+      'aria-label="Portfolio: Pick a portfolio"',
+    );
+  });
+
+  test("Cash has no rename or remove", async () => {
+    const st = await at([CASH, ...OVERVIEW.portfolios]);
+    const html = render(<SettingsPanel store={st} onDone={() => {}} />);
+    expect(html).toContain(">Cash<");
+    expect(html).not.toContain('aria-label="Rename Cash"');
+    expect(html).not.toContain('aria-label="Delete Cash"');
+    expect(html).toContain('aria-label="Rename Shares"');
+    expect(html).toContain('aria-label="Delete Shares"');
+  });
+
+  test("its refusals read plainly", () => {
+    expect(plainError("Cash holds only cash; name another portfolio")).toBe(
+      "Cash holds only cash. Pick another portfolio.",
+    );
+    expect(plainError("the name Cash is kept for cash")).toBe(
+      "The name Cash is kept for cash.",
+    );
   });
 });

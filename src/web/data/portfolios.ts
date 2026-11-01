@@ -49,6 +49,8 @@ const onPage = (): boolean =>
 export type PortfolioRow = {
   id: number;
   name: string;
+  // Cash: holds all cash and only cash, never renamed or removed
+  cash?: boolean;
   trades: number;
   positions: number;
 };
@@ -277,7 +279,8 @@ export type Listing = {
 
 export type PositionIn = {
   kind: "cash" | "bond";
-  portfolio: number;
+  // cash leaves it out: it goes to Cash
+  portfolio?: number;
   name: string;
   currency?: string;
   amount?: number;
@@ -356,7 +359,13 @@ export function plainError(said: string): string {
   if (/^sells more than that broker holds/i.test(t)) {
     return "More than that broker holds.";
   }
-  if (/^position \d+ has this name and broker/.test(t)) {
+  if (/^cash holds only cash/i.test(t)) {
+    return "Cash holds only cash. Pick another portfolio.";
+  }
+  if (/^the name cash is kept for cash/i.test(t)) {
+    return "The name Cash is kept for cash.";
+  }
+  if (/^position \d+ has this name and broker/i.test(t)) {
     return "Other cash has this name and broker.";
   }
   if (/is listed in .*a bond takes its listing's currency/.test(t)) {
@@ -369,13 +378,13 @@ export function plainError(said: string): string {
   if (/^the fund \S+ has this name/i.test(t)) {
     return "Another fund has this name.";
   }
-  if (/^no fund \S+ yet; its first buy names it$/i.test(t)) {
+  if (/^no fund \S+ yet; its first buy names it\.?$/i.test(t)) {
     return "Name the fund.";
   }
-  if (/^no fund \S+ yet; its first buy names its currency$/i.test(t)) {
+  if (/^no fund \S+ yet; its first buy names its currency\.?$/i.test(t)) {
     return "Pick a currency.";
   }
-  if (/^no fund \S+; its first trade is a buy$/i.test(t)) {
+  if (/^no fund \S+; its first trade is a buy\.?$/i.test(t)) {
     return "Nothing of this fund is held.";
   }
   if (/a fund has no live price/i.test(t)) return "Give the price or total.";

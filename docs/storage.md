@@ -241,7 +241,12 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   indexes and ids as they were; `0031-cash-no-market` clears
   `positions.market`, since cash counts by its currency and a bond by
   its listing: no code reads or writes the column, kept so an older
-  binary still opens the database.
+  binary still opens the database; `0032-cash-portfolio` adds
+  `portfolios.cash`, the mark on the one portfolio that holds all cash
+  (a partial unique index keeps it to one), marks a portfolio named
+  Cash holding only cash or renames one holding more to "Cash
+  (before)", makes Cash when the display currency is set or cash is
+  kept, and moves every cash row, removed ones too, into it.
   Rows are never deleted but a portfolio with no live row, its removed
   rows with it, and a broker no live row names; what they mean is
   `docs/portfolios.md`.

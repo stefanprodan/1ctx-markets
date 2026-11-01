@@ -3,8 +3,7 @@
 
 import type { Migration } from "../migration.ts";
 
-// cash counts by its currency and a bond by its listing, so no position
-// names a market; the column stays, unread, so an older binary still opens
+// cash counts by its currency, a bond by its listing; the column stays for older binaries
 export const m0031: Migration = {
   id: "0031-cash-no-market",
   up(db) {
