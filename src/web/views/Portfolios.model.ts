@@ -451,17 +451,25 @@ export function brokerEdit(
     : {};
 }
 
+// "" takes the note off
+export function noteEdit(
+  h: Holding,
+  note: string,
+): Pick<PositionChange, "note"> {
+  const n = note.trim();
+  return n !== (h.note ?? "") ? { note: n === "" ? null : n } : {};
+}
+
 // only what differs is sent; null takes a broker or a note off
 export function cashEdits(
   h: Holding,
   edited: { name: string; broker: string; note: string },
 ): Pick<PositionChange, "name" | "broker" | "note"> {
   const name = edited.name.trim();
-  const note = edited.note.trim();
   return {
     ...(name !== (h.name ?? "") ? { name } : {}),
     ...brokerEdit(h, edited.broker),
-    ...(note !== (h.note ?? "") ? { note: note === "" ? null : note } : {}),
+    ...noteEdit(h, edited.note),
   };
 }
 
