@@ -20,6 +20,7 @@ import {
 import { store } from "../src/web/data/store.ts";
 import {
   amount,
+  day,
   money,
   signedAmount,
   signedMoney,
@@ -1508,13 +1509,19 @@ describe("a fund the owner prices", () => {
     expect(holdingName({ ...fundRow, isin: undefined, parts: [] }, NOW)).toBe(
       "Fund",
     );
+    // its price, then the day it is for under it; the year only when not this one
+    expect(priceLine(fundRow)).toBe("6.00 EUR");
     // ICU builds name September "Sep" or "Sept"
-    expect(priceLine(fundRow, NOW)).toMatch(/^6\.00 EUR · 30 Sept?$/);
+    expect(day("2026-09-30", NOW)).toMatch(/^30 Sept?$/);
+    expect(day("2025-12-29", NOW)).toBe("29 Dec 2025");
     expect(pageOf(fundRow)).toBeNull();
     expect(homeOf(fundRow)).toBe("price");
     // no instrument page: its row is a button that opens the drawer
     const html = render(<PortfoliosBody store={s.portfolios} />);
     expect(html).not.toContain(`/instruments/fund`);
+    expect(html).toMatch(
+      /pf-price">6\.00 EUR<\/span><span class="num small faint pf-price">30 Sept?( 2026)?</,
+    );
     expect(html).toContain(
       '<button type="button" class="table-open"><span class="table-hidden">Made Up World Fund</span>',
     );

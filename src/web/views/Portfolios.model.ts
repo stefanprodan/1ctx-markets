@@ -743,12 +743,9 @@ export function rowActions(h: Holding): RowAction[] {
   return out;
 }
 
-// the price cell: a hand price with its day, a bond's as a percent
-export function priceLine(h: Holding, now = Date.now()): string {
+// the price cell's figure: a bond's as a percent of par
+export function priceLine(h: Holding): string {
   if (h.kind === "cash") return "";
-  if (h.priced === "hand") {
-    return `${price(h.price, h.currency)}${h.as_of ? ` · ${day(h.as_of, now)}` : ""}`;
-  }
   if (h.unit === "percent_of_par") return `${price(h.price)}%`;
   return price(h.price, h.currency);
 }

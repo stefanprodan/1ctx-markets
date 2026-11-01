@@ -717,12 +717,16 @@ export function holdingColumns(
       width: "minmax(0, 1.1fr)",
       align: "end",
       sortable: true,
-      hide: "phone",
+      hide: "tablet",
       show: cols.price,
       cell: (x) => (
         <>
           <span class="num faint pf-price">{priceLine(x)}</span>
-          <Change s={percent(x.change_percent)} class="small" />
+          {x.priced === "hand" ? (
+            x.as_of && <Num class="small faint pf-price">{day(x.as_of)}</Num>
+          ) : (
+            <Change s={percent(x.change_percent)} class="small" />
+          )}
         </>
       ),
     },
