@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Anchors are dates on the benchmark's days, not row offsets: calendars differ.
 
-import { addDays, wallOfDate } from "../market/zone.ts";
+import { addDays } from "../market/zone.ts";
+import { monthsBack, yearStart } from "../shared/periods.ts";
 import { type Close, checkOrder } from "./common.ts";
 
 export const RETURN_NOTE =
@@ -79,7 +80,7 @@ export function periodStart(end: string, period: ReturnPeriod): string {
   if (period === "1w") return addDays(end, -7);
   if (period === "1m") return monthsBack(end, 1);
   if (period === "3m") return monthsBack(end, 3);
-  return `${Number(end.slice(0, 4)) - 1}-12-31`;
+  return yearStart(end);
 }
 
 // the earliest a period's start can be, for a read bounded to it
@@ -105,16 +106,6 @@ export function trailingReturns(l: Listing): Returns | null {
     out[period] = c?.change ?? null;
   }
   return out;
-}
-
-// the same calendar day m months back, clamped to that month's end
-export function monthsBack(date: string, months: number): string {
-  const d = new Date(wallOfDate(date));
-  const y = d.getUTCFullYear();
-  const m = d.getUTCMonth() - months;
-  const monthEnd = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
-  const day = Math.min(d.getUTCDate(), monthEnd);
-  return new Date(Date.UTC(y, m, day)).toISOString().slice(0, 10);
 }
 
 function withLive(l: Listing): readonly Close[] {

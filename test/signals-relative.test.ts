@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
+import { monthsBack } from "../src/shared/periods.ts";
 import {
   LEVEL_NOTE,
-  monthsBack,
   RETURN_NOTE,
   relativeReturn,
 } from "../src/signals/relative.ts";
