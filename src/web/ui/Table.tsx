@@ -163,6 +163,12 @@ export function Table<R>({
     "--table-cols-phone": tracks(columns, "phone", menu !== undefined),
   };
   const span = cols.length + (menu ? 1 : 0);
+  // the row's open lives in a cell shown at every width: a hidden
+  // cell's would leave the row with nothing to tap
+  const at = Math.max(
+    0,
+    cols.findIndex((c) => c.hide === undefined),
+  );
   return (
     <table
       class={`table${dense ? " table-dense" : ""}`}
@@ -237,7 +243,7 @@ export function Table<R>({
               >
                 {cols.map((c, i) => (
                   <td key={c.key} class={cellClass(c as Column<unknown>)}>
-                    {i === 0 && o && <OpenOver o={o} label={rowLabel?.(r)} />}
+                    {i === at && o && <OpenOver o={o} label={rowLabel?.(r)} />}
                     {c.cell(r)}
                   </td>
                 ))}

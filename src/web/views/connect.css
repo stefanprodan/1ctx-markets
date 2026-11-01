@@ -23,27 +23,29 @@
     border-top: 0;
   }
 
-  /* the copy button sits in the box's corner, the text clear of it */
+  /* the frame holds the text and, beside it, the copy button: long code
+     scrolls inside its own column and never under the button (a scroll
+     box's right padding only shows at the scroll's end) */
   .connect-snippet {
-    position: relative;
-  }
-  /* code keeps its lines; a narrow box scrolls rather than wraps */
-  .connect-snippet-text {
-    margin: 0;
-    padding: var(--space-3) 40px var(--space-3) var(--space-3);
+    display: flex;
+    align-items: flex-start;
     border: 1px solid var(--line);
     border-radius: var(--radius);
     background: var(--inset);
+  }
+  /* code keeps its lines; a narrow box scrolls rather than wraps */
+  .connect-snippet-text {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    padding: var(--space-3) var(--space-1) var(--space-3) var(--space-3);
     font-family: var(--mono);
     font-size: var(--text-small);
     overflow-x: auto;
     white-space: pre;
   }
-  /* scrolled code passes under the button, not through it */
   .connect-snippet-copy {
-    position: absolute;
-    top: 2px;
-    right: 2px;
-    background: var(--inset);
+    flex-shrink: 0;
+    margin: 2px 2px 0 0;
   }
 }

@@ -172,6 +172,29 @@ describe("the table", () => {
     expect(html).not.toContain("chevron");
   });
 
+  test("a row's open sits in a cell shown at every width", () => {
+    const html = render(
+      <Table
+        columns={[
+          { ...COLUMNS[2]!, key: "date", hide: "tablet" },
+          COLUMNS[1]!,
+          COLUMNS[0]!,
+          COLUMNS[3]!,
+        ]}
+        rows={ROWS.slice(0, 1)}
+        rowKey={(r) => r.id}
+        open={() => ({ run: () => {} })}
+        rowLabel={(r) => r.name}
+      />,
+    );
+    const cells = html.match(/<td[^>]*>.*?<\/td>/g) ?? [];
+    expect(cells).toHaveLength(4);
+    expect(cells[0]).toContain("table-hide-tablet");
+    expect(cells[0]).not.toContain("table-open");
+    expect(cells[1]).not.toContain("table-open");
+    expect(cells[2]).toContain('class="table-open"');
+  });
+
   test("groups carry their labels, and no rows say the empty words", () => {
     const grouped = render(
       <Table
@@ -814,5 +837,23 @@ describe("the symbol search", () => {
     expect(render(<Page title="Status" />)).toContain("Search a symbol");
     const off = render(<Page title="Home" search={false} />);
     expect(off).not.toContain("ssearch");
+  });
+});
+
+describe("the bundled styles", () => {
+  // the bundler lowers a :not() or :is() selector list to :-webkit-any()
+  // and :-moz-any() copies; inside Safari's forgiving :where() the one it
+  // cannot read matches every element, so no rule may need lowering
+  test("hold no lowered :-webkit-any() or :-moz-any() selectors", async () => {
+    const out = await Bun.build({
+      entrypoints: ["src/web/index.html"],
+      minify: true,
+    });
+    expect(out.success).toBe(true);
+    const css = out.outputs.filter((o) => o.path.endsWith(".css"));
+    expect(css.length).toBeGreaterThan(0);
+    for (const o of css) {
+      expect((await o.text()).match(/:-(moz|webkit)-any\(/g)).toBeNull();
+    }
   });
 });

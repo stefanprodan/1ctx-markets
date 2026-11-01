@@ -5,6 +5,7 @@
 // a link, or pick one choice of several (checked).
 
 import type { ComponentChildren } from "preact";
+import { useEffect, useRef } from "preact/hooks";
 import { Icon, type IconName } from "../lib/icons.tsx";
 import { useMenu } from "../lib/menu.ts";
 import "./menu.css";
@@ -132,6 +133,18 @@ export function MenuButton({
   onOpen?: () => void;
 }) {
   const { open, root } = useMenu(back);
+  const pop = useRef<HTMLDivElement>(null);
+  // a menu low in a drawer's scrolling body opens past its edge: the
+  // body scrolls just enough to show it all. Only that body: scrolling
+  // into view from a page's sticky head moves the page under it
+  useEffect(() => {
+    const menu = pop.current;
+    const body = menu?.closest<HTMLElement>(".drawer-body");
+    if (!open.value || !menu || !body) return;
+    const past =
+      menu.getBoundingClientRect().bottom - body.getBoundingClientRect().bottom;
+    if (past > 0) body.scrollTop += past;
+  }, [open.value]);
   const close = () => {
     open.value = false;
   };
@@ -175,6 +188,7 @@ export function MenuButton({
           }${menuClass ? ` ${menuClass}` : ""}`}
           role="menu"
           aria-label={label}
+          ref={pop}
         >
           {items ? (
             <MenuItems items={items} close={close} />
