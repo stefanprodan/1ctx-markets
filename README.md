@@ -28,8 +28,11 @@ dividends or tax, and it makes no model calls.
   benchmark, `search` for listings, `movers` for the day's moves and
   average crossings, `screen` to filter and sort a list of symbols on a
   fixed set of fields, `research` and `events` for fundamentals,
-  analysts, earnings and news, `rules` for price alerts, and `portfolio` for trades and holdings. There is
-  no SQL or query tool.
+  analysts, earnings and news, `rules` for price alerts, and `portfolio`
+  for trades and holdings, with `portfolio_trade`, `portfolio_cash`,
+  `portfolio_bond`, `portfolio_fund` and `portfolio_setup` to change
+  them, listed only to a key allowed to write. There is no SQL or query
+  tool.
 - **Signals on live prices.** Moving averages (SMA 50 and 200, EMA 20),
   MACD, RSI 14, ATR 14, the lower Bollinger band, 52-week high, low
   and drawdown, volatility, volume ratio, and daily and weekly crossings,
@@ -53,7 +56,7 @@ dividends or tax, and it makes no model calls.
   answering 304 when nothing is new.
 - **Portfolios.** Trades by broker, funds bought and sold as trades and
   priced by hand, and positions (cash, bonds) entered in the web UI or
-  by an agent with the `portfolio` tool, valued live: average cost,
+  by an agent with the portfolio tools, valued live: average cost,
   value and profit or loss in each instrument's own currency, totals
   per currency, and converted into a currency the owner names, every
   rate answered.

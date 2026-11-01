@@ -3,10 +3,12 @@
 
 import { describe, expect, test } from "bun:test";
 import {
-  INSTRUCTIONS,
   INSTRUCTIONS_BYTES,
+  instructions,
 } from "../src/server/instructions.ts";
-import { mcpClient, withApp } from "./helpers/app.ts";
+import { ACCESS_LEVELS, mcpClient, seedKey, withApp } from "./helpers/app.ts";
+
+const ALL = instructions({ portfolio: "write", rules: "write" });
 
 // Backticked names that are answer fields, checked in review; every other
 // backticked name must be a registered tool or one of its arguments.
@@ -24,6 +26,10 @@ const ANSWER_FIELDS = [
   "previous_close",
   "valuation",
 ];
+
+// an answer field that a portfolio tool also takes as an argument, so a
+// key without portfolio access reads it as the field
+const SHARED_FIELDS = ["currency"];
 
 // the text goes to every user: no one's place or workspace
 const DENIED = ["1ctx", "project", "Bucharest", "BVB", "Romania"];
@@ -53,69 +59,96 @@ function propertyNames(schema: unknown, into = new Set<string>()) {
   return into;
 }
 
-const backticked = () =>
-  new Set([...INSTRUCTIONS.matchAll(/`([^`]+)`/g)].map((m) => m[1]!));
+const backticked = (text: string) =>
+  new Set([...text.matchAll(/`([^`]+)`/g)].map((m) => m[1]!));
+
+// each access level's key, its instructions and the tools it lists
+async function perKey(
+  t: Parameters<Parameters<typeof withApp>[0]>[0],
+  fn: (
+    text: string,
+    tools: { name: string; description?: string; inputSchema: unknown }[],
+    level: (typeof ACCESS_LEVELS)[number],
+  ) => void,
+) {
+  for (const level of ACCESS_LEVELS) {
+    const token = seedKey(t, `${level.portfolio}-${level.rules}`, level);
+    const client = await mcpClient(t, token);
+    const text = client.getInstructions()!;
+    const { tools } = await client.listTools();
+    await client.close();
+    expect([level, text]).toEqual([level, instructions(level)]);
+    fn(text, tools, level);
+  }
+}
 
 describe("the server instructions", () => {
-  test("are sent on initialize, under the byte cap", () =>
-    withApp(async (t) => {
-      const client = await mcpClient(t);
-      expect(client.getInstructions()).toBe(INSTRUCTIONS);
-      await client.close();
-      expect(Buffer.byteLength(INSTRUCTIONS)).toBeLessThanOrEqual(
-        INSTRUCTIONS_BYTES,
-      );
-    }));
+  test("are sent on initialize per key, each under the byte cap", () =>
+    withApp((t) =>
+      perKey(t, (text) => {
+        expect(Buffer.byteLength(text)).toBeLessThanOrEqual(INSTRUCTIONS_BYTES);
+      }),
+    ));
 
   test("route between tools first and say what is not held last", () => {
-    const at = GROUPS.map((g) => INSTRUCTIONS.indexOf(g));
+    const at = GROUPS.map((g) => ALL.indexOf(g));
     for (const i of at) expect(i).toBeGreaterThanOrEqual(0);
     expect(at).toEqual([...at].sort((a, b) => a - b));
-    expect(INSTRUCTIONS.indexOf("`quote`")).toBeLessThan(at[1]!);
+    expect(ALL.indexOf("`quote`")).toBeLessThan(at[1]!);
   });
 
-  test("name every registered tool and only its arguments", () =>
-    withApp(async (t) => {
-      const client = await mcpClient(t);
-      const { tools } = await client.listTools();
-      await client.close();
-      const names = new Set(tools.map((x) => x.name));
-      const args = new Set<string>();
-      for (const tool of tools) propertyNames(tool.inputSchema, args);
+  test("name every tool the key lists and only its arguments", () =>
+    withApp((t) =>
+      perKey(t, (text, tools, level) => {
+        const names = new Set(tools.map((x) => x.name));
+        const args = new Set<string>();
+        for (const tool of tools) propertyNames(tool.inputSchema, args);
 
-      const named = backticked();
-      for (const tool of names) expect(named).toContain(tool);
-      for (const field of ANSWER_FIELDS) {
-        expect(named).toContain(field);
-        // an argument is checked against the schemas, never listed here
-        expect(args.has(field) || names.has(field)).toBe(false);
-      }
-      const unknown = [...named].filter(
-        (x) => !names.has(x) && !args.has(x) && !ANSWER_FIELDS.includes(x),
-      );
-      expect(unknown).toEqual([]);
-    }));
+        const named = backticked(text);
+        for (const tool of names)
+          expect([level, named.has(tool)]).toEqual([level, true]);
+        for (const field of ANSWER_FIELDS) {
+          expect(named).toContain(field);
+          // an argument is checked against the schemas, never listed here
+          expect(args.has(field) || names.has(field)).toBe(false);
+        }
+        const unknown = [...named].filter(
+          (x) =>
+            !names.has(x) &&
+            !args.has(x) &&
+            !ANSWER_FIELDS.includes(x) &&
+            !SHARED_FIELDS.includes(x),
+        );
+        expect([level, unknown]).toEqual([level, []]);
+      }),
+    ));
 
   test("send a question on the owner's holdings to portfolio first", () =>
-    withApp(async (t) => {
-      const line = INSTRUCTIONS.split("\n").find((l) =>
-        l.includes("`portfolio`"),
-      )!;
-      const client = await mcpClient(t);
-      const { tools } = await client.listTools();
-      await client.close();
-      const tool = tools.find((x) => x.name === "portfolio")!.description!;
-      for (const text of [line, tool]) {
-        for (const said of ['"my stocks"', '"my ETF"', '"my portfolio"']) {
-          expect(text).toContain(said);
+    withApp((t) =>
+      perKey(t, (text, tools, level) => {
+        const line = text.split("\n").find((l) => l.includes("`portfolio`"));
+        const tool = tools.find((x) => x.name === "portfolio");
+        if (level.portfolio === "none") {
+          expect(line).toBeUndefined();
+          expect(tool).toBeUndefined();
+          return;
         }
-        expect(text).toMatch(/holdings first, then its symbols to/);
-      }
-    }));
+        for (const said of [line!, tool!.description!]) {
+          for (const words of ['"my stocks"', '"my ETF"', '"my portfolio"']) {
+            expect(said).toContain(words);
+          }
+          expect(said).toMatch(/holdings first, then its symbols to/);
+        }
+        // a new owner is set up only by a key that writes
+        expect(line!.includes("`portfolio_setup` makes one")).toBe(
+          level.portfolio === "write",
+        );
+      }),
+    ));
 
   test("name no holding, place or workspace", () => {
     for (const word of DENIED) {
-      expect(INSTRUCTIONS.toLowerCase()).not.toContain(word.toLowerCase());
+      expect(ALL.toLowerCase()).not.toContain(word.toLowerCase());
     }
   });
 });

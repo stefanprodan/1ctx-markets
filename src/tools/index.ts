@@ -1,19 +1,14 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 
-import {
-  fromJsonSchema,
-  type JsonSchemaType,
-  type jsonSchemaValidator,
-  type McpServer,
-} from "@modelcontextprotocol/server";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { INTRADAY_SESSIONS } from "../market/intraday.ts";
 import {
   errorResult,
   type ToolResult,
   textResult,
 } from "../operations/answer.ts";
-import { ArgError, MAX_SYMBOL } from "../operations/args.ts";
+import { ArgError } from "../operations/args.ts";
 import {
   eventsAnswer,
   MAX_EVENT_SYMBOLS,
@@ -26,13 +21,6 @@ import {
 } from "../operations/history.ts";
 import type { Markets } from "../operations/markets.ts";
 import { AVERAGES, moversAnswer, parseMovers } from "../operations/movers.ts";
-import {
-  ADD_KINDS,
-  MAX_SETUP_BROKERS,
-  PORTFOLIO_ACTIONS,
-  parsePortfolio,
-  portfolioAnswer,
-} from "../operations/portfolio.ts";
 import { MAX_SYMBOLS, parseQuote, quotePage } from "../operations/quote.ts";
 import { SINCE_DAYS } from "../operations/research.ts";
 import { parseRules, RULE_ACTIONS, rulesAnswer } from "../operations/rules.ts";
@@ -44,7 +32,7 @@ import {
   screenAnswer,
 } from "../operations/screen.ts";
 import { parseSearch, searchPage } from "../operations/search.ts";
-import { NO_ACCESS, type Who } from "../operations/who.ts";
+import { type Access, NO_ACCESS, type Who } from "../operations/who.ts";
 import {
   MAX_COMPARISONS,
   MAX_DEPTH,
@@ -53,48 +41,13 @@ import {
 } from "../rules/format.ts";
 import { errorFields } from "../runtime/log.ts";
 import { CALENDAR_AHEAD_DAYS } from "../sources/finnhub/store.ts";
+import { portfolioTools } from "./portfolio.ts";
 import {
   parseResearch,
   RESEARCH_SECTIONS,
   researchAnswer,
 } from "./research.ts";
-
-// the tools check their own arguments, with errors in their own words
-const permissive = {
-  getValidator: () => (input: unknown) => ({
-    valid: true as const,
-    data: input,
-    errorMessage: undefined,
-  }),
-} as unknown as jsonSchemaValidator;
-
-const schema = (
-  properties: Record<string, JsonSchemaType>,
-  required: string[],
-) =>
-  fromJsonSchema<Record<string, unknown>>(
-    {
-      type: "object",
-      properties,
-      required,
-      additionalProperties: false,
-    },
-    permissive,
-  );
-
-const symbol: JsonSchemaType = {
-  type: "string",
-  minLength: 1,
-  maxLength: MAX_SYMBOL,
-};
-const next: JsonSchemaType = {
-  type: "string",
-  description: "the next of an earlier answer, with the same arguments",
-};
-const day: JsonSchemaType = {
-  type: "string",
-  pattern: "^\\d{4}-\\d{2}-\\d{2}$",
-};
+import { day, next, schema, symbol, type Tool } from "./schema.ts";
 
 const quoteDescription = (m: Markets) =>
   `Live quotes and signals for 1 to ${MAX_SYMBOLS} symbols: a stored id (US:NVDA), a Yahoo symbol (VVSM.DE, ^VIX), FRED:<series id> or a name; several listings answer candidates. One never read is fetched in ${m.callMs / 1000} seconds, else timeout: call again. Each item: price, previous close, change, day range, volume, trade_time, fetched_at, daily and weekly signal rows (live or final: SMA 50/200, EMA 20, RSI, MACD, ATR, volatility, Bollinger, 52w range, drawdown, volume ratio), stale. returns: 1w, 1m, 3m, ytd percent (points for a yield) to the live price or last final close (live says which), null if too few bars. session: open or closed (regular; closed briefly at an open), start, end. benchmark (one symbol) adds relative_return_1m, _3m in percentage points. extended true adds extended: the last pre- or post-market price (session, price, change, change_percent from the regular close, time), or null with why in stale. FRED: last observation, price null. Errors are items. When next is set, call again with the same arguments and next.`;
@@ -114,18 +67,12 @@ const EVENTS = `Earnings events dated from to to (YYYY-MM-DD, inclusive) of the 
 
 const RULES = `Price rules on live quotes. Turning true writes one alert; again only after false. create: symbol, condition, note; answers its first evaluation. condition: {left, op, right} (op < <= > >=; right a number or operand) or {all: [...]}/{any: [...]}; ≤${MAX_COMPARISONS} comparisons, ${MAX_DEPTH} levels, ${MAX_INSTRUMENTS} instruments. Operand: a field of symbol, or {field, symbol} (^VIX). Fields: price changePct dayHigh dayLow previousClose sma50 sma200 ema20 rsi14 macd macdSignal macdHistogram macdTurn atr14 moveAtr volatility20 bollingerLower high52w low52w drawdown fromLow daysSinceHigh volumeRatio cross crossEdge weeklySma50 weeklySma200 weeklyCross weeklyCrossEdge, and {field: relativeReturn1m|relativeReturn3m, benchmark}. Each comparison reads a live value, in one unit. Example: {"all":[{"left":"rsi14","op":"<","right":30},{"left":"price","op":">","right":"sma200"}]}. "afterEarnings": "<US share>" on the root waits for its next results. A stale input changes nothing. A split pauses price-vs-number rules. list: next; pause: id, paused; delete: id.`;
 
-const PORTFOLIO = `For "my stocks", "my ETF", "my portfolio" or a named one: holdings first, then its symbols to quote, history, research. Totals per currency; currency converts. setup: display_currency, time_zone (ask, never assume), portfolio, broker. list: portfolios, brokers, markets, funds. holdings/trades: portfolio, broker; trades: symbol, from, to, removed. add: symbol, side, quantity/all, price/total (fees in), fees, date, currency paid, broker, note; neither: live price; 10 min repeat: again. fund: 1 per confirmation; units, isin/name, market; 1st buy: name, currency. cash, bond: name, currency; cash: in Cash; amount, dry_powder (ready to invest, else reserve); bond: amount (face), symbol, coupon, maturity, cost; as_of: bought; price: listing's, see fetched_at. update position (id|dry_powder by broker, currency): amount, by +/-, currency, cost, date, note; by id: name, broker; fund (isin|name): price, date, market, currency; isin+name renames. remove/restore: trade, position. rename_broker: broker, name. next pages.`;
+// what a key's access opens; the tools it does not open are not listed
+export type Opens = { portfolio: Access; rules: Access };
 
-type Tool = {
-  name: string;
-  description: string;
-  inputSchema: ReturnType<typeof schema>;
-  run: (input: unknown, who?: Who) => Promise<ToolResult>;
-  // read-only unless said otherwise
-  writes?: true;
-};
+const ALL: Opens = { portfolio: "write", rules: "write" };
 
-export function tools(m: Markets): Tool[] {
+export function tools(m: Markets, opens: Opens = ALL): Tool[] {
   return [
     {
       name: "quote",
@@ -280,82 +227,33 @@ export function tools(m: Markets): Tool[] {
       ),
       run: (input) => eventsAnswer(m, parseEvents(input)),
     },
-    {
-      name: "rules",
-      description: RULES,
-      inputSchema: schema(
-        {
-          action: { type: "string", enum: [...RULE_ACTIONS] },
-          symbol,
-          condition: {
-            type: "object",
-            description: "the condition JSON, as in the description",
+    ...(opens.rules === "none"
+      ? []
+      : [
+          {
+            name: "rules",
+            description: RULES,
+            inputSchema: schema(
+              {
+                action: { type: "string", enum: [...RULE_ACTIONS] },
+                symbol,
+                condition: {
+                  type: "object",
+                  description: "the condition JSON, as in the description",
+                },
+                note: { type: "string", maxLength: MAX_NOTE },
+                id: { type: "integer", minimum: 1 },
+                paused: { type: "boolean" },
+                next,
+              },
+              ["action"],
+            ),
+            run: (input: unknown, who?: Who) =>
+              rulesAnswer(m, who ?? NO_ACCESS, parseRules(input)),
+            writes: true as const,
           },
-          note: { type: "string", maxLength: MAX_NOTE },
-          id: { type: "integer", minimum: 1 },
-          paused: { type: "boolean" },
-          next,
-        },
-        ["action"],
-      ),
-      run: (input, who) => rulesAnswer(m, who ?? NO_ACCESS, parseRules(input)),
-      writes: true,
-    },
-    {
-      name: "portfolio",
-      description: PORTFOLIO,
-      inputSchema: schema(
-        {
-          action: { type: "string", enum: [...PORTFOLIO_ACTIONS] },
-          kind: { type: "string", enum: [...ADD_KINDS], default: "trade" },
-          portfolio: { type: ["string", "integer"] },
-          symbol,
-          side: { type: "string", enum: ["buy", "sell"] },
-          quantity: { type: ["number", "string"] },
-          price: { type: "number", minimum: 0 },
-          total: { type: "number", minimum: 0 },
-          fees: { type: "number", minimum: 0 },
-          date: day,
-          currency: { type: "string" },
-          display_currency: { type: "string" },
-          time_zone: { type: "string" },
-          // setup takes several, update null to take it off, others one
-          broker: {
-            type: ["string", "array", "null"],
-            items: { type: "string" },
-            maxItems: MAX_SETUP_BROKERS,
-          },
-          // null clears it on update
-          note: { type: ["string", "null"], maxLength: MAX_NOTE },
-          name: { type: "string" },
-          amount: { type: "number", minimum: 0 },
-          // a number, or all on a fund's sell
-          units: { type: ["number", "string"] },
-          isin: { type: "string" },
-          cost: { type: "number", minimum: 0 },
-          coupon: { type: "number" },
-          maturity: day,
-          dry_powder: { type: "boolean" },
-          market: { type: ["string", "null"] },
-          again: { type: "boolean", default: false },
-          by: { type: "number" },
-          trade: { type: "integer", minimum: 1 },
-          position: { type: ["integer", "string"] },
-          from: day,
-          to: day,
-          removed: {
-            type: "boolean",
-            default: false,
-            description: "trades: include removed ones",
-          },
-          next,
-        },
-        ["action"],
-      ),
-      run: (input, who) =>
-        portfolioAnswer(m, who ?? NO_ACCESS, parsePortfolio(input)),
-      writes: true,
-    },
+        ]),
+    ...portfolioTools(m, opens.portfolio),
   ];
 }
 
@@ -385,12 +283,18 @@ export async function call(
   }
 }
 
-// built once, registered on each request's server instance
+// built once per access, registered on each request's server instance
 export function registerTools(
   m: Markets,
 ): (server: McpServer, who: Who) => void {
-  const list = tools(m);
+  const lists = new Map<string, Tool[]>();
   return (server, who) => {
+    const key = `${who.portfolio}/${who.rules}`;
+    let list = lists.get(key);
+    if (list === undefined) {
+      list = tools(m, { portfolio: who.portfolio, rules: who.rules });
+      lists.set(key, list);
+    }
     for (const tool of list) {
       server.registerTool(
         tool.name,

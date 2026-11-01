@@ -8,6 +8,7 @@ import {
 } from "@modelcontextprotocol/client";
 import type { HTMLBundle } from "bun";
 import { type App, start } from "../../src/app.ts";
+import type { Access } from "../../src/operations/who.ts";
 import { MINUTE_MS } from "../../src/runtime/clock.ts";
 import { keys, requireAdmin } from "../../src/runtime/keys.ts";
 import { logger } from "../../src/runtime/log.ts";
@@ -121,12 +122,48 @@ export async function withApp(
 }
 
 // an SDK client on the app's /mcp, closed by the caller
-export async function mcpClient(t: TestApp): Promise<Client> {
+export async function mcpClient(
+  t: TestApp,
+  bearer = t.bearer,
+): Promise<Client> {
   const client = new Client({ name: "test", version: "1" });
   await client.connect(
     new StreamableHTTPClientTransport(new URL(`${t.url}/mcp`), {
-      requestInit: { headers: { authorization: `Bearer ${t.bearer}` } },
+      requestInit: { headers: { authorization: `Bearer ${bearer}` } },
     }),
   );
   return client;
 }
+
+// a made-up key with this access, as the admin makes one; its token
+export function seedKey(
+  t: TestApp,
+  name: string,
+  opens: { portfolio: Access; rules: Access },
+): string {
+  const token = `1ctx-markets-test-${name}-key-0123456789abcdef`;
+  t.db
+    .query(
+      `insert into keys (id, name, token_hash, created_at, portfolio, rules)
+       values (?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      `key-${name}`,
+      name,
+      tokenHash(token),
+      t.clock.now(),
+      opens.portfolio,
+      opens.rules,
+    );
+  return token;
+}
+
+// every portfolio access with no rules and with rules, as keys are made
+export const ACCESS_LEVELS: { portfolio: Access; rules: Access }[] = [
+  { portfolio: "none", rules: "none" },
+  { portfolio: "read", rules: "none" },
+  { portfolio: "write", rules: "none" },
+  { portfolio: "none", rules: "read" },
+  { portfolio: "read", rules: "write" },
+  { portfolio: "write", rules: "write" },
+];

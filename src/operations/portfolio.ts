@@ -106,23 +106,10 @@ import {
   type ToolResult,
   textResult,
 } from "./answer.ts";
-import { ArgError, date, fields, quoted, text, textValues } from "./args.ts";
+import { ArgError, date, fields, quoted, text } from "./args.ts";
 import type { Markets } from "./markets.ts";
 import { readTargets } from "./targets.ts";
 import { opens, type Who } from "./who.ts";
-
-export const PORTFOLIO_ACTIONS = [
-  "setup",
-  "list",
-  "holdings",
-  "trades",
-  "add",
-  "update",
-  "remove",
-  "restore",
-  "rename_broker",
-] as const;
-type Action = (typeof PORTFOLIO_ACTIONS)[number];
 
 export const ADD_KINDS = ["trade", "cash", "fund", "bond"] as const;
 export type AddKind = (typeof ADD_KINDS)[number];
@@ -242,18 +229,21 @@ export type PortfolioArgs =
       brokers: string[];
     }
   | { action: "list" }
-  | ({ action: "holdings"; next: string | null } & HoldingsArgs)
+  | ({
+      action: "holdings";
+      // adds the cash and bond rows removed and not replaced
+      removed: boolean;
+      next: string | null;
+    } & HoldingsArgs)
   | ({ action: "trades"; next: string | null } & TradesArgs)
   | { action: "add"; kind: "trade"; trade: TradeArgs }
   | { action: "add"; kind: "fund"; fund: FundTradeArgs }
   | { action: "add"; kind: PositionKind; position: PositionArgs }
   | {
       action: "update";
-      // an id, or the portfolio's one dry powder position
-      position: number | "dry_powder";
-      portfolio: Ref | null;
-      // picks the dry powder row when the change names no currency
-      currency: string | null;
+      position: number;
+      // the tool's kind: a row of the other kind is refused
+      kind: PositionKind;
       change: PositionChange;
     }
   | {
@@ -263,12 +253,8 @@ export type PortfolioArgs =
       change: FundChange;
     }
   | { action: "rename_broker"; broker: string; name: string }
-  | {
-      action: "remove" | "restore";
-      trade: number | null;
-      position: number | null;
-      portfolio: Ref | null;
-    };
+  | { action: "remove" | "restore"; trade: number; portfolio: Ref | null }
+  | { action: "remove" | "restore"; position: number; kind: PositionKind };
 
 export function amount(
   value: unknown,
@@ -412,7 +398,11 @@ export function isinArg(value: unknown, name = "isin"): string | null {
   return isin;
 }
 
-export function parseFundTrade(f: Record<string, unknown>): FundTradeArgs {
+// units: the word its quantity comes under, the tool's quantity
+export function parseFundTrade(
+  f: Record<string, unknown>,
+  units: "quantity" | "units" = "units",
+): FundTradeArgs {
   const isin = isinArg(f.isin);
   const name = optionalName(f.name, "name", MAX_POSITION_NAME);
   if (isin === null && name === null) {
@@ -422,7 +412,7 @@ export function parseFundTrade(f: Record<string, unknown>): FundTradeArgs {
     isin,
     name,
     market: optionalName(f.market, "market"),
-    trade: tradeFigures(f, "units"),
+    trade: tradeFigures(f, units),
   };
 }
 
@@ -465,7 +455,7 @@ export function parseFundChange(
     throw new ArgError(
       renames
         ? "a fund's update changes price, market, name or currency"
-        : "a fund's update changes price, market or currency; named by its isin, its name too",
+        : "a fund's update changes price, market or currency; named by its isin or symbol, its name too",
     );
   }
   return c;
@@ -521,70 +511,6 @@ export function parsePosition(
   };
 }
 
-const ARGS: Record<Action, readonly string[]> = {
-  setup: ["action", "display_currency", "time_zone", "portfolio", "broker"],
-  list: ["action"],
-  holdings: ["action", "portfolio", "broker", "currency", "next"],
-  trades: [
-    "action",
-    "portfolio",
-    "broker",
-    "symbol",
-    "from",
-    "to",
-    "removed",
-    "next",
-  ],
-  add: [
-    "action",
-    "kind",
-    "portfolio",
-    "symbol",
-    "side",
-    "quantity",
-    "price",
-    "total",
-    "fees",
-    "date",
-    "currency",
-    "broker",
-    "note",
-    "name",
-    "amount",
-    "units",
-    "cost",
-    "coupon",
-    "maturity",
-    "dry_powder",
-    "again",
-    "market",
-    "isin",
-  ],
-  update: [
-    "action",
-    "position",
-    "isin",
-    "name",
-    "amount",
-    "price",
-    "cost",
-    "date",
-    "note",
-    "dry_powder",
-    "market",
-    "by",
-    "currency",
-    "broker",
-    "portfolio",
-    "kind",
-  ],
-  // portfolio, when given, must be the row's, and kind is only checked to
-  // be a known one: agents pass both out of habit from add
-  remove: ["action", "trade", "position", "portfolio", "kind"],
-  restore: ["action", "trade", "position", "portfolio", "kind"],
-  rename_broker: ["action", "broker", "name"],
-};
-
 // what a position's update changes; currency goes with amount or by
 export const UPDATE_FIELDS = [
   "amount",
@@ -611,7 +537,10 @@ const FUND_UPDATE = [
   "portfolio",
 ];
 
-export function parseChange(f: Record<string, unknown>): PositionChange {
+export function parseChange(
+  f: Record<string, unknown>,
+  named: readonly string[] = UPDATE_FIELDS,
+): PositionChange {
   const c: PositionChange = {};
   const paid = currencyArg(f.currency);
   if (f.amount !== undefined) {
@@ -652,9 +581,7 @@ export function parseChange(f: Record<string, unknown>): PositionChange {
   if (f.name !== undefined) c.name = text(f.name, "name", MAX_POSITION_NAME);
   if (f.broker !== undefined) c.broker = optionalName(f.broker, "broker");
   if (Object.keys(c).length === 0) {
-    throw new ArgError(
-      `update changes at least one of ${UPDATE_FIELDS.join(", ")}`,
-    );
+    throw new ArgError(`update changes at least one of ${named.join(", ")}`);
   }
   return c;
 }
@@ -706,7 +633,7 @@ export const KIND_ARGS: Record<AddKind, readonly string[]> = {
 export const MAX_SETUP_BROKERS = 20;
 
 // a name or a list of names, each once
-function brokerNames(value: unknown): string[] {
+export function brokerNames(value: unknown): string[] {
   if (value === undefined || value === null) return [];
   const list = Array.isArray(value) ? value : [value];
   if (list.length > MAX_SETUP_BROKERS) {
@@ -722,193 +649,13 @@ function brokerNames(value: unknown): string[] {
   return out;
 }
 
-const nextOf = (v: unknown): string | null => {
+export const nextOf = (v: unknown): string | null => {
   if (v === undefined || v === null) return null;
   if (typeof v !== "string") {
     throw new ArgError("next must be a string from an earlier answer");
   }
   return v;
 };
-
-export function parsePortfolio(input: unknown): PortfolioArgs {
-  const f = textValues(
-    fields(input, [...new Set(Object.values(ARGS).flat())]),
-    {
-      numbers: [
-        "quantity",
-        "units",
-        "price",
-        "total",
-        "fees",
-        "amount",
-        "cost",
-        "coupon",
-        "by",
-      ],
-      ids: ["trade", "position"],
-      flags: ["again", "dry_powder", "removed"],
-    },
-  );
-  if (
-    typeof f.action !== "string" ||
-    !(PORTFOLIO_ACTIONS as readonly string[]).includes(f.action)
-  ) {
-    throw new ArgError(`action must be one of ${PORTFOLIO_ACTIONS.join(", ")}`);
-  }
-  const action = f.action as Action;
-  if (
-    (action === "update" || action === "remove" || action === "restore") &&
-    f.kind !== undefined &&
-    f.kind !== null &&
-    !(ADD_KINDS as readonly string[]).includes(String(f.kind))
-  ) {
-    throw new ArgError(`kind must be one of ${ADD_KINDS.join(", ")}`);
-  }
-  for (const name of Object.keys(f)) {
-    if (!ARGS[action].includes(name)) {
-      throw new ArgError(`${quoted(name)} is not an argument of ${action}`);
-    }
-  }
-  switch (action) {
-    case "setup": {
-      const made = {
-        action,
-        currency: namedCurrency(f.display_currency, "display_currency"),
-        zone: zoneArg(f.time_zone),
-        portfolio: optionalName(f.portfolio, "portfolio"),
-        brokers: brokerNames(f.broker),
-      };
-      if (
-        made.currency === null &&
-        made.zone === null &&
-        made.portfolio === null &&
-        made.brokers.length === 0
-      ) {
-        throw new ArgError(
-          "setup takes one or more of display_currency, time_zone, portfolio, broker",
-        );
-      }
-      return made;
-    }
-    case "rename_broker":
-      return {
-        action,
-        broker: text(f.broker, "broker", MAX_NAME),
-        name: text(f.name, "name", MAX_NAME),
-      };
-    case "list":
-      return { action };
-    case "holdings":
-      return {
-        action,
-        portfolio: ref(f.portfolio),
-        broker: optionalName(f.broker, "broker"),
-        currency: namedCurrency(f.currency),
-        next: nextOf(f.next),
-      };
-    case "trades": {
-      if (f.removed !== undefined && typeof f.removed !== "boolean") {
-        throw new ArgError("removed must be true or false");
-      }
-      return {
-        action,
-        portfolio: ref(f.portfolio),
-        broker: optionalName(f.broker, "broker"),
-        symbol:
-          f.symbol === undefined || f.symbol === null
-            ? null
-            : text(f.symbol, "symbol"),
-        from: date(f.from, "from"),
-        to: date(f.to, "to"),
-        removed: f.removed === true,
-        next: nextOf(f.next),
-      };
-    }
-    case "add": {
-      const kind = (f.kind ?? "trade") as AddKind;
-      if (!(ADD_KINDS as readonly string[]).includes(kind)) {
-        throw new ArgError(`kind must be one of ${ADD_KINDS.join(", ")}`);
-      }
-      for (const name of Object.keys(f)) {
-        if (["action", "kind", "portfolio"].includes(name)) continue;
-        if (name === "market" && kind !== "fund" && kind !== "trade") {
-          throw new ArgError(NO_POSITION_MARKET);
-        }
-        if (!KIND_ARGS[kind].includes(name)) {
-          throw new ArgError(`${quoted(name)} is not an argument of ${kind}`);
-        }
-      }
-      if (kind === "trade") return { action, kind, trade: parseTrade(f) };
-      if (kind === "fund") return { action, kind, fund: parseFundTrade(f) };
-      return { action, kind, position: parsePosition(kind, f) };
-    }
-    case "update":
-      // beside a position, name is its new name
-      if (
-        f.isin !== undefined ||
-        (f.name !== undefined && f.position === undefined)
-      ) {
-        if (f.position !== undefined) {
-          throw new ArgError(
-            "update takes a position, or a fund's isin or name",
-          );
-        }
-        const isin = isinArg(f.isin);
-        return {
-          action,
-          fund: isin ?? text(f.name, "name", MAX_POSITION_NAME),
-          change: parseFundChange(f, isin !== null),
-        };
-      }
-      if (f.position === undefined || f.position === null) {
-        throw new ArgError(
-          f.dry_powder === undefined ? UPDATE_TARGET : DRY_POWDER_PICK,
-        );
-      }
-      if (f.position === "dry_powder") {
-        // with no amount or by, currency picks the row, as broker does
-        const picks = f.amount === undefined && f.by === undefined;
-        const { currency, ...rest } = f;
-        // a name, a price or a market keeps its own refusal
-        if (
-          !["name", "price", "market", ...UPDATE_FIELDS].some(
-            (k) => k !== "broker" && f[k] !== undefined,
-          )
-        ) {
-          throw new ArgError(DRY_POWDER_CHANGES);
-        }
-        return {
-          action,
-          position: "dry_powder",
-          portfolio: ref(f.portfolio),
-          currency: picks ? currencyArg(currency) : null,
-          change: parseChange(picks ? rest : f),
-        };
-      }
-      return {
-        action,
-        position: rowId(f.position, "position"),
-        portfolio: ref(f.portfolio),
-        currency: null,
-        change: parseChange(f),
-      };
-    case "remove":
-    case "restore": {
-      const trade =
-        f.trade === undefined || f.trade === null
-          ? null
-          : rowId(f.trade, "trade");
-      const position =
-        f.position === undefined || f.position === null
-          ? null
-          : rowId(f.position, "position");
-      if ((trade === null) === (position === null)) {
-        throw new ArgError(`${action} takes one of trade or position`);
-      }
-      return { action, trade, position, portfolio: ref(f.portfolio) };
-    }
-  }
-}
 
 // ---- resolving names -----------------------------------------------------
 
@@ -1929,72 +1676,123 @@ export function historyOf(m: Markets, id: number) {
   };
 }
 
-export const UPDATE_TARGET =
-  'update takes a position: the row\'s position from holdings, or "dry_powder" with its broker and currency; a fund is named by isin or name';
-export const DRY_POWDER_PICK =
-  'dry_powder sets whether cash is ready to invest; the dry powder row is picked by position "dry_powder" with its broker and currency';
+const TOOL_OF: Record<PositionKind, string> = {
+  cash: "portfolio_cash",
+  bond: "portfolio_bond",
+};
+const ROW_OF: Record<PositionKind, string> = {
+  cash: "cash row",
+  bond: "bond",
+};
 
-export const DRY_POWDER_CHANGES = `update changes at least one of ${UPDATE_FIELDS.filter((f) => f !== "name" && f !== "broker").join(", ")}`;
+// at most this many rows named in a refusal
+const NAMED_ROWS = 10;
 
-export const DRY_POWDER_BY_ID =
-  "with position dry_powder, broker picks the row; a new name or broker needs its id";
-export const DRY_POWDER_LIVES = `dry powder lives in ${CASH_NAME}; leave portfolio out`;
+function rowLabel(db: Db, p: Position): string {
+  const broker =
+    p.broker === null ? null : (readBroker(db, p.broker)?.name ?? null);
+  const said = [p.name, broker, p.currency];
+  if (p.kind === "cash" && p.dryPowder) said.push("dry powder");
+  return `${p.id} (${said.filter((x) => x !== null).join(", ")})`;
+}
 
-// the one dry powder row meant, in Cash: by the broker and the currency
-// named, else refused with the candidates so the owner is asked
-function dryPowderOf(
+// the live rows of a kind, so a stale or mistyped id is retried right
+function liveRows(db: Db, kind: PositionKind): string {
+  const cash = cashPortfolio(db);
+  const rows =
+    kind === "cash"
+      ? cash === null
+        ? []
+        : readPositions(db, { portfolio: cash.id }).filter(
+            (x) => x.kind === "cash",
+          )
+      : readPositions(db).filter((x) => x.kind === "bond");
+  const where = kind === "cash" ? `${CASH_NAME} holds` : "bonds kept:";
+  if (rows.length === 0) return `${where} none`;
+  const named = rows.slice(0, NAMED_ROWS).map((x) => rowLabel(db, x));
+  const more = rows.length - named.length;
+  return `${where} ${named.join(", ")}${more > 0 ? `, and ${more} more` : ""}`;
+}
+
+// a row the cash or bond tool names by position: the other kind's is
+// refused naming its tool, one an update replaced naming the live row
+export function positionFor(
   m: Markets,
-  portfolio: Ref | null,
-  change: PositionChange,
-  currency: string | null,
-): number | Failure {
-  const p = findPortfolio(m.db, portfolio);
-  if (isFailure(p)) return p;
-  if (p !== null && !p.cash) {
-    return { error: "bad_arguments", message: DRY_POWDER_LIVES };
+  kind: PositionKind,
+  id: number,
+  action: "update" | "remove" | "restore",
+): Failure | null {
+  const p = readPosition(m.db, id);
+  if (p === null) {
+    return notFound(
+      action === "restore"
+        ? `no ${ROW_OF[kind]} at position ${id}`
+        : `no ${ROW_OF[kind]} at position ${id}; ${liveRows(m.db, kind)}`,
+    );
   }
-  const b =
-    change.broker === undefined || change.broker === null
-      ? null
-      : findBroker(m.db, change.broker);
-  if (isFailure(b)) return b;
-  const named = currency ?? (change.by ?? change.amount)?.currency ?? null;
-  const cash = cashPortfolio(m.db);
-  const all =
-    cash === null
-      ? []
-      : readPositions(m.db, { portfolio: cash.id }).filter(
-          (x) => x.kind === "cash" && x.dryPowder,
-        );
-  // broker null picks the row kept at none
-  const here =
-    change.broker === undefined
-      ? all
-      : all.filter((x) => x.broker === (b?.id ?? null));
-  const fit = named === null ? here : here.filter((x) => x.currency === named);
-  // an amount's currency converts, so any one row takes it; a currency
-  // that only picks must match
-  const pick =
-    fit.length === 1 ? fit : named === null || currency !== null ? [] : here;
-  if (pick.length === 1) return pick[0]!.id;
-  if (all.length === 0) return notFound("no dry powder is kept");
-  return {
-    error: "bad_arguments",
-    message:
-      here.length === 0
-        ? "no dry powder at that broker; name one by its id"
-        : currency !== null && fit.length === 0
-          ? `no dry powder in ${currency} there; name one by its id`
-          : "several dry powder positions; name one by its id",
-    positions: all.map((x) => ({
-      id: x.id,
+  if (p.kind !== kind) {
+    return {
+      error: "bad_arguments",
+      message: `position ${id} is ${p.kind === "cash" ? "cash" : "a bond"}; ${TOOL_OF[p.kind]} changes it`,
+    };
+  }
+  if (p.removedAt === null || action === "restore") return null;
+  const now = chainOf(m.db, id).find((x) => x.removedAt === null);
+  if (now !== undefined) {
+    return conflict(`position ${id} was updated; it is position ${now.id} now`);
+  }
+  // a second removal keeps who removed it first
+  if (action === "remove") return null;
+  return notFound(
+    `position ${id} was removed; restore brings it back; ${liveRows(m.db, kind)}`,
+  );
+}
+
+// the row's id named position, as the cash and bond tools take it
+const asPosition = <T extends { id: number }>({ id, ...rest }: T) => ({
+  position: id,
+  ...rest,
+});
+
+const withPosition = <T extends object>(body: T | Failure): T | Failure =>
+  isFailure(body) || !("position" in body)
+    ? body
+    : {
+        ...body,
+        position: asPosition(body.position as { id: number }),
+      };
+
+// the latest removed rows a holdings read lists
+export const MAX_REMOVED = 20;
+
+// cash and bond rows removed and not replaced by an update, newest first
+function removedRows(m: Markets, args: HoldingsArgs) {
+  const p = findPortfolio(m.db, args.portfolio);
+  const b = findBroker(m.db, args.broker);
+  const all = readPositions(m.db, {
+    portfolio: p === null || isFailure(p) ? null : p.id,
+    broker: b === null || isFailure(b) ? null : b.id,
+    removed: true,
+  });
+  const replaced = new Set(
+    readPositions(m.db, { removed: true }).flatMap((x) =>
+      x.replaces === null ? [] : [x.replaces],
+    ),
+  );
+  return all
+    .filter((x) => x.removedAt !== null && !replaced.has(x.id))
+    .sort((a, z) => z.removedAt! - a.removedAt! || z.id - a.id)
+    .slice(0, MAX_REMOVED)
+    .map((x) => ({
+      position: x.id,
+      kind: x.kind,
+      portfolio: readPortfolio(m.db, x.portfolio)?.name ?? null,
       name: x.name,
-      currency: x.currency,
       broker:
         x.broker === null ? null : (readBroker(m.db, x.broker)?.name ?? null),
-      portfolio: readPortfolio(m.db, x.portfolio)?.name ?? null,
-    })),
-  };
+      currency: x.currency,
+      removed_at: iso(x.removedAt),
+    }));
 }
 
 // a removal is a stamp: the row stays, restorable
@@ -2067,22 +1865,20 @@ export async function setPositionState(
   return { position: positionItem(m.db, readPosition(m.db, id)!) };
 }
 
-// a portfolio named beside a row's id must be the row's own
 function otherPortfolio(
   m: Markets,
   portfolio: Ref | null,
-  kind: "trade" | "position",
   id: number,
 ): Failure | null {
   if (portfolio === null) return null;
   const p = findPortfolio(m.db, portfolio);
   if (isFailure(p)) return p;
-  const row = kind === "trade" ? readTrade(m.db, id) : readPosition(m.db, id);
+  const row = readTrade(m.db, id);
   if (row === null || p === null || row.portfolio === p.id) return null;
   const its = readPortfolio(m.db, row.portfolio)?.name ?? "another portfolio";
   return {
     error: "bad_arguments",
-    message: `${kind} ${id} is in ${its}, not ${p.name}`,
+    message: `trade ${id} is in ${its}, not ${p.name}`,
   };
 }
 
@@ -2306,16 +2102,25 @@ async function holdingsPage(
   m: Markets,
   args: Extract<PortfolioArgs, { action: "holdings" }>,
 ): Promise<ToolResult> {
-  const { next, ...rest } = args;
+  const { next, removed, ...scope } = args;
+  const rest = { ...scope, removed };
   const from = offsetOf(next, rest);
-  const read = await readHoldings(m, rest);
+  const read = await readHoldings(m, scope);
   if (isFailure(read)) return errorResult(read);
-  const { holdings: rows, ...shell } = read;
+  const { holdings: all, ...shell } = read;
+  // symbol is what quote takes; REST keeps the instrument's id as id
+  const rows = all.map(({ kind, id, ...row }) => ({
+    kind,
+    symbol: id,
+    ...row,
+  }));
+  const gone = removed ? { removed: removedRows(m, scope) } : {};
   const list = rows.slice(from);
   const page = fitPage(
     list,
     (count) => ({
       ...shell,
+      ...gone,
       next:
         from + count < rows.length ? cursor(String(from + count), rest) : null,
     }),
@@ -2377,51 +2182,30 @@ export async function portfolioAnswer(
           ? await addTrade(m, who, args.trade)
           : "fund" in args
             ? await addFundTrade(m, who, args.fund)
-            : await addPosition(m, who, args.position),
+            : withPosition(await addPosition(m, who, args.position)),
       );
     case "update": {
       if ("fund" in args) {
         return answered(await updateFund(m, who, args.fund, args.change));
       }
-      let change = args.change;
-      if (args.position === "dry_powder") {
-        // broker picks the row here; a rename or a move needs its id
-        if (change.name !== undefined) {
-          return errorResult({
-            error: "bad_arguments",
-            message: DRY_POWDER_BY_ID,
-          });
-        }
-        const { broker: _, ...rest } = change;
-        if (Object.keys(rest).length === 0) {
-          return errorResult({
-            error: "bad_arguments",
-            message: `update changes at least one of ${UPDATE_FIELDS.filter((f) => f !== "name" && f !== "broker").join(", ")}`,
-          });
-        }
-        change = rest;
-      }
-      const id =
-        args.position === "dry_powder"
-          ? dryPowderOf(m, args.portfolio, args.change, args.currency)
-          : args.position;
-      if (typeof id !== "number") return errorResult(id);
-      const wrong = otherPortfolio(m, args.portfolio, "position", id);
+      const wrong = positionFor(m, args.kind, args.position, "update");
       if (wrong !== null) return errorResult(wrong);
-      return answered(await updatePosition(m, who, id, change));
+      return answered(
+        withPosition(await updatePosition(m, who, args.position, args.change)),
+      );
     }
     case "remove":
     case "restore": {
       const removed = args.action === "remove";
-      const wrong =
-        args.trade !== null
-          ? otherPortfolio(m, args.portfolio, "trade", args.trade)
-          : otherPortfolio(m, args.portfolio, "position", args.position!);
+      if ("trade" in args) {
+        const wrong = otherPortfolio(m, args.portfolio, args.trade);
+        if (wrong !== null) return errorResult(wrong);
+        return answered(await setTradeState(m, who, args.trade, removed));
+      }
+      const wrong = positionFor(m, args.kind, args.position, args.action);
       if (wrong !== null) return errorResult(wrong);
       return answered(
-        args.trade !== null
-          ? await setTradeState(m, who, args.trade, removed)
-          : await setPositionState(m, who, args.position!, removed),
+        withPosition(await setPositionState(m, who, args.position, removed)),
       );
     }
   }

@@ -14,7 +14,7 @@ positions; never orders, broker connections, dividends or tax.
 - **Packages** are devDependencies bundled at build time: exact pins,
   official npm only, `bun install --ignore-scripts`. A new package
   needs the owner's explicit go-ahead. In `src/`, only `server/mcp.ts`,
-  `server/http.ts` and `tools/index.ts` import
+  `server/http.ts` and `tools/` import
   `@modelcontextprotocol/server` (`server/http.ts` a type only); the
   MCP client is for tests. `swagger-ui-dist` is the one package
   `src/api/` imports, and only its `swagger-ui-bundle.js` and

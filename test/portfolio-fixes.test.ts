@@ -14,8 +14,6 @@ import {
   historyOf,
   latestDay,
   type PositionArgs,
-  parsePortfolio,
-  portfolioAnswer,
   readHoldings,
   readTradeList,
   saveSettings,
@@ -41,11 +39,17 @@ import {
 import { money } from "../src/portfolios/value.ts";
 import type { Db } from "../src/storage/db/index.ts";
 import { tools } from "../src/tools/index.ts";
+import {
+  parseBondTool,
+  parseCashTool,
+  parseSetupTool,
+  parseTradeTool,
+} from "../src/tools/portfolio.ts";
 import { sentence } from "../src/web/data/api.ts";
 import { JUST_SAVED, plainError } from "../src/web/data/portfolios.ts";
 import { missingWords, staleWords } from "../src/web/views/Portfolios.model.ts";
 import { api } from "./helpers/api.ts";
-import { cashBefore, portfolioBefore } from "./helpers/portfolio.ts";
+import { ask, cashBefore, portfolioBefore } from "./helpers/portfolio.ts";
 import { bar, instrument, LIVE, NOW, quote, world } from "./helpers/world.ts";
 
 const CASEY: Who = { name: "casey-agent", portfolio: "write", rules: "none" };
@@ -501,17 +505,12 @@ describe("bonds, restore and removals", () => {
   test("restore brings a removed trade back over the tool", async () => {
     const { m } = await setup();
     const id = idOf(await trade(m, { quantity: 1 }));
-    await portfolioAnswer(
-      m,
-      CASEY,
-      parsePortfolio({ action: "remove", trade: id }),
-    );
-    const back = await portfolioAnswer(
-      m,
-      CASEY,
-      parsePortfolio({ action: "restore", trade: id }),
-    );
-    expect(JSON.parse(back.content[0]!.text).trade.removed_at).toBeNull();
+    await ask(m, CASEY, "portfolio_trade", { action: "remove", trade: id });
+    const back = await ask(m, CASEY, "portfolio_trade", {
+      action: "restore",
+      trade: id,
+    });
+    expect(back.body.trade.removed_at).toBeNull();
   });
 
   test("a second removal keeps who removed it first", async () => {
@@ -1457,68 +1456,29 @@ describe("a review's fourth pass", () => {
 });
 
 describe("refusals an agent can act on", () => {
-  const call = async (m: Markets, args: object) => {
-    const r = await portfolioAnswer(m, CASEY, parsePortfolio(args));
-    return {
-      error: r.isError === true,
-      text: (r.content[0] as { text: string }).text,
-    };
-  };
-
-  test("remove, restore and update take the row's own portfolio", async () => {
+  test("remove and restore take the trade, a portfolio only checked", async () => {
     const { m } = await setup();
-    await portfolioBefore(m, "Other");
     const t = idOf(await trade(m, { date: "2026-01-27" }));
-    const ok = await call(m, {
+    const ok = await ask(m, CASEY, "portfolio_trade", {
       action: "remove",
       trade: t,
-      portfolio: "Shares",
     });
     expect(ok.error).toBe(false);
-    const back = await call(m, {
-      action: "restore",
-      trade: t,
-      portfolio: "Shares",
-    });
-    expect(back.error).toBe(false);
-    const wrong = await call(m, {
-      action: "remove",
-      trade: t,
-      portfolio: "Other",
-    });
-    expect(wrong.error).toBe(true);
-    expect(wrong.text).toContain(`trade ${t} is in Shares, not Other`);
-    // kind rides along from add out of habit: a known one is fine
-    const kinded = await call(m, { action: "remove", trade: t, kind: "trade" });
-    expect(kinded.error).toBe(false);
-    const again = await call(m, { action: "restore", trade: t, kind: "trade" });
-    expect(again.error).toBe(false);
-    await expect(
-      call(m, { action: "remove", trade: t, kind: "shares" }),
-    ).rejects.toThrow("kind must be one of");
-    const cash = await addPosition(m, CASEY, {
-      kind: "cash",
-      portfolio: null,
-      name: "Spare",
-      symbol: null,
-      currency: "USD",
-      amount: 40,
-      cost: null,
-      coupon: null,
-      maturity: null,
-      date: null,
-      broker: null,
-      note: null,
-      dryPowder: false,
-    });
-    if ("error" in cash) throw new Error(cash.message);
-    const up = await call(m, {
-      action: "update",
-      position: cash.position.id,
-      amount: 45,
-      portfolio: "Other",
-    });
-    expect(up.text).toContain("is in Cash, not Other");
+    // a trade is found by id; a portfolio named beside it is only checked
+    expect(
+      parseTradeTool({ action: "restore", trade: t, portfolio: "Shares" }),
+    ).toEqual({ action: "restore", trade: t, portfolio: "Shares" });
+    expect(() =>
+      parseTradeTool({ action: "restore", trade: t, kind: "trade" }),
+    ).toThrow("unknown argument kind");
+    expect(() =>
+      parseCashTool({
+        action: "update",
+        position: 1,
+        portfolio: "Cash",
+        amount: 1,
+      }),
+    ).toThrow("unknown argument portfolio");
   });
 
   test("a removal a later sale needs names that sale", async () => {
@@ -1724,27 +1684,23 @@ describe("a retried add", () => {
   test("the tool and the REST add take again", async () => {
     const { m } = await setup();
     const add = (more: object) =>
-      portfolioAnswer(
-        m,
-        CASEY,
-        parsePortfolio({
-          action: "add",
-          portfolio: "Shares",
-          symbol: "US:AAA",
-          side: "buy",
-          quantity: 1,
-          price: 10,
-          date: "2026-03-02",
-          broker: "North",
-          ...more,
-        }),
-      );
-    expect((await add({})).isError).toBeUndefined();
+      ask(m, CASEY, "portfolio_trade", {
+        action: "add",
+        portfolio: "Shares",
+        symbol: "US:AAA",
+        side: "buy",
+        quantity: 1,
+        price: 10,
+        date: "2026-03-02",
+        broker: "North",
+        ...more,
+      });
+    expect((await add({})).error).toBe(false);
     const refused = await add({});
-    expect(refused.isError).toBe(true);
-    expect(JSON.parse(refused.content[0]!.text).error).toBe("conflict");
-    expect((await add({ again: true })).isError).toBeUndefined();
-    expect(() => parsePortfolio({ action: "add", again: "yes" })).toThrow();
+    expect(refused.error).toBe(true);
+    expect(refused.body.error).toBe("conflict");
+    expect((await add({ again: true })).error).toBe(false);
+    expect(() => parseTradeTool({ action: "add", again: "yes" })).toThrow();
     const post = (body: object) =>
       api(m)(
         new Request("http://markets.test/api/v1/trades", {
@@ -1914,14 +1870,12 @@ describe("the owner's time zone", () => {
 });
 
 describe("setup and brokers over the tool", () => {
-  const ask = async (m: Markets, args: object) => {
-    const r = await portfolioAnswer(m, CASEY, parsePortfolio(args));
-    return { error: r.isError === true, body: JSON.parse(r.content[0]!.text) };
-  };
+  const setUp = (m: Markets, args: object) =>
+    ask(m, CASEY, "portfolio_setup", args);
 
   test("setup takes the owner's zone and several brokers", async () => {
     const { m } = world();
-    const done = await ask(m, {
+    const done = await setUp(m, {
       action: "setup",
       display_currency: "EUR",
       time_zone: "Asia/Tokyo",
@@ -1940,25 +1894,28 @@ describe("setup and brokers over the tool", () => {
     });
     // set once, as the display currency: the same is a no-op, another refused
     expect(
-      (await ask(m, { action: "setup", time_zone: "Asia/Tokyo" })).error,
+      (await setUp(m, { action: "setup", time_zone: "Asia/Tokyo" })).error,
     ).toBe(false);
-    const other = await ask(m, { action: "setup", time_zone: "Europe/Paris" });
+    const other = await setUp(m, {
+      action: "setup",
+      time_zone: "Europe/Paris",
+    });
     expect(other.error).toBe(true);
     expect(other.body.message).toContain("Asia/Tokyo");
     expect(() =>
-      parsePortfolio({ action: "setup", time_zone: "+09:00" }),
+      parseSetupTool({ action: "setup", time_zone: "+09:00" }),
     ).toThrow("IANA time zone");
-    expect(() => parsePortfolio({ action: "setup", broker: [] })).toThrow(
+    expect(() => parseSetupTool({ action: "setup", broker: [] })).toThrow(
       "one or more",
     );
     expect(() =>
-      parsePortfolio({ action: "setup", broker: ["North", 7] }),
+      parseSetupTool({ action: "setup", broker: ["North", 7] }),
     ).toThrow("broker");
   });
 
   test("rename_broker renames by name, with the routes' refusals", async () => {
     const { m } = await setup();
-    const done = await ask(m, {
+    const done = await setUp(m, {
       action: "rename_broker",
       broker: "north",
       name: "East",
@@ -1967,13 +1924,13 @@ describe("setup and brokers over the tool", () => {
       error: false,
       body: { broker: { name: "East" } },
     });
-    const taken = await ask(m, {
+    const taken = await setUp(m, {
       action: "rename_broker",
       broker: "East",
       name: "South",
     });
     expect(taken.body).toMatchObject({ error: "conflict" });
-    const unknown = await ask(m, {
+    const unknown = await setUp(m, {
       action: "rename_broker",
       broker: "West",
       name: "Far",
@@ -1981,12 +1938,12 @@ describe("setup and brokers over the tool", () => {
     expect(unknown.body).toMatchObject({ error: "not_found" });
     expect(unknown.body.message).toContain("East");
     const reader: Who = { name: "reader", portfolio: "read", rules: "none" };
-    const r = await portfolioAnswer(
-      m,
-      reader,
-      parsePortfolio({ action: "rename_broker", broker: "East", name: "X" }),
-    );
-    expect(JSON.parse(r.content[0]!.text).error).toBe("forbidden");
+    const r = await ask(m, reader, "portfolio_setup", {
+      action: "rename_broker",
+      broker: "East",
+      name: "X",
+    });
+    expect(r.body.error).toBe("forbidden");
   });
 });
 
@@ -2005,27 +1962,24 @@ describe("a holding's figures", () => {
 describe("the tool's description", () => {
   test("says a bond's as_of is its purchase and its price its listing's", () => {
     const { m } = world();
-    const d = tools(m).find((t) => t.name === "portfolio")!.description;
-    expect(d).toContain("as_of: bought");
-    expect(d).toContain("price: listing's, see fetched_at");
-    expect(d).toContain("list: portfolios, brokers, markets, funds.");
-    expect(d.length).toBeLessThanOrEqual(1024);
+    const d = (name: string) =>
+      tools(m).find((t) => t.name === name)!.description;
+    expect(d("portfolio_bond")).toContain("date (bought)");
+    expect(d("portfolio")).toContain("price: the listing's, see fetched_at");
+    expect(d("portfolio")).toContain(
+      "list: portfolios, brokers, markets, funds,",
+    );
   });
 });
 
 describe("a fund's market", () => {
-  const ask = async (m: Markets, args: object) => {
-    const r = await portfolioAnswer(m, CASEY, parsePortfolio(args));
-    return { error: r.isError === true, body: JSON.parse(r.content[0]!.text) };
-  };
   const fund = {
     action: "add",
-    kind: "fund",
     portfolio: "Shares",
     isin: "ZZFUND000011",
     name: "Made Up Fund",
     side: "buy",
-    units: 10,
+    quantity: 10,
     price: 5,
     currency: "USD",
   };
@@ -2033,17 +1987,19 @@ describe("a fund's market", () => {
   test("a fund naming a market counts in it; none is assumed", async () => {
     const { m } = await setup();
     await trade(m, { quantity: 1, price: 10 });
-    expect((await ask(m, { action: "list" })).body.markets).toEqual([
-      "KW",
-      "US",
-    ]);
-    const plain = await ask(m, {
+    expect(
+      (await ask(m, CASEY, "portfolio", { action: "list" })).body.markets,
+    ).toEqual(["KW", "US"]);
+    const plain = await ask(m, CASEY, "portfolio_trade", {
       ...fund,
       isin: "ZZFUND000029",
       name: "Unplaced Made Up Fund",
     });
     expect(plain.body.fund.market).toBeNull();
-    const placed = await ask(m, { ...fund, market: "us" });
+    const placed = await ask(m, CASEY, "portfolio_trade", {
+      ...fund,
+      market: "us",
+    });
     expect(placed.body.fund.market).toBe("US");
     const h = await holdingsOf(m);
     const rows = h.holdings.filter((x) => x.kind === "fund");
@@ -2057,13 +2013,15 @@ describe("a fund's market", () => {
 
   test("an unknown market is refused with the known ones", async () => {
     const { m } = await setup();
-    const r = await ask(m, { ...fund, market: "Nowhere" });
+    const r = await ask(m, CASEY, "portfolio_trade", {
+      ...fund,
+      market: "Nowhere",
+    });
     expect(r.body).toMatchObject({ error: "not_found" });
     expect(r.body.message).toContain("US");
     expect(() =>
-      parsePortfolio({
+      parseBondTool({
         action: "add",
-        kind: "bond",
         name: "Made Up Bond",
         amount: 1000,
         currency: "USD",
@@ -2074,31 +2032,28 @@ describe("a fund's market", () => {
 
   test("an update sets it or takes it off; a position takes none", async () => {
     const { m } = await setup();
-    await ask(m, fund);
-    const set = await ask(m, {
-      action: "update",
+    await ask(m, CASEY, "portfolio_trade", fund);
+    const set = await ask(m, CASEY, "portfolio_fund", {
       isin: fund.isin,
       market: "KW",
     });
     expect(set.body.fund.market).toBe("KW");
-    const off = await ask(m, {
-      action: "update",
+    const off = await ask(m, CASEY, "portfolio_fund", {
       name: fund.name,
       market: null,
     });
     expect(off.body.fund.market).toBeNull();
-    const bond = await ask(m, {
+    const bond = await ask(m, CASEY, "portfolio_bond", {
       action: "add",
-      kind: "bond",
       portfolio: "Shares",
       name: "Made Up Bond",
       amount: 1000,
       currency: "USD",
     });
     expect(() =>
-      parsePortfolio({
+      parseBondTool({
         action: "update",
-        position: bond.body.position.id,
+        position: bond.body.position.position,
         market: "US",
       }),
     ).toThrow("cash has no market");
@@ -2147,11 +2102,6 @@ describe("a fund's market", () => {
 });
 
 describe("gaps the import fixes left", () => {
-  const ask = async (m: Markets, args: object) => {
-    const r = await portfolioAnswer(m, CASEY, parsePortfolio(args));
-    return { error: r.isError === true, body: JSON.parse(r.content[0]!.text) };
-  };
-
   test("only markets a fund's money can be in are offered", async () => {
     const { m, db } = await setup();
     pair(db, "EURUSD=X", 1.2);
@@ -2159,20 +2109,17 @@ describe("gaps the import fixes left", () => {
     instrument(db, "SNP:GSPC", { unit: "index_points" });
     instrument(db, "NYM:CL", { unit: "per_unit" });
     instrument(db, "CRYPTO:BTC", { unit: "per_unit" });
-    expect((await ask(m, { action: "list" })).body.markets).toEqual([
-      "CRYPTO",
-      "KW",
-      "US",
-    ]);
+    expect(
+      (await ask(m, CASEY, "portfolio", { action: "list" })).body.markets,
+    ).toEqual(["CRYPTO", "KW", "US"]);
     for (const market of ["CCY", "FRED", "SNP", "NYM"]) {
-      const r = await ask(m, {
+      const r = await ask(m, CASEY, "portfolio_trade", {
         action: "add",
-        kind: "fund",
         portfolio: "Shares",
         isin: "ZZFUND000011",
         name: "Made Up Fund",
         side: "buy",
-        units: 1,
+        quantity: 1,
         price: 1,
         currency: "USD",
         market,
@@ -2185,17 +2132,15 @@ describe("gaps the import fixes left", () => {
     const { m } = await setup();
     const cash = {
       action: "add",
-      kind: "cash",
-      portfolio: null,
       name: "Made Up Cash",
       amount: 100,
       currency: "USD",
       dry_powder: true,
     };
-    expect(() => parsePortfolio({ ...cash, market: "US" })).toThrow(
+    expect(() => parseCashTool({ ...cash, market: "US" })).toThrow(
       "cash has no market, it counts by its currency",
     );
-    const saved = await ask(m, cash);
+    const saved = await ask(m, CASEY, "portfolio_cash", cash);
     expect("market" in saved.body.position).toBe(false);
     const h = await holdingsOf(m);
     expect(h.holdings.find((x) => x.kind === "cash")!.market).toBeNull();
@@ -2207,7 +2152,7 @@ describe("gaps the import fixes left", () => {
   test("a refused setup saves nothing", async () => {
     const { m } = world();
     await saveSettings(m, { time_zone: "Asia/Tokyo" });
-    const r = await ask(m, {
+    const r = await ask(m, CASEY, "portfolio_setup", {
       action: "setup",
       display_currency: "EUR",
       time_zone: "Europe/Paris",
@@ -2215,7 +2160,9 @@ describe("gaps the import fixes left", () => {
       broker: "North",
     });
     expect(r.body).toMatchObject({ error: "conflict" });
-    expect((await ask(m, { action: "list" })).body).toMatchObject({
+    expect(
+      (await ask(m, CASEY, "portfolio", { action: "list" })).body,
+    ).toMatchObject({
       display_currency: null,
       time_zone: "Asia/Tokyo",
       portfolios: [],
@@ -2225,14 +2172,10 @@ describe("gaps the import fixes left", () => {
 });
 
 describe("a cash row's name and broker", () => {
-  const ask = async (m: Markets, args: object) => {
-    const r = await portfolioAnswer(m, CASEY, parsePortfolio(args));
-    return { error: r.isError === true, body: JSON.parse(r.content[0]!.text) };
-  };
+  const cashTool = (m: Markets, args: object) =>
+    ask(m, CASEY, "portfolio_cash", args);
   const cash = {
     action: "add",
-    kind: "cash",
-    portfolio: null,
     name: "Savings",
     amount: 100,
     currency: "USD",
@@ -2241,8 +2184,8 @@ describe("a cash row's name and broker", () => {
 
   test("an update moves it, takes its broker off and renames it, its history whole", async () => {
     const { m } = await setup();
-    const first = (await ask(m, cash)).body.position.id as number;
-    const moved = await ask(m, {
+    const first = (await cashTool(m, cash)).body.position.position as number;
+    const moved = await cashTool(m, {
       action: "update",
       position: first,
       broker: "south",
@@ -2253,15 +2196,15 @@ describe("a cash row's name and broker", () => {
       amount: 100,
       replaces: first,
     });
-    const off = await ask(m, {
+    const off = await cashTool(m, {
       action: "update",
-      position: moved.body.position.id,
+      position: moved.body.position.position,
       broker: null,
     });
     expect(off.body.position.broker).toBeNull();
-    const renamed = await ask(m, {
+    const renamed = await cashTool(m, {
       action: "update",
-      position: off.body.position.id,
+      position: off.body.position.position,
       name: "Rainy day",
     });
     expect(renamed.body.position).toMatchObject({
@@ -2269,7 +2212,7 @@ describe("a cash row's name and broker", () => {
       broker: null,
       amount: 100,
     });
-    const last = renamed.body.position.id as number;
+    const last = renamed.body.position.position as number;
     for (const id of [first, last]) {
       const h = historyOf(m, id);
       if ("error" in h) throw new Error(h.message);
@@ -2284,10 +2227,11 @@ describe("a cash row's name and broker", () => {
 
   test("a change onto another live row's name and broker is refused, naming it", async () => {
     const { m } = await setup();
-    const kept = (await ask(m, cash)).body.position.id as number;
-    const other = (await ask(m, { ...cash, name: "Current", broker: "South" }))
-      .body.position.id as number;
-    const onto = await ask(m, {
+    const kept = (await cashTool(m, cash)).body.position.position as number;
+    const other = (
+      await cashTool(m, { ...cash, name: "Current", broker: "South" })
+    ).body.position.position as number;
+    const onto = await cashTool(m, {
       action: "update",
       position: other,
       name: "savings",
@@ -2306,7 +2250,7 @@ describe("a cash row's name and broker", () => {
     expect(patched.status).toBe(409);
     expect(readPosition(m.db, other)!.removedAt).toBeNull();
     // the same name at another broker is another row
-    const apart = await ask(m, {
+    const apart = await cashTool(m, {
       action: "update",
       position: other,
       name: "Savings",
@@ -2319,33 +2263,37 @@ describe("a cash row's name and broker", () => {
 
   test("one name at one broker holds a row per currency", async () => {
     const { m } = await setup();
-    const usd = (await ask(m, cash)).body.position.id as number;
-    const kwd = await ask(m, { ...cash, amount: 5, currency: "KWD" });
+    const usd = (await cashTool(m, cash)).body.position.position as number;
+    const kwd = await cashTool(m, { ...cash, amount: 5, currency: "KWD" });
     expect(kwd.body.replaced).toBeNull();
-    const again = await ask(m, { ...cash, amount: 150 });
+    const again = await cashTool(m, { ...cash, amount: 150 });
     expect(again.body.replaced).toBe(usd);
-    expect(readPosition(m.db, kwd.body.position.id)!.removedAt).toBeNull();
+    expect(
+      readPosition(m.db, kwd.body.position.position)!.removedAt,
+    ).toBeNull();
     // restoring the first USD row leaves the KWD row live
     await setPositionState(m, CASEY, usd, false);
     expect(readPosition(m.db, usd)!.removedAt).toBeNull();
     expect(
-      readPosition(m.db, again.body.position.id)!.removedAt,
+      readPosition(m.db, again.body.position.position)!.removedAt,
     ).not.toBeNull();
-    expect(readPosition(m.db, kwd.body.position.id)!.removedAt).toBeNull();
+    expect(
+      readPosition(m.db, kwd.body.position.position)!.removedAt,
+    ).toBeNull();
   });
 
   test("a change onto another currency's row is allowed, onto its own refused", async () => {
     const { m } = await setup();
-    await ask(m, cash);
+    await cashTool(m, cash);
     const other = (
-      await ask(m, {
+      await cashTool(m, {
         ...cash,
         name: "Current",
         broker: "South",
         currency: "KWD",
       })
-    ).body.position.id as number;
-    const apart = await ask(m, {
+    ).body.position.position as number;
+    const apart = await cashTool(m, {
       action: "update",
       position: other,
       name: "Savings",
@@ -2357,9 +2305,14 @@ describe("a cash row's name and broker", () => {
       currency: "KWD",
     });
     const kwd = (
-      await ask(m, { ...cash, name: "Spare", broker: "South", currency: "KWD" })
-    ).body.position.id as number;
-    const onto = await ask(m, {
+      await cashTool(m, {
+        ...cash,
+        name: "Spare",
+        broker: "South",
+        currency: "KWD",
+      })
+    ).body.position.position as number;
+    const onto = await cashTool(m, {
       action: "update",
       position: kwd,
       name: "Savings",
@@ -2367,7 +2320,7 @@ describe("a cash row's name and broker", () => {
     });
     expect(onto.body).toMatchObject({ error: "conflict" });
     expect(onto.body.message).toBe(
-      `position ${apart.body.position.id} has this name, broker and currency; update or remove it instead`,
+      `position ${apart.body.position.position} has this name, broker and currency; update or remove it instead`,
     );
     expect(plainError(sentence(onto.body.message))).toBe(
       "Other cash has this name, broker and currency.",
@@ -2376,8 +2329,12 @@ describe("a cash row's name and broker", () => {
 
   test("an unknown broker is refused with the known ones", async () => {
     const { m } = await setup();
-    const id = (await ask(m, cash)).body.position.id as number;
-    const r = await ask(m, { action: "update", position: id, broker: "West" });
+    const id = (await cashTool(m, cash)).body.position.position as number;
+    const r = await cashTool(m, {
+      action: "update",
+      position: id,
+      broker: "West",
+    });
     expect(r.body).toMatchObject({ error: "not_found" });
     expect(r.body.message).toContain("North");
   });
@@ -2385,9 +2342,16 @@ describe("a cash row's name and broker", () => {
   test("the REST holdings and the tool answer reserve and net worth alike", async () => {
     const { m } = await setup();
     await trade(m, { quantity: 1, price: 10 });
-    await ask(m, cash);
-    await ask(m, { ...cash, name: "To invest", amount: 40, dry_powder: true });
-    const tool = (await ask(m, { action: "holdings", currency: "USD" })).body;
+    await cashTool(m, cash);
+    await cashTool(m, {
+      ...cash,
+      name: "To invest",
+      amount: 40,
+      dry_powder: true,
+    });
+    const tool = (
+      await ask(m, CASEY, "portfolio", { action: "holdings", currency: "USD" })
+    ).body;
     const rest = (await (
       await api(m)(
         new Request("http://markets.test/api/v1/holdings?currency=USD"),

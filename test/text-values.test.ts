@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
-import {
-  DRY_POWDER_CHANGES,
-  DRY_POWDER_PICK,
-  parsePortfolio,
-  UPDATE_TARGET,
-} from "../src/operations/portfolio.ts";
 import { parseRules } from "../src/operations/rules.ts";
+import {
+  parseBondTool,
+  parseCashTool,
+  parseFundTool,
+  parsePortfolioRead,
+  parseTradeTool,
+} from "../src/tools/portfolio.ts";
 
 const asText = (input: Record<string, unknown>, names: string[]) =>
   Object.fromEntries(
@@ -19,9 +20,15 @@ const asText = (input: Record<string, unknown>, names: string[]) =>
   );
 
 describe("write arguments sent as text", () => {
-  const cases: [string, Record<string, unknown>, string[]][] = [
+  const cases: [
+    string,
+    (input: unknown) => unknown,
+    Record<string, unknown>,
+    string[],
+  ][] = [
     [
       "a trade",
+      parseTradeTool,
       {
         action: "add",
         symbol: "AAA",
@@ -36,26 +43,33 @@ describe("write arguments sent as text", () => {
     ],
     [
       "a trade by total",
+      parseTradeTool,
       { action: "add", symbol: "AAA", side: "sell", quantity: 1, total: 99 },
       ["quantity", "total"],
     ],
     [
+      "a sell of all",
+      parseTradeTool,
+      { action: "add", symbol: "AAA", side: "sell", all: true },
+      ["all"],
+    ],
+    [
       "a fund",
+      parseTradeTool,
       {
         action: "add",
-        kind: "fund",
         isin: "ZZFUND000011",
         side: "buy",
-        units: 10,
+        quantity: 10,
         price: 5,
       },
-      ["units", "price"],
+      ["quantity", "price"],
     ],
     [
       "cash",
+      parseCashTool,
       {
         action: "add",
-        kind: "cash",
         name: "Kept",
         currency: "EUR",
         amount: 100,
@@ -65,9 +79,9 @@ describe("write arguments sent as text", () => {
     ],
     [
       "a bond",
+      parseBondTool,
       {
         action: "add",
-        kind: "bond",
         name: "Bond",
         currency: "EUR",
         amount: 1000,
@@ -79,44 +93,62 @@ describe("write arguments sent as text", () => {
     ],
     [
       "an update by position",
+      parseCashTool,
       { action: "update", position: 7, by: -5, dry_powder: false },
       ["position", "by", "dry_powder"],
     ],
     [
       "an update of an amount",
+      parseBondTool,
       { action: "update", position: 7, amount: 120, cost: 3 },
       ["position", "amount", "cost"],
     ],
     [
       "a fund's price",
-      { action: "update", isin: "ZZFUND000011", price: 6.5 },
+      parseFundTool,
+      { isin: "ZZFUND000011", price: 6.5 },
       ["price"],
     ],
-    ["a trade removed", { action: "remove", trade: 12 }, ["trade"]],
-    ["a position restored", { action: "restore", position: 3 }, ["position"]],
+    [
+      "a trade removed",
+      parseTradeTool,
+      { action: "remove", trade: 12 },
+      ["trade"],
+    ],
+    [
+      "a position restored",
+      parseCashTool,
+      { action: "restore", position: 3 },
+      ["position"],
+    ],
     [
       "trades with removed ones",
+      parsePortfolioRead,
       { action: "trades", removed: true },
       ["removed"],
     ],
   ];
-  for (const [name, input, names] of cases) {
+  for (const [name, parse, input, names] of cases) {
     test(`${name} reads as its values`, () => {
-      expect(parsePortfolio(asText(input, names))).toEqual(
-        parsePortfolio(input),
-      );
+      expect(parse(asText(input, names))).toEqual(parse(input));
     });
   }
 
   test("text that is not a value is refused in the same words", () => {
-    const refused: [Record<string, unknown>, string][] = [
+    const refused: [(input: unknown) => unknown, object, string][] = [
       [
+        parseTradeTool,
         { action: "add", symbol: "AAA", side: "buy", quantity: "ten" },
         "quantity must be a number",
       ],
-      [{ action: "update", position: "1.5", note: "x" }, "position must be"],
-      [{ action: "remove", trade: "-3" }, "trade must be"],
       [
+        parseCashTool,
+        { action: "update", position: "1.5", note: "x" },
+        "position must be",
+      ],
+      [parseTradeTool, { action: "remove", trade: "-3" }, "trade must be"],
+      [
+        parseTradeTool,
         {
           action: "add",
           symbol: "AAA",
@@ -126,85 +158,15 @@ describe("write arguments sent as text", () => {
         },
         "again must be true or false",
       ],
+      [
+        parseTradeTool,
+        { action: "add", symbol: "AAA", side: "sell", quantity: "all" },
+        "a sell of all is all: true",
+      ],
     ];
-    for (const [input, words] of refused) {
-      expect(() => parsePortfolio(input)).toThrow(words);
+    for (const [parse, input, words] of refused) {
+      expect(() => parse(input)).toThrow(words);
     }
-  });
-
-  test("a sell of all is still all", () => {
-    expect(
-      parsePortfolio({
-        action: "add",
-        symbol: "AAA",
-        side: "sell",
-        quantity: "all",
-      }),
-    ).toMatchObject({ trade: { quantity: "all" } });
-  });
-
-  test("currency alone picks the dry powder row; with by it is the amount's", () => {
-    expect(
-      parsePortfolio({
-        action: "update",
-        position: "dry_powder",
-        broker: "North",
-        currency: "EUR",
-        note: "kept",
-      }),
-    ).toEqual({
-      action: "update",
-      position: "dry_powder",
-      portfolio: null,
-      currency: "EUR",
-      change: { note: "kept", broker: "North" },
-    });
-    expect(
-      parsePortfolio({
-        action: "update",
-        position: "dry_powder",
-        currency: "USD",
-        by: 5,
-      }),
-    ).toMatchObject({
-      currency: null,
-      change: { by: { amount: 5, currency: "USD" } },
-    });
-  });
-
-  test("a dry powder pick that changes nothing names what it can change", () => {
-    expect(() =>
-      parsePortfolio({
-        action: "update",
-        position: "dry_powder",
-        broker: "North",
-        currency: "EUR",
-      }),
-    ).toThrow(DRY_POWDER_CHANGES);
-    expect(DRY_POWDER_CHANGES).not.toContain("name");
-    // a price or a market keeps its own refusal
-    expect(() =>
-      parsePortfolio({
-        action: "update",
-        position: "dry_powder",
-        market: "US",
-      }),
-    ).toThrow("cash has no market");
-  });
-
-  test("an update with no position says what picks the row", () => {
-    expect(() => parsePortfolio({ action: "update", note: "x" })).toThrow(
-      UPDATE_TARGET,
-    );
-    expect(() =>
-      parsePortfolio({
-        action: "update",
-        dry_powder: true,
-        broker: "North",
-        currency: "EUR",
-        note: "x",
-      }),
-    ).toThrow(DRY_POWDER_PICK);
   });
 
   test("a rule's id, paused and condition as text", () => {
