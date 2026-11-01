@@ -27,6 +27,22 @@ signed in with the admin key alone.
   runs) serves `{ hmr: false }` instead: Bun rebuilds the bundle after
   an edit, with no reload script, so a UI change needs a browser
   reload, not a server restart.
+- **The fonts are files, never in a stylesheet.** Bun turns a CSS
+  `url()` under 128 KiB into a base64 `data:` URL, which holds the
+  first paint until the whole stylesheet lands; `app/fonts.ts` declares
+  the faces from imports instead, which stay hashed files, and
+  `index.html` preloads the same files. `test/web-build.test.ts` holds
+  the stylesheet free of `data:font`.
+- **The release build is minified** (`scripts/build.ts`, whose
+  options the same test bundles with): `--compile` alone embeds the
+  page unminified. Whitespace and syntax only, never identifiers: the
+  log names an error by its class, which the test holds.
+- **`index.html` draws a frame before the script**: the page colour
+  and the mark, centred, shown only while `#app` is empty and after
+  half a second, so a fast load never flashes it, then pulsing as the
+  placeholders do. It knows neither the page nor the session, so it
+  shows nothing else. Its colours are copied from `tokens.css`, held
+  equal by `test/install.test.ts`.
 - **The UI installs to a phone's Home Screen.** `manifest.webmanifest`
   and its icons sit beside `index.html`, drawn as 1ctx's tiles with
   the Markets mark. The bundler hashes what the page links but not the

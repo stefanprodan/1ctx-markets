@@ -9,3 +9,9 @@ declare module "*.png" {
   const path: string;
   export default path;
 }
+
+// a font the page preloads: the import is its hashed path
+declare module "*.woff2" {
+  const path: string;
+  export default path;
+}

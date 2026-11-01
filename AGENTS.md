@@ -105,6 +105,7 @@ src/web/                    the web UI, bundled from index.html (Preact)
   style/ ui/ lib/ fonts/    1ctx's tokens, primitives, icons and fonts
 test/                       one *.test.ts per area, helpers/ (fakes), fixtures/ (recordings)
 scripts/probe/              the fixture recorders, run by hand
+scripts/build.ts            the release build `make build` runs
 scripts/smoke.sh            the binary's smoke test
 scripts/staging.sh          deploy, status and keys of the staging box (host in staging.env)
 scripts/bun-version.sh      the Bun version CI installs (.github/workflows/test.yml)
