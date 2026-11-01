@@ -38,7 +38,8 @@ export function Instrument({ params }: { params: Params }) {
   const removing = useSignal(false);
   const refused = useSignal<string | null>(null);
 
-  const detail = markets.detailId.value === id ? markets.detail.value : null;
+  const mine = markets.detailId.value === id;
+  const detail = mine ? markets.detail.value : null;
   const held = useHolding(detail?.instrument.id ?? null);
   const kind = detail?.instrument.kind;
   const symbol = tickerOf(id, kind);
@@ -79,8 +80,8 @@ export function Instrument({ params }: { params: Params }) {
       }
       failed={didNotLoad(
         detail !== null,
-        markets.detailError.value,
-        markets.detailCode.value,
+        mine ? markets.detailError.value : null,
+        mine ? markets.detailCode.value : null,
         () => void markets.loadInstrument(id, true),
       )}
       stale={detail === null ? null : markets.detailError.value}
@@ -127,7 +128,7 @@ export function Instrument({ params }: { params: Params }) {
       {detail !== null ? (
         <>
           <Head detail={detail} now={Date.now()} />
-          <Chart id={id} intraday={detail.intraday} />
+          <Chart key={id} id={id} intraday={detail.intraday} />
           <InstrumentCards detail={detail} held={held} />
         </>
       ) : (

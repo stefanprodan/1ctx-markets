@@ -16,7 +16,15 @@ import {
   unread,
 } from "../src/web/data/store.ts";
 import { kindOf } from "../src/web/lib/names.ts";
-import { type Later, SLOW_MS, slowFlag } from "../src/web/lib/slow.ts";
+import {
+  HOLD_MS,
+  hold,
+  type Later,
+  paced,
+  SHOW_MS,
+  SLOW_MS,
+  slowFlag,
+} from "../src/web/lib/slow.ts";
 import { pointerAt, type Rest } from "../src/web/views/Chart.model.ts";
 import { ConnectBody } from "../src/web/views/Connect.tsx";
 import { HomeWaiting, SectionView } from "../src/web/views/Dashboard.tsx";
@@ -414,5 +422,199 @@ describe("names", () => {
       "BRK-B · 1ctx Markets",
     );
     expect(kindOf("ALTSYMBOL")).toBe("Future");
+  });
+});
+
+describe("a switch between pages", () => {
+  const gate = <T,>() => {
+    let open: (v: T) => void = () => {};
+    let shut: (e: unknown) => void = () => {};
+    const work = new Promise<T>((resolve, reject) => {
+      open = resolve;
+      shut = reject;
+    });
+    return { work, open, shut };
+  };
+
+  test("a read within the hold shows the next page at once", async () => {
+    const clock = fakeClock(NOW);
+    const g = gate<string>();
+    let shown = false;
+    hold(g.work, () => (shown = true), laterOf(clock));
+    const landed: { v: string | null } = { v: null };
+    void paced(g.work, laterOf(clock)).then((v) => (landed.v = v));
+    await clock.advance(HOLD_MS - 1);
+    expect(shown).toBe(false);
+    g.open("next");
+    await clock.advance(0);
+    expect(shown).toBe(true);
+    expect(landed.v).toBe("next");
+  });
+
+  test("past the hold the next page shows, and its answer waits out the placeholders' least time", async () => {
+    const clock = fakeClock(NOW);
+    const g = gate<string>();
+    let shown = false;
+    hold(g.work, () => (shown = true), laterOf(clock));
+    const landed: { v: string | null } = { v: null };
+    void paced(g.work, laterOf(clock)).then((v) => (landed.v = v));
+    await clock.advance(HOLD_MS);
+    expect(shown).toBe(true);
+    g.open("next");
+    await clock.advance(SHOW_MS - 1);
+    expect(landed.v).toBeNull();
+    await clock.advance(1);
+    expect(landed.v).toBe("next");
+    // one slower than that lands as it answers
+    const late = gate<string>();
+    const after: { v: string | null } = { v: null };
+    void paced(late.work, laterOf(clock)).then((v) => (after.v = v));
+    await clock.advance(HOLD_MS + SHOW_MS);
+    late.open("late");
+    await clock.advance(0);
+    expect(after.v).toBe("late");
+  });
+
+  test("a failed read is paced as an answer is, and a dropped hold never shows", async () => {
+    const clock = fakeClock(NOW);
+    const g = gate<string>();
+    let failed = false;
+    void paced(g.work, laterOf(clock)).catch(() => (failed = true));
+    let shown = false;
+    const drop = hold(g.work, () => (shown = true), laterOf(clock));
+    drop();
+    await clock.advance(HOLD_MS);
+    g.shut(new Error("no"));
+    await clock.advance(SHOW_MS - 1);
+    expect(failed).toBe(false);
+    await clock.advance(1);
+    expect(failed).toBe(true);
+    expect(shown).toBe(false);
+  });
+
+  test("an instrument keeps the one left until the next one's answer lands", async () => {
+    const h = held();
+    const s = store(h.fetch);
+    const first = s.loadInstrument("US:AAA");
+    await h.answer(
+      `GET ${instrumentPath("US:AAA")}`,
+      Response.json(detailOf("US:AAA")),
+    );
+    await first;
+    const next = s.loadInstrument("US:BBB");
+    expect(s.detailId.value).toBe("US:AAA");
+    expect(s.detail.value?.instrument.id).toBe("US:AAA");
+    // asked once for the one not on screen, as on a first open
+    expect(h.asked).toContain(`GET ${instrumentPath("US:BBB")}/stored`);
+    await h.answer(
+      `GET ${instrumentPath("US:BBB")}`,
+      Response.json(detailOf("US:BBB")),
+    );
+    await next;
+    expect(s.detailId.value).toBe("US:BBB");
+    expect(s.detail.value?.instrument.id).toBe("US:BBB");
+    // a failed read for another id never leaves the one left standing in
+    const gone = s.loadInstrument("US:CCC");
+    await h.answer(
+      `GET ${instrumentPath("US:CCC")}`,
+      problem(503, "source_error", "failed"),
+    );
+    await gone;
+    expect(s.detailId.value).toBe("US:CCC");
+    expect(s.detail.value).toBeNull();
+    expect(s.detailError.value).not.toBeNull();
+  });
+});
+
+describe("an instrument left while the next one reads", () => {
+  const read = (id: string) => `GET ${instrumentPath(id)}`;
+
+  test("a refetch of the page left never supersedes the next one's read", async () => {
+    const h = held();
+    const s = store(h.fetch);
+    const first = s.loadInstrument("US:AAA");
+    await h.answer(read("US:AAA"), Response.json(detailOf("US:AAA")));
+    await first;
+    const again = s.refetch("US:AAA", ["quotes"], []);
+    const next = s.loadInstrument("US:BBB");
+    await h.answer(
+      `POST ${instrumentPath("US:AAA")}/refetch`,
+      Response.json({ parts: [] }),
+    );
+    await again;
+    await h.answer(read("US:BBB"), Response.json(detailOf("US:BBB")));
+    await next;
+    expect(s.detailId.value).toBe("US:BBB");
+    expect(h.asked.filter((k) => k === read("US:AAA"))).toHaveLength(1);
+  });
+
+  test("a page that failed keeps its error while the next one reads", async () => {
+    const h = held();
+    const s = store(h.fetch);
+    const first = s.loadInstrument("US:AAA");
+    await h.answer(read("US:AAA"), problem(503, "source_error", "failed"));
+    await first;
+    const error = s.detailError.value;
+    expect(error).not.toBeNull();
+    const next = s.loadInstrument("US:BBB");
+    expect(s.detailId.value).toBe("US:AAA");
+    expect(s.detailError.value).toBe(error);
+    // Try again on the page left never takes over the next one's read
+    await s.loadInstrument("US:AAA", true);
+    expect(s.detailError.value).toBe(error);
+    await h.answer(read("US:BBB"), problem(503, "source_error", "failed"));
+    await next;
+    expect(s.detailId.value).toBe("US:BBB");
+    expect(s.detailError.value).not.toBeNull();
+    // Try again on its own page clears it while it reads
+    const retry = s.loadInstrument("US:BBB", true);
+    expect(s.detailError.value).toBeNull();
+    await h.answer(read("US:BBB"), Response.json(detailOf("US:BBB")));
+    await retry;
+    expect(s.detail.value?.instrument.id).toBe("US:BBB");
+    expect(h.asked.filter((k) => k === read("US:AAA"))).toHaveLength(1);
+  });
+
+  test("a deleted symbol stays as its page leaves, and reads anew if opened again", async () => {
+    const h = held();
+    const s = store(h.fetch);
+    const first = s.loadInstrument("US:AAA");
+    await h.answer(read("US:AAA"), Response.json(detailOf("US:AAA")));
+    await first;
+    const removing = s.remove("US:AAA");
+    await h.answer(
+      `DELETE ${instrumentPath("US:AAA")}`,
+      new Response(null, { status: 204 }),
+    );
+    expect(await removing).toEqual({ ok: true });
+    expect(s.detail.value?.instrument.id).toBe("US:AAA");
+    const back = s.loadInstrument("US:AAA");
+    expect(s.detail.value).toBeNull();
+    expect(h.asked).toContain(`GET ${instrumentPath("US:AAA")}/stored`);
+    await h.answer(read("US:AAA"), Response.json(detailOf("US:AAA")));
+    await back;
+  });
+
+  test("a deleted symbol opened again after another keeps that other one on screen", async () => {
+    const h = held();
+    const s = store(h.fetch);
+    const first = s.loadInstrument("US:AAA");
+    await h.answer(read("US:AAA"), Response.json(detailOf("US:AAA")));
+    await first;
+    const removing = s.remove("US:AAA");
+    await h.answer(
+      `DELETE ${instrumentPath("US:AAA")}`,
+      new Response(null, { status: 204 }),
+    );
+    await removing;
+    const other = s.loadInstrument("US:BBB");
+    await h.answer(read("US:BBB"), Response.json(detailOf("US:BBB")));
+    await other;
+    const back = s.loadInstrument("US:AAA");
+    expect(s.detailId.value).toBe("US:BBB");
+    expect(s.detail.value?.instrument.id).toBe("US:BBB");
+    await h.answer(read("US:AAA"), Response.json(detailOf("US:AAA")));
+    await back;
+    expect(s.detail.value?.instrument.id).toBe("US:AAA");
   });
 });

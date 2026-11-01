@@ -6,6 +6,7 @@
 import { batch, signal } from "@preact/signals";
 import { inCirculation } from "../../shared/currencies.ts";
 import { navigate } from "../app/router.ts";
+import { type Later, paced, timer } from "../lib/slow.ts";
 import { ApiError, type Call, codeOf, says } from "./api.ts";
 
 export const PORTFOLIOS_PATH = "/api/v1/portfolios";
@@ -376,7 +377,11 @@ export function plainError(said: string): string {
 
 // session: the store's sign-in count, so an answer from before a sign-in
 // or sign-out never lands
-export function portfolioStore(call: Call, session: () => number) {
+export function portfolioStore(
+  call: Call,
+  session: () => number,
+  later: Later = timer,
+) {
   const overview = signal<Overview | null>(null);
   const holdings = signal<Holdings | null>(null);
   const trades = signal<TradeRow[] | null>(null);
@@ -389,7 +394,9 @@ export function portfolioStore(call: Call, session: () => number) {
   const currency = signal<string | null>(null);
 
   let loads = 0;
-  async function load(): Promise<void> {
+  // paced only on arrival, where placeholders may show; a save or a
+  // pick reloads under what is drawn
+  async function load(arrival = false): Promise<void> {
     const mine = ++loads;
     // a currency pick or a fallback to all corrects the address in
     // place: only a portfolio picked is a step to go back from
@@ -411,11 +418,12 @@ export function portfolioStore(call: Call, session: () => number) {
     const tq = new URLSearchParams({ removed: "true" });
     if (portfolio.value !== null) tq.set("portfolio", String(portfolio.value));
     try {
-      const [o, h, t] = await Promise.all([
+      const reads = Promise.all([
         call<Overview>(PORTFOLIOS_PATH),
         call<Holdings>(`${where}${q.size > 0 ? `?${q}` : ""}`),
         call<{ trades: TradeRow[] }>(`/api/v1/trades?${tq}`),
       ]);
+      const [o, h, t] = await (arrival ? paced(reads, later) : reads);
       if (stale()) return;
       batch(() => {
         overview.value = o;
@@ -434,7 +442,7 @@ export function portfolioStore(call: Call, session: () => number) {
         portfolio.value !== null
       ) {
         portfolio.value = null;
-        return load();
+        return load(arrival);
       }
       batch(() => {
         error.value = says(e);
@@ -478,7 +486,7 @@ export function portfolioStore(call: Call, session: () => number) {
         portfolio.value = v.portfolio;
         currency.value = v.currency;
       });
-      return load();
+      return load(true);
     },
     pick(next: { portfolio?: number | null; currency?: string | null }) {
       batch(() => {
