@@ -20,6 +20,7 @@ import {
 import { store } from "../src/web/data/store.ts";
 import {
   amount,
+  day,
   money,
   signedAmount,
   signedMoney,
@@ -64,6 +65,7 @@ import {
   matured,
   missingWords,
   monthsOf,
+  noteEdit,
   orderOf,
   pageOf,
   payFromLabel,
@@ -1184,7 +1186,7 @@ describe("cash: dry powder, reserve, broker and note", () => {
     );
     expect(html).toContain('value="Savings"');
     expect(html).toContain('aria-label="Broker: North"');
-    expect(html).toContain('value="Made up deposit at 3%"');
+    expect(html).toContain(">Made up deposit at 3%</textarea>");
     expect(html).not.toContain("Market:");
     expect(html).not.toContain("<select");
     const head = render(
@@ -1349,17 +1351,32 @@ describe("a bond", () => {
     expect(html).toContain('<span class="show-phone"></span>');
   });
 
-  test("Edit has its face, date and broker, and sends a broker change only", async () => {
+  test("Edit has its face, date, broker and note, and sends what changed", async () => {
     const { s } = await loaded();
+    const noted = { ...bond, note: "Line one\nLine two" };
     const html = render(
-      <PositionEdit store={s.portfolios} h={bond} onDone={() => {}} />,
+      <PositionEdit store={s.portfolios} h={noted} onDone={() => {}} />,
     );
     expect(html).toContain(">Face<");
     expect(html).toContain('aria-label="Broker: North"');
     expect(html).not.toContain('value="Gov bond"');
+    expect(html).toMatch(/<textarea[^>]*>Line one\nLine two<\/textarea>/);
     expect(brokerEdit(bond, "North")).toEqual({});
     expect(brokerEdit(bond, "West")).toEqual({ broker: "West" });
     expect(brokerEdit(bond, "")).toEqual({ broker: null });
+    expect(noteEdit(noted, " Line one\nLine two ")).toEqual({});
+    expect(noteEdit(noted, "Other")).toEqual({ note: "Other" });
+    expect(noteEdit(noted, " ")).toEqual({ note: null });
+  });
+
+  test("every kind added, a bond included, takes a multi-line note", async () => {
+    const { s } = await loaded();
+    for (const kind of ["trade", "fund", "cash", "bond"] as const) {
+      const html = render(
+        <AddForm store={s.portfolios} kind={kind} onDone={() => {}} />,
+      );
+      expect(html).toMatch(/>Note<\/label>(<\/span>)+<textarea/);
+    }
   });
 });
 
@@ -1492,13 +1509,19 @@ describe("a fund the owner prices", () => {
     expect(holdingName({ ...fundRow, isin: undefined, parts: [] }, NOW)).toBe(
       "Fund",
     );
+    // its price, then the day it is for under it; the year only when not this one
+    expect(priceLine(fundRow)).toBe("6.00 EUR");
     // ICU builds name September "Sep" or "Sept"
-    expect(priceLine(fundRow, NOW)).toMatch(/^6\.00 EUR · 30 Sept?$/);
+    expect(day("2026-09-30", NOW)).toMatch(/^30 Sept?$/);
+    expect(day("2025-12-29", NOW)).toBe("29 Dec 2025");
     expect(pageOf(fundRow)).toBeNull();
     expect(homeOf(fundRow)).toBe("price");
     // no instrument page: its row is a button that opens the drawer
     const html = render(<PortfoliosBody store={s.portfolios} />);
     expect(html).not.toContain(`/instruments/fund`);
+    expect(html).toMatch(
+      /pf-price">6\.00 EUR<\/span><span class="num small faint pf-price">30 Sept?( 2026)?</,
+    );
     expect(html).toContain(
       '<button type="button" class="table-open"><span class="table-hidden">Made Up World Fund</span>',
     );

@@ -99,8 +99,11 @@
   }
 
   /* the trade drawer */
+  /* a note is typed in a multi-line box, so its line breaks are kept */
   .pf-note {
     margin-top: var(--space-1);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
   .pf-trade-fills {
     display: flex;

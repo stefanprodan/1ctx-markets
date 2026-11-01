@@ -48,6 +48,7 @@ import {
   importReason,
   importStatus,
   listingWords,
+  noteEdit,
   payFromLabel,
   price,
   type Remembered,
@@ -208,7 +209,7 @@ export function PositionEdit({
       ...(cash
         ? cashEdits(h, { name: name.value, broker: at, note: note.value })
         : brokered
-          ? brokerEdit(h, at)
+          ? { ...brokerEdit(h, at), ...noteEdit(h, note.value) }
           : {}),
     };
     error.value =
@@ -264,7 +265,9 @@ export function PositionEdit({
           }}
         />
       )}
-      {cash && <Field label="Note" value={note} placeholder="Optional" />}
+      {brokered && (
+        <Field label="Note" value={note} placeholder="Optional" rows={5} />
+      )}
     </EditFrame>
   );
 }
@@ -613,12 +616,15 @@ function Field({
   after,
   tag,
   onEdit,
+  rows,
 }: {
   label: string;
   value: Signal<string>;
   placeholder?: string;
   type?: "text" | "date";
   decimal?: boolean;
+  // a multi-line box, for a note that runs to paragraphs
+  rows?: number;
   onEdit?: () => void;
   // a control beside the label, such as All on a sell
   after?: ComponentChildren;
@@ -636,7 +642,18 @@ function Field({
         </span>
         {after}
       </span>
-      {type === "date" ? (
+      {rows ? (
+        <textarea
+          id={id}
+          rows={rows}
+          value={value.value}
+          placeholder={placeholder}
+          onInput={(ev) => {
+            value.value = ev.currentTarget.value;
+            onEdit?.();
+          }}
+        />
+      ) : type === "date" ? (
         <input
           id={id}
           type="date"
@@ -1219,9 +1236,7 @@ export function AddForm({
             }
           : {}),
         ...(kind.value === "cash" && dry.value ? { dry_powder: true } : {}),
-        ...(kind.value === "cash" && note.value.trim()
-          ? { note: note.value.trim() }
-          : {}),
+        ...(note.value.trim() ? { note: note.value.trim() } : {}),
         date: date.value,
       },
     };
@@ -1627,24 +1642,20 @@ export function AddForm({
               />
             </div>
             {placePicks}
-            {dryUse.length > 0 ? (
-              <div class="pf-pair">
-                <FormPick
-                  label="Dry powder"
-                  value={payFrom}
-                  options={[
-                    { value: "", text: "Not used" },
-                    ...dryUse.map((d) => ({
-                      value: String(d.position),
-                      text: payFromLabel(d, dryUse),
-                    })),
-                  ]}
-                />
-                <Field label="Note" value={note} placeholder="Optional" />
-              </div>
-            ) : (
-              <Field label="Note" value={note} placeholder="Optional" />
+            {dryUse.length > 0 && (
+              <FormPick
+                label="Dry powder"
+                value={payFrom}
+                options={[
+                  { value: "", text: "Not used" },
+                  ...dryUse.map((d) => ({
+                    value: String(d.position),
+                    text: payFromLabel(d, dryUse),
+                  })),
+                ]}
+              />
             )}
+            <Field label="Note" value={note} placeholder="Optional" rows={5} />
           </>
         ) : kind.value === "cash" ? (
           <>
@@ -1679,7 +1690,7 @@ export function AddForm({
                 onEdit={clear}
               />
             </div>
-            <Field label="Note" value={note} placeholder="Optional" />
+            <Field label="Note" value={note} placeholder="Optional" rows={5} />
           </>
         ) : kind.value === "fund" ? (
           <>
@@ -1735,7 +1746,7 @@ export function AddForm({
             </div>
             {marketPick}
             {placePicks}
-            <Field label="Note" value={note} placeholder="Optional" />
+            <Field label="Note" value={note} placeholder="Optional" rows={5} />
           </>
         ) : (
           <>
@@ -1756,6 +1767,7 @@ export function AddForm({
               <Field label="Cost" value={cost} placeholder="Optional" decimal />
             </div>
             {placePicks}
+            <Field label="Note" value={note} placeholder="Optional" rows={5} />
           </>
         )}
       </div>

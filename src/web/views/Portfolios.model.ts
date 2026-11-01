@@ -451,17 +451,25 @@ export function brokerEdit(
     : {};
 }
 
+// "" takes the note off
+export function noteEdit(
+  h: Holding,
+  note: string,
+): Pick<PositionChange, "note"> {
+  const n = note.trim();
+  return n !== (h.note ?? "") ? { note: n === "" ? null : n } : {};
+}
+
 // only what differs is sent; null takes a broker or a note off
 export function cashEdits(
   h: Holding,
   edited: { name: string; broker: string; note: string },
 ): Pick<PositionChange, "name" | "broker" | "note"> {
   const name = edited.name.trim();
-  const note = edited.note.trim();
   return {
     ...(name !== (h.name ?? "") ? { name } : {}),
     ...brokerEdit(h, edited.broker),
-    ...(note !== (h.note ?? "") ? { note: note === "" ? null : note } : {}),
+    ...noteEdit(h, edited.note),
   };
 }
 
@@ -735,12 +743,9 @@ export function rowActions(h: Holding): RowAction[] {
   return out;
 }
 
-// the price cell: a hand price with its day, a bond's as a percent
-export function priceLine(h: Holding, now = Date.now()): string {
+// the price cell's figure: a bond's as a percent of par
+export function priceLine(h: Holding): string {
   if (h.kind === "cash") return "";
-  if (h.priced === "hand") {
-    return `${price(h.price, h.currency)}${h.as_of ? ` · ${day(h.as_of, now)}` : ""}`;
-  }
   if (h.unit === "percent_of_par") return `${price(h.price)}%`;
   return price(h.price, h.currency);
 }
