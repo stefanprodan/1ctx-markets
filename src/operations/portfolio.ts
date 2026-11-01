@@ -52,6 +52,7 @@ import {
   MAX_NAME,
   MAX_NOTE,
   MAX_POSITION_NAME,
+  movePortfolio,
   type NewPosition,
   type NewTrade,
   type Portfolio,
@@ -1884,6 +1885,13 @@ function otherPortfolio(
 
 const nameArg = (value: unknown, name = "name") => text(value, name, MAX_NAME);
 
+const placeArg = (value: unknown): number => {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+    throw new ArgError("position must be a whole number from 1");
+  }
+  return value;
+};
+
 const conflict = (message: string): Failure => ({ error: "conflict", message });
 
 export async function createPortfolio(m: Markets, body: unknown) {
@@ -1905,18 +1913,28 @@ export async function createPortfolio(m: Markets, body: unknown) {
 }
 
 export async function updatePortfolio(m: Markets, id: number, body: unknown) {
-  const f = fields(body, ["name"]);
-  const name = nameArg(f.name);
+  const f = fields(body, ["name", "position"]);
+  if (f.name === undefined && f.position === undefined) {
+    throw new ArgError("name or position is required");
+  }
+  const name = f.name === undefined ? null : nameArg(f.name);
+  const place = f.position === undefined ? null : placeArg(f.position);
   const done = await m.writer.write((db): Portfolio | Failure | null => {
     const p = readPortfolio(db, id);
     if (p === null) return null;
-    if (p.cash) return conflict(`${CASH_NAME} keeps its name`);
-    if (isCashName(name)) return conflict(NAME_KEPT);
-    const other = portfolioByName(db, name);
-    if (other !== null && other.id !== id) {
-      return conflict("a portfolio has this name");
+    if (p.cash && name !== null) {
+      return conflict(`${CASH_NAME} keeps its name`);
     }
-    renamePortfolio(db, id, name);
+    if (p.cash) return conflict(`${CASH_NAME} stays first`);
+    if (name !== null) {
+      if (isCashName(name)) return conflict(NAME_KEPT);
+      const other = portfolioByName(db, name);
+      if (other !== null && other.id !== id) {
+        return conflict("a portfolio has this name");
+      }
+      renamePortfolio(db, id, name);
+    }
+    if (place !== null) movePortfolio(db, id, place);
     return readPortfolio(db, id)!;
   });
   if (done === null) return notFound(`no portfolio ${id}`);

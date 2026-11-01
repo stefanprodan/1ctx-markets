@@ -91,7 +91,7 @@ export type Position = {
 
 export function listPortfolios(db: Db): Portfolio[] {
   return db
-    .query<RawPortfolio, []>(`${PORTFOLIO} order by name collate nocase, id`)
+    .query<RawPortfolio, []>(`${PORTFOLIO} order by cash desc, position, id`)
     .all()
     .map(portfolioOf);
 }
@@ -123,7 +123,11 @@ export function insertPortfolio(
 ): number {
   return Number(
     db
-      .query("insert into portfolios (name, cash, created_at) values (?, ?, ?)")
+      .query(
+        `insert into portfolios (name, cash, created_at, position)
+         values (?, ?, ?,
+           (select coalesce(max(position), 0) + 1 from portfolios))`,
+      )
       .run(name, cash ? 1 : 0, now).lastInsertRowid,
   );
 }
@@ -137,6 +141,27 @@ export function ensureCash(db: Db, now: number): boolean {
 
 export function renamePortfolio(db: Db, id: number, name: string): void {
   db.query("update portfolios set name = ? where id = ?").run(name, id);
+}
+
+// to a place among the portfolios but Cash, 1 first, past the end last;
+// the rest renumbered 1..n in the same write
+export function movePortfolio(db: Db, id: number, place: number): void {
+  const ids = movable(db).filter((x) => x !== id);
+  ids.splice(Math.min(place, ids.length + 1) - 1, 0, id);
+  renumber(db, ids);
+}
+
+const movable = (db: Db): number[] =>
+  db
+    .query<{ id: number }, []>(
+      "select id from portfolios where cash = 0 order by position, id",
+    )
+    .all()
+    .map((r) => r.id);
+
+function renumber(db: Db, ids: number[]): void {
+  const set = db.query("update portfolios set position = ? where id = ?");
+  for (const [k, id] of ids.entries()) set.run(k + 1, id);
 }
 
 // the live rows; removed ones go with the portfolio
@@ -159,7 +184,11 @@ export function deletePortfolio(db: Db, id: number): boolean {
   db.query(
     "delete from positions where portfolio = ? and removed_at is not null",
   ).run(id);
-  return db.query("delete from portfolios where id = ?").run(id).changes > 0;
+  if (db.query("delete from portfolios where id = ?").run(id).changes === 0) {
+    return false;
+  }
+  renumber(db, movable(db));
+  return true;
 }
 
 export function listBrokers(db: Db): Broker[] {

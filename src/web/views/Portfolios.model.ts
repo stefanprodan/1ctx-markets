@@ -566,10 +566,12 @@ export type HoldingGroup = { key: string; rows: Holding[]; value: number };
 
 const CASH_GROUPS = ["Dry powder", "Reserve"];
 
-// on All by portfolio, inside one by kind; the largest first, dry powder before reserve
+// on All by portfolio in the list's order (order: their names), one not
+// in it last; inside one by kind, the largest first, dry powder before reserve
 export function groupsOf(
   rows: readonly Holding[],
   all: boolean,
+  order: readonly string[] = [],
 ): HoldingGroup[] {
   const by = new Map<string, Holding[]>();
   for (const r of rows) {
@@ -580,15 +582,69 @@ export function groupsOf(
         : kindName(r.type);
     by.set(k, [...(by.get(k) ?? []), r]);
   }
+  const placed = (k: string) => {
+    const i = order.indexOf(k);
+    return i < 0 ? order.length : i;
+  };
   const pinned = (k: string) => (all ? -1 : CASH_GROUPS.indexOf(k));
   return [...by.entries()]
     .map(([key, rs]) => ({ key, rows: rs, value: sums(rs).value }))
     .sort(
       (a, b) =>
+        (all ? placed(a.key) - placed(b.key) : 0) ||
         (pinned(a.key) >= 0 && pinned(b.key) >= 0
           ? pinned(a.key) - pinned(b.key)
-          : 0) || b.value - a.value,
+          : 0) ||
+        b.value - a.value,
     );
+}
+
+// the places a portfolio's arrows send, at its 0-based index among the n
+// portfolios but Cash; places are 1-based, null at an end
+export const movePlaces = (
+  at: number,
+  n: number,
+): { up: number | null; down: number | null } => ({
+  up: at > 0 ? at : null,
+  down: at < n - 1 ? at + 2 : null,
+});
+
+// the holding groups shut, per view ("all" or a portfolio id), kept as
+// one JSON text; text that is not that shuts nothing
+export const SHUT_KEY = "markets-portfolio-shut";
+
+function shutViews(text: string | null): Record<string, string[]> {
+  try {
+    const v: unknown = JSON.parse(text ?? "{}");
+    if (typeof v !== "object" || v === null || Array.isArray(v)) return {};
+    const out: Record<string, string[]> = {};
+    for (const [view, keys] of Object.entries(v)) {
+      if (Array.isArray(keys)) {
+        out[view] = keys.filter((k): k is string => typeof k === "string");
+      }
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+export const shutOf = (text: string | null, view: string): Set<string> =>
+  new Set(shutViews(text)[view] ?? []);
+
+// the text with one group of one view opened or shut, the others kept
+export function toggleShut(
+  text: string | null,
+  view: string,
+  key: string,
+): string {
+  const views = shutViews(text);
+  const keys = new Set(views[view] ?? []);
+  if (keys.has(key)) keys.delete(key);
+  else keys.add(key);
+  if (keys.size === 0) delete views[view];
+  else views[view] = [...keys];
+  return JSON.stringify(views);
 }
 
 // a group's share of the whole view
