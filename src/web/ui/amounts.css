@@ -1,0 +1,8 @@
+@layer tokens, base, owners;
+
+@layer owners {
+  .amounts-hidden .amount {
+    filter: blur(var(--blur-hidden));
+    user-select: none;
+  }
+}

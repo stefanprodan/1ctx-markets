@@ -3,10 +3,8 @@
 // Figures: a number, a change, the hero's value band, a row of stats.
 
 import type { ComponentChildren } from "preact";
+import type { Signed } from "../lib/format.ts";
 import "./figures.css";
-
-// a change as text, its sign already written, and which way it went
-export type Signed = { text: string; dir: -1 | 0 | 1 };
 
 const cx = (...c: (string | false | null | undefined)[]) =>
   c.filter(Boolean).join(" ");
@@ -52,7 +50,7 @@ export type Move = {
 // the value band, no card: a small name line, the one large figure with
 // its currency small beside it (or a menu in its place), one line of
 // moves, then any lines more in the text's size; never a second large
-// figure
+// figure. compact goes inside a card whose title names it
 export function Hero({
   name,
   value,
@@ -60,15 +58,17 @@ export function Hero({
   moves,
   lines,
   valueClass,
+  compact,
   children,
 }: {
-  name: ComponentChildren;
+  name?: ComponentChildren;
   value: ComponentChildren;
   currency?: ComponentChildren;
   moves?: readonly Move[];
   // under the moves, each a line, such as the price after hours
   lines?: readonly ComponentChildren[];
   valueClass?: string;
+  compact?: boolean;
   // under the line, such as a split bar
   children?: ComponentChildren;
 }) {
@@ -76,8 +76,8 @@ export function Hero({
     (m) => (m.money?.text ?? "") !== "" || (m.percent?.text ?? "") !== "",
   );
   return (
-    <section class="hero">
-      <h2 class="hero-name">{name}</h2>
+    <section class={cx("hero", compact && "hero-compact")}>
+      {name !== undefined && <h2 class="hero-name">{name}</h2>}
       <div class={cx("hero-value", valueClass)}>
         {value}
         {currency !== undefined &&
@@ -135,26 +135,32 @@ export function Stats({
   );
 }
 
-// a detail's facts, a small label over each value, two to a row: a
-// trade's date, quantity and price in its drawer
+// a detail's facts, a small label over each value, two to a row (four
+// for short figures side by side): a trade's date, quantity and price in
+// its drawer
 export function Facts({
   items,
+  four,
 }: {
   items: readonly {
     label: string;
     value: ComponentChildren;
     // a figure, in the mono face
     num?: boolean;
+    note?: ComponentChildren;
   }[];
+  four?: boolean;
 }) {
-  return (
-    <dl class="facts">
+  const list = (
+    <dl class={cx("facts", four && "facts-four")}>
       {items.map((x) => (
         <div key={x.label}>
           <dt>{x.label}</dt>
           <dd class={x.num ? "num" : undefined}>{x.value}</dd>
+          {x.note !== undefined && <dd class="facts-note">{x.note}</dd>}
         </div>
       ))}
     </dl>
   );
+  return four ? <div class="facts-fit">{list}</div> : list;
 }

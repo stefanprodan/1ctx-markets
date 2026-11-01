@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { JobStatus, SourceStatus, WatchEntry } from "../data/store.ts";
-
-const MINUTE = 60_000;
-const HOUR = 60 * MINUTE;
-const DAY = 24 * HOUR;
+import { ago, plain } from "../lib/format.ts";
 
 export function bytes(n: number): string {
   const units = ["B", "KB", "MB", "GB", "TB"];
@@ -41,17 +38,6 @@ export const runTime = (at: string | null): string =>
 
 export const count = (n: number): string => n.toLocaleString("en-US");
 
-// the server's times are UTC; an operator reads them as a distance from now
-export function ago(at: string | null, now: number): string {
-  if (at === null) return "never";
-  const ms = now - Date.parse(at);
-  if (!Number.isFinite(ms)) return "unknown";
-  if (ms < MINUTE) return "just now";
-  if (ms < HOUR) return `${Math.floor(ms / MINUTE)} min ago`;
-  if (ms < DAY) return `${Math.floor(ms / HOUR)} h ago`;
-  return `${Math.floor(ms / DAY)} d ago`;
-}
-
 export type Tone = "done" | "failed" | "running" | "stopped";
 
 // from the counts, not the last run: they skip what a later run settled
@@ -61,33 +47,6 @@ export const jobTone = (j: JobStatus): Tone =>
     : j.last.status === "running"
       ? "running"
       : "done";
-
-// the server's error phrases, as someone who runs it reads them
-const PLAIN: Record<string, string> = {
-  "rate limited": "too many requests",
-  "not found": "not found",
-  "bad request": "request refused",
-  "source error": "the source failed",
-  "network error": "no connection",
-  "timed out": "no answer in time",
-  "malformed answer": "answer not readable",
-  "key refused": "key not accepted",
-  // a --track value's read
-  timeout: "no answer in time",
-  candidates: "several matches",
-  "no data": "no data",
-  refused: "not supported",
-  failed: "failed",
-};
-
-export function plain(error: string | null): string {
-  if (error === null) return "failed";
-  const phrase = Object.keys(PLAIN).find((p) => error.startsWith(p));
-  if (phrase === undefined) return error;
-  // a run some symbols failed names them after its phrase: "source error: AMD"
-  const who = /^: (.+)$/.exec(error.slice(phrase.length))?.[1];
-  return who ? `${who}: ${PLAIN[phrase]!}` : PLAIN[phrase]!;
-}
 
 const counted = (n: number, one: string): string =>
   `${count(n)} ${n === 1 ? one : `${one}s`}`;

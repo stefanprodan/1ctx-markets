@@ -23,6 +23,7 @@ import { railDrawer } from "../app/shell.ts";
 import { theme } from "../app/theme.ts";
 import { says } from "../data/api.ts";
 import { markets } from "../data/store.ts";
+import { figure, signedChange, volumeText } from "../lib/format.ts";
 import { useRefresh } from "../lib/refresh.ts";
 import { Card } from "../ui/Card.tsx";
 import { Segmented } from "../ui/Segmented.tsx";
@@ -31,14 +32,12 @@ import {
   averages,
   axisPrice,
   candles,
-  changeText,
   clearOfTags,
   closes,
   DESK,
   dayOf,
-  drawnRange,
+  drawnFor,
   extendedLines,
-  figure,
   fromOf,
   type History,
   hasCandles,
@@ -57,13 +56,14 @@ import {
   pointLegendOf,
   pointLine,
   type Range,
+  rangesOf,
+  readRange,
   readSettings,
   type Settings,
   sessionSlots,
   tick,
   timeLabel,
   volumes,
-  volumeText,
 } from "./Chart.model.ts";
 import "./chart.css";
 
@@ -184,11 +184,14 @@ export function LegendLine({
   legend,
   interval,
   range,
+  since,
   show,
 }: {
   legend: Legend;
   interval: History["interval"] | Intraday["interval"];
   range: Range;
+  // in place of the range's name when the range starts before the bars
+  since?: string | null;
   show: { sma50: boolean; sma200: boolean; ohlc?: boolean };
 }) {
   const ohlc = show.ohlc !== false;
@@ -237,7 +240,8 @@ export function LegendLine({
         )}
         {legend.change !== null && (
           <span class={`chart-change${dir}`}>
-            <i>{range}</i> {changeText(legend.change, legend.points)}
+            <i>{since ?? range}</i>{" "}
+            {signedChange(legend.change, { points: legend.points }).text}
           </span>
         )}
       </span>
@@ -259,7 +263,7 @@ export function LegendLine({
   );
 }
 
-export function Chart({ id }: { id: string }) {
+export function Chart({ id, intraday }: { id: string; intraday: boolean }) {
   const box = useRef<HTMLDivElement>(null);
   const legendBox = useRef<HTMLDivElement>(null);
   const tallest = useRef({ shape: "", px: 0 });
@@ -288,7 +292,7 @@ export function Chart({ id }: { id: string }) {
   const candlesOn = () => !line.value && look().candles;
   const marks = useSignal<Mark[]>([]);
   const levels = useRef<{ s: ISeriesApi<SeriesType>; at: Levels } | null>(null);
-  const active = () => drawnRange(look(), range.value);
+  const active = () => drawnFor(look(), range.value, intraday);
   const hover = useSignal<string | number | null>(null);
   const lib = useRef<Lib | null>(null);
   const chart = useRef<IChartApi | null>(null);
@@ -321,18 +325,27 @@ export function Chart({ id }: { id: string }) {
 
   // the range the bars on screen were read for, which the legend names
   const shown = useSignal<Range>(kept.range);
+  const since = useSignal<string | null>(null);
 
   const load = async () => {
     const mine = ++asked.current;
     const r = active();
     try {
-      const h = isIntraday(r)
-        ? await markets.intraday(id, r, fromOf("Max", today()))
-        : await markets.history(id, fromOf(r, today()), intervalOf(r));
+      const read = isIntraday(r)
+        ? {
+            history: await markets.intraday(id, r, fromOf("Max", today())),
+            since: null,
+          }
+        : await readRange(
+            (from) => markets.history(id, from, intervalOf(r)),
+            r,
+            today(),
+          );
       if (mine !== asked.current) return;
       batch(() => {
-        data.value = h;
+        data.value = read.history;
         shown.value = r;
+        since.value = read.since;
       });
       error.value = null;
       draw();
@@ -344,6 +357,7 @@ export function Chart({ id }: { id: string }) {
         batch(() => {
           data.value = null;
           shown.value = r;
+          since.value = null;
         });
         const c = chart.current;
         if (c !== null) for (const s of series.current) c.removeSeries(s);
@@ -395,7 +409,7 @@ export function Chart({ id }: { id: string }) {
 
   useEffect(() => {
     void load();
-  }, [id, range.value, railDrawer.value]);
+  }, [id, intraday, range.value, railDrawer.value]);
   useRefresh(() => load());
 
   // a theme flip, a toggle: the same bars drawn again
@@ -717,15 +731,15 @@ export function Chart({ id }: { id: string }) {
       box.style.minHeight = `${px}px`;
     }
   });
-  const intraday = isIntraday(active());
+  const minutes = isIntraday(active());
   const lk = look();
   const candlesOk =
     lk.candles &&
-    !intraday &&
+    !minutes &&
     h !== null &&
     h.interval !== "5m" &&
     hasCandles(h.bars);
-  const linesOk = lk.log || (lk.averages && !intraday);
+  const linesOk = lk.log || (lk.averages && !minutes);
   return (
     <Card
       flush
@@ -737,7 +751,7 @@ export function Chart({ id }: { id: string }) {
           <Segmented
             small
             label="Range"
-            options={lk.ranges.map((r) => ({ value: r, text: r }))}
+            options={rangesOf(lk, intraday).map((r) => ({ value: r, text: r }))}
             value={active()}
             onPick={(r) => {
               range.value = r;
@@ -760,7 +774,7 @@ export function Chart({ id }: { id: string }) {
                 }}
               />
             )}
-            {lk.averages && !intraday && (
+            {lk.averages && !minutes && (
               <fieldset class="seg seg-small" aria-label="Averages">
                 <button
                   type="button"
@@ -812,6 +826,7 @@ export function Chart({ id }: { id: string }) {
               legend={legend}
               interval={h.interval}
               range={shown.value}
+              since={since.value}
               show={{
                 sma50: show50(),
                 sma200: show200(),

@@ -1,0 +1,32 @@
+@layer tokens, base, owners;
+
+@layer owners {
+  .range-bar {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-tight);
+    margin-bottom: var(--space-3);
+  }
+  .range-bar-track {
+    position: relative;
+    height: var(--track);
+    margin: var(--space-tight) 0 var(--space-hair);
+    border-radius: var(--radius-xs);
+    background: var(--inset);
+  }
+  .range-bar-dot {
+    position: absolute;
+    top: 50%;
+    width: var(--dot);
+    height: var(--dot);
+    border: var(--dot-ring) solid var(--card);
+    border-radius: var(--radius-pill);
+    background: var(--fg);
+    transform: translate(-50%, -50%);
+  }
+  .range-bar-ends {
+    display: flex;
+    justify-content: space-between;
+    color: var(--dim);
+  }
+}

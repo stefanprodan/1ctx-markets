@@ -106,6 +106,26 @@
     --space-4: 16px;
     --space-5: 24px;
     --space-6: 32px;
+    /* under a figure: its note, a bar */
+    --space-hair: 2px;
+    --space-tight: 6px;
+
+    /* a control's height, and a finger's (pointer: coarse) */
+    --target: 32px;
+    --target-touch: 44px;
+    --icon-small: 14px;
+    /* a bar drawn in a row, a range's track and the price's dot on it */
+    --bar: 6px;
+    --track: 4px;
+    --dot: 10px;
+    --dot-ring: 2px;
+    /* a weighted list's labels, up to a name's width */
+    --col-label: 11rem;
+    --col-label-phone: 9rem;
+    /* a menu wide enough to ask a question in */
+    --menu-ask: 280px;
+    /* amounts hidden from someone looking over a shoulder */
+    --blur-hidden: 7px;
   }
 
   :root[data-theme="light"] {

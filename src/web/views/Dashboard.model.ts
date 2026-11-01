@@ -13,9 +13,9 @@ import type {
   View,
   WatchEntry,
 } from "../data/store.ts";
-import { nameOf, tickerOf } from "../lib/names.ts";
-import { closes, figure, sessionSlots } from "./Chart.model.ts";
-import { change, price, priceParts, symbolOf } from "./Instruments.model.ts";
+import { change, figure, price, priceParts } from "../lib/format.ts";
+import { nameOf, symbolOf, tickerOf } from "../lib/names.ts";
+import { closes, sessionSlots } from "./Chart.model.ts";
 
 // the server's limits, so an edit past one is never sent
 export const MAX_SECTIONS = 20;

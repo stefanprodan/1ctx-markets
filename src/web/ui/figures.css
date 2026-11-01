@@ -44,6 +44,17 @@
     gap: var(--space-1) var(--space-4);
     font-size: var(--text-ui);
   }
+  .hero-compact {
+    padding: 0;
+  }
+  .hero-compact .hero-value {
+    font-family: var(--mono);
+    font-size: var(--text-title);
+    letter-spacing: 0;
+  }
+  .hero-compact .hero-ccy {
+    font-size: var(--text-ui);
+  }
 
   .stats {
     display: flex;
@@ -87,8 +98,29 @@
     color: var(--faint);
   }
   .facts dd {
-    margin: 2px 0 0;
+    margin: var(--space-hair) 0 0;
     overflow-wrap: anywhere;
+  }
+  .facts-fit {
+    container-type: inline-size;
+  }
+  .facts-four {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .facts-four dd {
+    overflow-wrap: normal;
+    white-space: nowrap;
+  }
+  /* four columns too narrow for "+123.45%" or "+0.25 pts": two by two;
+     a card's width, not the window's, since cards sit two abreast */
+  @container (max-width: 22rem) {
+    .facts-four {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  .facts .facts-note {
+    font-size: var(--text-small);
+    color: var(--faint);
   }
 
   @media (max-width: 719px) {

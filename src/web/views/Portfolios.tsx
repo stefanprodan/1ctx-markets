@@ -14,9 +14,11 @@ import type {
 } from "../data/portfolios.ts";
 import { addressOf } from "../data/portfolios.ts";
 import { markets } from "../data/store.ts";
+import { day, money, percent, quantity, signedMoney } from "../lib/format.ts";
 import { Icon } from "../lib/icons.tsx";
 import { nameOf } from "../lib/names.ts";
 import { useRefresh } from "../lib/refresh.ts";
+import { HideAmounts, hiddenClass, useHideAmounts } from "../ui/Amounts.tsx";
 import { Card, GroupLabel, PeriodLabel } from "../ui/Card.tsx";
 import { Drawer } from "../ui/Drawer.tsx";
 import { Change, Facts, Hero, type Move, Num } from "../ui/Figures.tsx";
@@ -54,7 +56,6 @@ import {
   barOf,
   columnsFor,
   currencies,
-  day,
   type EditWhat,
   enteredBy,
   groupShare,
@@ -68,12 +69,9 @@ import {
   isReward,
   missingWords,
   mixed,
-  money,
   orderOf,
   pageOf,
-  percent,
   priceLine,
-  quantity,
   type Remembered,
   type RowAction,
   rateLine,
@@ -84,7 +82,6 @@ import {
   shownValue,
   shownWeight,
   sideWord,
-  signedMoney,
   sortRows,
   staleWords,
   sums,
@@ -145,15 +142,6 @@ function useSparks(
 
 // ---- the page ----
 
-const HIDE_KEY = "markets-portfolio-hide";
-const readHide = (): boolean => {
-  try {
-    return localStorage.getItem(HIDE_KEY) === "1";
-  } catch {
-    return false;
-  }
-};
-
 export const keyOf = (h: Holding): string =>
   h.id ?? `pos:${h.position ?? h.name ?? ""}`;
 
@@ -183,7 +171,7 @@ export function PortfoliosBody({ store }: { store: PortfolioStore }) {
   const ov = store.overview.value;
   const trades = store.trades.value;
   const held = h !== null;
-  const [hide, setHide] = useState(readHide);
+  const [hide, toggleHide] = useHideAmounts();
   const sparks = useSparks(store, h);
   const panel = useSignal<Panel>(null);
   // a row's Buy or Sell opens the add drawer on it
@@ -209,13 +197,6 @@ export function PortfoliosBody({ store }: { store: PortfolioStore }) {
     panel.value = null;
     start.value = null;
   };
-  const toggleHide = () => {
-    const next = !hide;
-    setHide(next);
-    try {
-      localStorage.setItem(HIDE_KEY, next ? "1" : "0");
-    } catch {}
-  };
   const empty = (ov?.portfolios.length ?? 0) === 0 || !ov?.display_currency;
   // nothing in any portfolio yet; a removed trade counts, so the activity
   // keeps its Restore in reach
@@ -232,17 +213,7 @@ export function PortfoliosBody({ store }: { store: PortfolioStore }) {
       actions={
         held && !empty ? (
           <>
-            {!blank && (
-              <button
-                type="button"
-                class="btn-icon"
-                aria-label={hide ? "Show amounts" : "Hide amounts"}
-                title={hide ? "Show amounts" : "Hide amounts"}
-                onClick={toggleHide}
-              >
-                <EyeIcon off={hide} />
-              </button>
-            )}
+            {!blank && <HideAmounts hide={hide} onToggle={toggleHide} />}
             {!blank && (
               <button
                 type="button"
@@ -270,7 +241,7 @@ export function PortfoliosBody({ store }: { store: PortfolioStore }) {
         () => void store.load(),
       )}
     >
-      <div class={`pf-root${hide ? " pf-hide" : ""}`}>
+      <div class={`pf-root ${hiddenClass(hide)}`}>
         {panel.value === "add" && (
           <AddSheet
             key={
@@ -404,25 +375,6 @@ export function PageMenu({
   );
 }
 
-function EyeIcon({ off }: { off: boolean }) {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="1.5"
-      stroke-linecap="round"
-      aria-hidden="true"
-    >
-      <path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8 12.1 12.5 8 12.5 1.5 8 1.5 8z" />
-      <circle cx="8" cy="8" r="2" />
-      {off && <path d="M2.5 13.5l11-11" />}
-    </svg>
-  );
-}
-
 // a portfolio picked is an address, so Back returns to the one before
 function Switcher({ store }: { store: PortfolioStore }) {
   const list = store.overview.value?.portfolios ?? [];
@@ -499,7 +451,7 @@ function CurrencyPick({
                 <MenuLine
                   key={c.currency}
                   label={c.currency}
-                  value={<span class="pf-m">{money(c.value, null)}</span>}
+                  value={<span class="amount">{money(c.value, null)}</span>}
                 />
               ))}
               {rates.map((r) => (
@@ -542,7 +494,7 @@ function ValueBand({ store, h }: { store: PortfolioStore; h: Holdings }) {
             money: signedMoney(t.day_change, t.currency),
             percent: percent(hero.dayPercent),
             label: "today",
-            moneyClass: "pf-m",
+            moneyClass: "amount",
           },
         ]
       : []),
@@ -552,7 +504,7 @@ function ValueBand({ store, h }: { store: PortfolioStore; h: Holdings }) {
             money: signedMoney(t.pl, t.currency),
             percent: percent(t.pl_percent),
             label: "all time",
-            moneyClass: "pf-m",
+            moneyClass: "amount",
           },
         ]
       : []),
@@ -561,12 +513,12 @@ function ValueBand({ store, h }: { store: PortfolioStore; h: Holdings }) {
     <Hero
       name={name}
       value={money(t.value, null)}
-      valueClass="pf-m"
+      valueClass="amount"
       currency={<CurrencyPick store={store} h={h} cur={t.currency} />}
       moves={moveList}
       lines={hero.others.map((o) => (
         <span key={o.currency}>
-          <span class="num pf-m">{money(o.value, o.currency)}</span>{" "}
+          <span class="num amount">{money(o.value, o.currency)}</span>{" "}
           <Change s={percent(o.pl_percent)} />
         </span>
       ))}
@@ -591,7 +543,7 @@ function ValueBand({ store, h }: { store: PortfolioStore; h: Holdings }) {
               <span key={x.key}>
                 <i class={`pf-ivc-${x.key}`} />
                 <span class="faint">{x.label}</span>{" "}
-                <span class="num pf-m">{money(x.value, t.currency)}</span>{" "}
+                <span class="num amount">{money(x.value, t.currency)}</span>{" "}
                 <span class="num faint">{x.pct}%</span>
               </span>
             ))}
@@ -727,14 +679,14 @@ function HoldingsCard({
       cell: (x) =>
         x.sold_today ? (
           // its value is gone; what it moved before the sale is left
-          <Change s={signedMoney(x.day_change, x.currency)} class="pf-m" />
+          <Change s={signedMoney(x.day_change, x.currency)} class="amount" />
         ) : (
           <>
-            <Num class="pf-m">
+            <Num class="amount">
               {money(shownValue(x), x.converted?.currency ?? x.currency)}
             </Num>
             {x.converted && x.converted.currency !== x.currency && (
-              <Num class="small faint pf-m">{money(x.value, x.currency)}</Num>
+              <Num class="small faint amount">{money(x.value, x.currency)}</Num>
             )}
           </>
         ),
@@ -751,7 +703,7 @@ function HoldingsCard({
           <Change s={percent(shownGainPercent(x))} />
           <Change
             s={signedMoney(shownGain(x), null)}
-            class="small pf-m hide-phone"
+            class="small amount hide-phone"
           />
         </>
       ),
@@ -794,7 +746,7 @@ function HoldingsCard({
             // in two currencies with none to convert into, no sum
             mixed(h) ? undefined : (
               <>
-                <span class="pf-m">{money(sums(g.rows).value, ccy)}</span>
+                <span class="amount">{money(sums(g.rows).value, ccy)}</span>
                 <span class="pf-gdot">·</span>
                 <span class="faint">{groupShare(h, g.value)}</span>
               </>
@@ -1089,7 +1041,7 @@ export function TradeSheet({
         }
         value={reward ? `+${quantity(o.quantity)}` : money(o.amount, null)}
         currency={reward ? undefined : t.currency}
-        valueClass="pf-m"
+        valueClass="amount"
         lines={removed ? [<span class="tag">Removed</span>] : undefined}
       />
       <Facts
@@ -1097,7 +1049,7 @@ export function TradeSheet({
           { label: "Date", value: day(t.date) },
           {
             label: "Quantity",
-            value: <span class="pf-m">{quantity(o.quantity)}</span>,
+            value: <span class="amount">{quantity(o.quantity)}</span>,
             num: true,
           },
           ...(reward
@@ -1106,7 +1058,7 @@ export function TradeSheet({
                 {
                   label: fills.length > 1 ? "Average price" : "Price",
                   value: (
-                    <span class="pf-m">
+                    <span class="amount">
                       {unitPrice(o.price, t.currency, t.unit)}
                     </span>
                   ),
@@ -1117,7 +1069,9 @@ export function TradeSheet({
             ? [
                 {
                   label: "Fees",
-                  value: <span class="pf-m">{money(o.fees, t.currency)}</span>,
+                  value: (
+                    <span class="amount">{money(o.fees, t.currency)}</span>
+                  ),
                   num: true,
                 },
               ]
@@ -1155,11 +1109,11 @@ export function TradeSheet({
           <div class="label">{fills.length} fills</div>
           {fills.map((x) => (
             <div key={x.id} class="num small pf-trade-fill">
-              <span class="pf-m">{quantity(x.quantity)}</span>
-              <span class="faint pf-m">
+              <span class="amount">{quantity(x.quantity)}</span>
+              <span class="faint amount">
                 × {unitPrice(x.price, x.currency, x.unit)}
               </span>
-              <span class="pf-m">{money(tradeAmount(x), x.currency)}</span>
+              <span class="amount">{money(tradeAmount(x), x.currency)}</span>
             </div>
           ))}
         </div>
@@ -1226,7 +1180,7 @@ export function Activity({
                 </span>
                 <span class="show-tablet">
                   {day(t.date)} ·{" "}
-                  <span class="pf-m">
+                  <span class="amount">
                     {quantity(o.quantity)}
                     {isReward(t)
                       ? ""
@@ -1253,7 +1207,7 @@ export function Activity({
       width: "minmax(0, 0.9fr)",
       align: "end",
       hide: "tablet",
-      cell: (f) => <Num class="pf-m">{quantity(orderOf(f).quantity)}</Num>,
+      cell: (f) => <Num class="amount">{quantity(orderOf(f).quantity)}</Num>,
     },
     {
       key: "price",
@@ -1263,7 +1217,7 @@ export function Activity({
       hide: "tablet",
       cell: (f) =>
         isReward(f[0]!) ? null : (
-          <Num class="faint pf-m">
+          <Num class="faint amount">
             {unitPrice(orderOf(f).price, f[0]!.currency, f[0]!.unit)}
           </Num>
         ),
@@ -1275,7 +1229,7 @@ export function Activity({
       align: "end",
       cell: (f) =>
         isReward(f[0]!) ? null : (
-          <Num class="pf-m">{money(orderOf(f).amount, f[0]!.currency)}</Num>
+          <Num class="amount">{money(orderOf(f).amount, f[0]!.currency)}</Num>
         ),
     },
   ];

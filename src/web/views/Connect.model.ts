@@ -4,7 +4,7 @@
 // key: each reads KEY_ENV, so they stay on the page.
 
 import type { AgentKey, KeyAccess } from "../data/store.ts";
-import { ago } from "./Status.model.ts";
+import { ago } from "../lib/format.ts";
 
 // every setup reads the key from this variable
 export const KEY_ENV = "MARKETS_ACCESS_KEY";

@@ -138,3 +138,8 @@ export function PeriodLabel({
     </div>
   );
 }
+
+// in the text's face: GroupLabel's mono label is a list's group
+export function CardLabel({ children }: { children: ComponentChildren }) {
+  return <h3 class="card-label">{children}</h3>;
+}
