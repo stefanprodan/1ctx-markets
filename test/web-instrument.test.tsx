@@ -3,7 +3,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { render } from "preact-render-to-string";
-import type { Holding } from "../src/web/data/portfolios.ts";
+import type { Holding, TradeRow } from "../src/web/data/portfolios.ts";
 import type { Detail, Listed, TopHoldings } from "../src/web/data/store.ts";
 import { briefQuantity } from "../src/web/lib/format.ts";
 import { barWidth } from "../src/web/ui/Weights.tsx";
@@ -19,6 +19,7 @@ import {
   positionOf,
 } from "../src/web/views/InstrumentPosition.model.ts";
 import { PositionCard } from "../src/web/views/InstrumentPosition.tsx";
+import { gainOf, PositionsBody } from "../src/web/views/Positions.tsx";
 
 const NOW = Date.parse("2026-11-01T12:00:00Z");
 
@@ -215,23 +216,19 @@ describe("the instrument page's position", () => {
     expect(html).toContain("25.46");
     expect(html).toContain("Average price");
     expect(html).toContain("40.00 USD");
-    expect(html).toContain('href="/portfolios"');
-    expect(html).toContain('aria-label="Open Portfolios"');
-    expect(html).toContain('aria-label="Hide amounts"');
+    // the card's button opens the drawer; the eye is in the page head
+    expect(html).toContain('aria-label="Activity"');
+    expect(html).not.toContain('href="/portfolios"');
+    expect(html).not.toContain("Hide amounts");
     // one part: no line per broker
     expect(html).not.toContain("ins-parts");
   });
 
   test("Hide amounts blurs the money and quantities, not the percents", () => {
-    const shown = render(
-      <PositionCard h={holding()} hide={false} onToggleHide={() => {}} />,
-    );
+    const shown = render(<PositionCard h={holding()} hide={false} />);
     expect(shown).not.toContain("amounts-hidden");
-    const hidden = render(
-      <PositionCard h={holding()} hide={true} onToggleHide={() => {}} />,
-    );
+    const hidden = render(<PositionCard h={holding()} hide={true} />);
     expect(hidden).toContain("amounts-hidden");
-    expect(hidden).toContain('aria-label="Show amounts"');
     expect(hidden).toContain('class="hero-value amount"');
     expect(hidden).toContain('<span class="num up amount">+254.57 USD</span>');
     expect(hidden).toContain('<span class="amount">25.46</span>');
@@ -254,9 +251,7 @@ describe("the instrument page's position", () => {
       },
       { key: "Trading/", where: "Trading", held: "0.1235", value: "6.17 USD" },
     ]);
-    const html = render(
-      <PositionCard h={h} hide={false} onToggleHide={() => {}} />,
-    );
+    const html = render(<PositionCard h={h} hide={false} />);
     expect(html).toContain("Shares · North");
     expect(html).toContain("ins-parts");
   });
@@ -278,9 +273,7 @@ describe("the instrument page's position", () => {
       ["Bonds · West", "2,000 RON"],
       ["Bonds · East", "3,000 RON"],
     ]);
-    const html = render(
-      <PositionCard h={bond()} hide={false} onToggleHide={() => {}} />,
-    );
+    const html = render(<PositionCard h={bond()} hide={false} />);
     expect(html).not.toContain("Quantity");
     expect(html).not.toContain("all time");
   });
@@ -290,6 +283,153 @@ describe("the instrument page's position", () => {
     expect(briefQuantity(1)).toBe("1");
     expect(briefQuantity(0.000123456)).toBe("0.0001235");
     expect(briefQuantity(null)).toBe("—");
+  });
+});
+
+const trade = (id: number, more: Partial<TradeRow> = {}): TradeRow => ({
+  id,
+  portfolio: "Shares",
+  symbol: "US:CASY",
+  name: "Casey Made Up",
+  side: "buy",
+  date: "2025-05-10",
+  quantity: 2,
+  price: 50,
+  fees: 0,
+  currency: "USD",
+  unit: "per_share",
+  broker: "North",
+  note: null,
+  entered_by: "web",
+  entered_at: null,
+  removed_at: null,
+  removed_by: null,
+  ...more,
+});
+
+const rows = (html: string, cls: string): number =>
+  html.split(`class="${cls}"`).length - 1;
+
+describe("the instrument page's position drawer", () => {
+  const two = holding({
+    parts: [
+      part("Trading", null, { quantity: 5.4567, cost: 400, value: 272.84 }),
+      part("Shares", "North", { quantity: 20, cost: 800, value: 1000 }),
+    ],
+  });
+
+  test("the position is its value and all-time gain alone", () => {
+    const html = render(
+      <PositionsBody h={two} trades={[]} failed={false} hide={false} />,
+    );
+    expect(html).toContain("Your position");
+    expect(html).toContain('1,273<span class="hero-ccy">USD</span>');
+    expect(html).toContain("+254.57 USD");
+    expect(html).toContain("all time");
+    expect(html).not.toContain("today");
+    expect(html).not.toContain("Quantity");
+    expect(html).not.toContain("Average price");
+  });
+
+  test("each broker's holding, largest first, its gain as a percent", () => {
+    const html = render(
+      <PositionsBody h={two} trades={[]} failed={false} hide={false} />,
+    );
+    expect(html).toContain("Held at");
+    // the broker names the row, the portfolio when there is none
+    const north = html.indexOf(">North<");
+    const trading = html.indexOf(">Trading<");
+    expect(north).toBeGreaterThan(-1);
+    expect(trading).toBeGreaterThan(north);
+    expect(html).toContain("20 at 40.00");
+    expect(html).toContain("1,000 USD");
+    expect(html).toContain('<span class="num up">+25.00%</span>');
+    expect(html).toContain('<span class="num down">−31.79%</span>');
+    // no gain in money on a broker's row
+    expect(html).not.toContain("+200");
+    expect(gainOf(two.parts[1]!)).toEqual({ pl: 200, pct: 25 });
+    expect(gainOf(part("A", null, { value: null }))).toEqual({
+      pl: null,
+      pct: null,
+    });
+    expect(gainOf(part("A", null, { cost: 0, value: 5 })).pct).toBeNull();
+  });
+
+  test("trades read as orders, newest first, with Activity's tags", () => {
+    const trades = [
+      trade(1, { date: "2023-03-01", quantity: 4, price: 25, fees: 1 }),
+      // two fills of one order fold into one row
+      trade(2, { date: "2023-06-02", quantity: 1, price: 60 }),
+      trade(3, { date: "2023-06-02", quantity: 3, price: 60 }),
+      trade(4, { date: "2023-07-15", side: "sell", quantity: 2, price: 70 }),
+      trade(5, { date: "2023-08-03", quantity: 0.5, price: 0 }),
+      trade(6, { date: "2023-09-04", removed_at: "2023-09-05T10:00:00Z" }),
+    ];
+    const html = render(
+      <PositionsBody h={two} trades={trades} failed={false} hide={false} />,
+    );
+    expect(html).toContain('Trades <span class="faint">4</span>');
+    const reward = html.indexOf('<span class="tag tag-side">Reward</span>');
+    const sell = html.indexOf(
+      '<span class="tag tag-side tag-down">Sell</span>',
+    );
+    const buys = html.indexOf('<span class="tag tag-side tag-up">Buy</span>');
+    expect(reward).toBeGreaterThan(-1);
+    expect(sell).toBeGreaterThan(reward);
+    expect(buys).toBeGreaterThan(sell);
+    expect(html).toContain("+0.5");
+    expect(html).toContain("240.00 USD");
+    expect(html).toContain("4 × 60.00");
+    // a buy pays its fees, a sell's are taken from what it received
+    expect(html).toContain("101.00 USD");
+    expect(html).toContain("140.00 USD");
+    expect(html).toContain("2 Jun 2023 · North");
+    expect(html).not.toContain("4 Sept 2023");
+  });
+
+  test("twenty orders, then Show more", () => {
+    const many = Array.from({ length: 25 }, (_, i) =>
+      trade(i + 1, { date: `2025-01-${String(i + 1).padStart(2, "0")}` }),
+    );
+    const html = render(
+      <PositionsBody h={two} trades={many} failed={false} hide={false} />,
+    );
+    expect(html).toContain('Trades <span class="faint">25</span>');
+    // two broker rows and twenty orders
+    expect(rows(html, "pos-row")).toBe(22);
+    expect(html).toContain("Show more");
+  });
+
+  test("no Trades section without trades; a failed read says so", () => {
+    for (const trades of [null, []]) {
+      const html = render(
+        <PositionsBody h={two} trades={trades} failed={false} hide={false} />,
+      );
+      expect(html).not.toContain("Trades");
+      expect(html).toContain("Held at");
+    }
+    const removed = render(
+      <PositionsBody
+        h={two}
+        trades={[trade(1, { removed_at: "2025-09-02T10:00:00Z" })]}
+        failed={false}
+        hide={false}
+      />,
+    );
+    expect(removed).not.toContain("Trades");
+    const failed = render(
+      <PositionsBody h={two} trades={null} failed={true} hide={false} />,
+    );
+    expect(failed).toContain("The trades did not load.");
+  });
+
+  test("Hide amounts blurs the drawer's money, not its percents", () => {
+    const html = render(
+      <PositionsBody h={two} trades={[trade(1)]} failed={false} hide={true} />,
+    );
+    expect(html).toContain('class="pos amounts-hidden"');
+    expect(html).toContain('<span class="num amount">1,000 USD</span>');
+    expect(html).toContain('<span class="num up">+25.00%</span>');
   });
 });
 

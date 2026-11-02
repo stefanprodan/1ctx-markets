@@ -5,6 +5,7 @@ import type { ComponentChildren } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { markets } from "../data/store.ts";
 import { Icon } from "../lib/icons.tsx";
+import { HideAmounts } from "./Amounts.tsx";
 import { type SearchAdds, SymbolSearch } from "./SymbolSearch.tsx";
 import "./page.css";
 
@@ -35,6 +36,7 @@ export function Page({
   meta,
   search,
   actions,
+  amounts,
   error,
   stale,
   staleCount,
@@ -50,6 +52,8 @@ export function Page({
   search?: false | SearchAdds;
   // after the search, in the head's one button style, the ⋯ menu last
   actions?: ComponentChildren;
+  // the page shows the owner's amounts: the eye that hides them
+  amounts?: boolean;
   // a failure over the body, which stays as it was answered last
   error?: string | null;
   // a refresh failed over the answer still on screen: shown a few
@@ -81,6 +85,7 @@ export function Page({
         {meta && <span class="page-meta">{meta}</span>}
         <div class="page-actions">
           {search !== false && <SymbolSearch adds={search} />}
+          {amounts && <HideAmounts />}
           {actions}
         </div>
       </div>

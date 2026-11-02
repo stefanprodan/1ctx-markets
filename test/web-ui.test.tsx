@@ -838,6 +838,18 @@ describe("the symbol search", () => {
     const off = render(<Page title="Home" search={false} />);
     expect(off).not.toContain("ssearch");
   });
+
+  test("the eye sits after the search on a page with amounts only", () => {
+    const html = render(
+      <Page title="AAA" amounts actions={<button type="button">More</button>}>
+        <p>body</p>
+      </Page>,
+    );
+    expect(html).toMatch(
+      /class="ssearch">[\s\S]*aria-label="Hide amounts"[\s\S]*>More<\/button>/,
+    );
+    expect(render(<Page title="Home" />)).not.toContain("Hide amounts");
+  });
 });
 
 describe("the bundled styles", () => {

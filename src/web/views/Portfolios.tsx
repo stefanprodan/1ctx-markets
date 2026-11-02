@@ -18,7 +18,7 @@ import { day, money, percent, quantity, signedMoney } from "../lib/format.ts";
 import { Icon } from "../lib/icons.tsx";
 import { nameOf } from "../lib/names.ts";
 import { useRefresh } from "../lib/refresh.ts";
-import { HideAmounts, hiddenClass, useHideAmounts } from "../ui/Amounts.tsx";
+import { amountsHidden, hiddenClass } from "../ui/Amounts.tsx";
 import { Card, GroupLabel, PeriodLabel } from "../ui/Card.tsx";
 import { Drawer } from "../ui/Drawer.tsx";
 import {
@@ -94,6 +94,7 @@ import {
   shownValue,
   shownWeight,
   shutOf,
+  sideTag,
   sideWord,
   sortRows,
   staleWords,
@@ -185,7 +186,7 @@ export function PortfoliosBody({ store }: { store: PortfolioStore }) {
   const ov = store.overview.value;
   const trades = store.trades.value;
   const held = h !== null;
-  const [hide, toggleHide] = useHideAmounts();
+  const hide = amountsHidden.value;
   const sparks = useSparks(store, h);
   const panel = useSignal<Panel>(null);
   // a row's Buy or Sell opens the add drawer on it
@@ -224,10 +225,10 @@ export function PortfoliosBody({ store }: { store: PortfolioStore }) {
   return (
     <Page
       title="Portfolios"
+      amounts={held && !empty && !blank}
       actions={
         held && !empty ? (
           <>
-            {!blank && <HideAmounts hide={hide} onToggle={toggleHide} />}
             {!blank && (
               <button
                 type="button"
@@ -1009,9 +1010,6 @@ function fundOf(store: PortfolioStore, t: TradeRow) {
   const kept = store.overview.value?.funds?.find((f) => f.id === t.symbol);
   return { isin, name: t.name ?? isin, market: kept?.market ?? null };
 }
-
-const sideTag = (t: TradeRow): string =>
-  `tag tag-side${isReward(t) ? "" : t.side === "buy" ? " tag-up" : " tag-down"}`;
 
 // one order: what the list row cannot fit, and what can be done with it
 export function TradeSheet({
