@@ -584,6 +584,13 @@ export function portfolioStore(
     // where a listing is held and the dry powder a buy may pay from
     everything: (): Promise<Holdings | null> =>
       call<Holdings>("/api/v1/holdings").catch(() => null),
+    // one listing's trades across every portfolio, for its page
+    tradesOf: (id: string): Promise<TradeRow[] | null> =>
+      call<{ trades: TradeRow[] }>(
+        `/api/v1/trades?symbol=${encodeURIComponent(id)}`,
+      )
+        .then((r) => r.trades)
+        .catch(() => null),
     // a listed holding's daily closes from a day on, for its sparkline
     bars: (id: string, from: string): Promise<Close[]> =>
       call<{ bars: Close[] }>(

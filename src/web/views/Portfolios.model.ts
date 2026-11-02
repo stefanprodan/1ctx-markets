@@ -816,6 +816,9 @@ export const isReward = (t: TradeRow): boolean =>
 export const sideWord = (t: TradeRow): string =>
   isReward(t) ? "Reward" : t.side === "buy" ? "Buy" : "Sell";
 
+export const sideTag = (t: TradeRow): string =>
+  `tag tag-side${isReward(t) ? "" : t.side === "buy" ? " tag-up" : " tag-down"}`;
+
 export const tradeAmount = (t: TradeRow): number =>
   tradeMoney(t.side, t.quantity, t.price, t.fees, t.unit);
 

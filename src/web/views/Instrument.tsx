@@ -73,6 +73,7 @@ export function Instrument({ params }: { params: Params }) {
   return (
     <Page
       title={symbol}
+      amounts={held !== null}
       meta={
         detail?.instrument.name
           ? nameOf(detail.instrument.name, kind, id)

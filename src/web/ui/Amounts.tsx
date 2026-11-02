@@ -3,7 +3,7 @@
 // One setting for every page: each figure has the class "amount", the
 // element around them hiddenClass(hide).
 
-import { useState } from "preact/hooks";
+import { signal } from "@preact/signals";
 import { Icon } from "../lib/icons.tsx";
 import "./amounts.css";
 
@@ -13,7 +13,7 @@ export const hiddenClass = (hide: boolean): string =>
   hide ? "amounts-hidden" : "";
 
 // browser storage is a convenience: a browser that keeps nothing shows them
-const read = (): boolean => {
+export const readHidden = (): boolean => {
   try {
     return localStorage.getItem(HIDE_KEY) === "1";
   } catch {
@@ -21,25 +21,19 @@ const read = (): boolean => {
   }
 };
 
-export function useHideAmounts(): [boolean, () => void] {
-  const [hide, setHide] = useState(read);
-  const toggle = () => {
-    const next = !hide;
-    setHide(next);
-    try {
-      localStorage.setItem(HIDE_KEY, next ? "1" : "0");
-    } catch {}
-  };
-  return [hide, toggle];
+// one for the whole app, so the head's eye reaches every figure at once
+export const amountsHidden = signal(readHidden());
+
+export function toggleAmounts(): void {
+  const next = !amountsHidden.value;
+  amountsHidden.value = next;
+  try {
+    localStorage.setItem(HIDE_KEY, next ? "1" : "0");
+  } catch {}
 }
 
-export function HideAmounts({
-  hide,
-  onToggle,
-}: {
-  hide: boolean;
-  onToggle: () => void;
-}) {
+export function HideAmounts() {
+  const hide = amountsHidden.value;
   const label = hide ? "Show amounts" : "Hide amounts";
   return (
     <button
@@ -47,7 +41,7 @@ export function HideAmounts({
       class="btn-icon"
       aria-label={label}
       title={label}
-      onClick={onToggle}
+      onClick={toggleAmounts}
     >
       <Icon name={hide ? "eye-off" : "eye"} />
     </button>

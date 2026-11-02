@@ -25,7 +25,12 @@ import {
   signedAmount,
   signedMoney,
 } from "../src/web/lib/format.ts";
-import { HIDE_KEY } from "../src/web/ui/Amounts.tsx";
+import {
+  amountsHidden,
+  HIDE_KEY,
+  readHidden,
+  toggleAmounts,
+} from "../src/web/ui/Amounts.tsx";
 import { accessWords } from "../src/web/views/Connect.model.ts";
 import {
   AddForm,
@@ -284,6 +289,20 @@ async function loaded(
 }
 
 describe("the Portfolios page", () => {
+  test("an instrument's trades are read by its symbol", async () => {
+    const { s, asked } = await loaded();
+    expect(await s.portfolios.tradesOf("XETRA:AAA")).toEqual([trade()]);
+    expect(asked.at(-1)).toBe("GET /api/v1/trades?symbol=XETRA%3AAAA");
+    // a failed read answers null, so the drawer keeps what it had
+    const broken = store(
+      async () => new Response("no", { status: 500 }),
+      () => NOW,
+      () => "/instruments/XETRA:AAA",
+      () => {},
+    );
+    expect(await broken.portfolios.tradesOf("XETRA:AAA")).toBeNull();
+  });
+
   test("leads with the value band, then holdings and activity", async () => {
     const { s } = await loaded();
     const html = render(<PortfoliosBody store={s.portfolios} />);
@@ -318,11 +337,17 @@ describe("the Portfolios page", () => {
         const shown = render(<PortfoliosBody store={s.portfolios} />);
         expect(shown).toContain('aria-label="Hide amounts"');
         expect(shown).not.toContain("amounts-hidden");
-        kept.set(HIDE_KEY, "1");
+        // the eye in the head sets it for every page and keeps it
+        toggleAmounts();
+        expect(kept.get(HIDE_KEY)).toBe("1");
+        expect(readHidden()).toBe(true);
         const hidden = render(<PortfoliosBody store={s.portfolios} />);
         expect(hidden).toContain('aria-label="Show amounts"');
         expect(hidden).toContain('class="pf-root amounts-hidden"');
         expect(hidden).toContain('class="num amount"');
+        toggleAmounts();
+        expect(kept.get(HIDE_KEY)).toBe("0");
+        expect(amountsHidden.value).toBe(false);
       } finally {
         delete g.localStorage;
       }

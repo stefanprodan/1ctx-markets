@@ -7,10 +7,11 @@ import type { Holding } from "../data/portfolios.ts";
 import { markets } from "../data/store.ts";
 import { Icon } from "../lib/icons.tsx";
 import { useRefresh } from "../lib/refresh.ts";
-import { HideAmounts, hiddenClass } from "../ui/Amounts.tsx";
+import { hiddenClass } from "../ui/Amounts.tsx";
 import { Card } from "../ui/Card.tsx";
 import { Facts, Hero } from "../ui/Figures.tsx";
 import { heldOf, positionOf } from "./InstrumentPosition.model.ts";
+import { PositionsDrawer } from "./Positions.tsx";
 
 // a read that fails keeps the holdings read before
 export function useHolding(id: string | null): Holding | null {
@@ -26,31 +27,35 @@ export function useHolding(id: string | null): Holding | null {
   return id === null || all.value === null ? null : heldOf(all.value, id);
 }
 
-export function PositionCard({
-  h,
-  hide,
-  onToggleHide,
-}: {
-  h: Holding;
-  hide: boolean;
-  onToggleHide: () => void;
-}) {
+export function PositionCard({ h, hide }: { h: Holding; hide: boolean }) {
   const p = positionOf(h);
+  const open = useSignal(false);
   return (
     <Card
       title="Your position"
       class={hiddenClass(hide)}
       actions={
         <>
-          <HideAmounts hide={hide} onToggle={onToggleHide} />
-          <a
+          <button
+            type="button"
             class="btn-icon"
-            href="/portfolios"
-            aria-label="Open Portfolios"
-            title="Open Portfolios"
+            aria-label="Activity"
+            title="Activity"
+            aria-haspopup="dialog"
+            onClick={() => {
+              open.value = true;
+            }}
           >
             <Icon name="briefcase" />
-          </a>
+          </button>
+          {open.value && (
+            <PositionsDrawer
+              h={h}
+              onClose={() => {
+                open.value = false;
+              }}
+            />
+          )}
         </>
       }
     >

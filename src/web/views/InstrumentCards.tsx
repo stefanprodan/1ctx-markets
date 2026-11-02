@@ -3,7 +3,7 @@
 
 import type { Holding } from "../data/portfolios.ts";
 import type { Detail } from "../data/store.ts";
-import { useHideAmounts } from "../ui/Amounts.tsx";
+import { amountsHidden } from "../ui/Amounts.tsx";
 import { Card, CardLabel } from "../ui/Card.tsx";
 import { Change, Facts } from "../ui/Figures.tsx";
 import { RangeBar } from "../ui/RangeBar.tsx";
@@ -69,12 +69,12 @@ export function InstrumentCards({
   detail: Detail;
   held: Holding | null;
 }) {
-  const [hide, toggleHide] = useHideAmounts();
+  const hide = amountsHidden.value;
   const s = signalsOf(detail);
   const fund = fundOf(detail.instrument, detail.top_holdings);
   return (
     <div class="ins-cards">
-      {held && <PositionCard h={held} hide={hide} onToggleHide={toggleHide} />}
+      {held && <PositionCard h={held} hide={hide} />}
       <PerformanceCard s={s} />
       {s.session && (
         <Card title={s.session.today ? "Today" : "Last session"}>
