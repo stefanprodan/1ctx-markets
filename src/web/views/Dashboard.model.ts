@@ -6,6 +6,7 @@ import type {
   BoardItem,
   BoardSection,
   Earning,
+  Extended,
   Gap,
   Listed,
   Saved,
@@ -13,7 +14,13 @@ import type {
   View,
   WatchEntry,
 } from "../data/store.ts";
-import { change, figure, price, priceParts } from "../lib/format.ts";
+import {
+  change,
+  figure,
+  price,
+  priceParts,
+  type Signed,
+} from "../lib/format.ts";
 import { nameOf, symbolOf, tickerOf } from "../lib/names.ts";
 import { closes, sessionSlots } from "./Chart.model.ts";
 
@@ -507,4 +514,43 @@ export function tileColumns(n: number, most: number): number {
     if (c >= 1 && (n <= c || n % c !== 1)) return c;
   }
   return most;
+}
+
+export type ExtMove = {
+  session: "pre" | "post";
+  change: Signed;
+  title: string;
+};
+
+const CLOCK = new Intl.DateTimeFormat("en-GB", {
+  hour: "2-digit",
+  minute: "2-digit",
+});
+const WEEKDAY = new Intl.DateTimeFormat("en-GB", { weekday: "short" });
+
+// a trade from another day names it, so a weekend's move shows its age
+export function extMove(
+  x: Extended | undefined,
+  row: Listed | null,
+  now: number,
+): ExtMove | null {
+  if (x === undefined || x.price === null || x.change_percent === null) {
+    return null;
+  }
+  const at = new Date(x.time);
+  const time = CLOCK.format(at);
+  const when =
+    at.toDateString() === new Date(now).toDateString()
+      ? time
+      : `${WEEKDAY.format(at)} ${time}`;
+  const word = x.session === "pre" ? "Pre-market" : "After hours";
+  const value =
+    row === null
+      ? figure(x.price)
+      : price({ price: x.price, unit: row.unit, currency: row.currency });
+  return {
+    session: x.session,
+    change: change(x),
+    title: `${word} ${value} · ${when}`,
+  };
 }

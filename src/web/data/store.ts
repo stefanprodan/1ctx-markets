@@ -106,6 +106,15 @@ export type View = "cards" | "table";
 
 export type Gap = { distance_pct: number | null; crossed_today?: boolean };
 
+// pre or post trading while the regular session is closed
+export type Extended = {
+  session: "pre" | "post";
+  price: number | null;
+  change: number | null;
+  change_percent: number | null;
+  time: string;
+};
+
 export type BoardItem = {
   id: string;
   instrument: Listed;
@@ -255,14 +264,7 @@ export type Detail = {
       weekly?: { sma200?: number | null } | null;
     } | null;
     session: Session | null;
-    // pre or post trading while the regular session is closed
-    extended?: {
-      session: "pre" | "post";
-      price: number | null;
-      change: number | null;
-      change_percent: number | null;
-      time: string;
-    } | null;
+    extended?: Extended | null;
   };
 };
 
@@ -343,6 +345,12 @@ export const instrumentPath = (id: string) =>
   `${INSTRUMENTS_PATH}/${encodeURIComponent(id)}`;
 export const STATUS_PATH = "/api/v1/status";
 export const WATCHLIST_PATH = "/api/v1/watchlist";
+
+// the quotes route's limit on symbols
+export const EXTENDED_BATCH = 100;
+
+export const extendedPath = (ids: readonly string[]) =>
+  `/api/v1/quotes?${new URLSearchParams({ symbols: ids.join(","), extended: "true" })}`;
 export const SESSION_PATH = "/ui/session";
 export const KEYS_PATH = "/api/v1/keys";
 export const DASHBOARD_PATH = "/api/v1/dashboard";
@@ -404,6 +412,7 @@ export function store(
   const attribution = signal<string | null>(null);
   const sparks = signal<ReadonlyMap<string, Spark>>(new Map());
   const lining = signal<ReadonlySet<string>>(new Set());
+  const extended = signal<ReadonlyMap<string, Extended>>(new Map());
   const homeWait = slowFlag(later);
   const linesWait = slowFlag(later);
   // a save in flight shows at once
@@ -478,6 +487,7 @@ export function store(
       attribution.value = null;
       sparks.value = new Map();
       lining.value = new Set();
+      extended.value = new Map();
       layout.value = null;
       items.value = new Map();
       earnings.value = [];
@@ -892,7 +902,35 @@ export function store(
       homeError.value = null;
       homeCode.value = null;
     });
-    await Promise.all([loadLines(shown(), stale), loadEarnings(stale)]);
+    await Promise.all([
+      loadLines(shown(), stale),
+      loadEarnings(stale),
+      loadExtended(shown(), stale),
+    ]);
+  }
+
+  // after the page's answer, beside the lines: each listing is a live read
+  async function loadExtended(ids: readonly string[], stale: () => boolean) {
+    const closed = ids.filter((id) => {
+      const session = items.value.get(id)?.session;
+      return session != null && session.state !== "open";
+    });
+    const next = new Map<string, Extended>();
+    for (let i = 0; i < closed.length; i += EXTENDED_BATCH) {
+      try {
+        const r = await call<{
+          quotes: { id?: string; extended?: Extended | null }[];
+        }>(extendedPath(closed.slice(i, i + EXTENDED_BATCH)));
+        for (const x of r.quotes) {
+          if (x.id && x.extended && x.extended.price !== null) {
+            next.set(x.id, x.extended);
+          }
+        }
+      } catch {
+        return;
+      }
+    }
+    if (!stale()) extended.value = next;
   }
 
   // a failed one keeps the line drawn before
@@ -1092,6 +1130,7 @@ export function store(
     attribution,
     sparks,
     lining,
+    extended,
     homeSlow: homeWait.slow,
     linesSlow: linesWait.slow,
     homeError,

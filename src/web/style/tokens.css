@@ -18,6 +18,8 @@
     --brand: #f2c14e;
     /* the mark's sparkle, the brand book's amber for each ground */
     --sparkle: #f2c14e;
+    /* after hours, beside the sparkle's sun for pre-market */
+    --moon: oklch(0.75 0.09 255);
     --brand-hover: #f7d27a;
     --running: #60a5fa;
     --done: #4ade80;
@@ -133,6 +135,7 @@
     --brand: #a06800;
     --brand-hover: #7e5200;
     --sparkle: #d9a53a;
+    --moon: oklch(0.56 0.115 256);
     --running: #1d5fd6;
     --done: #1b7a3d;
     --failed: #c62828;
