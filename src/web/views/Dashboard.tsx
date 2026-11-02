@@ -7,6 +7,7 @@ import {
   type BoardItem,
   type BoardSection,
   type Earning,
+  type Extended,
   type Listed,
   markets,
   type Spark as SparkData,
@@ -39,9 +40,11 @@ import {
   dropSection,
   type EarningRow,
   type Editing,
+  type ExtMove,
   earningRows,
   editOf,
   entryOf,
+  extMove,
   gapText,
   idsOf,
   isSort,
@@ -574,16 +577,68 @@ function Line({
   );
 }
 
+const Sun = () => (
+  <svg
+    class="dash-sun"
+    width="13"
+    height="13"
+    viewBox="0 0 16 16"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.5"
+    stroke-linecap="round"
+    aria-hidden="true"
+  >
+    <circle cx="8" cy="8" r="3" fill="currentColor" stroke="none" />
+    <path d="M8 1.5v1.5M8 13v1.5M1.5 8H3M13 8h1.5M3.4 3.4l1.06 1.06M11.54 11.54l1.06 1.06M3.4 12.6l1.06-1.06M11.54 4.46l1.06-1.06" />
+  </svg>
+);
+
+const Moon = () => (
+  <svg
+    class="dash-moon"
+    width="13"
+    height="13"
+    viewBox="0 0 16 16"
+    aria-hidden="true"
+  >
+    <path
+      fill="currentColor"
+      d="M13.5 9.6A5.75 5.75 0 1 1 6.4 2.5a4.6 4.6 0 0 0 7.1 7.1z"
+    />
+  </svg>
+);
+
+function Ext({ move }: { move: ExtMove | null }) {
+  if (move === null) return null;
+  return (
+    <span class="small dash-ext" title={move.title}>
+      {move.session === "pre" ? <Sun /> : <Moon />}
+      <span class="dash-ext-word">
+        {move.session === "pre" ? "Pre-market" : "After hours"}
+      </span>
+      <Change s={move.change} />
+    </span>
+  );
+}
+
+function StateOrExt({ move, state }: { move: ExtMove | null; state: string }) {
+  if (move !== null) return <Ext move={move} />;
+  return state ? <span class="small faint dash-state">{state}</span> : null;
+}
+
 // a value still on its way keeps the tile's shape, so nothing moves
 // when its figures land
 export function Tile({
   entry,
   spark,
   waiting,
+  move = null,
 }: {
   entry: WatchEntry;
   spark: SparkData | undefined;
   waiting?: boolean;
+  move?: ExtMove | null;
 }) {
   const c = cardOf(entry);
   if (c.type === "pending") {
@@ -620,7 +675,7 @@ export function Tile({
     <a class="card dash-tile" href={c.href}>
       <div class="dash-tile-top">
         <SymbolName ticker={c.symbol} name={c.name} />
-        {c.state && <span class="small faint dash-state">{c.state}</span>}
+        <StateOrExt move={move} state={c.state} />
       </div>
       <Line spark={spark} height={TILE_LINE} waiting={waiting} />
       <div class="dash-tile-figs">
@@ -680,6 +735,7 @@ type Entry = {
   id: string;
   card: ReturnType<typeof cardOf>;
   spark: SparkData | undefined;
+  move: ExtMove | null;
 };
 
 const VIEWS = [
@@ -737,6 +793,7 @@ export function SectionView({
   items,
   sparks,
   lining = new Set(),
+  extended = new Map(),
   slow = false,
   drag,
   setDrag,
@@ -751,6 +808,7 @@ export function SectionView({
   items: Items;
   sparks: ReadonlyMap<string, SparkData>;
   lining?: ReadonlySet<string>;
+  extended?: ReadonlyMap<string, Extended>;
   slow?: boolean;
   drag: Drag;
   setDrag: (d: Drag) => void;
@@ -807,6 +865,15 @@ export function SectionView({
     id,
     card: cardOf(entryOf(id, items.get(id))),
     spark: sparks.get(id),
+    // a move kept from before the open, by a failed refresh, is not shown
+    move:
+      items.get(id)?.session?.state === "open"
+        ? null
+        : extMove(
+            extended.get(id),
+            items.get(id)?.instrument ?? null,
+            Date.now(),
+          ),
   }));
   const columns: Column<Entry>[] = [
     {
@@ -816,7 +883,21 @@ export function SectionView({
       cell: (l) => {
         const name =
           l.card.type === "ready" ? (
-            <SymbolName ticker={l.card.symbol} name={l.card.name} />
+            <SymbolName
+              ticker={
+                l.move === null ? (
+                  l.card.symbol
+                ) : (
+                  <span class="dash-ticker">
+                    {l.card.symbol}
+                    <span class="show-phone">
+                      <Ext move={l.move} />
+                    </span>
+                  </span>
+                )
+              }
+              name={l.card.name}
+            />
           ) : (
             <SymbolName ticker={symbolOf(l.id)} />
           );
@@ -832,8 +913,7 @@ export function SectionView({
     {
       key: "line",
       head: "Day",
-      width: "minmax(80px, 1fr)",
-      hide: "phone",
+      width: { base: "minmax(80px, 1fr)", phone: "72px" },
       cell: (l) =>
         l.card.type === "ready" ? (
           <Line spark={l.spark} height={ROW_LINE} waiting={lining.has(l.id)} />
@@ -846,7 +926,12 @@ export function SectionView({
       align: "end",
       cell: (l) =>
         l.card.type === "ready" ? (
-          <Num currency={l.card.currency}>{l.card.price}</Num>
+          <>
+            <Num currency={l.card.currency}>{l.card.price}</Num>
+            <span class="show-phone dash-phone-moves">
+              <Change s={{ text: l.card.percent, dir: l.card.dir }} />
+            </span>
+          </>
         ) : (
           <span class="small faint">Loading</span>
         ),
@@ -854,28 +939,26 @@ export function SectionView({
     {
       key: "change",
       head: "Change",
-      width: { base: "minmax(0, 1.2fr)", phone: "72px" },
+      width: "minmax(0, 1.2fr)",
       align: "end",
+      hide: "phone",
       cell: (l) =>
         l.card.type === "ready" ? (
           <>
             <Change s={{ text: l.card.percent, dir: l.card.dir }} />
-            <Change
-              s={{ text: l.card.move, dir: l.card.dir }}
-              class="small hide-phone"
-            />
+            <Change s={{ text: l.card.move, dir: l.card.dir }} class="small" />
           </>
         ) : null,
     },
     {
       key: "state",
       head: "Market",
-      width: "64px",
+      width: "88px",
       align: "end",
       hide: "phone",
       cell: (l) =>
         l.card.type === "ready" ? (
-          <span class="small faint dash-state">{l.card.state}</span>
+          <StateOrExt move={l.move} state={l.card.state} />
         ) : null,
     },
     {
@@ -955,6 +1038,7 @@ export function SectionView({
                 entry={entryOf(l.id, items.get(l.id))}
                 spark={l.spark}
                 waiting={lining.has(l.id)}
+                move={l.move}
               />
               {editing && remove(l.id)}
             </div>
@@ -1149,6 +1233,7 @@ export function Dashboard() {
               items={items}
               sparks={markets.sparks.value}
               lining={markets.lining.value}
+              extended={markets.extended.value}
               slow={markets.linesSlow.value}
               drag={drag}
               setDrag={setDrag}

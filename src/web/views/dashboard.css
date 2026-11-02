@@ -96,6 +96,38 @@
   .dash-state {
     flex-shrink: 0;
   }
+  .dash-ext {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 3px;
+    opacity: 0.6;
+  }
+  /* the icon is hidden from screen readers, so its word is said instead */
+  .dash-ext-word {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .dash-sun {
+    color: var(--sparkle);
+  }
+  .dash-moon {
+    color: var(--moon);
+  }
+  .dash-ticker {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--space-2);
+  }
+  .dash-phone-moves {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+  }
   .dash-tile-figs {
     display: flex;
     flex-wrap: wrap;
@@ -115,7 +147,8 @@
     pointer-events: none;
     border-style: dashed;
   }
-  .dash-editing .dash-item .dash-state {
+  .dash-editing .dash-item .dash-state,
+  .dash-editing .dash-item .dash-ext {
     visibility: hidden;
   }
   .dash-grab {

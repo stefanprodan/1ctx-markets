@@ -36,6 +36,9 @@ import {
   DASHBOARD_PATH,
   EARNINGS_PATH,
   EARNINGS_SYMBOLS,
+  EXTENDED_BATCH,
+  type Extended,
+  extendedPath,
   INSTRUMENTS_PATH,
   instrumentPath,
   KEYS_PATH,
@@ -126,6 +129,7 @@ import {
   earningRows,
   editOf,
   entryOf,
+  extMove,
   gapText,
   isSort,
   money,
@@ -3536,7 +3540,7 @@ describe("the dashboard's model", () => {
     );
     expect(html).toContain('href="/instruments/US%3AAAA"');
     expect(html).toMatch(
-      />\+2\.50%<\/span><span class="num up small hide-phone">\+1\.00 USD</,
+      />\+2\.50%<\/span><span class="num up small">\+1\.00 USD</,
     );
     expect(html).not.toContain('draggable="true"');
   });
@@ -4451,5 +4455,189 @@ describe("the dashboard's store", () => {
       Response.json({ earnings: [EARNING] }),
     );
     expect(s.earnings.value).toEqual([EARNING]);
+  });
+});
+
+describe("Home's pre- and post-market moves", () => {
+  const CLOSED = { ...SESSION, state: "closed" } as const;
+  const PRE: Extended = {
+    session: "pre",
+    price: 207.38,
+    change: 2.74,
+    change_percent: 1.33894,
+    time: "2026-10-28T11:23:00Z",
+  };
+  const closedItem = (id: string) => ({
+    ...boardItem(id, { kind: "EQUITY", unit: "currency" }),
+    session: CLOSED,
+  });
+  const SHUT: Board = {
+    revision: 1,
+    created: true,
+    sections: [
+      {
+        name: "Shares",
+        view: "table",
+        items: [
+          closedItem("US:AAA"),
+          closedItem("US:BBB"),
+          boardItem("US:OPN"),
+        ],
+      },
+      { name: "Cards", view: "cards", items: [closedItem("US:CCC")] },
+    ],
+  };
+  const props = (extended: ReadonlyMap<string, Extended>, index = 0) => ({
+    index,
+    layout: layoutOf(SHUT),
+    editing: false,
+    locked: false,
+    items: itemsOf(SHUT),
+    sparks: new Map(),
+    extended,
+    drag: null,
+    setDrag: () => {},
+    save: () => Promise.resolve(),
+  });
+
+  test("a move is a sun or a moon with its percent, titled with its price and time", () => {
+    const row = homeRow("US:AAA", { unit: "currency" }) as Listed;
+    const pre = extMove(PRE, row, NOW)!;
+    expect(pre.session).toBe("pre");
+    expect(pre.change).toEqual({ text: "+1.34%", dir: 1 });
+    expect(pre.title).toMatch(/^Pre-market 207\.38 USD · \d\d:\d\d$/);
+    const post = extMove(
+      { ...PRE, session: "post", change_percent: -0.004 },
+      row,
+      NOW,
+    )!;
+    expect(post.change).toEqual({ text: "0.00%", dir: 0 });
+    expect(post.title).toStartWith("After hours ");
+    expect(extMove(undefined, row, NOW)).toBeNull();
+    expect(extMove({ ...PRE, price: null }, row, NOW)).toBeNull();
+    expect(extMove({ ...PRE, change_percent: null }, row, NOW)).toBeNull();
+  });
+
+  test("a move from another day names the day", () => {
+    const later = Date.parse(PRE.time) + 3 * 86_400_000;
+    const m = extMove(PRE, null, later)!;
+    expect(m.title).toMatch(/^Pre-market 207\.38 · [A-Z][a-z]{2} \d\d:\d\d$/);
+  });
+
+  test("the Market column shows the move in place of Closed, and a phone puts it after the ticker", () => {
+    const html = render(
+      <SectionView
+        {...props(
+          new Map([
+            ["US:AAA", PRE],
+            ["US:OPN", PRE],
+          ]),
+        )}
+      />,
+    );
+    const rows = html.split('class="table-row');
+    const aaa = rows.find((r) => r.includes("US%3AAAA"))!;
+    const bbb = rows.find((r) => r.includes("US%3ABBB"))!;
+    const opn = rows.find((r) => r.includes("US%3AOPN"))!;
+    expect(aaa.match(/class="dash-sun"/g)).toHaveLength(2);
+    expect(aaa).toMatch(
+      /<span class="show-phone"><span class="small dash-ext"/,
+    );
+    expect(aaa).not.toContain(">Closed<");
+    expect(aaa).toContain("+1.34%");
+    expect(bbb).toContain(">Closed<");
+    expect(bbb).not.toContain("dash-ext");
+    expect(opn).toContain(">Open<");
+    expect(html).not.toContain("dash-moon");
+  });
+
+  test("a card shows the move in its corner, a moon after hours", () => {
+    const post = { ...PRE, session: "post" as const };
+    const html = render(
+      <SectionView {...props(new Map([["US:CCC", post]]), 1)} />,
+    );
+    expect(html).toContain('class="dash-moon"');
+    expect(html).not.toContain(">Closed<");
+  });
+
+  test("the store asks only for closed listings with a session, after the page's answer", async () => {
+    const f = fake({
+      [`GET ${DASHBOARD_PATH}`]: ok(SHUT),
+      [`GET ${barsOf("US:AAA", DAY)}`]: ok(dayAnswer("US:AAA", [101], 100)),
+      [`GET ${barsOf("US:BBB", DAY)}`]: ok(dayAnswer("US:BBB", [101], 100)),
+      [`GET ${barsOf("US:OPN", DAY)}`]: ok(dayAnswer("US:OPN", [101], 100)),
+      [`GET ${barsOf("US:CCC", DAY)}`]: ok(dayAnswer("US:CCC", [101], 100)),
+      [`GET ${earningsOf(["US:AAA", "US:BBB", "US:OPN"])}`]: ok({
+        earnings: [],
+      }),
+      [`GET ${extendedPath(["US:AAA", "US:BBB", "US:CCC"])}`]: ok({
+        quotes: [
+          { id: "US:AAA", extended: PRE },
+          { id: "US:BBB", extended: { ...PRE, price: null } },
+          { id: "US:CCC", extended: null },
+        ],
+      }),
+    });
+    const s = store(
+      f.fetch,
+      () => NOW,
+      () => "/",
+    );
+    await s.loadDashboard();
+    expect(f.asked.map((a) => a.path)).toContain(
+      extendedPath(["US:AAA", "US:BBB", "US:CCC"]),
+    );
+    expect([...s.extended.value.entries()]).toEqual([["US:AAA", PRE]]);
+  });
+
+  test("a long list is asked in batches, and a failed ask leaves no moves", async () => {
+    const ids = Array.from(
+      { length: EXTENDED_BATCH + 1 },
+      (_, i) => `US:S${i}`,
+    );
+    const many: Board = {
+      revision: 1,
+      created: true,
+      sections: [
+        {
+          name: "Many",
+          view: "cards",
+          items: ids.map((id) => ({ ...closedItem(id), intraday: false })),
+        },
+      ],
+    };
+    const first = extendedPath(ids.slice(0, EXTENDED_BATCH));
+    const second = extendedPath(ids.slice(EXTENDED_BATCH));
+    const run = async (fail: boolean) => {
+      const asked: string[] = [];
+      const s = store(
+        async (path) => {
+          asked.push(path);
+          if (path === DASHBOARD_PATH) return Response.json(many);
+          if (path === first || path === second) {
+            if (fail && path === second) {
+              return Response.json({ title: "failed" }, { status: 503 });
+            }
+            const batch =
+              path === first
+                ? ids.slice(0, EXTENDED_BATCH)
+                : ids.slice(EXTENDED_BATCH);
+            return Response.json({
+              quotes: batch.map((id) => ({ id, extended: PRE })),
+            });
+          }
+          return Response.json({ bars: [], earnings: [] });
+        },
+        () => NOW,
+        () => "/",
+      );
+      await s.loadDashboard();
+      return { asked, size: s.extended.value.size };
+    };
+    const ok = await run(false);
+    expect(ok.asked).toContain(first);
+    expect(ok.asked).toContain(second);
+    expect(ok.size).toBe(EXTENDED_BATCH + 1);
+    expect((await run(true)).size).toBe(0);
   });
 });
