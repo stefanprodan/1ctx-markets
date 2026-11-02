@@ -459,8 +459,8 @@ The parts:
   save, never overwritten. Save and Cancel wait for the answer; any
   other failure keeps the draft and says why, to try again or Cancel.
   Cancel drops it. Outside Edit, Add from search and the view switch
-  save at once. A phone has no editing: Edit, the view
-  switch and Add hide, and a section keeps its view.
+  save at once. A phone has no editing: Edit and Add hide, but the
+  view switch stays, so a section can be read as cards or rows there.
 - **A card** is the ticker over its name (a coin without its quote
   currency), Open or Closed, a line, the stored price with its currency
   apart (a yield in percent) and the day's change in percent; it links
