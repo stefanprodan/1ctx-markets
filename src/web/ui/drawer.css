@@ -54,8 +54,22 @@
     align-items: center;
     justify-content: flex-end;
     gap: var(--space-2);
-    padding: var(--space-3) var(--space-4);
+    /* the home-screen app reaches under the home bar, where iOS takes
+       a tap for a swipe, and the screen's rounded corners clip the
+       end buttons */
+    padding: var(--space-3) calc(var(--space-4) + env(safe-area-inset-right))
+      calc(var(--space-3) + env(safe-area-inset-bottom))
+      calc(var(--space-4) + env(safe-area-inset-left));
     border-top: 1px solid var(--line);
+  }
+  @media (pointer: coarse) {
+    .drawer-foot {
+      gap: var(--space-3);
+    }
+    .drawer-foot .btn {
+      height: var(--target-touch);
+      padding: 0 var(--space-4);
+    }
   }
   .drawer-foot-start {
     display: flex;

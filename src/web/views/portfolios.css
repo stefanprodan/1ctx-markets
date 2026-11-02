@@ -234,6 +234,11 @@
     padding-block: var(--space-1);
     cursor: default;
   }
+  @media (pointer: coarse) {
+    .pf-chosen {
+      min-height: var(--target-touch);
+    }
+  }
   .pf-chosen-main {
     display: flex;
     align-items: center;
