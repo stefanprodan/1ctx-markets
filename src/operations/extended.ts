@@ -6,7 +6,8 @@ import { CRYPTO, isQuoted, readSession } from "../market/calendars.ts";
 import { iso, price, round } from "../market/format.ts";
 import type { Instrument } from "../market/instruments.ts";
 import { STALE, type StaleReason } from "../market/stale.ts";
-import { MINUTE_MS } from "../runtime/clock.ts";
+import { fromWallTime, wallTime } from "../market/zone.ts";
+import { DAY_MS, MINUTE_MS } from "../runtime/clock.ts";
 import { YAHOO } from "../sources/ids.ts";
 import { SourceError } from "../sources/source.ts";
 import type { IntradayAnswer, Window } from "../sources/yahoo/client.ts";
@@ -17,6 +18,8 @@ import {
   type Markets,
   shared,
 } from "./markets.ts";
+
+const HOUR_MS = 60 * MINUTE_MS;
 
 const none = (reason: StaleReason): ExtendedRead => ({
   extended: null,
@@ -59,6 +62,41 @@ export function latestExtended(
   return none(STALE.extendedNoPrice);
 }
 
+// Yahoo names the next session only once its pre window starts, so an answer
+// read after every window it holds cannot change before the next pre start
+export function heldUntil(answer: IntradayAnswer, periodMs: number): number {
+  const now = answer.fetchedAt;
+  const periodEnd = (Math.floor(now / periodMs) + 1) * periodMs;
+  const { pre, regular, post } = answer.windows;
+  if (pre.length === 0) return periodEnd;
+  const all = [...pre, ...regular, ...post];
+  // a window's last minute bar can land after its end
+  if (all.some((w) => w.end + periodMs > now)) return periodEnd;
+  const newest = pre.reduce((a, w) => (w.start > a.start ? w : a));
+  const { last, next } = preStarts(answer.session.zone, newest.start, now);
+  if (last === newest.start) return next;
+  // a pre start passed with no new day: a weekend, a holiday or a late rollover
+  if (now < last + (newest.end - newest.start)) return periodEnd;
+  return Math.min(next, now + HOUR_MS);
+}
+
+// whole days at the same wall time, so a clock change keeps the local hour
+export function preStarts(
+  zone: string,
+  start: number,
+  now: number,
+): { last: number; next: number } {
+  let last = start;
+  let next = start;
+  let wall = wallTime(zone, start);
+  while (next <= now) {
+    last = next;
+    wall += DAY_MS;
+    next = fromWallTime(zone, wall);
+  }
+  return { last, next };
+}
+
 // the spark flag decides without a call; a listing never in one asks its chart
 async function readOne(
   m: Markets,
@@ -74,9 +112,8 @@ async function readOne(
   if (isQuoted(instrument.market, readSession(m.db, instrument.market), now)) {
     return none(STALE.extendedOpen);
   }
-  const slot = Math.floor(now / m.quoteEveryMs);
   const cached = m.extended.get(instrument.id);
-  if (cached?.slot === slot) return cached.read;
+  if (cached !== undefined && now < cached.until) return cached.read;
   try {
     const answer = await shared(
       m,
@@ -87,7 +124,7 @@ async function readOne(
     checkAnswer(instrument, answer);
     const read = latestExtended(answer, answer.fetchedAt);
     m.extended.set(instrument.id, {
-      slot: Math.floor(answer.fetchedAt / m.quoteEveryMs),
+      until: heldUntil(answer, m.quoteEveryMs),
       read,
       points: extendedPoints(answer),
     });
@@ -132,8 +169,9 @@ export async function readExtendedPoints(
   // refused (open, none, a failure): a cached answer is not this read's
   if (read === undefined || REFUSED.has(read.reason)) return [];
   const cached = m.extended.get(instrument.id);
-  const slot = Math.floor(m.clock.now() / m.quoteEveryMs);
-  return cached?.slot === slot ? cached.points : [];
+  return cached !== undefined && m.clock.now() < cached.until
+    ? cached.points
+    : [];
 }
 
 const REFUSED: ReadonlySet<StaleReason | null> = new Set([

@@ -111,7 +111,7 @@ export type ExtendedPoint = {
 
 export type ExtendedCache = Map<
   string,
-  { slot: number; read: ExtendedRead; points: ExtendedPoint[] }
+  { until: number; read: ExtendedRead; points: ExtendedPoint[] }
 >;
 
 // a joining caller extends the write's deadline, so it lands while anyone waits
