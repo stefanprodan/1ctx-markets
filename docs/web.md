@@ -152,11 +152,12 @@ signed in with the admin key alone.
   uses it: Home, Instruments, an instrument, Portfolios, Profile (held
   while its editor or History is open) and Server status; Connect
   agents changes only by the operator.
-- **A re-read pulses the page's own icon** in the rail, the strip and
-  the phone's menu button (`reloading`, `rail-icon-reload`), one fade
-  held `PULSE_MS` since a read lands in milliseconds; a load that
-  asks nothing (`undefined`) and the status icon's read (`quiet`) never
-  pulse, and Server status's red pulse outranks it (`iconClass`).
+- **A re-read sweeps a hairline under the page's title**
+  (`reloading`, `page-title-busy`), never the menu's icons, held
+  `PULSE_MS` since a read lands in milliseconds; a load that asks
+  nothing (`undefined`) and the status icon's read (`quiet`) never
+  show it. A failed re-read shows the page's one-line error, not the
+  line.
 - **A wait never looks like a broken page, and there are two.** An
   answer travelling to the browser (data the server holds, read in
   milliseconds; a slow connection makes it seconds) shows the page's

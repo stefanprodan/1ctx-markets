@@ -1176,29 +1176,25 @@ describe("the views", () => {
     expect(drawer).toContain("Close the menu");
   });
 
-  test("a page re-reading pulses its own icon in the rail and the strip", () => {
-    const pulsing = (html: string) =>
-      [...html.matchAll(/aria-current="page"[^>]*>.{0,400}?rail-icon-reload/g)]
-        .length;
+  test("a page re-reading marks its title, never the menu's icons", () => {
     const views = () => [
       render(<Rail here="/instruments" narrow={false} onHide={() => {}} />),
       render(<Strip here="/instruments" />),
     ];
-    for (const html of views()) {
-      expect(html).not.toContain("rail-icon-reload");
-    }
+    expect(render(<Page title="Instruments" />)).not.toContain(
+      "page-title-busy",
+    );
     reloading.value = 1;
     try {
-      for (const html of views()) {
-        expect(html.match(/rail-icon-reload/g)).toHaveLength(1);
-        expect(pulsing(html)).toBe(1);
-      }
+      expect(render(<Page title="Instruments" />)).toContain(
+        'class="page-title page-title-busy"',
+      );
+      for (const html of views()) expect(html).not.toContain("rail-icon-");
     } finally {
       reloading.value = 0;
     }
-    expect(iconClass(true, true)).toBe("rail-icon-failed");
-    expect(iconClass(false, true)).toBe("rail-icon-reload");
-    expect(iconClass(false, false)).toBeUndefined();
+    expect(iconClass(true)).toBe("rail-icon-failed");
+    expect(iconClass(false)).toBeUndefined();
   });
 
   test("the rail lists the recent instruments, the one on screen lit", () => {
