@@ -1561,7 +1561,7 @@ export function AddForm({
                     </button>
                   </span>
                   {picked.value && (
-                    <span class="faint small">
+                    <span class="faint small hide-phone">
                       {[
                         where.value,
                         picked.value.price !== null
@@ -1848,7 +1848,7 @@ export function AddSheet({
   const saving = useSignal(false);
   const title = useSignal("Add");
   return (
-    <Drawer title={title.value} onClose={onDone} busy={saving.value} bare>
+    <Drawer title={title.value} onClose={onDone} busy={saving.value} bare tall>
       <AddForm
         store={store}
         onDone={onDone}

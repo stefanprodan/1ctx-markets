@@ -110,6 +110,9 @@
     .drawer-closing .drawer {
       animation-name: drawer-down;
     }
+    .drawer-tall {
+      height: 92%;
+    }
   }
   @media (prefers-reduced-motion: reduce) {
     .drawer,
