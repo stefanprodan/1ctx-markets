@@ -286,6 +286,48 @@ export const heldAt = (h: Holdings | null, id: string): Part[] =>
     (x) => (x.kind === "holding" || x.kind === "fund") && x.id === id,
   )?.parts ?? [];
 
+// where more of a holding goes: a portfolio or broker every part shares,
+// each left out when the parts differ, so the owner picks it
+export function heldWhere(parts: Part[]): {
+  portfolio?: string;
+  broker?: string | null;
+} {
+  if (parts.length === 0) return {};
+  const ps = new Set(parts.map((p) => p.portfolio));
+  const bs = new Set(parts.map((p) => p.broker ?? null));
+  return {
+    ...(ps.size === 1 ? { portfolio: parts[0]!.portfolio } : {}),
+    ...(bs.size === 1 ? { broker: parts[0]!.broker ?? null } : {}),
+  };
+}
+
+// parts at several brokers: more goes where the last trade went, among
+// the places still held and in the portfolio picked
+export function lastBroker(
+  trades: TradeRow[],
+  parts: Part[],
+  portfolio?: string,
+): string | null | undefined {
+  const held = new Set(
+    parts
+      .filter((p) => portfolio === undefined || p.portfolio === portfolio)
+      .map((p) => `${p.portfolio}\u0000${p.broker ?? ""}`),
+  );
+  let last: TradeRow | undefined;
+  for (const t of trades) {
+    if (t.removed_at !== null) continue;
+    if (!held.has(`${t.portfolio}\u0000${t.broker ?? ""}`)) continue;
+    if (
+      last === undefined ||
+      t.date > last.date ||
+      (t.date === last.date && t.id > last.id)
+    ) {
+      last = t;
+    }
+  }
+  return last === undefined ? undefined : last.broker;
+}
+
 export type DryPowder = {
   position: number;
   name: string;

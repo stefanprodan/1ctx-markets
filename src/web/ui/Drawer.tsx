@@ -65,6 +65,7 @@ export function Drawer({
   foot,
   footStart,
   bare,
+  tall,
   children,
 }: {
   title: ComponentChildren;
@@ -81,6 +82,9 @@ export function Drawer({
   // the children are the body and foot themselves, such as a form that
   // holds both
   bare?: boolean;
+  // a sheet on a phone at its full height from the start, for a body
+  // whose details arrive after it opens
+  tall?: boolean;
   // given the drawer's close, which slides it out first
   children?: Slot;
 }) {
@@ -143,7 +147,7 @@ export function Drawer({
         onClick={close}
       />
       <div
-        class="drawer"
+        class={tall ? "drawer drawer-tall" : "drawer"}
         role="dialog"
         aria-modal="true"
         aria-label={label}

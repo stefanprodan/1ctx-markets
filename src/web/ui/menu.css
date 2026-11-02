@@ -14,9 +14,13 @@
     height: 28px;
     color: var(--faint);
   }
-  .menu-btn[aria-expanded="true"],
-  .table-row:hover .menu-btn {
+  .menu-btn[aria-expanded="true"] {
     color: var(--fg);
+  }
+  @media (hover: hover) {
+    .table-row:hover .menu-btn {
+      color: var(--fg);
+    }
   }
   .menu-btn-text {
     display: inline-flex;

@@ -28,9 +28,11 @@
   .sym-link {
     text-decoration: none;
   }
-  .sym-link:hover {
-    color: var(--fg);
-    text-decoration: underline;
+  @media (hover: hover) {
+    .sym-link:hover {
+      color: var(--fg);
+      text-decoration: underline;
+    }
   }
   .sym-name {
     font-size: var(--text-small);

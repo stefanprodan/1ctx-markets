@@ -457,7 +457,30 @@
     font-size: var(--text-input);
   }
   .field input {
-    height: 36px;
+    --field-height: 36px;
+    height: var(--field-height);
+  }
+  /* a finger's height, as the picks beside the fields have */
+  @media (pointer: coarse) {
+    .field input {
+      --field-height: var(--target-touch);
+    }
+  }
+  /* iOS Safari sizes a date field to its native control, past the
+     form's width, and centres the value; without appearance it takes
+     the box it is given, but sets the value at the top, so the line
+     fills the box inside its borders */
+  .field input[type="date"] {
+    appearance: none;
+    display: block;
+    min-width: 0;
+    line-height: calc(var(--field-height) - 2px);
+    text-align: left;
+  }
+  .field input[type="date"]::-webkit-date-and-time-value {
+    margin: 0;
+    line-height: calc(var(--field-height) - 2px);
+    text-align: left;
   }
   .field textarea {
     padding: var(--space-2) var(--space-3);

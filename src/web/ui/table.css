@@ -114,8 +114,12 @@
   .table-row-open {
     cursor: pointer;
   }
-  .table-row-open:hover {
-    background: var(--hover);
+  /* iOS keeps a tap's hover on what lands under the finger, such as a
+     row of the page a link opens */
+  @media (hover: hover) {
+    .table-row-open:hover {
+      background: var(--hover);
+    }
   }
   .table-open {
     position: absolute;

@@ -60,12 +60,14 @@ import {
   groupShare,
   groupsOf,
   heldAt,
+  heldWhere,
   heroOf,
   holdingMatches,
   holdingName,
   holdingTicker,
   homeOf,
   importLine,
+  lastBroker,
   listingWords,
   matured,
   missingWords,
@@ -909,6 +911,39 @@ describe("the add panel", () => {
       ["South", 3],
     ]);
     expect(heldAt(HOLDINGS, "US:NOT")).toEqual([]);
+  });
+
+  test("more of a holding goes where every part agrees", () => {
+    const parts = heldAt(HOLDINGS, "XETRA:AAA");
+    expect(heldWhere(parts)).toEqual({ portfolio: "Shares" });
+    expect(heldWhere(parts.slice(0, 1))).toEqual({
+      portfolio: "Shares",
+      broker: "North",
+    });
+    expect(heldWhere([{ ...parts[0]!, broker: null }])).toEqual({
+      portfolio: "Shares",
+      broker: null,
+    });
+    expect(
+      heldWhere([parts[0]!, { ...parts[0]!, portfolio: "Other" }]),
+    ).toEqual({ broker: "North" });
+    expect(heldWhere([])).toEqual({});
+  });
+
+  test("more of a holding at several brokers goes where it was last traded", () => {
+    const parts = heldAt(HOLDINGS, "XETRA:AAA");
+    const trades = [
+      trade({ id: 1, date: "2031-03-07", broker: "North" }),
+      trade({ id: 2, date: "2031-04-09", broker: "South" }),
+      trade({ id: 3, date: "2031-04-09", broker: "North" }),
+      // removed, and at a broker no longer held: neither counts
+      trade({ id: 4, date: "2031-05-13", broker: "South", removed_at: "x" }),
+      trade({ id: 5, date: "2031-06-17", broker: "West" }),
+    ];
+    expect(lastBroker(trades, parts, "Shares")).toBe("North");
+    expect(lastBroker(trades.slice(0, 2), parts)).toBe("South");
+    expect(lastBroker(trades, parts, "Other")).toBeUndefined();
+    expect(lastBroker([], parts)).toBeUndefined();
   });
 
   test("a buy pays from the dry powder at its broker, then in its currency", () => {
