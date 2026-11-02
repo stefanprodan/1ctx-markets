@@ -13,7 +13,13 @@ import { iso, round } from "../src/market/format.ts";
 import { readInstrument, upsertInstrument } from "../src/market/instruments.ts";
 import { STALE } from "../src/market/stale.ts";
 import { markRead } from "../src/market/tracking.ts";
-import { extendedPoints, latestExtended } from "../src/operations/extended.ts";
+import {
+  extendedPoints,
+  heldUntil,
+  latestExtended,
+  preStarts,
+  readExtendedPoints,
+} from "../src/operations/extended.ts";
 import { CALL_MS, type Markets, markets } from "../src/operations/markets.ts";
 import { moversAnswer, parseMovers } from "../src/operations/movers.ts";
 import { parseQuote, quotePage } from "../src/operations/quote.ts";
@@ -546,5 +552,138 @@ describe("the extended points of a chart's day", () => {
     const fx = await recorded(hoodChart());
     const answer = { ...parseIntraday(fx.body, Date.now()), prePost: false };
     expect(extendedPoints(answer)).toEqual([]);
+  });
+});
+
+const until = (t: { m: Markets }) => t.m.extended.get("US:HOOD")!.until;
+const at = (time: string) => Date.parse(time);
+
+describe("the extended cache", () => {
+  test("holds an answer read after every window until the next pre start", async () => {
+    const t = await setup({ window: OVERNIGHT });
+    await t.client.spark(SYMBOLS);
+    await ask(t.m);
+    expect(t.charted("HOOD")).toHaveLength(1);
+    expect(until(t)).toBe(at("2026-10-28T08:00:00Z"));
+    while (t.clock.now() + t.m.quoteEveryMs < until(t)) {
+      await t.clock.advance(t.m.quoteEveryMs);
+      expect(byId(await ask(t.m), "US:HOOD").extended).toEqual(HOOD_OVERNIGHT);
+    }
+    expect(t.charted("HOOD")).toHaveLength(1);
+    await t.clock.advance(until(t) - t.clock.now());
+    await ask(t.m);
+    expect(t.charted("HOOD")).toHaveLength(2);
+  });
+
+  test.each([
+    ["post", POST],
+    ["pre", PRE],
+  ])(
+    "keeps an answer read in the %s window to the end of its quote period",
+    async (_, window) => {
+      const t = await setup({ window });
+      await t.client.spark(SYMBOLS);
+      await ask(t.m);
+      const q = t.m.quoteEveryMs;
+      expect(until(t)).toBe((Math.floor(t.clock.now() / q) + 1) * q);
+      await t.clock.advance(until(t) - t.clock.now() - 1);
+      await ask(t.m);
+      expect(t.charted("HOOD")).toHaveLength(1);
+      await t.clock.advance(1);
+      await ask(t.m);
+      expect(t.charted("HOOD")).toHaveLength(2);
+    },
+  );
+
+  test("keeps the quote period across a pre span with no new day", async () => {
+    const t = await setup({ window: OVERNIGHT });
+    await t.client.spark(SYMBOLS);
+    await ask(t.m);
+    expect(until(t)).toBe(at("2026-10-28T08:00:00Z"));
+    await t.clock.advance(until(t) - t.clock.now());
+    await ask(t.m);
+    expect(until(t)).toBe(at("2026-10-28T08:00:00Z") + t.m.quoteEveryMs);
+    expect(t.charted("HOOD")).toHaveLength(2);
+  });
+
+  test("holds an hour outside the pre span of a day with no new session", async () => {
+    const fx = await recorded(hoodChart(OVERNIGHT));
+    const answer = parseIntraday(fx.body, at("2026-10-29T15:00:00Z"));
+    expect(heldUntil(answer, 5 * 60_000)).toBe(at("2026-10-29T16:00:00Z"));
+  });
+
+  test("keeps the quote period for one period after the post window ends", async () => {
+    const fx = await recorded(hoodChart(POST));
+    const q = 5 * 60_000;
+    const late = parseIntraday(fx.body, at("2026-10-28T00:00:10Z"));
+    expect(heldUntil(late, q)).toBe(at("2026-10-28T00:05:00Z"));
+    const settled = parseIntraday(fx.body, at("2026-10-28T00:05:00Z"));
+    expect(heldUntil(settled, q)).toBe(at("2026-10-28T08:00:00Z"));
+  });
+
+  test("holds a missed day's answer no later than the next pre start", async () => {
+    const fx = await recorded(hoodChart(OVERNIGHT));
+    const answer = parseIntraday(fx.body, at("2026-10-29T07:30:00Z"));
+    expect(heldUntil(answer, 5 * 60_000)).toBe(at("2026-10-29T08:00:00Z"));
+  });
+
+  test.each([
+    [
+      "autumn",
+      "2026-10-30T08:00:00Z",
+      "2026-10-31T08:00:00Z",
+      "2026-11-01T09:00:00Z",
+    ],
+    [
+      "spring",
+      "2027-03-12T09:00:00Z",
+      "2027-03-13T09:00:00Z",
+      "2027-03-14T08:00:00Z",
+    ],
+  ])(
+    "steps across the %s clock change at the same wall time",
+    (_, start, after, next) => {
+      expect(preStarts("America/New_York", at(start), at(after)).next).toBe(
+        at(next),
+      );
+    },
+  );
+
+  test("keeps the quote period for an answer with no pre window", async () => {
+    const fx = await recorded(hoodChart(OVERNIGHT));
+    const answer = parseIntraday(fx.body, at(fx.recordedAt));
+    const q = 5 * 60_000;
+    const periodEnd = (Math.floor(answer.fetchedAt / q) + 1) * q;
+    expect(heldUntil(answer, q)).toBe(at("2026-10-28T08:00:00Z"));
+    const noPre = { ...answer, windows: { ...answer.windows, pre: [] } };
+    expect(heldUntil(noPre, q)).toBe(periodEnd);
+  });
+
+  test("never keeps a failed read", async () => {
+    const t = await setup({ window: OVERNIGHT });
+    // another listing's answer fails the read without pausing the source
+    const other = clone(t.charts.get("HOOD")!);
+    other.body.chart.result[0].meta.symbol = "OTHER";
+    t.charts.set("HOOD", other);
+    await t.client.spark(SYMBOLS);
+    expect(byId(await ask(t.m), "US:HOOD").stale).toEqual([
+      STALE.extendedFailed,
+    ]);
+    expect(t.m.extended.has("US:HOOD")).toBe(false);
+    await ask(t.m);
+    expect(t.charted("HOOD")).toHaveLength(2);
+  });
+
+  test("answers the chart's points from the held answer without a fetch", async () => {
+    const t = await setup({ window: OVERNIGHT });
+    await t.client.spark(SYMBOLS);
+    await ask(t.m);
+    const held = t.m.extended.get("US:HOOD")!.points;
+    expect(held.length).toBeGreaterThan(0);
+    await t.clock.advance(3 * t.m.quoteEveryMs);
+    const hood = readInstrument(t.db, "US:HOOD")!;
+    const points = await readExtendedPoints(t.m, hood, t.clock.now() + CALL_MS);
+    expect(points).toEqual(held);
+    expect(t.charted("HOOD")).toHaveLength(1);
   });
 });
