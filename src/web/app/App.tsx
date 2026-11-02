@@ -5,7 +5,7 @@ import type { ComponentChildren } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { markets, type Store } from "../data/store.ts";
 import { Icon } from "../lib/icons.tsx";
-import { holding } from "../lib/refresh.ts";
+import { holding, reloading } from "../lib/refresh.ts";
 import { hold } from "../lib/slow.ts";
 import { Page } from "../ui/Page.tsx";
 import { SignIn } from "../views/SignIn.tsx";
@@ -84,7 +84,10 @@ export function Shell({
             aria-label="Show the menu"
             onClick={openDrawer}
           >
-            <Icon name="sidebar" />
+            <Icon
+              name="sidebar"
+              class={reloading.value > 0 ? "rail-icon-reload" : undefined}
+            />
           </button>
         )}
         {children}

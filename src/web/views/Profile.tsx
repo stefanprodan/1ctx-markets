@@ -13,6 +13,7 @@ import type {
 import { markets } from "../data/store.ts";
 import { ago } from "../lib/format.ts";
 import { Icon } from "../lib/icons.tsx";
+import { useRefresh } from "../lib/refresh.ts";
 import { Card } from "../ui/Card.tsx";
 import { Drawer } from "../ui/Drawer.tsx";
 import { Notice } from "../ui/Notice.tsx";
@@ -121,6 +122,8 @@ export function Editor({
   onDone: () => void;
 }) {
   const [text, setText] = useState(start);
+  // a load landing after Edit never moves the revision the save is checked at
+  const [opened] = useState(revision);
   const [busy, setBusy] = useState(false);
   const [refused, setRefused] = useState<string | null>(null);
   const [tab, setTab] = useState<"write" | "preview">("write");
@@ -133,7 +136,7 @@ export function Editor({
   async function save() {
     setBusy(true);
     setRefused(null);
-    const said = await store.save(text, revision);
+    const said = await store.save(text, opened);
     if (said === null) return onDone();
     setBusy(false);
     setRefused(said);
@@ -332,6 +335,9 @@ export function ProfileBody({ store }: { store: ProfileStore }) {
   const p = store.profile.value;
   const [editing, setEditing] = useState(false);
   const [history, setHistory] = useState(false);
+  // an edit or a restore saves at the revision it opened, so an agent's
+  // newer save is refused, never overwritten: no reload moves it meanwhile
+  useRefresh(() => (editing || history ? undefined : store.load()));
   const failed = didNotLoad(
     p !== null,
     store.error.value,

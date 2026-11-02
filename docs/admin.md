@@ -2,6 +2,7 @@
 
 Governs the operator's routes and command: `src/admin/http.ts` (the
 instrument, watchlist and status handlers), `src/admin/refetch.ts`,
+`src/admin/retry.ts` (the failed jobs' retry),
 `src/admin/keys.ts` (the agent keys' routes), `src/admin/cli.ts`
 (`1ctx-markets admin`) and `src/admin/keys-cli.ts` (`1ctx-markets
 keys`). The routes, their errors
@@ -42,6 +43,7 @@ log and cut off without touching the others.
 |---|---|
 | `GET /api/v1/instruments?query=&page_size=&page_token=` | the stored instruments by id, a page at a time (below) |
 | `GET /api/v1/status` | `sync`, false with `--no-sync` (`docs/config.md`), so the jobs' last runs read as from before; sources on, off and why, and every job, with names for people (a source's `label`, `short` and `mark`, a job's `label` and `about`; a keyed source's `key`: its file, what it adds, where to get one), a back-off in force, every job's last run, its scopes (markets or instruments with a run kept) and failing scopes counted, the newest `MAX_FAILING` (5) failing named with their error, a phrase that may name the symbols behind it (`docs/storage.md`; a run cut by shutdown, error `stopped`, never counts, since the next run settles it; one cut by a crash, `interrupted`, does, since a run that kills the server would otherwise never show; a failed Yahoo backfill is settled once the instrument has daily bars, since a read fetches a history without a backfill run; runs with no scope, from before backfill runs had one, are skipped; the page reads failure from these counts, never the last run), the instrument and tracked counts, the database size, the version. The `--track` values are `GET /api/v1/watchlist`'s (`docs/api.md`) |
+| `POST /api/v1/status/retry` | no body: every failing instrument scope status lists asks its failed part again (below); `{asked, fetched, failed, left_out}` |
 | `POST /api/v1/instruments/{symbol}/refetch` | `{"parts": [...], "sections": [...]}`, answered per part |
 | `DELETE /api/v1/instruments/{symbol}` | the instrument and every row of it; 204 |
 | `GET /api/v1/instruments/{symbol}/stored` | `{input, stored}`: true when the read's bare-symbol rule (`restStored()`) finds a stored row with daily bars, so a read answers without a first fetch; asks no source and marks no read. The web UI asks it beside an instrument's first read to say which wait it is in (`docs/web.md`) |
@@ -170,6 +172,39 @@ log and cut off without touching the others.
   tracks nothing. Bars evaluate the instrument's rules after the run
   ends, so a failure the refetch repaired no longer holds them unknown.
 
+## Retry failed jobs
+
+- **Every failing scope `GET /status` counts, not the `MAX_FAILING`
+  it names** (`failingScopes()`, the same reading as `jobs()`), each
+  asked again through the refetch code (`fetchAll()`), one fetch per
+  instrument and part, all under one call deadline.
+- **Only an instrument's failed part is asked:**
+
+| Job | Asked as |
+|---|---|
+| Massive `news` | `news` |
+| Finnhub `metric`, `analysts`, `earnings`, `insider` | `research`, that section only |
+| Finnhub `calendar` | `calendar` |
+| Yahoo `top_holdings` | `top_holdings` |
+| Yahoo `valuation` | `refreshValuation()`, a part only the retry uses |
+| EDGAR `filings` | `refreshFilings()`, a part only the retry uses |
+| Yahoo, Bucharest feed, FRED `bars` in an instrument's scope | `bars`, only while the instrument is still that source's |
+| Yahoo `backfill` | `bars`: stored bars settle a failed backfill |
+
+- **Left out:** a market's scope (live prices, market hours, a
+  market's daily prices, the feed's lists, SEC tickers, the earnings
+  calendar, the source switch), whose jobs ask again within the hour;
+  `owed`, whose runs never fail; an instrument no longer stored; a
+  source that is off; an instrument a part does not cover.
+- **Runs as the refetch records them**: a success ends the run its job
+  records, so the scope leaves the failing list; a failure that reached
+  the source records a failed run with its phrase; the deadline, a
+  back-off or a stopping server records nothing (`reached()`). A bars
+  fetch that fails again fails only the jobs whose rows asked it, so a
+  failed backfill stays one row.
+- **The answer is counts only**: `asked` (`fetched` plus `failed`) and
+  `left_out` add up to the failing scopes; status names which.
+
 ## Delete
 
 - **Stored only, never fetched**, named as refetch names it; 204 with
@@ -203,7 +238,7 @@ log and cut off without touching the others.
 
 ## The command
 
-- **`1ctx-markets admin status|refetch|delete` calls the running
+- **`1ctx-markets admin status|retry|refetch|delete` calls the running
   server on this machine** with `<data>/secrets/user-admin.key`, so it works
   over ssh without stopping the service. `--listen` and `--data`
   default to the installed service's, else the server's defaults; a

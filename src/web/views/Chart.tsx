@@ -505,7 +505,8 @@ export function Chart({ id, intraday }: { id: string; intraday: boolean }) {
   useEffect(() => {
     void load();
   }, [id, intraday, range.value, railDrawer.value]);
-  useRefresh(() => load());
+  // the instrument's own read pulses the menu for the page
+  useRefresh(() => load(), true);
 
   // a theme flip, a toggle: the same bars drawn again
   useEffect(() => {

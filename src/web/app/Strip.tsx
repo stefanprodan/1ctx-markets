@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Icon, Mark } from "../lib/icons.tsx";
+import { reloading } from "../lib/refresh.ts";
 import { useServerFailing } from "./failing.ts";
+import { iconClass } from "./Rail.tsx";
 import { HOME, lit, RAIL, STATUS } from "./routes.ts";
 import { showRail } from "./shell.ts";
 import { toggleUserMenu, UserMenu, userMenuOpen } from "./UserMenu.tsx";
@@ -38,7 +40,7 @@ export function Strip({ here }: { here: string }) {
             >
               <Icon
                 name={r.icon}
-                class={red ? "rail-icon-failed" : undefined}
+                class={iconClass(red, lit(here, r.path) && reloading.value > 0)}
               />
             </a>
           );

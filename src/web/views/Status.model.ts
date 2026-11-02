@@ -1,7 +1,12 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { JobStatus, SourceStatus, WatchEntry } from "../data/store.ts";
+import type {
+  JobStatus,
+  Retried,
+  SourceStatus,
+  WatchEntry,
+} from "../data/store.ts";
 import { ago, plain } from "../lib/format.ts";
 
 export function bytes(n: number): string {
@@ -15,14 +20,12 @@ export function bytes(n: number): string {
   return `${u === 0 ? v : v.toFixed(v < 10 ? 1 : 0)} ${units[u]}`;
 }
 
-// the viewer's own zone, since it says when they last asked
-export const clockTime = (ms: number): string =>
-  new Date(ms).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hourCycle: "h23",
-  });
+// a market's job asks again on its own: only a ticker's failure is retried
+export const retryable = (jobs: readonly JobStatus[]): boolean =>
+  jobs.some((j) => j.failing_instruments > 0);
+
+// the check means something came back and nothing failed again
+export const retried = (r: Retried): boolean => r.fetched > 0 && r.failed === 0;
 
 // a run's day and time in the viewer's zone, on a 24-hour clock
 export const runTime = (at: string | null): string =>

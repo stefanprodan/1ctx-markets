@@ -104,8 +104,16 @@
       opacity: 0.35;
     }
   }
+  /* the page on screen re-reading: one soft fade, never a flash, as long
+     as PULSE_MS holds it */
+  .rail-icon-reload {
+    animation: rail-pulse 600ms ease-in-out;
+  }
   @media (prefers-reduced-motion: reduce) {
     .rail-icon-failed {
+      animation: none;
+    }
+    .rail-icon-reload {
       animation: none;
     }
   }

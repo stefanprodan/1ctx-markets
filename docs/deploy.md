@@ -111,5 +111,5 @@ under `~/.1ctx-markets` and the binary in `~/.1ctx-markets/bin`.
   output, which names files only. The admin key is never copied: the
   box's first start writes its own, and its agents' keys are made there.
 - **Admin actions run on the box over ssh** with `1ctx-markets admin
-  status|refetch|delete` (`docs/admin.md`), which calls the installed
-  service on loopback, so it keeps running.
+  status|retry|refetch|delete` (`docs/admin.md`), which calls the
+  installed service on loopback, so it keeps running.

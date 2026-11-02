@@ -82,7 +82,7 @@ function pageId(here: string): string | null {
   }
 }
 
-// once per visit: the page's minute refresh reads the detail again
+// once per visit: the page's refresh reads the detail again
 let recordedAt: string | null = null;
 
 export function watchRecent(): void {

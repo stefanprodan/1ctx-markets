@@ -997,6 +997,17 @@ describe("the admin command", () => {
       `http://${DEFAULT_LISTEN}/api/v1/instruments/US%3A%5EGSPC`,
     );
     expect(h.calls[0]!.init.method).toBe("DELETE");
+    const r = fake();
+    await runAdmin(["--data", dir, "retry"], {
+      fetch: r.fetch,
+      write: () => {},
+      service: async () => null,
+    });
+    expect(r.calls[0]!.url).toBe(
+      `http://${DEFAULT_LISTEN}/api/v1/status/retry`,
+    );
+    expect(r.calls[0]!.init.method).toBe("POST");
+    expect(r.calls[0]!.init.body).toBeUndefined();
   });
 
   test("refetches several ids one call each, in turn, past a failed one", async () => {
@@ -1090,6 +1101,8 @@ describe("the admin command", () => {
     for (const argv of [
       [],
       ["status", "x"],
+      ["retry", "US:NVDA"],
+      ["retry", "--fetch", "bars"],
       ["delete"],
       ["refetch"],
       ["nope"],

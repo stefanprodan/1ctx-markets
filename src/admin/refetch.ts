@@ -10,6 +10,8 @@ import { errorFields } from "../runtime/log.ts";
 import type { Bvb } from "../sources/bvb/client.ts";
 import { storeBvbQuotes } from "../sources/bvb/quotes.ts";
 import { backfill as bvbBackfill, quoteNow } from "../sources/bvb/sync.ts";
+import { eligible as edgarEligible } from "../sources/edgar/store.ts";
+import { refreshFilings } from "../sources/edgar/sync.ts";
 import {
   eligible as finnhubEligible,
   type Section,
@@ -37,6 +39,10 @@ import {
   refreshTopHoldings,
   asked as topHoldingsAsked,
 } from "../sources/yahoo/top-holdings.ts";
+import {
+  refreshValuation,
+  covered as valuationCovered,
+} from "../sources/yahoo/valuation.ts";
 import { endRun, failRun, startRun } from "../storage/runs.ts";
 import { WriterClosed } from "../storage/writer.ts";
 
@@ -49,6 +55,8 @@ export const PARTS = [
   "top_holdings",
 ] as const;
 export type Part = (typeof PARTS)[number];
+// a daily job's own fetch, asked again only by the failed jobs' retry
+export type JobPart = Part | "valuation" | "filings";
 
 // Finnhub's sections but the calendar, which is a part of its own
 export const RESEARCH_SECTIONS = [
@@ -65,11 +73,19 @@ export type Outcome =
   | { status: "source off" }
   | { status: "failed"; error: string };
 
-export type Result = {
+export type Result<P extends JobPart = Part> = {
   symbol: string;
-  part: Part;
+  part: P;
   section?: ResearchSection;
 } & Outcome;
+
+export type Task<P extends JobPart = JobPart> = {
+  instrument: Instrument;
+  part: P;
+  section?: ResearchSection;
+  // the jobs a failed bars fetch fails, so a retry fails only the rows it asked
+  failAs?: string[];
+};
 
 export type Plan = {
   parts: readonly Part[];
@@ -115,17 +131,15 @@ async function failBars(
   id: string,
   at: number,
   error: unknown,
+  jobs: readonly string[],
 ): Promise<void> {
   if (!reached(error)) return;
   await m.writer
-    .write((db) =>
-      failRun(
-        db,
-        startRun(db, source, JOBS.bars, at, id),
-        m.clock.now(),
-        error,
-      ),
-    )
+    .write((db) => {
+      for (const job of jobs) {
+        failRun(db, startRun(db, source, job, at, id), m.clock.now(), error);
+      }
+    })
     .catch(() => {});
 }
 
@@ -150,6 +164,7 @@ async function bars(
   m: Markets,
   i: Instrument,
   live: () => boolean,
+  failAs: readonly string[] = [JOBS.bars],
 ): Promise<Outcome> {
   const at = m.clock.now();
   let written: Written;
@@ -180,7 +195,7 @@ async function bars(
       });
     } else return NOT_COVERED;
   } catch (error) {
-    await failBars(m, i.source, i.id, at, error);
+    await failBars(m, i.source, i.id, at, error, failAs);
     return failed(m, error);
   }
   if (i.source !== FRED) {
@@ -300,54 +315,118 @@ async function topHoldings(
   }
 }
 
+// a US share Finnhub answers from a foreign listing
+async function valuation(
+  m: Markets,
+  i: Instrument,
+  live: () => boolean,
+): Promise<Outcome> {
+  if (!valuationCovered(m.db, i)) return NOT_COVERED;
+  try {
+    const r = await refreshValuation(yahooCtx(m, live), i, {
+      live,
+      client: m.yahoo.within(live),
+    });
+    if (r === null) return fetched(0);
+    return r.status === "ok" ? fetched(r.rows) : failed(m, r.error);
+  } catch (error) {
+    return failed(m, error);
+  }
+}
+
+async function filings(
+  m: Markets,
+  i: Instrument,
+  live: () => boolean,
+): Promise<Outcome> {
+  const edgar = m.edgar;
+  if (edgar === null) return OFF;
+  if (!edgarEligible(i)) return NOT_COVERED;
+  try {
+    const r = await refreshFilings(
+      { db: m.db, clock: m.clock, writer: m.writer, edgar },
+      i,
+      { live, client: edgar.within(live) },
+    );
+    return r.status === "ok" ? fetched(r.rows) : failed(m, r.error);
+  } catch (error) {
+    return failed(m, error);
+  }
+}
+
+function runOf(
+  m: Markets,
+  t: Task,
+  live: () => boolean,
+): () => Promise<Outcome> {
+  const i = t.instrument;
+  switch (t.part) {
+    case "bars":
+      return () => bars(m, i, live, t.failAs);
+    case "quotes":
+      return () => quotes(m, i, live);
+    case "news":
+      return () => news(m, i, live);
+    case "top_holdings":
+      return () => topHoldings(m, i, live);
+    case "calendar":
+      return () => research(m, i, "calendar", live);
+    case "research":
+      return () => research(m, i, t.section!, live);
+    case "valuation":
+      return () => valuation(m, i, live);
+    case "filings":
+      return () => filings(m, i, live);
+  }
+}
+
 const EXPIRED = Symbol("expired");
 
-// every part at once: each source's own queue or limiter paces its calls
-export async function refetch(
+// every task at once under one deadline: each source's own queue or
+// limiter paces its calls
+export async function fetchAll<P extends JobPart>(
   m: Markets,
-  instruments: readonly Instrument[],
-  plan: Plan,
-): Promise<Result[]> {
+  tasks: readonly Task<P>[],
+): Promise<Result<P>[]> {
   const deadline = m.clock.now() + m.callMs;
   const live = () => m.clock.now() < deadline;
   let cancel = () => {};
   const expiry = new Promise<typeof EXPIRED>((resolve) => {
     cancel = m.clock.at(deadline, () => resolve(EXPIRED));
   });
-  const tasks: Promise<Result>[] = [];
-  const add = (
-    i: Instrument,
-    part: Part,
-    run: () => Promise<Outcome>,
-    section?: ResearchSection,
-  ) => {
-    const base = { symbol: i.id, part, ...(section ? { section } : {}) };
-    tasks.push(
-      // a call in flight may run to its own timeout; the answer does not
-      Promise.race([run(), expiry]).then(
-        (o): Result => ({ ...base, ...(o === EXPIRED ? TIMED_OUT : o) }),
-      ),
+  const answers = tasks.map((t) => {
+    const base = {
+      symbol: t.instrument.id,
+      part: t.part,
+      ...(t.section ? { section: t.section } : {}),
+    };
+    // a call in flight may run to its own timeout; the answer does not
+    return Promise.race([runOf(m, t, live)(), expiry]).then(
+      (o): Result<P> => ({ ...base, ...(o === EXPIRED ? TIMED_OUT : o) }),
     );
-  };
-  for (const i of instruments) {
+  });
+  try {
+    return await Promise.all(answers);
+  } finally {
+    cancel();
+  }
+}
+
+export function refetch(
+  m: Markets,
+  instruments: readonly Instrument[],
+  plan: Plan,
+): Promise<Result[]> {
+  const tasks: Task<Part>[] = [];
+  for (const instrument of instruments) {
     for (const part of plan.parts) {
-      if (part === "bars") add(i, part, () => bars(m, i, live));
-      else if (part === "quotes") add(i, part, () => quotes(m, i, live));
-      else if (part === "news") add(i, part, () => news(m, i, live));
-      else if (part === "top_holdings") {
-        add(i, part, () => topHoldings(m, i, live));
-      } else if (part === "calendar") {
-        add(i, part, () => research(m, i, "calendar", live));
-      } else {
-        for (const s of plan.sections) {
-          add(i, part, () => research(m, i, s, live), s);
+      if (part !== "research") tasks.push({ instrument, part });
+      else {
+        for (const section of plan.sections) {
+          tasks.push({ instrument, part, section });
         }
       }
     }
   }
-  try {
-    return await Promise.all(tasks);
-  } finally {
-    cancel();
-  }
+  return fetchAll(m, tasks);
 }

@@ -6,7 +6,7 @@ import { markets } from "../data/store.ts";
 import { useRefresh } from "../lib/refresh.ts";
 import { troubled } from "../views/Status.model.ts";
 
-// whether the status page shows anything failing, read once a minute
+// whether the status page shows anything failing, read every refresh
 // for the rail's or the strip's status icon; signed in only, since the
 // shell shows for a signed-out page too
 export function useServerFailing(): boolean {
@@ -16,7 +16,7 @@ export function useServerFailing(): boolean {
   }, [signed]);
   useRefresh(() => {
     if (markets.signedIn.peek() === true) return markets.checkPulse();
-  });
+  }, true);
   const pulse = markets.pulse.value;
   return signed && pulse !== null && troubled(pulse);
 }

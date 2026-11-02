@@ -737,6 +737,31 @@ describe("every operation", () => {
     await check("GET", "/status", await t.call("/status?x=1"), 400);
     await check("GET", "/status", await t.call("/status", wrong), 401);
     await check("GET", "/status", await t.call("/status", reader), 403);
+    const retry = { method: "POST" };
+    await check(
+      "POST",
+      "/status/retry",
+      await t.call("/status/retry", retry),
+      200,
+    );
+    await check(
+      "POST",
+      "/status/retry",
+      await t.call("/status/retry", json({})),
+      400,
+    );
+    await check(
+      "POST",
+      "/status/retry",
+      await t.call("/status/retry", { ...retry, ...wrong }),
+      401,
+    );
+    await check(
+      "POST",
+      "/status/retry",
+      await t.call("/status/retry", { ...retry, ...reader }),
+      403,
+    );
     await check(
       "GET",
       "/instruments",
