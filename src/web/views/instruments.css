@@ -64,4 +64,84 @@
     justify-content: flex-end;
     gap: var(--space-2);
   }
+
+  /* the screens as count tiles over the list, one picked */
+  .scr-set {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+  .scr-tiles {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: var(--space-2);
+  }
+  .scr-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    min-width: 0;
+    padding: var(--space-3) var(--space-3) 10px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-card);
+    background: var(--card);
+    color: var(--dim);
+    text-align: left;
+    cursor: pointer;
+  }
+  .scr-tile:hover {
+    border-color: var(--line-strong);
+    color: var(--fg);
+  }
+  .scr-tile-on,
+  .scr-tile-on:hover {
+    border-color: var(--faint);
+    background: var(--hover);
+    color: var(--fg);
+  }
+  .scr-n {
+    font-size: 22px;
+    line-height: 1.2;
+    color: var(--dim);
+  }
+  .scr-tile-on .scr-n {
+    color: var(--fg);
+  }
+  .scr-name {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--text-small);
+  }
+  .scr-why {
+    margin: calc(-1 * var(--space-2)) 0 var(--space-2);
+    color: var(--faint);
+    font-size: var(--text-small);
+  }
+  /* a phone scrolls the tiles sideways, fading at the edge */
+  @media (max-width: 719px) {
+    .scr-tiles {
+      display: flex;
+      overflow-x: auto;
+      scrollbar-width: none;
+      mask-image: linear-gradient(
+        to right,
+        #000 calc(100% - 32px),
+        transparent
+      );
+    }
+    .scr-tile {
+      flex: 0 0 auto;
+    }
+    .scr-name {
+      overflow: visible;
+    }
+  }
+  .scr-more {
+    display: block;
+    min-height: 44px;
+  }
 }

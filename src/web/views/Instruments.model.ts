@@ -1,47 +1,140 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { Listed } from "../data/store.ts";
-import { kindOf, marketOf, symbolOf } from "../lib/names.ts";
+import type { Screened, ScreenKey } from "../data/store.ts";
+import { type Signed, signedChange } from "../lib/format.ts";
+import { kindOf } from "../lib/names.ts";
 
-// by the symbol people know, the market breaking a tie
-// and an index's ^ ignored, so ^GSPC files under G
-const sortKey = (id: string) => symbolOf(id).replace(/^\^/, "");
-export const bySymbol = (a: Listed, b: Listed): number =>
-  sortKey(a.id).localeCompare(sortKey(b.id)) || a.id.localeCompare(b.id);
+// a screen's own figure, beside the price and under it on a phone
+export type Own = {
+  key: "drawdown" | "rsi14";
+  head: string;
+  text: (v: number) => string;
+};
 
-export type SortKey = "symbol" | "kind" | "market" | "change";
+export type ScreenText = {
+  key: ScreenKey;
+  name: string;
+  // one faint line under the card's title: what it keeps
+  why: string;
+  empty: string;
+  // the order its own figure sorts first, as the server's own sort
+  order: "asc" | "desc";
+  own?: Own;
+};
 
-// the list's order: by symbol unless a column head asks; a tie, and a
-// row with nothing to sort on, falls back to the symbol
-export function sortRows(
-  rows: readonly Listed[],
-  key: SortKey,
-  dir: "asc" | "desc",
-): Listed[] {
-  const sign = dir === "asc" ? 1 : -1;
-  const by = (a: Listed, b: Listed): number => {
-    if (key === "kind")
-      return sign * kindOf(a.kind).localeCompare(kindOf(b.kind));
-    if (key === "market") return sign * marketOf(a).localeCompare(marketOf(b));
-    if (key === "change") {
-      if (a.change_percent === null || b.change_percent === null)
-        return (
-          (a.change_percent === null ? 1 : 0) -
-          (b.change_percent === null ? 1 : 0)
-        );
-      return sign * (a.change_percent - b.change_percent);
-    }
-    return sign * bySymbol(a, b);
+// within a twentieth of a point reads as at the high, not "0.0% below"
+export const fromHigh = (v: number): string =>
+  v > -0.05 ? "At its high" : `${Math.abs(v).toFixed(1)}% below`;
+
+const FROM_HIGH: Own = { key: "drawdown", head: "From high", text: fromHigh };
+const RSI: Own = { key: "rsi14", head: "RSI", text: (v) => v.toFixed(0) };
+
+export const SCREEN_TEXT: readonly ScreenText[] = [
+  {
+    key: "moves",
+    name: "Biggest moves",
+    why: "Largest moves today, up or down.",
+    empty: "No instrument is kept up to date yet.",
+    order: "desc",
+  },
+  {
+    key: "near_high",
+    name: "Near the high",
+    why: "Within 3% of the year's high.",
+    empty: "Nothing is near its high today.",
+    order: "desc",
+    own: FROM_HIGH,
+  },
+  {
+    key: "off_high",
+    name: "Well off the high",
+    why: "20% or more below the year's high.",
+    empty: "Nothing is 20% or more below its high.",
+    order: "asc",
+    own: FROM_HIGH,
+  },
+  {
+    key: "oversold",
+    name: "Oversold",
+    why: "Fallen hard lately: RSI 30 or under.",
+    empty: "Nothing is oversold today.",
+    order: "asc",
+    own: RSI,
+  },
+  {
+    key: "overbought",
+    name: "Overbought",
+    why: "Risen hard lately: RSI 70 or over.",
+    empty: "Nothing is overbought today.",
+    order: "desc",
+    own: RSI,
+  },
+];
+
+export const screenText = (key: ScreenKey): ScreenText =>
+  SCREEN_TEXT.find((s) => s.key === key) ?? SCREEN_TEXT[0]!;
+
+const KIND_ORDER = [
+  "Stock",
+  "ETF",
+  "Fund",
+  "Crypto",
+  "Index",
+  "Currency",
+  "Future",
+  "Bond",
+  "Series",
+];
+
+const PLURAL: Record<string, string> = {
+  Stock: "Stocks",
+  ETF: "ETFs",
+  Fund: "Funds",
+  Index: "Indexes",
+  Currency: "Currencies",
+  Future: "Futures",
+  Bond: "Bonds",
+};
+
+export type TypeTab = { key: string; label: string; types: string[] };
+
+export const ALL_TYPES: TypeTab = { key: "all", label: "All", types: [] };
+
+// the kinds stored, one tab per word: two kinds said alike (a future and
+// Yahoo's other contract of one) are one tab
+export function typeTabs(
+  kinds: readonly { kind: string; count: number }[],
+): TypeTab[] {
+  const words = new Map<string, string[]>();
+  for (const { kind } of kinds) {
+    const word = kindOf(kind);
+    words.set(word, [...(words.get(word) ?? []), kind]);
+  }
+  const rank = (w: string) => {
+    const i = KIND_ORDER.indexOf(w);
+    return i < 0 ? KIND_ORDER.length : i;
   };
-  return [...rows].sort((a, b) => by(a, b) || bySymbol(a, b));
+  const tabs = [...words.entries()]
+    .sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b))
+    .map(([word, types]) => ({
+      key: word,
+      label: PLURAL[word] ?? word,
+      types: [...types].sort(),
+    }));
+  return [ALL_TYPES, ...tabs];
 }
 
-export function matches(row: Listed, q: string): boolean {
-  const t = q.trim().toLowerCase();
-  if (t === "") return true;
-  return (
-    row.id.toLowerCase().includes(t) ||
-    (row.name ?? "").toLowerCase().includes(t)
-  );
-}
+// the tab the asked kinds are, All when none
+export const tabOf = (types: readonly string[]): string =>
+  types.length === 0 ? ALL_TYPES.key : kindOf(types[0]!);
+
+// a yield's return is a change of its level, in points
+export const returnOf = (row: Screened, v: number | null): Signed =>
+  signedChange(v, { points: row.unit === "percent" });
+
+export const TREND: Record<NonNullable<Screened["trend"]>, string> = {
+  up: "Uptrend",
+  down: "Downtrend",
+  mixed: "Mixed",
+};

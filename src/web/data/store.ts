@@ -84,6 +84,44 @@ export type Listed = {
   fetched_at: string | null;
 };
 
+// a stored row with the figures the Instruments page screens on
+export type Screened = Listed & {
+  return_1m: number | null;
+  return_1y: number | null;
+  drawdown: number | null;
+  rsi14: number | null;
+  distance_sma200: number | null;
+  cross: number | null;
+  trend: "up" | "down" | "mixed" | null;
+};
+
+export const SCREENS = [
+  "moves",
+  "near_high",
+  "off_high",
+  "oversold",
+  "overbought",
+] as const;
+
+export type ScreenKey = (typeof SCREENS)[number];
+
+// what the page asks; a null sort is the screen's own
+export type ScreenAsk = {
+  types: readonly string[];
+  screen: ScreenKey;
+  sort: string | null;
+  order: "asc" | "desc" | null;
+};
+
+export type Screener = {
+  ask: ScreenAsk;
+  sort: { field: string; order: "asc" | "desc" };
+  counts: Record<ScreenKey, number>;
+  kinds: { kind: string; count: number }[];
+  rows: Screened[];
+  next: string | null;
+};
+
 export type Session = {
   state: "open" | "closed";
   start: string | null;
@@ -342,14 +380,33 @@ type KeysPage = { keys: AgentKey[]; limit: number };
 // the token is answered once; the view that made it holds it, never the store
 export type MadeKey = { key: AgentKey; token: string };
 
-type ListedPage = {
-  total: number;
-  instruments: Listed[];
+type ScreenerPage = Omit<Screener, "ask" | "rows" | "next"> & {
+  instruments: Screened[];
   // absent on the last page
   next_page_token?: string;
 };
 
 export const INSTRUMENTS_PATH = "/api/v1/instruments";
+export const SCREENER_PATH = "/api/v1/screener";
+// rows a page asks at once, and Show more adds
+export const SCREEN_PAGE = 50;
+
+export function screenerPath(ask: ScreenAsk, token?: string): string {
+  const q = new URLSearchParams({ screen: ask.screen });
+  if (ask.types.length > 0) q.set("type", ask.types.join(","));
+  if (ask.sort !== null) q.set("sort", ask.sort);
+  if (ask.sort !== null && ask.order !== null) q.set("order", ask.order);
+  q.set("page_size", String(SCREEN_PAGE));
+  if (token !== undefined) q.set("page_token", token);
+  return `${SCREENER_PATH}?${q}`;
+}
+
+const MOVES: ScreenAsk = {
+  types: [],
+  screen: "moves",
+  sort: null,
+  order: null,
+};
 export const instrumentPath = (id: string) =>
   `${INSTRUMENTS_PATH}/${encodeURIComponent(id)}`;
 export const STATUS_PATH = "/api/v1/status";
@@ -437,12 +494,17 @@ export function store(
   // another page's failure never does
   const statusFailures = signal(0);
   const homeFailures = signal(0);
-  const instrumentsFailures = signal(0);
+  const screenerFailures = signal(0);
   const detailFailures = signal(0);
   const loading = signal(false);
-  const instruments = signal<Listed[] | null>(null);
-  const instrumentsError = signal<string | null>(null);
-  const instrumentsCode = signal<number | null>(null);
+  // the page's ask lives here, so a refresh, or a page left and opened
+  // again, keeps the tab, the screen and the sort
+  const screenAsk = signal<ScreenAsk>(MOVES);
+  const screener = signal<Screener | null>(null);
+  const screenerError = signal<string | null>(null);
+  const screenerCode = signal<number | null>(null);
+  // Show more's page while it reads
+  const screenerMore = signal(false);
   // the instrument page's; detailId is the id the detail and its error
   // are for, kept until the next id's answer lands so the page left
   // stays on screen while it reads
@@ -503,9 +565,11 @@ export function store(
       saveError.value = null;
       homeError.value = null;
       homeCode.value = null;
-      instruments.value = null;
-      instrumentsError.value = null;
-      instrumentsCode.value = null;
+      screenAsk.value = MOVES;
+      screener.value = null;
+      screenerError.value = null;
+      screenerCode.value = null;
+      screenerMore.value = false;
       detail.value = null;
       detailId.value = null;
       askedId = null;
@@ -601,51 +665,89 @@ export function store(
     }
   }
 
-  // every stored instrument, a page at a time; a list is no read. A load
-  // already going answers for a second ask, so a tick never stacks.
-  let listing: Promise<void> | null = null;
-  // a delete or a new session makes a list in flight stale: its answer
-  // never lands, and the next ask starts a list of its own
-  let listed = 0;
-  function loadInstruments(): Promise<void> {
-    listing ??= listAll().finally(() => {
-      listing = null;
+  // A refresh reads again as many rows as are shown. A load of the same
+  // ask already going answers for a second, so a tick never stacks; a
+  // new ask, a delete or a new session makes one in flight stale.
+  let screening: { ask: ScreenAsk; read: Promise<void> } | null = null;
+  let screened = 0;
+  function loadScreener(next?: ScreenAsk): Promise<void> {
+    const ask = next ?? screenAsk.peek();
+    if (screening !== null && sameAsk(screening.ask, ask)) {
+      return screening.read;
+    }
+    screenAsk.value = ask;
+    const held = screener.peek();
+    const shown =
+      held !== null && sameAsk(held.ask, ask)
+        ? Math.max(held.rows.length, SCREEN_PAGE)
+        : SCREEN_PAGE;
+    const read = screen(ask, shown).finally(() => {
+      if (screening?.read === read) screening = null;
     });
-    return listing;
+    screening = { ask, read };
+    return read;
   }
-  async function listAll(): Promise<void> {
-    const mine = ++listed;
+  async function screen(ask: ScreenAsk, shown: number): Promise<void> {
+    const mine = ++screened;
     const at = session;
-    const stale = () => mine !== listed || at !== session;
+    const stale = () => mine !== screened || at !== session;
     try {
-      const all = await paced(
+      const got = await paced(
         (async () => {
-          const got: Listed[] = [];
-          let token: string | undefined;
-          do {
-            const q = new URLSearchParams({ page_size: "200" });
-            if (token !== undefined) q.set("page_token", token);
-            const page = await call<ListedPage>(`${INSTRUMENTS_PATH}?${q}`);
-            got.push(...page.instruments);
-            token = page.next_page_token;
-          } while (token !== undefined);
-          return got;
+          let page = await call<ScreenerPage>(screenerPath(ask));
+          let rows = page.instruments;
+          while (rows.length < shown && page.next_page_token !== undefined) {
+            page = await call<ScreenerPage>(
+              screenerPath(ask, page.next_page_token),
+            );
+            rows = appended(rows, page.instruments);
+          }
+          return { page, rows };
         })(),
         later,
       );
       if (stale()) return;
       batch(() => {
-        instruments.value = all;
-        instrumentsError.value = null;
-        instrumentsCode.value = null;
+        screener.value = screenerOf(ask, got.page, got.rows);
+        screenerError.value = null;
+        screenerCode.value = null;
       });
     } catch (error) {
       if (stale()) return;
       if (!(error instanceof ApiError && error.status === 401)) {
-        instrumentsError.value = says(error);
-        instrumentsCode.value = codeOf(error);
-        instrumentsFailures.value++;
+        screenerError.value = says(error);
+        screenerCode.value = codeOf(error);
+        screenerFailures.value++;
       }
+    }
+  }
+  // The next page of what is shown. A read already going would land
+  // fewer rows over it, so it goes stale; a later refresh or ask makes
+  // this one stale.
+  async function moreScreener(): Promise<void> {
+    const held = screener.peek();
+    if (held === null || held.next === null || screenerMore.peek()) return;
+    const mine = ++screened;
+    screening = null;
+    const at = session;
+    screenerMore.value = true;
+    try {
+      const page = await call<ScreenerPage>(screenerPath(held.ask, held.next));
+      if (mine !== screened || at !== session) return;
+      screener.value = screenerOf(
+        held.ask,
+        page,
+        appended(held.rows, page.instruments),
+      );
+    } catch (error) {
+      if (mine !== screened || at !== session) return;
+      if (!(error instanceof ApiError && error.status === 401)) {
+        screenerError.value = says(error);
+        screenerCode.value = codeOf(error);
+        screenerFailures.value++;
+      }
+    } finally {
+      if (at === session) screenerMore.value = false;
     }
   }
 
@@ -756,11 +858,17 @@ export function store(
       }
       return { ok: false, error: says(error) };
     }
-    // a list still loading was read before the delete
-    listed++;
-    listing = null;
+    // a screen still loading was read before the delete
+    screened++;
+    screening = null;
     batch(() => {
-      instruments.value = instruments.value?.filter((r) => r.id !== id) ?? null;
+      const held = screener.value;
+      if (held !== null) {
+        screener.value = {
+          ...held,
+          rows: held.rows.filter((r) => r.id !== id),
+        };
+      }
       if (detailId.value === id) removedId = id;
     });
     return { ok: true };
@@ -1180,11 +1288,14 @@ export function store(
     loadInstrument,
     refetch,
     remove,
-    instruments,
-    instrumentsError,
-    instrumentsCode,
-    instrumentsFailures,
-    loadInstruments,
+    screenAsk,
+    screener,
+    screenerError,
+    screenerCode,
+    screenerFailures,
+    screenerMore,
+    loadScreener,
+    moreScreener,
     signedIn,
     status,
     pulse,
@@ -1236,3 +1347,31 @@ export function store(
 export type Store = ReturnType<typeof store>;
 
 export const markets: Store = store((input, init) => fetch(input, init));
+
+// the token is an offset and prices reorder rows between pages, so a
+// row the page before held is not shown twice
+function appended(rows: Screened[], more: Screened[]): Screened[] {
+  const shown = new Set(rows.map((r) => r.id));
+  return [...rows, ...more.filter((r) => !shown.has(r.id))];
+}
+
+const sameAsk = (a: ScreenAsk, b: ScreenAsk): boolean =>
+  a.screen === b.screen &&
+  a.sort === b.sort &&
+  a.order === b.order &&
+  a.types.join(",") === b.types.join(",");
+
+function screenerOf(
+  ask: ScreenAsk,
+  page: ScreenerPage,
+  rows: Screened[],
+): Screener {
+  return {
+    ask,
+    sort: page.sort,
+    counts: page.counts,
+    kinds: page.kinds,
+    rows,
+    next: page.next_page_token ?? null,
+  };
+}
