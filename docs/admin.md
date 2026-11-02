@@ -2,7 +2,8 @@
 
 Governs the operator's routes and command: `src/admin/http.ts` (the
 instrument, watchlist and status handlers), `src/admin/refetch.ts`,
-`src/admin/retry.ts` (the failed jobs' retry),
+`src/admin/retry.ts` (the failed jobs' retry), `src/admin/screener.ts`
+(the Instruments page's screener),
 `src/admin/keys.ts` (the agent keys' routes), `src/admin/cli.ts`
 (`1ctx-markets admin`) and `src/admin/keys-cli.ts` (`1ctx-markets
 keys`). The routes, their errors
@@ -42,6 +43,7 @@ log and cut off without touching the others.
 | Route | Does |
 |---|---|
 | `GET /api/v1/instruments?query=&page_size=&page_token=` | the stored instruments by id, a page at a time (below) |
+| `GET /api/v1/screener?type=&screen=&sort=&order=&page_size=&page_token=` | the instruments kept up to date through one ready-made screen, read from stored figures in one query, a page at a time (`docs/api.md`, "The screener") |
 | `GET /api/v1/status` | `sync`, false with `--no-sync` (`docs/config.md`), so the jobs' last runs read as from before; sources on, off and why, and every job, with names for people (a source's `label`, `short` and `mark`, a job's `label` and `about`; a keyed source's `key`: its file, what it adds, where to get one), a back-off in force, every job's last run, its scopes (markets or instruments with a run kept) and failing scopes counted, the newest `MAX_FAILING` (5) failing named with their error, a phrase that may name the symbols behind it (`docs/storage.md`; a run cut by shutdown, error `stopped`, never counts, since the next run settles it; one cut by a crash, `interrupted`, does, since a run that kills the server would otherwise never show; a failed Yahoo backfill is settled once the instrument has daily bars, since a read fetches a history without a backfill run; runs with no scope, from before backfill runs had one, are skipped; the page reads failure from these counts, never the last run), the instrument and tracked counts, the database size, the version. The `--track` values are `GET /api/v1/watchlist`'s (`docs/api.md`) |
 | `POST /api/v1/status/retry` | no body: every failing instrument scope status lists asks its failed part again (below); `{asked, fetched, failed, left_out}` |
 | `POST /api/v1/instruments/{symbol}/refetch` | `{"parts": [...], "sections": [...]}`, answered per part |

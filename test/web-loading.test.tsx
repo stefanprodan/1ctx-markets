@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
-import { signal } from "@preact/signals";
 import { render } from "preact-render-to-string";
 import { tabTitle } from "../src/web/app/title.ts";
 import type { Fetch } from "../src/web/data/api.ts";
@@ -12,6 +11,7 @@ import {
   instrumentPath,
   type Listed,
   layoutOf,
+  type Screener,
   store,
   unread,
 } from "../src/web/data/store.ts";
@@ -387,12 +387,45 @@ describe("the other pages while they read", () => {
     expect(pf).toContain(">All<");
     expect(pf).toContain("Holdings");
     expect(pf.match(/<tr class="table-row">/g)).toHaveLength(6);
-    const list = render(<InstrumentsList all={null} query={signal("")} />);
-    expect(list).not.toContain("card-count");
-    expect(list.match(/<tr class="table-row">/g)).toHaveLength(8);
-    const drawn = render(
-      <InstrumentsList all={[listed("US:AAA")]} query={signal("")} />,
-    );
+    const ask = s.screenAsk.value;
+    const list = (held: Screener | null) =>
+      render(
+        <InstrumentsList
+          held={held}
+          ask={ask}
+          more={false}
+          onAsk={() => {}}
+          onMore={() => {}}
+        />,
+      );
+    const waiting = list(null);
+    expect(waiting).not.toContain("card-count");
+    expect(waiting.match(/<tr class="table-row">/g)).toHaveLength(8);
+    const drawn = list({
+      ask,
+      sort: { field: "move", order: "desc" },
+      counts: {
+        moves: 1,
+        near_high: 0,
+        off_high: 0,
+        oversold: 0,
+        overbought: 0,
+      },
+      kinds: [{ kind: "EQUITY", count: 1 }],
+      rows: [
+        {
+          ...listed("US:AAA"),
+          return_1m: null,
+          return_1y: null,
+          drawdown: null,
+          rsi14: null,
+          distance_sma200: null,
+          cross: null,
+          trend: null,
+        },
+      ],
+      next: null,
+    });
     expect(drawn).not.toContain('class="placeholder"');
   });
 });

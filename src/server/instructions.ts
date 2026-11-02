@@ -31,7 +31,7 @@ export const instructions = (opens: {
   rules: Access;
   profile: Access;
 }): string => `Market data, price rules and portfolios. Which tool answers what:
-- Prices now, and how a symbol did over a week, a month, three months or the year so far (ytd): \`quote\`, whose \`returns\` hold those periods and \`session\` whether its market is open; \`benchmark\` adds relative strength. The benchmark's own returns come from quoting it too, never from the relative figures.
+- Prices now, and how a symbol did over a week, a month, three months, the year so far (ytd) or a year: \`quote\`, whose \`returns\` hold those periods and \`session\` whether its market is open; \`benchmark\` adds relative strength. The benchmark's own returns come from quoting it too, never from the relative figures.
 - A US share's move before the open or after the close: \`quote\` with \`extended\`; a null \`extended\` gives its reason in \`stale\`, and it never drives a rule or signal.
 - Bars, a chart's data, a full year or any other period: \`history\`; its last bar's \`final\` is false while its market is open. How a symbol moved today or over the last five sessions: \`history\` with \`interval\` 5m, regular-hours closes as fresh as the quote pass, a move measured from its \`previous_close\`; \`extended\` adds the pre- and post-market closes while the session is closed.
 - Many symbols at once: \`movers\` for today's moves and average crossings, \`screen\` to filter and rank on signals and returns, with \`fields\` for columns beyond those filtered or sorted on.

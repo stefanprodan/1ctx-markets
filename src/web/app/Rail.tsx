@@ -4,7 +4,6 @@
 import { useEffect, useRef } from "preact/hooks";
 import { Icon, Logo } from "../lib/icons.tsx";
 import { nameOf, tickerOf } from "../lib/names.ts";
-import { reloading } from "../lib/refresh.ts";
 import { SymbolName } from "../ui/Symbol.tsx";
 import { useServerFailing } from "./failing.ts";
 import { pickRecent, recent, recentHref } from "./recent.ts";
@@ -67,10 +66,7 @@ export function Rail({
             >
               <Icon
                 name={r.icon}
-                class={iconClass(
-                  r.path === STATUS && failing,
-                  lit(here, r.path) && reloading.value > 0,
-                )}
+                class={iconClass(r.path === STATUS && failing)}
               />
               <span>{r.label}</span>
             </a>
@@ -96,12 +92,8 @@ export function Rail({
   );
 }
 
-// failing outranks the reload's pulse: both fade the icon
-export const iconClass = (
-  failed: boolean,
-  pulsing: boolean,
-): string | undefined =>
-  failed ? "rail-icon-failed" : pulsing ? "rail-icon-reload" : undefined;
+export const iconClass = (failed: boolean): string | undefined =>
+  failed ? "rail-icon-failed" : undefined;
 
 function Recent({ here, follow }: { here: string; follow?: () => void }) {
   const rows = recent.value;

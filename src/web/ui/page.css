@@ -72,6 +72,43 @@
     line-height: 1;
   }
 
+  /* the page on screen re-reading: a hairline under the title with a
+     faint sweep, gone once the read lands */
+  .page-title {
+    position: relative;
+  }
+  .page-title-busy::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -6px;
+    height: 2px;
+    border-radius: 1px;
+    background:
+      linear-gradient(90deg, transparent, var(--faint) 50%, transparent) 0 0 /
+      50% 100% no-repeat,
+      var(--line);
+    animation: page-title-sweep 900ms ease-in-out infinite;
+  }
+  @keyframes page-title-sweep {
+    from {
+      background-position:
+        -100% 0,
+        0 0;
+    }
+    to {
+      background-position:
+        200% 0,
+        0 0;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .page-title-busy::after {
+      animation: none;
+    }
+  }
+
   .page-meta {
     min-width: 0;
     overflow: hidden;

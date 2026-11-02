@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Icon, Mark } from "../lib/icons.tsx";
-import { reloading } from "../lib/refresh.ts";
 import { useServerFailing } from "./failing.ts";
 import { iconClass } from "./Rail.tsx";
 import { HOME, lit, RAIL, STATUS } from "./routes.ts";
@@ -38,10 +37,7 @@ export function Strip({ here }: { here: string }) {
               aria-label={red ? `${r.label}: something is failing` : r.label}
               title={red ? `${r.label}: something is failing` : r.label}
             >
-              <Icon
-                name={r.icon}
-                class={iconClass(red, lit(here, r.path) && reloading.value > 0)}
-              />
+              <Icon name={r.icon} class={iconClass(red)} />
             </a>
           );
         })}

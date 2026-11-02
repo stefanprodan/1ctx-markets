@@ -5,6 +5,7 @@ import type { ComponentChildren } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { markets } from "../data/store.ts";
 import { Icon } from "../lib/icons.tsx";
+import { reloading } from "../lib/refresh.ts";
 import { HideAmounts } from "./Amounts.tsx";
 import { type SearchAdds, SymbolSearch } from "./SymbolSearch.tsx";
 import "./page.css";
@@ -81,7 +82,11 @@ export function Page({
   return (
     <div class="page">
       <div class="page-head">
-        <h1 class="page-title">{title}</h1>
+        <h1
+          class={`page-title${reloading.value > 0 ? " page-title-busy" : ""}`}
+        >
+          {title}
+        </h1>
         {meta && <span class="page-meta">{meta}</span>}
         <div class="page-actions">
           {search !== false && <SymbolSearch adds={search} />}

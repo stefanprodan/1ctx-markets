@@ -50,6 +50,7 @@ describe("quote returns", () => {
     instrument(w.db, "XX:A");
     // 2025-12-31 is a holiday: the year's last close is the 30th
     closes(w.db, "XX:A", [
+      ["2025-10-20", 40],
       ["2025-12-30", 50],
       ["2026-07-23", 80],
       ["2026-09-23", 100],
@@ -67,6 +68,7 @@ describe("quote returns", () => {
     ]);
     instrument(w.db, "FRED:DGS10");
     closes(w.db, "FRED:DGS10", [
+      ["2025-10-20", 3.5],
       ["2025-12-31", 4.0],
       ["2026-07-22", 4.2],
       ["2026-09-22", 4.4],
@@ -86,6 +88,7 @@ describe("quote returns", () => {
       "1m": round(21),
       "3m": round(51.25),
       ytd: round(142),
+      "1y": round(202.5),
       to: LIVE,
       live: true,
     });
@@ -98,6 +101,7 @@ describe("quote returns", () => {
     expect(a.returns).toMatchObject({
       "1w": round((121 / 105 - 1) * 100),
       ytd: round(142),
+      "1y": round((121 / 40 - 1) * 100),
       to: LIVE,
       live: false,
     });
@@ -112,6 +116,7 @@ describe("quote returns", () => {
       "1m": null,
       "3m": null,
       ytd: null,
+      "1y": null,
       to: "2026-10-22",
       live: false,
     });
@@ -124,6 +129,7 @@ describe("quote returns", () => {
     expect(y.returns["1m"]).toBeCloseTo(0.2, 6);
     expect(y.returns["3m"]).toBeCloseTo(0.4, 6);
     expect(y.returns.ytd).toBeCloseTo(0.6, 6);
+    expect(y.returns["1y"]).toBeCloseTo(1.1, 6);
     expect(y.returns).toMatchObject({ to: "2026-10-22", live: false });
   });
 

@@ -12,6 +12,7 @@ import {
   DEFAULT_PAGE,
   MAX_PAGE,
 } from "../admin/http.ts";
+import { SCREEN_NAMES, SCREENS, SORT_NAMES } from "../admin/screener.ts";
 import { INTRADAY_SESSIONS } from "../market/intraday.ts";
 import { TRACK_DAYS } from "../market/tracking.ts";
 import { MAX_SYMBOL } from "../operations/args.ts";
@@ -398,6 +399,53 @@ export const paths = {
       ],
       responses: admins({
         200: ok("A page of instruments.", ref("Instruments")),
+      }),
+    },
+  },
+  "/screener": {
+    get: {
+      tags: ["instruments"],
+      operationId: "screenInstruments",
+      security: ADMIN_AUTH,
+      summary: "Screen the stored instruments",
+      description: lines(
+        "A page of the instruments kept up to date that one ready-made screen keeps, read from their stored quotes and latest daily signals in one pass. It fetches nothing and counts as no read.",
+        "",
+        "- `moves`: every instrument, by the size of the day's move either way.",
+        "- `near_high`: `drawdown` -3 or above. `off_high`: `drawdown` -20 or below.",
+        "- `oversold`: `rsi14` 30 or under. `overbought`: `rsi14` 70 or over. Currencies stay out of both.",
+        "- A series (`SERIES`) is in `moves` only.",
+        "- `counts` holds every screen's matches for the `type` asked; `kinds` every stored kind with its instruments, whatever the `type`.",
+        "- A sort puts rows without the figure last either way; ties go by ticker.",
+        "- `return_1m` and `return_1y` are the quote's `returns`, in points for a series whose `unit` is percent.",
+        "- `trend`: `up` with the 50-day average over the 200-day and the price above the 200-day, `down` with both the other way, `mixed` otherwise; null without the figures.",
+        "- Pass `next_page_token` as `page_token`, with the same arguments, for the next page; it is absent on the last.",
+      ),
+      parameters: [
+        csv(
+          "type",
+          "Stored kinds to keep, as `kinds` names them (`EQUITY`, `ETF`). Default: every kind.",
+        ),
+        query(
+          "screen",
+          `The screen. Default: \`moves\`.`,
+          values(SCREEN_NAMES),
+        ),
+        query(
+          "sort",
+          `The order. Default: the screen's own (${SCREEN_NAMES.map((s) => `\`${s}\` by \`${SCREENS[s].sort}\` ${SCREENS[s].order}`).join(", ")}).`,
+          values(SORT_NAMES),
+        ),
+        query(
+          "order",
+          "`asc` or `desc`; needs `sort`. Default: `asc` for `symbol`, else `desc`.",
+          values(["asc", "desc"]),
+        ),
+        query("page_size", `1 to ${MAX_PAGE}. Default: ${DEFAULT_PAGE}.`, int),
+        query("page_token", "The `next_page_token` of the page before."),
+      ],
+      responses: admins({
+        200: ok("A page of the screen.", ref("Screener")),
       }),
     },
   },

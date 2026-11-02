@@ -5,14 +5,14 @@
 import { round } from "../market/format.ts";
 import type { Instrument } from "../market/instruments.ts";
 import type { StaleReason } from "../market/stale.ts";
-import type { DailyRow } from "../signals/daily.ts";
 import {
   benchmarkSide,
   instrumentSide,
-  relativeOf,
   returnsOf,
   type Side,
-} from "../signals/read.ts";
+} from "../signals/closes.ts";
+import type { DailyRow } from "../signals/daily.ts";
+import { relativeOf } from "../signals/read.ts";
 import { earliestStart, type ReturnPeriod } from "../signals/relative.ts";
 import type { WeeklyRow } from "../signals/weekly.ts";
 import { ATTRIBUTION } from "../sources/fred/sync.ts";
@@ -117,6 +117,7 @@ export const FIELDS: Readonly<Record<string, Field>> = {
   return_1m: { source: { from: "return", period: "1m" } },
   return_3m: { source: { from: "return", period: "3m" } },
   return_ytd: { source: { from: "return", period: "ytd" } },
+  return_1y: { source: { from: "return", period: "1y" } },
   relative_return_1m: { source: { from: "relative", months: 1 } },
   relative_return_3m: { source: { from: "relative", months: 3 } },
 };

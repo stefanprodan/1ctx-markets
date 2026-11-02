@@ -407,6 +407,14 @@ export type Stored = {
   fetchedAt: number | null;
 };
 
+export function pageSize(value: unknown): number {
+  const size = (value as number | undefined) ?? DEFAULT_PAGE;
+  if (!Number.isInteger(size) || size < 1 || size > MAX_PAGE) {
+    throw new ArgError(`page_size is a whole number from 1 to ${MAX_PAGE}`);
+  }
+  return size;
+}
+
 function parseList(url: URL) {
   const q = queryArgs(url, {
     query: "text",
@@ -424,11 +432,7 @@ function parseList(url: URL) {
     }
     after = String(q.page_token).toUpperCase();
   }
-  const size = (q.page_size as number | undefined) ?? DEFAULT_PAGE;
-  if (!Number.isInteger(size) || size < 1 || size > MAX_PAGE) {
-    throw new ArgError(`page_size is a whole number from 1 to ${MAX_PAGE}`);
-  }
-  return { query, after, size };
+  return { query, after, size: pageSize(q.page_size) };
 }
 
 // by id, after the last one a page answered, so a delete never skips a row
@@ -467,16 +471,18 @@ export function instruments(m: Markets, url: URL): Response {
 
 // the stored quote, else the newest daily close (a FRED series has no
 // quote): a list is no read, so it never fetches
-const STORED = `select i.id, i.name, i.market, i.exchange, i.currency,
-    i.type, i.unit, i.source, i.last_read_at as readAt,
+export const STORED_COLUMNS = `i.id, i.name, i.market, i.exchange,
+    i.currency, i.type, i.unit, i.source, i.last_read_at as readAt,
     coalesce(q.price, b.close) as price,
     q.change, q.change_percent as changePercent,
-    coalesce(q.fetched_at, b.fetched_at) as fetchedAt
-  from instruments i
-  left join quotes q on q.instrument = i.id
+    coalesce(q.fetched_at, b.fetched_at) as fetchedAt`;
+
+export const STORED_JOINS = `left join quotes q on q.instrument = i.id
   left join bars b on b.instrument = i.id and b.interval = '1d'
     and b.date = (select max(date) from bars
       where instrument = i.id and interval = '1d')`;
+
+const STORED = `select ${STORED_COLUMNS} from instruments i ${STORED_JOINS}`;
 
 export const storedRow = (db: Db, id: string): Stored | null =>
   db.query<Stored, [string]>(`${STORED} where i.id = ?1`).get(id);

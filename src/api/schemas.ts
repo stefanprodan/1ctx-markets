@@ -5,6 +5,7 @@ import {
   PARTS,
   RESEARCH_SECTIONS as REFETCH_SECTIONS,
 } from "../admin/refetch.ts";
+import { SCREEN_NAMES, SORT_NAMES } from "../admin/screener.ts";
 import { UNITS } from "../market/instruments.ts";
 import { CALL_MS } from "../operations/markets.ts";
 import { FIELD_NAMES } from "../operations/screen.ts";
@@ -956,6 +957,59 @@ export const schemas: Record<string, Schema> = {
     },
     ["total", "instruments"],
   ),
+  Screener: object(
+    {
+      attribution: note(
+        str,
+        "A source's required notice, when the page holds one of its values.",
+      ),
+      screen: values(SCREEN_NAMES),
+      type: note(list(str), "The kinds asked; empty for every kind."),
+      sort: object({
+        field: values(SORT_NAMES),
+        order: values(["asc", "desc"]),
+      }),
+      counts: note(
+        object(Object.fromEntries(SCREEN_NAMES.map((s) => [s, int])), [
+          ...SCREEN_NAMES,
+        ]),
+        "Each screen's matches for the kinds asked, across all pages.",
+      ),
+      kinds: note(
+        list(object({ kind: str, count: int })),
+        "Every stored kind kept up to date, with its instruments.",
+      ),
+      instruments: list(
+        object({
+          ...instrumentRow.properties!,
+          return_1m: note(
+            nnum,
+            "The quote's 1-month return, stored with its latest signals.",
+          ),
+          return_1y: note(nnum, "The quote's 1-year return, the same way."),
+          drawdown: note(nnum, "Percent below the 52-week high."),
+          rsi14: nnum,
+          distance_sma200: note(
+            nnum,
+            "Percent from the 200-day average to the price.",
+          ),
+          cross: note(
+            { type: ["integer", "null"], enum: [-1, 0, 1, null] },
+            "1 with the 50-day average over the 200-day, -1 under it.",
+          ),
+          trend: {
+            type: ["string", "null"],
+            enum: ["up", "down", "mixed", null],
+          },
+        }),
+      ),
+      next_page_token: note(
+        str,
+        "Pass as `page_token` for the next page. Absent on the last page.",
+      ),
+    },
+    ["screen", "type", "sort", "counts", "kinds", "instruments"],
+  ),
   Instrument: object(
     {
       input: note(str, "The symbol as sent."),
@@ -1000,7 +1054,7 @@ export const schemas: Record<string, Schema> = {
               ),
               returns: note(
                 nullable(freeForm),
-                "Returns over `1w`, `1m`, `3m` and `ytd`, to `to`: in percent, or in points for a series whose `unit` is percent (a yield); `live` when today's price counts.",
+                "Returns over `1w`, `1m`, `3m`, `ytd` and `1y`, to `to`: in percent, or in points for a series whose `unit` is percent (a yield); `live` when today's price counts.",
               ),
               session: note(
                 nullable(freeForm),

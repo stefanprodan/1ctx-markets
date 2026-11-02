@@ -46,9 +46,13 @@ import {
   layoutOf,
   payloadOf,
   RETRY_PATH,
+  type ScreenAsk,
+  type Screened,
+  type Screener,
   SESSION_PATH,
   STATUS_PATH,
   type Status,
+  screenerPath,
   store,
   WATCHLIST_PATH,
   type WatchEntry,
@@ -176,9 +180,9 @@ import { InstrumentCards } from "../src/web/views/InstrumentCards.tsx";
 import { Head } from "../src/web/views/InstrumentHead.tsx";
 import { InstrumentMenu } from "../src/web/views/InstrumentMenu.tsx";
 import {
-  bySymbol,
-  matches,
-  sortRows,
+  fromHigh,
+  returnOf,
+  typeTabs,
 } from "../src/web/views/Instruments.model.ts";
 import { InstrumentsList } from "../src/web/views/Instruments.tsx";
 import { SignIn } from "../src/web/views/SignIn.tsx";
@@ -1176,29 +1180,25 @@ describe("the views", () => {
     expect(drawer).toContain("Close the menu");
   });
 
-  test("a page re-reading pulses its own icon in the rail and the strip", () => {
-    const pulsing = (html: string) =>
-      [...html.matchAll(/aria-current="page"[^>]*>.{0,400}?rail-icon-reload/g)]
-        .length;
+  test("a page re-reading marks its title, never the menu's icons", () => {
     const views = () => [
       render(<Rail here="/instruments" narrow={false} onHide={() => {}} />),
       render(<Strip here="/instruments" />),
     ];
-    for (const html of views()) {
-      expect(html).not.toContain("rail-icon-reload");
-    }
+    expect(render(<Page title="Instruments" />)).not.toContain(
+      "page-title-busy",
+    );
     reloading.value = 1;
     try {
-      for (const html of views()) {
-        expect(html.match(/rail-icon-reload/g)).toHaveLength(1);
-        expect(pulsing(html)).toBe(1);
-      }
+      expect(render(<Page title="Instruments" />)).toContain(
+        'class="page-title page-title-busy"',
+      );
+      for (const html of views()) expect(html).not.toContain("rail-icon-");
     } finally {
       reloading.value = 0;
     }
-    expect(iconClass(true, true)).toBe("rail-icon-failed");
-    expect(iconClass(false, true)).toBe("rail-icon-reload");
-    expect(iconClass(false, false)).toBeUndefined();
+    expect(iconClass(true)).toBe("rail-icon-failed");
+    expect(iconClass(false)).toBeUndefined();
   });
 
   test("the rail lists the recent instruments, the one on screen lit", () => {
@@ -1301,6 +1301,60 @@ const listed = (id: string, more: Partial<Listed> = {}): Listed => ({
   ...more,
 });
 
+const screened = (id: string, more: Partial<Screened> = {}): Screened => ({
+  ...listed(id),
+  return_1m: 2,
+  return_1y: 20,
+  drawdown: -4,
+  rsi14: 55,
+  distance_sma200: 5,
+  cross: 1,
+  trend: "up",
+  ...more,
+});
+
+const MOVES: ScreenAsk = {
+  types: [],
+  screen: "moves",
+  sort: null,
+  order: null,
+};
+
+const screenPage = (
+  rows: Screened[],
+  more: { next?: string; screen?: string; sort?: [string, string] } = {},
+) => ({
+  screen: more.screen ?? "moves",
+  type: [],
+  sort: {
+    field: more.sort?.[0] ?? "move",
+    order: more.sort?.[1] ?? "desc",
+  },
+  counts: { moves: 9, near_high: 3, off_high: 2, oversold: 1, overbought: 0 },
+  kinds: [
+    { kind: "EQUITY", count: 7 },
+    { kind: "ETF", count: 2 },
+  ],
+  instruments: rows,
+  ...(more.next === undefined ? {} : { next_page_token: more.next }),
+});
+
+const heldScreen = (
+  rows: Screened[],
+  ask: ScreenAsk = MOVES,
+  next: string | null = null,
+): Screener => {
+  const p = screenPage(rows, { screen: ask.screen });
+  return {
+    ask,
+    sort: p.sort as Screener["sort"],
+    counts: p.counts,
+    kinds: p.kinds,
+    rows,
+    next,
+  };
+};
+
 describe("the instruments model", () => {
   test("a row names the kind and market in plain words, and a stop only", () => {
     expect(symbolOf("US:NVDA")).toBe("NVDA");
@@ -1346,49 +1400,32 @@ describe("the instruments model", () => {
     );
   });
 
-  test("rows sort by symbol, an index's ^ aside, and match the id or name", () => {
-    const rows = ["US:NVDA", "DJI:^DJI", "BVB:BET", "XETRA:4GLD"].map((id) =>
-      listed(id),
-    );
-    expect(rows.sort(bySymbol).map((r) => r.id)).toEqual([
-      "XETRA:4GLD",
-      "BVB:BET",
-      "DJI:^DJI",
-      "US:NVDA",
-    ]);
-    expect(matches(listed("US:AAPL", { name: "Apple Inc." }), " apple ")).toBe(
-      true,
-    );
-    expect(matches(listed("US:AAPL"), "us:aa")).toBe(true);
-    expect(matches(listed("US:AAPL"), "nvda")).toBe(false);
-  });
-
-  test("a column head sorts the rows, the symbol breaking a tie", () => {
-    const rows = [
-      listed("US:NVDA", { change_percent: -1 }),
-      listed("XETRA:VWCE", { kind: "ETF", market: "XETRA", change_percent: 2 }),
-      listed("US:AMD", { change_percent: null }),
-      listed("US:AAPL", { change_percent: 0.5 }),
-    ];
-    const ids = (k: Parameters<typeof sortRows>[1], d: "asc" | "desc") =>
-      sortRows(rows, k, d).map((r) => symbolOf(r.id));
-    expect(ids("symbol", "asc")).toEqual(["AAPL", "AMD", "NVDA", "VWCE"]);
-    expect(ids("symbol", "desc")).toEqual(["VWCE", "NVDA", "AMD", "AAPL"]);
-    // a row with no change goes last either way
-    expect(ids("change", "desc")).toEqual(["VWCE", "AAPL", "NVDA", "AMD"]);
-    expect(ids("change", "asc")).toEqual(["NVDA", "AAPL", "VWCE", "AMD"]);
-    expect(ids("kind", "asc")).toEqual(["VWCE", "AAPL", "AMD", "NVDA"]);
-    expect(ids("market", "desc")).toEqual(["VWCE", "AAPL", "AMD", "NVDA"]);
-    // a coin's market shows blank and sorts as blank, never mid-list
-    const coin = listed("CRYPTO:BTC-USD", {
-      kind: "CRYPTOCURRENCY",
-      market: "CRYPTO",
-    });
+  test("a screen's own figure, the type tabs and a yield's return read plainly", () => {
+    expect(fromHigh(-3.14)).toBe("3.1% below");
+    expect(fromHigh(-0.04)).toBe("At its high");
+    expect(fromHigh(0)).toBe("At its high");
     expect(
-      sortRows([...rows, coin], "market", "asc").map((r) => symbolOf(r.id))[0],
-    ).toBe("BTC-USD");
-    // the input is left as it was
-    expect(symbolOf(rows[0]!.id)).toBe("NVDA");
+      typeTabs([
+        { kind: "SERIES", count: 1 },
+        { kind: "ALTSYMBOL", count: 1 },
+        { kind: "EQUITY", count: 3 },
+        { kind: "FUTURE", count: 2 },
+        { kind: "CURRENCY", count: 1 },
+        { kind: "WARRANT", count: 1 },
+      ]).map((t) => [t.label, t.types]),
+    ).toEqual([
+      ["All", []],
+      ["Stocks", ["EQUITY"]],
+      ["Currencies", ["CURRENCY"]],
+      // two kinds said alike are one tab
+      ["Futures", ["ALTSYMBOL", "FUTURE"]],
+      ["Series", ["SERIES"]],
+      ["Warrant", ["WARRANT"]],
+    ]);
+    expect(returnOf(screened("US:A"), 12.345).text).toBe("+12.35%");
+    expect(
+      returnOf(screened("FRED:DGS10", { unit: "percent" }), -0.2).text,
+    ).toBe("−0.20 pts");
   });
 
   test("the price and its currency come apart; a market that repeats the kind is blank", () => {
@@ -1410,60 +1447,247 @@ describe("the instruments model", () => {
   });
 });
 
-describe("the instruments list", () => {
-  test("draws each row with its price and change, filtered by the search", () => {
-    const all = [
-      listed("US:NVDA", {
-        name: "NVIDIA",
-        price: 216.885,
-        change_percent: -0.48,
-      }),
-      listed("BVB:H2O", { name: "Hidroelectrica", currency: "RON" }),
-    ];
-    const html = render(<InstrumentsList all={all} query={signal("")} />);
-    expect(html).toContain('placeholder="Search"');
-    expect(html.indexOf("H2O")).toBeLessThan(html.indexOf("NVDA"));
+describe("the instruments screener", () => {
+  const list = (held: Screener | null, ask: ScreenAsk = MOVES) =>
+    render(
+      <InstrumentsList
+        held={held}
+        ask={ask}
+        more={false}
+        onAsk={() => {}}
+        onMore={() => {}}
+      />,
+    );
+
+  test("draws the type tabs, the tiles' counts and the screen's rows", () => {
+    const html = list(
+      heldScreen(
+        [
+          screened("US:NVDA", {
+            name: "NVIDIA",
+            price: 216.885,
+            change_percent: -0.48,
+            return_1y: 30.5,
+          }),
+          screened("BVB:H2O", { currency: "RON", trend: "down" }),
+        ],
+        MOVES,
+        "50~abc",
+      ),
+    );
+    expect(html).toContain(">All<");
+    expect(html).toContain(">Stocks<");
+    expect(html).toContain(">ETFs<");
+    for (const name of [
+      "Biggest moves",
+      "Near the high",
+      "Well off the high",
+      "Oversold",
+      "Overbought",
+    ]) {
+      expect(html).toContain(`<span class="scr-name">${name}</span>`);
+    }
+    expect(html).toContain('<span class="scr-n num">9</span>');
+    expect(html).toContain("Largest moves today, up or down.");
+    // the title is the screen's name, no count
+    expect(html).not.toContain("card-count");
+    expect(html.indexOf("NVDA")).toBeLessThan(html.indexOf("H2O"));
     expect(html).toContain('href="/instruments/US%3ANVDA"');
     expect(html).toContain('216.89<span class="num-ccy"> USD</span>');
     expect(html).toContain("−0.48%");
-    expect(html).toContain('class="card-count num" aria-live="polite">2<');
-    // a row opens its page by the row itself, no chevron
-    expect(html).not.toContain("chevron");
-    expect(html).toContain('aria-sort="ascending"');
-    const one = render(<InstrumentsList all={all} query={signal("nvidia")} />);
-    expect(one).toContain("NVDA");
-    expect(one).not.toContain("H2O");
-    const none = render(<InstrumentsList all={all} query={signal("zzz")} />);
-    expect(none).toContain("No instrument matches.");
-    // before the first answer, no count and rows of placeholders
-    const waiting = render(<InstrumentsList all={null} query={signal("")} />);
-    expect(waiting).not.toContain("card-count");
-    expect(waiting).not.toContain("No instrument matches.");
+    expect(html).toContain("+30.50%");
+    expect(html).toContain(">Uptrend<");
+    expect(html).toContain(">Downtrend<");
+    for (const head of ["Day", "1M", "1Y", "Trend"]) {
+      expect(html).toContain(`>${head}<`);
+    }
+    // moves has no figure of its own
+    expect(html).not.toContain("From high");
+    expect(html).toContain("Show more");
   });
 
-  test("loads every page, and a second ask joins the load in flight", async () => {
+  test("a screen with a figure of its own shows it beside the price", () => {
+    const ask: ScreenAsk = { ...MOVES, screen: "off_high" };
+    const html = list(
+      heldScreen([screened("US:A", { drawdown: -31.26 })], ask),
+      ask,
+    );
+    expect(html).toContain(">From high<");
+    expect(html).toContain("31.3% below");
+    expect(html).toContain("20% or more below the year's high.");
+    const rsi: ScreenAsk = { ...MOVES, screen: "oversold" };
+    const low = list(heldScreen([screened("US:A", { rsi14: 27.6 })], rsi), rsi);
+    expect(low).toContain(">RSI<");
+    expect(low).toContain(">28<");
+    expect(low).not.toContain("Show more");
+  });
+
+  test("a tab, a tile and a column head each ask the server", () => {
+    const asked: ScreenAsk[] = [];
+    const ask: ScreenAsk = {
+      types: [],
+      screen: "off_high",
+      sort: "return_1y",
+      order: "asc",
+    };
+    const tree = InstrumentsList({
+      held: heldScreen([screened("US:A")], ask),
+      ask,
+      more: false,
+      onAsk: (a) => asked.push(a),
+      onMore: () => {},
+    });
+    const nodes: any[] = [];
+    const walk = (n: any) => {
+      if (n === null || typeof n !== "object") return;
+      if (Array.isArray(n)) return n.forEach(walk);
+      nodes.push(n);
+      walk(n.props?.children);
+    };
+    walk(tree);
+    nodes.find((n) => n.props?.label === "Types").props.onPick("Stock");
+    expect(asked.at(-1)).toEqual({ ...ask, types: ["EQUITY"] });
+    const tiles = nodes.filter((n) =>
+      /^scr-tile( |$)/.test(String(n.props?.class ?? "")),
+    );
+    // the picked tile asks nothing
+    tiles.find((n) => n.props["aria-pressed"]).props.onClick();
+    expect(asked).toHaveLength(1);
+    tiles.find((n) => !n.props["aria-pressed"]).props.onClick();
+    expect(asked.at(-1)).toEqual({
+      types: [],
+      screen: "moves",
+      sort: null,
+      order: null,
+    });
+    nodes
+      .find((n) => n.props?.label === "Instruments" && n.props.onSort)
+      .props.onSort("change", "desc");
+    expect(asked.at(-1)).toEqual({ ...ask, sort: "change", order: "desc" });
+    const html = list(heldScreen([], ask), ask);
+    expect(html).toContain(
+      '<button type="button" class="scr-tile scr-tile-on" aria-pressed="true">',
+    );
+    expect(html.match(/aria-pressed="true"/g)).toHaveLength(1);
+  });
+
+  test("says why a screen is empty, and waits before its first answer", () => {
+    const ask: ScreenAsk = { ...MOVES, screen: "oversold" };
+    expect(list(heldScreen([], ask), ask)).toContain(
+      "Nothing is oversold today.",
+    );
+    expect(list(heldScreen([]))).toContain(
+      "No instrument is kept up to date yet.",
+    );
+    const waiting = list(null);
+    expect(waiting).not.toContain("Nothing is");
+    expect(waiting).not.toContain("No instrument is kept up to date yet.");
+    expect(waiting).toContain('<span class="scr-n num">–</span>');
+  });
+
+  test("asks the screen, its type and sort; a second ask joins the one in flight", async () => {
     const first = Promise.withResolvers<Response>();
     const asked: string[] = [];
     const s = store(async (path) => {
       asked.push(path);
-      if (path === `${INSTRUMENTS_PATH}?page_size=200`) return first.promise;
-      return Response.json({ total: 2, instruments: [listed("US:B")] });
+      if (path === screenerPath(MOVES)) return first.promise;
+      return Response.json(
+        screenPage([screened("US:B")], { screen: "near_high" }),
+      );
     });
-    const a = s.loadInstruments();
-    const b = s.loadInstruments();
-    first.resolve(
-      Response.json({
-        total: 2,
-        instruments: [listed("US:A")],
-        next_page_token: "US:A",
-      }),
-    );
+    const a = s.loadScreener();
+    const b = s.loadScreener();
+    first.resolve(Response.json(screenPage([screened("US:A")])));
     await Promise.all([a, b]);
-    expect(asked).toEqual([
-      `${INSTRUMENTS_PATH}?page_size=200`,
-      `${INSTRUMENTS_PATH}?page_size=200&page_token=US%3AA`,
+    expect(asked).toEqual(["/api/v1/screener?screen=moves&page_size=50"]);
+    expect(s.screener.value?.rows.map((r) => r.id)).toEqual(["US:A"]);
+    const near: ScreenAsk = {
+      types: ["FUTURE", "ALTSYMBOL"],
+      screen: "near_high",
+      sort: "return_1y",
+      order: "asc",
+    };
+    await s.loadScreener(near);
+    expect(asked.at(-1)).toBe(
+      "/api/v1/screener?screen=near_high&type=FUTURE%2CALTSYMBOL&sort=return_1y&order=asc&page_size=50",
+    );
+    expect(s.screenAsk.value).toEqual(near);
+    // a refresh asks what the page asked last
+    await s.loadScreener();
+    expect(asked.at(-1)).toBe(asked.at(-2));
+  });
+
+  test("Show more adds the next page, and a refresh reads as many again", async () => {
+    const asked: string[] = [];
+    const rows = (from: number, n: number) =>
+      Array.from({ length: n }, (_, k) => screened(`US:R${from + k}`));
+    const s = store(async (path) => {
+      asked.push(path);
+      if (path.endsWith("page_token=p2")) {
+        return Response.json(screenPage(rows(50, 50), { next: "p3" }));
+      }
+      if (path.endsWith("page_token=p3")) {
+        return Response.json(screenPage(rows(100, 10)));
+      }
+      return Response.json(screenPage(rows(0, 50), { next: "p2" }));
+    });
+    await s.loadScreener();
+    expect(s.screener.value?.rows).toHaveLength(50);
+    await s.moreScreener();
+    expect(s.screener.value?.rows).toHaveLength(100);
+    expect(s.screener.value?.next).toBe("p3");
+    asked.length = 0;
+    await s.loadScreener();
+    expect(asked).toEqual([screenerPath(MOVES), screenerPath(MOVES, "p2")]);
+    expect(s.screener.value?.rows).toHaveLength(100);
+    await s.moreScreener();
+    expect(s.screener.value?.rows).toHaveLength(110);
+    expect(s.screener.value?.next).toBeNull();
+  });
+
+  test("a row a reordered page repeats is shown once", async () => {
+    // the quote pass moved US:B up between the two reads
+    const s = store(async (path) =>
+      Response.json(
+        path.endsWith("page_token=p2")
+          ? screenPage([screened("US:B"), screened("US:C")])
+          : screenPage([screened("US:A"), screened("US:B")], { next: "p2" }),
+      ),
+    );
+    await s.loadScreener();
+    await s.moreScreener();
+    expect(s.screener.value?.rows.map((r) => r.id)).toEqual([
+      "US:A",
+      "US:B",
+      "US:C",
     ]);
-    expect(s.instruments.value?.map((r) => r.id)).toEqual(["US:A", "US:B"]);
+  });
+
+  test("a refresh read before Show more never cuts the rows back", async () => {
+    const first = Promise.withResolvers<Response>();
+    const more = Promise.withResolvers<Response>();
+    const asked: string[] = [];
+    const rows = (from: number, n: number) =>
+      Array.from({ length: n }, (_, k) => screened(`US:R${from + k}`));
+    let refreshes = 0;
+    const s = store(async (path) => {
+      asked.push(path);
+      if (path.endsWith("page_token=p2")) return more.promise;
+      if (refreshes++ === 1) return first.promise;
+      return Response.json(screenPage(rows(0, 50), { next: "p2" }));
+    });
+    await s.loadScreener();
+    const refreshing = s.loadScreener();
+    const adding = s.moreScreener();
+    more.resolve(Response.json(screenPage(rows(50, 50), { next: "p3" })));
+    await adding;
+    first.resolve(Response.json(screenPage(rows(0, 50), { next: "p2" })));
+    await refreshing;
+    expect(s.screener.value?.rows).toHaveLength(100);
+    asked.length = 0;
+    await s.loadScreener();
+    // the next refresh reads the hundred again, a page past the first
+    expect(asked).toEqual([screenerPath(MOVES), screenerPath(MOVES, "p2")]);
   });
 
   test("a failed refresh keeps the rows and says why", async () => {
@@ -1474,13 +1698,13 @@ describe("the instruments list", () => {
             { status: 500, code: "internal", detail: "x" },
             { status: 500 },
           )
-        : Response.json({ total: 1, instruments: [listed("US:A")] }),
+        : Response.json(screenPage([screened("US:A")])),
     );
-    await s.loadInstruments();
+    await s.loadScreener();
     fail = true;
-    await s.loadInstruments();
-    expect(s.instruments.value?.map((r) => r.id)).toEqual(["US:A"]);
-    expect(s.instrumentsError.value).toBe("The server failed.");
+    await s.loadScreener();
+    expect(s.screener.value?.rows.map((r) => r.id)).toEqual(["US:A"]);
+    expect(s.screenerError.value).toBe("The server failed.");
   });
 });
 
@@ -1506,6 +1730,7 @@ const detail = (
       "1m": -5.08,
       "3m": 10.27,
       ytd: 16.48,
+      "1y": 30.12,
       to: "2026-10-28",
       live: true,
     },
@@ -2078,16 +2303,15 @@ describe("the instrument page", () => {
     expect(await held.remove("US:NVDA")).toEqual({ ok: false, rules: [3] });
     const s = store(
       fake({
-        [`GET ${INSTRUMENTS_PATH}?page_size=200`]: ok({
-          total: 2,
-          instruments: [listed("US:NVDA"), listed("US:AMD")],
-        }),
+        [`GET ${screenerPath(MOVES)}`]: ok(
+          screenPage([screened("US:NVDA"), screened("US:AMD")]),
+        ),
         "DELETE /api/v1/instruments/US%3ANVDA": status(204),
       }).fetch,
     );
-    await s.loadInstruments();
+    await s.loadScreener();
     expect(await s.remove("US:NVDA")).toEqual({ ok: true });
-    expect(s.instruments.value?.map((r) => r.id)).toEqual(["US:AMD"]);
+    expect(s.screener.value?.rows.map((r) => r.id)).toEqual(["US:AMD"]);
   });
 });
 
@@ -2512,27 +2736,27 @@ describe("page failures", () => {
             { status: 503, code: "unavailable", detail: "x" },
             { status: 503 },
           )
-        : Response.json({ total: 1, instruments: [listed("US:A")] }),
+        : Response.json(screenPage([screened("US:A")])),
     );
-    await s.loadInstruments();
-    expect(s.instrumentsCode.value).toBe(503);
-    expect(s.instrumentsFailures.value).toBe(1);
-    await s.loadInstruments();
-    expect(s.instrumentsFailures.value).toBe(2);
+    await s.loadScreener();
+    expect(s.screenerCode.value).toBe(503);
+    expect(s.screenerFailures.value).toBe(1);
+    await s.loadScreener();
+    expect(s.screenerFailures.value).toBe(2);
     expect(s.detailFailures.value).toBe(0);
     fail = false;
-    await s.loadInstruments();
-    expect(s.instrumentsError.value).toBeNull();
-    expect(s.instrumentsCode.value).toBeNull();
+    await s.loadScreener();
+    expect(s.screenerError.value).toBeNull();
+    expect(s.screenerCode.value).toBeNull();
   });
 
   test("no answer has no code", async () => {
     const s = store(async () => {
       throw new Error("offline");
     });
-    await s.loadInstruments();
-    expect(s.instrumentsError.value).toBe("The server did not answer.");
-    expect(s.instrumentsCode.value).toBeNull();
+    await s.loadScreener();
+    expect(s.screenerError.value).toBe("The server did not answer.");
+    expect(s.screenerCode.value).toBeNull();
   });
 
   test("an instrument the server does not hold reads as not found", async () => {
@@ -3081,17 +3305,12 @@ describe("the store across sessions and pages", () => {
   test("a list read before a delete never brings the row back", async () => {
     const h = held();
     const s = store(h.fetch);
-    const list = `GET ${INSTRUMENTS_PATH}?page_size=200`;
-    const first = s.loadInstruments();
-    await h.answer(
-      list,
-      Response.json({
-        total: 2,
-        instruments: [listed("US:A"), listed("US:B")],
-      }),
-    );
+    const list = `GET ${screenerPath(MOVES)}`;
+    const both = screenPage([screened("US:A"), screened("US:B")]);
+    const first = s.loadScreener();
+    await h.answer(list, Response.json(both));
     await first;
-    const refreshing = s.loadInstruments();
+    const refreshing = s.loadScreener();
     const removing = s.remove("US:A");
     await h.answer(
       `DELETE ${instrumentPath("US:A")}`,
@@ -3099,15 +3318,9 @@ describe("the store across sessions and pages", () => {
     );
     expect(await removing).toEqual({ ok: true });
     // the refresh asked before the delete answers with the row
-    await h.answer(
-      list,
-      Response.json({
-        total: 2,
-        instruments: [listed("US:A"), listed("US:B")],
-      }),
-    );
+    await h.answer(list, Response.json(both));
     await refreshing;
-    expect(s.instruments.value?.map((r) => r.id)).toEqual(["US:B"]);
+    expect(s.screener.value?.rows.map((r) => r.id)).toEqual(["US:B"]);
   });
 
   test("a refetch that ends on another page never takes that page over", async () => {

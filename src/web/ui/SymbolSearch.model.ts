@@ -4,7 +4,7 @@
 import type { Candidate } from "../data/store.ts";
 
 // one letter matches too much upstream to be worth a source call
-export const UPSTREAM_MIN = 2;
+const UPSTREAM_MIN = 2;
 export const UPSTREAM_WAIT_MS = 250;
 export const SHOWN = 12;
 

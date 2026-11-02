@@ -6,15 +6,17 @@ import { iso, price, round } from "../market/format.ts";
 import type { Instrument } from "../market/instruments.ts";
 import { readQuote } from "../market/quotes.ts";
 import type { StaleReason } from "../market/stale.ts";
-import type { DailyRow } from "../signals/daily.ts";
 import {
   benchmarkSide,
-  type InstrumentSignals,
   instrumentSide,
-  readSignals,
-  relativeOf,
   returnsOf,
   type Side,
+} from "../signals/closes.ts";
+import type { DailyRow } from "../signals/daily.ts";
+import {
+  type InstrumentSignals,
+  readSignals,
+  relativeOf,
 } from "../signals/read.ts";
 import { earliestStart } from "../signals/relative.ts";
 import { DAILY_COLUMNS, WEEKLY_COLUMNS } from "../signals/store.ts";
@@ -380,6 +382,7 @@ function agentItem(
             "1m": round(r["1m"]),
             "3m": round(r["3m"]),
             ytd: round(r.ytd),
+            "1y": round(r["1y"]),
             to: r.to,
             live: r.live,
           },

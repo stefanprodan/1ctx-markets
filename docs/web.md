@@ -152,11 +152,12 @@ signed in with the admin key alone.
   uses it: Home, Instruments, an instrument, Portfolios, Profile (held
   while its editor or History is open) and Server status; Connect
   agents changes only by the operator.
-- **A re-read pulses the page's own icon** in the rail, the strip and
-  the phone's menu button (`reloading`, `rail-icon-reload`), one fade
-  held `PULSE_MS` since a read lands in milliseconds; a load that
-  asks nothing (`undefined`) and the status icon's read (`quiet`) never
-  pulse, and Server status's red pulse outranks it (`iconClass`).
+- **A re-read sweeps a hairline under the page's title**
+  (`reloading`, `page-title-busy`), never the menu's icons, held
+  `PULSE_MS` since a read lands in milliseconds; a load that asks
+  nothing (`undefined`) and the status icon's read (`quiet`) never
+  show it. A failed re-read shows the page's one-line error, not the
+  line.
 - **A wait never looks like a broken page, and there are two.** An
   answer travelling to the browser (data the server holds, read in
   milliseconds; a slow connection makes it seconds) shows the page's
@@ -458,8 +459,8 @@ The parts:
   save, never overwritten. Save and Cancel wait for the answer; any
   other failure keeps the draft and says why, to try again or Cancel.
   Cancel drops it. Outside Edit, Add from search and the view switch
-  save at once. A phone has no editing: Edit, the view
-  switch and Add hide, and a section keeps its view.
+  save at once. A phone has no editing: Edit and Add hide, but the
+  view switch stays, so a section can be read as cards or rows there.
 - **A card** is the ticker over its name (a coin without its quote
   currency), Open or Closed, a line, the stored price with its currency
   apart (a yield in percent) and the day's change in percent; it links
@@ -802,31 +803,49 @@ The parts:
   same trade with `again`, for a second fill that is the same.
 - **The bundle names no source:** the import kinds read Trades, Cash
   and Bonds.
-- **Instruments:** every stored instrument from
-  `GET /api/v1/instruments`, every page by `next_page_token`, in one
-  `Card` titled All with its count and a search over id and name in
-  its head (the page's only search, so `Page` shows no symbol search),
-  kept in the view with the sort so a refresh keeps both. The list is
-  a `Table`: the instrument (`SymbolName`, a coin without its quote
-  currency, "No longer updated" after the name only when nothing
-  tracks it), the kind in plain words (Stock, ETF, Index, Bond,
-  Future, Crypto, Currency, Series), the market (blank where it
-  repeats the kind), the stored price with its currency, and the
-  day's change. Sorted by symbol, an index's `^` aside; Instrument,
-  Kind and Market sort A to Z first, Change high to low, a row with no
-  change last and the symbol breaking ties (`sortRows`). A phone keeps
-  the instrument and the price, the change under the price. A row
+- **Instruments** is a small screener over the instruments kept up to
+  date, from `GET /api/v1/screener` (`docs/api.md`, "The screener"):
+  the server reads every figure stored, in one query, so the page
+  never asks a symbol at a time and stays cheap at thousands. Its
+  model is `Instruments.model.ts`. Top to bottom: the head with the
+  page's symbol search, the only search (the list has none, since that
+  one reaches every symbol); the stored kinds as `Tabs` (All, then
+  Stocks, ETFs, Funds, Crypto, Indexes, Currencies, Futures, Bonds,
+  Series, any other kind in its own word; two kinds said alike are one
+  tab, `typeTabs()`); five count tiles in a fieldset, the picked one
+  filled, each a large count over its name (Biggest moves, Near the
+  high, Well off the high, Oversold, Overbought); and a card titled
+  with the screen's name, no count, a faint line saying what it keeps
+  under it. A type narrows the tiles' counts and the list. Five
+  screens and no filters: the owner picks one question
+  (`SCREEN_TEXT`), and a screen with no match says why ("Nothing is
+  oversold today.").
+- **The list is a `Table`: Instrument, Price, the screen's own figure,
+  Day, 1M, 1Y and Trend.** The own figure sits beside the price: From
+  high ("2.6% below", or "At its high" at the high) on the two high
+  screens, RSI as a whole number on Oversold and Overbought, none on
+  Biggest moves. 1M and 1Y are the stored returns, in points for a
+  yield; Trend is a tag (Uptrend, Downtrend, Mixed) or "–" without the
+  figures. Every column sorts on the server but Price, since prices
+  are in different currencies; each screen starts on its own order and
+  a tile resets it. A phone keeps the instrument and the price, with
+  the screen's own figure, or the day's move on Biggest moves, under
+  the price, and no sort menu, since each screen sorts as it needs; the
+  tiles and tabs scroll sideways, each tile's name on one line. A row
   opens the instrument page. The list never quotes: a quote is a read
-  and would keep every row tracked. From two characters the search
-  also asks `/symbols` and lists the sources' matches no row holds
-  under a "Not stored yet" group label, tagged New; opening one
-  fetches it.
+  and would keep every row tracked.
+- **The ask (type, screen, sort) lives in the store** (`screenAsk`),
+  so a refresh, or leaving and coming back, keeps it; the answer on
+  screen stays until the next ask's lands. 50 rows, then Show more
+  reads the next page by its token; a refresh reads again as many rows
+  as are shown, and a second load of the same ask joins the one in
+  flight.
 - **Before its first answer an instrument page** shows the symbol from
   its address as the title, the value band's placeholder, the chart's
   box with its words (above) and two cards of placeholder facts.
   Connect agents draws its Setup card at once and placeholder rows in
   Keys; Portfolios the All tab, the value band's placeholder and rows
-  in Holdings; Instruments rows in its card.
+  in Holdings; Instruments its tiles' "–" and rows in its card.
 - **An instrument** (`/instruments/<id>`, the id encoded) reads
   `GET /api/v1/instruments/{id}`, a read as any client's, so
   opening it keeps it tracked and an id never stored is fetched. The

@@ -7,7 +7,7 @@ import { useEffect, useRef } from "preact/hooks";
 // a page's re-read is cheap: it reads the server's store, never a source
 export const REFRESH_MS = 30_000;
 
-// a read lands in tens of milliseconds; the menu's pulse needs this long
+// a read lands in tens of milliseconds; the title's line needs this long
 // to be seen at all
 export const PULSE_MS = 600;
 
@@ -15,7 +15,7 @@ export const PULSE_MS = 600;
 // refresh would supersede that read and land the page left again
 export const holding = signal(false);
 
-// the page's refreshes in flight, for the menu's pulse
+// the page's refreshes in flight, for the title's line
 export const reloading = signal(0);
 
 // a refresh every REFRESH_MS while the page is on screen, and at once
@@ -30,7 +30,7 @@ export function useRefresh(load: () => unknown, quiet = false): void {
     const fire = () => {
       if (!visible() || holding.peek()) return;
       const read = latest.current();
-      // a load that asked nothing, such as one held while editing, never pulses
+      // a load that asked nothing, such as one held while editing, never shows the line
       if (quiet || read === undefined) return;
       reloading.value++;
       void Promise.allSettled([

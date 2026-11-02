@@ -7,19 +7,14 @@ import {
   readBars,
   type Bar as StoredBar,
 } from "../market/bars.ts";
-import {
-  CRYPTO,
-  readSession,
-  type Session,
-  sessionDate,
-  weekOf,
-} from "../market/calendars.ts";
-import type { Instrument } from "../market/instruments.ts";
-import { fromWallTime, localDate, wallTime } from "../market/zone.ts";
-import { DAY_MS, MINUTE_MS } from "../runtime/clock.ts";
+import { weekOf } from "../market/calendars.ts";
+import { readInstrument } from "../market/instruments.ts";
 import { BVB } from "../sources/ids.ts";
 import type { Db } from "../storage/db/index.ts";
+import { finalPrefix, instrumentSide, returnsOf } from "./closes.ts";
 import { type DailyRow, dailySeries, liveDaily } from "./daily.ts";
+import { earliestStart } from "./relative.ts";
+import { liveTarget, type Scoped } from "./target.ts";
 import { liveWeekly, type WeeklyRow, weeklySeries } from "./weekly.ts";
 
 type DailyKey = Exclude<keyof DailyRow, "date">;
@@ -101,14 +96,6 @@ function insertRows(
   }
 }
 
-// only final bars make final rows, and a series never skips a day
-export function finalPrefix<T extends { final: boolean }>(
-  bars: readonly T[],
-): T[] {
-  const k = bars.findIndex((b) => !b.final);
-  return k === -1 ? [...bars] : bars.slice(0, k);
-}
-
 // the dates the Bucharest feed's volumes change scale on: its splits,
 // since it keeps volumes raw beside adjusted prices
 function volumeBreaks(db: Db, instrument: string): string[] {
@@ -139,6 +126,7 @@ export function recomputeSignals(db: Db, instrument: string, now: number) {
     now,
   );
   insertRows(db, instrument, "1wk", "final", weeklySeries(weeks), null, now);
+  storeReturns(db, instrument);
 }
 
 type Span = { n: number; last: string | null };
@@ -184,8 +172,6 @@ function lastFinalDate(
   ).last;
 }
 
-type Scoped = Pick<Instrument, "id" | "market">;
-
 // final rows first, so at a rollover the live row steps from yesterday's
 export function signalsAfterBars(
   db: Db,
@@ -199,65 +185,6 @@ export function signalsAfterBars(
     recomputeSignals(db, instrument.id, now);
   }
   refreshLive(db, instrument, now);
-}
-
-export type LiveTarget = { date: string; quote: LiveQuote };
-
-export type LiveQuote = {
-  price: number;
-  dayHigh: number | null;
-  dayLow: number | null;
-  volume: number | null;
-  time: number;
-};
-
-// a closing auction prints late; keep it covering closeQuoteAt's 15 minutes
-export const LIVE_AFTER_END_MS = 15 * MINUTE_MS;
-
-// Nothing of the next session trades before its local start, while an
-// index's value can be stamped long after the end (^NDX 75 minutes).
-export function liveUntil(s: Session): number {
-  const next = fromWallTime(s.zone, wallTime(s.zone, s.start) + DAY_MS);
-  return Math.max(s.end + LIVE_AFTER_END_MS, next - 1);
-}
-
-// dated by the market's stored session, never the trade's own day: past
-// midnight Yahoo's crypto trade is the new day's while its day fields are
-// the old one's until the period rolls
-export function liveTarget(db: Db, instrument: Scoped): LiveTarget | null {
-  const row = db
-    .query<
-      Omit<LiveQuote, "time"> & { time: number | null; fetchedAt: number },
-      [string]
-    >(
-      `select price, day_high as dayHigh, day_low as dayLow, volume, time,
-         fetched_at as fetchedAt
-       from quotes where instrument = ?`,
-    )
-    .get(instrument.id);
-  if (row === null) return null;
-  const session = readSession(db, instrument.market);
-  // an untimed index page is current while its market trades: its fetch, at
-  // most the session's end, dates the live row; the stored quote keeps no time
-  const { fetchedAt, ...rest } = row;
-  const quote: LiveQuote = {
-    ...rest,
-    time:
-      row.time ??
-      (session === null ? fetchedAt : Math.min(fetchedAt, session.end)),
-  };
-  // a crypto market with no period stored yet still gets its live row
-  if (session === null && instrument.market === CRYPTO) {
-    return { date: localDate("UTC", quote.time), quote };
-  }
-  if (
-    session === null ||
-    quote.time < session.start ||
-    quote.time > liveUntil(session)
-  ) {
-    return null;
-  }
-  return { date: sessionDate(session), quote };
 }
 
 function recent(
@@ -340,6 +267,11 @@ function replaceLive(
 }
 
 export function refreshLive(db: Db, instrument: Scoped, now: number): void {
+  liveRows(db, instrument, now);
+  storeReturns(db, instrument.id);
+}
+
+function liveRows(db: Db, instrument: Scoped, now: number): void {
   const target = liveTarget(db, instrument);
   if (target === null) {
     db.query("delete from signals where instrument = ? and kind = 'live'").run(
@@ -385,6 +317,44 @@ export function refreshLive(db: Db, instrument: Scoped, now: number): void {
           replacesLast: week.replacesLast,
         });
   replaceLive(db, instrument.id, "1wk", weekRow, quote.time, now);
+}
+
+// The live row, else the last final: 'live' sorts after 'final', so the
+// primary key read backwards finds it at its first row.
+const latestOf = (id: string) => `(select kind, date from signals x
+  where x.instrument = ${id} and x.interval = '1d'
+  order by x.kind desc, x.date desc limit 1)`;
+
+// joins s to instrument i's latest daily row
+export const LATEST_DAILY = `s.instrument = i.id and s.interval = '1d'
+  and (s.kind, s.date) = ${latestOf("i.id")}`;
+
+// On the newest daily row only, the one a list reads, through returnsOf,
+// so they equal the quote tool's.
+function storeReturns(db: Db, id: string): void {
+  const i = readInstrument(db, id);
+  if (i === null) return;
+  const r = returnsOf(instrumentSide(db, i, null, earliestStart));
+  db.query(
+    `update signals set return_1m = ?2, return_1y = ?3
+     where instrument = ?1 and interval = '1d'
+       and (kind, date) = ${latestOf("?1")}`,
+  ).run(id, r?.["1m"] ?? null, r?.["1y"] ?? null);
+}
+
+// Rows written before the returns were stored get theirs at start, not
+// at the next pass, which for a closed market is the next day's. Driven
+// by instrument, so a start reads one row of each.
+export function fillReturns(db: Db): void {
+  const ids = db
+    .query<{ id: string }, []>(
+      `select i.id from instruments i
+       where (select x.return_1m is null and x.return_1y is null
+         from signals x where x.instrument = i.id and x.interval = '1d'
+         order by x.kind desc, x.date desc limit 1)`,
+    )
+    .all();
+  for (const { id } of ids) storeReturns(db, id);
 }
 
 export function pruneLive(db: Db, instrument: Scoped, now: number): void {

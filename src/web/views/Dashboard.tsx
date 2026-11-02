@@ -997,7 +997,7 @@ export function SectionView({
         }
         actions={
           (!locked || editing) && (
-            <div class="dash-section-tools hide-phone">
+            <div class="dash-section-tools">
               {!locked && (
                 <Segmented
                   label="Show as"
@@ -1007,11 +1007,14 @@ export function SectionView({
                   onPick={(v) => void save(withView(layout, index, v))}
                 />
               )}
+              {/* a phone picks the view only; editing stays on wider screens */}
               {editing && (
-                <MenuButton
-                  label={`Edit ${section.name}`}
-                  items={sectionTools(layout, index, save)}
-                />
+                <span class="hide-phone">
+                  <MenuButton
+                    label={`Edit ${section.name}`}
+                    items={sectionTools(layout, index, save)}
+                  />
+                </span>
               )}
             </div>
           )

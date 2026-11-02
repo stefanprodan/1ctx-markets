@@ -18,6 +18,7 @@ import { access } from "./server/access.ts";
 import { router, serve } from "./server/http.ts";
 import { mcpHandler } from "./server/mcp.ts";
 import { sessions } from "./server/session.ts";
+import { fillReturns } from "./signals/store.ts";
 import { type Bvb, bvb } from "./sources/bvb/client.ts";
 import { type BvbJobs, bvbJobs } from "./sources/bvb/jobs.ts";
 import { storeListings } from "./sources/bvb/listings.ts";
@@ -174,6 +175,11 @@ export function start(options: AppOptions): App {
     .write((db) => settleStored(db, clock.now()))
     .catch((error: unknown) => {
       options.log("yahoo").error("closes settle failed", errorFields(error));
+    });
+  void write
+    .write((db) => fillReturns(db))
+    .catch((error: unknown) => {
+      options.log("markets").error("returns fill failed", errorFields(error));
     });
   const yahooQueue = queue(clock, YAHOO_CONCURRENCY);
   const client = yahoo({ clock, fetch: options.fetch, queue: yahooQueue });
