@@ -93,7 +93,7 @@ src/operations/             the reads the MCP tools and the API share, with thei
 src/tools/                  the MCP surface: the tool registry and research's page
 src/api/                    /api/v1: routes, alerts, the spec, the docs page; never imports tools/
 src/service/                `service install|start|stop|...`: launchd, CLI only
-src/admin/                  the instrument, watchlist, status and keys routes, the `admin` and `keys` commands
+src/admin/                  the instrument, watchlist, status, screener and keys routes, the `admin` and `keys` commands
 src/shared/                 plain data and functions the server and the web UI both
                             import; a file here imports only shared/ (no package,
                             bun:, node:, database or network), and web/ imports

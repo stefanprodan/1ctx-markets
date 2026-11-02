@@ -29,6 +29,7 @@ MCP tools copied onto paths.
 | `GET /movers?symbols=&min_move_pct=&direction=&average=&relation=` | read | `readMovers()`, `setAll()` | `movers[]`: every match, unavailable and error, with `counts` |
 | `POST /screen` | read | `readScreen()`, `setAll()` | `matches[]`, the same; the body is the tool's arguments, since `filters` is a structure; 200, it creates nothing |
 | `GET /instruments?query=&page_size=&page_token=` | admin | `instruments()` | a page of stored instruments and what tracks each (`docs/admin.md`) |
+| `GET /screener?type=&screen=&sort=&order=&page_size=&page_token=` | admin | `screener()` | the web UI's Instruments page: a page of one ready-made screen over the instruments kept up to date, with every screen's `counts` and the stored `kinds` (below) |
 | `GET /instruments/{symbol}` | read | `instrument()` | the instrument, what tracks it, its full quote and a fund's `top_holdings`; a read (below) |
 | `DELETE /instruments/{symbol}` | admin | `deleteOne()` | 204; 409 with `rules` (`docs/admin.md`) |
 | `POST /instruments/{symbol}/refetch` | admin | `refetchOne()` | `input`, `id`, `parts[]` (`docs/admin.md`) |
@@ -237,6 +238,43 @@ MCP tools copied onto paths.
   trimming, unique ignoring case; `view` is `cards` or `table`. Past
   any, 400 `bad_arguments`, before anything is resolved.
 
+## The screener
+
+- **`GET /screener` is the web UI's Instruments page**: the
+  instruments kept up to date (`trackedIds()`), but the funds the owner
+  prices, read in one query over each one's stored quote and latest
+  daily signal row (the live one, else the last final), plus one for
+  the counts (`src/admin/screener.ts`). It never fetches, never reads a
+  symbol at a time and is no read, so the page asks every 30 seconds
+  at any number of instruments. An instrument no longer updated stays
+  out, since its figures are stale.
+- **Five ready-made screens, one question each** (`SCREENS`):
+  `moves` keeps every row, by the size of the day's move either way;
+  `near_high` keeps `drawdown` -3 or above, highest first; `off_high`
+  `drawdown` -20 or below, lowest first; `oversold` `rsi14` 30 or
+  under, lowest first; `overbought` `rsi14` 70 or over, highest first.
+  A series (`SERIES`) is in `moves` only, since it has no price to be
+  near a high; a currency pair stays out of `oversold` and
+  `overbought`, whose RSI says nothing of buying or selling. No
+  filter beyond these: a question the screens do not ask is the
+  `screen` tool's.
+- **`type` keeps stored kinds** (a list, so two kinds the page names
+  alike are one tab); `counts` holds each screen's matches for it, and
+  `kinds` every stored kind with its count whatever `type` is, for the
+  tabs.
+- **Each row is the stored row as `GET /instruments` gives it** plus
+  `return_1m` and `return_1y` (stored with the signal row, equal to
+  quote's `returns`, `docs/signals.md`), `drawdown`, `rsi14`,
+  `distance_sma200` (percent from the 200-day average to the price),
+  `cross` and `trend`: `up` with the cross at 1 and the price above the
+  200-day, `down` with both the other way, `mixed` otherwise, null
+  without either figure.
+- **`sort` is one of `move`, `symbol`, `change`, `return_1m`,
+  `return_1y`, `drawdown`, `rsi14` and `trend`**, the screen's own by
+  default; `order` needs it. A row without the figure is last either
+  way, and ties go by the ticker (an index's `^` ignored), then the id.
+  Never by price: prices are in different currencies.
+
 ## The quotes projection
 
 - **`briefItem()` is what a script needs**: price or observation,
@@ -272,7 +310,7 @@ MCP tools copied onto paths.
 
 ## Paging
 
-- **Every route answers its whole result but two**, nothing cut to
+- **Every route answers its whole result but three**, nothing cut to
   fit: a script that does not follow a cursor loses what is past it,
   and an HTTP client has no 32 KiB limit, which is an MCP client's
   (`docs/tools.md`). `next` is refused as any unknown argument is (400
@@ -281,6 +319,9 @@ MCP tools copied onto paths.
   50 by default; `page_token` the `next_page_token` of the page before,
   its last id, opaque to the caller; `next_page_token` absent at the
   end. By id, so a row deleted between pages skips no other.
+- **The screener pages the same way by position**, since its order
+  moves with the prices: its token is an offset bound to `type`,
+  `screen`, `sort` and `order`, refused with any other.
 - **A symbol that did not resolve in time answers its error item**,
   never by being left out.
 - **The alerts feed keeps its cursor**, since it is a feed polled on a
@@ -348,9 +389,9 @@ MCP tools copied onto paths.
   rules writes and the alerts feed included, as a wider scope holds a
   narrower one, and `/mcp`: a single-user install needs no other key.
 - **A valid key without the scope is 403 `forbidden`**: an agent key
-  on `GET /instruments`, `DELETE /instruments/{symbol}`, refetch,
-  `/status`, its retry and `/keys`, and on a portfolio, rules or
-  profile route without that access.
+  on `GET /instruments`, `GET /screener`, `DELETE
+  /instruments/{symbol}`, refetch, `/status`, its retry and `/keys`,
+  and on a portfolio, rules or profile route without that access.
 - **Portfolio routes take the key's portfolio access** (`keys.portfolio`,
   `none` by default): `portfolio:read` opens with `read` or `write`,
   `portfolio:write` with `write`. Holdings are private, so the read

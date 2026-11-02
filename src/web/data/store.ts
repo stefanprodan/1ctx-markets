@@ -187,6 +187,7 @@ export type Returns = {
   "1m": number | null;
   "3m": number | null;
   ytd: number | null;
+  "1y": number | null;
   to: string;
   live: boolean;
 };

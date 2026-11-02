@@ -145,8 +145,9 @@ tracking in `docs/storage.md`; the source queue and deadlines in
 | `portfolio`, `portfolio_trade`, `portfolio_cash`, `portfolio_bond`, `portfolio_fund`, `portfolio_setup` | see `docs/portfolios.md` | |
 | `profile`, `profile_edit` | see `docs/profile.md` | |
 
-- **quote's `returns` answer "how did it do" without `history`**
-  (`docs/signals.md`, "Trailing returns").
+- **quote's `returns` answer "how did it do" without `history`**:
+  `1w`, `1m`, `3m`, `ytd` and `1y`, `to` and `live` (`docs/signals.md`,
+  "Trailing returns").
 - **quote's `benchmark` is one symbol for the call**, resolved and
   fetched as history's, adding `relative_return_1m` and `_3m` per item
   and the benchmark's id, `fetched_at` and `stale` on the page, its

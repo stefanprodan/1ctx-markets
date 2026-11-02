@@ -16,7 +16,7 @@ import {
 } from "../market/intraday.ts";
 import type { StaleReason } from "../market/stale.ts";
 import { localDate } from "../market/zone.ts";
-import { liveTarget } from "../signals/store.ts";
+import { liveTarget } from "../signals/target.ts";
 import { YAHOO } from "../sources/ids.ts";
 import type { Db } from "../storage/db/index.ts";
 import {

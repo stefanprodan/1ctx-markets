@@ -22,6 +22,11 @@ import {
 } from "../src/market/zone.ts";
 import { DAY_MS, MINUTE_MS } from "../src/runtime/clock.ts";
 import { silent } from "../src/runtime/log.ts";
+import {
+  finalPrefix,
+  instrumentSide,
+  returnsOf,
+} from "../src/signals/closes.ts";
 import { dailySeries, liveDaily } from "../src/signals/daily.ts";
 import {
   readRelativeReturn,
@@ -29,16 +34,13 @@ import {
   UNKNOWN_UNITS_NOTE,
 } from "../src/signals/read.ts";
 import {
+  earliestStart,
   LEVEL_NOTE,
   RETURN_NOTE,
   relativeReturn,
 } from "../src/signals/relative.ts";
-import {
-  finalPrefix,
-  liveTarget,
-  refreshLive,
-  selectList,
-} from "../src/signals/store.ts";
+import { refreshLive, selectList } from "../src/signals/store.ts";
+import { liveTarget } from "../src/signals/target.ts";
 import { liveWeekly, weeklySeries } from "../src/signals/weekly.ts";
 import { parseSpark, yahoo } from "../src/sources/yahoo/client.ts";
 import { yahooJobs } from "../src/sources/yahoo/jobs.ts";
@@ -1001,5 +1003,69 @@ describe("the table", () => {
     expect(() => insert("1d", "2026-10-27", "live")).toThrow("UNIQUE");
     expect(() => insert("1wk", "2026-10-26", "final", 1)).toThrow("CHECK");
     expect(() => insert("1d", "2026-10-28", "final", null)).not.toThrow();
+  });
+});
+
+describe("the stored 1M and 1Y returns", () => {
+  // the newest daily row, the one a list reads
+  const newest = (db: Db) =>
+    db
+      .query<
+        { kind: string; date: string; m: number | null; y: number | null },
+        []
+      >(
+        `select kind, date, return_1m as m, return_1y as y from signals
+         where instrument = 'US:NVDA' and interval = '1d'
+         order by kind desc, date desc limit 1`,
+      )
+      .get()!;
+  // what the quote tool's returns read now
+  const now = (db: Db) => {
+    const r = returnsOf(
+      instrumentSide(db, readInstrument(db, "US:NVDA")!, null, earliestStart),
+    )!;
+    return { m: r["1m"], y: r["1y"] };
+  };
+
+  test("follow a refetch that changes the last final close", async () => {
+    const fx = clone(await recorded("chart-nvda-5d-1d"));
+    fx.body.chart.result[0].indicators.quote[0].close[3] = 150;
+    const { db, ctx, instrument } = await stored([fx]);
+    const before = newest(db);
+    expect(before.m).not.toBeNull();
+    await refetch(ctx, instrument);
+    const after = newest(db);
+    expect(after).toMatchObject({ kind: "final", date: "2026-10-22" });
+    expect({ m: after.m, y: after.y }).toEqual(now(db));
+    expect(after.m).not.toBe(before.m);
+  });
+
+  test("move to the last final row when a new session prunes the live one", async () => {
+    const { db, ctx, clock } = await stored();
+    const friday = await nvdaSpark((m) => {
+      m.regularMarketPrice = 150;
+    });
+    await ctx.writer.write((db) =>
+      storeQuotes(db, parseSpark(friday, clock.now())),
+    );
+    const live = newest(db);
+    expect(live.kind).toBe("live");
+    expect({ m: live.m, y: live.y }).toEqual(now(db));
+    await clock.advance(utc("2026-10-26T13:40") - clock.now());
+    const monday = await nvdaSpark((m) => {
+      m.symbol = "ZZZ";
+      m.currentTradingPeriod.regular.start += 3 * DAY_S;
+      m.currentTradingPeriod.regular.end += 3 * DAY_S;
+      m.regularMarketTime = utc("2026-10-26T13:35") / 1000;
+    });
+    monday.spark.result[0].symbol = "ZZZ";
+    await ctx.writer.write((db) =>
+      storeQuotes(db, parseSpark(monday, clock.now())),
+    );
+    const final = newest(db);
+    expect(final.kind).toBe("final");
+    expect({ m: final.m, y: final.y }).toEqual(now(db));
+    // the live price no longer ends them
+    expect(final.m).not.toBe(live.m);
   });
 });

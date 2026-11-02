@@ -2,9 +2,11 @@
 
 Governs the technical signals computed from stored bars and quotes:
 `src/signals/common.ts`, `daily.ts` and `weekly.ts` (the maths),
-`store.ts` (final and live rows), `read.ts` (what tools read, with stale
-reasons) and `relative.ts` (relative return), and the `signals` table
-(`src/storage/db/migrations/0005-signals.ts`). Sessions, bar dates and
+`store.ts` (final and live rows), `target.ts` (what dates a live row),
+`closes.ts` (the closes a return reads), `read.ts` (what tools read,
+with stale reasons) and `relative.ts` (returns), and the `signals`
+table (`src/storage/db/migrations/0005-signals.ts`, the stored returns
+in `0035-stored-returns.ts`). Sessions, bar dates and
 finality are in `docs/calendars.md`; the bar writes that call these in
 `docs/yahoo.md` and `docs/fred.md`; stale reasons in `docs/storage.md`.
 
@@ -165,13 +167,26 @@ bar's close, or the live price on the live row.
 
 ## Trailing returns
 
-- **quote's `returns` and screen's `return_*`: `1w`, `1m`, `3m` and
-  `ytd` from the last final close on or before each start**
-  (`trailingReturns()`): 7 days, 1 and 3 calendar months back by
+- **quote's `returns` and screen's `return_*`: `1w`, `1m`, `3m`, `ytd`
+  and `1y` from the last final close on or before each start**
+  (`trailingReturns()`): 7 days, 1, 3 and 12 calendar months back by
   `monthsBack()`, and the previous year's 31 December, counted from the
-  end's date; a holiday on the 31st takes the close before.
+  end's date; a holiday on the 31st takes the close before. The read
+  reaches back to the earliest of those starts (`earliestStart()`).
 - **The end is the live price only when its session date follows the
   last final bar** (`returnsOf()`), the rule relative return follows;
   otherwise the last final close. `to` and `live` say which.
 - **A percent unit answers points, prices percent** in the listing's
   own currency; a period whose start the bars do not reach is null.
+- **The 1M and 1Y returns are also stored, on the newest daily row**
+  (`return_1m`, `return_1y`: the live row, else the last final, the
+  one a reader takes), so `GET /api/v1/screener` (the web UI's
+  Instruments page) reads thousands in one query, without a bar. Every
+  write of the daily rows ends with them (`recomputeSignals()` and
+  `refreshLive()`, which the quote passes and every bar write call),
+  computed by `returnsOf()` over the same closes and live price as
+  quote's, so the two never differ. An older row may keep the figures
+  it had while it was the newest; no reader takes them. When the
+  server starts, an instrument whose newest row has neither, such as
+  one from before the columns, gets them (`fillReturns()`, one row
+  read per instrument).

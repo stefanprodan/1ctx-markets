@@ -72,7 +72,7 @@ export function relativeReturn(
   };
 }
 
-export const RETURN_PERIODS = ["1w", "1m", "3m", "ytd"] as const;
+export const RETURN_PERIODS = ["1w", "1m", "3m", "ytd", "1y"] as const;
 
 export type ReturnPeriod = (typeof RETURN_PERIODS)[number];
 
@@ -80,12 +80,13 @@ export function periodStart(end: string, period: ReturnPeriod): string {
   if (period === "1w") return addDays(end, -7);
   if (period === "1m") return monthsBack(end, 1);
   if (period === "3m") return monthsBack(end, 3);
+  if (period === "1y") return monthsBack(end, 12);
   return yearStart(end);
 }
 
 // the earliest a period's start can be, for a read bounded to it
 export const earliestStart = (end: string): string =>
-  [periodStart(end, "ytd"), periodStart(end, "3m")].sort()[0]!;
+  RETURN_PERIODS.map((p) => periodStart(end, p)).sort()[0]!;
 
 export type Returns = Record<ReturnPeriod, number | null> & {
   to: string;

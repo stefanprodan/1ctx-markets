@@ -64,6 +64,7 @@ const detail = (
       "1m": -3.25,
       "3m": null,
       ytd: 12,
+      "1y": 15,
       to: "2026-11-01",
       live: true,
     },

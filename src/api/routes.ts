@@ -26,6 +26,7 @@ import {
   revokeOne,
   setOne,
 } from "../admin/keys.ts";
+import { screener } from "../admin/screener.ts";
 import { iso, price } from "../market/format.ts";
 import { localDate } from "../market/zone.ts";
 import { ArgError, fields } from "../operations/args.ts";
@@ -624,6 +625,12 @@ function operator(
       path: "/instruments",
       scope: "admin",
       handle: async (_req, url) => instruments(m, url),
+    },
+    {
+      method: "GET",
+      path: "/screener",
+      scope: "admin",
+      handle: async (_req, url) => screener(m, url),
     },
     {
       method: "DELETE",

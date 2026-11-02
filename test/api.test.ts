@@ -786,6 +786,10 @@ describe("every operation", () => {
       await t.call("/instruments", reader),
       403,
     );
+    await check("GET", "/screener", await t.call("/screener"), 200);
+    await check("GET", "/screener", await t.call("/screener?sort=price"), 400);
+    await check("GET", "/screener", await t.call("/screener", wrong), 401);
+    await check("GET", "/screener", await t.call("/screener", reader), 403);
     // signed in by the UI's cookie, without this server's Origin
     const cookie = {
       cookie: `${COOKIE}=${sessions(ADMIN_KEY).issue(t.clock.now())}`,
