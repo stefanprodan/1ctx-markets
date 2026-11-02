@@ -43,10 +43,12 @@ import {
   figureEdits,
   findZones,
   heldAt,
+  heldWhere,
   IMPORT_KINDS,
   importLine,
   importReason,
   importStatus,
+  lastBroker,
   listingWords,
   movePlaces,
   noteEdit,
@@ -1011,6 +1013,38 @@ export function AddForm({
       all.value = h;
     });
   }, [store]);
+  // where it is held already says where more of it goes; a new
+  // portfolio or broker being named is the owner's choice
+  const placeHeld = (id: string, h: Holdings | null, keepBroker: boolean) => {
+    const parts = heldAt(h, id);
+    const at = heldWhere(parts);
+    const pid = byName(at.portfolio);
+    if (pid !== undefined && portfolio.value !== NEW) {
+      portfolio.value = String(pid);
+      error.value = null;
+    }
+    if (keepBroker || broker.value === NEW) return;
+    if (at.broker !== undefined) {
+      broker.value = at.broker ?? "";
+      error.value = null;
+      return;
+    }
+    // a sell left at no broker sells every part, which All counts on
+    if (parts.length === 0 || side.value === "sell") return;
+    // a pick made while the trades load is the owner's, never replaced
+    const was = broker.value;
+    void store.tradesOf(id).then((t) => {
+      const name =
+        portfolios.find((p) => String(p.id) === portfolio.value)?.name ??
+        at.portfolio;
+      const b = lastBroker(t ?? [], parts, name);
+      if (symbol.value !== id || b === undefined || broker.value !== was) {
+        return;
+      }
+      broker.value = b ?? "";
+      error.value = null;
+    });
+  };
   const pick = (id: string) => {
     picked.value = null;
     void store.listing(id).then((l) => {
@@ -1025,20 +1059,11 @@ export function AddForm({
         px.value = String(l.price);
         pxLive.value = true;
       }
-      // where it is held already says where more of it goes
-      // a new portfolio or broker being named is the owner's choice
-      const parts = heldAt(all.value ?? store.holdings.value, id);
-      if (parts.length === 1) {
-        const pid = byName(parts[0]!.portfolio);
-        if (pid !== undefined && portfolio.value !== NEW) {
-          portfolio.value = String(pid);
-          error.value = null;
-        }
-        if (broker.value !== NEW) {
-          broker.value = parts[0]!.broker ?? "";
-          error.value = null;
-        }
-      }
+      placeHeld(
+        id,
+        all.value ?? store.holdings.value,
+        id === start?.symbol && start.broker !== undefined,
+      );
     });
   };
   useEffect(() => {
@@ -1048,14 +1073,7 @@ export function AddForm({
   // the holdings arrive after a start pick: place it once they do
   useEffect(() => {
     if (!all.value || !start?.symbol || start.portfolio) return;
-    const parts = heldAt(all.value, start.symbol);
-    if (parts.length === 1) {
-      const pid = byName(parts[0]!.portfolio);
-      if (pid !== undefined) {
-        portfolio.value = String(pid);
-        error.value = null;
-      }
-    }
+    placeHeld(start.symbol, all.value, start.broker !== undefined);
   }, [all.value]);
   // by the pickers, not an effect: the save switches them itself
   const clear = () => {
