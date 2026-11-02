@@ -22,6 +22,7 @@ export type MenuItem = {
   danger?: boolean;
   // one choice of several: true for the one picked, false for the others
   checked?: boolean;
+  disabled?: boolean;
 };
 
 export function MenuItems({
@@ -79,6 +80,7 @@ export function MenuItems({
             type="button"
             class={cls}
             role="menuitem"
+            disabled={it.disabled}
             onClick={() => {
               close();
               it.run?.();

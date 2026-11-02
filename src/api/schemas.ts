@@ -1177,4 +1177,10 @@ export const schemas: Record<string, Schema> = {
       ),
     ),
   }),
+  Retried: object({
+    asked: note(int, "Failing jobs asked again."),
+    fetched: note(int, "Of those, the ones that succeeded."),
+    failed: note(int, "Of those, the ones that failed again."),
+    left_out: note(int, "Failing jobs not asked again."),
+  }),
 };

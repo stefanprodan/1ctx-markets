@@ -12,6 +12,10 @@
   .srv-line {
     margin: 0;
   }
+  .srv-spin {
+    width: var(--icon-small);
+    height: var(--icon-small);
+  }
 
   /* a job's state as a dot, in the row's first column */
   .srv-dot {

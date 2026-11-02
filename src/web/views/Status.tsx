@@ -1,7 +1,9 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 
-import { useState } from "preact/hooks";
+import { useSignal } from "@preact/signals";
+import { useEffect, useState } from "preact/hooks";
+import { says } from "../data/api.ts";
 import {
   type JobStatus,
   markets,
@@ -11,22 +13,26 @@ import {
 } from "../data/store.ts";
 import { plain } from "../lib/format.ts";
 import { Icon } from "../lib/icons.tsx";
+import { useRefresh } from "../lib/refresh.ts";
 import { Card, GroupLabel } from "../ui/Card.tsx";
 import { Drawer } from "../ui/Drawer.tsx";
 import { Facts, Stats } from "../ui/Figures.tsx";
+import { MenuButton, type MenuItem } from "../ui/Menu.tsx";
 import { Notice } from "../ui/Notice.tsx";
 import { didNotLoad, Page } from "../ui/Page.tsx";
 import { Placeholder } from "../ui/Placeholder.tsx";
 import { type Column, Table, type TableGroup } from "../ui/Table.tsx";
+import { SAID_MS } from "./InstrumentMenu.tsx";
 import {
   allOk,
   bytes,
-  clockTime,
   count,
   groups,
   jobLine,
   jobTone,
   jobWhen,
+  retried,
+  retryable,
   runTime,
   type SourceGroup,
   sourcesOn,
@@ -326,13 +332,75 @@ export function StatusBody({
   );
 }
 
+export const statusItems = (o: {
+  failing: boolean;
+  loading: boolean;
+  onRefresh: () => void;
+  onRetry: () => void;
+}): MenuItem[] => [
+  { label: "Refresh", icon: "redo", run: o.onRefresh, disabled: o.loading },
+  {
+    label: "Retry failed jobs",
+    icon: "retry",
+    run: o.onRetry,
+    disabled: !o.failing,
+  },
+];
+
+// as the instrument page's More menu
+export function StatusMenu({
+  busy,
+  done,
+  ...items
+}: Parameters<typeof statusItems>[0] & { busy: boolean; done: boolean }) {
+  return (
+    <MenuButton
+      head
+      label="More"
+      disabled={busy}
+      items={statusItems(items)}
+      face={
+        busy ? (
+          <span class="spinner srv-spin" role="img" aria-label="Retrying" />
+        ) : done ? (
+          <Icon name="check" size={16} class="status-done" />
+        ) : undefined
+      }
+    />
+  );
+}
+
 export function Status() {
   const s = markets.status.value;
-  const at = markets.statusAt.value;
+  useRefresh(markets.loadStatus);
+  const retrying = useSignal(false);
+  const said = useSignal<{ done: boolean } | { error: string } | null>(null);
+  // the check fades back to the menu's dots
+  useEffect(() => {
+    if (said.value === null || "error" in said.value) return;
+    const timer = setTimeout(() => {
+      said.value = null;
+    }, SAID_MS);
+    return () => clearTimeout(timer);
+  }, [said.value]);
+  const failing =
+    s !== null && retryable(groups(s.sources, s.jobs).flatMap((g) => g.jobs));
+  const retry = async () => {
+    retrying.value = true;
+    said.value = null;
+    try {
+      const r = await markets.retry();
+      said.value = { done: retried(r) };
+    } catch (error) {
+      said.value = { error: says(error) };
+    } finally {
+      retrying.value = false;
+    }
+  };
+  const outcome = said.value;
   return (
     <Page
       title="Server status"
-      meta={at === null ? undefined : `as of ${clockTime(at)}`}
       stale={s === null ? null : markets.statusError.value}
       staleCount={markets.statusFailures.value}
       failed={didNotLoad(
@@ -341,17 +409,16 @@ export function Status() {
         markets.statusCode.value,
         () => void markets.loadStatus(),
       )}
+      error={outcome !== null && "error" in outcome ? outcome.error : null}
       actions={
-        <button
-          type="button"
-          class="btn"
-          aria-label="Refresh"
-          disabled={markets.loading.value}
-          onClick={() => void markets.loadStatus()}
-        >
-          <Icon name="redo" size={14} />
-          <span class="hide-phone">Refresh</span>
-        </button>
+        <StatusMenu
+          busy={retrying.value}
+          done={outcome !== null && "done" in outcome && outcome.done}
+          failing={failing}
+          loading={markets.loading.value}
+          onRefresh={() => void markets.loadStatus()}
+          onRetry={() => void retry()}
+        />
       }
     >
       {s === null ? (

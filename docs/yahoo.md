@@ -142,7 +142,8 @@ finality in `docs/calendars.md`; tables, the writer and staleness in
 - **Cost: one call a day per tracked fund**, plus the session's two
   on first use and on each refusal; `research` and the instrument
   route ask inline only a fund never fetched well and not failed
-  within `RETRY_MS`, since the instrument page re-reads every minute.
+  within `RETRY_MS`, since the instrument page re-reads every 30
+  seconds.
 
 ## Parsing
 

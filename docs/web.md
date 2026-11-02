@@ -145,8 +145,18 @@ signed in with the admin key alone.
   store): an answer from before it never lands, and its 401 never signs
   the new one out. A delete makes a list in flight stale, and a refetch
   reloads its instrument only while that page is still open.
-- **`useRefresh` sets its timer once** and calls the latest load, so a
-  redraw (a crosshair moving) never pushes the refresh back.
+- **`useRefresh` reads the page again every `REFRESH_MS` (30 s)**,
+  and at once when the tab comes back; it sets its timer once and calls
+  the latest load, so a redraw (a crosshair moving) never pushes the
+  refresh back. Every page with data the server or an agent changes
+  uses it: Home, Instruments, an instrument, Portfolios, Profile (held
+  while its editor or History is open) and Server status; Connect
+  agents changes only by the operator.
+- **A re-read pulses the page's own icon** in the rail, the strip and
+  the phone's menu button (`reloading`, `rail-icon-reload`), one fade
+  held `PULSE_MS` since a read lands in milliseconds; a load that
+  asks nothing (`undefined`) and the status icon's read (`quiet`) never
+  pulse, and Server status's red pulse outranks it (`iconClass`).
 - **A wait never looks like a broken page, and there are two.** An
   answer travelling to the browser (data the server holds, read in
   milliseconds; a slow connection makes it seconds) shows the page's
@@ -202,7 +212,7 @@ signed in with the admin key alone.
   strip on a wide window, which shows the mark, and is a drawer on a
   phone. Server status's icon, in the rail and the strip, turns red and
   pulses (steady under reduced motion) while that page shows a job failing
-  or a source backing off (`troubled`), read once a minute while
+  or a source backing off (`troubled`), read every `REFRESH_MS` while
   signed in. The sign-in is the mark beside 1ctx's wordmark over
   **Markets**. The theme follows the system until flipped; a flip is
   kept in `localStorage`.
@@ -497,8 +507,15 @@ The parts:
   job's drawer: what it does, its source and last run, then its
   failing scopes with error and time ("AMD: the source failed" when a
   run names the symbols that failed it), or that all are ok. Failing
-  jobs come first. Missing closes (`owed`) never shows: it only marks
-  a day for the bars job to ask again, so it cannot fail.
+  jobs come first. The head's More menu holds Refresh, which reads
+  status again, and Retry failed jobs (`POST /api/v1/status/retry`,
+  `docs/admin.md`), off unless an instrument is failing (`retryable`:
+  a market's job asks again on its own): the button spins while it
+  runs, shows the green check for `SAID_MS` once something came back
+  and nothing failed again (`retried`), then status reloads; a
+  refused or failed call shows in the page's notice. Missing closes
+  (`owed`) never shows: it only marks a day for the bars job to ask
+  again, so it cannot fail.
 - **Readers are not technical.** A server phrase shows in plain words
   (`plain()`: "rate limited" reads "too many requests"), and a pause
   shows only as a count under Sources, since the job that hit it
@@ -542,7 +559,9 @@ The parts:
   Save waits on a change and sends the revision it opened. A stale
   save keeps the typed text and says "Changed since you opened it.
   Copy your text, then reload.", so nothing typed is lost to a newer
-  save.
+  save. The page's refresh holds while the editor or History is open,
+  and the editor keeps the revision it opened with, so neither a save
+  nor a restore is checked against a revision it never showed.
 - **History** is the drawer listing the kept revisions, newest first,
   with author, age and size, the live one marked Current. A row opens
   that revision drawn; Restore (not on the current one) saves its text

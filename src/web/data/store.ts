@@ -299,6 +299,14 @@ export type Fetched = {
   error?: string;
 };
 
+// counts only: status names which
+export type Retried = {
+  asked: number;
+  fetched: number;
+  failed: number;
+  left_out: number;
+};
+
 // a delete a rule holds names the rules; any other refusal is its sentence
 export type Removed =
   | { ok: true }
@@ -345,6 +353,7 @@ export const instrumentPath = (id: string) =>
   `${INSTRUMENTS_PATH}/${encodeURIComponent(id)}`;
 export const STATUS_PATH = "/api/v1/status";
 export const WATCHLIST_PATH = "/api/v1/watchlist";
+export const RETRY_PATH = "/api/v1/status/retry";
 
 // the quotes route's limit on symbols
 export const EXTENDED_BATCH = 100;
@@ -400,8 +409,6 @@ export function store(
   // undefined until the first answer says whether the cookie holds
   const signedIn = signal<boolean | undefined>(undefined);
   const status = signal<Status | null>(null);
-  // when the status on screen was answered, for the head's line
-  const statusAt = signal<number | null>(null);
   const statusError = signal<string | null>(null);
   // its HTTP code, shown beside the words; null when no server answered
   const statusCode = signal<number | null>(null);
@@ -480,7 +487,6 @@ export function store(
     batch(() => {
       signedIn.value = false;
       status.value = null;
-      statusAt.value = null;
       statusError.value = null;
       statusCode.value = null;
       watchlist.value = null;
@@ -576,7 +582,6 @@ export function store(
         status.value = s.value;
         pulse.value = s.value;
         watchlist.value = w.value.entries;
-        statusAt.value = now();
         statusError.value = null;
         statusCode.value = null;
       });
@@ -728,6 +733,12 @@ export function store(
     return done.parts;
   }
 
+  async function retry(): Promise<Retried> {
+    const done = await call<Retried>(RETRY_PATH, "POST");
+    void loadStatus();
+    return done;
+  }
+
   async function remove(id: string): Promise<Removed> {
     try {
       await call(instrumentPath(id), "DELETE");
@@ -874,7 +885,7 @@ export function store(
 
   let homeLoad = 0;
   async function loadDashboard(): Promise<void> {
-    // the minute refresh can fire after leaving, before Preact's cleanup
+    // the page's refresh can fire after leaving, before Preact's cleanup
     if (here() !== "/") return;
     const mine = ++homeLoad;
     const at = session;
@@ -1177,13 +1188,13 @@ export function store(
     status,
     pulse,
     checkPulse,
-    statusAt,
     statusError,
     statusCode,
     statusFailures,
     watchlist,
     loading,
     loadStatus,
+    retry,
     // the status load answers whether the cookie holds, so one load does both
     check: loadStatus,
     // a wrong key is no session ending, so it skips the 401 hook

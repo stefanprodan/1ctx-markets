@@ -44,6 +44,7 @@ import {
   type ResearchSection,
   refetch,
 } from "./refetch.ts";
+import { retryFailed } from "./retry.ts";
 
 export const MAX_BODY_BYTES = 16 * 1024;
 // a page of the stored list: a screen of rows, quoted a page at a time
@@ -220,10 +221,13 @@ export function jobLabel(source: string, job: string): string {
 // a page shows a few; the count says how many more
 export const MAX_FAILING = 5;
 
-type Failed = {
-  scope: string | null;
+type ScopeRun = {
+  source: string;
+  job: string;
+  scope: string;
   error: string | null;
   endedAt: number | null;
+  failing: boolean;
 };
 
 type Row = {
@@ -237,6 +241,50 @@ type Row = {
   error: string | null;
 };
 
+// each scope's latest ended run, over the runs kept, newest first per job
+function scopeRuns(db: Db): ScopeRun[] {
+  const hasBars = db.query<{ n: number }, [string]>(
+    "select 1 as n from bars where instrument = ? and interval = '1d' limit 1",
+  );
+  type Ended = Omit<ScopeRun, "failing" | "scope"> & {
+    scope: string | null;
+    status: Run["status"];
+  };
+  return (
+    db
+      .query<Ended, []>(
+        `select source, job, scope, status, error,
+           ended_at as endedAt, max(started_at)
+         from sync_runs where status <> 'running'
+         group by source, job, scope
+         order by source, job, endedAt desc`,
+      )
+      .all()
+      // a run from before backfill runs had a scope names nothing
+      .filter((r): r is Ended & { scope: string } => r.scope !== null)
+      .map((r) => {
+        // a read fetches a history without a backfill run, which settles it
+        const settled =
+          r.status === "failed" &&
+          r.source === YAHOO &&
+          r.job === BACKFILL_JOB &&
+          hasBars.get(r.scope) !== null;
+        return {
+          source: r.source,
+          job: r.job,
+          scope: r.scope,
+          error: r.error,
+          endedAt: r.endedAt,
+          failing: failedRun(r) && !settled,
+        };
+      })
+  );
+}
+
+// every scope status lists as failing, not only the few a job shows
+export const failingScopes = (db: Db): ScopeRun[] =>
+  scopeRuns(db).filter((r) => r.failing);
+
 // SQLite answers a max() query's other columns from the row holding it
 function jobs(db: Db) {
   const last = db
@@ -246,7 +294,6 @@ function jobs(db: Db) {
        from sync_runs group by source, job order by source, job`,
     )
     .all();
-  // each scope's latest ended run, over the runs kept
   type Counts = {
     instruments: number;
     markets: number;
@@ -254,27 +301,8 @@ function jobs(db: Db) {
     failing_markets: number;
   };
   const scopes = new Map<string, Counts>();
-  const failing = new Map<string, Failed[]>();
-  const hasBars = db.query<{ n: number }, [string]>(
-    "select 1 as n from bars where instrument = ? and interval = '1d' limit 1",
-  );
-  for (const r of db
-    .query<Failed & { source: string; job: string; status: Run["status"] }, []>(
-      `select source, job, scope, status, error,
-         ended_at as endedAt, max(started_at)
-       from sync_runs where status <> 'running'
-       group by source, job, scope
-       order by source, job, endedAt desc`,
-    )
-    .all()) {
-    // a run from before backfill runs had a scope names nothing
-    if (r.scope === null) continue;
-    // a read fetches a history without a backfill run, which settles it
-    const settled =
-      r.status === "failed" &&
-      r.source === YAHOO &&
-      r.job === BACKFILL_JOB &&
-      hasBars.get(r.scope) !== null;
+  const failing = new Map<string, ScopeRun[]>();
+  for (const r of scopeRuns(db)) {
     const key = `${r.source}|${r.job}`;
     const n = scopes.get(key) ?? {
       instruments: 0,
@@ -286,7 +314,7 @@ function jobs(db: Db) {
     if (instrument) n.instruments++;
     else n.markets++;
     scopes.set(key, n);
-    if (!failedRun(r) || settled) continue;
+    if (!r.failing) continue;
     if (instrument) n.failing_instruments++;
     else n.failing_markets++;
     const list = failing.get(key) ?? [];
@@ -635,6 +663,18 @@ function parseRefetch(body: unknown): RefetchArgs {
     sections = list(b.sections, RESEARCH_SECTIONS, "sections");
   }
   return { parts, sections };
+}
+
+export async function retryFailing(
+  d: AdminDeps,
+  req: Request,
+  url: URL,
+): Promise<Response> {
+  noQuery(url);
+  if ((await req.arrayBuffer()).byteLength > 0) {
+    throw new ArgError("this route takes no body");
+  }
+  return json(await retryFailed(d.m, failingScopes(d.m.db)));
 }
 
 export async function refetchOne(

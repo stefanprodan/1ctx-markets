@@ -72,6 +72,7 @@ MCP tools copied onto paths.
 | `POST /keys` | admin | `createOne()` | `{name, expiresInDays, portfolio}` (days null, 30, 90 or 365; portfolio `none`, the default, `read` or `write`); 201 with `key` and its `token`, once; 409 for a taken name or past the cap of 5 |
 | `DELETE /keys/{id}` | admin | `revokeOne()` | 204; 404 for an unknown id |
 | `GET /status` | admin | `status()` | `docs/admin.md` |
+| `POST /status/retry` | admin | `retryFailing()` | `asked`, `fetched`, `failed`, `left_out`: counts only; no body taken (`docs/admin.md`) |
 | `GET /openapi.json` | none | `spec` | the OpenAPI document |
 | `GET /docs`, `GET /docs/{file}` | none | `docs.ts` | the bundled Swagger UI page and its files |
 
@@ -130,7 +131,7 @@ MCP tools copied onto paths.
   section (`docs/research.md`), absent for anything else, so the page
   needs no second call. A fund never fetched is fetched beside the
   quote under one deadline, gated as in `research`: the page re-reads
-  every minute, so a failing fund is asked once per `RETRY_MS`. Past
+  every 30 seconds, so a failing fund is asked once per `RETRY_MS`. Past
   the deadline the answer has the stored object, its `stale` saying
   why.
 - **A stored instrument whose read fails answers 200** with its row,
@@ -215,7 +216,7 @@ MCP tools copied onto paths.
   dashboard, never seeded again. The seed keeps to the save limits
   below, so its first edit can be saved.
 - **It is no read and fetches nothing**, as the watchlist: the page
-  asks every minute.
+  asks every 30 seconds.
 - **`PUT /dashboard` replaces the whole layout in one write**: a move,
   a rename, an add or a remove is one call. A stored instrument's id
   is taken as it is, asking no source, so a source that is off never
@@ -348,8 +349,8 @@ MCP tools copied onto paths.
   narrower one, and `/mcp`: a single-user install needs no other key.
 - **A valid key without the scope is 403 `forbidden`**: an agent key
   on `GET /instruments`, `DELETE /instruments/{symbol}`, refetch,
-  `/status` and `/keys`, and on a portfolio, rules or profile route
-  without that access.
+  `/status`, its retry and `/keys`, and on a portfolio, rules or
+  profile route without that access.
 - **Portfolio routes take the key's portfolio access** (`keys.portfolio`,
   `none` by default): `portfolio:read` opens with `read` or `write`,
   `portfolio:write` with `write`. Holdings are private, so the read

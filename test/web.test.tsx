@@ -7,7 +7,7 @@ import { render } from "preact-render-to-string";
 import { spec } from "../src/api/openapi.ts";
 import { UI_PATHS } from "../src/server/http.ts";
 import { App, Shell } from "../src/web/app/App.tsx";
-import { Rail } from "../src/web/app/Rail.tsx";
+import { iconClass, Rail } from "../src/web/app/Rail.tsx";
 import {
   putRecent,
   RECENT_MAX,
@@ -45,6 +45,7 @@ import {
   type Listed,
   layoutOf,
   payloadOf,
+  RETRY_PATH,
   SESSION_PATH,
   STATUS_PATH,
   type Status,
@@ -61,6 +62,8 @@ import {
   signedChange,
 } from "../src/web/lib/format.ts";
 import { about, marketOf, symbolOf } from "../src/web/lib/names.ts";
+import { reloading } from "../src/web/lib/refresh.ts";
+import { MenuItems } from "../src/web/ui/Menu.tsx";
 import { didNotLoad, Page } from "../src/web/ui/Page.tsx";
 import { Segmented } from "../src/web/ui/Segmented.tsx";
 import {
@@ -182,18 +185,24 @@ import { SignIn } from "../src/web/views/SignIn.tsx";
 import {
   allOk,
   bytes,
-  clockTime,
   groups,
   jobLine,
   jobTone,
   jobWhen,
+  retried,
+  retryable,
   runTime,
   switchFailure,
   trackFailed,
   trackLine,
   troubled,
 } from "../src/web/views/Status.model.ts";
-import { JobDetails, StatusBody } from "../src/web/views/Status.tsx";
+import {
+  JobDetails,
+  StatusBody,
+  StatusMenu,
+  statusItems,
+} from "../src/web/views/Status.tsx";
 import { validate } from "./helpers/schema.ts";
 
 const NOW = Date.parse("2026-10-28T12:00:00Z");
@@ -517,7 +526,6 @@ describe("the data layer", () => {
     expect(signed.signedIn.value).toBe(true);
     expect(signed.status.value).toEqual(STATUS);
     expect(signed.watchlist.value).toEqual(WATCHLIST);
-    expect(signed.statusAt.value).toBe(NOW);
     const out = store(
       fake({ [`GET ${STATUS_PATH}`]: status(401, {}), ...WATCHED }).fetch,
     );
@@ -798,10 +806,6 @@ describe("the data layer", () => {
 });
 
 describe("the status model", () => {
-  test("the clock is 24-hour", () => {
-    expect(clockTime(Date.UTC(2026, 9, 28, 13, 5, 9))).not.toMatch(/AM|PM/i);
-  });
-
   test("sizes, distances and times read as an operator says them", () => {
     expect(bytes(512)).toBe("512 B");
     expect(bytes(65_515_520)).toBe("62 MB");
@@ -1046,6 +1050,95 @@ describe("the views", () => {
     expect(html).toContain('<p class="notice">Sync is off.</p>');
   });
 
+  test("the status menu holds Refresh and the retry, off with nothing failing", () => {
+    const items = (failing: boolean) =>
+      render(
+        <MenuItems
+          close={() => {}}
+          items={statusItems({
+            failing,
+            loading: false,
+            onRefresh: () => {},
+            onRetry: () => {},
+          })}
+        />,
+      );
+    const on = items(true);
+    expect(on.match(/role="menuitem"/g)).toHaveLength(2);
+    expect(on).toMatch(/role="menuitem"[^>]*>.*Refresh<\/button>/);
+    expect(on).toMatch(/role="menuitem"[^>]*>.*Retry failed jobs<\/button>/);
+    expect(on).not.toContain("disabled");
+    expect(items(false)).toMatch(
+      /role="menuitem" disabled[^>]*>.*Retry failed jobs<\/button>/,
+    );
+    const menu = (busy: boolean, done: boolean) =>
+      render(
+        <StatusMenu
+          busy={busy}
+          done={done}
+          failing
+          loading={false}
+          onRefresh={() => {}}
+          onRetry={() => {}}
+        />,
+      );
+    const idle = menu(false, false);
+    expect(idle).toContain('aria-label="More"');
+    expect(idle).not.toContain("disabled");
+    const busy = menu(true, false);
+    expect(busy).toContain("disabled");
+    expect(busy).toContain("spinner");
+    expect(menu(false, true)).toContain("status-done");
+  });
+
+  test("only a failing instrument makes the retry worth asking, and the check needs a fetch", () => {
+    const market = job("prices", "quotes", {
+      failing_markets: 1,
+      failing_scopes: 1,
+    });
+    const share = job("research", "metric", {
+      failing_instruments: 1,
+      failing_scopes: 1,
+    });
+    expect(retryable([job("prices", "bars")])).toBe(false);
+    expect(retryable([market])).toBe(false);
+    expect(retryable([market, share])).toBe(true);
+    const counts = { asked: 1, fetched: 1, failed: 0, left_out: 0 };
+    expect(retried(counts)).toBe(true);
+    expect(retried({ ...counts, fetched: 0, asked: 0, left_out: 2 })).toBe(
+      false,
+    );
+    expect(retried({ ...counts, asked: 2, failed: 1 })).toBe(false);
+  });
+
+  test("a retry posts to its route, then reloads status", async () => {
+    const counts = { asked: 2, fetched: 1, failed: 1, left_out: 3 };
+    const f = fake({
+      [`POST ${RETRY_PATH}`]: ok(counts),
+      [`GET ${STATUS_PATH}`]: ok(STATUS),
+      ...WATCHED,
+    });
+    const s = store(f.fetch);
+    expect(await s.retry()).toEqual(counts);
+    const post = f.asked.findIndex((a) => a.path === RETRY_PATH);
+    expect(f.asked[post]!.init?.method).toBe("POST");
+    expect(f.asked[post]!.init?.body).toBeUndefined();
+    expect(f.asked.slice(post + 1).some((a) => a.path === STATUS_PATH)).toBe(
+      true,
+    );
+    // refused, it throws for the page's notice and reloads nothing
+    const refused = fake({
+      [`POST ${RETRY_PATH}`]: status(403, {
+        title: "Forbidden",
+        status: 403,
+        code: "forbidden",
+        detail: "this route takes the admin key",
+      }),
+    });
+    await expect(store(refused.fetch).retry()).rejects.toThrow();
+    expect(refused.asked.map((a) => a.path)).toEqual([RETRY_PATH]);
+  });
+
   test("sign-in asks for the admin key alone", () => {
     const html = render(<SignIn store={store(fake({}).fetch)} />);
     expect(html).toContain("Admin key");
@@ -1081,6 +1174,31 @@ describe("the views", () => {
     const drawer = render(<Rail here="/status" narrow onHide={() => {}} />);
     expect(drawer).toContain("rail-drawer");
     expect(drawer).toContain("Close the menu");
+  });
+
+  test("a page re-reading pulses its own icon in the rail and the strip", () => {
+    const pulsing = (html: string) =>
+      [...html.matchAll(/aria-current="page"[^>]*>.{0,400}?rail-icon-reload/g)]
+        .length;
+    const views = () => [
+      render(<Rail here="/instruments" narrow={false} onHide={() => {}} />),
+      render(<Strip here="/instruments" />),
+    ];
+    for (const html of views()) {
+      expect(html).not.toContain("rail-icon-reload");
+    }
+    reloading.value = 1;
+    try {
+      for (const html of views()) {
+        expect(html.match(/rail-icon-reload/g)).toHaveLength(1);
+        expect(pulsing(html)).toBe(1);
+      }
+    } finally {
+      reloading.value = 0;
+    }
+    expect(iconClass(true, true)).toBe("rail-icon-failed");
+    expect(iconClass(false, true)).toBe("rail-icon-reload");
+    expect(iconClass(false, false)).toBeUndefined();
   });
 
   test("the rail lists the recent instruments, the one on screen lit", () => {

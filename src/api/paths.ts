@@ -822,6 +822,27 @@ export const paths = {
       responses: admins({ 200: ok("The status.", ref("Status")) }),
     },
   },
+  "/status/retry": {
+    post: {
+      tags: ["server"],
+      operationId: "retryFailed",
+      security: ADMIN_AUTH,
+      summary: "Retry failed jobs",
+      description: lines(
+        "Asks again, at once, for each instrument whose latest run of a job failed, as listed by `GET /status`: only what failed, such as one share's news or key figures. Answers how many were asked, fetched, failed and left out.",
+        "",
+        "- Takes no body.",
+        "- Leaves out a job that runs for a whole market, such as live prices; it runs again soon on its own.",
+        "- Leaves out a job whose source is off.",
+        "- A job that succeeds leaves the failing list; one that fails again stays in it with its new error.",
+        "- Spends the sources' rate limits.",
+        `- The call has a ${DEADLINE_S}-second deadline; what it cuts off waits for its job's next run.`,
+      ),
+      responses: admins({
+        200: ok("How many were asked again.", ref("Retried")),
+      }),
+    },
+  },
   "/openapi.json": {
     get: {
       tags: ["docs"],

@@ -14,6 +14,7 @@ export const TIMEOUT_MS = 40_000;
 
 const USAGE = `usage: 1ctx-markets admin [--listen <host:port>] [--data <dir>] <command>
   status                          what the server and its sources are doing
+  retry                           ask each failed instrument's job again
   refetch [--fetch <parts>] [--sections <sections>] <id>...
                                   ask the sources again for stored instruments;
                                   parts: ${PARTS.join(",")} (default: all);
@@ -70,7 +71,7 @@ function parse(argv: string[]): Parsed {
   out.ids = ids;
   const refetch = command === "refetch";
   const valid =
-    (command === "status" && ids.length === 0) ||
+    ((command === "status" || command === "retry") && ids.length === 0) ||
     (refetch && ids.length > 0) ||
     (command === "delete" && ids.length === 1);
   if (!valid || (!refetch && (out.fetch !== null || out.sections !== null))) {
@@ -128,6 +129,9 @@ const at = (id: string) => `/api/v1/instruments/${encodeURIComponent(id)}`;
 function requests(p: Parsed): Call[] {
   if (p.command === "status") {
     return [{ path: "/api/v1/status", init: { method: "GET" } }];
+  }
+  if (p.command === "retry") {
+    return [{ path: "/api/v1/status/retry", init: { method: "POST" } }];
   }
   if (p.command === "delete") {
     return [{ path: at(p.ids[0]!), init: { method: "DELETE" } }];

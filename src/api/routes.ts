@@ -14,6 +14,7 @@ import {
   instrument,
   instruments,
   refetchOne,
+  retryFailing,
   status,
   storedCheck,
   watchlist,
@@ -611,6 +612,12 @@ function operator(
       path: "/status",
       scope: "admin",
       handle: async (_req, url) => status(admin, url),
+    },
+    {
+      method: "POST",
+      path: "/status/retry",
+      scope: "admin",
+      handle: (req, url) => retryFailing(admin, req, url),
     },
     {
       method: "GET",
