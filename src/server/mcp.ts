@@ -8,7 +8,12 @@ import {
   McpServer,
 } from "@modelcontextprotocol/server";
 import type { Markets } from "../operations/markets.ts";
-import { type Access, NO_ACCESS, type Who } from "../operations/who.ts";
+import {
+  type Access,
+  type Credential,
+  NO_ACCESS,
+  type Who,
+} from "../operations/who.ts";
 import { type Log, sdkErrorFields } from "../runtime/log.ts";
 import { registerTools } from "../tools/index.ts";
 
@@ -23,13 +28,22 @@ function scoped(scopes: string[], area: string): Access {
     : "none";
 }
 
-// the router's caller, handed on as authInfo; none without it
+// the router's caller, handed on as authInfo; none without it or without
+// its person, so no tool reads anyone's rows by default
 function whoFrom(
-  info: { clientId: string; scopes: string[] } | undefined,
+  info:
+    | { clientId: string; scopes: string[]; extra?: Record<string, unknown> }
+    | undefined,
 ): Who {
-  if (info === undefined) return NO_ACCESS;
+  const user = info?.extra?.user;
+  const credential = info?.extra?.credential as Credential | undefined;
+  if (info === undefined || typeof user !== "string" || !credential) {
+    return NO_ACCESS;
+  }
   return {
     name: info.clientId,
+    user,
+    credential,
     portfolio: scoped(info.scopes, "portfolio"),
     rules: scoped(info.scopes, "rules"),
     profile: scoped(info.scopes, "profile"),

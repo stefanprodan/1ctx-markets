@@ -16,8 +16,6 @@ import { FRED } from "../sources/ids.ts";
 import type { Db } from "../storage/db/index.ts";
 import { listRow, type Stored, storedRow } from "./http.ts";
 
-export const OWNER = "operator";
-
 export const MAX_SECTIONS = 20;
 export const MAX_SECTION_SYMBOLS = 100;
 export const MAX_DASHBOARD_SYMBOLS = 200;
@@ -48,23 +46,26 @@ const PLURAL: Record<string, string> = {
 const pluralOf = (type: string) =>
   PLURAL[type] ?? type.charAt(0) + type.slice(1).toLowerCase();
 
-function stored(db: Db): { revision: number; sections: Section[] } | null {
+function stored(
+  db: Db,
+  owner: string,
+): { revision: number; sections: Section[] } | null {
   const head = db
     .query<{ revision: number }, [string]>(
       "select revision from dashboards where owner = ?",
     )
-    .get(OWNER);
+    .get(owner);
   if (head === null) return null;
   const sections = db
     .query<{ position: number; name: string; view: View }, [string]>(
       "select position, name, view from dashboard_sections where owner = ? order by position",
     )
-    .all(OWNER);
+    .all(owner);
   const items = db
     .query<{ section: number; instrument: string }, [string]>(
       "select section, instrument from dashboard_items where owner = ? order by section, position",
     )
-    .all(OWNER);
+    .all(owner);
   return {
     revision: head.revision,
     sections: sections.map((s) => ({
@@ -174,11 +175,15 @@ function item(
 }
 
 // no read and no fetch: the page asks every minute
-export function readDashboard(m: Markets, track: () => readonly TrackState[]) {
+export function readDashboard(
+  m: Markets,
+  owner: string,
+  track: () => readonly TrackState[],
+) {
   const now = m.clock.now();
-  const saved = stored(m.db);
+  const saved = stored(m.db, owner);
   const sections = saved?.sections ?? seed(m.db, track());
-  const row = listRow(m, now);
+  const row = listRow(m, owner, now);
   let fred = false;
   const out = sections.map((s) => ({
     name: s.name,
@@ -252,20 +257,27 @@ export function parseLayout(body: unknown): LayoutArgs {
   return { revision: b.revision, sections };
 }
 
-const revisionOf = (db: Db) => stored(db)?.revision ?? 0;
+const revisionOf = (db: Db, owner: string) => stored(db, owner)?.revision ?? 0;
 
-const changed = (m: Markets, track: () => readonly TrackState[]) =>
+const changed = (
+  m: Markets,
+  owner: string,
+  track: () => readonly TrackState[],
+) =>
   problem("conflict", "the dashboard changed since that revision", {
-    dashboard: readDashboard(m, track),
+    dashboard: readDashboard(m, owner, track),
   });
 
 // resolved before the write, since a fetch never runs inside one
 export async function saveDashboard(
   m: Markets,
+  owner: string,
   track: () => readonly TrackState[],
   args: LayoutArgs,
 ): Promise<Response> {
-  if (args.revision !== revisionOf(m.db)) return changed(m, track);
+  if (args.revision !== revisionOf(m.db, owner)) {
+    return changed(m, owner, track);
+  }
   const inputs = [...new Set(args.sections.flatMap((s) => s.symbols))];
   // asking a stored card's source again would refuse a rename while it is off
   const idOf = new Map<string, string>();
@@ -304,14 +316,14 @@ export async function saveDashboard(
     }),
   }));
   const saved = await m.writer.write((db) => {
-    if (revisionOf(db) !== args.revision) return false;
+    if (revisionOf(db, owner) !== args.revision) return false;
     const now = m.clock.now();
     db.query(
       `insert into dashboards (owner, revision, updated_at) values (?1, ?2, ?3)
        on conflict (owner) do update set revision = ?2, updated_at = ?3`,
-    ).run(OWNER, args.revision + 1, now);
-    db.query("delete from dashboard_items where owner = ?").run(OWNER);
-    db.query("delete from dashboard_sections where owner = ?").run(OWNER);
+    ).run(owner, args.revision + 1, now);
+    db.query("delete from dashboard_items where owner = ?").run(owner);
+    db.query("delete from dashboard_sections where owner = ?").run(owner);
     const section = db.query(
       "insert into dashboard_sections (owner, position, name, view) values (?, ?, ?, ?)",
     );
@@ -319,16 +331,16 @@ export async function saveDashboard(
       "insert into dashboard_items (owner, section, position, instrument) values (?, ?, ?, ?)",
     );
     sections.forEach((s, k) => {
-      section.run(OWNER, k, s.name, s.view);
+      section.run(owner, k, s.name, s.view);
       // one deleted since it resolved has no card to keep
       s.ids
         .filter((id) => readInstrument(db, id) !== null)
         .forEach((id, j) => {
-          add.run(OWNER, k, j, id);
+          add.run(owner, k, j, id);
         });
     });
     return true;
   });
-  if (!saved) return changed(m, track);
-  return json(readDashboard(m, track));
+  if (!saved) return changed(m, owner, track);
+  return json(readDashboard(m, owner, track));
 }

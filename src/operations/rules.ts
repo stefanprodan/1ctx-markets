@@ -256,6 +256,7 @@ export type Created = {
 
 export async function createRule(
   m: Markets,
+  owner: string,
   args: Extract<RulesArgs, { action: "create" }>,
 ): Promise<Created | Failure> {
   const gate = args.condition.afterEarnings;
@@ -354,6 +355,7 @@ export async function createRule(
     }
     const id = insertRule(
       db,
+      owner,
       {
         instrument: own,
         condition: writeCondition(condition),
@@ -361,8 +363,13 @@ export async function createRule(
       },
       now,
     );
-    const outcome = applyRule(db, readRule(db, id)!, now, m.quoteEveryMs);
-    return { rule: readRule(db, id)!, outcome };
+    const outcome = applyRule(
+      db,
+      readRule(db, owner, id)!,
+      now,
+      m.quoteEveryMs,
+    );
+    return { rule: readRule(db, owner, id)!, outcome };
   });
   if (done === null) return timeout(m);
   if ("error" in done) return done;
@@ -375,9 +382,10 @@ export async function createRule(
 
 async function create(
   m: Markets,
+  owner: string,
   args: Extract<RulesArgs, { action: "create" }>,
 ): Promise<ToolResult> {
-  const body = await createRule(m, args);
+  const body = await createRule(m, owner, args);
   if ("error" in body) return errorResult(body);
   const full = JSON.stringify(body);
   if (fits(full)) return textResult(full);
@@ -393,7 +401,11 @@ async function create(
   );
 }
 
-function list(m: Markets, args: Extract<RulesArgs, { action: "list" }>) {
+function list(
+  m: Markets,
+  owner: string,
+  args: Extract<RulesArgs, { action: "list" }>,
+) {
   let from = 0;
   if (args.next !== null) {
     const at = readCursor(args.next, { action: "list" });
@@ -402,7 +414,7 @@ function list(m: Markets, args: Extract<RulesArgs, { action: "list" }>) {
     }
     from = Number(at);
   }
-  const rules = readRules(m.db, { from });
+  const rules = readRules(m.db, owner, { from });
   const page = fitPage(
     rules.map((r) => ruleItem(m, r)),
     (count) => ({
@@ -423,16 +435,17 @@ const notFound = (id: number): Failure => ({
 
 export async function pauseRule(
   m: Markets,
+  owner: string,
   args: Extract<RulesArgs, { action: "pause" }>,
 ): Promise<{ rule: ReturnType<typeof ruleItem> } | Failure> {
   const out = await m.writer.write((db) => {
-    const rule = readRule(db, args.id);
+    const rule = readRule(db, owner, args.id);
     if (rule === null) return null;
     if (rule.paused === "split") {
       return args.paused ? { rule } : { split: rule };
     }
     setPaused(db, rule.id, args.paused ? "manual" : null);
-    return { rule: readRule(db, rule.id)! };
+    return { rule: readRule(db, owner, rule.id)! };
   });
   if (out === null) return notFound(args.id);
   if ("split" in out) {
@@ -447,9 +460,10 @@ export async function pauseRule(
 // its alerts stay, as alerts outlive their rules
 export async function deleteRuleById(
   m: Markets,
+  owner: string,
   id: number,
 ): Promise<{ deleted: number; alerts: "kept" } | Failure> {
-  const deleted = await m.writer.write((db) => deleteRule(db, id));
+  const deleted = await m.writer.write((db) => deleteRule(db, owner, id));
   if (!deleted) return notFound(id);
   return { deleted: id, alerts: "kept" };
 }
@@ -476,12 +490,12 @@ export async function rulesAnswer(
   if (!opens(who.rules, writes)) return errorResult(forbidden(writes));
   switch (args.action) {
     case "create":
-      return create(m, args);
+      return create(m, who.user, args);
     case "list":
-      return list(m, args);
+      return list(m, who.user, args);
     case "pause":
-      return answered(await pauseRule(m, args));
+      return answered(await pauseRule(m, who.user, args));
     case "delete":
-      return answered(await deleteRuleById(m, args.id));
+      return answered(await deleteRuleById(m, who.user, args.id));
   }
 }

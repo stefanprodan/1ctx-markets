@@ -5,6 +5,7 @@
 import { describe, expect, test } from "bun:test";
 import { spec } from "../src/api/openapi.ts";
 import { upsertInstrument } from "../src/market/instruments.ts";
+import { OPERATOR } from "../src/operations/who.ts";
 import { insertFund, setFundPrice } from "../src/portfolios/funds.ts";
 import { growth, yearBefore } from "../src/portfolios/growth.ts";
 import {
@@ -34,9 +35,9 @@ const EVERY = 60_000;
 
 function setup(currency = "EUR") {
   const w = world();
-  setDisplayCurrency(w.db, currency, NOW);
-  ensureCash(w.db, NOW);
-  const shares = insertPortfolio(w.db, "Shares", NOW);
+  setDisplayCurrency(w.db, OPERATOR, currency, NOW);
+  ensureCash(w.db, OPERATOR, NOW);
+  const shares = insertPortfolio(w.db, OPERATOR, "Shares", NOW);
   return { ...w, shares };
 }
 
@@ -120,8 +121,9 @@ const closes = (db: Db, id: string, list: [string, number][]) => {
 };
 
 const scopeOf = (db: Db, portfolio: number | null, currency = "EUR") => ({
-  portfolios: listPortfolios(db),
-  brokers: listBrokers(db),
+  owner: OPERATOR,
+  portfolios: listPortfolios(db, OPERATOR),
+  brokers: listBrokers(db, OPERATOR),
   portfolio,
   currency,
 });
@@ -330,8 +332,9 @@ describe("growth", () => {
       quantity: 10,
       price: 100,
     });
-    setFundPrice(db, f.id, "2030-01-05", 100, "test", NOW);
-    setFundPrice(db, f.id, "2030-01-15", 120, "test", NOW);
+    const by = { name: "test", user: OPERATOR };
+    setFundPrice(db, f.id, "2030-01-05", 100, by, NOW);
+    setFundPrice(db, f.id, "2030-01-15", 120, by, NOW);
     const g = read(db, shares);
     expect(g.eased).toEqual([f.id]);
     expect(on(g, "2030-01-05").value).toBe(1000);
@@ -350,7 +353,7 @@ describe("growth", () => {
       amount: 1000,
       cost: 980,
     });
-    setPositionRemoved(db, first, "test", NOW);
+    setPositionRemoved(db, OPERATOR, first, "test", NOW);
     position(db, {
       portfolio: shares,
       kind: "bond",
@@ -402,7 +405,7 @@ describe("growth", () => {
 
   test("leaves cash and reserve out; Cash and an empty view draw nothing", () => {
     const { db, shares } = setup();
-    const cash = listPortfolios(db).find((p) => p.cash)!.id;
+    const cash = listPortfolios(db, OPERATOR).find((p) => p.cash)!.id;
     position(db, { portfolio: cash, kind: "cash", amount: 5000 });
     position(db, {
       portfolio: cash,
@@ -426,10 +429,10 @@ describe("growth", () => {
       eased: [],
       missing: [],
     });
-    const empty = insertPortfolio(db, "Empty", NOW);
+    const empty = insertPortfolio(db, OPERATOR, "Empty", NOW);
     expect(read(db, empty).points).toEqual([]);
     // bought today: one day held is no line
-    const fresh = insertPortfolio(db, "Fresh", NOW);
+    const fresh = insertPortfolio(db, OPERATOR, "Fresh", NOW);
     trade(db, { portfolio: fresh, date: LIVE, quantity: 1, price: 10 });
     expect(read(db, fresh).points).toEqual([]);
   });
@@ -612,7 +615,7 @@ describe("growth", () => {
       quantity: 5,
       price: 10,
     });
-    setTradeRemoved(db, gone, "test", NOW);
+    setTradeRemoved(db, OPERATOR, gone, "test", NOW);
     const g = read(db, shares);
     expect(on(g, "2030-03-02")).toEqual({
       date: "2030-03-02",
@@ -674,7 +677,7 @@ describe("growth routes", () => {
 
   test("refuses a read with no currency named or set", async () => {
     const { db, m } = setup();
-    setDisplayCurrency(db, null, NOW);
+    setDisplayCurrency(db, OPERATOR, null, NOW);
     const res = await api(m)(
       new Request("http://markets.test/api/v1/holdings/growth", {
         headers: { authorization: `Bearer ${ADMIN_KEY}` },

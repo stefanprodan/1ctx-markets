@@ -46,12 +46,15 @@ function setup() {
       new Request(`http://localhost${path}`, {
         headers: tag === undefined ? {} : { "if-none-match": tag },
       }),
+      "operator",
     );
   return { clock, db, get };
 }
 
 const fire = (db: Db, at: number, n = 1, note: string | null = null) => {
-  for (let k = 0; k < n; k++) insertAlert(db, 1, snapshot(1, note), at);
+  for (let k = 0; k < n; k++) {
+    insertAlert(db, { id: 1, owner: "operator" }, snapshot(1, note), at);
+  }
 };
 
 const ids = async (res: Response) =>
@@ -184,7 +187,12 @@ describe("the alerts feed", () => {
 
   test("is served behind a key, GET only", () =>
     withApp(async (t) => {
-      insertAlert(t.db, 1, snapshot(1), t.clock.now());
+      insertAlert(
+        t.db,
+        { id: 1, owner: "operator" },
+        snapshot(1),
+        t.clock.now(),
+      );
       const auth = { authorization: `Bearer ${t.bearer}` };
       expect((await fetch(`${t.url}/api/v1/alerts`)).status).toBe(401);
       const post = await fetch(`${t.url}/api/v1/alerts`, {

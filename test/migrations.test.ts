@@ -3,6 +3,7 @@
 
 import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
+import { OPERATOR } from "../src/operations/who.ts";
 import { listPortfolios } from "../src/portfolios/store.ts";
 import { migrate, open } from "../src/storage/db/index.ts";
 import type { Migration } from "../src/storage/db/migration.ts";
@@ -725,7 +726,7 @@ describe("the Cash portfolio's migration", () => {
       { name: "Alpha", position: 1 },
       { name: "beta", position: 2 },
     ]);
-    expect(listPortfolios(db).map((p) => p.name)).toEqual([
+    expect(listPortfolios(db, OPERATOR).map((p) => p.name)).toEqual([
       "Cash",
       "Alpha",
       "beta",

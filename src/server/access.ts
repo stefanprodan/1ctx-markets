@@ -45,6 +45,8 @@ export type ProfileAccess = (typeof PROFILE_ACCESS)[number];
 
 export type KeyRow = {
   id: string;
+  // the person who made it, whose rows its agent reads and writes
+  user: string;
   name: string;
   createdAt: number;
   // null never expires
@@ -59,6 +61,7 @@ export type Caller = { kind: "admin" } | { kind: "agent"; key: KeyRow };
 
 type Raw = {
   id: string;
+  user_id: string;
   name: string;
   created_at: number;
   expires_at: number | null;
@@ -69,10 +72,11 @@ type Raw = {
 };
 
 const COLUMNS =
-  "id, name, created_at, expires_at, last_used_at, portfolio, rules, profile";
+  "id, user_id, name, created_at, expires_at, last_used_at, portfolio, rules, profile";
 
 const rowOf = (raw: Raw): KeyRow => ({
   id: raw.id,
+  user: raw.user_id,
   name: raw.name,
   createdAt: raw.created_at,
   expiresAt: raw.expires_at,
@@ -97,10 +101,13 @@ const newToken = (): string =>
   KEY_PREFIX +
   Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("base64url");
 
-export const listKeys = (db: Db): KeyRow[] =>
+// the person's own keys
+export const listKeys = (db: Db, user: string): KeyRow[] =>
   db
-    .query<Raw, []>(`select ${COLUMNS} from keys order by created_at, rowid`)
-    .all()
+    .query<Raw, [string]>(
+      `select ${COLUMNS} from keys where user_id = ? order by created_at, rowid`,
+    )
+    .all(user)
     .map(rowOf);
 
 export class KeyConflict extends Error {}
@@ -108,6 +115,7 @@ export class KeyConflict extends Error {}
 // inside a write, so the cap and the name hold against a concurrent create
 export function createKey(
   db: Db,
+  user: string,
   args: {
     name: string;
     days: KeyDays | null;
@@ -119,13 +127,13 @@ export function createKey(
 ): { key: KeyRow; token: string } {
   if (RESERVED_NAMES.includes(args.name))
     throw new KeyConflict("name reserved");
-  const keys = listKeys(db);
-  if (keys.some((k) => k.name === args.name)) {
-    throw new KeyConflict("name taken");
-  }
+  // names are unique across the server until each person has their own
+  if (keyByName(db, args.name) !== null) throw new KeyConflict("name taken");
+  const keys = listKeys(db, user);
   if (keys.length >= MAX_KEYS) throw new KeyConflict("too many keys");
   const key: KeyRow = {
     id: newId(),
+    user,
     name: args.name,
     createdAt: now,
     expiresAt: args.days === null ? null : now + args.days * DAY_MS,
@@ -137,11 +145,12 @@ export function createKey(
   const token = newToken();
   db.query(
     `insert into keys
-       (id, name, token_hash, created_at, expires_at, portfolio, rules,
-        profile)
-     values (?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, user_id, name, token_hash, created_at, expires_at, portfolio,
+        rules, profile)
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     key.id,
+    key.user,
     key.name,
     tokenHash(token),
     key.createdAt,
@@ -162,28 +171,32 @@ export type KeyAccess = {
 // the token, name and expiry stay; an expired key changes too
 export function setKeyAccess(
   db: Db,
+  user: string,
   id: string,
   change: KeyAccess,
 ): KeyRow | null {
   const raw = db
-    .query<Raw, [string | null, string | null, string | null, string]>(
+    .query<Raw, [string | null, string | null, string | null, string, string]>(
       `update keys set portfolio = coalesce(?, portfolio),
          rules = coalesce(?, rules), profile = coalesce(?, profile)
-       where id = ? returning ${COLUMNS}`,
+       where id = ? and user_id = ? returning ${COLUMNS}`,
     )
     .get(
       change.portfolio ?? null,
       change.rules ?? null,
       change.profile ?? null,
       id,
+      user,
     );
   return raw === null ? null : rowOf(raw);
 }
 
-export function revokeKey(db: Db, id: string): KeyRow | null {
+export function revokeKey(db: Db, user: string, id: string): KeyRow | null {
   const raw = db
-    .query<Raw, [string]>(`delete from keys where id = ? returning ${COLUMNS}`)
-    .get(id);
+    .query<Raw, [string, string]>(
+      `delete from keys where id = ? and user_id = ? returning ${COLUMNS}`,
+    )
+    .get(id, user);
   return raw === null ? null : rowOf(raw);
 }
 

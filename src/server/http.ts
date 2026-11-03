@@ -80,7 +80,8 @@ async function messages(req: Request): Promise<number> {
   }
 }
 
-// a cookie is the web UI's, which writes as the admin does
+// a cookie is the web UI's, which writes as the admin does; a key acts
+// as the person who made it
 export const whoOf = (c: Caller | null): Who =>
   c === null
     ? WEB
@@ -88,6 +89,8 @@ export const whoOf = (c: Caller | null): Who =>
       ? ADMIN
       : {
           name: c.key.name,
+          user: c.key.user,
+          credential: { kind: "key", id: c.key.id },
           portfolio: c.key.portfolio,
           rules: c.key.rules,
           profile: c.key.profile,
@@ -213,6 +216,8 @@ export function router(deps: RouterDeps): Handle {
           `rules:${who.rules}`,
           `profile:${who.profile}`,
         ],
+        // per request, never a global: each tool call reads its own person
+        extra: { user: who.user, credential: who.credential },
       },
     });
   };

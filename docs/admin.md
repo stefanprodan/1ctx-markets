@@ -88,9 +88,14 @@ log and cut off without touching the others.
   digit, unique (409 `conflict`, "name taken"). `web` and `admin` are
   reserved (409 `conflict`, "name reserved"): the server records the
   web UI and the admin key by those names.
-- **At most 5 keys** (`MAX_KEYS`), expired ones included, as 1ctx's
-  default cap (409 `conflict`, "too many keys"). The name and the cap
-  are checked in the same write as the insert.
+- **At most 5 keys per person** (`MAX_KEYS`), expired ones included,
+  as 1ctx's default cap (409 `conflict`, "too many keys"). The name,
+  unique across the server, and the cap are checked in the same write as
+  the insert.
+- **A key is its maker's** (`keys.user_id`): the routes list, change and
+  revoke only the caller's own, another's id answering 404, and the
+  key's agent reads and writes that person's rows. The admin key and the
+  web UI make the operator's.
 - **Expiry is optional**: null (never, the default), 30, 90 or 365
   days. An expired key is 401 and stays listed until revoked.
 - **The token is answered once** by `POST`, with `cache-control:
@@ -113,10 +118,13 @@ log and cut off without touching the others.
   and a key without portfolio access reads both.
 - **`query` keeps ids or names holding it**, ignoring ASCII case only
   (SQLite's `lower()`), at most 64 characters.
-- **Each row says what tracks it** in `tracked_by`: `rule` (a rule
-  reads it), `dashboard` (it is on the saved dashboard), `read` (read
-  within the tracking window, with `read_at` and `read_until`), `track`
-  (a `--track` value resolved to it); `tracked` is true when any holds.
+- **Each row says what tracks it** in `tracked_by`: `rule` (a rule of
+  the caller's reads it), `dashboard` (it is on the caller's saved
+  dashboard), `read` (read within the tracking window, with `read_at`
+  and `read_until`), `track` (a `--track` value resolved to it);
+  `tracked` is true when any holds, or when another person's rule,
+  dashboard or holding tracks it, which is never named, since every
+  read-scope key reads the row (`listRow()`).
 - **Each row carries its stored price**: `price`, `change`,
   `change_percent` and `fetched_at` from the stored quote, or a
   series' newest daily close with no change (FRED has no quote). The
@@ -225,7 +233,10 @@ log and cut off without touching the others.
   write moves the dashboard's revision, so a tab still holding the card
   reloads at its next save instead of fetching it back.
 - **Refused with 409 while a rule reads it**, its own or another's
-  condition: delete the rule first. The check is in the same write.
+  condition: delete the rule first. The check is in the same write and
+  counts every person's rules, but `rules` names only the caller's;
+  another person's alone answer "another person's rules read this
+  instrument" with `rules` empty.
 - **Refused with 409 while a trade or position names it**, removed
   ones included, so a restore never finds it gone (`portfolioHolds()`,
   `docs/portfolios.md`); `rules` is empty then and the detail names

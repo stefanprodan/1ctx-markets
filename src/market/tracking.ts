@@ -64,13 +64,14 @@ export function trackedIds(
   return ids;
 }
 
-export function dashboardInstruments(db: Db): Set<string> {
+// every person's, or one owner's
+export function dashboardInstruments(db: Db, owner?: string): Set<string> {
   return new Set(
     db
-      .query<{ id: string }, []>(
-        "select distinct instrument as id from dashboard_items",
+      .query<{ id: string }, [string | null]>(
+        "select distinct instrument as id from dashboard_items where ?1 is null or owner = ?1",
       )
-      .all()
+      .all(owner ?? null)
       .map((r) => r.id),
   );
 }

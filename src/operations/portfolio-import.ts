@@ -474,10 +474,11 @@ export async function importCsv(
   who: Who,
   args: ImportArgs,
 ): Promise<ImportAnswer | Failure> {
-  const named = findPortfolio(m.db, args.portfolio);
+  const owner = who.user;
+  const named = findPortfolio(m.db, owner, args.portfolio);
   if (named === null || "error" in named)
     return named ?? { error: "not_found", message: "no portfolio" };
-  const fileBroker = findBroker(m.db, args.broker);
+  const fileBroker = findBroker(m.db, owner, args.broker);
   if (fileBroker !== null && "error" in fileBroker) return fileBroker;
   const table = parseCsv(args.csv);
   if (table.length < 1) throw new ArgError("csv has no header");
@@ -499,7 +500,7 @@ export async function importCsv(
   }
   // cash goes to Cash whatever portfolio the import is for
   let p: Portfolio | null = named;
-  if (kind === "cash") p = cashPortfolio(m.db);
+  if (kind === "cash") p = cashPortfolio(m.db, owner);
   else if (named.cash) return { error: "bad_arguments", message: CASH_ONLY };
   if (p === null) {
     return {
@@ -507,7 +508,7 @@ export async function importCsv(
       message: `no ${CASH_NAME} portfolio yet; setup makes it with the display currency`,
     };
   }
-  const brokers = listBrokers(m.db);
+  const brokers = listBrokers(m.db, owner);
   const plan = await planRows(m, who, p, kind, header, table.slice(1), {
     broker: fileBroker,
     brokers,
@@ -518,7 +519,7 @@ export async function importCsv(
   if (args.confirm) {
     const now = m.clock.now();
     await m.writer.write((db) => {
-      judge(db, plan);
+      judge(db, owner, plan);
       // rows of one file never replace each other
       const added = new Set<number>();
       const taken = new Set<number>();
@@ -538,7 +539,7 @@ export async function importCsv(
           }
           const id = insertTrade(db, x.trade, now);
           // as a typed buy's: its price stands for its day until one is set
-          if (isFund(i)) buyPrice(db, readTrade(db, id)!, now);
+          if (isFund(i)) buyPrice(db, readTrade(db, owner, id)!, now);
         } else {
           let old: Position | null = null;
           if (x.position.kind === "bond") {
@@ -553,7 +554,9 @@ export async function importCsv(
             const found = samePosition(db, x.position);
             old = found !== null && !added.has(found.id) ? found : null;
           }
-          if (old !== null) setPositionRemoved(db, old.id, who.name, now);
+          if (old !== null) {
+            setPositionRemoved(db, owner, old.id, who.name, now);
+          }
           const id = insertPosition(
             db,
             { ...x.position, replaces: old?.id ?? null },
@@ -717,7 +720,7 @@ async function planTrades(
       });
     }
   }
-  judge(m.db, out);
+  judge(m.db, who.user, out);
   return out;
 }
 
@@ -746,7 +749,7 @@ const sameTrade = (a: NewTrade, t: NewTrade, splits: readonly Split[]) => {
 // any date, with the file's trades merged into each part's history, is
 // refused. One read of the portfolio, and each file sell replays only what
 // follows it, so a large file holds the writer briefly.
-function judge(db: Db, plan: Planned[]): void {
+function judge(db: Db, owner: string, plan: Planned[]): void {
   type Row = Extract<Planned, { kind: "trade" }>;
   for (const x of plan) {
     if (x.kind === "trade" && x.judged) {
@@ -776,7 +779,7 @@ function judge(db: Db, plan: Planned[]): void {
   for (const x of ready) {
     const p = x.trade.portfolio;
     if (!stored.has(p)) {
-      const all = readTrades(db, { portfolio: p });
+      const all = readTrades(db, owner, { portfolio: p });
       stored.set(p, all);
       for (const t of all) {
         const k = `${p}#${keyOf(t)}`;
@@ -891,7 +894,7 @@ async function planPositions(
     .find((c) => c !== undefined);
   const amountColumn =
     header.map(norm).find((h) => /^amount( \(.+\))?$/.test(h)) ?? "amount";
-  const today = ownerToday(m.db, m.clock.now());
+  const today = ownerToday(m.db, who.user, m.clock.now());
   const latest = latestDay(m.clock.now());
   const rows = body.map((cells, k) => ({
     line: k + 2,
@@ -1026,14 +1029,20 @@ export function plain(n: number): string {
 }
 
 // Yahoo's columns, oldest trade first; its market columns are left empty
-export function exportCsv(m: Markets, portfolio: Portfolio): string {
-  const trades = readTrades(m.db, { portfolio: portfolio.id }).reverse();
+export function exportCsv(
+  m: Markets,
+  owner: string,
+  portfolio: Portfolio,
+): string {
+  const trades = readTrades(m.db, owner, {
+    portfolio: portfolio.id,
+  }).reverse();
   const rows: string[][] = [[...YAHOO_HEADER]];
   const fx = rates(m.db, m.clock.now(), m.quoteEveryMs);
   for (const t of trades) {
     const i = readInstrument(m.db, t.instrument);
     const symbol = i?.source === YAHOO ? i.sourceSymbol : t.instrument;
-    const broker = t.broker === null ? null : readBroker(m.db, t.broker);
+    const broker = t.broker === null ? null : readBroker(m.db, owner, t.broker);
     // stated as of today, as the export restates every lot, and tagged so,
     // so a split between export and import applies once
     const f = splitFactor(splitsOf(m.db, t.instrument), statedOf(t));

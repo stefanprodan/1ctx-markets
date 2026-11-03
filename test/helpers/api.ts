@@ -33,6 +33,7 @@ export function keyAccess(adminKey: string | null): Access {
         kind: "agent",
         key: {
           id: "testreadkey0",
+          user: "operator",
           name: "test-read",
           createdAt: 0,
           expiresAt: null,
@@ -64,8 +65,8 @@ export function api(
   });
   m.db
     .query(
-      `insert or ignore into keys (id, name, token_hash, created_at)
-       values ('testreadkey0', 'test-read', ?, ?)`,
+      `insert or ignore into keys (id, user_id, name, token_hash, created_at)
+       values ('testreadkey0', 'operator', 'test-read', ?, ?)`,
     )
     .run(tokenHash(READ_KEY), m.clock.now());
   const handle = router({

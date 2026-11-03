@@ -390,6 +390,8 @@ export type Holdings = {
 };
 
 type Scope = {
+  // users.id: whose rows the scope reads
+  owner: string;
   portfolios: readonly Portfolio[];
   brokers: readonly Broker[];
   portfolio: number | null;
@@ -409,9 +411,12 @@ const plPct = (value: number | null, cost: number | null) =>
 // the scope's live trades, filtered in SQL, read once per answer
 export const scopeTrades = (
   db: Db,
-  scope: Pick<Scope, "portfolio" | "broker">,
+  scope: Pick<Scope, "owner" | "portfolio" | "broker">,
 ): Trade[] =>
-  readTrades(db, { portfolio: scope.portfolio, broker: scope.broker });
+  readTrades(db, scope.owner, {
+    portfolio: scope.portfolio,
+    broker: scope.broker,
+  });
 
 export function readHoldingRows(
   db: Db,
@@ -551,7 +556,7 @@ export function readHoldingRows(
       })),
     );
   }
-  const positions = readPositions(db, {
+  const positions = readPositions(db, scope.owner, {
     portfolio: scope.portfolio,
     broker: scope.broker,
   });
@@ -1110,7 +1115,7 @@ function roundTotal(t: Total): void {
 // ones are fetched before the answer is made
 export function pairsNeeded(
   db: Db,
-  scope: Pick<Scope, "portfolio" | "broker" | "currency">,
+  scope: Pick<Scope, "owner" | "portfolio" | "broker" | "currency">,
   trades: readonly Trade[] = scopeTrades(db, scope),
 ): [string, string][] {
   const out: [string, string][] = [];
@@ -1130,7 +1135,7 @@ export function pairsNeeded(
     }
   }
   if (scope.currency !== null) {
-    for (const p of readPositions(db, {
+    for (const p of readPositions(db, scope.owner, {
       portfolio: scope.portfolio,
       broker: scope.broker,
     })) {
@@ -1152,9 +1157,10 @@ const byDate = (a: Trade, b: Trade) =>
 // one part's trades, removed ones aside
 export function partTrades(
   db: Db,
+  owner: string,
   part: { portfolio: number; instrument: string; broker: number | null },
 ): Trade[] {
-  return readTrades(db, {
+  return readTrades(db, owner, {
     portfolio: part.portfolio,
     instrument: part.instrument,
   }).filter((t) => t.broker === part.broker);

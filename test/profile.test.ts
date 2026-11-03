@@ -8,7 +8,7 @@ import { runKeys } from "../src/admin/keys-cli.ts";
 import { PREFIX } from "../src/api/http.ts";
 import { fits } from "../src/operations/answer.ts";
 import type { Markets } from "../src/operations/markets.ts";
-import { ADMIN, WEB, type Who } from "../src/operations/who.ts";
+import { ADMIN, OPERATOR, WEB, type Who } from "../src/operations/who.ts";
 import { applyEdits, MAX_EDITS } from "../src/profile/edit.ts";
 import { renderMarkdown } from "../src/profile/markdown.ts";
 import { fenceFor } from "../src/profile/read.ts";
@@ -41,6 +41,8 @@ Long only, at most 10% in one name.
 
 const ASHLEY: Who = {
   name: "ashley-agent",
+  user: OPERATOR,
+  credential: { kind: "key", id: "ashley-agent" },
   portfolio: "none",
   rules: "none",
   profile: "write",
@@ -140,7 +142,7 @@ describe("applyEdits", () => {
         message: `edits must be a list of 1 to ${MAX_EDITS} {old, new} pairs`,
       });
     }
-    expect(profileVersions(m.db)).toHaveLength(2);
+    expect(profileVersions(m.db, OPERATOR)).toHaveLength(2);
   });
 
   test("applies all or none", async () => {
@@ -158,7 +160,7 @@ describe("applyEdits", () => {
       error: "bad_arguments",
       message: "edit 2: no match",
     });
-    expect(profileVersions(m.db)).toHaveLength(1);
+    expect(profileVersions(m.db, OPERATOR)).toHaveLength(1);
     expect(bodyOf(await ask(m, ASHLEY, { action: "read" }))).toContain(
       "Horizon: 5 years",
     );
@@ -270,7 +272,9 @@ describe("revisions", () => {
       text: PROFILE,
     });
     expect(jsonOf(replaced)).toMatchObject({ revision: 3, author: "web" });
-    expect(profileVersions(m.db).map((v) => [v.revision, v.author])).toEqual([
+    expect(
+      profileVersions(m.db, OPERATOR).map((v) => [v.revision, v.author]),
+    ).toEqual([
       [3, "web"],
       [2, "admin"],
       [1, "ashley-agent"],
@@ -305,7 +309,7 @@ describe("revisions", () => {
       edits: [{ old: "5 years", new: "5 years" }],
     });
     expect(jsonOf(noop)).toMatchObject({ revision: 1, unchanged: true });
-    expect(profileVersions(m.db)).toHaveLength(1);
+    expect(profileVersions(m.db, OPERATOR)).toHaveLength(1);
   });
 
   test("two first replaces at once land one", async () => {
@@ -314,6 +318,7 @@ describe("revisions", () => {
       ["one", "two"].map((text) =>
         saveProfile(
           m.writer,
+          OPERATOR,
           { action: "replace", revision: null, text },
           "x",
           clock.now(),
@@ -321,7 +326,7 @@ describe("revisions", () => {
       ),
     );
     expect(both.filter((r) => "error" in r)).toHaveLength(1);
-    expect(profileVersions(m.db)).toHaveLength(1);
+    expect(profileVersions(m.db, OPERATOR)).toHaveLength(1);
   });
 
   test(`keeps the last ${KEPT_REVISIONS}, the live one among them`, async () => {
@@ -334,7 +339,7 @@ describe("revisions", () => {
         text: `version ${n}`,
       });
     }
-    const kept = profileVersions(m.db).map((v) => v.revision);
+    const kept = profileVersions(m.db, OPERATOR).map((v) => v.revision);
     expect(kept).toHaveLength(KEPT_REVISIONS);
     expect(kept[0]).toBe(KEPT_REVISIONS + 5);
     expect(kept.at(-1)).toBe(6);
@@ -396,7 +401,7 @@ describe("size", () => {
       expect(body.error).toBe("bad_arguments");
       expect(body.message).toContain("read answer would be");
     }
-    expect(profileVersions(m.db)).toEqual([]);
+    expect(profileVersions(m.db, OPERATOR)).toEqual([]);
   });
 });
 
@@ -413,7 +418,7 @@ describe("access", () => {
       error: "forbidden",
       message: "this key reads the profile only; the admin grants write",
     });
-    expect(profileVersions(m.db)).toEqual([]);
+    expect(profileVersions(m.db, OPERATOR)).toEqual([]);
   });
 
   test("the routes take the key's profile scope; the cookie writes as web", async () => {
@@ -459,8 +464,8 @@ describe("access", () => {
     const reader = "test-profile-reader-key-0123456789abcdef";
     m.db
       .query(
-        `insert into keys (id, name, token_hash, created_at, profile)
-         values ('profreader01', 'profile-reader', ?, ?, 'read')`,
+        `insert into keys (id, user_id, name, token_hash, created_at, profile)
+         values ('profreader01', 'operator', 'profile-reader', ?, ?, 'read')`,
       )
       .run(tokenHash(reader), clock.now());
     const draft = "## Draft\n- Horizon: 3 years\n";
@@ -484,7 +489,7 @@ describe("access", () => {
     });
     expect(drawn.status).toBe(200);
     expect(await drawn.json()).toEqual({ html: renderMarkdown(draft) });
-    expect(profileVersions(m.db).map((r) => r.revision)).toEqual([1]);
+    expect(profileVersions(m.db, OPERATOR).map((r) => r.revision)).toEqual([1]);
   });
 
   test("a key reads and writes as its level opens; a revoked key's name stays", () =>
@@ -525,7 +530,7 @@ describe("access", () => {
       ).rejects.toThrow("not found");
       await r.close();
       t.db.query("delete from keys where name = 'jordan-agent'").run();
-      expect(profileVersions(t.db)[0]!.author).toBe("jordan-agent");
+      expect(profileVersions(t.db, OPERATOR)[0]!.author).toBe("jordan-agent");
     }));
 
   test("the keys command gives and changes profile access", () =>
@@ -625,7 +630,7 @@ describe("privacy", () => {
         });
         await res.text();
       }
-      expect(profileVersions(t.db)).toHaveLength(1);
+      expect(profileVersions(t.db, OPERATOR)).toHaveLength(1);
       expect(t.lines.some((l) => l.includes("profile saved"))).toBe(true);
       expect(t.lines.filter((l) => l.includes(marker))).toEqual([]);
     }));

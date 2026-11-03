@@ -23,7 +23,7 @@ import {
   importCsv,
   parseImport,
 } from "../src/operations/portfolio-import.ts";
-import type { Who } from "../src/operations/who.ts";
+import { OPERATOR, type Who } from "../src/operations/who.ts";
 import { fundPrices } from "../src/portfolios/funds.ts";
 import { portfolioByName } from "../src/portfolios/store.ts";
 import { silent } from "../src/runtime/log.ts";
@@ -41,6 +41,8 @@ import { instrument, NOW, quote } from "./helpers/world.ts";
 
 const CASEY: Who = {
   name: "casey-agent",
+  user: OPERATOR,
+  credential: { kind: "key", id: "casey-agent" },
   portfolio: "write",
   rules: "none",
   profile: "none",
@@ -70,7 +72,8 @@ async function setup() {
   instrument(db, "US:AAA", { currency: "USD", name: "Alpha Made Up" });
   quote(db, "US:AAA", 120, 118);
   await portfolioBefore(m, "Shares");
-  for (const name of ["North", "South"]) await createBroker(m, { name });
+  for (const name of ["North", "South"])
+    await createBroker(m, OPERATOR, { name });
   return { m, db, asked };
 }
 
@@ -104,7 +107,7 @@ const fund = async (
 };
 
 async function holdingsOf(m: Markets): Promise<HoldingsAnswer> {
-  const h = await readHoldings(m, {
+  const h = await readHoldings(m, OPERATOR, {
     portfolio: null,
     broker: null,
     currency: null,
@@ -522,7 +525,7 @@ describe("a fund's trades", () => {
       { isin: ONE },
       { side: "sell", quantity: 1, price: 12, date: "2026-04-01" },
     );
-    const listed = readTradeList(m, {
+    const listed = readTradeList(m, OPERATOR, {
       portfolio: null,
       broker: null,
       symbol: ONE,
@@ -535,7 +538,11 @@ describe("a fund's trades", () => {
       [`fund:${ONE}`, "sell", 1],
       [`fund:${ONE}`, "buy", 3],
     ]);
-    const csv = exportCsv(m, portfolioByName(db, "Shares")!);
+    const csv = exportCsv(
+      m,
+      OPERATOR,
+      portfolioByName(db, OPERATOR, "Shares")!,
+    );
     expect(csv).toContain(`fund:${ONE},`);
     await portfolioBefore(m, "Copy");
     const r = await importCsv(

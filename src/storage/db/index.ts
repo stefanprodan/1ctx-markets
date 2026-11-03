@@ -42,13 +42,31 @@ export function migrate(
   const ran: string[] = [];
   for (const migration of list) {
     if (applied.has(migration.id)) continue;
-    db.transaction(() => {
-      migration.up(db);
-      db.query("insert into migrations (id, applied_at) values (?, ?)").run(
-        migration.id,
-        clock.now(),
-      );
-    })();
+    // the pragma is a no-op inside a transaction, so it is set around it
+    const keys =
+      migration.foreignKeys === false &&
+      db.query<{ foreign_keys: number }, []>("pragma foreign_keys").get()!
+        .foreign_keys === 1;
+    if (keys) db.exec("pragma foreign_keys = off");
+    try {
+      db.transaction(() => {
+        migration.up(db);
+        if (migration.foreignKeys === false) {
+          const broken = db.query("pragma foreign_key_check").all();
+          if (broken.length > 0) {
+            throw new Error(
+              `${migration.id} left ${broken.length} rows pointing at none`,
+            );
+          }
+        }
+        db.query("insert into migrations (id, applied_at) values (?, ?)").run(
+          migration.id,
+          clock.now(),
+        );
+      })();
+    } finally {
+      if (keys) db.exec("pragma foreign_keys = on");
+    }
     ran.push(migration.id);
   }
   return ran;

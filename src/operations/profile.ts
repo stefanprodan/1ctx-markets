@@ -180,8 +180,12 @@ export const savedItem = (s: Saved) => ({
 });
 
 // an evicted revision says why it is gone, so an agent stops looking
-export function missingRevision(m: Markets, revision: number): Failure {
-  const live = liveRevision(m.db);
+export function missingRevision(
+  m: Markets,
+  owner: string,
+  revision: number,
+): Failure {
+  const live = liveRevision(m.db, owner);
   return {
     error: "not_found",
     message:
@@ -196,7 +200,13 @@ export async function saveAnswer(
   who: Who,
   save: Save,
 ): Promise<Saved | Failure> {
-  const done = await saveProfile(m.writer, save, who.name, m.clock.now());
+  const done = await saveProfile(
+    m.writer,
+    who.user,
+    save,
+    who.name,
+    m.clock.now(),
+  );
   if ("error" in done) return done;
   if (!done.unchanged) {
     m.log.info("profile saved", {
@@ -221,14 +231,18 @@ export async function profileAnswer(
   if (!opens(who.profile, writes)) return errorResult(forbidden(writes));
   switch (args.action) {
     case "read":
-      return textResult(read(who, readProfile(m.db)));
+      return textResult(read(who, readProfile(m.db, who.user)));
     case "versions":
       return textResult(
-        JSON.stringify({ revisions: profileVersions(m.db).map(revisionItem) }),
+        JSON.stringify({
+          revisions: profileVersions(m.db, who.user).map(revisionItem),
+        }),
       );
     case "version": {
-      const r = profileVersion(m.db, args.revision);
-      if (r === null) return errorResult(missingRevision(m, args.revision));
+      const r = profileVersion(m.db, who.user, args.revision);
+      if (r === null) {
+        return errorResult(missingRevision(m, who.user, args.revision));
+      }
       return textResult(profileRead(r));
     }
     case "edit":

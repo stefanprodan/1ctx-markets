@@ -37,6 +37,7 @@ export type Growth = {
 };
 
 type Scope = {
+  owner: string;
   portfolios: readonly Portfolio[];
   brokers: readonly Broker[];
   portfolio: number | null;
@@ -118,8 +119,12 @@ export function growth(
     eased: [],
     missing: [],
   };
-  const trades = scopeTrades(db, { portfolio: scope.portfolio, broker: null });
-  const bonds = bondsOf(db, scope.portfolio);
+  const trades = scopeTrades(db, {
+    owner: scope.owner,
+    portfolio: scope.portfolio,
+    broker: null,
+  });
+  const bonds = bondsOf(db, scope.owner, scope.portfolio);
   const ids = [
     ...new Set([
       ...trades.map((t) => t.instrument),
@@ -318,6 +323,7 @@ export function growth(
   const live = holdings(
     db,
     {
+      owner: scope.owner,
       portfolios: scope.portfolios,
       brokers: scope.brokers,
       portfolio: scope.portfolio,
@@ -440,8 +446,9 @@ export function growth(
 }
 
 // the view's live bonds, each dated by the first row of its chain; every
-// bond row is read once, as an edit may have moved it between portfolios
-function bondsOf(db: Db, portfolio: number | null): Bond[] {
+// bond row of the owner's is read once, as an edit may have moved it
+// between portfolios
+function bondsOf(db: Db, owner: string, portfolio: number | null): Bond[] {
   const rows = db
     .query<
       {
@@ -455,13 +462,14 @@ function bondsOf(db: Db, portfolio: number | null): Bond[] {
         replaces: number | null;
         removedAt: number | null;
       },
-      []
+      [string]
     >(
       `select id, portfolio, instrument, currency, amount, cost,
          as_of as asOf, replaces, removed_at as removedAt
-       from positions where kind = 'bond'`,
+       from positions where kind = 'bond'
+         and portfolio in (select id from portfolios where owner = ?)`,
     )
-    .all();
+    .all(owner);
   const byId = new Map(rows.map((r) => [r.id, r]));
   const out: Bond[] = [];
   for (const r of rows) {

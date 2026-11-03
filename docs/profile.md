@@ -17,9 +17,10 @@ revision refused.
 
 ## One document
 
-- **One profile per server**, since the server has one owner. People
-  signed in by email would key it by user; nothing assumes they never
-  come.
+- **One profile per person**: revisions are keyed `(owner, revision)`
+  (migration `0036-owners`), numbered per person, and every read and
+  save takes the caller's owner, so another person's revision reads as
+  one not kept.
 - **Read whole.** Its sections refer to each other (a rule to a goal,
   a default to the trading style), so an agent needs all of it before
   an answer, and a read is one answer with no offset or limit.

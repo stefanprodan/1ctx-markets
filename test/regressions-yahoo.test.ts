@@ -7,6 +7,7 @@ import { recordSession } from "../src/market/calendars.ts";
 import { readInstrument } from "../src/market/instruments.ts";
 import { readQuote } from "../src/market/quotes.ts";
 import { JOBS, quoteStale, STALE, SWITCH } from "../src/market/stale.ts";
+import { OPERATOR } from "../src/operations/who.ts";
 import { ruleEngine } from "../src/rules/evaluate.ts";
 import {
   bindCondition,
@@ -278,6 +279,7 @@ test("a rescaled FX history covering the live-minute day is accepted", async () 
     const rule = await write.write((db) =>
       insertRule(
         db,
+        OPERATOR,
         {
           instrument: instrument.id,
           condition: writeCondition(condition),
@@ -286,7 +288,7 @@ test("a rescaled FX history covering the live-minute day is accepted", async () 
         clock.now(),
       ),
     );
-    expect(readRule(db, rule)!.paused).toBeNull();
+    expect(readRule(db, OPERATOR, rule)!.paused).toBeNull();
 
     const outcome = await refetch(ctx, instrument).then(
       (written) => ({ written, error: null }),
@@ -297,7 +299,7 @@ test("a rescaled FX history covering the live-minute day is accepted", async () 
     expect(f.urls[2]!.searchParams.get("period1")).toBe(
       String(backfillStart(clock.now()).from / 1000),
     );
-    expect(readRule(db, rule)!.paused).toBe("split");
+    expect(readRule(db, OPERATOR, rule)!.paused).toBe("split");
 
     expect(outcome.error).toBeNull();
     expect(outcome.written).toMatchObject({

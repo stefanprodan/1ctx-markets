@@ -25,6 +25,7 @@ import {
   type NewFund,
   priceOn,
   readFund,
+  seesFund,
   setFundDetails,
   setFundMarket,
   setFundPrice,
@@ -50,6 +51,7 @@ import {
   knownMarkets,
   listBrokers,
   listPortfolios,
+  liveTradesOf,
   MAX_NAME,
   MAX_NOTE,
   MAX_POSITION_NAME,
@@ -666,18 +668,20 @@ const notFound = (message: string): Failure => ({
   message,
 });
 
+// the owner's own: another person's id or name reads as none
 export function findPortfolio(
   db: Db,
+  owner: string,
   r: Ref | null,
 ): Portfolio | Failure | null {
   if (r === null) return null;
   const p =
     typeof r === "number"
-      ? readPortfolio(db, r)
-      : (portfolioByName(db, r) ??
-        (/^\d+$/.test(r) ? readPortfolio(db, Number(r)) : null));
+      ? readPortfolio(db, owner, r)
+      : (portfolioByName(db, owner, r) ??
+        (/^\d+$/.test(r) ? readPortfolio(db, owner, Number(r)) : null));
   if (p !== null) return p;
-  const names = listPortfolios(db).map((x) => x.name);
+  const names = listPortfolios(db, owner).map((x) => x.name);
   return notFound(
     names.length === 0
       ? "no portfolio yet; make one first"
@@ -690,13 +694,17 @@ export const CASH_LIVES = `cash lives in ${CASH_NAME}; leave portfolio out`;
 export const NAME_KEPT = `the name ${CASH_NAME} is kept for cash`;
 
 // a trade, fund or bond: never Cash; with none named, the only other one
-function portfolioFor(db: Db, r: Ref | null): Portfolio | Failure {
-  const found = findPortfolio(db, r);
+function portfolioFor(
+  db: Db,
+  owner: string,
+  r: Ref | null,
+): Portfolio | Failure {
+  const found = findPortfolio(db, owner, r);
   if (found !== null && !isFailure(found) && found.cash) {
     return { error: "bad_arguments", message: CASH_ONLY };
   }
   if (found !== null) return found;
-  const all = listPortfolios(db).filter((p) => !p.cash);
+  const all = listPortfolios(db, owner).filter((p) => !p.cash);
   if (all.length === 1) return all[0]!;
   return {
     error: "bad_arguments",
@@ -708,14 +716,14 @@ function portfolioFor(db: Db, r: Ref | null): Portfolio | Failure {
 }
 
 // cash goes to Cash alone, named or not
-function cashFor(db: Db, r: Ref | null): Portfolio | Failure {
-  const found = findPortfolio(db, r);
+function cashFor(db: Db, owner: string, r: Ref | null): Portfolio | Failure {
+  const found = findPortfolio(db, owner, r);
   if (found !== null && isFailure(found)) return found;
   if (found !== null && !found.cash) {
     return { error: "bad_arguments", message: CASH_LIVES };
   }
   return (
-    cashPortfolio(db) ??
+    cashPortfolio(db, owner) ??
     conflict(
       `no ${CASH_NAME} portfolio yet; setup makes it with the display currency`,
     )
@@ -724,12 +732,13 @@ function cashFor(db: Db, r: Ref | null): Portfolio | Failure {
 
 export function findBroker(
   db: Db,
+  owner: string,
   name: string | null,
 ): Broker | Failure | null {
   if (name === null) return null;
-  const b = brokerByName(db, name);
+  const b = brokerByName(db, owner, name);
   if (b !== null) return b;
-  const names = listBrokers(db).map((x) => x.name);
+  const names = listBrokers(db, owner).map((x) => x.name);
   return notFound(
     names.length === 0
       ? `no broker ${quoted(name)}; none is kept yet`
@@ -755,13 +764,13 @@ export function findMarket(
 
 // ---- answers -------------------------------------------------------------
 
-export const portfolioItem = (db: Db, p: Portfolio) => ({
+export const portfolioItem = (db: Db, owner: string, p: Portfolio) => ({
   id: p.id,
   name: p.name,
   // the one that holds all cash: fixed, never renamed or removed
   cash: p.cash,
-  trades: readTrades(db, { portfolio: p.id }).length,
-  positions: readPositions(db, { portfolio: p.id }).length,
+  trades: readTrades(db, owner, { portfolio: p.id }).length,
+  positions: readPositions(db, owner, { portfolio: p.id }).length,
   created_at: iso(p.createdAt),
 });
 
@@ -781,31 +790,38 @@ export function fundItem(db: Db, f: Fund) {
   };
 }
 
-const priceItem = (p: FundPrice) => ({
-  date: p.date,
-  price: p.price,
-  trade: p.trade,
-  entered_by: p.enteredBy,
-  entered_at: iso(p.enteredAt),
-});
-
-export function listAll(m: Markets) {
+// a price is shared, but who entered it and the buy it came from are only
+// its own person's to see
+const priceItem = (owner: string, p: FundPrice) => {
+  const own = p.user === owner;
   return {
-    display_currency: displayCurrency(m.db),
-    time_zone: timeZone(m.db),
-    portfolios: listPortfolios(m.db).map((p) => portfolioItem(m.db, p)),
-    brokers: listBrokers(m.db).map(brokerItem),
+    date: p.date,
+    price: p.price,
+    trade: own ? p.trade : null,
+    entered_by: own ? p.enteredBy : null,
+    entered_at: iso(p.enteredAt),
+  };
+};
+
+export function listAll(m: Markets, owner: string) {
+  return {
+    display_currency: displayCurrency(m.db, owner),
+    time_zone: timeZone(m.db, owner),
+    portfolios: listPortfolios(m.db, owner).map((p) =>
+      portfolioItem(m.db, owner, p),
+    ),
+    brokers: listBrokers(m.db, owner).map(brokerItem),
     // what a fund can name as the market its money is in
     markets: knownMarkets(m.db),
-    funds: listFunds(m.db).map((f) => fundItem(m.db, f)),
+    funds: listFunds(m.db, owner).map((f) => fundItem(m.db, f)),
   };
 }
 
-export function tradeItem(db: Db, t: Trade) {
+export function tradeItem(db: Db, owner: string, t: Trade) {
   const i = readInstrument(db, t.instrument);
   const f = splitFactor(splitsOf(db, t.instrument), statedOf(t));
-  const p = readPortfolio(db, t.portfolio);
-  const b = t.broker === null ? null : readBroker(db, t.broker);
+  const p = readPortfolio(db, owner, t.portfolio);
+  const b = t.broker === null ? null : readBroker(db, owner, t.broker);
   return {
     id: t.id,
     portfolio: p?.name ?? null,
@@ -841,9 +857,9 @@ export function tradeItem(db: Db, t: Trade) {
   };
 }
 
-export function positionItem(db: Db, p: Position) {
-  const pf = readPortfolio(db, p.portfolio);
-  const b = p.broker === null ? null : readBroker(db, p.broker);
+export function positionItem(db: Db, owner: string, p: Position) {
+  const pf = readPortfolio(db, owner, p.portfolio);
+  const b = p.broker === null ? null : readBroker(db, owner, p.broker);
   return {
     id: p.id,
     kind: p.kind,
@@ -879,15 +895,17 @@ export type HoldingsAnswer = Holdings & {
 // the caller's currency, else the owner's display currency, else none
 export async function readHoldings(
   m: Markets,
+  owner: string,
   args: HoldingsArgs,
 ): Promise<HoldingsAnswer | Failure> {
-  const p = findPortfolio(m.db, args.portfolio);
+  const p = findPortfolio(m.db, owner, args.portfolio);
   if (isFailure(p)) return p;
-  const b = findBroker(m.db, args.broker);
+  const b = findBroker(m.db, owner, args.broker);
   if (isFailure(b)) return b;
-  const shown = displayCurrency(m.db);
+  const shown = displayCurrency(m.db, owner);
   const currency = args.currency ?? shown;
   const scope = {
+    owner,
     portfolio: p?.id ?? null,
     broker: b?.id ?? null,
     currency,
@@ -905,8 +923,8 @@ export async function readHoldings(
     m.db,
     {
       ...scope,
-      portfolios: listPortfolios(m.db),
-      brokers: listBrokers(m.db),
+      portfolios: listPortfolios(m.db, owner),
+      brokers: listBrokers(m.db, owner),
     },
     now,
     m.quoteEveryMs,
@@ -939,11 +957,12 @@ export async function readHoldings(
 // page drawing it never waits on a source
 export function readGrowth(
   m: Markets,
+  owner: string,
   args: { portfolio: Ref | null; currency: string | null },
 ): Growth | Failure {
-  const p = findPortfolio(m.db, args.portfolio);
+  const p = findPortfolio(m.db, owner, args.portfolio);
   if (isFailure(p)) return p;
-  const currency = args.currency ?? displayCurrency(m.db);
+  const currency = args.currency ?? displayCurrency(m.db, owner);
   if (currency === null) {
     return {
       error: "bad_arguments",
@@ -954,12 +973,13 @@ export function readGrowth(
   return growth(
     m.db,
     {
-      portfolios: listPortfolios(m.db),
-      brokers: listBrokers(m.db),
+      owner,
+      portfolios: listPortfolios(m.db, owner),
+      brokers: listBrokers(m.db, owner),
       portfolio: p?.id ?? null,
       currency,
     },
-    ownerToday(m.db, now),
+    ownerToday(m.db, owner, now),
     now,
     m.quoteEveryMs,
   );
@@ -967,18 +987,19 @@ export function readGrowth(
 
 export function readTradeList(
   m: Markets,
+  owner: string,
   args: TradesArgs,
 ): ReturnType<typeof tradeItem>[] | Failure {
-  const p = findPortfolio(m.db, args.portfolio);
+  const p = findPortfolio(m.db, owner, args.portfolio);
   if (isFailure(p)) return p;
-  const b = findBroker(m.db, args.broker);
+  const b = findBroker(m.db, owner, args.broker);
   if (isFailure(b)) return b;
   let instrument: string | null = null;
   if (args.symbol !== null) {
     const upper = args.symbol.toUpperCase();
     // a trade names its instrument by id; a bare symbol matches any market
     const ids = new Set(
-      readTrades(m.db, { removed: true }).map((t) => t.instrument),
+      readTrades(m.db, owner, { removed: true }).map((t) => t.instrument),
     );
     instrument =
       [...ids].find((id) => id.toUpperCase() === upper) ??
@@ -986,14 +1007,14 @@ export function readTradeList(
       [...ids].find((id) => readInstrument(m.db, id)?.sourceSymbol === upper) ??
       `${upper}\u0000`;
   }
-  return readTrades(m.db, {
+  return readTrades(m.db, owner, {
     portfolio: p?.id ?? null,
     broker: b?.id ?? null,
     instrument,
     from: args.from,
     to: args.to,
     removed: args.removed,
-  }).map((t) => tradeItem(m.db, t));
+  }).map((t) => tradeItem(m.db, owner, t));
 }
 
 // ---- writes --------------------------------------------------------------
@@ -1036,8 +1057,8 @@ export const latestDay = (now: number): string => localDate("Etc/GMT-14", now);
 
 // the owner's today, the UTC day until the owner names a zone: the day a
 // position with no date is true on
-export const ownerToday = (db: Db, now: number): string =>
-  localDate(timeZone(db) ?? "UTC", now);
+export const ownerToday = (db: Db, owner: string, now: number): string =>
+  localDate(timeZone(db, owner) ?? "UTC", now);
 
 // a retry within this of the first add is the same trade
 export const RETRY_MS = 10 * 60_000;
@@ -1061,6 +1082,7 @@ const trimDown = (v: number): number => {
 // the trades after it replayed, so a sell of all never sells twice
 function heldOn(
   m: Markets,
+  owner: string,
   portfolio: number,
   i: Instrument,
   day: string,
@@ -1068,7 +1090,10 @@ function heldOn(
   const splits = splitsOf(m.db, i.id);
   const byBroker = new Map<number | null, Trade[]>();
   // oldest first, so the parts answer in the order they were opened
-  for (const t of readTrades(m.db, { portfolio, instrument: i.id }).reverse()) {
+  for (const t of readTrades(m.db, owner, {
+    portfolio,
+    instrument: i.id,
+  }).reverse()) {
     const list = byBroker.get(t.broker);
     if (list) list.push(t);
     else byBroker.set(t.broker, [t]);
@@ -1108,15 +1133,18 @@ async function addTradeOn(
   i: Instrument,
   make: { fund: NewFund } | { market: string | null } | null,
 ): Promise<Added | Failure> {
-  const p = portfolioFor(m.db, args.portfolio);
+  const owner = who.user;
+  const p = portfolioFor(m.db, owner, args.portfolio);
   if (isFailure(p)) return p;
-  const b = findBroker(m.db, args.broker);
+  const b = findBroker(m.db, owner, args.broker);
   if (isFailure(b)) return b;
   const fund = isFund(i);
   // a fund's day is the owner's: it trades on no exchange
   const day =
     args.date ??
-    (fund ? ownerToday(m.db, m.clock.now()) : localDate(i.zone, m.clock.now()));
+    (fund
+      ? ownerToday(m.db, owner, m.clock.now())
+      : localDate(i.zone, m.clock.now()));
   if (day > latestDay(m.clock.now())) {
     return { error: "bad_arguments", message: "date is in the future" };
   }
@@ -1134,7 +1162,7 @@ async function addTradeOn(
   }
   let lots: { broker: number | null; quantity: number }[];
   if (args.quantity === "all") {
-    const held = heldOn(m, p.id, i, day).filter(
+    const held = heldOn(m, owner, p.id, i, day).filter(
       (x) => b === null || x.broker === b.id,
     );
     if (held.length === 0) {
@@ -1216,11 +1244,7 @@ async function addTradeOn(
         : null;
     if (making !== null) {
       const taken = fundByName(db, making.name);
-      if (taken !== null) {
-        return conflict(
-          `the fund ${taken.isin} has this name; name a new fund apart`,
-        );
-      }
+      if (taken !== null) return nameTaken(db, owner, taken);
     } else if (readInstrument(db, i.id) === null) {
       return notFound(`${i.id}: deleted while the trade was added`);
     }
@@ -1238,7 +1262,7 @@ async function addTradeOn(
         }
       }
     }
-    if (oversells(db, rows, i)) {
+    if (oversells(db, owner, rows, i)) {
       return { error: "bad_arguments", message: OVERSOLD };
     }
     if (making !== null) insertFund(db, making, who.name, now);
@@ -1247,7 +1271,9 @@ async function addTradeOn(
       setFundMarket(db, i.id, make.market);
     }
     // a fund added from one confirmation is valued at once
-    if (fund) for (const id of ids) buyPrice(db, readTrade(db, id)!, now);
+    if (fund) {
+      for (const id of ids) buyPrice(db, readTrade(db, owner, id)!, now);
+    }
     return ids;
   });
   if (isFailure(done)) {
@@ -1259,12 +1285,12 @@ async function addTradeOn(
       args.side === "sell" &&
       args.quantity !== "all"
     ) {
-      const where = heldOn(m, p.id, i, day);
+      const where = heldOn(m, owner, p.id, i, day);
       if (where.some((x) => x.broker !== null)) {
         const names = where.map((x) =>
           x.broker === null
             ? `${exact(x.quantity)} with no broker`
-            : `${readBroker(m.db, x.broker)?.name ?? "a broker"} ${exact(x.quantity)}`,
+            : `${readBroker(m.db, owner, x.broker)?.name ?? "a broker"} ${exact(x.quantity)}`,
         );
         const list =
           names.length === 1
@@ -1278,7 +1304,9 @@ async function addTradeOn(
     }
     return done;
   }
-  const items = done.map((id) => tradeItem(m.db, readTrade(m.db, id)!));
+  const items = done.map((id) =>
+    tradeItem(m.db, owner, readTrade(m.db, owner, id)!),
+  );
   return {
     ...(items.length === 1 ? { trade: items[0]! } : { trades: items }),
     ...(live === undefined ? {} : { live_price: live }),
@@ -1286,14 +1314,26 @@ async function addTradeOn(
   };
 }
 
-// a fund named by its ISIN or name; an unknown name lists the funds kept
-export function findFund(db: Db, named: string): Fund | Failure {
-  const f =
+// fund names are shared, so one taken by a fund the caller never held is
+// refused without naming that fund
+function nameTaken(db: Db, owner: string, taken: Fund): Failure {
+  return conflict(
+    seesFund(db, owner, taken.id)
+      ? `the fund ${taken.isin} has this name; name a new fund apart`
+      : "a fund has this name; name a new fund apart",
+  );
+}
+
+// a fund the owner holds or priced, named by its ISIN or name; any other
+// reads as unknown, and an unknown name lists the funds they see
+export function findFund(db: Db, owner: string, named: string): Fund | Failure {
+  const found =
     isIsin(named.trim().toUpperCase()) || isFundKey(named)
       ? fundByIsin(db, named)
       : fundByName(db, named);
+  const f = found !== null && seesFund(db, owner, found.id) ? found : null;
   if (f !== null) return f;
-  const all = listFunds(db);
+  const all = listFunds(db, owner);
   return notFound(
     all.length === 0
       ? `no fund ${quoted(named)}; none is kept yet`
@@ -1310,9 +1350,10 @@ export async function addFundTrade(
 ): Promise<(Added & { fund: ReturnType<typeof fundItem> }) | Failure> {
   const market = findMarket(m.db, args.market);
   if (isFailure(market)) return market;
+  // by its ISIN a fund is found whoever holds it: the ISIN is the fund
   const kept =
     args.isin === null
-      ? findFund(m.db, args.name!)
+      ? findFund(m.db, who.user, args.name!)
       : fundByIsin(m.db, args.isin);
   if (kept !== null && isFailure(kept)) return kept;
   // a name that is not the fund's is a mistake, never ignored
@@ -1402,12 +1443,14 @@ export async function updateFund(
     }
   | Failure
 > {
-  const kept = findFund(m.db, named);
+  const owner = who.user;
+  // only a person holding it or who priced it changes it
+  const kept = findFund(m.db, owner, named);
   if (isFailure(kept)) return kept;
   const market =
     change.market === undefined ? undefined : findMarket(m.db, change.market);
   if (isFailure(market)) return market;
-  const day = change.date ?? ownerToday(m.db, m.clock.now());
+  const day = change.date ?? ownerToday(m.db, owner, m.clock.now());
   if (day > latestDay(m.clock.now())) {
     return {
       error: "bad_arguments",
@@ -1422,15 +1465,14 @@ export async function updateFund(
       if (change.name !== undefined) {
         const taken = fundByName(db, change.name);
         if (taken !== null && taken.id !== fund.id) {
-          return conflict(
-            `the fund ${taken.isin} has this name; name a new fund apart`,
-          );
+          return nameTaken(db, owner, taken);
         }
       }
+      // every holder's live trades, since their prices were in the old one
       if (
         change.currency !== undefined &&
         change.currency !== fund.currency &&
-        readTrades(db, { instrument: fund.id }).length > 0
+        liveTradesOf(db, fund.id) > 0
       ) {
         return {
           error: "bad_arguments",
@@ -1445,7 +1487,7 @@ export async function updateFund(
         setFundDetails(db, kept.id, change, now);
       }
       if (change.price !== undefined) {
-        setFundPrice(db, kept.id, day, change.price, who.name, now);
+        setFundPrice(db, kept.id, day, change.price, who, now);
       }
       if (market !== undefined) setFundMarket(db, kept.id, market);
       return { before, name: fund.name };
@@ -1462,31 +1504,37 @@ export async function updateFund(
       : {
           price: { date: day, price: change.price },
           replaced:
-            replaced.before === null ? null : priceItem(replaced.before),
+            replaced.before === null ? null : priceItem(owner, replaced.before),
         }),
   };
 }
 
-// a fund with every price it was given, newest first, and its trades
-export function fundDetail(m: Markets, named: string) {
-  const f = findFund(m.db, named);
+// a fund with every price it was given, newest first, and the owner's
+// trades of it, never another holder's
+export function fundDetail(m: Markets, owner: string, named: string) {
+  const f = findFund(m.db, owner, named);
   if (isFailure(f)) return f;
   return {
     fund: fundItem(m.db, f),
-    prices: fundPrices(m.db, f.id).map(priceItem),
-    trades: readTrades(m.db, { instrument: f.id }).map((t) =>
-      tradeItem(m.db, t),
+    prices: fundPrices(m.db, f.id).map((p) => priceItem(owner, p)),
+    trades: readTrades(m.db, owner, { instrument: f.id }).map((t) =>
+      tradeItem(m.db, owner, t),
     ),
   };
 }
 
 // the part these rows touch, replayed whole with them added
-function oversells(db: Db, rows: readonly NewTrade[], i: Instrument): boolean {
+function oversells(
+  db: Db,
+  owner: string,
+  rows: readonly NewTrade[],
+  i: Instrument,
+): boolean {
   const first = rows[0]!;
   const splits = splitsOf(db, i.id);
   const brokers = new Set(rows.map((r) => r.broker));
   for (const broker of brokers) {
-    const before = partTrades(db, {
+    const before = partTrades(db, owner, {
       portfolio: first.portfolio,
       instrument: i.id,
       broker,
@@ -1505,12 +1553,13 @@ export async function addPosition(
   | { position: ReturnType<typeof positionItem>; replaced: number | null }
   | Failure
 > {
+  const owner = who.user;
   const p =
     args.kind === "cash"
-      ? cashFor(m.db, args.portfolio)
-      : portfolioFor(m.db, args.portfolio);
+      ? cashFor(m.db, owner, args.portfolio)
+      : portfolioFor(m.db, owner, args.portfolio);
   if (isFailure(p)) return p;
-  const b = findBroker(m.db, args.broker);
+  const b = findBroker(m.db, owner, args.broker);
   if (isFailure(b)) return b;
   let instrument: Instrument | null = null;
   if (args.symbol !== null) {
@@ -1529,7 +1578,7 @@ export async function addPosition(
       message: `${instrument.id} is listed in ${instrument.currency ?? "no currency"}; a bond takes its listing's currency`,
     };
   }
-  const day = args.date ?? ownerToday(m.db, m.clock.now());
+  const day = args.date ?? ownerToday(m.db, owner, m.clock.now());
   if (day > latestDay(m.clock.now())) {
     return { error: "bad_arguments", message: "date is in the future" };
   }
@@ -1553,14 +1602,14 @@ export async function addPosition(
   const done = await m.writer.write((db) => {
     const now = m.clock.now();
     const old = samePosition(db, row);
-    if (old !== null) setPositionRemoved(db, old.id, who.name, now);
+    if (old !== null) setPositionRemoved(db, owner, old.id, who.name, now);
     return {
       id: insertPosition(db, { ...row, replaces: old?.id ?? null }, now),
       replaced: old?.id ?? null,
     };
   });
   return {
-    position: positionItem(m.db, readPosition(m.db, done.id)!),
+    position: positionItem(m.db, owner, readPosition(m.db, owner, done.id)!),
     replaced: done.replaced,
   };
 }
@@ -1580,13 +1629,16 @@ export async function updatePosition(
     }
   | Failure
 > {
+  const owner = who.user;
   if (change.date !== undefined && change.date > latestDay(m.clock.now())) {
     return { error: "bad_arguments", message: "date is in the future" };
   }
   const broker =
-    change.broker === undefined ? undefined : findBroker(m.db, change.broker);
+    change.broker === undefined
+      ? undefined
+      : findBroker(m.db, owner, change.broker);
   if (isFailure(broker)) return broker;
-  const before = readPosition(m.db, id);
+  const before = readPosition(m.db, owner, id);
   let rate:
     | { from: string; to: string; rate: number; at: string | null }
     | undefined;
@@ -1620,7 +1672,7 @@ export async function updatePosition(
     else to = given.amount * factor;
   }
   const done = await m.writer.write((db): number | Failure => {
-    const old = readPosition(db, id);
+    const old = readPosition(db, owner, id);
     if (old === null) return notFound(`no position ${id}`);
     if (old.removedAt !== null) {
       return conflict(
@@ -1664,8 +1716,9 @@ export async function updatePosition(
     const now = m.clock.now();
     // as_of says when the figure was true; a bond's is its purchase date
     const revalued = old.kind === "cash" && given !== undefined;
-    const asOf = change.date ?? (revalued ? ownerToday(db, now) : old.asOf);
-    setPositionRemoved(db, id, who.name, now);
+    const asOf =
+      change.date ?? (revalued ? ownerToday(db, owner, now) : old.asOf);
+    setPositionRemoved(db, owner, id, who.name, now);
     const {
       id: _,
       enteredAt: __,
@@ -1693,18 +1746,20 @@ export async function updatePosition(
   });
   if (isFailure(done)) return done;
   return {
-    position: positionItem(m.db, readPosition(m.db, done)!),
+    position: positionItem(m.db, owner, readPosition(m.db, owner, done)!),
     replaced: id,
     ...(rate === undefined ? {} : { rate }),
   };
 }
 
 // the position's rows, its updates and removals with who and when
-export function historyOf(m: Markets, id: number) {
-  const p = readPosition(m.db, id);
+export function historyOf(m: Markets, owner: string, id: number) {
+  const p = readPosition(m.db, owner, id);
   if (p === null) return notFound(`no position ${id}`);
   return {
-    history: chainOf(m.db, p.id).map((r) => positionItem(m.db, r)),
+    history: chainOf(m.db, owner, p.id).map((r) =>
+      positionItem(m.db, owner, r),
+    ),
   };
 }
 
@@ -1720,28 +1775,28 @@ const ROW_OF: Record<PositionKind, string> = {
 // at most this many rows named in a refusal
 const NAMED_ROWS = 10;
 
-function rowLabel(db: Db, p: Position): string {
+function rowLabel(db: Db, owner: string, p: Position): string {
   const broker =
-    p.broker === null ? null : (readBroker(db, p.broker)?.name ?? null);
+    p.broker === null ? null : (readBroker(db, owner, p.broker)?.name ?? null);
   const said = [p.name, broker, p.currency];
   if (p.kind === "cash" && p.dryPowder) said.push("dry powder");
   return `${p.id} (${said.filter((x) => x !== null).join(", ")})`;
 }
 
 // the live rows of a kind, so a stale or mistyped id is retried right
-function liveRows(db: Db, kind: PositionKind): string {
-  const cash = cashPortfolio(db);
+function liveRows(db: Db, owner: string, kind: PositionKind): string {
+  const cash = cashPortfolio(db, owner);
   const rows =
     kind === "cash"
       ? cash === null
         ? []
-        : readPositions(db, { portfolio: cash.id }).filter(
+        : readPositions(db, owner, { portfolio: cash.id }).filter(
             (x) => x.kind === "cash",
           )
-      : readPositions(db).filter((x) => x.kind === "bond");
+      : readPositions(db, owner).filter((x) => x.kind === "bond");
   const where = kind === "cash" ? `${CASH_NAME} holds` : "bonds kept:";
   if (rows.length === 0) return `${where} none`;
-  const named = rows.slice(0, NAMED_ROWS).map((x) => rowLabel(db, x));
+  const named = rows.slice(0, NAMED_ROWS).map((x) => rowLabel(db, owner, x));
   const more = rows.length - named.length;
   return `${where} ${named.join(", ")}${more > 0 ? `, and ${more} more` : ""}`;
 }
@@ -1750,16 +1805,17 @@ function liveRows(db: Db, kind: PositionKind): string {
 // refused naming its tool, one an update replaced naming the live row
 export function positionFor(
   m: Markets,
+  owner: string,
   kind: PositionKind,
   id: number,
   action: "update" | "remove" | "restore",
 ): Failure | null {
-  const p = readPosition(m.db, id);
+  const p = readPosition(m.db, owner, id);
   if (p === null) {
     return notFound(
       action === "restore"
         ? `no ${ROW_OF[kind]} at position ${id}`
-        : `no ${ROW_OF[kind]} at position ${id}; ${liveRows(m.db, kind)}`,
+        : `no ${ROW_OF[kind]} at position ${id}; ${liveRows(m.db, owner, kind)}`,
     );
   }
   if (p.kind !== kind) {
@@ -1769,14 +1825,14 @@ export function positionFor(
     };
   }
   if (p.removedAt === null || action === "restore") return null;
-  const now = chainOf(m.db, id).find((x) => x.removedAt === null);
+  const now = chainOf(m.db, owner, id).find((x) => x.removedAt === null);
   if (now !== undefined) {
     return conflict(`position ${id} was updated; it is position ${now.id} now`);
   }
   // a second removal keeps who removed it first
   if (action === "remove") return null;
   return notFound(
-    `position ${id} was removed; restore brings it back; ${liveRows(m.db, kind)}`,
+    `position ${id} was removed; restore brings it back; ${liveRows(m.db, owner, kind)}`,
   );
 }
 
@@ -1798,16 +1854,16 @@ const withPosition = <T extends object>(body: T | Failure): T | Failure =>
 export const MAX_REMOVED = 20;
 
 // cash and bond rows removed and not replaced by an update, newest first
-function removedRows(m: Markets, args: HoldingsArgs) {
-  const p = findPortfolio(m.db, args.portfolio);
-  const b = findBroker(m.db, args.broker);
-  const all = readPositions(m.db, {
+function removedRows(m: Markets, owner: string, args: HoldingsArgs) {
+  const p = findPortfolio(m.db, owner, args.portfolio);
+  const b = findBroker(m.db, owner, args.broker);
+  const all = readPositions(m.db, owner, {
     portfolio: p === null || isFailure(p) ? null : p.id,
     broker: b === null || isFailure(b) ? null : b.id,
     removed: true,
   });
   const replaced = new Set(
-    readPositions(m.db, { removed: true }).flatMap((x) =>
+    readPositions(m.db, owner, { removed: true }).flatMap((x) =>
       x.replaces === null ? [] : [x.replaces],
     ),
   );
@@ -1818,10 +1874,12 @@ function removedRows(m: Markets, args: HoldingsArgs) {
     .map((x) => ({
       position: x.id,
       kind: x.kind,
-      portfolio: readPortfolio(m.db, x.portfolio)?.name ?? null,
+      portfolio: readPortfolio(m.db, owner, x.portfolio)?.name ?? null,
       name: x.name,
       broker:
-        x.broker === null ? null : (readBroker(m.db, x.broker)?.name ?? null),
+        x.broker === null
+          ? null
+          : (readBroker(m.db, owner, x.broker)?.name ?? null),
       currency: x.currency,
       removed_at: iso(x.removedAt),
     }));
@@ -1834,14 +1892,15 @@ export async function setTradeState(
   id: number,
   removed: boolean,
 ): Promise<{ trade: ReturnType<typeof tradeItem> } | Failure> {
+  const owner = who.user;
   const done = await m.writer.write((db): Failure | null | number => {
-    const t = readTrade(db, id);
+    const t = readTrade(db, owner, id);
     if (t === null) return null;
     // a second removal keeps who removed it first
     if (removed === (t.removedAt !== null)) return id;
     const i = readInstrument(db, t.instrument);
     if (i !== null) {
-      const before = partTrades(db, t);
+      const before = partTrades(db, owner, t);
       const after = removed
         ? before.filter((x) => x.id !== id)
         : [...before, { ...t, removedAt: null, removedBy: null }];
@@ -1851,7 +1910,7 @@ export async function setTradeState(
       if (sales.length > 0) return conflict(SELLS_PAST);
     }
     const now = m.clock.now();
-    setTradeRemoved(db, id, removed ? who.name : null, now);
+    setTradeRemoved(db, owner, id, removed ? who.name : null, now);
     // a buy's price for its day goes and comes back with it
     if (i !== null && isFund(i)) {
       if (removed) dropBuyPrice(db, t, now);
@@ -1861,7 +1920,7 @@ export async function setTradeState(
   });
   if (done === null) return notFound(`no trade ${id}`);
   if (isFailure(done)) return done;
-  return { trade: tradeItem(m.db, readTrade(m.db, id)!) };
+  return { trade: tradeItem(m.db, owner, readTrade(m.db, owner, id)!) };
 }
 
 export async function setPositionState(
@@ -1870,8 +1929,9 @@ export async function setPositionState(
   id: number,
   removed: boolean,
 ): Promise<{ position: ReturnType<typeof positionItem> } | Failure> {
+  const owner = who.user;
   const done = await m.writer.write((db): number | null | Failure => {
-    const p = readPosition(db, id);
+    const p = readPosition(db, owner, id);
     if (p === null) return null;
     // a second removal keeps who removed it first
     if (removed === (p.removedAt !== null)) return id;
@@ -1880,34 +1940,40 @@ export async function setPositionState(
       // whatever the updates changed; cash also a live row of its identity,
       // while two equal bond purchases are two bonds
       const out = new Set(
-        chainOf(db, id)
+        chainOf(db, owner, id)
           .filter((x) => x.removedAt === null)
           .map((x) => x.id),
       );
       const same = p.kind === "bond" ? null : samePosition(db, p);
       if (same !== null) out.add(same.id);
       out.delete(id);
-      for (const x of out) setPositionRemoved(db, x, who.name, m.clock.now());
+      for (const x of out) {
+        setPositionRemoved(db, owner, x, who.name, m.clock.now());
+      }
     }
-    setPositionRemoved(db, id, removed ? who.name : null, m.clock.now());
+    setPositionRemoved(db, owner, id, removed ? who.name : null, m.clock.now());
     return id;
   });
   if (done === null) return notFound(`no position ${id}`);
   if (isFailure(done)) return done;
-  return { position: positionItem(m.db, readPosition(m.db, id)!) };
+  return {
+    position: positionItem(m.db, owner, readPosition(m.db, owner, id)!),
+  };
 }
 
 function otherPortfolio(
   m: Markets,
+  owner: string,
   portfolio: Ref | null,
   id: number,
 ): Failure | null {
   if (portfolio === null) return null;
-  const p = findPortfolio(m.db, portfolio);
+  const p = findPortfolio(m.db, owner, portfolio);
   if (isFailure(p)) return p;
-  const row = readTrade(m.db, id);
+  const row = readTrade(m.db, owner, id);
   if (row === null || p === null || row.portfolio === p.id) return null;
-  const its = readPortfolio(m.db, row.portfolio)?.name ?? "another portfolio";
+  const its =
+    readPortfolio(m.db, owner, row.portfolio)?.name ?? "another portfolio";
   return {
     error: "bad_arguments",
     message: `trade ${id} is in ${its}, not ${p.name}`,
@@ -1925,25 +1991,36 @@ const placeArg = (value: unknown): number => {
 
 const conflict = (message: string): Failure => ({ error: "conflict", message });
 
-export async function createPortfolio(m: Markets, body: unknown) {
+export async function createPortfolio(
+  m: Markets,
+  owner: string,
+  body: unknown,
+) {
   const f = fields(body, ["name"]);
   const name = nameArg(f.name);
   const done = await m.writer.write((db): number | Failure => {
     // every total converts into it, and none is assumed for the owner
-    if (displayCurrency(db) === null) {
+    if (displayCurrency(db, owner) === null) {
       return conflict("Set a display currency first.");
     }
     if (isCashName(name)) return conflict(NAME_KEPT);
-    if (portfolioByName(db, name) !== null) {
+    if (portfolioByName(db, owner, name) !== null) {
       return conflict("a portfolio has this name");
     }
-    return insertPortfolio(db, name, m.clock.now());
+    return insertPortfolio(db, owner, name, m.clock.now());
   });
   if (isFailure(done)) return done;
-  return { portfolio: portfolioItem(m.db, readPortfolio(m.db, done)!) };
+  return {
+    portfolio: portfolioItem(m.db, owner, readPortfolio(m.db, owner, done)!),
+  };
 }
 
-export async function updatePortfolio(m: Markets, id: number, body: unknown) {
+export async function updatePortfolio(
+  m: Markets,
+  owner: string,
+  id: number,
+  body: unknown,
+) {
   const f = fields(body, ["name", "position"]);
   if (f.name === undefined && f.position === undefined) {
     throw new ArgError("name or position is required");
@@ -1951,7 +2028,7 @@ export async function updatePortfolio(m: Markets, id: number, body: unknown) {
   const name = f.name === undefined ? null : nameArg(f.name);
   const place = f.position === undefined ? null : placeArg(f.position);
   const done = await m.writer.write((db): Portfolio | Failure | null => {
-    const p = readPortfolio(db, id);
+    const p = readPortfolio(db, owner, id);
     if (p === null) return null;
     if (p.cash && name !== null) {
       return conflict(`${CASH_NAME} keeps its name`);
@@ -1959,85 +2036,90 @@ export async function updatePortfolio(m: Markets, id: number, body: unknown) {
     if (p.cash) return conflict(`${CASH_NAME} stays first`);
     if (name !== null) {
       if (isCashName(name)) return conflict(NAME_KEPT);
-      const other = portfolioByName(db, name);
+      const other = portfolioByName(db, owner, name);
       if (other !== null && other.id !== id) {
         return conflict("a portfolio has this name");
       }
-      renamePortfolio(db, id, name);
+      renamePortfolio(db, owner, id, name);
     }
-    if (place !== null) movePortfolio(db, id, place);
-    return readPortfolio(db, id)!;
+    if (place !== null) movePortfolio(db, owner, id, place);
+    return readPortfolio(db, owner, id)!;
   });
   if (done === null) return notFound(`no portfolio ${id}`);
   if (isFailure(done)) return done;
-  return { portfolio: portfolioItem(m.db, done) };
+  return { portfolio: portfolioItem(m.db, owner, done) };
 }
 
-export async function removePortfolio(m: Markets, id: number) {
+export async function removePortfolio(m: Markets, owner: string, id: number) {
   const done = await m.writer.write((db): Failure | null | true => {
-    const p = readPortfolio(db, id);
+    const p = readPortfolio(db, owner, id);
     if (p === null) return null;
     if (p.cash) return conflict(`${CASH_NAME} is kept for cash`);
     // removed rows go with it: kept for a restore, never a reason to stay
     if (portfolioRows(db, id) > 0) {
       return conflict("the portfolio holds trades or positions");
     }
-    deletePortfolio(db, id);
+    deletePortfolio(db, owner, id);
     return true;
   });
   if (done === null) return notFound(`no portfolio ${id}`);
   return done;
 }
 
-export async function createBroker(m: Markets, body: unknown) {
+export async function createBroker(m: Markets, owner: string, body: unknown) {
   const f = fields(body, ["name"]);
   const name = nameArg(f.name);
   const done = await m.writer.write((db): number | Failure => {
-    if (brokerByName(db, name) !== null)
+    if (brokerByName(db, owner, name) !== null)
       return conflict("a broker has this name");
-    return insertBroker(db, name, m.clock.now());
+    return insertBroker(db, owner, name, m.clock.now());
   });
   if (isFailure(done)) return done;
-  return { broker: brokerItem(readBroker(m.db, done)!) };
+  return { broker: brokerItem(readBroker(m.db, owner, done)!) };
 }
 
-export async function updateBroker(m: Markets, id: number, body: unknown) {
+export async function updateBroker(
+  m: Markets,
+  owner: string,
+  id: number,
+  body: unknown,
+) {
   const f = fields(body, ["name"]);
   const name = nameArg(f.name);
   const done = await m.writer.write((db): Broker | Failure | null => {
-    if (readBroker(db, id) === null) return null;
-    const other = brokerByName(db, name);
+    if (readBroker(db, owner, id) === null) return null;
+    const other = brokerByName(db, owner, name);
     if (other !== null && other.id !== id)
       return conflict("a broker has this name");
-    renameBroker(db, id, name);
-    return readBroker(db, id)!;
+    renameBroker(db, owner, id, name);
+    return readBroker(db, owner, id)!;
   });
   if (done === null) return notFound(`no broker ${id}`);
   if (isFailure(done)) return done;
   return { broker: brokerItem(done) };
 }
 
-export async function removeBroker(m: Markets, id: number) {
+export async function removeBroker(m: Markets, owner: string, id: number) {
   const done = await m.writer.write((db): Failure | null | true => {
-    if (readBroker(db, id) === null) return null;
+    if (readBroker(db, owner, id) === null) return null;
     // removed rows lose the name instead
     if (brokerRows(db, id) > 0) {
       return conflict("trades or positions name this broker");
     }
-    deleteBroker(db, id);
+    deleteBroker(db, owner, id);
     return true;
   });
   if (done === null) return notFound(`no broker ${id}`);
   return done;
 }
 
-export const settingsItem = (db: Db) => ({
-  display_currency: displayCurrency(db),
-  time_zone: timeZone(db),
+export const settingsItem = (db: Db, owner: string) => ({
+  display_currency: displayCurrency(db, owner),
+  time_zone: timeZone(db, owner),
 });
 
 // each can be changed, never cleared; one left out is kept
-export async function saveSettings(m: Markets, body: unknown) {
+export async function saveSettings(m: Markets, owner: string, body: unknown) {
   const f = fields(body, ["display_currency", "time_zone"]);
   if (f.display_currency === undefined && f.time_zone === undefined) {
     throw new ArgError("settings take display_currency, time_zone or both");
@@ -2056,12 +2138,12 @@ export async function saveSettings(m: Markets, body: unknown) {
   }
   await m.writer.write((db) => {
     const now = m.clock.now();
-    if (c !== null) setDisplayCurrency(db, c, now);
-    if (z !== null) setTimeZone(db, z, now);
+    if (c !== null) setDisplayCurrency(db, owner, c, now);
+    if (z !== null) setTimeZone(db, owner, z, now);
     // cash has its place from the first currency on
-    if (displayCurrency(db) !== null) ensureCash(db, now);
+    if (displayCurrency(db, owner) !== null) ensureCash(db, owner, now);
   });
-  return settingsItem(m.db);
+  return settingsItem(m.db, owner);
 }
 
 // ---- the tool ------------------------------------------------------------
@@ -2070,6 +2152,7 @@ export async function saveSettings(m: Markets, body: unknown) {
 // so a retried setup makes nothing twice
 async function setup(
   m: Markets,
+  owner: string,
   args: Extract<PortfolioArgs, { action: "setup" }>,
 ) {
   const made: string[] = [];
@@ -2078,14 +2161,14 @@ async function setup(
     // every check before any write, so a refused setup saves nothing
     // the owner's own setting: an agent passing one out of habit never
     // changes it, only sets the first
-    const shown = displayCurrency(db);
+    const shown = displayCurrency(db, owner);
     if (args.currency !== null && shown !== null && shown !== args.currency) {
       return conflict(
         `the display currency is ${shown}; the owner changes it in the web UI's settings`,
       );
     }
     // the same rule for the owner's zone
-    const zone = timeZone(db);
+    const zone = timeZone(db, owner);
     if (args.zone !== null && zone !== null && zone !== args.zone) {
       return conflict(
         `the time zone is ${zone}; the owner changes it in the web UI's settings`,
@@ -2096,7 +2179,7 @@ async function setup(
     const newPortfolio =
       args.portfolio !== null &&
       !cashNamed &&
-      portfolioByName(db, args.portfolio) === null;
+      portfolioByName(db, owner, args.portfolio) === null;
     // every total converts into it, and none is assumed for the owner
     if ((newPortfolio || cashNamed) && (shown ?? args.currency) === null) {
       return conflict(
@@ -2104,35 +2187,38 @@ async function setup(
       );
     }
     if (args.currency !== null && shown === null) {
-      setDisplayCurrency(db, args.currency, now);
+      setDisplayCurrency(db, owner, args.currency, now);
     }
-    if (args.zone !== null && zone === null) setTimeZone(db, args.zone, now);
-    if (displayCurrency(db) !== null && ensureCash(db, now)) {
+    if (args.zone !== null && zone === null) {
+      setTimeZone(db, owner, args.zone, now);
+    }
+    if (displayCurrency(db, owner) !== null && ensureCash(db, owner, now)) {
       made.push(`portfolio ${CASH_NAME}`);
     }
     if (newPortfolio) {
-      insertPortfolio(db, args.portfolio!, now);
+      insertPortfolio(db, owner, args.portfolio!, now);
       made.push(`portfolio ${args.portfolio}`);
     }
     for (const name of args.brokers) {
-      if (brokerByName(db, name) !== null) continue;
-      insertBroker(db, name, now);
+      if (brokerByName(db, owner, name) !== null) continue;
+      insertBroker(db, owner, name, now);
       made.push(`broker ${name}`);
     }
     return null;
   });
   if (done !== null) return done;
-  return { ...listAll(m), made };
+  return { ...listAll(m, owner), made };
 }
 
 // by its name, as an agent knows it; the routes' rename and its refusals
 async function renameBrokerNamed(
   m: Markets,
+  owner: string,
   args: Extract<PortfolioArgs, { action: "rename_broker" }>,
 ) {
-  const b = findBroker(m.db, args.broker);
+  const b = findBroker(m.db, owner, args.broker);
   if (isFailure(b)) return b;
-  return updateBroker(m, b!.id, { name: args.name });
+  return updateBroker(m, owner, b!.id, { name: args.name });
 }
 
 const answered = (body: object | Failure): ToolResult =>
@@ -2149,12 +2235,13 @@ function offsetOf(next: string | null, args: object): number {
 
 async function holdingsPage(
   m: Markets,
+  owner: string,
   args: Extract<PortfolioArgs, { action: "holdings" }>,
 ): Promise<ToolResult> {
   const { next, removed, ...scope } = args;
   const rest = { ...scope, removed };
   const from = offsetOf(next, rest);
-  const read = await readHoldings(m, scope);
+  const read = await readHoldings(m, owner, scope);
   if (isFailure(read)) return errorResult(read);
   const { holdings: all, ...shell } = read;
   // symbol is what quote takes; REST keeps the instrument's id as id
@@ -2163,7 +2250,7 @@ async function holdingsPage(
     symbol: id,
     ...row,
   }));
-  const gone = removed ? { removed: removedRows(m, scope) } : {};
+  const gone = removed ? { removed: removedRows(m, owner, scope) } : {};
   const list = rows.slice(from);
   const page = fitPage(
     list,
@@ -2180,11 +2267,12 @@ async function holdingsPage(
 
 function tradesPage(
   m: Markets,
+  owner: string,
   args: Extract<PortfolioArgs, { action: "trades" }>,
 ): ToolResult {
   const { next, ...rest } = args;
   const from = offsetOf(next, rest);
-  const all = readTradeList(m, rest);
+  const all = readTradeList(m, owner, rest);
   if (isFailure(all)) return errorResult(all);
   const list = all.slice(from);
   const page = fitPage(
@@ -2214,17 +2302,18 @@ export async function portfolioAnswer(
   if (!opens(who.portfolio, writes)) {
     return errorResult(forbidden(writes));
   }
+  const owner = who.user;
   switch (args.action) {
     case "setup":
-      return answered(await setup(m, args));
+      return answered(await setup(m, owner, args));
     case "list":
-      return textResult(JSON.stringify(listAll(m)));
+      return textResult(JSON.stringify(listAll(m, owner)));
     case "rename_broker":
-      return answered(await renameBrokerNamed(m, args));
+      return answered(await renameBrokerNamed(m, owner, args));
     case "holdings":
-      return holdingsPage(m, args);
+      return holdingsPage(m, owner, args);
     case "trades":
-      return tradesPage(m, args);
+      return tradesPage(m, owner, args);
     case "add":
       return answered(
         "trade" in args
@@ -2237,7 +2326,7 @@ export async function portfolioAnswer(
       if ("fund" in args) {
         return answered(await updateFund(m, who, args.fund, args.change));
       }
-      const wrong = positionFor(m, args.kind, args.position, "update");
+      const wrong = positionFor(m, owner, args.kind, args.position, "update");
       if (wrong !== null) return errorResult(wrong);
       return answered(
         withPosition(await updatePosition(m, who, args.position, args.change)),
@@ -2247,11 +2336,17 @@ export async function portfolioAnswer(
     case "restore": {
       const removed = args.action === "remove";
       if ("trade" in args) {
-        const wrong = otherPortfolio(m, args.portfolio, args.trade);
+        const wrong = otherPortfolio(m, owner, args.portfolio, args.trade);
         if (wrong !== null) return errorResult(wrong);
         return answered(await setTradeState(m, who, args.trade, removed));
       }
-      const wrong = positionFor(m, args.kind, args.position, args.action);
+      const wrong = positionFor(
+        m,
+        owner,
+        args.kind,
+        args.position,
+        args.action,
+      );
       if (wrong !== null) return errorResult(wrong);
       return answered(
         withPosition(await setPositionState(m, who, args.position, removed)),
