@@ -1154,6 +1154,7 @@ export function Dashboard() {
   return (
     <Page
       title="Home"
+      brand
       search={
         layout !== null &&
         !locked &&

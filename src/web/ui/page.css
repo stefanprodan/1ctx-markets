@@ -128,6 +128,29 @@
     }
   }
 
+  /* the brand shows only under the phone's bar; the title is kept for
+     screen readers there */
+  .page-brand {
+    display: none;
+  }
+  /* one title line high, the logo overhanging it, so the head keeps the
+     height every other page has */
+  .shell-main-bar .page-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    height: 1em;
+    vertical-align: top;
+  }
+  .shell-main-bar .page-brand-title {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
   /* the text is cut, not the title's box, so its busy bar still shows */
   .page-title-cut {
     flex-shrink: 1;

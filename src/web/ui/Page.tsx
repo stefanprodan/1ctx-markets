@@ -6,7 +6,7 @@ import { useEffect, useState } from "preact/hooks";
 import { goBack } from "../app/router.ts";
 import { onPhone } from "../app/shell.ts";
 import { markets } from "../data/store.ts";
-import { Icon } from "../lib/icons.tsx";
+import { Icon, Mark } from "../lib/icons.tsx";
 import { reloading } from "../lib/refresh.ts";
 import { HideAmounts } from "./Amounts.tsx";
 import { type SearchAdds, SymbolSearch } from "./SymbolSearch.tsx";
@@ -37,6 +37,7 @@ export function didNotLoad(
 export function Page({
   title,
   titleCut,
+  brand,
   back,
   meta,
   search,
@@ -52,6 +53,9 @@ export function Page({
   title: string;
   // a title holding a person's name may be long: cut it, keep the meta
   titleCut?: boolean;
+  // on a phone, with no rail, the app's mark and name stand where the
+  // title was
+  brand?: boolean;
   // on a phone, Back before the title: through the app's history, or to
   // this address when the page was opened cold
   back?: string;
@@ -107,7 +111,19 @@ export function Page({
           class={`page-title${titleCut ? " page-title-cut" : ""}${reloading.value > 0 ? " page-title-busy" : ""}`}
           title={titleCut ? title : undefined}
         >
-          {titleCut ? <span class="cut">{title}</span> : title}
+          {brand ? (
+            <>
+              <span class="page-brand" aria-hidden="true">
+                <Mark size={28} />
+                <span class="page-brand-word">Markets</span>
+              </span>
+              <span class="page-brand-title">{title}</span>
+            </>
+          ) : titleCut ? (
+            <span class="cut">{title}</span>
+          ) : (
+            title
+          )}
         </h1>
         {meta && <span class="page-meta">{meta}</span>}
         <div class="page-actions">
