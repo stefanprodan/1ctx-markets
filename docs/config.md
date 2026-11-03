@@ -124,7 +124,7 @@ the `--help` text, and a flag changes there in the same commit.
 | `/mcp` | POST | MCP over Streamable HTTP, stateless |
 | `/api/v1/*` | GET, POST, PATCH, DELETE | the REST API, its spec and docs page (`docs/api.md`); each operation takes the read or the admin scope (`docs/admin.md`) |
 | `/health` | GET | 200 with no body, for the service's start check |
-| `/`, `/status`, `/connect`, `/instruments` | GET | the web UI's page, its assets at the paths it names (`docs/web.md`) |
+| `/`, `/screener`, `/symbol/{id}`, `/portfolios`, `/profile`, `/connect`, `/status` (`UI_PATHS`) | GET | the web UI's page, its assets at the paths it names (`docs/web.md`) |
 | `/ui/session` | POST, DELETE | the web UI's sign-in and sign-out (`docs/web.md`) |
 
 - **Any other method is 405 with `Allow`.** `/mcp` is stateless (one

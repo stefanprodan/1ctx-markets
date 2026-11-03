@@ -1,11 +1,12 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 
+import { symbolHref } from "../app/paths.ts";
 import {
   markets,
   type ScreenAsk,
   type Screened,
-  type Screener,
+  type Screener as Screened_,
 } from "../data/store.ts";
 import { change, priceParts } from "../lib/format.ts";
 import { nameOf, tickerOf } from "../lib/names.ts";
@@ -25,10 +26,8 @@ import {
   TREND,
   tabOf,
   typeTabs,
-} from "./Instruments.model.ts";
+} from "./Screener.model.ts";
 import "./instruments.css";
-
-const hrefOf = (id: string) => `/instruments/${encodeURIComponent(id)}`;
 
 const faint = <span class="faint">–</span>;
 
@@ -141,14 +140,14 @@ function columnsFor(s: ScreenText): Column<Screened>[] {
 
 const WAITING_ROWS = 8;
 
-export function InstrumentsList({
+export function ScreenerList({
   held,
   ask,
   more,
   onAsk,
   onMore,
 }: {
-  held: Screener | null;
+  held: Screened_ | null;
   ask: ScreenAsk;
   // Show more's page is reading
   more: boolean;
@@ -202,7 +201,7 @@ export function InstrumentsList({
           columns={columnsFor(shown ?? s)}
           rows={held?.rows ?? []}
           rowKey={(r) => r.id}
-          open={(r) => ({ href: hrefOf(r.id) })}
+          open={(r) => ({ href: symbolHref(r.id) })}
           rowLabel={(r) => tickerOf(r.id, r.kind)}
           sort={held?.sort.field}
           dir={held?.sort.order}
@@ -225,12 +224,12 @@ export function InstrumentsList({
   );
 }
 
-export function Instruments() {
+export function Screener() {
   useRefresh(markets.loadScreener);
   const held = markets.screener.value !== null;
   return (
     <Page
-      title="Instruments"
+      title="Screener"
       stale={held ? markets.screenerError.value : null}
       staleCount={markets.screenerFailures.value}
       failed={didNotLoad(
@@ -240,7 +239,7 @@ export function Instruments() {
         () => void markets.loadScreener(),
       )}
     >
-      <InstrumentsList
+      <ScreenerList
         held={markets.screener.value}
         ask={markets.screenAsk.value}
         more={markets.screenerMore.value}

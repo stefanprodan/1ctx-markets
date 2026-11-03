@@ -20,7 +20,7 @@ import type {
 } from "lightweight-charts";
 import type { ComponentChildren, Ref } from "preact";
 import { useEffect, useLayoutEffect, useMemo, useRef } from "preact/hooks";
-import { railDrawer } from "../app/shell.ts";
+import { onPhone } from "../app/shell.ts";
 import { theme } from "../app/theme.ts";
 import { says } from "../data/api.ts";
 import { markets } from "../data/store.ts";
@@ -289,7 +289,7 @@ function ChartFrame({
     <Card
       flush
       label="Chart"
-      class={`chart-card${lookOf(railDrawer.value).phone ? " chart-phone" : ""}`}
+      class={`chart-card${lookOf(onPhone.value).phone ? " chart-phone" : ""}`}
     >
       <div class="card-head chart-head">{head}</div>
       <div class="chart-body">
@@ -347,7 +347,7 @@ export function Chart({ id, intraday }: { id: string; intraday: boolean }) {
     });
   }, [range.value, line.value, log.value, sma50.value, sma200.value]);
   // a kept toggle the look has no button for draws as off, never stuck on
-  const look = () => lookOf(railDrawer.value);
+  const look = () => lookOf(onPhone.value);
   const logScale = () => log.value && look().log;
   const show50 = () => sma50.value && look().averages;
   const show200 = () => sma200.value && look().averages;
@@ -504,7 +504,7 @@ export function Chart({ id, intraday }: { id: string; intraday: boolean }) {
 
   useEffect(() => {
     void load();
-  }, [id, intraday, range.value, railDrawer.value]);
+  }, [id, intraday, range.value, onPhone.value]);
   // the instrument's own read pulses the menu for the page
   useRefresh(() => load(), true);
 
@@ -515,7 +515,7 @@ export function Chart({ id, intraday }: { id: string; intraday: boolean }) {
     theme.value,
     line.value,
     log.value,
-    railDrawer.value,
+    onPhone.value,
     sma50.value,
     sma200.value,
   ]);

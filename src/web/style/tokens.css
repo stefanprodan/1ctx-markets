@@ -38,6 +38,9 @@
     --on-brand: #131314;
     /* a menu floating over the page */
     --shadow-pop: 0 6px 20px rgba(0, 0, 0, 0.45);
+    /* the phone's bar: glass, lighter than a popover */
+    --bar-line: rgba(255, 255, 255, 0.08);
+    --shadow-bar: 0 4px 14px rgba(0, 0, 0, 0.3);
     /* the slash between a crumb's parts */
     --separator: #35363a;
     /* the page dimmed behind a drawer */
@@ -148,6 +151,8 @@
     --hover: #e6e3da;
     --on-brand: #fbfaf7;
     --shadow-pop: 0 6px 20px rgba(19, 19, 20, 0.12);
+    --bar-line: rgba(19, 19, 20, 0.08);
+    --shadow-bar: 0 4px 14px rgba(19, 19, 20, 0.08);
     --separator: #aeaaa0;
     --backdrop: rgba(19, 19, 20, 0.3);
     --invested: oklch(0.48 0.08 255);

@@ -181,7 +181,7 @@ bar's close, or the live price on the live row.
 - **The 1M and 1Y returns are also stored, on the newest daily row**
   (`return_1m`, `return_1y`: the live row, else the last final, the
   one a reader takes), so `GET /api/v1/screener` (the web UI's
-  Instruments page) reads thousands in one query, without a bar. Every
+  Screener page) reads thousands in one query, without a bar. Every
   write of the daily rows ends with them (`recomputeSignals()` and
   `refreshLive()`, which the quote passes and every bar write call),
   computed by `returnsOf()` over the same closes and live price as

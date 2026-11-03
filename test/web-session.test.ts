@@ -451,10 +451,15 @@ describe("the served UI", () => {
           const res = await fetch(`${url}${asset}`);
           expect([asset, res.status]).toEqual([asset, 200]);
         }
-        for (const path of ["/status", "/instruments"]) {
+        for (const path of ["/status", "/screener", "/symbol/US%3AAAPL"]) {
           const res = await fetch(`${url}${path}`);
           expect([path, res.status]).toEqual([path, 200]);
           expect(await res.text()).toBe(html);
+        }
+        // the old addresses are no pages
+        for (const path of ["/instruments", "/instruments/US%3AAAPL"]) {
+          const res = await fetch(`${url}${path}`);
+          expect(await res.text()).not.toBe(html);
         }
         // an unknown path is no page: it keeps the keys' 401
         expect((await fetch(`${url}/nothing`)).status).toBe(401);
@@ -532,7 +537,7 @@ describe("the served UI", () => {
           await read(asset[1]!);
         }
         await read("/status");
-        await read("/instruments");
+        await read("/screener");
         for (const icon of Object.keys(ICONS)) {
           expect((await read(icon)).status).toBe(200);
         }

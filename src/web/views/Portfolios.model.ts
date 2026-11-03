@@ -3,6 +3,7 @@
 // The Portfolios page's words and numbers, with no DOM, so they are tested.
 
 import { inCirculation } from "../../shared/currencies.ts";
+import { symbolHref } from "../app/paths.ts";
 import type {
   Holding,
   Holdings,
@@ -799,15 +800,12 @@ export function barOf(t: Total, all = false): BarSide[] | null {
 
 export type EditWhat = "edit" | "price" | "purchases";
 
-const instrumentHref = (id: string): string =>
-  `/instruments/${encodeURIComponent(id)}`;
-
 // a hand-priced fund has an id but no listing, so no instrument page
 export const pageOf = (h: Holding): string | null =>
-  h.id && h.priced !== "hand" && !isFundId(h.id) ? instrumentHref(h.id) : null;
+  h.id && h.priced !== "hand" && !isFundId(h.id) ? symbolHref(h.id) : null;
 
 export const tradePage = (symbol: string): string | null =>
-  isFundId(symbol) ? null : instrumentHref(symbol);
+  isFundId(symbol) ? null : symbolHref(symbol);
 
 // with no instrument page, a row opens what edits it
 export function homeOf(h: Holding): EditWhat | null {

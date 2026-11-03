@@ -12,16 +12,37 @@ export const path = signal(
 // in place, so a page loads again on the same path with another query
 export const visits = signal(0);
 
+// each entry the app pushes is one step past the one it left; a reload
+// keeps the entry's step, so the page the tab opened on is the base and
+// only an entry past it was reached inside the app
+export const stepOf = (state: unknown): number => {
+  const at = (state as { step?: unknown } | null)?.step;
+  return typeof at === "number" ? at : 0;
+};
+let base = 0;
+
 export function navigate(to: string, replace = false): void {
   const url = new URL(to, location.origin);
   const next = url.pathname + url.search;
   if (next === location.pathname + location.search) return;
-  if (replace) history.replaceState(null, "", next);
+  const step = stepOf(history.state);
+  if (replace) history.replaceState({ step }, "", next);
   else {
-    history.pushState(null, "", next);
+    history.pushState({ step: step + 1 }, "", next);
     visits.value++;
   }
   path.value = url.pathname;
+}
+
+// back through the app's own history, or, opened cold, to the address
+// given: history.back() there would leave the app
+export function backFrom(state: unknown, start: number): "history" | "address" {
+  return stepOf(state) > start ? "history" : "address";
+}
+
+export function goBack(to: string): void {
+  if (backFrom(history.state, base) === "history") history.back();
+  else navigate(to);
 }
 
 // a same-origin link opens in place unless it asks for a download or a new
@@ -61,6 +82,7 @@ function onLinkClick(event: MouseEvent): void {
 }
 
 export function boot(): void {
+  base = stepOf(history.state);
   window.addEventListener("popstate", () => {
     path.value = location.pathname;
     visits.value++;

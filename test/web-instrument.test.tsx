@@ -514,9 +514,9 @@ describe("a fund's holdings", () => {
     expect(html).not.toContain("not current");
     // by the stored id, else by symbol, in the ticker's style
     expect(html).toContain(
-      '<a class="sym-ticker sym-link" href="/instruments/US%3AAAA" aria-label="Alpha Made Up">AAA</a>',
+      '<a class="sym-ticker sym-link" href="/symbol/US%3AAAA" aria-label="Alpha Made Up">AAA</a>',
     );
-    expect(html).toContain('href="/instruments/BBB"');
+    expect(html).toContain('href="/symbol/BBB"');
     // no symbol: its name, no link
     expect(html).toContain(
       '<dt title="Gamma Made Up Holdings">Gamma Made Up Holdings</dt>',

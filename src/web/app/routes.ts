@@ -11,10 +11,11 @@ import type { IconName } from "../lib/icons.tsx";
 import { Connect } from "../views/Connect.tsx";
 import { Dashboard } from "../views/Dashboard.tsx";
 import { Instrument } from "../views/Instrument.tsx";
-import { Instruments } from "../views/Instruments.tsx";
 import { Portfolios } from "../views/Portfolios.tsx";
 import { Profile } from "../views/Profile.tsx";
+import { Screener } from "../views/Screener.tsx";
 import { Status } from "../views/Status.tsx";
+import { SCREENER, SYMBOL } from "./paths.ts";
 
 export type Params = Record<string, string>;
 
@@ -24,6 +25,8 @@ export type Route = {
   label: string;
   icon: IconName;
   view: ComponentType<{ params: Params }>;
+  // the page the rail and the bar light for one outside its path
+  parent?: string;
   // what arriving on the page loads, before it renders
   load?: (params: Params) => Promise<void>;
 };
@@ -40,18 +43,19 @@ export const ROUTES: readonly Route[] = [
   },
 
   {
-    path: "/instruments",
-    label: "Instruments",
+    path: SCREENER,
+    label: "Screener",
     icon: "list",
-    view: Instruments,
+    view: Screener,
     load: async () => {
       await markets.loadScreener();
     },
   },
   {
-    path: "/instruments/:id",
+    path: `${SYMBOL}:id`,
     label: "Instrument",
     icon: "list",
+    parent: SCREENER,
     view: Instrument,
     load: async (p) => {
       await markets.loadInstrument(p.id!);
@@ -110,7 +114,9 @@ export const STATUS = "/status";
 // the rail's pages: a page with a parameter lights its parent
 export const RAIL = ROUTES.filter((r) => !r.path.includes(":"));
 export const lit = (here: string, path: string): boolean =>
-  here === path || here.startsWith(`${path}/`);
+  here === path ||
+  here.startsWith(`${path}/`) ||
+  match(here)?.route.parent === path;
 
 export type Match = { route: Route; params: Params };
 

@@ -3,7 +3,7 @@
 Governs the operator's routes and command: `src/admin/http.ts` (the
 instrument, watchlist and status handlers), `src/admin/refetch.ts`,
 `src/admin/retry.ts` (the failed jobs' retry), `src/admin/screener.ts`
-(the Instruments page's screener),
+(the Screener page),
 `src/admin/keys.ts` (the agent keys' routes), `src/admin/cli.ts`
 (`1ctx-markets admin`) and `src/admin/keys-cli.ts` (`1ctx-markets
 keys`). The routes, their errors

@@ -29,8 +29,8 @@ import { pointerAt, type Rest } from "../src/web/views/Chart.model.ts";
 import { ConnectBody } from "../src/web/views/Connect.tsx";
 import { HomeWaiting, SectionView } from "../src/web/views/Dashboard.tsx";
 import { InstrumentWaiting } from "../src/web/views/Instrument.tsx";
-import { InstrumentsList } from "../src/web/views/Instruments.tsx";
 import { PortfoliosBody } from "../src/web/views/Portfolios.tsx";
+import { ScreenerList } from "../src/web/views/Screener.tsx";
 import { StatusWaiting } from "../src/web/views/Status.tsx";
 import { fakeClock } from "./helpers/clock.ts";
 
@@ -390,7 +390,7 @@ describe("the other pages while they read", () => {
     const ask = s.screenAsk.value;
     const list = (held: Screener | null) =>
       render(
-        <InstrumentsList
+        <ScreenerList
           held={held}
           ask={ask}
           more={false}
@@ -445,13 +445,13 @@ describe("the chart's legend", () => {
 
 describe("names", () => {
   test("a coin's tab drops its quote currency; a future's other contract is a future", () => {
-    expect(tabTitle("/instruments/CRYPTO%3ABTC-USD", true)).toBe(
+    expect(tabTitle("/symbol/CRYPTO%3ABTC-USD", true)).toBe(
       "BTC · 1ctx Markets",
     );
-    expect(tabTitle("/instruments/BTC-USD", true, "CRYPTOCURRENCY")).toBe(
+    expect(tabTitle("/symbol/BTC-USD", true, "CRYPTOCURRENCY")).toBe(
       "BTC · 1ctx Markets",
     );
-    expect(tabTitle("/instruments/BRK-B", true, "EQUITY")).toBe(
+    expect(tabTitle("/symbol/BRK-B", true, "EQUITY")).toBe(
       "BRK-B · 1ctx Markets",
     );
     expect(kindOf("ALTSYMBOL")).toBe("Future");

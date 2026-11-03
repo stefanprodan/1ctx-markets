@@ -29,7 +29,7 @@ MCP tools copied onto paths.
 | `GET /movers?symbols=&min_move_pct=&direction=&average=&relation=` | read | `readMovers()`, `setAll()` | `movers[]`: every match, unavailable and error, with `counts` |
 | `POST /screen` | read | `readScreen()`, `setAll()` | `matches[]`, the same; the body is the tool's arguments, since `filters` is a structure; 200, it creates nothing |
 | `GET /instruments?query=&page_size=&page_token=` | admin | `instruments()` | a page of stored instruments and what tracks each (`docs/admin.md`) |
-| `GET /screener?type=&screen=&sort=&order=&page_size=&page_token=` | admin | `screener()` | the web UI's Instruments page: a page of one ready-made screen over the instruments kept up to date, with every screen's `counts` and the stored `kinds` (below) |
+| `GET /screener?type=&screen=&sort=&order=&page_size=&page_token=` | admin | `screener()` | the web UI's Screener page: a page of one ready-made screen over the instruments kept up to date, with every screen's `counts` and the stored `kinds` (below) |
 | `GET /instruments/{symbol}` | read | `instrument()` | the instrument, what tracks it, its full quote and a fund's `top_holdings`; a read (below) |
 | `DELETE /instruments/{symbol}` | admin | `deleteOne()` | 204; 409 with `rules` (`docs/admin.md`) |
 | `POST /instruments/{symbol}/refetch` | admin | `refetchOne()` | `input`, `id`, `parts[]` (`docs/admin.md`) |
@@ -240,7 +240,7 @@ MCP tools copied onto paths.
 
 ## The screener
 
-- **`GET /screener` is the web UI's Instruments page**: the
+- **`GET /screener` is the web UI's Screener page**: the
   instruments kept up to date (`trackedIds()`), but the funds the owner
   prices, read in one query over each one's stored quote and latest
   daily signal row (the live one, else the last final), plus one for

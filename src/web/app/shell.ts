@@ -5,7 +5,7 @@ import { signal } from "@preact/signals";
 
 export const NARROW = "(max-width: 719px)";
 // a phone on its side is wide but too short for a rail beside the view
-export const DRAWER = `${NARROW}, (max-height: 500px) and (pointer: coarse)`;
+export const PHONE = `${NARROW}, (max-height: 500px) and (pointer: coarse)`;
 const KEY = "rail";
 
 const stored = (): boolean => {
@@ -16,10 +16,9 @@ const stored = (): boolean => {
   }
 };
 
-export const railDrawer = signal(false);
+// a phone: the bottom bar in place of the rail and the strip
+export const onPhone = signal(false);
 export const railHidden = signal(stored());
-// never kept: a reload opens on the view
-export const drawerOpen = signal(false);
 
 export function hideRail(): void {
   railHidden.value = true;
@@ -35,23 +34,12 @@ export function showRail(): void {
   } catch {}
 }
 
-export function openDrawer(): void {
-  drawerOpen.value = true;
-}
-
-export function closeDrawer(): void {
-  drawerOpen.value = false;
-}
-
-// a drawer left open when the rail stops being one is closed, so it is not
-// open again the next time it becomes one
 export function watchScreen(): void {
   if (typeof matchMedia === "undefined") return;
-  const drawer = matchMedia(DRAWER);
+  const phone = matchMedia(PHONE);
   const apply = () => {
-    railDrawer.value = drawer.matches;
-    if (!drawer.matches) closeDrawer();
+    onPhone.value = phone.matches;
   };
   apply();
-  drawer.addEventListener("change", apply);
+  phone.addEventListener("change", apply);
 }

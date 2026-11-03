@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useEffect, useState } from "preact/hooks";
+import { symbolHref } from "../app/paths.ts";
 import {
   type Board,
   type BoardItem,
@@ -71,8 +72,6 @@ import "./dashboard.css";
 
 type Items = ReadonlyMap<string, BoardItem>;
 type Save = (next: BoardSection[] | null) => Promise<void>;
-
-const hrefOf = (id: string) => `/instruments/${encodeURIComponent(id)}`;
 
 // the viewer's own day, as the earnings were asked
 function today(): string {
@@ -156,7 +155,7 @@ function MoverList({
         columns={columns}
         rows={rows}
         rowKey={(r) => r.id}
-        open={(r) => ({ href: hrefOf(r.id) })}
+        open={(r) => ({ href: symbolHref(r.id) })}
         rowLabel={(r) => tickerOf(r.id, r.kind)}
         head={false}
         dense
@@ -295,7 +294,7 @@ function Trends({ trends, waiting }: { trends: Trend[]; waiting?: boolean }) {
         columns={columns}
         rows={shown}
         rowKey={(t) => t.id}
-        open={(t) => ({ href: hrefOf(t.id) })}
+        open={(t) => ({ href: symbolHref(t.id) })}
         rowLabel={(t) => tickerOf(t.id)}
         sort={sort.key}
         dir={sort.dir === 1 ? "asc" : "desc"}
@@ -393,7 +392,7 @@ export function Earnings({
       columns={EARNING_COLUMNS}
       rows={earningRows(earnings, today())}
       rowKey={(e) => e.id + e.day}
-      open={(e) => ({ href: hrefOf(e.id) })}
+      open={(e) => ({ href: symbolHref(e.id) })}
       rowLabel={(e) => e.symbol}
       dense
     />
@@ -1055,7 +1054,7 @@ export function SectionView({
             rows={lines}
             rowKey={(l) => l.id}
             rowAttrs={editing ? (l) => dragOf(l.id) : undefined}
-            open={(l) => (editing ? null : { href: hrefOf(l.id) })}
+            open={(l) => (editing ? null : { href: symbolHref(l.id) })}
             rowLabel={(l) => symbolOf(l.id)}
             dense
           />
