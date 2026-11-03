@@ -30,6 +30,7 @@ import {
   setFundPrice,
 } from "../portfolios/funds.ts";
 import { missingPairs, rates } from "../portfolios/fx.ts";
+import { type Growth, growth } from "../portfolios/growth.ts";
 import {
   type Broker,
   brokerByName,
@@ -932,6 +933,36 @@ export async function readHoldings(
     display_currency: shown,
     ...read,
   };
+}
+
+// the past year's growth, from stored rows only: never a fetch, so a
+// page drawing it never waits on a source
+export function readGrowth(
+  m: Markets,
+  args: { portfolio: Ref | null; currency: string | null },
+): Growth | Failure {
+  const p = findPortfolio(m.db, args.portfolio);
+  if (isFailure(p)) return p;
+  const currency = args.currency ?? displayCurrency(m.db);
+  if (currency === null) {
+    return {
+      error: "bad_arguments",
+      message: "no display currency is set; name a currency",
+    };
+  }
+  const now = m.clock.now();
+  return growth(
+    m.db,
+    {
+      portfolios: listPortfolios(m.db),
+      brokers: listBrokers(m.db),
+      portfolio: p?.id ?? null,
+      currency,
+    },
+    ownerToday(m.db, now),
+    now,
+    m.quoteEveryMs,
+  );
 }
 
 export function readTradeList(

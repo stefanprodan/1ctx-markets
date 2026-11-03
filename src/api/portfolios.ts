@@ -29,6 +29,7 @@ import {
   parseTrade,
   portfolioItem,
   positionItem,
+  readGrowth,
   readHoldings,
   readTradeList,
   removeBroker,
@@ -126,6 +127,12 @@ export function portfolioRoutes(m: Markets): Route[] {
     });
     return answer(read);
   };
+  const growthOf = (url: URL, portfolio: number | null) => {
+    const q = queryArgs(url, { currency: "text" });
+    return answer(
+      readGrowth(m, { portfolio, currency: namedCurrency(q.currency) }),
+    );
+  };
   return [
     {
       method: "GET",
@@ -197,6 +204,19 @@ export function portfolioRoutes(m: Markets): Route[] {
       path: "/holdings",
       scope: R,
       handle: async (_req, url) => holdingsOf(url, null),
+    },
+    {
+      method: "GET",
+      path: "/portfolios/{id}/growth",
+      scope: R,
+      handle: async (_req, url, params) =>
+        growthOf(url, idOf(params.id!, "portfolio")),
+    },
+    {
+      method: "GET",
+      path: "/holdings/growth",
+      scope: R,
+      handle: async (_req, url) => growthOf(url, null),
     },
     {
       method: "GET",
