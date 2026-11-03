@@ -106,6 +106,8 @@ const PATHS = {
   user: "M8 8a2.75 2.75 0 1 0 0-5.5 2.75 2.75 0 0 0 0 5.5zM2.5 13.5c.6-2.6 2.9-4 5.5-4s4.9 1.4 5.5 4",
   // Portfolios: a briefcase
   briefcase: "M2.5 5.5h11v8h-11zM6 5.5v-2h4v2M2.5 9h11",
+  shield:
+    "M8 1.75 13 3.5v4c0 3.2-2.1 5.6-5 6.75C5.1 13.1 3 10.7 3 7.5v-4zM5.75 8l1.5 1.5 3-3",
   download: "M8 2.5v8M4.5 7 8 10.5 11.5 7M3 13.5h10",
   upload: "M8 10.5v-8M4.5 6 8 2.5 11.5 6M3 13.5h10",
   // Connect agents: a plug

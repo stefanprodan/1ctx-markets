@@ -425,6 +425,14 @@ export const SESSION_PATH = "/ui/session";
 export const ME_PATH = "/ui/me";
 export const LINK_PATH = "/ui/link";
 export const CODE_PATH = "/ui/code";
+export const SHARING_PATH = "/api/v1/sharing";
+
+// everyone else, with whether the reader lets them see their portfolios,
+// and the people who let the reader see theirs
+export type Sharing = {
+  people: { id: string; name: string; shared: boolean }[];
+  sharers: { id: string; name: string }[];
+};
 
 // who is signed in, as GET /ui/me answers
 export type Me = {
@@ -617,7 +625,10 @@ export function store(
       keysError.value = null;
       keysCode.value = null;
     });
+    sharingLoad++;
+    sharing.value = null;
     portfolios.clear();
+    shared.clear();
     profile.clear();
     admin.clear();
   };
@@ -645,6 +656,39 @@ export function store(
   }
 
   const portfolios = portfolioStore(call, () => session, later);
+  // who sees whose portfolios: the settings' switches and the rail's rows
+  const sharing = signal<Sharing | null>(null);
+  const sharers = computed(() => sharing.value?.sharers ?? []);
+  let sharingLoad = 0;
+  // a failed read keeps the last answer: the rail never blinks
+  async function loadSharing(): Promise<void> {
+    const mine = ++sharingLoad;
+    const at = session;
+    try {
+      const a = await call<Sharing>(SHARING_PATH);
+      if (mine === sharingLoad && at === session) sharing.value = a;
+    } catch {}
+  }
+  // the refusal's words, or null once the server answered; only the
+  // newest answer lands, so switches flipped quickly never show an old one
+  async function share(id: string, on: boolean): Promise<string | null> {
+    const mine = ++sharingLoad;
+    const at = session;
+    try {
+      const a = await call<Sharing>(
+        `${SHARING_PATH}/${encodeURIComponent(id)}`,
+        on ? "PUT" : "DELETE",
+      );
+      if (mine === sharingLoad && at === session) sharing.value = a;
+      return null;
+    } catch (error) {
+      if (at === session) void loadSharing();
+      return says(error);
+    }
+  }
+  const shared = portfolioStore(call, () => session, later, {
+    gone: () => void loadSharing(),
+  });
   const profile = profileStore(call, () => session);
   const admin = adminStore(
     call,
@@ -683,6 +727,7 @@ export function store(
         statusError.value = null;
         statusCode.value = null;
       });
+      void loadSharing();
       return true;
     } catch (error) {
       if (mine !== meLoad) return meCurrent;
@@ -1359,6 +1404,11 @@ export function store(
   return {
     later,
     portfolios,
+    shared,
+    sharing,
+    sharers,
+    loadSharing,
+    share,
     profile,
     keys,
     keysLimit,

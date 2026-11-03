@@ -3115,4 +3115,65 @@ async function portfolioOperations(
     404,
   );
   await refusals("DELETE", one, at);
+
+  // owner reads another person's portfolios, by a sign-in they share with
+  t.db
+    .query(
+      "insert into users (id, name, role, created_at) values ('ana', 'Ana', 'member', 0)",
+    )
+    .run();
+  const signed = (init: RequestInit = {}): RequestInit => ({
+    ...init,
+    headers: {
+      ...(init.headers as object),
+      cookie: cookieFor(t.db, t.clock.now()),
+      "sec-fetch-site": "same-origin",
+    },
+  });
+  await check("GET", P, await t.call(`${P}?owner=ana`, signed()), 404);
+  await check("GET", P, await t.call(`${P}?owner=ana`), 403);
+  await check("GET", HG, await t.call(`${HG}?owner=ana`, signed()), 404);
+  const SH = "/sharing";
+  const SP = `${SH}/{id}`;
+  const shared = await check("GET", SH, await t.call(SH, signed()), 200);
+  expect(shared).toEqual({
+    people: [{ id: "ana", name: "Ana", shared: false }],
+    sharers: [],
+  });
+  await check("GET", SH, await t.call(`${SH}?x=1`, signed()), 400);
+  await check("GET", SH, await t.call(SH, wrong), 401);
+  await check("GET", SH, await t.call(SH, reader), 403);
+  for (const method of ["PUT", "DELETE"]) {
+    const done = await check(
+      method,
+      SP,
+      await t.call(`${SH}/ana`, signed({ method })),
+      200,
+    );
+    expect(done.people[0].shared).toBe(method === "PUT");
+    await check(
+      method,
+      SP,
+      await t.call(`${SH}/operator`, signed({ method })),
+      400,
+    );
+    await check(
+      method,
+      SP,
+      await t.call(`${SH}/nobody`, signed({ method })),
+      404,
+    );
+    await check(
+      method,
+      SP,
+      await t.call(`${SH}/ana`, { method, ...wrong }),
+      401,
+    );
+    await check(
+      method,
+      SP,
+      await t.call(`${SH}/ana`, { method, ...reader }),
+      403,
+    );
+  }
 }

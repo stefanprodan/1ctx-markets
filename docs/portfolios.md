@@ -218,6 +218,29 @@ once and valued on the live price the server already keeps.
   A conversion target takes no hundredth.
   Nothing in code, docs or tests defaults to a currency. An install
   with portfolios from before answers per currency until one is set.
+- **A person lets chosen people see all their portfolios, read only**
+  (`portfolio_viewers`, migration `0038-sharing`; `src/api/sharing.ts`).
+  One switch per person, the whole thing, Cash included, and nothing
+  else of theirs: no profile, dashboard or rules, no single portfolio
+  and no editing. Only the owner adds or ends it, in the web UI
+  (`PUT`, `DELETE /api/v1/sharing/{id}`); removing either person ends
+  it with their row.
+- **A viewer reads the owner's portfolios as the owner does.** The six
+  reads the Portfolios page draws from (`GET /portfolios`, `/holdings`,
+  `/portfolios/{id}/holdings`, `/holdings/growth`,
+  `/portfolios/{id}/growth`, `/trades`) take `owner=<person id>` and
+  answer exactly what the owner reads, in the owner's display currency
+  and time zone (`readOwner()`). Allowed for the caller's own id or one
+  who shares with them; anyone else, a person not there and an ended
+  share all answer 404, never 403, so an id never tells whether its
+  person exists. Every write ignores `owner` and acts on the caller's
+  own rows.
+- **The share is the web UI's alone.** A key, the admin key too, is
+  refused `owner` (403) even for its own person, and the sharing routes,
+  so an agent reads only its person's portfolios and the `portfolio`
+  tool never changes. To let another person's agent read theirs, an
+  owner makes a key with portfolio `read` (profile and rules `none`) on
+  Connect agents and hands it over; revoking it ends that.
 
 ## The arithmetic
 

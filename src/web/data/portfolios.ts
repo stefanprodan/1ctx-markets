@@ -11,6 +11,9 @@ import { ApiError, type Call, codeOf, says } from "./api.ts";
 
 export const PORTFOLIOS_PATH = "/api/v1/portfolios";
 export const PORTFOLIOS_PAGE = "/portfolios";
+export const SHARED_PAGE = "/portfolios/shared";
+// a share ended or never was: the page says so, never the figures before
+export const NOT_SHARED = "Not shared with you.";
 
 export type View = {
   portfolio: number | null;
@@ -20,13 +23,10 @@ export type View = {
 // the view lives in the page's address, so a reload or a link opens on it:
 // the portfolio in the path, the currency in the query. A list's search
 // narrows that list alone, so it stays out of it
-export function addressOf(v: View): string {
+export function addressOf(v: View, base = PORTFOLIOS_PAGE): string {
   const q = new URLSearchParams();
   if (v.currency !== null) q.set("currency", v.currency);
-  const path =
-    v.portfolio === null
-      ? PORTFOLIOS_PAGE
-      : `${PORTFOLIOS_PAGE}/${v.portfolio}`;
+  const path = v.portfolio === null ? base : `${base}/${v.portfolio}`;
   return q.size > 0 ? `${path}?${q}` : path;
 }
 
@@ -41,10 +41,13 @@ export function viewOf(id: string | undefined, search: string): View {
   };
 }
 
-const onPage = (): boolean =>
+// a portfolio's tab is a number after the base, so a shared view under
+// it is never taken for one of the owner's own
+const onPage = (base: string): boolean =>
   typeof location !== "undefined" &&
-  (location.pathname === PORTFOLIOS_PAGE ||
-    location.pathname.startsWith(`${PORTFOLIOS_PAGE}/`));
+  (location.pathname === base ||
+    (/^\/\d+$/.test(location.pathname.slice(base.length)) &&
+      location.pathname.startsWith(base)));
 
 export type PortfolioRow = {
   id: number;
@@ -412,11 +415,13 @@ export function plainError(said: string): string {
 }
 
 // session: the store's sign-in count, so an answer from before a sign-in
-// or sign-out never lands
+// or sign-out never lands. shared: another person's portfolios, read as
+// they see them under their own address; gone runs once their share ended
 export function portfolioStore(
   call: Call,
   session: () => number,
   later: Later = timer,
+  shared: { gone: () => void } | null = null,
 ) {
   const overview = signal<Overview | null>(null);
   const holdings = signal<Holdings | null>(null);
@@ -435,11 +440,22 @@ export function portfolioStore(
   // seen once draws its line at once; null for a read that failed
   const growths = signal<ReadonlyMap<string, Growth | null>>(new Map());
   const asking = new Set<string>();
+  // whose portfolios a shared store reads; none until its page opens one
+  const owner = signal<string | null>(null);
+  const base = (): string =>
+    shared === null
+      ? PORTFOLIOS_PAGE
+      : `${SHARED_PAGE}/${encodeURIComponent(owner.peek() ?? "")}`;
+  const read = (path: string): string =>
+    shared === null
+      ? path
+      : `${path}${path.includes("?") ? "&" : "?"}owner=${encodeURIComponent(owner.peek() ?? "")}`;
 
   let loads = 0;
   // paced only on arrival, where placeholders may show; a save or a
   // pick reloads under what is drawn
   async function load(arrival = false): Promise<void> {
+    if (shared !== null && owner.peek() === null) return;
     const mine = ++loads;
     const asked: View = {
       portfolio: portfolio.value,
@@ -447,11 +463,11 @@ export function portfolioStore(
     };
     // a currency pick or a fallback to all corrects the address in
     // place: only a portfolio picked is a step to go back from
-    if (onPage()) {
-      const here = addressOf({
-        portfolio: portfolio.value,
-        currency: currency.value,
-      });
+    if (onPage(base())) {
+      const here = addressOf(
+        { portfolio: portfolio.value, currency: currency.value },
+        base(),
+      );
       if (here !== location.pathname + location.search) navigate(here, true);
     }
     const at = session();
@@ -466,9 +482,9 @@ export function portfolioStore(
     if (portfolio.value !== null) tq.set("portfolio", String(portfolio.value));
     try {
       const reads = Promise.all([
-        call<Overview>(PORTFOLIOS_PATH),
-        call<Holdings>(`${where}${q.size > 0 ? `?${q}` : ""}`),
-        call<{ trades: TradeRow[] }>(`/api/v1/trades?${tq}`),
+        call<Overview>(read(PORTFOLIOS_PATH)),
+        call<Holdings>(read(`${where}${q.size > 0 ? `?${q}` : ""}`)),
+        call<{ trades: TradeRow[] }>(read(`/api/v1/trades?${tq}`)),
       ]);
       const [o, h, t] = await (arrival ? paced(reads, later) : reads);
       if (stale()) return;
@@ -491,6 +507,16 @@ export function portfolioStore(
       ) {
         portfolio.value = null;
         return load(arrival);
+      }
+      if (shared !== null && e instanceof ApiError && e.code === "not_found") {
+        batch(() => {
+          drop();
+          error.value = NOT_SHARED;
+          code.value = e.status;
+          failures.value++;
+        });
+        shared.gone();
+        return;
       }
       batch(() => {
         error.value = says(e);
@@ -518,7 +544,31 @@ export function portfolioStore(
   const refusal = (r: { refused: string } | object): string | null =>
     "refused" in r ? r.refused : null;
 
+  // what was drawn, so another person's figures never show under a name
+  function drop(): void {
+    loads++;
+    asking.clear();
+    overview.value = null;
+    holdings.value = null;
+    shown.value = null;
+    growths.value = new Map();
+    trades.value = null;
+  }
+
+  function clear(): void {
+    batch(() => {
+      drop();
+      error.value = null;
+      code.value = null;
+      portfolio.value = null;
+      currency.value = null;
+      owner.value = null;
+    });
+  }
+
   return {
+    address: (v: View) => addressOf(v, base()),
+    owner,
     overview,
     holdings,
     shown,
@@ -530,6 +580,18 @@ export function portfolioStore(
     portfolio,
     currency,
     load,
+    // a shared store's: whose page opened, then its view as open() takes it
+    openOf(user: string, v: View) {
+      if (owner.peek() !== user) {
+        clear();
+        owner.value = user;
+      }
+      batch(() => {
+        portfolio.value = v.portfolio;
+        currency.value = v.currency;
+      });
+      return load(true);
+    },
     // the view the address names, on arrival, a reload or a step back
     open(v: View) {
       batch(() => {
@@ -617,11 +679,11 @@ export function portfolioStore(
     // every portfolio and broker at once, whatever the page filters on:
     // where a listing is held and the dry powder a buy may pay from
     everything: (): Promise<Holdings | null> =>
-      call<Holdings>("/api/v1/holdings").catch(() => null),
+      call<Holdings>(read("/api/v1/holdings")).catch(() => null),
     // one listing's trades across every portfolio, for its page
     tradesOf: (id: string): Promise<TradeRow[] | null> =>
       call<{ trades: TradeRow[] }>(
-        `/api/v1/trades?symbol=${encodeURIComponent(id)}`,
+        read(`/api/v1/trades?symbol=${encodeURIComponent(id)}`),
       )
         .then((r) => r.trades)
         .catch(() => null),
@@ -639,16 +701,17 @@ export function portfolioStore(
       if (growths.value.has(key) || asking.has(key)) return;
       asking.add(key);
       const at = session();
+      const whose = owner.peek();
       const q = new URLSearchParams();
       if (v.currency !== null) q.set("currency", v.currency);
       const where =
         v.portfolio === null
           ? "/api/v1/holdings/growth"
           : `${PORTFOLIOS_PATH}/${v.portfolio}/growth`;
-      const g = await call<Growth>(`${where}${q.size > 0 ? `?${q}` : ""}`)
+      const g = await call<Growth>(read(`${where}${q.size > 0 ? `?${q}` : ""}`))
         .catch(() => null)
         .finally(() => asking.delete(key));
-      if (at !== session()) return;
+      if (at !== session() || whose !== owner.peek()) return;
       const next = new Map(growths.value);
       next.set(key, g);
       if (next.size > GROWTH_KEPT) next.delete(next.keys().next().value!);
@@ -660,20 +723,7 @@ export function portfolioStore(
       )
         .then((r) => r.instrument)
         .catch(() => null),
-    clear() {
-      loads++;
-      batch(() => {
-        overview.value = null;
-        holdings.value = null;
-        shown.value = null;
-        growths.value = new Map();
-        trades.value = null;
-        error.value = null;
-        code.value = null;
-        portfolio.value = null;
-        currency.value = null;
-      });
-    },
+    clear,
   };
 }
 

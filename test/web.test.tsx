@@ -80,6 +80,7 @@ import {
   type Screened,
   type Screener,
   SESSION_PATH,
+  SHARING_PATH,
   STATUS_PATH,
   type Status,
   screenerPath,
@@ -607,8 +608,8 @@ describe("the data layer", () => {
     expect(signed.me.value).toEqual(ADMIN_ME);
     expect(signed.isAdmin.value).toBe(true);
     expect(signed.emailOn.value).toBe(true);
-    // never the status, which is an admin's
-    expect(f.asked.map((a) => a.path)).toEqual([ME_PATH]);
+    // never the status, which is an admin's; who shares with them, for the rail
+    expect(f.asked.map((a) => a.path)).toEqual([ME_PATH, SHARING_PATH]);
     const out = store(fake({ [`GET ${ME_PATH}`]: signedAs(null) }).fetch);
     await out.check();
     expect(out.signedIn.value).toBe(false);
@@ -3193,6 +3194,55 @@ describe("More's drawer", () => {
     } finally {
       recent.value = [];
       markets.me.value = null;
+    }
+  });
+
+  test("lists each person sharing with the reader above Recent, none without", () => {
+    recent.value = [{ id: "US:AMD", name: "Advanced Micro Devices, Inc." }];
+    markets.me.value = ADMIN_ME;
+    const more = (here: string) => {
+      const { nodes } = drawn(() => (
+        <More here={here} failing={false} onClose={() => {}} />
+      ));
+      const drawer = nodes.find((n) => n.type === Drawer);
+      return render(drawer.props.children(() => {}));
+    };
+    const rail = (here: string) =>
+      render(<Rail here={here} onHide={() => {}} />);
+    try {
+      for (const html of [more("/"), rail("/")]) {
+        expect(html).not.toContain("Shared with me");
+        expect(html).not.toContain("/portfolios/shared/");
+      }
+      markets.sharing.value = {
+        people: [],
+        sharers: [
+          { id: "ana", name: "Ana" },
+          { id: "bea", name: "Bea" },
+        ],
+      };
+      for (const draw of [more, rail]) {
+        const html = draw("/portfolios/shared/ana/2");
+        expect(html.indexOf("Shared with me")).toBeLessThan(
+          html.indexOf("Recent"),
+        );
+        expect(html).toContain("Ana's portfolios");
+        expect(html).toContain("Bea's portfolios");
+        expect(html).toContain(
+          'href="/portfolios/shared/ana" class="rail-item rail-item-on"',
+        );
+        expect(html).toContain(
+          'href="/portfolios/shared/bea" class="rail-item"',
+        );
+      }
+      // another's page lights no page of the reader's own
+      expect(rail("/portfolios/shared/ana")).toContain(
+        'href="/portfolios" class="rail-item"',
+      );
+    } finally {
+      recent.value = [];
+      markets.me.value = null;
+      markets.sharing.value = null;
     }
   });
 

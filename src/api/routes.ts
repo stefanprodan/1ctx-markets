@@ -104,6 +104,7 @@ import {
 } from "./http.ts";
 import { spec } from "./openapi.ts";
 import { portfolioRoutes } from "./portfolios.ts";
+import { setSharing, sharingAnswer } from "./sharing.ts";
 
 export type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
@@ -723,6 +724,39 @@ function keys(d: KeysDeps): Route[] {
   ];
 }
 
+// who sees a person's portfolios, set by that person in the web UI
+function sharing(m: Markets): Route[] {
+  return [
+    {
+      method: "GET",
+      path: "/sharing",
+      scope: "session",
+      handle: async (_req, url, _params, who) => {
+        noQuery(url);
+        return sharingAnswer(m, who);
+      },
+    },
+    {
+      method: "PUT",
+      path: "/sharing/{id}",
+      scope: "session",
+      handle: async (_req, url, params, who) => {
+        noQuery(url);
+        return setSharing(m, who, params.id!, true);
+      },
+    },
+    {
+      method: "DELETE",
+      path: "/sharing/{id}",
+      scope: "session",
+      handle: async (_req, url, params, who) => {
+        noQuery(url);
+        return setSharing(m, who, params.id!, false);
+      },
+    },
+  ];
+}
+
 // admins only: people and email
 function people(d: PeopleDeps): Route[] {
   const body = async (req: Request) => {
@@ -866,6 +900,7 @@ export function routes(deps: ApiDeps): Route[] {
     ...operator(admin, deps.track),
     ...keys({ m: deps.admin.m, mask: deps.mask ?? (() => {}) }),
     ...people({ m: deps.admin.m, email, links: sent }),
+    ...sharing(deps.admin.m),
     {
       method: "GET",
       path: "/openapi.json",

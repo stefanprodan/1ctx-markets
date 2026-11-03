@@ -77,6 +77,10 @@
     font-weight: 500;
     flex-shrink: 0;
   }
+  /* a long name is cut, never the icon beside it */
+  .rail-item > svg {
+    flex-shrink: 0;
+  }
   .rail-item:hover {
     color: var(--fg);
   }

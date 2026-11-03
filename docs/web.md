@@ -328,6 +328,10 @@ learns it from `email_on` in `GET /ui/me`.
   chip and sparkle with a rising price line in place of the 1**
   (`Mark` in `lib/icons.tsx`, `favicon.svg` and the manifest's icons).
   The rail is 1ctx's logo with **Markets** beside it, the pages,
+  **Shared with me** (one row per person who lets the reader see their
+  portfolios, "<name>'s portfolios", from `GET /api/v1/sharing` after
+  sign-in and every `REFRESH_MS`, a failed read keeping the last;
+  hidden when nobody shares, cleared on sign-out),
   **Recent** (the last five instruments opened, each the ticker and
   its name on one line as `SymbolName` draws it, a coin without its
   quote currency), and
@@ -391,7 +395,7 @@ learns it from `email_on` in `GET /ui/me`.
   `--z-shell`).
 - **More is the shared `Drawer`** titled More: Profile, Connect agents,
   and for an admin Admin and Server status (red while failing), the
-  rail's Recent, then the user menu's own items (`UserItems`): the
+  rail's Shared with me and Recent, then the user menu's own items (`UserItems`): the
   person's name, Dark theme and Sign out. A tap goes there
   and closes it; so does any step to another address, the browser's
   Back included (`watchMore()`), so no page opens under it. It renders beside the bar, never inside: the bar's
@@ -1070,6 +1074,30 @@ The parts:
   same trade with `again`, for a second fill that is the same.
 - **The bundle names no source:** the import kinds read Trades, Cash
   and Bonds.
+- **Settings ends with Shared with**, under Brokers: one line, "They
+  see all your portfolios. They can't change them.", then everyone
+  else on the server with a switch (`role="switch"`, "Share with
+  <name>"), from `GET /api/v1/sharing`, read when the drawer opens. A
+  switch shows the asked state and waits, off, while its request runs,
+  then the server's answer; a refusal shows under the list. Hidden
+  while nobody else is on the server.
+- **Another person's portfolios** (`/portfolios/shared/<person id>`,
+  a tab `/portfolios/shared/<person id>/<portfolio id>`,
+  `SharedPortfolios`) are the same page drawn from the owner's data:
+  their tabs and order, All, the hero, the lists and the drawers, every
+  read with `owner` (`markets.shared`, a `portfolioStore` of its own
+  whose addresses sit under that path). The head says "<name>'s
+  portfolios" and a quiet "View only"; no Add, no page menu (Import,
+  Export, Settings), no row menus, and a trade's drawer has no Buy,
+  Sell, Remove or Restore. A listed holding still opens its instrument
+  page; a cash, fund or bond row opens nothing. Added by names whoever
+  the row names, never "You". With nothing held: "Nothing held yet.".
+  Opening another person's page drops what the last one drew, so one
+  person's figures never show under another's name. A 404 (the share
+  ended, or the person went) drops the figures, shows "This page did
+  not load" with "Not shared with you." and reads the sharers again,
+  so the rail's row goes. The route is `apart`: the rail's Portfolios
+  stays unlit there.
 - **Screener** (`/screener`, `Screener.tsx`) is a small screener over the instruments kept up to
   date, from `GET /api/v1/screener` (`docs/api.md`, "The screener"):
   the server reads every figure stored, in one query, so the page

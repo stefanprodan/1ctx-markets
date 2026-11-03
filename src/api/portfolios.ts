@@ -63,6 +63,7 @@ import {
   queryArgs,
   readBody,
 } from "./http.ts";
+import { readOwner } from "./sharing.ts";
 
 // routes.ts's Route, spelled here so the two files import one way
 type Route = {
@@ -118,6 +119,21 @@ const R = "portfolio:read" as const;
 const W = "portfolio:write" as const;
 
 export function portfolioRoutes(m: Markets): Route[] {
+  return routesOf(m).map((r) =>
+    r.scope === W
+      ? {
+          ...r,
+          // a share is read only: a write is always the caller's own
+          handle: (req, url, params, who) => {
+            url.searchParams.delete("owner");
+            return r.handle(req, url, params, who);
+          },
+        }
+      : r,
+  );
+}
+
+function routesOf(m: Markets): Route[] {
   const holdingsOf = async (
     url: URL,
     owner: string,
@@ -143,8 +159,10 @@ export function portfolioRoutes(m: Markets): Route[] {
       path: "/portfolios",
       scope: R,
       handle: async (_req, url, _params, who) => {
+        const owner = readOwner(m.db, url, who);
+        if (owner instanceof Response) return owner;
         noQuery(url);
-        return json(listAll(m, who.user));
+        return json(listAll(m, owner));
       },
     },
     {
@@ -202,28 +220,41 @@ export function portfolioRoutes(m: Markets): Route[] {
       method: "GET",
       path: "/portfolios/{id}/holdings",
       scope: R,
-      handle: async (_req, url, params, who) =>
-        holdingsOf(url, who.user, idOf(params.id!, "portfolio")),
+      handle: async (_req, url, params, who) => {
+        const owner = readOwner(m.db, url, who);
+        if (owner instanceof Response) return owner;
+        return holdingsOf(url, owner, idOf(params.id!, "portfolio"));
+      },
     },
     {
       method: "GET",
       path: "/holdings",
       scope: R,
-      handle: async (_req, url, _params, who) =>
-        holdingsOf(url, who.user, null),
+      handle: async (_req, url, _params, who) => {
+        const owner = readOwner(m.db, url, who);
+        if (owner instanceof Response) return owner;
+        return holdingsOf(url, owner, null);
+      },
     },
     {
       method: "GET",
       path: "/portfolios/{id}/growth",
       scope: R,
-      handle: async (_req, url, params, who) =>
-        growthOf(url, who.user, idOf(params.id!, "portfolio")),
+      handle: async (_req, url, params, who) => {
+        const owner = readOwner(m.db, url, who);
+        if (owner instanceof Response) return owner;
+        return growthOf(url, owner, idOf(params.id!, "portfolio"));
+      },
     },
     {
       method: "GET",
       path: "/holdings/growth",
       scope: R,
-      handle: async (_req, url, _params, who) => growthOf(url, who.user, null),
+      handle: async (_req, url, _params, who) => {
+        const owner = readOwner(m.db, url, who);
+        if (owner instanceof Response) return owner;
+        return growthOf(url, owner, null);
+      },
     },
     {
       method: "GET",
@@ -271,6 +302,8 @@ export function portfolioRoutes(m: Markets): Route[] {
       path: "/trades",
       scope: R,
       handle: async (_req, url, _params, who) => {
+        const owner = readOwner(m.db, url, who);
+        if (owner instanceof Response) return owner;
         const q = queryArgs(url, {
           portfolio: "text",
           broker: "text",
@@ -279,7 +312,7 @@ export function portfolioRoutes(m: Markets): Route[] {
           to: "text",
           removed: "boolean",
         });
-        const list = readTradeList(m, who.user, {
+        const list = readTradeList(m, owner, {
           portfolio: (q.portfolio as string | undefined) ?? null,
           broker: (q.broker as string | undefined) ?? null,
           symbol: (q.symbol as string | undefined) ?? null,

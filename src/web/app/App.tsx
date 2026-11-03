@@ -4,7 +4,7 @@
 import type { ComponentChildren } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { markets, type Store } from "../data/store.ts";
-import { holding } from "../lib/refresh.ts";
+import { holding, useRefresh } from "../lib/refresh.ts";
 import { hold } from "../lib/slow.ts";
 import { Page } from "../ui/Page.tsx";
 import { SignIn } from "../views/SignIn.tsx";
@@ -71,6 +71,11 @@ export function App({ store = markets }: { store?: Store }) {
   useEffect(() => {
     void store.check();
   }, [store]);
+  // a share started or ended elsewhere reaches the rail without a reload
+  useRefresh(
+    () => (store.signedIn.peek() === true ? store.loadSharing() : undefined),
+    true,
+  );
   useEffect(() => {
     if (route === null) navigate(HOME, true);
   }, [here, route]);

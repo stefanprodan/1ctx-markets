@@ -661,6 +661,16 @@ export const portfolioSchemas: Record<string, Schema> = {
       ),
     ),
   }),
+  Sharing: object({
+    people: note(
+      list(object({ id: str, name: str, shared: bool })),
+      "Everyone else on the server, by name, and whether they see your portfolios.",
+    ),
+    sharers: note(
+      list(object({ id: str, name: str })),
+      "The people who let you see their portfolios, by name: read them with `owner` set to the id.",
+    ),
+  }),
   Settings: object({
     display_currency: note(
       nstr,
@@ -676,6 +686,7 @@ export const portfolioSchemas: Record<string, Schema> = {
 // a key with portfolio access, the admin key or the web UI's cookie
 const READS = [{ portfolioRead: [] }, { admin: [] }, { session: [] }];
 const WRITES = [{ portfolioWrite: [] }, { admin: [] }, { session: [] }];
+const SIGNED_IN = [{ session: [] }];
 
 const r = (name: string) => ({ $ref: `#/components/responses/${name}` });
 const content = (schema: Schema) => ({ "application/json": { schema } });
@@ -694,7 +705,7 @@ const bodyOf = (schema: Schema) => ({
 const lines = (...parts: string[]) => parts.join("\n");
 
 const forbidden = err(
-  "A key without portfolio access, or one that reads only on a write (`forbidden`).",
+  "A key without portfolio access, one that reads only on a write, or `owner` from a key (`forbidden`).",
 );
 const missing = err(
   "No such portfolio, trade, position, broker or fund (`not_found`).",
@@ -733,6 +744,13 @@ const CURRENCY = q(
   "Also convert into this currency at live rates; the owner's display currency when left out.",
 );
 const BROKER = q("broker", "Only this broker's parts.");
+const OWNER = q(
+  "owner",
+  "Another person's id: their portfolios as they see them, in their display currency and time zone, read only. Only a web UI sign-in they share with, or their own; a key is refused (`forbidden`), anyone else answers `not_found`. Writes ignore it.",
+);
+const unshared = err(
+  "No such portfolio, or `owner` names a person who does not share with you (`not_found`).",
+);
 
 const HOLDINGS = lines(
   "One row per instrument with its parts per broker, a fund the owner prices among them (`kind` `fund`, valued at its latest price), then cash and bonds.",
@@ -769,7 +787,11 @@ export const portfolioPaths = {
       summary: "Portfolios and brokers",
       description:
         "Every portfolio with its counts, Cash first, then in the owner's order; the brokers and the display currency.",
-      responses: base({ 200: ok("The portfolios.", ref("Portfolios")) }),
+      parameters: [OWNER],
+      responses: base({
+        200: ok("The portfolios.", ref("Portfolios")),
+        404: unshared,
+      }),
     },
     post: {
       tags,
@@ -839,10 +861,10 @@ export const portfolioPaths = {
       security: READS,
       summary: "A portfolio's holdings",
       description: HOLDINGS,
-      parameters: [BROKER, CURRENCY],
+      parameters: [BROKER, CURRENCY, OWNER],
       responses: base({
         200: ok("The holdings.", ref("Holdings")),
-        404: missing,
+        404: unshared,
       }),
     },
   },
@@ -853,10 +875,10 @@ export const portfolioPaths = {
       security: READS,
       summary: "Holdings across portfolios",
       description: HOLDINGS,
-      parameters: [BROKER, CURRENCY],
+      parameters: [BROKER, CURRENCY, OWNER],
       responses: base({
         200: ok("The holdings.", ref("Holdings")),
-        404: missing,
+        404: unshared,
       }),
     },
   },
@@ -868,10 +890,10 @@ export const portfolioPaths = {
       security: READS,
       summary: "A portfolio's growth over the past year",
       description: GROWTH,
-      parameters: [GROWTH_CURRENCY],
+      parameters: [GROWTH_CURRENCY, OWNER],
       responses: base({
         200: ok("The growth.", ref("Growth")),
-        404: missing,
+        404: unshared,
       }),
     },
   },
@@ -882,9 +904,10 @@ export const portfolioPaths = {
       security: READS,
       summary: "Growth across portfolios over the past year",
       description: GROWTH,
-      parameters: [GROWTH_CURRENCY],
+      parameters: [GROWTH_CURRENCY, OWNER],
       responses: base({
         200: ok("The growth.", ref("Growth")),
+        404: unshared,
       }),
     },
   },
@@ -946,10 +969,11 @@ export const portfolioPaths = {
         q("from", "From this trade date."),
         q("to", "To this trade date."),
         q("removed", "Include removed trades.", bool),
+        OWNER,
       ],
       responses: base({
         200: ok("The trades.", ref("Trades")),
-        404: missing,
+        404: unshared,
       }),
     },
     post: {
@@ -1266,6 +1290,52 @@ export const portfolioPaths = {
       responses: base({
         200: ok("The settings.", ref("Settings")),
         ...json415,
+      }),
+    },
+  },
+  "/sharing": {
+    get: {
+      tags,
+      operationId: "getSharing",
+      security: SIGNED_IN,
+      summary: "Who sees whose portfolios",
+      description:
+        "The people you can let see all your portfolios, read only, and the people who let you see theirs. A web UI sign-in's only: a key, the admin key too, is refused (`forbidden`).",
+      responses: base({ 200: ok("The sharing.", ref("Sharing")) }),
+    },
+  },
+  "/sharing/{id}": {
+    parameters: [
+      {
+        name: "id",
+        in: "path" as const,
+        description: "The other person's id.",
+        required: true,
+        schema: str,
+      },
+    ],
+    put: {
+      tags,
+      operationId: "share",
+      security: SIGNED_IN,
+      summary: "Let a person see your portfolios",
+      description:
+        "They see every portfolio of yours, Cash included, read only, in the web UI. Nothing else of yours: no profile, dashboard or rules. Done already is no error. Takes no body.",
+      responses: base({
+        200: ok("The sharing after it.", ref("Sharing")),
+        404: err("No such person (`not_found`)."),
+      }),
+    },
+    delete: {
+      tags,
+      operationId: "unshare",
+      security: SIGNED_IN,
+      summary: "Stop a person seeing your portfolios",
+      description:
+        "Ends it at once: their next read answers `not_found`. Not shared is no error.",
+      responses: base({
+        200: ok("The sharing after it.", ref("Sharing")),
+        404: err("No such person (`not_found`)."),
       }),
     },
   },

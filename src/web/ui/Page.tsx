@@ -36,6 +36,7 @@ export function didNotLoad(
 
 export function Page({
   title,
+  titleCut,
   back,
   meta,
   search,
@@ -49,6 +50,8 @@ export function Page({
   children,
 }: {
   title: string;
+  // a title holding a person's name may be long: cut it, keep the meta
+  titleCut?: boolean;
   // on a phone, Back before the title: through the app's history, or to
   // this address when the page was opened cold
   back?: string;
@@ -101,9 +104,10 @@ export function Page({
           </button>
         )}
         <h1
-          class={`page-title${reloading.value > 0 ? " page-title-busy" : ""}`}
+          class={`page-title${titleCut ? " page-title-cut" : ""}${reloading.value > 0 ? " page-title-busy" : ""}`}
+          title={titleCut ? title : undefined}
         >
-          {title}
+          {titleCut ? <span class="cut">{title}</span> : title}
         </h1>
         {meta && <span class="page-meta">{meta}</span>}
         <div class="page-actions">

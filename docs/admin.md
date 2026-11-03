@@ -173,7 +173,11 @@ never signs in and a sign-in never opens `/mcp`.
   answer counts each kind (`ownedCounts()`); `?dry_run=true` counts
   without deleting, for the confirmation. Fund prices they entered
   stay, being shared, their author's id set null; their asks stay
-  counted.
+  counted. Shares to and from them go with their row
+  (`portfolio_viewers`, on delete cascade), so a viewer's next read is
+  404.
+- **An admin never sees another's portfolios but as anyone does:** the
+  owner shares them in the web UI, read only (`docs/portfolios.md`).
 - **A person, a login or a link made, used or removed logs its id**,
   with who did it; never a token, a code or an address.
 

@@ -14,10 +14,11 @@ import type {
 import {
   addressOf,
   JUST_SAVED,
+  NOT_SHARED,
   plainError,
   viewOf,
 } from "../src/web/data/portfolios.ts";
-import { store } from "../src/web/data/store.ts";
+import { markets, store } from "../src/web/data/store.ts";
 import {
   amount,
   day,
@@ -309,6 +310,8 @@ describe("the Portfolios page", () => {
     const { s } = await loaded();
     const html = render(<PortfoliosBody store={s.portfolios} />);
     expect(html).toContain("All portfolios");
+    // only another person's name may be long enough to cut
+    expect(html).not.toContain("page-title-cut");
     // nothing converted: the first currency's total, never a sum
     expect(html).toContain("1,000");
     expect(html).not.toContain("2,000");
@@ -2249,5 +2252,309 @@ describe("the Cash portfolio", () => {
     expect(plainError("the name Cash is kept for cash")).toBe(
       "The name Cash is kept for cash.",
     );
+  });
+});
+
+describe("another person's portfolios", () => {
+  async function sharedBy(user: string, answers: Record<string, unknown>) {
+    const f = fake(answers);
+    const s = store(
+      f.fetch,
+      () => NOW,
+      () => `/portfolios/shared/${user}`,
+      () => {},
+    );
+    await s.shared.openOf(user, { portfolio: null, currency: null });
+    return { s, asked: f.asked };
+  }
+  const THEIRS = {
+    "GET /api/v1/portfolios": OVERVIEW,
+    "GET /api/v1/holdings": HOLDINGS,
+    "GET /api/v1/trades": { trades: [trade()] },
+  };
+
+  test("are read as their person with owner, never the reader's own", async () => {
+    const { s, asked } = await sharedBy("ana", THEIRS);
+    expect(asked.sort()).toEqual([
+      "GET /api/v1/holdings?owner=ana",
+      "GET /api/v1/portfolios?owner=ana",
+      "GET /api/v1/trades?removed=true&owner=ana",
+    ]);
+    expect(s.shared.address({ portfolio: 1, currency: "EUR" })).toBe(
+      "/portfolios/shared/ana/1?currency=EUR",
+    );
+    // the reader's own page is a store apart
+    expect(s.portfolios.holdings.value).toBeNull();
+    expect(await s.shared.tradesOf("XETRA:AAA")).toEqual([trade()]);
+    expect(asked.at(-1)).toBe(
+      "GET /api/v1/trades?symbol=XETRA%3AAAA&owner=ana",
+    );
+  });
+
+  test("opening another person's page drops what the last one drew", async () => {
+    const late = Promise.withResolvers<void>();
+    const fetch: Fetch = async (path) => {
+      if (path.includes("owner=bea")) await late.promise;
+      const hit = Object.entries(THEIRS).find(([k]) =>
+        `GET ${path}`.startsWith(k),
+      );
+      return Response.json(hit![1]);
+    };
+    const s = store(
+      fetch,
+      () => NOW,
+      () => "/",
+      () => {},
+    );
+    await s.shared.openOf("ana", { portfolio: null, currency: null });
+    expect(s.shared.holdings.value).not.toBeNull();
+    const opening = s.shared.openOf("bea", { portfolio: null, currency: null });
+    expect(s.shared.owner.value).toBe("bea");
+    expect(s.shared.holdings.value).toBeNull();
+    expect(s.shared.overview.value).toBeNull();
+    expect(s.shared.trades.value).toBeNull();
+    late.resolve();
+    await opening;
+    expect(s.shared.holdings.value).not.toBeNull();
+  });
+
+  test("an ended share says so, drops the figures and reads the sharers again", async () => {
+    let ended = false;
+    const asked: string[] = [];
+    const fetch: Fetch = async (path) => {
+      asked.push(path);
+      if (path === "/api/v1/sharing") {
+        return Response.json({ people: [], sharers: [] });
+      }
+      if (ended) {
+        return Response.json(
+          { status: 404, code: "not_found", detail: "no portfolios shared" },
+          { status: 404 },
+        );
+      }
+      const hit = Object.entries(THEIRS).find(([k]) =>
+        `GET ${path}`.startsWith(k),
+      );
+      return Response.json(hit![1]);
+    };
+    const s = store(
+      fetch,
+      () => NOW,
+      () => "/",
+      () => {},
+    );
+    await s.shared.openOf("ana", { portfolio: null, currency: null });
+    expect(s.shared.holdings.value).not.toBeNull();
+    ended = true;
+    await s.shared.load();
+    expect(s.shared.holdings.value).toBeNull();
+    expect(s.shared.error.value).toBe(NOT_SHARED);
+    expect(s.shared.code.value).toBe(404);
+    expect(asked.at(-1)).toBe("/api/v1/sharing");
+    const html = render(<PortfoliosBody store={s.shared} owner="Ana" />);
+    expect(html).not.toContain("This page did not load");
+    expect(html).not.toContain("Try again");
+    expect(html).not.toContain("HTTP 404");
+    expect(html).toContain(NOT_SHARED);
+    expect(html).not.toContain("1,000");
+  });
+
+  test("a failed first read of a shared page can be tried again", async () => {
+    const fetch: Fetch = async (path) =>
+      path === "/api/v1/sharing"
+        ? Response.json({ people: [], sharers: [] })
+        : Response.json(
+            { status: 500, code: "internal", detail: "boom" },
+            { status: 500 },
+          );
+    const s = store(
+      fetch,
+      () => NOW,
+      () => "/",
+      () => {},
+    );
+    await s.shared.openOf("ana", { portfolio: null, currency: null });
+    expect(s.shared.error.value).not.toBe(NOT_SHARED);
+    const html = render(<PortfoliosBody store={s.shared} owner="Ana" />);
+    expect(html).toContain("This page did not load");
+    expect(html).toContain("Try again");
+    expect(html).not.toContain(NOT_SHARED);
+  });
+
+  test("draws no Add, page menu, row menu or trade buttons", async () => {
+    const { s } = await sharedBy("ana", THEIRS);
+    const html = render(<PortfoliosBody store={s.shared} owner="Ana" />);
+    expect(html).toContain("Ana's portfolios");
+    // a long name is cut in the head, the whole of it kept for a hover
+    expect(html).toContain('class="page-title page-title-cut"');
+    expect(html).toContain(`title="Ana's portfolios"`);
+    expect(html).toContain("View only");
+    expect(html).toContain(">Holdings<");
+    expect(html).not.toContain('aria-label="Add"');
+    expect(html).not.toContain('aria-label="More"');
+    expect(html).not.toContain("Actions for");
+    // a listed holding still opens its instrument page
+    expect(html).toContain('href="/symbol/XETRA%3AAAA"');
+    // a cash row opens nothing: one link and one button in all, the trade's
+    expect(html.match(/class="table-open"/g)).toHaveLength(2);
+    const sheet = (viewOnly: boolean) =>
+      render(
+        <TradeSheet
+          store={s.shared}
+          fills={[trade({ entered_by: "Ana", note: "Made up reason" })]}
+          all
+          viewOnly={viewOnly}
+          onTrade={() => {}}
+          onDone={() => {}}
+        />,
+      );
+    // the drawer's own buttons, past its Close
+    const buttons = (html: string) =>
+      [...html.matchAll(/<button[^>]*>(?:<svg.*?<\/svg>)?\s*([^<]*)</g)]
+        .map((m) => m[1]!.trim())
+        .filter((w) => w !== "");
+    expect(buttons(sheet(true))).toEqual([]);
+    expect(buttons(sheet(false))).toEqual(["Remove", "Buy", "Sell"]);
+    // notes are the owner's own, never drawn for a viewer
+    expect(sheet(true)).not.toContain("Made up reason");
+    expect(sheet(false)).toContain("Made up reason");
+    // the owner's own trade names them, even to a reader of the same name
+    markets.me.value = {
+      id: "jo",
+      name: "Ana",
+      role: "member",
+      email: null,
+      operator: false,
+    };
+    try {
+      expect(sheet(true)).toContain("Ana");
+      expect(sheet(true)).not.toContain("You");
+      expect(sheet(false)).toContain("You");
+    } finally {
+      markets.me.value = null;
+    }
+    const empty = await sharedBy("bea", {
+      ...THEIRS,
+      "GET /api/v1/holdings": { ...HOLDINGS, holdings: [] },
+      "GET /api/v1/trades": { trades: [] },
+    });
+    const none = render(<PortfoliosBody store={empty.s.shared} owner="Bea" />);
+    expect(none).toContain("Nothing held yet.");
+    expect(none).not.toContain("Start");
+  });
+
+  test("the settings list everyone else with a switch, none while alone", async () => {
+    const { s } = await loaded();
+    const settings = () =>
+      render(<SettingsPanel store={s.portfolios} onDone={() => {}} />);
+    try {
+      markets.sharing.value = { people: [], sharers: [] };
+      expect(settings()).not.toContain("Shared with");
+      markets.sharing.value = {
+        people: [
+          { id: "ana", name: "Ana", shared: true },
+          { id: "bea", name: "Bea", shared: false },
+        ],
+        sharers: [],
+      };
+      const html = settings();
+      expect(html).toContain("Shared with");
+      expect(html).toContain(
+        "They see all your portfolios. They can't change them.",
+      );
+      expect(html).toMatch(
+        /role="switch" aria-checked="true" aria-label="Share with Ana"/,
+      );
+      expect(html).toMatch(
+        /role="switch" aria-checked="false" aria-label="Share with Bea"/,
+      );
+      // last, under Brokers
+      expect(html.indexOf("Shared with")).toBeGreaterThan(
+        html.indexOf("Brokers"),
+      );
+    } finally {
+      markets.sharing.value = null;
+    }
+  });
+
+  test("only the newest switch's answer lands", async () => {
+    const held = new Map<string, PromiseWithResolvers<Response>>();
+    const fetch: Fetch = async (path, init) => {
+      const w = Promise.withResolvers<Response>();
+      held.set(`${init?.method ?? "GET"} ${path}`, w);
+      return w.promise;
+    };
+    const s = store(
+      fetch,
+      () => NOW,
+      () => "/portfolios",
+      () => {},
+    );
+    const answer = (ana: boolean, bea: boolean) =>
+      Response.json({
+        people: [
+          { id: "ana", name: "Ana", shared: ana },
+          { id: "bea", name: "Bea", shared: bea },
+        ],
+        sharers: [],
+      });
+    const first = s.share("ana", true);
+    const second = s.share("bea", true);
+    held.get("PUT /api/v1/sharing/bea")!.resolve(answer(true, true));
+    await second;
+    // the older answer, landing last, never shows Bea unshared again
+    held.get("PUT /api/v1/sharing/ana")!.resolve(answer(true, false));
+    await first;
+    expect(s.sharing.value?.people.map((p) => p.shared)).toEqual([true, true]);
+  });
+
+  test("a switch sets the share, shows a refusal and keeps the server's answer", async () => {
+    const answers: Record<string, Response | (() => Response)> = {};
+    const asked: string[] = [];
+    const fetch: Fetch = async (path, init) => {
+      const key = `${init?.method ?? "GET"} ${path}`;
+      asked.push(key);
+      const a = answers[key];
+      if (a === undefined) throw new Error(`no answer for ${key}`);
+      return typeof a === "function" ? a() : a;
+    };
+    const s = store(
+      fetch,
+      () => NOW,
+      () => "/portfolios",
+      () => {},
+    );
+    const after = {
+      people: [{ id: "ana", name: "Ana", shared: true }],
+      sharers: [{ id: "ana", name: "Ana" }],
+    };
+    answers["GET /api/v1/sharing"] = () =>
+      Response.json({
+        people: [{ id: "ana", name: "Ana", shared: false }],
+        sharers: [],
+      });
+    await s.loadSharing();
+    expect(s.sharers.value).toEqual([]);
+    answers["PUT /api/v1/sharing/ana"] = () => Response.json(after);
+    expect(await s.share("ana", true)).toBeNull();
+    expect(s.sharing.value).toEqual(after);
+    expect(s.sharers.value).toEqual([{ id: "ana", name: "Ana" }]);
+    answers["DELETE /api/v1/sharing/ana"] = () =>
+      Response.json(
+        { status: 404, code: "not_found", detail: "no such user" },
+        { status: 404 },
+      );
+    answers["GET /api/v1/sharing"] = () => Response.json(after);
+    expect(await s.share("ana", false)).toBe("No such user.");
+    // a failed read keeps the last answer
+    answers["GET /api/v1/sharing"] = () =>
+      new Response("down", { status: 500 });
+    await s.loadSharing();
+    expect(s.sharing.value).toEqual(after);
+    answers["DELETE /ui/session"] = () => new Response(null, { status: 204 });
+    await s.signOut();
+    expect(s.sharing.value).toBeNull();
+    expect(s.sharers.value).toEqual([]);
+    expect(s.shared.owner.value).toBeNull();
   });
 });

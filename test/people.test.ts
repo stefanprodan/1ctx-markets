@@ -1467,7 +1467,9 @@ describe("the migration for people", () => {
       `insert into keys (id, user_id, name, token_hash, created_at, rules)
        values ('madeupkey001', 'operator', 'agent', 'hash-1', 5, 'write')`,
     ).run();
-    expect(migrate(db, clock)).toEqual(["0037-people"]);
+    expect(migrate(db, clock, MIGRATIONS.slice(0, at + 1))).toEqual([
+      "0037-people",
+    ]);
     expect(db.query("select * from keys").all()).toEqual([
       {
         id: "madeupkey001",

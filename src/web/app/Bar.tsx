@@ -11,7 +11,7 @@ import { Drawer } from "../ui/Drawer.tsx";
 import { OPENER, openSearch, searchShown } from "../ui/SymbolSearch.tsx";
 import { useServerFailing } from "./failing.ts";
 import { SCREENER } from "./paths.ts";
-import { iconClass, Recent } from "./Rail.tsx";
+import { iconClass, Recent, SharedWithMe } from "./Rail.tsx";
 import { path, visits } from "./router.ts";
 import { HOME, lit, RAIL, railFor, STATUS } from "./routes.ts";
 import { UserItems } from "./UserMenu.tsx";
@@ -288,6 +288,7 @@ export function More({
               </a>
             );
           })}
+          <SharedWithMe here={here} follow={close} />
           <Recent here={here} follow={close} />
           <div class="more-user">
             <UserItems onSignedOut={close} />
