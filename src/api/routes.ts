@@ -27,6 +27,16 @@ import {
   setOne,
 } from "../admin/keys.ts";
 import { screener } from "../admin/screener.ts";
+import { deleteSmtp, putSmtp, smtpAnswer, testSmtp } from "../admin/smtp.ts";
+import {
+  addUser,
+  changeUser,
+  inviteAgain,
+  listUsers,
+  type PeopleDeps,
+  removeUser,
+  signOutUser,
+} from "../admin/users.ts";
 import { iso, price } from "../market/format.ts";
 import { localDate } from "../market/zone.ts";
 import { ArgError, fields } from "../operations/args.ts";
@@ -72,6 +82,9 @@ import {
 } from "../profile/store.ts";
 import { readRule, readRules } from "../rules/store.ts";
 import { errorFields, type Log } from "../runtime/log.ts";
+import { CallerGone } from "../server/caller.ts";
+import { type Email, email as emailOf } from "../server/email/settings.ts";
+import { type Links, links as linksOf } from "../server/links.ts";
 import { NO_EVENTS } from "../sources/finnhub/store.ts";
 import { ATTRIBUTION } from "../sources/fred/sync.ts";
 import { ASSET_CACHE, DOC_FILES, docsFile, docsPage } from "./docs.ts";
@@ -95,13 +108,15 @@ import { portfolioRoutes } from "./portfolios.ts";
 export type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 // read: an agent key, or the admin key, which holds every scope; admin:
-// the admin key alone; none: served before either, since it holds no data
-// and a browser opening it sends no key; portfolio:, rules: and profile: an
-// agent key the admin gave that access, holdings and the profile being
-// private and rules the owner's
+// the admin key or an admin's login; session: the admin key or anyone's
+// login, never an agent key; none: served before either, since it holds no
+// data and a browser opening it sends no key; portfolio:, rules: and
+// profile: an agent key its person gave that access, holdings, the profile
+// and rules being the person's
 export type Scope =
   | "read"
   | "admin"
+  | "session"
   | "none"
   | "portfolio:read"
   | "portfolio:write"
@@ -115,7 +130,7 @@ export type Route = {
   // {name} matches one path segment
   path: string;
   scope: Scope;
-  // the web UI's cookie opens every route but these, the rules writes
+  // a login opens every route but these, the rules writes
   cookie?: false;
   values?: Record<string, readonly string[]>;
   handle: (
@@ -137,6 +152,9 @@ export type ApiDeps = {
   // hides a key made through POST /keys from the log; none in tests that
   // read no log
   mask?: (token: string) => void;
+  // email and its links; off when none is given
+  email?: Email;
+  links?: Links;
 };
 
 // a body is the tool's arguments, never a cursor
@@ -597,7 +615,7 @@ function operator(
     {
       method: "GET",
       path: "/dashboard",
-      scope: "admin",
+      scope: "session",
       handle: async (_req, url, _params, who) => {
         noQuery(url);
         return json(readDashboard(m, who.user, track));
@@ -606,7 +624,7 @@ function operator(
     {
       method: "PUT",
       path: "/dashboard",
-      scope: "admin",
+      scope: "session",
       handle: async (req, url, _params, who) => {
         noQuery(url);
         const read = await bodyOf(req);
@@ -635,7 +653,7 @@ function operator(
     {
       method: "GET",
       path: "/screener",
-      scope: "admin",
+      scope: "session",
       handle: async (_req, url, _params, who) => screener(m, who.user, url),
     },
     {
@@ -648,7 +666,7 @@ function operator(
     {
       method: "GET",
       path: "/instruments/{symbol}/stored",
-      scope: "admin",
+      scope: "session",
       handle: async (_req, url, params) => storedCheck(m, url, params.symbol!),
     },
     {
@@ -665,7 +683,7 @@ function keys(d: KeysDeps): Route[] {
     {
       method: "GET",
       path: "/keys",
-      scope: "admin",
+      scope: "session",
       handle: async (_req, url, _params, who) => {
         noQuery(url);
         return listAnswer(d.m, who);
@@ -674,7 +692,7 @@ function keys(d: KeysDeps): Route[] {
     {
       method: "POST",
       path: "/keys",
-      scope: "admin",
+      scope: "session",
       handle: async (req, url, _params, who) => {
         noQuery(url);
         const read = await bodyOf(req);
@@ -685,7 +703,7 @@ function keys(d: KeysDeps): Route[] {
     {
       method: "PATCH",
       path: "/keys/{id}",
-      scope: "admin",
+      scope: "session",
       handle: async (req, url, params, who) => {
         noQuery(url);
         const read = await bodyOf(req);
@@ -696,10 +714,115 @@ function keys(d: KeysDeps): Route[] {
     {
       method: "DELETE",
       path: "/keys/{id}",
-      scope: "admin",
+      scope: "session",
       handle: async (_req, url, params, who) => {
         noQuery(url);
         return revokeOne(d, who, params.id!);
+      },
+    },
+  ];
+}
+
+// admins only: people and email
+function people(d: PeopleDeps): Route[] {
+  const body = async (req: Request) => {
+    const read = await bodyOf(req);
+    if (read instanceof Response) return read;
+    return read.body;
+  };
+  return [
+    {
+      method: "GET",
+      path: "/users",
+      scope: "admin",
+      handle: async (_req, url) => {
+        noQuery(url);
+        return listUsers(d);
+      },
+    },
+    {
+      method: "POST",
+      path: "/users",
+      scope: "admin",
+      handle: async (req, url, _params, who) => {
+        noQuery(url);
+        const b = await body(req);
+        return b instanceof Response ? b : addUser(d, who, b);
+      },
+    },
+    {
+      method: "PATCH",
+      path: "/users/{id}",
+      scope: "admin",
+      handle: async (req, url, params, who) => {
+        noQuery(url);
+        const b = await body(req);
+        return b instanceof Response ? b : changeUser(d, who, params.id!, b);
+      },
+    },
+    {
+      method: "DELETE",
+      path: "/users/{id}",
+      scope: "admin",
+      handle: async (_req, url, params, who) => {
+        const q = queryArgs(url, { dry_run: "boolean" });
+        return removeUser(d, who, params.id!, q.dry_run === true);
+      },
+    },
+    {
+      method: "POST",
+      path: "/users/{id}/invite",
+      scope: "admin",
+      handle: async (_req, url, params, who) => {
+        noQuery(url);
+        return inviteAgain(d, who, params.id!);
+      },
+    },
+    {
+      method: "POST",
+      path: "/users/{id}/sign-out",
+      scope: "admin",
+      handle: async (_req, url, params, who) => {
+        noQuery(url);
+        return signOutUser(d, who, params.id!);
+      },
+    },
+    {
+      method: "GET",
+      path: "/smtp",
+      scope: "admin",
+      handle: async (_req, url) => {
+        noQuery(url);
+        return smtpAnswer(d);
+      },
+    },
+    {
+      method: "PUT",
+      path: "/smtp",
+      scope: "admin",
+      handle: async (req, url, _params, who) => {
+        noQuery(url);
+        const b = await body(req);
+        return b instanceof Response ? b : putSmtp(d, who, b);
+      },
+    },
+    {
+      method: "DELETE",
+      path: "/smtp",
+      scope: "admin",
+      handle: async (_req, url, _params, who) => {
+        noQuery(url);
+        return deleteSmtp(d, who);
+      },
+    },
+    {
+      method: "POST",
+      path: "/smtp/test",
+      scope: "admin",
+      handle: async (req, url, _params, who) => {
+        noQuery(url);
+        const b = await body(req);
+        return b instanceof Response ? b : testSmtp(d, who, b);
       },
     },
   ];
@@ -713,6 +836,22 @@ export function routes(deps: ApiDeps): Route[] {
     m: { ...deps.admin.m, yahooFirst: true },
   };
   const body = JSON.stringify(spec);
+  // without email given, it is off: no key file is ever read
+  const email =
+    deps.email ??
+    emailOf({
+      keys: { email: () => null, emailNames: () => [] },
+      sender: async () => ({ ok: false, failure: "other", reply: null }),
+    });
+  const sent =
+    deps.links ??
+    linksOf({
+      db: deps.m.db,
+      writer: deps.m.writer,
+      email,
+      clock: deps.m.clock,
+      log: deps.log,
+    });
   const list: Route[] = [
     ...marketData(m),
     ...rules(m),
@@ -726,6 +865,7 @@ export function routes(deps: ApiDeps): Route[] {
     },
     ...operator(admin, deps.track),
     ...keys({ m: deps.admin.m, mask: deps.mask ?? (() => {}) }),
+    ...people({ m: deps.admin.m, email, links: sent }),
     {
       method: "GET",
       path: "/openapi.json",
@@ -766,6 +906,13 @@ export function routes(deps: ApiDeps): Route[] {
       } catch (error) {
         if (error instanceof ArgError) {
           return problem("bad_arguments", error.message);
+        }
+        // the credential went mid-call, so the write wrote nothing
+        if (error instanceof CallerGone) {
+          return problem(
+            error.status === 401 ? "unauthorized" : "forbidden",
+            error.message,
+          );
         }
         deps.log.error("api failed", {
           path: `${r.method} ${r.path}`,

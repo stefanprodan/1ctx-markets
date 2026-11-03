@@ -42,6 +42,7 @@ import {
   type Trade,
 } from "../portfolios/store.ts";
 import { sellStep, splitFactor, statedOf } from "../portfolios/value.ts";
+import { recheck } from "../server/caller.ts";
 import { isCurrencyCode } from "../shared/currencies.ts";
 import { FRED, YAHOO } from "../sources/ids.ts";
 import type { Db } from "../storage/db/index.ts";
@@ -519,6 +520,7 @@ export async function importCsv(
   if (args.confirm) {
     const now = m.clock.now();
     await m.writer.write((db) => {
+      recheck(db);
       judge(db, owner, plan);
       // rows of one file never replace each other
       const added = new Set<number>();

@@ -8,7 +8,7 @@ import { runKeys } from "../src/admin/keys-cli.ts";
 import { PREFIX } from "../src/api/http.ts";
 import { fits } from "../src/operations/answer.ts";
 import type { Markets } from "../src/operations/markets.ts";
-import { ADMIN, OPERATOR, WEB, type Who } from "../src/operations/who.ts";
+import { ADMIN, loginWho, OPERATOR, type Who } from "../src/operations/who.ts";
 import { applyEdits, MAX_EDITS } from "../src/profile/edit.ts";
 import { renderMarkdown } from "../src/profile/markdown.ts";
 import { fenceFor } from "../src/profile/read.ts";
@@ -23,11 +23,13 @@ import {
   INSTRUCTIONS_BYTES,
   instructions,
 } from "../src/server/instructions.ts";
-import { COOKIE, sessions } from "../src/server/session.ts";
 import { call, tools } from "../src/tools/index.ts";
-import { ADMIN_KEY, api, READ_KEY } from "./helpers/api.ts";
+import { ADMIN_KEY, api, cookieFor, READ_KEY } from "./helpers/api.ts";
 import { mcpClient, SECRETS, seedKey, withApp } from "./helpers/app.ts";
 import { world } from "./helpers/world.ts";
+
+// a person signed in to the web UI
+const WEB_LOGIN = loginWho(OPERATOR, "testlogin000", "operator");
 
 const PROFILE = `# Made-up owner
 
@@ -260,22 +262,25 @@ describe("revisions", () => {
       { action: "edit", revision: 1, edits: [{ old: "10", new: "12" }] },
       { action: "replace", revision: 1, text: "restored" },
     ]) {
-      expect(jsonOf(await ask(m, WEB, stale))).toEqual({
+      expect(jsonOf(await ask(m, WEB_LOGIN, stale))).toEqual({
         error: "conflict",
         message: "profile is at revision 2",
         revision: 2,
       });
     }
-    const replaced = await ask(m, WEB, {
+    const replaced = await ask(m, WEB_LOGIN, {
       action: "replace",
       revision: 2,
       text: PROFILE,
     });
-    expect(jsonOf(replaced)).toMatchObject({ revision: 3, author: "web" });
+    expect(jsonOf(replaced)).toMatchObject({
+      revision: 3,
+      author: "operator",
+    });
     expect(
       profileVersions(m.db, OPERATOR).map((v) => [v.revision, v.author]),
     ).toEqual([
-      [3, "web"],
+      [3, "operator"],
       [2, "admin"],
       [1, "ashley-agent"],
     ]);
@@ -410,18 +415,18 @@ describe("access", () => {
     const { m } = world();
     expect(jsonOf(await ask(m, NONE, { action: "read" }))).toEqual({
       error: "forbidden",
-      message: "this key has no profile access; the admin grants it",
+      message: "this key has no profile access; its owner grants it",
     });
     expect(
       jsonOf(await ask(m, READER, { action: "replace", text: "x" })),
     ).toEqual({
       error: "forbidden",
-      message: "this key reads the profile only; the admin grants write",
+      message: "this key reads the profile only; its owner grants write",
     });
     expect(profileVersions(m.db, OPERATOR)).toEqual([]);
   });
 
-  test("the routes take the key's profile scope; the cookie writes as web", async () => {
+  test("the routes take the key's profile scope; a login writes as its person", async () => {
     const { m, clock } = world();
     const handle = api(m);
     const call = (path: string, init: RequestInit = {}) =>
@@ -432,12 +437,15 @@ describe("access", () => {
       body: JSON.stringify(body),
     });
     const cookie = {
-      cookie: `${COOKIE}=${sessions(ADMIN_KEY).issue(clock.now())}`,
+      cookie: cookieFor(m.db, clock.now()),
       origin: "http://markets.test",
     };
     const saved = await call("/profile", put({ text: PROFILE }, cookie));
     expect(saved.status).toBe(200);
-    expect(await saved.json()).toMatchObject({ revision: 1, author: "web" });
+    expect(await saved.json()).toMatchObject({
+      revision: 1,
+      author: "operator",
+    });
     const stale = await call(
       "/profile",
       put({ text: "x" }, { authorization: `Bearer ${ADMIN_KEY}` }),
@@ -484,7 +492,7 @@ describe("access", () => {
       );
     }
     const drawn = await preview({
-      cookie: `${COOKIE}=${sessions(ADMIN_KEY).issue(clock.now())}`,
+      cookie: cookieFor(m.db, clock.now()),
       origin: "http://markets.test",
     });
     expect(drawn.status).toBe(200);

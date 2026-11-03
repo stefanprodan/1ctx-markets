@@ -11,6 +11,7 @@ import {
   sentBytes,
 } from "../operations/answer.ts";
 import { ArgError } from "../operations/args.ts";
+import { recheck } from "../server/caller.ts";
 import type { Db } from "../storage/db/index.ts";
 import type { Writer } from "../storage/writer.ts";
 import { applyEdits, type ProfileEdit } from "./edit.ts";
@@ -142,6 +143,7 @@ export function saveProfile(
   now: number,
 ): Promise<Saved | Failure> {
   return writer.write((db): Saved | Failure => {
+    recheck(db);
     const live = readProfile(db, owner);
     // only the first replace names no revision
     const stale =

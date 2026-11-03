@@ -1,17 +1,25 @@
 # Web UI
 
-Governs the operator's web UI: the client under `src/web/`, its
-sign-in (`src/server/session.ts`), the paths that serve it (`UI_PATHS`
-and `serve()` in `src/server/http.ts`) and `--no-ui`. The admin key is
-in `docs/admin.md`, the routes the UI reads in `docs/api.md`, flags in
-`docs/config.md`.
+Governs the web UI: the client under `src/web/`, its sign-ins
+(`src/server/session.ts`, the logins; `src/server/links.ts`, links by
+email; `src/server/ui.ts`, the `/ui/*` routes), the paths that serve it
+(`UI_PATHS` and `serve()` in `src/server/http.ts`) and `--no-ui`. The
+admin key, the people and the SMTP settings are in `docs/admin.md`, the
+routes the UI reads in `docs/api.md`, flags and key files in
+`docs/config.md`. Logins and links follow 1ctx's (its `docs/access.md`,
+"Logins" and "Links by email", and `docs/email.md`), cut down to what a
+family needs.
 
 ## Why
 
 Status, refetch and delete were reachable only through `curl` with the
 admin key or `1ctx-markets admin` over ssh. The UI shows the operator
 what the server holds from a browser, on the server's own public host,
-signed in with the admin key alone.
+signed in with the admin key alone. A family or a small group of
+investors shares one server, each person with their own portfolios,
+profile, dashboard, rules and keys, so each person signs in as
+themself, by a link emailed to an address an admin added; no
+passwords, no SSO, and no link handed over.
 
 ## Serving
 
@@ -53,48 +61,148 @@ signed in with the admin key alone.
   the `theme-color` that `app/theme.ts` keeps in the page colour.
 - **`UI_PATHS` and the client's `ROUTES` name the same paths**; `test/web.test.tsx` holds them equal. A new page adds its
   path to both.
-- **`--no-ui` turns the UI off**: no page, no `/ui/session` (it answers
-  the keys' 401 as any unknown path), and a cookie opens nothing.
-  The UI is on by default.
+- **`--no-ui` turns the UI off**: no page, no `/ui/*` route (each
+  answers the keys' 401 as any unknown path), and a cookie opens
+  nothing. The UI is on by default.
 
-## Sign-in
+## Logins
+
+- **A login is a row behind the `markets_session` cookie** (`logins`,
+  `docs/storage.md`): the cookie holds 32 random bytes as base64url,
+  the row only their SHA-256, as 1ctx's. No token reaches a log line or
+  an answer but the one `Set-Cookie`; a log line names the login's id
+  and its person.
+- **30 days, sliding at most once an hour** (`SESSION_MS`,
+  `TOUCH_MS`): a request past an hour since the login's last touch
+  moves its expiry through the writer, and the answer sends the cookie
+  again with a full `Max-Age`, unless the route set its own.
+- **Sign-out deletes that row**: `DELETE /ui/session` answers 204 and
+  clears the cookie. An admin signs a person out everywhere
+  (`docs/admin.md`). Expired logins go with the startup and daily
+  prunes (`pruneLogins()`); every check goes by `expires_at`, so none
+  waits on a prune.
+- **`HttpOnly; SameSite=Strict; Path=/`, and `Secure` unless the
+  request's `Origin` is plain HTTP to a loopback host**
+  (`cookieAttributes()`); no `Origin` is `Secure`. A browser keeps a
+  `Secure` cookie over plain HTTP only on loopback. The browser's
+  `Origin` decides, never `Host`, which a proxy may rewrite to loopback.
+  Plain HTTP to a LAN or tailnet address cannot sign in: use loopback
+  or TLS.
+- **A proxy in front needs nothing special for the cookie:** it and the
+  write check read what the browser sends, `Host` only as the fallback
+  below. The ask limit's client address is the socket's, so behind a
+  proxy every browser would share one window: `--trust-proxy` takes it
+  from the last `X-Forwarded-For` value instead, the one the proxy
+  added (`clientIp()`, `docs/config.md`). Never set it without a proxy,
+  since any client can send the header.
+- **No log line holds a link's token**: the request log names
+  `/ui/link/:token`, never the path (`loggedPath()`), and a code or a
+  challenge is only ever in a body or a cookie, never logged.
+
+## The admin key
 
 - **`POST /ui/session` with `{"key": "<admin key>"}`** compares the
   trimmed key in constant time (both sides hashed, `timingSafeEqual`)
-  and answers 204 with the cookie. `DELETE /ui/session` answers 204
-  and clears it; any other method is 405 with `Allow`.
+  and opens a login for the operator, answering 204 with the cookie;
+  any method but `POST` and `DELETE` is 405 with `Allow`. It is the
+  operator's alone and always works, email or not, so no mail outage
+  locks the server out.
 - **Every failed sign-in answers the same 401**,
   `{"error":"unauthorized","message":"wrong admin key"}`, with no
   cookie: a wrong or empty key, a malformed body, a body over the
   route's 8 KiB cap, a body that is not JSON, and a server with no
-  admin key (`sessions(null)`). The page faces the internet, so no
-  answer tells one failure from another. A body over the server's
-  1 MiB limit gets Bun's empty 413 before any route runs.
+  admin key. The page faces the internet, so no answer tells one
+  failure from another. A body over the server's 1 MiB limit gets Bun's
+  empty 413 before any route runs.
 - **No rate limit:** the admin key is 32 random bytes, so guessing it
-  is no threat, and a limiter would be state for nothing.
-- **The cookie holds no key.** `markets_session=v1.<expiry>.<mac>`:
-  the expiry in epoch milliseconds and its HMAC-SHA256 under a key
-  derived from the admin key (an HMAC of a fixed label), compared in
-  constant time. No table and no migration; replacing `user-admin.key` and
-  restarting refuses every cookie made before.
-- **`HttpOnly; SameSite=Strict; Path=/`, 30 days (`SESSION_MS`), and
-  `Secure` unless the sign-in's `Origin` is plain HTTP to a loopback
-  host** (`cookieAttributes()`); no `Origin` is `Secure`. A browser
-  keeps a `Secure` cookie over plain HTTP only on loopback. The
-  browser's `Origin` decides, never `Host`, which a proxy may rewrite
-  to loopback. Plain HTTP to a LAN or tailnet address cannot sign in:
-  use loopback or TLS.
-- **A proxy in front needs nothing special:** the cookie and the write
-  check read what the browser sends, `Host` only as the fallback below,
-  and no forwarded header.
+  is no threat.
+- **The login holds a SHA-256 of the admin key** (`admin_digest`), so
+  replacing `user-admin.key` and restarting answers 401 to every login
+  the old key opened; the operator's login by link and every other
+  person's stay.
 
-## What the cookie opens
+## Links by email
 
-- **What the admin key opens but the rules writes**: every route
-  under `/api/v1`, the admin scope's included (`docs/api.md`, "Keys
-  and caching"), with `POST /api/v1/screen`, a read whose filters are
-  a body, and refetch and delete held to the write check below. A key
-  is tried first (`router()`); the cookie only when no key is valid.
+Only while email is on (`docs/admin.md`, "Email"); the sign-in page
+learns it from `email_on` in `GET /ui/me`.
+
+- **An ask never tells.** `POST /ui/link` with `{email}` answers 202
+  with no body before any lookup, whatever the address; the lookup, the
+  caps and the email run after the answer (`links.ask()`), and the
+  shutdown waits for them before the writer closes. A body that is not
+  an address is 400; while email is off the route is 404. A plain HTML
+  form may post it too (`email=`), answered by a "Check your email."
+  page.
+- **Only an added address gets a link**: a 15-minute link and a
+  six-digit code in one plain email, subject "Your markets sign-in
+  code: 482913", body "Sign in to markets: <link>, or enter 482913.
+  Both work once, for 15 minutes." The digits are whole, never spaced,
+  so the system's one-time-code offer finds them. A new ask leaves the
+  earlier live links working, so nobody's ask kills another's.
+- **Caps**: 3 asks per person a day from one browser
+  (`ASKS_PER_USER_DAY`, counted per challenge, so a stranger's asks
+  never use up the person's own), 5 an hour from one browser whoever it
+  names (`ASKS_PER_CHALLENGE_HOUR`) and 50 per server an hour
+  (`ASKS_PER_HOUR`), counted on `link_asks`, kept a day whatever became
+  of their links; over any nothing is sent and `link ask capped` is
+  logged. Asks, codes and links used share 10 a minute
+  per client address (`ASKS_PER_MINUTE`), past which the answer is 429
+  with `Retry-After`. Invites are not counted.
+- **A link is `<public url>/ui/link/<token>`**, the public URL from the
+  SMTP settings, never a request's `Host`. A `GET` never acts, since
+  mail scanners open links: it draws a plain page with a "Sign in"
+  button that posts back, `<meta name="referrer" content="no-referrer">`
+  and `Referrer-Policy: no-referrer`, so the token in its address never
+  leaves. A dead link reads as an unknown one: "This link no longer
+  works." with a form, "Email me a new link", that asks again.
+- **Only `POST /ui/link/<token>` acts**, in one conditional update
+  (unused, unexpired, its person still there) in the transaction that
+  opens the login; it answers 303 to the landing, an invite's
+  `/portfolios` (empty, with its setup) and a sign-in link's `/`, and
+  ends the browser's older login. A dead one is the dead page, 404.
+- **The code is for the installed app**, whose cookies on iOS are
+  apart from Safari's, so a link from Mail signs in Safari, never the
+  app. The ask sets `markets_ask`, a 15-minute cookie on `/ui` holding a
+  random challenge (kept when the browser already holds one), and the
+  link row holds its SHA-256. `POST /ui/code` with `{email, code}`
+  checks a code only beside that cookie, so a code guessed from another
+  browser is never tried and burns nobody's tries; it answers 200 with
+  `{landing}` and the cookie. A wrong code, another address, an unknown
+  one and a missing challenge answer the same 401 `wrong code`. The
+  fifth wrong try kills the link (`MAX_CODE_TRIES`); using the link or
+  the code uses both. An invite, which no browser asked for, has no
+  challenge: its code is tried beside any `markets_ask` cookie, its
+  misses counted per challenge (`link_misses`), so the fifth wrong try
+  ends that browser's tries at that invite and never the invite.
+- **The same-origin check holds `/ui/link`, `/ui/link/<token>` and
+  `/ui/code`** (`sameOrigin()`, below), so no other site signs a
+  browser in.
+
+## Who is signed in
+
+- **`GET /ui/me`** answers `{user, email_on}`: `user` is `{id, name,
+  role, email, operator}` for a login, null for none, always 200 so the
+  browser logs no failed request. `GET /api/v1/status` stays an
+  admin's.
+- **`PATCH /ui/me`** takes `{name}` or `{email}`, one at a time, from
+  this server's pages. A person renames themself. The operator, who
+  signs in by the admin key, may add an email to sign in by link too:
+  a link without a code goes to that address ("Confirm your markets
+  email"), and using it only sets the address, and only in a browser
+  already signed in as that person; it never opens a login, so one sent
+  to a mistyped address signs nobody in. A member's email is an admin's
+  to change (403). It answers `{link: "sent"}` or `{link: "failed",
+  reason}`; 409 while email is off or when another person has the
+  address.
+
+## What a login opens
+
+- **A person's own rows and the market data**: every `/api/v1` route
+  of scope `read`, `session` and the person's portfolio, profile and
+  rules reads, as `loginWho()` holds; an admin's login also the `admin`
+  scope (`docs/api.md`, "Keys and caching"). A member on an admin route
+  is 403. A key is tried first (`router()`); the cookie only when no key
+  is valid.
 - **Never `/mcp`, and never a rules write** (`POST /rules`, `PATCH`
   and `DELETE /rules/{id}`, marked `cookie: false`): rules stay the
   keys'.
@@ -104,11 +212,13 @@ signed in with the admin key alone.
   a browser without it is held to an `Origin` whose host is the
   request's `Host`, the scheme not compared since a TLS proxy hands
   the request on as `http`. A request with the admin key needs neither,
-  as a script sends none.
+  as a script sends none. `POST /api/v1/screen`, a read whose filters
+  are a body, is held to it too.
 
 ## What an anonymous visitor sees
 
-- **The page, its assets, the sign-in's 401, and the OpenAPI spec and
+- **The page, its assets, the sign-in's 401, `/ui/me`'s `email_on`,
+  and the OpenAPI spec and
   its docs page, which describe the API of every install and nothing
   of this one**: no host path, key or key file name, no data directory, no
   version, no source or flag name, no instrument data, no config in

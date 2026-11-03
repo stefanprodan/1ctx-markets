@@ -5,6 +5,7 @@
 import { CALLS_PER_MINUTE } from "../server/ratelimit.ts";
 import { COOKIE } from "../server/session.ts";
 import { paths, responses } from "./paths.ts";
+import { peoplePaths, peopleSchemas } from "./people-spec.ts";
 import { portfolioPaths, portfolioSchemas } from "./portfolio-spec.ts";
 import { profilePaths, profileSchemas } from "./profile-spec.ts";
 import { schemas } from "./schemas.ts";
@@ -18,7 +19,7 @@ export const spec = {
     license: { name: "Apache-2.0" },
     description: `Market data, price rules and portfolios, the same answers as the MCP tools.
 
-- Each operation names the key it takes: an agent key, made by the admin, or the admin key, which opens every route. Portfolio and profile routes take an agent key only when the admin gave it that access.
+- Each operation names the key it takes: an agent key, made by a person for their agent, or the admin key, which opens every route as the operator. An agent key reads and writes its person's own portfolios, profile and rules, and those routes take it only when its person gave it that access. It never opens a web UI or admin route.
 - Each key makes at most ${CALLS_PER_MINUTE} calls a minute.
 - A symbol is taken as written, with its exchange suffix (\`VVSM.DE\`, \`BRK-B\`, \`^VIX\`, \`CL=F\`), or as a stored id (\`US:NVDA\`).
 - Results are not paged, except the stored instrument list and the alerts feed.
@@ -45,65 +46,73 @@ export const spec = {
     { name: "dashboard", description: "The web UI's home page." },
     { name: "server", description: "The server's sources and jobs." },
     { name: "keys", description: "The agents' keys." },
+    {
+      name: "people",
+      description: "The people on the server and the email that signs them in.",
+    },
     { name: "docs", description: "This page and its OpenAPI document." },
   ],
-  paths: { ...paths, ...portfolioPaths, ...profilePaths },
+  paths: { ...paths, ...portfolioPaths, ...profilePaths, ...peoplePaths },
   components: {
     securitySchemes: {
       read: {
         type: "http",
         scheme: "bearer",
         description:
-          "An agent key, made by the admin, for market data and instruments.",
+          "An agent key, made by a person for their agent, for market data and instruments.",
       },
       portfolioRead: {
         type: "http",
         scheme: "bearer",
         description:
-          "An agent key the admin gave portfolio read or write access.",
+          "An agent key its person gave portfolio read or write access.",
       },
       portfolioWrite: {
         type: "http",
         scheme: "bearer",
-        description: "An agent key the admin gave portfolio write access.",
+        description: "An agent key its person gave portfolio write access.",
       },
       rulesRead: {
         type: "http",
         scheme: "bearer",
         description:
-          "An agent key the admin gave rules read or write access: the rules and the alerts feed.",
+          "An agent key its person gave rules read or write access: the rules and the alerts feed.",
       },
       rulesWrite: {
         type: "http",
         scheme: "bearer",
-        description: "An agent key the admin gave rules write access.",
+        description: "An agent key its person gave rules write access.",
       },
       profileRead: {
         type: "http",
         scheme: "bearer",
         description:
-          "An agent key the admin gave profile read or write access.",
+          "An agent key its person gave profile read or write access.",
       },
       profileWrite: {
         type: "http",
         scheme: "bearer",
-        description: "An agent key the admin gave profile write access.",
+        description: "An agent key its person gave profile write access.",
       },
       admin: {
         type: "http",
         scheme: "bearer",
-        description:
-          "The admin key. It opens every route, the operator's included.",
+        description: "The admin key. It opens every route as the operator.",
       },
       session: {
         type: "apiKey",
         in: "cookie",
         name: COOKIE,
         description:
-          "The web UI's sign-in cookie. It opens what the admin key opens but the rules writes. A request other than GET must come from this server's own pages.",
+          "A person's sign-in to the web UI, by an emailed link or, for the operator, the admin key. It opens their own rows and the market data, and the admin routes for an admin; never the rules writes. A request other than GET must come from this server's own pages.",
       },
     },
-    schemas: { ...schemas, ...portfolioSchemas, ...profileSchemas },
+    schemas: {
+      ...schemas,
+      ...portfolioSchemas,
+      ...profileSchemas,
+      ...peopleSchemas,
+    },
     responses,
   },
 };

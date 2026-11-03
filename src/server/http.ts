@@ -8,24 +8,33 @@ import type { McpHttpHandler } from "@modelcontextprotocol/server";
 import type { HTMLBundle } from "bun";
 import { failed, notAllowed, notFound, PREFIX, problem } from "../api/http.ts";
 import { match, type Route } from "../api/routes.ts";
-import { ADMIN, NO_ACCESS, opens, WEB, type Who } from "../operations/who.ts";
+import {
+  ADMIN,
+  loginWho,
+  NO_ACCESS,
+  opens,
+  type Who,
+} from "../operations/who.ts";
 import { type Clock, MINUTE_MS } from "../runtime/clock.ts";
 import { type Log, type LogFields, sdkErrorFields } from "../runtime/log.ts";
 import type { Access, Caller } from "./access.ts";
+import { asCaller, checkOf } from "./caller.ts";
 import { CALLS_PER_MINUTE, RateLimit } from "./ratelimit.ts";
 import {
   cookieOf,
-  SESSION_PATH,
-  type Sessions,
+  type Login,
+  type Logins,
+  loginCookie,
   sameOrigin,
-  sessionRoute,
 } from "./session.ts";
+import type { Ui } from "./ui.ts";
 
 const MAX_BODY_BYTES = 1024 * 1024;
 // Bun's 10 s idle default is under CALL_MS; 30 s adds room for a queued write
 export const IDLE_TIMEOUT_S = 30;
 
-export type Handle = (req: Request) => Promise<Response>;
+// ip: the client's address, for the sign-in routes' limit
+export type Handle = (req: Request, ip?: string) => Promise<Response>;
 
 // the web UI's own paths, each answered with its page; src/web/app/routes.ts
 // routes the same
@@ -45,8 +54,10 @@ export type RouterDeps = {
   access: Access;
   mcp: McpHttpHandler;
   api?: readonly Route[];
-  // the web UI's sign-in; with none the cookie opens nothing
-  sessions?: Sessions | null;
+  // the web UI's logins; with none the cookie opens nothing
+  logins?: Logins | null;
+  // the sign-in routes under /ui; none with the UI off
+  ui?: Ui | null;
   clock: Clock;
   log: Log;
 };
@@ -80,11 +91,12 @@ async function messages(req: Request): Promise<number> {
   }
 }
 
-// a cookie is the web UI's, which writes as the admin does; a key acts
-// as the person who made it
-export const whoOf = (c: Caller | null): Who =>
+// a login acts as its person in the web UI; a key as the person who made it
+export const whoOf = (c: Caller | null, login: Login | null = null): Who =>
   c === null
-    ? WEB
+    ? login === null
+      ? NO_ACCESS
+      : loginWho(login.user, login.id, login.name)
     : c.kind === "admin"
       ? ADMIN
       : {
@@ -96,19 +108,22 @@ export const whoOf = (c: Caller | null): Who =>
           profile: c.key.profile,
         };
 
-const keyFields = (c: Caller | null): LogFields =>
+const keyFields = (c: Caller | null, login: Login | null): LogFields =>
   c === null
-    ? {}
+    ? login === null
+      ? {}
+      : { user: login.user, login: login.id }
     : c.kind === "admin"
       ? { key: "admin" }
       : { key: c.key.id, key_name: c.key.name };
 
 export function router(deps: RouterDeps): Handle {
   const api = deps.api ?? [];
-  const sessions = deps.sessions ?? null;
+  const logins = deps.logins ?? null;
+  const ui = deps.ui ?? null;
   const rate = new RateLimit(CALLS_PER_MINUTE, MINUTE_MS);
-  const signedIn = (req: Request) =>
-    sessions?.valid(cookieOf(req), deps.clock.now()) === true;
+  const now = () => deps.clock.now();
+  const checks = { adminDigest: logins?.adminDigest ?? null, now };
   // counted before a body is read, so a refused call costs no read
   const limited = (
     c: Caller,
@@ -140,12 +155,17 @@ export function router(deps: RouterDeps): Handle {
   const allowed = (
     req: Request,
     c: Caller | null,
+    login: Login | null,
     r: Route | null,
   ): Response | null => {
     if (c !== null) {
       const over = limited(c, apiOver);
       if (over !== null) return over;
       if (c.kind === "admin" || r === null || r.scope === "read") return null;
+      // a key never opens the web UI's own routes or an admin's
+      if (r.scope === "admin" || r.scope === "session") {
+        return forbidden("this key does not open this route");
+      }
       const [area, level] = r.scope.split(":");
       const held =
         area === "portfolio"
@@ -158,16 +178,20 @@ export function router(deps: RouterDeps): Handle {
       if (held !== null && opens(held, level === "write")) return null;
       return forbidden("this key does not open this route");
     }
-    if (!signedIn(req) || r?.cookie === false) return apiUnauthorized();
+    if (login === null || r?.cookie === false) return apiUnauthorized();
     // a cookie's write must come from this server's own pages
-    return READS.has(req.method) || sameOrigin(req)
-      ? null
-      : forbidden("not sent from this server's pages");
+    if (!READS.has(req.method) && !sameOrigin(req)) {
+      return forbidden("not sent from this server's pages");
+    }
+    return r?.scope === "admin" && login.role !== "admin"
+      ? forbidden("for admins only")
+      : null;
   };
   const apiRoute = async (
     req: Request,
     path: string,
     c: Caller | null,
+    login: Login | null,
   ): Promise<Response> => {
     const url = new URL(req.url);
     const found = match(api, path);
@@ -177,20 +201,27 @@ export function router(deps: RouterDeps): Handle {
       return r.handle(req, url, found.params, NO_ACCESS);
     }
     const r = found?.routes.find((x) => x.method === req.method) ?? null;
-    const refused = allowed(req, c, r);
+    const refused = allowed(req, c, login, r);
     if (refused !== null) return refused;
     if (found === null) return notFound();
     if (r === null) return notAllowed(found.routes.map((x) => x.method));
-    return r.handle(req, url, found.params, whoOf(c));
+    const who = whoOf(c, login);
+    // every write under it re-reads this very credential
+    return asCaller(checkOf(who, checks), () =>
+      r.handle(req, url, found.params, who),
+    );
   };
   const route = async (
     req: Request,
     path: string,
     c: Caller | null,
+    login: Login | null,
+    ip: string,
   ): Promise<Response> => {
-    if (isApi(path)) return apiRoute(req, path.slice(PREFIX.length), c);
-    if (sessions !== null && path === SESSION_PATH) {
-      return sessionRoute(sessions, req, deps.clock.now());
+    if (isApi(path)) return apiRoute(req, path.slice(PREFIX.length), c, login);
+    if (ui !== null && path.startsWith("/ui/")) {
+      const res = await ui.route(req, path, ip);
+      if (res !== null) return res;
     }
     if (c === null) return unauthorized();
     const over = limited(c, mcpOver);
@@ -207,21 +238,23 @@ export function router(deps: RouterDeps): Handle {
       if (batch !== null) return batch;
     }
     const who = whoOf(c);
-    return deps.mcp.fetch(req, {
-      authInfo: {
-        token: "",
-        clientId: who.name,
-        scopes: [
-          `portfolio:${who.portfolio}`,
-          `rules:${who.rules}`,
-          `profile:${who.profile}`,
-        ],
-        // per request, never a global: each tool call reads its own person
-        extra: { user: who.user, credential: who.credential },
-      },
-    });
+    return asCaller(checkOf(who, checks), () =>
+      deps.mcp.fetch(req, {
+        authInfo: {
+          token: "",
+          clientId: who.name,
+          scopes: [
+            `portfolio:${who.portfolio}`,
+            `rules:${who.rules}`,
+            `profile:${who.profile}`,
+          ],
+          // per request, never a global: each tool call reads its own person
+          extra: { user: who.user, credential: who.credential },
+        },
+      }),
+    );
   };
-  return async (req) => {
+  return async (req, ip = "local") => {
     const started = deps.clock.now();
     const path = new URL(req.url).pathname;
     // polled while the service starts, so it stays out of the log
@@ -231,25 +264,59 @@ export function router(deps: RouterDeps): Handle {
     }
     let res: Response;
     let c: Caller | null = null;
+    let login: Login | null = null;
     try {
       c = deps.access.caller(req);
-      res = await route(req, path, c);
+      // a valid key wins: a key never borrows a browser's login
+      const resolved =
+        c === null && logins !== null ? logins.resolve(req) : null;
+      login = resolved?.login ?? null;
+      res = await route(req, path, c, login, ip);
+      // a moved expiry goes back to the browser, unless the answer set the
+      // cookie itself
+      if (resolved?.touched === true && !res.headers.has("set-cookie")) {
+        res.headers.set("set-cookie", loginCookie(req, cookieOf(req)!));
+      }
     } catch (error) {
       // a throw from the MCP handler can quote the request
-      deps.log.error("request failed", { path, ...sdkErrorFields(error) });
+      deps.log.error("request failed", {
+        path: loggedPath(path),
+        ...sdkErrorFields(error),
+      });
       res = isApi(path)
         ? problem("internal", "internal error")
         : failed({ error: "internal", message: "internal error" });
     }
     deps.log.info("request", {
       method: req.method,
-      path,
+      path: loggedPath(path),
       status: res.status,
       duration: deps.clock.now() - started,
-      ...keyFields(c),
+      ...keyFields(c, login),
     });
     return res;
   };
+}
+
+// a sign-in link's path holds its token, which no log line may
+export const loggedPath = (path: string): string =>
+  path.startsWith("/ui/link/") ? "/ui/link/:token" : path;
+
+// the client's address, for the sign-in routes' limit: behind a trusted
+// proxy the last X-Forwarded-For value, the one that proxy added
+export function clientIp(
+  req: Request,
+  socket: string | undefined,
+  trustProxy: boolean,
+): string {
+  if (trustProxy) {
+    const last = (req.headers.get("x-forwarded-for") ?? "")
+      .split(",")
+      .at(-1)
+      ?.trim();
+    if (last !== undefined && last !== "") return last;
+  }
+  return socket ?? "unknown";
 }
 
 // outside /api/v1 an error keeps the {error, message} shape
@@ -271,6 +338,8 @@ export function serve(options: {
   files?: Readonly<Record<string, string>>;
   // a local preview's: rebuilt after an edit, without the reload script
   pageDev?: boolean;
+  // --trust-proxy: the client address is the proxy's last X-Forwarded-For
+  trustProxy?: boolean;
 }): Bun.Server<undefined> {
   const page = options.page ?? null;
   // stamped on every answer, so an open tab sees a deploy; random, as the
@@ -300,8 +369,15 @@ export function serve(options: {
             ...files,
             ...Object.fromEntries(UI_PATHS.map((path) => [path, page])),
           },
-    fetch: async (req) => {
-      const res = await options.handle(req);
+    fetch: async (req, server) => {
+      const res = await options.handle(
+        req,
+        clientIp(
+          req,
+          server.requestIP(req)?.address,
+          options.trustProxy === true,
+        ),
+      );
       res.headers.set(BUILD_HEADER, build);
       return res;
     },

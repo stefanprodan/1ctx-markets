@@ -172,12 +172,12 @@ describe("rules access", () => {
     const none = await ask("none", { action: "list" });
     expect(JSON.parse(none.content[0]!.text)).toEqual({
       error: "forbidden",
-      message: "this key has no rules access; the admin grants it",
+      message: "this key has no rules access; its owner grants it",
     });
     const reader = await ask("read", { action: "delete", id: 1 });
     expect(JSON.parse(reader.content[0]!.text)).toEqual({
       error: "forbidden",
-      message: "this key reads rules only; the admin grants write",
+      message: "this key reads rules only; its owner grants write",
     });
   });
 });

@@ -33,6 +33,7 @@ import {
   readRules,
   setPaused,
 } from "../rules/store.ts";
+import { recheck } from "../server/caller.ts";
 import { eventStatus, nextEvent } from "../sources/finnhub/read.ts";
 import { eligible, NOT_COVERED } from "../sources/finnhub/store.ts";
 import {
@@ -339,6 +340,7 @@ export async function createRule(
   const done = await m.writer.write<
     Failure | { rule: RuleRow; outcome: ReturnType<typeof applyRule> } | null
   >((db) => {
+    recheck(db);
     const now = m.clock.now();
     // a write queued past the call's deadline stores no rule
     if (now >= deadline) return null;
@@ -439,6 +441,7 @@ export async function pauseRule(
   args: Extract<RulesArgs, { action: "pause" }>,
 ): Promise<{ rule: ReturnType<typeof ruleItem> } | Failure> {
   const out = await m.writer.write((db) => {
+    recheck(db);
     const rule = readRule(db, owner, args.id);
     if (rule === null) return null;
     if (rule.paused === "split") {
@@ -463,7 +466,10 @@ export async function deleteRuleById(
   owner: string,
   id: number,
 ): Promise<{ deleted: number; alerts: "kept" } | Failure> {
-  const deleted = await m.writer.write((db) => deleteRule(db, owner, id));
+  const deleted = await m.writer.write((db) => {
+    recheck(db);
+    return deleteRule(db, owner, id);
+  });
   if (!deleted) return notFound(id);
   return { deleted: id, alerts: "kept" };
 }
@@ -473,8 +479,8 @@ const answered = (body: object | Failure): ToolResult =>
     ? errorResult(body as Failure)
     : textResult(JSON.stringify(body));
 
-const NO_READ = "this key has no rules access; the admin grants it";
-const NO_WRITE = "this key reads rules only; the admin grants write";
+const NO_READ = "this key has no rules access; its owner grants it";
+const NO_WRITE = "this key reads rules only; its owner grants write";
 
 const forbidden = (write: boolean): Failure => ({
   error: "forbidden",

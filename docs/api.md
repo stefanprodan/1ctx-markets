@@ -29,15 +29,15 @@ MCP tools copied onto paths.
 | `GET /movers?symbols=&min_move_pct=&direction=&average=&relation=` | read | `readMovers()`, `setAll()` | `movers[]`: every match, unavailable and error, with `counts` |
 | `POST /screen` | read | `readScreen()`, `setAll()` | `matches[]`, the same; the body is the tool's arguments, since `filters` is a structure; 200, it creates nothing |
 | `GET /instruments?query=&page_size=&page_token=` | admin | `instruments()` | a page of stored instruments and what tracks each (`docs/admin.md`) |
-| `GET /screener?type=&screen=&sort=&order=&page_size=&page_token=` | admin | `screener()` | the web UI's Screener page: a page of one ready-made screen over the instruments kept up to date, with every screen's `counts` and the stored `kinds` (below) |
+| `GET /screener?type=&screen=&sort=&order=&page_size=&page_token=` | session | `screener()` | the web UI's Screener page: a page of one ready-made screen over the instruments kept up to date, with every screen's `counts` and the stored `kinds` (below) |
 | `GET /instruments/{symbol}` | read | `instrument()` | the instrument, what tracks it, its full quote and a fund's `top_holdings`; a read (below) |
 | `DELETE /instruments/{symbol}` | admin | `deleteOne()` | 204; 409 with `rules` (`docs/admin.md`) |
 | `POST /instruments/{symbol}/refetch` | admin | `refetchOne()` | `input`, `id`, `parts[]` (`docs/admin.md`) |
-| `GET /instruments/{symbol}/stored` | admin | `storedCheck()` | `input`, `stored`: whether a read answers from the database or fetches the symbol first (`docs/admin.md`) |
+| `GET /instruments/{symbol}/stored` | session | `storedCheck()` | `input`, `stored`: whether a read answers from the database or fetches the symbol first (`docs/admin.md`) |
 | `GET /instruments/{symbol}/bars?interval=&from=&to=&benchmark=&extended=` | read | `readHistory()`, `readIntradayHistory()` | bars or 5-minute points (below) |
 | `GET /watchlist` | read | `watchlist()` | `entries[]`, the `--track` values (below) |
-| `GET /dashboard` | admin | `readDashboard()` | the web UI's home page: `revision`, `created`, `sections[]` of `items[]` (below) |
-| `PUT /dashboard` | admin | `saveDashboard()` | `{revision, sections: [{name, view, symbols}]}` replaces the layout; the saved dashboard; 409 with `dashboard`, 422 with `errors` (below) |
+| `GET /dashboard` | session | `readDashboard()` | the web UI's home page: `revision`, `created`, `sections[]` of `items[]` (below) |
+| `PUT /dashboard` | session | `saveDashboard()` | `{revision, sections: [{name, view, symbols}]}` replaces the layout; the saved dashboard; 409 with `dashboard`, 422 with `errors` (below) |
 | `GET /rules` | rules:read | `readRules()`, `ruleItem()` | `rules[]` |
 | `POST /rules` | rules:write | `createRule()` | 201, `Location: /api/v1/rules/{id}`, the rule, its first evaluation and any alert it fired |
 | `GET /rules/{id}` | rules:read | `readRule()`, `ruleItem()` | `{rule}` |
@@ -70,9 +70,11 @@ MCP tools copied onto paths.
 | `PATCH /funds/{isin}` | portfolio:write | `updateFund()` | `{price, date, market, name, currency}`: the price for a day (the owner's today by default), a day already priced replaced and answered in `replaced`; a new name no other fund has; a currency only while no live trade is on it |
 | `GET /brokers`, `POST /brokers`, `PATCH`, `DELETE /brokers/{id}` | portfolio:read, write | `listAll()`, `createBroker()`, `updateBroker()`, `removeBroker()` | `{name}`; 409 for a taken name or a broker a live row names (removed rows lose the name) |
 | `GET /portfolio-settings`, `PUT /portfolio-settings` | portfolio:read, write | `settingsItem()`, `saveSettings()` | `{display_currency, time_zone}`: an ISO 4217 code in circulation (`src/shared/currencies.ts`) and an IANA zone, each null only while none is set; a save takes either or both, keeps the one left out, and never clears one; the first currency saved makes Cash |
-| `GET /keys` | admin | `listAnswer()` | `keys[]` (id, name, created, last used, expires; never a token) and `limit` (`docs/admin.md`) |
-| `POST /keys` | admin | `createOne()` | `{name, expiresInDays, portfolio}` (days null, 30, 90 or 365; portfolio `none`, the default, `read` or `write`); 201 with `key` and its `token`, once; 409 for a taken name or past the cap of 5 |
-| `DELETE /keys/{id}` | admin | `revokeOne()` | 204; 404 for an unknown id |
+| `GET /keys` | session | `listAnswer()` | `keys[]` (id, name, `owner` `{id, name}`, created, last used, expires; never a token), the caller's own, an admin's everyone's, and `limit` (`docs/admin.md`) |
+| `POST /keys` | session | `createOne()` | `{name, expiresInDays, portfolio, rules, profile}` (days null, 30, 90 or 365; each access `none`, the default, `read` or `write`): a key of the caller's; 201 with `key` and its `token`, once; 409 for a name the caller has or past their cap of 5 |
+| `DELETE /keys/{id}` | session | `revokeOne()` | 204; 404 for an unknown id or another person's, but for an admin |
+| `GET`, `POST /users`; `PATCH`, `DELETE /users/{id}`; `POST /users/{id}/invite`, `/users/{id}/sign-out` | admin | `src/admin/users.ts` | the people (`docs/admin.md`, "People") |
+| `GET`, `PUT`, `DELETE /smtp`; `POST /smtp/test` | admin | `src/admin/smtp.ts` | the email settings (`docs/admin.md`, "Email") |
 | `GET /status` | admin | `status()` | `docs/admin.md` |
 | `POST /status/retry` | admin | `retryFailing()` | `asked`, `fetched`, `failed`, `left_out`: counts only; no body taken (`docs/admin.md`) |
 | `GET /openapi.json` | none | `spec` | the OpenAPI document |
@@ -352,7 +354,7 @@ MCP tools copied onto paths.
 |---|---|
 | 400 | `bad_arguments`, `mixed_units`, `no_event_source`, `no_event` |
 | 401 | `unauthorized`: no key, or a wrong, revoked or expired one; no `WWW-Authenticate`, so an MCP client never starts an OAuth sign-in |
-| 403 | `forbidden`: a key without the route's scope, or a cookie request other than `GET` not sent from this server's own pages |
+| 403 | `forbidden`: a key without the route's scope, a member's login on an admin route, or a cookie request other than `GET` not sent from this server's own pages |
 | 404 | `not_found` (route, rule, key, instrument or symbol), `candidates`, `no_data`, `refused` |
 | 405 | `method_not_allowed`, with `Allow` |
 | 409 | `conflict`, `split_paused` |
@@ -377,10 +379,11 @@ MCP tools copied onto paths.
 - **Scopes are per operation, never a path prefix.** The router
   (`router()` in `src/server/http.ts`) matches the method and path
   first, then holds the key to that operation's `scope` (`Route` in
-  `routes.ts`): `read` takes an agent key, `admin` the admin key alone,
-  `none` no key. Matching first is what tells `GET` from `DELETE` on
+  `routes.ts`): `read` takes an agent key, `admin` the admin key or an
+  admin's login, `session` the admin key or anyone's login, never an
+  agent key, `none` no key. Matching first is what tells `GET` from `DELETE` on
   one path.
-- **Agent keys are rows the admin makes** (`src/server/access.ts`,
+- **Agent keys are rows each person makes** (`src/server/access.ts`,
   table `keys`): `1ctx-markets-` and 32 random bytes as base64url,
   stored only as its SHA-256. A bearer is hashed and looked up on every
   request, never cached, so a revoke holds on the next call; an expired
@@ -390,22 +393,26 @@ MCP tools copied onto paths.
   rules writes and the alerts feed included, as a wider scope holds a
   narrower one, and `/mcp`: a single-user install needs no other key.
 - **A valid key without the scope is 403 `forbidden`**: an agent key
-  on `GET /instruments`, `GET /screener`, `DELETE
-  /instruments/{symbol}`, refetch, `/status`, its retry and `/keys`,
-  and on a portfolio, rules or profile route without that access.
+  on an `admin` or `session` route (`/instruments`, `/screener`,
+  `/dashboard`, an instrument's stored check, delete and refetch,
+  `/status`, its retry, `/keys`, `/users`, `/smtp`), and on a
+  portfolio, rules or profile route without that access.
 - **Portfolio routes take the key's portfolio access** (`keys.portfolio`,
   `none` by default): `portfolio:read` opens with `read` or `write`,
   `portfolio:write` with `write`. Holdings are private, so the read
   scope never opens them. The handler gets the caller (`Who`), whose
-  name a write records: `web` for the cookie, `admin`, or the key's
+  name a write records: the signed-in person's name for a login, `admin`, or the key's
   name. The spec names `portfolioRead` and `portfolioWrite`.
 - **Every person's route acts as the caller's person** (`Who.user`,
   `users.id`): portfolios, the profile, the dashboard, rules, alerts and
-  keys. A key's lookup carries the user who made it; the admin key and
-  the cookie are the operator. The router hands `Who` to the handler,
-  never a global; another person's row by id answers 404 as an unknown
-  one. `Who.credential` names what sent the request (the admin key,
-  the cookie or a key's id), so a write can check it again.
+  keys. A key's lookup carries the user who made it, a login its
+  person; the admin key is the operator. The router hands `Who` to the
+  handler, never a global; another person's row by id answers 404 as an
+  unknown one, an admin's too. `Who.credential` names what sent the
+  request (the admin key, a login's id or a key's id), and every write
+  of a person's rows re-reads it in its transaction (`recheck()`,
+  `docs/admin.md`): a credential gone mid-call answers 401, a demoted
+  admin's write 403, and nothing is written.
 - **Rules routes and the alerts feed take the key's rules access**
   (`keys.rules`, `none` by default) the same way: `rules:read` (the
   list, one rule, the feed) opens with `read` or `write`,
@@ -427,19 +434,19 @@ MCP tools copied onto paths.
   message, a batch's each. Past it the answer is 429 before the body is
   read; a `/mcp` batch's body is read to count its members, the first
   message already counted. The admin key is limited as a key of its
-  own; the web UI's cookie is not limited. The windows are capped (`MAX_WINDOWS`), and
+  own; a login is not limited. The windows are capped (`MAX_WINDOWS`), and
   only a valid key reaches them, so memory stays bounded. 600, not
   1ctx's 120: an agent adding a portfolio makes one call per lot, and a
   few hundred lots must fit in one window.
 - **A request's log line names its key**: `key=<id> key_name=<name>`,
   or `key=admin`; never a token. A token made by `POST /keys` joins the
   log mask before it is answered (`mask()` in `src/runtime/keys.ts`).
-- **The web UI's session cookie opens what the admin key opens but
-  the rules writes**, portfolio writes included, (`cookie: false` on `POST /rules`, `PATCH` and
-  `DELETE /rules/{id}`); a cookie request that is not a `GET` must come
-  from this server's own pages, or it is 403 (`docs/web.md`). A key is
-  tried first, the cookie only when no key is valid. The spec names
-  `read`, `admin` and `session` per operation.
+- **A login opens its person's routes but the rules writes**
+  (`cookie: false` on `POST /rules`, `PATCH` and `DELETE /rules/{id}`),
+  and the `admin` routes only for an admin; a cookie request that is
+  not a `GET` must come from this server's own pages, or it is 403
+  (`docs/web.md`). A key is tried first, the cookie only when no key is
+  valid. The spec names `read`, `admin` and `session` per operation.
 - **The spec and the docs page are served before any key check**, as
   `/health` is: they hold no data and no key, and a browser opening a
   page sends no key.

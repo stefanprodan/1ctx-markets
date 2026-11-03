@@ -591,7 +591,7 @@ rename_broker(broker: string, name: string): { broker };
   caller as `authInfo` (`whoOf()`), the tools listed follow it, and
   each call is checked again (`forbidden` without read, and a write
   without write, `Who.portfolio`), since a client may hold a list from
-  before the admin changed the key; a tool the key no longer lists
+  before its person changed the key; a tool the key no longer lists
   answers the SDK's tool not found. The admin key holds write.
 - **holdings and trades page** by offset with a cursor bound to their
   arguments; totals, rates, exposure and `removed` ride on every page.

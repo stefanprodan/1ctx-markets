@@ -39,6 +39,8 @@ import {
 import { DAY_MS } from "../src/runtime/clock.ts";
 import { silent } from "../src/runtime/log.ts";
 import { createKey, listKeys } from "../src/server/access.ts";
+import { createLink } from "../src/server/links.ts";
+import { openLogin } from "../src/server/session.ts";
 import { isIsin } from "../src/shared/isin.ts";
 import { fred } from "../src/sources/fred/client.ts";
 import { yahoo } from "../src/sources/yahoo/client.ts";
@@ -46,6 +48,7 @@ import { type Db, migrate, open } from "../src/storage/db/index.ts";
 import { MIGRATIONS } from "../src/storage/db/migrations/index.ts";
 import { writer } from "../src/storage/writer.ts";
 import { call, tools } from "../src/tools/index.ts";
+import { api, cookieFor } from "./helpers/api.ts";
 import { mcpClient, seedKey, withApp } from "./helpers/app.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { instrument, NOW, quote, world } from "./helpers/world.ts";
@@ -627,6 +630,9 @@ describe("two people on one server", () => {
   for (const { actor, victim, mark } of PEOPLE) {
     test(`every route over a person's rows, as ${actor} on ${victim}'s ids, shows and changes none of them`, async () => {
       const t = await two();
+      // as members: an admin lists and revokes anyone's keys by design,
+      // tested apart below
+      t.db.query("update users set role = 'member'").run();
       const who = actor === OPERATOR ? t.op : t.second;
       const list = routeList(t.m);
       const table = cases(t.ids[victim]!, t.ids[actor]!);
@@ -1166,5 +1172,109 @@ describe("the migration that gives every row an owner", () => {
       { date: "2026-01-06", trade: null },
     ]);
     db.close();
+  });
+});
+
+describe("people signed in to the web UI", () => {
+  test("removing a person deletes every row of theirs, keeps the other's and the fund prices", async () => {
+    const t = await two();
+    await t.m.writer.write((db) => {
+      openLogin(db, SECOND, t.clock.now());
+      createLink(
+        db,
+        { user: SECOND, purpose: "sign_in", challenge: null },
+        t.clock.now(),
+      );
+    });
+    const list = routeList(t.m);
+    const filled = rowsOf(t.db, SECOND) as Record<string, unknown[]>;
+    for (const [table, rows] of Object.entries(filled)) {
+      expect([table, rows.length > 0]).toEqual([table, true]);
+    }
+    const before = rowsOf(t.db, OPERATOR);
+    const prices = t.db
+      .query("select count(*) as n from fund_prices where user_id = ?")
+      .get(SECOND) as { n: number };
+    const counted = await routeAs(list, ADMIN, "DELETE", {
+      path: `/users/${SECOND}?dry_run=true`,
+    });
+    expect(counted.status).toBe(200);
+    const dry = (await counted.json()) as { deleted: Record<string, number> };
+    expect(rowsOf(t.db, SECOND)).toEqual(filled);
+    const res = await routeAs(list, ADMIN, "DELETE", {
+      path: `/users/${SECOND}`,
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as typeof dry).deleted).toEqual(dry.deleted);
+    expect(dry.deleted).toMatchObject({ logins: 1, links: 1, keys: 1 });
+    const left = rowsOf(t.db, SECOND) as Record<string, unknown[]>;
+    for (const [table, rows] of Object.entries(left)) {
+      expect([table, rows]).toEqual([table, []]);
+    }
+    for (const table of ["logins", "links"]) {
+      expect(
+        t.db.query(`select * from ${table} where user_id = ?`).all(SECOND),
+      ).toEqual([]);
+    }
+    expect(
+      t.db.query("select id from users where id = ?").get(SECOND),
+    ).toBeNull();
+    // the prices they entered stay, shared, with no author
+    expect(
+      t.db
+        .query("select count(*) as n from fund_prices where user_id is null")
+        .get(),
+    ).toEqual(prices);
+    expect(rowsOf(t.db, OPERATOR)).toEqual(before);
+    expect(t.db.query("pragma foreign_key_check").all()).toEqual([]);
+  });
+
+  test("each person's /ui/me, dashboard and keys are their own", async () => {
+    const t = await two();
+    const handle = api(t.m);
+    const at = (path: string, cookie: string, init: RequestInit = {}) =>
+      handle(
+        new Request(`http://markets.test${path}`, {
+          ...init,
+          headers: {
+            cookie,
+            "sec-fetch-site": "same-origin",
+            "content-type": "application/json",
+          },
+        }),
+      );
+    const cookies: Record<string, string> = {
+      [OPERATOR]: cookieFor(t.db, t.clock.now()),
+      [SECOND]: cookieFor(t.db, t.clock.now(), SECOND),
+    };
+    for (const { actor, victim, mark } of PEOPLE) {
+      const cookie = cookies[actor]!;
+      const me = (await (await at("/ui/me", cookie)).json()) as {
+        user: { id: string };
+      };
+      expect(me.user.id).toBe(actor);
+      const board = await (await at(`${PREFIX}/dashboard`, cookie)).text();
+      expect([actor, board.includes(mark)]).toEqual([actor, false]);
+      const renamed = await at("/ui/me", cookie, {
+        method: "PATCH",
+        body: JSON.stringify({ name: `${actor} renamed` }),
+      });
+      expect(renamed.status).toBe(200);
+      expect(
+        t.db.query("select name from users where id = ?").get(victim),
+      ).not.toEqual({ name: `${actor} renamed` });
+    }
+    // a member lists only their own keys; the operator, an admin, all
+    const listed = async (who: string) =>
+      (
+        (await (await at(`${PREFIX}/keys`, cookies[who]!)).json()) as {
+          keys: { owner: { id: string } }[];
+        }
+      ).keys.map((k) => k.owner.id);
+    expect(await listed(SECOND)).toEqual([SECOND]);
+    expect([...new Set(await listed(OPERATOR))].sort()).toEqual([
+      OPERATOR,
+      SECOND,
+    ]);
   });
 });

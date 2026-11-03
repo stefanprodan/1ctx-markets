@@ -12,12 +12,17 @@ import { seed, type Tracker, tracker } from "./operations/track.ts";
 import { ruleEngine } from "./rules/evaluate.ts";
 import { pruneAlerts } from "./rules/store.ts";
 import { type Clock, DAY_MS } from "./runtime/clock.ts";
+import type { Keys } from "./runtime/keys.ts";
 import { errorFields, type LogFactory, type LogFields } from "./runtime/log.ts";
 import { type Scheduler, scheduler } from "./runtime/scheduler.ts";
 import { access } from "./server/access.ts";
+import { email } from "./server/email/settings.ts";
+import { type EmailSender, smtpSender } from "./server/email/smtp.ts";
 import { router, serve } from "./server/http.ts";
+import { links } from "./server/links.ts";
 import { mcpHandler } from "./server/mcp.ts";
-import { sessions } from "./server/session.ts";
+import { logins, pruneLogins } from "./server/session.ts";
+import { ui as uiRoutes } from "./server/ui.ts";
 import { fillReturns } from "./signals/store.ts";
 import { type Bvb, bvb } from "./sources/bvb/client.ts";
 import { type BvbJobs, bvbJobs } from "./sources/bvb/jobs.ts";
@@ -66,8 +71,16 @@ export type AppOptions = {
   adminKey?: string | null;
   // hides each agent key made while running from the log
   mask?: (token: string) => void;
-  // the web UI's sign-in, which needs the admin key; off with --no-ui
+  // the web UI's sign-in: the admin key, and emailed links once an admin
+  // sets up email; off with --no-ui
   ui?: boolean;
+  // the secrets directory's email- key files, read at each send; none
+  // keeps email off
+  secrets?: Pick<Keys, "email" | "emailNames">;
+  // what sends an email; a test passes a fake that records
+  sender?: EmailSender;
+  // --trust-proxy: a client's address is the proxy's last X-Forwarded-For
+  trustProxy?: boolean;
   // the page served at the UI's paths while ui is on
   page?: HTMLBundle | null;
   // a fixed path to the file served there beside the page
@@ -157,6 +170,7 @@ export function start(options: AppOptions): App {
     pruneNews(db, now, trackedIds(db, now, tracking));
     pruneFilings(db, now);
     pruneAlerts(db, now);
+    pruneLogins(db, now);
   };
   // first, so no run is taken for a crashed one; prunes too, since a
   // server restarted daily never reaches the daily turn
@@ -364,12 +378,32 @@ export function start(options: AppOptions): App {
   ];
   const adminKey = options.adminKey ?? null;
   const ui = options.ui === true;
+  const mail = email({
+    keys: options.secrets ?? { email: () => null, emailNames: () => [] },
+    sender: options.sender ?? smtpSender(),
+  });
+  const now = () => clock.now();
+  const linked = links({
+    db,
+    writer: write,
+    email: mail,
+    clock,
+    log: options.log("access"),
+  });
+  const signIns = logins({
+    db,
+    writer: write,
+    adminKey,
+    now,
+    log: options.log("access"),
+  });
   const server = serve({
     hostname: options.hostname,
     port: options.port,
     page: ui ? (options.page ?? null) : null,
     files: ui ? options.files : undefined,
     pageDev: options.pageDev === true,
+    trustProxy: options.trustProxy === true,
     handle: router({
       access: access({
         db,
@@ -391,8 +425,21 @@ export function start(options: AppOptions): App {
         track: track.status,
         log: options.log("api"),
         mask: options.mask,
+        email: mail,
+        links: linked,
       }),
-      sessions: ui ? sessions(adminKey) : null,
+      logins: ui ? signIns : null,
+      ui: ui
+        ? uiRoutes({
+            db,
+            writer: write,
+            logins: signIns,
+            links: linked,
+            email: mail,
+            now,
+            log: options.log("access"),
+          })
+        : null,
       clock,
       log: options.log("http"),
     }),
@@ -442,6 +489,7 @@ export function start(options: AppOptions): App {
       // no new run or request starts, no job waits out a back-off, runs settle,
       // then queued writes drain before main closes the database
       track.stop();
+      linked.close();
       const settled = jobs.stop();
       yahooQueue.close();
       fredClient?.close();
@@ -458,6 +506,8 @@ export function start(options: AppOptions): App {
         [...reads.inflight.values()].map((f) => f.promise),
       );
       await mcp.close();
+      // a link's email after its answer is sent before the writer closes
+      await linked.settled();
       await write.close();
     },
   };

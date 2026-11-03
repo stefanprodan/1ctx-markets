@@ -40,8 +40,8 @@ export type ProfileReadArgs =
   | { action: "versions" }
   | { action: "version"; revision: number };
 
-const NO_READ = "this key has no profile access; the admin grants it";
-const NO_WRITE = "this key reads the profile only; the admin grants write";
+const NO_READ = "this key has no profile access; its owner grants it";
+const NO_WRITE = "this key reads the profile only; its owner grants write";
 
 const forbidden = (write: boolean): Failure => ({
   error: "forbidden",

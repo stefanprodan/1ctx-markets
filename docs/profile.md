@@ -60,7 +60,7 @@ revision refused.
   revision with `unchanged: true`, so an empty save never uses one of
   the kept revisions.
 - **The author is who wrote it, as on trades**: the key's name, `admin`
-  for the admin key, `web` for the web UI's cookie. It is copied into
+  for the admin key, the person's name for a web UI login. It is copied into
   the revision, so a revoked key's history still reads.
 - **Every write names the revision it read.** A stale one is refused as
   `{error: "conflict", message: "profile is at revision N", revision:

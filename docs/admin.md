@@ -4,9 +4,12 @@ Governs the operator's routes and command: `src/admin/http.ts` (the
 instrument, watchlist and status handlers), `src/admin/refetch.ts`,
 `src/admin/retry.ts` (the failed jobs' retry), `src/admin/screener.ts`
 (the Screener page),
-`src/admin/keys.ts` (the agent keys' routes), `src/admin/cli.ts`
-(`1ctx-markets admin`) and `src/admin/keys-cli.ts` (`1ctx-markets
-keys`). The routes, their errors
+`src/admin/keys.ts` (the agent keys' routes), `src/admin/users.ts`
+(the people), `src/admin/smtp.ts` and `src/server/email/` (email),
+`src/server/caller.ts` (a write's credential re-read),
+`src/admin/cli.ts` (`1ctx-markets admin`), `src/admin/keys-cli.ts`
+(`1ctx-markets keys`) and `src/admin/users-cli.ts` (`1ctx-markets
+users`). Sign-ins and links are in `docs/web.md`. The routes, their errors
 and the spec are in `docs/api.md`; key files in `docs/config.md`;
 runs, tracking and retention in `docs/storage.md`; the source queue
 and deadlines in `docs/sources.md`; each source's fetch code in its
@@ -16,9 +19,12 @@ own doc.
 
 An agent's key never forces a fetch, deletes a row or makes a key: an
 agent could spend the free sources' limits or break another's reads.
-The operator's actions take the admin key, and none is offered over
-MCP. Each agent has a key of its own, so one can be told apart in the
-log and cut off without touching the others.
+The operator's actions take the admin key or an admin's sign-in, and
+none is offered over MCP. Each agent has a key of its own, made by its
+person, so one can be told apart in the log and cut off without
+touching the others. People and agents are apart, as in 1ctx: a person
+signs in to the web UI, an agent holds a key its person made; a key
+never signs in and a sign-in never opens `/mcp`.
 
 ## The key and the guard
 
@@ -26,14 +32,27 @@ log and cut off without touching the others.
   writes** (`docs/config.md`, Keys), prefixed `1ctx-markets-admin-`.
   One that is unusable stops the start; the message names the file
   only. It is rotated by replacing the file and restarting.
-- **The admin scope takes the admin key alone**, checked after the
-  route is matched (`router()` in `src/server/http.ts`): an agent key
-  there is 403. The admin key also holds the read scope and opens
-  `/mcp`, so it opens everything. With no admin key the admin routes
-  refuse every caller.
-- **The web UI's session cookie opens them too**, made by signing in
-  with the admin key (`docs/web.md`); a write by cookie needs this
-  server's `Origin`, or it is 403.
+- **The admin scope takes the admin key or an admin's login**, checked
+  after the route is matched (`router()` in `src/server/http.ts`): an
+  agent key or a member's login there is 403. The admin key also holds
+  the read scope and opens `/mcp`, so it opens everything, as the
+  operator. The `session` scope (the dashboard, the screener, an
+  instrument's stored check, the keys) takes the admin key or anyone's
+  login, never an agent key. A write by cookie needs this server's
+  `Origin`, or it is 403 (`docs/web.md`).
+- **An admin never reads another person's portfolios, profile,
+  dashboard or rules**: those routes act as the caller's own person
+  (`docs/api.md`). An admin lists and revokes anyone's keys, signs a
+  person out everywhere and removes a person.
+- **Writes re-read their caller** (`recheck()` in `src/server/caller.ts`,
+  as 1ctx's `checkKey()`): the router runs each request under a check
+  of its credential (`asCaller()`), and every write of a person's rows
+  calls `recheck(db)` first inside its transaction, an admin's write
+  `recheck(db, "admin")`. A key revoked or expired, a login ended, a
+  person removed mid-call is 401 and a demoted admin 403, and nothing
+  is written. Shared work never calls it (a fetch two callers wait on,
+  a job, tracking stamps), so one caller's revoke fails no other's
+  read; a write outside a request passes.
 - **The routes are on the server's own port, so treat them as
   internet-facing** wherever the server is reachable. Arguments are
   parsed strictly and refused whole, a refetch body is at most 16 KiB
@@ -49,30 +68,44 @@ log and cut off without touching the others.
 | `POST /api/v1/instruments/{symbol}/refetch` | `{"parts": [...], "sections": [...]}`, answered per part |
 | `DELETE /api/v1/instruments/{symbol}` | the instrument and every row of it; 204 |
 | `GET /api/v1/instruments/{symbol}/stored` | `{input, stored}`: true when the read's bare-symbol rule (`restStored()`) finds a stored row with daily bars, so a read answers without a first fetch; asks no source and marks no read. The web UI asks it beside an instrument's first read to say which wait it is in (`docs/web.md`) |
-| `GET /api/v1/keys` | the agent keys (below) |
-| `POST /api/v1/keys` | `{"name", "expiresInDays", "portfolio", "rules", "profile"}`: a new agent key, its token answered once; `portfolio`, `rules` and `profile` are `none` (the default), `read` or `write` |
-| `PATCH /api/v1/keys/{id}` | `{"portfolio", "rules", "profile"}`, at least one: changes the key's access, the token, name and expiry kept; the key as listed; 400 for none or a bad value, 404 for an unknown id |
-| `DELETE /api/v1/keys/{id}` | revokes an agent key; 204 |
+| `GET /api/v1/keys` | session: the caller's agent keys, an admin's everyone's, each with its `owner` `{id, name}` (below) |
+| `POST /api/v1/keys` | session: `{"name", "expiresInDays", "portfolio", "rules", "profile"}`: a new agent key of the caller's, its token answered once; `portfolio`, `rules` and `profile` are `none` (the default), `read` or `write` |
+| `PATCH /api/v1/keys/{id}` | session: `{"portfolio", "rules", "profile"}`, at least one: changes one of the caller's keys' access, the token, name and expiry kept; the key as listed; 400 for none or a bad value, 404 for an unknown id or another's |
+| `DELETE /api/v1/keys/{id}` | session: revokes one of the caller's keys, an admin anyone's; 204 |
+| `GET /api/v1/users` | `users[]` (`id`, `name`, `email`, `role`, `operator`, `created_at`, `last_sign_in_at`, `keys`) and `email_on` (below) |
+| `POST /api/v1/users` | `{"name", "email", "role"}`: adds a person and emails the invite; 201 `{user, invite: "sent"}` or `{user, invite: "failed", reason}`; 409 while email is off or the address is taken |
+| `PATCH /api/v1/users/{id}` | `{"name", "role"}`, at least one; `{user}`; 409 making the operator a member |
+| `POST /api/v1/users/{id}/invite` | no body: a new 7-day invite, replacing an unused one; `{invite, reason?}`; 409 while email is off or for a person with no email |
+| `POST /api/v1/users/{id}/sign-out` | no body: ends their logins and live links; 204 |
+| `DELETE /api/v1/users/{id}?dry_run=` | removes the person and every row of theirs; `{dry_run, deleted}` with each kind's count; `dry_run=true` deletes nothing; 409 for the operator |
+| `GET /api/v1/smtp` | `{settings, key_names, email_on, key_missing}` (below) |
+| `PUT /api/v1/smtp` | every field of the settings; the same answer as `GET` |
+| `DELETE /api/v1/smtp` | email off; 204, 404 with none saved |
+| `POST /api/v1/smtp/test` | `{"to"}`, the caller's own email by default: one email at once; `{result: "sent"}` or `{result: "failed", reason, reply}` |
 
 ## Agent keys
 
 - **An agent key opens what the read scope opens**: `/mcp` and the
-  market data routes; never an admin route, so an agent never makes or
-  lists keys.
-- **Portfolio access is the admin's to give** (`portfolio`: `none`,
+  market data routes; never an admin or a `session` route, so an agent
+  never makes or lists keys, removes a person or changes email.
+- **Each person makes their own keys** on Connect agents, as in 1ctx,
+  the operator by the admin key or `1ctx-markets keys` too. A key opens
+  its person's own rows at the access it was made with. Nobody makes a
+  key for someone else: `POST /keys` takes no person.
+- **Portfolio access is the key's maker's to give** (`portfolio`: `none`,
   `read` or `write`, on `POST /keys` and `keys add --portfolio`),
   `none` by default, since holdings are private; a key's access is
   answered in the list. It opens the portfolio routes and the
   portfolio tools: `read` lists the `portfolio` read tool, `write` the
   write tools too, and `none` lists none (`docs/portfolios.md`).
-- **Rules access is the admin's to give the same way** (`rules`, `keys
+- **Rules access is given the same way** (`rules`, `keys
   add --rules`), `none` by default, since a rule acts for the owner.
   `read` opens the rules list and the alerts feed, `write` also
   creates, pauses and deletes rules (`docs/rules.md`). A feed reader is
   a rules reader: alerts have no access of their own. Keys made before
   rules access existed were given `write` (migration 0023), what they
   had.
-- **Profile access is the admin's to give the same way** (`profile`,
+- **Profile access is given the same way** (`profile`,
   `keys add --profile`), `none` by default, since the owner's profile is
   personal and a script's key never needs it. `read` lists the `profile`
   tool and opens the profile reads, `write` also lists `profile_edit`
@@ -85,26 +118,106 @@ log and cut off without touching the others.
   next request, since the row is read on every request.
 - **A name follows 1ctx's agent name rule**: 2 to 80 lowercase
   letters, digits, dashes and underscores, starting with a letter or
-  digit, unique (409 `conflict`, "name taken"). `web` and `admin` are
+  digit, unique among the person's keys (409 `conflict`, "name
+  taken"), so two people may name keys alike. `web` and `admin` are
   reserved (409 `conflict`, "name reserved"): the server records the
   web UI and the admin key by those names.
 - **At most 5 keys per person** (`MAX_KEYS`), expired ones included,
-  as 1ctx's default cap (409 `conflict`, "too many keys"). The name,
-  unique across the server, and the cap are checked in the same write as
+  the operator included, as 1ctx's default cap (409 `conflict`, "too
+  many keys"). The name and the cap are checked in the same write as
   the insert.
 - **A key is its maker's** (`keys.user_id`): the routes list, change and
-  revoke only the caller's own, another's id answering 404, and the
-  key's agent reads and writes that person's rows. The admin key and the
-  web UI make the operator's.
+  revoke the caller's own, another's id answering 404, and the key's
+  agent reads and writes that person's rows. An admin's list holds
+  every person's keys, each with its `owner`, and an admin revokes any,
+  re-checked as an admin in the write; a key's access is changed only
+  by its maker. The admin key makes the operator's.
 - **Expiry is optional**: null (never, the default), 30, 90 or 365
   days. An expired key is 401 and stays listed until revoked.
 - **The token is answered once** by `POST`, with `cache-control:
   no-store`, after it joins the log mask; the row holds only its
   SHA-256, and no list or log line names it. A made or revoked key is
-  logged by id and name.
+  logged by id, name and person.
 - **A revoke holds on the key's next call**: nothing caches a lookup,
   and `/mcp` is stateless, so there is no session to close; a call
-  already in flight finishes.
+  already in flight writes nothing past the revoke (above).
+
+## People
+
+- **`users`**: `id`, `name`, `email` (lowercased, unique), `role`
+  (`admin` or `member`), `created_at`, `last_sign_in_at`. A `member`
+  has their own data in full (portfolios, profile, dashboard, rules,
+  keys), the market pages and Connect agents; an `admin` also Server
+  status, refetch, delete, retry, and the people and email routes.
+- **The operator** (`OPERATOR`) always exists, is an admin, signs in
+  with `user-admin.key`, and cannot be removed or made a member (409),
+  so no admin locks everyone out and a mail outage never does. Their
+  email is null until they add one (`PATCH /ui/me`, `docs/web.md`).
+- **Invite only, by email.** Adding a person needs email on (409
+  otherwise: nobody could sign in), takes a name, an address and a role
+  (`member` by default), and sends a 7-day link and code at once: "You
+  were added to markets. Sign in: <link>, or enter 482913. Both work
+  once, for 7 days." The person is added whether or not it went;
+  `invite` says which, with the failure word, `timeout` past 25 s
+  (`SEND_DEADLINE_MS`, under Bun's 30 s idle limit) while the send goes
+  on. Invite again replaces any unused invite. The write that makes an
+  invite re-checks the caller is still an admin. Invites skip the ask
+  caps.
+- **Sign out everywhere** (`signOutEverywhere()`) deletes the person's
+  logins and live links; their data and keys stay.
+- **Removing a person is one transaction** (`removeUserRows()`): their
+  trades, positions, portfolios, brokers, settings, profile revisions,
+  dashboard, rules, alerts, keys, logins and links, then the row. The
+  answer counts each kind (`ownedCounts()`); `?dry_run=true` counts
+  without deleting, for the confirmation. Fund prices they entered
+  stay, being shared, their author's id set null; their asks stay
+  counted.
+- **A person, a login or a link made, used or removed logs its id**,
+  with who did it; never a token, a code or an address.
+
+## Email
+
+Follows 1ctx's (its `docs/email.md`), without an outbox: a link's email
+is sent directly, after the answer for an ask, before it for an admin.
+
+- **The operator's alone to change** (the admin key or the operator's
+  login): whoever sets the SMTP server reads every link it carries, and
+  the next send logs in to it with the password file, so another admin
+  gets 403 on `PUT` and `DELETE /smtp` and `POST /smtp/test`, and reads
+  `GET /smtp` only.
+- **Set in the web UI, no flag and no restart**: one `smtp_settings` row
+  (`host`, `port`, `security` `tls` or `starttls`, `username`,
+  `key_name`, `from`, `public_url`, `updated_at`, `updated_by`). A save
+  takes every field and names the missing ones (400); the username and
+  the key file are both set or both null. `public_url` is an `https://`
+  origin, or `http://` on a loopback host, with no path: the links'
+  address, never a request's `Host`. A save sends nothing; the next
+  email goes through it. A new host or port with the saved password
+  file clears the username and the file, so a password never follows a
+  new server unpicked: they are picked again for it.
+- **The password is a key file put there by hand**,
+  `secrets/email-<name>.key` (`docs/config.md`), named in `key_name`
+  without `.key`; `GET /smtp` lists the `email-` names, never a value,
+  and a `source-` or `user-admin` name is refused. The server reads it
+  at each send (`keys.email()`), so the log mask knows it, and never
+  writes it.
+- **Email is on while the row is saved and the file it names is
+  there** (`email().on()`); a file that cannot be read is a missing
+  one. `key_missing` says the named file is not there.
+- **Removing the settings** deletes the row: email goes off, new links
+  stop; the file, the people and their logins stay.
+- **Only `src/server/email/smtp.ts` imports `nodemailer`**, at 1ctx's
+  pin. Addresses go to it as `{name, address}` objects, a header value
+  with a control character or a line break is refused before it is
+  handed over, certificates are always verified (TLS 1.2 or later),
+  and the timeouts are 10 s to connect, 10 s for the greeting and 30 s
+  on the socket. Nothing is sent at start.
+- **A failure is one closed word** (`failureOf()`): `auth`, `tls`,
+  `connect`, `rejected`, `timeout` or `other`. A log line holds the
+  word, the person's and the link's ids, never the SMTP reply, which
+  can carry addresses. The test email answers the reply to the
+  operator alone, and `timeout` past 25 s as an invite does.
+
 ## The instrument list
 
 - **Paged by id, the one paged route:** `page_size` 1 to `MAX_PAGE`
@@ -265,12 +378,18 @@ log and cut off without touching the others.
 - **It prints the server's JSON and never the key**, and exits 1 on a
   status other than 2xx or no answer.
 - **`1ctx-markets keys list|add|set|revoke` calls the same way**, with
-  the same `--listen` and `--data`. `list` prints `GET
-  /api/v1/keys`'s JSON; `add <name> [--expires 30|90|365] [--portfolio
+  the same `--listen` and `--data`, as the operator. `list` prints `GET
+  /api/v1/keys`'s JSON, every person's; `add <name> [--expires 30|90|365] [--portfolio
   none|read|write] [--rules none|read|write] [--profile
   none|read|write]` (each access `none` by default) prints the new
   token alone on stdout, once, so `$(...)` can take it, and nothing
   else; `set <name> [--portfolio ...] [--rules ...] [--profile ...]`,
-  one at least, finds the key's id by name and prints `set
-  <name>`; `revoke <name>` finds it the same way and prints `revoked
-  <name>`. A refusal exits 1 with the server's detail and status.
+  one at least, finds the operator's own key's id by name and prints
+  `set <name>`; `revoke <name>` finds it the same way and prints
+  `revoked <name>`. Another person's key is revoked only by its id
+  (`revoke <id>`), since two people may name keys alike. A refusal
+  exits 1 with the server's detail and status.
+- **`1ctx-markets users list|add|invite|sign-out|remove` calls the same
+  way.** `add <email> <name> [--role admin|member]`, `invite <id>` and
+  `remove <id> [--dry-run]` print the server's JSON; `sign-out <id>`
+  prints `signed out <id>`.

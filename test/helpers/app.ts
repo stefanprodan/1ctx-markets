@@ -13,6 +13,7 @@ import { MINUTE_MS } from "../../src/runtime/clock.ts";
 import { keys, requireAdmin } from "../../src/runtime/keys.ts";
 import { logger } from "../../src/runtime/log.ts";
 import { tokenHash } from "../../src/server/access.ts";
+import type { EmailSender } from "../../src/server/email/smtp.ts";
 import type { Fetch } from "../../src/sources/source.ts";
 import { type Db, open } from "../../src/storage/db/index.ts";
 import { type FakeClock, fakeClock } from "./clock.ts";
@@ -63,6 +64,11 @@ export type TestOptions = {
   page?: HTMLBundle;
   // a fixed path to the file served there beside the page
   files?: Readonly<Record<string, string>>;
+  // the secrets directory email- key files are read from; none keeps
+  // email off
+  secrets?: string;
+  // records each email; by default any send fails the test's email
+  sender?: EmailSender;
 };
 
 // on loopback, on a port the system picks; stopped when fn ends, since
@@ -96,6 +102,10 @@ export async function withApp(
     bvb: options.bvb,
     sync: options.sync,
     ui: options.ui,
+    secrets: options.secrets === undefined ? undefined : keys(options.secrets),
+    sender:
+      options.sender ??
+      (async () => ({ ok: false, failure: "connect", reply: null })),
     page: options.page,
     files: options.files,
     // no test reaches a network

@@ -97,6 +97,7 @@ import {
   statedOf,
 } from "../portfolios/value.ts";
 import { errorFields } from "../runtime/log.ts";
+import { recheck } from "../server/caller.ts";
 import { inCirculation, isCurrencyCode } from "../shared/currencies.ts";
 import { isIsin } from "../shared/isin.ts";
 import { FRED, FUND_MARKET, FUND_SOURCE } from "../sources/ids.ts";
@@ -121,8 +122,8 @@ export type AddKind = (typeof ADD_KINDS)[number];
 // no larger number is a real holding, and none can round to another
 export const MAX_AMOUNT = 1e12;
 
-const NO_READ = "this key has no portfolio access; the admin grants it";
-const NO_WRITE = "this key reads portfolios only; the admin grants write";
+const NO_READ = "this key has no portfolio access; its owner grants it";
+const NO_WRITE = "this key reads portfolios only; its owner grants write";
 
 export const forbidden = (write: boolean): Failure => ({
   error: "forbidden",
@@ -1236,6 +1237,7 @@ async function addTradeOn(
     enteredBy: who.name,
   }));
   const done = await m.writer.write((db): number[] | Failure => {
+    recheck(db);
     const now = m.clock.now();
     // made by another call since this one looked: that one stands
     const making =
@@ -1459,6 +1461,7 @@ export async function updateFund(
   }
   const replaced = await m.writer.write(
     (db): { before: FundPrice | null; name: string } | Failure => {
+      recheck(db);
       const now = m.clock.now();
       const fund = readFund(db, kept.id)!;
       // every check before any write, so a refused update changes nothing
@@ -1600,6 +1603,7 @@ export async function addPosition(
     enteredBy: who.name,
   };
   const done = await m.writer.write((db) => {
+    recheck(db);
     const now = m.clock.now();
     const old = samePosition(db, row);
     if (old !== null) setPositionRemoved(db, owner, old.id, who.name, now);
@@ -1672,6 +1676,7 @@ export async function updatePosition(
     else to = given.amount * factor;
   }
   const done = await m.writer.write((db): number | Failure => {
+    recheck(db);
     const old = readPosition(db, owner, id);
     if (old === null) return notFound(`no position ${id}`);
     if (old.removedAt !== null) {
@@ -1894,6 +1899,7 @@ export async function setTradeState(
 ): Promise<{ trade: ReturnType<typeof tradeItem> } | Failure> {
   const owner = who.user;
   const done = await m.writer.write((db): Failure | null | number => {
+    recheck(db);
     const t = readTrade(db, owner, id);
     if (t === null) return null;
     // a second removal keeps who removed it first
@@ -1931,6 +1937,7 @@ export async function setPositionState(
 ): Promise<{ position: ReturnType<typeof positionItem> } | Failure> {
   const owner = who.user;
   const done = await m.writer.write((db): number | null | Failure => {
+    recheck(db);
     const p = readPosition(db, owner, id);
     if (p === null) return null;
     // a second removal keeps who removed it first
@@ -1999,6 +2006,7 @@ export async function createPortfolio(
   const f = fields(body, ["name"]);
   const name = nameArg(f.name);
   const done = await m.writer.write((db): number | Failure => {
+    recheck(db);
     // every total converts into it, and none is assumed for the owner
     if (displayCurrency(db, owner) === null) {
       return conflict("Set a display currency first.");
@@ -2028,6 +2036,7 @@ export async function updatePortfolio(
   const name = f.name === undefined ? null : nameArg(f.name);
   const place = f.position === undefined ? null : placeArg(f.position);
   const done = await m.writer.write((db): Portfolio | Failure | null => {
+    recheck(db);
     const p = readPortfolio(db, owner, id);
     if (p === null) return null;
     if (p.cash && name !== null) {
@@ -2052,6 +2061,7 @@ export async function updatePortfolio(
 
 export async function removePortfolio(m: Markets, owner: string, id: number) {
   const done = await m.writer.write((db): Failure | null | true => {
+    recheck(db);
     const p = readPortfolio(db, owner, id);
     if (p === null) return null;
     if (p.cash) return conflict(`${CASH_NAME} is kept for cash`);
@@ -2070,6 +2080,7 @@ export async function createBroker(m: Markets, owner: string, body: unknown) {
   const f = fields(body, ["name"]);
   const name = nameArg(f.name);
   const done = await m.writer.write((db): number | Failure => {
+    recheck(db);
     if (brokerByName(db, owner, name) !== null)
       return conflict("a broker has this name");
     return insertBroker(db, owner, name, m.clock.now());
@@ -2087,6 +2098,7 @@ export async function updateBroker(
   const f = fields(body, ["name"]);
   const name = nameArg(f.name);
   const done = await m.writer.write((db): Broker | Failure | null => {
+    recheck(db);
     if (readBroker(db, owner, id) === null) return null;
     const other = brokerByName(db, owner, name);
     if (other !== null && other.id !== id)
@@ -2101,6 +2113,7 @@ export async function updateBroker(
 
 export async function removeBroker(m: Markets, owner: string, id: number) {
   const done = await m.writer.write((db): Failure | null | true => {
+    recheck(db);
     if (readBroker(db, owner, id) === null) return null;
     // removed rows lose the name instead
     if (brokerRows(db, id) > 0) {
@@ -2137,6 +2150,7 @@ export async function saveSettings(m: Markets, owner: string, body: unknown) {
     );
   }
   await m.writer.write((db) => {
+    recheck(db);
     const now = m.clock.now();
     if (c !== null) setDisplayCurrency(db, owner, c, now);
     if (z !== null) setTimeZone(db, owner, z, now);
@@ -2157,6 +2171,7 @@ async function setup(
 ) {
   const made: string[] = [];
   const done = await m.writer.write((db): Failure | null => {
+    recheck(db);
     const now = m.clock.now();
     // every check before any write, so a refused setup saves nothing
     // the owner's own setting: an agent passing one out of habit never

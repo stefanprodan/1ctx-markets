@@ -25,6 +25,8 @@ export type Config = {
   ui: boolean;
   // the source jobs; off, the server answers from the database as it is
   sync: boolean;
+  // behind a proxy: a client's address is its last X-Forwarded-For value
+  trustProxy: boolean;
 };
 
 export const dbPath = (config: Config): string =>
@@ -37,6 +39,7 @@ export type Cli =
   | { kind: "service"; argv: string[] }
   | { kind: "admin"; argv: string[] }
   | { kind: "keys"; argv: string[] }
+  | { kind: "users"; argv: string[] }
   | { kind: "help" }
   | { kind: "version" }
   | { kind: "error"; message: string };
@@ -56,7 +59,11 @@ export const HELP = `\x1b[1m1ctx-markets\x1b[0m - a self-hosted market data serv
                         [--rules <access>] [--profile <access>]
   1ctx-markets keys ... set <name> [--portfolio <access>] [--rules <access>]
                         [--profile <access>]
-  1ctx-markets keys ... revoke <name>
+  1ctx-markets keys ... revoke <name>|<id>
+  1ctx-markets users [--listen <host:port>] [--data <dir>] list
+  1ctx-markets users ... add <email> <name> [--role admin|member]
+  1ctx-markets users ... invite|sign-out <id>
+  1ctx-markets users ... remove <id> [--dry-run]
 
 \x1b[1mService:\x1b[0m
   install                run 1ctx-markets with these options as a service
@@ -76,15 +83,26 @@ export const HELP = `\x1b[1m1ctx-markets\x1b[0m - a self-hosted market data serv
                          installed service's, else the defaults below
 
 \x1b[1mKeys:\x1b[0m
-  list                   the agent keys, never their tokens
+  list                   every person's agent keys, never their tokens
   add                    make an agent key and print it once; it never
                          expires unless --expires gives days, and reaches
                          no portfolio, rule or profile unless --portfolio,
                          --rules or --profile says so; access: none, read
                          or write
-  set                    change an agent key's access by its name; its
-                         token stays
-  revoke                 revoke an agent key by its name
+  set                    change one of the operator's agent keys' access
+                         by its name; its token stays
+  revoke                 revoke one of the operator's agent keys by its
+                         name, or anyone's by its id
+                         The server is called as for admin
+
+\x1b[1mUsers:\x1b[0m
+  list                   the people, their role, email and last sign-in
+  add                    add a person and email them a sign-in link,
+                         valid 7 days; needs email set up in the web UI
+  invite                 email the person's invite again
+  sign-out               end the person's sign-ins and live links
+  remove                 delete the person and every row of theirs;
+                         --dry-run counts them only. Never the operator
                          The server is called as for admin
 
 \x1b[1mOptions:\x1b[0m
@@ -99,6 +117,9 @@ export const HELP = `\x1b[1m1ctx-markets\x1b[0m - a self-hosted market data serv
   --track <symbol>       keep an instrument tracked whether read or not,
                          repeated for each; a symbol as quote takes it
   --no-ui                serve no web UI at / and refuse its sign-in
+  --trust-proxy          behind a reverse proxy: take a client's address
+                         from the last X-Forwarded-For value, for the
+                         sign-in page's limit; never without a proxy
   --no-sync              run no sync job and serve the database as it is;
                          a read still fetches a symbol not stored
   -v, --version          show version
@@ -112,7 +133,9 @@ export const HELP = `\x1b[1m1ctx-markets\x1b[0m - a self-hosted market data serv
   source-<name>.key      a source's API key, which turns it on:
                          source-fred.key, source-finnhub.key or
                          source-massive.key; source-edgar.key holds
-                         a name and an email for SEC instead`;
+                         a name and an email for SEC instead
+  email-<name>.key       an SMTP password, put there by hand and picked
+                         in the web UI's SMTP settings; read at each send`;
 
 export const VALUED_FLAGS = [
   "--listen",
@@ -146,6 +169,7 @@ export function parseCli(argv: string[], home: string = homedir()): Cli {
   if (argv[0] === "service") return { kind: "service", argv: argv.slice(1) };
   if (argv[0] === "admin") return { kind: "admin", argv: argv.slice(1) };
   if (argv[0] === "keys") return { kind: "keys", argv: argv.slice(1) };
+  if (argv[0] === "users") return { kind: "users", argv: argv.slice(1) };
   let listen = DEFAULT_LISTEN;
   let dataDir = defaultDataDir(home);
   let quoteEvery = DEFAULT_QUOTE_EVERY;
@@ -154,6 +178,7 @@ export function parseCli(argv: string[], home: string = homedir()): Cli {
   const track = new Set<string>();
   let ui = true;
   let sync = true;
+  let trustProxy = false;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
@@ -209,6 +234,9 @@ export function parseCli(argv: string[], home: string = homedir()): Cli {
       case "--no-sync":
         sync = false;
         break;
+      case "--trust-proxy":
+        trustProxy = true;
+        break;
       case "-v":
       case "--version":
         return { kind: "version" };
@@ -233,6 +261,7 @@ export function parseCli(argv: string[], home: string = homedir()): Cli {
       track: [...track],
       ui,
       sync,
+      trustProxy,
     },
   };
 }
@@ -253,5 +282,6 @@ export function configToArgs(config: Config): string[] {
   for (const value of config.track) args.push("--track", value);
   if (!config.ui) args.push("--no-ui");
   if (!config.sync) args.push("--no-sync");
+  if (config.trustProxy) args.push("--trust-proxy");
   return args;
 }
