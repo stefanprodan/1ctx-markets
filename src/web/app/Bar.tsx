@@ -5,6 +5,7 @@
 
 import { effect, signal } from "@preact/signals";
 import { useEffect, useRef, useState } from "preact/hooks";
+import { markets } from "../data/store.ts";
 import { Icon, type IconName } from "../lib/icons.tsx";
 import { Drawer } from "../ui/Drawer.tsx";
 import { OPENER, openSearch, searchShown } from "../ui/SymbolSearch.tsx";
@@ -12,7 +13,7 @@ import { useServerFailing } from "./failing.ts";
 import { SCREENER } from "./paths.ts";
 import { iconClass, Recent } from "./Rail.tsx";
 import { path, visits } from "./router.ts";
-import { HOME, lit, RAIL, STATUS } from "./routes.ts";
+import { HOME, lit, RAIL, railFor, STATUS } from "./routes.ts";
 import { UserItems } from "./UserMenu.tsx";
 import "./bar.css";
 
@@ -21,6 +22,12 @@ const PORTFOLIOS = "/portfolios";
 export const MORE = RAIL.filter(
   (r) => r.path !== HOME && r.path !== SCREENER && r.path !== PORTFOLIOS,
 );
+
+// More's pages for this person: an admin's only for admins
+export const moreFor = (admin: boolean) => {
+  const shown = new Set(railFor(admin));
+  return MORE.filter((r) => shown.has(r));
+};
 
 // never kept: a reload opens on the view
 export const moreOpen = signal(false);
@@ -263,7 +270,7 @@ export function More({
     <Drawer title="More" onClose={onClose}>
       {(close) => (
         <nav class="more" aria-label="More">
-          {MORE.map((r) => {
+          {moreFor(markets.isAdmin.value).map((r) => {
             const red = r.path === STATUS && failing;
             return (
               <a

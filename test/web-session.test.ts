@@ -585,7 +585,13 @@ describe("the served UI", () => {
         const docs = ours.slice(seen.slice(0, ui).join("\n").length);
         expect(docs.includes(".key")).toBe(false);
         expect(seen.length).toBeGreaterThan(20);
-        const all = seen.join("\n");
+        // the SMTP tab names the directory every install keeps its key
+        // files in, as the docs do, so an admin knows where the password
+        // file goes; never a path of this one
+        const all = seen
+          .join("\n")
+          .replaceAll("Files in secrets/ named email-*.key.", "")
+          .replaceAll("Put the password in secrets/ as ", "");
         for (const secret of [
           SECRETS,
           "secrets",

@@ -8,6 +8,7 @@ import type { ComponentType } from "preact";
 import { viewOf } from "../data/portfolios.ts";
 import { markets } from "../data/store.ts";
 import type { IconName } from "../lib/icons.tsx";
+import { AdminSmtp, AdminUsers } from "../views/Admin.tsx";
 import { Connect } from "../views/Connect.tsx";
 import { Dashboard } from "../views/Dashboard.tsx";
 import { Instrument } from "../views/Instrument.tsx";
@@ -25,8 +26,11 @@ export type Route = {
   label: string;
   icon: IconName;
   view: ComponentType<{ params: Params }>;
-  // the page the rail and the bar light for one outside its path
+  // the page the rail and the bar light for one outside its path, and
+  // which stands for it in the rail
   parent?: string;
+  // shown to admins only; a member's routes for it answer 403
+  admin?: boolean;
   // what arriving on the page loads, before it renders
   load?: (params: Params) => Promise<void>;
 };
@@ -98,9 +102,31 @@ export const ROUTES: readonly Route[] = [
     },
   },
   {
+    path: "/admin",
+    label: "Admin",
+    icon: "key",
+    admin: true,
+    view: AdminUsers,
+    load: async () => {
+      await markets.admin.loadPeople();
+    },
+  },
+  {
+    path: "/admin/smtp",
+    label: "Admin",
+    icon: "key",
+    admin: true,
+    parent: "/admin",
+    view: AdminSmtp,
+    load: async () => {
+      await markets.admin.loadSmtp();
+    },
+  },
+  {
     path: "/status",
     label: "Server status",
     icon: "status",
+    admin: true,
     view: Status,
     load: async () => {
       await markets.loadStatus();
@@ -110,9 +136,16 @@ export const ROUTES: readonly Route[] = [
 
 export const HOME = "/";
 export const STATUS = "/status";
+export const ADMIN = "/admin";
 
-// the rail's pages: a page with a parameter lights its parent
-export const RAIL = ROUTES.filter((r) => !r.path.includes(":"));
+// the rail's pages: a page under a parent lights it
+export const RAIL = ROUTES.filter(
+  (r) => !r.path.includes(":") && r.parent === undefined,
+);
+
+// the pages a person may open: an admin's only for admins
+export const railFor = (admin: boolean): readonly Route[] =>
+  admin ? RAIL : RAIL.filter((r) => !r.admin);
 export const lit = (here: string, path: string): boolean =>
   here === path ||
   here.startsWith(`${path}/`) ||

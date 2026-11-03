@@ -1,18 +1,26 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 
+import { markets } from "../data/store.ts";
 import { Icon, Logo } from "../lib/icons.tsx";
 import { nameOf, tickerOf } from "../lib/names.ts";
 import { SymbolName } from "../ui/Symbol.tsx";
 import { useServerFailing } from "./failing.ts";
 import { symbolHref } from "./paths.ts";
 import { pickRecent, recent } from "./recent.ts";
-import { HOME, lit, RAIL, STATUS } from "./routes.ts";
-import { toggleUserMenu, UserMenu, userMenuOpen } from "./UserMenu.tsx";
+import { HOME, lit, railFor, STATUS } from "./routes.ts";
+import {
+  avatarIcon,
+  toggleUserMenu,
+  UserMenu,
+  userMenuOpen,
+  userName,
+} from "./UserMenu.tsx";
 import "./rail.css";
 
 export function Rail({ here, onHide }: { here: string; onHide: () => void }) {
   const failing = useServerFailing();
+  const pages = railFor(markets.isAdmin.value);
   return (
     <aside class="rail">
       <div class="rail-top">
@@ -31,7 +39,7 @@ export function Rail({ here, onHide }: { here: string; onHide: () => void }) {
           </button>
         </div>
         <nav class="rail-nav">
-          {RAIL.map((r) => (
+          {pages.map((r) => (
             <a
               key={r.path}
               href={r.path}
@@ -66,9 +74,9 @@ export function Rail({ here, onHide }: { here: string; onHide: () => void }) {
           onClick={toggleUserMenu}
         >
           <span class="avatar">
-            <Icon name="key" size={14} />
+            <Icon name={avatarIcon()} size={14} />
           </span>
-          <span class="rail-user-name cut">Admin</span>
+          <span class="rail-user-name cut">{userName()}</span>
           <Icon name="chevron" size={14} class="rail-user-chevron" />
         </button>
       </UserMenu>

@@ -27,10 +27,16 @@ export const OUTLINE = `## Goals
 export const kb = (bytes: number): string =>
   `${(Math.ceil((bytes * 10) / 1024) / 10).toFixed(1)} KB`;
 
-// the server records the web UI and the admin key as `web` and `admin`;
-// both are the owner reading the page, so neither word is shown
-export const authorWords = (author: string | null): string =>
-  author === "web" || author === "admin" ? "you" : (author ?? "");
+// a login records its person's name, the admin key `admin` and an older
+// login `web`: the reader's own name and those read as "you", another
+// person's or an agent key's as itself
+export const authorWords = (
+  author: string | null,
+  self: string | null = null,
+): string =>
+  author === "web" || author === "admin" || (self !== null && author === self)
+    ? "you"
+    : (author ?? "");
 
 // the server counts UTF-8 bytes, not characters
 export const sizeOf = (text: string): number =>

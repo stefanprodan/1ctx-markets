@@ -13,7 +13,7 @@ import { HOME, match } from "./routes.ts";
 
 export const BRAND = "1ctx Markets";
 
-// signedIn is the store's: undefined until the first status answer
+// signedIn is the store's: undefined until /ui/me first answers
 export function tabTitle(
   here: string,
   signedIn: boolean | undefined,

@@ -34,7 +34,14 @@ import {
   stepOf,
   visits,
 } from "../src/web/app/router.ts";
-import { HOME, lit, match, RAIL, ROUTES } from "../src/web/app/routes.ts";
+import {
+  HOME,
+  lit,
+  match,
+  RAIL,
+  ROUTES,
+  railFor,
+} from "../src/web/app/routes.ts";
 import { Strip } from "../src/web/app/Strip.tsx";
 import { onPhone } from "../src/web/app/shell.ts";
 import { resolveTheme } from "../src/web/app/theme.ts";
@@ -64,6 +71,8 @@ import {
   KEYS_PATH,
   type Listed,
   layoutOf,
+  ME_PATH,
+  type Me,
   markets,
   payloadOf,
   RETRY_PATH,
@@ -398,6 +407,25 @@ const problem = (
 const watched = ok({ entries: WATCHLIST });
 const WATCHED = { [`GET ${WATCHLIST_PATH}`]: watched };
 
+const ADMIN_ME: Me = {
+  id: "operator",
+  name: "Casey",
+  role: "admin",
+  email: null,
+  operator: true,
+};
+const signedAs = (user: Me | null, email_on = true) => ok({ user, email_on });
+
+// the shell as an admin sees it: Admin and Server status in the menus
+function asAdmin<T>(run: () => T): T {
+  markets.me.value = ADMIN_ME;
+  try {
+    return run();
+  } finally {
+    markets.me.value = null;
+  }
+}
+
 describe("the routes", () => {
   test("are the paths the server answers with the page", () => {
     const paths = ROUTES.map((r) => r.path);
@@ -427,8 +455,30 @@ describe("the routes", () => {
       "Portfolios",
       "Profile",
       "Connect agents",
+      "Admin",
       "Server status",
     ]);
+    // a member never sees an admin's pages
+    expect(railFor(false).map((r) => r.label)).toEqual([
+      "Home",
+      "Screener",
+      "Portfolios",
+      "Profile",
+      "Connect agents",
+    ]);
+    expect(railFor(true)).toEqual(RAIL);
+    // Admin keeps its tab in the address, lit under Admin
+    expect(match("/admin")?.route).toMatchObject({
+      label: "Admin",
+      admin: true,
+    });
+    expect(match("/admin/smtp")?.route).toMatchObject({
+      label: "Admin",
+      admin: true,
+      parent: "/admin",
+    });
+    expect(lit("/admin/smtp", "/admin")).toBe(true);
+    expect(match("/status")?.route.admin).toBe(true);
     expect(lit("/status", "/")).toBe(false);
     // a symbol's page is not under /screener, so it names its parent
     expect(lit("/symbol/US%3ANVDA", "/screener")).toBe(true);
@@ -549,24 +599,22 @@ describe("the data layer", () => {
     expect([err.status, err.message]).toEqual([0, "the server did not answer"]);
   });
 
-  test("the first status says whether the cookie holds", async () => {
-    const signed = store(
-      fake({ [`GET ${STATUS_PATH}`]: ok(STATUS), ...WATCHED }).fetch,
-      () => NOW,
-    );
+  test("/ui/me says whether the cookie holds and whose it is", async () => {
+    const f = fake({ [`GET ${ME_PATH}`]: signedAs(ADMIN_ME) });
+    const signed = store(f.fetch, () => NOW);
     await signed.check();
     expect(signed.signedIn.value).toBe(true);
-    expect(signed.status.value).toEqual(STATUS);
-    expect(signed.watchlist.value).toEqual(WATCHLIST);
-    const out = store(
-      fake({ [`GET ${STATUS_PATH}`]: status(401, {}), ...WATCHED }).fetch,
-    );
+    expect(signed.me.value).toEqual(ADMIN_ME);
+    expect(signed.isAdmin.value).toBe(true);
+    expect(signed.emailOn.value).toBe(true);
+    // never the status, which is an admin's
+    expect(f.asked.map((a) => a.path)).toEqual([ME_PATH]);
+    const out = store(fake({ [`GET ${ME_PATH}`]: signedAs(null) }).fetch);
     await out.check();
     expect(out.signedIn.value).toBe(false);
+    expect(out.me.value).toBeNull();
     expect(out.statusError.value).toBeNull();
-    const down = store(
-      fake({ [`GET ${STATUS_PATH}`]: status(502), ...WATCHED }).fetch,
-    );
+    const down = store(fake({ [`GET ${ME_PATH}`]: status(502) }).fetch);
     await down.check();
     expect(down.signedIn.value).toBeUndefined();
     expect(down.statusError.value).toBe("The server failed.");
@@ -701,8 +749,7 @@ describe("the data layer", () => {
     let key = "";
     const f = fake({
       [`POST ${SESSION_PATH}`]: () => status(key === "right" ? 204 : 401)(),
-      [`GET ${STATUS_PATH}`]: ok(STATUS),
-      ...WATCHED,
+      [`GET ${ME_PATH}`]: signedAs(ADMIN_ME),
       [`DELETE ${SESSION_PATH}`]: status(204),
     });
     const s = store(f.fetch);
@@ -716,26 +763,26 @@ describe("the data layer", () => {
     expect(JSON.parse(String(post.init!.body))).toEqual({ key: "wrong" });
     key = "right";
     await s.signIn("right");
-    expect(s.status.value).toEqual(STATUS);
+    expect(s.me.value).toEqual(ADMIN_ME);
     await s.signOut();
     expect(s.signedIn.value).toBe(false);
+    expect(s.me.value).toBeNull();
     expect(f.asked.at(-1)).toMatchObject({
       path: SESSION_PATH,
       init: { method: "DELETE" },
     });
   });
 
-  test("a sign-in the status then refuses says why", async () => {
+  test("a sign-in /ui/me then names nobody for says why", async () => {
     for (const [answer, words] of [
       // the browser dropped the cookie: no session ever held
-      [status(401, {}), "Not signed in."],
+      [signedAs(null), "Not signed in."],
       [status(502), "The server failed."],
     ] as const) {
       const s = store(
         fake({
           [`POST ${SESSION_PATH}`]: status(204),
-          [`GET ${STATUS_PATH}`]: answer,
-          ...WATCHED,
+          [`GET ${ME_PATH}`]: answer,
         }).fetch,
       );
       const err = await s.signIn("right").catch((e: unknown) => e);
@@ -744,25 +791,25 @@ describe("the data layer", () => {
     }
   });
 
-  test("a sign-in waits for the latest status load", async () => {
+  test("a sign-in waits for the latest read of who is signed in", async () => {
     const releases: (() => void)[] = [];
     let n = 0;
-    const s = store(async (path, init) => {
+    const s = store(async (_path, init) => {
       if (init?.method === "POST") return new Response(null, { status: 204 });
-      if (path === WATCHLIST_PATH) return watched();
       const mine = ++n;
       await new Promise<void>((r) => releases.push(r));
-      // the load before the sign-in answers a 401, the later ones the status
-      return mine === 1
-        ? Response.json({ error: "unauthorized" }, { status: 401 })
-        : Response.json({ ...STATUS, version: `v${mine}` });
+      // the read before the sign-in names nobody, the later ones a person
+      return Response.json({
+        user: mine === 1 ? null : { ...ADMIN_ME, name: `v${mine}` },
+        email_on: true,
+      });
     });
-    const before = s.loadStatus();
+    const before = s.check();
     const signing = s.signIn("right");
     while (releases.length < 2) await Bun.sleep(0);
-    // a refresh supersedes the sign-in's own load
-    const after = s.loadStatus();
-    // the sign-in's load answers first and the refresh last
+    // a later read supersedes the sign-in's own
+    const after = s.check();
+    // the sign-in's read answers first and the later one last
     releases[1]!();
     await Bun.sleep(0);
     releases[0]!();
@@ -771,7 +818,7 @@ describe("the data layer", () => {
     await Promise.all([before, after]);
     await signing;
     expect(s.signedIn.value).toBe(true);
-    expect(s.status.value?.version).toBe("v3");
+    expect(s.me.value?.name).toBe("v3");
   });
 
   test("an old 401 after a sign-in never signs out", async () => {
@@ -780,22 +827,22 @@ describe("the data layer", () => {
     const s = store(async (path, init) => {
       if (init?.method === "POST") return new Response(null, { status: 204 });
       if (path === WATCHLIST_PATH) return watched();
+      if (path === ME_PATH) return Response.json({ user: ADMIN_ME });
       const mine = ++n;
       await new Promise<void>((r) => releases.push(r));
       return mine === 1
         ? Response.json({ error: "unauthorized" }, { status: 401 })
         : Response.json(STATUS);
     });
+    // a status read from before the sign-in
     const before = s.loadStatus();
-    const signing = s.signIn("right");
-    while (releases.length < 2) await Bun.sleep(0);
-    releases[1]!();
-    await signing;
+    while (releases.length < 1) await Bun.sleep(0);
+    await s.signIn("right");
     expect(s.signedIn.value).toBe(true);
     releases[0]!();
     await before;
     expect(s.signedIn.value).toBe(true);
-    expect(s.status.value).toEqual(STATUS);
+    expect(s.status.value).toBeNull();
   });
 
   test("a status load in flight at sign-out never signs back in", async () => {
@@ -1190,7 +1237,9 @@ describe("the views", () => {
   });
 
   test("the rail is the logo, Markets, the pages lit where they are, and the menu", () => {
-    const html = render(<Rail here="/symbol/US%3AAAPL" onHide={() => {}} />);
+    const html = asAdmin(() =>
+      render(<Rail here="/symbol/US%3AAAPL" onHide={() => {}} />),
+    );
     expect(html).toContain('aria-label="1ctx"');
     expect(html).toContain('<span class="rail-word">Markets</span>');
     expect(html.indexOf("rail-word")).toBeLessThan(html.indexOf("rail-nav"));
@@ -1199,8 +1248,24 @@ describe("the views", () => {
     ].map((m) => m[1]);
     expect(lit).toEqual(["Screener"]);
     expect(html).toContain('href="/status"');
+    expect(html).toContain('href="/admin"');
     expect(html).toContain("Hide the menu");
     expect(html).toContain("rail-user-row");
+    // the menu's row names the person signed in
+    expect(html).toContain('<span class="rail-user-name cut">Casey</span>');
+    // a member's rail leaves out Server status and Admin
+    markets.me.value = { ...ADMIN_ME, id: "ana", name: "Ana", role: "member" };
+    try {
+      const member = render(<Rail here="/" onHide={() => {}} />);
+      expect(member).not.toContain('href="/status"');
+      expect(member).not.toContain('href="/admin"');
+      expect(member).toContain('href="/connect"');
+      const strip = render(<Strip here="/" />);
+      expect(strip).not.toContain('href="/status"');
+      expect(strip).not.toContain('href="/admin"');
+    } finally {
+      markets.me.value = null;
+    }
   });
 
   test("a page re-reading marks its title, never the menu's icons", () => {
@@ -1283,7 +1348,7 @@ describe("the views", () => {
   });
 
   test("the folded rail keeps the pages as icons", () => {
-    const html = render(<Strip here="/status" />);
+    const html = asAdmin(() => render(<Strip here="/status" />));
     expect(html).toContain('aria-label="Show the menu"');
     for (const r of RAIL) expect(html).toContain(`aria-label="${r.label}"`);
     expect(html).toContain('class="strip-item strip-item-on"');
@@ -2840,8 +2905,10 @@ describe("the phone's bar", () => {
     expect(MORE.map((r) => r.label)).toEqual([
       "Profile",
       "Connect agents",
+      "Admin",
       "Server status",
     ]);
+    expect(barLit("/admin/smtp")).toBe("more");
     for (const [here, label] of [
       ["/", "Home"],
       ["/screener", "Screener"],
@@ -2910,11 +2977,22 @@ describe("the phone's bar", () => {
   test("More carries the status icon's red mark while something fails", () => {
     expect(render(<Bar here="/" />)).not.toContain("rail-icon-failed");
     markets.signedIn.value = true;
+    markets.me.value = ADMIN_ME;
     markets.pulse.value = STATUS;
     try {
       const html = render(<Bar here="/" />);
       expect(html).toContain('aria-label="More: something is failing"');
       expect(html).toContain('class="rail-icon-failed"');
+    } finally {
+      markets.signedIn.value = undefined;
+      markets.me.value = null;
+      markets.pulse.value = null;
+    }
+    // a member reads no status, so nothing is red for them
+    markets.signedIn.value = true;
+    markets.pulse.value = STATUS;
+    try {
+      expect(render(<Bar here="/" />)).not.toContain("rail-icon-failed");
     } finally {
       markets.signedIn.value = undefined;
       markets.pulse.value = null;
@@ -3072,8 +3150,9 @@ describe("the phone's bar", () => {
 });
 
 describe("More's drawer", () => {
-  test("lists the pages, Recent, the theme and Sign out; a tap closes it", () => {
+  test("lists the pages, Recent, the person, the theme and Sign out; a tap closes it", () => {
     recent.value = [{ id: "US:AMD", name: "Advanced Micro Devices, Inc." }];
+    markets.me.value = ADMIN_ME;
     try {
       const { nodes } = drawn(() => (
         <More here="/connect" failing={false} onClose={() => {}} />
@@ -3085,15 +3164,17 @@ describe("More's drawer", () => {
       const body = drawn(() => drawer.props.children(close));
       const words = [
         ...body.html.matchAll(
-          /<span>([^<]+)<\/span>|class="rail-label">([^<]+)|sym-ticker">([^<]+)/g,
+          /<span>([^<]+)<\/span>|class="rail-label">([^<]+)|sym-ticker">([^<]+)|menu-head"><span class="cut">([^<]+)/g,
         ),
-      ].map((m) => m[1] ?? m[2] ?? m[3]);
+      ].map((m) => m[1] ?? m[2] ?? m[3] ?? m[4]);
       expect(words).toEqual([
         "Profile",
         "Connect agents",
+        "Admin",
         "Server status",
         "Recent",
         "AMD",
+        "Casey",
         "Dark theme",
         "Sign out",
       ]);
@@ -3102,22 +3183,40 @@ describe("More's drawer", () => {
       );
       expect(body.html).toContain('href="/symbol/US%3AAMD"');
       const links = body.nodes.filter((n) => n.type === "a");
-      expect(links).toHaveLength(4);
+      expect(links).toHaveLength(5);
       for (const a of links) a.props.onClick();
-      expect(closed).toBe(4);
+      expect(closed).toBe(5);
       // the user menu's own items, closing once signed out
       expect(
         body.nodes.find((n) => n.type === UserItems).props.onSignedOut,
       ).toBe(close);
     } finally {
       recent.value = [];
+      markets.me.value = null;
+    }
+  });
+
+  test("a member's More leaves out Server status and Admin", () => {
+    markets.me.value = { ...ADMIN_ME, id: "ana", name: "Ana", role: "member" };
+    try {
+      const { nodes } = drawn(() => (
+        <More here="/" failing={false} onClose={() => {}} />
+      ));
+      const drawer = nodes.find((n) => n.type === Drawer);
+      const html = render(drawer.props.children(() => {}));
+      expect(html).toContain('href="/connect"');
+      expect(html).not.toContain('href="/status"');
+      expect(html).not.toContain('href="/admin"');
+      expect(html).toContain("Ana");
+    } finally {
+      markets.me.value = null;
     }
   });
 
   test("Server status is red while something fails", () => {
     const { nodes } = drawn(() => <More here="/" failing onClose={() => {}} />);
     const drawer = nodes.find((n) => n.type === Drawer);
-    const html = render(drawer.props.children(() => {}));
+    const html = asAdmin(() => render(drawer.props.children(() => {})));
     expect(html).toContain('aria-label="Server status: something is failing"');
     expect(html.match(/rail-icon-failed/g)).toHaveLength(1);
   });
@@ -3691,8 +3790,7 @@ describe("the store across sessions and pages", () => {
     const detail = s.loadInstrument("US:A");
     const signing = s.signIn("right");
     await h.answer(`POST ${SESSION_PATH}`, new Response(null, { status: 204 }));
-    await h.answer(`GET ${STATUS_PATH}`, Response.json(STATUS));
-    await h.answer(`GET ${WATCHLIST_PATH}`, watched());
+    await h.answer(`GET ${ME_PATH}`, Response.json({ user: ADMIN_ME }));
     await signing;
     await h.answer(
       one,

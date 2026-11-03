@@ -9,6 +9,7 @@ import { failed, json, NO_STORE } from "../api/http.ts";
 import { loginWho, OPERATOR } from "../operations/who.ts";
 import { MINUTE_MS } from "../runtime/clock.ts";
 import type { Log } from "../runtime/log.ts";
+import { SPARKLE, WORD } from "../shared/marks.ts";
 import type { Db } from "../storage/db/index.ts";
 import type { Writer } from "../storage/writer.ts";
 import { asCaller, CallerGone, checkOf, recheck } from "./caller.ts";
@@ -101,7 +102,31 @@ const isForm = (req: Request) =>
     req.headers.get("content-type") ?? "",
   );
 
-// plain, restyled later; the token in its address never leaves by a
+// the sign-in page's look: its colours copied from the web UI's tokens,
+// since this page loads nothing (no script, font or stylesheet), light
+// or dark as the system is
+const STYLE = `:root{color-scheme:dark;--page:#131314;--card:#1e1f20;--inset:#0f1216;--line:#2a2b2d;--line-strong:#35363a;--hover:#2a2b2d;--fg:#e7e7e9;--faint:#8b8b91;--sparkle:#f2c14e}
+@media (prefers-color-scheme:light){:root{color-scheme:light;--page:#f4f2ec;--card:#fbfaf7;--inset:#eeece5;--line:#dfdcd3;--line-strong:#cfccc2;--hover:#e6e3da;--fg:#1a1a1c;--faint:#6f6e75;--sparkle:#d9a53a}}
+html,body{height:100%}
+body{margin:0;background:var(--page);color:var(--fg);font:13px/1.5 "IBM Plex Sans","Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased}
+main{box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:32px;min-height:100%;padding:16px}
+.brand{display:flex;align-items:center;gap:16px}
+.name{display:flex;flex-direction:column;gap:6px}
+.name p{margin:0;font-size:28px;font-weight:500;line-height:1}
+.card{box-sizing:border-box;width:340px;max-width:100%;padding:24px;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+.card p{margin:0 0 16px}
+.card p:last-child{margin-bottom:0}
+form{display:flex;flex-direction:column;gap:16px;margin:0}
+label{display:flex;flex-direction:column;gap:6px;color:var(--faint);font-size:12px}
+input{box-sizing:border-box;height:36px;padding:0 12px;border:1px solid var(--line);border-radius:6px;background:var(--inset);color:var(--fg);font:inherit;font-size:14px}
+button{width:100%;height:36px;border:1px solid var(--line-strong);border-radius:6px;background:var(--hover);color:var(--fg);font:inherit;font-weight:500;cursor:pointer}
+a{color:var(--fg)}`;
+
+const MARK = `<svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Markets"><path d="M13.5 4H11C6.757 4 4.636 4 3.318 5.318S2 8.758 2 13s0 6.364 1.318 7.682S6.758 22 11 22s6.364 0 7.682-1.318S20 17.242 20 13v-2.5"/><path d="M5.5 17 9.25 12.75 12.25 14.75 16.5 9"/><path fill="var(--sparkle)" stroke="none" d="${SPARKLE}"/></svg>`;
+
+const WORDMARK = `<svg width="78" height="26" viewBox="3.5 -35.2 107.5 35.7" role="img" aria-label="1ctx"><path fill="currentColor" d="${WORD}"/></svg>`;
+
+// the sign-in page's look; the token in its address never leaves by a
 // referrer, and the page runs no script
 function page(status: number, body: string, headers = {}): Response {
   return new Response(
@@ -112,11 +137,14 @@ function page(status: number, body: string, headers = {}): Response {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <title>Sign in · 1ctx Markets</title>
+<style>${STYLE}</style>
 </head>
 <body>
 <main>
-<h1>1ctx Markets</h1>
+<div class="brand">${MARK}<div class="name">${WORDMARK}<p>Markets</p></div></div>
+<div class="card">
 ${body}
+</div>
 </main>
 </body>
 </html>
@@ -149,7 +177,7 @@ const deadPage = () =>
     404,
     `<p>This link no longer works.</p>
 <form method="post" action="${LINK_PATH}">
-<label>Email <input type="email" name="email" autocomplete="email" required></label>
+<label>Email<input type="email" name="email" autocomplete="email" required></label>
 <button type="submit">Email me a new link</button>
 </form>`,
   );

@@ -435,6 +435,12 @@ describe("using a link", () => {
     expect(html).toContain('<meta name="referrer" content="no-referrer">');
     expect(html).toContain('<form method="post">');
     expect(html).toContain("Sign in");
+    // the sign-in page's look, drawn by the page alone
+    expect(html).toContain('aria-label="Markets"');
+    expect(html).toContain('<div class="card">');
+    expect(html).toContain("prefers-color-scheme:light");
+    expect(html).not.toContain("<script");
+    expect(html).not.toMatch(/<link|src="/);
     expect(page.headers.get("referrer-policy")).toBe("no-referrer");
     expect(page.headers.get("set-cookie")).toBeNull();
     expect(t.db.query("select * from logins").all()).toEqual([]);
@@ -1254,6 +1260,45 @@ describe("a write re-reads its caller", () => {
       .all()
       .map((r) => r.name);
     expect(names).toEqual(["Before"]);
+  });
+
+  test("an admin never demotes or removes themself, and renames themself", async () => {
+    const t = people();
+    t.person("boss", "boss@example.com", "admin");
+    t.person("ana", ANA, "admin");
+    const cookie = cookieFor(t.db, t.clock.now(), "boss");
+    const demote = await t.at(
+      `${PREFIX}/users/boss`,
+      t.jsonBody("PATCH", { role: "member" }, { cookie }),
+    );
+    expect(demote.status).toBe(409);
+    for (const path of ["boss", "boss?dry_run=true"]) {
+      const gone = await t.at(
+        `${PREFIX}/users/${path}`,
+        t.jsonBody("DELETE", {}, { cookie }),
+      );
+      expect([path, gone.status]).toEqual([path, 409]);
+    }
+    expect(
+      t.db.query("select role from users where id = 'boss'").get(),
+    ).toEqual({ role: "admin" });
+    // a name, or the role it has, is no change of role
+    const renamed = await t.at(
+      `${PREFIX}/users/boss`,
+      t.jsonBody("PATCH", { name: "Boss", role: "admin" }, { cookie }),
+    );
+    expect(renamed.status).toBe(200);
+    // another admin is theirs to demote and remove
+    const other = await t.at(
+      `${PREFIX}/users/ana`,
+      t.jsonBody("PATCH", { role: "member" }, { cookie }),
+    );
+    expect(other.status).toBe(200);
+    const removed = await t.at(
+      `${PREFIX}/users/ana`,
+      t.jsonBody("DELETE", {}, { cookie }),
+    );
+    expect(removed.status).toBe(200);
   });
 
   test("an admin demoted mid-call adds nobody; a revoke through the router answers 401", async () => {

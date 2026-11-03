@@ -28,8 +28,9 @@
     display: none !important;
   }
 
+  /* the sign-in's code boxes keep their own large digits */
   @media (pointer: coarse) {
-    input,
+    input:not(.signin-box),
     textarea,
     [contenteditable] {
       /* biome-ignore lint/complexity/noImportantStyles: every owner sets its own field size, and only important in base wins over them all */

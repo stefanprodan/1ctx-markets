@@ -42,6 +42,8 @@ export const UI_PATHS = [
   "/",
   "/status",
   "/connect",
+  "/admin",
+  "/admin/smtp",
   "/screener",
   "/symbol/:id",
   "/portfolios",

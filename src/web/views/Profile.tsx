@@ -314,8 +314,8 @@ function History({
                     )}
                   </span>
                   <span class="faint">
-                    {authorWords(r.author)} · {ago(r.updated_at, now)} ·{" "}
-                    {kb(r.bytes)}
+                    {authorWords(r.author, markets.me.value?.name ?? null)} ·{" "}
+                    {ago(r.updated_at, now)} · {kb(r.bytes)}
                   </span>
                 </button>
               </li>
@@ -347,7 +347,7 @@ export function ProfileBody({ store }: { store: ProfileStore }) {
   const none = p !== null && p.revision === null;
   const meta =
     p?.updated_at != null
-      ? `Saved ${ago(p.updated_at, Date.now())} by ${authorWords(p.author)}`
+      ? `Saved ${ago(p.updated_at, Date.now())} by ${authorWords(p.author, markets.me.value?.name ?? null)}`
       : undefined;
   const edit = () => setEditing(true);
   return (

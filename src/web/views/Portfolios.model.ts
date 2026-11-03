@@ -107,7 +107,10 @@ export function listingWords(c: {
   return [market, c.currency].filter(Boolean).join(" · ");
 }
 
-export function enteredBy(by: string): string {
+// a login writes as its person's name, so the reader's own reads "You";
+// "web" is an older login's, before people signed in
+export function enteredBy(by: string, self: string | null = null): string {
+  if (self !== null && by === self) return "You";
   if (by === "web") return "Web";
   if (by === "admin") return "Admin";
   return by;

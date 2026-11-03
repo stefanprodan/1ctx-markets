@@ -278,15 +278,22 @@ export function NewKey({
 
 // a key's details: when it was used and ends, its picks saved on the kept
 // key, and Revoke, asked once before it cuts the agents off
+// a key of the person signed in; an admin also lists everyone else's
+export const ownKey = (k: AgentKey, me: string | null): boolean =>
+  k.owner === undefined || me === null || k.owner.id === me;
+
 export function KeyDetails({
   store,
   row,
   now,
+  own = true,
   onDone,
 }: {
   store: Store;
   row: AgentKey;
   now: number;
+  // another person's key: an admin revokes it but never changes it
+  own?: boolean;
   // told whether the key was revoked, once the drawer has slid out
   onDone: (revoked: boolean) => void;
 }) {
@@ -395,20 +402,25 @@ export function KeyDetails({
             >
               Cancel
             </button>
-            <button
-              type="submit"
-              form={form}
-              class="btn btn-small btn-primary"
-              disabled={busy.value || same}
-            >
-              {busy.value ? "Saving" : "Save"}
-            </button>
+            {own && (
+              <button
+                type="submit"
+                form={form}
+                class="btn btn-small btn-primary"
+                disabled={busy.value || same}
+              >
+                {busy.value ? "Saving" : "Save"}
+              </button>
+            )}
           </>
         );
       }}
     >
       <Facts
         items={[
+          ...(own || row.owner === undefined
+            ? []
+            : [{ label: "Owner", value: row.owner.name }]),
           { label: "Last used", value: usedWords(row, now) },
           {
             label: "Expires",
@@ -425,7 +437,7 @@ export function KeyDetails({
           portfolio={portfolio}
           rules={rules}
           profile={profile}
-          busy={busy.value}
+          busy={busy.value || !own}
         />
       </form>
       {error.value !== null && <Notice error>{error.value}</Notice>}
@@ -436,6 +448,8 @@ export function KeyDetails({
 export function keyColumns(
   keys: readonly AgentKey[],
   now: number,
+  // an admin's list holds everyone's keys
+  owners = false,
 ): Column<AgentKey>[] {
   return [
     {
@@ -443,6 +457,13 @@ export function keyColumns(
       head: "Name",
       width: "minmax(0, 1.4fr)",
       cell: (k) => <span class="cut">{k.name}</span>,
+    },
+    {
+      key: "owner",
+      head: "Owner",
+      width: "minmax(0, 1fr)",
+      show: owners,
+      cell: (k) => <span class="cut faint">{k.owner?.name ?? ""}</span>,
     },
     {
       key: "used",
@@ -493,12 +514,16 @@ export function Keys({
 }) {
   const keys = store.keys.value ?? [];
   const limit = store.keysLimit.value ?? 0;
+  const admin = store.isAdmin.value;
+  const me = store.me.value?.id ?? null;
+  // the cap is each person's own
+  const own = keys.filter((k) => ownKey(k, me));
   const adding = useSignal(false);
   // the key as opened, so its drawer slides out after a revoke drops it
   const opened = useSignal<AgentKey | null>(null);
   const newKey = useRef<HTMLButtonElement>(null);
   const refocus = useSignal(false);
-  const full = keys.length >= limit;
+  const full = own.length >= limit;
   const now = Date.now();
   const open =
     opened.value === null
@@ -516,7 +541,7 @@ export function Keys({
     <>
       <Card
         title="Keys"
-        count={`${keys.length} of ${limit}`}
+        count={`${own.length} of ${limit}`}
         actions={
           full ? undefined : (
             <button
@@ -535,7 +560,7 @@ export function Keys({
       >
         <Table
           label="Keys"
-          columns={keyColumns(keys, now)}
+          columns={keyColumns(keys, now, admin)}
           rows={keys}
           rowKey={(k) => k.id}
           open={(k) => ({
@@ -561,6 +586,7 @@ export function Keys({
           store={store}
           row={open}
           now={now}
+          own={ownKey(open, me)}
           onDone={(revoked) => {
             opened.value = null;
             refocus.value = revoked;

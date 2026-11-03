@@ -83,7 +83,14 @@ function pageId(here: string): string | null {
 // once per visit: the page's refresh reads the detail again
 let recordedAt: string | null = null;
 
+// the list is the person's who opened them: signed out, it goes, so the
+// next person on this browser never sees it
+export function forgetRecent(signedIn: boolean | undefined): void {
+  if (signedIn === false && recent.peek().length > 0) save([]);
+}
+
 export function watchRecent(): void {
+  effect(() => forgetRecent(markets.signedIn.value));
   effect(() => {
     const here = path.value;
     const d = markets.detail.value;

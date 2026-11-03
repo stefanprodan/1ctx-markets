@@ -146,6 +146,11 @@ export async function changeUser(
   if (id === OPERATOR && role === "member") {
     return problem("conflict", "the operator stays an admin");
   }
+  // an admin never demotes themself, so the last other admin's slip
+  // never locks the Admin page away from them
+  if (id === who.user && role !== null && role !== "admin") {
+    return problem("conflict", "you cannot change your own role");
+  }
   const done = await d.m.writer.write((db) => {
     recheck(db, "admin");
     return db
@@ -261,6 +266,9 @@ export async function removeUser(
   const id = idOf(raw);
   if (id === OPERATOR) {
     return problem("conflict", "the operator cannot be removed");
+  }
+  if (id === who.user) {
+    return problem("conflict", "you cannot remove yourself");
   }
   const counts = await d.m.writer.write((db) => {
     recheck(db, "admin");
