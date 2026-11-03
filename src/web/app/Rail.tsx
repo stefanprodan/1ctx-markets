@@ -63,6 +63,7 @@ export function Rail({ here, onHide }: { here: string; onHide: () => void }) {
               <span>{r.label}</span>
             </a>
           ))}
+          <SharedWithMe here={here} />
           <Recent here={here} />
         </nav>
       </div>
@@ -86,6 +87,42 @@ export function Rail({ here, onHide }: { here: string; onHide: () => void }) {
 
 export const iconClass = (failed: boolean): string | undefined =>
   failed ? "rail-icon-failed" : undefined;
+
+// the people who let this one see their portfolios: the rail's, and
+// More's on a phone
+export function SharedWithMe({
+  here,
+  follow,
+}: {
+  here: string;
+  follow?: () => void;
+}) {
+  const rows = markets.sharers.value;
+  if (rows.length === 0) return null;
+  return (
+    <>
+      <span class="rail-label">Shared with me</span>
+      {rows.map((s) => {
+        const href = `/portfolios/shared/${encodeURIComponent(s.id)}`;
+        const on = here === href || here.startsWith(`${href}/`);
+        return (
+          <a
+            key={s.id}
+            href={href}
+            class={`rail-item${on ? " rail-item-on" : ""}`}
+            aria-current={here === href ? "page" : undefined}
+            onClick={() => follow?.()}
+          >
+            <Icon name="briefcase" />
+            <span class="cut" title={`${s.name}'s portfolios`}>
+              {s.name}'s portfolios
+            </span>
+          </a>
+        );
+      })}
+    </>
+  );
+}
 
 // the last instruments opened: the rail's, and More's on a phone
 export function Recent({

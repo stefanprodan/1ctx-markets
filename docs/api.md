@@ -70,6 +70,8 @@ MCP tools copied onto paths.
 | `PATCH /funds/{isin}` | portfolio:write | `updateFund()` | `{price, date, market, name, currency}`: the price for a day (the owner's today by default), a day already priced replaced and answered in `replaced`; a new name no other fund has; a currency only while no live trade is on it |
 | `GET /brokers`, `POST /brokers`, `PATCH`, `DELETE /brokers/{id}` | portfolio:read, write | `listAll()`, `createBroker()`, `updateBroker()`, `removeBroker()` | `{name}`; 409 for a taken name or a broker a live row names (removed rows lose the name) |
 | `GET /portfolio-settings`, `PUT /portfolio-settings` | portfolio:read, write | `settingsItem()`, `saveSettings()` | `{display_currency, time_zone}`: an ISO 4217 code in circulation (`src/shared/currencies.ts`) and an IANA zone, each null only while none is set; a save takes either or both, keeps the one left out, and never clears one; the first currency saved makes Cash |
+| `GET /sharing` | session | `sharingAnswer()` | `people[]` (`id`, `name`, `shared`): everyone else, and whether they see the caller's portfolios; `sharers[]` (`id`, `name`): who lets the caller see theirs; both by name, ignoring case. A web UI sign-in's only: a key, the admin key too, is refused (403) |
+| `PUT`, `DELETE /sharing/{id}` | session | `setSharing()` | starts or ends that person seeing all the caller's portfolios, read only; answers as `GET /sharing`; done already is no error; 404 for no such person, 400 for the caller; a sign-in's only, as above |
 | `GET /keys` | session | `listAnswer()` | `keys[]` (id, name, `owner` `{id, name}`, created, last used, expires; never a token), the caller's own, an admin's everyone's, and `limit` (`docs/admin.md`) |
 | `POST /keys` | session | `createOne()` | `{name, expiresInDays, portfolio, rules, profile}` (days null, 30, 90 or 365; each access `none`, the default, `read` or `write`): a key of the caller's; 201 with `key` and its `token`, once; 409 for a name the caller has or past their cap of 5 |
 | `DELETE /keys/{id}` | session | `revokeOne()` | 204; 404 for an unknown id or another person's, but for an admin |
@@ -80,6 +82,12 @@ MCP tools copied onto paths.
 | `GET /openapi.json` | none | `spec` | the OpenAPI document |
 | `GET /docs`, `GET /docs/{file}` | none | `docs.ts` | the bundled Swagger UI page and its files |
 
+- **`owner=<person id>` reads another person's portfolios** on
+  `GET /portfolios`, `/holdings`, `/portfolios/{id}/holdings`,
+  `/holdings/growth`, `/portfolios/{id}/growth` and `/trades`, answered
+  as that person reads them, for a web UI sign-in they share with
+  (else 404) and never a key (403); every write ignores it
+  (`docs/portfolios.md`).
 - **A route calls the code its tool calls**, so resolution, tracking,
   the deadline, the limits and the error codes are the tool's, never
   copied (`docs/tools.md`, "One read, two surfaces").

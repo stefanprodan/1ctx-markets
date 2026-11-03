@@ -310,6 +310,11 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   (`docs/admin.md`, "Email").
 - **A key's name is unique per person** (`unique (user_id, name)`,
   `0037-people`, a rebuild of `keys` nothing points at).
+- **`portfolio_viewers` holds who sees whose portfolios**
+  (`0038-sharing`): `owner` and `viewer`, both `users.id` on delete
+  cascade, `created_at`, primary key `(owner, viewer)`, indexed by
+  `viewer` for the rail's list; removing either person deletes the row
+  (`docs/portfolios.md`).
 
 ## The dashboard
 

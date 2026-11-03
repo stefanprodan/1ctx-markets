@@ -12,7 +12,7 @@ import { AdminSmtp, AdminUsers } from "../views/Admin.tsx";
 import { Connect } from "../views/Connect.tsx";
 import { Dashboard } from "../views/Dashboard.tsx";
 import { Instrument } from "../views/Instrument.tsx";
-import { Portfolios } from "../views/Portfolios.tsx";
+import { Portfolios, SharedPortfolios } from "../views/Portfolios.tsx";
 import { Profile } from "../views/Profile.tsx";
 import { Screener } from "../views/Screener.tsx";
 import { Status } from "../views/Status.tsx";
@@ -31,6 +31,8 @@ export type Route = {
   parent?: string;
   // shown to admins only; a member's routes for it answer 403
   admin?: boolean;
+  // lights no rail page: its own row in the rail stands for it
+  apart?: boolean;
   // what arriving on the page loads, before it renders
   load?: (params: Params) => Promise<void>;
 };
@@ -84,6 +86,26 @@ export const ROUTES: readonly Route[] = [
     },
   },
   {
+    path: "/portfolios/shared/:user",
+    label: "Shared portfolios",
+    icon: "briefcase",
+    apart: true,
+    view: SharedPortfolios,
+    load: async (p) => {
+      await markets.shared.openOf(p.user!, viewOf(undefined, location.search));
+    },
+  },
+  {
+    path: "/portfolios/shared/:user/:id",
+    label: "Shared portfolios",
+    icon: "briefcase",
+    apart: true,
+    view: SharedPortfolios,
+    load: async (p) => {
+      await markets.shared.openOf(p.user!, viewOf(p.id, location.search));
+    },
+  },
+  {
     path: "/profile",
     label: "Profile",
     icon: "user",
@@ -104,7 +126,7 @@ export const ROUTES: readonly Route[] = [
   {
     path: "/admin",
     label: "Admin",
-    icon: "key",
+    icon: "shield",
     admin: true,
     view: AdminUsers,
     load: async () => {
@@ -114,7 +136,7 @@ export const ROUTES: readonly Route[] = [
   {
     path: "/admin/smtp",
     label: "Admin",
-    icon: "key",
+    icon: "shield",
     admin: true,
     parent: "/admin",
     view: AdminSmtp,
@@ -147,9 +169,10 @@ export const RAIL = ROUTES.filter(
 export const railFor = (admin: boolean): readonly Route[] =>
   admin ? RAIL : RAIL.filter((r) => !r.admin);
 export const lit = (here: string, path: string): boolean =>
-  here === path ||
-  here.startsWith(`${path}/`) ||
-  match(here)?.route.parent === path;
+  match(here)?.route.apart !== true &&
+  (here === path ||
+    here.startsWith(`${path}/`) ||
+    match(here)?.route.parent === path);
 
 export type Match = { route: Route; params: Params };
 

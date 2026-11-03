@@ -2469,7 +2469,63 @@ export function SettingsPanel({
         </ul>
         <AddName placeholder="New broker" onAdd={store.createBroker} />
       </section>
+      <SharedWith />
     </Drawer>
+  );
+}
+
+// who sees all of the owner's portfolios; nobody to show it to, no section
+function SharedWith() {
+  // the switch asked for, shown while its request runs
+  const asked = useSignal<ReadonlyMap<string, boolean>>(new Map());
+  const error = useSignal<string | null>(null);
+  useEffect(() => {
+    void markets.loadSharing();
+  }, []);
+  const people = markets.sharing.value?.people ?? [];
+  if (people.length === 0) return null;
+  const flip = async (id: string, on: boolean) => {
+    asked.value = new Map(asked.value).set(id, on);
+    error.value = await markets.share(id, on);
+    const left = new Map(asked.value);
+    left.delete(id);
+    asked.value = left;
+  };
+  return (
+    <section class="pf-section" aria-label="Shared with">
+      <SectionHead title="Shared with" />
+      <p class="faint small">
+        They see all your portfolios. They can't change them.
+      </p>
+      <ul class="pf-names">
+        {people.map((p) => {
+          const waiting = asked.value.get(p.id);
+          const shared = waiting ?? p.shared;
+          return (
+            <li key={p.id} class="pf-name">
+              <span class="pf-name-text cut">{p.name}</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={shared}
+                aria-label={`Share with ${p.name}`}
+                aria-busy={waiting !== undefined}
+                disabled={waiting !== undefined}
+                class={`switch${shared ? " switch-on" : ""}`}
+                onClick={() => void flip(p.id, !shared)}
+              >
+                <span class="switch-knob" />
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      {error.value && (
+        <p class="error small" role="alert">
+          {error.value}
+        </p>
+      )}
+    </section>
   );
 }
 

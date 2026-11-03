@@ -5,6 +5,7 @@
 
 import { type Signal, useSignal } from "@preact/signals";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
+import type { Params } from "../app/routes.ts";
 import type {
   Close,
   Holding,
@@ -12,7 +13,7 @@ import type {
   PortfolioStore,
   TradeRow,
 } from "../data/portfolios.ts";
-import { addressOf } from "../data/portfolios.ts";
+import { NOT_SHARED } from "../data/portfolios.ts";
 import { markets } from "../data/store.ts";
 import { day, money, percent, quantity, signedMoney } from "../lib/format.ts";
 import { Icon } from "../lib/icons.tsx";
@@ -188,11 +189,31 @@ export function Portfolios() {
   return <PortfoliosBody store={store} />;
 }
 
-export function PortfoliosBody({ store }: { store: PortfolioStore }) {
+// another person's portfolios, as they see them, with nothing to change
+export function SharedPortfolios({ params }: { params: Params }) {
+  const store = markets.shared;
+  useRefresh(store.load);
+  const owner =
+    markets.sharers.value.find((s) => s.id === params.user)?.name ?? null;
+  return <PortfoliosBody store={store} owner={owner} />;
+}
+
+export function PortfoliosBody({
+  store,
+  owner,
+}: {
+  store: PortfolioStore;
+  // whose portfolios these are, when they are another person's: drawn
+  // view only. null: theirs, the name not known yet
+  owner?: string | null;
+}) {
+  const viewOnly = owner !== undefined;
   const h = store.holdings.value;
   const ov = store.overview.value;
   const trades = store.trades.value;
   const held = h !== null;
+  // an ended share is an answer, not a failure: nothing to retry
+  const notShared = viewOnly && !held && store.error.value === NOT_SHARED;
   const hide = amountsHidden.value;
   const sparks = useSparks(store, h);
   const panel = useSignal<Panel>(null);
@@ -231,10 +252,18 @@ export function PortfoliosBody({ store }: { store: PortfolioStore }) {
   const all = store.portfolio.value === null;
   return (
     <Page
-      title="Portfolios"
+      title={
+        !viewOnly
+          ? "Portfolios"
+          : owner === null
+            ? "Shared portfolios"
+            : `${owner}'s portfolios`
+      }
+      titleCut={viewOnly}
+      meta={viewOnly ? "View only" : undefined}
       amounts={held && !empty && !blank}
       actions={
-        held && !empty ? (
+        held && !empty && !viewOnly ? (
           <>
             {!blank && (
               <button
@@ -257,7 +286,7 @@ export function PortfoliosBody({ store }: { store: PortfolioStore }) {
       stale={held ? store.error.value : null}
       staleCount={store.failures.value}
       failed={didNotLoad(
-        held,
+        held || notShared,
         store.error.value,
         store.code.value,
         () => void store.load(),
@@ -298,6 +327,7 @@ export function PortfoliosBody({ store }: { store: PortfolioStore }) {
             store={store}
             fills={fills}
             all={all}
+            viewOnly={viewOnly}
             onTrade={(x) => {
               tradeIds.value = null;
               onTrade(x);
@@ -308,7 +338,11 @@ export function PortfoliosBody({ store }: { store: PortfolioStore }) {
           />
         )}
         {held &&
-          (empty ? (
+          (viewOnly && (empty || blank) ? (
+            <Card>
+              <p class="faint">Nothing held yet.</p>
+            </Card>
+          ) : empty ? (
             <Welcome store={store} />
           ) : blank ? (
             <StartCard
@@ -336,6 +370,7 @@ export function PortfoliosBody({ store }: { store: PortfolioStore }) {
                 h={h}
                 all={all}
                 sparks={sparks}
+                viewOnly={viewOnly}
                 onTrade={onTrade}
                 onEdit={(x, what) => {
                   edit.value = { key: keyOf(x), what };
@@ -350,7 +385,14 @@ export function PortfoliosBody({ store }: { store: PortfolioStore }) {
               />
             </>
           ))}
-        {!held && <PortfoliosWaiting store={store} />}
+        {!held &&
+          (notShared ? (
+            <Card>
+              <p class="faint">{NOT_SHARED}</p>
+            </Card>
+          ) : (
+            <PortfoliosWaiting store={store} />
+          ))}
       </div>
     </Page>
   );
@@ -430,7 +472,7 @@ export function PageMenu({
 function Switcher({ store }: { store: PortfolioStore }) {
   const list = store.overview.value?.portfolios ?? [];
   const href = (id: number | null) =>
-    addressOf({ portfolio: id, currency: store.currency.value });
+    store.address({ portfolio: id, currency: store.currency.value });
   return (
     <Tabs
       label="Portfolios"
@@ -853,6 +895,7 @@ function HoldingsCard({
   h,
   all,
   sparks,
+  viewOnly,
   onTrade,
   onEdit,
 }: {
@@ -861,6 +904,7 @@ function HoldingsCard({
   h: Holdings;
   all: boolean;
   sparks: Record<string, Close[]>;
+  viewOnly: boolean;
   onTrade: (s: AddStart) => void;
   onEdit: (x: Holding, what: EditWhat) => void;
 }) {
@@ -935,11 +979,14 @@ function HoldingsCard({
         open={(x) => {
           const page = pageOf(x);
           if (page) return { href: page };
+          if (viewOnly) return null;
           const home = homeOf(x);
           return home ? { run: () => onEdit(x, home) } : null;
         }}
         rowLabel={holdingTicker}
-        menu={(x) => rowMenu(x, onTrade, (w) => onEdit(x, w))}
+        menu={
+          viewOnly ? undefined : (x) => rowMenu(x, onTrade, (w) => onEdit(x, w))
+        }
         menuLabel={(x) => `Actions for ${holdingTicker(x)}`}
         empty={
           listed.length === 0
@@ -1057,12 +1104,14 @@ export function TradeSheet({
   store,
   fills,
   all,
+  viewOnly = false,
   onTrade,
   onDone,
 }: {
   store: PortfolioStore;
   fills: TradeRow[];
   all: boolean;
+  viewOnly?: boolean;
   onTrade: (s: AddStart) => void;
   onDone: () => void;
 }) {
@@ -1079,6 +1128,8 @@ export function TradeSheet({
   const ticker = tradeName(t);
   const name = fund ? "" : nameOf(t.name, null, t.symbol);
   const zone = store.overview.value?.time_zone;
+  // on another's page a name is never the reader's "You", whoever shares it
+  const self = viewOnly ? null : (markets.me.value?.name ?? null);
   const run = async (
     f: (id: number) => Promise<string | null>,
     ids: number[],
@@ -1098,7 +1149,7 @@ export function TradeSheet({
       onClose={onDone}
       busy={busy.value}
       footStart={
-        removed ? (
+        viewOnly ? undefined : removed ? (
           "Removed from the holdings."
         ) : asking.value ? (
           fills.length > 1 ? (
@@ -1119,7 +1170,7 @@ export function TradeSheet({
         )
       }
       foot={
-        removed ? (
+        viewOnly ? undefined : removed ? (
           <button
             type="button"
             class="btn btn-small"
@@ -1231,7 +1282,7 @@ export function TradeSheet({
             : []),
           {
             label: "Added by",
-            value: `${enteredBy(t.entered_by, markets.me.value?.name ?? null)}${
+            value: `${enteredBy(t.entered_by, self)}${
               t.entered_at ? ` · ${ownerDay(t.entered_at, zone)}` : ""
             }`,
           },
@@ -1240,16 +1291,14 @@ export function TradeSheet({
                 {
                   label: "Removed",
                   value: `${ownerDay(t.removed_at, zone)}${
-                    t.removed_by
-                      ? ` · ${enteredBy(t.removed_by, markets.me.value?.name ?? null)}`
-                      : ""
+                    t.removed_by ? ` · ${enteredBy(t.removed_by, self)}` : ""
                   }`,
                 },
               ]
             : []),
         ]}
       />
-      {t.note && (
+      {t.note && !viewOnly && (
         <div>
           <div class="label">Note</div>
           <p class="faint pf-note">{t.note}</p>

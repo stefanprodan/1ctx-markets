@@ -837,6 +837,14 @@ describe("the symbol search", () => {
     expect(off).not.toContain("ssearch");
   });
 
+  test("a branded head keeps its title for screen readers beside the mark", () => {
+    const html = render(<Page title="Home" brand />);
+    expect(html).toContain('<span class="page-brand" aria-hidden="true">');
+    expect(html).toContain('aria-label="Markets"');
+    expect(html).toContain('<span class="page-brand-title">Home</span>');
+    expect(render(<Page title="Status" />)).not.toContain("page-brand");
+  });
+
   test("the eye sits after the search on a page with amounts only", () => {
     const html = render(
       <Page title="AAA" amounts actions={<button type="button">More</button>}>

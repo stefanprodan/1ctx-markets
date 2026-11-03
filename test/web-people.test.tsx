@@ -19,6 +19,7 @@ import {
   ME_PATH,
   type Me,
   markets,
+  SHARING_PATH,
   store,
 } from "../src/web/data/store.ts";
 import { Page } from "../src/web/ui/Page.tsx";
@@ -316,7 +317,9 @@ describe("signing in", () => {
         admin,
         emailOn,
       ]);
-      expect(f.asked.map((a) => a.path)).toEqual([ME_PATH]);
+      expect(f.asked.map((a) => a.path)).toEqual(
+        signed ? [ME_PATH, SHARING_PATH] : [ME_PATH],
+      );
     }
   });
 });

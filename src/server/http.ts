@@ -48,6 +48,8 @@ export const UI_PATHS = [
   "/symbol/:id",
   "/portfolios",
   "/portfolios/:id",
+  "/portfolios/shared/:user",
+  "/portfolios/shared/:user/:id",
   "/profile",
 ] as const;
 
