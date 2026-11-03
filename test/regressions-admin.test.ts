@@ -13,6 +13,7 @@ import { type Markets, markets } from "../src/operations/markets.ts";
 import { researchTargets } from "../src/operations/research.ts";
 import { createRule } from "../src/operations/rules.ts";
 import { readTargets } from "../src/operations/targets.ts";
+import { OPERATOR } from "../src/operations/who.ts";
 import { ruleEngine } from "../src/rules/evaluate.ts";
 import { parseCondition } from "../src/rules/format.ts";
 import { readAlertsAfter, readRule } from "../src/rules/store.ts";
@@ -238,7 +239,7 @@ async function repairedRule(
   repair: () => void,
 ) {
   const created = await run(
-    createRule(m, {
+    createRule(m, OPERATOR, {
       action: "create",
       symbol: i.id,
       condition: parseCondition({ left: "price", op: ">", right: "sma50" }),
@@ -249,7 +250,7 @@ async function repairedRule(
   if ("error" in created) throw new Error("rule was not created");
   expect(created.evaluation).toMatchObject({ result: "false", reasons: [] });
   expect(created.rule.armed).toBe(true);
-  expect(readAlertsAfter(m.db, 0, 10)).toEqual([]);
+  expect(readAlertsAfter(m.db, OPERATOR, 0, 10)).toEqual([]);
   const quote = readQuote(m.db, i.id)!;
   const previous = readSignals(m.db, i.id, m.clock.now(), m.quoteEveryMs)!;
   await m.writer.write((db) => {
@@ -262,7 +263,7 @@ async function repairedRule(
     );
     m.rules.evaluate(db, [i.id], now);
   });
-  expect(readRule(m.db, created.rule.id)?.lastResult).toBe("unknown");
+  expect(readRule(m.db, OPERATOR, created.rule.id)?.lastResult).toBe("unknown");
   expect(
     readSignals(m.db, i.id, m.clock.now(), m.quoteEveryMs)!.stale.live,
   ).toEqual([STALE.barsFailed]);
@@ -285,9 +286,9 @@ async function repairedRule(
   expect(current.daily.live!.sma50).not.toBe(previous.daily.live!.sma50);
   expect(current.daily.live!.sma50).toBeLessThan(quote.price);
 
-  expect(readRule(m.db, created.rule.id)?.lastResult).toBe("true");
-  expect(readRule(m.db, created.rule.id)?.armed).toBe(false);
-  expect(readAlertsAfter(m.db, 0, 10)).toHaveLength(1);
+  expect(readRule(m.db, OPERATOR, created.rule.id)?.lastResult).toBe("true");
+  expect(readRule(m.db, OPERATOR, created.rule.id)?.armed).toBe(false);
+  expect(readAlertsAfter(m.db, OPERATOR, 0, 10)).toHaveLength(1);
 }
 
 test("a successful Yahoo bars-only refetch fires a newly true rule", async () => {

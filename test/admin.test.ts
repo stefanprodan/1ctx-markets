@@ -831,7 +831,7 @@ describe("delete", () => {
     rows(t.db, "US:BBB");
     t.db
       .query(
-        "insert into alerts (rule_id, fired_at, snapshot) values (7, ?, '{}')",
+        "insert into alerts (owner, rule_id, fired_at, snapshot) values ('operator', 7, ?, '{}')",
       )
       .run(NOW);
     const before = of(t.db, "US:BBB");
@@ -856,7 +856,7 @@ describe("delete", () => {
     const reads = (on: string) =>
       t.db
         .query(
-          "insert into rules (instrument, condition, created_at) values (?, ?, ?)",
+          "insert into rules (owner, instrument, condition, created_at) values ('operator', ?, ?, ?)",
         )
         .run(
           on,
@@ -1171,7 +1171,7 @@ describe("the instrument list", () => {
     }
     w.db
       .query(
-        "insert into rules (instrument, condition, created_at) values (?, ?, ?)",
+        "insert into rules (owner, instrument, condition, created_at) values ('operator', ?, ?, ?)",
       )
       .run(
         "US:RULE",

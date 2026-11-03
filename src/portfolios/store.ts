@@ -1,7 +1,9 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 // Rows only; what they are worth is value.ts. Holdings are private: no
-// function here logs, and no error quotes a row.
+// function here logs, and no error quotes a row. Every read and write of a
+// person's rows takes their owner (users.id), so another person's row
+// reads as none; trades and positions are owned through their portfolio.
 
 import { CRYPTO } from "../market/calendars.ts";
 import { FRED_MARKET, FUND_SOURCE } from "../sources/ids.ts";
@@ -89,34 +91,54 @@ export type Position = {
   removedBy: string | null;
 };
 
-export function listPortfolios(db: Db): Portfolio[] {
+// a trade's or position's owner is its portfolio's
+const OWNED = "portfolio in (select id from portfolios where owner = ?)";
+
+export function listPortfolios(db: Db, owner: string): Portfolio[] {
   return db
-    .query<RawPortfolio, []>(`${PORTFOLIO} order by cash desc, position, id`)
-    .all()
+    .query<RawPortfolio, [string]>(
+      `${PORTFOLIO} where owner = ? order by cash desc, position, id`,
+    )
+    .all(owner)
     .map(portfolioOf);
 }
 
-export function readPortfolio(db: Db, id: number): Portfolio | null {
+export function readPortfolio(
+  db: Db,
+  owner: string,
+  id: number,
+): Portfolio | null {
   const r = db
-    .query<RawPortfolio, [number]>(`${PORTFOLIO} where id = ?`)
-    .get(id);
+    .query<RawPortfolio, [number, string]>(
+      `${PORTFOLIO} where id = ? and owner = ?`,
+    )
+    .get(id, owner);
   return r === null ? null : portfolioOf(r);
 }
 
-export function cashPortfolio(db: Db): Portfolio | null {
-  const r = db.query<RawPortfolio, []>(`${PORTFOLIO} where cash = 1`).get();
+export function cashPortfolio(db: Db, owner: string): Portfolio | null {
+  const r = db
+    .query<RawPortfolio, [string]>(`${PORTFOLIO} where owner = ? and cash = 1`)
+    .get(owner);
   return r === null ? null : portfolioOf(r);
 }
 
-export function portfolioByName(db: Db, name: string): Portfolio | null {
+export function portfolioByName(
+  db: Db,
+  owner: string,
+  name: string,
+): Portfolio | null {
   const r = db
-    .query<RawPortfolio, [string]>(`${PORTFOLIO} where name = ? collate nocase`)
-    .get(name);
+    .query<RawPortfolio, [string, string]>(
+      `${PORTFOLIO} where owner = ? and name = ? collate nocase`,
+    )
+    .get(owner, name);
   return r === null ? null : portfolioOf(r);
 }
 
 export function insertPortfolio(
   db: Db,
+  owner: string,
   name: string,
   now: number,
   cash = false,
@@ -124,39 +146,57 @@ export function insertPortfolio(
   return Number(
     db
       .query(
-        `insert into portfolios (name, cash, created_at, position)
-         values (?, ?, ?,
-           (select coalesce(max(position), 0) + 1 from portfolios))`,
+        `insert into portfolios (owner, name, cash, created_at, position)
+         values (?1, ?2, ?3, ?4,
+           (select coalesce(max(position), 0) + 1 from portfolios
+            where owner = ?1))`,
       )
-      .run(name, cash ? 1 : 0, now).lastInsertRowid,
+      .run(owner, name, cash ? 1 : 0, now).lastInsertRowid,
   );
 }
 
 // made with the display currency; true when this call made it
-export function ensureCash(db: Db, now: number): boolean {
-  if (cashPortfolio(db) !== null) return false;
-  insertPortfolio(db, CASH_NAME, now, true);
+export function ensureCash(db: Db, owner: string, now: number): boolean {
+  if (cashPortfolio(db, owner) !== null) return false;
+  insertPortfolio(db, owner, CASH_NAME, now, true);
   return true;
 }
 
-export function renamePortfolio(db: Db, id: number, name: string): void {
-  db.query("update portfolios set name = ? where id = ?").run(name, id);
+export function renamePortfolio(
+  db: Db,
+  owner: string,
+  id: number,
+  name: string,
+): void {
+  db.query("update portfolios set name = ? where id = ? and owner = ?").run(
+    name,
+    id,
+    owner,
+  );
 }
 
-// to a place among the portfolios but Cash, 1 first, past the end last;
-// the rest renumbered 1..n in the same write
-export function movePortfolio(db: Db, id: number, place: number): void {
-  const ids = movable(db).filter((x) => x !== id);
+// to a place among the owner's portfolios but Cash, 1 first, past the end
+// last; the rest renumbered 1..n in the same write
+export function movePortfolio(
+  db: Db,
+  owner: string,
+  id: number,
+  place: number,
+): void {
+  const all = movable(db, owner);
+  // another person's portfolio is none of these, so it moves nothing
+  if (!all.includes(id)) return;
+  const ids = all.filter((x) => x !== id);
   ids.splice(Math.min(place, ids.length + 1) - 1, 0, id);
   renumber(db, ids);
 }
 
-const movable = (db: Db): number[] =>
+const movable = (db: Db, owner: string): number[] =>
   db
-    .query<{ id: number }, []>(
-      "select id from portfolios where cash = 0 order by position, id",
+    .query<{ id: number }, [string]>(
+      "select id from portfolios where owner = ? and cash = 0 order by position, id",
     )
-    .all()
+    .all(owner)
     .map((r) => r.id);
 
 function renumber(db: Db, ids: number[]): void {
@@ -164,7 +204,8 @@ function renumber(db: Db, ids: number[]): void {
   for (const [k, id] of ids.entries()) set.run(k + 1, id);
 }
 
-// the live rows; removed ones go with the portfolio
+// the live rows; removed ones go with the portfolio. The caller read the
+// portfolio as the owner's
 export function portfolioRows(db: Db, id: number): number {
   return db
     .query<{ n: number }, [number, number]>(
@@ -177,61 +218,79 @@ export function portfolioRows(db: Db, id: number): number {
 }
 
 // with its removed rows, in the caller's write; a live row keeps it
-export function deletePortfolio(db: Db, id: number): boolean {
+export function deletePortfolio(db: Db, owner: string, id: number): boolean {
+  if (readPortfolio(db, owner, id) === null) return false;
   db.query(
     "delete from trades where portfolio = ? and removed_at is not null",
   ).run(id);
   db.query(
     "delete from positions where portfolio = ? and removed_at is not null",
   ).run(id);
-  if (db.query("delete from portfolios where id = ?").run(id).changes === 0) {
-    return false;
-  }
-  renumber(db, movable(db));
+  db.query("delete from portfolios where id = ?").run(id);
+  renumber(db, movable(db, owner));
   return true;
 }
 
-export function listBrokers(db: Db): Broker[] {
+const BROKER = "select id, name, created_at as createdAt from brokers";
+
+export function listBrokers(db: Db, owner: string): Broker[] {
   return db
-    .query<Broker, []>(
-      "select id, name, created_at as createdAt from brokers order by name collate nocase, id",
+    .query<Broker, [string]>(
+      `${BROKER} where owner = ? order by name collate nocase, id`,
     )
-    .all();
+    .all(owner);
 }
 
-export function readBroker(db: Db, id: number): Broker | null {
+export function readBroker(db: Db, owner: string, id: number): Broker | null {
   return (
     db
-      .query<Broker, [number]>(
-        "select id, name, created_at as createdAt from brokers where id = ?",
-      )
-      .get(id) ?? null
+      .query<Broker, [number, string]>(`${BROKER} where id = ? and owner = ?`)
+      .get(id, owner) ?? null
   );
 }
 
-export function brokerByName(db: Db, name: string): Broker | null {
+export function brokerByName(
+  db: Db,
+  owner: string,
+  name: string,
+): Broker | null {
   return (
     db
-      .query<Broker, [string]>(
-        "select id, name, created_at as createdAt from brokers where name = ? collate nocase",
+      .query<Broker, [string, string]>(
+        `${BROKER} where owner = ? and name = ? collate nocase`,
       )
-      .get(name) ?? null
+      .get(owner, name) ?? null
   );
 }
 
-export function insertBroker(db: Db, name: string, now: number): number {
+export function insertBroker(
+  db: Db,
+  owner: string,
+  name: string,
+  now: number,
+): number {
   return Number(
     db
-      .query("insert into brokers (name, created_at) values (?, ?)")
-      .run(name, now).lastInsertRowid,
+      .query("insert into brokers (owner, name, created_at) values (?, ?, ?)")
+      .run(owner, name, now).lastInsertRowid,
   );
 }
 
-export function renameBroker(db: Db, id: number, name: string): void {
-  db.query("update brokers set name = ? where id = ?").run(name, id);
+export function renameBroker(
+  db: Db,
+  owner: string,
+  id: number,
+  name: string,
+): void {
+  db.query("update brokers set name = ? where id = ? and owner = ?").run(
+    name,
+    id,
+    owner,
+  );
 }
 
-// the live rows naming it; removed ones lose the name when it goes
+// the live rows naming it; removed ones lose the name when it goes. Only
+// the broker's owner's rows name it
 export function brokerRows(db: Db, id: number): number {
   return db
     .query<{ n: number }, [number, number]>(
@@ -243,7 +302,8 @@ export function brokerRows(db: Db, id: number): number {
     .get(id, id)!.n;
 }
 
-export function deleteBroker(db: Db, id: number): boolean {
+export function deleteBroker(db: Db, owner: string, id: number): boolean {
+  if (readBroker(db, owner, id) === null) return false;
   db.query(
     "update trades set broker = null where broker = ? and removed_at is not null",
   ).run(id);
@@ -291,8 +351,12 @@ export function insertTrade(db: Db, t: NewTrade, now: number): number {
   );
 }
 
-export function readTrade(db: Db, id: number): Trade | null {
-  return db.query<Trade, [number]>(`${TRADE} where id = ?`).get(id) ?? null;
+export function readTrade(db: Db, owner: string, id: number): Trade | null {
+  return (
+    db
+      .query<Trade, [number, string]>(`${TRADE} where id = ? and ${OWNED}`)
+      .get(id, owner) ?? null
+  );
 }
 
 export type TradeFilter = {
@@ -305,9 +369,13 @@ export type TradeFilter = {
 };
 
 // newest first, the later entry first within a day
-export function readTrades(db: Db, f: TradeFilter = {}): Trade[] {
-  const where: string[] = [];
-  const args: (string | number)[] = [];
+export function readTrades(
+  db: Db,
+  owner: string,
+  f: TradeFilter = {},
+): Trade[] {
+  const where: string[] = [OWNED];
+  const args: (string | number)[] = [owner];
   if (f.portfolio != null) {
     where.push("portfolio = ?");
     args.push(f.portfolio);
@@ -331,23 +399,31 @@ export function readTrades(db: Db, f: TradeFilter = {}): Trade[] {
   if (!f.removed) where.push("removed_at is null");
   return db
     .query<Trade, (string | number)[]>(
-      `${TRADE} ${where.length > 0 ? `where ${where.join(" and ")}` : ""}
-       order by date desc, id desc`,
+      `${TRADE} where ${where.join(" and ")} order by date desc, id desc`,
     )
     .all(...args);
 }
 
+// live trades of an instrument across every owner: a shared fund's
+// currency changes only while nobody holds it
+export function liveTradesOf(db: Db, instrument: string): number {
+  return db
+    .query<{ n: number }, [string]>(
+      "select count(*) as n from trades where instrument = ? and removed_at is null",
+    )
+    .get(instrument)!.n;
+}
+
 export function setTradeRemoved(
   db: Db,
+  owner: string,
   id: number,
   by: string | null,
   now: number,
 ): void {
-  db.query("update trades set removed_at = ?, removed_by = ? where id = ?").run(
-    by === null ? null : now,
-    by,
-    id,
-  );
+  db.query(
+    `update trades set removed_at = ?, removed_by = ? where id = ? and ${OWNED}`,
+  ).run(by === null ? null : now, by, id, owner);
 }
 
 const POSITION = `select id, portfolio,
@@ -397,25 +473,30 @@ const positionOf = (r: RawPosition): Position => ({
   dryPowder: r.dryPowder === 1,
 });
 
-export function readPosition(db: Db, id: number): Position | null {
-  return (() => {
-    const r = db
-      .query<RawPosition, [number]>(`${POSITION} where id = ?`)
-      .get(id);
-    return r === null ? null : positionOf(r);
-  })();
+export function readPosition(
+  db: Db,
+  owner: string,
+  id: number,
+): Position | null {
+  const r = db
+    .query<RawPosition, [number, string]>(
+      `${POSITION} where id = ? and ${OWNED}`,
+    )
+    .get(id, owner);
+  return r === null ? null : positionOf(r);
 }
 
 export function readPositions(
   db: Db,
+  owner: string,
   f: {
     portfolio?: number | null;
     broker?: number | null;
     removed?: boolean;
   } = {},
 ): Position[] {
-  const where: string[] = [];
-  const args: number[] = [];
+  const where: string[] = [OWNED];
+  const args: (string | number)[] = [owner];
   if (f.portfolio != null) {
     where.push("portfolio = ?");
     args.push(f.portfolio);
@@ -426,8 +507,8 @@ export function readPositions(
   }
   if (!f.removed) where.push("removed_at is null");
   return db
-    .query<RawPosition, number[]>(
-      `${POSITION} ${where.length > 0 ? `where ${where.join(" and ")}` : ""}
+    .query<RawPosition, (string | number)[]>(
+      `${POSITION} where ${where.join(" and ")}
        order by kind, name collate nocase, id`,
     )
     .all(...args)
@@ -500,17 +581,18 @@ export function samePosition(
 
 export function setPositionRemoved(
   db: Db,
+  owner: string,
   id: number,
   by: string | null,
   now: number,
 ): void {
   db.query(
-    "update positions set removed_at = ?, removed_by = ? where id = ?",
-  ).run(by === null ? null : now, by, id);
+    `update positions set removed_at = ?, removed_by = ? where id = ? and ${OWNED}`,
+  ).run(by === null ? null : now, by, id, owner);
 }
 
-// held or with a position, removed rows aside: tracked as a rule's are;
-// a fund the owner prices is never fetched, so never tracked
+// held or with a position, removed rows aside, by anyone: tracked as a
+// rule's are; a fund the owner prices is never fetched, so never tracked
 export function portfolioInstruments(db: Db): Set<string> {
   return new Set(
     db
@@ -526,8 +608,8 @@ export function portfolioInstruments(db: Db): Set<string> {
   );
 }
 
-// every instrument a trade or position ever named, removed ones too, so a
-// restore never finds its instrument deleted
+// every instrument a trade or position of anyone's ever named, removed
+// ones too, so a restore never finds its instrument deleted
 export function portfolioHolds(db: Db, id: string): boolean {
   return (
     db
@@ -567,10 +649,7 @@ export function splitsOf(db: Db, instrument: string): Split[] {
     .all(instrument);
 }
 
-// one owner until people sign in
-export const OWNER = "admin";
-
-export function displayCurrency(db: Db, owner = OWNER): string | null {
+export function displayCurrency(db: Db, owner: string): string | null {
   return (
     db
       .query<{ c: string | null }, [string]>(
@@ -582,9 +661,9 @@ export function displayCurrency(db: Db, owner = OWNER): string | null {
 
 export function setDisplayCurrency(
   db: Db,
+  owner: string,
   currency: string | null,
   now: number,
-  owner = OWNER,
 ): void {
   db.query(
     `insert into portfolio_settings (owner, display_currency, updated_at)
@@ -594,7 +673,7 @@ export function setDisplayCurrency(
   ).run(owner, currency, now);
 }
 
-export function timeZone(db: Db, owner = OWNER): string | null {
+export function timeZone(db: Db, owner: string): string | null {
   return (
     db
       .query<{ z: string | null }, [string]>(
@@ -606,9 +685,9 @@ export function timeZone(db: Db, owner = OWNER): string | null {
 
 export function setTimeZone(
   db: Db,
+  owner: string,
   zone: string,
   now: number,
-  owner = OWNER,
 ): void {
   db.query(
     `insert into portfolio_settings (owner, time_zone, updated_at)
@@ -666,9 +745,9 @@ export function recentSameTrade(
 }
 
 // every row of a position's chain, latest first: an update may rename or move it
-export function chainOf(db: Db, id: number): Position[] {
+export function chainOf(db: Db, owner: string, id: number): Position[] {
   return db
-    .query<RawPosition, [number]>(
+    .query<RawPosition, [number, string]>(
       `with recursive up(id, replaces) as (
          select id, replaces from positions where id = ?
          union select p.id, p.replaces from positions p
@@ -679,9 +758,9 @@ export function chainOf(db: Db, id: number): Position[] {
          select id from root
          union select p.id from positions p join down on p.replaces = down.id
        )
-       ${POSITION} where id in (select id from down)
+       ${POSITION} where id in (select id from down) and ${OWNED}
        order by entered_at desc, id desc`,
     )
-    .all(id)
+    .all(id, owner)
     .map(positionOf);
 }

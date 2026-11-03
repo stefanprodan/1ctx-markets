@@ -26,8 +26,8 @@ export const AGENT_KEY = "1ctx-markets-test-agent-key-0123456789abcdef";
 // sets rules, as the tests drive them over MCP
 export function seedAgentKey(db: Db, at: number): void {
   db.query(
-    `insert or ignore into keys (id, name, token_hash, created_at, rules)
-     values ('testagentkey', 'test-agent', ?, ?, 'write')`,
+    `insert or ignore into keys (id, user_id, name, token_hash, created_at, rules)
+     values ('testagentkey', 'operator', 'test-agent', ?, ?, 'write')`,
   ).run(tokenHash(AGENT_KEY), at);
 }
 
@@ -135,21 +135,23 @@ export async function mcpClient(
   return client;
 }
 
-// a made-up key with this access, as the admin makes one; its token
+// a made-up key with this access, as the admin makes one, the operator's
+// unless a person is named; its token
 export function seedKey(
   t: TestApp,
   name: string,
-  opens: { portfolio: Access; rules: Access; profile?: Access },
+  opens: { portfolio: Access; rules: Access; profile?: Access; user?: string },
 ): string {
   const token = `1ctx-markets-test-${name}-key-0123456789abcdef`;
   t.db
     .query(
       `insert into keys
-         (id, name, token_hash, created_at, portfolio, rules, profile)
-       values (?, ?, ?, ?, ?, ?, ?)`,
+         (id, user_id, name, token_hash, created_at, portfolio, rules, profile)
+       values (?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       `key-${name}`,
+      opens.user ?? "operator",
       name,
       tokenHash(token),
       t.clock.now(),

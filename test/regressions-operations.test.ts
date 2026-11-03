@@ -9,6 +9,7 @@ import { markets } from "../src/operations/markets.ts";
 import { parseQuote, quotePage } from "../src/operations/quote.ts";
 import { createRule, parseRules } from "../src/operations/rules.ts";
 import { readTargets } from "../src/operations/targets.ts";
+import { OPERATOR } from "../src/operations/who.ts";
 import { ruleEngine } from "../src/rules/evaluate.ts";
 import { countRules } from "../src/rules/store.ts";
 import { silent } from "../src/runtime/log.ts";
@@ -144,6 +145,7 @@ test("rule creation refuses a dependency deleted while another symbol is fetchin
     expect(countRules(t.db)).toBe(0);
     pending = createRule(
       t.m,
+      OPERATOR,
       createArgs("US:A", {
         all: [
           { left: "price", op: ">", right: 1 },
@@ -311,6 +313,7 @@ test("an earnings-gated rule reports a calendar source failure instead of no eve
       pacedOf(t.m),
       createRule(
         t.m,
+        OPERATOR,
         createArgs("US:NVDA", {
           afterEarnings: "NVDA",
           left: "price",

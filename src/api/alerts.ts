@@ -5,7 +5,11 @@
 import { iso } from "../market/format.ts";
 import { alertItem } from "../operations/rules.ts";
 import type { Snapshot } from "../rules/evaluate.ts";
-import { lastAlertId, readAlertsAfter } from "../rules/store.ts";
+import {
+  issuedAlertId,
+  prunedAlertId,
+  readAlertsAfter,
+} from "../rules/store.ts";
 import type { Log } from "../runtime/log.ts";
 import { errorFields } from "../runtime/log.ts";
 import type { Db } from "../storage/db/index.ts";
@@ -99,8 +103,8 @@ export function alertPage(
 export function alertsHandler(deps: {
   db: Db;
   log: Log;
-}): (req: Request) => Promise<Response> {
-  return async (req) => {
+}): (req: Request, owner: string) => Promise<Response> {
+  return async (req, owner) => {
     try {
       if ([...new URL(req.url).searchParams.keys()].length > 0) {
         return refused("the alerts feed takes no query arguments");
@@ -111,17 +115,17 @@ export function alertsHandler(deps: {
           'If-None-Match must be an ETag this endpoint answered, W/"alerts-<id>"',
         );
       }
-      const issued = lastAlertId(deps.db);
-      // a cursor this database never gave, as after a restore: start over
+      const issued = issuedAlertId(deps.db, owner);
+      // a cursor this database never gave the owner, as after a restore:
+      // start over
       const reset = cursor !== null && cursor > issued;
       const after = cursor === null || reset ? 0 : cursor;
-      const rows = readAlertsAfter(deps.db, after, READ_ROWS);
-      // ids are never reused and only retention deletes, so a hole right
-      // after the cursor is alerts pruned before this check saw them
+      const rows = readAlertsAfter(deps.db, owner, after, READ_ROWS);
+      // ids are never reused and only retention deletes, which keeps each
+      // owner's newest pruned id, so another person's ids between the
+      // owner's never read as lost
       const gap =
-        cursor !== null &&
-        !reset &&
-        (rows.length > 0 ? rows[0]!.id > cursor + 1 : issued > cursor);
+        cursor !== null && !reset && prunedAlertId(deps.db, owner) > cursor;
       if (rows.length === 0 && !gap) {
         if (cursor === null || reset) {
           return new Response(null, { status: 204, headers: HEADERS });

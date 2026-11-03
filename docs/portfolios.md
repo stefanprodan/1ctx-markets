@@ -23,12 +23,12 @@ once and valued on the live price the server already keeps.
 
 - **A portfolio is a name, nothing more.** No currency: one portfolio
   mixes currencies, and every owner has their own. Names are unique
-  ignoring case, 1 to 40 characters. A portfolio with a live row cannot
+  per owner ignoring case, 1 to 40 characters. A portfolio with a live row cannot
   be deleted (409); one whose rows are all removed can, its removed rows
   deleted in the same write, so a test or mistaken portfolio can go.
 - **One portfolio, Cash, holds all cash and only cash**, marked by
   `portfolios.cash` (migration `0032-cash-portfolio`, a partial unique
-  index keeping it to one). The code, `list`, `GET /portfolios` (each
+  index keeping it to one per owner since `0036-owners`). The code, `list`, `GET /portfolios` (each
   portfolio's `cash`) and the web UI find it by the mark, never the
   name. It is made with the display currency (`ensureCash()`, by the
   first `PUT /portfolio-settings` or `portfolio_setup`), so a new owner
@@ -62,8 +62,9 @@ once and valued on the live price the server already keeps.
   1 first, past the end last, and renumbers them 1..n in the same write;
   a delete closes its gap. Cash refuses a place (409, "Cash stays
   first"). The place is never answered: the list's order is the order.
-- **A broker is a name the owner keeps** (`brokers`), matched ignoring
-  case. A trade or position names one or none; an unknown name is
+- **A broker is a name the owner keeps** (`brokers`), unique per owner
+  and matched ignoring case, since a name is matched against that
+  person's trades. A trade or position names one or none; an unknown name is
   refused with the known ones, so a typo never makes a broker. Brokers
   are added only by `POST /brokers` (the web UI) or `portfolio_setup`,
   renamed in place (`PATCH /brokers/{id}`, `portfolio_setup`'s `rename_broker`),
@@ -192,8 +193,8 @@ once and valued on the live price the server already keeps.
   one replaces it the same way. A position's history follows that chain
   (`chainOf()`), since an update may rename or move it, or change a
   bond's face or date.
-- **The display currency** (`portfolio_settings`, one row per owner,
-  `admin` until people sign in) is required: a portfolio is refused
+- **The display currency** (`portfolio_settings`, one row per owner)
+  is required: a portfolio is refused
   (409, "Set a display currency first.") until the owner sets one, and
   a save without a code is refused, so it changes but never clears.
   Its first save makes Cash.
@@ -729,6 +730,35 @@ rename_broker(broker: string, name: string): { broker };
   currency and price paid exactly; with no such close the lot is written
   as paid, tagged `[paid EUR]`, as before. Commission stays in the
   currency paid. Positions are not exported.
+
+## Owners
+
+- **Every row is one person's** (`users.id`, migration `0036-owners`):
+  `portfolios.owner`, `brokers.owner` and `portfolio_settings.owner`;
+  trades and positions are owned through their portfolio. Every
+  function in `src/portfolios/store.ts` and `src/operations/portfolio.ts`
+  takes the owner, and every read filters by it, the whole-table ones
+  too (`bondsOf()`, holdings, rates, history chains, removed rows, name
+  lookups), so no default owner exists to fall back on.
+- **The owner is the caller's** (`Who.user`, `docs/api.md`): a route
+  reads it from its `who`, a tool from the request's `authInfo`. Today
+  the admin key, the web UI's cookie and every key made so far are the
+  operator's, so a single-person server reads as before.
+- **Another person's row is no row**: a portfolio, trade, position or
+  broker of theirs, by id or by name, answers 404 or "no portfolio" as
+  an unknown one does, never 403, so an id never tells that it exists.
+- **A fund and its prices are shared, its trades never.** `funds` and
+  `fund_prices` have no owner: a person sees a fund in `list` and
+  `GET /funds` while a trade of theirs names it or they priced it
+  (`seesFund()`), and only such a person may update it; any other reads
+  it as unknown. A buy naming its ISIN finds it whoever holds it, the
+  ISIN being the fund; a name another person's fund holds is refused
+  without naming that fund. Its detail lists only the caller's trades,
+  and a price shows its `trade` and `entered_by` only to the person who
+  entered it (`fund_prices.user_id`), null to others. A currency change
+  still counts every holder's live trades (`liveTradesOf()`). A price a
+  buy set outlives that buy's deletion (`fund_prices.trade` on delete
+  set null), so removing one person never changes another's valuation.
 
 ## Privacy
 

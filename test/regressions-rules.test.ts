@@ -10,6 +10,7 @@ import { barsStale, JOBS, quoteStale, STALE } from "../src/market/stale.ts";
 import { type Markets, markets } from "../src/operations/markets.ts";
 import { readLatest } from "../src/operations/quote.ts";
 import { parseScreen, screenAnswer } from "../src/operations/screen.ts";
+import { OPERATOR } from "../src/operations/who.ts";
 import { readAlertsAfter, readRule } from "../src/rules/store.ts";
 import { DAY_MS } from "../src/runtime/clock.ts";
 import { silent } from "../src/runtime/log.ts";
@@ -49,12 +50,12 @@ test("a failed refetch keeps split-sensitive rules unknown after other instrumen
     const jobs = yahooJobs({ ctx: t.ctx, quoteEveryMs: EVERY_MS, log: silent });
     await t.quote("NVDA", { price: 210 });
     await jobs.barTick();
-    expect(readRule(t.db, id)).toMatchObject({
+    expect(readRule(t.db, OPERATOR, id)).toMatchObject({
       lastResult: "false",
       armed: true,
       paused: null,
     });
-    expect(readAlertsAfter(t.db, 0, 10)).toEqual([]);
+    expect(readAlertsAfter(t.db, OPERATOR, 0, 10)).toEqual([]);
 
     await t.clock.advance(Date.parse("2026-10-26T13:35:00Z") - t.clock.now());
     await t.quote("NVDA", {
@@ -69,11 +70,11 @@ test("a failed refetch keeps split-sensitive rules unknown after other instrumen
     expect(barsStale(t.db, instrument, t.clock.now())).toContain(
       STALE.barsPending,
     );
-    expect(readRule(t.db, id)).toMatchObject({
+    expect(readRule(t.db, OPERATOR, id)).toMatchObject({
       lastResult: "unknown",
       armed: true,
     });
-    expect(readAlertsAfter(t.db, 0, 10)).toEqual([]);
+    expect(readAlertsAfter(t.db, OPERATOR, 0, 10)).toEqual([]);
 
     // The failed window never reveals the split to the rule hooks.
     t.charts.set("NVDA", () => failure);
@@ -110,9 +111,9 @@ test("a failed refetch keeps split-sensitive rules unknown after other instrumen
 
     // Another listing's success cannot establish this listing's price scale.
     expect({
-      result: readRule(t.db, id)!.lastResult,
-      armed: readRule(t.db, id)!.armed,
-      alerts: readAlertsAfter(t.db, 0, 10).length,
+      result: readRule(t.db, OPERATOR, id)!.lastResult,
+      armed: readRule(t.db, OPERATOR, id)!.armed,
+      alerts: readAlertsAfter(t.db, OPERATOR, 0, 10).length,
     }).toEqual({ result: "unknown", armed: true, alerts: 0 });
   } finally {
     await t.write.close();

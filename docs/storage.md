@@ -46,6 +46,14 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   old one drops with nothing pointing at it under `foreign_keys`, and
   its `sqlite_sequence` row is carried over, so an id is never given
   twice.
+- **A table other tables point at is rebuilt with foreign keys off**
+  (`foreignKeys: false` on the migration, `0036-owners`): a plain drop
+  would fail or cascade into its children. `migrate()` turns the pragma
+  off around the transaction, since it is a no-op inside one, and
+  refuses to commit unless `pragma foreign_key_check` is empty. The
+  children name the parent by name, so the renamed copy keeps them.
+- **An owner column has no default**, so a write that names none fails
+  instead of landing on the operator.
 
 ## The writer
 
@@ -228,7 +236,8 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   owner's display currency) and `keys.portfolio` (`none`, `read`,
   `write`); `0021-stated-on` adds `trades.stated_on`, the day a trade's
   figures are stated as of; `0022-trade-indexes` indexes live trades by
-  date and trades by broker, so holdings never scan and sort the table;
+  date and trades by broker, so holdings never scan the table (an
+  owner's trades are read by their portfolios, and only those sorted);
   `0024-time-zone` adds `portfolio_settings.time_zone`, the owner's IANA
   zone, null until named; `0025-position-market` adds
   `positions.market`, the market cash named, null unless named;
@@ -259,14 +268,39 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   (`none`, `read`, `write`), `none` for every key, the ones made
   before too. A save inserts a revision and deletes those past the
   last 100 in the same write; what they mean is `docs/profile.md`.
+  `0036-owners` keys it `(owner, revision)`.
+
+## People and owners
+
+- **`users` holds the people** (`0036-owners`): `id`, `name`, `email`
+  (lower case, unique, null until people sign in by email), `role`
+  (`admin` or `member`), `created_at`, `last_sign_in_at`, and
+  `alerts_pruned` (the newest of their alert ids retention deleted, for
+  the alerts feed). The migration made `operator`, an admin, the owner
+  of every row before it; `user-admin.key` and the web UI's cookie are
+  the operator.
+- **A person's rows name them**: `portfolios.owner`, `brokers.owner`,
+  `portfolio_settings.owner` (was `admin`), `dashboards.owner` (was
+  `operator` already), `rules.owner`, `alerts.owner` (copied from the
+  rule, as an alert outlives it), `keys.user_id` and
+  `profile_versions.owner`, each referencing `users`. Trades and
+  positions are owned through their portfolio. Portfolio and broker
+  names are unique per owner, and Cash is one per owner
+  (`portfolios_one_cash` on `(owner) where cash`).
+- **Funds and their prices have no owner**: `fund_prices.user_id` is
+  who entered a price, by hand or by their buy, set null when they go,
+  and `fund_prices.trade` is set null when its buy is deleted, so a
+  shared price outlives one person's rows (`docs/portfolios.md`).
+- **Market data and tracking stay shared**: anyone's read, rule,
+  dashboard card or holding tracks an instrument for all.
 
 ## The dashboard
 
 - **Three tables hold the web UI's home page** (`0017-dashboard`):
   `dashboards` (one row per owner with its `revision`),
   `dashboard_sections` (`name` and `view` by `position`) and
-  `dashboard_items` (each section's instruments by `position`). The
-  one owner is `operator`.
+  `dashboard_items` (each section's instruments by `position`), one
+  layout per person, the owner a `users.id`.
 - **An item references `instruments(id)` on delete cascade**, so
   deleting an instrument drops its card and a favourite never blocks
   the delete (a rule still does); a section's items go with it the same

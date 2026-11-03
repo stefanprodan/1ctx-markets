@@ -25,7 +25,7 @@ import {
   updatePortfolio,
   updatePosition,
 } from "../src/operations/portfolio.ts";
-import type { Who } from "../src/operations/who.ts";
+import { OPERATOR, type Who } from "../src/operations/who.ts";
 import { listPortfolios } from "../src/portfolios/store.ts";
 import { splitFactor } from "../src/portfolios/value.ts";
 import { tokenHash } from "../src/server/access.ts";
@@ -43,6 +43,8 @@ import { bar, instrument, LIVE, NOW, quote, world } from "./helpers/world.ts";
 
 const CASEY: Who = {
   name: "casey-agent",
+  user: OPERATOR,
+  credential: { kind: "key", id: "casey-agent" },
   portfolio: "write",
   rules: "none",
   profile: "none",
@@ -94,7 +96,7 @@ async function setup() {
   await portfolioBefore(w.m, "Coins");
   await cashBefore(w.m);
   for (const name of ["North", "South", "East"]) {
-    await createBroker(w.m, { name });
+    await createBroker(w.m, OPERATOR, { name });
   }
   return w;
 }
@@ -121,9 +123,9 @@ const sell = (m: Markets, t: TradeIn) => buy(m, { side: "sell", ...t });
 
 async function holdingsOf(
   m: Markets,
-  args: Partial<Parameters<typeof readHoldings>[1]> = {},
+  args: Partial<Parameters<typeof readHoldings>[2]> = {},
 ): Promise<HoldingsAnswer> {
-  const h = await readHoldings(m, {
+  const h = await readHoldings(m, OPERATOR, {
     portfolio: null,
     broker: null,
     currency: null,
@@ -246,7 +248,7 @@ describe("average cost", () => {
     const a = row(h, "US:AAA");
     expect(a.quantity).toBe(50);
     expect(a.average_cost).toBe(100);
-    const [late, early] = readTradeList(m, {
+    const [late, early] = readTradeList(m, OPERATOR, {
       portfolio: null,
       broker: null,
       symbol: null,
@@ -365,7 +367,7 @@ describe("currencies", () => {
     pair(db, "EURUSD=X", 1.25);
     await buy(m, { symbol: "XETRA:BBB", quantity: 4, price: 40 });
     expect((await holdingsOf(m)).converted).toBeNull();
-    await saveSettings(m, { display_currency: "USD" });
+    await saveSettings(m, OPERATOR, { display_currency: "USD" });
     const shown = await holdingsOf(m);
     expect(shown.display_currency).toBe("USD");
     expect(shown.converted).toMatchObject({ currency: "USD", value: 250 });
@@ -375,11 +377,13 @@ describe("currencies", () => {
     );
     // it can be changed, never cleared
     for (const bad of [null, "ABC", "usd", "GBp"]) {
-      await expect(saveSettings(m, { display_currency: bad })).rejects.toThrow(
-        "in circulation",
-      );
+      await expect(
+        saveSettings(m, OPERATOR, { display_currency: bad }),
+      ).rejects.toThrow("in circulation");
     }
-    await expect(saveSettings(m, {})).rejects.toThrow("display_currency");
+    await expect(saveSettings(m, OPERATOR, {})).rejects.toThrow(
+      "display_currency",
+    );
     // a conversion named by the caller takes the same list
     expect(() =>
       parsePortfolioRead({ action: "holdings", currency: "ABC" }),
@@ -435,12 +439,14 @@ describe("currencies", () => {
 
   test("a portfolio needs a display currency set first", async () => {
     const { m } = world();
-    expect(await createPortfolio(m, { name: "Shares" })).toEqual({
+    expect(await createPortfolio(m, OPERATOR, { name: "Shares" })).toEqual({
       error: "conflict",
       message: "Set a display currency first.",
     });
-    await saveSettings(m, { display_currency: "EUR" });
-    expect(await createPortfolio(m, { name: "Shares" })).toMatchObject({
+    await saveSettings(m, OPERATOR, { display_currency: "EUR" });
+    expect(
+      await createPortfolio(m, OPERATOR, { name: "Shares" }),
+    ).toMatchObject({
       portfolio: { name: "Shares" },
     });
   });
@@ -725,7 +731,7 @@ describe("trades", () => {
     const gone = await setTradeState(m, CASEY, id, true);
     expect(gone).toMatchObject({ trade: { removed_by: "casey-agent" } });
     expect(row(await holdingsOf(m), "US:AAA")).toBeUndefined();
-    const all = readTradeList(m, {
+    const all = readTradeList(m, OPERATOR, {
       portfolio: null,
       broker: null,
       symbol: null,
@@ -754,12 +760,16 @@ describe("trades", () => {
     const { m } = await setup();
     const reader: Who = {
       name: "reader",
+      user: OPERATOR,
+      credential: { kind: "key", id: "reader" },
       portfolio: "read",
       rules: "none",
       profile: "none",
     };
     const none: Who = {
       name: "none",
+      user: OPERATOR,
+      credential: { kind: "key", id: "none" },
       portfolio: "none",
       rules: "none",
       profile: "none",
@@ -835,6 +845,8 @@ describe("setup", () => {
     const { m } = world();
     const reader: Who = {
       name: "reader",
+      user: OPERATOR,
+      credential: { kind: "key", id: "reader" },
       portfolio: "read",
       rules: "none",
       profile: "none",
@@ -869,8 +881,8 @@ describe("over MCP and REST", () => {
       quote(t.db, "US:AAA", 120, 118);
       t.db
         .query(
-          `insert into keys (id, name, token_hash, created_at, portfolio)
-           values ('testwriterkey', 'casey-writer', ?, ?, 'write')`,
+          `insert into keys (id, user_id, name, token_hash, created_at, portfolio)
+           values ('testwriterkey', 'operator', 'casey-writer', ?, ?, 'write')`,
         )
         .run(tokenHash(WRITER), t.clock.now());
       const admin = { authorization: `Bearer ${t.admin}` };
@@ -998,39 +1010,41 @@ describe("the Cash portfolio", () => {
   test("saving the display currency makes it once, with the time zone", async () => {
     const { m } = world();
     expect(
-      await saveSettings(m, {
+      await saveSettings(m, OPERATOR, {
         display_currency: "EUR",
         time_zone: "Europe/Paris",
       }),
     ).toEqual({ display_currency: "EUR", time_zone: "Europe/Paris" });
-    await saveSettings(m, { display_currency: "USD" });
+    await saveSettings(m, OPERATOR, { display_currency: "USD" });
     const list = (await ask(m, CASEY, "portfolio", { action: "list" })).body;
     expect(list.portfolios).toMatchObject([{ name: "Cash", cash: true }]);
   });
 
   test("is never renamed or removed, and no other takes its name", async () => {
     const { m } = world();
-    await saveSettings(m, { display_currency: "EUR" });
+    await saveSettings(m, OPERATOR, { display_currency: "EUR" });
     const cash = m.db
       .query("select id from portfolios where cash = 1")
       .get() as { id: number };
-    expect(await updatePortfolio(m, cash.id, { name: "Bank" })).toMatchObject({
+    expect(
+      await updatePortfolio(m, OPERATOR, cash.id, { name: "Bank" }),
+    ).toMatchObject({
       error: "conflict",
       message: "Cash keeps its name",
     });
-    expect(await removePortfolio(m, cash.id)).toMatchObject({
+    expect(await removePortfolio(m, OPERATOR, cash.id)).toMatchObject({
       error: "conflict",
     });
     for (const name of ["cash", " CASH "]) {
-      expect(await createPortfolio(m, { name })).toMatchObject({
+      expect(await createPortfolio(m, OPERATOR, { name })).toMatchObject({
         error: "conflict",
         message: "the name Cash is kept for cash",
       });
     }
-    const made = await createPortfolio(m, { name: "Shares" });
+    const made = await createPortfolio(m, OPERATOR, { name: "Shares" });
     if ("error" in made) throw new Error(made.message);
     expect(
-      await updatePortfolio(m, made.portfolio.id, { name: "Cash" }),
+      await updatePortfolio(m, OPERATOR, made.portfolio.id, { name: "Cash" }),
     ).toMatchObject({ error: "conflict" });
     // setup naming it makes nothing more
     const again = (
@@ -1101,11 +1115,11 @@ describe("the Cash portfolio", () => {
     const { m } = world();
     instrument(m.db, "US:AAA", { currency: "USD", name: "Alpha Made Up" });
     quote(m.db, "US:AAA", 120, 118);
-    await saveSettings(m, { display_currency: "EUR" });
-    await createPortfolio(m, { name: "Stocks" });
+    await saveSettings(m, OPERATOR, { display_currency: "EUR" });
+    await createPortfolio(m, OPERATOR, { name: "Stocks" });
     const one = await buy(m, { portfolio: null });
     expect(one).toMatchObject({ trade: { portfolio: "Stocks" } });
-    await createPortfolio(m, { name: "Coins" });
+    await createPortfolio(m, OPERATOR, { name: "Coins" });
     expect(await buy(m, { portfolio: null })).toMatchObject({
       error: "bad_arguments",
       message: "name a portfolio: Stocks, Coins",
@@ -1131,7 +1145,8 @@ describe("reserve with no rate across portfolios", () => {
 });
 
 describe("portfolio order", () => {
-  const names = (m: Markets) => listPortfolios(m.db).map((p) => p.name);
+  const names = (m: Markets) =>
+    listPortfolios(m.db, OPERATOR).map((p) => p.name);
   const places = (m: Markets) =>
     m.db
       .query<{ name: string; position: number }, []>(
@@ -1142,10 +1157,10 @@ describe("portfolio order", () => {
 
   async function four() {
     const { m } = world();
-    await saveSettings(m, { display_currency: "EUR" });
+    await saveSettings(m, OPERATOR, { display_currency: "EUR" });
     const id: Record<string, number> = {};
     for (const name of ["Delta", "Alpha", "Charlie", "Bravo"]) {
-      const made = await createPortfolio(m, { name });
+      const made = await createPortfolio(m, OPERATOR, { name });
       if ("error" in made) throw new Error(made.message);
       id[name] = made.portfolio.id;
     }
@@ -1159,13 +1174,15 @@ describe("portfolio order", () => {
 
   test("a move up, down, to 1 and past the end renumbers without gaps", async () => {
     const { m, id } = await four();
-    await updatePortfolio(m, id.Charlie!, { position: 2 });
+    await updatePortfolio(m, OPERATOR, id.Charlie!, { position: 2 });
     expect(names(m)).toEqual(["Cash", "Delta", "Charlie", "Alpha", "Bravo"]);
-    await updatePortfolio(m, id.Delta!, { position: 3 });
+    await updatePortfolio(m, OPERATOR, id.Delta!, { position: 3 });
     expect(names(m)).toEqual(["Cash", "Charlie", "Alpha", "Delta", "Bravo"]);
-    await updatePortfolio(m, id.Bravo!, { position: 1 });
+    await updatePortfolio(m, OPERATOR, id.Bravo!, { position: 1 });
     expect(names(m)).toEqual(["Cash", "Bravo", "Charlie", "Alpha", "Delta"]);
-    const moved = await updatePortfolio(m, id.Charlie!, { position: 99 });
+    const moved = await updatePortfolio(m, OPERATOR, id.Charlie!, {
+      position: 99,
+    });
     expect(moved).toMatchObject({ portfolio: { name: "Charlie" } });
     expect(moved).not.toHaveProperty("portfolio.position");
     expect(places(m)).toEqual(["1:Bravo", "2:Alpha", "3:Delta", "4:Charlie"]);
@@ -1173,15 +1190,18 @@ describe("portfolio order", () => {
 
   test("a rename and a move in one write", async () => {
     const { m, id } = await four();
-    await updatePortfolio(m, id.Bravo!, { name: "Echo", position: 1 });
+    await updatePortfolio(m, OPERATOR, id.Bravo!, {
+      name: "Echo",
+      position: 1,
+    });
     expect(names(m)).toEqual(["Cash", "Echo", "Delta", "Alpha", "Charlie"]);
   });
 
   test("a delete closes its gap and a later move still lands right", async () => {
     const { m, id } = await four();
-    await removePortfolio(m, id.Alpha!);
+    await removePortfolio(m, OPERATOR, id.Alpha!);
     expect(places(m)).toEqual(["1:Delta", "2:Charlie", "3:Bravo"]);
-    await updatePortfolio(m, id.Bravo!, { position: 2 });
+    await updatePortfolio(m, OPERATOR, id.Bravo!, { position: 2 });
     expect(names(m)).toEqual(["Cash", "Delta", "Bravo", "Charlie"]);
   });
 
@@ -1189,8 +1209,10 @@ describe("portfolio order", () => {
     const { m } = await four();
     m.db.exec("update portfolios set position = 99 where cash = 1");
     expect(names(m)[0]).toBe("Cash");
-    const cash = listPortfolios(m.db)[0]!;
-    expect(await updatePortfolio(m, cash.id, { position: 2 })).toMatchObject({
+    const cash = listPortfolios(m.db, OPERATOR)[0]!;
+    expect(
+      await updatePortfolio(m, OPERATOR, cash.id, { position: 2 }),
+    ).toMatchObject({
       error: "conflict",
       message: "Cash stays first",
     });
@@ -1200,11 +1222,11 @@ describe("portfolio order", () => {
   test("a place is a whole number from 1, and something must change", async () => {
     const { m, id } = await four();
     for (const position of [0, 1.5, "2", null]) {
-      await expect(updatePortfolio(m, id.Alpha!, { position })).rejects.toThrow(
-        "position must be a whole number from 1",
-      );
+      await expect(
+        updatePortfolio(m, OPERATOR, id.Alpha!, { position }),
+      ).rejects.toThrow("position must be a whole number from 1");
     }
-    await expect(updatePortfolio(m, id.Alpha!, {})).rejects.toThrow(
+    await expect(updatePortfolio(m, OPERATOR, id.Alpha!, {})).rejects.toThrow(
       "name or position is required",
     );
   });

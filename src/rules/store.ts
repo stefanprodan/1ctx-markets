@@ -13,6 +13,8 @@ export type PauseReason = "manual" | "split";
 
 export type RuleRow = {
   id: number;
+  // users.id: rules and their alerts are one person's
+  owner: string;
   instrument: string;
   condition: Condition;
   note: string | null;
@@ -28,7 +30,7 @@ type Raw = Omit<RuleRow, "condition" | "armed"> & {
   armed: number;
 };
 
-const SELECT = `select id, instrument, condition, note, paused, armed,
+const SELECT = `select id, owner, instrument, condition, note, paused, armed,
   created_at as createdAt, last_result as lastResult,
   last_evaluated_at as lastEvaluatedAt from rules`;
 
@@ -38,24 +40,41 @@ const row = (r: Raw): RuleRow => ({
   armed: r.armed === 1,
 });
 
-export function readRule(db: Db, id: number): RuleRow | null {
-  const r = db.query<Raw, [number]>(`${SELECT} where id = ?`).get(id);
+// another person's rule reads as no rule
+export function readRule(db: Db, owner: string, id: number): RuleRow | null {
+  const r = db
+    .query<Raw, [number, string]>(`${SELECT} where id = ? and owner = ?`)
+    .get(id, owner);
   return r === null ? null : row(r);
 }
 
+type RulesFilter = { from?: number; limit?: number; active?: boolean };
+
+const rulesQuery = (owned: boolean, f: RulesFilter) =>
+  `${SELECT} where id >= ?1 ${owned ? "and owner = ?3" : ""}
+   ${f.active ? "and paused is null" : ""} order by id limit ?2`;
+
+// the owner's rules
 export function readRules(
   db: Db,
-  options: { from?: number; limit?: number; active?: boolean } = {},
+  owner: string,
+  options: RulesFilter = {},
 ): RuleRow[] {
   return db
-    .query<Raw, [number, number]>(
-      `${SELECT} where id >= ? ${options.active ? "and paused is null" : ""}
-       order by id limit ?`,
-    )
+    .query<Raw, [number, number, string]>(rulesQuery(true, options))
+    .all(options.from ?? 0, options.limit ?? -1, owner)
+    .map(row);
+}
+
+// every person's, for the engine, which evaluates and pauses them all
+export function allRules(db: Db, options: RulesFilter = {}): RuleRow[] {
+  return db
+    .query<Raw, [number, number]>(rulesQuery(false, options))
     .all(options.from ?? 0, options.limit ?? -1)
     .map(row);
 }
 
+// every person's
 export function countRules(db: Db): number {
   return db.query<{ n: number }, []>("select count(*) as n from rules").get()!
     .n;
@@ -63,21 +82,26 @@ export function countRules(db: Db): number {
 
 export function insertRule(
   db: Db,
+  owner: string,
   rule: { instrument: string; condition: string; note: string | null },
   now: number,
 ): number {
   return Number(
     db
       .query(
-        `insert into rules (instrument, condition, note, created_at)
-         values (?, ?, ?, ?)`,
+        `insert into rules (owner, instrument, condition, note, created_at)
+         values (?, ?, ?, ?, ?)`,
       )
-      .run(rule.instrument, rule.condition, rule.note, now).lastInsertRowid,
+      .run(owner, rule.instrument, rule.condition, rule.note, now)
+      .lastInsertRowid,
   );
 }
 
-export function deleteRule(db: Db, id: number): boolean {
-  return db.query("delete from rules where id = ?").run(id).changes > 0;
+export function deleteRule(db: Db, owner: string, id: number): boolean {
+  return (
+    db.query("delete from rules where id = ? and owner = ?").run(id, owner)
+      .changes > 0
+  );
 }
 
 export function setPaused(
@@ -101,14 +125,15 @@ export function recordResult(
   ).run(result, now, armed ? 1 : 0, id);
 }
 
-// paused or not, so the jobs keep each one synced while its rule exists
-export function ruleInstruments(db: Db): Set<string> {
+// paused or not, so the jobs keep each one synced while its rule exists;
+// every person's, or one owner's
+export function ruleInstruments(db: Db, owner?: string): Set<string> {
   const out = new Set<string>();
   for (const r of db
-    .query<{ instrument: string; condition: string }, []>(
-      "select instrument, condition from rules",
+    .query<{ instrument: string; condition: string }, [string | null]>(
+      "select instrument, condition from rules where ?1 is null or owner = ?1",
     )
-    .all()) {
+    .all(owner ?? null)) {
     out.add(r.instrument);
     for (const id of instrumentsOf(readCondition(r.condition))) out.add(id);
   }
@@ -117,52 +142,74 @@ export function ruleInstruments(db: Db): Set<string> {
 
 export type AlertRow = {
   id: number;
+  owner: string;
   ruleId: number;
   firedAt: number;
   snapshot: string;
 };
 
+// the rule's owner, copied, since an alert outlives its rule
 export function insertAlert(
   db: Db,
-  ruleId: number,
+  rule: Pick<RuleRow, "id" | "owner">,
   snapshot: object,
   now: number,
 ): number {
   return Number(
     db
       .query(
-        "insert into alerts (rule_id, fired_at, snapshot) values (?, ?, ?)",
+        "insert into alerts (owner, rule_id, fired_at, snapshot) values (?, ?, ?, ?)",
       )
-      .run(ruleId, now, JSON.stringify(snapshot)).lastInsertRowid,
+      .run(rule.owner, rule.id, now, JSON.stringify(snapshot)).lastInsertRowid,
   );
 }
 
 export function readAlertsAfter(
   db: Db,
+  owner: string,
   after: number,
   limit: number,
 ): AlertRow[] {
   return db
-    .query<AlertRow, [number, number]>(
-      `select id, rule_id as ruleId, fired_at as firedAt, snapshot
-       from alerts where id > ? order by id limit ?`,
+    .query<AlertRow, [string, number, number]>(
+      `select id, owner, rule_id as ruleId, fired_at as firedAt, snapshot
+       from alerts where owner = ? and id > ? order by id limit ?`,
     )
-    .all(after, limit);
+    .all(owner, after, limit);
 }
 
-// the last id ever given, alerts since deleted included
-export function lastAlertId(db: Db): number {
+// the newest of the owner's alert ids retention deleted
+export function prunedAlertId(db: Db, owner: string): number {
   return (
     db
-      .query<{ seq: number }, []>(
-        "select seq from sqlite_sequence where name = 'alerts'",
+      .query<{ n: number }, [string]>(
+        "select alerts_pruned as n from users where id = ?",
       )
-      .get()?.seq ?? 0
+      .get(owner)?.n ?? 0
   );
 }
 
+// the last id given to the owner, alerts retention deleted included;
+// never the server's, which would tell how many alerts others got
+export function issuedAlertId(db: Db, owner: string): number {
+  return (
+    db
+      .query<{ n: number | null }, [string]>(
+        `select max(coalesce((select max(id) from alerts where owner = ?1), 0),
+           coalesce((select alerts_pruned from users where id = ?1), 0)) as n`,
+      )
+      .get(owner)?.n ?? 0
+  );
+}
+
+// each owner's newest pruned id is kept first, so their feed sees the loss
 export function pruneAlerts(db: Db, now: number): number {
-  return db
-    .query("delete from alerts where fired_at < ?")
-    .run(now - ALERTS_KEPT_DAYS * DAY_MS).changes;
+  const before = now - ALERTS_KEPT_DAYS * DAY_MS;
+  db.query(
+    `update users set alerts_pruned = max(alerts_pruned,
+       (select max(id) from alerts where owner = users.id and fired_at < ?1))
+     where exists (select 1 from alerts
+       where owner = users.id and fired_at < ?1)`,
+  ).run(before);
+  return db.query("delete from alerts where fired_at < ?").run(before).changes;
 }

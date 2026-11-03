@@ -7,6 +7,7 @@ import { json, NO_STORE, problem } from "../api/http.ts";
 import { iso } from "../market/format.ts";
 import { ArgError, fields } from "../operations/args.ts";
 import type { Markets } from "../operations/markets.ts";
+import type { Who } from "../operations/who.ts";
 import {
   createKey,
   isKeyId,
@@ -47,8 +48,9 @@ export const keyItem = (k: KeyRow) => ({
   profile: k.profile,
 });
 
-export const listAnswer = (m: Markets) =>
-  json({ keys: listKeys(m.db).map(keyItem), limit: MAX_KEYS });
+// the caller's own keys: each person makes and sees their own
+export const listAnswer = (m: Markets, who: Who) =>
+  json({ keys: listKeys(m.db, who.user).map(keyItem), limit: MAX_KEYS });
 
 function portfolioOf(value: unknown): PortfolioAccess {
   if (!(PORTFOLIO_ACCESS as readonly unknown[]).includes(value)) {
@@ -121,11 +123,13 @@ function parseAccess(body: unknown): KeyAccess {
   };
 }
 
-export async function createOne(d: KeysDeps, body: unknown) {
+export async function createOne(d: KeysDeps, who: Who, body: unknown) {
   const args = parseCreate(body);
   let made: { key: KeyRow; token: string };
   try {
-    made = await d.m.writer.write((db) => createKey(db, args, d.m.clock.now()));
+    made = await d.m.writer.write((db) =>
+      createKey(db, who.user, args, d.m.clock.now()),
+    );
   } catch (error) {
     if (error instanceof KeyConflict) return problem("conflict", error.message);
     throw error;
@@ -139,10 +143,10 @@ export async function createOne(d: KeysDeps, body: unknown) {
 }
 
 // the key's next request reads the new access, as a revoke holds
-export async function setOne(d: KeysDeps, id: string, body: unknown) {
+export async function setOne(d: KeysDeps, who: Who, id: string, body: unknown) {
   const change = parseAccess(body);
   const key = isKeyId(id)
-    ? await d.m.writer.write((db) => setKeyAccess(db, id, change))
+    ? await d.m.writer.write((db) => setKeyAccess(db, who.user, id, change))
     : null;
   if (key === null) return problem("not_found", "no such key");
   d.m.log.info("key access set", {
@@ -155,9 +159,9 @@ export async function setOne(d: KeysDeps, id: string, body: unknown) {
   return json({ key: keyItem(key) });
 }
 
-export async function revokeOne(d: KeysDeps, id: string) {
+export async function revokeOne(d: KeysDeps, who: Who, id: string) {
   const gone = isKeyId(id)
-    ? await d.m.writer.write((db) => revokeKey(db, id))
+    ? await d.m.writer.write((db) => revokeKey(db, who.user, id))
     : null;
   if (gone === null) return problem("not_found", "no such key");
   d.m.log.info("key revoked", { key: gone.id, key_name: gone.name });

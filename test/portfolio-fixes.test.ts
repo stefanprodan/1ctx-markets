@@ -30,7 +30,7 @@ import {
   readComment,
 } from "../src/operations/portfolio-import.ts";
 import { searchAll } from "../src/operations/search.ts";
-import type { Who } from "../src/operations/who.ts";
+import { OPERATOR, type Who } from "../src/operations/who.ts";
 import {
   portfolioByName,
   readPosition,
@@ -54,12 +54,16 @@ import { bar, instrument, LIVE, NOW, quote, world } from "./helpers/world.ts";
 
 const CASEY: Who = {
   name: "casey-agent",
+  user: OPERATOR,
+  credential: { kind: "key", id: "casey-agent" },
   portfolio: "write",
   rules: "none",
   profile: "none",
 };
 const OTHER: Who = {
   name: "riley-agent",
+  user: OPERATOR,
+  credential: { kind: "key", id: "riley-agent" },
   portfolio: "write",
   rules: "none",
   profile: "none",
@@ -102,8 +106,8 @@ async function setup() {
   quote(w.db, "KW:KKK", 1, 1);
   await portfolioBefore(w.m, "Shares");
   await cashBefore(w.m);
-  await createBroker(w.m, { name: "North" });
-  await createBroker(w.m, { name: "South" });
+  await createBroker(w.m, OPERATOR, { name: "North" });
+  await createBroker(w.m, OPERATOR, { name: "South" });
   return w;
 }
 
@@ -134,7 +138,11 @@ async function holdingsOf(
   m: Markets,
   currency: string | null = null,
 ): Promise<HoldingsAnswer> {
-  const h = await readHoldings(m, { portfolio: null, broker: null, currency });
+  const h = await readHoldings(m, OPERATOR, {
+    portfolio: null,
+    broker: null,
+    currency,
+  });
   if ("error" in h) throw new Error(h.message);
   return h;
 }
@@ -385,9 +393,9 @@ describe("import and export", () => {
       CASEY,
       parseImport({ portfolio: "Shares", csv, confirm: true }),
     );
-    expect((readTradeList(m, all) as { currency: string }[])[0]!.currency).toBe(
-      "GBp",
-    );
+    expect(
+      (readTradeList(m, OPERATOR, all) as { currency: string }[])[0]!.currency,
+    ).toBe("GBp");
   });
 
   test("two saves of one file at once insert it once; another currency is no duplicate", async () => {
@@ -400,7 +408,7 @@ describe("import and export", () => {
         parseImport({ portfolio: "Shares", csv, confirm: true }),
       );
     await Promise.all([save(), save()]);
-    expect(readTradeList(m, all)).toHaveLength(1);
+    expect(readTradeList(m, OPERATOR, all)).toHaveLength(1);
     const other = [
       head,
       "US:AAA,20260302,10,1,0,[broker North][paid EUR],Buy",
@@ -418,7 +426,11 @@ describe("import and export", () => {
     const { m, db } = await setup();
     await trade(m, { quantity: 1e-7, price: 10 });
     expect(plain(1e-7)).toBe("0.0000001");
-    const csv = exportCsv(m, portfolioByName(db, "Shares")!);
+    const csv = exportCsv(
+      m,
+      OPERATOR,
+      portfolioByName(db, OPERATOR, "Shares")!,
+    );
     expect(csv).toContain(",0.0000001,");
     await portfolioBefore(m, "Copy");
     const r = await importCsv(
@@ -528,7 +540,7 @@ describe("bonds, restore and removals", () => {
     const id = idOf(await trade(m, { quantity: 1 }));
     await setTradeState(m, CASEY, id, true);
     await setTradeState(m, OTHER, id, true);
-    expect(readTrade(db, id)!.removedBy).toBe("casey-agent");
+    expect(readTrade(db, OPERATOR, id)!.removedBy).toBe("casey-agent");
   });
 
   test("a refusal reads plainly on the page, without ids", () => {
@@ -575,7 +587,7 @@ describe("files as owners keep them", () => {
     const read = (await holdingsOf(m)).holdings.find((r) => r.id === "US:AAA")!;
     expect(read.quantity).toBe(50);
     expect(read.average_cost).toBe(10);
-    const [t] = readTradeList(m, all) as { stated_on: string }[];
+    const [t] = readTradeList(m, OPERATOR, all) as { stated_on: string }[];
     expect(t!.stated_on).toBe(LIVE);
   });
 
@@ -587,7 +599,11 @@ describe("files as owners keep them", () => {
       (r) => r.id === "US:AAA",
     )!;
     expect(typed.quantity).toBe(50);
-    const csv = exportCsv(m, portfolioByName(db, "Shares")!);
+    const csv = exportCsv(
+      m,
+      OPERATOR,
+      portfolioByName(db, OPERATOR, "Shares")!,
+    );
     expect(csv).toContain(",10,50,0,");
     // read back into its own portfolio: the same trade, nothing added
     const again = await importCsv(
@@ -603,7 +619,7 @@ describe("files as owners keep them", () => {
       CASEY,
       parseImport({ portfolio: "Copy", csv, confirm: true }),
     );
-    const copy = await readHoldings(m, {
+    const copy = await readHoldings(m, OPERATOR, {
       portfolio: "Copy",
       broker: null,
       currency: null,
@@ -944,7 +960,7 @@ describe("imports, rounding and removals as typed", () => {
       );
     await portfolioBefore(m, "Mistake");
     const t = idOf(await trade(m, { portfolio: "Mistake", broker: "South" }));
-    const mistake = `/portfolios/${portfolioByName(db, "Mistake")!.id}`;
+    const mistake = `/portfolios/${portfolioByName(db, OPERATOR, "Mistake")!.id}`;
     const live = await del(mistake);
     expect(live.status).toBe(409);
     expect(((await live.json()) as { detail: string }).detail).toContain(
@@ -953,18 +969,22 @@ describe("imports, rounding and removals as typed", () => {
     expect((await del("/brokers/2")).status).toBe(409);
     await setTradeState(m, CASEY, t, true);
     expect((await del("/brokers/2")).status).toBe(204);
-    expect(readTrade(db, t)!.broker).toBeNull();
+    expect(readTrade(db, OPERATOR, t)!.broker).toBeNull();
     expect((await del(mistake)).status).toBe(204);
-    expect(readTrade(db, t)).toBeNull();
-    expect(portfolioByName(db, "Mistake")).toBeNull();
+    expect(readTrade(db, OPERATOR, t)).toBeNull();
+    expect(portfolioByName(db, OPERATOR, "Mistake")).toBeNull();
   });
 
   test("export then import gives a total-derived price back exactly", async () => {
     const { m, db } = await setup();
     const r = await trade(m, { quantity: 3, price: null, total: 100 });
     if ("error" in r) throw new Error(r.message);
-    const stored = readTrade(db, r.trade!.id)!.price;
-    const csv = exportCsv(m, portfolioByName(db, "Shares")!);
+    const stored = readTrade(db, OPERATOR, r.trade!.id)!.price;
+    const csv = exportCsv(
+      m,
+      OPERATOR,
+      portfolioByName(db, OPERATOR, "Shares")!,
+    );
     await portfolioBefore(m, "Copy");
     await importCsv(
       m,
@@ -973,7 +993,7 @@ describe("imports, rounding and removals as typed", () => {
     );
     const copy = db
       .query("select price from trades where portfolio = ?")
-      .get(portfolioByName(db, "Copy")!.id) as { price: number };
+      .get(portfolioByName(db, OPERATOR, "Copy")!.id) as { price: number };
     expect(copy.price).toBe(stored);
   });
 
@@ -1126,7 +1146,7 @@ describe("a review's second pass", () => {
         .query("select id from positions where removed_at is null")
         .all();
       expect(live).toEqual([{ id: first }]);
-      const h = historyOf(m, up.position.id);
+      const h = historyOf(m, OPERATOR, up.position.id);
       if ("error" in h) throw new Error(h.message);
       expect(h.history.map((x) => x.id).sort()).toEqual(
         [first, up.position.id].sort(),
@@ -1137,7 +1157,11 @@ describe("a review's second pass", () => {
   test("an export read back after a later split counts the split once", async () => {
     const { m, db, clock } = await setup();
     await trade(m, { quantity: 5, price: 100, date: "2026-01-13" });
-    const csv = exportCsv(m, portfolioByName(db, "Shares")!);
+    const csv = exportCsv(
+      m,
+      OPERATOR,
+      portfolioByName(db, OPERATOR, "Shares")!,
+    );
     expect(csv).toContain(`[as of ${LIVE}]`);
     db.query(
       `insert into splits (instrument, date, numerator, denominator, ratio,
@@ -1147,7 +1171,7 @@ describe("a review's second pass", () => {
     const quantityIn = async (name: string, text: string) => {
       await portfolioBefore(m, name);
       await run(m, text, name);
-      const h = await readHoldings(m, {
+      const h = await readHoldings(m, OPERATOR, {
         portfolio: name,
         broker: null,
         currency: null,
@@ -1179,7 +1203,7 @@ describe("a review's second pass", () => {
     quote(db, "US:AAA", 12.123456789123, 12.123456789123);
     const t = await trade(m, { price: null });
     if ("error" in t) throw new Error(t.message);
-    expect(readTrade(db, t.trade!.id)!.price).toBe(12.123456789123);
+    expect(readTrade(db, OPERATOR, t.trade!.id)!.price).toBe(12.123456789123);
     const id = positionId(
       await addPosition(m, CASEY, {
         ...bond(),
@@ -1195,7 +1219,9 @@ describe("a review's second pass", () => {
       amount: { amount: 12.123456789123, currency: null },
     });
     if ("error" in up) throw new Error(up.message);
-    expect(readPosition(db, up.position.id)!.amount).toBe(12.123456789123);
+    expect(readPosition(db, OPERATOR, up.position.id)!.amount).toBe(
+      12.123456789123,
+    );
   });
 
   test("money rounds once, from the exact value", async () => {
@@ -1257,9 +1283,9 @@ describe("a review's second pass", () => {
     const { m, db } = await setup();
     const id = positionId(await addPosition(m, CASEY, bond()));
     await setPositionState(m, CASEY, id, true);
-    const first = readPosition(db, id)!;
+    const first = readPosition(db, OPERATOR, id)!;
     await setPositionState(m, OTHER, id, true);
-    expect(readPosition(db, id)).toEqual(first);
+    expect(readPosition(db, OPERATOR, id)).toEqual(first);
     expect(first.removedBy).toBe(CASEY.name);
   });
 
@@ -1428,7 +1454,11 @@ describe("a review's fourth pass", () => {
     expect(ahead > LIVE).toBe(true);
     const r = await trade(m, { quantity: 3, price: 41.5, date: ahead });
     if ("error" in r) throw new Error(r.message);
-    const csv = exportCsv(m, portfolioByName(db, "Shares")!);
+    const csv = exportCsv(
+      m,
+      OPERATOR,
+      portfolioByName(db, OPERATOR, "Shares")!,
+    );
     expect(csv).toContain(`[as of ${ahead}]`);
     await portfolioBefore(m, "Copy");
     const back = await importCsv(
@@ -1593,11 +1623,11 @@ describe("an update's date", () => {
     const up = await updated(m, id, {
       by: { amount: -606, currency: "USD" },
     });
-    const now = readPosition(db, up.position.id)!;
+    const now = readPosition(db, OPERATOR, up.position.id)!;
     expect([now.amount, now.asOf]).toEqual([394, LIVE]);
     const row = (await holdingsOf(m)).holdings.find((x) => x.kind === "cash")!;
     expect(row.as_of).toBe(LIVE);
-    const h = historyOf(m, up.position.id);
+    const h = historyOf(m, OPERATOR, up.position.id);
     if ("error" in h) throw new Error(h.message);
     expect(h.history.map((x) => [x.id, x.as_of]).sort()).toEqual(
       [
@@ -1615,7 +1645,7 @@ describe("an update's date", () => {
       amount: { amount: 100, currency: "EUR" },
     });
     expect(up.rate!.rate).toBe(1.2);
-    expect(readPosition(db, up.position.id)!.asOf).toBe(LIVE);
+    expect(readPosition(db, OPERATOR, up.position.id)!.asOf).toBe(LIVE);
   });
 
   test("a bond's new face keeps its purchase date", async () => {
@@ -1624,7 +1654,7 @@ describe("an update's date", () => {
     const up = await updated(m, id, {
       amount: { amount: 1500, currency: null },
     });
-    expect(readPosition(db, up.position.id)!.asOf).toBe("2026-05-03");
+    expect(readPosition(db, OPERATOR, up.position.id)!.asOf).toBe("2026-05-03");
   });
 
   test("a change that moves no value keeps the date", async () => {
@@ -1636,10 +1666,10 @@ describe("an update's date", () => {
       const { m, db } = await setup();
       const id = await added(m, args);
       const up = await updated(m, id, change);
-      expect([change, readPosition(db, up.position.id)!.asOf]).toEqual([
+      expect([
         change,
-        "2026-05-03",
-      ]);
+        readPosition(db, OPERATOR, up.position.id)!.asOf,
+      ]).toEqual([change, "2026-05-03"]);
     }
   });
 
@@ -1650,7 +1680,7 @@ describe("an update's date", () => {
       by: { amount: -6, currency: null },
       date: "2026-09-14",
     });
-    expect(readPosition(db, up.position.id)!.asOf).toBe("2026-09-14");
+    expect(readPosition(db, OPERATOR, up.position.id)!.asOf).toBe("2026-09-14");
     const later = latestDay(m.clock.now()).replace(/^\d{4}/, (y) =>
       String(Number(y) + 1),
     );
@@ -1673,13 +1703,13 @@ describe("a retried add", () => {
     const retry = await trade(m, {});
     expect(retry).toMatchObject({ error: "conflict", trade: first });
     expect((retry as { message: string }).message).toContain(`trade ${first}`);
-    expect(readTradeList(m, all)).toHaveLength(1);
+    expect(readTradeList(m, OPERATOR, all)).toHaveLength(1);
     // a field that differs is another trade
     idOf(await trade(m, { price: 11 }));
     idOf(await trade(m, { broker: "South" }));
     // a second fill equal to the first is saved when said so
     idOf(await trade(m, { again: true }));
-    expect(readTradeList(m, all)).toHaveLength(4);
+    expect(readTradeList(m, OPERATOR, all)).toHaveLength(4);
     await clock.advance(10 * 60_000 + 1);
     idOf(await trade(m, {}));
   });
@@ -1740,7 +1770,11 @@ describe("an export of a lot paid in another currency", () => {
     const { m, db } = await setup();
     pair(db, "EURUSD=X", 1.3, { "2026-02-27": [1.25, true] });
     const id = idOf(await trade(m, { currency: "EUR", price: 8 }));
-    const csv = exportCsv(m, portfolioByName(db, "Shares")!);
+    const csv = exportCsv(
+      m,
+      OPERATOR,
+      portfolioByName(db, OPERATOR, "Shares")!,
+    );
     const line = csv.split("\n")[1]!;
     expect(line).toContain(",20260302,10,1,0,,,");
     expect(line).toContain("[paid EUR 8]");
@@ -1758,9 +1792,9 @@ describe("an export of a lot paid in another currency", () => {
       CASEY,
       parseImport({ portfolio: "Copy", csv, confirm: true }),
     );
-    const copy = readTradeList(m, { ...all, portfolio: "Copy" });
+    const copy = readTradeList(m, OPERATOR, { ...all, portfolio: "Copy" });
     if ("error" in copy) throw new Error(copy.message);
-    const kept = readTrade(db, id)!;
+    const kept = readTrade(db, OPERATOR, id)!;
     expect(copy.map((t) => [t.currency, t.price])).toEqual([
       [kept.currency, kept.price],
     ]);
@@ -1770,7 +1804,11 @@ describe("an export of a lot paid in another currency", () => {
     const { m, db } = await setup();
     pair(db, "EURUSD=X", 1.3);
     await trade(m, { currency: "EUR", price: 8 });
-    const line = exportCsv(m, portfolioByName(db, "Shares")!).split("\n")[1]!;
+    const line = exportCsv(
+      m,
+      OPERATOR,
+      portfolioByName(db, OPERATOR, "Shares")!,
+    ).split("\n")[1]!;
     expect(line).toContain(",20260302,8,1,0,,,");
     expect(line).toContain("[paid EUR][as of");
   });
@@ -1835,20 +1873,20 @@ describe("the owner's time zone", () => {
   test("a position with no date is the UTC day until a zone is set", async () => {
     const { m } = await setup();
     expect(await asOf(m)).toBe(LIVE);
-    await saveSettings(m, { time_zone: EAST });
+    await saveSettings(m, OPERATOR, { time_zone: EAST });
     expect(await asOf(m)).toBe("2026-10-24");
   });
 
   test("an update and an import with no date use it too", async () => {
     const { m, db } = await setup();
-    await saveSettings(m, { time_zone: EAST });
+    await saveSettings(m, OPERATOR, { time_zone: EAST });
     const r = await addPosition(m, CASEY, cash("2026-05-03"));
     if ("error" in r) throw new Error(r.message);
     const up = await updatePosition(m, CASEY, r.position.id, {
       by: { amount: -6, currency: null },
     });
     if ("error" in up) throw new Error(up.message);
-    expect(readPosition(db, up.position.id)!.asOf).toBe("2026-10-24");
+    expect(readPosition(db, OPERATOR, up.position.id)!.asOf).toBe("2026-10-24");
     const file = await importCsv(
       m,
       CASEY,
@@ -1863,18 +1901,24 @@ describe("the owner's time zone", () => {
 
   test("settings keep one when the other is saved, and refuse a bad zone", async () => {
     const { m } = await setup();
-    await saveSettings(m, { display_currency: "EUR", time_zone: EAST });
-    expect(await saveSettings(m, { display_currency: "USD" })).toEqual({
+    await saveSettings(m, OPERATOR, {
+      display_currency: "EUR",
+      time_zone: EAST,
+    });
+    expect(
+      await saveSettings(m, OPERATOR, { display_currency: "USD" }),
+    ).toEqual({
       display_currency: "USD",
       time_zone: EAST,
     });
     for (const bad of [null, "", "+02:00", "Nowhere/Made_Up", 3]) {
-      await expect(saveSettings(m, { time_zone: bad })).rejects.toThrow(
-        "IANA time zone",
-      );
+      await expect(
+        saveSettings(m, OPERATOR, { time_zone: bad }),
+      ).rejects.toThrow("IANA time zone");
     }
     expect(
-      (await saveSettings(m, { time_zone: "america/new_york" })).time_zone,
+      (await saveSettings(m, OPERATOR, { time_zone: "america/new_york" }))
+        .time_zone,
     ).toBe("America/New_York");
   });
 });
@@ -1949,6 +1993,8 @@ describe("setup and brokers over the tool", () => {
     expect(unknown.body.message).toContain("East");
     const reader: Who = {
       name: "reader",
+      user: OPERATOR,
+      credential: { kind: "key", id: "reader" },
       portfolio: "read",
       rules: "none",
       profile: "none",
@@ -2166,7 +2212,7 @@ describe("gaps the import fixes left", () => {
 
   test("a refused setup saves nothing", async () => {
     const { m } = world();
-    await saveSettings(m, { time_zone: "Asia/Tokyo" });
+    await saveSettings(m, OPERATOR, { time_zone: "Asia/Tokyo" });
     const r = await ask(m, CASEY, "portfolio_setup", {
       action: "setup",
       display_currency: "EUR",
@@ -2229,7 +2275,7 @@ describe("a cash row's name and broker", () => {
     });
     const last = renamed.body.position.position as number;
     for (const id of [first, last]) {
-      const h = historyOf(m, id);
+      const h = historyOf(m, OPERATOR, id);
       if ("error" in h) throw new Error(h.message);
       expect(h.history.map((x) => [x.name, x.broker])).toEqual([
         ["Rainy day", null],
@@ -2263,7 +2309,7 @@ describe("a cash row's name and broker", () => {
       }),
     );
     expect(patched.status).toBe(409);
-    expect(readPosition(m.db, other)!.removedAt).toBeNull();
+    expect(readPosition(m.db, OPERATOR, other)!.removedAt).toBeNull();
     // the same name at another broker is another row
     const apart = await cashTool(m, {
       action: "update",
@@ -2284,16 +2330,16 @@ describe("a cash row's name and broker", () => {
     const again = await cashTool(m, { ...cash, amount: 150 });
     expect(again.body.replaced).toBe(usd);
     expect(
-      readPosition(m.db, kwd.body.position.position)!.removedAt,
+      readPosition(m.db, OPERATOR, kwd.body.position.position)!.removedAt,
     ).toBeNull();
     // restoring the first USD row leaves the KWD row live
     await setPositionState(m, CASEY, usd, false);
-    expect(readPosition(m.db, usd)!.removedAt).toBeNull();
+    expect(readPosition(m.db, OPERATOR, usd)!.removedAt).toBeNull();
     expect(
-      readPosition(m.db, again.body.position.position)!.removedAt,
+      readPosition(m.db, OPERATOR, again.body.position.position)!.removedAt,
     ).not.toBeNull();
     expect(
-      readPosition(m.db, kwd.body.position.position)!.removedAt,
+      readPosition(m.db, OPERATOR, kwd.body.position.position)!.removedAt,
     ).toBeNull();
   });
 

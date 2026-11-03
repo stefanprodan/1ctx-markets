@@ -38,6 +38,7 @@ import { m0032 } from "./0032-cash-portfolio.ts";
 import { m0033 } from "./0033-profile.ts";
 import { m0034 } from "./0034-portfolio-order.ts";
 import { m0035 } from "./0035-stored-returns.ts";
+import { m0036 } from "./0036-owners.ts";
 
 export const MIGRATIONS: readonly Migration[] = [
   m0001,
@@ -75,4 +76,5 @@ export const MIGRATIONS: readonly Migration[] = [
   m0033,
   m0034,
   m0035,
+  m0036,
 ];

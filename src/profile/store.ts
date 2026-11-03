@@ -40,42 +40,47 @@ const rowOf = (raw: Raw): Revision => ({
 
 const infoOf = ({ text: _, ...info }: Revision): RevisionInfo => info;
 
-export function readProfile(db: Db): Revision | null {
+export function readProfile(db: Db, owner: string): Revision | null {
   const raw = db
-    .query<Raw, []>(
+    .query<Raw, [string]>(
       `select revision, text, bytes, author, created_at
-       from profile_versions order by revision desc limit 1`,
+       from profile_versions where owner = ?
+       order by revision desc limit 1`,
     )
-    .get();
+    .get(owner);
   return raw === null ? null : rowOf(raw);
 }
 
 // newest first
-export const profileVersions = (db: Db): RevisionInfo[] =>
+export const profileVersions = (db: Db, owner: string): RevisionInfo[] =>
   db
-    .query<Omit<Raw, "text">, []>(
+    .query<Omit<Raw, "text">, [string]>(
       `select revision, bytes, author, created_at
-       from profile_versions order by revision desc`,
+       from profile_versions where owner = ? order by revision desc`,
     )
-    .all()
+    .all(owner)
     .map((raw) => infoOf(rowOf({ ...raw, text: "" })));
 
-export function profileVersion(db: Db, revision: number): Revision | null {
+export function profileVersion(
+  db: Db,
+  owner: string,
+  revision: number,
+): Revision | null {
   const raw = db
-    .query<Raw, [number]>(
+    .query<Raw, [string, number]>(
       `select revision, text, bytes, author, created_at
-       from profile_versions where revision = ?`,
+       from profile_versions where owner = ? and revision = ?`,
     )
-    .get(revision);
+    .get(owner, revision);
   return raw === null ? null : rowOf(raw);
 }
 
-export const liveRevision = (db: Db): number | null =>
+export const liveRevision = (db: Db, owner: string): number | null =>
   db
-    .query<{ r: number | null }, []>(
-      "select max(revision) as r from profile_versions",
+    .query<{ r: number | null }, [string]>(
+      "select max(revision) as r from profile_versions where owner = ?",
     )
-    .get()?.r ?? null;
+    .get(owner)?.r ?? null;
 
 // 1ctx's textFromString(): the text as an editor saves it
 export function profileText(value: string): string {
@@ -131,12 +136,13 @@ export const profileConflict = (live: number | null): Failure =>
 
 export function saveProfile(
   writer: Writer,
+  owner: string,
   save: Save,
   author: string,
   now: number,
 ): Promise<Saved | Failure> {
   return writer.write((db): Saved | Failure => {
-    const live = readProfile(db);
+    const live = readProfile(db, owner);
     // only the first replace names no revision
     const stale =
       save.revision === null
@@ -159,13 +165,21 @@ export function saveProfile(
     };
     checked(next);
     db.query(
-      `insert into profile_versions (revision, text, bytes, author, created_at)
-       values (?, ?, ?, ?, ?)`,
-    ).run(next.revision, next.text, next.bytes, next.author, next.createdAt);
-    // the live revision is the highest, so it is never evicted
-    db.query("delete from profile_versions where revision <= ?").run(
-      next.revision - KEPT_REVISIONS,
+      `insert into profile_versions (owner, revision, text, bytes, author,
+         created_at)
+       values (?, ?, ?, ?, ?, ?)`,
+    ).run(
+      owner,
+      next.revision,
+      next.text,
+      next.bytes,
+      next.author,
+      next.createdAt,
     );
+    // the live revision is the highest, so it is never evicted
+    db.query(
+      "delete from profile_versions where owner = ? and revision <= ?",
+    ).run(owner, next.revision - KEPT_REVISIONS);
     return { saved: infoOf(next), unchanged: false };
   });
 }

@@ -31,10 +31,10 @@ import {
 } from "./format.ts";
 import type { RuleHooks } from "./hooks.ts";
 import {
+  allRules,
   insertAlert,
   type Result,
   type RuleRow,
-  readRules,
   recordResult,
   setPaused,
 } from "./store.ts";
@@ -380,7 +380,7 @@ export function applyRule(
       values: evaluation.values,
     };
     alert = {
-      id: insertAlert(db, rule.id, snapshot, now),
+      id: insertAlert(db, rule, snapshot, now),
       firedAt: now,
       snapshot,
     };
@@ -435,7 +435,7 @@ export function ruleEngine(options: {
       guarded("rule evaluation failed", () => {
         const moved = new Set(instruments);
         if (moved.size === 0) return;
-        const due = readRules(db, { active: true }).filter((rule) =>
+        const due = allRules(db, { active: true }).filter((rule) =>
           [...reads(rule)].some((id) => moved.has(id)),
         );
         run(db, due, now);
@@ -443,7 +443,7 @@ export function ruleEngine(options: {
     },
     rescaled(db, instrument) {
       guarded("rule split check failed", () => {
-        for (const rule of readRules(db)) {
+        for (const rule of allRules(db)) {
           if (rule.paused === "split") continue;
           if (
             comparisons<Comparison>(rule.condition.node).some((c) =>
@@ -459,7 +459,7 @@ export function ruleEngine(options: {
     finnhub: {
       waited(db) {
         const keys = new Map<string, EventKey>();
-        for (const rule of readRules(db)) {
+        for (const rule of allRules(db)) {
           const g = rule.condition.afterEarnings;
           if (g === null) continue;
           keys.set(`${g.symbol}|${g.fiscalYear}|${g.fiscalQuarter}`, {
@@ -477,7 +477,7 @@ export function ruleEngine(options: {
               (e) => `${e.instrument}|${e.fiscalYear}|${e.fiscalQuarter}`,
             ),
           );
-          const due = readRules(db, { active: true }).filter((rule) => {
+          const due = allRules(db, { active: true }).filter((rule) => {
             const g = rule.condition.afterEarnings;
             return (
               g !== null &&

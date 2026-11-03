@@ -9,13 +9,15 @@ import {
   createPortfolio,
   saveSettings,
 } from "../src/operations/portfolio.ts";
-import type { Who } from "../src/operations/who.ts";
+import { OPERATOR, type Who } from "../src/operations/who.ts";
 import { ADMIN_KEY, api } from "./helpers/api.ts";
 import { ask } from "./helpers/portfolio.ts";
 import { instrument, quote, world } from "./helpers/world.ts";
 
 const CASEY: Who = {
   name: "casey-agent",
+  user: OPERATOR,
+  credential: { kind: "key", id: "casey-agent" },
   portfolio: "write",
   rules: "none",
   profile: "none",
@@ -26,9 +28,10 @@ async function setup() {
   const w = world();
   instrument(w.db, "US:AAA", { currency: "USD", name: "Alpha Made Up" });
   quote(w.db, "US:AAA", 120, 118);
-  await saveSettings(w.m, { display_currency: "EUR" });
-  await createPortfolio(w.m, { name: "Shares" });
-  for (const name of ["North", "South"]) await createBroker(w.m, { name });
+  await saveSettings(w.m, OPERATOR, { display_currency: "EUR" });
+  await createPortfolio(w.m, OPERATOR, { name: "Shares" });
+  for (const name of ["North", "South"])
+    await createBroker(w.m, OPERATOR, { name });
   return w;
 }
 

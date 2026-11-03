@@ -399,6 +399,13 @@ MCP tools copied onto paths.
   scope never opens them. The handler gets the caller (`Who`), whose
   name a write records: `web` for the cookie, `admin`, or the key's
   name. The spec names `portfolioRead` and `portfolioWrite`.
+- **Every person's route acts as the caller's person** (`Who.user`,
+  `users.id`): portfolios, the profile, the dashboard, rules, alerts and
+  keys. A key's lookup carries the user who made it; the admin key and
+  the cookie are the operator. The router hands `Who` to the handler,
+  never a global; another person's row by id answers 404 as an unknown
+  one. `Who.credential` names what sent the request (the admin key,
+  the cookie or a key's id), so a write can check it again.
 - **Rules routes and the alerts feed take the key's rules access**
   (`keys.rules`, `none` by default) the same way: `rules:read` (the
   list, one rule, the feed) opens with `read` or `write`,
@@ -461,7 +468,7 @@ answer; 1ctx (an agent workspace whose scheduled tasks poll it) is one.
 
 | Status | When |
 |---|---|
-| 200 | alerts after the cursor, or from the start after a reset; or a retention gap alone, with `ETag` `lastAlertId()` |
+| 200 | alerts after the cursor, or from the start after a reset; or a retention gap alone, with `ETag` `issuedAlertId()` |
 | 204 | no cursor (or a reset one) and no alerts |
 | 304 | a cursor and nothing after it; the ETag is repeated |
 | 400 | any query argument, or an `If-None-Match` not of this form |
@@ -484,10 +491,17 @@ answer; 1ctx (an agent workspace whose scheduled tasks poll it) is one.
   or `alertItem()` must still read every kept snapshot
   (`docs/storage.md`, "Retention"), and it changes the bytes of pages
   already answered, which starts a polling client's run again.
-- **A hole after the cursor is a retention gap**: a first id above
-  cursor + 1, or none left while `lastAlertId()` is past the cursor,
-  answers `retention_gap: true`. A cursor above any id this database
-  issued starts over with `cursor_reset: true`, as after a restore.
+- **Each person reads their own alerts** (`alerts.owner`, copied from
+  the rule when it fires). The cursor stays the alert id, shared by
+  everyone, so another person's ids fall between one's own.
+- **A pruned alert of the reader's after the cursor is a retention
+  gap**: retention keeps each person's newest pruned id
+  (`users.alerts_pruned`, `pruneAlerts()`), and one past the cursor
+  answers `retention_gap: true`; another person's ids, pruned or not,
+  never do. A cursor above any id given to the reader
+  (`issuedAlertId()`: their newest alert or pruned id, never the
+  server's, which would tell another person's alert count) starts over
+  with `cursor_reset: true`, as after a restore.
 - **Delivery is at least once.** The cursor moves only when the client
   stores the new ETag, so a consumer deduplicates by alert id. Answers
   are `cache-control: private, no-store`.

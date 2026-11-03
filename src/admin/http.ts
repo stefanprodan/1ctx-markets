@@ -27,9 +27,10 @@ import {
 } from "../operations/research.ts";
 import { type ErrorItem, restStored } from "../operations/targets.ts";
 import type { TrackState } from "../operations/track.ts";
+import type { Who } from "../operations/who.ts";
 import { portfolioHolds, portfolioInstruments } from "../portfolios/store.ts";
 import { instrumentsOf } from "../rules/format.ts";
-import { readRules, ruleInstruments } from "../rules/store.ts";
+import { allRules, ruleInstruments } from "../rules/store.ts";
 import { sourceFile } from "../runtime/keys.ts";
 import { ATTRIBUTION } from "../sources/fred/sync.ts";
 import { FRED, FUND_SOURCE, YAHOO } from "../sources/ids.ts";
@@ -436,7 +437,7 @@ function parseList(url: URL) {
 }
 
 // by id, after the last one a page answered, so a delete never skips a row
-export function instruments(m: Markets, url: URL): Response {
+export function instruments(m: Markets, owner: string, url: URL): Response {
   const { query, after, size } = parseList(url);
   const { db, clock } = m;
   const now = clock.now();
@@ -456,7 +457,7 @@ export function instruments(m: Markets, url: URL): Response {
       `${STORED} where ${where} and i.id > ?2 order by i.id limit ?3`,
     )
     .all(query, after ?? "", size + 1);
-  const row = listRow(m, now);
+  const row = listRow(m, owner, now);
   const page = rows.slice(0, size);
   return json({
     // FRED's terms, wherever a page shows one of its values
@@ -487,11 +488,17 @@ const STORED = `select ${STORED_COLUMNS} from instruments i ${STORED_JOINS}`;
 export const storedRow = (db: Db, id: string): Stored | null =>
   db.query<Stored, [string]>(`${STORED} where i.id = ?1`).get(id);
 
-export const listRow = (m: Markets, now: number) => {
-  const ruled = ruleInstruments(m.db);
-  const faved = dashboardInstruments(m.db);
-  // tracked, never named: a key without portfolio access reads this row
-  const held = portfolioInstruments(m.db);
+// tracked_by names only the caller's own rules and dashboard; another
+// person's, like any holding, tracks it unnamed, since every read-scope
+// key reads this row
+export const listRow = (m: Markets, owner: string, now: number) => {
+  const ruled = ruleInstruments(m.db, owner);
+  const faved = dashboardInstruments(m.db, owner);
+  const unnamed = new Set([
+    ...portfolioInstruments(m.db),
+    ...ruleInstruments(m.db),
+    ...dashboardInstruments(m.db),
+  ]);
   return (r: Stored) => {
     const { tracking } = m;
     const read = r.readAt !== null && r.readAt > now - tracking.readMs;
@@ -510,7 +517,7 @@ export const listRow = (m: Markets, now: number) => {
       kind: r.type,
       unit: r.unit,
       source: r.source,
-      tracked: by.length > 0 || held.has(r.id),
+      tracked: by.length > 0 || unnamed.has(r.id),
       tracked_by: by,
       read_at: iso(r.readAt),
       read_until: read ? iso(r.readAt! + tracking.readMs) : null,
@@ -523,7 +530,12 @@ export const listRow = (m: Markets, now: number) => {
 };
 
 // a read, as any client's: an unknown symbol is fetched
-export async function instrument(m: Markets, url: URL, raw: string) {
+export async function instrument(
+  m: Markets,
+  owner: string,
+  url: URL,
+  raw: string,
+) {
   noQuery(url);
   const input = pathSymbol(raw);
   // a fund's top holdings beside the quote, under one deadline, so the
@@ -566,7 +578,7 @@ export async function instrument(m: Markets, url: URL, raw: string) {
     input,
     ...(stored.source === FRED ? { attribution: ATTRIBUTION } : {}),
     credit: creditOf(stored.source),
-    instrument: listRow(m, m.clock.now())(stored),
+    instrument: listRow(m, owner, m.clock.now())(stored),
     intraday: hasIntraday(stored),
     quote: failure === null ? item : null,
     error:
@@ -591,12 +603,13 @@ export function storedCheck(m: Markets, url: URL, raw: string): Response {
 // no read: a read stamp would keep a value dropped from the flag tracked
 export function watchlist(
   m: Markets,
+  owner: string,
   track: () => readonly TrackState[],
   url: URL,
 ): Response {
   noQuery(url);
   const now = m.clock.now();
-  const row = listRow(m, now);
+  const row = listRow(m, owner, now);
   const entries = track().map((t) => ({
     t,
     stored: t.id === null ? null : storedRow(m.db, t.id),
@@ -704,9 +717,11 @@ export async function refetchOne(
 }
 
 // every row of one instrument in one write, never another's; a rule
-// reading it holds it, as tracking does
+// reading it holds it, as tracking does, whoever's it is: the caller's
+// are named, another person's only counted
 export async function deleteOne(
   d: AdminDeps,
+  who: Who,
   url: URL,
   raw: string,
 ): Promise<Response> {
@@ -716,10 +731,15 @@ export async function deleteOne(
   const id = instrument.id;
   const done = await d.m.writer.write((db) => {
     if (readInstrument(db, id) === null) return null;
-    const rules = readRules(db)
-      .filter((r) => r.instrument === id || instrumentsOf(r.condition).has(id))
-      .map((r) => r.id);
-    if (rules.length > 0) return { rules };
+    const holding = allRules(db).filter(
+      (r) => r.instrument === id || instrumentsOf(r.condition).has(id),
+    );
+    if (holding.length > 0) {
+      return {
+        rules: holding.filter((r) => r.owner === who.user).map((r) => r.id),
+        others: holding.filter((r) => r.owner !== who.user).length,
+      };
+    }
     if (portfolioHolds(db, id)) return { held: true as const };
     // a tab still holding the card reloads at its next save
     db.query(
@@ -732,7 +752,7 @@ export async function deleteOne(
     // the instrument's own runs, so a key added again starts unfetched
     db.query("delete from sync_runs where scope = ?").run(id);
     db.query("delete from instruments where id = ?").run(id);
-    return { rules: [] };
+    return { rules: [], others: 0 };
   });
   if (done === null) return noInstrument(input);
   if ("held" in done) {
@@ -748,6 +768,12 @@ export async function deleteOne(
       "rules read this instrument; delete them first",
       { input, rules: done.rules },
     );
+  }
+  if (done.others > 0) {
+    return problem("conflict", "another person's rules read this instrument", {
+      input,
+      rules: [],
+    });
   }
   return new Response(null, { status: 204, headers: NO_STORE });
 }

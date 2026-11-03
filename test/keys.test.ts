@@ -282,7 +282,7 @@ describe("agent keys", () => {
     await w.m.writer.write((db) =>
       db
         .query(
-          "insert into keys (id, name, token_hash, created_at) values ('burstkey0000', 'burst', ?, 0)",
+          "insert into keys (id, user_id, name, token_hash, created_at) values ('burstkey0000', 'operator', 'burst', ?, 0)",
         )
         .run(tokenHash(token)),
     );
@@ -380,7 +380,7 @@ describe("the call limit", () => {
     const key = (await w.m.writer.write((db) =>
       db
         .query(
-          "insert into keys (id, name, token_hash, created_at) values ('mcpkey000000', 'mcp', ?, 0) returning id",
+          "insert into keys (id, user_id, name, token_hash, created_at) values ('mcpkey000000', 'operator', 'mcp', ?, 0) returning id",
         )
         .get(tokenHash("1ctx-markets-mcp-limit-test-key-000000000000")),
     )) as { id: string };

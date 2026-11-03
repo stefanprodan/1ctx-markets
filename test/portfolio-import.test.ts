@@ -10,7 +10,7 @@ import {
   importCsv,
   parseImport,
 } from "../src/operations/portfolio-import.ts";
-import type { Who } from "../src/operations/who.ts";
+import { OPERATOR, type Who } from "../src/operations/who.ts";
 import { parseCsv, parseDay, parseNumber } from "../src/portfolios/csv.ts";
 import { portfolioByName, readPositions } from "../src/portfolios/store.ts";
 import { cashBefore, portfolioBefore } from "./helpers/portfolio.ts";
@@ -18,6 +18,8 @@ import { instrument, NOW, quote, world } from "./helpers/world.ts";
 
 const CASEY: Who = {
   name: "casey-agent",
+  user: OPERATOR,
+  credential: { kind: "key", id: "casey-agent" },
   portfolio: "write",
   rules: "none",
   profile: "none",
@@ -43,7 +45,7 @@ async function setup() {
   await portfolioBefore(w.m, "Shares");
   await portfolioBefore(w.m, "Copy");
   await cashBefore(w.m);
-  await createBroker(w.m, { name: "North" });
+  await createBroker(w.m, OPERATOR, { name: "North" });
   return w;
 }
 
@@ -111,7 +113,7 @@ describe("the Yahoo import", () => {
       broker: "North",
       note: "a note, with a comma",
     });
-    expect(readTradeList(m, all)).toEqual([]);
+    expect(readTradeList(m, OPERATOR, all)).toEqual([]);
     const saved = await importCsv(
       m,
       CASEY,
@@ -119,7 +121,7 @@ describe("the Yahoo import", () => {
     );
     if ("error" in saved) throw new Error(saved.message);
     expect(saved.counts).toEqual({ ok: 0, bad: 1, skipped: 1, saved: 2 });
-    expect(readTradeList(m, all)).toHaveLength(2);
+    expect(readTradeList(m, OPERATOR, all)).toHaveLength(2);
     // the same file again finds its trades already saved
     const again = await importCsv(
       m,
@@ -149,7 +151,11 @@ describe("the Yahoo import", () => {
       CASEY,
       parseImport({ portfolio: "Shares", csv: YAHOO, confirm: true }),
     );
-    const csv = exportCsv(m, portfolioByName(db, "Shares")!);
+    const csv = exportCsv(
+      m,
+      OPERATOR,
+      portfolioByName(db, OPERATOR, "Shares")!,
+    );
     // LF and no BOM, as Yahoo writes its own
     expect(csv.split("\n")[0]).toBe(HEADER);
     expect(csv).not.toContain("\r");
@@ -159,7 +165,12 @@ describe("the Yahoo import", () => {
       parseImport({ portfolio: "Copy", csv, confirm: true }),
     );
     const strip = (portfolio: string) =>
-      (readTradeList(m, { ...all, portfolio }) as Record<string, unknown>[])
+      (
+        readTradeList(m, OPERATOR, { ...all, portfolio }) as Record<
+          string,
+          unknown
+        >[]
+      )
         .map(
           ({
             id: _,
@@ -200,11 +211,11 @@ describe("the Yahoo import", () => {
       CASEY,
       parseImport({ portfolio: "Shares", csv, confirm: true }),
     );
-    const [t] = readTradeList(m, all) as { currency: string }[];
+    const [t] = readTradeList(m, OPERATOR, all) as { currency: string }[];
     expect(t!.currency).toBe("EUR");
-    expect(exportCsv(m, portfolioByName(db, "Shares")!)).toContain(
-      "[broker North][paid EUR]",
-    );
+    expect(
+      exportCsv(m, OPERATOR, portfolioByName(db, OPERATOR, "Shares")!),
+    ).toContain("[broker North][paid EUR]");
   });
 });
 
@@ -253,8 +264,10 @@ describe("position imports", () => {
     );
     if ("error" in r) throw new Error(r.message);
     expect(r).toMatchObject({ portfolio: "Cash", counts: { saved: 1 } });
-    const cash = portfolioByName(db, "Cash")!;
-    expect(readPositions(db).map((p) => p.portfolio)).toEqual([cash.id]);
+    const cash = portfolioByName(db, OPERATOR, "Cash")!;
+    expect(readPositions(db, OPERATOR).map((p) => p.portfolio)).toEqual([
+      cash.id,
+    ]);
     const bonds = [
       "Item,Symbol,Currency,Amount,Rate (%),Purchase Date,Maturity,Note",
       "Made Up Bond,,EUR,1000,5.5,2026-01-02,2030-01-02,",
@@ -270,7 +283,7 @@ describe("position imports", () => {
         message: "Cash holds only cash; name another portfolio",
       });
     }
-    expect(readPositions(db)).toHaveLength(1);
+    expect(readPositions(db, OPERATOR)).toHaveLength(1);
   });
 
   test("cash takes its header's currency and dry powder only where picked", async () => {
@@ -300,12 +313,12 @@ describe("position imports", () => {
       CASEY,
       parseImport({ portfolio: "Shares", csv, dry_powder: [2], confirm: true }),
     );
-    expect(readPositions(db).map((p) => [p.name, p.dryPowder, p.asOf])).toEqual(
-      [
-        ["Current account", false, "2026-04-17"],
-        ["Kept for buying", true, "2026-04-17"],
-      ],
-    );
+    expect(
+      readPositions(db, OPERATOR).map((p) => [p.name, p.dryPowder, p.asOf]),
+    ).toEqual([
+      ["Current account", false, "2026-04-17"],
+      ["Kept for buying", true, "2026-04-17"],
+    ]);
   });
 
   test("cash of one name and broker keeps a row per currency", async () => {
@@ -333,7 +346,7 @@ describe("position imports", () => {
       if ("error" in r) throw new Error(r.message);
     }
     expect(
-      readPositions(db)
+      readPositions(db, OPERATOR)
         .map((p) => [p.currency, p.amount])
         .sort(),
     ).toEqual([
@@ -357,7 +370,7 @@ describe("position imports", () => {
       if ("error" in r) throw new Error(r.message);
       expect(r.counts.saved).toBe(1);
     }
-    const [bond] = readPositions(db);
+    const [bond] = readPositions(db, OPERATOR);
     expect(bond).toMatchObject({
       kind: "bond",
       amount: 1000,

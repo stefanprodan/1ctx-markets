@@ -6,6 +6,7 @@ import { readInstrument } from "../src/market/instruments.ts";
 import { storeIntraday } from "../src/market/intraday.ts";
 import { trackedIds } from "../src/market/tracking.ts";
 import { NO_EVENT_SOURCE } from "../src/operations/rules.ts";
+import { OPERATOR } from "../src/operations/who.ts";
 import { WAITING } from "../src/rules/evaluate.ts";
 import {
   FIELD_NAMES,
@@ -47,7 +48,7 @@ const create = (
 const alerts = (t: RulesTest) =>
   (t.db.query("select count(*) as n from alerts").get() as { n: number }).n;
 
-const rule = (t: RulesTest, id: number) => readRule(t.db, id)!;
+const rule = (t: RulesTest, id: number) => readRule(t.db, OPERATOR, id)!;
 
 // a quote pass of a market that ended with this status
 async function pass(t: RulesTest, status: "ok" | "failed", job = "quotes") {
@@ -844,7 +845,7 @@ describe("splits", () => {
       time: Date.parse("2026-10-26T13:31:00Z"),
     });
     expect(alerts(t)).toBe(0);
-    const opening = readRule(t.db, ids.price!)!;
+    const opening = readRule(t.db, OPERATOR, ids.price!)!;
     expect(opening.lastResult).toBe("unknown");
 
     // the bar pass applies the split and pauses the price levels

@@ -173,6 +173,12 @@ Examples, each created with `symbol` set to the rule's own share:
 - **list pages rules by id; pause sets or clears a manual pause;
   delete removes the rule and keeps its alerts.** Alerts have no
   foreign key, so a fired alert outlives its rule.
+- **Rules and alerts are one person's** (`rules.owner`, `alerts.owner`,
+  migration `0036-owners`): the tool and the routes read and change only
+  the caller's, another's id answering `not_found`, and an alert copies
+  its rule's owner when it fires, so it stays theirs after the rule
+  goes. The engine evaluates and pauses every person's rules
+  (`allRules()`), since prices are shared.
 - **The rules routes call the same `createRule()`, `pauseRule()` and
   `deleteRuleById()`** (`docs/api.md`), so a rule made either way is
   the same.

@@ -161,7 +161,7 @@ const BASE = `with t as (select value as id from json_each(?1)),
 
 const TREND = { 1: "up", 0: "mixed", [-1]: "down" } as Record<number, string>;
 
-export function screener(m: Markets, url: URL): Response {
+export function screener(m: Markets, owner: string, url: URL): Response {
   const args = parseScreener(url);
   const { types, screen, sort, order, size, offset } = args;
   const { db } = m;
@@ -196,7 +196,7 @@ export function screener(m: Markets, url: URL): Response {
         .reduce((n, c) => n + c[s], 0),
     ]),
   ) as Record<Screen, number>;
-  const listed = listRow(m, now);
+  const listed = listRow(m, owner, now);
   const page = rows.slice(0, size);
   return json({
     ...(page.some((r) => r.source === FRED)

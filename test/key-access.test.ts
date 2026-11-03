@@ -159,7 +159,14 @@ describe("rules access", () => {
     const ask = (rules: Access, args: object) =>
       rulesAnswer(
         m,
-        { name: "x", portfolio: "write", rules, profile: "none" },
+        {
+          name: "x",
+          user: "operator",
+          credential: { kind: "key", id: "x" },
+          portfolio: "write",
+          rules,
+          profile: "none",
+        },
         parseRules(args),
       );
     const none = await ask("none", { action: "list" });

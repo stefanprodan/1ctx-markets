@@ -118,19 +118,23 @@ const R = "portfolio:read" as const;
 const W = "portfolio:write" as const;
 
 export function portfolioRoutes(m: Markets): Route[] {
-  const holdingsOf = async (url: URL, portfolio: number | null) => {
+  const holdingsOf = async (
+    url: URL,
+    owner: string,
+    portfolio: number | null,
+  ) => {
     const q = queryArgs(url, { broker: "text", currency: "text" });
-    const read = await readHoldings(m, {
+    const read = await readHoldings(m, owner, {
       portfolio,
       broker: q.broker === undefined ? null : String(q.broker),
       currency: namedCurrency(q.currency),
     });
     return answer(read);
   };
-  const growthOf = (url: URL, portfolio: number | null) => {
+  const growthOf = (url: URL, owner: string, portfolio: number | null) => {
     const q = queryArgs(url, { currency: "text" });
     return answer(
-      readGrowth(m, { portfolio, currency: namedCurrency(q.currency) }),
+      readGrowth(m, owner, { portfolio, currency: namedCurrency(q.currency) }),
     );
   };
   return [
@@ -138,21 +142,21 @@ export function portfolioRoutes(m: Markets): Route[] {
       method: "GET",
       path: "/portfolios",
       scope: R,
-      handle: async (_req, url) => {
+      handle: async (_req, url, _params, who) => {
         noQuery(url);
-        return json(listAll(m));
+        return json(listAll(m, who.user));
       },
     },
     {
       method: "POST",
       path: "/portfolios",
       scope: W,
-      handle: async (req, url) => {
+      handle: async (req, url, _params, who) => {
         noQuery(url);
         const read = await body(req);
         if (read instanceof Response) return read;
         return created(
-          await createPortfolio(m, read.body),
+          await createPortfolio(m, who.user, read.body),
           (v) => `/portfolios/${v.portfolio.id}`,
         );
       },
@@ -161,75 +165,78 @@ export function portfolioRoutes(m: Markets): Route[] {
       method: "GET",
       path: "/portfolios/{id}",
       scope: R,
-      handle: async (_req, url, params) => {
+      handle: async (_req, url, params, who) => {
         noQuery(url);
         const id = idOf(params.id!, "portfolio");
-        const p = findPortfolio(m.db, id);
+        const p = findPortfolio(m.db, who.user, id);
         if (p === null || isFailure(p)) {
           return problem("not_found", `no portfolio ${id}`);
         }
-        return json({ portfolio: portfolioItem(m.db, p) });
+        return json({ portfolio: portfolioItem(m.db, who.user, p) });
       },
     },
     {
       method: "PATCH",
       path: "/portfolios/{id}",
       scope: W,
-      handle: async (req, url, params) => {
+      handle: async (req, url, params, who) => {
         noQuery(url);
         const id = idOf(params.id!, "portfolio");
         const read = await body(req);
         if (read instanceof Response) return read;
-        return answer(await updatePortfolio(m, id, read.body));
+        return answer(await updatePortfolio(m, who.user, id, read.body));
       },
     },
     {
       method: "DELETE",
       path: "/portfolios/{id}",
       scope: W,
-      handle: async (_req, url, params) => {
+      handle: async (_req, url, params, who) => {
         noQuery(url);
-        return gone(await removePortfolio(m, idOf(params.id!, "portfolio")));
+        return gone(
+          await removePortfolio(m, who.user, idOf(params.id!, "portfolio")),
+        );
       },
     },
     {
       method: "GET",
       path: "/portfolios/{id}/holdings",
       scope: R,
-      handle: async (_req, url, params) =>
-        holdingsOf(url, idOf(params.id!, "portfolio")),
+      handle: async (_req, url, params, who) =>
+        holdingsOf(url, who.user, idOf(params.id!, "portfolio")),
     },
     {
       method: "GET",
       path: "/holdings",
       scope: R,
-      handle: async (_req, url) => holdingsOf(url, null),
+      handle: async (_req, url, _params, who) =>
+        holdingsOf(url, who.user, null),
     },
     {
       method: "GET",
       path: "/portfolios/{id}/growth",
       scope: R,
-      handle: async (_req, url, params) =>
-        growthOf(url, idOf(params.id!, "portfolio")),
+      handle: async (_req, url, params, who) =>
+        growthOf(url, who.user, idOf(params.id!, "portfolio")),
     },
     {
       method: "GET",
       path: "/holdings/growth",
       scope: R,
-      handle: async (_req, url) => growthOf(url, null),
+      handle: async (_req, url, _params, who) => growthOf(url, who.user, null),
     },
     {
       method: "GET",
       path: "/portfolios/{id}/export",
       scope: R,
-      handle: async (_req, url, params) => {
+      handle: async (_req, url, params, who) => {
         noQuery(url);
         const id = idOf(params.id!, "portfolio");
-        const p = findPortfolio(m.db, id);
+        const p = findPortfolio(m.db, who.user, id);
         if (p === null || isFailure(p)) {
           return problem("not_found", `no portfolio ${id}`);
         }
-        return new Response(exportCsv(m, p), {
+        return new Response(exportCsv(m, who.user, p), {
           headers: {
             "content-type": "text/csv; charset=utf-8",
             "content-disposition": `attachment; filename="portfolio-${p.id}.csv"`,
@@ -263,7 +270,7 @@ export function portfolioRoutes(m: Markets): Route[] {
       method: "GET",
       path: "/trades",
       scope: R,
-      handle: async (_req, url) => {
+      handle: async (_req, url, _params, who) => {
         const q = queryArgs(url, {
           portfolio: "text",
           broker: "text",
@@ -272,7 +279,7 @@ export function portfolioRoutes(m: Markets): Route[] {
           to: "text",
           removed: "boolean",
         });
-        const list = readTradeList(m, {
+        const list = readTradeList(m, who.user, {
           portfolio: (q.portfolio as string | undefined) ?? null,
           broker: (q.broker as string | undefined) ?? null,
           symbol: (q.symbol as string | undefined) ?? null,
@@ -324,7 +331,7 @@ export function portfolioRoutes(m: Markets): Route[] {
       method: "GET",
       path: "/positions",
       scope: R,
-      handle: async (_req, url) => {
+      handle: async (_req, url, _params, who) => {
         const q = queryArgs(url, {
           portfolio: "text",
           broker: "text",
@@ -332,17 +339,22 @@ export function portfolioRoutes(m: Markets): Route[] {
         });
         const p = findPortfolio(
           m.db,
+          who.user,
           (q.portfolio as string | undefined) ?? null,
         );
         if (isFailure(p)) return problemOf(p);
-        const b = findBroker(m.db, (q.broker as string | undefined) ?? null);
+        const b = findBroker(
+          m.db,
+          who.user,
+          (q.broker as string | undefined) ?? null,
+        );
         if (isFailure(b)) return problemOf(b);
         return json({
-          positions: readPositions(m.db, {
+          positions: readPositions(m.db, who.user, {
             portfolio: p?.id ?? null,
             broker: b?.id ?? null,
             removed: q.removed === true,
-          }).map((x) => positionItem(m.db, x)),
+          }).map((x) => positionItem(m.db, who.user, x)),
         });
       },
     },
@@ -420,18 +432,18 @@ export function portfolioRoutes(m: Markets): Route[] {
       method: "GET",
       path: "/positions/{id}/history",
       scope: R,
-      handle: async (_req, url, params) => {
+      handle: async (_req, url, params, who) => {
         noQuery(url);
-        return answer(historyOf(m, idOf(params.id!, "position")));
+        return answer(historyOf(m, who.user, idOf(params.id!, "position")));
       },
     },
     {
       method: "GET",
       path: "/funds",
       scope: R,
-      handle: async (_req, url) => {
+      handle: async (_req, url, _params, who) => {
         noQuery(url);
-        return json({ funds: listAll(m).funds });
+        return json({ funds: listAll(m, who.user).funds });
       },
     },
     {
@@ -453,9 +465,9 @@ export function portfolioRoutes(m: Markets): Route[] {
       method: "GET",
       path: "/funds/{isin}",
       scope: R,
-      handle: async (_req, url, params) => {
+      handle: async (_req, url, params, who) => {
         noQuery(url);
-        return answer(fundDetail(m, isinOf(params.isin!)));
+        return answer(fundDetail(m, who.user, isinOf(params.isin!)));
       },
     },
     {
@@ -481,21 +493,21 @@ export function portfolioRoutes(m: Markets): Route[] {
       method: "GET",
       path: "/brokers",
       scope: R,
-      handle: async (_req, url) => {
+      handle: async (_req, url, _params, who) => {
         noQuery(url);
-        return json({ brokers: listAll(m).brokers });
+        return json({ brokers: listAll(m, who.user).brokers });
       },
     },
     {
       method: "POST",
       path: "/brokers",
       scope: W,
-      handle: async (req, url) => {
+      handle: async (req, url, _params, who) => {
         noQuery(url);
         const read = await body(req);
         if (read instanceof Response) return read;
         return created(
-          await createBroker(m, read.body),
+          await createBroker(m, who.user, read.body),
           (v) => `/brokers/${v.broker.id}`,
         );
       },
@@ -504,41 +516,43 @@ export function portfolioRoutes(m: Markets): Route[] {
       method: "PATCH",
       path: "/brokers/{id}",
       scope: W,
-      handle: async (req, url, params) => {
+      handle: async (req, url, params, who) => {
         noQuery(url);
         const id = idOf(params.id!, "broker");
         const read = await body(req);
         if (read instanceof Response) return read;
-        return answer(await updateBroker(m, id, read.body));
+        return answer(await updateBroker(m, who.user, id, read.body));
       },
     },
     {
       method: "DELETE",
       path: "/brokers/{id}",
       scope: W,
-      handle: async (_req, url, params) => {
+      handle: async (_req, url, params, who) => {
         noQuery(url);
-        return gone(await removeBroker(m, idOf(params.id!, "broker")));
+        return gone(
+          await removeBroker(m, who.user, idOf(params.id!, "broker")),
+        );
       },
     },
     {
       method: "GET",
       path: "/portfolio-settings",
       scope: R,
-      handle: async (_req, url) => {
+      handle: async (_req, url, _params, who) => {
         noQuery(url);
-        return json(settingsItem(m.db));
+        return json(settingsItem(m.db, who.user));
       },
     },
     {
       method: "PUT",
       path: "/portfolio-settings",
       scope: W,
-      handle: async (req, url) => {
+      handle: async (req, url, _params, who) => {
         noQuery(url);
         const read = await body(req);
         if (read instanceof Response) return read;
-        return json(await saveSettings(m, read.body));
+        return json(await saveSettings(m, who.user, read.body));
       },
     },
   ];

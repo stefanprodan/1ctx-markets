@@ -129,7 +129,7 @@ export type Route = {
 
 export type ApiDeps = {
   m: Markets;
-  alerts: (req: Request) => Promise<Response>;
+  alerts: (req: Request, owner: string) => Promise<Response>;
   admin: AdminDeps;
   // each --track value and what it resolved to
   track: () => readonly TrackState[];
@@ -408,7 +408,8 @@ function marketData(m: Markets): Route[] {
       method: "GET",
       path: "/instruments/{symbol}",
       scope: "read",
-      handle: (_req, url, params) => instrument(m, url, params.symbol!),
+      handle: (_req, url, params, who) =>
+        instrument(m, who.user, url, params.symbol!),
     },
   ];
 }
@@ -420,9 +421,11 @@ function rules(m: Markets): Route[] {
       method: "GET",
       path: "/rules",
       scope: "rules:read",
-      handle: async (_req, url) => {
+      handle: async (_req, url, _params, who) => {
         noQuery(url);
-        return json({ rules: readRules(m.db).map((r) => ruleItem(m, r)) });
+        return json({
+          rules: readRules(m.db, who.user).map((r) => ruleItem(m, r)),
+        });
       },
     },
     {
@@ -430,14 +433,14 @@ function rules(m: Markets): Route[] {
       path: "/rules",
       scope: "rules:write",
       cookie: false,
-      handle: async (req, url) => {
+      handle: async (req, url, _params, who) => {
         noQuery(url);
         const read = await bodyOf(req);
         if (read instanceof Response) return read;
         const body = fields(read.body, ["symbol", "condition", "note"]);
         const args = parseRules({ ...body, action: "create" });
         if (args.action !== "create") throw new Error("not a create");
-        const made = await createRule(m, args);
+        const made = await createRule(m, who.user, args);
         if ("error" in made) return problemOf(made);
         return json(made, 201, {
           ...NO_STORE,
@@ -449,10 +452,10 @@ function rules(m: Markets): Route[] {
       method: "GET",
       path: "/rules/{id}",
       scope: "rules:read",
-      handle: async (_req, url, params) => {
+      handle: async (_req, url, params, who) => {
         noQuery(url);
         const id = ruleId(params.id!);
-        const rule = readRule(m.db, id);
+        const rule = readRule(m.db, who.user, id);
         if (rule === null) return noRule(id);
         return json({ rule: ruleItem(m, rule) });
       },
@@ -462,7 +465,7 @@ function rules(m: Markets): Route[] {
       path: "/rules/{id}",
       scope: "rules:write",
       cookie: false,
-      handle: async (req, url, params) => {
+      handle: async (req, url, params, who) => {
         noQuery(url);
         const id = ruleId(params.id!);
         const read = await bodyOf(req);
@@ -470,7 +473,7 @@ function rules(m: Markets): Route[] {
         const body = fields(read.body, ["paused"]);
         const args = parseRules({ ...body, action: "pause", id });
         if (args.action !== "pause") throw new Error("not a pause");
-        const done = await pauseRule(m, args);
+        const done = await pauseRule(m, who.user, args);
         if ("error" in done) return problemOf(done);
         return json(done);
       },
@@ -480,9 +483,9 @@ function rules(m: Markets): Route[] {
       path: "/rules/{id}",
       scope: "rules:write",
       cookie: false,
-      handle: async (_req, url, params) => {
+      handle: async (_req, url, params, who) => {
         noQuery(url);
-        const done = await deleteRuleById(m, ruleId(params.id!));
+        const done = await deleteRuleById(m, who.user, ruleId(params.id!));
         if ("error" in done) return problemOf(done);
         return new Response(null, { status: 204, headers: NO_STORE });
       },
@@ -510,9 +513,9 @@ function profile(m: Markets): Route[] {
       method: "GET",
       path: "/profile",
       scope: "profile:read",
-      handle: async (_req, url) => {
+      handle: async (_req, url, _params, who) => {
         noQuery(url);
-        return json(profileItem(readProfile(m.db)));
+        return json(profileItem(readProfile(m.db, who.user)));
       },
     },
     {
@@ -551,16 +554,18 @@ function profile(m: Markets): Route[] {
       method: "GET",
       path: "/profile/versions",
       scope: "profile:read",
-      handle: async (_req, url) => {
+      handle: async (_req, url, _params, who) => {
         noQuery(url);
-        return json({ revisions: profileVersions(m.db).map(revisionItem) });
+        return json({
+          revisions: profileVersions(m.db, who.user).map(revisionItem),
+        });
       },
     },
     {
       method: "GET",
       path: "/profile/versions/{revision}",
       scope: "profile:read",
-      handle: async (_req, url, params) => {
+      handle: async (_req, url, params, who) => {
         noQuery(url);
         if (!PATH_ID.test(params.revision!)) {
           throw new ArgError(
@@ -568,8 +573,8 @@ function profile(m: Markets): Route[] {
           );
         }
         const n = Number(params.revision);
-        const r = profileVersion(m.db, n);
-        if (r === null) return problemOf(missingRevision(m, n));
+        const r = profileVersion(m.db, who.user, n);
+        if (r === null) return problemOf(missingRevision(m, who.user, n));
         return json(profileItem(r));
       },
     },
@@ -586,26 +591,27 @@ function operator(
       method: "GET",
       path: "/watchlist",
       scope: "read",
-      handle: async (_req, url) => watchlist(m, track, url),
+      handle: async (_req, url, _params, who) =>
+        watchlist(m, who.user, track, url),
     },
     {
       method: "GET",
       path: "/dashboard",
       scope: "admin",
-      handle: async (_req, url) => {
+      handle: async (_req, url, _params, who) => {
         noQuery(url);
-        return json(readDashboard(m, track));
+        return json(readDashboard(m, who.user, track));
       },
     },
     {
       method: "PUT",
       path: "/dashboard",
       scope: "admin",
-      handle: async (req, url) => {
+      handle: async (req, url, _params, who) => {
         noQuery(url);
         const read = await bodyOf(req);
         if (read instanceof Response) return read;
-        return saveDashboard(m, track, parseLayout(read.body));
+        return saveDashboard(m, who.user, track, parseLayout(read.body));
       },
     },
     {
@@ -624,19 +630,20 @@ function operator(
       method: "GET",
       path: "/instruments",
       scope: "admin",
-      handle: async (_req, url) => instruments(m, url),
+      handle: async (_req, url, _params, who) => instruments(m, who.user, url),
     },
     {
       method: "GET",
       path: "/screener",
       scope: "admin",
-      handle: async (_req, url) => screener(m, url),
+      handle: async (_req, url, _params, who) => screener(m, who.user, url),
     },
     {
       method: "DELETE",
       path: "/instruments/{symbol}",
       scope: "admin",
-      handle: (_req, url, params) => deleteOne(admin, url, params.symbol!),
+      handle: (_req, url, params, who) =>
+        deleteOne(admin, who, url, params.symbol!),
     },
     {
       method: "GET",
@@ -659,40 +666,40 @@ function keys(d: KeysDeps): Route[] {
       method: "GET",
       path: "/keys",
       scope: "admin",
-      handle: async (_req, url) => {
+      handle: async (_req, url, _params, who) => {
         noQuery(url);
-        return listAnswer(d.m);
+        return listAnswer(d.m, who);
       },
     },
     {
       method: "POST",
       path: "/keys",
       scope: "admin",
-      handle: async (req, url) => {
+      handle: async (req, url, _params, who) => {
         noQuery(url);
         const read = await bodyOf(req);
         if (read instanceof Response) return read;
-        return createOne(d, read.body);
+        return createOne(d, who, read.body);
       },
     },
     {
       method: "PATCH",
       path: "/keys/{id}",
       scope: "admin",
-      handle: async (req, url, params) => {
+      handle: async (req, url, params, who) => {
         noQuery(url);
         const read = await bodyOf(req);
         if (read instanceof Response) return read;
-        return setOne(d, params.id!, read.body);
+        return setOne(d, who, params.id!, read.body);
       },
     },
     {
       method: "DELETE",
       path: "/keys/{id}",
       scope: "admin",
-      handle: async (_req, url, params) => {
+      handle: async (_req, url, params, who) => {
         noQuery(url);
-        return revokeOne(d, params.id!);
+        return revokeOne(d, who, params.id!);
       },
     },
   ];
@@ -715,7 +722,7 @@ export function routes(deps: ApiDeps): Route[] {
       method: "GET",
       path: "/alerts",
       scope: "rules:read",
-      handle: (req) => deps.alerts(req),
+      handle: (req, _url, _params, who) => deps.alerts(req, who.user),
     },
     ...operator(admin, deps.track),
     ...keys({ m: deps.admin.m, mask: deps.mask ?? (() => {}) }),
