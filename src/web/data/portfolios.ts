@@ -267,6 +267,26 @@ export type SavedTrade = {
 
 export type Close = { date: string; close: number };
 
+// a day of the holdings' growth, cash left out: gain is value less money in
+export type GrowthPoint = {
+  date: string;
+  value: number;
+  invested: number;
+  gain: number;
+};
+
+export type Growth = {
+  currency: string;
+  from: string;
+  to: string;
+  points: GrowthPoint[];
+  eased: string[];
+  missing: string[];
+};
+
+// a view's growth is kept this many at most, the oldest dropped first
+const GROWTH_KEPT = 24;
+
 // a picked listing: its currency and live price, as the form shows them
 export type Listing = {
   id: string;
@@ -408,12 +428,23 @@ export function portfolioStore(
   // into, none built in
   const portfolio = signal<number | null>(null);
   const currency = signal<string | null>(null);
+  // the view the drawn holdings were read for: a pick moves portfolio at
+  // once, and the hero keeps to this until the pick's read lands
+  const shown = signal<View | null>(null);
+  // each view's growth by growthKey, kept for the page's life, so a tab
+  // seen once draws its line at once; null for a read that failed
+  const growths = signal<ReadonlyMap<string, Growth | null>>(new Map());
+  const asking = new Set<string>();
 
   let loads = 0;
   // paced only on arrival, where placeholders may show; a save or a
   // pick reloads under what is drawn
   async function load(arrival = false): Promise<void> {
     const mine = ++loads;
+    const asked: View = {
+      portfolio: portfolio.value,
+      currency: currency.value,
+    };
     // a currency pick or a fallback to all corrects the address in
     // place: only a portfolio picked is a step to go back from
     if (onPage()) {
@@ -444,6 +475,7 @@ export function portfolioStore(
       batch(() => {
         overview.value = o;
         holdings.value = h;
+        shown.value = asked;
         trades.value = t.trades;
         error.value = null;
         code.value = null;
@@ -489,6 +521,8 @@ export function portfolioStore(
   return {
     overview,
     holdings,
+    shown,
+    growths,
     trades,
     error,
     code,
@@ -598,6 +632,28 @@ export function portfolioStore(
       )
         .then((r) => r.bars.map((b) => ({ date: b.date, close: b.close })))
         .catch(() => []),
+    // a view's growth over the past year, read once per key; a failed
+    // read is kept as null, so that key draws no line and no slot, and
+    // the next key reads again
+    async growth(v: View, key: string): Promise<void> {
+      if (growths.value.has(key) || asking.has(key)) return;
+      asking.add(key);
+      const at = session();
+      const q = new URLSearchParams();
+      if (v.currency !== null) q.set("currency", v.currency);
+      const where =
+        v.portfolio === null
+          ? "/api/v1/holdings/growth"
+          : `${PORTFOLIOS_PATH}/${v.portfolio}/growth`;
+      const g = await call<Growth>(`${where}${q.size > 0 ? `?${q}` : ""}`)
+        .catch(() => null)
+        .finally(() => asking.delete(key));
+      if (at !== session()) return;
+      const next = new Map(growths.value);
+      next.set(key, g);
+      if (next.size > GROWTH_KEPT) next.delete(next.keys().next().value!);
+      growths.value = next;
+    },
     listing: (id: string): Promise<Listing | null> =>
       call<{ instrument: Listing }>(
         `/api/v1/instruments/${encodeURIComponent(id)}`,
@@ -609,6 +665,8 @@ export function portfolioStore(
       batch(() => {
         overview.value = null;
         holdings.value = null;
+        shown.value = null;
+        growths.value = new Map();
         trades.value = null;
         error.value = null;
         code.value = null;

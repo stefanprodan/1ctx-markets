@@ -4,7 +4,7 @@
 // group, the activity by month; every form in the one drawer.
 
 import { type Signal, useSignal } from "@preact/signals";
-import { useEffect, useMemo, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type {
   Close,
   Holding,
@@ -58,6 +58,13 @@ import {
   StartCard,
   Welcome,
 } from "./PortfolioForms.tsx";
+import { hasGrowth, shortMoney } from "./PortfolioGrowth.model.ts";
+import {
+  GrowthLine,
+  HeroFigure,
+  useGrowth,
+  useHeroFit,
+} from "./PortfolioGrowth.tsx";
 import {
   activityOf,
   barOf,
@@ -319,7 +326,7 @@ export function PortfoliosBody({ store }: { store: PortfolioStore }) {
           ) : (
             <>
               <Switcher store={store} />
-              <ValueBand store={store} h={h} />
+              <ValueBand store={store} h={h} trades={trades ?? []} />
               <HoldingsCard
                 key={store.portfolio.value ?? "all"}
                 view={String(store.portfolio.value ?? "all")}
@@ -520,14 +527,32 @@ function CurrencyPick({
 // ---- the value band ----
 
 // the selection's name, its value and how it moved: nothing the list
-// below already says
-function ValueBand({ store, h }: { store: PortfolioStore; h: Holdings }) {
-  const id = store.portfolio.value;
-  const name =
-    id === null
-      ? "All portfolios"
-      : (store.overview.value?.portfolios.find((p) => p.id === id)?.name ?? "");
+// below already says. It follows the view its figures were read for, so
+// a tab picked never shows its name or bar over the last tab's figures
+function ValueBand({
+  store,
+  h,
+  trades,
+}: {
+  store: PortfolioStore;
+  h: Holdings;
+  trades: readonly TradeRow[];
+}) {
+  const view = store.shown.value ?? {
+    portfolio: store.portfolio.value,
+    currency: store.currency.value,
+  };
+  const id = view.portfolio;
+  const row = store.overview.value?.portfolios.find((p) => p.id === id);
+  const name = id === null ? "All portfolios" : (row?.name ?? "");
   const hero = heroOf(h);
+  const value = hero?.total.value ?? null;
+  const wanted = hero !== null && hasGrowth(h, row?.cash === true);
+  const growth = useGrowth(store, view, trades, h, wanted);
+  // a failed read or under two days draws nothing and needs no room
+  const line = wanted && !growth.none;
+  const box = useRef<HTMLDivElement>(null);
+  const fit = useHeroFit(box, money(value, null), shortMoney(value), line);
   if (hero === null) return null;
   const t = hero.total;
   const bar = barOf(t, id === null);
@@ -554,47 +579,63 @@ function ValueBand({ store, h }: { store: PortfolioStore; h: Holdings }) {
       : []),
   ];
   return (
-    <Hero
-      name={name}
-      value={money(t.value, null)}
-      valueClass="amount"
-      currency={<CurrencyPick store={store} h={h} cur={t.currency} />}
-      moves={moveList}
-      lines={hero.others.map((o) => (
-        <span key={o.currency}>
-          <span class="num amount">{money(o.value, o.currency)}</span>{" "}
-          <Change s={percent(o.pl_percent)} />
-        </span>
-      ))}
+    <div
+      ref={box}
+      class={[
+        "pf-hero",
+        line && fit.line === "beside" ? "pf-hero-beside" : "",
+        fit.line === "under" ? "pf-hero-under" : "",
+        fit.size !== null ? "pf-hero-fitted" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      style={fit.size !== null ? { "--hero-size": `${fit.size}px` } : undefined}
     >
-      {bar && (
-        <div class="pf-ivc">
-          <div
-            class="pf-ivc-bar"
-            role="img"
-            aria-label={bar.map((x) => `${x.label} ${x.pct}%`).join(", ")}
-          >
-            {bar.map((x) => (
-              <span
-                key={x.key}
-                class={`pf-ivc-${x.key}`}
-                style={{ flexGrow: x.value }}
-              />
-            ))}
+      <Hero
+        name={name}
+        value={
+          <HeroFigure value={value} currency={t.currency} short={fit.short} />
+        }
+        valueClass="amount"
+        currency={<CurrencyPick store={store} h={h} cur={t.currency} />}
+        moves={moveList}
+        lines={hero.others.map((o) => (
+          <span key={o.currency}>
+            <span class="num amount">{money(o.value, o.currency)}</span>{" "}
+            <Change s={percent(o.pl_percent)} />
+          </span>
+        ))}
+      >
+        {line && <GrowthLine growth={growth} />}
+        {bar && (
+          <div class="pf-ivc">
+            <div
+              class="pf-ivc-bar"
+              role="img"
+              aria-label={bar.map((x) => `${x.label} ${x.pct}%`).join(", ")}
+            >
+              {bar.map((x) => (
+                <span
+                  key={x.key}
+                  class={`pf-ivc-${x.key}`}
+                  style={{ flexGrow: x.value }}
+                />
+              ))}
+            </div>
+            <div class="small pf-ivc-legend">
+              {bar.map((x) => (
+                <span key={x.key}>
+                  <i class={`pf-ivc-${x.key}`} />
+                  <span class="faint">{x.label}</span>{" "}
+                  <span class="num amount">{money(x.value, t.currency)}</span>{" "}
+                  <span class="num faint">{x.pct}%</span>
+                </span>
+              ))}
+            </div>
           </div>
-          <div class="small pf-ivc-legend">
-            {bar.map((x) => (
-              <span key={x.key}>
-                <i class={`pf-ivc-${x.key}`} />
-                <span class="faint">{x.label}</span>{" "}
-                <span class="num amount">{money(x.value, t.currency)}</span>{" "}
-                <span class="num faint">{x.pct}%</span>
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-    </Hero>
+        )}
+      </Hero>
+    </div>
   );
 }
 

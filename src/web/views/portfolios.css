@@ -20,6 +20,18 @@
     line-height: 1.4;
   }
 
+  /* the growth line sits beside the figure, which is never wrapped: the
+     fit shrinks it instead */
+  .pf-hero .hero {
+    position: relative;
+  }
+  .pf-hero .hero-value {
+    white-space: nowrap;
+  }
+  .pf-hero-fitted .hero-value {
+    font-size: var(--hero-size);
+  }
+
   /* one track: invested from the left, cash after it */
   .pf-ivc {
     display: flex;
