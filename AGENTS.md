@@ -103,7 +103,7 @@ src/shared/                 plain data and functions the server and the web UI b
 src/web/                    the web UI, bundled from index.html (Preact)
   app/                      the shell, rail, router, routes and theme
   data/                     every call and signal; views never fetch
-  views/                    the pages: sign-in, Home, Status, Connect agents, Instruments
+  views/                    the pages: sign-in, Home, Status, Connect agents, Screener
   style/ ui/ lib/ fonts/    1ctx's tokens, primitives, icons and fonts
 test/                       one *.test.ts per area, helpers/ (fakes), fixtures/ (recordings)
 scripts/probe/              the fixture recorders, run by hand

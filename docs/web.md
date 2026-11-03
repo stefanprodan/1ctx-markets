@@ -127,7 +127,7 @@ signed in with the admin key alone.
   (`display-mode: standalone`) a page of the UI opens in place even
   from a link asking for a new tab, which would leave the app.
 - **The tab's title is the page, then the brand** (`app/title.ts`):
-  "Instruments · 1ctx Markets", an instrument by the symbol in its
+  "Screener · 1ctx Markets", an instrument by the symbol in its
   address ("AAPL · 1ctx Markets"), so it needs no answer, a coin
   without its quote currency ("BTC", by a `CRYPTO:` id or once the
   answer names it a coin), and "Sign in · 1ctx Markets" while signed
@@ -149,7 +149,7 @@ signed in with the admin key alone.
   and at once when the tab comes back; it sets its timer once and calls
   the latest load, so a redraw (a crosshair moving) never pushes the
   refresh back. Every page with data the server or an agent changes
-  uses it: Home, Instruments, an instrument, Portfolios, Profile (held
+  uses it: Home, Screener, an instrument, Portfolios, Profile (held
   while its editor or History is open) and Server status; Connect
   agents changes only by the operator.
 - **A re-read sweeps a hairline under the page's title**
@@ -187,7 +187,7 @@ signed in with the admin key alone.
   dimmed only after a tenth of a second (`.shell-holding`); a desktop
   read lands in one frame. Placeholders that do show stay `SHOW_MS`
   (`paced()` on each page's read: the instrument, Home's board,
-  Instruments and Connect agents on every read, which only delays a slow
+  the Screener and Connect agents on every read, which only delays a slow
   refresh; Portfolios on arrival alone, so a save never waits), so a
   read landing just past the hold never flashes them; Home's lines and the chart's bars read
   after their page shows and draw as they land. While held, no page
@@ -210,13 +210,44 @@ signed in with the admin key alone.
   its name on one line as `SymbolName` draws it, a coin without its
   quote currency), and
   the operator's menu (dark theme, sign out) at the foot; it folds to a
-  strip on a wide window, which shows the mark, and is a drawer on a
-  phone. Server status's icon, in the rail and the strip, turns red and
+  strip on a wide window, which shows the mark, and gives way to the
+  bar on a phone (below). Server status's icon, in the rail, the strip
+  and the bar's More, turns red and
   pulses (steady under reduced motion) while that page shows a job failing
   or a source backing off (`troubled`), read every `REFRESH_MS` while
   signed in. The sign-in is the mark beside 1ctx's wordmark over
   **Markets**. The theme follows the system until flipped; a flip is
   kept in `localStorage`.
+- **A phone navigates from a bar** (`app/Bar.tsx`), where the shell's
+  phone check holds (`onPhone`, `PHONE` in `app/shell.ts`: under 720px
+  wide, or a touch screen under 500px high, so a phone on its side
+  too): no rail, strip or menu button, one capsule floating over the
+  view's foot instead, 60px high, 16px in from each side, its bottom
+  21px above the layout viewport's over a home indicator and 16px
+  without one (`--bar-bottom`), so it clears the indicator and Safari's
+  own bottom toolbar; at most a phone's width (`--bar-w`), centred on
+  a phone on its side; light glass (`--bar-line`, `--shadow-bar`).
+  Five slots, an icon over a word, the lit one on the hover tone (`barLit()`):
+  Home, Screener (lit on `/symbol/:id` too), Portfolios (and
+  `/portfolios/:id`), Search and More (lit on Profile, Connect agents
+  and Server status). Search is a button opening the page's own
+  symbol search as its sheet, off while the page leaves the search out.
+  The view scrolls under the bar; `.shell-main-bar` adds the bar to the
+  page's bottom inset, so the last row and the footer end above it.
+  The bar hides while a text field outside it has the focus, so it
+  never rides the iOS keyboard. It asks `document.activeElement` again
+  on focusin, after focusout, on every address, on the visual
+  viewport's resize and, while away, on any change to the page
+  (`watchTyping()`): WebKit fires no focusout when the focused field
+  leaves with a drawer, the sheet or a page. Every drawer
+  and the search sheet sit above it (`--z-drawer`, `--z-sheet` over
+  `--z-shell`).
+- **More is the shared `Drawer`** titled More: Profile, Connect agents,
+  Server status (red while failing), the rail's Recent, then the user
+  menu's own Dark theme and Sign out (`UserItems`). A tap goes there
+  and closes it; so does any step to another address, the browser's
+  Back included (`watchMore()`), so no page opens under it. It renders beside the bar, never inside: the bar's
+  blur would hold a fixed drawer inside it.
 - **Copy is short:** sentence case, no "you", "please" or explanations.
   An error is the server's phrase as a sentence (`says()`, as 1ctx),
   so a wrong key reads "Wrong admin key.": a problem's `detail`, the
@@ -246,8 +277,16 @@ Portfolios page is the reference for each part.
   last. The head's buttons share one style, defined once in
   `ui/page.css`: an icon, an icon with words, the ⋯; 32px, 44px to a
   finger. The search shows by itself; `search={false}` leaves it out
-  (a page mid-edit). On a phone it folds to an icon, the meta gives way
-  first, and the head never wraps or scrolls sideways.
+  (a page mid-edit). On a phone, by the shell's check and so on its
+  side too, the head shows no search: the bar's Search opens it as the
+  sheet (`ssearch-phone`). The meta gives way first, and the head never wraps
+  or scrolls sideways. `back` puts Back (‹) before the title on a phone
+  only, a symbol's page alone passing it: it steps back through the
+  app's own history (`goBack()` in `app/router.ts`, each pushed entry
+  one `step` past the last, the tab's first page the base), and from a
+  page opened cold (a reload, a pasted address, the first of the tab)
+  goes to `/screener`, since `history.back()` there would leave the app.
+  `/portfolios/:id` has none: those are Portfolios' tabs.
 - **A card is only around a list, a table or a form.** Its title is
   the sans `Card` title, never a mono uppercase word; the mono label is
   for a group inside a list.
@@ -338,8 +377,12 @@ The parts:
   after a 250 ms pause, a newer query aborting the older); a result is
   the ticker over its name with its kind and exchange, New when not
   stored, and opens its instrument page; Escape closes the section
-  picker before the results. On a phone the icon opens a full-screen
-  sheet with Cancel. Home passes its sections (`search` on `Page`) for
+  picker before the results. On a phone (`onPhone`, its class
+  `ssearch-phone`, never a width) the bar's Search opens it as a
+  full-screen sheet with Cancel, closed by any step to another address (`openSearch()`, inside the tap so iOS
+  opens the keyboard); `searchShown` counts the searches on screen, so
+  the slot is off without one. Adding to a section stays a desktop edit:
+  the sheet hides Add. Home passes its sections (`search` on `Page`) for
   each result's Add, and `seedSearch(q)` fills and opens it from an
   example.
 - `Search.tsx`: the card-head search, its ✕ clearing and folding;
@@ -492,7 +535,7 @@ The parts:
 - **Before its first answer Server status shows** its figures row
   with the four labels over placeholders, and the Jobs card's rows.
 - **Server status** (`/status`, last in the rail, after Home,
-  Instruments, Portfolios and Connect agents): `GET /api/v1/status`
+  Screener, Portfolios and Connect agents): `GET /api/v1/status`
   drawn as a stat row (instruments and how many are tracked, the
   sources on and how many are paused, the jobs shown and how many
   fail, the database and the version), "Sync is off." under it while
@@ -601,7 +644,7 @@ The parts:
   quotes, so the shell never writes the key into its config, Codex's
   `bearer_token_env_var`, OpenCode's `{env:...}` with OAuth off.
 - **Portfolios** (`/portfolios` and `/portfolios/{id}`, after
-  Instruments in the rail) reads
+  Screener in the rail) reads
   `GET /api/v1/portfolios`, the holdings (`/holdings` or
   `/portfolios/{id}/holdings`) and the trades with removed ones in one
   load (`data/portfolios.ts`), every minute while visible. The page is
@@ -803,11 +846,11 @@ The parts:
   same trade with `again`, for a second fill that is the same.
 - **The bundle names no source:** the import kinds read Trades, Cash
   and Bonds.
-- **Instruments** is a small screener over the instruments kept up to
+- **Screener** (`/screener`, `Screener.tsx`) is a small screener over the instruments kept up to
   date, from `GET /api/v1/screener` (`docs/api.md`, "The screener"):
   the server reads every figure stored, in one query, so the page
   never asks a symbol at a time and stays cheap at thousands. Its
-  model is `Instruments.model.ts`. Top to bottom: the head with the
+  model is `Screener.model.ts`. Top to bottom: the head with the
   page's symbol search, the only search (the list has none, since that
   one reaches every symbol); the stored kinds as `Tabs` (All, then
   Stocks, ETFs, Funds, Crypto, Indexes, Currencies, Futures, Bonds,
@@ -845,8 +888,8 @@ The parts:
   box with its words (above) and two cards of placeholder facts.
   Connect agents draws its Setup card at once and placeholder rows in
   Keys; Portfolios the All tab, the value band's placeholder and rows
-  in Holdings; Instruments its tiles' "–" and rows in its card.
-- **An instrument** (`/instruments/<id>`, the id encoded) reads
+  in Holdings; the Screener its tiles' "–" and rows in its card.
+- **An instrument** (`/symbol/<id>`, the id encoded) reads
   `GET /api/v1/instruments/{id}`, a read as any client's, so
   opening it keeps it tracked and an id never stored is fetched. The
   title is the ticker with the name beside it. `Instrument.tsx` is the
@@ -925,8 +968,12 @@ The parts:
   menu, what goes beside Keep; a rule reading it (409 `conflict` with
   `rules`) is refused in the page's notice. A delete returns to the
   list.
-- **Pages with a parameter** (`/instruments/:id` in `ROUTES` and
-  `UI_PATHS`) stay off the rail, which lights their parent.
+- **Pages with a parameter** (`/symbol/:id` and `/portfolios/:id` in
+  `ROUTES` and `UI_PATHS`) stay off the rail, which lights their
+  parent: the page above in the path, or the route's `parent`, as
+  `/symbol/:id` names `/screener`. The old `/instruments` addresses are
+  no pages and redirect nowhere. Views link a symbol with
+  `symbolHref()` (`app/paths.ts`).
 - **The list re-reads every minute** (`REFRESH_MS`) while the tab is
   visible, and at once when it comes back; a load in flight answers a
   second ask, and a failed one keeps the rows and shows the error. An
@@ -943,7 +990,7 @@ The parts:
 
 - **A phone draws the chart as a phone chart app does.** What the
   chart offers and draws is one `Look` (`Chart.model.ts`), picked from
-  the shell's phone check (`railDrawer`: narrow, or a phone on its
+  the shell's phone check (`onPhone`: narrow, or a phone on its
   side); the card's `chart-phone` class carries it to the stylesheet,
   which has no width rule of its own, so the drawing and the layout
   never disagree. A phone: the price alone, as a line, edge to edge on
@@ -1038,8 +1085,6 @@ The parts:
 - **Prices on the axis** have separators, and no cents from five
   figures up (`axisPrice`), so a phone's axis stays narrow; each pane's
   scale keeps headroom so its top label is whole.
-- **On a phone the head's row is the floating menu button's height**,
-  centred, so the button, title and actions share one middle.
 - **The chart is a flush `Card`** whose head holds its tools where a
   title would be: the ranges as the shared `Segmented` on the left,
   then Line or Candles (`Segmented`), the 50 and 200 toggles, and Log,

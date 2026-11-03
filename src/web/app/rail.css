@@ -13,15 +13,6 @@
     border-right: 1px solid var(--line);
     background: var(--rail);
   }
-  /* over the view's stuck head and foot and the floating button */
-  .rail-drawer {
-    position: absolute;
-    inset: 0;
-    z-index: var(--z-rail);
-    width: 100%;
-    padding-right: env(safe-area-inset-right);
-    border-right: 0;
-  }
 
   /* the nav takes what the head and the menu row leave */
   .rail-top {

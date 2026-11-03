@@ -7,6 +7,7 @@
 import { effect } from "@preact/signals";
 import { markets } from "../data/store.ts";
 import { tickerOf } from "../lib/names.ts";
+import { SYMBOL } from "./paths.ts";
 import { path } from "./router.ts";
 import { HOME, match } from "./routes.ts";
 
@@ -24,7 +25,7 @@ export function tabTitle(
   if (found === null || found.route.path === HOME) return BRAND;
   const id = found.params.id;
   const page =
-    id === undefined || found.route.path !== "/instruments/:id"
+    id === undefined || found.route.path !== `${SYMBOL}:id`
       ? found.route.label
       : tickerOf(id, kind);
   return `${page} · ${BRAND}`;

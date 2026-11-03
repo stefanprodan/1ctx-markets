@@ -1,11 +1,15 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 // The page head's symbol search, on every page: a result opens its
-// instrument page; on a phone it folds to an icon that opens a
-// full-screen sheet. Home's sections give each result an Add.
+// instrument page; on a phone the bar's Search opens it as a full-screen
+// sheet. Home's sections give each result an Add.
 
+import { signal } from "@preact/signals";
 import { Fragment } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
+import { symbolHref } from "../app/paths.ts";
+import { visits } from "../app/router.ts";
+import { onPhone } from "../app/shell.ts";
 import { type BoardSection, type Candidate, markets } from "../data/store.ts";
 import { Icon } from "../lib/icons.tsx";
 import { kindOf, symbolOf } from "../lib/names.ts";
@@ -21,12 +25,21 @@ export type SearchAdds = {
 };
 
 const SEED_EVENT = "symbol-search";
+const OPEN_EVENT = "symbol-search-open";
+// on the button that opens the search, whose tap is no click outside it
+export const OPENER = "data-opens-search";
 
 // fills the head's search and opens it, such as from an example chip
 export const seedSearch = (q: string) =>
   window.dispatchEvent(new CustomEvent(SEED_EVENT, { detail: q }));
 
-const hrefOf = (id: string) => `/instruments/${encodeURIComponent(id)}`;
+// the searches on screen: none while a page leaves it out, which turns the
+// bar's Search off
+export const searchShown = signal(0);
+
+// the bar's Search: dispatched inside the tap, since iOS opens the
+// keyboard only for a focus inside it
+export const openSearch = () => window.dispatchEvent(new Event(OPEN_EVENT));
 
 export function SymbolResults({
   found,
@@ -68,7 +81,7 @@ export function SymbolResults({
         return (
           <Fragment key={c.id}>
             <div class="ssearch-result">
-              <a class="ssearch-go" href={hrefOf(c.id)} onClick={onGo}>
+              <a class="ssearch-go" href={symbolHref(c.id)} onClick={onGo}>
                 <SymbolName ticker={symbolOf(c.id)} name={c.name} />
                 <span class="ssearch-meta">
                   {c.type && <span>{kindOf(c.type)}</span>}
@@ -143,6 +156,28 @@ export function SymbolSearch({ adds }: { adds?: SearchAdds }) {
     setPicking(null);
     setQuery("");
   };
+  // the shell's phone check, not a width: a phone on its side is wide
+  const phone = onPhone.value;
+  // a step to another page, the browser's Back too, closes the sheet
+  const step = visits.value;
+  useEffect(() => {
+    if (onPhone.peek()) shut();
+  }, [step]);
+  // the field shows before the render does, so the focus lands in the tap
+  const openSheet = () => {
+    root.current?.classList.add("ssearch-sheet");
+    input.current?.focus();
+    setSheet(true);
+    setOpen(true);
+  };
+  useEffect(() => {
+    searchShown.value++;
+    window.addEventListener(OPEN_EVENT, openSheet);
+    return () => {
+      searchShown.value--;
+      window.removeEventListener(OPEN_EVENT, openSheet);
+    };
+  }, []);
   useEffect(() => {
     const onSeed = (ev: Event) => {
       setQuery((ev as CustomEvent<string>).detail);
@@ -159,7 +194,9 @@ export function SymbolSearch({ adds }: { adds?: SearchAdds }) {
   useEffect(() => finder.ask(query), [finder, query]);
   useEffect(() => {
     const onClick = (ev: MouseEvent) => {
-      if (!root.current?.contains(ev.target as Node)) setOpen(false);
+      const at = ev.target as Element;
+      if (root.current?.contains(at) || at.closest?.(`[${OPENER}]`)) return;
+      setOpen(false);
     };
     const onKey = (ev: KeyboardEvent) => {
       if (ev.key !== "Escape") return;
@@ -188,22 +225,10 @@ export function SymbolSearch({ adds }: { adds?: SearchAdds }) {
     shut();
   };
   return (
-    <div class={`ssearch${sheet ? " ssearch-sheet" : ""}`} ref={root}>
-      <button
-        type="button"
-        class="btn-icon ssearch-icon"
-        aria-label="Search"
-        onClick={() => {
-          // iOS opens the keyboard only for a focus inside the tap, so the
-          // field shows before the render does
-          root.current?.classList.add("ssearch-sheet");
-          input.current?.focus();
-          setSheet(true);
-          setOpen(true);
-        }}
-      >
-        <Icon name="search" size={16} />
-      </button>
+    <div
+      class={`ssearch${phone ? " ssearch-phone" : ""}${sheet ? " ssearch-sheet" : ""}`}
+      ref={root}
+    >
       <div class="ssearch-bar">
         <label class="ssearch-box">
           <Icon name="search" size={14} class="ssearch-glass" />

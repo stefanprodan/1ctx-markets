@@ -1,0 +1,87 @@
+@layer tokens, base, owners;
+
+@layer owners {
+  /* fixed to the layout viewport, so it sits above a browser's own
+     bottom toolbar; clear of the home indicator and never on the edge */
+  .bar {
+    position: fixed;
+    left: calc(var(--space-4) + env(safe-area-inset-left));
+    right: calc(var(--space-4) + env(safe-area-inset-right));
+    bottom: var(--bar-bottom);
+    max-width: var(--bar-w);
+    margin-inline: auto;
+    z-index: var(--z-shell);
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    height: var(--bar-h);
+    padding: var(--space-1);
+    border: 1px solid var(--bar-line);
+    border-radius: var(--radius-pill);
+    background: color-mix(in srgb, var(--card) 55%, transparent);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(20px) saturate(180%);
+    box-shadow: var(--shadow-bar);
+  }
+  /* a text field has the focus: the keyboard is up, the bar would ride it */
+  .bar-away {
+    display: none;
+  }
+
+  .bar-slot {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-hair);
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-pill);
+    background: transparent;
+    color: var(--faint);
+    font: inherit;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .bar-slot-on {
+    background: var(--hover);
+    color: var(--fg);
+  }
+  .bar-slot:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+  .bar-label {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--text-tiny);
+    font-weight: 500;
+    line-height: 1.2;
+  }
+
+  /* More's drawer: the rail's rows on the drawer's ground, lit with the
+     hover tone since the rail's lit fill is that ground */
+  .more {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .more .rail-item-on {
+    background: var(--hover);
+  }
+  .more-user {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-top: var(--space-2);
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--line);
+  }
+  /* the smaller icons on the rows' centre line */
+  .more-user .menu-item {
+    gap: 10px;
+    padding: 0 11px;
+  }
+}

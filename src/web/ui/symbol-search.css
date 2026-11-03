@@ -48,7 +48,6 @@
       animation-duration: 2.4s;
     }
   }
-  .ssearch-icon,
   .ssearch-cancel {
     display: none;
   }
@@ -136,83 +135,78 @@
     }
   }
 
-  @media (max-width: 719px) {
-    .ssearch-icon {
-      display: flex;
-    }
-    .ssearch:not(.ssearch-sheet) .ssearch-bar,
-    .ssearch:not(.ssearch-sheet) .ssearch-results {
-      display: none;
-    }
-    /* adding to a section is a desktop edit */
-    .ssearch-add,
-    .ssearch-on,
-    .ssearch-pick {
-      display: none;
-    }
-    /* the head holds the sheet: over the shell's bars, and unblurred, or
-       the fixed sheet would be held inside the head */
-    .page-head:has(.ssearch-sheet) {
-      z-index: var(--z-sheet);
-      -webkit-backdrop-filter: none;
-      backdrop-filter: none;
-    }
-    .ssearch-sheet {
-      position: fixed;
-      inset: 0;
-      z-index: var(--z-sheet);
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-3);
-      padding: calc(var(--space-3) + env(safe-area-inset-top)) var(--space-4)
-        var(--space-3);
-      background: var(--page);
-    }
-    .ssearch-sheet .ssearch-icon {
-      display: none;
-    }
-    .ssearch-sheet .ssearch-bar {
-      display: flex;
-      align-items: center;
-      gap: var(--space-3);
-    }
-    .ssearch-sheet .ssearch-box {
-      flex: 1;
-      width: auto;
-      height: 44px;
-    }
-    /* iOS zooms into a field under 16px */
-    .ssearch-sheet .ssearch-input {
-      font-size: var(--text-touch);
-    }
-    .ssearch-sheet .ssearch-cancel {
-      display: inline-flex;
-      height: 44px;
-    }
-    .ssearch-sheet .ssearch-results {
-      position: static;
-      flex: 0 1 auto;
-      min-height: 0;
-      width: auto;
-      max-height: none;
-      gap: 0;
-      padding: 0;
-      border-color: var(--line);
-      box-shadow: none;
-    }
-    .ssearch-sheet .ssearch-result {
-      padding: 0;
-      border-radius: 0;
-    }
-    .ssearch-sheet .ssearch-result + .ssearch-result {
-      border-top: 1px solid var(--line);
-    }
-    .ssearch-sheet .ssearch-go {
-      min-height: 60px;
-      padding: var(--space-2) var(--space-4);
-    }
-    .ssearch-sheet .ssearch-none {
-      padding: var(--space-4);
-    }
+  /* a phone, by the shell's check rather than a width, so a phone on its
+     side gets the sheet too: no box in the head, the bar's Search opens
+     the sheet */
+  .ssearch-phone:not(.ssearch-sheet) .ssearch-bar,
+  .ssearch-phone:not(.ssearch-sheet) .ssearch-results {
+    display: none;
+  }
+  /* adding to a section is a desktop edit */
+  .ssearch-phone .ssearch-add,
+  .ssearch-phone .ssearch-on,
+  .ssearch-phone .ssearch-pick {
+    display: none;
+  }
+  /* the head holds the sheet: over the shell's bars, and unblurred, or
+     the fixed sheet would be held inside the head */
+  .page-head:has(.ssearch-phone.ssearch-sheet) {
+    z-index: var(--z-sheet);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .ssearch-phone.ssearch-sheet {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-sheet);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: calc(var(--space-3) + env(safe-area-inset-top)) var(--space-4)
+      var(--space-3);
+    background: var(--page);
+  }
+  .ssearch-phone.ssearch-sheet .ssearch-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+  .ssearch-phone.ssearch-sheet .ssearch-box {
+    flex: 1;
+    width: auto;
+    height: 44px;
+  }
+  /* iOS zooms into a field under 16px */
+  .ssearch-phone.ssearch-sheet .ssearch-input {
+    font-size: var(--text-touch);
+  }
+  .ssearch-phone.ssearch-sheet .ssearch-cancel {
+    display: inline-flex;
+    height: 44px;
+  }
+  .ssearch-phone.ssearch-sheet .ssearch-results {
+    position: static;
+    flex: 0 1 auto;
+    min-height: 0;
+    width: auto;
+    max-height: none;
+    gap: 0;
+    padding: 0;
+    border-color: var(--line);
+    box-shadow: none;
+  }
+  .ssearch-phone.ssearch-sheet .ssearch-result {
+    padding: 0;
+    border-radius: 0;
+  }
+  .ssearch-phone.ssearch-sheet .ssearch-result + .ssearch-result {
+    border-top: 1px solid var(--line);
+  }
+  .ssearch-phone.ssearch-sheet .ssearch-go {
+    min-height: 60px;
+    padding: var(--space-2) var(--space-4);
+  }
+  .ssearch-phone.ssearch-sheet .ssearch-none {
+    padding: var(--space-4);
   }
 }

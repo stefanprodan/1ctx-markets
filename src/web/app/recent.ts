@@ -8,15 +8,13 @@
 
 import { effect, signal } from "@preact/signals";
 import { markets } from "../data/store.ts";
+import { SYMBOL } from "./paths.ts";
 import { path } from "./router.ts";
 
 export type RecentRow = { id: string; name: string | null };
 
 export const RECENT_MAX = 5;
 const KEY = "recent";
-
-export const recentHref = (id: string) =>
-  `/instruments/${encodeURIComponent(id)}`;
 
 export function readRecent(raw: string | null): RecentRow[] {
   try {
@@ -76,7 +74,7 @@ export function dropRecent(id: string): void {
 
 function pageId(here: string): string | null {
   try {
-    return decodeURIComponent(here.slice("/instruments/".length));
+    return decodeURIComponent(here.slice(SYMBOL.length));
   } catch {
     return null;
   }
@@ -90,7 +88,7 @@ export function watchRecent(): void {
     const here = path.value;
     const d = markets.detail.value;
     const id = markets.detailId.value;
-    if (!here.startsWith("/instruments/")) {
+    if (!here.startsWith(SYMBOL)) {
       recordedAt = null;
       picked = null;
       return;

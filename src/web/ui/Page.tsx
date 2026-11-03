@@ -3,6 +3,8 @@
 
 import type { ComponentChildren } from "preact";
 import { useEffect, useState } from "preact/hooks";
+import { goBack } from "../app/router.ts";
+import { onPhone } from "../app/shell.ts";
 import { markets } from "../data/store.ts";
 import { Icon } from "../lib/icons.tsx";
 import { reloading } from "../lib/refresh.ts";
@@ -34,6 +36,7 @@ export function didNotLoad(
 
 export function Page({
   title,
+  back,
   meta,
   search,
   actions,
@@ -46,6 +49,9 @@ export function Page({
   children,
 }: {
   title: string;
+  // on a phone, Back before the title: through the app's history, or to
+  // this address when the page was opened cold
+  back?: string;
   // a short line beside the title, such as when the page was answered
   meta?: ComponentChildren;
   // the symbol search shows on every page: false leaves it out (a page
@@ -82,6 +88,16 @@ export function Page({
   return (
     <div class="page">
       <div class="page-head">
+        {back !== undefined && onPhone.value && (
+          <button
+            type="button"
+            class="btn-icon page-back"
+            aria-label="Back"
+            onClick={() => goBack(back)}
+          >
+            <Icon name="chevron-left" size={20} />
+          </button>
+        )}
         <h1
           class={`page-title${reloading.value > 0 ? " page-title-busy" : ""}`}
         >

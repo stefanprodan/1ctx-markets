@@ -4,28 +4,20 @@
 import type { ComponentChildren } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { markets, type Store } from "../data/store.ts";
-import { Icon } from "../lib/icons.tsx";
 import { holding } from "../lib/refresh.ts";
 import { hold } from "../lib/slow.ts";
 import { Page } from "../ui/Page.tsx";
 import { SignIn } from "../views/SignIn.tsx";
+import { Bar } from "./Bar.tsx";
 import { Rail } from "./Rail.tsx";
 import { navigate, path, visits } from "./router.ts";
 import { HOME, type Match, match } from "./routes.ts";
 import { Strip } from "./Strip.tsx";
-import {
-  closeDrawer,
-  drawerOpen,
-  hideRail,
-  openDrawer,
-  railDrawer,
-  railHidden,
-} from "./shell.ts";
+import { hideRail, onPhone, railHidden } from "./shell.ts";
 import "./shell.css";
 
-// wide: the rail beside the view, or folded to the strip. Narrow or short:
-// the rail covers the view, opened by a button floating at its top left;
-// the view under it is inert, and closing it gives the button the focus
+// wide: the rail beside the view, or folded to the strip. A phone: the
+// view alone, with the bar floating over its foot
 export function Shell({
   here,
   children,
@@ -33,62 +25,27 @@ export function Shell({
   here: string;
   children: ComponentChildren;
 }) {
-  const phone = railDrawer.value;
-  const railShown = phone ? drawerOpen.value : !railHidden.value;
-  const covered = phone && drawerOpen.value;
-  const show = useRef<HTMLButtonElement>(null);
+  const phone = onPhone.value;
   const main = useRef<HTMLElement>(null);
-  const wasCovered = useRef(false);
-
-  useEffect(() => {
-    if (!covered) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeDrawer();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [covered]);
-  // the drawer closes on the tap, the page scrolls up once it shows
-  const address = path.value;
-  useEffect(() => {
-    closeDrawer();
-  }, [address]);
   useEffect(() => {
     main.current?.scrollTo(0, 0);
   }, [here]);
-  useEffect(() => {
-    if (wasCovered.current && !covered) show.current?.focus();
-    wasCovered.current = covered;
-  }, [covered]);
 
   return (
     <div class="shell">
-      {railShown && (
-        <Rail
-          here={here}
-          narrow={phone}
-          onHide={phone ? closeDrawer : hideRail}
-        />
-      )}
-      {!railShown && !phone && <Strip here={here} />}
+      {!phone &&
+        (railHidden.value ? (
+          <Strip here={here} />
+        ) : (
+          <Rail here={here} onHide={hideRail} />
+        ))}
       <main
         ref={main}
-        class={`shell-main${railShown ? "" : " shell-main-bare"}${holding.value ? " shell-holding" : ""}`}
-        inert={covered}
+        class={`shell-main${phone ? " shell-main-bar" : ""}${holding.value ? " shell-holding" : ""}`}
       >
-        {!railShown && phone && (
-          <button
-            ref={show}
-            type="button"
-            class="btn-icon shell-show-float"
-            aria-label="Show the menu"
-            onClick={openDrawer}
-          >
-            <Icon name="sidebar" />
-          </button>
-        )}
         {children}
       </main>
+      {phone && <Bar here={here} />}
     </div>
   );
 }

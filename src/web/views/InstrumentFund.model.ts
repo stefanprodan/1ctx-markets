@@ -1,6 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 
+import { symbolHref } from "../app/paths.ts";
 import type { Listed, TopHoldings } from "../data/store.ts";
 import { day } from "../lib/format.ts";
 import type { Weight } from "../ui/Weights.tsx";
@@ -49,7 +50,7 @@ const share = (w: number) => `${w.toFixed(1)}%`;
 
 const pageOf = (h: { id: string | null; symbol: string | null }) => {
   const to = h.id ?? h.symbol;
-  return to ? `/instruments/${encodeURIComponent(to)}` : null;
+  return to ? symbolHref(to) : null;
 };
 
 function headLine(t: TopHoldings, now: number): string | null {

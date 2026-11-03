@@ -150,9 +150,7 @@ describe("the table", () => {
         rows={ROWS}
         rowKey={(r) => r.id}
         open={(r) =>
-          r.id === "US:AAA"
-            ? { href: "/instruments/US%3AAAA" }
-            : { run: () => {} }
+          r.id === "US:AAA" ? { href: "/symbol/US%3AAAA" } : { run: () => {} }
         }
         rowLabel={(r) => r.name}
         menu={(r) =>
@@ -162,7 +160,7 @@ describe("the table", () => {
       />,
     );
     expect(html).toMatch(
-      /<a[^>]*href="\/instruments\/US%3AAAA"[^>]*><span[^>]*>Casey Corp<\/span><\/a>/,
+      /<a[^>]*href="\/symbol\/US%3AAAA"[^>]*><span[^>]*>Casey Corp<\/span><\/a>/,
     );
     expect(html).toMatch(
       /<button type="button" class="table-open"><span[^>]*>Doe Ltd<\/span><\/button>/,
@@ -548,7 +546,7 @@ describe("the menu", () => {
         close={() => {}}
         items={[
           { label: "Buy", run: () => {} },
-          { label: "Instrument page", href: "/instruments/US%3AAAA" },
+          { label: "Instrument page", href: "/symbol/US%3AAAA" },
           { label: "Remove", run: () => {}, danger: true },
         ]}
       />,
@@ -556,7 +554,7 @@ describe("the menu", () => {
     expect(html.match(/role="menuitem"/g)?.length).toBe(3);
     expect(html).toMatch(/<button[^>]*role="menuitem"[^>]*>Buy<\/button>/);
     expect(html).toMatch(
-      /<a[^>]*role="menuitem"[^>]*href="\/instruments\/US%3AAAA"[^>]*>Instrument page<\/a>/,
+      /<a[^>]*role="menuitem"[^>]*href="\/symbol\/US%3AAAA"[^>]*>Instrument page<\/a>/,
     );
   });
 });
@@ -780,8 +778,8 @@ describe("the symbol search", () => {
 
   test("a result is the ticker over its name and opens its instrument page", () => {
     const html = results();
-    expect(html).toContain('href="/instruments/US%3ACAS"');
-    expect(html).toContain('href="/instruments/CRYPTO%3ADOE-USD"');
+    expect(html).toContain('href="/symbol/US%3ACAS"');
+    expect(html).toContain('href="/symbol/CRYPTO%3ADOE-USD"');
     expect(html).toMatch(
       /<span class="sym-ticker">CAS<\/span><span class="sym-name">Casey Corp<\/span>/,
     );
@@ -815,9 +813,9 @@ describe("the symbol search", () => {
     expect(results({ adds, adding: doe.id })).toContain("Fetching…");
   });
 
-  test("the field, the phone's icon and its sheet's Cancel, no results until asked", () => {
+  test("the field and its sheet's Cancel, no results until asked; a phone opens it from the bar", () => {
     const html = render(<SymbolSearch />);
-    expect(html).toContain('aria-label="Search"');
+    expect(html).not.toContain('aria-label="Search"');
     expect(html).toContain('placeholder="Search a symbol or name"');
     expect(html).toContain('type="search"');
     expect(html).toContain(">Cancel</button>");

@@ -3,6 +3,7 @@
 
 import { useSignal } from "@preact/signals";
 import { useCallback, useEffect } from "preact/hooks";
+import { SCREENER } from "../app/paths.ts";
 import { navigate } from "../app/router.ts";
 import type { Params } from "../app/routes.ts";
 import { says } from "../data/api.ts";
@@ -62,7 +63,7 @@ export function Instrument({ params }: { params: Params }) {
     refused.value = null;
     const r = await markets.remove(id);
     removing.value = false;
-    if (r.ok) navigate("/instruments");
+    if (r.ok) navigate(SCREENER);
     else
       refused.value =
         "rules" in r
@@ -73,6 +74,7 @@ export function Instrument({ params }: { params: Params }) {
   return (
     <Page
       title={symbol}
+      back={SCREENER}
       amounts={held !== null}
       meta={
         detail?.instrument.name

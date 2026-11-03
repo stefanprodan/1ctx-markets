@@ -17,6 +17,48 @@ export function toggleUserMenu(): void {
   userMenuOpen.value = !userMenuOpen.value;
 }
 
+// the operator's two items: the user menu's, and More's on a phone
+export function UserItems({ onSignedOut }: { onSignedOut?: () => void }) {
+  const failure = useSignal<string | null>(null);
+  return (
+    <>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={theme.value === "dark"}
+        class="menu-item"
+        onClick={toggleTheme}
+      >
+        <Icon name="moon" size={14} />
+        <span>Dark theme</span>
+        <span
+          class={`usermenu-switch switch${theme.value === "dark" ? " switch-on" : ""}`}
+        >
+          <span class="switch-knob" />
+        </span>
+      </button>
+      <button
+        type="button"
+        class="menu-item"
+        onClick={async () => {
+          failure.value = null;
+          try {
+            await markets.signOut();
+          } catch (err) {
+            failure.value = says(err);
+            return;
+          }
+          onSignedOut?.();
+        }}
+      >
+        <Icon name="sign-out" size={14} />
+        <span>Sign out</span>
+      </button>
+      {failure.value && <p class="usermenu-error error">{failure.value}</p>}
+    </>
+  );
+}
+
 export function UserMenu({
   wrap,
   place,
@@ -27,7 +69,6 @@ export function UserMenu({
   // the button that opens it, inside the box so its click is no click outside
   children: ComponentChildren;
 }) {
-  const failure = useSignal<string | null>(null);
   const root = useRef<HTMLDivElement>(null);
   const open = userMenuOpen.value;
   useEffect(() => {
@@ -56,39 +97,11 @@ export function UserMenu({
     <div ref={root} class={wrap}>
       {open && (
         <div class={`menu ${place}`}>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={theme.value === "dark"}
-            class="menu-item"
-            onClick={toggleTheme}
-          >
-            <Icon name="moon" size={14} />
-            <span>Dark theme</span>
-            <span
-              class={`usermenu-switch switch${theme.value === "dark" ? " switch-on" : ""}`}
-            >
-              <span class="switch-knob" />
-            </span>
-          </button>
-          <button
-            type="button"
-            class="menu-item"
-            onClick={async () => {
-              failure.value = null;
-              try {
-                await markets.signOut();
-              } catch (err) {
-                failure.value = says(err);
-                return;
-              }
+          <UserItems
+            onSignedOut={() => {
               userMenuOpen.value = false;
             }}
-          >
-            <Icon name="sign-out" size={14} />
-            <span>Sign out</span>
-          </button>
-          {failure.value && <p class="usermenu-error error">{failure.value}</p>}
+          />
         </div>
       )}
       {children}

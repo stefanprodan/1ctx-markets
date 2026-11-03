@@ -4,7 +4,7 @@
 import { describe, expect, test } from "bun:test";
 import { render } from "preact-render-to-string";
 import { trailingReturns } from "../src/signals/relative.ts";
-import { railDrawer } from "../src/web/app/shell.ts";
+import { onPhone } from "../src/web/app/shell.ts";
 import {
   askedFrom,
   type DailyRange,
@@ -210,7 +210,7 @@ describe("the chart's ranges without 5-minute closes", () => {
       },
     });
     try {
-      railDrawer.value = false;
+      onPhone.value = false;
       const without = render(<Chart id="BVB:TLV" intraday={false} />);
       expect(without).not.toContain(">1D<");
       expect(without).not.toContain(">5D<");

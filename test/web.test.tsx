@@ -3,10 +3,22 @@
 
 import { describe, expect, test } from "bun:test";
 import { signal } from "@preact/signals";
+import { options } from "preact";
 import { render } from "preact-render-to-string";
 import { spec } from "../src/api/openapi.ts";
 import { UI_PATHS } from "../src/server/http.ts";
 import { App, Shell } from "../src/web/app/App.tsx";
+import {
+  Bar,
+  barLit,
+  isTextField,
+  MORE,
+  More,
+  moreOpen,
+  typingIn,
+  watchMore,
+  watchTyping,
+} from "../src/web/app/Bar.tsx";
 import { iconClass, Rail } from "../src/web/app/Rail.tsx";
 import {
   putRecent,
@@ -14,12 +26,20 @@ import {
   readRecent,
   recent,
 } from "../src/web/app/recent.ts";
-import { inApp } from "../src/web/app/router.ts";
+import {
+  backFrom,
+  goBack,
+  inApp,
+  path,
+  stepOf,
+  visits,
+} from "../src/web/app/router.ts";
 import { HOME, lit, match, RAIL, ROUTES } from "../src/web/app/routes.ts";
 import { Strip } from "../src/web/app/Strip.tsx";
-import { railDrawer } from "../src/web/app/shell.ts";
+import { onPhone } from "../src/web/app/shell.ts";
 import { resolveTheme } from "../src/web/app/theme.ts";
 import { tabTitle } from "../src/web/app/title.ts";
+import { UserItems } from "../src/web/app/UserMenu.tsx";
 import {
   ApiError,
   buildWatch,
@@ -44,6 +64,7 @@ import {
   KEYS_PATH,
   type Listed,
   layoutOf,
+  markets,
   payloadOf,
   RETRY_PATH,
   type ScreenAsk,
@@ -67,9 +88,16 @@ import {
 } from "../src/web/lib/format.ts";
 import { about, marketOf, symbolOf } from "../src/web/lib/names.ts";
 import { reloading } from "../src/web/lib/refresh.ts";
+import { Drawer } from "../src/web/ui/Drawer.tsx";
 import { MenuItems } from "../src/web/ui/Menu.tsx";
 import { didNotLoad, Page } from "../src/web/ui/Page.tsx";
 import { Segmented } from "../src/web/ui/Segmented.tsx";
+import {
+  OPENER,
+  openSearch,
+  SymbolSearch,
+  searchShown,
+} from "../src/web/ui/SymbolSearch.tsx";
 import {
   axisPrice,
   candles,
@@ -183,8 +211,8 @@ import {
   fromHigh,
   returnOf,
   typeTabs,
-} from "../src/web/views/Instruments.model.ts";
-import { InstrumentsList } from "../src/web/views/Instruments.tsx";
+} from "../src/web/views/Screener.model.ts";
+import { ScreenerList } from "../src/web/views/Screener.tsx";
 import { SignIn } from "../src/web/views/SignIn.tsx";
 import {
   allOk,
@@ -378,29 +406,35 @@ describe("the routes", () => {
     expect(HOME).toBe("/");
     expect(match("/")?.route.label).toBe("Home");
     expect(match("/status")?.route.label).toBe("Server status");
-    expect(match("/instruments")?.route.label).toBe("Instruments");
+    expect(match("/screener")?.route.label).toBe("Screener");
+    // the old addresses are no pages
+    expect(match("/instruments")).toBeNull();
+    expect(match("/instruments/US%3ANVDA")).toBeNull();
     expect(match("/connect")?.route.label).toBe("Connect agents");
     expect(match("/profile")?.route.label).toBe("Profile");
     expect(match("/nothing")).toBeNull();
     // an instrument's page takes its id from the path, decoded
-    expect(match("/instruments/US%3ANVDA")).toMatchObject({
+    expect(match("/symbol/US%3ANVDA")).toMatchObject({
       route: { label: "Instrument" },
       params: { id: "US:NVDA" },
     });
-    expect(match("/instruments/%E0%A4%A")).toBeNull();
-    expect(match("/instruments/a/b")).toBeNull();
+    expect(match("/symbol/%E0%A4%A")).toBeNull();
+    expect(match("/symbol/a/b")).toBeNull();
     // the rail names the pages without a parameter and lights the parent
     expect(RAIL.map((r) => r.label)).toEqual([
       "Home",
-      "Instruments",
+      "Screener",
       "Portfolios",
       "Profile",
       "Connect agents",
       "Server status",
     ]);
     expect(lit("/status", "/")).toBe(false);
-    expect(lit("/instruments/US%3ANVDA", "/instruments")).toBe(true);
-    expect(lit("/instrumentsx", "/instruments")).toBe(false);
+    // a symbol's page is not under /screener, so it names its parent
+    expect(lit("/symbol/US%3ANVDA", "/screener")).toBe(true);
+    expect(lit("/symbol/US%3ANVDA", "/portfolios")).toBe(false);
+    expect(lit("/portfolios/5", "/portfolios")).toBe(true);
+    expect(lit("/screenerx", "/screener")).toBe(false);
   });
 
   test("a link opens in place unless it leaves the UI", () => {
@@ -434,15 +468,9 @@ describe("the routes", () => {
   test("the tab names the page before the brand", () => {
     expect(tabTitle("/", true)).toBe("1ctx Markets");
     expect(tabTitle("/status", true)).toBe("Server status · 1ctx Markets");
-    expect(tabTitle("/instruments", undefined)).toBe(
-      "Instruments · 1ctx Markets",
-    );
-    expect(tabTitle("/instruments/US%3ABRK-B", true)).toBe(
-      "BRK-B · 1ctx Markets",
-    );
-    expect(tabTitle("/instruments/FRED:DGS10", true)).toBe(
-      "DGS10 · 1ctx Markets",
-    );
+    expect(tabTitle("/screener", undefined)).toBe("Screener · 1ctx Markets");
+    expect(tabTitle("/symbol/US%3ABRK-B", true)).toBe("BRK-B · 1ctx Markets");
+    expect(tabTitle("/symbol/FRED:DGS10", true)).toBe("DGS10 · 1ctx Markets");
     expect(tabTitle("/portfolios/5", true)).toBe("Portfolios · 1ctx Markets");
     expect(tabTitle("/status", false)).toBe("Sign in · 1ctx Markets");
     expect(tabTitle("/nothing", true)).toBe("1ctx Markets");
@@ -1162,35 +1190,28 @@ describe("the views", () => {
   });
 
   test("the rail is the logo, Markets, the pages lit where they are, and the menu", () => {
-    const html = render(
-      <Rail here="/instruments" narrow={false} onHide={() => {}} />,
-    );
+    const html = render(<Rail here="/symbol/US%3AAAPL" onHide={() => {}} />);
     expect(html).toContain('aria-label="1ctx"');
     expect(html).toContain('<span class="rail-word">Markets</span>');
     expect(html.indexOf("rail-word")).toBeLessThan(html.indexOf("rail-nav"));
     const lit = [
       ...html.matchAll(/class="rail-item rail-item-on"[^>]*>.*?<span>([^<]+)/g),
     ].map((m) => m[1]);
-    expect(lit).toEqual(["Instruments"]);
+    expect(lit).toEqual(["Screener"]);
     expect(html).toContain('href="/status"');
     expect(html).toContain("Hide the menu");
     expect(html).toContain("rail-user-row");
-    const drawer = render(<Rail here="/status" narrow onHide={() => {}} />);
-    expect(drawer).toContain("rail-drawer");
-    expect(drawer).toContain("Close the menu");
   });
 
   test("a page re-reading marks its title, never the menu's icons", () => {
     const views = () => [
-      render(<Rail here="/instruments" narrow={false} onHide={() => {}} />),
-      render(<Strip here="/instruments" />),
+      render(<Rail here="/screener" onHide={() => {}} />),
+      render(<Strip here="/screener" />),
     ];
-    expect(render(<Page title="Instruments" />)).not.toContain(
-      "page-title-busy",
-    );
+    expect(render(<Page title="Screener" />)).not.toContain("page-title-busy");
     reloading.value = 1;
     try {
-      expect(render(<Page title="Instruments" />)).toContain(
+      expect(render(<Page title="Screener" />)).toContain(
         'class="page-title page-title-busy"',
       );
       for (const html of views()) expect(html).not.toContain("rail-icon-");
@@ -1202,19 +1223,15 @@ describe("the views", () => {
   });
 
   test("the rail lists the recent instruments, the one on screen lit", () => {
-    expect(
-      render(<Rail here="/" narrow={false} onHide={() => {}} />),
-    ).not.toContain("Recent");
+    expect(render(<Rail here="/" onHide={() => {}} />)).not.toContain("Recent");
     recent.value = [
       { id: "US:AMD", name: "Advanced Micro Devices, Inc." },
       { id: "US:AAPL", name: null },
     ];
     try {
-      const html = render(
-        <Rail here="/instruments/US%3AAAPL" narrow={false} onHide={() => {}} />,
-      );
+      const html = render(<Rail here="/symbol/US%3AAAPL" onHide={() => {}} />);
       expect(html).toContain('<span class="rail-label">Recent</span>');
-      expect(html).toContain('href="/instruments/US%3AAMD"');
+      expect(html).toContain('href="/symbol/US%3AAMD"');
       expect(html).toContain(
         '<span class="sym sym-compact"><span class="sym-ticker">AMD</span><span class="sym-name">Advanced Micro Devices, Inc.</span></span>',
       );
@@ -1229,7 +1246,7 @@ describe("the views", () => {
   test("a recent coin is named without its quote currency", () => {
     recent.value = [{ id: "CRYPTO:BTC-USD", name: "Bitcoin USD" }];
     try {
-      const html = render(<Rail here="/" narrow={false} onHide={() => {}} />);
+      const html = render(<Rail here="/" onHide={() => {}} />);
       expect(html).toContain(
         '<span class="sym-ticker">BTC</span><span class="sym-name">Bitcoin</span>',
       );
@@ -1450,7 +1467,7 @@ describe("the instruments model", () => {
 describe("the instruments screener", () => {
   const list = (held: Screener | null, ask: ScreenAsk = MOVES) =>
     render(
-      <InstrumentsList
+      <ScreenerList
         held={held}
         ask={ask}
         more={false}
@@ -1492,7 +1509,7 @@ describe("the instruments screener", () => {
     // the title is the screen's name, no count
     expect(html).not.toContain("card-count");
     expect(html.indexOf("NVDA")).toBeLessThan(html.indexOf("H2O"));
-    expect(html).toContain('href="/instruments/US%3ANVDA"');
+    expect(html).toContain('href="/symbol/US%3ANVDA"');
     expect(html).toContain('216.89<span class="num-ccy"> USD</span>');
     expect(html).toContain("−0.48%");
     expect(html).toContain("+30.50%");
@@ -1530,7 +1547,7 @@ describe("the instruments screener", () => {
       sort: "return_1y",
       order: "asc",
     };
-    const tree = InstrumentsList({
+    const tree = ScreenerList({
       held: heldScreen([screened("US:A")], ask),
       ask,
       more: false,
@@ -2787,20 +2804,403 @@ describe("page failures", () => {
   });
 });
 
+// every vnode a render makes, so a test can press what it drew
+function drawn(view: () => preact.VNode): { html: string; nodes: any[] } {
+  const nodes: any[] = [];
+  const before = options.vnode;
+  options.vnode = (v) => {
+    nodes.push(v);
+    before?.(v);
+  };
+  try {
+    return { html: render(view()), nodes };
+  } finally {
+    options.vnode = before;
+  }
+}
+
+const slotOn = (html: string): string[] =>
+  [
+    ...html.matchAll(
+      /class="bar-slot bar-slot-on"[^>]*>.*?bar-label">([^<]+)/g,
+    ),
+  ].map((m) => m[1]!);
+
+describe("the phone's bar", () => {
+  test("lights the slot of the page on screen", () => {
+    expect(barLit("/")).toBe("home");
+    expect(barLit("/screener")).toBe("screener");
+    expect(barLit("/symbol/US%3AAAPL")).toBe("screener");
+    expect(barLit("/portfolios")).toBe("portfolios");
+    expect(barLit("/portfolios/5")).toBe("portfolios");
+    for (const here of ["/profile", "/connect", "/status"]) {
+      expect(barLit(here)).toBe("more");
+    }
+    expect(barLit("/instruments")).toBeNull();
+    expect(MORE.map((r) => r.label)).toEqual([
+      "Profile",
+      "Connect agents",
+      "Server status",
+    ]);
+    for (const [here, label] of [
+      ["/", "Home"],
+      ["/screener", "Screener"],
+      ["/symbol/US%3AAAPL", "Screener"],
+      ["/portfolios/5", "Portfolios"],
+      ["/status", "More"],
+    ] as const) {
+      expect([here, slotOn(render(<Bar here={here} />))]).toEqual([
+        here,
+        [label],
+      ]);
+    }
+    const home = render(<Bar here="/" />);
+    expect(home).toContain(
+      'href="/" class="bar-slot bar-slot-on" aria-current="page"',
+    );
+    expect(home).toContain('href="/screener"');
+    expect(home).toContain('href="/portfolios"');
+    // a page under its slot is lit but is not that page
+    expect(render(<Bar here="/symbol/US%3AAAPL" />)).toContain(
+      'href="/screener" class="bar-slot bar-slot-on" aria-current="true"',
+    );
+  });
+
+  test("Search opens the page's own search, off while the page leaves it out", () => {
+    searchShown.value = 0;
+    const off = drawn(() => <Bar here="/profile" />);
+    const search = (nodes: any[]) =>
+      nodes.find((n) => n.type === "button" && n.props[OPENER] !== undefined);
+    expect(search(off.nodes).props.disabled).toBe(true);
+    searchShown.value = 1;
+    try {
+      const on = drawn(() => <Bar here="/" />);
+      expect(search(on.nodes).props.disabled).toBe(false);
+      expect(search(on.nodes).props.onClick).toBe(openSearch);
+    } finally {
+      searchShown.value = 0;
+    }
+    // the sheet is the page's search: Home's carries its adds, a page
+    // mid-edit has none
+    const adds = { sections: [], onAdd: async () => {}, refuse: () => null };
+    const home = drawn(() => <Page title="Home" search={adds} />);
+    expect(home.nodes.find((n) => n.type === SymbolSearch).props.adds).toBe(
+      adds,
+    );
+    const plain = drawn(() => <Page title="Screener" />);
+    expect(
+      plain.nodes.find((n) => n.type === SymbolSearch).props.adds,
+    ).toBeUndefined();
+    const editing = drawn(() => <Page title="Profile" search={false} />);
+    expect(editing.nodes.some((n) => n.type === SymbolSearch)).toBe(false);
+    // the tap asks the page's search to open, inside the tap
+    const was = (globalThis as any).window;
+    const target = new EventTarget();
+    let asked = 0;
+    target.addEventListener("symbol-search-open", () => asked++);
+    (globalThis as any).window = target;
+    try {
+      openSearch();
+    } finally {
+      (globalThis as any).window = was;
+    }
+    expect(asked).toBe(1);
+  });
+
+  test("More carries the status icon's red mark while something fails", () => {
+    expect(render(<Bar here="/" />)).not.toContain("rail-icon-failed");
+    markets.signedIn.value = true;
+    markets.pulse.value = STATUS;
+    try {
+      const html = render(<Bar here="/" />);
+      expect(html).toContain('aria-label="More: something is failing"');
+      expect(html).toContain('class="rail-icon-failed"');
+    } finally {
+      markets.signedIn.value = undefined;
+      markets.pulse.value = null;
+    }
+  });
+
+  test("hides for a text field, never for a button or a switch", () => {
+    const el = (tagName: string, type?: string, editable = false) => ({
+      tagName,
+      isContentEditable: editable,
+      getAttribute: (n: string) => (n === "type" ? (type ?? null) : null),
+    });
+    for (const f of [
+      el("INPUT"),
+      el("INPUT", "text"),
+      el("INPUT", "search"),
+      el("INPUT", "NUMBER"),
+      el("INPUT", "date"),
+      el("TEXTAREA"),
+      el("DIV", undefined, true),
+    ]) {
+      expect(isTextField(f as any)).toBe(true);
+    }
+    for (const f of [
+      el("INPUT", "checkbox"),
+      el("INPUT", "radio"),
+      el("INPUT", "file"),
+      el("BUTTON"),
+      el("A"),
+      null,
+    ]) {
+      expect(isTextField(f as any)).toBe(false);
+    }
+  });
+
+  test("comes back once the focused field leaves the page, with no focusout", async () => {
+    const field = {
+      tagName: "INPUT",
+      isContentEditable: false,
+      isConnected: true,
+      getAttribute: () => "search",
+    };
+    const body = {
+      tagName: "BODY",
+      isConnected: true,
+      getAttribute: () => null,
+    };
+    const doc = Object.assign(new EventTarget(), {
+      activeElement: body as any,
+      body: {} as Node,
+    });
+    const view = new EventTarget();
+    let changed: (() => void) | null = null;
+    let watching = 0;
+    class Tree {
+      constructor(fn: () => void) {
+        changed = fn;
+      }
+      observe() {
+        watching++;
+      }
+      disconnect() {
+        watching--;
+      }
+    }
+    const seen: boolean[] = [];
+    const inBar = { ...field };
+    const bar = { contains: (n: unknown) => n === inBar } as any;
+    const w = watchTyping(
+      { doc: doc as any, view: view as any, Observer: Tree as any },
+      () => bar,
+      (t) => seen.push(t),
+    );
+    doc.activeElement = field;
+    doc.dispatchEvent(new Event("focusin"));
+    expect(seen).toEqual([true]);
+    expect(watching).toBe(1);
+    // the drawer or the sheet holding it closes: WebKit says nothing
+    field.isConnected = false;
+    changed!();
+    expect(seen).toEqual([true, false]);
+    expect(watching).toBe(0);
+    // a field the keyboard leaves, seen once the focus has moved
+    field.isConnected = true;
+    doc.dispatchEvent(new Event("focusin"));
+    doc.activeElement = body;
+    doc.dispatchEvent(new Event("focusout"));
+    expect(seen).toEqual([true, false, true]);
+    await Promise.resolve();
+    expect(seen).toEqual([true, false, true, false]);
+    // the keyboard going resizes the visual viewport
+    doc.activeElement = field;
+    w.check();
+    field.isConnected = false;
+    view.dispatchEvent(new Event("resize"));
+    expect(seen).toEqual([true, false, true, false, true, false]);
+    // a field inside the bar never sends it away
+    expect(typingIn(inBar as any, bar)).toBe(false);
+    expect(typingIn({ ...field, isConnected: true } as any, bar)).toBe(true);
+    w.stop();
+  });
+
+  test("More closes on any step to another address, Back included", () => {
+    const stop = watchMore();
+    const was = path.value;
+    try {
+      moreOpen.value = true;
+      path.value = "/status";
+      expect(moreOpen.value).toBe(false);
+      moreOpen.value = true;
+      visits.value++;
+      expect(moreOpen.value).toBe(false);
+    } finally {
+      stop();
+      path.value = was;
+    }
+  });
+
+  test("the phone check, not the width, makes the search a sheet", () => {
+    expect(render(<SymbolSearch />)).not.toContain("ssearch-phone");
+    onPhone.value = true;
+    try {
+      expect(render(<SymbolSearch />)).toContain(
+        'class="ssearch ssearch-phone"',
+      );
+    } finally {
+      onPhone.value = false;
+    }
+  });
+
+  test("a phone's shell is the view and the bar, no rail, strip or menu button", () => {
+    onPhone.value = true;
+    try {
+      const html = render(
+        <Shell here="/">
+          <p>view</p>
+        </Shell>,
+      );
+      expect(html).toContain('class="shell-main shell-main-bar"');
+      expect(html).toContain('class="bar"');
+      expect(html).not.toContain("rail");
+      expect(html).not.toContain("strip");
+      expect(html).not.toContain("Show the menu");
+    } finally {
+      onPhone.value = false;
+    }
+    const wide = render(
+      <Shell here="/">
+        <p>view</p>
+      </Shell>,
+    );
+    expect(wide).toContain('class="rail"');
+    expect(wide).not.toContain('class="bar');
+  });
+});
+
+describe("More's drawer", () => {
+  test("lists the pages, Recent, the theme and Sign out; a tap closes it", () => {
+    recent.value = [{ id: "US:AMD", name: "Advanced Micro Devices, Inc." }];
+    try {
+      const { nodes } = drawn(() => (
+        <More here="/connect" failing={false} onClose={() => {}} />
+      ));
+      const drawer = nodes.find((n) => n.type === Drawer);
+      expect(drawer.props.title).toBe("More");
+      let closed = 0;
+      const close = () => closed++;
+      const body = drawn(() => drawer.props.children(close));
+      const words = [
+        ...body.html.matchAll(
+          /<span>([^<]+)<\/span>|class="rail-label">([^<]+)|sym-ticker">([^<]+)/g,
+        ),
+      ].map((m) => m[1] ?? m[2] ?? m[3]);
+      expect(words).toEqual([
+        "Profile",
+        "Connect agents",
+        "Server status",
+        "Recent",
+        "AMD",
+        "Dark theme",
+        "Sign out",
+      ]);
+      expect(body.html).toContain(
+        'href="/connect" class="rail-item rail-item-on" aria-current="page"',
+      );
+      expect(body.html).toContain('href="/symbol/US%3AAMD"');
+      const links = body.nodes.filter((n) => n.type === "a");
+      expect(links).toHaveLength(4);
+      for (const a of links) a.props.onClick();
+      expect(closed).toBe(4);
+      // the user menu's own items, closing once signed out
+      expect(
+        body.nodes.find((n) => n.type === UserItems).props.onSignedOut,
+      ).toBe(close);
+    } finally {
+      recent.value = [];
+    }
+  });
+
+  test("Server status is red while something fails", () => {
+    const { nodes } = drawn(() => <More here="/" failing onClose={() => {}} />);
+    const drawer = nodes.find((n) => n.type === Drawer);
+    const html = render(drawer.props.children(() => {}));
+    expect(html).toContain('aria-label="Server status: something is failing"');
+    expect(html.match(/rail-icon-failed/g)).toHaveLength(1);
+  });
+});
+
+describe("Back", () => {
+  test("steps back inside the app, else goes to the page's address", () => {
+    expect(stepOf(null)).toBe(0);
+    expect(stepOf({ step: 3 })).toBe(3);
+    expect(stepOf({ other: 1 })).toBe(0);
+    // reached by a step inside the app
+    expect(backFrom({ step: 2 }, 1)).toBe("history");
+    // the tab's first page, a reload or a pasted address
+    expect(backFrom(null, 0)).toBe("address");
+    expect(backFrom({ step: 3 }, 3)).toBe("address");
+    // back past a reload, to an entry from before it
+    expect(backFrom({ step: 1 }, 3)).toBe("address");
+
+    const g = globalThis as any;
+    const was = { history: g.history, location: g.location, path: path.value };
+    const backs: number[] = [];
+    const pushed: [unknown, string][] = [];
+    const tab = (state: unknown) => {
+      g.location = {
+        origin: "http://markets.test",
+        pathname: "/symbol/US%3AAAPL",
+        search: "",
+      };
+      g.history = {
+        state,
+        back: () => backs.push(1),
+        pushState: (s: unknown, _: string, to: string) => pushed.push([s, to]),
+        replaceState: () => {},
+      };
+    };
+    try {
+      tab({ step: 1 });
+      goBack("/screener");
+      expect(backs).toHaveLength(1);
+      expect(pushed).toEqual([]);
+      tab(null);
+      goBack("/screener");
+      expect(backs).toHaveLength(1);
+      expect(pushed).toEqual([[{ step: 1 }, "/screener"]]);
+      expect(path.value).toBe("/screener");
+    } finally {
+      g.history = was.history;
+      g.location = was.location;
+      path.value = was.path;
+    }
+  });
+
+  test("shows on a phone's page that asks for it, before the title", () => {
+    expect(render(<Page title="AAPL" back="/screener" />)).not.toContain(
+      "page-back",
+    );
+    onPhone.value = true;
+    try {
+      const html = render(<Page title="AAPL" back="/screener" />);
+      expect(html).toMatch(
+        /<div class="page-head"><button type="button" class="btn-icon page-back" aria-label="Back">[\s\S]*<h1[^>]*>AAPL<\/h1>/,
+      );
+      expect(render(<Page title="Portfolios" />)).not.toContain("page-back");
+    } finally {
+      onPhone.value = false;
+    }
+  });
+});
+
 describe("the chart model", () => {
   test("a phone has no toolbar and draws edge to edge; a wider window keeps Log", () => {
     // no storage in tests, so the chart opens on its default, 1D
     try {
-      railDrawer.value = true;
+      onPhone.value = true;
       const phone = render(<Chart id="US:AAPL" intraday />);
       expect(phone).not.toContain("chart-tools");
       expect(phone).toContain("chart-phone");
-      railDrawer.value = false;
+      onPhone.value = false;
       const desk = render(<Chart id="US:AAPL" intraday />);
       expect(desk).toContain(">Log</button>");
       expect(desk).not.toContain("chart-phone");
     } finally {
-      railDrawer.value = false;
+      onPhone.value = false;
     }
   });
 
@@ -3494,7 +3894,7 @@ describe("the home page's cards", () => {
     const [gspc, , dgs10, later, , typo] = HOME_WATCH.entries as WatchEntry[];
     expect(cardOf(gspc!)).toMatchObject({
       type: "ready",
-      href: "/instruments/SNP%3A%5EGSPC",
+      href: "/symbol/SNP%3A%5EGSPC",
       symbol: "^GSPC",
       price: "100.00",
       currency: "USD",
@@ -3551,7 +3951,7 @@ describe("the home page's cards", () => {
       type: "failed",
       value: "^NDX",
       text: "Not available",
-      href: "/instruments/NAS%3A%5ENDX",
+      href: "/symbol/NAS%3A%5ENDX",
       price: "100.00 USD",
     });
     expect(cardOf({ ...stored, state: "candidates" })).toMatchObject({
@@ -3559,7 +3959,7 @@ describe("the home page's cards", () => {
     });
     const html = render(<Tile entry={stored} spark={undefined} />);
     expect(html).toContain("Not available");
-    expect(html).toContain('href="/instruments/NAS%3A%5ENDX"');
+    expect(html).toContain('href="/symbol/NAS%3A%5ENDX"');
   });
 
   test("a card leads with the ticker over its name; a coin drops its quote currency", () => {
@@ -3869,7 +4269,7 @@ describe("the dashboard's model", () => {
         save={() => Promise.resolve()}
       />,
     );
-    expect(html).toContain('href="/instruments/US%3AAAA"');
+    expect(html).toContain('href="/symbol/US%3AAAA"');
     expect(html).toMatch(
       />\+2\.50%<\/span><span class="num up small">\+1\.00 USD</,
     );
@@ -4034,7 +4434,7 @@ describe("the dashboard's model", () => {
       "None of your stocks reports",
     );
     const week = render(<Earnings earnings={[EARNING]} off={false} />);
-    expect(week).toContain('href="/instruments/US%3AAAA"');
+    expect(week).toContain('href="/symbol/US%3AAAA"');
     expect(week).toMatch(
       /sym-ticker">AAA<\/span><span class="sym-name">AAA Inc\./,
     );

@@ -1,6 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 
+import { symbolHref } from "../app/paths.ts";
 import type {
   Board,
   BoardItem,
@@ -446,8 +447,6 @@ export function moveOf(row: Listed): { text: string; dir: Dir } {
 // a typo or an ambiguous value is not found; a source failure may pass
 const MISSING = new Set(["not_found", "candidates", "no_data"]);
 
-const hrefOf = (id: string) => `/instruments/${encodeURIComponent(id)}`;
-
 export function cardOf(e: WatchEntry): Card {
   const row = e.instrument;
   if (e.state !== "tracked" && e.state !== "pending") {
@@ -456,7 +455,7 @@ export function cardOf(e: WatchEntry): Card {
       value: e.value,
       text: MISSING.has(e.state) ? "Not found" : "Not available",
       ...(row !== null && e.id !== null
-        ? { href: hrefOf(e.id), price: price(row) }
+        ? { href: symbolHref(e.id), price: price(row) }
         : {}),
     };
   }
@@ -468,7 +467,7 @@ export function cardOf(e: WatchEntry): Card {
   const p = priceParts(row);
   return {
     type: "ready",
-    href: hrefOf(e.id),
+    href: symbolHref(e.id),
     name: nameOf(row.name, row.kind, e.id),
     symbol: tickerOf(e.id, row.kind),
     price: p.value,

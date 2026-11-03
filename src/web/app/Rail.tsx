@@ -1,48 +1,33 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 
-import { useEffect, useRef } from "preact/hooks";
 import { Icon, Logo } from "../lib/icons.tsx";
 import { nameOf, tickerOf } from "../lib/names.ts";
 import { SymbolName } from "../ui/Symbol.tsx";
 import { useServerFailing } from "./failing.ts";
-import { pickRecent, recent, recentHref } from "./recent.ts";
+import { symbolHref } from "./paths.ts";
+import { pickRecent, recent } from "./recent.ts";
 import { HOME, lit, RAIL, STATUS } from "./routes.ts";
 import { toggleUserMenu, UserMenu, userMenuOpen } from "./UserMenu.tsx";
 import "./rail.css";
 
-export function Rail({
-  here,
-  narrow,
-  onHide,
-}: {
-  here: string;
-  narrow: boolean;
-  onHide: () => void;
-}) {
-  const hide = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    if (narrow) hide.current?.focus();
-  }, [narrow]);
+export function Rail({ here, onHide }: { here: string; onHide: () => void }) {
   const failing = useServerFailing();
-  // a link to the page on screen is no navigation, so it closes the drawer
-  const follow = narrow ? onHide : undefined;
   return (
-    <aside class={`rail${narrow ? " rail-drawer" : ""}`}>
+    <aside class="rail">
       <div class="rail-top">
         <div class="rail-head">
-          <a class="rail-logo" href={HOME} aria-label="Home" onClick={follow}>
+          <a class="rail-logo" href={HOME} aria-label="Home">
             <Logo height={26} />
           </a>
           <span class="rail-word">Markets</span>
           <button
-            ref={hide}
             type="button"
             class="btn-icon rail-hide"
-            aria-label={narrow ? "Close the menu" : "Hide the menu"}
+            aria-label="Hide the menu"
             onClick={onHide}
           >
-            <Icon name={narrow ? "close" : "sidebar"} />
+            <Icon name="sidebar" />
           </button>
         </div>
         <nav class="rail-nav">
@@ -62,7 +47,6 @@ export function Rail({
                   ? `${r.label}: something is failing`
                   : undefined
               }
-              onClick={follow}
             >
               <Icon
                 name={r.icon}
@@ -71,7 +55,7 @@ export function Rail({
               <span>{r.label}</span>
             </a>
           ))}
-          <Recent here={here} follow={follow} />
+          <Recent here={here} />
         </nav>
       </div>
       <UserMenu wrap="rail-user" place="rail-menu">
@@ -95,14 +79,21 @@ export function Rail({
 export const iconClass = (failed: boolean): string | undefined =>
   failed ? "rail-icon-failed" : undefined;
 
-function Recent({ here, follow }: { here: string; follow?: () => void }) {
+// the last instruments opened: the rail's, and More's on a phone
+export function Recent({
+  here,
+  follow,
+}: {
+  here: string;
+  follow?: () => void;
+}) {
   const rows = recent.value;
   if (rows.length === 0) return null;
   return (
     <>
       <span class="rail-label">Recent</span>
       {rows.map((row) => {
-        const href = recentHref(row.id);
+        const href = symbolHref(row.id);
         const symbol = tickerOf(row.id);
         const name = nameOf(row.name, null, row.id);
         return (

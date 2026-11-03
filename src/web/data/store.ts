@@ -84,7 +84,7 @@ export type Listed = {
   fetched_at: string | null;
 };
 
-// a stored row with the figures the Instruments page screens on
+// a stored row with the figures the Screener page screens on
 export type Screened = Listed & {
   return_1m: number | null;
   return_1y: number | null;

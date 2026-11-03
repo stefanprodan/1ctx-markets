@@ -2,6 +2,12 @@
 
 @layer owners {
   .shell {
+    /* a phone's bar, which the view's foot keeps clear of */
+    --bar-h: 60px;
+    /* a phone's width; on its side the bar stays that wide, centred */
+    --bar-w: 440px;
+    /* 21px over a home indicator (its inset is 34px), 16px without one */
+    --bar-bottom: max(var(--space-4), calc(env(safe-area-inset-bottom) - 13px));
     position: relative;
     display: flex;
     height: 100%;
@@ -45,35 +51,25 @@
       --shell-inset: var(--space-4);
       --shell-gutter: var(--space-4);
     }
-    /* the button shares the page head's row: the head moves right by
-       this much, the content under it keeps the full width. Fixed,
-       so it stays on the head's row while the page scrolls */
-    .shell-main-bare {
-      --page-lead: 40px;
-    }
-    /* the head's row as tall as the floating button and centred, so the
-       title, its line and the actions meet the button's middle */
-    .shell-main-bare .page-head {
-      align-items: center;
-      min-height: calc(var(--shell-inset-top) + 32px + var(--space-2));
-    }
-    .shell-show-float {
-      position: fixed;
-      top: calc(var(--space-4) + env(safe-area-inset-top));
-      left: calc(var(--space-3) + env(safe-area-inset-left));
-      /* over the page's stuck head, under the drawer */
-      z-index: var(--z-shell);
-    }
+  }
+  /* the view scrolls under the bar; its last row and foot end above it */
+  .shell-main-bar {
+    --shell-inset-bottom: calc(
+      var(--shell-inset) +
+      var(--bar-h) +
+      var(--bar-bottom)
+    );
+    scroll-padding-bottom: calc(var(--bar-h) + var(--bar-bottom));
   }
 
   /* the page left, while the next one reads: dims only past a tenth of a
      second, so a fast switch shows no change, and comes back at once */
-  .shell-holding > :not(.shell-show-float) {
+  .shell-holding > * {
     opacity: 0.5;
     transition: opacity 200ms ease-out 100ms;
   }
   @media (prefers-reduced-motion: reduce) {
-    .shell-holding > :not(.shell-show-float) {
+    .shell-holding > * {
       transition-duration: 0s;
     }
   }

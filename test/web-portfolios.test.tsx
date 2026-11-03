@@ -299,7 +299,7 @@ describe("the Portfolios page", () => {
     const broken = store(
       async () => new Response("no", { status: 500 }),
       () => NOW,
-      () => "/instruments/XETRA:AAA",
+      () => "/symbol/XETRA:AAA",
       () => {},
     );
     expect(await broken.portfolios.tradesOf("XETRA:AAA")).toBeNull();
@@ -381,9 +381,7 @@ describe("the Portfolios page", () => {
     expect(html).toContain(
       '<button type="button" class="table-open"><span class="table-hidden">Kept for buying</span>',
     );
-    expect(html).toContain(
-      '<a class="table-open" href="/instruments/XETRA%3AAAA">',
-    );
+    expect(html).toContain('<a class="table-open" href="/symbol/XETRA%3AAAA">');
   });
 
   test("a holding sold today shows the day's move in place of its value", async () => {
@@ -1601,7 +1599,7 @@ describe("a fund the owner prices", () => {
     expect(homeOf(fundRow)).toBe("price");
     // no instrument page: its row is a button that opens the drawer
     const html = render(<PortfoliosBody store={s.portfolios} />);
-    expect(html).not.toContain(`/instruments/fund`);
+    expect(html).not.toContain(`/symbol/fund`);
     expect(html).toMatch(
       /pf-price">6\.00 EUR<\/span><span class="num small faint pf-price">30 Sept?( 2026)?</,
     );
@@ -2013,7 +2011,7 @@ describe("the page's model", () => {
   });
 
   test("a row with no instrument page opens what edits it", () => {
-    expect(pageOf(HOLDINGS.holdings[0]!)).toBe("/instruments/XETRA%3AAAA");
+    expect(pageOf(HOLDINGS.holdings[0]!)).toBe("/symbol/XETRA%3AAAA");
     expect(homeOf(cash)).toBe("edit");
     expect(homeOf(row({ kind: "bond", id: null, position: null }))).toBe(
       "purchases",
@@ -2041,7 +2039,7 @@ describe("the page's model", () => {
     ).toEqual([
       ["Buy", undefined],
       ["Sell", undefined],
-      ["Instrument page", "/instruments/XETRA%3AAAA"],
+      ["Instrument page", "/symbol/XETRA%3AAAA"],
     ]);
   });
 });
