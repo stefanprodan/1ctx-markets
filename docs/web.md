@@ -675,6 +675,44 @@ The parts:
   shows now that no other portfolio holds cash; shown only when both
   sides are above 0. The page shows no net worth: All portfolios is not net
   worth, which only the API and the tool answer.
+- **The value band follows the view its figures were read for**
+  (`shown` in `data/portfolios.ts`, set with the holdings): a tab
+  picked moves `portfolio` at once, but the name, bar and line change
+  only when its holdings land, in the same frame as the figures.
+- **One quiet line of growth beside the value** (`PortfolioGrowth.tsx`,
+  its rules in `PortfolioGrowth.model.ts`): the holdings' gain (value
+  less money put in, cash left out) per day over the past year, from
+  `GET /api/v1/holdings/growth` or `/portfolios/{id}/growth` with the
+  view's `currency` when one is picked (`docs/api.md`). Inside the
+  hero's height on the right, a third of its width (320px at most),
+  64px high, 44px on a phone; green when the year ended up, red when
+  down, a faint fill under it, "1Y" under its end; no axis, figures or
+  hover readout, so Hide amounts leaves it as is. A view younger than
+  a year spans the width from its first day, labelled by its months
+  ("6M") and titled "Growth since 8 May excluding cash". None, and no
+  slot, on Cash, a view of cash alone, under two days held, or when
+  its read failed (the next key reads again).
+- **The line never flickers.** Each view's series is kept for the
+  page's life (`growths`, by `growthKey()`: the view, the currency or
+  the display currency when none is picked, the live trades' ids, a
+  fund's hand price and a bond's face, cost and date), read from that
+  cache in the render, so a tab seen once draws at once and a new tab
+  or currency never shows the last one's line; the minute's refresh
+  keeps the key and reads nothing. A save keeps the view and currency
+  (`growthScope()`): its last line stays drawn until the new series
+  swaps in, with no fade. Otherwise an empty slot of the same size
+  holds the place while a series is read, and a series drawn for the
+  first time fades in (240ms, none under reduced motion).
+- **The figure is never cut, wrapped or rounded unasked**
+  (`useHeroFit`, the choice `heroFit()`): measured before the first
+  paint, again once the fonts land and on every resize. The line stays
+  beside while the figure, its currency, 16px and the line fit; else it
+  goes under the moves as a 24px strip the full width, no label; a
+  figure wider than the hero shrinks from the display size in even
+  pixels to 20px; past that it reads short ("9.88T",
+  `shortMoney()`), the full figure and currency in its title. Back beside
+  from under needs 24px more, so a figure near the edge moving with
+  each quote never flips the line.
 - **The view is the address** (`addressOf`, `viewOf`): the portfolio's
   id in the path, `currency` in the query, left out when it is the
   display currency. The tabs are links, so a

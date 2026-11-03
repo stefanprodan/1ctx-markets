@@ -595,6 +595,39 @@ export const portfolioSchemas: Record<string, Schema> = {
     ),
     holdings: list(holding),
   }),
+  Growth: object({
+    currency: note(str, "The named currency, else the display currency."),
+    from: note(
+      str,
+      "The first day in the past year that anything but cash was held.",
+    ),
+    to: note(str, "The owner's today."),
+    points: note(
+      list(
+        object({
+          date: str,
+          value: note(
+            num,
+            "What the holdings, never cash, were worth that day, at that day's closes and rates.",
+          ),
+          invested: note(
+            num,
+            "Money put in to date: buys less sells at their amounts, fees counted, each at its own day's rate; a bond's cost from its first day.",
+          ),
+          gain: note(num, "`value` less `invested`."),
+        }),
+      ),
+      "One a calendar day from `from` to `to`, oldest first; the last is the live value the holdings answer. Empty when fewer than two days held anything.",
+    ),
+    eased: note(
+      list(str),
+      "Funds the owner prices whose price between the owner's entries is a straight line.",
+    ),
+    missing: note(
+      list(str),
+      "Instruments or `CCY:` pairs with no stored row for part of the window, counted as 0 there; an instrument never priced is left out whole.",
+    ),
+  }),
   ImportArgs: object(
     {
       csv: note(str, `The file's text, at most ${MAX_CSV_BYTES / 1024} KiB.`),
@@ -712,6 +745,19 @@ const HOLDINGS = lines(
   "- Money (values, costs, profit or loss, the day's change, totals) is rounded to its currency's minor units, 2 decimals for most, 0 for JPY, 3 for KWD and 8 for a code ISO 4217 lacks; prices, quantities and rates keep their digits.",
 );
 
+const GROWTH = lines(
+  "The holdings' growth per day over the past year, in the named or display currency: what they were worth less the money put in, so a buy never lifts it.",
+  "",
+  "- Cash, reserve and dry powder never count.",
+  "- Built from stored rows only, never fetched: trades in today's shares, daily closes, the owner's fund prices and bonds from the first row of each one's history, priced by their listing's closes or at face.",
+  "- 400 while no currency is named and no display currency is set.",
+);
+
+const GROWTH_CURRENCY = q(
+  "currency",
+  "The currency every point is in; the owner's display currency when left out.",
+);
+
 const tags = ["portfolios"];
 
 export const portfolioPaths = {
@@ -811,6 +857,34 @@ export const portfolioPaths = {
       responses: base({
         200: ok("The holdings.", ref("Holdings")),
         404: missing,
+      }),
+    },
+  },
+  "/portfolios/{id}/growth": {
+    parameters: [idParam("portfolio")],
+    get: {
+      tags,
+      operationId: "portfolioGrowth",
+      security: READS,
+      summary: "A portfolio's growth over the past year",
+      description: GROWTH,
+      parameters: [GROWTH_CURRENCY],
+      responses: base({
+        200: ok("The growth.", ref("Growth")),
+        404: missing,
+      }),
+    },
+  },
+  "/holdings/growth": {
+    get: {
+      tags,
+      operationId: "holdingsGrowth",
+      security: READS,
+      summary: "Growth across portfolios over the past year",
+      description: GROWTH,
+      parameters: [GROWTH_CURRENCY],
+      responses: base({
+        200: ok("The growth.", ref("Growth")),
       }),
     },
   },

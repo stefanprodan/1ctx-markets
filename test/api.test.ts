@@ -2511,6 +2511,16 @@ async function portfolioOperations(
     404,
   );
   await refusals("GET", "/holdings", "/holdings");
+  const PG = `${P}/{id}/growth`;
+  await check("GET", PG, await t.call(`${at}/growth?currency=USD`), 200);
+  await check("GET", PG, await t.call(`${at}/growth?currency=usd`), 400);
+  await check("GET", PG, await t.call(`${at}/growth?broker=North`), 400);
+  await check("GET", PG, await t.call(`${P}/999/growth`), 404);
+  await refusals("GET", PG, `${at}/growth`);
+  const HG = "/holdings/growth";
+  await check("GET", HG, await t.call(HG), 200);
+  await check("GET", HG, await t.call(`${HG}?x=1`), 400);
+  await refusals("GET", HG, HG);
 
   const E = `${P}/{id}/export`;
   const csv = await t.call(`${at}/export`);

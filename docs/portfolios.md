@@ -3,8 +3,8 @@
 Governs portfolios, brokers, trades, positions and the funds the owner
 prices: the tables of migrations `0020-portfolios` and
 `0026-fund-trades`, `src/portfolios/` (`store.ts` rows, `funds.ts` a
-fund and its prices, `value.ts` the holdings arithmetic, `fx.ts`
-rates, `csv.ts`), `src/shared/isin.ts` (the ISIN check),
+fund and its prices, `value.ts` the holdings arithmetic, `growth.ts`
+the past year's growth, `fx.ts` rates, `csv.ts`), `src/shared/isin.ts` (the ISIN check),
 `src/operations/portfolio.ts` (every read and write the tools and the
 routes share), `src/tools/portfolio.ts` (the portfolio tools), `src/operations/portfolio-import.ts` (CSV
 import and export) and `src/api/portfolios.ts` with its spec in
@@ -359,6 +359,50 @@ once and valued on the live price the server already keeps.
   with the listing's day change on its face,
   when the listing has a quote (`priced: listing`), else its face
   (`priced: face`), said so.
+
+## Growth
+
+- **The holdings' growth per day over the past year**
+  (`src/portfolios/growth.ts`, `/portfolios/{id}/growth`,
+  `/holdings/growth`): per calendar day, what the holdings were worth
+  less the money put in, so a buy never lifts the line. Cash, reserve
+  and dry powder never count, in any view. The web UI's Portfolios
+  page draws `gain` beside the value; no MCP tool answers it.
+- **Stored rows only, never a fetch**: trades, splits, daily bars, fund
+  prices and positions, each read in one query (bars from the window's
+  start, a pair's from the oldest trade day), plus the holdings answer's
+  own per-instrument reads for today's point, so the page never waits
+  on a source. A holding or pair priced for part of the window counts 0
+  on a day with no row on or before it and is named in `missing`.
+- **A holding never priced is left out whole** (no daily close and no
+  fund price stored at all): neither value nor money in, today's point
+  too, and named in `missing`, so its cost never draws as a loss.
+- **The window**: `to` is the owner's today; `from` the first day in
+  the past year (from the same day a year before, 29 Feb taking 28 Feb)
+  that anything but cash is held, so a holding sold out long ago and
+  bought again starts on the rebuy. A stretch held nothing after
+  `from` keeps its days. Fewer than two days held answers `points: []` with
+  `from` equal to `to` (Cash, an empty portfolio, one bought today).
+- **A day's value**: quantity held that day in today's shares (the
+  splits applied as the holdings apply them, since stored closes are
+  split-adjusted) times its last daily close on or before the day,
+  converted at the pair's last final close on or before the day, either
+  way listed, hundredths by their factor. A fund the owner prices is
+  eased in a straight line between its stored prices (the owner's and
+  its buys'), flat before the first and after the last, and named in
+  `eased`. A bond counts from the `as_of` of the first row of its chain
+  of updates, since an edit dates the row, not the buy; a listed bond
+  with closes moves with them, today's live value scaled by each day's
+  close over the last one, else it is worth its face.
+- **Money in** is buys less sells at their amounts (a buy's `quantity ×
+  price + fees`, a sell's `quantity × price − fees`), each at its own
+  trade day's close, and a bond's cost (its face with none) on its
+  first day.
+- **Today's point is the holdings' live value**: the converted
+  `invested` of the holdings answer for the same view and currency
+  (less a holding left out as never priced), so the line ends where
+  the holdings stand. Its money in counts every
+  trade, a trade dated past the owner's today too.
 
 ## The tools
 

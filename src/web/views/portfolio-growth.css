@@ -1,0 +1,100 @@
+@layer tokens, base, owners;
+
+@layer owners {
+  /* beside the value, inside the hero's own height */
+  .growth {
+    position: absolute;
+    top: 30px;
+    right: 0;
+    width: min(320px, 34%);
+    height: 64px;
+  }
+  .growth-svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+  .growth-line {
+    fill: none;
+    stroke-width: 1.5;
+    stroke-linejoin: round;
+    vector-effect: non-scaling-stroke;
+    opacity: 0.85;
+  }
+  .growth-up .growth-line {
+    stroke: var(--up);
+  }
+  .growth-down .growth-line {
+    stroke: var(--down);
+  }
+  .growth-top {
+    stop-opacity: 0.1;
+  }
+  .growth-up .growth-top {
+    stop-color: var(--up);
+  }
+  .growth-down .growth-top {
+    stop-color: var(--down);
+  }
+  .growth-bottom {
+    stop-color: var(--page);
+    stop-opacity: 0;
+  }
+  .growth-label {
+    position: absolute;
+    right: 0;
+    bottom: -8px;
+    font-family: var(--mono);
+    font-size: var(--text-label);
+    color: var(--faint);
+  }
+  /* a series read after its figures fades in, never pops */
+  .growth-fade {
+    animation: growth-in 240ms ease-out;
+  }
+  @keyframes growth-in {
+    from {
+      opacity: 0;
+    }
+  }
+
+  @media (max-width: 719px) {
+    .growth {
+      top: 38px;
+      width: 34%;
+      height: 44px;
+    }
+  }
+
+  /* the moves and lines under the figure keep clear of the line beside
+     it: they wrap, never run under it */
+  .pf-hero-beside .hero-moves,
+  .pf-hero-beside .hero-line {
+    padding-right: calc(min(320px, 34%) + var(--space-4));
+  }
+  @media (max-width: 719px) {
+    .pf-hero-beside .hero-moves,
+    .pf-hero-beside .hero-line {
+      padding-right: calc(34% + var(--space-3));
+    }
+  }
+
+  /* a figure that needs the width: the line goes under the moves, slim */
+  .pf-hero-under .growth {
+    position: relative;
+    top: 0;
+    width: 100%;
+    height: 24px;
+    margin: var(--space-hair) 0 var(--space-1);
+  }
+  .pf-hero-under .growth-label {
+    display: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .growth-fade {
+      animation: none;
+    }
+  }
+}
