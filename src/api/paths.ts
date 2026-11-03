@@ -48,8 +48,8 @@ import {
   values,
 } from "./schemas.ts";
 
-// read is an agent key's scope; the admin key holds every scope; the web
-// UI's cookie opens every route but the rules writes
+// read is an agent key's scope; the admin key holds every scope; a login
+// opens every route but the rules writes, the admin routes an admin's only
 const READ_AUTH = [{ read: [] }, { admin: [] }, { session: [] }];
 const RULES_READ_AUTH = [{ rulesRead: [] }, { admin: [] }, { session: [] }];
 const RULES_WRITE_AUTH = [{ rulesWrite: [] }, { admin: [] }];
@@ -92,7 +92,7 @@ export const responses = {
     "A key without rules access, or one that reads only on a write (`forbidden`).",
   ),
   AdminOnly: error(
-    "A key without this route's scope: an agent key on an admin route, or a cookie request not sent from this server's own pages (`forbidden`).",
+    "Not for this caller: an agent key on an admin or web UI route, a member's sign-in on an admin route, or a cookie request not sent from this server's own pages (`forbidden`).",
   ),
   TooMany: {
     ...error(
@@ -736,7 +736,7 @@ export const paths = {
       security: ADMIN_AUTH,
       summary: "Agent keys",
       description:
-        "Every agent key, expired ones included, with when it was made, last used and expires. Never a key's token.",
+        "Your agent keys, expired ones included, with when each was made, last used and expires; an admin's list holds every person's, each with its `owner`. Never a key's token.",
       responses: admins({ 200: ok("The keys.", ref("Keys")) }),
     },
     post: {
@@ -745,14 +745,14 @@ export const paths = {
       security: ADMIN_AUTH,
       summary: "Make an agent key",
       description: lines(
-        "Makes a key for an agent and answers its token, once.",
+        "Makes a key for your agent and answers its token, once. It acts as you; nobody makes a key for someone else.",
         "",
         "- An agent key opens what the read scope opens: market data, instruments and MCP. Never an admin route.",
         "- `portfolio` is `read` or `write` to open the portfolio routes and the portfolio tool; `none` by default.",
         "- `rules` is `read` to open the rules list and the alerts feed, `write` to also create, pause and delete rules, over the routes and the rules tool; `none` by default.",
         "- `profile` is `read` to open the profile routes and the `profile` tool, `write` to also save it and list `profile_edit`; `none` by default.",
-        `- At most ${MAX_KEYS} keys, expired ones included. Revoke one to make another.`,
-        "- A name is unique among the keys (`conflict`).",
+        `- At most ${MAX_KEYS} keys a person, expired ones included. Revoke one to make another.`,
+        "- A name is unique among your keys (`conflict`).",
       ),
       requestBody: body(ref("KeyArgs")),
       responses: admins({
@@ -799,7 +799,8 @@ export const paths = {
       operationId: "revokeKey",
       security: ADMIN_AUTH,
       summary: "Revoke an agent key",
-      description: "Deletes the key. Its next call is refused.",
+      description:
+        "Deletes the key. Its next call is refused, and a write it has in flight writes nothing. An admin revokes anyone's.",
       parameters: [
         {
           name: "id",

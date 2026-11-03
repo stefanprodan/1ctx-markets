@@ -2,20 +2,29 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
-import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { PREFIX } from "../src/api/http.ts";
 import { silent } from "../src/runtime/log.ts";
+import { email } from "../src/server/email/settings.ts";
 import { router } from "../src/server/http.ts";
+import { links } from "../src/server/links.ts";
 import {
   COOKIE,
   cookieOf,
+  logins,
   SESSION_MS,
   sameOrigin,
-  sessions,
+  sha256,
 } from "../src/server/session.ts";
+import { ui } from "../src/server/ui.ts";
 import page from "../src/web/index.html";
-import { ADMIN_KEY, api, keyAccess, READ_KEY } from "./helpers/api.ts";
+import {
+  ADMIN_KEY,
+  api,
+  cookieFor,
+  keyAccess,
+  READ_KEY,
+} from "./helpers/api.ts";
 import { SECRETS, withApp } from "./helpers/app.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { NOW } from "./helpers/sources.ts";
@@ -60,39 +69,52 @@ function setup() {
   return { ...w, handle, at, cookie };
 }
 
+// a router over the same database whose server holds no admin key
+function keylessRouter(t: ReturnType<typeof setup>) {
+  const off = email({
+    keys: { email: () => null, emailNames: () => [] },
+    sender: async () => ({ ok: false, failure: "other", reply: null }),
+  });
+  const deps = {
+    db: t.db,
+    writer: t.m.writer,
+    now: () => t.clock.now(),
+    log: silent,
+  };
+  const signIns = logins({ ...deps, adminKey: null });
+  return router({
+    access: keyAccess(null),
+    logins: signIns,
+    ui: ui({
+      ...deps,
+      logins: signIns,
+      email: off,
+      links: links({ ...deps, email: off, clock: t.clock }),
+    }),
+    mcp: {} as never,
+    clock: fakeClock(NOW),
+    log: silent,
+  });
+}
+
 // a --track value the anonymous test runs with, found nowhere else
 const TRACKED = "ZZTRACKEDVALUE";
 
-describe("the session token", () => {
-  test("holds an expiry and its MAC, never the key", () => {
-    const s = sessions(ADMIN_KEY);
-    const token = s.issue(NOW);
-    expect(token).toMatch(/^v1\.\d+\.[A-Za-z0-9_-]{43}$/);
-    expect(token.split(".")[1]).toBe(String(NOW + SESSION_MS));
-    for (const form of [
-      ADMIN_KEY,
-      Buffer.from(ADMIN_KEY).toString("base64url"),
-      createHash("sha256").update(ADMIN_KEY).digest("base64url"),
-    ]) {
-      expect(token).not.toContain(form);
-    }
-    expect(s.valid(token, NOW)).toBe(true);
-    expect(s.valid(token, NOW + SESSION_MS - 1)).toBe(true);
-  });
-
-  test("a forged, expired, malformed or other key's token is refused", () => {
-    const s = sessions(ADMIN_KEY);
-    const token = s.issue(NOW);
-    const [, expiry, mac] = token.split(".");
-    const later = `v1.${Number(expiry) + SESSION_MS}.${mac}`;
-    const flipped = `v1.${expiry}.${mac!.slice(0, -1)}${mac!.endsWith("A") ? "B" : "A"}`;
-    for (const bad of [later, flipped, `v2.${expiry}.${mac}`, "", "v1..x"]) {
-      expect([bad, s.valid(bad, NOW)]).toEqual([bad, false]);
-    }
-    expect(s.valid(null, NOW)).toBe(false);
-    expect(s.valid(token, NOW + SESSION_MS)).toBe(false);
-    // a new user-admin.key signs every browser out
-    expect(sessions(OTHER_KEY).valid(token, NOW)).toBe(false);
+describe("the login cookie", () => {
+  test("holds a random token, the row only its hash, never the key", async () => {
+    const t = setup();
+    const token = tokenOf(await t.handle(signIn(ADMIN_KEY)));
+    expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(token).not.toContain(ADMIN_KEY);
+    const rows = t.db.query("select * from logins").all();
+    expect(rows).toHaveLength(1);
+    expect(JSON.stringify(rows)).not.toContain(token);
+    expect(JSON.stringify(rows)).not.toContain(ADMIN_KEY);
+    expect(rows[0]).toMatchObject({
+      user_id: "operator",
+      token_hash: sha256(token),
+      expires_at: t.clock.now() + SESSION_MS,
+    });
   });
 
   test("the cookie and the Origin are read from their headers", () => {
@@ -196,13 +218,7 @@ describe("sign-in", () => {
           body,
         }),
       );
-    const keyless = router({
-      access: keyAccess(null),
-      sessions: sessions(null),
-      mcp: {} as never,
-      clock: fakeClock(NOW),
-      log: silent,
-    });
+    const keyless = keylessRouter(t);
     const answers: string[] = [];
     for (const [handle, body, type] of [
       [t.handle, JSON.stringify({ key: OTHER_KEY })],
@@ -322,28 +338,27 @@ describe("what the cookie opens", () => {
   });
 
   test("a forged, expired or other key's cookie opens nothing", async () => {
-    const clock = fakeClock(NOW);
-    const handle = router({
-      access: keyAccess(ADMIN_KEY),
-      sessions: sessions(ADMIN_KEY),
-      mcp: {} as never,
-      api: [],
-      clock,
-      log: silent,
-    });
-    const status = async (token: string) =>
+    const t = setup();
+    const status = async (cookie: string) =>
       (
-        await handle(
-          new Request(`http://127.0.0.1:1${PREFIX}/status`, {
-            headers: { cookie: `${COOKIE}=${token}` },
-          }),
-        )
+        await t.at(`${PREFIX}/status`, {
+          headers: { cookie },
+        })
       ).status;
-    const good = sessions(ADMIN_KEY).issue(NOW);
-    expect(await status(good)).toBe(404);
-    expect(await status(sessions(OTHER_KEY).issue(NOW))).toBe(401);
+    const good = cookieFor(t.db, NOW);
+    expect(await status(good)).toBe(200);
+    // made under another user-admin.key: a new key signs the browser out
+    expect(await status(cookieFor(t.db, NOW, "operator", OTHER_KEY))).toBe(401);
     expect(await status(`${good.slice(0, -2)}xx`)).toBe(401);
-    await clock.advance(SESSION_MS);
+    expect(await status(`${COOKIE}=`)).toBe(401);
+    // slid at the hour's first use, so it lives 30 days from its last
+    await t.clock.advance(SESSION_MS - 1);
+    expect(await status(good)).toBe(200);
+    await t.m.writer.write(() => {});
+    await t.clock.advance(SESSION_MS - 1);
+    expect(await status(good)).toBe(200);
+    await t.m.writer.write(() => {});
+    await t.clock.advance(SESSION_MS);
     expect(await status(good)).toBe(401);
   });
 
@@ -401,7 +416,7 @@ describe("what the cookie opens", () => {
   });
 
   test("with the UI off there is no sign-in and the cookie opens nothing", () =>
-    withApp(async ({ url, admin }) => {
+    withApp(async ({ url, admin, db }) => {
       const res = await fetch(`${url}/ui/session`, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -409,9 +424,8 @@ describe("what the cookie opens", () => {
       });
       expect(res.status).toBe(401);
       expect(res.headers.get("set-cookie")).toBeNull();
-      const token = sessions(admin).issue(NOW);
       const status = await fetch(`${url}${PREFIX}/status`, {
-        headers: { cookie: `${COOKIE}=${token}` },
+        headers: { cookie: cookieFor(db, NOW, "operator", admin) },
       });
       expect(status.status).toBe(401);
       expect((await fetch(url)).status).toBe(401);
@@ -571,7 +585,13 @@ describe("the served UI", () => {
         const docs = ours.slice(seen.slice(0, ui).join("\n").length);
         expect(docs.includes(".key")).toBe(false);
         expect(seen.length).toBeGreaterThan(20);
-        const all = seen.join("\n");
+        // the SMTP tab names the directory every install keeps its key
+        // files in, as the docs do, so an admin knows where the password
+        // file goes; never a path of this one
+        const all = seen
+          .join("\n")
+          .replaceAll("Files in secrets/ named email-*.key.", "")
+          .replaceAll("Put the password in secrets/ as ", "");
         for (const secret of [
           SECRETS,
           "secrets",

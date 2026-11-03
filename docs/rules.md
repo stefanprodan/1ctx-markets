@@ -156,12 +156,14 @@ Examples, each created with `symbol` set to the rule's own share:
   `list` needs `read`, `create`, `pause` and `delete` need `write`;
   without it the tool answers `forbidden` before reading anything, in
   the portfolio tools' words ("this key has no rules access; the admin
-  grants it", "this key reads rules only; the admin grants write"). A
+  grants it", "this key reads rules only; its owner grants write"). A
   key with access `none` is not given the tool at all (`docs/tools.md`),
   and one that reads is given it whole: reads and writes stay one tool,
   as a rules reader is rare. The same access opens the rules routes and the alerts feed
-  (`docs/api.md`); the admin key holds `write`, and the web UI's
-  cookie the reads only.
+  (`docs/api.md`); the admin key holds `write`, and a person's web UI
+  login the reads only. Rules and their alerts are each person's: a
+  person's agents share them, and `GET /alerts` carries only the key's
+  person's.
 - **create leaves no rule on any failure.** Every symbol resolves and
   is stored inside the call (`readTargets()`, and `researchTargets()`
   for the gate, under one deadline); any error answers without a write.

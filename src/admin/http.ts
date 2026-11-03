@@ -32,6 +32,7 @@ import { portfolioHolds, portfolioInstruments } from "../portfolios/store.ts";
 import { instrumentsOf } from "../rules/format.ts";
 import { allRules, ruleInstruments } from "../rules/store.ts";
 import { sourceFile } from "../runtime/keys.ts";
+import { recheck } from "../server/caller.ts";
 import { ATTRIBUTION } from "../sources/fred/sync.ts";
 import { FRED, FUND_SOURCE, YAHOO } from "../sources/ids.ts";
 import type { Backoff } from "../sources/source.ts";
@@ -730,6 +731,7 @@ export async function deleteOne(
   if (instrument === null) return noInstrument(input);
   const id = instrument.id;
   const done = await d.m.writer.write((db) => {
+    recheck(db, "admin");
     if (readInstrument(db, id) === null) return null;
     const holding = allRules(db).filter(
       (r) => r.instrument === id || instrumentsOf(r.condition).has(id),

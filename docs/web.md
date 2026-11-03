@@ -1,17 +1,25 @@
 # Web UI
 
-Governs the operator's web UI: the client under `src/web/`, its
-sign-in (`src/server/session.ts`), the paths that serve it (`UI_PATHS`
-and `serve()` in `src/server/http.ts`) and `--no-ui`. The admin key is
-in `docs/admin.md`, the routes the UI reads in `docs/api.md`, flags in
-`docs/config.md`.
+Governs the web UI: the client under `src/web/`, its sign-ins
+(`src/server/session.ts`, the logins; `src/server/links.ts`, links by
+email; `src/server/ui.ts`, the `/ui/*` routes), the paths that serve it
+(`UI_PATHS` and `serve()` in `src/server/http.ts`) and `--no-ui`. The
+admin key, the people and the SMTP settings are in `docs/admin.md`, the
+routes the UI reads in `docs/api.md`, flags and key files in
+`docs/config.md`. Logins and links follow 1ctx's (its `docs/access.md`,
+"Logins" and "Links by email", and `docs/email.md`), cut down to what a
+family needs.
 
 ## Why
 
 Status, refetch and delete were reachable only through `curl` with the
 admin key or `1ctx-markets admin` over ssh. The UI shows the operator
 what the server holds from a browser, on the server's own public host,
-signed in with the admin key alone.
+signed in with the admin key alone. A family or a small group of
+investors shares one server, each person with their own portfolios,
+profile, dashboard, rules and keys, so each person signs in as
+themself, by a link emailed to an address an admin added; no
+passwords, no SSO, and no link handed over.
 
 ## Serving
 
@@ -53,48 +61,150 @@ signed in with the admin key alone.
   the `theme-color` that `app/theme.ts` keeps in the page colour.
 - **`UI_PATHS` and the client's `ROUTES` name the same paths**; `test/web.test.tsx` holds them equal. A new page adds its
   path to both.
-- **`--no-ui` turns the UI off**: no page, no `/ui/session` (it answers
-  the keys' 401 as any unknown path), and a cookie opens nothing.
-  The UI is on by default.
+- **`--no-ui` turns the UI off**: no page, no `/ui/*` route (each
+  answers the keys' 401 as any unknown path), and a cookie opens
+  nothing. The UI is on by default.
 
-## Sign-in
+## Logins
+
+- **A login is a row behind the `markets_session` cookie** (`logins`,
+  `docs/storage.md`): the cookie holds 32 random bytes as base64url,
+  the row only their SHA-256, as 1ctx's. No token reaches a log line or
+  an answer but the one `Set-Cookie`; a log line names the login's id
+  and its person.
+- **30 days, sliding at most once an hour** (`SESSION_MS`,
+  `TOUCH_MS`): a request past an hour since the login's last touch
+  moves its expiry through the writer, and the answer sends the cookie
+  again with a full `Max-Age`, unless the route set its own.
+- **Sign-out deletes that row**: `DELETE /ui/session` answers 204 and
+  clears the cookie. An admin signs a person out everywhere
+  (`docs/admin.md`). Expired logins go with the startup and daily
+  prunes (`pruneLogins()`); every check goes by `expires_at`, so none
+  waits on a prune.
+- **`HttpOnly; SameSite=Strict; Path=/`, and `Secure` unless the
+  request's `Origin` is plain HTTP to a loopback host**
+  (`cookieAttributes()`); no `Origin` is `Secure`. A browser keeps a
+  `Secure` cookie over plain HTTP only on loopback. The browser's
+  `Origin` decides, never `Host`, which a proxy may rewrite to loopback.
+  Plain HTTP to a LAN or tailnet address cannot sign in: use loopback
+  or TLS.
+- **A proxy in front needs nothing special for the cookie:** it and the
+  write check read what the browser sends, `Host` only as the fallback
+  below. The ask limit's client address is the socket's, so behind a
+  proxy every browser would share one window: `--trust-proxy` takes it
+  from the last `X-Forwarded-For` value instead, the one the proxy
+  added (`clientIp()`, `docs/config.md`). Never set it without a proxy,
+  since any client can send the header.
+- **No log line holds a link's token**: the request log names
+  `/ui/link/:token`, never the path (`loggedPath()`), and a code or a
+  challenge is only ever in a body or a cookie, never logged.
+
+## The admin key
 
 - **`POST /ui/session` with `{"key": "<admin key>"}`** compares the
   trimmed key in constant time (both sides hashed, `timingSafeEqual`)
-  and answers 204 with the cookie. `DELETE /ui/session` answers 204
-  and clears it; any other method is 405 with `Allow`.
+  and opens a login for the operator, answering 204 with the cookie;
+  any method but `POST` and `DELETE` is 405 with `Allow`. It is the
+  operator's alone and always works, email or not, so no mail outage
+  locks the server out.
 - **Every failed sign-in answers the same 401**,
   `{"error":"unauthorized","message":"wrong admin key"}`, with no
   cookie: a wrong or empty key, a malformed body, a body over the
   route's 8 KiB cap, a body that is not JSON, and a server with no
-  admin key (`sessions(null)`). The page faces the internet, so no
-  answer tells one failure from another. A body over the server's
-  1 MiB limit gets Bun's empty 413 before any route runs.
+  admin key. The page faces the internet, so no answer tells one
+  failure from another. A body over the server's 1 MiB limit gets Bun's
+  empty 413 before any route runs.
 - **No rate limit:** the admin key is 32 random bytes, so guessing it
-  is no threat, and a limiter would be state for nothing.
-- **The cookie holds no key.** `markets_session=v1.<expiry>.<mac>`:
-  the expiry in epoch milliseconds and its HMAC-SHA256 under a key
-  derived from the admin key (an HMAC of a fixed label), compared in
-  constant time. No table and no migration; replacing `user-admin.key` and
-  restarting refuses every cookie made before.
-- **`HttpOnly; SameSite=Strict; Path=/`, 30 days (`SESSION_MS`), and
-  `Secure` unless the sign-in's `Origin` is plain HTTP to a loopback
-  host** (`cookieAttributes()`); no `Origin` is `Secure`. A browser
-  keeps a `Secure` cookie over plain HTTP only on loopback. The
-  browser's `Origin` decides, never `Host`, which a proxy may rewrite
-  to loopback. Plain HTTP to a LAN or tailnet address cannot sign in:
-  use loopback or TLS.
-- **A proxy in front needs nothing special:** the cookie and the write
-  check read what the browser sends, `Host` only as the fallback below,
-  and no forwarded header.
+  is no threat.
+- **The login holds a SHA-256 of the admin key** (`admin_digest`), so
+  replacing `user-admin.key` and restarting answers 401 to every login
+  the old key opened; the operator's login by link and every other
+  person's stay.
 
-## What the cookie opens
+## Links by email
 
-- **What the admin key opens but the rules writes**: every route
-  under `/api/v1`, the admin scope's included (`docs/api.md`, "Keys
-  and caching"), with `POST /api/v1/screen`, a read whose filters are
-  a body, and refetch and delete held to the write check below. A key
-  is tried first (`router()`); the cookie only when no key is valid.
+Only while email is on (`docs/admin.md`, "Email"); the sign-in page
+learns it from `email_on` in `GET /ui/me`.
+
+- **An ask never tells.** `POST /ui/link` with `{email}` answers 202
+  with no body before any lookup, whatever the address; the lookup, the
+  caps and the email run after the answer (`links.ask()`), and the
+  shutdown waits for them before the writer closes. A body that is not
+  an address is 400; while email is off the route is 404. A plain HTML
+  form may post it too (`email=`), answered by a "Check your email."
+  page.
+- **Only an added address gets a link**: a 15-minute link and a
+  six-digit code in one plain email, subject "Your markets sign-in
+  code: 482913", body "Sign in to markets: <link>, or enter 482913.
+  Both work once, for 15 minutes." The digits are whole, never spaced,
+  so the system's one-time-code offer finds them. A new ask leaves the
+  earlier live links working, so nobody's ask kills another's.
+- **Caps**: 3 asks per person a day from one browser
+  (`ASKS_PER_USER_DAY`, counted per challenge, so a stranger's asks
+  never use up the person's own), 5 an hour from one browser whoever it
+  names (`ASKS_PER_CHALLENGE_HOUR`) and 50 per server an hour
+  (`ASKS_PER_HOUR`), counted on `link_asks`, kept a day whatever became
+  of their links; over any nothing is sent and `link ask capped` is
+  logged. Asks, codes and links used share 10 a minute
+  per client address (`ASKS_PER_MINUTE`), past which the answer is 429
+  with `Retry-After`. Invites are not counted.
+- **A link is `<public url>/ui/link/<token>`**, the public URL from the
+  SMTP settings, never a request's `Host`. A `GET` never acts, since
+  mail scanners open links: it draws a page in the sign-in's look (the
+  mark and wordmark over a card, the tokens' colours copied in, light
+  or dark as the system is, no script, font or stylesheet loaded) with
+  a "Sign in" button that posts back, `<meta name="referrer" content="no-referrer">`
+  and `Referrer-Policy: no-referrer`, so the token in its address never
+  leaves. A dead link reads as an unknown one: "This link no longer
+  works." with a form, "Email me a new link", that asks again.
+- **Only `POST /ui/link/<token>` acts**, in one conditional update
+  (unused, unexpired, its person still there) in the transaction that
+  opens the login; it answers 303 to the landing, an invite's
+  `/portfolios` (empty, with its setup) and a sign-in link's `/`, and
+  ends the browser's older login. A dead one is the dead page, 404.
+- **The code is for the installed app**, whose cookies on iOS are
+  apart from Safari's, so a link from Mail signs in Safari, never the
+  app. The ask sets `markets_ask`, a 15-minute cookie on `/ui` holding a
+  random challenge (kept when the browser already holds one), and the
+  link row holds its SHA-256. `POST /ui/code` with `{email, code}`
+  checks a code only beside that cookie, so a code guessed from another
+  browser is never tried and burns nobody's tries; it answers 200 with
+  `{landing}` and the cookie. A wrong code, another address, an unknown
+  one and a missing challenge answer the same 401 `wrong code`. The
+  fifth wrong try kills the link (`MAX_CODE_TRIES`); using the link or
+  the code uses both. An invite, which no browser asked for, has no
+  challenge: its code is tried beside any `markets_ask` cookie, its
+  misses counted per challenge (`link_misses`), so the fifth wrong try
+  ends that browser's tries at that invite and never the invite.
+- **The same-origin check holds `/ui/link`, `/ui/link/<token>` and
+  `/ui/code`** (`sameOrigin()`, below), so no other site signs a
+  browser in.
+
+## Who is signed in
+
+- **`GET /ui/me`** answers `{user, email_on}`: `user` is `{id, name,
+  role, email, operator}` for a login, null for none, always 200 so the
+  browser logs no failed request. `GET /api/v1/status` stays an
+  admin's.
+- **`PATCH /ui/me`** takes `{name}` or `{email}`, one at a time, from
+  this server's pages. A person renames themself. The operator, who
+  signs in by the admin key, may add an email to sign in by link too:
+  a link without a code goes to that address ("Confirm your markets
+  email"), and using it only sets the address, and only in a browser
+  already signed in as that person; it never opens a login, so one sent
+  to a mistyped address signs nobody in. A member's email is an admin's
+  to change (403). It answers `{link: "sent"}` or `{link: "failed",
+  reason}`; 409 while email is off or when another person has the
+  address.
+
+## What a login opens
+
+- **A person's own rows and the market data**: every `/api/v1` route
+  of scope `read`, `session` and the person's portfolio, profile and
+  rules reads, as `loginWho()` holds; an admin's login also the `admin`
+  scope (`docs/api.md`, "Keys and caching"). A member on an admin route
+  is 403. A key is tried first (`router()`); the cookie only when no key
+  is valid.
 - **Never `/mcp`, and never a rules write** (`POST /rules`, `PATCH`
   and `DELETE /rules/{id}`, marked `cookie: false`): rules stay the
   keys'.
@@ -104,11 +214,13 @@ signed in with the admin key alone.
   a browser without it is held to an `Origin` whose host is the
   request's `Host`, the scheme not compared since a TLS proxy hands
   the request on as `http`. A request with the admin key needs neither,
-  as a script sends none.
+  as a script sends none. `POST /api/v1/screen`, a read whose filters
+  are a body, is held to it too.
 
 ## What an anonymous visitor sees
 
-- **The page, its assets, the sign-in's 401, and the OpenAPI spec and
+- **The page, its assets, the sign-in's 401, `/ui/me`'s `email_on`,
+  and the OpenAPI spec and
   its docs page, which describe the API of every install and nothing
   of this one**: no host path, key or key file name, no data directory, no
   version, no source or flag name, no instrument data, no config in
@@ -117,7 +229,9 @@ signed in with the admin key alone.
   1ctx's bundle does; every value is read after sign-in. `test/web-session.test.ts` reads each anonymous answer
   and fails on any of them.
 - **No help text on the page.** Where the key lives and how the UI
-  works are for this doc, never the page.
+  works are for this doc, never the page. The SMTP tab alone names
+  `secrets/`, the directory every install keeps its key files in, so an
+  admin knows where the password file goes.
 
 ## The client
 
@@ -134,11 +248,19 @@ signed in with the admin key alone.
   out. Home is the brand alone.
 - **Views never fetch.** `data/store.ts` owns every call and signal;
   `data/api.ts` makes the calls. Any 401 signs out (the shell gives way
-  to the sign-in), and a later status load supersedes one in flight.
-  The first status answer is also the check of the cookie.
-- **A page's `load` in `app/routes.ts` runs on arrival**, the status
-  page's on first arrival being that check. A sign-out clears the
-  pages' data, so the next sign-in counts as an arrival.
+  to the sign-in), and a later load supersedes one in flight.
+- **The web UI starts from `GET /ui/me`** (`check` in the store), never
+  from the status, which is an admin's: `user` null is the sign-in,
+  `email_on` false shows it the admin key alone, and the person's
+  `role` decides the pages (`me`, `isAdmin`). The admin key and a code
+  each read it again.
+- **A page's `load` in `app/routes.ts` runs on arrival.** A sign-out
+  clears the pages' data, so the next sign-in counts as an arrival.
+- **An admin's pages** (`admin: true` in `ROUTES`: Admin and Server
+  status) show to admins only, in the rail, the strip and More; a
+  member asking for one lands on Home, and never sees Refetch, Delete
+  or Retry, whose routes answer them 403. Only an admin's shell reads
+  the status for the red icon.
 - **A later load supersedes one in flight**, the same id included, so
   a refresh tick never lands over the reload after a refetch.
 - **A sign-in or sign-out starts a session anew** (`session` in the
@@ -209,14 +331,39 @@ signed in with the admin key alone.
   **Recent** (the last five instruments opened, each the ticker and
   its name on one line as `SymbolName` draws it, a coin without its
   quote currency), and
-  the operator's menu (dark theme, sign out) at the foot; it folds to a
+  the person's menu at the foot, the row and the menu's head their
+  name (the key for the admin key's person, a person's icon for anyone
+  else), then Dark theme and Sign out; signing out clears Recent and
+  the status read for the red icon, and only an admin's footer names
+  the server's version; it folds to a
   strip on a wide window, which shows the mark, and gives way to the
   bar on a phone (below). Server status's icon, in the rail, the strip
   and the bar's More, turns red and
   pulses (steady under reduced motion) while that page shows a job failing
   or a source backing off (`troubled`), read every `REFRESH_MS` while
   signed in. The sign-in is the mark beside 1ctx's wordmark over
-  **Markets**. The theme follows the system until flipped; a flip is
+  **Markets** over one card: the email step (Email and **Sign in**,
+  "Sending" and both off while the ask is answered), then the code
+  step, and **Sign in with the admin key** under the card swapping in
+  the Admin key field and back ("Sign in by email"); with email off,
+  the admin key field alone. The code step is a Code label over six
+  boxes (`CodeBoxes` in `views/SignIn.tsx`, its rules
+  `SignIn.model.ts`): typing moves on, Backspace and the arrows move
+  back, and a paste or the system's one-time-code fill (the first box's
+  `autocomplete`) fills every box from where it lands, a whole code
+  from the first. The sixth digit signs in, once (`oneAtATime`), with no
+  button, then goes to the code's landing; a code taken whose person
+  could not then be read says "Couldn't load." with a Try again button
+  that reads `/ui/me` again, never posting the used code (`codeFlow`);
+  Send a new code and Use another email start over. A digit typed over a box's
+  digit replaces it from either side of the caret, and the arrows
+  select the next box. One line under the boxes always keeps its height
+  (every state in one cell under the longest, "New code sent to
+  <email>", held hidden): "Sent to <email>" (wrapping anywhere, so the
+  domain shows), "Signing in", "Wrong or expired code." in red with the
+  boxes red, emptied and the first focused, or "New code sent to
+  <email>". Under it Send a new code and Use another email, off while
+  a send or a check runs. The theme follows the system until flipped; a flip is
   kept in `localStorage`.
 - **A phone navigates from a bar** (`app/Bar.tsx`), where the shell's
   phone check holds (`onPhone`, `PHONE` in `app/shell.ts`: under 720px
@@ -243,8 +390,9 @@ signed in with the admin key alone.
   and the search sheet sit above it (`--z-drawer`, `--z-sheet` over
   `--z-shell`).
 - **More is the shared `Drawer`** titled More: Profile, Connect agents,
-  Server status (red while failing), the rail's Recent, then the user
-  menu's own Dark theme and Sign out (`UserItems`). A tap goes there
+  and for an admin Admin and Server status (red while failing), the
+  rail's Recent, then the user menu's own items (`UserItems`): the
+  person's name, Dark theme and Sign out. A tap goes there
   and closes it; so does any step to another address, the browser's
   Back included (`watchMore()`), so no page opens under it. It renders beside the bar, never inside: the bar's
   blur would hold a fixed drawer inside it.
@@ -534,8 +682,8 @@ The parts:
   picks its closes, base and slots.
 - **Before its first answer Server status shows** its figures row
   with the four labels over placeholders, and the Jobs card's rows.
-- **Server status** (`/status`, last in the rail, after Home,
-  Screener, Portfolios and Connect agents): `GET /api/v1/status`
+- **Server status** (`/status`, last in the rail, after Admin; admins
+  only): `GET /api/v1/status`
   drawn as a stat row (instruments and how many are tracked, the
   sources on and how many are paused, the jobs shown and how many
   fail, the database and the version), "Sync is off." under it while
@@ -584,8 +732,11 @@ The parts:
   the `html` of `GET /api/v1/profile` in a card, drawn on the server so
   the bundle ships no Markdown parser and any HTML in the text comes
   back escaped; the head says when and by whom it was saved, with
-  History and Edit. A save by the web UI or the admin key (recorded
-  `web` and `admin`) reads "you" here and in History.
+  History and Edit. A save by the reader's own login (recorded as
+  their name), the admin key (`admin`) or an older login (`web`) reads
+  "you" here and in History; another person's name or a key's reads as
+  itself (`authorWords`), as Portfolios' Added by and Removed do
+  (`enteredBy`, "You").
 - **No profile yet** is a panel (Write your profile) whose Write it
   opens the editor on an outline: Goals, Risk, Trading style and
   Analysis defaults, one hint line each, generic for any investor.
@@ -611,9 +762,12 @@ The parts:
   that revision drawn; Restore (not on the current one) saves its text
   on the live revision, so a newer save refuses it instead of being
   overwritten, and the profile is read again before a second try.
-- **Connect agents** (`/connect`, before Server status in the rail), as
-  1ctx's: a Keys card from `GET /api/v1/keys` ("N of 5", New key in its
-  head), a table of each key's name, last use, expiry and access. The
+- **Connect agents** (`/connect`, before Admin in the rail), as
+  1ctx's: a Keys card from `GET /api/v1/keys` ("N of 5", the person's
+  own keys counted, New key in its head), a table of each key's name,
+  last use, expiry and access. An admin's list holds everyone's keys
+  with an Owner column (`owner.name`); another person's key opens with
+  its owner and the picks off, Revoke and Cancel only. The
   Access column says "Reads portfolios", "Writes portfolios", "Reads
   alert rules", "Writes alert rules", "Reads the profile" or "Writes the
   profile" only for what a key has, shows only when some key has any,
@@ -630,6 +784,38 @@ The parts:
   server `markets` at the page's origin plus `/mcp`. At the cap, New key
   goes and a line names the cap. A revoke that answers 404 drops the row
   and its drawer.
+- **Admin** (`/admin` Users, `/admin/smtp` SMTP, after Connect agents
+  in the rail, admins only): `Admin.tsx`, its calls `data/admin.ts`,
+  its words `Admin.model.ts`; the tab is in the address, as Portfolios
+  keeps its portfolio. **Users** (`GET /api/v1/users`) is the People
+  card, its count and Add person: Name (the reader marked "you"),
+  Email ("Admin key" for the operator without one), Role and Last
+  sign-in ("Invited" until a first sign-in). Add person is a drawer of
+  Name, Email and a Member/Admin switch, then **Add and invite** and
+  "Invite sent to <email>. The link works once, for 7 days." or why
+  not. A row's drawer holds the email, last sign-in and agent keys,
+  the Name and the role (the operator's and the reader's own locked)
+  with Save (`PATCH`), and a menu at the foot's start: Send invite
+  again (until a first sign-in), Sign out everywhere and Remove (never
+  on the reader's own row), each asked once in the foot, Remove naming
+  the counts its dry run answers (`?dry_run=true`). The reader's own
+  name saves through `PATCH /ui/me`; the operator's own row adds an
+  Email field, which sends a confirming link ("Check your email to
+  confirm.") and shows the address only once it is used. A failed
+  email reads in plain words (`failureWords`), an SMTP refusal by the
+  form's labels (`plainError`). While email
+  is off the card says "People can't be added until email is set up."
+  with Set up email opening SMTP. **SMTP** (`GET /api/v1/smtp`) is the
+  Email card, On or Off: Host and Port, Security (TLS or STARTTLS),
+  Username, Password file (the app's menu of `key_names`), From and
+  Link address, no example text; Remove asked once, Send test email
+  (to the reader's own email, off with "Add your email to send a
+  test." while they have none; the server's reply on a faint second
+  line when it fails) and Save. With no `email-*.key` file the
+  picker stays, off, reading "No files". A saved file that is missing
+  says where to put it. Only the operator saves, removes or tests:
+  another admin sees the tab read only, fields off and no buttons. A
+  save or a remove sets `email_on` for the sign-in page at once.
 - **Copy uses `copyText()` (`src/web/lib/clipboard.ts`)**, as 1ctx:
   the clipboard exists only on loopback or HTTPS, so on plain HTTP the
   button stays as it is and never says Copied.
@@ -1176,3 +1362,7 @@ The parts:
   its bundle names Yahoo among web domains and its stylesheet names a
   source map. `scripts/smoke.sh` checks the binary serves the page,
   its assets and the sign-in.
+- **People** (`test/web-people.test.tsx`): the code boxes' rules, the
+  start from `/ui/me` for each kind of person, a member's pages and
+  controls, Connect agents' owners, the Admin page's calls and words,
+  and SMTP read only for an admin who is not the operator.

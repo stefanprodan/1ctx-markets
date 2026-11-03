@@ -54,8 +54,11 @@ export function App({ store = markets }: { store?: Store }) {
   const signedIn = store.signedIn.value;
   const here = path.value;
   const visit = `${here} ${visits.value}`;
+  const admin = store.isAdmin.value;
   const found = match(here);
-  const route = found?.route ?? null;
+  // a member asking for an admin's page lands on Home
+  const barred = signedIn === true && found?.route.admin === true && !admin;
+  const route = barred ? null : (found?.route ?? null);
   const arrived = useRef<string | null>(null);
   // the page on screen, which stays while the next one reads (hold())
   const [shown, setShown] = useState<{
@@ -64,14 +67,14 @@ export function App({ store = markets }: { store?: Store }) {
     found: Match;
   } | null>(null);
 
-  // the first status answer is also the check of the cookie
+  // /ui/me says whether the cookie holds and whose it is
   useEffect(() => {
     void store.check();
   }, [store]);
   useEffect(() => {
     if (route === null) navigate(HOME, true);
   }, [here, route]);
-  // a page's load runs on arrival; the check above is the status page's
+  // a page's load runs on arrival
   useEffect(() => {
     // signed out, the page's data went; the next sign-in loads it again
     // and holds no page from before
@@ -82,7 +85,7 @@ export function App({ store = markets }: { store?: Store }) {
     if (signedIn !== true || route === null) return;
     const first = arrived.current === null;
     let work: Promise<void> | undefined;
-    if (arrived.current !== visit && !(first && route.path === "/status")) {
+    if (arrived.current !== visit) {
       work = route.load?.(found!.params);
     }
     arrived.current = visit;
@@ -126,7 +129,7 @@ export function App({ store = markets }: { store?: Store }) {
     );
   }
   if (!signedIn) return <SignIn store={store} />;
-  if (found === null) return null;
+  if (found === null || route === null) return null;
   const held = shown !== null && shown.visit !== visit ? shown : null;
   const page = held?.found ?? found;
   const View = page.route.view;

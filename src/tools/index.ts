@@ -40,6 +40,7 @@ import {
   MAX_NOTE,
 } from "../rules/format.ts";
 import { errorFields } from "../runtime/log.ts";
+import { CallerGone } from "../server/caller.ts";
 import { CALENDAR_AHEAD_DAYS } from "../sources/finnhub/store.ts";
 import { portfolioTools } from "./portfolio.ts";
 import { profileTools } from "./profile.ts";
@@ -279,6 +280,14 @@ export async function call(
     if (error instanceof ArgError) {
       m.log.info("tool call", { tool: tool.name, status: "bad arguments" });
       return errorResult({ error: "bad_arguments", message: error.message });
+    }
+    // the key went mid-call, so the write wrote nothing
+    if (error instanceof CallerGone) {
+      m.log.info("tool call", { tool: tool.name, status: "refused" });
+      return errorResult({
+        error: error.status === 401 ? "unauthorized" : "forbidden",
+        message: error.message,
+      });
     }
     m.log.error("tool call", { tool: tool.name, ...errorFields(error) });
     return errorResult({ error: "internal", message: "internal error" });

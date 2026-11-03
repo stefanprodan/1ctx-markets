@@ -24,6 +24,7 @@ the `--help` text, and a flag changes there in the same commit.
 | `--source <name>` | none | turns on a keyless source, repeated for each; `bvb` is the Bucharest feed (`docs/bvb.md`) |
 | `--track <symbol>` | none | keeps an instrument tracked whether read or not, repeated for each; a value is what `quote` takes (`docs/storage.md`, Tracking). Until the dashboard is first saved, the web UI's home page shows these values; after that only the dashboard's own saves, or deleting an instrument on it, change it (`docs/web.md`) |
 | `--no-ui` | the UI on | serves no web UI and refuses its sign-in (`docs/web.md`) |
+| `--trust-proxy` | off | behind a reverse proxy: a client's address, for the sign-in page's limit, is the last `X-Forwarded-For` value, the one the proxy added (`docs/web.md`); never without a proxy, since any client can send the header |
 | `--no-sync` | sync on | runs no source job and no fetch at start (`--track` values, a source switch, the Bucharest feed's lists), so a second server on a copy of the database spends none of the first's source rate limits; retention still runs, a read still fetches a symbol not stored (`docs/tools.md`), and `GET /api/v1/status` answers `sync: false` |
 | `-v`, `--version` | | prints the version |
 | `-h`, `--help` | | prints the help |
@@ -48,13 +49,17 @@ the `--help` text, and a flag changes there in the same commit.
 | `markets.log` | the service's log, when run by `service install` (`docs/deploy.md`) |
 | `secrets/user-admin.key` | the admin key: it opens `/mcp`, every `/api/v1` route and the web UI's sign-in (`docs/admin.md`, `docs/web.md`) |
 | `secrets/source-<name>.key` | a source's API key: `source-fred.key`, `source-finnhub.key`, `source-massive.key`; `source-edgar.key` holds the contact line SEC asks for, a name and an email (`docs/edgar.md`) |
+| `secrets/email-<name>.key` | an SMTP password, put there by hand and picked by name in the web UI's SMTP settings (`docs/admin.md`, "Email"); the name is 1 to 48 lowercase letters, digits and dashes |
 
 ## Keys
 
 - **Only `keys.ts` reads key files.** A file holds the bare value,
   trimmed; one absent, empty, not a regular file or over 4,096 bytes
   reads as no key. Keys are read once at start: a changed key needs a
-  restart.
+  restart. An `email-` file is the exception, read at each send, so one
+  put there or replaced later needs no restart; one that cannot be read
+  is a missing one. The server lists `email-` names, never values, and
+  never writes one.
 - **A first start writes only the admin key** (`startKeys()`):
   `user-admin.key`, `1ctx-markets-admin-` and 32 random bytes in
   base64url, mode 600, in a `secrets/` made mode 700. It writes only
@@ -66,8 +71,12 @@ the `--help` text, and a flag changes there in the same commit.
   file and how to get a new one, never its contents. It opens `/mcp`
   and holds every `/api/v1` scope.
 - **Agents' keys are rows, not files** (`docs/api.md`, "Keys and
-  caching"): the admin makes and revokes them on Connect agents
-  (`docs/web.md`) or with `1ctx-markets keys` (`docs/admin.md`).
+  caching"): each person makes and revokes their own on Connect agents
+  (`docs/web.md`), the operator with `1ctx-markets keys` too
+  (`docs/admin.md`).
+- **The SMTP password is a file; sign-ins and sign-in links are rows
+  holding only a SHA-256 of their token, which reaches no log and no
+  answer, only the one email that carries a link** (`docs/web.md`).
 - **A source key turns its source on.** Yahoo needs none and is always
   on; FRED, Finnhub, Massive and EDGAR are on while their file holds a
   key, and every tool answers without them. A keyless optional source
@@ -76,7 +85,8 @@ the `--help` text, and a flag changes there in the same commit.
   answer.** The logger masks every value `keys.ts` has read (`[key]`)
   in the message and every field, percent-decoded first, since a key
   sent in a URL arrives encoded in the logged path. Pass a source its
-  key through `store.source()`, so the mask knows it. An agent key made
+  key through `store.source()`, and read an SMTP password through
+  `store.email()`, so the mask knows it. An agent key made
   while running joins the mask through `store.mask()` before it is
   answered, and anything shaped like this server's keys
   (`1ctx-markets-`, `admin-` or not, and 16 or more base64url

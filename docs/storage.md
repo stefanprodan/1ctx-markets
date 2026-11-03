@@ -277,8 +277,7 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   (`admin` or `member`), `created_at`, `last_sign_in_at`, and
   `alerts_pruned` (the newest of their alert ids retention deleted, for
   the alerts feed). The migration made `operator`, an admin, the owner
-  of every row before it; `user-admin.key` and the web UI's cookie are
-  the operator.
+  of every row before it; `user-admin.key` is the operator.
 - **A person's rows name them**: `portfolios.owner`, `brokers.owner`,
   `portfolio_settings.owner` (was `admin`), `dashboards.owner` (was
   `operator` already), `rules.owner`, `alerts.owner` (copied from the
@@ -293,6 +292,24 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   shared price outlives one person's rows (`docs/portfolios.md`).
 - **Market data and tracking stay shared**: anyone's read, rule,
   dashboard card or holding tracks an instrument for all.
+- **Sign-ins are rows holding only a SHA-256** (`0037-people`), as
+  1ctx's: `logins` (`user_id` on delete cascade, `admin_digest` on the
+  operator's admin-key logins, `token_hash`, `created_at`,
+  `last_seen_at`, `expires_at`), `links` (`user_id` on delete cascade,
+  `purpose` `invite` or `sign_in`, `token_hash`, `code_hash`,
+  `challenge_hash`, `code_tries`, `email` for an address it sets,
+  `created_at`, `expires_at`, `used_at`), `link_asks` (`user_id`, set
+  null when the person goes, the asking browser's `challenge_hash` and
+  `asked_at`, kept a day so the caps count asks whatever became of
+  their links) and `link_misses` (wrong codes at an invite per trying
+  browser, going with the link). Expired logins, used or expired links
+  and asks past a day go with the startup and daily prunes
+  (`pruneLogins()`).
+- **`smtp_settings` is one row or none** (`0037-people`): the email
+  settings, never the password, which is a key file
+  (`docs/admin.md`, "Email").
+- **A key's name is unique per person** (`unique (user_id, name)`,
+  `0037-people`, a rebuild of `keys` nothing points at).
 
 ## The dashboard
 

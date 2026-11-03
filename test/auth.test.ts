@@ -245,6 +245,8 @@ describe("key files", () => {
       dir: SECRETS,
       admin: () => spaced,
       source: () => null,
+      email: () => null,
+      emailNames: () => [],
       mask: () => {},
       values: () => [spaced],
     };

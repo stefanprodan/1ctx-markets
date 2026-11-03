@@ -15,9 +15,8 @@ import {
   MAX_WINDOWS,
   RateLimit,
 } from "../src/server/ratelimit.ts";
-import { COOKIE, sessions } from "../src/server/session.ts";
 import { open } from "../src/storage/db/index.ts";
-import { ADMIN_KEY, api } from "./helpers/api.ts";
+import { ADMIN_KEY, api, cookieFor } from "./helpers/api.ts";
 import { SECRETS, type TestApp, withApp } from "./helpers/app.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { world } from "./helpers/world.ts";
@@ -363,7 +362,7 @@ describe("the call limit", () => {
     expect(
       (await k.call("/watchlist", { headers: as(ADMIN_KEY) })).status,
     ).toBe(200);
-    const cookie = `${COOKIE}=${sessions(ADMIN_KEY).issue(k.clock.now())}`;
+    const cookie = cookieFor(k.db, k.clock.now());
     for (let n = 0; n <= CALLS_PER_MINUTE; n++) {
       expect((await k.call("/watchlist", { headers: { cookie } })).status).toBe(
         200,

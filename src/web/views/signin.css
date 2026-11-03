@@ -46,4 +46,60 @@
     width: 100%;
     height: 36px;
   }
+  .signin-boxes {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: var(--space-2);
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+  .signin-box {
+    width: 100%;
+    height: 48px;
+    padding: 0;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius);
+    background: var(--inset);
+    color: var(--fg);
+    font-family: var(--mono);
+    font-size: 22px;
+    text-align: center;
+    caret-color: var(--brand);
+  }
+  .signin-box-wrong {
+    border-color: var(--down);
+  }
+  .signin-box:disabled {
+    opacity: 0.6;
+  }
+  .signin-box:focus {
+    outline: none;
+    border-color: var(--brand);
+  }
+  /* the address, or what just happened; a long address wraps anywhere,
+     so its domain, where a typo shows, is never cut off */
+  .signin-say {
+    margin: calc(-1 * var(--space-2)) 0 0;
+    min-height: 1.4em;
+    font-size: var(--text-small);
+    overflow-wrap: anywhere;
+    /* every state in one cell under the longest address line, held
+       hidden, so the line is as tall whatever it says */
+    display: grid;
+  }
+  .signin-say > span {
+    grid-area: 1 / 1;
+  }
+  .signin-say-hold {
+    visibility: hidden;
+  }
+  .signin-alts {
+    display: flex;
+    justify-content: space-between;
+  }
+  .signin-switch {
+    color: var(--faint);
+  }
 }

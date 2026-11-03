@@ -20,7 +20,6 @@ import { ADMIN } from "../src/operations/who.ts";
 import { DAY_MS } from "../src/runtime/clock.ts";
 import { silent } from "../src/runtime/log.ts";
 import { CALLS_PER_MINUTE } from "../src/server/ratelimit.ts";
-import { COOKIE, sessions } from "../src/server/session.ts";
 import { finnhub } from "../src/sources/finnhub/client.ts";
 import { fred } from "../src/sources/fred/client.ts";
 import { yahoo } from "../src/sources/yahoo/client.ts";
@@ -28,7 +27,7 @@ import { type Db, open } from "../src/storage/db/index.ts";
 import { writer } from "../src/storage/writer.ts";
 import { tools } from "../src/tools/index.ts";
 import { restAnswers } from "./helpers/answers.ts";
-import { ADMIN_KEY, api, READ_KEY } from "./helpers/api.ts";
+import { ADMIN_KEY, api, cookieFor, READ_KEY } from "./helpers/api.ts";
 import { withApp } from "./helpers/app.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { drive, pacedOf } from "./helpers/drive.ts";
@@ -792,7 +791,7 @@ describe("every operation", () => {
     await check("GET", "/screener", await t.call("/screener", reader), 403);
     // signed in by the UI's cookie, without this server's Origin
     const cookie = {
-      cookie: `${COOKIE}=${sessions(ADMIN_KEY).issue(t.clock.now())}`,
+      cookie: cookieFor(t.db, t.clock.now()),
     };
     await check(
       "POST",
@@ -1091,6 +1090,7 @@ describe("every operation", () => {
 
     await portfolioOperations(t, check, wrong, reader);
     await profileOperations(t, check, wrong, reader);
+    await peopleOperations(t, check, wrong, reader);
 
     // past the minute's calls every keyed operation is refused before it
     // runs, whatever it was sent
@@ -2088,6 +2088,250 @@ type Check = (
 
 // every profile operation's success and documented errors, on a made-up
 // profile
+// the people and email routes, over the same database with email's key
+// file and sender made up
+async function peopleOperations(
+  t: Awaited<ReturnType<typeof setup>>,
+  check: Check,
+  wrong: RequestInit,
+  reader: RequestInit,
+) {
+  const sent: string[] = [];
+  let fail = false;
+  const handle = api(t.m, {
+    secrets: {
+      email: (name) => (name === "email-test" ? "made-up-password" : null),
+      emailNames: () => ["email-test"],
+    },
+    sender: async (_server, message) => {
+      sent.push(message.to.address);
+      return fail
+        ? { ok: false, failure: "auth", reply: "535 made-up refusal" }
+        : { ok: true };
+    },
+  });
+  const call = (path: string, init: RequestInit = {}) =>
+    handle(new Request(`http://markets.test${PREFIX}${path}`, init));
+  const with_ = (init: RequestInit, key: RequestInit): RequestInit => ({
+    ...init,
+    headers: { ...(init.headers as object), ...(key.headers as object) },
+  });
+  const send = (method: string, body: unknown, type = "application/json") => ({
+    method,
+    headers: { "content-type": type },
+    body: typeof body === "string" ? body : JSON.stringify(body),
+  });
+  // each route's refusals: no key, an agent key, an unknown argument
+  const refusals = async (path: string, at: string, init: RequestInit) => {
+    const method = init.method ?? "GET";
+    await check(method, path, await call(at, with_(init, wrong)), 401);
+    await check(method, path, await call(at, with_(init, reader)), 403);
+    await check(method, path, await call(`${at}?x=1`, init), 400);
+  };
+  const tooBig = async (path: string, at: string, method: string) => {
+    await check(
+      method,
+      path,
+      await call(at, send(method, "x".repeat(70_000))),
+      413,
+    );
+    await check(
+      method,
+      path,
+      await call(at, send(method, "{}", "text/plain")),
+      415,
+    );
+  };
+  const smtp = {
+    host: "smtp.example.com",
+    port: 465,
+    security: "tls",
+    username: "markets@example.com",
+    key_name: "email-test",
+    from: "markets@example.com",
+    public_url: "https://markets.example.com",
+  };
+  // email off: nothing to remove, no test, nobody added
+  await check(
+    "DELETE",
+    "/smtp",
+    await call("/smtp", { method: "DELETE" }),
+    404,
+  );
+  await check(
+    "POST",
+    "/smtp/test",
+    await call("/smtp/test", send("POST", { to: "a@example.com" })),
+    409,
+  );
+  await check(
+    "POST",
+    "/users",
+    await call(
+      "/users",
+      send("POST", { name: "Ana", email: "ana@example.com" }),
+    ),
+    409,
+  );
+  await check("PUT", "/smtp", await call("/smtp", send("PUT", smtp)), 200);
+  await check(
+    "PUT",
+    "/smtp",
+    await call("/smtp", send("PUT", { host: "x" })),
+    400,
+  );
+  await refusals("/smtp", "/smtp", send("PUT", smtp));
+  await tooBig("/smtp", "/smtp", "PUT");
+  const got = await check("GET", "/smtp", await call("/smtp"), 200);
+  expect(got).toMatchObject({ email_on: true, key_names: ["email-test"] });
+  await refusals("/smtp", "/smtp", {});
+  await check(
+    "POST",
+    "/smtp/test",
+    await call("/smtp/test", send("POST", { to: "a@example.com" })),
+    200,
+  );
+  // the operator has no email of their own to default to
+  await check(
+    "POST",
+    "/smtp/test",
+    await call("/smtp/test", send("POST", {})),
+    400,
+  );
+  await refusals("/smtp/test", "/smtp/test", send("POST", {}));
+  await tooBig("/smtp/test", "/smtp/test", "POST");
+
+  const added = await check(
+    "POST",
+    "/users",
+    await call(
+      "/users",
+      send("POST", { name: "Ana", email: "ana@example.com" }),
+    ),
+    201,
+  );
+  expect(added).toMatchObject({ invite: "sent", user: { role: "member" } });
+  const id = added.user.id as string;
+  await check(
+    "POST",
+    "/users",
+    await call(
+      "/users",
+      send("POST", { name: "Ana", email: "ANA@example.com" }),
+    ),
+    409,
+  );
+  await check(
+    "POST",
+    "/users",
+    await call(
+      "/users",
+      send("POST", { name: "Ana", email: "not an address" }),
+    ),
+    400,
+  );
+  await refusals("/users", "/users", send("POST", {}));
+  await tooBig("/users", "/users", "POST");
+  await check("GET", "/users", await call("/users"), 200);
+  await refusals("/users", "/users", {});
+
+  const one = `/users/${id}`;
+  await check(
+    "PATCH",
+    "/users/{id}",
+    await call(one, send("PATCH", { name: "Ana B", role: "admin" })),
+    200,
+  );
+  await check("PATCH", "/users/{id}", await call(one, send("PATCH", {})), 400);
+  await check(
+    "PATCH",
+    "/users/{id}",
+    await call("/users/nobody", send("PATCH", { name: "X" })),
+    404,
+  );
+  await check(
+    "PATCH",
+    "/users/{id}",
+    await call("/users/operator", send("PATCH", { role: "member" })),
+    409,
+  );
+  await refusals("/users/{id}", one, send("PATCH", {}));
+  await tooBig("/users/{id}", one, "PATCH");
+
+  fail = true;
+  const again = await check(
+    "POST",
+    "/users/{id}/invite",
+    await call(`${one}/invite`, { method: "POST" }),
+    200,
+  );
+  expect(again).toEqual({ invite: "failed", reason: "auth" });
+  fail = false;
+  await check(
+    "POST",
+    "/users/{id}/invite",
+    await call("/users/nobody/invite", { method: "POST" }),
+    404,
+  );
+  await check(
+    "POST",
+    "/users/{id}/invite",
+    await call("/users/operator/invite", { method: "POST" }),
+    409,
+  );
+  await refusals("/users/{id}/invite", `${one}/invite`, { method: "POST" });
+
+  await check(
+    "POST",
+    "/users/{id}/sign-out",
+    await call(`${one}/sign-out`, { method: "POST" }),
+    204,
+  );
+  await check(
+    "POST",
+    "/users/{id}/sign-out",
+    await call("/users/nobody/sign-out", { method: "POST" }),
+    404,
+  );
+  await refusals("/users/{id}/sign-out", `${one}/sign-out`, { method: "POST" });
+
+  const counted = await check(
+    "DELETE",
+    "/users/{id}",
+    await call(`${one}?dry_run=true`, { method: "DELETE" }),
+    200,
+  );
+  expect(counted.dry_run).toBe(true);
+  await check(
+    "DELETE",
+    "/users/{id}",
+    await call("/users/operator", { method: "DELETE" }),
+    409,
+  );
+  await refusals("/users/{id}", one, { method: "DELETE" });
+  await check(
+    "DELETE",
+    "/users/{id}",
+    await call(one, { method: "DELETE" }),
+    200,
+  );
+  await check(
+    "DELETE",
+    "/users/{id}",
+    await call(one, { method: "DELETE" }),
+    404,
+  );
+
+  await refusals("/smtp", "/smtp", { method: "DELETE" });
+  await check(
+    "DELETE",
+    "/smtp",
+    await call("/smtp", { method: "DELETE" }),
+    204,
+  );
+  expect(sent).toEqual(["a@example.com", "ana@example.com", "ana@example.com"]);
+}
+
 async function profileOperations(
   t: Awaited<ReturnType<typeof setup>>,
   check: Check,

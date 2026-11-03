@@ -129,7 +129,7 @@ done
 COOKIE=$(curl -s --max-time 5 -o /dev/null -D - -X POST "$URL/ui/session" \
   -H 'content-type: application/json' --data-binary @- <<<"{\"key\":\"$ADMIN\"}" |
   grep -i '^set-cookie:' | sed -E 's/^[^:]*: *([^;]*).*/\1/' | tr -d '\r')
-[[ $COOKIE == markets_session=v1.* ]] || fail "the admin key did not sign the web UI in"
+[[ $COOKIE =~ ^markets_session=[A-Za-z0-9_-]{43}$ ]] || fail "the admin key did not sign the web UI in"
 grep -q "$ADMIN" <<<"$COOKIE" && fail "the session cookie holds the admin key"
 [[ $(status "$URL/api/v1/status" -H "cookie: $COOKIE") == 200 ]] ||
   fail "the session cookie did not open /api/v1/status"

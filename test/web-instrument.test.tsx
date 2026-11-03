@@ -4,9 +4,15 @@
 import { describe, expect, test } from "bun:test";
 import { render } from "preact-render-to-string";
 import type { Holding, TradeRow } from "../src/web/data/portfolios.ts";
-import type { Detail, Listed, TopHoldings } from "../src/web/data/store.ts";
+import {
+  type Detail,
+  type Listed,
+  markets,
+  type TopHoldings,
+} from "../src/web/data/store.ts";
 import { briefQuantity } from "../src/web/lib/format.ts";
 import { barWidth } from "../src/web/ui/Weights.tsx";
+import { Instrument } from "../src/web/views/Instrument.tsx";
 import { signalsOf } from "../src/web/views/InstrumentCards.model.ts";
 import { InstrumentCards } from "../src/web/views/InstrumentCards.tsx";
 import {
@@ -599,5 +605,31 @@ describe("a fund's holdings", () => {
     // a stray answer on a share is no fund's
     expect(fundOf(listed("US:CASY"), holdings())).toBeNull();
     expect(fundOf(listed("US:CASY", { kind: "ETF" }), undefined)).toBeNull();
+  });
+});
+
+describe("an instrument's page by role", () => {
+  test("Refetch and Delete are an admin's; a member's page has no menu", () => {
+    markets.detailId.value = "US:CASY";
+    markets.detail.value = detail();
+    const page = () => render(<Instrument params={{ id: "US:CASY" }} />);
+    try {
+      markets.me.value = {
+        id: "operator",
+        name: "Casey",
+        role: "admin",
+        email: null,
+        operator: true,
+      };
+      expect(page()).toContain('aria-label="More"');
+      markets.me.value = { ...markets.me.value, id: "ana", role: "member" };
+      const member = page();
+      expect(member).not.toContain('aria-label="More"');
+      expect(member).toContain("CASY");
+    } finally {
+      markets.me.value = null;
+      markets.detail.value = null;
+      markets.detailId.value = null;
+    }
   });
 });

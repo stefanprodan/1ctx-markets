@@ -1,7 +1,9 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 // `1ctx-markets keys`: the running server's agent keys, called with
-// user-admin.key. A made key goes to stdout once, and nowhere else.
+// user-admin.key, the operator's. A made key goes to stdout once, and
+// nowhere else. A name is the operator's own key; another person's is
+// named by its id alone, since two people may name keys alike.
 
 import {
   KEY_DAYS,
@@ -17,14 +19,17 @@ import {
 } from "./cli.ts";
 
 const USAGE = `usage: 1ctx-markets keys [--listen <host:port>] [--data <dir>] <command>
-  list                            the agent keys, never their tokens
+  list                            every person's agent keys, never tokens
   add <name> [--expires <days>] [--portfolio <access>] [--rules <access>]
       [--profile <access>]        make a key and print it once; days:
                                   ${KEY_DAYS.join(", ")} (default: never);
                                   access: none, read or write (default: none)
   set <name> [--portfolio <access>] [--rules <access>] [--profile <access>]
-                                  change a key's access; its token stays
-  revoke <name>                   revoke a key; an agent using it is refused`;
+                                  change an operator's key's access; its
+                                  token stays
+  revoke <name>|<id>              revoke an operator's key by name, or
+                                  anyone's by id; an agent using it is
+                                  refused`;
 
 type Parsed = {
   listen: string | null;
@@ -100,7 +105,9 @@ function parse(argv: string[]): Parsed {
   };
 }
 
-type Listed = { keys: { id: string; name: string }[] };
+type Listed = { keys: { id: string; name: string; owner: { id: string } }[] };
+
+const OPERATOR = "operator";
 
 export async function runKeys(
   argv: string[],
@@ -163,7 +170,11 @@ export async function runKeys(
     return;
   }
   const listed = (await call("/keys")) as Listed;
-  const found = listed.keys.find((k) => k.name === p.name);
+  const found =
+    listed.keys.find((k) => k.owner.id === OPERATOR && k.name === p.name) ??
+    (p.command === "revoke"
+      ? listed.keys.find((k) => k.id === p.name)
+      : undefined);
   if (found === undefined) throw new AdminError(`no key named ${p.name}`);
   const path = `/keys/${encodeURIComponent(found.id)}`;
   if (p.command === "set") {

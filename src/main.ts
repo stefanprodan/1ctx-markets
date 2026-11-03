@@ -7,6 +7,7 @@ import { join } from "node:path";
 import pkg from "../package.json";
 import { AdminError, runAdmin } from "./admin/cli.ts";
 import { runKeys } from "./admin/keys-cli.ts";
+import { runUsers } from "./admin/users-cli.ts";
 import { start } from "./app.ts";
 import { MINUTE_MS, wallClock } from "./runtime/clock.ts";
 import { dbPath, HELP, parseCli, secretsDir } from "./runtime/config.ts";
@@ -51,9 +52,10 @@ if (cli.kind === "service") {
   }
   process.exit(0);
 }
-if (cli.kind === "admin" || cli.kind === "keys") {
+if (cli.kind === "admin" || cli.kind === "keys" || cli.kind === "users") {
+  const run = { admin: runAdmin, keys: runKeys, users: runUsers }[cli.kind];
   try {
-    await (cli.kind === "admin" ? runAdmin : runKeys)(cli.argv);
+    await run(cli.argv);
   } catch (error) {
     if (!(error instanceof AdminError)) throw error;
     console.error(`error: ${error.message}`);
@@ -115,6 +117,9 @@ const app = start({
   finnhubKey: store.source("finnhub"),
   massiveKey: store.source("massive"),
   edgarKey: store.source("edgar"),
+  // read at each send, through the keys module, so the log masks it
+  secrets: store,
+  trustProxy: config.trustProxy,
   bvb: config.sources.includes("bvb"),
 });
 

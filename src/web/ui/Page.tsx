@@ -75,8 +75,10 @@ export function Page({
   foot?: ComponentChildren;
   children?: ComponentChildren;
 }) {
-  // the server's, from the status the sign-in read
-  const version = markets.status.value?.version;
+  // the server's, from a status an admin read; a member is never told
+  const version = markets.isAdmin.value
+    ? (markets.status.value?.version ?? markets.pulse.value?.version)
+    : undefined;
   const [shown, setShown] = useState<string | null>(stale ?? null);
   useEffect(() => {
     setShown(stale ?? null);

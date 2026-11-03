@@ -1,7 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 
-import { batch, signal } from "@preact/signals";
+import { batch, computed, signal } from "@preact/signals";
 import { path } from "../app/router.ts";
 import { type Later, paced, slowFlag, timer } from "../lib/slow.ts";
 import {
@@ -11,6 +11,7 @@ import {
   type Intraday,
   type IntradayRange,
 } from "../views/Chart.model.ts";
+import { adminStore } from "./admin.ts";
 import {
   ApiError,
   buildWatch,
@@ -356,6 +357,8 @@ export type Removed =
 export type AgentKey = {
   id: string;
   name: string;
+  // whose key it is; an admin's list holds everyone's
+  owner?: { id: string; name: string };
   created_at: string;
   last_used_at: string | null;
   // null never expires
@@ -419,6 +422,27 @@ export const EXTENDED_BATCH = 100;
 export const extendedPath = (ids: readonly string[]) =>
   `/api/v1/quotes?${new URLSearchParams({ symbols: ids.join(","), extended: "true" })}`;
 export const SESSION_PATH = "/ui/session";
+export const ME_PATH = "/ui/me";
+export const LINK_PATH = "/ui/link";
+export const CODE_PATH = "/ui/code";
+
+// who is signed in, as GET /ui/me answers
+export type Me = {
+  id: string;
+  name: string;
+  role: "admin" | "member";
+  email: string | null;
+  // the person the admin key signs in as
+  operator: boolean;
+};
+
+type MeAnswer = { user: Me | null; email_on: boolean };
+
+const isMe = (u: unknown): u is Me =>
+  typeof u === "object" &&
+  u !== null &&
+  typeof (u as Me).id === "string" &&
+  typeof (u as Me).name === "string";
 export const KEYS_PATH = "/api/v1/keys";
 export const DASHBOARD_PATH = "/api/v1/dashboard";
 export const EARNINGS_PATH = "/api/v1/earnings";
@@ -466,6 +490,10 @@ export function store(
 ) {
   // undefined until the first answer says whether the cookie holds
   const signedIn = signal<boolean | undefined>(undefined);
+  const me = signal<Me | null>(null);
+  const isAdmin = computed(() => me.value?.role === "admin");
+  // whether a person can ask for a link; known signed out too
+  const emailOn = signal(false);
   const status = signal<Status | null>(null);
   const statusError = signal<string | null>(null);
   // its HTTP code, shown beside the words; null when no server answered
@@ -546,9 +574,16 @@ export function store(
     flight = null;
     latest++;
     current = Promise.resolve(false);
+    // a read of who is signed in from before it never signs back in
+    meLoad++;
+    meCurrent = Promise.resolve(false);
     loading.value = false;
     batch(() => {
       signedIn.value = false;
+      me.value = null;
+      // the server's version and state are an admin's, never the next
+      // person's on this browser
+      pulse.value = null;
       status.value = null;
       statusError.value = null;
       statusCode.value = null;
@@ -584,6 +619,7 @@ export function store(
     });
     portfolios.clear();
     profile.clear();
+    admin.clear();
   };
   const quiet = client(fetchFn, () => {}, buildWatch(reloadPage));
   // a 401 signs out only the session the call was made in
@@ -610,11 +646,93 @@ export function store(
 
   const portfolios = portfolioStore(call, () => session, later);
   const profile = profileStore(call, () => session);
+  const admin = adminStore(
+    call,
+    () => session,
+    (on) => {
+      emailOn.value = on;
+    },
+    later,
+  );
+
+  // who is signed in: the web UI starts from it, never from the status,
+  // which is an admin's. A later read supersedes one in flight
+  let meLoad = 0;
+  let meCurrent: Promise<boolean> = Promise.resolve(false);
+  function loadMe(): Promise<boolean> {
+    meCurrent = readMe(++meLoad);
+    return meCurrent;
+  }
+  async function readMe(mine: number): Promise<boolean> {
+    try {
+      const a = await quiet<MeAnswer>(ME_PATH);
+      if (mine !== meLoad) return meCurrent;
+      emailOn.value = a?.email_on === true;
+      if (!isMe(a?.user)) {
+        if (signedIn.peek() !== false) signedOut();
+        // an answer naming nobody is no failure, signed out already or not
+        batch(() => {
+          statusError.value = null;
+          statusCode.value = null;
+        });
+        return false;
+      }
+      batch(() => {
+        me.value = a.user as Me;
+        signedIn.value = true;
+        statusError.value = null;
+        statusCode.value = null;
+      });
+      return true;
+    } catch (error) {
+      if (mine !== meLoad) return meCurrent;
+      batch(() => {
+        statusError.value = says(error);
+        statusCode.value = codeOf(error);
+        statusFailures.value++;
+      });
+      return false;
+    }
+  }
+
+  // a sign-in's post: a wrong key or code is no session ending, so it
+  // skips the 401 hook; the answer's own words otherwise
+  async function post(
+    to: string,
+    body: unknown,
+    wrong: string,
+  ): Promise<Response> {
+    let res: Response;
+    try {
+      res = await fetchFn(to, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    } catch {
+      throw failure(0, null);
+    }
+    if (res.status === 401) throw new ApiError(401, wrong);
+    if (!res.ok) throw failure(res.status, await res.json().catch(() => null));
+    return res;
+  }
+
+  // a new session: an old call's late 401 never signs it out; the cookie
+  // set but /ui/me naming nobody is a cookie the browser dropped
+  async function opened(): Promise<void> {
+    session++;
+    if (!(await loadMe())) {
+      throw new ApiError(0, statusError.value ?? "not signed in");
+    }
+  }
 
   // a quiet read: a failure leaves the last answer, never a sign-out
   async function checkPulse(): Promise<void> {
+    const at = session;
     try {
-      pulse.value = await quiet<Status>(STATUS_PATH);
+      const read = await quiet<Status>(STATUS_PATH);
+      if (at === session) pulse.value = read;
     } catch {}
   }
 
@@ -625,6 +743,8 @@ export function store(
 
   async function load(mine: number): Promise<boolean> {
     loading.value = true;
+    // a sign-in since makes it stale: its 401 never signs the new one out
+    const at = session;
     try {
       // the status page shows both, so they land together; a 401 from
       // either signs out, whichever failed first
@@ -642,6 +762,7 @@ export function store(
         );
       }
       if (mine !== latest) return current;
+      if (at !== session) return false;
       batch(() => {
         signedIn.value = true;
         status.value = s.value;
@@ -653,6 +774,7 @@ export function store(
       return true;
     } catch (error) {
       if (mine !== latest) return current;
+      if (at !== session) return false;
       if (error instanceof ApiError && error.status === 401) signedOut();
       else {
         statusError.value = says(error);
@@ -1307,34 +1429,76 @@ export function store(
     loading,
     loadStatus,
     retry,
-    // the status load answers whether the cookie holds, so one load does both
-    check: loadStatus,
-    // a wrong key is no session ending, so it skips the 401 hook
-    async signIn(key: string): Promise<void> {
-      let res: Response;
+    me,
+    isAdmin,
+    emailOn,
+    admin,
+    // the reader's own name; the refusal's sentence, or null once saved
+    async setMyName(name: string): Promise<string | null> {
       try {
-        res = await fetchFn(SESSION_PATH, {
-          method: "POST",
-          credentials: "same-origin",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ key: key.trim() }),
-        });
-      } catch {
-        throw failure(0, null);
+        const a = await call<MeAnswer>(ME_PATH, "PATCH", { name });
+        if (isMe(a?.user)) {
+          me.value = a.user;
+          admin.renamed(a.user.id, a.user.name);
+        }
+        return null;
+      } catch (error) {
+        return says(error);
       }
-      if (res.status === 401) {
-        throw new ApiError(401, "wrong admin key");
+    },
+    // the operator's email: a link goes there, and the address is set
+    // only once it is used
+    async setMyEmail(
+      email: string,
+    ): Promise<
+      { sent: true } | { sent: false; reason: string } | { error: string }
+    > {
+      try {
+        const a = await call<{ link: string; reason?: string }>(
+          ME_PATH,
+          "PATCH",
+          { email },
+        );
+        return a.link === "sent"
+          ? { sent: true }
+          : { sent: false, reason: a.reason ?? "other" };
+      } catch (error) {
+        return { error: says(error) };
       }
-      if (!res.ok) {
-        throw failure(res.status, await res.json().catch(() => null));
+    },
+    // /ui/me answers whether the cookie holds and who it is
+    check: loadMe,
+    // the same read, saying whether it named nobody or failed
+    async whoIs(): Promise<"in" | "nobody" | "failed"> {
+      if (await loadMe()) return "in";
+      return statusError.peek() === null ? "nobody" : "failed";
+    },
+    async signIn(key: string): Promise<void> {
+      await post(SESSION_PATH, { key: key.trim() }, "wrong admin key");
+      await opened();
+    },
+    // answered the same for any address; the code goes to an invited one
+    async askLink(email: string): Promise<void> {
+      await post(LINK_PATH, { email: email.trim() }, "signed out");
+    },
+    // go: the landing the code opens, taken before the pages load
+    async signInByCode(
+      email: string,
+      code: string,
+      go: (landing: string) => void,
+    ): Promise<void> {
+      const res = await post(
+        CODE_PATH,
+        { email: email.trim(), code },
+        "wrong or expired code",
+      );
+      const a = (await res.json().catch(() => null)) as {
+        landing?: unknown;
+      } | null;
+      if (typeof a?.landing === "string" && a.landing.startsWith("/")) {
+        go(a.landing);
       }
-      // a new session: an old call's late 401 never signs it out
-      session++;
-      // the cookie set but the status refused, so the form says why; a
-      // 401 here is a cookie the browser dropped, never a session ended
-      if (!(await loadStatus())) {
-        throw new ApiError(0, statusError.value ?? "not signed in");
-      }
+      await opened();
     },
     async signOut(): Promise<void> {
       await call(SESSION_PATH, "DELETE");

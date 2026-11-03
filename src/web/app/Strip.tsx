@@ -1,12 +1,19 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 
+import { markets } from "../data/store.ts";
 import { Icon, Mark } from "../lib/icons.tsx";
 import { useServerFailing } from "./failing.ts";
 import { iconClass } from "./Rail.tsx";
-import { HOME, lit, RAIL, STATUS } from "./routes.ts";
+import { HOME, lit, railFor, STATUS } from "./routes.ts";
 import { showRail } from "./shell.ts";
-import { toggleUserMenu, UserMenu, userMenuOpen } from "./UserMenu.tsx";
+import {
+  avatarIcon,
+  toggleUserMenu,
+  UserMenu,
+  userMenuOpen,
+  userName,
+} from "./UserMenu.tsx";
 import "./strip.css";
 
 export function Strip({ here }: { here: string }) {
@@ -26,7 +33,7 @@ export function Strip({ here }: { here: string }) {
         <Mark />
       </a>
       <nav class="strip-nav">
-        {RAIL.map((r) => {
+        {railFor(markets.isAdmin.value).map((r) => {
           const red = r.path === STATUS && failing;
           return (
             <a
@@ -48,12 +55,12 @@ export function Strip({ here }: { here: string }) {
             type="button"
             class="strip-avatar"
             aria-expanded={userMenuOpen.value}
-            aria-label="Admin"
-            title="Admin"
+            aria-label={userName()}
+            title={userName()}
             onClick={toggleUserMenu}
           >
             <span class="avatar">
-              <Icon name="key" size={14} />
+              <Icon name={avatarIcon()} size={14} />
             </span>
           </button>
         </UserMenu>

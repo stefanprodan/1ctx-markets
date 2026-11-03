@@ -29,6 +29,11 @@ doc; key files in `docs/config.md`.
   for <url>`), so an unexpected call fails the test instead of passing
   unseen. Tests assert the calls it recorded, or `Calls` in
   `test/helpers/sources.ts`.
+- **No email leaves.** The SMTP sender is a fake that records each
+  message: `withApp()` and `api()` take a `sender`, which by default
+  fails every send as `connect`, and a `secrets` directory or reader for
+  the `email-` key files, a test's own temporary one; without it email
+  stays off.
 - **Source fakes live in helpers, one per source:**
 
 | Helper | Answers |

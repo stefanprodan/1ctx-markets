@@ -815,7 +815,11 @@ export const schemas: Record<string, Schema> = {
   Pause: object({ paused: bool }),
   Key: object({
     id: str,
-    name: str,
+    name: note(str, "Unique among its person's keys."),
+    owner: note(
+      object({ id: str, name: str }),
+      "The person who made it, whose rows it reads and writes.",
+    ),
     created_at: str,
     last_used_at: note(nstr, "Null until first used. Kept to the minute."),
     expires_at: note(nstr, "Null for a key that never expires."),

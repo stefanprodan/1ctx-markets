@@ -1,0 +1,42 @@
+/* Admin: the tabs, then the people card or the SMTP form. */
+
+@layer tokens, base, owners;
+
+@layer owners {
+  .admin {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+  .admin-tag {
+    margin-left: var(--space-2);
+  }
+  .admin-smtp {
+    max-width: 520px;
+  }
+  .admin-lead {
+    margin: 0;
+  }
+  .admin-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 96px;
+    gap: var(--space-3);
+  }
+  .admin-under {
+    margin-top: calc(-1 * var(--space-3));
+  }
+  .admin-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+  .admin-spacer {
+    flex: 1;
+  }
+  /* the SMTP server's reply under a failed test's words */
+  .admin-detail {
+    display: block;
+    overflow-wrap: anywhere;
+  }
+}

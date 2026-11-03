@@ -2,7 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // The only reader of key files: a value reaches its caller and the log mask.
 
-import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 
 export const MIN_KEY_LENGTH = 32;
@@ -12,6 +18,12 @@ export const ADMIN_FILE = "user-admin.key";
 export const ADMIN_PREFIX = "1ctx-markets-admin-";
 const MAX_KEY_BYTES = 4096;
 const SOURCE_NAME = /^[a-z][a-z0-9-]{0,47}$/;
+// 1ctx's secret names: the kind, then 1 to 48 lowercase letters, digits
+// and dashes; the file adds .key
+export const EMAIL_KEY_PREFIX = "email-";
+const EMAIL_NAME = /^email-[a-z0-9][a-z0-9-]{0,47}$/;
+export const isEmailKeyName = (value: unknown): value is string =>
+  typeof value === "string" && EMAIL_NAME.test(value);
 
 export type Keys = {
   readonly dir: string;
@@ -19,6 +31,11 @@ export type Keys = {
   // absent, empty, not a regular file or larger than a key
   admin(): string | null;
   source(name: string): string | null;
+  // an SMTP password, read at each send so a file put there later needs
+  // no restart; null as for a missing key
+  email(name: string): string | null;
+  // the email- key files there, by name alone, never a value
+  emailNames(): string[];
   // a key made in the running server, so the mask hides it too
   mask(value: string): void;
   // every value read or masked so far, for the log mask
@@ -48,6 +65,30 @@ export function keys(dir: string): Keys {
     dir,
     admin: () => read(ADMIN_FILE),
     source: (name) => read(sourceFile(name)),
+    // a file that cannot be read is a missing one: email is off
+    email: (name) => {
+      if (!isEmailKeyName(name)) return null;
+      try {
+        return read(`${name}.key`);
+      } catch {
+        return null;
+      }
+    },
+    emailNames: () => {
+      let files: string[];
+      try {
+        files = readdirSync(dir);
+      } catch {
+        return [];
+      }
+      return files
+        .filter((f) => f.endsWith(".key") && isEmailKeyName(f.slice(0, -4)))
+        .filter((f) =>
+          statSync(join(dir, f), { throwIfNoEntry: false })?.isFile(),
+        )
+        .map((f) => f.slice(0, -4))
+        .sort();
+    },
     mask: (value) => {
       seen.add(value);
     },

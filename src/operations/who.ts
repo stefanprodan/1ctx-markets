@@ -9,7 +9,7 @@ export type Access = "none" | "read" | "write";
 // the very credential a request came with, so a write can check it again
 export type Credential =
   | { kind: "admin" }
-  | { kind: "cookie" }
+  | { kind: "login"; id: string }
   | { kind: "key"; id: string }
   | { kind: "none" };
 
@@ -23,19 +23,21 @@ export type Who = {
   profile: Access;
 };
 
-// the person user-admin.key and the web UI's cookie sign in as, made by
-// the migration that gave every row an owner
+// the person user-admin.key signs in as, made by the migration that gave
+// every row an owner
 export const OPERATOR = "operator";
 
-// the web UI's cookie: every portfolio and profile write, never a rules write
-export const WEB: Who = {
-  name: "web",
-  user: OPERATOR,
-  credential: { kind: "cookie" },
+// a person signed in to the web UI: every portfolio and profile write of
+// their own, never a rules write; what they write names them, so a shared
+// fund's price or a removed row tells who
+export const loginWho = (user: string, login: string, name: string): Who => ({
+  name,
+  user,
+  credential: { kind: "login", id: login },
   portfolio: "write",
   rules: "read",
   profile: "write",
-};
+});
 export const ADMIN: Who = {
   name: "admin",
   user: OPERATOR,

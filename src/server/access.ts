@@ -127,8 +127,10 @@ export function createKey(
 ): { key: KeyRow; token: string } {
   if (RESERVED_NAMES.includes(args.name))
     throw new KeyConflict("name reserved");
-  // names are unique across the server until each person has their own
-  if (keyByName(db, args.name) !== null) throw new KeyConflict("name taken");
+  // unique per person, as 1ctx's
+  if (keyByName(db, user, args.name) !== null) {
+    throw new KeyConflict("name taken");
+  }
   const keys = listKeys(db, user);
   if (keys.length >= MAX_KEYS) throw new KeyConflict("too many keys");
   const key: KeyRow = {
@@ -191,19 +193,34 @@ export function setKeyAccess(
   return raw === null ? null : rowOf(raw);
 }
 
-export function revokeKey(db: Db, user: string, id: string): KeyRow | null {
+// user null: anyone's, for an admin
+export function revokeKey(
+  db: Db,
+  user: string | null,
+  id: string,
+): KeyRow | null {
   const raw = db
-    .query<Raw, [string, string]>(
-      `delete from keys where id = ? and user_id = ? returning ${COLUMNS}`,
+    .query<Raw, [string, string | null]>(
+      `delete from keys where id = ?1 and (?2 is null or user_id = ?2)
+       returning ${COLUMNS}`,
     )
     .get(id, user);
   return raw === null ? null : rowOf(raw);
 }
 
-export function keyByName(db: Db, name: string): KeyRow | null {
+// every person's keys, for an admin
+export const allKeys = (db: Db): KeyRow[] =>
+  db
+    .query<Raw, []>(`select ${COLUMNS} from keys order by created_at, rowid`)
+    .all()
+    .map(rowOf);
+
+export function keyByName(db: Db, user: string, name: string): KeyRow | null {
   const raw = db
-    .query<Raw, [string]>(`select ${COLUMNS} from keys where name = ?`)
-    .get(name);
+    .query<Raw, [string, string]>(
+      `select ${COLUMNS} from keys where user_id = ? and name = ?`,
+    )
+    .get(user, name);
   return raw === null ? null : rowOf(raw);
 }
 

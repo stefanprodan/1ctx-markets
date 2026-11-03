@@ -10,6 +10,7 @@ export type Clock = {
 };
 
 export const MINUTE_MS = 60_000;
+export const HOUR_MS = 60 * MINUTE_MS;
 export const DAY_MS = 24 * 60 * MINUTE_MS;
 
 // a longer setTimeout delay overflows and fires at once

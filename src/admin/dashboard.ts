@@ -11,6 +11,7 @@ import { crossing } from "../operations/movers.ts";
 import { closeOn, readLatest, sessionOf } from "../operations/quote.ts";
 import { resolveTargets } from "../operations/targets.ts";
 import type { TrackState } from "../operations/track.ts";
+import { recheck } from "../server/caller.ts";
 import { ATTRIBUTION } from "../sources/fred/sync.ts";
 import { FRED } from "../sources/ids.ts";
 import type { Db } from "../storage/db/index.ts";
@@ -316,6 +317,7 @@ export async function saveDashboard(
     }),
   }));
   const saved = await m.writer.write((db) => {
+    recheck(db);
     if (revisionOf(db, owner) !== args.revision) return false;
     const now = m.clock.now();
     db.query(

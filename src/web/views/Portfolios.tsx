@@ -1231,7 +1231,7 @@ export function TradeSheet({
             : []),
           {
             label: "Added by",
-            value: `${enteredBy(t.entered_by)}${
+            value: `${enteredBy(t.entered_by, markets.me.value?.name ?? null)}${
               t.entered_at ? ` · ${ownerDay(t.entered_at, zone)}` : ""
             }`,
           },
@@ -1240,7 +1240,9 @@ export function TradeSheet({
                 {
                   label: "Removed",
                   value: `${ownerDay(t.removed_at, zone)}${
-                    t.removed_by ? ` · ${enteredBy(t.removed_by)}` : ""
+                    t.removed_by
+                      ? ` · ${enteredBy(t.removed_by, markets.me.value?.name ?? null)}`
+                      : ""
                   }`,
                 },
               ]

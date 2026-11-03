@@ -116,7 +116,9 @@ export function Instrument({ params }: { params: Params }) {
         )
       }
       actions={
-        detail !== null && (
+        // refetch and delete are an admin's
+        detail !== null &&
+        markets.isAdmin.value && (
           <InstrumentMenu
             symbol={symbol}
             busy={fetching.value}

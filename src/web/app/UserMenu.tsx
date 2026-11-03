@@ -7,6 +7,7 @@ import { useEffect, useRef } from "preact/hooks";
 import { says } from "../data/api.ts";
 import { markets } from "../data/store.ts";
 import { Icon } from "../lib/icons.tsx";
+import { MenuHead } from "../ui/Menu.tsx";
 import { theme, toggleTheme } from "./theme.ts";
 import "./usermenu.css";
 
@@ -17,11 +18,24 @@ export function toggleUserMenu(): void {
   userMenuOpen.value = !userMenuOpen.value;
 }
 
-// the operator's two items: the user menu's, and More's on a phone
+// who is signed in, as the menu names them
+export const userName = (): string => markets.me.value?.name ?? "";
+
+// the admin key's person by the key, anyone else as a person
+export const avatarIcon = (): "key" | "user" =>
+  markets.me.value?.operator === true ? "key" : "user";
+
+// the signed-in person's name, then two items: the user menu's, and
+// More's on a phone
 export function UserItems({ onSignedOut }: { onSignedOut?: () => void }) {
   const failure = useSignal<string | null>(null);
   return (
     <>
+      {userName() !== "" && (
+        <MenuHead>
+          <span class="cut">{userName()}</span>
+        </MenuHead>
+      )}
       <button
         type="button"
         role="switch"
