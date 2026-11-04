@@ -32,6 +32,7 @@ const as = (user: string): Who => ({
   portfolio: "write",
   rules: "none",
   profile: "none",
+  analysis: "none",
 });
 
 const isinOf = (body: string): string =>

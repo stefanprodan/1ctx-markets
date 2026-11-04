@@ -1,27 +1,21 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-// The owner's profile: one Markdown document, stored as sent and never
-// parsed, every save a revision. A write checks, saves and evicts in one
-// closure, so two writers that read the same revision never both land.
+// The owner's profile: one Markdown document per person, on the rules every
+// document shares (src/document/).
 
+import type { Revision } from "../document/read.ts";
 import {
-  type Failure,
-  fits,
-  PAGE_BYTES,
-  sentBytes,
-} from "../operations/answer.ts";
-import { ArgError } from "../operations/args.ts";
+  type Kind,
+  type RevisionInfo,
+  type Save,
+  type Saved,
+  saveIn,
+} from "../document/store.ts";
+import type { Failure } from "../operations/answer.ts";
 import { recheck } from "../server/caller.ts";
 import type { Db } from "../storage/db/index.ts";
 import type { Writer } from "../storage/writer.ts";
-import { applyEdits, type ProfileEdit } from "./edit.ts";
-import { profileRead, type Revision } from "./read.ts";
-
-// UTF-8 bytes, about three times a full profile, so a read is one answer
-export const MAX_PROFILE_BYTES = 24 * 1024;
-export const KEPT_REVISIONS = 100;
-
-export type RevisionInfo = Omit<Revision, "text">;
+import { profileRead } from "./read.ts";
 
 type Raw = {
   revision: number;
@@ -38,8 +32,6 @@ const rowOf = (raw: Raw): Revision => ({
   author: raw.author,
   createdAt: raw.created_at,
 });
-
-const infoOf = ({ text: _, ...info }: Revision): RevisionInfo => info;
 
 export function readProfile(db: Db, owner: string): Revision | null {
   const raw = db
@@ -60,7 +52,10 @@ export const profileVersions = (db: Db, owner: string): RevisionInfo[] =>
        from profile_versions where owner = ? order by revision desc`,
     )
     .all(owner)
-    .map((raw) => infoOf(rowOf({ ...raw, text: "" })));
+    .map((raw) => {
+      const { text: _, ...info } = rowOf({ ...raw, text: "" });
+      return info;
+    });
 
 export function profileVersion(
   db: Db,
@@ -83,57 +78,13 @@ export const liveRevision = (db: Db, owner: string): number | null =>
     )
     .get(owner)?.r ?? null;
 
-// 1ctx's textFromString(): the text as an editor saves it
-export function profileText(value: string): string {
-  if (!value.isWellFormed() || value.includes("\u0000")) {
-    throw new ArgError("text must be well-formed UTF-8 with no NUL");
-  }
-  return value.startsWith("\ufeff") ? value.slice(1) : value;
-}
-
-const NOT_HERE =
-  "the profile holds goals, risk, trading style, rules and analysis defaults; trades, holdings, cash, scorecards, per-symbol calls and dated logs belong elsewhere";
-
-// the read answer is what must fit, since JSON escaping grows short lines,
-// quotes and control characters past the byte cap's promise
-function checked(next: Revision): void {
-  if (next.text.trim() === "") {
-    throw new ArgError(
-      "text is empty; the profile is rewritten, never blanked",
-    );
-  }
-  if (next.bytes > MAX_PROFILE_BYTES) {
-    throw new ArgError(
-      `the profile would be ${next.bytes} bytes, over ${MAX_PROFILE_BYTES} (24 KiB); ${NOT_HERE}`,
-    );
-  }
-  const read = profileRead(next);
-  if (!fits(read)) {
-    throw new ArgError(
-      `the profile's read answer would be ${sentBytes(read)} bytes as sent, over one ${PAGE_BYTES / 1024} KiB page: its short lines, quotes or control characters grow when escaped; ${NOT_HERE}`,
-    );
-  }
-}
-
-export type Save =
-  | { action: "replace"; revision: number | null; text: string }
-  | { action: "edit"; revision: number; edits: ProfileEdit[] };
-
-export type Saved = { saved: RevisionInfo; unchanged: boolean };
-
-export const profileConflict = (live: number | null): Failure =>
-  live === null
-    ? {
-        error: "conflict",
-        message:
-          "there is no profile yet; replace without a revision makes one",
-        revision: null,
-      }
-    : {
-        error: "conflict",
-        message: `profile is at revision ${live}`,
-        revision: live,
-      };
+const PROFILE: Kind = {
+  noun: "profile",
+  notHere:
+    "the profile holds goals, risk, trading style, rules and analysis defaults; trades, holdings, cash, scorecards, per-symbol calls and dated logs belong elsewhere",
+  read: profileRead,
+  reserve: 0,
+};
 
 export function saveProfile(
   writer: Writer,
@@ -144,44 +95,32 @@ export function saveProfile(
 ): Promise<Saved | Failure> {
   return writer.write((db): Saved | Failure => {
     recheck(db);
-    const live = readProfile(db, owner);
-    // only the first replace names no revision
-    const stale =
-      save.revision === null
-        ? live !== null
-        : live === null || live.revision !== save.revision;
-    if (stale) return profileConflict(live?.revision ?? null);
-    const text = profileText(
-      save.action === "edit" ? applyEdits(live!.text, save.edits) : save.text,
-    );
-    // an unchanged save never uses one of the kept revisions
-    if (live !== null && text === live.text) {
-      return { saved: infoOf(live), unchanged: true };
-    }
-    const next: Revision = {
-      revision: (live?.revision ?? 0) + 1,
-      text,
-      bytes: Buffer.byteLength(text),
+    return saveIn(
+      db,
+      PROFILE,
+      {
+        table: "profile_versions",
+        column: "owner",
+        value: owner,
+        live: (db) => readProfile(db, owner),
+        insert: (db, next) => {
+          db.query(
+            `insert into profile_versions (owner, revision, text, bytes,
+               author, created_at)
+             values (?, ?, ?, ?, ?, ?)`,
+          ).run(
+            owner,
+            next.revision,
+            next.text,
+            next.bytes,
+            next.author,
+            next.createdAt,
+          );
+        },
+      },
+      save,
       author,
-      createdAt: now,
-    };
-    checked(next);
-    db.query(
-      `insert into profile_versions (owner, revision, text, bytes, author,
-         created_at)
-       values (?, ?, ?, ?, ?, ?)`,
-    ).run(
-      owner,
-      next.revision,
-      next.text,
-      next.bytes,
-      next.author,
-      next.createdAt,
+      now,
     );
-    // the live revision is the highest, so it is never evicted
-    db.query(
-      "delete from profile_versions where owner = ? and revision <= ?",
-    ).run(owner, next.revision - KEPT_REVISIONS);
-    return { saved: infoOf(next), unchanged: false };
   });
 }

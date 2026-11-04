@@ -42,6 +42,7 @@ import {
 import { errorFields } from "../runtime/log.ts";
 import { CallerGone } from "../server/caller.ts";
 import { CALENDAR_AHEAD_DAYS } from "../sources/finnhub/store.ts";
+import { analysisTools } from "./analysis.ts";
 import { portfolioTools } from "./portfolio.ts";
 import { profileTools } from "./profile.ts";
 import {
@@ -70,9 +71,19 @@ const EVENTS = `Earnings events dated from to to (YYYY-MM-DD, inclusive) of the 
 const RULES = `Price rules on live quotes. Turning true writes one alert; again only after false. create: symbol, condition, note; answers its first evaluation. condition: {left, op, right} (op < <= > >=; right a number or operand) or {all: [...]}/{any: [...]}; ≤${MAX_COMPARISONS} comparisons, ${MAX_DEPTH} levels, ${MAX_INSTRUMENTS} instruments. Operand: a field of symbol, or {field, symbol} (^VIX). Fields: price changePct dayHigh dayLow previousClose sma50 sma200 ema20 rsi14 macd macdSignal macdHistogram macdTurn atr14 moveAtr volatility20 bollingerLower high52w low52w drawdown fromLow daysSinceHigh volumeRatio cross crossEdge weeklySma50 weeklySma200 weeklyCross weeklyCrossEdge, and {field: relativeReturn1m|relativeReturn3m, benchmark}. Each comparison reads a live value, in one unit. Example: {"all":[{"left":"rsi14","op":"<","right":30},{"left":"price","op":">","right":"sma200"}]}. "afterEarnings": "<US share>" on the root waits for its next results. A stale input changes nothing. A split pauses price-vs-number rules. list: next; pause: id, paused; delete: id.`;
 
 // what a key's access opens; the tools it does not open are not listed
-export type Opens = { portfolio: Access; rules: Access; profile: Access };
+export type Opens = {
+  portfolio: Access;
+  rules: Access;
+  profile: Access;
+  analysis: Access;
+};
 
-const ALL: Opens = { portfolio: "write", rules: "write", profile: "write" };
+const ALL: Opens = {
+  portfolio: "write",
+  rules: "write",
+  profile: "write",
+  analysis: "write",
+};
 
 export function tools(m: Markets, opens: Opens = ALL): Tool[] {
   return [
@@ -93,7 +104,10 @@ export function tools(m: Markets, opens: Opens = ALL): Tool[] {
         },
         ["symbols"],
       ),
-      run: async (input) => textResult(await quotePage(m, parseQuote(input))),
+      run: async (input, who) =>
+        textResult(
+          await quotePage(m, parseQuote(input), undefined, who ?? NO_ACCESS),
+        ),
     },
     {
       name: "history",
@@ -267,6 +281,7 @@ export function tools(m: Markets, opens: Opens = ALL): Tool[] {
         ]),
     ...portfolioTools(m, opens.portfolio),
     ...profileTools(m, opens.profile),
+    ...analysisTools(m, opens.analysis),
   ];
 }
 
@@ -310,13 +325,14 @@ export function registerTools(
 ): (server: McpServer, who: Who) => void {
   const lists = new Map<string, Tool[]>();
   return (server, who) => {
-    const key = `${who.portfolio}/${who.rules}/${who.profile}`;
+    const key = `${who.portfolio}/${who.rules}/${who.profile}/${who.analysis}`;
     let list = lists.get(key);
     if (list === undefined) {
       list = tools(m, {
         portfolio: who.portfolio,
         rules: who.rules,
         profile: who.profile,
+        analysis: who.analysis,
       });
       lists.set(key, list);
     }

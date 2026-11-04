@@ -28,6 +28,7 @@ const CASEY: Who = {
   portfolio: "write",
   rules: "none",
   profile: "none",
+  analysis: "none",
 };
 
 const HEADER =

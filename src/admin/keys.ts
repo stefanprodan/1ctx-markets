@@ -11,6 +11,8 @@ import { ArgError, fields } from "../operations/args.ts";
 import type { Markets } from "../operations/markets.ts";
 import type { Who } from "../operations/who.ts";
 import {
+  ANALYSIS_ACCESS,
+  type AnalysisAccess,
   allKeys,
   createKey,
   isKeyId,
@@ -52,6 +54,7 @@ export const keyItem = (k: KeyRow, names: ReadonlyMap<string, string>) => ({
   portfolio: k.portfolio,
   rules: k.rules,
   profile: k.profile,
+  analysis: k.analysis,
 });
 
 const namesOf = (m: Markets): Map<string, string> =>
@@ -97,12 +100,20 @@ function profileOf(value: unknown): ProfileAccess {
   return value as ProfileAccess;
 }
 
+function analysisOf(value: unknown): AnalysisAccess {
+  if (!(ANALYSIS_ACCESS as readonly unknown[]).includes(value)) {
+    throw new ArgError(`analysis is ${ANALYSIS_ACCESS.join(", ")}`);
+  }
+  return value as AnalysisAccess;
+}
+
 function parseCreate(body: unknown): {
   name: string;
   days: KeyDays | null;
   portfolio: PortfolioAccess;
   rules: RulesAccess;
   profile: ProfileAccess;
+  analysis: AnalysisAccess;
 } {
   const b = fields(body, [
     "name",
@@ -110,6 +121,7 @@ function parseCreate(body: unknown): {
     "portfolio",
     "rules",
     "profile",
+    "analysis",
   ]);
   if (!isKeyName(b.name)) {
     throw new ArgError(
@@ -126,17 +138,21 @@ function parseCreate(body: unknown): {
     portfolio: portfolioOf(b.portfolio ?? "none"),
     rules: rulesOf(b.rules ?? "none"),
     profile: profileOf(b.profile ?? "none"),
+    analysis: analysisOf(b.analysis ?? "none"),
   };
 }
 
 function parseAccess(body: unknown): KeyAccess {
-  const b = fields(body, ["portfolio", "rules", "profile"]);
+  const b = fields(body, ["portfolio", "rules", "profile", "analysis"]);
   if (
     b.portfolio === undefined &&
     b.rules === undefined &&
-    b.profile === undefined
+    b.profile === undefined &&
+    b.analysis === undefined
   ) {
-    throw new ArgError("give portfolio, rules, profile or more than one");
+    throw new ArgError(
+      "give portfolio, rules, profile, analysis or more than one",
+    );
   }
   return {
     ...(b.portfolio === undefined
@@ -144,6 +160,7 @@ function parseAccess(body: unknown): KeyAccess {
       : { portfolio: portfolioOf(b.portfolio) }),
     ...(b.rules === undefined ? {} : { rules: rulesOf(b.rules) }),
     ...(b.profile === undefined ? {} : { profile: profileOf(b.profile) }),
+    ...(b.analysis === undefined ? {} : { analysis: analysisOf(b.analysis) }),
   };
 }
 
@@ -184,6 +201,7 @@ export async function setOne(d: KeysDeps, who: Who, id: string, body: unknown) {
     portfolio: key.portfolio,
     rules: key.rules,
     profile: key.profile,
+    analysis: key.analysis,
   });
   return json({ key: keyItem(key, namesOf(d.m)) });
 }

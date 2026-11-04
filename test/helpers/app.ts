@@ -152,14 +152,21 @@ export async function mcpClient(
 export function seedKey(
   t: TestApp,
   name: string,
-  opens: { portfolio: Access; rules: Access; profile?: Access; user?: string },
+  opens: {
+    portfolio: Access;
+    rules: Access;
+    profile?: Access;
+    analysis?: Access;
+    user?: string;
+  },
 ): string {
   const token = `1ctx-markets-test-${name}-key-0123456789abcdef`;
   t.db
     .query(
       `insert into keys
-         (id, user_id, name, token_hash, created_at, portfolio, rules, profile)
-       values (?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, user_id, name, token_hash, created_at, portfolio, rules, profile,
+          analysis)
+       values (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       `key-${name}`,
@@ -170,22 +177,25 @@ export function seedKey(
       opens.portfolio,
       opens.rules,
       opens.profile ?? "none",
+      opens.analysis ?? "none",
     );
   return token;
 }
 
-// every portfolio and profile access with no rules and with rules, as keys
-// are made; the last opens everything, the longest instructions
+// every portfolio, profile and analysis access with no rules and with
+// rules, as keys are made; the last opens everything, the longest
+// instructions
 export const ACCESS_LEVELS: {
   portfolio: Access;
   rules: Access;
   profile: Access;
+  analysis: Access;
 }[] = [
-  { portfolio: "none", rules: "none", profile: "none" },
-  { portfolio: "read", rules: "none", profile: "read" },
-  { portfolio: "write", rules: "none", profile: "write" },
-  { portfolio: "none", rules: "read", profile: "write" },
-  { portfolio: "read", rules: "write", profile: "none" },
-  { portfolio: "write", rules: "write", profile: "read" },
-  { portfolio: "write", rules: "write", profile: "write" },
+  { portfolio: "none", rules: "none", profile: "none", analysis: "none" },
+  { portfolio: "read", rules: "none", profile: "read", analysis: "write" },
+  { portfolio: "write", rules: "none", profile: "write", analysis: "read" },
+  { portfolio: "none", rules: "read", profile: "write", analysis: "none" },
+  { portfolio: "read", rules: "write", profile: "none", analysis: "read" },
+  { portfolio: "write", rules: "write", profile: "read", analysis: "none" },
+  { portfolio: "write", rules: "write", profile: "write", analysis: "write" },
 ];

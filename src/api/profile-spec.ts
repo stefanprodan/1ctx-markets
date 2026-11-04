@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // The profile routes' part of the spec, for people reading the docs page.
 
-import { MAX_EDITS } from "../profile/edit.ts";
-import { KEPT_REVISIONS, MAX_PROFILE_BYTES } from "../profile/store.ts";
+import { MAX_EDITS } from "../document/edit.ts";
+import { KEPT_REVISIONS, MAX_DOCUMENT_BYTES } from "../document/store.ts";
 import { PROBLEM_TYPE } from "./http.ts";
 import { bool, int, list, object, ref, type Schema, str } from "./schemas.ts";
 
@@ -120,7 +120,7 @@ export const profilePaths = {
         "Replaces the text (`text`) or changes part of it (`edits`), as a new revision. Answers the revision, never the text.",
         "",
         "- Every save names the revision it read; a stale one is refused (409) with the live `revision`.",
-        `- The text is well-formed UTF-8 with no NUL, at most ${MAX_PROFILE_BYTES / 1024} KiB, and its tool read must fit one answer.`,
+        `- The text is well-formed UTF-8 with no NUL, at most ${MAX_DOCUMENT_BYTES / 1024} KiB, and its tool read must fit one answer.`,
         "- A text equal to the live one saves nothing and answers the live revision with `unchanged`.",
         `- The last ${KEPT_REVISIONS} revisions are kept. The profile is never deleted.`,
       ),

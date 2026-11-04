@@ -113,9 +113,12 @@ describe("the server instructions", () => {
         for (const tool of tools) propertyNames(tool.inputSchema, args);
 
         const named = backticked(text);
-        // profile's description names profile_edit, for want of room here
+        // profile's description names profile_edit, for want of room here;
+        // the analysis is found by its pointer in quote and research
         for (const tool of names) {
-          if (tool === "profile_edit") continue;
+          if (["profile_edit", "analysis", "analysis_edit"].includes(tool)) {
+            continue;
+          }
           expect([level, named.has(tool)]).toEqual([level, true]);
         }
         for (const field of ANSWER_FIELDS) {

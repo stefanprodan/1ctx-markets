@@ -43,6 +43,7 @@ import { m0037 } from "./0037-people.ts";
 import { m0038 } from "./0038-sharing.ts";
 import { m0039 } from "./0039-fund-holdings-as-of.ts";
 import { m0040 } from "./0040-past-balances.ts";
+import { m0041 } from "./0041-analysis.ts";
 
 export const MIGRATIONS: readonly Migration[] = [
   m0001,
@@ -85,4 +86,5 @@ export const MIGRATIONS: readonly Migration[] = [
   m0038,
   m0039,
   m0040,
+  m0041,
 ];

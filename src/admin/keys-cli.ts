@@ -6,6 +6,7 @@
 // named by its id alone, since two people may name keys alike.
 
 import {
+  ANALYSIS_ACCESS,
   KEY_DAYS,
   PORTFOLIO_ACCESS,
   PROFILE_ACCESS,
@@ -21,11 +22,12 @@ import {
 const USAGE = `usage: 1ctx-markets keys [--listen <host:port>] [--data <dir>] <command>
   list                            every person's agent keys, never tokens
   add <name> [--expires <days>] [--portfolio <access>] [--rules <access>]
-      [--profile <access>]        make a key and print it once; days:
+      [--profile <access>] [--analysis <access>]
+                                  make a key and print it once; days:
                                   ${KEY_DAYS.join(", ")} (default: never);
                                   access: none, read or write (default: none)
   set <name> [--portfolio <access>] [--rules <access>] [--profile <access>]
-                                  change an operator's key's access; its
+      [--analysis <access>]       change an operator's key's access; its
                                   token stays
   revoke <name>|<id>              revoke an operator's key by name, or
                                   anyone's by id; an agent using it is
@@ -40,6 +42,7 @@ type Parsed = {
   portfolio: string | null;
   rules: string | null;
   profile: string | null;
+  analysis: string | null;
 };
 
 function parse(argv: string[]): Parsed {
@@ -49,6 +52,7 @@ function parse(argv: string[]): Parsed {
   let portfolio: string | null = null;
   let rules: string | null = null;
   let profile: string | null = null;
+  let analysis: string | null = null;
   const positional: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
@@ -80,6 +84,11 @@ function parse(argv: string[]): Parsed {
         throw new AdminError(`--profile is ${PROFILE_ACCESS.join(", ")}`);
       }
       profile = value;
+    } else if (arg === "--analysis") {
+      if (!(ANALYSIS_ACCESS as readonly string[]).includes(value)) {
+        throw new AdminError(`--analysis is ${ANALYSIS_ACCESS.join(", ")}`);
+      }
+      analysis = value;
     } else throw new AdminError(USAGE);
   }
   const [command, ...rest] = positional;
@@ -88,7 +97,11 @@ function parse(argv: string[]): Parsed {
     throw new AdminError(USAGE);
   }
   if (days !== null && command !== "add") throw new AdminError(USAGE);
-  const access = portfolio !== null || rules !== null || profile !== null;
+  const access =
+    portfolio !== null ||
+    rules !== null ||
+    profile !== null ||
+    analysis !== null;
   if (access && command !== "add" && command !== "set") {
     throw new AdminError(USAGE);
   }
@@ -102,6 +115,7 @@ function parse(argv: string[]): Parsed {
     portfolio,
     rules,
     profile,
+    analysis,
   };
 }
 
@@ -164,6 +178,7 @@ export async function runKeys(
         ...(p.portfolio === null ? {} : { portfolio: p.portfolio }),
         ...(p.rules === null ? {} : { rules: p.rules }),
         ...(p.profile === null ? {} : { profile: p.profile }),
+        ...(p.analysis === null ? {} : { analysis: p.analysis }),
       }),
     })) as { token: string };
     write(made.token);
@@ -185,6 +200,7 @@ export async function runKeys(
         ...(p.portfolio === null ? {} : { portfolio: p.portfolio }),
         ...(p.rules === null ? {} : { rules: p.rules }),
         ...(p.profile === null ? {} : { profile: p.profile }),
+        ...(p.analysis === null ? {} : { analysis: p.analysis }),
       }),
     });
     write(`set ${p.name}`);

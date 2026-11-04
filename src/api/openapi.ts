@@ -4,6 +4,7 @@
 
 import { CALLS_PER_MINUTE } from "../server/ratelimit.ts";
 import { COOKIE } from "../server/session.ts";
+import { analysisPaths, analysisSchemas } from "./analysis-spec.ts";
 import { paths, responses } from "./paths.ts";
 import { peoplePaths, peopleSchemas } from "./people-spec.ts";
 import { portfolioPaths, portfolioSchemas } from "./portfolio-spec.ts";
@@ -19,7 +20,7 @@ export const spec = {
     license: { name: "Apache-2.0" },
     description: `Market data, price rules and portfolios, the same answers as the MCP tools.
 
-- Each operation names the key it takes: an agent key, made by a person for their agent, or the admin key, which opens every route as the operator. An agent key reads and writes its person's own portfolios, profile and rules, and those routes take it only when its person gave it that access. It never opens a web UI or admin route.
+- Each operation names the key it takes: an agent key, made by a person for their agent, or the admin key, which opens every route as the operator. An agent key reads and writes its person's own portfolios, profile and rules, and the analysis every person shares, and those routes take it only when its person gave it that access. It never opens a web UI or admin route.
 - Each key makes at most ${CALLS_PER_MINUTE} calls a minute.
 - A symbol is taken as written, with its exchange suffix (\`VVSM.DE\`, \`BRK-B\`, \`^VIX\`, \`CL=F\`), or as a stored id (\`US:NVDA\`).
 - Results are not paged, except the stored instrument list and the alerts feed.
@@ -43,6 +44,11 @@ export const spec = {
       description:
         "The owner's profile: one Markdown document, every save a revision.",
     },
+    {
+      name: "analysis",
+      description:
+        "An agent's dated analysis per symbol, shared by everyone on the server, every save a revision.",
+    },
     { name: "dashboard", description: "The web UI's home page." },
     { name: "server", description: "The server's sources and jobs." },
     { name: "keys", description: "The agents' keys." },
@@ -52,7 +58,13 @@ export const spec = {
     },
     { name: "docs", description: "This page and its OpenAPI document." },
   ],
-  paths: { ...paths, ...portfolioPaths, ...profilePaths, ...peoplePaths },
+  paths: {
+    ...paths,
+    ...portfolioPaths,
+    ...profilePaths,
+    ...analysisPaths,
+    ...peoplePaths,
+  },
   components: {
     securitySchemes: {
       read: {
@@ -94,6 +106,17 @@ export const spec = {
         scheme: "bearer",
         description: "An agent key its person gave profile write access.",
       },
+      analysisRead: {
+        type: "http",
+        scheme: "bearer",
+        description:
+          "An agent key its person gave analysis read or write access.",
+      },
+      analysisWrite: {
+        type: "http",
+        scheme: "bearer",
+        description: "An agent key its person gave analysis write access.",
+      },
       admin: {
         type: "http",
         scheme: "bearer",
@@ -111,6 +134,7 @@ export const spec = {
       ...schemas,
       ...portfolioSchemas,
       ...profileSchemas,
+      ...analysisSchemas,
       ...peopleSchemas,
     },
     responses,

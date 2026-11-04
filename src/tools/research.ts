@@ -4,6 +4,7 @@
 
 import { iso } from "../market/format.ts";
 import { dateOfWall, wallOfDate } from "../market/zone.ts";
+import { analysisField } from "../operations/analysis.ts";
 import {
   cursor,
   errorResult,
@@ -210,6 +211,7 @@ export async function researchAnswer(
       JSON.stringify({
         ...head,
         quote,
+        ...analysisField(m, who, instrument.id),
         ...(fund === undefined ? {} : { top_holdings: fund }),
         research: researchSummary(m, instrument, inline.get(instrument.id)),
         ...(value === undefined ? {} : { valuation: value }),

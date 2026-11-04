@@ -59,6 +59,7 @@ const CASEY: Who = {
   portfolio: "write",
   rules: "none",
   profile: "none",
+  analysis: "none",
 };
 const OTHER: Who = {
   name: "riley-agent",
@@ -67,6 +68,7 @@ const OTHER: Who = {
   portfolio: "write",
   rules: "none",
   profile: "none",
+  analysis: "none",
 };
 
 function pair(
@@ -1998,6 +2000,7 @@ describe("setup and brokers over the tool", () => {
       portfolio: "read",
       rules: "none",
       profile: "none",
+      analysis: "none",
     };
     const r = await ask(m, reader, "portfolio_setup", {
       action: "rename_broker",

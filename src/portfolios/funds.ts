@@ -49,12 +49,14 @@ export function readFund(db: Db, id: string): Fund | null {
   return db.query<Fund, [string]>(`${FUND} where i.id = ?`).get(id) ?? null;
 }
 
-// a person sees a fund while a trade of theirs names it or they priced it
-const SEEN = `(exists (select 1 from trades t
-    join portfolios p on p.id = t.portfolio
-    where t.instrument = i.id and p.owner = ?1)
+// ?1 sees a fund while a trade of theirs names it or they priced it
+export const seenWhere = (id: string): string => `(exists (select 1
+    from trades t join portfolios p on p.id = t.portfolio
+    where t.instrument = ${id} and p.owner = ?1)
   or exists (select 1 from fund_prices fp
-    where fp.instrument = i.id and fp.user_id = ?1))`;
+    where fp.instrument = ${id} and fp.user_id = ?1))`;
+
+const SEEN = seenWhere("i.id");
 
 export function listFunds(db: Db, owner: string): Fund[] {
   return db

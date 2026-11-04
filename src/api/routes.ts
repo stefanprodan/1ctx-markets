@@ -13,6 +13,7 @@ import {
   deleteOne,
   instrument,
   instruments,
+  pageSize,
   refetchOne,
   retryFailing,
   status,
@@ -36,9 +37,32 @@ import {
   removeUser,
   signOutUser,
 } from "../admin/users.ts";
+import {
+  analysisVersion,
+  analysisVersions,
+  type ListAt,
+  type Note,
+  readAnalysis,
+} from "../analysis/store.ts";
+import type { Revision } from "../document/read.ts";
+import { documentText } from "../document/store.ts";
 import { iso, price } from "../market/format.ts";
+import type { Instrument } from "../market/instruments.ts";
 import { localDate } from "../market/zone.ts";
+import {
+  analysisItem,
+  analysisTarget,
+  listedItem,
+  listedPage,
+  listPosition,
+  missingAnalysis,
+  readListPosition,
+  saveAnalysisAnswer,
+  savedAnalysis,
+  sinceWritten,
+} from "../operations/analysis.ts";
 import { ArgError, fields } from "../operations/args.ts";
+import { parseSave } from "../operations/document.ts";
 import { parseEvents, readEventsOf } from "../operations/events.ts";
 import { basisOf, parseHistory, readHistory } from "../operations/history.ts";
 import { extendedOut, readIntradayHistory } from "../operations/intraday.ts";
@@ -46,7 +70,6 @@ import type { ExtendedRead, Markets } from "../operations/markets.ts";
 import { parseMovers, readMovers } from "../operations/movers.ts";
 import {
   missingRevision,
-  parseSave,
   revisionItem,
   saveAnswer,
   savedItem,
@@ -72,9 +95,7 @@ import { setAll } from "../operations/sets.ts";
 import type { World } from "../operations/track.ts";
 import type { Who } from "../operations/who.ts";
 import { renderMarkdown } from "../profile/markdown.ts";
-import type { Revision } from "../profile/read.ts";
 import {
-  profileText,
   profileVersion,
   profileVersions,
   readProfile,
@@ -111,9 +132,10 @@ export type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 // read: an agent key, or the admin key, which holds every scope; admin:
 // the admin key or an admin's login; session: the admin key or anyone's
 // login, never an agent key; none: served before either, since it holds no
-// data and a browser opening it sends no key; portfolio:, rules: and
-// profile: an agent key its person gave that access, holdings, the profile
-// and rules being the person's
+// data and a browser opening it sends no key; portfolio:, rules:,
+// profile: and analysis: an agent key its person gave that access,
+// holdings, the profile and rules being the person's and the analysis
+// shared by everyone
 export type Scope =
   | "read"
   | "admin"
@@ -124,7 +146,9 @@ export type Scope =
   | "rules:read"
   | "rules:write"
   | "profile:read"
-  | "profile:write";
+  | "profile:write"
+  | "analysis:read"
+  | "analysis:write";
 
 export type Route = {
   method: Method;
@@ -574,7 +598,7 @@ function profile(m: Markets): Route[] {
         if (typeof f.text !== "string") {
           throw new ArgError("text must be a string");
         }
-        return json({ html: renderMarkdown(profileText(f.text)) });
+        return json({ html: renderMarkdown(documentText(f.text)) });
       },
     },
     {
@@ -603,6 +627,138 @@ function profile(m: Markets): Route[] {
         const r = profileVersion(m.db, who.user, n);
         if (r === null) return problemOf(missingRevision(m, who.user, n));
         return json(profileItem(r));
+      },
+    },
+  ];
+}
+
+// drawn as the profile is, with the move since measured at the read
+function analysisBody(m: Markets, i: Instrument, note: Note | null) {
+  return note === null
+    ? {
+        text: null,
+        html: null,
+        revision: null,
+        author: null,
+        written_at: null,
+        bytes: null,
+        since_written: null,
+      }
+    : {
+        text: note.text,
+        html: renderMarkdown(note.text),
+        ...analysisItem(note),
+        since_written: sinceWritten(m, i, note),
+      };
+}
+
+// shared by everyone, yet every route takes an analysis scope
+function analysis(m: Markets): Route[] {
+  const P = "/instruments/{symbol}/analysis";
+  const target = async (raw: string, who: Who, read: boolean) => {
+    const i = await analysisTarget(m, who, pathSymbol(raw), read);
+    return "input" in i ? problemOf(i) : i;
+  };
+  return [
+    {
+      method: "GET",
+      path: P,
+      scope: "analysis:read",
+      handle: async (_req, url, params, who) => {
+        noQuery(url);
+        const i = await target(params.symbol!, who, true);
+        if (i instanceof Response) return i;
+        return json(analysisBody(m, i, readAnalysis(m.db, i.id)));
+      },
+    },
+    {
+      method: "PUT",
+      path: P,
+      scope: "analysis:write",
+      handle: async (req, url, params, who) => {
+        noQuery(url);
+        const read = await bodyOf(req);
+        if (read instanceof Response) return read;
+        const save = parseSave(
+          fields(read.body, ["revision", "text", "edits"]),
+        );
+        const i = await target(params.symbol!, who, false);
+        if (i instanceof Response) return i;
+        const done = await saveAnalysisAnswer(m, who, i.id, save);
+        if ("error" in done) return problemOf(done);
+        return json(savedAnalysis(done));
+      },
+    },
+    // the editor's Preview: a draft drawn as a save would draw it, never kept
+    {
+      method: "POST",
+      path: `${P}/preview`,
+      scope: "analysis:write",
+      handle: async (req, url) => {
+        noQuery(url);
+        const read = await bodyOf(req);
+        if (read instanceof Response) return read;
+        const f = fields(read.body, ["text"]);
+        if (typeof f.text !== "string") {
+          throw new ArgError("text must be a string");
+        }
+        return json({ html: renderMarkdown(documentText(f.text)) });
+      },
+    },
+    {
+      method: "GET",
+      path: `${P}/versions`,
+      scope: "analysis:read",
+      handle: async (_req, url, params, who) => {
+        noQuery(url);
+        const i = await target(params.symbol!, who, true);
+        if (i instanceof Response) return i;
+        return json({
+          revisions: analysisVersions(m.db, i.id).map(analysisItem),
+        });
+      },
+    },
+    {
+      method: "GET",
+      path: `${P}/versions/{revision}`,
+      scope: "analysis:read",
+      handle: async (_req, url, params, who) => {
+        noQuery(url);
+        if (!PATH_ID.test(params.revision!)) {
+          throw new ArgError(
+            "the path ends with a revision, a positive integer",
+          );
+        }
+        const n = Number(params.revision);
+        const i = await target(params.symbol!, who, true);
+        if (i instanceof Response) return i;
+        const note = analysisVersion(m.db, i.id, n);
+        if (note === null) return problemOf(missingAnalysis(m, i.id, n));
+        return json(analysisBody(m, i, note));
+      },
+    },
+    {
+      method: "GET",
+      path: "/analysis",
+      scope: "analysis:read",
+      handle: async (_req, url, _params, who) => {
+        const q = queryArgs(url, { page_size: "number", page_token: "text" });
+        let at: ListAt | null = null;
+        if (q.page_token !== undefined) {
+          at = readListPosition(String(q.page_token));
+          if (at === null) {
+            throw new ArgError(
+              "page_token is a next_page_token answered before",
+            );
+          }
+        }
+        const page = listedPage(m, who, at, pageSize(q.page_size));
+        return json({
+          analyses: page.shown.map(listedItem),
+          ...(page.last === null
+            ? {}
+            : { next_page_token: listPosition(page.last) }),
+        });
       },
     },
   ];
@@ -890,6 +1046,7 @@ export function routes(deps: ApiDeps): Route[] {
     ...rules(m),
     ...portfolioRoutes(m),
     ...profile(m),
+    ...analysis(m),
     {
       method: "GET",
       path: "/alerts",

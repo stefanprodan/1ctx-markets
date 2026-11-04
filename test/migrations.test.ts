@@ -365,6 +365,33 @@ describe("migrations", () => {
     db.close();
   });
 
+  test("keys made before analysis access open no analysis, new ones none", () => {
+    const db = new Database(":memory:", { strict: true });
+    const clock = fakeClock();
+    const at = MIGRATIONS.findIndex((m) => m.id === "0041-analysis");
+    migrate(db, clock, MIGRATIONS.slice(0, at));
+    db.exec(
+      `insert into keys (id, user_id, name, token_hash, created_at, portfolio,
+         rules, profile)
+       values ('oldkey000000', 'operator', 'old', 'h1', 0, 'write', 'write',
+         'write')`,
+    );
+    migrate(db, clock, MIGRATIONS.slice(0, at + 1));
+    db.exec(
+      `insert into keys (id, user_id, name, token_hash, created_at)
+       values ('newkey000000', 'operator', 'new', 'h2', 0)`,
+    );
+    expect(
+      db.query("select name, analysis from keys order by name").all(),
+    ).toEqual([
+      { name: "new", analysis: "none" },
+      { name: "old", analysis: "none" },
+    ]);
+    expect(() => db.exec("update keys set analysis = 'all'")).toThrow();
+    expect(db.query("select * from analysis_versions").all()).toEqual([]);
+    db.close();
+  });
+
   test("the owner's settings gain a time zone, none until named", () => {
     const db = new Database(":memory:", { strict: true });
     const clock = fakeClock();

@@ -146,12 +146,12 @@ const csv = (
 const FORMS =
   "a stored id (`US:NVDA`), a symbol as written with its exchange suffix (`VVSM.DE`, `BRK-B`, `^VIX`, `CL=F`), `FRED:<series id>` or a name";
 
-const SYMBOL = `${FORMS[0].toUpperCase()}${FORMS.slice(1)}. At most ${MAX_SYMBOL} characters. A \`^\` may be sent raw or as \`%5E\`.`;
+export const SYMBOL = `${FORMS[0].toUpperCase()}${FORMS.slice(1)}. At most ${MAX_SYMBOL} characters. A \`^\` may be sent raw or as \`%5E\`.`;
 
 const STORED_SYMBOL =
   "A stored id (`US:NVDA`) or a symbol as written (`VVSM.DE`, `^VIX`). A `^` may be sent raw or as `%5E`.";
 
-const symbolParam = (description: string) => ({
+export const symbolParam = (description: string) => ({
   name: "symbol",
   in: "path" as const,
   description,
@@ -735,6 +735,7 @@ export const paths = {
         "- `portfolio` is `read` or `write` to open the portfolio routes and the portfolio tool; `none` by default.",
         "- `rules` is `read` to open the rules list and the alerts feed, `write` to also create, pause and delete rules, over the routes and the rules tool; `none` by default.",
         "- `profile` is `read` to open the profile routes and the `profile` tool, `write` to also save it and list `profile_edit`; `none` by default.",
+        "- `analysis` is `read` to open the analysis routes and the `analysis` tool, `write` to also save one and list `analysis_edit`; `none` by default.",
         `- At most ${MAX_KEYS} keys a person, expired ones included. Revoke one to make another.`,
         "- A name is unique among your keys (`conflict`).",
       ),
@@ -756,7 +757,7 @@ export const paths = {
       security: ADMIN_AUTH,
       summary: "Change an agent key's access",
       description: lines(
-        "Sets the key's portfolio, rules or profile access, or more than one. Answers the key as the list does.",
+        "Sets the key's portfolio, rules, profile or analysis access, or more than one. Answers the key as the list does.",
         "",
         "- The token, name and expiry stay. An expired key changes too.",
         "- The key's next call is held to the new access.",

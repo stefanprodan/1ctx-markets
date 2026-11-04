@@ -21,6 +21,8 @@ export type Who = {
   portfolio: Access;
   rules: Access;
   profile: Access;
+  // the analysis per symbol, shared by everyone on the server
+  analysis: Access;
 };
 
 // the person user-admin.key signs in as, made by the migration that gave
@@ -28,8 +30,8 @@ export type Who = {
 export const OPERATOR = "operator";
 
 // a person signed in to the web UI: every portfolio and profile write of
-// their own, never a rules write; what they write names them, so a shared
-// fund's price or a removed row tells who
+// their own and the shared analysis, never a rules write; what they write
+// names them, so a shared fund's price or a removed row tells who
 export const loginWho = (user: string, login: string, name: string): Who => ({
   name,
   user,
@@ -37,6 +39,7 @@ export const loginWho = (user: string, login: string, name: string): Who => ({
   portfolio: "write",
   rules: "read",
   profile: "write",
+  analysis: "write",
 });
 export const ADMIN: Who = {
   name: "admin",
@@ -45,6 +48,7 @@ export const ADMIN: Who = {
   portfolio: "write",
   rules: "write",
   profile: "write",
+  analysis: "write",
 };
 // no user owns the empty id, so a read as no one finds nothing
 export const NO_ACCESS: Who = {
@@ -54,6 +58,7 @@ export const NO_ACCESS: Who = {
   portfolio: "none",
   rules: "none",
   profile: "none",
+  analysis: "none",
 };
 
 export const opens = (access: Access, write: boolean): boolean =>

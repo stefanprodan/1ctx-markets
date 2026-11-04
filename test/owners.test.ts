@@ -73,6 +73,7 @@ const as = (user: string, name: string): Who => ({
   portfolio: "write",
   rules: "write",
   profile: "write",
+  analysis: "none",
 });
 
 // a made-up ISIN: the body and the one check digit that fits it
@@ -1071,8 +1072,9 @@ describe("the migration that gives every row an owner", () => {
                 delete o.owner;
                 delete o.user_id;
               }
-              // a column a later migration adds
+              // columns later migrations add
               delete o.past_of;
+              delete o.analysis;
               return o;
             }),
         ]),
