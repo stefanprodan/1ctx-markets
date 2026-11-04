@@ -7,6 +7,7 @@ import type { SourceState } from "./admin/http.ts";
 import { alertsHandler } from "./api/alerts.ts";
 import { routes } from "./api/routes.ts";
 import { TRACK_DAYS, type Tracking, trackedIds } from "./market/tracking.ts";
+import { type WorldEntry, worldOn, worldSymbols } from "./market/world.ts";
 import { type Markets, markets } from "./operations/markets.ts";
 import { seed, type Tracker, tracker } from "./operations/track.ts";
 import { ruleEngine } from "./rules/evaluate.ts";
@@ -97,8 +98,9 @@ export type AppOptions = {
   quoteEveryMs: number;
   // an instrument read within this many days stays tracked
   trackDays?: number;
-  // --track: tracked whether read or not
-  track?: readonly string[];
+  // World markets, tracked whether read or not; main passes the list,
+  // tests a small one or none
+  world?: readonly WorldEntry[];
   // a source is on while its key file holds a key
   fredKey?: string | null;
   finnhubKey?: string | null;
@@ -141,19 +143,20 @@ export type App = {
 export function start(options: AppOptions): App {
   const { clock, db } = options;
   const syncing = options.sync !== false;
-  const flagged = new Set<string>();
+  const worldIds = new Set<string>();
   const owed = new Set<string>();
   const tracking: Tracking = {
     readMs: (options.trackDays ?? TRACK_DAYS) * DAY_MS,
-    flagged,
+    world: worldIds,
     owed,
   };
+  const world = worldOn(options.world ?? [], options.bvb === true);
   // before the startup write, whose prune reads what is tracked
   const trackStates = seed({
     db,
-    values: options.track ?? [],
+    values: worldSymbols(world),
     on: { bvb: options.bvb === true, fred: (options.fredKey ?? null) !== null },
-    flagged,
+    world: worldIds,
     owed,
     now: clock.now(),
   });
@@ -345,7 +348,7 @@ export function start(options: AppOptions): App {
   const track = tracker({
     m: reads,
     states: trackStates,
-    flagged,
+    world: worldIds,
     owed,
     periodMs: options.quoteEveryMs,
     log: options.log("track"),
@@ -422,7 +425,7 @@ export function start(options: AppOptions): App {
           sources: states,
           sync: syncing,
         },
-        track: track.status,
+        world: { entries: world, status: track.status, resolving: syncing },
         log: options.log("api"),
         mask: options.mask,
         email: mail,

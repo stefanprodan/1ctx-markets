@@ -11,9 +11,9 @@ import type {
   Gap,
   Listed,
   Saved,
+  Session,
   Spark,
   View,
-  WatchEntry,
 } from "../data/store.ts";
 import {
   change,
@@ -32,24 +32,49 @@ export const MAX_SYMBOLS = 200;
 export const MAX_NAME = 40;
 export const FIRST = "Favourites";
 
-export const entryOf = (id: string, item: BoardItem | undefined): WatchEntry =>
-  item === undefined
-    ? {
-        value: symbolOf(id),
-        id,
-        state: "pending",
-        instrument: null,
-        session: null,
-        intraday: false,
-      }
-    : {
-        value: symbolOf(id),
-        id,
-        state: "tracked",
-        instrument: item.instrument,
-        session: item.session,
-        intraday: item.intraday,
-      };
+// what a card draws; state is pending, tracked or a read's error code
+export type CardEntry = {
+  value: string;
+  id: string | null;
+  state: string;
+  instrument: Listed | null;
+  session: Session | null;
+  intraday: boolean;
+};
+
+// a flipped index draws its futures under their label, so the price never
+// passes for the index level
+export function entryOf(id: string, item: BoardItem | undefined): CardEntry {
+  if (item === undefined) {
+    return {
+      value: symbolOf(id),
+      id,
+      state: "pending",
+      instrument: null,
+      session: null,
+      intraday: false,
+    };
+  }
+  const f = item.futures;
+  if (f !== undefined) {
+    return {
+      value: symbolOf(f.instrument.id),
+      id: f.instrument.id,
+      state: "tracked",
+      instrument: { ...f.instrument, name: f.label },
+      session: f.session,
+      intraday: f.intraday,
+    };
+  }
+  return {
+    value: symbolOf(id),
+    id,
+    state: "tracked",
+    instrument: item.instrument,
+    session: item.session,
+    intraday: item.intraday,
+  };
+}
 
 export const idsOf = (layout: readonly BoardSection[]): string[] => [
   ...new Set(layout.flatMap((s) => s.ids)),
@@ -447,7 +472,7 @@ export function moveOf(row: Listed): { text: string; dir: Dir } {
 // a typo or an ambiguous value is not found; a source failure may pass
 const MISSING = new Set(["not_found", "candidates", "no_data"]);
 
-export function cardOf(e: WatchEntry): Card {
+export function cardOf(e: CardEntry): Card {
   const row = e.instrument;
   if (e.state !== "tracked" && e.state !== "pending") {
     return {

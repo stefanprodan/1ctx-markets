@@ -189,11 +189,7 @@ describe("the admin scope", () => {
         const own = await fetch(`${url}${path}`, { headers: as(admin) });
         expect([path, own.status]).toEqual([path, 200]);
       }
-      for (const path of [
-        "/api/v1/rules",
-        "/api/v1/watchlist",
-        "/api/v1/openapi.json",
-      ]) {
+      for (const path of ["/api/v1/rules", "/api/v1/openapi.json"]) {
         const res = await fetch(`${url}${path}`, { headers: as(admin) });
         expect([path, res.status]).toEqual([path, 200]);
       }
@@ -1160,11 +1156,11 @@ describe("the instrument list", () => {
     expect(byName.body.instruments.map((i: any) => i.id)).toEqual(["US:AAA"]);
   });
 
-  test("names what tracks each one: a rule, a read and until when, --track", async () => {
+  test("names what tracks each one: a rule, a read and until when, World markets", async () => {
     const w = world();
     const m: Markets = {
       ...w.m,
-      tracking: { ...w.m.tracking, flagged: new Set(["US:FLAG"]) },
+      tracking: { ...w.m.tracking, world: new Set(["US:FLAG"]) },
     };
     for (const id of ["US:RULE", "US:READ", "US:OLD", "US:FLAG", "US:NONE"]) {
       instrument(w.db, id);
@@ -1204,7 +1200,7 @@ describe("the instrument list", () => {
     });
     expect(by["US:FLAG"]).toMatchObject({
       tracked: true,
-      tracked_by: ["track"],
+      tracked_by: ["world_markets"],
     });
     expect(by["US:NONE"]).toMatchObject({
       tracked: false,

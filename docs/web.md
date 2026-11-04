@@ -564,20 +564,26 @@ The parts:
   table, with a top card of three tabs above them. `Dashboard.tsx` is
   the view; the rankings, rows and layout edits are
   `Dashboard.model.ts`, which has no DOM and is tested.
-- **Seeded from `--track` until the first save.** Before it, the
-  server answers the flag's values grouped by kind in flag order, so
-  a new server's Home is what the flag names; the first edit saves
-  that layout with the edit, and from then on only its own saves, or
-  deleting an instrument on it, change it. Removing everything leaves
-  an empty dashboard, never the seed again. The flag still keeps its
-  values tracked.
-- **A first start waits for the seed.** While any `--track` value is
+- **Seeded from World markets until the first save.** Before it, the
+  server answers World markets' six groups, four entries each
+  (`docs/api.md`, The dashboard), so a new person's Home shows the
+  world's markets; the first edit saves that layout with the edit, and
+  from then on only its own saves, or deleting an instrument on it,
+  change it. Removing everything leaves an empty dashboard, never the
+  seed again. Every World markets entry stays tracked either way.
+- **A first start waits for the seed.** While any of Home's entries is
   still resolving (the answer's `track`), the page shows a loading
-  panel (Getting prices, the count ready, a chip per value, green when
-  ready and red when it failed) above the cards already there, re-reads
-  every 3 seconds while visible, and offers no search, Edit or view
-  switch: a save then would end the seed without the values still on
-  their way. A value that failed is left out, as the seed leaves it.
+  panel (Getting prices, the count ready, a chip per entry, green when
+  ready) above the cards already there, re-reads every 3 seconds while
+  visible, and offers no search, Edit or view switch: a save then would
+  end the seed without the entries still on their way.
+- **A flipped index shows its futures** (the item's `futures`): the
+  card or row draws the futures' symbol, their label as the name
+  (`S&P Futures`), price, day move, 5-minute line and Open or Closed,
+  and links to the futures' page, so the price never passes for the
+  index level. The page asks the futures' line by their id
+  (`entryOf()` in `Dashboard.model.ts`, `loadLines()` in the store).
+  The index's averages, movers and trends stay the index's.
 - **A save sends the whole layout** with
   `PUT /api/v1/dashboard` (`saveLayout()` in the store): the page shows
   the edit before the answer, and edits made while a save is in flight
@@ -723,10 +729,7 @@ The parts:
   the jobs: it runs once per change of flags, not on a schedule.
 - **Add a source** is a card listing the keyed sources that are off,
   each with what it adds, its key file and a link to get a key; it is
-  absent when none is off. **Always tracked** is a card of the
-  `--track` values beside their resolved ids, from
-  `GET /api/v1/watchlist`, loaded with the status so both land
-  together.
+  absent when none is off.
 - **Profile** (`/profile`, between Portfolios and Connect agents in the
   rail) is the owner's profile (`docs/profile.md`): how they invest, one
   Markdown document agents read before any work on the portfolio.

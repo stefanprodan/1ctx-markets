@@ -282,7 +282,7 @@ const REQUESTS: [string, RequestInit?][] = [
   ["/docs/swagger-ui.css"],
   ["/docs/swagger-ui-bundle.js"],
   ["/docs/other.js"],
-  ["/watchlist"],
+  ["/dashboard"],
   ["/status"],
   ["/instruments/US:NVDA"],
   ["/instruments/US:NVDA/stored"],
@@ -345,12 +345,21 @@ export async function restAnswers(): Promise<Record<string, RestAnswer>> {
       { name: "yahoo", on: true, why: "always", backoff: () => null },
       { name: "massive", on: false, why: "no key file", backoff: () => null },
     ],
-    track: () => [
-      { value: "^GSPC", id: "SNP:^GSPC", state: "tracked" },
-      { value: "NVDA", id: "US:NVDA", state: "tracked" },
-      { value: "ZZNOTHING", id: null, state: "not_found" },
-      { value: "TLV.RO", id: null, state: "pending" },
-    ],
+    world: {
+      entries: [
+        { group: "Americas", name: "S&P 500", symbol: "^GSPC" },
+        { group: "Stocks", name: "Nvidia", symbol: "NVDA" },
+        { group: "Stocks", name: "Nothing", symbol: "ZZNOTHING" },
+        { group: "Europe", name: "Transilvania", symbol: "TLV.RO" },
+      ],
+      status: () => [
+        { value: "^GSPC", id: "SNP:^GSPC", state: "tracked" },
+        { value: "NVDA", id: "US:NVDA", state: "tracked" },
+        { value: "ZZNOTHING", id: null, state: "not_found" },
+        { value: "TLV.RO", id: null, state: "pending" },
+      ],
+      resolving: true,
+    },
   });
   for (const [k, [path, init]] of REQUESTS.entries()) {
     const req = new Request(`http://markets.test${PREFIX}${path}`, init);

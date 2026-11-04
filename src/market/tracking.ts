@@ -13,15 +13,15 @@ export const TRACK_MS = TRACK_DAYS * DAY_MS;
 
 export type Tracking = {
   readMs: number;
-  // ids the --track values resolved to, filled in as they resolve
-  flagged: ReadonlySet<string>;
-  // flagged ids that missed a session, until a catch-up of theirs lands
+  // ids World markets resolved to, filled in as they resolve
+  world: ReadonlySet<string>;
+  // its ids that missed a session, until a catch-up of theirs lands
   owed: Set<string>;
 };
 
 export const BY_USE: Tracking = {
   readMs: TRACK_MS,
-  flagged: new Set(),
+  world: new Set(),
   owed: new Set(),
 };
 
@@ -60,7 +60,7 @@ export function trackedIds(
   for (const id of ruleInstruments(db)) ids.add(id);
   for (const id of dashboardInstruments(db)) ids.add(id);
   for (const id of portfolioInstruments(db)) ids.add(id);
-  for (const id of tracking.flagged) ids.add(id);
+  for (const id of tracking.world) ids.add(id);
   return ids;
 }
 

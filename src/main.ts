@@ -9,6 +9,7 @@ import { AdminError, runAdmin } from "./admin/cli.ts";
 import { runKeys } from "./admin/keys-cli.ts";
 import { runUsers } from "./admin/users-cli.ts";
 import { start } from "./app.ts";
+import { WORLD_MARKETS } from "./market/world.ts";
 import { MINUTE_MS, wallClock } from "./runtime/clock.ts";
 import { dbPath, HELP, parseCli, secretsDir } from "./runtime/config.ts";
 import { ADMIN_FILE, KeyError, keys, startKeys } from "./runtime/keys.ts";
@@ -111,7 +112,7 @@ const app = start({
   db,
   quoteEveryMs: config.quoteEveryMs,
   trackDays: config.trackDays,
-  track: config.track,
+  world: WORLD_MARKETS,
   // read through the keys module, so the log masks it
   fredKey: store.source("fred"),
   finnhubKey: store.source("finnhub"),

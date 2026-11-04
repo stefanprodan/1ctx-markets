@@ -17,7 +17,6 @@ import {
   retryFailing,
   status,
   storedCheck,
-  watchlist,
 } from "../admin/http.ts";
 import {
   createOne,
@@ -70,7 +69,7 @@ import {
 import { parseScreen, readScreen } from "../operations/screen.ts";
 import { parseSearch, searchAll } from "../operations/search.ts";
 import { setAll } from "../operations/sets.ts";
-import type { TrackState } from "../operations/track.ts";
+import type { World } from "../operations/track.ts";
 import type { Who } from "../operations/who.ts";
 import { renderMarkdown } from "../profile/markdown.ts";
 import type { Revision } from "../profile/read.ts";
@@ -147,8 +146,8 @@ export type ApiDeps = {
   m: Markets;
   alerts: (req: Request, owner: string) => Promise<Response>;
   admin: AdminDeps;
-  // each --track value and what it resolved to
-  track: () => readonly TrackState[];
+  // World markets and what each symbol resolved to
+  world: World;
   log: Log;
   // hides a key made through POST /keys from the log; none in tests that
   // read no log
@@ -600,26 +599,16 @@ function profile(m: Markets): Route[] {
   ];
 }
 
-function operator(
-  admin: AdminDeps,
-  track: () => readonly TrackState[],
-): Route[] {
+function operator(admin: AdminDeps, world: World): Route[] {
   const { m } = admin;
   return [
-    {
-      method: "GET",
-      path: "/watchlist",
-      scope: "read",
-      handle: async (_req, url, _params, who) =>
-        watchlist(m, who.user, track, url),
-    },
     {
       method: "GET",
       path: "/dashboard",
       scope: "session",
       handle: async (_req, url, _params, who) => {
         noQuery(url);
-        return json(readDashboard(m, who.user, track));
+        return json(readDashboard(m, who.user, world));
       },
     },
     {
@@ -630,7 +619,7 @@ function operator(
         noQuery(url);
         const read = await bodyOf(req);
         if (read instanceof Response) return read;
-        return saveDashboard(m, who.user, track, parseLayout(read.body));
+        return saveDashboard(m, who.user, world, parseLayout(read.body));
       },
     },
     {
@@ -897,7 +886,7 @@ export function routes(deps: ApiDeps): Route[] {
       scope: "rules:read",
       handle: (req, _url, _params, who) => deps.alerts(req, who.user),
     },
-    ...operator(admin, deps.track),
+    ...operator(admin, deps.world),
     ...keys({ m: deps.admin.m, mask: deps.mask ?? (() => {}) }),
     ...people({ m: deps.admin.m, email, links: sent }),
     ...sharing(deps.admin.m),

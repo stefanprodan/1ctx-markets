@@ -12,7 +12,6 @@ import {
   type Listed,
   markets,
   type Spark as SparkData,
-  type WatchEntry,
 } from "../data/store.ts";
 import { Icon } from "../lib/icons.tsx";
 import { nameOf, symbolOf, tickerOf } from "../lib/names.ts";
@@ -35,6 +34,7 @@ import {
   addTo,
   afterSave,
   bySort,
+  type CardEntry,
   cardOf,
   crossedToday,
   DEFAULT_SORT,
@@ -476,7 +476,6 @@ type Seeding = NonNullable<Board["track"]>;
 
 const SEED_CLASS = {
   ready: "tag status-done",
-  failed: "tag status-failed",
   pending: "tag dash-seed-pending",
 } as const;
 
@@ -634,7 +633,7 @@ export function Tile({
   waiting,
   move = null,
 }: {
-  entry: WatchEntry;
+  entry: CardEntry;
   spark: SparkData | undefined;
   waiting?: boolean;
   move?: ExtMove | null;
@@ -732,6 +731,9 @@ function NameInput({
 
 type Entry = {
   id: string;
+  entry: CardEntry;
+  // whose line it draws: a flipped index draws its futures'
+  line: string;
   card: ReturnType<typeof cardOf>;
   spark: SparkData | undefined;
   move: ExtMove | null;
@@ -860,20 +862,23 @@ export function SectionView({
       <Icon name="close" size={14} />
     </button>
   );
-  const lines: Entry[] = section.ids.map((id) => ({
-    id,
-    card: cardOf(entryOf(id, items.get(id))),
-    spark: sparks.get(id),
-    // a move kept from before the open, by a failed refresh, is not shown
-    move:
-      items.get(id)?.session?.state === "open"
-        ? null
-        : extMove(
-            extended.get(id),
-            items.get(id)?.instrument ?? null,
-            Date.now(),
-          ),
-  }));
+  const lines: Entry[] = section.ids.map((id) => {
+    const item = items.get(id);
+    const entry = entryOf(id, item);
+    const line = entry.id ?? id;
+    return {
+      id,
+      entry,
+      line,
+      card: cardOf(entry),
+      spark: sparks.get(line),
+      // a move kept from before the open, by a failed refresh, is not shown
+      move:
+        item?.session?.state === "open" || item?.futures !== undefined
+          ? null
+          : extMove(extended.get(id), item?.instrument ?? null, Date.now()),
+    };
+  });
   const columns: Column<Entry>[] = [
     {
       key: "name",
@@ -915,7 +920,11 @@ export function SectionView({
       width: { base: "minmax(80px, 1fr)", phone: "72px" },
       cell: (l) =>
         l.card.type === "ready" ? (
-          <Line spark={l.spark} height={ROW_LINE} waiting={lining.has(l.id)} />
+          <Line
+            spark={l.spark}
+            height={ROW_LINE}
+            waiting={lining.has(l.line)}
+          />
         ) : null,
     },
     {
@@ -990,7 +999,7 @@ export function SectionView({
         }
         count={n}
         note={
-          <WaitWords show={slow && section.ids.some((id) => lining.has(id))}>
+          <WaitWords show={slow && lines.some((l) => lining.has(l.line))}>
             Loading charts
           </WaitWords>
         }
@@ -1037,9 +1046,9 @@ export function SectionView({
           {lines.map((l) => (
             <div key={l.id} {...dragOf(l.id)}>
               <Tile
-                entry={entryOf(l.id, items.get(l.id))}
+                entry={l.entry}
                 spark={l.spark}
-                waiting={lining.has(l.id)}
+                waiting={lining.has(l.line)}
                 move={l.move}
               />
               {editing && remove(l.id)}
@@ -1054,8 +1063,8 @@ export function SectionView({
             rows={lines}
             rowKey={(l) => l.id}
             rowAttrs={editing ? (l) => dragOf(l.id) : undefined}
-            open={(l) => (editing ? null : { href: symbolHref(l.id) })}
-            rowLabel={(l) => symbolOf(l.id)}
+            open={(l) => (editing ? null : { href: symbolHref(l.line) })}
+            rowLabel={(l) => symbolOf(l.line)}
             dense
           />
         </Card>

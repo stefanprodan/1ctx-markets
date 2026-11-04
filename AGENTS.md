@@ -93,7 +93,7 @@ src/operations/             the reads the MCP tools and the API share, with thei
 src/tools/                  the MCP surface: the tool registry and research's page
 src/api/                    /api/v1: routes, alerts, the spec, the docs page; never imports tools/
 src/service/                `service install|start|stop|...`: launchd, CLI only
-src/admin/                  the instrument, watchlist, status, screener and keys routes, the `admin` and `keys` commands
+src/admin/                  the instrument, status, screener, dashboard and keys routes, the `admin` and `keys` commands
 src/shared/                 plain data and functions the server and the web UI both
                             import; a file here imports only shared/ (no package,
                             bun:, node:, database or network), and web/ imports
@@ -124,7 +124,7 @@ the same commit as the code that changes a rule.
 |---|---|
 | `docs/config.md` | flags, the data directory, key files, the start log, HTTP routes, shutdown order, the build and smoke test |
 | `docs/admin.md` | the admin key and its scope, the instrument list, status, refetch, delete and the `admin` command |
-| `docs/api.md` | the REST API under `/api/v1`: routes and their parameters, symbols, bars, the watchlist, paging, problem details, scopes, caching, the alerts feed, the spec and its contract test, the docs page |
+| `docs/api.md` | the REST API under `/api/v1`: routes and their parameters, symbols, bars, the dashboard, paging, problem details, scopes, caching, the alerts feed, the spec and its contract test, the docs page |
 | `docs/deploy.md` | the `service` command, launchd, the kill timeout, the log, staging deploys, backups and keys |
 | `docs/storage.md` | the database, migrations, the writer, instruments, times and prices, the clock, runs and staleness, tracking, retention |
 | `docs/calendars.md` | market sessions from the source, quoting and checks, bar dates and finality, weeks, wall time, crypto |
@@ -161,7 +161,10 @@ the same commit as the code that changes a rule.
   IANA zone**, never fixed UTC hours, opening times or holiday lists
   kept by hand.
 - **No default markets, instruments, benchmarks or currencies.** The
-  server runs for any country; what it syncs is learned from use.
+  server runs for any country; what it syncs is learned from use. The
+  one exception is World markets (`src/market/world.ts`), a built-in
+  list of world indices, commodities, currencies and crypto that is
+  always tracked and fills a new person's Home.
   Every source but Yahoo is optional: off without its key file, or
   without its `--source` flag for a keyless one.
 - **A change that adds or renames a tool, an argument or an answer

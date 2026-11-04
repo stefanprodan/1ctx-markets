@@ -32,6 +32,9 @@ const initialize = JSON.stringify({
   },
 });
 
+// a read route that fetches nothing without an event source
+const READ = "/earnings?from=2026-01-01&to=2026-01-02";
+
 const as = (key: string) => ({ authorization: `Bearer ${key}` });
 
 const mcp = (t: TestApp, key: string) =>
@@ -98,7 +101,7 @@ describe("agent keys", () => {
       const token = await tokenOf(made);
       expect(token).toMatch(/^1ctx-markets-[A-Za-z0-9_-]{43}$/);
       expect((await mcp(t, token)).status).toBe(200);
-      for (const path of ["/watchlist"]) {
+      for (const path of [READ]) {
         const res = await fetch(`${t.url}${PREFIX}${path}`, {
           headers: as(token),
         });
@@ -314,29 +317,23 @@ describe("agent keys", () => {
     const k = await keyed();
     expect(await k.lastUsed()).toBeNull();
     const first = k.clock.now();
-    expect((await k.call("/watchlist", { headers: as(k.token) })).status).toBe(
-      200,
-    );
+    expect((await k.call(READ, { headers: as(k.token) })).status).toBe(200);
     expect(await k.lastUsed()).toBe(first);
     await k.clock.advance(MINUTE_MS - 1);
-    await k.call("/watchlist", { headers: as(k.token) });
+    await k.call(READ, { headers: as(k.token) });
     expect(await k.lastUsed()).toBe(first);
     await k.clock.advance(1);
-    await k.call("/watchlist", { headers: as(k.token) });
+    await k.call(READ, { headers: as(k.token) });
     expect(await k.lastUsed()).toBe(first + MINUTE_MS);
   });
 
   test("an expired key is refused and stays listed", async () => {
     const k = await keyed(30);
-    expect((await k.call("/watchlist", { headers: as(k.token) })).status).toBe(
-      200,
-    );
+    expect((await k.call(READ, { headers: as(k.token) })).status).toBe(200);
     await k.clock.advance(30 * DAY_MS - 1);
-    expect((await k.call("/watchlist", { headers: as(k.token) })).status).toBe(
-      200,
-    );
+    expect((await k.call(READ, { headers: as(k.token) })).status).toBe(200);
     await k.clock.advance(1);
-    const refused = await k.call("/watchlist", { headers: as(k.token) });
+    const refused = await k.call(READ, { headers: as(k.token) });
     expect(refused.status).toBe(401);
     const listed = (await (await k.call("/keys")).json()) as {
       keys: { name: string; expires_at: string }[];
@@ -350,7 +347,7 @@ describe("agent keys", () => {
 describe("the call limit", () => {
   test("the call past the minute's limit is refused until the window ends", async () => {
     const k = await keyed();
-    const read = () => k.call("/watchlist", { headers: as(k.token) });
+    const read = () => k.call(READ, { headers: as(k.token) });
     for (let n = 0; n < CALLS_PER_MINUTE; n++) {
       expect((await read()).status).toBe(200);
     }
@@ -359,14 +356,10 @@ describe("the call limit", () => {
     expect(over.headers.get("retry-after")).toBe("60");
     expect(await over.json()).toMatchObject({ code: "too_many_requests" });
     // the admin key has its own window, and the signed-in UI none
-    expect(
-      (await k.call("/watchlist", { headers: as(ADMIN_KEY) })).status,
-    ).toBe(200);
+    expect((await k.call(READ, { headers: as(ADMIN_KEY) })).status).toBe(200);
     const cookie = cookieFor(k.db, k.clock.now());
     for (let n = 0; n <= CALLS_PER_MINUTE; n++) {
-      expect((await k.call("/watchlist", { headers: { cookie } })).status).toBe(
-        200,
-      );
+      expect((await k.call(READ, { headers: { cookie } })).status).toBe(200);
     }
     await k.clock.advance(MINUTE_MS - 1);
     expect((await read()).status).toBe(429);
@@ -574,9 +567,9 @@ describe("portfolio access", () => {
     expect((await post(reader.body.token)).status).toBe(403);
     expect((await post(writer.body.token)).status).toBe(201);
     // a market read never needed it
-    expect(
-      (await call("/watchlist", { headers: as(none.body.token) })).status,
-    ).toBe(200);
+    expect((await call(READ, { headers: as(none.body.token) })).status).toBe(
+      200,
+    );
   });
 
   test("the keys command passes --portfolio", async () => {

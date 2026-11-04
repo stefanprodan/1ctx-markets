@@ -3,7 +3,7 @@
 Governs the REST API under `/api/v1`: `src/api/` (`routes.ts`,
 `http.ts`, `openapi.ts`, `schemas.ts`, `paths.ts`, `docs.ts`, `docs/`),
 the router's part in `src/server/http.ts`, the alerts feed
-(`src/api/alerts.ts`) and the instrument, watchlist and status
+(`src/api/alerts.ts`) and the instrument, dashboard and status
 handlers (`src/admin/http.ts`), the portfolio routes
 (`src/api/portfolios.ts`, `docs/portfolios.md`), and the dashboard's
 (`src/admin/dashboard.ts`). What each route reads is its tool's,
@@ -35,7 +35,6 @@ MCP tools copied onto paths.
 | `POST /instruments/{symbol}/refetch` | admin | `refetchOne()` | `input`, `id`, `parts[]` (`docs/admin.md`) |
 | `GET /instruments/{symbol}/stored` | session | `storedCheck()` | `input`, `stored`: whether a read answers from the database or fetches the symbol first (`docs/admin.md`) |
 | `GET /instruments/{symbol}/bars?interval=&from=&to=&benchmark=&extended=` | read | `readHistory()`, `readIntradayHistory()` | bars or 5-minute points (below) |
-| `GET /watchlist` | read | `watchlist()` | `entries[]`, the `--track` values (below) |
 | `GET /dashboard` | session | `readDashboard()` | the web UI's home page: `revision`, `created`, `sections[]` of `items[]` (below) |
 | `PUT /dashboard` | session | `saveDashboard()` | `{revision, sections: [{name, view, symbols}]}` replaces the layout; the saved dashboard; 409 with `dashboard`, 422 with `errors` (below) |
 | `GET /rules` | rules:read | `readRules()`, `ruleItem()` | `rules[]` |
@@ -136,7 +135,7 @@ MCP tools copied onto paths.
   resolves and fetches an unknown symbol as the tools do, tracks it as
   a read, and answers `input`, the stored row (`instrument`, as the
   list gives it, `tracked_by` included), `credit`, `intraday` (whether
-  its source gives 5-minute closes, as the watchlist says) and its quote
+  its source gives 5-minute closes, as the dashboard says) and its quote
   as the quote tool gives it, `returns` and `session` included, with
   `extended` asked so a page shows pre or post trading.
 - **An ETF or mutual fund adds `top_holdings`**, the research tool's
@@ -180,23 +179,6 @@ MCP tools copied onto paths.
 - **`from` and `to` are dates in the exchange's zone**, session dates
   for `5m`; defaults are the tool's.
 
-## The watchlist
-
-- **`GET /watchlist` is the `--track` values in flag order** and
-  cannot be written: the flag is the source of truth, so a write would
-  be lost at restart.
-- **Each entry is `value` as written, `id` (null until resolved),
-  `state`** (`pending`, `tracked`, or the read's error code), the
-  stored row as `GET /instruments` gives it (`instrument`, null until
-  resolved), its market's `session` and `intraday`, whether its source
-  gives 5-minute closes (`readIntradayHistory()`'s rule; false until
-  resolved), so a client picks `interval=5m` or daily bars without
-  naming a source, with FRED's `attribution` once when an entry is a
-  series.
-- **It is no read and fetches nothing**: the flag already keeps each
-  entry tracked and quoted, and a read stamp would keep a value
-  dropped from the flag tracked 30 more days.
-
 ## The dashboard
 
 - **`GET /dashboard` is the web UI's home page**: named sections, each
@@ -215,20 +197,39 @@ MCP tools copied onto paths.
   carries it. A FRED series has no live quote to measure, so all three
   are null.
 - **Before the first save `created` is false, `revision` 0, and the
-  sections are the `--track` values grouped by kind** (Indices, Stocks,
-  ETFs, Futures, Crypto and so on, any other kind by its own name), in
-  the order its first value has in the flag, each shown as cards; a
-  value not resolved is left out. Nothing is stored by a read, so a
-  value that resolves later still joins it. Until then `track` lists
-  each `--track` value with its state: `ready` (in the sections),
-  `pending` (still resolving, as on a first start) or `failed` (left
-  out). A client waits for none to be pending before it saves, since a
-  save ends the seed. Once saved, `track` is absent and only a save or
-  deleting an instrument on it changes it: an empty dashboard is a
-  dashboard, never seeded again. The seed keeps to the save limits
-  below, so its first edit can be saved.
-- **It is no read and fetches nothing**, as the watchlist: the page
-  asks every 30 seconds.
+  sections are World markets' groups** (`docs/storage.md`, Tracking),
+  by name in the list's order, each shown as cards with the group's
+  first four entries (`HOME_PER_GROUP`) that did not fail: a failed
+  one lets the next move up, one still resolving or waiting out a
+  source's pause (`rate_limited`, `timeout`) keeps its place as
+  `pending`. Any other failure, `source_error` included, may last until
+  a new build, so it never holds Home waiting. Under `--no-sync` nothing resolves a symbol not stored,
+  so such an entry is left out and never pending. With the
+  Bucharest source on, the BET and EUR/RON take a first place. A group
+  shows once one of its entries is in. Nothing is stored by a read, so
+  an entry that resolves later still joins it. Until then `track` lists
+  Home's entries only, never a futures pair or an entry past the four,
+  each `ready` (in the sections) or `pending` (still resolving, as on a
+  first start). A client waits for none to be pending before it saves,
+  since a save ends the seed. Once saved, `track` is absent and only a
+  save or deleting an instrument on it changes it: an empty dashboard
+  is a dashboard, never seeded again.
+- **A World markets entry's `instrument.name` is the list's** (`Hang
+  Seng`, not Yahoo's `HANG SENG INDEX`), on any dashboard.
+- **A World markets index with a pair carries `futures` while it
+  flips**, on any dashboard, seeded or saved: its market's session is
+  closed and the futures' last trade (`quotes.time`) is after the
+  index's own last trade. The index's last trade marks its close
+  because Yahoo's regular period names the coming session before the
+  open. `futures` is the futures' `label` (`S&P Futures`), stored row,
+  `session` and `intraday`; its `session.state` is `open` while the last
+  trade is at most `FUTURES_FRESH_MS` (30 minutes) old, else `closed`.
+  A future's own session cannot say when CME is shut, since Yahoo
+  gives it the whole local day; Yahoo delays CME by about 10 minutes
+  and CME's shortest pause is an hour. The pair is found by the ids the
+  tracker resolved, never by symbol text.
+- **It is no read and fetches nothing**: the page asks every 30
+  seconds.
 - **`PUT /dashboard` replaces the whole layout in one write**: a move,
   a rename, an add or a remove is one call. A stored instrument's id
   is taken as it is, asking no source, so a source that is off never

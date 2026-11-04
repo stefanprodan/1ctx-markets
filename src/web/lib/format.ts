@@ -177,7 +177,7 @@ const PLAIN: Record<string, string> = {
   "timed out": "no answer in time",
   "malformed answer": "answer not readable",
   "key refused": "key not accepted",
-  // a --track value's read
+  // a symbol read's error code
   timeout: "no answer in time",
   candidates: "several matches",
   "no data": "no data",

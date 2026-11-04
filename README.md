@@ -155,20 +155,15 @@ above, logging to `markets.log` beside the database; `service status`,
 ./bin/1ctx-markets service install --source bvb
 ```
 
-An instrument is synced while something reads it. To keep some synced
-whether read or not, such as an overview of the world's markets, name
-each with `--track` as the `quote` tool takes it, and quote `^`, which
-zsh's extended globbing reads as a pattern. This one holds the main
-US, European and Asian indices, Bucharest's BET (feed only, so with
-`--source bvb`), gold, silver and WTI oil:
-
-```sh
-./bin/1ctx-markets service install --source bvb \
-  --track '^GSPC' --track '^DJI' --track '^NDX' --track '^SOX' \
-  --track '^VIX' --track '^STOXX' --track '^GDAXI' --track '^FTSE' \
-  --track '^FCHI' --track '^N225' --track '^HSI' --track '^KS11' \
-  --track '^TWII' --track BVB:BET --track GC=F --track SI=F --track CL=F
-```
+An instrument is synced while something reads it, a rule or a
+portfolio names it, or it sits on a Home. World markets is always
+synced too: a built-in list of 30 indices, commodities, currencies
+and coins, in six groups (Americas, Europe, Asia,
+Commodities, Currencies, Crypto), with the futures of the main US
+indices and the Nikkei. It fills a new person's Home, four per group,
+and while an index's market is closed its card shows its futures, as
+Yahoo Finance does. Bucharest's BET and EUR/RON join it with
+`--source bvb`.
 
 Connect an MCP client over Streamable HTTP with a key in the
 `Authorization` header. For Claude Code:

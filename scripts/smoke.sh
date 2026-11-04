@@ -27,7 +27,8 @@ unset PID
 grep -q 'user-admin.key' "$RUN/log" || fail "the refusal did not name user-admin.key"
 
 rm "$RUN/data/secrets/user-admin.key"
-"$BIN" --listen "127.0.0.1:$PORT" --data "$RUN/data" >"$RUN/log" 2>&1 &
+# no sync: World markets would fetch from Yahoo at start
+"$BIN" --listen "127.0.0.1:$PORT" --data "$RUN/data" --no-sync >"$RUN/log" 2>&1 &
 PID=$!
 
 status() { curl -s --max-time 5 -o /dev/null -w '%{http_code}' "$@" || true; }
@@ -81,7 +82,7 @@ initialize "$BEARER" >/dev/null || fail "initialize with an agent key failed"
   fail "an agent key was taken on /api/v1/status"
 [[ $(status "$URL/api/v1/status" -H "authorization: Bearer $ADMIN") == 200 ]] ||
   fail "the admin key did not open /api/v1/status"
-for path in rules watchlist; do
+for path in rules 'earnings?from=2026-01-01&to=2026-01-02'; do
   [[ $(status "$URL/api/v1/$path" -H "authorization: Bearer $BEARER") == 200 ]] ||
     fail "an agent key did not open /api/v1/$path"
   [[ $(status "$URL/api/v1/$path" -H "authorization: Bearer $ADMIN") == 200 ]] ||

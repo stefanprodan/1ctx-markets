@@ -77,7 +77,7 @@ export type Listed = {
   unit: string;
   source: string;
   tracked: boolean;
-  tracked_by: ("rule" | "dashboard" | "read" | "track")[];
+  tracked_by: ("rule" | "dashboard" | "read" | "world_markets")[];
   read_until: string | null;
   price: number | null;
   change: number | null;
@@ -129,18 +129,6 @@ export type Session = {
   end: string | null;
 };
 
-// a --track value; state is pending, tracked or its read's error code
-export type WatchEntry = {
-  value: string;
-  id: string | null;
-  state: string;
-  instrument: Listed | null;
-  session: Session | null;
-  intraday: boolean;
-};
-
-type Watchlist = { attribution?: string; entries: WatchEntry[] };
-
 export type View = "cards" | "table";
 
 export type Gap = { distance_pct: number | null; crossed_today?: boolean };
@@ -164,13 +152,22 @@ export type BoardItem = {
     daily_sma200: Gap | null;
     weekly_sma200: Gap | null;
   };
+  // an index's futures, shown in its place while its market is closed
+  futures?: Futures;
+};
+
+export type Futures = {
+  label: string;
+  instrument: Listed;
+  session: Session;
+  intraday: boolean;
 };
 
 export type Board = {
   attribution?: string;
   revision: number;
   created: boolean;
-  track?: { value: string; state: "ready" | "pending" | "failed" }[];
+  track?: { value: string; state: "ready" | "pending" }[];
   sections: { name: string; view: View; items: BoardItem[] }[];
 };
 
@@ -413,7 +410,6 @@ const MOVES: ScreenAsk = {
 export const instrumentPath = (id: string) =>
   `${INSTRUMENTS_PATH}/${encodeURIComponent(id)}`;
 export const STATUS_PATH = "/api/v1/status";
-export const WATCHLIST_PATH = "/api/v1/watchlist";
 export const RETRY_PATH = "/api/v1/status/retry";
 
 // the quotes route's limit on symbols
@@ -506,7 +502,6 @@ export function store(
   const statusError = signal<string | null>(null);
   // its HTTP code, shown beside the words; null when no server answered
   const statusCode = signal<number | null>(null);
-  const watchlist = signal<WatchEntry[] | null>(null);
   // the rail's own read of the status, apart from the page's
   const pulse = signal<Status | null>(null);
   // FRED's terms ask for its notice wherever its values show
@@ -595,7 +590,6 @@ export function store(
       status.value = null;
       statusError.value = null;
       statusCode.value = null;
-      watchlist.value = null;
       attribution.value = null;
       sparks.value = new Map();
       lining.value = new Set();
@@ -791,28 +785,13 @@ export function store(
     // a sign-in since makes it stale: its 401 never signs the new one out
     const at = session;
     try {
-      // the status page shows both, so they land together; a 401 from
-      // either signs out, whichever failed first
-      const [s, w] = await Promise.allSettled([
-        quiet<Status>(STATUS_PATH),
-        quiet<Watchlist>(WATCHLIST_PATH),
-      ]);
-      if (s.status === "rejected" || w.status === "rejected") {
-        const errors = [s, w].flatMap((r) =>
-          r.status === "rejected" ? [r.reason as unknown] : [],
-        );
-        throw (
-          errors.find((e) => e instanceof ApiError && e.status === 401) ??
-          errors[0]
-        );
-      }
+      const s = await quiet<Status>(STATUS_PATH);
       if (mine !== latest) return current;
       if (at !== session) return false;
       batch(() => {
         signedIn.value = true;
-        status.value = s.value;
-        pulse.value = s.value;
-        watchlist.value = w.value.entries;
+        status.value = s;
+        pulse.value = s;
         statusError.value = null;
         statusCode.value = null;
       });
@@ -1220,10 +1199,19 @@ export function store(
     if (!stale()) extended.value = next;
   }
 
-  // a failed one keeps the line drawn before
-  async function loadLines(ids: readonly string[], stale: () => boolean) {
+  // a failed one keeps the line drawn before; a flipped index draws its
+  // futures' line, under the futures' id
+  async function loadLines(shownIds: readonly string[], stale: () => boolean) {
     const at = session;
     const today = new Date(now()).toISOString().slice(0, 10);
+    const lines = new Map<string, boolean>();
+    for (const id of shownIds) {
+      const item = items.value.get(id);
+      if (item?.futures !== undefined) {
+        lines.set(item.futures.instrument.id, item.futures.intraday);
+      } else lines.set(id, item?.intraday ?? false);
+    }
+    const ids = [...lines.keys()];
     const fresh = ids.filter((id) => !sparks.value.has(id));
     if (fresh.length > 0) lining.value = new Set([...lining.value, ...fresh]);
     const landed = (id: string) => {
@@ -1236,7 +1224,7 @@ export function store(
       Promise.allSettled(
         ids.map(async (id) => {
           try {
-            const line = await (items.value.get(id)?.intraday
+            const line = await (lines.get(id)
               ? call<Intraday>(
                   `${instrumentPath(id)}/bars?${new URLSearchParams({ interval: "5m" })}`,
                 )
@@ -1475,7 +1463,6 @@ export function store(
     statusError,
     statusCode,
     statusFailures,
-    watchlist,
     loading,
     loadStatus,
     retry,

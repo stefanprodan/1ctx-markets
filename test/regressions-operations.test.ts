@@ -65,7 +65,7 @@ async function setup(
     finnhub: finnhub({ clock, key: FINNHUB_KEY, fetch: s.fetch }),
     rules: engine,
     hooks: engine.finnhub,
-    tracking: { readMs: TRACK_MS, flagged: new Set(), owed: new Set() },
+    tracking: { readMs: TRACK_MS, world: new Set(), owed: new Set() },
     log: silent,
   });
   return { clock, db, write, m, calls: s.calls };

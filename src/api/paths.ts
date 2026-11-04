@@ -389,7 +389,7 @@ export const paths = {
         "",
         "- Pass `next_page_token` as `page_token` for the next page; it is absent on the last.",
         "- `total` counts every match.",
-        "- `tracked_by`: a rule, a dashboard, a recent read (until `read_until`), or the watchlist.",
+        "- `tracked_by`: a rule, a dashboard, a recent read (until `read_until`), or `world_markets`: the server's built-in list of indices, commodities, currencies and crypto, always kept up to date.",
         "- Listing does not count as a read and fetches nothing.",
       ),
       parameters: [
@@ -581,22 +581,6 @@ export const paths = {
         404: r("NotFound"),
         503: r("Unavailable"),
       }),
-    },
-  },
-  "/watchlist": {
-    get: {
-      tags: ["instruments"],
-      operationId: "watchlist",
-      security: READ_AUTH,
-      summary: "The watchlist",
-      description: lines(
-        "The instruments this server keeps up to date by its configuration, in its order, each with its stored price and its market's session.",
-        "",
-        "- Set where the server starts; it cannot be changed here.",
-        "- A value is `pending` until it resolves, or names the error that stopped it.",
-        "- Fetches nothing and does not count as a read.",
-      ),
-      responses: reads({ 200: ok("The watchlist.", ref("Watchlist")) }),
     },
   },
   "/rules": {
@@ -825,7 +809,8 @@ export const paths = {
       description: lines(
         "The web UI's home page: named sections of instruments, each item with its stored price, its market's session and its distance from its averages.",
         "",
-        "- Until the first save, `created` is false and the sections are the watchlist's values grouped by kind, in their order. A value that did not resolve is left out. `track` says which values are in, still `pending` or left out; a save while one is pending would leave it out for good.",
+        "- Until the first save, `created` is false and the sections are World markets' groups in order, each with its first four symbols that resolved; one that failed lets the next move up. `track` says which are in or still `pending`; a save while one is pending would leave it out for good.",
+        "- While a World markets index's market is closed and its futures traded after its close, the item carries `futures`, which a page shows in the index's place.",
         "- Each instrument on a saved dashboard is kept up to date while it is there; `tracked_by` says `dashboard`.",
         "- `averages` are in percent from the price to the daily 50 and 200 day and the weekly 200 week simple moving averages; `crossed_today` follows `movers`: the last final close on or below the average and the price above it, or the reverse.",
         "- Fetches nothing and does not count as a read.",

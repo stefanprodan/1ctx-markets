@@ -19,8 +19,6 @@ export type Config = {
   // an instrument read within this many days stays tracked
   trackDays: number;
   sources: string[];
-  // tracked whether read or not, each as the quote tool takes it
-  track: string[];
   // the web UI at / and its sign-in
   ui: boolean;
   // the source jobs; off, the server answers from the database as it is
@@ -114,8 +112,6 @@ export const HELP = `\x1b[1m1ctx-markets\x1b[0m - a self-hosted market data serv
                          tracked (default: ${DEFAULT_TRACK_DAYS})
   --source <name>        turn on a keyless source, repeated for each;
                          bvb: the Bucharest Stock Exchange's own feed
-  --track <symbol>       keep an instrument tracked whether read or not,
-                         repeated for each; a symbol as quote takes it
   --no-ui                serve no web UI at / and refuse its sign-in
   --trust-proxy          behind a reverse proxy: take a client's address
                          from the last X-Forwarded-For value, for the
@@ -143,7 +139,6 @@ export const VALUED_FLAGS = [
   "--quote-every",
   "--track-days",
   "--source",
-  "--track",
 ];
 
 export function defaultDataDir(home: string): string {
@@ -175,7 +170,6 @@ export function parseCli(argv: string[], home: string = homedir()): Cli {
   let quoteEvery = DEFAULT_QUOTE_EVERY;
   let trackDays = DEFAULT_TRACK_DAYS;
   const sources = new Set<string>();
-  const track = new Set<string>();
   let ui = true;
   let sync = true;
   let trustProxy = false;
@@ -221,13 +215,6 @@ export function parseCli(argv: string[], home: string = homedir()): Cli {
         }
         sources.add(value);
         break;
-      // resolved by the running server, since that may fetch it
-      case "--track":
-        if (value.trim() === "") {
-          return { kind: "error", message: "--track is empty" };
-        }
-        track.add(value.trim());
-        break;
       case "--no-ui":
         ui = false;
         break;
@@ -258,7 +245,6 @@ export function parseCli(argv: string[], home: string = homedir()): Cli {
       quoteEveryMs: quoteEvery * MINUTE_MS,
       trackDays,
       sources: [...sources].sort(),
-      track: [...track],
       ui,
       sync,
       trustProxy,
@@ -279,7 +265,6 @@ export function configToArgs(config: Config): string[] {
     String(config.trackDays),
   ];
   for (const name of config.sources) args.push("--source", name);
-  for (const value of config.track) args.push("--track", value);
   if (!config.ui) args.push("--no-ui");
   if (!config.sync) args.push("--no-sync");
   if (config.trustProxy) args.push("--trust-proxy");

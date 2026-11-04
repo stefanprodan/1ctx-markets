@@ -7,6 +7,7 @@ import { dailyRange, upsertBars } from "../src/market/bars.ts";
 import { recordSession } from "../src/market/calendars.ts";
 import { readInstrument, upsertInstrument } from "../src/market/instruments.ts";
 import { lastReadAt, markRead, trackedIds } from "../src/market/tracking.ts";
+import { WORLD_MARKETS, type WorldEntry } from "../src/market/world.ts";
 import { readTargets, storedInstrument } from "../src/operations/targets.ts";
 import { seed } from "../src/operations/track.ts";
 import { DAY_MS, MINUTE_MS } from "../src/runtime/clock.ts";
@@ -70,15 +71,15 @@ const get = async (t: TestApp, path: string): Promise<any> =>
     })
   ).json();
 
-// the status counts, and each watchlist entry's value, id and state
+// the status counts, and each symbol's value, id and state
 const status = async (t: TestApp): Promise<any> => ({
   ...(await get(t, "/status")),
-  track: (await get(t, "/watchlist")).entries.map((e: any) => ({
-    value: e.value,
-    id: e.id,
-    state: e.state,
-  })),
+  track: t.app.tracker.status(),
 });
+
+// a list of one group, each symbol as written
+const wm = (symbols: string[]): WorldEntry[] =>
+  symbols.map((symbol) => ({ group: "Test", name: symbol, symbol }));
 
 const notResolved = (t: TestApp, value: string): string[] =>
   t.lines.filter(
@@ -86,7 +87,26 @@ const notResolved = (t: TestApp, value: string): string[] =>
       l.includes("track value not resolved") && l.includes(`value=${value} `),
   );
 
-describe("--track", () => {
+describe("World markets", () => {
+  test("tracks every entry in order, then each futures pair; the BET and EUR/RON only with the Bucharest source", async () => {
+    const pairs = ["ES=F", "NQ=F", "YM=F", "RTY=F", "NIY=F"];
+    const values = async (bvb: boolean) => {
+      let out: string[] = [];
+      await withApp(
+        async (t) => {
+          out = t.app.tracker.status().map((x) => x.value);
+        },
+        { start: NOW, world: [...WORLD_MARKETS], bvb, sync: false },
+      );
+      return out;
+    };
+    const on = await values(true);
+    expect(on).toEqual([...WORLD_MARKETS.map((e) => e.symbol), ...pairs]);
+    expect(on).toHaveLength(37);
+    const off = await values(false);
+    expect(off).toEqual(on.filter((v) => v !== "BVB:BET" && v !== "EURRON=X"));
+  });
+
   test("a value not stored is fetched on start and tracked with no read", async () => {
     const s = await sources({ charts: await charts() });
     await withApp(
@@ -120,11 +140,11 @@ describe("--track", () => {
         expect(s.calls.searches()).toHaveLength(0);
         expect(daily().length).toBe(asked);
       },
-      { fetch: s.fetch, start: NOW, track: ["^DJI", "GC=F"] },
+      { fetch: s.fetch, start: NOW, world: wm(["^DJI", "GC=F"]) },
     );
   });
 
-  test("the watchlist answers the values in flag order, stored rows only, no read and no fetch", async () => {
+  test("its rows say world_markets, with no read and no fetch", async () => {
     const unknown = await recorded("chart-unknown-symbol");
     const s = await sources({
       charts: await charts(),
@@ -134,41 +154,23 @@ describe("--track", () => {
     await withApp(
       async (t) => {
         await t.app.tracker.settled();
-        const asked = s.calls.urls.length;
-        const reads = t.db
-          .query(
-            "select count(*) as n from instruments where last_read_at is not null",
-          )
-          .get();
-        const res = await fetch(`${t.url}/api/v1/watchlist`, {
-          headers: { authorization: `Bearer ${t.bearer}` },
-        });
-        expect(res.status).toBe(200);
-        const { entries } = (await res.json()) as { entries: any[] };
-        expect(entries.map((e) => [e.value, e.id, e.state])).toEqual([
-          ["GC=F", GOLD, "tracked"],
-          ["ZZNOPE", null, "not_found"],
-          ["^DJI", DJI, "tracked"],
+        expect(t.app.tracker.status()).toEqual([
+          { value: "GC=F", id: GOLD, state: "tracked" },
+          { value: "ZZNOPE", id: null, state: "not_found" },
+          { value: "^DJI", id: DJI, state: "tracked" },
         ]);
-        expect(entries[0].instrument).toMatchObject({
-          id: GOLD,
-          kind: "FUTURE",
-          tracked_by: ["track"],
-        });
-        expect(entries[0].instrument.price).toBeNumber();
-        expect(entries[2].session).toMatchObject({ state: "closed" });
-        expect(entries[1]).toMatchObject({ instrument: null, session: null });
-        expect(s.calls.urls.length).toBe(asked);
+        const asked = s.calls.urls.length;
+        const { instruments } = await get(t, "/instruments");
         expect(
-          t.db
-            .query(
-              "select count(*) as n from instruments where last_read_at is not null",
-            )
-            .get(),
-        ).toEqual(reads);
+          instruments.map((r: any) => [r.id, r.tracked, r.tracked_by]),
+        ).toEqual([
+          [GOLD, true, ["world_markets"]],
+          [DJI, true, ["world_markets"]],
+        ]);
+        expect(s.calls.urls.length).toBe(asked);
         expect(lastReadAt(t.db, DJI)).toBeNull();
       },
-      { fetch: s.fetch, start: NOW, track: ["GC=F", "ZZNOPE", "^DJI"] },
+      { fetch: s.fetch, start: NOW, world: wm(["GC=F", "ZZNOPE", "^DJI"]) },
     );
   });
 
@@ -205,7 +207,7 @@ describe("--track", () => {
           new Set([DJI]),
         );
       },
-      { fetch: s.fetch, start: NOW, track: ["^DJI"] },
+      { fetch: s.fetch, start: NOW, world: wm(["^DJI"]) },
     );
   });
 
@@ -227,7 +229,7 @@ describe("--track", () => {
           { value: "NVIDIA", id: null, state: "candidates" },
         ]);
       },
-      { fetch: s.fetch, start: NOW, track: ["NVIDIA"] },
+      { fetch: s.fetch, start: NOW, world: wm(["NVIDIA"]) },
     );
   });
 
@@ -246,7 +248,7 @@ describe("--track", () => {
           { value: "BVB:BET", id: null, state: "no_data" },
         ]);
       },
-      { fetch: s.fetch, start: NOW, track: ["BVB:BET"] },
+      { fetch: s.fetch, start: NOW, world: wm(["BVB:BET"]) },
     );
   });
 
@@ -261,7 +263,7 @@ describe("--track", () => {
           stored = bars(t, DJI);
           expect(stored).toBeGreaterThan(0);
         },
-        { fetch: s.fetch, start: NOW, track: ["^DJI"], db },
+        { fetch: s.fetch, start: NOW, world: wm(["^DJI"]), db },
       );
       await withApp(
         async (t) => {
@@ -294,7 +296,7 @@ describe("--track", () => {
             ).run(DJI, OPEN - 3_600_000, OPEN);
           });
         },
-        { fetch: s.fetch, start: OPEN, track: ["^DJI"], db },
+        { fetch: s.fetch, start: OPEN, world: wm(["^DJI"]), db },
       );
       const asked = s.calls.charts("^DJI").length;
       await withApp(
@@ -309,14 +311,14 @@ describe("--track", () => {
           expect(s.calls.charts("^DJI").length).toBe(asked);
           expect(lastReadAt(t.db, DJI)).toBeNull();
         },
-        { fetch: s.fetch, start: OPEN, track: ["^DJI"], db },
+        { fetch: s.fetch, start: OPEN, world: wm(["^DJI"]), db },
       );
     } finally {
       db.close();
     }
   });
 
-  test("a stored value that missed sessions is flagged at once and caught up", async () => {
+  test("a stored value that missed sessions is tracked at once and caught up", async () => {
     const then = Date.parse("2026-07-01T08:00:00Z");
     const full = listed(
       backTo(await recorded("chart-dji-5d-1d"), "2026-05-04"),
@@ -344,18 +346,18 @@ describe("--track", () => {
         async (t) => {
           await t.app.tracker.settled();
         },
-        { fetch: first.fetch, start: then, track: ["^DJI"], db },
+        { fetch: first.fetch, start: then, world: wm(["^DJI"]), db },
       );
       expect(lastDate()).toBe("2026-06-26");
       const s = await sources({ charts: { "^DJI": full } });
       await withApp(
         async (t) => {
-          // flagged for the prune and the jobs, owed for the reads, before
+          // tracked for the prune and the jobs, owed for the reads, before
           // the first pass can land
           expect(t.app.tracker.status()).toEqual([
             { value: "^DJI", id: DJI, state: "pending" },
           ]);
-          expect([...t.app.markets.tracking.flagged]).toEqual([DJI]);
+          expect([...t.app.markets.tracking.world]).toEqual([DJI]);
           expect([...t.app.markets.tracking.owed]).toEqual([DJI]);
           await t.app.tracker.settled();
           expect(lastDate()).toBe("2026-10-27");
@@ -369,14 +371,14 @@ describe("--track", () => {
           expect(t.app.markets.tracking.owed.size).toBe(0);
           expect(lastReadAt(t.db, DJI)).toBeNull();
         },
-        { fetch: s.fetch, start: NOW, track: ["^DJI"], db },
+        { fetch: s.fetch, start: NOW, world: wm(["^DJI"]), db },
       );
     } finally {
       db.close();
     }
   });
 
-  test("a flagged instrument deleted by the operator is fetched again", async () => {
+  test("a World markets instrument deleted by the operator is fetched again", async () => {
     const s = await sources({ charts: await charts() });
     await withApp(
       async (t) => {
@@ -400,11 +402,11 @@ describe("--track", () => {
           new Set([DJI]),
         );
       },
-      { fetch: s.fetch, start: NOW, track: ["^DJI"] },
+      { fetch: s.fetch, start: NOW, world: wm(["^DJI"]) },
     );
   });
 
-  test("the quote job asks for a flagged instrument with no read or rule", async () => {
+  test("the quote job asks for a World markets instrument with no read or rule", async () => {
     const s = await sources({ charts: await charts() });
     await withApp(
       async (t) => {
@@ -418,7 +420,7 @@ describe("--track", () => {
         expect(asked).toContain("^DJI");
         expect(lastReadAt(t.db, DJI)).toBeNull();
       },
-      { fetch: s.fetch, start: OPEN, track: ["^DJI"] },
+      { fetch: s.fetch, start: OPEN, world: wm(["^DJI"]) },
     );
   });
 });
@@ -464,7 +466,7 @@ const US_SESSION = {
 const count = (db: Db, table: string): number =>
   db.query<{ n: number }, []>(`select count(*) as n from ${table}`).get()!.n;
 
-describe("--track at start", () => {
+describe("World markets at start", () => {
   test("a value that missed sessions keeps its news and is caught up before a read answers", async () => {
     const { db } = open(":memory:", fakeClock(OPEN));
     stored(db, NVDA, "2026-10-05");
@@ -496,7 +498,7 @@ describe("--track at start", () => {
           expect(t.app.tracker.status()[0]!.state).toBe("tracked");
           expect(t.app.markets.tracking.owed.size).toBe(0);
         },
-        { fetch: s.fetch, start: OPEN, track: ["NVDA"], db },
+        { fetch: s.fetch, start: OPEN, world: wm(["NVDA"]), db },
       );
     } finally {
       db.close();
@@ -515,7 +517,7 @@ describe("--track at start", () => {
       await withApp(
         async (t) => {
           expect(t.app.tracker.status()[0]!.id).toBeNull();
-          expect(t.app.markets.tracking.flagged.size).toBe(0);
+          expect(t.app.markets.tracking.world.size).toBe(0);
           await t.app.tracker.settled();
           await t.app.sourceSwitch.settled();
           expect(readInstrument(db, "BVB:TLV")!.source).toBe("yahoo");
@@ -529,7 +531,7 @@ describe("--track at start", () => {
             trackedIds(db, now, t.app.markets.tracking).has("BVB:TLV"),
           ).toBe(true);
         },
-        { fetch: s.fetch, start: OPEN, track: ["BVB:TLV"], db },
+        { fetch: s.fetch, start: OPEN, world: wm(["BVB:TLV"]), db },
       );
     } finally {
       db.close();
@@ -562,7 +564,7 @@ describe("--track at start", () => {
           held.release();
         }
       },
-      { fetch: s.fetch, start: OPEN, track: names },
+      { fetch: s.fetch, start: OPEN, world: wm(names) },
     );
   });
 
@@ -586,7 +588,7 @@ describe("--track at start", () => {
           await t.app.tracker.settled();
         }
       },
-      { fetch: s.fetch, start: OPEN, track: ["^FIRST"] },
+      { fetch: s.fetch, start: OPEN, world: wm(["^FIRST"]) },
     );
   });
 
@@ -605,13 +607,13 @@ describe("--track at start", () => {
             id: DJI,
             state: "tracked",
           });
-          expect(t.app.markets.tracking.flagged.has(DJI)).toBe(true);
+          expect(t.app.markets.tracking.world.has(DJI)).toBe(true);
         } finally {
           held.release();
           await t.app.tracker.settled();
         }
       },
-      { fetch: s.fetch, start: OPEN, track: ["^DJI", "^SLOW"] },
+      { fetch: s.fetch, start: OPEN, world: wm(["^DJI", "^SLOW"]) },
     );
   });
 
@@ -642,7 +644,7 @@ describe("--track at start", () => {
           await readTargets(t.app.markets, ["NVDA"]);
           expect(s.calls.charts("NVDA")).toHaveLength(asked);
         },
-        { fetch: s.fetch, start: OPEN, track: ["NVDA"], db },
+        { fetch: s.fetch, start: OPEN, world: wm(["NVDA"]), db },
       );
     } finally {
       db.close();
@@ -666,7 +668,7 @@ describe("--track at start", () => {
             "tracked",
             "tracked",
           ]);
-          expect([...t.app.markets.tracking.flagged].sort()).toEqual(
+          expect([...t.app.markets.tracking.world].sort()).toEqual(
             [GOLD, DJI].sort(),
           );
           held.release();
@@ -675,7 +677,7 @@ describe("--track at start", () => {
           held.release();
         }
       },
-      { fetch: s.fetch, start: OPEN, track: ["^DJI", "GC=F"] },
+      { fetch: s.fetch, start: OPEN, world: wm(["^DJI", "GC=F"]) },
     );
   });
 
@@ -744,7 +746,7 @@ describe("--track at start", () => {
       db,
       version: "v0.0.0-test",
       quoteEveryMs: PERIOD,
-      track: ["^ONE", "^TWO"],
+      world: wm(["^ONE", "^TWO"]),
       fetch: s.fetch,
       log: () => ({
         info() {},
@@ -784,10 +786,10 @@ describe("seed", () => {
     on = { bvb: true, fred: true },
     now = OPEN,
   ) => {
-    const flagged = new Set<string>();
+    const world = new Set<string>();
     const owed = new Set<string>();
-    const states = seed({ db, values, on, flagged, owed, now });
-    return { states, flagged, owed };
+    const states = seed({ db, values, on, world, owed, now });
+    return { states, world, owed };
   };
 
   test("a value read within the window still owes the sessions it missed", () => {
@@ -797,7 +799,7 @@ describe("seed", () => {
     markRead(db, [NVDA], OPEN - 20 * DAY_MS);
     const s = seeded(db, ["NVDA"]);
     expect(s.states).toEqual([{ value: "NVDA", id: NVDA, state: "pending" }]);
-    expect([...s.flagged]).toEqual([NVDA]);
+    expect([...s.world]).toEqual([NVDA]);
     expect([...s.owed]).toEqual([NVDA]);
     db.close();
   });
@@ -857,7 +859,7 @@ describe("seed", () => {
       [null, "pending"],
       [null, "pending"],
     ]);
-    expect(s.flagged.size).toBe(0);
+    expect(s.world.size).toBe(0);
     db.close();
   });
 
@@ -884,7 +886,7 @@ describe("seed", () => {
             { value: "TLV", id: null, state: "candidates" },
           ]);
         },
-        { fetch: f.fetch, start: OPEN, track: ["TLV"], bvb: true, db },
+        { fetch: f.fetch, start: OPEN, world: wm(["TLV"]), bvb: true, db },
       );
     } finally {
       db.close();
@@ -919,7 +921,7 @@ describe("--no-sync", () => {
       {
         fetch: s.fetch,
         start: OPEN,
-        track: ["^DJI"],
+        world: wm(["^DJI"]),
         fredKey: FRED_KEY,
         finnhubKey: FINNHUB_KEY,
         massiveKey: MASSIVE_KEY,
@@ -927,6 +929,23 @@ describe("--no-sync", () => {
         bvb: true,
         sync: false,
       },
+    );
+  });
+
+  test("World markets never holds Home waiting, since nothing resolves it", async () => {
+    await withApp(
+      async (t) => {
+        const board = await get(t, "/dashboard");
+        expect(board).toMatchObject({
+          created: false,
+          track: [],
+          sections: [],
+        });
+        expect(t.app.tracker.status()).toEqual([
+          { value: "^GSPC", id: null, state: "pending" },
+        ]);
+      },
+      { start: OPEN, world: wm(["^GSPC"]), sync: false },
     );
   });
 

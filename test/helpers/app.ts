@@ -8,6 +8,7 @@ import {
 } from "@modelcontextprotocol/client";
 import type { HTMLBundle } from "bun";
 import { type App, start } from "../../src/app.ts";
+import type { WorldEntry } from "../../src/market/world.ts";
 import type { Access } from "../../src/operations/who.ts";
 import { MINUTE_MS } from "../../src/runtime/clock.ts";
 import { keys, requireAdmin } from "../../src/runtime/keys.ts";
@@ -52,7 +53,8 @@ export type TestOptions = {
   massiveKey?: string;
   edgarKey?: string;
   start?: number;
-  track?: string[];
+  // World markets as the server tracks it; none by default
+  world?: WorldEntry[];
   // the Bucharest feed, on as with --source bvb
   bvb?: boolean;
   // false as with --no-sync
@@ -98,7 +100,7 @@ export async function withApp(
     finnhubKey: options.finnhubKey ?? null,
     massiveKey: options.massiveKey ?? null,
     edgarKey: options.edgarKey ?? null,
-    track: options.track,
+    world: options.world,
     bvb: options.bvb,
     sync: options.sync,
     ui: options.ui,

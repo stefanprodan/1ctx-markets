@@ -100,8 +100,8 @@ const instrumentRow = object({
   source: str,
   tracked: bool,
   tracked_by: note(
-    list(values(["rule", "dashboard", "read", "track"])),
-    "What keeps it up to date: a rule, a dashboard, a recent read or the watchlist.",
+    list(values(["rule", "dashboard", "read", "world_markets"])),
+    "What keeps it up to date: a rule, a dashboard, a recent read or the server's built-in World markets.",
   ),
   read_at: nstr,
   read_until: nstr,
@@ -1116,37 +1116,6 @@ export const schemas: Record<string, Schema> = {
     },
     ["input", "instrument", "intraday", "credit", "quote", "error"],
   ),
-  Watchlist: object(
-    {
-      attribution: note(
-        str,
-        "A source's required notice, when an entry is one of its series.",
-      ),
-      entries: list(
-        object({
-          value: note(str, "The value as configured."),
-          id: note(nstr, "The instrument it resolved to; null until it does."),
-          state: note(
-            values(["pending", "tracked", ...ERRORS]),
-            "`pending` until resolved, `tracked`, or the error that stopped it.",
-          ),
-          instrument: note(
-            nullable(instrumentRow),
-            "The stored instrument, as the instrument list gives it.",
-          ),
-          session: note(
-            session,
-            "Its market's last regular session. Null for a series or until resolved.",
-          ),
-          intraday: note(
-            bool,
-            "Whether its source gives 5-minute closes (`/instruments/{symbol}/bars?interval=5m`); false until resolved.",
-          ),
-        }),
-      ),
-    },
-    ["entries"],
-  ),
   Dashboard: object(
     {
       attribution: note(
@@ -1159,39 +1128,66 @@ export const schemas: Record<string, Schema> = {
         list(
           object({
             value: str,
-            state: values(["ready", "pending", "failed"]),
+            state: values(["ready", "pending"]),
           }),
         ),
-        "Until the first save: each watchlist value and whether the sections hold it (`ready`), it is still resolving (`pending`), or it is left out (`failed`).",
+        "Until the first save: each World markets symbol the sections are seeded with, in their order, and whether the sections hold it (`ready`) or it is still resolving (`pending`).",
       ),
       sections: list(
         object({
           name: str,
           view: values(["cards", "table"]),
           items: list(
-            object({
-              id: str,
-              instrument: note(
-                instrumentRow,
-                "The stored instrument, as the instrument list gives it.",
-              ),
-              session: note(
-                session,
-                "Its market's last regular session. Null for a series.",
-              ),
-              intraday: note(
-                bool,
-                "Whether its source gives 5-minute closes (`/instruments/{symbol}/bars?interval=5m`).",
-              ),
-              averages: note(
-                object({
-                  daily_sma50: gap(true),
-                  daily_sma200: gap(true),
-                  weekly_sma200: gap(false),
-                }),
-                "The price's distance from each average, in percent; null without a price or an average.",
-              ),
-            }),
+            object(
+              {
+                id: str,
+                instrument: note(
+                  instrumentRow,
+                  "The stored instrument, as the instrument list gives it.",
+                ),
+                session: note(
+                  session,
+                  "Its market's last regular session. Null for a series.",
+                ),
+                intraday: note(
+                  bool,
+                  "Whether its source gives 5-minute closes (`/instruments/{symbol}/bars?interval=5m`).",
+                ),
+                averages: note(
+                  object({
+                    daily_sma50: gap(true),
+                    daily_sma200: gap(true),
+                    weekly_sma200: gap(false),
+                  }),
+                  "The price's distance from each average, in percent; null without a price or an average.",
+                ),
+                futures: note(
+                  object(
+                    {
+                      label: note(
+                        str,
+                        "What the futures are called, as `S&P Futures`.",
+                      ),
+                      instrument: note(
+                        instrumentRow,
+                        "The futures' stored instrument, as the instrument list gives it.",
+                      ),
+                      session: note(
+                        session,
+                        "Its market's last regular session; `state` is `open` while its last trade is at most 30 minutes old.",
+                      ),
+                      intraday: note(
+                        bool,
+                        "Whether its source gives 5-minute closes.",
+                      ),
+                    },
+                    ["label", "instrument", "session", "intraday"],
+                  ),
+                  "A World markets index's futures, present only while the index's market is closed and the futures traded after its close.",
+                ),
+              },
+              ["id", "instrument", "session", "intraday", "averages"],
+            ),
           ),
         }),
       ),
