@@ -86,6 +86,7 @@ import { type Email, email as emailOf } from "../server/email/settings.ts";
 import { type Links, links as linksOf } from "../server/links.ts";
 import { NO_EVENTS } from "../sources/finnhub/store.ts";
 import { ATTRIBUTION } from "../sources/fred/sync.ts";
+import { FUND_SOURCE } from "../sources/ids.ts";
 import { ASSET_CACHE, DOC_FILES, docsFile, docsPage } from "./docs.ts";
 import {
   detailOf,
@@ -200,8 +201,9 @@ function brief(
 async function intraday(
   m: Markets,
   args: Parameters<typeof readIntradayHistory>[1],
+  who: Who,
 ): Promise<Response> {
-  const read = await readIntradayHistory(m, args, null);
+  const read = await readIntradayHistory(m, args, null, who);
   if ("error" in read) return problemOf({ input: read.input, ...read.error });
   const i = read.instrument;
   return json({
@@ -235,7 +237,12 @@ async function intraday(
   });
 }
 
-async function bars(m: Markets, url: URL, raw: string): Promise<Response> {
+async function bars(
+  m: Markets,
+  url: URL,
+  raw: string,
+  who: Who,
+): Promise<Response> {
   const args = parseHistory({
     ...queryArgs(url, {
       interval: "text",
@@ -246,12 +253,14 @@ async function bars(m: Markets, url: URL, raw: string): Promise<Response> {
     }),
     symbol: pathSymbol(raw),
   });
-  if (args.interval === "5m") return intraday(m, args);
-  const read = await readHistory(m, args, null);
+  if (args.interval === "5m") return intraday(m, args, who);
+  const read = await readHistory(m, args, null, who);
   if ("error" in read) return problemOf({ input: read.input, ...read.error });
   const i = read.instrument;
-  // a range ending today or later still takes the next live bar
+  // a range ending today or later still takes the next live bar; a hand
+  // price may be entered again any day
   const final =
+    i.source !== FUND_SOURCE &&
     args.to !== null &&
     args.to < localDate(i.zone, m.clock.now()) &&
     args.benchmark === null &&
@@ -420,14 +429,14 @@ function marketData(m: Markets): Route[] {
       method: "GET",
       path: "/instruments/{symbol}/bars",
       scope: "read",
-      handle: (_req, url, params) => bars(m, url, params.symbol!),
+      handle: (_req, url, params, who) => bars(m, url, params.symbol!, who),
     },
     {
       method: "GET",
       path: "/instruments/{symbol}",
       scope: "read",
       handle: (_req, url, params, who) =>
-        instrument(m, who.user, url, params.symbol!),
+        instrument(m, who, url, params.symbol!),
     },
   ];
 }

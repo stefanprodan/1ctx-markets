@@ -120,13 +120,40 @@ once and valued on the live price the server already keeps.
   price was paid in the old one; a new currency drops the fund's prices,
   which were in the old one. A rename answers `renamed_from`, so an
   agent that sent a name beside the ISIN sees it renamed the fund.
+- **A fund's holdings are entered by hand, read as an ETF's**
+  (`holdings` on `portfolio_fund` and `PATCH /funds/{isin}`,
+  `src/portfolios/fund-holdings.ts`): its reports give them, no source
+  does. They go in the tables Yahoo's ETF holdings use, keyed by the
+  fund's instrument, so `research` `top_holdings` and the instrument
+  detail answer them in the same shape, with `source` `owner`. `top`
+  (up to ten rows, ranked by weight) and `assets` come together and
+  replace the stored ones whole, as of `as_of`; `sectors` (Yahoo's
+  sector keys) replace the stored sectors only when sent, as of their
+  own day (`sectors_as_of`, migration `0039-fund-holdings-as-of`),
+  since a monthly bulletin gives the top rows and split and only a
+  half-year report the whole list sectors are worked out from. A part
+  as of a later day is never replaced by an earlier one (`conflict`),
+  so a report entered after a newer bulletin keeps the bulletin's rows.
+  Weights are percents above 0 to 100, summing to at most 100 with half
+  a point for rounding. A row's symbol is resolved as any symbol
+  argument is (`resolveTargets()`: fetched when new, never marked read)
+  and kept as the instrument's id, so its row links to its page; a row
+  without one gives its name.
 - **No source ever fetches a fund the owner prices.** It is never
   tracked (`trackedIds()` and `portfolioInstruments()` leave out source
-  `owner`), so no job asks for it; `quote`, `history` and every other
-  read refuse its key without asking a source (`OWNER_PRICED` in
-  `src/operations/targets.ts`), the same answer held or not; the admin
-  instrument list, its count and `search` leave it out, since its
-  existence says the owner holds it.
+  `owner`), and Yahoo's top holdings job asks only Yahoo's ETFs and
+  mutual funds (`asked()`), so no job asks for it or overwrites its
+  holdings. `history` (and `GET /instruments/{symbol}/bars`) answers its
+  entered prices as daily closes, one per priced day, a week's last for
+  `1wk`, and no 5-minute closes; `research` `top_holdings` and `GET
+  /instruments/{symbol}` answer what was entered
+  (`src/operations/funds.ts`). Each answers only a person who holds or
+  priced it, through a key that opens portfolios (`seenFund()`); anyone
+  else gets the same `not_found` as for a fund that is not there.
+  `quote` and every other read refuse its key without asking a source
+  (`OWNER_PRICED` in `src/operations/targets.ts`), the same answer held
+  or not; the admin instrument list, its count and `search` leave it
+  out, since its existence says the owner holds it.
 - **A removal is a stamp** (`removed_at`, `removed_by`), never a
   delete: a mistake is seen and restored. An instrument any trade or
   position names, removed ones included, refuses its admin delete
@@ -507,10 +534,14 @@ restore(position: number): { position };
 // portfolio_fund, no action: a fund's price per unit for a day (the
 // owner's today by default), a day already priced replaced; market null
 // takes it off; picked by isin or symbol, else by name; with a pick,
-// name renames it; currency only while no live trade is priced in it
+// name renames it; currency only while no live trade is priced in it;
+// holdings from its reports, answered as research top_holdings
 (isin?: string, symbol?: string, name?: string, price?: number,
-  date?: Day, market?: string | null, currency?: Currency):
-  { fund; price?; replaced?; renamed_from? };
+  date?: Day, market?: string | null, currency?: Currency,
+  holdings?: { as_of: Day; top?: { symbol?: string; name?: string;
+    weight: number }[]; assets?: { stock?, bond?, cash?, other?,
+    preferred?, convertible?: number }; sectors?: { [key]: number } }):
+  { fund; price?; replaced?; renamed_from?; holdings? };
 
 // portfolio_setup: a new owner's first steps, one or more at once: the
 // currency totals are shown in (asked of the owner, never assumed; set

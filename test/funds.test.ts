@@ -5,6 +5,7 @@
 
 import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
+import { readInstrument } from "../src/market/instruments.ts";
 import { trackedIds } from "../src/market/tracking.ts";
 import type { Markets } from "../src/operations/markets.ts";
 import { markets } from "../src/operations/markets.ts";
@@ -30,11 +31,16 @@ import { silent } from "../src/runtime/log.ts";
 import { isIsin } from "../src/shared/isin.ts";
 import { fred } from "../src/sources/fred/client.ts";
 import { yahoo } from "../src/sources/yahoo/client.ts";
+import {
+  asked as topHoldingsAsked,
+  topHoldingsJobs,
+} from "../src/sources/yahoo/top-holdings.ts";
 import { migrate, open } from "../src/storage/db/index.ts";
 import { MIGRATIONS } from "../src/storage/db/migrations/index.ts";
 import { writer } from "../src/storage/writer.ts";
 import { tools } from "../src/tools/index.ts";
 import { parseFundTool, parseTradeTool } from "../src/tools/portfolio.ts";
+import { ADMIN_KEY, api, READ_KEY } from "./helpers/api.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { ask as askTool, portfolioBefore } from "./helpers/portfolio.ts";
 import { instrument, NOW, quote } from "./helpers/world.ts";
@@ -444,7 +450,7 @@ describe("a fund's name and currency", () => {
     ).toMatchObject({ error: "conflict" });
     // named by its name alone, the name only finds it
     expect(() => parseFundTool({ name: "Made Up Growth Fund" })).toThrow(
-      "changes price, market or currency",
+      "changes price, market, currency or holdings",
     );
     expect((await fundRow(m)).name).toBe("Made Up Growth Fund");
   });
@@ -762,5 +768,379 @@ describe("migration 0026-fund-trades", () => {
       { name: "positions_by_instrument" },
       { name: "positions_by_portfolio" },
     ]);
+  });
+});
+
+describe("a fund's holdings, entered by hand", () => {
+  const bulletin = {
+    as_of: "2026-09-30",
+    top: [
+      { name: "Made Up Bond 2030", weight: 4.5 },
+      { symbol: "US:AAA", weight: 9.25 },
+      { symbol: "us:bbb", name: "Beta, as the report names it", weight: 6 },
+    ],
+    assets: { stock: 70, bond: 25, cash: 5 },
+  };
+  const sectors = { technology: 30.5, energy: 12, utilities: 7.5 };
+
+  async function held() {
+    const t = await setup();
+    instrument(t.db, "US:BBB", { currency: "USD", name: "Beta Made Up" });
+    await fund(t.m, { isin: ONE, name: "Made Up Fund" });
+    return t;
+  }
+
+  const read = async (m: Markets, who: Who = CASEY) =>
+    askTool(m, who, "research", {
+      symbol: `fund:${ONE}`,
+      section: "top_holdings",
+    });
+
+  test("read back through research as an ETF's, ranked by weight", async () => {
+    const { m, asked } = await held();
+    const none = await read(m);
+    expect(none.body.message).toBe("no holdings entered for this fund");
+    const w = await ask(m, "portfolio_fund", {
+      isin: ONE,
+      holdings: { ...bulletin, sectors },
+    });
+    expect(w.error).toBe(false);
+    const r = await read(m);
+    expect(r.error).toBe(false);
+    expect(r.body).toMatchObject({
+      id: `fund:${ONE}`,
+      name: "Made Up Fund",
+      section: "top_holdings",
+      source: "owner",
+      as_of: "2026-09-30",
+      sectors_as_of: "2026-09-30",
+      top_weight_percent: 19.75,
+      assets: {
+        stock_percent: 70,
+        bond_percent: 25,
+        cash_percent: 5,
+        other_percent: null,
+      },
+      bond_ratings: [],
+    });
+    expect(r.body.top).toEqual([
+      {
+        rank: 1,
+        symbol: "US:AAA",
+        id: "US:AAA",
+        name: "Alpha Made Up",
+        weight_percent: 9.25,
+      },
+      {
+        rank: 2,
+        symbol: "US:BBB",
+        id: "US:BBB",
+        name: "Beta, as the report names it",
+        weight_percent: 6,
+      },
+      {
+        rank: 3,
+        symbol: null,
+        id: null,
+        name: "Made Up Bond 2030",
+        weight_percent: 4.5,
+      },
+    ]);
+    expect(r.body.sectors.map((s: { sector: string }) => s.sector)).toEqual([
+      "technology",
+      "energy",
+      "utilities",
+    ]);
+    expect(w.body.holdings).toEqual(
+      Object.fromEntries(
+        Object.entries(r.body).filter(
+          ([k]) => !["id", "name", "type", "currency", "section"].includes(k),
+        ),
+      ),
+    );
+    expect(asked).toEqual([]);
+  });
+
+  test("top and assets are replaced whole; sectors only when given", async () => {
+    const { m } = await held();
+    await ask(m, "portfolio_fund", {
+      isin: ONE,
+      holdings: { ...bulletin, as_of: "2026-06-30", sectors },
+    });
+    // the next bulletin: five rows and a split, no sectors
+    await ask(m, "portfolio_fund", {
+      isin: ONE,
+      holdings: {
+        as_of: "2026-07-31",
+        top: [{ name: "Made Up Bank", weight: 8 }],
+        assets: { stock: 80, cash: 20 },
+      },
+    });
+    let r = (await read(m)).body;
+    expect(r.top.map((h: { name: string }) => h.name)).toEqual([
+      "Made Up Bank",
+    ]);
+    expect(r.assets.bond_percent).toBeNull();
+    expect([r.as_of, r.sectors_as_of]).toEqual(["2026-07-31", "2026-06-30"]);
+    expect(r.sectors).toHaveLength(3);
+    // a later report's sectors replace the earlier ones
+    await ask(m, "portfolio_fund", {
+      isin: ONE,
+      holdings: { as_of: "2026-08-31", sectors: { healthcare: 40 } },
+    });
+    r = (await read(m)).body;
+    expect(r.sectors).toEqual([{ sector: "healthcare", weight_percent: 40 }]);
+    expect([r.as_of, r.sectors_as_of]).toEqual(["2026-07-31", "2026-08-31"]);
+    expect(r.top).toHaveLength(1);
+  });
+
+  test("an earlier entry never replaces a later part", async () => {
+    const { m } = await held();
+    await ask(m, "portfolio_fund", { isin: ONE, holdings: bulletin });
+    const late = await ask(m, "portfolio_fund", {
+      isin: ONE,
+      holdings: { ...bulletin, as_of: "2026-06-30", sectors },
+    });
+    expect(late.error).toBe(true);
+    expect(late.body.error).toBe("conflict");
+    expect(late.body.message).toContain("send sectors alone");
+    // nothing of the refused entry was kept
+    expect((await read(m)).body.sectors).toEqual([]);
+    const alone = await ask(m, "portfolio_fund", {
+      isin: ONE,
+      holdings: { as_of: "2026-06-30", sectors },
+    });
+    expect(alone.error).toBe(false);
+    expect((await read(m)).body.as_of).toBe("2026-09-30");
+  });
+
+  test("weights, keys and symbols are checked", async () => {
+    const { m, asked } = await held();
+    const refused = async (holdings: object) => {
+      const r = await ask(m, "portfolio_fund", { isin: ONE, holdings });
+      expect(r.error).toBe(true);
+      return r.body.message as string;
+    };
+    const day = { as_of: "2026-09-30" };
+    expect(
+      await refused({ ...day, top: [{ name: "X", weight: 101 }], assets: {} }),
+    ).toContain("from above 0 to 100");
+    expect(
+      await refused({
+        ...day,
+        top: [
+          { name: "X", weight: 60 },
+          { name: "Y", weight: 50 },
+        ],
+        assets: { stock: 100 },
+      }),
+    ).toContain("sum to more than 100");
+    expect(
+      await refused({ ...day, top: [{ name: "X", weight: 5 }] }),
+    ).toContain("go together");
+    expect(await refused({ ...day, sectors: { tech: 10 } })).toContain(
+      "not tech",
+    );
+    expect(
+      await refused({
+        ...day,
+        assets: { gold: 5 },
+        top: [{ name: "X", weight: 1 }],
+      }),
+    ).toContain("not gold");
+    expect(await refused({ as_of: "2026-12-31", sectors })).toContain(
+      "in the future",
+    );
+    expect(
+      await refused({
+        ...day,
+        top: [
+          { symbol: "US:AAA", weight: 2 },
+          { symbol: "us:aaa", weight: 1 },
+        ],
+        assets: { stock: 100 },
+      }),
+    ).toContain("US:AAA twice");
+    expect(
+      await refused({
+        ...day,
+        top: Array.from({ length: 11 }, (_, k) => ({
+          name: `H${k}`,
+          weight: 1,
+        })),
+        assets: { stock: 100 },
+      }),
+    ).toContain("1 to 10");
+    asked.length = 0;
+    // an unknown symbol is looked up as any symbol argument is
+    const unknown = await ask(m, "portfolio_fund", {
+      isin: ONE,
+      holdings: {
+        ...day,
+        top: [{ symbol: "ZZZZ", weight: 1 }],
+        assets: { stock: 100 },
+      },
+    });
+    expect(unknown.error).toBe(true);
+    expect(unknown.body.message).toContain("holding ZZZZ");
+    expect((await read(m)).body.message).toBe(
+      "no holdings entered for this fund",
+    );
+  });
+
+  test("Yahoo's refresh never asks for or overwrites them", async () => {
+    const { m, db, asked } = await held();
+    await ask(m, "portfolio_fund", { isin: ONE, holdings: bulletin });
+    const before = (await read(m)).body;
+    const jobs = topHoldingsJobs({
+      ctx: { db, clock: m.clock, writer: m.writer, yahoo: m.yahoo },
+      log: silent,
+    });
+    expect((await jobs.tick()).asked).toEqual([]);
+    expect(topHoldingsAsked(readInstrument(db, `fund:${ONE}`)!)).toBe(false);
+    expect((await read(m)).body).toEqual(before);
+    expect(asked).toEqual([]);
+  });
+});
+
+describe("a fund read by its key", () => {
+  const OTHER: Who = { ...CASEY, name: "nobody", user: "nobody" };
+  const MARKETS_ONLY: Who = { ...CASEY, portfolio: "none" };
+
+  async function priced() {
+    const t = await setup();
+    await fund(
+      t.m,
+      { isin: ONE, name: "Made Up Fund" },
+      { date: "2026-08-03" },
+    );
+    for (const [date, price] of [
+      ["2026-08-31", 5.25],
+      ["2026-09-28", 5.5],
+      ["2026-09-30", 5.75],
+      ["2026-10-20", 6],
+    ] as const) {
+      await updateFund(t.m, CASEY, ONE, { price, date });
+    }
+    return t;
+  }
+
+  const history = (m: Markets, args: object, who: Who = CASEY) =>
+    askTool(m, who, "history", { symbol: `fund:${ONE}`, ...args });
+
+  test("history answers its entered prices as closes, never a source", async () => {
+    const { m, asked } = await priced();
+    const daily = await history(m, { from: "2026-08-01" });
+    expect(daily.error).toBe(false);
+    expect(daily.body).toMatchObject({
+      id: `fund:${ONE}`,
+      source: "owner",
+      currency: "EUR",
+      interval: "1d",
+      to: "2026-10-20",
+      session: null,
+      stale: [],
+    });
+    expect(
+      daily.body.bars.map((b: { date: string; close: number }) => [
+        b.date,
+        b.close,
+      ]),
+    ).toEqual([
+      ["2026-08-03", 5],
+      ["2026-08-31", 5.25],
+      ["2026-09-28", 5.5],
+      ["2026-09-30", 5.75],
+      ["2026-10-20", 6],
+    ]);
+    expect(daily.body.bars[0]).toMatchObject({
+      open: null,
+      high: null,
+      low: null,
+      volume: null,
+      final: true,
+      signals: null,
+    });
+    // a week keeps its last price, under its Monday
+    const weekly = await history(m, { interval: "1wk", from: "2026-08-01" });
+    expect(
+      weekly.body.bars.map((b: { date: string; close: number }) => [
+        b.date,
+        b.close,
+      ]),
+    ).toEqual([
+      ["2026-08-03", 5],
+      ["2026-08-31", 5.25],
+      ["2026-09-28", 5.75],
+      ["2026-10-19", 6],
+    ]);
+    const intraday = await history(m, { interval: "5m" });
+    expect(intraday.body.error).toBe("no_data");
+    expect(asked).toEqual([]);
+  });
+
+  test("is not found by a person who never held or priced it", async () => {
+    const { m } = await priced();
+    for (const who of [OTHER, MARKETS_ONLY]) {
+      for (const args of [{}, { interval: "5m" }]) {
+        const r = await history(m, args, who);
+        expect(r.body.error).toBe("not_found");
+      }
+      const r = await askTool(m, who, "research", {
+        symbol: `fund:${ONE}`,
+        section: "top_holdings",
+      });
+      expect(r.body.error).toBe("not_found");
+    }
+    // the same answer as a fund that is not there
+    const missing = await askTool(m, CASEY, "history", {
+      symbol: `fund:${TWO}`,
+    });
+    expect(missing.body.message).toBe(
+      (await history(m, {}, OTHER)).body.message,
+    );
+  });
+
+  test("REST answers its detail and bars", async () => {
+    const { m, asked } = await priced();
+    await ask(m, "portfolio_fund", {
+      isin: ONE,
+      holdings: { as_of: "2026-09-30", sectors: { energy: 20 } },
+    });
+    const call = api(m);
+    const get = (path: string, key = ADMIN_KEY) =>
+      call(
+        new Request(`http://markets.test/api/v1/instruments/${path}`, {
+          headers: { authorization: `Bearer ${key}` },
+        }),
+      );
+    const detail = await get(`fund:${ONE}`);
+    expect(detail.status).toBe(200);
+    const d = await detail.json();
+    expect(d).toMatchObject({
+      input: `fund:${ONE}`,
+      credit: null,
+      intraday: false,
+      error: null,
+      instrument: { id: `fund:${ONE}`, kind: "FUND", price: 6 },
+      quote: {
+        kind: "hand_price",
+        price: 6,
+        as_of: "2026-10-20",
+        change: null,
+        session: null,
+      },
+      top_holdings: { source: "owner", sectors_as_of: "2026-09-30" },
+    });
+    const bars = await get(`fund:${ONE}/bars?from=2026-09-01&to=2026-09-30`);
+    expect(bars.status).toBe(200);
+    expect(bars.headers.get("cache-control")).not.toContain("max-age");
+    const b = await bars.json();
+    expect(b.instrument.basis).toContain("entered by hand");
+    expect(b.bars.map((x: { close: number }) => x.close)).toEqual([5.5, 5.75]);
+    // the read key opens no portfolio
+    expect((await get(`fund:${ONE}`, READ_KEY)).status).toBe(404);
+    expect((await get(`fund:${ONE}/bars`, READ_KEY)).status).toBe(404);
+    expect(asked).toEqual([]);
   });
 });

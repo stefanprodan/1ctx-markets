@@ -16,6 +16,7 @@ import {
 } from "../market/intraday.ts";
 import type { StaleReason } from "../market/stale.ts";
 import { localDate } from "../market/zone.ts";
+import { isFundKey } from "../portfolios/funds.ts";
 import { liveTarget } from "../signals/target.ts";
 import { YAHOO } from "../sources/ids.ts";
 import type { Db } from "../storage/db/index.ts";
@@ -29,9 +30,11 @@ import {
 } from "./answer.ts";
 import { ArgError } from "./args.ts";
 import { readExtendedPoints } from "./extended.ts";
+import { noFund, seenFund } from "./funds.ts";
 import type { ExtendedPoint, Markets } from "./markets.ts";
 import { readLatest, sessionOf } from "./quote.ts";
 import { type ItemError, readTargets } from "./targets.ts";
+import { NO_ACCESS, type Who } from "./who.ts";
 
 export type IntradayArgs = {
   symbol: string;
@@ -129,7 +132,13 @@ export async function readIntradayHistory(
   m: Markets,
   args: IntradayArgs,
   page: { from: string; to: string; start: number } | null,
+  who: Who = NO_ACCESS,
 ): Promise<IntradayRead> {
+  if (isFundKey(args.symbol)) {
+    return seenFund(m.db, who, args.symbol) === null
+      ? { input: args.symbol, error: noFund }
+      : noData(args.symbol, NO_SOURCE);
+  }
   // one budget for the call, the extended read included
   const deadline = m.clock.now() + m.callMs;
   const [target] = await readTargets(m, [args.symbol], deadline);
@@ -192,6 +201,7 @@ const POSITION = /^(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})_(\d{1,16})$/;
 export async function intradayAnswer(
   m: Markets,
   args: IntradayArgs,
+  who: Who = NO_ACCESS,
 ): Promise<ToolResult> {
   // a cursor reads as it did before extended was an argument
   const { next, extended, ...rest } = args;
@@ -205,7 +215,7 @@ export async function intradayAnswer(
     }
     page = { from: at[1]!, to: at[2]!, start };
   }
-  const read = await readIntradayHistory(m, args, page);
+  const read = await readIntradayHistory(m, args, page, who);
   if ("error" in read) return errorResult({ input: read.input, ...read.error });
   const { instrument, from, to, points } = read;
   const items = points.map((p) => ({

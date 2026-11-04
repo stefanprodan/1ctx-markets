@@ -18,6 +18,7 @@ import {
   ref,
   type Schema,
   str,
+  topHoldings,
   values,
 } from "./schemas.ts";
 
@@ -406,6 +407,39 @@ export const portfolioSchemas: Record<string, Schema> = {
         str,
         "A new currency, only while the fund has no live trades; it drops the fund's prices, which were in the old one.",
       ),
+      holdings: note(
+        object(
+          {
+            as_of: note(str, "The day of the report they are from."),
+            top: note(
+              list(
+                object(
+                  {
+                    symbol: note(
+                      str,
+                      "A listing as `/quotes` takes it; fetched when unknown.",
+                    ),
+                    name: note(str, "Needed without a symbol."),
+                    weight: note(num, "Percent of the fund, above 0."),
+                  },
+                  ["weight"],
+                ),
+              ),
+              "Up to 10 holdings, ranked by weight; replaces the stored ones with `assets`.",
+            ),
+            assets: note(
+              freeForm,
+              "Percent in `stock`, `bond`, `cash`, `other`, `preferred`, `convertible`; goes with `top`.",
+            ),
+            sectors: note(
+              freeForm,
+              "Percent by an ETF's sector keys (`technology`, `financial_services`, ...); replaces the stored sectors.",
+            ),
+          },
+          ["as_of"],
+        ),
+        "Holdings read back as an ETF's. A part as of a later day is never replaced by an earlier one (`conflict`).",
+      ),
     },
     [],
   ),
@@ -418,6 +452,7 @@ export const portfolioSchemas: Record<string, Schema> = {
         "The price that day had before, null when none.",
       ),
       renamed_from: note(str, "The fund's name before this update renamed it."),
+      holdings: note(topHoldings, "With `holdings` sent: as now stored."),
     },
     ["fund"],
   ),
@@ -1202,13 +1237,16 @@ export const portfolioPaths = {
       tags,
       operationId: "updateFund",
       security: WRITES,
-      summary: "Set a fund's price",
+      summary: "Set a fund's price or holdings",
       description:
-        "Sets its price per unit for a day, the owner's today by default: a price for a day already priced replaces it, a buy's too, and earlier days are kept. The latest values the holding. Also sets the market its money is in, and corrects its name (not another fund's) or its currency (only while it has no live trades).",
+        "Sets its price per unit for a day, the owner's today by default: a price for a day already priced replaces it, a buy's too, and earlier days are kept. The latest values the holding. Also sets the market its money is in, its holdings from its reports, and corrects its name (not another fund's) or its currency (only while it has no live trades).",
       requestBody: bodyOf(ref("FundChange")),
       responses: base({
         200: ok("The fund.", ref("UpdatedFund")),
         404: missing,
+        409: err(
+          "The name is another fund's, or holdings are older than the stored part they would replace (`conflict`).",
+        ),
         ...json415,
       }),
     },

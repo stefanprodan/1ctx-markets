@@ -186,24 +186,36 @@ const valuation = note(
   "P/E, forward P/E, PEG and EPS per US share, for a share whose metrics come from a foreign listing; with `metric` asked.",
 );
 const share = (name: string) => object({ [name]: str, weight_percent: num });
-const topHoldings = note(
+export const topHoldings = note(
   object(
     {
-      source: str,
+      source: note(
+        str,
+        "The source's name, or `owner` for a fund the owner prices, whose holdings are entered by hand.",
+      ),
       error: str,
       message: note(
         str,
-        "Why there are none (the source has none for the fund, or it is not a fund), or why the fetch failed, with `error`.",
+        "Why there are none (the source has none for the fund, none were entered, or it is not a fund), or why the fetch failed, with `error`.",
       ),
       fetched_at: nstr,
       stale: note(list(str), STALE),
+      entered_at: note(nstr, "A hand entry's: when it was last entered."),
+      as_of: note(
+        nstr,
+        "A hand entry's: the day `top` and `assets` are as of, null until entered.",
+      ),
+      sectors_as_of: note(
+        nstr,
+        "A hand entry's: the day `sectors` are as of, null until entered.",
+      ),
       top: note(
         list(
           object({
             rank: int,
             symbol: note(
               nstr,
-              "The holding's symbol; null when the source gives a bare exchange code.",
+              "The holding's symbol; null when the source gives a bare exchange code. A hand entry's is the stored instrument's id.",
             ),
             id: note(nstr, "The stored instrument with this symbol, if any."),
             name: str,
@@ -1041,8 +1053,12 @@ export const schemas: Record<string, Schema> = {
               source: str,
               unit: brief.unit,
               currency: nstr,
-              kind: brief.kind,
+              kind: note(
+                values(["market_quote", "observation", "hand_price"]),
+                "`hand_price` for a fund the owner prices: its latest entered price, with no day change, session or returns.",
+              ),
               price: nnum,
+              as_of: note(str, "A hand price's day."),
               observation: brief.observation,
               previous_close: nnum,
               change: nnum,
@@ -1111,7 +1127,7 @@ export const schemas: Record<string, Schema> = {
       ),
       top_holdings: note(
         topHoldings,
-        "For an ETF or mutual fund only, as the research route's `top_holdings`.",
+        "For an ETF or mutual fund, as the research route's `top_holdings`; for a fund the owner prices, its holdings once entered.",
       ),
     },
     ["input", "instrument", "intraday", "credit", "quote", "error"],

@@ -287,6 +287,9 @@ tracking in `docs/storage.md`; the source queue and deadlines in
   answers `not_found` saying the owner prices it and the holdings have
   its price, before any lookup, the same held or not, so no source is
   asked for it and a key without portfolio access learns nothing.
+  `history` and `research` `top_holdings` answer it from what was
+  entered, to a caller who holds or priced it, else the same
+  `not_found` as for no fund (`docs/portfolios.md`).
 - **What the server lacks is fetched inside the call**: an instrument
   with no bars gets ten years of history, its signals and a fresh
   quote in one write (`fetchInstrument()`); one no longer tracked is

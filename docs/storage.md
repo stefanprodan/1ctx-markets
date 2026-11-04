@@ -408,6 +408,13 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   none deletes them, a failed one keeps them. No history. The names
   keep clear of the owner-priced `funds` tables, which are private
   holdings (`docs/portfolios.md`).
+- **A fund the owner prices keeps its hand-entered holdings in the same
+  three tables** (`src/portfolios/fund-holdings.ts`), so they read as
+  an ETF's. `0039-fund-holdings-as-of` adds `as_of` (the day the rows
+  and the six positions are as of) and `sectors_as_of` to
+  `fund_top_holdings`, both null for Yahoo's; `fetched_at` is when they
+  were last entered and a row's `symbol` is a stored instrument's id.
+  Yahoo's job never asks for or replaces them (`asked()`).
 
 ## Retention
 

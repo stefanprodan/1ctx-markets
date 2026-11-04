@@ -2943,6 +2943,28 @@ async function portfolioOperations(
     200,
   );
   expect(priced.replaced).toBeNull();
+  const holdings = (as_of: string) =>
+    send("PATCH", {
+      holdings: {
+        as_of,
+        top: [{ name: "Made Up Holding", weight: 5 }],
+        assets: { stock: 90, cash: 10 },
+        sectors: { energy: 40 },
+      },
+    });
+  const held = await check(
+    "PATCH",
+    FONE,
+    await t.call(`${F}/${isin}`, holdings("2026-09-30")),
+    200,
+  );
+  expect(held.holdings).toMatchObject({ source: "owner", as_of: "2026-09-30" });
+  await check(
+    "PATCH",
+    FONE,
+    await t.call(`${F}/${isin}`, holdings("2026-06-30")),
+    409,
+  );
   await check(
     "PATCH",
     FONE,

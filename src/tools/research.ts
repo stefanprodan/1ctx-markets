@@ -22,6 +22,7 @@ import {
   optionalText,
   text,
 } from "../operations/args.ts";
+import { fundHoldingsAnswer, noFund, seenFund } from "../operations/funds.ts";
 import type { Markets } from "../operations/markets.ts";
 import { quoteItem, readLatest } from "../operations/quote.ts";
 import {
@@ -46,6 +47,8 @@ import {
   topHoldingsSummary,
   valuationSummary,
 } from "../operations/research.ts";
+import { NO_ACCESS, type Who } from "../operations/who.ts";
+import { isFundKey } from "../portfolios/funds.ts";
 import { type FilingCursor, readFilings } from "../sources/edgar/store.ts";
 import { readResearch, sectionState } from "../sources/finnhub/read.ts";
 import { NO_DATA, SECTIONS, type Section } from "../sources/finnhub/store.ts";
@@ -117,6 +120,7 @@ export function parseResearch(input: unknown): ResearchArgs {
 export async function researchAnswer(
   m: Markets,
   args: ResearchArgs,
+  who: Who = NO_ACCESS,
 ): Promise<ToolResult> {
   const { next, since: given, ...rest } = args;
   // without since the digest is what cursors were bound to before it
@@ -148,6 +152,21 @@ export async function researchAnswer(
     ) {
       throw new ArgError("next does not continue these arguments");
     }
+  }
+  // a fund the owner prices has only the holdings entered for it
+  if (args.section === "top_holdings" && isFundKey(args.symbol)) {
+    const fund = seenFund(m.db, who, args.symbol);
+    if (fund === null) return errorResult({ input: args.symbol, ...noFund });
+    const text = JSON.stringify({
+      id: fund.id,
+      name: fund.name,
+      type: fund.type,
+      currency: fund.currency,
+      section: args.section,
+      ...fundHoldingsAnswer(m.db, fund.id),
+    });
+    if (!fits(text)) throw new PageOverflow();
+    return textResult(text);
   }
   const withNews = args.section === "overview" || args.section === "news";
   const withFilings = args.section === "overview" || args.section === "filings";

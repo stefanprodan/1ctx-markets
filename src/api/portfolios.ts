@@ -518,6 +518,7 @@ function routesOf(m: Markets): Route[] {
           "market",
           "name",
           "currency",
+          "holdings",
         ]);
         return answer(await updateFund(m, who, isin, parseFundChange(f, true)));
       },
