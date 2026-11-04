@@ -47,6 +47,7 @@ export function Page({
   stale,
   staleCount,
   failed,
+  tabs,
   foot,
   children,
 }: {
@@ -77,6 +78,9 @@ export function Page({
   staleCount?: number;
   // the page could not load at all: 1ctx's notice, in place of the body
   failed?: Failed;
+  // under the head, kept when the page did not load, so the other tabs
+  // stay in reach
+  tabs?: ComponentChildren;
   // a footer, only on a page that owes a credit (its charts'): the
   // server's name and version on the left, the credit on the right
   foot?: ComponentChildren;
@@ -132,6 +136,7 @@ export function Page({
           {actions}
         </div>
       </div>
+      {tabs}
       {notice && (
         <div class="notice-failed page-failed" role="alert">
           <Icon name="alert" size={16} class="page-failed-icon" />

@@ -408,7 +408,7 @@ describe("the valuation job", () => {
     expect(readValuation(t.db, "US:TSM")).toBeNull();
   });
 
-  test("the status page names the job in plain words", () => {
+  test("Status names the job in plain words", () => {
     expect(jobLabel("yahoo", "valuation")).toBe("ADR valuations");
     expect(jobAbout("yahoo", "valuation")).toContain("foreign listing");
   });

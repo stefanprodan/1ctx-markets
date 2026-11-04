@@ -1,6 +1,6 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-// The Admin page's calls and signals: the people and the SMTP settings.
+// Server admin's calls and signals: the people and the SMTP settings.
 // A change answers the refusal's sentence, or null once done.
 
 import { batch, signal } from "@preact/signals";

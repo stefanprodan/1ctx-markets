@@ -5,7 +5,7 @@ import { markets } from "../data/store.ts";
 import { Icon, Mark } from "../lib/icons.tsx";
 import { useServerFailing } from "./failing.ts";
 import { iconClass } from "./Rail.tsx";
-import { HOME, lit, railFor, STATUS } from "./routes.ts";
+import { ADMIN, HOME, lit, railFor } from "./routes.ts";
 import { showRail } from "./shell.ts";
 import {
   avatarIcon,
@@ -34,7 +34,7 @@ export function Strip({ here }: { here: string }) {
       </a>
       <nav class="strip-nav">
         {railFor(markets.isAdmin.value).map((r) => {
-          const red = r.path === STATUS && failing;
+          const red = r.path === ADMIN && failing;
           return (
             <a
               key={r.path}

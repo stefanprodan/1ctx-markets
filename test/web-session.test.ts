@@ -461,7 +461,12 @@ describe("the served UI", () => {
           const res = await fetch(`${url}${asset}`);
           expect([asset, res.status]).toEqual([asset, 200]);
         }
-        for (const path of ["/status", "/screener", "/symbol/US%3AAAPL"]) {
+        for (const path of [
+          "/admin",
+          "/admin/settings",
+          "/screener",
+          "/symbol/US%3AAAPL",
+        ]) {
           const res = await fetch(`${url}${path}`);
           expect([path, res.status]).toEqual([path, 200]);
           expect(await res.text()).toBe(html);
@@ -546,7 +551,7 @@ describe("the served UI", () => {
         for (const asset of [...page.matchAll(/(?:src|href)="(\/[^"]+)"/g)]) {
           await read(asset[1]!);
         }
-        await read("/status");
+        await read("/admin");
         await read("/screener");
         for (const icon of Object.keys(ICONS)) {
           expect((await read(icon)).status).toBe(200);
@@ -581,7 +586,7 @@ describe("the served UI", () => {
         const docs = ours.slice(seen.slice(0, ui).join("\n").length);
         expect(docs.includes(".key")).toBe(false);
         expect(seen.length).toBeGreaterThan(20);
-        // the SMTP tab names the directory every install keeps its key
+        // the SMTP drawer names the directory every install keeps its key
         // files in, as the docs do, so an admin knows where the password
         // file goes; never a path of this one
         const all = seen

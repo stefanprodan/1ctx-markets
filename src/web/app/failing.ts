@@ -6,9 +6,9 @@ import { markets } from "../data/store.ts";
 import { useRefresh } from "../lib/refresh.ts";
 import { troubled } from "../views/Status.model.ts";
 
-// whether the status page shows anything failing, read every refresh
-// for the rail's or the strip's status icon; an admin's only, since the
-// status is theirs and the shell shows for a signed-out page too
+// whether Server admin's Status shows anything failing, read every
+// refresh for its icon in the rail, the strip and More; an admin's
+// only, since the status is theirs and the shell shows signed out too
 export function useServerFailing(): boolean {
   const signed =
     markets.signedIn.value === true && markets.isAdmin.value === true;

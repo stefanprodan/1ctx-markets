@@ -13,7 +13,7 @@ import { useServerFailing } from "./failing.ts";
 import { SCREENER } from "./paths.ts";
 import { iconClass, Recent, SharedWithMe } from "./Rail.tsx";
 import { path, visits } from "./router.ts";
-import { HOME, lit, RAIL, railFor, STATUS } from "./routes.ts";
+import { ADMIN, HOME, lit, RAIL, railFor } from "./routes.ts";
 import { UserItems } from "./UserMenu.tsx";
 import "./bar.css";
 
@@ -271,7 +271,7 @@ export function More({
       {(close) => (
         <nav class="more" aria-label="More">
           {moreFor(markets.isAdmin.value).map((r) => {
-            const red = r.path === STATUS && failing;
+            const red = r.path === ADMIN && failing;
             return (
               <a
                 key={r.path}

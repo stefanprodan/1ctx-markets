@@ -35,10 +35,13 @@ import {
 } from "../src/web/views/Admin.model.ts";
 import {
   AdminPage,
+  emailAsked,
   PersonDetails,
   peopleColumns,
   personItems,
-  SmtpTab,
+  SmtpDrawer,
+  settingRows,
+  watchEmailAsk,
 } from "../src/web/views/Admin.tsx";
 import { Keys, keyColumns, ownKey } from "../src/web/views/Connect.tsx";
 import { enteredBy } from "../src/web/views/Portfolios.model.ts";
@@ -55,6 +58,7 @@ import {
   UNREAD,
 } from "../src/web/views/SignIn.model.ts";
 import { CodeBoxes, SignIn } from "../src/web/views/SignIn.tsx";
+import { AdminStatus } from "../src/web/views/Status.tsx";
 
 const NOW = Date.parse("2026-11-03T12:00:00Z");
 
@@ -329,14 +333,14 @@ describe("members", () => {
     const was = path.value;
     markets.signedIn.value = true;
     try {
-      for (const at of ["/status", "/admin", "/admin/smtp"]) {
+      for (const at of ["/admin", "/admin/settings", "/admin/users"]) {
         path.value = at;
         expect([at, as(MEMBER, () => render(<App />))]).toEqual([at, ""]);
       }
-      path.value = "/admin";
+      path.value = "/admin/users";
       const html = as(OPERATOR, () => render(<App />));
       expect(html).toContain("People");
-      expect(html).toContain('href="/admin/smtp"');
+      expect(html).toContain('href="/admin/settings"');
     } finally {
       path.value = was;
       markets.signedIn.value = undefined;
@@ -344,7 +348,7 @@ describe("members", () => {
   });
 
   test("an admin's routes are pages the server serves", () => {
-    for (const p of ["/admin", "/admin/smtp"]) {
+    for (const p of ["/admin", "/admin/settings", "/admin/users"]) {
       expect(UI_PATHS as readonly string[]).toContain(p);
       expect(ROUTES.some((r) => r.path === p && r.admin === true)).toBe(true);
     }
@@ -414,7 +418,7 @@ const person = (more: Partial<Person> = {}): Person => ({
   ...more,
 });
 
-describe("the Admin page", () => {
+describe("Server admin", () => {
   test("people: the reader marked you, the admin key without email, the invited", () => {
     const cols = peopleColumns(OPERATOR.id, NOW);
     const cell = (key: string, p: Person) =>
@@ -578,18 +582,19 @@ describe("the Admin page", () => {
     const s = store(fake({}).fetch);
     s.admin.smtp.value = smtp();
     s.me.value = OPERATOR;
-    const mine = render(<SmtpTab store={s} />);
+    const mine = render(<SmtpDrawer store={s} onClose={() => {}} />);
     expect(mine).toContain(">Save</button>");
     expect(mine).toContain(">Remove</button>");
-    expect(mine).toContain(">Send test email</button>");
+    expect(mine).toContain(">Send test</button>");
     expect(mine).toContain("email-casey.key");
     expect(mine).not.toMatch(/<input[^>]*disabled/);
     expect(mine).not.toContain("placeholder");
     s.me.value = ADMIN;
-    const theirs = render(<SmtpTab store={s} />);
+    const theirs = render(<SmtpDrawer store={s} onClose={() => {}} />);
     expect(theirs).not.toContain(">Save</button>");
     expect(theirs).not.toContain(">Remove</button>");
-    expect(theirs).not.toContain("Send test email");
+    expect(theirs).not.toContain("Send test");
+    expect(theirs).toContain(">Close</button>");
     expect(theirs.match(/<input[^>]*disabled/g)).toHaveLength(5);
     expect(theirs).toContain('value="smtp.example.com"');
   });
@@ -598,10 +603,91 @@ describe("the Admin page", () => {
     const s = store(fake({}).fetch);
     s.me.value = OPERATOR;
     s.admin.smtp.value = smtp({ email_on: false, key_missing: true });
-    const html = render(<SmtpTab store={s} />);
+    const html = render(<SmtpDrawer store={s} onClose={() => {}} />);
     expect(html).toContain("Put the password in secrets/ as email-casey.key.");
-    expect(html).toContain("Off");
-    expect(html).not.toContain("Send test email");
+    expect(html).not.toContain("Send test");
+  });
+
+  test("Settings lists SMTP with its server and whether email is on", () => {
+    expect(settingRows(smtp())).toEqual([
+      {
+        key: "email",
+        name: "SMTP",
+        detail: "smtp.example.com:465",
+        state: "On",
+      },
+    ]);
+    expect(settingRows(smtp({ email_on: false }))[0]?.state).toBe("Off");
+    expect(
+      settingRows(smtp({ settings: null, email_on: false }))[0],
+    ).toMatchObject({ detail: "Not set", state: "Off" });
+    const s = store(fake({}).fetch);
+    s.me.value = OPERATOR;
+    s.admin.smtp.value = smtp();
+    const html = render(<AdminPage store={s} tab="settings" />);
+    expect(html).toContain("Config");
+    for (const head of ["Setting", "Value", "State"])
+      expect(html).toContain(head);
+    expect(html).toContain("smtp.example.com:465");
+    // the drawer opens from the row, or on arrival from Set up email
+    expect(html).not.toContain('value="smtp.example.com"');
+    emailAsked.value = true;
+    try {
+      const asked = render(<AdminPage store={s} tab="settings" />);
+      expect(asked).toContain('value="smtp.example.com"');
+    } finally {
+      emailAsked.value = false;
+    }
+  });
+
+  test("Set up email's ask lasts only while on Settings", () => {
+    const was = path.value;
+    const stop = watchEmailAsk();
+    try {
+      // as Users asks: the ask first, then the step to Settings
+      path.value = "/admin/users";
+      emailAsked.value = true;
+      path.value = "/admin/settings";
+      expect(emailAsked.value).toBe(true);
+      // left before Settings drew, or after its load failed
+      path.value = "/";
+      expect(emailAsked.value).toBe(false);
+    } finally {
+      stop();
+      emailAsked.value = false;
+      path.value = was;
+    }
+  });
+
+  test("a tab that did not load keeps the tabs", () => {
+    const s = store(fake({}).fetch);
+    s.me.value = OPERATOR;
+    s.admin.peopleError.value = "the server failed";
+    s.admin.peopleCode.value = 500;
+    const html = render(<AdminPage store={s} tab="users" />);
+    expect(html).toContain("This page did not load");
+    expect(html).toContain('href="/admin/settings"');
+    expect(html).toContain('href="/admin"');
+    markets.statusError.value = "the server failed";
+    markets.statusCode.value = 500;
+    try {
+      const status = render(<AdminStatus />);
+      expect(status).toContain("This page did not load");
+      expect(status).toContain('href="/admin/users"');
+    } finally {
+      markets.statusError.value = null;
+      markets.statusCode.value = null;
+    }
+  });
+
+  test("Remove asks once in the SMTP drawer's foot", () => {
+    const s = store(fake({}).fetch);
+    s.me.value = OPERATOR;
+    s.admin.smtp.value = smtp({ settings: null, email_on: false });
+    // nothing saved, nothing to remove
+    expect(render(<SmtpDrawer store={s} onClose={() => {}} />)).not.toContain(
+      ">Remove</button>",
+    );
   });
 
   test("Users says how to set up email while it is off", () => {
@@ -825,15 +911,15 @@ describe("after the review", () => {
       email_on: true,
       key_missing: false,
     };
-    const html = render(<SmtpTab store={s} />);
+    const html = render(<SmtpDrawer store={s} onClose={() => {}} />);
     expect(html).toContain("Add your email to send a test.");
-    expect(html).toMatch(/disabled[^>]*>Send test email/);
+    expect(html).toMatch(/disabled[^>]*>Send test</);
     expect(html).toMatch(/aria-label="Password file"[^>]*disabled/);
     expect(html).toContain("No files");
     s.me.value = { ...OPERATOR, email: "casey@example.com" };
-    const mine = render(<SmtpTab store={s} />);
+    const mine = render(<SmtpDrawer store={s} onClose={() => {}} />);
     expect(mine).not.toContain("Add your email to send a test.");
-    expect(mine).not.toMatch(/disabled[^>]*>Send test email/);
+    expect(mine).not.toMatch(/disabled[^>]*>Send test</);
   });
 
   test("the code boxes keep their digits' size on a phone, and the line its height", async () => {

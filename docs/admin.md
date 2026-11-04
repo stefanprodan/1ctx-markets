@@ -148,13 +148,13 @@ never signs in and a sign-in never opens `/mcp`.
   (`admin` or `member`), `created_at`, `last_sign_in_at`. A `member`
   has their own data in full (portfolios, profile, dashboard, rules,
   keys), the market pages and Connect agents; an `admin` also Server
-  status, refetch, delete, retry, and the people and email routes.
+  admin's status, refetch, delete, retry, and the people and email routes.
 - **The operator** (`OPERATOR`) always exists, is an admin, signs in
   with `user-admin.key`, and cannot be removed or made a member (409),
   so no admin locks everyone out and a mail outage never does. Their
   email is null until they add one (`PATCH /ui/me`, `docs/web.md`).
 - **No admin demotes or removes themself** (409): another admin does,
-  so an admin's slip never takes the Admin page from them.
+  so an admin's slip never takes Server admin from them.
 - **Invite only, by email.** Adding a person needs email on (409
   otherwise: nobody could sign in), takes a name, an address and a role
   (`member` by default), and sends a 7-day link and code at once: "You

@@ -118,7 +118,7 @@ export function switchFailure(jobs: readonly JobStatus[]): string | null {
 export const sourcesOn = (list: readonly SourceStatus[]): number =>
   list.filter((s) => s.state === "on").length;
 
-// what turns the rail's status icon red: what this page shows red or
+// what turns Server admin's icon red: what this page shows red or
 // backing off
 export function troubled(s: {
   sources: readonly SourceStatus[];

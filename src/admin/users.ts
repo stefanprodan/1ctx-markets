@@ -147,7 +147,7 @@ export async function changeUser(
     return problem("conflict", "the operator stays an admin");
   }
   // an admin never demotes themself, so the last other admin's slip
-  // never locks the Admin page away from them
+  // never locks Server admin away from them
   if (id === who.user && role !== null && role !== "admin") {
     return problem("conflict", "you cannot change your own role");
   }

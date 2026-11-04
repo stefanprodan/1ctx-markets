@@ -1,6 +1,6 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-// The SMTP tab's routes, for admins: the settings row, the email- key file
+// The SMTP settings' routes, for admins: the settings row, the email- key file
 // names to pick from, and a test email. The password is the file's, put
 // there by hand; no answer or log line holds it.
 
