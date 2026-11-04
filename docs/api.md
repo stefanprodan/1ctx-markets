@@ -153,6 +153,8 @@ MCP tools copied onto paths.
   close per priced day, never cached as final, since a price can be
   entered again. Nothing is fetched or tracked; a caller who neither
   holds nor priced it, or whose key opens no portfolio, gets 404.
+  `GET /instruments/{symbol}/stored` answers `stored` true for a fund
+  the caller sees, since its read never fetches.
 - **A stored instrument whose read fails answers 200** with its row,
   `quote` null and `error` (`{code, detail}`), so a page keeps the
   stored price; a symbol never stored has no row, so its failure is a

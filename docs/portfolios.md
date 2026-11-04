@@ -137,8 +137,10 @@ once and valued on the live price the server already keeps.
   Weights are percents above 0 to 100, summing to at most 100 with half
   a point for rounding. A row's symbol is resolved as any symbol
   argument is (`resolveTargets()`: fetched when new, never marked read)
-  and kept as the instrument's id, so its row links to its page; a row
-  without one gives its name.
+  and kept as the instrument's id, answered as `id` beside the
+  listing's own `symbol`, as an ETF row's, so its row links to its
+  page; a row without one gives its name. A part older than the stored
+  one is refused before any symbol is looked up.
 - **No source ever fetches a fund the owner prices.** It is never
   tracked (`trackedIds()` and `portfolioInstruments()` leave out source
   `owner`), and Yahoo's top holdings job asks only Yahoo's ETFs and

@@ -413,7 +413,8 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   an ETF's. `0039-fund-holdings-as-of` adds `as_of` (the day the rows
   and the six positions are as of) and `sectors_as_of` to
   `fund_top_holdings`, both null for Yahoo's; `fetched_at` is when they
-  were last entered and a row's `symbol` is a stored instrument's id.
+  were last entered and a row's `symbol` column holds a stored
+  instrument's id.
   Yahoo's job never asks for or replaces them (`asked()`).
 
 ## Retention

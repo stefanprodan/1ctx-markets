@@ -617,9 +617,18 @@ export async function instrument(m: Markets, who: Who, url: URL, raw: string) {
 }
 
 // the instrument route's own lookup: stored means its read fetches nothing
-export function storedCheck(m: Markets, url: URL, raw: string): Response {
+export function storedCheck(
+  m: Markets,
+  who: Who,
+  url: URL,
+  raw: string,
+): Response {
   noQuery(url);
   const input = keyed(raw);
+  // a fund the owner prices is never fetched, so its read never waits
+  if (isFundKey(input)) {
+    return json({ input, stored: seenFund(m.db, who, input) !== null });
+  }
   const row = restStored(m.db, input, m.bvb !== null, false);
   return json({
     input,

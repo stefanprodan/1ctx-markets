@@ -666,7 +666,8 @@ function operator(admin: AdminDeps, world: World): Route[] {
       method: "GET",
       path: "/instruments/{symbol}/stored",
       scope: "session",
-      handle: async (_req, url, params) => storedCheck(m, url, params.symbol!),
+      handle: async (_req, url, params, who) =>
+        storedCheck(m, who, url, params.symbol!),
     },
     {
       method: "POST",

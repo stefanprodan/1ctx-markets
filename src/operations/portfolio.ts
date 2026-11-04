@@ -1481,6 +1481,11 @@ export async function updateFund(
       message: "holdings.as_of is in the future",
     } as const;
   }
+  // refused before any symbol is fetched; checked again in the write
+  if (change.holdings !== undefined) {
+    const older = olderHoldings(m.db, kept.id, change.holdings);
+    if (older !== null) return older;
+  }
   // a holding's symbol may be fetched, so before the write
   const entry =
     change.holdings === undefined

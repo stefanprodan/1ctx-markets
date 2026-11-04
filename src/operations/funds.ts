@@ -115,12 +115,16 @@ export function fundHoldingsAnswer(db: Db, id: string) {
   const p = row.positions;
   return {
     source: FUND_SOURCE,
+    // as Yahoo's answer has it, so a page reads both alike
+    fetched_at: iso(row.fetchedAt),
     entered_at: iso(row.fetchedAt),
     as_of: row.asOf,
     sectors_as_of: row.sectorsAsOf,
     top: row.holdings.map((h) => ({
       rank: h.rank,
-      symbol: h.symbol,
+      // the listing's own symbol, as an ETF row's; the key stays in id
+      symbol:
+        h.id === null ? h.symbol : (readInstrument(db, h.id)?.symbol ?? null),
       id: h.id,
       name: h.name,
       weight_percent: percent(h.weight),
@@ -349,7 +353,7 @@ export async function holdingsEntry(
 export function olderHoldings(
   db: Db,
   id: string,
-  entry: HoldingsEntry,
+  entry: Pick<HoldingsEntry, "asOf"> & { top?: unknown; sectors?: unknown },
 ): Failure | null {
   const days = holdingsDays(db, id);
   if (days === null) return null;

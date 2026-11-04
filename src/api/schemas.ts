@@ -215,7 +215,7 @@ export const topHoldings = note(
             rank: int,
             symbol: note(
               nstr,
-              "The holding's symbol; null when the source gives a bare exchange code. A hand entry's is the stored instrument's id.",
+              "The holding's symbol; null when the source gives a bare exchange code.",
             ),
             id: note(nstr, "The stored instrument with this symbol, if any."),
             name: str,

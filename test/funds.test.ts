@@ -40,7 +40,7 @@ import { MIGRATIONS } from "../src/storage/db/migrations/index.ts";
 import { writer } from "../src/storage/writer.ts";
 import { tools } from "../src/tools/index.ts";
 import { parseFundTool, parseTradeTool } from "../src/tools/portfolio.ts";
-import { ADMIN_KEY, api, READ_KEY } from "./helpers/api.ts";
+import { ADMIN_KEY, api, cookieFor, READ_KEY } from "./helpers/api.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { ask as askTool, portfolioBefore } from "./helpers/portfolio.ts";
 import { instrument, NOW, quote } from "./helpers/world.ts";
@@ -815,6 +815,8 @@ describe("a fund's holdings, entered by hand", () => {
       as_of: "2026-09-30",
       sectors_as_of: "2026-09-30",
       top_weight_percent: 19.75,
+      fetched_at: "2026-10-23T18:00:00Z",
+      entered_at: "2026-10-23T18:00:00Z",
       assets: {
         stock_percent: 70,
         bond_percent: 25,
@@ -826,14 +828,14 @@ describe("a fund's holdings, entered by hand", () => {
     expect(r.body.top).toEqual([
       {
         rank: 1,
-        symbol: "US:AAA",
+        symbol: "AAA",
         id: "US:AAA",
         name: "Alpha Made Up",
         weight_percent: 9.25,
       },
       {
         rank: 2,
-        symbol: "US:BBB",
+        symbol: "BBB",
         id: "US:BBB",
         name: "Beta, as the report names it",
         weight_percent: 6,
@@ -895,7 +897,7 @@ describe("a fund's holdings, entered by hand", () => {
   });
 
   test("an earlier entry never replaces a later part", async () => {
-    const { m } = await held();
+    const { m, asked } = await held();
     await ask(m, "portfolio_fund", { isin: ONE, holdings: bulletin });
     const late = await ask(m, "portfolio_fund", {
       isin: ONE,
@@ -906,6 +908,17 @@ describe("a fund's holdings, entered by hand", () => {
     expect(late.body.message).toContain("send sectors alone");
     // nothing of the refused entry was kept
     expect((await read(m)).body.sectors).toEqual([]);
+    // refused before its unknown symbol is looked up
+    const unknown = await ask(m, "portfolio_fund", {
+      isin: ONE,
+      holdings: {
+        as_of: "2026-06-30",
+        top: [{ symbol: "ZZZZ", weight: 1 }],
+        assets: { stock: 100 },
+      },
+    });
+    expect(unknown.body.error).toBe("conflict");
+    expect(asked).toEqual([]);
     const alone = await ask(m, "portfolio_fund", {
       isin: ONE,
       holdings: { as_of: "2026-06-30", sectors },
@@ -1138,6 +1151,16 @@ describe("a fund read by its key", () => {
     const b = await bars.json();
     expect(b.instrument.basis).toContain("entered by hand");
     expect(b.bars.map((x: { close: number }) => x.close)).toEqual([5.5, 5.75]);
+    // never fetched, so its read never waits on a first fetch
+    const stored = (name: string) =>
+      call(
+        new Request(
+          `http://markets.test/api/v1/instruments/fund:${name}/stored`,
+          { headers: { cookie: cookieFor(m.db, m.clock.now()) } },
+        ),
+      ).then((r) => r.json());
+    expect((await stored(ONE)).stored).toBe(true);
+    expect((await stored(TWO)).stored).toBe(false);
     // the read key opens no portfolio
     expect((await get(`fund:${ONE}`, READ_KEY)).status).toBe(404);
     expect((await get(`fund:${ONE}/bars`, READ_KEY)).status).toBe(404);
