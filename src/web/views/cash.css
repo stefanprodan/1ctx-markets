@@ -91,6 +91,17 @@
     stop-color: var(--card);
     stop-opacity: 0;
   }
+  .cs-past {
+    margin-top: var(--space-2);
+  }
+  .cs-past .field input {
+    width: 100%;
+    min-width: 0;
+  }
+  /* the day is required, so its empty field says nothing */
+  .cs-past .pf-date-empty:not(:focus-within)::after {
+    content: none;
+  }
   /* a note may run long: it wraps in the list, never cut */
   .cs-sub {
     white-space: normal;

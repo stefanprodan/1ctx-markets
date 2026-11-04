@@ -185,6 +185,10 @@ const position = object(
     broker: nstr,
     note: nstr,
     replaces: note({ type: ["integer", "null"] }, "The row this one updated."),
+    past: note(
+      bool,
+      "True on a cash balance dated before its row's day: kept in the row's history, never its figures. Left out otherwise.",
+    ),
     entered_by: str,
     entered_at: nstr,
     removed_at: nstr,
@@ -579,7 +583,10 @@ export const portfolioSchemas: Record<string, Schema> = {
   UpdatedPosition: object(
     {
       position,
-      replaced: int,
+      replaced: note(
+        { type: ["integer", "null"] },
+        "Null for a past balance, which replaces nothing.",
+      ),
       rate: object({ from: str, to: str, rate: num, at: nstr }),
     },
     ["position", "replaced"],
@@ -660,6 +667,39 @@ export const portfolioSchemas: Record<string, Schema> = {
         }),
       ),
       "One a calendar day from `from` to `to`, oldest first; the last is the live value the holdings answer. Empty when fewer than two days held anything.",
+    ),
+    eased: note(
+      list(str),
+      "Funds the owner prices whose price between the owner's entries is a straight line.",
+    ),
+    missing: note(
+      list(str),
+      "Instruments or `CCY:` pairs with no stored row for part of the window, counted as 0 there; an instrument never priced is left out whole.",
+    ),
+  }),
+  NetWorth: object({
+    currency: note(str, "The named currency, else the display currency."),
+    from: note(
+      str,
+      "The first day every live cash account has a balance, at most a year back; with no cash account, the growth's `from`.",
+    ),
+    to: note(str, "The owner's today."),
+    points: note(
+      list(
+        object({
+          date: str,
+          invested: note(
+            num,
+            "What the holdings, never cash, were worth that day: the growth's `value`.",
+          ),
+          cash: note(
+            num,
+            "Every cash account's balance that day, past balances counted, each at that day's rate; a removed account until the day it was removed.",
+          ),
+          total: note(num, "`invested` plus `cash`."),
+        }),
+      ),
+      "One a calendar day from `from` to `to`, oldest first; the last is the holdings answer's own: `total` its `net_worth`, `cash` its dry powder plus reserve. Empty with no cash account and fewer than two days held.",
     ),
     eased: note(
       list(str),
@@ -813,6 +853,14 @@ const GROWTH = lines(
   "- 400 while no currency is named and no display currency is set.",
 );
 
+const NET_WORTH = lines(
+  "Net worth per day over the past year, in the named or display currency: the holdings' value plus every cash account's balance.",
+  "",
+  "- The caller's own portfolios only, never ones shared with them; `owner` is refused.",
+  "- Built from stored rows only, never fetched: the growth's daily value, each cash account's balance on the day (its latest entry on or before it, past balances counted) at that day's stored rate.",
+  "- 400 while no currency is named and no display currency is set.",
+);
+
 const GROWTH_CURRENCY = q(
   "currency",
   "The currency every point is in; the owner's display currency when left out.",
@@ -950,6 +998,19 @@ export const portfolioPaths = {
       responses: base({
         200: ok("The growth.", ref("Growth")),
         404: unshared,
+      }),
+    },
+  },
+  "/holdings/net-worth": {
+    get: {
+      tags,
+      operationId: "holdingsNetWorth",
+      security: READS,
+      summary: "Net worth over the past year",
+      description: NET_WORTH,
+      parameters: [GROWTH_CURRENCY],
+      responses: base({
+        200: ok("The net worth.", ref("NetWorth")),
       }),
     },
   },
@@ -1126,6 +1187,7 @@ export const portfolioPaths = {
         "Changes an amount, a cost, the date, the note or the market. The old row is kept as replaced, so a change can be set back by restoring it.",
         "",
         "- `by` moves a cash balance. An amount in another currency converts at the live rate, answered in `rate`.",
+        "- A cash `date` before the row's own day records a past balance: `amount` alone, kept in the row's history at that day and answered with `past`; the row itself is unchanged. Any other field with it is refused. A past balance is removed and restored as a row, never updated.",
       ),
       requestBody: bodyOf(ref("PositionChange")),
       responses: base({
@@ -1170,7 +1232,7 @@ export const portfolioPaths = {
       security: READS,
       summary: "A position's changes",
       description:
-        "Every row of the position, newest first, with who made each and when.",
+        "Every row of the position, newest first, with who made each and when, through updates, renames and broker moves. A cash row's past balances are among them, marked `past`; a past balance's id answers its row's history.",
       responses: base({
         200: ok("The rows.", ref("PositionHistory")),
         404: missing,

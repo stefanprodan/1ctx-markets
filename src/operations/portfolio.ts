@@ -8,6 +8,7 @@ import { type Instrument, readInstrument } from "../market/instruments.ts";
 import { readQuote } from "../market/quotes.ts";
 import { markRead } from "../market/tracking.ts";
 import { checkZone, localDate } from "../market/zone.ts";
+import { standing } from "../portfolios/balances.ts";
 import { writeFundHoldings } from "../portfolios/fund-holdings.ts";
 import {
   buyPrice,
@@ -33,6 +34,7 @@ import {
 } from "../portfolios/funds.ts";
 import { missingPairs, rates } from "../portfolios/fx.ts";
 import { type Growth, growth } from "../portfolios/growth.ts";
+import { type NetWorth, netWorth } from "../portfolios/net-worth.ts";
 import {
   type Broker,
   brokerByName,
@@ -44,6 +46,7 @@ import {
   deletePortfolio,
   displayCurrency,
   ensureCash,
+  entriesOf,
   insertBroker,
   insertPortfolio,
   insertPosition,
@@ -905,6 +908,7 @@ export function positionItem(db: Db, owner: string, p: Position) {
     broker: b?.name ?? null,
     note: p.note,
     replaces: p.replaces,
+    ...(p.pastOf === null ? {} : { past: true }),
     entered_by: p.enteredBy,
     entered_at: iso(p.enteredAt),
     removed_at: iso(p.removedAt),
@@ -1006,6 +1010,36 @@ export function readGrowth(
       brokers: listBrokers(m.db, owner),
       portfolio: p?.id ?? null,
       currency,
+    },
+    ownerToday(m.db, owner, now),
+    now,
+    m.quoteEveryMs,
+  );
+}
+
+// net worth per day over the past year, the caller's own portfolios
+// only, from stored rows: never a fetch, as the growth line
+export function readNetWorth(
+  m: Markets,
+  owner: string,
+  args: { currency: string | null },
+): NetWorth | Failure {
+  const currency = args.currency ?? displayCurrency(m.db, owner);
+  if (currency === null) {
+    return {
+      error: "bad_arguments",
+      message: "no display currency is set; name a currency",
+    };
+  }
+  const now = m.clock.now();
+  return netWorth(
+    m.db,
+    {
+      owner,
+      portfolios: listPortfolios(m.db, owner),
+      brokers: listBrokers(m.db, owner),
+      currency,
+      zone: timeZone(m.db, owner) ?? "UTC",
     },
     ownerToday(m.db, owner, now),
     now,
@@ -1660,12 +1694,40 @@ export async function addPosition(
     recheck(db);
     const now = m.clock.now();
     const old = samePosition(db, row);
+    // cash added again for a day before its row's is a past balance, as
+    // an update with that date is, so the row's own figures stand
+    if (old !== null && old.kind === "cash" && day < old.asOf) {
+      if (
+        args.amount === null ||
+        args.note !== null ||
+        args.cost !== null ||
+        args.coupon !== null ||
+        args.maturity !== null ||
+        (args.dryPowder && !old.dryPowder)
+      ) {
+        return { error: "bad_arguments", message: PAST_ONLY } as Failure;
+      }
+      return {
+        id: insertPosition(
+          db,
+          {
+            ...row,
+            maturity: old.maturity,
+            dryPowder: old.dryPowder,
+            pastOf: old.id,
+          },
+          now,
+        ),
+        replaced: null,
+      };
+    }
     if (old !== null) setPositionRemoved(db, owner, old.id, who.name, now);
     return {
       id: insertPosition(db, { ...row, replaces: old?.id ?? null }, now),
       replaced: old?.id ?? null,
     };
   });
+  if (isFailure(done)) return done;
   return {
     position: positionItem(m.db, owner, readPosition(m.db, owner, done.id)!),
     replaced: done.replaced,
@@ -1682,7 +1744,8 @@ export async function updatePosition(
 ): Promise<
   | {
       position: ReturnType<typeof positionItem>;
-      replaced: number;
+      // none for a past balance, which replaces nothing
+      replaced: number | null;
       rate?: { from: string; to: string; rate: number; at: string | null };
     }
   | Failure
@@ -1690,6 +1753,18 @@ export async function updatePosition(
   const owner = who.user;
   if (change.date !== undefined && change.date > latestDay(m.clock.now())) {
     return { error: "bad_arguments", message: "date is in the future" };
+  }
+  const row = readPosition(m.db, owner, id);
+  if (row !== null && row.pastOf !== null) {
+    return { error: "bad_arguments", message: PAST_FIXED };
+  }
+  if (
+    row !== null &&
+    row.kind === "cash" &&
+    change.date !== undefined &&
+    change.date < row.asOf
+  ) {
+    return addPastBalance(m, who, row, change);
   }
   const broker =
     change.broker === undefined
@@ -1819,12 +1894,79 @@ export async function updatePosition(
   };
 }
 
-// the position's rows, its updates and removals with who and when
+export const PAST_ONLY =
+  "a date before the row's own day takes only amount: its balance that day";
+export const PAST_FIXED =
+  "a past balance never changes: remove it, or add another for its day";
+
+// a balance for a day before the row's own: kept in its history, the
+// row's figures untouched; the latest entry on a day is its balance
+async function addPastBalance(
+  m: Markets,
+  who: Who,
+  row: Position,
+  change: PositionChange,
+): Promise<
+  { position: ReturnType<typeof positionItem>; replaced: null } | Failure
+> {
+  const owner = who.user;
+  const other = Object.keys(change).filter(
+    (k) => k !== "amount" && k !== "date",
+  );
+  const given = change.amount;
+  if (
+    other.length > 0 ||
+    given === undefined ||
+    (given.currency !== null && given.currency !== row.currency)
+  ) {
+    return { error: "bad_arguments", message: PAST_ONLY };
+  }
+  const done = await m.writer.write((db): number | Failure => {
+    recheck(db);
+    const old = readPosition(db, owner, row.id);
+    if (old === null) return notFound(`no position ${row.id}`);
+    if (old.removedAt !== null) {
+      return conflict(
+        `position ${row.id} was removed or updated; restore it first`,
+      );
+    }
+    return insertPosition(
+      db,
+      {
+        portfolio: old.portfolio,
+        kind: old.kind,
+        name: old.name,
+        currency: old.currency,
+        instrument: null,
+        amount: given.amount,
+        cost: null,
+        coupon: null,
+        maturity: old.maturity,
+        asOf: change.date!,
+        broker: old.broker,
+        note: null,
+        dryPowder: old.dryPowder,
+        replaces: null,
+        pastOf: old.id,
+        enteredBy: who.name,
+      },
+      m.clock.now(),
+    );
+  });
+  if (isFailure(done)) return done;
+  return {
+    position: positionItem(m.db, owner, readPosition(m.db, owner, done)!),
+    replaced: null,
+  };
+}
+
+// the position's rows and past balances, its updates and removals with
+// who and when; a past balance's id answers its account's
 export function historyOf(m: Markets, owner: string, id: number) {
   const p = readPosition(m.db, owner, id);
   if (p === null) return notFound(`no position ${id}`);
   return {
-    history: chainOf(m.db, owner, p.id).map((r) =>
+    history: entriesOf(m.db, owner, p.id).map((r) =>
       positionItem(m.db, owner, r),
     ),
   };
@@ -1837,8 +1979,8 @@ export function historyOf(m: Markets, owner: string, id: number) {
 export function rowHistory(m: Markets, owner: string, id: number) {
   const p = readPosition(m.db, owner, id);
   if (p === null) return notFound(`no position ${id}`);
-  const chain = chainOf(m.db, owner, p.id).reverse();
-  const byId = new Map(chain.map((r) => [r.id, r]));
+  const all = entriesOf(m.db, owner, p.id).reverse();
+  const chain = all.filter((r) => r.pastOf === null);
   const byHand = (r: Position): boolean => {
     const t = r.removedAt;
     if (t === null) return false;
@@ -1852,22 +1994,11 @@ export function rowHistory(m: Markets, owner: string, id: number) {
         (x.removedAt === null || x.removedAt > t),
     );
   };
-  // the rows that stand: the live one, or the last taken off, back to the first
-  const tip =
-    chain.find((r) => r.removedAt === null) ??
-    [...chain].sort((a, b) => (b.removedAt ?? 0) - (a.removedAt ?? 0))[0];
-  const stands = new Set<number>();
-  for (
-    let r: Position | undefined = tip;
-    r;
-    r = r.replaces === null ? undefined : byId.get(r.replaces)
-  ) {
-    stands.add(r.id);
-  }
+  const stands = standing(chain);
   return {
-    position: p.id,
+    position: p.pastOf ?? p.id,
     kind: p.kind,
-    history: chain.map((r) => {
+    history: all.map((r) => {
       const b = r.broker === null ? null : readBroker(m.db, owner, r.broker);
       return {
         position: r.id,
@@ -1879,8 +2010,9 @@ export function rowHistory(m: Markets, owner: string, id: number) {
         ...(r.kind === "cash" ? { dry_powder: r.dryPowder } : {}),
         ...(r.maturity === null ? {} : { maturity: r.maturity }),
         note: r.note,
-        removed: byHand(r),
-        ...(stands.has(r.id) ? {} : { undone: true }),
+        ...(r.pastOf === null ? {} : { past: true }),
+        removed: r.pastOf === null ? byHand(r) : r.removedAt !== null,
+        ...(r.pastOf !== null || stands.has(r.id) ? {} : { undone: true }),
       };
     }),
   };
@@ -1946,6 +2078,9 @@ export function positionFor(
       error: "bad_arguments",
       message: `position ${id} is ${p.kind === "cash" ? "cash" : "a bond"}; ${TOOL_OF[p.kind]} changes it`,
     };
+  }
+  if (p.pastOf !== null && action === "update") {
+    return { error: "bad_arguments", message: PAST_FIXED };
   }
   if (p.removedAt === null || action === "restore") return null;
   const now = chainOf(m.db, owner, id).find((x) => x.removedAt === null);
@@ -2060,7 +2195,8 @@ export async function setPositionState(
     if (p === null) return null;
     // a second removal keeps who removed it first
     if (removed === (p.removedAt !== null)) return id;
-    if (!removed) {
+    // a past balance stands beside its chain, never in another row's way
+    if (!removed && p.pastOf === null) {
       // a restore puts every other live row of its chain out of the way,
       // whatever the updates changed; cash also a live row of its identity,
       // while two equal bond purchases are two bonds

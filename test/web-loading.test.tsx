@@ -158,7 +158,7 @@ describe("a wait's words", () => {
 describe("Home while it reads", () => {
   test("shows the page's shape, and its words only once slow", () => {
     const quick = render(<HomeWaiting slow={false} />);
-    expect(quick).toContain("Today's movers");
+    expect(quick).toContain(">Movers<");
     expect(quick).toContain('class="placeholder"');
     expect(quick.match(/class="card dash-tile"/g)).toHaveLength(4);
     expect(quick).not.toContain("Loading prices");

@@ -2697,6 +2697,12 @@ async function portfolioOperations(
   await check("GET", HG, await t.call(HG), 200);
   await check("GET", HG, await t.call(`${HG}?x=1`), 400);
   await refusals("GET", HG, HG);
+  const NW = "/holdings/net-worth";
+  await check("GET", NW, await t.call(`${NW}?currency=USD`), 200);
+  await check("GET", NW, await t.call(`${NW}?currency=usd`), 400);
+  // a share's owner is never read here, so the argument is unknown
+  await check("GET", NW, await t.call(`${NW}?owner=operator`), 400);
+  await refusals("GET", NW, NW);
 
   const E = `${P}/{id}/export`;
   const csv = await t.call(`${at}/export`);
@@ -2834,11 +2840,26 @@ async function portfolioOperations(
     415,
   );
   await refusals("PATCH", sone, `${S}/${newer}`, send("PATCH", { amount: 1 }));
+  // a day before the row's own keeps a past balance beside it
+  const past = await check(
+    "PATCH",
+    sone,
+    await t.call(
+      `${S}/${newer}`,
+      send("PATCH", { amount: 9, date: "2026-01-02" }),
+    ),
+    200,
+  );
+  expect([past.position.past, past.replaced]).toEqual([true, null]);
   const hist = `${S}/{id}/history`;
-  expect(
-    (await check("GET", hist, await t.call(`${S}/${newer}/history`), 200))
-      .history,
-  ).toHaveLength(2);
+  const rows = (
+    await check("GET", hist, await t.call(`${S}/${newer}/history`), 200)
+  ).history;
+  expect(rows.map((r: { past?: boolean }) => r.past ?? false)).toEqual([
+    true,
+    false,
+    false,
+  ]);
   await check("GET", hist, await t.call(`${S}/x/history`), 400);
   await check("GET", hist, await t.call(`${S}/999/history`), 404);
   await refusals("GET", hist, `${S}/${newer}/history`);

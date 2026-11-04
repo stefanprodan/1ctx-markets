@@ -16,6 +16,7 @@ import {
 import { Icon } from "../lib/icons.tsx";
 import { nameOf, symbolOf, tickerOf } from "../lib/names.ts";
 import { useRefresh } from "../lib/refresh.ts";
+import { amountsHidden, hiddenClass } from "../ui/Amounts.tsx";
 import { Card, SectionHead } from "../ui/Card.tsx";
 import { Change, Num } from "../ui/Figures.tsx";
 import { MenuButton, type MenuItem } from "../ui/Menu.tsx";
@@ -46,7 +47,12 @@ import {
   editOf,
   entryOf,
   extMove,
+  GLANCE_TABS,
+  type GlanceTab,
   gapText,
+  glanceCount,
+  glanceTab,
+  glanceTabs,
   idsOf,
   isSort,
   MAX_NAME,
@@ -66,9 +72,13 @@ import {
   tileColumns,
   trendsOf,
   waiting,
+  wealthShown,
   withView,
 } from "./Dashboard.model.ts";
+import { wealthOf } from "./NetWorth.model.ts";
+import { NetWorthPanel } from "./NetWorth.tsx";
 import "./dashboard.css";
+import "./portfolio-growth.css";
 
 type Items = ReadonlyMap<string, BoardItem>;
 type Save = (next: BoardSection[] | null) => Promise<void>;
@@ -212,7 +222,8 @@ function Gap({ side, name }: { side: Side | null; name: string }) {
   );
 }
 
-const SHOWN = 8;
+// as many as Movers shows a side, so the tabs keep near one height
+const SHOWN = MOVERS;
 
 function Trends({ trends, waiting }: { trends: Trend[]; waiting?: boolean }) {
   const [all, setAll] = useState(false);
@@ -399,13 +410,11 @@ export function Earnings({
   );
 }
 
-type Tab = "movers" | "trend" | "earnings";
 const TAB_KEY = "markets-dashboard-tab";
-const TABS: readonly (readonly [Tab, string, string])[] = [
-  ["movers", "Today's movers", "Movers"],
-  ["trend", "Trend", "Trend"],
-  ["earnings", "Earnings this week", "Earnings"],
-];
+// whether the last answer had Wealth, so a Home without it never draws
+// its loader first: a yes or no, never an amount
+const WEALTH_KEY = "markets-dashboard-wealth";
+const WORDS = new Map(GLANCE_TABS);
 
 export function Glance({
   ids,
@@ -420,55 +429,59 @@ export function Glance({
   off?: boolean;
   waiting?: boolean;
 }) {
-  const [tab, setTab] = useState<Tab>(() => {
-    const t = remembered(TAB_KEY);
-    return t === "earnings" || t === "trend" ? t : "movers";
-  });
+  const store = markets.portfolios;
+  const known = wealthOf(store.worth.value);
+  const [stored] = useState(() => remembered(WEALTH_KEY));
+  const wealth = wealthShown(known, stored);
+  useEffect(() => {
+    void store.loadWorth();
+  }, []);
+  useEffect(() => {
+    if (known !== null) remember(WEALTH_KEY, known ? "1" : "0");
+  }, [known]);
+  const [picked, setPicked] = useState<string | null>(() =>
+    remembered(TAB_KEY),
+  );
+  const tab = glanceTab(picked, wealth);
   const trends = trendsOf(ids, items);
   const crossed = trends.filter(crossedToday).length;
-  const pick = (t: Tab) => {
-    setTab(t);
+  const pick = (t: GlanceTab) => {
+    setPicked(t);
     remember(TAB_KEY, t);
   };
-  // the trend counts only today's crossings; earnings count even none,
-  // unless they cannot be known
-  const countOf = (t: Tab) =>
-    waiting
-      ? null
-      : t === "earnings"
-        ? earnings.length === 0 && off
-          ? null
-          : earnings.length
-        : t === "trend" && crossed > 0
-          ? crossed
-          : null;
+  // as Portfolios: the tabs on the page, each tab's content bare under them
   return (
-    <Card label="At a glance">
+    <div class="dash-glance">
       <Tabs
         label="At a glance"
         value={tab}
         onPick={pick}
-        tabs={TABS.map(([t, long, short]) => ({
+        tabs={glanceTabs(wealth).map((t) => ({
           key: t,
-          label: (
-            <>
-              <span class="hide-phone">{long}</span>
-              <span class="show-phone">{short}</span>
-            </>
-          ),
-          count: countOf(t),
+          label: WORDS.get(t)!,
+          count: glanceCount(t, {
+            waiting: waiting === true,
+            earnings: earnings.length,
+            crossed,
+          }),
         }))}
       />
-      <div role="tabpanel" class="dash-panel">
-        {tab === "movers" ? (
-          <Movers ids={ids} items={items} waiting={waiting} />
-        ) : tab === "trend" ? (
-          <Trends trends={trends} waiting={waiting} />
-        ) : (
-          <Earnings earnings={earnings} off={off} waiting={waiting} />
-        )}
-      </div>
-    </Card>
+      {tab === "worth" ? (
+        <div role="tabpanel" class={hiddenClass(amountsHidden.value)}>
+          <NetWorthPanel />
+        </div>
+      ) : (
+        <div role="tabpanel" class="dash-panel">
+          {tab === "movers" ? (
+            <Movers ids={ids} items={items} waiting={waiting} />
+          ) : tab === "trend" ? (
+            <Trends trends={trends} waiting={waiting} />
+          ) : (
+            <Earnings earnings={earnings} off={off} waiting={waiting} />
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

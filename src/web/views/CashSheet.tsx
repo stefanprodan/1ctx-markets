@@ -14,6 +14,7 @@ import {
   balanceChange,
   type ChainRow,
   historyLines,
+  pastBalance,
   stepPath,
   steps,
 } from "./CashHistory.model.ts";
@@ -48,6 +49,8 @@ export function CashSheet({
   const details = useSignal(open);
   const asking = useSignal(false);
   const chain = useSignal<ChainRow[] | null>(null);
+  // a past balance or a details save leaves the id; this reads it again
+  const reads = useSignal(0);
   useEffect(() => {
     let live = true;
     void store.positionHistory<ChainRow>(id).then((got) => {
@@ -56,7 +59,7 @@ export function CashSheet({
     return () => {
       live = false;
     };
-  }, [id]);
+  }, [id, reads.value]);
   const balance = h.parts[0]?.amount ?? h.value;
   const at = h.parts[0]?.as_of ?? h.as_of;
   const update = async (ev: Event) => {
@@ -157,6 +160,7 @@ export function CashSheet({
               onMoved={onMoved}
               onDone={() => {
                 details.value = false;
+                reads.value++;
               }}
               lead={
                 <button
@@ -213,6 +217,17 @@ export function CashSheet({
                 today={now}
                 zone={store.overview.value?.time_zone ?? null}
               />
+              {chain.value !== null && (
+                <PastBalance
+                  rowDay={at ?? null}
+                  ccy={ccy}
+                  save={async (change) => {
+                    const no = await store.updatePosition(id, change);
+                    if (no === null) reads.value++;
+                    return no;
+                  }}
+                />
+              )}
             </div>
           )}
         </div>
@@ -282,5 +297,111 @@ function History({
         ))}
       </ul>
     </section>
+  );
+}
+
+const before = (d: string) =>
+  new Date(Date.parse(`${d}T00:00:00Z`) - 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+
+// a balance from a statement, for a day before the row's own
+function PastBalance({
+  rowDay,
+  ccy,
+  save,
+}: {
+  rowDay: string | null;
+  ccy: string;
+  save: (change: { amount: number; date: string }) => Promise<string | null>;
+}) {
+  const open = useSignal(false);
+  const date = useSignal("");
+  const text = useSignal("");
+  const busy = useSignal(false);
+  const error = useSignal<string | null>(null);
+  if (!open.value) {
+    return (
+      <button
+        type="button"
+        class="btn-text cs-fold"
+        onClick={() => {
+          open.value = true;
+        }}
+      >
+        Add a past balance <Icon name="chevron" size={14} />
+      </button>
+    );
+  }
+  const submit = async (ev: Event) => {
+    ev.preventDefault();
+    const got = pastBalance(date.value, text.value, rowDay);
+    if ("error" in got) {
+      error.value = got.error;
+      return;
+    }
+    busy.value = true;
+    error.value = await save(got.change);
+    busy.value = false;
+    if (error.value !== null) return;
+    date.value = "";
+    text.value = "";
+    open.value = false;
+  };
+  return (
+    <form class="pf-edit cs-past" onSubmit={submit}>
+      <label class="field">
+        <span class="label">Day</span>
+        {/* Safari shows today, greyed, in an empty date field */}
+        <span class={`pf-date-opt${date.value === "" ? " pf-date-empty" : ""}`}>
+          <input
+            type="date"
+            max={rowDay ? before(rowDay) : undefined}
+            value={date.value}
+            onInput={(e) => {
+              date.value = e.currentTarget.value;
+              error.value = null;
+            }}
+          />
+        </span>
+      </label>
+      <label class="field">
+        <span class="label">Balance</span>
+        <input
+          inputMode="decimal"
+          placeholder={ccy}
+          value={text.value}
+          onInput={(e) => {
+            text.value = e.currentTarget.value;
+            error.value = null;
+          }}
+        />
+      </label>
+      <div class="pf-form-foot">
+        {error.value && (
+          <p class="error pf-refusal" role="alert">
+            {error.value}
+          </p>
+        )}
+        <button
+          type="button"
+          class="btn btn-small"
+          disabled={busy.value}
+          onClick={() => {
+            open.value = false;
+            error.value = null;
+          }}
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          class="btn btn-small btn-primary"
+          disabled={busy.value}
+        >
+          {busy.value ? "Saving" : "Save"}
+        </button>
+      </div>
+    </form>
   );
 }

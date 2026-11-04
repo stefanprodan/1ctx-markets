@@ -4543,20 +4543,21 @@ describe("the dashboard's model", () => {
     });
   });
 
-  test("the top card counts today's crossings, hidden at none, and the week's earnings", () => {
+  test("the tabs count today's crossings and the week's earnings, hidden at none", () => {
     const items = itemsOf(BOARD);
     const ids = [...items.keys()];
     const html = render(
       <Glance ids={ids} items={items} earnings={[EARNING]} />,
     );
-    expect(html).toContain("Today's movers");
+    expect(html).toContain(">Wealth<");
+    expect(html).toContain(">Movers<");
+    expect(html).not.toContain('class="card');
     expect(html).toContain('role="tablist"');
     expect(html.match(/tab-count/g)).toHaveLength(2);
     const calm = new Map(items);
     calm.set("US:AAA", boardItem("US:AAA", { kind: "EQUITY" }));
     const none = render(<Glance ids={ids} items={calm} earnings={[]} />);
-    expect(none.match(/tab-count/g)).toHaveLength(1);
-    expect(none).toContain('tab-count num">0<');
+    expect(none.match(/tab-count/g)).toBeNull();
     const off = render(<Glance ids={ids} items={calm} earnings={[]} off />);
     expect(off.match(/tab-count/g)).toBeNull();
     expect(render(<Earnings earnings={[]} off />)).toContain(

@@ -383,6 +383,7 @@ function cases(other: Owned, mine: Owned): Record<string, Case> {
       missing: true,
     },
     "GET /holdings/growth": { path: "/holdings/growth" },
+    "GET /holdings/net-worth": { path: "/holdings/net-worth" },
     "GET /portfolios/{id}/export": {
       path: `/portfolios/${other.portfolio}/export`,
       missing: true,
@@ -1070,6 +1071,8 @@ describe("the migration that gives every row an owner", () => {
                 delete o.owner;
                 delete o.user_id;
               }
+              // a column a later migration adds
+              delete o.past_of;
               return o;
             }),
         ]),

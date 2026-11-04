@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { PositionChange } from "../data/portfolios.ts";
+import { day } from "../lib/format.ts";
 import { typed } from "./Portfolios.model.ts";
 
 // a row of a position's chain as /positions/{id}/history answers it
@@ -16,6 +17,8 @@ export type ChainRow = {
   note: string | null;
   maturity?: string | null;
   replaces: number | null;
+  // a balance dated before its row's day, beside the chain, never in it
+  past?: boolean;
   entered_at: string;
   removed_at: string | null;
 };
@@ -86,7 +89,8 @@ export function endOf(
 
 // the rows that stand: the live one (or the last taken off) back to the
 // first through replaces; a row off it was undone by a restore
-export function kept(chain: readonly ChainRow[]): Set<number> {
+export function kept(entries: readonly ChainRow[]): Set<number> {
+  const chain = entries.filter((r) => !r.past);
   const byId = new Map(chain.map((r) => [r.id, r]));
   const tip =
     chain.find((r) => r.removed_at === null) ??
@@ -104,16 +108,46 @@ export function kept(chain: readonly ChainRow[]): Set<number> {
   return out;
 }
 
-// newest first: each update a line with its change from the row it
-// replaced, a removal and a restore lines of their own
+// newest day first, the later entry first on a day: each update a line
+// with its change from the row it replaced, a removal and a restore lines
+// of their own, a past balance at its day
 export function historyLines(
   chain: readonly ChainRow[],
   zone: string | null = null,
 ): HistoryLine[] {
-  const rows = byEntry(chain);
+  const rows = byEntry(chain.filter((r) => !r.past));
   const byId = new Map(rows.map((r) => [r.id, r]));
   const when = (iso: string) => dayIn(iso, zone);
   const out: { at: string; line: HistoryLine }[] = [];
+  for (const r of chain) {
+    if (!r.past) continue;
+    out.push({
+      at: r.entered_at,
+      line: {
+        key: `${r.id}`,
+        date: r.as_of ?? when(r.entered_at),
+        amount: r.amount,
+        currency: r.currency,
+        change: null,
+        what: "Past balance",
+        event: false,
+      },
+    });
+    if (r.removed_at !== null) {
+      out.push({
+        at: r.removed_at,
+        line: {
+          key: `${r.id}/removed`,
+          date: when(r.removed_at),
+          amount: null,
+          currency: r.currency,
+          change: null,
+          what: "Past balance removed",
+          event: true,
+        },
+      });
+    }
+  }
   for (const r of rows) {
     const date = r.as_of ?? when(r.entered_at);
     const prev = r.replaces ? byId.get(r.replaces) : undefined;
@@ -199,25 +233,31 @@ export function historyLines(
     });
   }
   return out
-    .sort((a, b) => a.at.localeCompare(b.at))
+    .sort(
+      (a, b) =>
+        a.line.date.localeCompare(b.line.date) || a.at.localeCompare(b.at),
+    )
     .map((x) => x.line)
     .reverse();
 }
 
 export type Step = { date: string; amount: number };
 
-// the balance after each day's last update over the rows that stand,
-// oldest first, in its one currency: a chain that changed currency draws
-// from the change on
+// the balance after each day's last entry over the rows that stand and
+// the live past balances, oldest first, in its one currency: a chain that
+// changed currency draws from the change on
 export function steps(
   chain: readonly ChainRow[],
   zone: string | null = null,
 ): Step[] {
   const stands = kept(chain);
-  const rows = byEntry(chain).filter((r) => stands.has(r.id));
-  const ccy = rows.at(-1)?.currency;
+  const rows = byEntry(chain).filter((r) =>
+    r.past ? r.removed_at === null : stands.has(r.id),
+  );
+  const ccy = rows.findLast((r) => !r.past)?.currency;
   const byDay = new Map<string, number>();
   for (const r of rows) {
+    if (r.past && r.currency !== ccy) continue;
     if (r.currency !== ccy) {
       byDay.clear();
       continue;
@@ -275,13 +315,33 @@ export function balanceChange(
   const t = text.trim().replace(/^−/, "-");
   if (t === "") return { none: true };
   const sign = t[0] === "+" ? 1 : t[0] === "-" ? -1 : 0;
-  const body = sign === 0 ? t : t.slice(1);
-  // 12,400 is twelve thousand, never twelve point four, as the head writes it
-  const n = typed(
-    /^\d{1,3}(,\d{3})+(\.\d+)?$/.test(body) ? body.replaceAll(",", "") : body,
-  );
+  const n = figure(sign === 0 ? t : t.slice(1));
   if (n === null || Number.isNaN(n)) return { error: "Not a number." };
   if (sign !== 0)
     return n === 0 ? { none: true } : { change: { by: sign * n } };
   return n === current ? { none: true } : { change: { amount: n } };
+}
+
+// 12,400 is twelve thousand, never twelve point four, as the head writes it
+const figure = (body: string): number | null =>
+  typed(
+    /^\d{1,3}(,\d{3})+(\.\d+)?$/.test(body) ? body.replaceAll(",", "") : body,
+  );
+
+// a past balance: a day before the row's own and the balance it held then
+export function pastBalance(
+  date: string,
+  text: string,
+  rowDay: string | null,
+):
+  | { change: Required<Pick<PositionChange, "amount" | "date">> }
+  | { error: string } {
+  if (date === "") return { error: "Pick a day." };
+  if (rowDay !== null && date >= rowDay) {
+    return { error: `Pick a day before ${day(rowDay)}.` };
+  }
+  const n = figure(text.trim());
+  if (n === null) return { error: "Give the balance." };
+  if (Number.isNaN(n)) return { error: "Not a number." };
+  return { change: { amount: n, date } };
 }
