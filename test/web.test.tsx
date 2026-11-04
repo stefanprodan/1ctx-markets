@@ -85,8 +85,6 @@ import {
   type Status,
   screenerPath,
   store,
-  WATCHLIST_PATH,
-  type WatchEntry,
 } from "../src/web/data/store.ts";
 import {
   ago,
@@ -166,6 +164,7 @@ import {
   addTo,
   afterSave,
   bySort,
+  type CardEntry,
   cardOf,
   crossedToday,
   DEFAULT_SORT,
@@ -235,8 +234,6 @@ import {
   retryable,
   runTime,
   switchFailure,
-  trackFailed,
-  trackLine,
   troubled,
 } from "../src/web/views/Status.model.ts";
 import {
@@ -350,25 +347,6 @@ const STATUS: Status = {
   database_bytes: 65_515_520,
 };
 
-const WATCHLIST: WatchEntry[] = [
-  {
-    value: "^GSPC",
-    id: "SNP:^GSPC",
-    state: "tracked",
-    instrument: null,
-    session: { state: "open", start: null, end: null },
-    intraday: true,
-  },
-  {
-    value: "NOPE",
-    id: null,
-    state: "not_found",
-    instrument: null,
-    session: null,
-    intraday: false,
-  },
-];
-
 // answers by method and path, recording what was asked
 function fake(answers: Record<string, () => Response>): {
   fetch: Fetch;
@@ -403,10 +381,6 @@ const problem = (
     status: code,
     ...body,
   });
-
-// the status page loads the watchlist beside the status
-const watched = ok({ entries: WATCHLIST });
-const WATCHED = { [`GET ${WATCHLIST_PATH}`]: watched };
 
 const ADMIN_ME: Me = {
   id: "operator",
@@ -623,59 +597,13 @@ describe("the data layer", () => {
 
   test("a 401 after signing in drops what was shown", async () => {
     let answer = ok(STATUS);
-    const s = store(
-      fake({ [`GET ${STATUS_PATH}`]: () => answer(), ...WATCHED }).fetch,
-    );
+    const s = store(fake({ [`GET ${STATUS_PATH}`]: () => answer() }).fetch);
     await s.loadStatus();
     expect(s.signedIn.value).toBe(true);
     answer = status(401, {});
     await s.loadStatus();
     expect(s.signedIn.value).toBe(false);
     expect(s.status.value).toBeNull();
-    expect(s.watchlist.value).toBeNull();
-  });
-
-  test("a 401 from either half of the status load signs out", async () => {
-    for (const [first, second] of [
-      [STATUS_PATH, WATCHLIST_PATH],
-      [WATCHLIST_PATH, STATUS_PATH],
-    ] as const) {
-      // the other half fails first, with a fault or no answer at all
-      for (const fault of [500, 0]) {
-        const late = Promise.withResolvers<Response>();
-        const s = store(async (path) => {
-          if (path === second) return late.promise;
-          if (fault === 0) throw new TypeError("offline");
-          return Response.json(
-            { status: 500, code: "internal", detail: "x" },
-            { status: 500 },
-          );
-        });
-        s.signedIn.value = true;
-        const loading = s.loadStatus();
-        await Bun.sleep(0);
-        late.resolve(
-          Response.json(
-            { status: 401, code: "unauthorized", detail: "x" },
-            { status: 401 },
-          ),
-        );
-        expect(await loading).toBe(false);
-        expect([first, fault, s.signedIn.value]).toEqual([first, fault, false]);
-        expect(s.statusError.value).toBeNull();
-      }
-    }
-    // neither is a 401: the error is said and nothing lands half
-    const s = store(
-      fake({
-        [`GET ${STATUS_PATH}`]: ok(STATUS),
-        [`GET ${WATCHLIST_PATH}`]: status(502),
-      }).fetch,
-    );
-    await s.loadStatus();
-    expect(s.signedIn.value).toBeUndefined();
-    expect(s.status.value).toBeNull();
-    expect(s.statusError.value).toBe("The server failed.");
   });
 
   test("1D asks for the newest session with its extended trading, 5D for every one kept", async () => {
@@ -827,7 +755,6 @@ describe("the data layer", () => {
     let n = 0;
     const s = store(async (path, init) => {
       if (init?.method === "POST") return new Response(null, { status: 204 });
-      if (path === WATCHLIST_PATH) return watched();
       if (path === ME_PATH) return Response.json({ user: ADMIN_ME });
       const mine = ++n;
       await new Promise<void>((r) => releases.push(r));
@@ -848,11 +775,10 @@ describe("the data layer", () => {
 
   test("a status load in flight at sign-out never signs back in", async () => {
     const releases: (() => void)[] = [];
-    const s = store(async (path, init) => {
+    const s = store(async (_path, init) => {
       if (init?.method === "DELETE") {
         return new Response(null, { status: 204 });
       }
-      if (path === WATCHLIST_PATH) return watched();
       await new Promise<void>((r) => releases.push(r));
       return Response.json(STATUS);
     });
@@ -868,8 +794,7 @@ describe("the data layer", () => {
   test("an older status answer never lands over a newer one", async () => {
     const releases: (() => void)[] = [];
     let n = 0;
-    const s = store(async (path) => {
-      if (path === WATCHLIST_PATH) return watched();
+    const s = store(async () => {
       const mine = ++n;
       await new Promise<void>((r) => releases.push(r));
       return Response.json({ ...STATUS, version: `v${mine}` });
@@ -904,10 +829,6 @@ describe("the status model", () => {
     expect(plain("rate limited")).toBe("too many requests");
     expect(plain("timed out")).toBe("no answer in time");
     expect(plain(null)).toBe("failed");
-    expect(WATCHLIST.map(trackLine)).toEqual(["SNP:^GSPC", "not found"]);
-    expect(trackLine({ id: null, state: "candidates" })).toBe(
-      "several matches",
-    );
     expect(plain("something new")).toBe("something new");
     expect(plain("source error: AMD")).toBe("AMD: the source failed");
     expect(plain("source error: AMD, EL +2 more")).toBe(
@@ -958,8 +879,6 @@ describe("the status model", () => {
     expect(jobTone(running)).toBe("running");
     // a failing scope outranks a run in progress
     expect(jobTone({ ...running, failing_scopes: 1 })).toBe("failed");
-    expect(WATCHLIST.map(trackLine)).toEqual(["SNP:^GSPC", "not found"]);
-    expect(WATCHLIST.map(trackFailed)).toEqual([false, true]);
   });
 
   test("the rail turns red when a job fails or a source backs off", () => {
@@ -1026,10 +945,10 @@ describe("the status model", () => {
 });
 
 describe("the views", () => {
-  test("status draws the on sources' cards, the keyed ones to add, and the tracked values", () => {
-    const html = render(
-      <StatusBody status={STATUS} watchlist={WATCHLIST} now={NOW} />,
-    );
+  test("status draws the on sources' cards and the keyed ones to add, never a tracked list", () => {
+    const html = render(<StatusBody status={STATUS} now={NOW} />);
+    expect(html).not.toContain("Always tracked");
+    expect(html).not.toContain("srv-track");
     for (const words of [
       "78",
       "61 tracked",
@@ -1045,9 +964,6 @@ describe("the views", () => {
       "secrets/source-news.key",
       "https://example.com/keys",
       "Get a key",
-      "Always tracked",
-      "SNP:^GSPC",
-      "not found",
     ]) {
       expect([words, html.includes(words)]).toEqual([words, true]);
     }
@@ -1108,24 +1024,18 @@ describe("the views", () => {
           sources: STATUS.sources.map((x) => ({ ...x, state: "on" as const })),
           jobs: [],
         }}
-        watchlist={[]}
         now={NOW}
       />,
     );
     expect(html).toContain("No runs yet.");
     expect(html).not.toContain("Add a source");
-    expect(html).not.toContain("Always tracked");
     expect(html).not.toContain("notice-failed");
     expect(html).not.toContain("Sync is off.");
   });
 
   test("status says when sync is off", () => {
     const html = render(
-      <StatusBody
-        status={{ ...STATUS, sync: false }}
-        watchlist={[]}
-        now={NOW}
-      />,
+      <StatusBody status={{ ...STATUS, sync: false }} now={NOW} />,
     );
     expect(html).toContain('<p class="notice">Sync is off.</p>');
   });
@@ -1196,7 +1106,6 @@ describe("the views", () => {
     const f = fake({
       [`POST ${RETRY_PATH}`]: ok(counts),
       [`GET ${STATUS_PATH}`]: ok(STATUS),
-      ...WATCHED,
     });
     const s = store(f.fetch);
     expect(await s.retry()).toEqual(counts);
@@ -3827,7 +3736,6 @@ describe("the store across sessions and pages", () => {
     await detail;
     expect(s.signedIn.value).toBe(false);
     await h.answer(`GET ${STATUS_PATH}`, Response.json(STATUS));
-    await h.answer(`GET ${WATCHLIST_PATH}`, watched());
     await status;
     expect(s.signedIn.value).toBe(false);
     expect(s.status.value).toBeNull();
@@ -3902,7 +3810,7 @@ const homeRow = (id: string, more: Partial<Listed> = {}) => ({
   unit: "index_points",
   source: "yahoo",
   tracked: true,
-  tracked_by: ["track"],
+  tracked_by: ["world_markets"],
   read_at: null,
   read_until: null,
   price: 100,
@@ -3935,11 +3843,11 @@ const SERIES = {
   currency: null,
   source: "fred",
   price: 4.1,
-  // the watchlist gives a series no day change
+  // a series has no day change
   change: null,
   change_percent: null,
 } as const;
-const HOME_WATCH = {
+const HOME_CARDS = {
   attribution: "Source: a series' owner.",
   entries: [
     tracked("^GSPC", "SNP:^GSPC"),
@@ -4028,7 +3936,16 @@ const MONTH = "from=2026-09-28&interval=1d";
 describe("the home page's cards", () => {
   test("the fakes hold to the spec", () => {
     const schemas = spec.components.schemas as Record<string, any>;
-    expect(validate(HOME_WATCH, schemas.Watchlist, spec)).toEqual([]);
+    const items = HOME_CARDS.entries.flatMap((e) =>
+      e.instrument === null
+        ? []
+        : [{ ...e, value: undefined, state: undefined, averages: NO_AVERAGES }],
+    );
+    const cards = { revision: 0, created: false, sections: [] as unknown[] };
+    cards.sections.push({ name: "Cards", view: "cards", items });
+    expect(
+      validate(JSON.parse(JSON.stringify(cards)), schemas.Dashboard, spec),
+    ).toEqual([]);
     expect(
       validate(dayAnswer("SNP:^GSPC", [101], 100), schemas.Intraday, spec),
     ).toEqual([]);
@@ -4039,7 +3956,7 @@ describe("the home page's cards", () => {
   });
 
   test("a card has its price, the day's move in its unit and in percent, and its state", () => {
-    const [gspc, , dgs10, later, , typo] = HOME_WATCH.entries as WatchEntry[];
+    const [gspc, , dgs10, later, , typo] = HOME_CARDS.entries as CardEntry[];
     expect(cardOf(gspc!)).toMatchObject({
       type: "ready",
       href: "/symbol/SNP%3A%5EGSPC",
@@ -4078,13 +3995,13 @@ describe("the home page's cards", () => {
     const restarted = {
       ...tracked("^GSPC", "SNP:^GSPC"),
       state: "pending",
-    } as WatchEntry;
+    } as CardEntry;
     expect(cardOf(restarted)).toMatchObject({
       type: "ready",
       price: "100.00",
       currency: "USD",
     });
-    expect(cardOf(HOME_WATCH.entries[3] as WatchEntry)).toEqual({
+    expect(cardOf(HOME_CARDS.entries[3] as CardEntry)).toEqual({
       type: "pending",
       value: "LATER",
     });
@@ -4094,7 +4011,7 @@ describe("the home page's cards", () => {
     const stored = {
       ...tracked("^NDX", "NAS:^NDX"),
       state: "source_error",
-    } as WatchEntry;
+    } as CardEntry;
     expect(cardOf(stored)).toEqual({
       type: "failed",
       value: "^NDX",
@@ -4113,14 +4030,14 @@ describe("the home page's cards", () => {
   test("a card leads with the ticker over its name; a coin drops its quote currency", () => {
     const html = render(
       <Tile
-        entry={tracked("^NDX", "NAS:^NDX") as WatchEntry}
+        entry={tracked("^NDX", "NAS:^NDX") as CardEntry}
         spark={undefined}
       />,
     );
     expect(html).toMatch(/sym-ticker">\^NDX<\/span><span class="sym-name">/);
     const coin = {
       ...tracked("BTC-USD", "CRYPTO:BTC-USD"),
-    } as WatchEntry;
+    } as CardEntry;
     coin.instrument = {
       ...coin.instrument!,
       name: "Bitcoin USD",
@@ -4135,7 +4052,7 @@ describe("the home page's cards", () => {
     expect(up).toEqual({ closes: [101, 103], base: 100, slots: 79 });
     const html = render(
       <Tile
-        entry={HOME_WATCH.entries[0] as WatchEntry}
+        entry={HOME_CARDS.entries[0] as CardEntry}
         spark={dayAnswer("SNP:^GSPC", [101, 103], 100) as Intraday}
       />,
     );
@@ -4153,7 +4070,7 @@ describe("the home page's cards", () => {
   });
 
   test("a card shows the day's percent, not its move; the minute refresh redraws its line", () => {
-    const e = HOME_WATCH.entries[0] as WatchEntry;
+    const e = HOME_CARDS.entries[0] as CardEntry;
     const draw = (shift: number) =>
       render(
         <Tile
@@ -4235,6 +4152,20 @@ const BOARD: Board = {
     },
   ],
 };
+// the S&P while its market is closed and its futures trade
+const flipped = (state: "open" | "closed" = "open"): BoardItem => ({
+  ...boardItem("SNP:^GSPC"),
+  session: { ...SESSION, state: "closed" },
+  futures: {
+    label: "S&P Futures",
+    instrument: homeRow("CME:ES=F", {
+      kind: "FUTURE",
+      price: 7617.5,
+    }) as Listed,
+    session: { state, start: null, end: null },
+    intraday: true,
+  },
+});
 const itemsOf = (b: Board) =>
   new Map(b.sections.flatMap((s) => s.items.map((i) => [i.id, i] as const)));
 const local = (ms: number) => {
@@ -4531,18 +4462,53 @@ describe("the dashboard's model", () => {
     const track = [
       { value: "^GSPC", state: "ready" as const },
       { value: "AAPL", state: "pending" as const },
-      { value: "TYPO", state: "failed" as const },
     ];
     expect(waiting(track)).toBe(true);
-    expect(waiting([track[0]!, track[2]!])).toBe(false);
+    expect(waiting([track[0]!])).toBe(false);
     expect(waiting(null)).toBe(false);
     const html = render(<LoadingPanel track={track} />);
     expect(html).toContain("Getting prices");
-    expect(html).toContain("1 of 3");
-    for (const cls of ["status-done", "dash-seed-pending", "status-failed"]) {
+    expect(html).toContain("1 of 2");
+    for (const cls of ["status-done", "dash-seed-pending"]) {
       expect(html.match(new RegExp(`"tag ${cls}"`, "g"))).toHaveLength(1);
     }
     expect(html).toContain('class="spinner dash-seed-spin"');
+  });
+
+  test("a flipped index draws its futures under their label, with their line and state", () => {
+    const item = flipped();
+    const card = cardOf(entryOf("SNP:^GSPC", item));
+    expect(card).toMatchObject({
+      type: "ready",
+      href: "/symbol/CME%3AES%3DF",
+      name: "S&P Futures",
+      symbol: "ES=F",
+      state: "Open",
+    });
+    const shut = flipped("closed");
+    expect(cardOf(entryOf("SNP:^GSPC", shut))).toMatchObject({
+      name: "S&P Futures",
+      state: "Closed",
+    });
+    const html = render(
+      <SectionView
+        index={0}
+        layout={[{ name: "Americas", view: "cards", ids: ["SNP:^GSPC"] }]}
+        editing={false}
+        locked={false}
+        items={new Map([["SNP:^GSPC", item]])}
+        sparks={
+          new Map([["CME:ES=F", dayAnswer("CME:ES=F", [1, 2], 1) as never]])
+        }
+        drag={null}
+        setDrag={() => {}}
+        save={async () => {}}
+      />,
+    );
+    expect(html).toContain("S&amp;P Futures");
+    expect(html).toContain("ES=F");
+    expect(html).not.toContain("dash-tile-pending");
+    expect(html).toContain("<polyline");
   });
 
   test("a card not answered yet draws as pending", () => {
@@ -4660,6 +4626,25 @@ describe("the dashboard's store", () => {
     ]);
     expect(s.sparks.value.get("BVB:BET")?.interval).toBe("1d");
     expect(s.earnings.value).toEqual([EARNING]);
+    // a flipped index asks its futures' line, never its own
+    const swapped = {
+      ...BOARD,
+      sections: [{ ...BOARD.sections[0]!, items: [flipped()] }],
+    };
+    const g = fake({
+      [`GET ${DASHBOARD_PATH}`]: ok(swapped),
+      [`GET ${barsOf("CME:ES=F", DAY)}`]: ok(dayAnswer("CME:ES=F", [1], 1)),
+    });
+    const t = store(
+      g.fetch,
+      () => NOW,
+      () => "/",
+    );
+    await t.loadDashboard();
+    const asked = g.asked.map((a) => a.path);
+    expect(asked).toContain(barsOf("CME:ES=F", DAY));
+    expect(asked).not.toContain(barsOf("SNP:^GSPC", DAY));
+    expect(t.sparks.value.has("CME:ES=F")).toBe(true);
     const off = fake({});
     await store(
       off.fetch,
@@ -4669,7 +4654,7 @@ describe("the dashboard's store", () => {
     expect(off.asked).toEqual([]);
   });
 
-  test("the watchlist's seed shows until the first save, which sends revision 0", async () => {
+  test("the World markets seed shows until the first save, which sends revision 0", async () => {
     const seed = { ...BOARD, revision: 0, created: false };
     const h = held();
     const s = store(

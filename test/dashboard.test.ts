@@ -12,9 +12,14 @@ import { PREFIX } from "../src/api/http.ts";
 import { spec } from "../src/api/openapi.ts";
 import { readInstrument, upsertInstrument } from "../src/market/instruments.ts";
 import { lastReadAt, trackedIds } from "../src/market/tracking.ts";
+import { WORLD_MARKETS, worldOn } from "../src/market/world.ts";
 import { type Markets, markets } from "../src/operations/markets.ts";
 import { readTargets } from "../src/operations/targets.ts";
-import type { TrackState } from "../src/operations/track.ts";
+import {
+  NO_WORLD,
+  type TrackState,
+  type World,
+} from "../src/operations/track.ts";
 import { silent } from "../src/runtime/log.ts";
 import { yahoo } from "../src/sources/yahoo/client.ts";
 import { type Db, open } from "../src/storage/db/index.ts";
@@ -42,8 +47,8 @@ type Layout = {
   sections: { name: string; view: string; symbols: string[] }[];
 };
 
-function client(m: Markets, track: () => TrackState[] = () => []) {
-  const handle = api(m, { track });
+function client(m: Markets, world: World = NO_WORLD) {
+  const handle = api(m, { world });
   const send = async (req: Request) => {
     const res = await drive(m.clock as never, pacedOf(m), handle(req));
     return { status: res.status, body: (await res.json()) as any };
@@ -94,11 +99,45 @@ function kind(db: Db, id: string, type: string) {
   );
 }
 
-const tracked = (value: string, id: string | null): TrackState => ({
-  value,
-  id,
-  state: id === null ? "not_found" : "tracked",
-});
+// World markets with each symbol stored under a made-up id, but those
+// failed or still pending
+function resolved(
+  db: Db,
+  bvb: boolean,
+  failed: readonly string[] = [],
+  pending: readonly string[] = [],
+  errors: Readonly<Record<string, TrackState["state"]>> = {},
+): World {
+  const entries = worldOn(WORLD_MARKETS, bvb);
+  const symbols = entries.flatMap((e) => [
+    e.symbol,
+    ...(e.futures ? [e.futures.symbol] : []),
+  ]);
+  const status: TrackState[] = symbols.map((value) => {
+    if (failed.includes(value)) return { value, id: null, state: "not_found" };
+    if (pending.includes(value)) return { value, id: null, state: "pending" };
+    const error = errors[value];
+    if (error !== undefined) return { value, id: null, state: error };
+    const id = idOf(value);
+    kind(db, id, "INDEX");
+    return { value, id, state: "tracked" };
+  });
+  return { entries, status: () => status, resolving: true };
+}
+
+const idOf = (symbol: string) => `W:${symbol.replace(":", "_")}`;
+
+const HOME = [
+  ["Americas", ["^GSPC", "^NDX", "^DJI", "^RUT"]],
+  ["Europe", ["^GDAXI", "^FTSE", "^FCHI", "^STOXX50E"]],
+  ["Asia", ["^N225", "^HSI", "^TWII", "^KS11"]],
+  ["Commodities", ["GC=F", "SI=F", "HG=F", "CL=F"]],
+  ["Currencies", ["EURUSD=X", "JPY=X", "GBPUSD=X", "CNY=X"]],
+  ["Crypto", ["BTC-USD", "ETH-USD", "BNB-USD", "XRP-USD"]],
+] as const;
+
+const homeIds = (home: readonly (readonly [string, readonly string[]])[]) =>
+  home.map(([name, symbols]) => [name, symbols.map(idOf)]);
 
 describe("the dashboard's tables", () => {
   test("hold one owner's sections and items, an item dropped with its instrument", () => {
@@ -135,54 +174,125 @@ describe("the dashboard's tables", () => {
 });
 
 describe("the dashboard", () => {
-  test("before a save is the watchlist by kind in flag order; once saved, only a save changes it", async () => {
+  test("before a save is World markets' groups in order, four each; once saved, only a save changes it", async () => {
     const w = world();
-    kind(w.db, "SNP:^GSPC", "INDEX");
-    kind(w.db, "CMX:GC=F", "FUTURE");
-    kind(w.db, "NIM:^NDX", "INDEX");
-    kind(w.db, "CRYPTO:BTC-USD", "CRYPTOCURRENCY");
-    kind(w.db, "XX:ODD", "WARRANT");
-    let track = [
-      tracked("^GSPC", "SNP:^GSPC"),
-      tracked("GC=F", "CMX:GC=F"),
-      tracked("TYPO", null),
-      tracked("^NDX", "NIM:^NDX"),
-      tracked("SNP:^GSPC", "SNP:^GSPC"),
-      tracked("BTC-USD", "CRYPTO:BTC-USD"),
-      tracked("ODD", "XX:ODD"),
-    ];
-    const c = client(w.m, () => track);
+    const c = client(w.m, resolved(w.db, false));
     const first = await c.get();
     expect(first.status).toBe(200);
     expect(first.body).toMatchObject({ revision: 0, created: false });
-    expect(first.body.track).toEqual([
-      { value: "^GSPC", state: "ready" },
-      { value: "GC=F", state: "ready" },
-      { value: "TYPO", state: "failed" },
-      { value: "^NDX", state: "ready" },
-      { value: "SNP:^GSPC", state: "ready" },
-      { value: "BTC-USD", state: "ready" },
-      { value: "ODD", state: "ready" },
-    ]);
-    expect(ids(first.body)).toEqual([
-      ["Indices", ["SNP:^GSPC", "NIM:^NDX"]],
-      ["Futures", ["CMX:GC=F"]],
-      ["Crypto", ["CRYPTO:BTC-USD"]],
-      ["Warrant", ["XX:ODD"]],
-    ]);
+    expect(ids(first.body)).toEqual(homeIds(HOME));
+    // only Home's entries: no futures and none past the four
+    expect(first.body.track).toEqual(
+      HOME.flatMap(([, symbols]) =>
+        symbols.map((value) => ({ value, state: "ready" })),
+      ),
+    );
     expect(first.body.sections.every((s: any) => s.view === "cards")).toBe(
       true,
     );
+    const schema = answerSchema(spec, "GET", "/dashboard", 200)!;
+    expect(validate(first.body, schema, spec)).toEqual([]);
     expect(count(w.db, "dashboards")).toBe(0);
     const saved = await c.put({ revision: 0, sections: [] });
     expect(saved.status).toBe(200);
     expect(saved.body).not.toHaveProperty("track");
     expect(saved.body).toEqual({ revision: 1, created: true, sections: [] });
-    track = [tracked("^DJI", "SNP:^GSPC")];
-    expect((await c.get()).body).toEqual(saved.body);
+    const again = client(w.m, resolved(w.db, true));
+    expect((await again.get()).body).toEqual(saved.body);
   });
 
-  test("answers each item as a watchlist entry with its distance from each average", async () => {
+  test("with the Bucharest source on, the BET and EUR/RON lead their groups", async () => {
+    const w = world();
+    const c = client(w.m, resolved(w.db, true));
+    const { body } = await c.get();
+    expect(ids(body)).toEqual(
+      homeIds([
+        HOME[0],
+        ["Europe", ["BVB:BET", "^GDAXI", "^FTSE", "^FCHI"]],
+        HOME[2],
+        HOME[3],
+        ["Currencies", ["EURRON=X", "EURUSD=X", "JPY=X", "GBPUSD=X"]],
+        HOME[5],
+      ]),
+    );
+  });
+
+  test("a World markets entry is named as the list names it, not as its source does", async () => {
+    const w = world();
+    const c = client(w.m, resolved(w.db, false));
+    const { body } = await c.get();
+    const names = body.sections.map((s: any) =>
+      s.items.map((i: any) => i.instrument.name),
+    );
+    expect(names[2]).toEqual(["Nikkei 225", "Hang Seng", "TAIEX", "KOSPI"]);
+    expect(readInstrument(w.db, idOf("^HSI"))!.name).toBe("^HSI");
+  });
+
+  test("a failed entry lets the next move up; one still resolving keeps its place", async () => {
+    const w = world();
+    const c = client(w.m, resolved(w.db, false, ["^DJI"], ["^HSI"]));
+    const { body } = await c.get();
+    expect(ids(body).slice(0, 3)).toEqual(
+      homeIds([
+        ["Americas", ["^GSPC", "^NDX", "^RUT", "^GSPTSE"]],
+        HOME[1],
+        ["Asia", ["^N225", "^TWII", "^KS11"]],
+      ]),
+    );
+    expect(body.track.slice(0, 4)).toEqual([
+      { value: "^GSPC", state: "ready" },
+      { value: "^NDX", state: "ready" },
+      { value: "^RUT", state: "ready" },
+      { value: "^GSPTSE", state: "ready" },
+    ]);
+    expect(body.track.filter((t: any) => t.state === "pending")).toEqual([
+      { value: "^HSI", state: "pending" },
+    ]);
+    expect(body.track).toHaveLength(24);
+  });
+
+  test("an entry waiting out a source's pause keeps its place; a source error lets the next move up", async () => {
+    const w = world();
+    const c = client(
+      w.m,
+      resolved(w.db, false, [], [], {
+        "^NDX": "source_error",
+        "^DJI": "rate_limited",
+        "BTC-USD": "timeout",
+      }),
+    );
+    const { body } = await c.get();
+    expect(ids(body)[0]).toEqual(
+      homeIds([["Americas", ["^GSPC", "^RUT", "^GSPTSE"]]])[0],
+    );
+    expect(body.track.slice(0, 4)).toEqual([
+      { value: "^GSPC", state: "ready" },
+      { value: "^DJI", state: "pending" },
+      { value: "^RUT", state: "ready" },
+      { value: "^GSPTSE", state: "ready" },
+    ]);
+    expect(body.track.filter((t: any) => t.state === "pending")).toEqual([
+      { value: "^DJI", state: "pending" },
+      { value: "BTC-USD", state: "pending" },
+    ]);
+    expect(body.track).toHaveLength(24);
+  });
+
+  test("a group shows once one of its entries is in", async () => {
+    const w = world();
+    const crypto = ["BTC-USD", "ETH-USD", "BNB-USD", "XRP-USD", "SOL-USD"];
+    const c = client(w.m, resolved(w.db, false, [], crypto));
+    const { body } = await c.get();
+    expect(ids(body).map(([name]: [string]) => name)).toEqual([
+      "Americas",
+      "Europe",
+      "Asia",
+      "Commodities",
+      "Currencies",
+    ]);
+  });
+
+  test("answers each item with its distance from each average", async () => {
     const w = world();
     // crossed up through its 50 and down through its 200 since the last close
     listing(w.db, "US:AAA", {
@@ -235,36 +345,6 @@ describe("the dashboard", () => {
     expect(LIVE > FINAL).toBe(true);
   });
 
-  test("a value still resolving is pending, and the seed leaves it out until it resolves", async () => {
-    const w = world();
-    kind(w.db, "SNP:^GSPC", "INDEX");
-    let track: TrackState[] = [
-      tracked("^GSPC", "SNP:^GSPC"),
-      { value: "AAPL", id: null, state: "pending" },
-      { value: "LATE", id: "US:LATE", state: "pending" },
-    ];
-    const c = client(w.m, () => track);
-    const first = (await c.get()).body;
-    expect(first.track).toEqual([
-      { value: "^GSPC", state: "ready" },
-      { value: "AAPL", state: "pending" },
-      { value: "LATE", state: "pending" },
-    ]);
-    expect(ids(first)).toEqual([["Indices", ["SNP:^GSPC"]]]);
-    kind(w.db, "US:AAPL", "EQUITY");
-    track = [track[0]!, tracked("AAPL", "US:AAPL"), tracked("LATE", null)];
-    const after = (await c.get()).body;
-    expect(after.track.map((t: any) => t.state)).toEqual([
-      "ready",
-      "ready",
-      "failed",
-    ]);
-    expect(ids(after)).toEqual([
-      ["Indices", ["SNP:^GSPC"]],
-      ["Stocks", ["US:AAPL"]],
-    ]);
-  });
-
   test("a save asks no source for a stored favourite, so one it cannot reach never refuses a rename", async () => {
     const w = world();
     // a series whose source cannot answer: any fetch fails
@@ -284,34 +364,6 @@ describe("the dashboard", () => {
       sections: [{ name: "Rates", view: "cards", symbols: ["FRED:DGS2"] }],
     });
     expect(added.status).toBe(422);
-  });
-
-  test("the seed keeps to a save's limits, so the first edit saves", async () => {
-    const w = world();
-    const track: TrackState[] = [];
-    for (let k = 0; k < MAX_SECTION_SYMBOLS + 5; k++) {
-      kind(w.db, `US:S${k}`, "EQUITY");
-      track.push(tracked(`S${k}`, `US:S${k}`));
-    }
-    for (let k = 0; k < MAX_SECTIONS + 5; k++) {
-      kind(w.db, `XX:K${k}`, `KIND${k}`);
-      track.push(tracked(`K${k}`, `XX:K${k}`));
-    }
-    const c = client(w.m, () => track);
-    const seed = (await c.get()).body;
-    expect(seed.sections).toHaveLength(MAX_SECTIONS);
-    expect(seed.sections[0].items).toHaveLength(MAX_SECTION_SYMBOLS);
-    const all = seed.sections.flatMap((s: any) => s.items);
-    expect(all.length).toBeLessThanOrEqual(MAX_DASHBOARD_SYMBOLS);
-    const first = await c.put({
-      revision: 0,
-      sections: seed.sections.map((s: any) => ({
-        name: s.name,
-        view: s.view,
-        symbols: s.items.map((i: any) => i.id).slice(1),
-      })),
-    });
-    expect(first.status).toBe(200);
   });
 
   test("crossed today follows the movers tool's rule, equal to the average included", async () => {

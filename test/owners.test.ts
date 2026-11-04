@@ -27,6 +27,7 @@ import {
   updateFund,
 } from "../src/operations/portfolio.ts";
 import { createRule, parseRules } from "../src/operations/rules.ts";
+import { NO_WORLD } from "../src/operations/track.ts";
 import { ADMIN, OPERATOR, type Who } from "../src/operations/who.ts";
 import { fundPrices } from "../src/portfolios/funds.ts";
 import { readProfile, saveProfile } from "../src/profile/store.ts";
@@ -212,7 +213,7 @@ async function fill(m: Markets, who: Who, mark: string): Promise<Owned> {
   // a listing only this person's rule and dashboard track, so a list row
   // naming why it is tracked would tell
   const sym = owner === OPERATOR ? "US:BBB" : "US:CCC";
-  const saved = await saveDashboard(m, owner, () => [], {
+  const saved = await saveDashboard(m, owner, NO_WORLD, {
     revision: 0,
     sections: [
       { name: `${mark} board`, view: "cards", symbols: ["US:AAA", sym] },
@@ -311,7 +312,7 @@ const routeList = (m: Markets): Route[] =>
     m,
     alerts: alertsHandler({ db: m.db, log: silent }),
     admin: { m, version: "v0.0.0-test", sources: [], sync: true },
-    track: () => [],
+    world: NO_WORLD,
     log: silent,
   });
 
@@ -322,7 +323,6 @@ const owned = (r: Route) =>
   /^(portfolio|rules|profile):/.test(r.scope) ||
   r.path.startsWith("/dashboard") ||
   r.path.startsWith("/keys") ||
-  r.path === "/watchlist" ||
   r.path === "/screener" ||
   (r.method === "GET" &&
     /^\/instruments(\/\{symbol\})?(\/stored)?$/.test(r.path));
@@ -506,7 +506,6 @@ function cases(other: Owned, mine: Owned): Record<string, Case> {
     "GET /instruments/{symbol}/stored": {
       path: `/instruments/${other.sym}/stored`,
     },
-    "GET /watchlist": { path: "/watchlist" },
     "GET /screener": { path: "/screener" },
   };
 }

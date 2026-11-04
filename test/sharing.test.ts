@@ -16,6 +16,7 @@ import {
   createPortfolio,
   saveSettings,
 } from "../src/operations/portfolio.ts";
+import { NO_WORLD } from "../src/operations/track.ts";
 import type { Who } from "../src/operations/who.ts";
 import { silent } from "../src/runtime/log.ts";
 import { createKey } from "../src/server/access.ts";
@@ -304,7 +305,7 @@ describe("a person sharing their portfolios", () => {
       m: t.m,
       alerts: async () => new Response(),
       admin: { m: t.m, version: "v", sources: [], sync: true },
-      track: () => [],
+      world: NO_WORLD,
       log: silent,
     }).filter((r) => r.scope === "portfolio:write");
     const spare = await (

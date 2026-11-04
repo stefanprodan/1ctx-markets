@@ -9,7 +9,6 @@ import {
   markets,
   type SourceStatus,
   type Status as StatusAnswer,
-  type WatchEntry,
 } from "../data/store.ts";
 import { plain } from "../lib/format.ts";
 import { Icon } from "../lib/icons.tsx";
@@ -37,8 +36,6 @@ import {
   type SourceGroup,
   sourcesOn,
   switchFailure,
-  trackFailed,
-  trackLine,
 } from "./Status.model.ts";
 import "./status.css";
 
@@ -249,11 +246,9 @@ export function StatusWaiting() {
 
 export function StatusBody({
   status: s,
-  watchlist: track,
   now,
 }: {
   status: StatusAnswer;
-  watchlist: readonly WatchEntry[];
   now: number;
 }) {
   const shown = groups(s.sources, s.jobs);
@@ -305,22 +300,6 @@ export function StatusBody({
             rowKey={(x) => x.name}
             head={false}
           />
-        </Card>
-      )}
-      {track.length > 0 && (
-        <Card title="Always tracked" count={count(track.length)}>
-          <ul class="srv-track">
-            {track.map((t) => (
-              <li key={t.value} class="srv-track-item">
-                <span class="num">{t.value}</span>
-                <span
-                  class={`small cut ${trackFailed(t) ? "status-failed" : "faint"}`}
-                >
-                  {trackLine(t)}
-                </span>
-              </li>
-            ))}
-          </ul>
         </Card>
       )}
       {open !== undefined && (
@@ -424,11 +403,7 @@ export function Status() {
       {s === null ? (
         <StatusWaiting />
       ) : (
-        <StatusBody
-          status={s}
-          watchlist={markets.watchlist.value ?? []}
-          now={Date.now()}
-        />
+        <StatusBody status={s} now={Date.now()} />
       )}
     </Page>
   );

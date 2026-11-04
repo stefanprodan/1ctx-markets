@@ -158,6 +158,25 @@ const CASES: Case[] = [
     name: "chart-cl-f-5d-1d",
     url: chart(Q1, "CL=F", { range: "5d", interval: "1d" }),
   },
+  // an index and its CME futures, recorded dated (PROBE_SUFFIX) with the
+  // index closed: overnight, CME's daily break and a weekend
+  ...["^GSPC", "ES=F", "^N225", "NIY=F"].flatMap((symbol) => {
+    const slug = symbol.toLowerCase().replace(/[\^]/g, "").replace("=", "-");
+    return [
+      {
+        name: `chart-${slug}-5d-1d`,
+        url: chart(Q1, symbol, { range: "5d", interval: "1d" }),
+      },
+      {
+        name: `chart-${slug}-1d-5m`,
+        url: chart(Q1, symbol, { range: "1d", interval: "5m" }),
+      },
+    ];
+  }),
+  {
+    name: "spark-v7-index-futures",
+    url: `${Q1}/v7/finance/spark?symbols=%5EGSPC,ES%3DF,%5EN225,NIY%3DF&range=1d&interval=5m`,
+  },
   {
     name: "chart-hyg-5d-1d",
     url: chart(Q1, "HYG", { range: "5d", interval: "1d" }),

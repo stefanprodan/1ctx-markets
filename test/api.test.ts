@@ -13,9 +13,9 @@ import { readInstrument } from "../src/market/instruments.ts";
 import { storeIntraday } from "../src/market/intraday.ts";
 import { lastReadAt } from "../src/market/tracking.ts";
 import { withLive } from "../src/operations/history.ts";
-import { NO_SOURCE } from "../src/operations/intraday.ts";
 import { CALL_MS, markets } from "../src/operations/markets.ts";
 import { MAX_IMPORT_BODY } from "../src/operations/portfolio-import.ts";
+import { NO_WORLD } from "../src/operations/track.ts";
 import { ADMIN } from "../src/operations/who.ts";
 import { DAY_MS } from "../src/runtime/clock.ts";
 import { silent } from "../src/runtime/log.ts";
@@ -127,7 +127,7 @@ describe("the spec", () => {
       m: w.m,
       alerts: async () => new Response(),
       admin: { m: w.m, version: "v", sources: [], sync: true },
-      track: () => [],
+      world: NO_WORLD,
       log: silent,
     });
     const routed = list.map((r) => `${r.method} ${r.path}`).sort();
@@ -728,10 +728,6 @@ describe("every operation", () => {
       403,
     );
 
-    await check("GET", "/watchlist", await t.call("/watchlist"), 200);
-    await check("GET", "/watchlist", await t.call("/watchlist?x=1"), 400);
-    await check("GET", "/watchlist", await t.call("/watchlist", wrong), 401);
-
     await check("GET", "/status", await t.call("/status"), 200);
     await check("GET", "/status", await t.call("/status?x=1"), 400);
     await check("GET", "/status", await t.call("/status", wrong), 401);
@@ -1163,7 +1159,6 @@ describe("every operation", () => {
       "/quotes?symbols=NVDA&extended=true&extended=false",
       "/instruments/NVDA/bars?symbol=NVDA",
       "/instruments/NVDA?extended=true",
-      "/watchlist?x=1",
       "/alerts?next=1",
     ]) {
       const res = await t.call(path);
@@ -1568,7 +1563,7 @@ describe("access", () => {
         m: world().m,
         alerts: async () => new Response(),
         admin: { m: world().m, version: "v", sources: [], sync: true },
-        track: () => [],
+        world: NO_WORLD,
         log: silent,
       });
       const paths = Object.entries(spec.paths).flatMap(([path, item]) =>
@@ -1735,69 +1730,6 @@ describe("one instrument", () => {
     });
     expect(t.s.calls.urls.length).toBe(after);
     expect(lastReadAt(t.db, "US:NVDA")).toBe(read);
-  });
-});
-
-describe("the watchlist", () => {
-  test("names FRED's terms once when an entry is a series", async () => {
-    const w = world();
-    instrument(w.db, "FRED:DGS10");
-    instrument(w.db, "US:AAA");
-    const ask = async (ids: string[]) => {
-      const res = await api(w.m, {
-        track: () => ids.map((id) => ({ value: id, id, state: "tracked" })),
-      })(new Request(`http://markets.test${PREFIX}/watchlist`));
-      const raw = await res.text();
-      const body = JSON.parse(raw);
-      const schema = answerSchema(spec, "GET", "/watchlist", 200)!;
-      expect(validate(body, schema, spec)).toEqual([]);
-      return { raw, body };
-    };
-    const both = await ask(["US:AAA", "FRED:DGS10"]);
-    expect(both.body.attribution).toContain("FRED");
-    expect(both.raw.split(both.body.attribution)).toHaveLength(2);
-    expect((await ask(["US:AAA"])).body).not.toHaveProperty("attribution");
-  });
-
-  test("says which entries have 5-minute closes", async () => {
-    const w = world();
-    for (const id of ["FRED:DGS10", "US:AAA", "US:BBB"]) listing(w.db, id);
-    w.db
-      .query("update instruments set source = 'yahoo' where id = 'US:AAA'")
-      .run();
-    // read lately, so the 5-minute read below fetches nothing
-    w.db.query("update instruments set last_read_at = ?").run(NOW);
-    const res = await api(w.m, {
-      track: () => [
-        { value: "AAA", id: "US:AAA", state: "tracked" },
-        { value: "FRED:DGS10", id: "FRED:DGS10", state: "tracked" },
-        { value: "BBB", id: "US:BBB", state: "tracked" },
-        { value: "ZZNOPE", id: null, state: "not_found" },
-        { value: "CCC", id: null, state: "pending" },
-      ],
-    })(new Request(`http://markets.test${PREFIX}/watchlist`));
-    const body = await res.json();
-    expect(
-      validate(body, answerSchema(spec, "GET", "/watchlist", 200)!, spec),
-    ).toEqual([]);
-    expect(body.entries.map((e: any) => [e.value, e.intraday])).toEqual([
-      ["AAA", true],
-      ["FRED:DGS10", false],
-      ["BBB", false],
-      ["ZZNOPE", false],
-      ["CCC", false],
-    ]);
-    // the 5-minute read refuses exactly the entries the watchlist marks false
-    for (const id of ["US:AAA", "FRED:DGS10", "US:BBB"]) {
-      const res = await api(w.m)(
-        new Request(
-          `http://markets.test${PREFIX}/instruments/${id}/bars?interval=5m`,
-        ),
-      );
-      const refused = JSON.stringify(await res.json()).includes(NO_SOURCE);
-      const entry = body.entries.find((e: any) => e.id === id);
-      expect([id, refused]).toEqual([id, !entry.intraday]);
-    }
   });
 });
 

@@ -19,14 +19,13 @@ import { dashboardInstruments, trackedIds } from "../market/tracking.ts";
 import { ArgError, fields } from "../operations/args.ts";
 import { hasIntraday } from "../operations/intraday.ts";
 import type { Markets } from "../operations/markets.ts";
-import { parseQuote, quoteRows, sessionOf } from "../operations/quote.ts";
+import { parseQuote, quoteRows } from "../operations/quote.ts";
 import {
   type Inline,
   topHoldingsInline,
   topHoldingsSummary,
 } from "../operations/research.ts";
 import { type ErrorItem, restStored } from "../operations/targets.ts";
-import type { TrackState } from "../operations/track.ts";
 import type { Who } from "../operations/who.ts";
 import { portfolioHolds, portfolioInstruments } from "../portfolios/store.ts";
 import { instrumentsOf } from "../rules/format.ts";
@@ -507,7 +506,7 @@ export const listRow = (m: Markets, owner: string, now: number) => {
       ...(ruled.has(r.id) ? ["rule"] : []),
       ...(faved.has(r.id) ? ["dashboard"] : []),
       ...(read ? ["read"] : []),
-      ...(tracking.flagged.has(r.id) ? ["track"] : []),
+      ...(tracking.world.has(r.id) ? ["world_markets"] : []),
     ];
     return {
       id: r.id,
@@ -598,36 +597,6 @@ export function storedCheck(m: Markets, url: URL, raw: string): Response {
   return json({
     input,
     stored: row !== null && dailyRange(m.db, row.id) !== null,
-  });
-}
-
-// no read: a read stamp would keep a value dropped from the flag tracked
-export function watchlist(
-  m: Markets,
-  owner: string,
-  track: () => readonly TrackState[],
-  url: URL,
-): Response {
-  noQuery(url);
-  const now = m.clock.now();
-  const row = listRow(m, owner, now);
-  const entries = track().map((t) => ({
-    t,
-    stored: t.id === null ? null : storedRow(m.db, t.id),
-    i: t.id === null ? null : readInstrument(m.db, t.id),
-  }));
-  return json({
-    ...(entries.some((e) => e.stored?.source === FRED)
-      ? { attribution: ATTRIBUTION }
-      : {}),
-    entries: entries.map(({ t, stored, i }) => ({
-      value: t.value,
-      id: t.id,
-      state: t.state,
-      instrument: stored === null ? null : row(stored),
-      session: i === null ? null : sessionOf(m, i, now),
-      intraday: stored !== null && hasIntraday(stored),
-    })),
   });
 }
 

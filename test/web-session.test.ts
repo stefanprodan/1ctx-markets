@@ -97,9 +97,6 @@ function keylessRouter(t: ReturnType<typeof setup>) {
   });
 }
 
-// a --track value the anonymous test runs with, found nowhere else
-const TRACKED = "ZZTRACKEDVALUE";
-
 describe("the login cookie", () => {
   test("holds a random token, the row only its hash, never the key", async () => {
     const t = setup();
@@ -264,7 +261,6 @@ describe("what the cookie opens", () => {
     for (const path of [
       "/status",
       "/instruments",
-      "/watchlist",
       "/rules",
       "/alerts",
       "/openapi.json",
@@ -599,8 +595,6 @@ describe("the served UI", () => {
           "bearer.key",
           "v0.0.0-test",
           "/Users/",
-          // the flag's name is public help; the values it runs with are not
-          TRACKED,
           "--source",
         ]) {
           expect([secret, all.includes(secret)]).toEqual([secret, false]);
@@ -624,6 +618,6 @@ describe("the served UI", () => {
           expect([name, said]).toEqual([name, false]);
         }
       },
-      { ui: true, page, files: ICONS, track: [TRACKED] },
+      { ui: true, page, files: ICONS },
     ));
 });

@@ -22,10 +22,9 @@ the `--help` text, and a flag changes there in the same commit.
 | `--quote-every <min>` | 5 | minutes between quote passes; a quote two periods behind is `quote overdue` |
 | `--track-days <days>` | 30 | an instrument read within this many days stays tracked; news of an untracked one is pruned |
 | `--source <name>` | none | turns on a keyless source, repeated for each; `bvb` is the Bucharest feed (`docs/bvb.md`) |
-| `--track <symbol>` | none | keeps an instrument tracked whether read or not, repeated for each; a value is what `quote` takes (`docs/storage.md`, Tracking). Until the dashboard is first saved, the web UI's home page shows these values; after that only the dashboard's own saves, or deleting an instrument on it, change it (`docs/web.md`) |
 | `--no-ui` | the UI on | serves no web UI and refuses its sign-in (`docs/web.md`) |
 | `--trust-proxy` | off | behind a reverse proxy: a client's address, for the sign-in page's limit, is the last `X-Forwarded-For` value, the one the proxy added (`docs/web.md`); never without a proxy, since any client can send the header |
-| `--no-sync` | sync on | runs no source job and no fetch at start (`--track` values, a source switch, the Bucharest feed's lists), so a second server on a copy of the database spends none of the first's source rate limits; retention still runs, a read still fetches a symbol not stored (`docs/tools.md`), and `GET /api/v1/status` answers `sync: false` |
+| `--no-sync` | sync on | runs no source job and no fetch at start (World markets, a source switch, the Bucharest feed's lists), so a second server on a copy of the database spends none of the first's source rate limits; retention still runs, a read still fetches a symbol not stored (`docs/tools.md`), and `GET /api/v1/status` answers `sync: false` |
 | `-v`, `--version` | | prints the version |
 | `-h`, `--help` | | prints the help |
 
@@ -37,9 +36,11 @@ the `--help` text, and a flag changes there in the same commit.
   counts are whole numbers from 1 to 999999, `--data` is not empty,
   `--listen` has a host before its last colon, and an unknown option
   or `--source` name is refused, so a typo never runs without its
-  source. A `--track` value is only checked to be non-empty, and a
-  repeat is dropped: it resolves in the running server, which may
-  fetch it.
+  source.
+- **World markets is built in, never a flag**
+  (`src/market/world.ts`): the server always tracks it
+  (`docs/storage.md`, Tracking) and a new person's Home shows it
+  (`docs/web.md`). It changes only by a new build.
 
 ## The data directory
 
@@ -160,8 +161,8 @@ the `--help` text, and a flag changes there in the same commit.
 exit 0, or exit 1 with the error logged; a second signal during
 shutdown is ignored. The order in `stop()` holds:
 
-1. Stop the `--track` tracker between values and the scheduler, so no
-   new value or run starts.
+1. Stop the World markets tracker between symbols and the scheduler,
+   so no new symbol or run starts.
 2. Close every source queue, so a call waiting out a back-off fails at
    once; calls already sent finish.
 3. Stop the HTTP server, so no new request starts.
@@ -192,6 +193,7 @@ or runs against a closed connection.
   key to its scopes, lists and revokes it, serves the web UI and its
   assets, signs in with the admin key into a cookie that holds no key,
   creates `markets.db`, keeps every key out of the log, and prints a
-  `--version` starting with `v`.
+  `--version` starting with `v`. It runs with `--no-sync`, so World
+  markets never reaches Yahoo from a smoke run.
 - **Bun is the only runtime**, at the version in `.bun-version`; there
   is no Node. `make start` and `make dev` run from source.

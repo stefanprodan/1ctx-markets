@@ -1,7 +1,7 @@
 # Admin
 
 Governs the operator's routes and command: `src/admin/http.ts` (the
-instrument, watchlist and status handlers), `src/admin/refetch.ts`,
+instrument and status handlers), `src/admin/refetch.ts`,
 `src/admin/retry.ts` (the failed jobs' retry), `src/admin/screener.ts`
 (the Screener page),
 `src/admin/keys.ts` (the agent keys' routes), `src/admin/users.ts`
@@ -63,7 +63,7 @@ never signs in and a sign-in never opens `/mcp`.
 |---|---|
 | `GET /api/v1/instruments?query=&page_size=&page_token=` | the stored instruments by id, a page at a time (below) |
 | `GET /api/v1/screener?type=&screen=&sort=&order=&page_size=&page_token=` | the instruments kept up to date through one ready-made screen, read from stored figures in one query, a page at a time (`docs/api.md`, "The screener") |
-| `GET /api/v1/status` | `sync`, false with `--no-sync` (`docs/config.md`), so the jobs' last runs read as from before; sources on, off and why, and every job, with names for people (a source's `label`, `short` and `mark`, a job's `label` and `about`; a keyed source's `key`: its file, what it adds, where to get one), a back-off in force, every job's last run, its scopes (markets or instruments with a run kept) and failing scopes counted, the newest `MAX_FAILING` (5) failing named with their error, a phrase that may name the symbols behind it (`docs/storage.md`; a run cut by shutdown, error `stopped`, never counts, since the next run settles it; one cut by a crash, `interrupted`, does, since a run that kills the server would otherwise never show; a failed Yahoo backfill is settled once the instrument has daily bars, since a read fetches a history without a backfill run; runs with no scope, from before backfill runs had one, are skipped; the page reads failure from these counts, never the last run), the instrument and tracked counts, the database size, the version. The `--track` values are `GET /api/v1/watchlist`'s (`docs/api.md`) |
+| `GET /api/v1/status` | `sync`, false with `--no-sync` (`docs/config.md`), so the jobs' last runs read as from before; sources on, off and why, and every job, with names for people (a source's `label`, `short` and `mark`, a job's `label` and `about`; a keyed source's `key`: its file, what it adds, where to get one), a back-off in force, every job's last run, its scopes (markets or instruments with a run kept) and failing scopes counted, the newest `MAX_FAILING` (5) failing named with their error, a phrase that may name the symbols behind it (`docs/storage.md`; a run cut by shutdown, error `stopped`, never counts, since the next run settles it; one cut by a crash, `interrupted`, does, since a run that kills the server would otherwise never show; a failed Yahoo backfill is settled once the instrument has daily bars, since a read fetches a history without a backfill run; runs with no scope, from before backfill runs had one, are skipped; the page reads failure from these counts, never the last run), the instrument and tracked counts, the database size, the version |
 | `POST /api/v1/status/retry` | no body: every failing instrument scope status lists asks its failed part again (below); `{asked, fetched, failed, left_out}` |
 | `POST /api/v1/instruments/{symbol}/refetch` | `{"parts": [...], "sections": [...]}`, answered per part |
 | `DELETE /api/v1/instruments/{symbol}` | the instrument and every row of it; 204 |
@@ -240,7 +240,8 @@ is sent directly, after the answer for an ask, before it for an admin.
 - **Each row says what tracks it** in `tracked_by`: `rule` (a rule of
   the caller's reads it), `dashboard` (it is on the caller's saved
   dashboard), `read` (read within the tracking window, with `read_at`
-  and `read_until`), `track` (a `--track` value resolved to it);
+  and `read_until`), `world_markets` (a World markets symbol resolved
+  to it, `docs/storage.md`);
   `tracked` is true when any holds, or when another person's rule,
   dashboard or holding tracks it, which is never named, since every
   read-scope key reads the row (`listRow()`).
@@ -362,9 +363,8 @@ is sent directly, after the answer for an ask, before it for an admin.
   no figure.
 - **Its alerts stay** until retention, since alerts have no foreign key
   and a hole would read as a retention gap on the alerts feed.
-- **A `--track` value's instrument is fetched again** on the next track
-  pass, since the flag still names it; to stop it, drop the flag and
-  restart.
+- **A World markets instrument is fetched again** on the next track
+  pass, since the built-in list still names it.
 - **Not built:** deleting alerts, untracking (tracking ends by itself),
   key rotation (replace the file and restart).
 

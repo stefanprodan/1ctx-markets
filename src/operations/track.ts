@@ -1,10 +1,11 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-// The --track values: resolved as a read would, tracked without one.
+// World markets' symbols: resolved as a read would, tracked without one.
 
 import { nextCheck, readSession } from "../market/calendars.ts";
 import { type Instrument, readInstrument } from "../market/instruments.ts";
 import { JOBS } from "../market/stale.ts";
+import type { WorldEntry } from "../market/world.ts";
 import { errorFields, type Log } from "../runtime/log.ts";
 import type { Scheduler } from "../runtime/scheduler.ts";
 import { seriesStale } from "../sources/fred/jobs.ts";
@@ -21,6 +22,20 @@ export type TrackState = {
   state: "pending" | "tracked" | ItemError["error"];
 };
 
+// the list the server tracks, and what each symbol resolved to
+export type World = {
+  entries: readonly WorldEntry[];
+  status(): readonly TrackState[];
+  // false without sync: nothing resolves a symbol not stored
+  resolving: boolean;
+};
+
+export const NO_WORLD: World = {
+  entries: [],
+  status: () => [],
+  resolving: false,
+};
+
 export type Tracker = {
   // resolves every value still owed one, one value at a time
   run(): Promise<void>;
@@ -32,7 +47,7 @@ export type Tracker = {
   settled(): Promise<void>;
 };
 
-// only the operator changes these: the value, a flag or a key
+// only a new build, a flag or a key changes these
 const FINAL = new Set<TrackState["state"]>([
   "candidates",
   "refused",
@@ -57,23 +72,23 @@ function whole(db: Db, i: Instrument, now: number): boolean {
   return now < nextCheck(session, since);
 }
 
-// each stored value whose source is on is flagged before the startup prune
+// each stored value whose source is on is tracked before the startup prune
 export function seed(options: {
   db: Db;
   values: readonly string[];
   on: { bvb: boolean; fred: boolean };
-  flagged: Set<string>;
+  world: Set<string>;
   owed: Set<string>;
   now: number;
 }): TrackState[] {
-  const { db, on, flagged, owed, now } = options;
+  const { db, on, world, owed, now } = options;
   return options.values.map((value) => {
     const stored = storedInstrument(db, value, on.bvb);
     const off =
       (stored?.source === BVB && !on.bvb) ||
       (stored?.source === FRED && !on.fred);
     if (stored === null || off) return { value, id: null, state: "pending" };
-    flagged.add(stored.id);
+    world.add(stored.id);
     if (whole(db, stored, now)) {
       return { value, id: stored.id, state: "tracked" };
     }
@@ -88,12 +103,12 @@ export function tracker(options: {
   // seed()'s, one per value
   states: TrackState[];
   // the sets trackedIds() and the reads see, kept as values resolve
-  flagged: Set<string>;
+  world: Set<string>;
   owed: Set<string>;
   periodMs: number;
   log: Log;
 }): Tracker {
-  const { m, states, flagged, owed, periodMs, log } = options;
+  const { m, states, world, owed, periodMs, log } = options;
   let running: Promise<void> | null = null;
   let stopped = false;
   // a stored value's no_data asks no source, and a source switch can end it
@@ -112,7 +127,7 @@ export function tracker(options: {
     if ("instrument" in t) {
       s.id = t.instrument.id;
       s.state = "tracked";
-      flagged.add(s.id);
+      world.add(s.id);
       owed.delete(s.id);
       log.info("track value resolved", { value: s.value, id: s.id });
       return;
@@ -132,10 +147,10 @@ export function tracker(options: {
 
   // one at a time in the reads' lane, so a read waits behind one call at most
   async function pass(): Promise<void> {
-    // deleted by the operator: the flag still names it, so fetch it again
+    // deleted by the operator: World markets still names it, so fetch it again
     for (const s of states) {
       if (s.id === null || readInstrument(m.db, s.id) !== null) continue;
-      flagged.delete(s.id);
+      world.delete(s.id);
       owed.delete(s.id);
       s.id = null;
       s.state = "pending";

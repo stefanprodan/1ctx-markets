@@ -7,7 +7,7 @@ import { alertsHandler } from "../../src/api/alerts.ts";
 import { PREFIX } from "../../src/api/http.ts";
 import { match, routes } from "../../src/api/routes.ts";
 import type { Markets } from "../../src/operations/markets.ts";
-import type { TrackState } from "../../src/operations/track.ts";
+import { NO_WORLD, type World } from "../../src/operations/track.ts";
 import { type Log, silent } from "../../src/runtime/log.ts";
 import {
   type Access,
@@ -78,7 +78,7 @@ export function api(
   m: Markets,
   options: {
     sources?: SourceState[];
-    track?: () => TrackState[];
+    world?: World;
     // email's key files and sender; email stays off without them
     secrets?: { email(name: string): string | null; emailNames(): string[] };
     sender?: EmailSender;
@@ -108,7 +108,7 @@ export function api(
       sources: options.sources ?? [],
       sync: true,
     },
-    track: options.track ?? (() => []),
+    world: options.world ?? NO_WORLD,
     log,
     email,
     links: sent,

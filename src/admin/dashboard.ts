@@ -2,15 +2,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { itemOf, json, problem } from "../api/http.ts";
+import { readSession } from "../market/calendars.ts";
 import { round } from "../market/format.ts";
 import { type Instrument, readInstrument } from "../market/instruments.ts";
+import { readQuote } from "../market/quotes.ts";
+import { HOME_PER_GROUP } from "../market/world.ts";
 import { ArgError, fields, MAX_SYMBOL } from "../operations/args.ts";
 import { hasIntraday } from "../operations/intraday.ts";
 import type { Markets } from "../operations/markets.ts";
 import { crossing } from "../operations/movers.ts";
 import { closeOn, readLatest, sessionOf } from "../operations/quote.ts";
 import { resolveTargets } from "../operations/targets.ts";
-import type { TrackState } from "../operations/track.ts";
+import type { World } from "../operations/track.ts";
+import { MINUTE_MS } from "../runtime/clock.ts";
 import { recheck } from "../server/caller.ts";
 import { ATTRIBUTION } from "../sources/fred/sync.ts";
 import { FRED } from "../sources/ids.ts";
@@ -31,21 +35,6 @@ export type LayoutArgs = {
   revision: number;
   sections: { name: string; view: View; symbols: string[] }[];
 };
-
-const PLURAL: Record<string, string> = {
-  INDEX: "Indices",
-  EQUITY: "Stocks",
-  ETF: "ETFs",
-  BOND: "Bonds",
-  FUTURE: "Futures",
-  CRYPTOCURRENCY: "Crypto",
-  CURRENCY: "Currencies",
-  MUTUALFUND: "Funds",
-  SERIES: "Series",
-};
-
-const pluralOf = (type: string) =>
-  PLURAL[type] ?? type.charAt(0) + type.slice(1).toLowerCase();
 
 function stored(
   db: Db,
@@ -79,41 +68,120 @@ function stored(
   };
 }
 
-// in flag order, so the operator's own order is the page's
-function seed(db: Db, track: readonly TrackState[]): Section[] {
-  const sections: Section[] = [];
-  const by = new Map<string, Section>();
-  const seen = new Set<string>();
-  for (const t of track) {
-    if (t.id === null || seen.has(t.id)) continue;
-    // past a save's limits the first edit could never be saved
-    if (seen.size >= MAX_DASHBOARD_SYMBOLS) break;
-    const i = readInstrument(db, t.id);
-    if (i === null) continue;
-    let s = by.get(i.type);
-    if (s === undefined) {
-      if (sections.length >= MAX_SECTIONS) continue;
-      s = { name: pluralOf(i.type), view: "cards", ids: [] };
-      by.set(i.type, s);
-      sections.push(s);
+type Seeded = { value: string; id: string | null; state: "ready" | "pending" };
+
+// a source's pause passes; any other failure may last until a new build,
+// so it must not hold Home waiting
+const HOLDS = new Set<string>([
+  "pending",
+  "tracked",
+  "rate_limited",
+  "timeout",
+]);
+
+// each group's first entries that did not fail, so a failed one lets the
+// next move up; one resolving, or waiting out a pause, keeps its place
+function home(db: Db, world: World): { name: string; picks: Seeded[] }[] {
+  const status = new Map(world.status().map((t) => [t.value, t]));
+  const groups = new Map<string, Seeded[]>();
+  for (const e of world.entries) {
+    let picks = groups.get(e.group);
+    if (picks === undefined) {
+      picks = [];
+      groups.set(e.group, picks);
     }
-    if (s.ids.length >= MAX_SECTION_SYMBOLS) continue;
-    seen.add(t.id);
-    s.ids.push(t.id);
+    if (picks.length >= HOME_PER_GROUP) continue;
+    const t = status.get(e.symbol);
+    if (t?.id && readInstrument(db, t.id) !== null) {
+      picks.push({ value: e.symbol, id: t.id, state: "ready" });
+    } else if (world.resolving && (t === undefined || HOLDS.has(t.state))) {
+      picks.push({ value: e.symbol, id: null, state: "pending" });
+    }
   }
-  return sections;
+  return [...groups].map(([name, picks]) => ({ name, picks }));
 }
 
-function trackStates(db: Db, track: readonly TrackState[]) {
-  return track.map((t) => ({
-    value: t.value,
-    state:
-      t.id !== null && readInstrument(db, t.id) !== null
-        ? "ready"
-        : t.state === "pending"
-          ? "pending"
-          : "failed",
-  }));
+// a group shows once one of its entries is in
+function seed(db: Db, world: World): Section[] {
+  const seen = new Set<string>();
+  return home(db, world).flatMap((g) => {
+    const ids = g.picks.flatMap((p) => {
+      if (p.id === null || seen.has(p.id)) return [];
+      seen.add(p.id);
+      return [p.id];
+    });
+    return ids.length === 0 ? [] : [{ name: g.name, view: "cards", ids }];
+  });
+}
+
+const seeding = (db: Db, world: World) =>
+  home(db, world).flatMap((g) =>
+    g.picks.map((p) => ({ value: p.value, state: p.state })),
+  );
+
+// Yahoo delays CME by about 10 minutes and CME's shortest pause is an
+// hour, so an older last trade means its market is shut
+export const FUTURES_FRESH_MS = 30 * MINUTE_MS;
+
+type Pair = { id: string; label: string };
+
+// by the ids each symbol resolved to, never by symbol text
+function pairsOf(world: World): Map<string, Pair> {
+  const ids = new Map(world.status().map((t) => [t.value, t.id]));
+  const pairs = new Map<string, Pair>();
+  for (const e of world.entries) {
+    if (e.futures === undefined) continue;
+    const index = ids.get(e.symbol);
+    const id = ids.get(e.futures.symbol);
+    if (index && id) pairs.set(index, { id, label: e.futures.label });
+  }
+  return pairs;
+}
+
+// the list's short name over the source's ("HANG SENG INDEX")
+function namesOf(world: World): Map<string, string> {
+  const names = new Map(world.entries.map((e) => [e.symbol, e.name]));
+  const out = new Map<string, string>();
+  for (const t of world.status()) {
+    const name = names.get(t.value);
+    if (t.id !== null && name !== undefined) out.set(t.id, name);
+  }
+  return out;
+}
+
+// Yahoo's regular period names the coming session before the open, so
+// the index's own last trade marks its close
+function futuresOf(
+  m: Markets,
+  row: ReturnType<typeof listRow>,
+  i: Instrument,
+  session: ReturnType<typeof sessionOf>,
+  pair: Pair | undefined,
+  now: number,
+) {
+  if (pair === undefined || session === null || session.state === "open") {
+    return undefined;
+  }
+  const f = readInstrument(m.db, pair.id);
+  const st = storedRow(m.db, pair.id);
+  const traded = readQuote(m.db, pair.id)?.time ?? null;
+  if (f === null || st === null || traded === null) return undefined;
+  const ended = readSession(m.db, i.market)?.end ?? null;
+  const closed =
+    readQuote(m.db, i.id)?.time ??
+    (ended !== null && ended <= now ? ended : null);
+  if (closed === null || traded <= closed) return undefined;
+  const hours = sessionOf(m, f, now);
+  return {
+    label: pair.label,
+    instrument: row(st),
+    session: {
+      state: now - traded <= FUTURES_FRESH_MS ? "open" : "closed",
+      start: hours?.start ?? null,
+      end: hours?.end ?? null,
+    },
+    intraday: hasIntraday(st),
+  };
 }
 
 type Gap = { distance_pct: number | null; crossed_today?: boolean } | null;
@@ -158,33 +226,35 @@ function averagesOf(
   };
 }
 
-// a watchlist entry's fields, so every card draws from one shape
 function item(
   m: Markets,
   row: ReturnType<typeof listRow>,
   s: Stored,
+  pair: Pair | undefined,
+  name: string | undefined,
   now: number,
 ) {
   const i = readInstrument(m.db, s.id)!;
+  const session = sessionOf(m, i, now);
+  const futures = futuresOf(m, row, i, session, pair, now);
   return {
     id: s.id,
-    instrument: row(s),
-    session: sessionOf(m, i, now),
+    instrument: name === undefined ? row(s) : { ...row(s), name },
+    session,
     intraday: hasIntraday(s),
     averages: averagesOf(m, i, s.price, now),
+    ...(futures === undefined ? {} : { futures }),
   };
 }
 
 // no read and no fetch: the page asks every minute
-export function readDashboard(
-  m: Markets,
-  owner: string,
-  track: () => readonly TrackState[],
-) {
+export function readDashboard(m: Markets, owner: string, world: World) {
   const now = m.clock.now();
   const saved = stored(m.db, owner);
-  const sections = saved?.sections ?? seed(m.db, track());
+  const sections = saved?.sections ?? seed(m.db, world);
   const row = listRow(m, owner, now);
+  const pairs = pairsOf(world);
+  const names = namesOf(world);
   let fred = false;
   const out = sections.map((s) => ({
     name: s.name,
@@ -193,7 +263,7 @@ export function readDashboard(
       const st = storedRow(m.db, id);
       if (st === null) return [];
       if (st.source === FRED) fred = true;
-      return [item(m, row, st, now)];
+      return [item(m, row, st, pairs.get(id), names.get(id), now)];
     }),
   }));
   return {
@@ -201,7 +271,7 @@ export function readDashboard(
     revision: saved?.revision ?? 0,
     created: saved !== null,
     // a save while one is pending would leave it out for good
-    ...(saved === null ? { track: trackStates(m.db, track()) } : {}),
+    ...(saved === null ? { track: seeding(m.db, world) } : {}),
     sections: out,
   };
 }
@@ -260,24 +330,20 @@ export function parseLayout(body: unknown): LayoutArgs {
 
 const revisionOf = (db: Db, owner: string) => stored(db, owner)?.revision ?? 0;
 
-const changed = (
-  m: Markets,
-  owner: string,
-  track: () => readonly TrackState[],
-) =>
+const changed = (m: Markets, owner: string, world: World) =>
   problem("conflict", "the dashboard changed since that revision", {
-    dashboard: readDashboard(m, owner, track),
+    dashboard: readDashboard(m, owner, world),
   });
 
 // resolved before the write, since a fetch never runs inside one
 export async function saveDashboard(
   m: Markets,
   owner: string,
-  track: () => readonly TrackState[],
+  world: World,
   args: LayoutArgs,
 ): Promise<Response> {
   if (args.revision !== revisionOf(m.db, owner)) {
-    return changed(m, owner, track);
+    return changed(m, owner, world);
   }
   const inputs = [...new Set(args.sections.flatMap((s) => s.symbols))];
   // asking a stored card's source again would refuse a rename while it is off
@@ -343,6 +409,6 @@ export async function saveDashboard(
     });
     return true;
   });
-  if (!saved) return changed(m, owner, track);
-  return json(readDashboard(m, owner, track));
+  if (!saved) return changed(m, owner, world);
+  return json(readDashboard(m, owner, world));
 }

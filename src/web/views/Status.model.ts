@@ -1,12 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 
-import type {
-  JobStatus,
-  Retried,
-  SourceStatus,
-  WatchEntry,
-} from "../data/store.ts";
+import type { JobStatus, Retried, SourceStatus } from "../data/store.ts";
 import { ago, plain } from "../lib/format.ts";
 
 export function bytes(n: number): string {
@@ -119,16 +114,6 @@ export function switchFailure(jobs: readonly JobStatus[]): string | null {
   const market = f.scope === null ? "a market" : `market ${f.scope}`;
   return `Source change for ${market} failed: ${plain(f.error)}. Its prices stay stale until a retry succeeds.`;
 }
-
-export const trackFailed = (t: Pick<WatchEntry, "id" | "state">): boolean =>
-  t.state !== "tracked" && t.state !== "pending";
-
-export const trackLine = (t: Pick<WatchEntry, "id" | "state">): string =>
-  t.state === "tracked"
-    ? (t.id ?? "")
-    : t.state === "pending"
-      ? "pending"
-      : plain(t.state.replaceAll("_", " "));
 
 export const sourcesOn = (list: readonly SourceStatus[]): number =>
   list.filter((s) => s.state === "on").length;
