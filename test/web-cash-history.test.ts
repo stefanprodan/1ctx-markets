@@ -8,6 +8,7 @@ import {
   balanceChange,
   type ChainRow,
   historyLines,
+  pastBalance,
   stepPath,
   steps,
 } from "../src/web/views/CashHistory.model.ts";
@@ -238,5 +239,82 @@ describe("the box", () => {
     expect(balanceChange("100", 100)).toEqual({ none: true });
     expect(balanceChange("+0", 100)).toEqual({ none: true });
     expect(balanceChange("ten", 100)).toEqual({ error: "Not a number." });
+  });
+});
+
+describe("past balances", () => {
+  // 100 on 1 Oct, 150 on 5 Oct; then balances for 20 and 28 Sep entered
+  const withPast = (): ChainRow[] => [
+    row({
+      id: 300,
+      amount: 60,
+      as_of: "2026-09-28",
+      past: true,
+      replaces: null,
+      entered_at: "2026-10-07T08:00:00.000Z",
+    }),
+    row({
+      id: 301,
+      amount: 40,
+      as_of: "2026-09-20",
+      past: true,
+      replaces: null,
+      entered_at: "2026-10-06T08:00:00.000Z",
+    }),
+    ...chain({ amount: 100 }, { amount: 150, as_of: "2026-10-05" }),
+  ];
+
+  test("are listed at their day, newest day first", () => {
+    expect(
+      historyLines(withPast()).map((l) => [l.date, l.amount, l.change, l.what]),
+    ).toEqual([
+      ["2026-10-05", 150, 50, null],
+      ["2026-10-01", 100, null, "Added"],
+      ["2026-09-28", 60, null, "Past balance"],
+      ["2026-09-20", 40, null, "Past balance"],
+    ]);
+  });
+
+  test("draw the step line from the first", () => {
+    expect(steps(withPast()).map((p) => [p.date, p.amount])).toEqual([
+      ["2026-09-20", 40],
+      ["2026-09-28", 60],
+      ["2026-10-01", 100],
+      ["2026-10-05", 150],
+    ]);
+  });
+
+  test("a removed one leaves the line and says so", () => {
+    const rows = withPast();
+    rows[0]!.removed_at = "2026-10-08T08:00:00.000Z";
+    expect(steps(rows).map((p) => p.date)).toEqual([
+      "2026-09-20",
+      "2026-10-01",
+      "2026-10-05",
+    ]);
+    expect(historyLines(rows)[0]).toMatchObject({
+      date: "2026-10-08",
+      what: "Past balance removed",
+      event: true,
+    });
+  });
+
+  test("the form takes a day before the row's and a balance", () => {
+    expect(pastBalance("2026-09-30", "12,400", "2026-10-05")).toEqual({
+      change: { amount: 12400, date: "2026-09-30" },
+    });
+    expect(pastBalance("", "10", "2026-10-05")).toEqual({
+      error: "Pick a day.",
+    });
+    const late = pastBalance("2026-10-05", "10", "2026-10-05");
+    expect("error" in late && late.error.startsWith("Pick a day before")).toBe(
+      true,
+    );
+    expect(pastBalance("2026-09-30", " ", "2026-10-05")).toEqual({
+      error: "Give the balance.",
+    });
+    expect(pastBalance("2026-09-30", "-5", "2026-10-05")).toEqual({
+      error: "Not a number.",
+    });
   });
 });

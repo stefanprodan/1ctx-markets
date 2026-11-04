@@ -228,6 +228,23 @@ once and valued on the live price the server already keeps.
   one replaces it the same way. A position's history follows that chain
   (`chainOf()`), since an update may rename or move it, or change a
   bond's face or date.
+- **A cash update dated before the row's own day is a past balance**,
+  and so is an add of the same name, broker and currency dated before it
+  (`past_of`, migration `0040-past-balances`): a row of its own beside
+  the chain row it was entered on, so an older balance from a statement
+  never changes the row. It takes `amount` alone, in the row's
+  currency; anything else with such a date is refused, as a move or a
+  rename means nothing for a past day. It is never updated, only
+  removed and restored, and a restore of it moves no other row. It
+  stays with the account through updates, renames and broker moves,
+  read with the whole chain in one query (`entriesOf()`, which the same
+  migration indexes, `past_of` and `replaces`). Reads of
+  live rows (`readPositions()`, `samePosition()`, a broker's rows)
+  leave it out, so holdings, totals and imports never count it.
+- **A cash account's balance on a day** (`balanceOn()`) is its latest
+  entry dated on or before it, rows and past balances alike, the one
+  entered last on a tie, none before the first; only the rows that
+  stand and live past balances count (`counted()`).
 - **The display currency** (`portfolio_settings`, one row per owner)
   is required: a portfolio is refused
   (409, "Set a display currency first.") until the owner sets one, and
@@ -505,7 +522,8 @@ trades(portfolio?: Portfolio, broker?: string, symbol?: string,
 // never who set it. An update and the row it replaces share one instant;
 // any other removal set the row aside for a restore, or was by hand when
 // no row was live just after. A removal undone by its own restore leaves
-// no trace, since the restore clears it
+// no trace, since the restore clears it. Past balances are among them
+// with past: true, and removed only when taken off
 history(position: number): { position; kind; history };
 
 // portfolio_trade: a share, ETF, crypto or fund; never Cash; portfolio
@@ -531,7 +549,8 @@ add(name: string, amount: number, currency: Currency, date?: Day,
   maturity?: Day): { position };
 // amount set outright or moved by `by`, in `currency` or its own; at
 // least one change; broker null takes it off, note and maturity null
-// clear them
+// clear them. A date before the row's day with amount alone saves a
+// past balance, answered with past: true and replaced null
 update(position: number, amount?: number, by?: number,
   currency?: Currency, date?: Day, note?: string | null,
   dry_powder?: boolean, name?: string, broker?: string | null,

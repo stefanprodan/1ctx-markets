@@ -415,6 +415,13 @@ export function plainError(said: string): string {
     return "Nothing of this fund is held.";
   }
   if (/a fund has no live price/i.test(t)) return "Give the price or total.";
+  if (/^a date before the row's own day takes only amount/i.test(t)) {
+    return "An earlier day takes only a balance. Use Add a past balance.";
+  }
+  if (/^a past balance never changes/i.test(t)) {
+    return "A past balance never changes. Add another for its day.";
+  }
+  if (/^date is in the future/i.test(t)) return "Pick a day up to today.";
   return t.charAt(0).toUpperCase() + t.slice(1);
 }
 
@@ -637,14 +644,16 @@ export function portfolioStore(
       moved: (id: number) => void = () => {},
     ): Promise<{ id: number } | { refused: string }> => {
       try {
-        const done = await call<{ position: { id: number } }>(
+        const done = await call<{ position: { id: number; past?: boolean } }>(
           `/api/v1/positions/${id}`,
           "PATCH",
           change,
         );
-        moved(done.position.id);
+        // a past balance leaves the row as it was
+        const to = done.position.past ? id : done.position.id;
+        moved(to);
         await load();
-        return { id: done.position.id };
+        return { id: to };
       } catch (e) {
         await load();
         return { refused: plainError(says(e)) };

@@ -1070,6 +1070,8 @@ describe("the migration that gives every row an owner", () => {
                 delete o.owner;
                 delete o.user_id;
               }
+              // a column a later migration adds
+              delete o.past_of;
               return o;
             }),
         ]),

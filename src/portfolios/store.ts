@@ -85,6 +85,9 @@ export type Position = {
   dryPowder: boolean;
   // the row this one updated, removed by the update
   replaces: number | null;
+  // a cash balance dated before its row's day: the chain row it was
+  // entered on, whose figures it never changes
+  pastOf: number | null;
   enteredBy: string;
   enteredAt: number;
   removedAt: number | null;
@@ -297,7 +300,7 @@ export function brokerRows(db: Db, id: number): number {
       `select (select count(*) from trades where broker = ?1
           and removed_at is null)
         + (select count(*) from positions where broker = ?2
-          and removed_at is null) as n`,
+          and removed_at is null and past_of is null) as n`,
     )
     .get(id, id)!.n;
 }
@@ -308,7 +311,8 @@ export function deleteBroker(db: Db, owner: string, id: number): boolean {
     "update trades set broker = null where broker = ? and removed_at is not null",
   ).run(id);
   db.query(
-    "update positions set broker = null where broker = ? and removed_at is not null",
+    `update positions set broker = null where broker = ?
+     and (removed_at is not null or past_of is not null)`,
   ).run(id);
   return db.query("delete from brokers where id = ?").run(id).changes > 0;
 }
@@ -429,13 +433,14 @@ export function setTradeRemoved(
 const POSITION = `select id, portfolio,
   kind, name, currency, instrument,
   amount, cost, coupon, maturity, as_of as asOf, broker, note,
-  dry_powder as dryPowder, replaces, entered_by as enteredBy, entered_at as enteredAt, removed_at as removedAt,
+  dry_powder as dryPowder, replaces, past_of as pastOf,
+  entered_by as enteredBy, entered_at as enteredAt, removed_at as removedAt,
   removed_by as removedBy from positions`;
 
 export type NewPosition = Omit<
   Position,
-  "id" | "enteredAt" | "removedAt" | "removedBy"
->;
+  "id" | "enteredAt" | "removedAt" | "removedBy" | "pastOf"
+> & { pastOf?: number | null };
 
 export function insertPosition(db: Db, p: NewPosition, now: number): number {
   return Number(
@@ -443,8 +448,8 @@ export function insertPosition(db: Db, p: NewPosition, now: number): number {
       .query(
         `insert into positions (portfolio, kind, name, currency, instrument,
            amount, cost, coupon, maturity, as_of, broker, note,
-           dry_powder, replaces, entered_by, entered_at)
-         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           dry_powder, replaces, past_of, entered_by, entered_at)
+         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         p.portfolio,
@@ -461,6 +466,7 @@ export function insertPosition(db: Db, p: NewPosition, now: number): number {
         p.note,
         p.dryPowder ? 1 : 0,
         p.replaces,
+        p.pastOf ?? null,
         p.enteredBy,
         now,
       ).lastInsertRowid,
@@ -506,6 +512,8 @@ export function readPositions(
     args.push(f.broker);
   }
   if (!f.removed) where.push("removed_at is null");
+  // a past balance is part of its row's history, never a row of its own
+  where.push("past_of is null");
   return db
     .query<RawPosition, (string | number)[]>(
       `${POSITION} where ${where.join(" and ")}
@@ -557,7 +565,7 @@ export function samePosition(
                or ((instrument is null or ?2 is null)
                  and name = ?3 collate nocase))
              and (?4 is null or as_of = ?4) and amount is ?5 and broker is ?6
-             and removed_at is null
+             and removed_at is null and past_of is null
              and id not in (select value from json_each(?7))
              order by instrument is null, id`,
           )
@@ -573,7 +581,8 @@ export function samePosition(
       : db
           .query<RawPosition, [number, string, string, number | null, string]>(
             `${POSITION} where portfolio = ? and kind = ? and name = ? collate nocase
-             and broker is ? and currency = ? and removed_at is null`,
+             and broker is ? and currency = ? and removed_at is null
+             and past_of is null`,
           )
           .get(p.portfolio, p.kind, p.name, p.broker, p.currency);
   return r === null ? null : positionOf(r);
@@ -762,5 +771,30 @@ export function chainOf(db: Db, owner: string, id: number): Position[] {
        order by entered_at desc, id desc`,
     )
     .all(id, owner)
+    .map(positionOf);
+}
+
+// a chain's rows and the past balances entered on any of them, latest
+// first, from any of its rows or past balances: what its balances are read from
+export function entriesOf(db: Db, owner: string, id: number): Position[] {
+  return db
+    .query<RawPosition, [number, string, string]>(
+      `with recursive up(id, replaces) as (
+         select id, replaces from positions
+         where id = (select coalesce(past_of, id) from positions where id = ?)
+         union select p.id, p.replaces from positions p
+           join up on p.id = up.replaces
+       ),
+       root(id) as (select id from up where replaces is null),
+       down(id) as (
+         select id from root
+         union select p.id from positions p join down on p.replaces = down.id
+       )
+       ${POSITION} where id in (select id from down) and ${OWNED}
+       union all
+       ${POSITION} where past_of in (select id from down) and ${OWNED}
+       order by enteredAt desc, id desc`,
+    )
+    .all(id, owner, owner)
     .map(positionOf);
 }

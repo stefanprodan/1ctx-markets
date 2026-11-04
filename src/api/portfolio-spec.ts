@@ -185,6 +185,10 @@ const position = object(
     broker: nstr,
     note: nstr,
     replaces: note({ type: ["integer", "null"] }, "The row this one updated."),
+    past: note(
+      bool,
+      "True on a cash balance dated before its row's day: kept in the row's history, never its figures. Left out otherwise.",
+    ),
     entered_by: str,
     entered_at: nstr,
     removed_at: nstr,
@@ -579,7 +583,10 @@ export const portfolioSchemas: Record<string, Schema> = {
   UpdatedPosition: object(
     {
       position,
-      replaced: int,
+      replaced: note(
+        { type: ["integer", "null"] },
+        "Null for a past balance, which replaces nothing.",
+      ),
       rate: object({ from: str, to: str, rate: num, at: nstr }),
     },
     ["position", "replaced"],
@@ -1126,6 +1133,7 @@ export const portfolioPaths = {
         "Changes an amount, a cost, the date, the note or the market. The old row is kept as replaced, so a change can be set back by restoring it.",
         "",
         "- `by` moves a cash balance. An amount in another currency converts at the live rate, answered in `rate`.",
+        "- A cash `date` before the row's own day records a past balance: `amount` alone, kept in the row's history at that day and answered with `past`; the row itself is unchanged. Any other field with it is refused. A past balance is removed and restored as a row, never updated.",
       ),
       requestBody: bodyOf(ref("PositionChange")),
       responses: base({
@@ -1170,7 +1178,7 @@ export const portfolioPaths = {
       security: READS,
       summary: "A position's changes",
       description:
-        "Every row of the position, newest first, with who made each and when.",
+        "Every row of the position, newest first, with who made each and when, through updates, renames and broker moves. A cash row's past balances are among them, marked `past`; a past balance's id answers its row's history.",
       responses: base({
         200: ok("The rows.", ref("PositionHistory")),
         404: missing,

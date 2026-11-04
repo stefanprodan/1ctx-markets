@@ -998,6 +998,14 @@ The parts:
   id before the reload, and the page keeps the drawer's last row until
   the new one lands, so it never closes and opens again. The box reads
   12,400 as the head writes it, twelve thousand.
+- **Past balances in the cash drawer**: the history lists each at its
+  day ("Past balance", "Past balance removed" when taken off), the list
+  ordered by day, newest first, and the step line draws the live ones
+  from the first. Under the history, Add a past balance unfolds a Day
+  and a Balance in the row's currency (`pastBalance()`), a day before
+  the row's own, so a statement's balance goes in without touching the
+  row; a save reads the history again, as the row keeps its id. A past
+  date from Edit details saves one too and leaves the drawer on the row.
 - **Drawers:** every form and detail opens in the one `Drawer`. Edit
   (amount and as of; cash also its name, broker, "New broker…"
   included, and note, each sent only when changed (`cashEdits()`), no
