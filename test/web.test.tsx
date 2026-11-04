@@ -3104,6 +3104,7 @@ describe("More's drawer", () => {
         "AMD",
         "Casey",
         "Dark theme",
+        "Hide amounts",
         "Sign out",
       ]);
       expect(body.html).toContain(

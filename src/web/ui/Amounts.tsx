@@ -4,7 +4,6 @@
 // element around them hiddenClass(hide).
 
 import { signal } from "@preact/signals";
-import { Icon } from "../lib/icons.tsx";
 import "./amounts.css";
 
 export const HIDE_KEY = "markets-portfolio-hide";
@@ -21,7 +20,7 @@ export const readHidden = (): boolean => {
   }
 };
 
-// one for the whole app, so the head's eye reaches every figure at once
+// one for the whole app, so the account menu's switch reaches every figure
 export const amountsHidden = signal(readHidden());
 
 export function toggleAmounts(): void {
@@ -30,20 +29,4 @@ export function toggleAmounts(): void {
   try {
     localStorage.setItem(HIDE_KEY, next ? "1" : "0");
   } catch {}
-}
-
-export function HideAmounts() {
-  const hide = amountsHidden.value;
-  const label = hide ? "Show amounts" : "Hide amounts";
-  return (
-    <button
-      type="button"
-      class="btn-icon"
-      aria-label={label}
-      title={label}
-      onClick={toggleAmounts}
-    >
-      <Icon name={hide ? "eye-off" : "eye"} />
-    </button>
-  );
 }

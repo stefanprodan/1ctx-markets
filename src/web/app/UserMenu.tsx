@@ -7,6 +7,7 @@ import { useEffect, useRef } from "preact/hooks";
 import { says } from "../data/api.ts";
 import { markets } from "../data/store.ts";
 import { Icon } from "../lib/icons.tsx";
+import { amountsHidden, toggleAmounts } from "../ui/Amounts.tsx";
 import { MenuHead } from "../ui/Menu.tsx";
 import { theme, toggleTheme } from "./theme.ts";
 import "./usermenu.css";
@@ -47,6 +48,22 @@ export function UserItems({ onSignedOut }: { onSignedOut?: () => void }) {
         <span>Dark theme</span>
         <span
           class={`usermenu-switch switch${theme.value === "dark" ? " switch-on" : ""}`}
+        >
+          <span class="switch-knob" />
+        </span>
+      </button>
+      {/* every page's figures at once, so it lives with the account */}
+      <button
+        type="button"
+        role="switch"
+        aria-checked={amountsHidden.value}
+        class="menu-item"
+        onClick={toggleAmounts}
+      >
+        <Icon name="eye-off" size={14} />
+        <span>Hide amounts</span>
+        <span
+          class={`usermenu-switch switch${amountsHidden.value ? " switch-on" : ""}`}
         >
           <span class="switch-knob" />
         </span>

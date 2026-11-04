@@ -845,16 +845,14 @@ describe("the symbol search", () => {
     expect(render(<Page title="Status" />)).not.toContain("page-brand");
   });
 
-  test("the eye sits after the search on a page with amounts only", () => {
+  test("no page head holds the eye: hiding amounts is the account's", () => {
     const html = render(
-      <Page title="AAA" amounts actions={<button type="button">More</button>}>
+      <Page title="AAA" actions={<button type="button">More</button>}>
         <p>body</p>
       </Page>,
     );
-    expect(html).toMatch(
-      /class="ssearch">[\s\S]*aria-label="Hide amounts"[\s\S]*>More<\/button>/,
-    );
-    expect(render(<Page title="Home" />)).not.toContain("Hide amounts");
+    expect(html).toMatch(/class="ssearch">[\s\S]*>More<\/button>/);
+    expect(html).not.toContain("Hide amounts");
   });
 });
 

@@ -367,6 +367,13 @@ route's transport in `docs/api.md`; rules that wait on events in
   first page carries `counts` for that window before the articles, so
   an agent reads the balance of a week before its text; later pages
   carry none. `since` with another section is refused.
+- **A fund the owner prices answers `top_holdings` as entered**
+  (`fund:<ISIN>`, `src/operations/funds.ts`, `docs/portfolios.md`):
+  the same shape with `source` `owner`, `fetched_at` (when entered,
+  also as `entered_at`), `as_of` and `sectors_as_of`, no `stale`, a
+  row's `symbol` the listing's own and `id` its key; never fetched,
+  and `not_found` for a caller who neither holds nor priced it. Every
+  other section of its key answers as `quote` does (`OWNER_PRICED`).
 - **`top_holdings` is a fund's from Yahoo**: for an ETF or mutual fund
   on any market (`isFund()`), whose Finnhub, news and filings parts
   answer as before; a share's overview has no `top_holdings` key, and

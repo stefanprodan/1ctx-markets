@@ -99,7 +99,7 @@ export const NO_LISTING = "no listing found; try search";
 
 // a fund the owner prices has no quote; its price is in the holdings
 export const OWNER_PRICED =
-  "a fund the owner prices has no quote; portfolio holdings has its price";
+  "a fund the owner prices has no quote; portfolio holdings has its price, history its entered prices, research top_holdings its holdings";
 
 // anything but these fixed messages is logged and answered as a source error
 export function itemError(m: Markets, error: unknown): ItemError {

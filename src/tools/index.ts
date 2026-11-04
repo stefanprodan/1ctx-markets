@@ -100,7 +100,11 @@ export function tools(m: Markets, opens: Opens = ALL): Tool[] {
       description: HISTORY,
       inputSchema: schema(
         {
-          symbol,
+          symbol: {
+            ...symbol,
+            description:
+              "a fund's key (fund:<ISIN>) answers its entered prices as closes, one per priced day, a week's last for 1wk; no 5m",
+          },
           interval: {
             type: "string",
             enum: ["1d", "1wk", "5m"],
@@ -114,7 +118,8 @@ export function tools(m: Markets, opens: Opens = ALL): Tool[] {
         },
         ["symbol"],
       ),
-      run: (input) => historyAnswer(m, parseHistory(input)),
+      run: (input, who) =>
+        historyAnswer(m, parseHistory(input), who ?? NO_ACCESS),
     },
     {
       name: "movers",
@@ -195,7 +200,11 @@ export function tools(m: Markets, opens: Opens = ALL): Tool[] {
       description: RESEARCH,
       inputSchema: schema(
         {
-          symbol,
+          symbol: {
+            ...symbol,
+            description:
+              "a fund's key (fund:<ISIN>) answers top_holdings only, as entered, with as_of and sectors_as_of",
+          },
           section: {
             type: "string",
             enum: [...RESEARCH_SECTIONS],
@@ -208,7 +217,8 @@ export function tools(m: Markets, opens: Opens = ALL): Tool[] {
         },
         ["symbol"],
       ),
-      run: (input) => researchAnswer(m, parseResearch(input)),
+      run: (input, who) =>
+        researchAnswer(m, parseResearch(input), who ?? NO_ACCESS),
     },
     {
       name: "events",

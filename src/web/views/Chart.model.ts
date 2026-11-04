@@ -612,3 +612,22 @@ export function clearOfTags(
       : axisPrice(p);
   });
 }
+
+// a trade on the bar of its day, or of the last bar before it: a week's
+// bar is dated its Monday, and one bar holds one buy and one sell at most
+export type TradeMark = { time: string; side: "buy" | "sell" };
+export function tradeMarks(
+  times: readonly string[],
+  trades: readonly { date: string; side: "buy" | "sell" }[],
+): TradeMark[] {
+  const out = new Map<string, TradeMark>();
+  for (const t of trades) {
+    let at: string | null = null;
+    for (const d of times) {
+      if (d > t.date) break;
+      at = d;
+    }
+    if (at !== null) out.set(`${at} ${t.side}`, { time: at, side: t.side });
+  }
+  return [...out.values()].sort((a, b) => a.time.localeCompare(b.time));
+}

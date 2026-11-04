@@ -17,6 +17,12 @@ import { iso } from "../market/format.ts";
 import { readInstrument } from "../market/instruments.ts";
 import { dashboardInstruments, trackedIds } from "../market/tracking.ts";
 import { ArgError, fields } from "../operations/args.ts";
+import {
+  fundHoldingsAnswer,
+  fundQuote,
+  NO_FUND,
+  seenFund,
+} from "../operations/funds.ts";
 import { hasIntraday } from "../operations/intraday.ts";
 import type { Markets } from "../operations/markets.ts";
 import { parseQuote, quoteRows } from "../operations/quote.ts";
@@ -27,6 +33,7 @@ import {
 } from "../operations/research.ts";
 import { type ErrorItem, restStored } from "../operations/targets.ts";
 import type { Who } from "../operations/who.ts";
+import { isFundKey } from "../portfolios/funds.ts";
 import { portfolioHolds, portfolioInstruments } from "../portfolios/store.ts";
 import { instrumentsOf } from "../rules/format.ts";
 import { allRules, ruleInstruments } from "../rules/store.ts";
@@ -529,15 +536,35 @@ export const listRow = (m: Markets, owner: string, now: number) => {
   };
 };
 
+// a fund the owner prices, read from what was entered: nothing is fetched
+function fundInstrument(m: Markets, who: Who, input: string) {
+  const fund = seenFund(m.db, who, input);
+  const stored = fund === null ? null : storedRow(m.db, fund.id);
+  if (fund === null || stored === null) {
+    return problem("not_found", NO_FUND, { input });
+  }
+  const quote = fundQuote(m.db, input, fund);
+  const holdings = fundHoldingsAnswer(m.db, fund.id);
+  return json({
+    input,
+    credit: null,
+    instrument: {
+      ...listRow(m, who.user, m.clock.now())(stored),
+      price: quote.price,
+    },
+    intraday: false,
+    quote,
+    error: null,
+    ...("message" in holdings ? {} : { top_holdings: holdings }),
+  });
+}
+
 // a read, as any client's: an unknown symbol is fetched
-export async function instrument(
-  m: Markets,
-  owner: string,
-  url: URL,
-  raw: string,
-) {
+export async function instrument(m: Markets, who: Who, url: URL, raw: string) {
   noQuery(url);
   const input = pathSymbol(raw);
+  if (isFundKey(input)) return fundInstrument(m, who, input);
+  const owner = who.user;
   // a fund's top holdings beside the quote, under one deadline, so the
   // page needs no second call
   const deadline = m.clock.now() + m.callMs;
@@ -590,9 +617,18 @@ export async function instrument(
 }
 
 // the instrument route's own lookup: stored means its read fetches nothing
-export function storedCheck(m: Markets, url: URL, raw: string): Response {
+export function storedCheck(
+  m: Markets,
+  who: Who,
+  url: URL,
+  raw: string,
+): Response {
   noQuery(url);
   const input = keyed(raw);
+  // a fund the owner prices is never fetched, so its read never waits
+  if (isFundKey(input)) {
+    return json({ input, stored: seenFund(m.db, who, input) !== null });
+  }
   const row = restStored(m.db, input, m.bvb !== null, false);
   return json({
     input,

@@ -803,12 +803,15 @@ export function barOf(t: Total, all = false): BarSide[] | null {
 
 export type EditWhat = "edit" | "price" | "purchases";
 
-// a hand-priced fund has an id but no listing, so no instrument page
-export const pageOf = (h: Holding): string | null =>
-  h.id && h.priced !== "hand" && !isFundId(h.id) ? symbolHref(h.id) : null;
+// a fund the owner prices has a page of its own, read only by who holds
+// or priced it, so a viewer of shared portfolios gets none
+export const pageOf = (h: Holding, viewOnly = false): string | null =>
+  h.id && (isFundId(h.id) ? !viewOnly : h.priced !== "hand")
+    ? symbolHref(h.id)
+    : null;
 
-export const tradePage = (symbol: string): string | null =>
-  isFundId(symbol) ? null : symbolHref(symbol);
+export const tradePage = (symbol: string, viewOnly = false): string | null =>
+  isFundId(symbol) && viewOnly ? null : symbolHref(symbol);
 
 // with no instrument page, a row opens what edits it
 export function homeOf(h: Holding): EditWhat | null {
@@ -960,4 +963,23 @@ export function activityOf(
     kept: kept.length,
     removed: foldFills(trades.filter((t) => t.removed_at !== null)).length,
   };
+}
+
+// what Add opens on in one portfolio: Cash takes cash, else the kind most
+// of its holdings are; none in All or an empty one, where the kind last
+// saved stands
+export function addKindOf(
+  holdings: readonly Pick<Holding, "kind">[],
+  cash: boolean,
+): "trade" | "cash" | "fund" | "bond" | undefined {
+  if (cash) return "cash";
+  const count = new Map<string, number>();
+  for (const h of holdings) {
+    const k = h.kind === "holding" ? "trade" : h.kind;
+    count.set(k, (count.get(k) ?? 0) + 1);
+  }
+  let best: string | undefined;
+  for (const [k, n] of count)
+    if (best === undefined || n > count.get(best)!) best = k;
+  return best as "trade" | "cash" | "fund" | "bond" | undefined;
 }

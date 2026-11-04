@@ -108,6 +108,8 @@ const DAY = new Intl.DateTimeFormat("en-GB", {
 export function priceState(d: Detail, now: number): string {
   const q = d.quote;
   if (q === null) return `Stored price · ${ago(d.instrument.fetched_at, now)}`;
+  if (q.kind === "hand_price" && q.as_of)
+    return `Price for ${DAY.format(new Date(`${q.as_of}T00:00:00Z`))}`;
   const when = ago(q.fetched_at, now);
   if (q.session === null) {
     const on = q.observation?.date;
@@ -221,3 +223,9 @@ export const deleteLine =
 
 export const isFund = (row: Pick<Listed, "kind">): boolean =>
   row.kind === "ETF" || row.kind === "MUTUALFUND";
+
+// what a trade buys: never an index, a future, a currency pair or a
+// series; a listed bond is added as a bond, by face, from Portfolios
+const BUYABLE = new Set(["EQUITY", "ETF", "MUTUALFUND", "CRYPTOCURRENCY"]);
+export const buyable = (row: Pick<Listed, "id" | "kind">): boolean =>
+  BUYABLE.has(row.kind) || row.id.startsWith("fund:");

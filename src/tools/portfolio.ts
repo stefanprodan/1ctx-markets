@@ -11,6 +11,7 @@ import {
   text,
   textValues,
 } from "../operations/args.ts";
+import { MAX_HOLDING_ROWS } from "../operations/funds.ts";
 import type { Markets } from "../operations/markets.ts";
 import {
   brokerNames,
@@ -33,6 +34,7 @@ import {
   zoneArg,
 } from "../operations/portfolio.ts";
 import { type Access, NO_ACCESS } from "../operations/who.ts";
+import { ASSET_KEYS, SECTOR_KEYS } from "../portfolios/fund-holdings.ts";
 import { isFundKey } from "../portfolios/funds.ts";
 import { MAX_NAME, MAX_NOTE, MAX_POSITION_NAME } from "../portfolios/store.ts";
 import { day, next, schema, symbol, type Tool } from "./schema.ts";
@@ -46,7 +48,7 @@ const CASH = `Adds, updates, removes or restores the owner's cash; all cash live
 
 const BOND = `Adds, updates, removes or restores a bond the owner holds. add: name, amount (face), currency (the listing's when symbol names one), symbol (a listing, valued at its percent of par), coupon (percent), maturity, cost (paid), date (bought), broker, portfolio (needed when several), note. update: position (from holdings; on a merged bond each purchase's, in parts) and one or more of amount (face), currency (of amount, converted), cost, date, note (null clears), name, broker (null takes it off); an update gives it a new position. Coupon, maturity and listing never change: remove and add again. remove, restore: position. Example: {"action":"add","name":"Made Up 2030","amount":12000,"currency":"EUR","coupon":4.75,"maturity":"2030-06-30","cost":11650,"date":"2026-03-17"}.`;
 
-const FUND = `Sets a fund the owner prices: its price per unit for a day, its market, name or currency. The fund is picked by isin or symbol (its key, fund:<ISIN>, as holdings answers it), else by name; with a pick, name renames it. price with date (default today): a day already priced is replaced. market: where its money is invested (list names them), null takes it off. currency: only while no trade is priced in it. Buys and sells go through portfolio_trade. Example: {"isin":"ZZFUND000011","price":11.87,"date":"2026-10-14"}.`;
+const FUND = `Sets a fund the owner prices: its price per unit for a day, its market, name, currency or holdings. The fund is picked by isin or symbol (its key, fund:<ISIN>, as holdings answers it), else by name; with a pick, name renames it. price with date (default today): a day already priced is replaced. market: where its money is invested (list names them), null takes it off. currency: only while no trade is priced in it. holdings, from its reports, read as an ETF's in research: as_of (report day); top (up to ${MAX_HOLDING_ROWS} of symbol as quote takes it, name, weight %) with assets (% per kind), replaced together; sectors (% per sector key), replaced only when given; a later part is never replaced by an earlier one. Buys and sells go through portfolio_trade. Examples: {"isin":"ZZFUND000011","price":11.87,"date":"2026-10-14"}; {"isin":"ZZFUND000011","holdings":{"as_of":"2026-09-30","top":[{"symbol":"AAPL","weight":6.2}],"assets":{"stock":95,"cash":5}}}.`;
 
 const SETUP = `First steps for an owner, and broker renames. setup: display_currency (totals are shown in it: ask the owner, never assume), time_zone (IANA, ask), a portfolio to make, broker (a name or up to ${MAX_SETUP_BROKERS}); a name already there is kept, so a retry makes nothing twice; the display currency and time zone are set only while none is, then the owner changes them in the web UI. rename_broker: broker (its name now), name (the new one). Example: {"action":"setup","display_currency":"EUR","time_zone":"America/New_York","portfolio":"Shares","broker":["North","South"]}.`;
 
@@ -56,6 +58,37 @@ const portfolioRef: JsonSchemaType = {
 };
 const id: JsonSchemaType = { type: "integer", minimum: 1 };
 const amount: JsonSchemaType = { type: "number", minimum: 0 };
+const pct: JsonSchemaType = { type: "number", minimum: 0, maximum: 100 };
+const weights = (keys: readonly string[]): JsonSchemaType => ({
+  type: "object",
+  properties: Object.fromEntries(keys.map((k) => [k, pct])),
+  additionalProperties: false,
+});
+const holdings: JsonSchemaType = {
+  type: "object",
+  properties: {
+    as_of: day,
+    top: {
+      type: "array",
+      minItems: 1,
+      maxItems: MAX_HOLDING_ROWS,
+      items: {
+        type: "object",
+        properties: {
+          symbol,
+          name: { type: "string" },
+          weight: pct,
+        },
+        required: ["weight"],
+        additionalProperties: false,
+      },
+    },
+    assets: weights(ASSET_KEYS),
+    sectors: weights(SECTOR_KEYS),
+  },
+  required: ["as_of"],
+  additionalProperties: false,
+};
 const nullable = (type: string, extra: object = {}): JsonSchemaType => ({
   type: [type, "null"],
   ...extra,
@@ -346,6 +379,7 @@ const FUND_ARGS = [
   "date",
   "market",
   "currency",
+  "holdings",
 ];
 
 export function parseFundTool(input: unknown): PortfolioArgs {
@@ -547,6 +581,7 @@ export function portfolioTools(m: Markets, access: Access): Tool[] {
           date: day,
           market: nullable("string"),
           currency: { type: "string" },
+          holdings,
         },
         [],
       ),

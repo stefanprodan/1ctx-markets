@@ -8,12 +8,13 @@ import { price, round } from "../market/format.ts";
 import type { Instrument } from "../market/instruments.ts";
 import type { StaleReason } from "../market/stale.ts";
 import { dateOfWall } from "../market/zone.ts";
+import { isFundKey } from "../portfolios/funds.ts";
 import { monthsBack } from "../shared/periods.ts";
 import { readRelativeReturn } from "../signals/read.ts";
 import { selectList } from "../signals/store.ts";
 import { type LiveTarget, liveTarget } from "../signals/target.ts";
 import { ATTRIBUTION } from "../sources/fred/sync.ts";
-import { FRED } from "../sources/ids.ts";
+import { FRED, FUND_SOURCE } from "../sources/ids.ts";
 import type { Db } from "../storage/db/index.ts";
 import {
   cursor,
@@ -24,6 +25,7 @@ import {
   textResult,
 } from "./answer.ts";
 import { ArgError, date, fields, oneOf, optionalText, text } from "./args.ts";
+import { FUND_BASIS, fundBars, noFund, seenFund } from "./funds.ts";
 import { type IntradayArgs, intradayAnswer } from "./intraday.ts";
 import type { Markets } from "./markets.ts";
 import {
@@ -35,6 +37,7 @@ import {
 } from "./quote.ts";
 import { benchmarkStale } from "./sets.ts";
 import { type ItemError, readTargets } from "./targets.ts";
+import { NO_ACCESS, type Who } from "./who.ts";
 
 export const BASIS =
   "split-adjusted prices; dividends and FX conversion excluded";
@@ -231,12 +234,45 @@ export type HistoryRead =
       attribution: boolean;
     };
 
+// a fund's entered prices, as its page draws them
+function readFundHistory(
+  m: Markets,
+  args: DailyArgs,
+  start: string | null,
+  who: Who,
+): HistoryRead {
+  if (args.benchmark !== null) {
+    throw new ArgError("benchmark is not taken with a fund's key");
+  }
+  const instrument = seenFund(m.db, who, args.symbol);
+  if (instrument === null) return { input: args.symbol, error: noFund };
+  const today = dateOfWall(m.clock.now());
+  const all = fundBars(m.db, instrument.id, args.interval, today);
+  const to = args.to ?? all.at(-1)?.date ?? today;
+  const from = args.from ?? monthsBack(to, DEFAULT_MONTHS[args.interval]);
+  const first = start ?? from;
+  return {
+    instrument,
+    from,
+    to,
+    bars: all
+      .filter((b) => b.date >= first && b.date <= to)
+      .map((b) => ({ ...b, row: null })),
+    session: null,
+    relative: null,
+    stale: [],
+    attribution: false,
+  };
+}
+
 // a null start is from; the one bar not final carries its live row
 export async function readHistory(
   m: Markets,
   args: DailyArgs,
   start: string | null,
+  who: Who = NO_ACCESS,
 ): Promise<HistoryRead> {
+  if (isFundKey(args.symbol)) return readFundHistory(m, args, start, who);
   const names =
     args.benchmark === null ? [args.symbol] : [args.symbol, args.benchmark];
   const [target, bench] = await readTargets(m, names);
@@ -290,13 +326,18 @@ export async function readHistory(
 }
 
 export const basisOf = (i: Instrument): string =>
-  i.source === FRED ? FRED_BASIS : BASIS;
+  i.source === FRED
+    ? FRED_BASIS
+    : i.source === FUND_SOURCE
+      ? FUND_BASIS
+      : BASIS;
 
 export async function historyAnswer(
   m: Markets,
   args: HistoryArgs,
+  who: Who = NO_ACCESS,
 ): Promise<ToolResult> {
-  if (args.interval === "5m") return intradayAnswer(m, args);
+  if (args.interval === "5m") return intradayAnswer(m, args, who);
   // extended is 5m's alone, so a daily cursor reads as it always has
   const { next, extended: _, ...asked } = args;
   let start: string | null = null;
@@ -305,7 +346,7 @@ export async function historyAnswer(
     if (start === null)
       throw new ArgError("next does not continue these arguments");
   }
-  const read = await readHistory(m, args, start);
+  const read = await readHistory(m, args, start, who);
   if ("error" in read) return errorResult({ input: read.input, ...read.error });
   const { instrument, from, to } = read;
   const items = read.bars.map((b) => {

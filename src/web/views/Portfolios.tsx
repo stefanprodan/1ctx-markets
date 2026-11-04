@@ -19,6 +19,7 @@ import { day, money, percent, quantity, signedMoney } from "../lib/format.ts";
 import { Icon } from "../lib/icons.tsx";
 import { nameOf } from "../lib/names.ts";
 import { useRefresh } from "../lib/refresh.ts";
+import { AddButton } from "../ui/AddButton.tsx";
 import { amountsHidden, hiddenClass } from "../ui/Amounts.tsx";
 import { Card, GroupLabel, PeriodLabel } from "../ui/Card.tsx";
 import { Drawer } from "../ui/Drawer.tsx";
@@ -68,6 +69,7 @@ import {
 } from "./PortfolioGrowth.tsx";
 import {
   activityOf,
+  addKindOf,
   barOf,
   bondPhoneLine,
   cashLine,
@@ -144,7 +146,8 @@ function useSparks(
   const ids = useMemo(
     () =>
       (h?.holdings ?? [])
-        .map((x) => (pageOf(x) ? x.id : null))
+        // a fund's prices are a month apart: three points make no spark
+        .map((x) => (pageOf(x) && !isFundId(x.id ?? "") ? x.id : null))
         .filter((id): id is string => id !== null),
     [h],
   );
@@ -261,23 +264,17 @@ export function PortfoliosBody({
       }
       titleCut={viewOnly}
       meta={viewOnly ? "View only" : undefined}
-      amounts={held && !empty && !blank}
       actions={
         held && !empty && !viewOnly ? (
           <>
             {!blank && (
-              <button
-                type="button"
-                class="btn btn-primary"
-                aria-label="Add"
+              <AddButton
+                label="Add"
                 onClick={() => {
                   start.value = null;
                   panel.value = "add";
                 }}
-              >
-                <Icon name="plus" size={14} />
-                <span class="hide-phone">Add</span>
-              </button>
+              />
             )}
             <PageMenu store={store} panel={panel} />
           </>
@@ -300,7 +297,17 @@ export function PortfoliosBody({
             }
             store={store}
             start={start.value}
-            kind={blank ? opened.value : undefined}
+            kind={
+              blank
+                ? opened.value
+                : store.portfolio.value === null
+                  ? undefined
+                  : addKindOf(
+                      h?.holdings ?? [],
+                      ov?.portfolios.find((p) => p.id === store.portfolio.value)
+                        ?.cash === true,
+                    )
+            }
             onDone={close}
           />
         )}
@@ -977,7 +984,7 @@ function HoldingsCard({
           setDir(d);
         }}
         open={(x) => {
-          const page = pageOf(x);
+          const page = pageOf(x, viewOnly);
           if (page) return { href: page };
           if (viewOnly) return null;
           const home = homeOf(x);
@@ -1235,7 +1242,7 @@ export function TradeSheet({
         name={
           <SymbolName
             ticker={ticker}
-            href={tradePage(t.symbol)}
+            href={tradePage(t.symbol, viewOnly)}
             name={name !== "" && name !== ticker ? name : undefined}
           />
         }

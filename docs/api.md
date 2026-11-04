@@ -66,7 +66,7 @@ MCP tools copied onto paths.
 | `GET /funds` | portfolio:read | `listAll()` | `funds[]`: each fund the owner prices with its latest price and that price's day |
 | `POST /funds/trades` | portfolio:write | `addFundTrade()` | `portfolio` and a fund trade's arguments (`KIND_ARGS.fund`), its count in `units`; 201 with `trade` (or `trades`) and `fund`; the first buy makes the fund; 409 for a retry, as `POST /trades` |
 | `GET /funds/{isin}` | portfolio:read | `fundDetail()` | `{fund, prices, trades}`: every price, newest first, beside its live trades; 400 for an ISIN whose check digit fails, 404 for one not kept |
-| `PATCH /funds/{isin}` | portfolio:write | `updateFund()` | `{price, date, market, name, currency}`: the price for a day (the owner's today by default), a day already priced replaced and answered in `replaced`; a new name no other fund has; a currency only while no live trade is on it |
+| `PATCH /funds/{isin}` | portfolio:write | `updateFund()` | `{price, date, market, name, currency, holdings}`: the price for a day (the owner's today by default), a day already priced replaced and answered in `replaced`; a new name no other fund has; a currency only while no live trade is on it; `holdings` as `portfolio_fund` takes them (`docs/portfolios.md`), answered as stored, 409 when older than the stored part |
 | `GET /brokers`, `POST /brokers`, `PATCH`, `DELETE /brokers/{id}` | portfolio:read, write | `listAll()`, `createBroker()`, `updateBroker()`, `removeBroker()` | `{name}`; 409 for a taken name or a broker a live row names (removed rows lose the name) |
 | `GET /portfolio-settings`, `PUT /portfolio-settings` | portfolio:read, write | `settingsItem()`, `saveSettings()` | `{display_currency, time_zone}`: an ISO 4217 code in circulation (`src/shared/currencies.ts`) and an IANA zone, each null only while none is set; a save takes either or both, keeps the one left out, and never clears one; the first currency saved makes Cash |
 | `GET /sharing` | session | `sharingAnswer()` | `people[]` (`id`, `name`, `shared`): everyone else, and whether they see the caller's portfolios; `sharers[]` (`id`, `name`): who lets the caller see theirs; both by name, ignoring case. A web UI sign-in's only: a key, the admin key too, is refused (403) |
@@ -145,6 +145,16 @@ MCP tools copied onto paths.
   every 30 seconds, so a failing fund is asked once per `RETRY_MS`. Past
   the deadline the answer has the stored object, its `stale` saying
   why.
+- **A fund the owner prices answers from what was entered**
+  (`fund:<ISIN>`, `fundInstrument()`): its row with the latest entered
+  price, `intraday` false, a `quote` of `kind` `hand_price` with that
+  price and its day in `as_of` (no change, session or returns), and
+  `top_holdings` once entered. Its bars are the entered prices, one
+  close per priced day, never cached as final, since a price can be
+  entered again. Nothing is fetched or tracked; a caller who neither
+  holds nor priced it, or whose key opens no portfolio, gets 404.
+  `GET /instruments/{symbol}/stored` answers `stored` true for a fund
+  the caller sees, since its read never fetches.
 - **A stored instrument whose read fails answers 200** with its row,
   `quote` null and `error` (`{code, detail}`), so a page keeps the
   stored price; a symbol never stored has no row, so its failure is a

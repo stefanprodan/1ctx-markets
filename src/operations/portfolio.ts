@@ -8,6 +8,7 @@ import { type Instrument, readInstrument } from "../market/instruments.ts";
 import { readQuote } from "../market/quotes.ts";
 import { markRead } from "../market/tracking.ts";
 import { checkZone, localDate } from "../market/zone.ts";
+import { writeFundHoldings } from "../portfolios/fund-holdings.ts";
 import {
   buyPrice,
   dropBuyPrice,
@@ -112,6 +113,13 @@ import {
   textResult,
 } from "./answer.ts";
 import { ArgError, date, fields, quoted, text } from "./args.ts";
+import {
+  type FundHoldingsArgs,
+  fundHoldingsAnswer,
+  holdingsEntry,
+  olderHoldings,
+  parseHoldings,
+} from "./funds.ts";
 import type { Markets } from "./markets.ts";
 import { readTargets } from "./targets.ts";
 import { opens, type Who } from "./who.ts";
@@ -174,6 +182,7 @@ export type FundChange = {
   name?: string;
   // only while no live trade is priced in it
   currency?: string;
+  holdings?: FundHoldingsArgs;
 };
 
 export type PositionArgs = {
@@ -451,16 +460,18 @@ export function parseFundChange(
     c.date = d;
   }
   if (f.market !== undefined) c.market = optionalName(f.market, "market");
+  if (f.holdings !== undefined) c.holdings = parseHoldings(f.holdings);
   if (
     c.price === undefined &&
     c.market === undefined &&
     c.name === undefined &&
-    c.currency === undefined
+    c.currency === undefined &&
+    c.holdings === undefined
   ) {
     throw new ArgError(
       renames
-        ? "a fund's update changes price, market, name or currency"
-        : "a fund's update changes price, market or currency; named by its isin or symbol, its name too",
+        ? "a fund's update changes price, market, name, currency or holdings"
+        : "a fund's update changes price, market, currency or holdings; named by its isin or symbol, its name too",
     );
   }
   return c;
@@ -538,6 +549,7 @@ const FUND_UPDATE = [
   "date",
   "market",
   "currency",
+  "holdings",
   "kind",
   "portfolio",
 ];
@@ -1442,6 +1454,7 @@ export async function updateFund(
       price?: { date: string; price: number };
       replaced?: ReturnType<typeof priceItem> | null;
       renamed_from?: string;
+      holdings?: ReturnType<typeof fundHoldingsAnswer>;
     }
   | Failure
 > {
@@ -1459,6 +1472,26 @@ export async function updateFund(
       message: "date is in the future",
     } as const;
   }
+  if (
+    change.holdings !== undefined &&
+    change.holdings.asOf > latestDay(m.clock.now())
+  ) {
+    return {
+      error: "bad_arguments",
+      message: "holdings.as_of is in the future",
+    } as const;
+  }
+  // refused before any symbol is fetched; checked again in the write
+  if (change.holdings !== undefined) {
+    const older = olderHoldings(m.db, kept.id, change.holdings);
+    if (older !== null) return older;
+  }
+  // a holding's symbol may be fetched, so before the write
+  const entry =
+    change.holdings === undefined
+      ? null
+      : await holdingsEntry(m, change.holdings);
+  if (entry !== null && isFailure(entry)) return entry;
   const replaced = await m.writer.write(
     (db): { before: FundPrice | null; name: string } | Failure => {
       recheck(db);
@@ -1483,6 +1516,10 @@ export async function updateFund(
             "a fund's currency changes only while it has no live trades; its owner removes them first",
         };
       }
+      if (entry !== null) {
+        const older = olderHoldings(db, kept.id, entry);
+        if (older !== null) return older;
+      }
       const before =
         change.price === undefined ? null : priceOn(db, kept.id, day);
       // a new currency drops the old prices, so a price sent with it comes after
@@ -1493,6 +1530,7 @@ export async function updateFund(
         setFundPrice(db, kept.id, day, change.price, who, now);
       }
       if (market !== undefined) setFundMarket(db, kept.id, market);
+      if (entry !== null) writeFundHoldings(db, kept.id, entry, now);
       return { before, name: fund.name };
     },
   );
@@ -1509,6 +1547,7 @@ export async function updateFund(
           replaced:
             replaced.before === null ? null : priceItem(owner, replaced.before),
         }),
+    ...(entry === null ? {} : { holdings: fundHoldingsAnswer(m.db, kept.id) }),
   };
 }
 

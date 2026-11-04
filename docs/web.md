@@ -428,7 +428,10 @@ Portfolios page is the reference for each part.
   and its meta, the symbol search, then the page's actions, the ⋯ menu
   last. The head's buttons share one style, defined once in
   `ui/page.css`: an icon, an icon with words, the ⋯; 32px, 44px to a
-  finger. The search shows by itself; `search={false}` leaves it out
+  finger. A page's one way to add is `AddButton`, the same framed +
+  everywhere, its words in its label (Portfolios' Add, a symbol's Buy
+  or sell). Hide amounts is no head's: it is the account menu's
+  switch, under Dark theme. The search shows by itself; `search={false}` leaves it out
   (a page mid-edit). On a phone, by the shell's check and so on its
   side too, the head shows no search: the bar's Search opens it as the
   sheet (`ssearch-phone`). The meta gives way first, and the head never wraps
@@ -501,8 +504,8 @@ The parts:
   label-over-value grid, two to a row, `four` for short figures, never
   broken, two by two in a narrow card; a faint `note` under a value).
 - `Amounts.tsx`: Hide amounts, one setting for every page with the
-  owner's amounts (`markets-portfolio-hide` in `localStorage`):
-  `useHideAmounts()`, the eye (`HideAmounts`), and `hiddenClass()` on
+  owner's amounts (`markets-portfolio-hide` in `localStorage`), set by
+  the account menu's switch (`toggleAmounts()`), and `hiddenClass()` on
   the element around figures of class `amount`, which it blurs; a
   percent stays readable.
 - `Weights.tsx`: shares of a whole as rows, a label (a ticker linking
@@ -854,8 +857,8 @@ The parts:
   load (`data/portfolios.ts`), every minute while visible. The page is
   `Portfolios.tsx`, its forms `PortfolioForms.tsx`; its words, numbers
   and rules are `Portfolios.model.ts`, which has no DOM and is tested
-  (`test/web-portfolios.test.tsx`). Top to bottom: the head (the eye
-  that hides amounts, Add, the ⋯ menu), the portfolios as tabs, the
+  (`test/web-portfolios.test.tsx`). Top to bottom: the head (Add, the
+  ⋯ menu), the portfolios as tabs, the
   value band, Holdings, Activity.
 - **No currency is built in.** The value band (`Hero`) names the tab
   ("All portfolios" or the portfolio), the converted total large. With
@@ -962,8 +965,9 @@ The parts:
   row with nothing to sort by, or no rate in a converted view, goes last
   (`sortRows()`). A row opens its instrument page (`pageOf()`); with
   none it opens what edits it (`homeOf()`): cash and a position its
-  Edit, a hand-priced fund (its `fund:` id has no page) its Set price, a
-  merged bond its Purchases. Its ⋯ (`rowActions()`): Buy and Sell (Sell
+  Edit, a merged bond its Purchases. A hand-priced fund opens its own
+  page, except for a viewer of shared portfolios, whom the server never
+  shows it (`pageOf(h, viewOnly)`, `tradePage()`). Its ⋯ (`rowActions()`): Buy and Sell (Sell
   not on a holding sold today) open the add drawer on it, in its one
   portfolio and broker; Set price for a hand-priced fund; Edit for a
   position, kept on cash though the row opens it too, so a cash list
@@ -1001,10 +1005,19 @@ The parts:
   ("Web", "Admin" or the key's name) and when on the owner's calendar,
   when it was removed and by whom, the note and each fill; its foot
   has Remove (asks once; every fill
-  together), Buy and Sell (a fund's open the Fund tab on it), and a
+  together), Buy and Sell (a fund's open on it, as one line), and a
   removed trade's Restore. The counts are of orders, not fills.
 - **Add** opens the drawer, the page staying where it was: Trade, Cash,
-  Fund or Bond as tabs. Fund records a buy or
+  Fund or Bond as tabs, on the kind the portfolio picked holds most
+  (Cash on cash, `addKindOf()`), on All or an empty one the kind last
+  saved. A Buy or Sell on a holding or a symbol page is a trade of it:
+  the drawer titled by its side, no tabs, its symbol kept (no ✕), a
+  held fund one line (name and ISIN, its latest price's day) with no
+  market to pick. A share starts at its live price, a fund at its
+  latest; a past date takes that day's close, a fund's price on or
+  before it, until the owner types a price ("close of 2 Oct"). Fees go
+  beside the date, a fund's too. Cancel and a save close it through the
+  drawer, so it slides out as every drawer does. Fund records a buy or
   sell of a fund bought from its manager, one per confirmation
   (`POST /api/v1/funds/trades`; a fund with a symbol, an ETF among
   them, is a trade): Buy or Sell, ISIN and name, units, price per unit
@@ -1168,7 +1181,9 @@ The parts:
   "updated": "Closed" with no age (a close does not age; the move line
   says "at close"), "Open · 2 min ago", "Opening · last close" from the
   open until the first pass, "Open · no trade yet · 3 h ago" until the
-  first trade, a series' "Latest value, 29 Oct · 1 d ago". The one
+  first trade, a series' "Latest value, 29 Oct · 1 d ago", a fund the
+  owner prices "Price for 2 Nov" (its quote's `kind` `hand_price`,
+  never "No longer updated"). The one
   large figure is the price with its currency small beside it; the
   moves line is the day's change in the price's unit and in percent,
   "today" once a trade lands after the open and "at close" otherwise
@@ -1194,8 +1209,7 @@ The parts:
     one). A line per portfolio and broker when there are several: a
     bond's face amount, else the quantity, and the value. Quantities
     to two decimals from 1, four digits under it (`briefQuantity()`).
-    Its head: the Hide amounts eye, the Portfolios page's setting, and
-    a briefcase to Portfolios ("Open Portfolios" on hover), no words.
+    Its head: a briefcase opening its trades' drawer, no words.
   - **Performance**: the 1 week, 1 month, 3 months and year-to-date
     returns from the quote, never recomputed, four abreast, "—" where
     the server has none (points for a series in percent); then the
@@ -1219,6 +1233,18 @@ The parts:
     estate", "AAA"), US government bonds as a line under the ratings. A
     fund with none: "No top holdings listed for this fund." alone; a
     failed fetch: "Could not get its top holdings."
+- **A fund the owner prices** (`fund:<ISIN>`) is an instrument page:
+  its line through the entered prices, line only (no candles or
+  averages), opening on 1Y with its range never saved as a share's,
+  each of the caller's buys and sells an arrow on its bar or the last
+  before it (`tradeMarks()`); Top holdings and Sectors as an ETF's,
+  "as of 30 Sep" from the owner's entry and a Sectors note when its day
+  is older. Its head: the + and, when held, a ⋯ with Set price. The
+  drawers render in the page body, as Portfolios' do, and the page
+  reloads only when a save changed the holdings.
+- **The head's + only where a trade buys** (`buyable()`): a share, an
+  ETF, a mutual fund, a coin, a fund the owner prices; never an index,
+  a future, a currency pair, a series or a listed bond.
 - **The page head is a containing block for fixed elements**: its blur
   (`backdrop-filter`) holds a fixed descendant inside it, so a sheet or
   popover fixed to the window turns the blur off while open, as the
