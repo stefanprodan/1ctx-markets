@@ -1,0 +1,135 @@
+{
+  "recordedAt": "2026-11-04T09:19:27.668Z",
+  "request": {
+    "method": "GET",
+    "url": "https://query1.finance.yahoo.com/v8/finance/chart/NIY%3DF?range=5d&interval=1d"
+  },
+  "status": 200,
+  "headers": {
+    "age": "0",
+    "cache-control": "public, max-age=10, stale-while-revalidate=20",
+    "content-type": "application/json;charset=utf-8"
+  },
+  "body": {
+    "chart": {
+      "result": [
+        {
+          "meta": {
+            "currency": "JPY",
+            "symbol": "NIY=F",
+            "exchangeName": "CME",
+            "fullExchangeName": "CME",
+            "instrumentType": "FUTURE",
+            "firstTradeDate": 1077253200,
+            "regularMarketTime": 1793783361,
+            "hasPrePostMarketData": false,
+            "gmtoffset": -18000,
+            "timezone": "EST",
+            "exchangeTimezoneName": "America/New_York",
+            "regularMarketPrice": 62945,
+            "regularMarketChangePercent": -0.206,
+            "fulldayPrice": 62945,
+            "fulldayChange": -130,
+            "fulldayChangePercent": -0.206,
+            "fiftyTwoWeekHigh": 72780,
+            "fiftyTwoWeekLow": 48030,
+            "regularMarketDayHigh": 63470,
+            "regularMarketDayLow": 60140,
+            "regularMarketVolume": 26179,
+            "shortName": "Nikkei/Yen Futures,Dec-2026",
+            "chartPreviousClose": 62660,
+            "priceHint": 2,
+            "currentTradingPeriod": {
+              "pre": {
+                "timezone": "EST",
+                "end": 1793768400,
+                "start": 1793768400,
+                "gmtoffset": -18000
+              },
+              "regular": {
+                "timezone": "EST",
+                "end": 1793854740,
+                "start": 1793768400,
+                "gmtoffset": -18000
+              },
+              "post": {
+                "timezone": "EST",
+                "end": 1793854740,
+                "start": 1793854740,
+                "gmtoffset": -18000
+              }
+            },
+            "dataGranularity": "1d",
+            "range": "5d",
+            "validRanges": [
+              "1d",
+              "5d",
+              "1mo",
+              "3mo",
+              "6mo",
+              "1y",
+              "2y",
+              "5y",
+              "10y",
+              "ytd",
+              "max"
+            ]
+          },
+          "timestamp": [
+            1793332800,
+            1793595600,
+            1793682000,
+            1793768400
+          ],
+          "indicators": {
+            "quote": [
+              {
+                "close": [
+                  62660,
+                  62700,
+                  63840,
+                  62945
+                ],
+                "high": [
+                  62660,
+                  62700,
+                  63840,
+                  63470
+                ],
+                "low": [
+                  62660,
+                  62700,
+                  63840,
+                  60140
+                ],
+                "volume": [
+                  0,
+                  0,
+                  0,
+                  26179
+                ],
+                "open": [
+                  62660,
+                  62700,
+                  63840,
+                  63295
+                ]
+              }
+            ],
+            "adjclose": [
+              {
+                "adjclose": [
+                  62660,
+                  62700,
+                  63840,
+                  62945
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "error": null
+    }
+  }
+}
