@@ -48,6 +48,7 @@ const CASEY: Who = {
   portfolio: "write",
   rules: "none",
   profile: "none",
+  analysis: "none",
 };
 
 // a currency pair as Yahoo lists it, with its closes and a live quote
@@ -765,6 +766,7 @@ describe("trades", () => {
       portfolio: "read",
       rules: "none",
       profile: "none",
+      analysis: "none",
     };
     const none: Who = {
       name: "none",
@@ -773,6 +775,7 @@ describe("trades", () => {
       portfolio: "none",
       rules: "none",
       profile: "none",
+      analysis: "none",
     };
     const write = await ask(m, reader, "portfolio_trade", {
       action: "remove",
@@ -850,6 +853,7 @@ describe("setup", () => {
       portfolio: "read",
       rules: "none",
       profile: "none",
+      analysis: "none",
     };
     const r = await setUp(m, { display_currency: "EUR" }, reader);
     expect(r.body.error).toBe("forbidden");

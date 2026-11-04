@@ -1086,6 +1086,7 @@ describe("every operation", () => {
 
     await portfolioOperations(t, check, wrong, reader);
     await profileOperations(t, check, wrong, reader);
+    await analysisOperations(t, check, wrong, reader);
     await peopleOperations(t, check, wrong, reader);
 
     // past the minute's calls every keyed operation is refused before it
@@ -2390,6 +2391,163 @@ async function profileOperations(
   await check("GET", one, await t.call(`${V}/x`), 400);
   await check("GET", one, await t.call(`${V}/9`), 404);
   await refusals(one, `${V}/1`, { method: "GET" });
+}
+
+// every analysis operation's success and documented errors, on a made-up
+// note
+async function analysisOperations(
+  t: Awaited<ReturnType<typeof setup>>,
+  check: Check,
+  wrong: RequestInit,
+  reader: RequestInit,
+) {
+  await t.clock.advance(60_000);
+  const put = (body: unknown, type = "application/json"): RequestInit => ({
+    method: "PUT",
+    headers: { "content-type": type },
+    body: typeof body === "string" ? body : JSON.stringify(body),
+  });
+  const post = (body: unknown, type?: string): RequestInit => ({
+    ...put(body, type),
+    method: "POST",
+  });
+  const as = (init: RequestInit, key: RequestInit): RequestInit => ({
+    ...init,
+    headers: { ...(init.headers as object), ...(key.headers as object) },
+  });
+  const refusals = async (path: string, at: string, init: RequestInit) => {
+    await check(init.method!, path, await t.call(at, as(init, wrong)), 401);
+    await check(init.method!, path, await t.call(at, as(init, reader)), 403);
+  };
+  const P = "/instruments/{symbol}/analysis";
+  const A = "/instruments/US%3ANVDA/analysis";
+  const none = await check("GET", P, await t.call(A), 200);
+  expect(none).toEqual({
+    text: null,
+    html: null,
+    revision: null,
+    author: null,
+    written_at: null,
+    bytes: null,
+    since_written: null,
+  });
+  await check("GET", P, await t.call(`${A}?x=1`), 400);
+  await check("GET", P, await t.call("/instruments/ZZNOTHING/analysis"), 404);
+  await check(
+    "GET",
+    P,
+    await t.late("SLOWF.DE", "/instruments/SLOWF.DE/analysis"),
+    503,
+  );
+  await refusals(P, A, { method: "GET" });
+
+  await check("PUT", P, await t.call(A, put({ revision: 1, text: "x" })), 409);
+  const made = await check(
+    "PUT",
+    P,
+    await t.call(A, put({ text: "# Made-up note\n\nTrend: up.\n" })),
+    200,
+  );
+  expect(made).toMatchObject({ revision: 1, author: "admin" });
+  await check(
+    "PUT",
+    P,
+    await t.call(A, put({ revision: 1, edits: [{ old: "nowhere", new: "" }] })),
+    400,
+  );
+  await check(
+    "PUT",
+    P,
+    await t.call("/instruments/ZZNOTHING/analysis", put({ text: "x" })),
+    404,
+  );
+  await check(
+    "PUT",
+    P,
+    await t.late(
+      "SLOWG.DE",
+      "/instruments/SLOWG.DE/analysis",
+      put({ text: "x" }),
+    ),
+    503,
+  );
+  await check(
+    "PUT",
+    P,
+    await t.call(A, put({ revision: 1, text: "x".repeat(70_000) })),
+    413,
+  );
+  await check("PUT", P, await t.call(A, put({ text: "x" }, "text/plain")), 415);
+  await refusals(P, A, put({ revision: 1, text: "x" }));
+  const read = await check("GET", P, await t.call(A), 200);
+  expect(read).toMatchObject({
+    revision: 1,
+    html: '<h1 class="md-h1">Made-up note</h1><p class="md-p">Trend: up.</p>',
+  });
+
+  const D = `${P}/preview`;
+  const drawn = await check(
+    "POST",
+    D,
+    await t.call(`${A}/preview`, post({ text: "# Draft\n" })),
+    200,
+  );
+  expect(drawn).toEqual({ html: '<h1 class="md-h1">Draft</h1>' });
+  await check("POST", D, await t.call(`${A}/preview`, post({})), 400);
+  await check(
+    "POST",
+    D,
+    await t.call(`${A}/preview`, post({ text: "x".repeat(70_000) })),
+    413,
+  );
+  await check(
+    "POST",
+    D,
+    await t.call(`${A}/preview`, post({ text: "x" }, "text/plain")),
+    415,
+  );
+  await refusals(D, `${A}/preview`, post({ text: "x" }));
+
+  const V = `${P}/versions`;
+  const listed = await check("GET", V, await t.call(`${A}/versions`), 200);
+  expect(listed.revisions.map((r: { revision: number }) => r.revision)).toEqual(
+    [1],
+  );
+  await check("GET", V, await t.call(`${A}/versions?x=1`), 400);
+  await check(
+    "GET",
+    V,
+    await t.call("/instruments/ZZNOTHING/analysis/versions"),
+    404,
+  );
+  await check(
+    "GET",
+    V,
+    await t.late("SLOWH.DE", "/instruments/SLOWH.DE/analysis/versions"),
+    503,
+  );
+  await refusals(V, `${A}/versions`, { method: "GET" });
+
+  const one = `${V}/{revision}`;
+  const first = await check("GET", one, await t.call(`${A}/versions/1`), 200);
+  expect(first).toMatchObject({ revision: 1, author: "admin" });
+  await check("GET", one, await t.call(`${A}/versions/x`), 400);
+  await check("GET", one, await t.call(`${A}/versions/9`), 404);
+  await check(
+    "GET",
+    one,
+    await t.late("SLOWI.DE", "/instruments/SLOWI.DE/analysis/versions/1"),
+    503,
+  );
+  await refusals(one, `${A}/versions/1`, { method: "GET" });
+
+  const L = "/analysis";
+  const all = await check("GET", L, await t.call(L), 200);
+  expect(all).toEqual({
+    analyses: [{ id: "US:NVDA", ...made }],
+  });
+  await check("GET", L, await t.call(`${L}?page_token=nope`), 400);
+  await refusals(L, L, { method: "GET" });
 }
 
 // every portfolio operation's success and documented errors, on made-up rows

@@ -41,6 +41,8 @@ export function accessWords(k: AgentKey): string | null {
   if (rules !== null) said.push(`${rules} alert rules`);
   const profile = VERB[k.profile ?? "none"];
   if (profile !== null) said.push(`${profile} the profile`);
+  const analysis = VERB[k.analysis ?? "none"];
+  if (analysis !== null) said.push(`${analysis} analyses`);
   return said.length === 0 ? null : said.join(" · ");
 }
 

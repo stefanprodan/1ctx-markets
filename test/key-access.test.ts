@@ -166,6 +166,7 @@ describe("rules access", () => {
           portfolio: "write",
           rules,
           profile: "none",
+          analysis: "none",
         },
         parseRules(args),
       );

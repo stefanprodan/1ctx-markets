@@ -1,7 +1,10 @@
 # The owner's profile
 
-Governs `src/profile/` (the store, `applyEdits()`, the fenced read and
-the Markdown renderer), `src/operations/profile.ts`,
+Governs `src/profile/` (the store, the fenced read and the Markdown
+renderer), `src/document/` (`applyEdits()`, the fence, the text and size
+checks, the save and its eviction, shared with the analysis of
+`docs/analysis.md`), `src/operations/document.ts` (the arguments both
+documents take), `src/operations/profile.ts`,
 `src/tools/profile.ts`, the `/profile` routes in `src/api/routes.ts`
 and their spec in `src/api/profile-spec.ts`. Keys and their access are
 in `docs/admin.md`; the tool list per key and the server instructions
@@ -34,13 +37,13 @@ revision refused.
 
 ## Text and size
 
-- **Text is checked as 1ctx's `textFromString()`** (`profileText()`):
+- **Text is checked as 1ctx's `textFromString()`** (`documentText()`):
   well-formed UTF-8, no NUL, a leading BOM dropped. `text`, `old` and
   `new` never pass through `args.text()`, which trims and cuts at 100
   characters: spaces, blank lines and a missing last newline are kept.
 - **A blank text is refused**: the profile is rewritten, never blanked
   by one call.
-- **At most `MAX_PROFILE_BYTES` (24 KiB) of UTF-8**, about three times
+- **At most `MAX_DOCUMENT_BYTES` (24 KiB) of UTF-8**, about three times
   a full profile. The byte cap alone does not keep a read to one
   answer: JSON escaping grows short lines, quotes, tabs and control
   characters. So a save is also refused when its read answer would not
@@ -69,7 +72,8 @@ revision refused.
   only write without a revision is the first `replace`; once a profile
   exists, it is refused the same way, and with none an edit or a
   replace naming a revision answers `revision: null`.
-- **One `writer.write` closure per save** (`saveProfile()`): the
+- **One `writer.write` closure per save** (`saveProfile()`, through
+  the shared `saveIn()`): the
   existence check, the revision compare, `applyEdits()`, the text and
   size checks, the insert and the eviction, so two first replaces never
   both land.
@@ -78,7 +82,7 @@ revision refused.
 
 ## Edits
 
-- **`edit` is 1ctx's `applyEdits()`** (`src/profile/edit.ts`, pure): 1
+- **`edit` is 1ctx's `applyEdits()`** (`src/document/edit.ts`, pure): 1
   to `MAX_EDITS` (50) pairs of `old` and `new`; each `old` is non-empty
   and matches exactly once in the text at that revision, all matched
   before any applies, so pair order never changes the result and no

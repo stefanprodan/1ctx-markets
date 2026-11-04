@@ -24,12 +24,14 @@ import type { WeeklyRow } from "../signals/weekly.ts";
 import { ATTRIBUTION } from "../sources/fred/sync.ts";
 import { FRED } from "../sources/ids.ts";
 import type { Db } from "../storage/db/index.ts";
+import { analysisField } from "./analysis.ts";
 import { cursor, fitPage, readCursor } from "./answer.ts";
 import { ArgError, fields, optionalText, symbols } from "./args.ts";
 import { readExtended } from "./extended.ts";
 import type { ExtendedRead, Markets } from "./markets.ts";
 import { benchmarkStale } from "./sets.ts";
 import { type ErrorItem, readTargets, type Target } from "./targets.ts";
+import { NO_ACCESS, type Who } from "./who.ts";
 
 export const MAX_SYMBOLS = 100;
 
@@ -364,6 +366,7 @@ function agentItem(
   bench: Benchmark | null,
   now: number,
   extended: ExtendedRead | undefined,
+  who: Who,
 ) {
   const side = instrumentSide(m.db, i, bench?.side ?? null, earliestStart);
   const r = returnsOf(side);
@@ -393,6 +396,7 @@ function agentItem(
           relative_return_3m: relative(3),
         }),
     session: sessionOf(m, i, now),
+    ...analysisField(m, who, i.id),
     ...(extended === undefined
       ? { stale }
       : {
@@ -411,6 +415,7 @@ export async function quoteRows(
     latest: Latest,
     extended: ExtendedRead | undefined,
   ) => object,
+  who: Who = NO_ACCESS,
 ): Promise<{
   offset: number;
   bench: Benchmark | null;
@@ -446,7 +451,7 @@ export async function quoteRows(
     const ext = extended?.get(t.instrument.id);
     const item =
       project === undefined
-        ? agentItem(m, q, t.instrument, bench, now, ext)
+        ? agentItem(m, q, t.instrument, bench, now, ext, who)
         : project(q, latest, ext);
     return { item, fred: q.observation != null };
   });
@@ -458,8 +463,9 @@ export async function quotePage(
   m: Markets,
   args: QuoteArgs,
   project?: (item: QuoteItem, latest: Latest) => object,
+  who: Who = NO_ACCESS,
 ): Promise<string> {
-  const { offset, bench, rows } = await quoteRows(m, args, project);
+  const { offset, bench, rows } = await quoteRows(m, args, project, who);
   const items = rows.map((r) => r.item);
   return fitPage(items, (count) => {
     const end = offset + count;

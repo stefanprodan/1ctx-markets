@@ -18,7 +18,8 @@ fetched the first time an agent names it and kept in sync while agents
 read it, a rule watches it or a portfolio holds it.
 
 It holds market data, the price rules agents set, the owner's
-portfolios of trades and the owner's profile, nothing else: no orders,
+portfolios of trades, the owner's profile and agents' dated analyses of
+symbols, nothing else: no orders,
 broker connections, dividends or tax, and it makes no model calls.
 
 ## Highlights
@@ -33,7 +34,9 @@ broker connections, dividends or tax, and it makes no model calls.
   `portfolio_bond`, `portfolio_fund` and `portfolio_setup` to change
   them, listed only to a key allowed to write, and `profile` for how the
   owner invests (goals, risk, trading style, rules), with `profile_edit`
-  to change it. There is no SQL or query tool.
+  to change it, and `analysis` for an agent's dated analysis of a symbol,
+  shared by everyone on the server, with `analysis_edit` to write it.
+  There is no SQL or query tool.
 - **Signals on live prices.** Moving averages (SMA 50 and 200, EMA 20),
   MACD, RSI 14, ATR 14, the lower Bollinger band, 52-week high, low
   and drawdown, volatility, volume ratio, and daily and weekly crossings,
@@ -183,8 +186,9 @@ curl -H "Authorization: Bearer $(cat ~/.1ctx-markets/secrets/user-admin.key)" \
 To give an agent a key of its own, which can be revoked without
 touching the others, make one on the web UI's Connect agents page, or
 with `1ctx-markets keys add <name>`. An agent's key reads market data,
-and price rules, portfolios and the profile only as far as the admin
-allows (`--rules`, `--portfolio` and `--profile`: none, read or write,
+and price rules, portfolios, the profile and the analyses only as far
+as the admin allows (`--rules`, `--portfolio`, `--profile` and
+`--analysis`: none, read or write,
 changed later with `keys set`), but never opens the admin's routes:
 keys, status, the instrument list, and an instrument's refetch and
 delete.

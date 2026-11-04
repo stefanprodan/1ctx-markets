@@ -279,6 +279,23 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   last 100 in the same write; what they mean is `docs/profile.md`.
   `0036-owners` keys it `(owner, revision)`.
 
+## The analysis
+
+- **One table and a key column** (`0041-analysis`): `analysis_versions`
+  (each revision of a symbol's analysis, keyed `(symbol, revision)`:
+  its full text, bytes, author, `user_id` of the person who wrote it,
+  set null when they go, the stored quote's `price`, `currency` and
+  `priced_at` at the save, null with none, and `created_at`; a symbol's
+  highest revision is the live one) and `keys.analysis` (`none`,
+  `read`, `write`), `none` for every key, the ones made before too.
+  `analysis_by_symbol` on `(symbol, revision, created_at, bytes,
+  author)` lets the list, a pointer and the revisions read no text.
+  `symbol` references no instrument, so deleting an instrument leaves
+  its analysis. A save inserts a revision and deletes the symbol's
+  revisions past the last 100 in the same write, as the profile's;
+  what they mean is `docs/analysis.md`. About 4 KiB a note rewritten
+  daily keeps 400 KiB a symbol at the cap.
+
 ## People and owners
 
 - **`users` holds the people** (`0036-owners`): `id`, `name`, `email`

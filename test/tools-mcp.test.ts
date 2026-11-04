@@ -97,6 +97,8 @@ describe("the tool list", () => {
           : []),
         ...(level.profile === "none" ? [] : ["profile"]),
         ...(level.profile === "write" ? ["profile_edit"] : []),
+        ...(level.analysis === "none" ? [] : ["analysis"]),
+        ...(level.analysis === "write" ? ["analysis_edit"] : []),
       ];
       for (const level of ACCESS_LEVELS) {
         const token = seedKey(
@@ -116,7 +118,8 @@ describe("the tool list", () => {
           const writes =
             tool.name === "rules" ||
             tool.name.startsWith("portfolio_") ||
-            tool.name === "profile_edit";
+            tool.name === "profile_edit" ||
+            tool.name === "analysis_edit";
           expect([tool.name, tool.annotations?.readOnlyHint]).toEqual([
             tool.name,
             !writes,
@@ -138,6 +141,14 @@ describe("the tool list", () => {
           expect(
             profile.description!.startsWith("Changes go through profile_edit."),
           ).toBe(level.profile === "write");
+        }
+        const analysis = tools.find((x) => x.name === "analysis");
+        if (analysis !== undefined) {
+          expect(
+            analysis.description!.startsWith(
+              "Changes go through analysis_edit.",
+            ),
+          ).toBe(level.analysis === "write");
         }
       }
     }));

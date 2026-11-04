@@ -336,8 +336,9 @@ route's transport in `docs/api.md`; rules that wait on events in
 
 ## Answers
 
-- **The `research` tool's sections** are `overview` (quote,
-  `top_holdings` for a fund, signals, each Finnhub section's latest
+- **The `research` tool's sections** are `overview` (quote, for a key
+  with analysis access `analysis`, the symbol's note's revision and
+  date (`docs/analysis.md`), `top_holdings` for a fund, signals, each Finnhub section's latest
   row, `valuation` for a share answered from a foreign listing,
   earnings with its revenue, the next event, five headlines,
   `filings`), `analysts`, `earnings`, `insiders`, `news` and `filings`,

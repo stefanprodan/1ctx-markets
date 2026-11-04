@@ -126,16 +126,18 @@ function AccessPick({
 }
 
 // what a key opens beyond market data: portfolios, rules with their
-// alerts, and the owner's profile
+// alerts, the owner's profile and the shared analysis
 export function AccessPicks({
   portfolio,
   rules,
   profile,
+  analysis,
   busy,
 }: {
   portfolio: Signal<KeyAccess>;
   rules: Signal<KeyAccess>;
   profile: Signal<KeyAccess>;
+  analysis: Signal<KeyAccess>;
   busy: boolean;
 }) {
   return (
@@ -143,6 +145,7 @@ export function AccessPicks({
       <AccessPick label="Portfolios" value={portfolio} busy={busy} />
       <AccessPick label="Alert rules" value={rules} busy={busy} />
       <AccessPick label="Profile" value={profile} busy={busy} />
+      <AccessPick label="Analysis" value={analysis} busy={busy} />
     </>
   );
 }
@@ -167,6 +170,7 @@ export function NewKey({
   const portfolio = useSignal<KeyAccess>("none");
   const rules = useSignal<KeyAccess>("none");
   const profile = useSignal<KeyAccess>("none");
+  const analysis = useSignal<KeyAccess>("none");
   const busy = useSignal(false);
   const error = useSignal<string | null>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -182,6 +186,7 @@ export function NewKey({
         portfolio: portfolio.value,
         rules: rules.value,
         profile: profile.value,
+        analysis: analysis.value,
       });
       busy.value = false;
       shown.value = made.token;
@@ -267,6 +272,7 @@ export function NewKey({
             portfolio={portfolio}
             rules={rules}
             profile={profile}
+            analysis={analysis}
             busy={busy.value}
           />
           {error.value !== null && <Notice error>{error.value}</Notice>}
@@ -300,6 +306,7 @@ export function KeyDetails({
   const portfolio = useSignal<KeyAccess>(row.portfolio ?? "none");
   const rules = useSignal<KeyAccess>(row.rules ?? "none");
   const profile = useSignal<KeyAccess>(row.profile ?? "none");
+  const analysis = useSignal<KeyAccess>(row.analysis ?? "none");
   const busy = useSignal(false);
   const asking = useSignal(false);
   const error = useSignal<string | null>(null);
@@ -316,11 +323,13 @@ export function KeyDetails({
     portfolio: portfolio.value,
     rules: rules.value,
     profile: profile.value,
+    analysis: analysis.value,
   };
   const same =
     next.portfolio === (row.portfolio ?? "none") &&
     next.rules === (row.rules ?? "none") &&
-    next.profile === (row.profile ?? "none");
+    next.profile === (row.profile ?? "none") &&
+    next.analysis === (row.analysis ?? "none");
   const submit = async (event: Event) => {
     event.preventDefault();
     if (busy.value || same) return;
@@ -437,6 +446,7 @@ export function KeyDetails({
           portfolio={portfolio}
           rules={rules}
           profile={profile}
+          analysis={analysis}
           busy={busy.value || !own}
         />
       </form>
@@ -489,7 +499,7 @@ export function keyColumns(
       width: "minmax(0, 1.4fr)",
       align: "end",
       hide: "phone",
-      // many keys reach no portfolio, rule or profile
+      // many keys reach no portfolio, rule, profile or analysis
       show: keys.some((k) => accessWords(k) !== null),
       cell: (k) => <span class="faint">{accessWords(k) ?? ""}</span>,
     },

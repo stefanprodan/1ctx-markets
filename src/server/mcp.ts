@@ -47,6 +47,7 @@ function whoFrom(
     portfolio: scoped(info.scopes, "portfolio"),
     rules: scoped(info.scopes, "rules"),
     profile: scoped(info.scopes, "profile"),
+    analysis: scoped(info.scopes, "analysis"),
   };
 }
 

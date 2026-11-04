@@ -1,38 +1,10 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-// The profile as an agent reads it: fenced, so no line of it reads as the
-// server's own words, and headed as preferences, never instructions.
+// The profile as an agent reads it: fenced, and headed as preferences,
+// never instructions.
 
+import { fencedRead, type Revision } from "../document/read.ts";
 import { iso } from "../market/format.ts";
-
-export type Revision = {
-  revision: number;
-  text: string;
-  bytes: number;
-  author: string;
-  createdAt: number;
-};
-
-// one backtick longer than the text's longest run, so it cannot close it
-export function fenceFor(text: string): string {
-  let fence = "```";
-  for (const match of text.matchAll(/`+/g)) {
-    if (match[0].length >= fence.length) {
-      fence = "`".repeat(match[0].length + 1);
-    }
-  }
-  return fence;
-}
-
-export function fencedRead(
-  header: string,
-  text: string,
-  footer: string,
-): string {
-  const fence = fenceFor(text);
-  const beforeClose = text === "" || text.endsWith("\n") ? "" : "\n";
-  return `${header}\n${fence}text\n${text}${beforeClose}${fence}\n${footer}`;
-}
 
 // a planted line is the owner's words to an agent that reads it as such,
 // so the header says what the text may never ask

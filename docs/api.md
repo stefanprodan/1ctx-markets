@@ -45,9 +45,15 @@ MCP tools copied onto paths.
 | `GET /alerts` | rules:read | `alertsHandler()` | the alerts feed (below) |
 | `GET /profile` | profile:read | `readProfile()`, `renderMarkdown()` | `text`, `html` (the text drawn on the server), `revision`, `author`, `updated_at`, `bytes`; every one null with no profile yet (`docs/profile.md`) |
 | `PUT /profile` | profile:write | `saveProfile()` | `{revision?, text}` replaces it, `{revision, edits}` changes part of it; the new `revision`, `author`, `bytes`, `updated_at`, never the text, with `unchanged` when the text equals the live one; 409 with the live `revision` for a stale one |
-| `POST /profile/preview` | profile:write | `profileText()`, `renderMarkdown()` | `{text}`, well-formed UTF-8 with no NUL (the size cap applies on save), answered as `html` drawn as `GET /profile` draws it; nothing is saved and no revision is made (the web UI editor's Preview) |
+| `POST /profile/preview` | profile:write | `documentText()`, `renderMarkdown()` | `{text}`, well-formed UTF-8 with no NUL (the size cap applies on save), answered as `html` drawn as `GET /profile` draws it; nothing is saved and no revision is made (the web UI editor's Preview) |
 | `GET /profile/versions` | profile:read | `profileVersions()` | `revisions[]`, the kept ones newest first, without their text |
 | `GET /profile/versions/{revision}` | profile:read | `profileVersion()` | that revision as `GET /profile` answers it; 404 for one never made or no longer kept |
+| `GET /instruments/{symbol}/analysis` | analysis:read | `readAnalysis()`, `sinceWritten()`, `renderMarkdown()` | `text`, `html`, `revision`, `author`, `written_at`, `bytes`, `since_written` (the price move and earnings since it was saved); every one null with no analysis yet; the symbol resolves as `/instruments/{symbol}/bars`' does, 404 or 503 as there (`docs/analysis.md`) |
+| `PUT /instruments/{symbol}/analysis` | analysis:write | `saveAnalysis()` | `{revision?, text}` or `{revision, edits}`, as `PUT /profile`; the new `revision`, `author`, `bytes`, `written_at`, with `unchanged` for the live text; 409 with the live `revision` for a stale one; the symbol is fetched when new but never marked read |
+| `POST /instruments/{symbol}/analysis/preview` | analysis:write | `documentText()`, `renderMarkdown()` | `{text}` drawn as `html`, as `POST /profile/preview`; nothing is saved |
+| `GET /instruments/{symbol}/analysis/versions` | analysis:read | `analysisVersions()` | `revisions[]`, the kept ones newest first, without their text |
+| `GET /instruments/{symbol}/analysis/versions/{revision}` | analysis:read | `analysisVersion()` | that revision as `GET .../analysis` answers it, its move measured from its own save; 404 for one never made or no longer kept |
+| `GET /analysis?page_size=&page_token=` | analysis:read | `listedPage()` | `analyses[]`, each symbol's live revision newest first (`id`, `revision`, `author`, `written_at`, `bytes`, no text), `next_page_token` while more follow; a fund's only to one who holds or priced it |
 | `GET /portfolios` | portfolio:read | `listAll()` | `portfolios[]`, Cash first then the owner's order, with their counts and `cash` (true on Cash, the one that holds all cash and only cash), `brokers[]`, `display_currency`, `time_zone`, `markets[]`, `funds[]` |
 | `POST /portfolios`, `PATCH`, `DELETE /portfolios/{id}` | portfolio:write | `createPortfolio()`, `updatePortfolio()`, `removePortfolio()` | `{name}`, and on `PATCH` `{name, position}`, either or both, `position` the place among the portfolios but Cash, 1 first (the others renumbered); 201 with `Location`; 409 while no display currency is set, for a taken name or the name Cash, for any rename, move or delete of Cash, or for a portfolio holding live rows (removed ones are deleted with it) |
 | `GET /portfolios/{id}` | portfolio:read | `portfolioItem()` | `{portfolio}` |
@@ -416,7 +422,7 @@ MCP tools copied onto paths.
   on an `admin` or `session` route (`/instruments`, `/screener`,
   `/dashboard`, an instrument's stored check, delete and refetch,
   `/status`, its retry, `/keys`, `/users`, `/smtp`), and on a
-  portfolio, rules or profile route without that access.
+  portfolio, rules, profile or analysis route without that access.
 - **Portfolio routes take the key's portfolio access** (`keys.portfolio`,
   `none` by default): `portfolio:read` opens with `read` or `write`,
   `portfolio:write` with `write`. Holdings are private, so the read
@@ -444,7 +450,14 @@ MCP tools copied onto paths.
   revisions) opens with `read` or `write`, `profile:write` (`PUT
   /profile`, `POST /profile/preview`) with `write`. The profile is
   private, so the read scope never opens it; the cookie writes it,
-  recorded as `web`. The spec names `profileRead` and `profileWrite`. A
+  recorded as `web`. The spec names `profileRead` and `profileWrite`.
+- **Analysis routes take the key's analysis access** (`keys.analysis`,
+  `none` by default) the same way: `analysis:read` (a symbol's
+  analysis, its revisions, the list) opens with `read` or `write`,
+  `analysis:write` (`PUT`, the preview) with `write`. The analysis is
+  shared by everyone, but a script's key never needs it, so the read
+  scope never opens it; a cookie writes it under the person's name. The
+  spec names `analysisRead` and `analysisWrite`. A
   missing, wrong, revoked or expired key is 401. Any other `/api/v1/`
   path, unknown ones included, answers 401 without a key and 404 with
   one.

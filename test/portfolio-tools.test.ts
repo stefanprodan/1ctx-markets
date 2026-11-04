@@ -21,6 +21,7 @@ const CASEY: Who = {
   portfolio: "write",
   rules: "none",
   profile: "none",
+  analysis: "none",
 };
 const ONE = "ZZFUND000011";
 

@@ -110,6 +110,7 @@ export const whoOf = (c: Caller | null, login: Login | null = null): Who =>
           portfolio: c.key.portfolio,
           rules: c.key.rules,
           profile: c.key.profile,
+          analysis: c.key.analysis,
         };
 
 const keyFields = (c: Caller | null, login: Login | null): LogFields =>
@@ -178,7 +179,9 @@ export function router(deps: RouterDeps): Handle {
             ? c.key.rules
             : area === "profile"
               ? c.key.profile
-              : null;
+              : area === "analysis"
+                ? c.key.analysis
+                : null;
       if (held !== null && opens(held, level === "write")) return null;
       return forbidden("this key does not open this route");
     }
@@ -251,6 +254,7 @@ export function router(deps: RouterDeps): Handle {
             `portfolio:${who.portfolio}`,
             `rules:${who.rules}`,
             `profile:${who.profile}`,
+            `analysis:${who.analysis}`,
           ],
           // per request, never a global: each tool call reads its own person
           extra: { user: who.user, credential: who.credential },

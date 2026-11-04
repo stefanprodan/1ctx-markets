@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useSignal } from "@preact/signals";
-import { useCallback, useEffect } from "preact/hooks";
+import { useCallback, useEffect, useMemo } from "preact/hooks";
 import { SCREENER } from "../app/paths.ts";
 import { navigate } from "../app/router.ts";
 import type { Params } from "../app/routes.ts";
@@ -22,6 +22,8 @@ import {
   summary,
   UNREAD,
 } from "./Instrument.model.ts";
+import { moreMenu } from "./InstrumentAnalysis.model.ts";
+import { AnalysisSection } from "./InstrumentAnalysis.tsx";
 import { InstrumentCards } from "./InstrumentCards.tsx";
 import { Head } from "./InstrumentHead.tsx";
 import { InstrumentMenu, SAID_MS } from "./InstrumentMenu.tsx";
@@ -60,6 +62,19 @@ export function Instrument({ params }: { params: Params }) {
   const kind = detail?.instrument.kind;
   const symbol = tickerOf(id, kind);
   const options = detail === null ? [] : choices(detail.instrument);
+  const analysis = useMemo(() => markets.analysis(id), [id]);
+  const writing = useSignal(false);
+  // Back or Forward reuses the page, so a drawer never carries a draft over
+  useEffect(() => {
+    writing.value = false;
+  }, [id]);
+  // offered once the read says there is none, never before it lands
+  const write =
+    analysis.doc.value !== null && analysis.doc.value.revision === null
+      ? () => {
+          writing.value = true;
+        }
+      : undefined;
 
   const run = async (c: Choice) => {
     fetching.value = true;
@@ -134,20 +149,23 @@ export function Instrument({ params }: { params: Params }) {
           <>
             {/* a buy of what the page is on, held or not */}
             {buyable(detail.instrument) && <BuyButton open={sheet} />}
-            {hand
-              ? // a fund the owner prices sells and is priced here
-                held && <FundMenu open={sheet} />
-              : // refetch and delete are an admin's
-                markets.isAdmin.value && (
-                  <InstrumentMenu
-                    symbol={symbol}
-                    busy={fetching.value}
-                    done={said.value?.text === "Updated"}
-                    removing={removing.value}
-                    onRefetch={() => void run(options[0]!)}
-                    onDelete={() => void remove()}
-                  />
-                )}
+            {hand ? (
+              // a fund the owner prices sells and is priced here
+              <FundMenu open={sheet} held={held !== null} onWrite={write} />
+            ) : (
+              moreMenu(markets.isAdmin.value, write !== undefined) && (
+                <InstrumentMenu
+                  symbol={symbol}
+                  admin={markets.isAdmin.value}
+                  onWrite={write}
+                  busy={fetching.value}
+                  done={said.value?.text === "Updated"}
+                  removing={removing.value}
+                  onRefetch={() => void run(options[0]!)}
+                  onDelete={() => void remove()}
+                />
+              )
+            )}
           </>
         )
       }
@@ -164,6 +182,12 @@ export function Instrument({ params }: { params: Params }) {
             saved={hand ? saved.value : 0}
           />
           <InstrumentCards detail={detail} held={held} />
+          <AnalysisSection
+            key={id}
+            store={analysis}
+            symbol={symbol}
+            writing={writing}
+          />
           <TradeSheets
             id={detail.instrument.id}
             fund={

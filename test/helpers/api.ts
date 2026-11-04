@@ -51,6 +51,7 @@ export function keyAccess(adminKey: string | null): Access {
           portfolio: "none",
           rules: "none",
           profile: "none",
+          analysis: "none",
         },
       };
     },

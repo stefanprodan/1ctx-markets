@@ -6,18 +6,17 @@ import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { runKeys } from "../src/admin/keys-cli.ts";
 import { PREFIX } from "../src/api/http.ts";
+import { applyEdits, MAX_EDITS } from "../src/document/edit.ts";
+import { fenceFor } from "../src/document/read.ts";
+import {
+  KEPT_REVISIONS,
+  MAX_DOCUMENT_BYTES as MAX_PROFILE_BYTES,
+} from "../src/document/store.ts";
 import { fits } from "../src/operations/answer.ts";
 import type { Markets } from "../src/operations/markets.ts";
 import { ADMIN, loginWho, OPERATOR, type Who } from "../src/operations/who.ts";
-import { applyEdits, MAX_EDITS } from "../src/profile/edit.ts";
 import { renderMarkdown } from "../src/profile/markdown.ts";
-import { fenceFor } from "../src/profile/read.ts";
-import {
-  KEPT_REVISIONS,
-  MAX_PROFILE_BYTES,
-  profileVersions,
-  saveProfile,
-} from "../src/profile/store.ts";
+import { profileVersions, saveProfile } from "../src/profile/store.ts";
 import { tokenHash } from "../src/server/access.ts";
 import {
   INSTRUCTIONS_BYTES,
@@ -48,6 +47,7 @@ const ASHLEY: Who = {
   portfolio: "none",
   rules: "none",
   profile: "write",
+  analysis: "none",
 };
 const READER: Who = { ...ASHLEY, name: "reader", profile: "read" };
 const NONE: Who = { ...ASHLEY, name: "none", profile: "none" };

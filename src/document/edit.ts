@@ -1,21 +1,18 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-// Part of the profile changed by exact replacement, as an agent's editor
+// Part of a document changed by exact replacement, as an agent's editor
 // does: each old matches once in the text it read, so the order of the
 // pairs never changes the result and no edit matches another's text.
 
 import { ArgError } from "../operations/args.ts";
 
-export type ProfileEdit = { old: string; new: string };
+export type Edit = { old: string; new: string };
 
 export const MAX_EDITS = 50;
 
 // every old is matched against the text as given, before any pair
 // applies; a refusal names the pair from 1 and never quotes its old
-export function applyEdits(
-  text: string,
-  edits: readonly ProfileEdit[],
-): string {
+export function applyEdits(text: string, edits: readonly Edit[]): string {
   if (edits.length === 0 || edits.length > MAX_EDITS) {
     throw new ArgError(`edits must hold 1 to ${MAX_EDITS} pairs`);
   }

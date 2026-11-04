@@ -52,6 +52,7 @@ const CASEY: Who = {
   portfolio: "write",
   rules: "none",
   profile: "none",
+  analysis: "none",
 };
 
 // fictional: ZZ is no country's code

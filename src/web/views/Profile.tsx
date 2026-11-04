@@ -5,11 +5,8 @@
 
 import { useEffect, useRef, useState } from "preact/hooks";
 import { says } from "../data/api.ts";
-import type {
-  ProfileAnswer,
-  ProfileStore,
-  RevisionRow,
-} from "../data/profile.ts";
+import type { DocumentStore, Loaded, RevisionRow } from "../data/document.ts";
+import type { ProfileStore } from "../data/profile.ts";
 import { markets } from "../data/store.ts";
 import { ago } from "../lib/format.ts";
 import { Icon } from "../lib/icons.tsx";
@@ -53,7 +50,7 @@ function run(area: HTMLTextAreaElement | null, tool: Tool) {
 }
 
 // the server escapes any HTML in the text before it draws it
-function Drawn({ html }: { html: string }) {
+export function Drawn({ html }: { html: string }) {
   return <div class="profile-doc" dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
@@ -107,20 +104,26 @@ export function PreviewBox({ drawn }: { drawn: Preview }) {
   );
 }
 
-export function Editor({
+export type EditorProps = {
+  store: Pick<DocumentStore, "save" | "preview">;
+  start: string;
+  // the live text, so a first document's outline can be saved as it is
+  saved: string;
+  revision: number | null;
+  onDone: () => void;
+  // the text box's name for a screen reader
+  label?: string;
+};
+
+// the editor's state and parts, framed by a card or a drawer
+export function useEditor({
   store,
   start,
   saved,
   revision,
   onDone,
-}: {
-  store: ProfileStore;
-  start: string;
-  // the live text, so a first profile's outline can be saved as it is
-  saved: string;
-  revision: number | null;
-  onDone: () => void;
-}) {
+  label = "Profile text",
+}: EditorProps) {
   const [text, setText] = useState(start);
   // a load landing after Edit never moves the revision the save is checked at
   const [opened] = useState(revision);
@@ -137,8 +140,8 @@ export function Editor({
     setBusy(true);
     setRefused(null);
     const said = await store.save(text, opened);
-    if (said === null) return onDone();
     setBusy(false);
+    if (said === null) return onDone();
     setRefused(said);
   }
   function pick(next: "write" | "preview") {
@@ -155,67 +158,92 @@ export function Editor({
       },
     );
   }
+  const head = (
+    <div class="profile-edit-head">
+      <Tabs
+        label="Editor"
+        value={tab}
+        onPick={pick}
+        tabs={[
+          { key: "write", label: "Write" },
+          { key: "preview", label: "Preview" },
+        ]}
+      />
+      {tab === "write" && <Toolbar area={() => area.current} busy={busy} />}
+    </div>
+  );
+  const box = (
+    <div class="profile-edit-box">
+      {/* kept while Preview shows, so its undo and caret stay */}
+      <textarea
+        ref={area}
+        class="profile-editor"
+        value={text}
+        hidden={tab !== "write"}
+        readOnly={busy}
+        spellcheck={false}
+        aria-label={label}
+        onInput={(e) => setText((e.target as HTMLTextAreaElement).value)}
+      />
+      {tab === "preview" && <PreviewBox drawn={drawn} />}
+      {refused !== null && <Notice error>{refused}</Notice>}
+    </div>
+  );
+  const sizeLine = (
+    <span class={size > MAX_BYTES ? "profile-size over" : "profile-size"}>
+      {kb(size)} of {kb(MAX_BYTES)}
+    </span>
+  );
+  const saveButton = (
+    <button
+      type="button"
+      class="btn btn-primary"
+      onClick={save}
+      disabled={busy || text === saved}
+    >
+      {busy ? "Saving…" : "Save"}
+    </button>
+  );
+  return { busy, head, box, sizeLine, saveButton };
+}
+
+export function Editor(props: EditorProps) {
+  const { busy, head, box, sizeLine, saveButton } = useEditor(props);
   return (
     <Card>
-      <div class="profile-edit-head">
-        <Tabs
-          label="Editor"
-          value={tab}
-          onPick={pick}
-          tabs={[
-            { key: "write", label: "Write" },
-            { key: "preview", label: "Preview" },
-          ]}
-        />
-        {tab === "write" && <Toolbar area={() => area.current} busy={busy} />}
-      </div>
-      <div class="profile-edit-box">
-        {/* kept while Preview shows, so its undo and caret stay */}
-        <textarea
-          ref={area}
-          class="profile-editor"
-          value={text}
-          hidden={tab !== "write"}
-          readOnly={busy}
-          spellcheck={false}
-          aria-label="Profile text"
-          onInput={(e) => setText((e.target as HTMLTextAreaElement).value)}
-        />
-        {tab === "preview" && <PreviewBox drawn={drawn} />}
-        {refused !== null && <Notice error>{refused}</Notice>}
-      </div>
+      {head}
+      {box}
       <div class="profile-edit-foot">
-        <span class={size > MAX_BYTES ? "profile-size over" : "profile-size"}>
-          {kb(size)} of {kb(MAX_BYTES)}
-        </span>
-        <button type="button" class="btn" onClick={onDone} disabled={busy}>
-          Cancel
-        </button>
+        {sizeLine}
         <button
           type="button"
-          class="btn btn-primary"
-          onClick={save}
-          disabled={busy || text === saved}
+          class="btn"
+          onClick={props.onDone}
+          disabled={busy}
         >
-          {busy ? "Saving…" : "Save"}
+          Cancel
         </button>
+        {saveButton}
       </div>
     </Card>
   );
 }
 
-function History({
+export function History({
   store,
   live,
   onClose,
+  who = (author) => authorWords(author, markets.me.value?.name ?? null),
 }: {
-  store: ProfileStore;
+  store: Pick<DocumentStore, "versions" | "version" | "restore">;
   live: number;
   onClose: () => void;
+  // an author as the reader is told it
+  who?: (author: string) => string;
 }) {
   const [rows, setRows] = useState<RevisionRow[] | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
-  const [open, setOpen] = useState<ProfileAnswer | null>(null);
+  const [open, setOpen] = useState<Loaded | null>(null);
   const [busy, setBusy] = useState(false);
   const alive = useRef(true);
   // a restore done slides the drawer out once the render that ends busy
@@ -314,8 +342,7 @@ function History({
                     )}
                   </span>
                   <span class="faint">
-                    {authorWords(r.author, markets.me.value?.name ?? null)} ·{" "}
-                    {ago(r.updated_at, now)} · {kb(r.bytes)}
+                    {who(r.author)} · {ago(r.at, now)} · {kb(r.bytes)}
                   </span>
                 </button>
               </li>

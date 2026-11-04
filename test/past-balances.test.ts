@@ -28,6 +28,7 @@ const CASEY: Who = {
   portfolio: "write",
   rules: "none",
   profile: "none",
+  analysis: "none",
 };
 const HOUR = 3_600_000;
 
