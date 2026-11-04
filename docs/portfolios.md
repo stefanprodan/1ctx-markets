@@ -200,6 +200,12 @@ once and valued on the live price the server already keeps.
   the markets (bank money, one row per bank and currency, its products
   in the note). The owner or an agent told to sets each amount; a trade
   never moves it, since the server keeps no cash ledger.
+- **A cash row may have a maturity** (`maturity`): a term deposit's
+  last day, at a bank or a broker. Unlike a bond's it changes on update,
+  since a deposit rolls over, and null takes it off; holdings answers
+  it only when set. From that day, by the viewer's date, the web UI tags
+  the row Matured and fades its figures, as a matured bond's, and it
+  still counts in the totals until the owner updates or removes it.
 - **An update is a new row** replacing the old (`replaces`), the old one
   removed by whoever updated it, so every change keeps who and when, and
   restoring an old row sets a wrong update back (restoring takes out of
@@ -492,6 +498,15 @@ holdings(portfolio?: Portfolio, broker?: string, currency?: Currency,
 // newest first; removed: true lists the removed ones too
 trades(portfolio?: Portfolio, broker?: string, symbol?: string,
   from?: Day, to?: Day, removed?: boolean, next?: string): { trades; next };
+// a cash or bond row's chain (`rowHistory()`), oldest first: each row's
+// date, amount, currency, name, broker, note, dry_powder, maturity,
+// removed (taken off by hand) and undone (off the rows that stand, which
+// run from the live one, or the last taken off, back through replaces);
+// never who set it. An update and the row it replaces share one instant;
+// any other removal set the row aside for a restore, or was by hand when
+// no row was live just after. A removal undone by its own restore leaves
+// no trace, since the restore clears it
+history(position: number): { position; kind; history };
 
 // portfolio_trade: a share, ETF, crypto or fund; never Cash; portfolio
 // is needed unless there is one besides Cash; neither price nor total
@@ -512,13 +527,15 @@ restore(trade: number, portfolio?: Portfolio): { trade };
 // portfolio_cash: cash lives in Cash, so it takes no portfolio; cash is
 // reserve unless dry_powder (ready to invest)
 add(name: string, amount: number, currency: Currency, date?: Day,
-  broker?: string, note?: string, dry_powder?: boolean): { position };
+  broker?: string, note?: string, dry_powder?: boolean,
+  maturity?: Day): { position };
 // amount set outright or moved by `by`, in `currency` or its own; at
-// least one change; broker null takes it off, note null clears it
+// least one change; broker null takes it off, note and maturity null
+// clear them
 update(position: number, amount?: number, by?: number,
   currency?: Currency, date?: Day, note?: string | null,
-  dry_powder?: boolean, name?: string, broker?: string | null):
-  { position; replaced; rate? };
+  dry_powder?: boolean, name?: string, broker?: string | null,
+  maturity?: Day | null): { position; replaced; rate? };
 remove(position: number): { position };
 restore(position: number): { position };
 

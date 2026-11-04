@@ -40,11 +40,11 @@ import { MAX_NAME, MAX_NOTE, MAX_POSITION_NAME } from "../portfolios/store.ts";
 import { day, next, schema, symbol, type Tool } from "./schema.ts";
 
 const readDescription = (writes: boolean) =>
-  `${writes ? "Writes go through portfolio_trade (shares, ETFs, crypto, funds), portfolio_cash, portfolio_bond, portfolio_fund (a fund's price) and portfolio_setup. " : ""}For "my stocks", "my ETF", "my portfolio" or a named one: holdings first, then its symbols to quote, history, research. list: portfolios, brokers, markets, funds, display currency, time zone. holdings: portfolio, broker; totals per currency, currency converts. A row's symbol is what quote takes (a fund's key), null for cash and an unlisted bond. position is a cash or bond row's id${writes ? " for portfolio_cash or portfolio_bond" : ""}, null for a share, ETF, crypto or fund${writes ? ", which change through their trades" : ""}, and on a merged bond, each purchase's in parts. Cash is dry_powder (ready to invest) or reserve. as_of: a bond's purchase date, a fund's price date. removed true adds the ${MAX_REMOVED} latest removed cash and bond rows. price: the listing's, see fetched_at. trades: portfolio, broker, symbol, from, to, removed (include removed)${writes ? "; a trade's id is what portfolio_trade removes" : ""}. next pages.`;
+  `${writes ? "Writes go through portfolio_trade (shares, ETFs, crypto, funds), portfolio_cash, portfolio_bond, portfolio_fund (a fund's price) and portfolio_setup. " : ""}For "my stocks", "my ETF", "my portfolio" or a named one: holdings first, then its symbols to quote, history, research. list: portfolios, brokers, markets, funds, display currency, time zone. holdings: portfolio, broker; totals per currency, currency converts. A row's symbol is what quote takes (a fund's key), null for cash and an unlisted bond. position is a cash or bond row's id${writes ? " for portfolio_cash or portfolio_bond" : ""}, null for a share, ETF, crypto or fund${writes ? ", which change through their trades" : ""}, and on a merged bond, each purchase's in parts. Cash is dry_powder (ready to invest) or reserve. as_of: a bond's purchase date, a fund's price date. removed true adds the ${MAX_REMOVED} latest removed cash and bond rows. price: the listing's, see fetched_at. trades: portfolio, broker, symbol, from, to, removed${writes ? "; a trade's id is what portfolio_trade removes" : ""}. history: position. next pages.`;
 
 const TRADE = `Records a buy or sell of a share, ETF, crypto or fund; remove or restore a trade by its id (from trades). add: symbol as quote takes it, or a fund by isin, its key as symbol (fund:<ISIN>) or name; side; quantity, or all: true to sell all held; price or total (what left or reached the account, fees in), neither: the live price; fees, date (default today), currency paid, broker (one listed), portfolio (needed when several), note. A fund: one trade per confirmation; its first buy makes it, with isin, name and currency; market: where its money is invested. The same trade within ${RETRY_MS / 60_000} minutes is refused as a repeat unless again: true, for two real equal fills. Removing all of a holding is removing its trades. Cash never moves with a trade: see portfolio_cash. Examples: {"action":"add","symbol":"AAPL","side":"buy","quantity":3,"price":190.5,"fees":1,"broker":"North"}; a first fund buy {"action":"add","isin":"ZZFUND000011","name":"Made Up Fund","side":"buy","quantity":12.5,"total":1000,"currency":"EUR"}.`;
 
-const CASH = `Adds, updates, removes or restores the owner's cash; all cash lives in Cash. A row is picked by position from holdings (removed true lists removed ones), and an update gives it a new position. dry_powder true: ready to invest at a broker; else reserve. add: name, amount, currency, broker, date, note, dry_powder; the same name, broker and currency replaces that row. update: position and one or more of amount (the new balance), by (+/- a move), currency (of amount or by, converted), date, note (null clears), dry_powder, name, broker (null takes it off). remove, restore: position. A buy paid from dry powder: holdings, then update that row with by: -(the total paid). Examples: {"action":"update","position":12,"note":"made-up note"}; {"action":"add","name":"Savings","amount":2500,"currency":"EUR","broker":"South"}.`;
+const CASH = `Adds, updates, removes or restores the owner's cash; all cash lives in Cash. A row is picked by position from holdings (removed true lists removed ones), and an update gives it a new position. dry_powder true: ready to invest at a broker; else reserve. add: name, amount, currency, broker, date, note, dry_powder, maturity (a term deposit's last day: from it, matured); the same name, broker and currency replaces that row. update: position and one or more of amount (the new balance), by (+/- a move), currency (of amount or by, converted), date, note (null clears), dry_powder, name, broker (null takes it off), maturity (null takes it off; a deposit rolled over gets its new day). remove, restore: position. A buy paid from dry powder: holdings, then update that row with by: -(the total paid). Examples: {"action":"update","position":12,"note":"made-up note"}; {"action":"add","name":"Savings","amount":2500,"currency":"EUR","broker":"South"}.`;
 
 const BOND = `Adds, updates, removes or restores a bond the owner holds. add: name, amount (face), currency (the listing's when symbol names one), symbol (a listing, valued at its percent of par), coupon (percent), maturity, cost (paid), date (bought), broker, portfolio (needed when several), note. update: position (from holdings; on a merged bond each purchase's, in parts) and one or more of amount (face), currency (of amount, converted), cost, date, note (null clears), name, broker (null takes it off); an update gives it a new position. Coupon, maturity and listing never change: remove and add again. remove, restore: position. Example: {"action":"add","name":"Made Up 2030","amount":12000,"currency":"EUR","coupon":4.75,"maturity":"2030-06-30","cost":11650,"date":"2026-03-17"}.`;
 
@@ -121,14 +121,20 @@ const READ_ARGS = {
   list: [],
   holdings: ["portfolio", "broker", "currency", "removed", "next"],
   trades: ["portfolio", "broker", "symbol", "from", "to", "removed", "next"],
+  history: ["position"],
 } as const;
 
 export function parsePortfolioRead(input: unknown): PortfolioArgs {
   const f = textValues(
     fields(input, ["action", ...new Set(Object.values(READ_ARGS).flat())]),
-    { flags: ["removed"] },
+    { flags: ["removed"], ids: ["position"] },
   );
-  const action = actionOf(f, ["list", "holdings", "trades"] as const);
+  const action = actionOf(f, [
+    "list",
+    "holdings",
+    "trades",
+    "history",
+  ] as const);
   only(f, action, READ_ARGS[action]);
   if (f.removed !== undefined && typeof f.removed !== "boolean") {
     throw new ArgError("removed must be true or false");
@@ -140,6 +146,8 @@ export function parsePortfolioRead(input: unknown): PortfolioArgs {
   switch (action) {
     case "list":
       return { action };
+    case "history":
+      return { action, position: rowId(f.position, "position") };
     case "holdings":
       return {
         action,
@@ -258,6 +266,7 @@ const CASH_ADD = [
   "broker",
   "note",
   "dry_powder",
+  "maturity",
 ];
 const CASH_UPDATE = [
   "position",
@@ -269,6 +278,7 @@ const CASH_UPDATE = [
   "dry_powder",
   "name",
   "broker",
+  "maturity",
 ];
 
 const rowAction = (
@@ -467,7 +477,15 @@ export function portfolioTools(m: Markets, access: Access): Tool[] {
     description: readDescription(access === "write"),
     inputSchema: schema(
       {
-        action: { type: "string", enum: ["list", "holdings", "trades"] },
+        action: {
+          type: "string",
+          enum: ["list", "holdings", "trades", "history"],
+        },
+        position: {
+          ...id,
+          description:
+            "history: a cash or bond row's, from holdings; answers its updates oldest first, each with its date, amount, note, removed (taken off by hand) and undone (set aside by a restore)",
+        },
         portfolio: portfolioRef,
         broker: { type: "string" },
         currency: { type: "string" },
@@ -536,6 +554,10 @@ export function portfolioTools(m: Markets, access: Access): Tool[] {
           broker,
           note,
           dry_powder: { type: "boolean" },
+          maturity: nullable("string", {
+            pattern: day.pattern,
+            description: "a term deposit's last day; null takes it off",
+          }),
         },
         ["action"],
       ),

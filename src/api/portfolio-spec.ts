@@ -532,7 +532,10 @@ export const portfolioSchemas: Record<string, Schema> = {
       amount: note(num, "Cash's amount, or a bond's face."),
       cost: num,
       coupon: num,
-      maturity: str,
+      maturity: note(
+        str,
+        "A bond's maturity, or a term deposit's last day for cash.",
+      ),
       date: note(str, "As of; today by default."),
       dry_powder: note(
         bool,
@@ -564,6 +567,10 @@ export const portfolioSchemas: Record<string, Schema> = {
       broker: note(
         nstr,
         "A broker's name, as the list has it; null takes it off.",
+      ),
+      maturity: note(
+        nstr,
+        "Cash's: a term deposit's last day, changed when it rolls over; null takes it off. A bond's never changes.",
       ),
       market: note(nstr, NO_MARKET),
     },

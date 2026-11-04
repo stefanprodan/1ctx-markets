@@ -217,6 +217,8 @@ export type PositionChange = {
   name?: string;
   // null takes it off
   broker?: string | null;
+  // a term deposit's last day, null takes it off; a bond's never changes
+  maturity?: string | null;
 };
 
 export type HoldingsArgs = {
@@ -250,6 +252,7 @@ export type PortfolioArgs =
       next: string | null;
     } & HoldingsArgs)
   | ({ action: "trades"; next: string | null } & TradesArgs)
+  | { action: "history"; position: number }
   | { action: "add"; kind: "trade"; trade: TradeArgs }
   | { action: "add"; kind: "fund"; fund: FundTradeArgs }
   | { action: "add"; kind: PositionKind; position: PositionArgs }
@@ -505,6 +508,7 @@ export function parsePosition(
     return {
       ...base,
       amount: amount(f.amount, "amount"),
+      maturity: date(f.maturity, "maturity"),
       dryPowder: f.dry_powder === true,
     };
   }
@@ -537,6 +541,7 @@ export const UPDATE_FIELDS = [
   "dry_powder",
   "name",
   "broker",
+  "maturity",
 ] as const;
 
 // a fund's update: its price for a day and its market; kind and
@@ -597,6 +602,7 @@ export function parseChange(
   if (f.market !== undefined) throw new ArgError(NO_POSITION_MARKET);
   if (f.name !== undefined) c.name = text(f.name, "name", MAX_POSITION_NAME);
   if (f.broker !== undefined) c.broker = optionalName(f.broker, "broker");
+  if (f.maturity !== undefined) c.maturity = date(f.maturity, "maturity");
   if (Object.keys(c).length === 0) {
     throw new ArgError(`update changes at least one of ${named.join(", ")}`);
   }
@@ -617,7 +623,16 @@ export const KIND_ARGS: Record<AddKind, readonly string[]> = {
     "note",
     "again",
   ],
-  cash: ["name", "amount", "currency", "date", "broker", "note", "dry_powder"],
+  cash: [
+    "name",
+    "amount",
+    "currency",
+    "date",
+    "broker",
+    "note",
+    "dry_powder",
+    "maturity",
+  ],
   fund: [
     "isin",
     "name",
@@ -1726,6 +1741,12 @@ export async function updatePosition(
     if (change.dryPowder === true && old.kind !== "cash") {
       return { error: "bad_arguments", message: "only cash is dry powder" };
     }
+    if (change.maturity !== undefined && old.kind !== "cash") {
+      return {
+        error: "bad_arguments",
+        message: "a bond's maturity never changes: remove it and add it again",
+      };
+    }
     const name = change.name ?? old.name;
     const at = broker === undefined ? old.broker : (broker?.id ?? null);
     // add takes cash of one name, broker and currency as one row
@@ -1780,6 +1801,8 @@ export async function updatePosition(
         asOf,
         note: change.note === undefined ? old.note : change.note,
         dryPowder: change.dryPowder ?? old.dryPowder,
+        maturity:
+          change.maturity === undefined ? old.maturity : change.maturity,
         name,
         broker: at,
         replaces: id,
@@ -1804,6 +1827,62 @@ export function historyOf(m: Markets, owner: string, id: number) {
     history: chainOf(m.db, owner, p.id).map((r) =>
       positionItem(m.db, owner, r),
     ),
+  };
+}
+
+// a row's kept updates for an agent, oldest first: what the owner set
+// and when, never who. An update and the row it replaces share one
+// instant; any other removal set the row aside for a restore (undone),
+// or took it off by hand (removed) when no row was live just after
+export function rowHistory(m: Markets, owner: string, id: number) {
+  const p = readPosition(m.db, owner, id);
+  if (p === null) return notFound(`no position ${id}`);
+  const chain = chainOf(m.db, owner, p.id).reverse();
+  const byId = new Map(chain.map((r) => [r.id, r]));
+  const byHand = (r: Position): boolean => {
+    const t = r.removedAt;
+    if (t === null) return false;
+    if (chain.some((c) => c.replaces === r.id && c.enteredAt === t)) {
+      return false;
+    }
+    return !chain.some(
+      (x) =>
+        x.id !== r.id &&
+        x.enteredAt <= t &&
+        (x.removedAt === null || x.removedAt > t),
+    );
+  };
+  // the rows that stand: the live one, or the last taken off, back to the first
+  const tip =
+    chain.find((r) => r.removedAt === null) ??
+    [...chain].sort((a, b) => (b.removedAt ?? 0) - (a.removedAt ?? 0))[0];
+  const stands = new Set<number>();
+  for (
+    let r: Position | undefined = tip;
+    r;
+    r = r.replaces === null ? undefined : byId.get(r.replaces)
+  ) {
+    stands.add(r.id);
+  }
+  return {
+    position: p.id,
+    kind: p.kind,
+    history: chain.map((r) => {
+      const b = r.broker === null ? null : readBroker(m.db, owner, r.broker);
+      return {
+        position: r.id,
+        date: r.asOf,
+        amount: r.amount,
+        currency: r.currency,
+        name: r.name,
+        broker: b?.name ?? null,
+        ...(r.kind === "cash" ? { dry_powder: r.dryPowder } : {}),
+        ...(r.maturity === null ? {} : { maturity: r.maturity }),
+        note: r.note,
+        removed: byHand(r),
+        ...(stands.has(r.id) ? {} : { undone: true }),
+      };
+    }),
   };
 }
 
@@ -2368,6 +2447,8 @@ export async function portfolioAnswer(
       return holdingsPage(m, owner, args);
     case "trades":
       return tradesPage(m, owner, args);
+    case "history":
+      return answered(rowHistory(m, owner, args.position));
     case "add":
       return answered(
         "trade" in args

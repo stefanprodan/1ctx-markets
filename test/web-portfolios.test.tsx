@@ -33,6 +33,7 @@ import {
   readHidden,
   toggleAmounts,
 } from "../src/web/ui/Amounts.tsx";
+import { CashSheet } from "../src/web/views/CashSheet.tsx";
 import { accessWords } from "../src/web/views/Connect.model.ts";
 import {
   AddForm,
@@ -1315,6 +1316,64 @@ describe("cash: dry powder, reserve, broker and note", () => {
     ).toEqual({ broker: null, note: "Kept" });
   });
 
+  test("a maturity and dry powder go in the edit only when changed; an emptied maturity is null", () => {
+    const same = {
+      name: "Savings",
+      broker: "North",
+      note: "Made up deposit at 3%",
+    };
+    expect(cashEdits(reserve, { ...same, maturity: "", dry: false })).toEqual(
+      {},
+    );
+    expect(
+      cashEdits(reserve, { ...same, maturity: "2027-01-15", dry: true }),
+    ).toEqual({ maturity: "2027-01-15", dry_powder: true });
+    expect(
+      cashEdits(
+        { ...reserve, maturity: "2027-01-15" },
+        { ...same, maturity: "" },
+      ),
+    ).toEqual({ maturity: null });
+  });
+
+  test("a term deposit says when it matures, and from that day is matured", () => {
+    const deposit = { ...reserve, maturity: "2026-11-15" };
+    expect(holdingName(deposit, NOW)).toBe("Reserve · North · matures 15 Nov");
+    expect(matured(deposit, NOW)).toBe(false);
+    expect(matured({ ...deposit, maturity: "2026-10-28" }, NOW)).toBe(true);
+  });
+
+  test("its drawer opens on the balance, one box and the details folded", async () => {
+    const { s } = await loaded(allView);
+    const html = render(
+      <CashSheet
+        store={s.portfolios}
+        h={{ ...reserve, maturity: "2020-01-15" }}
+        onMoved={() => {}}
+        onDone={() => {}}
+      />,
+    );
+    expect(html).toContain("Reserve · North · EUR");
+    expect(html).toContain("Updated 1 Oct · matures 15 Jan 2020");
+    expect(html).toContain("Matured");
+    expect(html).toContain("New balance, or +/− change");
+    expect(html).toContain("Edit details");
+    expect(html).not.toContain(">Note</label>");
+    const open = render(
+      <CashSheet
+        store={s.portfolios}
+        h={reserve}
+        open
+        onMoved={() => {}}
+        onDone={() => {}}
+      />,
+    );
+    expect(open).toContain(">Note</label>");
+    expect(open).toContain("Matures");
+    expect(open).toContain("Kept as");
+    expect(open).not.toContain("New balance");
+  });
+
   test("Add cash has a note field", async () => {
     const { s } = await loaded();
     const html = render(
@@ -2058,7 +2117,7 @@ describe("the page's model", () => {
 
   test("a row with no instrument page opens what edits it", () => {
     expect(pageOf(HOLDINGS.holdings[0]!)).toBe("/symbol/XETRA%3AAAA");
-    expect(homeOf(cash)).toBe("edit");
+    expect(homeOf(cash)).toBe("balance");
     expect(homeOf(row({ kind: "bond", id: null, position: null }))).toBe(
       "purchases",
     );

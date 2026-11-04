@@ -156,10 +156,13 @@ export function PositionEdit({
   lead,
   head,
   drawer,
+  onMoved,
 }: {
   store: PortfolioStore;
   h: Holding;
   onDone: () => void;
+  // an update is a new row: its id, for what shows the row to follow
+  onMoved?: (id: number) => void;
   lead?: ComponentChildren;
   head?: ComponentChildren;
   drawer?: boolean;
@@ -177,6 +180,8 @@ export function PositionEdit({
   const broker = useSignal(h.parts[0]?.broker ?? "");
   const newBroker = useSignal("");
   const note = useSignal(h.note ?? "");
+  const maturity = useSignal(h.maturity ?? "");
+  const dry = useSignal(h.dry_powder === true);
   const busy = useSignal(false);
   const error = useSignal<string | null>(null);
   const save = async (ev: Event) => {
@@ -210,15 +215,23 @@ export function PositionEdit({
     const change = {
       ...figureEdits(h, { amount: n, date: date.value }),
       ...(cash
-        ? cashEdits(h, { name: name.value, broker: at, note: note.value })
+        ? cashEdits(h, {
+            name: name.value,
+            broker: at,
+            note: note.value,
+            maturity: maturity.value,
+            dry: dry.value,
+          })
         : brokered
           ? { ...brokerEdit(h, at), ...noteEdit(h, note.value) }
           : {}),
     };
-    error.value =
-      Object.keys(change).length === 0
-        ? null
-        : await store.updatePosition(h.position!, change);
+    if (Object.keys(change).length === 0) {
+      error.value = null;
+    } else {
+      const r = await store.updatePositionTo(h.position!, change, onMoved);
+      error.value = "refused" in r ? r.refused : null;
+    }
     busy.value = false;
     if (error.value === null) onDone();
   };
@@ -247,7 +260,7 @@ export function PositionEdit({
         />
       </label>
       <label class="field">
-        <span class="label">As of</span>
+        <span class="label">{cash ? "Updated" : "As of"}</span>
         <input
           type="date"
           value={date.value}
@@ -257,6 +270,23 @@ export function PositionEdit({
           }}
         />
       </label>
+      {cash && (
+        <label class="field">
+          <span class="label">Matures</span>
+          {/* Safari shows today, greyed, in an empty date field */}
+          <span
+            class={`pf-date-opt${maturity.value === "" ? " pf-date-empty" : ""}`}
+          >
+            <input
+              type="date"
+              value={maturity.value}
+              onInput={(e) => {
+                maturity.value = e.currentTarget.value;
+              }}
+            />
+          </span>
+        </label>
+      )}
       {brokered && (
         <BrokerPick
           value={broker}
@@ -267,6 +297,26 @@ export function PositionEdit({
             error.value = null;
           }}
         />
+      )}
+      {cash && (
+        <div class="field">
+          <span class="label">Kept as</span>
+          <div class="seg">
+            {[true, false].map((d) => (
+              <button
+                key={String(d)}
+                type="button"
+                aria-pressed={dry.value === d}
+                class={`seg-option${dry.value === d ? " seg-on" : ""}`}
+                onClick={() => {
+                  dry.value = d;
+                }}
+              >
+                {d ? "Dry powder" : "Reserve"}
+              </button>
+            ))}
+          </div>
+        </div>
       )}
       {brokered && (
         <Field label="Note" value={note} placeholder="Optional" rows={5} />
@@ -635,7 +685,7 @@ function Field({
 }) {
   const id = useId();
   return (
-    <div class="field">
+    <div class={rows ? "field pf-field-text" : "field"}>
       <span class="pf-field-head">
         <span class="pf-field-label">
           <label class="label" for={id}>

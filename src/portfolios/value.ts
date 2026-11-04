@@ -761,7 +761,12 @@ function positionRow(
     change_percent: pct(changePercent),
     currency_weight: null,
     ...(p.kind === "bond" ? { coupon: p.coupon, maturity: p.maturity } : {}),
-    ...(p.kind === "cash" ? { dry_powder: p.dryPowder } : {}),
+    ...(p.kind === "cash"
+      ? {
+          dry_powder: p.dryPowder,
+          ...(p.maturity === null ? {} : { maturity: p.maturity }),
+        }
+      : {}),
     note: p.note,
     trade_time: iso(tradeTime),
     fetched_at: iso(fetchedAt),

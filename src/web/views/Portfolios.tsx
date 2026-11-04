@@ -49,6 +49,7 @@ import {
   type TableGroup,
 } from "../ui/Table.tsx";
 import { Tabs } from "../ui/Tabs.tsx";
+import { CashSheet } from "./CashSheet.tsx";
 import {
   AddSheet,
   type AddStart,
@@ -224,17 +225,35 @@ export function PortfoliosBody({
   const start = useSignal<AddStart | null>(null);
   // the start card's choice of what to add
   const opened = useSignal<Remembered["kind"]>("trade");
-  const edit = useSignal<{ key: string; what: EditWhat } | null>(null);
+  const edit = useSignal<{
+    key: string;
+    what: EditWhat;
+    // each opening its own, so a row's new id keeps the drawer in place
+    sheet: number;
+  } | null>(null);
   // the fills of one order, read fresh so a removal shows at once
   const tradeIds = useSignal<number[] | null>(null);
   const fills =
     tradeIds.value === null
       ? []
       : (trades ?? []).filter((t) => tradeIds.value!.includes(t.id));
-  const edited =
+  const found =
     edit.value === null
       ? null
       : (h?.holdings.find((x) => keyOf(x) === edit.value!.key) ?? null);
+  // an update's new row lands with the reload: the open drawer keeps its
+  // last row until then, never unmounting under the owner
+  const shownEdit = useRef<{ sheet: number; h: Holding } | null>(null);
+  if (found !== null && edit.value !== null)
+    shownEdit.current = { sheet: edit.value.sheet, h: found };
+  // only while a save moved the key: a row gone elsewhere closes the drawer
+  const edited =
+    found ??
+    (edit.value !== null &&
+    shownEdit.current?.sheet === edit.value.sheet &&
+    keyOf(shownEdit.current.h) !== edit.value.key
+      ? shownEdit.current.h
+      : null);
   const onTrade = (s: AddStart) => {
     start.value = s;
     panel.value = "add";
@@ -317,7 +336,22 @@ export function PortfoliosBody({
         {panel.value === "settings" && (
           <SettingsPanel store={store} onDone={close} />
         )}
-        {edit.value !== null && edited !== null && (
+        {edit.value !== null && edited?.kind === "cash" && (
+          <CashSheet
+            // the sheet stays as an update gives the row a new id
+            key={`cash/${edit.value.sheet}`}
+            store={store}
+            h={edited}
+            open={edit.value.what === "edit"}
+            onMoved={(id) => {
+              edit.value = { ...edit.value!, key: `pos:${id}` };
+            }}
+            onDone={() => {
+              edit.value = null;
+            }}
+          />
+        )}
+        {edit.value !== null && edited !== null && edited.kind !== "cash" && (
           <EditSheet
             key={`${edit.value.key}/${edit.value.what}`}
             store={store}
@@ -380,7 +414,7 @@ export function PortfoliosBody({
                 viewOnly={viewOnly}
                 onTrade={onTrade}
                 onEdit={(x, what) => {
-                  edit.value = { key: keyOf(x), what };
+                  edit.value = { key: keyOf(x), what, sheet: Date.now() };
                 }}
               />
               <Activity
@@ -1007,6 +1041,7 @@ function HoldingsCard({
 
 const SHEET_TITLES: Record<EditWhat, string> = {
   edit: "Edit",
+  balance: "Edit",
   price: "Set price",
   purchases: "Purchases",
 };

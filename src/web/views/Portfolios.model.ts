@@ -509,13 +509,30 @@ export function noteEdit(
 // only what differs is sent; null takes a broker or a note off
 export function cashEdits(
   h: Holding,
-  edited: { name: string; broker: string; note: string },
-): Pick<PositionChange, "name" | "broker" | "note"> {
+  edited: {
+    name: string;
+    broker: string;
+    note: string;
+    // "" takes it off
+    maturity?: string;
+    dry?: boolean;
+  },
+): Pick<
+  PositionChange,
+  "name" | "broker" | "note" | "maturity" | "dry_powder"
+> {
   const name = edited.name.trim();
+  const maturity = edited.maturity ?? h.maturity ?? "";
   return {
     ...(name !== (h.name ?? "") ? { name } : {}),
     ...brokerEdit(h, edited.broker),
     ...noteEdit(h, edited.note),
+    ...(maturity !== (h.maturity ?? "")
+      ? { maturity: maturity === "" ? null : maturity }
+      : {}),
+    ...(edited.dry !== undefined && edited.dry !== (h.dry_powder === true)
+      ? { dry_powder: edited.dry }
+      : {}),
   };
 }
 
@@ -527,13 +544,20 @@ export function cashLine(
   return {
     what: cashWord(h),
     broker: h.parts.length === 1 ? h.parts[0]!.broker : null,
-    date: h.as_of ? day(h.as_of, now) : null,
+    // a term deposit says when it ends in place of the day it was set
+    date: h.maturity
+      ? `matures ${day(h.maturity, now)}`
+      : h.as_of
+        ? day(h.as_of, now)
+        : null,
   };
 }
 
 // repaid on its maturity day, by the viewer's date
 export const matured = (h: Holding, now = Date.now()): boolean =>
-  h.kind === "bond" && !!h.maturity && h.maturity <= today(browserZone(), now);
+  (h.kind === "bond" || h.kind === "cash") &&
+  !!h.maturity &&
+  h.maturity <= today(browserZone(), now);
 
 // the line under the ticker
 export function holdingName(h: Holding, now = Date.now()): string {
@@ -801,7 +825,8 @@ export function barOf(t: Total, all = false): BarSide[] | null {
   return sides.map((x) => ({ ...x, pct: Math.round((x.value / sum) * 100) }));
 }
 
-export type EditWhat = "edit" | "price" | "purchases";
+// balance: a cash row's drawer with its details folded
+export type EditWhat = "edit" | "balance" | "price" | "purchases";
 
 // a fund the owner prices has a page of its own, read only by who holds
 // or priced it, so a viewer of shared portfolios gets none
@@ -815,7 +840,7 @@ export const tradePage = (symbol: string, viewOnly = false): string | null =>
 
 // with no instrument page, a row opens what edits it
 export function homeOf(h: Holding): EditWhat | null {
-  if (h.position !== null) return "edit";
+  if (h.position !== null) return h.kind === "cash" ? "balance" : "edit";
   if (h.kind === "fund" && h.id && h.isin) return "price";
   if (h.kind === "bond") return "purchases";
   return null;
