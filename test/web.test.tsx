@@ -2181,6 +2181,7 @@ describe("the instrument page", () => {
       render(
         <InstrumentMenu
           symbol="NVDA"
+          admin
           busy={busy}
           done={done}
           removing={false}

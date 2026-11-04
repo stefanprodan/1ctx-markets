@@ -12,6 +12,7 @@ import {
   type IntradayRange,
 } from "../views/Chart.model.ts";
 import { adminStore } from "./admin.ts";
+import { analysisStore } from "./analysis.ts";
 import {
   ApiError,
   buildWatch,
@@ -692,6 +693,8 @@ export function store(
     gone: () => void loadSharing(),
   });
   const profile = profileStore(call, () => session);
+  // one per symbol page, read and written by every sign-in
+  const analysis = (id: string) => analysisStore(call, () => session, id);
   const admin = adminStore(
     call,
     () => session,
@@ -1411,6 +1414,7 @@ export function store(
     loadSharing,
     share,
     profile,
+    analysis,
     keys,
     keysLimit,
     keysError,

@@ -33,14 +33,25 @@ export function BuyButton({ open }: { open: Signal<TradeSheet | null> }) {
   );
 }
 
-export function FundMenu({ open }: { open: Signal<TradeSheet | null> }) {
-  return (
-    <MenuButton
-      head
-      label="More"
-      items={[{ label: "Set price", run: () => void show(open, "price") }]}
-    />
-  );
+export function FundMenu({
+  open,
+  held,
+  onWrite,
+}: {
+  open: Signal<TradeSheet | null>;
+  // a fund the owner prices is priced here only while held
+  held: boolean;
+  // only while the fund has no analysis yet
+  onWrite?: () => void;
+}) {
+  const items = [
+    ...(onWrite ? [{ label: "Write analysis", run: onWrite }] : []),
+    ...(held
+      ? [{ label: "Set price", run: () => void show(open, "price") }]
+      : []),
+  ];
+  if (items.length === 0) return null;
+  return <MenuButton head label="More" items={items} />;
 }
 
 export function TradeSheets({

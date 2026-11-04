@@ -1347,6 +1347,27 @@ The parts:
   menu, what goes beside Keep; a rule reading it (409 `conflict` with
   `rules`) is refused in the page's notice. A delete returns to the
   list.
+- **The More button shows for every sign-in**: Write analysis while the
+  symbol has no analysis yet (once its read has landed), and Refetch
+  data and Delete for an admin only. A fund the owner prices keeps its
+  own menu: Write analysis the same way, Set price while held; with
+  neither, no button.
+- **The analysis** (`docs/analysis.md`) is one card under the others
+  once one is written, and nothing before: a symbol mostly has none,
+  and an empty card on every page is noise. `InstrumentAnalysis.tsx`
+  is the view, `data/analysis.ts` its calls on the profile's
+  `data/document.ts`. The card draws `html` with `Written <ago> by
+  <author>`, the move since its save and "earnings reported since"
+  when one came out; History and Edit sit in its head. Edit and Write
+  analysis open one drawer holding the Profile page's editor
+  (`useEditor()`), titled `<symbol> analysis`, starting a first note
+  from four headings, with "Everyone on this server can read it." under
+  the text, since every person reads it. A save closes the drawer once
+  the render that ends its busy lets it, then scrolls to the card; a
+  stale save keeps the text as the profile's does, and closing the
+  drawer reads the analysis again. History is the Profile page's
+  drawer. An author reads as you only for the reader's own saves, the
+  admin key's as the admin, since it is no one admin's.
 - **Pages with a parameter** (`/symbol/:id` and `/portfolios/:id` in
   `ROUTES` and `UI_PATHS`) stay off the rail, which lights their
   parent: the page above in the path, or the route's `parent`, as

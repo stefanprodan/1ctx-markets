@@ -11,16 +11,22 @@ export const SAID_MS = 2000;
 // as 1ctx's More menu
 export function InstrumentMenu({
   symbol,
+  admin,
   busy,
   done,
   removing,
+  onWrite,
   onRefetch,
   onDelete,
 }: {
   symbol: string;
+  // refetch and delete are an admin's
+  admin: boolean;
   busy: boolean;
   done: boolean;
   removing: boolean;
+  // only while the symbol has no analysis yet
+  onWrite?: () => void;
   onRefetch: () => void;
   onDelete: () => void;
 }) {
@@ -82,27 +88,45 @@ export function InstrumentMenu({
           </div>
         ) : (
           <>
-            <button
-              type="button"
-              class="menu-item"
-              role="menuitem"
-              onClick={() => {
-                close();
-                onRefetch();
-              }}
-            >
-              <Icon name="redo" size={14} />
-              Refetch data
-            </button>
-            <button
-              type="button"
-              class="menu-item menu-item-danger"
-              role="menuitem"
-              onClick={(ev) => swap(ev, true)}
-            >
-              <Icon name="trash" size={14} />
-              Delete
-            </button>
+            {onWrite && (
+              <button
+                type="button"
+                class="menu-item"
+                role="menuitem"
+                onClick={() => {
+                  close();
+                  onWrite();
+                }}
+              >
+                <Icon name="pencil" size={14} />
+                Write analysis
+              </button>
+            )}
+            {admin && (
+              <>
+                <button
+                  type="button"
+                  class="menu-item"
+                  role="menuitem"
+                  onClick={() => {
+                    close();
+                    onRefetch();
+                  }}
+                >
+                  <Icon name="redo" size={14} />
+                  Refetch data
+                </button>
+                <button
+                  type="button"
+                  class="menu-item menu-item-danger"
+                  role="menuitem"
+                  onClick={(ev) => swap(ev, true)}
+                >
+                  <Icon name="trash" size={14} />
+                  Delete
+                </button>
+              </>
+            )}
           </>
         )
       }
