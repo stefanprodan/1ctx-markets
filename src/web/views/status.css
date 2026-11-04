@@ -1,4 +1,4 @@
-/* Server status: the counts as a stat row, then a card per source with
+/* Server admin's Status: the counts as a stat row, then a card per source with
    its jobs; a job's details open in the drawer. */
 
 @layer tokens, base, owners;

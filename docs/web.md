@@ -229,7 +229,7 @@ learns it from `email_on` in `GET /ui/me`.
   1ctx's bundle does; every value is read after sign-in. `test/web-session.test.ts` reads each anonymous answer
   and fails on any of them.
 - **No help text on the page.** Where the key lives and how the UI
-  works are for this doc, never the page. The SMTP tab alone names
+  works are for this doc, never the page. The SMTP drawer alone names
   `secrets/`, the directory every install keeps its key files in, so an
   admin knows where the password file goes.
 
@@ -256,8 +256,8 @@ learns it from `email_on` in `GET /ui/me`.
   each read it again.
 - **A page's `load` in `app/routes.ts` runs on arrival.** A sign-out
   clears the pages' data, so the next sign-in counts as an arrival.
-- **An admin's pages** (`admin: true` in `ROUTES`: Admin and Server
-  status) show to admins only, in the rail, the strip and More; a
+- **An admin's pages** (`admin: true` in `ROUTES`: Server admin's
+  three tabs) show to admins only, in the rail, the strip and More; a
   member asking for one lands on Home, and never sees Refetch, Delete
   or Retry, whose routes answer them 403. Only an admin's shell reads
   the status for the red icon.
@@ -272,12 +272,12 @@ learns it from `email_on` in `GET /ui/me`.
   the latest load, so a redraw (a crosshair moving) never pushes the
   refresh back. Every page with data the server or an agent changes
   uses it: Home, Screener, an instrument, Portfolios, Profile (held
-  while its editor or History is open) and Server status; Connect
+  while its editor or History is open) and Server admin's Status; Connect
   agents changes only by the operator.
 - **A re-read sweeps a hairline under the page's title**
   (`reloading`, `page-title-busy`), never the menu's icons, held
   `PULSE_MS` since a read lands in milliseconds; a load that asks
-  nothing (`undefined`) and the status icon's read (`quiet`) never
+  nothing (`undefined`) and Server admin's icon read (`quiet`) never
   show it. A failed re-read shows the page's one-line error, not the
   line.
 - **A wait never looks like a broken page, and there are two.** An
@@ -341,9 +341,9 @@ learns it from `email_on` in `GET /ui/me`.
   the status read for the red icon, and only an admin's footer names
   the server's version; it folds to a
   strip on a wide window, which shows the mark, and gives way to the
-  bar on a phone (below). Server status's icon, in the rail, the strip
+  bar on a phone (below). Server admin's icon, in the rail, the strip
   and the bar's More, turns red and
-  pulses (steady under reduced motion) while that page shows a job failing
+  pulses (steady under reduced motion) while its Status shows a job failing
   or a source backing off (`troubled`), read every `REFRESH_MS` while
   signed in. The sign-in is the mark beside 1ctx's wordmark over
   **Markets** over one card: the email step (Email and **Sign in**,
@@ -381,7 +381,7 @@ learns it from `email_on` in `GET /ui/me`.
   Five slots, an icon over a word, the lit one on the hover tone (`barLit()`):
   Home, Screener (lit on `/symbol/:id` too), Portfolios (and
   `/portfolios/:id`), Search and More (lit on Profile, Connect agents
-  and Server status). Search is a button opening the page's own
+  and Server admin). Search is a button opening the page's own
   symbol search as its sheet, off while the page leaves the search out.
   The view scrolls under the bar; `.shell-main-bar` adds the bar to the
   page's bottom inset, so the last row and the footer end above it.
@@ -394,7 +394,7 @@ learns it from `email_on` in `GET /ui/me`.
   and the search sheet sit above it (`--z-drawer`, `--z-sheet` over
   `--z-shell`).
 - **More is the shared `Drawer`** titled More: Profile, Connect agents,
-  and for an admin Admin and Server status (red while failing), the
+  and for an admin Server admin (red while failing), the
   rail's Shared with me and Recent, then the user menu's own items (`UserItems`): the
   person's name, Dark theme and Sign out. A tap goes there
   and closes it; so does any step to another address, the browser's
@@ -690,10 +690,18 @@ The parts:
 - **The line is the shared `Spark`**, inline SVG whose strokes are
   CSS tokens, so it wears the theme from the first frame; `sparkOf()`
   picks its closes, base and slots.
-- **Before its first answer Server status shows** its figures row
+- **Before its first answer Status shows** its figures row
   with the four labels over placeholders, and the Jobs card's rows.
-- **Server status** (`/status`, last in the rail, after Admin; admins
-  only): `GET /api/v1/status`
+- **Server admin** (last in the rail, after Connect agents, the
+  shield; admins only) is one page of three tabs, each its own address
+  as Portfolios keeps its portfolio, and each loading only its own
+  answer: Status (`/admin`, `Status.tsx`), Settings (`/admin/settings`)
+  and Users (`/admin/users`), the last two in `Admin.tsx` with their
+  calls in `data/admin.ts` and words in `Admin.model.ts`. No tab
+  carries a count. The tabs are `Page`'s `tabs`, drawn above a tab
+  that did not load too, so the others stay in reach. The tab title
+  reads Server admin on all three.
+- **Status** (`/admin`): `GET /api/v1/status`
   drawn as a stat row (instruments and how many are tracked, the
   sources on and how many are paused, the jobs shown and how many
   fail, the database and the version), "Sync is off." under it while
@@ -769,7 +777,7 @@ The parts:
   that revision drawn; Restore (not on the current one) saves its text
   on the live revision, so a newer save refuses it instead of being
   overwritten, and the profile is read again before a second try.
-- **Connect agents** (`/connect`, before Admin in the rail), as
+- **Connect agents** (`/connect`, before Server admin in the rail), as
   1ctx's: a Keys card from `GET /api/v1/keys` ("N of 5", the person's
   own keys counted, New key in its head), a table of each key's name,
   last use, expiry and access. An admin's list holds everyone's keys
@@ -791,10 +799,7 @@ The parts:
   server `markets` at the page's origin plus `/mcp`. At the cap, New key
   goes and a line names the cap. A revoke that answers 404 drops the row
   and its drawer.
-- **Admin** (`/admin` Users, `/admin/smtp` SMTP, after Connect agents
-  in the rail, admins only): `Admin.tsx`, its calls `data/admin.ts`,
-  its words `Admin.model.ts`; the tab is in the address, as Portfolios
-  keeps its portfolio. **Users** (`GET /api/v1/users`) is the People
+- **Users** (`/admin/users`, `GET /api/v1/users`) is the People
   card, its count and Add person: Name (the reader marked "you"),
   Email ("Admin key" for the operator without one), Role and Last
   sign-in ("Invited" until a first sign-in). Add person is a drawer of
@@ -812,17 +817,23 @@ The parts:
   email reads in plain words (`failureWords`), an SMTP refusal by the
   form's labels (`plainError`). While email
   is off the card says "People can't be added until email is set up."
-  with Set up email opening SMTP. **SMTP** (`GET /api/v1/smtp`) is the
-  Email card, On or Off: Host and Port, Security (TLS or STARTTLS),
-  Username, Password file (the app's menu of `key_names`), From and
-  Link address, no example text; Remove asked once, Send test email
+  with Set up email opening the SMTP drawer on Settings (`emailAsked`,
+  dropped by any step off Settings, `watchEmailAsk`).
+- **Settings** (`/admin/settings`, `GET /api/v1/smtp`) is the Config
+  card: a table of one row per setting under Setting, Value and State
+  (`settingRows`), each row opening its drawer. Its one row is SMTP,
+  the host and port or "Not set", On or Off. **The SMTP drawer** holds
+  Host and Port, Security (TLS or STARTTLS), Username, Password file
+  (the app's menu of `key_names`), From and Link address, no example
+  text; its foot holds Remove at the start, asked once, then Send test
   (to the reader's own email, off with "Add your email to send a
   test." while they have none; the server's reply on a faint second
-  line when it fails) and Save. With no `email-*.key` file the
-  picker stays, off, reading "No files". A saved file that is missing
-  says where to put it. Only the operator saves, removes or tests:
-  another admin sees the tab read only, fields off and no buttons. A
-  save or a remove sets `email_on` for the sign-in page at once.
+  line when it fails) and Save; no Cancel, the drawer's close is
+  one. With no `email-*.key` file the picker stays, off, reading "No
+  files". A saved file that is missing says where to put it. Only the
+  operator saves, removes or tests: another admin sees the form read
+  only, fields off and Close alone. A save or a remove sets
+  `email_on` for the sign-in page at once.
 - **Copy uses `copyText()` (`src/web/lib/clipboard.ts`)**, as 1ctx:
   the clipboard exists only on loopback or HTTPS, so on plain HTTP the
   button stays as it is and never says Copied.
@@ -1395,5 +1406,5 @@ The parts:
   its assets and the sign-in.
 - **People** (`test/web-people.test.tsx`): the code boxes' rules, the
   start from `/ui/me` for each kind of person, a member's pages and
-  controls, Connect agents' owners, the Admin page's calls and words,
+  controls, Connect agents' owners, Server admin's calls and words,
   and SMTP read only for an admin who is not the operator.

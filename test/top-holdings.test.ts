@@ -503,7 +503,7 @@ describe("the top holdings job", () => {
     expect(t.summaries()).toEqual(["QQQ", "VFIAX"]);
   });
 
-  test("the status page names the job in plain words", () => {
+  test("Status names the job in plain words", () => {
     expect(jobLabel("yahoo", "top_holdings")).toBe("Top holdings");
     expect(jobAbout("yahoo", "top_holdings")).toContain("mutual fund");
   });

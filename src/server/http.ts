@@ -40,10 +40,10 @@ export type Handle = (req: Request, ip?: string) => Promise<Response>;
 // routes the same
 export const UI_PATHS = [
   "/",
-  "/status",
   "/connect",
   "/admin",
-  "/admin/smtp",
+  "/admin/settings",
+  "/admin/users",
   "/screener",
   "/symbol/:id",
   "/portfolios",

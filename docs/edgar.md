@@ -16,7 +16,7 @@ phrases and the lock every source shares are in `docs/sources.md`; the
   line**: a name and an email, which SEC asks every client to declare in
   its User-Agent. A line that is not printable ASCII with an `@`
   (`usableContact()`) leaves EDGAR off as `off (bad contact line)` on
-  the start log and the status page, never printing it: a header with
+  the start log and Server admin's Status, never printing it: a header with
   any other character fails every call as a network error. It needs no
   key, but the line holds an email, so it is read, masked and never
   answered like a key, and one on/off mechanism serves every source. The

@@ -88,7 +88,7 @@
     background: var(--card);
     color: var(--fg);
   }
-  /* something on the status page is failing; a slow pulse draws the
+  /* something on Server admin's Status is failing; a slow pulse draws the
      eye without flashing */
   .rail-icon-failed {
     color: var(--failed);

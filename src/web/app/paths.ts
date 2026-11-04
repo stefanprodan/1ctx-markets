@@ -5,6 +5,10 @@
 
 export const SCREENER = "/screener";
 export const SYMBOL = "/symbol/";
+// Server admin: Status, Settings and Users
+export const ADMIN = "/admin";
+export const ADMIN_SETTINGS = "/admin/settings";
+export const ADMIN_USERS = "/admin/users";
 
 export const symbolHref = (id: string): string =>
   `${SYMBOL}${encodeURIComponent(id)}`;

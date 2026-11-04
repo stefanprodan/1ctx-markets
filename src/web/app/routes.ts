@@ -8,15 +8,21 @@ import type { ComponentType } from "preact";
 import { viewOf } from "../data/portfolios.ts";
 import { markets } from "../data/store.ts";
 import type { IconName } from "../lib/icons.tsx";
-import { AdminSmtp, AdminUsers } from "../views/Admin.tsx";
+import { AdminSettings, AdminUsers } from "../views/Admin.tsx";
 import { Connect } from "../views/Connect.tsx";
 import { Dashboard } from "../views/Dashboard.tsx";
 import { Instrument } from "../views/Instrument.tsx";
 import { Portfolios, SharedPortfolios } from "../views/Portfolios.tsx";
 import { Profile } from "../views/Profile.tsx";
 import { Screener } from "../views/Screener.tsx";
-import { Status } from "../views/Status.tsx";
-import { SCREENER, SYMBOL } from "./paths.ts";
+import { AdminStatus } from "../views/Status.tsx";
+import {
+  ADMIN,
+  ADMIN_SETTINGS,
+  ADMIN_USERS,
+  SCREENER,
+  SYMBOL,
+} from "./paths.ts";
 
 export type Params = Record<string, string>;
 
@@ -124,41 +130,41 @@ export const ROUTES: readonly Route[] = [
     },
   },
   {
-    path: "/admin",
-    label: "Admin",
+    path: ADMIN,
+    label: "Server admin",
     icon: "shield",
     admin: true,
-    view: AdminUsers,
+    view: AdminStatus,
     load: async () => {
-      await markets.admin.loadPeople();
+      await markets.loadStatus();
     },
   },
   {
-    path: "/admin/smtp",
-    label: "Admin",
+    path: ADMIN_SETTINGS,
+    label: "Server admin",
     icon: "shield",
     admin: true,
-    parent: "/admin",
-    view: AdminSmtp,
+    parent: ADMIN,
+    view: AdminSettings,
     load: async () => {
       await markets.admin.loadSmtp();
     },
   },
   {
-    path: "/status",
-    label: "Server status",
-    icon: "status",
+    path: ADMIN_USERS,
+    label: "Server admin",
+    icon: "shield",
     admin: true,
-    view: Status,
+    parent: ADMIN,
+    view: AdminUsers,
     load: async () => {
-      await markets.loadStatus();
+      await markets.admin.loadPeople();
     },
   },
 ];
 
 export const HOME = "/";
-export const STATUS = "/status";
-export const ADMIN = "/admin";
+export { ADMIN };
 
 // the rail's pages: a page under a parent lights it
 export const RAIL = ROUTES.filter(

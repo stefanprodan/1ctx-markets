@@ -1,6 +1,6 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-// The Admin page's words: people's sign-ins, what removing one deletes,
+// Server admin's words: people's sign-ins, what removing one deletes,
 // and the SMTP form's fields as the server takes them.
 
 import type { Counts, Person, SmtpSettings } from "../data/admin.ts";

@@ -391,7 +391,7 @@ const ADMIN_ME: Me = {
 };
 const signedAs = (user: Me | null, email_on = true) => ok({ user, email_on });
 
-// the shell as an admin sees it: Admin and Server status in the menus
+// the shell as an admin sees it: Server admin in the menus
 function asAdmin<T>(run: () => T): T {
   markets.me.value = ADMIN_ME;
   try {
@@ -405,10 +405,12 @@ describe("the routes", () => {
   test("are the paths the server answers with the page", () => {
     const paths = ROUTES.map((r) => r.path);
     expect(paths.sort()).toEqual([...UI_PATHS].sort());
-    // the home page lands on /, and Status keeps its own path
+    // the home page lands on /, and Server admin's Status is /admin
     expect(HOME).toBe("/");
     expect(match("/")?.route.label).toBe("Home");
-    expect(match("/status")?.route.label).toBe("Server status");
+    expect(match("/admin")?.route.label).toBe("Server admin");
+    expect(match("/status")).toBeNull();
+    expect(match("/admin/smtp")).toBeNull();
     expect(match("/screener")?.route.label).toBe("Screener");
     // the old addresses are no pages
     expect(match("/instruments")).toBeNull();
@@ -430,8 +432,7 @@ describe("the routes", () => {
       "Portfolios",
       "Profile",
       "Connect agents",
-      "Admin",
-      "Server status",
+      "Server admin",
     ]);
     // a member never sees an admin's pages
     expect(railFor(false).map((r) => r.label)).toEqual([
@@ -442,19 +443,21 @@ describe("the routes", () => {
       "Connect agents",
     ]);
     expect(railFor(true)).toEqual(RAIL);
-    // Admin keeps its tab in the address, lit under Admin
+    // Server admin keeps its tab in the address, lit under /admin
     expect(match("/admin")?.route).toMatchObject({
-      label: "Admin",
+      label: "Server admin",
+      icon: "shield",
       admin: true,
     });
-    expect(match("/admin/smtp")?.route).toMatchObject({
-      label: "Admin",
-      admin: true,
-      parent: "/admin",
-    });
-    expect(lit("/admin/smtp", "/admin")).toBe(true);
-    expect(match("/status")?.route.admin).toBe(true);
-    expect(lit("/status", "/")).toBe(false);
+    for (const tab of ["/admin/settings", "/admin/users"]) {
+      expect(match(tab)?.route).toMatchObject({
+        label: "Server admin",
+        admin: true,
+        parent: "/admin",
+      });
+      expect(lit(tab, "/admin")).toBe(true);
+    }
+    expect(lit("/admin", "/")).toBe(false);
     // a symbol's page is not under /screener, so it names its parent
     expect(lit("/symbol/US%3ANVDA", "/screener")).toBe(true);
     expect(lit("/symbol/US%3ANVDA", "/portfolios")).toBe(false);
@@ -466,7 +469,7 @@ describe("the routes", () => {
     const at = "http://markets.test";
     const link = {
       origin: at,
-      pathname: "/status",
+      pathname: "/admin",
       download: false,
       blank: false,
     };
@@ -492,12 +495,13 @@ describe("the routes", () => {
 
   test("the tab names the page before the brand", () => {
     expect(tabTitle("/", true)).toBe("1ctx Markets");
-    expect(tabTitle("/status", true)).toBe("Server status · 1ctx Markets");
+    expect(tabTitle("/admin", true)).toBe("Server admin · 1ctx Markets");
+    expect(tabTitle("/admin/users", true)).toBe("Server admin · 1ctx Markets");
     expect(tabTitle("/screener", undefined)).toBe("Screener · 1ctx Markets");
     expect(tabTitle("/symbol/US%3ABRK-B", true)).toBe("BRK-B · 1ctx Markets");
     expect(tabTitle("/symbol/FRED:DGS10", true)).toBe("DGS10 · 1ctx Markets");
     expect(tabTitle("/portfolios/5", true)).toBe("Portfolios · 1ctx Markets");
-    expect(tabTitle("/status", false)).toBe("Sign in · 1ctx Markets");
+    expect(tabTitle("/admin", false)).toBe("Sign in · 1ctx Markets");
     expect(tabTitle("/nothing", true)).toBe("1ctx Markets");
   });
 
@@ -1157,21 +1161,19 @@ describe("the views", () => {
       ...html.matchAll(/class="rail-item rail-item-on"[^>]*>.*?<span>([^<]+)/g),
     ].map((m) => m[1]);
     expect(lit).toEqual(["Screener"]);
-    expect(html).toContain('href="/status"');
     expect(html).toContain('href="/admin"');
+    expect(html).not.toContain('href="/status"');
     expect(html).toContain("Hide the menu");
     expect(html).toContain("rail-user-row");
     // the menu's row names the person signed in
     expect(html).toContain('<span class="rail-user-name cut">Casey</span>');
-    // a member's rail leaves out Server status and Admin
+    // a member's rail leaves out Server admin
     markets.me.value = { ...ADMIN_ME, id: "ana", name: "Ana", role: "member" };
     try {
       const member = render(<Rail here="/" onHide={() => {}} />);
-      expect(member).not.toContain('href="/status"');
       expect(member).not.toContain('href="/admin"');
       expect(member).toContain('href="/connect"');
       const strip = render(<Strip here="/" />);
-      expect(strip).not.toContain('href="/status"');
       expect(strip).not.toContain('href="/admin"');
     } finally {
       markets.me.value = null;
@@ -1258,7 +1260,7 @@ describe("the views", () => {
   });
 
   test("the folded rail keeps the pages as icons", () => {
-    const html = asAdmin(() => render(<Strip here="/status" />));
+    const html = asAdmin(() => render(<Strip here="/admin/settings" />));
     expect(html).toContain('aria-label="Show the menu"');
     for (const r of RAIL) expect(html).toContain(`aria-label="${r.label}"`);
     expect(html).toContain('class="strip-item strip-item-on"');
@@ -1266,7 +1268,7 @@ describe("the views", () => {
 
   test("the shell puts the rail beside the page", () => {
     const html = render(
-      <Shell here="/status">
+      <Shell here="/admin">
         <p>page</p>
       </Shell>,
     );
@@ -2808,23 +2810,21 @@ describe("the phone's bar", () => {
     expect(barLit("/symbol/US%3AAAPL")).toBe("screener");
     expect(barLit("/portfolios")).toBe("portfolios");
     expect(barLit("/portfolios/5")).toBe("portfolios");
-    for (const here of ["/profile", "/connect", "/status"]) {
+    for (const here of ["/profile", "/connect", "/admin", "/admin/users"]) {
       expect(barLit(here)).toBe("more");
     }
     expect(barLit("/instruments")).toBeNull();
     expect(MORE.map((r) => r.label)).toEqual([
       "Profile",
       "Connect agents",
-      "Admin",
-      "Server status",
+      "Server admin",
     ]);
-    expect(barLit("/admin/smtp")).toBe("more");
     for (const [here, label] of [
       ["/", "Home"],
       ["/screener", "Screener"],
       ["/symbol/US%3AAAPL", "Screener"],
       ["/portfolios/5", "Portfolios"],
-      ["/status", "More"],
+      ["/admin", "More"],
     ] as const) {
       expect([here, slotOn(render(<Bar here={here} />))]).toEqual([
         here,
@@ -2884,7 +2884,26 @@ describe("the phone's bar", () => {
     expect(asked).toBe(1);
   });
 
-  test("More carries the status icon's red mark while something fails", () => {
+  test("the rail and the strip mark Server admin red while something fails", () => {
+    markets.signedIn.value = true;
+    markets.me.value = ADMIN_ME;
+    markets.pulse.value = STATUS;
+    try {
+      const rail = render(<Rail here="/" onHide={() => {}} />);
+      expect(rail).toContain('aria-label="Server admin: something is failing"');
+      expect(rail.match(/rail-icon-failed/g)).toHaveLength(1);
+      const strip = render(<Strip here="/" />);
+      expect(strip).toContain(
+        'aria-label="Server admin: something is failing"',
+      );
+    } finally {
+      markets.signedIn.value = undefined;
+      markets.me.value = null;
+      markets.pulse.value = null;
+    }
+  });
+
+  test("More carries Server admin's red mark while something fails", () => {
     expect(render(<Bar here="/" />)).not.toContain("rail-icon-failed");
     markets.signedIn.value = true;
     markets.me.value = ADMIN_ME;
@@ -3010,7 +3029,7 @@ describe("the phone's bar", () => {
     const was = path.value;
     try {
       moreOpen.value = true;
-      path.value = "/status";
+      path.value = "/admin";
       expect(moreOpen.value).toBe(false);
       moreOpen.value = true;
       visits.value++;
@@ -3080,8 +3099,7 @@ describe("More's drawer", () => {
       expect(words).toEqual([
         "Profile",
         "Connect agents",
-        "Admin",
-        "Server status",
+        "Server admin",
         "Recent",
         "AMD",
         "Casey",
@@ -3093,9 +3111,9 @@ describe("More's drawer", () => {
       );
       expect(body.html).toContain('href="/symbol/US%3AAMD"');
       const links = body.nodes.filter((n) => n.type === "a");
-      expect(links).toHaveLength(5);
+      expect(links).toHaveLength(4);
       for (const a of links) a.props.onClick();
-      expect(closed).toBe(5);
+      expect(closed).toBe(4);
       // the user menu's own items, closing once signed out
       expect(
         body.nodes.find((n) => n.type === UserItems).props.onSignedOut,
@@ -3155,7 +3173,7 @@ describe("More's drawer", () => {
     }
   });
 
-  test("a member's More leaves out Server status and Admin", () => {
+  test("a member's More leaves out Server admin", () => {
     markets.me.value = { ...ADMIN_ME, id: "ana", name: "Ana", role: "member" };
     try {
       const { nodes } = drawn(() => (
@@ -3164,7 +3182,6 @@ describe("More's drawer", () => {
       const drawer = nodes.find((n) => n.type === Drawer);
       const html = render(drawer.props.children(() => {}));
       expect(html).toContain('href="/connect"');
-      expect(html).not.toContain('href="/status"');
       expect(html).not.toContain('href="/admin"');
       expect(html).toContain("Ana");
     } finally {
@@ -3172,11 +3189,11 @@ describe("More's drawer", () => {
     }
   });
 
-  test("Server status is red while something fails", () => {
+  test("Server admin is red while something fails", () => {
     const { nodes } = drawn(() => <More here="/" failing onClose={() => {}} />);
     const drawer = nodes.find((n) => n.type === Drawer);
     const html = asAdmin(() => render(drawer.props.children(() => {})));
-    expect(html).toContain('aria-label="Server status: something is failing"');
+    expect(html).toContain('aria-label="Server admin: something is failing"');
     expect(html.match(/rail-icon-failed/g)).toHaveLength(1);
   });
 });
@@ -4649,7 +4666,7 @@ describe("the dashboard's store", () => {
     await store(
       off.fetch,
       () => NOW,
-      () => "/status",
+      () => "/admin",
     ).loadDashboard();
     expect(off.asked).toEqual([]);
   });
@@ -5171,7 +5188,7 @@ describe("the dashboard's store", () => {
     void s.loadDashboard();
     await h.answer(`GET ${DASHBOARD_PATH}`, Response.json(BOARD));
     const saving = s.saveLayout(addTo(s.layout.value!, 1, "US:NEW")!);
-    page = "/status";
+    page = "/admin";
     const before = h.asked.length;
     const added = {
       ...BOARD.sections[1]!,

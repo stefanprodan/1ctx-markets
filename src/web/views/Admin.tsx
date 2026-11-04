@@ -1,13 +1,15 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-// The Admin page, for admins: Users at /admin and SMTP at /admin/smtp, the
-// tab in the address as Portfolios keeps its portfolio. Only the operator
-// changes or tests SMTP; another admin reads it.
+// Server admin, for admins: Status at /admin (Status.tsx), Settings at
+// /admin/settings and Users at /admin/users, the tab in the address as
+// Portfolios keeps its portfolio. Only the operator changes or tests
+// SMTP; another admin reads it.
 
-import { type Signal, useSignal } from "@preact/signals";
-import { useId } from "preact/hooks";
-import { navigate } from "../app/router.ts";
-import type { AdminStore, Person, Role } from "../data/admin.ts";
+import { effect, type Signal, signal, useSignal } from "@preact/signals";
+import { useEffect, useId } from "preact/hooks";
+import { ADMIN, ADMIN_SETTINGS, ADMIN_USERS } from "../app/paths.ts";
+import { navigate, path } from "../app/router.ts";
+import type { AdminStore, Person, Role, SmtpAnswer } from "../data/admin.ts";
 import { markets, type Store } from "../data/store.ts";
 import { Icon } from "../lib/icons.tsx";
 import { Card } from "../ui/Card.tsx";
@@ -16,7 +18,6 @@ import { Facts } from "../ui/Figures.tsx";
 import { MenuButton } from "../ui/Menu.tsx";
 import { Notice } from "../ui/Notice.tsx";
 import { didNotLoad, Page } from "../ui/Page.tsx";
-import { Placeholder } from "../ui/Placeholder.tsx";
 import { Segmented } from "../ui/Segmented.tsx";
 import { type Column, Table } from "../ui/Table.tsx";
 import { Tabs } from "../ui/Tabs.tsx";
@@ -39,11 +40,6 @@ import {
 } from "./Admin.model.ts";
 import "./connect.css";
 import "./admin.css";
-
-export const ADMIN_USERS = "/admin";
-export const ADMIN_SMTP = "/admin/smtp";
-
-type Tab = "users" | "smtp";
 
 const ROLES = [
   { value: "member" as const, text: "Member" },
@@ -542,7 +538,10 @@ function Users({ store }: { store: Store }) {
             <button
               type="button"
               class="btn-text"
-              onClick={() => navigate(ADMIN_SMTP)}
+              onClick={() => {
+                emailAsked.value = true;
+                navigate(ADMIN_SETTINGS);
+              }}
             >
               Set up email
             </button>
@@ -606,23 +605,107 @@ function TextField({
   );
 }
 
-export function SmtpTab({ store }: { store: Store }) {
-  const answer = store.admin.smtp.value;
-  if (answer === null) {
-    return (
-      <Card title="Email">
-        <div class="connect-form admin-smtp">
-          <Placeholder chars={40} />
-          <Placeholder chars={24} />
-          <Placeholder chars={24} />
-        </div>
-      </Card>
-    );
-  }
-  return <SmtpCard store={store} />;
+// Users' Set up email asks Settings to open the SMTP drawer on arrival
+export const emailAsked = signal(false);
+
+// any step off Settings drops the ask, so a later visit opens no drawer
+export function watchEmailAsk(): () => void {
+  return effect(() => {
+    if (path.value !== ADMIN_SETTINGS) emailAsked.value = false;
+  });
 }
 
-function SmtpCard({ store }: { store: Store }) {
+export type Setting = {
+  key: "email";
+  name: string;
+  state: string;
+  detail: string;
+};
+
+export const settingRows = (answer: SmtpAnswer): Setting[] => [
+  {
+    key: "email",
+    name: "SMTP",
+    state: answer.email_on ? "On" : "Off",
+    detail:
+      answer.settings === null
+        ? "Not set"
+        : `${answer.settings.host}:${answer.settings.port}`,
+  },
+];
+
+const SETTING_COLUMNS: Column<Setting>[] = [
+  {
+    key: "name",
+    head: "Setting",
+    width: { base: "minmax(0, 1fr)", phone: "64px" },
+    cell: (s) => <span class="cut">{s.name}</span>,
+  },
+  {
+    key: "detail",
+    head: "Value",
+    width: "minmax(0, 1.6fr)",
+    cell: (s) => <span class="cut faint">{s.detail}</span>,
+  },
+  {
+    key: "state",
+    head: "State",
+    width: "64px",
+    align: "end",
+    cell: (s) => <span class="faint">{s.state}</span>,
+  },
+];
+
+function Settings({ store }: { store: Store }) {
+  const answer = store.admin.smtp.value;
+  const open = useSignal(emailAsked.peek());
+  useEffect(() => {
+    emailAsked.value = false;
+  }, []);
+  return (
+    <>
+      <Card title="Config">
+        {answer === null ? (
+          <Table
+            label="Config"
+            columns={SETTING_COLUMNS}
+            rowKey={(s) => s.key}
+            waiting={1}
+          />
+        ) : (
+          <Table
+            label="Config"
+            columns={SETTING_COLUMNS}
+            rows={settingRows(answer)}
+            rowKey={(s) => s.key}
+            rowLabel={(s) => s.name}
+            open={() => ({
+              run: () => {
+                open.value = true;
+              },
+            })}
+          />
+        )}
+      </Card>
+      {answer !== null && open.value && (
+        <SmtpDrawer
+          store={store}
+          onClose={() => {
+            open.value = false;
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+export function SmtpDrawer({
+  store,
+  onClose,
+}: {
+  store: Store;
+  onClose: () => void;
+}) {
   const admin = store.admin;
   const answer = admin.smtp.value!;
   // only the operator changes or tests it: whoever sets the SMTP server
@@ -636,6 +719,7 @@ function SmtpCard({ store }: { store: Store }) {
   const busy = useSignal(false);
   const saved = answer.settings !== null;
   const off = !operator || busy.value;
+  const formId = useId();
   const run = async (work: () => Promise<Said>) => {
     busy.value = true;
     said.value = null;
@@ -644,9 +728,90 @@ function SmtpCard({ store }: { store: Store }) {
   };
   const picked = form.value.keyName;
   return (
-    <Card title="Email" count={answer.email_on ? "On" : "Off"}>
+    <Drawer
+      title="SMTP"
+      onClose={onClose}
+      busy={busy.value}
+      footStart={
+        !operator || !saved ? undefined : asking.value ? (
+          "Turns email off. Signed-in people stay signed in."
+        ) : (
+          <button
+            type="button"
+            class="btn btn-small"
+            disabled={busy.value}
+            onClick={() => {
+              said.value = null;
+              asking.value = true;
+            }}
+          >
+            Remove
+          </button>
+        )
+      }
+      foot={(close) =>
+        !operator ? (
+          <button type="button" class="btn btn-small" onClick={close}>
+            Close
+          </button>
+        ) : asking.value ? (
+          <>
+            <button
+              type="button"
+              class="btn btn-small"
+              disabled={busy.value}
+              onClick={() => {
+                asking.value = false;
+              }}
+            >
+              Keep
+            </button>
+            <button
+              type="button"
+              class="btn btn-small btn-danger"
+              disabled={busy.value}
+              onClick={() =>
+                void run(async () => {
+                  const error = await admin.removeSmtp();
+                  asking.value = false;
+                  return error === null
+                    ? { text: "Email is off." }
+                    : { text: error, error: true };
+                })
+              }
+            >
+              Remove
+            </button>
+          </>
+        ) : (
+          <>
+            {answer.email_on && (
+              <button
+                type="button"
+                class="btn btn-small"
+                disabled={busy.value || !mine}
+                onClick={() =>
+                  void run(async () => testLine(await admin.testSmtp()))
+                }
+              >
+                Send test
+              </button>
+            )}
+            <button
+              type="submit"
+              form={formId}
+              class="btn btn-small btn-primary"
+              disabled={busy.value}
+            >
+              Save
+            </button>
+          </>
+        )
+      }
+    >
       <form
-        class="connect-form admin-smtp"
+        id={formId}
+        class="connect-form"
         onSubmit={(e) => {
           e.preventDefault();
           if (off) return;
@@ -739,95 +904,46 @@ function SmtpCard({ store }: { store: Store }) {
         <span class="small faint admin-under">
           Where the links in emails point: this server's public address.
         </span>
-        {said.value !== null && (
-          <Notice error={said.value.error}>
-            {said.value.text}
-            {said.value.detail && (
-              <span class="small faint admin-detail">{said.value.detail}</span>
-            )}
-          </Notice>
-        )}
         {operator && answer.email_on && !mine && (
           <p class="small faint admin-lead">{NO_EMAIL}</p>
         )}
-        {operator && (
-          <div class="admin-actions">
-            {saved &&
-              (asking.value ? (
-                <>
-                  <span class="small faint">
-                    Turns email off. Signed-in people stay signed in.
-                  </span>
-                  <button
-                    type="button"
-                    class="btn btn-small"
-                    disabled={busy.value}
-                    onClick={() => {
-                      asking.value = false;
-                    }}
-                  >
-                    Keep
-                  </button>
-                  <button
-                    type="button"
-                    class="btn btn-small btn-danger"
-                    disabled={busy.value}
-                    onClick={() =>
-                      void run(async () => {
-                        const error = await admin.removeSmtp();
-                        asking.value = false;
-                        return error === null
-                          ? { text: "Email is off." }
-                          : { text: error, error: true };
-                      })
-                    }
-                  >
-                    Remove
-                  </button>
-                </>
-              ) : (
-                <button
-                  type="button"
-                  class="btn btn-small"
-                  disabled={busy.value}
-                  onClick={() => {
-                    said.value = null;
-                    asking.value = true;
-                  }}
-                >
-                  Remove
-                </button>
-              ))}
-            <span class="admin-spacer" />
-            {!asking.value && answer.email_on && (
-              <button
-                type="button"
-                class="btn btn-small"
-                disabled={busy.value || !mine}
-                onClick={() =>
-                  void run(async () => testLine(await admin.testSmtp()))
-                }
-              >
-                Send test email
-              </button>
-            )}
-            {!asking.value && (
-              <button
-                type="submit"
-                class="btn btn-small btn-primary"
-                disabled={busy.value}
-              >
-                Save
-              </button>
-            )}
-          </div>
-        )}
       </form>
-    </Card>
+      {said.value !== null && (
+        <Notice error={said.value.error}>
+          {said.value.text}
+          {said.value.detail && (
+            <span class="small faint admin-detail">{said.value.detail}</span>
+          )}
+        </Notice>
+      )}
+    </Drawer>
   );
 }
 
-export function AdminPage({ store, tab }: { store: Store; tab: Tab }) {
+export type AdminTab = "status" | "settings" | "users";
+
+// the tabs every Server admin address draws under its head
+export function AdminTabs({ tab }: { tab: AdminTab }) {
+  return (
+    <Tabs
+      label="Server admin"
+      tabs={[
+        { key: "status", label: "Status", href: ADMIN },
+        { key: "settings", label: "Settings", href: ADMIN_SETTINGS },
+        { key: "users", label: "Users", href: ADMIN_USERS },
+      ]}
+      value={tab}
+    />
+  );
+}
+
+export function AdminPage({
+  store,
+  tab,
+}: {
+  store: Store;
+  tab: "settings" | "users";
+}) {
   const admin = store.admin;
   const users = tab === "users";
   const held = users ? admin.people.value !== null : admin.smtp.value !== null;
@@ -835,7 +951,8 @@ export function AdminPage({ store, tab }: { store: Store; tab: Tab }) {
   const code = users ? admin.peopleCode.value : admin.smtpCode.value;
   return (
     <Page
-      title="Admin"
+      title="Server admin"
+      tabs={<AdminTabs tab={tab} />}
       stale={held ? error : null}
       staleCount={users ? admin.peopleFailures.value : admin.smtpFailures.value}
       failed={didNotLoad(
@@ -846,20 +963,7 @@ export function AdminPage({ store, tab }: { store: Store; tab: Tab }) {
       )}
     >
       <div class="admin">
-        <Tabs
-          label="Admin"
-          tabs={[
-            {
-              key: "users",
-              label: "Users",
-              count: admin.people.value?.length ?? null,
-              href: ADMIN_USERS,
-            },
-            { key: "smtp", label: "SMTP", href: ADMIN_SMTP },
-          ]}
-          value={tab}
-        />
-        {users ? <Users store={store} /> : <SmtpTab store={store} />}
+        {users ? <Users store={store} /> : <Settings store={store} />}
       </div>
     </Page>
   );
@@ -869,6 +973,6 @@ export function AdminUsers() {
   return <AdminPage store={markets} tab="users" />;
 }
 
-export function AdminSmtp() {
-  return <AdminPage store={markets} tab="smtp" />;
+export function AdminSettings() {
+  return <AdminPage store={markets} tab="settings" />;
 }

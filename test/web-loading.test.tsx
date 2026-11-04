@@ -357,7 +357,7 @@ describe("an instrument while it reads", () => {
 });
 
 describe("the other pages while they read", () => {
-  test("Server status keeps its figures row with placeholders", () => {
+  test("Status keeps its figures row with placeholders", () => {
     const html = render(<StatusWaiting />);
     for (const label of ["Instruments", "Sources", "Jobs", "Database"]) {
       expect(html).toContain(`<dt>${label}</dt>`);

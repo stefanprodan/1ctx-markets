@@ -21,6 +21,7 @@ import { Notice } from "../ui/Notice.tsx";
 import { didNotLoad, Page } from "../ui/Page.tsx";
 import { Placeholder } from "../ui/Placeholder.tsx";
 import { type Column, Table, type TableGroup } from "../ui/Table.tsx";
+import { AdminTabs } from "./Admin.tsx";
 import { SAID_MS } from "./InstrumentMenu.tsx";
 import {
   allOk,
@@ -349,7 +350,8 @@ export function StatusMenu({
   );
 }
 
-export function Status() {
+// Server admin's Status tab, at /admin
+export function AdminStatus() {
   const s = markets.status.value;
   useRefresh(markets.loadStatus);
   const retrying = useSignal(false);
@@ -379,7 +381,8 @@ export function Status() {
   const outcome = said.value;
   return (
     <Page
-      title="Server status"
+      title="Server admin"
+      tabs={<AdminTabs tab="status" />}
       stale={s === null ? null : markets.statusError.value}
       staleCount={markets.statusFailures.value}
       failed={didNotLoad(

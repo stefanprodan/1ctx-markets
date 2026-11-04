@@ -150,7 +150,7 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
 - **A quote pass that answered is judged per instrument**, so one
   symbol that never answers marks only itself. A failed pass marks
   only the quotes fetched before it started: one it stored is fresh,
-  though the run stays failed for the status page and the log.
+  though the run stays failed on Server admin's Status and in the log.
 - **A failed refetch is its instrument's own `bars` run** and marks
   only it; the market's run fails only when no instrument answered. A
   refetch that left a close owed adds an ok `owed` run in the same

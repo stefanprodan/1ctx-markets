@@ -12,12 +12,14 @@ import { boot } from "./app/router.ts";
 import { watchScreen } from "./app/shell.ts";
 import { watchTheme } from "./app/theme.ts";
 import { watchTitle } from "./app/title.ts";
+import { watchEmailAsk } from "./views/Admin.tsx";
 
 addFonts();
 watchTheme();
 boot();
 watchScreen();
 watchMore();
+watchEmailAsk();
 watchTitle();
 watchRecent();
 render(<App />, document.getElementById("app")!);

@@ -1,4 +1,4 @@
-/* Admin: the tabs, then the people card or the SMTP form. */
+/* Server admin's Settings and Users: the Config list or the people. */
 
 @layer tokens, base, owners;
 
@@ -11,9 +11,6 @@
   .admin-tag {
     margin-left: var(--space-2);
   }
-  .admin-smtp {
-    max-width: 520px;
-  }
   .admin-lead {
     margin: 0;
   }
@@ -24,15 +21,6 @@
   }
   .admin-under {
     margin-top: calc(-1 * var(--space-3));
-  }
-  .admin-actions {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: var(--space-2);
-  }
-  .admin-spacer {
-    flex: 1;
   }
   /* the SMTP server's reply under a failed test's words */
   .admin-detail {

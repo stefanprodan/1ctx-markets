@@ -8,7 +8,7 @@ import { SymbolName } from "../ui/Symbol.tsx";
 import { useServerFailing } from "./failing.ts";
 import { symbolHref } from "./paths.ts";
 import { pickRecent, recent } from "./recent.ts";
-import { HOME, lit, railFor, STATUS } from "./routes.ts";
+import { ADMIN, HOME, lit, railFor } from "./routes.ts";
 import {
   avatarIcon,
   toggleUserMenu,
@@ -46,19 +46,17 @@ export function Rail({ here, onHide }: { here: string; onHide: () => void }) {
               class={`rail-item${lit(here, r.path) ? " rail-item-on" : ""}`}
               aria-current={here === r.path ? "page" : undefined}
               title={
-                r.path === STATUS && failing
-                  ? "Something is failing"
-                  : undefined
+                r.path === ADMIN && failing ? "Something is failing" : undefined
               }
               aria-label={
-                r.path === STATUS && failing
+                r.path === ADMIN && failing
                   ? `${r.label}: something is failing`
                   : undefined
               }
             >
               <Icon
                 name={r.icon}
-                class={iconClass(r.path === STATUS && failing)}
+                class={iconClass(r.path === ADMIN && failing)}
               />
               <span>{r.label}</span>
             </a>
