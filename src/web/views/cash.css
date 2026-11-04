@@ -1,0 +1,98 @@
+@layer tokens, base, owners;
+
+@layer owners {
+  /* its parts are the drawer's own body and foot */
+  .cs-sheet {
+    display: contents;
+  }
+  .cs-head {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-hair);
+  }
+  /* a matured deposit's figure fades, as a matured bond's row does */
+  .cs-matured .cs-figure {
+    opacity: 0.4;
+  }
+  .cs-figure {
+    font-size: var(--text-figure);
+    font-weight: 500;
+  }
+  .cs-ccy {
+    font-size: var(--text-ui);
+    font-weight: 400;
+  }
+  .cs-update {
+    display: flex;
+    gap: var(--space-2);
+  }
+  .cs-box {
+    flex: 1;
+    min-width: 0;
+  }
+  .cs-fold {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    align-self: flex-start;
+    min-height: 32px;
+  }
+  /* fields in pairs; a note runs to paragraphs and takes the whole row */
+  .cs-sheet .pf-fields {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .cs-sheet .pf-field-text {
+    grid-column: 1 / -1;
+  }
+  .cs-sheet .pf-field-text textarea {
+    width: 100%;
+  }
+  .pf-date-opt {
+    position: relative;
+    display: block;
+  }
+  .pf-date-opt input {
+    width: 100%;
+  }
+  .pf-date-empty input:not(:focus) {
+    color: transparent;
+  }
+  .pf-date-empty:not(:focus-within)::after {
+    content: "Optional";
+    position: absolute;
+    top: 50%;
+    left: calc(var(--space-3) + 1px);
+    transform: translateY(-50%);
+    color: var(--faint);
+    pointer-events: none;
+  }
+  .cs-history {
+    margin-top: var(--space-2);
+  }
+  .cs-chart {
+    display: block;
+    width: 100%;
+    height: 72px;
+    margin-bottom: var(--space-2);
+    overflow: visible;
+  }
+  .cs-chart-line {
+    fill: none;
+    stroke: var(--brand);
+    stroke-width: 1.5;
+    vector-effect: non-scaling-stroke;
+  }
+  .cs-chart-top {
+    stop-color: var(--brand);
+    stop-opacity: 0.1;
+  }
+  .cs-chart-bottom {
+    stop-color: var(--card);
+    stop-opacity: 0;
+  }
+  /* a note may run long: it wraps in the list, never cut */
+  .cs-sub {
+    white-space: normal;
+  }
+}

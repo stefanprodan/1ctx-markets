@@ -4,7 +4,12 @@
 
 import { describe, expect, test } from "bun:test";
 import { upsertInstrument } from "../src/market/instruments.ts";
-import { createBroker, readTradeList } from "../src/operations/portfolio.ts";
+import {
+  addPosition,
+  createBroker,
+  parsePosition,
+  readTradeList,
+} from "../src/operations/portfolio.ts";
 import {
   exportCsv,
   importCsv,
@@ -319,6 +324,32 @@ describe("position imports", () => {
       ["Current account", false, "2026-04-17"],
       ["Kept for buying", true, "2026-04-17"],
     ]);
+  });
+
+  test("a cash file's new balance keeps a term deposit's maturity", async () => {
+    const { m, db } = await setup();
+    await addPosition(
+      m,
+      CASEY,
+      parsePosition("cash", {
+        name: "Deposit",
+        amount: 1000,
+        currency: "EUR",
+        maturity: "2027-01-15",
+      }),
+    );
+    const csv = [
+      "Item,Amount (EUR),As Of,Note",
+      "Deposit,1010,2026-04-17,",
+    ].join("\n");
+    await importCsv(
+      m,
+      CASEY,
+      parseImport({ portfolio: "Cash", csv, confirm: true }),
+    );
+    expect(
+      readPositions(db, OPERATOR).map((p) => [p.name, p.amount, p.maturity]),
+    ).toEqual([["Deposit", 1010, "2027-01-15"]]);
   });
 
   test("cash of one name and broker keeps a row per currency", async () => {

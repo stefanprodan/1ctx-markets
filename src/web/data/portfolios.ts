@@ -328,6 +328,9 @@ export type PositionChange = {
   // null takes it off
   broker?: string | null;
   note?: string | null;
+  // a term deposit's last day; null takes it off
+  maturity?: string | null;
+  dry_powder?: boolean;
 };
 
 export type ImportRow = {
@@ -625,6 +628,33 @@ export function portfolioStore(
       refusal(await write("/api/v1/positions", "POST", p)),
     updatePosition: async (id: number, change: PositionChange) =>
       refusal(await write(`/api/v1/positions/${id}`, "PATCH", change)),
+    // an update is a new row: moved hears its id before the reload draws
+    // the holdings, so what shows the row follows it in the same frame; a
+    // refusal reloads too, as the row may have changed under it
+    updatePositionTo: async (
+      id: number,
+      change: PositionChange,
+      moved: (id: number) => void = () => {},
+    ): Promise<{ id: number } | { refused: string }> => {
+      try {
+        const done = await call<{ position: { id: number } }>(
+          `/api/v1/positions/${id}`,
+          "PATCH",
+          change,
+        );
+        moved(done.position.id);
+        await load();
+        return { id: done.position.id };
+      } catch (e) {
+        await load();
+        return { refused: plainError(says(e)) };
+      }
+    },
+    // a position's rows, its updates and removals, newest first
+    positionHistory: <T>(id: number): Promise<T[] | null> =>
+      call<{ history: T[] }>(read(`/api/v1/positions/${id}/history`))
+        .then((r) => r.history)
+        .catch(() => null),
     removeTrade: async (id: number) =>
       refusal(await write(`/api/v1/trades/${id}`, "DELETE")),
     restoreTrade: async (id: number) =>

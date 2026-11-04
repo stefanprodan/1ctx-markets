@@ -559,9 +559,14 @@ export async function importCsv(
           if (old !== null) {
             setPositionRemoved(db, owner, old.id, who.name, now);
           }
+          // a cash file has no maturity column: a term deposit keeps its day
+          const maturity =
+            x.position.kind === "cash" && old !== null
+              ? old.maturity
+              : x.position.maturity;
           const id = insertPosition(
             db,
-            { ...x.position, replaces: old?.id ?? null },
+            { ...x.position, maturity, replaces: old?.id ?? null },
             now,
           );
           added.add(id);

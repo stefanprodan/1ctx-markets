@@ -964,8 +964,8 @@ The parts:
   phone. Sort by Change, Value or Gain from the heads, Value first; a
   row with nothing to sort by, or no rate in a converted view, goes last
   (`sortRows()`). A row opens its instrument page (`pageOf()`); with
-  none it opens what edits it (`homeOf()`): cash and a position its
-  Edit, a merged bond its Purchases. A hand-priced fund opens its own
+  none it opens what edits it (`homeOf()`): cash its drawer, a bond
+  position its Edit, a merged bond its Purchases. A hand-priced fund opens its own
   page, except for a viewer of shared portfolios, whom the server never
   shows it (`pageOf(h, viewOnly)`, `tradePage()`). Its ⋯ (`rowActions()`): Buy and Sell (Sell
   not on a holding sold today) open the add drawer on it, in its one
@@ -974,6 +974,30 @@ The parts:
   looks like the others; Purchases for a bond bought several times;
   Instrument page when there is one. Amounts show whole from 1,000 up (`money()`),
   else in the currency's minor units (`minorUnits()`).
+- **A cash row's drawer** (`CashSheet`): its kind, broker and
+  currency, the balance with the day it was updated and its maturity,
+  and one box: a figure sets the balance, a signed one moves it
+  (`balanceChange()`, the tool's `amount` and `by`), dated today; an
+  empty box or the same balance saves nothing. The drawer stays open
+  as an update gives the row a new id (`onMoved`). Edit details unfolds
+  the edit form in place (name, amount, Updated, Matures, broker, Kept
+  as dry powder or reserve, note on its own row, Remove); the row's ⋯
+  Edit opens it unfolded; open, its buttons sit in the drawer's foot
+  and the history hides. Under it the row's history from `GET
+  /positions/{id}/history` (`historyLines()`): newest first, each
+  balance and its change from the row it replaced, none across
+  currencies; a note's change is named, never its text, which Edit
+  details holds; an update that left the amount alone says what it
+  changed and is dated when made, on the owner's calendar; a removal and a
+  restore are lines, told apart as the tool's `history` does
+  (`endOf()`), a restore's change from the row it undid to the row it
+  brought back; no author. A step line of the balance
+  (`steps()`, `stepPath()`) over the rows that stand (`kept()`), never
+  tighter than a fifth of the balance, so a small change reads small;
+  none for a row never updated. A save hands the drawer the new row's
+  id before the reload, and the page keeps the drawer's last row until
+  the new one lands, so it never closes and opens again. The box reads
+  12,400 as the head writes it, twelve thousand.
 - **Drawers:** every form and detail opens in the one `Drawer`. Edit
   (amount and as of; cash also its name, broker, "New broker…"
   included, and note, each sent only when changed (`cashEdits()`), no

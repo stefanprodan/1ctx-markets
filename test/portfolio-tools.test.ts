@@ -468,3 +468,110 @@ describe("portfolio holdings", () => {
     expect(north.body.removed).toEqual([]);
   });
 });
+
+describe("a cash row's maturity and history", () => {
+  test("a term deposit's maturity is set, rolled over and taken off", async () => {
+    const { m } = await setup();
+    const made = await cash(m, { maturity: "2027-01-15" });
+    expect(made.body.position.maturity).toBe("2027-01-15");
+    let at = made.body.position.position as number;
+    const rolled = await tool(m, "portfolio_cash", {
+      action: "update",
+      position: at,
+      maturity: "2027-07-15",
+    });
+    expect(rolled.body.position.maturity).toBe("2027-07-15");
+    at = rolled.body.position.position as number;
+    const read = await tool(m, "portfolio", { action: "holdings" });
+    const row = (read.body.holdings as Record<string, unknown>[]).find(
+      (x) => x.position === at,
+    );
+    expect(row?.maturity).toBe("2027-07-15");
+    const off = await tool(m, "portfolio_cash", {
+      action: "update",
+      position: at,
+      maturity: null,
+    });
+    expect(off.body.position.maturity).toBeNull();
+    const plain = await tool(m, "portfolio", { action: "holdings" });
+    const kept = (plain.body.holdings as Record<string, unknown>[]).find(
+      (x) => x.kind === "cash",
+    );
+    expect(kept && "maturity" in kept).toBe(false);
+  });
+
+  test("a bond's maturity never changes on update", async () => {
+    const { m } = await setup();
+    const at = (await bond(m)).body.position.position as number;
+    const moved = await tool(m, "portfolio_bond", {
+      action: "update",
+      position: at,
+      maturity: "2031-01-01",
+    });
+    expect(moved.body.error).toBe("bad_arguments");
+  });
+
+  test("history reads the chain oldest first, removals by hand marked", async () => {
+    const { m } = await setup();
+    const first = (await cash(m)).body.position.position as number;
+    const up = await tool(m, "portfolio_cash", {
+      action: "update",
+      position: first,
+      by: 50,
+    });
+    const second = up.body.position.position as number;
+    const noted = await tool(m, "portfolio_cash", {
+      action: "update",
+      position: second,
+      note: "made-up note",
+    });
+    const third = noted.body.position.position as number;
+    await tool(m, "portfolio_cash", { action: "remove", position: third });
+    const read = await tool(m, "portfolio", {
+      action: "history",
+      position: second,
+    });
+    expect(read.body.position).toBe(second);
+    const rows = read.body.history as Record<string, unknown>[];
+    expect(rows.map((r) => [r.position, r.amount, r.note, r.removed])).toEqual([
+      [first, 100, null, false],
+      [second, 150, null, false],
+      [third, 150, "made-up note", true],
+    ]);
+    // what was set, never who set it
+    expect(rows.every((r) => !("entered_by" in r))).toBe(true);
+    expect(rows[0]).toMatchObject({
+      currency: "EUR",
+      broker: "North",
+      dry_powder: false,
+    });
+    const none = await tool(m, "portfolio", {
+      action: "history",
+      position: 999,
+    });
+    expect(none.body.error).toBe("not_found");
+    // a restore of the first row sets the newer ones aside, undone
+    await tool(m, "portfolio_cash", { action: "restore", position: first });
+    const back = await tool(m, "portfolio", {
+      action: "history",
+      position: first,
+    });
+    expect(
+      (back.body.history as Record<string, unknown>[]).map((r) => [
+        r.position,
+        r.removed,
+        r.undone ?? false,
+      ]),
+    ).toEqual([
+      [first, false, false],
+      [second, false, true],
+      [third, false, true],
+    ]);
+    const wrong = await tool(m, "portfolio", {
+      action: "history",
+      position: first,
+      symbol: "US:AAA",
+    });
+    expect(wrong.body.message).toContain("is not an argument of history");
+  });
+});
