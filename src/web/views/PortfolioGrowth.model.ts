@@ -104,10 +104,10 @@ export function growthKey(
 }
 
 // the last series drawn and the view and currency it was for
-export type Drawn = { scope: string; series: Growth };
+export type Drawn<T = Growth> = { scope: string; series: T };
 
-export type Shown = {
-  series: Growth | null;
+export type Shown<T = Growth> = {
+  series: T | null;
   // a series of the same view and currency, held while the new one is read
   held: boolean;
   // no line and no slot: the read failed or held under two days
@@ -115,11 +115,11 @@ export type Shown = {
 };
 
 // got: the key's cached series, undefined while read, null when it failed
-export function growthShown(
-  got: Growth | null | undefined,
-  last: Drawn | null,
+export function growthShown<T extends { points: readonly unknown[] }>(
+  got: T | null | undefined,
+  last: Drawn<T> | null,
   scope: string,
-): Shown {
+): Shown<T> {
   if (got === undefined) {
     const held = last?.scope === scope ? last.series : null;
     return { series: held, held: held !== null, none: false };
@@ -131,6 +131,15 @@ export function growthShown(
 // a Cash tab, or a view of cash alone, has no line and no slot for one
 export function hasGrowth(h: Holdings, cash: boolean): boolean {
   return !cash && h.holdings.some((x) => x.kind !== "cash");
+}
+
+// the Cash tab's line is the person's own cash, never a shared Cash
+// portfolio's: net worth is read for the caller alone
+export function hasCashLine(
+  row: { cash?: boolean } | undefined,
+  mine: boolean,
+): boolean {
+  return mine && row?.cash === true;
 }
 
 // the same month and day a year before; 29 Feb falls back to 28 Feb
@@ -162,27 +171,70 @@ export function growthWords(g: Growth): GrowthWords {
   };
 }
 
-export type GrowthPath = { line: string; area: string; up: boolean };
+// a day of a hero line: the figure it draws
+export type LinePoint = { date: string; value: number };
+
+// end: the last point's height in the box, for where its label goes
+export type GrowthPath = {
+  line: string;
+  area: string;
+  up: boolean;
+  end: number;
+};
+
+// a few tenths of a percent never fill the height: the scale spans at
+// least this share of the value drawn against, the line centred in it
+export const MIN_SPAN = 0.02;
 
 // the box's own units, stretched to the slot; room for the stroke at the
 // top and bottom
-const PAD = 4;
+export const GROWTH_PAD = 4;
+export const WORTH_PAD = 2;
 
-export function growthPath(g: Growth, w: number, h: number): GrowthPath | null {
-  const gains = g.points.map((p) => p.gain);
-  if (gains.length < 2) return null;
-  const lo = Math.min(...gains);
-  const span = Math.max(...gains) - lo || 1;
-  const x = (i: number) => (i / (gains.length - 1)) * w;
-  const y = (v: number) => PAD + (1 - (v - lo) / span) * (h - 2 * PAD);
-  const line = gains
-    .map(
-      (v, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(v).toFixed(1)}`,
-    )
+// against: the value the floor is a share of, the points' highest when
+// they are that value themselves; the growth line's gain is against the
+// view's value
+export function linePath(
+  points: readonly LinePoint[],
+  w: number,
+  h: number,
+  pad: number,
+  against?: number,
+): GrowthPath | null {
+  const v = points.map((p) => p.value);
+  if (v.length < 2) return null;
+  const low = Math.min(...v);
+  const high = Math.max(...v);
+  const floor = Math.abs(against ?? high) * MIN_SPAN;
+  const room = Math.max(0, floor - (high - low)) / 2;
+  const lo = low - room;
+  const span = high - low + 2 * room;
+  const x = (i: number) => (i / (v.length - 1)) * w;
+  // nothing to scale against: a flat line in the middle, as any other
+  const y = (n: number) =>
+    span === 0 ? h / 2 : pad + (1 - (n - lo) / span) * (h - 2 * pad);
+  const line = v
+    .map((n, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(n).toFixed(1)}`)
     .join("");
   return {
     line,
     area: `${line}L${w},${h}L0,${h}Z`,
-    up: gains.at(-1)! >= gains[0]!,
+    up: v.at(-1)! >= v[0]!,
+    end: y(v.at(-1)!),
+  };
+}
+
+// the label sits under the line's end, above it when the line ends in
+// the lower half, so it never lies on the line
+export const labelOver = (p: GrowthPath, h: number): boolean => p.end > h / 2;
+
+// the growth line draws the gain, its floor a share of the view's value
+export function growthPoints(g: Growth): {
+  points: LinePoint[];
+  against: number | undefined;
+} {
+  return {
+    points: g.points.map((p) => ({ date: p.date, value: p.gain })),
+    against: g.points.at(-1)?.value,
   };
 }

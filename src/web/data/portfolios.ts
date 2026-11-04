@@ -480,6 +480,14 @@ export function portfolioStore(
   const worthFailed = signal(false);
   let worthLoads = 0;
   let worthAsked: Promise<void> | null = null;
+  // the Cash tab's series by currency, null for a read that failed; a
+  // save drops them, as a balance dated in the past moves its past days
+  const cashes = signal<ReadonlyMap<string, NetWorth | null>>(new Map());
+  const cashAsking = new Set<string>();
+  let saves = 0;
+  // the saves before Home's series was read, so one read before a save
+  // never stands in for the Cash tab's
+  let worthSaves = -1;
   // whose portfolios a shared store reads; none until its page opens one
   const owner = signal<string | null>(null);
   const base = (): string =>
@@ -574,6 +582,8 @@ export function portfolioStore(
   ): Promise<{ done: T } | { refused: string }> {
     try {
       const done = await call<T>(path, method, body);
+      // once the server holds it, so a read sent before never stands
+      saved();
       await load();
       return { done };
     } catch (e) {
@@ -584,8 +594,14 @@ export function portfolioStore(
   const refusal = (r: { refused: string } | object): string | null =>
     "refused" in r ? r.refused : null;
 
+  function saved(): void {
+    saves++;
+    cashes.value = new Map();
+  }
+
   // what was drawn, so another person's figures never show under a name
   function drop(): void {
+    saved();
     loads++;
     asking.clear();
     overview.value = null;
@@ -610,6 +626,7 @@ export function portfolioStore(
     const stale = () => mine !== worthLoads || at !== session();
     const had = worth.peek();
     const kept = had !== null && keep !== null ? keep(had) : null;
+    const before = saves;
     try {
       const [o, h, n] = await Promise.all([
         call<Overview>(PORTFOLIOS_PATH),
@@ -617,6 +634,7 @@ export function portfolioStore(
         kept ?? call<NetWorth>("/api/v1/holdings/net-worth").catch(() => null),
       ]);
       if (stale()) return;
+      if (kept === null) worthSaves = before;
       batch(() => {
         worth.value = { overview: o, holdings: h, series: n };
         worthFailed.value = false;
@@ -660,6 +678,9 @@ export function portfolioStore(
     worth,
     worthFailed,
     loadWorth,
+    cashes,
+    // the person's own portfolios, never another's shared with them
+    mine: shared === null,
     error,
     code,
     failures,
@@ -724,12 +745,14 @@ export function portfolioStore(
           "PATCH",
           change,
         );
+        saved();
         // a past balance leaves the row as it was
         const to = done.position.past ? id : done.position.id;
         moved(to);
         await load();
         return { id: to };
       } catch (e) {
+        saved();
         await load();
         return { refused: plainError(says(e)) };
       }
@@ -831,6 +854,42 @@ export function portfolioStore(
       next.set(key, g);
       if (next.size > GROWTH_KEPT) next.delete(next.keys().next().value!);
       growths.value = next;
+    },
+    // all cash per day for the Cash tab, read once per currency; Home's
+    // series stands in when keep holds it in that currency and no save
+    // came after it was read
+    // a failed read is tried again when the Cash tab is shown again
+    cashAgain(): void {
+      const failed = [...cashes.value].filter(([, n]) => n === null);
+      if (failed.length === 0) return;
+      const next = new Map(cashes.value);
+      for (const [c] of failed) next.delete(c);
+      cashes.value = next;
+    },
+    async cash(
+      currency: string,
+      keep: (w: Worth) => NetWorth | null,
+    ): Promise<void> {
+      if (shared !== null) return;
+      const ask = `${currency} ${saves}`;
+      if (cashes.value.has(currency) || cashAsking.has(ask)) return;
+      const w = worth.peek();
+      const home = w !== null && worthSaves === saves ? keep(w) : null;
+      const at = session();
+      const before = saves;
+      let n: NetWorth | null;
+      if (home !== null && home.currency === currency) n = home;
+      else {
+        cashAsking.add(ask);
+        const q = new URLSearchParams({ currency });
+        n = await call<NetWorth>(`/api/v1/holdings/net-worth?${q}`)
+          .catch(() => null)
+          .finally(() => cashAsking.delete(ask));
+      }
+      if (at !== session() || before !== saves) return;
+      const next = new Map(cashes.value);
+      next.set(currency, n);
+      cashes.value = next;
     },
     listing: (id: string): Promise<Listing | null> =>
       call<{ instrument: Listing }>(

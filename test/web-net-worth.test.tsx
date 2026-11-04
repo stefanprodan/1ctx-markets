@@ -21,18 +21,31 @@ import {
 } from "../src/web/views/Dashboard.model.ts";
 import {
   cashHref,
+  cashPoints,
   dayPercent,
   keptSeries,
-  MIN_SPAN,
+  linePoints,
   pointsOf,
   SHAPE_GUESS,
   shapeOf,
   totalOf,
   wealthOf,
-  worthPath,
   worthWords,
 } from "../src/web/views/NetWorth.model.ts";
 import { NetWorthPanel } from "../src/web/views/NetWorth.tsx";
+import {
+  labelOver,
+  linePath,
+  MIN_SPAN,
+  WORTH_PAD,
+} from "../src/web/views/PortfolioGrowth.model.ts";
+
+const worthPath = (s: NetWorth, t: Total) =>
+  linePath(linePoints(pointsOf(s, t)), 300, 64, WORTH_PAD);
+
+// the heights of a path's points, top first
+const heights = (line: string) =>
+  [...line.matchAll(/,([\d.]+)/g)].map((m) => Number(m[1]));
 
 const NOW = Date.parse("2030-11-04T12:00:00Z");
 
@@ -155,6 +168,47 @@ describe("the glance tabs", () => {
   });
 });
 
+describe("the Cash tab's line", () => {
+  const cash = (amounts: number[], currency = "EUR"): NetWorth => {
+    const s = series(amounts.map((a) => a + 5000));
+    return {
+      ...s,
+      currency,
+      points: s.points.map((p, i) => ({ ...p, cash: amounts[i]! })),
+    };
+  };
+
+  test("draws all cash per day, today on the hero's figure", () => {
+    expect(cashPoints(cash([300, 320, 310]), "EUR", 340)).toEqual([
+      { date: "2030-10-20", value: 300 },
+      { date: "2030-10-21", value: 320 },
+      { date: "2030-10-22", value: 340 },
+    ]);
+    // no figure keeps the series' own last day
+    expect(cashPoints(cash([300, 320]), "EUR", null).at(-1)?.value).toBe(320);
+  });
+
+  test("draws none from a series in another currency", () => {
+    expect(cashPoints(cash([300, 320], "USD"), "EUR", 340)).toEqual([]);
+    expect(cashPoints(null, "EUR", 340)).toEqual([]);
+  });
+
+  test("spans at least 2% of the cash, the line centred", () => {
+    const p = linePath(cashPoints(cash([500, 501]), "EUR", 501), 300, 64, 2)!;
+    const ys = heights(p.line);
+    expect(ys[0]! - ys[1]!).toBeCloseTo((1 / 10.02) * 60, 1);
+    expect((ys[0]! + ys[1]!) / 2).toBeCloseTo(32, 1);
+  });
+
+  test("is titled and labelled as net worth's line", () => {
+    const points = cashPoints(cash([1, 2], "EUR"), "EUR", null);
+    expect(worthWords(points, NOW, "Cash")).toEqual({
+      label: "20 Oct",
+      title: "Cash since 20 Oct",
+    });
+  });
+});
+
 describe("the net worth band", () => {
   test("takes the converted total, the day's change of net worth before it", () => {
     expect(totalOf(WORTH)).toMatchObject({ net_worth: 2000 });
@@ -217,17 +271,32 @@ describe("the net worth band", () => {
   });
 
   test("draws no line under two points, its scale at least 2% of the value", () => {
-    expect(worthPath(pointsOf(series([5]), BARE), 300, 64)).toBeNull();
-    const flat = worthPath(pointsOf(series([1000, 1001]), BARE), 300, 64)!;
+    expect(worthPath(series([5]), BARE)).toBeNull();
+    const flat = worthPath(series([1000, 1001]), BARE)!;
     // a 0.1% move stays near the middle, never the whole height
-    const ys = [...flat.line.matchAll(/,([\d.]+)/g)].map((m) => Number(m[1]));
+    const ys = heights(flat.line);
     expect(MIN_SPAN).toBe(0.02);
     expect(ys[0]! - ys[1]!).toBeCloseTo((1 / 20.02) * 60, 1);
     expect(flat.up).toBe(true);
-    const fall = worthPath(pointsOf(series([1000, 500]), BARE), 300, 64)!;
+    const fall = worthPath(series([1000, 500]), BARE)!;
     expect(fall.up).toBe(false);
     expect(fall.line).toBe("M0.0,2.0L300.0,62.0");
     expect(fall.area).toBe("M0.0,2.0L300.0,62.0L300,64L0,64Z");
+  });
+
+  test("puts the label above the end of a line ending low, under one ending high", () => {
+    const rise = worthPath(series([1000, 1500]), BARE)!;
+    expect(rise.end).toBe(2);
+    expect(labelOver(rise, 64)).toBe(false);
+    const fall = worthPath(series([1500, 1000]), BARE)!;
+    expect(fall.end).toBe(62);
+    expect(labelOver(fall, 64)).toBe(true);
+    // a flat line ends in the middle, its label under it
+    expect(labelOver(worthPath(series([1000, 1000]), BARE)!, 64)).toBe(false);
+    // nothing to scale against: zero is drawn in the middle too
+    const zero = worthPath(series([0, 0]), BARE)!;
+    expect(zero.line).toBe("M0.0,32.0L300.0,32.0");
+    expect(labelOver(zero, 64)).toBe(false);
   });
 
   test("keeps the loader's shape from widths only, a guess for anything else", () => {

@@ -10,23 +10,29 @@ import type {
   Growth,
   Holding,
   Holdings,
+  NetWorth,
   Overview,
   TradeRow,
 } from "../src/web/data/portfolios.ts";
 import { store } from "../src/web/data/store.ts";
+import { keptSeries } from "../src/web/views/NetWorth.model.ts";
 import {
   FIT_FLOOR,
   FIT_SLACK,
   FIT_START,
   type FitRoom,
+  GROWTH_PAD,
   growthKey,
-  growthPath,
+  growthPoints,
   growthScope,
   growthShown,
   growthWords,
+  hasCashLine,
   hasGrowth,
   heroFit,
   LINE_GAP,
+  labelOver,
+  linePath,
   shortMoney,
   yearBefore,
 } from "../src/web/views/PortfolioGrowth.model.ts";
@@ -155,6 +161,32 @@ function series(from: string, to: string, step = 1): Growth {
 
 const YEAR = series("2029-10-28", "2030-10-28");
 
+// as the hero draws it: the gain against the view's value
+function growthPath(g: Growth) {
+  const d = growthPoints(g);
+  return linePath(d.points, 300, 64, GROWTH_PAD, d.against);
+}
+
+// all cash per day, from 2030-10-25 to the store's day
+function cashSeries(amounts: number[], currency = "EUR"): NetWorth {
+  const points = amounts.map((cash, i) => ({
+    date: `2030-10-${25 + i}`,
+    invested: 700,
+    cash,
+    total: 700 + cash,
+  }));
+  return {
+    currency,
+    from: points[0]!.date,
+    to: points.at(-1)!.date,
+    points,
+    eased: [],
+    missing: [],
+  };
+}
+
+const CASH_DAYS = cashSeries([250, 260, 280, 290]);
+
 // answers by path prefix, the first match winning; a gate holds the
 // portfolios' reads until opened
 function fake(answers: [string, unknown][], gate?: { prefix: string }) {
@@ -176,6 +208,8 @@ function fake(answers: [string, unknown][], gate?: { prefix: string }) {
 
 const ANSWERS: [string, unknown][] = [
   ["GET /api/v1/holdings/growth", YEAR],
+  ["GET /api/v1/holdings/net-worth", CASH_DAYS],
+  ["GET /api/v1/brokers", { broker: { id: 2, name: "South" } }],
   ["GET /api/v1/portfolios/1/growth", series("2030-05-08", "2030-10-28")],
   ["GET /api/v1/portfolios/1/holdings", SHARES],
   ["GET /api/v1/portfolios/3/holdings", CASH],
@@ -301,20 +335,45 @@ describe("the growth line's words and path", () => {
   });
 
   test("green when the gain ended up, red when down; none under two days", () => {
-    expect(growthPath(YEAR, 300, 64)?.up).toBe(true);
-    expect(
-      growthPath(series("2030-01-01", "2030-03-01", -1), 300, 64)?.up,
-    ).toBe(false);
+    expect(growthPath(YEAR)?.up).toBe(true);
+    expect(growthPath(series("2030-01-01", "2030-03-01", -1))?.up).toBe(false);
     const one = series("2030-10-28", "2030-10-28");
-    expect(growthPath(one, 300, 64)).toBeNull();
-    const path = growthPath(series("2030-10-27", "2030-10-28"), 300, 64)!;
-    expect(path.line).toBe("M0.0,60.0L300.0,4.0");
+    expect(growthPath(one)).toBeNull();
+    // a year's gain spans the height, the stroke's room kept
+    expect(growthPath(YEAR)!.line).toStartWith("M0.0,60.0L");
+    expect(growthPath(YEAR)!.end).toBe(4);
   });
 
-  test("Cash and a view of cash alone have no line", () => {
+  test("a gain of a tenth of a percent of the value stays near the middle", () => {
+    // gain 0 then 1 on a value of 1001: the scale spans 2% of 1001
+    const path = growthPath(series("2030-10-27", "2030-10-28"))!;
+    expect(path.line).toBe("M0.0,33.4L300.0,30.6");
+    // drawn against its own gain it would fill the height
+    const own = growthPoints(series("2030-10-27", "2030-10-28")).points;
+    expect(linePath(own, 300, 64, GROWTH_PAD)!.line).toBe(
+      "M0.0,60.0L300.0,4.0",
+    );
+  });
+
+  test("the label goes above the end of a falling line", () => {
+    expect(labelOver(growthPath(YEAR)!, 64)).toBe(false);
+    const fall = growthPath(series("2030-01-01", "2030-03-01", -1))!;
+    expect(labelOver(fall, 64)).toBe(true);
+  });
+
+  test("Cash and a view of cash alone have no growth line", () => {
     expect(hasGrowth(ALL, false)).toBe(true);
     expect(hasGrowth(ALL, true)).toBe(false);
     expect(hasGrowth(CASH, false)).toBe(false);
+  });
+
+  test("only the person's own Cash portfolio has the cash line", () => {
+    const [cashRow, shares] = OVERVIEW.portfolios;
+    expect(hasCashLine(cashRow, true)).toBe(true);
+    // a Cash portfolio shared with them is another person's cash
+    expect(hasCashLine(cashRow, false)).toBe(false);
+    expect(hasCashLine(shares, true)).toBe(false);
+    expect(hasCashLine(undefined, true)).toBe(false);
   });
 });
 
@@ -378,9 +437,180 @@ describe("the hero's growth line on the page", () => {
     expect(asked).toContain("GET /api/v1/portfolios/1/growth?currency=USD");
   });
 
-  test("Cash has no line and no slot", async () => {
-    const { st } = await opened(3);
+  test("Cash holds a slot, then draws its cash per day", async () => {
+    const { st, asked } = await opened(3);
+    expect(page(st)).toContain('<div class="growth" aria-hidden="true"></div>');
+    await st.cash("EUR", keptSeries);
+    expect(asked).toContain("GET /api/v1/holdings/net-worth?currency=EUR");
+    expect(asked.filter((a) => a.includes("/growth"))).toHaveLength(0);
+    const drawn = page(st);
+    expect(drawn).toContain('class="growth-svg growth-up"');
+    expect(drawn).toContain('title="Cash since 25 Oct 2030"');
+    // the minute's refresh reads no series
+    await st.load();
+    await st.cash("EUR", keptSeries);
+    expect(asked.filter((a) => a.includes("/net-worth"))).toHaveLength(1);
+  });
+
+  test("Cash ends its line on the hero's figure", async () => {
+    const f = fake([
+      ["GET /api/v1/holdings/net-worth", cashSeries([300, 290, 280, 200])],
+      ...ANSWERS,
+    ]);
+    const s = store(
+      f.fetch,
+      () => NOW,
+      () => "/portfolios",
+      () => {},
+    );
+    await s.portfolios.open({ portfolio: 3, currency: null });
+    await s.portfolios.cash("EUR", keptSeries);
+    // the last day's 200 is the hero's 300: back up, ending at the top
+    const drawn = page(s.portfolios);
+    expect(drawn).toContain("growth-up");
+    expect(drawn).toContain('class="growth-label"');
+    expect(drawn).not.toContain("growth-label-over");
+  });
+
+  test("Cash in another currency than its series has no line and no slot", async () => {
+    const f = fake([
+      ["GET /api/v1/holdings/net-worth", cashSeries([1, 2], "USD")],
+      ...ANSWERS,
+    ]);
+    const s = store(
+      f.fetch,
+      () => NOW,
+      () => "/portfolios",
+      () => {},
+    );
+    await s.portfolios.open({ portfolio: 3, currency: null });
+    await s.portfolios.cash("EUR", keptSeries);
+    expect(page(s.portfolios)).not.toContain('class="growth');
+  });
+
+  test("Cash under two days has no line and no slot", async () => {
+    const f = fake([
+      ["GET /api/v1/holdings/net-worth", cashSeries([250])],
+      ...ANSWERS,
+    ]);
+    const s = store(
+      f.fetch,
+      () => NOW,
+      () => "/portfolios",
+      () => {},
+    );
+    await s.portfolios.open({ portfolio: 3, currency: null });
+    await s.portfolios.cash("EUR", keptSeries);
+    expect(page(s.portfolios)).not.toContain('class="growth');
+  });
+
+  test("a save reads the cash again", async () => {
+    const { st, asked } = await opened(3);
+    await st.cash("EUR", keptSeries);
+    expect(page(st)).toContain("growth-svg");
+    expect(await st.createBroker("South")).toBeNull();
+    expect(st.cashes.value.size).toBe(0);
+    await st.cash("EUR", keptSeries);
+    expect(asked.filter((a) => a.includes("/net-worth"))).toHaveLength(2);
+  });
+
+  test("a read made while a save is out never keeps the days before it", async () => {
+    let saved = false;
+    let release: () => void = () => {};
+    const held = new Promise<void>((r) => {
+      release = r;
+    });
+    const f = fake(ANSWERS);
+    const s = store(
+      async (path, init) => {
+        if (init?.method === "POST") {
+          await held;
+          saved = true;
+          return Response.json({ broker: { id: 2, name: "South" } });
+        }
+        if (String(path).startsWith("/api/v1/holdings/net-worth"))
+          return Response.json(cashSeries(saved ? [900, 910] : [100, 110]));
+        return f.fetch(path, init);
+      },
+      () => NOW,
+      () => "/portfolios",
+      () => {},
+    );
+    const st = s.portfolios;
+    await st.open({ portfolio: 3, currency: null });
+    await st.cash("EUR", keptSeries);
+    const saving = st.createBroker("South");
+    // the page reads again whenever the kept series is gone
+    await st.cash("EUR", keptSeries);
+    release();
+    expect(await saving).toBeNull();
+    await st.cash("EUR", keptSeries);
+    expect(st.cashes.value.get("EUR")?.points[0]?.cash).toBe(900);
+  });
+
+  test("a failed cash read is tried again when Cash is shown again", async () => {
+    let fail = true;
+    const f = fake(ANSWERS);
+    const s = store(
+      async (path, init) =>
+        String(path).includes("/net-worth") && fail
+          ? new Response("no", { status: 500 })
+          : f.fetch(path, init),
+      () => NOW,
+      () => "/portfolios",
+      () => {},
+    );
+    const st = s.portfolios;
+    await st.open({ portfolio: 3, currency: null });
+    await st.cash("EUR", keptSeries);
     expect(page(st)).not.toContain('class="growth');
+    // the minute's refresh does not read it again
+    fail = false;
+    await st.load();
+    await st.cash("EUR", keptSeries);
+    expect(st.cashes.value.get("EUR")).toBeNull();
+    st.cashAgain();
+    await st.cash("EUR", keptSeries);
+    expect(page(st)).toContain("growth-svg");
+    const reads = f.asked.filter((a) => a.includes("/net-worth")).length;
+    // a series read is kept when Cash is shown again
+    st.cashAgain();
+    await st.cash("EUR", keptSeries);
+    expect(f.asked.filter((a) => a.includes("/net-worth"))).toHaveLength(reads);
+  });
+
+  test("Home's series of today stands in for the Cash tab's", async () => {
+    const { st, asked } = await opened(3);
+    const own = { ...CASH_DAYS, to: "2030-10-28" };
+    await st.loadWorth();
+    st.worth.value = { ...st.worth.value!, series: own };
+    const kept = (w: { series: NetWorth | null }) => w.series;
+    const reads = asked.filter((a) => a.includes("/net-worth")).length;
+    await st.cash("EUR", kept);
+    expect(asked.filter((a) => a.includes("/net-worth"))).toHaveLength(reads);
+    expect(st.cashes.value.get("EUR")).toBe(own);
+    expect(asked).not.toContain("GET /api/v1/holdings/net-worth?currency=EUR");
+    // another currency is read
+    await st.cash("USD", kept);
+    expect(asked).toContain("GET /api/v1/holdings/net-worth?currency=USD");
+    // a save may have moved past days Home read before it
+    expect(await st.createBroker("South")).toBeNull();
+    await st.cash("EUR", kept);
+    expect(asked).toContain("GET /api/v1/holdings/net-worth?currency=EUR");
+  });
+
+  test("a shared Cash portfolio reads no cash", async () => {
+    const f = fake(ANSWERS);
+    const s = store(
+      f.fetch,
+      () => NOW,
+      () => "/portfolios",
+      () => {},
+    );
+    await s.shared.openOf("casey", { portfolio: 3, currency: null });
+    await s.shared.cash("EUR", keptSeries);
+    expect(f.asked.filter((a) => a.includes("/net-worth"))).toHaveLength(0);
+    expect(page(s.shared)).not.toContain('class="growth');
   });
 
   test("under two days held, no line and no slot", async () => {

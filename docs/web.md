@@ -623,9 +623,10 @@ The parts:
   before it) and "all time" (the holdings' gain), one per line at every
   width; then the Invested against Cash bar (`barOf()`), Cash being dry
   powder and reserve and linking to the Cash portfolio, its legend
-  wrapping as Portfolios'. The line is the series' `total` in the
-  growth line's slot, size and colours, its scale at least 2% of the
-  value (`worthPath()`), labelled by its first day under a month
+  wrapping as Portfolios'. The line is the series' `total`, drawn by
+  the Portfolios hero's line (`HeroLine`) in its slot, size and
+  colours, its scale at least 2% of the value, labelled by its first
+  day under a month
   ("2 Nov"), then its months ("5M"), then "1Y", titled "Net worth since
   2 Nov" (`worthWords()`); under two points, or when its read failed,
   none. Hide amounts hides every figure and leaves the line. A failed
@@ -930,8 +931,29 @@ The parts:
   hover readout, so Hide amounts leaves it as is. A view younger than
   a year spans the width from its first day, labelled by its months
   ("6M") and titled "Growth since 8 May excluding cash". None, and no
-  slot, on Cash, a view of cash alone, under two days held, or when
-  its read failed (the next key reads again).
+  slot, on Cash (its own line below), a view of cash alone, under two
+  days held, or when its read failed (the next key reads again).
+- **One line for every hero** (`HeroLine`, its path `linePath()`):
+  Home's net worth, the Cash tab's cash and the other tabs' growth
+  draw the same slot, look, fade and empty slot while read. Every
+  line's scale spans at least 2% of the value it is drawn against
+  (`MIN_SPAN`): net worth's and cash's own values, the view's value
+  for the growth line's gain, the line centred, so a flat stretch
+  never fills the height. The label sits under the line's end, above
+  it when the line ends in the lower half (`labelOver()`).
+- **The Cash tab draws all cash per day** (`useCash`,
+  `CashTabLine`): the person's own Cash portfolio only, never one
+  shared with them (`hasCashLine()`, net worth being the caller's own).
+  Its points are the `cash` of `GET /holdings/net-worth` in the hero's
+  currency, today's being the hero's figure (`cashPoints()`), titled
+  "Cash since 4 Jun" and labelled as Home's line. Read once per
+  currency (`cash()` in `data/portfolios.ts`, kept in `cashes`), never
+  on the minute's refresh; Home's series stands in when it is in that
+  currency, still today's and read after the last save. A save drops
+  the kept series, as a balance dated in the past moves its past days,
+  and the line drawn stays until the new one lands. Under two points,
+  in another currency, or when its read failed: no line and no slot, a
+  failed read tried again the next time the Cash tab is shown.
 - **The line never flickers.** Each view's series is kept for the
   page's life (`growths`, by `growthKey()`: the view, the currency or
   the display currency when none is picked, the live trades' ids, a

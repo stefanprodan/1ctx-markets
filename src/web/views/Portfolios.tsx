@@ -61,10 +61,12 @@ import {
   StartCard,
   Welcome,
 } from "./PortfolioForms.tsx";
-import { hasGrowth, shortMoney } from "./PortfolioGrowth.model.ts";
+import { hasCashLine, hasGrowth, shortMoney } from "./PortfolioGrowth.model.ts";
 import {
+  CashTabLine,
   GrowthLine,
   HeroFigure,
+  useCash,
   useGrowth,
   useHeroFit,
 } from "./PortfolioGrowth.tsx";
@@ -632,8 +634,10 @@ function ValueBand({
   const value = hero?.total.value ?? null;
   const wanted = hero !== null && hasGrowth(h, row?.cash === true);
   const growth = useGrowth(store, view, trades, h, wanted);
+  const cashWanted = hero !== null && hasCashLine(row, store.mine);
+  const cash = useCash(store, hero?.total.currency ?? null, value, cashWanted);
   // a failed read or under two days draws nothing and needs no room
-  const line = wanted && !growth.none;
+  const line = (wanted && !growth.none) || (cashWanted && !cash.none);
   const box = useRef<HTMLDivElement>(null);
   const fit = useHeroFit(box, money(value, null), shortMoney(value), line);
   if (hero === null) return null;
@@ -689,7 +693,12 @@ function ValueBand({
           </span>
         ))}
       >
-        {line && <GrowthLine growth={growth} />}
+        {line &&
+          (cashWanted ? (
+            <CashTabLine cash={cash} />
+          ) : (
+            <GrowthLine growth={growth} />
+          ))}
         {bar && (
           <div class="pf-ivc">
             <div

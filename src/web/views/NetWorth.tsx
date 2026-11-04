@@ -3,7 +3,7 @@
 // Home's Wealth tab: the Portfolios hero over every holding and all cash,
 // its figure, moves, split bar and a line of net worth itself.
 
-import { useId, useLayoutEffect, useMemo, useRef } from "preact/hooks";
+import { useLayoutEffect, useMemo, useRef } from "preact/hooks";
 import { PORTFOLIOS_PAGE, type Total, type Worth } from "../data/portfolios.ts";
 import { markets } from "../data/store.ts";
 import { money, percent, signedMoney } from "../lib/format.ts";
@@ -14,16 +14,15 @@ import {
   cashHref,
   dayPercent,
   keptSeries,
+  linePoints,
   pointsOf,
   SHAPE_KEY,
   shapeOf,
   totalOf,
-  type WorthPoint,
-  worthPath,
   worthWords,
 } from "./NetWorth.model.ts";
-import { shortMoney } from "./PortfolioGrowth.model.ts";
-import { HeroFigure, useHeroFit } from "./PortfolioGrowth.tsx";
+import { shortMoney, WORTH_PAD } from "./PortfolioGrowth.model.ts";
+import { HeroFigure, HeroLine, useHeroFit } from "./PortfolioGrowth.tsx";
 import { barOf } from "./Portfolios.model.ts";
 import "./portfolios.css";
 import "./net-worth.css";
@@ -41,40 +40,12 @@ function keepShape(widths: number[]) {
   } catch {}
 }
 
-const W = 300;
-const H = 64;
-
-// the hero's line in its slot and look, drawn from net worth's own points
-function WorthLine({ points }: { points: WorthPoint[] }) {
-  const id = useId();
-  const path = useMemo(() => worthPath(points, W, H)!, [points]);
-  const words = worthWords(points);
-  return (
-    <div class="growth growth-fade" title={words.title}>
-      <svg
-        viewBox={`0 0 ${W} ${H}`}
-        preserveAspectRatio="none"
-        class={`growth-svg ${path.up ? "growth-up" : "growth-down"}`}
-        role="img"
-        aria-label={words.title}
-      >
-        <defs>
-          <linearGradient id={id} x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" class="growth-top" />
-            <stop offset="100%" class="growth-bottom" />
-          </linearGradient>
-        </defs>
-        <path d={path.area} fill={`url(#${id})`} />
-        <path d={path.line} class="growth-line" />
-      </svg>
-      <span class="growth-label">{words.label}</span>
-    </div>
-  );
-}
-
 function Band({ w, t }: { w: Worth; t: Total }) {
   const value = t.net_worth ?? null;
-  const points = useMemo(() => pointsOf(w.series, t), [w.series, t]);
+  const points = useMemo(
+    () => linePoints(pointsOf(w.series, t)),
+    [w.series, t],
+  );
   const line = points.length >= 2;
   const box = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
@@ -126,7 +97,14 @@ function Band({ w, t }: { w: Worth; t: Total }) {
         currency={t.currency}
         moves={moves}
       >
-        {line && <WorthLine points={points} />}
+        {line && (
+          <HeroLine
+            points={points}
+            words={worthWords(points)}
+            fade={true}
+            pad={WORTH_PAD}
+          />
+        )}
         {bar && (
           <div class="pf-ivc">
             <div
