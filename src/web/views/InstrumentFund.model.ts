@@ -58,7 +58,12 @@ function headLine(t: TopHoldings, now: number): string | null {
     t.top_weight_percent != null
       ? `Top ${t.top?.length ?? 0}: ${share(t.top_weight_percent)} of the fund`
       : null,
-    t.fetched_at ? `fetched ${day(t.fetched_at.slice(0, 10), now)}` : null,
+    // the owner's entry is as of its report's day, not the day it was typed
+    t.as_of
+      ? `as of ${day(t.as_of, now)}`
+      : t.fetched_at
+        ? `fetched ${day(t.fetched_at.slice(0, 10), now)}`
+        : null,
     (t.stale ?? []).length > 0 ? "not current" : null,
   ].filter((x) => x !== null);
   return said.length > 0 ? said.join(" · ") : null;
@@ -69,9 +74,10 @@ export function fundOf(
   t: TopHoldings | undefined,
   now = Date.now(),
 ): Fund | null {
-  if (!isFund(row) || t === undefined) return null;
+  if (!(isFund(row) || row.kind === "FUND") || t === undefined) return null;
   const top = t.top ?? [];
-  if (top.length === 0) {
+  // a fund the owner prices may hold sectors entered before any rows
+  if (top.length === 0 && (t.sectors ?? []).length === 0) {
     return {
       line: t.error
         ? "Could not get its top holdings."
@@ -104,7 +110,11 @@ export function fundOf(
               label: sectorName(s.sector),
               weight: s.weight_percent,
             })),
-            note: null,
+            // sectors come from a half-year report, older than the rows
+            note:
+              t.sectors_as_of && t.sectors_as_of !== t.as_of
+                ? `As of ${day(t.sectors_as_of, now)}`
+                : null,
           }
         : null;
   return {

@@ -968,9 +968,18 @@ export function AddForm({
   const again = useSignal(false);
   const symbol = useSignal(start?.symbol ?? "");
   const qty = useSignal("");
-  const px = useSignal("");
+  // a held fund starts at its latest entered price, as a share at its
+  // live one; the owner types the confirmation's price over it
+  const fundPrice = start?.fund
+    ? ((o?.funds ?? []).find((x) => x.isin === start.fund!.isin)?.price ?? null)
+    : null;
+  const px = useSignal(fundPrice === null ? "" : String(fundPrice));
   // the price came from the live quote, so a new pick may replace it
   const pxLive = useSignal(false);
+  // where a price the form filled came from: the day of a past close, or
+  // null for the live (a fund's latest) one; typed prices are never moved
+  const pxDay = useSignal<string | null>(null);
+  const pxTyped = useSignal(false);
   const byTotal = useSignal(false);
   const fees = useSignal("");
   const date = useSignal(today(o?.time_zone ?? null));
@@ -998,12 +1007,60 @@ export function AddForm({
   // the sell's quantity is the All figure: sent as "all", so the server
   // sells what is sellable on the trade's date
   const sellAll = useSignal(false);
+  // a past day's buy is priced at that day's close, a fund's at its price
+  // on or before it; back to today, the live one again
+  useEffect(() => {
+    // a close is in the listing's currency: paid in another, the server
+    // converts its own price, as for the live one
+    if (pxTyped.value || byTotal.value || paid.value !== "") return;
+    const fund = kind.value === "fund";
+    const id = fund
+      ? isin.value.trim()
+        ? `fund:${isin.value.trim().toUpperCase()}`
+        : ""
+      : chosen.value
+        ? symbol.value
+        : "";
+    if (id === "") return;
+    const now = today(o?.time_zone ?? null);
+    const on = date.value;
+    if (on === "" || on >= now) {
+      if (pxDay.value === null) return;
+      pxDay.value = null;
+      const live = fund ? fundPrice : (picked.value?.price ?? null);
+      px.value = live === null ? "" : String(live);
+      pxLive.value = !fund && live !== null;
+      return;
+    }
+    let gone = false;
+    // a fund is priced about once a month, so its month before is read
+    void store.bars(id, shiftDay(on, -45)).then((bars) => {
+      if (gone || pxTyped.value || date.value !== on) return;
+      const close = bars.filter((b) => b.date <= on).at(-1);
+      if (!close) return;
+      px.value = String(close.close);
+      pxDay.value = close.date;
+      pxLive.value = !fund;
+    });
+    return () => {
+      gone = true;
+    };
+  }, [
+    date.value,
+    symbol.value,
+    chosen.value,
+    isin.value,
+    kind.value,
+    paid.value,
+    byTotal.value,
+  ]);
   // a price filled from the quote is in the listing's currency: paid in
   // another, the server converts the live price itself
   useEffect(() => {
     if (pxLive.value) {
       px.value = "";
       pxLive.value = false;
+      pxDay.value = null;
     }
   }, [paid.value]);
   // every portfolio's holdings, whatever the page filters on
@@ -1050,11 +1107,14 @@ export function AddForm({
     void store.listing(id).then((l) => {
       if (symbol.value !== id || l === null) return;
       picked.value = l;
+      // a past day's close stands: the live price is today's
       if (
         (px.value === "" || pxLive.value) &&
         l.price !== null &&
         !paid.value &&
-        !byTotal.value
+        !byTotal.value &&
+        pxDay.value === null &&
+        date.value >= today(o?.time_zone ?? null)
       ) {
         px.value = String(l.price);
         pxLive.value = true;
@@ -1079,9 +1139,15 @@ export function AddForm({
   const clear = () => {
     error.value = null;
   };
+  // a Buy or Sell on a holding names its side, not a kind to add
   useEffect(() => {
-    if (title) title.value = KIND_TITLES[kind.value];
-  }, [kind.value]);
+    if (title)
+      title.value = start
+        ? side.value === "buy"
+          ? "Buy"
+          : "Sell"
+        : KIND_TITLES[kind.value];
+  }, [kind.value, side.value]);
   const listingCur = picked.value?.currency ?? null;
   const cur = paid.value || listingCur;
   const portfolioName =
@@ -1148,9 +1214,13 @@ export function AddForm({
       ? null
       : byTotal.value
         ? p
-        : kind.value === "fund"
-          ? q * p
-          : tradeMoney(side.value, q, p, f, picked.value?.unit);
+        : tradeMoney(
+            side.value,
+            q,
+            p,
+            f,
+            kind.value === "fund" ? null : picked.value?.unit,
+          );
   const moneyShown =
     money !== null && cur
       ? shownIn(all.value ?? store.holdings.value, money, cur)
@@ -1199,8 +1269,9 @@ export function AddForm({
           units: all ? "all" : units,
           ...(byTotal.value
             ? { total: num(px, "Total paid", true) }
-            : { price: num(px, "Price per unit", true) }),
+            : { price: num(px, "Price", true) }),
           date: date.value,
+          ...(typed(fees.value) ? { fees: num(fees, "Fees", false)! } : {}),
           ...(market.value !== "" && market.value !== (knownFund?.market ?? "")
             ? { market: market.value }
             : {}),
@@ -1502,6 +1573,7 @@ export function AddForm({
         byTotal.value = !byTotal.value;
         px.value = "";
         pxLive.value = false;
+        pxDay.value = null;
       }}
     >
       {byTotal.value ? "Use price" : "Use total"}
@@ -1516,27 +1588,37 @@ export function AddForm({
     if (pxLive.value) {
       px.value = "";
       pxLive.value = false;
+      pxDay.value = null;
     }
   };
   return (
     <form
       class="pf-form"
       onSubmit={submit}
-      aria-label={KIND_TITLES[kind.value]}
+      aria-label={
+        start
+          ? side.value === "buy"
+            ? "Buy"
+            : "Sell"
+          : KIND_TITLES[kind.value]
+      }
     >
       <div class="drawer-body">
-        <Tabs
-          label="What to add"
-          tabs={KIND_LABELS}
-          value={kind.value}
-          onPick={(k) => {
-            // a trade's listing and a bond's share the symbol field
-            unpick();
-            again.value = false;
-            kind.value = k;
-            error.value = null;
-          }}
-        />
+        {/* a Buy or Sell on a holding is a trade of it, never cash or a bond */}
+        {!start && (
+          <Tabs
+            label="What to add"
+            tabs={KIND_LABELS}
+            value={kind.value}
+            onPick={(k) => {
+              // a trade's listing and a bond's share the symbol field
+              unpick();
+              again.value = false;
+              kind.value = k;
+              error.value = null;
+            }}
+          />
+        )}
         {kind.value === "trade" ? (
           <>
             {chosen.value ? (
@@ -1551,22 +1633,27 @@ export function AddForm({
                       ticker={symbolOf(symbol.value)}
                       name={picked.value?.name ?? undefined}
                     />
-                    <button
-                      type="button"
-                      class="btn-icon pf-chosen-x"
-                      aria-label="Change symbol"
-                      onClick={unpick}
-                    >
-                      <Icon name="close" size={14} />
-                    </button>
+                    {/* a Buy or Sell on a holding or a page keeps its symbol */}
+                    {!start && (
+                      <button
+                        type="button"
+                        class="btn-icon pf-chosen-x"
+                        aria-label="Change symbol"
+                        onClick={unpick}
+                      >
+                        <Icon name="close" size={14} />
+                      </button>
+                    )}
                   </span>
                   {picked.value && (
                     <span class="faint small hide-phone">
                       {[
                         where.value,
-                        picked.value.price !== null
-                          ? `${price(picked.value.price, picked.value.currency)} live`
-                          : null,
+                        pxDay.value !== null
+                          ? `${price(Number(px.value), picked.value.currency)} close of ${day(pxDay.value)}`
+                          : picked.value.price !== null
+                            ? `${price(picked.value.price, picked.value.currency)} live`
+                            : null,
                         parts.length > 0
                           ? `you hold ${parts
                               .map(
@@ -1605,6 +1692,7 @@ export function AddForm({
                   if (pxLive.value) {
                     px.value = "";
                     pxLive.value = false;
+                    pxDay.value = null;
                   }
                 }}
               />
@@ -1647,6 +1735,8 @@ export function AddForm({
                 decimal
                 onEdit={() => {
                   pxLive.value = false;
+                  pxTyped.value = true;
+                  pxDay.value = null;
                 }}
                 after={totalToggle}
               />
@@ -1714,30 +1804,55 @@ export function AddForm({
         ) : kind.value === "fund" ? (
           <>
             {sides}
-            <div class="pf-pair">
-              <Field
-                label="ISIN"
-                value={isin}
-                onEdit={() => {
-                  sellAll.value = false;
-                  error.value = null;
-                }}
-              />
-              {knownFund ? (
-                <div class="field">
-                  <span class="pf-field-head">
-                    <span class="label">Name</span>
+            {start?.fund && knownFund ? (
+              // the fund the page or row is on: named, not typed again
+              <div class="field">
+                <span class="pf-field-head">
+                  <span class="label">Fund</span>
+                </span>
+                <div class="menu-btn-field pf-chosen">
+                  <span class="pf-chosen-main">
+                    <SymbolName
+                      compact
+                      ticker={knownFund.name}
+                      name={knownFund.isin}
+                    />
                   </span>
-                  <div class="menu-btn-field pf-chosen">
-                    <span class="pf-chosen-main">
-                      <span class="cut">{knownFund.name}</span>
-                    </span>
-                  </div>
+                  <span class="faint small">
+                    {pxDay.value !== null
+                      ? `price of ${day(pxDay.value)}`
+                      : knownFund.as_of
+                        ? `latest price, ${day(knownFund.as_of)}`
+                        : null}
+                  </span>
                 </div>
-              ) : (
-                <Field label="Name" value={name} />
-              )}
-            </div>
+              </div>
+            ) : (
+              <div class="pf-pair">
+                <Field
+                  label="ISIN"
+                  value={isin}
+                  onEdit={() => {
+                    sellAll.value = false;
+                    error.value = null;
+                  }}
+                />
+                {knownFund ? (
+                  <div class="field">
+                    <span class="pf-field-head">
+                      <span class="label">Name</span>
+                    </span>
+                    <div class="menu-btn-field pf-chosen">
+                      <span class="pf-chosen-main">
+                        <span class="cut">{knownFund.name}</span>
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <Field label="Name" value={name} />
+                )}
+              </div>
+            )}
             <div class="pf-pair">
               <Field
                 label="Units"
@@ -1750,20 +1865,34 @@ export function AddForm({
               />
               <Field
                 label={inCurrency(
-                  byTotal.value ? "Total paid" : "Price per unit",
+                  byTotal.value ? "Total paid" : "Price",
                   knownFund?.currency ?? (currency.value || null),
                 )}
                 value={px}
                 placeholder={byTotal.value ? "Fees in" : undefined}
                 decimal
+                onEdit={() => {
+                  pxTyped.value = true;
+                  pxDay.value = null;
+                }}
                 after={totalToggle}
               />
             </div>
             <div class="pf-pair">
               <Field label="Date" value={date} type="date" />
-              {knownFund ? null : currencyField}
+              <Field
+                label={inCurrency(
+                  "Fees",
+                  knownFund?.currency ?? (currency.value || null),
+                )}
+                value={fees}
+                placeholder="0"
+                decimal
+              />
             </div>
-            {marketPick}
+            {knownFund ? null : <div class="pf-pair">{currencyField}</div>}
+            {/* a held fund's market is set with its price */}
+            {start?.fund ? null : marketPick}
             {placePicks}
             <Field label="Note" value={note} placeholder="Optional" rows={5} />
           </>
@@ -1847,18 +1976,37 @@ export function AddSheet({
 }) {
   const saving = useSignal(false);
   const title = useSignal("Add");
+  // asked by Cancel or a save; the drawer slides out once a save's busy
+  // has drawn off, since a busy drawer ignores its close
+  const leaving = useSignal(false);
   return (
     <Drawer title={title.value} onClose={onDone} busy={saving.value} bare tall>
-      <AddForm
-        store={store}
-        onDone={onDone}
-        start={start}
-        saving={saving}
-        title={title}
-        kind={kind}
-      />
+      {(close) => (
+        <>
+          <AddForm
+            store={store}
+            onDone={() => {
+              leaving.value = true;
+            }}
+            start={start}
+            saving={saving}
+            title={title}
+            kind={kind}
+          />
+          <CloseWhen ready={leaving.value && !saving.value} close={close} />
+        </>
+      )}
     </Drawer>
   );
+}
+
+// closes its drawer after the render that made it ready, when the
+// drawer has read the busy it drew with
+function CloseWhen({ ready, close }: { ready: boolean; close: () => void }) {
+  useEffect(() => {
+    if (ready) close();
+  }, [ready]);
+  return null;
 }
 
 // ---- import ---------------------------------------------------------------
@@ -2749,4 +2897,11 @@ export function StartCard({
       />
     </Card>
   );
+}
+
+// a day as YYYY-MM-DD, moved by whole days
+function shiftDay(on: string, days: number): string {
+  const d = new Date(`${on}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
 }

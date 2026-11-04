@@ -15,11 +15,23 @@ import { Facts, HeroWaiting } from "../ui/Figures.tsx";
 import { didNotLoad, Page } from "../ui/Page.tsx";
 import { Placeholder, WaitWords } from "../ui/Placeholder.tsx";
 import { CHART_CREDIT, Chart, ChartWaiting } from "./Chart.tsx";
-import { type Choice, choices, summary, UNREAD } from "./Instrument.model.ts";
+import {
+  buyable,
+  type Choice,
+  choices,
+  summary,
+  UNREAD,
+} from "./Instrument.model.ts";
 import { InstrumentCards } from "./InstrumentCards.tsx";
 import { Head } from "./InstrumentHead.tsx";
 import { InstrumentMenu, SAID_MS } from "./InstrumentMenu.tsx";
 import { useHolding } from "./InstrumentPosition.tsx";
+import {
+  BuyButton,
+  FundMenu,
+  type TradeSheet,
+  TradeSheets,
+} from "./InstrumentTrade.tsx";
 import "./instruments.css";
 
 export function Instrument({ params }: { params: Params }) {
@@ -41,7 +53,10 @@ export function Instrument({ params }: { params: Params }) {
 
   const mine = markets.detailId.value === id;
   const detail = mine ? markets.detail.value : null;
-  const held = useHolding(detail?.instrument.id ?? null);
+  const saved = useSignal(0);
+  const sheet = useSignal<TradeSheet | null>(null);
+  const held = useHolding(detail?.instrument.id ?? null, saved.value);
+  const hand = detail?.quote?.kind === "hand_price";
   const kind = detail?.instrument.kind;
   const symbol = tickerOf(id, kind);
   const options = detail === null ? [] : choices(detail.instrument);
@@ -75,7 +90,6 @@ export function Instrument({ params }: { params: Params }) {
     <Page
       title={symbol}
       back={SCREENER}
-      amounts={held !== null}
       meta={
         detail?.instrument.name
           ? nameOf(detail.instrument.name, kind, id)
@@ -116,25 +130,58 @@ export function Instrument({ params }: { params: Params }) {
         )
       }
       actions={
-        // refetch and delete are an admin's
-        detail !== null &&
-        markets.isAdmin.value && (
-          <InstrumentMenu
-            symbol={symbol}
-            busy={fetching.value}
-            done={said.value?.text === "Updated"}
-            removing={removing.value}
-            onRefetch={() => void run(options[0]!)}
-            onDelete={() => void remove()}
-          />
+        detail !== null && (
+          <>
+            {/* a buy of what the page is on, held or not */}
+            {buyable(detail.instrument) && <BuyButton open={sheet} />}
+            {hand
+              ? // a fund the owner prices sells and is priced here
+                held && <FundMenu open={sheet} />
+              : // refetch and delete are an admin's
+                markets.isAdmin.value && (
+                  <InstrumentMenu
+                    symbol={symbol}
+                    busy={fetching.value}
+                    done={said.value?.text === "Updated"}
+                    removing={removing.value}
+                    onRefetch={() => void run(options[0]!)}
+                    onDelete={() => void remove()}
+                  />
+                )}
+          </>
         )
       }
     >
       {detail !== null ? (
         <>
           <Head detail={detail} now={Date.now()} />
-          <Chart key={id} id={id} intraday={detail.intraday} />
+          <Chart
+            key={id}
+            id={id}
+            intraday={detail.intraday}
+            hand={hand}
+            // a share's bars do not change with a trade; a fund's price can
+            saved={hand ? saved.value : 0}
+          />
           <InstrumentCards detail={detail} held={held} />
+          <TradeSheets
+            id={detail.instrument.id}
+            fund={
+              hand
+                ? {
+                    isin: detail.instrument.id.slice("fund:".length),
+                    name: detail.instrument.name ?? symbol,
+                    market: held?.market ?? null,
+                  }
+                : null
+            }
+            held={held}
+            open={sheet}
+            onSaved={() => {
+              saved.value++;
+              void markets.loadInstrument(id, true);
+            }}
+          />
         </>
       ) : (
         <InstrumentWaiting

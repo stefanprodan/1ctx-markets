@@ -14,7 +14,8 @@ import { heldOf, positionOf } from "./InstrumentPosition.model.ts";
 import { PositionsDrawer } from "./Positions.tsx";
 
 // a read that fails keeps the holdings read before
-export function useHolding(id: string | null): Holding | null {
+// saved: a count the page bumps after a write, so the position reads again
+export function useHolding(id: string | null, saved = 0): Holding | null {
   const all = useSignal<Holding[] | null>(null);
   const load = useCallback(async () => {
     const h = await markets.portfolios.everything();
@@ -22,7 +23,7 @@ export function useHolding(id: string | null): Holding | null {
   }, [all]);
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, saved]);
   useRefresh(load);
   return id === null || all.value === null ? null : heldOf(all.value, id);
 }

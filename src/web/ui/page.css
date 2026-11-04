@@ -225,6 +225,14 @@
     background: var(--hover);
     color: var(--fg);
   }
+  /* the head's add: a square as the menu's, framed as the page's one action */
+  :where(.page-actions .page-add) {
+    width: 32px;
+    padding: 0;
+    border-color: var(--line-strong);
+    background: var(--hover);
+    color: var(--fg);
+  }
   @media (pointer: coarse) {
     :where(
         .page-actions

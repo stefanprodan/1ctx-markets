@@ -11,7 +11,10 @@ import {
   type TopHoldings,
 } from "../src/web/data/store.ts";
 import { briefQuantity } from "../src/web/lib/format.ts";
+import { stopped } from "../src/web/lib/names.ts";
 import { barWidth } from "../src/web/ui/Weights.tsx";
+import { tradeMarks } from "../src/web/views/Chart.model.ts";
+import { buyable, priceState } from "../src/web/views/Instrument.model.ts";
 import { Instrument } from "../src/web/views/Instrument.tsx";
 import { signalsOf } from "../src/web/views/InstrumentCards.model.ts";
 import { InstrumentCards } from "../src/web/views/InstrumentCards.tsx";
@@ -631,5 +634,124 @@ describe("an instrument's page by role", () => {
       markets.detail.value = null;
       markets.detailId.value = null;
     }
+  });
+});
+
+describe("a fund the owner prices, on its page", () => {
+  const FUND_ID = "fund:ZZFUND000011";
+  const hand = (more: Partial<Detail> = {}) =>
+    detail(
+      {
+        id: FUND_ID,
+        kind: "FUND",
+        name: "Made Up World Fund",
+        market: "",
+        tracked: false,
+      },
+      { intraday: false, ...more },
+      {
+        id: FUND_ID,
+        kind: "hand_price",
+        as_of: "2026-10-24",
+        price: 6,
+        change: null,
+        change_percent: null,
+        fetched_at: null,
+        returns: null,
+        session: null,
+      },
+    );
+
+  test("its head names the day its price is for, never a stop", () => {
+    expect(priceState(hand(), NOW)).toBe("Price for 24 Oct");
+    // never fetched, so never "no longer updated"
+    expect(stopped(hand().instrument)).toBeNull();
+    expect(stopped(listed("US:OLD", { tracked: false }))).toBe(
+      "No longer updated",
+    );
+  });
+
+  test("its holdings show as an ETF's, each part as of its own day", () => {
+    const t = holdings({
+      fetched_at: "2026-11-04T10:00:00Z",
+      as_of: "2026-09-30",
+      sectors_as_of: "2026-06-30",
+    });
+    const f = fundOf(hand().instrument, t, NOW);
+    expect(f?.line).toMatch(/^Top 3: 35\.0% of the fund · as of 30 Sept?$/);
+    expect(f?.split?.title).toBe("Sectors");
+    expect(f?.split?.note).toBe("As of 30 Jun");
+    // sectors of the same day say nothing more
+    expect(
+      fundOf(
+        hand().instrument,
+        holdings({ as_of: "2026-09-30", sectors_as_of: "2026-09-30" }),
+        NOW,
+      )?.split?.note,
+    ).toBeNull();
+    // sectors entered before any rows still show
+    const only = fundOf(
+      hand().instrument,
+      holdings({ top: [], top_weight_percent: null }),
+      NOW,
+    );
+    expect(only?.split?.rows.length).toBe(3);
+    expect(only?.top).toEqual([]);
+  });
+
+  test("its head has the + and a menu that only sets its price", () => {
+    markets.detailId.value = FUND_ID;
+    markets.detail.value = hand();
+    markets.me.value = {
+      id: "operator",
+      name: "Casey",
+      role: "admin",
+      email: null,
+      operator: true,
+    };
+    try {
+      const page = render(<Instrument params={{ id: FUND_ID }} />);
+      expect(page).toContain('aria-label="Buy or sell"');
+      expect(page).toContain('Fund<span class="faint"> · Price for 24 Oct');
+      // a line a month apart: a year to open on, no day ranges, no averages
+      expect(page).not.toMatch(/>1D<|>5D</);
+      expect(page).toMatch(/seg-on" aria-pressed="true">1Y</);
+      expect(page).not.toContain('aria-label="Averages"');
+      expect(page).not.toContain(">Candles<");
+      // not held: nothing to sell or price, and an admin's fetch menu is moot
+      expect(page).not.toContain('aria-label="More"');
+    } finally {
+      markets.me.value = null;
+      markets.detail.value = null;
+      markets.detailId.value = null;
+    }
+  });
+
+  test("only what a trade buys has the +", () => {
+    for (const kind of ["EQUITY", "ETF", "MUTUALFUND", "CRYPTOCURRENCY"])
+      expect(buyable(listed("US:CASY", { kind }))).toBe(true);
+    expect(buyable(listed(FUND_ID, { kind: "FUND" }))).toBe(true);
+    for (const kind of ["INDEX", "FUTURE", "CURRENCY", "SERIES", "BOND"])
+      expect(buyable(listed("US:CASY", { kind }))).toBe(false);
+  });
+
+  test("its trades mark the bar of their day, or the last bar before it", () => {
+    const times = ["2026-08-31", "2026-09-30", "2026-10-24"];
+    expect(
+      tradeMarks(times, [
+        { date: "2026-09-30", side: "buy" },
+        // between bars: on the one before
+        { date: "2026-10-12", side: "buy" },
+        { date: "2026-10-14", side: "sell" },
+        // two buys on one bar are one mark
+        { date: "2026-10-01", side: "buy" },
+        // before the range: none
+        { date: "2026-01-02", side: "buy" },
+      ]),
+    ).toEqual([
+      { time: "2026-09-30", side: "buy" },
+      { time: "2026-09-30", side: "sell" },
+    ]);
+    expect(tradeMarks([], [{ date: "2026-10-01", side: "buy" }])).toEqual([]);
   });
 });

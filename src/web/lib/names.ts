@@ -52,8 +52,9 @@ export const kindOf = (kind: string): string =>
   KINDS[kind] ?? kind.charAt(0) + kind.slice(1).toLowerCase();
 
 // said only when it stopped: an instrument kept up to date is the norm
+// a fund the owner prices is never fetched, so never stops
 export const stopped = (row: Listed): string | null =>
-  row.tracked ? null : "No longer updated";
+  row.tracked || row.id.startsWith("fund:") ? null : "No longer updated";
 
 // blank where it only repeats the kind (Yahoo's crypto market is CRYPTO)
 export const marketOf = (row: Pick<Listed, "kind" | "market">): string =>

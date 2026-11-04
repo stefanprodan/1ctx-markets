@@ -253,6 +253,9 @@ export type TopHoldings = {
   error?: string;
   message?: string;
   fetched_at?: string | null;
+  // a fund the owner prices: the days its holdings and sectors are as of
+  as_of?: string | null;
+  sectors_as_of?: string | null;
   stale?: string[];
   top?: {
     rank: number;
@@ -281,6 +284,9 @@ export type Detail = {
   top_holdings?: TopHoldings;
   quote: null | {
     id: string;
+    // a fund the owner prices: its latest price and the day it is for
+    kind?: "hand_price";
+    as_of?: string;
     price: number | null;
     observation?: { date: string; value: number } | null;
     change: number | null;

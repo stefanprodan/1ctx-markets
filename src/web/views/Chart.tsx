@@ -68,6 +68,7 @@ import {
   sessionSlots,
   tick,
   timeLabel,
+  tradeMarks,
   volumes,
 } from "./Chart.model.ts";
 import "./chart.css";
@@ -325,19 +326,49 @@ export function ChartWaiting({ children }: { children: ComponentChildren }) {
   );
 }
 
-export function Chart({ id, intraday }: { id: string; intraday: boolean }) {
+export function Chart({
+  id,
+  intraday,
+  hand = false,
+  saved = 0,
+}: {
+  id: string;
+  intraday: boolean;
+  // prices entered by hand, a month apart: no averages over them
+  hand?: boolean;
+  // the page's saves: a trade or price saved there draws at once
+  saved?: number;
+}) {
   const box = useRef<HTMLDivElement>(null);
   const legendBox = useRef<HTMLDivElement>(null);
   const tallest = useRef({ shape: "", px: 0 });
   const kept = useRef(loadSettings()).current;
-  const range = useSignal<Range>(kept.range);
+  // a fund's prices are a month apart: it opens on a year
+  const range = useSignal<Range>(hand ? "1Y" : kept.range);
   const data = useSignal<History | Intraday | null>(null);
   const error = useSignal<string | null>(null);
   const line = useSignal(kept.line);
   const log = useSignal(kept.log);
   const sma50 = useSignal(kept.sma50);
   const sma200 = useSignal(kept.sma200);
+  // a fund's trades by the caller, marked on its line
+  const trades = useSignal<readonly { date: string; side: "buy" | "sell" }[]>(
+    [],
+  );
   useEffect(() => {
+    if (!hand) return;
+    let live = true;
+    void markets.portfolios.tradesOf(id).then((got) => {
+      if (live && got !== null)
+        trades.value = got.filter((t) => t.removed_at === null);
+    });
+    return () => {
+      live = false;
+    };
+  }, [id, hand, saved]);
+  useEffect(() => {
+    // a fund's own range and style are not the ones a share opens with
+    if (hand) return;
     saveSettings({
       range: range.value,
       line: line.value,
@@ -347,7 +378,10 @@ export function Chart({ id, intraday }: { id: string; intraday: boolean }) {
     });
   }, [range.value, line.value, log.value, sma50.value, sma200.value]);
   // a kept toggle the look has no button for draws as off, never stuck on
-  const look = () => lookOf(onPhone.value);
+  const look = () => {
+    const lk = lookOf(onPhone.value);
+    return hand ? { ...lk, averages: false, candles: false } : lk;
+  };
   const logScale = () => log.value && look().log;
   const show50 = () => sma50.value && look().averages;
   const show200 = () => sma200.value && look().averages;
@@ -504,7 +538,7 @@ export function Chart({ id, intraday }: { id: string; intraday: boolean }) {
 
   useEffect(() => {
     void load();
-  }, [id, intraday, range.value, onPhone.value]);
+  }, [id, intraday, range.value, onPhone.value, saved]);
   // the instrument's own read pulses the menu for the page
   useRefresh(() => load(), true);
 
@@ -518,6 +552,7 @@ export function Chart({ id, intraday }: { id: string; intraday: boolean }) {
     onPhone.value,
     sma50.value,
     sma200.value,
+    trades.value,
   ]);
 
   function placeMarks() {
@@ -755,6 +790,30 @@ export function Chart({ id, intraday }: { id: string; intraday: boolean }) {
     }
     refLine(price, levels.current?.at ?? null);
     series.current.push(price);
+    if (hand && trades.value.length > 0) {
+      const marks = tradeMarks(
+        h.bars.map((b) => b.date),
+        trades.value,
+      );
+      l.createSeriesMarkers(
+        price,
+        marks.map((m) =>
+          m.side === "buy"
+            ? {
+                time: m.time,
+                position: "belowBar" as const,
+                shape: "arrowUp" as const,
+                color: k.up,
+              }
+            : {
+                time: m.time,
+                position: "aboveBar" as const,
+                shape: "arrowDown" as const,
+                color: k.down,
+              },
+        ),
+      );
+    }
 
     const avg = (key: "sma50" | "sma200", color: string) => {
       const s = c.addSeries(l.LineSeries, {

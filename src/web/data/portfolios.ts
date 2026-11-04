@@ -242,6 +242,7 @@ export type FundTradeIn = {
   units: number | "all";
   price?: number;
   total?: number;
+  fees?: number;
   currency?: string;
   date: string;
   broker?: string;

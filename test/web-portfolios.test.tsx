@@ -4,6 +4,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { render } from "preact-render-to-string";
+import { UserItems } from "../src/web/app/UserMenu.tsx";
 import { type Fetch, sentence } from "../src/web/data/api.ts";
 import type {
   Holding,
@@ -45,6 +46,7 @@ import {
 } from "../src/web/views/PortfolioForms.tsx";
 import {
   activityOf,
+  addKindOf,
   barOf,
   bondPhoneLine,
   brokerEdit,
@@ -95,6 +97,7 @@ import {
   tradeMatches,
   tradeMoney,
   tradeName,
+  tradePage,
   typed,
   unitPrice,
   zoneWords,
@@ -340,14 +343,20 @@ describe("the Portfolios page", () => {
       };
       try {
         const shown = render(<PortfoliosBody store={s.portfolios} />);
-        expect(shown).toContain('aria-label="Hide amounts"');
+        // the switch lives in the account menu, never the page head
+        expect(shown).not.toContain("Hide amounts");
         expect(shown).not.toContain("amounts-hidden");
-        // the eye in the head sets it for every page and keeps it
+        expect(render(<UserItems />)).toMatch(
+          /role="switch" aria-checked="false" class="menu-item">[\s\S]*Hide amounts/,
+        );
+        // the account's switch sets it for every page and keeps it
         toggleAmounts();
         expect(kept.get(HIDE_KEY)).toBe("1");
         expect(readHidden()).toBe(true);
         const hidden = render(<PortfoliosBody store={s.portfolios} />);
-        expect(hidden).toContain('aria-label="Show amounts"');
+        expect(render(<UserItems />)).toMatch(
+          /role="switch" aria-checked="true" class="menu-item">[\s\S]*Hide amounts/,
+        );
         expect(hidden).toContain('class="pf-root amounts-hidden"');
         expect(hidden).toContain('class="num amount"');
         toggleAmounts();
@@ -1024,10 +1033,16 @@ describe("the add panel", () => {
       />,
     );
     expect(html).toContain('<span class="sym-ticker">AAA</span>');
-    expect(html).toContain('aria-label="Change symbol"');
+    // the holding is the trade's: no symbol to change, no other kind to add
+    expect(html).not.toContain('aria-label="Change symbol"');
+    expect(html).not.toContain('aria-label="What to add"');
+    expect(html).toContain('aria-label="Sell"');
     expect(html).toMatch(/aria-pressed="true"[^>]*>Sell/);
     expect(html).toContain("Add sell");
     expect(html).not.toContain("Pick a portfolio");
+    // with no holding, the kinds and the symbol picker stay
+    const add = render(<AddForm store={s.portfolios} onDone={() => {}} />);
+    expect(add).toContain('aria-label="What to add"');
   });
 });
 
@@ -1580,7 +1595,7 @@ describe("a fund the owner prices", () => {
     return { s, bodies };
   };
 
-  test("its row offers Buy, Sell and Set price, and opens its price", async () => {
+  test("its row offers Buy, Sell, Set price and its page, and opens it", async () => {
     const { s } = await withFund();
     expect(
       rowMenu(
@@ -1588,7 +1603,7 @@ describe("a fund the owner prices", () => {
         () => {},
         () => {},
       ).map((i) => i.label),
-    ).toEqual(["Buy", "Sell", "Set price"]);
+    ).toEqual(["Buy", "Sell", "Set price", "Instrument page"]);
     expect(holdingName(fundRow, NOW)).toBe(`North · ${ISIN}`);
     expect(holdingName({ ...fundRow, isin: undefined, parts: [] }, NOW)).toBe(
       "Fund",
@@ -1598,16 +1613,21 @@ describe("a fund the owner prices", () => {
     // ICU builds name September "Sep" or "Sept"
     expect(day("2026-09-30", NOW)).toMatch(/^30 Sept?$/);
     expect(day("2025-12-29", NOW)).toBe("29 Dec 2025");
-    expect(pageOf(fundRow)).toBeNull();
+    // its page, read only by who holds or priced it: none for a viewer
+    expect(pageOf(fundRow)).toBe(`/symbol/fund%3A${ISIN}`);
+    expect(pageOf(fundRow, true)).toBeNull();
+    expect(tradePage(`fund:${ISIN}`)).toBe(`/symbol/fund%3A${ISIN}`);
+    expect(tradePage(`fund:${ISIN}`, true)).toBeNull();
+    expect(tradePage("US:AAA", true)).toBe("/symbol/US%3AAAA");
     expect(homeOf(fundRow)).toBe("price");
-    // no instrument page: its row is a button that opens the drawer
     const html = render(<PortfoliosBody store={s.portfolios} />);
-    expect(html).not.toContain(`/symbol/fund`);
+    expect(html).toContain(`href="/symbol/fund%3A${ISIN}"`);
     expect(html).toMatch(
       /pf-price">6\.00 EUR<\/span><span class="num small faint pf-price">30 Sept?( 2026)?</,
     );
+    // the row is a link to the fund's page, as a listed holding's is
     expect(html).toContain(
-      '<button type="button" class="table-open"><span class="table-hidden">Made Up World Fund</span>',
+      `<a class="table-open" href="/symbol/fund%3A${ISIN}"><span class="table-hidden">Made Up World Fund</span>`,
     );
   });
 
@@ -1638,7 +1658,7 @@ describe("a fund the owner prices", () => {
     const html = render(
       <AddForm store={s.portfolios} kind="fund" onDone={() => {}} />,
     );
-    for (const label of ["ISIN", "Name", "Units", "Price per unit", "Date"]) {
+    for (const label of ["ISIN", "Name", "Units", "Price", "Date", "Fees"]) {
       expect(html).toContain(`>${label}<`);
     }
     expect(html).toContain("Currency");
@@ -1674,11 +1694,34 @@ describe("a fund the owner prices", () => {
         }}
       />,
     );
-    expect(html).toMatch(/aria-selected="true"[^>]*>Fund</);
-    expect(html).toContain(`value="${ISIN}"`);
-    expect(html).toContain("Made Up World Fund");
+    // the fund on one line, never typed again; no tabs, no market to pick
+    expect(html).not.toContain('aria-label="What to add"');
+    expect(html).toContain(
+      '<span class="sym-ticker">Made Up World Fund</span><span class="sym-name">ZZFUND000011</span>',
+    );
+    expect(html).not.toContain(`value="${ISIN}"`);
+    expect(html).not.toContain("Market:");
+    // its latest price stands in, said as such, with its fees beside the day
+    expect(html).toMatch(/latest price, 30 Sept?</);
+    expect(html).toContain('value="6"');
+    expect(html).toContain(">Price (EUR)<");
+    expect(html).toContain(">Fees (EUR)<");
     expect(html).toMatch(/aria-pressed="true"[^>]*>Sell/);
     expect(html).toContain("Add sell");
+  });
+
+  test("a fund trade sends its fees, none when left empty", async () => {
+    const { s, bodies } = await withFund();
+    await s.portfolios.addFundTrade({
+      portfolio: 1,
+      isin: ISIN,
+      side: "buy",
+      units: 2,
+      price: 6,
+      fees: 1.5,
+      date: "2026-10-27",
+    });
+    expect(bodies[0]![1]).toMatchObject({ fees: 1.5 });
   });
 
   test("its trades read by name, and its refusals plainly", () => {
@@ -2556,5 +2599,30 @@ describe("another person's portfolios", () => {
     expect(s.sharing.value).toBeNull();
     expect(s.sharers.value).toEqual([]);
     expect(s.shared.owner.value).toBeNull();
+  });
+});
+
+describe("what Add opens on", () => {
+  test("a portfolio's own kind; none in All or an empty one", () => {
+    const k = (kinds: string[], cash = false) =>
+      addKindOf(
+        kinds.map((kind) => ({ kind }) as Pick<Holding, "kind">),
+        cash,
+      );
+    expect(k(["fund", "fund", "holding"])).toBe("fund");
+    expect(k(["bond"])).toBe("bond");
+    expect(k(["holding", "holding", "bond"])).toBe("trade");
+    // Cash takes cash whatever it lists
+    expect(k([], true)).toBe("cash");
+    // nothing held: the kind last saved stands
+    expect(k([])).toBeUndefined();
+  });
+
+  test("the head's + is one square with its words in its label", async () => {
+    const { s } = await loaded();
+    const html = render(<PortfoliosBody store={s.portfolios} />);
+    expect(html).toContain(
+      '<button type="button" class="btn page-add" aria-label="Add" title="Add">',
+    );
   });
 });
