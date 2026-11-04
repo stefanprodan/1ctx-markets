@@ -2697,6 +2697,12 @@ async function portfolioOperations(
   await check("GET", HG, await t.call(HG), 200);
   await check("GET", HG, await t.call(`${HG}?x=1`), 400);
   await refusals("GET", HG, HG);
+  const NW = "/holdings/net-worth";
+  await check("GET", NW, await t.call(`${NW}?currency=USD`), 200);
+  await check("GET", NW, await t.call(`${NW}?currency=usd`), 400);
+  // a share's owner is never read here, so the argument is unknown
+  await check("GET", NW, await t.call(`${NW}?owner=operator`), 400);
+  await refusals("GET", NW, NW);
 
   const E = `${P}/{id}/export`;
   const csv = await t.call(`${at}/export`);

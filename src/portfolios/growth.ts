@@ -12,6 +12,7 @@ import { isFund } from "./funds.ts";
 import { pairSymbols } from "./fx.ts";
 import type { Broker, Portfolio, Split, Trade } from "./store.ts";
 import {
+  type Holdings,
   holdings,
   minorUnits,
   scopeTrades,
@@ -44,7 +45,7 @@ type Scope = {
   currency: string;
 };
 
-type Close = { date: string; close: number };
+export type Close = { date: string; close: number };
 
 type Bond = {
   instrument: string | null;
@@ -69,7 +70,7 @@ export function yearBefore(day: string): string {
 }
 
 // the last close on or before a day
-function closeOn(series: readonly Close[] | undefined, day: string) {
+export function closeOn(series: readonly Close[] | undefined, day: string) {
   if (series === undefined) return null;
   let lo = 0;
   let hi = series.length - 1;
@@ -108,6 +109,9 @@ export function growth(
   today: string,
   now: number,
   everyMs: number,
+  // what the caller read already: the scope's trades and the holdings
+  // answer today's point is read from
+  given: { trades?: readonly Trade[]; live?: Holdings } = {},
 ): Growth {
   const to = today;
   const target = scope.currency;
@@ -119,11 +123,13 @@ export function growth(
     eased: [],
     missing: [],
   };
-  const trades = scopeTrades(db, {
-    owner: scope.owner,
-    portfolio: scope.portfolio,
-    broker: null,
-  });
+  const trades =
+    given.trades ??
+    scopeTrades(db, {
+      owner: scope.owner,
+      portfolio: scope.portfolio,
+      broker: null,
+    });
   const bonds = bondsOf(db, scope.owner, scope.portfolio);
   const ids = [
     ...new Set([
@@ -174,16 +180,7 @@ export function growth(
   }
   for (const t of trades) currencies.add(t.currency);
   for (const b of bonds) currencies.add(b.currency);
-  const symbols = [...currencies].flatMap((c) => pairSymbols(c, target));
-  const pairs = new Map(
-    db
-      .query<{ id: string; symbol: string }, [string, string]>(
-        `select id, source_symbol as symbol from instruments
-         where source = ? and source_symbol in (select value from json_each(?))`,
-      )
-      .all(YAHOO, JSON.stringify(symbols))
-      .map((r) => [r.symbol, r.id]),
-  );
+  const pairs = pairsTo(db, currencies, target);
 
   // money in is converted at its own day's close, which can be years back
   const earliest = [
@@ -201,31 +198,7 @@ export function growth(
       1,
     ]),
   ];
-  const closes = new Map<string, Close[]>();
-  for (const r of db
-    .query<Close & { id: string }, [string, string]>(
-      `with want(id, lo, pair) as (
-         select value ->> 0, value ->> 1, value ->> 2 from json_each(?1)
-       ),
-       start(id, lo, pair) as (
-         select id, coalesce((select max(date) from bars
-           where instrument = want.id and interval = '1d'
-             and (final = 1 or want.pair = 0) and date <= want.lo), want.lo),
-           pair
-         from want
-       )
-       select b.instrument as id, b.date, b.close from start s
-       join bars b on b.instrument = s.id and b.interval = '1d'
-         and b.date >= s.lo and b.date <= ?2
-       where b.final = 1 or s.pair = 0
-       order by b.instrument, b.date`,
-    )
-    .all(JSON.stringify(want), to)) {
-    const list = closes.get(r.id);
-    const c = { date: r.date, close: r.close };
-    if (list) list.push(c);
-    else closes.set(r.id, [c]);
-  }
+  const closes = dailyCloses(db, want, to);
 
   const fundPrices = new Map<string, Close[]>();
   for (const r of db
@@ -253,28 +226,7 @@ export function growth(
       missing.add(id);
     }
   }
-  const pairName = (c: string) => {
-    const [direct, inverse] = pairSymbols(c, target);
-    const stored = pairs.get(direct!) ?? pairs.get(inverse!);
-    return stored ?? `CCY:${direct}`;
-  };
-  // a pair's last final close on or before the day, either way listed
-  const rate = (c: string, day: string): number | null => {
-    const [a, am] = major(c);
-    const [b, bm] = major(target);
-    if (a === b) return am / bm;
-    for (const [symbol, inverse] of [
-      [`${a}${b}=X`, false],
-      [`${b}${a}=X`, true],
-    ] as const) {
-      const id = pairs.get(symbol);
-      const close = id === undefined ? null : closeOn(closes.get(id), day);
-      if (close === null || close.close <= 0) continue;
-      return (inverse ? 1 / close.close : close.close) * (am / bm);
-    }
-    missing.add(pairName(c));
-    return null;
-  };
+  const { rate, pairName } = rateBook(pairs, closes, target, missing);
 
   const flowOf = (t: Trade, i: Instrument) => {
     const gross = t.quantity * t.price * unitOf(i);
@@ -320,20 +272,22 @@ export function growth(
   };
 
   // a listed bond moves with its closes from today's live value
-  const live = holdings(
-    db,
-    {
-      owner: scope.owner,
-      portfolios: scope.portfolios,
-      brokers: scope.brokers,
-      portfolio: scope.portfolio,
-      broker: null,
-      currency: target,
-    },
-    now,
-    everyMs,
-    trades,
-  );
+  const live =
+    given.live ??
+    holdings(
+      db,
+      {
+        owner: scope.owner,
+        portfolios: scope.portfolios,
+        brokers: scope.brokers,
+        portfolio: scope.portfolio,
+        broker: null,
+        currency: target,
+      },
+      now,
+      everyMs,
+      trades,
+    );
   // live price over the last close, so each day's close scales today's value
   const bondScale = new Map<string, number>();
   for (const b of bonds) {
@@ -492,4 +446,89 @@ function bondsOf(db: Db, owner: string, portfolio: number | null): Bond[] {
     });
   }
   return out;
+}
+
+// the stored pairs between each currency and the target, by Yahoo symbol
+export function pairsTo(
+  db: Db,
+  currencies: Iterable<string>,
+  target: string,
+): Map<string, string> {
+  const symbols = [...currencies].flatMap((c) => pairSymbols(c, target));
+  return new Map(
+    db
+      .query<{ id: string; symbol: string }, [string, string]>(
+        `select id, source_symbol as symbol from instruments
+         where source = ? and source_symbol in (select value from json_each(?))`,
+      )
+      .all(YAHOO, JSON.stringify(symbols))
+      .map((r) => [r.symbol, r.id]),
+  );
+}
+
+// each id's daily closes up to a day, from its last close on or before
+// its own start; pair 1 reads final closes only, as a rate must
+export function dailyCloses(
+  db: Db,
+  want: readonly (readonly [string, string, number])[],
+  to: string,
+): Map<string, Close[]> {
+  const closes = new Map<string, Close[]>();
+  for (const r of db
+    .query<Close & { id: string }, [string, string]>(
+      `with want(id, lo, pair) as (
+         select value ->> 0, value ->> 1, value ->> 2 from json_each(?1)
+       ),
+       start(id, lo, pair) as (
+         select id, coalesce((select max(date) from bars
+           where instrument = want.id and interval = '1d'
+             and (final = 1 or want.pair = 0) and date <= want.lo), want.lo),
+           pair
+         from want
+       )
+       select b.instrument as id, b.date, b.close from start s
+       join bars b on b.instrument = s.id and b.interval = '1d'
+         and b.date >= s.lo and b.date <= ?2
+       where b.final = 1 or s.pair = 0
+       order by b.instrument, b.date`,
+    )
+    .all(JSON.stringify(want), to)) {
+    const list = closes.get(r.id);
+    const c = { date: r.date, close: r.close };
+    if (list) list.push(c);
+    else closes.set(r.id, [c]);
+  }
+  return closes;
+}
+
+// a pair's last final close on or before the day, either way listed; a
+// day with none names the pair in missing
+export function rateBook(
+  pairs: ReadonlyMap<string, string>,
+  closes: ReadonlyMap<string, readonly Close[]>,
+  target: string,
+  missing: Set<string>,
+) {
+  const pairName = (c: string) => {
+    const [direct, inverse] = pairSymbols(c, target);
+    const stored = pairs.get(direct!) ?? pairs.get(inverse!);
+    return stored ?? `CCY:${direct}`;
+  };
+  const rate = (c: string, day: string): number | null => {
+    const [a, am] = major(c);
+    const [b, bm] = major(target);
+    if (a === b) return am / bm;
+    for (const [symbol, inverse] of [
+      [`${a}${b}=X`, false],
+      [`${b}${a}=X`, true],
+    ] as const) {
+      const id = pairs.get(symbol);
+      const close = id === undefined ? null : closeOn(closes.get(id), day);
+      if (close === null || close.close <= 0) continue;
+      return (inverse ? 1 / close.close : close.close) * (am / bm);
+    }
+    missing.add(pairName(c));
+    return null;
+  };
+  return { rate, pairName };
 }

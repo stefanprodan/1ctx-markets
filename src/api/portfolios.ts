@@ -31,6 +31,7 @@ import {
   positionItem,
   readGrowth,
   readHoldings,
+  readNetWorth,
   readTradeList,
   removeBroker,
   removePortfolio,
@@ -254,6 +255,18 @@ function routesOf(m: Markets): Route[] {
         const owner = readOwner(m.db, url, who);
         if (owner instanceof Response) return owner;
         return growthOf(url, owner, null);
+      },
+    },
+    {
+      method: "GET",
+      path: "/holdings/net-worth",
+      scope: R,
+      // the caller's own: a share shows portfolios, never a net worth
+      handle: async (_req, url, _params, who) => {
+        const q = queryArgs(url, { currency: "text" });
+        return answer(
+          readNetWorth(m, who.user, { currency: namedCurrency(q.currency) }),
+        );
       },
     },
     {

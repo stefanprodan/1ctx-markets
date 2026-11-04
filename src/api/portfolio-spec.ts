@@ -677,6 +677,39 @@ export const portfolioSchemas: Record<string, Schema> = {
       "Instruments or `CCY:` pairs with no stored row for part of the window, counted as 0 there; an instrument never priced is left out whole.",
     ),
   }),
+  NetWorth: object({
+    currency: note(str, "The named currency, else the display currency."),
+    from: note(
+      str,
+      "The first day every live cash account has a balance, at most a year back; with no cash account, the growth's `from`.",
+    ),
+    to: note(str, "The owner's today."),
+    points: note(
+      list(
+        object({
+          date: str,
+          invested: note(
+            num,
+            "What the holdings, never cash, were worth that day: the growth's `value`.",
+          ),
+          cash: note(
+            num,
+            "Every cash account's balance that day, past balances counted, each at that day's rate; a removed account until the day it was removed.",
+          ),
+          total: note(num, "`invested` plus `cash`."),
+        }),
+      ),
+      "One a calendar day from `from` to `to`, oldest first; the last is the holdings answer's own: `total` its `net_worth`, `cash` its dry powder plus reserve. Empty with no cash account and fewer than two days held.",
+    ),
+    eased: note(
+      list(str),
+      "Funds the owner prices whose price between the owner's entries is a straight line.",
+    ),
+    missing: note(
+      list(str),
+      "Instruments or `CCY:` pairs with no stored row for part of the window, counted as 0 there; an instrument never priced is left out whole.",
+    ),
+  }),
   ImportArgs: object(
     {
       csv: note(str, `The file's text, at most ${MAX_CSV_BYTES / 1024} KiB.`),
@@ -820,6 +853,14 @@ const GROWTH = lines(
   "- 400 while no currency is named and no display currency is set.",
 );
 
+const NET_WORTH = lines(
+  "Net worth per day over the past year, in the named or display currency: the holdings' value plus every cash account's balance.",
+  "",
+  "- The caller's own portfolios only, never ones shared with them; `owner` is refused.",
+  "- Built from stored rows only, never fetched: the growth's daily value, each cash account's balance on the day (its latest entry on or before it, past balances counted) at that day's stored rate.",
+  "- 400 while no currency is named and no display currency is set.",
+);
+
 const GROWTH_CURRENCY = q(
   "currency",
   "The currency every point is in; the owner's display currency when left out.",
@@ -957,6 +998,19 @@ export const portfolioPaths = {
       responses: base({
         200: ok("The growth.", ref("Growth")),
         404: unshared,
+      }),
+    },
+  },
+  "/holdings/net-worth": {
+    get: {
+      tags,
+      operationId: "holdingsNetWorth",
+      security: READS,
+      summary: "Net worth over the past year",
+      description: NET_WORTH,
+      parameters: [GROWTH_CURRENCY],
+      responses: base({
+        200: ok("The net worth.", ref("NetWorth")),
       }),
     },
   },

@@ -383,6 +383,7 @@ function cases(other: Owned, mine: Owned): Record<string, Case> {
       missing: true,
     },
     "GET /holdings/growth": { path: "/holdings/growth" },
+    "GET /holdings/net-worth": { path: "/holdings/net-worth" },
     "GET /portfolios/{id}/export": {
       path: `/portfolios/${other.portfolio}/export`,
       missing: true,

@@ -1,0 +1,75 @@
+@layer tokens, base, owners;
+
+@layer owners {
+  .nw-panel {
+    padding: var(--space-3) 0 var(--space-1);
+  }
+  /* no name line here: the tab names it, so the line starts at the top */
+  .nw-hero .growth {
+    top: 4px;
+  }
+  .nw-link {
+    color: inherit;
+    text-decoration: none;
+  }
+  .nw-failed {
+    padding: var(--space-3) 0;
+  }
+  @media (max-width: 719px) {
+    .nw-hero .growth {
+      top: 8px;
+    }
+  }
+}
+
+@layer owners {
+  .nw-bar-waiting {
+    background: var(--line, rgba(127, 127, 127, 0.2));
+  }
+}
+
+@layer owners {
+  /* the moves' own line inside the hero's plain line while waiting */
+  .nw-wait-moves {
+    margin: 0;
+  }
+}
+
+@layer owners {
+  /* the band's lines never depend on how long a figure is, so the loader
+     has the same lines at every width: one move per line; the legend
+     wraps as Portfolios', its loader at the last band's widths */
+  .nw-hero .hero-moves {
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+  .nw-hero .hero-moves > span,
+  .nw-hero .pf-ivc-legend > span {
+    white-space: nowrap;
+  }
+  .nw-hero .placeholder {
+    max-width: 100%;
+  }
+}
+
+@layer owners {
+  .dash-glance {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+  .dash-glance .nw-panel {
+    padding: 0;
+  }
+}
+
+@layer owners {
+  /* the card no longer holds the tabs, so its list starts at its top */
+  .dash-glance .dash-panel {
+    margin-top: 0;
+  }
+  .dash-glance .dash-movers-col:first-child .dash-movers-label,
+  .dash-glance .dash-movers-label:first-child {
+    margin-top: 0;
+  }
+}

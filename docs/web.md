@@ -564,7 +564,7 @@ The parts:
 - **Home** (`/`, the landing page) is the admin's dashboard, from one
   `GET /api/v1/dashboard` (`docs/api.md`, The dashboard): named
   sections the admin creates and orders, each shown as cards or as a
-  table, with a top card of three tabs above them. `Dashboard.tsx` is
+  table, with four tabs above them. `Dashboard.tsx` is
   the view; the rankings, rows and layout edits are
   `Dashboard.model.ts`, which has no DOM and is tested.
 - **Seeded from World markets until the first save.** Before it, the
@@ -598,12 +598,45 @@ The parts:
   answered with an older revision than the one held, never lands its
   layout over it. A sign-out drops a save in flight, so the next
   session's edits start a save of their own.
-- **The top card has three tabs**, the shared `Tabs` in a `Card`
-  (short words on a phone), the last chosen kept per browser
-  (`markets-dashboard-tab` in `localStorage`); each list is a `Table`
-  whose rows open the instrument page. Browser storage is a
-  convenience: a browser that keeps nothing starts from the defaults.
-- **Today's movers**: the four biggest gainers and losers among the
+- **Four tabs, as Portfolios'**: the shared `Tabs` on the page, no
+  card, one word each at every width (Wealth, Movers, Trend, Earnings),
+  each tab's content bare under them; a count only above 0
+  (`glanceCount()`). The last chosen is kept per browser
+  (`markets-dashboard-tab` in `localStorage`); with none, Wealth is
+  first for a person with a portfolio, and a person without one has no
+  Wealth tab and starts on Movers (`glanceTab()`, `glanceTabs()` in
+  `Dashboard.model.ts`). Until the person's portfolios are read the
+  tabs follow the last answer, kept per browser as a yes or no
+  (`markets-dashboard-wealth`, `wealthShown()`), so a Home without
+  Wealth never draws its loader first; with nothing kept, Wealth shows
+  with its loader. Each list is a `Table` whose rows
+  open the instrument page. Browser storage is a convenience: a
+  browser that keeps nothing starts from the defaults.
+- **Wealth** (`NetWorth.tsx`, its rules in `NetWorth.model.ts`): the
+  Portfolios hero with no name line, read from `GET /api/v1/portfolios`,
+  `/holdings` and `/holdings/net-worth` in the display currency
+  (`loadWorth()` in `data/portfolios.ts`, the person's own only). It is
+  read again on the page's refresh only while Wealth is the tab shown,
+  the series kept through the owner's day (`keptSeries()`), its past
+  days being stored rows, and its last point the band's figure. Net worth is the figure, a link to Portfolios;
+  under it "today" (the holdings' day change, its percent of net worth
+  before it) and "all time" (the holdings' gain), one per line at every
+  width; then the Invested against Cash bar (`barOf()`), Cash being dry
+  powder and reserve and linking to the Cash portfolio, its legend
+  wrapping as Portfolios'. The line is the series' `total` in the
+  growth line's slot, size and colours, its scale at least 2% of the
+  value (`worthPath()`), labelled by its first day under a month
+  ("2 Nov"), then its months ("5M"), then "1Y", titled "Net worth since
+  2 Nov" (`worthWords()`); under two points, or when its read failed,
+  none. Hide amounts hides every figure and leaves the line. A failed
+  first read says "Could not load net worth."; a failed refresh keeps
+  what is drawn.
+- **Nothing moves while Wealth loads**: the loader draws the band's
+  lines at the band's heights, and the legend's items at the widths the
+  last band drew them, kept per browser in px, never an amount
+  (`markets-networth-legend` in `localStorage`, read through
+  `shapeOf()`, every read and write allowed to fail).
+- **Movers**: the four biggest gainers and losers among the
   favourites by the day's percent, in two columns (one on a phone),
   each row the ticker with the short name after it (a bond its ticker
   alone), a bar scaled to the biggest move, and the percent.
@@ -612,15 +645,15 @@ The parts:
   and 200-week averages from the server's `averages`, two decimals
   under 1%. Each header sorts, the 50-day deepest below first by
   default, and a second click flips it (kept as
-  `markets-dashboard-trend-sort`). Eight rows, then "Show all N".
+  `markets-dashboard-trend-sort`). Four rows, as Movers shows a side,
+  then "Show all N".
   "Crossed today" comes from the server's `crossed_today`, a tag after
   the ticker, and is the tab's count, which hides at none. A phone
   drops the price.
-- **Earnings this week**: the favourite shares reporting today and the
+- **Earnings**: the favourite shares reporting today and the
   six days after it in the viewer's own calendar, from
   `GET /api/v1/earnings`, 100 shares a call (the route's cap) merged by
-  date, Today in the text's colour and later days faint. The tab's
-  count shows even at 0. A phone drops the estimates. A call
+  date, Today in the text's colour and later days faint. A phone drops the estimates. A call
   that fails keeps the list shown before, an answer older than the
   newest asked never lands, and a share a save removes leaves the list
   at once, even from an answer asked before it. The route lists a share
@@ -675,7 +708,7 @@ The parts:
   lands after leaving starts no load, so leaving the page asks no line
   after it (an effect's cleanup runs too late).
 - **Before the layout's first answer** the page shows its shape: the
-  top card's tabs over rows of placeholders, and a section of four
+  tabs over rows of placeholders, and a section of four
   placeholder tiles, "Loading prices" after its head once slow.
 - **The line is one bars call per card, in parallel**, each drawn as it
   lands, never held for the slowest (a band holds the place of a line

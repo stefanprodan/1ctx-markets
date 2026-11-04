@@ -578,3 +578,50 @@ export function extMove(
     title: `${word} ${value} · ${when}`,
   };
 }
+
+export type GlanceTab = "worth" | "movers" | "trend" | "earnings";
+
+// one word each, the same on every width
+export const GLANCE_TABS: readonly (readonly [GlanceTab, string])[] = [
+  ["worth", "Wealth"],
+  ["movers", "Movers"],
+  ["trend", "Trend"],
+  ["earnings", "Earnings"],
+];
+
+// wealth: whether the person has a portfolio, null until known; Wealth
+// shows until it is known there is none
+export const glanceTabs = (wealth: boolean | null): GlanceTab[] =>
+  GLANCE_TABS.map(([t]) => t).filter((t) => t !== "worth" || wealth !== false);
+
+// the answer's when known, else what the last answer said, kept per browser
+export function wealthShown(
+  known: boolean | null,
+  stored: string | null,
+): boolean | null {
+  if (known !== null) return known;
+  return stored === "1" ? true : stored === "0" ? false : null;
+}
+
+// the remembered tab while it is there, else Wealth first for a person
+// with a portfolio, Movers for one without
+export function glanceTab(
+  remembered: string | null,
+  wealth: boolean | null,
+): GlanceTab {
+  const tabs = glanceTabs(wealth);
+  const kept = tabs.find((t) => t === remembered);
+  return kept ?? tabs[0]!;
+}
+
+// a count only when there is something: earnings this week, the trend's
+// crossings today
+export function glanceCount(
+  t: GlanceTab,
+  s: { waiting: boolean; earnings: number; crossed: number },
+): number | null {
+  if (s.waiting) return null;
+  if (t === "earnings" && s.earnings > 0) return s.earnings;
+  if (t === "trend" && s.crossed > 0) return s.crossed;
+  return null;
+}

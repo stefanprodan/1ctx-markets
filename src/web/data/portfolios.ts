@@ -288,6 +288,31 @@ export type Growth = {
   missing: string[];
 };
 
+// a day of net worth: the holdings' value and every cash account's balance
+export type NetWorthPoint = {
+  date: string;
+  invested: number;
+  cash: number;
+  total: number;
+};
+
+export type NetWorth = {
+  currency: string;
+  from: string;
+  to: string;
+  points: NetWorthPoint[];
+  eased: string[];
+  missing: string[];
+};
+
+// Home's Wealth tab: the person's own portfolios, all of them, and the
+// net worth line, null when its read failed
+export type Worth = {
+  overview: Overview;
+  holdings: Holdings;
+  series: NetWorth | null;
+};
+
 // a view's growth is kept this many at most, the oldest dropped first
 const GROWTH_KEPT = 24;
 
@@ -451,6 +476,10 @@ export function portfolioStore(
   // seen once draws its line at once; null for a read that failed
   const growths = signal<ReadonlyMap<string, Growth | null>>(new Map());
   const asking = new Set<string>();
+  const worth = signal<Worth | null>(null);
+  const worthFailed = signal(false);
+  let worthLoads = 0;
+  let worthAsked: Promise<void> | null = null;
   // whose portfolios a shared store reads; none until its page opens one
   const owner = signal<string | null>(null);
   const base = (): string =>
@@ -564,6 +593,49 @@ export function portfolioStore(
     shown.value = null;
     growths.value = new Map();
     trades.value = null;
+    worthLoads++;
+    worthAsked = null;
+    worth.value = null;
+    worthFailed.value = false;
+  }
+
+  // the person's own, never a share's; a failed refresh keeps what is
+  // drawn, and a read already out is the one waited on. keep: the series
+  // a refresh may keep instead of reading it again, null to read it
+  async function readWorth(
+    keep: ((w: Worth) => NetWorth | null) | null,
+  ): Promise<void> {
+    const mine = ++worthLoads;
+    const at = session();
+    const stale = () => mine !== worthLoads || at !== session();
+    const had = worth.peek();
+    const kept = had !== null && keep !== null ? keep(had) : null;
+    try {
+      const [o, h, n] = await Promise.all([
+        call<Overview>(PORTFOLIOS_PATH),
+        call<Holdings>("/api/v1/holdings"),
+        kept ?? call<NetWorth>("/api/v1/holdings/net-worth").catch(() => null),
+      ]);
+      if (stale()) return;
+      batch(() => {
+        worth.value = { overview: o, holdings: h, series: n };
+        worthFailed.value = false;
+      });
+    } catch (e) {
+      if (stale()) return;
+      if (e instanceof ApiError && e.status === 401) return;
+      if (worth.peek() === null) worthFailed.value = true;
+    }
+  }
+  function loadWorth(
+    keep: ((w: Worth) => NetWorth | null) | null = null,
+  ): Promise<void> {
+    if (worthAsked !== null) return worthAsked;
+    const asked: Promise<void> = readWorth(keep).finally(() => {
+      if (worthAsked === asked) worthAsked = null;
+    });
+    worthAsked = asked;
+    return asked;
   }
 
   function clear(): void {
@@ -585,6 +657,9 @@ export function portfolioStore(
     shown,
     growths,
     trades,
+    worth,
+    worthFailed,
+    loadWorth,
     error,
     code,
     failures,

@@ -34,6 +34,7 @@ import {
 } from "../portfolios/funds.ts";
 import { missingPairs, rates } from "../portfolios/fx.ts";
 import { type Growth, growth } from "../portfolios/growth.ts";
+import { type NetWorth, netWorth } from "../portfolios/net-worth.ts";
 import {
   type Broker,
   brokerByName,
@@ -1009,6 +1010,36 @@ export function readGrowth(
       brokers: listBrokers(m.db, owner),
       portfolio: p?.id ?? null,
       currency,
+    },
+    ownerToday(m.db, owner, now),
+    now,
+    m.quoteEveryMs,
+  );
+}
+
+// net worth per day over the past year, the caller's own portfolios
+// only, from stored rows: never a fetch, as the growth line
+export function readNetWorth(
+  m: Markets,
+  owner: string,
+  args: { currency: string | null },
+): NetWorth | Failure {
+  const currency = args.currency ?? displayCurrency(m.db, owner);
+  if (currency === null) {
+    return {
+      error: "bad_arguments",
+      message: "no display currency is set; name a currency",
+    };
+  }
+  const now = m.clock.now();
+  return netWorth(
+    m.db,
+    {
+      owner,
+      portfolios: listPortfolios(m.db, owner),
+      brokers: listBrokers(m.db, owner),
+      currency,
+      zone: timeZone(m.db, owner) ?? "UTC",
     },
     ownerToday(m.db, owner, now),
     now,

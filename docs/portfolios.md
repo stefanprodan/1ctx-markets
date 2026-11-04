@@ -4,7 +4,7 @@ Governs portfolios, brokers, trades, positions and the funds the owner
 prices: the tables of migrations `0020-portfolios` and
 `0026-fund-trades`, `src/portfolios/` (`store.ts` rows, `funds.ts` a
 fund and its prices, `value.ts` the holdings arithmetic, `growth.ts`
-the past year's growth, `fx.ts` rates, `csv.ts`), `src/shared/isin.ts` (the ISIN check),
+the past year's growth, `net-worth.ts` net worth per day, `fx.ts` rates, `csv.ts`), `src/shared/isin.ts` (the ISIN check),
 `src/operations/portfolio.ts` (every read and write the tools and the
 routes share), `src/tools/portfolio.ts` (the portfolio tools), `src/operations/portfolio-import.ts` (CSV
 import and export) and `src/api/portfolios.ts` with its spec in
@@ -479,6 +479,34 @@ once and valued on the live price the server already keeps.
   (less a holding left out as never priced), so the line ends where
   the holdings stand. Its money in counts every
   trade, a trade dated past the owner's today too.
+
+## Net worth
+
+- **Net worth per day over the past year**
+  (`src/portfolios/net-worth.ts`, `/holdings/net-worth`): the
+  holdings' value as growth rebuilds it (`invested`, growth's
+  `value`) plus every cash account's balance (`cash`), reserve and dry
+  powder alike. The caller's own portfolios only: a share shows
+  portfolios, never a net worth, so the route takes no `owner`. Home's
+  Wealth tab draws `total`; no MCP tool answers it.
+- **A cash account is a chain** of rows through `replaces` with the
+  past balances entered on them, all of the owner's cash rows read in
+  one query and grouped in memory (`cashEntriesOf()`,
+  `accountsOf()`). Its balance on a day is `balanceOn(counted())`,
+  converted at that day's stored close as growth converts
+  (`rateBook()`), a pair with none named in `missing`. A removed
+  account (no live row in its chain) counts only on days before the
+  day, in the owner's zone, its last row was removed.
+- **The window**: `from` is the first day every live cash account has
+  a balance (the latest of their first entries), so no account counts
+  as nothing before it was entered, at most a year back; a removed
+  account never holds it. With no live cash account, growth's own
+  `from`. One point a day to `to`; none with no live cash account and
+  fewer than two days held.
+- **Today's point is the holdings answer's own**: `total` its
+  converted `net_worth`, `cash` its dry powder plus reserve, so Home's
+  figure and the line's end never differ. With a rate missing today
+  (`net_worth` null) it is summed as any other day.
 
 ## The tools
 

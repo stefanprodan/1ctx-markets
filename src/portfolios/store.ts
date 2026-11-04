@@ -798,3 +798,14 @@ export function entriesOf(db: Db, owner: string, id: number): Position[] {
     .all(id, owner, owner)
     .map(positionOf);
 }
+
+// every cash row of the owner's, removed rows and past balances too, in
+// one read: each account's entries are grouped from it by chain
+export function cashEntriesOf(db: Db, owner: string): Position[] {
+  return db
+    .query<RawPosition, [string]>(
+      `${POSITION} where kind = 'cash' and ${OWNED}`,
+    )
+    .all(owner)
+    .map(positionOf);
+}
