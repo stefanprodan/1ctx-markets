@@ -1,6 +1,6 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-// The hero's quiet line of the holdings' growth over the past year, and
+// The hero's quiet line, of the holdings' growth, net worth or cash, and
 // the fit that keeps the figure whole beside it.
 
 import type { RefObject } from "preact";
@@ -15,24 +15,32 @@ import {
 import type {
   Growth,
   Holdings,
+  NetWorth,
   PortfolioStore,
   TradeRow,
   View,
 } from "../data/portfolios.ts";
 import { money } from "../lib/format.ts";
+import { cashPoints, keptSeries, worthWords } from "./NetWorth.model.ts";
 import {
   type Drawn,
   FIT_START,
   type Fit,
+  GROWTH_PAD,
+  type GrowthWords,
   growthKey,
-  growthPath,
+  growthPoints,
   growthScope,
   growthShown,
   growthWords,
   heroFit,
+  type LinePoint,
+  labelOver,
+  linePath,
   lineWidth,
   sameFit,
   shortMoney,
+  WORTH_PAD,
 } from "./PortfolioGrowth.model.ts";
 import "./portfolio-growth.css";
 
@@ -81,6 +89,48 @@ export function useGrowth(
   };
 }
 
+export type CashLine = {
+  // null while it is read
+  points: LinePoint[] | null;
+  fade: boolean;
+  // no line and no slot: the read failed or held under two days
+  none: boolean;
+};
+
+// the Cash tab's cash per day, read once per currency and never on the
+// minute's refresh; a save reads it again under the line drawn
+export function useCash(
+  store: PortfolioStore,
+  currency: string | null,
+  value: number | null,
+  wanted: boolean,
+): CashLine {
+  const on = wanted && currency !== null;
+  const scope = currency ?? "";
+  const got = on ? store.cashes.value.get(scope) : undefined;
+  const drawn = useRef<Drawn<NetWorth> | null>(null);
+  const shown = growthShown(got, drawn.current, scope);
+  const seen = useRef<{ key: string; cached: boolean } | null>(null);
+  if (seen.current?.key !== scope)
+    seen.current = { key: scope, cached: got !== undefined || shown.held };
+  if (got) drawn.current = { scope, series: got };
+  useEffect(() => {
+    if (on) store.cashAgain();
+  }, [on]);
+  useEffect(() => {
+    if (on && got === undefined) void store.cash(scope, keptSeries);
+  }, [on, scope, got === undefined]);
+  const points = useMemo(
+    () => (shown.series ? cashPoints(shown.series, scope, value) : null),
+    [shown.series, scope, value],
+  );
+  return {
+    points,
+    fade: !seen.current.cached,
+    none: shown.none || (points !== null && points.length < 2),
+  };
+}
+
 // the hero's figure; a short one keeps the full figure in its title
 export function HeroFigure({
   value,
@@ -95,20 +145,30 @@ export function HeroFigure({
   return <span title={money(value, currency)}>{shortMoney(value)}</span>;
 }
 
-// the slot holds the line's place while it is read, so the hero never
-// grows when it lands
-export function GrowthLine({ growth }: { growth: ViewGrowth }) {
+// every hero's line: the slot holds its place while it is read, so the
+// hero never grows when it lands
+export function HeroLine({
+  points,
+  words,
+  fade,
+  pad,
+  against,
+}: {
+  points: readonly LinePoint[] | null;
+  words: GrowthWords;
+  fade: boolean;
+  pad: number;
+  against?: number;
+}) {
   const id = useId();
-  const g = growth.series;
-  const path = useMemo(() => (g ? growthPath(g, BOX_W, BOX_H) : null), [g]);
-  if (g === null || path === null)
-    return <div class="growth" aria-hidden="true" />;
-  const words = growthWords(g);
+  const path = useMemo(
+    () => (points ? linePath(points, BOX_W, BOX_H, pad, against) : null),
+    [points, pad, against],
+  );
+  if (path === null) return <div class="growth" aria-hidden="true" />;
+  const over = labelOver(path, BOX_H);
   return (
-    <div
-      class={`growth${growth.fade ? " growth-fade" : ""}`}
-      title={words.title}
-    >
+    <div class={`growth${fade ? " growth-fade" : ""}`} title={words.title}>
       <svg
         viewBox={`0 0 ${BOX_W} ${BOX_H}`}
         preserveAspectRatio="none"
@@ -125,8 +185,39 @@ export function GrowthLine({ growth }: { growth: ViewGrowth }) {
         <path d={path.area} fill={`url(#${id})`} />
         <path d={path.line} class="growth-line" />
       </svg>
-      <span class="growth-label">{words.label}</span>
+      <span class={`growth-label${over ? " growth-label-over" : ""}`}>
+        {words.label}
+      </span>
     </div>
+  );
+}
+
+export function GrowthLine({ growth }: { growth: ViewGrowth }) {
+  const g = growth.series;
+  const drawn = useMemo(() => (g ? growthPoints(g) : null), [g]);
+  if (g === null || drawn === null)
+    return <div class="growth" aria-hidden="true" />;
+  return (
+    <HeroLine
+      points={drawn.points}
+      words={growthWords(g)}
+      fade={growth.fade}
+      pad={GROWTH_PAD}
+      against={drawn.against}
+    />
+  );
+}
+
+// titled and labelled as Home's net worth line
+export function CashTabLine({ cash }: { cash: CashLine }) {
+  if (cash.points === null) return <div class="growth" aria-hidden="true" />;
+  return (
+    <HeroLine
+      points={cash.points}
+      words={worthWords(cash.points, Date.now(), "Cash")}
+      fade={cash.fade}
+      pad={WORTH_PAD}
+    />
   );
 }
 

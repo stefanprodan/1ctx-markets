@@ -49,6 +49,11 @@
     font-size: var(--text-label);
     color: var(--faint);
   }
+  /* a line ending low would run through the label under it */
+  .growth-label-over {
+    top: -8px;
+    bottom: auto;
+  }
   /* a series read after its figures fades in, never pops */
   .growth-fade {
     animation: growth-in 240ms ease-out;

@@ -1,7 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-// Home's Wealth tab: the band's figures, the net worth line's words and
-// path, and the loader's remembered shape, no DOM.
+// Home's Wealth tab: the band's figures, the net worth and cash lines'
+// points and words, and the loader's remembered shape, no DOM.
 
 import {
   addressOf,
@@ -11,7 +11,7 @@ import {
   type Worth,
 } from "../data/portfolios.ts";
 import { day } from "../lib/format.ts";
-import type { GrowthPath } from "./PortfolioGrowth.model.ts";
+import type { LinePoint } from "./PortfolioGrowth.model.ts";
 import { today } from "./Portfolios.model.ts";
 
 export type WorthPoint = { date: string; total: number };
@@ -25,6 +25,23 @@ export function pointsOf(series: NetWorth | null, t: Total): WorthPoint[] {
     total: p.date === series.to && t.net_worth != null ? t.net_worth : p.total,
   }));
 }
+
+// the Cash tab's line: all cash per day, none from a series in another
+// currency than the hero; today's ends on the hero's figure
+export function cashPoints(
+  series: NetWorth | null,
+  currency: string,
+  value: number | null,
+): LinePoint[] {
+  if (series === null || series.currency !== currency) return [];
+  return series.points.map((p) => ({
+    date: p.date,
+    value: p.date === series.to && value !== null ? value : p.cash,
+  }));
+}
+
+export const linePoints = (points: readonly WorthPoint[]): LinePoint[] =>
+  points.map((p) => ({ date: p.date, value: p.total }));
 
 // a refresh keeps the series through the owner's day: its past days hold
 // stored rows that a minute never changes
@@ -59,8 +76,9 @@ export type WorthWords = { label: string; title: string };
 
 // under a month the first day, then whole months, then the year
 export function worthWords(
-  points: readonly WorthPoint[],
+  points: readonly { date: string }[],
   now = Date.now(),
+  what = "Net worth",
 ): WorthWords {
   const first = points[0]!.date;
   const days = (Date.parse(points.at(-1)!.date) - Date.parse(first)) / DAY;
@@ -68,32 +86,8 @@ export function worthWords(
   return {
     label:
       days >= 365 ? "1Y" : days >= 30 ? `${Math.round(days / 30.44)}M` : since,
-    title: `Net worth since ${since}`,
+    title: `${what} since ${since}`,
   };
-}
-
-// a few tenths of a percent never fill the height: the scale spans at
-// least this share of the value, the line centred in it
-export const MIN_SPAN = 0.02;
-
-export function worthPath(
-  points: readonly WorthPoint[],
-  w: number,
-  h: number,
-): GrowthPath | null {
-  const v = points.map((p) => p.total);
-  if (v.length < 2) return null;
-  const low = Math.min(...v);
-  const high = Math.max(...v);
-  const pad = Math.max(0, Math.abs(high) * MIN_SPAN - (high - low)) / 2;
-  const lo = low - pad;
-  const span = high - low + 2 * pad || 1;
-  const x = (i: number) => (i / (v.length - 1)) * w;
-  const y = (n: number) => 2 + (1 - (n - lo) / span) * (h - 4);
-  const line = v
-    .map((n, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(n).toFixed(1)}`)
-    .join("");
-  return { line, area: `${line}L${w},${h}L0,${h}Z`, up: v.at(-1)! >= v[0]! };
 }
 
 // the legend items' widths from the last band, in px and never amounts,
