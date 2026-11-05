@@ -4,7 +4,13 @@
 import { describe, expect, test } from "bun:test";
 import { recordSession } from "../src/market/calendars.ts";
 import { upsertInstrument } from "../src/market/instruments.ts";
-import { barsStale, JOBS, quoteStale, STALE } from "../src/market/stale.ts";
+import {
+  barsStale,
+  checkAgainAt,
+  JOBS,
+  quoteStale,
+  STALE,
+} from "../src/market/stale.ts";
 import { DAY_MS, MINUTE_MS } from "../src/runtime/clock.ts";
 import { STALE_RESEARCH, sectionState } from "../src/sources/finnhub/read.ts";
 import { newsState, STALE_NEWS } from "../src/sources/massive/store.ts";
@@ -283,6 +289,63 @@ describe("a run cut by shutdown", () => {
     cut("finnhub", "metric", new SourceError("timed out"));
     expect(sectionState(db, us.id, "metric", now()).stale).toContain(
       STALE_RESEARCH.failed,
+    );
+  });
+});
+
+describe("checkAgainAt", () => {
+  const utc = (s: string) => Date.parse(s);
+  const failedCheck = (
+    db: ReturnType<typeof open>["db"],
+    market: string,
+    at: number,
+  ) => failRun(db, startRun(db, "yahoo", JOBS.check, at, market), at, "bad");
+
+  test("a market open all day is checked again at the next day's start", () => {
+    const { db } = open(":memory:", fakeClock());
+    recordSession(
+      db,
+      "FX",
+      {
+        zone: "UTC",
+        start: utc("2026-11-05T00:00:00Z"),
+        end: utc("2026-11-05T23:59:00Z"),
+      },
+      utc("2026-11-04T23:00:00Z"),
+    );
+    failedCheck(db, "FX", utc("2026-11-05T00:00:20Z"));
+    // no check runs while it trades
+    expect(checkAgainAt(db, "yahoo", "FX", utc("2026-11-05T11:05:00Z"))).toBe(
+      utc("2026-11-06T00:00:00Z"),
+    );
+    // an overdue check runs on the next pass
+    const late = utc("2026-11-06T00:00:10Z");
+    expect(checkAgainAt(db, "yahoo", "FX", late)).toBe(late);
+  });
+
+  test("a closed market is checked again at its next opening time", () => {
+    const { db } = open(":memory:", fakeClock());
+    recordSession(
+      db,
+      "US",
+      {
+        zone: "America/New_York",
+        start: utc("2026-11-05T14:30:00Z"),
+        end: utc("2026-11-05T21:00:00Z"),
+      },
+      utc("2026-11-05T07:18:00Z"),
+    );
+    failedCheck(db, "US", utc("2026-11-05T21:30:00Z"));
+    expect(checkAgainAt(db, "yahoo", "US", utc("2026-11-05T22:00:00Z"))).toBe(
+      utc("2026-11-06T14:30:00Z"),
+    );
+  });
+
+  test("a market with no stored session has no time", () => {
+    const { db } = open(":memory:", fakeClock());
+    failedCheck(db, "US", utc("2026-11-05T21:30:00Z"));
+    expect(checkAgainAt(db, "yahoo", "US", utc("2026-11-05T22:00:00Z"))).toBe(
+      null,
     );
   });
 });

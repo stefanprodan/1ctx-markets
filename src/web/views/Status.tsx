@@ -42,24 +42,45 @@ import "./status.css";
 
 type Failing = JobStatus["failing"][number];
 
-const FAILING: Column<Failing>[] = [
-  {
-    key: "scope",
-    width: "minmax(0, 1fr)",
-    cell: (x) => <span class="cut">{x.scope ?? ""}</span>,
-  },
-  {
-    key: "error",
-    width: "minmax(0, 1.4fr)",
-    cell: (x) => <span class="status-failed">{plain(x.error)}</span>,
-  },
-  {
-    key: "at",
-    width: "88px",
-    align: "end",
-    cell: (x) => <span class="faint">{runTime(x.at)}</span>,
-  },
-];
+// the jobs table's shape: what failed over its error, then its times
+function failingColumns(next: boolean): Column<Failing>[] {
+  return [
+    {
+      key: "scope",
+      head: "Failing",
+      width: "minmax(0, 1fr)",
+      cell: (x) => (
+        <>
+          <span class="cut">{x.scope ?? ""}</span>
+          <span class="small status-failed">{plain(x.error)}</span>
+        </>
+      ),
+    },
+    {
+      key: "at",
+      head: "Failed",
+      width: "88px",
+      align: "end",
+      cell: (x) => <span class="faint">{runTime(x.at)}</span>,
+    },
+    // only a market check runs again on its own schedule
+    ...(next
+      ? [
+          {
+            key: "next",
+            head: "Runs again",
+            width: "88px",
+            align: "end" as const,
+            cell: (x: Failing) => (
+              <span class="faint">
+                {x.next_at === null ? "" : runTime(x.next_at)}
+              </span>
+            ),
+          },
+        ]
+      : []),
+  ];
+}
 
 // what a job does, then its failing scopes with error and time, or that
 // all are ok
@@ -87,10 +108,9 @@ export function JobDetails({
       ) : (
         <Table
           label="Failing"
-          columns={FAILING}
+          columns={failingColumns(j.failing.some((x) => x.next_at !== null))}
           rows={j.failing}
           rowKey={(x) => x.scope ?? ""}
-          head={false}
           dense
         />
       )}

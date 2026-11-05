@@ -15,6 +15,7 @@ import {
 import { dailyRange } from "../market/bars.ts";
 import { iso } from "../market/format.ts";
 import { readInstrument } from "../market/instruments.ts";
+import { checkAgainAt, JOBS } from "../market/stale.ts";
 import { dashboardInstruments, trackedIds } from "../market/tracking.ts";
 import { ArgError, fields } from "../operations/args.ts";
 import {
@@ -294,7 +295,7 @@ export const failingScopes = (db: Db): ScopeRun[] =>
   scopeRuns(db).filter((r) => r.failing);
 
 // SQLite answers a max() query's other columns from the row holding it
-function jobs(db: Db) {
+function jobs(db: Db, now: number) {
   const last = db
     .query<Row, []>(
       `select source, job, scope, max(started_at) as startedAt,
@@ -353,7 +354,16 @@ function jobs(db: Db) {
     failing_scopes: (failing.get(`${r.source}|${r.job}`) ?? []).length,
     failing: (failing.get(`${r.source}|${r.job}`) ?? [])
       .slice(0, MAX_FAILING)
-      .map((x) => ({ scope: x.scope, error: x.error, at: iso(x.endedAt) })),
+      .map((x) => ({
+        scope: x.scope,
+        error: x.error,
+        at: iso(x.endedAt),
+        // a failed market check is left to its schedule, not to a retry
+        next_at:
+          x.job === JOBS.check && !x.scope.includes(":")
+            ? iso(checkAgainAt(db, x.source, x.scope, now))
+            : null,
+      })),
   }));
 }
 
@@ -387,7 +397,7 @@ export function status(d: AdminDeps, url: URL): Response {
           b === null ? null : { until: iso(b.until), after: b.after },
       };
     }),
-    jobs: jobs(db),
+    jobs: jobs(db, now),
     instruments: count(
       db,
       `select count(*) as n from instruments where source <> '${FUND_SOURCE}'`,
