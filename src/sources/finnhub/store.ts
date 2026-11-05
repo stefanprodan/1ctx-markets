@@ -78,7 +78,7 @@ export type Fetched =
   | { section: "calendar"; answer: Answer<CalendarEvent[]> };
 
 // columns in kept hold a value once seen when a later answer leaves it
-// out, as an earnings actual does
+// out, as an earnings actual does, while the stored row is keptWhen
 const upsertResearch = (
   db: Db,
   instrument: string,
@@ -88,11 +88,13 @@ const upsertResearch = (
   listing: string | null,
   fetchedAt: number,
   kept: readonly string[] = [],
+  keptWhen = "1",
 ) => {
   const columns = Object.keys(values);
   const set = (c: string) =>
     kept.includes(c)
-      ? `${c} = coalesce(excluded.${c}, research.${c})`
+      ? `${c} = case when ${keptWhen}
+          then coalesce(excluded.${c}, research.${c}) else excluded.${c} end`
       : `${c} = excluded.${c}`;
   db.query(
     `insert into research (instrument, kind, period, ${columns.join(", ")},
@@ -107,6 +109,9 @@ const upsertResearch = (
 
 // an actual, and the surprise worked out from it, never go back to null
 const EARNINGS_KEPT = ["eps_actual", "surprise", "surprise_percent"];
+// a period relabelled to another quarter holds that quarter's figures
+const SAME_QUARTER = `research.fiscal_year is excluded.fiscal_year
+  and research.fiscal_quarter is excluded.fiscal_quarter`;
 
 export const METRIC_COLUMNS: Record<keyof Metric, string> = {
   forwardPE: "forward_pe",
@@ -268,10 +273,41 @@ export function storeSection(
         rows++;
       }
       break;
-    case "earnings":
+    case "earnings": {
+      const today = localDate("UTC", at);
+      const vouched = db.query<unknown, [string, number, number, string]>(
+        `select 1 from events where instrument = ? and fiscal_year = ?
+           and fiscal_quarter = ? and reported_seen_at is not null
+           and strftime('%Y-%m-%d', reported_seen_at / 1000, 'unixepoch') <= ?`,
+      );
+      // the same quarter under another period was a mislabelled answer; what
+      // it kept once seen stays with the quarter
+      const carried = db.query(
+        `update research set ${EARNINGS_KEPT.map(
+          (c) => `${c} = coalesce(${c}, (select r.${c} from research r
+             where r.instrument = research.instrument and r.kind = 'earnings'
+               and r.fiscal_year = research.fiscal_year
+               and r.fiscal_quarter = research.fiscal_quarter
+               and r.period <> research.period and r.${c} is not null
+             order by r.fetched_at desc limit 1))`,
+        ).join(", ")}
+         where instrument = ? and kind = 'earnings' and period = ?`,
+      );
+      const relabelled = db.query(
+        `delete from research where instrument = ? and kind = 'earnings'
+           and fiscal_year = ? and fiscal_quarter = ? and period <> ?`,
+      );
       for (const r of f.answer.data ?? []) {
-        // a quarter not ended by its fetch day is a mislabelled report
-        if (r.period > localDate("UTC", at)) continue;
+        // a period after the fetch day is an offset quarter's (NVDA) or a
+        // mislabel (MSFT once): only the quarter's reported event vouches
+        if (
+          r.period > today &&
+          (r.fiscalYear === null ||
+            vouched.get(instrument, r.fiscalYear, r.fiscalQuarter!, today) ===
+              null)
+        ) {
+          continue;
+        }
         upsertResearch(
           db,
           instrument,
@@ -282,14 +318,22 @@ export function storeSection(
             eps_actual: r.actual,
             surprise: r.surprise,
             surprise_percent: r.surprisePercent,
+            fiscal_year: r.fiscalYear,
+            fiscal_quarter: r.fiscalQuarter,
           },
           listing,
           at,
           EARNINGS_KEPT,
+          SAME_QUARTER,
         );
+        if (r.fiscalYear !== null) {
+          carried.run(instrument, r.period);
+          relabelled.run(instrument, r.fiscalYear, r.fiscalQuarter, r.period);
+        }
         rows++;
       }
       break;
+    }
     case "insider":
       for (const r of f.answer.data ?? []) {
         upsertResearch(

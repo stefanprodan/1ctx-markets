@@ -534,11 +534,11 @@ const surprisePercent = (actual: number | null, estimate: number | null) =>
 // Finnhub's earnings carry EPS only; revenue is the quarter's report's
 const revenueOf = (
   kind: ResearchKind,
-  period: string,
+  r: ResearchRow,
   reported: readonly EventRow[],
 ) => {
   if (kind !== "earnings") return {};
-  const e = reportOf(reported, period);
+  const e = reportOf(reported, r);
   const estimate = e?.revenueEstimate ?? null;
   const actual = e?.revenueActual ?? null;
   return {
@@ -555,7 +555,7 @@ export const rowItem = (
 ) => ({
   period: r.period,
   ...valuesOf(kind, r),
-  ...revenueOf(kind, r.period, reported),
+  ...revenueOf(kind, r, reported),
   fetched_at: iso(r.fetchedAt),
 });
 
@@ -592,7 +592,7 @@ function latestSection(
     stale: state.stale,
     ...listingFields(row.listing),
     ...valuesOf(kind, row),
-    ...revenueOf(kind, row.period, reported),
+    ...revenueOf(kind, row, reported),
     ...past,
   };
 }

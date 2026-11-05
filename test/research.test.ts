@@ -905,12 +905,18 @@ describe("events inside the call", () => {
   });
 
   test("rows of another share class carry it, its note and every figure", async () => {
+    const goog = otherListing("GOOG", "nvda", "GOOGL", {
+      eps: 2.6,
+      revenue: 1.2e11,
+    });
     const t = await setup({
       charts: await shares(["GOOG"]),
-      hold: otherListing("GOOG", "nvda", "GOOGL", {
-        eps: 2.6,
-        revenue: 1.2e11,
-      }),
+      // the report of the newest earnings row's quarter
+      hold: async (url) => {
+        const a = await goog(url);
+        for (const r of a?.body?.earningsCalendar ?? []) r.quarter = 2;
+        return a;
+      },
     });
     usShare(t.db, "GOOG");
     const other = { listing: "GOOGL", note: SHARE_CLASS };
@@ -1517,20 +1523,20 @@ describe("the research route's history", () => {
     expect(overview.research.earnings).not.toContainKey("history");
   });
 
-  test("an earnings row carries the revenue of its quarter's nearest report in the window", async () => {
+  test("an earnings row carries the revenue of its fiscal quarter's report", async () => {
     const t = await setup();
     await drive(t.clock, pacedOf(t.m), researchTargets(t.m, ["NVDA"]));
     const event = t.db.query(
-      `insert into events (instrument, fiscal_year, fiscal_quarter, date, hour,
-         eps_estimate, eps_actual, revenue_estimate, revenue_actual,
-         reported_seen_at, listing, fetched_at)
+      `insert or replace into events (instrument, fiscal_year, fiscal_quarter,
+         date, hour, eps_estimate, eps_actual, revenue_estimate,
+         revenue_actual, reported_seen_at, listing, fetched_at)
        values ('US:NVDA', ?, ?, ?, 'amc', 1, ?, ?, ?, ?, ?, ?)`,
     );
-    // the quarter ending 2026-09-30: two reports in its window, one past it
+    // 2026-09-30 is fiscal 2027 Q2, reported before its period ends
     event.run(
       2027,
-      1,
-      "2026-10-20",
+      2,
+      "2026-08-26",
       1.1,
       1_450_000_000,
       1_421_000_000,
@@ -1538,10 +1544,13 @@ describe("the research route's history", () => {
       null,
       NOW,
     );
-    event.run(2026, 4, "2026-11-10", 1.1, 900, 1_000, NOW, null, NOW);
-    event.run(2026, 3, "2027-01-09", 1.1, 800, 1_000, NOW, null, NOW);
+    // the next quarter's report, inside the period's 100 days
+    event.run(2027, 3, "2026-11-17", 1.1, 900, 1_000, NOW, null, NOW);
+    // 2026-06-30 is labelled two quarters: neither report is its
+    event.run(2027, 1, "2026-05-28", 1.1, 800, 1_000, NOW, null, NOW);
+    event.run(2026, 1, "2025-05-28", 1.1, 800, 1_000, NOW, null, NOW);
     // not reported: never matched
-    event.run(2026, 2, "2026-07-01", null, 500, null, null, null, NOW);
+    event.run(2026, 4, "2026-02-25", null, 500, null, null, null, NOW);
     const matched = {
       revenue_estimate: 1_450_000_000,
       revenue_actual: 1_421_000_000,
@@ -1574,6 +1583,26 @@ describe("the research route's history", () => {
     const { items } = await ask(t, "NVDA");
     expect(items[0].company.earnings).toMatchObject(matched);
     expect(items[0].company.earnings.history).toEqual(tool.rows);
+
+    // rows without a fiscal quarter match none, even with a report in the
+    // 100 days after their period
+    t.db
+      .query(
+        `update research set fiscal_year = null, fiscal_quarter = null
+         where kind = 'earnings'`,
+      )
+      .run();
+    const unlabelled = body(
+      await researchAnswer(
+        t.m,
+        parseResearch({ symbol: "NVDA", section: "earnings" }),
+      ),
+    );
+    expect(unlabelled.rows).toEqual([
+      expect.objectContaining({ period: "2026-09-30", ...none }),
+      expect.objectContaining({ period: "2026-06-30", ...none }),
+      expect.objectContaining({ period: "2026-03-31", ...none }),
+    ]);
   });
 
   test("five shares with full history and the longest numbers fit a page", async () => {
@@ -1588,6 +1617,15 @@ describe("the research route's history", () => {
       await drive(t.clock, pacedOf(t.m), researchTargets(t.m, [s]));
     }
     for (const s of symbols) addQuarters(t.db, `US:${s}`, ["2025-12-31"]);
+    // the k-th newest quarter labelled 2030 Qk+1, as its report below
+    t.db
+      .query(
+        `update research set fiscal_year = 2030, fiscal_quarter = (
+           select count(*) from research r where r.instrument = research.instrument
+             and r.kind = 'earnings' and r.period >= research.period)
+         where kind = 'earnings'`,
+      )
+      .run();
     // a report for each quarter, its revenue at its widest
     const report = t.db.query(
       `insert into events (instrument, fiscal_year, fiscal_quarter, date, hour,

@@ -10,7 +10,8 @@ the `research` and `events` tools and the research route's contents
 `research`, `events`, `news`, `news_walks`, `valuations` and fund
 tables (`src/storage/db/migrations/0007-research.ts`, `0008-news.ts`,
 `0012-listing.ts`, `0028-share-class-listing.ts`,
-`0029-valuations.ts`, `0030-fund-top-holdings.ts`). Yahoo's quote
+`0029-valuations.ts`, `0030-fund-top-holdings.ts`,
+`0042-earnings-fiscal.ts`). Yahoo's quote
 summary call, its session and what a fund's answer keeps are in
 `docs/yahoo.md`. EDGAR's filings,
 their flags and events' `filed_at` are in `docs/edgar.md`; the
@@ -93,10 +94,14 @@ route's transport in `docs/api.md`; rules that wait on events in
 | --- | --- | --- |
 | `metric` | `stock/metric` | one row per instrument, replaced, dated by its fetch |
 | `analysts` | `stock/recommendation` | one row per period |
-| `earnings` | `stock/earnings` | one row per period; actual and surprise once seen are kept |
+| `earnings` | `stock/earnings` | one row per period, with its fiscal year and quarter; actual and surprise once seen are kept |
 | `insider` | `stock/insider-sentiment`, the last 12 months | one row per month |
 | `calendar` | `calendar/earnings`, 120 days back to 90 ahead | `events` |
 
+- **The calendar's past reaches about a month, whatever is asked**:
+  Finnhub's free answer holds about a month of past reports (a server
+  tracking 54 shares held none older than 30 days), so a quarter
+  reported before that has no event.
 - **The daily refresh is due after 23:00 UTC** (`dueAt`, after the US
   close and after-market reports). A section failed within `RETRY_MS`
   (Finnhub's own, in `jobs.ts`) waits.
@@ -104,12 +109,28 @@ route's transport in `docs/api.md`; rules that wait on events in
   one failing section is stale alone. The sections fetched land in one
   write, failures as their own runs; a `Paused` refusal stores the
   sections fetched before it, and a passed deadline stores none.
+- **An earnings row's `period` is not its quarter's end.** For a
+  company whose fiscal quarters are offset, Finnhub labels a row with
+  the calendar quarter after it: NVDA's 2026-09-30 row is fiscal 2027
+  Q2, reported 2026-08-26. Each row's fiscal `year` and `quarter` are
+  the key its calendar event has, and are kept with it. A period
+  answered under two fiscal quarters, or a quarter under two periods
+  in one answer (NVDA's 2026-06-30 comes as both 2027 Q1 and 2026 Q1),
+  keeps none: either may be wrong.
 - **An earnings row whose period ends after its fetch's UTC date is
-  not stored** nor counted in the run's rows, never an error or a stale
-  mark: a quarter has no actual before it ends, and Finnhub has
-  labelled a fresh report a later quarter for a night, a row that
-  would stay as the newest quarter, since actuals once seen are kept.
-  Migration `0027-earnings-ahead` deleted the rows stored before.
+  stored only when the share's event of the same fiscal quarter has
+  reported** (actuals seen on or before that date); otherwise it is not
+  stored nor counted in the run's rows, never an error or a stale mark.
+  Finnhub once labelled a fresh report a later quarter for a night
+  (MSFT's fiscal 2027 Q1 as 2027-03-31, then 2026-09-30), a row that
+  would stay as the newest, since rows are kept per period. So a row
+  stored with a fiscal quarter deletes the share's other earnings rows
+  of that quarter under another period, first taking from them an
+  actual or surprise it lacks, as actuals once seen are kept. Kept
+  figures stay only within one fiscal quarter: a period stored again
+  under another quarter, or first labelled, takes the answer's figures
+  whole. Migration `0027-earnings-ahead` deleted the rows ahead stored
+  before.
 - **A Finnhub 403 or an empty answer is no data, never an error**: the
   stored rows stay and the section reads "no data in the last answer";
   with no rows stored it carries `NO_DATA` ("no data from Finnhub")
@@ -254,11 +275,13 @@ route's transport in `docs/api.md`; rules that wait on events in
   (`revenue_estimate`, `revenue_actual`, `revenue_surprise_percent`:
   (actual − estimate) / |estimate| × 100), read at answer time, nothing
   stored: Finnhub's earnings hold EPS only, and an EPS beat can be a
-  revenue miss. The event is the share's own with actuals dated after
-  the period's end and within `REPORT_WINDOW_DAYS` (100, a report lands
-  in the next quarter), the nearest if two (`reportOf`); none, or a
-  missing figure, is null. Only quarters whose report the calendar
-  still holds carry revenue, in practice the newest reported one.
+  revenue miss. The event is the share's own with actuals and the
+  row's fiscal year and quarter (`reportOf`), never matched by date,
+  which hands an offset quarter the next one's report; none, or a
+  missing figure, is null, and so is a row without a fiscal quarter.
+  Rows stored before the fiscal quarter was kept (`0042`) carry none
+  until the share's next earnings refresh labels them. Only quarters whose report the calendar still holds carry
+  revenue, in practice the newest reported one.
   A foreign listing has no earnings rows and its events no figures; a
   share class has both, so its rows carry revenue as the share's own.
 - **The next event is the earliest dated from the exchange's today, or
