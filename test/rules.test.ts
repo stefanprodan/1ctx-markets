@@ -2,13 +2,20 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
+import { readSession, recordSession } from "../src/market/calendars.ts";
 import { readInstrument } from "../src/market/instruments.ts";
 import { storeIntraday } from "../src/market/intraday.ts";
 import { SWITCH } from "../src/market/stale.ts";
 import { trackedIds } from "../src/market/tracking.ts";
-import { NO_EVENT_SOURCE } from "../src/operations/rules.ts";
+import { addDays } from "../src/market/zone.ts";
+import { NO_EVENT_SOURCE, ruleViews } from "../src/operations/rules.ts";
 import { OPERATOR } from "../src/operations/who.ts";
-import { applyRule, evaluateRules, WAITING } from "../src/rules/evaluate.ts";
+import {
+  applyRule,
+  evaluateRules,
+  NO_SESSION,
+  WAITING,
+} from "../src/rules/evaluate.ts";
 import {
   FIELD_NAMES,
   NO_RETURN_QUOTE,
@@ -27,11 +34,15 @@ import { yahooJobs } from "../src/sources/yahoo/jobs.ts";
 import { catchUp, refetch } from "../src/sources/yahoo/sync.ts";
 import { endRun, failRun, startRun } from "../src/storage/runs.ts";
 import { tools } from "../src/tools/index.ts";
+import type { Rule } from "../src/web/data/alerts.ts";
+import { stateOf } from "../src/web/views/Alerts.model.ts";
 import { drive, pacedOf } from "./helpers/drive.ts";
 import { EVERY_MS, type RulesTest, rulesTest } from "./helpers/rules.ts";
 import { clone, listed, type Recorded, recorded } from "./helpers/yahoo.ts";
 
 const NVDA_PRICE = 210.96;
+// the session after the recorded Friday
+const MONDAY = addDays("2026-10-23", 3);
 
 const create = (
   t: RulesTest,
@@ -301,8 +312,10 @@ describe("evaluation", () => {
         { left: "rsi14", op: ">", right: 30 },
       ],
     });
-    // true and armed: applying it would fire
-    t.db.query("update rules set armed = 1 where id = ?").run(b.body.rule.id);
+    // true and armed in a session it has not fired in: applying it would fire
+    t.db
+      .query("update rules set armed = 1, fired_session = null where id = ?")
+      .run(b.body.rule.id);
     const rows = () => t.db.query("select * from rules order by id").all();
     const before = rows();
     const fired = alerts(t);
@@ -316,37 +329,6 @@ describe("evaluation", () => {
     );
     expect(applied.map((o) => o.evaluation)).toEqual(now);
     expect(applied.map((o) => o.alert !== null)).toEqual([false, true]);
-  });
-
-  test("true then true fires once, false then true fires again", async () => {
-    const t = await rulesTest();
-    const r = await create(t, "NVDA", { left: "price", op: "<", right: 200 });
-    expect(r.body.evaluation.result).toBe("false");
-    await t.quote("NVDA", { price: 199 });
-    expect(alerts(t)).toBe(1);
-    expect(rule(t, r.body.rule.id)).toMatchObject({
-      armed: false,
-      lastResult: "true",
-    });
-    await t.quote("NVDA", { price: 198 });
-    expect(alerts(t)).toBe(1);
-    await t.quote("NVDA", { price: 201 });
-    expect(rule(t, r.body.rule.id)).toMatchObject({
-      armed: true,
-      lastResult: "false",
-    });
-    await t.quote("NVDA", { price: 199.5 });
-    expect(alerts(t)).toBe(2);
-    // each alert holds the values read when it fired
-    const snapshots = t.db
-      .query("select snapshot from alerts order by id")
-      .all()
-      .map((r: any) => JSON.parse(r.snapshot));
-    expect(snapshots.map((s) => s.values[0].left.value)).toEqual([199, 199.5]);
-    expect(snapshots[0].rule).toMatchObject({
-      id: r.body.rule.id,
-      symbol: "US:NVDA",
-    });
   });
 
   test("an unknown input neither fires nor rearms", async () => {
@@ -474,6 +456,424 @@ describe("evaluation", () => {
         drawdown.body.rule.id,
       ]),
     );
+  });
+});
+
+// a market's next session stored, and its bar pass done, as the checks and
+// the bar job leave them before its first quote
+async function nextSession(t: RulesTest, id: string, days: number) {
+  const { market } = readInstrument(t.db, id)!;
+  await t.write.write((db) => {
+    const s = readSession(db, market)!;
+    const at = s.start + days * DAY_MS;
+    recordSession(
+      db,
+      market,
+      { ...s, start: at, end: s.end + days * DAY_MS },
+      at,
+    );
+  });
+  await t.clock.advance(
+    readSession(t.db, market)!.start + 60_000 - t.clock.now(),
+  );
+  await t.write.write((db) => {
+    const run = startRun(db, "yahoo", "bars", t.clock.now(), market);
+    endRun(db, run, t.clock.now(), 1);
+  });
+}
+
+describe("one alert a session", () => {
+  const xetra = async () =>
+    rulesTest({
+      charts: { "VVSM.DE": listed(await recorded("chart-vvsm-de-5d-1d")) },
+    });
+  const at = (iso: string) => {
+    const ms = Date.parse(iso);
+    return { ms, quote: { time: ms } };
+  };
+
+  test("a price hovering at the level fires once in its session", async () => {
+    const t = await xetra();
+    const r = await create(t, "VVSM.DE", {
+      left: "price",
+      op: "<=",
+      right: 80,
+    });
+    const id = r.body.rule.id;
+    expect(r.body.evaluation.result).toBe("false");
+    for (const price of [79.95, 80.05, 79.77, 80, 80.65, 79.99]) {
+      await t.quote("VVSM.DE", { price });
+    }
+    expect(alerts(t)).toBe(1);
+    expect(rule(t, id)).toMatchObject({
+      armed: true,
+      firedSession: "2026-10-23",
+      lastResult: "true",
+    });
+    const snapshot = JSON.parse(
+      (t.db.query("select snapshot from alerts").get() as any).snapshot,
+    );
+    expect(snapshot.values[0].left.value).toBe(79.95);
+
+    // armed, so the next session's first true fires
+    await nextSession(t, "XETRA:VVSM", 3);
+    await t.quote("VVSM.DE", {
+      price: 79.5,
+      sessionDays: 3,
+      time: t.clock.now() - 30_000,
+    });
+    expect(alerts(t)).toBe(2);
+    expect(rule(t, id)).toMatchObject({
+      armed: false,
+      firedSession: MONDAY,
+    });
+  });
+
+  test("true from one session into the next with no false fires once", async () => {
+    const t = await xetra();
+    const r = await create(t, "VVSM.DE", {
+      left: "price",
+      op: "<=",
+      right: 80,
+    });
+    await t.quote("VVSM.DE", { price: 79.9 });
+    expect(alerts(t)).toBe(1);
+    await nextSession(t, "XETRA:VVSM", 3);
+    await t.quote("VVSM.DE", {
+      price: 79.8,
+      sessionDays: 3,
+      time: t.clock.now() - 30_000,
+    });
+    expect(alerts(t)).toBe(1);
+    expect(rule(t, r.body.rule.id)).toMatchObject({
+      armed: false,
+      firedSession: "2026-10-23",
+      lastResult: "true",
+    });
+  });
+
+  test("a day with no session keeps the last trade's, whatever the clock", async () => {
+    const t = await xetra();
+    const r = await create(t, "VVSM.DE", {
+      left: "price",
+      op: "<=",
+      right: 80,
+    });
+    const id = r.body.rule.id;
+    await t.quote("VVSM.DE", { price: 79.9 });
+    // a holiday Monday and the Tuesday morning before its open: the quotes
+    // still carry the last session's trade time
+    for (const day of ["2026-10-26T10:00:00Z", "2026-10-27T06:00:00Z"]) {
+      await t.clock.advance(at(day).ms - t.clock.now());
+      await t.quote("VVSM.DE", { price: 80.5 });
+      await t.quote("VVSM.DE", { price: 79.9 });
+    }
+    expect(alerts(t)).toBe(1);
+    expect(rule(t, id)).toMatchObject({
+      armed: true,
+      firedSession: "2026-10-23",
+    });
+    await nextSession(t, "XETRA:VVSM", 4);
+    await t.quote("VVSM.DE", {
+      price: 79.9,
+      sessionDays: 4,
+      time: t.clock.now() - 30_000,
+    });
+    expect(alerts(t)).toBe(2);
+    expect(rule(t, id).firedSession).toBe("2026-10-27");
+  });
+
+  test("crypto's session is the UTC day", async () => {
+    const t = await rulesTest({
+      charts: { "SOL-USD": listed(await recorded("chart-sol-usd-5d-1d")) },
+    });
+    const r = await create(t, "SOL-USD", {
+      left: "price",
+      op: "<=",
+      right: 100,
+    });
+    const id = r.body.rule.id;
+    expect(r.body.evaluation.result).toBe("false");
+    const step = async (iso: string, price: number, sessionDays = 0) => {
+      const { ms, quote } = at(iso);
+      await t.clock.advance(ms + 30_000 - t.clock.now());
+      await t.quote("SOL-USD", { price, sessionDays, ...quote });
+    };
+    await step("2026-10-25T23:50:00Z", 99);
+    await step("2026-10-25T23:55:00Z", 101);
+    await step("2026-10-25T23:58:00Z", 99.5);
+    expect(alerts(t)).toBe(1);
+    expect(rule(t, id)).toMatchObject({
+      armed: true,
+      firedSession: "2026-10-25",
+    });
+    await nextSession(t, "CRYPTO:SOL-USD", 1);
+    await step("2026-10-26T00:05:00Z", 99, 1);
+    expect(alerts(t)).toBe(2);
+    expect(rule(t, id).firedSession).toBe(MONDAY);
+  });
+
+  test("another symbol's new session does not start the rule's", async () => {
+    const vix = listed(await recorded("chart-vix-5d-1d"));
+    const t = await rulesTest({ charts: { "^VIX": vix } });
+    const r = await create(t, "NVDA", {
+      all: [
+        { left: "changePct", op: ">", right: -50 },
+        { left: { field: "price", symbol: "^VIX" }, op: ">", right: 25 },
+      ],
+    });
+    const id = r.body.rule.id;
+    expect(r.body.evaluation.result).toBe("false");
+    await t.quote("^VIX", { price: 27 });
+    await t.quote("^VIX", { price: 24 });
+    expect(alerts(t)).toBe(1);
+    await nextSession(t, "CXI:^VIX", 3);
+    await t.quote("^VIX", {
+      price: 27,
+      sessionDays: 3,
+      time: t.clock.now() - 30_000,
+    });
+    expect(rule(t, id)).toMatchObject({
+      lastResult: "true",
+      armed: true,
+      firedSession: "2026-10-23",
+    });
+    expect(alerts(t)).toBe(1);
+    await nextSession(t, "US:NVDA", 3);
+    await t.quote("^VIX", { price: 27, sessionDays: 3 });
+    expect(alerts(t)).toBe(1);
+    await t.quote("NVDA", { sessionDays: 3, time: t.clock.now() - 30_000 });
+    expect(alerts(t)).toBe(2);
+    expect(rule(t, id).firedSession).toBe(MONDAY);
+  });
+
+  test("no session date reads unknown and changes nothing", async () => {
+    const vix = listed(await recorded("chart-vix-5d-1d"));
+    const t = await rulesTest({ charts: { "^VIX": vix } });
+    const r = await create(t, "NVDA", {
+      left: { field: "price", symbol: "^VIX" },
+      op: ">",
+      right: 25,
+    });
+    const id = r.body.rule.id;
+    t.db.query("delete from quotes where instrument = 'US:NVDA'").run();
+    await t.quote("^VIX", { price: 27 });
+    expect(alerts(t)).toBe(0);
+    expect(rule(t, id)).toMatchObject({
+      armed: true,
+      firedSession: null,
+      lastResult: "unknown",
+    });
+    const evaluated = () =>
+      evaluateRules(t.db, [rule(t, id)], t.clock.now(), EVERY_MS)[0]!;
+    expect(evaluated()).toMatchObject({
+      result: "unknown",
+      reasons: [`US:NVDA: ${NO_SESSION}`],
+    });
+    // named beside the other reasons, not hidden by them
+    t.db.query("delete from quotes where instrument = 'CXI:^VIX'").run();
+    const { reasons } = evaluated();
+    expect(reasons.length).toBeGreaterThan(1);
+    expect(reasons).toContain(`US:NVDA: ${NO_SESSION}`);
+  });
+
+  test("an untimed quote before the next session opens keeps the last one", async () => {
+    const t = await rulesTest();
+    const r = await create(t, "NVDA", { left: "price", op: "<", right: 200 });
+    const id = r.body.rule.id;
+    // an index page's quote: no trade time, dated by its fetch
+    const untimed = (price: number) =>
+      t.write.write((db) => {
+        db.query(
+          `update quotes set time = null, price = ?, fetched_at = ?
+           where instrument = 'US:NVDA'`,
+        ).run(price, t.clock.now());
+        t.engine.evaluate(db, ["US:NVDA"], t.clock.now());
+      });
+    await untimed(199);
+    expect(alerts(t)).toBe(1);
+    expect(rule(t, id).firedSession).toBe("2026-10-23");
+
+    // the next session stored by a check hours before it opens
+    await t.clock.advance(Date.parse("2026-10-26T06:00:00Z") - t.clock.now());
+    await t.write.write((db) => {
+      const s = readSession(db, "US")!;
+      const shift = 3 * DAY_MS;
+      recordSession(
+        db,
+        "US",
+        { ...s, start: s.start + shift, end: s.end + shift },
+        t.clock.now(),
+      );
+    });
+    await untimed(201);
+    await untimed(199);
+    expect(rule(t, id)).toMatchObject({
+      lastResult: "true",
+      armed: true,
+      firedSession: "2026-10-23",
+    });
+    expect(alerts(t)).toBe(1);
+
+    // its first quote in the open session fires, a false having come
+    await t.clock.advance(Date.parse("2026-10-26T13:35:00Z") - t.clock.now());
+    await t.write.write((db) => {
+      const run = startRun(db, "yahoo", "bars", t.clock.now(), "US");
+      endRun(db, run, t.clock.now(), 1);
+    });
+    await untimed(199);
+    expect(alerts(t)).toBe(2);
+    expect(rule(t, id).firedSession).toBe(MONDAY);
+  });
+
+  test("a fallback date older than the fired session counts as fired", async () => {
+    const t = await rulesTest();
+    const r = await create(t, "NVDA", { left: "price", op: "<", right: 200 });
+    const id = r.body.rule.id;
+    const untimed = (price: number) =>
+      t.write.write((db) => {
+        db.query(
+          `update quotes set time = null, price = ?, fetched_at = ?
+           where instrument = 'US:NVDA'`,
+        ).run(price, t.clock.now());
+        t.engine.evaluate(db, ["US:NVDA"], t.clock.now());
+      });
+    await untimed(199);
+    expect(rule(t, id).firedSession).toBe("2026-10-23");
+    await t.clock.advance(Date.parse("2026-10-26T06:00:00Z") - t.clock.now());
+    await t.write.write((db) => {
+      const s = readSession(db, "US")!;
+      const shift = 3 * DAY_MS;
+      recordSession(
+        db,
+        "US",
+        { ...s, start: s.start + shift, end: s.end + shift },
+        t.clock.now(),
+      );
+      // the fired session's bar never came, as when its bar pass failed
+      db.query(
+        `delete from bars where instrument = 'US:NVDA' and interval = '1d'
+           and date >= '2026-10-23'`,
+      ).run();
+    });
+    await untimed(201);
+    await untimed(199);
+    expect(alerts(t)).toBe(1);
+    expect(rule(t, id)).toMatchObject({
+      armed: true,
+      firedSession: "2026-10-23",
+    });
+  });
+
+  test("a series with no quote takes its final row's date", async () => {
+    const t = await rulesTest({ fred: true });
+    // the series' drawdown above NVDA's day move
+    const r = await create(t, "FRED:DGS10", {
+      left: { field: "changePct", symbol: "NVDA" },
+      op: "<",
+      right: "drawdown",
+    });
+    const id = r.body.rule.id;
+    const series = "FRED:DGS10";
+    const final = () =>
+      t.db
+        .query<{ date: string }, [string]>(
+          `select date from signals where instrument = ? and interval = '1d'
+             and kind = 'final' order by date desc limit 1`,
+        )
+        .get(series)!.date;
+    const set = (drawdown: number) =>
+      t.write.write((db) => {
+        db.query(
+          `update signals set drawdown = ? where instrument = ?
+             and interval = '1d' and kind = 'final' and date = ?`,
+        ).run(drawdown, series, final());
+        t.engine.evaluate(db, [series], t.clock.now());
+      });
+    await set(-50);
+    expect(rule(t, id).lastResult).toBe("false");
+    const first = final();
+    await set(50);
+    await set(-50);
+    await set(50);
+    expect(alerts(t)).toBe(1);
+    expect(rule(t, id)).toMatchObject({ armed: true, firedSession: first });
+    // the next observation's bar and final row, as the series' pass writes them
+    const next = addDays(first, 1);
+    await t.write.write((db) => {
+      for (const [table, where] of [
+        ["bars", "interval = '1d' and final = 1"],
+        ["signals", "interval = '1d' and kind = 'final'"],
+      ]) {
+        db.exec(`
+          create temp table next_row as select * from ${table}
+            where instrument = '${series}' and ${where} and date = '${first}';
+          update next_row set date = '${next}';
+          insert into ${table} select * from next_row;
+          drop table next_row;
+        `);
+      }
+    });
+    await set(50);
+    expect(alerts(t)).toBe(2);
+    expect(rule(t, id).firedSession).toBe(next);
+  });
+
+  test("a restart keeps the session it fired in", async () => {
+    const t = await rulesTest();
+    const r = await create(t, "NVDA", { left: "price", op: "<", right: 200 });
+    await t.quote("NVDA", { price: 199 });
+    expect(alerts(t)).toBe(1);
+    const restarted = await rulesTest({ db: t.db });
+    await restarted.quote("NVDA", { price: 201 });
+    await restarted.quote("NVDA", { price: 198 });
+    expect(alerts(t)).toBe(1);
+    expect(rule(t, r.body.rule.id)).toMatchObject({
+      armed: true,
+      firedSession: "2026-10-23",
+    });
+  });
+
+  test("answers armed only while the next true fires", async () => {
+    const t = await xetra();
+    const r = await create(t, "VVSM.DE", {
+      left: "price",
+      op: "<=",
+      right: 80,
+    });
+    const id = r.body.rule.id;
+    const listedRule = async () =>
+      (await t.rules({ action: "list" })).body.rules[0];
+    await expect(listedRule()).resolves.toMatchObject({
+      armed: true,
+      fired_session: null,
+    });
+    await t.quote("VVSM.DE", { price: 79.9 });
+    await t.quote("VVSM.DE", { price: 80.1 });
+    await t.quote("VVSM.DE", { price: 79.9 });
+    // stored armed, but this session already fired: the page shows fired
+    expect(rule(t, id).armed).toBe(true);
+    expect(await listedRule()).toMatchObject({
+      armed: false,
+      fired_session: "2026-10-23",
+    });
+    const view = ruleViews(t.m, [rule(t, id)]).rules[0]!;
+    expect(view.armed).toBe(false);
+    expect(stateOf(view as unknown as Rule)).toBe("fired");
+    // the next session's quote before its bar pass is unknown, so it waits
+    const { market } = readInstrument(t.db, "XETRA:VVSM")!;
+    const s = readSession(t.db, market)!;
+    await t.clock.advance(s.start + 3 * DAY_MS + 60_000 - t.clock.now());
+    await t.quote("VVSM.DE", {
+      price: 79.9,
+      sessionDays: 3,
+      time: t.clock.now() - 30_000,
+    });
+    expect(rule(t, id).lastResult).toBe("unknown");
+    expect(await listedRule()).toMatchObject({
+      armed: true,
+      fired_session: "2026-10-23",
+    });
   });
 });
 

@@ -403,7 +403,14 @@ const ruleFields: Record<string, Schema> = {
     description: "`manual`, `split` (cannot be resumed) or null.",
   },
   message: str,
-  armed: note(bool, "The next true result fires an alert."),
+  armed: note(
+    bool,
+    "The next true result fires an alert: a false came since its last alert, and its symbol trades in a later session than the one it fired in.",
+  ),
+  fired_session: note(
+    nstr,
+    "The date of its symbol's trading session it last fired in, in the exchange's zone; null before the first alert. A rule fires at most once a session.",
+  ),
   created_at: str,
   last_result: nstr,
   last_evaluated_at: nstr,
@@ -417,6 +424,7 @@ const RULE_REQUIRED = [
   "note",
   "paused",
   "armed",
+  "fired_session",
   "created_at",
   "last_result",
   "last_evaluated_at",

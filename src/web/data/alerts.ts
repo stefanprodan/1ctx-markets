@@ -51,6 +51,7 @@ export type Rule = {
   note: string | null;
   paused: "manual" | "split" | null;
   armed: boolean;
+  fired_session: string | null;
   created_at: string;
   last_result: "true" | "false" | "unknown" | null;
   last_evaluated_at: string | null;

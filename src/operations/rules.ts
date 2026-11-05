@@ -11,7 +11,10 @@ import {
   evaluateRules,
   eventOf,
   type Fired,
+  firesNext,
   gateItem,
+  type Reader,
+  reader,
 } from "../rules/evaluate.ts";
 import {
   bindCondition,
@@ -198,7 +201,10 @@ export function parseRules(input: unknown): RulesArgs {
   }
 }
 
-export function ruleItem(m: Markets, rule: RuleRow) {
+// one reader per answer, so rules on one symbol read its session once
+const readerOf = (m: Markets) => reader(m.db, m.clock.now(), m.quoteEveryMs);
+
+export function ruleItem(m: Markets, rule: RuleRow, r: Reader = readerOf(m)) {
   const event = eventOf(m.db, rule);
   const gate = gateItem(rule, event);
   const company =
@@ -216,7 +222,8 @@ export function ruleItem(m: Markets, rule: RuleRow) {
     note: rule.note,
     paused: rule.paused,
     ...(rule.paused === "split" ? { message: SPLIT_PAUSED } : {}),
-    armed: rule.armed,
+    armed: firesNext(r, rule),
+    fired_session: rule.firedSession,
     created_at: iso(rule.createdAt),
     last_result: rule.lastResult,
     last_evaluated_at: iso(rule.lastEvaluatedAt),
@@ -420,8 +427,9 @@ function list(
     from = Number(at);
   }
   const rules = readRules(m.db, owner, { from });
+  const r = readerOf(m);
   const page = fitPage(
-    rules.map((r) => ruleItem(m, r)),
+    rules.map((rule) => ruleItem(m, rule, r)),
     (count) => ({
       next:
         count < rules.length
@@ -531,14 +539,15 @@ function listings(m: Markets, ids: Iterable<string>) {
 
 // the routes' rules: each as the tool lists it, with the engine's answer now
 export function ruleViews(m: Markets, rules: readonly RuleRow[]) {
-  const now = evaluateRules(m.db, rules, m.clock.now(), m.quoteEveryMs);
+  const r = readerOf(m);
+  const now = evaluateRules(m.db, rules, m.clock.now(), m.quoteEveryMs, r);
   const ids = new Set<string>();
   for (const r of rules) {
     ids.add(r.instrument);
     for (const id of instrumentsOf(r.condition)) ids.add(id);
   }
   return {
-    rules: rules.map((r, i) => ({ ...ruleItem(m, r), now: now[i]! })),
+    rules: rules.map((rule, i) => ({ ...ruleItem(m, rule, r), now: now[i]! })),
     instruments: listings(m, ids),
   };
 }

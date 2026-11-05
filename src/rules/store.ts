@@ -22,6 +22,8 @@ export type RuleRow = {
   note: string | null;
   paused: PauseReason | null;
   armed: boolean;
+  // the session date of its symbol it last fired in
+  firedSession: string | null;
   createdAt: number;
   lastResult: Result | null;
   lastEvaluatedAt: number | null;
@@ -33,7 +35,7 @@ type Raw = Omit<RuleRow, "condition" | "armed"> & {
 };
 
 const SELECT = `select id, owner, instrument, condition, note, paused, armed,
-  created_at as createdAt, last_result as lastResult,
+  fired_session as firedSession, created_at as createdAt, last_result as lastResult,
   last_evaluated_at as lastEvaluatedAt from rules`;
 
 const row = (r: Raw): RuleRow => ({
@@ -119,12 +121,13 @@ export function recordResult(
   id: number,
   result: Result,
   armed: boolean,
+  firedSession: string | null,
   now: number,
 ): void {
   db.query(
-    `update rules set last_result = ?, last_evaluated_at = ?, armed = ?
-     where id = ?`,
-  ).run(result, now, armed ? 1 : 0, id);
+    `update rules set last_result = ?, last_evaluated_at = ?, armed = ?,
+       fired_session = ? where id = ?`,
+  ).run(result, now, armed ? 1 : 0, firedSession, id);
 }
 
 // paused or not, so the jobs keep each one synced while its rule exists;

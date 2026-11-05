@@ -116,6 +116,11 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   live signal row dates it by its fetch, at most its stored session's
   end, so the pass after the close keeps the session's row
   (`liveTarget()`).
+- **`rules.fired_session` is the session date a rule last fired in**
+  (`0045-rules-fired-session`, `YYYY-MM-DD` in its symbol's exchange
+  zone, null before its first alert), set in the write that inserts the
+  alert, so a restart keeps the once-a-session limit (`docs/rules.md`).
+  Rules from before it start null: one may fire once more that day.
 
 ## Price sources
 

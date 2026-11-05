@@ -90,11 +90,24 @@ Examples, each created with `symbol` set to the rule's own share:
   Quotes are judged with `quoteStale()` against `--quote-every`;
   signals use the live row of a listing with quotes, the final row of a
   FRED series.
-- **Armed rules fire once.** True on an armed rule inserts one alert
-  with a snapshot (the rule, the gate, every compared value with its
-  trade time) and disarms it; false rearms it; unknown changes neither
-  (`applyRule()`). There is no damping, cooldown or hysteresis: a value
-  that crosses back and forth fires on every return to true.
+- **Armed rules fire at most once a trading session.** True on an
+  armed rule inserts one alert with a snapshot (the rule, the gate,
+  every compared value with its trade time), disarms it and stores the
+  session in `fired_session`; false rearms it; unknown changes neither
+  (`applyRule()`). True on an armed rule in the session it fired in
+  writes nothing and leaves it armed, so a price hovering at the level
+  fires once that session, not on every return to true. A rule still
+  true at the next session with no false between does not fire again.
+- **The session is the rule's own symbol's** (`rule.instrument`):
+  `barDate()` of its quote's trade time in the exchange's zone, so a
+  weekend or holiday keeps the last session and crypto's is the UTC day;
+  an untimed quote takes its live row's date, or its last bar's when no
+  session is stored or the next one has not opened, and a series with no
+  quote its final row's. A session only moves forward: one dated before
+  `fired_session` counts as fired (`>`), so it never goes back. Another
+  symbol the rule reads (^VIX, a benchmark) never starts a new one. No
+  date adds "no session date" to the reasons and makes the rule
+  unknown, so it can never fire twice in one session.
 - **A failing rule never fails the write it rides on.** `ruleEngine()`
   logs it and the source write and the other rules go on.
 
@@ -192,7 +205,10 @@ Examples, each created with `symbol` set to the rule's own share:
   lists it plus `now`**, the engine's answer at the read
   (`evaluateRules()`, one reader for the whole list): it is stored
   nowhere, so it never fires an alert or changes `armed` or
-  `last_result`, and agrees with what `applyRule()` would answer. The
+  `last_result`, and agrees with what `applyRule()` would answer. Their
+  `armed`, and the tool's, is whether the next true fires (`firesNext()`,
+  one reader per answer): the stored flag and a session date later than
+  `fired_session`; false with no session date. The
   tool's answers carry no `now`: an agent reads the evaluation in
   `create` and the alert in the feed.
 - **They add `instruments`**, each listing a rule reads by id with its

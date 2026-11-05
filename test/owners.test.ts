@@ -1076,6 +1076,7 @@ describe("the migration that gives every row an owner", () => {
               // columns later migrations add
               delete o.past_of;
               delete o.analysis;
+              delete o.fired_session;
               return o;
             }),
         ]),

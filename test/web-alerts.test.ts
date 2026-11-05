@@ -90,6 +90,7 @@ const ruleOf = (condition: Node, extra: Extra = {}): Rule => {
     note: null,
     paused: null,
     armed: true,
+    fired_session: null,
     created_at: "2026-11-02T10:00:00Z",
     last_result: "false",
     last_evaluated_at: "2026-11-02T10:00:00Z",

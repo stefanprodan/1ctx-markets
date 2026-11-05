@@ -37,7 +37,7 @@ MCP tools copied onto paths.
 | `GET /instruments/{symbol}/bars?interval=&from=&to=&benchmark=&extended=` | read | `readHistory()`, `readIntradayHistory()` | bars or 5-minute points (below) |
 | `GET /dashboard` | session | `readDashboard()` | the web UI's home page: `revision`, `created`, `sections[]` of `items[]` (below) |
 | `PUT /dashboard` | session | `saveDashboard()` | `{revision, sections: [{name, view, symbols}]}` replaces the layout; the saved dashboard; 409 with `dashboard`, 422 with `errors` (below) |
-| `GET /rules` | rules:read | `readRules()`, `ruleViews()` | `rules[]`, each the tool's item plus `now` (`result`, `values`, `reasons`), evaluated at the read and stored nowhere; `instruments` (id → `name`, `type`, `currency`, `unit`) of every listing they read (`docs/rules.md`) |
+| `GET /rules` | rules:read | `readRules()`, `ruleViews()` | `rules[]`, each the tool's item plus `now` (`result`, `values`, `reasons`), evaluated at the read and stored nowhere; the item's `armed` is whether the next true fires (a false since its last alert and a session of its symbol later than `fired_session`, the date it last fired in, null before any); `instruments` (id → `name`, `type`, `currency`, `unit`) of every listing they read (`docs/rules.md`) |
 | `POST /rules` | rules:write | `createRule()` | 201, `Location: /api/v1/rules/{id}`, the rule, its first evaluation and any alert it fired |
 | `GET /rules/{id}` | rules:read | `readRule()`, `ruleViews()` | `{rule, instruments}`, as one item of `GET /rules` |
 | `PATCH /rules/{id}` | rules:write | `pauseRule()` | `{"paused": bool}` sets or clears the manual pause; `{rule}` |
