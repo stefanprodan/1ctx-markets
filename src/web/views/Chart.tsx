@@ -191,6 +191,9 @@ const PRICE = {
 
 const SETTINGS_KEY = "chart";
 
+// two mono spaces at 11px, near a phone's 16px gutter
+const EDGE_PAD = "  ";
+
 // storage may be blocked or full: the chart then starts from the defaults
 function loadSettings(): Settings {
   try {
@@ -674,15 +677,21 @@ export function Chart({
         timeVisible: h.interval === "5m",
         tickMarkFormatter: (time: unknown, type: number) => {
           const at = typeof time === "number" ? localTime(time) : null;
-          if (at !== null && type >= l.TickMarkType.Time) return at.time;
-          return tick(
-            at?.date ?? dateOf(time),
-            type === l.TickMarkType.Year
-              ? "year"
-              : type === l.TickMarkType.Month
-                ? "month"
-                : "day",
-          );
+          const text =
+            at !== null && type >= l.TickMarkType.Time
+              ? at.time
+              : tick(
+                  at?.date ?? dateOf(time),
+                  type === l.TickMarkType.Year
+                    ? "year"
+                    : type === l.TickMarkType.Month
+                      ? "month"
+                      : "day",
+                );
+          // the library pulls an edge label inside the canvas; a phone's
+          // canvas runs to the screen edge, so even padding keeps that label
+          // off it and leaves a centred one where it was
+          return look().phone ? `${EDGE_PAD}${text}${EDGE_PAD}` : text;
         },
       },
       localization: {
