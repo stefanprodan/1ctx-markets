@@ -411,7 +411,7 @@ async function record(c: Case) {
     headers,
     body,
   };
-  const out = JSON.stringify(fixture, null, 2) + "\n";
+  const out = `${JSON.stringify(fixture, null, 2)}\n`;
   if (s !== null && secrets(s).some((f) => out.includes(f))) {
     throw new Error(`${c.name}: the session is still in the fixture`);
   }

@@ -77,7 +77,7 @@ export async function record(
     body,
   };
   edit?.(fixture);
-  const out = JSON.stringify(clean(fixture, key), null, 2) + "\n";
+  const out = `${JSON.stringify(clean(fixture, key), null, 2)}\n`;
   if (out.length > MAX_BYTES)
     throw new Error(`${file}: fixture over 1 MB, use a smaller limit`);
   await Bun.write(file, out);
