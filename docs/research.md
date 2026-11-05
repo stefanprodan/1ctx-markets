@@ -385,6 +385,21 @@ route's transport in `docs/api.md`; rules that wait on events in
   `next_event`, the earnings route) is when its results 8-K was
   accepted, from EDGAR (`docs/edgar.md`), null without one; status
   and `reported_seen_at` stay as above.
+- **The currency of earnings figures** (`figuresCurrency()`) is the
+  listing's only for a share known to report in it. It is an event's
+  `currency` (the events tool, the overview's `next_event`, the
+  earnings route), the `currency` of the `earnings` section in the
+  overview and the research route, and the top-level `currency` of the
+  tool's `earnings` section page, whose rows are figures only. It is
+  null for another listing that is not a US share class, whose figures
+  are left out, and for a foreign filer, whose estimates and actuals
+  Finnhub gives in its reporting currency (BABA's in renminbi). With
+  EDGAR on, a share is known to report in its listing's currency only
+  once EDGAR has classified it a domestic filer (`foreignFiler()`, its
+  stored flag and a kept 10-K or 10-Q, `docs/edgar.md`); never fetched
+  there, with no CIK, or with no 10-K or 10-Q kept yet (a new foreign
+  listing files an F-1 before its first 20-F), it is null. **With EDGAR off it is the listing's**, a known limit: a
+  foreign filer's figures are then labelled in its listing's currency.
 - **`news` takes `since`**, a UTC date as published times are, at
   most 30 days back (`SINCE_DAYS`, what is kept), else
   `bad_arguments`; without it the section answers all 30 days. Its

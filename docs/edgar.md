@@ -83,7 +83,10 @@ phrases and the lock every source shares are in `docs/sources.md`; the
 - **A foreign filer is out of scope.** The newest periodic report in
   the answer decides: 20-F, 40-F or 6-K is foreign, 10-K or 10-Q is
   not. A foreign filer keeps no filings and answers `NO_DATA` with the
-  reason `foreign filer`: its figures arrive late or not at all.
+  reason `foreign filer`: its figures arrive late or not at all. Its
+  stored flag also sets the currency of its earnings figures
+  (`docs/research.md`): null for a foreign filer, as Finnhub gives them
+  in its reporting currency, and for a share not yet classified.
 - **A ticker that moved to another company keeps none of the old
   one's filings**: a store drops rows whose URL names another CIK.
 - **8-K items carry names** from a fixed table of SEC's item list

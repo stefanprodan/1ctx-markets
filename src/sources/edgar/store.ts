@@ -213,6 +213,25 @@ export function filingsDue(
 export const filingsFetched = (db: Db, instrument: string): boolean =>
   lastStarted(db, SOURCE, FILINGS_JOB, instrument, "ok") !== null;
 
+// The stored flag; null before a fetch, with no CIK to read it from, or
+// with no 10-K or 10-Q kept yet, as a new foreign listing files an F-1 first.
+export function foreignFiler(db: Db, instrument: string): boolean | null {
+  const filer = db
+    .query<{ cik: number | null; abroad: number }, [string]>(
+      "select cik, foreign_filer as abroad from edgar_filers where instrument = ?",
+    )
+    .get(instrument);
+  if (filer == null || filer.cik === null) return null;
+  if (filer.abroad === 1) return true;
+  const report = db
+    .query<{ n: number }, [string]>(
+      `select 1 as n from filings where instrument = ?
+         and form in ('10-K', '10-K/A', '10-Q', '10-Q/A') limit 1`,
+    )
+    .get(instrument);
+  return report === null ? null : false;
+}
+
 export type FilerState = {
   // when the last good run ended, null before the first
   fetchedAt: number | null;

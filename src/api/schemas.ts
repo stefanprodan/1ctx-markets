@@ -145,6 +145,10 @@ const quarter = object({
 });
 const earnings = object(
   {
+    currency: note(
+      nstr,
+      "The EPS and revenue figures' currency; null when not known to be the listing's.",
+    ),
     history: note(list(quarter), "The newest quarters, newest first."),
   },
   ["history"],

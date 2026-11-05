@@ -27,6 +27,7 @@ import {
 } from "../src/operations/research.ts";
 import { DAY_MS, MINUTE_MS } from "../src/runtime/clock.ts";
 import { silent } from "../src/runtime/log.ts";
+import { edgar } from "../src/sources/edgar/client.ts";
 import { finnhub } from "../src/sources/finnhub/client.ts";
 import { finnhubJobs } from "../src/sources/finnhub/jobs.ts";
 import { kindColumns, STALE_RESEARCH } from "../src/sources/finnhub/read.ts";
@@ -62,6 +63,7 @@ import { api } from "./helpers/api.ts";
 import { type TestApp, withApp } from "./helpers/app.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { drive, pacedOf } from "./helpers/drive.ts";
+import { EDGAR_CONTACT } from "./helpers/edgar.ts";
 import { FINNHUB_KEY, finnhubAnswer, otherListing } from "./helpers/finnhub.ts";
 import {
   type FakeMassive,
@@ -82,6 +84,7 @@ async function setup(
     off?: boolean;
     massive?: FakeMassive;
     charts?: Record<string, Recorded>;
+    edgar?: boolean;
   } = {},
 ) {
   const clock = fakeClock(NOW);
@@ -110,6 +113,9 @@ async function setup(
     fred: null,
     finnhub: fh,
     massive: ms,
+    edgar: options.edgar
+      ? edgar({ clock, contact: EDGAR_CONTACT, fetch: s.fetch })
+      : null,
     log: silent,
   });
   const finnhubCalls = () =>
@@ -902,6 +908,98 @@ describe("events inside the call", () => {
       expect(items[1].company[s]).not.toContainKey("note");
     }
     expect(items[1].company.next_event).not.toContainKey("listing");
+  });
+
+  test("figures' currency is the listing's only for a share known to report in it", async () => {
+    const currencies = async (t: Setup) => {
+      const range = "from=2026-10-01&to=2027-01-31&symbols=TSM,NVDA";
+      const ev = body(
+        await drive(
+          t.clock,
+          pacedOf(t.m),
+          eventsAnswer(
+            t.m,
+            parseEvents({
+              from: "2026-10-01",
+              to: "2027-01-31",
+              symbols: ["TSM", "NVDA"],
+            }),
+          ),
+        ),
+      );
+      const get = async (path: string) =>
+        (await (
+          await drive(
+            t.clock,
+            pacedOf(t.m),
+            api(t.m)(new Request(`http://markets.test/api/v1/${path}`)),
+          )
+        ).json()) as any;
+      const route = (await get(`earnings?${range}`)).earnings;
+      expect(route.map((e: any) => e.currency)).toEqual(
+        ev.events.map((e: any) => e.currency),
+      );
+      const { research } = await get(
+        "research?symbols=NVDA&sections=earnings,next_event",
+      );
+      const section = body(
+        await researchAnswer(
+          t.m,
+          parseResearch({ symbol: "NVDA", section: "earnings" }),
+        ),
+      );
+      expect(section.currency).toBe(research[0].company.earnings.currency);
+      return {
+        events: ev.events.map((e: any) => [e.id, e.currency]),
+        next: research[0].company.next_event.currency,
+        earnings: section.currency,
+      };
+    };
+    const listed = (nvda: string | null) => ({
+      events: [
+        ["US:TSM", null],
+        ["US:NVDA", nvda],
+        ["US:TSM", null],
+      ],
+      next: nvda,
+      earnings: nvda,
+    });
+    const filer = (t: Setup, cik: number | null, abroad: number) =>
+      t.db
+        .query(
+          `insert or replace into edgar_filers (instrument, cik,
+             foreign_filer, fetched_at) values ('US:NVDA', ?, ?, ?)`,
+        )
+        .run(cik, abroad, NOW);
+
+    // EDGAR off: another listing's events have none, a share's own its listing's
+    const off = await setup({ charts: await shares(["TSM"]) });
+    usShare(off.db, "TSM");
+    expect(await currencies(off)).toEqual(listed("USD"));
+
+    const on = await setup({ charts: await shares(["TSM"]), edgar: true });
+    usShare(on.db, "TSM");
+    // not classified yet, or with no CIK: not known to report in USD
+    expect(await currencies(on)).toEqual(listed(null));
+    filer(on, null, 0);
+    expect(await currencies(on)).toEqual(listed(null));
+    // a CIK with only an F-1 kept, as a new foreign listing: not known yet
+    filer(on, 1045810, 0);
+    const filing = (accession: string, form: string) =>
+      on.db
+        .query(
+          `insert into filings (instrument, accession, form, accepted_at,
+             filed, url, fetched_at)
+           values ('US:NVDA', ?, ?, ?, '2026-10-01', 'https://sec.test', ?)`,
+        )
+        .run(accession, form, NOW, NOW);
+    filing("0001045810-26-000001", "F-1");
+    expect(await currencies(on)).toEqual(listed(null));
+    filing("0001045810-26-000002", "10-Q");
+    expect(await currencies(on)).toEqual(listed("USD"));
+    // a foreign filer's figures are in its reporting currency
+    filer(on, 1045810, 1);
+    expect(await currencies(on)).toEqual(listed(null));
   });
 
   test("rows of another share class carry it, its note and every figure", async () => {
