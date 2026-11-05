@@ -69,6 +69,8 @@ export type Bvb = {
   listed(): ReadonlySet<string> | null;
   // when the list page of a kind was last read, null if never
   listedAt(kind: ListKind): number | null;
+  // the symbols, uppercased, on a kind's list page last read, null if never
+  listedIn(kind: ListKind): ReadonlySet<string> | null;
   failFast(): Bvb;
   within(live: () => boolean): Bvb;
   due(): number | null;
@@ -311,6 +313,7 @@ export function bvb(options: BvbOptions): Bvb {
           ? null
           : new Set([...lists.values()].flatMap((l) => [...l.symbols])),
       listedAt: (kind) => lists.get(kind)?.at ?? null,
+      listedIn: (kind) => lists.get(kind)?.symbols ?? null,
       failFast: () => client({ failFast: true }),
       within: (live) => client({ failFast: true, live }),
       due: () => calls.due(),

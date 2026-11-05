@@ -18,6 +18,7 @@ import { keys } from "../src/runtime/keys.ts";
 import { logger, silent } from "../src/runtime/log.ts";
 import { bvb, MARKET } from "../src/sources/bvb/client.ts";
 import { bvbJobs } from "../src/sources/bvb/jobs.ts";
+import { storeListings } from "../src/sources/bvb/listings.ts";
 import { sessionOf } from "../src/sources/bvb/quotes.ts";
 import {
   AERO,
@@ -232,6 +233,63 @@ describe("instruments from the feed", () => {
     expect(t.db.query("select count(*) as n from instruments").get()).toEqual({
       n: 0,
     });
+  });
+});
+
+describe("a first fetch and the list pages", () => {
+  const sharesRead = (urls: URL[]) =>
+    site(urls, "/FinancialInstruments/Markets/Shares").length;
+
+  test("a list read once is not read again for the next share", async () => {
+    const t = await setup(utc("2026-10-23T14:00:00"));
+    friday(t.db, t.clock.now());
+    await t.run(t.ctx.bvb.shares());
+    await t.add("TLV");
+    expect(sharesRead(t.f.urls)).toBe(1);
+    expect(t.f.urls.map((u) => u.pathname)).toEqual([
+      "/FinancialInstruments/Markets/Shares",
+      "/api/symbols",
+      "/FinancialInstruments/Details/FinancialInstrumentsDetails.aspx",
+      "/api/history",
+    ]);
+  });
+
+  test("a stored listing skips the list read; one it lacks reads the page", async () => {
+    const metaOf = async (symbol: string) => {
+      const fx = clone(await bvbRecorded("wapi-symbols-tlv"));
+      fx.body.name = symbol;
+      fx.body.ticker = symbol;
+      return fx;
+    };
+    const metas: Record<string, Recorded> = {
+      SNP: await metaOf("SNP"),
+      XYZ: await metaOf("XYZ"),
+    };
+    const t = await setup(utc("2026-10-23T14:00:00"), {
+      hold: (url) =>
+        url.pathname === "/api/symbols"
+          ? metas[url.searchParams.get("symbol") ?? ""]
+          : undefined,
+    });
+    friday(t.db, t.clock.now());
+    await t.ctx.writer.write((db) =>
+      storeListings(
+        db,
+        "shares",
+        [{ symbol: "TLV", isin: null, name: null }],
+        t.clock.now(),
+      ),
+    );
+    expect((await t.add("TLV")).id).toBe("BVB:TLV");
+    expect(sharesRead(t.f.urls)).toBe(0);
+    // listed since the stored read: the fresh page holds it
+    expect((await t.add("SNP")).id).toBe("BVB:SNP");
+    expect(sharesRead(t.f.urls)).toBe(1);
+    await expect(
+      t.run(fetchInstrument(t.ctx, "XYZ", null, () => true)),
+    ).rejects.toThrow(AERO);
+    expect(sharesRead(t.f.urls)).toBe(2);
+    expect(readInstrument(t.db, "BVB:XYZ")).toBeNull();
   });
 });
 
