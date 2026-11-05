@@ -190,8 +190,10 @@ export async function mcpAnswers(): Promise<Answers> {
   return answers;
 }
 
-// the package's own files are pinned by digest: their bytes are its
-const DIGESTED = /\/docs\/swagger-ui(-bundle\.js|\.css)/;
+// the package's files and their fingerprints are its bytes, not ours: the
+// docs page test checks them against the installed package
+const PACKAGE_FILE = /\/docs\/swagger-ui(-bundle\.js|\.css)/;
+const PACKAGE_HASH = /(\/docs\/swagger-ui(?:-bundle\.js|\.css))\?h=[0-9a-f]+/g;
 
 type RestAnswer = {
   status: number;
@@ -317,9 +319,9 @@ const REQUESTS: [string, RequestInit?][] = [
 
 async function restAnswer(res: Response, path: string): Promise<RestAnswer> {
   const bytes = new Uint8Array(await res.arrayBuffer());
-  const body = DIGESTED.test(path)
-    ? `sha256:${new Bun.CryptoHasher("sha256").update(bytes).digest("hex")} ${bytes.byteLength}`
-    : new TextDecoder().decode(bytes);
+  const body = PACKAGE_FILE.test(path)
+    ? "swagger-ui-dist's file"
+    : new TextDecoder().decode(bytes).replace(PACKAGE_HASH, "$1?h=package");
   const headers = Object.fromEntries(
     [...res.headers.entries()].sort(([a], [b]) => a.localeCompare(b)),
   );

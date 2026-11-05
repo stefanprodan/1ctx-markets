@@ -321,7 +321,7 @@
       "content-type": "text/html; charset=utf-8",
       "x-content-type-options": "nosniff"
     },
-    "body": "<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"utf-8\" />\n    <title>1ctx-markets API</title>\n    <link rel=\"icon\" href=\"data:,\" />\n    <link rel=\"stylesheet\" href=\"/api/v1/docs/swagger-ui.css?h=c3cfe8248c4b\" />\n  </head>\n  <body>\n    <div id=\"swagger-ui\"></div>\n    <script src=\"/api/v1/docs/swagger-ui-bundle.js?h=36eeb4d5640b\"></script>\n    <script src=\"/api/v1/docs/init.js?h=8b3be798551b\"></script>\n  </body>\n</html>\n"
+    "body": "<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"utf-8\" />\n    <title>1ctx-markets API</title>\n    <link rel=\"icon\" href=\"data:,\" />\n    <link rel=\"stylesheet\" href=\"/api/v1/docs/swagger-ui.css?h=package\" />\n  </head>\n  <body>\n    <div id=\"swagger-ui\"></div>\n    <script src=\"/api/v1/docs/swagger-ui-bundle.js?h=package\"></script>\n    <script src=\"/api/v1/docs/init.js?h=8b3be798551b\"></script>\n  </body>\n</html>\n"
   },
   "40 GET /docs/init.js?h=0": {
     "status": 200,
@@ -339,7 +339,7 @@
       "content-type": "text/css; charset=utf-8",
       "x-content-type-options": "nosniff"
     },
-    "body": "sha256:c3cfe8248c4b0b89673600fb829924eafbac6de4bc4b2b06f5f5243483074d0a 187576"
+    "body": "swagger-ui-dist's file"
   },
   "42 GET /docs/swagger-ui-bundle.js": {
     "status": 200,
@@ -348,7 +348,7 @@
       "content-type": "text/javascript; charset=utf-8",
       "x-content-type-options": "nosniff"
     },
-    "body": "sha256:36eeb4d5640b9c036b1d0f854499af1cceebbdb260b790a03a18be5e8488fbf5 1685697"
+    "body": "swagger-ui-dist's file"
   },
   "43 GET /docs/other.js": {
     "status": 404,

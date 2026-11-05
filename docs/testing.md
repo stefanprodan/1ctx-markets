@@ -58,7 +58,9 @@ doc; key files in `docs/config.md`.
   change meant to alter an answer writes them again in the same commit
   (`bun -e` importing the function and `Bun.write`) so the review
   reads the diff; any other change leaves them as they are. The
-  Swagger UI package's files are pinned by their digest.
+  Swagger UI package's files and their fingerprints on the page are
+  left out, since the docs page test checks them against the installed
+  package: a bump of the package changes no recording.
 - **Keys in tests are made up** (the helpers' constants,
   `test/fixtures/secrets/`, `test/fixtures/short/`). No test reads a
   real key file.
