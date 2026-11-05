@@ -4,13 +4,15 @@
 
 import type { Interval } from "../market/bars.ts";
 import { weekOf } from "../market/calendars.ts";
-import { readInstrument } from "../market/instruments.ts";
+import { type Instrument, readInstrument } from "../market/instruments.ts";
+import { readQuote } from "../market/quotes.ts";
 import {
   barsStale,
   quoteStale,
   STALE,
   type StaleReason,
 } from "../market/stale.ts";
+import { localDate } from "../market/zone.ts";
 import { seriesStale } from "../sources/fred/jobs.ts";
 import { FRED } from "../sources/ids.ts";
 import type { Db } from "../storage/db/index.ts";
@@ -130,7 +132,32 @@ export function readSignals(
       live.push(STALE.signalsPending);
     }
   }
+  if (
+    !live.includes(STALE.signalsPending) &&
+    uncovered(db, i, daily.live?.date ?? "", daily.final?.date ?? "")
+  ) {
+    live.push(STALE.signalsPending);
+  }
   return { instrument: i.id, daily, weekly, stale: { final, live } };
+}
+
+// A newest bar not final that no live row reaches, while a quote newer than
+// the last final row waits, would leave a reader on that row unannounced.
+function uncovered(
+  db: Db,
+  i: Instrument,
+  liveDate: string,
+  finalDate: string,
+): boolean {
+  const bar = db
+    .query<{ date: string; final: number }, [string]>(
+      `select date, final from bars where instrument = ? and interval = '1d'
+       order by date desc limit 1`,
+    )
+    .get(i.id);
+  if (bar === null || bar.final === 1 || liveDate >= bar.date) return false;
+  const q = readQuote(db, i.id);
+  return q !== null && localDate(i.zone, q.time ?? q.fetchedAt) > finalDate;
 }
 
 // a listing of unknown unit, or an index, is still a valid benchmark

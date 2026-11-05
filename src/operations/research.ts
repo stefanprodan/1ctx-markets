@@ -16,6 +16,7 @@ import {
   filerState,
   filingsFetched,
   flags,
+  foreignFiler,
   NO_DATA as NO_EDGAR,
   NO_FLAGS,
   readFilings,
@@ -534,11 +535,11 @@ const surprisePercent = (actual: number | null, estimate: number | null) =>
 // Finnhub's earnings carry EPS only; revenue is the quarter's report's
 const revenueOf = (
   kind: ResearchKind,
-  period: string,
+  r: ResearchRow,
   reported: readonly EventRow[],
 ) => {
   if (kind !== "earnings") return {};
-  const e = reportOf(reported, period);
+  const e = reportOf(reported, r);
   const estimate = e?.revenueEstimate ?? null;
   const actual = e?.revenueActual ?? null;
   return {
@@ -555,7 +556,7 @@ export const rowItem = (
 ) => ({
   period: r.period,
   ...valuesOf(kind, r),
-  ...revenueOf(kind, r.period, reported),
+  ...revenueOf(kind, r, reported),
   fetched_at: iso(r.fetchedAt),
 });
 
@@ -577,12 +578,18 @@ function latestSection(
   const past =
     history > 0 ? { history: rows.map((r) => rowItem(kind, r, reported)) } : {};
   const row = rows[0];
+  // EPS and revenue are in the reporting currency, not always the listing's
+  const currency =
+    kind === "earnings"
+      ? { currency: figuresCurrency(m, instrument, row?.listing ?? null) }
+      : {};
   if (row === undefined) {
     return {
       period: null,
       fetched_at: iso(state.fetchedAt),
       stale: state.stale,
       ...(state.noData ? { message: NO_DATA } : {}),
+      ...currency,
       ...past,
     };
   }
@@ -591,10 +598,26 @@ function latestSection(
     fetched_at: iso(row.fetchedAt),
     stale: state.stale,
     ...listingFields(row.listing),
+    ...currency,
     ...valuesOf(kind, row),
-    ...revenueOf(kind, row.period, reported),
+    ...revenueOf(kind, row, reported),
     ...past,
   };
+}
+
+// A foreign filer reports in its home currency (BABA in renminbi), and a
+// foreign listing's figures are left out: neither is the listing's. With
+// EDGAR on, a share it has not classified is not known to be domestic.
+export function figuresCurrency(
+  m: Markets,
+  instrument: Instrument,
+  listing: string | null,
+): string | null {
+  if (listing !== null && !shareClass(listing)) return null;
+  if (m.edgar === null) return instrument.currency;
+  return foreignFiler(m.db, instrument.id) === false
+    ? instrument.currency
+    : null;
 }
 
 export function eventItem(m: Markets, instrument: Instrument, e: EventRow) {
@@ -607,7 +630,7 @@ export function eventItem(m: Markets, instrument: Instrument, e: EventRow) {
     date: e.date,
     hour: e.hour,
     status: eventStatus(e, localDate(instrument.zone, m.clock.now())),
-    currency: instrument.currency,
+    currency: figuresCurrency(m, instrument, e.listing),
     eps_estimate: round(e.epsEstimate),
     eps_actual: round(e.epsActual),
     revenue_estimate: e.revenueEstimate,

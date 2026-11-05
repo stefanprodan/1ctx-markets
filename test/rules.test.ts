@@ -4,6 +4,7 @@
 import { describe, expect, test } from "bun:test";
 import { readInstrument } from "../src/market/instruments.ts";
 import { storeIntraday } from "../src/market/intraday.ts";
+import { SWITCH } from "../src/market/stale.ts";
 import { trackedIds } from "../src/market/tracking.ts";
 import { NO_EVENT_SOURCE } from "../src/operations/rules.ts";
 import { OPERATOR } from "../src/operations/who.ts";
@@ -326,18 +327,25 @@ describe("evaluation", () => {
     const t = await rulesTest();
     const r = await create(t, "NVDA", { left: "price", op: "<", right: 200 });
     const id = r.body.rule.id;
-    await pass(t, "failed", "check");
+    // a pending source switch keeps a quote stale however new
+    const switching = (done: boolean) =>
+      t.write.write((db) => {
+        const at = t.clock.now();
+        const run = startRun(db, SWITCH.source, SWITCH.job, at, "US");
+        if (done) endRun(db, run, at, 0);
+      });
+    await switching(false);
     await t.quote("NVDA", { price: 190 });
     expect(rule(t, id)).toMatchObject({ armed: true, lastResult: "unknown" });
     expect(alerts(t)).toBe(0);
-    await pass(t, "ok", "check");
+    await switching(true);
     await t.quote("NVDA", { price: 190 });
     expect(alerts(t)).toBe(1);
-    await pass(t, "failed", "check");
+    await switching(false);
     await t.quote("NVDA", { price: 205 });
     // still disarmed: a stale false is no false
     expect(rule(t, id)).toMatchObject({ armed: false, lastResult: "unknown" });
-    await pass(t, "ok", "check");
+    await switching(true);
     await t.quote("NVDA", { price: 190 });
     expect(alerts(t)).toBe(1);
   });

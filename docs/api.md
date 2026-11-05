@@ -183,7 +183,8 @@ MCP tools copied onto paths.
   call.
 - **Daily and weekly bars always carry `open`, `high`, `low`, `close`,
   `volume`, `final`, `sma50` and `sma200`**, oldest first. A bar the
-  live quote made with no open has `open` null.
+  live quote made with no open has `open` null, as has a bar not final
+  whose open is outside its own range (`docs/tools.md`).
 - **A bar is live only while its market's `session` is open and it is
   not `final`**: an open market whose last bar is final has had no
   trade yet today, so that bar is a past close.

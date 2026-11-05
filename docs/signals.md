@@ -99,6 +99,13 @@ bar's close, or the live price on the live row.
   Yahoo stamps an index's value up to 75 minutes after it. A trade
   outside that window updates the quote only, never a row. Never date
   it by fixed UTC hours.
+- **A trade before the stored session's start still dates its own
+  day's row while that day is the newest daily bar, not final, and the
+  trade's local date in the session's zone** (`ownBar()`): a check can
+  store the next session hours before it opens, and until the bar pass
+  makes the closed day final its live row, returns and history's last
+  bar stay on the quote. A trade stamped on the next session's date
+  never dates the old bar. Crypto has no such allowance.
 - **Crypto's day is the UTC day**: its trade's UTC date is the row's,
   with no allowance carrying it past midnight.
 - **Live prices never wait on the bars.** When an earlier bar is not
@@ -124,7 +131,10 @@ bar's close, or the live price on the live row.
   `readSignals()` adds "signals pending" when final rows lag the final
   bars or the live rows lag the quote (another date or trade time), but
   not when the quote's date already has a final bar, which by design has
-  no live row (crypto's Sunday trade after Monday's rollover), and
+  no live row (crypto's Sunday trade after Monday's rollover), or when
+  the newest daily bar is not final, no live row reaches its date and a
+  quote dated after the last final row exists (`uncovered()`), so a
+  reader never falls back to the last final row unannounced; and
   "previous day not final" when a live row stepped over a stored day not
   yet final. FRED uses the final list only (`docs/fred.md`).
 - **Values are rounded to six significant digits on output** (`round()`

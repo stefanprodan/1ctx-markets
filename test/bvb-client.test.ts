@@ -405,6 +405,59 @@ describe("the client", () => {
     ]);
   });
 
+  test("a fetch's calls go ahead of a later fetch's, and both ahead of jobs'", async () => {
+    const clock = fakeClock();
+    const f = await bvbFetch();
+    const client = bvb({ clock, fetch: f.fetch });
+    const first = client.within(() => true);
+    const second = client.within(() => true);
+    const job = client.schedule();
+    const later = second.detail("SNP");
+    const chain = first.detail("TLV").then(() => first.meta("TLV"));
+    const queued = client.shares();
+    await drive(clock, client, Promise.all([job, later, chain, queued]));
+    expect(
+      f.urls.map((u) => `${u.pathname}${u.search.replace(/&.*/, "")}`),
+    ).toEqual([
+      "/TradingAndStatistics/TradingSessionSchedule",
+      "/FinancialInstruments/Details/FinancialInstrumentsDetails.aspx?s=TLV",
+      "/api/symbols?symbol=TLV",
+      "/FinancialInstruments/Details/FinancialInstrumentsDetails.aspx?s=SNP",
+      "/FinancialInstruments/Markets/Shares",
+    ]);
+  });
+
+  test("a fetch's next call goes first after an answer slower than the spacing", async () => {
+    const clock = fakeClock();
+    const g = gate();
+    let first = true;
+    const f = await bvbFetch({
+      hold: (url) => {
+        if (url.searchParams.get("s") !== "TLV" || !first) return undefined;
+        first = false;
+        return g.hold();
+      },
+    });
+    const client = bvb({ clock, fetch: f.fetch });
+    const a = client.within(() => true);
+    const b = client.within(() => true);
+    // a continuation some turns long, as a first fetch's checks are
+    const chain = a.detail("TLV").then(async () => {
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+      return a.meta("TLV");
+    });
+    await drive(clock, client, g.arrived);
+    const later = b.detail("SNP");
+    await clock.advance(SPACING_MS + 1);
+    g.release();
+    await drive(clock, client, Promise.all([chain, later]));
+    expect(f.urls.map((u) => `${u.pathname}${u.search}`)).toEqual([
+      "/FinancialInstruments/Details/FinancialInstrumentsDetails.aspx?s=TLV",
+      "/api/symbols?symbol=TLV",
+      "/FinancialInstruments/Details/FinancialInstrumentsDetails.aspx?s=SNP",
+    ]);
+  });
+
   test("an open market reads open on every page", async () => {
     const clock = fakeClock();
     const f = await bvbFetch({ open: true });

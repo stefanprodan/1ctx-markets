@@ -164,12 +164,12 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
 | `no quote in the last pass` | `quoteStale` | last pass ok, this instrument (added before it) not in it |
 | `no quote yet` | `quoteStale` | no quote stored |
 | `quote overdue` | `quoteStale` with `due` | quote older than two quote periods before the last time one was due |
-| `session check failed` | `quoteStale` | the market's last closed-market check failed |
+| `session check failed` | `quoteStale` | the market's last closed-market check failed, and the quote predates its start |
 | `bar sync failed` | `barsStale`, `seriesStale` | the market's last bar pass or the instrument's own refetch failed (FRED: the series' last run) |
 | `bar sync pending` | `barsStale` | a session began after the last ok bar pass (`barsDue`), the instrument added before it |
 | `bar sync pending` | `seriesStale` | FRED: no run ended well since the latest 23:00 UTC (`seriesDue`), the series added before it |
 | `no history` | `barsStale`, `seriesStale` | no daily bars stored |
-| `signals pending` | `readSignals` | final signals behind the final bars, or live rows behind the latest quote |
+| `signals pending` | `readSignals` | final signals behind the final bars, live rows behind the latest quote, or a newest bar not final that no live row reaches while a newer quote exists |
 | `previous day not final` | `readSignals` | a live row stepped over a stored bar not final yet |
 | `source switch pending` | `quoteStale`, `barsStale` | the market's latest source switch run is running or failed (`SWITCH`) |
 | `source off` | `quoteStale`, `barsStale` | a feed instrument whose source the last landed switch turned off, so its prices are its last |

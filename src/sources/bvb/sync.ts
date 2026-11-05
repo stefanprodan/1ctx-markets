@@ -20,7 +20,7 @@ import type { Db } from "../../storage/db/index.ts";
 import type { Writer } from "../../storage/writer.ts";
 import { backfillStart, REFETCH_DAYS } from "../history.ts";
 import { expired, Refused, SourceError } from "../source.ts";
-import { type Bvb, MARKET, SOURCE } from "./client.ts";
+import { type Bvb, type ListKind, MARKET, SOURCE } from "./client.ts";
 import {
   barsAnswered,
   barsOf,
@@ -216,13 +216,28 @@ export async function quoteNow(
   return q;
 }
 
-// a listing on no list a quote pass reads, an AeRO share, would never be quoted
+const storedHolds = (db: Db, kind: ListKind, symbol: string): boolean =>
+  db
+    .query<{ n: number }, [string, string]>(
+      "select 1 as n from bvb_listings where kind = ? and upper(symbol) = ?",
+    )
+    .get(kind, symbol) !== null;
+
+// a listing on no list a quote pass reads, an AeRO share, would never be
+// quoted; a list read before may be old, so only a fresh page refuses
 export async function checkListed(ctx: BvbContext, meta: Meta): Promise<void> {
   const type = KINDS[meta.type]?.type;
   if (type !== "EQUITY" && type !== "ETF") return;
-  const page =
-    type === "EQUITY" ? await ctx.bvb.shares() : await ctx.bvb.units();
+  const kind: ListKind = type === "EQUITY" ? "shares" : "units";
   const symbol = meta.symbol.toUpperCase();
+  if (
+    ctx.bvb.listedIn(kind)?.has(symbol) ||
+    storedHolds(ctx.db, kind, symbol)
+  ) {
+    return;
+  }
+  const page =
+    kind === "shares" ? await ctx.bvb.shares() : await ctx.bvb.units();
   if (!page.rows.some((r) => r.symbol.toUpperCase() === symbol)) {
     throw new Refused(type === "EQUITY" ? AERO : UNLISTED);
   }

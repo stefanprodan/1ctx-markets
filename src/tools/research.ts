@@ -28,6 +28,7 @@ import type { Markets } from "../operations/markets.ts";
 import { quoteItem, readLatest } from "../operations/quote.ts";
 import {
   FILINGS_PAGE_ROWS,
+  figuresCurrency,
   filingItem,
   filingsHead,
   filingsSummary,
@@ -331,6 +332,12 @@ export async function researchAnswer(
     items,
     (count) => ({
       ...head,
+      // the rows' figures are in it, which a foreign filer's are not
+      ...(kind === "earnings"
+        ? {
+            currency: figuresCurrency(m, instrument, rows[0]?.listing ?? null),
+          }
+        : {}),
       source: "finnhub",
       ...(message !== null
         ? { message }

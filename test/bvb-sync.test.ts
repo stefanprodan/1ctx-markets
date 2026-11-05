@@ -11,13 +11,15 @@ import { readQuote } from "../src/market/quotes.ts";
 import { JOBS, quoteStale, STALE } from "../src/market/stale.ts";
 import { markRead } from "../src/market/tracking.ts";
 import { historyAnswer, parseHistory } from "../src/operations/history.ts";
-import { markets } from "../src/operations/markets.ts";
+import { CALL_MS, markets } from "../src/operations/markets.ts";
+import { readTargets } from "../src/operations/targets.ts";
 import type { RuleHooks } from "../src/rules/hooks.ts";
 import { MINUTE_MS } from "../src/runtime/clock.ts";
 import { keys } from "../src/runtime/keys.ts";
 import { logger, silent } from "../src/runtime/log.ts";
 import { bvb, MARKET } from "../src/sources/bvb/client.ts";
 import { bvbJobs } from "../src/sources/bvb/jobs.ts";
+import { storeListings } from "../src/sources/bvb/listings.ts";
 import { sessionOf } from "../src/sources/bvb/quotes.ts";
 import {
   AERO,
@@ -232,6 +234,109 @@ describe("instruments from the feed", () => {
     expect(t.db.query("select count(*) as n from instruments").get()).toEqual({
       n: 0,
     });
+  });
+});
+
+describe("a first fetch and the list pages", () => {
+  const sharesRead = (urls: URL[]) =>
+    site(urls, "/FinancialInstruments/Markets/Shares").length;
+
+  test("a list read once is not read again for the next share", async () => {
+    const t = await setup(utc("2026-10-23T14:00:00"));
+    friday(t.db, t.clock.now());
+    await t.run(t.ctx.bvb.shares());
+    await t.add("TLV");
+    expect(sharesRead(t.f.urls)).toBe(1);
+    expect(t.f.urls.map((u) => u.pathname)).toEqual([
+      "/FinancialInstruments/Markets/Shares",
+      "/api/symbols",
+      "/FinancialInstruments/Details/FinancialInstrumentsDetails.aspx",
+      "/api/history",
+    ]);
+  });
+
+  test("a stored listing skips the list read; one it lacks reads the page", async () => {
+    const metaOf = async (symbol: string) => {
+      const fx = clone(await bvbRecorded("wapi-symbols-tlv"));
+      fx.body.name = symbol;
+      fx.body.ticker = symbol;
+      return fx;
+    };
+    const metas: Record<string, Recorded> = {
+      SNP: await metaOf("SNP"),
+      XYZ: await metaOf("XYZ"),
+    };
+    const t = await setup(utc("2026-10-23T14:00:00"), {
+      hold: (url) =>
+        url.pathname === "/api/symbols"
+          ? metas[url.searchParams.get("symbol") ?? ""]
+          : undefined,
+    });
+    friday(t.db, t.clock.now());
+    await t.ctx.writer.write((db) =>
+      storeListings(
+        db,
+        "shares",
+        [{ symbol: "TLV", isin: null, name: null }],
+        t.clock.now(),
+      ),
+    );
+    expect((await t.add("TLV")).id).toBe("BVB:TLV");
+    expect(sharesRead(t.f.urls)).toBe(0);
+    // listed since the stored read: the fresh page holds it
+    expect((await t.add("SNP")).id).toBe("BVB:SNP");
+    expect(sharesRead(t.f.urls)).toBe(1);
+    await expect(
+      t.run(fetchInstrument(t.ctx, "XYZ", null, () => true)),
+    ).rejects.toThrow(AERO);
+    expect(sharesRead(t.f.urls)).toBe(2);
+    expect(readInstrument(t.db, "BVB:XYZ")).toBeNull();
+  });
+
+  test("new shares in one call land one after another, and a retry lands the next", async () => {
+    const metaOf = async (symbol: string) => {
+      const fx = clone(await bvbRecorded("wapi-symbols-tlv"));
+      fx.body.name = symbol;
+      fx.body.ticker = symbol;
+      return fx;
+    };
+    const metas: Record<string, Recorded> = {
+      SNP: await metaOf("SNP"),
+      H2O: await metaOf("H2O"),
+    };
+    const t = await setup(utc("2026-10-23T14:00:00"), {
+      hold: (url) =>
+        url.pathname === "/api/symbols"
+          ? metas[url.searchParams.get("symbol") ?? ""]
+          : undefined,
+    });
+    friday(t.db, t.clock.now());
+    const m = markets({
+      db: t.db,
+      clock: t.clock,
+      writer: t.ctx.writer,
+      yahoo: yahoo({ clock: t.clock, fetch: noNetwork }),
+      fred: null,
+      bvb: t.ctx.bvb,
+      log: silent,
+    });
+    const read = (inputs: string[]) =>
+      t.run(readTargets(m, inputs, t.clock.now() + CALL_MS));
+    const first = await read(["BVB:TLV", "BVB:SNP", "BVB:H2O"]);
+    expect("instrument" in first[0]!).toBe(true);
+    expect(first[2]).toMatchObject({ error: { error: "timeout" } });
+    // every call for the first share before any for the second
+    const named = (s: string) =>
+      t.f.urls.flatMap((u, i) =>
+        u.searchParams.get("symbol") === s || u.searchParams.get("s") === s
+          ? [i]
+          : [],
+      );
+    expect(Math.max(...named("TLV"))).toBeLessThan(Math.min(...named("SNP")));
+    expect(readInstrument(t.db, "BVB:H2O")).toBeNull();
+    const [again] = await read(["BVB:H2O"]);
+    expect(again).toMatchObject({ instrument: { id: "BVB:H2O" } });
+    expect(readBars(t.db, "BVB:H2O", "1d").length).toBeGreaterThan(0);
   });
 });
 

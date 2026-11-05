@@ -153,6 +153,34 @@ describe("staleness", () => {
     expect(quoteStale(db, us)).toEqual(["session check failed"]);
   });
 
+  test("a quote newer than a failed check is not marked by it", () => {
+    const { db, us, run } = setup();
+    run(JOBS.quotes, "US");
+    run(JOBS.check, "US", new SourceError("malformed answer"));
+    expect(quoteStale(db, us)).toEqual([STALE.checkFailed]);
+    // the market opened: quote passes run, checks do not
+    run(JOBS.quotes, "US");
+    expect(quoteStale(db, us)).toEqual([]);
+  });
+
+  test("a check failed by one symbol marks only the quotes it did not store", () => {
+    const { db, us, now } = setup();
+    const amd = upsertInstrument(db, instrument("US", "AMD"), now());
+    db.query(
+      `insert into quotes (instrument, price, time, source, fetched_at)
+       values (?, 1, ?2, 'yahoo', ?2)`,
+    ).run(amd.id, now());
+    const at = now() + MINUTE_MS;
+    const id = startRun(db, "yahoo", JOBS.check, at, "US");
+    db.query(
+      `insert into quotes (instrument, price, time, source, fetched_at)
+       values (?, 1, ?2, 'yahoo', ?2)`,
+    ).run(us.id, at);
+    failRun(db, id, at, new SourceError("malformed answer"), 1, ["AMD"]);
+    expect(quoteStale(db, us)).toEqual([]);
+    expect(quoteStale(db, amd)).toEqual([STALE.checkFailed]);
+  });
+
   test("a failed quote pass marks only the quotes it did not store", () => {
     const { db, us, run, now } = setup();
     run(JOBS.quotes, "US");

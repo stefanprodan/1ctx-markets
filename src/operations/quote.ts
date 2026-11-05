@@ -370,10 +370,11 @@ function agentItem(
 ) {
   const side = instrumentSide(m.db, i, bench?.side ?? null, earliestStart);
   const r = returnsOf(side);
-  const relative = (months: 1 | 3) => {
-    if (!bench?.side) return null;
-    return round(relativeOf(side, bench.side, months)?.relative ?? null);
-  };
+  const [r1, r3] = ([1, 3] as const).map((months) =>
+    bench?.side ? relativeOf(side, bench.side, months) : null,
+  );
+  // both periods end on the benchmark's last close or live price
+  const end = r1 ?? r3 ?? null;
   const { stale, ...rest } = q;
   return {
     ...rest,
@@ -392,8 +393,14 @@ function agentItem(
     ...(bench === null
       ? {}
       : {
-          relative_return_1m: relative(1),
-          relative_return_3m: relative(3),
+          relative_return_1m: round(r1?.relative ?? null),
+          relative_return_3m: round(r3?.relative ?? null),
+          relative_to: end?.benchmark.to ?? null,
+          relative_live: end?.live ?? null,
+          // a move in the exchange rate would read as out- or underperformance
+          ...(end !== null && end.instrument.currency !== end.benchmark.currency
+            ? { relative_note: end.note }
+            : {}),
         }),
     session: sessionOf(m, i, now),
     ...analysisField(m, who, i.id),

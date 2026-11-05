@@ -68,7 +68,8 @@ phrases and the lock every source shares are in `docs/sources.md`; the
   S-3ASR, 424B1, 424B4 and 424B5, which register or offer new
   securities, shares or debt. 424B2 and 424B3 are left out: a bank
   files thousands a year for structured notes, which would bury every
-  other filing and set the offering flag every day. 424B7 and 424B8
+  other filing and set the offering flag every day, so an issuer that
+  files its notes only as 424B2 or FWP never sets the flag. 424B7 and 424B8
   are left out too: resales by holders and late-filed copies, never
   new securities.
 - **Stored per filing** (`filings`, keyed by instrument and accession):
@@ -83,7 +84,10 @@ phrases and the lock every source shares are in `docs/sources.md`; the
 - **A foreign filer is out of scope.** The newest periodic report in
   the answer decides: 20-F, 40-F or 6-K is foreign, 10-K or 10-Q is
   not. A foreign filer keeps no filings and answers `NO_DATA` with the
-  reason `foreign filer`: its figures arrive late or not at all.
+  reason `foreign filer`: its figures arrive late or not at all. Its
+  stored flag also sets the currency of its earnings figures
+  (`docs/research.md`): null for a foreign filer, as Finnhub gives them
+  in its reporting currency, and for a share not yet classified.
 - **A ticker that moved to another company keeps none of the old
   one's filings**: a store drops rows whose URL names another CIK.
 - **8-K items carry names** from a fixed table of SEC's item list

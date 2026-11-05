@@ -65,6 +65,15 @@ Each provider's own behaviour is in its doc: `docs/yahoo.md`,
 - **A call with a deadline goes ahead of waiting job calls,** first in
   first out among its own, so a read never times out behind a pass; a
   limiter keeps its spacing.
+- **A call with an `order` goes ahead of a waiting deadline call with
+  a higher one,** and on a limiter, once answered, holds the queue
+  until the next call of the same order is queued or an event-loop turn
+  passes with none, however long the answer took, so the next call of
+  its own chain is the one chosen; a failure releases it at once. The Bucharest feed's `within(live)` numbers each
+  client it makes, one per fetch, so a fetch's calls all run before a
+  later fetch's start and one new symbol lands inside the deadline,
+  where interleaved fetches would all miss it. No other source sets
+  it.
 
 ## Retries
 

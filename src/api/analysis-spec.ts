@@ -69,12 +69,19 @@ const since = note(
     ...object({
       price: note(num, "The stored quote's price when it was saved."),
       currency: nstr,
-      priced_at: note(nstr, "When that quote was fetched."),
+      priced_at: note(
+        nstr,
+        "When that price traded; when it was fetched for a quote with no trade time.",
+      ),
       price_now: note(nnum, "The stored quote's price now."),
       fetched_at: note(nstr, "When the quote now was fetched."),
       change_percent: note(
         nnum,
-        "The move from the price then to the price now, in percent; null when the currency changed or either price is missing.",
+        "The move from the price then to the price now, in percent, on today's share count; null when the currency changed or either price is missing.",
+      ),
+      splits: note(
+        list(object({ date: str, ratio: num })),
+        "The splits dated after the price's day; the price then is divided by their ratios before the move is measured.",
       ),
       earnings: list(object({ date: str, hour: str, status: STATUS })),
     }),

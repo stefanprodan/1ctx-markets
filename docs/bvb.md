@@ -234,9 +234,17 @@ exchange: one client, its parsers, its session, the same tables.
   answer; a Yahoo symbol naming a Bucharest listing (`TLV.RO`) resolves
   to the same key and is fetched from the feed.
 - **An instrument never seen is fetched inside the call**
-  (`fetchInstrument()`): the symbol answer, for a share the shares
-  list, a quote (the instrument page, or the index page), then ten
-  years of bars, in one write while `live()` holds.
+  (`fetchInstrument()`): the symbol answer, for a share whether the
+  shares list holds it, a quote (the instrument page, or the index
+  page), then ten years of bars, in one write while `live()` holds.
+  A symbol the client's last read of the shares or fund units list
+  holds (`listedIn()`), or `bvb_listings` does, needs no page read
+  (`checkListed()`); one they lack reads the page again and is refused
+  only when the fresh page lacks it too, since a list read earlier may
+  predate a new listing. The symbol answer is always asked: it
+  gives the currency and zone no list holds. Several new symbols in
+  one call are fetched one after another (`docs/sources.md`,
+  "Deadlines").
 
 ## Switching sources
 

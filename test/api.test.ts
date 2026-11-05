@@ -1338,6 +1338,32 @@ describe("bars", () => {
     expect(bare).toMatchObject({ high: null, low: null, close: 11 });
   });
 
+  test("a bar not final answers no open outside its own range", async () => {
+    const w = world();
+    const id = "XX:DAYS";
+    instrument(w.db, id);
+    for (const date of ["2026-10-20", "2026-10-21"]) {
+      bar(w.db, id, "1d", date, 100, true);
+    }
+    bar(w.db, id, "1d", FINAL, 100, false);
+    // the previous session's open, as a first-minute bar carries it
+    w.db
+      .query("update bars set open = 105 where instrument = ? and date >= ?")
+      .run(id, "2026-10-21");
+    const body: any = await (
+      await api(w.m)(
+        new Request(
+          `http://markets.test/api/v1/instruments/${id}/bars?from=2026-10-01`,
+        ),
+      )
+    ).json();
+    expect(body.bars.map((b: any) => [b.date, b.open, b.final])).toEqual([
+      ["2026-10-20", 100, true],
+      ["2026-10-21", 105, true],
+      [FINAL, null, false],
+    ]);
+  });
+
   test("an index's first read answers its final rows and its live row", async () => {
     const t = await setup();
     const body: any = await (await t.call("/instruments/^GSPC/bars")).json();

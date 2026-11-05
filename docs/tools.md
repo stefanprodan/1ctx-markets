@@ -141,7 +141,7 @@ tracking in `docs/storage.md`; the source queue and deadlines in
 
 | Tool | Takes | Answers |
 |---|---|---|
-| `quote` | `symbols`, `benchmark`, `extended`, `next` | per symbol a `QuoteItem` (`quote.ts`) with `returns`, `session`, with a benchmark `relative_return_1m` and `_3m`, with `extended` true `extended`, for a key with analysis access `analysis` |
+| `quote` | `symbols`, `benchmark`, `extended`, `next` | per symbol a `QuoteItem` (`quote.ts`) with `returns`, `session`, with a benchmark `relative_return_1m`, `_3m`, `relative_to`, `relative_live` and, across currencies, `relative_note`, with `extended` true `extended`, for a key with analysis access `analysis` |
 | `history` | `symbol`, `interval`, `from`, `to`, `benchmark`, `extended`, `next` | bars oldest first with `final` and signals; `session`; `relative`; with `5m`, `points` and `sessions`, and `extended_points` when `extended` |
 | `search` | `query`, `next` | up to 20 stored matches, then up to 20 Bucharest listings from the stored list pages while the feed is on, then Yahoo's, each with id, exchange, type, name, `source`, `stored`; a listing Yahoo found adds `exchange_name`, the exchange in Yahoo's words, the stored copy of it too, and a stored one its `currency`, so one fund on several exchanges reads apart; a Bucharest listing adds its `isin` |
 | `movers` | `symbols`, `min_move_pct`, `direction`, `average`, `relation`, `next` | matches by absolute change, largest first; `counts` |
@@ -162,10 +162,15 @@ tracking in `docs/storage.md`; the source queue and deadlines in
   `1w`, `1m`, `3m`, `ytd` and `1y`, `to` and `live` (`docs/signals.md`,
   "Trailing returns").
 - **quote's `benchmark` is one symbol for the call**, resolved and
-  fetched as history's, adding `relative_return_1m` and `_3m` per item
-  and the benchmark's id, `fetched_at` and `stale` on the page, its
+  fetched as history's, adding `relative_return_1m` and `_3m` per item,
+  `relative_to` and `relative_live` (the benchmark's end both periods
+  read to, and whether it is a live price, as history's `relative`
+  says), and `relative_note`, history's note, only when the two
+  currencies differ, since no FX conversion is applied; and the
+  benchmark's id, `fetched_at` and `stale` on the page, its
   reasons prefixed `benchmark:` in the page's `stale`; a benchmark that
-  fails is that object's error and the relative fields are null.
+  fails is that object's error and the relative fields are null. The
+  API's `/quotes` takes no benchmark.
 - **quote's `session` is the last regular session the source
   reported**: `state` `open` or `closed` by `isQuoted()`, `start` and
   `end` in UTC. At an opening it reads `closed` until a check stores
@@ -196,6 +201,11 @@ tracking in `docs/storage.md`; the source queue and deadlines in
   from the bar pass near the open, hours old, and the Bucharest feed
   often has none. It is the bar the live row steps from
   (`docs/signals.md`), so the two never disagree.
+- **A bar not final answers `open` null when its open is outside its
+  own range** (`ownOpen()`, after `withLive()` widens it): Yahoo's
+  first-minute daily bar carries the previous session's open until it
+  turns final. Read time only; stored and final bars are as the source
+  gives them.
 - **history's `session` is quote's**, so a reader tells an intraday
   bar from an unsettled close: a day's bar stays not final after its
   close until the source shows a later session (`docs/calendars.md`).
@@ -309,8 +319,11 @@ tracking in `docs/storage.md`; the source queue and deadlines in
   caught up first (`catchUp()`, `refetchSeries()`).
 - **The whole call has one 15-second deadline** (`CALL_MS`), under
   1ctx's untouched 20-second tool timeout. Each input resolves and
-  fetches on its own, so a slow one holds no other; one not done
-  answers `timeout` with "retry this symbol".
+  fetches on its own; one not done answers `timeout` with "retry this
+  symbol". Inputs on a spaced source share its pace: the Bucharest
+  feed serves one fetch's calls before a later fetch's
+  (`docs/sources.md`, "Deadlines"), so of several new symbols the
+  first lands and a retry lands the next, rather than none landing.
 - **Nothing starts or lands after the deadline**: no source call
   starts past it (`docs/sources.md`, "Deadlines"), a late fetch stores
   nothing (`docs/storage.md`, "The writer"), and the tracking write is

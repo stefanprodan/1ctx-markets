@@ -10,6 +10,7 @@ import {
   SourceError,
 } from "../src/sources/source.ts";
 import {
+  asAsked,
   parseChart,
   parsePoints,
   parseSpark,
@@ -699,5 +700,42 @@ describe("search", () => {
       "XETRA",
       "Munich",
     ]);
+  });
+});
+
+describe("a dollar pair Yahoo answers under its other name", () => {
+  test("a spark entry is kept under the symbol asked", async () => {
+    const fx = await recorded("spark-v7-fx-usd-alias");
+    const answer = parseSpark(fx.body, 1);
+    expect(answer.skipped).toEqual([]);
+    expect(answer.quotes.map((q) => q.symbol).sort()).toEqual([
+      "CHF=X",
+      "EURUSD=X",
+      "JPY=X",
+    ]);
+  });
+
+  test("a chart is kept under the symbol asked", async () => {
+    const fx = await recorded("chart-chf-x-5d-1d-usd-alias");
+    expect(parseChart(fx.body, 0).symbol).toBe("USDCHF=X");
+    const clock = fakeClock(Date.parse(fx.recordedAt));
+    const f = fakeFetch(() => fx);
+    const answer = await yahoo({ clock, fetch: f.fetch }).chart(
+      "CHF=X",
+      0,
+      clock.now(),
+    );
+    expect(answer).toMatchObject({ symbol: "CHF=X", exchange: "CCY" });
+  });
+
+  test("only the same pair is renamed, under its upper-case name", () => {
+    const as = (asked: string, answered: string) =>
+      asAsked(asked, { symbol: answered }).symbol;
+    expect(as("CHF=X", "USDCHF=X")).toBe("CHF=X");
+    expect(as("USDCNY=X", "CNY=X")).toBe("USDCNY=X");
+    expect(as("chf=x", "USDCHF=X")).toBe("CHF=X");
+    expect(as("chf=x", "CHF=X")).toBe("CHF=X");
+    expect(as("CHF=X", "EURCHF=X")).toBe("EURCHF=X");
+    expect(as("NVDA", "USDNVDA")).toBe("USDNVDA");
   });
 });

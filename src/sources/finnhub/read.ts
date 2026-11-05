@@ -61,6 +61,9 @@ export function sectionState(
 
 export type ResearchRow = {
   period: string;
+  // an earnings row's, when Finnhub labelled it one way
+  fiscalYear: number | null;
+  fiscalQuarter: number | null;
   listing: string | null;
   fetchedAt: number;
 } & Record<string, number | string | null>;
@@ -85,8 +88,8 @@ export function readResearch(
 ): ResearchRow[] {
   return db
     .query<ResearchRow, [string, string, number]>(
-      `select period, ${KIND[kind].join(", ")}, listing,
-         fetched_at as fetchedAt
+      `select period, ${KIND[kind].join(", ")}, fiscal_year as fiscalYear,
+         fiscal_quarter as fiscalQuarter, listing, fetched_at as fetchedAt
        from research where instrument = ? and kind = ?
        order by period desc limit ?`,
     )
@@ -143,9 +146,6 @@ export function readEvent(db: Db, key: EventKey): EventRow | null {
   );
 }
 
-// a quarter's report lands in the next quarter
-export const REPORT_WINDOW_DAYS = 100;
-
 // the share's reported events, by date; a foreign listing stores no actuals
 export function reportedEvents(db: Db, instrument: string): EventRow[] {
   return db
@@ -157,13 +157,20 @@ export function reportedEvents(db: Db, instrument: string): EventRow[] {
     .all(instrument);
 }
 
-// the report of the quarter ending on period: the first after it, in the window
+// Only the row's fiscal quarter names its report: a period can be a quarter
+// after it, so a date window hands it the next quarter's.
 export function reportOf(
   reported: readonly EventRow[],
-  period: string,
+  row: Pick<ResearchRow, "fiscalYear" | "fiscalQuarter">,
 ): EventRow | null {
-  const last = addDays(period, REPORT_WINDOW_DAYS);
-  return reported.find((e) => e.date > period && e.date <= last) ?? null;
+  if (row.fiscalYear === null) return null;
+  return (
+    reported.find(
+      (e) =>
+        e.fiscalYear === row.fiscalYear &&
+        e.fiscalQuarter === row.fiscalQuarter,
+    ) ?? null
+  );
 }
 
 // days a passed event still counts as next while it awaits results

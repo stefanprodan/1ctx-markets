@@ -26,6 +26,8 @@ import type { Instrument } from "../market/instruments.ts";
 import { readQuote } from "../market/quotes.ts";
 import { addDays, localDate } from "../market/zone.ts";
 import { isFundKey } from "../portfolios/funds.ts";
+import { splitsOf } from "../portfolios/store.ts";
+import { splitFactor } from "../portfolios/value.ts";
 import {
   AWAITING_DAYS,
   eventStatus,
@@ -123,10 +125,14 @@ export function sinceWritten(m: Markets, i: Instrument, note: Note) {
   const q = readQuote(m.db, i.id);
   const today = localDate(i.zone, now);
   const saved = localDate(i.zone, note.createdAt);
+  // a split since puts the price then and now on two share counts
+  const pricedOn = localDate(i.zone, note.pricedAt ?? note.createdAt);
+  const splits = splitsOf(m.db, i.id).filter((s) => s.date > pricedOn);
+  const then = note.price / splitFactor(splits, pricedOn);
   // a currency changed since makes the two prices no move
   const change =
-    q !== null && note.currency === i.currency && note.price !== 0
-      ? round((q.price / note.price - 1) * 100)
+    q !== null && note.currency === i.currency && then !== 0
+      ? round((q.price / then - 1) * 100)
       : null;
   return {
     price: price(note.price),
@@ -135,6 +141,7 @@ export function sinceWritten(m: Markets, i: Instrument, note: Note) {
     price_now: price(q?.price ?? null),
     fetched_at: iso(q?.fetchedAt ?? null),
     change_percent: change,
+    splits: splits.map((s) => ({ date: s.date, ratio: s.ratio })),
     // a report seen late can be dated in the days before the save
     earnings: readEvents(m.db, addDays(saved, -AWAITING_DAYS), today, [i.id])
       // a report seen before the save is one the note could read

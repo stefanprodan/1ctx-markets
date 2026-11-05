@@ -51,7 +51,11 @@ export type Analysts = {
 };
 
 export type Earnings = {
+  // a calendar quarter after the fiscal one when fiscal quarters are offset
   period: string;
+  // the event's fiscal quarter, null when the answer labels it two ways
+  fiscalYear: number | null;
+  fiscalQuarter: number | null;
   estimate: number | null;
   actual: number | null;
   surprise: number | null;
@@ -284,9 +288,11 @@ function earningsOf(body: unknown, symbol: string): Parsed<Earnings[]> {
   const listing = listingOf(entries, symbol);
   if (!perShare(listing)) return { data: null, listing };
   const rows = entries.map((r): Earnings => {
-    // the fiscal labels are not kept: they disagree for one period
+    const fiscal = fiscalOf(r);
     return {
       period: day(r.period, "period"),
+      fiscalYear: fiscal?.year ?? null,
+      fiscalQuarter: fiscal?.quarter ?? null,
       estimate: optionalNum(r.estimate, "estimate"),
       actual: optionalNum(r.actual, "actual"),
       surprise: optionalNum(r.surprise, "surprise"),
@@ -294,9 +300,44 @@ function earningsOf(body: unknown, symbol: string): Parsed<Earnings[]> {
     };
   });
   return {
-    data: rows.length === 0 ? null : collapse(rows, (r) => r.period),
+    data:
+      rows.length === 0 ? null : collapse(unlabelled(rows), (r) => r.period),
     listing,
   };
+}
+
+// the stored range; a label out of it is no label
+function fiscalOf(r: Obj): { year: number; quarter: number } | null {
+  const { year, quarter } = r;
+  if (!Number.isSafeInteger(year) || !Number.isSafeInteger(quarter)) {
+    return null;
+  }
+  const y = year as number;
+  const q = quarter as number;
+  return y >= 1900 && y <= 2200 && q >= 1 && q <= 4
+    ? { year: y, quarter: q }
+    : null;
+}
+
+const fiscalKey = (r: Earnings) =>
+  r.fiscalYear === null ? "" : `${r.fiscalYear} Q${r.fiscalQuarter}`;
+
+// NVDA's answer labels one period two fiscal quarters; either may be wrong,
+// so a period or a quarter answered two ways keeps no label
+function unlabelled(rows: readonly Earnings[]): Earnings[] {
+  const labels = new Map<string, Set<string>>();
+  const periods = new Map<string, Set<string>>();
+  for (const r of rows) {
+    const key = fiscalKey(r);
+    labels.set(r.period, (labels.get(r.period) ?? new Set()).add(key));
+    if (key !== "")
+      periods.set(key, (periods.get(key) ?? new Set()).add(r.period));
+  }
+  return rows.map((r) =>
+    labels.get(r.period)!.size > 1 || (periods.get(fiscalKey(r))?.size ?? 1) > 1
+      ? { ...r, fiscalYear: null, fiscalQuarter: null }
+      : r,
+  );
 }
 
 export const parseInsider = (

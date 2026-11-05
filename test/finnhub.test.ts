@@ -39,8 +39,10 @@ import {
   type EventKey,
   eligible,
   finnhubSymbol,
+  NO_HOOKS,
   pruneResearch,
   SECTIONS,
+  storeSection,
 } from "../src/sources/finnhub/store.ts";
 import {
   type FinnhubContext,
@@ -105,6 +107,22 @@ function share(
   return i;
 }
 
+// a reported earnings event, its actuals seen at seen
+function reported(
+  db: Db,
+  instrument: string,
+  year: number,
+  quarter: number,
+  date: string,
+  seen = NOW,
+) {
+  db.query(
+    `insert or replace into events (instrument, fiscal_year, fiscal_quarter,
+       date, hour, eps_actual, reported_seen_at, fetched_at)
+     values (?, ?, ?, ?, 'amc', 1, ?, ?)`,
+  ).run(instrument, year, quarter, date, seen, seen);
+}
+
 const count = (db: Db, sql: string, ...args: (string | number)[]) =>
   (db.query(sql).get(...args) as { n: number }).n;
 
@@ -151,10 +169,13 @@ describe("finnhub answers", () => {
       strongSell: 0,
     });
     const earnings = (await d(t.client.earnings("NVDA"))).data!;
-    expect(earnings.map((e) => e.period)).toEqual([
-      "2026-09-30",
-      "2026-06-30",
-      "2026-03-31",
+    // the period labelled two fiscal quarters keeps neither
+    expect(
+      earnings.map((e) => [e.period, e.fiscalYear, e.fiscalQuarter]),
+    ).toEqual([
+      ["2026-09-30", 2027, 2],
+      ["2026-06-30", null, null],
+      ["2026-03-31", 2026, 4],
     ]);
     const insider = (
       await d(t.client.insider("NVDA", "2025-10-25", "2026-10-25"))
@@ -808,6 +829,28 @@ describe("research rows", () => {
     });
   });
 
+  test("a fiscal quarter reported before its period ends is stored", async () => {
+    const before = Date.parse("2026-09-01T23:30:00Z");
+    const t = setup({ start: before });
+    const nvda = share(t.db, "NVDA", before);
+    const periods = () =>
+      readResearch(t.db, nvda.id, "earnings").map((r) => r.period);
+    await drive(t.clock, t.client, refreshResearch(t.ctx, nvda, ["earnings"]));
+    expect(periods()).toEqual(["2026-06-30", "2026-03-31"]);
+    // reported, but seen only after this fetch's day
+    reported(t.db, nvda.id, 2027, 2, "2026-08-26", before + DAY_MS);
+    await drive(t.clock, t.client, refreshResearch(t.ctx, nvda, ["earnings"]));
+    expect(periods()).toEqual(["2026-06-30", "2026-03-31"]);
+    reported(t.db, nvda.id, 2027, 2, "2026-08-26", before);
+    await drive(t.clock, t.client, refreshResearch(t.ctx, nvda, ["earnings"]));
+    expect(periods()).toEqual(["2026-09-30", "2026-06-30", "2026-03-31"]);
+    expect(readResearch(t.db, nvda.id, "earnings")[0]).toMatchObject({
+      fiscalYear: 2027,
+      fiscalQuarter: 2,
+      eps_actual: 2.22,
+    });
+  });
+
   test("an earnings row of a quarter ending after the fetch day is not stored", async () => {
     const t = setup({
       route: edited("/api/v1/stock/earnings", "NVDA", (b) => {
@@ -826,15 +869,60 @@ describe("research rows", () => {
     expect(sectionState(t.db, nvda.id, "earnings", NOW).stale).toEqual([]);
   });
 
+  test("a period relabelled to another quarter keeps none of the old quarter's figures", () => {
+    const t = setup();
+    const nvda = share(t.db, "NVDA", NOW);
+    const row = (period: string, quarter: number, actual: number | null) => ({
+      symbol: "NVDA",
+      period,
+      year: 2027,
+      quarter,
+      estimate: quarter,
+      actual,
+      surprise: actual === null ? null : 0.1,
+      surprisePercent: actual === null ? null : 5,
+    });
+    const store = (body: unknown[], fetchedAt: number) =>
+      storeSection(
+        t.db,
+        nvda.id,
+        {
+          section: "earnings",
+          answer: { ...parseEarnings(body, "NVDA"), fetchedAt },
+        },
+        NO_HOOKS,
+      );
+    store([row("2026-09-30", 1, 1), row("2026-06-30", 2, 2)], NOW);
+    // Q2 moves to 2026-09-30 without its actual: Q1's must not stay there
+    store([row("2026-09-30", 2, null)], NOW + 1);
+    const rows = readResearch(t.db, nvda.id, "earnings");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      period: "2026-09-30",
+      fiscalQuarter: 2,
+      eps_estimate: 2,
+      eps_actual: 2,
+      surprise: 0.1,
+      surprise_percent: 5,
+    });
+  });
+
   test("a report labelled a later quarter one night and its own the next leaves one row", async () => {
     let ahead = true;
     const t = setup({
       route: edited("/api/v1/stock/earnings", "NVDA", (b) => {
         if (ahead) b[0].period = "2027-03-31";
+        // the real period's answer leaves out what the mislabelled one had
+        else b[0].actual = b[0].surprise = b[0].surprisePercent = null;
       }),
     });
     const nvda = share(t.db, "NVDA", NOW);
+    reported(t.db, nvda.id, 2027, 2, "2026-08-26");
     await drive(t.clock, t.client, refreshResearch(t.ctx, nvda, ["earnings"]));
+    // its quarter has reported, so the period ahead is stored for a night
+    expect(readResearch(t.db, nvda.id, "earnings")[0]!.period).toBe(
+      "2027-03-31",
+    );
     ahead = false;
     await t.clock.advance(DAY_MS);
     await drive(t.clock, t.client, refreshResearch(t.ctx, nvda, ["earnings"]));
@@ -844,7 +932,11 @@ describe("research rows", () => {
       "2026-06-30",
       "2026-03-31",
     ]);
-    expect(rows[0]!.eps_actual).toBe(2.22);
+    expect(rows[0]).toMatchObject({
+      eps_actual: 2.22,
+      surprise: 0.0816,
+      surprise_percent: 3.8159,
+    });
   });
 
   test("rows kept from an earlier answer say the last one had no data", async () => {
