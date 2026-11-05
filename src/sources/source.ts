@@ -111,6 +111,9 @@ export type RunOptions = {
   failFast?: boolean;
   // false once the caller's deadline passed, so a waiting call never starts
   live?: () => boolean;
+  // among calls with a deadline, a lower order goes first, so one fetch's
+  // chain of calls ends before a later fetch's starts
+  order?: number;
 };
 
 // a back-off in force: when calls go again and the phrase that started it
@@ -140,6 +143,7 @@ type Waiting = {
   failFast: boolean;
   live: () => boolean;
   deadline: boolean;
+  order: number | undefined;
   reject: (error: unknown) => void;
 };
 
@@ -213,12 +217,20 @@ export function queue(clock: Clock, concurrency: number): Queue {
           failFast: options.failFast === true,
           live: options.live ?? (() => true),
           deadline: options.live !== undefined,
+          order: options.order,
           reject,
         };
         // a call with a deadline goes ahead of the jobs' calls, in order
         // among its own, so a read never times out behind a pass
+        const order = call.order;
         const behind = call.deadline
-          ? waiting.findIndex((w) => !w.deadline)
+          ? waiting.findIndex(
+              (w) =>
+                !w.deadline ||
+                (order !== undefined &&
+                  w.order !== undefined &&
+                  w.order > order),
+            )
           : -1;
         if (behind === -1) waiting.push(call);
         else waiting.splice(behind, 0, call);
@@ -252,6 +264,8 @@ export function limiter(clock: Clock, spacingMs: number): Limiter {
   let closed = false;
   let parked: number | null = null;
   const waits = new Set<{ cancel: () => void; reject: (e: unknown) => void }>();
+  // an answered ordered call's hold on the queue, by its order
+  const holds = new Map<number, () => void>();
 
   // waits, holding the queue, until the spacing since the last start
   const slot = async (): Promise<void> => {
@@ -273,23 +287,54 @@ export function limiter(clock: Clock, spacingMs: number): Limiter {
     }
   };
 
+  const started = async <T>(
+    task: () => Promise<T>,
+    run: RunOptions,
+  ): Promise<T> => {
+    if (closed) throw new QueueClosed();
+    if (run.live !== undefined && !run.live()) throw new DeadlinePassed();
+    await slot();
+    // closed or past the deadline while it waited: the slot stays free
+    if (closed) throw new QueueClosed();
+    if (run.live !== undefined && !run.live()) throw new DeadlinePassed();
+    lastStart = clock.now();
+    return task();
+  };
+
   return {
-    run: (task, run = {}) =>
-      calls.run(async () => {
-        if (closed) throw new QueueClosed();
-        if (run.live !== undefined && !run.live()) throw new DeadlinePassed();
-        await slot();
-        // closed or past the deadline while it waited: the slot stays free
-        if (closed) throw new QueueClosed();
-        if (run.live !== undefined && !run.live()) throw new DeadlinePassed();
-        lastStart = clock.now();
-        return task();
-      }, run),
+    run: (task, run = {}) => {
+      const order = run.order;
+      if (order === undefined) return calls.run(() => started(task, run), run);
+      // an ordered call answers at once but holds the queue until its
+      // fetch's next call is queued, or a turn passes with none, however
+      // long the answer took, so no later fetch's call slips in between
+      const p = new Promise<Awaited<ReturnType<typeof task>>>(
+        (resolve, reject) => {
+          calls
+            .run(async () => {
+              resolve(await started(task, run));
+              await new Promise<void>((done) => {
+                const release = () => {
+                  clearImmediate(turn);
+                  if (holds.get(order) === release) holds.delete(order);
+                  done();
+                };
+                const turn = setImmediate(release);
+                holds.set(order, release);
+              });
+            }, run)
+            .catch(reject);
+        },
+      );
+      holds.get(order)?.();
+      return p;
+    },
     due: () => parked ?? calls.due(),
     backoff: () => calls.backoff(),
     close() {
       closed = true;
       calls.close();
+      for (const release of holds.values()) release();
       for (const wait of waits) {
         wait.cancel();
         wait.reject(new QueueClosed());

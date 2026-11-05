@@ -72,6 +72,7 @@ export type Bvb = {
   // the symbols, uppercased, on a kind's list page last read, null if never
   listedIn(kind: ListKind): ReadonlySet<string> | null;
   failFast(): Bvb;
+  // one fetch's client: its calls go ahead of those of a client made later
   within(live: () => boolean): Bvb;
   due(): number | null;
   backoff(): Backoff | null;
@@ -100,6 +101,7 @@ export function bvb(options: BvbOptions): Bvb {
   const calls: Limiter = limiter(clock, SPACING_MS);
   // the chart feed's key, from the last instrument page read
   let key: string | null = null;
+  let fetches = 0;
   const lists = new Map<
     ListKind,
     { symbols: ReadonlySet<string>; at: number }
@@ -315,7 +317,7 @@ export function bvb(options: BvbOptions): Bvb {
       listedAt: (kind) => lists.get(kind)?.at ?? null,
       listedIn: (kind) => lists.get(kind)?.symbols ?? null,
       failFast: () => client({ failFast: true }),
-      within: (live) => client({ failFast: true, live }),
+      within: (live) => client({ failFast: true, live, order: ++fetches }),
       due: () => calls.due(),
       backoff: () => calls.backoff(),
       close: () => calls.close(),

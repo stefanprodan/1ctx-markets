@@ -242,7 +242,9 @@ exchange: one client, its parsers, its session, the same tables.
   (`checkListed()`); one they lack reads the page again and is refused
   only when the fresh page lacks it too, since a list read earlier may
   predate a new listing. The symbol answer is always asked: it
-  gives the currency and zone no list holds.
+  gives the currency and zone no list holds. Several new symbols in
+  one call are fetched one after another (`docs/sources.md`,
+  "Deadlines").
 
 ## Switching sources
 

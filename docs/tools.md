@@ -319,8 +319,11 @@ tracking in `docs/storage.md`; the source queue and deadlines in
   caught up first (`catchUp()`, `refetchSeries()`).
 - **The whole call has one 15-second deadline** (`CALL_MS`), under
   1ctx's untouched 20-second tool timeout. Each input resolves and
-  fetches on its own, so a slow one holds no other; one not done
-  answers `timeout` with "retry this symbol".
+  fetches on its own; one not done answers `timeout` with "retry this
+  symbol". Inputs on a spaced source share its pace: the Bucharest
+  feed serves one fetch's calls before a later fetch's
+  (`docs/sources.md`, "Deadlines"), so of several new symbols the
+  first lands and a retry lands the next, rather than none landing.
 - **Nothing starts or lands after the deadline**: no source call
   starts past it (`docs/sources.md`, "Deadlines"), a late fetch stores
   nothing (`docs/storage.md`, "The writer"), and the tracking write is

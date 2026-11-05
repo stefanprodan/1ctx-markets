@@ -11,7 +11,8 @@ import { readQuote } from "../src/market/quotes.ts";
 import { JOBS, quoteStale, STALE } from "../src/market/stale.ts";
 import { markRead } from "../src/market/tracking.ts";
 import { historyAnswer, parseHistory } from "../src/operations/history.ts";
-import { markets } from "../src/operations/markets.ts";
+import { CALL_MS, markets } from "../src/operations/markets.ts";
+import { readTargets } from "../src/operations/targets.ts";
 import type { RuleHooks } from "../src/rules/hooks.ts";
 import { MINUTE_MS } from "../src/runtime/clock.ts";
 import { keys } from "../src/runtime/keys.ts";
@@ -290,6 +291,52 @@ describe("a first fetch and the list pages", () => {
     ).rejects.toThrow(AERO);
     expect(sharesRead(t.f.urls)).toBe(2);
     expect(readInstrument(t.db, "BVB:XYZ")).toBeNull();
+  });
+
+  test("new shares in one call land one after another, and a retry lands the next", async () => {
+    const metaOf = async (symbol: string) => {
+      const fx = clone(await bvbRecorded("wapi-symbols-tlv"));
+      fx.body.name = symbol;
+      fx.body.ticker = symbol;
+      return fx;
+    };
+    const metas: Record<string, Recorded> = {
+      SNP: await metaOf("SNP"),
+      H2O: await metaOf("H2O"),
+    };
+    const t = await setup(utc("2026-10-23T14:00:00"), {
+      hold: (url) =>
+        url.pathname === "/api/symbols"
+          ? metas[url.searchParams.get("symbol") ?? ""]
+          : undefined,
+    });
+    friday(t.db, t.clock.now());
+    const m = markets({
+      db: t.db,
+      clock: t.clock,
+      writer: t.ctx.writer,
+      yahoo: yahoo({ clock: t.clock, fetch: noNetwork }),
+      fred: null,
+      bvb: t.ctx.bvb,
+      log: silent,
+    });
+    const read = (inputs: string[]) =>
+      t.run(readTargets(m, inputs, t.clock.now() + CALL_MS));
+    const first = await read(["BVB:TLV", "BVB:SNP", "BVB:H2O"]);
+    expect("instrument" in first[0]!).toBe(true);
+    expect(first[2]).toMatchObject({ error: { error: "timeout" } });
+    // every call for the first share before any for the second
+    const named = (s: string) =>
+      t.f.urls.flatMap((u, i) =>
+        u.searchParams.get("symbol") === s || u.searchParams.get("s") === s
+          ? [i]
+          : [],
+      );
+    expect(Math.max(...named("TLV"))).toBeLessThan(Math.min(...named("SNP")));
+    expect(readInstrument(t.db, "BVB:H2O")).toBeNull();
+    const [again] = await read(["BVB:H2O"]);
+    expect(again).toMatchObject({ instrument: { id: "BVB:H2O" } });
+    expect(readBars(t.db, "BVB:H2O", "1d").length).toBeGreaterThan(0);
   });
 });
 
