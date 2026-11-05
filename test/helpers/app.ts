@@ -59,6 +59,8 @@ export type TestOptions = {
   bvb?: boolean;
   // false as with --no-sync
   sync?: boolean;
+  // keys a person may hold, as --max-keys
+  maxKeys?: number;
   // kept open after the app stops, so a second start reads it
   db?: Db;
   // the web UI's sign-in, and the page it serves
@@ -103,6 +105,7 @@ export async function withApp(
     world: options.world,
     bvb: options.bvb,
     sync: options.sync,
+    maxKeys: options.maxKeys,
     ui: options.ui,
     secrets: options.secrets === undefined ? undefined : keys(options.secrets),
     sender:

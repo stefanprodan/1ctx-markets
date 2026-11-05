@@ -142,9 +142,10 @@ signs in to the web UI and works for MCP and the REST API.
 
 The server listens on `127.0.0.1:11238`, serves MCP at `/mcp`, and
 keeps `markets.db` in `~/.1ctx-markets`. `--listen`, `--data`,
-`--quote-every` (minutes between quote syncs, 5 by default) and
+`--quote-every` (minutes between quote syncs, 5 by default),
 `--track-days` (how long an instrument stays synced after its last
-read, 30 by default) change that, `--source bvb` turns on the
+read, 30 by default) and `--max-keys` (keys a person may hold, 20 by
+default) change that, `--source bvb` turns on the
 Bucharest Stock Exchange's feed, and `--no-sync` serves the database
 without syncing it, for a second server on a copy; `--help` lists
 them. It speaks plain

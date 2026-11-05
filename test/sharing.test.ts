@@ -18,6 +18,7 @@ import {
 } from "../src/operations/portfolio.ts";
 import { NO_WORLD } from "../src/operations/track.ts";
 import type { Who } from "../src/operations/who.ts";
+import { DEFAULT_MAX_KEYS } from "../src/runtime/config.ts";
 import { silent } from "../src/runtime/log.ts";
 import { createKey } from "../src/server/access.ts";
 import { isIsin } from "../src/shared/isin.ts";
@@ -267,6 +268,7 @@ describe("a person sharing their portfolios", () => {
         "jo",
         { name: "jo-agent", days: null, portfolio: "read" },
         0,
+        DEFAULT_MAX_KEYS,
       ),
     );
     for (const token of [made.token, ADMIN_KEY]) {

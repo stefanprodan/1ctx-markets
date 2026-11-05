@@ -60,6 +60,25 @@ describe("--no-ui", () => {
   });
 });
 
+describe("--max-keys", () => {
+  test("20 by default, a value from 1 to 1000, and a service keeps it", () => {
+    const none = parseCli([], "/home/x");
+    if (none.kind !== "run") throw new Error(none.kind);
+    expect(none.config.maxKeys).toBe(20);
+    const set = parseCli(["--max-keys", "100"], "/home/x");
+    if (set.kind !== "run") throw new Error(set.kind);
+    expect(set.config.maxKeys).toBe(100);
+    expect(parseCli(configToArgs(set.config), "/home/y")).toEqual(set);
+    for (const bad of ["0", "1001", "x", "-1"]) {
+      expect(parseCli(["--max-keys", bad], "/home/x")).toEqual({
+        kind: "error",
+        message: "--max-keys must be a whole number from 1 to 1000",
+      });
+    }
+    expect(HELP).toContain("--max-keys");
+  });
+});
+
 describe("--no-sync", () => {
   test("sync is on unless the flag turns it off, and a service keeps it", () => {
     const on = parseCli([], "/home/x");

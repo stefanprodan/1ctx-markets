@@ -9,6 +9,9 @@ import { MINUTE_MS } from "./clock.ts";
 export const DEFAULT_LISTEN = "127.0.0.1:11238";
 export const DEFAULT_QUOTE_EVERY = 5;
 export const DEFAULT_TRACK_DAYS = 30;
+// one key per client, so a person with a few agents and scripts never runs out
+export const DEFAULT_MAX_KEYS = 20;
+export const MAX_MAX_KEYS = 1000;
 export const KNOWN_SOURCES = ["bvb"] as const;
 
 export type Config = {
@@ -18,6 +21,8 @@ export type Config = {
   quoteEveryMs: number;
   // an instrument read within this many days stays tracked
   trackDays: number;
+  // keys a person may hold, expired ones included
+  maxKeys: number;
   sources: string[];
   // the web UI at / and its sign-in
   ui: boolean;
@@ -110,6 +115,8 @@ export const HELP = `\x1b[1m1ctx-markets\x1b[0m - a self-hosted market data serv
   --quote-every <min>    minutes between quote syncs (default: ${DEFAULT_QUOTE_EVERY})
   --track-days <days>    an instrument read within this many days stays
                          tracked (default: ${DEFAULT_TRACK_DAYS})
+  --max-keys <n>         keys a person may hold, expired ones included,
+                         1 to ${MAX_MAX_KEYS} (default: ${DEFAULT_MAX_KEYS})
   --source <name>        turn on a keyless source, repeated for each;
                          bvb: the Bucharest Stock Exchange's own feed
   --no-ui                serve no web UI at / and refuse its sign-in
@@ -138,6 +145,7 @@ export const VALUED_FLAGS = [
   "--data",
   "--quote-every",
   "--track-days",
+  "--max-keys",
   "--source",
 ];
 
@@ -169,6 +177,7 @@ export function parseCli(argv: string[], home: string = homedir()): Cli {
   let dataDir = defaultDataDir(home);
   let quoteEvery = DEFAULT_QUOTE_EVERY;
   let trackDays = DEFAULT_TRACK_DAYS;
+  let maxKeys = DEFAULT_MAX_KEYS;
   const sources = new Set<string>();
   let ui = true;
   let sync = true;
@@ -204,6 +213,17 @@ export function parseCli(argv: string[], home: string = homedir()): Cli {
         const n = positive();
         if (typeof n === "string") return { kind: "error", message: n };
         trackDays = n;
+        break;
+      }
+      case "--max-keys": {
+        const n = count(value);
+        if (n === null || n > MAX_MAX_KEYS) {
+          return {
+            kind: "error",
+            message: `--max-keys must be a whole number from 1 to ${MAX_MAX_KEYS}`,
+          };
+        }
+        maxKeys = n;
         break;
       }
       case "--source":
@@ -244,6 +264,7 @@ export function parseCli(argv: string[], home: string = homedir()): Cli {
       dataDir,
       quoteEveryMs: quoteEvery * MINUTE_MS,
       trackDays,
+      maxKeys,
       sources: [...sources].sort(),
       ui,
       sync,
@@ -263,6 +284,8 @@ export function configToArgs(config: Config): string[] {
     String(config.quoteEveryMs / MINUTE_MS),
     "--track-days",
     String(config.trackDays),
+    "--max-keys",
+    String(config.maxKeys),
   ];
   for (const name of config.sources) args.push("--source", name);
   if (!config.ui) args.push("--no-ui");

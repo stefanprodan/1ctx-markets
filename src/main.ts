@@ -112,6 +112,7 @@ const app = start({
   db,
   quoteEveryMs: config.quoteEveryMs,
   trackDays: config.trackDays,
+  maxKeys: config.maxKeys,
   world: WORLD_MARKETS,
   // read through the keys module, so the log masks it
   fredKey: store.source("fred"),
@@ -131,6 +132,7 @@ main.info("startup", {
   migrations: migrations.length > 0 ? migrations.join(",") : "current",
   quote_every: config.quoteEveryMs / MINUTE_MS,
   track_days: config.trackDays,
+  max_keys: config.maxKeys,
   ui: config.ui ? "on" : "off",
   sync: config.sync ? "on" : "off",
 });

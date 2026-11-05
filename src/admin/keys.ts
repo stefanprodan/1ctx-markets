@@ -25,7 +25,6 @@ import {
   type KeyDays,
   type KeyRow,
   listKeys,
-  MAX_KEYS,
   MAX_NAME,
   MIN_NAME,
   PORTFOLIO_ACCESS,
@@ -39,6 +38,8 @@ import { recheck } from "../server/caller.ts";
 
 export type KeysDeps = {
   m: Markets;
+  // keys a person may hold, from --max-keys
+  maxKeys: number;
   // hides a made token from every later log line
   mask: (token: string) => void;
 };
@@ -73,10 +74,10 @@ export const isAdmin = (m: Markets, who: Who): boolean =>
     .get(who.user)?.role === "admin";
 
 // the caller's own keys; an admin's list holds everyone's
-export const listAnswer = (m: Markets, who: Who) => {
+export const listAnswer = (m: Markets, who: Who, maxKeys: number) => {
   const names = namesOf(m);
   const list = isAdmin(m, who) ? allKeys(m.db) : listKeys(m.db, who.user);
-  return json({ keys: list.map((k) => keyItem(k, names)), limit: MAX_KEYS });
+  return json({ keys: list.map((k) => keyItem(k, names)), limit: maxKeys });
 };
 
 function portfolioOf(value: unknown): PortfolioAccess {
@@ -170,7 +171,7 @@ export async function createOne(d: KeysDeps, who: Who, body: unknown) {
   try {
     made = await d.m.writer.write((db) => {
       recheck(db);
-      return createKey(db, who.user, args, d.m.clock.now());
+      return createKey(db, who.user, args, d.m.clock.now(), d.maxKeys);
     });
   } catch (error) {
     if (error instanceof KeyConflict) return problem("conflict", error.message);
