@@ -196,6 +196,11 @@ tracking in `docs/storage.md`; the source queue and deadlines in
   from the bar pass near the open, hours old, and the Bucharest feed
   often has none. It is the bar the live row steps from
   (`docs/signals.md`), so the two never disagree.
+- **A bar not final answers `open` null when its open is outside its
+  own range** (`ownOpen()`, after `withLive()` widens it): Yahoo's
+  first-minute daily bar carries the previous session's open until it
+  turns final. Read time only; stored and final bars are as the source
+  gives them.
 - **history's `session` is quote's**, so a reader tells an intraday
   bar from an unsettled close: a day's bar stays not final after its
   close until the source shows a later session (`docs/calendars.md`).

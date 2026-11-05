@@ -219,6 +219,15 @@ export function withLive(
   ];
 }
 
+// Yahoo's first-minute bar carries the previous session's open until it
+// turns final; a final bar is left as the source gives it
+function ownOpen(b: Bar): Bar {
+  if (b.final || b.open === null || b.high === null || b.low === null) {
+    return b;
+  }
+  return b.open < b.low || b.open > b.high ? { ...b, open: null } : b;
+}
+
 export type HistoryBar = Bar & { row: SignalRow | null };
 
 export type HistoryRead =
@@ -283,7 +292,7 @@ export async function readHistory(
     readBars(db, instrument.id, args.interval),
     liveTarget(db, instrument),
     args.interval,
-  );
+  ).map(ownOpen);
   const to = args.to ?? all.at(-1)?.date ?? dateOfWall(m.clock.now());
   const from = args.from ?? monthsBack(to, DEFAULT_MONTHS[args.interval]);
   const first = start ?? from;
