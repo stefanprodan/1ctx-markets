@@ -76,12 +76,16 @@ drift (`docs/profile.md` has each rule and why):
 ## What changed since it was written
 
 - **At each save the stored quote is kept beside the revision**: its
-  price, the instrument's currency and the quote's `fetched_at`
-  (`priced_at`), or nulls with no stored quote (a FRED series, a fund,
+  price, the instrument's currency and the quote's trade time, its
+  `fetched_at` for an untimed quote (`priced_at`, so a price fetched
+  before a split day's open counts as before the split), or nulls with
+  no stored quote (a FRED series, a fund,
   a symbol never quoted). A write never fetches a quote.
 - **The read answers `since_written`** (`sinceWritten()`): that price,
-  the stored price now, `change_percent` between them (null when the
-  currency changed or either is missing), and the earnings stored in
+  the stored price now, `change_percent` between them on today's share
+  count (null when the currency changed or either is missing; a split
+  dated after the price's day divides the price then by its ratio, and
+  `splits` lists each with `date` and `ratio`), and the earnings stored in
   `events` that came after the save, each with `date`, `hour` and
   `status`: a reported one seen reported after the save's time, one not
   reported yet dated after the save's day (in the exchange's zone), so a

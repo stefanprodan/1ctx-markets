@@ -624,6 +624,7 @@ describe("since written", () => {
       price_now: 110,
       fetched_at: "2026-10-26T18:00:00Z",
       change_percent: 10,
+      splits: [],
       earnings: [{ date: "2026-10-24", hour: "amc", status: "reported" }],
     });
     // a version is the text as saved, without the move
@@ -636,6 +637,91 @@ describe("since written", () => {
         }),
       ),
     ).not.toContain("since_written");
+  });
+
+  test("dates the price at the save by its trade, so a split that day counts", async () => {
+    const { m, db, clock } = setup();
+    const traded = clock.now();
+    await clock.advance(2 * 24 * 3_600_000 + 14 * 3_600_000);
+    // the day before's close, fetched on the split's day before its open
+    upsertQuote(db, {
+      instrument: SYMBOL,
+      price: 100,
+      previousClose: 99,
+      previousCloseField: "previousClose",
+      change: 1,
+      changePercent: 1.01,
+      dayHigh: null,
+      dayLow: null,
+      volume: null,
+      time: traded,
+      source: "other",
+      fetchedAt: clock.now(),
+    });
+    await ask(m, WRITER, { action: "replace", symbol: SYMBOL, text: NOTE });
+    const day = new Date(clock.now()).toISOString().slice(0, 10);
+    db.query(
+      `insert into splits (instrument, date, numerator, denominator, ratio,
+         applied_at) values (?, ?, 2, 1, '2:1', ?)`,
+    ).run(SYMBOL, day, clock.now());
+    await clock.advance(12 * 3_600_000);
+    upsertQuote(db, {
+      instrument: SYMBOL,
+      price: 55,
+      previousClose: 50,
+      previousCloseField: "previousClose",
+      change: 5,
+      changePercent: 10,
+      dayHigh: null,
+      dayLow: null,
+      volume: null,
+      time: clock.now(),
+      source: "other",
+      fetchedAt: clock.now(),
+    });
+    const read = bodyOf(
+      await ask(m, WRITER, { action: "read", symbol: SYMBOL }),
+    );
+    const line = read.split("\n").find((l) => l.startsWith("since_written: "));
+    expect(JSON.parse(line!.slice("since_written: ".length))).toMatchObject({
+      change_percent: 10,
+      splits: [{ date: day, ratio: 2 }],
+    });
+  });
+
+  test("measures across a split since the save on the shares now", async () => {
+    const { m, db, clock } = setup();
+    quote(db, SYMBOL, 100, 99);
+    await ask(m, WRITER, { action: "replace", symbol: SYMBOL, text: NOTE });
+    await clock.advance(3 * 24 * 3_600_000);
+    db.query(
+      `insert into splits (instrument, date, numerator, denominator, ratio,
+         applied_at) values (?, '2026-10-25', 2, 1, '2:1', ?)`,
+    ).run(SYMBOL, clock.now());
+    upsertQuote(db, {
+      instrument: SYMBOL,
+      price: 55,
+      previousClose: 54,
+      previousCloseField: "previousClose",
+      change: 1,
+      changePercent: 1.85,
+      dayHigh: null,
+      dayLow: null,
+      volume: null,
+      time: clock.now(),
+      source: "other",
+      fetchedAt: clock.now(),
+    });
+    const read = bodyOf(
+      await ask(m, WRITER, { action: "read", symbol: SYMBOL }),
+    );
+    const line = read.split("\n").find((l) => l.startsWith("since_written: "));
+    expect(JSON.parse(line!.slice("since_written: ".length))).toMatchObject({
+      price: 100,
+      price_now: 55,
+      change_percent: 10,
+      splits: [{ date: "2026-10-25", ratio: 2 }],
+    });
   });
 
   test("lists only earnings after the save, never one reported before it that day", async () => {

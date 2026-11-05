@@ -68,7 +68,8 @@ phrases and the lock every source shares are in `docs/sources.md`; the
   S-3ASR, 424B1, 424B4 and 424B5, which register or offer new
   securities, shares or debt. 424B2 and 424B3 are left out: a bank
   files thousands a year for structured notes, which would bury every
-  other filing and set the offering flag every day. 424B7 and 424B8
+  other filing and set the offering flag every day, so an issuer that
+  files its notes only as 424B2 or FWP never sets the flag. 424B7 and 424B8
   are left out too: resales by holders and late-filed copies, never
   new securities.
 - **Stored per filing** (`filings`, keyed by instrument and accession):

@@ -203,7 +203,8 @@ export function saveAnalysis(
             who.user,
             q?.price ?? null,
             q === null ? null : currency,
-            q?.fetchedAt ?? null,
+            // the trade's time says which side of a split the price is on
+            q === null ? null : (q.time ?? q.fetchedAt),
             next.createdAt,
           );
         },
