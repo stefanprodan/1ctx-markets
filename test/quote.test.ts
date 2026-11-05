@@ -192,6 +192,33 @@ describe("quote against a benchmark", () => {
       fetched_at: "2026-10-23T18:00:00Z",
     });
     expect(q.benchmark.stale).not.toContain("no quote yet");
+    // one currency: no FX between them, so no note
+    expect(q.items[0]).toMatchObject({
+      relative_to: rel.returns[0].benchmark.to,
+      relative_live: true,
+    });
+    expect(q.items[0].relative_to).toBe(LIVE);
+    expect(q.items[0]).not.toContainKey("relative_note");
+  });
+
+  test("a benchmark in another currency says no FX conversion is applied", async () => {
+    const w = pair();
+    w.db
+      .query("update instruments set currency = 'EUR' where id = 'XX:B'")
+      .run();
+    const q = await ask(w.m, { symbols: ["XX:A"], benchmark: "XX:B" });
+    const h = await historyAnswer(
+      w.m,
+      parseHistory({ symbol: "XX:A", benchmark: "XX:B" }),
+    );
+    const rel = JSON.parse(h.content[0]!.text).relative;
+    expect(rel.returns[0].benchmark.currency).toBe("EUR");
+    expect(q.items[0]).toMatchObject({
+      relative_to: LIVE,
+      relative_live: true,
+      relative_note: rel.returns[0].note,
+    });
+    expect(q.items[0].relative_note).toContain("FX conversion excluded");
   });
 
   test("a stale benchmark marks the answer", async () => {
