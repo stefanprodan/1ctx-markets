@@ -64,12 +64,35 @@ export function liveTarget(db: Db, instrument: Scoped): LiveTarget | null {
   if (session === null && instrument.market === CRYPTO) {
     return { date: localDate("UTC", quote.time), quote };
   }
-  if (
-    session === null ||
-    quote.time < session.start ||
-    quote.time > liveUntil(session)
-  ) {
-    return null;
+  if (session === null || quote.time > liveUntil(session)) return null;
+  if (quote.time < session.start) {
+    const date = ownBar(db, instrument, session, quote.time);
+    return date === null ? null : { date, quote };
   }
   return { date: sessionDate(session), quote };
+}
+
+// A check can store the next session hours before it opens; until a bar
+// pass makes the quote's own bar final, that bar is still the live one.
+function ownBar(
+  db: Db,
+  instrument: Scoped,
+  session: Session,
+  time: number,
+): string | null {
+  if (instrument.market === CRYPTO) return null;
+  const bar = db
+    .query<{ date: string; final: number }, [string]>(
+      `select date, final from bars where instrument = ? and interval = '1d'
+       order by date desc limit 1`,
+    )
+    .get(instrument.id);
+  const date = localDate(session.zone, time);
+  // only a day before the stored session's: a pre-open trade is not its own
+  return bar !== null &&
+    bar.final === 0 &&
+    bar.date === date &&
+    date < sessionDate(session)
+    ? date
+    : null;
 }
