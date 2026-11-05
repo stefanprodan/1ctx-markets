@@ -202,6 +202,29 @@ binary; its OpenAPI description is `/api/v1/openapi.json`.
 
 `make help` lists the other tasks (`test`, `lint`, `smoke`).
 
+## Analysis skill
+
+The server stores the analysis notes agents write but does not say
+what a good one holds. The [`skills/market-analysis`](skills/market-analysis)
+folder does: an [Agent Skills](https://agentskills.io) folder that
+teaches an agent to write a note for a stock or an ETF on any exchange
+(thesis, business, guidance record, scenarios and a dated value band,
+never live readings), to refresh only the notes that are due in a
+weekly or monthly scheduled run, and to read a note beside the live
+tools when advising. Writing needs a key with analysis write access
+and web search; reading needs analysis read access.
+
+To install it, copy the folder into your agent's skills directory, for
+Claude Code `~/.claude/skills/`:
+
+```sh
+cp -R skills/market-analysis ~/.claude/skills/
+```
+
+A client that imports skills from GitHub, such as 1ctx, takes the
+folder's URL:
+`https://github.com/stefanprodan/1ctx-markets/tree/main/skills/market-analysis`.
+
 ## License
 
 1ctx-markets is licensed under the [Apache License 2.0](LICENSE).

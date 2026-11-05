@@ -2,17 +2,29 @@
 
 Governs `src/analysis/` (the store and the fenced read),
 `src/operations/analysis.ts`, `src/tools/analysis.ts`, the analysis
-routes in `src/api/routes.ts` and their spec in
-`src/api/analysis-spec.ts`. The rules it shares with the owner's
-profile live in `src/document/` and `docs/profile.md`; keys and their
-access in `docs/admin.md`; the tool list per key in `docs/tools.md`.
+routes in `src/api/routes.ts`, their spec in
+`src/api/analysis-spec.ts`, and the skill in `skills/market-analysis/`.
+The rules it shares with the owner's profile live in `src/document/`
+and `docs/profile.md`; keys and their access in `docs/admin.md`; the
+tool list per key in `docs/tools.md`.
 
-An analysis is an agent's dated reading of one symbol (trend, earnings,
-news, valuation, risks) kept as one Markdown document, so that the next
-chat or scheduled run about that symbol starts from it instead of from
-nothing, and the web UI can show it. Agents write it over MCP, from a
-chat or a schedule outside the server; the server never calls a model
-and never writes one itself.
+An analysis is an agent's dated reading of one symbol (its thesis,
+business, earnings record, valuation and risks) kept as one Markdown
+document, so that the next chat or scheduled run about that symbol
+starts from it instead of from nothing, and the web UI can show it.
+Agents write it over MCP, from a chat or a schedule outside the
+server; the server never calls a model and never writes one itself.
+
+## How a note is written
+
+- **The skill in `skills/market-analysis/` says how, not server
+  code**: what a note holds (conclusions and history, never live
+  readings), its templates, and when a scheduled run rewrites one. It
+  is an Agent Skills folder an agent loads; the server never reads or
+  serves it. The server stores the text as sent and never checks it
+  against the templates. `test/skill.test.ts` fails when the skill
+  names a tool, argument, `analysis` action or answer field the server
+  does not have, so a rename breaks the build, not a scheduled run.
 
 ## About the symbol, never a person's money
 

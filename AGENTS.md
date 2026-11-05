@@ -109,6 +109,7 @@ src/web/                    the web UI, bundled from index.html (Preact)
   data/                     every call and signal; views never fetch
   views/                    the pages: sign-in, Home, Status, Connect agents, Screener
   style/ ui/ lib/ fonts/    1ctx's tokens, primitives, icons and fonts
+skills/market-analysis/     how agents write and read analysis notes (Agent Skills); the server never reads it
 test/                       one *.test.ts per area, helpers/ (fakes), fixtures/ (recordings)
 scripts/probe/              the fixture recorders, run by hand
 scripts/build.ts            the release build `make build` runs
@@ -142,7 +143,7 @@ the same commit as the code that changes a rule.
 | `docs/alerts.md` | price alerts: the `when` text and its stored tree, validation, evaluation once a session, state and how close, the earnings gate, split pauses, history, the `alerts` and `alerts_edit` tools |
 | `docs/portfolios.md` | portfolios, brokers, trades and positions, funds the owner prices and their prices, dry powder, the holdings arithmetic, currencies and rates, the `portfolio` tool, CSV import and export, privacy |
 | `docs/profile.md` | the owner's profile: one Markdown document, its text and size checks, revisions and their eviction, edits, the fenced read, the `profile` and `profile_edit` tools, its routes and the Markdown drawn for the web UI |
-| `docs/analysis.md` | the analysis per symbol: shared by everyone and about the symbol only, the rules it shares with the profile, the author, the price move since it was written, the fenced read, the `analysis` and `analysis_edit` tools, the pointer in `quote` and `research`, its routes |
+| `docs/analysis.md` | the analysis per symbol: shared by everyone and about the symbol only, the rules it shares with the profile, the author, the price move since it was written, the fenced read, the `analysis` and `analysis_edit` tools, the skill that says how a note is written, the pointer in `quote` and `research`, its routes |
 | `docs/tools.md` | the answer contract, arguments, each tool, units and staleness, resolution and the inline fetch, the reads the API shares, tool descriptions |
 | `docs/web.md` | the web UI: serving, the sign-in and its cookie, what the cookie opens, what an anonymous visitor sees, the client's rules, the pages |
 | `docs/testing.md` | the test suite, fakes, the fake clock, fixtures and the recorders |
