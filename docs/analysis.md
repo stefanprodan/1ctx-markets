@@ -20,11 +20,24 @@ server; the server never calls a model and never writes one itself.
 - **The skill in `skills/market-analysis/` says how, not server
   code**: what a note holds (conclusions and history, never live
   readings), its templates, and when a scheduled run rewrites one. It
-  is an Agent Skills folder an agent loads; the server never reads or
-  serves it. The server stores the text as sent and never checks it
-  against the templates. `test/skill.test.ts` fails when the skill
-  names a tool, argument, `analysis` action or answer field the server
-  does not have, so a rename breaks the build, not a scheduled run.
+  is an Agent Skills folder an agent loads. The server stores the
+  text as sent and never checks it against the templates.
+  `test/skill.test.ts` fails when the skill names a tool, argument,
+  `analysis` action or answer field the server does not have, so a
+  rename breaks the build, not a scheduled run.
+- **The server serves every folder under `skills/`, without a key**
+  (`src/server/skills.ts`): `/.well-known/agent-skills/index.json`,
+  the index 1ctx's skill import reads (name, `archive`, the
+  frontmatter's description, the URL, a `sha256:` digest of the
+  bytes), `{name}.tgz` that it names, and `{name}.zip`, since
+  claude.ai's skill upload takes a zip only. A Bun macro
+  (`src/server/skill-files.ts`) embeds the files at build time, so a
+  new file needs no code change. The archives are written by hand
+  with a fixed time, since `Bun.Archive` stamps the current one and
+  would move the digest at every start. `test/skill-serve.test.ts`
+  checks both archives hold the folder's files. A dot file is left
+  out, a file that is not UTF-8 text fails the build, and a quoted or
+  multi-line frontmatter value fails the tests and the start.
 
 ## About the symbol, never a person's money
 

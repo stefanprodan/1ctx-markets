@@ -109,7 +109,7 @@ src/web/                    the web UI, bundled from index.html (Preact)
   data/                     every call and signal; views never fetch
   views/                    the pages: sign-in, Home, Status, Connect agents, Screener
   style/ ui/ lib/ fonts/    1ctx's tokens, primitives, icons and fonts
-skills/market-analysis/     how agents write and read analysis notes (Agent Skills); the server never reads it
+skills/market-analysis/     how agents write and read analysis notes (Agent Skills); served at /.well-known/agent-skills/
 test/                       one *.test.ts per area, helpers/ (fakes), fixtures/ (recordings)
 scripts/probe/              the fixture recorders, run by hand
 scripts/build.ts            the release build `make build` runs

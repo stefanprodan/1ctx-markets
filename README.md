@@ -215,16 +215,20 @@ or monthly scheduled run; and to read a note beside the live
 tools when advising. Writing needs a key with analysis write access
 and web search; reading needs analysis read access.
 
-To install it, copy the folder into your agent's skills directory, for
-Claude Code `~/.claude/skills/`:
+The server serves it without a key, matching the version it runs.
+A client that imports skills from a server, such as 1ctx, takes the
+server's address and reads
+`/.well-known/agent-skills/index.json`. For Claude Code, unpack it
+into `~/.claude/skills/`:
 
 ```sh
-cp -R skills/market-analysis ~/.claude/skills/
+curl -fsSL http://127.0.0.1:11238/.well-known/agent-skills/market-analysis.tgz \
+  | tar -xz -C ~/.claude/skills/
 ```
 
-A client that imports skills from GitHub, such as 1ctx, takes the
-folder's URL:
-`https://github.com/stefanprodan/1ctx-markets/tree/main/skills/market-analysis`.
+For claude.ai, download
+`/.well-known/agent-skills/market-analysis.zip` and upload it as a
+skill.
 
 ## License
 

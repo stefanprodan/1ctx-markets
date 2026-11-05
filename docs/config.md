@@ -123,7 +123,8 @@ the `--help` text, and a flag changes there in the same commit.
   answered** (`router()`), so it answers 401 without a key and 404
   with one; under `/api/v1` the route is matched first and the key
   held to its scope (`docs/api.md`). Only `GET /health`, the API's spec and its docs
-  page, the web UI's page and its sign-in answer without it. The
+  page, the web UI's page and its sign-in, and the skills under
+  `/.well-known/agent-skills/` answer without it. The
   admin key's compare hashes both sides with SHA-256 and uses
   `timingSafeEqual`; an agent key is found by its SHA-256
   (`src/server/access.ts`).
@@ -136,6 +137,7 @@ the `--help` text, and a flag changes there in the same commit.
 | `/mcp` | POST | MCP over Streamable HTTP, stateless |
 | `/api/v1/*` | GET, POST, PATCH, DELETE | the REST API, its spec and docs page (`docs/api.md`); each operation takes the read or the admin scope (`docs/admin.md`) |
 | `/health` | GET | 200 with no body, for the service's start check |
+| `/.well-known/agent-skills/index.json`, `{name}.tgz`, `{name}.zip` | GET | the skills under `skills/` and their index (`docs/analysis.md`) |
 | `/`, `/screener`, `/symbol/{id}`, `/portfolios`, `/profile`, `/connect`, `/admin`, `/admin/settings`, `/admin/users` (`UI_PATHS`) | GET | the web UI's page, its assets at the paths it names (`docs/web.md`) |
 | `/ui/session` | POST, DELETE | the web UI's sign-in and sign-out (`docs/web.md`) |
 
