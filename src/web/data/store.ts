@@ -12,6 +12,7 @@ import {
   type IntradayRange,
 } from "../views/Chart.model.ts";
 import { adminStore } from "./admin.ts";
+import { alertsStore } from "./alerts.ts";
 import { analysisStore } from "./analysis.ts";
 import {
   ApiError,
@@ -596,6 +597,7 @@ export function store(
     meLoad++;
     meCurrent = Promise.resolve(false);
     loading.value = false;
+    alerts.signedOut();
     batch(() => {
       signedIn.value = false;
       me.value = null;
@@ -709,6 +711,7 @@ export function store(
     },
     later,
   );
+  const alerts = alertsStore(call, () => session, later);
 
   // who is signed in: the web UI starts from it, never from the status,
   // which is an admin's. A later read supersedes one in flight
@@ -739,6 +742,7 @@ export function store(
         statusCode.value = null;
       });
       void loadSharing();
+      void alerts.loadSeen();
       return true;
     } catch (error) {
       if (mine !== meLoad) return meCurrent;
@@ -1421,6 +1425,7 @@ export function store(
     share,
     profile,
     analysis,
+    alerts,
     keys,
     keysLimit,
     keysError,

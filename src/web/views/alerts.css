@@ -1,0 +1,221 @@
+@layer tokens, base, owners;
+
+@layer owners {
+  .al-tiles {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .scr-set {
+    margin: 0 0 var(--space-3);
+  }
+  .al-rule {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    padding: var(--space-2) 0;
+  }
+  .al-cond {
+    color: var(--fg);
+  }
+  .al-note {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    white-space: normal;
+  }
+  .al-dist {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+  }
+  .al-meter {
+    display: block;
+    width: 72px;
+    height: 4px;
+    border-radius: var(--radius-pill);
+    background: var(--line);
+    overflow: hidden;
+  }
+  .al-meter-fill {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--faint);
+  }
+  .al-meter-near {
+    background: var(--brand);
+  }
+  .al-state {
+    font-size: var(--text-small);
+    color: var(--dim);
+    white-space: nowrap;
+  }
+  .al-tag {
+    white-space: nowrap;
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: var(--text-label);
+  }
+  .al-tag-on {
+    color: var(--brand);
+    background: color-mix(in srgb, var(--brand) 14%, transparent);
+  }
+  .al-tag-off {
+    color: var(--faint);
+  }
+  .al-tag-warn {
+    color: var(--failed);
+    background: color-mix(in srgb, var(--failed) 12%, transparent);
+  }
+  .al-phone-now {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .al-pick {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .al-drawer-link {
+    color: var(--dim);
+  }
+  .al-drawer-link:hover {
+    color: var(--fg);
+  }
+  .al-phone-line {
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    margin-top: 4px;
+  }
+
+  .al-drawer {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+  .al-drawer-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+  .al-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  .al-section p {
+    margin: 0;
+  }
+  .al-gate {
+    color: var(--dim);
+  }
+  .al-checks,
+  .al-history {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .al-check {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+  }
+  .al-check > svg {
+    flex-shrink: 0;
+    align-self: center;
+  }
+  .al-yes {
+    color: var(--up);
+  }
+  .al-no {
+    color: var(--faint);
+  }
+  .al-unknown {
+    color: var(--running);
+  }
+  .al-now {
+    white-space: nowrap;
+  }
+  .al-note-full {
+    white-space: pre-wrap;
+  }
+  .al-history li {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .al-fired {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .al-fired li + li {
+    border-top: 1px solid var(--separator);
+  }
+  .al-fired-row {
+    display: grid;
+    grid-template-columns: 64px minmax(0, 1fr) auto;
+    gap: var(--space-3);
+    align-items: baseline;
+    padding: var(--space-3) var(--space-4);
+    color: inherit;
+  }
+  .al-fired-row:hover {
+    background: var(--hover);
+  }
+  .al-fired-time {
+    position: relative;
+  }
+  .al-dot {
+    position: absolute;
+    left: -12px;
+    top: 50%;
+    width: 6px;
+    height: 6px;
+    margin-top: -3px;
+    border-radius: 50%;
+    background: var(--brand);
+  }
+  .al-fired-body {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .al-kept {
+    margin: var(--space-3) 0 0;
+    text-align: center;
+  }
+  .al-form {
+    gap: var(--space-4);
+  }
+
+  @media (max-width: 719px) {
+    .al-rule .al-phone-line {
+      display: flex;
+    }
+    .al-phone-line .al-dist {
+      flex-direction: row;
+      align-items: center;
+      gap: var(--space-2);
+    }
+    .al-tiles {
+      display: flex;
+    }
+    .al-fired-row {
+      grid-template-columns: 48px minmax(0, 1fr);
+    }
+    .al-fired-now {
+      grid-column: 2;
+    }
+  }
+}

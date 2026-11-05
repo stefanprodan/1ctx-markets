@@ -201,13 +201,13 @@ learns it from `email_on` in `GET /ui/me`.
 
 - **A person's own rows and the market data**: every `/api/v1` route
   of scope `read`, `session` and the person's portfolio, profile and
-  rules reads, as `loginWho()` holds; an admin's login also the `admin`
-  scope (`docs/api.md`, "Keys and caching"). A member on an admin route
-  is 403. A key is tried first (`router()`); the cookie only when no key
-  is valid.
-- **Never `/mcp`, and never a rules write** (`POST /rules`, `PATCH`
-  and `DELETE /rules/{id}`, marked `cookie: false`): rules stay the
-  keys'.
+  rules, reads and writes, as `loginWho()` holds; an admin's login
+  also the `admin` scope (`docs/api.md`, "Keys and caching"). A member
+  on an admin route is 403. A key is tried first (`router()`); the
+  cookie only when no key is valid.
+- **Never `/mcp`.** A login writes rules from the Alerts page, held
+  like every cookie write to this server's own pages (below), so a
+  cross-site page holding the cookie makes, pauses or deletes none.
 - **A write by cookie must come from this server's own pages**, or it
   is 403 `forbidden` (`sameOrigin()`): `Sec-Fetch-Site` is
   `same-origin` when the browser sends it, which a proxy leaves alone;
@@ -775,6 +775,28 @@ The parts:
 - **Add a source** is a card listing the keyed sources that are off,
   each with what it adds, its key file and a link to get a key; it is
   absent when none is off.
+- **Alerts** (`/alerts`, after Portfolios in the rail and first in
+  More on a phone) is the person's price rules (`docs/rules.md`) in two
+  tabs, each its own address: Rules (`/alerts`) and Fired
+  (`/alerts/fired`). `Alerts.tsx` is the view, `data/alerts.ts` its
+  calls; a rule read as words, its distance, state and order are
+  `Alerts.model.ts`, which has no DOM and is tested, and which names
+  every field in `FIELDS` (`src/rules/format.ts`) so the server's names
+  never reach the page.
+- **Rules** draws `GET /api/v1/rules` with each rule's `now` and the
+  `instruments` it names: tiles (All rules, Within 5%, Fired this week,
+  Paused) over a table, nearest first with a symbol's rules together
+  and paused last. A row opens its drawer, where Pause, Resume and
+  Remove (asked once) call the rules writes; Price alert adds a price
+  level rule on one symbol. Agents make the richer ones.
+- **Fired** is `GET /api/v1/alerts/recent` by day, newest first, More
+  reading the next older page. Opening it marks the newest seen
+  (`PUT /api/v1/alerts/seen`); the ones newer than the last visit keep
+  a dot until the tab is left.
+- **The rail's Alerts row counts the alerts not seen yet**
+  (`GET /api/v1/alerts/seen`, read after sign-in and on the shell's
+  30-second refresh), shown 99+ past 99; on a phone the count sits on
+  Alerts in More and a dot on More.
 - **Profile** (`/profile`, between Portfolios and Connect agents in the
   rail) is the owner's profile (`docs/profile.md`): how they invest, one
   Markdown document agents read before any work on the portfolio.
@@ -1542,3 +1564,5 @@ The parts:
   start from `/ui/me` for each kind of person, a member's pages and
   controls, Connect agents' owners, Server admin's calls and words,
   and SMTP read only for an admin who is not the operator.
+- **Alerts** (`test/web-alerts.test.ts`): `Alerts.model.ts`'s words for
+  every field and op, groups and gates, distances, states and order.

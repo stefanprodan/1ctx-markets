@@ -359,6 +359,7 @@ function cases(other: Owned, mine: Owned): Record<string, Case> {
     },
     "DELETE /rules/{id}": { path: `/rules/${other.rule}`, missing: true },
     "GET /alerts": { path: "/alerts" },
+    "GET /alerts/recent": { path: "/alerts/recent" },
     "GET /portfolios": { path: "/portfolios" },
     "POST /portfolios": { path: "/portfolios", body: { name: "Coins" } },
     "GET /portfolios/{id}": {

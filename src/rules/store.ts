@@ -7,6 +7,8 @@ import type { Db } from "../storage/db/index.ts";
 import { type Condition, instrumentsOf, readCondition } from "./format.ts";
 
 export const ALERTS_KEPT_DAYS = 90;
+// a page's alerts, newest first; the feed stays the poll's
+export const RECENT_ALERTS = 50;
 
 export type Result = "true" | "false" | "unknown";
 export type PauseReason = "manual" | "split";
@@ -212,4 +214,46 @@ export function pruneAlerts(db: Db, now: number): number {
        where owner = users.id and fired_at < ?1)`,
   ).run(before);
   return db.query("delete from alerts where fired_at < ?").run(before).changes;
+}
+
+// newest first, for a page; the feed reads oldest first behind its cursor
+export function readAlertsBefore(
+  db: Db,
+  owner: string,
+  before: number | null,
+  limit: number,
+): AlertRow[] {
+  return db
+    .query<AlertRow, [string, number | null, number]>(
+      `select id, owner, rule_id as ruleId, fired_at as firedAt, snapshot
+       from alerts where owner = ?1 and (?2 is null or id < ?2)
+       order by id desc limit ?3`,
+    )
+    .all(owner, before, limit);
+}
+
+// the last alert the person's browser showed, and how many came after it
+export function readSeen(
+  db: Db,
+  owner: string,
+): { seen: number; unseen: number } {
+  return (
+    db
+      .query<{ seen: number; unseen: number }, [string]>(
+        `select u.alerts_seen as seen,
+         (select count(*) from alerts a
+          where a.owner = u.id and a.id > u.alerts_seen) as unseen
+       from users u where u.id = ?`,
+      )
+      .get(owner) ?? { seen: 0, unseen: 0 }
+  );
+}
+
+// forward only, and never past the person's own last alert
+export function markSeen(db: Db, owner: string, id: number): void {
+  db.query(
+    `update users set alerts_seen = max(alerts_seen,
+       min(?2, coalesce((select max(id) from alerts where owner = ?1), 0)))
+     where id = ?1`,
+  ).run(owner, id);
 }

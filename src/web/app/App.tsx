@@ -73,7 +73,10 @@ export function App({ store = markets }: { store?: Store }) {
   }, [store]);
   // a share started or ended elsewhere reaches the rail without a reload
   useRefresh(
-    () => (store.signedIn.peek() === true ? store.loadSharing() : undefined),
+    () =>
+      store.signedIn.peek() === true
+        ? Promise.all([store.loadSharing(), store.alerts.loadSeen()])
+        : undefined,
     true,
   );
   useEffect(() => {

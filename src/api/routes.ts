@@ -83,11 +83,12 @@ import {
 } from "../operations/quote.ts";
 import { parseResearchList, researchList } from "../operations/research.ts";
 import {
+  alertViews,
   createRule,
   deleteRuleById,
   parseRules,
   pauseRule,
-  ruleItem,
+  ruleViews,
 } from "../operations/rules.ts";
 import { parseScreen, readScreen } from "../operations/screen.ts";
 import { parseSearch, searchAll } from "../operations/search.ts";
@@ -100,7 +101,14 @@ import {
   profileVersions,
   readProfile,
 } from "../profile/store.ts";
-import { readRule, readRules } from "../rules/store.ts";
+import {
+  markSeen,
+  RECENT_ALERTS,
+  readAlertsBefore,
+  readRule,
+  readRules,
+  readSeen,
+} from "../rules/store.ts";
 import { errorFields, type Log } from "../runtime/log.ts";
 import { CallerGone } from "../server/caller.ts";
 import { type Email, email as emailOf } from "../server/email/settings.ts";
@@ -155,8 +163,6 @@ export type Route = {
   // {name} matches one path segment
   path: string;
   scope: Scope;
-  // a login opens every route but these, the rules writes
-  cookie?: false;
   values?: Record<string, readonly string[]>;
   handle: (
     req: Request,
@@ -474,16 +480,13 @@ function rules(m: Markets): Route[] {
       scope: "rules:read",
       handle: async (_req, url, _params, who) => {
         noQuery(url);
-        return json({
-          rules: readRules(m.db, who.user).map((r) => ruleItem(m, r)),
-        });
+        return json(ruleViews(m, readRules(m.db, who.user)));
       },
     },
     {
       method: "POST",
       path: "/rules",
       scope: "rules:write",
-      cookie: false,
       handle: async (req, url, _params, who) => {
         noQuery(url);
         const read = await bodyOf(req);
@@ -508,14 +511,14 @@ function rules(m: Markets): Route[] {
         const id = ruleId(params.id!);
         const rule = readRule(m.db, who.user, id);
         if (rule === null) return noRule(id);
-        return json({ rule: ruleItem(m, rule) });
+        const view = ruleViews(m, [rule]);
+        return json({ rule: view.rules[0]!, instruments: view.instruments });
       },
     },
     {
       method: "PATCH",
       path: "/rules/{id}",
       scope: "rules:write",
-      cookie: false,
       handle: async (req, url, params, who) => {
         noQuery(url);
         const id = ruleId(params.id!);
@@ -533,12 +536,68 @@ function rules(m: Markets): Route[] {
       method: "DELETE",
       path: "/rules/{id}",
       scope: "rules:write",
-      cookie: false,
       handle: async (_req, url, params, who) => {
         noQuery(url);
         const done = await deleteRuleById(m, who.user, ruleId(params.id!));
         if ("error" in done) return problemOf(done);
         return new Response(null, { status: 204, headers: NO_STORE });
+      },
+    },
+  ];
+}
+
+function alertPages(m: Markets): Route[] {
+  return [
+    {
+      method: "GET",
+      path: "/alerts/recent",
+      scope: "rules:read",
+      handle: async (_req, url, _params, who) => {
+        const keys = [...url.searchParams.keys()];
+        if (keys.some((k) => k !== "before")) {
+          throw new ArgError("takes only before");
+        }
+        const raw = url.searchParams.get("before");
+        if (raw !== null && !PATH_ID.test(raw)) {
+          throw new ArgError("before must be an alert id");
+        }
+        const before = raw === null ? null : Number(raw);
+        const rows = readAlertsBefore(
+          m.db,
+          who.user,
+          before,
+          RECENT_ALERTS + 1,
+        );
+        const page = rows.slice(0, RECENT_ALERTS);
+        return json({
+          ...alertViews(m, page),
+          next: rows.length > RECENT_ALERTS ? page.at(-1)!.id : null,
+        });
+      },
+    },
+    {
+      method: "GET",
+      path: "/alerts/seen",
+      scope: "session",
+      handle: async (_req, url, _params, who) => {
+        noQuery(url);
+        return json(readSeen(m.db, who.user));
+      },
+    },
+    {
+      method: "PUT",
+      path: "/alerts/seen",
+      scope: "session",
+      handle: async (req, url, _params, who) => {
+        noQuery(url);
+        const read = await bodyOf(req);
+        if (read instanceof Response) return read;
+        const body = fields(read.body, ["id"]);
+        if (!Number.isSafeInteger(body.id) || (body.id as number) < 0) {
+          throw new ArgError("id must be an alert id");
+        }
+        await m.writer.write((db) => markSeen(db, who.user, body.id as number));
+        return json(readSeen(m.db, who.user));
       },
     },
   ];
@@ -1053,6 +1112,7 @@ export function routes(deps: ApiDeps): Route[] {
       scope: "rules:read",
       handle: (req, _url, _params, who) => deps.alerts(req, who.user),
     },
+    ...alertPages(m),
     ...operator(admin, deps.world),
     ...keys({ m: deps.admin.m, mask: deps.mask ?? (() => {}) }),
     ...people({ m: deps.admin.m, email, links: sent }),

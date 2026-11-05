@@ -302,8 +302,11 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   (lower case, unique, null until people sign in by email), `role`
   (`admin` or `member`), `created_at`, `last_sign_in_at`, and
   `alerts_pruned` (the newest of their alert ids retention deleted, for
-  the alerts feed). The migration made `operator`, an admin, the owner
-  of every row before it; `user-admin.key` is the operator.
+  the alerts feed), and `alerts_seen` (`0044-alerts-seen`, 0 until
+  set: the newest of their alert ids the web UI showed, so the rail
+  counts the newer ones; `docs/rules.md`). The migration made
+  `operator`, an admin, the owner of every row before it;
+  `user-admin.key` is the operator.
 - **A person's rows name them**: `portfolios.owner`, `brokers.owner`,
   `portfolio_settings.owner` (was `admin`), `dashboards.owner` (was
   `operator` already), `rules.owner`, `alerts.owner` (copied from the

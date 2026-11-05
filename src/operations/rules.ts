@@ -8,6 +8,7 @@ import { localDate } from "../market/zone.ts";
 import {
   applyRule,
   type Evaluation,
+  evaluateRules,
   eventOf,
   type Fired,
   gateItem,
@@ -18,6 +19,7 @@ import {
   type Gate,
   type InputCondition,
   inputSymbols,
+  instrumentsOf,
   MAX_CONDITION_BYTES,
   MAX_INSTRUMENTS,
   MAX_NOTE,
@@ -26,6 +28,7 @@ import {
   writeCondition,
 } from "../rules/format.ts";
 import {
+  type AlertRow,
   deleteRule,
   insertRule,
   type RuleRow,
@@ -504,4 +507,57 @@ export async function rulesAnswer(
     case "delete":
       return answered(await deleteRuleById(m, who.user, args.id));
   }
+}
+
+// the listings a page names, so it draws a row without another read
+function listings(m: Markets, ids: Iterable<string>) {
+  const out: Record<
+    string,
+    { name: string | null; type: string; currency: string | null; unit: string }
+  > = {};
+  for (const id of ids) {
+    const i = readInstrument(m.db, id);
+    if (i !== null) {
+      out[id] = {
+        name: i.name,
+        type: i.type,
+        currency: i.currency,
+        unit: i.unit,
+      };
+    }
+  }
+  return out;
+}
+
+// the routes' rules: each as the tool lists it, with the engine's answer now
+export function ruleViews(m: Markets, rules: readonly RuleRow[]) {
+  const now = evaluateRules(m.db, rules, m.clock.now(), m.quoteEveryMs);
+  const ids = new Set<string>();
+  for (const r of rules) {
+    ids.add(r.instrument);
+    for (const id of instrumentsOf(r.condition)) ids.add(id);
+  }
+  return {
+    rules: rules.map((r, i) => ({ ...ruleItem(m, r), now: now[i]! })),
+    instruments: listings(m, ids),
+  };
+}
+
+export function alertViews(m: Markets, rows: readonly AlertRow[]) {
+  const alerts = rows.map((r) =>
+    alertItem({
+      id: r.id,
+      firedAt: r.firedAt,
+      snapshot: JSON.parse(r.snapshot) as Fired["snapshot"],
+    }),
+  );
+  const ids = new Set<string>();
+  for (const a of alerts) {
+    ids.add(a.symbol);
+    for (const v of a.values) {
+      ids.add(v.left.symbol);
+      if (typeof v.right !== "number") ids.add(v.right.symbol);
+    }
+  }
+  return { alerts, instruments: listings(m, ids) };
 }

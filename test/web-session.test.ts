@@ -4,6 +4,8 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { PREFIX } from "../src/api/http.ts";
+import { OPERATOR } from "../src/operations/who.ts";
+import { countRules, readRule } from "../src/rules/store.ts";
 import { silent } from "../src/runtime/log.ts";
 import { email } from "../src/server/email/settings.ts";
 import { router } from "../src/server/http.ts";
@@ -28,7 +30,7 @@ import {
 import { SECRETS, withApp } from "./helpers/app.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { NOW } from "./helpers/sources.ts";
-import { world } from "./helpers/world.ts";
+import { listing, world } from "./helpers/world.ts";
 
 const OTHER_KEY = "test-other-admin-key-0123456789abcdef0123";
 
@@ -255,7 +257,7 @@ describe("sign-in", () => {
 });
 
 describe("what the cookie opens", () => {
-  test("what the admin key opens, never /mcp or a rules write", async () => {
+  test("what the admin key opens, never /mcp", async () => {
     const t = setup();
     const c = { cookie: `${COOKIE}=${await t.cookie()}` };
     for (const path of [
@@ -273,28 +275,51 @@ describe("what the cookie opens", () => {
     }
     const mcp = await t.at("/mcp", { method: "POST", headers: c });
     expect(mcp.status).toBe(401);
-    const rule = await t.at(`${PREFIX}/rules`, {
-      method: "POST",
-      headers: {
-        ...c,
-        origin: "http://127.0.0.1:1",
-        "content-type": "application/json",
-      },
-      body: "{}",
-    });
-    expect(rule.status).toBe(401);
-    for (const method of ["PATCH", "DELETE"]) {
-      const res = await t.at(`${PREFIX}/rules/1`, {
+  });
+
+  test("a login creates, pauses and deletes a rule from this server's pages only", async () => {
+    const t = setup();
+    listing(t.db, "US:AAA", { price: 100 });
+    const cookie = `${COOKIE}=${await t.cookie()}`;
+    const send = (method: string, path: string, body: unknown, site: string) =>
+      t.at(`${PREFIX}${path}`, {
         method,
         headers: {
-          ...c,
-          origin: "http://127.0.0.1:1",
+          cookie,
           "content-type": "application/json",
+          "sec-fetch-site": site,
         },
-        body: method === "PATCH" ? '{"paused":true}' : undefined,
+        body: body === null ? undefined : JSON.stringify(body),
       });
-      expect([method, res.status]).toEqual([method, 401]);
+    const rule = {
+      symbol: "US:AAA",
+      condition: { left: "price", op: "<", right: 90 },
+    };
+    // a cross-site page holding the cookie changes nothing
+    const writes = [
+      ["POST", "/rules", rule],
+      ["PATCH", "/rules/1", { paused: true }],
+      ["DELETE", "/rules/1", null],
+    ] as const;
+    for (const [method, path, body] of writes) {
+      const res = await send(method, path, body, "cross-site");
+      expect([method, res.status]).toEqual([method, 403]);
     }
+    expect(countRules(t.db)).toBe(0);
+    const made = await send("POST", "/rules", rule, "same-origin");
+    expect(made.status).toBe(201);
+    const paused = await send(
+      "PATCH",
+      "/rules/1",
+      { paused: true },
+      "same-origin",
+    );
+    expect([paused.status, readRule(t.db, OPERATOR, 1)?.paused]).toEqual([
+      200,
+      "manual",
+    ]);
+    const gone = await send("DELETE", "/rules/1", null, "same-origin");
+    expect([gone.status, countRules(t.db)]).toEqual([204, 0]);
   });
 
   test("screen's POST is a read, held to the write check", async () => {

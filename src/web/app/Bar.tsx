@@ -10,8 +10,8 @@ import { Icon, type IconName } from "../lib/icons.tsx";
 import { Drawer } from "../ui/Drawer.tsx";
 import { OPENER, openSearch, searchShown } from "../ui/SymbolSearch.tsx";
 import { useServerFailing } from "./failing.ts";
-import { SCREENER } from "./paths.ts";
-import { iconClass, Recent, SharedWithMe } from "./Rail.tsx";
+import { ALERTS, SCREENER } from "./paths.ts";
+import { iconClass, Recent, SharedWithMe, Unseen } from "./Rail.tsx";
 import { path, visits } from "./router.ts";
 import { ADMIN, HOME, lit, RAIL, railFor } from "./routes.ts";
 import { UserItems } from "./UserMenu.tsx";
@@ -240,6 +240,9 @@ export function Bar({ here }: { here: string }) {
           }}
         >
           <Icon name="more" size={20} class={iconClass(failing)} />
+          {(markets.alerts.seen.value?.unseen ?? 0) > 0 && (
+            <span class="bar-dot" aria-hidden="true" />
+          )}
           <span class="bar-label">More</span>
         </button>
       </nav>
@@ -285,6 +288,7 @@ export function More({
               >
                 <Icon name={r.icon} class={iconClass(red)} />
                 <span>{r.label}</span>
+                {r.path === ALERTS && <Unseen />}
               </a>
             );
           })}

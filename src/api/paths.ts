@@ -29,7 +29,7 @@ import {
 } from "../operations/research.ts";
 import { MAX_FIELDS, MAX_FILTERS } from "../operations/screen.ts";
 import { MAX_NOTE } from "../rules/format.ts";
-import { ALERTS_KEPT_DAYS } from "../rules/store.ts";
+import { ALERTS_KEPT_DAYS, RECENT_ALERTS } from "../rules/store.ts";
 import { MAX_KEYS } from "../server/access.ts";
 import { CALLS_PER_MINUTE } from "../server/ratelimit.ts";
 import { ALERT_PAGE_BYTES } from "./alerts.ts";
@@ -49,10 +49,10 @@ import {
 } from "./schemas.ts";
 
 // read is an agent key's scope; the admin key holds every scope; a login
-// opens every route but the rules writes, the admin routes an admin's only
+// opens every route, the admin routes an admin's only
 const READ_AUTH = [{ read: [] }, { admin: [] }, { session: [] }];
 const RULES_READ_AUTH = [{ rulesRead: [] }, { admin: [] }, { session: [] }];
-const RULES_WRITE_AUTH = [{ rulesWrite: [] }, { admin: [] }];
+const RULES_WRITE_AUTH = [{ rulesWrite: [] }, { admin: [] }, { session: [] }];
 const ADMIN_AUTH = [{ admin: [] }, { session: [] }];
 
 const content = (schema: Schema) => ({
@@ -589,8 +589,12 @@ export const paths = {
       operationId: "listRules",
       security: RULES_READ_AUTH,
       summary: "List price rules",
-      description:
-        "Every rule with its condition, pause, whether it is armed, and its last result.",
+      description: lines(
+        "Every rule with its condition, pause, whether it is armed, its last result, and how it stands now.",
+        "",
+        "- `now` is the rule evaluated at this read on the stored prices. It is stored nowhere: it fires no alert and changes neither `armed` nor `last_result`.",
+        "- `instruments` names every listing the rules read, by id, with its name, type, currency and unit.",
+      ),
       responses: ruled({ 200: ok("The rules.", ref("Rules")) }),
     },
     post: {
@@ -636,9 +640,9 @@ export const paths = {
       security: RULES_READ_AUTH,
       summary: "One price rule",
       description:
-        "The rule with its condition, pause, whether it is armed, and its last result.",
+        "The rule as the list gives it, with `now` evaluated at this read and stored nowhere, and the `instruments` it reads.",
       responses: ruled({
-        200: ok("The rule.", ref("OneRule")),
+        200: ok("The rule.", ref("RuleWithNow")),
         404: r("NotFound"),
       }),
     },
@@ -711,6 +715,57 @@ export const paths = {
         429: r("TooMany"),
         500: r("Internal"),
       },
+    },
+  },
+  "/alerts/recent": {
+    get: {
+      tags: ["rules"],
+      operationId: "recentAlerts",
+      security: RULES_READ_AUTH,
+      summary: "Recent alerts",
+      description: lines(
+        "Your kept alerts, newest first, a page at a time, with the `instruments` they name. For reading back; poll the feed to be told of new ones.",
+        "",
+        `- ${RECENT_ALERTS} alerts a page. Pass \`next\` as \`before\` for the next older page; \`next\` is null on the last.`,
+        `- Alerts are kept for ${ALERTS_KEPT_DAYS} days, also after their rule is deleted.`,
+      ),
+      parameters: [
+        query(
+          "before",
+          "An alert id: only alerts older than it. Default: from the newest.",
+          int,
+        ),
+      ],
+      responses: ruled({ 200: ok("A page of alerts.", ref("RecentAlerts")) }),
+    },
+  },
+  "/alerts/seen": {
+    get: {
+      tags: ["rules"],
+      operationId: "alertsSeen",
+      security: ADMIN_AUTH,
+      summary: "Alerts seen",
+      description:
+        "The newest of your alerts the web UI marked seen, and how many came after it. A web UI route: an agent key is refused (`forbidden`).",
+      responses: admins({ 200: ok("Seen and unseen.", ref("Seen")) }),
+    },
+    put: {
+      tags: ["rules"],
+      operationId: "markAlertsSeen",
+      security: ADMIN_AUTH,
+      summary: "Mark alerts seen",
+      description: lines(
+        "Marks your alerts up to `id` seen and answers as the read.",
+        "",
+        "- It only moves forward: an older id leaves it as it was.",
+        "- It stops at your newest alert, so an alert fired later is never seen ahead of time.",
+      ),
+      requestBody: body(ref("SeenArgs")),
+      responses: admins({
+        200: ok("Seen and unseen.", ref("Seen")),
+        413: r("TooLarge"),
+        415: r("UnsupportedType"),
+      }),
     },
   },
   "/keys": {

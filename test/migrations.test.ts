@@ -581,6 +581,26 @@ describe("migrations", () => {
     db.close();
   });
 
+  test("people stored before it have seen no alert", () => {
+    const db = new Database(":memory:", { strict: true });
+    const clock = fakeClock();
+    const at = MIGRATIONS.findIndex((m) => m.id === "0044-alerts-seen");
+    migrate(db, clock, MIGRATIONS.slice(0, at));
+    db.exec(
+      `insert into users (id, name, role, created_at)
+       values ('ana', 'Ana', 'member', 0)`,
+    );
+    migrate(db, clock, MIGRATIONS.slice(0, at + 1));
+    expect(
+      db.query("select id, alerts_seen from users order by id").all(),
+    ).toEqual([
+      { id: "ana", alerts_seen: 0 },
+      { id: OPERATOR, alerts_seen: 0 },
+    ]);
+    expect(() => db.exec("update users set alerts_seen = null")).toThrow();
+    db.close();
+  });
+
   test("open applies the shipped list to a new database", () => {
     const { db, migrations } = open(":memory:", fakeClock());
     expect(migrations).toEqual(MIGRATIONS.map((m) => m.id));

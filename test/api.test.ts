@@ -629,7 +629,10 @@ describe("every operation", () => {
       await t.call(location!.slice(PREFIX.length)),
       200,
     );
-    expect(one).toEqual({ rule: listed.rules[0] });
+    expect(one).toEqual({
+      rule: listed.rules[0],
+      instruments: listed.instruments,
+    });
     await check("GET", "/rules/{id}", await t.call("/rules/x"), 400);
     await check("GET", "/rules/{id}", await t.call("/rules/999"), 404);
     await check("GET", "/rules/{id}", await t.call(`/rules/${id}`, wrong), 401);
@@ -700,6 +703,35 @@ describe("every operation", () => {
       400,
     );
     await check("GET", "/alerts", await t.call("/alerts", wrong), 401);
+    const R = "/alerts/recent";
+    const recent = await check("GET", R, await t.call(R), 200);
+    expect([recent.alerts.length, recent.next]).toEqual([1, null]);
+    await check("GET", R, await t.call(`${R}?before=x`), 400);
+    await check("GET", R, await t.call(R, wrong), 401);
+    await check("GET", R, await t.call(R, reader), 403);
+    const S = "/alerts/seen";
+    const mark = (body: unknown, init: RequestInit = {}) =>
+      t.call(S, { ...json(body), method: "PUT", ...init });
+    expect(await check("GET", S, await t.call(S), 200)).toEqual({
+      seen: 0,
+      unseen: 1,
+    });
+    await check("GET", S, await t.call(`${S}?x=1`), 400);
+    await check("GET", S, await t.call(S, wrong), 401);
+    await check("GET", S, await t.call(S, reader), 403);
+    expect(
+      await check("PUT", S, await mark({ id: recent.alerts[0].id }), 200),
+    ).toEqual({ seen: recent.alerts[0].id, unseen: 0 });
+    await check("PUT", S, await mark({ id: "x" }), 400);
+    await check("PUT", S, await mark({ id: 1 }, wrong), 401);
+    await check("PUT", S, await mark({ id: 1 }, reader), 403);
+    await check("PUT", S, await mark({ id: "x".repeat(MAX_BODY_BYTES) }), 413);
+    await check(
+      "PUT",
+      S,
+      await t.call(S, { ...json({ id: 1 }, "text/plain"), method: "PUT" }),
+      415,
+    );
     // the read key has no rules access
     await check("GET", "/alerts", await t.call("/alerts", reader), 403);
     await check("GET", "/rules", await t.call("/rules", reader), 403);
@@ -1537,11 +1569,27 @@ describe("rules", () => {
     const made = await rest.call("/rules", json(rule));
     expect(made.status).toBe(201);
     expect(made.headers.get("location")).toBe(`${PREFIX}/rules/1`);
-    expect(await made.json()).toEqual(await run({ action: "create", ...rule }));
+    const created: any = await made.json();
+    expect(created).toEqual(await run({ action: "create", ...rule }));
     const listed: any = await (await rest.call("/rules")).json();
     const { next, ...page } = await run({ action: "list" });
     expect(next).toBeNull();
-    expect(listed).toEqual(page);
+    // the route adds each rule's evaluation now and the listings it names;
+    // the rest is the tool's list
+    const { instruments, ...rules } = listed;
+    expect({
+      rules: rules.rules.map(({ now: _, ...r }: { now: unknown }) => r),
+    }).toEqual(page);
+    expect(Object.keys(rules)).toEqual(["rules"]);
+    expect(listed.rules[0].now).toEqual(created.evaluation);
+    expect(instruments).toEqual({
+      "US:NVDA": {
+        name: "NVIDIA Corporation",
+        type: "EQUITY",
+        currency: "USD",
+        unit: "per_share",
+      },
+    });
     const paused = await rest.call("/rules/1", patch({ paused: true }));
     expect(await paused.json()).toEqual(
       await run({ action: "pause", id: 1, paused: true }),

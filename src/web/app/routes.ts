@@ -9,6 +9,7 @@ import { viewOf } from "../data/portfolios.ts";
 import { markets } from "../data/store.ts";
 import type { IconName } from "../lib/icons.tsx";
 import { AdminSettings, AdminUsers } from "../views/Admin.tsx";
+import { AlertRules, AlertsFired } from "../views/Alerts.tsx";
 import { Connect } from "../views/Connect.tsx";
 import { Dashboard } from "../views/Dashboard.tsx";
 import { Instrument } from "../views/Instrument.tsx";
@@ -20,6 +21,8 @@ import {
   ADMIN,
   ADMIN_SETTINGS,
   ADMIN_USERS,
+  ALERTS,
+  ALERTS_FIRED,
   SCREENER,
   SYMBOL,
 } from "./paths.ts";
@@ -109,6 +112,25 @@ export const ROUTES: readonly Route[] = [
     view: SharedPortfolios,
     load: async (p) => {
       await markets.shared.openOf(p.user!, viewOf(p.id, location.search));
+    },
+  },
+  {
+    path: ALERTS,
+    label: "Alerts",
+    icon: "bell",
+    view: AlertRules,
+    load: async () => {
+      await markets.alerts.loadAll();
+    },
+  },
+  {
+    path: ALERTS_FIRED,
+    label: "Alerts",
+    icon: "bell",
+    parent: ALERTS,
+    view: AlertsFired,
+    load: async () => {
+      await markets.alerts.loadAll();
     },
   },
   {

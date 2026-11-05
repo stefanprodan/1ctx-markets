@@ -378,6 +378,45 @@ const gap = (daily: boolean): Schema =>
     ),
   );
 
+const ruleFields: Record<string, Schema> = {
+  id: int,
+  symbol: str,
+  condition: freeForm,
+  note: nstr,
+  paused: {
+    type: ["string", "null"],
+    enum: ["manual", "split", null],
+    description: "`manual`, `split` (cannot be resumed) or null.",
+  },
+  message: str,
+  armed: note(bool, "The next true result fires an alert."),
+  created_at: str,
+  last_result: nstr,
+  last_evaluated_at: nstr,
+  after_earnings: freeForm,
+};
+
+const RULE_REQUIRED = [
+  "id",
+  "symbol",
+  "condition",
+  "note",
+  "paused",
+  "armed",
+  "created_at",
+  "last_result",
+  "last_evaluated_at",
+];
+
+const evaluation = object(
+  {
+    result: values(["true", "false", "unknown"]),
+    values: list(freeForm),
+    reasons: list(str),
+  },
+  ["result", "values", "reasons"],
+);
+
 export const schemas: Record<string, Schema> = {
   Problem: object(
     {
@@ -784,37 +823,32 @@ export const schemas: Record<string, Schema> = {
     },
     ["symbols"],
   ),
-  Rule: object(
+  Rule: object(ruleFields, RULE_REQUIRED),
+  RuleNow: object(
     {
-      id: int,
-      symbol: str,
-      condition: freeForm,
-      note: nstr,
-      paused: {
-        type: ["string", "null"],
-        enum: ["manual", "split", null],
-        description: "`manual`, `split` (cannot be resumed) or null.",
-      },
-      message: str,
-      armed: note(bool, "The next true result fires an alert."),
-      created_at: str,
-      last_result: nstr,
-      last_evaluated_at: nstr,
-      after_earnings: freeForm,
+      ...ruleFields,
+      now: note(
+        evaluation,
+        "The rule evaluated at this read on the stored prices, stored nowhere: it neither fires an alert nor changes `armed` or `last_result`.",
+      ),
     },
-    [
-      "id",
-      "symbol",
-      "condition",
-      "note",
-      "paused",
-      "armed",
-      "created_at",
-      "last_result",
-      "last_evaluated_at",
-    ],
+    [...RULE_REQUIRED, "now"],
   ),
-  Rules: object({ rules: list(ref("Rule")) }),
+  Listings: note(
+    { type: "object", additionalProperties: ref("Listing") },
+    "Every listing the answer names, by its id, so a page can name and price it without another call.",
+  ),
+  Listing: object({
+    name: nstr,
+    type: str,
+    currency: nstr,
+    unit: values(UNITS),
+  }),
+  Rules: object({ rules: list(ref("RuleNow")), instruments: ref("Listings") }),
+  RuleWithNow: object({
+    rule: ref("RuleNow"),
+    instruments: ref("Listings"),
+  }),
   RuleArgs: object({ symbol: str, condition: freeForm, note: nstr }, [
     "symbol",
     "condition",
@@ -917,6 +951,19 @@ export const schemas: Record<string, Schema> = {
   }),
   OneRule: object({ rule: ref("Rule") }),
   Alert: alert,
+  RecentAlerts: object({
+    alerts: list(ref("Alert")),
+    instruments: ref("Listings"),
+    next: note(
+      { type: ["integer", "null"] },
+      "The `before` that reads the next older page, or null on the last.",
+    ),
+  }),
+  Seen: object({
+    seen: note(int, "The newest alert id marked seen; 0 before any."),
+    unseen: note(int, "How many of your alerts are newer than `seen`."),
+  }),
+  SeenArgs: object({ id: note(int, "An alert id, usually the newest shown.") }),
   Alerts: object(
     {
       retention_gap: note(
