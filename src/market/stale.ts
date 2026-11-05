@@ -106,8 +106,15 @@ export function quoteStale(
       reasons.push(STALE.quoteOverdue);
     }
   }
-  // a closed market's new session can go unseen while its checks fail
-  if (failed(db, instrument, JOBS.check)) reasons.push(STALE.checkFailed);
+  // a closed market's new session can go unseen while its checks fail;
+  // no check runs while it is open, so a newer quote outranks the failure
+  const check = lastRun(db, instrument.source, JOBS.check, instrument.market);
+  if (
+    failedRun(check) &&
+    (quote === null || quote.fetchedAt < check.startedAt)
+  ) {
+    reasons.push(STALE.checkFailed);
+  }
   if (switching(db, instrument.market)) reasons.push(STALE.switchPending);
   if (sourceOff(db, instrument)) reasons.push(STALE.sourceOff);
   return reasons;

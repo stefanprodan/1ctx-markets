@@ -164,7 +164,7 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
 | `no quote in the last pass` | `quoteStale` | last pass ok, this instrument (added before it) not in it |
 | `no quote yet` | `quoteStale` | no quote stored |
 | `quote overdue` | `quoteStale` with `due` | quote older than two quote periods before the last time one was due |
-| `session check failed` | `quoteStale` | the market's last closed-market check failed |
+| `session check failed` | `quoteStale` | the market's last closed-market check failed, and the quote predates its start |
 | `bar sync failed` | `barsStale`, `seriesStale` | the market's last bar pass or the instrument's own refetch failed (FRED: the series' last run) |
 | `bar sync pending` | `barsStale` | a session began after the last ok bar pass (`barsDue`), the instrument added before it |
 | `bar sync pending` | `seriesStale` | FRED: no run ended well since the latest 23:00 UTC (`seriesDue`), the series added before it |
