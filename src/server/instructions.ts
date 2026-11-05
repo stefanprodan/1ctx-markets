@@ -24,34 +24,39 @@ const RULES_LINE = `
 const PROFILE_LINE = `
 - How the owner invests (goals, risk, trading style, rules): \`profile\`, read before any work on their portfolio.`;
 
+// a key without analysis access never sees the tool
+const ANALYSIS_LINE = `
+- A view or take on a symbol, not a price or move: \`analysis\` read first (a dated note, not a document), then \`quote\` and \`research\` for what changed.`;
+
 // Most important first, what the server lacks last: a cut drops the least.
 // Only the tools the key lists are named.
 export const instructions = (opens: {
   portfolio: Access;
   rules: Access;
   profile: Access;
+  analysis: Access;
 }): string => `Market data, price rules and portfolios. Which tool answers what:
-- Prices now, and how a symbol did over a week, a month, three months, the year so far (ytd) or a year: \`quote\`, whose \`returns\` hold those periods and \`session\` whether its market is open; \`benchmark\` adds relative strength. The benchmark's own returns come from quoting it too, never from the relative figures.
-- A US share's move before the open or after the close: \`quote\` with \`extended\`; a null \`extended\` gives its reason in \`stale\`, and it never drives a rule or signal.
-- Bars, a chart's data, a full year or any other period: \`history\`; its last bar's \`final\` is false while its market is open. How a symbol moved today or over the last five sessions: \`history\` with \`interval\` 5m, regular-hours closes as fresh as the quote pass, a move measured from its \`previous_close\`; \`extended\` adds the pre- and post-market closes while the session is closed.
-- Many symbols at once: \`movers\` for today's moves and average crossings, \`screen\` to filter and rank on signals and returns, with \`fields\` for columns beyond those filtered or sorted on.
+- Prices now, and how a symbol did over 1w, 1m, 3m, ytd or 1y: \`quote\`, whose \`returns\` hold those periods and \`session\` whether its market is open; \`benchmark\` adds relative strength. The benchmark's own returns come from quoting it too, never from the relative figures.${opens.analysis === "none" ? "" : ANALYSIS_LINE}
+- A US share's move before the open or after the close: \`quote\` with \`extended\` (null: see \`extended_reason\`); it never drives a rule or signal.
+- Bars, a chart's data or any period: \`history\`; its last daily bar's \`final\` turns true only once the next session shows. How a symbol moved today or over the last five sessions: \`history\` with \`interval\` 5m, regular-hours closes as fresh as quotes, a move measured from its \`previous_close\`; \`extended\` adds pre- and post-market closes while closed.
+- Many symbols at once: \`movers\` for today's moves and average crossings, \`screen\` to filter and rank on signals and returns, \`fields\` adding columns.
 - A US share's fundamentals, analysts, earnings, insiders and news, or a US ETF's news: \`research\`, for the few symbols that matter. For news, \`section\` news with \`since\` keeps to a recent window; read its \`counts\` by sentiment before the articles.
-- A US share's SEC filings, late filings, restatements or new securities registered or offered: \`research\`, \`section\` filings; its overview carries the flags.
-- What an ETF or fund holds: \`research\`, \`section\` top_holdings, its ten largest and sectors.
+- A US share's SEC filings, late or restated, or securities offered: \`research\`, \`section\` filings; its overview carries the flags.
+- What an ETF or fund holds: \`research\`, \`section\` top_holdings.
 - Earnings dates: \`events\`. A named share under \`no_event\` had no earnings in the window: that is an answer, not missing data.${opens.rules === "none" ? "" : RULES_LINE}${opens.profile === "none" ? "" : PROFILE_LINE}${PORTFOLIO_LINE[opens.portfolio]}
 - An unknown or ambiguous name: \`search\`.
 Answer from these tools, not the HTTP API, and never recompute an average or return a tool already gives.
 
-Missing is not false: a \`stale\` reason, \`unavailable\`, "no data" or a null field means the value is missing, never that a condition failed or a figure is zero. A section answered from another listing names it in \`listing\`; a foreign one leaves out per-share figures, and \`valuation\` gives them per US share.
+Missing is not false: \`unavailable\`, "no data" or a null field means the value is missing, never that a condition failed or a figure is zero. A \`stale\` reason says why a figure is missing or not current; give a figure with its reason. A section answered from another listing names it in \`listing\`; a foreign one leaves out per-share figures, and \`valuation\` gives them per US share.
 
-Symbols: Yahoo's forms (AAPL, VWCE.DE, BTC-USD, EURUSD=X), FRED:<series id>, a market:symbol id as answers give it, or a regional source's own codes while that source is on; \`search\` when unsure. An unknown symbol is fetched inside the call.
+Symbols: Yahoo's forms (AAPL, VWCE.DE, BTC-USD, EURUSD=X), FRED:<series id>, a market:symbol id as answers give it, or a regional source's own codes while that source is on. An unknown symbol is fetched inside the call.
 
 Live prices: a quote is the live price while its market is open, and the day's close after. Signals and \`returns\` already count today's price. Say whether a price is live or a close; never warn that a live price is not a close.
 
-Freshness: answers carry \`fetched_at\`; read it before calling a figure current. Research refreshes daily after the US close, earnings around a share's report date, news through the day.
+Freshness: answers carry \`fetched_at\`; read it before calling a figure current. Research refreshes daily, earnings around a share's report date, news through the day.
 
-Units: prices are in the listing's own \`currency\`. A series whose \`unit\` is percent (a yield, a spread) moves in points, not percent; an index is in points, a yield index's (^TNX) being its yield in percent; unknown means not known.
+Units: prices are in the listing's own \`currency\`. A series whose \`unit\` is percent (a yield, a spread) moves in points, not percent; an index is in points (^TNX: its yield in percent); unknown means not known.
 
 Paging: never change the arguments to avoid a page.
 
-What this server does not hold, so look elsewhere and never read its silence as none: macro dates (central banks, data releases, elections), a fund's holdings past its ten largest, prices of funds Yahoo does not list${opens.portfolio === "none" ? "" : " (but `portfolio` holds the owner's hand-priced ones)"}, options, and analyst estimate revisions.`;
+What this server does not hold, so look elsewhere and never read its silence as none: macro dates (central banks, data releases, elections), a fund's holdings past its ten largest or its fees and replication, prices of funds Yahoo does not list${opens.portfolio === "none" ? "" : " (`portfolio` holds hand-priced ones)"}, options, and analyst estimate revisions.`;

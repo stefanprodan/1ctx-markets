@@ -998,7 +998,7 @@ describe("a session still trading in history", () => {
       date: "2026-10-26",
       close: 36.4,
       final: false,
-      signals: { kind: "live", ema20: round(live.ema20) },
+      signals: { kind: "close", ema20: round(live.ema20) },
     });
     // the quote's day range, with no open or volume from the quote
     expect(route).toEqual({

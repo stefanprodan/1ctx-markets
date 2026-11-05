@@ -161,8 +161,8 @@ describe("screen", () => {
       price: 100,
     });
     expect(item.fields).toEqual({
-      rsi14: { value: 30, unit: "0 to 100", kind: "live", date: LIVE },
-      drawdown: { value: -20, unit: "percent", kind: "live", date: LIVE },
+      rsi14: { value: 30, unit: "0 to 100", kind: "close", date: LIVE },
+      drawdown: { value: -20, unit: "percent", kind: "close", date: LIVE },
     });
   });
 
@@ -275,11 +275,11 @@ describe("screen", () => {
     expect(f.distance_weekly_sma50).toEqual({
       value: 37.5,
       unit: "percent",
-      kind: "live",
+      kind: "close",
       date: "2026-10-19",
     });
     expect(f.distance_weekly_sma200.value).toBeCloseTo(-45, 6);
-    expect(f.distance_sma50).toMatchObject({ kind: "live", date: LIVE });
+    expect(f.distance_sma50).toMatchObject({ kind: "close", date: LIVE });
   });
 
   test("a final row answers when there is no live one, stated per field", async () => {
@@ -659,7 +659,7 @@ describe("movers", () => {
       expect(up.body.items[0].average).toEqual({
         name: "daily_sma50",
         value: 100.2,
-        kind: "live",
+        kind: "close",
         date: LIVE,
         distance_pct: expect.closeTo(100 * (101 / 100.2 - 1), 4),
         last_final: { date: FINAL, close: 99, value: 100 },
@@ -668,6 +668,35 @@ describe("movers", () => {
       expect(ids(down.body)).toEqual(["XX:DNX", "XX:ON"]);
     });
 
+    test("an average and a screen value are the close once the market closed, live while it trades", async () => {
+      const { m, db } = crossings();
+      // crypto always trades; the XX market has no open session
+      listing(db, "CRYPTO:UPC-USD", {
+        previousClose: 99,
+        price: 101,
+        final: { sma50: 100 },
+        live: { sma50: 100.2 },
+      });
+      bar(db, "CRYPTO:UPC-USD", "1wk", "2026-10-19", 101, false);
+      row(db, "CRYPTO:UPC-USD", "1wk", "2026-10-19", "live");
+      const kinds = async (id: string) => {
+        const crossed = await movers(m, {
+          symbols: [id],
+          average: "daily_sma50",
+          relation: "crossed_up",
+        });
+        const mover = crossed.body.items[0];
+        const s = await screen(m, {
+          symbols: [id],
+          sort: "sma50",
+          fields: ["distance_sma50"],
+        });
+        const f = s.body.items[0].fields;
+        return [mover?.average.kind, f.sma50.kind, f.distance_sma50.kind];
+      };
+      expect(await kinds("XX:UPX")).toEqual(["close", "close", "close"]);
+      expect(await kinds("CRYPTO:UPC-USD")).toEqual(["live", "live", "live"]);
+    });
     test("weekly averages cross on the last final week", async () => {
       const w = world();
       listing(w.db, "XX:W", { previousClose: 99, price: 103 });
@@ -892,7 +921,7 @@ describe("the quotes route's last final day", () => {
   function crossed(item: any): "up" | "down" | null {
     const then = item.last_final?.daily;
     const now = item.sma.daily;
-    if (then == null || now?.kind !== "live" || item.stale.length > 0) {
+    if (then == null || now?.kind === "final" || item.stale.length > 0) {
       return null;
     }
     if (now.date <= then.date) return null;
@@ -952,7 +981,7 @@ describe("the quotes route's last final day", () => {
     const { body } = await quotes(m, ["XX:DNX", "XX:NEWDN"]);
     expect(body.quotes[0]).toMatchObject({
       price: 99,
-      sma: { daily: { kind: "live", date: LIVE, sma200: 100.1 } },
+      sma: { daily: { kind: "close", date: LIVE, sma200: 100.1 } },
       last_final: {
         daily: { date: FINAL, close: 101, sma50: 100, sma200: 100 },
       },

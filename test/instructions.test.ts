@@ -12,6 +12,7 @@ const ALL = instructions({
   portfolio: "write",
   rules: "write",
   profile: "write",
+  analysis: "write",
 });
 
 // Backticked names that are answer fields, checked in review; every other
@@ -29,6 +30,7 @@ const ANSWER_FIELDS = [
   "unit",
   "previous_close",
   "valuation",
+  "extended_reason",
 ];
 
 // an answer field that a portfolio tool also takes as an argument, so a
@@ -78,7 +80,7 @@ async function perKey(
   for (const level of ACCESS_LEVELS) {
     const token = seedKey(
       t,
-      `${level.portfolio}-${level.rules}-${level.profile}`,
+      `${level.portfolio}-${level.rules}-${level.profile}-${level.analysis}`,
       level,
     );
     const client = await mcpClient(t, token);
@@ -113,12 +115,9 @@ describe("the server instructions", () => {
         for (const tool of tools) propertyNames(tool.inputSchema, args);
 
         const named = backticked(text);
-        // profile's description names profile_edit, for want of room here;
-        // the analysis is found by its pointer in quote and research
+        // the read tools' descriptions name the edits, for want of room here
         for (const tool of names) {
-          if (["profile_edit", "analysis", "analysis_edit"].includes(tool)) {
-            continue;
-          }
+          if (["profile_edit", "analysis_edit"].includes(tool)) continue;
           expect([level, named.has(tool)]).toEqual([level, true]);
         }
         for (const field of ANSWER_FIELDS) {
@@ -159,6 +158,40 @@ describe("the server instructions", () => {
         );
       }),
     ));
+
+  test("send a view on a symbol to its analysis second, for a key that reads it", () =>
+    withApp((t) =>
+      perKey(t, (text, _tools, level) => {
+        const routes = text.split("\n").filter((l) => l.startsWith("- "));
+        const at = routes.findIndex((l) => l.includes("`analysis` read"));
+        expect([level, at]).toEqual([
+          level,
+          level.analysis === "none" ? -1 : 1,
+        ]);
+        // a price or move question also calls quote; it never reads a note
+        if (at >= 0) expect(routes[at]).toContain("not a price or move");
+        if (level.analysis === "none") {
+          expect(backticked(text).has("analysis")).toBe(false);
+        }
+      }),
+    ));
+
+  test("stay under the byte cap and ASCII for every access combination", () => {
+    const access = ["none", "read", "write"] as const;
+    for (const portfolio of access) {
+      for (const rules of access) {
+        for (const profile of access) {
+          for (const analysis of access) {
+            const text = instructions({ portfolio, rules, profile, analysis });
+            expect(Buffer.byteLength(text)).toBeLessThanOrEqual(
+              INSTRUCTIONS_BYTES,
+            );
+            expect(/^[\x20-\x7e\n]*$/.test(text)).toBe(true);
+          }
+        }
+      }
+    }
+  });
 
   test("name no holding, place or workspace", () => {
     for (const word of DENIED) {

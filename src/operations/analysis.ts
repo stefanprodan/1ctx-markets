@@ -170,7 +170,7 @@ export const savedAnalysis = (s: Saved) => ({
   ...(s.unchanged ? { unchanged: true } : {}),
 });
 
-// beside a quote or an overview, for a key that opens the analysis only
+// beside the research overview, for a key that opens the analysis only
 export function analysisField(m: Markets, who: Who, id: string) {
   if (who.analysis === "none") return {};
   const p = analysisPointer(m.db, id);
@@ -178,7 +178,12 @@ export function analysisField(m: Markets, who: Who, id: string) {
     analysis:
       p === null
         ? null
-        : { revision: p.revision, written_at: iso(p.createdAt) },
+        : {
+            revision: p.revision,
+            written_at: iso(p.createdAt),
+            // the answer names its tool: an agent may never read a description
+            read_with: "analysis",
+          },
   };
 }
 

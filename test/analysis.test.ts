@@ -511,7 +511,7 @@ describe("access", () => {
     ).toBe("No analysis of US:MADE yet. analysis_edit replace writes one.");
   });
 
-  test("quote and the research overview point at a note only for a key with access", async () => {
+  test("the research overview points at a note for a key with access; a quote never does", async () => {
     const { m, db } = setup();
     quote(db, SYMBOL, 100, 99);
     await ask(m, WRITER, { action: "replace", symbol: SYMBOL, text: NOTE });
@@ -533,16 +533,17 @@ describe("access", () => {
           who,
         ),
       );
-    const pointer = { revision: 1, written_at: "2026-10-23T18:00:00Z" };
     const reader = keyWho(OPERATOR, "reader", "read");
-    const [made, other] = await quoteOf(reader);
-    expect(made.analysis).toEqual(pointer);
-    expect(other.analysis).toBeNull();
-    expect((await overview(reader)).analysis).toEqual(pointer);
-    const none = keyWho(OPERATOR, "none", "none");
-    for (const item of await quoteOf(none)) {
+    // every price question calls quote, so it never points at a note
+    for (const item of await quoteOf(reader)) {
       expect(item).not.toHaveProperty("analysis");
     }
+    expect((await overview(reader)).analysis).toEqual({
+      revision: 1,
+      written_at: "2026-10-23T18:00:00Z",
+      read_with: "analysis",
+    });
+    const none = keyWho(OPERATOR, "none", "none");
     expect(await overview(none)).not.toHaveProperty("analysis");
   });
 
@@ -818,11 +819,11 @@ describe("the descriptions", () => {
     expect(edit.description).toContain(
       "about the symbol only, never holdings, cost, gains or the owner's profile",
     );
-    expect(
-      read.description.startsWith("Changes go through analysis_edit. "),
-    ).toBe(true);
+    // the opening says what it answers; the write pointer follows
+    expect(read.description).toStartWith("A symbol's dated analysis ");
+    expect(read.description).toContain("Changes go through analysis_edit. ");
     for (const t of [read, edit]) {
-      expect(t.description.length).toBeLessThanOrEqual(1024);
+      expect(t.description.length).toBeLessThan(1024);
     }
   });
 });

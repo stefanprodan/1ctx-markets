@@ -679,9 +679,11 @@ rename_broker(broker: string, name: string): { broker };
   share buy and a fund's first buy, since a schema cannot require name
   and currency on the first buy only, and says `again` in full;
   `portfolio_cash` says dry powder is ready to invest and the rest
-  reserve; `portfolio` names the write tools only to a key that lists
-  them. A fund's trades come one per confirmation, so an agent never
-  sums a manager's statement into one buy.
+  reserve. `portfolio` opens with what it answers, the same for read
+  and write keys, since a catalog client shows that sentence alone, and
+  names a write tool only to a key that lists it. A fund's trades come
+  one per confirmation, so an agent never sums a manager's statement
+  into one buy.
 - **Annotations are per tool**: `portfolio` is read-only, so a client
   that runs reads without asking never asks for holdings; every write
   tool is destructive, so an add asks as a remove does.
@@ -750,7 +752,8 @@ rename_broker(broker: string, name: string): { broker };
   reserve counts only in net worth. For a key that writes it names the
   write tools and that with no portfolio yet `portfolio_setup` makes
   one; a key without portfolio access has no such line. The read
-  tool's description opens with the same routing.
+  tool's description carries the same routing right after its opening
+  sentence.
 
 ## Import and export
 

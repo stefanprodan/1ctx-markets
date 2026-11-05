@@ -32,7 +32,14 @@ import {
   symbols,
 } from "./args.ts";
 import type { Markets } from "./markets.ts";
-import { type Latest, MAX_SYMBOLS, quoteItem, readLatest } from "./quote.ts";
+import {
+  type AnswerKind,
+  answerKind,
+  type Latest,
+  MAX_SYMBOLS,
+  quoteItem,
+  readLatest,
+} from "./quote.ts";
 import {
   benchmarkStale,
   distinct,
@@ -249,7 +256,7 @@ export function parseScreen(input: unknown): ScreenArgs {
 type Value = {
   value: number;
   unit: string;
-  kind: "live" | "final";
+  kind: AnswerKind;
   date: string;
   note?: string;
 };
@@ -314,7 +321,7 @@ function readField(
       value: {
         value: v,
         unit: unitOf(def, instrument),
-        kind: p.kind,
+        kind: answerKind(p.kind, latest.open),
         date: p.row.date,
       },
     };
@@ -335,7 +342,7 @@ function readField(
       value: {
         value: 100 * (price / avg - 1),
         unit: "percent",
-        kind: p.kind,
+        kind: answerKind(p.kind, latest.open),
         date: p.row.date,
       },
     };
@@ -350,7 +357,7 @@ function readField(
         value: v,
         // a yield or spread moves in points, as quote's returns
         unit: instrument.unit === "percent" ? "points" : "percent",
-        kind: ret.live ? "live" : "final",
+        kind: answerKind(ret.live ? "live" : "final", latest.open),
         date: ret.to,
       },
     };
@@ -364,7 +371,7 @@ function readField(
     value: {
       value: rel.relative,
       unit: rel.instrument.unit === "points" ? "points" : "percentage points",
-      kind: rel.live ? "live" : "final",
+      kind: answerKind(rel.live ? "live" : "final", latest.open),
       date: rel.instrument.to,
       note: rel.note,
     },

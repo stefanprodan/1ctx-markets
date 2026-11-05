@@ -173,12 +173,21 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
 | `previous day not final` | `readSignals` | a live row stepped over a stored bar not final yet |
 | `source switch pending` | `quoteStale`, `barsStale` | the market's latest source switch run is running or failed (`SWITCH`) |
 | `source off` | `quoteStale`, `barsStale` | a feed instrument whose source the last landed switch turned off, so its prices are its last |
-| `extended: no pre- or post-market trading` | `readExtended` | the source's flag says the listing has none, or it is crypto |
-| `extended: not reported by its source` | `readExtended` | a listing not priced by Yahoo |
-| `extended: no price since the regular close` | `readExtended` | no pre or post bar has a price since the last regular close |
-| `extended: regular session open` | `readExtended` | the stored session or the chart's regular window holds now |
-| `extended: not fetched in time` | `readExtended` | the chart missed the call's deadline |
-| `extended: fetch failed` | `readExtended` | the chart call failed |
+
+- **Why an asked extended price is missing is not staleness**: it goes
+  in `extended_reason` beside quote's `extended` and history's
+  `extended_points`, fixed phrases in `EXTENDED`, so `stale` stays about
+  the regular quote:
+
+| Phrase | Set by | When |
+| --- | --- | --- |
+| `no pre- or post-market trading` | `readExtended` | the source's flag says the listing has none, or it is crypto |
+| `not reported by its source` | `readExtended` | a listing not priced by Yahoo |
+| `no price since the regular close` | `readExtended` | no pre or post bar has a price since the last regular close |
+| `regular session open` | `readExtended` | the stored session or the chart's regular window holds now |
+| `not fetched in time` | `readExtended` | the chart missed the call's deadline |
+| `fetch failed` | `readExtended` | the chart call failed |
+| `none in the sessions answered` | `extendedOut` | history's `5m`: the read held points of other sessions only |
 
 - **`quote overdue` follows when a quote was last due**
   (`lastQuoteDue`): now while the market trades (always for crypto),

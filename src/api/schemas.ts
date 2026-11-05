@@ -7,6 +7,7 @@ import {
 } from "../admin/refetch.ts";
 import { SCREEN_NAMES, SORT_NAMES } from "../admin/screener.ts";
 import { UNITS } from "../market/instruments.ts";
+import { EXTENDED } from "../market/stale.ts";
 import { CALL_MS } from "../operations/markets.ts";
 import { FIELD_NAMES } from "../operations/screen.ts";
 import { ERRORS } from "../operations/targets.ts";
@@ -69,6 +70,13 @@ const note = (s: Schema, description: string): Schema => ({
   ...s,
   description,
 });
+
+const extendedReason = (description: string): Schema =>
+  note(
+    { type: ["string", "null"], enum: [...Object.values(EXTENDED), null] },
+    description,
+  );
+const EXTENDED_NULL = "Why `extended` is null; null when it holds a price.";
 
 export const DEADLINE_S = CALL_MS / 1000;
 
@@ -294,9 +302,15 @@ const filings = note(
   "A US share's SEC filings: the newest few and three flags.",
 );
 
+// a live row once its market closes is the day's close, final next session
+const rowKind = note(
+  values(["live", "close", "final"]),
+  "live: with today's price while its market is open; close: to the latest close while its market is closed (a weekly row: the week so far); final once its period is over and the next one shows.",
+);
+
 const averages = nullable(
   object({
-    kind: values(["live", "final"]),
+    kind: rowKind,
     date: str,
     sma50: nnum,
     sma200: nnum,
@@ -325,7 +339,7 @@ const brief = {
   ),
   sma: note(
     object({ daily: averages, weekly: averages }),
-    "SMA 50 and SMA 200, `live` with today's price or `final` as of the last final bar. Null with too few bars.",
+    "SMA 50 and SMA 200, `live` with today's price, `close` on the day's close while its market is closed, or `final` as of the last final bar. Null with too few bars.",
   ),
   last_final: note(
     nullable(
@@ -474,6 +488,7 @@ export const schemas: Record<string, Schema> = {
           time: nstr,
         }),
       ),
+      extended_reason: extendedReason(EXTENDED_NULL),
     },
     briefRequired,
   ),
@@ -563,7 +578,10 @@ export const schemas: Record<string, Schema> = {
             close: num,
           }),
         ),
-        "With `extended=true`: the pre- and post-market closes of the sessions answered, read while the regular session is closed, never stored.",
+        "With `extended=true`: the pre- and post-market closes of the sessions answered, read while the regular session is closed, never stored; when empty, `extended_reason` says why.",
+      ),
+      extended_reason: extendedReason(
+        "Why `extended_points` is empty; null when it holds points.",
       ),
     },
     [
@@ -759,7 +777,7 @@ export const schemas: Record<string, Schema> = {
             {
               value: nnum,
               unit: str,
-              kind: values(["live", "final"]),
+              kind: rowKind,
               date: str,
               note: str,
             },
@@ -1155,8 +1173,9 @@ export const schemas: Record<string, Schema> = {
                     time: nstr,
                   }),
                 ),
-                "Pre or post trading while the regular session is closed, as the quote tool's `extended`; null with the reason in `stale`.",
+                "Pre or post trading while the regular session is closed, as the quote tool's `extended`; null with the reason in `extended_reason`.",
               ),
+              extended_reason: extendedReason(EXTENDED_NULL),
               stale: brief.stale,
             },
             [

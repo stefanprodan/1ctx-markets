@@ -12,6 +12,7 @@ import { type ToolResult, textResult } from "./answer.ts";
 import { ArgError, fields, oneOf, optionalText, symbols } from "./args.ts";
 import type { Markets } from "./markets.ts";
 import {
+  answerKind,
   closeOn,
   type Latest,
   MAX_SYMBOLS,
@@ -143,7 +144,7 @@ function relate(
     return {
       ok: true,
       holds: args.relation === "above" ? last > avg : last < avg,
-      shown: averageOf(args.average!, at, last),
+      shown: averageOf(args.average!, at, last, latest.open),
     };
   }
   const rows = latest.signals?.[interval === "1d" ? "daily" : "weekly"];
@@ -167,6 +168,7 @@ function relate(
         args.average!,
         { kind: "live", date: live.date, value: avgNow },
         last,
+        latest.open,
       ),
       last_final: {
         date: final.date,
@@ -177,10 +179,10 @@ function relate(
   };
 }
 
-const averageOf = (name: Average, at: Side, last: number) => ({
+const averageOf = (name: Average, at: Side, last: number, open: boolean) => ({
   name,
   value: round(at.value),
-  kind: at.kind,
+  kind: answerKind(at.kind, open),
   date: at.date,
   distance_pct: at.value > 0 ? round(100 * (last / at.value - 1)) : null,
 });

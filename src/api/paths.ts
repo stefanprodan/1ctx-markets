@@ -208,7 +208,7 @@ export const paths = {
       description: lines(
         "The live price, change and moving averages of each symbol, in the order asked. Each item is a quote or its own `error`.",
         "",
-        "- `sma` holds the daily and weekly SMA 50 and SMA 200, with today's price counted (`live`) or as of the last final bar (`final`).",
+        "- `sma` holds the daily and weekly SMA 50 and SMA 200, with today's price counted (`live`, or `close` once its market closed) or as of the last final bar (`final`).",
         "- `last_final.daily` is the last final close and its averages, to tell a crossing since that close.",
         "- A `FRED:<series id>` symbol has an `observation` and a null `price`.",
         STALE,
@@ -220,7 +220,7 @@ export const paths = {
         csv("symbols", symbols(MAX_SYMBOLS), str, true),
         query(
           "extended",
-          "`true` adds the last pre- or post-market price, or null with the reason in `stale`. Default: `false`.",
+          "`true` adds `extended`, the last pre- or post-market price, and `extended_reason`, why it is null. Default: `false`.",
           bool,
         ),
       ],
@@ -572,7 +572,7 @@ export const paths = {
         ),
         query(
           "extended",
-          "With `5m` only: `true` adds `extended_points`, the pre- and post-market closes of the sessions answered, read while the regular session is closed. Default: `false`.",
+          "With `5m` only: `true` adds `extended_points`, the pre- and post-market closes of the sessions answered, read while the regular session is closed, and `extended_reason`, why the list is empty. Default: `false`.",
           bool,
         ),
       ],

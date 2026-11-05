@@ -16,7 +16,7 @@ import { type Access, NO_ACCESS } from "../operations/who.ts";
 import { next, schema, symbol, type Tool } from "./schema.ts";
 
 const readDescription = (writes: boolean) =>
-  `${writes ? "Changes go through analysis_edit. " : ""}A symbol's dated analysis (trend, earnings, news, valuation, risks), written earlier and shared by everyone on this server. Check it against quote and research, which hold the live figures. read: symbol; the text, its author, date and the price move since. list: the symbols with one, newest first. versions: symbol; the kept revisions. version: symbol, revision; that revision's text.`;
+  `A symbol's dated analysis (trend, earnings, news, valuation, risks), written earlier and shared by everyone on this server. ${writes ? "Changes go through analysis_edit. " : ""}Check it against quote and research, which hold the live figures. read: symbol; the text, its author, date and the price move since. list: the symbols with one, newest first. versions: symbol; the kept revisions. version: symbol, revision; that revision's text.`;
 
 const EDIT = `Writes a symbol's analysis, which everyone on this server reads: about the symbol only, never holdings, cost, gains or the owner's profile. replace: symbol, revision read and the whole text; no revision only for the first. edit: symbol, revision, edits: 1-${MAX_EDITS} {old, new}, each old found once, for a few lines. A stale revision is refused with the live one: read again, retry. At most ${MAX_DOCUMENT_BYTES / 1024} KiB; date every figure. Example: {"action": "replace", "symbol": "NVDA", "revision": 3, "text": "# NVDA, 2026-11-05\\nTrend: up since the October earnings."}`;
 

@@ -5,7 +5,7 @@
 import { CRYPTO, isQuoted, readSession } from "../market/calendars.ts";
 import { iso, price, round } from "../market/format.ts";
 import type { Instrument } from "../market/instruments.ts";
-import { STALE, type StaleReason } from "../market/stale.ts";
+import { EXTENDED, type ExtendedReason } from "../market/stale.ts";
 import { fromWallTime, wallTime } from "../market/zone.ts";
 import { DAY_MS, MINUTE_MS } from "../runtime/clock.ts";
 import { YAHOO } from "../sources/ids.ts";
@@ -21,7 +21,7 @@ import {
 
 const HOUR_MS = 60 * MINUTE_MS;
 
-const none = (reason: StaleReason): ExtendedRead => ({
+const none = (reason: ExtendedReason): ExtendedRead => ({
   extended: null,
   reason,
 });
@@ -34,9 +34,9 @@ export function latestExtended(
   answer: IntradayAnswer,
   now: number,
 ): ExtendedRead {
-  if (answer.prePost !== true) return none(STALE.extendedNone);
+  if (answer.prePost !== true) return none(EXTENDED.none);
   const { pre, regular, post } = answer.windows;
-  if (inside(regular, now)) return none(STALE.extendedOpen);
+  if (inside(regular, now)) return none(EXTENDED.open);
   let closed = Number.NEGATIVE_INFINITY;
   for (const w of regular) if (w.end <= now) closed = Math.max(closed, w.end);
   for (let i = answer.rows.length - 1; i >= 0; i--) {
@@ -59,7 +59,7 @@ export function latestExtended(
       reason: null,
     };
   }
-  return none(STALE.extendedNoPrice);
+  return none(EXTENDED.noPrice);
 }
 
 // Yahoo names the next session only once its pre window starts, so an answer
@@ -103,14 +103,14 @@ async function readOne(
   instrument: Instrument,
   deadline: number,
 ): Promise<ExtendedRead> {
-  if (instrument.source !== YAHOO) return none(STALE.extendedUnreported);
-  if (instrument.market === CRYPTO) return none(STALE.extendedNone);
+  if (instrument.source !== YAHOO) return none(EXTENDED.unreported);
+  if (instrument.market === CRYPTO) return none(EXTENDED.none);
   if (m.yahoo.prePost(instrument.sourceSymbol) === false) {
-    return none(STALE.extendedNone);
+    return none(EXTENDED.none);
   }
   const now = m.clock.now();
   if (isQuoted(instrument.market, readSession(m.db, instrument.market), now)) {
-    return none(STALE.extendedOpen);
+    return none(EXTENDED.open);
   }
   const cached = m.extended.get(instrument.id);
   if (cached !== undefined && now < cached.until) return cached.read;
@@ -131,9 +131,9 @@ async function readOne(
     return read;
   } catch (error) {
     if (error instanceof SourceError && error.phrase === "timed out") {
-      return none(STALE.extendedTimeout);
+      return none(EXTENDED.timeout);
     }
-    return none(STALE.extendedFailed);
+    return none(EXTENDED.failed);
   }
 }
 
@@ -162,24 +162,31 @@ export async function readExtendedPoints(
   m: Markets,
   instrument: Instrument,
   deadline: number,
-): Promise<ExtendedPoint[]> {
+): Promise<ExtendedPoints> {
   const read = (await readExtended(m, [instrument], deadline)).get(
     instrument.id,
-  );
+  )!;
   // refused (open, none, a failure): a cached answer is not this read's
-  if (read === undefined || REFUSED.has(read.reason)) return [];
+  if (REFUSED.has(read.reason)) return { points: [], reason: read.reason };
   const cached = m.extended.get(instrument.id);
-  return cached !== undefined && m.clock.now() < cached.until
-    ? cached.points
-    : [];
+  return {
+    points:
+      cached !== undefined && m.clock.now() < cached.until ? cached.points : [],
+    reason: read.reason,
+  };
 }
 
-const REFUSED: ReadonlySet<StaleReason | null> = new Set([
-  STALE.extendedOpen,
-  STALE.extendedNone,
-  STALE.extendedUnreported,
-  STALE.extendedTimeout,
-  STALE.extendedFailed,
+export type ExtendedPoints = {
+  points: ExtendedPoint[];
+  reason: ExtendedReason | null;
+};
+
+const REFUSED: ReadonlySet<ExtendedReason | null> = new Set([
+  EXTENDED.open,
+  EXTENDED.none,
+  EXTENDED.unreported,
+  EXTENDED.timeout,
+  EXTENDED.failed,
 ]);
 
 const EXPIRED = Symbol("expired");
@@ -198,7 +205,7 @@ export async function readExtended(
     const reads = await Promise.all(
       instruments.map(async (i) => {
         const done = await Promise.race([readOne(m, i, deadline), expired]);
-        return [i.id, done === EXPIRED ? none(STALE.extendedTimeout) : done];
+        return [i.id, done === EXPIRED ? none(EXTENDED.timeout) : done];
       }),
     );
     return new Map(reads as [string, ExtendedRead][]);

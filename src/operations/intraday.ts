@@ -14,7 +14,7 @@ import {
   newestSession,
   readIntraday,
 } from "../market/intraday.ts";
-import type { StaleReason } from "../market/stale.ts";
+import { EXTENDED, type StaleReason } from "../market/stale.ts";
 import { localDate } from "../market/zone.ts";
 import { isFundKey } from "../portfolios/funds.ts";
 import { liveTarget } from "../signals/target.ts";
@@ -29,9 +29,9 @@ import {
   textResult,
 } from "./answer.ts";
 import { ArgError } from "./args.ts";
-import { readExtendedPoints } from "./extended.ts";
+import { type ExtendedPoints, readExtendedPoints } from "./extended.ts";
 import { noFund, seenFund } from "./funds.ts";
-import type { ExtendedPoint, Markets } from "./markets.ts";
+import type { Markets } from "./markets.ts";
 import { readLatest, sessionOf } from "./quote.ts";
 import { type ItemError, readTargets } from "./targets.ts";
 import { NO_ACCESS, type Who } from "./who.ts";
@@ -70,7 +70,7 @@ export type IntradayRead =
       points: IntradayPoint[];
       sessions: { session: string; fetchedAt: number }[];
       previousClose: number | null;
-      extended: ExtendedPoint[] | null;
+      extended: ExtendedPoints | null;
       session: ReturnType<typeof sessionOf>;
       stale: StaleReason[];
     };
@@ -167,11 +167,18 @@ export async function readIntradayHistory(
   const moving = movingAt(db, instrument, now);
   const sessions = intradaySessions(db, instrument.id, from, to);
   const days = new Set(sessions.map((s) => s.session));
-  const extended = args.extended
-    ? (await readExtendedPoints(m, instrument, deadline)).filter((p) =>
-        days.has(localDate(instrument.zone, p.at)),
-      )
+  const read = args.extended
+    ? await readExtendedPoints(m, instrument, deadline)
     : null;
+  const extended =
+    read === null
+      ? null
+      : {
+          points: read.points.filter((p) =>
+            days.has(localDate(instrument.zone, p.at)),
+          ),
+          reason: read.reason,
+        };
   return {
     instrument,
     from,
@@ -185,15 +192,18 @@ export async function readIntradayHistory(
   };
 }
 
-export const extendedOut = (points: ExtendedPoint[] | null) =>
-  points === null
+// an empty list always says why, so it never reads as no trading
+export const extendedOut = (read: ExtendedPoints | null) =>
+  read === null
     ? {}
     : {
-        extended_points: points.map((p) => ({
+        extended_points: read.points.map((p) => ({
           at: iso(p.at),
           session: p.session,
           close: price(p.close),
         })),
+        extended_reason:
+          read.points.length > 0 ? null : (read.reason ?? EXTENDED.outside),
       };
 
 const POSITION = /^(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})_(\d{1,16})$/;

@@ -3,7 +3,7 @@
 // A benchmark's relative return is computed on read, at the range's end.
 
 import { type Bar, type Interval, readBars } from "../market/bars.ts";
-import { weekOf } from "../market/calendars.ts";
+import { isQuoted, readSession, weekOf } from "../market/calendars.ts";
 import { price, round } from "../market/format.ts";
 import type { Instrument } from "../market/instruments.ts";
 import type { StaleReason } from "../market/stale.ts";
@@ -29,6 +29,7 @@ import { FUND_BASIS, fundBars, noFund, seenFund } from "./funds.ts";
 import { type IntradayArgs, intradayAnswer } from "./intraday.ts";
 import type { Markets } from "./markets.ts";
 import {
+  answerKind,
   quoteItem,
   readLatest,
   type SignalRow,
@@ -297,6 +298,14 @@ export async function readHistory(
   const from = args.from ?? monthsBack(to, DEFAULT_MONTHS[args.interval]);
   const first = start ?? from;
   const signals = rowsByDate(db, instrument.id, args.interval, first, to);
+  const liveKind = answerKind(
+    "live",
+    isQuoted(
+      instrument.market,
+      readSession(db, instrument.market),
+      m.clock.now(),
+    ),
+  );
   const bars = all
     .filter((b) => b.date >= first && b.date <= to)
     .map((b) => {
@@ -307,7 +316,7 @@ export async function readHistory(
         final !== undefined
           ? signalRow(final, "final", args.interval)
           : live !== null
-            ? signalRow(live, "live", args.interval)
+            ? signalRow(live, liveKind, args.interval)
             : null;
       return { ...b, row };
     });
