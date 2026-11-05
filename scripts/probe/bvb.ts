@@ -88,7 +88,7 @@ function save(
     body,
   };
   if (note) fixture.note = note;
-  const json = JSON.stringify(fixture, null, 2) + "\n";
+  const json = `${JSON.stringify(fixture, null, 2)}\n`;
   if (json.length > MAX_BYTES)
     throw new Error(`${name}: fixture is ${json.length} bytes, trim it`);
   writeFileSync(join(OUT, `${name}${SUFFIX}.json`), json);

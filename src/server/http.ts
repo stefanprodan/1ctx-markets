@@ -1,7 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 // A key is checked before a path is known missing, so an unknown path
-// answers 401 without one.
+// answers 401 without one; the skills are open source and need none.
 
 import { readFileSync } from "node:fs";
 import type { McpHttpHandler } from "@modelcontextprotocol/server";
@@ -27,6 +27,7 @@ import {
   loginCookie,
   sameOrigin,
 } from "./session.ts";
+import { buildSkills, SKILLS_PREFIX } from "./skills.ts";
 import type { Ui } from "./ui.ts";
 
 const MAX_BODY_BYTES = 1024 * 1024;
@@ -127,6 +128,7 @@ const keyFields = (c: Caller | null, login: Login | null): LogFields =>
 export function router(deps: RouterDeps): Handle {
   const api = deps.api ?? [];
   const logins = deps.logins ?? null;
+  const skills = buildSkills();
   const ui = deps.ui ?? null;
   const rate = new RateLimit(CALLS_PER_MINUTE, MINUTE_MS);
   const now = () => deps.clock.now();
@@ -227,6 +229,16 @@ export function router(deps: RouterDeps): Handle {
     login: Login | null,
     ip: string,
   ): Promise<Response> => {
+    if (path.startsWith(SKILLS_PREFIX)) {
+      const file = skills.get(path.slice(SKILLS_PREFIX.length));
+      if (file === undefined) {
+        return failed({ error: "not_found", message: "no such skill" });
+      }
+      if (req.method !== "GET") return plainNotAllowed(["GET"]);
+      return new Response(file.body, {
+        headers: { "content-type": file.type, "cache-control": "no-cache" },
+      });
+    }
     if (isApi(path)) return apiRoute(req, path.slice(PREFIX.length), c, login);
     if (ui !== null && path.startsWith("/ui/")) {
       const res = await ui.route(req, path, ip);

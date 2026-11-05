@@ -2,17 +2,42 @@
 
 Governs `src/analysis/` (the store and the fenced read),
 `src/operations/analysis.ts`, `src/tools/analysis.ts`, the analysis
-routes in `src/api/routes.ts` and their spec in
-`src/api/analysis-spec.ts`. The rules it shares with the owner's
-profile live in `src/document/` and `docs/profile.md`; keys and their
-access in `docs/admin.md`; the tool list per key in `docs/tools.md`.
+routes in `src/api/routes.ts`, their spec in
+`src/api/analysis-spec.ts`, and the skill in `skills/market-analysis/`.
+The rules it shares with the owner's profile live in `src/document/`
+and `docs/profile.md`; keys and their access in `docs/admin.md`; the
+tool list per key in `docs/tools.md`.
 
-An analysis is an agent's dated reading of one symbol (trend, earnings,
-news, valuation, risks) kept as one Markdown document, so that the next
-chat or scheduled run about that symbol starts from it instead of from
-nothing, and the web UI can show it. Agents write it over MCP, from a
-chat or a schedule outside the server; the server never calls a model
-and never writes one itself.
+An analysis is an agent's dated reading of one symbol (its thesis,
+business, earnings record, valuation and risks) kept as one Markdown
+document, so that the next chat or scheduled run about that symbol
+starts from it instead of from nothing, and the web UI can show it.
+Agents write it over MCP, from a chat or a schedule outside the
+server; the server never calls a model and never writes one itself.
+
+## How a note is written
+
+- **The skill in `skills/market-analysis/` says how, not server
+  code**: what a note holds (conclusions and history, never live
+  readings), its templates, and when a scheduled run rewrites one. It
+  is an Agent Skills folder an agent loads. The server stores the
+  text as sent and never checks it against the templates.
+  `test/skill.test.ts` fails when the skill names a tool, argument,
+  `analysis` action or answer field the server does not have, so a
+  rename breaks the build, not a scheduled run.
+- **The server serves every folder under `skills/`, without a key**
+  (`src/server/skills.ts`): `/.well-known/agent-skills/index.json`,
+  the index 1ctx's skill import reads (name, `archive`, the
+  frontmatter's description, the URL, a `sha256:` digest of the
+  bytes), `{name}.tgz` that it names, and `{name}.zip`, since
+  claude.ai's skill upload takes a zip only. A Bun macro
+  (`src/server/skill-files.ts`) embeds the files at build time, so a
+  new file needs no code change. The archives are written by hand
+  with a fixed time, since `Bun.Archive` stamps the current one and
+  would move the digest at every start. `test/skill-serve.test.ts`
+  checks both archives hold the folder's files. A dot file is left
+  out, a file that is not UTF-8 text fails the build, and a quoted or
+  multi-line frontmatter value fails the tests and the start.
 
 ## About the symbol, never a person's money
 
@@ -126,7 +151,7 @@ drift (`docs/profile.md` has each rule and why):
   REST `/quotes` answers none either.
 - **The server instructions route a view or take on a symbol to it**,
   second, for a key that lists `analysis`: the note first, then `quote`
-  and `research` for what changed. A note is 8 to 12 KB, so the line
+  and `research` for what changed. A note is up to 8 KB, so the line
   says "not a price or move": a price or move question never reads one.
   A symbol without a note answers a short "No analysis" line.
 
