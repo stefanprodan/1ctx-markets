@@ -127,6 +127,16 @@ bar's close, or the live price on the live row.
 
 - **A reader takes the live row when one exists, else the last final
   row** (`readLatest()` in `src/operations/quote.ts`), tagged `kind`.
+- **An answer calls a live row `close` while its market is not
+  quoted** (`answerKind()`, from `Latest.open`, the test `sessionOf`
+  uses): after the session the row runs to the latest close (a weekly
+  row: the week so far), though it stays live in storage until the next
+  period shows and the bar turns final. Agents read `live` there as a price still moving. Quote,
+  the REST quote's `sma`, the research overview, history's bar not
+  final, screen's values and movers' averages answer `live`, `close` or
+  `final`; crypto is always quoted, so `live`, and FRED rows are final.
+  Logic that branches on the kind (movers' and the dashboard's
+  crossing, rules) reads the stored kind.
 - **Stale reasons are fixed phrases** (`docs/storage.md`).
   `readSignals()` adds "signals pending" when final rows lag the final
   bars or the live rows lag the quote (another date or trade time), but

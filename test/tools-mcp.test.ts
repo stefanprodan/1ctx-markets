@@ -69,6 +69,21 @@ const yahooApp = async (
   });
 };
 
+// A catalog client shows a tool by its first sentence alone, cut at 160:
+// the rule as 1ctx applies it, `e.g.` and `i.e.` no sentence end.
+const MAX_CATALOG_LINE = 160;
+function firstSentence(text: string): string {
+  const line = text.replace(/\s+/g, " ").trim();
+  for (const end of line.matchAll(/[.!?](?=\s|$)/g)) {
+    const before = line.slice(0, end.index);
+    if (end[0] === "." && /(?:^|[^\p{L}\p{N}_])(?:e\.g|i\.e)$/iu.test(before)) {
+      continue;
+    }
+    return `${before}${end[0]}`;
+  }
+  return line;
+}
+
 const MARKET_TOOLS = [
   "quote",
   "history",
@@ -112,7 +127,21 @@ describe("the tool list", () => {
         expect([level, tools.map((x) => x.name)]).toEqual([level, want(level)]);
         for (const tool of tools) {
           // 1ctx cuts a description at 1,024
-          expect(tool.description!.length).toBeLessThanOrEqual(1024);
+          expect([tool.name, tool.description!.length < 1024]).toEqual([
+            tool.name,
+            true,
+          ]);
+          // the one line a catalog shows says what the tool answers, not where
+          // writes go
+          const first = firstSentence(tool.description!);
+          expect([tool.name, first.length <= MAX_CATALOG_LINE]).toEqual([
+            tool.name,
+            true,
+          ]);
+          expect([
+            tool.name,
+            /^(Changes|Writes) go through/.test(first),
+          ]).toEqual([tool.name, false]);
           expect(tool.inputSchema.additionalProperties).toBe(false);
           // a write asks as a remove does; the read never asks
           const writes =
@@ -139,15 +168,16 @@ describe("the tool list", () => {
         const profile = tools.find((x) => x.name === "profile");
         if (profile !== undefined) {
           expect(
-            profile.description!.startsWith("Changes go through profile_edit."),
+            profile.description!.includes("Changes go through profile_edit."),
           ).toBe(level.profile === "write");
         }
+        // a quote never points at a note, so a price question reads none
+        const quote = tools.find((x) => x.name === "quote")!;
+        expect(quote.description).not.toContain("analysis");
         const analysis = tools.find((x) => x.name === "analysis");
         if (analysis !== undefined) {
           expect(
-            analysis.description!.startsWith(
-              "Changes go through analysis_edit.",
-            ),
+            analysis.description!.includes("Changes go through analysis_edit."),
           ).toBe(level.analysis === "write");
         }
       }
@@ -171,7 +201,7 @@ describe("the tool list", () => {
       }
       const history = tools.find((x) => x.name === "history")!;
       expect(history.description).toContain(
-        `${DEFAULT_MONTHS["1d"]} months before to for 1d and ${DEFAULT_MONTHS["1wk"]} months for 1wk`,
+        `to and from (YYYY-MM-DD) default to the latest bar and ${DEFAULT_MONTHS["1d"]} months before (1d) or ${DEFAULT_MONTHS["1wk"]} (1wk)`,
       );
     }));
 });
@@ -273,7 +303,7 @@ describe("quote", () => {
         fetched_at: "2026-10-25T21:05:00Z",
       });
       expect(item.change).toBeCloseTo(-1.25, 6);
-      expect(item.signals.daily.kind).toMatch(/^(live|final)$/);
+      expect(item.signals.daily.kind).toMatch(/^(live|close|final)$/);
       expect(item.signals.daily.date).toBe("2026-10-23");
       expect(item.signals.daily.sma200).toBeNumber();
       expect(item.signals.daily.rsi14).toBeNumber();
@@ -558,7 +588,7 @@ describe("screen", () => {
         fetched_at: "2026-10-25T21:05:00Z",
       });
       expect(nvda.fields.rsi14).toMatchObject({
-        kind: "live",
+        kind: "close",
         date: "2026-10-23",
       });
       expect(nvda.fields.relative_return_1m.unit).toBe("percentage points");
@@ -586,7 +616,7 @@ describe("screen", () => {
       });
       expect(a.body.counts).toMatchObject({ matched: 1, unavailable: 1 });
       expect(a.body.items[0].id).toBe("US:NVDA");
-      expect(a.body.items[0].fields.distance_weekly_sma200.kind).toBe("live");
+      expect(a.body.items[0].fields.distance_weekly_sma200.kind).toBe("close");
       expect(a.body.items[1]).toMatchObject({
         id: "FRED:DGS10",
         status: "unavailable",

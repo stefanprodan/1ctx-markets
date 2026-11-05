@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // The context every read takes, so no read imports another for it.
 
-import type { StaleReason } from "../market/stale.ts";
+import type { ExtendedReason } from "../market/stale.ts";
 import { BY_USE, type Tracking } from "../market/tracking.ts";
 import { NO_RULES, type RuleHooks } from "../rules/hooks.ts";
 import { type Clock, MINUTE_MS } from "../runtime/clock.ts";
@@ -100,7 +100,7 @@ export type Extended = {
 
 export type ExtendedRead =
   | { extended: Extended; reason: null }
-  | { extended: null; reason: StaleReason };
+  | { extended: null; reason: ExtendedReason };
 
 // by instrument id, for the quote period it was fetched in
 export type ExtendedPoint = {

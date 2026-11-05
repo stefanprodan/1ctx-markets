@@ -47,25 +47,30 @@ tracking in `docs/storage.md`; the source queue and deadlines in
   the tools the key lists: the rules line goes for rules access `none`,
   the portfolio line for portfolio access `none`, and its writes and
   `portfolio_setup` for `read`; the profile line comes only for a key
-  that lists `profile`. It never names `profile_edit`, for want of room:
-  `profile`'s description opens with it for a write key. Nor does it
-  name `analysis` or `analysis_edit`, being at its cap: an agent finds
-  a note by the `analysis` field of `quote` and the `research`
-  overview, and the tool's own description. A client may
-  list a tool by one line and cuts its description (below), so guidance
-  across tools lives here; never repeat a description's argument list.
-- **At most `INSTRUCTIONS_BYTES` (4 KB) at every access level**, the
-  write key's the longest: clients cut long instructions from the end. A
-  new line pushes an old one out, or the cap is raised as a choice in
-  review. Every line changes what an agent does; nothing that dates
-  (symbol lists, dates, prices).
+  that lists `profile`, and the analysis line, second after quote's,
+  only for a key that lists `analysis`: a view on a symbol, not a price
+  or move, reads its note first, so no price or bar question reads one.
+  It never names `profile_edit` or `analysis_edit`, for want of room:
+  each read tool's description names its edit tool for a write key. A
+  client may list a tool by one line and cuts its description
+  (below), so guidance across tools lives here; never repeat a
+  description's argument list.
+- **At most `INSTRUCTIONS_BYTES` (4,096 bytes) at every access level**,
+  the key with every access at write the longest, ASCII only. The cap
+  follows Claude Code's, which cuts server instructions at 4,096
+  characters from the end; OpenAI advises the key details in the first
+  512, so the routing leads. A new line pushes an old one out, or the
+  cap is raised as a choice in review. Every line changes what an agent
+  does; nothing that dates (symbol lists, dates, prices).
 - **Routing first, what the server does not hold last**, so a cut drops
   the least. No one's holding, market, country, currency or default
   symbol: the text goes to every user.
 - **`test/instructions.test.ts` holds it to that** for each access
-  level: under the cap, the groups in order, every listed tool named but
-  `profile_edit`, `analysis` and `analysis_edit`, every backticked name a listed tool, its argument or a
-  listed answer field, and a deny list. Whether those fields are still
+  level, and every access combination for the cap: under the cap and
+  ASCII, the groups in order, every listed tool named but
+  `profile_edit` and `analysis_edit`, `analysis` second or not at all,
+  every backticked name a listed tool, its argument or a listed answer
+  field, and a deny list. Whether those fields are still
   answered is left to review.
 
 ## The answer contract
@@ -141,8 +146,8 @@ tracking in `docs/storage.md`; the source queue and deadlines in
 
 | Tool | Takes | Answers |
 |---|---|---|
-| `quote` | `symbols`, `benchmark`, `extended`, `next` | per symbol a `QuoteItem` (`quote.ts`) with `returns`, `session`, with a benchmark `relative_return_1m`, `_3m`, `relative_to`, `relative_live` and, across currencies, `relative_note`, with `extended` true `extended`, for a key with analysis access `analysis` |
-| `history` | `symbol`, `interval`, `from`, `to`, `benchmark`, `extended`, `next` | bars oldest first with `final` and signals; `session`; `relative`; with `5m`, `points` and `sessions`, and `extended_points` when `extended` |
+| `quote` | `symbols`, `benchmark`, `extended`, `next` | per symbol a `QuoteItem` (`quote.ts`) with `returns`, `session`, with a benchmark `relative_return_1m`, `_3m`, `relative_to`, `relative_live` and, across currencies, `relative_note`, with `extended` true `extended` and `extended_reason` |
+| `history` | `symbol`, `interval`, `from`, `to`, `benchmark`, `extended`, `next` | bars oldest first with `final` and signals; `session`; `relative`; with `5m`, `points` and `sessions`, and `extended_points` with `extended_reason` when `extended` |
 | `search` | `query`, `next` | up to 20 stored matches, then up to 20 Bucharest listings from the stored list pages while the feed is on, then Yahoo's, each with id, exchange, type, name, `source`, `stored`; a listing Yahoo found adds `exchange_name`, the exchange in Yahoo's words, the stored copy of it too, and a stored one its `currency`, so one fund on several exchanges reads apart; a Bucharest listing adds its `isin` |
 | `movers` | `symbols`, `min_move_pct`, `direction`, `average`, `relation`, `next` | matches by absolute change, largest first; `counts` |
 | `screen` | `symbols`, `filters`, `benchmark`, `sort`, `order`, `fields`, `next` | matches with each used and asked field's value, unit, kind and date; `counts` |
@@ -153,11 +158,10 @@ tracking in `docs/storage.md`; the source queue and deadlines in
 | `profile`, `profile_edit` | see `docs/profile.md` | |
 | `analysis`, `analysis_edit` | see `docs/analysis.md` | |
 
-- **quote's `analysis` points at a symbol's note** for a key with
-  analysis access: `{revision, written_at}` of the live revision, null
-  with none; a key without it gets no field, so its answer is as
-  before. The `research` overview carries the same field
-  (`analysisField()`, `docs/analysis.md`).
+- **quote never points at a note**: every price question calls it,
+  and a pointer there drew agents into a symbol's note for a move
+  question. The `research` overview carries the pointer
+  (`docs/analysis.md`).
 - **quote's `returns` answer "how did it do" without `history`**:
   `1w`, `1m`, `3m`, `ytd` and `1y`, `to` and `live` (`docs/signals.md`,
   "Trailing returns").
@@ -184,8 +188,10 @@ tracking in `docs/storage.md`; the source queue and deadlines in
   before the open the pre-market one. It is the latest priced bar in a
   pre or post window since the last regular close, kept until the next
   regular open, with `change` from the regular close. Null comes with
-  an `extended:` reason in `stale` (`docs/storage.md`), never meaning
-  the price held. One chart per listing within the call's deadline
+  its reason in `extended_reason` (`EXTENDED` in `stale.ts`), never
+  meaning the price held; the item's `stale` stays about its regular
+  quote and signals, so a live price is never marked by the null
+  `extended` beside it. One chart per listing within the call's deadline
   (`docs/yahoo.md`), kept in memory for a quote period
   (`m.extended`), so the thin market is never fresher than the regular
   one. Never stored: signals, bars, movers, screen, history and rules
@@ -234,7 +240,10 @@ tracking in `docs/storage.md`; the source queue and deadlines in
   5 minutes (`extendedPoints()`), from the same read and cache as
   quote's `extended`, so a chart costs no call more; so it too runs only
   while the regular session is closed, a failed read leaves the list
-  empty and the points stand, and nothing of it is stored. Asked with
+  empty and the points stand, and nothing of it is stored. An empty
+  list comes with `extended_reason`, quote's reasons or `none in the
+  sessions answered` when the read held points of other sessions only,
+  so it never reads as no trading; null with points. Asked with
   another interval it is `bad_arguments`.
 - **history's `5m` cursor holds the next point's `at` and the resolved
   `from` and `to`**, never a session date, which would repeat a page
@@ -284,9 +293,11 @@ tracking in `docs/storage.md`; the source queue and deadlines in
 
 ## Values, units and staleness
 
-- **A signal row is answered `live` or `final`** (`docs/signals.md`,
-  "Reading"). Live prices drive every answer: never add a closed-only
-  variant or a warning about intraday prices.
+- **A signal row is answered `live`, `close` or `final`**
+  (`docs/signals.md`, "Reading"): `close` is a live row while its
+  market is closed, to the latest close (a weekly row: the week so far),
+  until the next period makes it final. Live prices drive every answer:
+  never add a closed-only variant or a warning about intraday prices.
 - **A FRED series is an `observation`, not a `market_quote`**: `price`
   null, `observation` the last value and date. It has final rows only,
   never moves in movers, and has no price for a screen distance. A
@@ -362,12 +373,20 @@ tracking in `docs/storage.md`; the source queue and deadlines in
 ## Tool descriptions
 
 - **A description is for an agent choosing a tool**: what it answers,
-  every argument's form and limit, the fields and units an agent
-  filters on, and how to continue with `next`. No history, marketing
+  every argument's form and limit, and the fields and units an agent
+  filters on; how to continue is the `next` argument's own text, never
+  repeated in the description. No history, marketing
   or repetition of the schema's types. A write tool opens with what it
   changes and carries an example call as compact JSON, with made-up
   names.
-- **At most 1,024 characters**: 1ctx cuts a description there, and
+- **The first sentence says what the tool answers, in at most 160
+  characters**: a catalog client lists each tool by its name, argument
+  names and first sentence alone (1ctx above 6,000 tokens of offered
+  schemas: whitespace folded, the text up to the first `.`, `!` or `?`
+  before a space or the end, `e.g.` and `i.e.` skipped, cut at 160). A
+  pointer to the write tools comes after it, never first.
+  `test/tools-mcp.test.ts` checks every tool at every access level.
+- **Under 1,024 characters**: 1ctx cuts a description there, and
   `test/tools-mcp.test.ts` asserts it. Shorten wording before adding a
   field. screen names its field groups and points at its schema's enum
   (`FIELD_NAMES`).

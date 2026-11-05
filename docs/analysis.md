@@ -117,11 +117,18 @@ drift (`docs/profile.md` has each rule and why):
 
 ## Finding it
 
-- **`quote` and the `research` overview carry `analysis:
-  {revision, written_at}`** per symbol for a key with analysis access,
-  null with no note (`analysisField()`); a key without access gets no
-  field. That is how an agent finds a note without being told: the
-  server instructions are at their cap and name neither tool.
+- **The `research` overview carries `analysis: {revision, written_at,
+  read_with}`** for a key with analysis access, null with no note
+  (`analysisField()`); a key without access gets no field. `read_with`
+  is always `analysis`, the tool that reads it, for an agent that never
+  reads a description. `quote` carries no pointer: every price question
+  calls it, so a pointer there invites a note into a move question. The
+  REST `/quotes` answers none either.
+- **The server instructions route a view or take on a symbol to it**,
+  second, for a key that lists `analysis`: the note first, then `quote`
+  and `research` for what changed. A note is 8 to 12 KB, so the line
+  says "not a price or move": a price or move question never reads one.
+  A symbol without a note answers a short "No analysis" line.
 
 ## Tools and routes
 
@@ -129,7 +136,8 @@ drift (`docs/profile.md` has each rule and why):
   analysis access: `read` lists `analysis`, `write` both, `none`
   neither. `analysis` is read-only; `analysis_edit` destructive. The
   call-time access check stays (`analysisAnswer()`). `analysis`'s
-  description opens with `Changes go through analysis_edit.` for a
+  description opens with what it answers, the one line a catalog
+  client shows; `Changes go through analysis_edit.` follows it for a
   write key.
 - **`analysis` actions**: `read` (`symbol`), `list` (`next`; each
   symbol's live revision, newest first, without text, paged by cursor),

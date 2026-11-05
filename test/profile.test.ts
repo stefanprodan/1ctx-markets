@@ -649,7 +649,12 @@ describe("discovery", () => {
     for (const portfolio of ["none", "read", "write"] as const) {
       for (const rules of ["none", "write"] as const) {
         for (const profile of ["none", "read", "write"] as const) {
-          const text = instructions({ portfolio, rules, profile });
+          const text = instructions({
+            portfolio,
+            rules,
+            profile,
+            analysis: "write",
+          });
           expect(Buffer.byteLength(text)).toBeLessThanOrEqual(
             INSTRUCTIONS_BYTES,
           );

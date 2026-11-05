@@ -117,7 +117,7 @@ never signs in and a sign-in never opens `/mcp`.
   everyone on the server, so a write key's text reaches every person's
   agents and sign-ins; a script's key never needs it. `read` lists the
   `analysis` tool, opens the analysis reads and adds the `analysis`
-  pointer to `quote` and the `research` overview; `write` also lists
+  pointer to the `research` overview; `write` also lists
   `analysis_edit` and opens its `PUT` (`docs/analysis.md`). Keys made
   before analysis access existed start at `none` too (migration 0041).
   A web UI sign-in and the admin key write it.

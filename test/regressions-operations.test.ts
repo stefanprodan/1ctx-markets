@@ -368,7 +368,8 @@ test("an extended quote for another listing is refused and not cached as a price
       repeat: cached.extended,
       cached: t.m.extended.get("US:NVDA")?.read.extended ?? null,
     }).toEqual({ first: null, repeat: null, cached: null });
-    expect(first.stale).toContain("extended: fetch failed");
+    expect(first.extended_reason).toBe("fetch failed");
+    expect(first.stale).not.toContain("fetch failed");
   } finally {
     await close(t);
   }

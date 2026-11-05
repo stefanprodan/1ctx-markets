@@ -8,6 +8,7 @@ import {
   StreamableHTTPClientTransport,
 } from "@modelcontextprotocol/client";
 import { upsertInstrument } from "../src/market/instruments.ts";
+import { JOBS, STALE } from "../src/market/stale.ts";
 import type { Markets } from "../src/operations/markets.ts";
 import {
   addFundTrade,
@@ -30,6 +31,7 @@ import { listPortfolios } from "../src/portfolios/store.ts";
 import { splitFactor } from "../src/portfolios/value.ts";
 import { tokenHash } from "../src/server/access.ts";
 import type { Db } from "../src/storage/db/index.ts";
+import { failRun, startRun } from "../src/storage/runs.ts";
 import {
   parseBondTool,
   parseCashTool,
@@ -345,6 +347,20 @@ describe("currencies", () => {
     expect(h.converted!.missing).toEqual([]);
     const weights = h.exposure[0]!.currency_weights!;
     expect(weights.map((w) => w.key)).toEqual(["EUR", "USD"]);
+  });
+
+  test("a failed FX quote pass keeps the converted total, with its reason in stale", async () => {
+    const { m, db } = await setup();
+    pair(db, "EURUSD=X", 1.25);
+    await buy(m, { symbol: "XETRA:BBB", quantity: 4, price: 40 });
+    const at = m.clock.now() + 1;
+    failRun(db, startRun(db, "yahoo", JOBS.quotes, at, "CCY"), at, "failed");
+    const h = await holdingsOf(m, { currency: "USD" });
+    expect(h.rates[0]).toMatchObject({
+      rate: 1.25,
+      stale: [STALE.quotesFailed],
+    });
+    expect(h.converted).toMatchObject({ currency: "USD", value: 250 });
   });
 
   test("a pair the server cannot quote is null with its reason", async () => {

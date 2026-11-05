@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
+import { recordSession, session } from "../src/market/calendars.ts";
 import { upsertInstrument } from "../src/market/instruments.ts";
 import {
   INTRADAY_SESSIONS,
@@ -9,8 +10,10 @@ import {
   readIntraday,
   storeIntraday,
 } from "../src/market/intraday.ts";
+import { EXTENDED } from "../src/market/stale.ts";
 import { markRead } from "../src/market/tracking.ts";
 import { parseHistory } from "../src/operations/history.ts";
+import { extendedOut } from "../src/operations/intraday.ts";
 import { type Markets, markets } from "../src/operations/markets.ts";
 import { silent } from "../src/runtime/log.ts";
 import { parseSpark, yahoo } from "../src/sources/yahoo/client.ts";
@@ -19,6 +22,7 @@ import { keyOf } from "../src/sources/yahoo/resolve.ts";
 import { type Db, open } from "../src/storage/db/index.ts";
 import { writer } from "../src/storage/writer.ts";
 import { call, tools } from "../src/tools/index.ts";
+import { api } from "./helpers/api.ts";
 import { type FakeClock, fakeClock } from "./helpers/clock.ts";
 import { bar, instrument, world } from "./helpers/world.ts";
 import { clone, type Recorded, recorded } from "./helpers/yahoo.ts";
@@ -438,6 +442,7 @@ describe("history with interval 5m", () => {
     await pass(t, "spark-v7-extended-post-2122");
     const plain = await history(t.m, { symbol: "US:HOOD", interval: "5m" });
     expect(plain.body).not.toHaveProperty("extended_points");
+    expect(plain.body).not.toHaveProperty("extended_reason");
     // the read reaches no network here: it fails and the points stand
     const asked = await history(t.m, {
       symbol: "US:HOOD",
@@ -446,7 +451,43 @@ describe("history with interval 5m", () => {
     });
     expect(asked.error).toBe(false);
     expect(asked.body.extended_points).toEqual([]);
+    expect(asked.body.extended_reason).toBe(EXTENDED.failed);
     expect(asked.body.points).toEqual(plain.body.points);
+    const res = await api(t.m)(
+      new Request(
+        "http://markets.test/api/v1/instruments/US:HOOD/bars?interval=5m&extended=true",
+      ),
+    );
+    const rest: any = await res.json();
+    expect(rest.extended_points).toEqual([]);
+    expect(rest.extended_reason).toBe(EXTENDED.failed);
+  });
+
+  test("an empty extended list says why: the session open, or none in the sessions answered", async () => {
+    const t = setup(Date.parse("2026-10-27T21:22:55Z"));
+    await pass(t, "spark-v7-extended-post-2122");
+    const now = t.clock.now();
+    recordSession(
+      t.db,
+      "US",
+      session("America/New_York", now - 60_000, now + 60_000),
+      now,
+    );
+    const open = await history(t.m, {
+      symbol: "US:HOOD",
+      interval: "5m",
+      extended: true,
+    });
+    expect(open.body.extended_points).toEqual([]);
+    expect(open.body.extended_reason).toBe(EXTENDED.open);
+    const point = { at: now, session: "post" as const, close: 1 };
+    expect(extendedOut({ points: [point], reason: null })).toMatchObject({
+      extended_reason: null,
+    });
+    expect(extendedOut({ points: [], reason: null })).toEqual({
+      extended_points: [],
+      extended_reason: EXTENDED.outside,
+    });
   });
 
   test("refuses benchmark, and answers no_data for a source without points or a range without any", async () => {

@@ -11,7 +11,8 @@ import {
 } from "../src/market/calendars.ts";
 import { iso, round } from "../src/market/format.ts";
 import { readInstrument, upsertInstrument } from "../src/market/instruments.ts";
-import { STALE } from "../src/market/stale.ts";
+import { storeIntraday } from "../src/market/intraday.ts";
+import { EXTENDED } from "../src/market/stale.ts";
 import { markRead } from "../src/market/tracking.ts";
 import {
   extendedPoints,
@@ -36,6 +37,7 @@ import {
 import { storeQuotes } from "../src/sources/yahoo/quotes.ts";
 import { open } from "../src/storage/db/index.ts";
 import { writer } from "../src/storage/writer.ts";
+import { call, tools } from "../src/tools/index.ts";
 import { api } from "./helpers/api.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { answerSchema, validate } from "./helpers/schema.ts";
@@ -228,11 +230,13 @@ describe("quote extended", () => {
     expect(byId(asked, "US:HOOD").extended).toEqual(HOOD);
     for (const [k, item] of asked.entries()) {
       expect(item.extended).toEqual(tool[k].extended);
+      expect(item.extended_reason).toEqual(tool[k].extended_reason);
       expect(item.stale).toEqual(tool[k].stale);
     }
     for (const query of ["", "&extended=false"]) {
       for (const item of await get(query)) {
         expect(item).not.toContainKey("extended");
+        expect(item).not.toContainKey("extended_reason");
         expect(item.stale).toEqual([]);
       }
     }
@@ -246,13 +250,15 @@ describe("quote extended", () => {
     const items = await ask(t.m);
     const hood = byId(items, "US:HOOD");
     expect(hood.extended).toEqual(HOOD);
+    expect(hood.extended_reason).toBeNull();
     expect(hood.stale).toEqual([]);
     // the regular quote stays the regular session's
     expect(hood.price).toBe(HOOD_CLOSE);
     for (const id of ["XETRA:VWCE", "CRYPTO:BTC-USD", "BVB:TLV"]) {
       const item = byId(items, id);
       expect(item.extended).toBeNull();
-      expect(item.stale).toEqual([STALE.extendedNone]);
+      expect(item.extended_reason).toBe(EXTENDED.none);
+      expect(item.stale).toEqual([]);
     }
     // the spark answer's flag spares the others a chart
     expect(t.charted()).toHaveLength(1);
@@ -268,7 +274,8 @@ describe("quote extended", () => {
     expect(byId(items, "US:HOOD").extended).toEqual(HOOD);
     for (const id of ["XETRA:VWCE", "BVB:TLV"]) {
       expect(byId(items, id).extended).toBeNull();
-      expect(byId(items, id).stale).toEqual([STALE.extendedNone]);
+      expect(byId(items, id).extended_reason).toBe(EXTENDED.none);
+      expect(byId(items, id).stale).toEqual([]);
     }
     // crypto never closes, so it is never asked
     expect(t.charted("BTC-USD")).toHaveLength(0);
@@ -311,7 +318,7 @@ describe("quote extended", () => {
     for (const id of ["XETRA:VWCE", "CRYPTO:BTC-USD", "BVB:TLV"]) {
       const item = byId(items, id);
       expect(item.extended).toBeNull();
-      expect(item.stale).toContain(STALE.extendedNone);
+      expect(item.extended_reason).toBe(EXTENDED.none);
     }
     expect(t.charted()).toHaveLength(1);
     expect(t.charted("HOOD")[0]!.searchParams.get("range")).toBe(
@@ -334,8 +341,7 @@ describe("quote extended", () => {
     ).items;
     for (const item of items) {
       expect(item.extended).toBeNull();
-      expect(item.stale).toContain(STALE.extendedUnreported);
-      expect(item.stale).not.toContain(STALE.extendedNone);
+      expect(item.extended_reason).toBe(EXTENDED.unreported);
     }
   });
 
@@ -363,7 +369,17 @@ describe("quote extended", () => {
     );
     const hood = byId(await ask(t.m), "US:HOOD");
     expect(hood.extended).toBeNull();
-    expect(hood.stale).toEqual([STALE.extendedOpen]);
+    expect(hood.extended_reason).toBe(EXTENDED.open);
+    expect(hood.stale).toEqual([]);
+    const res = await api(t.m)(
+      new Request(
+        "http://markets.test/api/v1/quotes?symbols=US:HOOD&extended=true",
+      ),
+    );
+    const [rest] = ((await res.json()) as any).quotes;
+    expect(rest.extended).toBeNull();
+    expect(rest.extended_reason).toBe(EXTENDED.open);
+    expect(rest.stale).toEqual([]);
     expect(t.charted("HOOD")).toHaveLength(0);
   });
 
@@ -379,9 +395,11 @@ describe("quote extended", () => {
     const items = await page;
     const hood = byId(items, "US:HOOD");
     expect(hood.extended).toBeNull();
-    expect(hood.stale).toEqual([STALE.extendedTimeout]);
+    expect(hood.extended_reason).toBe(EXTENDED.timeout);
+    expect(hood.stale).toEqual([]);
     expect(hood.price).toBe(HOOD_CLOSE);
-    expect(byId(items, "XETRA:VWCE").stale).toEqual([STALE.extendedNone]);
+    expect(byId(items, "XETRA:VWCE").extended_reason).toBe(EXTENDED.none);
+    expect(byId(items, "XETRA:VWCE").stale).toEqual([]);
     held.release();
   });
 
@@ -397,7 +415,7 @@ describe("quote extended", () => {
     const asked = byId(await ask(t.m), "US:HOOD");
     expect(asked.extended).toEqual(HOOD);
     expect(tables()).toEqual(stored);
-    const { extended, stale, ...regular } = asked;
+    const { extended, extended_reason, stale, ...regular } = asked;
     expect(regular).toEqual((({ stale, ...rest }) => rest)(plain));
     const movers = JSON.parse(
       (
@@ -481,7 +499,7 @@ describe("the latest extended bar", () => {
     const fx = await recorded(hoodChart());
     expect(latestOf(unpricedSinceClose(fx))).toEqual({
       extended: null,
-      reason: STALE.extendedNoPrice,
+      reason: EXTENDED.noPrice,
     });
   });
 
@@ -489,7 +507,7 @@ describe("the latest extended bar", () => {
     const fx = await recorded(chartName("HOOD"));
     expect(latestOf(unpricedSinceClose(fx))).toEqual({
       extended: null,
-      reason: STALE.extendedNoPrice,
+      reason: EXTENDED.noPrice,
     });
   });
 
@@ -518,13 +536,45 @@ describe("the latest extended bar", () => {
     "is none for %s, which has no extended trading, in the %s window",
     async (symbol, _, window) => {
       expect(latestOf(await recorded(chartName(symbol, window))).reason).toBe(
-        STALE.extendedNone,
+        EXTENDED.none,
       );
     },
   );
 });
 
 describe("the extended points of a chart's day", () => {
+  test("an older session answers none, with why", async () => {
+    const t = await setup();
+    await t.client.spark(SYMBOLS);
+    // a session before the chart's two days
+    const day = Date.parse("2026-10-23T14:00:00Z");
+    storeIntraday(
+      t.db,
+      "US:HOOD",
+      "America/New_York",
+      [0, 1, 2].map((k) => ({ at: day + k * 300_000, close: 90 + k })),
+      t.clock.now(),
+    );
+    const history = tools(t.m).find((x) => x.name === "history")!;
+    const asked = { symbol: "US:HOOD", interval: "5m", extended: true };
+    const SESSIONS = ((await call(t.m, history, asked)).content[0] as any).text;
+    const old = { ...asked, from: "2026-10-23", to: "2026-10-23" };
+    const r = await call(t.m, history, old);
+    const body = JSON.parse((r.content[0] as any).text);
+    expect(body.extended_points).toEqual([]);
+    expect(body.extended_reason).toBe(EXTENDED.outside);
+    const res = await api(t.m)(
+      new Request(
+        `http://markets.test/api/v1/instruments/US:HOOD/bars?interval=5m&extended=true&from=${old.from}&to=${old.to}`,
+      ),
+    );
+    expect(((await res.json()) as any).extended_reason).toBe(EXTENDED.outside);
+    // the newest session holds the evening's points
+    const newest = JSON.parse(SESSIONS);
+    expect(newest.extended_points.length).toBeGreaterThan(0);
+    expect(newest.extended_reason).toBeNull();
+  });
+
   test("are the last close of each 5 minutes, pre and post only, in order", async () => {
     const fx = await recorded(hoodChart());
     const at = Date.parse(fx.recordedAt);
@@ -666,9 +716,9 @@ describe("the extended cache", () => {
     other.body.chart.result[0].meta.symbol = "OTHER";
     t.charts.set("HOOD", other);
     await t.client.spark(SYMBOLS);
-    expect(byId(await ask(t.m), "US:HOOD").stale).toEqual([
-      STALE.extendedFailed,
-    ]);
+    const hood = byId(await ask(t.m), "US:HOOD");
+    expect(hood.extended_reason).toBe(EXTENDED.failed);
+    expect(hood.stale).toEqual([]);
     expect(t.m.extended.has("US:HOOD")).toBe(false);
     await ask(t.m);
     expect(t.charted("HOOD")).toHaveLength(2);
@@ -683,7 +733,45 @@ describe("the extended cache", () => {
     await t.clock.advance(3 * t.m.quoteEveryMs);
     const hood = readInstrument(t.db, "US:HOOD")!;
     const points = await readExtendedPoints(t.m, hood, t.clock.now() + CALL_MS);
-    expect(points).toEqual(held);
+    expect(points).toEqual({ points: held, reason: null });
     expect(t.charted("HOOD")).toHaveLength(1);
+  });
+});
+
+describe("a live row's kind in answers", () => {
+  const tool = async (m: Markets, name: string, args: object) => {
+    const t = tools(m).find((x) => x.name === name)!;
+    return JSON.parse(((await call(m, t, args)).content[0] as any).text);
+  };
+
+  test("is close once its market closed, live while it trades, crypto always live", async () => {
+    const t = await setup();
+    const kinds = async () => {
+      const items = await ask(t.m, {});
+      return Object.fromEntries(
+        ["US:HOOD", "CRYPTO:BTC-USD"].map((id) => [
+          id,
+          [
+            byId(items, id).signals.daily?.kind,
+            byId(items, id).signals.weekly?.kind,
+          ],
+        ]),
+      );
+    };
+    expect((await kinds())["US:HOOD"]![0]).toBe("close");
+    expect((await kinds())["CRYPTO:BTC-USD"]![0]).toBe("live");
+    const hood = await tool(t.m, "history", { symbol: "US:HOOD" });
+    const last = hood.bars.at(-1);
+    expect(last.final).toBe(false);
+    expect(last.signals.kind).toBe("close");
+    // the session open again: the same row is live
+    const now = t.clock.now();
+    recordSession(
+      t.db,
+      "US",
+      session("America/New_York", now - 60_000, now + 60_000),
+      now,
+    );
+    expect((await kinds())["US:HOOD"]![0]).toBe("live");
   });
 });

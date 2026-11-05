@@ -96,7 +96,7 @@ route's transport in `docs/api.md`; rules that wait on events in
 | `analysts` | `stock/recommendation` | one row per period |
 | `earnings` | `stock/earnings` | one row per period, with its fiscal year and quarter; actual and surprise once seen are kept |
 | `insider` | `stock/insider-sentiment`, the last 12 months | one row per month |
-| `calendar` | `calendar/earnings`, 120 days back to 90 ahead | `events` |
+| `calendar` | `calendar/earnings`, asked 120 days back (`CALENDAR_BACK_DAYS`, since asking further costs nothing), answered about a month back, to 90 ahead | `events` |
 
 - **The calendar's past reaches about a month, whatever is asked**:
   Finnhub's free answer holds about a month of past reports (a server

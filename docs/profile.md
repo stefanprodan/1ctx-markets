@@ -116,9 +116,10 @@ revision refused.
   profile access: `read` lists `profile`, `write` both, `none` neither.
   `profile` is read-only; `profile_edit` destructive. The call-time
   access check stays (`profileAnswer()`), in the portfolio tools'
-  words. `profile`'s description opens with `Changes go through
-  profile_edit.` for a write key and carries its own discovery line for
-  clients that drop the server instructions. The instructions' profile
+  words. `profile`'s description opens with what it answers (how the owner
+  invests), the one line a catalog client shows, then its own discovery
+  line for clients that drop the server instructions, and `Changes go
+  through profile_edit.` for a write key. The instructions' profile
   line names `profile` only, for want of room under their cap.
 - **`revision` is an integer of at least 1** (digits as text are read
   too, as the other write tools do); `edits` 1 to 50 `{old, new}`

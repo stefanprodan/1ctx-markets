@@ -22,7 +22,7 @@ MCP tools copied onto paths.
 
 | Method and path | Scope | Calls | Answers |
 |---|---|---|---|
-| `GET /quotes?symbols=&extended=` | read | `quoteRows()` with `briefItem()` | `quotes[]`: every symbol asked, up to `MAX_SYMBOLS` (100); `extended=true` adds the quote tool's `extended` per item |
+| `GET /quotes?symbols=&extended=` | read | `quoteRows()` with `briefItem()` | `quotes[]`: every symbol asked, up to `MAX_SYMBOLS` (100); `extended=true` adds the quote tool's `extended` and `extended_reason` per item |
 | `GET /research?symbols=&sections=&since=` | read | `researchList()` | `research[]`: up to `MAX_RESEARCH_SYMBOLS` (5) items of `input`, `id`, `company`, `valuation`, `news`, `filings` and, asked, `top_holdings` (below) |
 | `GET /symbols?query=&upstream=` | read | `searchAll()` | the search tool's `candidates[]`, and `errors[]` for a source that failed; `upstream=false` answers only the stored instruments and the stored Bucharest listings, asking no source |
 | `GET /earnings?from=&to=&symbols=` | read | `readEventsOf()` | `earnings[]`, with `no_event[]` and `unavailable[]` uncapped |
@@ -147,7 +147,8 @@ MCP tools copied onto paths.
   list gives it, `tracked_by` included), `credit`, `intraday` (whether
   its source gives 5-minute closes, as the dashboard says) and its quote
   as the quote tool gives it, `returns` and `session` included, with
-  `extended` asked so a page shows pre or post trading.
+  `extended` asked so a page shows pre or post trading, and
+  `extended_reason` saying why it is null.
 - **An ETF or mutual fund adds `top_holdings`**, the research tool's
   section (`docs/research.md`), absent for anything else, so the page
   needs no second call. A fund never fetched is fetched beside the
@@ -194,9 +195,11 @@ MCP tools copied onto paths.
 - **`interval=5m` answers points on the same path** (`Intraday`):
   `points[]` with `at`, `session`, `close`, `final`; `sessions[]` with
   each one's `fetched_at`; `previous_close`; and with `extended=true`
-  `extended_points`, for the whole range, unpaged. Its `instrument`
-  has no `basis`: the points are closes as stored. `benchmark` with
-  `5m`, and `extended` with `1d` or `1wk`, are `bad_arguments`.
+  `extended_points`, for the whole range, unpaged, with
+  `extended_reason` saying why when it is empty (`docs/storage.md`).
+  Its `instrument` has no `basis`: the points are closes as stored.
+  `benchmark` with `5m`, and `extended` with `1d` or `1wk`, are
+  `bad_arguments`.
 - **`from` and `to` are dates in the exchange's zone**, session dates
   for `5m`; defaults are the tool's.
 
@@ -318,10 +321,10 @@ MCP tools copied onto paths.
   `close` with its final row's `sma50` and `sma200`**, the values
   movers crosses from, so a script applies movers' crossing rule
   (`docs/tools.md`, "The tools") without calling movers: counted only
-  when `stale` is empty and `sma.daily` is `live` and dated after
-  `last_final.daily.date`, with `sma50` when `sma200` is null (under
-  200 bars). `last_final` is null with no final bar, an average null
-  with too few bars. Daily only: a crossing since the last close is a
+  when `stale` is empty and `sma.daily` is `live` or `close` and dated
+  after `last_final.daily.date`, with `sma50` when `sma200` is null
+  (under 200 bars). `last_final` is null with no final bar, an average
+  null with too few bars. Daily only: a crossing since the last close is a
   daily question.
 - **Averages are rounded to six significant digits and movers compares
   unrounded ones**, so a price that close to its average can count

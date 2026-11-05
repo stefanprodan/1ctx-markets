@@ -2033,6 +2033,18 @@ describe("the tool's description", () => {
     expect(d("portfolio")).toContain(
       "list: portfolios, brokers, markets, funds,",
     );
+    // what it answers first, for read and write keys alike
+    for (const access of ["read", "write"] as const) {
+      const read = tools(m, {
+        portfolio: access,
+        rules: "none",
+        profile: "none",
+        analysis: "none",
+      }).find((t) => t.name === "portfolio")!.description;
+      expect(read).toStartWith(
+        'What the owner holds and trades: portfolios, holdings with totals, trades, and each cash or bond row\'s history. For "my stocks"',
+      );
+    }
   });
 });
 

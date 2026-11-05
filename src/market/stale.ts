@@ -47,16 +47,25 @@ export const STALE = {
   switchPending: "source switch pending",
   // its source is off since the last start, so its prices are its last
   sourceOff: "source off",
-  // why quote's extended is null when asked; none says the price held
-  extendedNone: "extended: no pre- or post-market trading",
-  extendedUnreported: "extended: not reported by its source",
-  extendedNoPrice: "extended: no price since the regular close",
-  extendedOpen: "extended: regular session open",
-  extendedTimeout: "extended: not fetched in time",
-  extendedFailed: "extended: fetch failed",
 } as const;
 
 export type StaleReason = (typeof STALE)[keyof typeof STALE];
+
+// why an asked extended price or extended points are missing, in a field of
+// their own: an item's stale is about its regular quote; none never says the
+// price held
+export const EXTENDED = {
+  none: "no pre- or post-market trading",
+  unreported: "not reported by its source",
+  noPrice: "no price since the regular close",
+  open: "regular session open",
+  timeout: "not fetched in time",
+  failed: "fetch failed",
+  // history's points held, none in a session it answers
+  outside: "none in the sessions answered",
+} as const;
+
+export type ExtendedReason = (typeof EXTENDED)[keyof typeof EXTENDED];
 
 type Scoped = Pick<Instrument, "id" | "source" | "market" | "addedAt">;
 

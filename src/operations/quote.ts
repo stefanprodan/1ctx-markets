@@ -24,14 +24,12 @@ import type { WeeklyRow } from "../signals/weekly.ts";
 import { ATTRIBUTION } from "../sources/fred/sync.ts";
 import { FRED } from "../sources/ids.ts";
 import type { Db } from "../storage/db/index.ts";
-import { analysisField } from "./analysis.ts";
 import { cursor, fitPage, readCursor } from "./answer.ts";
 import { ArgError, fields, optionalText, symbols } from "./args.ts";
 import { readExtended } from "./extended.ts";
 import type { ExtendedRead, Markets } from "./markets.ts";
 import { benchmarkStale } from "./sets.ts";
 import { type ErrorItem, readTargets, type Target } from "./targets.ts";
-import { NO_ACCESS, type Who } from "./who.ts";
 
 export const MAX_SYMBOLS = 100;
 
@@ -47,14 +45,23 @@ const RUNNING = new Set([
 const DAILY = Object.entries(DAILY_COLUMNS).filter(([k]) => !RUNNING.has(k));
 const WEEKLY = Object.entries(WEEKLY_COLUMNS);
 
+// what an answer calls a row: a live row is the day's close once its market
+// is closed, though it stays live in storage until the next session shows
+export type AnswerKind = "live" | "close" | "final";
+
+export const answerKind = (
+  kind: "live" | "final",
+  open: boolean,
+): AnswerKind => (kind === "final" ? "final" : open ? "live" : "close");
+
 export type SignalRow = {
-  kind: "live" | "final";
+  kind: AnswerKind;
   date: string;
 } & { [signal: string]: number | string | null };
 
 export function signalRow(
   row: Record<string, unknown> & { date: string },
-  kind: "live" | "final",
+  kind: AnswerKind,
   interval: "1d" | "1wk",
 ): SignalRow {
   const out: SignalRow = { kind, date: row.date };
@@ -78,6 +85,8 @@ export type Latest = {
   daily: Picked<DailyRow>;
   weekly: Picked<WeeklyRow>;
   stale: StaleReason[];
+  // its market quoted now, so a live row is live rather than the close
+  open: boolean;
 };
 
 const pick = <T>(rows: { live: T | null; final: T | null }): Picked<T> =>
@@ -95,19 +104,27 @@ export function readLatest(
   quoteEveryMs: number,
 ): Latest {
   const s = readSignals(db, instrument.id, now, quoteEveryMs);
+  const open = isQuoted(
+    instrument.market,
+    readSession(db, instrument.market),
+    now,
+  );
   if (s === null)
-    return { signals: null, daily: null, weekly: null, stale: [] };
+    return { signals: null, daily: null, weekly: null, stale: [], open };
   return {
     signals: s,
     daily: pick(s.daily),
     weekly: pick(s.weekly),
     stale: instrument.source === FRED ? s.stale.final : s.stale.live,
+    open,
   };
 }
 
 export function latestSignals(latest: Latest): Signals {
   const row = (p: Picked<{ date: string }>, interval: "1d" | "1wk") =>
-    p === null ? null : signalRow(p.row, p.kind, interval);
+    p === null
+      ? null
+      : signalRow(p.row, answerKind(p.kind, latest.open), interval);
   return {
     daily: row(latest.daily, "1d"),
     weekly: row(latest.weekly, "1wk"),
@@ -366,7 +383,6 @@ function agentItem(
   bench: Benchmark | null,
   now: number,
   extended: ExtendedRead | undefined,
-  who: Who,
 ) {
   const side = instrumentSide(m.db, i, bench?.side ?? null, earliestStart);
   const r = returnsOf(side);
@@ -403,13 +419,10 @@ function agentItem(
             : {}),
         }),
     session: sessionOf(m, i, now),
-    ...analysisField(m, who, i.id),
     ...(extended === undefined
-      ? { stale }
-      : {
-          extended: extended.extended,
-          stale: extended.reason === null ? stale : [...stale, extended.reason],
-        }),
+      ? {}
+      : { extended: extended.extended, extended_reason: extended.reason }),
+    stale,
   };
 }
 
@@ -422,7 +435,6 @@ export async function quoteRows(
     latest: Latest,
     extended: ExtendedRead | undefined,
   ) => object,
-  who: Who = NO_ACCESS,
 ): Promise<{
   offset: number;
   bench: Benchmark | null;
@@ -458,7 +470,7 @@ export async function quoteRows(
     const ext = extended?.get(t.instrument.id);
     const item =
       project === undefined
-        ? agentItem(m, q, t.instrument, bench, now, ext, who)
+        ? agentItem(m, q, t.instrument, bench, now, ext)
         : project(q, latest, ext);
     return { item, fred: q.observation != null };
   });
@@ -470,9 +482,8 @@ export async function quotePage(
   m: Markets,
   args: QuoteArgs,
   project?: (item: QuoteItem, latest: Latest) => object,
-  who: Who = NO_ACCESS,
 ): Promise<string> {
-  const { offset, bench, rows } = await quoteRows(m, args, project, who);
+  const { offset, bench, rows } = await quoteRows(m, args, project);
   const items = rows.map((r) => r.item);
   return fitPage(items, (count) => {
     const end = offset + count;
