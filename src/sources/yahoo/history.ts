@@ -23,7 +23,8 @@ import {
   readInstrument,
   type Unit,
 } from "../../market/instruments.ts";
-import { clearIntraday } from "../../market/intraday.ts";
+import { clearIntraday, readIntraday } from "../../market/intraday.ts";
+import { readQuote } from "../../market/quotes.ts";
 import { JOBS } from "../../market/stale.ts";
 import { addDays, wallTime } from "../../market/zone.ts";
 import { NO_RULES, type RuleHooks } from "../../rules/hooks.ts";
@@ -413,6 +414,66 @@ function unclosed(
   return stored?.date === newest && stored.final === 1 ? null : newest;
 }
 
+// Yahoo can leave a finished row empty for good, while a quote traded in
+// the next session names its close; the stored live bar proves it traded
+function closeOwed(
+  db: Db,
+  instrument: Instrument,
+  latest: Session,
+  owed: string,
+): boolean {
+  // a pair's, coin's or future's previous close is not its day's close
+  const type = instrument.type.toUpperCase();
+  if (type === "CURRENCY" || type === "CRYPTOCURRENCY" || type === "FUTURE") {
+    return false;
+  }
+  const quote = readQuote(db, instrument.id);
+  if (
+    quote === null ||
+    quote.source !== SOURCE ||
+    quote.previousClose === null ||
+    quote.time === null ||
+    quote.time < latest.start ||
+    sessionDate(latest) <= owed
+  ) {
+    return false;
+  }
+  const bar = db
+    .query<{ high: number | null; low: number | null }, [string, string]>(
+      `select high, low from bars where instrument = ? and interval = '1d'
+       and date = ? and final = 0`,
+    )
+    .get(instrument.id, owed);
+  if (bar === null) return false;
+  // the live bar's high and low stopped at its fetch; open and volume stay
+  const closes = [
+    quote.previousClose,
+    ...readIntraday(db, instrument.id, owed, owed).map((p) => p.close),
+  ];
+  db.query(
+    `update bars set high = ?, low = ?, close = ?, final = 1, quote_close = 1,
+       fetched_at = ?
+     where instrument = ? and interval = '1d' and date = ?`,
+  ).run(
+    Math.max(bar.high ?? -Infinity, ...closes),
+    Math.min(bar.low ?? Infinity, ...closes),
+    quote.previousClose,
+    quote.fetchedAt,
+    instrument.id,
+    owed,
+  );
+  return true;
+}
+
+const quoteCloses = (db: Db, instrument: Pick<Instrument, "id">) =>
+  db
+    .query<{ date: string }, [string]>(
+      `select date from bars where instrument = ? and interval = '1d'
+       and quote_close = 1`,
+    )
+    .all(instrument.id)
+    .map((r) => r.date);
+
 // a cut-short whole history writes nothing, so no day keeps an old scale
 function storeBars(
   db: Db,
@@ -461,6 +522,8 @@ function storeBars(
       }
     }
     const keep = new Set(kept.map((b) => b.date));
+    // a rescale leaves a quote's close on the old scale
+    if (!rescaled) for (const d of quoteCloses(db, instrument)) keep.add(d);
     const deleted =
       span.length === 0
         ? null
@@ -494,16 +557,27 @@ function storeBars(
   const span = [...days].sort();
   let deleted: string | null = null;
   if (span.length > 0) {
-    const keep = new Set(bars.map((b) => b.date));
+    const keep = new Set([
+      ...bars.map((b) => b.date),
+      ...quoteCloses(db, instrument),
+    ]);
     if (owed !== null) keep.add(owed);
     deleted = deleteDailyBars(db, instrument.id, span[0]!, span.at(-1)!, keep);
   }
-  const from = earliest(before?.date ?? null, span[0] ?? null);
+  const closed =
+    owed !== null && latest !== null && closeOwed(db, instrument, latest, owed);
+  const from = earliest(
+    earliest(before?.date ?? null, span[0] ?? null),
+    closed ? owed : null,
+  );
   if (from !== null) rebuildWeeks(db, instrument.id, latest, now, from);
   return {
     rows: written.rows,
-    changedFrom: earliest(deleted, written.changedFrom),
-    owed,
+    changedFrom: earliest(
+      earliest(deleted, written.changedFrom),
+      closed ? owed : null,
+    ),
+    owed: closed ? null : owed,
     // a window is stored only when refetchAnswer found no rescale in it
     rescaled: false,
   };

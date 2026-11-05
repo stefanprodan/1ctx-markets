@@ -233,7 +233,9 @@ Phrases from Yahoo (`docs/sources.md`, Refusals):
 - **Each write reconciles the answer's span.** Stored daily bars inside
   the span of the answer's regular rows that the answer no longer
   prices are deleted (`deleteDailyBars()`): a day the source has no
-  bar for had no trading. Weeks are rebuilt from the span's first
+  bar for had no trading. A 30-day refetch keeps an owed day and a day
+  closed from a quote (below); a whole history keeps only the latter,
+  and not when it rescales. Weeks are rebuilt from the span's first
   week, or all of them for a whole history.
 - **The last finished session without its close is owed, not gone**
   (`unclosed()` in `history.ts`). A chart can leave that day's close
@@ -255,6 +257,21 @@ Phrases from Yahoo (`docs/sources.md`, Refusals):
   the one it became newest in starts; that session's full pass decides
   again, and a day the source never closed is deleted as above once it
   is no longer newest.
+- **An owed day with a stored live bar closes at the next session's
+  previous close** (`closeOwed()` in `history.ts`), since Yahoo can
+  leave a finished row empty for hours or for good (seen on Xetra)
+  while its quote already names that close. Only a Yahoo quote whose
+  trade is in the stored session after the owed day counts, so a quote
+  from before the open never names the day before; crypto, currency
+  pairs and futures are left owed, their quote's previous close not
+  being the day's close (a future's can be a later settlement). The
+  bar turns final with that close, its high and low widened by the
+  close and the session's stored 5-minute closes, its open and volume
+  kept as stored (no source holds the full day's volume). It is marked
+  (`bars.quote_close`): an empty row never deletes it, unless a whole
+  history rescales, and the next answer with Yahoo's own row for that
+  day replaces it and clears the mark, since Yahoo's close includes the
+  closing auction.
 - **A currency pair's final day closes at its session's end, not
   Yahoo's close** (`settle()` in `history.ts`), since Yahoo's daily
   close for a `CURRENCY` is about the day's open. The close is the

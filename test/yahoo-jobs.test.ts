@@ -13,6 +13,7 @@ import {
   JOBS,
   OWED_RETRY_MS,
   quoteStale,
+  STALE,
 } from "../src/market/stale.ts";
 import { markRead } from "../src/market/tracking.ts";
 import { markets } from "../src/operations/markets.ts";
@@ -784,6 +785,9 @@ describe("a finished session's close that lands late", () => {
     session: [string, string];
     at: (k: number, now: number) => Recorded;
     price?: number;
+    // the moved quote's previous close; none unless given, since the
+    // recorded one is the session before
+    previousClose?: number;
   }) {
     const spark = await sparkFrom();
     let moved = false;
@@ -801,6 +805,8 @@ describe("a finished session's close that lands late", () => {
     const meta = spark.metas.get(o.symbol);
     moveSession(meta, start, end, utc(start));
     if (o.price !== undefined) meta.regularMarketPrice = o.price;
+    meta.previousClose = o.previousClose ?? null;
+    meta.chartPreviousClose = o.previousClose ?? null;
     await t.runTo(utc(start));
     return { ...t, asks, meta, spark };
   }
@@ -859,6 +865,26 @@ describe("a finished session's close that lands late", () => {
     expect(
       barsStale(t.db, readInstrument(t.db, "XETRA:VVSM")!, t.clock.now()),
     ).toEqual([]);
+  });
+
+  test("a Xetra chart that leaves the last close empty takes the quote's previous close", async () => {
+    const { late } = await mondayOpen();
+    const t = await nextSession({
+      symbol: "VVSM.DE",
+      sunday: listed(await recorded("chart-vvsm-de-5d-1d")),
+      session: XETRA_MONDAY,
+      at: () => late,
+      previousClose: 87.2,
+    });
+    await t.runTo(utc("2026-10-26T18:00"));
+    // the session's first quote pass runs before its bar pass: no owed pass
+    expect(t.asks).toEqual([utc("2026-10-26T08:00")]);
+    expect(bar(t.db, "XETRA:VVSM", "2026-10-23")).toMatchObject({
+      close: 87.2,
+      final: true,
+    });
+    const stale = readSignals(t.db, "XETRA:VVSM", t.clock.now())!.stale.live;
+    expect(stale).not.toContain(STALE.previousDayNotFinal);
   });
 
   test("a crypto chart at midnight without the day just ended gets it on a later pass", async () => {

@@ -6,10 +6,14 @@ import { readBars, rebuildWeeks } from "../src/market/bars.ts";
 import { readSession, readSessions } from "../src/market/calendars.ts";
 import { readInstrument, upsertInstrument } from "../src/market/instruments.ts";
 import { storeIntraday } from "../src/market/intraday.ts";
-import { readQuote } from "../src/market/quotes.ts";
+import { readQuote, upsertQuote } from "../src/market/quotes.ts";
+import { STALE } from "../src/market/stale.ts";
 import { startOfDate } from "../src/market/zone.ts";
 import { DAY_MS } from "../src/runtime/clock.ts";
-import { recomputeSignals } from "../src/signals/store.ts";
+import { finalPrefix } from "../src/signals/closes.ts";
+import { dailySeries } from "../src/signals/daily.ts";
+import { readSignals } from "../src/signals/read.ts";
+import { recomputeSignals, selectList } from "../src/signals/store.ts";
 import { backfillStart, RETRY_MS } from "../src/sources/history.ts";
 import {
   type ChartAnswer,
@@ -676,6 +680,260 @@ describe("a finished day the answer has not closed yet", () => {
       date: "2026-10-23",
       close: FRIDAY,
       final: false,
+    });
+  });
+});
+
+describe("a finished day Yahoo answers with an empty row", () => {
+  const VVSM = "XETRA:VVSM";
+  // Yahoo's answer at 09:33 UTC on Thursday: Wednesday's row is empty
+  const EMPTY = "chart-vvsm-de-10d-1d-empty-row-0933";
+  const DAY_S = 86_400;
+  const WEDNESDAY = "2026-11-04";
+  // Wednesday's live bar as the refetch at 09:53 stored it
+  const SNAPSHOT = [84.1, 85.9, 84.0, 85.54, 31000];
+  // the quote's previous close on Thursday, Wednesday's real close
+  const CLOSE = 82.3;
+
+  // the recording a day earlier: Thursday's row gone, Wednesday's live
+  function wednesday(fx: Recorded): Recorded {
+    const out = clone(fx);
+    out.recordedAt = "2026-11-04T09:53:00.000Z";
+    const result = out.body.chart.result[0];
+    result.meta.regularMarketTime = 1793785980;
+    result.meta.currentTradingPeriod.regular.start -= DAY_S;
+    result.meta.currentTradingPeriod.regular.end -= DAY_S;
+    result.timestamp.pop();
+    const q = result.indicators.quote[0];
+    ["open", "high", "low", "close", "volume"].forEach((k, n) => {
+      q[k].pop();
+      q[k][q[k].length - 1] = SNAPSHOT[n];
+    });
+    return out;
+  }
+
+  // the recording a day later, Friday's session started
+  function friday(fx: Recorded, row: (number | null)[] | null): Recorded {
+    const out = clone(fx);
+    out.recordedAt = "2026-11-06T09:30:00.000Z";
+    const result = out.body.chart.result[0];
+    result.meta.regularMarketTime = 1793955600;
+    result.meta.currentTradingPeriod.regular.start += DAY_S;
+    result.meta.currentTradingPeriod.regular.end += DAY_S;
+    if (row !== null) {
+      const q = result.indicators.quote[0];
+      ["open", "high", "low", "close", "volume"].forEach((k, n) => {
+        q[k][q[k].length - 2] = row[n];
+      });
+    }
+    appendRow(result, 1793952000, [79.5, 80.2, 78.9, 79.8, 40000]);
+    return out;
+  }
+
+  // Wednesday stored live with its points, then Thursday's empty answer
+  async function thursday(quoteTime: number, previousClose: number) {
+    const empty = await recorded(EMPTY);
+    let route = listed(wednesday(empty));
+    const t = setup(Date.parse(route.recordedAt), () => route);
+    const { instrument } = await addInstrument(t.ctx, "VVSM.DE");
+    await t.writer.write((db) =>
+      storeIntraday(
+        db,
+        VVSM,
+        "Europe/Berlin",
+        [
+          { at: Date.parse("2026-11-04T10:30:00Z"), close: 86.4 },
+          { at: Date.parse("2026-11-04T15:00:00Z"), close: 81.95 },
+          { at: Date.parse("2026-11-04T16:25:00Z"), close: 82.25 },
+        ],
+        t.clock.now(),
+      ),
+    );
+    await t.clock.advance(Date.parse(empty.recordedAt) - t.clock.now());
+    await t.writer.write((db) =>
+      upsertQuote(db, {
+        instrument: VVSM,
+        price: 79.93,
+        previousClose,
+        previousCloseField: "previousClose",
+        change: 79.93 - previousClose,
+        changePercent: ((79.93 - previousClose) / previousClose) * 100,
+        dayHigh: 80.63,
+        dayLow: 79.71,
+        volume: 56801,
+        time: quoteTime,
+        source: "yahoo",
+        fetchedAt: t.clock.now(),
+      }),
+    );
+    route = empty;
+    return {
+      ...t,
+      instrument,
+      empty,
+      answer: (r: Recorded) => {
+        route = r;
+      },
+    };
+  }
+
+  const day = (db: Db, date: string) =>
+    db
+      .query(
+        `select open, high, low, close, volume, final, quote_close as quote
+         from bars where instrument = ? and interval = '1d' and date = ?`,
+      )
+      .get(VVSM, date);
+
+  const FILLED = {
+    open: 84.1,
+    high: 86.4,
+    low: 81.95,
+    close: CLOSE,
+    volume: 31000,
+    final: 1,
+    quote: 1,
+  };
+
+  // the quote's trade on Thursday after the open
+  const THURSDAY_TRADE = 1793870322000;
+
+  test("closes at the next session's previous close and turns final", async () => {
+    const t = await thursday(THURSDAY_TRADE, CLOSE);
+    const written = await refetch(t.ctx, t.instrument);
+    expect(written.owed).toBeNull();
+    expect(written.changedFrom).toBe(WEDNESDAY);
+    expect(day(t.db, WEDNESDAY)).toEqual(FILLED);
+    const days = readBars(t.db, VVSM, "1d");
+    const finals = t.db
+      .query(
+        `select date, ${selectList("1d")} from signals
+         where instrument = ? and interval = '1d' and kind = 'final'
+         order by date`,
+      )
+      .all(VVSM);
+    expect(finals).toEqual(dailySeries(finalPrefix(days)));
+    expect((finals.at(-1) as { date: string }).date).toBe(WEDNESDAY);
+    const signals = readSignals(t.db, VVSM, t.clock.now())!;
+    expect(signals.stale.live).not.toContain(STALE.previousDayNotFinal);
+    // a later pass in the session, still empty, changes nothing
+    expect(await refetch(t.ctx, t.instrument)).toMatchObject({
+      changedFrom: null,
+      owed: null,
+    });
+    expect(day(t.db, WEDNESDAY)).toEqual(FILLED);
+  });
+
+  test("keeps the filled close while later answers leave the row empty", async () => {
+    const t = await thursday(THURSDAY_TRADE, CLOSE);
+    await refetch(t.ctx, t.instrument);
+    const later = friday(t.empty, null);
+    await t.clock.advance(Date.parse(later.recordedAt) - t.clock.now());
+    t.answer(later);
+    await refetch(t.ctx, t.instrument);
+    expect(day(t.db, WEDNESDAY)).toEqual(FILLED);
+    expect(dates(readBars(t.db, VVSM, "1d")).slice(-3)).toEqual([
+      WEDNESDAY,
+      "2026-11-05",
+      "2026-11-06",
+    ]);
+    // so does a whole history with no rescale
+    await backfill(t.ctx, t.instrument);
+    expect(day(t.db, WEDNESDAY)).toEqual(FILLED);
+  });
+
+  test("yields to Yahoo's own close once it fills the row", async () => {
+    const t = await thursday(THURSDAY_TRADE, CLOSE);
+    await refetch(t.ctx, t.instrument);
+    const later = friday(t.empty, [84.1, 86.5, 81.9, 82.31, 250000]);
+    await t.clock.advance(Date.parse(later.recordedAt) - t.clock.now());
+    t.answer(later);
+    expect((await refetch(t.ctx, t.instrument)).changedFrom).toBe(WEDNESDAY);
+    expect(day(t.db, WEDNESDAY)).toEqual({
+      open: 84.1,
+      high: 86.5,
+      low: 81.9,
+      close: 82.31,
+      volume: 250000,
+      final: 1,
+      quote: 0,
+    });
+  });
+
+  test("Yahoo's own row equal to the filled values still clears the mark", async () => {
+    const t = await thursday(THURSDAY_TRADE, CLOSE);
+    await refetch(t.ctx, t.instrument);
+    const later = friday(t.empty, [84.1, 86.4, 81.95, CLOSE, 31000]);
+    await t.clock.advance(Date.parse(later.recordedAt) - t.clock.now());
+    t.answer(later);
+    await refetch(t.ctx, t.instrument);
+    expect(day(t.db, WEDNESDAY)).toEqual({ ...FILLED, quote: 0 });
+  });
+
+  test("a future's empty day stays owed despite a quote in the next session", async () => {
+    const NIY = "chart-niy-f-5d-1d-overnight";
+    const today = await recorded(NIY);
+    // the recording a day earlier: Tuesday's row live
+    const tuesday = clone(today);
+    tuesday.recordedAt = "2026-11-03T09:19:27.668Z";
+    const meta = tuesday.body.chart.result[0].meta;
+    meta.regularMarketTime -= DAY_S;
+    meta.currentTradingPeriod.regular.start -= DAY_S;
+    meta.currentTradingPeriod.regular.end -= DAY_S;
+    const result = tuesday.body.chart.result[0];
+    result.timestamp.pop();
+    for (const k of ["open", "high", "low", "close", "volume"]) {
+      result.indicators.quote[0][k].pop();
+    }
+    let route = listed(tuesday);
+    const t = setup(Date.parse(tuesday.recordedAt), () => route);
+    const { instrument } = await addInstrument(t.ctx, "NIY=F");
+    await t.clock.advance(Date.parse(today.recordedAt) - t.clock.now());
+    // the quote recorded beside it: its previous close is no daily close
+    await t.writer.write((db) =>
+      upsertQuote(db, {
+        instrument: instrument.id,
+        price: 62945,
+        previousClose: 63075,
+        previousCloseField: "previousClose",
+        change: 62945 - 63075,
+        changePercent: ((62945 - 63075) / 63075) * 100,
+        dayHigh: null,
+        dayLow: null,
+        volume: null,
+        time: Date.parse("2026-11-04T09:09:21Z"),
+        source: "yahoo",
+        fetchedAt: t.clock.now(),
+      }),
+    );
+    const empty = clone(today);
+    const q = empty.body.chart.result[0].indicators.quote[0];
+    for (const k of ["open", "high", "low", "close", "volume"]) {
+      q[k][q[k].length - 2] = null;
+    }
+    route = empty;
+    expect((await refetch(t.ctx, instrument)).owed).toBe("2026-11-03");
+    const stored = t.db
+      .query(
+        `select close, final, quote_close as quote from bars
+         where instrument = ? and interval = '1d' and date = '2026-11-03'`,
+      )
+      .get(instrument.id);
+    expect(stored).toEqual({ close: 63840, final: 0, quote: 0 });
+  });
+
+  test("a quote from before the next session's first trade fills nothing", async () => {
+    // Wednesday's last trade: its previous close is Tuesday's
+    const t = await thursday(Date.parse("2026-11-04T16:35:00Z"), 85.04);
+    expect((await refetch(t.ctx, t.instrument)).owed).toBe(WEDNESDAY);
+    expect(day(t.db, WEDNESDAY)).toEqual({
+      open: 84.1,
+      high: 85.9,
+      low: 84.0,
+      close: 85.54,
+      volume: 31000,
+      final: 0,
+      quote: 0,
     });
   });
 });
