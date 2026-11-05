@@ -3541,7 +3541,13 @@ describe("the chart model", () => {
       line: true,
     });
     // a fresh browser opens on 1D as a line; 1D and 5D are kept like any range
-    expect(DEFAULT_SETTINGS).toMatchObject({ range: "1D", line: true });
+    // a first chart is a plain line, the averages off
+    expect(DEFAULT_SETTINGS).toMatchObject({
+      range: "1D",
+      line: true,
+      sma50: false,
+      sma200: false,
+    });
     expect(readSettings(JSON.stringify({ range: "5D" })).range).toBe("5D");
     expect(readSettings(JSON.stringify({ range: "2D" })).range).toBe("1D");
   });
@@ -3695,6 +3701,7 @@ describe("the chart model", () => {
       down: "#f87171",
       sma50: "#aaaaaa",
       sma200: "#bbbbbb",
+      buy: "#cccccc",
       font: "mono",
     };
     const o = paintOptions(l, k, false);

@@ -120,6 +120,54 @@
     font-variant-numeric: tabular-nums;
     color: var(--dim);
   }
+  /* the price pane's plot: a mark on the newest bar stops at the scale */
+  .chart-trades {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: var(--z-raise);
+    overflow: hidden;
+    pointer-events: none;
+  }
+  /* a trade, centred on its bar's close */
+  .chart-trade {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    box-shadow: 0 0 0 2px var(--card);
+  }
+  /* above the mark, on the side with more room: off both crosshair lines */
+  .chart-trade-tip {
+    position: absolute;
+    z-index: var(--z-raise);
+    transform: translate(8px, calc(-100% - 8px));
+    padding: 1px 6px;
+    border-radius: var(--radius-pill);
+    background: var(--hover);
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    white-space: nowrap;
+    font-family: var(--mono);
+    font-size: var(--text-small);
+    font-variant-numeric: tabular-nums;
+    color: var(--fg);
+  }
+  .chart-trade-tip-left {
+    transform: translate(calc(-100% - 8px), calc(-100% - 8px));
+  }
+  .chart-trade-buy {
+    background: var(--chart-buy);
+  }
+  /* a phone's chart sits on the page, not a card */
+  .chart-phone .chart-trade {
+    box-shadow: 0 0 0 2px var(--page);
+  }
+  .chart-trade-sell {
+    background: var(--chart-down);
+  }
   .chart-mark-left {
     left: var(--shell-left, var(--space-4));
   }
