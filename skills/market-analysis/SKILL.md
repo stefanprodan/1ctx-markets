@@ -1,6 +1,6 @@
 ---
 name: market-analysis
-description: Write, update and refresh the shared per-symbol analysis notes on a 1ctx-markets server (stocks and ETFs on any exchange), and read them well when advising on a plan. Load when asked to analyse a symbol, write or update its analysis, review or refresh the notes, at the start of a scheduled weekly or monthly analysis run, or before using a note in buy, sell or hold planning.
+description: Write, update and refresh the shared per-symbol analysis notes on a 1ctx-markets server (stocks and ETFs on any exchange, and currency pairs), and read them well when advising on a plan. Load when asked to analyse a symbol, write or update its analysis, review or refresh the notes, at the start of a scheduled weekly or monthly analysis run, or before using a note in buy, sell or hold planning.
 license: Apache-2.0
 compatibility: Requires the 1ctx-markets MCP server with the analysis, analysis_edit, quote, history, research and events tools. Web search and fetch are needed for writing; reading needs neither.
 ---
@@ -30,14 +30,15 @@ A note has three parts, in order, each a `##` heading:
 - **Decide** is read every time: Thesis, Triggers, Levels, Next 6 weeks,
   Risks. A quick read stops here, so everything a reader acts on is in it.
 - **Check** is redone at a full review: Key drivers; then the Guidance
-  record, Scenarios and value and Capital (a stock), or Exposure and
-  Valuation (an ETF); Cycle evidence when cyclical.
-- **Reference** changes only with the business or the fund: its facts,
-  Competitive standing, Other listings, Price history, Unverified coverage,
-  Gaps. There is no Sources list: each figure cites its source inline.
+  record, Scenarios and value and Capital (a stock), Exposure and
+  Valuation (an ETF), or Regime and Valuation (a currency pair); Cycle
+  evidence when cyclical.
+- **Reference** changes only with the business, the fund or the regime:
+  its facts, Competitive standing, Other listings, Price history,
+  Unverified coverage, Gaps. There is no Sources list: each figure cites its source inline.
 
 **Size is a ceiling, not a budget:** a stock note at most 8,000 bytes, an ETF
-note 6,000, Decide about 3,000 of either. Shorter is fine; never pad, since a
+or currency note 6,000, Decide about 3,000 of any. Shorter is fine; never pad, since a
 note filled to its limit buries what decides. Over the limit, cut Reference
 first, then Check prose, never Decide. A cut never drops a trigger or a Key
 driver's "breaks if": each of those has a matching trigger (→ a stance, or
@@ -45,11 +46,13 @@ Thesis broken).
 
 ## Writing a note
 
-Templates: [references/stock-template.md](references/stock-template.md) and
-[references/etf-template.md](references/etf-template.md). Follow them in order,
-with the same headings. Delete their `<!-- -->` guidance when saving. Another
-kind of symbol (a currency pair, an index, a coin) has no template: keep the
-stock template's header lines, its rules, and the sections that apply.
+Templates: [references/stock-template.md](references/stock-template.md),
+[references/etf-template.md](references/etf-template.md) and
+[references/fx-template.md](references/fx-template.md) for a currency pair.
+Follow them in order, with the same headings. Delete their `<!-- -->`
+guidance when saving. Another kind of symbol (an index, a coin) has no
+template: keep the stock template's header lines, its rules, and the
+sections that apply.
 
 1. **Read first.** `analysis` `read` the symbol, and note its revision and
    `since_written`. Reuse every durable fact in an existing note (earnings
@@ -112,6 +115,15 @@ stock template's header lines, its rules, and the sections that apply.
   valuation line (cheap up, rich down); with notes covering less than 40%
   of the weight, move one step by it too. Rate the vehicle separately:
   cost, tracking, structure.
+- **Currency pairs:** the pair is priced in the quote currency per one
+  base currency, so a rising pair is a stronger base. The stance is about
+  the base: stronger, range or weaker, from the same grid, with
+  fundamentals the base's against the quote's (rate and inflation gaps,
+  current account, budget and ratings, politics) and the band a fair
+  value from a stated method, carried to the writing date by the
+  inflation gap. A regime binds before the grid: a credible peg is range,
+  and its triggers are what would break it. Check levels against the
+  official fixing, since bars can hold bad ticks.
 - **Triggers** are relative to the current stance ("stays while", "→ each
   other stance", "thesis broken") and each is checkable: the level or figure,
   the comparison, where it is checked and the stance it moves to. "Weekly
@@ -130,10 +142,14 @@ stock template's header lines, its rules, and the sections that apply.
   than write n/a.
 - **Macro dates** (central bank meetings, inflation prints) go in Next 6
   weeks only when a risk names that driver, dated from the official calendar
-  on the web: the server does not hold them.
+  on the web: the server does not hold them. For a currency pair, both
+  central banks' decisions are its own events and always listed.
 
 ### Discipline
 
+- **Tables stand alone:** put a blank line before and after every table.
+  A table right after a bullet or a text line is swallowed into it and does
+  not render, and a text line right after a table becomes a row.
 - **Date and source every number, inline:** the document and its date, e.g.
   "(10-Q, 2026-08-01)" or "(`research` `earnings`, 2026-11-04)". No URL for a
   filing, since `research` `filings` links it; keep one only for a page a
@@ -208,7 +224,9 @@ changes nothing.
    detection rests on `review by`, set to the day after the next report, and
    the Next 6 weeks rows. `since_written` is null when the server held no
    price at the save (a hand-priced fund, a series): judge by the header and
-   Decide alone.
+   Decide alone. A currency pair has no reports: `review by` is the day
+   after either central bank's next decision, and a decision passed counts
+   as its own event in Next 6 weeks.
 3. For each due note, do a **light update** (about 10–15 tool calls): redo
    the header and Decide, and keep Check (except as below), Reference and
    the `full review:` line as they are.
@@ -221,7 +239,7 @@ changes nothing.
    - set the next review-by;
    - write the `changed:` line (old → new, and why);
    - use `kind: post-earnings` after a report (a stock) and `kind: update`
-     otherwise; an ETF note always uses update.
+     otherwise; an ETF or currency note always uses update.
 4. Notes not due: leave them. A save that changes nothing is noise.
 5. Report: one line per note touched (revision, stance old → new, the
    reason), the notes skipped, and any tool call that failed with its error.

@@ -31,6 +31,7 @@ The vehicle rating is about the fund: cost, tracking, structure, size, liquidity
 | Level (<CCY>) | What it is | Set |
 |---|---|---|
 | <price> | <weekly shelf, gap edge, prior high or low> | <YYYY-MM-DD> |
+
 <!-- 3–5 rows. Never where the price sits now: readers compare `quote` with these. -->
 
 ### Next 6 weeks
@@ -38,6 +39,7 @@ The vehicle rating is about the fund: cost, tracking, structure, size, liquidity
 |---|---|---|
 | <YYYY-MM-DD hour> | <holding> report (<weight %>) | <this listing's next session after its last report> |
 | <YYYY-MM-DD> | <index rebalance or reconstitution, distribution, fund event> | <…> |
+
 <!-- The top holdings' reports in the window with their weights (`events` for US shares, the issuers' calendars for others), and index and fund dates; other dates only when a trigger or risk names them. -->
 
 ### Risks
@@ -73,6 +75,7 @@ The vehicle rating is about the fund: cost, tracking, structure, size, liquidity
 | Withholding / tax drag | <dividend withholding the fund pays on its holdings, set by its domicile's treaties; synthetic vs physical> |
 | Trading clock | <listing hours vs the underlying's; when moves in other time zones reach this price> |
 | Proxy | <a twin on another listing and how its index differs; for comparison only> |
+
 <!-- From the issuer's factsheet, key information document, prospectus or annual report, and the index provider's methodology. Write "unknown (searched: …)", never a guess. -->
 
 ### Price history
