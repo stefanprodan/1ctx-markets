@@ -97,7 +97,7 @@ export function Instrument({ params }: { params: Params }) {
     else
       refused.value =
         "rules" in r
-          ? `A rule uses ${symbol}. Delete the rule first.`
+          ? `An alert uses ${symbol}. Delete the alert first.`
           : r.error;
   };
 

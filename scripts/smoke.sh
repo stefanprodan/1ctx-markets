@@ -72,7 +72,7 @@ answer=$(initialize "$ADMIN") || fail "initialize with the admin key failed"
 grep -q '"name":"1ctx-markets"' <<<"$answer" || fail "initialize did not name the server"
 
 # an agent key, made by the admin through the keys command, printed once
-BEARER=$("$BIN" keys --listen "127.0.0.1:$PORT" --data "$RUN/data" add smoke --rules read) ||
+BEARER=$("$BIN" keys --listen "127.0.0.1:$PORT" --data "$RUN/data" add smoke --alerts read) ||
   fail "keys add failed"
 [[ $BEARER == 1ctx-markets-* && $BEARER != 1ctx-markets-admin-* ]] || fail "keys add printed no agent key"
 initialize "$BEARER" >/dev/null || fail "initialize with an agent key failed"
@@ -82,7 +82,7 @@ initialize "$BEARER" >/dev/null || fail "initialize with an agent key failed"
   fail "an agent key was taken on /api/v1/status"
 [[ $(status "$URL/api/v1/status" -H "authorization: Bearer $ADMIN") == 200 ]] ||
   fail "the admin key did not open /api/v1/status"
-for path in rules 'earnings?from=2026-01-01&to=2026-01-02'; do
+for path in alerts 'earnings?from=2026-01-01&to=2026-01-02'; do
   [[ $(status "$URL/api/v1/$path" -H "authorization: Bearer $BEARER") == 200 ]] ||
     fail "an agent key did not open /api/v1/$path"
   [[ $(status "$URL/api/v1/$path" -H "authorization: Bearer $ADMIN") == 200 ]] ||
@@ -106,7 +106,7 @@ grep -q '"name": "smoke"' "$RUN/keys" || fail "keys list did not name the key"
 grep -q "$BEARER" "$RUN/keys" && fail "keys list printed the key"
 "$BIN" keys --listen "127.0.0.1:$PORT" --data "$RUN/data" revoke smoke >/dev/null ||
   fail "keys revoke failed"
-[[ $(status "$URL/api/v1/rules" -H "authorization: Bearer $BEARER") == 401 ]] ||
+[[ $(status "$URL/api/v1/alerts" -H "authorization: Bearer $BEARER") == 401 ]] ||
   fail "a revoked key was taken"
 
 # the web UI: the page and every asset it names, from the binary's bundle

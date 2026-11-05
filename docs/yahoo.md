@@ -9,7 +9,7 @@ deadlines, retries, backfill, rescales, phrases and the lock every
 source shares are in `docs/sources.md`; sessions, bar dates and
 finality in `docs/calendars.md`; tables, the writer and staleness in
 `docs/storage.md`; the tools that resolve and fetch inside a call in
-`docs/tools.md`; rule pauses in `docs/rules.md`.
+`docs/tools.md`; rule pauses in `docs/alerts.md`.
 
 ## Endpoints
 

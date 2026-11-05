@@ -263,21 +263,22 @@ describe("what the cookie opens", () => {
     for (const path of [
       "/status",
       "/instruments",
-      "/rules",
       "/alerts",
+      "/alerts/history",
+      "/alerts/feed",
       "/openapi.json",
     ]) {
       const res = await t.at(`${PREFIX}${path}`, { headers: c });
       expect([path, res.status]).toEqual([
         path,
-        path === "/alerts" ? 204 : 200,
+        path === "/alerts/feed" ? 204 : 200,
       ]);
     }
     const mcp = await t.at("/mcp", { method: "POST", headers: c });
     expect(mcp.status).toBe(401);
   });
 
-  test("a login creates, pauses and deletes a rule from this server's pages only", async () => {
+  test("a login creates, pauses and deletes an alert from this server's pages only", async () => {
     const t = setup();
     listing(t.db, "US:AAA", { price: 100 });
     const cookie = `${COOKIE}=${await t.cookie()}`;
@@ -291,26 +292,23 @@ describe("what the cookie opens", () => {
         },
         body: body === null ? undefined : JSON.stringify(body),
       });
-    const rule = {
-      symbol: "US:AAA",
-      condition: { left: "price", op: "<", right: 90 },
-    };
+    const rule = { symbol: "US:AAA", when: "price < 90" };
     // a cross-site page holding the cookie changes nothing
     const writes = [
-      ["POST", "/rules", rule],
-      ["PATCH", "/rules/1", { paused: true }],
-      ["DELETE", "/rules/1", null],
+      ["POST", "/alerts", rule],
+      ["PATCH", "/alerts/1", { paused: true }],
+      ["DELETE", "/alerts/1", null],
     ] as const;
     for (const [method, path, body] of writes) {
       const res = await send(method, path, body, "cross-site");
       expect([method, res.status]).toEqual([method, 403]);
     }
     expect(countRules(t.db)).toBe(0);
-    const made = await send("POST", "/rules", rule, "same-origin");
+    const made = await send("POST", "/alerts", rule, "same-origin");
     expect(made.status).toBe(201);
     const paused = await send(
       "PATCH",
-      "/rules/1",
+      "/alerts/1",
       { paused: true },
       "same-origin",
     );
@@ -318,7 +316,7 @@ describe("what the cookie opens", () => {
       200,
       "manual",
     ]);
-    const gone = await send("DELETE", "/rules/1", null, "same-origin");
+    const gone = await send("DELETE", "/alerts/1", null, "same-origin");
     expect([gone.status, countRules(t.db)]).toEqual([204, 0]);
   });
 

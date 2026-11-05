@@ -354,18 +354,29 @@ const brief = {
 // every brief field but a FRED series' observation is always there
 const briefRequired = Object.keys(brief).filter((k) => k !== "observation");
 
-// a $ref takes no null beside it, so an alert that may be null is inline
-const alert = object(
+// a $ref takes no null beside it, so a trigger that may be null is inline
+const trigger = object(
   {
     id: int,
-    rule_id: int,
-    fired_at: str,
+    alert_id: int,
+    symbol: str,
+    when: note(str, "The alert's condition when it triggered."),
+    note: nstr,
+    triggered_at: str,
+    values: note(
+      { type: "object", additionalProperties: nnum },
+      "Each side read when it triggered, keyed as `when` writes it: `price`, `price(^VIX)`.",
+    ),
+    after_earnings: note(
+      freeForm,
+      "The earnings event it waited for: symbol, fiscal year and quarter, date and when the results were seen.",
+    ),
     truncated: note(
       bool,
-      "Too large for a page: only the id, rule and time are kept.",
+      "Too large for a feed page, or a stored trigger this server cannot read: only the id, alert and time are kept.",
     ),
   },
-  ["id", "rule_id", "fired_at"],
+  ["id", "alert_id", "triggered_at"],
   true,
 );
 
@@ -392,51 +403,68 @@ const gap = (daily: boolean): Schema =>
     ),
   );
 
-const ruleFields: Record<string, Schema> = {
-  id: int,
-  symbol: str,
-  condition: freeForm,
-  note: nstr,
-  paused: {
-    type: ["string", "null"],
-    enum: ["manual", "split", null],
-    description: "`manual`, `split` (cannot be resumed) or null.",
-  },
-  message: str,
-  armed: note(
-    bool,
-    "The next true result fires an alert: a false came since its last alert, and its symbol trades in a later session than the one it fired in.",
-  ),
-  fired_session: note(
-    nstr,
-    "The date of its symbol's trading session it last fired in, in the exchange's zone; null before the first alert. A rule fires at most once a session.",
-  ),
-  created_at: str,
-  last_result: nstr,
-  last_evaluated_at: nstr,
-  after_earnings: freeForm,
-};
-
-const RULE_REQUIRED = [
-  "id",
-  "symbol",
-  "condition",
-  "note",
-  "paused",
-  "armed",
-  "fired_session",
-  "created_at",
-  "last_result",
-  "last_evaluated_at",
-];
-
-const evaluation = object(
+const nowItem = object(
   {
-    result: values(["true", "false", "unknown"]),
-    values: list(freeForm),
-    reasons: list(str),
+    field: note(str, "The left side's field, as `when` names it."),
+    symbol: note(str, "Another symbol's, absent for the alert's own."),
+    benchmark: note(str, "A relative return's benchmark."),
+    value: note(nnum, "The left side now."),
+    level: note(nnum, "The number or the right side's value now."),
+    gap: note(
+      nnum,
+      "Level minus value, signed, in the field's unit: the move left to the level.",
+    ),
+    gap_percent: note(
+      nnum,
+      "The gap as a percent of the value; between price levels only.",
+    ),
+    holds: note(
+      { type: ["boolean", "null"] },
+      "Null while a side is missing or stale.",
+    ),
   },
-  ["result", "values", "reasons"],
+  ["field", "value", "level", "gap", "holds"],
+);
+
+const alertItem = object(
+  {
+    id: int,
+    symbol: note(str, "The listing it watches, a stored id."),
+    when: note(str, "Its condition in canonical form, to edit and send back."),
+    note: nstr,
+    after_earnings: note(
+      freeForm,
+      "The earnings event it waits for: symbol, fiscal year and quarter, date and status.",
+    ),
+    state: values([
+      "watching",
+      "triggered",
+      "waiting_for_earnings",
+      "paused",
+      "split_paused",
+      "unknown",
+    ]),
+    reasons: note(
+      list(str),
+      "Why it is unknown, or what it waits for; only with those states.",
+    ),
+    last_triggered_at: note(nstr, "Null when no kept trigger."),
+    gap_percent: note(
+      nnum,
+      "How far from triggering, in percent: an and's farthest comparison, an or's nearest, price levels only; 0 once it holds.",
+    ),
+    now: list(nowItem),
+  },
+  [
+    "id",
+    "symbol",
+    "when",
+    "note",
+    "state",
+    "last_triggered_at",
+    "gap_percent",
+    "now",
+  ],
 );
 
 export const schemas: Record<string, Schema> = {
@@ -454,7 +482,10 @@ export const schemas: Record<string, Schema> = {
         list(ref("Candidate")),
         "With `candidates`: the listings to pick an id from.",
       ),
-      rules: note(list(int), "With `conflict`: the rules reading it."),
+      rules: note(
+        list(int),
+        "With `conflict`: the ids of the alerts reading it.",
+      ),
       revision: note(
         { type: ["integer", "null"] },
         "With `conflict` on saving the profile or an analysis: its live revision, null with none.",
@@ -849,17 +880,6 @@ export const schemas: Record<string, Schema> = {
     },
     ["symbols"],
   ),
-  Rule: object(ruleFields, RULE_REQUIRED),
-  RuleNow: object(
-    {
-      ...ruleFields,
-      now: note(
-        evaluation,
-        "The rule evaluated at this read on the stored prices, stored nowhere: it neither fires an alert nor changes `armed` or `last_result`.",
-      ),
-    },
-    [...RULE_REQUIRED, "now"],
-  ),
   Listings: note(
     { type: "object", additionalProperties: ref("Listing") },
     "Every listing the answer names, by its id, so a page can name and price it without another call.",
@@ -870,25 +890,56 @@ export const schemas: Record<string, Schema> = {
     currency: nstr,
     unit: values(UNITS),
   }),
-  Rules: object({ rules: list(ref("RuleNow")), instruments: ref("Listings") }),
-  RuleWithNow: object({
-    rule: ref("RuleNow"),
+  Alert: alertItem,
+  Trigger: trigger,
+  AlertList: object(
+    {
+      alerts: list(ref("Alert")),
+      instruments: ref("Listings"),
+      next_page_token: note(
+        str,
+        "Pass as `page_token` for the next page. Absent on the last page.",
+      ),
+    },
+    ["alerts", "instruments"],
+  ),
+  OneAlert: object({
+    alert: ref("Alert"),
+    history: list(ref("Trigger")),
     instruments: ref("Listings"),
   }),
-  RuleArgs: object({ symbol: str, condition: freeForm, note: nstr }, [
-    "symbol",
-    "condition",
-  ]),
-  Created: object({
-    rule: ref("Rule"),
-    evaluation: object(
-      { result: str, values: list(freeForm), reasons: list(str) },
-      ["result", "reasons"],
-      true,
-    ),
-    alert: nullable(alert),
+  AlertArgs: object(
+    {
+      symbol: str,
+      when: str,
+      note: nstr,
+      after_earnings: note(str, "A US share whose next results it waits for."),
+    },
+    ["symbol", "when"],
+  ),
+  AlertChange: object(
+    {
+      when: str,
+      note: nstr,
+      paused: note(bool, "Alone: pause or resume."),
+    },
+    [],
+  ),
+  AlertChanged: object({
+    alert: ref("Alert"),
+    triggered: nullable(trigger),
   }),
-  Pause: object({ paused: bool }),
+  History: object(
+    {
+      triggers: list(ref("Trigger")),
+      instruments: ref("Listings"),
+      next_page_token: note(
+        str,
+        "Pass as `page_token` for the next older page. Absent on the last page.",
+      ),
+    },
+    ["triggers", "instruments"],
+  ),
   Key: object({
     id: str,
     name: note(str, "Unique among its person's keys."),
@@ -903,9 +954,9 @@ export const schemas: Record<string, Schema> = {
       values(["none", "read", "write"]),
       "What the key may do with portfolios.",
     ),
-    rules: note(
+    alerts: note(
       values(["none", "read", "write"]),
-      "What the key may do with rules: read opens the list and the alerts feed.",
+      "What the key may do with alerts: read opens them, their history and the feed.",
     ),
     profile: note(
       values(["none", "read", "write"]),
@@ -923,9 +974,9 @@ export const schemas: Record<string, Schema> = {
         values(["none", "read", "write"]),
         "What the key may do with portfolios.",
       ),
-      rules: note(
+      alerts: note(
         values(["none", "read", "write"]),
-        "What the key may do with rules.",
+        "What the key may do with alerts.",
       ),
       profile: note(
         values(["none", "read", "write"]),
@@ -948,9 +999,9 @@ export const schemas: Record<string, Schema> = {
         values(["none", "read", "write"]),
         "What the key may do with portfolios; none by default.",
       ),
-      rules: note(
+      alerts: note(
         values(["none", "read", "write"]),
-        "What the key may do with rules: read opens the list and the alerts feed; none by default.",
+        "What the key may do with alerts: read opens them, their history and the feed; none by default.",
       ),
       profile: note(
         values(["none", "read", "write"]),
@@ -975,35 +1026,27 @@ export const schemas: Record<string, Schema> = {
     key: ref("Key"),
     token: note(str, "The key to send as a bearer. It is never shown again."),
   }),
-  OneRule: object({ rule: ref("Rule") }),
-  Alert: alert,
-  RecentAlerts: object({
-    alerts: list(ref("Alert")),
-    instruments: ref("Listings"),
-    next: note(
-      { type: ["integer", "null"] },
-      "The `before` that reads the next older page, or null on the last.",
-    ),
-  }),
   Seen: object({
-    seen: note(int, "The newest alert id marked seen; 0 before any."),
-    unseen: note(int, "How many of your alerts are newer than `seen`."),
+    seen: note(int, "The newest trigger id marked seen; 0 before any."),
+    unseen: note(int, "How many of your triggers are newer than `seen`."),
   }),
-  SeenArgs: object({ id: note(int, "An alert id, usually the newest shown.") }),
-  Alerts: object(
+  SeenArgs: object({
+    id: note(int, "A trigger id, usually the newest shown."),
+  }),
+  Feed: object(
     {
       retention_gap: note(
         bool,
-        "Alerts after the cursor were deleted by retention.",
+        "Triggers after the cursor were deleted by retention.",
       ),
       cursor_reset: note(
         bool,
         "The cursor is unknown to this server, so the feed starts over.",
       ),
-      more: note(bool, "More alerts wait for the next poll."),
-      alerts: list(ref("Alert")),
+      more: note(bool, "More triggers wait for the next poll."),
+      triggers: list(ref("Trigger")),
     },
-    ["more", "alerts"],
+    ["more", "triggers"],
   ),
   Status: object({
     version: str,

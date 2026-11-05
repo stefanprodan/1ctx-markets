@@ -124,7 +124,7 @@ revision refused.
 - **`revision` is an integer of at least 1** (digits as text are read
   too, as the other write tools do); `edits` 1 to 50 `{old, new}`
   objects, `old` non-empty, also read when sent as JSON text (at most 64
-  KiB), as `rules` reads a condition; `text` a string. The byte cap is
+  KiB); `text` a string. The byte cap is
   the server's, since a schema counts characters.
 - **REST** (`docs/api.md`): `GET /profile` answers `text`, `html`,
   `revision`, `author`, `updated_at` and `bytes`, every one null with

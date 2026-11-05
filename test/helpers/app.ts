@@ -25,10 +25,10 @@ export const SECRETS = join(import.meta.dir, "..", "fixtures", "secrets");
 export const AGENT_KEY = "1ctx-markets-test-agent-key-0123456789abcdef";
 
 // the agent key's row, kept when a test's database is started again; it
-// sets rules, as the tests drive them over MCP
+// sets alerts, as the tests drive them over MCP
 export function seedAgentKey(db: Db, at: number): void {
   db.query(
-    `insert or ignore into keys (id, user_id, name, token_hash, created_at, rules)
+    `insert or ignore into keys (id, user_id, name, token_hash, created_at, alerts)
      values ('testagentkey', 'operator', 'test-agent', ?, ?, 'write')`,
   ).run(tokenHash(AGENT_KEY), at);
 }
@@ -154,7 +154,7 @@ export function seedKey(
   name: string,
   opens: {
     portfolio: Access;
-    rules: Access;
+    alerts: Access;
     profile?: Access;
     analysis?: Access;
     user?: string;
@@ -164,7 +164,7 @@ export function seedKey(
   t.db
     .query(
       `insert into keys
-         (id, user_id, name, token_hash, created_at, portfolio, rules, profile,
+         (id, user_id, name, token_hash, created_at, portfolio, alerts, profile,
           analysis)
        values (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
@@ -175,27 +175,27 @@ export function seedKey(
       tokenHash(token),
       t.clock.now(),
       opens.portfolio,
-      opens.rules,
+      opens.alerts,
       opens.profile ?? "none",
       opens.analysis ?? "none",
     );
   return token;
 }
 
-// every portfolio, profile and analysis access with no rules and with
-// rules, as keys are made; the last opens everything, the longest
+// every portfolio, profile and analysis access with no alerts and with
+// alerts, as keys are made; the last opens everything, the longest
 // instructions
 export const ACCESS_LEVELS: {
   portfolio: Access;
-  rules: Access;
+  alerts: Access;
   profile: Access;
   analysis: Access;
 }[] = [
-  { portfolio: "none", rules: "none", profile: "none", analysis: "none" },
-  { portfolio: "read", rules: "none", profile: "read", analysis: "write" },
-  { portfolio: "write", rules: "none", profile: "write", analysis: "read" },
-  { portfolio: "none", rules: "read", profile: "write", analysis: "none" },
-  { portfolio: "read", rules: "write", profile: "none", analysis: "read" },
-  { portfolio: "write", rules: "write", profile: "read", analysis: "none" },
-  { portfolio: "write", rules: "write", profile: "write", analysis: "write" },
+  { portfolio: "none", alerts: "none", profile: "none", analysis: "none" },
+  { portfolio: "read", alerts: "none", profile: "read", analysis: "write" },
+  { portfolio: "write", alerts: "none", profile: "write", analysis: "read" },
+  { portfolio: "none", alerts: "read", profile: "write", analysis: "none" },
+  { portfolio: "read", alerts: "write", profile: "none", analysis: "read" },
+  { portfolio: "write", alerts: "write", profile: "read", analysis: "none" },
+  { portfolio: "write", alerts: "write", profile: "write", analysis: "write" },
 ];

@@ -7,7 +7,7 @@ Governs the Model Context Protocol (MCP) tools: `src/server/mcp.ts`,
 `history.ts`, `search.ts`, `movers.ts`, `screen.ts` and `sets.ts` under
 `src/operations/`. The HTTP API that calls the same reads is in
 `docs/api.md`; the research and events tools in `docs/research.md`;
-the rules tool in `docs/rules.md`; the portfolio tools in
+the alerts tools in `docs/alerts.md`; the portfolio tools in
 `docs/portfolios.md`; the profile tools in `docs/profile.md`; the
 analysis tools in `docs/analysis.md`; signal
 rows and returns in `docs/signals.md`; units, stale reasons and
@@ -20,15 +20,16 @@ tracking in `docs/storage.md`; the source queue and deadlines in
   (`mcpHandler()`), so no tool may keep per-session state. A new tool
   is added to `tools()` in `src/tools/index.ts`.
 - **The caller rides in `authInfo`**: the router passes the key's name
-  and its portfolio, rules, profile and analysis access as the scopes
-  `portfolio:<access>`, `rules:<access>`, `profile:<access>` and
+  and its portfolio, alerts, profile and analysis access as the scopes
+  `portfolio:<access>`, `alerts:<access>`, `profile:<access>` and
   `analysis:<access>`
   (`whoOf()` in `src/server/http.ts`, `Who` in `src/operations/who.ts`),
   the factory registers the tools with it, and a tool that needs it
   reads it from its second argument; a tool that needs none ignores it.
 - **A key lists only the tools its access opens** (`tools(m, opens)`,
-  built once per access in `registerTools()`): no `rules` for rules
-  access `none`, no portfolio tool for portfolio access `none`, only the
+  built once per access in `registerTools()`): no alerts tool for alerts
+  access `none`, `alerts` for `read`, `alerts_edit` too for `write`, no
+  portfolio tool for portfolio access `none`, only the
   `portfolio` read for `read`, and the write tools for `write`; the same
   for the profile, `profile` for `read`, `profile_edit` too for `write`,
   and the analysis, `analysis` for `read`, `analysis_edit` too for
@@ -44,7 +45,8 @@ tracking in `docs/storage.md`; the source queue and deadlines in
 
 - **One text sent on initialize, per key** (`instructions()`), says
   which tool answers what and what holds across tools, and names only
-  the tools the key lists: the rules line goes for rules access `none`,
+  the tools the key lists: the alerts line goes for alerts access `none`
+  and names `alerts_edit` only for `write`,
   the portfolio line for portfolio access `none`, and its writes and
   `portfolio_setup` for `read`; the profile line comes only for a key
   that lists `profile`, and the analysis line, second after quote's,
@@ -93,7 +95,8 @@ tracking in `docs/storage.md`; the source queue and deadlines in
   `benchmark` only when one is given, so a cursor without one stays
   valid. The position is the next offset, the next bar's date
   (history), the next point's `at` with its bounds (history's `5m`)
-  or the next rule id (rules list).
+  or the next alert id (the alerts list), or the last trigger id shown
+  (the alerts history).
 - **movers and screen page a fresh view**: each call reads again and
   pages the sorted set from the offset, `counts` covering every page;
   the set may shift between pages, as the descriptions say. An offset
@@ -125,10 +128,9 @@ tracking in `docs/storage.md`; the source queue and deadlines in
   symbols (`MAX_SYMBOLS`), a date `YYYY-MM-DD`. Text quoted back in an
   error is cut at 64 characters (`quoted()`).
 - **A write argument's number, id or true/false may come as text.**
-  Some clients send a number as text, so the portfolio tools, `rules`
-  and the profile and analysis tools' `revision` read `"1"`, `"2.5"` and `"true"`
-  as their values (`textValues()`); `rules` reads a condition sent as
-  JSON text and a comparison's `right` as a number's text, and
+  Some clients send a number as text, so the portfolio tools, the
+  alerts tools and the profile and analysis tools' `revision` read
+  `"1"`, `"2.5"` and `"true"` as their values (`textValues()`), and
   `profile_edit` and `analysis_edit` read `edits` sent as JSON text. Other text is
   refused as before.
 - **Arguments are typed, each meaning one thing**: an id is an
@@ -136,10 +138,10 @@ tracking in `docs/storage.md`; the source queue and deadlines in
   (`all: true`), and an argument that changes a row never also picks
   it. Only an argument that is a name or an id (`portfolio`) is a
   union.
-- **Write annotations are per tool**: `rules`, the portfolio write
+- **Write annotations are per tool**: `alerts_edit`, the portfolio write
   tools, `profile_edit` and `analysis_edit` are `destructiveHint: true`,
   so an add asks as a remove does. Every other tool, `portfolio`,
-  `profile` and `analysis` included, is `readOnlyHint: true`,
+  `alerts`, `profile` and `analysis` included, is `readOnlyHint: true`,
   `openWorldHint: true`: an inline fetch only adds market data.
 
 ## The tools
@@ -153,7 +155,7 @@ tracking in `docs/storage.md`; the source queue and deadlines in
 | `screen` | `symbols`, `filters`, `benchmark`, `sort`, `order`, `fields`, `next` | matches with each used and asked field's value, unit, kind and date; `counts` |
 | `research` | `symbol`, `section`, `since`, `next` | `overview` (quote, a fund's `top_holdings`, Finnhub sections, an ADR's `valuation` from Yahoo, next event, headlines, `filings` with three flags), or one section paged: `analysts`, `earnings`, `insiders`, `news`, `filings`; or `top_holdings` unpaged, a fund's on any exchange from Yahoo (`docs/research.md`, `docs/edgar.md`) |
 | `events` | `from`, `to`, `symbols`, `next` | events by date with `status`, `reported_seen_at` and `filed_at`; `unavailable`, `no_event` (`docs/research.md`) |
-| `rules` | see `docs/rules.md` | |
+| `alerts`, `alerts_edit` | see `docs/alerts.md` | |
 | `portfolio`, `portfolio_trade`, `portfolio_cash`, `portfolio_bond`, `portfolio_fund`, `portfolio_setup` | see `docs/portfolios.md` | |
 | `profile`, `profile_edit` | see `docs/profile.md` | |
 | `analysis`, `analysis_edit` | see `docs/analysis.md` | |
@@ -194,7 +196,7 @@ tracking in `docs/storage.md`; the source queue and deadlines in
   `extended` beside it. One chart per listing within the call's deadline
   (`docs/yahoo.md`), kept in memory for a quote period
   (`m.extended`), so the thin market is never fresher than the regular
-  one. Never stored: signals, bars, movers, screen, history and rules
+  one. Never stored: signals, bars, movers, screen, history and alerts
   read the regular session only.
 - **`returns`, `session` and `extended` are the quote tool's only**:
   `quoteItem()`, which screen, movers and the API's quotes route share,

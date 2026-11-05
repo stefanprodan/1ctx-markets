@@ -99,7 +99,8 @@ describe("the tool list", () => {
     withApp(async (t) => {
       const want = (level: (typeof ACCESS_LEVELS)[number]) => [
         ...MARKET_TOOLS,
-        ...(level.rules === "none" ? [] : ["rules"]),
+        ...(level.alerts === "none" ? [] : ["alerts"]),
+        ...(level.alerts === "write" ? ["alerts_edit"] : []),
         ...(level.portfolio === "none" ? [] : ["portfolio"]),
         ...(level.portfolio === "write"
           ? [
@@ -118,7 +119,7 @@ describe("the tool list", () => {
       for (const level of ACCESS_LEVELS) {
         const token = seedKey(
           t,
-          `${level.portfolio}-${level.rules}-${level.profile}`,
+          `${level.portfolio}-${level.alerts}-${level.profile}`,
           level,
         );
         const client = await mcpClient(t, token);
@@ -145,7 +146,7 @@ describe("the tool list", () => {
           expect(tool.inputSchema.additionalProperties).toBe(false);
           // a write asks as a remove does; the read never asks
           const writes =
-            tool.name === "rules" ||
+            tool.name === "alerts_edit" ||
             tool.name.startsWith("portfolio_") ||
             tool.name === "profile_edit" ||
             tool.name === "analysis_edit";
@@ -172,6 +173,12 @@ describe("the tool list", () => {
           ).toBe(level.profile === "write");
         }
         // a quote never points at a note, so a price question reads none
+        const alerts = tools.find((x) => x.name === "alerts");
+        if (alerts !== undefined) {
+          expect(alerts.description!.includes("Changes: alerts_edit.")).toBe(
+            level.alerts === "write",
+          );
+        }
         const quote = tools.find((x) => x.name === "quote")!;
         expect(quote.description).not.toContain("analysis");
         const analysis = tools.find((x) => x.name === "analysis");
@@ -870,33 +877,43 @@ describe("the quotes route", () => {
     }));
 });
 
-describe("rules", () => {
-  test("a rule made over MCP fires into the alerts feed and follows the bar job", () =>
+describe("alerts", () => {
+  test("an alert made over MCP triggers into the feed and follows the bar job", () =>
     yahooApp(async (t) => {
-      const made = await call(t, "rules", {
+      const made = await call(t, "alerts_edit", {
         action: "create",
         symbol: "NVDA",
-        condition: { left: "price", op: "<", right: 211 },
+        when: "price < 211",
         note: "below 211",
       });
       expect(made.isError).toBe(false);
-      expect(made.body.evaluation.result).toBe("true");
-      expect(made.body.alert).toMatchObject({ id: 1, note: "below 211" });
-      const res = await fetch(`${t.url}/api/v1/alerts`, {
+      expect(made.body.alert.state).toBe("triggered");
+      expect(made.body.triggered).toMatchObject({ id: 1, note: "below 211" });
+      const res = await fetch(`${t.url}/api/v1/alerts/feed`, {
         headers: { authorization: `Bearer ${t.bearer}` },
       });
       expect(res.headers.get("etag")).toBe('W/"alerts-1"');
       const body = (await res.json()) as any;
-      expect(body.alerts).toEqual([made.body.alert]);
+      expect(body.triggers).toEqual([made.body.triggered]);
 
-      // the bar job's write evaluates the rule again, without a new alert
+      // the bar job's write evaluates the alert again, without a new trigger
       await t.clock.advance(60_000);
       await t.app.yahooJobs.barTick();
-      const listed = await call(t, "rules", { action: "list" });
-      expect(listed.body.rules[0]).toMatchObject({
+      expect(
+        t.db
+          .query("select last_result, last_evaluated_at, armed from rules")
+          .get(),
+      ).toEqual({
         last_result: "true",
-        last_evaluated_at: "2026-10-25T21:06:00Z",
-        armed: false,
+        last_evaluated_at: t.clock.now(),
+        armed: 0,
       });
+      const listed = await call(t, "alerts", {});
+      expect(listed.body.alerts[0]).toMatchObject({
+        state: "triggered",
+        last_triggered_at: made.body.triggered.triggered_at,
+      });
+      const history = await call(t, "alerts", { history: true });
+      expect(history.body.triggers).toEqual([made.body.triggered]);
     }));
 });

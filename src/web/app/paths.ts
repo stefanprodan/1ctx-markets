@@ -7,7 +7,7 @@ export const SCREENER = "/screener";
 export const SYMBOL = "/symbol/";
 // Server admin: Status, Settings and Users
 export const ALERTS = "/alerts";
-export const ALERTS_FIRED = "/alerts/fired";
+export const ALERTS_HISTORY = "/alerts/history";
 export const ADMIN = "/admin";
 export const ADMIN_SETTINGS = "/admin/settings";
 export const ADMIN_USERS = "/admin/users";

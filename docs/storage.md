@@ -96,7 +96,7 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   `unknown`.** Yahoo's `INDEX` is `index_points`, ^VIX's and ^TNX's too,
   a yield index's points being its yield in percent; its `FUTURE` holds
   per-barrel and per-bond prices alike, so stays `unknown`. Price levels
-  compare only within one unit and currency (`docs/rules.md`,
+  compare only within one unit and currency (`docs/alerts.md`,
   "Validation"; screen's `mixed_units` in `docs/tools.md`).
 
 ## Times, dates and prices
@@ -119,8 +119,17 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
 - **`rules.fired_session` is the session date a rule last fired in**
   (`0045-rules-fired-session`, `YYYY-MM-DD` in its symbol's exchange
   zone, null before its first alert), set in the write that inserts the
-  alert, so a restart keeps the once-a-session limit (`docs/rules.md`).
+  alert, so a restart keeps the once-a-session limit (`docs/alerts.md`).
   Rules from before it start null: one may fire once more that day.
+- **Alerts keep their tables' old names**: an alert is a `rules` row
+  and a trigger an `alerts` row, the condition stored as its JSON tree
+  with internal camelCase keys and instrument ids, never as the `when`
+  text callers send and read (`docs/alerts.md`), so the text form needed
+  no migration. A trigger's `snapshot` keeps that tree and every value
+  read, and is rendered as text on each read.
+- **A key's alerts access is `keys.alerts`** (`none`, `read`, `write`),
+  the column `0023-key-rules` added as `rules` and `0046-key-alerts`
+  renamed, its check and values kept.
 
 ## Price sources
 
@@ -318,7 +327,7 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   `alerts_pruned` (the newest of their alert ids retention deleted, for
   the alerts feed), and `alerts_seen` (`0044-alerts-seen`, 0 until
   set: the newest of their alert ids the web UI showed, so the rail
-  counts the newer ones; `docs/rules.md`). The migration made
+  counts the newer ones; `docs/alerts.md`). The migration made
   `operator`, an admin, the owner of every row before it;
   `user-admin.key` is the operator.
 - **A person's rows name them**: `portfolios.owner`, `brokers.owner`,

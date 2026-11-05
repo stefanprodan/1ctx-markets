@@ -4,10 +4,10 @@
 import { expect, test } from "bun:test";
 import { readInstrument } from "../src/market/instruments.ts";
 import { markRead, TRACK_MS } from "../src/market/tracking.ts";
+import { createAlert, parseAlertsEdit } from "../src/operations/alerts.ts";
 import { eventsAnswer, parseEvents } from "../src/operations/events.ts";
 import { markets } from "../src/operations/markets.ts";
 import { parseQuote, quotePage } from "../src/operations/quote.ts";
-import { createRule, parseRules } from "../src/operations/rules.ts";
 import { readTargets } from "../src/operations/targets.ts";
 import { OPERATOR } from "../src/operations/who.ts";
 import { ruleEngine } from "../src/rules/evaluate.ts";
@@ -95,8 +95,13 @@ async function storeShare(t: Context, symbol: string) {
   return instrument;
 }
 
-function createArgs(symbol: string, condition: unknown) {
-  const args = parseRules({ action: "create", symbol, condition });
+function createArgs(symbol: string, when: string, after_earnings?: string) {
+  const args = parseAlertsEdit({
+    action: "create",
+    symbol,
+    when,
+    ...(after_earnings === undefined ? {} : { after_earnings }),
+  });
   if (args.action !== "create") throw new Error("expected create arguments");
   return args;
 }
@@ -138,21 +143,15 @@ test("rule creation refuses a dependency deleted while another symbol is fetchin
       return undefined;
     },
   });
-  let pending: ReturnType<typeof createRule> | undefined;
+  let pending: ReturnType<typeof createAlert> | undefined;
   try {
     await storeShare(t, "A");
     await storeShare(t, "B");
     expect(countRules(t.db)).toBe(0);
-    pending = createRule(
+    pending = createAlert(
       t.m,
       OPERATOR,
-      createArgs("US:A", {
-        all: [
-          { left: "price", op: ">", right: 1 },
-          { left: { field: "price", symbol: "US:B" }, op: ">", right: 1 },
-          { left: { field: "price", symbol: "C" }, op: ">", right: 1 },
-        ],
-      }),
+      createArgs("US:A", "price > 1 and price(US:B) > 1 and price(C) > 1"),
     );
     await held.arrived;
     const deleted = await api(t.m)(
@@ -311,16 +310,7 @@ test("an earnings-gated rule reports a calendar source failure instead of no eve
     const created = await drive(
       t.clock,
       pacedOf(t.m),
-      createRule(
-        t.m,
-        OPERATOR,
-        createArgs("US:NVDA", {
-          afterEarnings: "NVDA",
-          left: "price",
-          op: ">",
-          right: 1,
-        }),
-      ),
+      createAlert(t.m, OPERATOR, createArgs("US:NVDA", "price > 1", "NVDA")),
     );
     expectCalendarFailure(t);
     expect(countRules(t.db)).toBe(0);

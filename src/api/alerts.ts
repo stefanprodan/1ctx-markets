@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // The alert id is the cursor, and the same alerts must answer the same bytes.
 
-import { iso } from "../market/format.ts";
-import { alertItem } from "../operations/rules.ts";
-import type { Snapshot } from "../rules/evaluate.ts";
+import { storedTrigger, truncatedItem } from "../operations/alerts.ts";
 import {
   issuedAlertId,
   prunedAlertId,
@@ -50,7 +48,8 @@ type Page = {
   last: number;
 };
 
-// an alert too big alone goes out without its values, so the feed never stalls
+// a trigger too big alone goes out without its values, so the feed never
+// stalls; rows are read only as far as the page reaches
 export function alertPage(
   rows: readonly {
     id: number;
@@ -59,43 +58,31 @@ export function alertPage(
     snapshot: string;
   }[],
   flags: Record<string, true>,
+  log: Log,
 ): Page {
-  const items = rows.map((r) =>
-    JSON.stringify(
-      alertItem({
-        id: r.id,
-        firedAt: r.firedAt,
-        snapshot: JSON.parse(r.snapshot) as Snapshot,
-      }),
-    ),
-  );
   const shell = (more: boolean) =>
-    JSON.stringify({ ...flags, more, alerts: [] }).slice(0, -2);
+    JSON.stringify({ ...flags, more, triggers: [] }).slice(0, -2);
   const bytes = (s: string) => Buffer.byteLength(s);
-  let count = 0;
+  const items: string[] = [];
   let size = 0;
-  for (const item of items) {
-    const more = count + 1 < items.length;
-    const next = size + (count > 0 ? 1 : 0) + bytes(item);
+  for (const row of rows) {
+    const item = JSON.stringify(storedTrigger(row, log).item);
+    const more = items.length + 1 < rows.length;
+    const next = size + (items.length > 0 ? 1 : 0) + bytes(item);
     if (bytes(shell(more)) + next + 2 >= ALERT_PAGE_BYTES) break;
     size = next;
-    count++;
+    items.push(item);
   }
-  if (count === 0 && items.length > 0) {
+  const count = items.length;
+  if (count === 0 && rows.length > 0) {
     const r = rows[0]!;
-    const item = JSON.stringify({
-      id: r.id,
-      rule_id: r.ruleId,
-      fired_at: iso(r.firedAt),
-      truncated: true,
-    });
     return {
-      body: `${shell(items.length > 1)}${item}]}`,
+      body: `${shell(rows.length > 1)}${JSON.stringify(truncatedItem(r))}]}`,
       last: r.id,
     };
   }
   return {
-    body: `${shell(count < items.length)}${items.slice(0, count).join(",")}]}`,
+    body: `${shell(count < rows.length)}${items.join(",")}]}`,
     last: count > 0 ? rows[count - 1]!.id : 0,
   };
 }
@@ -107,7 +94,7 @@ export function alertsHandler(deps: {
   return async (req, owner) => {
     try {
       if ([...new URL(req.url).searchParams.keys()].length > 0) {
-        return refused("the alerts feed takes no query arguments");
+        return refused("the feed takes no query arguments");
       }
       const cursor = cursorOf(req);
       if (cursor === undefined) {
@@ -138,7 +125,7 @@ export function alertsHandler(deps: {
       const flags: Record<string, true> = {};
       if (gap) flags.retention_gap = true;
       if (reset) flags.cursor_reset = true;
-      const page = alertPage(rows, flags);
+      const page = alertPage(rows, flags, deps.log);
       return json(page.body, 200, {
         etag: etag(rows.length === 0 ? issued : page.last),
       });

@@ -430,7 +430,7 @@ describe("the routes", () => {
     expect(match("/profile")?.route.label).toBe("Profile");
     // Alerts' two tabs keep their tab in the address, lit under /alerts
     expect(match("/alerts")?.route.label).toBe("Alerts");
-    expect(match("/alerts/fired")?.route).toMatchObject({
+    expect(match("/alerts/history")?.route).toMatchObject({
       label: "Alerts",
       parent: "/alerts",
     });
@@ -2333,7 +2333,7 @@ describe("the instrument page", () => {
       fake({
         "DELETE /api/v1/instruments/US%3ANVDA": problem(409, {
           code: "conflict",
-          detail: "rules read this instrument; delete them first",
+          detail: "alerts read this instrument; delete them first",
           input: "US:NVDA",
           rules: [3],
         }),
@@ -2391,7 +2391,7 @@ describe("connect agents", () => {
       name: "claude-code",
       expiresInDays: 90,
       portfolio: "none",
-      rules: "none",
+      alerts: "none",
       profile: "none",
       analysis: "none",
     });
@@ -2424,7 +2424,7 @@ describe("connect agents", () => {
         limit: 5,
       }),
       [`PATCH ${KEYS_PATH}/codex-id`]: ok({
-        key: agentKey("codex", { portfolio: "read", rules: "write" }),
+        key: agentKey("codex", { portfolio: "read", alerts: "write" }),
       }),
       [`PATCH ${KEYS_PATH}/gone-id`]: problem(404, {
         code: "not_found",
@@ -2435,24 +2435,24 @@ describe("connect agents", () => {
     await s.loadKeys();
     await s.setKeyAccess("codex-id", {
       portfolio: "read",
-      rules: "write",
+      alerts: "write",
       profile: "read",
       analysis: "write",
     });
     expect(JSON.parse(f.asked.at(-1)!.init!.body as string)).toEqual({
       portfolio: "read",
-      rules: "write",
+      alerts: "write",
       profile: "read",
       analysis: "write",
     });
-    expect(s.keys.value?.map((k) => [k.name, k.portfolio, k.rules])).toEqual([
+    expect(s.keys.value?.map((k) => [k.name, k.portfolio, k.alerts])).toEqual([
       ["codex", "read", "write"],
       ["opencode", undefined, undefined],
     ]);
     await expect(
       s.setKeyAccess("gone-id", {
         portfolio: "none",
-        rules: "read",
+        alerts: "read",
         profile: "none",
         analysis: "none",
       }),
@@ -2462,20 +2462,18 @@ describe("connect agents", () => {
   test("a key says what it opens beyond market data", () => {
     expect(accessWords(agentKey("a"))).toBeNull();
     expect(
-      accessWords(agentKey("a", { portfolio: "none", rules: "none" })),
+      accessWords(agentKey("a", { portfolio: "none", alerts: "none" })),
     ).toBeNull();
-    expect(accessWords(agentKey("a", { rules: "read" }))).toBe(
-      "Reads alert rules",
-    );
+    expect(accessWords(agentKey("a", { alerts: "read" }))).toBe("Reads alerts");
     expect(
-      accessWords(agentKey("a", { portfolio: "write", rules: "write" })),
-    ).toBe("Writes portfolios · Writes alert rules");
+      accessWords(agentKey("a", { portfolio: "write", alerts: "write" })),
+    ).toBe("Writes portfolios · Writes alerts");
     expect(accessWords(agentKey("a", { portfolio: "read" }))).toBe(
       "Reads portfolios",
     );
     expect(
-      accessWords(agentKey("a", { rules: "read", profile: "write" })),
-    ).toBe("Reads alert rules · Writes the profile");
+      accessWords(agentKey("a", { alerts: "read", profile: "write" })),
+    ).toBe("Reads alerts · Writes the profile");
     expect(accessWords(agentKey("a", { analysis: "read" }))).toBe(
       "Reads analyses",
     );
@@ -2489,7 +2487,7 @@ describe("connect agents", () => {
     const changed = render(
       <KeyDetails
         store={s}
-        row={agentKey("codex", { portfolio: "read", rules: "write" })}
+        row={agentKey("codex", { portfolio: "read", alerts: "write" })}
         now={Date.parse("2026-10-28T12:00:00Z")}
         onDone={() => {}}
       />,
@@ -2497,7 +2495,7 @@ describe("connect agents", () => {
     for (const html of [made, changed]) {
       expect(html).toContain('role="dialog"');
       expect(html).toContain(">Portfolios<");
-      expect(html).toContain(">Alert rules<");
+      expect(html).toContain(">Alerts<");
       expect(html).toContain(">Profile<");
       expect(html).toContain(">Analysis<");
       expect(html.match(/>Read and write</g)).toHaveLength(4);

@@ -1,34 +1,40 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-// The Alerts page's words from fixed, made-up rules: no DOM, no network.
+// The Alerts page's words from fixed, made-up alerts: no DOM, no network.
 
 import { describe, expect, test } from "bun:test";
 import { STALE } from "../src/market/stale.ts";
 import { WAITING } from "../src/rules/evaluate.ts";
-import { FIELDS } from "../src/rules/format.ts";
+import { WHEN_FIELD_NAMES } from "../src/shared/when.ts";
 import {
+  ALERTS_PATH,
   type Alert,
   alertsStore,
-  type ComparisonValue,
+  HISTORY_PATH,
   type Listings,
-  type Node,
-  type Op,
-  RECENT_PATH,
-  RULES_PATH,
-  type Rule,
+  type Now,
   SEEN_PATH,
+  type Trigger,
 } from "../src/web/data/alerts.ts";
 import {
+  comparisonsOf,
+  conditionLines,
   FIELD_WORDS,
+  firedText,
+  inTile,
   nearOf,
   OP_WORDS,
+  rightNow,
   ruleSummary,
   type StateKey,
   sortRules,
   stateOf,
+  treeOf,
+  triggerText,
 } from "../src/web/views/Alerts.model.ts";
 
 const OWN = "XETRA:MADE";
+const AT = "2026-11-05T09:00:00Z";
 
 const L: Listings = {
   [OWN]: {
@@ -51,62 +57,42 @@ const L: Listings = {
   },
 };
 
-const price = (op: Op, right: number, symbol = OWN): Node => ({
-  left: { field: "price", symbol },
-  op,
-  right,
-});
-
-const reading = (
+const now = (
   field: string,
   value: number | null,
-  op: Op,
-  right: number | { field: string; value: number | null },
+  level: number | null,
   holds: boolean | null,
-): ComparisonValue => ({
-  left: { field, symbol: OWN, value, trade_time: null },
-  op,
-  right:
-    typeof right === "number"
-      ? right
-      : {
-          field: right.field,
-          symbol: OWN,
-          value: right.value,
-          trade_time: null,
-        },
+): Now => ({
+  field,
+  value,
+  level,
+  gap: value === null || level === null ? null : level - value,
   holds,
 });
 
-type Extra = Partial<Omit<Rule, "now">> & { now?: Partial<Rule["now"]> };
-
 let ids = 1;
-const ruleOf = (condition: Node, extra: Extra = {}): Rule => {
-  const { now, ...rest } = extra;
-  return {
-    id: ids++,
-    symbol: OWN,
-    condition,
-    note: null,
-    paused: null,
-    armed: true,
-    fired_session: null,
-    created_at: "2026-11-02T10:00:00Z",
-    last_result: "false",
-    last_evaluated_at: "2026-11-02T10:00:00Z",
-    ...rest,
-    now: { result: "false", values: [], reasons: [], ...now },
-  };
-};
+const alertOf = (when: string, extra: Partial<Alert> = {}): Alert => ({
+  id: ids++,
+  symbol: OWN,
+  when,
+  note: null,
+  state: "watching",
+  last_triggered_at: null,
+  gap_percent: null,
+  now: [],
+  ...extra,
+});
 
-describe("a rule in words", () => {
-  test("every field the rules take has a label", () => {
-    expect(Object.keys(FIELDS).filter((f) => !(f in FIELD_WORDS))).toEqual([]);
+describe("an alert in words", () => {
+  test("every field when takes has a label", () => {
+    expect(Object.keys(FIELD_WORDS).sort()).toEqual(
+      [...WHEN_FIELD_NAMES].sort(),
+    );
   });
 
   test("each op reads as its words", () => {
     const said = (["<", "<=", ">", ">="] as const).map((op) =>
-      ruleSummary(ruleOf(price(op, 80)), L),
+      ruleSummary(alertOf(`price ${op} 80`), L),
     );
     expect(said).toEqual([
       "Price below 80.00 EUR",
@@ -118,42 +104,39 @@ describe("a rule in words", () => {
   });
 
   test("another listing is named by its ticker, an index without its caret", () => {
-    expect(ruleSummary(ruleOf(price(">", 30, "US:^VIX")), L)).toBe(
-      "VIX above 30",
+    expect(ruleSummary(alertOf("price(US:^VIX) > 30"), L)).toBe("VIX above 30");
+    expect(ruleSummary(alertOf("rsi14(US:ZZZ) < 30"), L)).toBe(
+      "ZZZ RSI below 30",
     );
-    const rsi: Node = {
-      left: { field: "rsi14", symbol: "US:ZZZ" },
-      op: "<",
-      right: 30,
-    };
-    expect(ruleSummary(ruleOf(rsi), L)).toBe("ZZZ RSI below 30");
+    expect(ruleSummary(alertOf("relative_return_1m(US:ZZZ) < -5"), L)).toBe(
+      "1-month return vs ZZZ below -5 pts",
+    );
   });
 
   test("a flat group reads inline, a nested one by its count", () => {
-    const rsi: Node = {
-      left: { field: "rsi14", symbol: OWN },
-      op: "<",
-      right: 40,
-    };
-    expect(ruleSummary(ruleOf({ all: [price("<=", 165), rsi] }), L)).toBe(
+    expect(ruleSummary(alertOf("price <= 165 and rsi14 < 40"), L)).toBe(
       "Price at or below 165.00 EUR and RSI below 40",
     );
-    expect(ruleSummary(ruleOf({ any: [price("<", 150), rsi] }), L)).toBe(
+    expect(ruleSummary(alertOf("price < 150 or rsi14 < 40"), L)).toBe(
       "Price below 150.00 EUR or RSI below 40",
     );
-    const nested = { all: [{ any: [price("<", 150), rsi] }, price(">", 100)] };
-    expect(ruleSummary(ruleOf(nested), L)).toBe("All of 3 conditions");
-    expect(ruleSummary(ruleOf({ any: [nested, rsi] }), L)).toBe(
-      "Any of 4 conditions",
-    );
+    const nested = "(price < 150 or rsi14 < 40) and price > 100";
+    expect(ruleSummary(alertOf(nested), L)).toBe("All of 3 conditions");
+    expect(
+      ruleSummary(
+        alertOf("(price < 150 and price > 100) or (rsi14 < 40 and rsi14 > 10)"),
+        L,
+      ),
+    ).toBe("Any of 4 conditions");
   });
 
   test("an earnings gate leads the condition", () => {
-    const gated = ruleOf(price(">", 200), {
+    const gated = alertOf("price > 200", {
       after_earnings: {
         symbol: OWN,
         fiscal_year: 2026,
         fiscal_quarter: 3,
+        date: null,
         status: null,
       },
     });
@@ -161,137 +144,121 @@ describe("a rule in words", () => {
       "After MADE's Q3 2026 results: price above 200.00 EUR",
     );
   });
-});
 
-describe("how near a rule is", () => {
-  test("a price from its level, in percent of the price", () => {
-    const level = ruleOf(price("<=", 95), {
-      now: { values: [reading("price", 100, "<=", 95, false)] },
-    });
-    expect(nearOf(level, L).distance).toBe(5);
-    const average = ruleOf(price("<", 0), {
-      now: {
-        values: [
-          reading("price", 100, "<", { field: "sma200", value: 90 }, false),
-        ],
-      },
-    });
-    expect(nearOf(average, L).distance).toBe(10);
+  test("an unreadable condition shows as its text", () => {
+    expect(treeOf("price <")).toBeNull();
+    expect(ruleSummary(alertOf("price <"), L)).toBe("price <");
   });
 
-  test("met is no distance at all", () => {
-    const met = ruleOf(price("<=", 105), {
-      now: {
-        result: "true",
-        values: [reading("price", 100, "<=", 105, true)],
-      },
-    });
-    expect(nearOf(met, L)).toMatchObject({ distance: 0, holds: 1, of: 1 });
-  });
-
-  test("all of: a reading left that is not a price has no distance", () => {
-    const all = ruleOf(
-      { all: [price("<", 105), price("<", 0)] },
-      {
-        now: {
-          values: [
-            reading("price", 100, "<", 105, true),
-            reading("rsi14", 45, "<", 40, false),
-          ],
-        },
-      },
+  test("each comparison's line holds its place in now", () => {
+    const n = treeOf("price < 150 and (rsi14 < 40 or price > sma200)")!;
+    expect(conditionLines(n, OWN, L)).toEqual([
+      { text: "All of", depth: 0, at: null },
+      { text: "Price below 150.00 EUR", depth: 1, at: 0 },
+      { text: "Any of", depth: 1, at: null },
+      { text: "RSI below 40", depth: 2, at: 1 },
+      { text: "Price above 200-day average", depth: 2, at: 2 },
+    ]);
+    const c = comparisonsOf("price > sma200")[0]!;
+    expect(rightNow(c, now("price", 100, 90, true), OWN, L)).toBe(
+      "200-day average 90.00 EUR",
     );
-    expect(nearOf(all, L)).toMatchObject({ distance: null, holds: 1, of: 2 });
-  });
-
-  test("any of: the nearest price", () => {
-    const any = ruleOf(
-      { any: [price("<", 95), price(">", 110)] },
-      {
-        now: {
-          values: [
-            reading("price", 100, "<", 95, false),
-            reading("price", 100, ">", 110, false),
-            reading("rsi14", 45, "<", 40, false),
-          ],
-        },
-      },
-    );
-    expect(nearOf(any, L).distance).toBe(5);
-  });
-
-  test("a group nested in another takes its own nearest or farthest", () => {
-    // price 105: the any's nearer side is 110, 4.8% away
-    const inner = ruleOf(
-      { all: [price(">=", 100), { any: [price("<=", 50), price(">=", 110)] }] },
-      {
-        now: {
-          values: [
-            reading("price", 105, ">=", 100, true),
-            reading("price", 105, "<=", 50, false),
-            reading("price", 105, ">=", 110, false),
-          ],
-        },
-      },
-    );
-    expect(nearOf(inner, L).distance).toBeCloseTo(4.76, 2);
-    // an any met through one side counts as met
-    const met = ruleOf(
-      { all: [{ any: [price("<=", 50), price(">=", 100)] }, price(">=", 110)] },
-      {
-        now: {
-          values: [
-            reading("price", 105, "<=", 50, false),
-            reading("price", 105, ">=", 100, true),
-            reading("price", 105, ">=", 110, false),
-          ],
-        },
-      },
-    );
-    expect(nearOf(met, L).distance).toBeCloseTo(4.76, 2);
-  });
-
-  test("no percent for readings near zero that share the price's unit", () => {
-    for (const field of ["macd", "macdHistogram", "atr14"]) {
-      const rule = ruleOf(
-        { left: { field, symbol: OWN }, op: ">", right: 0 },
-        { now: { values: [reading(field, -0.5, ">", 0, false)] } },
-      );
-      expect([field, nearOf(rule, L).distance]).toEqual([field, null]);
-    }
   });
 });
 
-describe("a rule's state", () => {
-  test("names each state from the pause and the evaluation now", () => {
-    const cases: [Extra, StateKey][] = [
-      [{ paused: "split" }, "split"],
-      [{ paused: "manual" }, "paused"],
+describe("what triggered, in words", () => {
+  const trigger = (when: string, values: Trigger["values"]): Trigger => ({
+    id: 1,
+    alert_id: 1,
+    symbol: OWN,
+    when,
+    note: null,
+    triggered_at: AT,
+    values,
+  });
+
+  test("a level and a field read from the values keyed as when", () => {
+    const c = comparisonsOf("price <= 80")[0]!;
+    expect(firedText(c, { price: 79.5 }, OWN, L)).toBe(
+      "Price fell to 79.50 EUR, at or below 80.00 EUR",
+    );
+    expect(
+      triggerText(
+        trigger("price > sma200 and price(US:^VIX) > 30", {
+          price: 101,
+          sma200: 99,
+          "price(US:^VIX)": 31,
+        }),
+        L,
+      ),
+    ).toBe(
+      "Price rose to 101.00 EUR, above 200-day average (99.00 EUR); VIX rose to 31, above 30",
+    );
+  });
+});
+
+describe("how near an alert is", () => {
+  test("the distance is the server's gap_percent", () => {
+    const a = alertOf("price <= 95", {
+      gap_percent: 5,
+      now: [now("price", 100, 95, false)],
+    });
+    expect(nearOf(a, L)).toEqual({
+      distance: 5,
+      met: false,
+      holds: 0,
+      of: 1,
+      shown: { text: "100.00 EUR", field: "price" },
+    });
+  });
+
+  test("counts the comparisons met, and names a reading not a price", () => {
+    const a = alertOf("price < 105 and rsi14 < 40", {
+      now: [now("price", 100, 105, true), now("rsi14", 45, 40, false)],
+    });
+    expect(nearOf(a, L)).toMatchObject({ distance: null, holds: 1, of: 2 });
+    const rsi = alertOf("rsi14 < 40", { now: [now("rsi14", 34.5, 40, true)] });
+    expect(nearOf(rsi, L).shown?.text).toBe("RSI 34.5");
+  });
+});
+
+describe("an alert's state", () => {
+  test("is the server's state in the page's words", () => {
+    const cases: [Partial<Alert>, StateKey][] = [
+      [{ state: "split_paused" }, "split"],
+      [{ state: "paused" }, "paused"],
       [
-        {
-          now: {
-            result: "unknown",
-            reasons: [`price of ${OWN}: quote overdue`],
-          },
-        },
+        { state: "unknown", reasons: [`price of ${OWN}: quote overdue`] },
         "stale",
       ],
       [
-        {
-          now: {
-            result: "unknown",
-            reasons: [`price of ${OWN}: not stored`],
-          },
-        },
+        { state: "unknown", reasons: [`price of ${OWN}: not stored`] },
         "unknown",
       ],
-      [{ now: { result: "false", reasons: [WAITING] } }, "earnings"],
-      [{ armed: true, now: { result: "true" } }, "holds"],
-      [{ armed: false, now: { result: "true" } }, "fired"],
-      [{ now: { result: "false" } }, "watching"],
+      [{ state: "waiting_for_earnings", reasons: [WAITING] }, "earnings"],
+      [
+        {
+          state: "watching",
+          gap_percent: 0,
+          now: [{ field: "price", value: 1, level: 1, gap: 0, holds: true }],
+        },
+        "holds",
+      ],
+      // a gap rounded to 0 is not met while the condition is false
+      [
+        {
+          state: "watching",
+          gap_percent: 0,
+          now: [{ field: "price", value: 1, level: 1, gap: 0, holds: false }],
+        },
+        "watching",
+      ],
+      [{ state: "triggered", gap_percent: 0 }, "fired"],
+      [{ state: "watching", gap_percent: 3 }, "watching"],
+      [{ state: "watching" }, "watching"],
     ];
     for (const [extra, state] of cases) {
-      expect([state, stateOf(ruleOf(price("<", 1), extra))]).toEqual([
+      expect([state, stateOf(alertOf("price < 1", extra))]).toEqual([
         state,
         state,
       ]);
@@ -314,37 +281,61 @@ describe("a rule's state", () => {
     ];
     const of = (r: string) =>
       stateOf(
-        ruleOf(price("<", 1), {
-          now: { result: "unknown", reasons: [`price of ${OWN}: ${r}`] },
+        alertOf("price < 1", {
+          state: "unknown",
+          reasons: [`price of ${OWN}: ${r}`],
         }),
       );
     expect(fresh.map(of)).toEqual(fresh.map(() => "stale"));
     expect(other.map(of)).toEqual(other.map(() => "unknown"));
   });
 
-  test("sorts the nearest first, a symbol's rules together, paused last", () => {
-    const at = (symbol: string, d: number, paused: Rule["paused"] = null) =>
-      ruleOf(price("<", 100 - d, symbol), {
+  test("tiles filter on the server's state, gap and the week's triggers", () => {
+    const near = alertOf("price < 1", { gap_percent: 4 });
+    const far = alertOf("price < 1", { gap_percent: 6 });
+    const paused = alertOf("price < 1", { state: "paused", gap_percent: 1 });
+    const t = Date.parse(AT);
+    const fired: Trigger[] = [
+      {
+        id: 1,
+        alert_id: far.id,
+        symbol: OWN,
+        when: "price < 1",
+        note: null,
+        triggered_at: AT,
+        values: { price: 0.5 },
+      },
+    ];
+    const tile = (key: Parameters<typeof inTile>[0]) =>
+      [near, far, paused]
+        .filter((a) => inTile(key, a, fired, t))
+        .map((a) => a.id);
+    expect(tile("near")).toEqual([near.id]);
+    expect(tile("paused")).toEqual([paused.id]);
+    expect(tile("fired")).toEqual([far.id]);
+    expect(tile("all")).toHaveLength(3);
+  });
+
+  test("sorts the nearest first, a symbol's alerts together, paused last", () => {
+    const at = (
+      symbol: string,
+      d: number,
+      state: Alert["state"] = "watching",
+    ) =>
+      alertOf(`price < ${100 - d}`, {
         symbol,
-        paused,
+        state,
         note: `${symbol} ${d}`,
-        now: {
-          values: [
-            {
-              ...reading("price", 100, "<", 100 - d, false),
-              left: { field: "price", symbol, value: 100, trade_time: null },
-            },
-          ],
-        },
+        gap_percent: d,
       });
-    const rules = [
+    const alerts = [
       at(OWN, 10),
       at("US:ZZZ", 2),
-      at("US:ZZZ", 0.5, "manual"),
+      at("US:ZZZ", 0.5, "paused"),
       at(OWN, 1),
-      at("US:ZZZ", 3, "split"),
+      at("US:ZZZ", 3, "split_paused"),
     ];
-    expect(sortRules(rules).map((r) => r.note)).toEqual([
+    expect(sortRules(alerts).map((r) => r.note)).toEqual([
       `${OWN} 1`,
       `${OWN} 10`,
       "US:ZZZ 2",
@@ -360,40 +351,114 @@ describe("the alerts store", () => {
     const asked: {
       path: string;
       method?: string;
+      body?: unknown;
       answer: (v: unknown) => void;
     }[] = [];
-    const call = (<T>(path: string, method?: string) =>
+    const call = (<T>(path: string, method?: string, body?: unknown) =>
       new Promise<T>((resolve) => {
-        asked.push({ path, method, answer: (v) => resolve(v as T) });
+        asked.push({ path, method, body, answer: (v) => resolve(v as T) });
       })) as Parameters<typeof alertsStore>[0];
     return { asked, call };
   };
   const never = () => () => {};
-  const alert = (id: number): Alert => ({
+  const trigger = (id: number): Trigger => ({
     id,
-    rule_id: 1,
-    fired_at: "2026-11-05T09:00:00Z",
+    alert_id: 1,
+    triggered_at: AT,
     symbol: OWN,
     note: null,
-    condition: price("<", 1),
-    values: [],
+    when: "price < 1",
+    values: { price: 0.5 },
   });
   const settle = () => new Promise((r) => setTimeout(r, 0));
+
+  test("reads every page of alerts and the first of the history", async () => {
+    const f = fake();
+    const store = alertsStore(f.call, () => 1, never);
+    const load = store.loadAll();
+    await settle();
+    f.asked
+      .find((a) => a.path === ALERTS_PATH)!
+      .answer({
+        alerts: [alertOf("price < 1")],
+        instruments: {},
+        next_page_token: "7",
+      });
+    f.asked
+      .find((a) => a.path === HISTORY_PATH)!
+      .answer({
+        triggers: [trigger(3)],
+        instruments: {},
+        next_page_token: "3",
+      });
+    await settle();
+    const second = f.asked.find(
+      (a) => a.path === `${ALERTS_PATH}?page_token=7`,
+    )!;
+    second.answer({ alerts: [alertOf("price < 2")], instruments: L });
+    await load;
+    expect(store.alerts.value?.map((a) => a.when)).toEqual([
+      "price < 1",
+      "price < 2",
+    ]);
+    expect(store.next.value).toBe("3");
+    expect(store.listings.value).toEqual(L);
+    const more = store.loadMore();
+    f.asked.at(-1)!.answer({ triggers: [trigger(2)], instruments: {} });
+    expect(f.asked.at(-1)!.path).toBe(`${HISTORY_PATH}?page_token=3`);
+    await more;
+    expect(store.history.value?.map((t) => t.id)).toEqual([3, 2]);
+    expect(store.next.value).toBeNull();
+  });
+
+  test("writes go to an alert's path, a new one as when", async () => {
+    const f = fake();
+    const store = alertsStore(f.call, () => 1, never);
+    const writes = [
+      store.add(OWN, true, 80, " near the top "),
+      store.add(OWN, false, 70, ""),
+      store.pause(4, true),
+      store.remove(4),
+    ];
+    await settle();
+    expect(f.asked.map((a) => [a.method, a.path, a.body])).toEqual([
+      [
+        "POST",
+        ALERTS_PATH,
+        { symbol: OWN, when: "price >= 80", note: "near the top" },
+      ],
+      ["POST", ALERTS_PATH, { symbol: OWN, when: "price <= 70" }],
+      ["PATCH", `${ALERTS_PATH}/4`, { paused: true }],
+      ["DELETE", `${ALERTS_PATH}/4`, undefined],
+    ]);
+    for (const a of f.asked.splice(0)) a.answer({});
+    await settle();
+    // each write reloads; answer them so the promises end
+    for (const a of f.asked) {
+      a.answer(
+        a.path === HISTORY_PATH
+          ? { triggers: [], instruments: {} }
+          : { alerts: [], instruments: {} },
+      );
+    }
+    expect(await Promise.all(writes)).toEqual([null, null, null, null]);
+  });
 
   test("an older page answered after a sign-out lands nowhere", async () => {
     const f = fake();
     let session = 1;
     const store = alertsStore(f.call, () => session, never);
     const first = store.loadAll();
+    await settle();
     f.asked
-      .find((a) => a.path === RULES_PATH)!
-      .answer({ rules: [], instruments: {} });
+      .find((a) => a.path === ALERTS_PATH)!
+      .answer({ alerts: [], instruments: {} });
     f.asked
-      .find((a) => a.path === RECENT_PATH)!
+      .find((a) => a.path === HISTORY_PATH)!
       .answer({
-        alerts: [alert(3)],
+        triggers: [trigger(3)],
         instruments: {},
-        next: 3,
+        next_page_token: "3",
       });
     await first;
     const more = store.loadMore();
@@ -401,9 +466,9 @@ describe("the alerts store", () => {
     store.signedOut();
     f.asked
       .at(-1)!
-      .answer({ alerts: [alert(2), alert(1)], instruments: {}, next: null });
+      .answer({ triggers: [trigger(2), trigger(1)], instruments: {} });
     await more;
-    expect(store.alerts.value).toBeNull();
+    expect(store.history.value).toBeNull();
     expect(store.next.value).toBeNull();
   });
 
@@ -411,7 +476,7 @@ describe("the alerts store", () => {
     const f = fake();
     const store = alertsStore(f.call, () => 1, never);
     store.seen.value = { seen: 1, unseen: 1 };
-    store.alerts.value = [alert(2)];
+    store.history.value = [trigger(2)];
     const read = store.loadSeen();
     const mark = store.markSeen();
     await settle();

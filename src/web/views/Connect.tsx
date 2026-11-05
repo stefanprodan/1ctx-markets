@@ -125,17 +125,17 @@ function AccessPick({
   );
 }
 
-// what a key opens beyond market data: portfolios, rules with their
-// alerts, the owner's profile and the shared analysis
+// what a key opens beyond market data: portfolios, alerts with their
+// history, the owner's profile and the shared analysis
 export function AccessPicks({
   portfolio,
-  rules,
+  alerts,
   profile,
   analysis,
   busy,
 }: {
   portfolio: Signal<KeyAccess>;
-  rules: Signal<KeyAccess>;
+  alerts: Signal<KeyAccess>;
   profile: Signal<KeyAccess>;
   analysis: Signal<KeyAccess>;
   busy: boolean;
@@ -143,7 +143,7 @@ export function AccessPicks({
   return (
     <>
       <AccessPick label="Portfolios" value={portfolio} busy={busy} />
-      <AccessPick label="Alert rules" value={rules} busy={busy} />
+      <AccessPick label="Alerts" value={alerts} busy={busy} />
       <AccessPick label="Profile" value={profile} busy={busy} />
       <AccessPick label="Analysis" value={analysis} busy={busy} />
     </>
@@ -168,7 +168,7 @@ export function NewKey({
   const name = useSignal("");
   const days = useSignal<number | null>(null);
   const portfolio = useSignal<KeyAccess>("none");
-  const rules = useSignal<KeyAccess>("none");
+  const alerts = useSignal<KeyAccess>("none");
   const profile = useSignal<KeyAccess>("none");
   const analysis = useSignal<KeyAccess>("none");
   const busy = useSignal(false);
@@ -184,7 +184,7 @@ export function NewKey({
     try {
       const made = await store.createKey(name.value, days.value, {
         portfolio: portfolio.value,
-        rules: rules.value,
+        alerts: alerts.value,
         profile: profile.value,
         analysis: analysis.value,
       });
@@ -270,7 +270,7 @@ export function NewKey({
           </div>
           <AccessPicks
             portfolio={portfolio}
-            rules={rules}
+            alerts={alerts}
             profile={profile}
             analysis={analysis}
             busy={busy.value}
@@ -304,7 +304,7 @@ export function KeyDetails({
   onDone: (revoked: boolean) => void;
 }) {
   const portfolio = useSignal<KeyAccess>(row.portfolio ?? "none");
-  const rules = useSignal<KeyAccess>(row.rules ?? "none");
+  const alerts = useSignal<KeyAccess>(row.alerts ?? "none");
   const profile = useSignal<KeyAccess>(row.profile ?? "none");
   const analysis = useSignal<KeyAccess>(row.analysis ?? "none");
   const busy = useSignal(false);
@@ -321,13 +321,13 @@ export function KeyDetails({
   }, [leaving.value]);
   const next: KeyAccesses = {
     portfolio: portfolio.value,
-    rules: rules.value,
+    alerts: alerts.value,
     profile: profile.value,
     analysis: analysis.value,
   };
   const same =
     next.portfolio === (row.portfolio ?? "none") &&
-    next.rules === (row.rules ?? "none") &&
+    next.alerts === (row.alerts ?? "none") &&
     next.profile === (row.profile ?? "none") &&
     next.analysis === (row.analysis ?? "none");
   const submit = async (event: Event) => {
@@ -444,7 +444,7 @@ export function KeyDetails({
       <form id={form} class="connect-form" onSubmit={submit}>
         <AccessPicks
           portfolio={portfolio}
-          rules={rules}
+          alerts={alerts}
           profile={profile}
           analysis={analysis}
           busy={busy.value || !own}

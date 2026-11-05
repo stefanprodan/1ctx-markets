@@ -48,6 +48,7 @@ import { m0042 } from "./0042-earnings-fiscal.ts";
 import { m0043 } from "./0043-quote-close.ts";
 import { m0044 } from "./0044-alerts-seen.ts";
 import { m0045 } from "./0045-rules-fired-session.ts";
+import { m0046 } from "./0046-key-alerts.ts";
 
 export const MIGRATIONS: readonly Migration[] = [
   m0001,
@@ -95,4 +96,5 @@ export const MIGRATIONS: readonly Migration[] = [
   m0043,
   m0044,
   m0045,
+  m0046,
 ];

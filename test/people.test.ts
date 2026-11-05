@@ -1228,7 +1228,7 @@ describe("a write re-reads its caller", () => {
       user: "ana",
       credential: { kind: "key", id: key.id },
       portfolio: "write",
-      rules: "write",
+      alerts: "write",
       profile: "write",
       analysis: "none",
     };
@@ -1430,7 +1430,7 @@ describe("the CLI", () => {
       await expect(run("revoke", "shared")).rejects.toThrow(
         "no key named shared",
       );
-      await expect(run("set", theirs, "--rules", "read")).rejects.toThrow(
+      await expect(run("set", theirs, "--alerts", "read")).rejects.toThrow(
         `no key named ${theirs}`,
       );
       await run("add", "shared");

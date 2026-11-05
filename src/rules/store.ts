@@ -7,8 +7,8 @@ import type { Db } from "../storage/db/index.ts";
 import { type Condition, instrumentsOf, readCondition } from "./format.ts";
 
 export const ALERTS_KEPT_DAYS = 90;
-// a page's alerts, newest first; the feed stays the poll's
-export const RECENT_ALERTS = 50;
+// a page of alerts or of their history; the feed pages by bytes
+export const ALERTS_PAGE = 50;
 
 export type Result = "true" | "false" | "unknown";
 export type PauseReason = "manual" | "split";
@@ -52,10 +52,16 @@ export function readRule(db: Db, owner: string, id: number): RuleRow | null {
   return r === null ? null : row(r);
 }
 
-type RulesFilter = { from?: number; limit?: number; active?: boolean };
+type RulesFilter = {
+  from?: number;
+  limit?: number;
+  active?: boolean;
+  instrument?: string;
+};
 
 const rulesQuery = (owned: boolean, f: RulesFilter) =>
   `${SELECT} where id >= ?1 ${owned ? "and owner = ?3" : ""}
+   ${f.instrument === undefined ? "" : "and instrument = ?4"}
    ${f.active ? "and paused is null" : ""} order by id limit ?2`;
 
 // the owner's rules
@@ -64,9 +70,15 @@ export function readRules(
   owner: string,
   options: RulesFilter = {},
 ): RuleRow[] {
+  const args: [number, number, string, ...string[]] = [
+    options.from ?? 0,
+    options.limit ?? -1,
+    owner,
+  ];
+  if (options.instrument !== undefined) args.push(options.instrument);
   return db
-    .query<Raw, [number, number, string]>(rulesQuery(true, options))
-    .all(options.from ?? 0, options.limit ?? -1, owner)
+    .query<Raw, typeof args>(rulesQuery(true, options))
+    .all(...args)
     .map(row);
 }
 
@@ -106,6 +118,24 @@ export function deleteRule(db: Db, owner: string, id: number): boolean {
     db.query("delete from rules where id = ? and owner = ?").run(id, owner)
       .changes > 0
   );
+}
+
+// a new condition is a new question: armed, never fired, no split pause
+export function updateRule(
+  db: Db,
+  id: number,
+  change: { condition?: string; note?: string | null },
+): void {
+  if (change.condition !== undefined) {
+    db.query(
+      `update rules set condition = ?, armed = 1, fired_session = null,
+         last_result = null, last_evaluated_at = null,
+         paused = nullif(paused, 'split') where id = ?`,
+    ).run(change.condition, id);
+  }
+  if (change.note !== undefined) {
+    db.query("update rules set note = ? where id = ?").run(change.note, id);
+  }
 }
 
 export function setPaused(
@@ -219,20 +249,61 @@ export function pruneAlerts(db: Db, now: number): number {
   return db.query("delete from alerts where fired_at < ?").run(before).changes;
 }
 
-// newest first, for a page; the feed reads oldest first behind its cursor
-export function readAlertsBefore(
+export type HistoryFilter = {
+  before?: number | null;
+  rule?: number | null;
+  // the alert's own symbol, as its snapshot holds it, so a deleted
+  // alert's history still reads by it
+  instrument?: string | null;
+  since?: number | null;
+};
+
+// newest first; the feed reads oldest first behind its cursor
+export function readHistory(
   db: Db,
   owner: string,
-  before: number | null,
   limit: number,
+  f: HistoryFilter = {},
 ): AlertRow[] {
   return db
-    .query<AlertRow, [string, number | null, number]>(
+    .query<
+      AlertRow,
+      [
+        string,
+        number | null,
+        number,
+        number | null,
+        string | null,
+        number | null,
+      ]
+    >(
       `select id, owner, rule_id as ruleId, fired_at as firedAt, snapshot
        from alerts where owner = ?1 and (?2 is null or id < ?2)
+         and (?4 is null or rule_id = ?4)
+         and (?5 is null or json_extract(snapshot, '$.rule.symbol') = ?5)
+         and (?6 is null or fired_at >= ?6)
        order by id desc limit ?3`,
     )
-    .all(owner, before, limit);
+    .all(
+      owner,
+      f.before ?? null,
+      limit,
+      f.rule ?? null,
+      f.instrument ?? null,
+      f.since ?? null,
+    );
+}
+
+// when each of the owner's rules last fired, among the kept alerts
+export function lastFired(db: Db, owner: string): Map<number, number> {
+  return new Map(
+    db
+      .query<{ rule: number; at: number }, [string]>(
+        "select rule_id as rule, max(fired_at) as at from alerts where owner = ? group by rule_id",
+      )
+      .all(owner)
+      .map((r) => [r.rule, r.at]),
+  );
 }
 
 // the last alert the person's browser showed, and how many came after it

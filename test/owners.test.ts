@@ -10,6 +10,7 @@ import { saveDashboard } from "../src/admin/dashboard.ts";
 import { alertsHandler } from "../src/api/alerts.ts";
 import { PREFIX } from "../src/api/http.ts";
 import { match, type Route, routes } from "../src/api/routes.ts";
+import { createAlert, parseAlertsEdit } from "../src/operations/alerts.ts";
 import { type Markets, markets } from "../src/operations/markets.ts";
 import {
   addFundTrade,
@@ -26,7 +27,6 @@ import {
   setTradeState,
   updateFund,
 } from "../src/operations/portfolio.ts";
-import { createRule, parseRules } from "../src/operations/rules.ts";
 import { NO_WORLD } from "../src/operations/track.ts";
 import { ADMIN, OPERATOR, type Who } from "../src/operations/who.ts";
 import { fundPrices } from "../src/portfolios/funds.ts";
@@ -71,7 +71,7 @@ const as = (user: string, name: string): Who => ({
   user,
   credential: { kind: "key", id: name },
   portfolio: "write",
-  rules: "write",
+  alerts: "write",
   profile: "write",
   analysis: "none",
 });
@@ -221,26 +221,34 @@ async function fill(m: Markets, who: Who, mark: string): Promise<Owned> {
     ],
   });
   expect(saved.status).toBe(200);
-  const args = parseRules({
+  const args = parseAlertsEdit({
     action: "create",
     symbol: "US:AAA",
-    condition: { left: "price", op: "<", right: 1 },
+    when: "price < 1",
     note: `${mark} rule`,
   });
   if (args.action !== "create") throw new Error("not a create");
-  const rule = ok(await createRule(m, owner, args)).rule.id;
-  const own = parseRules({
+  const rule = ok(await createAlert(m, owner, args)).alert.id;
+  const own = parseAlertsEdit({
     action: "create",
     symbol: sym,
-    condition: { left: "price", op: "<", right: 1 },
+    when: "price < 1",
   });
   if (own.action !== "create") throw new Error("not a create");
-  ok(await createRule(m, owner, own));
+  ok(await createAlert(m, owner, own));
   await m.writer.write((db) =>
     insertAlert(
       db,
       { id: rule, owner },
-      { rule: { id: rule, symbol: "US:AAA", note: mark }, values: [] },
+      {
+        rule: {
+          id: rule,
+          symbol: "US:AAA",
+          condition: JSON.parse(PRICE_BELOW),
+          note: mark,
+        },
+        values: [],
+      },
       m.clock.now(),
     ),
   );
@@ -321,7 +329,7 @@ const routeList = (m: Markets): Route[] =>
 // only the admin reaches today; and the instrument reads, whose rows say
 // what tracks a listing from every person's rules and dashboards
 const owned = (r: Route) =>
-  /^(portfolio|rules|profile):/.test(r.scope) ||
+  /^(portfolio|alerts|profile):/.test(r.scope) ||
   r.path.startsWith("/dashboard") ||
   r.path.startsWith("/keys") ||
   r.path === "/screener" ||
@@ -343,23 +351,20 @@ type Case = { path: string; body?: unknown; missing?: boolean };
 function cases(other: Owned, mine: Owned): Record<string, Case> {
   const csv = "Item,Amount,Currency\nSpare,10,EUR\n";
   return {
-    "GET /rules": { path: "/rules" },
-    "POST /rules": {
-      path: "/rules",
-      body: {
-        symbol: "US:AAA",
-        condition: { left: "price", op: ">", right: 1000 },
-      },
+    "GET /alerts": { path: "/alerts" },
+    "POST /alerts": {
+      path: "/alerts",
+      body: { symbol: "US:AAA", when: "price > 1000" },
     },
-    "GET /rules/{id}": { path: `/rules/${other.rule}`, missing: true },
-    "PATCH /rules/{id}": {
-      path: `/rules/${other.rule}`,
+    "GET /alerts/{id}": { path: `/alerts/${other.rule}`, missing: true },
+    "PATCH /alerts/{id}": {
+      path: `/alerts/${other.rule}`,
       body: { paused: true },
       missing: true,
     },
-    "DELETE /rules/{id}": { path: `/rules/${other.rule}`, missing: true },
-    "GET /alerts": { path: "/alerts" },
-    "GET /alerts/recent": { path: "/alerts/recent" },
+    "DELETE /alerts/{id}": { path: `/alerts/${other.rule}`, missing: true },
+    "GET /alerts/feed": { path: "/alerts/feed" },
+    "GET /alerts/history": { path: "/alerts/history" },
     "GET /portfolios": { path: "/portfolios" },
     "POST /portfolios": { path: "/portfolios", body: { name: "Coins" } },
     "GET /portfolios/{id}": {
@@ -612,10 +617,15 @@ function toolCases(
         },
       },
     ],
-    rules: [
-      { args: { action: "list" } },
+    alerts: [
+      { args: {} },
+      { args: { history: true } },
+      { args: { id: other.rule }, missing: true },
+    ],
+    alerts_edit: [
+      { args: { action: "pause", id: other.rule }, missing: true },
       {
-        args: { action: "pause", id: other.rule, paused: true },
+        args: { action: "update", id: other.rule, note: "x" },
         missing: true,
       },
       { args: { action: "delete", id: other.rule }, missing: true },
@@ -667,7 +677,7 @@ describe("two people on one server", () => {
       const who = actor === OPERATOR ? t.op : t.second;
       const table = toolCases(t.ids[actor]!, t.ids[victim]!);
       const list = tools(t.m).filter((x) =>
-        /^(portfolio|profile|rules)/.test(x.name),
+        /^(portfolio|profile|alerts)/.test(x.name),
       );
       expect(list.map((x) => x.name).filter((n) => !table[n])).toEqual([]);
       const before = rowsOf(t.db, victim);
@@ -736,7 +746,7 @@ test("deleting an instrument another person's rule reads is refused without nami
   res = await del();
   expect(res.status).toBe(409);
   expect(await res.json()).toMatchObject({
-    detail: "another person's rules read this instrument",
+    detail: "another person's alerts read this instrument",
     rules: [],
   });
   await t.m.writer.write((db) => deleteRule(db, SECOND, t.ids[SECOND]!.rule));
@@ -751,7 +761,7 @@ test("each key reaches its own person's rows over MCP and REST, per request", ()
     addUser(t.db, SECOND);
     const access = {
       portfolio: "write",
-      rules: "write",
+      alerts: "write",
       profile: "write",
     } as const;
     const mine = seedKey(t, "op-agent", access);
@@ -787,7 +797,7 @@ test("each key reaches its own person's rows over MCP and REST, per request", ()
   }));
 
 describe("alerts per person", () => {
-  test("alerts kept after their rule is deleted stay their owner's", async () => {
+  test("triggers kept after their alert is deleted stay their owner's", async () => {
     const t = await two();
     const rule = t.ids[SECOND]!.rule;
     expect(await t.m.writer.write((db) => deleteRule(db, SECOND, rule))).toBe(
@@ -798,11 +808,11 @@ describe("alerts per person", () => {
     const read = async (owner: string) =>
       (
         (await (
-          await feed(new Request("http://localhost/api/v1/alerts"), owner)
-        ).json()) as { alerts: { rule_id: number; note: string }[] }
-      ).alerts;
+          await feed(new Request("http://localhost/api/v1/alerts/feed"), owner)
+        ).json()) as { triggers: { alert_id: number; note: string }[] }
+      ).triggers;
     expect(await read(SECOND)).toEqual([
-      expect.objectContaining({ rule_id: rule, note: "zzsec" }),
+      expect.objectContaining({ alert_id: rule, note: "zzsec" }),
     ]);
     expect((await read(OPERATOR)).map((a) => a.note)).toEqual(["zzop"]);
   });
@@ -815,7 +825,15 @@ describe("alerts per person", () => {
       insertAlert(
         db,
         { id: 1, owner },
-        { rule: { id: 1, symbol: "US:AAA", note: null }, values: [] },
+        {
+          rule: {
+            id: 1,
+            symbol: "US:AAA",
+            condition: JSON.parse(PRICE_BELOW),
+            note: null,
+          },
+          values: [],
+        },
         at,
       );
     const old = NOW - 100 * DAY_MS;
@@ -826,16 +844,19 @@ describe("alerts per person", () => {
     const feed = alertsHandler({ db, log: silent });
     const get = (owner: string, cursor: number) =>
       feed(
-        new Request("http://localhost/api/v1/alerts", {
+        new Request("http://localhost/api/v1/alerts/feed", {
           headers: { "if-none-match": `W/"alerts-${cursor}"` },
         }),
         owner,
       );
     const body = async (res: Response) =>
-      (await res.json()) as { retention_gap?: true; alerts: { id: number }[] };
+      (await res.json()) as {
+        retention_gap?: true;
+        triggers: { id: number }[];
+      };
     const seen = await body(await get(OPERATOR, a));
     expect(seen.retention_gap).toBeUndefined();
-    expect(seen.alerts.map((x) => x.id)).toEqual([b]);
+    expect(seen.triggers.map((x) => x.id)).toEqual([b]);
     // the second person's first alert is pruned: theirs reads as lost,
     // the operator's never
     expect(pruneAlerts(db, NOW)).toBe(1);
@@ -853,7 +874,15 @@ test("the alerts feed answers alike whatever another person's alert count", asyn
     insertAlert(
       db,
       { id: 1, owner },
-      { rule: { id: 1, symbol: "US:AAA", note: null }, values: [] },
+      {
+        rule: {
+          id: 1,
+          symbol: "US:AAA",
+          condition: JSON.parse(PRICE_BELOW),
+          note: null,
+        },
+        values: [],
+      },
       NOW,
     );
   const mine = fire(SECOND);
@@ -861,7 +890,7 @@ test("the alerts feed answers alike whatever another person's alert count", asyn
   const feed = alertsHandler({ db, log: silent });
   const answer = async (cursor: number) => {
     const res = await feed(
-      new Request("http://localhost/api/v1/alerts", {
+      new Request("http://localhost/api/v1/alerts/feed", {
         headers: { "if-none-match": `W/"alerts-${cursor}"` },
       }),
       SECOND,
@@ -1077,6 +1106,11 @@ describe("the migration that gives every row an owner", () => {
               delete o.past_of;
               delete o.analysis;
               delete o.fired_session;
+              // a later migration renames the key's rules access
+              if (x === "keys" && "alerts" in o) {
+                o.rules = o.alerts;
+                delete o.alerts;
+              }
               return o;
             }),
         ]),

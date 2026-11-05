@@ -51,7 +51,7 @@ export const UI_PATHS = [
   "/portfolios/shared/:user",
   "/portfolios/shared/:user/:id",
   "/alerts",
-  "/alerts/fired",
+  "/alerts/history",
   "/profile",
 ] as const;
 
@@ -110,7 +110,7 @@ export const whoOf = (c: Caller | null, login: Login | null = null): Who =>
           user: c.key.user,
           credential: { kind: "key", id: c.key.id },
           portfolio: c.key.portfolio,
-          rules: c.key.rules,
+          alerts: c.key.alerts,
           profile: c.key.profile,
           analysis: c.key.analysis,
         };
@@ -177,8 +177,8 @@ export function router(deps: RouterDeps): Handle {
       const held =
         area === "portfolio"
           ? c.key.portfolio
-          : area === "rules"
-            ? c.key.rules
+          : area === "alerts"
+            ? c.key.alerts
             : area === "profile"
               ? c.key.profile
               : area === "analysis"
@@ -254,7 +254,7 @@ export function router(deps: RouterDeps): Handle {
           clientId: who.name,
           scopes: [
             `portfolio:${who.portfolio}`,
-            `rules:${who.rules}`,
+            `alerts:${who.alerts}`,
             `profile:${who.profile}`,
             `analysis:${who.analysis}`,
           ],

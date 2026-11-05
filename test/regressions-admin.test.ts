@@ -9,13 +9,13 @@ import { readQuote } from "../src/market/quotes.ts";
 import { JOBS, quoteStale, STALE } from "../src/market/stale.ts";
 import { markRead } from "../src/market/tracking.ts";
 import { fromWallTime } from "../src/market/zone.ts";
+import { createAlert } from "../src/operations/alerts.ts";
 import { type Markets, markets } from "../src/operations/markets.ts";
 import { researchTargets } from "../src/operations/research.ts";
-import { createRule } from "../src/operations/rules.ts";
 import { readTargets } from "../src/operations/targets.ts";
 import { OPERATOR } from "../src/operations/who.ts";
 import { ruleEngine } from "../src/rules/evaluate.ts";
-import { parseCondition } from "../src/rules/format.ts";
+import { parseWhenCondition } from "../src/rules/format.ts";
 import { readAlertsAfter, readRule } from "../src/rules/store.ts";
 import { DAY_MS } from "../src/runtime/clock.ts";
 import { silent } from "../src/runtime/log.ts";
@@ -239,17 +239,18 @@ async function repairedRule(
   repair: () => void,
 ) {
   const created = await run(
-    createRule(m, OPERATOR, {
+    createAlert(m, OPERATOR, {
       action: "create",
       symbol: i.id,
-      condition: parseCondition({ left: "price", op: ">", right: "sma50" }),
+      condition: parseWhenCondition("price > sma50", null),
       note: null,
     }),
   );
   expect(created).not.toHaveProperty("error");
   if ("error" in created) throw new Error("rule was not created");
-  expect(created.evaluation).toMatchObject({ result: "false", reasons: [] });
-  expect(created.rule.armed).toBe(true);
+  expect(created.alert).toMatchObject({ state: "watching" });
+  expect(created.alert.now[0].holds).toBe(false);
+  expect(created.triggered).toBeNull();
   expect(readAlertsAfter(m.db, OPERATOR, 0, 10)).toEqual([]);
   const quote = readQuote(m.db, i.id)!;
   const previous = readSignals(m.db, i.id, m.clock.now(), m.quoteEveryMs)!;
@@ -263,7 +264,9 @@ async function repairedRule(
     );
     m.rules.evaluate(db, [i.id], now);
   });
-  expect(readRule(m.db, OPERATOR, created.rule.id)?.lastResult).toBe("unknown");
+  expect(readRule(m.db, OPERATOR, created.alert.id)?.lastResult).toBe(
+    "unknown",
+  );
   expect(
     readSignals(m.db, i.id, m.clock.now(), m.quoteEveryMs)!.stale.live,
   ).toEqual([STALE.barsFailed]);
@@ -286,8 +289,8 @@ async function repairedRule(
   expect(current.daily.live!.sma50).not.toBe(previous.daily.live!.sma50);
   expect(current.daily.live!.sma50).toBeLessThan(quote.price);
 
-  expect(readRule(m.db, OPERATOR, created.rule.id)?.lastResult).toBe("true");
-  expect(readRule(m.db, OPERATOR, created.rule.id)?.armed).toBe(false);
+  expect(readRule(m.db, OPERATOR, created.alert.id)?.lastResult).toBe("true");
+  expect(readRule(m.db, OPERATOR, created.alert.id)?.armed).toBe(false);
   expect(readAlertsAfter(m.db, OPERATOR, 0, 10)).toHaveLength(1);
 }
 

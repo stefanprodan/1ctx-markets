@@ -88,7 +88,7 @@ src/sources/                what every source shares, each provider under it
   massive/                  news
   edgar/                    SEC filings, their flags, events' filed_at
 src/signals/                daily, weekly, live and relative signals
-src/rules/                  rule conditions, evaluation, alerts
+src/rules/                  alert conditions, evaluation, triggers
 src/portfolios/             trades, positions, owner-priced funds, holdings, rates, CSV
 src/document/               what the profile and the analysis share: edits, the fence, checks, revisions
 src/profile/                the owner's profile: revisions, edits, the read, Markdown
@@ -139,7 +139,7 @@ the same commit as the code that changes a rule.
 | `docs/edgar.md` | SEC EDGAR: its contact line, its call limit, the ticker map, kept forms and their checks, foreign filers, the daily pass, the filing flags, events' `filed_at` |
 | `docs/research.md` | Finnhub research and earnings events, Massive news, their keys and budgets, the `research` and `events` tools, the research route's contents |
 | `docs/signals.md` | the daily and weekly signals, final and live rows, reading, relative return |
-| `docs/rules.md` | rule conditions, validation, evaluation, the earnings gate, split pauses, the `rules` tool |
+| `docs/alerts.md` | price alerts: the `when` text and its stored tree, validation, evaluation once a session, state and how close, the earnings gate, split pauses, history, the `alerts` and `alerts_edit` tools |
 | `docs/portfolios.md` | portfolios, brokers, trades and positions, funds the owner prices and their prices, dry powder, the holdings arithmetic, currencies and rates, the `portfolio` tool, CSV import and export, privacy |
 | `docs/profile.md` | the owner's profile: one Markdown document, its text and size checks, revisions and their eviction, edits, the fenced read, the `profile` and `profile_edit` tools, its routes and the Markdown drawn for the web UI |
 | `docs/analysis.md` | the analysis per symbol: shared by everyone and about the symbol only, the rules it shares with the profile, the author, the price move since it was written, the fenced read, the `analysis` and `analysis_edit` tools, the pointer in `quote` and `research`, its routes |

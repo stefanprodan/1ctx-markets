@@ -107,13 +107,13 @@ describe("agent keys", () => {
         });
         expect([path, res.status < 300]).toEqual([path, true]);
       }
-      // rules and the alerts feed are opened by the admin, as holdings are
+      // alerts and their feed are opened by the admin, as holdings are
       for (const path of [
         "/status",
         "/instruments",
         "/keys",
-        "/rules",
         "/alerts",
+        "/alerts/feed",
       ]) {
         const res = await fetch(`${t.url}${PREFIX}${path}`, {
           headers: as(token),
@@ -143,7 +143,7 @@ describe("agent keys", () => {
       const refused = await mcp(t, made.token);
       expect(refused.status).toBe(401);
       expect(refused.headers.get("www-authenticate")).toBeNull();
-      const read = await fetch(`${t.url}${PREFIX}/rules`, {
+      const read = await fetch(`${t.url}${PREFIX}/alerts`, {
         headers: as(made.token),
       });
       expect(read.status).toBe(401);

@@ -54,8 +54,8 @@ export const HELP = `\x1b[1m1ctx-markets\x1b[0m - a self-hosted market data serv
   1ctx-markets admin ... delete <id>
   1ctx-markets keys [--listen <host:port>] [--data <dir>] list
   1ctx-markets keys ... add <name> [--expires 30|90|365] [--portfolio <access>]
-                        [--rules <access>] [--profile <access>]
-  1ctx-markets keys ... set <name> [--portfolio <access>] [--rules <access>]
+                        [--alerts <access>] [--profile <access>]
+  1ctx-markets keys ... set <name> [--portfolio <access>] [--alerts <access>]
                         [--profile <access>]
   1ctx-markets keys ... revoke <name>|<id>
   1ctx-markets users [--listen <host:port>] [--data <dir>] list
@@ -84,8 +84,8 @@ export const HELP = `\x1b[1m1ctx-markets\x1b[0m - a self-hosted market data serv
   list                   every person's agent keys, never their tokens
   add                    make an agent key and print it once; it never
                          expires unless --expires gives days, and reaches
-                         no portfolio, rule or profile unless --portfolio,
-                         --rules or --profile says so; access: none, read
+                         no portfolio, alerts or profile unless --portfolio,
+                         --alerts or --profile says so; access: none, read
                          or write
   set                    change one of the operator's agent keys' access
                          by its name; its token stays

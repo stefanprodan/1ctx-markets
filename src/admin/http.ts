@@ -782,12 +782,12 @@ export async function deleteOne(
   if (done.rules.length > 0) {
     return problem(
       "conflict",
-      "rules read this instrument; delete them first",
+      "alerts read this instrument; delete them first",
       { input, rules: done.rules },
     );
   }
   if (done.others > 0) {
-    return problem("conflict", "another person's rules read this instrument", {
+    return problem("conflict", "another person's alerts read this instrument", {
       input,
       rules: [],
     });

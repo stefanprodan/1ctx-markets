@@ -15,9 +15,9 @@ It works for any exchange Yahoo Finance carries: shares, ETFs,
 indices, futures, currencies and crypto. Nothing is preset: no ticker
 list and no default market, benchmark or currency. An instrument is
 fetched the first time an agent names it and kept in sync while agents
-read it, a rule watches it or a portfolio holds it.
+read it, an alert watches it or a portfolio holds it.
 
-It holds market data, the price rules agents set, the owner's
+It holds market data, the price alerts agents set, the owner's
 portfolios of trades, the owner's profile and agents' dated analyses of
 symbols, nothing else: no orders,
 broker connections, dividends or tax, and it makes no model calls.
@@ -29,7 +29,8 @@ broker connections, dividends or tax, and it makes no model calls.
   benchmark, `search` for listings, `movers` for the day's moves and
   average crossings, `screen` to filter and sort a list of symbols on a
   fixed set of fields, `research` and `events` for fundamentals,
-  analysts, earnings and news, `rules` for price alerts, and `portfolio`
+  analysts, earnings and news, `alerts` for price alerts, with
+  `alerts_edit` to set them, and `portfolio`
   for trades and holdings, with `portfolio_trade`, `portfolio_cash`,
   `portfolio_bond`, `portfolio_fund` and `portfolio_setup` to change
   them, listed only to a key allowed to write, and `profile` for how the
@@ -52,12 +53,13 @@ broker connections, dividends or tax, and it makes no model calls.
   Yahoo: the ten largest holdings, asset split and sectors of an ETF or
   mutual fund Yahoo lists, on any exchange. Beside Finnhub's metrics, from Yahoo: an
   ADR's P/E, PEG and EPS per US share.
-- **Rules and alerts.** Agents set conditions on a symbol's price or
-  signals, other symbols included: price below 200, RSI under 30 while
-  above the 200-day average, the VIX above 30, a drop after the next
-  earnings report. Each rule fires one alert each time its condition
-  turns true. `GET /api/v1/alerts` is a feed a scheduled job can poll,
-  answering 304 when nothing is new.
+- **Price alerts.** Agents set conditions as short text on a symbol's
+  price or signals, other symbols included: `price < 200`,
+  `rsi14 < 30 and price > sma200`, `price(^VIX) > 30`, a drop after the
+  next earnings report. An alert triggers when its condition turns
+  true, at most once a trading session, and every read says how close
+  each one is. `GET /api/v1/alerts/feed` is a feed a scheduled job can
+  poll, answering 304 when nothing is new.
 - **Portfolios.** Trades by broker, funds bought and sold as trades and
   priced by hand, and positions (cash, bonds) entered in the web UI or
   by an agent with the portfolio tools, valued live: average cost,
@@ -186,8 +188,8 @@ curl -H "Authorization: Bearer $(cat ~/.1ctx-markets/secrets/user-admin.key)" \
 To give an agent a key of its own, which can be revoked without
 touching the others, make one on the web UI's Connect agents page, or
 with `1ctx-markets keys add <name>`. An agent's key reads market data,
-and price rules, portfolios, the profile and the analyses only as far
-as the admin allows (`--rules`, `--portfolio`, `--profile` and
+and price alerts, portfolios, the profile and the analyses only as far
+as the admin allows (`--alerts`, `--portfolio`, `--profile` and
 `--analysis`: none, read or write,
 changed later with `keys set`), but never opens the admin's routes:
 keys, status, the instrument list, and an instrument's refetch and

@@ -189,12 +189,13 @@ describe("the admin scope", () => {
         const own = await fetch(`${url}${path}`, { headers: as(admin) });
         expect([path, own.status]).toEqual([path, 200]);
       }
-      for (const path of ["/api/v1/rules", "/api/v1/openapi.json"]) {
+      for (const path of ["/api/v1/alerts", "/api/v1/openapi.json"]) {
         const res = await fetch(`${url}${path}`, { headers: as(admin) });
         expect([path, res.status]).toEqual([path, 200]);
       }
       expect(
-        (await fetch(`${url}/api/v1/alerts`, { headers: as(admin) })).status,
+        (await fetch(`${url}/api/v1/alerts/feed`, { headers: as(admin) }))
+          .status,
       ).toBe(204);
       for (const path of [
         "/api/v1/nothing",

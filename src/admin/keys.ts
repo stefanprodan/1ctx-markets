@@ -11,6 +11,8 @@ import { ArgError, fields } from "../operations/args.ts";
 import type { Markets } from "../operations/markets.ts";
 import type { Who } from "../operations/who.ts";
 import {
+  ALERTS_ACCESS,
+  type AlertsAccess,
   ANALYSIS_ACCESS,
   type AnalysisAccess,
   allKeys,
@@ -30,8 +32,6 @@ import {
   type PortfolioAccess,
   PROFILE_ACCESS,
   type ProfileAccess,
-  RULES_ACCESS,
-  type RulesAccess,
   revokeKey,
   setKeyAccess,
 } from "../server/access.ts";
@@ -52,7 +52,7 @@ export const keyItem = (k: KeyRow, names: ReadonlyMap<string, string>) => ({
   last_used_at: k.lastUsedAt === null ? null : iso(k.lastUsedAt),
   expires_at: k.expiresAt === null ? null : iso(k.expiresAt),
   portfolio: k.portfolio,
-  rules: k.rules,
+  alerts: k.alerts,
   profile: k.profile,
   analysis: k.analysis,
 });
@@ -86,11 +86,11 @@ function portfolioOf(value: unknown): PortfolioAccess {
   return value as PortfolioAccess;
 }
 
-function rulesOf(value: unknown): RulesAccess {
-  if (!(RULES_ACCESS as readonly unknown[]).includes(value)) {
-    throw new ArgError(`rules is ${RULES_ACCESS.join(", ")}`);
+function alertsOf(value: unknown): AlertsAccess {
+  if (!(ALERTS_ACCESS as readonly unknown[]).includes(value)) {
+    throw new ArgError(`alerts is ${ALERTS_ACCESS.join(", ")}`);
   }
-  return value as RulesAccess;
+  return value as AlertsAccess;
 }
 
 function profileOf(value: unknown): ProfileAccess {
@@ -111,7 +111,7 @@ function parseCreate(body: unknown): {
   name: string;
   days: KeyDays | null;
   portfolio: PortfolioAccess;
-  rules: RulesAccess;
+  alerts: AlertsAccess;
   profile: ProfileAccess;
   analysis: AnalysisAccess;
 } {
@@ -119,7 +119,7 @@ function parseCreate(body: unknown): {
     "name",
     "expiresInDays",
     "portfolio",
-    "rules",
+    "alerts",
     "profile",
     "analysis",
   ]);
@@ -136,29 +136,29 @@ function parseCreate(body: unknown): {
     name: b.name,
     days: days as KeyDays | null,
     portfolio: portfolioOf(b.portfolio ?? "none"),
-    rules: rulesOf(b.rules ?? "none"),
+    alerts: alertsOf(b.alerts ?? "none"),
     profile: profileOf(b.profile ?? "none"),
     analysis: analysisOf(b.analysis ?? "none"),
   };
 }
 
 function parseAccess(body: unknown): KeyAccess {
-  const b = fields(body, ["portfolio", "rules", "profile", "analysis"]);
+  const b = fields(body, ["portfolio", "alerts", "profile", "analysis"]);
   if (
     b.portfolio === undefined &&
-    b.rules === undefined &&
+    b.alerts === undefined &&
     b.profile === undefined &&
     b.analysis === undefined
   ) {
     throw new ArgError(
-      "give portfolio, rules, profile, analysis or more than one",
+      "give portfolio, alerts, profile, analysis or more than one",
     );
   }
   return {
     ...(b.portfolio === undefined
       ? {}
       : { portfolio: portfolioOf(b.portfolio) }),
-    ...(b.rules === undefined ? {} : { rules: rulesOf(b.rules) }),
+    ...(b.alerts === undefined ? {} : { alerts: alertsOf(b.alerts) }),
     ...(b.profile === undefined ? {} : { profile: profileOf(b.profile) }),
     ...(b.analysis === undefined ? {} : { analysis: analysisOf(b.analysis) }),
   };
@@ -199,7 +199,7 @@ export async function setOne(d: KeysDeps, who: Who, id: string, body: unknown) {
     key: key.id,
     key_name: key.name,
     portfolio: key.portfolio,
-    rules: key.rules,
+    alerts: key.alerts,
     profile: key.profile,
     analysis: key.analysis,
   });

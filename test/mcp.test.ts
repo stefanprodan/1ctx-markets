@@ -34,8 +34,9 @@ describe("the MCP endpoint", () => {
         "screen",
         "research",
         "events",
-        // the seeded agent key writes rules and has no portfolio access
-        "rules",
+        // the seeded agent key writes alerts and has no portfolio access
+        "alerts",
+        "alerts_edit",
       ];
       expect((await client.listTools()).tools.map((t) => t.name)).toEqual(
         names,

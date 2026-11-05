@@ -28,8 +28,8 @@ const NAMED: readonly [string, string, boolean][] = [
   ["portfolios", "portfolios", true],
   ["trades", "trades", true],
   ["profile", "profile", false],
-  ["rules", "alert rules", true],
-  ["alerts", "alerts", true],
+  ["rules", "alerts", true],
+  ["alerts", "triggered alerts", true],
   ["keys", "keys", true],
 ];
 

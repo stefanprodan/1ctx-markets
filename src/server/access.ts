@@ -34,12 +34,12 @@ export const RESERVED_NAMES: readonly string[] = ["web", "admin"];
 
 export const isKeyId = (value: string): boolean => ID.test(value);
 
-// what a key may do with portfolios, with rules and their alerts, with the
+// what a key may do with portfolios, with alerts and their history, with the
 // owner's profile and with the shared analysis; none unless the admin says
 export const PORTFOLIO_ACCESS = ["none", "read", "write"] as const;
 export type PortfolioAccess = (typeof PORTFOLIO_ACCESS)[number];
-export const RULES_ACCESS = ["none", "read", "write"] as const;
-export type RulesAccess = (typeof RULES_ACCESS)[number];
+export const ALERTS_ACCESS = ["none", "read", "write"] as const;
+export type AlertsAccess = (typeof ALERTS_ACCESS)[number];
 export const PROFILE_ACCESS = ["none", "read", "write"] as const;
 export type ProfileAccess = (typeof PROFILE_ACCESS)[number];
 export const ANALYSIS_ACCESS = ["none", "read", "write"] as const;
@@ -55,7 +55,7 @@ export type KeyRow = {
   expiresAt: number | null;
   lastUsedAt: number | null;
   portfolio: PortfolioAccess;
-  rules: RulesAccess;
+  alerts: AlertsAccess;
   profile: ProfileAccess;
   analysis: AnalysisAccess;
 };
@@ -70,13 +70,13 @@ type Raw = {
   expires_at: number | null;
   last_used_at: number | null;
   portfolio: PortfolioAccess;
-  rules: RulesAccess;
+  alerts: AlertsAccess;
   profile: ProfileAccess;
   analysis: AnalysisAccess;
 };
 
 const COLUMNS =
-  "id, user_id, name, created_at, expires_at, last_used_at, portfolio, rules, profile, analysis";
+  "id, user_id, name, created_at, expires_at, last_used_at, portfolio, alerts, profile, analysis";
 
 const rowOf = (raw: Raw): KeyRow => ({
   id: raw.id,
@@ -86,7 +86,7 @@ const rowOf = (raw: Raw): KeyRow => ({
   expiresAt: raw.expires_at,
   lastUsedAt: raw.last_used_at,
   portfolio: raw.portfolio,
-  rules: raw.rules,
+  alerts: raw.alerts,
   profile: raw.profile,
   analysis: raw.analysis,
 });
@@ -125,7 +125,7 @@ export function createKey(
     name: string;
     days: KeyDays | null;
     portfolio?: PortfolioAccess;
-    rules?: RulesAccess;
+    alerts?: AlertsAccess;
     profile?: ProfileAccess;
     analysis?: AnalysisAccess;
   },
@@ -147,7 +147,7 @@ export function createKey(
     expiresAt: args.days === null ? null : now + args.days * DAY_MS,
     lastUsedAt: null,
     portfolio: args.portfolio ?? "none",
-    rules: args.rules ?? "none",
+    alerts: args.alerts ?? "none",
     profile: args.profile ?? "none",
     analysis: args.analysis ?? "none",
   };
@@ -155,7 +155,7 @@ export function createKey(
   db.query(
     `insert into keys
        (id, user_id, name, token_hash, created_at, expires_at, portfolio,
-        rules, profile, analysis)
+        alerts, profile, analysis)
      values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     key.id,
@@ -165,7 +165,7 @@ export function createKey(
     key.createdAt,
     key.expiresAt,
     key.portfolio,
-    key.rules,
+    key.alerts,
     key.profile,
     key.analysis,
   );
@@ -174,7 +174,7 @@ export function createKey(
 
 export type KeyAccess = {
   portfolio?: PortfolioAccess;
-  rules?: RulesAccess;
+  alerts?: AlertsAccess;
   profile?: ProfileAccess;
   analysis?: AnalysisAccess;
 };
@@ -199,13 +199,13 @@ export function setKeyAccess(
       ]
     >(
       `update keys set portfolio = coalesce(?, portfolio),
-         rules = coalesce(?, rules), profile = coalesce(?, profile),
+         alerts = coalesce(?, alerts), profile = coalesce(?, profile),
          analysis = coalesce(?, analysis)
        where id = ? and user_id = ? returning ${COLUMNS}`,
     )
     .get(
       change.portfolio ?? null,
-      change.rules ?? null,
+      change.alerts ?? null,
       change.profile ?? null,
       change.analysis ?? null,
       id,

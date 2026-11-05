@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
-import { parseRules } from "../src/operations/rules.ts";
+import { parseAlertsEdit, parseAlertsRead } from "../src/operations/alerts.ts";
 import {
   parseBondTool,
   parseCashTool,
@@ -169,54 +169,24 @@ describe("write arguments sent as text", () => {
     }
   });
 
-  test("a rule's id, paused and condition as text", () => {
-    expect(parseRules({ action: "pause", id: "4", paused: "true" })).toEqual(
-      parseRules({ action: "pause", id: 4, paused: true }),
+  test("an alert's id and history as text", () => {
+    expect(parseAlertsEdit({ action: "pause", id: "4" })).toEqual(
+      parseAlertsEdit({ action: "pause", id: 4 }),
     );
-    expect(parseRules({ action: "delete", id: "4" })).toEqual(
-      parseRules({ action: "delete", id: 4 }),
+    expect(parseAlertsEdit({ action: "delete", id: "4" })).toEqual(
+      parseAlertsEdit({ action: "delete", id: 4 }),
     );
-    const condition = {
-      all: [
-        { left: "rsi14", op: "<", right: 30 },
-        { left: "price", op: ">", right: "sma200" },
-      ],
-    };
-    const native = parseRules({ action: "create", symbol: "AAA", condition });
-    expect(
-      parseRules({
-        action: "create",
-        symbol: "AAA",
-        condition: JSON.stringify(condition),
-      }),
-    ).toEqual(native);
-    expect(
-      parseRules({
-        action: "create",
-        symbol: "AAA",
-        condition: {
-          all: [
-            { left: "rsi14", op: "<", right: "30" },
-            { left: "price", op: ">", right: "sma200" },
-          ],
-        },
-      }),
-    ).toEqual(native);
+    expect(parseAlertsRead({ history: "true", id: "4" })).toEqual(
+      parseAlertsRead({ history: true, id: 4 }),
+    );
   });
 
-  test("a condition as text over the size limit is refused before parsing", () => {
-    const deep = `${'{"all":['.repeat(5000)}{"left":"price","op":">","right":1}${"]}".repeat(5000)}`;
-    expect(() =>
-      parseRules({ action: "create", symbol: "AAA", condition: deep }),
-    ).toThrow("condition is longer than");
-  });
-
-  test("a rule's id that is not one is refused", () => {
-    expect(() => parseRules({ action: "delete", id: "4a" })).toThrow(
-      "id must be a rule id",
+  test("an alert's id that is not one is refused", () => {
+    expect(() => parseAlertsEdit({ action: "delete", id: "4a" })).toThrow(
+      "id must be an alert id",
     );
-    expect(() => parseRules({ action: "pause", id: 4, paused: "yes" })).toThrow(
-      "paused must be true or false",
+    expect(() => parseAlertsRead({ history: "yes" })).toThrow(
+      "history must be true or false",
     );
   });
 });

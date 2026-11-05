@@ -625,6 +625,28 @@ describe("migrations", () => {
     db.close();
   });
 
+  test("keys keep their rules access, named alerts", () => {
+    const db = new Database(":memory:", { strict: true });
+    const clock = fakeClock();
+    const at = MIGRATIONS.findIndex((m) => m.id === "0046-key-alerts");
+    migrate(db, clock, MIGRATIONS.slice(0, at));
+    db.exec(`
+      insert into keys (id, user_id, name, token_hash, created_at, rules)
+      values ('madeupkey001', '${OPERATOR}', 'reader', 'hash-1', 0, 'read'),
+        ('madeupkey002', '${OPERATOR}', 'writer', 'hash-2', 0, 'write');
+    `);
+    migrate(db, clock, MIGRATIONS.slice(0, at + 1));
+    expect(
+      db.query("select name, alerts from keys order by name").all(),
+    ).toEqual([
+      { name: "reader", alerts: "read" },
+      { name: "writer", alerts: "write" },
+    ]);
+    expect(() => db.exec("update keys set alerts = 'all'")).toThrow();
+    expect(() => db.exec("select rules from keys")).toThrow();
+    db.close();
+  });
+
   test("open applies the shipped list to a new database", () => {
     const { db, migrations } = open(":memory:", fakeClock());
     expect(migrations).toEqual(MIGRATIONS.map((m) => m.id));

@@ -45,7 +45,7 @@ function whoFrom(
     user,
     credential,
     portfolio: scoped(info.scopes, "portfolio"),
-    rules: scoped(info.scopes, "rules"),
+    alerts: scoped(info.scopes, "alerts"),
     profile: scoped(info.scopes, "profile"),
     analysis: scoped(info.scopes, "analysis"),
   };

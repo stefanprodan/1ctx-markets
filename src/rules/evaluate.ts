@@ -28,6 +28,7 @@ import {
   type Op,
   type Operand,
   PRICE_LEVEL,
+  publicField,
   splitSensitive,
   writeCondition,
 } from "./format.ts";
@@ -173,7 +174,7 @@ export function reader(db: Db, now: number, quoteEveryMs: number) {
     read(o: Operand): Read {
       const i = instrument(o.symbol);
       const def = FIELDS[o.field]!;
-      const of = `${o.field} of ${o.symbol}`;
+      const of = `${publicField(o.field)} of ${o.symbol}`;
       if (i === null)
         return { value: null, times: [], reasons: [`${of}: not stored`] };
       if (def.from === "quote") {

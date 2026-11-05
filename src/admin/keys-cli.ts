@@ -6,11 +6,11 @@
 // named by its id alone, since two people may name keys alike.
 
 import {
+  ALERTS_ACCESS,
   ANALYSIS_ACCESS,
   KEY_DAYS,
   PORTFOLIO_ACCESS,
   PROFILE_ACCESS,
-  RULES_ACCESS,
 } from "../server/access.ts";
 import {
   type AdminCliDeps,
@@ -21,12 +21,12 @@ import {
 
 const USAGE = `usage: 1ctx-markets keys [--listen <host:port>] [--data <dir>] <command>
   list                            every person's agent keys, never tokens
-  add <name> [--expires <days>] [--portfolio <access>] [--rules <access>]
+  add <name> [--expires <days>] [--portfolio <access>] [--alerts <access>]
       [--profile <access>] [--analysis <access>]
                                   make a key and print it once; days:
                                   ${KEY_DAYS.join(", ")} (default: never);
                                   access: none, read or write (default: none)
-  set <name> [--portfolio <access>] [--rules <access>] [--profile <access>]
+  set <name> [--portfolio <access>] [--alerts <access>] [--profile <access>]
       [--analysis <access>]       change an operator's key's access; its
                                   token stays
   revoke <name>|<id>              revoke an operator's key by name, or
@@ -40,7 +40,7 @@ type Parsed = {
   name: string | null;
   days: number | null;
   portfolio: string | null;
-  rules: string | null;
+  alerts: string | null;
   profile: string | null;
   analysis: string | null;
 };
@@ -50,7 +50,7 @@ function parse(argv: string[]): Parsed {
   let data: string | null = null;
   let days: number | null = null;
   let portfolio: string | null = null;
-  let rules: string | null = null;
+  let alerts: string | null = null;
   let profile: string | null = null;
   let analysis: string | null = null;
   const positional: string[] = [];
@@ -74,11 +74,11 @@ function parse(argv: string[]): Parsed {
         throw new AdminError(`--portfolio is ${PORTFOLIO_ACCESS.join(", ")}`);
       }
       portfolio = value;
-    } else if (arg === "--rules") {
-      if (!(RULES_ACCESS as readonly string[]).includes(value)) {
-        throw new AdminError(`--rules is ${RULES_ACCESS.join(", ")}`);
+    } else if (arg === "--alerts") {
+      if (!(ALERTS_ACCESS as readonly string[]).includes(value)) {
+        throw new AdminError(`--alerts is ${ALERTS_ACCESS.join(", ")}`);
       }
-      rules = value;
+      alerts = value;
     } else if (arg === "--profile") {
       if (!(PROFILE_ACCESS as readonly string[]).includes(value)) {
         throw new AdminError(`--profile is ${PROFILE_ACCESS.join(", ")}`);
@@ -99,7 +99,7 @@ function parse(argv: string[]): Parsed {
   if (days !== null && command !== "add") throw new AdminError(USAGE);
   const access =
     portfolio !== null ||
-    rules !== null ||
+    alerts !== null ||
     profile !== null ||
     analysis !== null;
   if (access && command !== "add" && command !== "set") {
@@ -113,7 +113,7 @@ function parse(argv: string[]): Parsed {
     name: rest[0] ?? null,
     days,
     portfolio,
-    rules,
+    alerts,
     profile,
     analysis,
   };
@@ -176,7 +176,7 @@ export async function runKeys(
         name: p.name,
         expiresInDays: p.days,
         ...(p.portfolio === null ? {} : { portfolio: p.portfolio }),
-        ...(p.rules === null ? {} : { rules: p.rules }),
+        ...(p.alerts === null ? {} : { alerts: p.alerts }),
         ...(p.profile === null ? {} : { profile: p.profile }),
         ...(p.analysis === null ? {} : { analysis: p.analysis }),
       }),
@@ -198,7 +198,7 @@ export async function runKeys(
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         ...(p.portfolio === null ? {} : { portfolio: p.portfolio }),
-        ...(p.rules === null ? {} : { rules: p.rules }),
+        ...(p.alerts === null ? {} : { alerts: p.alerts }),
         ...(p.profile === null ? {} : { profile: p.profile }),
         ...(p.analysis === null ? {} : { analysis: p.analysis }),
       }),
