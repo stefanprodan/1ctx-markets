@@ -63,7 +63,11 @@ export type Written = { rows: number; changedFrom: string | null };
 export const earliest = (a: string | null, b: string | null) =>
   a === null ? b : b === null ? a : a < b ? a : b;
 
-type Stored = Omit<Bar, "final"> & { final: number; pointClose: number };
+type Stored = Omit<Bar, "final"> & {
+  final: number;
+  pointClose: number;
+  quoteClose: number;
+};
 
 const sameValues = (a: Stored, b: Bar) =>
   a.open === b.open &&
@@ -72,7 +76,8 @@ const sameValues = (a: Stored, b: Bar) =>
   a.close === b.close &&
   a.volume === volumeOf(b.volume);
 
-// corrections replace stored values; a final row stays final
+// corrections replace stored values; a final row stays final, and the
+// source's own row replaces a close taken from a quote
 export function upsertBars(
   db: Db,
   instrument: string,
@@ -83,7 +88,7 @@ export function upsertBars(
 ): Written {
   const read = db.query<Stored, [string, string, string]>(
     `select date, open, high, low, close, volume, final,
-       point_close as pointClose
+       point_close as pointClose, quote_close as quoteClose
      from bars where instrument = ? and interval = ? and date = ?`,
   );
   const insert = db.query(
@@ -93,7 +98,7 @@ export function upsertBars(
   );
   const update = db.query(
     `update bars set open = ?, high = ?, low = ?, close = ?, volume = ?,
-       final = ?, point_close = ?, fetched_at = ?
+       final = ?, point_close = ?, quote_close = 0, fetched_at = ?
      where instrument = ? and interval = ? and date = ?`,
   );
   let changedFrom: string | null = null;
@@ -109,7 +114,11 @@ export function upsertBars(
     } else if (!sameValues(stored, b)) {
       update.run(...values, ...rest, instrument, interval, b.date);
       changedFrom = earliest(changedFrom, b.date);
-    } else if (final !== stored.final || point !== stored.pointClose) {
+    } else if (
+      final !== stored.final ||
+      point !== stored.pointClose ||
+      stored.quoteClose !== 0
+    ) {
       update.run(...values, ...rest, instrument, interval, b.date);
     }
   }

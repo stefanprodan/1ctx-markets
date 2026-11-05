@@ -1,0 +1,178 @@
+{
+  "recordedAt": "2026-11-05T09:33:48.996Z",
+  "request": {
+    "method": "GET",
+    "url": "https://query1.finance.yahoo.com/v8/finance/chart/VVSM.DE?range=10d&interval=1d"
+  },
+  "status": 200,
+  "headers": {
+    "age": "1",
+    "cache-control": "public, max-age=10, stale-while-revalidate=20",
+    "content-type": "application/json;charset=utf-8"
+  },
+  "body": {
+    "chart": {
+      "result": [
+        {
+          "meta": {
+            "currency": "EUR",
+            "symbol": "VVSM.DE",
+            "exchangeName": "GER",
+            "fullExchangeName": "XETRA",
+            "instrumentType": "ETF",
+            "firstTradeDate": 1607673600,
+            "regularMarketTime": 1793870322,
+            "hasPrePostMarketData": false,
+            "gmtoffset": 3600,
+            "timezone": "CET",
+            "exchangeTimezoneName": "Europe/Berlin",
+            "regularMarketPrice": 79.93,
+            "regularMarketChangePercent": -2.88,
+            "fulldayPrice": 79.93,
+            "fulldayChange": -2.37,
+            "fulldayChangePercent": -2.88,
+            "fiftyTwoWeekHigh": 110.82,
+            "fiftyTwoWeekLow": 46.57,
+            "regularMarketDayHigh": 80.63,
+            "regularMarketDayLow": 79.71,
+            "regularMarketVolume": 56801,
+            "longName": "VanEck Semiconductor UCITS ETF",
+            "shortName": "VanEck Semiconductor UC.ETF   R",
+            "chartPreviousClose": 86.62,
+            "priceHint": 2,
+            "currentTradingPeriod": {
+              "pre": {
+                "timezone": "CET",
+                "start": 1793858400,
+                "end": 1793865600,
+                "gmtoffset": 3600
+              },
+              "regular": {
+                "timezone": "CET",
+                "start": 1793865600,
+                "end": 1793896200,
+                "gmtoffset": 3600
+              },
+              "post": {
+                "timezone": "CET",
+                "start": 1793896200,
+                "end": 1793907000,
+                "gmtoffset": 3600
+              }
+            },
+            "dataGranularity": "1d",
+            "range": "10d",
+            "validRanges": [
+              "1d",
+              "5d",
+              "1mo",
+              "3mo",
+              "6mo",
+              "1y",
+              "2y",
+              "5y",
+              "10y",
+              "ytd",
+              "max"
+            ]
+          },
+          "timestamp": [
+            1792738800,
+            1793001600,
+            1793088000,
+            1793174400,
+            1793260800,
+            1793347200,
+            1793606400,
+            1793692800,
+            1793779200,
+            1793865600
+          ],
+          "indicators": {
+            "quote": [
+              {
+                "low": [
+                  85.70999908447266,
+                  86,
+                  89.12999725341797,
+                  93.44999694824219,
+                  92.45999908447266,
+                  85.97000122070312,
+                  85.7300033569336,
+                  83.58999633789062,
+                  null,
+                  79.70999908447266
+                ],
+                "close": [
+                  87.22000122070312,
+                  89.18000030517578,
+                  92.27999877929688,
+                  94.37000274658203,
+                  93.66999816894531,
+                  86.19000244140625,
+                  85.91000366210938,
+                  85.04000091552734,
+                  null,
+                  79.93000030517578
+                ],
+                "high": [
+                  87.68000030517578,
+                  89.68000030517578,
+                  92.4800033569336,
+                  94.48999786376953,
+                  94.44000244140625,
+                  88.6500015258789,
+                  87.80000305175781,
+                  86.29000091552734,
+                  null,
+                  80.62999725341797
+                ],
+                "volume": [
+                  406127,
+                  192134,
+                  220362,
+                  207874,
+                  200766,
+                  172078,
+                  221312,
+                  264482,
+                  null,
+                  56801
+                ],
+                "open": [
+                  86.97000122070312,
+                  86.33000183105469,
+                  89.22000122070312,
+                  94.38999938964844,
+                  92.69000244140625,
+                  88.26000213623047,
+                  87.66000366210938,
+                  83.69999694824219,
+                  null,
+                  80.31999969482422
+                ]
+              }
+            ],
+            "adjclose": [
+              {
+                "adjclose": [
+                  87.22000122070312,
+                  89.18000030517578,
+                  92.27999877929688,
+                  94.37000274658203,
+                  93.66999816894531,
+                  86.19000244140625,
+                  85.91000366210938,
+                  85.04000091552734,
+                  null,
+                  79.93000030517578
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "error": null
+    }
+  }
+}
