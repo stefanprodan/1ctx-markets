@@ -438,6 +438,21 @@ export function parsePoints(body: unknown, fetchedAt: number): PointsAnswer {
   return { ...meta, points: closesOf(rows) };
 }
 
+const DOLLAR_PAIR = /^(?:USD)?([A-Z]{3})=X$/;
+
+// Yahoo answers a dollar pair as XXX=X or USDXXX=X, whichever of its
+// servers replies; both are one listing, kept under the name asked
+export function asAsked<T extends { symbol: string }>(
+  asked: string,
+  answer: T,
+): T {
+  const a = DOLLAR_PAIR.exec(asked.toUpperCase());
+  const b = DOLLAR_PAIR.exec(answer.symbol.toUpperCase());
+  return a !== null && b !== null && a[0] !== b[0] && a[1] === b[1]
+    ? { ...answer, symbol: a[0] }
+    : answer;
+}
+
 // Yahoo's own answer about the symbols asked, as for one it has no spark
 // for while its chart answers; never a sign the source is down
 class SparkRefused extends SourceError {
@@ -469,7 +484,11 @@ export function parseSpark(body: unknown, fetchedAt: number): SparkAnswer {
     try {
       if (!Array.isArray(response)) throw malformed("spark response");
       const first = obj(response[0], "spark response");
-      quotes.push({ ...parseMeta(first.meta), points: sparkPoints(first) });
+      const meta = parseMeta(first.meta);
+      quotes.push({
+        ...(symbol === null ? meta : asAsked(symbol, meta)),
+        points: sparkPoints(first),
+      });
     } catch (error) {
       if (!(error instanceof SourceError)) throw error;
       skipped.push({ symbol, phrase: error.phrase });
@@ -908,7 +927,13 @@ export function yahoo(options: YahooOptions): Yahoo {
           if (!brokenBy(error)) return { error };
           try {
             return {
-              answer: await next(quoteChartUrl(symbol), parseQuoteChart),
+              answer: await next(quoteChartUrl(symbol), (b, at) => {
+                const answer = parseQuoteChart(b, at);
+                return {
+                  ...answer,
+                  quotes: answer.quotes.map((q) => asAsked(symbol, q)),
+                };
+              }),
             };
           } catch (e) {
             if (!ownError(e)) throw e;
@@ -985,7 +1010,7 @@ export function yahoo(options: YahooOptions): Yahoo {
           events: "div,split",
         });
         const url = `${host}/v8/finance/chart/${encodeURIComponent(symbol)}?${params}`;
-        return seen(await get(url, run, parseChart));
+        return seen(asAsked(symbol, await get(url, run, parseChart)));
       },
       async intraday(symbol) {
         const params = new URLSearchParams({
@@ -994,7 +1019,7 @@ export function yahoo(options: YahooOptions): Yahoo {
           includePrePost: "true",
         });
         const url = `${host}/v8/finance/chart/${encodeURIComponent(symbol)}?${params}`;
-        return seen(await get(url, run, parseIntraday));
+        return seen(asAsked(symbol, await get(url, run, parseIntraday)));
       },
       async points(symbol) {
         const params = new URLSearchParams({
@@ -1003,7 +1028,7 @@ export function yahoo(options: YahooOptions): Yahoo {
           includePrePost: "false",
         });
         const url = `${host}/v8/finance/chart/${encodeURIComponent(symbol)}?${params}`;
-        return seen(await get(url, run, parsePoints));
+        return seen(asAsked(symbol, await get(url, run, parsePoints)));
       },
       prePost: (symbol) => prePost.get(symbol),
       spark,
