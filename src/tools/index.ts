@@ -23,7 +23,6 @@ import type { Markets } from "../operations/markets.ts";
 import { AVERAGES, moversAnswer, parseMovers } from "../operations/movers.ts";
 import { MAX_SYMBOLS, parseQuote, quotePage } from "../operations/quote.ts";
 import { SINCE_DAYS } from "../operations/research.ts";
-import { parseRules, RULE_ACTIONS, rulesAnswer } from "../operations/rules.ts";
 import {
   FIELD_NAMES,
   MAX_FIELDS,
@@ -33,15 +32,10 @@ import {
 } from "../operations/screen.ts";
 import { parseSearch, searchPage } from "../operations/search.ts";
 import { type Access, NO_ACCESS, type Who } from "../operations/who.ts";
-import {
-  MAX_COMPARISONS,
-  MAX_DEPTH,
-  MAX_INSTRUMENTS,
-  MAX_NOTE,
-} from "../rules/format.ts";
 import { errorFields } from "../runtime/log.ts";
 import { CallerGone } from "../server/caller.ts";
 import { CALENDAR_AHEAD_DAYS } from "../sources/finnhub/store.ts";
+import { alertsTools } from "./alerts.ts";
 import { analysisTools } from "./analysis.ts";
 import { portfolioTools } from "./portfolio.ts";
 import { profileTools } from "./profile.ts";
@@ -68,19 +62,17 @@ const RESEARCH = `One US share's research (Finnhub), filings (EDGAR) and news (M
 
 const EVENTS = `Earnings events dated from to to (YYYY-MM-DD, inclusive) of the tracked US shares, or of 1 to ${MAX_EVENT_SYMBOLS} symbols named, by date. Company events only: macro dates (central bank meetings, data releases, elections) are not here; look them up elsewhere. Each: fiscal_year, fiscal_quarter, date, hour (amc after close, bmo before open, or empty), status (scheduled; awaiting results once its date came without actuals; reported once EPS or revenue actuals are seen, with reported_seen_at), filed_at (the results 8-K's acceptance), EPS and revenue estimates and actuals (revenue in whole currency units), fetched_at, stale. Symbols resolve and are fetched as in quote; one Finnhub does not cover is listed as unavailable. A named share with nothing in the range is in no_event with the last stored event before from and the next after to (date, hour, status), so it is never read as missing data; a no_event next is null when none is within ${CALENDAR_AHEAD_DAYS} days of its last fetch.`;
 
-const RULES = `Rules on live prices: each writes an alert on turning true, again only after false. create: symbol, condition, note; answers its first evaluation. condition: {left, op, right} (op < <= > >=; right a number or operand) or {all: [...]}/{any: [...]}; ≤${MAX_COMPARISONS} comparisons, ${MAX_DEPTH} levels, ${MAX_INSTRUMENTS} instruments. Operand: a field of symbol, or {field, symbol} (^VIX). Fields: price changePct dayHigh dayLow previousClose sma50 sma200 ema20 rsi14 macd macdSignal macdHistogram macdTurn atr14 moveAtr volatility20 bollingerLower high52w low52w drawdown fromLow daysSinceHigh volumeRatio cross crossEdge weeklySma50 weeklySma200 weeklyCross weeklyCrossEdge, and {field: relativeReturn1m|relativeReturn3m, benchmark}. Each comparison reads live values in one unit. Example: {"all":[{"left":"rsi14","op":"<","right":30},{"left":"price","op":">","right":"sma200"}]}. "afterEarnings": "<US share>" on the root waits for its next results. A stale input changes nothing. A split pauses price-vs-number rules. list: next; pause: id, paused; delete: id.`;
-
 // what a key's access opens; the tools it does not open are not listed
 export type Opens = {
   portfolio: Access;
-  rules: Access;
+  alerts: Access;
   profile: Access;
   analysis: Access;
 };
 
 const ALL: Opens = {
   portfolio: "write",
-  rules: "write",
+  alerts: "write",
   profile: "write",
   analysis: "write",
 };
@@ -250,32 +242,7 @@ export function tools(m: Markets, opens: Opens = ALL): Tool[] {
       ),
       run: (input) => eventsAnswer(m, parseEvents(input)),
     },
-    ...(opens.rules === "none"
-      ? []
-      : [
-          {
-            name: "rules",
-            description: RULES,
-            inputSchema: schema(
-              {
-                action: { type: "string", enum: [...RULE_ACTIONS] },
-                symbol,
-                condition: {
-                  type: "object",
-                  description: "the condition JSON, as in the description",
-                },
-                note: { type: "string", maxLength: MAX_NOTE },
-                id: { type: "integer", minimum: 1 },
-                paused: { type: "boolean" },
-                next,
-              },
-              ["action"],
-            ),
-            run: (input: unknown, who?: Who) =>
-              rulesAnswer(m, who ?? NO_ACCESS, parseRules(input)),
-            writes: true as const,
-          },
-        ]),
+    ...alertsTools(m, opens.alerts),
     ...portfolioTools(m, opens.portfolio),
     ...profileTools(m, opens.profile),
     ...analysisTools(m, opens.analysis),
@@ -322,12 +289,12 @@ export function registerTools(
 ): (server: McpServer, who: Who) => void {
   const lists = new Map<string, Tool[]>();
   return (server, who) => {
-    const key = `${who.portfolio}/${who.rules}/${who.profile}/${who.analysis}`;
+    const key = `${who.portfolio}/${who.alerts}/${who.profile}/${who.analysis}`;
     let list = lists.get(key);
     if (list === undefined) {
       list = tools(m, {
         portfolio: who.portfolio,
-        rules: who.rules,
+        alerts: who.alerts,
         profile: who.profile,
         analysis: who.analysis,
       });

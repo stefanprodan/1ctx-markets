@@ -49,7 +49,7 @@ export function keyAccess(adminKey: string | null): Access {
           expiresAt: null,
           lastUsedAt: null,
           portfolio: "none",
-          rules: "none",
+          alerts: "none",
           profile: "none",
           analysis: "none",
         },

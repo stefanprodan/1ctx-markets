@@ -57,7 +57,7 @@ const CASEY: Who = {
   user: OPERATOR,
   credential: { kind: "key", id: "casey-agent" },
   portfolio: "write",
-  rules: "none",
+  alerts: "none",
   profile: "none",
   analysis: "none",
 };
@@ -66,7 +66,7 @@ const OTHER: Who = {
   user: OPERATOR,
   credential: { kind: "key", id: "riley-agent" },
   portfolio: "write",
-  rules: "none",
+  alerts: "none",
   profile: "none",
   analysis: "none",
 };
@@ -1998,7 +1998,7 @@ describe("setup and brokers over the tool", () => {
       user: OPERATOR,
       credential: { kind: "key", id: "reader" },
       portfolio: "read",
-      rules: "none",
+      alerts: "none",
       profile: "none",
       analysis: "none",
     };
@@ -2037,7 +2037,7 @@ describe("the tool's description", () => {
     for (const access of ["read", "write"] as const) {
       const read = tools(m, {
         portfolio: access,
-        rules: "none",
+        alerts: "none",
         profile: "none",
         analysis: "none",
       }).find((t) => t.name === "portfolio")!.description;

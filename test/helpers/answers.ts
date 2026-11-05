@@ -19,7 +19,7 @@ import { FINNHUB_KEY, finnhubAnswer } from "./finnhub.ts";
 import { FRED_KEY, NOW, sources } from "./sources.ts";
 import { bar, listing, row, world } from "./world.ts";
 
-// the calls, in order, since rules change what later calls read
+// the calls, in order, since alerts change what later calls read
 const CALLS: [string, Record<string, unknown>][] = [
   ["quote", { symbols: ["NVDA", "FRED:DGS10", "^GSPC"] }],
   ["quote", { symbols: ["NVDA"], benchmark: "^GSPC" }],
@@ -68,27 +68,25 @@ const CALLS: [string, Record<string, unknown>][] = [
   ["events", { from: "2026-01-01", to: "2026-12-31", symbols: ["NVDA"] }],
   ["events", { from: "2026-01-01", to: "2026-12-31" }],
   [
-    "rules",
+    "alerts_edit",
     {
       action: "create",
       symbol: "NVDA",
-      condition: { left: "price", op: "<", right: 211 },
+      when: "price < 211",
       note: "below 211",
     },
   ],
-  [
-    "rules",
-    {
-      action: "create",
-      symbol: "NVDA",
-      condition: { left: "rsi14", op: ">", right: 30 },
-    },
-  ],
-  ["rules", { action: "list" }],
-  ["rules", { action: "pause", id: 1, paused: true }],
-  ["rules", { action: "delete", id: 2 }],
-  ["rules", { action: "delete", id: 2 }],
-  ["rules", { action: "list" }],
+  ["alerts_edit", { action: "create", symbol: "NVDA", when: "rsi14 > 30" }],
+  ["alerts_edit", { action: "create", symbol: "NVDA", when: "rsi < 30" }],
+  ["alerts", {}],
+  ["alerts_edit", { action: "pause", id: 1 }],
+  ["alerts_edit", { action: "delete", id: 2 }],
+  ["alerts_edit", { action: "delete", id: 2 }],
+  ["alerts", {}],
+  ["alerts", { history: true }],
+  // a deleted alert's history stays
+  ["alerts", { history: true, id: 2 }],
+  ["alerts", { id: 1 }],
 ];
 
 type Answers = Record<string, string[]>;
@@ -209,7 +207,7 @@ const post = (method: string, body: unknown): RequestInit => ({
 
 const WRONG = { headers: { authorization: "Bearer wrong" } };
 
-// in order, since rules and deletes change what later requests read
+// in order, since alerts and deletes change what later requests read
 const REQUESTS: [string, RequestInit?][] = [
   ["/quotes?symbols=NVDA,FRED:DGS10,^GSPC"],
   ["/quotes?symbols=NVDA,FRED:DGS10&extended=true"],
@@ -249,35 +247,28 @@ const REQUESTS: [string, RequestInit?][] = [
     }),
   ],
   ["/screen", { method: "POST", body: "{}" }],
+  ["/alerts/feed"],
   ["/alerts"],
-  ["/rules"],
   [
-    "/rules",
-    post("POST", {
-      symbol: "NVDA",
-      condition: { left: "price", op: "<", right: 211 },
-      note: "below 211",
-    }),
+    "/alerts",
+    post("POST", { symbol: "NVDA", when: "price < 211", note: "below 211" }),
   ],
-  [
-    "/rules",
-    post("POST", {
-      symbol: "NVDA",
-      condition: { left: "rsi14", op: ">", right: 30 },
-    }),
-  ],
-  ["/rules", post("POST", { symbol: "ZZNOTHING", condition: "x" })],
-  ["/rules"],
-  ["/rules/1"],
-  ["/rules/1", post("PATCH", { paused: true })],
-  ["/rules/x", post("PATCH", { paused: true })],
-  ["/rules/2", { method: "DELETE" }],
-  ["/rules/2", { method: "DELETE" }],
-  ["/rules/2"],
-  ["/rules"],
+  ["/alerts", post("POST", { symbol: "NVDA", when: "rsi14 > 30" })],
+  ["/alerts", post("POST", { symbol: "ZZNOTHING", when: "x" })],
   ["/alerts"],
-  ["/alerts", { headers: { "if-none-match": 'W/"alerts-1"' } }],
-  ["/alerts", { headers: { "if-none-match": "x" } }],
+  ["/alerts/1"],
+  ["/alerts/1", post("PATCH", { paused: true })],
+  ["/alerts/1", post("PATCH", { note: null })],
+  ["/alerts/x", post("PATCH", { paused: true })],
+  ["/alerts/2", { method: "DELETE" }],
+  ["/alerts/2", { method: "DELETE" }],
+  ["/alerts/2"],
+  ["/alerts"],
+  ["/alerts/history"],
+  ["/alerts/history?alert=2"],
+  ["/alerts/feed"],
+  ["/alerts/feed", { headers: { "if-none-match": 'W/"alerts-1"' } }],
+  ["/alerts/feed", { headers: { "if-none-match": "x" } }],
   ["/openapi.json"],
   ["/docs"],
   ["/docs/init.js?h=0"],

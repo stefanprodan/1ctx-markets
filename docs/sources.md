@@ -8,7 +8,7 @@ Each provider's own behaviour is in its doc: `docs/yahoo.md`,
 `docs/bvb.md`, `docs/fred.md`, `docs/research.md` (Finnhub and Massive),
 `docs/edgar.md`. The tool call's deadline and the inline fetch are in
 `docs/tools.md`; runs and staleness in `docs/storage.md`; rule pauses in
-`docs/rules.md`.
+`docs/alerts.md`.
 
 ## The source queue
 
@@ -113,7 +113,7 @@ Each provider's own behaviour is in its doc: `docs/yahoo.md`,
   day keeps the old scale, and that history must cover every stored
   day.
 - **Rules on old price levels pause before the whole history is
-  asked** (`rules.rescaled`, `docs/rules.md`), since it may be refused.
+  asked** (`rules.rescaled`, `docs/alerts.md`), since it may be refused.
 - How a source detects a split or a moved close is in its doc.
 
 ## Refusals

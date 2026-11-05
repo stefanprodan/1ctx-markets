@@ -3,12 +3,12 @@
 
 import { useSignal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
-import { ALERTS, ALERTS_FIRED as FIRED, symbolHref } from "../app/paths.ts";
+import { ALERTS, ALERTS_HISTORY as FIRED, symbolHref } from "../app/paths.ts";
 import { onPhone } from "../app/shell.ts";
-import type { Alert, Listings, Rule } from "../data/alerts.ts";
+import type { Alert, Listings, Trigger } from "../data/alerts.ts";
 import type { Listing } from "../data/portfolios.ts";
 import { markets } from "../data/store.ts";
-import { ago, amount } from "../lib/format.ts";
+import { amount } from "../lib/format.ts";
 import { Icon } from "../lib/icons.tsx";
 import { nameOf, symbolOf, tickerOf } from "../lib/names.ts";
 import { useRefresh } from "../lib/refresh.ts";
@@ -21,6 +21,7 @@ import { SymbolName } from "../ui/Symbol.tsx";
 import { type Column, Table } from "../ui/Table.tsx";
 import { Tabs } from "../ui/Tabs.tsx";
 import {
+  comparisonsOf,
   conditionLines,
   dayLabel,
   firedText,
@@ -38,6 +39,8 @@ import {
   TILES,
   type TileKey,
   timeText,
+  treeOf,
+  triggerText,
   valueText,
 } from "./Alerts.model.ts";
 import { SymbolPick } from "./PortfolioForms.tsx";
@@ -57,10 +60,10 @@ function Head({ tab }: { tab: TabKey }) {
       label="Alerts"
       value={tab}
       tabs={[
-        { key: "rules", label: "Rules", href: ALERTS },
+        { key: "rules", label: "Alerts", href: ALERTS },
         {
           key: "fired",
-          label: "Fired",
+          label: "History",
           href: FIRED,
           count: tab === "rules" && unseen > 0 ? unseen : null,
         },
@@ -72,7 +75,7 @@ function Head({ tab }: { tab: TabKey }) {
 function AlertsPage({ tab }: { tab: TabKey }) {
   useRefresh(store.loadAll);
   const adding = useSignal(false);
-  const held = store.rules.value !== null;
+  const held = store.alerts.value !== null;
   return (
     <Page
       title="Alerts"
@@ -125,7 +128,7 @@ const TONE: Record<StateKey, string | null> = {
   unknown: "al-tag-warn",
 };
 
-function StateTag({ rule }: { rule: Rule }) {
+function StateTag({ rule }: { rule: Alert }) {
   const s = stateOf(rule);
   const tone = TONE[s];
   return tone === null ? (
@@ -136,7 +139,7 @@ function StateTag({ rule }: { rule: Rule }) {
 }
 
 // how near: a short meter, full at the level, empty 10% or more away
-function Distance({ rule }: { rule: Rule }) {
+function Distance({ rule }: { rule: Alert }) {
   const n = nearOf(rule, {});
   if (n.distance === null) {
     return n.of > 1 ? (
@@ -152,7 +155,7 @@ function Distance({ rule }: { rule: Rule }) {
   return (
     <span class="al-dist">
       <span class={`small num${near ? "" : " faint"}`}>
-        {n.distance === 0 ? "Met" : `${n.distance.toFixed(1)}% away`}
+        {n.met ? "Met" : `${n.distance.toFixed(1)}% away`}
       </span>
       <span class="al-meter" aria-hidden="true">
         <span
@@ -164,11 +167,11 @@ function Distance({ rule }: { rule: Rule }) {
   );
 }
 
-function ruleColumns(l: Listings): Column<Rule>[] {
+function ruleColumns(l: Listings): Column<Alert>[] {
   return [
     {
       key: "rule",
-      head: "Rule",
+      head: "Alert",
       width: "minmax(0, 2.4fr)",
       cell: (r) => (
         <span class="al-rule">
@@ -232,50 +235,49 @@ function ruleColumns(l: Listings): Column<Rule>[] {
 function RulesTab() {
   const tile = useSignal<TileKey>("all");
   const open = useSignal<number | null>(null);
-  const rules = store.rules.value;
-  const alerts = store.alerts.value ?? [];
+  const rules = store.alerts.value;
+  const triggers = store.history.value ?? [];
   const l = store.listings.value;
   const now = Date.now();
   const sorted = rules === null ? [] : sortRules(rules);
-  const shown = sorted.filter((r) => inTile(tile.value, r, alerts, now));
+  const shown = sorted.filter((r) => inTile(tile.value, r, triggers, now));
   const rule = rules?.find((r) => r.id === open.value) ?? null;
   if (rules !== null && rules.length === 0) {
     return (
-      <Notice title="No rules yet" icon="bell">
+      <Notice title="No alerts yet" icon="bell">
         Add a price alert, or ask an agent to watch a level.
       </Notice>
     );
   }
   return (
     <>
-      <fieldset class="scr-set" aria-label="Filters">
-        <div class="scr-tiles al-tiles">
-          {TILES.map((t) => {
-            const on = t.key === tile.value;
-            const n =
-              rules === null
-                ? null
-                : sorted.filter((r) => inTile(t.key, r, alerts, now)).length;
-            return (
-              <button
-                key={t.key}
-                type="button"
-                class={`scr-tile${on ? " scr-tile-on" : ""}`}
-                aria-pressed={on}
-                onClick={() => {
-                  tile.value = t.key;
-                }}
-              >
-                <span class="scr-n num">{n ?? "–"}</span>
-                <span class="scr-name">{t.name}</span>
-              </button>
-            );
-          })}
-        </div>
+      <fieldset class="seg al-filters" aria-label="Filters">
+        {TILES.map((t) => {
+          const on = t.key === tile.value;
+          const n =
+            rules === null
+              ? null
+              : sorted.filter((r) => inTile(t.key, r, triggers, now)).length;
+          return (
+            <button
+              key={t.key}
+              type="button"
+              class={`seg-option${on ? " seg-on" : ""}${n === 0 ? " al-zero" : ""}`}
+              aria-pressed={on}
+              title={t.name === t.short ? undefined : t.name}
+              onClick={() => {
+                tile.value = t.key;
+              }}
+            >
+              <span>{t.short}</span>
+              <span class="al-count num">{n ?? "–"}</span>
+            </button>
+          );
+        })}
       </fieldset>
-      <Card title={TILES.find((t) => t.key === tile.value)!.name} label="Rules">
+      <Card label={TILES.find((t) => t.key === tile.value)!.name}>
         <Table
-          label="Rules"
+          label="Alerts"
           columns={ruleColumns(l)}
           rows={shown}
           rowKey={(r) => r.id}
@@ -294,7 +296,7 @@ function RulesTab() {
         <RuleDrawer
           key={rule.id}
           rule={rule}
-          fired={alerts.filter((a) => a.rule_id === rule.id)}
+          fired={triggers.filter((a) => a.alert_id === rule.id)}
           onClose={() => {
             open.value = null;
           }}
@@ -309,8 +311,8 @@ function RuleDrawer({
   fired,
   onClose,
 }: {
-  rule: Rule;
-  fired: readonly Alert[];
+  rule: Alert;
+  fired: readonly Trigger[];
   onClose: () => void;
 }) {
   const l = store.listings.value;
@@ -329,8 +331,12 @@ function RuleDrawer({
     else close?.();
   };
   const gate = gateText(rule, l);
-  const lines = conditionLines(rule.condition, rule.symbol, l);
-  const values = rule.now.values;
+  const tree = treeOf(rule.when);
+  const lines =
+    tree === null
+      ? [{ text: rule.when, depth: 0, at: null }]
+      : conditionLines(tree, rule.symbol, l);
+  const cs = comparisonsOf(rule.when);
   const now = Date.now();
   return (
     <Drawer
@@ -340,7 +346,7 @@ function RuleDrawer({
       busy={busy.value}
       footStart={
         asking.value ? (
-          "Remove this rule?"
+          "Remove this alert?"
         ) : (
           <button
             type="button"
@@ -376,7 +382,7 @@ function RuleDrawer({
               {busy.value ? "Removing" : "Remove"}
             </button>
           </>
-        ) : rule.paused === "split" ? (
+        ) : rule.state === "split_paused" ? (
           <button type="button" class="btn btn-small" onClick={close}>
             Close
           </button>
@@ -386,10 +392,10 @@ function RuleDrawer({
             class="btn btn-small btn-primary"
             disabled={busy.value}
             onClick={() =>
-              void run(() => store.pause(rule.id, rule.paused === null))
+              void run(() => store.pause(rule.id, rule.state !== "paused"))
             }
           >
-            {rule.paused === null ? "Pause" : "Resume"}
+            {rule.state === "paused" ? "Resume" : "Pause"}
           </button>
         )
       }
@@ -407,11 +413,13 @@ function RuleDrawer({
         </div>
         {said.value && <Notice error>{said.value}</Notice>}
         {stateOf(rule) === "fired" && (
-          <p class="small faint">Fires again once this is no longer true.</p>
-        )}
-        {rule.paused === "split" && (
           <p class="small faint">
-            A split changed the price scale. Delete this rule and make it again
+            Can trigger again on a later trading day, after it stops being true.
+          </p>
+        )}
+        {rule.state === "split_paused" && (
+          <p class="small faint">
+            A split changed the price scale. Delete this alert and make it again
             with new levels.
           </p>
         )}
@@ -420,12 +428,8 @@ function RuleDrawer({
           {gate && <p class="al-gate">{gate}</p>}
           <ul class="al-checks">
             {lines.map((line, i) => {
-              const v = line.text.endsWith(" of")
-                ? undefined
-                : values[
-                    lines.slice(0, i).filter((x) => !x.text.endsWith(" of"))
-                      .length
-                  ];
+              const v = line.at === null ? undefined : rule.now[line.at];
+              const c = line.at === null ? undefined : cs[line.at];
               return (
                 <li
                   key={i}
@@ -457,8 +461,9 @@ function RuleDrawer({
                       <span class="faint small num al-now">
                         {" "}
                         now {nowText(v, rule.symbol, l)}
-                        {rightNow(v, rule.symbol, l) !== null &&
-                          ` · ${rightNow(v, rule.symbol, l)}`}
+                        {c !== undefined &&
+                          rightNow(c, v, rule.symbol, l) !== null &&
+                          ` · ${rightNow(c, v, rule.symbol, l)}`}
                       </span>
                     )}
                   </span>
@@ -474,48 +479,46 @@ function RuleDrawer({
           </section>
         )}
         <section class="al-section">
-          <h3 class="card-label">Fired</h3>
+          <h3 class="card-label">Triggered</h3>
           {fired.length === 0 ? (
             <p class="small faint">Not yet.</p>
           ) : (
             <ul class="al-history">
-              {fired.map((a) => (
-                <li key={a.id} class="small">
-                  <span class="num faint">
-                    {dayLabel(a.fired_at, now)} {timeText(a.fired_at)}
-                  </span>
-                  <span>
-                    {a.values[0] ? firedText(a.values[0], a.symbol, l) : ""}
-                  </span>
-                </li>
-              ))}
+              {fired.map((a) => {
+                const first = comparisonsOf(a.when)[0];
+                return (
+                  <li key={a.id} class="small">
+                    <span class="num faint">
+                      {dayLabel(a.triggered_at, now)} {timeText(a.triggered_at)}
+                    </span>
+                    <span>
+                      {first ? firedText(first, a.values, a.symbol, l) : ""}
+                    </span>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>
-        <p class="small faint">
-          Made {ago(rule.created_at, now)}
-          {rule.last_evaluated_at &&
-            ` · checked ${ago(rule.last_evaluated_at, now)}`}
-        </p>
       </div>
     </Drawer>
   );
 }
 
 function FiredTab() {
-  const alerts = store.alerts.value;
+  const alerts = store.history.value;
   const l = store.listings.value;
-  const rules = store.rules.value ?? [];
+  const rules = store.alerts.value ?? [];
   // opening Fired sees the newest; leaving it ends the visit's dots
   useEffect(() => {
     if (alerts !== null) void store.markSeen();
-  }, [alerts?.[0]?.id]);
+  }, [alerts?.[0]?.id, store.newest.value]);
   useEffect(() => store.leftFired, []);
   if (alerts === null)
     return (
-      <Card label="Fired">
+      <Card label="History">
         <Table
-          label="Fired"
+          label="History"
           columns={[]}
           rows={[]}
           rowKey={() => 0}
@@ -525,16 +528,16 @@ function FiredTab() {
     );
   if (alerts.length === 0) {
     return (
-      <Notice title="Nothing fired yet" icon="bell">
-        A rule's alert shows here the moment it fires.
+      <Notice title="Nothing triggered yet" icon="bell">
+        An alert shows here the moment it triggers.
       </Notice>
     );
   }
   const now = Date.now();
   const before = store.seenBefore.value;
-  const days: { label: string; rows: Alert[] }[] = [];
+  const days: { label: string; rows: Trigger[] }[] = [];
   for (const a of alerts) {
-    const label = dayLabel(a.fired_at, now);
+    const label = dayLabel(a.triggered_at, now);
     if (days.at(-1)?.label !== label) days.push({ label, rows: [] });
     days.at(-1)!.rows.push(a);
   }
@@ -544,11 +547,15 @@ function FiredTab() {
         <Card key={d.label} title={d.label} flush label={d.label}>
           <ul class="al-fired">
             {d.rows.map((a) => {
-              const rule = rules.find((r) => r.id === a.rule_id);
-              const first = a.values[0];
+              const rule = rules.find((r) => r.id === a.alert_id);
+              const first = comparisonsOf(a.when)[0];
+              const now0 = rule?.now[0];
               const live =
-                rule?.now.values[0]?.left.field === first?.left.field
-                  ? rule?.now.values[0]?.left.value
+                first !== undefined &&
+                now0 !== undefined &&
+                now0.field === first.left.field &&
+                (now0.symbol ?? null) === first.left.symbol
+                  ? now0.value
                   : undefined;
               return (
                 <li key={a.id}>
@@ -557,7 +564,7 @@ function FiredTab() {
                       {before !== null && a.id > before && (
                         <span class="al-dot" role="img" aria-label="New" />
                       )}
-                      {timeText(a.fired_at)}
+                      {timeText(a.triggered_at)}
                     </span>
                     <span class="al-fired-body">
                       <SymbolName
@@ -569,20 +576,14 @@ function FiredTab() {
                           a.symbol,
                         )}
                       />
-                      <span>
-                        {a.values.length === 1 && first
-                          ? firedText(first, a.symbol, l)
-                          : a.values
-                              .map((v) => firedText(v, a.symbol, l))
-                              .join("; ")}
-                      </span>
+                      <span>{triggerText(a, l)}</span>
                       {a.note && (
                         <span class="small faint al-note">{a.note}</span>
                       )}
                     </span>
                     <span class="al-fired-now small faint num">
                       {live !== undefined && live !== null && first
-                        ? `Now ${valueText(first.left.field, live, first.left.symbol, l)}`
+                        ? `Now ${valueText(first.left.field, live, first.left.symbol ?? a.symbol, l)}`
                         : ""}
                     </span>
                   </a>

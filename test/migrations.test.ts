@@ -601,6 +601,52 @@ describe("migrations", () => {
     db.close();
   });
 
+  test("rules stored before it have fired in no session", () => {
+    const db = new Database(":memory:", { strict: true });
+    const clock = fakeClock();
+    const at = MIGRATIONS.findIndex((m) => m.id === "0045-rules-fired-session");
+    migrate(db, clock, MIGRATIONS.slice(0, at));
+    db.exec(`
+      insert into instruments (id, market, symbol, source, source_symbol,
+        exchange, type, currency, zone, added_at, updated_at)
+      values ('US:ZZZ', 'US', 'ZZZ', 'yahoo', 'ZZZ', 'NMS', 'EQUITY', 'USD',
+        'America/New_York', 0, 0);
+      insert into rules (owner, instrument, condition, created_at, armed)
+      values ('${OPERATOR}', 'US:ZZZ', '{}', 0, 0);
+    `);
+    migrate(db, clock, MIGRATIONS.slice(0, at + 1));
+    expect(db.query("select armed, fired_session from rules").all()).toEqual([
+      { armed: 0, fired_session: null },
+    ]);
+    expect(() =>
+      db.exec("update rules set fired_session = '5 Nov 2026'"),
+    ).toThrow();
+    db.exec("update rules set fired_session = '2026-11-05'");
+    db.close();
+  });
+
+  test("keys keep their rules access, named alerts", () => {
+    const db = new Database(":memory:", { strict: true });
+    const clock = fakeClock();
+    const at = MIGRATIONS.findIndex((m) => m.id === "0046-key-alerts");
+    migrate(db, clock, MIGRATIONS.slice(0, at));
+    db.exec(`
+      insert into keys (id, user_id, name, token_hash, created_at, rules)
+      values ('madeupkey001', '${OPERATOR}', 'reader', 'hash-1', 0, 'read'),
+        ('madeupkey002', '${OPERATOR}', 'writer', 'hash-2', 0, 'write');
+    `);
+    migrate(db, clock, MIGRATIONS.slice(0, at + 1));
+    expect(
+      db.query("select name, alerts from keys order by name").all(),
+    ).toEqual([
+      { name: "reader", alerts: "read" },
+      { name: "writer", alerts: "write" },
+    ]);
+    expect(() => db.exec("update keys set alerts = 'all'")).toThrow();
+    expect(() => db.exec("select rules from keys")).toThrow();
+    db.close();
+  });
+
   test("open applies the shipped list to a new database", () => {
     const { db, migrations } = open(":memory:", fakeClock());
     expect(migrations).toEqual(MIGRATIONS.map((m) => m.id));

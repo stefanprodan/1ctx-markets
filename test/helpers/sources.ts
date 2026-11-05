@@ -49,6 +49,7 @@ const SEARCHES: Record<string, string> = {
   TLV: "search-tlv",
   VVSM: "search-vvsm",
   SOLANA: "search-solana",
+  "SOL-USD": "search-solana",
 };
 
 export type Calls = {

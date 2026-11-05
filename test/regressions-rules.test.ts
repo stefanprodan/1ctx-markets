@@ -40,13 +40,13 @@ test("a failed refetch keeps split-sensitive rules unknown after other instrumen
   const t = await rulesTest({ charts: { NVDA: nvda, HYG: hyg } });
   try {
     const other = await added(t.ctx, "HYG");
-    const created = await t.rules({
+    const created = await t.edit({
       action: "create",
       symbol: "NVDA",
-      condition: { left: "price", op: "<", right: 200 },
+      when: "price < 200",
     });
     expect(created.error).toBe(false);
-    const id = created.body.rule.id as number;
+    const id = created.body.alert.id as number;
     const jobs = yahooJobs({ ctx: t.ctx, quoteEveryMs: EVERY_MS, log: silent });
     await t.quote("NVDA", { price: 210 });
     await jobs.barTick();

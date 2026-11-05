@@ -14,6 +14,7 @@ import { readInstrument, upsertInstrument } from "../src/market/instruments.ts";
 import { storeIntraday } from "../src/market/intraday.ts";
 import { EXTENDED } from "../src/market/stale.ts";
 import { markRead } from "../src/market/tracking.ts";
+import { alertsEdit, parseAlertsEdit } from "../src/operations/alerts.ts";
 import {
   extendedPoints,
   heldUntil,
@@ -24,7 +25,6 @@ import {
 import { CALL_MS, type Markets, markets } from "../src/operations/markets.ts";
 import { moversAnswer, parseMovers } from "../src/operations/movers.ts";
 import { parseQuote, quotePage } from "../src/operations/quote.ts";
-import { parseRules, rulesAnswer } from "../src/operations/rules.ts";
 import { ADMIN } from "../src/operations/who.ts";
 import { silent } from "../src/runtime/log.ts";
 import { recomputeSignals, refreshLive } from "../src/signals/store.ts";
@@ -429,21 +429,23 @@ describe("quote extended", () => {
     // HOOD's extended price is under 92, its regular close is not
     const rule = JSON.parse(
       (
-        await rulesAnswer(
+        await alertsEdit(
           t.m,
           ADMIN,
-          parseRules({
+          parseAlertsEdit({
             action: "create",
             symbol: "US:HOOD",
-            condition: { left: "price", op: "<", right: 92 },
+            when: "price < 92",
             note: "below 92",
           }),
         )
       ).content[0]!.text,
     );
-    expect(rule.evaluation.result).toBe("false");
-    expect(rule.evaluation.values[0].left.value).toBe(HOOD_CLOSE);
-    expect(rule.alert).toBeNull();
+    expect(rule.alert.now[0]).toMatchObject({
+      value: HOOD_CLOSE,
+      holds: false,
+    });
+    expect(rule.triggered).toBeNull();
   });
 });
 

@@ -50,6 +50,17 @@ import { iso, price } from "../market/format.ts";
 import type { Instrument } from "../market/instruments.ts";
 import { localDate } from "../market/zone.ts";
 import {
+  alertList,
+  createAlert,
+  deleteAlert,
+  historyList,
+  oneAlert,
+  parseAlertsEdit,
+  parseAlertsRead,
+  pauseAlert,
+  updateAlert,
+} from "../operations/alerts.ts";
+import {
   analysisItem,
   analysisTarget,
   listedItem,
@@ -82,14 +93,6 @@ import {
   quoteRows,
 } from "../operations/quote.ts";
 import { parseResearchList, researchList } from "../operations/research.ts";
-import {
-  alertViews,
-  createRule,
-  deleteRuleById,
-  parseRules,
-  pauseRule,
-  ruleViews,
-} from "../operations/rules.ts";
 import { parseScreen, readScreen } from "../operations/screen.ts";
 import { parseSearch, searchAll } from "../operations/search.ts";
 import { setAll } from "../operations/sets.ts";
@@ -101,14 +104,7 @@ import {
   profileVersions,
   readProfile,
 } from "../profile/store.ts";
-import {
-  markSeen,
-  RECENT_ALERTS,
-  readAlertsBefore,
-  readRule,
-  readRules,
-  readSeen,
-} from "../rules/store.ts";
+import { markSeen, readSeen } from "../rules/store.ts";
 import { errorFields, type Log } from "../runtime/log.ts";
 import { CallerGone } from "../server/caller.ts";
 import { type Email, email as emailOf } from "../server/email/settings.ts";
@@ -140,9 +136,9 @@ export type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 // read: an agent key, or the admin key, which holds every scope; admin:
 // the admin key or an admin's login; session: the admin key or anyone's
 // login, never an agent key; none: served before either, since it holds no
-// data and a browser opening it sends no key; portfolio:, rules:,
+// data and a browser opening it sends no key; portfolio:, alerts:,
 // profile: and analysis: an agent key its person gave that access,
-// holdings, the profile and rules being the person's and the analysis
+// holdings, the profile and alerts being the person's and the analysis
 // shared by everyone
 export type Scope =
   | "read"
@@ -151,8 +147,8 @@ export type Scope =
   | "none"
   | "portfolio:read"
   | "portfolio:write"
-  | "rules:read"
-  | "rules:write"
+  | "alerts:read"
+  | "alerts:write"
   | "profile:read"
   | "profile:write"
   | "analysis:read"
@@ -202,9 +198,25 @@ async function bodyOf(req: Request): Promise<{ body: unknown } | Response> {
 // 15 digits stay under Number.MAX_SAFE_INTEGER, so no id rounds to another
 const PATH_ID = /^[1-9]\d{0,14}$/;
 
-function ruleId(raw: string): number {
+function alertId(raw: string): number {
   if (!PATH_ID.test(raw)) {
-    throw new ArgError("the path ends with a rule id, a positive integer");
+    throw new ArgError("the path ends with an alert id, a positive integer");
+  }
+  return Number(raw);
+}
+
+function idParam(raw: unknown, name: string): number {
+  if (typeof raw !== "string" || !PATH_ID.test(raw)) {
+    throw new ArgError(`${name} must be an alert id, a positive integer`);
+  }
+  return Number(raw);
+}
+
+// a page_token is the id the next page starts at, or ends before
+function tokenOf(raw: unknown): number | null {
+  if (raw === undefined) return null;
+  if (typeof raw !== "string" || !PATH_ID.test(raw)) {
+    throw new ArgError("page_token is a next_page_token answered before");
   }
   return Number(raw);
 }
@@ -467,107 +479,46 @@ function marketData(m: Markets): Route[] {
   ];
 }
 
-function rules(m: Markets): Route[] {
-  const noRule = (id: number) => problem("not_found", `no rule ${id}`);
+// the literal paths first: the router takes the first pattern that fits
+function alerts(m: Markets, feed: ApiDeps["alerts"]): Route[] {
+  const one = (owner: string, id: number) => {
+    const read = oneAlert(m, owner, id);
+    return "error" in read ? problemOf(read) : json(read);
+  };
   return [
     {
       method: "GET",
-      path: "/rules",
-      scope: "rules:read",
-      handle: async (_req, url, _params, who) => {
-        noQuery(url);
-        return json(ruleViews(m, readRules(m.db, who.user)));
-      },
+      path: "/alerts/feed",
+      scope: "alerts:read",
+      handle: (req, _url, _params, who) => feed(req, who.user),
     },
     {
-      method: "POST",
-      path: "/rules",
-      scope: "rules:write",
-      handle: async (req, url, _params, who) => {
-        noQuery(url);
-        const read = await bodyOf(req);
-        if (read instanceof Response) return read;
-        const body = fields(read.body, ["symbol", "condition", "note"]);
-        const args = parseRules({ ...body, action: "create" });
-        if (args.action !== "create") throw new Error("not a create");
-        const made = await createRule(m, who.user, args);
-        if ("error" in made) return problemOf(made);
-        return json(made, 201, {
-          ...NO_STORE,
-          location: `${PREFIX}/rules/${made.rule.id}`,
+      method: "GET",
+      path: "/alerts/history",
+      scope: "alerts:read",
+      handle: async (_req, url, _params, who) => {
+        const q = queryArgs(url, {
+          since: "text",
+          symbol: "text",
+          alert: "text",
+          page_token: "text",
         });
-      },
-    },
-    {
-      method: "GET",
-      path: "/rules/{id}",
-      scope: "rules:read",
-      handle: async (_req, url, params, who) => {
-        noQuery(url);
-        const id = ruleId(params.id!);
-        const rule = readRule(m.db, who.user, id);
-        if (rule === null) return noRule(id);
-        const view = ruleViews(m, [rule]);
-        return json({ rule: view.rules[0]!, instruments: view.instruments });
-      },
-    },
-    {
-      method: "PATCH",
-      path: "/rules/{id}",
-      scope: "rules:write",
-      handle: async (req, url, params, who) => {
-        noQuery(url);
-        const id = ruleId(params.id!);
-        const read = await bodyOf(req);
-        if (read instanceof Response) return read;
-        const body = fields(read.body, ["paused"]);
-        const args = parseRules({ ...body, action: "pause", id });
-        if (args.action !== "pause") throw new Error("not a pause");
-        const done = await pauseRule(m, who.user, args);
-        if ("error" in done) return problemOf(done);
-        return json(done);
-      },
-    },
-    {
-      method: "DELETE",
-      path: "/rules/{id}",
-      scope: "rules:write",
-      handle: async (_req, url, params, who) => {
-        noQuery(url);
-        const done = await deleteRuleById(m, who.user, ruleId(params.id!));
-        if ("error" in done) return problemOf(done);
-        return new Response(null, { status: 204, headers: NO_STORE });
-      },
-    },
-  ];
-}
-
-function alertPages(m: Markets): Route[] {
-  return [
-    {
-      method: "GET",
-      path: "/alerts/recent",
-      scope: "rules:read",
-      handle: async (_req, url, _params, who) => {
-        const keys = [...url.searchParams.keys()];
-        if (keys.some((k) => k !== "before")) {
-          throw new ArgError("takes only before");
-        }
-        const raw = url.searchParams.get("before");
-        if (raw !== null && !PATH_ID.test(raw)) {
-          throw new ArgError("before must be an alert id");
-        }
-        const before = raw === null ? null : Number(raw);
-        const rows = readAlertsBefore(
-          m.db,
-          who.user,
-          before,
-          RECENT_ALERTS + 1,
-        );
-        const page = rows.slice(0, RECENT_ALERTS);
+        const read = parseAlertsRead({
+          history: true,
+          since: q.since,
+          symbol: q.symbol,
+          id: q.alert === undefined ? undefined : idParam(q.alert, "alert"),
+        });
+        const { triggers, instruments, more } = historyList(m, who.user, {
+          before: tokenOf(q.page_token),
+          alert: read.id,
+          symbol: read.symbol,
+          since: read.since,
+        });
         return json({
-          ...alertViews(m, page),
-          next: rows.length > RECENT_ALERTS ? page.at(-1)!.id : null,
+          triggers,
+          instruments,
+          ...(more ? { next_page_token: String(triggers.at(-1)!.id) } : {}),
         });
       },
     },
@@ -594,6 +545,100 @@ function alertPages(m: Markets): Route[] {
         }
         await m.writer.write((db) => markSeen(db, who.user, body.id as number));
         return json(readSeen(m.db, who.user));
+      },
+    },
+    {
+      method: "GET",
+      path: "/alerts",
+      scope: "alerts:read",
+      handle: async (_req, url, _params, who) => {
+        const q = queryArgs(url, { symbol: "text", page_token: "text" });
+        const read = parseAlertsRead({ symbol: q.symbol });
+        const { alerts, instruments, after } = alertList(m, who.user, {
+          symbol: read.symbol,
+          from: tokenOf(q.page_token) ?? 0,
+        });
+        return json({
+          alerts,
+          instruments,
+          ...(after === null ? {} : { next_page_token: String(after) }),
+        });
+      },
+    },
+    {
+      method: "POST",
+      path: "/alerts",
+      scope: "alerts:write",
+      handle: async (req, url, _params, who) => {
+        noQuery(url);
+        const read = await bodyOf(req);
+        if (read instanceof Response) return read;
+        const body = fields(read.body, [
+          "symbol",
+          "when",
+          "note",
+          "after_earnings",
+        ]);
+        const args = parseAlertsEdit({ ...body, action: "create" });
+        if (args.action !== "create") throw new Error("not a create");
+        const made = await createAlert(m, who.user, args);
+        if ("error" in made) return problemOf(made);
+        return json(made, 201, {
+          ...NO_STORE,
+          location: `${PREFIX}/alerts/${made.alert.id}`,
+        });
+      },
+    },
+    {
+      method: "GET",
+      path: "/alerts/{id}",
+      scope: "alerts:read",
+      handle: async (_req, url, params, who) => {
+        noQuery(url);
+        return one(who.user, alertId(params.id!));
+      },
+    },
+    {
+      method: "PATCH",
+      path: "/alerts/{id}",
+      scope: "alerts:write",
+      handle: async (req, url, params, who) => {
+        noQuery(url);
+        const id = alertId(params.id!);
+        const read = await bodyOf(req);
+        if (read instanceof Response) return read;
+        const { paused, ...change } = fields(read.body, [
+          "when",
+          "note",
+          "paused",
+        ]);
+        if (paused !== undefined) {
+          if (Object.keys(change).length > 0) {
+            throw new ArgError("paused goes alone, without when or note");
+          }
+          if (typeof paused !== "boolean") {
+            throw new ArgError("paused must be true or false");
+          }
+          const done = await pauseAlert(m, who.user, id, paused);
+          if ("error" in done) return problemOf(done);
+          return json({ ...done, triggered: null });
+        }
+        const args = parseAlertsEdit({ ...change, action: "update", id });
+        if (args.action !== "update") throw new Error("not an update");
+        const done = await updateAlert(m, who.user, args);
+        if ("error" in done) return problemOf(done);
+        return json(done);
+      },
+    },
+    {
+      method: "DELETE",
+      path: "/alerts/{id}",
+      scope: "alerts:write",
+      handle: async (_req, url, params, who) => {
+        noQuery(url);
+        const done = await deleteAlert(m, who.user, alertId(params.id!));
+        if ("error" in done) return problemOf(done);
+        return new Response(null, { status: 204, headers: NO_STORE });
       },
     },
   ];
@@ -1098,17 +1143,10 @@ export function routes(deps: ApiDeps): Route[] {
     });
   const list: Route[] = [
     ...marketData(m),
-    ...rules(m),
+    ...alerts(m, deps.alerts),
     ...portfolioRoutes(m),
     ...profile(m),
     ...analysis(m),
-    {
-      method: "GET",
-      path: "/alerts",
-      scope: "rules:read",
-      handle: (req, _url, _params, who) => deps.alerts(req, who.user),
-    },
-    ...alertPages(m),
     ...operator(admin, deps.world),
     ...keys({ m: deps.admin.m, mask: deps.mask ?? (() => {}) }),
     ...people({ m: deps.admin.m, email, links: sent }),

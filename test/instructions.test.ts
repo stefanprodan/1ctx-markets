@@ -10,7 +10,7 @@ import { ACCESS_LEVELS, mcpClient, seedKey, withApp } from "./helpers/app.ts";
 
 const ALL = instructions({
   portfolio: "write",
-  rules: "write",
+  alerts: "write",
   profile: "write",
   analysis: "write",
 });
@@ -80,7 +80,7 @@ async function perKey(
   for (const level of ACCESS_LEVELS) {
     const token = seedKey(
       t,
-      `${level.portfolio}-${level.rules}-${level.profile}-${level.analysis}`,
+      `${level.portfolio}-${level.alerts}-${level.profile}-${level.analysis}`,
       level,
     );
     const client = await mcpClient(t, token);
@@ -179,10 +179,10 @@ describe("the server instructions", () => {
   test("stay under the byte cap and ASCII for every access combination", () => {
     const access = ["none", "read", "write"] as const;
     for (const portfolio of access) {
-      for (const rules of access) {
+      for (const alerts of access) {
         for (const profile of access) {
           for (const analysis of access) {
-            const text = instructions({ portfolio, rules, profile, analysis });
+            const text = instructions({ portfolio, alerts, profile, analysis });
             expect(Buffer.byteLength(text)).toBeLessThanOrEqual(
               INSTRUCTIONS_BYTES,
             );
@@ -192,6 +192,22 @@ describe("the server instructions", () => {
       }
     }
   });
+
+  test("send a level to watch to alerts, naming the edit to a key that writes", () =>
+    withApp((t) =>
+      perKey(t, (text, _tools, level) => {
+        const line = text.split("\n").find((l) => l.includes("`alerts`"));
+        if (level.alerts === "none") {
+          expect([level, line]).toEqual([level, undefined]);
+          return;
+        }
+        expect(line).toContain("how close an alert is, or what triggered");
+        expect([level, line!.includes("`alerts_edit`")]).toEqual([
+          level,
+          level.alerts === "write",
+        ]);
+      }),
+    ));
 
   test("name no holding, place or workspace", () => {
     for (const word of DENIED) {

@@ -15,6 +15,7 @@ import {
 import { SCREEN_NAMES, SCREENS, SORT_NAMES } from "../admin/screener.ts";
 import { INTRADAY_SESSIONS } from "../market/intraday.ts";
 import { TRACK_DAYS } from "../market/tracking.ts";
+import { LAST_TRIGGERS } from "../operations/alerts.ts";
 import { MAX_SYMBOL } from "../operations/args.ts";
 import { MAX_EVENT_SYMBOLS } from "../operations/events.ts";
 import { DEFAULT_MONTHS } from "../operations/history.ts";
@@ -28,8 +29,13 @@ import {
   WEEK_ITEMS,
 } from "../operations/research.ts";
 import { MAX_FIELDS, MAX_FILTERS } from "../operations/screen.ts";
-import { MAX_NOTE } from "../rules/format.ts";
-import { ALERTS_KEPT_DAYS, RECENT_ALERTS } from "../rules/store.ts";
+import {
+  MAX_COMPARISONS,
+  MAX_DEPTH,
+  MAX_INSTRUMENTS,
+  MAX_NOTE,
+} from "../rules/format.ts";
+import { ALERTS_KEPT_DAYS, ALERTS_PAGE } from "../rules/store.ts";
 import { MAX_KEYS } from "../server/access.ts";
 import { CALLS_PER_MINUTE } from "../server/ratelimit.ts";
 import { ALERT_PAGE_BYTES } from "./alerts.ts";
@@ -51,8 +57,8 @@ import {
 // read is an agent key's scope; the admin key holds every scope; a login
 // opens every route, the admin routes an admin's only
 const READ_AUTH = [{ read: [] }, { admin: [] }, { session: [] }];
-const RULES_READ_AUTH = [{ rulesRead: [] }, { admin: [] }, { session: [] }];
-const RULES_WRITE_AUTH = [{ rulesWrite: [] }, { admin: [] }, { session: [] }];
+const ALERTS_READ_AUTH = [{ alertsRead: [] }, { admin: [] }, { session: [] }];
+const ALERTS_WRITE_AUTH = [{ alertsWrite: [] }, { admin: [] }, { session: [] }];
 const ADMIN_AUTH = [{ admin: [] }, { session: [] }];
 
 const content = (schema: Schema) => ({
@@ -77,19 +83,19 @@ export const responses = {
   ),
   Unauthorized: error("Missing, wrong, revoked or expired key."),
   NotFound: error(
-    "No such route, rule, key, instrument or symbol (`not_found`); a name with several listings (`candidates`, with ids to pick from); a symbol whose source is off (`no_data`) or that this server does not serve (`refused`).",
+    "No such route, alert, key, instrument or symbol (`not_found`); a name with several listings (`candidates`, with ids to pick from); a symbol whose source is off (`no_data`) or that this server does not serve (`refused`).",
   ),
   NotStored: error(
     "No stored instrument for the symbol (`not_found`). Nothing is fetched.",
   ),
   Conflict: error(
-    "The rule or instrument refuses it in its current state (`conflict`, `split_paused`).",
+    "The alert or instrument refuses it in its current state (`conflict`, `split_paused`).",
   ),
   Forbidden: error(
     "A request other than GET or HEAD with the session cookie, not sent from this server's own pages (`forbidden`).",
   ),
-  NoRules: error(
-    "A key without rules access, or one that reads only on a write (`forbidden`).",
+  NoAlerts: error(
+    "A key without alerts access, or one that reads only on a write (`forbidden`).",
   ),
   AdminOnly: error(
     "Not for this caller: an agent key on an admin or web UI route, a member's sign-in on an admin route, or a cookie request not sent from this server's own pages (`forbidden`).",
@@ -182,7 +188,7 @@ const reads = (extra: object = {}) => ({
   ...extra,
 });
 
-const ruled = (extra: object = {}) => reads({ 403: r("NoRules"), ...extra });
+const alerted = (extra: object = {}) => reads({ 403: r("NoAlerts"), ...extra });
 
 const admins = (extra: object = {}) => ({
   400: r("BadArguments"),
@@ -479,7 +485,7 @@ export const paths = {
       description: lines(
         "Deletes a stored instrument and all its stored rows.",
         "",
-        "- Refused with `conflict` while a rule reads it; `rules` names them.",
+        "- Refused with `conflict` while an alert reads it; `rules` names their ids.",
         "- Its alerts are kept.",
       ),
       parameters: [symbolParam(STORED_SYMBOL)],
@@ -583,38 +589,48 @@ export const paths = {
       }),
     },
   },
-  "/rules": {
+  "/alerts": {
     get: {
-      tags: ["rules"],
-      operationId: "listRules",
-      security: RULES_READ_AUTH,
-      summary: "List price rules",
+      tags: ["alerts"],
+      operationId: "listAlerts",
+      security: ALERTS_READ_AUTH,
+      summary: "Price alerts",
       description: lines(
-        "Every rule with its condition, pause, whether it is armed, its last result, and how it stands now.",
+        "Your alerts, by id, each with its condition, state and how close it is now.",
         "",
-        "- `now` is the rule evaluated at this read on the stored prices. It is stored nowhere: it fires no alert and changes neither `armed` nor `last_result`.",
-        "- `instruments` names every listing the rules read, by id, with its name, type, currency and unit.",
+        "- `when` is the condition in its canonical form, to edit and send back.",
+        "- `state`: `watching` (the next true triggers), `triggered` (it waits for a false, then triggers again at most once a trading session), `waiting_for_earnings`, `paused`, `split_paused` (update it with new levels), `unknown` (`reasons` say why; it never triggers).",
+        "- `now` holds each comparison, in the order `when` gives them: the left side's `value`, the `level` it is compared with, `gap` (level minus value, signed) and, between price levels, `gap_percent`.",
+        "- The alert's `gap_percent` is how far from triggering: the farthest comparison of an `and`, the nearest of an `or`, price levels only, 0 once it holds.",
+        "- Evaluated at this read on the stored prices and stored nowhere: a read never triggers.",
+        `- ${ALERTS_PAGE} alerts a page. Pass \`next_page_token\` as \`page_token\` for the next; it is absent on the last.`,
       ),
-      responses: ruled({ 200: ok("The rules.", ref("Rules")) }),
+      parameters: [
+        query("symbol", "Only this symbol's alerts. Nothing is fetched."),
+        query("page_token", "The `next_page_token` of the page before."),
+      ],
+      responses: alerted({ 200: ok("A page of alerts.", ref("AlertList")) }),
     },
     post: {
-      tags: ["rules"],
-      operationId: "createRule",
-      security: RULES_WRITE_AUTH,
-      summary: "Create a price rule",
+      tags: ["alerts"],
+      operationId: "createAlert",
+      security: ALERTS_WRITE_AUTH,
+      summary: "Create a price alert",
       description: lines(
-        "Creates a rule on live quotes. Answers the rule, its first evaluation and any alert it fired, with the rule's path in `Location`.",
+        "Creates an alert on live quotes. Answers it and its trigger, if its condition is true already, with its path in `Location`.",
         "",
-        "- The condition is a fixed tree, not an expression.",
-        "- An alert fires when the condition turns true, and again only after it was false.",
+        '- `when` is comparisons joined by `and` (first) and `or`, with parentheses: `"price < 180"`, `"rsi14 < 30 and price > sma200"`, `"price(^VIX) > 25"`.',
+        "- A side is a number or a field as `quote` and `screen` name it; `field(symbol)` reads another symbol, `relative_return_1m(benchmark)` and `_3m` a relative return.",
+        `- One unit per comparison, at most ${MAX_COMPARISONS} comparisons, ${MAX_DEPTH} levels and ${MAX_INSTRUMENTS} symbols. A refusal names the token and its position.`,
+        "- It triggers when its condition turns true, at most once a trading session of its symbol, and again only after false.",
         `- \`note\` is at most ${MAX_NOTE} characters.`,
-        "- Every symbol it names is resolved within the call. On any failure no rule is stored.",
+        "- Every symbol it names is resolved within the call. On any failure no alert is stored.",
         DEADLINE,
       ),
-      requestBody: body(ref("RuleArgs")),
-      responses: ruled({
+      requestBody: body(ref("AlertArgs")),
+      responses: alerted({
         201: {
-          ...ok("The rule created.", ref("Created")),
+          ...ok("The alert created.", ref("AlertChanged")),
           headers: { Location: { schema: str } },
         },
         404: r("NotFound"),
@@ -624,71 +640,40 @@ export const paths = {
       }),
     },
   },
-  "/rules/{id}": {
-    parameters: [
-      {
-        name: "id",
-        in: "path",
-        description: "The rule's id.",
-        required: true,
-        schema: int,
-      },
-    ],
+  "/alerts/history": {
     get: {
-      tags: ["rules"],
-      operationId: "getRule",
-      security: RULES_READ_AUTH,
-      summary: "One price rule",
-      description:
-        "The rule as the list gives it, with `now` evaluated at this read and stored nowhere, and the `instruments` it reads.",
-      responses: ruled({
-        200: ok("The rule.", ref("RuleWithNow")),
-        404: r("NotFound"),
-      }),
-    },
-    patch: {
-      tags: ["rules"],
-      operationId: "pauseRule",
-      security: RULES_WRITE_AUTH,
-      summary: "Pause or resume a rule",
+      tags: ["alerts"],
+      operationId: "alertHistory",
+      security: ALERTS_READ_AUTH,
+      summary: "What triggered",
       description: lines(
-        "Sets or clears the rule's manual pause.",
+        "Your triggers, newest first, with the `instruments` they name. For reading back; poll the feed to be told of new ones.",
         "",
-        "- A rule paused by a split cannot be resumed (`split_paused`): its levels predate the split. Delete it and create it again.",
+        "- `values` holds each side read when it triggered, keyed as `when` writes it.",
+        `- ${ALERTS_PAGE} a page. Pass \`next_page_token\` as \`page_token\` for the next older page; it is absent on the last.`,
+        `- Kept ${ALERTS_KEPT_DAYS} days, also after their alert is deleted.`,
       ),
-      requestBody: body(ref("Pause")),
-      responses: ruled({
-        200: ok("The rule.", ref("OneRule")),
-        404: r("NotFound"),
-        409: r("Conflict"),
-        413: r("TooLarge"),
-        415: r("UnsupportedType"),
-      }),
-    },
-    delete: {
-      tags: ["rules"],
-      operationId: "deleteRule",
-      security: RULES_WRITE_AUTH,
-      summary: "Delete a rule",
-      description: `Deletes the rule. Its alerts are kept until they are ${ALERTS_KEPT_DAYS} days old.`,
-      responses: ruled({
-        204: { description: "Deleted." },
-        404: r("NotFound"),
-      }),
+      parameters: [
+        query("since", "From this UTC day, `YYYY-MM-DD`."),
+        query("symbol", "Only this symbol's alerts. Nothing is fetched."),
+        query("alert", "Only this alert's, a deleted one's too.", int),
+        query("page_token", "The `next_page_token` of the page before."),
+      ],
+      responses: alerted({ 200: ok("A page of triggers.", ref("History")) }),
     },
   },
-  "/alerts": {
+  "/alerts/feed": {
     get: {
-      tags: ["rules"],
-      operationId: "alerts",
-      security: RULES_READ_AUTH,
+      tags: ["alerts"],
+      operationId: "alertFeed",
+      security: ALERTS_READ_AUTH,
       summary: "Alerts feed",
       description: lines(
-        "The alerts after the `If-None-Match` cursor, oldest first, or all kept alerts without one. Meant to be polled on a schedule.",
+        "The triggers after the `If-None-Match` cursor, oldest first, or all kept ones without one. Meant to be polled on a schedule.",
         "",
-        '- Send the last `ETag` (`W/"alerts-<id>"`) back as `If-None-Match` to get only newer alerts.',
-        `- A page stays under ${kib(ALERT_PAGE_BYTES)}. \`more\` is true when more alerts wait for the next poll.`,
-        "- The same alerts always answer the same bytes.",
+        '- Send the last `ETag` (`W/"alerts-<id>"`) back as `If-None-Match` to get only newer ones.',
+        `- A page stays under ${kib(ALERT_PAGE_BYTES)}. \`more\` is true when more wait for the next poll.`,
+        "- The same triggers always answer the same bytes.",
         "- Delivery is at least once: deduplicate by `id`.",
       ),
       parameters: [
@@ -701,70 +686,105 @@ export const paths = {
       ],
       responses: {
         200: {
-          ...ok("Alerts after the cursor.", ref("Alerts")),
+          ...ok("Triggers after the cursor.", ref("Feed")),
           headers: { ETag: { schema: str } },
         },
-        204: { description: "No cursor and no alerts." },
+        204: { description: "No cursor and no triggers." },
         304: {
           description: "Nothing after the cursor.",
           headers: { ETag: { schema: str } },
         },
         400: r("BadArguments"),
         401: r("Unauthorized"),
-        403: r("NoRules"),
+        403: r("NoAlerts"),
         429: r("TooMany"),
         500: r("Internal"),
       },
     },
   },
-  "/alerts/recent": {
-    get: {
-      tags: ["rules"],
-      operationId: "recentAlerts",
-      security: RULES_READ_AUTH,
-      summary: "Recent alerts",
-      description: lines(
-        "Your kept alerts, newest first, a page at a time, with the `instruments` they name. For reading back; poll the feed to be told of new ones.",
-        "",
-        `- ${RECENT_ALERTS} alerts a page. Pass \`next\` as \`before\` for the next older page; \`next\` is null on the last.`,
-        `- Alerts are kept for ${ALERTS_KEPT_DAYS} days, also after their rule is deleted.`,
-      ),
-      parameters: [
-        query(
-          "before",
-          "An alert id: only alerts older than it. Default: from the newest.",
-          int,
-        ),
-      ],
-      responses: ruled({ 200: ok("A page of alerts.", ref("RecentAlerts")) }),
-    },
-  },
   "/alerts/seen": {
     get: {
-      tags: ["rules"],
+      tags: ["alerts"],
       operationId: "alertsSeen",
       security: ADMIN_AUTH,
       summary: "Alerts seen",
       description:
-        "The newest of your alerts the web UI marked seen, and how many came after it. A web UI route: an agent key is refused (`forbidden`).",
+        "The newest of your triggers the web UI marked seen, and how many came after it. A web UI route: an agent key is refused (`forbidden`).",
       responses: admins({ 200: ok("Seen and unseen.", ref("Seen")) }),
     },
     put: {
-      tags: ["rules"],
+      tags: ["alerts"],
       operationId: "markAlertsSeen",
       security: ADMIN_AUTH,
       summary: "Mark alerts seen",
       description: lines(
-        "Marks your alerts up to `id` seen and answers as the read.",
+        "Marks your triggers up to `id` seen and answers as the read.",
         "",
         "- It only moves forward: an older id leaves it as it was.",
-        "- It stops at your newest alert, so an alert fired later is never seen ahead of time.",
+        "- It stops at your newest trigger, so one triggered later is never seen ahead of time.",
       ),
       requestBody: body(ref("SeenArgs")),
       responses: admins({
         200: ok("Seen and unseen.", ref("Seen")),
         413: r("TooLarge"),
         415: r("UnsupportedType"),
+      }),
+    },
+  },
+  "/alerts/{id}": {
+    parameters: [
+      {
+        name: "id",
+        in: "path",
+        description: "The alert's id.",
+        required: true,
+        schema: int,
+      },
+    ],
+    get: {
+      tags: ["alerts"],
+      operationId: "getAlert",
+      security: ALERTS_READ_AUTH,
+      summary: "One price alert",
+      description: `The alert as the list gives it, its last ${LAST_TRIGGERS} triggers, newest first, and the \`instruments\` they name.`,
+      responses: alerted({
+        200: ok("The alert.", ref("OneAlert")),
+        404: r("NotFound"),
+      }),
+    },
+    patch: {
+      tags: ["alerts"],
+      operationId: "updateAlert",
+      security: ALERTS_WRITE_AUTH,
+      summary: "Update, pause or resume an alert",
+      description: lines(
+        "Changes `when`, `note` or both, keeping the id and history; or, alone, `paused` pauses or resumes it.",
+        "",
+        "- A new `when` is a new question: it clears the session it last triggered in and a split pause, and is checked at once, its trigger in the answer when true.",
+        "- The symbol never changes: another symbol is another alert.",
+        "- `note` null clears it.",
+        "- An alert paused by a split resumes only with a new `when` (`split_paused`).",
+        DEADLINE,
+      ),
+      requestBody: body(ref("AlertChange")),
+      responses: alerted({
+        200: ok("The alert.", ref("AlertChanged")),
+        404: r("NotFound"),
+        409: r("Conflict"),
+        413: r("TooLarge"),
+        415: r("UnsupportedType"),
+        503: r("Unavailable"),
+      }),
+    },
+    delete: {
+      tags: ["alerts"],
+      operationId: "deleteAlert",
+      security: ALERTS_WRITE_AUTH,
+      summary: "Delete an alert",
+      description: `Deletes the alert. Its history is kept until ${ALERTS_KEPT_DAYS} days old.`,
+      responses: alerted({
+        204: { description: "Deleted." },
+        404: r("NotFound"),
       }),
     },
   },
@@ -788,7 +808,7 @@ export const paths = {
         "",
         "- An agent key opens what the read scope opens: market data, instruments and MCP. Never an admin route.",
         "- `portfolio` is `read` or `write` to open the portfolio routes and the portfolio tool; `none` by default.",
-        "- `rules` is `read` to open the rules list and the alerts feed, `write` to also create, pause and delete rules, over the routes and the rules tool; `none` by default.",
+        "- `alerts` is `read` to open the alerts, their history and the feed, and the `alerts` tool, `write` to also create, update, pause and delete them and list `alerts_edit`; `none` by default.",
         "- `profile` is `read` to open the profile routes and the `profile` tool, `write` to also save it and list `profile_edit`; `none` by default.",
         "- `analysis` is `read` to open the analysis routes and the `analysis` tool, `write` to also save one and list `analysis_edit`; `none` by default.",
         `- At most ${MAX_KEYS} keys a person, expired ones included. Revoke one to make another.`,
@@ -812,7 +832,7 @@ export const paths = {
       security: ADMIN_AUTH,
       summary: "Change an agent key's access",
       description: lines(
-        "Sets the key's portfolio, rules, profile or analysis access, or more than one. Answers the key as the list does.",
+        "Sets the key's portfolio, alerts, profile or analysis access, or more than one. Answers the key as the list does.",
         "",
         "- The token, name and expiry stay. An expired key changes too.",
         "- The key's next call is held to the new access.",

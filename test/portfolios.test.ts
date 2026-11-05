@@ -48,7 +48,7 @@ const CASEY: Who = {
   user: OPERATOR,
   credential: { kind: "key", id: "casey-agent" },
   portfolio: "write",
-  rules: "none",
+  alerts: "none",
   profile: "none",
   analysis: "none",
 };
@@ -780,7 +780,7 @@ describe("trades", () => {
       user: OPERATOR,
       credential: { kind: "key", id: "reader" },
       portfolio: "read",
-      rules: "none",
+      alerts: "none",
       profile: "none",
       analysis: "none",
     };
@@ -789,7 +789,7 @@ describe("trades", () => {
       user: OPERATOR,
       credential: { kind: "key", id: "none" },
       portfolio: "none",
-      rules: "none",
+      alerts: "none",
       profile: "none",
       analysis: "none",
     };
@@ -867,7 +867,7 @@ describe("setup", () => {
       user: OPERATOR,
       credential: { kind: "key", id: "reader" },
       portfolio: "read",
-      rules: "none",
+      alerts: "none",
       profile: "none",
       analysis: "none",
     };

@@ -18,8 +18,8 @@ their flags and events' `filed_at` are in `docs/edgar.md`; the
 sections that answer them are here. The queue, deadlines, retries, phrases, scrubbing
 and the lock every source shares are in `docs/sources.md`; resolution,
 tracking and the answer contract in `docs/tools.md`; the research
-route's transport in `docs/api.md`; rules that wait on events in
-`docs/rules.md`; runs and retention in `docs/storage.md`.
+route's transport in `docs/api.md`; alerts that wait on events in
+`docs/alerts.md`; runs and retention in `docs/storage.md`.
 
 ## Keys
 

@@ -16,7 +16,9 @@ import { withLive } from "../src/operations/history.ts";
 import { CALL_MS, markets } from "../src/operations/markets.ts";
 import { MAX_IMPORT_BODY } from "../src/operations/portfolio-import.ts";
 import { NO_WORLD } from "../src/operations/track.ts";
-import { ADMIN } from "../src/operations/who.ts";
+import { ADMIN, OPERATOR } from "../src/operations/who.ts";
+import { writeCondition } from "../src/rules/format.ts";
+import { insertAlert, insertRule } from "../src/rules/store.ts";
 import { DAY_MS } from "../src/runtime/clock.ts";
 import { silent } from "../src/runtime/log.ts";
 import { CALLS_PER_MINUTE } from "../src/server/ratelimit.ts";
@@ -563,152 +565,191 @@ describe("every operation", () => {
     );
     await check("POST", "/screen", late, 503);
 
-    // alerts before any fired
-    await check("GET", "/alerts", await t.call("/alerts"), 204);
+    // the feed before any triggered
+    const F = "/alerts/feed";
+    await check("GET", F, await t.call(F), 204);
 
-    const rule = {
+    const alert = {
       symbol: "NVDA",
-      condition: { left: "price", op: "<", right: 211 },
+      when: "price < 211",
       note: "below 211",
     };
-    const created = await t.call("/rules", json(rule));
+    const created = await t.call("/alerts", json(alert));
     const location = created.headers.get("location");
-    const made = await check("POST", "/rules", created, 201);
-    expect(made.alert).not.toBeNull();
-    expect(location).toBe(`${PREFIX}/rules/${made.rule.id}`);
+    const made = await check("POST", "/alerts", created, 201);
+    expect(made.triggered).not.toBeNull();
+    expect(location).toBe(`${PREFIX}/alerts/${made.alert.id}`);
     await check(
       "POST",
-      "/rules",
-      await t.call("/rules", json({ ...rule, action: "list" })),
+      "/alerts",
+      await t.call("/alerts", json({ ...alert, action: "create" })),
       400,
     );
     await check(
       "POST",
-      "/rules",
-      await t.call("/rules", { ...json(rule), ...wrong }),
+      "/alerts",
+      await t.call("/alerts", json({ ...alert, when: "rsi < 30" })),
+      400,
+    );
+    await check(
+      "POST",
+      "/alerts",
+      await t.call("/alerts", { ...json(alert), ...wrong }),
       401,
     );
     await check(
       "POST",
-      "/rules",
-      await t.call("/rules", json({ ...rule, symbol: "ZZNOTHING" })),
+      "/alerts",
+      await t.call("/alerts", json({ ...alert, symbol: "ZZNOTHING" })),
       404,
     );
     await check(
       "POST",
-      "/rules",
+      "/alerts",
       await t.call(
-        "/rules",
-        json({ ...rule, note: "x".repeat(MAX_BODY_BYTES) }),
+        "/alerts",
+        json({ ...alert, note: "x".repeat(MAX_BODY_BYTES) }),
       ),
       413,
     );
     await check(
       "POST",
-      "/rules",
-      await t.call("/rules", json(rule, "text/plain")),
+      "/alerts",
+      await t.call("/alerts", json(alert, "text/plain")),
       415,
     );
-    const lateRule = await t.late(
+    const lateAlert = await t.late(
       "SLOWC.DE",
-      "/rules",
-      json({ ...rule, symbol: "SLOWC.DE" }),
+      "/alerts",
+      json({ ...alert, symbol: "SLOWC.DE" }),
     );
-    await check("POST", "/rules", lateRule, 503);
+    await check("POST", "/alerts", lateAlert, 503);
     expect(count(t.db, "rules")).toBe(1);
 
-    const listed = await check("GET", "/rules", await t.call("/rules"), 200);
-    expect(listed.rules).toHaveLength(1);
-    await check("GET", "/rules", await t.call("/rules?x=1"), 400);
-    await check("GET", "/rules", await t.call("/rules", wrong), 401);
+    const listed = await check("GET", "/alerts", await t.call("/alerts"), 200);
+    expect(listed.alerts).toHaveLength(1);
+    await check("GET", "/alerts", await t.call("/alerts?x=1"), 400);
+    await check("GET", "/alerts", await t.call("/alerts?page_token=x"), 400);
+    await check("GET", "/alerts", await t.call("/alerts", wrong), 401);
 
-    const id = made.rule.id;
+    const id = made.alert.id;
     const one = await check(
       "GET",
-      "/rules/{id}",
+      "/alerts/{id}",
       await t.call(location!.slice(PREFIX.length)),
       200,
     );
     expect(one).toEqual({
-      rule: listed.rules[0],
+      alert: listed.alerts[0],
+      history: [made.triggered],
       instruments: listed.instruments,
     });
-    await check("GET", "/rules/{id}", await t.call("/rules/x"), 400);
-    await check("GET", "/rules/{id}", await t.call("/rules/999"), 404);
-    await check("GET", "/rules/{id}", await t.call(`/rules/${id}`, wrong), 401);
+    await check("GET", "/alerts/{id}", await t.call("/alerts/x"), 400);
+    await check("GET", "/alerts/{id}", await t.call("/alerts/999"), 404);
     await check(
+      "GET",
+      "/alerts/{id}",
+      await t.call(`/alerts/${id}`, wrong),
+      401,
+    );
+    const P = "/alerts/{id}";
+    const paused = await check(
       "PATCH",
-      "/rules/{id}",
-      await t.call(`/rules/${id}`, patch({ paused: true })),
+      P,
+      await t.call(`/alerts/${id}`, patch({ paused: true })),
       200,
     );
+    expect([paused.alert.state, paused.triggered]).toEqual(["paused", null]);
     await check(
       "PATCH",
-      "/rules/{id}",
-      await t.call(`/rules/${id}`, patch({ paused: "yes" })),
+      P,
+      await t.call(`/alerts/${id}`, patch({ paused: "yes" })),
       400,
     );
     await check(
       "PATCH",
-      "/rules/{id}",
-      await t.call(`/rules/${id}`, { ...patch({ paused: true }), ...wrong }),
+      P,
+      await t.call(`/alerts/${id}`, patch({ paused: false, note: "x" })),
+      400,
+    );
+    await check("PATCH", P, await t.call(`/alerts/${id}`, patch({})), 400);
+    await check(
+      "PATCH",
+      P,
+      await t.call(`/alerts/${id}`, { ...patch({ paused: true }), ...wrong }),
       401,
     );
     await check(
       "PATCH",
-      "/rules/{id}",
-      await t.call("/rules/999", patch({ paused: true })),
+      P,
+      await t.call("/alerts/999", patch({ paused: true })),
       404,
     );
     await check(
       "PATCH",
-      "/rules/{id}",
+      P,
       await t.call(
-        `/rules/${id}`,
+        `/alerts/${id}`,
         patch({ paused: "x".repeat(MAX_BODY_BYTES) }),
       ),
       413,
     );
     await check(
       "PATCH",
-      "/rules/{id}",
-      await t.call(`/rules/${id}`, {
+      P,
+      await t.call(`/alerts/${id}`, {
         ...patch({ paused: true }),
         headers: { "content-type": "text/plain" },
       }),
       415,
     );
+    const lateUpdate = await t.late(
+      "SLOWJ.DE",
+      `/alerts/${id}`,
+      patch({ when: "price(SLOWJ.DE) > 1" }),
+    );
+    await check("PATCH", P, lateUpdate, 503);
+    const noted = await check(
+      "PATCH",
+      P,
+      await t.call(`/alerts/${id}`, patch({ note: null })),
+      200,
+    );
+    expect([noted.alert.note, noted.triggered]).toEqual([null, null]);
     t.db.query("update rules set paused = 'split' where id = ?").run(id);
     await check(
       "PATCH",
-      "/rules/{id}",
-      await t.call(`/rules/${id}`, patch({ paused: false })),
+      P,
+      await t.call(`/alerts/${id}`, patch({ paused: false })),
       409,
     );
 
-    // alerts after the rule fired
-    const feed = await t.call("/alerts");
+    // the feed after it triggered
+    const feed = await t.call(F);
     const etag = feed.headers.get("etag")!;
-    await check("GET", "/alerts", feed, 200);
+    await check("GET", F, feed, 200);
     await check(
       "GET",
-      "/alerts",
-      await t.call("/alerts", { headers: { "if-none-match": etag } }),
+      F,
+      await t.call(F, { headers: { "if-none-match": etag } }),
       304,
     );
     await check(
       "GET",
-      "/alerts",
-      await t.call("/alerts", { headers: { "if-none-match": "x" } }),
+      F,
+      await t.call(F, { headers: { "if-none-match": "x" } }),
       400,
     );
-    await check("GET", "/alerts", await t.call("/alerts", wrong), 401);
-    const R = "/alerts/recent";
-    const recent = await check("GET", R, await t.call(R), 200);
-    expect([recent.alerts.length, recent.next]).toEqual([1, null]);
-    await check("GET", R, await t.call(`${R}?before=x`), 400);
-    await check("GET", R, await t.call(R, wrong), 401);
-    await check("GET", R, await t.call(R, reader), 403);
+    await check("GET", F, await t.call(F, wrong), 401);
+    const H = "/alerts/history";
+    const history = await check("GET", H, await t.call(H), 200);
+    expect([history.triggers.length, history.next_page_token]).toEqual([
+      1,
+      undefined,
+    ]);
+    await check("GET", H, await t.call(`${H}?page_token=x`), 400);
+    await check("GET", H, await t.call(H, wrong), 401);
+    await check("GET", H, await t.call(H, reader), 403);
     const S = "/alerts/seen";
     const mark = (body: unknown, init: RequestInit = {}) =>
       t.call(S, { ...json(body), method: "PUT", ...init });
@@ -720,8 +761,8 @@ describe("every operation", () => {
     await check("GET", S, await t.call(S, wrong), 401);
     await check("GET", S, await t.call(S, reader), 403);
     expect(
-      await check("PUT", S, await mark({ id: recent.alerts[0].id }), 200),
-    ).toEqual({ seen: recent.alerts[0].id, unseen: 0 });
+      await check("PUT", S, await mark({ id: history.triggers[0].id }), 200),
+    ).toEqual({ seen: history.triggers[0].id, unseen: 0 });
     await check("PUT", S, await mark({ id: "x" }), 400);
     await check("PUT", S, await mark({ id: 1 }, wrong), 401);
     await check("PUT", S, await mark({ id: 1 }, reader), 403);
@@ -732,31 +773,26 @@ describe("every operation", () => {
       await t.call(S, { ...json({ id: 1 }, "text/plain"), method: "PUT" }),
       415,
     );
-    // the read key has no rules access
+    // the read key has no alerts access
+    await check("GET", F, await t.call(F, reader), 403);
     await check("GET", "/alerts", await t.call("/alerts", reader), 403);
-    await check("GET", "/rules", await t.call("/rules", reader), 403);
     await check(
       "POST",
-      "/rules",
-      await t.call("/rules", { ...json(rule), ...reader }),
+      "/alerts",
+      await t.call("/alerts", { ...json(alert), ...reader }),
       403,
     );
-    await check(
-      "GET",
-      "/rules/{id}",
-      await t.call(`/rules/${id}`, reader),
-      403,
-    );
+    await check("GET", P, await t.call(`/alerts/${id}`, reader), 403);
     await check(
       "PATCH",
-      "/rules/{id}",
-      await t.call(`/rules/${id}`, { ...patch({ paused: true }), ...reader }),
+      P,
+      await t.call(`/alerts/${id}`, { ...patch({ paused: true }), ...reader }),
       403,
     );
     await check(
       "DELETE",
-      "/rules/{id}",
-      await t.call(`/rules/${id}`, { method: "DELETE", ...reader }),
+      P,
+      await t.call(`/alerts/${id}`, { method: "DELETE", ...reader }),
       403,
     );
 
@@ -963,38 +999,38 @@ describe("every operation", () => {
     await check("DELETE", path, await del("US:NVDA", wrong), 401);
     await check("DELETE", path, await del("US:NVDA", reader), 403);
 
-    // rules delete last: its alert stays
+    // the alert deleted last: its history stays
     await check(
       "DELETE",
-      "/rules/{id}",
-      await t.call(`/rules/${id}`, { method: "DELETE" }),
+      "/alerts/{id}",
+      await t.call(`/alerts/${id}`, { method: "DELETE" }),
       204,
     );
     expect(count(t.db, "alerts")).toBe(1);
     await check(
       "DELETE",
-      "/rules/{id}",
-      await t.call(`/rules/${id}`, { method: "DELETE" }),
+      "/alerts/{id}",
+      await t.call(`/alerts/${id}`, { method: "DELETE" }),
       404,
     );
     await check(
       "DELETE",
-      "/rules/{id}",
-      await t.call("/rules/0", { method: "DELETE" }),
+      "/alerts/{id}",
+      await t.call("/alerts/0", { method: "DELETE" }),
       400,
     );
     // past Number.MAX_SAFE_INTEGER an id would round to another
     for (const big of ["9999999999999999", "100000000000000000"]) {
-      const res = await t.call(`/rules/${big}`, { method: "DELETE" });
+      const res = await t.call(`/alerts/${big}`, { method: "DELETE" });
       expect([big, res.status]).toEqual([big, 400]);
     }
     expect(
-      (await t.call("/rules/999999999999999", { method: "DELETE" })).status,
+      (await t.call("/alerts/999999999999999", { method: "DELETE" })).status,
     ).toBe(404);
     await check(
       "DELETE",
-      "/rules/{id}",
-      await t.call(`/rules/${id}`, { method: "DELETE", ...wrong }),
+      "/alerts/{id}",
+      await t.call(`/alerts/${id}`, { method: "DELETE", ...wrong }),
       401,
     );
 
@@ -1061,23 +1097,23 @@ describe("every operation", () => {
     const changed = await check(
       "PATCH",
       "/keys/{id}",
-      await access({ rules: "read" }),
+      await access({ alerts: "read" }),
       200,
     );
-    expect(changed.key).toMatchObject({ portfolio: "none", rules: "read" });
+    expect(changed.key).toMatchObject({ portfolio: "none", alerts: "read" });
     await check("PATCH", "/keys/{id}", await access({}), 400);
-    await check("PATCH", "/keys/{id}", await access({ rules: "all" }), 400);
+    await check("PATCH", "/keys/{id}", await access({ alerts: "all" }), 400);
     await check(
       "PATCH",
       "/keys/{id}",
-      await access({ rules: "x".repeat(70_000) }),
+      await access({ alerts: "x".repeat(70_000) }),
       413,
     );
     await check(
       "PATCH",
       "/keys/{id}",
       await t.call(keyAt, {
-        ...json({ rules: "read" }, "text/plain"),
+        ...json({ alerts: "read" }, "text/plain"),
         method: "PATCH",
       }),
       415,
@@ -1085,20 +1121,20 @@ describe("every operation", () => {
     await check(
       "PATCH",
       "/keys/{id}",
-      await access({ rules: "read" }, wrong),
+      await access({ alerts: "read" }, wrong),
       401,
     );
     await check(
       "PATCH",
       "/keys/{id}",
-      await access({ rules: "read" }, reader),
+      await access({ alerts: "read" }, reader),
       403,
     );
     await check(
       "PATCH",
       "/keys/{id}",
       await t.call("/keys/zzzzzzzzzzzz", {
-        ...json({ rules: "read" }),
+        ...json({ alerts: "read" }),
         method: "PATCH",
       }),
       404,
@@ -1164,7 +1200,7 @@ describe("every operation", () => {
     const w = world();
     const handle = api(w.m);
     w.db.close();
-    const res = await handle(new Request("http://markets.test/api/v1/rules"));
+    const res = await handle(new Request("http://markets.test/api/v1/alerts"));
     expect(res.status).toBe(500);
     expect(res.headers.get("content-type")).toBe("application/problem+json");
     const body = await res.json();
@@ -1174,7 +1210,7 @@ describe("every operation", () => {
       detail: "internal error",
       code: "internal",
     });
-    const schema = answerSchema(spec, "GET", "/rules", 500)!;
+    const schema = answerSchema(spec, "GET", "/alerts", 500)!;
     expect(validate(body, schema, spec)).toEqual([]);
   });
 
@@ -1193,6 +1229,8 @@ describe("every operation", () => {
       "/instruments/NVDA/bars?symbol=NVDA",
       "/instruments/NVDA?extended=true",
       "/alerts?next=1",
+      "/alerts/history?next=1",
+      "/alerts/feed?next=1",
     ]) {
       const res = await t.call(path);
       expect([path, res.status]).toEqual([path, 400]);
@@ -1492,13 +1530,10 @@ describe("an unknown symbol", () => {
       input: "ZZNOTHING",
       error: { code: "not_found", detail: hint },
     });
-    // a rule's miss names its input first
+    // an alert's miss names its input first
     const rule = await t.call(
-      "/rules",
-      json({
-        symbol: "ZZNOTHING",
-        condition: { left: "price", op: "<", right: 1 },
-      }),
+      "/alerts",
+      json({ symbol: "ZZNOTHING", when: "price < 1" }),
     );
     expect(rule.status).toBe(404);
     expect(await rule.json()).toMatchObject({
@@ -1551,38 +1586,33 @@ describe("symbols", () => {
   });
 });
 
-describe("rules", () => {
-  test("create, list, pause and delete answer what the tool answers", async () => {
+describe("alerts", () => {
+  test("create, read, update, pause and delete answer what the tools answer", async () => {
     const rest = await setup();
     const mcp = await setup();
-    const tool = tools(mcp.m).find((x) => x.name === "rules")!;
-    const run = async (args: object) =>
+    const list = tools(mcp.m);
+    const run = async (name: string, args: object) =>
       JSON.parse(
-        (await drive(mcp.clock, pacedOf(mcp.m), tool.run(args, ADMIN)))
-          .content[0]!.text,
+        (
+          await drive(
+            mcp.clock,
+            pacedOf(mcp.m),
+            list.find((x) => x.name === name)!.run(args, ADMIN),
+          )
+        ).content[0]!.text,
       );
-    const rule = {
-      symbol: "NVDA",
-      condition: { left: "price", op: "<", right: 211 },
-      note: "below 211",
-    };
-    const made = await rest.call("/rules", json(rule));
+    const edit = (args: object) => run("alerts_edit", args);
+    const alert = { symbol: "NVDA", when: "price < 211", note: "below 211" };
+    const made = await rest.call("/alerts", json(alert));
     expect(made.status).toBe(201);
-    expect(made.headers.get("location")).toBe(`${PREFIX}/rules/1`);
+    expect(made.headers.get("location")).toBe(`${PREFIX}/alerts/1`);
     const created: any = await made.json();
-    expect(created).toEqual(await run({ action: "create", ...rule }));
-    const listed: any = await (await rest.call("/rules")).json();
-    const { next, ...page } = await run({ action: "list" });
+    expect(created).toEqual(await edit({ action: "create", ...alert }));
+    const listed: any = await (await rest.call("/alerts")).json();
+    const { next, ...page } = await run("alerts", {});
     expect(next).toBeNull();
-    // the route adds each rule's evaluation now and the listings it names;
-    // the rest is the tool's list
-    const { instruments, ...rules } = listed;
-    expect({
-      rules: rules.rules.map(({ now: _, ...r }: { now: unknown }) => r),
-    }).toEqual(page);
-    expect(Object.keys(rules)).toEqual(["rules"]);
-    expect(listed.rules[0].now).toEqual(created.evaluation);
-    expect(instruments).toEqual({
+    expect(listed).toEqual(page);
+    expect(listed.instruments).toEqual({
       "US:NVDA": {
         name: "NVIDIA Corporation",
         type: "EQUITY",
@@ -1590,34 +1620,118 @@ describe("rules", () => {
         unit: "per_share",
       },
     });
-    const paused = await rest.call("/rules/1", patch({ paused: true }));
-    expect(await paused.json()).toEqual(
-      await run({ action: "pause", id: 1, paused: true }),
+    expect(await (await rest.call("/alerts/1")).json()).toEqual(
+      await run("alerts", { id: 1 }),
     );
-    const gone = await rest.call("/rules/1", { method: "DELETE" });
+    const history: any = await (await rest.call("/alerts/history")).json();
+    const { next: after, ...triggers } = await run("alerts", { history: true });
+    expect(after).toBeNull();
+    expect(history).toEqual(triggers);
+    const updated = await rest.call(
+      "/alerts/1",
+      patch({ when: "price <= 300", note: "lifted" }),
+    );
+    expect(await updated.json()).toEqual(
+      await edit({
+        action: "update",
+        id: 1,
+        when: "price <= 300",
+        note: "lifted",
+      }),
+    );
+    const paused = await rest.call("/alerts/1", patch({ paused: true }));
+    expect(await paused.json()).toEqual({
+      ...(await edit({ action: "pause", id: 1 })),
+      triggered: null,
+    });
+    const resumed = await rest.call("/alerts/1", patch({ paused: false }));
+    expect(await resumed.json()).toEqual({
+      ...(await edit({ action: "resume", id: 1 })),
+      triggered: null,
+    });
+    const gone = await rest.call("/alerts/1", { method: "DELETE" });
     expect(gone.status).toBe(204);
     expect(await gone.text()).toBe("");
-    expect(await run({ action: "delete", id: 1 })).toEqual({
-      deleted: 1,
-      alerts: "kept",
-    });
+    expect(await edit({ action: "delete", id: 1 })).toEqual({ deleted: 1 });
     expect(count(rest.db, "rules")).toBe(0);
     expect(count(rest.db, "alerts")).toBe(count(mcp.db, "alerts"));
-    expect(count(rest.db, "alerts")).toBe(1);
+    expect(count(rest.db, "alerts")).toBe(2);
   });
 
   test("a failed create writes nothing", async () => {
     const t = await setup();
     for (const body of [
-      { symbol: "ZZNOTHING", condition: { left: "price", op: "<", right: 1 } },
-      { symbol: "NVDA", condition: { left: "nothing", op: "<", right: 1 } },
+      { symbol: "ZZNOTHING", when: "price < 1" },
+      { symbol: "NVDA", when: "nothing < 1" },
+      { symbol: "NVDA", condition: { left: "price", op: "<", right: 1 } },
       { symbol: "NVDA" },
     ]) {
-      const res = await t.call("/rules", json(body));
+      const res = await t.call("/alerts", json(body));
       expect(res.status).toBeGreaterThanOrEqual(400);
     }
     expect(count(t.db, "rules")).toBe(0);
     expect(count(t.db, "alerts")).toBe(0);
+  });
+
+  test("the alerts and their history page by page_token", async () => {
+    const t = await setup();
+    const first = await t.call(
+      "/alerts",
+      json({ symbol: "NVDA", when: "price > 1" }),
+    );
+    expect(first.status).toBe(201);
+    const condition = writeCondition({
+      node: { left: { field: "price", symbol: "US:NVDA" }, op: ">", right: 1 },
+      afterEarnings: null,
+    });
+    for (let k = 0; k < 60; k++) {
+      const id = insertRule(
+        t.db,
+        OPERATOR,
+        { instrument: "US:NVDA", condition, note: `n${k}` },
+        t.clock.now(),
+      );
+      insertAlert(
+        t.db,
+        { id, owner: OPERATOR },
+        {
+          rule: {
+            id,
+            symbol: "US:NVDA",
+            condition: JSON.parse(condition),
+            note: null,
+          },
+          values: [],
+        },
+        t.clock.now(),
+      );
+    }
+    const walk = async (path: string, key: string) => {
+      const ids: number[] = [];
+      let token: string | undefined;
+      let pages = 0;
+      do {
+        const sep = path.includes("?") ? "&" : "?";
+        const res = await t.call(
+          token === undefined ? path : `${path}${sep}page_token=${token}`,
+        );
+        expect(res.status).toBe(200);
+        const body: any = await res.json();
+        ids.push(...body[key].map((x: { id: number }) => x.id));
+        token = body.next_page_token;
+        pages++;
+      } while (token !== undefined && pages < 10);
+      return { ids, pages };
+    };
+    const alerts = await walk("/alerts", "alerts");
+    expect(alerts.pages).toBe(2);
+    expect(alerts.ids).toEqual(Array.from({ length: 61 }, (_, k) => k + 1));
+    const kept = await walk("/alerts?symbol=NVDA", "alerts");
+    expect(kept.ids).toEqual(alerts.ids);
+    expect((await walk("/alerts?symbol=^GSPC", "alerts")).ids).toEqual([]);
+    const history = await walk("/alerts/history", "triggers");
+    expect(history.pages).toBe(2);
+    expect(history.ids).toEqual(Array.from({ length: 61 }, (_, k) => 61 - k));
   });
 });
 
@@ -1662,11 +1776,11 @@ describe("access", () => {
           "application/problem+json",
         );
         const read = await fetch(at, { method, headers: as(bearer) });
-        // the agent key here writes rules and has no portfolio access
+        // the agent key here writes alerts and has no portfolio access
         const forbidden =
           r.scope !== "read" &&
-          r.scope !== "rules:read" &&
-          r.scope !== "rules:write";
+          r.scope !== "alerts:read" &&
+          r.scope !== "alerts:write";
         expect([method, path, read.status === 403]).toEqual([
           method,
           path,
@@ -1916,15 +2030,12 @@ describe("a symbol in a path", () => {
     ]);
     const made = await handle(
       new Request(
-        `http://markets.test${PREFIX}/rules`,
-        json({
-          symbol: "^VIX",
-          condition: { left: "price", op: ">", right: 1 },
-        }),
+        `http://markets.test${PREFIX}/alerts`,
+        json({ symbol: "^VIX", when: "price > 1" }),
       ),
     );
     expect(made.status).toBe(201);
-    expect(((await made.json()) as any).rule.symbol).toBe("CXI:^VIX");
+    expect(((await made.json()) as any).alert.symbol).toBe("CXI:^VIX");
   });
 
   test("every answer names the server's start, never its version", () =>

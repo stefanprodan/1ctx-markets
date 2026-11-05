@@ -45,7 +45,7 @@ const ASHLEY: Who = {
   user: OPERATOR,
   credential: { kind: "key", id: "ashley-agent" },
   portfolio: "none",
-  rules: "none",
+  alerts: "none",
   profile: "write",
   analysis: "none",
 };
@@ -504,12 +504,12 @@ describe("access", () => {
     withApp(async (t) => {
       const writer = seedKey(t, "jordan-agent", {
         portfolio: "none",
-        rules: "none",
+        alerts: "none",
         profile: "write",
       });
       const reader = seedKey(t, "reader", {
         portfolio: "none",
-        rules: "none",
+        alerts: "none",
         profile: "read",
       });
       const w = await mcpClient(t, writer);
@@ -588,7 +588,7 @@ describe("privacy", () => {
           arguments: { action: "versions" },
         }),
         await c.callTool({ name: "portfolio", arguments: { action: "list" } }),
-        await c.callTool({ name: "rules", arguments: { action: "list" } }),
+        await c.callTool({ name: "alerts", arguments: {} }),
         await c.callTool({
           name: "profile_edit",
           arguments: {
@@ -647,11 +647,11 @@ describe("privacy", () => {
 describe("discovery", () => {
   test("the instructions name the profile only to a key that lists it, within the cap", () => {
     for (const portfolio of ["none", "read", "write"] as const) {
-      for (const rules of ["none", "write"] as const) {
+      for (const alerts of ["none", "write"] as const) {
         for (const profile of ["none", "read", "write"] as const) {
           const text = instructions({
             portfolio,
-            rules,
+            alerts,
             profile,
             analysis: "write",
           });

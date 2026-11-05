@@ -1,11 +1,18 @@
 @layer tokens, base, owners;
 
 @layer owners {
-  .al-tiles {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-  .scr-set {
+  .al-filters {
     margin: 0 0 var(--space-3);
+  }
+  .al-count {
+    color: var(--faint);
+    font-size: var(--text-small);
+  }
+  .seg-on .al-count {
+    color: var(--dim);
+  }
+  .al-zero:not(.seg-on) {
+    color: var(--faint);
   }
   .al-rule {
     display: flex;
@@ -207,9 +214,6 @@
       flex-direction: row;
       align-items: center;
       gap: var(--space-2);
-    }
-    .al-tiles {
-      display: flex;
     }
     .al-fired-row {
       grid-template-columns: 48px minmax(0, 1fr);

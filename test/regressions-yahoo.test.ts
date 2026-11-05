@@ -11,7 +11,7 @@ import { OPERATOR } from "../src/operations/who.ts";
 import { ruleEngine } from "../src/rules/evaluate.ts";
 import {
   bindCondition,
-  parseCondition,
+  parseWhenCondition,
   writeCondition,
 } from "../src/rules/format.ts";
 import { insertRule, readRule } from "../src/rules/store.ts";
@@ -271,7 +271,7 @@ test("a rescaled FX history covering the live-minute day is accepted", async () 
       before.map((bar) => bar.date),
     );
     const condition = bindCondition(
-      parseCondition({ left: "price", op: ">", right: 6 }),
+      parseWhenCondition("price > 6", null),
       instrument.id,
       (symbol) => symbol,
       null,

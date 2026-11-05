@@ -30,7 +30,7 @@ const as = (user: string): Who => ({
   user,
   credential: { kind: "key", id: user },
   portfolio: "write",
-  rules: "none",
+  alerts: "none",
   profile: "none",
   analysis: "none",
 });

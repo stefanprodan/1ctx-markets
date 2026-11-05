@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Rules run inside the write that moved their inputs, in one transaction.
 
+import { barDate } from "../market/calendars.ts";
 import { iso, price, round } from "../market/format.ts";
 import { type Instrument, readInstrument } from "../market/instruments.ts";
 import { barsStale, JOBS, quoteStale, STALE } from "../market/stale.ts";
@@ -11,6 +12,7 @@ import {
   readRelativeReturn,
   readSignals,
 } from "../signals/read.ts";
+import { liveTarget } from "../signals/target.ts";
 import { type EventRow, readEvent } from "../sources/finnhub/read.ts";
 import type { EventKey, Hooks } from "../sources/finnhub/store.ts";
 import type { Db } from "../storage/db/index.ts";
@@ -26,6 +28,7 @@ import {
   type Op,
   type Operand,
   PRICE_LEVEL,
+  publicField,
   splitSensitive,
   writeCondition,
 } from "./format.ts";
@@ -90,6 +93,7 @@ export const WAITING = "waiting for the earnings results";
 export const BEFORE_RESULTS = "prices from before the earnings results";
 export const UNTIMED =
   "a live price with no trade time may be from before the earnings results";
+export const NO_SESSION = "no session date";
 
 type Read = {
   value: number | null;
@@ -102,7 +106,7 @@ type Read = {
 };
 
 // one reader per evaluation pass, so rules sharing an input read it once
-function reader(db: Db, now: number, quoteEveryMs: number) {
+export function reader(db: Db, now: number, quoteEveryMs: number) {
   const instruments = new Map<string, Instrument | null>();
   const signals = new Map<string, InstrumentSignals | null>();
   const instrument = (id: string) => {
@@ -135,13 +139,42 @@ function reader(db: Db, now: number, quoteEveryMs: number) {
       .get(id);
 
   const liveReasons = (id: string): string[] => signalsOf(id)?.stale.live ?? [];
+  const sessions = new Map<string, string | null>();
+  // an untimed quote before the stored session opens is still the last one's
+  const lastBar = (id: string) =>
+    db
+      .query<{ date: string }, [string]>(
+        `select date from bars where instrument = ? and interval = '1d'
+         order by date desc limit 1`,
+      )
+      .get(id)?.date ?? null;
 
   return {
     instrument,
+    // its last trade's date in its exchange's zone, never the clock's
+    session(id: string): string | null {
+      if (!sessions.has(id)) {
+        const i = instrument(id);
+        let date: string | null = null;
+        if (i !== null && !hasQuote(i)) {
+          date = signalsOf(i.id)?.daily.final?.date ?? null;
+        } else if (i !== null) {
+          const time = quote(i.id)?.time;
+          date =
+            time === undefined
+              ? null
+              : time === null
+                ? (liveTarget(db, i)?.date ?? lastBar(i.id))
+                : barDate(i.zone, time);
+        }
+        sessions.set(id, date);
+      }
+      return sessions.get(id)!;
+    },
     read(o: Operand): Read {
       const i = instrument(o.symbol);
       const def = FIELDS[o.field]!;
-      const of = `${o.field} of ${o.symbol}`;
+      const of = `${publicField(o.field)} of ${o.symbol}`;
       if (i === null)
         return { value: null, times: [], reasons: [`${of}: not stored`] };
       if (def.from === "quote") {
@@ -229,7 +262,7 @@ function reader(db: Db, now: number, quoteEveryMs: number) {
   };
 }
 
-type Reader = ReturnType<typeof reader>;
+export type Reader = ReturnType<typeof reader>;
 
 const holds = (l: number, op: Op, r: number): boolean => {
   switch (op) {
@@ -315,6 +348,10 @@ function evaluateWith(r: Reader, db: Db, rule: RuleRow): Evaluation {
       holds: ok ? values.get(c)! : null,
     });
   }
+  // with no date a true could not tell a new session from the fired one
+  if (r.session(rule.instrument) === null) {
+    reasons.push(`${rule.instrument}: ${NO_SESSION}`);
+  }
   const unique = [...new Set(reasons)];
   if (unique.length > 0) {
     return { result: "unknown", values: shownValues, reasons: unique };
@@ -362,10 +399,19 @@ export function evaluateRules(
   rules: readonly RuleRow[],
   now: number,
   quoteEveryMs: number,
+  r: Reader = reader(db, now, quoteEveryMs),
 ): Evaluation[] {
-  const r = reader(db, now, quoteEveryMs);
   return rules.map((rule) => evaluateWith(r, db, rule));
 }
+
+// its next true result fires: armed, and in a session it has not fired in
+export function firesNext(r: Reader, rule: RuleRow): boolean {
+  return rule.armed && later(r.session(rule.instrument), rule.firedSession);
+}
+
+// later, never just other: a fallback date can be older than the fired one
+const later = (session: string | null, fired: string | null): boolean =>
+  session !== null && (fired === null || session > fired);
 
 // in the caller's transaction
 export function applyRule(
@@ -378,7 +424,10 @@ export function applyRule(
   const evaluation = evaluateWith(r, db, rule);
   let alert: Fired | null = null;
   let armed = rule.armed;
-  if (evaluation.result === "true" && armed) {
+  let firedSession = rule.firedSession;
+  const session = r.session(rule.instrument);
+  // still true in the session it fired in: no alert, and it stays armed
+  if (evaluation.result === "true" && armed && later(session, firedSession)) {
     const gate = gateItem(rule, eventOf(db, rule));
     const snapshot: Snapshot = {
       rule: {
@@ -396,10 +445,11 @@ export function applyRule(
       snapshot,
     };
     armed = false;
+    firedSession = session;
   } else if (evaluation.result === "false") {
     armed = true;
   }
-  recordResult(db, rule.id, evaluation.result, armed, now);
+  recordResult(db, rule.id, evaluation.result, armed, firedSession, now);
   return { evaluation, alert };
 }
 

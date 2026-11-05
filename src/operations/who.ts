@@ -19,7 +19,7 @@ export type Who = {
   user: string;
   credential: Credential;
   portfolio: Access;
-  rules: Access;
+  alerts: Access;
   profile: Access;
   // the analysis per symbol, shared by everyone on the server
   analysis: Access;
@@ -29,15 +29,15 @@ export type Who = {
 // every row an owner
 export const OPERATOR = "operator";
 
-// a person signed in to the web UI: every portfolio and profile write of
-// their own and the shared analysis, never a rules write; what they write
-// names them, so a shared fund's price or a removed row tells who
+// a person signed in to the web UI: every write of their own and the
+// shared analysis; what they write names them, so a shared fund's price or
+// a removed row tells who
 export const loginWho = (user: string, login: string, name: string): Who => ({
   name,
   user,
   credential: { kind: "login", id: login },
   portfolio: "write",
-  rules: "write",
+  alerts: "write",
   profile: "write",
   analysis: "write",
 });
@@ -46,7 +46,7 @@ export const ADMIN: Who = {
   user: OPERATOR,
   credential: { kind: "admin" },
   portfolio: "write",
-  rules: "write",
+  alerts: "write",
   profile: "write",
   analysis: "write",
 };
@@ -56,7 +56,7 @@ export const NO_ACCESS: Who = {
   user: "",
   credential: { kind: "none" },
   portfolio: "none",
-  rules: "none",
+  alerts: "none",
   profile: "none",
   analysis: "none",
 };

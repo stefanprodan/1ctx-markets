@@ -1,11 +1,30 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-// A fixed JSON tree of comparisons, never an expression language.
+// Stored as a fixed JSON tree with the server's own keys; read and written
+// by callers as text (src/shared/when.ts), never an expression language.
 
 import type { Instrument } from "../market/instruments.ts";
+import {
+  MAX_COMPARISONS,
+  MAX_DEPTH,
+  MAX_SYMBOL,
+  parseWhen,
+  renderWhen,
+  WHEN_FIELDS,
+  WhenError,
+  type WhenNode,
+  type WhenOperand,
+} from "../shared/when.ts";
 import type { DailyRow } from "../signals/daily.ts";
 import type { WeeklyRow } from "../signals/weekly.ts";
 import { FRED } from "../sources/ids.ts";
+
+export {
+  MAX_COMPARISONS,
+  MAX_DEPTH,
+  MAX_LITERAL,
+  MAX_SYMBOL,
+} from "../shared/when.ts";
 
 export class RuleError extends Error {
   constructor(message: string) {
@@ -17,15 +36,8 @@ export class RuleError extends Error {
 export const OPS = ["<", "<=", ">", ">="] as const;
 export type Op = (typeof OPS)[number];
 
-export const MAX_COMPARISONS = 8;
-export const MAX_DEPTH = 3;
 export const MAX_INSTRUMENTS = 4;
 export const MAX_NOTE = 500;
-// the condition as the caller sent it, serialized
-export const MAX_CONDITION_BYTES = 4096;
-export const MAX_SYMBOL = 100;
-// past this a level is a typo, not a price
-export const MAX_LITERAL = 1e15;
 
 type DailyKey = Exclude<keyof DailyRow, "date">;
 type WeeklyKey = Exclude<keyof WeeklyRow, "date">;
@@ -141,189 +153,121 @@ export const isComparison = <T extends { op: Op }>(
   n: T | { all: unknown } | { any: unknown },
 ): n is T => "op" in n;
 
-const SHAPE =
-  "a comparison {left, op, right}, or {all: [...]} or {any: [...]} of them";
+// the caller's name of a stored key: change_percent for changePct
+const PUBLIC: Readonly<Record<string, string>> = Object.fromEntries(
+  Object.entries(WHEN_FIELDS).map(([name, key]) => [key, name]),
+);
+export const publicField = (key: string): string => PUBLIC[key] ?? key;
 
-// a snake_case name an agent may have taken from the screen tool
-function hint(name: string): string {
-  const camel = name.replace(/_([a-z0-9])/g, (_, c: string) => c.toUpperCase());
-  const known = FIELD_NAMES.find(
-    (f) => f.toLowerCase() === camel.toLowerCase(),
-  );
-  return known === undefined ? "" : `; did you mean ${known}?`;
-}
+const SHAPE = "a stored condition is a comparison or all or any of them";
 
-const quoted = (s: string) => (s.length > 64 ? `${s.slice(0, 64)}…` : s);
-
-type Mode = "input" | "stored";
-
-function symbolText(v: unknown, path: string): string {
-  if (typeof v !== "string" || v.trim() === "") {
-    throw new RuleError(`${path} must be a non-empty symbol`);
+function storedOperand(v: unknown, path: string): Operand {
+  if (
+    !isObject(v) ||
+    typeof v.field !== "string" ||
+    !Object.hasOwn(FIELDS, v.field) ||
+    typeof v.symbol !== "string" ||
+    v.symbol.length > MAX_SYMBOL
+  ) {
+    throw new RuleError(`${path} is not a stored operand`);
   }
-  if (v.length > MAX_SYMBOL) {
-    throw new RuleError(`${path} is longer than ${MAX_SYMBOL} characters`);
+  const relative = FIELDS[v.field]!.from === "relative";
+  if (relative !== (typeof v.benchmark === "string")) {
+    throw new RuleError(`${path} is not a stored operand`);
   }
-  return v.trim();
-}
-
-function fieldName(v: unknown, path: string): string {
-  if (typeof v !== "string") {
-    throw new RuleError(`${path} must be a field name`);
-  }
-  if (!Object.hasOwn(FIELDS, v)) {
-    throw new RuleError(`${path}: unknown field ${quoted(v)}${hint(v)}`);
-  }
-  return v;
-}
-
-function operand(v: unknown, path: string, mode: Mode): InputOperand {
-  if (typeof v === "string" && mode === "input") {
-    const field = fieldName(v, path);
-    if (FIELDS[field]!.from === "relative") {
-      throw new RuleError(
-        `${path}: ${field} needs a benchmark: {"field": "${field}", "benchmark": "QQQ"}`,
-      );
-    }
-    return { field, symbol: null };
-  }
-  if (!isObject(v)) {
-    throw new RuleError(
-      `${path} must be a field name or {field, symbol, benchmark}`,
-    );
-  }
-  for (const k of Object.keys(v)) {
-    if (k !== "field" && k !== "symbol" && k !== "benchmark") {
-      throw new RuleError(`${path}: unknown property ${quoted(k)}`);
-    }
-  }
-  const field = fieldName(v.field, `${path}.field`);
-  const relative = FIELDS[field]!.from === "relative";
-  let symbol: string | null = null;
-  if (v.symbol !== undefined) symbol = symbolText(v.symbol, `${path}.symbol`);
-  else if (mode === "stored") throw new RuleError(`${path} has no symbol`);
-  if (relative !== (v.benchmark !== undefined)) {
-    throw new RuleError(
-      relative
-        ? `${path}: ${field} needs a benchmark`
-        : `${path}: only relativeReturn1m and relativeReturn3m take a benchmark`,
-    );
-  }
-  const out: InputOperand = { field, symbol };
-  if (relative) out.benchmark = symbolText(v.benchmark, `${path}.benchmark`);
+  const out: Operand = { field: v.field, symbol: v.symbol };
+  if (relative) out.benchmark = v.benchmark as string;
   return out;
 }
 
-function literal(v: number, path: string): number {
-  if (!Number.isFinite(v) || Math.abs(v) > MAX_LITERAL) {
-    throw new RuleError(`${path} must be a finite number`);
-  }
-  return v;
-}
-
-type Count = { comparisons: number };
-
-function node(
-  v: unknown,
-  path: string,
-  depth: number,
-  count: Count,
-  mode: Mode,
-  root: boolean,
-): InputNode {
-  if (!isObject(v)) throw new RuleError(`${path} must be ${SHAPE}`);
-  if (depth > MAX_DEPTH) {
-    throw new RuleError(`${path}: conditions nest at most ${MAX_DEPTH} deep`);
-  }
-  const keys = Object.keys(v).filter((k) => !(root && k === "afterEarnings"));
-  if (keys.includes("all") || keys.includes("any")) {
-    if (keys.length !== 1) {
-      throw new RuleError(
-        `${path}: all or any stands alone, with no other property`,
-      );
+function storedNode(v: unknown, path: string, depth: number): Node {
+  if (!isObject(v) || depth > MAX_DEPTH)
+    throw new RuleError(`${path}: ${SHAPE}`);
+  const list = Array.isArray(v.all)
+    ? v.all
+    : Array.isArray(v.any)
+      ? v.any
+      : null;
+  if (list !== null) {
+    if (list.length === 0 || list.length > MAX_COMPARISONS) {
+      throw new RuleError(`${path}: ${SHAPE}`);
     }
-    const key = keys[0] as "all" | "any";
-    const list = v[key];
-    if (!Array.isArray(list) || list.length === 0) {
-      throw new RuleError(`${path}.${key} must be a non-empty list`);
-    }
-    if (list.length > MAX_COMPARISONS) {
-      throw new RuleError(
-        `${path}.${key} holds at most ${MAX_COMPARISONS} conditions`,
-      );
-    }
-    const children = list.map((c, k) =>
-      node(c, `${path}.${key}[${k}]`, depth + 1, count, mode, false),
-    );
-    return key === "all" ? { all: children } : { any: children };
-  }
-  for (const k of keys) {
-    if (k !== "left" && k !== "op" && k !== "right") {
-      throw new RuleError(
-        k === "afterEarnings"
-          ? `${path}: afterEarnings goes on the condition's root only`
-          : `${path}: unknown property ${quoted(k)}; a condition is ${SHAPE}`,
-      );
-    }
-  }
-  for (const k of ["left", "op", "right"]) {
-    if (!(k in v))
-      throw new RuleError(`${path} has no ${k}; it must be ${SHAPE}`);
-  }
-  count.comparisons++;
-  if (count.comparisons > MAX_COMPARISONS) {
-    throw new RuleError(
-      `a condition holds at most ${MAX_COMPARISONS} comparisons`,
-    );
+    const kids = list.map((c, k) => storedNode(c, `${path}[${k}]`, depth + 1));
+    return "all" in v ? { all: kids } : { any: kids };
   }
   if (typeof v.op !== "string" || !(OPS as readonly string[]).includes(v.op)) {
-    throw new RuleError(`${path}.op must be one of ${OPS.join(" ")}`);
+    throw new RuleError(`${path}: ${SHAPE}`);
   }
-  if (typeof v.left === "number") {
-    throw new RuleError(
-      `${path}.left must be an operand; put the number on the right`,
-    );
-  }
-  const left = operand(v.left, `${path}.left`, mode);
   const right =
-    typeof v.right === "number"
-      ? literal(v.right, `${path}.right`)
-      : operand(v.right, `${path}.right`, mode);
-  return { left, op: v.op as Op, right };
+    typeof v.right === "number" && Number.isFinite(v.right)
+      ? v.right
+      : storedOperand(v.right, `${path}.right`);
+  return { left: storedOperand(v.left, `${path}.left`), op: v.op as Op, right };
 }
 
-function parse(
-  v: unknown,
-  mode: Mode,
-): { node: InputNode; gate: unknown | undefined } {
-  if (!isObject(v)) throw new RuleError(`condition must be ${SHAPE}`);
-  const n = node(v, "condition", 1, { comparisons: 0 }, mode, true);
-  return { node: n, gate: v.afterEarnings };
-}
-
-// checked before anything is resolved or fetched
-export function parseCondition(value: unknown): InputCondition {
-  if (isObject(value)) {
-    const bytes = Buffer.byteLength(JSON.stringify(value));
-    if (bytes > MAX_CONDITION_BYTES) {
-      throw new RuleError(
-        `condition is longer than ${MAX_CONDITION_BYTES} bytes`,
-      );
-    }
+// the text a caller sent, checked before anything is resolved or fetched
+export function parseWhenCondition(
+  text: string,
+  afterEarnings: string | null,
+): InputCondition {
+  let n: WhenNode;
+  try {
+    n = parseWhen(text);
+  } catch (error) {
+    if (error instanceof WhenError) throw new RuleError(error.message);
+    throw error;
   }
-  const { node: n, gate } = parse(value, "input");
+  const operand = (o: WhenOperand): InputOperand => {
+    const out: InputOperand = {
+      field: WHEN_FIELDS[o.field]!,
+      symbol: o.symbol,
+    };
+    if (o.benchmark !== undefined) out.benchmark = o.benchmark;
+    return out;
+  };
+  const walk = (x: WhenNode): InputNode => {
+    if ("all" in x) return { all: x.all.map(walk) };
+    if ("any" in x) return { any: x.any.map(walk) };
+    return {
+      left: operand(x.left),
+      op: x.op,
+      right: typeof x.right === "number" ? x.right : operand(x.right),
+    };
+  };
+  return { node: walk(n), afterEarnings };
+}
+
+// the stored tree in the caller's words, its own symbol left out
+export function whenOperand(o: Operand, own: string): WhenOperand {
+  const out: WhenOperand = {
+    field: publicField(o.field),
+    symbol: o.symbol === own ? null : o.symbol,
+  };
+  if (o.benchmark !== undefined) out.benchmark = o.benchmark;
+  return out;
+}
+
+export function whenNode(n: Node, own: string): WhenNode {
+  const operand = (o: Operand) => whenOperand(o, own);
+  if ("all" in n) return { all: n.all.map((k) => whenNode(k, own)) };
+  if ("any" in n) return { any: n.any.map((k) => whenNode(k, own)) };
   return {
-    node: n,
-    afterEarnings:
-      gate === undefined ? null : symbolText(gate, "condition.afterEarnings"),
+    left: operand(n.left),
+    op: n.op,
+    right: typeof n.right === "number" ? n.right : operand(n.right),
   };
 }
+
+export const whenText = (n: Node, own: string): string =>
+  renderWhen(whenNode(n, own));
 
 // A stored condition, written only by this module; a row that no longer
 // parses is the server's fault, never the caller's.
 export function readCondition(text: string): Condition {
   const value: unknown = JSON.parse(text);
-  const { node: n, gate } = parse(value, "stored");
+  if (!isObject(value)) throw new RuleError(SHAPE);
+  const { afterEarnings: gate, ...rest } = value;
+  const n = storedNode(rest, "condition", 1);
   let afterEarnings: Gate | null = null;
   if (gate !== undefined) {
     const g = gate as Record<string, unknown>;
@@ -341,7 +285,7 @@ export function readCondition(text: string): Condition {
       fiscalQuarter: g.fiscalQuarter as number,
     };
   }
-  return { node: n as Node, afterEarnings };
+  return { node: n, afterEarnings };
 }
 
 export function writeCondition(c: Condition): string {
@@ -470,7 +414,7 @@ export function checkBound(
   ids.add(own);
   if (ids.size > MAX_INSTRUMENTS) {
     throw new RuleError(
-      `a rule reads at most ${MAX_INSTRUMENTS} instruments; this one reads ${ids.size}`,
+      `an alert reads at most ${MAX_INSTRUMENTS} symbols; this one reads ${ids.size}`,
     );
   }
   const get = (id: string) => {
@@ -479,7 +423,7 @@ export function checkBound(
     return i;
   };
   comparisons<Comparison>(c.node).forEach((cmp, k) => {
-    const at = `comparison ${k + 1}`;
+    const at = `comparison ${k + 1} (${whenText(cmp, own)})`;
     for (const o of operands(cmp)) {
       const i = get(o.symbol);
       if (FIELDS[o.field]!.from === "quote" && !hasQuote(i)) {
@@ -497,7 +441,7 @@ export function checkBound(
     }
     if (!operands(cmp).some((o) => isLive(o, get(o.symbol)))) {
       throw new RuleError(
-        `${at} reads no live value: compare a live field such as price, changePct or a signal of a listing with quotes`,
+        `${at} reads no live value: compare a live field such as price, change_percent or a signal of a listing with quotes`,
       );
     }
     if (typeof cmp.right !== "number") {
@@ -513,7 +457,7 @@ export function checkBound(
       const r = unitOf(cmp.right, ri);
       if (l !== r) {
         throw new RuleError(
-          `${at} compares ${cmp.left.field} in ${l} with ${cmp.right.field} in ${r}; both sides need the same unit`,
+          `${at} compares ${publicField(cmp.left.field)} in ${l} with ${publicField(cmp.right.field)} in ${r}; both sides need the same unit`,
         );
       }
     }

@@ -41,7 +41,7 @@ never signs in and a sign-in never opens `/mcp`.
   login, never an agent key. A write by cookie needs this server's
   `Origin`, or it is 403 (`docs/web.md`).
 - **An admin never reads another person's portfolios, profile,
-  dashboard or rules**: those routes act as the caller's own person
+  dashboard or alerts**: those routes act as the caller's own person
   (`docs/api.md`). An admin lists and revokes anyone's keys, signs a
   person out everywhere and removes a person.
 - **Writes re-read their caller** (`recheck()` in `src/server/caller.ts`,
@@ -69,8 +69,8 @@ never signs in and a sign-in never opens `/mcp`.
 | `DELETE /api/v1/instruments/{symbol}` | the instrument and every row of it; 204 |
 | `GET /api/v1/instruments/{symbol}/stored` | `{input, stored}`: true when the read's bare-symbol rule (`restStored()`) finds a stored row with daily bars, so a read answers without a first fetch; asks no source and marks no read. The web UI asks it beside an instrument's first read to say which wait it is in (`docs/web.md`) |
 | `GET /api/v1/keys` | session: the caller's agent keys, an admin's everyone's, each with its `owner` `{id, name}` (below) |
-| `POST /api/v1/keys` | session: `{"name", "expiresInDays", "portfolio", "rules", "profile", "analysis"}`: a new agent key of the caller's, its token answered once; `portfolio`, `rules`, `profile` and `analysis` are `none` (the default), `read` or `write` |
-| `PATCH /api/v1/keys/{id}` | session: `{"portfolio", "rules", "profile", "analysis"}`, at least one: changes one of the caller's keys' access, the token, name and expiry kept; the key as listed; 400 for none or a bad value, 404 for an unknown id or another's |
+| `POST /api/v1/keys` | session: `{"name", "expiresInDays", "portfolio", "alerts", "profile", "analysis"}`: a new agent key of the caller's, its token answered once; `portfolio`, `alerts`, `profile` and `analysis` are `none` (the default), `read` or `write` |
+| `PATCH /api/v1/keys/{id}` | session: `{"portfolio", "alerts", "profile", "analysis"}`, at least one: changes one of the caller's keys' access, the token, name and expiry kept; the key as listed; 400 for none or a bad value, 404 for an unknown id or another's |
 | `DELETE /api/v1/keys/{id}` | session: revokes one of the caller's keys, an admin anyone's; 204 |
 | `GET /api/v1/users` | `users[]` (`id`, `name`, `email`, `role`, `operator`, `created_at`, `last_sign_in_at`, `keys`) and `email_on` (below) |
 | `POST /api/v1/users` | `{"name", "email", "role"}`: adds a person and emails the invite; 201 `{user, invite: "sent"}` or `{user, invite: "failed", reason}`; 409 while email is off or the address is taken |
@@ -98,13 +98,15 @@ never signs in and a sign-in never opens `/mcp`.
   answered in the list. It opens the portfolio routes and the
   portfolio tools: `read` lists the `portfolio` read tool, `write` the
   write tools too, and `none` lists none (`docs/portfolios.md`).
-- **Rules access is given the same way** (`rules`, `keys
-  add --rules`), `none` by default, since a rule acts for the owner.
-  `read` opens the rules list and the alerts feed, `write` also
-  creates, pauses and deletes rules (`docs/rules.md`). A feed reader is
-  a rules reader: alerts have no access of their own. Keys made before
-  rules access existed were given `write` (migration 0023), what they
-  had.
+- **Alerts access is given the same way** (`alerts`, `keys
+  add --alerts`), `none` by default, since an alert acts for the owner.
+  `read` lists the `alerts` tool and opens the alerts, their history and
+  the feed; `write` lists `alerts_edit` too and opens creating,
+  updating, pausing and deleting alerts (`docs/alerts.md`). A feed
+  reader is an alerts reader: triggers have no access of their own.
+  Keys made before this access existed were given `write` (migration
+  0023), what they had; the column was named `rules` until migration
+  `0046-key-alerts` renamed it, the values kept.
 - **Profile access is given the same way** (`profile`,
   `keys add --profile`), `none` by default, since the owner's profile is
   personal and a script's key never needs it. `read` lists the `profile`
@@ -155,7 +157,7 @@ never signs in and a sign-in never opens `/mcp`.
 
 - **`users`**: `id`, `name`, `email` (lowercased, unique), `role`
   (`admin` or `member`), `created_at`, `last_sign_in_at`. A `member`
-  has their own data in full (portfolios, profile, dashboard, rules,
+  has their own data in full (portfolios, profile, dashboard, alerts,
   keys), the market pages and Connect agents; an `admin` also Server
   admin's status, refetch, delete, retry, and the people and email routes.
 - **The operator** (`OPERATOR`) always exists, is an admin, signs in
@@ -365,7 +367,7 @@ is sent directly, after the answer for an ask, before it for an admin.
 - **Refused with 409 while a rule reads it**, its own or another's
   condition: delete the rule first. The check is in the same write and
   counts every person's rules, but `rules` names only the caller's;
-  another person's alone answer "another person's rules read this
+  another person's alone answer "another person's alerts read this
   instrument" with `rules` empty.
 - **Refused with 409 while a trade or position names it**, removed
   ones included, so a restore never finds it gone (`portfolioHolds()`,
@@ -396,11 +398,11 @@ is sent directly, after the answer for an ask, before it for an admin.
 - **`1ctx-markets keys list|add|set|revoke` calls the same way**, with
   the same `--listen` and `--data`, as the operator. `list` prints `GET
   /api/v1/keys`'s JSON, every person's; `add <name> [--expires 30|90|365] [--portfolio
-  none|read|write] [--rules none|read|write] [--profile
+  none|read|write] [--alerts none|read|write] [--profile
   none|read|write] [--analysis none|read|write]` (each access `none` by
   default) prints the new
   token alone on stdout, once, so `$(...)` can take it, and nothing
-  else; `set <name> [--portfolio ...] [--rules ...] [--profile ...]
+  else; `set <name> [--portfolio ...] [--alerts ...] [--profile ...]
   [--analysis ...]`,
   one at least, finds the operator's own key's id by name and prints
   `set <name>`; `revoke <name>` finds it the same way and prints

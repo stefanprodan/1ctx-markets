@@ -50,7 +50,7 @@ const CASEY: Who = {
   user: OPERATOR,
   credential: { kind: "key", id: "casey-agent" },
   portfolio: "write",
-  rules: "none",
+  alerts: "none",
   profile: "none",
   analysis: "none",
 };

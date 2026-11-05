@@ -41,7 +41,7 @@ const keyWho = (
   user,
   credential: { kind: "key", id: name },
   portfolio,
-  rules: "none",
+  alerts: "none",
   profile: "write",
   analysis,
 });
@@ -552,7 +552,7 @@ describe("access", () => {
       const names = async (analysis: Access) => {
         const token = seedKey(t, `level-${analysis}`, {
           portfolio: "none",
-          rules: "none",
+          alerts: "none",
           analysis,
         });
         const client = await mcpClient(t, token);

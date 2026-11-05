@@ -18,12 +18,12 @@ export const spec = {
     version: "v1",
     // no identifier or url: the page would link to another host
     license: { name: "Apache-2.0" },
-    description: `Market data, price rules and portfolios, the same answers as the MCP tools.
+    description: `Market data, price alerts and portfolios, the same answers as the MCP tools.
 
-- Each operation names the key it takes: an agent key, made by a person for their agent, or the admin key, which opens every route as the operator. An agent key reads and writes its person's own portfolios, profile and rules, and the analysis every person shares, and those routes take it only when its person gave it that access. It never opens a web UI or admin route.
+- Each operation names the key it takes: an agent key, made by a person for their agent, or the admin key, which opens every route as the operator. An agent key reads and writes its person's own portfolios, profile and alerts, and the analysis every person shares, and those routes take it only when its person gave it that access. It never opens a web UI or admin route.
 - Each key makes at most ${CALLS_PER_MINUTE} calls a minute.
 - A symbol is taken as written, with its exchange suffix (\`VVSM.DE\`, \`BRK-B\`, \`^VIX\`, \`CL=F\`), or as a stored id (\`US:NVDA\`).
-- Results are not paged, except the stored instrument list and the alerts feed.
+- Results are not paged, except where an answer gives \`next_page_token\`, and the alerts feed.
 - Errors are problem details (RFC 9457): \`title\`, \`status\`, \`detail\` and \`code\`, the error to branch on. An error about one symbol among several is that item's \`error\`, inside a 200.`,
   },
   servers: [{ url: "/api/v1" }],
@@ -34,7 +34,7 @@ export const spec = {
       name: "instruments",
       description: "One instrument, its bars, and the stored instruments.",
     },
-    { name: "rules", description: "Price rules and their alerts." },
+    { name: "alerts", description: "Price alerts and what triggered them." },
     {
       name: "portfolios",
       description: "Trades, positions and holdings, valued live.",
@@ -84,16 +84,16 @@ export const spec = {
         scheme: "bearer",
         description: "An agent key its person gave portfolio write access.",
       },
-      rulesRead: {
+      alertsRead: {
         type: "http",
         scheme: "bearer",
         description:
-          "An agent key its person gave rules read or write access: the rules and the alerts feed.",
+          "An agent key its person gave alerts read or write access: the alerts, their history and the feed.",
       },
-      rulesWrite: {
+      alertsWrite: {
         type: "http",
         scheme: "bearer",
-        description: "An agent key its person gave rules write access.",
+        description: "An agent key its person gave alerts write access.",
       },
       profileRead: {
         type: "http",
@@ -127,7 +127,7 @@ export const spec = {
         in: "cookie",
         name: COOKIE,
         description:
-          "A person's sign-in to the web UI, by an emailed link or, for the operator, the admin key. It opens their own rows and the market data, and the admin routes for an admin; never the rules writes. A request other than GET must come from this server's own pages.",
+          "A person's sign-in to the web UI, by an emailed link or, for the operator, the admin key. It opens their own rows and the market data, and the admin routes for an admin. A request other than GET must come from this server's own pages.",
       },
     },
     schemas: {

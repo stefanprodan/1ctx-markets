@@ -17,7 +17,7 @@ admin key or `1ctx-markets admin` over ssh. The UI shows the operator
 what the server holds from a browser, on the server's own public host,
 signed in with the admin key alone. A family or a small group of
 investors shares one server, each person with their own portfolios,
-profile, dashboard, rules and keys, so each person signs in as
+profile, dashboard, alerts and keys, so each person signs in as
 themself, by a link emailed to an address an admin added; no
 passwords, no SSO, and no link handed over.
 
@@ -201,11 +201,11 @@ learns it from `email_on` in `GET /ui/me`.
 
 - **A person's own rows and the market data**: every `/api/v1` route
   of scope `read`, `session` and the person's portfolio, profile and
-  rules, reads and writes, as `loginWho()` holds; an admin's login
+  alerts, reads and writes, as `loginWho()` holds; an admin's login
   also the `admin` scope (`docs/api.md`, "Keys and caching"). A member
   on an admin route is 403. A key is tried first (`router()`); the
   cookie only when no key is valid.
-- **Never `/mcp`.** A login writes rules from the Alerts page, held
+- **Never `/mcp`.** A login writes alerts from the Alerts page, held
   like every cookie write to this server's own pages (below), so a
   cross-site page holding the cookie makes, pauses or deletes none.
 - **A write by cookie must come from this server's own pages**, or it
@@ -776,21 +776,37 @@ The parts:
   each with what it adds, its key file and a link to get a key; it is
   absent when none is off.
 - **Alerts** (`/alerts`, after Portfolios in the rail and first in
-  More on a phone) is the person's price rules (`docs/rules.md`) in two
-  tabs, each its own address: Rules (`/alerts`) and Fired
-  (`/alerts/fired`). `Alerts.tsx` is the view, `data/alerts.ts` its
-  calls; a rule read as words, its distance, state and order are
-  `Alerts.model.ts`, which has no DOM and is tested, and which names
-  every field in `FIELDS` (`src/rules/format.ts`) so the server's names
-  never reach the page.
-- **Rules** draws `GET /api/v1/rules` with each rule's `now` and the
-  `instruments` it names: tiles (All rules, Within 5%, Fired this week,
-  Paused) over a table, nearest first with a symbol's rules together
-  and paused last. A row opens its drawer, where Pause, Resume and
-  Remove (asked once) call the rules writes; Price alert adds a price
-  level rule on one symbol. Agents make the richer ones.
-- **Fired** is `GET /api/v1/alerts/recent` by day, newest first, More
-  reading the next older page. Opening it marks the newest seen
+  More on a phone) is the person's price alerts (`docs/alerts.md`) in
+  two tabs, each its own address: Rules (`/alerts`) and Fired
+  (`/alerts/fired`). The page keeps its words "rule" and "fired" for its
+  readers; the API says alert and trigger. `Alerts.tsx` is the view,
+  `data/alerts.ts` its calls; an alert read as words and its order are
+  `Alerts.model.ts`, which has no DOM and is tested. It parses each
+  `when` with the server's own parser (`src/shared/when.ts`) to draw
+  its comparisons, and names every field in `WHEN_FIELDS` so the
+  server's names never reach the page.
+- **The server says how close and in what state; the page never works
+  it out.** Distance is the alert's `gap_percent`, the meter and
+  "x% away" drawn from it; the state badge maps `state` (`stateOf()`):
+  `watching` reads Watching, or Met when the condition holds by each
+  comparison's `holds` (the next quote triggers it; a rounded
+  `gap_percent` of 0 is not met), `triggered` Triggered,
+  `waiting_for_earnings` Waiting for earnings, `paused` Paused,
+  `split_paused` Paused by a split, and `unknown` No fresh price when a
+  reason is a price that did not come in, else Can't check now.
+- **Rules** draws every page of `GET /api/v1/alerts` (following
+  `next_page_token`) with each alert's `now` and the `instruments` it
+  names: one filter row (All, Within 5%, This week, Paused, each with
+  its count and, where shortened, the full name as its hover title)
+  over a table, nearest first with a symbol's alerts together and paused last.
+  A row opens its drawer, each comparison ticked from `now[i].holds`
+  with its values now, where Pause and Resume (`PATCH {paused}`) and
+  Remove (asked once, `DELETE`) call the alerts writes; Price alert
+  adds `price <= level` or `price >= level` on one symbol (`POST
+  /api/v1/alerts`). Agents make the richer ones.
+- **Fired** is `GET /api/v1/alerts/history` by day, newest first, More
+  reading the next older page by its `next_page_token`; each trigger's
+  words come from its `when` and `values`. Opening it marks the newest seen
   (`PUT /api/v1/alerts/seen`); the ones newer than the last visit keep
   a dot until the tab is left.
 - **The rail's Alerts row counts the alerts not seen yet**
@@ -843,10 +859,10 @@ The parts:
   with an Owner column (`owner.name`); another person's key opens with
   its owner and the picks off, Revoke and Cancel only. The
   Access column says "Reads portfolios", "Writes portfolios", "Reads
-  alert rules", "Writes alert rules", "Reads the profile" or "Writes the
+  alerts", "Writes alerts", "Reads the profile" or "Writes the
   profile" only for what a key has, shows only when some key has any,
   and drops on a phone with the last use. A row opens the key's drawer:
-  its last use and expiry, then Portfolios, Alert rules and Profile,
+  its last use and expiry, then Portfolios, Alerts and Profile,
   each No access, Read, or Read and write, set to what it has; Revoke at
   the foot's start asks once beside Keep, and Cancel and Save (`PATCH
   /api/v1/keys/{id}`, waiting on a change) at its end. New key opens the
@@ -1565,4 +1581,5 @@ The parts:
   controls, Connect agents' owners, Server admin's calls and words,
   and SMTP read only for an admin who is not the operator.
 - **Alerts** (`test/web-alerts.test.ts`): `Alerts.model.ts`'s words for
-  every field and op, groups and gates, distances, states and order.
+  every field and op, groups and gates, triggers, the server's state
+  and distance, tiles and order, and the store's paths and paging.

@@ -371,7 +371,7 @@ describe("the net worth route", () => {
         user,
         credential: { kind: "key", id: user },
         portfolio: "write",
-        rules: "none",
+        alerts: "none",
         profile: "none",
         analysis: "none",
       };

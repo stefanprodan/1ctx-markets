@@ -22,7 +22,7 @@ import {
   ADMIN_SETTINGS,
   ADMIN_USERS,
   ALERTS,
-  ALERTS_FIRED,
+  ALERTS_HISTORY,
   SCREENER,
   SYMBOL,
 } from "./paths.ts";
@@ -124,7 +124,7 @@ export const ROUTES: readonly Route[] = [
     },
   },
   {
-    path: ALERTS_FIRED,
+    path: ALERTS_HISTORY,
     label: "Alerts",
     icon: "bell",
     parent: ALERTS,

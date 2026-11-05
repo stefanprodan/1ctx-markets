@@ -458,7 +458,7 @@ describe("Server admin", () => {
         keys: 1,
       }),
     ).toBe(
-      "Removes their portfolios (6), trades (412), profile, alerts (3) and keys (1).",
+      "Removes their portfolios (6), trades (412), profile, triggered alerts (3) and keys (1).",
     );
     expect(removeLine({ keys: 1 })).toBe("Removes their keys (1).");
     expect(removeLine({ logins: 2 })).toBe("Removes them.");

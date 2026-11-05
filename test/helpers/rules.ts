@@ -56,8 +56,10 @@ export type RulesTest = {
   charts: Map<string, () => Recorded>;
   // edits Finnhub's calendar answer, while set
   calendar: { edit: ((fx: Recorded) => Recorded) | null };
-  // the rules tool's answer, parsed, with whether it was an error
-  rules(input: unknown): Promise<{ error: boolean; body: any }>;
+  // the alerts_edit tool's answer, parsed, with whether it was an error
+  edit(input: unknown): Promise<{ error: boolean; body: any }>;
+  // the alerts tool's answer, likewise
+  read(input?: unknown): Promise<{ error: boolean; body: any }>;
   // a quote made from the recorded meta, stored as the quote job does
   quote(symbol: string, edit?: QuoteEdit): Promise<void>;
   calls: URL[];
@@ -116,7 +118,15 @@ export async function rulesTest(
   for (const [symbol, fx] of Object.entries(options.charts ?? {})) {
     metas.set(symbol, fx.body.chart.result[0].meta);
   }
-  const tool = tools(m).find((t) => t.name === "rules")!;
+  const list = tools(m);
+  const run = async (name: string, input: unknown) => {
+    const tool = list.find((t) => t.name === name)!;
+    const result = await drive(clock, pacedOf(m), call(m, tool, input, ADMIN));
+    return {
+      error: result.isError === true,
+      body: JSON.parse(result.content[0]!.text),
+    };
+  };
   return {
     clock,
     db,
@@ -128,17 +138,8 @@ export async function rulesTest(
     charts,
     calendar,
     calls: s.calls.urls,
-    async rules(input) {
-      const result = await drive(
-        clock,
-        pacedOf(m),
-        call(m, tool, input, ADMIN),
-      );
-      return {
-        error: result.isError === true,
-        body: JSON.parse(result.content[0]!.text),
-      };
-    },
+    edit: (input) => run("alerts_edit", input),
+    read: (input = {}) => run("alerts", input),
     async quote(symbol, edit = {}) {
       const meta = clone(metas.get(symbol));
       if (meta === undefined) throw new Error(`no meta for ${symbol}`);

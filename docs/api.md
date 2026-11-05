@@ -7,8 +7,8 @@ the router's part in `src/server/http.ts`, the alerts feed
 handlers (`src/admin/http.ts`), the portfolio routes
 (`src/api/portfolios.ts`, `docs/portfolios.md`), and the dashboard's
 (`src/admin/dashboard.ts`). What each route reads is its tool's,
-in `docs/tools.md`, `docs/research.md` and `docs/rules.md`; what an
-alert is in `docs/rules.md`; the admin key and what refetch and delete
+in `docs/tools.md`, `docs/research.md` and `docs/alerts.md`; what an
+alert is in `docs/alerts.md`; the admin key and what refetch and delete
 do in `docs/admin.md`; the server, keys and flags in `docs/config.md`.
 
 ## Why
@@ -37,15 +37,15 @@ MCP tools copied onto paths.
 | `GET /instruments/{symbol}/bars?interval=&from=&to=&benchmark=&extended=` | read | `readHistory()`, `readIntradayHistory()` | bars or 5-minute points (below) |
 | `GET /dashboard` | session | `readDashboard()` | the web UI's home page: `revision`, `created`, `sections[]` of `items[]` (below) |
 | `PUT /dashboard` | session | `saveDashboard()` | `{revision, sections: [{name, view, symbols}]}` replaces the layout; the saved dashboard; 409 with `dashboard`, 422 with `errors` (below) |
-| `GET /rules` | rules:read | `readRules()`, `ruleViews()` | `rules[]`, each the tool's item plus `now` (`result`, `values`, `reasons`), evaluated at the read and stored nowhere; `instruments` (id → `name`, `type`, `currency`, `unit`) of every listing they read (`docs/rules.md`) |
-| `POST /rules` | rules:write | `createRule()` | 201, `Location: /api/v1/rules/{id}`, the rule, its first evaluation and any alert it fired |
-| `GET /rules/{id}` | rules:read | `readRule()`, `ruleViews()` | `{rule, instruments}`, as one item of `GET /rules` |
-| `PATCH /rules/{id}` | rules:write | `pauseRule()` | `{"paused": bool}` sets or clears the manual pause; `{rule}` |
-| `DELETE /rules/{id}` | rules:write | `deleteRuleById()` | 204; its alerts stay |
-| `GET /alerts` | rules:read | `alertsHandler()` | the alerts feed (below) |
-| `GET /alerts/recent?before=` | rules:read | `readAlertsBefore()`, `alertViews()` | `alerts[]`, the caller's kept ones newest first, 50 a page (`RECENT_ALERTS`), each as the feed gives it; `instruments` as `GET /rules`; `next`, the `before` of the next older page, null on the last; 400 for a `before` not an id |
-| `GET /alerts/seen` | session | `readSeen()` | `seen`, the newest alert id the web UI marked seen (0 before any), and `unseen`, how many of the caller's alerts are newer |
-| `PUT /alerts/seen` | session | `markSeen()` | `{id}` moves the mark forward, never back and never past the caller's own newest alert; answers as `GET /alerts/seen` |
+| `GET /alerts?symbol=&page_token=` | alerts:read | `alertList()` | `alerts[]`, by id, 50 a page (`ALERTS_PAGE`), each as the `alerts` tool answers it (`id`, `symbol`, `when`, `note`, `after_earnings`, `state`, `reasons`, `last_triggered_at`, `gap_percent`, `now`), evaluated at the read and stored nowhere; `instruments` (id → `name`, `type`, `currency`, `unit`) of every listing they read; `next_page_token` while more follow (`docs/alerts.md`) |
+| `POST /alerts` | alerts:write | `createAlert()` | `{symbol, when, note, after_earnings}`: 201, `Location: /api/v1/alerts/{id}`, `{alert, triggered}`, the trigger if true at once, else null |
+| `GET /alerts/history?since=&symbol=&alert=&page_token=` | alerts:read | `historyList()` | `triggers[]`, newest first, 50 a page, a deleted alert's included; `since` a UTC day; `instruments` as above; `next_page_token` while older ones follow |
+| `GET /alerts/feed` | alerts:read | `alertsHandler()` | the feed (below) |
+| `GET /alerts/{id}` | alerts:read | `oneAlert()` | `{alert, history, instruments}`, `history` its last 5 triggers newest first |
+| `PATCH /alerts/{id}` | alerts:write | `updateAlert()`, `pauseAlert()` | `{when, note}`, either or both, updates it, keeping id and history; `{paused}` alone pauses or resumes it, refused with `when` or `note`; `{alert, triggered}` |
+| `DELETE /alerts/{id}` | alerts:write | `deleteAlert()` | 204; its history stays |
+| `GET /alerts/seen` | session | `readSeen()` | `seen`, the newest trigger id the web UI marked seen (0 before any), and `unseen`, how many of the caller's triggers are newer |
+| `PUT /alerts/seen` | session | `markSeen()` | `{id}` moves the mark forward, never back and never past the caller's own newest trigger; answers as `GET /alerts/seen` |
 | `GET /profile` | profile:read | `readProfile()`, `renderMarkdown()` | `text`, `html` (the text drawn on the server), `revision`, `author`, `updated_at`, `bytes`; every one null with no profile yet (`docs/profile.md`) |
 | `PUT /profile` | profile:write | `saveProfile()` | `{revision?, text}` replaces it, `{revision, edits}` changes part of it; the new `revision`, `author`, `bytes`, `updated_at`, never the text, with `unchanged` when the text equals the live one; 409 with the live `revision` for a stale one |
 | `POST /profile/preview` | profile:write | `documentText()`, `renderMarkdown()` | `{text}`, well-formed UTF-8 with no NUL (the size cap applies on save), answered as `html` drawn as `GET /profile` draws it; nothing is saved and no revision is made (the web UI editor's Preview) |
@@ -82,7 +82,7 @@ MCP tools copied onto paths.
 | `GET /sharing` | session | `sharingAnswer()` | `people[]` (`id`, `name`, `shared`): everyone else, and whether they see the caller's portfolios; `sharers[]` (`id`, `name`): who lets the caller see theirs; both by name, ignoring case. A web UI sign-in's only: a key, the admin key too, is refused (403) |
 | `PUT`, `DELETE /sharing/{id}` | session | `setSharing()` | starts or ends that person seeing all the caller's portfolios, read only; answers as `GET /sharing`; done already is no error; 404 for no such person, 400 for the caller; a sign-in's only, as above |
 | `GET /keys` | session | `listAnswer()` | `keys[]` (id, name, `owner` `{id, name}`, created, last used, expires; never a token), the caller's own, an admin's everyone's, and `limit` (`docs/admin.md`) |
-| `POST /keys` | session | `createOne()` | `{name, expiresInDays, portfolio, rules, profile}` (days null, 30, 90 or 365; each access `none`, the default, `read` or `write`): a key of the caller's; 201 with `key` and its `token`, once; 409 for a name the caller has or past their cap of 5 |
+| `POST /keys` | session | `createOne()` | `{name, expiresInDays, portfolio, alerts, profile, analysis}` (days null, 30, 90 or 365; each access `none`, the default, `read` or `write`): a key of the caller's; 201 with `key` and its `token`, once; 409 for a name the caller has or past their cap of 5 |
 | `DELETE /keys/{id}` | session | `revokeOne()` | 204; 404 for an unknown id or another person's, but for an admin |
 | `GET`, `POST /users`; `PATCH`, `DELETE /users/{id}`; `POST /users/{id}/invite`, `/users/{id}/sign-out` | admin | `src/admin/users.ts` | the people (`docs/admin.md`, "People") |
 | `GET`, `PUT`, `DELETE /smtp`; `POST /smtp/test` | admin | `src/admin/smtp.ts` | the email settings (`docs/admin.md`, "Email") |
@@ -346,7 +346,7 @@ MCP tools copied onto paths.
 
 ## Paging
 
-- **Every route answers its whole result but three**, nothing cut to
+- **Every route answers its whole result but the paged lists**, nothing cut to
   fit: a script that does not follow a cursor loses what is past it,
   and an HTTP client has no 32 KiB limit, which is an MCP client's
   (`docs/tools.md`). `next` is refused as any unknown argument is (400
@@ -360,6 +360,9 @@ MCP tools copied onto paths.
   `screen`, `sort` and `order`, refused with any other.
 - **A symbol that did not resolve in time answers its error item**,
   never by being left out.
+- **Alerts and their history page by id the same way**: `GET /alerts`'s
+  token is the next page's first id, `GET /alerts/history`'s the last
+  id shown, older ones following. Neither takes `before` or `next`.
 - **The alerts feed keeps its cursor**, since it is a feed polled on a
   schedule, not a list (below).
 
@@ -388,7 +391,7 @@ MCP tools copied onto paths.
 | 400 | `bad_arguments`, `mixed_units`, `no_event_source`, `no_event` |
 | 401 | `unauthorized`: no key, or a wrong, revoked or expired one; no `WWW-Authenticate`, so an MCP client never starts an OAuth sign-in |
 | 403 | `forbidden`: a key without the route's scope, a member's login on an admin route, or a cookie request other than `GET` not sent from this server's own pages |
-| 404 | `not_found` (route, rule, key, instrument or symbol), `candidates`, `no_data`, `refused` |
+| 404 | `not_found` (route, alert, key, instrument or symbol), `candidates`, `no_data`, `refused` |
 | 405 | `method_not_allowed`, with `Allow` |
 | 409 | `conflict`, `split_paused` |
 | 422 | `unresolved`: a dashboard save naming a symbol that did not resolve |
@@ -423,13 +426,13 @@ MCP tools copied onto paths.
   key is refused as an unknown one and stays listed until revoked. Its
   last use is written through the writer at most once a minute.
 - **The admin key holds every scope**, so it opens every read route,
-  rules writes and the alerts feed included, as a wider scope holds a
+  alerts writes and the feed included, as a wider scope holds a
   narrower one, and `/mcp`: a single-user install needs no other key.
 - **A valid key without the scope is 403 `forbidden`**: an agent key
   on an `admin` or `session` route (`/instruments`, `/screener`,
   `/dashboard`, an instrument's stored check, delete and refetch,
   `/status`, its retry, `/keys`, `/users`, `/smtp`), and on a
-  portfolio, rules, profile or analysis route without that access.
+  portfolio, alerts, profile or analysis route without that access.
 - **Portfolio routes take the key's portfolio access** (`keys.portfolio`,
   `none` by default): `portfolio:read` opens with `read` or `write`,
   `portfolio:write` with `write`. Holdings are private, so the read
@@ -437,7 +440,7 @@ MCP tools copied onto paths.
   name a write records: the signed-in person's name for a login, `admin`, or the key's
   name. The spec names `portfolioRead` and `portfolioWrite`.
 - **Every person's route acts as the caller's person** (`Who.user`,
-  `users.id`): portfolios, the profile, the dashboard, rules, alerts and
+  `users.id`): portfolios, the profile, the dashboard, alerts, their history and
   keys. A key's lookup carries the user who made it, a login its
   person; the admin key is the operator. The router hands `Who` to the
   handler, never a global; another person's row by id answers 404 as an
@@ -446,12 +449,12 @@ MCP tools copied onto paths.
   of a person's rows re-reads it in its transaction (`recheck()`,
   `docs/admin.md`): a credential gone mid-call answers 401, a demoted
   admin's write 403, and nothing is written.
-- **Rules routes and the alerts feed take the key's rules access**
-  (`keys.rules`, `none` by default) the same way: `rules:read` (the
-  list, one rule, the feed, the recent alerts) opens with `read` or
-  `write`, `rules:write` (create, pause, delete) with `write`. A rule acts for
-  the owner, so the read scope never opens them. The spec names
-  `rulesRead` and `rulesWrite`.
+- **Alerts routes and the feed take the key's alerts access**
+  (`keys.alerts`, `none` by default) the same way: `alerts:read` (the
+  list, one alert, the history, the feed) opens with `read` or `write`,
+  `alerts:write` (create, update, pause, delete) with `write`. An alert
+  acts for the owner, so the read scope never opens them. The spec names
+  `alertsRead` and `alertsWrite`.
 - **Profile routes take the key's profile access** (`keys.profile`,
   `none` by default) the same way: `profile:read` (the profile, its
   revisions) opens with `read` or `write`, `profile:write` (`PUT
@@ -481,7 +484,7 @@ MCP tools copied onto paths.
 - **A request's log line names its key**: `key=<id> key_name=<name>`,
   or `key=admin`; never a token. A token made by `POST /keys` joins the
   log mask before it is answered (`mask()` in `src/runtime/keys.ts`).
-- **A login opens its person's routes, the rules writes included**,
+- **A login opens its person's routes, the alerts writes included**,
   and the `admin` routes only for an admin; a cookie request that is
   not a `GET` must come from this server's own pages, or it is 403
   (`docs/web.md`). A key is tried first, the cookie only when no key is
@@ -502,20 +505,22 @@ MCP tools copied onto paths.
 
 ## The alerts feed
 
-A client polling `GET /api/v1/alerts` on a schedule acts only on a new
-answer; 1ctx (an agent workspace whose scheduled tasks poll it) is one.
+A client polling `GET /api/v1/alerts/feed` on a schedule acts only on a
+new answer; 1ctx (an agent workspace whose scheduled tasks poll it) is
+one. Its items are triggers, as `GET /alerts/history` gives them
+(`triggerItem()`), under `triggers`.
 
-- **The alert id is the cursor, sent as the ETag.** `ETag:
-  W/"alerts-<id>"` names the last alert in the page; the client sends it
+- **The trigger id is the cursor, sent as the ETag.** `ETag:
+  W/"alerts-<id>"` names the last trigger in the page; the client sends it
   back in `If-None-Match`, which also takes it without `W/` (`TAG`).
   Ids autoincrement and are never reused (migration `0009-rules`), so
-  alerts fired in the same second are never lost or repeated as a time
+  triggers in the same second are never lost or repeated as a time
   cursor would be.
 
 | Status | When |
 |---|---|
-| 200 | alerts after the cursor, or from the start after a reset; or a retention gap alone, with `ETag` `issuedAlertId()` |
-| 204 | no cursor (or a reset one) and no alerts |
+| 200 | triggers after the cursor, or from the start after a reset; or a retention gap alone, with `ETag` `issuedAlertId()` |
+| 204 | no cursor (or a reset one) and no triggers |
 | 304 | a cursor and nothing after it; the ETag is repeated |
 | 400 | any query argument, or an `If-None-Match` not of this form |
 | 401 | no or wrong key |
@@ -525,22 +530,23 @@ answer; 1ctx (an agent workspace whose scheduled tasks poll it) is one.
   keep their bytes.
 
 - **A page stays strictly under 16 KiB** (`ALERT_PAGE_BYTES`), since
-  1ctx's poll refuses a larger body. It holds whole alerts oldest first
-  with `more`, so a backlog drains over several polls. One alert too
-  large alone keeps only `id`, `rule_id`, `fired_at` and `truncated:
-  true` (`alertPage()`), so the feed never stalls on it.
-- **The same alerts answer the same bytes.** A client may hash the
+  1ctx's poll refuses a larger body. It holds whole triggers oldest
+  first with `more`, so a backlog drains over several polls. One too
+  large alone keeps only `id`, `alert_id`, `triggered_at` and
+  `truncated: true` (`alertPage()`), so the feed never stalls on it;
+  so does one whose snapshot no longer reads (`storedTrigger()`).
+- **The same triggers answer the same bytes.** A client may hash the
   last answer; never add a time, counter or other changing field to a
   page.
-- **Items are rebuilt from each alert's stored `snapshot`**
-  (`alertItem()` in `src/operations/rules.ts`). A change to `Snapshot`
-  or `alertItem()` must still read every kept snapshot
+- **Items are rebuilt from each trigger's stored `snapshot`**
+  (`triggerItem()` in `src/operations/alerts.ts`). A change to `Snapshot`
+  or `triggerItem()` must still read every kept snapshot
   (`docs/storage.md`, "Retention"), and it changes the bytes of pages
   already answered, which starts a polling client's run again.
-- **Each person reads their own alerts** (`alerts.owner`, copied from
-  the rule when it fires). The cursor stays the alert id, shared by
+- **Each person reads their own triggers** (`alerts.owner`, copied from
+  the alert when it triggers). The cursor stays the alert id, shared by
   everyone, so another person's ids fall between one's own.
-- **A pruned alert of the reader's after the cursor is a retention
+- **A pruned trigger of the reader's after the cursor is a retention
   gap**: retention keeps each person's newest pruned id
   (`users.alerts_pruned`, `pruneAlerts()`), and one past the cursor
   answers `retention_gap: true`; another person's ids, pruned or not,
@@ -549,7 +555,7 @@ answer; 1ctx (an agent workspace whose scheduled tasks poll it) is one.
   server's, which would tell another person's alert count) starts over
   with `cursor_reset: true`, as after a restore.
 - **Delivery is at least once.** The cursor moves only when the client
-  stores the new ETag, so a consumer deduplicates by alert id. Answers
+  stores the new ETag, so a consumer deduplicates by trigger id. Answers
   are `cache-control: private, no-store`.
 
 ## The spec
@@ -578,7 +584,7 @@ answer; 1ctx (an agent workspace whose scheduled tasks poll it) is one.
   required, `Unavailable` where the tool has it, and `ItemError`
   (`input` and `error`), each closed to other fields, so an item with
   only `input` fails.
-- **A free-form object is left open** (a rule's condition, a job row,
+- **A free-form object is left open** (a gate, a job row,
   an event): its fields are in the docs here, which a Swagger reader
   cannot open, so the spec names none of them.
 - **`test/api.test.ts` holds the spec to the code**: every routed
