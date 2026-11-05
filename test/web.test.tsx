@@ -323,8 +323,18 @@ const STATUS: Status = {
       failing_instruments: 7,
       failing_scopes: 7,
       failing: [
-        { scope: "FEED:TLV", error: "no bars", at: "2026-10-28T09:00:01Z" },
-        { scope: "FEED:SNP", error: "timeout", at: "2026-10-28T08:00:01Z" },
+        {
+          scope: "FEED:TLV",
+          error: "no bars",
+          at: "2026-10-28T09:00:01Z",
+          next_at: null,
+        },
+        {
+          scope: "FEED:SNP",
+          error: "timeout",
+          at: "2026-10-28T08:00:01Z",
+          next_at: null,
+        },
       ],
     }),
     job("research", "Key figures", {
@@ -938,7 +948,9 @@ describe("the status model", () => {
         ? {
             ...j,
             failing_scopes: 1,
-            failing: [{ scope: "BVB", error: "timeout", at: null }],
+            failing: [
+              { scope: "BVB", error: "timeout", at: null, next_at: null },
+            ],
           }
         : j,
     );
@@ -1018,6 +1030,24 @@ describe("the views", () => {
     const done = render(<JobDetails job={settled} />);
     expect(done).toContain("All 14 instruments ok.");
     expect(done).not.toContain("no bars");
+    // a failed market check says when it runs again; a ticker's has no column
+    expect(bad).not.toContain("Runs again");
+    const check = render(
+      <JobDetails
+        job={{
+          ...daily!,
+          failing: [
+            {
+              scope: "FX",
+              error: "malformed answer: CHF=X",
+              at: "2026-11-05T00:00:20Z",
+              next_at: "2026-11-06T00:00:00Z",
+            },
+          ],
+        }}
+      />,
+    );
+    expect(check).toContain("Runs again");
   });
 
   test("status leaves out what is empty", () => {

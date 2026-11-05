@@ -6,7 +6,13 @@ import { MINUTE_MS } from "../runtime/clock.ts";
 import { BVB } from "../sources/ids.ts";
 import type { Db } from "../storage/db/index.ts";
 import { failedRun, lastRun, lastStarted } from "../storage/runs.ts";
-import { CRYPTO, closeQuoteAt, readSession } from "./calendars.ts";
+import {
+  CRYPTO,
+  closeQuoteAt,
+  isQuoted,
+  nextCheck,
+  readSession,
+} from "./calendars.ts";
 import type { Instrument } from "./instruments.ts";
 
 export const JOBS = {
@@ -218,4 +224,20 @@ export function owedDue<T extends { id: string }>(
     return true;
   });
   return now - earliest >= OWED_RETRY_MS ? owed : [];
+}
+
+// when a closed market's check asks again, by the schedulers' own rule;
+// null with no stored session, which the next pass asks
+export function checkAgainAt(
+  db: Db,
+  source: string,
+  market: string,
+  now: number,
+): number | null {
+  const s = readSession(db, market);
+  if (s === null || market === CRYPTO) return null;
+  const last = lastStarted(db, source, JOBS.check, market);
+  const at = nextCheck(s, Math.max(s.fetchedAt, last?.startedAt ?? 0));
+  // no check runs while the market trades; an overdue one runs next pass
+  return Math.max(at, now, isQuoted(market, s, now) ? s.end + MINUTE_MS : 0);
 }

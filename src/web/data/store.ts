@@ -55,7 +55,13 @@ export type JobStatus = {
   failing_instruments: number;
   failing_markets: number;
   failing_scopes: number;
-  failing: { scope: string | null; error: string | null; at: string | null }[];
+  failing: {
+    scope: string | null;
+    error: string | null;
+    at: string | null;
+    // when a failed market check runs again, else null
+    next_at: string | null;
+  }[];
 };
 
 export type Status = {

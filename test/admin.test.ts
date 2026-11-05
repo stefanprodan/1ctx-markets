@@ -412,7 +412,12 @@ describe("the admin scope", () => {
             failing_markets: 0,
             failing_scopes: 1,
             failing: [
-              { scope: "US:A", error: "not found", at: "2026-10-25T21:04:00Z" },
+              {
+                scope: "US:A",
+                error: "not found",
+                at: "2026-10-25T21:04:00Z",
+                next_at: null,
+              },
             ],
           },
           {
@@ -439,6 +444,7 @@ describe("the admin scope", () => {
                 scope: "US",
                 error: "rate limited",
                 at: "2026-10-25T21:05:00Z",
+                next_at: null,
               },
             ],
           },
