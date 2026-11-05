@@ -138,7 +138,7 @@ drift (`docs/profile.md` has each rule and why):
   REST `/quotes` answers none either.
 - **The server instructions route a view or take on a symbol to it**,
   second, for a key that lists `analysis`: the note first, then `quote`
-  and `research` for what changed. A note is 8 to 12 KB, so the line
+  and `research` for what changed. A note is up to 8 KB, so the line
   says "not a price or move": a price or move question never reads one.
   A symbol without a note answers a short "No analysis" line.
 

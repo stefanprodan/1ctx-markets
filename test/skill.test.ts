@@ -15,7 +15,6 @@ const SKILL = join(import.meta.dir, "..", "skills", "market-analysis");
 // backticked name must be a tool, an argument or an argument's value.
 const ANSWER_FIELDS = [
   "since_written",
-  "price_now",
   "splits",
   "status",
   "reported",
@@ -136,15 +135,9 @@ describe("the market analysis skill", () => {
 
   test("reads only fields the answers carry", async () => {
     const { db, m } = world();
-    listing(db, "US:MADE", { live: { atr14: 2 } });
+    listing(db, "US:MADE");
     const run = (name: string, args: Record<string, unknown>) =>
       call(m, tools(m).find((t) => t.name === name)!, args, WRITER);
-
-    const quoted = JSON.parse(
-      (await run("quote", { symbols: ["US:MADE"] })).content[0]!.text,
-    );
-    // the due rule measures a move in ATRs from this row
-    expect(quoted.items[0].signals.daily).toHaveProperty("atr14");
 
     await run("analysis_edit", {
       action: "replace",

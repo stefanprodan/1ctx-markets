@@ -20,7 +20,7 @@ count as coverage until checked.
 | Business, segments, customers | 10-K or 20-F Item 1, the segment note, the latest results release; segment changes in 8-Ks | the annual report (business review, segment note), the latest results release and presentation |
 | Guidance record | 8-K item 2.02 and its Exhibit 99.1, one per report; call-only guidance from a transcript, tagged coverage | results releases and presentations on the IR site; the home exchange's announcements; call-only guidance tagged coverage |
 | Report dates | `events`; past dates from the 8-K item 2.02 filings in `research` `filings` | the IR financial calendar; the home exchange's issuer calendar |
-| Capital and balance sheet | 10-Q and 10-K (debt, commitments, guarantees, leases not yet started); 424B2, 424B5 and FWP for every equity and debt raise; S-3ASR shelves; buyback 8-Ks | annual and interim reports; prospectuses and bond offering documents; the home exchange's and regulator's announcements of issues and buybacks |
+| Capital | 10-Q and 10-K (debt, commitments, guarantees, leases not yet started); 424B2, 424B5 and FWP for every equity and debt raise; S-3ASR shelves; buyback 8-Ks | annual and interim reports; prospectuses and bond offering documents; the home exchange's and regulator's announcements of issues and buybacks |
 | Dated events | DEF 14A/14C (meetings, charter changes, stock dividends); 424B4 (IPO lock-ups); IR calendars | meeting notices and resolutions on the IR site or the home exchange; IPO prospectus (lock-ups) |
 | Depositary receipts | 20-F and 6-K on EDGAR; F-1 or 424B4 for the terms | the home filings above, for the underlying share |
 | ETFs and funds | issuer factsheet and prospectus; annual report (tracking difference); the index provider's methodology | the same, by domicile: key information document, prospectus, annual and semi-annual reports; the index provider's methodology (caps, rebalance and reconstitution dates) |
@@ -33,5 +33,6 @@ it leaves out), any other issuer's from its annual report, its home exchange
 or securities regulator, and its investor-relations site. A foreign issuer
 that also files with the SEC has both.
 
-Cite as: publisher · document · document date · period covered · URL (canonical,
-no tracking query strings), with "accessed YYYY-MM-DD" for living pages.
+Cite inline, beside the figure: publisher, document, its date and the period
+it covers. A URL only for a page a search would not find again (canonical, no
+tracking query strings), never for a filing `research` `filings` links.
