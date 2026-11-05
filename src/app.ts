@@ -98,6 +98,8 @@ export type AppOptions = {
   quoteEveryMs: number;
   // an instrument read within this many days stays tracked
   trackDays?: number;
+  // keys a person may hold, from --max-keys
+  maxKeys?: number;
   // World markets, tracked whether read or not; main passes the list,
   // tests a small one or none
   world?: readonly WorldEntry[];
@@ -428,6 +430,7 @@ export function start(options: AppOptions): App {
         world: { entries: world, status: track.status, resolving: syncing },
         log: options.log("api"),
         mask: options.mask,
+        maxKeys: options.maxKeys,
         email: mail,
         links: linked,
       }),

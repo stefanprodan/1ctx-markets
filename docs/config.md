@@ -21,6 +21,7 @@ the `--help` text, and a flag changes there in the same commit.
 | `--data <dir>` | `~/.1ctx-markets` | holds `markets.db` and `secrets/` |
 | `--quote-every <min>` | 5 | minutes between quote passes; a quote two periods behind is `quote overdue` |
 | `--track-days <days>` | 30 | an instrument read within this many days stays tracked; news of an untracked one is pruned |
+| `--max-keys <n>` | 20 | keys a person may hold, expired ones included, 1 to 1000; a key over it is refused with "too many keys" (`docs/admin.md`) |
 | `--source <name>` | none | turns on a keyless source, repeated for each; `bvb` is the Bucharest feed (`docs/bvb.md`) |
 | `--no-ui` | the UI on | serves no web UI and refuses its sign-in (`docs/web.md`) |
 | `--trust-proxy` | off | behind a reverse proxy: a client's address, for the sign-in page's limit, is the last `X-Forwarded-For` value, the one the proxy added (`docs/web.md`); never without a proxy, since any client can send the header |

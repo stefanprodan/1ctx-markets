@@ -11,8 +11,6 @@ import type { Writer } from "../storage/writer.ts";
 
 // names the key's owner wherever it is pasted
 export const KEY_PREFIX = "1ctx-markets-";
-// 1ctx's default cap, expired keys included
-export const MAX_KEYS = 5;
 export const KEY_DAYS = [30, 90, 365] as const;
 export type KeyDays = (typeof KEY_DAYS)[number];
 // 1ctx's agent name rule
@@ -130,6 +128,7 @@ export function createKey(
     analysis?: AnalysisAccess;
   },
   now: number,
+  maxKeys: number,
 ): { key: KeyRow; token: string } {
   if (RESERVED_NAMES.includes(args.name))
     throw new KeyConflict("name reserved");
@@ -138,7 +137,7 @@ export function createKey(
     throw new KeyConflict("name taken");
   }
   const keys = listKeys(db, user);
-  if (keys.length >= MAX_KEYS) throw new KeyConflict("too many keys");
+  if (keys.length >= maxKeys) throw new KeyConflict("too many keys");
   const key: KeyRow = {
     id: newId(),
     user,

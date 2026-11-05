@@ -36,7 +36,6 @@ import {
   MAX_NOTE,
 } from "../rules/format.ts";
 import { ALERTS_KEPT_DAYS, ALERTS_PAGE } from "../rules/store.ts";
-import { MAX_KEYS } from "../server/access.ts";
 import { CALLS_PER_MINUTE } from "../server/ratelimit.ts";
 import { ALERT_PAGE_BYTES } from "./alerts.ts";
 import { DOC_FILES } from "./docs.ts";
@@ -811,7 +810,7 @@ export const paths = {
         "- `alerts` is `read` to open the alerts, their history and the feed, and the `alerts` tool, `write` to also create, update, pause and delete them and list `alerts_edit`; `none` by default.",
         "- `profile` is `read` to open the profile routes and the `profile` tool, `write` to also save it and list `profile_edit`; `none` by default.",
         "- `analysis` is `read` to open the analysis routes and the `analysis` tool, `write` to also save one and list `analysis_edit`; `none` by default.",
-        `- At most ${MAX_KEYS} keys a person, expired ones included. Revoke one to make another.`,
+        "- At most `limit` keys a person (`GET /keys`), expired ones included. Revoke one to make another.",
         "- A name is unique among your keys (`conflict`).",
       ),
       requestBody: body(ref("KeyArgs")),

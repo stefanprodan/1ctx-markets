@@ -38,6 +38,7 @@ import {
   readRules,
 } from "../src/rules/store.ts";
 import { DAY_MS } from "../src/runtime/clock.ts";
+import { DEFAULT_MAX_KEYS } from "../src/runtime/config.ts";
 import { silent } from "../src/runtime/log.ts";
 import { createKey, listKeys } from "../src/server/access.ts";
 import { createLink } from "../src/server/links.ts";
@@ -253,7 +254,14 @@ async function fill(m: Markets, who: Who, mark: string): Promise<Owned> {
     ),
   );
   const key = await m.writer.write(
-    (db) => createKey(db, owner, { name: `${mark}-key`, days: null }, 0).key.id,
+    (db) =>
+      createKey(
+        db,
+        owner,
+        { name: `${mark}-key`, days: null },
+        0,
+        DEFAULT_MAX_KEYS,
+      ).key.id,
   );
   return {
     portfolio,

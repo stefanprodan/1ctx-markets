@@ -18,7 +18,11 @@ import type { Markets } from "../src/operations/markets.ts";
 import { createPortfolio, saveSettings } from "../src/operations/portfolio.ts";
 import { loginWho, OPERATOR, type Who } from "../src/operations/who.ts";
 import { MINUTE_MS } from "../src/runtime/clock.ts";
-import { configToArgs, parseCli } from "../src/runtime/config.ts";
+import {
+  configToArgs,
+  DEFAULT_MAX_KEYS,
+  parseCli,
+} from "../src/runtime/config.ts";
 import { keys } from "../src/runtime/keys.ts";
 import { logger } from "../src/runtime/log.ts";
 import { createKey } from "../src/server/access.ts";
@@ -1144,7 +1148,7 @@ describe("signing out", () => {
 });
 
 describe("keys per person", () => {
-  test(`a member makes up to 5 keys of their own; nobody makes one for someone else`, async () => {
+  test(`a member makes up to the default keys of their own; nobody makes one for someone else`, async () => {
     const t = people();
     t.person("ana", ANA);
     const member = {
@@ -1153,9 +1157,9 @@ describe("keys per person", () => {
     };
     const make = (name: string, extra = {}) =>
       t.at(`${PREFIX}/keys`, t.jsonBody("POST", { name, ...extra }, member));
-    for (let k = 0; k < 5; k++)
+    for (let k = 0; k < DEFAULT_MAX_KEYS; k++)
       expect((await make(`agent-${k}`)).status).toBe(201);
-    const over = await make("agent-5");
+    const over = await make(`agent-${DEFAULT_MAX_KEYS}`);
     expect(over.status).toBe(409);
     expect((await over.json()).detail).toBe("too many keys");
     // the operator may use the same names: names are per person
@@ -1171,7 +1175,7 @@ describe("keys per person", () => {
     expect(other.status).toBe(400);
     expect(
       t.db.query("select count(*) as n from keys where user_id = 'ana'").get(),
-    ).toEqual({ n: 5 });
+    ).toEqual({ n: DEFAULT_MAX_KEYS });
   });
 
   test("an admin lists everyone's keys with their owner and revokes any; a member only their own", async () => {
@@ -1182,10 +1186,19 @@ describe("keys per person", () => {
       "sec-fetch-site": "same-origin",
     };
     const anaKey = await t.m.writer.write(
-      (db) => createKey(db, "ana", { name: "phone", days: null }, 0).key.id,
+      (db) =>
+        createKey(db, "ana", { name: "phone", days: null }, 0, DEFAULT_MAX_KEYS)
+          .key.id,
     );
     const opKey = await t.m.writer.write(
-      (db) => createKey(db, OPERATOR, { name: "phone", days: null }, 0).key.id,
+      (db) =>
+        createKey(
+          db,
+          OPERATOR,
+          { name: "phone", days: null },
+          0,
+          DEFAULT_MAX_KEYS,
+        ).key.id,
     );
     const list = async (headers: Record<string, string>) =>
       (
@@ -1221,7 +1234,9 @@ describe("a write re-reads its caller", () => {
     const t = people();
     t.person("ana", ANA);
     const key = await t.m.writer.write(
-      (db) => createKey(db, "ana", { name: "agent", days: null }, 0).key,
+      (db) =>
+        createKey(db, "ana", { name: "agent", days: null }, 0, DEFAULT_MAX_KEYS)
+          .key,
     );
     const viaKey: Who = {
       name: "agent",
@@ -1425,7 +1440,14 @@ describe("the CLI", () => {
         ).run(ANA);
       });
       const theirs = await t.app.writer.write(
-        (db) => createKey(db, "ana", { name: "shared", days: null }, 0).key.id,
+        (db) =>
+          createKey(
+            db,
+            "ana",
+            { name: "shared", days: null },
+            0,
+            DEFAULT_MAX_KEYS,
+          ).key.id,
       );
       await expect(run("revoke", "shared")).rejects.toThrow(
         "no key named shared",

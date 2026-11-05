@@ -133,10 +133,11 @@ never signs in and a sign-in never opens `/mcp`.
   taken"), so two people may name keys alike. `web` and `admin` are
   reserved (409 `conflict`, "name reserved"): the server records the
   web UI and the admin key by those names.
-- **At most 5 keys per person** (`MAX_KEYS`), expired ones included,
-  the operator included, as 1ctx's default cap (409 `conflict`, "too
-  many keys"). The name and the cap are checked in the same write as
-  the insert.
+- **At most 20 keys per person** by default (`--max-keys`, 1 to
+  1000), expired ones included, the operator included (409
+  `conflict`, "too many keys"); `GET /api/v1/keys` answers the cap as
+  `limit`. Lowering it revokes no key. The name and the cap are
+  checked in the same write as the insert.
 - **A key is its maker's** (`keys.user_id`): the routes list, change and
   revoke the caller's own, another's id answering 404, and the key's
   agent reads and writes that person's rows. An admin's list holds

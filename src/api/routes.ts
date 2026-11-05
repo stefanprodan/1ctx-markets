@@ -105,6 +105,7 @@ import {
   readProfile,
 } from "../profile/store.ts";
 import { markSeen, readSeen } from "../rules/store.ts";
+import { DEFAULT_MAX_KEYS } from "../runtime/config.ts";
 import { errorFields, type Log } from "../runtime/log.ts";
 import { CallerGone } from "../server/caller.ts";
 import { type Email, email as emailOf } from "../server/email/settings.ts";
@@ -179,6 +180,8 @@ export type ApiDeps = {
   // hides a key made through POST /keys from the log; none in tests that
   // read no log
   mask?: (token: string) => void;
+  // keys a person may hold; the default when none is given
+  maxKeys?: number;
   // email and its links; off when none is given
   email?: Email;
   links?: Links;
@@ -942,7 +945,7 @@ function keys(d: KeysDeps): Route[] {
       scope: "session",
       handle: async (_req, url, _params, who) => {
         noQuery(url);
-        return listAnswer(d.m, who);
+        return listAnswer(d.m, who, d.maxKeys);
       },
     },
     {
@@ -1148,7 +1151,11 @@ export function routes(deps: ApiDeps): Route[] {
     ...profile(m),
     ...analysis(m),
     ...operator(admin, deps.world),
-    ...keys({ m: deps.admin.m, mask: deps.mask ?? (() => {}) }),
+    ...keys({
+      m: deps.admin.m,
+      maxKeys: deps.maxKeys ?? DEFAULT_MAX_KEYS,
+      mask: deps.mask ?? (() => {}),
+    }),
     ...people({ m: deps.admin.m, email, links: sent }),
     ...sharing(deps.admin.m),
     {

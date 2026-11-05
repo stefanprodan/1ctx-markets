@@ -155,58 +155,61 @@ describe("agent keys", () => {
       expect(t.lines.some((l) => l.includes('msg="key revoked"'))).toBe(true);
     }));
 
-  test("at most five keys, and each name once", () =>
-    withApp(async (t) => {
-      // the test's own agent key is the first
-      for (const name of ["a1", "a2", "a3", "a4"]) {
-        expect((await make(t, name)).status).toBe(201);
-      }
-      const taken = await make(t, "a1");
-      expect(taken.status).toBe(409);
-      expect(await taken.json()).toMatchObject({
-        code: "conflict",
-        detail: "name taken",
-      });
-      for (const name of ["web", "admin"]) {
-        const reserved = await make(t, name);
-        expect(reserved.status).toBe(409);
-        expect(await reserved.json()).toMatchObject({
+  test("at most the configured keys, and each name once", () =>
+    withApp(
+      async (t) => {
+        // the test's own agent key is the first
+        for (const name of ["a1", "a2", "a3", "a4"]) {
+          expect((await make(t, name)).status).toBe(201);
+        }
+        const taken = await make(t, "a1");
+        expect(taken.status).toBe(409);
+        expect(await taken.json()).toMatchObject({
           code: "conflict",
-          detail: "name reserved",
+          detail: "name taken",
         });
-      }
-      const full = await make(t, "a5");
-      expect(full.status).toBe(409);
-      expect(await full.json()).toMatchObject({
-        code: "conflict",
-        detail: "too many keys",
-      });
-      const listed = await fetch(`${t.url}${PREFIX}/keys`, {
-        headers: as(t.admin),
-      });
-      const body = (await listed.json()) as {
-        keys: { name: string }[];
-        limit: number;
-      };
-      expect(body.limit).toBe(5);
-      expect(body.keys.map((k) => k.name)).toEqual([
-        "test-agent",
-        "a1",
-        "a2",
-        "a3",
-        "a4",
-      ]);
-      for (const bad of ["A", "x", "-x", "x y", "é".repeat(3), 1, null]) {
-        const res = await make(t, bad as string);
-        expect([bad, res.status]).toEqual([bad, 400]);
-      }
-      const days = await fetch(`${t.url}${PREFIX}/keys`, {
-        method: "POST",
-        headers: { "content-type": "application/json", ...as(t.admin) },
-        body: JSON.stringify({ name: "a1", expiresInDays: 7 }),
-      });
-      expect(days.status).toBe(400);
-    }));
+        for (const name of ["web", "admin"]) {
+          const reserved = await make(t, name);
+          expect(reserved.status).toBe(409);
+          expect(await reserved.json()).toMatchObject({
+            code: "conflict",
+            detail: "name reserved",
+          });
+        }
+        const full = await make(t, "a5");
+        expect(full.status).toBe(409);
+        expect(await full.json()).toMatchObject({
+          code: "conflict",
+          detail: "too many keys",
+        });
+        const listed = await fetch(`${t.url}${PREFIX}/keys`, {
+          headers: as(t.admin),
+        });
+        const body = (await listed.json()) as {
+          keys: { name: string }[];
+          limit: number;
+        };
+        expect(body.limit).toBe(5);
+        expect(body.keys.map((k) => k.name)).toEqual([
+          "test-agent",
+          "a1",
+          "a2",
+          "a3",
+          "a4",
+        ]);
+        for (const bad of ["A", "x", "-x", "x y", "é".repeat(3), 1, null]) {
+          const res = await make(t, bad as string);
+          expect([bad, res.status]).toEqual([bad, 400]);
+        }
+        const days = await fetch(`${t.url}${PREFIX}/keys`, {
+          method: "POST",
+          headers: { "content-type": "application/json", ...as(t.admin) },
+          body: JSON.stringify({ name: "a1", expiresInDays: 7 }),
+        });
+        expect(days.status).toBe(400);
+      },
+      { maxKeys: 5 },
+    ));
 
   test("a made key is answered once and never reaches the log", () =>
     withApp(async (t) => {

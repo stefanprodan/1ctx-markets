@@ -112,6 +112,8 @@ describe("service install", () => {
         "5",
         "--track-days",
         "30",
+        "--max-keys",
+        "20",
         "--source",
         "bvb",
       ],
@@ -155,6 +157,8 @@ describe("service install", () => {
       "2",
       "--track-days",
       "7",
+      "--max-keys",
+      "20",
     ]);
     expect(definition()?.workingDirectory).toBe("/work/data/markets");
     expect(definition()?.logPath).toBe("/work/data/markets/markets.log");
@@ -211,9 +215,11 @@ describe("service install", () => {
 
     expect(calls).toEqual(["install", "install"]);
     expect(definition()?.programArguments).not.toContain("--source");
-    expect(definition()?.programArguments.slice(-2)).toEqual([
+    expect(definition()?.programArguments.slice(-4)).toEqual([
       "--track-days",
       "9",
+      "--max-keys",
+      "20",
     ]);
   });
 
