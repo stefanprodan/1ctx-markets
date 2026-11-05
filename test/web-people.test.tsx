@@ -10,6 +10,7 @@ import { forgetRecent, recent } from "../src/web/app/recent.ts";
 import { path } from "../src/web/app/router.ts";
 import { ROUTES } from "../src/web/app/routes.ts";
 import type { Person, SmtpAnswer } from "../src/web/data/admin.ts";
+import { SEEN_PATH } from "../src/web/data/alerts.ts";
 import type { Fetch } from "../src/web/data/api.ts";
 import {
   type AgentKey,
@@ -322,7 +323,7 @@ describe("signing in", () => {
         emailOn,
       ]);
       expect(f.asked.map((a) => a.path)).toEqual(
-        signed ? [ME_PATH, SHARING_PATH] : [ME_PATH],
+        signed ? [ME_PATH, SHARING_PATH, SEEN_PATH] : [ME_PATH],
       );
     }
   });

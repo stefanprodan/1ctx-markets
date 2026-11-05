@@ -66,6 +66,7 @@ export function Drawer({
   footStart,
   bare,
   tall,
+  swaps,
   children,
 }: {
   title: ComponentChildren;
@@ -85,6 +86,9 @@ export function Drawer({
   // a sheet on a phone at its full height from the start, for a body
   // whose details arrive after it opens
   tall?: boolean;
+  // a click on a list's row behind it opens that row, as a list of
+  // records read one after another wants, rather than only closing
+  swaps?: boolean;
   // given the drawer's close, which slides it out first
   children?: Slot;
 }) {
@@ -144,7 +148,11 @@ export function Drawer({
         class="drawer-back"
         aria-label="Close"
         tabIndex={-1}
-        onClick={close}
+        onClick={(ev) => {
+          const row = swaps ? rowUnder(wrap.current, ev) : null;
+          if (row) row.click();
+          else close();
+        }}
       />
       <div
         class={tall ? "drawer drawer-tall" : "drawer"}
@@ -181,5 +189,21 @@ export function Drawer({
         )}
       </div>
     </div>
+  );
+}
+
+// the row's open control under a click on the backdrop, the drawer let
+// through for the one lookup
+function rowUnder(
+  wrap: HTMLElement | null,
+  ev: MouseEvent,
+): HTMLElement | null {
+  if (wrap === null) return null;
+  wrap.style.pointerEvents = "none";
+  const el = document.elementFromPoint(ev.clientX, ev.clientY);
+  wrap.style.pointerEvents = "";
+  return (
+    el?.closest(".table-row-open")?.querySelector<HTMLElement>(".table-open") ??
+    null
   );
 }

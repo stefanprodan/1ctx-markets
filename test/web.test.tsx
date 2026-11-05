@@ -47,6 +47,7 @@ import { onPhone } from "../src/web/app/shell.ts";
 import { resolveTheme } from "../src/web/app/theme.ts";
 import { tabTitle } from "../src/web/app/title.ts";
 import { UserItems } from "../src/web/app/UserMenu.tsx";
+import { SEEN_PATH } from "../src/web/data/alerts.ts";
 import {
   ApiError,
   buildWatch,
@@ -427,6 +428,12 @@ describe("the routes", () => {
     expect(match("/instruments/US%3ANVDA")).toBeNull();
     expect(match("/connect")?.route.label).toBe("Connect agents");
     expect(match("/profile")?.route.label).toBe("Profile");
+    // Alerts' two tabs keep their tab in the address, lit under /alerts
+    expect(match("/alerts")?.route.label).toBe("Alerts");
+    expect(match("/alerts/fired")?.route).toMatchObject({
+      label: "Alerts",
+      parent: "/alerts",
+    });
     expect(match("/nothing")).toBeNull();
     // an instrument's page takes its id from the path, decoded
     expect(match("/symbol/US%3ANVDA")).toMatchObject({
@@ -440,6 +447,7 @@ describe("the routes", () => {
       "Home",
       "Screener",
       "Portfolios",
+      "Alerts",
       "Profile",
       "Connect agents",
       "Server admin",
@@ -449,6 +457,7 @@ describe("the routes", () => {
       "Home",
       "Screener",
       "Portfolios",
+      "Alerts",
       "Profile",
       "Connect agents",
     ]);
@@ -596,8 +605,13 @@ describe("the data layer", () => {
     expect(signed.me.value).toEqual(ADMIN_ME);
     expect(signed.isAdmin.value).toBe(true);
     expect(signed.emailOn.value).toBe(true);
-    // never the status, which is an admin's; who shares with them, for the rail
-    expect(f.asked.map((a) => a.path)).toEqual([ME_PATH, SHARING_PATH]);
+    // never the status, which is an admin's; who shares with them and the
+    // alerts not seen yet, for the rail
+    expect(f.asked.map((a) => a.path)).toEqual([
+      ME_PATH,
+      SHARING_PATH,
+      SEEN_PATH,
+    ]);
     const out = store(fake({ [`GET ${ME_PATH}`]: signedAs(null) }).fetch);
     await out.check();
     expect(out.signedIn.value).toBe(false);
@@ -2854,6 +2868,7 @@ describe("the phone's bar", () => {
     }
     expect(barLit("/instruments")).toBeNull();
     expect(MORE.map((r) => r.label)).toEqual([
+      "Alerts",
       "Profile",
       "Connect agents",
       "Server admin",
@@ -3136,6 +3151,7 @@ describe("More's drawer", () => {
         ),
       ].map((m) => m[1] ?? m[2] ?? m[3] ?? m[4]);
       expect(words).toEqual([
+        "Alerts",
         "Profile",
         "Connect agents",
         "Server admin",
@@ -3151,9 +3167,9 @@ describe("More's drawer", () => {
       );
       expect(body.html).toContain('href="/symbol/US%3AAMD"');
       const links = body.nodes.filter((n) => n.type === "a");
-      expect(links).toHaveLength(4);
+      expect(links).toHaveLength(5);
       for (const a of links) a.props.onClick();
-      expect(closed).toBe(4);
+      expect(closed).toBe(5);
       // the user menu's own items, closing once signed out
       expect(
         body.nodes.find((n) => n.type === UserItems).props.onSignedOut,

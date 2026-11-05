@@ -6,7 +6,7 @@ import { Icon, Logo } from "../lib/icons.tsx";
 import { nameOf, tickerOf } from "../lib/names.ts";
 import { SymbolName } from "../ui/Symbol.tsx";
 import { useServerFailing } from "./failing.ts";
-import { symbolHref } from "./paths.ts";
+import { ALERTS, symbolHref } from "./paths.ts";
 import { pickRecent, recent } from "./recent.ts";
 import { ADMIN, HOME, lit, railFor } from "./routes.ts";
 import {
@@ -59,6 +59,7 @@ export function Rail({ here, onHide }: { here: string; onHide: () => void }) {
                 class={iconClass(r.path === ADMIN && failing)}
               />
               <span>{r.label}</span>
+              {r.path === ALERTS && <Unseen />}
             </a>
           ))}
           <SharedWithMe here={here} />
@@ -156,5 +157,16 @@ export function Recent({
         );
       })}
     </>
+  );
+}
+
+// the alerts fired since Fired was last opened, on the rail's and More's row
+export function Unseen() {
+  const n = markets.alerts.seen.value?.unseen ?? 0;
+  if (n === 0) return null;
+  return (
+    <span class="rail-count num" role="img" aria-label={`${n} new`}>
+      {n > 99 ? "99+" : n}
+    </span>
   );
 }

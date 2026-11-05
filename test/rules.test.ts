@@ -8,7 +8,7 @@ import { SWITCH } from "../src/market/stale.ts";
 import { trackedIds } from "../src/market/tracking.ts";
 import { NO_EVENT_SOURCE } from "../src/operations/rules.ts";
 import { OPERATOR } from "../src/operations/who.ts";
-import { WAITING } from "../src/rules/evaluate.ts";
+import { applyRule, evaluateRules, WAITING } from "../src/rules/evaluate.ts";
 import {
   FIELD_NAMES,
   NO_RETURN_QUOTE,
@@ -290,6 +290,32 @@ describe("evaluation", () => {
       // a rule true at creation fires at once
       expect(r.body.alert === null).toBe(result === "false");
     }
+  });
+
+  test("evaluated now stores nothing and answers what applying would", async () => {
+    const t = await rulesTest();
+    const a = await create(t, "NVDA", { left: "price", op: "<", right: 200 });
+    const b = await create(t, "NVDA", {
+      all: [
+        { left: "price", op: "<", right: 211 },
+        { left: "rsi14", op: ">", right: 30 },
+      ],
+    });
+    // true and armed: applying it would fire
+    t.db.query("update rules set armed = 1 where id = ?").run(b.body.rule.id);
+    const rows = () => t.db.query("select * from rules order by id").all();
+    const before = rows();
+    const fired = alerts(t);
+    const listed = [rule(t, a.body.rule.id), rule(t, b.body.rule.id)];
+    const now = evaluateRules(t.db, listed, t.clock.now(), EVERY_MS);
+    expect(now.map((e) => e.result)).toEqual(["false", "true"]);
+    expect(rows()).toEqual(before);
+    expect(alerts(t)).toBe(fired);
+    const applied = await t.write.write((db) =>
+      listed.map((r) => applyRule(db, r, t.clock.now(), EVERY_MS)),
+    );
+    expect(applied.map((o) => o.evaluation)).toEqual(now);
+    expect(applied.map((o) => o.alert !== null)).toEqual([false, true]);
   });
 
   test("true then true fires once, false then true fires again", async () => {

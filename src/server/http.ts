@@ -50,6 +50,8 @@ export const UI_PATHS = [
   "/portfolios/:id",
   "/portfolios/shared/:user",
   "/portfolios/shared/:user/:id",
+  "/alerts",
+  "/alerts/fired",
   "/profile",
 ] as const;
 
@@ -185,7 +187,7 @@ export function router(deps: RouterDeps): Handle {
       if (held !== null && opens(held, level === "write")) return null;
       return forbidden("this key does not open this route");
     }
-    if (login === null || r?.cookie === false) return apiUnauthorized();
+    if (login === null) return apiUnauthorized();
     // a cookie's write must come from this server's own pages
     if (!READS.has(req.method) && !sameOrigin(req)) {
       return forbidden("not sent from this server's pages");

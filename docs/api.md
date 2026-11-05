@@ -37,12 +37,15 @@ MCP tools copied onto paths.
 | `GET /instruments/{symbol}/bars?interval=&from=&to=&benchmark=&extended=` | read | `readHistory()`, `readIntradayHistory()` | bars or 5-minute points (below) |
 | `GET /dashboard` | session | `readDashboard()` | the web UI's home page: `revision`, `created`, `sections[]` of `items[]` (below) |
 | `PUT /dashboard` | session | `saveDashboard()` | `{revision, sections: [{name, view, symbols}]}` replaces the layout; the saved dashboard; 409 with `dashboard`, 422 with `errors` (below) |
-| `GET /rules` | rules:read | `readRules()`, `ruleItem()` | `rules[]` |
+| `GET /rules` | rules:read | `readRules()`, `ruleViews()` | `rules[]`, each the tool's item plus `now` (`result`, `values`, `reasons`), evaluated at the read and stored nowhere; `instruments` (id → `name`, `type`, `currency`, `unit`) of every listing they read (`docs/rules.md`) |
 | `POST /rules` | rules:write | `createRule()` | 201, `Location: /api/v1/rules/{id}`, the rule, its first evaluation and any alert it fired |
-| `GET /rules/{id}` | rules:read | `readRule()`, `ruleItem()` | `{rule}` |
+| `GET /rules/{id}` | rules:read | `readRule()`, `ruleViews()` | `{rule, instruments}`, as one item of `GET /rules` |
 | `PATCH /rules/{id}` | rules:write | `pauseRule()` | `{"paused": bool}` sets or clears the manual pause; `{rule}` |
 | `DELETE /rules/{id}` | rules:write | `deleteRuleById()` | 204; its alerts stay |
 | `GET /alerts` | rules:read | `alertsHandler()` | the alerts feed (below) |
+| `GET /alerts/recent?before=` | rules:read | `readAlertsBefore()`, `alertViews()` | `alerts[]`, the caller's kept ones newest first, 50 a page (`RECENT_ALERTS`), each as the feed gives it; `instruments` as `GET /rules`; `next`, the `before` of the next older page, null on the last; 400 for a `before` not an id |
+| `GET /alerts/seen` | session | `readSeen()` | `seen`, the newest alert id the web UI marked seen (0 before any), and `unseen`, how many of the caller's alerts are newer |
+| `PUT /alerts/seen` | session | `markSeen()` | `{id}` moves the mark forward, never back and never past the caller's own newest alert; answers as `GET /alerts/seen` |
 | `GET /profile` | profile:read | `readProfile()`, `renderMarkdown()` | `text`, `html` (the text drawn on the server), `revision`, `author`, `updated_at`, `bytes`; every one null with no profile yet (`docs/profile.md`) |
 | `PUT /profile` | profile:write | `saveProfile()` | `{revision?, text}` replaces it, `{revision, edits}` changes part of it; the new `revision`, `author`, `bytes`, `updated_at`, never the text, with `unchanged` when the text equals the live one; 409 with the live `revision` for a stale one |
 | `POST /profile/preview` | profile:write | `documentText()`, `renderMarkdown()` | `{text}`, well-formed UTF-8 with no NUL (the size cap applies on save), answered as `html` drawn as `GET /profile` draws it; nothing is saved and no revision is made (the web UI editor's Preview) |
@@ -442,8 +445,8 @@ MCP tools copied onto paths.
   admin's write 403, and nothing is written.
 - **Rules routes and the alerts feed take the key's rules access**
   (`keys.rules`, `none` by default) the same way: `rules:read` (the
-  list, one rule, the feed) opens with `read` or `write`,
-  `rules:write` (create, pause, delete) with `write`. A rule acts for
+  list, one rule, the feed, the recent alerts) opens with `read` or
+  `write`, `rules:write` (create, pause, delete) with `write`. A rule acts for
   the owner, so the read scope never opens them. The spec names
   `rulesRead` and `rulesWrite`.
 - **Profile routes take the key's profile access** (`keys.profile`,
@@ -475,8 +478,7 @@ MCP tools copied onto paths.
 - **A request's log line names its key**: `key=<id> key_name=<name>`,
   or `key=admin`; never a token. A token made by `POST /keys` joins the
   log mask before it is answered (`mask()` in `src/runtime/keys.ts`).
-- **A login opens its person's routes but the rules writes**
-  (`cookie: false` on `POST /rules`, `PATCH` and `DELETE /rules/{id}`),
+- **A login opens its person's routes, the rules writes included**,
   and the `admin` routes only for an admin; a cookie request that is
   not a `GET` must come from this server's own pages, or it is 403
   (`docs/web.md`). A key is tried first, the cookie only when no key is

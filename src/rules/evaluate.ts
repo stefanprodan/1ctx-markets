@@ -356,6 +356,17 @@ function evaluateWith(r: Reader, db: Db, rule: RuleRow): Evaluation {
   };
 }
 
+// what the engine would answer now, stored nowhere: one reader for them all
+export function evaluateRules(
+  db: Db,
+  rules: readonly RuleRow[],
+  now: number,
+  quoteEveryMs: number,
+): Evaluation[] {
+  const r = reader(db, now, quoteEveryMs);
+  return rules.map((rule) => evaluateWith(r, db, rule));
+}
+
 // in the caller's transaction
 export function applyRule(
   db: Db,

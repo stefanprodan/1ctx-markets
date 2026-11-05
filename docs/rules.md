@@ -160,10 +160,11 @@ Examples, each created with `symbol` set to the rule's own share:
   key with access `none` is not given the tool at all (`docs/tools.md`),
   and one that reads is given it whole: reads and writes stay one tool,
   as a rules reader is rare. The same access opens the rules routes and the alerts feed
-  (`docs/api.md`); the admin key holds `write`, and a person's web UI
-  login the reads only. Rules and their alerts are each person's: a
-  person's agents share them, and `GET /alerts` carries only the key's
-  person's.
+  (`docs/api.md`); the admin key holds `write`, and so does a person's
+  web UI login, its writes held to this server's own pages
+  (`sameOrigin()`, `docs/web.md`). Rules and their alerts are each
+  person's: a person's agents share them, and `GET /alerts` carries
+  only the key's person's.
 - **create leaves no rule on any failure.** Every symbol resolves and
   is stored inside the call (`readTargets()`, and `researchTargets()`
   for the gate, under one deadline); any error answers without a write.
@@ -183,4 +184,28 @@ Examples, each created with `symbol` set to the rule's own share:
   (`allRules()`), since prices are shared.
 - **The rules routes call the same `createRule()`, `pauseRule()` and
   `deleteRuleById()`** (`docs/api.md`), so a rule made either way is
-  the same.
+  the same, by a key or by the web UI's Alerts page.
+
+## The routes' reads
+
+- **`GET /rules` and `GET /rules/{id}` answer each rule as the tool
+  lists it plus `now`**, the engine's answer at the read
+  (`evaluateRules()`, one reader for the whole list): it is stored
+  nowhere, so it never fires an alert or changes `armed` or
+  `last_result`, and agrees with what `applyRule()` would answer. The
+  tool's answers carry no `now`: an agent reads the evaluation in
+  `create` and the alert in the feed.
+- **They add `instruments`**, each listing a rule reads by id with its
+  name, type, currency and unit (`ruleViews()`), so a page names and
+  prices a rule without another call.
+- **`GET /alerts/recent` reads back the caller's kept alerts, newest
+  first**, `RECENT_ALERTS` a page, with `next` the `before` of the
+  next older page and `instruments` as above (`readAlertsBefore()`,
+  `alertViews()`). The feed (`GET /alerts`) stays the poll: oldest
+  first behind its cursor.
+- **`GET` and `PUT /alerts/seen` hold the web UI's mark of the newest
+  alert shown** (`users.alerts_seen`, `readSeen()`, `markSeen()`) and
+  how many of the person's alerts came after it. The mark moves forward
+  only and never past the person's own newest alert, so an alert that
+  fires later is never seen ahead of time. They are web UI routes: no
+  agent key opens them.

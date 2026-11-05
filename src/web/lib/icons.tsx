@@ -113,6 +113,10 @@ const PATHS = {
   // Connect agents: a plug
   plug: "M8 14.5v-3M6 5.5v-4M10 5.5v-4M4 5.5h8v3a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3z",
   plus: "M8 3v10M3 8h10",
+  // a condition not met yet: an empty circle, never a cross that reads as delete
+  circle: "M8 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10z",
+  // Alerts: a bell
+  bell: "M4 11.5V7a4 4 0 0 1 8 0v4.5l1 1H3zM6.75 13.5a1.4 1.4 0 0 0 2.5 0",
   grid: "M2.5 2.5h4.5v4.5h-4.5zM9 2.5h4.5v4.5H9zM2.5 9h4.5v4.5h-4.5zM9 9h4.5v4.5H9z",
   rows: "M2.5 4h11M2.5 8h11M2.5 12h11",
   more: "M3.5 8h.01M8 8h.01M12.5 8h.01",

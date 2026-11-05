@@ -37,7 +37,7 @@ export const loginWho = (user: string, login: string, name: string): Who => ({
   user,
   credential: { kind: "login", id: login },
   portfolio: "write",
-  rules: "read",
+  rules: "write",
   profile: "write",
   analysis: "write",
 });
