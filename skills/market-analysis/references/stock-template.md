@@ -49,6 +49,7 @@ Cyclicals (memory, chip equipment, commodities, autos, any company whose margins
 | Level (<CCY>) | What it is | Set |
 |---|---|---|
 | <price> | <weekly shelf, unfilled gap edge, post-earnings low, prior cycle high> | <YYYY-MM-DD> |
+
 <!-- 3–5 rows, from `history` 1wk and 1d. Never where the price sits now: readers compare `quote` with these. -->
 
 ### Next 6 weeks
@@ -56,6 +57,7 @@ Cyclicals (memory, chip equipment, commodities, autos, any company whose margins
 |---|---|---|
 | <YYYY-MM-DD hour> | Q<n> report: guide-implied EPS <…>; consensus EPS <…>, revenue <…> (<source>, <date>) <vs the latest guide: in line | above the top | stale> | <date: gap / close / filled?> |
 | <YYYY-MM-DD> | <investor day, lock-up end, shareholder meeting, split, regulatory date> | <…> |
+
 <!-- The symbol's own dated events, and another's (a peer's report, a ruling) only when a trigger or risk names it. The next report: "unknown (searched: …); likely <date> from past pattern" when not announced. -->
 
 ### Risks
@@ -67,20 +69,24 @@ Cyclicals (memory, chip equipment, commodities, autos, any company whose margins
 | Driver | Last reading (period · source) | Thesis breaks if |
 |---|---|---|
 | <KPI> | <value · results release, interim report or IR, or "coverage: publisher, date"> | <threshold at the next report> |
+
 <!-- 3–5 rows. Note discontinued or redefined KPIs ("bookings no longer reported after Q4-25; proxy: …"). -->
 
 ### Guidance record
 | Quarter (report date) | Guided (revenue / EPS / key metric; when) | Actual (EPS ex one-offs) | Reaction (gap / close / filled?) |
 |---|---|---|---|
+
 <!-- The last 4 reports (new listings: "since listing, N reports"; half-yearly reporters: the last 4 half-years), including preliminary releases as their own rows. Qualitative, cost-only (e.g. opex) or call-only guidance is allowed, tagged "(call, coverage)". Flag 53-week quarters. Reactions from `history`. -->
 
 ### Scenarios and value
 - **Method:** <EPS × P/E | EV/EBITDA | EV/Sales | FCF yield | sum-of-parts (one row per part)>, <forward|trailing> multiple on FY<yy> <metric>, value dated <start of FY<yy> (forward) | end of FY<yy> (trailing)>, <discounted | carried forward> <n> y at <r>% (<10% | 10% + <g> points: <CCY> 10y <y>% vs US 10y <u>%, <date>>) to the writing date<; + excess cash at peak <x> <CCY>/share><; + present value of dividends paid before the value date <d> <CCY>><; FX <pair rate, date> if the reporting currency differs from the listing's>.
+
 | Case | Key assumptions (FY<yy>) | Shares (dilution) | Method and multiple | Present value (<CCY>) |
 |---|---|---|---|---|
 | Bull | | | | |
 | Base | | | | |
 | Bear | | | | |
+
 <!-- Judgement, with inputs shown. ~25% odds of beating bull and of missing bear. Use the method that fits the debate (FCF yield or EV/EBITDA when FCF or credit is the issue; sum-of-parts with one row per part when segments differ in kind). Leave the table out rather than invent inputs. -->
 - **Multiple over time:** <forward P/E range over 3–5 y with source | fallback: price ÷ realised next-FY EPS, from history and releases | "unknown (searched: …)"> · at writing <z> at <price at writing> <CCY>.
 
@@ -101,6 +107,7 @@ Cyclicals (memory, chip equipment, commodities, autos, any company whose margins
 | Segment / line | Share of revenue | Growth YoY | Margin | Period · source |
 |---|---|---|---|---|
 | <segment> | | | <% or n/d> | |
+
 - **Model:** <how it makes money, one line> · **Customers:** <concentration, top-customer %> · **Reporting:** <currency; standard (US GAAP, IFRS, local); segment changes, as applicable>.
 
 ### Competitive standing

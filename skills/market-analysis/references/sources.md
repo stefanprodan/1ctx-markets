@@ -24,6 +24,7 @@ count as coverage until checked.
 | Dated events | DEF 14A/14C (meetings, charter changes, stock dividends); 424B4 (IPO lock-ups); IR calendars | meeting notices and resolutions on the IR site or the home exchange; IPO prospectus (lock-ups) |
 | Depositary receipts | 20-F and 6-K on EDGAR; F-1 or 424B4 for the terms | the home filings above, for the underlying share |
 | ETFs and funds | issuer factsheet and prospectus; annual report (tracking difference); the index provider's methodology | the same, by domicile: key information document, prospectus, annual and semi-annual reports; the index provider's methodology (caps, rebalance and reconstitution dates) |
+| Currency pairs | both central banks: decisions, minutes, the official fixing, reserves and intervention data; the statistics offices (inflation, current account); the finance ministries (budget); rating agencies' releases; the real effective exchange rate from BIS (`FRED:` series); the IMF's Article IV and External Sector Report | the same |
 | A regional exchange | | the exchange's own site: index weights, issuer calendars, filings and fund reports it publishes |
 | Events and context | Reuters, Bloomberg, FT, WSJ, AP and the main business press of the issuer's country | the same |
 

@@ -205,15 +205,16 @@ binary; its OpenAPI description is `/api/v1/openapi.json`.
 ## Analysis skill
 
 The server stores the analysis notes agents write but does not say
-what a good one holds. The [`skills/market-analysis`](skills/market-analysis)
-folder does: an [Agent Skills](https://agentskills.io) folder that
-teaches an agent to write a note for a stock or an ETF on any exchange
-that leads with what decides (thesis, checkable triggers, levels, the
-next six weeks, risks) before the work behind it, never live readings;
-to refresh only the notes whose decision inputs changed, in a weekly
-or monthly scheduled run; and to read a note beside the live
-tools when advising. Writing needs a key with analysis write access
-and web search; reading needs analysis read access.
+what a good one holds. The
+[`skills/market-analysis`](skills/market-analysis) folder does: an
+[Agent Skills](https://agentskills.io) folder that teaches an agent to
+write a note for a stock or an ETF on any exchange, or a currency
+pair, that leads with what decides (thesis, checkable triggers,
+levels, the next six weeks, risks) before the work behind it, never
+live readings; to refresh only the notes whose decision inputs
+changed, in a weekly or monthly scheduled run; and to read a note
+beside the live tools when advising. Writing needs a key with analysis
+write access and web search; reading needs analysis read access.
 
 The server serves it without a key, matching the version it runs.
 A client that imports skills from a server, such as 1ctx, takes the
