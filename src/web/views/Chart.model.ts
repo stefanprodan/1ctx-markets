@@ -540,8 +540,8 @@ export const DEFAULT_SETTINGS: Settings = {
   range: DEFAULT_RANGE,
   line: true,
   log: false,
-  sma50: true,
-  sma200: true,
+  sma50: false,
+  sma200: false,
 };
 
 // a kept value that is not one of ours falls back, field by field
@@ -613,21 +613,77 @@ export function clearOfTags(
   });
 }
 
+// a year or more of trades reads by month: each month's buys and sells
+// summed on the month's first bar, by the trade's own date, as a week's
+// bar can start in the month before
+export const MONTHLY_SHARES: readonly Range[] = ["1Y", "3Y", "5Y", "Max"];
+export function monthlyShares(
+  times: readonly string[],
+  trades: readonly Trade[],
+): TradeMark[] {
+  const first = times[0];
+  if (first === undefined) return [];
+  return summed(
+    trades.flatMap((t) => {
+      if (t.date < first) return [];
+      const month = t.date.slice(0, 7);
+      const at =
+        times.find((d) => d.startsWith(month)) ??
+        times.findLast((d) => d <= t.date);
+      return at === undefined ? [] : [{ ...t, at }];
+    }),
+  );
+}
+
 // a trade on the bar of its day, or of the last bar before it: a week's
-// bar is dated its Monday, and one bar holds one buy and one sell at most
-export type TradeMark = { time: string; side: "buy" | "sell" };
+// bar is dated its Monday; one bar holds one buy and one sell at most,
+// each at its trades' price weighted by quantity
+export type TradeMark = {
+  time: string;
+  side: "buy" | "sell";
+  price: number;
+  quantity: number;
+};
+type Trade = {
+  date: string;
+  side: "buy" | "sell";
+  quantity: number;
+  price: number;
+};
 export function tradeMarks(
   times: readonly string[],
-  trades: readonly { date: string; side: "buy" | "sell" }[],
+  trades: readonly Trade[],
 ): TradeMark[] {
-  const out = new Map<string, TradeMark>();
-  for (const t of trades) {
-    let at: string | null = null;
-    for (const d of times) {
-      if (d > t.date) break;
-      at = d;
-    }
-    if (at !== null) out.set(`${at} ${t.side}`, { time: at, side: t.side });
+  return summed(
+    trades.flatMap((t) => {
+      let at: string | null = null;
+      for (const d of times) {
+        if (d > t.date) break;
+        at = d;
+      }
+      return at === null ? [] : [{ ...t, at }];
+    }),
+  );
+}
+
+// one mark per bar and side
+function summed(placed: readonly (Trade & { at: string })[]): TradeMark[] {
+  const out = new Map<string, TradeMark & { cost: number }>();
+  for (const t of placed) {
+    const key = `${t.at} ${t.side}`;
+    const m = out.get(key) ?? {
+      time: t.at,
+      side: t.side,
+      price: 0,
+      quantity: 0,
+      cost: 0,
+    };
+    m.quantity += t.quantity;
+    m.cost += t.quantity * t.price;
+    m.price = m.quantity > 0 ? m.cost / m.quantity : t.price;
+    out.set(key, m);
   }
-  return [...out.values()].sort((a, b) => a.time.localeCompare(b.time));
+  return [...out.values()]
+    .map(({ cost: _, ...m }) => m)
+    .sort((a, b) => a.time.localeCompare(b.time));
 }

@@ -13,7 +13,7 @@ import {
 import { briefQuantity } from "../src/web/lib/format.ts";
 import { stopped } from "../src/web/lib/names.ts";
 import { barWidth } from "../src/web/ui/Weights.tsx";
-import { tradeMarks } from "../src/web/views/Chart.model.ts";
+import { monthlyShares, tradeMarks } from "../src/web/views/Chart.model.ts";
 import { buyable, priceState } from "../src/web/views/Instrument.model.ts";
 import { Instrument } from "../src/web/views/Instrument.tsx";
 import { signalsOf } from "../src/web/views/InstrumentCards.model.ts";
@@ -739,19 +739,60 @@ describe("a fund the owner prices, on its page", () => {
     const times = ["2026-08-31", "2026-09-30", "2026-10-24"];
     expect(
       tradeMarks(times, [
-        { date: "2026-09-30", side: "buy" },
+        { date: "2026-09-30", side: "buy", quantity: 2, price: 10 },
         // between bars: on the one before
-        { date: "2026-10-12", side: "buy" },
-        { date: "2026-10-14", side: "sell" },
-        // two buys on one bar are one mark
-        { date: "2026-10-01", side: "buy" },
+        { date: "2026-10-12", side: "buy", quantity: 1, price: 40 },
+        { date: "2026-10-14", side: "sell", quantity: 3, price: 30 },
+        // two buys on one bar are one mark at their price by quantity
+        { date: "2026-10-01", side: "buy", quantity: 1, price: 10 },
         // before the range: none
-        { date: "2026-01-02", side: "buy" },
+        { date: "2026-01-02", side: "buy", quantity: 5, price: 1 },
       ]),
     ).toEqual([
-      { time: "2026-09-30", side: "buy" },
-      { time: "2026-09-30", side: "sell" },
+      { time: "2026-09-30", side: "buy", price: 17.5, quantity: 4 },
+      { time: "2026-09-30", side: "sell", price: 30, quantity: 3 },
     ]);
-    expect(tradeMarks([], [{ date: "2026-10-01", side: "buy" }])).toEqual([]);
+    expect(
+      tradeMarks(
+        [],
+        [{ date: "2026-10-01", side: "buy", quantity: 1, price: 1 }],
+      ),
+    ).toEqual([]);
+  });
+
+  test("a year or more sums each month's trades on its first bar", () => {
+    const times = ["2026-08-31", "2026-09-01", "2026-09-15", "2026-10-01"];
+    expect(
+      monthlyShares(times, [
+        { date: "2026-09-02", side: "buy", quantity: 1, price: 10 },
+        { date: "2026-09-16", side: "buy", quantity: 3, price: 20 },
+        { date: "2026-09-20", side: "sell", quantity: 2, price: 30 },
+        { date: "2026-10-02", side: "buy", quantity: 5, price: 40 },
+        // before the range: none
+        { date: "2026-08-03", side: "buy", quantity: 9, price: 1 },
+      ]),
+    ).toEqual([
+      { time: "2026-09-01", side: "buy", price: 17.5, quantity: 4 },
+      { time: "2026-09-01", side: "sell", price: 30, quantity: 2 },
+      { time: "2026-10-01", side: "buy", price: 40, quantity: 5 },
+    ]);
+  });
+
+  test("a month on weekly bars counts a trade by its own date", () => {
+    // a Friday 3 April buy sits in the week of Monday 30 March
+    const weeks = ["2026-03-23", "2026-03-30", "2026-04-06"];
+    const buy = {
+      date: "2026-04-03",
+      side: "buy",
+      quantity: 1,
+      price: 10,
+    } as const;
+    expect(monthlyShares(weeks, [buy])).toEqual([
+      { time: "2026-04-06", side: "buy", price: 10, quantity: 1 },
+    ]);
+    // a month with no bar of its own falls on the bar before
+    expect(monthlyShares(["2026-03-30"], [buy])).toEqual([
+      { time: "2026-03-30", side: "buy", price: 10, quantity: 1 },
+    ]);
   });
 });

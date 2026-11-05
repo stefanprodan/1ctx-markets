@@ -32,6 +32,12 @@
     /* the chart's two averages, checked for colour blindness on --card */
     --chart-sma50: #3b82f6;
     --chart-sma200: #c08018;
+    /* a chart's colours sit a notch under the page's own up and down,
+       which glare across a whole line and its fill on a dark page; the
+       owner's buys are the brand's gold */
+    --chart-up: #34b36b;
+    --chart-down: #e0625f;
+    --chart-buy: #d6a93f;
     /* the fill under the pointer and under the picked option */
     --hover: #2a2b2d;
     /* a word or a knob on a brand fill */
@@ -148,6 +154,9 @@
     --failed-wash: rgba(198, 40, 40, 0.06);
     --chart-sma50: #1d5fd6;
     --chart-sma200: #a06800;
+    --chart-up: var(--up);
+    --chart-down: var(--down);
+    --chart-buy: #f2c14e;
     --hover: #e6e3da;
     --on-brand: #fbfaf7;
     --shadow-pop: 0 6px 20px rgba(19, 19, 20, 0.12);

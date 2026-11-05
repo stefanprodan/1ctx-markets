@@ -24,7 +24,13 @@ import { onPhone } from "../app/shell.ts";
 import { theme } from "../app/theme.ts";
 import { says } from "../data/api.ts";
 import { markets } from "../data/store.ts";
-import { figure, signedChange, volumeText } from "../lib/format.ts";
+import {
+  briefQuantity,
+  figure,
+  quantity,
+  signedChange,
+  volumeText,
+} from "../lib/format.ts";
 import { useRefresh } from "../lib/refresh.ts";
 import { slowFlag } from "../lib/slow.ts";
 import { Card } from "../ui/Card.tsx";
@@ -56,6 +62,8 @@ import {
   levelsOf,
   localTime,
   lookOf,
+  MONTHLY_SHARES,
+  monthlyShares,
   pointerAt,
   pointLegendOf,
   pointLine,
@@ -66,6 +74,7 @@ import {
   readSettings,
   type Settings,
   sessionSlots,
+  type TradeMark,
   tick,
   timeLabel,
   tradeMarks,
@@ -95,6 +104,20 @@ type Mark = {
   text: string;
 };
 
+// how far apart a buy and a sell on one bar sit
+const SPLIT_PX = 5;
+
+// a trade mark placed on the plot, in the plot's pixels
+type Dot = TradeMark & { x: number; y: number; month: boolean };
+
+// a month reads as its total, a day as its price
+const tradeText = (d: Dot) => {
+  const did = d.side === "buy" ? "Bought" : "Sold";
+  return d.month
+    ? `${did} ${quantity(d.quantity)} for ${figure(d.quantity * d.price)}`
+    : `${did} ${quantity(d.quantity)} at ${figure(d.price)}`;
+};
+
 function colors() {
   return {
     card: token("--card"),
@@ -102,10 +125,11 @@ function colors() {
     fg: token("--fg"),
     faint: token("--faint"),
     line: token("--line"),
-    up: token("--up"),
-    down: token("--down"),
+    up: token("--chart-up"),
+    down: token("--chart-down"),
     sma50: token("--chart-sma50"),
     sma200: token("--chart-sma200"),
+    buy: token("--chart-buy"),
     font: token("--mono"),
   };
 }
@@ -351,21 +375,27 @@ export function Chart({
   const log = useSignal(kept.log);
   const sma50 = useSignal(kept.sma50);
   const sma200 = useSignal(kept.sma200);
-  // a fund's trades by the caller, marked on its line
-  const trades = useSignal<readonly { date: string; side: "buy" | "sell" }[]>(
-    [],
-  );
+  // the caller's trades of this instrument, marked on its line
+  const trades = useSignal<
+    readonly {
+      date: string;
+      side: "buy" | "sell";
+      quantity: number;
+      price: number;
+    }[]
+  >([]);
   useEffect(() => {
-    if (!hand) return;
     let live = true;
     void markets.portfolios.tradesOf(id).then((got) => {
-      if (live && got !== null)
-        trades.value = got.filter((t) => t.removed_at === null);
+      if (!live || got === null) return;
+      const kept = got.filter((t) => t.removed_at === null);
+      // an empty answer for an empty list would redraw the chart for nothing
+      if (kept.length > 0 || trades.value.length > 0) trades.value = kept;
     });
     return () => {
       live = false;
     };
-  }, [id, hand, saved]);
+  }, [id, saved]);
   useEffect(() => {
     // a fund's own range and style are not the ones a share opens with
     if (hand) return;
@@ -387,6 +417,17 @@ export function Chart({
   const show200 = () => sma200.value && look().averages;
   const candlesOn = () => !line.value && look().candles;
   const marks = useSignal<Mark[]>([]);
+  const dots = useSignal<Dot[]>([]);
+  // the price pane's plot, so a mark never sits on the scale
+  const plot = useSignal<{ w: number; h: number } | null>(null);
+  // a trade sits on its bar's close, on the line; its own price is in its label
+  const dotsAt = useRef<{
+    s: ISeriesApi<SeriesType>;
+    at: TradeMark[];
+    // a year or more: each month's trades as one
+    month: boolean;
+    close: Map<string, number>;
+  } | null>(null);
   const levels = useRef<{ s: ISeriesApi<SeriesType>; at: Levels } | null>(null);
   const active = () => drawnFor(look(), range.value, intraday);
   const hover = useSignal<string | number | null>(null);
@@ -470,6 +511,8 @@ export function Chart({
         series.current = [];
         levels.current = null;
         marks.value = [];
+        dotsAt.current = null;
+        dots.value = [];
       }
     }
   };
@@ -556,6 +599,7 @@ export function Chart({
   ]);
 
   function placeMarks() {
+    placeDots();
     const lv = levels.current;
     if (look().axis || chart.current === null || lv === null) {
       if (marks.value.length > 0) marks.value = [];
@@ -574,6 +618,37 @@ export function Chart({
     marks.value = out;
   }
 
+  // the line's own hover marker, in the line's colour, would cover a trade's dot
+  useEffect(() => {
+    const d = dotsAt.current;
+    if (d === null) return;
+    d.s.applyOptions({
+      crosshairMarkerVisible: !d.at.some((m) => m.time === hover.value),
+    });
+  }, [hover.value]);
+
+  function placeDots() {
+    const d = dotsAt.current;
+    const c = chart.current;
+    if (d === null || c === null) {
+      if (dots.value.length > 0) dots.value = [];
+      return;
+    }
+    plot.value = { w: c.timeScale().width(), h: c.paneSize(0).height };
+    const out: Dot[] = [];
+    for (const m of d.at) {
+      const x = c.timeScale().timeToCoordinate(m.time as Time);
+      const close = d.close.get(m.time);
+      const y = close === undefined ? null : d.s.priceToCoordinate(close);
+      if (x === null || y === null) continue;
+      // a buy and a sell on one bar sit apart, the sell above
+      const both = d.at.some((o) => o.time === m.time && o.side !== m.side);
+      const nudge = both ? (m.side === "sell" ? -SPLIT_PX : SPLIT_PX) : 0;
+      out.push({ ...m, x, y: y + nudge, month: d.month });
+    }
+    dots.value = out;
+  }
+
   function draw() {
     const l = lib.current;
     const c = chart.current;
@@ -582,8 +657,14 @@ export function Chart({
     // a range with no bars (a series on 5D) keeps the page's colours too
     c.applyOptions(paintOptions(l, k, logScale(), look()));
     marks.value = [];
+    // the dots on screen stay until placeDots replaces them, so a redraw
+    // never blinks them
+    dotsAt.current = null;
     const h = data.value;
-    if (h === null) return;
+    if (h === null) {
+      dots.value = [];
+      return;
+    }
     c.applyOptions({
       timeScale: {
         borderVisible: false,
@@ -659,7 +740,10 @@ export function Chart({
         }));
       const values = line5(h.points);
       const base = h.previous_close ?? values[0]?.value ?? null;
-      if (base === null) return;
+      if (base === null) {
+        dots.value = [];
+        return;
+      }
       // 5D reads as one move, as the daily ranges do
       if (shown.value !== "1D") {
         const s = area(values, base);
@@ -790,29 +874,30 @@ export function Chart({
     }
     refLine(price, levels.current?.at ?? null);
     series.current.push(price);
-    if (hand && trades.value.length > 0) {
-      const marks = tradeMarks(
-        h.bars.map((b) => b.date),
-        trades.value,
-      );
-      l.createSeriesMarkers(
-        price,
-        marks.map((m) =>
-          m.side === "buy"
-            ? {
-                time: m.time,
-                position: "belowBar" as const,
-                shape: "arrowUp" as const,
-                color: k.up,
-              }
-            : {
-                time: m.time,
-                position: "aboveBar" as const,
-                shape: "arrowDown" as const,
-                color: k.down,
-              },
+    // a line shows the owner's trades and candles the volume; a line
+    // with no trades keeps the volume
+    const times = h.bars.map((b) => b.date);
+    const month = MONTHLY_SHARES.includes(shown.value);
+    const at = asCandles
+      ? []
+      : month
+        ? monthlyShares(times, trades.value)
+        : tradeMarks(times, trades.value);
+    // a range with none of the owner's trades keeps its volume
+    const withTrades = at.length > 0;
+    if (withTrades) {
+      dotsAt.current = {
+        s: price,
+        month,
+        at,
+        close: new Map(
+          closes(h.bars).map((v) => [String(v.time), v.value] as const),
         ),
-      );
+      };
+      // a redraw under a resting pointer keeps the dot clear too
+      price.applyOptions({
+        crosshairMarkerVisible: !at.some((m) => m.time === hover.value),
+      });
     }
 
     const avg = (key: "sma50" | "sma200", color: string) => {
@@ -830,7 +915,53 @@ export function Chart({
     if (show50()) avg("sma50", k.sma50);
     if (show200()) avg("sma200", k.sma200);
 
-    if (hasVolume(h.bars) && look().volume) {
+    // under a line: the shares bought up and sold down, where the volume was
+    if (withTrades && look().volume && dotsAt.current !== null) {
+      const sized = {
+        type: "custom" as const,
+        minMove: 0.0001,
+        formatter: (v: number) =>
+          v > 0
+            ? `+${briefQuantity(v)}`
+            : v < 0
+              ? `−${briefQuantity(-v)}`
+              : "0",
+      };
+      const bars = dotsAt.current.at;
+      const sold = bars.some((m) => m.side === "sell");
+      const bought = bars.some((m) => m.side === "buy");
+      for (const side of ["buy", "sell"] as const) {
+        const at = bars.filter((m) => m.side === side);
+        if (at.length === 0) continue;
+        const q = c.addSeries(
+          l.HistogramSeries,
+          {
+            priceFormat: sized,
+            priceLineVisible: false,
+            lastValueVisible: false,
+            color: side === "buy" ? k.buy : k.down,
+          },
+          1,
+        );
+        q.setData(
+          at.map((m) => ({
+            time: m.time as Time,
+            value: side === "buy" ? m.quantity : -m.quantity,
+          })),
+        );
+        // room past the longest bar, so the scale's end label is whole
+        q.priceScale().applyOptions({
+          scaleMargins: {
+            top: bought ? 0.3 : 0.1,
+            bottom: sold ? 0.3 : 0.1,
+          },
+        });
+        series.current.push(q);
+      }
+      c.panes()[0]?.setStretchFactor(4);
+      c.panes()[1]?.setStretchFactor(1);
+    }
+    if (hasVolume(h.bars) && look().volume && !withTrades) {
       const v = c.addSeries(
         l.HistogramSeries,
         {
@@ -1008,6 +1139,43 @@ export function Chart({
             {m.text}
           </span>
         ))}
+      {!reading.value && dots.value.length > 0 && plot.value !== null && (
+        <div
+          class="chart-trades"
+          style={{ width: `${plot.value.w}px`, height: `${plot.value.h}px` }}
+        >
+          {dots.value.map((d) => (
+            <span
+              key={`${d.time} ${d.side}`}
+              class={`chart-trade chart-trade-${d.side}`}
+              style={{ left: `${d.x}px`, top: `${d.y}px` }}
+              role="img"
+              aria-label={tradeText(d)}
+            />
+          ))}
+        </div>
+      )}
+      {/* the hovered bar's trades, beside their marks */}
+      {!reading.value &&
+        plot.value !== null &&
+        (() => {
+          const on = dots.value.filter((d) => d.time === hover.value);
+          const top = on.reduce<Dot | null>(
+            (a, d) => (a === null || d.y < a.y ? d : a),
+            null,
+          );
+          if (top === null) return null;
+          return (
+            <span
+              class={`chart-trade-tip${top.x > plot.value.w / 2 ? " chart-trade-tip-left" : ""}`}
+              style={{ left: `${top.x}px`, top: `${top.y}px` }}
+            >
+              {on.map((d) => (
+                <span key={d.side}>{tradeText(d)}</span>
+              ))}
+            </span>
+          );
+        })()}
     </ChartFrame>
   );
 }
