@@ -19,10 +19,11 @@ import {
   watchMore,
   watchTyping,
 } from "../src/web/app/Bar.tsx";
-import { iconClass, Rail } from "../src/web/app/Rail.tsx";
+import { iconClass, Rail, Recent } from "../src/web/app/Rail.tsx";
 import {
   putRecent,
   RECENT_MAX,
+  RECENT_PHONE,
   readRecent,
   recent,
 } from "../src/web/app/recent.ts";
@@ -1258,6 +1259,25 @@ describe("the views", () => {
       );
       expect(html).toMatch(
         /class="rail-recent rail-item-on"[^>]*><span class="sym sym-compact"><span class="sym-ticker">AAPL<\/span><\/span><\/a>/,
+      );
+    } finally {
+      recent.value = [];
+    }
+  });
+
+  test("the rail lists every recent instrument, More on a phone the first few", () => {
+    recent.value = Array.from({ length: RECENT_MAX }, (_, i) => ({
+      id: `US:S${i}`,
+      name: null,
+    }));
+    try {
+      const count = (html: string) =>
+        html.split('class="rail-recent').length - 1;
+      expect(count(render(<Rail here="/" onHide={() => {}} />))).toBe(
+        RECENT_MAX,
+      );
+      expect(count(render(<Recent here="/" max={RECENT_PHONE} />))).toBe(
+        RECENT_PHONE,
       );
     } finally {
       recent.value = [];
