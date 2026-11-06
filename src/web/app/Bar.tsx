@@ -12,6 +12,7 @@ import { OPENER, openSearch, searchShown } from "../ui/SymbolSearch.tsx";
 import { useServerFailing } from "./failing.ts";
 import { ALERTS, SCREENER } from "./paths.ts";
 import { iconClass, Recent, SharedWithMe, Unseen } from "./Rail.tsx";
+import { RECENT_PHONE } from "./recent.ts";
 import { path, visits } from "./router.ts";
 import { ADMIN, HOME, lit, RAIL, railFor } from "./routes.ts";
 import { UserItems } from "./UserMenu.tsx";
@@ -293,7 +294,7 @@ export function More({
             );
           })}
           <SharedWithMe here={here} follow={close} />
-          <Recent here={here} follow={close} />
+          <Recent here={here} follow={close} max={RECENT_PHONE} />
           <div class="more-user">
             <UserItems onSignedOut={close} />
           </div>

@@ -7,7 +7,7 @@ import { nameOf, tickerOf } from "../lib/names.ts";
 import { SymbolName } from "../ui/Symbol.tsx";
 import { useServerFailing } from "./failing.ts";
 import { ALERTS, symbolHref } from "./paths.ts";
-import { pickRecent, recent } from "./recent.ts";
+import { pickRecent, RECENT_MAX, recent } from "./recent.ts";
 import { ADMIN, HOME, lit, railFor } from "./routes.ts";
 import {
   avatarIcon,
@@ -127,11 +127,13 @@ export function SharedWithMe({
 export function Recent({
   here,
   follow,
+  max = RECENT_MAX,
 }: {
   here: string;
   follow?: () => void;
+  max?: number;
 }) {
-  const rows = recent.value;
+  const rows = recent.value.slice(0, max);
   if (rows.length === 0) return null;
   return (
     <>

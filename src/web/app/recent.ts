@@ -13,7 +13,9 @@ import { path } from "./router.ts";
 
 export type RecentRow = { id: string; name: string | null };
 
-export const RECENT_MAX = 5;
+export const RECENT_MAX = 10;
+// More's drawer on a phone shares the screen with the pages
+export const RECENT_PHONE = 5;
 const KEY = "recent";
 
 export function readRecent(raw: string | null): RecentRow[] {
