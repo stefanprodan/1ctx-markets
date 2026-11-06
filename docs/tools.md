@@ -148,7 +148,7 @@ tracking in `docs/storage.md`; the source queue and deadlines in
 
 | Tool | Takes | Answers |
 |---|---|---|
-| `quote` | `symbols`, `benchmark`, `extended`, `next` | per symbol a `QuoteItem` (`quote.ts`) with `returns`, `session`, with a benchmark `relative_return_1m`, `_3m`, `relative_to`, `relative_live` and, across currencies, `relative_note`, with `extended` true `extended` and `extended_reason` |
+| `quote` | `symbols`, `benchmark`, `extended`, `next` | per symbol a `QuoteItem` (`quote.ts`) with `returns`, `session`, with a benchmark `relative_return_1m`, `_3m`, `relative_to`, `relative_live` and, across currencies, `relative_note`, with `extended` true `extended`, `extended_reason` and `opens` |
 | `history` | `symbol`, `interval`, `from`, `to`, `benchmark`, `extended`, `next` | bars oldest first with `final` and signals; `session`; `relative`; with `5m`, `points` and `sessions`, and `extended_points` with `extended_reason` when `extended` |
 | `search` | `query`, `next` | up to 20 stored matches, then up to 20 Bucharest listings from the stored list pages while the feed is on, then Yahoo's, each with id, exchange, type, name, `source`, `stored`; a listing Yahoo found adds `exchange_name`, the exchange in Yahoo's words, the stored copy of it too, and a stored one its `currency`, so one fund on several exchanges reads apart; a Bucharest listing adds its `isin` |
 | `movers` | `symbols`, `min_move_pct`, `direction`, `average`, `relation`, `next` | matches by absolute change, largest first; `counts` |
@@ -198,6 +198,12 @@ tracking in `docs/storage.md`; the source queue and deadlines in
   (`m.extended`), so the thin market is never fresher than the regular
   one. Never stored: signals, bars, movers, screen, history and alerts
   read the regular session only.
+- **`opens` comes with `extended`**: while closed, the next regular
+  start in UTC from the same chart (`nextOpen()`), once Yahoo names it
+  at its pre window's start, indexes included; null while open, for
+  crypto, FRED and other sources, and when the chart fails. The stored
+  session is not moved: it rolls only at the open, which starts the bar
+  jobs.
 - **`returns`, `session` and `extended` are the quote tool's only**:
   `quoteItem()`, which screen, movers and the API's quotes route share,
   never computes them. Bars are read from the earliest start a call

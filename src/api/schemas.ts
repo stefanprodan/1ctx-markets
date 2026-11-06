@@ -528,6 +528,10 @@ export const schemas: Record<string, Schema> = {
         }),
       ),
       extended_reason: extendedReason(EXTENDED_NULL),
+      opens: note(
+        nstr,
+        "With `extended=true`: while the market is closed, the next regular session's start in UTC once the source names it (at the start of its pre window), else null.",
+      ),
     },
     briefRequired,
   ),
@@ -1227,6 +1231,10 @@ export const schemas: Record<string, Schema> = {
                 "Pre or post trading while the regular session is closed, as the quote tool's `extended`; null with the reason in `extended_reason`.",
               ),
               extended_reason: extendedReason(EXTENDED_NULL),
+              opens: note(
+                nstr,
+                "While the market is closed, the next regular session's start in UTC once the source names it, as the quote tool's `opens`.",
+              ),
               stale: brief.stale,
             },
             [

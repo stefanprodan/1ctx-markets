@@ -225,7 +225,7 @@ export const paths = {
         csv("symbols", symbols(MAX_SYMBOLS), str, true),
         query(
           "extended",
-          "`true` adds `extended`, the last pre- or post-market price, and `extended_reason`, why it is null. Default: `false`.",
+          "`true` adds `extended`, the last pre- or post-market price, `extended_reason`, why it is null, and `opens`, the next regular start while closed once the source names it. Default: `false`.",
           bool,
         ),
       ],

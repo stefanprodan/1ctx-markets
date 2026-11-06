@@ -22,7 +22,7 @@ MCP tools copied onto paths.
 
 | Method and path | Scope | Calls | Answers |
 |---|---|---|---|
-| `GET /quotes?symbols=&extended=` | read | `quoteRows()` with `briefItem()` | `quotes[]`: every symbol asked, up to `MAX_SYMBOLS` (100); `extended=true` adds the quote tool's `extended` and `extended_reason` per item |
+| `GET /quotes?symbols=&extended=` | read | `quoteRows()` with `briefItem()` | `quotes[]`: every symbol asked, up to `MAX_SYMBOLS` (100); `extended=true` adds the quote tool's `extended`, `extended_reason` and `opens` per item |
 | `GET /research?symbols=&sections=&since=` | read | `researchList()` | `research[]`: up to `MAX_RESEARCH_SYMBOLS` (5) items of `input`, `id`, `company`, `valuation`, `news`, `filings` and, asked, `top_holdings` (below) |
 | `GET /symbols?query=&upstream=` | read | `searchAll()` | the search tool's `candidates[]`, and `errors[]` for a source that failed; `upstream=false` answers only the stored instruments and the stored Bucharest listings, asking no source |
 | `GET /earnings?from=&to=&symbols=` | read | `readEventsOf()` | `earnings[]`, with `no_event[]` and `unavailable[]` uncapped |
@@ -147,8 +147,9 @@ MCP tools copied onto paths.
   list gives it, `tracked_by` included), `credit`, `intraday` (whether
   its source gives 5-minute closes, as the dashboard says) and its quote
   as the quote tool gives it, `returns` and `session` included, with
-  `extended` asked so a page shows pre or post trading, and
-  `extended_reason` saying why it is null.
+  `extended` asked so a page shows pre or post trading,
+  `extended_reason` saying why it is null, and `opens`, when a closed
+  market opens next.
 - **An ETF or mutual fund adds `top_holdings`**, the research tool's
   section (`docs/research.md`), absent for anything else, so the page
   needs no second call. A fund never fetched is fetched beside the

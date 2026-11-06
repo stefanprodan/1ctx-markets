@@ -21,10 +21,28 @@ import {
 
 const HOUR_MS = 60 * MINUTE_MS;
 
-const none = (reason: ExtendedReason): ExtendedRead => ({
+const none = (
+  reason: ExtendedReason,
+  opens: string | null = null,
+): ExtendedRead => ({
   extended: null,
   reason,
+  opens,
 });
+
+function nextStart(windows: readonly Window[], now: number): number | null {
+  let at: number | null = null;
+  for (const w of windows) {
+    if (w.start > now && (at === null || w.start < at)) at = w.start;
+  }
+  return at;
+}
+
+// Yahoo names the next session from its pre window's start, indexes included
+export function nextOpen(answer: IntradayAnswer, now: number): string | null {
+  const at = nextStart(answer.windows.regular, now);
+  return at === null ? null : iso(at);
+}
 
 const inside = (windows: readonly Window[], at: number) =>
   windows.some((w) => at >= w.start && at < w.end);
@@ -34,7 +52,8 @@ export function latestExtended(
   answer: IntradayAnswer,
   now: number,
 ): ExtendedRead {
-  if (answer.prePost !== true) return none(EXTENDED.none);
+  const opens = nextOpen(answer, now);
+  if (answer.prePost !== true) return none(EXTENDED.none, opens);
   const { pre, regular, post } = answer.windows;
   if (inside(regular, now)) return none(EXTENDED.open);
   let closed = Number.NEGATIVE_INFINITY;
@@ -57,9 +76,10 @@ export function latestExtended(
         time: iso(at),
       },
       reason: null,
+      opens,
     };
   }
-  return none(EXTENDED.noPrice);
+  return none(EXTENDED.noPrice, opens);
 }
 
 // Yahoo names the next session only once its pre window starts, so an answer
@@ -69,14 +89,21 @@ export function heldUntil(answer: IntradayAnswer, periodMs: number): number {
   const periodEnd = (Math.floor(now / periodMs) + 1) * periodMs;
   const { pre, regular, post } = answer.windows;
   if (pre.length === 0) return periodEnd;
-  const all = [...pre, ...regular, ...post];
+  // without pre or post bars only the next open can change, and once named
+  // it holds until it starts
+  const flat = answer.prePost !== true;
+  const open = flat ? nextStart(regular, now) : null;
+  if (open !== null) return open;
+  const all = flat ? regular : [...pre, ...regular, ...post];
   // a window's last minute bar can land after its end
   if (all.some((w) => w.end + periodMs > now)) return periodEnd;
   const newest = pre.reduce((a, w) => (w.start > a.start ? w : a));
   const { last, next } = preStarts(answer.session.zone, newest.start, now);
   if (last === newest.start) return next;
+  // an empty pre window names the session only at its open
+  if (flat && pre.every((w) => w.end === w.start)) return next;
   // a pre start passed with no new day: a weekend, a holiday or a late rollover
-  if (now < last + (newest.end - newest.start)) return periodEnd;
+  if (!flat && now < last + (newest.end - newest.start)) return periodEnd;
   return Math.min(next, now + HOUR_MS);
 }
 
@@ -97,7 +124,14 @@ export function preStarts(
   return { last, next };
 }
 
-// the spark flag decides without a call; a listing never in one asks its chart
+// a listing known to lack pre and post trading answers none whatever its
+// chart does
+const unread = (m: Markets, instrument: Instrument, reason: ExtendedReason) =>
+  none(
+    m.yahoo.prePost(instrument.sourceSymbol) === false ? EXTENDED.none : reason,
+  );
+
+// a listing with no pre or post trading still asks its chart, for its next open
 async function readOne(
   m: Markets,
   instrument: Instrument,
@@ -105,12 +139,9 @@ async function readOne(
 ): Promise<ExtendedRead> {
   if (instrument.source !== YAHOO) return none(EXTENDED.unreported);
   if (instrument.market === CRYPTO) return none(EXTENDED.none);
-  if (m.yahoo.prePost(instrument.sourceSymbol) === false) {
-    return none(EXTENDED.none);
-  }
   const now = m.clock.now();
   if (isQuoted(instrument.market, readSession(m.db, instrument.market), now)) {
-    return none(EXTENDED.open);
+    return unread(m, instrument, EXTENDED.open);
   }
   const cached = m.extended.get(instrument.id);
   if (cached !== undefined && now < cached.until) return cached.read;
@@ -131,9 +162,9 @@ async function readOne(
     return read;
   } catch (error) {
     if (error instanceof SourceError && error.phrase === "timed out") {
-      return none(EXTENDED.timeout);
+      return unread(m, instrument, EXTENDED.timeout);
     }
-    return none(EXTENDED.failed);
+    return unread(m, instrument, EXTENDED.failed);
   }
 }
 
@@ -205,7 +236,7 @@ export async function readExtended(
     const reads = await Promise.all(
       instruments.map(async (i) => {
         const done = await Promise.race([readOne(m, i, deadline), expired]);
-        return [i.id, done === EXPIRED ? none(EXTENDED.timeout) : done];
+        return [i.id, done === EXPIRED ? unread(m, i, EXTENDED.timeout) : done];
       }),
     );
     return new Map(reads as [string, ExtendedRead][]);
