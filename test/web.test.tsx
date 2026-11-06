@@ -2044,6 +2044,32 @@ describe("the instrument model", () => {
     expect(signedChange(null, { empty: "—" })).toEqual({ text: "—", dir: 0 });
   });
 
+  test("a closed head says when the market opens", () => {
+    const closed = { state: "closed" as const, start: null, end: null };
+    const state = (opens: string | null | undefined) =>
+      priceState(detail({ session: closed, opens }), NOW);
+    const at = (ms: number) => new Date(NOW + ms).toISOString();
+    expect(state(at(2 * 3_600_000 + 3 * 60_000))).toBe(
+      "Closed · opens in 2h 3m",
+    );
+    expect(state(at(2 * 3_600_000))).toBe("Closed · opens in 2h");
+    expect(state(at(45 * 60_000))).toBe("Closed · opens in 45m");
+    // rounded up, so the last minute still counts down
+    expect(state(at(1_000))).toBe("Closed · opens in 1m");
+    expect(state(at(59 * 60_000 + 1_000))).toBe("Closed · opens in 1h");
+    expect(state(at(12 * 3_600_000 - 1))).toBe("Closed · opens in 12h");
+    // from 12 hours out, the viewer's clock time
+    const far = at(12 * 3_600_000);
+    const clock = new Intl.DateTimeFormat("en-GB", {
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date(far));
+    expect(state(far)).toBe(`Closed · opens ${clock}`);
+    for (const past of [at(0), at(-60_000), null, undefined]) {
+      expect(state(past)).toBe("Closed");
+    }
+  });
+
   test("after hours stands beside the close, said with its time", () => {
     expect(afterHours(detail())).toBeNull();
     const after = afterHours(

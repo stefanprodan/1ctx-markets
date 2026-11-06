@@ -344,17 +344,23 @@ Phrases from Yahoo (`docs/sources.md`, Refusals):
   trading,** never the windows: `currentTradingPeriod` names `pre` and
   `post` for Xetra too, whose flag is false. The client keeps the flag
   per Yahoo symbol in memory from every chart and spark answer
-  (`prePost()`), so a listing whose quote pass said false is never
-  charted for `extended`; one not seen yet is charted once, and its
-  answer says. A restart empties it.
+  (`prePost()`), so a listing whose quote pass said false answers
+  `extended` none even when its chart fails; it is still charted, only
+  for quote's `opens`. A restart empties it.
 - **`intraday()` reads two days of minutes** (`INTRADAY_RANGE`): before
   the pre window a one-day answer can hold no bar inside its windows,
   while two keep the last post bars until the next open. It carries
   the pre, regular and post windows of `currentTradingPeriod` and of
   each day in `tradingPeriods`; a market without a window answers it
-  empty. Extended bars' `volume` reads 0. Only quote's `extended` reads
-  it, inside the call (`docs/tools.md`); no job polls the extended
-  windows.
+  empty. Extended bars' `volume` reads 0. `currentTradingPeriod` names
+  the next regular session from its pre window's start, for an index
+  too, so a closed listing learns when it opens (`nextOpen()`); an
+  answer without pre or post trading is held until that start, or past
+  its close until the next pre start, and an empty pre window (named
+  only at the open) always to the next pre start (`heldUntil()`): about
+  one call a night on a trading day, at most hourly over a weekend or
+  holiday. Only quote's `extended` reads it, inside the call
+  (`docs/tools.md`); no job polls the extended windows.
 
 ## The per-instrument lock
 

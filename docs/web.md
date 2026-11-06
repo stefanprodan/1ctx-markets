@@ -1304,7 +1304,10 @@ The parts:
   chart: returns in the head pushed the chart below a phone's first
   screen. The name line is the kind and market, then the state, never
   "updated": "Closed" with no age (a close does not age; the move line
-  says "at close"), "Open · 2 min ago", "Opening · last close" from the
+  says "at close"), "Closed · opens in 2h 3m" once the quote's `opens`
+  names the next start (a countdown rounded up to the minute under 12
+  hours, the viewer's clock time from 12, "opens 16:30", plain "Closed"
+  once it passes), "Open · 2 min ago", "Opening · last close" from the
   open until the first pass, "Open · no trade yet · 3 h ago" until the
   first trade, a series' "Latest value, 29 Oct · 1 d ago", a fund the
   owner prices "Price for 2 Nov" (its quote's `kind` `hand_price`,

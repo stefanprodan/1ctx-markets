@@ -235,7 +235,12 @@ function brief(
 ) {
   const b = briefItem(m.db, item, latest);
   if (ext === undefined) return b;
-  return { ...b, extended: ext.extended, extended_reason: ext.reason };
+  return {
+    ...b,
+    extended: ext.extended,
+    extended_reason: ext.reason,
+    opens: ext.opens,
+  };
 }
 
 // a point is a close, not a bar, so it has its own schema

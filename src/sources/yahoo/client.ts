@@ -739,8 +739,8 @@ export function yahoo(options: YahooOptions): Yahoo {
   const host = options.host ?? HOST;
   const doFetch: Fetch = options.fetch ?? ((url, init) => fetch(url, init));
   const calls = options.queue ?? queue(clock, CONCURRENCY);
-  // kept from every answer, so a quote asking for extended prices skips
-  // a listing without them; a restart empties it
+  // kept from every answer, so a listing without extended prices answers
+  // none even when its chart fails; a restart empties it
   const prePost = new Map<string, boolean>();
   const seen = <T extends ChartMeta>(meta: T): T => {
     if (meta.prePost !== null) prePost.set(meta.symbol, meta.prePost);

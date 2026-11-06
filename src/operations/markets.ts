@@ -98,9 +98,11 @@ export type Extended = {
   time: string | null;
 };
 
-export type ExtendedRead =
+// opens: the next regular start once the source names it, while closed
+export type ExtendedRead = (
   | { extended: Extended; reason: null }
-  | { extended: null; reason: ExtendedReason };
+  | { extended: null; reason: ExtendedReason }
+) & { opens: string | null };
 
 // by instrument id, for the quote period it was fetched in
 export type ExtendedPoint = {

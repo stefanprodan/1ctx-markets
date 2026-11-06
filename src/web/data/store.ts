@@ -316,6 +316,7 @@ export type Detail = {
     } | null;
     session: Session | null;
     extended?: Extended | null;
+    opens?: string | null;
   };
 };
 

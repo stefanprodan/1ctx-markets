@@ -421,7 +421,11 @@ function agentItem(
     session: sessionOf(m, i, now),
     ...(extended === undefined
       ? {}
-      : { extended: extended.extended, extended_reason: extended.reason }),
+      : {
+          extended: extended.extended,
+          extended_reason: extended.reason,
+          opens: extended.opens,
+        }),
     stale,
   };
 }

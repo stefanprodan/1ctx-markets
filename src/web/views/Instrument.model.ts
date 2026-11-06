@@ -105,6 +105,16 @@ const DAY = new Intl.DateTimeFormat("en-GB", {
   timeZone: "UTC",
 });
 
+const MINUTE = 60_000;
+const HOUR = 60 * MINUTE;
+
+// rounded up, so the last minute before the open still says "in 1m"
+function until(ms: number): string {
+  const m = Math.ceil(ms / MINUTE);
+  const h = Math.floor(m / 60);
+  return h === 0 ? `${m}m` : m % 60 === 0 ? `${h}h` : `${h}h ${m % 60}m`;
+}
+
 export function priceState(d: Detail, now: number): string {
   const q = d.quote;
   if (q === null) return `Stored price · ${ago(d.instrument.fetched_at, now)}`;
@@ -118,7 +128,14 @@ export function priceState(d: Detail, now: number): string {
       : `Latest value · ${when}`;
   }
   // a close does not age; the move line says "at close"
-  if (q.session.state !== "open") return "Closed";
+  if (q.session.state !== "open") {
+    const opens = Date.parse(q.opens ?? "");
+    const left = opens - now;
+    if (!(left > 0)) return "Closed";
+    return left < 12 * HOUR
+      ? `Closed · opens in ${until(left)}`
+      : `Closed · opens ${CLOCK.format(new Date(opens))}`;
+  }
   // until the first pass after the open, the price is the last close and
   // its fetch time (often last night) says nothing useful; a thin listing
   // fetched since with no trade yet still shows the price is being read

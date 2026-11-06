@@ -19,6 +19,7 @@ import {
   extendedPoints,
   heldUntil,
   latestExtended,
+  nextOpen,
   preStarts,
   readExtendedPoints,
 } from "../src/operations/extended.ts";
@@ -101,10 +102,13 @@ async function setup(
   const window = options.window ?? POST;
   const spark = await recorded(`spark-v7-extended-${window}`);
   const charts = new Map<string, Recorded>();
-  // the others have one-day recordings only, and only some windows: just
-  // their flag is read; loaded up front so a held chart is the only wait
+  // the others have one-day recordings only, and only some windows; past
+  // the post window a chart names the evening's windows, as the post one
+  // does; loaded up front so a held chart is the only wait
   for (const s of SYMBOLS) {
-    const fx = await recorded(chartName(s, window)).catch(() => undefined);
+    const fx = await recorded(chartName(s, window))
+      .catch(() => recorded(chartName(s, POST)))
+      .catch(() => undefined);
     if (fx !== undefined) charts.set(s, fx);
   }
   charts.set("HOOD", await recorded(hoodChart(window)));
@@ -231,12 +235,14 @@ describe("quote extended", () => {
     for (const [k, item] of asked.entries()) {
       expect(item.extended).toEqual(tool[k].extended);
       expect(item.extended_reason).toEqual(tool[k].extended_reason);
+      expect(item.opens).toEqual(tool[k].opens);
       expect(item.stale).toEqual(tool[k].stale);
     }
     for (const query of ["", "&extended=false"]) {
       for (const item of await get(query)) {
         expect(item).not.toContainKey("extended");
         expect(item).not.toContainKey("extended_reason");
+        expect(item).not.toContainKey("opens");
         expect(item.stale).toEqual([]);
       }
     }
@@ -258,10 +264,12 @@ describe("quote extended", () => {
       const item = byId(items, id);
       expect(item.extended).toBeNull();
       expect(item.extended_reason).toBe(EXTENDED.none);
+      expect(item.opens).toBeNull();
       expect(item.stale).toEqual([]);
     }
-    // the spark answer's flag spares the others a chart
-    expect(t.charted()).toHaveLength(1);
+    // a listing without extended trading still asks, for its next open
+    expect(t.charted("BTC-USD")).toHaveLength(0);
+    expect(t.charted()).toHaveLength(3);
     expect(t.charted("HOOD")).toHaveLength(1);
     const url = t.charted("HOOD")[0]!;
     expect(url.searchParams.get("interval")).toBe("1m");
@@ -320,7 +328,7 @@ describe("quote extended", () => {
       expect(item.extended).toBeNull();
       expect(item.extended_reason).toBe(EXTENDED.none);
     }
-    expect(t.charted()).toHaveLength(1);
+    expect(t.charted("HOOD")).toHaveLength(1);
     expect(t.charted("HOOD")[0]!.searchParams.get("range")).toBe(
       INTRADAY_RANGE,
     );
@@ -342,6 +350,7 @@ describe("quote extended", () => {
     for (const item of items) {
       expect(item.extended).toBeNull();
       expect(item.extended_reason).toBe(EXTENDED.unreported);
+      expect(item.opens).toBeNull();
     }
   });
 
@@ -354,8 +363,9 @@ describe("quote extended", () => {
     expect(await text(t.m, {})).toBe(before);
     for (const item of JSON.parse(before).items) {
       expect(item).not.toContainKey("extended");
+      expect(item).not.toContainKey("opens");
     }
-    expect(t.charted()).toHaveLength(1);
+    expect(t.charted()).toHaveLength(3);
   });
 
   test("answers null in the regular session without a chart", async () => {
@@ -370,6 +380,7 @@ describe("quote extended", () => {
     const hood = byId(await ask(t.m), "US:HOOD");
     expect(hood.extended).toBeNull();
     expect(hood.extended_reason).toBe(EXTENDED.open);
+    expect(hood.opens).toBeNull();
     expect(hood.stale).toEqual([]);
     const res = await api(t.m)(
       new Request(
@@ -379,6 +390,7 @@ describe("quote extended", () => {
     const [rest] = ((await res.json()) as any).quotes;
     expect(rest.extended).toBeNull();
     expect(rest.extended_reason).toBe(EXTENDED.open);
+    expect(rest.opens).toBeNull();
     expect(rest.stale).toEqual([]);
     expect(t.charted("HOOD")).toHaveLength(0);
   });
@@ -403,6 +415,57 @@ describe("quote extended", () => {
     held.release();
   });
 
+  test.each([
+    ["fails", false],
+    ["is late", true],
+  ])(
+    "a listing without extended trading answers none when its chart %s",
+    async (_, late) => {
+      const held = gate();
+      const t = await setup({
+        window: OVERNIGHT,
+        hold: (url) =>
+          late && chartSymbol(url) === "VWCE.DE" && intraday(url)
+            ? held.hold()
+            : undefined,
+      });
+      if (!late) t.charts.delete("VWCE.DE");
+      await t.client.spark(SYMBOLS);
+      const page = ask(t.m);
+      if (late) {
+        await held.arrived;
+        await t.clock.advance(CALL_MS);
+      }
+      const vwce = byId(await page, "XETRA:VWCE");
+      expect(vwce.extended).toBeNull();
+      expect(vwce.extended_reason).toBe(EXTENDED.none);
+      expect(vwce.opens).toBeNull();
+      expect(vwce.stale).toEqual([]);
+      held.release();
+    },
+  );
+
+  test("names the next regular open while closed, once the source does", async () => {
+    const t = await setup({ window: PRE });
+    await t.client.spark(SYMBOLS);
+    const items = await ask(t.m);
+    const hood = byId(items, "US:HOOD");
+    expect(hood.extended).toEqual(HOOD_PRE);
+    expect(hood.opens).toBe("2026-10-28T13:30:00Z");
+    // the others trade by now, or never close
+    for (const id of ["XETRA:VWCE", "CRYPTO:BTC-USD", "BVB:TLV"]) {
+      expect(byId(items, id).opens).toBeNull();
+    }
+    const res = await api(t.m)(
+      new Request(
+        "http://markets.test/api/v1/quotes?symbols=US:HOOD&extended=true",
+      ),
+    );
+    const [rest] = ((await res.json()) as any).quotes;
+    expect(rest.opens).toBe(hood.opens);
+    expect(t.charted("HOOD")).toHaveLength(1);
+  });
+
   test("leaves signals, movers and rules on the regular price", async () => {
     const t = await setup();
     await t.client.spark(SYMBOLS);
@@ -415,7 +478,7 @@ describe("quote extended", () => {
     const asked = byId(await ask(t.m), "US:HOOD");
     expect(asked.extended).toEqual(HOOD);
     expect(tables()).toEqual(stored);
-    const { extended, extended_reason, stale, ...regular } = asked;
+    const { extended, extended_reason, opens, stale, ...regular } = asked;
     expect(regular).toEqual((({ stale, ...rest }) => rest)(plain));
     const movers = JSON.parse(
       (
@@ -502,6 +565,7 @@ describe("the latest extended bar", () => {
     expect(latestOf(unpricedSinceClose(fx))).toEqual({
       extended: null,
       reason: EXTENDED.noPrice,
+      opens: null,
     });
   });
 
@@ -510,6 +574,7 @@ describe("the latest extended bar", () => {
     expect(latestOf(unpricedSinceClose(fx))).toEqual({
       extended: null,
       reason: EXTENDED.noPrice,
+      opens: null,
     });
   });
 
@@ -542,6 +607,49 @@ describe("the latest extended bar", () => {
       );
     },
   );
+});
+
+const GSPC = "chart-gspc-1d-5m-overnight";
+
+describe("the next open", () => {
+  test("is the next regular start of a stock in its pre window", async () => {
+    const fx = await recorded(hoodChart(PRE));
+    const read = latestOf(fx);
+    expect(read.extended).toEqual(HOOD_PRE);
+    expect(read.opens).toBe("2026-10-28T13:30:00Z");
+  });
+
+  test("is named for an index with no pre or post trading", async () => {
+    const fx = await recorded(GSPC);
+    const now = Date.parse(fx.recordedAt);
+    const answer = parseIntraday(fx.body, now);
+    expect(answer.prePost).toBe(false);
+    expect(latestExtended(answer, now)).toEqual({
+      extended: null,
+      reason: EXTENDED.none,
+      opens: "2026-11-04T14:30:00Z",
+    });
+    expect(nextOpen(answer, now)).toBe("2026-11-04T14:30:00Z");
+  });
+
+  test("is null once the session start has passed", async () => {
+    const fx = await recorded(GSPC);
+    const answer = parseIntraday(fx.body, Date.parse(fx.recordedAt));
+    const start = Date.parse("2026-11-04T14:30:00Z");
+    expect(nextOpen(answer, start - 1)).toBe("2026-11-04T14:30:00Z");
+    expect(nextOpen(answer, start)).toBeNull();
+    expect(latestExtended(answer, start).opens).toBeNull();
+  });
+
+  test("is null when the answer holds no later regular window", async () => {
+    for (const name of [
+      hoodChart(),
+      chartName("TLV.RO"),
+      chartName("VWCE.DE"),
+    ]) {
+      expect(latestOf(await recorded(name)).opens).toBeNull();
+    }
+  });
 });
 
 describe("the extended points of a chart's day", () => {
@@ -709,6 +817,67 @@ describe("the extended cache", () => {
     expect(heldUntil(answer, q)).toBe(at("2026-10-28T08:00:00Z"));
     const noPre = { ...answer, windows: { ...answer.windows, pre: [] } };
     expect(heldUntil(noPre, q)).toBe(periodEnd);
+  });
+
+  test.each([
+    ["an index named its next open", GSPC, "2026-11-04T14:30:00Z"],
+    [
+      "a listing after its post window",
+      chartName("VWCE.DE"),
+      "2026-10-28T06:00:00Z",
+    ],
+    [
+      "a listing with an empty pre window",
+      chartName("TLV.RO"),
+      "2026-10-28T08:00:00Z",
+    ],
+  ])(
+    "holds the answer of %s without extended trading until it can change",
+    async (_, name, next) => {
+      const fx = await recorded(name);
+      const answer = parseIntraday(fx.body, at(fx.recordedAt));
+      expect(answer.prePost).toBe(false);
+      expect(heldUntil(answer, 5 * 60_000)).toBe(at(next));
+    },
+  );
+
+  test("holds an hour for a listing without extended trading in a pre span with no new day", async () => {
+    const fx = await recorded(GSPC);
+    // Saturday, inside the pre span of a Wednesday answer
+    const answer = parseIntraday(fx.body, at("2026-11-07T10:00:00Z"));
+    expect(heldUntil(answer, 5 * 60_000)).toBe(at("2026-11-07T11:00:00Z"));
+  });
+
+  test.each([
+    [chartName("TLV.RO"), "2026-10-31T08:30:00Z", "2026-11-01T08:00:00Z"],
+    [chartName("TLV.RO"), "2026-11-01T12:00:00Z", "2026-11-02T08:00:00Z"],
+    [
+      "chart-n225-1d-5m-overnight",
+      "2026-11-04T09:19:24Z",
+      "2026-11-05T00:00:00Z",
+    ],
+    [
+      "chart-n225-1d-5m-overnight",
+      "2026-11-07T01:00:00Z",
+      "2026-11-08T00:00:00Z",
+    ],
+  ])(
+    "holds %s, whose pre window is empty, read at %s to the next pre start",
+    async (name, now, next) => {
+      const answer = parseIntraday((await recorded(name)).body, at(now));
+      expect(answer.prePost).toBe(false);
+      expect(heldUntil(answer, 5 * 60_000)).toBe(at(next));
+    },
+  );
+
+  test("keeps the quote period for a listing without extended trading while its session is live", async () => {
+    const fx = await recorded(GSPC);
+    const q = 5 * 60_000;
+    const live = parseIntraday(fx.body, at("2026-11-04T15:00:02Z"));
+    expect(heldUntil(live, q)).toBe(at("2026-11-04T15:05:00Z"));
+    // the post window has no bars, so one period past the close settles it
+    const settled = parseIntraday(fx.body, at("2026-11-04T21:05:00Z"));
+    expect(heldUntil(settled, q)).toBe(at("2026-11-05T09:00:00Z"));
   });
 
   test("never keeps a failed read", async () => {
