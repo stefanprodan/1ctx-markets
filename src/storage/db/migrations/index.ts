@@ -49,6 +49,7 @@ import { m0043 } from "./0043-quote-close.ts";
 import { m0044 } from "./0044-alerts-seen.ts";
 import { m0045 } from "./0045-rules-fired-session.ts";
 import { m0046 } from "./0046-key-alerts.ts";
+import { m0047 } from "./0047-trade-plans.ts";
 
 export const MIGRATIONS: readonly Migration[] = [
   m0001,
@@ -97,4 +98,5 @@ export const MIGRATIONS: readonly Migration[] = [
   m0044,
   m0045,
   m0046,
+  m0047,
 ];

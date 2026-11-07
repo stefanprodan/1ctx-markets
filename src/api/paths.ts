@@ -810,6 +810,7 @@ export const paths = {
         "- `alerts` is `read` to open the alerts, their history and the feed, and the `alerts` tool, `write` to also create, update, pause and delete them and list `alerts_edit`; `none` by default.",
         "- `profile` is `read` to open the profile routes and the `profile` tool, `write` to also save it and list `profile_edit`; `none` by default.",
         "- `analysis` is `read` to open the analysis routes and the `analysis` tool, `write` to also save one and list `analysis_edit`; `none` by default.",
+        "- `trade_plans` is `read` to open the trade plans routes, the `trade_plans` tool and the `trade_plans` pointer in `quote`, `write` to also save them and list `trade_plans_edit`; `none` by default.",
         "- At most `limit` keys a person (`GET /keys`), expired ones included. Revoke one to make another.",
         "- A name is unique among your keys (`conflict`).",
       ),
@@ -831,7 +832,7 @@ export const paths = {
       security: ADMIN_AUTH,
       summary: "Change an agent key's access",
       description: lines(
-        "Sets the key's portfolio, alerts, profile or analysis access, or more than one. Answers the key as the list does.",
+        "Sets the key's portfolio, alerts, profile, analysis or trade plans access, or more than one. Answers the key as the list does.",
         "",
         "- The token, name and expiry stay. An expired key changes too.",
         "- The key's next call is held to the new access.",

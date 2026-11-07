@@ -97,8 +97,23 @@ import { parseScreen, readScreen } from "../operations/screen.ts";
 import { parseSearch, searchAll } from "../operations/search.ts";
 import { setAll } from "../operations/sets.ts";
 import type { World } from "../operations/track.ts";
+import {
+  listStatusOf,
+  missingPlanRevision,
+  parseTradePlansEdit,
+  planIdOf,
+  planItem,
+  planPage,
+  listPosition as planPosition,
+  readFields,
+  readListPosition as readPlanPosition,
+  revisionFields,
+  type TradePlansWrite,
+  versionItems,
+  writePlan,
+} from "../operations/trade-plans.ts";
 import type { Who } from "../operations/who.ts";
-import { renderMarkdown } from "../profile/markdown.ts";
+import { drawMarkdown, renderMarkdown } from "../profile/markdown.ts";
 import {
   profileVersion,
   profileVersions,
@@ -113,6 +128,12 @@ import { type Links, links as linksOf } from "../server/links.ts";
 import { NO_EVENTS } from "../sources/finnhub/store.ts";
 import { ATTRIBUTION } from "../sources/fred/sync.ts";
 import { FUND_SOURCE } from "../sources/ids.ts";
+import {
+  type ListAt as PlanAt,
+  planVersion,
+  planVersions,
+  readPlan,
+} from "../trade-plans/store.ts";
 import { ASSET_CACHE, DOC_FILES, docsFile, docsPage } from "./docs.ts";
 import {
   detailOf,
@@ -138,9 +159,9 @@ export type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 // the admin key or an admin's login; session: the admin key or anyone's
 // login, never an agent key; none: served before either, since it holds no
 // data and a browser opening it sends no key; portfolio:, alerts:,
-// profile: and analysis: an agent key its person gave that access,
-// holdings, the profile and alerts being the person's and the analysis
-// shared by everyone
+// profile:, analysis: and trade_plans: an agent key its person gave that
+// access, holdings, the profile, alerts and trade plans being the person's
+// and the analysis shared by everyone
 export type Scope =
   | "read"
   | "admin"
@@ -153,7 +174,9 @@ export type Scope =
   | "profile:read"
   | "profile:write"
   | "analysis:read"
-  | "analysis:write";
+  | "analysis:write"
+  | "trade_plans:read"
+  | "trade_plans:write";
 
 export type Route = {
   method: Method;
@@ -872,6 +895,220 @@ function analysis(m: Markets): Route[] {
   ];
 }
 
+function planPath(raw: string): number {
+  if (!PATH_ID.test(raw)) {
+    throw new ArgError(
+      "the path ends with a trade plan id, a positive integer",
+    );
+  }
+  return planIdOf(Number(raw));
+}
+
+// the owner's own only: every route reads and writes the caller's plans
+function tradePlans(m: Markets): Route[] {
+  const P = "/trade-plans";
+  const written = async (who: Who, args: TradePlansWrite) => {
+    const done = await writePlan(m, who, args);
+    if ("error" in done) return problemOf(done);
+    if (done.made) {
+      return json(done.item, 201, {
+        ...NO_STORE,
+        location: `${PREFIX}${P}/${done.item.id}`,
+      });
+    }
+    return json({
+      ...done.item,
+      ...(done.unchanged ? { unchanged: true } : {}),
+    });
+  };
+  return [
+    {
+      method: "GET",
+      path: P,
+      scope: "trade_plans:read",
+      handle: async (_req, url, _params, who) => {
+        const q = queryArgs(url, {
+          status: "text",
+          symbol: "text",
+          page_size: "number",
+          page_token: "text",
+        });
+        let at: PlanAt | null = null;
+        if (q.page_token !== undefined) {
+          at = readPlanPosition(String(q.page_token));
+          if (at === null) {
+            throw new ArgError(
+              "page_token is a next_page_token answered before",
+            );
+          }
+        }
+        const filter = {
+          status: listStatusOf(q.status),
+          symbol: q.symbol === undefined ? null : String(q.symbol),
+        };
+        const page = planPage(m, who.user, filter, at, pageSize(q.page_size));
+        return json({
+          plans: page.shown.map((p) => planItem(m, who.user, p)),
+          ...(page.last === null
+            ? {}
+            : { next_page_token: planPosition(page.last) }),
+        });
+      },
+    },
+    {
+      method: "POST",
+      path: P,
+      scope: "trade_plans:write",
+      handle: async (req, url, _params, who) => {
+        noQuery(url);
+        const read = await bodyOf(req);
+        if (read instanceof Response) return read;
+        const body = fields(read.body, [
+          "name",
+          "text",
+          "symbols",
+          "review_by",
+        ]);
+        return written(who, parseTradePlansEdit({ ...body, action: "create" }));
+      },
+    },
+    // the editor's Preview: a draft drawn as a save would draw it, never kept
+    {
+      method: "POST",
+      path: `${P}/preview`,
+      scope: "trade_plans:write",
+      handle: async (req, url) => {
+        noQuery(url);
+        const read = await bodyOf(req);
+        if (read instanceof Response) return read;
+        const f = fields(read.body, ["text"]);
+        if (typeof f.text !== "string") {
+          throw new ArgError("text must be a string");
+        }
+        return json({ html: renderMarkdown(documentText(f.text)) });
+      },
+    },
+    {
+      method: "GET",
+      path: `${P}/{id}`,
+      scope: "trade_plans:read",
+      handle: async (_req, url, params, who) => {
+        const q = queryArgs(url, { symbol: "text" });
+        const id = planPath(params.id!);
+        const p = readPlan(m.db, who.user, id);
+        if (p === null) {
+          return problem("not_found", `no trade plan ${id}`);
+        }
+        // a section names its heading's id in the html, for a link to it
+        const drawn = drawMarkdown(p.text);
+        return json({
+          ...readFields(
+            m,
+            who.user,
+            p,
+            q.symbol === undefined ? null : String(q.symbol),
+            drawn.headings,
+          ),
+          text: p.text,
+          html: drawn.html,
+        });
+      },
+    },
+    // text, edits, or the fields set changes, each with the revision read
+    {
+      method: "PUT",
+      path: `${P}/{id}`,
+      scope: "trade_plans:write",
+      handle: async (req, url, params, who) => {
+        noQuery(url);
+        const id = planPath(params.id!);
+        const read = await bodyOf(req);
+        if (read instanceof Response) return read;
+        const body = fields(read.body, [
+          "revision",
+          "text",
+          "edits",
+          "name",
+          "symbols",
+          "status",
+          "review_by",
+        ]);
+        const action =
+          body.edits !== undefined
+            ? "edit"
+            : body.text !== undefined
+              ? "replace"
+              : "set";
+        return written(who, parseTradePlansEdit({ ...body, action, id }));
+      },
+    },
+    {
+      method: "DELETE",
+      path: `${P}/{id}`,
+      scope: "trade_plans:write",
+      handle: async (_req, url, params, who) => {
+        const q = queryArgs(url, { revision: "text" });
+        const id = planPath(params.id!);
+        return written(
+          who,
+          parseTradePlansEdit({ action: "delete", id, revision: q.revision }),
+        );
+      },
+    },
+    {
+      method: "POST",
+      path: `${P}/{id}/restore`,
+      scope: "trade_plans:write",
+      handle: async (_req, url, params, who) => {
+        noQuery(url);
+        const id = planPath(params.id!);
+        return written(who, { action: "restore", id });
+      },
+    },
+    {
+      method: "GET",
+      path: `${P}/{id}/versions`,
+      scope: "trade_plans:read",
+      handle: async (_req, url, params, who) => {
+        noQuery(url);
+        const id = planPath(params.id!);
+        if (readPlan(m.db, who.user, id) === null) {
+          return problem("not_found", `no trade plan ${id}`);
+        }
+        return json({
+          id,
+          revisions: versionItems(planVersions(m.db, who.user, id)),
+        });
+      },
+    },
+    {
+      method: "GET",
+      path: `${P}/{id}/versions/{revision}`,
+      scope: "trade_plans:read",
+      handle: async (_req, url, params, who) => {
+        noQuery(url);
+        const id = planPath(params.id!);
+        if (!PATH_ID.test(params.revision!)) {
+          throw new ArgError(
+            "the path ends with a revision, a positive integer",
+          );
+        }
+        const n = Number(params.revision);
+        const r = planVersion(m.db, who.user, id, n);
+        if (r === null) {
+          return problemOf(missingPlanRevision(m, who.user, id, n));
+        }
+        return json({
+          id,
+          ...revisionFields(r),
+          text: r.text,
+          html: renderMarkdown(r.text),
+        });
+      },
+    },
+  ];
+}
+
 function operator(admin: AdminDeps, world: World): Route[] {
   const { m } = admin;
   return [
@@ -1155,6 +1392,7 @@ export function routes(deps: ApiDeps): Route[] {
     ...portfolioRoutes(m),
     ...profile(m),
     ...analysis(m),
+    ...tradePlans(m),
     ...operator(admin, deps.world),
     ...keys({
       m: deps.admin.m,

@@ -10,6 +10,7 @@ import { peoplePaths, peopleSchemas } from "./people-spec.ts";
 import { portfolioPaths, portfolioSchemas } from "./portfolio-spec.ts";
 import { profilePaths, profileSchemas } from "./profile-spec.ts";
 import { schemas } from "./schemas.ts";
+import { tradePlansPaths, tradePlansSchemas } from "./trade-plans-spec.ts";
 
 export const spec = {
   openapi: "3.1.0",
@@ -20,7 +21,7 @@ export const spec = {
     license: { name: "Apache-2.0" },
     description: `Market data, price alerts and portfolios, the same answers as the MCP tools.
 
-- Each operation names the key it takes: an agent key, made by a person for their agent, or the admin key, which opens every route as the operator. An agent key reads and writes its person's own portfolios, profile and alerts, and the analysis every person shares, and those routes take it only when its person gave it that access. It never opens a web UI or admin route.
+- Each operation names the key it takes: an agent key, made by a person for their agent, or the admin key, which opens every route as the operator. An agent key reads and writes its person's own portfolios, profile, alerts and trade plans, and the analysis every person shares, and those routes take it only when its person gave it that access. It never opens a web UI or admin route.
 - Each key makes at most ${CALLS_PER_MINUTE} calls a minute.
 - A symbol is taken as written, with its exchange suffix (\`VVSM.DE\`, \`BRK-B\`, \`^VIX\`, \`CL=F\`), or as a stored id (\`US:NVDA\`).
 - Results are not paged, except where an answer gives \`next_page_token\`, and the alerts feed.
@@ -49,6 +50,11 @@ export const spec = {
       description:
         "An agent's dated analysis per symbol, shared by everyone on the server, every save a revision.",
     },
+    {
+      name: "trade plans",
+      description:
+        "Your own trade plans: intent as Markdown, tagged with symbols, every change a revision. Never an order.",
+    },
     { name: "dashboard", description: "The web UI's home page." },
     { name: "server", description: "The server's sources and jobs." },
     { name: "keys", description: "The agents' keys." },
@@ -63,6 +69,7 @@ export const spec = {
     ...portfolioPaths,
     ...profilePaths,
     ...analysisPaths,
+    ...tradePlansPaths,
     ...peoplePaths,
   },
   components: {
@@ -117,6 +124,17 @@ export const spec = {
         scheme: "bearer",
         description: "An agent key its person gave analysis write access.",
       },
+      tradePlansRead: {
+        type: "http",
+        scheme: "bearer",
+        description:
+          "An agent key its person gave trade plans read or write access.",
+      },
+      tradePlansWrite: {
+        type: "http",
+        scheme: "bearer",
+        description: "An agent key its person gave trade plans write access.",
+      },
       admin: {
         type: "http",
         scheme: "bearer",
@@ -135,6 +153,7 @@ export const spec = {
       ...portfolioSchemas,
       ...profileSchemas,
       ...analysisSchemas,
+      ...tradePlansSchemas,
       ...peopleSchemas,
     },
     responses,

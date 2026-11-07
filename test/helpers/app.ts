@@ -160,6 +160,7 @@ export function seedKey(
     alerts: Access;
     profile?: Access;
     analysis?: Access;
+    tradePlans?: Access;
     user?: string;
   },
 ): string {
@@ -168,8 +169,8 @@ export function seedKey(
     .query(
       `insert into keys
          (id, user_id, name, token_hash, created_at, portfolio, alerts, profile,
-          analysis)
-       values (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          analysis, trade_plans)
+       values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       `key-${name}`,
@@ -181,24 +182,76 @@ export function seedKey(
       opens.alerts,
       opens.profile ?? "none",
       opens.analysis ?? "none",
+      opens.tradePlans ?? "none",
     );
   return token;
 }
 
-// every portfolio, profile and analysis access with no alerts and with
-// alerts, as keys are made; the last opens everything, the longest
-// instructions
+// every portfolio, profile, analysis and trade plans access with no alerts
+// and with alerts, as keys are made; two differ in trade plans alone, so the
+// tool-list cache must tell them apart; the last opens everything, the
+// longest instructions
 export const ACCESS_LEVELS: {
   portfolio: Access;
   alerts: Access;
   profile: Access;
   analysis: Access;
+  tradePlans: Access;
 }[] = [
-  { portfolio: "none", alerts: "none", profile: "none", analysis: "none" },
-  { portfolio: "read", alerts: "none", profile: "read", analysis: "write" },
-  { portfolio: "write", alerts: "none", profile: "write", analysis: "read" },
-  { portfolio: "none", alerts: "read", profile: "write", analysis: "none" },
-  { portfolio: "read", alerts: "write", profile: "none", analysis: "read" },
-  { portfolio: "write", alerts: "write", profile: "read", analysis: "none" },
-  { portfolio: "write", alerts: "write", profile: "write", analysis: "write" },
+  {
+    portfolio: "none",
+    alerts: "none",
+    profile: "none",
+    analysis: "none",
+    tradePlans: "none",
+  },
+  {
+    portfolio: "none",
+    alerts: "none",
+    profile: "none",
+    analysis: "none",
+    tradePlans: "read",
+  },
+  {
+    portfolio: "read",
+    alerts: "none",
+    profile: "read",
+    analysis: "write",
+    tradePlans: "write",
+  },
+  {
+    portfolio: "write",
+    alerts: "none",
+    profile: "write",
+    analysis: "read",
+    tradePlans: "none",
+  },
+  {
+    portfolio: "none",
+    alerts: "read",
+    profile: "write",
+    analysis: "none",
+    tradePlans: "read",
+  },
+  {
+    portfolio: "read",
+    alerts: "write",
+    profile: "none",
+    analysis: "read",
+    tradePlans: "write",
+  },
+  {
+    portfolio: "write",
+    alerts: "write",
+    profile: "read",
+    analysis: "none",
+    tradePlans: "none",
+  },
+  {
+    portfolio: "write",
+    alerts: "write",
+    profile: "write",
+    analysis: "write",
+    tradePlans: "write",
+  },
 ];

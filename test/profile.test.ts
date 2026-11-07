@@ -48,6 +48,7 @@ const ASHLEY: Who = {
   alerts: "none",
   profile: "write",
   analysis: "none",
+  tradePlans: "none",
 };
 const READER: Who = { ...ASHLEY, name: "reader", profile: "read" };
 const NONE: Who = { ...ASHLEY, name: "none", profile: "none" };
@@ -232,8 +233,34 @@ describe("the read", () => {
         "# Made <b>up</b>\n\n[x](javascript:alert(1)) [y](https://example.com) ![i](https://example.com/i.png)\n\n<script>alert(1)</script>",
       ),
     ).toBe(
-      '<h1 class="md-h1">Made &lt;b&gt;up&lt;/b&gt;</h1><p class="md-p">x <a class="md-link" href="https://example.com" target="_blank" rel="noopener">y</a> <span class="md-img">[image: i https://example.com/i.png]</span></p><p class="md-p">&lt;script&gt;alert(1)&lt;/script&gt;</p>',
+      '<h1 class="md-h1" id="md-made-bupb">Made &lt;b&gt;up&lt;/b&gt;</h1><p class="md-p">x <a class="md-link" href="https://example.com" target="_blank" rel="noopener">y</a> <span class="md-img">[image: i https://example.com/i.png]</span></p><p class="md-p">&lt;script&gt;alert(1)&lt;/script&gt;</p>',
     );
+  });
+
+  test("gives each heading an anchor, unique in one render", () => {
+    const md = "## Notes\n\n### Notes\n\n## **Café** & `x`\n\n## Notes\n";
+    const ids = [...renderMarkdown(md).matchAll(/ id="([^"]*)"/g)].map(
+      (m) => m[1],
+    );
+    expect(ids).toEqual(["md-notes", "md-notes-1", "md-cafe-x", "md-notes-2"]);
+    // a second render starts its ids anew
+    expect(renderMarkdown("## Notes\n")).toBe(
+      '<h2 class="md-h2" id="md-notes">Notes</h2>',
+    );
+  });
+
+  test("an anchor holds only letters, digits and dashes", () => {
+    const html = renderMarkdown(
+      '# "onmouseover=alert(1) x="\n\n# <img src=x>\n\n# Ștefan\n\n# 計画\n',
+    );
+    const ids = [...html.matchAll(/ id="([^"]*)"/g)].map((m) => m[1]);
+    expect(ids).toEqual([
+      "md-onmouseoveralert1-x",
+      "md-img-srcx",
+      "md-stefan",
+      "md-section",
+    ]);
+    for (const id of ids) expect(id).toMatch(/^md-[a-z0-9-]+$/);
   });
 });
 
@@ -654,6 +681,7 @@ describe("discovery", () => {
             alerts,
             profile,
             analysis: "write",
+            tradePlans: "write",
           });
           expect(Buffer.byteLength(text)).toBeLessThanOrEqual(
             INSTRUCTIONS_BYTES,

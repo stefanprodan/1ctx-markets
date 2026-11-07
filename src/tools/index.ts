@@ -45,6 +45,7 @@ import {
   researchAnswer,
 } from "./research.ts";
 import { day, next, schema, symbol, type Tool } from "./schema.ts";
+import { tradePlansTools } from "./trade-plans.ts";
 
 const quoteDescription = (m: Markets) =>
   `Live prices or FRED observations, returns and signals for 1 to ${MAX_SYMBOLS} symbols. Symbols: a stored id (US:NVDA), a Yahoo symbol (VVSM.DE, ^VIX), FRED:<series id> or a name; several listings answer candidates. A new one is fetched in ${m.callMs / 1000} s, else timeout: call again. Each item: price, previous close, change, day range, volume, trade_time, fetched_at, daily and weekly signals (live, close or final: averages, RSI, MACD, ATR, volatility, Bollinger, 52w range, drawdown, volume ratio), stale. returns: 1w, 1m, 3m, ytd, 1y percent (points for a yield) to the live price or last final close (live says which), null if too few bars. session: open or closed (regular; closed briefly at an open), start, end. benchmark (one symbol) adds relative_return_1m, _3m in percentage points. extended true adds extended: the last pre- or post-market price (change from the regular close), or null with extended_reason, and opens: the next regular start once known, while closed. FRED: last observation, price null. Errors are items.`;
@@ -68,6 +69,7 @@ export type Opens = {
   alerts: Access;
   profile: Access;
   analysis: Access;
+  tradePlans: Access;
 };
 
 const ALL: Opens = {
@@ -75,6 +77,7 @@ const ALL: Opens = {
   alerts: "write",
   profile: "write",
   analysis: "write",
+  tradePlans: "write",
 };
 
 export function tools(m: Markets, opens: Opens = ALL): Tool[] {
@@ -96,7 +99,10 @@ export function tools(m: Markets, opens: Opens = ALL): Tool[] {
         },
         ["symbols"],
       ),
-      run: async (input) => textResult(await quotePage(m, parseQuote(input))),
+      run: async (input, who) =>
+        textResult(
+          await quotePage(m, parseQuote(input), undefined, who ?? NO_ACCESS),
+        ),
     },
     {
       name: "history",
@@ -246,6 +252,7 @@ export function tools(m: Markets, opens: Opens = ALL): Tool[] {
     ...portfolioTools(m, opens.portfolio),
     ...profileTools(m, opens.profile),
     ...analysisTools(m, opens.analysis),
+    ...tradePlansTools(m, opens.tradePlans),
   ];
 }
 
@@ -289,7 +296,7 @@ export function registerTools(
 ): (server: McpServer, who: Who) => void {
   const lists = new Map<string, Tool[]>();
   return (server, who) => {
-    const key = `${who.portfolio}/${who.alerts}/${who.profile}/${who.analysis}`;
+    const key = `${who.portfolio}/${who.alerts}/${who.profile}/${who.analysis}/${who.tradePlans}`;
     let list = lists.get(key);
     if (list === undefined) {
       list = tools(m, {
@@ -297,6 +304,7 @@ export function registerTools(
         alerts: who.alerts,
         profile: who.profile,
         analysis: who.analysis,
+        tradePlans: who.tradePlans,
       });
       lists.set(key, list);
     }

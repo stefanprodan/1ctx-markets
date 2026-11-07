@@ -5,6 +5,7 @@
 
 import type { Revision } from "../document/read.ts";
 import {
+  authorOf,
   type Kind,
   type RevisionInfo,
   type Save,
@@ -159,15 +160,6 @@ const ANALYSIS = (symbol: string): Kind => ({
   read: (r) => analysisRead(symbol, r),
   reserve: SINCE_RESERVE,
 });
-
-// the person and the key, so a shared note says whose agent wrote it
-function authorOf(db: Db, who: Who): string {
-  if (who.credential.kind !== "key") return who.name;
-  const person = db
-    .query<{ name: string }, [string]>("select name from users where id = ?")
-    .get(who.user)?.name;
-  return person === undefined ? who.name : `${person} (${who.name})`;
-}
 
 export function saveAnalysis(
   writer: Writer,

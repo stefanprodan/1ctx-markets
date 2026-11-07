@@ -17,6 +17,7 @@ import { Portfolios, SharedPortfolios } from "../views/Portfolios.tsx";
 import { Profile } from "../views/Profile.tsx";
 import { Screener } from "../views/Screener.tsx";
 import { AdminStatus } from "../views/Status.tsx";
+import { TradePlan, TradePlans } from "../views/TradePlans.tsx";
 import {
   ADMIN,
   ADMIN_SETTINGS,
@@ -25,6 +26,7 @@ import {
   ALERTS_HISTORY,
   SCREENER,
   SYMBOL,
+  TRADE_PLANS,
 } from "./paths.ts";
 
 export type Params = Record<string, string>;
@@ -131,6 +133,29 @@ export const ROUTES: readonly Route[] = [
     view: AlertsFired,
     load: async () => {
       await markets.alerts.loadAll();
+    },
+  },
+  {
+    path: TRADE_PLANS,
+    label: "Trade plans",
+    icon: "flag",
+    view: TradePlans,
+    load: async () => {
+      await markets.tradePlans.load();
+    },
+  },
+  {
+    path: `${TRADE_PLANS}/:id`,
+    label: "Trade plans",
+    icon: "flag",
+    parent: TRADE_PLANS,
+    view: TradePlan,
+    load: async (p) => {
+      const id = Number(p.id);
+      const symbol = new URLSearchParams(location.search).get("symbol");
+      if (Number.isSafeInteger(id) && id > 0) {
+        await markets.tradePlans.open(id, symbol);
+      }
     },
   },
   {

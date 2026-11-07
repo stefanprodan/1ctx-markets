@@ -36,7 +36,9 @@ broker connections, dividends or tax, and it makes no model calls.
   them, listed only to a key allowed to write, and `profile` for how the
   owner invests (goals, risk, trading style, rules), with `profile_edit`
   to change it, and `analysis` for an agent's dated analysis of a symbol,
-  shared by everyone on the server, with `analysis_edit` to write it.
+  shared by everyone on the server, with `analysis_edit` to write it,
+  and `trade_plans` for the owner's own trade plans, Markdown tagged
+  with symbols and never orders, with `trade_plans_edit` to write them.
   There is no SQL or query tool.
 - **Signals on live prices.** Moving averages (SMA 50 and 200, EMA 20),
   MACD, RSI 14, ATR 14, the lower Bollinger band, 52-week high, low
@@ -189,9 +191,9 @@ curl -H "Authorization: Bearer $(cat ~/.1ctx-markets/secrets/user-admin.key)" \
 To give an agent a key of its own, which can be revoked without
 touching the others, make one on the web UI's Connect agents page, or
 with `1ctx-markets keys add <name>`. An agent's key reads market data,
-and price alerts, portfolios, the profile and the analyses only as far
-as the admin allows (`--alerts`, `--portfolio`, `--profile` and
-`--analysis`: none, read or write,
+and price alerts, portfolios, the profile, the analyses and trade plans
+only as far as the admin allows (`--alerts`, `--portfolio`,
+`--profile`, `--analysis` and `--trade-plans`: none, read or write,
 changed later with `keys set`), but never opens the admin's routes:
 keys, status, the instrument list, and an instrument's refetch and
 delete.

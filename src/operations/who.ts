@@ -23,6 +23,8 @@ export type Who = {
   profile: Access;
   // the analysis per symbol, shared by everyone on the server
   analysis: Access;
+  // the person's own trade plans, never shared
+  tradePlans: Access;
 };
 
 // the person user-admin.key signs in as, made by the migration that gave
@@ -40,6 +42,7 @@ export const loginWho = (user: string, login: string, name: string): Who => ({
   alerts: "write",
   profile: "write",
   analysis: "write",
+  tradePlans: "write",
 });
 export const ADMIN: Who = {
   name: "admin",
@@ -49,6 +52,7 @@ export const ADMIN: Who = {
   alerts: "write",
   profile: "write",
   analysis: "write",
+  tradePlans: "write",
 };
 // no user owns the empty id, so a read as no one finds nothing
 export const NO_ACCESS: Who = {
@@ -59,6 +63,7 @@ export const NO_ACCESS: Who = {
   alerts: "none",
   profile: "none",
   analysis: "none",
+  tradePlans: "none",
 };
 
 export const opens = (access: Access, write: boolean): boolean =>

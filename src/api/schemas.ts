@@ -488,7 +488,7 @@ export const schemas: Record<string, Schema> = {
       ),
       revision: note(
         { type: ["integer", "null"] },
-        "With `conflict` on saving the profile or an analysis: its live revision, null with none.",
+        "With `conflict` on saving the profile, an analysis or a trade plan: its live revision, null with none.",
       ),
       trade: note(
         int,
@@ -970,6 +970,10 @@ export const schemas: Record<string, Schema> = {
       values(["none", "read", "write"]),
       "What the key may do with the analysis every person shares.",
     ),
+    trade_plans: note(
+      values(["none", "read", "write"]),
+      "What the key may do with its person's trade plans.",
+    ),
   }),
   OneKey: object({ key: ref("Key") }),
   KeyAccess: object(
@@ -988,7 +992,11 @@ export const schemas: Record<string, Schema> = {
       ),
       analysis: note(
         values(["none", "read", "write"]),
-        "What the key may do with the analysis every person shares. At least one of the four.",
+        "What the key may do with the analysis every person shares.",
+      ),
+      trade_plans: note(
+        values(["none", "read", "write"]),
+        "What the key may do with its person's trade plans. At least one of the five.",
       ),
     },
     [],
@@ -1014,6 +1022,10 @@ export const schemas: Record<string, Schema> = {
       analysis: note(
         values(["none", "read", "write"]),
         "What the key may do with the analysis every person shares; none by default.",
+      ),
+      trade_plans: note(
+        values(["none", "read", "write"]),
+        "What the key may do with its person's trade plans; none by default.",
       ),
       name: note(
         str,

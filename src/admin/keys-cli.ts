@@ -11,6 +11,7 @@ import {
   KEY_DAYS,
   PORTFOLIO_ACCESS,
   PROFILE_ACCESS,
+  TRADE_PLANS_ACCESS,
 } from "../server/access.ts";
 import {
   type AdminCliDeps,
@@ -23,11 +24,13 @@ const USAGE = `usage: 1ctx-markets keys [--listen <host:port>] [--data <dir>] <c
   list                            every person's agent keys, never tokens
   add <name> [--expires <days>] [--portfolio <access>] [--alerts <access>]
       [--profile <access>] [--analysis <access>]
+      [--trade-plans <access>]
                                   make a key and print it once; days:
                                   ${KEY_DAYS.join(", ")} (default: never);
                                   access: none, read or write (default: none)
   set <name> [--portfolio <access>] [--alerts <access>] [--profile <access>]
-      [--analysis <access>]       change an operator's key's access; its
+      [--analysis <access>] [--trade-plans <access>]
+                                  change an operator's key's access; its
                                   token stays
   revoke <name>|<id>              revoke an operator's key by name, or
                                   anyone's by id; an agent using it is
@@ -43,6 +46,7 @@ type Parsed = {
   alerts: string | null;
   profile: string | null;
   analysis: string | null;
+  tradePlans: string | null;
 };
 
 function parse(argv: string[]): Parsed {
@@ -53,6 +57,7 @@ function parse(argv: string[]): Parsed {
   let alerts: string | null = null;
   let profile: string | null = null;
   let analysis: string | null = null;
+  let tradePlans: string | null = null;
   const positional: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
@@ -89,6 +94,13 @@ function parse(argv: string[]): Parsed {
         throw new AdminError(`--analysis is ${ANALYSIS_ACCESS.join(", ")}`);
       }
       analysis = value;
+    } else if (arg === "--trade-plans") {
+      if (!(TRADE_PLANS_ACCESS as readonly string[]).includes(value)) {
+        throw new AdminError(
+          `--trade-plans is ${TRADE_PLANS_ACCESS.join(", ")}`,
+        );
+      }
+      tradePlans = value;
     } else throw new AdminError(USAGE);
   }
   const [command, ...rest] = positional;
@@ -101,7 +113,8 @@ function parse(argv: string[]): Parsed {
     portfolio !== null ||
     alerts !== null ||
     profile !== null ||
-    analysis !== null;
+    analysis !== null ||
+    tradePlans !== null;
   if (access && command !== "add" && command !== "set") {
     throw new AdminError(USAGE);
   }
@@ -116,6 +129,7 @@ function parse(argv: string[]): Parsed {
     alerts,
     profile,
     analysis,
+    tradePlans,
   };
 }
 
@@ -179,6 +193,7 @@ export async function runKeys(
         ...(p.alerts === null ? {} : { alerts: p.alerts }),
         ...(p.profile === null ? {} : { profile: p.profile }),
         ...(p.analysis === null ? {} : { analysis: p.analysis }),
+        ...(p.tradePlans === null ? {} : { trade_plans: p.tradePlans }),
       }),
     })) as { token: string };
     write(made.token);
@@ -201,6 +216,7 @@ export async function runKeys(
         ...(p.alerts === null ? {} : { alerts: p.alerts }),
         ...(p.profile === null ? {} : { profile: p.profile }),
         ...(p.analysis === null ? {} : { analysis: p.analysis }),
+        ...(p.tradePlans === null ? {} : { trade_plans: p.tradePlans }),
       }),
     });
     write(`set ${p.name}`);

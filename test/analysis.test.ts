@@ -44,6 +44,7 @@ const keyWho = (
   alerts: "none",
   profile: "write",
   analysis,
+  tradePlans: "none",
 });
 
 const WRITER = keyWho(OPERATOR, "riley-agent");

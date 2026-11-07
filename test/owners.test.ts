@@ -75,6 +75,7 @@ const as = (user: string, name: string): Who => ({
   alerts: "write",
   profile: "write",
   analysis: "none",
+  tradePlans: "none",
 });
 
 // a made-up ISIN: the body and the one check digit that fits it
@@ -1113,6 +1114,7 @@ describe("the migration that gives every row an owner", () => {
               // columns later migrations add
               delete o.past_of;
               delete o.analysis;
+              delete o.trade_plans;
               delete o.fired_session;
               // a later migration renames the key's rules access
               if (x === "keys" && "alerts" in o) {

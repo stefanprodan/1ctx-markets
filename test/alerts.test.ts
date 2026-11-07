@@ -468,6 +468,7 @@ describe("the alerts tool's history", () => {
           alerts,
           profile: "none",
           analysis: "none",
+          tradePlans: "none",
         },
         parseAlertsRead({ history: true, ...args }),
       );
@@ -600,6 +601,7 @@ describe("the alerts tool's list", () => {
         alerts: "read",
         profile: "none",
         analysis: "none",
+        tradePlans: "none",
       },
       parseAlertsRead({}),
     );

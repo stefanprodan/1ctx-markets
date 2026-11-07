@@ -219,6 +219,17 @@ const OWNED: readonly { name: string; table: string; where: string }[] = [
   { name: "brokers", table: "brokers", where: "owner = ?1" },
   { name: "settings", table: "portfolio_settings", where: "owner = ?1" },
   { name: "profile", table: "profile_versions", where: "owner = ?1" },
+  {
+    name: "trade_plan_symbols",
+    table: "trade_plan_symbols",
+    where: "plan in (select id from trade_plans where owner = ?1)",
+  },
+  {
+    name: "trade_plan_versions",
+    table: "trade_plan_versions",
+    where: "plan in (select id from trade_plans where owner = ?1)",
+  },
+  { name: "trade_plans", table: "trade_plans", where: "owner = ?1" },
   { name: "dashboard", table: "dashboard_items", where: "owner = ?1" },
   {
     name: "dashboard_sections",

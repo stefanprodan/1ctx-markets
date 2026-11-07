@@ -29,6 +29,7 @@ const CASEY: Who = {
   alerts: "none",
   profile: "none",
   analysis: "none",
+  tradePlans: "none",
 };
 
 const HEADER =

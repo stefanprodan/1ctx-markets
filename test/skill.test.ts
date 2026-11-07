@@ -87,6 +87,7 @@ const WRITER: Who = {
   alerts: "none",
   profile: "none",
   analysis: "write",
+  tradePlans: "none",
 };
 
 const actionsOf = (tool: Listed): string[] =>

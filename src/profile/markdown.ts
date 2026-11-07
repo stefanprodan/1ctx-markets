@@ -4,6 +4,8 @@
 // Any write key can change the profile, so this is the safety boundary:
 // no raw HTML, no link but http(s) and mailto, no image fetched.
 
+import { anchors } from "../trade-plans/sections.ts";
+
 const OPTIONS = { noHtmlBlocks: true, noHtmlSpans: true } as const;
 
 export function escapeHtml(value: string): string {
@@ -29,11 +31,24 @@ const tableAlign = (value: string | undefined) =>
     ? ` style="text-align:${value}"`
     : "";
 
+const ENTITIES: Record<string, string> = {
+  "&amp;": "&",
+  "&lt;": "<",
+  "&gt;": ">",
+  "&quot;": '"',
+};
+
+// a heading's words as a reader sees them, for its anchor
+const wordsOf = (content: string): string =>
+  content
+    .replace(/<[^>]*>/g, "")
+    .replace(/&(amp|lt|gt|quot);/g, (e) => ENTITIES[e] ?? e);
+
+export type DrawnHeading = { id: string; text: string };
+
 const CALLBACKS = {
   text: (content: string) => escapeHtml(content),
   paragraph: (content: string) => `<p class="md-p">${content}</p>`,
-  heading: (content: string, meta: { level: number }) =>
-    `<h${meta.level} class="md-h${meta.level}">${content}</h${meta.level}>`,
   blockquote: (content: string) =>
     `<blockquote class="md-quote">${content}</blockquote>`,
   hr: () => '<hr class="md-hr">',
@@ -81,12 +96,29 @@ const CALLBACKS = {
     `<td class="md-td"${tableAlign(meta?.align)}>${content}</td>`,
 };
 
-// a parser failure keeps the text readable
-export function renderMarkdown(md: string): string {
-  if (md === "") return "";
+// the HTML and its headings' ids, unique in this text, so a link can open
+// a section; a parser failure keeps the text readable
+export function drawMarkdown(md: string): {
+  html: string;
+  headings: DrawnHeading[];
+} {
+  const headings: DrawnHeading[] = [];
+  if (md === "") return { html: "", headings };
+  const anchor = anchors();
+  const callbacks = {
+    ...CALLBACKS,
+    heading: (content: string, meta: { level: number }) => {
+      const text = wordsOf(content);
+      const id = anchor(text);
+      headings.push({ id, text });
+      return `<h${meta.level} class="md-h${meta.level}" id="${id}">${content}</h${meta.level}>`;
+    },
+  };
   try {
-    return Bun.markdown.render(md, CALLBACKS, OPTIONS);
+    return { html: Bun.markdown.render(md, callbacks, OPTIONS), headings };
   } catch {
-    return `<p class="md-p">${escapeHtml(md)}</p>`;
+    return { html: `<p class="md-p">${escapeHtml(md)}</p>`, headings: [] };
   }
 }
+
+export const renderMarkdown = (md: string): string => drawMarkdown(md).html;

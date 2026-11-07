@@ -54,6 +54,8 @@ export const UI_PATHS = [
   "/alerts",
   "/alerts/history",
   "/profile",
+  "/trade-plans",
+  "/trade-plans/:id",
 ] as const;
 
 export type RouterDeps = {
@@ -114,6 +116,7 @@ export const whoOf = (c: Caller | null, login: Login | null = null): Who =>
           alerts: c.key.alerts,
           profile: c.key.profile,
           analysis: c.key.analysis,
+          tradePlans: c.key.tradePlans,
         };
 
 const keyFields = (c: Caller | null, login: Login | null): LogFields =>
@@ -185,7 +188,9 @@ export function router(deps: RouterDeps): Handle {
               ? c.key.profile
               : area === "analysis"
                 ? c.key.analysis
-                : null;
+                : area === "trade_plans"
+                  ? c.key.tradePlans
+                  : null;
       if (held !== null && opens(held, level === "write")) return null;
       return forbidden("this key does not open this route");
     }
@@ -269,6 +274,7 @@ export function router(deps: RouterDeps): Handle {
             `alerts:${who.alerts}`,
             `profile:${who.profile}`,
             `analysis:${who.analysis}`,
+            `trade_plans:${who.tradePlans}`,
           ],
           // per request, never a global: each tool call reads its own person
           extra: { user: who.user, credential: who.credential },

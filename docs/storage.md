@@ -319,6 +319,33 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   what they mean is `docs/analysis.md`. About 4 KiB a note rewritten
   daily keeps 400 KiB a symbol at the cap.
 
+## Trade plans
+
+- **Three tables and a key column** (`0047-trade-plans`), all strict:
+  `trade_plans` (one row a plan: `id`, `owner` referencing `users`, the
+  live `revision`, `removed_at` and `removed_by`, both null or both
+  set, `created_at`, `updated_at`, the live revision's time),
+  `trade_plan_versions` (each revision keyed `(plan, revision)`, the
+  whole state: `name`, `text`, `bytes`, `status` `active` or
+  `archived`, `review_by`, `symbols` as a JSON array of instrument
+  ids for history only, `author`, `created_at`) and
+  `trade_plan_symbols` (`(plan, symbol)`, the live revision's tags,
+  rewritten by each save, with `trade_plan_symbols_by_symbol` on
+  `(symbol, plan)` for quote and the instrument page), and
+  `keys.trade_plans` (`none`, `read`, `write`), `none` for every key,
+  the ones made before too. Revisions and tags go with their plan (on
+  delete cascade).
+- **`symbol` references no instrument**, as `analysis_versions.symbol`:
+  a reference would block the admin's delete of an instrument or reach
+  into a plan's history, and the id stays in the tag, matched again if
+  the instrument comes back.
+- **A save is one write**: it rechecks the caller, the live revision,
+  the active-name rule and the 100 active plans, inserts the revision,
+  rewrites the tags and deletes the plan's revisions past the last 100,
+  the live one never among them. A delete or restore sets or clears
+  `removed_at` and makes no revision. What they mean is
+  `docs/trade-plans.md`.
+
 ## People and owners
 
 - **`users` holds the people** (`0036-owners`): `id`, `name`, `email`
@@ -333,8 +360,9 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
 - **A person's rows name them**: `portfolios.owner`, `brokers.owner`,
   `portfolio_settings.owner` (was `admin`), `dashboards.owner` (was
   `operator` already), `rules.owner`, `alerts.owner` (copied from the
-  rule, as an alert outlives it), `keys.user_id` and
-  `profile_versions.owner`, each referencing `users`. Trades and
+  rule, as an alert outlives it), `keys.user_id`,
+  `profile_versions.owner` and `trade_plans.owner`, each referencing
+  `users`; a plan's revisions and tags are owned through it. Trades and
   positions are owned through their portfolio. Portfolio and broker
   names are unique per owner, and Cash is one per owner
   (`portfolios_one_cash` on `(owner) where cash`).

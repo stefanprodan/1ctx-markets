@@ -115,11 +115,13 @@ describe("the tool list", () => {
         ...(level.profile === "write" ? ["profile_edit"] : []),
         ...(level.analysis === "none" ? [] : ["analysis"]),
         ...(level.analysis === "write" ? ["analysis_edit"] : []),
+        ...(level.tradePlans === "none" ? [] : ["trade_plans"]),
+        ...(level.tradePlans === "write" ? ["trade_plans_edit"] : []),
       ];
       for (const level of ACCESS_LEVELS) {
         const token = seedKey(
           t,
-          `${level.portfolio}-${level.alerts}-${level.profile}`,
+          `${level.portfolio}-${level.alerts}-${level.profile}-${level.analysis}-${level.tradePlans}`,
           level,
         );
         const client = await mcpClient(t, token);
@@ -149,7 +151,8 @@ describe("the tool list", () => {
             tool.name === "alerts_edit" ||
             tool.name.startsWith("portfolio_") ||
             tool.name === "profile_edit" ||
-            tool.name === "analysis_edit";
+            tool.name === "analysis_edit" ||
+            tool.name === "trade_plans_edit";
           expect([tool.name, tool.annotations?.readOnlyHint]).toEqual([
             tool.name,
             !writes,
@@ -181,6 +184,12 @@ describe("the tool list", () => {
         }
         const quote = tools.find((x) => x.name === "quote")!;
         expect(quote.description).not.toContain("analysis");
+        const plans = tools.find((x) => x.name === "trade_plans");
+        if (plans !== undefined) {
+          expect(
+            plans.description!.includes("Changes go through trade_plans_edit."),
+          ).toBe(level.tradePlans === "write");
+        }
         const analysis = tools.find((x) => x.name === "analysis");
         if (analysis !== undefined) {
           expect(

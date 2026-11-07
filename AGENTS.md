@@ -8,9 +8,9 @@ Protocol (MCP, Streamable HTTP) and a REST API under `/api/v1` with an
 OpenAPI spec, both behind the admin key or agents' own keys. It holds
 market data, price rules, the owner's portfolios of trades and
 positions, the owner's profile, one Markdown document of their
-preferences, and agents' dated analyses of symbols, one shared Markdown
-document per instrument; never orders, broker connections, dividends or
-tax.
+preferences, agents' dated analyses of symbols, one shared Markdown
+document per instrument, and the owner's trade plans, Markdown tagged
+with symbols; never orders, broker connections, dividends or tax.
 
 - **Runtime:** Bun only (pinned in `.bun-version`), TypeScript run
   directly, `bun:sqlite`, one standalone binary. No Node.
@@ -90,9 +90,10 @@ src/sources/                what every source shares, each provider under it
 src/signals/                daily, weekly, live and relative signals
 src/rules/                  alert conditions, evaluation, triggers
 src/portfolios/             trades, positions, owner-priced funds, holdings, rates, CSV
-src/document/               what the profile and the analysis share: edits, the fence, checks, revisions
+src/document/               what the profile, the analysis and trade plans share: edits, the fence, checks, revisions
 src/profile/                the owner's profile: revisions, edits, the read, Markdown
 src/analysis/               the analysis per symbol: revisions, the price at each save, the read
+src/trade-plans/            the owner's trade plans: whole-state revisions, symbol tags, sections, the read
 src/operations/             the reads the MCP tools and the API share, with their MCP pages
 src/tools/                  the MCP surface: the tool registry and research's page
 src/api/                    /api/v1: routes, alerts, the spec, the docs page; never imports tools/
@@ -144,6 +145,7 @@ the same commit as the code that changes a rule.
 | `docs/portfolios.md` | portfolios, brokers, trades and positions, funds the owner prices and their prices, dry powder, the holdings arithmetic, currencies and rates, the `portfolio` tool, CSV import and export, privacy |
 | `docs/profile.md` | the owner's profile: one Markdown document, its text and size checks, revisions and their eviction, edits, the fenced read, the `profile` and `profile_edit` tools, its routes and the Markdown drawn for the web UI |
 | `docs/analysis.md` | the analysis per symbol: shared by everyone and about the symbol only, the rules it shares with the profile, the author, the price move since it was written, the fenced read, the `analysis` and `analysis_edit` tools, the skill that says how a note is written, the pointer in `quote` and `research`, its routes |
+| `docs/trade-plans.md` | the owner's trade plans: account-owned and never shared, symbol tags only, prose never parsed, whole-state revisions, names and limits, symbol resolution, sections by heading, the fenced read, the `trade_plans` and `trade_plans_edit` tools, the pointer in `quote`, its routes |
 | `docs/tools.md` | the answer contract, arguments, each tool, units and staleness, resolution and the inline fetch, the reads the API shares, tool descriptions |
 | `docs/web.md` | the web UI: serving, the sign-in and its cookie, what the cookie opens, what an anonymous visitor sees, the client's rules, the pages |
 | `docs/testing.md` | the test suite, fakes, the fake clock, fixtures and the recorders |

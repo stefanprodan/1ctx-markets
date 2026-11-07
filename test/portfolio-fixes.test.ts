@@ -60,6 +60,7 @@ const CASEY: Who = {
   alerts: "none",
   profile: "none",
   analysis: "none",
+  tradePlans: "none",
 };
 const OTHER: Who = {
   name: "riley-agent",
@@ -69,6 +70,7 @@ const OTHER: Who = {
   alerts: "none",
   profile: "none",
   analysis: "none",
+  tradePlans: "none",
 };
 
 function pair(
@@ -2001,6 +2003,7 @@ describe("setup and brokers over the tool", () => {
       alerts: "none",
       profile: "none",
       analysis: "none",
+      tradePlans: "none",
     };
     const r = await ask(m, reader, "portfolio_setup", {
       action: "rename_broker",
@@ -2040,6 +2043,7 @@ describe("the tool's description", () => {
         alerts: "none",
         profile: "none",
         analysis: "none",
+        tradePlans: "none",
       }).find((t) => t.name === "portfolio")!.description;
       expect(read).toStartWith(
         'What the owner holds and trades: portfolios, holdings with totals, trades, and each cash or bond row\'s history. For "my stocks"',

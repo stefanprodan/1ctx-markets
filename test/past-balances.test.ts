@@ -29,6 +29,7 @@ const CASEY: Who = {
   alerts: "none",
   profile: "none",
   analysis: "none",
+  tradePlans: "none",
 };
 const HOUR = 3_600_000;
 

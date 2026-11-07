@@ -374,6 +374,7 @@ describe("the net worth route", () => {
         alerts: "none",
         profile: "none",
         analysis: "none",
+        tradePlans: "none",
       };
       await addPosition(w.m, who, {
         kind: "cash",

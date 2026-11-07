@@ -34,6 +34,7 @@ const as = (user: string): Who => ({
   alerts: "none",
   profile: "none",
   analysis: "none",
+  tradePlans: "none",
 });
 
 const isinOf = (body: string): string =>

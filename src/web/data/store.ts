@@ -25,6 +25,7 @@ import {
 } from "./api.ts";
 import { portfolioStore } from "./portfolios.ts";
 import { profileStore } from "./profile.ts";
+import { tradePlansStore } from "./trade-plans.ts";
 
 export type SourceStatus = {
   name: string;
@@ -376,11 +377,13 @@ export type AgentKey = {
   // null never expires
   expires_at: string | null;
   // what it may do with portfolios, with alerts and their history, with
-  // the owner's profile and with the shared analysis
+  // the owner's profile, with the shared analysis and with the owner's
+  // trade plans
   portfolio?: KeyAccess;
   alerts?: KeyAccess;
   profile?: KeyAccess;
   analysis?: KeyAccess;
+  trade_plans?: KeyAccess;
 };
 
 export type KeyAccess = "none" | "read" | "write";
@@ -390,6 +393,7 @@ export type KeyAccesses = {
   alerts: KeyAccess;
   profile: KeyAccess;
   analysis: KeyAccess;
+  trade_plans: KeyAccess;
 };
 
 type KeysPage = { keys: AgentKey[]; limit: number };
@@ -642,6 +646,7 @@ export function store(
     portfolios.clear();
     shared.clear();
     profile.clear();
+    tradePlans.clear();
     admin.clear();
   };
   const quiet = client(fetchFn, () => {}, buildWatch(reloadPage));
@@ -702,6 +707,7 @@ export function store(
     gone: () => void loadSharing(),
   });
   const profile = profileStore(call, () => session);
+  const tradePlans = tradePlansStore(call, () => session);
   // one per symbol page, read and written by every sign-in
   const analysis = (id: string) => analysisStore(call, () => session, id);
   const admin = adminStore(
@@ -1076,6 +1082,7 @@ export function store(
       alerts: "none",
       profile: "none",
       analysis: "none",
+      trade_plans: "none",
     },
   ): Promise<MadeKey> {
     let made: MadeKey;
@@ -1426,6 +1433,7 @@ export function store(
     share,
     profile,
     analysis,
+    tradePlans,
     alerts,
     keys,
     keysLimit,

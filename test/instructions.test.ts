@@ -13,6 +13,7 @@ const ALL = instructions({
   alerts: "write",
   profile: "write",
   analysis: "write",
+  tradePlans: "write",
 });
 
 // Backticked names that are answer fields, checked in review; every other
@@ -80,7 +81,7 @@ async function perKey(
   for (const level of ACCESS_LEVELS) {
     const token = seedKey(
       t,
-      `${level.portfolio}-${level.alerts}-${level.profile}-${level.analysis}`,
+      `${level.portfolio}-${level.alerts}-${level.profile}-${level.analysis}-${level.tradePlans}`,
       level,
     );
     const client = await mcpClient(t, token);
@@ -117,7 +118,11 @@ describe("the server instructions", () => {
         const named = backticked(text);
         // the read tools' descriptions name the edits, for want of room here
         for (const tool of names) {
-          if (["profile_edit", "analysis_edit"].includes(tool)) continue;
+          if (
+            ["profile_edit", "analysis_edit", "trade_plans_edit"].includes(tool)
+          ) {
+            continue;
+          }
           expect([level, named.has(tool)]).toEqual([level, true]);
         }
         for (const field of ANSWER_FIELDS) {
@@ -182,11 +187,19 @@ describe("the server instructions", () => {
       for (const alerts of access) {
         for (const profile of access) {
           for (const analysis of access) {
-            const text = instructions({ portfolio, alerts, profile, analysis });
-            expect(Buffer.byteLength(text)).toBeLessThanOrEqual(
-              INSTRUCTIONS_BYTES,
-            );
-            expect(/^[\x20-\x7e\n]*$/.test(text)).toBe(true);
+            for (const tradePlans of access) {
+              const text = instructions({
+                portfolio,
+                alerts,
+                profile,
+                analysis,
+                tradePlans,
+              });
+              expect(Buffer.byteLength(text)).toBeLessThanOrEqual(
+                INSTRUCTIONS_BYTES,
+              );
+              expect(/^[\x20-\x7e\n]*$/.test(text)).toBe(true);
+            }
           }
         }
       }
@@ -206,6 +219,19 @@ describe("the server instructions", () => {
           level,
           level.alerts === "write",
         ]);
+      }),
+    ));
+
+  test("send the owner's plans to trade_plans, for a key that reads them", () =>
+    withApp((t) =>
+      perKey(t, (text, _tools, level) => {
+        const line = text.split("\n").find((l) => l.includes("`trade_plans`"));
+        if (level.tradePlans === "none") {
+          expect([level, line]).toEqual([level, undefined]);
+          return;
+        }
+        expect(line).toContain("never an order");
+        expect(line).toContain("named in `quote`");
       }),
     ));
 

@@ -34,6 +34,7 @@ import {
   type TradeSheet,
   TradeSheets,
 } from "./InstrumentTrade.tsx";
+import { TradePlansSection } from "./InstrumentTradePlans.tsx";
 import "./instruments.css";
 
 export function Instrument({ params }: { params: Params }) {
@@ -63,6 +64,7 @@ export function Instrument({ params }: { params: Params }) {
   const symbol = tickerOf(id, kind);
   const options = detail === null ? [] : choices(detail.instrument);
   const analysis = useMemo(() => markets.analysis(id), [id]);
+  const plans = useMemo(() => markets.tradePlans.tagged(id), [id]);
   const writing = useSignal(false);
   // Back or Forward reuses the page, so a drawer never carries a draft over
   useEffect(() => {
@@ -182,6 +184,7 @@ export function Instrument({ params }: { params: Params }) {
             saved={hand ? saved.value : 0}
           />
           <InstrumentCards detail={detail} held={held} />
+          <TradePlansSection key={id} store={plans} id={id} />
           <AnalysisSection
             key={id}
             store={analysis}
