@@ -150,6 +150,36 @@ export type TopHoldings = {
   fetchedAt: number;
 };
 
+// a contract's figures as Yahoo gives them; null when missing or not usable
+export type OptionContract = {
+  strike: number;
+  bid: number | null;
+  ask: number | null;
+  last: number | null;
+  lastTradeAt: number | null;
+  volume: number | null;
+  openInterest: number | null;
+  // a fraction a year
+  iv: number | null;
+  inTheMoney: boolean | null;
+};
+
+// chain null: Yahoo lists no options for the symbol; times in epoch ms
+export type OptionChain = {
+  symbol: string;
+  price: number | null;
+  priceAt: number | null;
+  currency: string | null;
+  // 00:00 UTC of each listed expiry date
+  expiries: number[];
+  chain: {
+    expiry: number;
+    calls: OptionContract[];
+    puts: OptionContract[];
+  } | null;
+  fetchedAt: number;
+};
+
 export type Listing = {
   sourceSymbol: string;
   exchange: string;
@@ -175,6 +205,8 @@ export type Yahoo = {
   valuation(symbol: string): Promise<Valuation>;
   // a fund's ten largest holdings, on the same session
   topHoldings(symbol: string): Promise<TopHoldings>;
+  // one expiry's chain, the nearest without one; expiry is a listed one
+  options(symbol: string, expiry?: number): Promise<OptionChain>;
   failFast(): Yahoo;
   within(live: () => boolean): Yahoo;
   backoff(): Backoff | null;
@@ -729,6 +761,110 @@ export function parseTopHoldings(
   };
 }
 
+// Yahoo's placeholder for a contract it has no volatility for is 1e-05
+export const IV_MIN = 1 / 100;
+export const IV_MAX = 10;
+// one contract size per chain, so open interest and prices compare
+const CONTRACT_SIZE = "REGULAR";
+
+const atLeastZero = (v: unknown): number | null =>
+  typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null;
+
+const ivOf = (v: unknown): number | null =>
+  typeof v === "number" && Number.isFinite(v) && v >= IV_MIN && v <= IV_MAX
+    ? v
+    : null;
+
+const stampOf = (v: unknown): number | null =>
+  typeof v === "number" && Number.isSafeInteger(v) && v > 0 ? v * 1000 : null;
+
+// a strike once a side, in Yahoo's order; another expiry or size is dropped
+function contracts(v: unknown, what: string, expiry: number): OptionContract[] {
+  const out: OptionContract[] = [];
+  const seen = new Set<number>();
+  const rows = rowsOf(v, what);
+  let otherExpiry = 0;
+  for (const c of rows) {
+    if (!isObj(c) || c.contractSize !== CONTRACT_SIZE) continue;
+    const strike = c.strike;
+    if (typeof strike !== "number" || !Number.isFinite(strike) || strike <= 0) {
+      continue;
+    }
+    if (stampOf(c.expiration) !== expiry) {
+      otherExpiry++;
+      continue;
+    }
+    if (seen.has(strike)) continue;
+    seen.add(strike);
+    out.push({
+      strike,
+      bid: atLeastZero(c.bid),
+      ask: atLeastZero(c.ask),
+      last: atLeastZero(c.lastPrice),
+      lastTradeAt: stampOf(c.lastTradeDate),
+      volume: atLeastZero(c.volume),
+      openInterest: atLeastZero(c.openInterest),
+      iv: ivOf(c.impliedVolatility),
+      inTheMoney: typeof c.inTheMoney === "boolean" ? c.inTheMoney : null,
+    });
+  }
+  // a side of another expiry only is not this expiry's, never an empty one
+  if (rows.length > 0 && otherExpiry === rows.length) {
+    throw malformed(`${what} of another expiry`);
+  }
+  return out;
+}
+
+export function parseOptions(body: unknown, fetchedAt: number): OptionChain {
+  const b = obj(body, "body");
+  const top = obj(isObj(b.optionChain) ? b.optionChain : b.finance, "chain");
+  if (top.error !== null && top.error !== undefined) {
+    const code = isObj(top.error) ? top.error.code : undefined;
+    if (code === "Unauthorized") throw new Unauthorized();
+    throw code === "Not Found"
+      ? new SourceError("not found")
+      : new SourceError("source error", "option chain error");
+  }
+  if (!Array.isArray(top.result)) throw malformed("no option chain result");
+  if (top.result.length === 0) throw new SourceError("not found");
+  if (top.result.length !== 1) throw malformed("not one option chain result");
+  const result = obj(top.result[0], "option chain result");
+  const quote = obj(result.quote, "quote");
+  if (!Array.isArray(result.expirationDates)) {
+    throw malformed("no expirationDates");
+  }
+  const expiries = result.expirationDates.map((v) =>
+    seconds(v, "expiration date"),
+  );
+  const head = {
+    symbol: text(quote.symbol, "symbol"),
+    price: optionalNumber(quote.regularMarketPrice, "regularMarketPrice"),
+    priceAt:
+      quote.regularMarketTime === undefined || quote.regularMarketTime === null
+        ? null
+        : seconds(quote.regularMarketTime, "regularMarketTime"),
+    currency: optionalText(quote.currency),
+    expiries,
+    fetchedAt,
+  };
+  if (expiries.length === 0) return { ...head, chain: null };
+  // listed expiries with no chain is no answer, never an empty one
+  if (!Array.isArray(result.options) || result.options.length !== 1) {
+    throw malformed("not one expiry's options");
+  }
+  const one = obj(result.options[0], "options");
+  const expiry = seconds(one.expirationDate, "expirationDate");
+  if (!expiries.includes(expiry)) throw malformed("an expiry not listed");
+  return {
+    ...head,
+    chain: {
+      expiry,
+      calls: contracts(one.calls, "calls", expiry),
+      puts: contracts(one.puts, "puts", expiry),
+    },
+  };
+}
+
 type Crumb = { cookie: string; crumb: string };
 
 // a crumb is a short token; anything else is a page, not a crumb
@@ -832,14 +968,17 @@ export function yahoo(options: YahooOptions): Yahoo {
     return { cookie, crumb };
   };
 
-  const summaryUrl = (symbol: string, modules: string, crumb: string) =>
+  const summaryUrl = (symbol: string, modules: string) => (crumb: string) =>
     `${SUMMARY_HOST}/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=${modules}&crumb=${encodeURIComponent(crumb)}`;
+
+  const optionsUrl = (symbol: string, expiry?: number) => (crumb: string) =>
+    `${SUMMARY_HOST}/v7/finance/options/${encodeURIComponent(symbol)}?${new URLSearchParams({ ...(expiry === undefined ? {} : { date: String(expiry / 1000) }), crumb })}`;
 
   // A refused session is asked again once. One queued task whose failure
   // comes back as a value, so it never backs off the queue prices share.
   const summary = <T extends { symbol: string }>(
     symbol: string,
-    modules: string,
+    url: (crumb: string) => string,
     parse: (body: unknown, fetchedAt: number) => T,
     run: RunOptions,
   ) =>
@@ -850,7 +989,7 @@ export function yahoo(options: YahooOptions): Yahoo {
           session = s;
           ready(run);
           try {
-            return await call(summaryUrl(symbol, modules, s.crumb), parse, {
+            return await call(url(s.crumb), parse, {
               Cookie: s.cookie,
             });
           } catch (error) {
@@ -1056,9 +1195,32 @@ export function yahoo(options: YahooOptions): Yahoo {
         return get(`${host}/v1/finance/search?${params}`, run, parseSearch);
       },
       valuation: (symbol) =>
-        summary(symbol, "defaultKeyStatistics,price", parseSummary, run),
+        summary(
+          symbol,
+          summaryUrl(symbol, "defaultKeyStatistics,price"),
+          parseSummary,
+          run,
+        ),
       topHoldings: (symbol) =>
-        summary(symbol, "topHoldings,price", parseTopHoldings, run),
+        summary(
+          symbol,
+          summaryUrl(symbol, "topHoldings,price"),
+          parseTopHoldings,
+          run,
+        ),
+      async options(symbol, expiry) {
+        const answer = await summary(
+          symbol,
+          optionsUrl(symbol, expiry),
+          parseOptions,
+          run,
+        );
+        // a listing answers its nearest chain for a date it does not take
+        if (expiry !== undefined && answer.chain?.expiry !== expiry) {
+          throw malformed("another expiry");
+        }
+        return answer;
+      },
       failFast: () => client({ failFast: true }),
       within: (live) => client({ failFast: true, live }),
       backoff: () => calls.backoff(),

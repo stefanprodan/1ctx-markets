@@ -87,6 +87,8 @@ const CALLS: [string, Record<string, unknown>][] = [
   // a deleted alert's history stays
   ["alerts", { history: true, id: 2 }],
   ["alerts", { id: 1 }],
+  ["research", { symbol: "FRED:DGS10", section: "options" }],
+  ["research", { symbol: "NVDA", expiry: "2026-11-20" }],
 ];
 
 type Answers = Record<string, string[]>;
@@ -306,6 +308,7 @@ const REQUESTS: [string, RequestInit?][] = [
   ["/quotes", { method: "POST" }],
   ["/quotes?symbols=NVDA", WRONG],
   ["/status", { headers: { authorization: `Bearer ${READ_KEY}` } }],
+  ["/research?symbols=NVDA,^GSPC&sections=options"],
 ];
 
 async function restAnswer(res: Response, path: string): Promise<RestAnswer> {

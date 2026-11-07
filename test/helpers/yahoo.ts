@@ -131,6 +131,42 @@ export const summarySymbol = (url: URL): string | null =>
       )
     : null;
 
+// the symbol an option chain URL asks for
+export const optionsSymbol = (url: URL): string | null =>
+  url.pathname.startsWith("/v7/finance/options/")
+    ? decodeURIComponent(url.pathname.slice("/v7/finance/options/".length))
+    : null;
+
+// the nearest expiry with the listing, asked without a date
+export const OPTIONS: Record<string, string> = {
+  AAPL: "options-aapl",
+  SPY: "options-spy",
+  "VWCE.DE": "options-vwce-de",
+};
+// by symbol and the date asked, in epoch seconds
+const DATED_OPTIONS: Record<string, string> = {
+  "AAPL 1795132800": "options-aapl-2026-11-20",
+};
+
+// a listed date with no recording answers the nearest chain moved to it
+export async function chainAnswer(url: URL): Promise<Recorded | undefined> {
+  const symbol = optionsSymbol(url)!;
+  const date = url.searchParams.get("date");
+  const name = OPTIONS[symbol];
+  if (name === undefined) return undefined;
+  if (date === null) return recorded(name);
+  const dated = DATED_OPTIONS[`${symbol} ${date}`];
+  if (dated !== undefined) return recorded(dated);
+  const out = clone(await recorded(name));
+  const result = out.body.optionChain.result[0];
+  const at = Number(date);
+  if (!result.expirationDates.includes(at)) return undefined;
+  const chain = result.options[0];
+  chain.expirationDate = at;
+  for (const c of [...chain.calls, ...chain.puts]) c.expiration = at;
+  return out;
+}
+
 export const notFound: Recorded = {
   recordedAt: "",
   status: 404,
@@ -143,7 +179,7 @@ export const notFound: Recorded = {
   },
 };
 
-// Yahoo's session and quote summary: each visit to fc is a new cookie,
+// Yahoo's session, quote summary and option chains: each visit to fc is a new cookie,
 // getcrumb answers that cookie's crumb, and a summary answers only the
 // newest pair, as sent together; revoke() makes Yahoo drop the newest
 export function yahooSession() {
@@ -171,13 +207,14 @@ export function yahooSession() {
         ? { recordedAt: "", status: 200, headers: {}, body: `${CRUMB}${n}` }
         : { recordedAt: "", status: 400, headers: {}, body: "" };
     }
-    const symbol = summarySymbol(url);
+    const symbol = summarySymbol(url) ?? optionsSymbol(url);
     if (symbol === null) return undefined;
     const paired =
       valid > 0 &&
       headers.get("cookie") === `${COOKIE}${valid}` &&
       url.searchParams.get("crumb") === `${CRUMB}${valid}`;
     if (!paired) return recorded("quotesummary-no-crumb");
+    if (optionsSymbol(url) !== null) return chainAnswer(url);
     const name = (holdingsAsked(url) ? TOP_HOLDINGS : SUMMARIES)[symbol];
     return name === undefined ? notFound : recorded(name);
   };

@@ -82,6 +82,7 @@ import {
 } from "../sources/yahoo/valuation.ts";
 import { ArgError, date, fields, symbols } from "./args.ts";
 import { type Markets, shared } from "./markets.ts";
+import { type OptionsSection, readOptions } from "./options.ts";
 import {
   type ItemError,
   itemError,
@@ -880,13 +881,19 @@ export const RESEARCH_PARTS = [
   "news",
   "filings",
   "top_holdings",
+  "options",
 ] as const;
 export type ResearchPart = (typeof RESEARCH_PARTS)[number];
 
 // answered only when asked, so a call without sections answers as before
-const DEFAULT_PARTS = RESEARCH_PARTS.filter((p) => p !== "top_holdings");
+const DEFAULT_PARTS = RESEARCH_PARTS.filter(
+  (p) => p !== "top_holdings" && p !== "options",
+);
 
-type FinnhubPart = Exclude<ResearchPart, "news" | "filings" | "top_holdings">;
+type FinnhubPart = Exclude<
+  ResearchPart,
+  "news" | "filings" | "top_holdings" | "options"
+>;
 
 const SECTION_OF_PART: Record<FinnhubPart, Section> = {
   metric: "metric",
@@ -921,11 +928,16 @@ export function parseResearchList(input: unknown): ResearchListArgs {
   if (since !== null && !parts.includes("news")) {
     throw new ArgError("since is for the news section only");
   }
+  // a summary is up to six calls, so five symbols would be thirty
+  if (parts.includes("options") && list.length > 1) {
+    throw new ArgError("options is for one symbol per call");
+  }
   return { symbols: list, parts, since };
 }
 
 // fetches the Finnhub sections asked that never ended well, but never news
 export async function researchList(m: Markets, args: ResearchListArgs) {
+  const started = m.clock.now();
   let since = m.clock.now() - WEEK_MS;
   if (args.since !== null) {
     // a UTC date, as published times are
@@ -939,7 +951,10 @@ export async function researchList(m: Markets, args: ResearchListArgs) {
   }
   const finnhub = args.parts.filter(
     (p): p is FinnhubPart =>
-      p !== "news" && p !== "filings" && p !== "top_holdings",
+      p !== "news" &&
+      p !== "filings" &&
+      p !== "top_holdings" &&
+      p !== "options",
   );
   const left = (Object.keys(SECTION_OF_PART) as FinnhubPart[]).filter(
     (p) => !finnhub.includes(p),
@@ -955,6 +970,16 @@ export async function researchList(m: Markets, args: ResearchListArgs) {
       valuation: withValuation,
       topHoldings: withTopHoldings,
     });
+  const options = new Map<string, OptionsSection>();
+  if (args.parts.includes("options")) {
+    for (const t of targets) {
+      if (!("instrument" in t)) continue;
+      options.set(
+        t.instrument.id,
+        await readOptions(m, t.instrument, null, started + m.callMs),
+      );
+    }
+  }
   // no quote: /quotes answers prices for many symbols in one call
   return targets.map((t) => {
     if ("error" in t) return { input: t.input, ...t.error };
@@ -993,6 +1018,9 @@ export async function researchList(m: Markets, args: ResearchListArgs) {
               topHoldings.get(t.instrument.id),
             ),
           }
+        : {}),
+      ...(options.has(t.instrument.id)
+        ? { options: options.get(t.instrument.id) }
         : {}),
     };
   });

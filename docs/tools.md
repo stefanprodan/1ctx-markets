@@ -162,7 +162,7 @@ tracking in `docs/storage.md`; the source queue and deadlines in
 | `search` | `query`, `next` | up to 20 stored matches, then up to 20 Bucharest listings from the stored list pages while the feed is on, then Yahoo's, each with id, exchange, type, name, `source`, `stored`; a listing Yahoo found adds `exchange_name`, the exchange in Yahoo's words, the stored copy of it too, and a stored one its `currency`, so one fund on several exchanges reads apart; a Bucharest listing adds its `isin` |
 | `movers` | `symbols`, `min_move_pct`, `direction`, `average`, `relation`, `next` | matches by absolute change, largest first; `counts` |
 | `screen` | `symbols`, `filters`, `benchmark`, `sort`, `order`, `fields`, `next` | matches with each used and asked field's value, unit, kind and date; `counts` |
-| `research` | `symbol`, `section`, `since`, `next` | `overview` (quote, a fund's `top_holdings`, Finnhub sections, an ADR's `valuation` from Yahoo, next event, headlines, `filings` with three flags), or one section paged: `analysts`, `earnings`, `insiders`, `news`, `filings`; or `top_holdings` unpaged, a fund's on any exchange from Yahoo (`docs/research.md`, `docs/edgar.md`) |
+| `research` | `symbol`, `section`, `since`, `expiry`, `next` | `overview` (quote, a fund's `top_holdings`, Finnhub sections, an ADR's `valuation` from Yahoo, next event, headlines, `filings` with three flags), or one section paged: `analysts`, `earnings`, `insiders`, `news`, `filings`; or unpaged `top_holdings`, a fund's on any exchange from Yahoo, or `options`, Yahoo's chains: a summary of the nearest expiries, or with `expiry` one expiry's strikes near the money (`docs/research.md`, `docs/edgar.md`) |
 | `events` | `from`, `to`, `symbols`, `next` | events by date with `status`, `reported_seen_at` and `filed_at`; `unavailable`, `no_event` (`docs/research.md`) |
 | `alerts`, `alerts_edit` | see `docs/alerts.md` | |
 | `portfolio`, `portfolio_trade`, `portfolio_cash`, `portfolio_bond`, `portfolio_fund`, `portfolio_setup` | see `docs/portfolios.md` | |
@@ -414,9 +414,13 @@ tracking in `docs/storage.md`; the source queue and deadlines in
   before a space or the end, `e.g.` and `i.e.` skipped, cut at 160). A
   pointer to the write tools comes after it, never first.
   `test/tools-mcp.test.ts` checks every tool at every access level.
-- **Under 1,024 characters**: 1ctx cuts a description there, and
-  `test/tools-mcp.test.ts` asserts it. Shorten wording before adding a
-  field. screen names its field groups and points at its schema's enum
+- **Under 1,024 characters, the tool's and every argument's**: 1ctx
+  cuts each description in a schema there and drops `default`, and
+  `test/tools-mcp.test.ts` asserts both at every access level. Shorten
+  wording before adding a field. A field list lives in the argument
+  that selects it (research's `section`, `since` and `expiry`), the
+  tool's own description naming each section's subject in a clause, so
+  no list is dropped, only moved; an argument with a default says it. screen names its field groups and points at its schema's enum
   (`FIELD_NAMES`).
 - **A limit in a description is the constant interpolated**, never
   written as text.

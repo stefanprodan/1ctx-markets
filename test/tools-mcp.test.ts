@@ -84,6 +84,20 @@ function firstSentence(text: string): string {
   return line;
 }
 
+// every description in a schema, at any depth, by where it sits
+function descriptions(
+  node: unknown,
+  at: string,
+  into: [string, string][] = [],
+) {
+  if (node === null || typeof node !== "object") return into;
+  for (const [k, v] of Object.entries(node)) {
+    if (k === "description" && typeof v === "string") into.push([at, v]);
+    else descriptions(v, `${at}.${k}`, into);
+  }
+  return into;
+}
+
 const MARKET_TOOLS = [
   "quote",
   "history",
@@ -145,6 +159,20 @@ describe("the tool list", () => {
             tool.name,
             /^(Changes|Writes) go through/.test(first),
           ]).toEqual([tool.name, false]);
+          // and so does every argument's, the lean schema's only text
+          const args = descriptions(tool.inputSchema, tool.name);
+          for (const [at, text] of args) {
+            expect([at, text.length < 1024]).toEqual([at, true]);
+          }
+          if (tool.name === "research") {
+            expect(args.map(([at]) => at)).toEqual([
+              "research.properties.symbol",
+              "research.properties.section",
+              "research.properties.since",
+              "research.properties.expiry",
+              "research.properties.next",
+            ]);
+          }
           expect(tool.inputSchema.additionalProperties).toBe(false);
           // a write asks as a remove does; the read never asks
           const writes =

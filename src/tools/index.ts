@@ -35,6 +35,7 @@ import { type Access, NO_ACCESS, type Who } from "../operations/who.ts";
 import { errorFields } from "../runtime/log.ts";
 import { CallerGone } from "../server/caller.ts";
 import { CALENDAR_AHEAD_DAYS } from "../sources/finnhub/store.ts";
+import { CHAIN_BAND, SUMMARY_EXPIRIES } from "../sources/yahoo/options.ts";
 import { alertsTools } from "./alerts.ts";
 import { analysisTools } from "./analysis.ts";
 import { portfolioTools } from "./portfolio.ts";
@@ -59,7 +60,13 @@ const SCREEN = `Filter and rank 1 to ${MAX_SYMBOLS} symbols on their latest sign
 const SEARCH =
   "Find instruments by name or symbol, each with its id, exchange, type and name, for quote or history. It searches stored ones, Yahoo's listings and, with the Bucharest feed on, the exchange's own. Fetches no prices. A FRED series not stored yet is found only as FRED:<series id>.";
 
-const RESEARCH = `One US share's research (Finnhub), filings (EDGAR) and news (Massive, US ETFs too); a fund's top holdings, any exchange (Yahoo). section overview (default): quote, signals as in quote, metrics (forward_pe, forward_peg, pe_ttm, ps_ttm, pb, beta; TTM: YoY EPS and revenue growth, net margin, ROE, dividend yield; quarterly: current ratio, debt/equity), ADR P/E, PEG, EPS per US share, analyst counts, earnings surprise, insider month (change, MSPR), next earnings, five headlines and filings, flags late_filing, restatement, offering, a fund's top_holdings, each with fetched_at, stale. top_holdings (ETF, mutual fund): top ten, asset split, sectors, bond ratings. analysts, earnings, insiders, filings, news page newest first, news from since (YYYY-MM-DD UTC, up to ${SINCE_DAYS} days back, default), page one counting by sentiment; articles: published_at, title, publisher, url, sentiment (positive, neutral, negative, null), reasoning (attribute an article's figures to it).`;
+const RESEARCH = `A symbol's research: a US share's fundamentals, filings and news, a fund's holdings, and options on any Yahoo listing. Sources: Finnhub, EDGAR (SEC), Massive (US ETFs' news too), Yahoo. section overview: quote, signals as in quote, metrics (forward_pe, forward_peg, pe_ttm, ps_ttm, pb, beta; TTM: YoY EPS and revenue growth, net margin, ROE, dividend yield; quarterly: current ratio, debt/equity), ADR P/E, PEG, EPS per US share, analyst counts, earnings surprise, insider month (change, MSPR), next earnings, five headlines and filings, flags late_filing, restatement, offering, a fund's top_holdings, each with fetched_at, stale. analysts, earnings, insiders, filings, news: pages newest first. top_holdings: an ETF's or mutual fund's ten largest. options: the implied move, IV and open interest of the nearest expiries, or one expiry's chain near the money.`;
+
+const RESEARCH_SECTION = `overview by default. analysts: monthly strong_buy, buy, hold, sell, strong_sell. earnings: eps_estimate, eps_actual, surprise, surprise_percent, revenue estimate, actual and surprise; a period is Finnhub's quarter label, not its report date, the first (newest) row the latest report, as in overview. insiders: monthly change (shares) and mspr. filings: SEC filings, late or restated, or securities offered: accession, form, accepted_at, filed, period, items (code, name), url; page one carries the flags. top_holdings (ETF, mutual fund): top (rank, symbol, id, name, weight_percent), assets split, sectors, bond_ratings. news: page one counts by sentiment; articles: published_at, title, publisher, url, sentiment (positive, neutral, negative, null), reasoning (attribute an article's figures to it). options: see expiry.`;
+
+const RESEARCH_SINCE = `news only: the first day (YYYY-MM-DD UTC), up to ${SINCE_DAYS} days back; without it, all ${SINCE_DAYS} days kept`;
+
+const RESEARCH_EXPIRY = `options only: one listed expiry (YYYY-MM-DD), else its nearest are named. Both answer price (every figure is measured from it), price_at, currency. Without it: expiries, and summary rows of the nearest ${SUMMARY_EXPIRIES} and the earnings expiry (earnings true): expiry, days, atm_strike, call_iv, put_iv (percent a year), straddle (call plus put mid), implied_move_pct, put_call_oi, put_call_volume, top_call_oi, top_put_oi; a row not fetched in time has error. With it: strikes within band_pct (${CHAIN_BAND}, less when that many do not fit) of price, each a call and a put (null without one): bid, ask, mid (null for a crossed or empty quote), last, last_trade_at, volume, open_interest, iv (percent a year, Yahoo's, null when not usable), in_the_money. Open interest is the previous session's. Another source's symbol has none.`;
 
 const EVENTS = `Earnings events dated from to to (YYYY-MM-DD, inclusive) of the tracked US shares, or of 1 to ${MAX_EVENT_SYMBOLS} symbols named, by date. Company events only: macro dates (central bank meetings, data releases, elections) are not here; look them up elsewhere. Each: fiscal_year, fiscal_quarter, date, hour (amc after close, bmo before open, or empty), status (scheduled; awaiting results once its date came without actuals; reported once EPS or revenue actuals are seen, with reported_seen_at), filed_at (the results 8-K's acceptance), EPS and revenue estimates and actuals (revenue in whole currency units), fetched_at, stale. Symbols resolve and are fetched as in quote; one Finnhub does not cover is listed as unavailable. A named share with nothing in the range is in no_event with the last stored event before from and the next after to (date, hour, status), so it is never read as missing data; a no_event next is null when none is within ${CALENDAR_AHEAD_DAYS} days of its last fetch.`;
 
@@ -218,10 +225,10 @@ export function tools(m: Markets, opens: Opens = ALL): Tool[] {
             type: "string",
             enum: [...RESEARCH_SECTIONS],
             default: "overview",
-            description:
-              "earnings and overview: an earnings period is Finnhub's quarter label, not its report date; the first (newest) row is the latest report",
+            description: RESEARCH_SECTION,
           },
-          since: day,
+          since: { ...day, description: RESEARCH_SINCE },
+          expiry: { ...day, description: RESEARCH_EXPIRY },
           next,
         },
         ["symbol"],

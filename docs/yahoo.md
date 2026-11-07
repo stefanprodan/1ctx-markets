@@ -3,8 +3,9 @@
 Governs the Yahoo source: `src/sources/yahoo/client.ts` (calls and
 parsing), `resolve.ts` (symbols into keys), `sync.ts` (fetches),
 `history.ts` and `quotes.ts` (answers into rows), `jobs.ts` (the
-schedule), `valuation.ts` (an ADR's quote summary) and
-`top-holdings.ts` (a fund's), all under `src/sources/yahoo/`. The queue, back-off,
+schedule), `valuation.ts` (an ADR's quote summary),
+`top-holdings.ts` (a fund's) and `options.ts` (option chains), all under
+`src/sources/yahoo/`. The queue, back-off,
 deadlines, retries, backfill, rescales, phrases and the lock every
 source shares are in `docs/sources.md`; sessions, bar dates and
 finality in `docs/calendars.md`; tables, the writer and staleness in
@@ -60,11 +61,12 @@ finality in `docs/calendars.md`; tables, the writer and staleness in
 
 ## The quote summary
 
-- **One more call, behind a session**, read two ways (`summary()`,
-  one task for both): `valuation()` asks
-  `query2.finance.yahoo.com/v10/finance/quoteSummary/<symbol>?modules=defaultKeyStatistics,price&crumb=<crumb>`
-  and `topHoldings()` the same with `modules=topHoldings,price`, each
-  with the session's cookie. Without them Yahoo answers 401
+- **Two more calls, behind a session**, read three ways (`summary()`,
+  one task for all): `valuation()` asks
+  `query2.finance.yahoo.com/v10/finance/quoteSummary/<symbol>?modules=defaultKeyStatistics,price&crumb=<crumb>`,
+  `topHoldings()` the same with `modules=topHoldings,price`, and
+  `options()` `query2.finance.yahoo.com/v7/finance/options/<symbol>?date=<epoch>&crumb=<crumb>`
+  (below), each with the session's cookie. Without them Yahoo answers 401
   `Unauthorized` ("Invalid Crumb"); the six calls above need neither.
 - **The session is a cookie and a crumb, held in memory only**
   (`newSession()`): `https://fc.yahoo.com/` sets the cookie whatever
@@ -144,6 +146,38 @@ finality in `docs/calendars.md`; tables, the writer and staleness in
   route ask inline only a fund never fetched well and not failed
   within `RETRY_MS`, since the instrument page re-reads every 30
   seconds.
+
+## Option chains
+
+- **Asked for any instrument with source `yahoo`, on any market**
+  (`optionable()` in `options.ts`), inside a `research` call only
+  (`docs/research.md`); no job asks one and nothing is stored. A
+  listing Yahoo lists no options for (a UCITS ETF, a crypto pair) answers
+  `expirationDates` and `strikes` empty and no `options`: chain null,
+  answered `NO_OPTIONS`.
+- **One call answers one expiry.** Asked without `date`, Yahoo answers
+  every listed expiry and the nearest one's chain; `date=` is always an
+  epoch from that list, never one computed from a date. Expiries are
+  epochs at 00:00 UTC of the expiry date, read as that UTC date. An
+  answer whose expiry is not the one asked (Yahoo answers the nearest
+  for a date it does not list) is `malformed answer`, as is one naming
+  another symbol (`quote.symbol`) or listing expiries with no
+  `options`.
+- **Read per contract** (`parseOptions()`): `strike`, `bid`, `ask`,
+  `lastPrice`, `lastTradeDate`, `volume`, `openInterest`,
+  `impliedVolatility` and `inTheMoney`, and the quote's
+  `regularMarketPrice`, `regularMarketTime` and `currency`. A figure
+  that is missing or below 0 is null, never 0; a zero bid is kept, a
+  fact far out of the money.
+- **Implied volatility is Yahoo's, never computed**: a fraction a year,
+  null below `IV_MIN` (one percent) or above `IV_MAX` (10). An ETF's in-the-money
+  puts have read 1e-05 beside live bids, a placeholder.
+- **One contract size**: a contract whose `contractSize` is not
+  `REGULAR`, of another expiry, or with a strike already read on its
+  side is dropped, so prices and open interest compare.
+- **Cost: one call per expiry read**, plus the session's two on first
+  use; a read keeps each answer in memory for the quote period
+  (`docs/research.md`).
 
 ## Parsing
 

@@ -53,8 +53,7 @@ export const instructions = (opens: {
 - Bars, a chart's data or any period: \`history\`; its last daily bar's \`final\` turns true only once the next session shows. Moves today or in the last five sessions: \`history\` with \`interval\` 5m, regular-hours closes as fresh as quotes, measured from its \`previous_close\`; \`extended\` adds pre- and post-market closes while closed.
 - Many symbols at once: \`movers\` for today's moves and average crossings, \`screen\` to filter and rank on signals and returns, \`fields\` adding columns.
 - A US share's fundamentals, analysts, earnings, insiders and news, or a US ETF's news: \`research\`, for the few symbols that matter. For news, \`section\` news with \`since\` keeps to a recent window; read its \`counts\` by sentiment before the articles.
-- A US share's SEC filings, late or restated, or securities offered: \`research\`, \`section\` filings; its overview carries the flags.
-- What an ETF or fund holds: \`research\`, \`section\` top_holdings.
+- Beyond a US share's research: \`research\` sections filings (SEC; flags in the overview), top_holdings (an ETF or fund) and options (implied move, IV, open interest).
 - Earnings dates: \`events\`. A named share under \`no_event\` had no earnings in the window: an answer, not missing data.${ALERTS[opens.alerts]}${opens.profile === "none" ? "" : PROFILE_LINE}${opens.tradePlans === "none" ? "" : TRADE_PLANS_LINE}${PORTFOLIO_LINE[opens.portfolio]}
 - An unknown or ambiguous name: \`search\`.
 Answer from these tools, not the HTTP API; never recompute an average or return a tool already gives.
@@ -71,4 +70,4 @@ Units: prices are in the listing's \`currency\`. A series whose \`unit\` is perc
 
 Paging: never change the arguments to avoid a page.
 
-What this server does not hold, so look elsewhere and never read its silence as none: macro dates (central banks, data releases, elections), a fund's holdings past its ten largest or its fees and replication, prices of funds Yahoo does not list${opens.portfolio === "none" ? "" : " (`portfolio` holds hand-priced ones)"}, options, and analyst estimate revisions.`;
+What this server does not hold, so look elsewhere and never read its silence as none: macro dates (central banks, data releases, elections), a fund's holdings past its ten largest or its fees and replication, prices of funds Yahoo does not list${opens.portfolio === "none" ? "" : " (`portfolio` holds hand-priced ones)"}, and analyst estimate revisions.`;
