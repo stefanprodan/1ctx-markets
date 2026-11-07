@@ -110,8 +110,11 @@ const SPLIT_PX = 5;
 // a trade mark placed on the plot, in the plot's pixels
 type Dot = TradeMark & { x: number; y: number; month: boolean };
 
-// a month reads as its total, a day as its price
+// a month reads as its total, a day as its price; a buy at no cost is a
+// reward (staking), not a purchase
 const tradeText = (d: Dot) => {
+  if (d.side === "buy" && d.price === 0)
+    return `Reward ${quantity(d.quantity)}`;
   const did = d.side === "buy" ? "Bought" : "Sold";
   return d.month
     ? `${did} ${quantity(d.quantity)} for ${figure(d.quantity * d.price)}`

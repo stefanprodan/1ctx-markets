@@ -117,25 +117,6 @@ export const ROUTES: readonly Route[] = [
     },
   },
   {
-    path: ALERTS,
-    label: "Alerts",
-    icon: "bell",
-    view: AlertRules,
-    load: async () => {
-      await markets.alerts.loadAll();
-    },
-  },
-  {
-    path: ALERTS_HISTORY,
-    label: "Alerts",
-    icon: "bell",
-    parent: ALERTS,
-    view: AlertsFired,
-    load: async () => {
-      await markets.alerts.loadAll();
-    },
-  },
-  {
     path: TRADE_PLANS,
     label: "Trade plans",
     icon: "flag",
@@ -156,6 +137,25 @@ export const ROUTES: readonly Route[] = [
       if (Number.isSafeInteger(id) && id > 0) {
         await markets.tradePlans.open(id, symbol);
       }
+    },
+  },
+  {
+    path: ALERTS,
+    label: "Price alerts",
+    icon: "bell",
+    view: AlertRules,
+    load: async () => {
+      await markets.alerts.loadAll();
+    },
+  },
+  {
+    path: ALERTS_HISTORY,
+    label: "Price alerts",
+    icon: "bell",
+    parent: ALERTS,
+    view: AlertsFired,
+    load: async () => {
+      await markets.alerts.loadAll();
     },
   },
   {
