@@ -1,8 +1,12 @@
 # Deploying the server
 
-Governs running the binary as a service and the staging scripts:
-`src/service/`, `scripts/staging.sh`, `scripts/staging.env.example` and
-their `Makefile` and `package.json` targets. Flags, `GET /health` and
+Governs running the binary as a service, the staging scripts, releases,
+the container image and Docker Compose: `src/service/`,
+`scripts/staging.sh`, `scripts/staging.env.example`,
+`.github/workflows/release.yml`, `Dockerfile`, `.dockerignore`,
+`deploy/docker/`, `scripts/archive.sh`, `scripts/image.sh`,
+`scripts/image-smoke.sh`, `THIRD_PARTY_LICENSES.md` and their `Makefile`
+and `package.json` targets. Flags, `GET /health` and
 the shutdown order are in `docs/config.md`.
 
 ## The OS service (`1ctx-markets service`)
@@ -113,3 +117,90 @@ under `~/.1ctx-markets` and the binary in `~/.1ctx-markets/bin`.
 - **Admin actions run on the box over ssh** with `1ctx-markets admin
   status|retry|refetch|delete` (`docs/admin.md`), which calls the
   installed service on loopback, so it keeps running.
+
+## Releases
+
+A release is a GitHub release with binaries, plus a container image on
+the GitHub Container Registry (GHCR), both made by
+`.github/workflows/release.yml` when a version tag is pushed.
+
+- **A `v*` tag releases only a commit on `main`.** CI has already
+  linted and tested it, so the release does not. The tag must be
+  `vMAJOR.MINOR.PATCH[-PRERELEASE]`; a `-` makes a GitHub prerelease.
+  The binaries and the image are built with `VERSION` set to the tag,
+  and the Linux amd64 binary must print it for `--version`.
+- **Every archive is built on one Linux amd64 runner.** Bun
+  cross-compiles Linux arm64 and macOS arm64 (the macOS build ad-hoc
+  signed), each checked with `file`; only the amd64 binary runs the
+  smoke test there. `scripts/archive.sh <os>_<arch>` packs
+  `dist/1ctx-markets_<os>_<arch>.tar.gz` with `LICENSE` and
+  `THIRD_PARTY_LICENSES.md`; `1ctx-markets_checksums.txt` holds their
+  SHA-256 sums and carries a build provenance attestation.
+- **The image is `ghcr.io/stefanprodan/1ctx-markets:<tag>`, never
+  `latest`,** for linux/amd64 and linux/arm64, its description taken
+  from `package.json`, with a provenance attestation. `make image-smoke`
+  runs before it is pushed.
+- **One Bun version.** `.bun-version` is what every workflow installs;
+  `scripts/bun-version.sh` fails when the Dockerfile's
+  `oven/bun:<version>@sha256:<digest>` pin differs, so the archives and
+  the image come from the same Bun.
+- **`THIRD_PARTY_LICENSES.md` holds the license of every package the
+  release bundles,** with lightweight-charts' NOTICE and the web UI's
+  fonts. `test/third-party-licenses.test.ts` bundles with the release
+  options and fails on a bundled package the file has no `## <name>`
+  section for, so a new dependency cannot ship without its license.
+
+## The container image
+
+- **The build cross-compiles on `$BUILDPLATFORM`.** Bun builds every
+  platform natively, so nothing runs under emulation. The binary's
+  `.env` and `bunfig.toml` autoload is off, since its working directory
+  is the data volume.
+- **`.dockerignore` is an allowlist.** The tree holds key files
+  (`.preview/`, `workspace/`); only what the build reads enters the
+  context: `package.json`, `bun.lock`, `tsconfig.json`,
+  `scripts/build.ts`, `src/`, `skills/` (embedded in the binary) and the
+  two license files.
+- **The container runs as user 65532 on a read-only root, with no Linux
+  capabilities.** The server writes only under `/data`; keep it so.
+  The licenses are in `/usr/share/doc/1ctx-markets/`.
+- **`CMD` holds the server flags (`--listen 0.0.0.0:11238 --data
+  /data`); arguments replace it whole,** so a Docker Compose `command:`
+  or `docker run` arguments repeat every flag they keep.
+- **`/data` is a named volume, never a bind mount on Docker Desktop or
+  OrbStack.** Their file sharing breaks the POSIX locks SQLite's WAL
+  needs. A new named volume takes the image's `/data` with its owner
+  65532. On a Linux host a bind mount works once it is
+  `chown 65532:65532`.
+- **`/data/secrets` is mounted read-only.** The owner writes
+  `user-admin.key` (32 or more printable ASCII characters) and any
+  `source-<name>.key` before the first start, each readable by 65532
+  (mode 644). The server keeps an existing admin key and writes nothing
+  else there; on a read-only mount it cannot write one, so a missing
+  admin key fails the start.
+- **`make image-smoke` runs the image as Docker Compose does**: a fresh
+  named volume, read-only secrets holding an admin key, a read-only
+  root, no capabilities, and `--no-sync` so no source is called. It
+  checks `--version` and the startup line's version, a refused `/mcp`
+  without a key and an MCP `initialize` with it, that the key file is
+  unchanged and nothing else was written beside it, then stops the
+  container with SIGTERM and requires exit 0. `make image` builds and
+  loads the image for the host; `PLATFORMS=linux/amd64,linux/arm64
+  make image` only builds both into the cache.
+- **CI runs `make image-smoke` and `docker compose config` on both
+  Compose files** in `build-test`, on every pull request, after the
+  binary's smoke test.
+
+## Docker Compose
+
+- **`deploy/docker/compose.yaml` runs a release by `MARKETS_VERSION`,
+  the tag,** which it requires. It publishes port 11238 on loopback only, mounts the
+  named volume `data` at `/data` and `./secrets` read-only at
+  `/data/secrets`, with a read-only root, no capabilities and
+  `no-new-privileges`. `deploy/docker/secrets/` is gitignored.
+- **`compose.dev.yaml`, layered over it with `MARKETS_VERSION=dev`,
+  builds from the checkout and never pulls.**
+- **The stop grace is 45 seconds,** the service's kill timeout: a source
+  call already sent ends within its 30-second timeout, then the writer
+  drains its queue. Docker's 10-second default would cut the drain; a
+  plain `docker run` passes `--stop-timeout 45`.

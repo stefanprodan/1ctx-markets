@@ -122,3 +122,6 @@ workspace/
 
 # the staging host, never tracked
 scripts/staging.env
+
+# the Docker Compose keys
+deploy/docker/secrets/

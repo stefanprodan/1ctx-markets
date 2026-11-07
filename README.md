@@ -50,7 +50,10 @@ All free. The keyed ones turn on when their key file is present:
 
 ## Quick start
 
-You need [Bun](https://bun.sh) at the version in `.bun-version`.
+Download a binary for Linux (amd64, arm64) or macOS (Apple silicon)
+from [Releases](https://github.com/stefanprodan/1ctx-markets/releases),
+or build it with [Bun](https://bun.com) at the version in
+`.bun-version`:
 
 ```sh
 git clone https://github.com/stefanprodan/1ctx-markets.git
@@ -78,6 +81,38 @@ service.
 
 The server speaks plain HTTP: keep it on loopback, a private network
 such as Tailscale, or behind a TLS proxy.
+
+### With Docker
+
+From a clone of this repository, write the admin key, and the key of
+any source you want, before the first start:
+
+```sh
+cd deploy/docker
+mkdir -p secrets
+openssl rand -hex 32 > secrets/user-admin.key
+printf '%s' '<key>' > secrets/source-finnhub.key   # optional, as above
+chmod 644 secrets/*.key
+```
+
+The container reads `secrets/` read-only, so it cannot write a key of
+its own; the admin key must be 32 or more characters. Start a release
+from [Releases](https://github.com/stefanprodan/1ctx-markets/releases):
+
+```sh
+MARKETS_VERSION=v0.0.1 docker compose up -d
+```
+
+Or build the image from the checkout:
+
+```sh
+MARKETS_VERSION=dev docker compose -f compose.yaml -f compose.dev.yaml up -d --build
+```
+
+The server listens on `127.0.0.1:11238` and keeps its database in the
+Docker volume `1ctx-markets_data`. To connect an agent, use the commands
+below with `deploy/docker/secrets/user-admin.key` in place of
+`~/.1ctx-markets/secrets/user-admin.key`.
 
 ## Connect an agent
 

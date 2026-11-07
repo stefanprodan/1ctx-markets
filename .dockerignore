@@ -1,0 +1,10 @@
+# An allowlist: the tree holds key files that must never reach the context.
+*
+!package.json
+!bun.lock
+!tsconfig.json
+!LICENSE
+!THIRD_PARTY_LICENSES.md
+!scripts/build.ts
+!skills/
+!src/
