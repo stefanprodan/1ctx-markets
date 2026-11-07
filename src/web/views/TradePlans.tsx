@@ -621,7 +621,7 @@ export function TradePlanBody({
               (onPhone.value ? (
                 <button
                   type="button"
-                  class="btn page-add"
+                  class="btn menu-btn-head"
                   aria-label="Edit"
                   title="Edit"
                   disabled={busy}
