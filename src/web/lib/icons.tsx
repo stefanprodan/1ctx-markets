@@ -115,6 +115,8 @@ const PATHS = {
   plus: "M8 3v10M3 8h10",
   // a condition not met yet: an empty circle, never a cross that reads as delete
   circle: "M8 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10z",
+  // Trade plans: a flag planted at a level
+  flag: "M3.5 14V2.5M3.5 3h8.5l-2 3 2 3H3.5",
   // Alerts: a bell
   bell: "M4 11.5V7a4 4 0 0 1 8 0v4.5l1 1H3zM6.75 13.5a1.4 1.4 0 0 0 2.5 0",
   grid: "M2.5 2.5h4.5v4.5h-4.5zM9 2.5h4.5v4.5H9zM2.5 9h4.5v4.5h-4.5zM9 9h4.5v4.5H9z",

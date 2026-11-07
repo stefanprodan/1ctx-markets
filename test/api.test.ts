@@ -2523,7 +2523,7 @@ async function profileOperations(
   expect(read).toMatchObject({
     revision: 2,
     text: "# Made-up owner\n\nHorizon: 10 years.\n",
-    html: '<h1 class="md-h1">Made-up owner</h1><p class="md-p">Horizon: 10 years.</p>',
+    html: '<h1 class="md-h1" id="md-made-up-owner">Made-up owner</h1><p class="md-p">Horizon: 10 years.</p>',
   });
   await check("GET", P, await t.call(`${P}?x=1`), 400);
   await refusals(P, P, { method: "GET" });
@@ -2540,7 +2540,7 @@ async function profileOperations(
     200,
   );
   expect(drawn).toEqual({
-    html: '<h1 class="md-h1">Draft</h1><p class="md-p">&lt;script&gt;alert(1)&lt;/script&gt;</p>',
+    html: '<h1 class="md-h1" id="md-draft">Draft</h1><p class="md-p">&lt;script&gt;alert(1)&lt;/script&gt;</p>',
   });
   await check("POST", D, await t.call(D, post({ text: "nul \u0000" })), 400);
   await check("POST", D, await t.call(D, post({ text: "lone \ud800" })), 400);
@@ -2668,7 +2668,7 @@ async function analysisOperations(
   const read = await check("GET", P, await t.call(A), 200);
   expect(read).toMatchObject({
     revision: 1,
-    html: '<h1 class="md-h1">Made-up note</h1><p class="md-p">Trend: up.</p>',
+    html: '<h1 class="md-h1" id="md-made-up-note">Made-up note</h1><p class="md-p">Trend: up.</p>',
   });
 
   const D = `${P}/preview`;
@@ -2678,7 +2678,7 @@ async function analysisOperations(
     await t.call(`${A}/preview`, post({ text: "# Draft\n" })),
     200,
   );
-  expect(drawn).toEqual({ html: '<h1 class="md-h1">Draft</h1>' });
+  expect(drawn).toEqual({ html: '<h1 class="md-h1" id="md-draft">Draft</h1>' });
   await check("POST", D, await t.call(`${A}/preview`, post({})), 400);
   await check(
     "POST",
@@ -2814,7 +2814,7 @@ async function tradePlanOperations(
     await t.call(D, send("POST", { text: "# Draft\n" })),
     200,
   );
-  expect(drawn).toEqual({ html: '<h1 class="md-h1">Draft</h1>' });
+  expect(drawn).toEqual({ html: '<h1 class="md-h1" id="md-draft">Draft</h1>' });
   await check("POST", D, await t.call(D, send("POST", {})), 400);
   await check(
     "POST",
@@ -2829,7 +2829,7 @@ async function tradePlanOperations(
   const read = await check("GET", P, await t.call(`${L}/1?symbol=NVDA`), 200);
   expect(read).toMatchObject({
     text: plan.text,
-    sections: [{ heading: "NVDA", level: 3, line: 3 }],
+    sections: [{ heading: "NVDA", level: 3, line: 3, anchor: "md-nvda" }],
   });
   await check("GET", P, await t.call(`${L}/x`), 400);
   await check("GET", P, await t.call(`${L}/99`), 404);

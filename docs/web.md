@@ -271,8 +271,8 @@ learns it from `email_on` in `GET /ui/me`.
   and at once when the tab comes back; it sets its timer once and calls
   the latest load, so a redraw (a crosshair moving) never pushes the
   refresh back. Every page with data the server or an agent changes
-  uses it: Home, Screener, an instrument, Portfolios, Profile (held
-  while its editor or History is open) and Server admin's Status; Connect
+  uses it: Home, Screener, an instrument, Portfolios, Profile and Trade
+  plans (held while an editor or History is open) and Server admin's Status; Connect
   agents changes only by the operator.
 - **A re-read sweeps a hairline under the page's title**
   (`reloading`, `page-title-busy`), never the menu's icons, held
@@ -380,8 +380,8 @@ learns it from `email_on` in `GET /ui/me`.
   a phone on its side; light glass (`--bar-line`, `--shadow-bar`).
   Five slots, an icon over a word, the lit one on the hover tone (`barLit()`):
   Home, Screener (lit on `/symbol/:id` too), Portfolios (and
-  `/portfolios/:id`), Search and More (lit on Profile, Connect agents
-  and Server admin). Search is a button opening the page's own
+  `/portfolios/:id`), Search and More (lit on Alerts, Trade plans,
+  Profile, Connect agents and Server admin). Search is a button opening the page's own
   symbol search as its sheet, off while the page leaves the search out.
   The view scrolls under the bar; `.shell-main-bar` adds the bar to the
   page's bottom inset, so the last row and the footer end above it.
@@ -393,7 +393,8 @@ learns it from `email_on` in `GET /ui/me`.
   leaves with a drawer, the sheet or a page. Every drawer
   and the search sheet sit above it (`--z-drawer`, `--z-sheet` over
   `--z-shell`).
-- **More is the shared `Drawer`** titled More: Profile, Connect agents,
+- **More is the shared `Drawer`** titled More: Alerts, Trade plans,
+  Profile, Connect agents,
   and for an admin Server admin (red while failing), the
   rail's Shared with me and Recent, then the user menu's own items (`UserItems`): the
   person's name, Dark theme and Sign out. A tap goes there
@@ -813,8 +814,8 @@ The parts:
   (`GET /api/v1/alerts/seen`, read after sign-in and on the shell's
   30-second refresh), shown 99+ past 99; on a phone the count sits on
   Alerts in More and a dot on More.
-- **Profile** (`/profile`, between Portfolios and Connect agents in the
-  rail) is the owner's profile (`docs/profile.md`): how they invest, one
+- **Profile** (`/profile`, between Trade plans and Connect agents in
+  the rail) is the owner's profile (`docs/profile.md`): how they invest, one
   Markdown document agents read before any work on the portfolio.
   `Profile.tsx` is the view, `data/profile.ts` its calls; the size,
   the outline and what each toolbar button types are
@@ -852,6 +853,82 @@ The parts:
   that revision drawn; Restore (not on the current one) saves its text
   on the live revision, so a newer save refuses it instead of being
   overwritten, and the profile is read again before a second try.
+- **Trade plans** (`/trade-plans` and `/trade-plans/{id}`, between
+  Alerts and Profile in the rail, the flag) are the reader's own plans
+  (`docs/trade-plans.md`): Markdown tagged with symbols, never another
+  person's, never an order. `TradePlans.tsx` is the view, its card on an
+  instrument page `InstrumentTradePlans.tsx`, `data/trade-plans.ts` the
+  calls; the filters, the card's list and the words are
+  `TradePlans.model.ts`, which has no DOM and is tested
+  (`test/web-trade-plans.test.tsx`).
+- **The list** reads every page of `GET /api/v1/trade-plans?status=all`
+  once, active and archived, and filters it in the page: Active (the
+  default), Archived, All (both, as the server's own `all`) and Deleted,
+  which alone reads `status=removed`, only once picked, so a deleted
+  plan can be found and restored; each with its count, Deleted's once
+  read. A symbol menu beside them ("All symbols", then every symbol the
+  plans hold) keeps one symbol's plans, and stays while a symbol is
+  picked that no plan holds any more, so it can be cleared. The filters
+  stay while the reader moves about the app and reset on sign-out. A row
+  is the name, the status badge (Active in the link colour, Archived
+  grey, Deleted red), a chip per symbol linking its instrument page (the
+  first five, three on a phone, then a "+N" count that opens the plan),
+  Review by with "Review due" (red) from the answer's `review_due`,
+  never worked out here, and when it was updated and by whom
+  (`authorWords`, as the profile's); a phone keeps the name, with the
+  badge, the due tag and the chips under it, and the age. A row opens
+  the plan. With no active or archived plan, a panel (No trade plans
+  yet) offers New trade plan and Show deleted, which picks Deleted and
+  reads it again; while a deleted plan is left the filters stay in its
+  place. A filter left empty says "None here." A failed refresh says so
+  over the rows still shown (`stale`), as Alerts does.
+- **New trade plan** (`AddButton` in the head, and the empty panel's
+  button) opens the drawer that edits one: Name, Symbols (typed with
+  spaces or commas, each once) and Review by (a date field) above the
+  Profile page's editor (`useEditor()`), Write and Preview, the
+  toolbar, the size against the cap, Cancel and Save; a sheet from the
+  bottom on a phone. Preview asks `POST /api/v1/trade-plans/preview`.
+  A save posts the plan and opens it.
+- **A plan** is the head (its name, cut; "Saved <ago> by <author>", left
+  out on a phone, where the name needs the room; History, Edit and the
+  More menu; Back on a phone) over one card: a header as wide as the
+  text (Status, Review by, Symbols with their count; a phone shows six
+  chips and a "+N" button that shows the rest), a rule, then `html`
+  drawn as the profile is. More holds Archive or Unarchive (`PUT
+  {revision, status}`) and Delete, asked once inside the menu as an
+  instrument's Delete is; a deleted plan shows Deleted, no Edit, and
+  More holds Restore. Every refusal shows in the page's notice in the
+  server's words (a name an active plan holds, the active limit, a stale
+  revision), and the plan and the list are read again either way.
+- **Edit is the same drawer** with the plan's fields and text, Save on
+  a change to either. A save sends the fields changed first (`PUT
+  {revision, ...}`), so a taken name or a symbol that does not resolve
+  stops it before the text is sent, then the text at the revision the
+  first left: two revisions when both change, since the server's write
+  takes one or the other. A symbol with several listings says the
+  server's sentence and the listings' ids. A stale save keeps the typed
+  text and says "Changed since you opened it. Copy your text, then
+  reload.", as the profile's, and every save after it in the same
+  drawer is refused the same way until the plan is reloaded. When the
+  fields saved and only the text was stale, it says "Name, symbols and
+  date saved. The text changed since you opened it: copy it, then
+  reload." **History** is the Profile page's drawer
+  on the plan's `versions`; its Restore puts back the text, at the live
+  revision. The page's refresh holds while either is open.
+- **Opened from an instrument** (`/trade-plans/{id}?symbol=<id>`, built
+  by `tradePlanHref()`), the read asks `?symbol=` and scrolls to its
+  first section's `anchor`, the heading's `id` the renderer gave it
+  (`docs/trade-plans.md`), once per arrival; with no section, the top.
+- **The instrument page's card** (Trade plans, under the cards and above
+  the analysis, on a hand-priced fund's page too) reads
+  `GET /api/v1/trade-plans?status=all&symbol=<id>`, the reader's own
+  plans only, and lists the active ones, each its name, a "Review due"
+  tag and its age, opening the plan at the symbol's section. Show
+  archived, in its head while any is archived, adds them with their
+  badge. No card when the reader has none for the symbol, archived
+  ones included; with archived ones only, the card says "No active
+  plans." A failed read keeps the last answer; the page's refresh reads
+  it again.
 - **Connect agents** (`/connect`, before Server admin in the rail), as
   1ctx's: a Keys card from `GET /api/v1/keys` ("N of 5", the person's
   own keys counted, New key in its head), a table of each key's name,
@@ -859,17 +936,18 @@ The parts:
   with an Owner column (`owner.name`); another person's key opens with
   its owner and the picks off, Revoke and Cancel only. The
   Access column says "Reads portfolios", "Writes portfolios", "Reads
-  alerts", "Writes alerts", "Reads the profile" or "Writes the
-  profile" only for what a key has, shows only when some key has any,
+  alerts", "Writes alerts", "Reads the profile", "Writes the
+  profile", "Reads analyses", "Writes analyses", "Reads trade plans" or
+  "Writes trade plans" only for what a key has, shows only when some key has any,
   and drops on a phone with the last use. A row opens the key's drawer:
-  its last use and expiry, then Portfolios, Alerts and Profile,
-  each No access, Read, or Read and write, set to what it has; Revoke at
+  its last use and expiry, then Portfolios, Alerts, Profile, Analysis
+  and Trade plans, each No access, Read, or Read and write, set to what it has; Revoke at
   the foot's start asks once beside Keep, and Cancel and Save (`PATCH
   /api/v1/keys/{id}`, waiting on a change) at its end. New key opens the
   same drawer: a name, shaped as typed to the server's rule, Expires
-  (Never, 30, 90 or 365 days) and the three picks, no access by default
-  (the profile is personal, so a key reaches it only when the admin
-  picks it). Then a Setup card with the agent picked in its head (Claude
+  (Never, 30, 90 or 365 days) and the five picks, no access by default
+  (the profile and trade plans are personal, so a key reaches them only
+  when picked). Then a Setup card with the agent picked in its head (Claude
   Code, Codex, OpenCode) and the line that adds this server as the MCP
   server `markets` at the page's origin plus `/mcp`. At the cap, New key
   goes and a line names the cap. A revoke that answers 404 drops the row
@@ -1586,3 +1664,10 @@ The parts:
 - **Alerts** (`test/web-alerts.test.ts`): `Alerts.model.ts`'s words for
   every field and op, groups and gates, triggers, the server's state
   and distance, tiles and order, and the store's paths and paging.
+- **Trade plans** (`test/web-trade-plans.test.tsx`): the list and its
+  filters, Deleted read only once picked, every page read, the empty
+  panel, review due, a plan read for a symbol and drawn, a deleted one
+  without Edit, delete, restore and archive with the revision read and
+  a refusal in the server's words, the editor's fields sent before the
+  text and a stale save, the instrument card present, absent and with
+  archived ones only, and its link to the symbol's section.

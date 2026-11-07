@@ -120,6 +120,10 @@ const section = object({
   heading: note(str, "The heading's plain text, cut at 120 characters."),
   level: int,
   line: note(int, "The heading's line in the text, from 1."),
+  anchor: note(
+    nstr,
+    "The heading's `id` in `html`, `md-` and its words lowercased, so a link opens the section; null when none is drawn.",
+  ),
 });
 
 export const tradePlansSchemas: Record<string, Schema> = {

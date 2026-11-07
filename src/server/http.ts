@@ -54,6 +54,8 @@ export const UI_PATHS = [
   "/alerts",
   "/alerts/history",
   "/profile",
+  "/trade-plans",
+  "/trade-plans/:id",
 ] as const;
 
 export type RouterDeps = {

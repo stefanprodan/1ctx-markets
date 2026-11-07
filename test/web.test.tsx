@@ -449,6 +449,7 @@ describe("the routes", () => {
       "Screener",
       "Portfolios",
       "Alerts",
+      "Trade plans",
       "Profile",
       "Connect agents",
       "Server admin",
@@ -459,6 +460,7 @@ describe("the routes", () => {
       "Screener",
       "Portfolios",
       "Alerts",
+      "Trade plans",
       "Profile",
       "Connect agents",
     ]);
@@ -2915,12 +2917,20 @@ describe("the phone's bar", () => {
     expect(barLit("/symbol/US%3AAAPL")).toBe("screener");
     expect(barLit("/portfolios")).toBe("portfolios");
     expect(barLit("/portfolios/5")).toBe("portfolios");
-    for (const here of ["/profile", "/connect", "/admin", "/admin/users"]) {
+    for (const here of [
+      "/profile",
+      "/trade-plans",
+      "/trade-plans/3",
+      "/connect",
+      "/admin",
+      "/admin/users",
+    ]) {
       expect(barLit(here)).toBe("more");
     }
     expect(barLit("/instruments")).toBeNull();
     expect(MORE.map((r) => r.label)).toEqual([
       "Alerts",
+      "Trade plans",
       "Profile",
       "Connect agents",
       "Server admin",
@@ -3204,6 +3214,7 @@ describe("More's drawer", () => {
       ].map((m) => m[1] ?? m[2] ?? m[3] ?? m[4]);
       expect(words).toEqual([
         "Alerts",
+        "Trade plans",
         "Profile",
         "Connect agents",
         "Server admin",
@@ -3219,9 +3230,9 @@ describe("More's drawer", () => {
       );
       expect(body.html).toContain('href="/symbol/US%3AAMD"');
       const links = body.nodes.filter((n) => n.type === "a");
-      expect(links).toHaveLength(5);
+      expect(links).toHaveLength(6);
       for (const a of links) a.props.onClick();
-      expect(closed).toBe(5);
+      expect(closed).toBe(6);
       // the user menu's own items, closing once signed out
       expect(
         body.nodes.find((n) => n.type === UserItems).props.onSignedOut,

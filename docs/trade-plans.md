@@ -56,7 +56,15 @@ broker, fill or alert comes from it.
   `US:ON`; a one-letter symbol can still match a capital used as a
   word, accepted since sections only point a reader somewhere.
 - **`slug()` is the one anchor form** for a heading: its plain text
-  lowercased, punctuation dropped, spaces as dashes.
+  with accents folded, lowercased, everything but `a-z`, `0-9`, spaces
+  and dashes dropped, spaces as dashes, so an id needs no escaping in
+  an attribute or an address. `anchors()` makes them unique in one
+  text: `md-` and the slug, a repeat taking `-1`, `-2` as it comes, a
+  heading of no such characters `md-section`. The renderer gives each
+  heading that `id` (`docs/profile.md`), and the REST read names each
+  section's `anchor`: the first drawn heading, after the last one
+  matched, whose words slug the same, so the web UI opens a plan at a
+  symbol's first section.
 
 ## The rules it shares with the profile and the analysis
 

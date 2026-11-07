@@ -113,7 +113,7 @@ import {
   writePlan,
 } from "../operations/trade-plans.ts";
 import type { Who } from "../operations/who.ts";
-import { renderMarkdown } from "../profile/markdown.ts";
+import { drawMarkdown, renderMarkdown } from "../profile/markdown.ts";
 import {
   profileVersion,
   profileVersions,
@@ -999,15 +999,18 @@ function tradePlans(m: Markets): Route[] {
         if (p === null) {
           return problem("not_found", `no trade plan ${id}`);
         }
+        // a section names its heading's id in the html, for a link to it
+        const drawn = drawMarkdown(p.text);
         return json({
           ...readFields(
             m,
             who.user,
             p,
             q.symbol === undefined ? null : String(q.symbol),
+            drawn.headings,
           ),
           text: p.text,
-          html: renderMarkdown(p.text),
+          html: drawn.html,
         });
       },
     },

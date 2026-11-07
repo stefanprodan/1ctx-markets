@@ -11,9 +11,10 @@ import { readInstrument } from "../market/instruments.ts";
 import { localDate } from "../market/zone.ts";
 import { fundKey, isFundKey } from "../portfolios/funds.ts";
 import { timeZone } from "../portfolios/store.ts";
+import type { DrawnHeading } from "../profile/markdown.ts";
 import { FUND_MARKET } from "../sources/ids.ts";
 import { planRead } from "../trade-plans/read.ts";
-import { namesOf, sectionsFor } from "../trade-plans/sections.ts";
+import { namesOf, sectionsFor, slug } from "../trade-plans/sections.ts";
 import {
   createPlan,
   LIST_STATUSES,
@@ -401,15 +402,31 @@ export const MAX_SECTIONS = 20;
 const HEADING_CHARS = 120;
 export const SECTIONS_RESERVE = 4096;
 
-export function sectionsOf(text: string, symbol: string, name: string | null) {
+// with the drawn headings, as REST answers them, each section gains the id
+// of its heading in the HTML: the first one after the last matched with its
+// words, null when the renderer drew none such
+export function sectionsOf(
+  text: string,
+  symbol: string,
+  name: string | null,
+  drawn?: readonly DrawnHeading[],
+) {
   const market = symbol.slice(0, symbol.indexOf(":"));
+  let from = 0;
   return sectionsFor(text, namesOf({ id: symbol, market, name }))
     .slice(0, MAX_SECTIONS)
-    .map((h) => ({
-      heading: [...h.text].slice(0, HEADING_CHARS).join(""),
-      level: h.level,
-      line: h.line,
-    }));
+    .map((h) => {
+      const section = {
+        heading: [...h.text].slice(0, HEADING_CHARS).join(""),
+        level: h.level,
+        line: h.line,
+      };
+      if (drawn === undefined) return section;
+      const words = slug(h.text);
+      const at = drawn.findIndex((d, k) => k >= from && slug(d.text) === words);
+      if (at !== -1) from = at + 1;
+      return { ...section, anchor: at === -1 ? null : drawn[at]!.id };
+    });
 }
 
 const KIND =
@@ -598,6 +615,7 @@ export function readFields(
   owner: string,
   p: Plan,
   symbol: string | null,
+  drawn?: readonly DrawnHeading[],
 ) {
   const id = storedSymbol(m, symbol);
   return {
@@ -614,6 +632,7 @@ export function readFields(
               p.text,
               id,
               readInstrument(m.db, id)?.name ?? null,
+              drawn,
             ),
           }),
   };

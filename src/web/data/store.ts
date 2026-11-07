@@ -25,6 +25,7 @@ import {
 } from "./api.ts";
 import { portfolioStore } from "./portfolios.ts";
 import { profileStore } from "./profile.ts";
+import { tradePlansStore } from "./trade-plans.ts";
 
 export type SourceStatus = {
   name: string;
@@ -645,6 +646,7 @@ export function store(
     portfolios.clear();
     shared.clear();
     profile.clear();
+    tradePlans.clear();
     admin.clear();
   };
   const quiet = client(fetchFn, () => {}, buildWatch(reloadPage));
@@ -705,6 +707,7 @@ export function store(
     gone: () => void loadSharing(),
   });
   const profile = profileStore(call, () => session);
+  const tradePlans = tradePlansStore(call, () => session);
   // one per symbol page, read and written by every sign-in
   const analysis = (id: string) => analysisStore(call, () => session, id);
   const admin = adminStore(
@@ -1430,6 +1433,7 @@ export function store(
     share,
     profile,
     analysis,
+    tradePlans,
     alerts,
     keys,
     keysLimit,

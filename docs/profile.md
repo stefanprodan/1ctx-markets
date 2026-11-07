@@ -138,4 +138,7 @@ revision refused.
   1ctx without its code highlighting and app links), so the web UI
   ships no parser. It is the safety boundary for text any write key can
   set: no raw HTML, only http, https and mailto links, an image shown
-  as its text and address, never fetched.
+  as its text and address, never fetched. Each heading carries an `id`,
+  `md-` and the slug of its words, unique in one render
+  (`drawMarkdown()`, `anchors()` in `src/trade-plans/sections.ts`), so a
+  link can open a section; the slug holds `a-z`, `0-9` and dashes only.

@@ -113,6 +113,8 @@ export type EditorProps = {
   onDone: () => void;
   // the text box's name for a screen reader
   label?: string;
+  // something beside the text changed, such as a trade plan's name
+  dirty?: boolean;
 };
 
 // the editor's state and parts, framed by a card or a drawer
@@ -123,6 +125,7 @@ export function useEditor({
   revision,
   onDone,
   label = "Profile text",
+  dirty = false,
 }: EditorProps) {
   const [text, setText] = useState(start);
   // a load landing after Edit never moves the revision the save is checked at
@@ -199,7 +202,7 @@ export function useEditor({
       type="button"
       class="btn btn-primary"
       onClick={save}
-      disabled={busy || text === saved}
+      disabled={busy || (text === saved && !dirty)}
     >
       {busy ? "Saving…" : "Save"}
     </button>

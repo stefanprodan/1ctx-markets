@@ -11,7 +11,7 @@ import { KEPT_REVISIONS } from "../src/document/store.ts";
 import { lastReadAt } from "../src/market/tracking.ts";
 import { PAGE_BYTES, sentBytes } from "../src/operations/answer.ts";
 import { CALL_MS, type Markets, markets } from "../src/operations/markets.ts";
-import { QUOTE_PLANS } from "../src/operations/trade-plans.ts";
+import { QUOTE_PLANS, sectionsOf } from "../src/operations/trade-plans.ts";
 import {
   type Access,
   ADMIN,
@@ -21,12 +21,14 @@ import {
 } from "../src/operations/who.ts";
 import { insertFund } from "../src/portfolios/funds.ts";
 import { setTimeZone } from "../src/portfolios/store.ts";
+import { drawMarkdown } from "../src/profile/markdown.ts";
 import { silent } from "../src/runtime/log.ts";
 import { yahoo } from "../src/sources/yahoo/client.ts";
 import { open } from "../src/storage/db/index.ts";
 import { writer } from "../src/storage/writer.ts";
 import { call, tools } from "../src/tools/index.ts";
 import {
+  anchors,
   headings,
   names,
   namesOf,
@@ -484,7 +486,40 @@ describe("sections", () => {
 
   test("slug gives one anchor form", () => {
     expect(slug("NVDA ladder: $90 / $85")).toBe("nvda-ladder-90-85");
-    expect(slug("Ștefan's  plan")).toBe("ștefans-plan");
+    expect(slug("Ștefan's  plan")).toBe("stefans-plan");
+    expect(slug('"><img src=x onerror=alert(1)>')).toBe(
+      "img-srcx-onerroralert1",
+    );
+    expect(slug("買い 計画")).toBe("");
+  });
+
+  test("a section names its heading's anchor in the drawn HTML", () => {
+    const text =
+      "# Made-up\n\n## Notes\n\n### NVDA ladder\n\n## Later\n\n### NVDA ladder\n\n> ### NVDA quoted\n";
+    const drawn = drawMarkdown(text);
+    expect(
+      sectionsOf(text, "US:NVDA", null, drawn.headings).map((s) =>
+        "anchor" in s ? s.anchor : undefined,
+      ),
+    ).toEqual(["md-nvda-ladder", "md-nvda-ladder-1"]);
+    expect(drawn.html).toContain('<h3 class="md-h3" id="md-nvda-ladder-1">');
+    // the tool's read carries no anchor: the MCP answer has no HTML
+    expect(sectionsOf(text, "US:NVDA", null)[0]).toEqual({
+      heading: "NVDA ladder",
+      level: 3,
+      line: 5,
+    });
+  });
+
+  test("anchors are unique in one text, a repeat numbered", () => {
+    const anchor = anchors();
+    expect(["NVDA", "NVDA", "nvda-1", "***", "***"].map(anchor)).toEqual([
+      "md-nvda",
+      "md-nvda-1",
+      "md-nvda-1-1",
+      "md-section",
+      "md-section-1",
+    ]);
   });
 });
 

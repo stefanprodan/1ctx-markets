@@ -123,14 +123,29 @@ export function headings(text: string): Heading[] {
   });
 }
 
-// one anchor form for every heading, so a link names the same section
+// one anchor form for every heading, so a link names the same section;
+// ASCII only, accents folded, so an id needs no escaping in an address
 export function slug(text: string): string {
   return plain(text)
-    .normalize("NFKC")
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
     .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s-]/gu, "")
+    .replace(/[^a-z0-9\s-]/g, "")
     .trim()
     .replace(/\s+/g, "-");
+}
+
+// each heading's id in one text, in order: a repeat takes -1, -2 as it
+// comes, and a heading of no letters is a section
+export function anchors(): (text: string) => string {
+  const taken = new Set<string>();
+  return (text) => {
+    const base = slug(text) || "section";
+    let id = base;
+    for (let n = 1; taken.has(id); n++) id = `${base}-${n}`;
+    taken.add(id);
+    return `md-${id}`;
+  };
 }
 
 // what a heading may call an instrument: the id's symbol, a crypto pair's
