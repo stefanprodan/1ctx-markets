@@ -147,6 +147,33 @@ describe("the Trade plans page", () => {
     expect(html).not.toContain(">+1<");
   });
 
+  test("a phone picks the status from a menu and opens a row on any tap", async () => {
+    const { store } = answering({ [ALL]: listed([LADDER, POWDER]) });
+    await store.load();
+    const desk = render(<TradePlansBody store={store} />);
+    expect(desk).toContain('aria-label="Status"');
+    expect(desk).toContain("seg-option");
+    onPhone.value = true;
+    try {
+      const phone = render(<TradePlansBody store={store} />);
+      expect(phone).not.toContain("seg-option");
+      expect(phone).toMatch(/aria-label="Status"[^>]*aria-haspopup="menu"/);
+      // the picked status and its count on the picker's face
+      expect(phone).toMatch(
+        /<span>Active<\/span><span class="al-count num">2</,
+      );
+      // the row's chips are words under its link, not links of their own
+      const under = phone
+        .split('class="tp-under')[1]!
+        .split("</span></span></span>")[0];
+      expect(under).toContain('class="tp-chips"');
+      expect(under).toContain('<span class="tag tp-chip">WIDG');
+      expect(under).not.toContain("<a ");
+    } finally {
+      onPhone.value = false;
+    }
+  });
+
   test("Archived, All and a symbol filter the rows", async () => {
     const { store } = answering({ [ALL]: listed([LADDER, POWDER, SHELVED]) });
     await store.load();
