@@ -6,11 +6,12 @@
 
 A self-hosted market data server for AI agents.
 
-It syncs quotes, price history, research and news from free sources
-into a single SQLite file, computes technical signals, and serves it all
-to agents over [MCP](https://modelcontextprotocol.io/) and to scripts
-over a REST API. It also keeps your price alerts and portfolios, so an
-agent can see what you hold.
+It collects quotes, price history, research and news from free sources
+and computes technical signals. Agents query it over
+[MCP](https://modelcontextprotocol.io/), scripts over a REST API.
+
+You can also track price alerts and portfolios, so agents know what you
+hold.
 
 It works with anything Yahoo Finance lists: shares, ETFs, indices,
 futures, currencies and crypto, on any exchange. There is no ticker
@@ -31,8 +32,7 @@ it.
 - **Notes for agents:** your investor profile, trade plans and dated
   analyses per symbol, written in Markdown.
 - **A web UI** to browse all of the above and manage agent keys.
-- **One binary, one database file.** No cloud, no model calls, no
-  broker connections.
+- **Self-hosted:** one binary and one SQLite file.
 
 ## Data sources
 
