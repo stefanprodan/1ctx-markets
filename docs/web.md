@@ -890,16 +890,17 @@ The parts:
   bottom on a phone. Preview asks `POST /api/v1/trade-plans/preview`.
   A save posts the plan and opens it.
 - **A plan** is the head (its name, cut; "Saved <ago> by <author>", left
-  out on a phone, where the name needs the room; History, Edit and the
-  More menu; Back on a phone) over one card: a header as wide as the
-  text (Status, Review by, Symbols with their count; a phone shows six
-  chips and a "+N" button that shows the rest), a rule, then `html`
-  drawn as the profile is. More holds Archive or Unarchive (`PUT
-  {revision, status}`) and Delete, asked once inside the menu as an
-  instrument's Delete is; a deleted plan shows Deleted, no Edit, and
-  More holds Restore. Every refusal shows in the page's notice in the
-  server's words (a name an active plan holds, the active limit, a stale
-  revision), and the plan and the list are read again either way.
+  out on a phone, where the name needs the room; Edit, a pencil alone on
+  a phone, and the More menu, which holds History; Back on a phone) over
+  one card: a header as wide as the text (Status, Review by, Symbols
+  with their count; a phone shows six chips and a "+N" button that shows
+  the rest), a rule, then `html` drawn as the profile is. More holds
+  Archive or Unarchive (`PUT {revision, status}`) and Delete, asked once
+  inside the menu as an instrument's Delete is; a deleted plan shows
+  Deleted, no Edit, and More holds Restore. Every refusal shows in the
+  page's notice in the server's words (a name an active plan holds, the
+  active limit, a stale revision), and the plan and the list are read
+  again either way.
 - **Edit is the same drawer** with the plan's fields and text, Save on
   a change to either. A save sends the fields changed first (`PUT
   {revision, ...}`), so a taken name or a symbol that does not resolve

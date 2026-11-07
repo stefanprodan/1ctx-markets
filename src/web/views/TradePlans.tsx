@@ -443,12 +443,14 @@ function PlanMenu({
   onStatus,
   onDelete,
   onRestore,
+  onHistory,
 }: {
   plan: PlanItem;
   busy: boolean;
   onStatus: (status: PlanStatus) => void;
   onDelete: () => void;
   onRestore: () => void;
+  onHistory: () => void;
 }) {
   const asking = useSignal(false);
   // swapping the pane drops the clicked button, which the menu would
@@ -459,7 +461,7 @@ function PlanMenu({
   };
   const item = (
     label: string,
-    icon: "eye" | "eye-off" | "redo",
+    icon: "eye" | "eye-off" | "redo" | "list",
     run: () => void,
     close: () => void,
   ) => (
@@ -520,9 +522,13 @@ function PlanMenu({
             </div>
           </div>
         ) : plan.status === "removed" ? (
-          item("Restore", "redo", onRestore, close)
+          <>
+            {item("History", "list", onHistory, close)}
+            {item("Restore", "redo", onRestore, close)}
+          </>
         ) : (
           <>
+            {item("History", "list", onHistory, close)}
             {plan.status === "active"
               ? item("Archive", "eye-off", () => onStatus("archived"), close)
               : item("Unarchive", "eye", () => onStatus("active"), close)}
@@ -610,25 +616,30 @@ export function TradePlanBody({
       actions={
         p !== null && (
           <>
-            <button
-              type="button"
-              class="btn"
-              disabled={busy}
-              onClick={() => setHistory(true)}
-            >
-              History
-            </button>
-            {!gone && (
-              <button
-                type="button"
-                class="btn btn-primary"
-                disabled={busy}
-                onClick={() => setEditing(true)}
-              >
-                <Icon name="pencil" size={14} />
-                Edit
-              </button>
-            )}
+            {!gone &&
+              // a phone gives the plan's name the room: the pencil alone
+              (onPhone.value ? (
+                <button
+                  type="button"
+                  class="btn page-add"
+                  aria-label="Edit"
+                  title="Edit"
+                  disabled={busy}
+                  onClick={() => setEditing(true)}
+                >
+                  <Icon name="pencil" size={16} />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  class="btn btn-primary"
+                  disabled={busy}
+                  onClick={() => setEditing(true)}
+                >
+                  <Icon name="pencil" size={14} />
+                  Edit
+                </button>
+              ))}
             <PlanMenu
               plan={p}
               busy={busy}
@@ -637,6 +648,7 @@ export function TradePlanBody({
               }
               onDelete={() => void run(() => store.remove(p.id, p.revision))}
               onRestore={() => void run(() => store.restore(p.id))}
+              onHistory={() => setHistory(true)}
             />
           </>
         )

@@ -263,7 +263,8 @@ describe("a plan opened", () => {
     const html = render(<TradePlanBody store={store} id={1} />);
     expect(html).toContain(READ.html);
     expect(html).toContain('id="md-acme-ladder"');
-    expect(html).toContain(">History</button>");
+    // History waits in More, so the head keeps the name's room
+    expect(html).not.toContain(">History</button>");
     expect(html).toContain("Edit</button>");
     expect(html).toContain('aria-label="More"');
     expect(html).toMatch(/Saved .+ by Sam \(made-up-agent\)/);
@@ -288,6 +289,8 @@ describe("a plan opened", () => {
       expect(phone).toContain(">S6</a>");
       expect(phone).not.toContain(">S7</a>");
       expect(phone).toContain('aria-label="Show all 9 symbols"');
+      expect(phone).toContain('aria-label="Edit"');
+      expect(phone).not.toContain("Edit</button>");
     } finally {
       onPhone.value = false;
     }
