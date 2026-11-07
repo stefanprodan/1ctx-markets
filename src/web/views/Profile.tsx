@@ -3,7 +3,7 @@
 // The owner's profile: drawn as the server renders it, edited as text,
 // and any kept revision opened and restored.
 
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { says } from "../data/api.ts";
 import type { DocumentStore, Loaded, RevisionRow } from "../data/document.ts";
 import type { ProfileStore } from "../data/profile.ts";
@@ -49,9 +49,29 @@ function run(area: HTMLTextAreaElement | null, tool: Tool) {
   typeInto(area, tool.run({ value, start, end }));
 }
 
+// a cell holding more is prose: it wraps, where a figure keeps its line
+const LONG_CELL = 40;
+
 // the server escapes any HTML in the text before it draws it
 export function Drawn({ html }: { html: string }) {
-  return <div class="profile-doc" dangerouslySetInnerHTML={{ __html: html }} />;
+  const doc = useRef<HTMLDivElement>(null);
+  // CSS cannot size a table cell by its own length, so prose is marked,
+  // before the paint so the table never draws at its unwrapped width
+  useLayoutEffect(() => {
+    for (const cell of doc.current?.querySelectorAll("td, th") ?? []) {
+      cell.classList.toggle(
+        "doc-cell-long",
+        (cell.textContent?.length ?? 0) > LONG_CELL,
+      );
+    }
+  }, [html]);
+  return (
+    <div
+      ref={doc}
+      class="profile-doc"
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
 }
 
 export function Toolbar({

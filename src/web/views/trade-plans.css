@@ -7,9 +7,27 @@
   .tp-filters {
     display: flex;
     flex-wrap: wrap;
-    align-items: center;
+    /* the segments as tall as the symbol picker beside them */
+    align-items: stretch;
     gap: var(--space-2);
-    margin: 0 0 var(--space-3);
+  }
+  .tp-status {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--space-2);
+  }
+  .tp-filter {
+    display: flex;
+    min-width: 0;
+  }
+  .tp-filter-symbol {
+    width: 200px;
+    margin-left: auto;
+  }
+  /* a plan may hold dozens of symbols: the menu stays above the nav bar */
+  .tp-symbol-menu {
+    max-height: min(320px, 50dvh);
+    overflow-y: auto;
   }
 
   .tp-cell {
@@ -42,9 +60,12 @@
     color: var(--dim);
     text-decoration: none;
   }
-  .tp-chip:hover {
-    border-color: var(--line-strong);
-    color: var(--fg);
+  /* iOS keeps a tap's hover on the chip left under the finger */
+  @media (hover: hover) {
+    .tp-chip:hover {
+      border-color: var(--line-strong);
+      color: var(--fg);
+    }
   }
   .tp-more {
     cursor: pointer;
@@ -104,7 +125,7 @@
   .tp-plan .profile-doc h4,
   .tp-plan .profile-doc h5,
   .tp-plan .profile-doc h6 {
-    scroll-margin-top: var(--space-8);
+    scroll-margin-top: calc(var(--page-head-h) + var(--space-3));
   }
 
   .tp-fields {
@@ -116,9 +137,17 @@
   .tp-field-name {
     grid-column: 1 / -1;
   }
-  /* the fields sit above the text box, so it ends above the drawer's foot */
+  /* the text box takes what the fields leave, so it ends above the
+     drawer's foot however tall the fields stack */
+  .tp-edit {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+  }
   .tp-edit .profile-edit-box {
-    height: calc(100dvh - 400px);
+    flex: 1;
+    height: auto;
+    min-height: 200px;
   }
 
   .tp-card {
@@ -153,6 +182,15 @@
   }
 
   @media (max-width: 719px) {
+    /* two pickers of one height, half the row each */
+    .tp-filters {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+    .tp-filter-symbol {
+      width: auto;
+      margin-left: 0;
+    }
     .tp-fields {
       grid-template-columns: minmax(0, 1fr);
     }

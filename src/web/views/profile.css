@@ -57,19 +57,37 @@
     font-family: var(--mono);
     font-size: var(--text-mono);
   }
-  /* a wide table scrolls inside the document, never the page */
+  /* a wide table scrolls sideways in its box, never the page: a cell
+     keeps one line, as the document's break-anywhere would cut it letter
+     by letter, and an edge shades while more is out of view */
   .profile-doc table {
     display: block;
+    max-width: 100%;
     overflow-x: auto;
     border-collapse: collapse;
     margin: 0 0 var(--space-3);
     font-size: var(--text-small);
+    background:
+      linear-gradient(to right, var(--doc-bg, var(--card)) 30%, transparent)
+      left / 32px 100% no-repeat local,
+      linear-gradient(to left, var(--doc-bg, var(--card)) 30%, transparent)
+      right / 32px 100% no-repeat local,
+      radial-gradient(farthest-side at 0 50%, var(--line-strong), transparent)
+      left / 12px 100% no-repeat scroll,
+      radial-gradient(
+        farthest-side at 100% 50%,
+        var(--line-strong),
+        transparent
+      )
+      right / 12px 100% no-repeat scroll;
   }
   .profile-doc th,
   .profile-doc td {
     padding: var(--space-1) var(--space-3);
     border-bottom: 1px solid var(--line);
     text-align: left;
+    /* a cell breaks between words only, never inside one */
+    overflow-wrap: normal;
   }
   .profile-doc th {
     color: var(--dim);
@@ -121,6 +139,8 @@
     border: 1px solid var(--line);
     border-radius: var(--radius);
     background: var(--page);
+    /* a wide table's edge shading matches what it sits on */
+    --doc-bg: var(--page);
     font-family: var(--mono);
     font-size: var(--text-input);
     line-height: 1.5;
@@ -176,6 +196,19 @@
     border-radius: var(--radius-pill);
     color: var(--dim);
     font-size: var(--text-tiny);
+  }
+
+  /* a phone squeezes each column to its longest word: a cell keeps its
+     line and prose wraps at a reading width, the table scrolling */
+  @media (max-width: 719px) {
+    .profile-doc th,
+    .profile-doc td {
+      white-space: nowrap;
+    }
+    .profile-doc .doc-cell-long {
+      min-width: 16em;
+      white-space: normal;
+    }
   }
 
   /* a phone has no room beside the tabs: the toolbar goes under their

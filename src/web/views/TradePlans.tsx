@@ -70,16 +70,28 @@ export function DueTag() {
   return <span class="tag tag-side al-tag tp-tag al-tag-warn">Review due</span>;
 }
 
+function StatusWords({ label, n }: { label: string; n: number | null }) {
+  return (
+    <span class="tp-status">
+      <span>{label}</span>
+      {n !== null && <span class="al-count num">{n}</span>}
+    </span>
+  );
+}
+
 // in a row the chips sit over its link and a "+N" span under it, so a tap
-// there opens the plan; with onMore the "+N" is a button of its own
+// there opens the plan; with onMore the "+N" is a button of its own; plain
+// chips are words under the row's link, as a phone's row opens on any tap
 function Chips({
   symbols,
   max,
   onMore,
+  plain,
 }: {
   symbols: readonly string[];
   max: number;
   onMore?: () => void;
+  plain?: boolean;
 }) {
   if (symbols.length === 0) return null;
   // "+1" would take the room of the chip it hides
@@ -87,11 +99,17 @@ function Chips({
   const rest = symbols.length - shown.length;
   return (
     <span class="tp-chips">
-      {shown.map((s) => (
-        <a key={s} class="tag tp-chip table-raise" href={symbolHref(s)}>
-          {tickerOf(s)}
-        </a>
-      ))}
+      {shown.map((s) =>
+        plain ? (
+          <span key={s} class="tag tp-chip">
+            {tickerOf(s)}
+          </span>
+        ) : (
+          <a key={s} class="tag tp-chip table-raise" href={symbolHref(s)}>
+            {tickerOf(s)}
+          </a>
+        ),
+      )}
       {rest > 0 &&
         (onMore ? (
           <button
@@ -151,7 +169,7 @@ function columns(now: number): Column<PlanItem>[] {
           <span class="tp-under show-phone">
             {p.status !== "active" && <StatusTag status={p.status} />}
             {p.review_due && <DueTag />}
-            <Chips symbols={p.symbols} max={LIST_CHIPS_PHONE} />
+            <Chips symbols={p.symbols} max={LIST_CHIPS_PHONE} plain />
           </span>
         </span>
       ),
@@ -224,6 +242,10 @@ export function TradePlansBody({ store }: { store: TradePlansStore }) {
     symbol === null &&
     (removed === null || removed.length === 0);
   const choices = plans === null ? [] : symbolChoices(plans);
+  // a ticker on two markets names each by its id
+  const shared = new Set(
+    choices.map((s) => tickerOf(s)).filter((t, i, all) => all.indexOf(t) !== i),
+  );
   const rows = plans === null ? [] : shownPlans(plans, removed, filter, symbol);
   return (
     <Page
@@ -255,46 +277,74 @@ export function TradePlansBody({ store }: { store: TradePlansStore }) {
       ) : (
         <>
           <div class="tp-filters">
-            <Segmented
-              label="Status"
-              options={FILTERS.map((f) => {
-                const n = filterCount(plans, removed, f.key);
-                return {
+            {onPhone.value ? (
+              // four segments with counts do not fit beside the symbol
+              <span class="tp-filter">
+                <MenuButton
+                  label="Status"
+                  field
+                  text={
+                    <StatusWords
+                      label={FILTERS.find((f) => f.key === filter)!.label}
+                      n={filterCount(plans, removed, filter)}
+                    />
+                  }
+                  items={FILTERS.map((f) => ({
+                    key: f.key,
+                    label: (
+                      <StatusWords
+                        label={f.label}
+                        n={filterCount(plans, removed, f.key)}
+                      />
+                    ),
+                    checked: f.key === filter,
+                    run: () => pick(f.key),
+                  }))}
+                />
+              </span>
+            ) : (
+              <Segmented
+                label="Status"
+                options={FILTERS.map((f) => ({
                   value: f.key,
                   text: (
-                    <>
-                      <span>{f.label}</span>
-                      {n !== null && <span class="al-count num">{n}</span>}
-                    </>
+                    <StatusWords
+                      label={f.label}
+                      n={filterCount(plans, removed, f.key)}
+                    />
                   ),
-                };
-              })}
-              value={filter}
-              onPick={pick}
-            />
+                }))}
+                value={filter}
+                onPick={pick}
+              />
+            )}
             {/* a symbol picked stays clearable once no plan holds it */}
             {(choices.length > 0 || symbol !== null) && (
-              <MenuButton
-                label="Symbol"
-                text={symbol === null ? "All symbols" : tickerOf(symbol)}
-                items={[
-                  {
-                    label: "All symbols",
-                    checked: symbol === null,
-                    run: () => {
-                      store.symbol.value = null;
+              <span class="tp-filter tp-filter-symbol">
+                <MenuButton
+                  label="Symbol"
+                  field
+                  text={symbol === null ? "All symbols" : tickerOf(symbol)}
+                  menuClass="tp-symbol-menu"
+                  items={[
+                    {
+                      label: "All symbols",
+                      checked: symbol === null,
+                      run: () => {
+                        store.symbol.value = null;
+                      },
                     },
-                  },
-                  ...choices.map((s) => ({
-                    key: s,
-                    label: s,
-                    checked: symbol === s,
-                    run: () => {
-                      store.symbol.value = s;
-                    },
-                  })),
-                ]}
-              />
+                    ...choices.map((s) => ({
+                      key: s,
+                      label: shared.has(tickerOf(s)) ? s : tickerOf(s),
+                      checked: symbol === s,
+                      run: () => {
+                        store.symbol.value = s;
+                      },
+                    })),
+                  ]}
+                />
+              </span>
             )}
           </div>
           <Card label="Trade plans">
