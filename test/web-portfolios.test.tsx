@@ -1987,8 +1987,8 @@ describe("the page's model", () => {
     });
     const months = monthsOf(fills);
     expect(months.map((m) => [m.label, m.trail])).toEqual([
-      ["April 2026", "1 sold"],
-      ["March 2026", "3 bought"],
+      ["April 2026", "1 trade"],
+      ["March 2026", "3 trades"],
     ]);
     expect(tradeName(trade({ symbol: "CRYPTO:BTC-USD" }))).toBe("BTC");
   });

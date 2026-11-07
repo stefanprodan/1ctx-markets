@@ -4,6 +4,7 @@
 // and any kept revision opened and restored.
 
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
+import { onPhone } from "../app/shell.ts";
 import { says } from "../data/api.ts";
 import type { DocumentStore, Loaded, RevisionRow } from "../data/document.ts";
 import type { ProfileStore } from "../data/profile.ts";
@@ -13,6 +14,7 @@ import { Icon } from "../lib/icons.tsx";
 import { useRefresh } from "../lib/refresh.ts";
 import { Card } from "../ui/Card.tsx";
 import { Drawer } from "../ui/Drawer.tsx";
+import { MenuButton } from "../ui/Menu.tsx";
 import { Notice } from "../ui/Notice.tsx";
 import { didNotLoad, Page } from "../ui/Page.tsx";
 import { Tabs } from "../ui/Tabs.tsx";
@@ -409,7 +411,32 @@ export function ProfileBody({ store }: { store: ProfileStore }) {
       actions={
         p !== null &&
         !editing &&
-        !none && (
+        !none &&
+        // a phone's header holds icons, as a trade plan's does
+        (onPhone.value ? (
+          <>
+            <button
+              type="button"
+              class="btn menu-btn-head"
+              aria-label="Edit"
+              title="Edit"
+              onClick={edit}
+            >
+              <Icon name="pencil" size={16} />
+            </button>
+            <MenuButton
+              head
+              label="More"
+              items={[
+                {
+                  label: "History",
+                  icon: "list",
+                  run: () => setHistory(true),
+                },
+              ]}
+            />
+          </>
+        ) : (
           <>
             <button type="button" class="btn" onClick={() => setHistory(true)}>
               History
@@ -419,7 +446,7 @@ export function ProfileBody({ store }: { store: ProfileStore }) {
               Edit
             </button>
           </>
-        )
+        ))
       }
     >
       {p !== null &&

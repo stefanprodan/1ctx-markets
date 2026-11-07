@@ -4,6 +4,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { render } from "preact-render-to-string";
+import { onPhone } from "../src/web/app/shell.ts";
 import { client, type Fetch } from "../src/web/data/api.ts";
 import {
   PROFILE_PATH,
@@ -110,6 +111,23 @@ describe("the Profile page", () => {
     expect(html).toContain(">History</button>");
     expect(html).toContain("Edit</button>");
     expect(html).not.toContain("Write your profile");
+  });
+
+  test("a phone's head holds the pencil and More, History inside it", async () => {
+    const { store } = answering({
+      [`GET ${PROFILE_PATH}`]: () => Response.json(MADE),
+    });
+    await store.load();
+    onPhone.value = true;
+    try {
+      const html = render(<ProfileBody store={store} />);
+      expect(html).toContain('aria-label="Edit"');
+      expect(html).toMatch(/aria-label="More"[^>]*aria-haspopup="menu"/);
+      expect(html).not.toContain(">History</button>");
+      expect(html).not.toContain("Edit</button>");
+    } finally {
+      onPhone.value = false;
+    }
   });
 
   test("a failed load says the page did not load, with a retry", async () => {

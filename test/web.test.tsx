@@ -108,6 +108,7 @@ import {
   SymbolSearch,
   searchShown,
 } from "../src/web/ui/SymbolSearch.tsx";
+import { AlertRules } from "../src/web/views/Alerts.tsx";
 import {
   axisPrice,
   candles,
@@ -429,10 +430,10 @@ describe("the routes", () => {
     expect(match("/instruments/US%3ANVDA")).toBeNull();
     expect(match("/connect")?.route.label).toBe("Connect agents");
     expect(match("/profile")?.route.label).toBe("Profile");
-    // Alerts' two tabs keep their tab in the address, lit under /alerts
-    expect(match("/alerts")?.route.label).toBe("Alerts");
+    // Price alerts' two tabs keep their tab in the address, lit under /alerts
+    expect(match("/alerts")?.route.label).toBe("Price alerts");
     expect(match("/alerts/history")?.route).toMatchObject({
-      label: "Alerts",
+      label: "Price alerts",
       parent: "/alerts",
     });
     expect(match("/nothing")).toBeNull();
@@ -448,8 +449,8 @@ describe("the routes", () => {
       "Home",
       "Screener",
       "Portfolios",
-      "Alerts",
       "Trade plans",
+      "Price alerts",
       "Profile",
       "Connect agents",
       "Server admin",
@@ -459,8 +460,8 @@ describe("the routes", () => {
       "Home",
       "Screener",
       "Portfolios",
-      "Alerts",
       "Trade plans",
+      "Price alerts",
       "Profile",
       "Connect agents",
     ]);
@@ -2929,8 +2930,8 @@ describe("the phone's bar", () => {
     }
     expect(barLit("/instruments")).toBeNull();
     expect(MORE.map((r) => r.label)).toEqual([
-      "Alerts",
       "Trade plans",
+      "Price alerts",
       "Profile",
       "Connect agents",
       "Server admin",
@@ -3213,8 +3214,8 @@ describe("More's drawer", () => {
         ),
       ].map((m) => m[1] ?? m[2] ?? m[3] ?? m[4]);
       expect(words).toEqual([
-        "Alerts",
         "Trade plans",
+        "Price alerts",
         "Profile",
         "Connect agents",
         "Server admin",
@@ -5647,5 +5648,23 @@ describe("Home's pre- and post-market moves", () => {
     expect(ok.asked).toContain(second);
     expect(ok.size).toBe(EXTENDED_BATCH + 1);
     expect((await run(true)).size).toBe(0);
+  });
+});
+
+describe("the Price alerts head", () => {
+  test("adds with the framed plus on a phone, words on a desk", () => {
+    const desk = render(<AlertRules />);
+    expect(desk).toContain("<span>Price alert</span>");
+    expect(desk).not.toContain("page-add");
+    onPhone.value = true;
+    try {
+      const phone = render(<AlertRules />);
+      expect(phone).toMatch(
+        /class="btn page-add" aria-label="New price alert"/,
+      );
+      expect(phone).not.toContain("<span>Price alert</span>");
+    } finally {
+      onPhone.value = false;
+    }
   });
 });

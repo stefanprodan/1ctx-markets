@@ -1,6 +1,6 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-// The Alerts page's calls and signals: the person's alerts with how close
+// The Price alerts page's calls and signals: the person's alerts with how close
 // each is now, what triggered, and what the browser has shown.
 // A change answers the refusal's sentence, or null once done.
 

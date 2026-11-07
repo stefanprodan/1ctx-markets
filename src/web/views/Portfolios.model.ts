@@ -941,7 +941,7 @@ export function foldFills(trades: readonly TradeRow[]): TradeRow[][] {
 export type Month = {
   key: string;
   label: string;
-  // "11 bought · 2 sold"
+  // "13 trades": rewards count too
   trail: string;
   rows: TradeRow[][];
 };
@@ -954,20 +954,13 @@ export function monthsOf(trades: readonly TradeRow[]): Month[] {
   }
   return [...by.entries()].map(([key, rows]) => {
     const [y, m] = key.split("-").map(Number) as [number, number];
-    const buys = rows.filter((r) => r[0]!.side === "buy").length;
-    const sells = rows.length - buys;
     return {
       key,
       label: new Date(y, m - 1, 1).toLocaleDateString("en-GB", {
         month: "long",
         year: "numeric",
       }),
-      trail: [
-        buys > 0 ? `${buys} bought` : "",
-        sells > 0 ? `${sells} sold` : "",
-      ]
-        .filter(Boolean)
-        .join(" · "),
+      trail: `${rows.length} ${rows.length === 1 ? "trade" : "trades"}`,
       rows,
     };
   });

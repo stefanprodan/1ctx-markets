@@ -12,6 +12,7 @@ import { amount } from "../lib/format.ts";
 import { Icon } from "../lib/icons.tsx";
 import { nameOf, symbolOf, tickerOf } from "../lib/names.ts";
 import { useRefresh } from "../lib/refresh.ts";
+import { AddButton } from "../ui/AddButton.tsx";
 import { Card } from "../ui/Card.tsx";
 import { Drawer } from "../ui/Drawer.tsx";
 import { Notice } from "../ui/Notice.tsx";
@@ -57,10 +58,10 @@ function Head({ tab }: { tab: TabKey }) {
   const unseen = store.seen.value?.unseen ?? 0;
   return (
     <Tabs
-      label="Alerts"
+      label="Price alerts"
       value={tab}
       tabs={[
-        { key: "rules", label: "Alerts", href: ALERTS },
+        { key: "rules", label: "Price alerts", href: ALERTS },
         {
           key: "fired",
           label: "History",
@@ -78,21 +79,31 @@ function AlertsPage({ tab }: { tab: TabKey }) {
   const held = store.alerts.value !== null;
   return (
     <Page
-      title="Alerts"
+      title="Price alerts"
       tabs={<Head tab={tab} />}
       stale={held ? store.error.value : null}
       staleCount={store.failures.value}
       actions={
-        <button
-          type="button"
-          class="btn btn-small"
-          onClick={() => {
-            adding.value = true;
-          }}
-        >
-          <Icon name="plus" size={14} />
-          <span>Price alert</span>
-        </button>
+        // a phone's head holds the framed + alone, as a trade plan's does
+        onPhone.value ? (
+          <AddButton
+            label="New price alert"
+            onClick={() => {
+              adding.value = true;
+            }}
+          />
+        ) : (
+          <button
+            type="button"
+            class="btn btn-small"
+            onClick={() => {
+              adding.value = true;
+            }}
+          >
+            <Icon name="plus" size={14} />
+            <span>Price alert</span>
+          </button>
+        )
       }
       failed={didNotLoad(
         held,
@@ -277,7 +288,7 @@ function RulesTab() {
       </fieldset>
       <Card label={TILES.find((t) => t.key === tile.value)!.name}>
         <Table
-          label="Alerts"
+          label="Price alerts"
           columns={ruleColumns(l)}
           rows={shown}
           rowKey={(r) => r.id}
