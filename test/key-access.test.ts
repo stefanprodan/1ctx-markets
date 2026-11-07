@@ -177,6 +177,7 @@ describe("alerts access", () => {
       alerts,
       profile: "none" as const,
       analysis: "none" as const,
+      tradePlans: "none" as const,
     });
     const none = await alertsRead(m, who("none"), parseAlertsRead({}));
     expect(JSON.parse(none.content[0]!.text)).toEqual({

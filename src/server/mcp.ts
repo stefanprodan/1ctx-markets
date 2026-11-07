@@ -48,6 +48,7 @@ function whoFrom(
     alerts: scoped(info.scopes, "alerts"),
     profile: scoped(info.scopes, "profile"),
     analysis: scoped(info.scopes, "analysis"),
+    tradePlans: scoped(info.scopes, "trade_plans"),
   };
 }
 

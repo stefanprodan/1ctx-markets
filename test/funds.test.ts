@@ -53,6 +53,7 @@ const CASEY: Who = {
   alerts: "none",
   profile: "none",
   analysis: "none",
+  tradePlans: "none",
 };
 
 // fictional: ZZ is no country's code

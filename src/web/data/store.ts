@@ -376,11 +376,13 @@ export type AgentKey = {
   // null never expires
   expires_at: string | null;
   // what it may do with portfolios, with alerts and their history, with
-  // the owner's profile and with the shared analysis
+  // the owner's profile, with the shared analysis and with the owner's
+  // trade plans
   portfolio?: KeyAccess;
   alerts?: KeyAccess;
   profile?: KeyAccess;
   analysis?: KeyAccess;
+  trade_plans?: KeyAccess;
 };
 
 export type KeyAccess = "none" | "read" | "write";
@@ -390,6 +392,7 @@ export type KeyAccesses = {
   alerts: KeyAccess;
   profile: KeyAccess;
   analysis: KeyAccess;
+  trade_plans: KeyAccess;
 };
 
 type KeysPage = { keys: AgentKey[]; limit: number };
@@ -1076,6 +1079,7 @@ export function store(
       alerts: "none",
       profile: "none",
       analysis: "none",
+      trade_plans: "none",
     },
   ): Promise<MadeKey> {
     let made: MadeKey;

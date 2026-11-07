@@ -2440,6 +2440,7 @@ describe("connect agents", () => {
       alerts: "none",
       profile: "none",
       analysis: "none",
+      trade_plans: "none",
     });
     expect(s.keys.value?.map((k) => k.name)).toEqual(["codex", "claude-code"]);
     expect(JSON.stringify(s.keys.value)).not.toContain(TOKEN);
@@ -2484,12 +2485,14 @@ describe("connect agents", () => {
       alerts: "write",
       profile: "read",
       analysis: "write",
+      trade_plans: "read",
     });
     expect(JSON.parse(f.asked.at(-1)!.init!.body as string)).toEqual({
       portfolio: "read",
       alerts: "write",
       profile: "read",
       analysis: "write",
+      trade_plans: "read",
     });
     expect(s.keys.value?.map((k) => [k.name, k.portfolio, k.alerts])).toEqual([
       ["codex", "read", "write"],
@@ -2501,6 +2504,7 @@ describe("connect agents", () => {
         alerts: "read",
         profile: "none",
         analysis: "none",
+        trade_plans: "none",
       }),
     ).rejects.toThrow();
   });
@@ -2523,6 +2527,9 @@ describe("connect agents", () => {
     expect(accessWords(agentKey("a", { analysis: "read" }))).toBe(
       "Reads analyses",
     );
+    expect(
+      accessWords(agentKey("a", { analysis: "read", trade_plans: "write" })),
+    ).toBe("Reads analyses · Writes trade plans");
   });
 
   test("New key and a key's details pick each access with the app's own buttons", () => {
@@ -2544,15 +2551,16 @@ describe("connect agents", () => {
       expect(html).toContain(">Alerts<");
       expect(html).toContain(">Profile<");
       expect(html).toContain(">Analysis<");
-      expect(html.match(/>Read and write</g)).toHaveLength(4);
+      expect(html).toContain(">Trade plans<");
+      expect(html.match(/>Read and write</g)).toHaveLength(5);
       expect(html).not.toContain("<select");
     }
     // the new key never expires unless picked, and reaches neither
     expect(made).toMatch(/aria-pressed="true"[^>]*>Never</);
-    expect(made.match(/aria-pressed="true"[^>]*>No access</g)).toHaveLength(4);
+    expect(made.match(/aria-pressed="true"[^>]*>No access</g)).toHaveLength(5);
     expect(made).toContain(" disabled>Create key<");
     // the kept key's picks start at what it has, Save waiting on a change
-    expect(changed.match(/aria-pressed="true"/g)).toHaveLength(4);
+    expect(changed.match(/aria-pressed="true"/g)).toHaveLength(5);
     expect(changed).toMatch(/aria-pressed="true"[^>]*>Read</);
     expect(changed).toMatch(/aria-pressed="true"[^>]*>Read and write</);
     expect(changed).toContain(" disabled>Save<");

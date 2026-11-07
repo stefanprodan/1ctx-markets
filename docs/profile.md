@@ -2,8 +2,10 @@
 
 Governs `src/profile/` (the store, the fenced read and the Markdown
 renderer), `src/document/` (`applyEdits()`, the fence, the text and size
-checks, the save and its eviction, shared with the analysis of
-`docs/analysis.md`), `src/operations/document.ts` (the arguments both
+checks, the save and its eviction, the author's form, shared with the
+analysis of `docs/analysis.md` and the trade plans of
+`docs/trade-plans.md`, whose whole-state save calls `checked()` and
+`evict()` from it), `src/operations/document.ts` (the arguments the
 documents take), `src/operations/profile.ts`,
 `src/tools/profile.ts`, the `/profile` routes in `src/api/routes.ts`
 and their spec in `src/api/profile-spec.ts`. Keys and their access are

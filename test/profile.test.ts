@@ -48,6 +48,7 @@ const ASHLEY: Who = {
   alerts: "none",
   profile: "write",
   analysis: "none",
+  tradePlans: "none",
 };
 const READER: Who = { ...ASHLEY, name: "reader", profile: "read" };
 const NONE: Who = { ...ASHLEY, name: "none", profile: "none" };
@@ -654,6 +655,7 @@ describe("discovery", () => {
             alerts,
             profile,
             analysis: "write",
+            tradePlans: "write",
           });
           expect(Buffer.byteLength(text)).toBeLessThanOrEqual(
             INSTRUCTIONS_BYTES,

@@ -33,7 +33,8 @@ export const RESERVED_NAMES: readonly string[] = ["web", "admin"];
 export const isKeyId = (value: string): boolean => ID.test(value);
 
 // what a key may do with portfolios, with alerts and their history, with the
-// owner's profile and with the shared analysis; none unless the admin says
+// owner's profile, with the shared analysis and with the owner's trade
+// plans; none unless the admin says
 export const PORTFOLIO_ACCESS = ["none", "read", "write"] as const;
 export type PortfolioAccess = (typeof PORTFOLIO_ACCESS)[number];
 export const ALERTS_ACCESS = ["none", "read", "write"] as const;
@@ -42,6 +43,8 @@ export const PROFILE_ACCESS = ["none", "read", "write"] as const;
 export type ProfileAccess = (typeof PROFILE_ACCESS)[number];
 export const ANALYSIS_ACCESS = ["none", "read", "write"] as const;
 export type AnalysisAccess = (typeof ANALYSIS_ACCESS)[number];
+export const TRADE_PLANS_ACCESS = ["none", "read", "write"] as const;
+export type TradePlansAccess = (typeof TRADE_PLANS_ACCESS)[number];
 
 export type KeyRow = {
   id: string;
@@ -56,6 +59,7 @@ export type KeyRow = {
   alerts: AlertsAccess;
   profile: ProfileAccess;
   analysis: AnalysisAccess;
+  tradePlans: TradePlansAccess;
 };
 
 export type Caller = { kind: "admin" } | { kind: "agent"; key: KeyRow };
@@ -71,10 +75,11 @@ type Raw = {
   alerts: AlertsAccess;
   profile: ProfileAccess;
   analysis: AnalysisAccess;
+  trade_plans: TradePlansAccess;
 };
 
 const COLUMNS =
-  "id, user_id, name, created_at, expires_at, last_used_at, portfolio, alerts, profile, analysis";
+  "id, user_id, name, created_at, expires_at, last_used_at, portfolio, alerts, profile, analysis, trade_plans";
 
 const rowOf = (raw: Raw): KeyRow => ({
   id: raw.id,
@@ -87,6 +92,7 @@ const rowOf = (raw: Raw): KeyRow => ({
   alerts: raw.alerts,
   profile: raw.profile,
   analysis: raw.analysis,
+  tradePlans: raw.trade_plans,
 });
 
 // a token is 32 random bytes, so a plain hash cannot be reversed
@@ -126,6 +132,7 @@ export function createKey(
     alerts?: AlertsAccess;
     profile?: ProfileAccess;
     analysis?: AnalysisAccess;
+    tradePlans?: TradePlansAccess;
   },
   now: number,
   maxKeys: number,
@@ -149,13 +156,14 @@ export function createKey(
     alerts: args.alerts ?? "none",
     profile: args.profile ?? "none",
     analysis: args.analysis ?? "none",
+    tradePlans: args.tradePlans ?? "none",
   };
   const token = newToken();
   db.query(
     `insert into keys
        (id, user_id, name, token_hash, created_at, expires_at, portfolio,
-        alerts, profile, analysis)
-     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        alerts, profile, analysis, trade_plans)
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     key.id,
     key.user,
@@ -167,6 +175,7 @@ export function createKey(
     key.alerts,
     key.profile,
     key.analysis,
+    key.tradePlans,
   );
   return { key, token };
 }
@@ -176,6 +185,7 @@ export type KeyAccess = {
   alerts?: AlertsAccess;
   profile?: ProfileAccess;
   analysis?: AnalysisAccess;
+  tradePlans?: TradePlansAccess;
 };
 
 // the token, name and expiry stay; an expired key changes too
@@ -193,13 +203,15 @@ export function setKeyAccess(
         string | null,
         string | null,
         string | null,
+        string | null,
         string,
         string,
       ]
     >(
       `update keys set portfolio = coalesce(?, portfolio),
          alerts = coalesce(?, alerts), profile = coalesce(?, profile),
-         analysis = coalesce(?, analysis)
+         analysis = coalesce(?, analysis),
+         trade_plans = coalesce(?, trade_plans)
        where id = ? and user_id = ? returning ${COLUMNS}`,
     )
     .get(
@@ -207,6 +219,7 @@ export function setKeyAccess(
       change.alerts ?? null,
       change.profile ?? null,
       change.analysis ?? null,
+      change.tradePlans ?? null,
       id,
       user,
     );

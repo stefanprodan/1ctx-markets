@@ -69,8 +69,8 @@ never signs in and a sign-in never opens `/mcp`.
 | `DELETE /api/v1/instruments/{symbol}` | the instrument and every row of it; 204 |
 | `GET /api/v1/instruments/{symbol}/stored` | `{input, stored}`: true when the read's bare-symbol rule (`restStored()`) finds a stored row with daily bars, so a read answers without a first fetch; asks no source and marks no read. The web UI asks it beside an instrument's first read to say which wait it is in (`docs/web.md`) |
 | `GET /api/v1/keys` | session: the caller's agent keys, an admin's everyone's, each with its `owner` `{id, name}` (below) |
-| `POST /api/v1/keys` | session: `{"name", "expiresInDays", "portfolio", "alerts", "profile", "analysis"}`: a new agent key of the caller's, its token answered once; `portfolio`, `alerts`, `profile` and `analysis` are `none` (the default), `read` or `write` |
-| `PATCH /api/v1/keys/{id}` | session: `{"portfolio", "alerts", "profile", "analysis"}`, at least one: changes one of the caller's keys' access, the token, name and expiry kept; the key as listed; 400 for none or a bad value, 404 for an unknown id or another's |
+| `POST /api/v1/keys` | session: `{"name", "expiresInDays", "portfolio", "alerts", "profile", "analysis", "trade_plans"}`: a new agent key of the caller's, its token answered once; `portfolio`, `alerts`, `profile`, `analysis` and `trade_plans` are `none` (the default), `read` or `write` |
+| `PATCH /api/v1/keys/{id}` | session: `{"portfolio", "alerts", "profile", "analysis", "trade_plans"}`, at least one: changes one of the caller's keys' access, the token, name and expiry kept; the key as listed; 400 for none or a bad value, 404 for an unknown id or another's |
 | `DELETE /api/v1/keys/{id}` | session: revokes one of the caller's keys, an admin anyone's; 204 |
 | `GET /api/v1/users` | `users[]` (`id`, `name`, `email`, `role`, `operator`, `created_at`, `last_sign_in_at`, `keys`) and `email_on` (below) |
 | `POST /api/v1/users` | `{"name", "email", "role"}`: adds a person and emails the invite; 201 `{user, invite: "sent"}` or `{user, invite: "failed", reason}`; 409 while email is off or the address is taken |
@@ -123,6 +123,14 @@ never signs in and a sign-in never opens `/mcp`.
   `analysis_edit` and opens its `PUT` (`docs/analysis.md`). Keys made
   before analysis access existed start at `none` too (migration 0041).
   A web UI sign-in and the admin key write it.
+- **Trade plans access is given the same way** (`trade_plans`,
+  `keys add --trade-plans`), `none` by default, since a plan is the
+  owner's own intent with their money. `read` lists the `trade_plans`
+  tool, opens the trade plans reads and adds the `trade_plans` pointer
+  to `quote`; `write` also lists `trade_plans_edit` and opens the
+  writes (`docs/trade-plans.md`). Keys made before trade plans access
+  existed start at `none` too (migration 0047). A web UI sign-in and
+  the admin key write their own.
 - **Access changes on a kept key** (`PATCH /keys/{id}`, `keys set`):
   the token, name and expiry stay, an expired key changes too, and the
   key's next request reads the new access, as a revoke holds on the
@@ -181,7 +189,8 @@ never signs in and a sign-in never opens `/mcp`.
   logins and live links; their data and keys stay.
 - **Removing a person is one transaction** (`removeUserRows()`): their
   trades, positions, portfolios, brokers, settings, profile revisions,
-  dashboard, rules, alerts, keys, logins and links, then the row. The
+  trade plans (their tags and revisions first), dashboard, rules,
+  alerts, keys, logins and links, then the row. The
   answer counts each kind (`ownedCounts()`); `?dry_run=true` counts
   without deleting, for the confirmation. Fund prices they entered and
   analysis revisions they wrote stay, being shared, their author's id
@@ -400,11 +409,11 @@ is sent directly, after the answer for an ask, before it for an admin.
   the same `--listen` and `--data`, as the operator. `list` prints `GET
   /api/v1/keys`'s JSON, every person's; `add <name> [--expires 30|90|365] [--portfolio
   none|read|write] [--alerts none|read|write] [--profile
-  none|read|write] [--analysis none|read|write]` (each access `none` by
-  default) prints the new
+  none|read|write] [--analysis none|read|write] [--trade-plans
+  none|read|write]` (each access `none` by default) prints the new
   token alone on stdout, once, so `$(...)` can take it, and nothing
   else; `set <name> [--portfolio ...] [--alerts ...] [--profile ...]
-  [--analysis ...]`,
+  [--analysis ...] [--trade-plans ...]`,
   one at least, finds the operator's own key's id by name and prints
   `set <name>`; `revoke <name>` finds it the same way and prints
   `revoked <name>`. Another person's key is revoked only by its id

@@ -647,6 +647,58 @@ describe("migrations", () => {
     db.close();
   });
 
+  test("keys start with no trade plans access; a tag outlives its instrument", () => {
+    const db = new Database(":memory:", { strict: true });
+    const clock = fakeClock();
+    const at = MIGRATIONS.findIndex((m) => m.id === "0047-trade-plans");
+    migrate(db, clock, MIGRATIONS.slice(0, at));
+    db.exec(`
+      insert into keys (id, user_id, name, token_hash, created_at, alerts)
+      values ('madeupkey001', '${OPERATOR}', 'old', 'hash-1', 0, 'write');
+    `);
+    migrate(db, clock, MIGRATIONS.slice(0, at + 1));
+    db.exec(`
+      insert into keys (id, user_id, name, token_hash, created_at)
+      values ('madeupkey002', '${OPERATOR}', 'new', 'hash-2', 0);
+    `);
+    expect(
+      db.query("select name, trade_plans from keys order by name").all(),
+    ).toEqual([
+      { name: "new", trade_plans: "none" },
+      { name: "old", trade_plans: "none" },
+    ]);
+    expect(() => db.exec("update keys set trade_plans = 'all'")).toThrow();
+    db.exec("pragma foreign_keys = on");
+    db.exec(`
+      insert into instruments (id, market, symbol, source, source_symbol,
+        exchange, type, currency, zone, added_at, updated_at)
+      values ('US:ZZZ', 'US', 'ZZZ', 'yahoo', 'ZZZ', 'NMS', 'EQUITY', 'USD',
+        'America/New_York', 0, 0);
+      insert into trade_plans (owner, revision, created_at, updated_at)
+        values ('${OPERATOR}', 1, 0, 0);
+      insert into trade_plan_versions (plan, revision, name, text, bytes,
+        status, symbols, author, created_at)
+        values (1, 1, 'Made up', 'x', 1, 'active', '["US:ZZZ"]', 'web', 0);
+      insert into trade_plan_symbols (plan, symbol) values (1, 'US:ZZZ');
+      delete from instruments where id = 'US:ZZZ';
+    `);
+    expect(db.query("select * from trade_plan_symbols").all()).toEqual([
+      { plan: 1, symbol: "US:ZZZ" },
+    ]);
+    expect(() =>
+      db.exec(
+        "update trade_plan_versions set status = 'removed' where plan = 1",
+      ),
+    ).toThrow();
+    expect(() =>
+      db.exec("update trade_plans set removed_at = 1 where id = 1"),
+    ).toThrow();
+    db.exec("delete from trade_plans where id = 1");
+    expect(db.query("select * from trade_plan_versions").all()).toEqual([]);
+    expect(db.query("select * from trade_plan_symbols").all()).toEqual([]);
+    db.close();
+  });
+
   test("open applies the shipped list to a new database", () => {
     const { db, migrations } = open(":memory:", fakeClock());
     expect(migrations).toEqual(MIGRATIONS.map((m) => m.id));

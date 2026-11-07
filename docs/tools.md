@@ -9,7 +9,8 @@ Governs the Model Context Protocol (MCP) tools: `src/server/mcp.ts`,
 `docs/api.md`; the research and events tools in `docs/research.md`;
 the alerts tools in `docs/alerts.md`; the portfolio tools in
 `docs/portfolios.md`; the profile tools in `docs/profile.md`; the
-analysis tools in `docs/analysis.md`; signal
+analysis tools in `docs/analysis.md`; the trade plans tools in
+`docs/trade-plans.md`; signal
 rows and returns in `docs/signals.md`; units, stale reasons and
 tracking in `docs/storage.md`; the source queue and deadlines in
 `docs/sources.md`; the server, keys and flags in `docs/config.md`.
@@ -20,9 +21,9 @@ tracking in `docs/storage.md`; the source queue and deadlines in
   (`mcpHandler()`), so no tool may keep per-session state. A new tool
   is added to `tools()` in `src/tools/index.ts`.
 - **The caller rides in `authInfo`**: the router passes the key's name
-  and its portfolio, alerts, profile and analysis access as the scopes
-  `portfolio:<access>`, `alerts:<access>`, `profile:<access>` and
-  `analysis:<access>`
+  and its portfolio, alerts, profile, analysis and trade plans access as
+  the scopes `portfolio:<access>`, `alerts:<access>`,
+  `profile:<access>`, `analysis:<access>` and `trade_plans:<access>`
   (`whoOf()` in `src/server/http.ts`, `Who` in `src/operations/who.ts`),
   the factory registers the tools with it, and a tool that needs it
   reads it from its second argument; a tool that needs none ignores it.
@@ -32,8 +33,10 @@ tracking in `docs/storage.md`; the source queue and deadlines in
   portfolio tool for portfolio access `none`, only the
   `portfolio` read for `read`, and the write tools for `write`; the same
   for the profile, `profile` for `read`, `profile_edit` too for `write`,
-  and the analysis, `analysis` for `read`, `analysis_edit` too for
-  `write`.
+  the analysis, `analysis` for `read`, `analysis_edit` too for
+  `write`, and the trade plans, `trade_plans` for `read`,
+  `trade_plans_edit` too for `write`. The list is cached per
+  combination of all five, so the cache key names each.
   An agent shown a write it would be refused tries it, and a read-only
   key must be read-only to the agent too. The call-time check stays,
   since a client may hold an older list; a tool no longer listed answers
@@ -52,7 +55,10 @@ tracking in `docs/storage.md`; the source queue and deadlines in
   that lists `profile`, and the analysis line, second after quote's,
   only for a key that lists `analysis`: a view on a symbol, not a price
   or move, reads its note first, so no price or bar question reads one.
-  It never names `profile_edit` or `analysis_edit`, for want of room:
+  The trade plans line comes only for a key that lists `trade_plans`:
+  the owner's plans for a symbol, which `quote` names, intent and never
+  an order. It never names `profile_edit`, `analysis_edit` or
+  `trade_plans_edit`, for want of room:
   each read tool's description names its edit tool for a write key. A
   client may list a tool by one line and cuts its description
   (below), so guidance across tools lives here; never repeat a
@@ -70,7 +76,8 @@ tracking in `docs/storage.md`; the source queue and deadlines in
 - **`test/instructions.test.ts` holds it to that** for each access
   level, and every access combination for the cap: under the cap and
   ASCII, the groups in order, every listed tool named but
-  `profile_edit` and `analysis_edit`, `analysis` second or not at all,
+  `profile_edit`, `analysis_edit` and `trade_plans_edit`, `analysis`
+  second or not at all, the trade plans line only with access,
   every backticked name a listed tool, its argument or a listed answer
   field, and a deny list. Whether those fields are still
   answered is left to review.
@@ -129,9 +136,10 @@ tracking in `docs/storage.md`; the source queue and deadlines in
   error is cut at 64 characters (`quoted()`).
 - **A write argument's number, id or true/false may come as text.**
   Some clients send a number as text, so the portfolio tools, the
-  alerts tools and the profile and analysis tools' `revision` read
-  `"1"`, `"2.5"` and `"true"` as their values (`textValues()`), and
-  `profile_edit` and `analysis_edit` read `edits` sent as JSON text. Other text is
+  alerts tools, the profile and analysis tools' `revision` and the trade
+  plans tools' `id` and `revision` read `"1"`, `"2.5"` and `"true"` as
+  their values (`textValues()`), and `profile_edit`, `analysis_edit`
+  and `trade_plans_edit` read `edits` sent as JSON text. Other text is
   refused as before.
 - **Arguments are typed, each meaning one thing**: an id is an
   integer, never a union with a string, a mode is its own boolean
@@ -139,16 +147,17 @@ tracking in `docs/storage.md`; the source queue and deadlines in
   it. Only an argument that is a name or an id (`portfolio`) is a
   union.
 - **Write annotations are per tool**: `alerts_edit`, the portfolio write
-  tools, `profile_edit` and `analysis_edit` are `destructiveHint: true`,
-  so an add asks as a remove does. Every other tool, `portfolio`,
-  `alerts`, `profile` and `analysis` included, is `readOnlyHint: true`,
+  tools, `profile_edit`, `analysis_edit` and `trade_plans_edit` are
+  `destructiveHint: true`, so an add asks as a remove does. Every other
+  tool, `portfolio`, `alerts`, `profile`, `analysis` and `trade_plans`
+  included, is `readOnlyHint: true`,
   `openWorldHint: true`: an inline fetch only adds market data.
 
 ## The tools
 
 | Tool | Takes | Answers |
 |---|---|---|
-| `quote` | `symbols`, `benchmark`, `extended`, `next` | per symbol a `QuoteItem` (`quote.ts`) with `returns`, `session`, with a benchmark `relative_return_1m`, `_3m`, `relative_to`, `relative_live` and, across currencies, `relative_note`, with `extended` true `extended`, `extended_reason` and `opens` |
+| `quote` | `symbols`, `benchmark`, `extended`, `next` | per symbol a `QuoteItem` (`quote.ts`) with `returns`, `session`, with a benchmark `relative_return_1m`, `_3m`, `relative_to`, `relative_live` and, across currencies, `relative_note`, with `extended` true `extended`, `extended_reason` and `opens`; for a key with trade plans access, `trade_plans` when the caller has active plans tagged with it |
 | `history` | `symbol`, `interval`, `from`, `to`, `benchmark`, `extended`, `next` | bars oldest first with `final` and signals; `session`; `relative`; with `5m`, `points` and `sessions`, and `extended_points` with `extended_reason` when `extended` |
 | `search` | `query`, `next` | up to 20 stored matches, then up to 20 Bucharest listings from the stored list pages while the feed is on, then Yahoo's, each with id, exchange, type, name, `source`, `stored`; a listing Yahoo found adds `exchange_name`, the exchange in Yahoo's words, the stored copy of it too, and a stored one its `currency`, so one fund on several exchanges reads apart; a Bucharest listing adds its `isin` |
 | `movers` | `symbols`, `min_move_pct`, `direction`, `average`, `relation`, `next` | matches by absolute change, largest first; `counts` |
@@ -159,11 +168,22 @@ tracking in `docs/storage.md`; the source queue and deadlines in
 | `portfolio`, `portfolio_trade`, `portfolio_cash`, `portfolio_bond`, `portfolio_fund`, `portfolio_setup` | see `docs/portfolios.md` | |
 | `profile`, `profile_edit` | see `docs/profile.md` | |
 | `analysis`, `analysis_edit` | see `docs/analysis.md` | |
+| `trade_plans`, `trade_plans_edit` | see `docs/trade-plans.md` | |
 
 - **quote never points at a note**: every price question calls it,
   and a pointer there drew agents into a symbol's note for a move
   question. The `research` overview carries the pointer
   (`docs/analysis.md`).
+- **quote points at the caller's own trade plans**: `trade_plans:
+  [{id, name, updated_at, read_with}]` of the active plans tagged with
+  the item, the 10 newest (`QUOTE_PLANS`), with `trade_plans_more: <n>`
+  only when more are tagged, which `trade_plans` `list` with `symbol`
+  gives; left out with none or without trade plans access, never their
+  text. An item is never split across pages, so the pointer stays
+  short. A plan holds the owner's levels for that very price, so
+  the pointer belongs where the price is (`docs/trade-plans.md`). It is
+  added in `agentItem()` from the tool's `who`; the REST projection and
+  admin's quote never carry it.
 - **quote's `returns` answer "how did it do" without `history`**:
   `1w`, `1m`, `3m`, `ytd` and `1y`, `to` and `live` (`docs/signals.md`,
   "Trailing returns").

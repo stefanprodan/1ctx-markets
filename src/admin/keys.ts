@@ -33,6 +33,8 @@ import {
   type ProfileAccess,
   revokeKey,
   setKeyAccess,
+  TRADE_PLANS_ACCESS,
+  type TradePlansAccess,
 } from "../server/access.ts";
 import { recheck } from "../server/caller.ts";
 
@@ -56,6 +58,7 @@ export const keyItem = (k: KeyRow, names: ReadonlyMap<string, string>) => ({
   alerts: k.alerts,
   profile: k.profile,
   analysis: k.analysis,
+  trade_plans: k.tradePlans,
 });
 
 const namesOf = (m: Markets): Map<string, string> =>
@@ -108,6 +111,13 @@ function analysisOf(value: unknown): AnalysisAccess {
   return value as AnalysisAccess;
 }
 
+function tradePlansOf(value: unknown): TradePlansAccess {
+  if (!(TRADE_PLANS_ACCESS as readonly unknown[]).includes(value)) {
+    throw new ArgError(`trade_plans is ${TRADE_PLANS_ACCESS.join(", ")}`);
+  }
+  return value as TradePlansAccess;
+}
+
 function parseCreate(body: unknown): {
   name: string;
   days: KeyDays | null;
@@ -115,6 +125,7 @@ function parseCreate(body: unknown): {
   alerts: AlertsAccess;
   profile: ProfileAccess;
   analysis: AnalysisAccess;
+  tradePlans: TradePlansAccess;
 } {
   const b = fields(body, [
     "name",
@@ -123,6 +134,7 @@ function parseCreate(body: unknown): {
     "alerts",
     "profile",
     "analysis",
+    "trade_plans",
   ]);
   if (!isKeyName(b.name)) {
     throw new ArgError(
@@ -140,19 +152,27 @@ function parseCreate(body: unknown): {
     alerts: alertsOf(b.alerts ?? "none"),
     profile: profileOf(b.profile ?? "none"),
     analysis: analysisOf(b.analysis ?? "none"),
+    tradePlans: tradePlansOf(b.trade_plans ?? "none"),
   };
 }
 
 function parseAccess(body: unknown): KeyAccess {
-  const b = fields(body, ["portfolio", "alerts", "profile", "analysis"]);
+  const b = fields(body, [
+    "portfolio",
+    "alerts",
+    "profile",
+    "analysis",
+    "trade_plans",
+  ]);
   if (
     b.portfolio === undefined &&
     b.alerts === undefined &&
     b.profile === undefined &&
-    b.analysis === undefined
+    b.analysis === undefined &&
+    b.trade_plans === undefined
   ) {
     throw new ArgError(
-      "give portfolio, alerts, profile, analysis or more than one",
+      "give portfolio, alerts, profile, analysis, trade_plans or more than one",
     );
   }
   return {
@@ -162,6 +182,9 @@ function parseAccess(body: unknown): KeyAccess {
     ...(b.alerts === undefined ? {} : { alerts: alertsOf(b.alerts) }),
     ...(b.profile === undefined ? {} : { profile: profileOf(b.profile) }),
     ...(b.analysis === undefined ? {} : { analysis: analysisOf(b.analysis) }),
+    ...(b.trade_plans === undefined
+      ? {}
+      : { tradePlans: tradePlansOf(b.trade_plans) }),
   };
 }
 
@@ -203,6 +226,7 @@ export async function setOne(d: KeysDeps, who: Who, id: string, body: unknown) {
     alerts: key.alerts,
     profile: key.profile,
     analysis: key.analysis,
+    trade_plans: key.tradePlans,
   });
   return json({ key: keyItem(key, namesOf(d.m)) });
 }

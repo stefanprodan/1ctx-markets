@@ -52,6 +52,7 @@ export function keyAccess(adminKey: string | null): Access {
           alerts: "none",
           profile: "none",
           analysis: "none",
+          tradePlans: "none",
         },
       };
     },

@@ -5,7 +5,9 @@ Governs the REST API under `/api/v1`: `src/api/` (`routes.ts`,
 the router's part in `src/server/http.ts`, the alerts feed
 (`src/api/alerts.ts`) and the instrument, dashboard and status
 handlers (`src/admin/http.ts`), the portfolio routes
-(`src/api/portfolios.ts`, `docs/portfolios.md`), and the dashboard's
+(`src/api/portfolios.ts`, `docs/portfolios.md`), the trade plans
+routes (`src/api/trade-plans-spec.ts`, `docs/trade-plans.md`), and the
+dashboard's
 (`src/admin/dashboard.ts`). What each route reads is its tool's,
 in `docs/tools.md`, `docs/research.md` and `docs/alerts.md`; what an
 alert is in `docs/alerts.md`; the admin key and what refetch and delete
@@ -57,6 +59,15 @@ MCP tools copied onto paths.
 | `GET /instruments/{symbol}/analysis/versions` | analysis:read | `analysisVersions()` | `revisions[]`, the kept ones newest first, without their text |
 | `GET /instruments/{symbol}/analysis/versions/{revision}` | analysis:read | `analysisVersion()` | that revision as `GET .../analysis` answers it, its move measured from its own save; 404 for one never made or no longer kept |
 | `GET /analysis?page_size=&page_token=` | analysis:read | `listedPage()` | `analyses[]`, each symbol's live revision newest first (`id`, `revision`, `author`, `written_at`, `bytes`, no text), `next_page_token` while more follow; a fund's only to one who holds or priced it |
+| `GET /trade-plans?status=&symbol=&page_size=&page_token=` | trade_plans:read | `planPage()` | `plans[]`, the caller's own newest updated first (`id`, `name`, `status`, `symbols`, `review_by`, `review_due`, `revision`, `updated_at`, `author`, `bytes`, no text); `status` `active` (default), `archived`, `removed` or `all` (active and archived); `symbol` a stored id or form, never fetched; `next_page_token` while more follow (`docs/trade-plans.md`) |
+| `POST /trade-plans` | trade_plans:write | `writePlan()` | `{name, text, symbols?, review_by?}`: a new active plan at revision 1; 201 with `Location` and the plan as listed; 404 or 503 for a symbol as `/quotes` would answer it, naming the symbol, nothing saved; 409 for a name an active plan holds or past 100 active |
+| `POST /trade-plans/preview` | trade_plans:write | `documentText()`, `renderMarkdown()` | `{text}` drawn as `html`, as `POST /profile/preview`; nothing is saved |
+| `GET /trade-plans/{id}?symbol=` | trade_plans:read | `readPlan()`, `readFields()`, `renderMarkdown()` | the plan as listed with `created_at`, `text`, `html`; with `symbol`, `symbol` and `sections[]` (`heading`, `level`, `line`); 404 for another person's or none |
+| `PUT /trade-plans/{id}` | trade_plans:write | `writePlan()` | `{revision, text}`, `{revision, edits}` or `{revision}` with any of `name`, `symbols`, `status` (`active`, `archived`), `review_by` (null clears it): one new revision of the whole state; the plan as listed, with `unchanged` when nothing changes; 409 with the live `revision` for a stale one, or for a name or the active limit |
+| `DELETE /trade-plans/{id}?revision=` | trade_plans:write | `writePlan()` | a soft delete with the revision read, not a revision; the plan as listed, `status` `removed`; 409 with the live `revision` for a stale one |
+| `POST /trade-plans/{id}/restore` | trade_plans:write | `writePlan()` | a deleted plan back at the revision it had; 409 when it is not deleted, for its name or the active limit |
+| `GET /trade-plans/{id}/versions` | trade_plans:read | `planVersions()`, `versionItems()` | `revisions[]`, the kept ones newest first (`revision`, `author`, `updated_at`, `bytes`, `changed`), without their text |
+| `GET /trade-plans/{id}/versions/{revision}` | trade_plans:read | `planVersion()` | that revision's whole state with `text` and `html`; 404 for one never made or no longer kept |
 | `GET /portfolios` | portfolio:read | `listAll()` | `portfolios[]`, Cash first then the owner's order, with their counts and `cash` (true on Cash, the one that holds all cash and only cash), `brokers[]`, `display_currency`, `time_zone`, `markets[]`, `funds[]` |
 | `POST /portfolios`, `PATCH`, `DELETE /portfolios/{id}` | portfolio:write | `createPortfolio()`, `updatePortfolio()`, `removePortfolio()` | `{name}`, and on `PATCH` `{name, position}`, either or both, `position` the place among the portfolios but Cash, 1 first (the others renumbered); 201 with `Location`; 409 while no display currency is set, for a taken name or the name Cash, for any rename, move or delete of Cash, or for a portfolio holding live rows (removed ones are deleted with it) |
 | `GET /portfolios/{id}` | portfolio:read | `portfolioItem()` | `{portfolio}` |
@@ -82,7 +93,7 @@ MCP tools copied onto paths.
 | `GET /sharing` | session | `sharingAnswer()` | `people[]` (`id`, `name`, `shared`): everyone else, and whether they see the caller's portfolios; `sharers[]` (`id`, `name`): who lets the caller see theirs; both by name, ignoring case. A web UI sign-in's only: a key, the admin key too, is refused (403) |
 | `PUT`, `DELETE /sharing/{id}` | session | `setSharing()` | starts or ends that person seeing all the caller's portfolios, read only; answers as `GET /sharing`; done already is no error; 404 for no such person, 400 for the caller; a sign-in's only, as above |
 | `GET /keys` | session | `listAnswer()` | `keys[]` (id, name, `owner` `{id, name}`, created, last used, expires; never a token), the caller's own, an admin's everyone's, and `limit` (`docs/admin.md`) |
-| `POST /keys` | session | `createOne()` | `{name, expiresInDays, portfolio, alerts, profile, analysis}` (days null, 30, 90 or 365; each access `none`, the default, `read` or `write`): a key of the caller's; 201 with `key` and its `token`, once; 409 for a name the caller has or past their cap of 5 |
+| `POST /keys` | session | `createOne()` | `{name, expiresInDays, portfolio, alerts, profile, analysis, trade_plans}` (days null, 30, 90 or 365; each access `none`, the default, `read` or `write`): a key of the caller's; 201 with `key` and its `token`, once; 409 for a name the caller has or past their cap of 5 |
 | `DELETE /keys/{id}` | session | `revokeOne()` | 204; 404 for an unknown id or another person's, but for an admin |
 | `GET`, `POST /users`; `PATCH`, `DELETE /users/{id}`; `POST /users/{id}/invite`, `/users/{id}/sign-out` | admin | `src/admin/users.ts` | the people (`docs/admin.md`, "People") |
 | `GET`, `PUT`, `DELETE /smtp`; `POST /smtp/test` | admin | `src/admin/smtp.ts` | the email settings (`docs/admin.md`, "Email") |
@@ -433,7 +444,8 @@ MCP tools copied onto paths.
   on an `admin` or `session` route (`/instruments`, `/screener`,
   `/dashboard`, an instrument's stored check, delete and refetch,
   `/status`, its retry, `/keys`, `/users`, `/smtp`), and on a
-  portfolio, alerts, profile or analysis route without that access.
+  portfolio, alerts, profile, analysis or trade plans route without
+  that access.
 - **Portfolio routes take the key's portfolio access** (`keys.portfolio`,
   `none` by default): `portfolio:read` opens with `read` or `write`,
   `portfolio:write` with `write`. Holdings are private, so the read
@@ -468,7 +480,14 @@ MCP tools copied onto paths.
   `analysis:write` (`PUT`, the preview) with `write`. The analysis is
   shared by everyone, but a script's key never needs it, so the read
   scope never opens it; a cookie writes it under the person's name. The
-  spec names `analysisRead` and `analysisWrite`. A
+  spec names `analysisRead` and `analysisWrite`.
+- **Trade plans routes take the key's trade plans access**
+  (`keys.trade_plans`, `none` by default) the same way:
+  `trade_plans:read` (the list, a plan, its revisions) opens with
+  `read` or `write`, `trade_plans:write` (create, `PUT`, delete,
+  restore, the preview) with `write`. A plan is the caller's own and is
+  never shared, so no route takes `?owner=` and the read scope never
+  opens them. The spec names `tradePlansRead` and `tradePlansWrite`. A
   missing, wrong, revoked or expired key is 401. Any other `/api/v1/`
   path, unknown ones included, answers 401 without a key and 404 with
   one.

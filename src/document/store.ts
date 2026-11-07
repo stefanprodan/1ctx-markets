@@ -5,6 +5,7 @@
 
 import { type Failure, PAGE_BYTES, sentBytes } from "../operations/answer.ts";
 import { ArgError } from "../operations/args.ts";
+import type { Who } from "../operations/who.ts";
 import type { Db } from "../storage/db/index.ts";
 import { applyEdits, type Edit } from "./edit.ts";
 import type { Revision } from "./read.ts";
@@ -42,7 +43,7 @@ export type Kind = {
 
 // the read answer is what must fit, since JSON escaping grows short lines,
 // quotes and control characters past the byte cap's promise
-function checked(kind: Kind, next: Revision): void {
+export function checked(kind: Kind, next: Revision): void {
   if (next.text.trim() === "") {
     throw new ArgError(
       `text is empty; the ${kind.noun} is rewritten, never blanked`,
@@ -121,9 +122,26 @@ export function saveIn(
   };
   checked(kind, next);
   rows.insert(db, next);
-  // the live revision is the highest, so it is never evicted
+  evict(db, rows, next.revision);
+  return { saved: infoOf(next), unchanged: false };
+}
+
+// the live revision is the highest, so it is never evicted
+export function evict(
+  db: Db,
+  rows: Pick<Rows, "table" | "column"> & { value: string | number },
+  live: number,
+): void {
   db.query(
     `delete from ${rows.table} where ${rows.column} = ? and revision <= ?`,
-  ).run(rows.value, next.revision - KEPT_REVISIONS);
-  return { saved: infoOf(next), unchanged: false };
+  ).run(rows.value, live - KEPT_REVISIONS);
+}
+
+// the person and the key, so a revision says whose agent wrote it
+export function authorOf(db: Db, who: Who): string {
+  if (who.credential.kind !== "key") return who.name;
+  const person = db
+    .query<{ name: string }, [string]>("select name from users where id = ?")
+    .get(who.user)?.name;
+  return person === undefined ? who.name : `${person} (${who.name})`;
 }

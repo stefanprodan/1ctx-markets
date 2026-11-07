@@ -132,12 +132,14 @@ export function AccessPicks({
   alerts,
   profile,
   analysis,
+  tradePlans,
   busy,
 }: {
   portfolio: Signal<KeyAccess>;
   alerts: Signal<KeyAccess>;
   profile: Signal<KeyAccess>;
   analysis: Signal<KeyAccess>;
+  tradePlans: Signal<KeyAccess>;
   busy: boolean;
 }) {
   return (
@@ -146,6 +148,7 @@ export function AccessPicks({
       <AccessPick label="Alerts" value={alerts} busy={busy} />
       <AccessPick label="Profile" value={profile} busy={busy} />
       <AccessPick label="Analysis" value={analysis} busy={busy} />
+      <AccessPick label="Trade plans" value={tradePlans} busy={busy} />
     </>
   );
 }
@@ -171,6 +174,7 @@ export function NewKey({
   const alerts = useSignal<KeyAccess>("none");
   const profile = useSignal<KeyAccess>("none");
   const analysis = useSignal<KeyAccess>("none");
+  const tradePlans = useSignal<KeyAccess>("none");
   const busy = useSignal(false);
   const error = useSignal<string | null>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -187,6 +191,7 @@ export function NewKey({
         alerts: alerts.value,
         profile: profile.value,
         analysis: analysis.value,
+        trade_plans: tradePlans.value,
       });
       busy.value = false;
       shown.value = made.token;
@@ -273,6 +278,7 @@ export function NewKey({
             alerts={alerts}
             profile={profile}
             analysis={analysis}
+            tradePlans={tradePlans}
             busy={busy.value}
           />
           {error.value !== null && <Notice error>{error.value}</Notice>}
@@ -307,6 +313,7 @@ export function KeyDetails({
   const alerts = useSignal<KeyAccess>(row.alerts ?? "none");
   const profile = useSignal<KeyAccess>(row.profile ?? "none");
   const analysis = useSignal<KeyAccess>(row.analysis ?? "none");
+  const tradePlans = useSignal<KeyAccess>(row.trade_plans ?? "none");
   const busy = useSignal(false);
   const asking = useSignal(false);
   const error = useSignal<string | null>(null);
@@ -324,12 +331,14 @@ export function KeyDetails({
     alerts: alerts.value,
     profile: profile.value,
     analysis: analysis.value,
+    trade_plans: tradePlans.value,
   };
   const same =
     next.portfolio === (row.portfolio ?? "none") &&
     next.alerts === (row.alerts ?? "none") &&
     next.profile === (row.profile ?? "none") &&
-    next.analysis === (row.analysis ?? "none");
+    next.analysis === (row.analysis ?? "none") &&
+    next.trade_plans === (row.trade_plans ?? "none");
   const submit = async (event: Event) => {
     event.preventDefault();
     if (busy.value || same) return;
@@ -447,6 +456,7 @@ export function KeyDetails({
           alerts={alerts}
           profile={profile}
           analysis={analysis}
+          tradePlans={tradePlans}
           busy={busy.value || !own}
         />
       </form>

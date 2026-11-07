@@ -1246,6 +1246,7 @@ describe("a write re-reads its caller", () => {
       alerts: "write",
       profile: "write",
       analysis: "none",
+      tradePlans: "none",
     };
     const login = await t.m.writer.write((db) =>
       openLogin(db, "ana", t.clock.now()),
