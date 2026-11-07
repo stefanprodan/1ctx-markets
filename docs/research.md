@@ -6,14 +6,15 @@ the `research` and `events` tools and the research route's contents
 (`src/tools/research.ts`, `src/operations/research.ts`,
 `src/operations/events.ts`), an ADR's `valuation`
 (`src/sources/yahoo/valuation.ts`), a fund's `top_holdings`
-(`src/sources/yahoo/top-holdings.ts`), and the
+(`src/sources/yahoo/top-holdings.ts`), `options`
+(`src/sources/yahoo/options.ts`, `src/operations/options.ts`), and the
 `research`, `events`, `news`, `news_walks`, `valuations` and fund
 tables (`src/storage/db/migrations/0007-research.ts`, `0008-news.ts`,
 `0012-listing.ts`, `0028-share-class-listing.ts`,
 `0029-valuations.ts`, `0030-fund-top-holdings.ts`,
 `0042-earnings-fiscal.ts`). Yahoo's quote
-summary call, its session and what a fund's answer keeps are in
-`docs/yahoo.md`. EDGAR's filings,
+summary call, its session, what a fund's answer keeps and how a chain
+is read are in `docs/yahoo.md`. EDGAR's filings,
 their flags and events' `filed_at` are in `docs/edgar.md`; the
 sections that answer them are here. The queue, deadlines, retries, phrases, scrubbing
 and the lock every source shares are in `docs/sources.md`; resolution,
@@ -365,9 +366,9 @@ route's transport in `docs/api.md`; alerts that wait on events in
   row, `valuation` for a share answered from a foreign listing,
   earnings with its revenue, the next event, five headlines,
   `filings`), `analysts`, `earnings`, `insiders`, `news` and `filings`,
-  paged newest first, and `top_holdings`. The overview drops headlines
-  first to fit one page; `overview` and `top_holdings` have no next
-  page.
+  paged newest first, and `top_holdings` and `options`. The overview
+  drops headlines first to fit one page; `overview`, `top_holdings` and
+  `options` have no next page.
 - **The overview's `filings`** is EDGAR's summary (`filingsSummary()`):
   `source`, `fetched_at`, `stale`, the three flags (`late_filing`,
   `restatement`, `offering`: new securities, shares or debt,
@@ -445,6 +446,57 @@ route's transport in `docs/api.md`; alerts that wait on events in
   - **Stale reasons are research's** (`topHoldingsState`,
     `STALE_RESEARCH`), on the 23:00 UTC schedule; `fetched_at` is the
     stored row's, so it outlives the runs' pruning.
+- **`options` is Yahoo's chains** (`readOptions()`), for any
+  instrument Yahoo prices, on any market; another source's (FRED, the
+  Bucharest feed) answers `NOT_OPTIONABLE` ("Options come from Yahoo;
+  this symbol is priced by another source."), and a listing with none
+  `NO_OPTIONS` ("Yahoo lists no options for this symbol."), as
+  `NOT_A_FUND` and `NO_TOP_HOLDINGS` do. Never in the overview: a
+  summary is several calls, and the overview stays one read.
+  - **Fetched inside the call, never stored**, and kept in memory per
+    instrument and expiry until the quote period ends (`m.options`), as
+    quote's `extended` is, so a read repeated within it costs no call.
+    Chains change through the day; nothing else reads them, and nothing
+    of them reaches signals, movers, screen, alerts or bars.
+  - **Without `expiry`, the summary**: `price` (the chain's own
+    `regularMarketPrice`, which every figure is measured from),
+    `price_at`, `currency`, `fetched_at`, `stale`, `expiries` (every
+    listed date, read in UTC) and `summary`, one row for each of the
+    nearest `SUMMARY_EXPIRIES` (4) expiries with `days` above 0
+    (calendar days from the market's date), and for the earnings expiry
+    when it is not among them. Each row: `expiry`, `days`, `earnings`,
+    `atm_strike` (the strike nearest `price` listing both a call and a
+    put, the lower on a tie), `call_iv` and `put_iv` there in percent a
+    year, `straddle` (the call's mid plus the put's), `implied_move_pct`
+    (`straddle` over `price`, times 100), `put_call_oi` and
+    `put_call_volume` (the puts' sum over the calls', null when the
+    calls' is 0), `top_call_oi` and `top_put_oi` (the `TOP_STRIKES` (3) strikes
+    with the most open interest). The listing is the nearest chain, so
+    a summary is one call per row past it; a row not answered within
+    the call's deadline is its `error` (`timeout`), the rest standing.
+  - **The earnings expiry is the first to price the report**: the first
+    listed expiry strictly after the next earnings date for an `amc` or
+    unlabelled hour, on or after it for `bmo` or `dmh` (an expiry settles
+    at the day's close), since a contract expiring
+    before the news prices none of it. Only a stored event not yet
+    reported and not past (`upcomingEvent()`, Finnhub's calendar) counts,
+    so a passed one awaiting results never hides the next;
+    with Finnhub off there is no earnings row.
+  - **With `expiry`, that expiry's chain near the money**, unpaged:
+    every strike within `CHAIN_BAND` (10) percent of `price`, lowest
+    first, each with `call` and `put` (`bid`, `ask`, `mid`, `last`,
+    `last_trade_at`, `volume`, `open_interest`, `iv` in percent a year,
+    `in_the_money`; null for a side with no contract), beside `expiry`,
+    `days` and `band_pct`. A chain too long for a page drops its
+    farthest strikes, both sides of a tie together, and `band_pct` says
+    how far it reaches. An expiry not listed is `bad_arguments` naming
+    the `NEAREST_LISTED` (3) nearest listed; `expiry` with another section, and
+    `since` with this one, are refused.
+  - **Wrong in silence, guarded**: `mid` is null unless bid and ask are
+    both above 0 and ask is at or above bid, and a straddle with a null
+    mid is null, never a last price stood in; `last` comes with
+    `last_trade_at`, so an old trade reads as one. Open interest is the
+    previous session's, as exchanges publish it once a day.
 - **Every section carries its period, `fetched_at` and `stale`**; a
   section with no row says why. A section or event of another listing
   also carries `listing` and the note `OTHER_LISTING`, or `SHARE_CLASS`
@@ -465,9 +517,12 @@ is fixed, never an argument, to keep five summaries short.
   `valuation` (the overview's, with `metric` asked, for a share answered
   from a foreign listing),
   `news` (the news week), `filings` (EDGAR's summary) and
-  `top_holdings` (the tool's section), under the tool's deadline and
-  tracking. `top_holdings` is answered only when asked, never by
-  default, so a call without `sections` answers as before. No quote: `/quotes` answers prices for
+  `top_holdings` (the tool's section) and `options` (the tool's summary,
+  never a chain), under the tool's deadline and tracking. `top_holdings`
+  and `options` are answered only when asked, never by default, so a
+  call without `sections` answers as before. `options` takes one symbol
+  (`bad_arguments` with more), since a summary is up to six calls (five
+  rows, and the listing when its nearest expires that day). No quote: `/quotes` answers prices for
   many symbols in one call. The research tool keeps its own names.
 - **Each Finnhub section but `metric` adds `history`**: its newest
   rows as the section's page shows them, so a script reads a trend

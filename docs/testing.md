@@ -38,7 +38,7 @@ doc; key files in `docs/config.md`.
 
 | Helper | Answers |
 |---|---|
-| `yahoo.ts` | `recorded()`, `fakeFetch()`, `listed()` (a short chart read as a whole history), `backTo()` (made-up weekday rows before a recording), `added()`, `yahooSession()` (a made-up session and the recorded quote summaries, by symbol and modules) |
+| `yahoo.ts` | `recorded()`, `fakeFetch()`, `listed()` (a short chart read as a whole history), `backTo()` (made-up weekday rows before a recording), `added()`, `yahooSession()` (a made-up session and the recorded quote summaries, by symbol and modules, and option chains, a listed date with no recording answering the nearest chain moved to it) |
 | `bvb.ts` | the Bucharest exchange's pages and chart feed by URL (`bvbFetch()`), `opened()` (a page read as open: every recording is of a closed market), `keyed()` (a made-up page key, which the recordings strip), `bothSources()` with Yahoo |
 | `sources.ts` | Yahoo and FRED by URL for reads that fetch inside a call; `gate()` holds a call until released |
 | `sim.ts` | a made-up Yahoo for whole simulated days, sessions from each listing's zone |
@@ -120,7 +120,7 @@ Never run one from a test or CI.
 
 | Script | Records | Key |
 |---|---|---|
-| `yahoo.ts` | charts, searches, spark and quote batches, quote summaries with a session; a case name records one | none |
+| `yahoo.ts` | charts, searches, spark and quote batches, quote summaries and option chains with a session; a case name records one | none |
 | `fred.ts` | daily series' metadata and recent observations, an unknown series, a refused key | `FRED_KEY_FILE` or `~/.1ctx-markets/secrets/source-fred.key` |
 | `finnhub.ts` | the research sections, the whole-market calendar, a price target | `FINNHUB_KEY_FILE` or `source-finnhub.key` |
 | `massive.ts` | the latest news and its next page, older news | `MASSIVE_KEY_FILE` or `source-massive.key` |

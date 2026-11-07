@@ -14,7 +14,7 @@ import type { Finnhub } from "../sources/finnhub/client.ts";
 import { type Hooks, NO_HOOKS } from "../sources/finnhub/store.ts";
 import type { Fred } from "../sources/fred/client.ts";
 import type { Massive } from "../sources/massive/client.ts";
-import type { Yahoo } from "../sources/yahoo/client.ts";
+import type { OptionChain, Yahoo } from "../sources/yahoo/client.ts";
 import type { Db } from "../storage/db/index.ts";
 import type { Writer } from "../storage/writer.ts";
 
@@ -45,6 +45,7 @@ export type Markets = {
   // fetches in flight, shared by every call naming the same instrument
   inflight: Map<string, Flight>;
   extended: ExtendedCache;
+  options: OptionsCache;
   // REST's rule: a bare symbol is Yahoo's listing, the feed's only when
   // Yahoo has none; MCP answers both as candidates
   yahooFirst: boolean;
@@ -85,6 +86,7 @@ export function markets(options: {
     log: options.log,
     inflight: new Map(),
     extended: new Map(),
+    options: new Map(),
     yahooFirst: false,
   };
 }
@@ -115,6 +117,10 @@ export type ExtendedCache = Map<
   string,
   { until: number; read: ExtendedRead; points: ExtendedPoint[] }
 >;
+
+// by instrument and expiry, "listed" the answer asked without a date, for
+// the quote period it was fetched in
+export type OptionsCache = Map<string, { until: number; answer: OptionChain }>;
 
 // a joining caller extends the write's deadline, so it lands while anyone waits
 export function shared<T>(

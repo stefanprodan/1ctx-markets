@@ -37,6 +37,10 @@ const summary = (symbol: string, modules = "defaultKeyStatistics,price") =>
 
 const holdings = (symbol: string) => summary(symbol, "topHoldings,price");
 
+// date is an expiry as Yahoo lists it, in epoch seconds
+const options = (symbol: string, date?: number) =>
+  `${Q2}/v7/finance/options/${encodeURIComponent(symbol)}${date === undefined ? "" : `?date=${date}`}`;
+
 const CASES: Case[] = [
   // Access without cookie or crumb, both hosts, and the UA quirk.
   {
@@ -297,6 +301,17 @@ const CASES: Case[] = [
     session: true,
   },
   { name: "topholdings-aapl", url: holdings("AAPL"), session: true },
+  // Option chains on the same session: the nearest expiry with the list,
+  // one listed expiry, an ETF with placeholder volatilities, and a
+  // listing with no options, which answers empty lists.
+  { name: "options-aapl", url: options("AAPL"), session: true },
+  {
+    name: "options-aapl-2026-11-20",
+    url: options("AAPL", utc("2026-11-20T00:00:00Z")),
+    session: true,
+  },
+  { name: "options-spy", url: options("SPY"), session: true },
+  { name: "options-vwce-de", url: options("VWCE.DE"), session: true },
   // Yahoo caps a spark call at 20 symbols; 21 is a 400.
   {
     name: "spark-v7-21-symbols",
@@ -382,8 +397,9 @@ function clean(value: unknown, s: Session | null): unknown {
 async function record(c: Case) {
   if (c.session && session === null) session = await startSession();
   const s = c.session ? session : null;
+  const sep = c.url.includes("?") ? "&" : "?";
   const url =
-    s === null ? c.url : `${c.url}&crumb=${encodeURIComponent(s.crumb)}`;
+    s === null ? c.url : `${c.url}${sep}crumb=${encodeURIComponent(s.crumb)}`;
   const { res, text: raw } = await get(c.name, url, {
     headers: {
       "User-Agent": UA,
@@ -405,7 +421,7 @@ async function record(c: Case) {
     recordedAt: new Date().toISOString(),
     request: {
       method: "GET",
-      url: s === null ? c.url : `${c.url}&crumb=REDACTED`,
+      url: s === null ? c.url : `${c.url}${sep}crumb=REDACTED`,
     },
     status: res.status,
     headers,

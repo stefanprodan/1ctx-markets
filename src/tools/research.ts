@@ -25,6 +25,7 @@ import {
 } from "../operations/args.ts";
 import { fundHoldingsAnswer, noFund, seenFund } from "../operations/funds.ts";
 import type { Markets } from "../operations/markets.ts";
+import { type OptionsSection, readOptions } from "../operations/options.ts";
 import { quoteItem, readLatest } from "../operations/quote.ts";
 import {
   FILINGS_PAGE_ROWS,
@@ -63,6 +64,7 @@ import {
   newsState,
   readNews,
 } from "../sources/massive/store.ts";
+import { CHAIN_BAND } from "../sources/yahoo/options.ts";
 
 export const RESEARCH_SECTIONS = [
   "overview",
@@ -72,6 +74,7 @@ export const RESEARCH_SECTIONS = [
   "news",
   "filings",
   "top_holdings",
+  "options",
 ] as const;
 export type ResearchSection = (typeof RESEARCH_SECTIONS)[number];
 
@@ -84,6 +87,7 @@ export const SECTIONS_OF: Record<ResearchSection, readonly Section[]> = {
   news: [],
   filings: [],
   top_holdings: [],
+  options: [],
 };
 
 // a news page goes on below the last article it showed
@@ -106,17 +110,52 @@ export type ResearchArgs = {
   symbol: string;
   section: ResearchSection;
   since: string | null;
+  expiry: string | null;
   next: string | null;
 };
 
 export function parseResearch(input: unknown): ResearchArgs {
-  const f = fields(input, ["symbol", "section", "since", "next"]);
+  const f = fields(input, ["symbol", "section", "since", "expiry", "next"]);
   return {
     symbol: text(f.symbol, "symbol"),
     section: oneOf(f.section, "section", RESEARCH_SECTIONS, "overview"),
     since: date(f.since, "since"),
+    expiry: date(f.expiry, "expiry"),
     next: optionalText(f.next, "next", 300),
   };
+}
+
+type Strike = { strike: number };
+
+// Unpaged: the strikes farthest from the price go first, both sides of a
+// tie together, so every strike within band_pct is shown.
+function optionsText(
+  head: Record<string, unknown>,
+  section: OptionsSection,
+): string {
+  const { strikes, ...rest } = section as OptionsSection & {
+    strikes?: Strike[];
+  };
+  const price = rest.price as number | null | undefined;
+  if (strikes === undefined || price == null || price <= 0) {
+    return JSON.stringify({ ...head, ...section });
+  }
+  const off = (s: Strike) => Math.abs(s.strike - price);
+  let kept = strikes;
+  let band = CHAIN_BAND;
+  for (;;) {
+    const text = JSON.stringify({
+      ...head,
+      ...rest,
+      band_pct: band,
+      strikes: kept,
+    });
+    if (fits(text) || kept.length === 0) return text;
+    const far = Math.max(...kept.map(off));
+    kept = kept.filter((s) => off(s) < far);
+    const widest = kept.length === 0 ? 0 : Math.max(...kept.map(off));
+    band = Math.floor((widest / price) * 10_000) / 100;
+  }
 }
 
 export async function researchAnswer(
@@ -124,9 +163,17 @@ export async function researchAnswer(
   args: ResearchArgs,
   who: Who = NO_ACCESS,
 ): Promise<ToolResult> {
-  const { next, since: given, ...rest } = args;
-  // without since the digest is what cursors were bound to before it
-  const asked = given === null ? rest : { ...rest, since: given };
+  const started = m.clock.now();
+  const { next, since: given, expiry, ...rest } = args;
+  // without since or expiry the digest is what cursors were bound to before
+  const asked = {
+    ...rest,
+    ...(given === null ? {} : { since: given }),
+    ...(expiry === null ? {} : { expiry }),
+  };
+  if (expiry !== null && args.section !== "options") {
+    throw new ArgError("expiry is for the options section only");
+  }
   let since: number | null = null;
   if (args.since !== null) {
     if (args.section !== "news") {
@@ -143,7 +190,11 @@ export async function researchAnswer(
   }
   let start: string | null = null;
   if (next !== null) {
-    if (args.section === "overview" || args.section === "top_holdings") {
+    if (
+      args.section === "overview" ||
+      args.section === "top_holdings" ||
+      args.section === "options"
+    ) {
       throw new ArgError(`${args.section} has no next page`);
     }
     start = readCursor(next, asked);
@@ -226,6 +277,17 @@ export async function researchAnswer(
       summary.headlines.pop();
       text = answer();
     }
+    if (!fits(text)) throw new PageOverflow();
+    return textResult(text);
+  }
+  if (args.section === "options") {
+    const section = await readOptions(
+      m,
+      instrument,
+      expiry,
+      started + m.callMs,
+    );
+    const text = optionsText(head, section);
     if (!fits(text)) throw new PageOverflow();
     return textResult(text);
   }

@@ -37,6 +37,7 @@ import {
 } from "../rules/format.ts";
 import { ALERTS_KEPT_DAYS, ALERTS_PAGE } from "../rules/store.ts";
 import { CALLS_PER_MINUTE } from "../server/ratelimit.ts";
+import { SUMMARY_EXPIRIES } from "../sources/yahoo/options.ts";
 import { ALERT_PAGE_BYTES } from "./alerts.ts";
 import { DOC_FILES } from "./docs.ts";
 import { MAX_BODY_BYTES, PROBLEM_TYPE } from "./http.ts";
@@ -246,6 +247,7 @@ export const paths = {
         `- News gives counts by sentiment and the ${WEEK_ITEMS} articles that take a side first.`,
         `- \`filings\` holds a US share's ${FILINGS_RECENT} newest SEC filings and three flags: a late filing, a restatement, new securities registered or offered.`,
         "- `top_holdings`, only when asked, holds an ETF's or mutual fund's ten largest holdings, asset split and sectors, on any exchange.",
+        `- \`options\`, only when asked and for one symbol, holds the implied move, implied volatility and open interest of the nearest ${SUMMARY_EXPIRIES} expiries and of the first to price the next earnings report.`,
         "- A share not researched before is fetched within the call, from a rate-limited source.",
         DEADLINE,
         READ,
@@ -254,7 +256,7 @@ export const paths = {
         csv("symbols", symbols(MAX_RESEARCH_SYMBOLS), str, true),
         csv(
           "sections",
-          "Comma-separated. Default: all but `top_holdings`. A section left out is not fetched.",
+          "Comma-separated. Default: all but `top_holdings` and `options`. A section left out is not fetched. `options` takes one symbol.",
           values(RESEARCH_PARTS),
         ),
         query(

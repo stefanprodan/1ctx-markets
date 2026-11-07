@@ -9,6 +9,7 @@ import {
   clone,
   fakeFetch,
   listed,
+  optionsSymbol,
   type Recorded,
   recorded,
   summarySymbol,
@@ -59,6 +60,7 @@ export type Calls = {
   charts: (symbol?: string) => URL[];
   sparks: () => URL[];
   summaries: () => URL[];
+  chains: () => URL[];
 };
 
 export async function sources(
@@ -131,6 +133,7 @@ export async function sources(
         }),
       sparks: () => yahoo().filter((u) => u.pathname === "/v7/finance/spark"),
       summaries: () => yahoo().filter((u) => summarySymbol(u) !== null),
+      chains: () => yahoo().filter((u) => optionsSymbol(u) !== null),
     },
   };
 }

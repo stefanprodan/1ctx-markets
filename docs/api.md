@@ -346,13 +346,15 @@ MCP tools copied onto paths.
 
 - **`symbols` takes up to `MAX_RESEARCH_SYMBOLS` (5), `sections` a list
   of `metric`, `analysts`, `earnings`, `insider`, `next_event`, `news`,
-  `filings` (all by default) and `top_holdings` (only when asked), and
-  `since` a UTC date, with `news` asked.** Each item is `input`, `id`,
+  `filings` (all by default), `top_holdings` and `options` (only when
+  asked; `options` for one symbol, else `bad_arguments`), and `since` a
+  UTC date, with `news` asked.** Each item is `input`, `id`,
   `company` (the Finnhub summary with each asked section's `history`),
   `valuation` (with `metric`, for a share answered from a foreign
   listing), `news` (the news week), `filings` (EDGAR's summary, the
-  tool overview's) and `top_holdings` (the tool's section,
-  `NOT_A_FUND` for anything but a fund), or its error; no
+  tool overview's), `top_holdings` (the tool's section,
+  `NOT_A_FUND` for anything but a fund) and `options` (the tool's
+  summary, never a chain), or its error; no
   quote, since `/quotes` answers prices in one call. What each holds and
   why is in `docs/research.md` ("The research route").
 

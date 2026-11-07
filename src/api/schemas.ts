@@ -12,6 +12,7 @@ import { CALL_MS } from "../operations/markets.ts";
 import { FIELD_NAMES } from "../operations/screen.ts";
 import { ERRORS } from "../operations/targets.ts";
 import { KEY_DAYS, MAX_NAME, MIN_NAME } from "../server/access.ts";
+import { TOP_STRIKES } from "../sources/yahoo/options.ts";
 
 type JsonType =
   | "string"
@@ -258,6 +259,69 @@ export const topHoldings = note(
     ["source"],
   ),
   "A fund's ten largest holdings, asset split, sectors and bond ratings, not its full list; with `top_holdings` asked.",
+);
+const openInterest = list(object({ strike: num, open_interest: num }));
+const options = note(
+  object(
+    {
+      source: str,
+      error: str,
+      message: str,
+      price: note(
+        nnum,
+        "The chain's own price, which every figure is measured from.",
+      ),
+      price_at: nstr,
+      currency: nstr,
+      fetched_at: nstr,
+      stale: list(str),
+      expiries: note(list(str), "Every listed expiry date, read in UTC."),
+      summary: note(
+        list(
+          object(
+            {
+              expiry: str,
+              days: note(int, "Calendar days from the market's date."),
+              earnings: note(
+                bool,
+                "The first expiry to price the next earnings report.",
+              ),
+              error: str,
+              message: str,
+              atm_strike: note(
+                nnum,
+                "The strike nearest `price` listing both a call and a put.",
+              ),
+              call_iv: note(nnum, "Percent a year, as the source gives it."),
+              put_iv: note(nnum, "Percent a year, as the source gives it."),
+              straddle: note(
+                nnum,
+                "The call's mid plus the put's at `atm_strike`; null without a sane quote on either.",
+              ),
+              implied_move_pct: nnum,
+              put_call_oi: note(
+                nnum,
+                "Open interest, the previous session's: puts over calls.",
+              ),
+              put_call_volume: nnum,
+              top_call_oi: note(
+                openInterest,
+                `The ${TOP_STRIKES} strikes with the most open interest.`,
+              ),
+              top_put_oi: note(
+                openInterest,
+                `The ${TOP_STRIKES} strikes with the most open interest.`,
+              ),
+            },
+            ["expiry", "days", "earnings"],
+          ),
+        ),
+        "The nearest expiries, and the earnings one when past them.",
+      ),
+    },
+    ["source"],
+  ),
+  "The option chains' summary; with `options` asked, for one symbol.",
 );
 const news = object({ source: str }, ["source"], true);
 const flag = (what: string) =>
@@ -686,11 +750,12 @@ export const schemas: Record<string, Schema> = {
       valuation,
       filings,
       top_holdings: topHoldings,
+      options,
     },
     ["input", "id", "company"],
   ),
   ResearchNews: object(
-    { input: str, id: str, news, filings, top_holdings: topHoldings },
+    { input: str, id: str, news, filings, top_holdings: topHoldings, options },
     ["input", "id", "news"],
   ),
   ResearchBoth: object(
@@ -702,24 +767,26 @@ export const schemas: Record<string, Schema> = {
       news,
       filings,
       top_holdings: topHoldings,
+      options,
     },
     ["input", "id", "company", "news"],
   ),
   ResearchFilings: object(
-    { input: str, id: str, filings, top_holdings: topHoldings },
+    { input: str, id: str, filings, top_holdings: topHoldings, options },
     ["input", "id", "filings"],
   ),
-  ResearchTopHoldings: object({
-    input: str,
-    id: str,
-    top_holdings: topHoldings,
-  }),
+  ResearchTopHoldings: object(
+    { input: str, id: str, top_holdings: topHoldings, options },
+    ["input", "id", "top_holdings"],
+  ),
+  ResearchOptions: object({ input: str, id: str, options }),
   ResearchItem: oneOf(
     "ResearchCompany",
     "ResearchNews",
     "ResearchBoth",
     "ResearchFilings",
     "ResearchTopHoldings",
+    "ResearchOptions",
     "ItemError",
   ),
   Research: object({ research: list(ref("ResearchItem")) }),

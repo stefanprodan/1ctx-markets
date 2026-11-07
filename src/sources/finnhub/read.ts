@@ -173,6 +173,24 @@ export function reportOf(
   );
 }
 
+// the earliest event from the exchange's today with no actuals seen, so a
+// passed or reported one never stands in for the one still to come
+export function upcomingEvent(
+  db: Db,
+  instrument: Pick<Instrument, "id" | "zone">,
+  now: number,
+): EventRow | null {
+  return (
+    db
+      .query<EventRow, [string, string]>(
+        `${EVENT_SELECT} where instrument = ?1 and date >= ?2
+           and reported_seen_at is null
+         order by date limit 1`,
+      )
+      .get(instrument.id, localDate(instrument.zone, now)) ?? null
+  );
+}
+
 // days a passed event still counts as next while it awaits results
 export const AWAITING_DAYS = 7;
 
