@@ -6,9 +6,9 @@ market ids) and `src/sources/history.ts` (the backfill window, the retry
 wait, rescales), with the per-instrument lock in `src/runtime/lock.ts`.
 Each provider's own behaviour is in its doc: `docs/yahoo.md`,
 `docs/bvb.md`, `docs/fred.md`, `docs/research.md` (Finnhub and Massive),
-`docs/edgar.md`. The tool call's deadline and the inline fetch are in
-`docs/tools.md`; runs and staleness in `docs/storage.md`; rule pauses in
-`docs/alerts.md`.
+`docs/edgar.md`, `docs/cftc.md`. The tool call's deadline and the
+inline fetch are in `docs/tools.md`; runs and staleness in
+`docs/storage.md`; rule pauses in `docs/alerts.md`.
 
 ## The source queue
 
@@ -142,4 +142,5 @@ Each provider's own behaviour is in its doc: `docs/yahoo.md`,
 - **Source and market ids live in `src/sources/ids.ts`,** so code that
   names a source without calling it (staleness, signals, the reads,
   rules) imports no provider. A market id is an instrument key's
-  prefix (`BVB:`, `FRED:`).
+  prefix (`BVB:`, `FRED:`); `CFTC:` names a futures market, which is no
+  instrument (`docs/cftc.md`).

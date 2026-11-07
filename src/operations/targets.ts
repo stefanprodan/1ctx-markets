@@ -19,6 +19,7 @@ import {
   fetchInstrument as bvbFetchInstrument,
   keyOf as bvbKey,
 } from "../sources/bvb/sync.ts";
+import { NO_PRICE } from "../sources/cftc/list.ts";
 import {
   addSeries,
   NO_DATA,
@@ -28,6 +29,7 @@ import {
 import {
   BVB,
   BVB_MARKET,
+  CFTC_MARKET,
   FRED,
   FRED_MARKET,
   FUND_MARKET,
@@ -288,6 +290,10 @@ async function step(
       kind: "error",
       error: { error: "not_found", message: OWNER_PRICED },
     };
+  }
+  // a futures market's positioning, never an instrument
+  if (upper.startsWith(`${CFTC_MARKET}:`)) {
+    return { kind: "error", error: { error: "not_found", message: NO_PRICE } };
   }
   if (upper.includes(":")) {
     const stored = readInstrument(m.db, upper);

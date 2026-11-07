@@ -17,6 +17,7 @@ import { tokenHash } from "../../src/server/access.ts";
 import type { EmailSender } from "../../src/server/email/smtp.ts";
 import type { Fetch } from "../../src/sources/source.ts";
 import { type Db, open } from "../../src/storage/db/index.ts";
+import { cftcFetch, isCftc } from "./cftc.ts";
 import { type FakeClock, fakeClock } from "./clock.ts";
 
 export const SECRETS = join(import.meta.dir, "..", "fixtures", "secrets");
@@ -48,6 +49,9 @@ export type TestApp = {
 export type TestOptions = {
   // answers every source call; by default any call fails the test
   fetch?: Fetch;
+  // the CFTC's calls, which the app makes at start whatever a test fakes;
+  // the recordings by default
+  cftc?: Fetch;
   fredKey?: string;
   finnhubKey?: string;
   massiveKey?: string;
@@ -88,6 +92,13 @@ export async function withApp(
   const admin = requireAdmin(store);
   const db = options.db ?? open(":memory:", clock).db;
   seedAgentKey(db, clock.now());
+  // no test reaches a network
+  const route: Fetch =
+    options.fetch ??
+    (async (url) => {
+      throw new Error(`no network in tests: ${url}`);
+    });
+  const cftc = options.cftc ?? cftcFetch().fetch;
   const app = start({
     hostname: "127.0.0.1",
     port: 0,
@@ -113,12 +124,8 @@ export async function withApp(
       (async () => ({ ok: false, failure: "connect", reply: null })),
     page: options.page,
     files: options.files,
-    // no test reaches a network
-    fetch:
-      options.fetch ??
-      (async (url) => {
-        throw new Error(`no network in tests: ${url}`);
-      }),
+    fetch: (url, init) =>
+      isCftc(new URL(url)) ? cftc(url, init) : route(url, init),
   });
   try {
     await fn({

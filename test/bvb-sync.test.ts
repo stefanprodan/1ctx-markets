@@ -43,6 +43,7 @@ import {
   site,
   wapi,
 } from "./helpers/bvb.ts";
+import { cftcFetch, isCftc } from "./helpers/cftc.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { drive } from "./helpers/drive.ts";
 import { gate } from "./helpers/sources.ts";
@@ -619,6 +620,7 @@ describe("the list pages at start", () => {
     });
     const store = keys(SECRETS);
     const lines: string[] = [];
+    const cftc = cftcFetch();
     const app = start({
       hostname: "127.0.0.1",
       port: 0,
@@ -628,7 +630,9 @@ describe("the list pages at start", () => {
       db,
       quoteEveryMs: EVERY,
       bvb: true,
-      fetch: f.fetch,
+      // the CFTC's list, asked at start whatever else is on
+      fetch: (url, init) =>
+        isCftc(new URL(url)) ? cftc.fetch(url, init) : f.fetch(url, init),
     });
     const pages = () => f.urls.map((u) => u.pathname);
     return { clock, db, app, g, lines, pages };

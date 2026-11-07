@@ -3,6 +3,7 @@
 
 import { join } from "node:path";
 import type { Fetch } from "../../src/sources/source.ts";
+import { cftcAnswer } from "./cftc.ts";
 import {
   backTo,
   chartSymbol,
@@ -99,6 +100,8 @@ export async function sources(
     const held = await options.hold?.(url);
     if (held !== undefined) return held;
     if (url.hostname === "api.stlouisfed.org") return fredAnswer(url);
+    const cftc = await cftcAnswer(url);
+    if (cftc !== undefined) return cftc;
     const symbol = chartSymbol(url);
     if (symbol !== null) {
       return charts[symbol] ?? (await recorded("chart-unknown-symbol"));

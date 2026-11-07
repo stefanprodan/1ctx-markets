@@ -245,7 +245,9 @@ describe("the admin scope", () => {
         const res = await fetch(`${url}/api/v1/status`, {
           headers: { authorization: `Bearer ${admin}` },
         });
-        const [bars] = (await res.json()).jobs;
+        const bars = (await res.json()).jobs.find(
+          (j: { source: string }) => j.source === "yahoo",
+        );
         expect(bars.instruments).toBe(8);
         expect(bars.markets).toBe(0);
         expect(bars.failing_scopes).toBe(7);
@@ -372,6 +374,7 @@ describe("the admin scope", () => {
           ["finnhub", "Finnhub", "Finnhub", "FH"],
           ["massive", "Massive", "Massive", "M"],
           ["edgar", "SEC EDGAR", "EDGAR", "SEC"],
+          ["cftc", "CFTC Commitments of Traders", "CFTC", "CFTC"],
           ["bvb", "Bucharest Stock Exchange", "BVB", "BVB"],
         ]);
         const [yahoo, fred] = b.sources;
@@ -388,11 +391,19 @@ describe("the admin scope", () => {
         expect(b.sources[4]).toMatchObject({ state: "off", why: "no key" });
         expect(b.sources[4].key.file).toBe("secrets/source-edgar.key");
         expect(b.sources[5]).toMatchObject({
+          state: "on",
+          why: "always",
+          key: null,
+        });
+        expect(b.sources[6]).toMatchObject({
           state: "off",
           why: "no flag",
           key: null,
         });
-        expect(b.jobs).toEqual([
+        // the CFTC's list job runs at start, whatever a test fakes
+        expect(
+          b.jobs.filter((j: { source: string }) => j.source !== "cftc"),
+        ).toEqual([
           {
             source: "finnhub",
             job: "metric",

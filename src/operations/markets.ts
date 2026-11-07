@@ -9,6 +9,8 @@ import { type Clock, MINUTE_MS } from "../runtime/clock.ts";
 import { DEFAULT_QUOTE_EVERY } from "../runtime/config.ts";
 import type { Log } from "../runtime/log.ts";
 import type { Bvb } from "../sources/bvb/client.ts";
+import type { Cftc, Weeks } from "../sources/cftc/client.ts";
+import type { MarketList } from "../sources/cftc/list.ts";
 import type { Edgar } from "../sources/edgar/client.ts";
 import type { Finnhub } from "../sources/finnhub/client.ts";
 import { type Hooks, NO_HOOKS } from "../sources/finnhub/store.ts";
@@ -35,6 +37,8 @@ export type Markets = {
   finnhub: Finnhub | null;
   massive: Massive | null;
   edgar: Edgar | null;
+  // the app always has it; null only where reads are built without it
+  cftc: CftcReads | null;
   hooks: Hooks;
   rules: RuleHooks;
   tracking: Tracking;
@@ -46,6 +50,7 @@ export type Markets = {
   inflight: Map<string, Flight>;
   extended: ExtendedCache;
   options: OptionsCache;
+  positioning: PositioningCache;
   // REST's rule: a bare symbol is Yahoo's listing, the feed's only when
   // Yahoo has none; MCP answers both as candidates
   yahooFirst: boolean;
@@ -61,6 +66,7 @@ export function markets(options: {
   finnhub?: Finnhub | null;
   massive?: Massive | null;
   edgar?: Edgar | null;
+  cftc?: CftcReads | null;
   hooks?: Hooks;
   rules?: RuleHooks;
   log: Log;
@@ -78,6 +84,10 @@ export function markets(options: {
     finnhub: options.finnhub?.failFast() ?? null,
     massive: options.massive?.failFast() ?? null,
     edgar: options.edgar?.failFast() ?? null,
+    cftc:
+      options.cftc == null
+        ? null
+        : { client: options.cftc.client.failFast(), list: options.cftc.list },
     hooks: options.hooks ?? NO_HOOKS,
     rules: options.rules ?? NO_RULES,
     tracking: options.tracking ?? BY_USE,
@@ -87,6 +97,7 @@ export function markets(options: {
     inflight: new Map(),
     extended: new Map(),
     options: new Map(),
+    positioning: new Map(),
     yahooFirst: false,
   };
 }
@@ -121,6 +132,12 @@ export type ExtendedCache = Map<
 // by instrument and expiry, "listed" the answer asked without a date, for
 // the quote period it was fetched in
 export type OptionsCache = Map<string, { until: number; answer: OptionChain }>;
+
+// the client and the market list the job keeps
+export type CftcReads = { client: Cftc; list: MarketList };
+
+// by CFTC market code, for POSITIONING_MS from its fetch
+export type PositioningCache = Map<string, { until: number; answer: Weeks }>;
 
 // a joining caller extends the write's deadline, so it lands while anyone waits
 export function shared<T>(

@@ -1,0 +1,596 @@
+{
+  "note": "every date moved 156 weeks back from the recording",
+  "recordedAt": "2023-11-11T17:34:59.662Z",
+  "request": {
+    "method": "GET",
+    "url": "https://publicreporting.cftc.gov/resource/gpe5-46if.json?%24select=cftc_contract_market_code%2Cmax%28market_and_exchange_names%29+as+name%2Cmax%28report_date_as_yyyy_mm_dd%29+as+latest&%24where=report_date_as_yyyy_mm_dd+%3E%3D+%272022-11-12T00%3A00%3A00.000%27&%24group=cftc_contract_market_code&%24limit=2000"
+  },
+  "status": 200,
+  "headers": {
+    "access-control-allow-origin": "*",
+    "connection": "keep-alive",
+    "content-encoding": "gzip",
+    "content-type": "application/json;charset=utf-8",
+    "date": "Sat, 11 Nov 2023 17:35:00 GMT",
+    "etag": "\"aG90ZWwuNDkzNTZfM18zNTdWanI0RFI0Vl92TllLMnpuam91b0RzSWFETFU---gzioreBpwe0AbEwey29CqZK-hG1UOng--gzip--gzip\"",
+    "last-modified": "Fri, 10 Nov 2023 20:30:30 GMT",
+    "server": "nginx",
+    "strict-transport-security": "max-age=31536000; includeSubDomains",
+    "transfer-encoding": "chunked",
+    "vary": "Accept-Encoding",
+    "x-socrata-region": "aws-us-east-1-fedramp-prod",
+    "x-socrata-requestid": "2d93089f399c82854d9ae8222347d819",
+    "x-soda2-data-out-of-date": "false",
+    "x-soda2-fields": "[\"cftc_contract_market_code\",\"name\",\"latest\"]",
+    "x-soda2-secondary-last-modified": "Fri, 10 Nov 2023 20:30:30 GMT",
+    "x-soda2-truth-last-modified": "Fri, 10 Nov 2023 20:30:30 GMT",
+    "x-soda2-types": "[\"text\",\"text\",\"floating_timestamp\"]"
+  },
+  "body": [
+    {
+      "cftc_contract_market_code": "344607",
+      "name": "7 YEAR ERIS SOFR SWAP - CHICAGO BOARD OF TRADE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "13874J",
+      "name": "E-MINI S&P UTILITIES INDEX - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "13874H",
+      "name": "E-MINI S&P MATERIALS INDEX - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "1170E1",
+      "name": "VIX FUTURES - CBOE FUTURES EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "221606",
+      "name": "BLOOMBERG IG CREDIT FUTURES - CHICAGO BOARD OF TRADE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "12460+",
+      "name": "DJIA Consolidated - CHICAGO BOARD OF TRADE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "176740",
+      "name": "XRP - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "244041",
+      "name": "MSCI EAFE  - ICE FUTURES U.S.",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "221605",
+      "name": "BLOOMBERG HY CREDIT FUTURES - CHICAGO BOARD OF TRADE",
+      "latest": "2023-09-19T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "168DC1",
+      "name": "DOGECOIN - COINBASE DERIVATIVES, LLC",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "180LM3",
+      "name": "SUI PERP STYLE - COINBASE DERIVATIVES, LLC",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "20974+",
+      "name": "NASDAQ-100 Consolidated - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "171LM1",
+      "name": "AVALANCHE - COINBASE DERIVATIVES, LLC",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "13874I",
+      "name": "E-MINI S&P TECHNOLOGY INDEX - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "146022",
+      "name": "MICRO ETHER  - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "344606",
+      "name": "3 YEAR ERIS SOFR SWAP - CHICAGO BOARD OF TRADE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "124608",
+      "name": "MICRO E-MINI DJIA (x$0.5) - CHICAGO BOARD OF TRADE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "177LM3",
+      "name": "NANO SOLANA PERP STYLE - COINBASE DERIVATIVES, LLC",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "098662",
+      "name": "USD INDEX - ICE FUTURES U.S.",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "134FM1",
+      "name": "SOFR-3M - FMX FUTURES EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "020604",
+      "name": "ULTRA UST BOND - CHICAGO BOARD OF TRADE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "180LM2",
+      "name": "SUI - COINBASE DERIVATIVES, LLC",
+      "latest": "2023-10-31T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "299741",
+      "name": "EURO FX/BRITISH POUND XRATE - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "176LM2",
+      "name": "XRP - COINBASE DERIVATIVES, LLC",
+      "latest": "2023-10-31T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "13874C",
+      "name": "E-MINI S&P FINANCIAL INDEX - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "172LM1",
+      "name": "1K SHIB - COINBASE DERIVATIVES, LLC",
+      "latest": "2022-11-14T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "209747",
+      "name": "MICRO E-MINI NASDAQ-100 INDEX - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "221607",
+      "name": "BLOOMBERG IG DURATION-HEDGED  - CHICAGO BOARD OF TRADE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "13874E",
+      "name": "E-MINI S&P HEALTH CARE INDEX - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "042601",
+      "name": "UST 2Y NOTE - CHICAGO BOARD OF TRADE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "171LM2",
+      "name": "AVALANCHE PERP STYLE - COINBASE DERIVATIVES, LLC",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "180LM5",
+      "name": "AAVE PERP STYLE - COINBASE DERIVATIVES, LLC",
+      "latest": "2023-09-19T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "180LM4",
+      "name": "HEDERA PERP STYLE - COINBASE DERIVATIVES, LLC",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "244042",
+      "name": "MSCI EM INDEX - ICE FUTURES U.S.",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "342603",
+      "name": "2 YEAR ERIS SOFR SWAP - CHICAGO BOARD OF TRADE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "138749",
+      "name": "E-MINI S&P ENERGY INDEX - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "090741",
+      "name": "CANADIAN DOLLAR - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "177LM1",
+      "name": "NANO SOLANA - COINBASE DERIVATIVES, LLC",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "043607",
+      "name": "ULTRA UST 10Y - CHICAGO BOARD OF TRADE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "047745",
+      "name": "EURO SHORT TERM RATE - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "343603",
+      "name": "10 YEAR ERIS SOFR SWAP - CHICAGO BOARD OF TRADE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "04360Y",
+      "name": "MICRO 10 YEAR YIELD - CHICAGO BOARD OF TRADE",
+      "latest": "2023-10-10T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "133LM5",
+      "name": "BITCOIN CASH PERP STYLE - COINBASE DERIVATIVES, LLC",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "33874A",
+      "name": "E-MINI S&P 400 STOCK INDEX - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "221602",
+      "name": "BBG COMMODITY - CHICAGO BOARD OF TRADE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "138747",
+      "name": "E-MINI S&P CONSUMER DISC INDEX - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-06-06T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "172LM2",
+      "name": "1K SHIB PERP - COINBASE DERIVATIVES, LLC",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "180LMA",
+      "name": "1K PEPE PERP STYLE - COINBASE DERIVATIVES, LLC",
+      "latest": "2023-10-24T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "239744",
+      "name": "EMINI RUSSELL 1000 VALUE INDEX - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "020601",
+      "name": "UST BOND - CHICAGO BOARD OF TRADE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "180LMB",
+      "name": "ZCASH PERP STYLE - COINBASE DERIVATIVES, LLC",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "240741",
+      "name": "NIKKEI STOCK AVERAGE - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-03-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "146021",
+      "name": "ETHER CASH SETTLED - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "13874A",
+      "name": "E-MINI S&P 500 - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "122741",
+      "name": "SO AFRICAN RAND - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "344605",
+      "name": "5 YEAR ERIS SOFR SWAP - CHICAGO BOARD OF TRADE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "176741",
+      "name": "MICRO XRP - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2022-12-27T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "138LM1",
+      "name": "TECH100 INDEX PERP STYLE - COINBASE DERIVATIVES, LLC",
+      "latest": "2023-10-31T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "399741",
+      "name": "EURO FX/JAPANESE YEN XRATE - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "174LM2",
+      "name": "CARDONA PERP STYLE - COINBASE DERIVATIVES, LLC",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "096742",
+      "name": "BRITISH POUND - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "095741",
+      "name": "MEXICAN PESO - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "169LM2",
+      "name": "POLKADOT PERP STYLE - COINBASE DERIVATIVES, LLC",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "170LM1",
+      "name": "CHAINLINK - COINBASE DERIVATIVES, LLC",
+      "latest": "2022-12-20T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "170LM2",
+      "name": "CHAINLINK PERP STYLE - COINBASE DERIVATIVES, LLC",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "112741",
+      "name": "NZ DOLLAR - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "43874Q",
+      "name": "S&P 500 QUARTERLY DIVIDEND IND - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "13874P",
+      "name": "E-MINI S&P COMMUNICATION INDEX - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "045601",
+      "name": "FED FUNDS - CHICAGO BOARD OF TRADE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "180LM7",
+      "name": "NEAR PROTOCAL PERP STYLE - COINBASE DERIVATIVES, LLC",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "133LM4",
+      "name": "NANO BITCOIN PERP STYLE - COINBASE DERIVATIVES, LLC",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "43874A",
+      "name": "S&P 500 ANNUAL DIVIDEND INDEX - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "180LM6",
+      "name": "ETHENA PERP STYLE - COINBASE DERIVATIVES, LLC",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "13874W",
+      "name": "ADJUSTED INT RATE S&P 500 TOTL - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "124603",
+      "name": "DJIA x $5 - CHICAGO BOARD OF TRADE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "176LM3",
+      "name": "NANO XRP PERP STYLE - COINBASE DERIVATIVES, LLC",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "174LM1",
+      "name": "CARDONA - COINBASE DERIVATIVES, LLC",
+      "latest": "2023-10-31T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "134741",
+      "name": "SOFR-3M - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "24477M",
+      "name": "MINI MSCI ACWI NTR INDEX  - ICE FUTURES U.S.",
+      "latest": "2023-08-01T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "167LM0",
+      "name": "LITECOIN CASH - COINBASE DERIVATIVES, LLC",
+      "latest": "2023-01-31T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "134742",
+      "name": "SOFR-1M - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "183LM2",
+      "name": "CRYPTO HYPE PERP STYLE - COINBASE DERIVATIVES, LLC",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "133742",
+      "name": "MICRO BITCOIN - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "102741",
+      "name": "BRAZILIAN REAL - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "133LM1",
+      "name": "Nano Bitcoin  - COINBASE DERIVATIVES, LLC",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "168LM2",
+      "name": "DOGECOIN PERP STYLE - COINBASE DERIVATIVES, LLC",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "138748",
+      "name": "E-MINI S&P CONSU STAPLES INDEX - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "239742",
+      "name": "RUSSELL E-MINI - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "177742",
+      "name": "MICRO SOL - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-10-31T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "239747",
+      "name": "MICRO E-MINI RUSSELL 2000 INDX - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "13874+",
+      "name": "S&P 500 Consolidated - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "167LM1",
+      "name": "LITECOIN PERP STYLE - COINBASE DERIVATIVES, LLC",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "146LM3",
+      "name": "NANO ETHER PERP STYLE - COINBASE DERIVATIVES, LLC",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "173LM2",
+      "name": "STELLAR PERP STYLE - COINBASE DERIVATIVES, LLC",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "232741",
+      "name": "AUSTRALIAN DOLLAR - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "099741",
+      "name": "EURO FX - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "043602",
+      "name": "UST 10Y NOTE - CHICAGO BOARD OF TRADE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "180LM8",
+      "name": "ONDO PERP STYLE - COINBASE DERIVATIVES, LLC",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "13874F",
+      "name": "E-MINI S&P INDUSTRIAL INDEX - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "133741",
+      "name": "BITCOIN - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "180LM9",
+      "name": "PAX GOLD PERP STYLE - COINBASE DERIVATIVES, LLC",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "097741",
+      "name": "JAPANESE YEN - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "169LM1",
+      "name": "POLKADOT - COINBASE DERIVATIVES, LLC",
+      "latest": "2022-12-27T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "176LM1",
+      "name": "NANO XRP - COINBASE DERIVATIVES, LLC",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "239750",
+      "name": "RUSSELL 2000 ANNUAL DIVIDEND  - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "146LM1",
+      "name": "NANO ETHER - COINBASE DERIVATIVES, LLC",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "124606",
+      "name": "DOW JONES U.S. REAL ESTATE IDX - CHICAGO BOARD OF TRADE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "13874U",
+      "name": "MICRO E-MINI S&P 500 INDEX - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "209742",
+      "name": "NASDAQ MINI - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "177741",
+      "name": "SOL - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "240743",
+      "name": "NIKKEI STOCK AVERAGE YEN DENOM - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "092741",
+      "name": "SWISS FRANC - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "044601",
+      "name": "UST 5Y NOTE - CHICAGO BOARD OF TRADE",
+      "latest": "2023-11-07T00:00:00.000"
+    }
+  ]
+}

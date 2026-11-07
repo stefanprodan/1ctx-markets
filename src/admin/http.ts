@@ -86,7 +86,7 @@ export const INSTRUMENT_TABLES = [
 export type SourceState = {
   name: string;
   on: boolean;
-  // why it is on or off: the key file, the flag, or always for Yahoo
+  // why it is on or off: the key file, the flag, or always for Yahoo and the CFTC
   why: string;
   backoff(): Backoff | null;
 };
@@ -108,6 +108,7 @@ const SOURCE_LABELS: Record<string, string> = {
   finnhub: "Finnhub",
   massive: "Massive",
   edgar: "SEC EDGAR",
+  cftc: "CFTC Commitments of Traders",
 };
 
 const SOURCE_SHORT: Record<string, string> = {
@@ -117,6 +118,7 @@ const SOURCE_SHORT: Record<string, string> = {
   finnhub: "Finnhub",
   massive: "Massive",
   edgar: "EDGAR",
+  cftc: "CFTC",
 };
 
 // the price sources' own sites, for the instrument page's credit
@@ -140,6 +142,7 @@ const SOURCE_MARKS: Record<string, string> = {
   finnhub: "FH",
   massive: "M",
   edgar: "SEC",
+  cftc: "CFTC",
 };
 
 // how an operator turns on a source that needs a key
@@ -183,6 +186,7 @@ const JOB_LABELS: Record<string, string> = {
   switch: "Source change",
   "yahoo/valuation": "ADR valuations",
   "yahoo/top_holdings": "Top holdings",
+  "cftc/markets": "Futures markets",
 };
 
 const JOB_ABOUT: Record<string, string> = {
@@ -215,6 +219,8 @@ const JOB_ABOUT: Record<string, string> = {
     "Refreshes P/E and EPS once a day, after 23:00 UTC, for each US share whose research comes from a foreign listing.",
   "yahoo/top_holdings":
     "Refreshes each tracked ETF's and mutual fund's ten largest holdings and sectors once a day, after 23:00 UTC.",
+  "cftc/markets":
+    "Refreshes the list of futures markets the CFTC reported in the last year, at start and once a day, for search and positioning.",
 };
 
 export const jobAbout = (source: string, job: string): string | null =>

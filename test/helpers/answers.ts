@@ -6,6 +6,8 @@ import { PREFIX } from "../../src/api/http.ts";
 import { markets } from "../../src/operations/markets.ts";
 import { ADMIN } from "../../src/operations/who.ts";
 import { silent } from "../../src/runtime/log.ts";
+import { cftc } from "../../src/sources/cftc/client.ts";
+import { marketList } from "../../src/sources/cftc/list.ts";
 import { finnhub } from "../../src/sources/finnhub/client.ts";
 import { fred } from "../../src/sources/fred/client.ts";
 import { yahoo } from "../../src/sources/yahoo/client.ts";
@@ -13,14 +15,20 @@ import { open } from "../../src/storage/db/index.ts";
 import { writer } from "../../src/storage/writer.ts";
 import { call, tools } from "../../src/tools/index.ts";
 import { api, READ_KEY } from "./api.ts";
+import { RECORDED as CFTC_RECORDED } from "./cftc.ts";
 import { fakeClock } from "./clock.ts";
 import { drive, pacedOf } from "./drive.ts";
 import { FINNHUB_KEY, finnhubAnswer } from "./finnhub.ts";
 import { FRED_KEY, NOW, sources } from "./sources.ts";
 import { bar, listing, row, world } from "./world.ts";
 
+// the CFTC's recordings are dated years back, so a call marked cftc runs
+// on a clock at their recording; the others hold their own list, filled
+// on their clock, since one list read on both clocks reads two days old
+type On = "cftc" | undefined;
+
 // the calls, in order, since alerts change what later calls read
-const CALLS: [string, Record<string, unknown>][] = [
+const CALLS: [string, Record<string, unknown>, On?][] = [
   ["quote", { symbols: ["NVDA", "FRED:DGS10", "^GSPC"] }],
   ["quote", { symbols: ["NVDA"], benchmark: "^GSPC" }],
   ["quote", { symbols: [] }],
@@ -89,7 +97,39 @@ const CALLS: [string, Record<string, unknown>][] = [
   ["alerts", { id: 1 }],
   ["research", { symbol: "FRED:DGS10", section: "options" }],
   ["research", { symbol: "NVDA", expiry: "2026-11-20" }],
+  // the market list is filled inline by the first read, then held
+  ["research", { symbol: "CFTC:088691" }, "cftc"],
+  ["research", { symbol: "cftc:13874+", section: "positioning" }, "cftc"],
+  [
+    "research",
+    { symbol: "CFTC:088691", section: "positioning", since: "2023-03-07" },
+    "cftc",
+  ],
+  ["research", { symbol: "CFTC:088691", section: "news" }, "cftc"],
+  ["research", { symbol: "CFTC:ZZZZZZ" }, "cftc"],
+  ["search", { query: "gold" }, "cftc"],
+  ["research", { symbol: "NVDA", section: "positioning" }],
+  // the pointer names the held list's market
+  ["research", { symbol: "^GSPC" }],
+  ["quote", { symbols: ["CFTC:088691"] }],
 ];
+
+// a server at the CFTC recordings' time, with its own market list
+async function cftcReads(s: Awaited<ReturnType<typeof sources>>) {
+  const clock = fakeClock(CFTC_RECORDED);
+  const { db } = open(":memory:", clock);
+  const list = marketList(clock);
+  const m = markets({
+    db,
+    clock,
+    writer: writer(db),
+    yahoo: yahoo({ clock, fetch: s.fetch }),
+    fred: null,
+    cftc: { client: cftc({ clock, fetch: s.fetch }), list },
+    log: silent,
+  });
+  return { clock, db, m, list };
+}
 
 type Answers = Record<string, string[]>;
 
@@ -114,6 +154,9 @@ export async function mcpAnswers(): Promise<Answers> {
   const clock = fakeClock(NOW);
   const { db } = open(":memory:", clock);
   const s = await sources({ hold: (url) => finnhubAnswer(url) });
+  const c = await cftcReads(s);
+  const cftcClient = cftc({ clock, fetch: s.fetch });
+  const held = marketList(clock);
   const m = markets({
     db,
     clock,
@@ -121,16 +164,30 @@ export async function mcpAnswers(): Promise<Answers> {
     yahoo: yahoo({ clock, fetch: s.fetch }),
     fred: fred({ clock, key: FRED_KEY, fetch: s.fetch }),
     finnhub: finnhub({ clock, key: FINNHUB_KEY, fetch: s.fetch }),
+    cftc: { client: cftcClient, list: held },
     log: silent,
   });
+  // as the start's job would, so the overview's pointer names its market
+  await drive(
+    clock,
+    pacedOf(m),
+    Promise.all([
+      held.fetch(cftcClient, "disaggregated"),
+      held.fetch(cftcClient, "financial"),
+    ]),
+  );
   const list = tools(m);
-  for (const [k, [name, input]] of CALLS.entries()) {
-    const tool = list.find((t) => t.name === name)!;
+  const cftcList = tools(c.m);
+  for (const [k, [name, input, on]] of CALLS.entries()) {
+    const [at, reads, all] =
+      on === "cftc" ? [c.clock, c.m, cftcList] : [clock, m, list];
+    const tool = all.find((t) => t.name === name)!;
     answers[`${k} ${name} ${JSON.stringify(input)}`] = await pages(
-      (args) => drive(clock, pacedOf(m), call(m, tool, args, ADMIN)),
+      (args) => drive(at, pacedOf(reads), call(reads, tool, args, ADMIN)),
       input,
     );
   }
+  c.db.close();
   // a century of quarters, so events pages
   const insert = db.query(
     `insert into events (instrument, fiscal_year, fiscal_quarter, date,
@@ -309,6 +366,16 @@ const REQUESTS: [string, RequestInit?][] = [
   ["/quotes?symbols=NVDA", WRONG],
   ["/status", { headers: { authorization: `Bearer ${READ_KEY}` } }],
   ["/research?symbols=NVDA,^GSPC&sections=options"],
+  ["/quotes?symbols=CFTC:088691"],
+];
+
+// on the CFTC recordings' clock, after the others
+const CFTC_REQUESTS: string[] = [
+  "/research?symbols=CFTC:088691,CFTC:ZZZZZZ&sections=positioning",
+  // a bare + decodes to a space
+  "/research?symbols=CFTC:13874%2B&sections=positioning",
+  "/research?symbols=CFTC:088691",
+  "/research?symbols=CFTC:088691,NVDA&sections=positioning",
 ];
 
 async function restAnswer(res: Response, path: string): Promise<RestAnswer> {
@@ -334,8 +401,13 @@ export async function restAnswers(): Promise<Record<string, RestAnswer>> {
     yahoo: yahoo({ clock, fetch: s.fetch }),
     fred: fred({ clock, key: FRED_KEY, fetch: s.fetch }),
     finnhub: finnhub({ clock, key: FINNHUB_KEY, fetch: s.fetch }),
+    cftc: {
+      client: cftc({ clock, fetch: s.fetch }),
+      list: marketList(clock),
+    },
     log: silent,
   });
+  const c = await cftcReads(s);
   const handle = api(m, {
     sources: [
       { name: "yahoo", on: true, why: "always", backoff: () => null },
@@ -362,6 +434,16 @@ export async function restAnswers(): Promise<Record<string, RestAnswer>> {
     const res = await drive(clock, pacedOf(m), handle(req));
     answers[`${k} ${req.method} ${path}`] = await restAnswer(res, path);
   }
+  const cftcHandle = api(c.m);
+  for (const [k, path] of CFTC_REQUESTS.entries()) {
+    const req = new Request(`http://markets.test${PREFIX}${path}`);
+    const res = await drive(c.clock, pacedOf(c.m), cftcHandle(req));
+    answers[`${REQUESTS.length + k} ${req.method} ${path}`] = await restAnswer(
+      res,
+      path,
+    );
+  }
+  c.db.close();
   db.close();
   return answers;
 }

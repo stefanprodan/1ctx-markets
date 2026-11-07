@@ -38,5 +38,8 @@ export const pacedOf = (m: {
   finnhub: Paced | null;
   massive: Paced | null;
   edgar?: Paced | null;
+  cftc?: { client: Paced } | null;
 }): Paced[] =>
-  [m.finnhub, m.massive, m.edgar ?? null].filter((p) => p !== null);
+  [m.finnhub, m.massive, m.edgar ?? null, m.cftc?.client ?? null].filter(
+    (p) => p !== null,
+  );

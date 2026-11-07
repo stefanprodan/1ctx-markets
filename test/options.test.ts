@@ -517,7 +517,7 @@ describe("the options section", () => {
     ).rejects.toThrow("expiry is for the options section only");
     await expect(
       t.ask({ symbol: "AAPL", section: "options", since: "2026-11-01" }),
-    ).rejects.toThrow("since is for the news section only");
+    ).rejects.toThrow("since is for the news and positioning sections only");
     await expect(
       t.ask({ symbol: "AAPL", section: "options", next: "x" }),
     ).rejects.toThrow("options has no next page");

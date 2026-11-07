@@ -12,6 +12,12 @@ import { CALL_MS } from "../operations/markets.ts";
 import { FIELD_NAMES } from "../operations/screen.ts";
 import { ERRORS } from "../operations/targets.ts";
 import { KEY_DAYS, MAX_NAME, MIN_NAME } from "../server/access.ts";
+import { REPORTS } from "../sources/cftc/client.ts";
+import {
+  COT_WEEKS,
+  HISTORY_WEEKS,
+  POSITIONING_WEEKS,
+} from "../sources/cftc/list.ts";
 import { TOP_STRIKES } from "../sources/yahoo/options.ts";
 
 type JsonType =
@@ -322,6 +328,47 @@ const options = note(
     ["source"],
   ),
   "The option chains' summary; with `options` asked, for one symbol.",
+);
+const positioning = note(
+  object(
+    {
+      source: str,
+      error: str,
+      message: str,
+      cftc: object({
+        id: note(str, "CFTC:<code>, the market read."),
+        name: str,
+        exchange: nstr,
+        report: values(REPORTS),
+      }),
+      fetched_at: str,
+      latest_report: note(
+        str,
+        "The newest report date of any market in the report.",
+      ),
+      in_latest_report: note(
+        bool,
+        "False when this market skipped the latest report.",
+      ),
+      since: str,
+      cot_index: note(
+        object({}, [], true),
+        `Per trader group, the latest net in the range of the last ${HISTORY_WEEKS} weeks' nets, 0 to 100, with the weeks read; null under ${COT_WEEKS} weeks.`,
+      ),
+      weeks: note(
+        list(
+          object(
+            { report_date: str, open_interest: int },
+            ["report_date", "open_interest"],
+            true,
+          ),
+        ),
+        "Newest first, positions as of each Tuesday; per trader group long, short, spread, net, net_pct_oi, net_change, traders_long, traders_short, null where the report has none.",
+      ),
+    },
+    ["source"],
+  ),
+  `A CFTC market's futures positioning over the last ${POSITIONING_WEEKS} weeks; with \`positioning\` asked, for a CFTC:<code> or a symbol paired with one.`,
 );
 const news = object({ source: str }, ["source"], true);
 const flag = (what: string) =>
@@ -751,11 +798,20 @@ export const schemas: Record<string, Schema> = {
       filings,
       top_holdings: topHoldings,
       options,
+      positioning,
     },
     ["input", "id", "company"],
   ),
   ResearchNews: object(
-    { input: str, id: str, news, filings, top_holdings: topHoldings, options },
+    {
+      input: str,
+      id: str,
+      news,
+      filings,
+      top_holdings: topHoldings,
+      options,
+      positioning,
+    },
     ["input", "id", "news"],
   ),
   ResearchBoth: object(
@@ -768,18 +824,31 @@ export const schemas: Record<string, Schema> = {
       filings,
       top_holdings: topHoldings,
       options,
+      positioning,
     },
     ["input", "id", "company", "news"],
   ),
   ResearchFilings: object(
-    { input: str, id: str, filings, top_holdings: topHoldings, options },
+    {
+      input: str,
+      id: str,
+      filings,
+      top_holdings: topHoldings,
+      options,
+      positioning,
+    },
     ["input", "id", "filings"],
   ),
   ResearchTopHoldings: object(
-    { input: str, id: str, top_holdings: topHoldings, options },
+    { input: str, id: str, top_holdings: topHoldings, options, positioning },
     ["input", "id", "top_holdings"],
   ),
-  ResearchOptions: object({ input: str, id: str, options }),
+  ResearchOptions: object({ input: str, id: str, options, positioning }, [
+    "input",
+    "id",
+    "options",
+  ]),
+  ResearchPositioning: object({ input: str, id: str, positioning }),
   ResearchItem: oneOf(
     "ResearchCompany",
     "ResearchNews",
@@ -787,6 +856,7 @@ export const schemas: Record<string, Schema> = {
     "ResearchFilings",
     "ResearchTopHoldings",
     "ResearchOptions",
+    "ResearchPositioning",
     "ItemError",
   ),
   Research: object({ research: list(ref("ResearchItem")) }),

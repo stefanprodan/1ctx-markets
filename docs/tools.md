@@ -159,10 +159,10 @@ tracking in `docs/storage.md`; the source queue and deadlines in
 |---|---|---|
 | `quote` | `symbols`, `benchmark`, `extended`, `next` | per symbol a `QuoteItem` (`quote.ts`) with `returns`, `session`, with a benchmark `relative_return_1m`, `_3m`, `relative_to`, `relative_live` and, across currencies, `relative_note`, with `extended` true `extended`, `extended_reason` and `opens`; for a key with trade plans access, `trade_plans` when the caller has active plans tagged with it |
 | `history` | `symbol`, `interval`, `from`, `to`, `benchmark`, `extended`, `next` | bars oldest first with `final` and signals; `session`; `relative`; with `5m`, `points` and `sessions`, and `extended_points` with `extended_reason` when `extended` |
-| `search` | `query`, `next` | up to 20 stored matches, then up to 20 Bucharest listings from the stored list pages while the feed is on, then Yahoo's, each with id, exchange, type, name, `source`, `stored`; a listing Yahoo found adds `exchange_name`, the exchange in Yahoo's words, the stored copy of it too, and a stored one its `currency`, so one fund on several exchanges reads apart; a Bucharest listing adds its `isin` |
+| `search` | `query`, `next` | up to 20 stored matches, then up to 20 Bucharest listings from the stored list pages while the feed is on, then Yahoo's, each with id, exchange, type, name, `source`, `stored`; a listing Yahoo found adds `exchange_name`, the exchange in Yahoo's words, the stored copy of it too, and a stored one its `currency`, so one fund on several exchanges reads apart; a Bucharest listing adds its `isin`; last, up to 20 CFTC futures markets from the held list (`CFTC:<code>`, `name`, `source` `cftc`, `latest_report`), for research's `positioning` only |
 | `movers` | `symbols`, `min_move_pct`, `direction`, `average`, `relation`, `next` | matches by absolute change, largest first; `counts` |
 | `screen` | `symbols`, `filters`, `benchmark`, `sort`, `order`, `fields`, `next` | matches with each used and asked field's value, unit, kind and date; `counts` |
-| `research` | `symbol`, `section`, `since`, `expiry`, `next` | `overview` (quote, a fund's `top_holdings`, Finnhub sections, an ADR's `valuation` from Yahoo, next event, headlines, `filings` with three flags), or one section paged: `analysts`, `earnings`, `insiders`, `news`, `filings`; or unpaged `top_holdings`, a fund's on any exchange from Yahoo, or `options`, Yahoo's chains: a summary of the nearest expiries, or with `expiry` one expiry's strikes near the money (`docs/research.md`, `docs/edgar.md`) |
+| `research` | `symbol`, `section`, `since`, `expiry`, `next` | `overview` (quote, a fund's `top_holdings`, Finnhub sections, an ADR's `valuation` from Yahoo, next event, headlines, `filings` with three flags), or one section paged: `analysts`, `earnings`, `insiders`, `news`, `filings`; or unpaged `top_holdings`, a fund's on any exchange from Yahoo, or `options`, Yahoo's chains: a summary of the nearest expiries, or with `expiry` one expiry's strikes near the money; or `positioning`, a CFTC futures market's weeks paged newest first, for a `CFTC:<code>` or a paired World markets symbol (`docs/research.md`, `docs/cftc.md`, `docs/edgar.md`) |
 | `events` | `from`, `to`, `symbols`, `next` | events by date with `status`, `reported_seen_at` and `filed_at`; `unavailable`, `no_event` (`docs/research.md`) |
 | `alerts`, `alerts_edit` | see `docs/alerts.md` | |
 | `portfolio`, `portfolio_trade`, `portfolio_cash`, `portfolio_bond`, `portfolio_fund`, `portfolio_setup` | see `docs/portfolios.md` | |
@@ -287,6 +287,12 @@ tracking in `docs/storage.md`; the source queue and deadlines in
   instrument would take; its `isin` is the list's, kept on a stored
   candidate too. Before the list pages are first read there are no
   Bucharest candidates.
+- **A CFTC search candidate comes from the list the job holds, never
+  a call** (`docs/cftc.md`): matched case-blind in the name or the code,
+  the exact code first, after every instrument, since none is one. None
+  before the list's first fill; a list two days old puts `cftc` in
+  `errors`. REST's `/symbols` lists none, since its callers add
+  instruments.
 - **search fetches no prices and tracks nothing**, and never answers a
   fund the owner prices (`docs/portfolios.md`). FRED is asked only
   for `FRED:<series id>`, with a note when the series is not daily; a
@@ -351,7 +357,10 @@ tracking in `docs/storage.md`; the source queue and deadlines in
   asked for it and a key without portfolio access learns nothing.
   `history` and `research` `top_holdings` answer it from what was
   entered, to a caller who holds or priced it, else the same
-  `not_found` as for no fund (`docs/portfolios.md`).
+  `not_found` as for no fund (`docs/portfolios.md`). A CFTC market's id
+  (`CFTC:<code>`) answers `not_found` with `NO_PRICE` ("A CFTC market
+  has no price; read it with research, section positioning.") the same
+  way, before any lookup; `research` reads it (`docs/cftc.md`).
 - **What the server lacks is fetched inside the call**: an instrument
   with no bars gets ten years of history, its signals and a fresh
   quote in one write (`fetchInstrument()`); one no longer tracked is
