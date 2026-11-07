@@ -50,10 +50,10 @@ export const instructions = (opens: {
 }): string => `Market data, price alerts and portfolios. Which tool answers what:
 - Prices now, and how a symbol did over 1w, 1m, 3m, ytd or 1y: \`quote\`, whose \`returns\` hold those periods and \`session\` whether its market is open; \`benchmark\` adds relative strength. The benchmark's own returns come from quoting it, not the relative figures.${opens.analysis === "none" ? "" : ANALYSIS_LINE}
 - A US share's move before the open or after the close: \`quote\` with \`extended\` (null: see \`extended_reason\`); it never drives an alert or signal.
-- Bars, a chart's data or any period: \`history\`; its last daily bar's \`final\` turns true only once the next session shows. Moves today or in the last five sessions: \`history\` with \`interval\` 5m, regular-hours closes as fresh as quotes, measured from its \`previous_close\`; \`extended\` adds pre- and post-market closes while closed.
+- Bars, a chart's data or any period: \`history\`; its last daily bar's \`final\` turns true only once the next session shows. Moves today or in the last 5 sessions: \`history\` with \`interval\` 5m, regular-hours closes as fresh as quotes, measured from its \`previous_close\`; \`extended\` adds pre- and post-market closes while closed.
 - Many symbols at once: \`movers\` for today's moves and average crossings, \`screen\` to filter and rank on signals and returns, \`fields\` adding columns.
 - A US share's fundamentals, analysts, earnings, insiders and news, or a US ETF's news: \`research\`, for the few symbols that matter. For news, \`section\` news with \`since\` keeps to a recent window; read its \`counts\` by sentiment before the articles.
-- Beyond a US share's research: \`research\` sections filings (SEC; flags in the overview), top_holdings (an ETF or fund) and options (implied move, IV, open interest).
+- Beyond a US share's research: \`research\` sections filings (SEC; overview flags), top_holdings (an ETF or fund), options (implied move, IV, open interest) and positioning (futures; \`search\` finds a CFTC market).
 - Earnings dates: \`events\`. A named share under \`no_event\` had no earnings in the window: an answer, not missing data.${ALERTS[opens.alerts]}${opens.profile === "none" ? "" : PROFILE_LINE}${opens.tradePlans === "none" ? "" : TRADE_PLANS_LINE}${PORTFOLIO_LINE[opens.portfolio]}
 - An unknown or ambiguous name: \`search\`.
 Answer from these tools, not the HTTP API; never recompute an average or return a tool already gives.

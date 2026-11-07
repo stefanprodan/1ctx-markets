@@ -5,10 +5,14 @@
 import { type Instrument, readInstrument } from "../market/instruments.ts";
 import { findListings } from "../sources/bvb/listings.ts";
 import { keyOf as bvbKey } from "../sources/bvb/sync.ts";
+import { REPORTS } from "../sources/cftc/client.ts";
+import { listStale } from "../sources/cftc/list.ts";
 import { NO_DATA, seriesId } from "../sources/fred/sync.ts";
 import {
   BVB,
   BVB_MARKET,
+  CFTC,
+  CFTC_MARKET,
   FRED_MARKET,
   FUND_SOURCE,
   YAHOO,
@@ -46,6 +50,14 @@ type Found = {
   isin?: string | null;
   stored: boolean;
   note?: string;
+};
+
+// a futures market for research's positioning, never an instrument
+type Market = {
+  id: string;
+  name: string;
+  source: string;
+  latest_report: string;
 };
 
 const fromStored = (i: Instrument): Found => ({
@@ -198,24 +210,71 @@ function bvbCandidates(m: Markets, query: string): Found[] {
   });
 }
 
+// the list the job holds, so a search waits on no CFTC call; none until
+// its first fill, and an old one is named in errors
+function cftcCandidates(
+  m: Markets,
+  query: string,
+): { found: Market[]; notes: SourceNote[] } {
+  const list = m.cftc?.list;
+  if (list === undefined) return { found: [], notes: [] };
+  const q = query.trim().toUpperCase();
+  const code = q.startsWith(`${CFTC_MARKET}:`)
+    ? q.slice(CFTC_MARKET.length + 1)
+    : q;
+  const found = REPORTS.flatMap((r) => list.held(r)?.markets ?? [])
+    .filter(
+      (mk) =>
+        q !== "" && (mk.code === code || mk.name.toUpperCase().includes(q)),
+    )
+    .sort(
+      (a, b) =>
+        Number(b.code === code) - Number(a.code === code) ||
+        a.name.localeCompare(b.name),
+    )
+    .slice(0, STORED)
+    .map((mk) => ({
+      id: `${CFTC_MARKET}:${mk.code}`,
+      name: mk.name,
+      source: CFTC,
+      latest_report: mk.latest,
+    }));
+  const notes: SourceNote[] = listStale(list, m.clock.now())
+    ? [
+        {
+          source: CFTC,
+          error: "source_error",
+          message: "the CFTC's market list has not been refreshed for two days",
+        },
+      ]
+    : [];
+  return { found, notes };
+}
+
 const NONE = { found: [] as Found[], notes: [] as SourceNote[] };
 
-// upstream false asks no source: stored instruments and stored listings
+// upstream false asks no source: stored instruments and stored listings;
+// cftc adds the CFTC's markets, which are no instruments
 export async function searchAll(
   m: Markets,
   query: string,
   upstream = true,
-): Promise<{ notes: SourceNote[]; all: Found[] }> {
+  cftc = false,
+): Promise<{ notes: SourceNote[]; all: (Found | Market)[] }> {
   const fredQuery = query.toUpperCase().startsWith(`${FRED_MARKET}:`);
   // a stored series matches by id here, as the FRED side would find it
   const local = fredQuery && upstream ? [] : stored(m, query);
-  const listed = fredQuery ? [] : bvbCandidates(m, query);
-  const remote = !upstream
-    ? NONE
-    : fredQuery
-      ? await fredCandidates(m, query)
-      : await yahooCandidates(m, query);
-  const notes = remote.notes;
+  // a CFTC id names no listing, so no other source is asked
+  const cftcQuery = query.trim().toUpperCase().startsWith(`${CFTC_MARKET}:`);
+  const listed = fredQuery || cftcQuery ? [] : bvbCandidates(m, query);
+  const remote =
+    !upstream || cftcQuery
+      ? NONE
+      : fredQuery
+        ? await fredCandidates(m, query)
+        : await yahooCandidates(m, query);
+  const markets = cftc ? cftcCandidates(m, query) : { found: [], notes: [] };
+  const notes = [...remote.notes, ...markets.notes];
   const seen = new Set<string>();
   // the instrument stores no ISIN, so a stored listing takes the list's
   const isins = new Map(listed.map((c) => [c.id, c.isin]));
@@ -235,11 +294,13 @@ export async function searchAll(
     };
   });
   // a Bucharest listing is the exchange's while its source is on
-  const all = [...known, ...listed, ...remote.found].filter((c) => {
-    if (seen.has(c.id)) return false;
-    seen.add(c.id);
-    return true;
-  });
+  const all = [...known, ...listed, ...remote.found, ...markets.found].filter(
+    (c) => {
+      if (seen.has(c.id)) return false;
+      seen.add(c.id);
+      return true;
+    },
+  );
   return { notes, all };
 }
 
@@ -255,7 +316,7 @@ export async function searchPage(
       throw new ArgError("next does not continue this query");
     }
   }
-  const { notes, all } = await searchAll(m, args.query);
+  const { notes, all } = await searchAll(m, args.query, true, true);
   const rest = all.slice(offset);
   return fitPage(
     rest,

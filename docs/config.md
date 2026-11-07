@@ -79,10 +79,11 @@ the `--help` text, and a flag changes there in the same commit.
 - **The SMTP password is a file; sign-ins and sign-in links are rows
   holding only a SHA-256 of their token, which reaches no log and no
   answer, only the one email that carries a link** (`docs/web.md`).
-- **A source key turns its source on.** Yahoo needs none and is always
-  on; FRED, Finnhub, Massive and EDGAR are on while their file holds a
-  key, and every tool answers without them. A keyless optional source
-  is on only with its `--source` flag.
+- **A source key turns its source on.** Yahoo and the CFTC need none
+  and are always on, with no flag, file or setting to turn them off
+  (`docs/cftc.md`); FRED, Finnhub, Massive and EDGAR are on while their
+  file holds a key, and every tool answers without them. A keyless
+  optional source is on only with its `--source` flag.
 - **A key value never reaches a row, a log line, an error or an
   answer.** The logger masks every value `keys.ts` has read (`[key]`)
   in the message and every field, percent-decoded first, since a key
@@ -106,9 +107,9 @@ the `--help` text, and a flag changes there in the same commit.
   slog-text form. `startup` holds `version`, `listen`, `data` (`~` for
   the home directory), `migrations` (applied, or `current`),
   `quote_every`, `track_days`, `ui` and `sync` (each `on` or `off`). `sources` has one field per source:
-  `yahoo=on`, the keyed ones `on (key file)` or `off (no key)`, `edgar`
-  also `off (bad contact line)` (`docs/edgar.md`), `bvb` `on (flag)` or
-  `off (no flag)`.
+  `yahoo=on`, `cftc=on (always)`, the keyed ones `on (key file)` or
+  `off (no key)`, `edgar` also `off (bad contact line)`
+  (`docs/edgar.md`), `bvb` `on (flag)` or `off (no flag)`.
 - **Log fields are fixed names and short values.** `errorFields()`
   keeps an error's type and first line only, so a stack stays out; a
   `SourceError` message is a fixed phrase, so a source's own text

@@ -7,14 +7,16 @@ the `research` and `events` tools and the research route's contents
 `src/operations/events.ts`), an ADR's `valuation`
 (`src/sources/yahoo/valuation.ts`), a fund's `top_holdings`
 (`src/sources/yahoo/top-holdings.ts`), `options`
-(`src/sources/yahoo/options.ts`, `src/operations/options.ts`), and the
-`research`, `events`, `news`, `news_walks`, `valuations` and fund
-tables (`src/storage/db/migrations/0007-research.ts`, `0008-news.ts`,
+(`src/sources/yahoo/options.ts`, `src/operations/options.ts`),
+`positioning` (`src/operations/positioning.ts`), and the `research`,
+`events`, `news`, `news_walks`, `valuations` and fund tables
+(`src/storage/db/migrations/0007-research.ts`, `0008-news.ts`,
 `0012-listing.ts`, `0028-share-class-listing.ts`,
 `0029-valuations.ts`, `0030-fund-top-holdings.ts`,
 `0042-earnings-fiscal.ts`). Yahoo's quote
 summary call, its session, what a fund's answer keeps and how a chain
-is read are in `docs/yahoo.md`. EDGAR's filings,
+is read are in `docs/yahoo.md`; the CFTC's calls, field map, market list
+and figures in `docs/cftc.md`. EDGAR's filings,
 their flags and events' `filed_at` are in `docs/edgar.md`; the
 sections that answer them are here. The queue, deadlines, retries, phrases, scrubbing
 and the lock every source shares are in `docs/sources.md`; resolution,
@@ -366,9 +368,11 @@ route's transport in `docs/api.md`; alerts that wait on events in
   row, `valuation` for a share answered from a foreign listing,
   earnings with its revenue, the next event, five headlines,
   `filings`), `analysts`, `earnings`, `insiders`, `news` and `filings`,
-  paged newest first, and `top_holdings` and `options`. The overview
-  drops headlines first to fit one page; `overview`, `top_holdings` and
-  `options` have no next page.
+  paged newest first, `top_holdings` and `options`, and `positioning`,
+  paged newest first. A World markets symbol paired with a CFTC market
+  adds the overview pointer `positioning`. The overview drops headlines
+  first to fit one page; `overview`, `top_holdings` and `options` have
+  no next page.
 - **The overview's `filings`** is EDGAR's summary (`filingsSummary()`):
   `source`, `fetched_at`, `stale`, the three flags (`late_filing`,
   `restatement`, `offering`: new securities, shares or debt,
@@ -497,6 +501,37 @@ route's transport in `docs/api.md`; alerts that wait on events in
     mid is null, never a last price stood in; `last` comes with
     `last_trade_at`, so an old trade reads as one. Open interest is the
     previous session's, as exchanges publish it once a day.
+- **`positioning` is a CFTC futures market's weekly positions by
+  trader group** (`docs/cftc.md`), for a `CFTC:<code>` or a symbol
+  World markets pairs with one (`cftcPair()`), its futures symbol
+  answering as the entry; any other symbol answers `NOT_COVERED` with a
+  hint to search for the market's name, and a pair the list no longer
+  holds `RETIRED`, both as plain answers with `source` `cftc`.
+  - **Fetched inside the call, never stored**, one call once the list
+    is held and kept per market for `POSITIONING_MS`, so the pages of
+    a read and a repeat cost nothing. A failure or the deadline is the
+    answer's `error` and `message`.
+  - **The answer**: `source`, `cftc` (`id`, `name`, `exchange`,
+    `report`: `disaggregated` or `financial`), `fetched_at`,
+    `latest_report`, `in_latest_report`, `since`, on the first page
+    `cot_index` (as news carries `counts`), then `weeks` newest
+    first, each `report_date`, `open_interest` and per group `long`,
+    `short`, `spread`, `net`, `net_pct_oi`, `net_change`,
+    `traders_long`, `traders_short`, paged at `PAGE_BYTES`: a week
+    of a commodity market is about 800 bytes, so 12 weeks are 10 KB and
+    156 five pages.
+  - **`since` is the first report date**, `POSITIONING_WEEKS` (12)
+    back by default, at most `HISTORY_WEEKS` (156), else
+    `bad_arguments`; `expiry` with it is refused.
+  - **A CFTC id's overview is its latest week** with `cot_index`, no
+    instrument head; every other section of it answers
+    `SECTION_NOT_COVERED`, and a code the list does not hold is
+    `not_found`. Nothing of it is resolved or tracked.
+  - **The overview of a paired symbol points at its market**:
+    `positioning: {id, name, read_with}`, the name the held list's or
+    null before its first fill, as quote's `trade_plans` pointer is
+    shaped (`docs/tools.md`); no CFTC call, left out for every other
+    symbol and over REST, which has no pointer fields.
 - **Every section carries its period, `fetched_at` and `stale`**; a
   section with no row says why. A section or event of another listing
   also carries `listing` and the note `OTHER_LISTING`, or `SHARE_CLASS`
@@ -522,8 +557,13 @@ is fixed, never an argument, to keep five summaries short.
   and `options` are answered only when asked, never by default, so a
   call without `sections` answers as before. `options` takes one symbol
   (`bad_arguments` with more), since a summary is up to six calls (five
-  rows, and the listing when its nearest expires that day). No quote: `/quotes` answers prices for
-  many symbols in one call. The research tool keeps its own names.
+  rows, and the listing when its nearest expires that day).
+  `positioning` is the tool's first page over the default weeks for a
+  `CFTC:<code>` or a paired symbol, answered only when asked; a
+  `CFTC:<code>` takes no other section, its item `not_found` without
+  it, and is never resolved or tracked. No quote: `/quotes` answers
+  prices for many symbols in one call. The research tool keeps its own
+  names.
 - **Each Finnhub section but `metric` adds `history`**: its newest
   rows as the section's page shows them, so a script reads a trend
   without paging the tool (`HTTP_HISTORY`): `analysts` two months, the

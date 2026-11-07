@@ -219,7 +219,10 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
 - **World markets is the one built-in list** (`src/market/world.ts`):
   indices, commodities, currencies and crypto in six groups, five US
   indices and the Nikkei with their index futures, the BET and EUR/RON
-  only while the Bucharest source is on. It holds no zone or hours:
+  only while the Bucharest source is on. An entry a CFTC market tracks
+  directly carries its `cftc` code, the market research's
+  `positioning` reads for it and its futures (`docs/cftc.md`). It holds
+  no zone or hours:
   each instrument's come from its source's answer, as for any symbol.
   It changes by PR, never at run time. The instrument list counts a held one as
   tracked without naming why, since holdings are private. Every

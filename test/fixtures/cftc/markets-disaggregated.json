@@ -1,0 +1,1726 @@
+{
+  "note": "every date moved 156 weeks back from the recording",
+  "recordedAt": "2023-11-11T17:34:51.279Z",
+  "request": {
+    "method": "GET",
+    "url": "https://publicreporting.cftc.gov/resource/72hh-3qpy.json?%24select=cftc_contract_market_code%2Cmax%28market_and_exchange_names%29+as+name%2Cmax%28report_date_as_yyyy_mm_dd%29+as+latest&%24where=report_date_as_yyyy_mm_dd+%3E%3D+%272022-11-12T00%3A00%3A00.000%27&%24group=cftc_contract_market_code&%24limit=2000"
+  },
+  "status": 200,
+  "headers": {
+    "access-control-allow-origin": "*",
+    "connection": "keep-alive",
+    "content-encoding": "gzip",
+    "content-type": "application/json;charset=utf-8",
+    "date": "Sat, 11 Nov 2023 17:34:57 GMT",
+    "etag": "\"aG90ZWwuNTEzMDRfM180NThhSEh4bkNCenhrWDEtcEliTnZCeElvRHdkR1U---gzircnlKWupjJvIJguo0j0xGhMndEuA--gzip--gzip\"",
+    "last-modified": "Fri, 10 Nov 2023 20:30:31 GMT",
+    "server": "nginx",
+    "strict-transport-security": "max-age=31536000; includeSubDomains",
+    "transfer-encoding": "chunked",
+    "vary": "Accept-Encoding",
+    "x-socrata-region": "aws-us-east-1-fedramp-prod",
+    "x-socrata-requestid": "379bc10b640c16c225d0b4f808fccbf7",
+    "x-soda2-data-out-of-date": "false",
+    "x-soda2-fields": "[\"cftc_contract_market_code\",\"name\",\"latest\"]",
+    "x-soda2-secondary-last-modified": "Fri, 10 Nov 2023 20:30:31 GMT",
+    "x-soda2-truth-last-modified": "Fri, 10 Nov 2023 20:30:31 GMT",
+    "x-soda2-types": "[\"text\",\"text\",\"floating_timestamp\"]"
+  },
+  "body": [
+    {
+      "cftc_contract_market_code": "02339Y",
+      "name": "CG Mainline Basis - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064FON",
+      "name": "ERCOT.HB_SOUTH_month_off_rtp - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "088695",
+      "name": "MICRO GOLD - COMMODITY EXCHANGE INC.",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "06439K",
+      "name": "MISO INDIANA  OFF-PEAK - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0063E5",
+      "name": "CALIF CARBON ALL VINTAGE 2025 - ICE FUTURES ENERGY DIV",
+      "latest": "2022-12-27T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "006NHY",
+      "name": "TX REC CRS V26 FRONT HALF - NODAL EXCHANGE",
+      "latest": "2023-09-26T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233B1",
+      "name": "NGPL TXOK BASIS - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "033661",
+      "name": "COTTON NO. 2 - ICE FUTURES U.S.",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064FWW",
+      "name": "PJM.FE OHIO_month_on_dap - NODAL EXCHANGE",
+      "latest": "2023-10-31T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064ERM",
+      "name": "PJM.N ILLINOIS HUB_mo_on_dap - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233BB",
+      "name": "NNG VENTURA BASIS - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0063DT",
+      "name": "PA COMPLIANCE AECs TIER1 - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064FOL",
+      "name": "ERCOT.HB_NORTH_month_off_rtp - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0063DK",
+      "name": "CT RECs CLASS 1  - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "02339E",
+      "name": "ALGONQUIN CITYGATES BASIS - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064AAB",
+      "name": "ISONE.H.INTERNAL_HB_mo_off_dap - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0643BW",
+      "name": "NYISO ZONE J DA PEAK - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "006NJ1",
+      "name": "TX REC CRS V28 FRONT HALF - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064EVA",
+      "name": "PJM.PENELEC_month_on_dap - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0643CB",
+      "name": "PALO VERDE DA PEAK - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "02339U",
+      "name": "CIG ROCKIES BASIS - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233D4",
+      "name": "WAHA INDEX  - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0643C4",
+      "name": "NYISO ZONE G DA OFF-PK - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233BF",
+      "name": "ONEOK GAS TRANSPORTATION BASIS - ICE FUTURES ENERGY DIV",
+      "latest": "2023-10-31T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "006NHX",
+      "name": "TX REC CRS V30 BACK HALF - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064FHK",
+      "name": "PJM.WESTERN HUB_month_on_dap - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0643C3",
+      "name": "NYISO ZONE G DA PEAK - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "257690",
+      "name": "CHICAGO BUSHELING FERROUS  - COMMODITY EXCHANGE INC.",
+      "latest": "2022-12-13T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "006NMW",
+      "name": "NEW JERSEY RECs CLASS 2 V2028 - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "066391",
+      "name": "PROPANE ARGUS CIF ARA MINI - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064CXO",
+      "name": "NYISO.HUD VL_month_on_dap - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233AY",
+      "name": "NGPL MIDCONT BASIS - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "076651",
+      "name": "PLATINUM - NEW YORK MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "085692",
+      "name": "COPPER- #1 - COMMODITY EXCHANGE INC.",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233AQ",
+      "name": "MICHCON BASIS - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0063EG",
+      "name": "RGGI V2025 - ICE FUTURES ENERGY DIV",
+      "latest": "2023-01-31T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "111415",
+      "name": "GASOLINE CRK-RBOB/BRENT 1st - ICE FUTURES ENERGY DIV",
+      "latest": "2023-08-29T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "405652",
+      "name": "MONT BELVIEU ETHYLENE FIN - NEW YORK MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "039601",
+      "name": "ROUGH RICE - CHICAGO BOARD OF TRADE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0643A7",
+      "name": "ERCOT NORTH 345K RT OFFPK DLY  - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "006NKJ",
+      "name": "TX REC CRS V31 FRONT HALF - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0063EL",
+      "name": "CALIF CARBON ALLOWANCE V2026 - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "023A55",
+      "name": "HENRY HUB LAST DAY FIN - NEW YORK MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233AM",
+      "name": "HOUSTON SHIP CHANNEL (INDEX) - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "007601",
+      "name": "SOYBEAN OIL - CHICAGO BOARD OF TRADE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0063CC",
+      "name": "NJ SRECS - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064ERN",
+      "name": "PJM.N ILLINOIS HUB_mo_off_dap - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0643DB",
+      "name": "PJM WESTERN HUB DA OFF-PK - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233AG",
+      "name": "HENRY HUB BASIS - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0643DL",
+      "name": "PJM PSEG DAY-AHEAD PEAK - ICE FUTURES ENERGY DIV",
+      "latest": "2023-03-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "06641G",
+      "name": "PROPANE OPIS MT BELVIEU TET FP - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233AW",
+      "name": "ALGONQUIN CITYGATES INDEX - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "06641D",
+      "name": "BUTANE OPIS MT BELV NONTET FP  - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "006NHZ",
+      "name": "TX REC CRS V27 FRONT HALF - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064FKD",
+      "name": "PJM.N ILLINOIS HUB_mo_off_rtp - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0643D8",
+      "name": "PJM PPL ZONE DA PEAK - ICE FUTURES ENERGY DIV",
+      "latest": "2023-06-06T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "06639W",
+      "name": "PROPANE,OPIS MT B TET/AFEI - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064CTQ",
+      "name": "NYISO.CENTRL_month_on_dap - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "06665T",
+      "name": "CONWAY PROPANE (OPIS) - NEW YORK MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0643BT",
+      "name": "PJM N. IL HUB RT PEAK - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "02141B",
+      "name": "USGC HSFO (PLATTS) - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "001626",
+      "name": "WHEAT-HRSpring - MIAX FUTURES EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0643BZ",
+      "name": "NYISO ZONE A DA OFF-PK FIX PR - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0643F9",
+      "name": "MISO ARKANSAS DA PEAK FIXED - ICE FUTURES ENERGY DIV",
+      "latest": "2023-10-10T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "063642",
+      "name": "CHEESE (CASH-SETTLED) - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233CW",
+      "name": "TRANSCO STATION 85-ZONE 4 BASI - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "061641",
+      "name": "FEEDER CATTLE - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233AN",
+      "name": "MICHCON FINANCIAL INDEX - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0643IB",
+      "name": "ERCOT N 345KV REAL T PK DALY M - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "040701",
+      "name": "FRZN CONCENTRATED ORANGE JUICE - ICE FUTURES U.S.",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064FKB",
+      "name": "PJM.AEP-DAYTON HUB_mo_off_rtp - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064CTR",
+      "name": "NYISO.CENTRL_month_off_dap - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "006NLD",
+      "name": "NEW JERSEY RECs CLASS 2 V2026 - NODAL EXCHANGE",
+      "latest": "2023-08-01T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "005602",
+      "name": "SOYBEANS - CHICAGO BOARD OF TRADE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064EVH",
+      "name": "PJM.PEPCO_month_off_dap - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "111659",
+      "name": "GASOLINE RBOB - NEW YORK MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "004603",
+      "name": "OATS - CHICAGO BOARD OF TRADE",
+      "latest": "2023-10-24T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "085699",
+      "name": "MICRO COPPER - COMMODITY EXCHANGE INC.",
+      "latest": "2023-05-16T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0063EE",
+      "name": "CALIF CARBON ALL VINTAGE 2026 - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "06665P",
+      "name": "MT BELVIEU ETHANE OPIS - NEW YORK MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "006NMT",
+      "name": "PENNSYLVANIA AEC TIER 2-V2027 - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "865392",
+      "name": "MARINE .5% FOB USGC/BRENT 1st - ICE FUTURES ENERGY DIV",
+      "latest": "2023-08-01T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064DMY",
+      "name": "PJM.APS_month_on_dap - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "022651",
+      "name": "NY HARBOR ULSD - NEW YORK MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "006NMM",
+      "name": "NEW JERSEY RECs CLASS 2 V2027 - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "02141R",
+      "name": "USGC HSFO-PLATTS/BRENT 1ST LN  - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0643CC",
+      "name": "PALO VERDE DA OFF-PK FiXED PR - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0643IA",
+      "name": "PJM WEST HUB REAL TIME PK MINI - ICE FUTURES ENERGY DIV",
+      "latest": "2023-10-17T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "088LM1",
+      "name": "GOLD -1 TROY OUNCE  - COINBASE DERIVATIVES, LLC",
+      "latest": "2023-09-12T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064CXP",
+      "name": "NYISO.HUD VL_month_off_dap - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064EUY",
+      "name": "PJM.PECO_month_on_dap - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "06665G",
+      "name": "PROPANE NON-LDH MT BEL - NEW YORK MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "06641H",
+      "name": "PROPANE ARGUS SAUDI CP FP - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "006NOI",
+      "name": "DC SOLAR RECS V2027 - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "406651",
+      "name": "PGP PROPYLENE (PCW) CAL - NEW YORK MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233CS",
+      "name": "TRANSCO STN 85 MONTHLY INDEX - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233AT",
+      "name": "NAT GAS LD1 for GDD -TEXOK - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "06742T",
+      "name": "CRUDE DIFF-TMX SW 1A INDEX - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064FZB",
+      "name": "PJM.ATSI_month_off_dap - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "025608",
+      "name": "ETHANOL T2 FOB INCL DUTY - NEW YORK MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "023395",
+      "name": "NWP ROCKIES FIN BASIS - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064IAZ",
+      "name": "PJM DOM ZONE DAY AHEAD PEAK - ICE FUTURES ENERGY DIV",
+      "latest": "2023-01-03T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233A8",
+      "name": "EP SAN JUAN BASIS - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "023A56",
+      "name": "HENRY HUB PENULTIMATE FIN - NEW YORK MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "023396",
+      "name": "AECO FIN BASIS - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0063DQ",
+      "name": "NEPOOL DUAL RECs CLASS 1  - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "001612",
+      "name": "WHEAT-HRW - CHICAGO BOARD OF TRADE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "06439B",
+      "name": "PJM AEP DAYTON RT PEAK FIXED - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "02339S",
+      "name": "CIG ROCKIES FINANCIAL INDEX - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0063DG",
+      "name": "D4 BIODIESEL RINs OPIS CURR YR - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "001602",
+      "name": "WHEAT-SRW - CHICAGO BOARD OF TRADE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064GBC",
+      "name": "ERCOT.HB_NORTH_month_2x16_rtp - NODAL EXCHANGE",
+      "latest": "2023-10-10T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "037021",
+      "name": "USD Malaysian Crude Palm Oil C - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "192691",
+      "name": "NORTH EURO HOT-ROLL COIL STEEL - COMMODITY EXCHANGE INC.",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "06439W",
+      "name": "ERCOT WEST 345K RT OFF-PEAK - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064FZA",
+      "name": "PJM.ATSI_month_on_dap - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "03565C",
+      "name": "HENRY HUB PENULTIMATE NAT GAS - NEW YORK MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "06439S",
+      "name": "ERCOT SOUTH 345 KV RT PEAK FIX - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064DPQ",
+      "name": "PJM.BGE_month_on_dap - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064DEU",
+      "name": "NYISO.WEST_month_on_dap - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "006NP1",
+      "name": "DC SOLAR RECS V2026 - NODAL EXCHANGE",
+      "latest": "2023-10-24T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0676A5",
+      "name": "WTI  HOUSTON ARGUS/WTI TR MO - NEW YORK MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0643IL",
+      "name": "ERCOT Houston 345KV Hub RT 7x8 - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064FOP",
+      "name": "ERCOT.HB_WEST_month_off_rtp - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064BFI",
+      "name": "MISO.INDIANA.HUB_month_on_dap - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "006NHW",
+      "name": "TX REC CRS V29 BACK HALF - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "006NG4",
+      "name": "TX GREEN-E REC V25 BACK HALF - NODAL EXCHANGE",
+      "latest": "2023-03-28T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064EWU",
+      "name": "PJM.PPL_month_on_dap - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0063DB",
+      "name": "CALIF CARBON CURRENT AUCTION - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0643BG",
+      "name": "ISO NE MASS HUB DA PEAK - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233BM",
+      "name": "PANHANDLE INDEX - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064FKC",
+      "name": "PJM.N ILLINOIS HUB_mo_on_rtp - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0063DM",
+      "name": "MARYLAND COMPLIANCE REC TIER1 - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064FKE",
+      "name": "PJM.WESTERN HUB_month_on_rtp - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "006NMX",
+      "name": "PENNSYLVANIA AEC TIER 2-V2028 - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "191696",
+      "name": "ALUMINIUM EURO PREM DUTY-PAID - COMMODITY EXCHANGE INC.",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "057642",
+      "name": "LIVE CATTLE - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233A3",
+      "name": "DOMINION - SOUTH POINT (BASIS) - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064396",
+      "name": "CAISO SP-15 DA OFF-PK FIXED - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064FOO",
+      "name": "ERCOT.HB_WEST_month_on_rtp - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0643D7",
+      "name": "PJM PPL ZONE DA OFF-PEAK FIXED - ICE FUTURES ENERGY DIV",
+      "latest": "2023-06-06T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "02141C",
+      "name": "FUEL OIL-3% USGC/3.5% FOB RDAM - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0643B3",
+      "name": "MISO INDIANA HUB RT PEAK - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0063DD",
+      "name": "RGGI AUCTION CLEARING PRICE - ICE FUTURES ENERGY DIV",
+      "latest": "2023-09-12T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064EXE",
+      "name": "PJM.PSEG_month_on_dap - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233FJ",
+      "name": "Transco Zone 5 South Basis - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "06743A",
+      "name": "CONDENSATE DIF-TMX C5 1A INDEX - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "86565A",
+      "name": "GULF # 6 FUEL OIL CRACK - NEW YORK MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "06641F",
+      "name": "PROPANE OPIS MT BELV NONTET FP - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "006NNO",
+      "name": "PENNSYLVANIA AEC TIER 2-V2029 - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "023391",
+      "name": "NAT GAS ICE LD1 - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "006NHU",
+      "name": "TX REC CRS V27 BACK HALF - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064DLQ",
+      "name": "PJM.AEP_month_on_dap - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "06742G",
+      "name": "CRUDE DIFF-TMX WCS 1A INDEX - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0643BF",
+      "name": "ISO NE MASS HUB DA OFF-PK FIXD - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "191693",
+      "name": "ALUMINUM MWP - COMMODITY EXCHANGE INC.",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "06439N",
+      "name": "ERCOT HOUSTON 345KV RT PK FIX - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "06439V",
+      "name": "ERCOT WEST 345KV RT PEAK - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "084694",
+      "name": "MICRO SILVER - COMMODITY EXCHANGE INC.",
+      "latest": "2023-10-24T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064FOM",
+      "name": "ERCOT.HB_SOUTH_month_on_rtp - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "002602",
+      "name": "CORN - CHICAGO BOARD OF TRADE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233BW",
+      "name": "SOCAL (INDEX) - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "088691",
+      "name": "GOLD - COMMODITY EXCHANGE INC.",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233DC",
+      "name": "TGT ZONE 1 INDEX DIFF - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233DW",
+      "name": "TETCO M2 Index (Receipts) - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064IBA",
+      "name": "PJM DOM ZONE DAY AHEAD OFFPEAK - ICE FUTURES ENERGY DIV",
+      "latest": "2023-01-03T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "111A34",
+      "name": "GULF COAST CBOB GAS A2 PL RBOB - NEW YORK MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0643BE",
+      "name": "PJM N. IL HUB DA PEAK - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233BC",
+      "name": "NWP SUMAS BASIS - ICE FUTURES ENERGY DIV",
+      "latest": "2023-09-05T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "054642",
+      "name": "LEAN HOGS - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0063EI",
+      "name": "CALIF CARBON ALL VINTAGE 2027 - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064EOW",
+      "name": "PJM.METED_month_on_dap - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0643DN",
+      "name": "S PATH 15 EZ GEN HUB DA DLY OP - ICE FUTURES ENERGY DIV",
+      "latest": "2023-09-05T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233C9",
+      "name": "TENNESSEE 500L BASIS - ICE FUTURES ENERGY DIV",
+      "latest": "2023-08-08T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0643BX",
+      "name": "NYISO ZONE J DA OFF-PK FIXED - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0643BS",
+      "name": "PJM NI HUB RT OFF-PK FIXED - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "006NHV",
+      "name": "TX REC CRS V28 BACK HALF - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "251607",
+      "name": "UREA (GRANULAR) FOB US GULF - CHICAGO BOARD OF TRADE",
+      "latest": "2023-10-10T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "06665O",
+      "name": "PROPANE - NEW YORK MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064DZS",
+      "name": "PJM.DOM_month_on_dap - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064395",
+      "name": "SP15 FIN DA PEAK FIXED - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064DPR",
+      "name": "PJM.BGE_month_off_dap - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "075651",
+      "name": "PALLADIUM - NEW YORK MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0063CH",
+      "name": "PJM TRI-RECs CLASS 1  - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233E5",
+      "name": "TRANSCO LEIDY INDEX - ICE FUTURES ENERGY DIV",
+      "latest": "2023-04-04T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0643A8",
+      "name": "ERCOT - NORTH MONTHLY OFF-PEAK - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "86465K",
+      "name": "JET UP-DOWN BALMO - NEW YORK MERCANTILE EXCHANGE",
+      "latest": "2023-04-04T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "06765L",
+      "name": "WTI-BRENT CALENDAR - NEW YORK MERCANTILE EXCHANGE",
+      "latest": "2023-05-30T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "066416",
+      "name": "ETHANE, MT. BELV-ENTERPRISE - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "025651",
+      "name": "ETHANOL - NEW YORK MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "03565B",
+      "name": "HENRY HUB - NEW YORK MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0643BR",
+      "name": "CAISO NP-15 DA OFF-PK FIXED - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "021397",
+      "name": "MARINE FUEL OIL 0.5% FOB USGC - ICE FUTURES ENERGY DIV",
+      "latest": "2023-05-30T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "06439F",
+      "name": "PJM AEP DAYTON DA PEAK - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "188691",
+      "name": "COBALT - COMMODITY EXCHANGE INC.",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "006NLV",
+      "name": "PENNSYLVANIA AEC TIER 2-V2026 - NODAL EXCHANGE",
+      "latest": "2023-08-01T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233C1",
+      "name": "SONAT - TIER 1 POOL (ZONE 0) - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0643A5",
+      "name": "ERCOT NORTH 345KV DA PK DLY FI - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "080732",
+      "name": "SUGAR NO. 11 - ICE FUTURES U.S.",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "006NGL",
+      "name": "RGGI V2025 - NODAL EXCHANGE",
+      "latest": "2022-12-06T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "023398",
+      "name": "HSC FIN BASIS - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "067A71",
+      "name": "WTI MIDLAND ARGUS VS WTI TRADE - NEW YORK MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0643AZ",
+      "name": "MISO IN. DAY-AHEAD PEAK - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "006NHT",
+      "name": "TX REC CRS V26 BACK HALF - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0643ID",
+      "name": "ERCOT N 345KV REAL T PK 2x16 - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "189691",
+      "name": "LITHIUM HYDROXIDE  - COMMODITY EXCHANGE INC.",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "084691",
+      "name": "SILVER - COMMODITY EXCHANGE INC.",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0063F6",
+      "name": "RGGI V2027 - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064IBJ",
+      "name": "ERCOT N 345KV RT OFF-PEAK MINI - ICE FUTURES ENERGY DIV",
+      "latest": "2023-02-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233ED",
+      "name": "REX ZONE 3 INDEX - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "06639Z",
+      "name": "PROPANE,OPIS MT BELV TET BALMO - ICE FUTURES ENERGY DIV",
+      "latest": "2023-10-03T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "06439U",
+      "name": "ERCOT-SOUTH MONTHLY OFFPEAK - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064DEV",
+      "name": "NYISO.WEST_month_off_dap - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064FOK",
+      "name": "ERCOT.HB_NORTH_month_on_rtp - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "052645",
+      "name": "DRY WHEY - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064EOX",
+      "name": "PJM.METED_month_off_dap - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064EUZ",
+      "name": "PJM.PECO_month_off_dap - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0063DN",
+      "name": "MARYLAND SOLAR REC - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "02165A",
+      "name": "GULF # 6 FUEL 3.0% SULFUR - NEW YORK MERCANTILE EXCHANGE",
+      "latest": "2023-05-02T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0643DF",
+      "name": "PJM WESTERN HUB RT PEAK MINI - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0063EM",
+      "name": "RGGI V2026 - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064EJI",
+      "name": "PJM.JCPL_month_on_dap - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "06765A",
+      "name": "WTI FINANCIAL CRUDE OIL - NEW YORK MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "02339Q",
+      "name": "CHICAGO CITYGATE (INDEX) - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "006NGR",
+      "name": "CALIF CARBON ALLOWANCE V2025 - NODAL EXCHANGE",
+      "latest": "2022-12-13T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233CC",
+      "name": "TETCO WLA BASIS - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "02339P",
+      "name": "CG-MAINLINE FINANCIAL INDEX - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "006NJ3",
+      "name": "TX REC CRS V30 FRONT HALF - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "06639H",
+      "name": "PROPANE ARGUS SAUDI CP MINI - ICE FUTURES ENERGY DIV",
+      "latest": "2023-10-31T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064EVG",
+      "name": "PJM.PEPCO_month_on_dap - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "06439E",
+      "name": "AEP DAYTON HUB DA PEAK DAILY - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233BD",
+      "name": "NWP Rockies Index - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "066397",
+      "name": "BUTANE,OPIS MT B, NONTET FIX - ICE FUTURES ENERGY DIV",
+      "latest": "2023-10-31T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233EP",
+      "name": "NAT GAS TETCO-WLA INDEX - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "06439A",
+      "name": "PJM AEP DAYTON RT OFF-PK FIXED - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0063DA",
+      "name": "PA SOLAR ALTER ENERGY CREDIT - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "06439L",
+      "name": "MISO IN. REAL-TIME OFF-PEAK - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0676A6",
+      "name": "WTI  HOUSTON ARGUS/WTI BALMO - NEW YORK MERCANTILE EXCHANGE",
+      "latest": "2023-10-31T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "066418",
+      "name": "ISOBUTANE OPIS MT BELV NONTET - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233AH",
+      "name": "HENRY HUB INDEX - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0643BC",
+      "name": "PJM N. IL HUB DA OFF-PK  - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "06665B",
+      "name": "ARGUS PROPANE FAR EAST INDEX - NEW YORK MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "06439Q",
+      "name": "ERCOT Houston 345KV RT OFF FIX - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233BY",
+      "name": "SOCAL CITYGATE FINANCIAL BASIS - ICE FUTURES ENERGY DIV",
+      "latest": "2023-09-05T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064FKF",
+      "name": "PJM.WESTERN HUB_month_off_rtp - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233CU",
+      "name": "TRANSCO ZONE 6 BASIS - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "023651",
+      "name": "NAT GAS NYME - NEW YORK MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064394",
+      "name": "PJM WESTERN HUB RT OFF - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "023397",
+      "name": "CHICAGO FIN BASIS - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "06741Q",
+      "name": "WTI CRUDE OIL 1ST LINE - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "06665Q",
+      "name": "MT BELV NORM BUTANE OPIS - NEW YORK MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064EXF",
+      "name": "PJM.PSEG_month_off_dap - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233BQ",
+      "name": "PG&E - CITYGATE (INDEX) - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233A9",
+      "name": "FLORIDA GAS-ZONE 3 BASIS - ICE FUTURES ENERGY DIV",
+      "latest": "2023-10-03T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "06639E",
+      "name": "PROPANE,OPIS MT B, NONTET BALM - ICE FUTURES ENERGY DIV",
+      "latest": "2023-07-04T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064EVB",
+      "name": "PJM.PENELEC_month_off_dap - NODAL EXCHANGE",
+      "latest": "2023-10-31T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "052641",
+      "name": "MILK, Class III - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0063DR",
+      "name": "NJ COMPLIANCE RECs CLASS 1 - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "06665R",
+      "name": "MT BELV NAT GASOLINE OPIS - NEW YORK MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233EB",
+      "name": "REX ZONE 3 BASIS - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0063DL",
+      "name": "MASS COMPLIANCE RECs CLASS 1  - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064GBD",
+      "name": "ERCOT.HB_NORTH_month_7x8_rtp - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064DZT",
+      "name": "PJM.DOM_month_off_dap - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "111416",
+      "name": "RBOB GASOLINE 1ST LINE - ICE FUTURES ENERGY DIV",
+      "latest": "2023-06-27T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064DLR",
+      "name": "PJM.AEP_month_off_dap - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "06765T",
+      "name": "BRENT LAST DAY - NEW YORK MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "006WBY",
+      "name": "CALIF CARBON VINTAGE SPEC 2028 - ICE FUTURES ENERGY DIV",
+      "latest": "2022-12-27T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064IBM",
+      "name": "ERCOT North 345KV Hub RT 7x16 - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "052644",
+      "name": "CME MILK IV - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064AAA",
+      "name": "ISONE.H.INTERNAL_HUB_mo_on_dap - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "052642",
+      "name": "NON FAT DRY MILK - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064BFJ",
+      "name": "MISO.INDIANA.HUB_month_off_dap - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233CH",
+      "name": "TETCO M3 BASIS - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064FHL",
+      "name": "PJM.WESTERN HUB_month_off_dap - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064DMZ",
+      "name": "PJM.APS_month_off_dap - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0643HS",
+      "name": "CAISO SP-15 PEAK 0900-1600 HE - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0643IK",
+      "name": "ERCOT North 345KV Hub RT 7x8 - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064FJY",
+      "name": "MISO.INDIANA.HUB_month_on_rtp - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "06739C",
+      "name": "CRUDE DIFF-WCS HOUSTON/WTI 1ST - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064FOI",
+      "name": "ERCOT.HB_HOUSTON_month_on_rtp - NODAL EXCHANGE",
+      "latest": "2023-06-20T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "058644",
+      "name": "LUMBER - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064CZS",
+      "name": "NYISO.N.Y.C._month_on_dap - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233DT",
+      "name": "TRANSCO LEIDY BASIS - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233B7",
+      "name": "NNG VENTURA FINANCIAL INDEX - ICE FUTURES ENERGY DIV",
+      "latest": "2023-01-31T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233DR",
+      "name": "TETCO M2 Basis (Receipts) - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0063EA",
+      "name": "WASHINGTON CARBON ALL V2026 - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "073732",
+      "name": "COCOA - ICE FUTURES U.S.",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064DLX",
+      "name": "PJM.AEP-DAYTON HUB_mo_off_dap - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "066393",
+      "name": "PROPANE ARGUS FAR EAST MINI - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "050642",
+      "name": "BUTTER (CASH SETTLED) - CHICAGO MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "006WCA",
+      "name": "CALIF CARBON VINTAGE SPEC 2029 - ICE FUTURES ENERGY DIV",
+      "latest": "2023-09-26T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "066413",
+      "name": "ARGUS FAR EAST PROPANE - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "023399",
+      "name": "WAHA FIN BASIS - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "06641A",
+      "name": "NAT GASLNE OPIS MT B NONTET FP - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "067411",
+      "name": "CRUDE OIL, LIGHT SWEET-WTI - ICE FUTURES EUROPE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "023394",
+      "name": "PG&E CITYGATE FIN BASIS - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "006NKH",
+      "name": "TX REC CRS V31 BACK HALF - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064391",
+      "name": "MID-C DAY-AHEAD PEAK - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "023392",
+      "name": "NAT GAS ICE PEN - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "86465A",
+      "name": "GULF JET NY HEAT OIL SPR - NEW YORK MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "06439R",
+      "name": "ERCOT NORTH 345KV RT PK FIX - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233CM",
+      "name": "TGT ZONE 1 BASIS - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233CG",
+      "name": "TETCO M3 INDEX - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233CV",
+      "name": "TRANSCO ZONE 6 MONTHLY INDEX - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "191691",
+      "name": "ALUMINUM - COMMODITY EXCHANGE INC.",
+      "latest": "2023-06-13T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064EJJ",
+      "name": "PJM.JCPL_month_off_dap - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233A2",
+      "name": "DOMINION - SOUTH POINT - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0643BM",
+      "name": "CAISO NP-15 PEAK - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "066411",
+      "name": "ARGUS CIF ARA Lg Finl Propane - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "06641E",
+      "name": "PROPANE OPIS CONWAY INWELL FP - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064CZT",
+      "name": "NYISO.N.Y.C._month_off_dap - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "006NJ2",
+      "name": "TX REC CRS V29 FRONT HALF - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233BL",
+      "name": "PANHANDLE BASIS - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0643DM",
+      "name": "PJM PSEG DA OFF-PK FIXED PRICE - ICE FUTURES ENERGY DIV",
+      "latest": "2023-03-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0063EN",
+      "name": "WASHINGTON CARBON ALL V2025 - ICE FUTURES ENERGY DIV",
+      "latest": "2022-12-27T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "135731",
+      "name": "CANOLA - ICE FUTURES U.S.",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0643BY",
+      "name": "NYISO ZONE A DA PEAK - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064EWV",
+      "name": "PJM.PPL_month_off_dap - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "022A13",
+      "name": "UP DOWN GC ULSD VS HO SPR - NEW YORK MERCANTILE EXCHANGE",
+      "latest": "2023-09-12T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233AX",
+      "name": "NATURAL GAS INDEX: EP SAN JUAN - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233BH",
+      "name": "MALIN (BASIS) - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "111A08",
+      "name": "GRP 3 SOC GAS VS RBOB SPR - NEW YORK MERCANTILE EXCHANGE",
+      "latest": "2023-03-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064ED7",
+      "name": "ERCOT North 345KV Hub RT 10x17 - ICE FUTURES ENERGY DIV",
+      "latest": "2023-09-12T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064392",
+      "name": "MID-C DAY-AHEAD OFF-PEAK - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064FJZ",
+      "name": "MISO.INDIANA.HUB_month_off_rtp - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "005603",
+      "name": "MINI SOYBEANS - CHICAGO BOARD OF TRADE",
+      "latest": "2023-10-24T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0063CU",
+      "name": "CALIF LOW CARBON FSC-OPIS  - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "06439C",
+      "name": "PJM AEP DAYTON HUB DA OFF-PK  - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0063CW",
+      "name": "D6 RINs OPIS CURRENT YEAR - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0643DC",
+      "name": "PJM WESTERN HUB DA PEAK - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "023393",
+      "name": "SOCAL BORDER FIN BASIS - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "067651",
+      "name": "WTI-PHYSICAL - NEW YORK MERCANTILE EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "192651",
+      "name": "STEEL-HRC - COMMODITY EXCHANGE INC.",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064FKA",
+      "name": "PJM.AEP-DAYTON HUB_mo_on_rtp - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "064DLW",
+      "name": "PJM.AEP-DAYTON HUB_mo_on_dap - NODAL EXCHANGE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "083731",
+      "name": "COFFEE C - ICE FUTURES U.S.",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "0233CF",
+      "name": "TETCO ELA BASIS - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "026603",
+      "name": "SOYBEAN MEAL - CHICAGO BOARD OF TRADE",
+      "latest": "2023-11-07T00:00:00.000"
+    },
+    {
+      "cftc_contract_market_code": "02339W",
+      "name": "TCO Basis  - ICE FUTURES ENERGY DIV",
+      "latest": "2023-11-07T00:00:00.000"
+    }
+  ]
+}

@@ -54,7 +54,10 @@ broker connections, dividends or tax, and it makes no model calls.
   or offered, and when each earnings release was filed. Keyless, from
   Yahoo: the ten largest holdings, asset split and sectors of an ETF or
   mutual fund Yahoo lists, on any exchange. Beside Finnhub's metrics, from Yahoo: an
-  ADR's P/E, PEG and EPS per US share.
+  ADR's P/E, PEG and EPS per US share. Keyless, from the CFTC's
+  Commitments of Traders: weekly futures positioning by trader group
+  for gold, oil, currencies, equity indices, Bitcoin and any other
+  market it reports.
 - **Price alerts.** Agents set conditions as short text on a symbol's
   price or signals, other symbols included: `price < 200`,
   `rsi14 < 30 and price > sma200`, `price(^VIX) > 30`, a drop after the
@@ -76,7 +79,8 @@ broker connections, dividends or tax, and it makes no model calls.
   currency and times, and stale reasons when a source failed or a sync
   is behind. Market hours come from the source, so holidays and clock
   changes need no table.
-- **Free sources, each optional.** Yahoo needs no key and is always on.
+- **Free sources, each optional but two.** Yahoo and the CFTC need no
+  key and are always on.
   FRED, Finnhub and Massive turn on when their free key file is present,
   SEC EDGAR when its file holds a contact line.
   The Bucharest Stock Exchange's own feed, with its shares, fund units,

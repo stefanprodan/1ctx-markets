@@ -40,11 +40,12 @@ doc; key files in `docs/config.md`.
 |---|---|
 | `yahoo.ts` | `recorded()`, `fakeFetch()`, `listed()` (a short chart read as a whole history), `backTo()` (made-up weekday rows before a recording), `added()`, `yahooSession()` (a made-up session and the recorded quote summaries, by symbol and modules, and option chains, a listed date with no recording answering the nearest chain moved to it) |
 | `bvb.ts` | the Bucharest exchange's pages and chart feed by URL (`bvbFetch()`), `opened()` (a page read as open: every recording is of a closed market), `keyed()` (a made-up page key, which the recordings strip), `bothSources()` with Yahoo |
-| `sources.ts` | Yahoo and FRED by URL for reads that fetch inside a call; `gate()` holds a call until released |
+| `sources.ts` | Yahoo, FRED and the CFTC by URL for reads that fetch inside a call; `gate()` holds a call until released |
 | `sim.ts` | a made-up Yahoo for whole simulated days, sessions from each listing's zone |
 | `finnhub.ts` | Finnhub by path and symbol, recorded and made-up answers |
 | `massive.ts` | Massive's news, filtered, ordered and paged with an opaque `next_url` |
 | `edgar.ts` | SEC's ticker map and submissions by URL, a made-up contact line, `share()` for a stored US share |
+| `cftc.ts` | the CFTC's lists and two markets' weeks by URL, none for another market; `withApp()` answers the app's start-time CFTC calls with them unless a test passes `cftc` |
 | `rules.ts` | reads with rules over the recorded sources |
 | `app.ts` | the whole server on loopback (`withApp()`) and an MCP SDK client on it (`mcpClient()`) |
 | `api.ts` | `/api/v1` through the real router over a test's own `Markets`, each request with the right made-up key (`api()`) |
@@ -125,6 +126,7 @@ Never run one from a test or CI.
 | `finnhub.ts` | the research sections, the whole-market calendar, a price target | `FINNHUB_KEY_FILE` or `source-finnhub.key` |
 | `massive.ts` | the latest news and its next page, older news | `MASSIVE_KEY_FILE` or `source-massive.key` |
 | `edgar.ts` | the ticker map trimmed to the tests' symbols, two years of submissions per company (a bank's note prospectuses sampled), an unknown CIK | `EDGAR_KEY_FILE` or `source-edgar.key`, the contact line |
+| `cftc.ts` | both reports' market lists, a commodity market's and a consolidated financial market's weeks with the client's own queries, a list at its limit; a case name records one | none |
 | `bvb.ts` | the Bucharest exchange's pages and chart feed, trimmed to the fragments that hold data; a case name records one | none; the page key is stripped |
 
 - **Calls are spaced and few** (`GAP_MS`), under each source's limit,

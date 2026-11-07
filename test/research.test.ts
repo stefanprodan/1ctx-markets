@@ -366,7 +366,7 @@ describe("the research and events tools", () => {
         [
           "research",
           { symbol: "NVDA", since: "2026-10-22" },
-          "since is for the news section only",
+          "since is for the news and positioning sections only",
         ],
         ["events", { from: "2026-10-01" }, "to must be a date"],
         ["events", { to: "2026-10-01" }, "from must be a date"],

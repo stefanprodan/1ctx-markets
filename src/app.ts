@@ -34,6 +34,8 @@ import {
   sourceSwitch,
   writeSources,
 } from "./sources/bvb/switch.ts";
+import { type Cftc, cftc } from "./sources/cftc/client.ts";
+import { type CftcJobs, cftcJobs, marketList } from "./sources/cftc/list.ts";
 import {
   BAD_CONTACT,
   type Edgar,
@@ -132,6 +134,9 @@ export type App = {
   massiveJobs: MassiveJobs | null;
   edgar: Edgar | null;
   edgarJobs: EdgarJobs | null;
+  // keyless and always on, as Yahoo is
+  cftc: Cftc;
+  cftcJobs: CftcJobs;
   bvb: Bvb | null;
   bvbJobs: BvbJobs | null;
   // moves the Bucharest market between Yahoo and the feed
@@ -331,6 +336,18 @@ export function start(options: AppOptions): App {
           tracking,
         });
 
+  const cftcClient = cftc({ clock, fetch: options.fetch });
+  const cftcList = marketList(clock);
+  const cftcSync = cftcJobs({
+    clock,
+    writer: write,
+    cftc: cftcClient,
+    list: cftcList,
+    log: options.log("cftc"),
+  });
+  // the market list at once, so search finds a market from the start
+  if (syncing) void cftcSync.tick();
+
   const reads = markets({
     db,
     clock,
@@ -341,6 +358,7 @@ export function start(options: AppOptions): App {
     finnhub: finnhubClient,
     massive: massiveClient,
     edgar: edgarClient,
+    cftc: { client: cftcClient, list: cftcList },
     hooks,
     rules,
     log: options.log("tools"),
@@ -374,6 +392,12 @@ export function start(options: AppOptions): App {
     keyed("finnhub", finnhubKey, finnhubClient),
     keyed("massive", massiveKey, massiveClient),
     keyed("edgar", edgarKey, edgarClient),
+    {
+      name: "cftc",
+      on: true,
+      why: "always",
+      backoff: () => cftcClient.backoff(),
+    },
     {
       name: "bvb",
       on: bvbClient !== null,
@@ -459,6 +483,7 @@ export function start(options: AppOptions): App {
     topHoldingsSync.schedule(jobs);
     massiveSync?.schedule(jobs);
     edgarSync?.schedule(jobs);
+    cftcSync.schedule(jobs);
     bvbSync?.schedule(jobs);
     switcher.schedule(jobs);
     track.schedule(jobs);
@@ -480,6 +505,8 @@ export function start(options: AppOptions): App {
     massiveJobs: massiveSync,
     edgar: edgarClient,
     edgarJobs: edgarSync,
+    cftc: cftcClient,
+    cftcJobs: cftcSync,
     bvb: bvbClient,
     bvbJobs: bvbSync,
     sourceSwitch: switcher,
@@ -502,6 +529,7 @@ export function start(options: AppOptions): App {
       finnhubClient?.close();
       massiveClient?.close();
       edgarClient?.close();
+      cftcClient.close();
       bvbClient?.close();
       await server.stop();
       await settled;

@@ -83,6 +83,7 @@ import {
 import { ArgError, date, fields, symbols } from "./args.ts";
 import { type Markets, shared } from "./markets.ts";
 import { type OptionsSection, readOptions } from "./options.ts";
+import { cftcCode, cftcId, positioningSummary } from "./positioning.ts";
 import {
   type ItemError,
   itemError,
@@ -882,18 +883,22 @@ export const RESEARCH_PARTS = [
   "filings",
   "top_holdings",
   "options",
+  "positioning",
 ] as const;
 export type ResearchPart = (typeof RESEARCH_PARTS)[number];
 
 // answered only when asked, so a call without sections answers as before
 const DEFAULT_PARTS = RESEARCH_PARTS.filter(
-  (p) => p !== "top_holdings" && p !== "options",
+  (p) => p !== "top_holdings" && p !== "options" && p !== "positioning",
 );
 
 type FinnhubPart = Exclude<
   ResearchPart,
-  "news" | "filings" | "top_holdings" | "options"
+  "news" | "filings" | "top_holdings" | "options" | "positioning"
 >;
+
+export const CFTC_PARTS =
+  "a CFTC market answers sections=positioning, nothing else";
 
 const SECTION_OF_PART: Record<FinnhubPart, Section> = {
   metric: "metric",
@@ -924,6 +929,8 @@ export function parseResearchList(input: unknown): ResearchListArgs {
     }
     parts = RESEARCH_PARTS.filter((p) => asked.includes(p));
   }
+  // a malformed CFTC code is the request's error, not an item's
+  for (const input of list) cftcCode(input);
   const since = date(f.since, "since");
   if (since !== null && !parts.includes("news")) {
     throw new ArgError("since is for the news section only");
@@ -954,7 +961,8 @@ export async function researchList(m: Markets, args: ResearchListArgs) {
       p !== "news" &&
       p !== "filings" &&
       p !== "top_holdings" &&
-      p !== "options",
+      p !== "options" &&
+      p !== "positioning",
   );
   const left = (Object.keys(SECTION_OF_PART) as FinnhubPart[]).filter(
     (p) => !finnhub.includes(p),
@@ -963,16 +971,27 @@ export async function researchList(m: Markets, args: ResearchListArgs) {
   // valuation goes with the metric, which says whether the listing is foreign
   const withValuation = args.parts.includes("metric");
   const withTopHoldings = args.parts.includes("top_holdings");
-  const { targets, inline, filings, valuation, topHoldings } =
-    await researchTargets(m, args.symbols, {
+  // a CFTC market is no instrument: nothing is resolved or tracked
+  const markets = args.symbols.filter((s) => cftcCode(s) !== null);
+  const {
+    targets: resolved,
+    inline,
+    filings,
+    valuation,
+    topHoldings,
+  } = await researchTargets(
+    m,
+    args.symbols.filter((s) => !markets.includes(s)),
+    {
       sections: finnhub.map((p) => SECTION_OF_PART[p]),
       filings: withFilings,
       valuation: withValuation,
       topHoldings: withTopHoldings,
-    });
+    },
+  );
   const options = new Map<string, OptionsSection>();
   if (args.parts.includes("options")) {
-    for (const t of targets) {
+    for (const t of resolved) {
       if (!("instrument" in t)) continue;
       options.set(
         t.instrument.id,
@@ -980,8 +999,39 @@ export async function researchList(m: Markets, args: ResearchListArgs) {
       );
     }
   }
+  const withPositioning = args.parts.includes("positioning");
+  const positioning = new Map<string, Record<string, unknown>>();
+  if (withPositioning) {
+    for (const input of args.symbols) {
+      const t = resolved.find((r) => r.input === input);
+      if (t !== undefined && !("instrument" in t)) continue;
+      positioning.set(
+        input,
+        await positioningSummary(
+          m,
+          input,
+          t?.instrument ?? null,
+          started + m.callMs,
+        ),
+      );
+    }
+  }
+  let next = 0;
+  // in the order asked, the instruments' as resolved
+  const targets = args.symbols.map(
+    (input) =>
+      (markets.includes(input) ? { input } : resolved[next++]!) as
+        | Target
+        | { input: string },
+  );
   // no quote: /quotes answers prices for many symbols in one call
   return targets.map((t) => {
+    if (!("instrument" in t) && !("error" in t)) {
+      const id = cftcId(cftcCode(t.input)!);
+      return withPositioning
+        ? { input: t.input, id, positioning: positioning.get(t.input) }
+        : { input: t.input, error: "not_found", message: CFTC_PARTS };
+    }
     if ("error" in t) return { input: t.input, ...t.error };
     const company: Record<string, unknown> = researchSummary(
       m,
@@ -1021,6 +1071,9 @@ export async function researchList(m: Markets, args: ResearchListArgs) {
         : {}),
       ...(options.has(t.instrument.id)
         ? { options: options.get(t.instrument.id) }
+        : {}),
+      ...(positioning.has(t.input)
+        ? { positioning: positioning.get(t.input) }
         : {}),
     };
   });

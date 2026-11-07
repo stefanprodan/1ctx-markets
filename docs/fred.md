@@ -14,8 +14,8 @@ tracking and staleness in `docs/storage.md`; the answer pages in
 
 - **FRED is on only while `secrets/source-fred.key` in the data
   directory holds a key.** `src/app.ts` builds no client and schedules
-  no job without it, and every source but Yahoo is optional, so no
-  code path may assume FRED exists.
+  no job without it, and every source but Yahoo and the CFTC is
+  optional, so no code path may assume FRED exists.
 - **Off is an answer, never an error.** `addSeries` returns
   `{ kind: "off" }` and a tool item carries `no_data` with `NO_DATA`
   ("no data from FRED"). That holds for a stored series too

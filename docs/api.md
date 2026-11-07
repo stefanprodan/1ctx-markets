@@ -148,7 +148,13 @@ MCP tools copied onto paths.
   the stored instruments that match, then the Bucharest exchange's
   listings stored from its list pages (below in `docs/bvb.md`), with
   no call to Yahoo, FRED or the exchange. A page that searches as the
-  user types asks it first, then the full search for the rest.
+  user types asks it first, then the full search for the rest. It lists
+  no CFTC market, which the search tool does: its callers add
+  instruments, and a CFTC market is none.
+- **A CFTC market is `CFTC:<code>`, its `+` sent as `%2B`**
+  (`CFTC:13874%2B`): a bare `+` in a query decodes to a space, and the
+  code is then refused (`docs/cftc.md`). Only the research route reads
+  one; every other route answers its item `not_found`.
 
 ## One instrument
 
@@ -346,16 +352,18 @@ MCP tools copied onto paths.
 
 - **`symbols` takes up to `MAX_RESEARCH_SYMBOLS` (5), `sections` a list
   of `metric`, `analysts`, `earnings`, `insider`, `next_event`, `news`,
-  `filings` (all by default), `top_holdings` and `options` (only when
-  asked; `options` for one symbol, else `bad_arguments`), and `since` a
-  UTC date, with `news` asked.** Each item is `input`, `id`,
-  `company` (the Finnhub summary with each asked section's `history`),
-  `valuation` (with `metric`, for a share answered from a foreign
-  listing), `news` (the news week), `filings` (EDGAR's summary, the
-  tool overview's), `top_holdings` (the tool's section,
-  `NOT_A_FUND` for anything but a fund) and `options` (the tool's
-  summary, never a chain), or its error; no
-  quote, since `/quotes` answers prices in one call. What each holds and
+  `filings` (all by default), `top_holdings`, `options` and
+  `positioning` (only when asked; `options` for one symbol, else
+  `bad_arguments`), and `since` a UTC date, with `news` asked.** Each
+  item is `input`, `id`, `company` (the Finnhub summary with each
+  asked section's `history`), `valuation` (with `metric`, for a share
+  answered from a foreign listing), `news` (the news week), `filings`
+  (EDGAR's summary, the tool overview's), `top_holdings` (the tool's
+  section, `NOT_A_FUND` for anything but a fund), `options` (the
+  tool's summary, never a chain) and `positioning` (a CFTC market's
+  default weeks, for a `CFTC:<code>`, whose item holds nothing else, or
+  a paired World markets symbol), or its error; no quote, since
+  `/quotes` answers prices in one call. What each holds and
   why is in `docs/research.md` ("The research route").
 
 ## Paging
