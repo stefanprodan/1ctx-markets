@@ -13,6 +13,8 @@
     "lint": "bun biome check --write . && bun check",
     "build": "mkdir -p bin && bun scripts/build.ts && rm -f .*.bun-build",
     "smoke": "scripts/smoke.sh",
+    "image": "scripts/image.sh",
+    "image-smoke": "scripts/image-smoke.sh",
     "clean": "rm -rf bin .*.bun-build",
     "staging-deploy": "scripts/staging.sh deploy",
     "staging-status": "scripts/staging.sh status",

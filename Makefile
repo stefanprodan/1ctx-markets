@@ -5,10 +5,11 @@
 # actual commands live in package.json, edit them there.
 
 export VERSION
+export PLATFORMS
 
 .DEFAULT_GOAL := help
 
-.PHONY: help start dev test lint build clean smoke staging-deploy staging-status staging-secrets
+.PHONY: help start dev test lint build clean smoke image image-smoke staging-deploy staging-status staging-secrets
 
 help: ## Show available tasks
 	@grep -hE '^[a-z][a-z-]*:.*## .*$$' $(MAKEFILE_LIST) \
@@ -31,6 +32,12 @@ build: ## Compile a standalone binary into bin/ (release: VERSION=v1.2.3)
 
 smoke: ## Start the compiled binary, check its keys and MCP answer, stop it
 	@bun run smoke
+
+image: ## Build the container image and load it (PLATFORMS=linux/amd64,linux/arm64 builds only)
+	@bun run image
+
+image-smoke: ## Build the image, run it as Compose does, check its MCP answer and stop it
+	@bun run image-smoke
 
 clean: ## Remove the build artifacts
 	@bun run clean

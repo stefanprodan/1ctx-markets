@@ -17,7 +17,7 @@ concurrency:
 jobs:
   build-test:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -51,6 +51,18 @@ jobs:
           test "$(./bin/1ctx-markets --version)" = "$expected"
           ./bin/1ctx-markets --help >/dev/null
           make smoke
+      - parallel:
+          - name: Smoke test image
+            run: |
+              expected="v$(bun -e 'console.log(require("./package.json").version)')"
+              make image-smoke VERSION="$expected"
+          - name: Check Docker Compose files
+            env:
+              MARKETS_VERSION: dev
+            run: |
+              docker compose -f deploy/docker/compose.yaml config --quiet
+              docker compose -f deploy/docker/compose.yaml \
+                -f deploy/docker/compose.dev.yaml config --quiet
 
   macos-smoke:
     if: github.event_name == 'push'

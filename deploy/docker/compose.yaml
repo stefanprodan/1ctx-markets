@@ -1,0 +1,23 @@
+# Run with MARKETS_VERSION set to a release. ./secrets holds user-admin.key
+# (32 or more printable characters) and any source-<name>.key, written
+# before the first start and readable by the container's user (mode 644):
+# on a read-only mount the server cannot write a key of its own.
+name: 1ctx-markets
+services:
+  markets:
+    image: ghcr.io/stefanprodan/1ctx-markets:${MARKETS_VERSION:?set MARKETS_VERSION to a 1ctx-markets release}
+    restart: unless-stopped
+    # a source call already sent ends within its 30-second timeout, then
+    # the writer drains its queue
+    stop_grace_period: 45s
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    ports:
+      # loopback only: a TLS proxy or a private network reaches it from elsewhere
+      - "127.0.0.1:11238:11238"
+    volumes:
+      - data:/data
+      - ./secrets:/data/secrets:ro
+volumes:
+  data:

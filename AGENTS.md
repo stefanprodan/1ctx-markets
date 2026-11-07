@@ -37,6 +37,8 @@ make lint              # biome check --write, then bun check; run after any code
 make test              # bun test; run after any code change, before finishing
 make build             # standalone binary in bin/ (VERSION=v1.2.3 for a release)
 make smoke             # start the binary, check its keys and MCP answer, stop it
+make image             # build the container image and load it (PLATFORMS=... builds only)
+make image-smoke       # build the image, run it as Docker Compose does, stop it
 make clean             # remove bin/ and Bun's build leftovers
 make staging-deploy    # build main, back up staging's db, swap its binary, restart
 make staging-status    # what the staging service says
@@ -115,9 +117,15 @@ test/                       one *.test.ts per area, helpers/ (fakes), fixtures/ 
 scripts/probe/              the fixture recorders, run by hand
 scripts/build.ts            the release build `make build` runs
 scripts/smoke.sh            the binary's smoke test
+scripts/archive.sh          packs a release archive with the licenses
+scripts/image.sh            builds the container image; image-smoke.sh runs it
 scripts/staging.sh          deploy, status and keys of the staging box (host in staging.env)
-scripts/bun-version.sh      the Bun version CI installs (.github/workflows/test.yml)
+scripts/bun-version.sh      the Bun version CI installs and the Dockerfile pins
 docs/                       the rules of each area (see Docs)
+Dockerfile                  the container image; .dockerignore is an allowlist
+deploy/docker/              Docker Compose: compose.yaml runs a release, compose.dev.yaml builds
+THIRD_PARTY_LICENSES.md     the licenses of every bundled package (test/third-party-licenses.test.ts)
+.github/workflows/          test.yml on every pull request, release.yml on a v* tag
 ```
 
 ## Docs
@@ -131,7 +139,7 @@ the same commit as the code that changes a rule.
 | `docs/config.md` | flags, the data directory, key files, the start log, HTTP routes, shutdown order, the build and smoke test |
 | `docs/admin.md` | the admin key and its scope, the instrument list, status, refetch, delete and the `admin` command |
 | `docs/api.md` | the REST API under `/api/v1`: routes and their parameters, symbols, bars, the dashboard, paging, problem details, scopes, caching, the alerts feed, the spec and its contract test, the docs page |
-| `docs/deploy.md` | the `service` command, launchd, the kill timeout, the log, staging deploys, backups and keys |
+| `docs/deploy.md` | the `service` command, launchd, the kill timeout, the log, staging deploys, backups and keys, releases, the container image and Docker Compose |
 | `docs/storage.md` | the database, migrations, the writer, instruments, times and prices, the clock, runs and staleness, tracking, retention |
 | `docs/calendars.md` | market sessions from the source, quoting and checks, bar dates and finality, weeks, wall time, crypto |
 | `docs/sources.md` | what every source shares: the source queue, the per-instrument lock, deadlines, retries, backfill, splits and rescales, refusals, source ids |
