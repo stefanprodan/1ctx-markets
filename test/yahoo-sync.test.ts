@@ -2,13 +2,26 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
-import { readBars, rebuildWeeks } from "../src/market/bars.ts";
-import { readSession, readSessions } from "../src/market/calendars.ts";
+import { readBars, rebuildWeeks, upsertBars } from "../src/market/bars.ts";
+import {
+  readSession,
+  readSessions,
+  recordSession,
+} from "../src/market/calendars.ts";
 import { readInstrument, upsertInstrument } from "../src/market/instruments.ts";
-import { storeIntraday } from "../src/market/intraday.ts";
+import { storeIntraday, trailingStep } from "../src/market/intraday.ts";
 import { readQuote, upsertQuote } from "../src/market/quotes.ts";
-import { STALE } from "../src/market/stale.ts";
+import { heldStale, quoteStale, STALE } from "../src/market/stale.ts";
 import { startOfDate } from "../src/market/zone.ts";
+import { quoteItem, readLatest } from "../src/operations/quote.ts";
+import { OPERATOR } from "../src/operations/who.ts";
+import { evaluateRules } from "../src/rules/evaluate.ts";
+import {
+  bindCondition,
+  parseWhenCondition,
+  writeCondition,
+} from "../src/rules/format.ts";
+import { insertRule, readRule } from "../src/rules/store.ts";
 import { DAY_MS } from "../src/runtime/clock.ts";
 import { finalPrefix } from "../src/signals/closes.ts";
 import { dailySeries } from "../src/signals/daily.ts";
@@ -24,12 +37,18 @@ import {
 import {
   dailyBars,
   settle,
+  settleBars,
   settleStored,
   unitOf,
 } from "../src/sources/yahoo/history.ts";
 import { storeQuotes } from "../src/sources/yahoo/quotes.ts";
 import { marketOf, symbolOf } from "../src/sources/yahoo/resolve.ts";
-import { addInstrument, backfill, refetch } from "../src/sources/yahoo/sync.ts";
+import {
+  addInstrument,
+  backfill,
+  fillSessions,
+  refetch,
+} from "../src/sources/yahoo/sync.ts";
 import { type Db, open } from "../src/storage/db/index.ts";
 import { writer } from "../src/storage/writer.ts";
 import { withApp } from "./helpers/app.ts";
@@ -1507,5 +1526,457 @@ describe("a currency pair's daily close", () => {
     expect(settle(db, { id: "US:NVDA", type: "EQUITY" }, bars).bars).toEqual(
       bars,
     );
+  });
+});
+
+describe("a currency pair's trailing print", () => {
+  const MIN = 60_000;
+  const FRIDAY = "2026-11-13";
+  const MONDAY = "2026-11-16";
+  const at = (date: string, hhmm: string) => Date.parse(`${date}T${hhmm}:00Z`);
+  const FRIDAY_START = at(FRIDAY, "00:00");
+  // Yahoo's FX periods are whole London days, GMT in November
+  const SESSION = {
+    zone: "Europe/London",
+    start: FRIDAY_START,
+    end: at(FRIDAY, "23:59"),
+  };
+  const NEXT = {
+    zone: "Europe/London",
+    start: at(MONDAY, "00:00"),
+    end: at(MONDAY, "23:59"),
+  };
+  const round = (v: number) => Math.round(v * 1e4) / 1e4;
+
+  // a day of 5-minute closes from 00:00 to 21:55 wavering around base,
+  // ending on last, then the prints after 21:55
+  function day(
+    date: string,
+    base: number,
+    swing: number,
+    last: number | null = null,
+    prints: [string, number][] = [],
+  ) {
+    const start = at(date, "00:00");
+    const points = [];
+    for (let i = 0; i < 264; i++) {
+      points.push({
+        at: start + i * 5 * MIN,
+        close: round(base + swing * Math.sin(i / 7)),
+      });
+    }
+    if (last !== null) points[263]!.close = last;
+    for (const [hhmm, close] of prints)
+      points.push({ at: at(date, hhmm), close });
+    return points;
+  }
+
+  const eurron = () =>
+    day(FRIDAY, 5.3466, 0.0019, 5.3467, [
+      ["22:00", 5.3013],
+      ["22:25", 5.3013],
+    ]);
+  // a 0.0003 step mid-day, six times under the print's
+  const ronusd = () => {
+    const points = day(FRIDAY, 0.2061, 0, null, [["22:00", 0.2079]]);
+    points.forEach((p, i) => {
+      p.close = round(0.2061 + (i >= 120 && i < 140 ? 0.0003 : 0));
+    });
+    points.at(-1)!.close = 0.2079;
+    return points;
+  };
+
+  function pair(db: Db, symbol: string) {
+    return upsertInstrument(
+      db,
+      {
+        market: "CCY",
+        symbol,
+        source: "yahoo",
+        sourceSymbol: symbol,
+        exchange: "CCY",
+        name: null,
+        type: "CURRENCY",
+        currency: null,
+        unit: "per_unit",
+        zone: "Europe/London",
+      },
+      0,
+    );
+  }
+
+  const bar = (date: string, open: number, final: boolean) => ({
+    date,
+    open,
+    high: open + 0.0031,
+    low: open - 0.0031,
+    close: open,
+    volume: 0,
+    final,
+  });
+
+  // a week of stored bars and Friday's points, Monday's session begun
+  function stored(
+    symbol: string,
+    base: number,
+    points: { at: number; close: number }[],
+    mondayOpen: number,
+  ) {
+    const clock = fakeClock(at(MONDAY, "08:00"));
+    const { db } = open(":memory:", clock);
+    const instrument = pair(db, symbol);
+    recordSession(db, "CCY", NEXT, clock.now());
+    upsertBars(
+      db,
+      instrument.id,
+      "1d",
+      [
+        ...["2026-11-09", "2026-11-10", "2026-11-11", "2026-11-12", FRIDAY].map(
+          (d) => bar(d, base, true),
+        ),
+        bar(MONDAY, mondayOpen, false),
+      ],
+      clock.now(),
+    );
+    storeIntraday(db, instrument.id, instrument.zone, points, clock.now());
+    rebuildWeeks(db, instrument.id, NEXT, clock.now());
+    return { db, clock, instrument };
+  }
+
+  const closeOf = (db: Db, id: string, date: string) =>
+    db
+      .query<{ close: number; point: number }, [string, string]>(
+        `select close, point_close as point from bars where instrument = ?
+         and interval = '1d' and date = ?`,
+      )
+      .get(id, date);
+
+  test("a final day whose trailing jump the next open undoes closes before it", () => {
+    for (const [symbol, base, points, open, before] of [
+      ["EURRON=X", 5.3466, eurron(), 5.3478, 5.3467],
+      ["RONUSD=X", 0.206, ronusd(), 0.2062, 0.2061],
+    ] as const) {
+      const t = stored(symbol, base, [...points], open);
+      settleBars(t.db, t.instrument, t.clock.now());
+      expect(closeOf(t.db, t.instrument.id, FRIDAY)).toEqual({
+        close: before,
+        point: 1,
+      });
+      expect(readBars(t.db, t.instrument.id, "1wk")[0]).toMatchObject({
+        date: "2026-11-09",
+        close: before,
+      });
+    }
+  });
+
+  test("a trailing jump the next open keeps is the close", () => {
+    for (const [symbol, base, points, open, print] of [
+      ["EURRON=X", 5.3466, eurron(), 5.301, 5.3013],
+      ["RONUSD=X", 0.2061, ronusd(), 0.208, 0.2079],
+    ] as const) {
+      const t = stored(symbol, base, [...points], open);
+      settleBars(t.db, t.instrument, t.clock.now());
+      expect(closeOf(t.db, t.instrument.id, FRIDAY)).toEqual({
+        close: print,
+        point: 1,
+      });
+    }
+  });
+
+  test("a large step hours before the end, and a normal day, close on the last point", () => {
+    // a step of about 0.28% at 06:25 that the rest of the day held
+    const held = day(FRIDAY, 5.3466, 0.0019).map((p, i) => ({
+      ...p,
+      close: i >= 77 ? round(p.close + 0.0147) : p.close,
+    }));
+    for (const points of [held, day(FRIDAY, 5.3466, 0.0019)]) {
+      const last = points.at(-1)!.close;
+      const t = stored("EURRON=X", 5.3466, points, 5.3459);
+      settleBars(t.db, t.instrument, t.clock.now());
+      expect(closeOf(t.db, t.instrument.id, FRIDAY)).toEqual({
+        close: last,
+        point: 1,
+      });
+    }
+  });
+
+  test("at start, a stored close taken from a print is repaired and its week follows", async () => {
+    const t = stored("EURRON=X", 5.3466, eurron(), 5.3478);
+    // as an older build stored it: the print, marked a point close
+    t.db
+      .query(
+        `update bars set close = 5.3013, point_close = 1 where instrument = ?
+         and interval = '1d' and date = ?`,
+      )
+      .run(t.instrument.id, FRIDAY);
+    rebuildWeeks(t.db, t.instrument.id, NEXT, t.clock.now(), FRIDAY);
+    expect(readBars(t.db, t.instrument.id, "1wk")[0]!.close).toBe(5.3013);
+    settleStored(t.db, t.clock.now());
+    expect(closeOf(t.db, t.instrument.id, FRIDAY)).toEqual({
+      close: 5.3467,
+      point: 1,
+    });
+    expect(readBars(t.db, t.instrument.id, "1wk")[0]).toMatchObject({
+      date: "2026-11-09",
+      close: 5.3467,
+    });
+  });
+
+  // the recorded weekend EUR/USD spark entry, as another pair's answer
+  async function spark(
+    fetchedAt: number,
+    quotes: {
+      symbol: string;
+      price: number;
+      time: number;
+      low: number;
+      high: number;
+      previous: number;
+      session: typeof SESSION;
+      points: { at: number; close: number }[];
+    }[],
+  ) {
+    const fx = clone(await recorded("spark-v7-batch"));
+    const base = fx.body.spark.result.find((r: any) => r.symbol === "EURUSD=X");
+    fx.body.spark.result = quotes.map((q) => {
+      const e = clone(base);
+      const r = e.response[0];
+      e.symbol = q.symbol;
+      Object.assign(r.meta, {
+        symbol: q.symbol,
+        regularMarketPrice: q.price,
+        regularMarketTime: q.time / 1000,
+        regularMarketDayLow: q.low,
+        regularMarketDayHigh: q.high,
+        previousClose: q.previous,
+        chartPreviousClose: q.previous,
+      });
+      for (const k of ["pre", "regular", "post"]) {
+        r.meta.currentTradingPeriod[k] = {
+          ...r.meta.currentTradingPeriod[k],
+          timezone: "GMT",
+          gmtoffset: 0,
+          start: (k === "post" ? q.session.end : q.session.start) / 1000,
+          end: (k === "pre" ? q.session.start : q.session.end) / 1000,
+        };
+      }
+      r.timestamp = q.points.map((p) => p.at / 1000);
+      r.indicators.quote[0].close = q.points.map((p) => p.close);
+      return e;
+    });
+    return parseSpark(fx.body, fetchedAt);
+  }
+
+  const fridayQuotes = (points = true) => [
+    {
+      symbol: "EURRON=X",
+      price: 5.3013,
+      time: at(FRIDAY, "22:25"),
+      low: 5.3013,
+      high: 5.3486,
+      previous: 5.3459,
+      session: SESSION,
+      points: points ? eurron() : [],
+    },
+    {
+      symbol: "RONUSD=X",
+      price: 0.2079,
+      time: at(FRIDAY, "22:00"),
+      low: 0.2058,
+      high: 0.2079,
+      previous: 0.2062,
+      session: SESSION,
+      points: points ? ronusd() : [],
+    },
+  ];
+
+  function pairs(now: number) {
+    const clock = fakeClock(now);
+    const { db } = open(":memory:", clock);
+    pair(db, "EURRON=X");
+    pair(db, "RONUSD=X");
+    return { db, clock };
+  }
+
+  const stale = (db: Db, id: string) => heldStale(db, id);
+
+  test("a closed market's quote at a trailing print holds the point before it", async () => {
+    const saturday = at("2026-11-14", "00:15");
+    const { db } = pairs(saturday);
+    const written = storeQuotes(db, await spark(saturday, fridayQuotes()));
+    const eur = readQuote(db, "CCY:EURRON=X")!;
+    expect(eur).toMatchObject({
+      price: 5.3467,
+      time: at(FRIDAY, "21:55"),
+      // the print's side from the points, the other Yahoo's
+      dayLow: 5.3447,
+      dayHigh: 5.3486,
+      previousClose: 5.3459,
+    });
+    expect(eur.change).toBeCloseTo(0.0008, 10);
+    expect(eur.changePercent).toBeCloseTo((0.0008 / 5.3459) * 100, 8);
+    const ron = readQuote(db, "CCY:RONUSD=X")!;
+    expect(ron).toMatchObject({
+      price: 0.2061,
+      time: at(FRIDAY, "21:55"),
+      dayLow: 0.2058,
+      dayHigh: 0.2064,
+    });
+    expect(written.map((q) => q.price)).toEqual([5.3467, 0.2061]);
+    expect(stale(db, "CCY:EURRON=X")).toContain(STALE.printHeld);
+    expect(stale(db, "CCY:RONUSD=X")).toContain(STALE.printHeld);
+    // the points stay as Yahoo answered
+    const points = db
+      .query<{ close: number }, [string]>(
+        "select close from intraday where instrument = ? order by at",
+      )
+      .all("CCY:EURRON=X");
+    expect(points.at(-1)!.close).toBe(5.3013);
+
+    // the same answer again holds it again
+    storeQuotes(db, await spark(saturday + 60 * MIN, fridayQuotes()));
+    expect(readQuote(db, "CCY:EURRON=X")!.price).toBe(5.3467);
+
+    // the next session's first quote releases it
+    const monday = at(MONDAY, "07:00");
+    const opened = day(MONDAY, 5.3478, 0.0005).slice(0, 85);
+    storeQuotes(
+      db,
+      await spark(monday, [
+        {
+          symbol: "EURRON=X",
+          price: 5.348,
+          time: monday,
+          low: 5.3473,
+          high: 5.3483,
+          previous: 5.3467,
+          session: NEXT,
+          points: opened,
+        },
+      ]),
+    );
+    expect(readQuote(db, "CCY:EURRON=X")).toMatchObject({
+      price: 5.348,
+      time: monday,
+    });
+    expect(stale(db, "CCY:EURRON=X")).not.toContain(STALE.printHeld);
+  });
+
+  test("a held quote is a good price: rules read it, quote shows why", async () => {
+    const saturday = at("2026-11-14", "00:15");
+    const { db } = pairs(saturday);
+    storeQuotes(db, await spark(saturday, fridayQuotes()));
+    const eur = readInstrument(db, "CCY:EURRON=X")!;
+    const condition = bindCondition(
+      parseWhenCondition("price > 5.34", null),
+      eur.id,
+      (symbol) => symbol,
+      null,
+    );
+    const id = insertRule(
+      db,
+      OPERATOR,
+      { instrument: eur.id, condition: writeCondition(condition), note: null },
+      saturday,
+    );
+    const rule = readRule(db, OPERATOR, id)!;
+    const [evaluated] = evaluateRules(db, [rule], saturday, 5 * MIN);
+    expect(evaluated).toMatchObject({ result: "true", reasons: [] });
+    expect(evaluated!.values[0]!.left.value).toBe(5.3467);
+    expect(quoteStale(db, eur)).not.toContain(STALE.printHeld);
+    const item = quoteItem(
+      db,
+      "EURRON=X",
+      eur,
+      readLatest(db, eur, saturday, 5 * MIN),
+    );
+    expect(item).toMatchObject({ price: 5.3467 });
+    expect(item.stale).toContain(STALE.printHeld);
+  });
+
+  test("a trailing step under four times the second largest is not held", async () => {
+    const saturday = at("2026-11-14", "00:15");
+    const { db } = pairs(saturday);
+    // a real jump mid-day and back, a third of the print's
+    const points = eurron().map((p, i) =>
+      i >= 120 && i < 140 ? { ...p, close: round(p.close - 0.0151) } : p,
+    );
+    const quote = { ...fridayQuotes()[0]!, points };
+    storeQuotes(db, await spark(saturday, [quote]));
+    expect(readQuote(db, "CCY:EURRON=X")).toMatchObject({
+      price: 5.3013,
+      time: at(FRIDAY, "22:25"),
+    });
+    expect(stale(db, "CCY:EURRON=X")).not.toContain(STALE.printHeld);
+  });
+
+  test("a trailing step is the largest one in a session's last six points", () => {
+    expect(trailingStep([])).toBeNull();
+    expect(trailingStep([1])).toBeNull();
+    // a flat session
+    expect(trailingStep([1, 1, 1, 1])).toBeNull();
+    // fewer than seven points: every step is trailing
+    expect(trailingStep([1, 2])).toEqual({ before: 0, times: 0 });
+    expect(trailingStep([1, 1, 3])).toEqual({ before: 1, times: Infinity });
+    expect(trailingStep([1, 2, 4, 5])).toEqual({ before: 1, times: 2 });
+    // a tie keeps the earlier step
+    const tie = [1, 2, 2, 2, 2, 2, 2, 2, 3];
+    expect(trailingStep(tie)).toBeNull();
+    expect(trailingStep([1, 1, 1, 2, 2, 2, 2, 3])).toEqual({
+      before: 2,
+      times: 1,
+    });
+    // the largest step before the last six points
+    expect(trailingStep([1, 3, 3, 3, 3, 3, 3, 4])).toBeNull();
+    expect(trailingStep([1, 1, 3, 3, 3, 3, 3, 4])).toEqual({
+      before: 1,
+      times: 2,
+    });
+  });
+
+  test("a print while the market is open is the quote", async () => {
+    const late = at(FRIDAY, "22:30");
+    const { db } = pairs(late);
+    storeQuotes(db, await spark(late, fridayQuotes()));
+    expect(readQuote(db, "CCY:EURRON=X")).toMatchObject({
+      price: 5.3013,
+      time: at(FRIDAY, "22:25"),
+      dayLow: 5.3013,
+    });
+    expect(readQuote(db, "CCY:RONUSD=X")!.price).toBe(0.2079);
+    expect(stale(db, "CCY:EURRON=X")).not.toContain(STALE.printHeld);
+  });
+
+  test("points filled after the closed market's quote hold it", async () => {
+    const saturday = at("2026-11-14", "00:15");
+    const fx = clone(await recorded("chart-eurusd-x-5d-5m"));
+    const result = fx.body.chart.result[0];
+    const points = eurron();
+    Object.assign(result.meta, {
+      symbol: "EURRON=X",
+      regularMarketPrice: 5.3013,
+      regularMarketTime: at(FRIDAY, "22:25") / 1000,
+    });
+    result.meta.currentTradingPeriod.regular = {
+      ...result.meta.currentTradingPeriod.regular,
+      start: SESSION.start / 1000,
+      end: SESSION.end / 1000,
+    };
+    result.timestamp = points.map((p) => p.at / 1000);
+    const q = result.indicators.quote[0];
+    q.close = points.map((p) => p.close);
+    for (const k of ["open", "high", "low"]) q[k] = q.close;
+    q.volume = points.map(() => 0);
+    const t = setup(saturday, () => fx);
+    pair(t.db, "EURRON=X");
+    const answer = await spark(saturday, fridayQuotes(false).slice(0, 1));
+    await t.writer.write((db) => storeQuotes(db, answer));
+    expect(readQuote(t.db, "CCY:EURRON=X")!.price).toBe(5.3013);
+    await fillSessions(t.ctx, readInstrument(t.db, "CCY:EURRON=X")!);
+    expect(readQuote(t.db, "CCY:EURRON=X")).toMatchObject({
+      price: 5.3467,
+      time: at(FRIDAY, "21:55"),
+    });
+    expect(stale(t.db, "CCY:EURRON=X")).toContain(STALE.printHeld);
   });
 });

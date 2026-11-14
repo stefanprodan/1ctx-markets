@@ -7,7 +7,7 @@
 import { iso } from "../market/format.ts";
 import { type Instrument, readInstrument } from "../market/instruments.ts";
 import { type QuoteRow, readQuote } from "../market/quotes.ts";
-import { quoteStale, STALE } from "../market/stale.ts";
+import { heldStale, quoteStale, STALE } from "../market/stale.ts";
 import { localDate } from "../market/zone.ts";
 import type { Db } from "../storage/db/index.ts";
 import { isFund, latestPrice, readFund } from "./funds.ts";
@@ -474,7 +474,10 @@ export function readHoldingRows(
     const value = px === null ? null : quantity * px * unit;
     const stale: string[] =
       fund === null
-        ? [...quoteStale(db, instrument, { now, everyMs })]
+        ? [
+            ...quoteStale(db, instrument, { now, everyMs }),
+            ...heldStale(db, id),
+          ]
         : hand === null
           ? [NO_PRICE]
           : [];

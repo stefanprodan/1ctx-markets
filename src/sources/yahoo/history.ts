@@ -23,7 +23,11 @@ import {
   readInstrument,
   type Unit,
 } from "../../market/instruments.ts";
-import { clearIntraday, readIntraday } from "../../market/intraday.ts";
+import {
+  clearIntraday,
+  readIntraday,
+  trailingStep,
+} from "../../market/intraday.ts";
 import { readQuote } from "../../market/quotes.ts";
 import { JOBS } from "../../market/stale.ts";
 import { addDays, wallTime } from "../../market/zone.ts";
@@ -115,6 +119,7 @@ export function settle(
   const pointCloses = new Set<string>();
   if (!isCurrency(instrument.type)) return { bars: [...bars], pointCloses };
   const closes = new Map<string, number>();
+  const beforeSteps = new Map<string, number>();
   if (trusted) {
     // a stored point close outlives its pruned points
     for (const r of db
@@ -125,14 +130,21 @@ export function settle(
       .all(instrument.id)) {
       closes.set(r.date, r.close);
     }
+    const sessions = new Map<string, number[]>();
     for (const r of db
       .query<{ session: string; close: number }, [string]>(
-        `select session, close from intraday i where instrument = ?1
-         and at = (select max(at) from intraday
-           where instrument = ?1 and session = i.session)`,
+        `select session, close from intraday where instrument = ?
+         order by session, at`,
       )
       .all(instrument.id)) {
-      closes.set(r.session, r.close);
+      const list = sessions.get(r.session);
+      if (list === undefined) sessions.set(r.session, [r.close]);
+      else list.push(r.close);
+    }
+    for (const [session, list] of sessions) {
+      closes.set(session, list.at(-1)!);
+      const step = trailingStep(list);
+      if (step !== null) beforeSteps.set(session, list[step.before]!);
     }
   }
   const last = bars.at(-1);
@@ -148,11 +160,17 @@ export function settle(
   const out = bars.map((b, k) => {
     if (!b.final) return b;
     const point = closes.get(b.date);
+    const next = k + 1 < bars.length ? bars[k + 1]!.open : after;
     if (point !== undefined) {
       pointCloses.add(b.date);
-      return { ...b, close: point };
+      // a trailing jump the next open undoes is not the close
+      const before = beforeSteps.get(b.date);
+      const undone =
+        before !== undefined &&
+        next !== null &&
+        Math.abs(next - before) < Math.abs(next - point);
+      return { ...b, close: undone ? before : point };
     }
-    const next = k + 1 < bars.length ? bars[k + 1]!.open : after;
     return next === null ? b : { ...b, close: next };
   });
   return { bars: out, pointCloses };

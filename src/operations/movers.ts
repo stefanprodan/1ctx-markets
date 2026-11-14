@@ -220,7 +220,8 @@ function moverOne(
   }
   const latest = readLatest(m.db, r.instrument, now, m.quoteEveryMs);
   const q = quoteItem(m.db, r.input, r.instrument, latest);
-  if (q.stale.length > 0) return unavailable(r, inputs, q.stale);
+  // a held print is a good price, so only the quote's own reasons gate
+  if (latest.stale.length > 0) return unavailable(r, inputs, latest.stale);
   const raw = readQuote(m.db, r.instrument.id);
   const change = raw?.changePercent ?? null;
   const missing: string[] = [];

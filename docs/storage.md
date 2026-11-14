@@ -187,6 +187,7 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
 | `previous day not final` | `readSignals` | a live row stepped over a stored bar not final yet |
 | `source switch pending` | `quoteStale`, `barsStale` | the market's latest source switch run is running or failed (`SWITCH`) |
 | `source off` | `quoteStale`, `barsStale` | a feed instrument whose source the last landed switch turned off, so its prices are its last |
+| `closing print held` | `heldStale`, added by quote, history and portfolio answers only, never rules, signals or screens | a currency pair's closed-market quote holds the point before its session's trailing print (`docs/yahoo.md`) |
 
 - **Why an asked extended price is missing is not staleness**: it goes
   in `extended_reason` beside quote's `extended` and history's

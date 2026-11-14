@@ -6,7 +6,7 @@
 import { iso } from "../market/format.ts";
 import { readBySourceSymbol } from "../market/instruments.ts";
 import { readQuote } from "../market/quotes.ts";
-import { quoteStale } from "../market/stale.ts";
+import { heldStale, quoteStale } from "../market/stale.ts";
 import { HUNDREDTHS } from "../shared/currencies.ts";
 import { YAHOO } from "../sources/ids.ts";
 import type { Db } from "../storage/db/index.ts";
@@ -91,7 +91,10 @@ export function rates(db: Db, now: number, everyMs: number): Rates {
         if (q !== null) {
           value = q.price;
           at = iso(q.time ?? q.fetchedAt);
-          stale = quoteStale(db, pair, { now, everyMs });
+          stale = [
+            ...quoteStale(db, pair, { now, everyMs }),
+            ...heldStale(db, pair.id),
+          ];
         }
       } else {
         const c = closeOn(db, pair.id, date);

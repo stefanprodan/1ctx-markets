@@ -6,7 +6,7 @@ import { type Bar, type Interval, readBars } from "../market/bars.ts";
 import { isQuoted, readSession, weekOf } from "../market/calendars.ts";
 import { price, round } from "../market/format.ts";
 import type { Instrument } from "../market/instruments.ts";
-import type { StaleReason } from "../market/stale.ts";
+import { heldStale, type StaleReason } from "../market/stale.ts";
 import { dateOfWall } from "../market/zone.ts";
 import { isFundKey } from "../portfolios/funds.ts";
 import { monthsBack } from "../shared/periods.ts";
@@ -338,7 +338,10 @@ export async function readHistory(
     bars,
     session: sessionOf(m, instrument, m.clock.now()),
     relative: rel,
-    stale: readLatest(db, instrument, m.clock.now(), m.quoteEveryMs).stale,
+    stale: [
+      ...readLatest(db, instrument, m.clock.now(), m.quoteEveryMs).stale,
+      ...heldStale(db, instrument.id),
+    ],
     attribution: instrument.source === FRED || benchFred,
   };
 }

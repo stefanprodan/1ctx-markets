@@ -498,7 +498,8 @@ function screenOne(
   const { m } = ctx;
   const latest = readLatest(m.db, r.instrument, now, m.quoteEveryMs);
   const q = quoteItem(m.db, r.input, r.instrument, latest);
-  if (q.stale.length > 0) return unavailable(r, used, q.stale);
+  // a held print is a good price, so only the quote's own reasons gate
+  if (latest.stale.length > 0) return unavailable(r, used, latest.stale);
   const values = new Map<string, Value>();
   const missing: string[] = [];
   const stale: string[] = [];

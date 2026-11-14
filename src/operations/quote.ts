@@ -5,7 +5,7 @@ import { CRYPTO, isQuoted, readSession } from "../market/calendars.ts";
 import { iso, price, round } from "../market/format.ts";
 import type { Instrument } from "../market/instruments.ts";
 import { readQuote } from "../market/quotes.ts";
-import type { StaleReason } from "../market/stale.ts";
+import { heldStale, type StaleReason } from "../market/stale.ts";
 import {
   benchmarkSide,
   instrumentSide,
@@ -226,7 +226,7 @@ export function quoteItem(
     trade_time: iso(q?.time ?? null),
     fetched_at: iso(q?.fetchedAt ?? null),
     signals: { daily: signals.daily, weekly: signals.weekly },
-    stale: signals.stale,
+    stale: [...signals.stale, ...heldStale(db, instrument.id)],
   };
 }
 
