@@ -14,6 +14,7 @@ import {
   readSession,
 } from "./calendars.ts";
 import type { Instrument } from "./instruments.ts";
+import { isPrintHeld } from "./quotes.ts";
 
 export const JOBS = {
   quotes: "quotes",
@@ -47,6 +48,9 @@ export const STALE = {
   switchPending: "source switch pending",
   // its source is off since the last start, so its prices are its last
   sourceOff: "source off",
+  // a pair's closed-market quote is the point before its session's last
+  // print: a good price, so shown with it (heldStale) and never gating
+  printHeld: "closing print held",
 } as const;
 
 export type StaleReason = (typeof STALE)[keyof typeof STALE];
@@ -133,6 +137,12 @@ export function quoteStale(
   if (switching(db, instrument.market)) reasons.push(STALE.switchPending);
   if (sourceOff(db, instrument)) reasons.push(STALE.sourceOff);
   return reasons;
+}
+
+// for answers showing a quote's price only: rules, signals and screens
+// read the held price as the close it is
+export function heldStale(db: Db, id: string): StaleReason[] {
+  return isPrintHeld(db, id) ? [STALE.printHeld] : [];
 }
 
 // A Friday session still stored on Monday is left to the failed checks.

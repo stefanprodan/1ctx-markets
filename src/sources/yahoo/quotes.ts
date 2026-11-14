@@ -4,7 +4,7 @@
 import { recordSession, type Session } from "../../market/calendars.ts";
 import { readBySourceSymbol } from "../../market/instruments.ts";
 import { storeIntraday } from "../../market/intraday.ts";
-import { type QuoteRow, upsertQuote } from "../../market/quotes.ts";
+import { holdPrint, type QuoteRow, upsertQuote } from "../../market/quotes.ts";
 import { NO_RULES, type RuleHooks } from "../../rules/hooks.ts";
 import { pruneLive, refreshLive } from "../../signals/store.ts";
 import type { Db } from "../../storage/db/index.ts";
@@ -97,7 +97,6 @@ export function storeQuotes(
     const q = quoteOf(instrument.id, meta, answer.fetchedAt);
     // the points go with the quote, so an older answer stores none
     if (upsertQuote(db, q)) {
-      written.push(q);
       storeIntraday(
         db,
         instrument.id,
@@ -105,6 +104,7 @@ export function storeQuotes(
         meta.points,
         answer.fetchedAt,
       );
+      written.push(holdPrint(db, instrument, answer.fetchedAt) ?? q);
       refreshLive(db, instrument, answer.fetchedAt);
       moved.add(instrument.id);
     }

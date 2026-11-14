@@ -14,7 +14,7 @@ import {
   newestSession,
   readIntraday,
 } from "../market/intraday.ts";
-import { EXTENDED, type StaleReason } from "../market/stale.ts";
+import { EXTENDED, heldStale, type StaleReason } from "../market/stale.ts";
 import { localDate } from "../market/zone.ts";
 import { isFundKey } from "../portfolios/funds.ts";
 import { liveTarget } from "../signals/target.ts";
@@ -188,7 +188,10 @@ export async function readIntradayHistory(
     previousClose: previousClose(db, instrument, sessions[0]?.session ?? from),
     extended,
     session: sessionOf(m, instrument, now),
-    stale: readLatest(db, instrument, now, m.quoteEveryMs).stale,
+    stale: [
+      ...readLatest(db, instrument, now, m.quoteEveryMs).stale,
+      ...heldStale(db, instrument.id),
+    ],
   };
 }
 

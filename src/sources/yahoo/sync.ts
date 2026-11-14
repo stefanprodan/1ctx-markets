@@ -10,11 +10,12 @@ import {
   upsertInstrument,
 } from "../../market/instruments.ts";
 import { addIntraday } from "../../market/intraday.ts";
-import type { QuoteRow } from "../../market/quotes.ts";
+import { holdPrint, type QuoteRow } from "../../market/quotes.ts";
 import { startOfDate } from "../../market/zone.ts";
 import { NO_RULES, type RuleHooks } from "../../rules/hooks.ts";
 import { type Clock, DAY_MS } from "../../runtime/clock.ts";
 import { exclusive } from "../../runtime/lock.ts";
+import { refreshLive } from "../../signals/store.ts";
 import type { Db } from "../../storage/db/index.ts";
 import type { Writer } from "../../storage/writer.ts";
 import {
@@ -387,7 +388,12 @@ export function fillSessions(
         answer.points,
         answer.fetchedAt,
       );
-      if (added.length > 0) settleBars(db, instrument, ctx.clock.now());
+      if (added.length > 0) {
+        settleBars(db, instrument, ctx.clock.now());
+        if (holdPrint(db, instrument, answer.fetchedAt) !== null) {
+          refreshLive(db, instrument, answer.fetchedAt);
+        }
+      }
       return added;
     });
   });

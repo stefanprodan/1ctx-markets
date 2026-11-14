@@ -123,3 +123,32 @@ export function intradaySessions(
     )
     .all(instrument, from, to);
 }
+
+// how far back from a session's end its largest step counts as trailing
+export const TRAILING_POINTS = 6;
+
+export type TrailingStep = {
+  // the index of the point before the step
+  before: number;
+  // the step over the session's second largest; 0 with no second step
+  times: number;
+};
+
+// Yahoo's FX weekend close can print far off the day with nothing after it;
+// a real session's largest step lands earlier
+export function trailingStep(closes: readonly number[]): TrailingStep | null {
+  let top = 0;
+  let at = -1;
+  let second = -1;
+  for (let i = 1; i < closes.length; i++) {
+    const step = Math.abs(closes[i]! - closes[i - 1]!);
+    if (step > top) {
+      if (at !== -1) second = top;
+      top = step;
+      at = i;
+    } else if (step > second) second = step;
+  }
+  if (at === -1 || at < closes.length - TRAILING_POINTS) return null;
+  const times = second < 0 ? 0 : second === 0 ? Infinity : top / second;
+  return { before: at - 1, times };
+}

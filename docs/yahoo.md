@@ -323,6 +323,29 @@ Phrases from Yahoo (`docs/sources.md`, Refusals):
   `settleStored()` applies the same rule to stored pairs, rebuilding
   weeks and signals from the first day it changed, so a deploy needs no
   manual step.
+- **A trailing jump the next open undoes is not a pair's close.** Yahoo
+  can print a thin pair far off the day at the 5 pm New York weekend
+  close, with nothing after it. When a final session's largest step
+  between neighbouring points lands in its last six points
+  (`trailingStep()` in `src/market/intraday.ts`) and the next
+  session's open is nearer the point before the step than the last
+  point, the close is the point before the step, still a point close.
+  No size bound: no real session's largest step was that late, and a
+  late move the market keeps is kept. Points stay stored as answered.
+- **While a pair's market is closed, by Yahoo's trading periods, a
+  quote at such a print is held** (`holdPrint()` in
+  `src/market/quotes.ts`): when its price is the session's last point
+  and the trailing step is at least four times the session's second
+  largest, the stored quote takes the point before the step's price and
+  time, the day's extreme on the print's side from the points up to it,
+  and quote's `stale` says `closing print held`. It runs after the
+  quote pass's write and the points fill, whichever lands last, and
+  the next quote at another price replaces it (a live Sunday-evening
+  trade releases it). A held quote is the session's real close, so the
+  reason is shown only beside its price (quote, history, portfolio
+  answers, `heldStale()`) and never makes a rule, signal or screen
+  unknown. While open nothing is
+  held: live prices drive decisions.
 - **The bars, their signals and the rule evaluation land in one
   transaction** (`store()`), so nothing reads bars without their
   signals.
