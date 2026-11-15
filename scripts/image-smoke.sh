@@ -76,6 +76,7 @@ if [[ -n "${VERSION:-}" ]]; then
     fail "startup does not report $VERSION"
 fi
 grep -q 'admin key created' <<<"$log" && fail "the server wrote an admin key"
+grep -q 'level=ERROR' <<<"$log" && fail "the server logged an error"
 grep -qF "$ADMIN" <<<"$log" && fail "the admin key reached the log"
 [[ $(cksum <"$RUN/secrets/user-admin.key") == "$before" ]] ||
   fail "user-admin.key changed"

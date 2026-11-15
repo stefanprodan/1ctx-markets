@@ -389,6 +389,14 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   browser, going with the link). Expired logins, used or expired links
   and asks past a day go with the startup and daily prunes
   (`pruneLogins()`).
+- **`push_subscriptions` holds the devices push goes to**
+  (`0048-push-subscriptions`): `owner` (`users`) and `login`
+  (`logins`), both on delete cascade, so a sign-out, an expired login
+  or a removed person takes the device with it; `endpoint` unique,
+  `p256dh`, `auth` as the browser gave them, `created_at`. `push_sent`
+  is one row, the newest alert id the send pass is done with, set to
+  the newest alert at the migration so no history goes out
+  (`docs/alerts.md`, "Push").
 - **`smtp_settings` is one row or none** (`0037-people`): the email
   settings, never the password, which is a key file
   (`docs/admin.md`, "Email").

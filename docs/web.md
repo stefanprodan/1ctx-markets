@@ -59,6 +59,14 @@ passwords, no SSO, and no link handed over.
   (`files`), public as the page is and off with `--no-ui`. The iOS
   status bar style is `default`, so an installed app paints its bar in
   the `theme-color` that `app/theme.ts` keeps in the page colour.
+- **`sw.js` only shows pushes.** It handles `push` (the notification,
+  then the app badge by `setAppBadge()` where the browser has it) and
+  `notificationclick` (Fired, in the open app or a new window, never
+  another origin), and caches nothing and handles no `fetch`, so the
+  app never shows an old price offline. It sits beside the icons in
+  `files` at `/sw.js`, so its scope is every page, off with `--no-ui`.
+  Every fixed path answers `Cache-Control: no-cache`, so a new worker
+  is seen at once.
 - **`UI_PATHS` and the client's `ROUTES` name the same paths**; `test/web.test.tsx` holds them equal. A new page adds its
   path to both.
 - **`--no-ui` turns the UI off**: no page, no `/ui/*` route (each
@@ -77,7 +85,8 @@ passwords, no SSO, and no link handed over.
   moves its expiry through the writer, and the answer sends the cookie
   again with a full `Max-Age`, unless the route set its own.
 - **Sign-out deletes that row**: `DELETE /ui/session` answers 204 and
-  clears the cookie. An admin signs a person out everywhere
+  clears the cookie. The login's push subscriptions go with it (on
+  delete cascade), so a device signed out gets no push. An admin signs a person out everywhere
   (`docs/admin.md`). Expired logins go with the startup and daily
   prunes (`pruneLogins()`); every check goes by `expires_at`, so none
   waits on a prune.
@@ -196,6 +205,34 @@ learns it from `email_on` in `GET /ui/me`.
   to change (403). It answers `{link: "sent"}` or `{link: "failed",
   reason}`; 409 while email is off or when another person has the
   address.
+
+## Push
+
+- **`/ui/push` is a login's own device**, never a key's: a request
+  with `Authorization` is 403, one without a login 401. `GET` answers
+  `{key, endpoints}`: the server's public key, null while push is off
+  (`docs/alerts.md`, "Push"), and the endpoints this login saved.
+  `POST` saves `{endpoint, keys: {p256dh, auth}}` as the browser's
+  `toJSON()` gives it, an endpoint another login held moving to this
+  one; `DELETE` takes `{endpoint}`; both answer 204, are held to this
+  server's pages (`sameOrigin()`) and are 404 while push is off.
+- **An endpoint is a push service's `https` URL**: a host under
+  `push.apple.com`, `googleapis.com`, `push.services.mozilla.com` or
+  `notify.windows.com`, no port or user, at most 2,048 characters, so
+  a login never points the server's posts elsewhere. `p256dh` is a
+  65-byte uncompressed P-256 key, `auth` 16 bytes. At most
+  `PUSH_PER_LOGIN` (5) a login, then 409.
+- **The switch is this device's** (`data/push.ts`): on when the
+  browser's own subscription is among the login's `endpoints`. On asks
+  the browser's permission first, inside the tap, as iOS requires,
+  then subscribes with the server's key and posts it; a refusal leaves
+  it off with "Notifications not allowed."; off deletes it and ends the
+  browser's subscription. The page registers `/sw.js` only to read or
+  make a subscription.
+- **The app icon counts the unseen alerts**: each push carries the
+  rail's count, and the page sets the badge whenever its count of
+  unseen alerts changes, so marking Fired seen clears it; sign-out
+  clears it too.
 
 ## What a login opens
 
@@ -337,7 +374,11 @@ learns it from `email_on` in `GET /ui/me`.
   quote currency), and
   the person's menu at the foot, the row and the menu's head their
   name (the key for the admin key's person, a person's icon for anyone
-  else), then Dark theme and Sign out; signing out clears Recent and
+  else), then Dark theme, Hide amounts, Push notifications and Sign
+  out; Push notifications is absent while push is off on the server or
+  the browser has no push, and disabled with "Add to Home Screen
+  first." under it in iOS Safari outside the Home Screen app, the only
+  place iOS pushes from; signing out clears Recent and
   the status read for the red icon, and only an admin's footer names
   the server's version; it folds to a
   strip on a wide window, which shows the mark, and gives way to the
@@ -397,7 +438,8 @@ learns it from `email_on` in `GET /ui/me`.
   Profile, Connect agents,
   and for an admin Server admin (red while failing), the
   rail's Shared with me and Recent, then the user menu's own items (`UserItems`): the
-  person's name, Dark theme and Sign out. A tap goes there
+  person's name, Dark theme, Hide amounts, Push notifications and Sign
+  out. A tap goes there
   and closes it; so does any step to another address, the browser's
   Back included (`watchMore()`), so no page opens under it. It renders beside the bar, never inside: the bar's
   blur would hold a fixed drawer inside it.
@@ -1662,6 +1704,11 @@ The parts:
   start from `/ui/me` for each kind of person, a member's pages and
   controls, Connect agents' owners, Server admin's calls and words,
   and SMTP read only for an admin who is not the operator.
+- **Push** (`test/web-push.test.tsx`, `test/push.test.ts`): the
+  switch absent while push is off, its place and states, the store's
+  saves, deletes, refusal and badge with a fake device; the server's
+  side as `docs/alerts.md`, "Push" says, the routes' refusals and the
+  service worker served.
 - **Alerts** (`test/web-alerts.test.ts`): `Alerts.model.ts`'s words for
   every field and op, groups and gates, triggers, the server's state
   and distance, tiles and order, and the store's paths and paging.

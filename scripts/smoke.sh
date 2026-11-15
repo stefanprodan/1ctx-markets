@@ -52,12 +52,16 @@ for file in init.js swagger-ui-bundle.js swagger-ui.css; do
 done
 [[ $(status "$URL/api/v1/quotes") == 401 ]] || fail "/api/v1/quotes answered without a key"
 
-[[ $(ls "$RUN/data/secrets") == user-admin.key ]] || fail "the first start wrote a key file other than user-admin.key"
+[[ $(ls "$RUN/data/secrets" | tr '\n' ' ') == "push-vapid.key user-admin.key " ]] ||
+  fail "the first start wrote key files other than user-admin.key and push-vapid.key"
 ADMIN=$(cat "$RUN/data/secrets/user-admin.key")
 [[ $ADMIN == 1ctx-markets-admin-* ]] || fail "the first start wrote no prefixed admin key"
 # GNU first: on Linux stat -f reads the file system and still succeeds
 [[ $(stat -c %a "$RUN/data/secrets/user-admin.key" 2>/dev/null || stat -f %Lp "$RUN/data/secrets/user-admin.key") == 600 ]] ||
   fail "the admin key file is readable by others"
+[[ $(stat -c %a "$RUN/data/secrets/push-vapid.key" 2>/dev/null || stat -f %Lp "$RUN/data/secrets/push-vapid.key") == 600 ]] ||
+  fail "the push key file is readable by others"
+grep -q 'push key created' "$RUN/log" || fail "the first start did not log the push key file"
 grep -q 'admin key created' "$RUN/log" || fail "the first start did not log the admin key file"
 
 INIT='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"smoke","version":"1"}}}'

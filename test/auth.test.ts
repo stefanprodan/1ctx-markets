@@ -244,6 +244,7 @@ describe("key files", () => {
     const store = {
       dir: SECRETS,
       admin: () => spaced,
+      push: () => null,
       source: () => null,
       email: () => null,
       emailNames: () => [],

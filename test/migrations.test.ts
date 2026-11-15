@@ -647,6 +647,23 @@ describe("migrations", () => {
     db.close();
   });
 
+  test("push starts past every alert already fired, so no history goes out", () => {
+    const db = new Database(":memory:", { strict: true });
+    const clock = fakeClock();
+    const at = MIGRATIONS.findIndex((m) => m.id === "0048-push-subscriptions");
+    migrate(db, clock, MIGRATIONS.slice(0, at));
+    db.exec(`
+      insert into alerts (owner, rule_id, fired_at, snapshot)
+        values ('${OPERATOR}', 1, 0, '{}'), ('${OPERATOR}', 1, 0, '{}');
+    `);
+    migrate(db, clock, MIGRATIONS.slice(0, at + 1));
+    expect(db.query("select * from push_sent").all()).toEqual([
+      { id: 1, alert: 2 },
+    ]);
+    expect(() => db.exec("insert into push_sent values (2, 0)")).toThrow();
+    db.close();
+  });
+
   test("keys start with no trade plans access; a tag outlives its instrument", () => {
     const db = new Database(":memory:", { strict: true });
     const clock = fakeClock();

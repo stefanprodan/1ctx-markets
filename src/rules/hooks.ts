@@ -10,6 +10,8 @@ export type RuleHooks = {
   evaluate(db: Db, instruments: Iterable<string>, now: number): void;
   // before a write evaluates on the new scale, or alone once a window shows it
   rescaled(db: Db, instrument: string, now: number): void;
+  // an alert was stored, so push sends it once the write commits
+  fired?(): void;
 };
 
 export const NO_RULES: RuleHooks = {

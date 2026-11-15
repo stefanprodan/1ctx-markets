@@ -469,6 +469,7 @@ export type Engine = RuleHooks & {
 export function ruleEngine(options: {
   quoteEveryMs: number;
   log?: Log;
+  fired?: () => void;
 }): Engine {
   const { quoteEveryMs } = options;
   const log = options.log ?? silent;
@@ -486,12 +487,14 @@ export function ruleEngine(options: {
         const { alert } = applyRule(db, rule, now, quoteEveryMs, r);
         if (alert !== null) {
           log.info("rule fired", { rule: rule.id, alert: alert.id });
+          options.fired?.();
         }
       });
     }
   };
   return {
     quoteEveryMs,
+    fired: () => options.fired?.(),
     evaluate(db, instruments, now) {
       guarded("rule evaluation failed", () => {
         const moved = new Set(instruments);

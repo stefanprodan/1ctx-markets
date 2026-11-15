@@ -10,9 +10,17 @@ import { runKeys } from "./admin/keys-cli.ts";
 import { runUsers } from "./admin/users-cli.ts";
 import { start } from "./app.ts";
 import { WORLD_MARKETS } from "./market/world.ts";
+import { type Vapid, vapidKeys } from "./push/crypto.ts";
 import { MINUTE_MS, wallClock } from "./runtime/clock.ts";
 import { dbPath, HELP, parseCli, secretsDir } from "./runtime/config.ts";
-import { ADMIN_FILE, KeyError, keys, startKeys } from "./runtime/keys.ts";
+import {
+  ADMIN_FILE,
+  createPush,
+  KeyError,
+  keys,
+  PUSH_FILE,
+  startKeys,
+} from "./runtime/keys.ts";
 import { errorFields, logger } from "./runtime/log.ts";
 import { runService, ServiceError } from "./service/index.ts";
 import { open } from "./storage/db/index.ts";
@@ -20,6 +28,7 @@ import icon192 from "./web/icon-192.png";
 import icon512 from "./web/icon-512.png";
 import maskable from "./web/icon-maskable-512.png";
 import page from "./web/index.html";
+import serviceWorker from "./web/sw.js" with { type: "file" };
 
 const buildVersion = process.env.MARKETS_BUILD_VERSION;
 export const VERSION = buildVersion || `v${pkg.version}`;
@@ -85,6 +94,26 @@ if (adminCreated) {
   });
 }
 
+// push is the UI's: a server without it makes no key
+let pushKey: Vapid | null = null;
+if (config.ui) {
+  const pushPath = displayPath(join(store.dir, PUSH_FILE));
+  let warned = false;
+  try {
+    if (await createPush(store.dir))
+      main.info("push key created", { path: pushPath });
+  } catch (error) {
+    if (!(error instanceof KeyError)) throw error;
+    // a read-only secrets/ (a container) holds no key: push is off
+    main.warn("push off: no key", { path: pushPath });
+    warned = true;
+  }
+  const held = store.push();
+  pushKey = held === null ? null : await vapidKeys(held);
+  if (pushKey === null && !warned)
+    main.warn("push key unusable", { path: pushPath });
+}
+
 mkdirSync(config.dataDir, { recursive: true });
 const { db, migrations } = open(dbPath(config), wallClock);
 
@@ -102,7 +131,10 @@ const app = start({
     "/icon-192.png": icon192,
     "/icon-512.png": icon512,
     "/icon-maskable-512.png": maskable,
+    // at the root, so its scope is every page
+    "/sw.js": serviceWorker,
   },
+  push: pushKey,
   // a local preview rebuilds the page as its sources change, so an edit
   // never needs a restart; never set where the binary runs
   pageDev: process.env.MARKETS_PAGE_DEV === "1",

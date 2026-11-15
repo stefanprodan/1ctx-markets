@@ -9,4 +9,10 @@
   .usermenu-error {
     margin: var(--space-1) var(--space-2);
   }
+
+  .usermenu-note {
+    margin: 0 var(--space-2) var(--space-1);
+    color: var(--faint);
+    font-size: var(--text-small);
+  }
 }

@@ -4,8 +4,9 @@ Governs price alerts, their evaluation and what they trigger: the
 condition text in `src/shared/when.ts`, the stored tree, evaluation and
 storage in `src/rules/format.ts`, `evaluate.ts`, `hooks.ts` and
 `store.ts`, the answers and writes in `src/operations/alerts.ts`, the
-`alerts` and `alerts_edit` tools in `src/tools/alerts.ts` and the feed
-in `src/api/alerts.ts`, served as `docs/api.md` says. The answer
+`alerts` and `alerts_edit` tools in `src/tools/alerts.ts`, the feed
+in `src/api/alerts.ts`, served as `docs/api.md` says, and push in
+`src/push/`. The answer
 contract, resolution and the inline fetch are in `docs/tools.md`;
 earnings events in `docs/research.md`; splits, rescales and the
 refetch in `docs/sources.md` and each source's doc; retention and
@@ -38,8 +39,9 @@ changed, so no migration rewrote a row.
   `weekly_sma200`, `weekly_cross`, `weekly_cross_edge`,
   `relative_return_1m`, `relative_return_3m`. One vocabulary across the
   tools, so the tool texts list none; the `when` argument's description
-  does. A new field goes in `WHEN_FIELDS`, `FIELDS` and the page's
-  `FIELD_WORDS`; tests hold them equal.
+  does. A new field goes in `WHEN_FIELDS`, `FIELDS` and `FIELD_WORDS`
+  (`src/shared/when-words.ts`, the page's words and push's); tests hold
+  them equal.
 - **`field(symbol)` reads another symbol** (`price(^VIX)`,
   `sma50(XETRA:VVSM)`): a symbol is read as written up to `,` or `)`, so
   a dot (`VWCE.DE`), a colon or `=` need no quotes. No argument is the
@@ -321,3 +323,44 @@ stored nowhere: a read never triggers or changes anything.
   forward only and never past the person's own newest trigger, so one
   that comes later is never seen ahead of time. They are web UI routes:
   no agent key opens them.
+
+## Push
+
+A fired alert goes to its owner's devices as a Web Push notification
+(`src/push/`); the switch and the routes are `docs/web.md`'s.
+
+- **The send pass runs after the write, never inside it.** The engine
+  calls `fired()` when it stores an alert (`ruleEngine()`), and so do
+  create and update when they trigger at once; the pass starts a
+  microtask later, once the write committed, and once at start, so an
+  alert fired before a restart still goes. One pass runs at a time; a
+  call while it runs queues one more.
+- **One cursor, `push_sent`**: a pass reads the alerts past it by id,
+  posts each to every subscription of its `owner`, then moves the
+  cursor past it in a short write that also deletes the gone devices.
+  A sent alert is never sent again, across restarts too.
+- **Every alert moves the cursor, sent or not.** A 404 or 410 deletes
+  that subscription; any other status, a network failure or the
+  `PUSH_TIMEOUT_MS` (10 s) timeout logs `push failed` with the alert
+  id and status, never the endpoint, and is not retried: a price alert
+  read late describes a market that moved on. An alert older than
+  `TTL_S` (an hour) when the pass reaches it is skipped, as is every
+  alert while push is off, so turning it on sends no backlog.
+- **On only with the UI on, `push-vapid.key` usable and the email
+  settings' public URL set**: that origin is the VAPID `sub`, the one
+  sign-in links use. Off, `publicKey()` is null and the menu has no
+  switch.
+- **No package**: the aes128gcm payload (RFC 8291, one record, a fresh
+  ECDH pair and salt each time) and the ES256 VAPID token (RFC 8292,
+  `aud` the endpoint's origin, `exp` 12 hours on) are WebCrypto in
+  `src/push/crypto.ts`, tested against RFC 8291's Appendix A.
+- **Each post** carries `TTL: 3600`, `Urgency: high`,
+  `Content-Encoding: aes128gcm` and `Authorization: vapid t=…, k=…`.
+- **The payload is JSON under Apple's 4 KB** (`payloadOf()`): `title`
+  the symbol's name (its ticker without one), `body` the comparisons
+  that held in the Alerts page's words with the value read ("NVDA fell
+  below 170.00 USD: 168.40 USD", "NVDA RSI below 30: 28.4";
+  `src/push/text.ts`, labels from `src/shared/when-words.ts`) and the
+  note on a second line, cut first when long; `url` the Fired tab;
+  `badge` the owner's unseen count as `readSeen()` gives the rail;
+  `tag` the alert's id.

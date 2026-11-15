@@ -7,6 +7,13 @@
 
 import { failed, json, NO_STORE } from "../api/http.ts";
 import { loginWho, OPERATOR } from "../operations/who.ts";
+import { fromB64url, PUBLIC_KEY_BYTES } from "../push/crypto.ts";
+import { NO_PUSH, type Push } from "../push/send.ts";
+import {
+  loginEndpoints,
+  removeSubscription,
+  saveSubscription,
+} from "../push/store.ts";
 import { MINUTE_MS } from "../runtime/clock.ts";
 import type { Log } from "../runtime/log.ts";
 import { SPARKLE, WORD } from "../shared/marks.ts";
@@ -31,6 +38,18 @@ import {
 
 export const ME_PATH = "/ui/me";
 export const CODE_PATH = "/ui/code";
+export const PUSH_PATH = "/ui/push";
+// one browser holds one subscription; a few cover a reinstall
+export const PUSH_PER_LOGIN = 5;
+const MAX_ENDPOINT = 2048;
+// the browsers' own push services, so a login never points the server's
+// posts at another host
+const PUSH_HOSTS = [
+  "push.apple.com",
+  "googleapis.com",
+  "push.services.mozilla.com",
+  "notify.windows.com",
+];
 // the asking browser's challenge, which a code is only tried beside
 export const ASK_COOKIE = "markets_ask";
 // asks, codes and links used, per client address
@@ -47,6 +66,8 @@ export type UiDeps = {
   logins: Logins;
   links: Links;
   email: Email;
+  // none keeps push off
+  push?: Push;
   now: () => number;
   log: Log;
 };
@@ -204,6 +225,34 @@ export const meItem = (login: Login | null, emailOn: boolean) => ({
   email_on: emailOn,
 });
 
+// a push service's https URL, or null
+export function pushEndpoint(value: unknown): string | null {
+  if (typeof value !== "string" || value.length > MAX_ENDPOINT) return null;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:" || url.username !== "" || url.password !== "")
+    return null;
+  if (url.port !== "") return null;
+  const host = url.hostname;
+  return PUSH_HOSTS.some((h) => host === h || host.endsWith(`.${h}`))
+    ? url.href
+    : null;
+}
+
+const keyOf = (value: unknown, bytes: number): string | null => {
+  if (typeof value !== "string" || !/^[A-Za-z0-9_-]+=*$/.test(value)) {
+    return null;
+  }
+  const raw = fromB64url(value);
+  if (raw.length !== bytes) return null;
+  if (bytes === PUBLIC_KEY_BYTES && raw[0] !== 4) return null;
+  return value.replace(/=+$/, "");
+};
+
 export type Ui = {
   // the answer for a /ui path, or null for any other path
   route(req: Request, path: string, ip: string): Promise<Response | null>;
@@ -220,6 +269,7 @@ export function ui(d: UiDeps): Ui {
     );
   };
   const current = (req: Request) => d.logins.resolve(req)?.login ?? null;
+  const pushes = d.push ?? NO_PUSH;
   const signedIn = (token: string, req: Request, location: string | null) =>
     new Response(null, {
       status: location === null ? 204 : 303,
@@ -442,9 +492,89 @@ export function ui(d: UiDeps): Ui {
     return signedIn(used.token, req, landingOf(used.purpose));
   }
 
+  // a device's subscription: the login's own, from this server's pages
+  async function pushRoute(req: Request): Promise<Response> {
+    if (
+      req.method !== "GET" &&
+      req.method !== "POST" &&
+      req.method !== "DELETE"
+    )
+      return notAllowed("GET, POST, DELETE");
+    // a key never borrows a browser's login
+    if (req.headers.has("authorization")) {
+      return failed({
+        error: "forbidden",
+        message: "this key does not open this route",
+      });
+    }
+    const login = current(req);
+    if (login === null) {
+      return failed({ error: "unauthorized", message: "signed out" });
+    }
+    const key = pushes.publicKey(d.db);
+    if (req.method === "GET") {
+      return json(
+        { key, endpoints: key === null ? [] : loginEndpoints(d.db, login.id) },
+        200,
+        NO_STORE,
+      );
+    }
+    if (!sameOrigin(req)) return foreign();
+    if (key === null) {
+      return failed({ error: "not_found", message: "push is off" });
+    }
+    const b = await bodyOf(req);
+    if (b === null || isForm(req)) {
+      return failed({ error: "bad_arguments", message: "the body is JSON" });
+    }
+    const endpoint = pushEndpoint(b.endpoint);
+    if (endpoint === null) {
+      return failed({
+        error: "bad_arguments",
+        message: "endpoint is a push service's https URL",
+      });
+    }
+    if (req.method === "DELETE") {
+      await d.writer.write((db) => removeSubscription(db, login.id, endpoint));
+      return new Response(null, { status: 204, headers: NO_STORE });
+    }
+    const keys = b.keys as Record<string, unknown> | null | undefined;
+    const p256dh = keyOf(keys?.p256dh, PUBLIC_KEY_BYTES);
+    const auth = keyOf(keys?.auth, 16);
+    if (p256dh === null || auth === null) {
+      return failed({
+        error: "bad_arguments",
+        message: "keys holds p256dh and auth as the browser gives them",
+      });
+    }
+    const saved = await d.writer.write((db) => {
+      const held = loginEndpoints(db, login.id);
+      if (!held.includes(endpoint) && held.length >= PUSH_PER_LOGIN) {
+        return false;
+      }
+      saveSubscription(
+        db,
+        login.user,
+        login.id,
+        { endpoint, p256dh, auth },
+        d.now(),
+      );
+      return true;
+    });
+    if (!saved) {
+      return failed({
+        error: "conflict",
+        message: `at most ${PUSH_PER_LOGIN} devices a sign-in`,
+      });
+    }
+    d.log.info("push subscribed", { user: login.user, login: login.id });
+    return new Response(null, { status: 204, headers: NO_STORE });
+  }
+
   return {
     async route(req, path, ip) {
       if (path === SESSION_PATH) return session(req);
+      if (path === PUSH_PATH) return pushRoute(req);
       if (path === ME_PATH) return me(req);
       if (path === LINK_PATH) return ask(req, ip);
       if (path === CODE_PATH) return code(req, ip);

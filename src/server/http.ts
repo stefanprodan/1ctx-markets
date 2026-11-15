@@ -373,12 +373,16 @@ export function serve(options: {
   // stamped on every answer, so an open tab sees a deploy; random, as the
   // version is never told to an anonymous visitor
   const build = crypto.randomUUID();
-  // static answers, read once: Bun answers HEAD and ETag for them
+  // static answers, read once: Bun answers HEAD and ETag for them; a fixed
+  // path is checked again each time, so a new service worker is seen at once
   const files = Object.fromEntries(
     Object.entries(options.files ?? {}).map(([path, file]) => [
       path,
       new Response(readFileSync(file), {
-        headers: { "content-type": Bun.file(file).type },
+        headers: {
+          "content-type": Bun.file(file).type,
+          "cache-control": "no-cache",
+        },
       }),
     ]),
   );

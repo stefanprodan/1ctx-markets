@@ -10,6 +10,8 @@ import { TRACK_DAYS, type Tracking, trackedIds } from "./market/tracking.ts";
 import { type WorldEntry, worldOn, worldSymbols } from "./market/world.ts";
 import { type Markets, markets } from "./operations/markets.ts";
 import { seed, type Tracker, tracker } from "./operations/track.ts";
+import type { Vapid } from "./push/crypto.ts";
+import { NO_PUSH, type Push, push } from "./push/send.ts";
 import { ruleEngine } from "./rules/evaluate.ts";
 import { pruneAlerts } from "./rules/store.ts";
 import { type Clock, DAY_MS } from "./runtime/clock.ts";
@@ -17,7 +19,7 @@ import type { Keys } from "./runtime/keys.ts";
 import { errorFields, type LogFactory, type LogFields } from "./runtime/log.ts";
 import { type Scheduler, scheduler } from "./runtime/scheduler.ts";
 import { access } from "./server/access.ts";
-import { email } from "./server/email/settings.ts";
+import { email, readSmtp } from "./server/email/settings.ts";
 import { type EmailSender, smtpSender } from "./server/email/smtp.ts";
 import { router, serve } from "./server/http.ts";
 import { links } from "./server/links.ts";
@@ -113,6 +115,9 @@ export type AppOptions = {
   edgarKey?: string | null;
   // the Bucharest exchange's feed, on with --source bvb
   bvb?: boolean;
+  // push-vapid.key's pair: fired alerts go to their owner's devices while
+  // the UI is on and email settings name the server's origin
+  push?: Vapid | null;
   // what the research jobs ask of the rules, the rules' own by default
   hooks?: Hooks;
   fetch?: Fetch;
@@ -144,6 +149,7 @@ export type App = {
   markets: Markets;
   tracker: Tracker;
   sources: LogFields;
+  push: Push;
   stop(): Promise<void>;
 };
 
@@ -168,9 +174,12 @@ export function start(options: AppOptions): App {
     now: clock.now(),
   });
   const write = writer(db);
+  // bound below, once push is made
+  let pushed = () => {};
   const rules = ruleEngine({
     quoteEveryMs: options.quoteEveryMs,
     log: options.log("rules"),
+    fired: () => pushed(),
   });
   const hooks = options.hooks ?? rules.finnhub;
   const prune = (db: Db) => {
@@ -412,6 +421,21 @@ export function start(options: AppOptions): App {
     sender: options.sender ?? smtpSender(),
   });
   const now = () => clock.now();
+  const pushes =
+    ui && options.push != null
+      ? push({
+          db,
+          writer: write,
+          clock,
+          log: options.log("push"),
+          fetch: options.fetch ?? ((url, init) => fetch(url, init)),
+          keys: options.push,
+          origin: (d) => readSmtp(d)?.publicUrl ?? null,
+        })
+      : NO_PUSH;
+  pushed = pushes.kick;
+  // an alert fired before a restart still goes out
+  pushes.kick();
   const linked = links({
     db,
     writer: write,
@@ -466,6 +490,7 @@ export function start(options: AppOptions): App {
             logins: signIns,
             links: linked,
             email: mail,
+            push: pushes,
             now,
             log: options.log("access"),
           })
@@ -512,6 +537,7 @@ export function start(options: AppOptions): App {
     sourceSwitch: switcher,
     markets: reads,
     tracker: track,
+    push: pushes,
     sources: Object.fromEntries(
       states.map((s) => [
         s.name,
@@ -523,6 +549,7 @@ export function start(options: AppOptions): App {
       // then queued writes drain before main closes the database
       track.stop();
       linked.close();
+      pushes.close();
       const settled = jobs.stop();
       yahooQueue.close();
       fredClient?.close();
@@ -542,6 +569,9 @@ export function start(options: AppOptions): App {
       await mcp.close();
       // a link's email after its answer is sent before the writer closes
       await linked.settled();
+      // a post in flight ends before the writer closes; the cursor keeps
+      // what it did not reach for the next start
+      await pushes.settled();
       await write.close();
     },
   };
