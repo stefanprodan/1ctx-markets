@@ -336,7 +336,9 @@ A fired alert goes to its owner's devices as a Web Push notification
   alert fired before a restart still goes. One pass runs at a time; a
   call while it runs queues one more.
 - **One cursor, `push_sent`**: a pass reads the alerts past it by id,
-  posts each to every subscription of its `owner`, then moves the
+  posts each to every subscription of its `owner` whose login still
+  signs in (`loginLive()`, as `resolve()` holds it: unexpired, and an
+  admin-key login only under the current key), then moves the
   cursor past it in a short write that also deletes the gone devices.
   A sent alert is never sent again, across restarts too.
 - **Every alert moves the cursor, sent or not.** A 404 or 410 deletes
@@ -355,7 +357,12 @@ A fired alert goes to its owner's devices as a Web Push notification
   `aud` the endpoint's origin, `exp` 12 hours on) are WebCrypto in
   `src/push/crypto.ts`, tested against RFC 8291's Appendix A.
 - **Each post** carries `TTL: 3600`, `Urgency: high`,
-  `Content-Encoding: aes128gcm` and `Authorization: vapid t=…, k=…`.
+  `Content-Encoding: aes128gcm` and `Authorization: vapid t=…, k=…`,
+  and follows no redirect (`redirect: "error"`), so it never leaves the
+  endpoint's checked host.
+- **A kick is never lost**: the loop clears its running mark right
+  after its last check for another kick, so a kick after that starts a
+  new loop.
 - **The payload is JSON under Apple's 4 KB** (`payloadOf()`): `title`
   the symbol's name (its ticker without one), `body` the comparisons
   that held in the Alerts page's words with the value read ("NVDA fell

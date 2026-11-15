@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // A device's subscription is its login's: logins cascade them away.
 
+import { loginLive } from "../server/session.ts";
 import type { Db } from "../storage/db/index.ts";
 
 export type Subscription = {
@@ -45,13 +46,33 @@ export const loginEndpoints = (db: Db, login: string): string[] =>
     .all(login)
     .map((r) => r.endpoint);
 
-export const ownerSubscriptions = (db: Db, owner: string): Subscription[] =>
+// only devices whose login still signs in: an expired one or one of an
+// older admin key waits for its prune
+export const ownerSubscriptions = (
+  db: Db,
+  owner: string,
+  now: number,
+  operator: string | null,
+): Subscription[] =>
   db
-    .query<Subscription, [string]>(
-      `select id, owner, endpoint, p256dh, auth from push_subscriptions
-       where owner = ? order by id`,
+    .query<
+      Subscription & { expires_at: number; admin_digest: string | null },
+      [string]
+    >(
+      `select s.id, s.owner, s.endpoint, s.p256dh, s.auth, l.expires_at,
+         l.admin_digest
+       from push_subscriptions s join logins l on l.id = s.login
+       where s.owner = ? order by s.id`,
     )
-    .all(owner);
+    .all(owner)
+    .filter((r) => loginLive(r, now, operator))
+    .map(({ id, owner, endpoint, p256dh, auth }) => ({
+      id,
+      owner,
+      endpoint,
+      p256dh,
+      auth,
+    }));
 
 // gone at the push service: matched by endpoint too, so a row saved again
 // meanwhile stays

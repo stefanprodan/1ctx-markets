@@ -78,9 +78,12 @@ export function payloadOf(db: Db, row: Row, log: Log): Payload | null {
     badge: readSeen(db, row.owner).unseen,
     tag: `alert-${row.id}`,
   };
-  // a long note gives way first
+  // the note gives way first, then the name; the rest is small and fixed
+  const cut = (s: string) => s.slice(0, Math.floor(s.length * 0.8));
   while (new TextEncoder().encode(JSON.stringify(p)).length > MAX_PAYLOAD) {
-    p.body = p.body.slice(0, Math.floor(p.body.length * 0.8));
+    if (p.body !== "") p.body = cut(p.body);
+    else if (p.title !== "") p.title = cut(p.title);
+    else break;
   }
   return p;
 }
@@ -111,6 +114,9 @@ export function push(deps: {
   keys: Vapid;
   // the VAPID contact, the origin sign-in links use; push is off without one
   origin: (db: Db) => string | null;
+  // user-admin.key's login digest, so a device whose login no longer
+  // signs in gets nothing
+  adminDigest: string | null;
 }): Push {
   const { db, writer, clock, log } = deps;
   const key = toB64url(deps.keys.publicKey);
@@ -142,6 +148,8 @@ export function push(deps: {
         },
         body,
         signal: abort.signal,
+        // a redirect would take the post past the endpoint's checked host
+        redirect: "error",
       });
       await res.arrayBuffer().catch(() => {});
       return res.status;
@@ -159,7 +167,12 @@ export function push(deps: {
   ): Promise<Subscription[]> => {
     const gone: Subscription[] = [];
     if (clock.now() - row.firedAt > TTL_S * 1000) return gone;
-    const subs = ownerSubscriptions(db, row.owner);
+    const subs = ownerSubscriptions(
+      db,
+      row.owner,
+      clock.now(),
+      deps.adminDigest,
+    );
     if (subs.length === 0) return gone;
     const p = payloadOf(db, row, log);
     if (p === null) return gone;
@@ -234,6 +247,8 @@ export function push(deps: {
         log.error("push pass failed", errorFields(error));
       }
     } while (again && !closed);
+    // at once after the last check, so a kick from here on starts a loop
+    running = null;
   };
 
   return {
@@ -244,9 +259,7 @@ export function push(deps: {
         again = true;
         return;
       }
-      running = loop().finally(() => {
-        running = null;
-      });
+      running = loop();
     },
     async settled() {
       while (running !== null) await running;

@@ -386,9 +386,9 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   null when the person goes, the asking browser's `challenge_hash` and
   `asked_at`, kept a day so the caps count asks whatever became of
   their links) and `link_misses` (wrong codes at an invite per trying
-  browser, going with the link). Expired logins, used or expired links
-  and asks past a day go with the startup and daily prunes
-  (`pruneLogins()`).
+  browser, going with the link). Expired logins, admin-key logins of an
+  older `user-admin.key`, used or expired links and asks past a day go
+  with the startup and daily prunes (`pruneLogins()`).
 - **`push_subscriptions` holds the devices push goes to**
   (`0048-push-subscriptions`): `owner` (`users`) and `login`
   (`logins`), both on delete cascade, so a sign-out, an expired login

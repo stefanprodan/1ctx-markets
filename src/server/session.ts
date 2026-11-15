@@ -65,12 +65,32 @@ export function openLogin(
   return { id, token };
 }
 
+// what resolve() holds of a login row: unexpired, and an admin-key login
+// only under the current user-admin.key
+export const loginLive = (
+  r: { expires_at: number; admin_digest: string | null },
+  now: number,
+  operator: string | null,
+): boolean =>
+  r.expires_at > now &&
+  (r.admin_digest === null || r.admin_digest === operator);
+
 export const endLogin = (db: Db, id: string): boolean =>
   db.query("delete from logins where id = ?").run(id).changes > 0;
 
-// expired logins, and links used or past their time; asks past a day
-export function pruneLogins(db: Db, now: number): void {
+// expired logins, and links used or past their time; asks past a day.
+// Given the current admin digest, admin-key logins of an older key too
+export function pruneLogins(
+  db: Db,
+  now: number,
+  operator?: string | null,
+): void {
   db.query("delete from logins where expires_at <= ?").run(now);
+  if (operator !== undefined) {
+    db.query(
+      "delete from logins where admin_digest is not null and admin_digest is not ?",
+    ).run(operator);
+  }
   db.query(
     "delete from links where used_at is not null or expires_at <= ?",
   ).run(now);
@@ -176,8 +196,7 @@ export function logins(deps: {
       if (token === null || token === "" || token.length > 128) return null;
       const r = find.get(sha256(token));
       const now = deps.now();
-      if (r === null || r.expires_at <= now) return null;
-      if (r.admin_digest !== null && r.admin_digest !== operator) return null;
+      if (r === null || !loginLive(r, now, operator)) return null;
       const last = Math.max(r.last_seen_at, queued.get(r.id) ?? 0);
       const touched = now - last >= TOUCH_MS;
       if (touched) {

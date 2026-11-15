@@ -24,7 +24,7 @@ import { type EmailSender, smtpSender } from "./server/email/smtp.ts";
 import { router, serve } from "./server/http.ts";
 import { links } from "./server/links.ts";
 import { mcpHandler } from "./server/mcp.ts";
-import { logins, pruneLogins } from "./server/session.ts";
+import { adminDigest, logins, pruneLogins } from "./server/session.ts";
 import { ui as uiRoutes } from "./server/ui.ts";
 import { fillReturns } from "./signals/store.ts";
 import { type Bvb, bvb } from "./sources/bvb/client.ts";
@@ -182,6 +182,9 @@ export function start(options: AppOptions): App {
     fired: () => pushed(),
   });
   const hooks = options.hooks ?? rules.finnhub;
+  // an admin-key login of an older key never signs in again
+  const operator =
+    options.adminKey == null ? null : adminDigest(options.adminKey);
   const prune = (db: Db) => {
     const now = clock.now();
     pruneRuns(db, now);
@@ -189,7 +192,7 @@ export function start(options: AppOptions): App {
     pruneNews(db, now, trackedIds(db, now, tracking));
     pruneFilings(db, now);
     pruneAlerts(db, now);
-    pruneLogins(db, now);
+    pruneLogins(db, now, operator);
   };
   // first, so no run is taken for a crashed one; prunes too, since a
   // server restarted daily never reaches the daily turn
@@ -431,6 +434,7 @@ export function start(options: AppOptions): App {
           fetch: options.fetch ?? ((url, init) => fetch(url, init)),
           keys: options.push,
           origin: (d) => readSmtp(d)?.publicUrl ?? null,
+          adminDigest: operator,
         })
       : NO_PUSH;
   pushed = pushes.kick;

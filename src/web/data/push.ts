@@ -52,7 +52,11 @@ export function browserPush(): PushDevice {
     | undefined;
   let registered: Promise<ServiceWorkerRegistration> | null = null;
   const registration = () => {
-    registered ??= nav!.serviceWorker.register(WORKER_PATH);
+    // ready: a tap right after the first registration needs the worker
+    // active before any subscription call
+    registered ??= nav!.serviceWorker
+      .register(WORKER_PATH)
+      .then(() => nav!.serviceWorker.ready);
     return registered;
   };
   const subscription = async () =>

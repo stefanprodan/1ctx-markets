@@ -9,7 +9,7 @@ import {
   type WhenOperand,
   whenComparisons,
 } from "../shared/when.ts";
-import { FIELD_WORDS, OP_WORDS } from "../shared/when-words.ts";
+import { FIELD_WORDS, OP_WORDS, STATES } from "../shared/when-words.ts";
 
 export type Listing = {
   name: string | null;
@@ -62,6 +62,7 @@ function valueText(field: string, v: number | null, l?: Listing): string {
   if (unit === "ratio") return `${round(v, 2)}×`;
   if (unit === "atrs") return `${round(v, 2)} ATRs`;
   if (unit === "days") return `${Math.round(v)} days`;
+  if (unit === "state") return STATES[field]?.[v] ?? String(v);
   return String(round(v, 1));
 }
 

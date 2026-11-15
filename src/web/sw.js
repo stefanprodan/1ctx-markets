@@ -45,13 +45,22 @@ self.addEventListener("notificationclick", (event) => {
   const to = url.origin === self.location.origin ? url.href : FIRED;
   event.waitUntil(
     self.clients
-      .matchAll({ type: "window", includeUncontrolled: true })
+      // controlled windows only: an uncontrolled one cannot navigate, and
+      // its focus would spend the tap that openWindow needs
+      .matchAll({ type: "window" })
       .then((open) => {
         const app = open.find((c) => "focus" in c);
         if (!app) return self.clients.openWindow(to);
-        return app
-          .navigate(to)
-          .then((c) => (c ?? app).focus())
+        // focus first, inside the tap's activation; navigate only where
+        // the client has it
+        return Promise.resolve()
+          .then(() => app.focus())
+          .then((c) => {
+            const w = c ?? app;
+            return typeof w.navigate === "function"
+              ? w.navigate(to)
+              : self.clients.openWindow(to);
+          })
           .catch(() => self.clients.openWindow(to));
       }),
   );

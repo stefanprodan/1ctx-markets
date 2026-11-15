@@ -21,7 +21,13 @@ import {
   vapidAuth,
   vapidKeys,
 } from "../src/push/crypto.ts";
-import { FIRED_PATH, type Payload, push, TTL_S } from "../src/push/send.ts";
+import {
+  FIRED_PATH,
+  type Payload,
+  payloadOf,
+  push,
+  TTL_S,
+} from "../src/push/send.ts";
 import { saveSubscription } from "../src/push/store.ts";
 import { notification } from "../src/push/text.ts";
 import { ruleEngine, type Snapshot } from "../src/rules/evaluate.ts";
@@ -30,6 +36,7 @@ import { HOUR_MS } from "../src/runtime/clock.ts";
 import { createPush, keys, PUSH_FILE } from "../src/runtime/keys.ts";
 import { type Log, silent } from "../src/runtime/log.ts";
 import { openLogin, pruneLogins, SESSION_MS } from "../src/server/session.ts";
+import type { Fetch } from "../src/sources/source.ts";
 import { yahoo } from "../src/sources/yahoo/client.ts";
 import { type Db, open } from "../src/storage/db/index.ts";
 import { writer } from "../src/storage/writer.ts";
@@ -329,6 +336,8 @@ async function pushTest(
     db?: Db;
     smtp?: boolean;
     log?: Log;
+    adminDigest?: string | null;
+    fetch?: Fetch;
   } = {},
 ) {
   const clock = fakeClock(START);
@@ -346,12 +355,13 @@ async function pushTest(
     writer: write,
     clock,
     log: options.log ?? silent,
-    fetch: s.fetch,
+    fetch: options.fetch ?? s.fetch,
     keys: v,
     origin: (d) =>
       d
         .query<{ u: string }, []>("select public_url as u from smtp_settings")
         .get()?.u ?? null,
+    adminDigest: options.adminDigest ?? null,
   });
   // a browser signed in as casey: its login and its subscription
   const device = async (endpoint: string, owner = "casey") => {
@@ -496,22 +506,132 @@ describe("the send pass", () => {
     expect(off.posted).toEqual([]);
   });
 
-  test("the engine starts a pass only once its write commits", async () => {
+  test("a pass reads only committed alerts: a rolled-back fire sends nothing", async () => {
     const t = await pushTest();
     await t.device(APPLE);
-    let seen = -1;
     const engine = ruleEngine({
       quoteEveryMs: 5 * 60_000,
       fired: () => t.p.kick(),
     });
-    await t.write.write((d) => {
-      insertAlert(d, { id: 1, owner: "casey" }, snapshot(), t.clock.now());
-      engine.fired?.();
-      seen = t.posted.length;
-    });
+    const fireIn = (fail: boolean) =>
+      t.write.write((d) => {
+        insertAlert(d, { id: 1, owner: "casey" }, snapshot(), t.clock.now());
+        engine.fired?.();
+        if (fail) throw new Error("made-up failure");
+      });
+    await expect(fireIn(true)).rejects.toThrow("made-up failure");
     await t.p.settled();
-    expect(seen).toBe(0);
+    expect(t.posted).toEqual([]);
+    await fireIn(false);
+    await t.p.settled();
     expect(t.posted.length).toBe(1);
+  });
+
+  test("a kick as a pass ends is never lost", async () => {
+    // every point in the pass's last microtasks, the gap included
+    for (let ticks = 0; ticks < 30; ticks++) {
+      const t = await pushTest();
+      await t.device(APPLE);
+      t.p.kick();
+      for (let k = 0; k < ticks; k++) await Promise.resolve();
+      insertAlert(t.db, { id: 1, owner: "casey" }, snapshot(), t.clock.now());
+      t.p.kick();
+      await t.p.settled();
+      expect([ticks, t.posted.length]).toEqual([ticks, 1]);
+    }
+  });
+
+  test("only devices whose login still signs in get pushes", async () => {
+    const t = await pushTest({ adminDigest: "made-up-current" });
+    await t.device(APPLE);
+    const expired = await t.device(
+      "https://web.push.apple.com/made-up-expired",
+    );
+    t.db
+      .query("update logins set expires_at = ? where id = ?")
+      .run(t.clock.now(), expired.login);
+    const stale = await t.device("https://web.push.apple.com/made-up-stale");
+    t.db
+      .query("update logins set admin_digest = 'made-up-old' where id = ?")
+      .run(stale.login);
+    const current = await t.device(FCM);
+    t.db
+      .query("update logins set admin_digest = 'made-up-current' where id = ?")
+      .run(current.login);
+    await t.fire();
+    await t.pass();
+    expect(t.posted.map((x) => x.url).sort()).toEqual([APPLE, FCM].sort());
+    // the prune takes the older key's login and its device with it
+    pruneLogins(t.db, t.clock.now() - 1, "made-up-current");
+    expect(
+      t.db
+        .query("select endpoint from push_subscriptions order by endpoint")
+        .all(),
+    ).toEqual(
+      [FCM, APPLE, "https://web.push.apple.com/made-up-expired"]
+        .sort()
+        .map((endpoint) => ({ endpoint })),
+    );
+    // without the digest it leaves admin-key logins alone
+    const kept = t.db.query("select count(*) as n from logins").get();
+    pruneLogins(t.db, t.clock.now() - 1);
+    expect(t.db.query("select count(*) as n from logins").get()).toEqual(kept);
+  });
+
+  test("a redirect is never followed", async () => {
+    const lines: string[] = [];
+    const log: Log = {
+      info: () => {},
+      warn: (m) => lines.push(m),
+      error: (m) => lines.push(m),
+    };
+    const followed: string[] = [];
+    const posted: string[] = [];
+    // a 302 to another host, as fetch handles it per its redirect mode
+    const fetch: Fetch = async (url, init) => {
+      posted.push(url);
+      if (init.redirect === "error") throw new TypeError("redirect");
+      followed.push("https://elsewhere.example/");
+      return new Response(null, { status: 201 });
+    };
+    const t = await pushTest({ log, fetch });
+    await t.device(APPLE);
+    await t.fire();
+    await t.pass();
+    expect(posted).toEqual([APPLE]);
+    expect(followed).toEqual([]);
+    expect(lines).toEqual(["push failed"]);
+    expect(t.db.query("select endpoint from push_subscriptions").all()).toEqual(
+      [{ endpoint: APPLE }],
+    );
+  });
+
+  test("an oversized name is cut to fit after the note", async () => {
+    const t = await pushTest();
+    t.db
+      .query("update instruments set name = ? where id = ?")
+      .run("N".repeat(6000), NVDA);
+    await t.fire("casey", "n".repeat(500));
+    const row = t.db
+      .query<
+        {
+          id: number;
+          owner: string;
+          ruleId: number;
+          firedAt: number;
+          snapshot: string;
+        },
+        []
+      >(
+        "select id, owner, rule_id as ruleId, fired_at as firedAt, snapshot from alerts",
+      )
+      .get()!;
+    const p = payloadOf(t.db, row, silent)!;
+    expect(p.body).toBe("");
+    expect(p.title.length).toBeGreaterThan(0);
+    expect(
+      new TextEncoder().encode(JSON.stringify(p)).length,
+    ).toBeLessThanOrEqual(3800);
   });
 
   test("the text names a non-price field and leaves a long note to fit", () => {
@@ -527,6 +647,29 @@ describe("the send pass", () => {
       },
     );
     expect(words).toEqual({ title: "NVDA", body: "NVDA RSI below 30: 28.4" });
+  });
+
+  test("a cross and a MACD turn read as the Alerts page words them", () => {
+    const l = {
+      [NVDA]: { name: null, type: "EQUITY", currency: "USD", unit: "price" },
+    };
+    expect(
+      notification(
+        { symbol: NVDA, when: "cross > 0", note: null, values: { cross: 1 } },
+        l,
+      ).body,
+    ).toBe("NVDA 50/200-day cross above none: golden");
+    expect(
+      notification(
+        {
+          symbol: NVDA,
+          when: "macd_turn < 0",
+          note: null,
+          values: { macd_turn: -1 },
+        },
+        l,
+      ).body,
+    ).toBe("NVDA MACD turn below none: down");
   });
 });
 
@@ -577,6 +720,7 @@ async function routes() {
       d
         .query<{ u: string }, []>("select public_url as u from smtp_settings")
         .get()?.u ?? null,
+    adminDigest: null,
   });
   const handle = api(m, { push: p });
   const dev = await browser();

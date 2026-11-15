@@ -12,7 +12,12 @@ import {
   type WhenOperand,
   whenComparisons,
 } from "../../shared/when.ts";
-import { FIELD_WORDS, OP_WORDS, type Unit } from "../../shared/when-words.ts";
+import {
+  FIELD_WORDS,
+  OP_WORDS,
+  STATES,
+  type Unit,
+} from "../../shared/when-words.ts";
 import type { Alert, Listings, Now, Trigger } from "../data/alerts.ts";
 import { amount } from "../lib/format.ts";
 import { tickerOf } from "../lib/names.ts";
@@ -21,14 +26,6 @@ export { FIELD_WORDS, OP_WORDS };
 
 const words = (field: string) =>
   FIELD_WORDS[field] ?? { label: field, unit: "plain" as Unit };
-
-const STATES: Record<string, Record<number, string>> = {
-  cross: { 1: "golden", 0: "none", [-1]: "death" },
-  weekly_cross: { 1: "golden", 0: "none", [-1]: "death" },
-  cross_edge: { 1: "golden", 0: "none", [-1]: "death" },
-  weekly_cross_edge: { 1: "golden", 0: "none", [-1]: "death" },
-  macd_turn: { 1: "up", 0: "none", [-1]: "down" },
-};
 
 // the server renders when from what it stored, so it always parses; an
 // unreadable one shows as its text

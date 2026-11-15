@@ -84,6 +84,9 @@
     gap: 10px;
     padding: 0 11px;
   }
+  .more-user .usermenu-note {
+    margin: 0 0 var(--space-1) 35px;
+  }
 
   .bar-slot {
     position: relative;

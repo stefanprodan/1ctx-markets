@@ -127,8 +127,9 @@ passwords, no SSO, and no link handed over.
   is no threat.
 - **The login holds a SHA-256 of the admin key** (`admin_digest`), so
   replacing `user-admin.key` and restarting answers 401 to every login
-  the old key opened; the operator's login by link and every other
-  person's stay.
+  the old key opened, and the startup and daily prunes delete them
+  (`pruneLogins()` given the current digest), their devices with them;
+  the operator's login by link and every other person's stay.
 
 ## Links by email
 

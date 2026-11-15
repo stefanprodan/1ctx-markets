@@ -55,3 +55,12 @@ export const OP_WORDS: Record<WhenOp, string> = {
   ">": "above",
   ">=": "at or above",
 };
+
+// a state field's values as words
+export const STATES: Record<string, Record<number, string>> = {
+  cross: { 1: "golden", 0: "none", [-1]: "death" },
+  weekly_cross: { 1: "golden", 0: "none", [-1]: "death" },
+  cross_edge: { 1: "golden", 0: "none", [-1]: "death" },
+  weekly_cross_edge: { 1: "golden", 0: "none", [-1]: "death" },
+  macd_turn: { 1: "up", 0: "none", [-1]: "down" },
+};
