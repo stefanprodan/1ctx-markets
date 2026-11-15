@@ -8,6 +8,7 @@ import { PREFIX } from "../../src/api/http.ts";
 import { match, routes } from "../../src/api/routes.ts";
 import type { Markets } from "../../src/operations/markets.ts";
 import { NO_WORLD, type World } from "../../src/operations/track.ts";
+import type { Push } from "../../src/push/send.ts";
 import { type Log, silent } from "../../src/runtime/log.ts";
 import {
   type Access,
@@ -85,6 +86,8 @@ export function api(
     secrets?: { email(name: string): string | null; emailNames(): string[] };
     sender?: EmailSender;
     log?: Log;
+    // the UI's push; off without it
+    push?: Push;
   } = {},
 ) {
   const log = options.log ?? silent;
@@ -143,6 +146,7 @@ export function api(
       logins: signIns,
       links: sent,
       email,
+      push: options.push,
       now: () => m.clock.now(),
       log,
     }),

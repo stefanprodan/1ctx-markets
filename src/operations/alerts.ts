@@ -794,6 +794,7 @@ export async function createAlert(
   });
   if (done === null) return timeout(m);
   if ("error" in done) return done;
+  if (done.outcome?.alert != null) m.rules.fired?.();
   return written(m, owner, done);
 }
 
@@ -852,6 +853,7 @@ export async function updateAlert(
   });
   if (done === null) return timeout(m);
   if ("error" in done) return done;
+  if (done.outcome?.alert != null) m.rules.fired?.();
   return written(m, owner, done);
 }
 

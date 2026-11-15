@@ -16,6 +16,8 @@ export const MIN_KEY_LENGTH = 32;
 export const ADMIN_FILE = "user-admin.key";
 // names the key's owner wherever it is pasted
 export const ADMIN_PREFIX = "1ctx-markets-admin-";
+// the server's Web Push key pair, the P-256 private key as PKCS #8
+export const PUSH_FILE = "push-vapid.key";
 const MAX_KEY_BYTES = 4096;
 const SOURCE_NAME = /^[a-z][a-z0-9-]{0,47}$/;
 // 1ctx's secret names: the kind, then 1 to 48 lowercase letters, digits
@@ -30,6 +32,7 @@ export type Keys = {
   // the value without surrounding whitespace, or null when the file is
   // absent, empty, not a regular file or larger than a key
   admin(): string | null;
+  push(): string | null;
   source(name: string): string | null;
   // an SMTP password, read at each send so a file put there later needs
   // no restart; null as for a missing key
@@ -64,6 +67,14 @@ export function keys(dir: string): Keys {
   return {
     dir,
     admin: () => read(ADMIN_FILE),
+    // one the server cannot read turns push off, never the start
+    push: () => {
+      try {
+        return read(PUSH_FILE);
+      } catch {
+        return null;
+      }
+    },
     source: (name) => read(sourceFile(name)),
     // a file that cannot be read is a missing one: email is off
     email: (name) => {
@@ -103,10 +114,30 @@ export class KeyError extends Error {}
 export const createAdmin = (dir: string): boolean =>
   createKey(dir, ADMIN_FILE, ADMIN_PREFIX);
 
+// made once like the admin key, so a restart keeps every device's
+// subscription, which is bound to this key
+export async function createPush(dir: string): Promise<boolean> {
+  if (statSync(join(dir, PUSH_FILE), { throwIfNoEntry: false })) return false;
+  const pair = await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"],
+  );
+  const pkcs8 = await crypto.subtle.exportKey("pkcs8", pair.privateKey);
+  return writeKey(dir, PUSH_FILE, Buffer.from(pkcs8).toString("base64url"));
+}
+
 function createKey(dir: string, file: string, prefix: string): boolean {
-  const path = join(dir, file);
   const random = crypto.getRandomValues(new Uint8Array(32));
-  const value = prefix + Buffer.from(random).toString("base64url");
+  return writeKey(
+    dir,
+    file,
+    prefix + Buffer.from(random).toString("base64url"),
+  );
+}
+
+function writeKey(dir: string, file: string, value: string): boolean {
+  const path = join(dir, file);
   try {
     // only secrets/ is private; its parents keep the umask's mode
     mkdirSync(dirname(dir), { recursive: true });

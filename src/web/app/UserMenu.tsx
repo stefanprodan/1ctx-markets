@@ -68,6 +68,7 @@ export function UserItems({ onSignedOut }: { onSignedOut?: () => void }) {
           <span class="switch-knob" />
         </span>
       </button>
+      <PushSwitch />
       <button
         type="button"
         class="menu-item"
@@ -86,6 +87,36 @@ export function UserItems({ onSignedOut }: { onSignedOut?: () => void }) {
         <span>Sign out</span>
       </button>
       {failure.value && <p class="usermenu-error error">{failure.value}</p>}
+    </>
+  );
+}
+
+// this device's, absent while the server sends none
+function PushSwitch() {
+  const p = markets.push;
+  const support = p.support.value;
+  if (p.key.value === null || support === "none") return null;
+  const on = p.on.value;
+  return (
+    <>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={on}
+        class="menu-item"
+        disabled={support === "install" || p.busy.value}
+        onClick={() => void p.set(!on)}
+      >
+        <Icon name="bell" size={14} />
+        <span>Push notifications</span>
+        <span class={`usermenu-switch switch${on ? " switch-on" : ""}`}>
+          <span class="switch-knob" />
+        </span>
+      </button>
+      {support === "install" && (
+        <p class="usermenu-note">Add to Home Screen first.</p>
+      )}
+      {p.error.value && <p class="usermenu-error error">{p.error.value}</p>}
     </>
   );
 }

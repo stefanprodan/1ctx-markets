@@ -9,4 +9,11 @@
   .usermenu-error {
     margin: var(--space-1) var(--space-2);
   }
+
+  /* under the row's words: its padding, the 14px icon and the gap */
+  .usermenu-note {
+    margin: 0 var(--space-2) var(--space-1) calc(var(--space-2) * 2 + 14px);
+    color: var(--faint);
+    font-size: var(--text-small);
+  }
 }

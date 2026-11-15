@@ -15,3 +15,9 @@ declare module "*.woff2" {
   const path: string;
   export default path;
 }
+
+// the service worker, served at a fixed root path: the import is its path
+declare module "*/sw.js" {
+  const path: string;
+  export default path;
+}

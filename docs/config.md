@@ -50,6 +50,7 @@ the `--help` text, and a flag changes there in the same commit.
 | `markets.db` | the one SQLite database (`docs/storage.md`) |
 | `markets.log` | the service's log, when run by `service install` (`docs/deploy.md`) |
 | `secrets/user-admin.key` | the admin key: it opens `/mcp`, every `/api/v1` route and the web UI's sign-in (`docs/admin.md`, `docs/web.md`) |
+| `secrets/push-vapid.key` | the server's Web Push key pair, its P-256 private key as PKCS #8 in base64url, made at the first start with the UI on (`docs/alerts.md`, "Push") |
 | `secrets/source-<name>.key` | a source's API key: `source-fred.key`, `source-finnhub.key`, `source-massive.key`; `source-edgar.key` holds the contact line SEC asks for, a name and an email (`docs/edgar.md`) |
 | `secrets/email-<name>.key` | an SMTP password, put there by hand and picked by name in the web UI's SMTP settings (`docs/admin.md`, "Email"); the name is 1 to 48 lowercase letters, digits and dashes |
 
@@ -67,7 +68,10 @@ the `--help` text, and a flag changes there in the same commit.
   base64url, mode 600, in a `secrets/` made mode 700. It writes only
   when no file is there, so an existing key, even an empty or bad one,
   is never replaced. No other name is read: an `admin.key` or
-  `bearer.key` left from an older version is ignored.
+  `bearer.key` left from an older version is ignored. With the UI on,
+  `push-vapid.key` is made the same way (`createPush()`); one that
+  holds no P-256 key turns push off, logged with its path. Replacing it
+  ends every device's subscription.
 - **The server will not start without an admin key** of at least 32
   printable ASCII characters (`requireAdmin()`); it exits 1 naming the
   file and how to get a new one, never its contents. It opens `/mcp`
@@ -141,6 +145,8 @@ the `--help` text, and a flag changes there in the same commit.
 | `/.well-known/agent-skills/index.json`, `{name}.tgz`, `{name}.zip` | GET | the skills under `skills/` and their index (`docs/analysis.md`) |
 | `/`, `/screener`, `/symbol/{id}`, `/portfolios`, `/profile`, `/connect`, `/admin`, `/admin/settings`, `/admin/users` (`UI_PATHS`) | GET | the web UI's page, its assets at the paths it names (`docs/web.md`) |
 | `/ui/session` | POST, DELETE | the web UI's sign-in and sign-out (`docs/web.md`) |
+| `/ui/push` | GET, POST, DELETE | this device's push subscription (`docs/web.md`) |
+| `/icon-192.png`, `/icon-512.png`, `/icon-maskable-512.png`, `/sw.js` | GET | the manifest's icons and the service worker, at fixed paths, `no-cache` (`docs/web.md`) |
 
 - **Any other method is 405 with `Allow`.** `/mcp` is stateless (one
   MCP server instance per request, `src/server/mcp.ts`), so there is
@@ -165,8 +171,8 @@ the `--help` text, and a flag changes there in the same commit.
 exit 0, or exit 1 with the error logged; a second signal during
 shutdown is ignored. The order in `stop()` holds:
 
-1. Stop the World markets tracker between symbols and the scheduler,
-   so no new symbol or run starts.
+1. Stop the World markets tracker between symbols, the scheduler and
+   the push pass, so no new symbol, run or push starts.
 2. Close every source queue, so a call waiting out a back-off fails at
    once; calls already sent finish.
 3. Stop the HTTP server, so no new request starts.
@@ -175,7 +181,9 @@ shutdown is ignored. The order in `stop()` holds:
 5. Wait for every shared fetch still in flight, a read's past its
    deadline included, so no answer lands after the database closes.
 6. Close the MCP handler.
-7. Close the writer, which refuses new writes and drains the queued
+7. Wait for the push pass to finish the alert it is on; the cursor
+   keeps the rest for the next start.
+8. Close the writer, which refuses new writes and drains the queued
    ones.
 
 The database closes only after the writer drained, so no write is lost

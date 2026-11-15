@@ -177,7 +177,9 @@ the GitHub Container Registry (GHCR), both made by
   `source-<name>.key` before the first start, each readable by 65532
   (mode 644). The server keeps an existing admin key and writes nothing
   else there; on a read-only mount it cannot write one, so a missing
-  admin key fails the start.
+  admin key fails the start. A missing `push-vapid.key` only turns push
+  notifications off, with a warning; to turn them on, copy in one
+  that a start with writable secrets made, readable by 65532.
 - **`make image-smoke` runs the image as Docker Compose does**: a fresh
   named volume, read-only secrets holding an admin key, a read-only
   root, no capabilities, and `--no-sync` so no source is called. It

@@ -12,6 +12,7 @@ import { ROUTES } from "../src/web/app/routes.ts";
 import type { Person, SmtpAnswer } from "../src/web/data/admin.ts";
 import { SEEN_PATH } from "../src/web/data/alerts.ts";
 import type { Fetch } from "../src/web/data/api.ts";
+import { PUSH_PATH } from "../src/web/data/push.ts";
 import {
   type AgentKey,
   CODE_PATH,
@@ -323,7 +324,7 @@ describe("signing in", () => {
         emailOn,
       ]);
       expect(f.asked.map((a) => a.path)).toEqual(
-        signed ? [ME_PATH, SHARING_PATH, SEEN_PATH] : [ME_PATH],
+        signed ? [ME_PATH, SHARING_PATH, SEEN_PATH, PUSH_PATH] : [ME_PATH],
       );
     }
   });

@@ -25,6 +25,7 @@ import {
 } from "./api.ts";
 import { portfolioStore } from "./portfolios.ts";
 import { profileStore } from "./profile.ts";
+import { browserPush, type PushDevice, pushStore } from "./push.ts";
 import { tradePlansStore } from "./trade-plans.ts";
 
 export type SourceStatus = {
@@ -512,6 +513,7 @@ export function store(
   here: () => string = () => path.peek(),
   reloadPage: () => void = () => location.reload(),
   later: Later = timer,
+  device: PushDevice = browserPush(),
 ) {
   // undefined until the first answer says whether the cookie holds
   const signedIn = signal<boolean | undefined>(undefined);
@@ -603,6 +605,7 @@ export function store(
     meCurrent = Promise.resolve(false);
     loading.value = false;
     alerts.signedOut();
+    push.signedOut();
     batch(() => {
       signedIn.value = false;
       me.value = null;
@@ -719,6 +722,12 @@ export function store(
     later,
   );
   const alerts = alertsStore(call, () => session, later);
+  const push = pushStore(
+    call,
+    () => session,
+    device,
+    () => alerts.seen.value?.unseen ?? null,
+  );
 
   // who is signed in: the web UI starts from it, never from the status,
   // which is an admin's. A later read supersedes one in flight
@@ -750,6 +759,7 @@ export function store(
       });
       void loadSharing();
       void alerts.loadSeen();
+      void push.read();
       return true;
     } catch (error) {
       if (mine !== meLoad) return meCurrent;
@@ -1507,6 +1517,7 @@ export function store(
     isAdmin,
     emailOn,
     admin,
+    push,
     // the reader's own name; the refusal's sentence, or null once saved
     async setMyName(name: string): Promise<string | null> {
       try {

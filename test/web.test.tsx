@@ -57,6 +57,7 @@ import {
   failure,
   says,
 } from "../src/web/data/api.ts";
+import { PUSH_PATH } from "../src/web/data/push.ts";
 import type { AgentKey, Detail } from "../src/web/data/store.ts";
 import {
   type Board,
@@ -609,12 +610,13 @@ describe("the data layer", () => {
     expect(signed.me.value).toEqual(ADMIN_ME);
     expect(signed.isAdmin.value).toBe(true);
     expect(signed.emailOn.value).toBe(true);
-    // never the status, which is an admin's; who shares with them and the
-    // alerts not seen yet, for the rail
+    // never the status, which is an admin's; who shares with them, the
+    // alerts not seen yet, for the rail, and this device's push
     expect(f.asked.map((a) => a.path)).toEqual([
       ME_PATH,
       SHARING_PATH,
       SEEN_PATH,
+      PUSH_PATH,
     ]);
     const out = store(fake({ [`GET ${ME_PATH}`]: signedAs(null) }).fetch);
     await out.check();

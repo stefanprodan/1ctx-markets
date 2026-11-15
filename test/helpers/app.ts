@@ -10,6 +10,7 @@ import type { HTMLBundle } from "bun";
 import { type App, start } from "../../src/app.ts";
 import type { WorldEntry } from "../../src/market/world.ts";
 import type { Access } from "../../src/operations/who.ts";
+import type { Vapid } from "../../src/push/crypto.ts";
 import { MINUTE_MS } from "../../src/runtime/clock.ts";
 import { keys, requireAdmin } from "../../src/runtime/keys.ts";
 import { logger } from "../../src/runtime/log.ts";
@@ -77,6 +78,8 @@ export type TestOptions = {
   secrets?: string;
   // records each email; by default any send fails the test's email
   sender?: EmailSender;
+  // push-vapid.key's pair, made by the test
+  push?: Vapid;
 };
 
 // on loopback, on a port the system picks; stopped when fn ends, since
@@ -124,6 +127,7 @@ export async function withApp(
       (async () => ({ ok: false, failure: "connect", reply: null })),
     page: options.page,
     files: options.files,
+    push: options.push ?? null,
     fetch: (url, init) =>
       isCftc(new URL(url)) ? cftc(url, init) : route(url, init),
   });
