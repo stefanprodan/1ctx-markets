@@ -114,5 +114,49 @@ export function readCursor(next: string, args: unknown): string | null {
   return next.slice(0, at);
 }
 
+// A list ranked by live values pages by the rows already shown, never an
+// offset, so a move between pages neither repeats nor skips a row.
+export const TAG_CHARS = 7;
+const TAG_SPACE = 36 ** 6;
+const TAGS = /^[0-9a-z]{6}(?:\.[0-9a-z]{6})*$/;
+
+export const tagOf = (key: string): string =>
+  (
+    Number.parseInt(
+      createHash("sha256").update(key).digest("hex").slice(0, 12),
+      16,
+    ) % TAG_SPACE
+  )
+    .toString(36)
+    .padStart(6, "0");
+
+// null for a position that is not a list of tags
+export function shownOf(position: string): Set<string> | null {
+  return TAGS.test(position) ? new Set(position.split(".")) : null;
+}
+
+// a tag two rows share drops neither: a collision repeats a row, never
+// hides one
+export function notShown<T>(
+  rows: readonly T[],
+  keyOf: (row: T) => string,
+  shown: ReadonlySet<string>,
+): { rows: T[]; tags: string[] } {
+  const tags = rows.map((r) => tagOf(keyOf(r)));
+  const uses = new Map<string, number>();
+  for (const t of tags) uses.set(t, (uses.get(t) ?? 0) + 1);
+  const keep = tags.map((t) => !shown.has(t) || uses.get(t) !== 1);
+  return {
+    rows: rows.filter((_, k) => keep[k]),
+    tags: tags.filter((_, k) => keep[k]),
+  };
+}
+
+export const shownCursor = (
+  shown: ReadonlySet<string>,
+  page: readonly string[],
+  args: unknown,
+): string => cursor([...new Set([...shown, ...page])].join("."), args);
+
 const digest = (args: unknown): string =>
   createHash("sha256").update(JSON.stringify(args)).digest("hex").slice(0, 10);

@@ -715,8 +715,10 @@ rename_broker(broker: string, name: string): { broker };
   without write, `Who.portfolio`), since a client may hold a list from
   before its person changed the key; a tool the key no longer lists
   answers the SDK's tool not found. The admin key holds write.
-- **holdings and trades page** by offset with a cursor bound to their
-  arguments; totals, rates, exposure and `removed` ride on every page.
+- **holdings and trades page** with a cursor bound to their
+  arguments, holdings by the rows shown since its order is by live value
+  (`docs/tools.md`), trades by offset; totals, rates, exposure and
+  `removed` ride on every page.
 - **An add answers the stored row resolved to its instrument**, so the
   agent shows the owner what was saved. With no `price` and no `total`
   the live quote's price is used (converted when paid in another

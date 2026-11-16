@@ -100,14 +100,22 @@ tracking in `docs/storage.md`; the source queue and deadlines in
   appends a digest of the arguments without `next`, and `readCursor()`
   refuses it with other arguments (`bad_arguments`). quote binds its
   `benchmark` only when one is given, so a cursor without one stays
-  valid. The position is the next offset, the next bar's date
-  (history), the next point's `at` with its bounds (history's `5m`)
-  or the next alert id (the alerts list), or the last trigger id shown
-  (the alerts history).
-- **movers and screen page a fresh view**: each call reads again and
-  pages the sorted set from the offset, `counts` covering every page;
-  the set may shift between pages, as the descriptions say. An offset
-  past a set that shrank is refused (`startOf()`).
+  valid. The position is the next offset, the rows already shown
+  (movers, screen, holdings), the next bar's date (history), the next
+  point's `at` with its bounds (history's `5m`) or the next alert id
+  (the alerts list), or the last trigger id shown (the alerts history).
+- **movers, screen and portfolio holdings page a fresh view by the
+  rows shown**: each call reads and ranks again, and the cursor holds a
+  6-character tag of each row shown (`tagOf()`: an instrument's id, a
+  holding's `keyOf`, `err:<input>` for an error row with none), so a
+  symbol unavailable on one page and matched on the next is not shown
+  again, and a move between pages neither repeats nor skips a row;
+  `counts` cover every page. A row is dropped only when its tag is
+  unique in the new list (`notShown()`): a collision repeats a row,
+  never hides one. A row that stopped matching just ends the walk
+  sooner. The cursor grows by
+  seven characters a row, so movers' and screen's `next` cap fits two
+  tags a symbol (`MAX_SET_NEXT`).
 - **An error is a result with `isError`, in the same one-part form**,
   cut to `error` and a 1,024-character message when too long. An
   `ArgError` answers `bad_arguments`; any other throw is logged and

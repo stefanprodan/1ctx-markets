@@ -4,7 +4,13 @@
 
 import type { Instrument } from "../market/instruments.ts";
 import type { StaleReason } from "../market/stale.ts";
-import { cursor, fitPage, readCursor } from "./answer.ts";
+import {
+  fitPage,
+  notShown,
+  readCursor,
+  shownCursor,
+  shownOf,
+} from "./answer.ts";
 import { ArgError } from "./args.ts";
 import type { ErrorItem, Target } from "./targets.ts";
 
@@ -60,17 +66,22 @@ export const benchmarkStale = (reasons: readonly StaleReason[]) =>
 export const byId = (a: { id: string }, b: { id: string }) =>
   a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 
-type Entry = { item: object; fred: boolean };
+// key: the instrument's id, err:<input> for a row resolved to none, so a
+// symbol that turns matched between pages is not shown again
+type Entry = { key: string; item: object; fred: boolean };
 
 const NOT_THESE = "next does not continue these arguments";
 
 // checked before anything is read or fetched
-export function startOf(next: string | null, args: unknown): number {
-  if (next === null) return 0;
+export function shownBy(
+  next: string | null,
+  args: unknown,
+): ReadonlySet<string> {
+  if (next === null) return new Set();
   const at = readCursor(next, args);
-  const n = at !== null && /^[1-9]\d{0,5}$/.test(at) ? Number(at) : null;
-  if (n === null) throw new ArgError(NOT_THESE);
-  return n;
+  const shown = at === null ? null : shownOf(at);
+  if (shown === null) throw new ArgError(NOT_THESE);
+  return shown;
 }
 
 export type SetRead = {
@@ -82,10 +93,15 @@ export type SetRead = {
   attribution: string;
 };
 
+const keyOf = (item: ErrorItem): string =>
+  "id" in item && typeof item.id === "string" ? item.id : `err:${item.input}`;
+
 const ordered = (read: SetRead): Entry[] => [
   ...read.matched,
-  ...[...read.unavailable].sort(byId).map((item) => ({ item, fred: false })),
-  ...read.errors.map((item) => ({ item, fred: false })),
+  ...[...read.unavailable]
+    .sort(byId)
+    .map((item) => ({ key: item.id, item, fred: false })),
+  ...read.errors.map((item) => ({ key: keyOf(item), item, fred: false })),
 ];
 
 const countsOf = (read: SetRead) => ({
@@ -97,13 +113,13 @@ const countsOf = (read: SetRead) => ({
 
 // counts cover every page
 export function setPage(
-  options: SetRead & { args: unknown; offset: number },
+  options: SetRead & { args: unknown; shown: ReadonlySet<string> },
 ): string {
-  const items = ordered(options);
-  const offset = options.offset;
-  // the set may have shrunk since the cursor was made
-  if (offset > 0 && offset >= items.length) throw new ArgError(NOT_THESE);
-  const rest = items.slice(offset);
+  const { rows: rest, tags } = notShown(
+    ordered(options),
+    (e) => e.key,
+    options.shown,
+  );
   return fitPage(
     rest.map((e) => e.item),
     (count) => ({
@@ -113,8 +129,8 @@ export function setPage(
         ? { attribution: options.attribution }
         : {}),
       next:
-        offset + count < items.length
-          ? cursor(String(offset + count), options.args)
+        count < rest.length
+          ? shownCursor(options.shown, tags.slice(0, count), options.args)
           : null,
     }),
   ).text;

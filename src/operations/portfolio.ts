@@ -111,7 +111,10 @@ import {
   errorResult,
   type Failure,
   fitPage,
+  notShown,
   readCursor,
+  shownCursor,
+  shownOf,
   type ToolResult,
   textResult,
 } from "./answer.ts";
@@ -2502,6 +2505,22 @@ function offsetOf(next: string | null, args: object): number {
   return Number(at);
 }
 
+// ranked by live value, so a page continues from the rows shown
+function shownIn(next: string | null, args: object): ReadonlySet<string> {
+  if (next === null) return new Set();
+  const at = readCursor(next, args);
+  const shown = at === null ? null : shownOf(at);
+  if (shown === null) throw new ArgError("next does not continue this list");
+  return shown;
+}
+
+// the web's keyOf: a listed row by its id, a cash or bond row by itself
+const holdingKey = (h: {
+  id: string | null;
+  position: number | null;
+  name: string | null;
+}) => h.id ?? `pos:${h.position ?? h.name ?? ""}`;
+
 async function holdingsPage(
   m: Markets,
   owner: string,
@@ -2509,25 +2528,27 @@ async function holdingsPage(
 ): Promise<ToolResult> {
   const { next, removed, ...scope } = args;
   const rest = { ...scope, removed };
-  const from = offsetOf(next, rest);
+  const shown = shownIn(next, rest);
   const read = await readHoldings(m, owner, scope);
   if (isFailure(read)) return errorResult(read);
   const { holdings: all, ...shell } = read;
+  const { rows: left, tags } = notShown(all, holdingKey, shown);
   // symbol is what quote takes; REST keeps the instrument's id as id
-  const rows = all.map(({ kind, id, ...row }) => ({
+  const list = left.map(({ kind, id, ...row }) => ({
     kind,
     symbol: id,
     ...row,
   }));
   const gone = removed ? { removed: removedRows(m, owner, scope) } : {};
-  const list = rows.slice(from);
   const page = fitPage(
     list,
     (count) => ({
       ...shell,
       ...gone,
       next:
-        from + count < rows.length ? cursor(String(from + count), rest) : null,
+        count < list.length
+          ? shownCursor(shown, tags.slice(0, count), rest)
+          : null,
     }),
     "holdings",
   );
