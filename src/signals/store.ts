@@ -108,24 +108,126 @@ function volumeBreaks(db: Db, instrument: string): string[] {
     .map((r) => r.date);
 }
 
-// from the first bar: an incremental patch would drift from the seeds
-export function recomputeSignals(db: Db, instrument: string, now: number) {
+// how many stored final rows stay, null when none can
+function kept(
+  db: Db,
+  instrument: string,
+  interval: Interval,
+  rows: readonly { date: string }[],
+  changedFrom: string | null,
+): number | null {
+  const stored = db
+    .query<{ date: string }, [string, string]>(
+      `select date from signals where instrument = ? and interval = ?
+       and kind = 'final' order by date`,
+    )
+    .all(instrument, interval);
+  const last = stored.at(-1)?.date;
+  if (changedFrom !== null && last !== undefined) {
+    const from = interval === "1wk" ? weekOf(changedFrom) : changedFrom;
+    if (from <= last) return null;
+  }
+  if (
+    stored.length > rows.length ||
+    !stored.every((r, k) => r.date === rows[k]!.date)
+  ) {
+    return null;
+  }
+  // a change to the maths or a new column shows on the last row, so the
+  // next final bar rewrites rows an older build stored
+  if (
+    last !== undefined &&
+    !sameRow(db, instrument, interval, rows[stored.length - 1]!)
+  ) {
+    return null;
+  }
+  return stored.length;
+}
+
+// the value as insertRows binds it, which stores NaN as null
+const bound = (v: unknown): unknown =>
+  v === undefined || (typeof v === "number" && Number.isNaN(v))
+    ? null
+    : v === true
+      ? 1
+      : v === false
+        ? 0
+        : v;
+
+function sameRow(
+  db: Db,
+  instrument: string,
+  interval: Interval,
+  row: { date: string },
+): boolean {
+  const stored = db
+    .query<Record<string, unknown>, [string, string, string]>(
+      `select ${selectList(interval)} from signals where instrument = ?
+       and interval = ? and kind = 'final' and date = ?`,
+    )
+    .get(instrument, interval, row.date);
+  if (stored === null) return false;
+  const computed = row as Record<string, unknown>;
+  return columnsOf(interval).every(
+    ([key]) => stored[key] === bound(computed[key]),
+  );
+}
+
+// Stored rows that are the computed ones' prefix by date, with no bar
+// changed under them, stay and the rest is appended; else all are
+// rewritten. True when they stayed.
+function storeFinal(
+  db: Db,
+  instrument: string,
+  interval: Interval,
+  rows: readonly { date: string }[],
+  changedFrom: string | null | undefined,
+  now: number,
+): boolean {
+  const n =
+    changedFrom === undefined
+      ? null
+      : kept(db, instrument, interval, rows, changedFrom);
+  if (n === null) {
+    db.query(
+      "delete from signals where instrument = ? and interval = ? and kind = 'final'",
+    ).run(instrument, interval);
+  }
+  insertRows(db, instrument, interval, "final", rows.slice(n ?? 0), null, now);
+  return n !== null;
+}
+
+// From the first bar: an incremental patch would drift from the seeds.
+// changedFrom is the first bar changed, null for none; left out, every
+// final row is rewritten.
+export function recomputeSignals(
+  db: Db,
+  instrument: string,
+  now: number,
+  changedFrom?: string | null,
+) {
   const days = finalPrefix(readBars(db, instrument, "1d"));
   const weeks = finalPrefix(readBars(db, instrument, "1wk"));
-  db.query("delete from signals where instrument = ? and kind = 'final'").run(
-    instrument,
-  );
   const breaks = volumeBreaks(db, instrument);
-  insertRows(
+  const daily = dailySeries(days, breaks);
+  // weeks are built from the days, so days rewritten rewrite them too
+  const stayed = storeFinal(db, instrument, "1d", daily, changedFrom, now);
+  const weekly = weeklySeries(weeks);
+  storeFinal(
     db,
     instrument,
-    "1d",
-    "final",
-    dailySeries(days, breaks),
-    null,
+    "1wk",
+    weekly,
+    stayed ? changedFrom : undefined,
     now,
   );
-  insertRows(db, instrument, "1wk", "final", weeklySeries(weeks), null, now);
+  // a rewrite leaves the returns on the newest row only, so a kept row
+  // loses its own
+  db.query(
+    `update signals set return_1m = null, return_1y = null
+     where instrument = ? and kind = 'final'
+       and (return_1m is not null or return_1y is not null)`,
+  ).run(instrument);
   storeReturns(db, instrument);
 }
 
@@ -182,7 +284,7 @@ export function signalsAfterBars(
   const last = lastFinalDate(db, instrument.id, "1d");
   const changed = changedFrom !== null && last !== null && changedFrom <= last;
   if (changed || finalPending(db, instrument.id)) {
-    recomputeSignals(db, instrument.id, now);
+    recomputeSignals(db, instrument.id, now, changedFrom);
   }
   refreshLive(db, instrument, now);
 }
