@@ -21,7 +21,6 @@ const ALL = instructions({
 const ANSWER_FIELDS = [
   "returns",
   "session",
-  "final",
   "counts",
   "no_event",
   "stale",
@@ -29,9 +28,7 @@ const ANSWER_FIELDS = [
   "listing",
   "fetched_at",
   "unit",
-  "previous_close",
   "valuation",
-  "extended_reason",
 ];
 
 // an answer field that a portfolio tool also takes as an argument, so a
