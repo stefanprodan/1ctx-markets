@@ -264,10 +264,10 @@ export const STATE_WORDS: Record<StateKey, string> = {
   holds: "Met",
   fired: "Triggered",
   paused: "Paused",
-  split: "Paused by a split",
-  earnings: "Waiting for earnings",
-  stale: "No fresh price",
-  unknown: "Can't check now",
+  split: "Split",
+  earnings: "Earnings",
+  stale: "No price",
+  unknown: "Unknown",
 };
 
 const FRESH_PRICE =

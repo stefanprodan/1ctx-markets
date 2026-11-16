@@ -162,11 +162,11 @@ export function rateLine(
 
 // a reason a figure may be out of date, in a few plain words
 export function staleWords(reason: string): string {
-  if (reason === "sells more than bought") return "Sold more than bought";
+  if (reason === "sells more than bought") return "Below zero";
   const rate = /^no (\S+) to (\S+) (rate|close)/.exec(reason);
   if (rate) return `No ${rate[1]} rate`;
   if (reason === "no listing currency") return "No currency";
-  return "Not current";
+  return "Old price";
 }
 
 // what a total left out: a listing by its symbol, a rate in words

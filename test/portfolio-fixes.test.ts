@@ -557,7 +557,7 @@ describe("bonds, restore and removals", () => {
     expect(plainError("US:AAA: the source has no such symbol")).toBe(
       "The source has no such symbol",
     );
-    expect(staleWords("sells more than bought")).toBe("Sold more than bought");
+    expect(staleWords("sells more than bought")).toBe("Below zero");
     expect(
       plainError(
         "The same trade was saved as trade 7 in the last 10 minutes, so a retry adds nothing; again: true saves a second fill",

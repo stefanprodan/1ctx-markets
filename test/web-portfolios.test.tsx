@@ -641,7 +641,7 @@ describe("plain words on the page", () => {
     };
     const { s } = await loaded(odd);
     const html = render(<PortfoliosBody store={s.portfolios} />);
-    expect(html).toContain("Sold more than bought");
+    expect(html).toContain("Below zero");
     expect(missingWords("US:NOQ")).toBe("NOQ");
     expect(missingWords("no EUR to JPY rate")).toBe("No EUR to JPY rate");
   });
