@@ -8,14 +8,19 @@ import { OPERATOR } from "../src/operations/who.ts";
 import { readRule } from "../src/rules/store.ts";
 import { MINUTE_MS } from "../src/runtime/clock.ts";
 import type { Log, LogFields } from "../src/runtime/log.ts";
+import { cftc } from "../src/sources/cftc/client.ts";
+import { cftcJobs, marketList } from "../src/sources/cftc/list.ts";
 import { massive, parseNews } from "../src/sources/massive/client.ts";
 import {
   type MassiveContext,
   refreshNews,
 } from "../src/sources/massive/store.ts";
+import { DeadlinePassed } from "../src/sources/source.ts";
 import { refetch } from "../src/sources/yahoo/sync.ts";
 import { open } from "../src/storage/db/index.ts";
+import { lastRun } from "../src/storage/runs.ts";
 import { writer } from "../src/storage/writer.ts";
+import { cftcAnswer, RECORDED } from "./helpers/cftc.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { drive } from "./helpers/drive.ts";
 import {
@@ -153,5 +158,43 @@ describe("a split and MACD", () => {
       time: Date.parse("2026-10-26T13:31:00Z"),
     });
     expect(rule(t, sign).lastResult).toBe("unknown");
+  });
+});
+
+describe("the CFTC market list job", () => {
+  test("a reader's deadline in a joined fetch is not the job's failure", async () => {
+    const clock = fakeClock(RECORDED);
+    const { db } = open(":memory:", clock);
+    const f = fakeFetch((url) => cftcAnswer(url));
+    const client = cftc({ clock, fetch: f.fetch });
+    const list = marketList(clock);
+    const { log, lines } = recording();
+    const job = cftcJobs({
+      clock,
+      writer: writer(db),
+      cftc: client,
+      list,
+      log,
+    });
+    // a call just made, so the reader's next one waits for its slot
+    await drive(clock, client, client.markets("financial", "2023-01-01"));
+    let alive = true;
+    const read = list.fetch(
+      client.within(() => alive),
+      "disaggregated",
+    );
+    read.catch(() => {});
+    const tick = job.tick();
+    for (let k = 0; k < 5; k++) {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+    alive = false;
+    await drive(clock, client, tick);
+    await expect(read).rejects.toBeInstanceOf(DeadlinePassed);
+    expect(lastRun(db, "cftc", "markets", "disaggregated")).toMatchObject({
+      status: "ok",
+    });
+    expect(list.held("disaggregated")).not.toBeNull();
+    expect(lines.filter(([m]) => m === "cftc markets failed")).toEqual([]);
   });
 });

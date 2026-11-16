@@ -106,7 +106,10 @@ expected: the extra row gives the oldest week its change.
   `markets`, scope the report. A search or read never waits on it.
 - **A read that finds a report not held fetches it inline**, under the
   call's deadline, joining a fetch in flight; it stops at the report
-  that holds the code. search never fetches it.
+  that holds the code. search never fetches it. A job that joins a
+  read's fetch and sees it end by the read's deadline or a pause asks
+  again on its own client: that is the read's end, not the job's
+  failure, so no failed run is recorded and no retry wait starts.
 - **A list older than `LIST_STALE_MS` (two days)**, or none two days
   after start, means the job keeps failing: search names the CFTC in
   `errors` beside what it still found.

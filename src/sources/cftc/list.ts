@@ -9,7 +9,7 @@ import type { Log } from "../../runtime/log.ts";
 import type { Scheduler } from "../../runtime/scheduler.ts";
 import { runJob } from "../../storage/runs.ts";
 import { type Writer, WriterClosed } from "../../storage/writer.ts";
-import { phraseOf, QueueClosed } from "../source.ts";
+import { DeadlinePassed, Paused, phraseOf, QueueClosed } from "../source.ts";
 import {
   type Cftc,
   type Market,
@@ -127,6 +127,19 @@ export function cftcJobs(options: {
       (failed === undefined || now - failed >= RETRY_MS)
     );
   };
+  // A joined read's deadline or pause is the reader's, never the job's:
+  // its own client neither has a deadline nor fails fast, so it asks again.
+  async function own(report: Report) {
+    for (;;) {
+      try {
+        return await list.fetch(cftc, report);
+      } catch (error) {
+        if (!(error instanceof DeadlinePassed || error instanceof Paused)) {
+          throw error;
+        }
+      }
+    }
+  }
   async function tick() {
     if (running) return;
     running = true;
@@ -145,7 +158,7 @@ export function cftcJobs(options: {
           clock,
           SOURCE,
           LIST_JOB,
-          async () => (await list.fetch(cftc, report)).markets.length,
+          async () => (await own(report)).markets.length,
           report,
         );
         failedAt.delete(report);
