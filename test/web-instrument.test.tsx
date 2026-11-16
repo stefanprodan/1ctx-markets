@@ -483,6 +483,21 @@ describe("the instrument page's performance", () => {
     expect(html).not.toContain('<h2 class="card-title">52-week range');
   });
 
+  test("an average at or below zero has no distance, a yield's keeps its points", () => {
+    const daily = { ...DAILY, sma50: -2, sma200: 0 };
+    const labels = (d: Detail) =>
+      signalsOf(d)
+        .trend.filter((f) => f.label.endsWith("average"))
+        .map((f) => [f.label, f.value]);
+    expect(labels(detail({}, {}, { signals: { daily } }))).toEqual([]);
+    expect(
+      labels(detail({ unit: "percent" }, {}, { price: 1, signals: { daily } })),
+    ).toEqual([
+      ["50-day average", "3.00 pts above"],
+      ["200-day average", "1.00 pts above"],
+    ]);
+  });
+
   test("returns alone, a range alone, or neither", () => {
     const returnsOnly = render(
       <InstrumentCards detail={detail()} held={null} />,

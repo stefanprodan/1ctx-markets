@@ -59,6 +59,32 @@ export function change(row: { change_percent: number | null }): Signed {
   return { text: `${dir > 0 ? "+" : dir < 0 ? "−" : ""}${n}%`, dir };
 }
 
+// an instant on the owner's calendar, never the browser's: with no zone
+// set, UTC's, as the server dates the owner's day
+export function dayIn(iso: string, zone: string | null | undefined): string {
+  try {
+    return new Date(iso).toLocaleDateString("en-CA", {
+      timeZone: zone ?? "UTC",
+    });
+  } catch {
+    return iso.slice(0, 10);
+  }
+}
+
+// the same day as words with its year, "2 Mar 2026"
+export function dateIn(iso: string, zone: string | null | undefined): string {
+  try {
+    return new Date(iso).toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      timeZone: zone ?? "UTC",
+    });
+  } catch {
+    return day(iso.slice(0, 10));
+  }
+}
+
 // a currency's minor units (JPY 0, KWD 3), 2 when unknown; a coin's 8
 export function minorUnits(currency?: string | null): number {
   if (!currency) return 2;
@@ -130,6 +156,13 @@ export function signedMoney(
 }
 
 export const percent = (v: number | null): Signed => signedChange(v);
+
+// a total's move that must show: missing reads as missing, never hidden
+// as if nothing moved
+export const signedOrMissing = (
+  v: number | null,
+  currency?: string | null,
+): Signed => (v === null ? { text: "—", dir: 0 } : signedMoney(v, currency));
 
 export function quantity(v: number | null): string {
   if (v === null) return "—";

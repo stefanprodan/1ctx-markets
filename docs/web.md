@@ -672,7 +672,7 @@ The parts:
   the series kept through the owner's day (`keptSeries()`), its past
   days being stored rows, and its last point the band's figure. Net worth is the figure, a link to Portfolios;
   under it "today" (the holdings' day change, its percent of net worth
-  before it) and "all time" (the holdings' gain), one per line at every
+  before it; "—" when the total's is null, `signedOrMissing()`) and "all time" (the holdings' gain), one per line at every
   width; then the Invested against Cash bar (`barOf()`), Cash being dry
   powder and reserve and linking to the Cash portfolio, its legend
   wrapping as Portfolios'. The line is the series' `total`, drawn by
@@ -1076,7 +1076,8 @@ The parts:
   to JPY rate" (`missingWords()`). Under it one line (`heroOf()`):
   today, only when something in view moves within a day (a quoted or
   listed price; cash, a hand-priced fund and a face-value bond never
-  do), and all time, only when a cost gives a gain. Then one bar
+  do), "—" when the total's day change is null, never hidden as no
+  move (`signedOrMissing()`), and all time, only when a cost gives a gain. Then one bar
   (`barOf()`): on All, Invested against Dry powder, the two parts of
   All's value, which leaves reserve out (`docs/portfolios.md`); in the
   Cash tab, Dry powder against Reserve, as Cash holds only cash; in a
@@ -1211,7 +1212,8 @@ The parts:
   balance and its change from the row it replaced, none across
   currencies; a note's change is named, never its text, which Edit
   details holds; an update that left the amount alone says what it
-  changed and is dated when made, on the owner's calendar; a removal and a
+  changed and is dated when made, on the owner's calendar (UTC's until
+  they set a zone, as the server dates their day, `dayIn()`); a removal and a
   restore are lines, told apart as the tool's `history` does
   (`endOf()`), a restore's change from the row it undid to the row it
   brought back; no author. A step line of the balance
@@ -1229,8 +1231,11 @@ The parts:
   the row's own, so a statement's balance goes in without touching the
   row; a save reads the history again, as the row keeps its id. A past
   date from Edit details saves one too and leaves the drawer on the row.
-- **Drawers:** every form and detail opens in the one `Drawer`. Edit
-  (amount and as of; cash also its name, broker, "New broker…"
+- **Drawers:** every form and detail opens in the one `Drawer`. A typed
+  number (`typed()`, every form and the cash box) reads commas as
+  thousands only in groups of three after a leading 1 to 999 (`12,400`,
+  `1,234,567.5`), else a lone comma as the decimal (`0,125`, `12,4`).
+  Edit (amount and as of; cash also its name, broker, "New broker…"
   included, and note, each sent only when changed (`cashEdits()`), no
   broker or an emptied note as null, which takes it off; Remove at the
   foot's start asks once), Set price (name, price per unit, the day it is for, starting
@@ -1257,7 +1262,8 @@ The parts:
   ticker (a link to its instrument page when it has one) and name, the
   amount large, then date, quantity, price (the average across fills,
   a bond's as a percent), fees, broker, portfolio on All, who added it
-  ("Web", "Admin" or the key's name) and when on the owner's calendar,
+  ("Web", "Admin" or the key's name) and when on the owner's calendar
+  (UTC's with no zone set, `dateIn()`),
   when it was removed and by whom, the note and each fill; its foot
   has Remove (asks once; every fill
   together), Buy and Sell (a fund's open on it, as one line), and a
@@ -1481,7 +1487,9 @@ The parts:
     its day, RSI 14 as neutral, overbought from 70 or oversold to 30,
     and momentum as the MACD histogram's sign, upward or downward, with
     a turn of its direction as the day's note, since a turn comes on
-    either side. A yield's distances and range are in points.
+    either side. A yield's distances and range are in points; any
+    other distance to an average at or below 0 is left out, as the
+    server's, since a percent of it says nothing.
   - **A fund's Top holdings, then Sectors or Bond ratings** (an ETF or
     mutual fund, from the answer's `top_holdings`): each a `Weights`
     list, one decimal. "Top 10: 82.6% of the fund · fetched 1 Nov"

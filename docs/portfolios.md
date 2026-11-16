@@ -374,7 +374,12 @@ once and valued on the live price the server already keeps.
   with none (one unquoted holding never blanks the total), cost and
   P/L over the rows with a cost (null when none has one), the day's
   change, and the value split into invested, reserve and dry powder,
-  each with its share. Weights and exposure (market, type, portfolio,
+  each with its share. The day's change counts cash, a face-valued bond
+  and a fund the owner prices as no move, since they have none by
+  definition, but is null when a quoted or listed row in the value
+  lacks one (no previous close, a missing rate for a trade that day),
+  so a part never reads as the whole; `missing` still names only what
+  the value leaves out. Weights and exposure (market, type, portfolio,
   broker) are within one currency: a holding's `currency_weight` is its
   share of the value in its own currency, never of the total, which is
   `converted.weight`. A total is rounded from the
@@ -466,8 +471,8 @@ once and valued on the live price the server already keeps.
   way listed, hundredths by their factor. A fund the owner prices is
   eased in a straight line between its stored prices (the owner's and
   its buys'), flat before the first and after the last, and named in
-  `eased`. A bond counts from the `as_of` of the first row of its chain
-  of updates, since an edit dates the row, not the buy; a listed bond
+  `eased`. A bond counts from its live row's `as_of`, its purchase date,
+  which an update moves only when given a `date`; a listed bond
   with closes moves with them, today's live value scaled by each day's
   close over the last one, else it is worth its face.
 - **Money in** is buys less sells at their amounts (a buy's `quantity ×

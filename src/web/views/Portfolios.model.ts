@@ -85,13 +85,14 @@ export function browserZone(): string | null {
   }
 }
 
-// a typed number: a dot or a lone comma for decimals, spaces and
-// thousands commas ignored; null when empty, NaN when not a number
+// a typed number: commas are thousands only in groups of three after a
+// leading 1-999 (12,400), else a lone comma is the decimal (0,125, 12,4);
+// spaces ignored; null when empty, NaN when not a number
 export function typed(text: string): number | null {
   let t = text.trim().replace(/\s+/g, "");
   if (t === "") return null;
-  if (!t.includes(".") && /^\d+,\d+$/.test(t)) t = t.replace(",", ".");
-  else t = t.replace(/,/g, "");
+  if (/^[1-9]\d{0,2}(,\d{3})+(\.\d*)?$/.test(t)) t = t.replaceAll(",", "");
+  else if (/^\d+,\d+$/.test(t)) t = t.replace(",", ".");
   return /^\d*\.?\d+$|^\d+\.$/.test(t) ? Number(t) : Number.NaN;
 }
 

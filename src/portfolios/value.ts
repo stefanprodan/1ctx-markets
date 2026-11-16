@@ -794,6 +794,11 @@ function positionRow(
 
 const nameOf = (r: Row): string => r.id ?? r.name ?? "";
 
+// a quoted or listed price has a day change; cash, a face-valued bond and
+// a fund the owner prices never move within a day, so count as none
+const moves = (r: Row): boolean =>
+  r.priced === "quote" || r.priced === "listing";
+
 // the known values summed, the rest named; cost and gain over the rows
 // with both a cost and a value, so cash and an unknown cost never count;
 // apart: reserve, outside the value and inside net worth
@@ -809,7 +814,7 @@ function sumOf(
   let cost = 0;
   let costed = 0;
   let any = false;
-  let days = 0;
+  let days: number | null = 0;
   const gone = new Set<string>();
   // missing names only what the value counts; reserve unknown voids net worth
   let unknownReserve = false;
@@ -829,7 +834,9 @@ function sumOf(
       costed += w.value;
       any = true;
     }
-    days += day(r) ?? 0;
+    const d = day(r);
+    if (d !== null) days = days === null ? null : days + d;
+    else if (moves(r)) days = null;
   }
   const split = split3(rows, (r) => worth(r).value, apart);
   return {

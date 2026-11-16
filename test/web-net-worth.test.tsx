@@ -306,6 +306,19 @@ describe("the net worth band", () => {
     }
   });
 
+  test("a missing day change reads as missing, never as no move", () => {
+    markets.portfolios.worth.value = {
+      ...WORTH,
+      holdings: {
+        ...HOLDINGS,
+        converted: { ...TOTAL, day_change: null, missing: [] },
+      },
+    };
+    expect(render(<NetWorthPanel />)).toMatch(
+      />—<\/span>\s*<span class="faint">today</,
+    );
+  });
+
   test("draws the figure, moves, bar and line, or the loader until read", () => {
     const waiting = render(<NetWorthPanel />);
     expect(waiting).toContain("nw-bar-waiting");

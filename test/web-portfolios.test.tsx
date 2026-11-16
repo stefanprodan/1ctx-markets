@@ -388,6 +388,15 @@ describe("the Portfolios page", () => {
     }
   });
 
+  test("a total's missing day change reads as missing, never as no move", async () => {
+    const { s } = await loaded({
+      ...HOLDINGS,
+      totals: [total("EUR", { day_change: null }), HOLDINGS.totals[1]!],
+    });
+    const html = render(<PortfoliosBody store={s.portfolios} />);
+    expect(html).toMatch(/>—<\/span>\s*<span class="faint">today</);
+  });
+
   test("a cash row opens its drawer from a button, a listed row its page", async () => {
     const { s } = await loaded();
     const html = render(<PortfoliosBody store={s.portfolios} />);
@@ -638,6 +647,15 @@ describe("plain words on the page", () => {
 });
 
 describe("the page's words", () => {
+  test("read commas as thousands only in groups of three, else as the decimal", () => {
+    expect(typed("1,250")).toBe(1250);
+    expect(typed("12,400")).toBe(12400);
+    expect(typed("1,234,567.5")).toBe(1234567.5);
+    expect(typed("0,125")).toBe(0.125);
+    expect(typed("12,4")).toBe(12.4);
+    expect(Number.isNaN(typed("1,23,4")!)).toBe(true);
+  });
+
   test("say amounts, gains and dates plainly", () => {
     expect(amount(1234.5, "EUR")).toBe("1,234.50 EUR");
     expect(amount(-3, "USD")).toBe("−3.00 USD");
@@ -2200,6 +2218,31 @@ describe("removed trades", () => {
     expect(html).toContain("Average price");
     expect(html).toContain(">Shares<");
   });
+
+  test.serial(
+    "with no zone set, a trade's entry is dated on UTC's day, as the server's",
+    async () => {
+      const { s } = await loaded();
+      const was = process.env.TZ;
+      process.env.TZ = "Pacific/Auckland";
+      try {
+        const html = render(
+          <TradeSheet
+            store={s.portfolios}
+            fills={[trade({ entered_at: "2026-03-02T23:30:00Z" })]}
+            all={false}
+            onTrade={() => {}}
+            onDone={() => {}}
+          />,
+        );
+        expect(html).toContain("2 Mar 2026");
+        expect(html).not.toContain("3 Mar 2026");
+      } finally {
+        if (was === undefined) delete process.env.TZ;
+        else process.env.TZ = was;
+      }
+    },
+  );
 
   test("a fund's trade offers Buy and Sell too", async () => {
     const { s } = await loaded();
