@@ -157,6 +157,7 @@ export function PositionEdit({
   head,
   drawer,
   onMoved,
+  saving,
 }: {
   store: PortfolioStore;
   h: Holding;
@@ -166,6 +167,8 @@ export function PositionEdit({
   lead?: ComponentChildren;
   head?: ComponentChildren;
   drawer?: boolean;
+  // the drawer's, so it stays open while a save is on its way
+  saving?: Signal<boolean>;
 }) {
   // the stored amount, never the value rounded for show
   const first = useSignal(String(h.parts[0]?.amount ?? ""));
@@ -182,10 +185,12 @@ export function PositionEdit({
   const note = useSignal(h.note ?? "");
   const maturity = useSignal(h.maturity ?? "");
   const dry = useSignal(h.dry_powder === true);
-  const busy = useSignal(false);
+  const own = useSignal(false);
+  const busy = saving ?? own;
   const error = useSignal<string | null>(null);
   const save = async (ev: Event) => {
     ev.preventDefault();
+    if (busy.value) return;
     const n = typed(first.value);
     if (n === null || Number.isNaN(n)) {
       error.value = "Not a number.";
@@ -432,6 +437,7 @@ function PositionActions({
   const editing = useSignal(false);
   const asking = useSignal(false);
   const error = useSignal<string | null>(null);
+  const removing = useSignal(false);
   return (
     <div class="pf-row-actions">
       {editing.value ? (
@@ -457,8 +463,12 @@ function PositionActions({
           <button
             type="button"
             class="btn btn-small btn-danger"
+            disabled={removing.value}
             onClick={async () => {
+              if (removing.value) return;
+              removing.value = true;
               error.value = await store.removePosition(h.position!);
+              removing.value = false;
               asking.value = false;
             }}
           >
@@ -739,11 +749,13 @@ function FormPick({
   value,
   options,
   onPick,
+  disabled,
 }: {
   label: string;
   value: Signal<string>;
   options: { value: string; text: string }[];
   onPick?: () => void;
+  disabled?: boolean;
 }) {
   return (
     <div class="field">
@@ -754,6 +766,7 @@ function FormPick({
         label={label}
         value={value.value}
         options={options}
+        disabled={disabled}
         onPick={(v) => {
           value.value = v;
           onPick?.();
@@ -769,16 +782,19 @@ function FieldPick({
   value,
   options,
   onPick,
+  disabled,
 }: {
   label: string;
   value: string;
   options: { value: string; text: string }[];
   onPick: (v: string) => void;
+  disabled?: boolean;
 }) {
   const picked = options.find((o) => o.value === value) ?? options[0]!;
   return (
     <MenuButton
       field
+      disabled={disabled}
       label={`${label}: ${picked.text}`}
       text={picked.text}
       items={options.map((o) => ({
@@ -1309,6 +1325,7 @@ export function AddForm({
         allMeansHere &&
         qty.value === String(heldQty);
       const units = num(qty, "Units", true, "above")!;
+      const paidFees = num(fees, "Fees", false);
       return {
         fund: {
           isin: code,
@@ -1321,7 +1338,7 @@ export function AddForm({
             ? { total: num(px, "Total paid", true) }
             : { price: num(px, "Price", true) }),
           date: date.value,
-          ...(typed(fees.value) ? { fees: num(fees, "Fees", false)! } : {}),
+          ...(paidFees ? { fees: paidFees } : {}),
           ...(market.value !== "" && market.value !== (knownFund?.market ?? "")
             ? { market: market.value }
             : {}),
@@ -2088,8 +2105,14 @@ export function ImportPanel({
   const busy = useSignal(false);
   const error = useSignal<string | null>(null);
   const input = useRef<HTMLInputElement>(null);
+  // the read asked last: an earlier preview landing after it, or after
+  // a pick that cleared it, is another selection's
+  const reads = useRef(0);
+  // the run that set busy last, which alone ends it
+  const running = useRef(0);
   // a preview read for another portfolio or broker would mislead
   useEffect(() => {
+    reads.current++;
     preview.value = null;
     dry.value = [];
     csv.value = null;
@@ -2109,6 +2132,8 @@ export function ImportPanel({
       error.value = "Pick a portfolio.";
       return;
     }
+    const mine = ++reads.current;
+    running.current = mine;
     busy.value = true;
     error.value = null;
     const r = await store.importFile({
@@ -2118,7 +2143,8 @@ export function ImportPanel({
       dry_powder: dry.value,
       confirm,
     });
-    busy.value = false;
+    if (running.current === mine) busy.value = false;
+    if (mine !== reads.current) return;
     if ("refused" in r) {
       error.value = r.refused;
       return;
@@ -2163,6 +2189,7 @@ export function ImportPanel({
         <FormPick
           label="Portfolio"
           value={portfolio}
+          disabled={busy.value}
           options={[
             ...(portfolio.value === ""
               ? [{ value: "", text: "Pick a portfolio" }]
@@ -2173,6 +2200,7 @@ export function ImportPanel({
         <FormPick
           label="Broker for the file"
           value={broker}
+          disabled={busy.value}
           options={[
             { value: "", text: "From the file" },
             ...brokers.map((b) => ({ value: b.name, text: b.name })),
@@ -2185,6 +2213,7 @@ export function ImportPanel({
           <button
             type="button"
             class="btn"
+            disabled={busy.value}
             onClick={() => input.current?.click()}
           >
             <Icon name="upload" size={14} /> Choose CSV
@@ -2231,6 +2260,7 @@ export function ImportPanel({
                   <label class="faint pf-dry">
                     <input
                       type="checkbox"
+                      disabled={busy.value}
                       checked={dry.value.includes(r.line)}
                       onChange={async (ev) => {
                         dry.value = ev.currentTarget.checked
@@ -2274,6 +2304,16 @@ function NameRow({
   const text = useSignal(name);
   const asking = useSignal(false);
   const error = useSignal<string | null>(null);
+  // a rename or delete on its way takes no second press
+  const busy = useSignal(false);
+  const once = async (run: () => Promise<string | null>) => {
+    busy.value = true;
+    try {
+      return await run();
+    } finally {
+      busy.value = false;
+    }
+  };
   return (
     <li class="pf-name">
       {editing.value ? (
@@ -2281,7 +2321,8 @@ function NameRow({
           class="field pf-inline"
           onSubmit={async (ev) => {
             ev.preventDefault();
-            error.value = await onRename(text.value.trim());
+            if (busy.value) return;
+            error.value = await once(() => onRename(text.value.trim()));
             if (error.value === null) editing.value = false;
           }}
         >
@@ -2292,12 +2333,17 @@ function NameRow({
               text.value = e.currentTarget.value;
             }}
           />
-          <button type="submit" class="btn btn-small btn-primary">
+          <button
+            type="submit"
+            class="btn btn-small btn-primary"
+            disabled={busy.value}
+          >
             Save
           </button>
           <button
             type="button"
             class="btn btn-small"
+            disabled={busy.value}
             onClick={() => {
               editing.value = false;
               text.value = name;
@@ -2332,8 +2378,10 @@ function NameRow({
                 <button
                   type="button"
                   class="btn btn-small btn-danger"
+                  disabled={busy.value}
                   onClick={async () => {
-                    error.value = await onDelete();
+                    if (busy.value) return;
+                    error.value = await once(onDelete);
                     asking.value = false;
                   }}
                 >
@@ -2403,13 +2451,17 @@ function AddName({
 }) {
   const text = useSignal("");
   const error = useSignal<string | null>(null);
+  // Enter pressed again while the add is out makes no second one
+  const busy = useSignal(false);
   return (
     <form
       class="field pf-inline"
       onSubmit={async (ev) => {
         ev.preventDefault();
-        if (text.value.trim() === "") return;
+        if (busy.value || text.value.trim() === "") return;
+        busy.value = true;
         error.value = await onAdd(text.value.trim());
+        busy.value = false;
         if (error.value === null) text.value = "";
       }}
     >
@@ -2421,7 +2473,7 @@ function AddName({
           text.value = e.currentTarget.value;
         }}
       />
-      <button type="submit" class="btn btn-small">
+      <button type="submit" class="btn btn-small" disabled={busy.value}>
         <Icon name="plus" size={14} /> Add
       </button>
       {error.value && (

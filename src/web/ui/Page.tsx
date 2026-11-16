@@ -19,7 +19,8 @@ export const STALE_MS = 5000;
 export type Failed = {
   words: string;
   status: number | null;
-  retry: () => void;
+  // none where reading again cannot help, such as an address with no page
+  retry?: () => void;
 };
 
 // as 1ctx: a page with nothing on screen says it did not load; one still
@@ -150,13 +151,15 @@ export function Page({
             </p>
             <p class="page-failed-text">{failed.words}</p>
           </div>
-          <button
-            type="button"
-            class="btn page-failed-retry"
-            onClick={failed.retry}
-          >
-            Try again
-          </button>
+          {failed.retry && (
+            <button
+              type="button"
+              class="btn page-failed-retry"
+              onClick={failed.retry}
+            >
+              Try again
+            </button>
+          )}
         </div>
       ) : (
         children

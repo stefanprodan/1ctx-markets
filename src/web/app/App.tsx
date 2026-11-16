@@ -143,7 +143,10 @@ export function App({ store = markets }: { store?: Store }) {
   const View = page.route.view;
   return (
     <Shell here={held?.here ?? here}>
-      <View params={page.params} />
+      <View
+        key={page.route.keyed ? JSON.stringify(page.params) : undefined}
+        params={page.params}
+      />
     </Shell>
   );
 }

@@ -1,6 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 
+import { SYMBOL } from "../app/paths.ts";
 import type { Detail, Fetched, Listed, Part, Section } from "../data/store.ts";
 import {
   ago,
@@ -246,3 +247,13 @@ export const isFund = (row: Pick<Listed, "kind">): boolean =>
 const BUYABLE = new Set(["EQUITY", "ETF", "MUTUALFUND", "CRYPTOCURRENCY"]);
 export const buyable = (row: Pick<Listed, "id" | "kind">): boolean =>
   BUYABLE.has(row.kind) || row.id.startsWith("fund:");
+
+// a refetch or delete answered after the reader moved on acts on nothing
+export function onSymbolPage(pathname: string, id: string): boolean {
+  if (!pathname.startsWith(SYMBOL)) return false;
+  try {
+    return decodeURIComponent(pathname.slice(SYMBOL.length)) === id;
+  } catch {
+    return false;
+  }
+}

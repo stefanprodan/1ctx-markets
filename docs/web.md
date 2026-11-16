@@ -237,7 +237,8 @@ learns it from `email_on` in `GET /ui/me`.
   then subscribes with the server's key and posts it; a refusal leaves
   it off with "Notifications not allowed."; off deletes it and ends the
   browser's subscription. The page registers `/sw.js` only to read or
-  make a subscription.
+  make a subscription; a registration that failed is tried again on
+  the next read or turn-on.
 - **The app icon counts the unseen alerts**: each push carries the
   rail's count, and the page sets the badge whenever its count of
   unseen alerts changes, so marking Fired seen clears it; sign-out
@@ -364,6 +365,12 @@ learns it from `email_on` in `GET /ui/me`.
   answer and error until the next one lands (`detailId` is the id they
   are for; a refetch reloads the id asked last), so the held page never
   empties under the reader.
+- **An instrument's and a trade plan's page is drawn afresh for each
+  symbol or plan** (`keyed` in `ROUTES`), so a drawer, a draft or
+  Refetch's outcome never carries to the next; a refetch or delete
+  answered after the reader moved on acts on nothing
+  (`onSymbolPage()`). Portfolios is not keyed: its tabs move the
+  address under one page.
 - **The page imports outside `src/web/` only from `src/shared/`**,
   plain files that import nothing but each other, so no server-only
   code (a package, `bun:`, the database) reaches the browser bundle;
@@ -604,7 +611,8 @@ The parts:
   body, `foot` and `footStart`, `busy`; slides in 200ms and out 180ms;
   Escape, the close or the dimmed page closes it once (Escape in a
   search with words clears it first), and the focus returns where it
-  was, or to the menu button that opened it.
+  was, or to the menu button that opened it. While `busy` nothing
+  closes it, and a `swaps` drawer opens no row behind it either.
 - `Notice.tsx`: an empty list's line, a refusal (`error`), or a panel
   that starts a page from nothing; a page that did not load is `Page`'s
   `failed`.
@@ -855,7 +863,8 @@ The parts:
   with its values now, where Pause and Resume (`PATCH {paused}`) and
   Remove (asked once, `DELETE`) call the alerts writes; Price alert
   adds `price <= level` or `price >= level` on one symbol (`POST
-  /api/v1/alerts`). Agents make the richer ones.
+  /api/v1/alerts`), waiting on the symbol's price, and says "The price
+  did not load." when its read fails. Agents make the richer ones.
 - **Fired** is `GET /api/v1/alerts/history` by day, newest first, More
   reading the next older page by its `next_page_token`; each trigger's
   words come from its `when` and `values`. Opening it marks the newest seen
@@ -911,7 +920,8 @@ The parts:
   instrument page `InstrumentTradePlans.tsx`, `data/trade-plans.ts` the
   calls; the filters, the card's list and the words are
   `TradePlans.model.ts`, which has no DOM and is tested
-  (`test/web-trade-plans.test.tsx`).
+  (`test/web-trade-plans.test.tsx`). An address whose id is no plan's
+  (`planIdOf()`) says "No such trade plan." without asking the server.
 - **The list** reads every page of `GET /api/v1/trade-plans?status=all`
   once, active and archived, and filters it in the page: Active (the
   default), Archived, All (both, as the server's own `all`) and Deleted,
@@ -1120,7 +1130,9 @@ The parts:
   on the minute's refresh; Home's series stands in when it is in that
   currency, still today's and read after the last save. A save drops
   the kept series, as a balance dated in the past moves its past days,
-  and the line drawn stays until the new one lands. Under two points,
+  and the line drawn stays until the new one lands; a read a save
+  overtakes is asked again, since the page has no series left to ask
+  on. Under two points,
   in another currency, or when its read failed: no line and no slot, a
   failed read tried again the next time the Cash tab is shown.
 - **The line never flickers.** Each view's series is kept for the
@@ -1335,7 +1347,9 @@ The parts:
   file's lines each with a Dry powder box; "Import N" saves the ready
   ones. Its picker leaves Cash out while another portfolio is kept, as
   a cash file goes to Cash whatever is picked. Changing the portfolio or broker clears the file and its
-  preview, so a preview read for another is never saved. Settings lists portfolios and brokers with rename, delete
+  preview, so a preview read for another is never saved; the pickers,
+  Choose CSV and the Dry powder boxes are off while a preview reads,
+  and only the read asked last lands. Settings lists portfolios and brokers with rename, delete
   (none on Cash, which is fixed), and portfolios but Cash with Move up
   and Move down arrows before them (no up on the first, no down on the
   last), saved at once; the tabs and every pick read the server's

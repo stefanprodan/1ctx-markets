@@ -67,6 +67,10 @@
   .menu-btn-field[aria-expanded="true"] {
     border-color: var(--line-strong);
   }
+  .menu-btn-field:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
   .menu-pop-field {
     left: 0;
     right: 0;

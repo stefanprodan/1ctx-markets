@@ -3,6 +3,7 @@
 // The Portfolios page from fixed, made-up answers: no DOM, no network.
 
 import { describe, expect, test } from "bun:test";
+import { options, type VNode } from "preact";
 import { render } from "preact-render-to-string";
 import { UserItems } from "../src/web/app/UserMenu.tsx";
 import { type Fetch, sentence } from "../src/web/data/api.ts";
@@ -1801,6 +1802,31 @@ describe("a fund the owner prices", () => {
     expect(bodies[0]![1]).toMatchObject({ fees: 1.5 });
   });
 
+  test("a fund trade refuses fees that are not a number", async () => {
+    const { s, bodies } = await withFund();
+    const { nodes } = drawn(() => (
+      <AddForm
+        store={s.portfolios}
+        onDone={() => {}}
+        start={{
+          symbol: `fund:${ISIN}`,
+          side: "buy",
+          portfolio: "Shares",
+          broker: "North",
+          fund: { isin: ISIN, name: "Made Up World Fund", market: "BVB" },
+        }}
+      />
+    ));
+    const field = (label: string) =>
+      nodes.find((n) => String(n.props?.label ?? "").startsWith(label))!.props
+        .value;
+    field("Units").value = "2";
+    field("Fees").value = "two";
+    const form = nodes.find((n) => n.type === "form" && n.props.onSubmit)!;
+    await form.props.onSubmit({ preventDefault() {} });
+    expect(bodies).toEqual([]);
+  });
+
   test("its trades read by name, and its refusals plainly", () => {
     const t = trade({ symbol: `fund:${ISIN}`, name: "Made Up World Fund" });
     expect(tradeName(t)).toBe("Made Up World Fund");
@@ -2307,6 +2333,37 @@ describe("the Cash portfolio", () => {
     );
   });
 
+  test("Add sends a new portfolio once, however often it is pressed", async () => {
+    const st = await at([CASH, ...OVERVIEW.portfolios]);
+    const asked: string[] = [];
+    const done = Promise.withResolvers<string | null>();
+    const { nodes } = drawn(() => (
+      <SettingsPanel
+        store={{
+          ...st,
+          createPortfolio: (name: string) => {
+            asked.push(name);
+            return done.promise;
+          },
+        }}
+        onDone={() => {}}
+      />
+    ));
+    const input = nodes.find(
+      (n) => n.type === "input" && n.props.placeholder === "New portfolio",
+    )!;
+    input.props.onInput({ currentTarget: { value: "Bonds" } });
+    const form = nodes.find(
+      (n) => n.type === "form" && [n.props.children].flat().includes(input),
+    )!;
+    const press = () => form.props.onSubmit({ preventDefault() {} });
+    const first = press();
+    void press();
+    done.resolve(null);
+    await first;
+    expect(asked).toEqual(["Bonds"]);
+  });
+
   test("Cash has no rename or remove", async () => {
     const st = await at([CASH, ...OVERVIEW.portfolios]);
     const html = render(<SettingsPanel store={st} onDone={() => {}} />);
@@ -2728,3 +2785,18 @@ describe("what Add opens on", () => {
     );
   });
 });
+
+// every vnode a render makes, so a test can press what it drew
+function drawn(view: () => VNode): { html: string; nodes: any[] } {
+  const nodes: any[] = [];
+  const before = options.vnode;
+  options.vnode = (v) => {
+    nodes.push(v);
+    before?.(v);
+  };
+  try {
+    return { html: render(view()), nodes };
+  } finally {
+    options.vnode = before;
+  }
+}

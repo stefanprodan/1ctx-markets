@@ -28,6 +28,7 @@ import {
 } from "../src/web/views/TradePlans.model.ts";
 import {
   PlanDrawer,
+  TradePlan,
   TradePlanBody,
   TradePlansBody,
 } from "../src/web/views/TradePlans.tsx";
@@ -320,6 +321,15 @@ describe("a plan opened", () => {
       expect(phone).not.toContain("Edit</button>");
     } finally {
       onPhone.value = false;
+    }
+  });
+
+  test("a malformed address says there is no such plan", () => {
+    for (const id of ["abc", "0", "-2", "1.5", "1e3"]) {
+      const html = render(<TradePlan params={{ id }} />);
+      expect([id, html.includes("No such trade plan.")]).toEqual([id, true]);
+      // reading again cannot help an address with no plan
+      expect(html).not.toContain("Try again");
     }
   });
 

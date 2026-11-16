@@ -53,10 +53,16 @@ export function browserPush(): PushDevice {
   let registered: Promise<ServiceWorkerRegistration> | null = null;
   const registration = () => {
     // ready: a tap right after the first registration needs the worker
-    // active before any subscription call
-    registered ??= nav!.serviceWorker
-      .register(WORKER_PATH)
-      .then(() => nav!.serviceWorker.ready);
+    // active before any subscription call; a failed one is asked again
+    if (registered === null) {
+      const asked = nav!.serviceWorker
+        .register(WORKER_PATH)
+        .then(() => nav!.serviceWorker.ready);
+      registered = asked;
+      asked.catch(() => {
+        if (registered === asked) registered = null;
+      });
+    }
     return registered;
   };
   const subscription = async () =>

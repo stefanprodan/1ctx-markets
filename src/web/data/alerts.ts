@@ -261,6 +261,8 @@ export function alertsStore(
       next.value = null;
       seen.value = null;
       seenBefore.value = null;
+      error.value = null;
+      code.value = null;
     });
   };
 

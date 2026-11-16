@@ -7,6 +7,7 @@ import { render } from "preact-render-to-string";
 import { UserItems } from "../src/web/app/UserMenu.tsx";
 import { client } from "../src/web/data/api.ts";
 import {
+  browserPush,
   PUSH_PATH,
   type PushDevice,
   pushStore,
@@ -169,5 +170,32 @@ describe("the push store", () => {
     unseen.value = 0;
     p.signedOut();
     expect(d.badges).toEqual([3, 0, 0]);
+  });
+});
+
+describe("the browser's push", () => {
+  test("a failed worker registration is tried again", async () => {
+    let tries = 0;
+    const was = globalThis.navigator;
+    const sub = { endpoint: "https://push.example.test/made-up" };
+    const ready = { pushManager: { getSubscription: async () => sub } };
+    globalThis.navigator = {
+      serviceWorker: {
+        register: async () => {
+          tries++;
+          if (tries === 1) throw new Error("offline");
+          return ready;
+        },
+        ready: Promise.resolve(ready),
+      },
+    } as unknown as Navigator;
+    try {
+      const device = browserPush();
+      await expect(device.current()).rejects.toThrow("offline");
+      expect(await device.current()).toBe(sub.endpoint);
+      expect(tries).toBe(2);
+    } finally {
+      globalThis.navigator = was;
+    }
   });
 });
