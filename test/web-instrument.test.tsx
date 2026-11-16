@@ -908,7 +908,7 @@ describe("a fund the owner prices, on its page", () => {
     ).toEqual([]);
   });
 
-  test("a year or more sums each month's trades on its first bar", () => {
+  test("a year or more sums each month's trades on its latest trade's bar", () => {
     const times = ["2026-08-31", "2026-09-01", "2026-09-15", "2026-10-01"];
     expect(
       monthlyShares(times, [
@@ -920,10 +920,34 @@ describe("a fund the owner prices, on its page", () => {
         { date: "2026-08-03", side: "buy", quantity: 9, price: 1 },
       ]),
     ).toEqual([
-      { time: "2026-09-01", side: "buy", price: 17.5, quantity: 4 },
-      { time: "2026-09-01", side: "sell", price: 30, quantity: 2 },
+      { time: "2026-09-15", side: "buy", price: 17.5, quantity: 4 },
+      { time: "2026-09-15", side: "sell", price: 30, quantity: 2 },
       { time: "2026-10-01", side: "buy", price: 40, quantity: 5 },
     ]);
+  });
+
+  test("a month's buys and sells each sit on their own latest bar", () => {
+    const times = ["2026-09-01", "2026-09-15", "2026-09-29"];
+    expect(
+      monthlyShares(times, [
+        { date: "2026-09-02", side: "buy", quantity: 1, price: 10 },
+        { date: "2026-09-30", side: "sell", quantity: 1, price: 13 },
+      ]),
+    ).toEqual([
+      { time: "2026-09-01", side: "buy", price: 10, quantity: 1 },
+      { time: "2026-09-29", side: "sell", price: 13, quantity: 1 },
+    ]);
+  });
+
+  test("a month's trades sit on the week of its latest trade", () => {
+    // a buy on Monday 21 September lands on its own week, not on the 7th
+    const weeks = ["2026-08-31", "2026-09-07", "2026-09-14", "2026-09-21"];
+    expect(
+      monthlyShares(weeks, [
+        { date: "2026-09-09", side: "buy", quantity: 1, price: 50 },
+        { date: "2026-09-21", side: "buy", quantity: 1, price: 40 },
+      ]),
+    ).toEqual([{ time: "2026-09-21", side: "buy", price: 45, quantity: 2 }]);
   });
 
   test("a month on weekly bars counts a trade by its own date", () => {

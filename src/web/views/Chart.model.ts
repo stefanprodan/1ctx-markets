@@ -614,8 +614,9 @@ export function clearOfTags(
 }
 
 // a year or more of trades reads by month: each month's buys and sells
-// summed on the month's first bar, by the trade's own date, as a week's
-// bar can start in the month before
+// summed on the bar of its latest trade, so the dot sits near the price
+// paid; by the trade's own date, as a week's bar can start in the month
+// before
 export const MONTHLY_SHARES: readonly Range[] = ["1Y", "3Y", "5Y", "Max"];
 export function monthlyShares(
   times: readonly string[],
@@ -623,11 +624,19 @@ export function monthlyShares(
 ): TradeMark[] {
   const first = times[0];
   if (first === undefined) return [];
+  const kept = trades.filter((t) => t.date >= first);
+  // by side, so a month's buy sits near its own price, not the sell's
+  const latest = new Map<string, string>();
+  const key = (t: Trade) => `${t.date.slice(0, 7)} ${t.side}`;
+  for (const t of kept) {
+    if (t.date > (latest.get(key(t)) ?? "")) latest.set(key(t), t.date);
+  }
   return summed(
-    trades.flatMap((t) => {
-      if (t.date < first) return [];
+    kept.flatMap((t) => {
       const month = t.date.slice(0, 7);
+      const last = latest.get(key(t))!;
       const at =
+        times.findLast((d) => d.startsWith(month) && d <= last) ??
         times.find((d) => d.startsWith(month)) ??
         times.findLast((d) => d <= t.date);
       return at === undefined ? [] : [{ ...t, at }];
