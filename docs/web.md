@@ -558,15 +558,30 @@ Portfolios page is the reference for each part.
 - **Rules** reads every page of `GET /api/v1/alerts` with each alert's
   `now` and `instruments`, filtered in the page, nearest first, a
   symbol's alerts together and paused last. A row's drawer ticks each
-  comparison from `now[i].holds` and pauses, resumes or removes it
-  (asked once). The page adds only a price above or below a level on
+  comparison from `now[i].holds`, links the owner's active plans
+  tagged with the symbol, and pauses, resumes or removes it (asked
+  once). The page adds only a price above or below a level on
   one symbol (`POST /api/v1/alerts`), waiting on the symbol's price and
   saying when it did not load; agents make the richer ones.
-- **Fired** reads `GET /api/v1/alerts/history` by day, newest first, a
-  page at a time; each trigger's words come from its `when` and
-  `values`, a close alert's ending with the close it read, in the
-  push's words ("at the 13 Nov close", `closeName()` in
-  `src/shared/when-words.ts`). Opening it marks the newest seen
+- **Fired** reads `GET /api/v1/alerts/history`, newest first, a page
+  at a time. The newest trigger leads, large, with what triggered: its
+  words come from its `when` and `values`, a close alert's ending with
+  the close it read, in the push's words ("at the 13 Nov close",
+  `closeName()` in `src/shared/when-words.ts`). The rest split into
+  those still met and those no longer met (`historyGroups()`). A
+  trigger is still met when it is its alert's newest (an alert fires
+  again only after its condition went false), the alert is kept with
+  the same condition, has not been watching again since (a close
+  alert re-arms on a false close), is neither paused, split-paused nor
+  unknown, and every comparison holds as `when` joins them
+  (`metOf()`); else it
+  is no longer met. A no longer met trigger's tag is the first
+  comparison's side and `gap_percent` ("Back above · 0.2%"), only
+  between price levels; any other has none. Each figure is the
+  symbol's price now, else the first comparison's reading by name
+  ("RSI 34.5", "50-day average 165.00 EUR"). Each row's Plan opens the owner's active plans tagged with
+  the symbol, from the plan list read when the tab opens and every 30
+  seconds. Opening the tab marks the newest seen
   (`PUT /api/v1/alerts/seen`); the ones newer than the last visit keep
   a dot until the tab is left. A failed refresh says so over the rows
   still shown (`stale`).
