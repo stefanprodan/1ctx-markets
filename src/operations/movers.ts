@@ -15,6 +15,7 @@ import {
   answerKind,
   closeOn,
   type Latest,
+  MAX_SET_NEXT,
   MAX_SYMBOLS,
   quoteItem,
   readLatest,
@@ -24,7 +25,7 @@ import {
   type Resolved,
   type SetRead,
   setPage,
-  startOf,
+  shownBy,
   type Unavailable,
   unavailable,
 } from "./sets.ts";
@@ -98,7 +99,7 @@ export function parseMovers(input: unknown): MoversArgs {
     direction: oneOf(f.direction, "direction", DIRECTIONS, "either"),
     average,
     relation,
-    next: optionalText(f.next, "next", 200),
+    next: optionalText(f.next, "next", MAX_SET_NEXT),
   };
 }
 
@@ -291,7 +292,7 @@ export async function readMovers(
     return a.id < b.id ? -1 : 1;
   });
   return {
-    matched: matched.map(({ item }) => ({ item, fred: false })),
+    matched: matched.map(({ id, item }) => ({ key: id, item, fred: false })),
     notMatched,
     unavailable: out,
     errors,
@@ -307,7 +308,7 @@ export async function moversAnswer(
   args: MoversArgs,
 ): Promise<ToolResult> {
   const { next, ...asked } = args;
-  const offset = startOf(next, asked);
+  const shown = shownBy(next, asked);
   const read = await readMovers(m, args);
-  return textResult(setPage({ ...read, args: asked, offset }));
+  return textResult(setPage({ ...read, args: asked, shown }));
 }

@@ -3,12 +3,7 @@
 Governs the Federal Reserve Economic Data (FRED) source of the
 St. Louis Fed: `src/sources/fred/client.ts` (calls and answer checks),
 `sync.ts` (series as instruments, observations as bars) and `jobs.ts`
-(the daily refetch and staleness), all under `src/sources/fred/`. The
-queue, deadlines, retries, backfill, phrases, scrubbing and the lock
-every source shares are in `docs/sources.md`; how the bars become
-signals in `docs/signals.md`; key files in `docs/config.md`; runs,
-tracking and staleness in `docs/storage.md`; the answer pages in
-`docs/tools.md`.
+(the daily refetch and staleness), all under `src/sources/fred/`.
 
 ## On and off
 

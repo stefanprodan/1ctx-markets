@@ -472,6 +472,19 @@ describe("the alerts store", () => {
     expect(store.next.value).toBeNull();
   });
 
+  test("a sign-out clears a failed read's error", async () => {
+    const store = alertsStore(
+      () => Promise.reject(new Error("The server did not answer.")),
+      () => 1,
+      never,
+    );
+    await store.loadAll();
+    expect(store.error.value).not.toBeNull();
+    store.signedOut();
+    expect(store.error.value).toBeNull();
+    expect(store.code.value).toBeNull();
+  });
+
   test("a refresh that started before a mark never moves it back", async () => {
     const f = fake();
     const store = alertsStore(f.call, () => 1, never);

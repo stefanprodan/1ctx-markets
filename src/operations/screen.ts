@@ -36,6 +36,7 @@ import {
   type AnswerKind,
   answerKind,
   type Latest,
+  MAX_SET_NEXT,
   MAX_SYMBOLS,
   quoteItem,
   readLatest,
@@ -46,7 +47,7 @@ import {
   type Resolved,
   type SetRead,
   setPage,
-  startOf,
+  shownBy,
   type Unavailable,
   unavailable,
 } from "./sets.ts";
@@ -249,7 +250,7 @@ export function parseScreen(input: unknown): ScreenArgs {
     sort,
     order,
     fields: shown,
-    next: optionalText(f.next, "next", 200),
+    next: optionalText(f.next, "next", MAX_SET_NEXT),
   };
 }
 
@@ -397,10 +398,10 @@ export async function screenAnswer(
   const { next, fields: shown, ...rest } = args;
   // a cursor made before fields existed still continues
   const asked = shown.length === 0 ? rest : { ...rest, fields: shown };
-  const offset = startOf(next, asked);
+  const before = shownBy(next, asked);
   const read = await readScreen(m, args);
   if ("error" in read) return errorResult(read);
-  return textResult(setPage({ ...read, args: asked, offset }));
+  return textResult(setPage({ ...read, args: asked, shown: before }));
 }
 
 export async function readScreen(
@@ -478,7 +479,7 @@ export async function readScreen(
     ...(bench?.source === FRED ? { attribution: ATTRIBUTION } : {}),
   };
   return {
-    matched: matched.map(({ item, fred }) => ({ item, fred })),
+    matched: matched.map(({ id, item, fred }) => ({ key: id, item, fred })),
     notMatched,
     unavailable: out,
     errors,

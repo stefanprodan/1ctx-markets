@@ -2,18 +2,10 @@
 
 Governs the Model Context Protocol (MCP) tools: `src/server/mcp.ts`,
 `src/server/instructions.ts`, `src/tools/index.ts`,
-`src/tools/schema.ts`, and `answer.ts`,
-`args.ts`, `markets.ts`, `targets.ts`, `quote.ts`, `extended.ts`,
-`history.ts`, `search.ts`, `movers.ts`, `screen.ts` and `sets.ts` under
-`src/operations/`. The HTTP API that calls the same reads is in
-`docs/api.md`; the research and events tools in `docs/research.md`;
-the alerts tools in `docs/alerts.md`; the portfolio tools in
-`docs/portfolios.md`; the profile tools in `docs/profile.md`; the
-analysis tools in `docs/analysis.md`; the trade plans tools in
-`docs/trade-plans.md`; signal
-rows and returns in `docs/signals.md`; units, stale reasons and
-tracking in `docs/storage.md`; the source queue and deadlines in
-`docs/sources.md`; the server, keys and flags in `docs/config.md`.
+`src/tools/schema.ts`, and `answer.ts`, `args.ts`, `markets.ts`,
+`targets.ts`, `quote.ts`, `extended.ts`, `history.ts`, `search.ts`,
+`movers.ts`, `screen.ts` and `sets.ts` under `src/operations/`. Each
+area's own tools are in its doc.
 
 ## The MCP endpoint
 
@@ -100,14 +92,22 @@ tracking in `docs/storage.md`; the source queue and deadlines in
   appends a digest of the arguments without `next`, and `readCursor()`
   refuses it with other arguments (`bad_arguments`). quote binds its
   `benchmark` only when one is given, so a cursor without one stays
-  valid. The position is the next offset, the next bar's date
-  (history), the next point's `at` with its bounds (history's `5m`)
-  or the next alert id (the alerts list), or the last trigger id shown
-  (the alerts history).
-- **movers and screen page a fresh view**: each call reads again and
-  pages the sorted set from the offset, `counts` covering every page;
-  the set may shift between pages, as the descriptions say. An offset
-  past a set that shrank is refused (`startOf()`).
+  valid. The position is the next offset, the rows already shown
+  (movers, screen, holdings), the next bar's date (history), the next
+  point's `at` with its bounds (history's `5m`) or the next alert id
+  (the alerts list), or the last trigger id shown (the alerts history).
+- **movers, screen and portfolio holdings page a fresh view by the
+  rows shown**: each call reads and ranks again, and the cursor holds a
+  6-character tag of each row shown (`tagOf()`: an instrument's id, a
+  holding's `keyOf`, `err:<input>` for an error row with none), so a
+  symbol unavailable on one page and matched on the next is not shown
+  again, and a move between pages neither repeats nor skips a row;
+  `counts` cover every page. A row is dropped only when its tag is
+  unique in the new list (`notShown()`): a collision repeats a row,
+  never hides one. A row that stopped matching just ends the walk
+  sooner. The cursor grows by
+  seven characters a row, so movers' and screen's `next` cap fits two
+  tags a symbol (`MAX_SET_NEXT`).
 - **An error is a result with `isError`, in the same one-part form**,
   cut to `error` and a 1,024-character message when too long. An
   `ArgError` answers `bad_arguments`; any other throw is logged and
@@ -140,7 +140,7 @@ tracking in `docs/storage.md`; the source queue and deadlines in
   plans tools' `id` and `revision` read `"1"`, `"2.5"` and `"true"` as
   their values (`textValues()`), and `profile_edit`, `analysis_edit`
   and `trade_plans_edit` read `edits` sent as JSON text. Other text is
-  refused as before.
+  refused.
 - **Arguments are typed, each meaning one thing**: an id is an
   integer, never a union with a string, a mode is its own boolean
   (`all: true`), and an argument that changes a row never also picks
@@ -397,10 +397,11 @@ tracking in `docs/storage.md`; the source queue and deadlines in
 
 - **Each tool is a read and its paging.** `quoteRows()`,
   `readHistory()`, `searchAll()`, `readMovers()`, `readScreen()`,
-  `readEventsOf()`, `createRule()`, `pauseRule()` and
-  `deleteRuleById()` answer the whole result; the tool pages it and
-  the API (`docs/api.md`) answers it at once. A change to what a tool
-  reads goes in the read, so both surfaces stay the same.
+  `readEventsOf()`, `alertList()`, `historyList()`, `createAlert()`,
+  `updateAlert()`, `pauseAlert()` and `deleteAlert()` answer the whole
+  result; the tool pages it and the API (`docs/api.md`) answers it at
+  once. A change to what a tool reads goes in the read, so both
+  surfaces stay the same.
 - **The MCP answers are pinned**: `test/mcp.test.ts` compares every
   tool's pages over the recordings with
   `test/fixtures/mcp/answers.json` byte for byte. A change meant to

@@ -39,6 +39,8 @@ import {
   fieldsOf,
   filterCount,
   NO_FIELDS,
+  NO_PLAN,
+  planIdOf,
   STATUS_WORDS,
   shownPlans,
   symbolChoices,
@@ -599,7 +601,7 @@ function PlanMenu({
 }
 
 export function TradePlan({ params }: { params: Params }) {
-  return <TradePlanBody store={markets.tradePlans} id={Number(params.id)} />;
+  return <TradePlanBody store={markets.tradePlans} id={planIdOf(params.id)} />;
 }
 
 export function TradePlanBody({
@@ -607,7 +609,8 @@ export function TradePlanBody({
   id,
 }: {
   store: TradePlansStore;
-  id: number;
+  // null: the address names no plan
+  id: number | null;
 }) {
   const [editing, setEditing] = useState(false);
   const [history, setHistory] = useState(false);
@@ -615,7 +618,10 @@ export function TradePlanBody({
   const [said, setSaid] = useState<string | null>(null);
   // an edit or a restore saves at the revision it opened, so no reload
   // moves it meanwhile
-  useRefresh(() => (editing || history ? undefined : store.reopen()));
+  // a malformed address has no plan to read; the last one opened stays asked
+  useRefresh(() =>
+    editing || history || id === null ? undefined : store.reopen(),
+  );
   const mine = store.planAsk.value?.id === id;
   const p = mine ? store.plan.value : null;
   // opened for a symbol: at the first section it heads, once per arrival
@@ -634,12 +640,15 @@ export function TradePlanBody({
       .getElementById(anchor)
       ?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [p, anchor]);
-  const failed = didNotLoad(
-    p !== null,
-    mine ? store.planError.value : null,
-    mine ? store.planCode.value : null,
-    () => void store.open(id, ask?.symbol ?? null),
-  );
+  const failed =
+    id === null
+      ? { words: NO_PLAN, status: null }
+      : didNotLoad(
+          p !== null,
+          mine ? store.planError.value : null,
+          mine ? store.planCode.value : null,
+          () => void store.open(id, ask?.symbol ?? null),
+        );
   const run = async (work: () => Promise<string | null>) => {
     setBusy(true);
     setSaid(null);

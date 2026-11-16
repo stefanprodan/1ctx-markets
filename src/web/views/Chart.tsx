@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // The price chart: TradingView's Lightweight Charts, run only when a
 // chart is drawn (the binary ships it in the page's bundle), coloured
-// from the page's tokens and again on a theme flip. The licence's link is the page's footer (CHART_CREDIT), so the
-// logo, which sat on the volume, is off.
+// from the page's tokens and again on a theme flip. The licence's link is the
+// page's footer (CHART_CREDIT), so the logo is off.
 //
 // TradingView Lightweight Charts™
 // Copyright (c) 2026 TradingView, Inc. https://www.tradingview.com/
@@ -624,7 +624,8 @@ export function Chart({
     marks.value = out;
   }
 
-  // the line's own hover marker, in the line's colour, would cover a trade's dot
+  // the line's own hover marker, in the line's colour, would cover
+  // a trade's dot
   useEffect(() => {
     const d = dotsAt.current;
     if (d === null) return;
@@ -769,7 +770,8 @@ export function Chart({
         fit();
         return;
       }
-      // green above the previous close and red below, as a chart site draws a day
+      // green above the previous close and red below, as a chart site
+      // draws a day
       const day = (data: typeof values, faded: boolean, latest: boolean) => {
         const f = faded ? 0.5 : 1;
         const s = c.addSeries(l.BaselineSeries, {

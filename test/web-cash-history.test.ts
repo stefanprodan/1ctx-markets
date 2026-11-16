@@ -4,6 +4,7 @@
 // from made-up chains.
 
 import { describe, expect, test } from "bun:test";
+import { dayIn } from "../src/web/lib/format.ts";
 import {
   balanceChange,
   type ChainRow,
@@ -53,6 +54,20 @@ function chain(...rows: Partial<ChainRow>[]): ChainRow[] {
 }
 
 describe("history lines", () => {
+  test("with no zone set, an instant's day is UTC's, as the server's", () => {
+    const was = process.env.TZ;
+    process.env.TZ = "Pacific/Auckland";
+    try {
+      expect(dayIn("2026-10-23T23:30:00Z", null)).toBe("2026-10-23");
+      expect(dayIn("2026-10-23T23:30:00Z", "Pacific/Auckland")).toBe(
+        "2026-10-24",
+      );
+    } finally {
+      if (was === undefined) delete process.env.TZ;
+      else process.env.TZ = was;
+    }
+  });
+
   test("amount updates carry their change, newest first", () => {
     const lines = historyLines(
       chain(
@@ -226,6 +241,7 @@ describe("the box", () => {
       change: { by: 1250000 },
     });
     expect(balanceChange("12,5", 100)).toEqual({ change: { amount: 12.5 } });
+    expect(balanceChange("0,125", 100)).toEqual({ change: { amount: 0.125 } });
     expect(balanceChange("12,400.50", 100)).toEqual({
       change: { amount: 12400.5 },
     });

@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // The rail's Recent list: an instrument page is recorded once its detail
 // is read, from what the page already loaded, so no request is added. The
 // list is this browser's; storage can be absent or full, so every access

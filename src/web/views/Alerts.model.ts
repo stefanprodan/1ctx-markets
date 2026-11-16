@@ -290,6 +290,9 @@ export function stateOf(a: Alert): StateKey {
 export const NEAR_PERCENT = 5;
 export const WEEK_MS = 7 * 24 * 3600 * 1000;
 
+// the add form's symbol picked, its listing and price not read
+export const PRICE_UNREAD = "The price did not load.";
+
 export type TileKey = "all" | "near" | "fired" | "paused";
 
 // short names fit a phone's filter row; the full name is the hover title

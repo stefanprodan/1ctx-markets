@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { PositionChange } from "../data/portfolios.ts";
-import { day } from "../lib/format.ts";
+import { day, dayIn } from "../lib/format.ts";
 import { typed } from "./Portfolios.model.ts";
 
 // a row of a position's chain as /positions/{id}/history answers it
@@ -35,17 +35,6 @@ export type HistoryLine = {
   // a removal or a restore: no balance of its own
   event: boolean;
 };
-
-// an instant's day on the owner's calendar, not UTC's
-export function dayIn(iso: string, zone: string | null): string {
-  try {
-    return new Date(iso).toLocaleDateString("en-CA", {
-      timeZone: zone ?? undefined,
-    });
-  } catch {
-    return iso.slice(0, 10);
-  }
-}
 
 function changedWords(a: ChainRow, b: ChainRow): string[] {
   const out: string[] = [];
@@ -183,7 +172,8 @@ export function historyLines(
         at: r.entered_at,
         line: {
           key: `${r.id}`,
-          // an update that left the balance and its day alone is dated when made
+          // an update that left the balance and its day alone is
+          // dated when made
           date:
             change === 0 && r.as_of === prev.as_of ? when(r.entered_at) : date,
           amount: r.amount,
@@ -315,18 +305,12 @@ export function balanceChange(
   const t = text.trim().replace(/^−/, "-");
   if (t === "") return { none: true };
   const sign = t[0] === "+" ? 1 : t[0] === "-" ? -1 : 0;
-  const n = figure(sign === 0 ? t : t.slice(1));
+  const n = typed(sign === 0 ? t : t.slice(1));
   if (n === null || Number.isNaN(n)) return { error: "Not a number." };
   if (sign !== 0)
     return n === 0 ? { none: true } : { change: { by: sign * n } };
   return n === current ? { none: true } : { change: { amount: n } };
 }
-
-// 12,400 is twelve thousand, never twelve point four, as the head writes it
-const figure = (body: string): number | null =>
-  typed(
-    /^\d{1,3}(,\d{3})+(\.\d+)?$/.test(body) ? body.replaceAll(",", "") : body,
-  );
 
 // a past balance: a day before the row's own and the balance it held then
 export function pastBalance(
@@ -340,7 +324,7 @@ export function pastBalance(
   if (rowDay !== null && date >= rowDay) {
     return { error: `Pick a day before ${day(rowDay)}.` };
   }
-  const n = figure(text.trim());
+  const n = typed(text.trim());
   if (n === null) return { error: "Give the balance." };
   if (Number.isNaN(n)) return { error: "Not a number." };
   return { change: { amount: n, date } };

@@ -31,7 +31,8 @@ const day = (date: string, close: number, final = true): Bar => ({
 
 describe("weekly bars", () => {
   test("are built Monday to Sunday from the daily bars", async () => {
-    // crypto's open week runs to Sunday, which Yahoo's own weeks cut at Saturday
+    // crypto's open week runs to Sunday, which Yahoo's own weeks
+    // cut at Saturday
     const fx = await recorded("chart-sol-usd-1mo-1d");
     const a = parseChart(fx.body, utc(fx.recordedAt));
     const days = dailyBars(a, a.session);

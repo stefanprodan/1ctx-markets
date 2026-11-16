@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
+import { options } from "preact";
 import { render } from "preact-render-to-string";
+import { App } from "../src/web/app/App.tsx";
+import { path } from "../src/web/app/router.ts";
 import type { Holding, TradeRow } from "../src/web/data/portfolios.ts";
 import {
   type Detail,
@@ -14,7 +17,11 @@ import { briefQuantity } from "../src/web/lib/format.ts";
 import { stopped } from "../src/web/lib/names.ts";
 import { barWidth } from "../src/web/ui/Weights.tsx";
 import { monthlyShares, tradeMarks } from "../src/web/views/Chart.model.ts";
-import { buyable, priceState } from "../src/web/views/Instrument.model.ts";
+import {
+  buyable,
+  onSymbolPage,
+  priceState,
+} from "../src/web/views/Instrument.model.ts";
 import { Instrument } from "../src/web/views/Instrument.tsx";
 import { signalsOf } from "../src/web/views/InstrumentCards.model.ts";
 import { InstrumentCards } from "../src/web/views/InstrumentCards.tsx";
@@ -23,6 +30,7 @@ import {
   ratingName,
   sectorName,
 } from "../src/web/views/InstrumentFund.model.ts";
+import { InstrumentMenu } from "../src/web/views/InstrumentMenu.tsx";
 import {
   heldOf,
   positionOf,
@@ -483,6 +491,21 @@ describe("the instrument page's performance", () => {
     expect(html).not.toContain('<h2 class="card-title">52-week range');
   });
 
+  test("an average at or below zero has no distance, a yield's keeps its points", () => {
+    const daily = { ...DAILY, sma50: -2, sma200: 0 };
+    const labels = (d: Detail) =>
+      signalsOf(d)
+        .trend.filter((f) => f.label.endsWith("average"))
+        .map((f) => [f.label, f.value]);
+    expect(labels(detail({}, {}, { signals: { daily } }))).toEqual([]);
+    expect(
+      labels(detail({ unit: "percent" }, {}, { price: 1, signals: { daily } })),
+    ).toEqual([
+      ["50-day average", "3.00 pts above"],
+      ["200-day average", "1.00 pts above"],
+    ]);
+  });
+
   test("returns alone, a range alone, or neither", () => {
     const returnsOnly = render(
       <InstrumentCards detail={detail()} held={null} />,
@@ -634,6 +657,111 @@ describe("an instrument's page by role", () => {
       markets.detail.value = null;
       markets.detailId.value = null;
     }
+  });
+});
+
+describe("an instrument's page by symbol", () => {
+  test("each symbol's page is its own, so nothing carries to the next", () => {
+    const was = path.value;
+    const keyAt = (at: string) => {
+      path.value = at;
+      const nodes: any[] = [];
+      const before = options.vnode;
+      options.vnode = (v) => {
+        nodes.push(v);
+        before?.(v);
+      };
+      try {
+        render(<App />);
+      } finally {
+        options.vnode = before;
+      }
+      return nodes.find((n) => n.type === Instrument)?.key;
+    };
+    markets.signedIn.value = true;
+    try {
+      const one = keyAt("/symbol/US%3AAAA");
+      const two = keyAt("/symbol/US%3ABBB");
+      expect(one).toBeDefined();
+      expect(two).toBeDefined();
+      expect(one).not.toBe(two);
+    } finally {
+      path.value = was;
+      markets.signedIn.value = undefined;
+    }
+  });
+
+  test("a delete answered after the reader moved on leaves them where they are", async () => {
+    const was = {
+      path: path.value,
+      fetch: globalThis.fetch,
+      location: globalThis.location,
+      history: globalThis.history,
+    };
+    const answered = Promise.withResolvers<void>();
+    const asked: string[] = [];
+    globalThis.fetch = (async (input: string, init?: RequestInit) => {
+      asked.push(`${init?.method ?? "GET"} ${input}`);
+      await answered.promise;
+      return new Response(null, { status: 204 });
+    }) as typeof fetch;
+    globalThis.location = {
+      origin: "http://markets.test",
+      get pathname() {
+        return path.value;
+      },
+      search: "",
+    } as Location;
+    globalThis.history = {
+      state: null,
+      pushState() {},
+      replaceState() {},
+    } as unknown as History;
+    path.value = "/symbol/US%3ACASY";
+    markets.detailId.value = "US:CASY";
+    markets.detail.value = detail();
+    markets.me.value = {
+      id: "operator",
+      name: "Casey",
+      role: "admin",
+      email: null,
+      operator: true,
+    };
+    try {
+      const nodes: any[] = [];
+      const before = options.vnode;
+      options.vnode = (v) => {
+        nodes.push(v);
+        before?.(v);
+      };
+      try {
+        render(<Instrument params={{ id: "US:CASY" }} />);
+      } finally {
+        options.vnode = before;
+      }
+      nodes.find((n) => n.type === InstrumentMenu)!.props.onDelete();
+      expect(asked).toEqual(["DELETE /api/v1/instruments/US%3ACASY"]);
+      path.value = "/symbol/US%3AMSFT";
+      answered.resolve();
+      await new Promise((r) => setTimeout(r, 0));
+      expect(path.value).toBe("/symbol/US%3AMSFT");
+    } finally {
+      globalThis.fetch = was.fetch;
+      globalThis.location = was.location;
+      globalThis.history = was.history;
+      path.value = was.path;
+      markets.me.value = null;
+      markets.detail.value = null;
+      markets.detailId.value = null;
+    }
+  });
+
+  test("a late answer acts only while its symbol's page is open", () => {
+    expect(onSymbolPage("/symbol/US%3AAAA", "US:AAA")).toBe(true);
+    expect(onSymbolPage("/symbol/US:AAA", "US:AAA")).toBe(true);
+    expect(onSymbolPage("/symbol/US%3ABBB", "US:AAA")).toBe(false);
+    expect(onSymbolPage("/screener", "US:AAA")).toBe(false);
+    expect(onSymbolPage("/symbol/%E0%A4%A", "US:AAA")).toBe(false);
   });
 });
 

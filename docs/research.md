@@ -13,16 +13,8 @@ the `research` and `events` tools and the research route's contents
 (`src/storage/db/migrations/0007-research.ts`, `0008-news.ts`,
 `0012-listing.ts`, `0028-share-class-listing.ts`,
 `0029-valuations.ts`, `0030-fund-top-holdings.ts`,
-`0042-earnings-fiscal.ts`). Yahoo's quote
-summary call, its session, what a fund's answer keeps and how a chain
-is read are in `docs/yahoo.md`; the CFTC's calls, field map, market list
-and figures in `docs/cftc.md`. EDGAR's filings,
-their flags and events' `filed_at` are in `docs/edgar.md`; the
-sections that answer them are here. The queue, deadlines, retries, phrases, scrubbing
-and the lock every source shares are in `docs/sources.md`; resolution,
-tracking and the answer contract in `docs/tools.md`; the research
-route's transport in `docs/api.md`; alerts that wait on events in
-`docs/alerts.md`; runs and retention in `docs/storage.md`.
+`0042-earnings-fiscal.ts`). The sources' own calls are in their docs;
+the sections that answer them are here.
 
 ## Keys
 
@@ -171,10 +163,8 @@ route's transport in `docs/api.md`; alerts that wait on events in
   valuation from Yahoo** (`covered()`, `docs/yahoo.md`, "The quote
   summary"): `valuation`, its own object beside Finnhub's, whose
   `metric` keeps its listing-bound fields null, so two sources never
-  fill one field. Yahoo's EPS is per US share in the share's currency.
-  `valuation` holds `source` (`yahoo`), `fetched_at`, `stale`,
-  `currency`, `pe_ttm`, `forward_pe`, `forward_peg`, `eps_ttm`,
-  `eps_forward` and `note` (`PER_US_SHARE`). A share Finnhub answers as
+  fill one field. Yahoo's EPS is per US share in the share's currency
+  (the note `PER_US_SHARE`). A share Finnhub answers as
   itself or as another US class has no `valuation`.
   - **P/E is worked out at answer time**: the stored quote's price
     (`readQuote()`, the overview quote's) over the stored EPS, so it
@@ -324,7 +314,15 @@ route's transport in `docs/api.md`; alerts that wait on events in
 
 - **Every 30 minutes each tracked ticker's news is walked newest first**
   (`EVERY_MS`, `refreshNews`), longest waiting first, at most
-  `MAX_PAGES` (3) pages a run. One run is one write and one run row
+  `MAX_PAGES` (3) pages a run.
+- **On a day its market has no session, every 2 hours**
+  (`QUIET_EVERY_MS`, `newsEvery`), read from the market's stored
+  session (`docs/calendars.md`), never fixed hours or weekdays: the day
+  is quiet when the next session is on a later day, or once the
+  session's local start time passed with no session shown for the day.
+  Before that start nothing says the day has none, so pre-market is
+  asked as often as a session day, and post-market too, since the
+  session's own date runs to local midnight. One run is one write and one run row
   scoped to the instrument; a failed page fails the run with the pages
   before it kept.
 - **An unfinished walk resumes from Massive's own cursor, stored in
@@ -347,10 +345,15 @@ route's transport in `docs/api.md`; alerts that wait on events in
 - **Text is bounded so an article always fits an answer**: title and
   publisher 300 characters, reasoning 1,000, cut with an ellipsis and
   `truncated` set; a URL must be http or https and at most 2,000
-  characters, an id at most 200, else the answer is malformed.
+  characters, an id at most 200.
+- **An article that fails a check drops itself, never its page**
+  (`parseNews`): no id, title or date, or a bad URL or id, leaves the
+  article out and logs it once, so one bad article never fails a run.
+  A page whose every article fails is malformed.
 - **Rows are one per article and instrument, deduplicated by id.**
 - **Stale reasons** (`newsState`, `STALE_NEWS`): "no news yet", "news
-  sync failed", "news sync pending" (no good run for two periods),
+  sync failed", "news sync pending" (no good run for two of the periods
+  in force now, so a quiet day's news never reads pending),
   "older news pending" (a walk not finished).
 - **Counts are by the ticker's own sentiment** (`countNews`):
   `positive`, `neutral`, `negative`, and `unknown` for an article
@@ -361,6 +364,10 @@ route's transport in `docs/api.md`; alerts that wait on events in
   company's story, so the ones that take a side say more per byte.
 
 ## Answers
+
+Each section's fields are the `research` tool's description
+(`src/tools/research.ts`) and its recorded pages in
+`test/fixtures/mcp/answers.json`; what follows is what they mean.
 
 - **The `research` tool's sections** are `overview` (quote, for a key
   with analysis access `analysis`, the symbol's note's revision and
@@ -374,17 +381,14 @@ route's transport in `docs/api.md`; alerts that wait on events in
   first to fit one page; `overview`, `top_holdings` and `options` have
   no next page.
 - **The overview's `filings`** is EDGAR's summary (`filingsSummary()`):
-  `source`, `fetched_at`, `stale`, the three flags (`late_filing`,
-  `restatement`, `offering`: new securities, shares or debt,
-  registered or offered; `docs/edgar.md`) and `recent`, the
-  `FILINGS_RECENT` (5) newest filings. A flag says which filing to
+  the three flags (`late_filing`, `restatement`, `offering`: new
+  securities, shares or debt, registered or offered; `docs/edgar.md`)
+  and the `FILINGS_RECENT` (5) newest filings. A flag says which filing to
   read; the section holds the rest. Off, not covered, no CIK and a
   foreign filer answer `message` (and `reason` for the last two) with
   every flag null, never false.
 - **The `filings` section pages filings newest first** by accepted
-  time, at most `FILINGS_PAGE_ROWS` (50) a page, each with
-  `accession`, `form`, `accepted_at`, `filed`, `period`, `items`
-  (`code` and `name`) and `url`. Its first page carries the flags, as
+  time, at most `FILINGS_PAGE_ROWS` (50) a page. Its first page carries the flags, as
   news carries counts; later pages carry none.
 - **An event's `filed_at`** (the events tool, the overview's
   `next_event`, the earnings route) is when its results 8-K was
@@ -420,17 +424,13 @@ route's transport in `docs/api.md`; alerts that wait on events in
   other section of its key answers as `quote` does (`OWNER_PRICED`).
 - **`top_holdings` is a fund's from Yahoo**: for an ETF or mutual fund
   on any market (`isFund()`), whose Finnhub, news and filings parts
-  answer as before; a share's overview has no `top_holdings` key, and
+  answer as a share's do; a share's overview has no `top_holdings` key, and
   the section asked for anything but a fund answers `NOT_A_FUND`
-  ("Top holdings are for ETFs and mutual funds only."). It holds
-  `source` (`yahoo`), `fetched_at`, `stale`, `top` (`rank`, `symbol`,
-  `id`, `name`, `weight_percent`), `top_weight_percent` (their sum),
-  `assets` (`stock_percent`, `bond_percent`, `cash_percent`,
-  `other_percent`, `preferred_percent`, `convertible_percent`),
-  `sectors` and `bond_ratings` (largest first),
-  `government_bonds_percent` and the note `TOP_ONLY`: the ten largest
-  as Yahoo lists them, never the full list, with no as-of date. Percent
-  to two decimals, from the stored fractions.
+  ("Top holdings are for ETFs and mutual funds only."). It holds the
+  ten largest as Yahoo lists them (the note `TOP_ONLY`), never the full
+  list, with no as-of date, their summed weight, the asset mix, and
+  sectors and bond ratings largest first. Percent to two decimals,
+  from the stored fractions.
   - **A holding's `id` is joined at answer time**: the stored
     instrument whose Yahoo symbol it is, else null. A holding is never
     resolved or fetched, which would be ten calls per fund.
@@ -462,20 +462,18 @@ route's transport in `docs/api.md`; alerts that wait on events in
     quote's `extended` is, so a read repeated within it costs no call.
     Chains change through the day; nothing else reads them, and nothing
     of them reaches signals, movers, screen, alerts or bars.
-  - **Without `expiry`, the summary**: `price` (the chain's own
-    `regularMarketPrice`, which every figure is measured from),
-    `price_at`, `currency`, `fetched_at`, `stale`, `expiries` (every
-    listed date, read in UTC) and `summary`, one row for each of the
+  - **Without `expiry`, the summary**: every figure is measured from
+    `price`, the chain's own `regularMarketPrice`; `expiries` lists
+    every date, read in UTC; `summary` has one row for each of the
     nearest `SUMMARY_EXPIRIES` (4) expiries with `days` above 0
     (calendar days from the market's date), and for the earnings expiry
-    when it is not among them. Each row: `expiry`, `days`, `earnings`,
-    `atm_strike` (the strike nearest `price` listing both a call and a
-    put, the lower on a tie), `call_iv` and `put_iv` there in percent a
-    year, `straddle` (the call's mid plus the put's), `implied_move_pct`
-    (`straddle` over `price`, times 100), `put_call_oi` and
-    `put_call_volume` (the puts' sum over the calls', null when the
-    calls' is 0), `top_call_oi` and `top_put_oi` (the `TOP_STRIKES` (3) strikes
-    with the most open interest). The listing is the nearest chain, so
+    when it is not among them. A row's `atm_strike` is the strike
+    nearest `price` listing both a call and a put, the lower on a tie,
+    its IVs in percent a year; `straddle` is the call's mid plus the
+    put's, `implied_move_pct` `straddle` over `price` times 100; the
+    put/call ratios are the puts' sum over the calls', null when the
+    calls' is 0; the top strikes are the `TOP_STRIKES` (3) with the most
+    open interest. The listing is the nearest chain, so
     a summary is one call per row past it; a row not answered within
     the call's deadline is its `error` (`timeout`), the rest standing.
   - **The earnings expiry is the first to price the report**: the first
@@ -488,10 +486,8 @@ route's transport in `docs/api.md`; alerts that wait on events in
     with Finnhub off there is no earnings row.
   - **With `expiry`, that expiry's chain near the money**, unpaged:
     every strike within `CHAIN_BAND` (10) percent of `price`, lowest
-    first, each with `call` and `put` (`bid`, `ask`, `mid`, `last`,
-    `last_trade_at`, `volume`, `open_interest`, `iv` in percent a year,
-    `in_the_money`; null for a side with no contract), beside `expiry`,
-    `days` and `band_pct`. A chain too long for a page drops its
+    first, each with `call` and `put` (null for a side with no
+    contract, `iv` in percent a year). A chain too long for a page drops its
     farthest strikes, both sides of a tie together, and `band_pct` says
     how far it reaches. An expiry not listed is `bad_arguments` naming
     the `NEAREST_LISTED` (3) nearest listed; `expiry` with another section, and
@@ -511,15 +507,11 @@ route's transport in `docs/api.md`; alerts that wait on events in
     is held and kept per market for `POSITIONING_MS`, so the pages of
     a read and a repeat cost nothing. A failure or the deadline is the
     answer's `error` and `message`.
-  - **The answer**: `source`, `cftc` (`id`, `name`, `exchange`,
-    `report`: `disaggregated` or `financial`), `fetched_at`,
-    `latest_report`, `in_latest_report`, `since`, on the first page
-    `cot_index` (as news carries `counts`), then `weeks` newest
-    first, each `report_date`, `open_interest` and per group `long`,
-    `short`, `spread`, `net`, `net_pct_oi`, `net_change`,
-    `traders_long`, `traders_short`, paged at `PAGE_BYTES`: a week
-    of a commodity market is about 800 bytes, so 12 weeks are 10 KB and
-    156 five pages.
+  - **The answer** names the market and its report (`disaggregated`
+    or `financial`), carries `cot_index` on its first page only (as
+    news carries `counts`), then the weeks newest first, each per
+    trader group, paged at `PAGE_BYTES`: a week of a commodity market
+    is about 800 bytes, so 12 weeks are 10 KB and 156 five pages.
   - **`since` is the first report date**, `POSITIONING_WEEKS` (12)
     back by default, at most `HISTORY_WEEKS` (156), else
     `bad_arguments`; `expiry` with it is refused.
@@ -555,7 +547,7 @@ is fixed, never an argument, to keep five summaries short.
   `top_holdings` (the tool's section) and `options` (the tool's summary,
   never a chain), under the tool's deadline and tracking. `top_holdings`
   and `options` are answered only when asked, never by default, so a
-  call without `sections` answers as before. `options` takes one symbol
+  call without `sections` leaves them out. `options` takes one symbol
   (`bad_arguments` with more), since a summary is up to six calls (five
   rows, and the listing when its nearest expires that day).
   `positioning` is the tool's first page over the default weeks for a

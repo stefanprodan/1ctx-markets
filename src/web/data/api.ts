@@ -99,7 +99,7 @@ export function client(
   };
 }
 
-// 1ctx's: a capital and a full stop, whatever the server's phrase
+// a capital and a full stop, whatever the server's phrase
 export function sentence(text: string): string {
   const t = text.trim();
   if (t === "") return t;

@@ -6,8 +6,7 @@ the container image and Docker Compose: `src/service/`,
 `.github/workflows/release.yml`, `Dockerfile`, `.dockerignore`,
 `deploy/docker/`, `scripts/archive.sh`, `scripts/image.sh`,
 `scripts/image-smoke.sh`, `THIRD_PARTY_LICENSES.md` and their `Makefile`
-and `package.json` targets. Flags, `GET /health` and
-the shutdown order are in `docs/config.md`.
+and `package.json` targets.
 
 ## The OS service (`1ctx-markets service`)
 
@@ -71,19 +70,19 @@ today; any other platform answers `service is not supported on
 
 ## Staging
 
-Staging is a Mac reached over ssh that runs the server for real use
-beside other services; its database holds real data and is never
-wiped. It runs the binary through `1ctx-markets service` with its data
-under `~/.1ctx-markets` and the binary in `~/.1ctx-markets/bin`.
+Staging is the owner's own install, a macOS machine reached over ssh
+that runs the server for real use; its database holds real data and is
+never wiped. It runs the binary through `1ctx-markets service` with its
+data under `~/.1ctx-markets` and the binary in `~/.1ctx-markets/bin`.
 `scripts/staging.sh` drives it, behind `make staging-deploy`,
 `make staging-status` and `make staging-secrets DIR=<dir>`.
 
 - **The host is never in a tracked file.** It is `STAGING_SSH` in the
   gitignored `scripts/staging.env`, copied from `staging.env.example`
   with `STAGING_LISTEN` and `STAGING_FLAGS`.
-- **Staging binds `0.0.0.0:11238`** so clients on the tailnet reach it;
-  Tailscale encrypts the plain HTTP, and the keys still guard every
-  route but `/health`. 1ctx on the same box uses `127.0.0.1:11238`.
+- **`STAGING_LISTEN` defaults to `0.0.0.0:11238`**, for clients on a
+  private network that encrypts the plain HTTP (`docs/config.md`,
+  "HTTP"); the keys still guard every route but `/health`.
 - **Staging always runs `--source bvb` and `--data ~/.1ctx-markets`.**
   `STAGING_FLAGS` holds extra server flags only; one holding `--data`
   is refused, since the backups and keys stay in `~/.1ctx-markets`.

@@ -308,7 +308,8 @@ describe("the admin scope", () => {
           markets: 0,
           failing_instruments: 1,
         });
-        // only a backfill settles: a failed bars run of the same instrument stays
+        // only a backfill settles: a failed bars run of the
+        // same instrument stays
         db.query(
           `insert into sync_runs (source, job, scope, started_at, ended_at,
              status, rows, error)

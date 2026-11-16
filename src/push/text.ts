@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // A fired alert as a notification's words, the Alerts page's own.
 
+import { minorUnits } from "../shared/currencies.ts";
 import {
   operandText,
   parseWhen,
@@ -41,10 +42,12 @@ export function tickerOf(id: string, l?: Listing): string {
 const round = (v: number, d: number) =>
   Number(v.toFixed(d)).toLocaleString("en-US", { maximumFractionDigits: d });
 
+// in the currency's minor units, as the Alerts page shows it
 const price = (v: number, currency: string | null) => {
+  const d = currency === null ? 2 : minorUnits(currency);
   const n = v.toLocaleString("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+    minimumFractionDigits: Math.min(d, 2),
+    maximumFractionDigits: d,
   });
   return currency === null ? n : `${n} ${currency}`;
 };

@@ -6,9 +6,7 @@ Governs the technical signals computed from stored bars and quotes:
 `closes.ts` (the closes a return reads), `read.ts` (what tools read,
 with stale reasons) and `relative.ts` (returns), and the `signals`
 table (`src/storage/db/migrations/0005-signals.ts`, the stored returns
-in `0035-stored-returns.ts`). Sessions, bar dates and
-finality are in `docs/calendars.md`; the bar writes that call these in
-`docs/yahoo.md` and `docs/fred.md`; stale reasons in `docs/storage.md`.
+in `0035-stored-returns.ts`).
 
 ## The daily signals
 
@@ -75,6 +73,17 @@ bar's close, or the live price on the live row.
   (`recomputeSignals()`): a past bar changed on or before the last
   final row, or a bar turned final or went away (`finalPending()`). An
   incremental patch would drift from the seeds.
+- **Only rows past the stored ones are written when nothing earlier
+  changed** (`storeFinal()`): the series is still computed from the
+  first bar, and the stored final rows stay when their dates are the
+  computed ones' first and no bar changed on or before the last of
+  them (for weeks, in its week). Anything else, or daily rows
+  rewritten, deletes and rewrites the interval's final rows. A ten-year
+  history then writes two rows a day instead of about three thousand.
+- **A change to the maths reaches stored rows on the next final bar**:
+  the last stored final row of each interval is compared with the
+  computed one, every signal column exactly, and any difference
+  rewrites that interval.
 - **Signals are computed inside the bar write's transaction**
   (`signalsAfterBars()`), final rows first, then the live rows, so at a
   session's rollover the previous day's final row exists before the new

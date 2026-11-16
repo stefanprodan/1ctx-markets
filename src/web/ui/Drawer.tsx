@@ -149,6 +149,8 @@ export function Drawer({
         aria-label="Close"
         tabIndex={-1}
         onClick={(ev) => {
+          // a save on its way keeps this record open: no swap, as no close
+          if (held.current || closing.current) return;
           const row = swaps ? rowUnder(wrap.current, ev) : null;
           if (row) row.click();
           else close();

@@ -5,19 +5,14 @@ condition text in `src/shared/when.ts`, the stored tree, evaluation and
 storage in `src/rules/format.ts`, `evaluate.ts`, `hooks.ts` and
 `store.ts`, the answers and writes in `src/operations/alerts.ts`, the
 `alerts` and `alerts_edit` tools in `src/tools/alerts.ts`, the feed
-in `src/api/alerts.ts`, served as `docs/api.md` says, and push in
-`src/push/`. The answer
-contract, resolution and the inline fetch are in `docs/tools.md`;
-earnings events in `docs/research.md`; splits, rescales and the
-refetch in `docs/sources.md` and each source's doc; retention and
-tracking in `docs/storage.md`.
+in `src/api/alerts.ts`, and push in `src/push/`.
 
 An alert belongs to one symbol, reads a few with a fixed condition, and
 triggers once each time the condition turns true, at most once a
 trading session. Alerts hold market conditions only, never holdings or
-orders. In code and tables an alert is still a rule (`rules`, `RuleRow`)
-and a trigger an alert (`alerts`, `Fired`): only the words callers see
-changed, so no migration rewrote a row.
+orders. In code and tables an alert is a rule (`rules`, `RuleRow`) and
+a trigger an alert (`alerts`, `Fired`): only the words callers see
+differ.
 
 ## The condition: `when`
 
@@ -250,6 +245,9 @@ stored nowhere: a read never triggers or changes anything.
   price level with a number, or with another listing's price level.
   Against its own average, high or other price level the comparison
   still holds and keeps running; non-price fields are never paused.
+  Neither is `macd`, `macd_signal` or `macd_histogram` compared with 0
+  (`splitPauses()`): a split scales both averages alike, so the sign
+  holds.
 - **The pause comes before any evaluation on the new scale**: inside
   the write that applies a new split or rescales past prices, before
   it evaluates, and in a write of its own when a refetch window first
@@ -258,7 +256,8 @@ stored nowhere: a read never triggers or changes anything.
   `docs/sources.md`, "Splits and rescales").
 - **Until the new session's bars are in, split-sensitive comparisons
   are unknown** (`BARS_PENDING`), since the opening quote may already
-  be on the new scale. The symbol's own failed bars run keeps them
+  be on the new scale; MACD's sign against 0 too, since its live value
+  then mixes that quote with unadjusted history. The symbol's own failed bars run keeps them
   unknown too (`BARS_FAILED`), though the market's pass succeeded on
   other listings.
 - **A split pause holds until a new `when`.** `paused` becomes `split`
@@ -276,9 +275,8 @@ stored nowhere: a read never triggers or changes anything.
 - **`alerts` reads, `alerts_edit` writes**, as `profile` and
   `profile_edit` are split, so a read key lists only `alerts`, marked
   `readOnlyHint`, and `alerts_edit` carries the destructive hint.
-- **Access is the key's alerts access** (`Who.alerts`, `docs/admin.md`):
-  `none` lists neither, `read` lists `alerts`, `write` both
-  (`alertsTools()`, `docs/tools.md`). Each call checks again and answers
+- **Access is the key's alerts access** (`Who.alerts`, `docs/admin.md`),
+  the tools listed by it (`docs/tools.md`). Each call checks again and answers
   `forbidden` before reading anything ("this key has no alerts access;
   its owner grants it", "this key reads alerts only; its owner grants
   write"). The admin key holds `write`, and so does a person's web UI
@@ -366,8 +364,10 @@ A fired alert goes to its owner's devices as a Web Push notification
 - **The payload is JSON under Apple's 4 KB** (`payloadOf()`): `title`
   the symbol's name (its ticker without one), `body` the comparisons
   that held in the Alerts page's words with the value read ("NVDA fell
-  below 170.00 USD: 168.40 USD", "NVDA RSI below 30: 28.4";
-  `src/push/text.ts`, labels from `src/shared/when-words.ts`) and the
+  below 170.00 USD: 168.40 USD", "NVDA RSI below 30: 28.4", a price in
+  its currency's minor units as the page shows it, "1,234 JPY";
+  `src/push/text.ts`, labels from `src/shared/when-words.ts`, digits
+  from `minorUnits()` in `src/shared/currencies.ts`) and the
   note on a second line, cut first when long; `url` the Fired tab;
   `badge` the owner's unseen count as `readSeen()` gives the rail;
   `tag` the alert's id.

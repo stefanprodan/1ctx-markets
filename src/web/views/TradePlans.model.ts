@@ -9,6 +9,16 @@ import type {
   PlanStatus,
 } from "../data/trade-plans.ts";
 
+// a plan's id from its address, null for one that names no plan
+export function planIdOf(raw: string | undefined): number | null {
+  if (raw === undefined || !/^[1-9][0-9]*$/.test(raw)) return null;
+  const id = Number(raw);
+  return Number.isSafeInteger(id) ? id : null;
+}
+
+// a malformed address, which the server is never asked about
+export const NO_PLAN = "No such trade plan.";
+
 export const FILTERS: readonly { key: PlanFilter; label: string }[] = [
   { key: "active", label: "Active" },
   { key: "archived", label: "Archived" },

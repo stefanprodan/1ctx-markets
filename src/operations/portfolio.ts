@@ -111,7 +111,10 @@ import {
   errorResult,
   type Failure,
   fitPage,
+  notShown,
   readCursor,
+  shownCursor,
+  shownOf,
   type ToolResult,
   textResult,
 } from "./answer.ts";
@@ -1125,6 +1128,21 @@ export const ownerToday = (db: Db, owner: string, now: number): string =>
 // a retry within this of the first add is the same trade
 export const RETRY_MS = 10 * 60_000;
 
+// a live-priced add takes the quote at call time, so its retry has another
+// price: it is known by its arguments for this long instead, in memory
+export const LIVE_RETRY_MS = 2 * 60_000;
+const liveAdds = new WeakMap<
+  Markets,
+  Map<string, { at: number; id: number }>
+>();
+
+const retried = (id: number, ms: number): Failure => ({
+  ...conflict(
+    `the same trade was saved as trade ${id} in the last ${ms / 60_000} minutes, so a retry adds nothing; again: true saves a second fill`,
+  ),
+  trade: id,
+});
+
 export type Added = {
   trade?: ReturnType<typeof tradeItem>;
   // a sell of all with no broker: one per broker's part
@@ -1238,6 +1256,7 @@ async function addTradeOn(
   const shares = lots.reduce((a, x) => a + x.quantity, 0);
   let price = args.price;
   let live: Added["live_price"];
+  let liveKey: string | null = null;
   let total: Added["total"];
   if (args.total !== null) {
     // what left or reached the account, fees in it
@@ -1275,6 +1294,17 @@ async function addTradeOn(
       return { error: "no_data", message: `${r.reason}; name the price` };
     }
     price = q.price * r.rate;
+    liveKey = JSON.stringify([
+      owner,
+      p.id,
+      i.id,
+      args.side,
+      args.quantity,
+      args.fees,
+      day,
+      currency,
+      b?.id ?? null,
+    ]);
     live = {
       price,
       at: iso(q.time ?? q.fetchedAt),
@@ -1311,18 +1341,23 @@ async function addTradeOn(
     } else if (readInstrument(db, i.id) === null) {
       return notFound(`${i.id}: deleted while the trade was added`);
     }
+    const seen = liveAdds.get(m) ?? new Map();
+    liveAdds.set(m, seen);
+    for (const [key, add] of seen) {
+      if (now - add.at > LIVE_RETRY_MS) seen.delete(key);
+    }
     if (!args.again) {
+      const before = liveKey === null ? undefined : seen.get(liveKey);
+      if (
+        before !== undefined &&
+        readTrade(db, owner, before.id)?.removedAt === null
+      ) {
+        return retried(before.id, LIVE_RETRY_MS);
+      }
       const since = now - RETRY_MS;
       for (const row of rows) {
         const same = recentSameTrade(db, row, since);
-        if (same !== null) {
-          return {
-            ...conflict(
-              `the same trade was saved as trade ${same.id} in the last ${RETRY_MS / 60_000} minutes, so a retry adds nothing; again: true saves a second fill`,
-            ),
-            trade: same.id,
-          };
-        }
+        if (same !== null) return retried(same.id, RETRY_MS);
       }
     }
     if (oversells(db, owner, rows, i)) {
@@ -1330,6 +1365,7 @@ async function addTradeOn(
     }
     if (making !== null) insertFund(db, making, who.name, now);
     const ids = rows.map((row) => insertTrade(db, row, now));
+    if (liveKey !== null) seen.set(liveKey, { at: now, id: ids[0]! });
     if (make !== null && "market" in make && make.market !== null) {
       setFundMarket(db, i.id, make.market);
     }
@@ -1571,7 +1607,8 @@ export async function updateFund(
       }
       const before =
         change.price === undefined ? null : priceOn(db, kept.id, day);
-      // a new currency drops the old prices, so a price sent with it comes after
+      // a new currency drops the old prices, so a price sent with
+      // it comes after
       if (change.name !== undefined || change.currency !== undefined) {
         setFundDetails(db, kept.id, change, now);
       }
@@ -2502,6 +2539,22 @@ function offsetOf(next: string | null, args: object): number {
   return Number(at);
 }
 
+// ranked by live value, so a page continues from the rows shown
+function shownIn(next: string | null, args: object): ReadonlySet<string> {
+  if (next === null) return new Set();
+  const at = readCursor(next, args);
+  const shown = at === null ? null : shownOf(at);
+  if (shown === null) throw new ArgError("next does not continue this list");
+  return shown;
+}
+
+// the web's keyOf: a listed row by its id, a cash or bond row by itself
+const holdingKey = (h: {
+  id: string | null;
+  position: number | null;
+  name: string | null;
+}) => h.id ?? `pos:${h.position ?? h.name ?? ""}`;
+
 async function holdingsPage(
   m: Markets,
   owner: string,
@@ -2509,25 +2562,27 @@ async function holdingsPage(
 ): Promise<ToolResult> {
   const { next, removed, ...scope } = args;
   const rest = { ...scope, removed };
-  const from = offsetOf(next, rest);
+  const shown = shownIn(next, rest);
   const read = await readHoldings(m, owner, scope);
   if (isFailure(read)) return errorResult(read);
   const { holdings: all, ...shell } = read;
+  const { rows: left, tags } = notShown(all, holdingKey, shown);
   // symbol is what quote takes; REST keeps the instrument's id as id
-  const rows = all.map(({ kind, id, ...row }) => ({
+  const list = left.map(({ kind, id, ...row }) => ({
     kind,
     symbol: id,
     ...row,
   }));
   const gone = removed ? { removed: removedRows(m, owner, scope) } : {};
-  const list = rows.slice(from);
   const page = fitPage(
     list,
     (count) => ({
       ...shell,
       ...gone,
       next:
-        from + count < rows.length ? cursor(String(from + count), rest) : null,
+        count < list.length
+          ? shownCursor(shown, tags.slice(0, count), rest)
+          : null,
     }),
     "holdings",
   );

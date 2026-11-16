@@ -753,7 +753,8 @@ export function recentSameTrade(
   );
 }
 
-// every row of a position's chain, latest first: an update may rename or move it
+// every row of a position's chain, latest first: an update may rename
+// or move it
 export function chainOf(db: Db, owner: string, id: number): Position[] {
   return db
     .query<RawPosition, [number, string]>(

@@ -548,6 +548,42 @@ describe("the hero's growth line on the page", () => {
     expect(st.cashes.value.get("EUR")?.points[0]?.cash).toBe(900);
   });
 
+  test("a cash read a save overtakes is asked again", async () => {
+    let saved = false;
+    const out = Promise.withResolvers<void>();
+    let reads = 0;
+    const f = fake(ANSWERS);
+    const s = store(
+      async (path, init) => {
+        if (init?.method === "POST") {
+          saved = true;
+          return Response.json({ broker: { id: 2, name: "South" } });
+        }
+        if (String(path).startsWith("/api/v1/holdings/net-worth")) {
+          reads++;
+          // the first read is answered after the save, with the days before it
+          if (reads === 1) {
+            await out.promise;
+            return Response.json(cashSeries([100, 110]));
+          }
+          return Response.json(cashSeries(saved ? [900, 910] : [100, 110]));
+        }
+        return f.fetch(path, init);
+      },
+      () => NOW,
+      () => "/portfolios",
+      () => {},
+    );
+    const st = s.portfolios;
+    await st.open({ portfolio: 3, currency: null });
+    const reading = st.cash("EUR", keptSeries);
+    await Promise.resolve();
+    expect(await st.createBroker("South")).toBeNull();
+    out.resolve();
+    await reading;
+    expect(st.cashes.value.get("EUR")?.points[0]?.cash).toBe(900);
+  });
+
   test("a failed cash read is tried again when Cash is shown again", async () => {
     let fail = true;
     const f = fake(ANSWERS);

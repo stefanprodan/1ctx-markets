@@ -656,6 +656,34 @@ export function portfolioStore(
     return asked;
   }
 
+  // false when a save came while it read, so what it read was dropped
+  async function cashOnce(
+    currency: string,
+    keep: (w: Worth) => NetWorth | null,
+  ): Promise<boolean> {
+    const ask = `${currency} ${saves}`;
+    if (cashes.value.has(currency) || cashAsking.has(ask)) return true;
+    const w = worth.peek();
+    const home = w !== null && worthSaves === saves ? keep(w) : null;
+    const at = session();
+    const before = saves;
+    let n: NetWorth | null;
+    if (home !== null && home.currency === currency) n = home;
+    else {
+      cashAsking.add(ask);
+      const q = new URLSearchParams({ currency });
+      n = await call<NetWorth>(`/api/v1/holdings/net-worth?${q}`)
+        .catch(() => null)
+        .finally(() => cashAsking.delete(ask));
+    }
+    if (at !== session()) return true;
+    if (before !== saves) return false;
+    const next = new Map(cashes.value);
+    next.set(currency, n);
+    cashes.value = next;
+    return true;
+  }
+
   function clear(): void {
     batch(() => {
       drop();
@@ -871,25 +899,10 @@ export function portfolioStore(
       keep: (w: Worth) => NetWorth | null,
     ): Promise<void> {
       if (shared !== null) return;
-      const ask = `${currency} ${saves}`;
-      if (cashes.value.has(currency) || cashAsking.has(ask)) return;
-      const w = worth.peek();
-      const home = w !== null && worthSaves === saves ? keep(w) : null;
       const at = session();
-      const before = saves;
-      let n: NetWorth | null;
-      if (home !== null && home.currency === currency) n = home;
-      else {
-        cashAsking.add(ask);
-        const q = new URLSearchParams({ currency });
-        n = await call<NetWorth>(`/api/v1/holdings/net-worth?${q}`)
-          .catch(() => null)
-          .finally(() => cashAsking.delete(ask));
-      }
-      if (at !== session() || before !== saves) return;
-      const next = new Map(cashes.value);
-      next.set(currency, n);
-      cashes.value = next;
+      // a save while it read drops what it read and leaves no series for
+      // the page to ask again on, so the days after the save are read here
+      while (at === session() && !(await cashOnce(currency, keep)));
     },
     listing: (id: string): Promise<Listing | null> =>
       call<{ instrument: Listing }>(

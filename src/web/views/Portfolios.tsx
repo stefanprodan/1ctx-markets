@@ -15,7 +15,15 @@ import type {
 } from "../data/portfolios.ts";
 import { NOT_SHARED } from "../data/portfolios.ts";
 import { markets } from "../data/store.ts";
-import { day, money, percent, quantity, signedMoney } from "../lib/format.ts";
+import {
+  dateIn,
+  day,
+  money,
+  percent,
+  quantity,
+  signedMoney,
+  signedOrMissing,
+} from "../lib/format.ts";
 import { Icon } from "../lib/icons.tsx";
 import { nameOf } from "../lib/names.ts";
 import { useRefresh } from "../lib/refresh.ts";
@@ -173,21 +181,6 @@ function useSparks(
 
 export const keyOf = (h: Holding): string =>
   h.id ?? `pos:${h.position ?? h.name ?? ""}`;
-
-// a stored instant read on the owner's calendar: a trade entered at
-// 01:00 in Bucharest is dated that day, not the UTC day before
-function ownerDay(iso: string, zone: string | null | undefined): string {
-  try {
-    return new Date(iso).toLocaleDateString("en-GB", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-      timeZone: zone ?? undefined,
-    });
-  } catch {
-    return day(iso.slice(0, 10));
-  }
-}
 
 export function Portfolios() {
   const store = markets.portfolios;
@@ -647,7 +640,7 @@ function ValueBand({
     ...(hero.today
       ? [
           {
-            money: signedMoney(t.day_change, t.currency),
+            money: signedOrMissing(t.day_change, t.currency),
             percent: percent(hero.dayPercent),
             label: "today",
             moneyClass: "amount",
@@ -770,7 +763,8 @@ export function rowMenu(
   return rowActionsOf(x).map((a) => run[a]);
 }
 
-// a label already says Dry powder or Reserve; a phone on All has room for that word only
+// a label already says Dry powder or Reserve; a phone on All has room for
+// that word only
 function rowName(x: Holding, all: boolean, labelled: boolean) {
   if (x.kind === "bond") {
     return (
@@ -1334,14 +1328,14 @@ export function TradeSheet({
           {
             label: "Added by",
             value: `${enteredBy(t.entered_by, self)}${
-              t.entered_at ? ` · ${ownerDay(t.entered_at, zone)}` : ""
+              t.entered_at ? ` · ${dateIn(t.entered_at, zone)}` : ""
             }`,
           },
           ...(removed && t.removed_at
             ? [
                 {
                   label: "Removed",
-                  value: `${ownerDay(t.removed_at, zone)}${
+                  value: `${dateIn(t.removed_at, zone)}${
                     t.removed_by ? ` · ${enteredBy(t.removed_by, self)}` : ""
                   }`,
                 },

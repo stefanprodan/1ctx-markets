@@ -4,7 +4,7 @@
 import { useSignal } from "@preact/signals";
 import { useCallback, useEffect, useMemo } from "preact/hooks";
 import { SCREENER } from "../app/paths.ts";
-import { navigate } from "../app/router.ts";
+import { navigate, path } from "../app/router.ts";
 import type { Params } from "../app/routes.ts";
 import { says } from "../data/api.ts";
 import { markets } from "../data/store.ts";
@@ -19,6 +19,7 @@ import {
   buyable,
   type Choice,
   choices,
+  onSymbolPage,
   summary,
   UNREAD,
 } from "./Instrument.model.ts";
@@ -66,10 +67,6 @@ export function Instrument({ params }: { params: Params }) {
   const analysis = useMemo(() => markets.analysis(id), [id]);
   const plans = useMemo(() => markets.tradePlans.tagged(id), [id]);
   const writing = useSignal(false);
-  // Back or Forward reuses the page, so a drawer never carries a draft over
-  useEffect(() => {
-    writing.value = false;
-  }, [id]);
   // offered once the read says there is none, never before it lands
   const write =
     analysis.doc.value !== null && analysis.doc.value.revision === null
@@ -83,9 +80,13 @@ export function Instrument({ params }: { params: Params }) {
     said.value = null;
     try {
       const results = await markets.refetch(id, c.parts, c.sections);
-      said.value = summary(results, options, symbol);
+      if (onSymbolPage(path.peek(), id)) {
+        said.value = summary(results, options, symbol);
+      }
     } catch (error) {
-      said.value = { text: says(error), bad: true };
+      if (onSymbolPage(path.peek(), id)) {
+        said.value = { text: says(error), bad: true };
+      }
     } finally {
       fetching.value = false;
     }
@@ -95,6 +96,7 @@ export function Instrument({ params }: { params: Params }) {
     refused.value = null;
     const r = await markets.remove(id);
     removing.value = false;
+    if (!onSymbolPage(path.peek(), id)) return;
     if (r.ok) navigate(SCREENER);
     else
       refused.value =

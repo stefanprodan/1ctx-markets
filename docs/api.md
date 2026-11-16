@@ -3,15 +3,10 @@
 Governs the REST API under `/api/v1`: `src/api/` (`routes.ts`,
 `http.ts`, `openapi.ts`, `schemas.ts`, `paths.ts`, `docs.ts`, `docs/`),
 the router's part in `src/server/http.ts`, the alerts feed
-(`src/api/alerts.ts`) and the instrument, dashboard and status
-handlers (`src/admin/http.ts`), the portfolio routes
-(`src/api/portfolios.ts`, `docs/portfolios.md`), the trade plans
-routes (`src/api/trade-plans-spec.ts`, `docs/trade-plans.md`), and the
-dashboard's
-(`src/admin/dashboard.ts`). What each route reads is its tool's,
-in `docs/tools.md`, `docs/research.md` and `docs/alerts.md`; what an
-alert is in `docs/alerts.md`; the admin key and what refetch and delete
-do in `docs/admin.md`; the server, keys and flags in `docs/config.md`.
+(`src/api/alerts.ts`), the instrument, dashboard and status handlers
+(`src/admin/http.ts`, `src/admin/dashboard.ts`), and the portfolio
+and trade plans routes (`src/api/portfolios.ts`,
+`src/api/trade-plans-spec.ts`). What each route reads is its tool's.
 
 ## Why
 
@@ -93,11 +88,20 @@ MCP tools copied onto paths.
 | `GET /sharing` | session | `sharingAnswer()` | `people[]` (`id`, `name`, `shared`): everyone else, and whether they see the caller's portfolios; `sharers[]` (`id`, `name`): who lets the caller see theirs; both by name, ignoring case. A web UI sign-in's only: a key, the admin key too, is refused (403) |
 | `PUT`, `DELETE /sharing/{id}` | session | `setSharing()` | starts or ends that person seeing all the caller's portfolios, read only; answers as `GET /sharing`; done already is no error; 404 for no such person, 400 for the caller; a sign-in's only, as above |
 | `GET /keys` | session | `listAnswer()` | `keys[]` (id, name, `owner` `{id, name}`, created, last used, expires; never a token), the caller's own, an admin's everyone's, and `limit` (`docs/admin.md`) |
-| `POST /keys` | session | `createOne()` | `{name, expiresInDays, portfolio, alerts, profile, analysis, trade_plans}` (days null, 30, 90 or 365; each access `none`, the default, `read` or `write`): a key of the caller's; 201 with `key` and its `token`, once; 409 for a name the caller has or past their cap of 5 |
+| `POST /keys` | session | `createOne()` | `{name, expiresInDays, portfolio, alerts, profile, analysis, trade_plans}` (days null, 30, 90 or 365; each access `none`, the default, `read` or `write`): a key of the caller's; 201 with `key` and its `token`, once; 409 for a name the caller has or past the cap a person may hold (`--max-keys`, `docs/config.md`) |
+| `PATCH /keys/{id}` | session | `setOne()` | `{portfolio, alerts, profile, analysis, trade_plans}`, any of them: the caller's own key's access, its token, name and expiry kept; answers `key` as the list does; its next call is held to the new access; 400 for none or a bad value, 404 for an unknown id or another person's |
 | `DELETE /keys/{id}` | session | `revokeOne()` | 204; 404 for an unknown id or another person's, but for an admin |
-| `GET`, `POST /users`; `PATCH`, `DELETE /users/{id}`; `POST /users/{id}/invite`, `/users/{id}/sign-out` | admin | `src/admin/users.ts` | the people (`docs/admin.md`, "People") |
-| `GET`, `PUT`, `DELETE /smtp`; `POST /smtp/test` | admin | `src/admin/smtp.ts` | the email settings (`docs/admin.md`, "Email") |
-| `GET /status` | admin | `status()` | `docs/admin.md` |
+| `GET /users` | admin | `listUsers()` | `users[]` (`id`, `name`, `email`, `role`, `operator`, `created_at`, `last_sign_in_at`, `keys`) and `email_on` (`docs/admin.md`, "People") |
+| `POST /users` | admin | `addUser()` | `{name, email, role}`: adds a person and emails the invite; 201 `{user, invite: "sent"}` or `{user, invite: "failed", reason}`; 409 while email is off or the address is taken |
+| `PATCH /users/{id}` | admin | `changeUser()` | `{name, role}`, at least one; `{user}`; 409 making the operator a member |
+| `POST /users/{id}/invite` | admin | `inviteAgain()` | no body: a new 7-day invite, replacing an unused one; `{invite, reason?}`; 409 while email is off or for a person with no email |
+| `POST /users/{id}/sign-out` | admin | `signOutUser()` | no body: ends their logins and live links; 204 |
+| `DELETE /users/{id}?dry_run=` | admin | `removeUser()` | removes the person and every row of theirs; `{dry_run, deleted}` with each kind's count; `dry_run=true` deletes nothing; 409 for the operator |
+| `GET /smtp` | admin | `smtpAnswer()` | `{settings, key_names, email_on, key_missing}` (`docs/admin.md`, "Email") |
+| `PUT /smtp` | admin | `putSmtp()` | every field of the settings; the same answer as `GET` |
+| `DELETE /smtp` | admin | `deleteSmtp()` | email off; 204, 404 with none saved |
+| `POST /smtp/test` | admin | `testSmtp()` | `{to}`, the caller's own email by default: one email at once; `{result: "sent"}` or `{result: "failed", reason, reply}` |
+| `GET /status` | admin | `status()` | `docs/admin.md`, "Status" |
 | `POST /status/retry` | admin | `retryFailing()` | `asked`, `fetched`, `failed`, `left_out`: counts only; no body taken (`docs/admin.md`) |
 | `GET /openapi.json` | none | `spec` | the OpenAPI document |
 | `GET /docs`, `GET /docs/{file}` | none | `docs.ts` | the bundled Swagger UI page and its files |
@@ -574,14 +578,14 @@ one. Its items are triggers, as `GET /alerts/history` gives them
   (`docs/storage.md`, "Retention"), and it changes the bytes of pages
   already answered, which starts a polling client's run again.
 - **Each person reads their own triggers** (`alerts.owner`, copied from
-  the alert when it triggers). The cursor stays the alert id, shared by
-  everyone, so another person's ids fall between one's own.
+  the alert when it triggers). The cursor stays the trigger id (`alerts.id`), shared
+  by everyone, so another person's ids fall between one's own.
 - **A pruned trigger of the reader's after the cursor is a retention
   gap**: retention keeps each person's newest pruned id
   (`users.alerts_pruned`, `pruneAlerts()`), and one past the cursor
   answers `retention_gap: true`; another person's ids, pruned or not,
   never do. A cursor above any id given to the reader
-  (`issuedAlertId()`: their newest alert or pruned id, never the
+  (`issuedAlertId()`: their newest trigger or pruned id, never the
   server's, which would tell another person's alert count) starts over
   with `cursor_reset: true`, as after a restore.
 - **Delivery is at least once.** The cursor moves only when the client
@@ -592,10 +596,11 @@ one. Its items are triggers, as `GET /alerts/history` gives them
 
 - **`src/api/openapi.ts` is OpenAPI 3.1, written by hand as a typed
   object** and served at `/api/v1/openapi.json`. Every route,
-  parameter, body, answer and documented error is in it, with two
-  bearer security schemes, `read` and `admin`, and the `session`
-  cookie, named per operation. Errors are `application/problem+json`
-  with the `Problem` schema.
+  parameter, body, answer and documented error is in it, with bearer
+  security schemes for `admin` and per access (`read`, then a read and
+  a write scheme each for portfolio, alerts, profile, analysis and
+  trade plans) and the `session` cookie, named per operation. Errors
+  are `application/problem+json` with the `Problem` schema.
 - **Descriptions are for a person reading the docs page**: what a
   route returns, then the limits, defaults and units a caller needs,
   never the reasons behind them or the MCP descriptions copied. They

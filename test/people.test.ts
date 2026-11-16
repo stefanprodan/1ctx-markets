@@ -39,6 +39,7 @@ import { clientIp, loggedPath } from "../src/server/http.ts";
 import {
   ASKS_PER_CHALLENGE_HOUR,
   ASKS_PER_HOUR,
+  ASKS_PER_INBOX_DAY,
   ASKS_PER_USER_DAY,
   MAX_CODE_TRIES,
   SEND_DEADLINE_MS,
@@ -380,6 +381,23 @@ describe("asking for a link", () => {
     const own = await t.ask(ANA, "F".repeat(43), "1.2.3.4");
     expect(own.res.status).toBe(202);
     expect(t.sent).toHaveLength(ASKS_PER_USER_DAY + 1);
+  });
+
+  test(`one inbox is sent at most ${ASKS_PER_INBOX_DAY} links a day across browsers`, async () => {
+    const t = people();
+    t.person("ana", ANA);
+    t.person("bo", "bo@example.com");
+    // a browser without a cookie is given a new challenge each ask
+    for (let n = 0; n < ASKS_PER_INBOX_DAY + 5; n++)
+      await t.ask(ANA, null, `6.6.8.${n}`);
+    expect(t.sent).toHaveLength(ASKS_PER_INBOX_DAY);
+    expect((await t.ask(ANA, "F".repeat(43), "1.2.3.4")).res.status).toBe(202);
+    expect(t.sent).toHaveLength(ASKS_PER_INBOX_DAY);
+    await t.ask("bo@example.com", null, "1.2.3.5");
+    expect(t.mailTo("bo@example.com")).not.toBeNull();
+    await t.clock.advance(24 * 60 * MINUTE_MS);
+    await t.ask(ANA, "F".repeat(43), "1.2.3.4");
+    expect(t.sent).toHaveLength(ASKS_PER_INBOX_DAY + 2);
   });
 
   test(`one browser is sent at most ${ASKS_PER_CHALLENGE_HOUR} links an hour, whoever it names`, async () => {
@@ -1741,29 +1759,32 @@ describe("what the review found", () => {
     expect((await t.smtp()).status).toBe(200);
   });
 
-  test("a stranger's wrong codes never kill a pending invite", async () => {
+  test("a stranger's wrong codes end an invite's code from every browser, never its link", async () => {
     const t = people();
     const res = await t.at(
       `${PREFIX}/users`,
       t.jsonBody("POST", { name: "Ana", email: ANA }, t.admin),
     );
     expect(res.status).toBe(201);
-    const { code } = t.mailTo(ANA)!;
+    const { token, code } = t.mailTo(ANA)!;
     const wrong = code === "000000" ? "111111" : "000000";
-    const stranger = "H".repeat(43);
     for (let n = 0; n < MAX_CODE_TRIES + 1; n++) {
+      const stranger = `H${n}`.padEnd(43, "H");
       expect((await t.code(ANA, wrong, stranger, `6.6.7.${n}`)).status).toBe(
         401,
       );
     }
-    // that browser is done with this invite, the right code included
-    expect((await t.code(ANA, code, stranger)).status).toBe(401);
+    // the right code is refused from any browser, past the tries
+    expect((await t.code(ANA, code, "I".repeat(43))).status).toBe(401);
     expect(t.db.query("select code_tries, used_at from links").get()).toEqual({
-      code_tries: 0,
+      code_tries: MAX_CODE_TRIES,
       used_at: null,
     });
-    const right = await t.code(ANA, code, "I".repeat(43));
-    expect(right.status).toBe(200);
+    // the emailed link still signs in, and a code asked at sign-in works
+    expect((await t.use(token)).status).toBe(303);
+    const asked = await t.ask(ANA);
+    const fresh = t.mailTo(ANA)!;
+    expect((await t.code(ANA, fresh.code, asked.challenge)).status).toBe(200);
   });
 
   test("behind a trusted proxy the client is the last X-Forwarded-For value", () => {

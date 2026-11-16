@@ -13,7 +13,7 @@ import type { Writer } from "../storage/writer.ts";
 export const KEY_PREFIX = "1ctx-markets-";
 export const KEY_DAYS = [30, 90, 365] as const;
 export type KeyDays = (typeof KEY_DAYS)[number];
-// 1ctx's agent name rule
+// a key's name: lowercase letters, digits, dashes and underscores
 export const MIN_NAME = 2;
 export const MAX_NAME = 80;
 const NAME = /^[a-z0-9][a-z0-9_-]*$/;
@@ -139,7 +139,7 @@ export function createKey(
 ): { key: KeyRow; token: string } {
   if (RESERVED_NAMES.includes(args.name))
     throw new KeyConflict("name reserved");
-  // unique per person, as 1ctx's
+  // unique per person, so two people may name keys alike
   if (keyByName(db, user, args.name) !== null) {
     throw new KeyConflict("name taken");
   }

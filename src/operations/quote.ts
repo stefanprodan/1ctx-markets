@@ -24,7 +24,7 @@ import type { WeeklyRow } from "../signals/weekly.ts";
 import { ATTRIBUTION } from "../sources/fred/sync.ts";
 import { FRED } from "../sources/ids.ts";
 import type { Db } from "../storage/db/index.ts";
-import { cursor, fitPage, readCursor } from "./answer.ts";
+import { cursor, fitPage, readCursor, TAG_CHARS } from "./answer.ts";
 import { ArgError, fields, optionalText, symbols } from "./args.ts";
 import { readExtended } from "./extended.ts";
 import type { ExtendedRead, Markets } from "./markets.ts";
@@ -34,6 +34,9 @@ import { tradePlansField } from "./trade-plans.ts";
 import { NO_ACCESS, type Who } from "./who.ts";
 
 export const MAX_SYMBOLS = 100;
+// a movers or screen cursor: two tags a symbol (an error row's, then its
+// id's) and the arguments' digest
+export const MAX_SET_NEXT = 2 * MAX_SYMBOLS * TAG_CHARS + 16;
 
 // a live row's running values, which say nothing to a caller
 const RUNNING = new Set([

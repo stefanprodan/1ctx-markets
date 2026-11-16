@@ -55,8 +55,10 @@ function besideAverage(
   avg: number | null | undefined,
   now: number | null,
 ): Fact | null {
-  if (avg == null || avg === 0 || now === null) return null;
-  const by = inPoints(d) ? now - avg : ((now - avg) / Math.abs(avg)) * 100;
+  if (avg == null || now === null) return null;
+  // a percent of a level at or below zero says nothing; points still do
+  if (!inPoints(d) && avg <= 0) return null;
+  const by = inPoints(d) ? now - avg : ((now - avg) / avg) * 100;
   const side = flat(by)
     ? "at it"
     : `${inPoints(d) ? pointsOf(by) : pct(by)} ${by > 0 ? "above" : "below"}`;

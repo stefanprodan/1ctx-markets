@@ -1,6 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-// Thin over the operations REST shares, so REST's contract never moves with a tool.
+// Thin over the operations REST shares, so REST's contract never moves
+// with a tool.
 
 import type { JsonSchemaType } from "@modelcontextprotocol/server";
 import {

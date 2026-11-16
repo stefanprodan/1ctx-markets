@@ -5,10 +5,7 @@ Governs the US Securities and Exchange Commission's EDGAR source:
 (the Form 8-K item names), `store.ts` (tickers, filings, flags,
 staleness), `sync.ts` (one share's fetch) and `jobs.ts` (the daily
 pass), and the `edgar_tickers`, `edgar_filers` and `filings` tables
-(`src/storage/db/migrations/0019-edgar.ts`). The queue, deadlines,
-phrases and the lock every source shares are in `docs/sources.md`; the
-`research` sections, the research route and events in
-`docs/research.md`; key files in `docs/config.md`.
+(`src/storage/db/migrations/0019-edgar.ts`).
 
 ## On and off
 

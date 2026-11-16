@@ -1,7 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-// Connect agents' words and setup lines, as 1ctx's. No setup line holds a
-// key: each reads KEY_ENV, so they stay on the page.
+// Connect agents' words and setup lines. No setup line holds a key: each
+// reads KEY_ENV, so they stay on the page.
 
 import type { AgentKey, KeyAccess } from "../data/store.ts";
 import { ago } from "../lib/format.ts";

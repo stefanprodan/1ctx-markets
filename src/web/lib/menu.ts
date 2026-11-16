@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // A menu: open on a click, closed by a click outside it or by
 // Escape. A menu with a pane inside passes `back`, which takes Escape
 // first and says whether it used it. A menu that two owners open passes

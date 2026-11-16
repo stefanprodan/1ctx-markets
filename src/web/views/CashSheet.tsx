@@ -3,7 +3,7 @@
 // A cash row's drawer: one box for a new balance, the rest folded away,
 // and the row's kept updates as a step line and a list.
 
-import { useSignal } from "@preact/signals";
+import { type Signal, useSignal } from "@preact/signals";
 import { useEffect, useId, useMemo } from "preact/hooks";
 import type { Holding, PortfolioStore } from "../data/portfolios.ts";
 import { amount, day, signedAmount } from "../lib/format.ts";
@@ -158,6 +158,7 @@ export function CashSheet({
               h={h}
               head={head}
               onMoved={onMoved}
+              saving={busy}
               onDone={() => {
                 details.value = false;
                 reads.value++;
@@ -221,6 +222,7 @@ export function CashSheet({
                 <PastBalance
                   rowDay={at ?? null}
                   ccy={ccy}
+                  busy={busy}
                   save={async (change) => {
                     const no = await store.updatePosition(id, change);
                     if (no === null) reads.value++;
@@ -309,16 +311,18 @@ const before = (d: string) =>
 function PastBalance({
   rowDay,
   ccy,
+  busy,
   save,
 }: {
   rowDay: string | null;
   ccy: string;
+  // the drawer's, so it stays open while the balance saves
+  busy: Signal<boolean>;
   save: (change: { amount: number; date: string }) => Promise<string | null>;
 }) {
   const open = useSignal(false);
   const date = useSignal("");
   const text = useSignal("");
-  const busy = useSignal(false);
   const error = useSignal<string | null>(null);
   if (!open.value) {
     return (
@@ -335,6 +339,7 @@ function PastBalance({
   }
   const submit = async (ev: Event) => {
     ev.preventDefault();
+    if (busy.value) return;
     const got = pastBalance(date.value, text.value, rowDay);
     if ("error" in got) {
       error.value = got.error;

@@ -5,7 +5,8 @@
 import { describe, expect, test } from "bun:test";
 import { spec } from "../src/api/openapi.ts";
 import { upsertInstrument } from "../src/market/instruments.ts";
-import { OPERATOR } from "../src/operations/who.ts";
+import { updatePosition } from "../src/operations/portfolio.ts";
+import { loginWho, OPERATOR } from "../src/operations/who.ts";
 import { insertFund, setFundPrice } from "../src/portfolios/funds.ts";
 import { growth, yearBefore } from "../src/portfolios/growth.ts";
 import {
@@ -18,7 +19,6 @@ import {
   type NewPosition,
   type NewTrade,
   setDisplayCurrency,
-  setPositionRemoved,
   setTradeRemoved,
 } from "../src/portfolios/store.ts";
 import { holdings } from "../src/portfolios/value.ts";
@@ -344,25 +344,24 @@ describe("growth", () => {
     expect(g.points.at(-1)!.value).toBe(live(db, shares).invested!);
   });
 
-  test("dates a bond from the first row of its chain", () => {
-    const { db, shares } = setup();
-    const first = position(db, {
-      portfolio: shares,
-      kind: "bond",
-      asOf: "2030-02-02",
-      amount: 1000,
-      cost: 980,
-    });
-    setPositionRemoved(db, OPERATOR, first, "test", NOW);
-    position(db, {
+  test("dates a bond from its purchase date, corrected or not", async () => {
+    const { clock, db, m, shares } = setup();
+    await clock.advance(NOW - clock.now());
+    const who = loginWho(OPERATOR, "test-login", "test");
+    const id = position(db, {
       portfolio: shares,
       kind: "bond",
       asOf: "2030-07-01",
       amount: 1000,
       cost: 980,
-      note: "edited",
-      replaces: first,
     });
+    const noted = await updatePosition(m, who, id, { note: "edited" });
+    if ("error" in noted) throw new Error(noted.message);
+    expect(read(db, shares).from).toBe("2030-07-01");
+    const dated = await updatePosition(m, who, noted.position.id, {
+      date: "2030-02-02",
+    });
+    if ("error" in dated) throw new Error(dated.message);
     const g = read(db, shares);
     expect(g.from).toBe("2030-02-02");
     expect(g.points[0]).toEqual({
@@ -371,7 +370,6 @@ describe("growth", () => {
       invested: 980,
       gain: 20,
     });
-    expect(on(g, "2030-07-01").invested).toBe(980);
     expect(g.points.at(-1)).toEqual({
       date: LIVE,
       value: 1000,

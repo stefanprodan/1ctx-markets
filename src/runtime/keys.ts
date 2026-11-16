@@ -20,8 +20,8 @@ export const ADMIN_PREFIX = "1ctx-markets-admin-";
 export const PUSH_FILE = "push-vapid.key";
 const MAX_KEY_BYTES = 4096;
 const SOURCE_NAME = /^[a-z][a-z0-9-]{0,47}$/;
-// 1ctx's secret names: the kind, then 1 to 48 lowercase letters, digits
-// and dashes; the file adds .key
+// an email key's name: email-, then 1 to 48 lowercase letters, digits and
+// dashes; the file adds .key
 export const EMAIL_KEY_PREFIX = "email-";
 const EMAIL_NAME = /^email-[a-z0-9][a-z0-9-]{0,47}$/;
 export const isEmailKeyName = (value: unknown): value is string =>

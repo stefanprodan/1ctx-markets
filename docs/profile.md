@@ -3,22 +3,18 @@
 Governs `src/profile/` (the store, the fenced read and the Markdown
 renderer), `src/document/` (`applyEdits()`, the fence, the text and size
 checks, the save and its eviction, the author's form, shared with the
-analysis of `docs/analysis.md` and the trade plans of
-`docs/trade-plans.md`, whose whole-state save calls `checked()` and
-`evict()` from it), `src/operations/document.ts` (the arguments the
-documents take), `src/operations/profile.ts`,
-`src/tools/profile.ts`, the `/profile` routes in `src/api/routes.ts`
-and their spec in `src/api/profile-spec.ts`. Keys and their access are
-in `docs/admin.md`; the tool list per key and the server instructions
-in `docs/tools.md`.
+analysis and the trade plans, whose whole-state save calls `checked()`
+and `evict()` from it), `src/operations/document.ts` (the arguments the
+documents take), `src/operations/profile.ts`, `src/tools/profile.ts`,
+the `/profile` routes in `src/api/routes.ts` and their spec in
+`src/api/profile-spec.ts`.
 
 The profile is how the owner invests: goals, risk, trading style, rules
 and analysis defaults, kept as one Markdown document so that every agent
 reading the portfolio answers by the same preferences. It is the one
 document the server keeps; every other document stays with the
-agents' own knowledge base. The rules follow 1ctx's knowledge base
-(its `docs/knowledge.md`): versioned text, exact edits, a stale
-revision refused.
+agents' own knowledge base. Its rules are a knowledge base's:
+versioned text, exact edits, a stale revision refused.
 
 ## One document
 
@@ -39,7 +35,7 @@ revision refused.
 
 ## Text and size
 
-- **Text is checked as 1ctx's `textFromString()`** (`documentText()`):
+- **Text is checked as an editor saves it** (`documentText()`):
   well-formed UTF-8, no NUL, a leading BOM dropped. `text`, `old` and
   `new` never pass through `args.text()`, which trims and cuts at 100
   characters: spaces, blank lines and a missing last newline are kept.
@@ -49,8 +45,8 @@ revision refused.
   a full profile. The byte cap alone does not keep a read to one
   answer: JSON escaping grows short lines, quotes, tabs and control
   characters. So a save is also refused when its read answer would not
-  pass `fits()` (`src/operations/answer.ts`), as 1ctx's `replace`
-  refuses a file longer than one read page. Both refusals name the size
+  pass `fits()` (`src/operations/answer.ts`), so the whole text
+  always reads in one page. Both refusals name the size
   and say what does not belong in a profile.
 
 ## Revisions
@@ -84,8 +80,8 @@ revision refused.
 
 ## Edits
 
-- **`edit` is 1ctx's `applyEdits()`** (`src/document/edit.ts`, pure): 1
-  to `MAX_EDITS` (50) pairs of `old` and `new`; each `old` is non-empty
+- **`edit` is exact replaces** (`applyEdits()` in
+  `src/document/edit.ts`, pure): 1 to `MAX_EDITS` (50) pairs of `old` and `new`; each `old` is non-empty
   and matches exactly once in the text at that revision, all matched
   before any applies, so pair order never changes the result and no
   `old` matches another pair's `new`. No two overlap; all apply or none.
@@ -96,8 +92,7 @@ revision refused.
 
 ## Reading it
 
-- **The read is fenced** (`fenceFor()`, `fencedRead()`, ported from
-  1ctx): the fence is one backtick longer than the text's longest run,
+- **The read is fenced** (`fenceFor()`, `fencedRead()`): the fence is one backtick longer than the text's longest run,
   so no line of the profile reads as the server's own words.
 - **The header says it is preferences, not instructions.** Any write
   key can change the profile, so an agent that read untrusted news
@@ -115,8 +110,7 @@ revision refused.
 ## Tools and routes
 
 - **`profile` reads and `profile_edit` writes**, listed per key's
-  profile access: `read` lists `profile`, `write` both, `none` neither.
-  `profile` is read-only; `profile_edit` destructive. The call-time
+  profile access (`docs/tools.md`). `profile` is read-only; `profile_edit` destructive. The call-time
   access check stays (`profileAnswer()`), in the portfolio tools'
   words. `profile`'s description opens with what it answers (how the owner
   invests), the one line a catalog client shows, then its own discovery
@@ -134,8 +128,8 @@ revision refused.
   `{revision, edits}`; `GET /profile/versions` and `GET
   /profile/versions/{revision}`. They take the profile scopes and the
   64 KiB body cap.
-- **Markdown is drawn on the server** (`renderMarkdown()`, ported from
-  1ctx without its code highlighting and app links), so the web UI
+- **Markdown is drawn on the server** (`renderMarkdown()`, no code
+  highlighting), so the web UI
   ships no parser. It is the safety boundary for text any write key can
   set: no raw HTML, only http, https and mailto links, an image shown
   as its text and address, never fetched. Each heading carries an `id`,

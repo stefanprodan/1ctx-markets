@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // The release build; test/web-build.test.ts bundles with the same options.
 
 export const RELEASE = {

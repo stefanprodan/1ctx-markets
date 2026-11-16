@@ -86,7 +86,8 @@ export const INSTRUMENT_TABLES = [
 export type SourceState = {
   name: string;
   on: boolean;
-  // why it is on or off: the key file, the flag, or always for Yahoo and the CFTC
+  // why it is on or off: the key file, the flag, or always for Yahoo
+  // and the CFTC
   why: string;
   backoff(): Backoff | null;
 };
@@ -256,25 +257,78 @@ type Row = {
   error: string | null;
 };
 
+type Key = { source: string; job: string; scope: string | null };
+
+// every scope's newest run and newest ended run, each found by a seek on
+// the scope index: a group by over the 30 days of runs kept reads them all
+function newestRuns(db: Db): { newest: Row; ended: Row | null }[] {
+  const first = db.query<Key, []>(
+    "select source, job, scope from sync_runs order by source, job, scope limit 1",
+  );
+  // a null scope sorts first, and no comparison with null is true
+  const afterNull = db.query<{ scope: string }, [string, string]>(
+    `select scope from sync_runs where source = ? and job = ?
+       and scope is not null order by scope limit 1`,
+  );
+  const afterScope = db.query<{ scope: string }, [string, string, string]>(
+    `select scope from sync_runs where source = ? and job = ? and scope > ?
+     order by scope limit 1`,
+  );
+  const afterJob = db.query<Key, [string, string]>(
+    `select source, job, scope from sync_runs where source = ? and job > ?
+     order by job, scope limit 1`,
+  );
+  const afterSource = db.query<Key, [string]>(
+    `select source, job, scope from sync_runs where source > ?
+     order by source, job, scope limit 1`,
+  );
+  const cols = `source, job, scope, started_at as startedAt,
+    ended_at as endedAt, status, rows, error`;
+  const newest = db.query<Row, [string, string, string | null]>(
+    `select ${cols} from sync_runs where source = ? and job = ? and scope is ?
+     order by started_at desc, id desc limit 1`,
+  );
+  const ended = db.query<Row, [string, string, string | null]>(
+    `select ${cols} from sync_runs where source = ? and job = ? and scope is ?
+       and status <> 'running' order by started_at desc, id desc limit 1`,
+  );
+  const out: { newest: Row; ended: Row | null }[] = [];
+  let k = first.get();
+  while (k !== null) {
+    const n = newest.get(k.source, k.job, k.scope)!;
+    out.push({
+      newest: n,
+      ended: n.status === "running" ? ended.get(k.source, k.job, k.scope) : n,
+    });
+    const s =
+      k.scope === null
+        ? afterNull.get(k.source, k.job)
+        : afterScope.get(k.source, k.job, k.scope);
+    k =
+      s !== null
+        ? { source: k.source, job: k.job, scope: s.scope }
+        : (afterJob.get(k.source, k.job) ?? afterSource.get(k.source));
+  }
+  return out;
+}
+
 // each scope's latest ended run, over the runs kept, newest first per job
-function scopeRuns(db: Db): ScopeRun[] {
+function scopeRuns(
+  db: Db,
+  runs: { ended: Row | null }[] = newestRuns(db),
+): ScopeRun[] {
   const hasBars = db.query<{ n: number }, [string]>(
     "select 1 as n from bars where instrument = ? and interval = '1d' limit 1",
   );
-  type Ended = Omit<ScopeRun, "failing" | "scope"> & {
-    scope: string | null;
-    status: Run["status"];
-  };
+  type Ended = Row & { endedAt: number; status: Run["status"] };
   return (
-    db
-      .query<Ended, []>(
-        `select source, job, scope, status, error,
-           ended_at as endedAt, max(started_at)
-         from sync_runs where status <> 'running'
-         group by source, job, scope
-         order by source, job, endedAt desc`,
+    runs
+      .map((r) => r.ended)
+      .filter((r): r is Ended => r !== null)
+      .sort(
+        (a, b) =>
+          cmp(a.source, b.source) || cmp(a.job, b.job) || b.endedAt - a.endedAt,
       )
-      .all()
       // a run from before backfill runs had a scope names nothing
       .filter((r): r is Ended & { scope: string } => r.scope !== null)
       .map((r) => {
@@ -300,15 +354,18 @@ function scopeRuns(db: Db): ScopeRun[] {
 export const failingScopes = (db: Db): ScopeRun[] =>
   scopeRuns(db).filter((r) => r.failing);
 
-// SQLite answers a max() query's other columns from the row holding it
+const cmp = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
+// each job's newest run, whichever scope ran it
 function jobs(db: Db, now: number) {
-  const last = db
-    .query<Row, []>(
-      `select source, job, scope, max(started_at) as startedAt,
-         ended_at as endedAt, status, rows, error
-       from sync_runs group by source, job order by source, job`,
-    )
-    .all();
+  const runs = newestRuns(db);
+  const newest = new Map<string, Row>();
+  for (const { newest: r } of runs) {
+    const key = `${r.source}|${r.job}`;
+    const had = newest.get(key);
+    if (had === undefined || r.startedAt > had.startedAt) newest.set(key, r);
+  }
+  const last = [...newest.values()];
   type Counts = {
     instruments: number;
     markets: number;
@@ -317,7 +374,7 @@ function jobs(db: Db, now: number) {
   };
   const scopes = new Map<string, Counts>();
   const failing = new Map<string, ScopeRun[]>();
-  for (const r of scopeRuns(db)) {
+  for (const r of scopeRuns(db, runs)) {
     const key = `${r.source}|${r.job}`;
     const n = scopes.get(key) ?? {
       instruments: 0,

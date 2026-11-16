@@ -972,7 +972,8 @@ describe("events inside the call", () => {
         )
         .run(cik, abroad, NOW);
 
-    // EDGAR off: another listing's events have none, a share's own its listing's
+    // EDGAR off: another listing's events have none, a share's
+    // own its listing's
     const off = await setup({ charts: await shares(["TSM"]) });
     usShare(off.db, "TSM");
     expect(await currencies(off)).toEqual(listed("USD"));

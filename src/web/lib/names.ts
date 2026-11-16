@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // How an instrument is named on screen, for views and models alike.
 
 import type { Listed } from "../data/store.ts";

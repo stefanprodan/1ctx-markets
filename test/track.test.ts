@@ -425,7 +425,8 @@ describe("World markets", () => {
   });
 });
 
-// one daily bar on date, written 60 days before OPEN, as a read long ago left it
+// one daily bar on date, written 60 days before OPEN, as a read long
+// ago left it
 function stored(
   db: Db,
   id: string,

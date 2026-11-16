@@ -1,9 +1,7 @@
 # Calendars
 
 Governs market hours, bar dates and weeks: `src/market/calendars.ts`,
-`src/market/zone.ts` and the `markets` table. The jobs that act on a
-session are in `docs/yahoo.md`; tables, times and staleness in
-`docs/storage.md`.
+`src/market/zone.ts` and the `markets` table.
 
 ## Sessions come from the source
 

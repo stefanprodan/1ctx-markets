@@ -1,6 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 
+import { hasDailyBars } from "../../market/bars.ts";
 import {
   closeQuoteAt,
   isQuoted,
@@ -299,13 +300,8 @@ export function yahooJobs(options: JobsOptions): YahooJobs {
       error?: unknown;
     }[] = [];
     for (const instrument of instruments) {
-      const has = db
-        .query<{ n: number }, [string]>(
-          "select count(*) as n from bars where instrument = ? and interval = '1d'",
-        )
-        .get(instrument.id)!.n;
       // an instrument with no bars waits for the backfill job
-      if (has === 0) continue;
+      if (!hasDailyBars(db, instrument.id)) continue;
       const at = clock.now();
       try {
         const written = await refetch(ctx, instrument);

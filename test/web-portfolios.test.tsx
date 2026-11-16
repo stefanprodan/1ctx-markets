@@ -3,6 +3,7 @@
 // The Portfolios page from fixed, made-up answers: no DOM, no network.
 
 import { describe, expect, test } from "bun:test";
+import { options, type VNode } from "preact";
 import { render } from "preact-render-to-string";
 import { UserItems } from "../src/web/app/UserMenu.tsx";
 import { type Fetch, sentence } from "../src/web/data/api.ts";
@@ -388,6 +389,15 @@ describe("the Portfolios page", () => {
     }
   });
 
+  test("a total's missing day change reads as missing, never as no move", async () => {
+    const { s } = await loaded({
+      ...HOLDINGS,
+      totals: [total("EUR", { day_change: null }), HOLDINGS.totals[1]!],
+    });
+    const html = render(<PortfoliosBody store={s.portfolios} />);
+    expect(html).toMatch(/>—<\/span>\s*<span class="faint">today</);
+  });
+
   test("a cash row opens its drawer from a button, a listed row its page", async () => {
     const { s } = await loaded();
     const html = render(<PortfoliosBody store={s.portfolios} />);
@@ -638,6 +648,15 @@ describe("plain words on the page", () => {
 });
 
 describe("the page's words", () => {
+  test("read commas as thousands only in groups of three, else as the decimal", () => {
+    expect(typed("1,250")).toBe(1250);
+    expect(typed("12,400")).toBe(12400);
+    expect(typed("1,234,567.5")).toBe(1234567.5);
+    expect(typed("0,125")).toBe(0.125);
+    expect(typed("12,4")).toBe(12.4);
+    expect(Number.isNaN(typed("1,23,4")!)).toBe(true);
+  });
+
   test("say amounts, gains and dates plainly", () => {
     expect(amount(1234.5, "EUR")).toBe("1,234.50 EUR");
     expect(amount(-3, "USD")).toBe("−3.00 USD");
@@ -1667,7 +1686,8 @@ describe("a fund the owner prices", () => {
     expect(holdingName({ ...fundRow, isin: undefined, parts: [] }, NOW)).toBe(
       "Fund",
     );
-    // its price, then the day it is for under it; the year only when not this one
+    // its price, then the day it is for under it; the year only when
+    // not this one
     expect(priceLine(fundRow)).toBe("6.00 EUR");
     // ICU builds name September "Sep" or "Sept"
     expect(day("2026-09-30", NOW)).toMatch(/^30 Sept?$/);
@@ -1781,6 +1801,31 @@ describe("a fund the owner prices", () => {
       date: "2026-10-27",
     });
     expect(bodies[0]![1]).toMatchObject({ fees: 1.5 });
+  });
+
+  test("a fund trade refuses fees that are not a number", async () => {
+    const { s, bodies } = await withFund();
+    const { nodes } = drawn(() => (
+      <AddForm
+        store={s.portfolios}
+        onDone={() => {}}
+        start={{
+          symbol: `fund:${ISIN}`,
+          side: "buy",
+          portfolio: "Shares",
+          broker: "North",
+          fund: { isin: ISIN, name: "Made Up World Fund", market: "BVB" },
+        }}
+      />
+    ));
+    const field = (label: string) =>
+      nodes.find((n) => String(n.props?.label ?? "").startsWith(label))!.props
+        .value;
+    field("Units").value = "2";
+    field("Fees").value = "two";
+    const form = nodes.find((n) => n.type === "form" && n.props.onSubmit)!;
+    await form.props.onSubmit({ preventDefault() {} });
+    expect(bodies).toEqual([]);
   });
 
   test("its trades read by name, and its refusals plainly", () => {
@@ -2201,6 +2246,31 @@ describe("removed trades", () => {
     expect(html).toContain(">Shares<");
   });
 
+  test.serial(
+    "with no zone set, a trade's entry is dated on UTC's day, as the server's",
+    async () => {
+      const { s } = await loaded();
+      const was = process.env.TZ;
+      process.env.TZ = "Pacific/Auckland";
+      try {
+        const html = render(
+          <TradeSheet
+            store={s.portfolios}
+            fills={[trade({ entered_at: "2026-03-02T23:30:00Z" })]}
+            all={false}
+            onTrade={() => {}}
+            onDone={() => {}}
+          />,
+        );
+        expect(html).toContain("2 Mar 2026");
+        expect(html).not.toContain("3 Mar 2026");
+      } finally {
+        if (was === undefined) delete process.env.TZ;
+        else process.env.TZ = was;
+      }
+    },
+  );
+
   test("a fund's trade offers Buy and Sell too", async () => {
     const { s } = await loaded();
     const html = render(
@@ -2262,6 +2332,37 @@ describe("the Cash portfolio", () => {
     expect(render(<ImportPanel store={two} onDone={() => {}} />)).toContain(
       'aria-label="Portfolio: Pick a portfolio"',
     );
+  });
+
+  test("Add sends a new portfolio once, however often it is pressed", async () => {
+    const st = await at([CASH, ...OVERVIEW.portfolios]);
+    const asked: string[] = [];
+    const done = Promise.withResolvers<string | null>();
+    const { nodes } = drawn(() => (
+      <SettingsPanel
+        store={{
+          ...st,
+          createPortfolio: (name: string) => {
+            asked.push(name);
+            return done.promise;
+          },
+        }}
+        onDone={() => {}}
+      />
+    ));
+    const input = nodes.find(
+      (n) => n.type === "input" && n.props.placeholder === "New portfolio",
+    )!;
+    input.props.onInput({ currentTarget: { value: "Bonds" } });
+    const form = nodes.find(
+      (n) => n.type === "form" && [n.props.children].flat().includes(input),
+    )!;
+    const press = () => form.props.onSubmit({ preventDefault() {} });
+    const first = press();
+    void press();
+    done.resolve(null);
+    await first;
+    expect(asked).toEqual(["Bonds"]);
   });
 
   test("Cash has no rename or remove", async () => {
@@ -2685,3 +2786,18 @@ describe("what Add opens on", () => {
     );
   });
 });
+
+// every vnode a render makes, so a test can press what it drew
+function drawn(view: () => VNode): { html: string; nodes: any[] } {
+  const nodes: any[] = [];
+  const before = options.vnode;
+  options.vnode = (v) => {
+    nodes.push(v);
+    before?.(v);
+  };
+  try {
+    return { html: render(view()), nodes };
+  } finally {
+    options.vnode = before;
+  }
+}

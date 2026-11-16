@@ -5,7 +5,7 @@
 // positions. Nothing is fetched; a day with no row to price counts 0.
 
 import type { Instrument } from "../market/instruments.ts";
-import { HUNDREDTHS } from "../shared/currencies.ts";
+import { HUNDREDTHS, minorUnits } from "../shared/currencies.ts";
 import { YAHOO } from "../sources/ids.ts";
 import type { Db } from "../storage/db/index.ts";
 import { isFund } from "./funds.ts";
@@ -14,7 +14,6 @@ import type { Broker, Portfolio, Split, Trade } from "./store.ts";
 import {
   type Holdings,
   holdings,
-  minorUnits,
   scopeTrades,
   sellStep,
   splitFactor,
@@ -52,7 +51,7 @@ type Bond = {
   currency: string;
   amount: number;
   cost: number | null;
-  // its chain's first as_of: an edit dates the row, not the buy
+  // its purchase date
   start: string;
 };
 
@@ -399,53 +398,18 @@ export function growth(
   };
 }
 
-// the view's live bonds, each dated by the first row of its chain; every
-// bond row of the owner's is read once, as an edit may have moved it
-// between portfolios
+// the view's live bonds, each from its live row's as_of: its purchase
+// date, which an update moves only when the owner corrects it
 function bondsOf(db: Db, owner: string, portfolio: number | null): Bond[] {
-  const rows = db
-    .query<
-      {
-        id: number;
-        portfolio: number;
-        instrument: string | null;
-        currency: string;
-        amount: number | null;
-        cost: number | null;
-        asOf: string;
-        replaces: number | null;
-        removedAt: number | null;
-      },
-      [string]
-    >(
-      `select id, portfolio, instrument, currency, amount, cost,
-         as_of as asOf, replaces, removed_at as removedAt
-       from positions where kind = 'bond'
-         and portfolio in (select id from portfolios where owner = ?)`,
+  return db
+    .query<Bond, [string, number | null]>(
+      `select instrument, currency, coalesce(amount, 0) as amount, cost,
+         as_of as start
+       from positions where kind = 'bond' and removed_at is null
+         and portfolio in (select id from portfolios where owner = ?1)
+         and (?2 is null or portfolio = ?2)`,
     )
-    .all(owner);
-  const byId = new Map(rows.map((r) => [r.id, r]));
-  const out: Bond[] = [];
-  for (const r of rows) {
-    if (r.removedAt !== null) continue;
-    if (portfolio !== null && r.portfolio !== portfolio) continue;
-    let first = r;
-    const seen = new Set<number>();
-    while (first.replaces !== null && !seen.has(first.id)) {
-      seen.add(first.id);
-      const up = byId.get(first.replaces);
-      if (up === undefined) break;
-      first = up;
-    }
-    out.push({
-      instrument: r.instrument,
-      currency: r.currency,
-      amount: r.amount ?? 0,
-      cost: r.cost,
-      start: first.asOf,
-    });
-  }
-  return out;
+    .all(owner, portfolio);
 }
 
 // the stored pairs between each currency and the target, by Yahoo symbol

@@ -1,6 +1,6 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-// Sign-in links by email, as 1ctx's, cut down to a family's: an invite
+// Sign-in links by email, cut down to a family's server: an invite
 // and a sign-in link, each with a six-digit code for the installed app,
 // whose cookies are apart from the browser's. A link and its code are rows
 // holding only a sha256; the token reaches no log and no answer, only the
@@ -17,16 +17,20 @@ import { newId, newToken, openLogin, sha256 } from "./session.ts";
 
 export const SIGN_IN_MS = 15 * MINUTE_MS;
 export const INVITE_MS = 7 * DAY_MS;
-// the fifth wrong code kills the link
+// the fifth wrong code kills a sign-in link, and ends an invite's code
+// while its link still works
 export const MAX_CODE_TRIES = 5;
 // asks at the sign-in page, so nobody floods an inbox or the server's
 // quota from it; invites are not counted. A person's cap is per asking
-// browser, so a stranger's asks never use up the person's own
+// browser, so a stranger's asks never use up the person's own; the
+// inbox's cap holds across browsers, since a browser without a cookie
+// gets a new challenge each ask
 export const ASKS_PER_USER_DAY = 3;
+export const ASKS_PER_INBOX_DAY = 10;
 export const ASKS_PER_CHALLENGE_HOUR = 5;
 export const ASKS_PER_HOUR = 50;
-// an invite or a test email answers by then, under Bun's 30 s idle
-// limit; the send itself goes on
+// an invite or a test email answers by then, under the server's 30 s
+// idle limit; the send itself goes on
 export const SEND_DEADLINE_MS = 25_000;
 export const LINK_PATH = "/ui/link";
 
@@ -245,7 +249,8 @@ export function links(deps: {
   let closed = false;
   const track = (p: Promise<unknown>) => {
     pending.add(p);
-    void p.finally(() => pending.delete(p));
+    // the caller keeps p's rejection; this chain must not raise its own
+    void p.catch(() => {}).finally(() => pending.delete(p));
   };
   // the email for a made link; the reply never reaches a log, as it can
   // carry addresses
@@ -295,6 +300,19 @@ export function links(deps: {
         asker,
         at - DAY_MS,
       );
+      const inbox = count(
+        "select count(*) as n from link_asks where user_id = ? and asked_at > ?",
+        u.id,
+        at - DAY_MS,
+      );
+      // a browser that signed this person in keeps only its own cap, so
+      // a stranger's asks never close the inbox to it
+      const known = count(
+        `select count(*) as n from links
+         where user_id = ? and challenge_hash = ? and used_at is not null`,
+        u.id,
+        asker,
+      );
       const browser = count(
         `select count(*) as n from link_asks
          where challenge_hash = ? and asked_at > ?`,
@@ -307,6 +325,7 @@ export function links(deps: {
       );
       if (
         day >= ASKS_PER_USER_DAY ||
+        (known === 0 && inbox >= ASKS_PER_INBOX_DAY) ||
         browser >= ASKS_PER_CHALLENGE_HOUR ||
         hour >= ASKS_PER_HOUR
       ) {
@@ -436,9 +455,9 @@ export function links(deps: {
           )
           .get(email);
         if (u === null) return null;
-        // an invite's misses count per trying browser, which is dead for
-        // that invite after the fifth; a link that sets an address takes
-        // no code
+        // an invite's misses count from any browser, since a new cookie is
+        // free; past the fifth its code is refused and its link still works.
+        // A link that sets an address takes no code
         const tried = db
           .query<
             { id: string; code_hash: string; asked: number },
@@ -446,30 +465,21 @@ export function links(deps: {
           >(
             `select l.id, l.code_hash, l.challenge_hash is not null as asked
              from links l
-             left join link_misses m
-               on m.link_id = l.id and m.challenge_hash = ?3
              where l.user_id = ?1 and l.used_at is null and l.expires_at > ?2
                and l.email is null
                and (l.challenge_hash = ?3
-                 or (l.challenge_hash is null and coalesce(m.misses, 0) < ?4))`,
+                 or (l.challenge_hash is null and l.code_tries < ?4))`,
           )
           .all(u.id, at, asker, MAX_CODE_TRIES);
         const hit = tried.find((l) => l.code_hash === codeHash(l.id, code));
         if (hit !== undefined) return use(db, "id = ?2", [hit.id], at, null);
         for (const l of tried) {
-          if (l.asked) {
-            db.query(
-              `update links set code_tries = code_tries + 1,
-                 used_at = case when code_tries + 1 >= ?2 then ?3 else used_at end
-               where id = ?1`,
-            ).run(l.id, MAX_CODE_TRIES, at);
-          } else {
-            db.query(
-              `insert into link_misses (link_id, challenge_hash, misses)
-               values (?, ?, 1) on conflict (link_id, challenge_hash)
-               do update set misses = misses + 1`,
-            ).run(l.id, asker);
-          }
+          db.query(
+            `update links set code_tries = code_tries + 1,
+               used_at = case when ?4 and code_tries + 1 >= ?2 then ?3
+                 else used_at end
+             where id = ?1`,
+          ).run(l.id, MAX_CODE_TRIES, at, l.asked);
         }
         return null;
       }, replaces),

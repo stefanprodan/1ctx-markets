@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // Period starts shared by the server's returns and the page's chart, so
 // the two measure a period from the same day.
 

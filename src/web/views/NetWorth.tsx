@@ -6,7 +6,7 @@
 import { useLayoutEffect, useMemo, useRef } from "preact/hooks";
 import { PORTFOLIOS_PAGE, type Total, type Worth } from "../data/portfolios.ts";
 import { markets } from "../data/store.ts";
-import { money, percent, signedMoney } from "../lib/format.ts";
+import { money, percent, signedMoney, signedOrMissing } from "../lib/format.ts";
 import { useRefresh } from "../lib/refresh.ts";
 import { Hero, type Move } from "../ui/Figures.tsx";
 import { Placeholder } from "../ui/Placeholder.tsx";
@@ -58,7 +58,7 @@ function Band({ w, t }: { w: Worth; t: Total }) {
   const fit = useHeroFit(box, money(value, null), shortMoney(value), line);
   const moves: Move[] = [
     {
-      money: signedMoney(t.day_change, t.currency),
+      money: signedOrMissing(t.day_change, t.currency),
       percent: percent(dayPercent(t)),
       label: "today",
       moneyClass: "amount",

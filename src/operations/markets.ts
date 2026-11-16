@@ -20,7 +20,7 @@ import type { OptionChain, Yahoo } from "../sources/yahoo/client.ts";
 import type { Db } from "../storage/db/index.ts";
 import type { Writer } from "../storage/writer.ts";
 
-// 1ctx's untouched tool timeout is 20 seconds
+// under the 20 s an MCP client such as 1ctx waits for a tool by default
 export const CALL_MS = 15_000;
 
 type Flight = { promise: Promise<unknown>; deadline: number };

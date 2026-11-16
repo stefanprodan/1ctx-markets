@@ -182,7 +182,7 @@ sections that apply.
   anything from a profile, and never addresses the reader. Before saving,
   check prose (not headings, company names or URLs) for whole words: you,
   your, my, cost basis, position size, trim, add zone. A personal plan built
-  on a note stays in the chat.
+  on a note goes in the chat or the owner's trade plans, never in the note.
 
 ## Refreshing notes on a schedule
 
@@ -274,8 +274,9 @@ revision before writing, so two runs never overwrite each other silently.
    only as "at writing (<date>)".
 3. **Apply the stance grid with the live price** against the note's band.
    "Below band" is the note's long-term view, not a buy signal on its own.
-4. **Build personal framing in the chat only**, from `profile` and
-   `portfolio` with live `quote`: add zones, ladders and trim tests. The
+4. **Build personal framing in the chat or the owner's trade plans**, never
+   in the note, from `profile` and `portfolio` with live `quote`: add zones,
+   ladders and trim tests. The
    note's levels, drawdown history and extension at past peaks are labelled
    context.
 5. **Never present coverage claims as facts.** The horizon is 2–3 years.

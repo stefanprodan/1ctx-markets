@@ -17,6 +17,7 @@ import { Portfolios, SharedPortfolios } from "../views/Portfolios.tsx";
 import { Profile } from "../views/Profile.tsx";
 import { Screener } from "../views/Screener.tsx";
 import { AdminStatus } from "../views/Status.tsx";
+import { planIdOf } from "../views/TradePlans.model.ts";
 import { TradePlan, TradePlans } from "../views/TradePlans.tsx";
 import {
   ADMIN,
@@ -44,6 +45,9 @@ export type Route = {
   admin?: boolean;
   // lights no rail page: its own row in the rail stands for it
   apart?: boolean;
+  // a page per value of its params: another value draws a fresh view, so
+  // nothing one symbol's page holds carries to the next
+  keyed?: boolean;
   // what arriving on the page loads, before it renders
   load?: (params: Params) => Promise<void>;
 };
@@ -73,6 +77,7 @@ export const ROUTES: readonly Route[] = [
     label: "Instrument",
     icon: "list",
     parent: SCREENER,
+    keyed: true,
     view: Instrument,
     load: async (p) => {
       await markets.loadInstrument(p.id!);
@@ -130,13 +135,12 @@ export const ROUTES: readonly Route[] = [
     label: "Trade plans",
     icon: "flag",
     parent: TRADE_PLANS,
+    keyed: true,
     view: TradePlan,
     load: async (p) => {
-      const id = Number(p.id);
+      const id = planIdOf(p.id);
       const symbol = new URLSearchParams(location.search).get("symbol");
-      if (Number.isSafeInteger(id) && id > 0) {
-        await markets.tradePlans.open(id, symbol);
-      }
+      if (id !== null) await markets.tradePlans.open(id, symbol);
     },
   },
   {

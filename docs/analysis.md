@@ -5,8 +5,7 @@ Governs `src/analysis/` (the store and the fenced read),
 routes in `src/api/routes.ts`, their spec in
 `src/api/analysis-spec.ts`, and the skill in `skills/market-analysis/`.
 The rules it shares with the owner's profile live in `src/document/`
-and `docs/profile.md`; keys and their access in `docs/admin.md`; the
-tool list per key in `docs/tools.md`.
+and `docs/profile.md`.
 
 An analysis is an agent's dated reading of one symbol (its thesis,
 business, earnings record, valuation and risks) kept as one Markdown
@@ -158,8 +157,7 @@ drift (`docs/profile.md` has each rule and why):
 ## Tools and routes
 
 - **`analysis` reads and `analysis_edit` writes**, listed per key's
-  analysis access: `read` lists `analysis`, `write` both, `none`
-  neither. `analysis` is read-only; `analysis_edit` destructive. The
+  analysis access (`docs/tools.md`). `analysis` is read-only; `analysis_edit` destructive. The
   call-time access check stays (`analysisAnswer()`). `analysis`'s
   description opens with what it answers, the one line a catalog
   client shows; `Changes go through analysis_edit.` follows it for a

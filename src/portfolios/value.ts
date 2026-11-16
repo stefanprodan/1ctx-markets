@@ -9,6 +9,7 @@ import { type Instrument, readInstrument } from "../market/instruments.ts";
 import { type QuoteRow, readQuote } from "../market/quotes.ts";
 import { heldStale, quoteStale, STALE } from "../market/stale.ts";
 import { localDate } from "../market/zone.ts";
+import { minorUnits } from "../shared/currencies.ts";
 import type { Db } from "../storage/db/index.ts";
 import { isFund, latestPrice, readFund } from "./funds.ts";
 import { type Rate, type Rates, rates as ratesOf } from "./fx.ts";
@@ -58,20 +59,6 @@ export const money = (v: number | null): number | null =>
       ? Number(v.toFixed(8))
       : Number(v.toPrecision(15));
 export const qty = exact;
-
-const ISO = new Set(Intl.supportedValuesOf("currency"));
-
-// a currency's minor units (JPY 0, KWD 3); a code ISO lacks, a coin, keeps 8
-export function minorUnits(currency: string): number {
-  const code = currency.toUpperCase();
-  if (!ISO.has(code)) return 8;
-  return (
-    new Intl.NumberFormat("en", {
-      style: "currency",
-      currency: code,
-    }).resolvedOptions().maximumFractionDigits ?? 2
-  );
-}
 
 const cents = (v: number | null, digits: number): number | null =>
   v === null ? null : Number(v.toFixed(digits)) + 0;
@@ -794,6 +781,11 @@ function positionRow(
 
 const nameOf = (r: Row): string => r.id ?? r.name ?? "";
 
+// a quoted or listed price has a day change; cash, a face-valued bond and
+// a fund the owner prices never move within a day, so count as none
+const moves = (r: Row): boolean =>
+  r.priced === "quote" || r.priced === "listing";
+
 // the known values summed, the rest named; cost and gain over the rows
 // with both a cost and a value, so cash and an unknown cost never count;
 // apart: reserve, outside the value and inside net worth
@@ -809,7 +801,7 @@ function sumOf(
   let cost = 0;
   let costed = 0;
   let any = false;
-  let days = 0;
+  let days: number | null = 0;
   const gone = new Set<string>();
   // missing names only what the value counts; reserve unknown voids net worth
   let unknownReserve = false;
@@ -829,7 +821,9 @@ function sumOf(
       costed += w.value;
       any = true;
     }
-    days += day(r) ?? 0;
+    const d = day(r);
+    if (d !== null) days = days === null ? null : days + d;
+    else if (moves(r)) days = null;
   }
   const split = split3(rows, (r) => worth(r).value, apart);
   return {

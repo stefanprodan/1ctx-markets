@@ -291,13 +291,16 @@ export function History({
       alive.current = false;
     };
   }, []);
+  // the revision tapped last, or Back, wins over a read still out
+  const [shows] = useState(latest);
   async function show(n: number) {
+    const last = shows.ask();
     setFailed(null);
     try {
       const r = await store.version(n);
-      if (alive.current) setOpen(r);
+      if (alive.current && last()) setOpen(r);
     } catch {
-      if (alive.current) setFailed("That revision did not load.");
+      if (alive.current && last()) setFailed("That revision did not load.");
     }
   }
   async function restore(close: () => void) {
@@ -327,6 +330,7 @@ export function History({
                   class="btn"
                   disabled={busy}
                   onClick={() => {
+                    shows.drop();
                     setOpen(null);
                     setFailed(null);
                   }}

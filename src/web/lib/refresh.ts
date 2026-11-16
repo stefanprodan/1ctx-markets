@@ -30,7 +30,8 @@ export function useRefresh(load: () => unknown, quiet = false): void {
     const fire = () => {
       if (!visible() || holding.peek()) return;
       const read = latest.current();
-      // a load that asked nothing, such as one held while editing, never shows the line
+      // a load that asked nothing, such as one held while editing, never
+      // shows the line
       if (quiet || read === undefined) return;
       reloading.value++;
       void Promise.allSettled([

@@ -879,7 +879,8 @@ describe("the status model", () => {
     expect(jobLine({ ...live!, instruments: 50, markets: 19 })).toBe(
       "50 instruments",
     );
-    // its market run failing reads apart, so a count never exceeds the one shown
+    // its market run failing reads apart, so a count never exceeds
+    // the one shown
     expect(
       jobLine({
         ...live!,

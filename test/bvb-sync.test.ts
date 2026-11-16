@@ -486,7 +486,8 @@ describe("quotes from the list pages", () => {
     const t = await setup(utc("2026-10-23T14:00:00"));
     friday(t.db, t.clock.now());
     await t.add("TLV");
-    // the stored quote is Thursday's: the list's Friday row needs Friday's reference
+    // the stored quote is Thursday's: the list's Friday row
+    // needs Friday's reference
     t.db
       .query(
         "update quotes set time = ?, previous_close = 35.5, change = 0.68 where instrument = 'BVB:TLV'",

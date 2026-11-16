@@ -1,6 +1,6 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-// 1ctx's fixed window per key, in memory: one counter and one start per
+// A fixed window per key, in memory: one counter and one start per
 // key, and a cap on keys, so the map stays bounded whatever is sent.
 
 // an import adds one lot per call, so a portfolio of a few hundred lots

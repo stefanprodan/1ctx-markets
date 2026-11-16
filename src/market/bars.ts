@@ -35,6 +35,18 @@ export function readBars(
     .map((r) => ({ ...r, final: r.final === 1 }));
 }
 
+// seeks one row, where a count or a range reads them all
+export function hasDailyBars(db: Db, instrument: string): boolean {
+  return (
+    db
+      .query<{ has: number }, [string]>(
+        `select exists (select 1 from bars
+           where instrument = ? and interval = '1d') as has`,
+      )
+      .get(instrument)!.has === 1
+  );
+}
+
 export function dailyRange(
   db: Db,
   instrument: string,

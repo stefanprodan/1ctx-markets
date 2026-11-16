@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Words and numbers more than one page writes, so they read alike.
 
+import { minorUnits as digitsOf } from "../../shared/currencies.ts";
+
 // a change as text, its sign already written, and which way it went
 export type Signed = { text: string; dir: -1 | 0 | 1 };
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
-
-let iso: Set<string> | null = null;
 
 export function figure(v: number | null): string {
   if (v === null) return "—";
@@ -59,23 +59,35 @@ export function change(row: { change_percent: number | null }): Signed {
   return { text: `${dir > 0 ? "+" : dir < 0 ? "−" : ""}${n}%`, dir };
 }
 
-// a currency's minor units (JPY 0, KWD 3), 2 when unknown; a coin's 8
-export function minorUnits(currency?: string | null): number {
-  if (!currency) return 2;
-  const code = currency.toUpperCase();
+// an instant on the owner's calendar, never the browser's: with no zone
+// set, UTC's, as the server dates the owner's day
+export function dayIn(iso: string, zone: string | null | undefined): string {
   try {
-    iso ??= new Set(Intl.supportedValuesOf("currency"));
-    if (!iso.has(code)) return 8;
-    return (
-      new Intl.NumberFormat("en", {
-        style: "currency",
-        currency: code,
-      }).resolvedOptions().maximumFractionDigits ?? 2
-    );
+    return new Date(iso).toLocaleDateString("en-CA", {
+      timeZone: zone ?? "UTC",
+    });
   } catch {
-    return 2;
+    return iso.slice(0, 10);
   }
 }
+
+// the same day as words with its year, "2 Mar 2026"
+export function dateIn(iso: string, zone: string | null | undefined): string {
+  try {
+    return new Date(iso).toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      timeZone: zone ?? "UTC",
+    });
+  } catch {
+    return day(iso.slice(0, 10));
+  }
+}
+
+// the server's digits; a figure with no currency named shows 2
+const minorUnits = (currency?: string | null): number =>
+  currency ? digitsOf(currency) : 2;
 
 // in the currency's minor units; bare leaves the code off
 export function amount(
@@ -130,6 +142,13 @@ export function signedMoney(
 }
 
 export const percent = (v: number | null): Signed => signedChange(v);
+
+// a total's move that must show: missing reads as missing, never hidden
+// as if nothing moved
+export const signedOrMissing = (
+  v: number | null,
+  currency?: string | null,
+): Signed => (v === null ? { text: "—", dir: 0 } : signedMoney(v, currency));
 
 export function quantity(v: number | null): string {
   if (v === null) return "—";

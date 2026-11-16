@@ -31,6 +31,7 @@ import {
   NEAR_PERCENT,
   nearOf,
   nowText,
+  PRICE_UNREAD,
   rightNow,
   ruleSummary,
   STATE_WORDS,
@@ -624,6 +625,8 @@ function AddDrawer({ onClose }: { onClose: () => void }) {
   const picked = useSignal<Listing | null>(null);
   const where = useSignal<string | null>(null);
   const chosen = useSignal(false);
+  // the pick's listing did not load: Add waits on a price it never gets
+  const unread = useSignal(false);
   const side = useSignal<"below" | "above">("below");
   const level = useSignal("");
   const note = useSignal("");
@@ -698,11 +701,17 @@ function AddDrawer({ onClose }: { onClose: () => void }) {
                     symbol.value = "";
                     picked.value = null;
                     where.value = null;
+                    unread.value = false;
                   }}
                 >
                   <Icon name="close" size={14} />
                 </button>
               </span>
+              {unread.value && (
+                <span class="error small" role="alert">
+                  {PRICE_UNREAD}
+                </span>
+              )}
               {picked.value && (
                 <span class="faint small hide-phone">
                   {[
@@ -724,11 +733,16 @@ function AddDrawer({ onClose }: { onClose: () => void }) {
             onPick={(c) => {
               chosen.value = true;
               picked.value = null;
+              unread.value = false;
               where.value =
                 listingWords({ id: c.id, exchange_name: c.exchange_name }) ||
                 null;
               void markets.portfolios.listing(c.id).then((got) => {
-                if (symbol.value !== c.id || got === null) return;
+                if (symbol.value !== c.id) return;
+                if (got === null) {
+                  unread.value = true;
+                  return;
+                }
                 picked.value = got;
                 // the side follows a level typed before the price came in
                 const v = Number(level.value.replace(",", "."));

@@ -179,9 +179,9 @@ export const notFound: Recorded = {
   },
 };
 
-// Yahoo's session, quote summary and option chains: each visit to fc is a new cookie,
-// getcrumb answers that cookie's crumb, and a summary answers only the
-// newest pair, as sent together; revoke() makes Yahoo drop the newest
+// Yahoo's session, quote summary and option chains: each visit to fc is a new
+// cookie, getcrumb answers that cookie's crumb, and a summary answers
+// only the newest pair, as sent together; revoke() makes Yahoo drop the newest
 export function yahooSession() {
   let issued = 0;
   let valid = 0;

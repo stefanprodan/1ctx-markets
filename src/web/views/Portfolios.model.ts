@@ -85,13 +85,14 @@ export function browserZone(): string | null {
   }
 }
 
-// a typed number: a dot or a lone comma for decimals, spaces and
-// thousands commas ignored; null when empty, NaN when not a number
+// a typed number: commas are thousands only in groups of three after a
+// leading 1-999 (12,400), else a lone comma is the decimal (0,125, 12,4);
+// spaces ignored; null when empty, NaN when not a number
 export function typed(text: string): number | null {
   let t = text.trim().replace(/\s+/g, "");
   if (t === "") return null;
-  if (!t.includes(".") && /^\d+,\d+$/.test(t)) t = t.replace(",", ".");
-  else t = t.replace(/,/g, "");
+  if (/^[1-9]\d{0,2}(,\d{3})+(\.\d*)?$/.test(t)) t = t.replaceAll(",", "");
+  else if (/^\d+,\d+$/.test(t)) t = t.replace(",", ".");
   return /^\d*\.?\d+$|^\d+\.$/.test(t) ? Number(t) : Number.NaN;
 }
 
@@ -370,7 +371,8 @@ export function dryPowders(h: Holdings | null): DryPowder[] {
     );
 }
 
-// a buy pays from the dry powder at its broker in its currency, else in its currency
+// the one row a buy pays from: at its broker in its currency, else the only one
+// in its currency; with several or none the owner picks
 export function dryPowderFor(
   all: readonly DryPowder[],
   broker: string | null,
@@ -459,7 +461,8 @@ export function holdingTicker(h: Holding): string {
   return tickerOf(h.id, h.type);
 }
 
-// a new amount goes with the date shown; a name, broker or note edit keeps the date
+// a new amount goes with the date shown; a name, broker or note edit
+// keeps the date
 export function figureEdits(
   h: Holding,
   edited: { amount: number; date: string },
@@ -801,7 +804,8 @@ export type BarSide = {
   pct: number;
 };
 
-// All: invested against dry powder, reserve being outside its value; shown only when both are above 0
+// All: invested against dry powder, reserve being outside its value; shown only
+// when both are above 0
 export function barOf(t: Total, all = false): BarSide[] | null {
   const inv = t.invested ?? 0;
   const dry = t.dry_powder ?? 0;

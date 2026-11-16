@@ -3,7 +3,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { lastReadAt } from "../src/market/tracking.ts";
-import { cursor, PAGE_BYTES } from "../src/operations/answer.ts";
+import { cursor, PAGE_BYTES, tagOf } from "../src/operations/answer.ts";
 import { ArgError } from "../src/operations/args.ts";
 import type { Markets } from "../src/operations/markets.ts";
 import { moversAnswer, parseMovers } from "../src/operations/movers.ts";
@@ -880,6 +880,8 @@ describe("movers", () => {
       cursor("0", asked),
       cursor("1.5", asked),
       cursor("x", asked),
+      cursor("ABCDEF", asked),
+      cursor(`${tagOf("XX:DN3")}.`, asked),
     ]) {
       await expect(
         moversAnswer(
@@ -889,11 +891,11 @@ describe("movers", () => {
       ).rejects.toThrow("next does not continue");
     }
     for (const id of names) expect(lastReadAt(w.db, id)).toBeNull();
-    // the same arguments' cursor continues them
+    // the same arguments' cursor continues them, past the rows it shows
     const rest = await movers(w.m, {
       symbols: names,
       min_move_pct: 1,
-      next: cursor("1", asked),
+      next: cursor(tagOf("XX:DN3"), asked),
     });
     expect(ids(rest.body)).toEqual(["XX:UP3", "XX:DN2"]);
   });

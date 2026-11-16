@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // The ISO 4217 currencies in circulation, codes only: the browser's own
 // list differs by browser and holds withdrawn ones, and its names come
 // from Intl.DisplayNames in the reader's language.
@@ -34,6 +33,26 @@ export const HUNDREDTHS: Readonly<Record<string, [string, number]>> = {
 // a currency a person or a file names for money held or paid
 export const isCurrencyCode = (code: string): boolean =>
   inCirculation(code) || Object.hasOwn(HUNDREDTHS, code);
+
+let iso: Set<string> | null = null;
+
+// a currency's minor units (JPY 0, KWD 3); a code ISO lacks, a coin,
+// keeps 8; 2 where the runtime cannot tell
+export function minorUnits(currency: string): number {
+  const code = currency.toUpperCase();
+  try {
+    iso ??= new Set(Intl.supportedValuesOf("currency"));
+    if (!iso.has(code)) return 8;
+    return (
+      new Intl.NumberFormat("en", {
+        style: "currency",
+        currency: code,
+      }).resolvedOptions().maximumFractionDigits ?? 2
+    );
+  } catch {
+    return 2;
+  }
+}
 
 let names: Intl.DisplayNames | null | undefined;
 

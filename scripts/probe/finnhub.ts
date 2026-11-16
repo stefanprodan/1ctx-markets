@@ -10,7 +10,8 @@ const base = "https://finnhub.io/api/v1";
 const dir = join(import.meta.dir, "../../test/fixtures/finnhub");
 const auth = { "X-Finnhub-Token": key };
 
-// One US share, one Xetra ETF, one Bucharest share: the free key's coverage differs by exchange.
+// One US share, one Xetra ETF, one Bucharest share: the free key's coverage
+// differs by exchange.
 const symbols: Record<string, string> = {
   nvda: "NVDA",
   vvsm: "VVSM.DE",
@@ -39,7 +40,8 @@ cases.push([
   "calendar-earnings-day",
   `${base}/calendar/earnings?from=2026-10-28&to=2026-10-28`,
 ]);
-// Two days past their dates hold actuals; a week shows whether a busy range is cut off.
+// Two days past their dates hold actuals; a week shows whether a busy range
+// is cut off.
 cases.push([
   "calendar-earnings-two-days",
   `${base}/calendar/earnings?from=2026-10-26&to=2026-10-27`,

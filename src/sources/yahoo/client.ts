@@ -4,6 +4,7 @@
 import { type Session, sessionFromChartMeta } from "../../market/calendars.ts";
 import type { Point } from "../../market/intraday.ts";
 import type { Clock } from "../../runtime/clock.ts";
+import { RETRY_MS } from "../history.ts";
 import { YAHOO } from "../ids.ts";
 import { cut } from "../massive/client.ts";
 import {
@@ -1039,18 +1040,68 @@ export function yahoo(options: YahooOptions): Yahoo {
     return answer;
   };
 
+  // inside a queued task: another call's back-off holds it too
+  const nextCall = <T>(
+    run: RunOptions,
+    url: string,
+    parse: (b: unknown, at: number) => T,
+  ) => {
+    if (calls.isClosed()) throw new QueueClosed();
+    if (run.live !== undefined && !run.live()) throw new DeadlinePassed();
+    const paused = calls.backoff();
+    if (paused !== null) throw new Paused(paused.after);
+    return call(url, parse);
+  };
+
+  // the symbol that broke its calls, asked once on the chart
+  const chartAlone = async (
+    run: RunOptions,
+    symbol: string,
+    error: unknown,
+  ): Promise<{ answer?: SparkAnswer; error?: unknown }> => {
+    if (!brokenBy(error)) return { error };
+    try {
+      return {
+        answer: await nextCall(run, quoteChartUrl(symbol), (b, at) => {
+          const answer = parseQuoteChart(b, at);
+          return {
+            ...answer,
+            quotes: answer.quotes.map((q) => asAsked(symbol, q)),
+          };
+        }),
+      };
+    } catch (e) {
+      if (!ownError(e)) throw e;
+      return { error };
+    }
+  };
+
+  // A symbol found breaking its batch would break it again each pass, so
+  // it is asked alone on the chart for RETRY_MS, failing with the spark
+  // error its batch gave should the chart fail too.
+  const lone = new Map<string, { until: number; error: unknown }>();
+
+  const sparkLone = (symbol: string, error: unknown, run: RunOptions) =>
+    calls
+      .run(async (): Promise<SparkBatch> => {
+        const one = await chartAlone(run, symbol, error);
+        return {
+          symbols: [symbol],
+          ...one,
+          ...(one.answer === undefined ? { alone: true } : {}),
+        };
+      }, run)
+      .then((b) => {
+        if (b.answer) seenAll(b.answer);
+        return [b];
+      });
+
   // one queued task, so only a failure the split cannot narrow backs off
   const sparkSplit = (batch: string[], run: RunOptions) =>
     calls
       .run(async (): Promise<SparkBatch[]> => {
-        const next = <T>(url: string, parse: (b: unknown, at: number) => T) => {
-          if (calls.isClosed()) throw new QueueClosed();
-          if (run.live !== undefined && !run.live()) throw new DeadlinePassed();
-          // another call's back-off holds the split too
-          const paused = calls.backoff();
-          if (paused !== null) throw new Paused(paused.after);
-          return call(url, parse);
-        };
+        const next = <T>(url: string, parse: (b: unknown, at: number) => T) =>
+          nextCall(run, url, parse);
         const ask = async (
           symbols: string[],
         ): Promise<{ answer?: SparkAnswer; error?: unknown }> => {
@@ -1061,24 +1112,8 @@ export function yahoo(options: YahooOptions): Yahoo {
             return { error };
           }
         };
-        // the symbol that broke its calls, asked once on the chart
-        const alone = async (symbol: string, error: unknown) => {
-          if (!brokenBy(error)) return { error };
-          try {
-            return {
-              answer: await next(quoteChartUrl(symbol), (b, at) => {
-                const answer = parseQuoteChart(b, at);
-                return {
-                  ...answer,
-                  quotes: answer.quotes.map((q) => asAsked(symbol, q)),
-                };
-              }),
-            };
-          } catch (e) {
-            if (!ownError(e)) throw e;
-            return { error };
-          }
-        };
+        const alone = (symbol: string, error: unknown) =>
+          chartAlone(run, symbol, error);
         const out: SparkBatch[] = [];
         // both halves failing as a broken call would is the source, so
         // that batch fails whole; Yahoo refusing one lone symbol is about
@@ -1106,6 +1141,12 @@ export function yahoo(options: YahooOptions): Yahoo {
                 out.push({ symbols: half, error: t.error });
               }
             } else if (half.length === 1) {
+              if (brokenBy(t.error)) {
+                lone.set(half[0]!, {
+                  until: clock.now() + RETRY_MS,
+                  error: t.error,
+                });
+              }
               const one = await alone(half[0]!, t.error);
               out.push({
                 symbols: half,
@@ -1172,17 +1213,30 @@ export function yahoo(options: YahooOptions): Yahoo {
       prePost: (symbol) => prePost.get(symbol),
       spark,
       async sparkAll(symbols) {
-        const batches: string[][] = [];
-        for (let i = 0; i < symbols.length; i += SPARK_MAX) {
-          batches.push(symbols.slice(i, i + SPARK_MAX));
+        const now = clock.now();
+        for (const [symbol, l] of lone) if (now >= l.until) lone.delete(symbol);
+        const together: string[] = [];
+        const alone: { symbol: string; error: unknown }[] = [];
+        for (const symbol of symbols) {
+          const l = lone.get(symbol);
+          if (l === undefined) together.push(symbol);
+          else alone.push({ symbol, error: l.error });
         }
-        const answered = await Promise.all(
-          batches.map((batch) =>
-            sparkSplit(batch, run).catch((error: unknown): SparkBatch[] => [
-              { symbols: batch, error },
-            ]),
+        const batches: string[][] = [];
+        for (let i = 0; i < together.length; i += SPARK_MAX) {
+          batches.push(together.slice(i, i + SPARK_MAX));
+        }
+        const failed = (batch: string[]) => (error: unknown) => [
+          { symbols: batch, error },
+        ];
+        const answered = await Promise.all([
+          ...batches.map((batch) =>
+            sparkSplit(batch, run).catch(failed(batch)),
           ),
-        );
+          ...alone.map((a) =>
+            sparkLone(a.symbol, a.error, run).catch(failed([a.symbol])),
+          ),
+        ]);
         return answered.flat();
       },
       async search(query) {

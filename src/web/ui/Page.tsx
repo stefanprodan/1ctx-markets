@@ -19,11 +19,12 @@ export const STALE_MS = 5000;
 export type Failed = {
   words: string;
   status: number | null;
-  retry: () => void;
+  // none where reading again cannot help, such as an address with no page
+  retry?: () => void;
 };
 
-// as 1ctx: a page with nothing on screen says it did not load; one still
-// holding its last answer keeps the one-line error over it instead
+// a page with nothing on screen says it did not load; one still holding
+// its last answer keeps the one-line error over it instead
 export function didNotLoad(
   held: boolean,
   words: string | null,
@@ -72,7 +73,7 @@ export function Page({
   stale?: string | null;
   // the page's count of failed loads, so each new failure shows again
   staleCount?: number;
-  // the page could not load at all: 1ctx's notice, in place of the body
+  // the page could not load at all: a notice in place of the body
   failed?: Failed;
   // under the head, kept when the page did not load, so the other tabs
   // stay in reach
@@ -150,13 +151,15 @@ export function Page({
             </p>
             <p class="page-failed-text">{failed.words}</p>
           </div>
-          <button
-            type="button"
-            class="btn page-failed-retry"
-            onClick={failed.retry}
-          >
-            Try again
-          </button>
+          {failed.retry && (
+            <button
+              type="button"
+              class="btn page-failed-retry"
+              onClick={failed.retry}
+            >
+              Try again
+            </button>
+          )}
         </div>
       ) : (
         children

@@ -365,7 +365,8 @@ describe("the figures", () => {
 
 describe("the sparkline", () => {
   test("from the period's start its box spans at least 10% of the start", () => {
-    // 100 → 101 is 1%: the box is 95.5 to 105.5, the start just under the middle
+    // 100 → 101 is 1%: the box is 95.5 to 105.5, the start just
+    // under the middle
     const flat = sparkLine([100, 101], "start", 96, 28)!;
     expect(flat.base).toBe(15.2);
     // a 30% fall fills the box: the start on top, the end at the bottom
