@@ -22,7 +22,7 @@ import { Drawn, History, useEditor } from "./Profile.tsx";
 import "./profile.css";
 import "./analysis.css";
 
-const who = (author: string) =>
+const who = (author: string | null) =>
   analysisAuthor(author, markets.me.value?.name ?? null);
 
 function WriteDrawer({
@@ -157,7 +157,8 @@ export function AnalysisSection({
           }
         >
           <p class="ana-meta">
-            Written {ago(a.at, Date.now())} by {who(a.author ?? "")}
+            Written {ago(a.at, Date.now())}
+            {a.author !== null && ` by ${who(a.author)}`}
             {since.change !== null && (
               <>
                 {" · "}

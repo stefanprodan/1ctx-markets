@@ -769,7 +769,7 @@ function profile(m: Markets): Route[] {
 }
 
 // drawn as the profile is, with the move since measured at the read
-function analysisBody(m: Markets, i: Instrument, note: Note | null) {
+function analysisBody(m: Markets, who: Who, i: Instrument, note: Note | null) {
   return note === null
     ? {
         text: null,
@@ -783,7 +783,7 @@ function analysisBody(m: Markets, i: Instrument, note: Note | null) {
     : {
         text: note.text,
         html: renderMarkdown(note.text),
-        ...analysisItem(note),
+        ...analysisItem(who.user, i.id, note),
         since_written: sinceWritten(m, i, note),
       };
 }
@@ -804,7 +804,7 @@ function analysis(m: Markets): Route[] {
         noQuery(url);
         const i = await target(params.symbol!, who, true);
         if (i instanceof Response) return i;
-        return json(analysisBody(m, i, readAnalysis(m.db, i.id)));
+        return json(analysisBody(m, who, i, readAnalysis(m.db, i.id)));
       },
     },
     {
@@ -822,7 +822,7 @@ function analysis(m: Markets): Route[] {
         if (i instanceof Response) return i;
         const done = await saveAnalysisAnswer(m, who, i.id, save);
         if ("error" in done) return problemOf(done);
-        return json(savedAnalysis(done));
+        return json(savedAnalysis(who.user, i.id, done));
       },
     },
     // the editor's Preview: a draft drawn as a save would draw it, never kept
@@ -852,7 +852,9 @@ function analysis(m: Markets): Route[] {
         const i = await target(params.symbol!, who, true);
         if (i instanceof Response) return i;
         return json({
-          revisions: analysisVersions(m.db, i.id).map(analysisItem),
+          revisions: analysisVersions(m.db, i.id).map((r) =>
+            analysisItem(who.user, i.id, r),
+          ),
         });
       },
     },
@@ -872,7 +874,7 @@ function analysis(m: Markets): Route[] {
         if (i instanceof Response) return i;
         const note = analysisVersion(m.db, i.id, n);
         if (note === null) return problemOf(missingAnalysis(m, i.id, n));
-        return json(analysisBody(m, i, note));
+        return json(analysisBody(m, who, i, note));
       },
     },
     {
@@ -892,7 +894,7 @@ function analysis(m: Markets): Route[] {
         }
         const page = listedPage(m, who, at, pageSize(q.page_size));
         return json({
-          analyses: page.shown.map(listedItem),
+          analyses: page.shown.map((r) => listedItem(who.user, r)),
           ...(page.last === null
             ? {}
             : { next_page_token: listPosition(page.last) }),

@@ -26,7 +26,8 @@ export type Loaded<W extends DocumentWire = DocumentWire> = W & {
 
 export type RevisionRow = {
   revision: number;
-  author: string;
+  // null where the reader may not see it: a fund's note by another
+  author: string | null;
   bytes: number;
   at: string;
 };

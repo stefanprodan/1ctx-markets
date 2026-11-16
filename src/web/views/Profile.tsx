@@ -264,7 +264,7 @@ export function History({
   live: number;
   onClose: () => void;
   // an author as the reader is told it
-  who?: (author: string) => string;
+  who?: (author: string | null) => string;
 }) {
   const [rows, setRows] = useState<RevisionRow[] | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
@@ -371,7 +371,9 @@ export function History({
                     )}
                   </span>
                   <span class="faint">
-                    {who(r.author)} · {ago(r.at, now)} · {kb(r.bytes)}
+                    {[who(r.author), ago(r.at, now), kb(r.bytes)]
+                      .filter((part) => part !== "")
+                      .join(" · ")}
                   </span>
                 </button>
               </li>

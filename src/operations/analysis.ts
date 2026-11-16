@@ -5,6 +5,7 @@
 
 import { analysisRead, noAnalysis, WRITE_ONE } from "../analysis/read.ts";
 import {
+  type AnalysisSaved,
   analysisList,
   analysisPointer,
   analysisVersion,
@@ -19,7 +20,6 @@ import {
   KEPT_REVISIONS,
   type RevisionInfo,
   type Save,
-  type Saved,
 } from "../document/store.ts";
 import { iso, price, round } from "../market/format.ts";
 import type { Instrument } from "../market/instruments.ts";
@@ -158,17 +158,40 @@ export function sinceWritten(m: Markets, i: Instrument, note: Note) {
   };
 }
 
-export const analysisItem = (r: RevisionInfo) => ({
+type Written = RevisionInfo & { user: string | null };
+
+// a fund's note is shared, but who wrote it is only its own person's to
+// see, as a fund price's entered_by is
+export const authorFor = (owner: string, symbol: string, r: Written) =>
+  !isFundKey(symbol) || r.user === owner ? r.author : null;
+
+export const analysisItem = (owner: string, symbol: string, r: Written) => ({
   revision: r.revision,
-  author: r.author,
+  author: authorFor(owner, symbol, r),
   bytes: r.bytes,
   written_at: iso(r.createdAt),
 });
 
-export const savedAnalysis = (s: Saved) => ({
-  ...analysisItem(s.saved),
+export const savedAnalysis = (
+  owner: string,
+  symbol: string,
+  s: AnalysisSaved,
+) => ({
+  ...analysisItem(owner, symbol, s.saved),
   ...(s.unchanged ? { unchanged: true } : {}),
 });
+
+// the read as this owner may see it
+export const shownRead = (
+  owner: string,
+  note: Note,
+  since: object | null | undefined = undefined,
+) =>
+  analysisRead(
+    note.symbol,
+    { ...note, author: authorFor(owner, note.symbol, note) },
+    since,
+  );
 
 // beside the research overview, for a key that opens the analysis only
 export function analysisField(m: Markets, who: Who, id: string) {
@@ -208,7 +231,7 @@ export async function saveAnalysisAnswer(
   who: Who,
   symbol: string,
   save: Save,
-): Promise<Saved | Failure> {
+): Promise<AnalysisSaved | Failure> {
   const done = await saveAnalysis(m.writer, symbol, save, who, m.clock.now());
   if ("error" in done) return done;
   if (!done.unchanged) {
@@ -244,9 +267,9 @@ export function listedPage(
   return { shown, last: raw.length > size ? shown.at(-1)! : null };
 }
 
-export const listedItem = (r: Listed) => ({
+export const listedItem = (owner: string, r: Listed) => ({
   id: r.symbol,
-  ...analysisItem(r),
+  ...analysisItem(owner, r.symbol, r),
 });
 
 function listAnswer(m: Markets, who: Who, next: string | null): string {
@@ -258,7 +281,7 @@ function listAnswer(m: Markets, who: Who, next: string | null): string {
   }
   const { shown, last } = listedPage(m, who, at, LIST_ROWS);
   return fitPage(
-    shown.map(listedItem),
+    shown.map((r) => listedItem(who.user, r)),
     (count) => ({
       next:
         count > 0 && count < shown.length
@@ -286,7 +309,9 @@ export async function analysisAnswer(
   if (writes) {
     const done = await saveAnalysisAnswer(m, who, i.id, args.save);
     if ("error" in done) return errorResult(done);
-    return textResult(JSON.stringify({ id: i.id, ...savedAnalysis(done) }));
+    return textResult(
+      JSON.stringify({ id: i.id, ...savedAnalysis(who.user, i.id, done) }),
+    );
   }
   switch (args.action) {
     case "read": {
@@ -296,13 +321,15 @@ export async function analysisAnswer(
           `${noAnalysis(i.id)}${who.analysis === "write" ? WRITE_ONE : ""}`,
         );
       }
-      return textResult(analysisRead(i.id, note, sinceWritten(m, i, note)));
+      return textResult(shownRead(who.user, note, sinceWritten(m, i, note)));
     }
     case "versions":
       return textResult(
         JSON.stringify({
           id: i.id,
-          revisions: analysisVersions(m.db, i.id).map(analysisItem),
+          revisions: analysisVersions(m.db, i.id).map((r) =>
+            analysisItem(who.user, i.id, r),
+          ),
         }),
       );
     case "version": {
@@ -310,7 +337,7 @@ export async function analysisAnswer(
       if (note === null) {
         return errorResult(missingAnalysis(m, i.id, args.revision));
       }
-      return textResult(analysisRead(i.id, note));
+      return textResult(shownRead(who.user, note));
     }
   }
 }

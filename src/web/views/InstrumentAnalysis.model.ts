@@ -17,8 +17,13 @@ export const OUTLINE = `## Trend
 `;
 
 // a shared note names its writer; only the reader's own saves read as
-// you, and the admin key is no one admin's
-export function analysisAuthor(author: string, self: string | null): string {
+// you, and the admin key is no one admin's. A fund's note by another
+// names no one
+export function analysisAuthor(
+  author: string | null,
+  self: string | null,
+): string {
+  if (author === null) return "";
   if (author === "admin") return "the admin";
   if (self !== null && author === self) return "you";
   return author;
