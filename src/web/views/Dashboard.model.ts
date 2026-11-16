@@ -286,6 +286,18 @@ export function addTo(
   return next;
 }
 
+// a symbol's page adds to one section and removes from wherever it is
+export const homeSection = (
+  layout: readonly BoardSection[],
+  id: string,
+): number => layout.findIndex((s) => s.ids.includes(id));
+
+export const removeFromHome = (
+  layout: readonly BoardSection[],
+  id: string,
+): BoardSection[] =>
+  layout.map((s) => ({ ...s, ids: s.ids.filter((x) => x !== id) }));
+
 export const removeFrom = (
   layout: readonly BoardSection[],
   section: number,

@@ -56,6 +56,11 @@
   .ins-ask-line {
     margin: 0;
   }
+  /* Home's sections to add to, under a small heading */
+  .ins-pick {
+    margin: 0;
+    padding: var(--space-1) var(--space-2);
+  }
   .ins-ask-title {
     font-weight: 500;
   }

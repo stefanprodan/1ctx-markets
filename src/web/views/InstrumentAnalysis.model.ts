@@ -16,11 +16,6 @@ export const OUTLINE = `## Trend
 
 `;
 
-// Write analysis is anyone's while there is none; refetch and delete an
-// admin's; with neither the button goes
-export const moreMenu = (admin: boolean, canWrite: boolean): boolean =>
-  admin || canWrite;
-
 // a shared note names its writer; only the reader's own saves read as
 // you, and the admin key is no one admin's
 export function analysisAuthor(author: string, self: string | null): string {

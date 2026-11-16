@@ -635,10 +635,23 @@ describe("a fund's holdings", () => {
 });
 
 describe("an instrument's page by role", () => {
-  test("Refetch and Delete are an admin's; a member's page has no menu", () => {
+  test("Refetch and Delete are an admin's; anyone adds to their Home", () => {
     markets.detailId.value = "US:CASY";
     markets.detail.value = detail();
-    const page = () => render(<Instrument params={{ id: "US:CASY" }} />);
+    const menu = () => {
+      const nodes: any[] = [];
+      const before = options.vnode;
+      options.vnode = (v) => {
+        nodes.push(v);
+        before?.(v);
+      };
+      try {
+        render(<Instrument params={{ id: "US:CASY" }} />);
+      } finally {
+        options.vnode = before;
+      }
+      return nodes.find((n) => n.type === InstrumentMenu)!.props;
+    };
     try {
       markets.me.value = {
         id: "operator",
@@ -647,12 +660,19 @@ describe("an instrument's page by role", () => {
         email: null,
         operator: true,
       };
-      expect(page()).toContain('aria-label="More"');
+      expect(menu().admin).toBe(true);
       markets.me.value = { ...markets.me.value, id: "ana", role: "member" };
-      const member = page();
-      expect(member).not.toContain('aria-label="More"');
-      expect(member).toContain("CASY");
+      const member = menu();
+      expect(member.admin).toBe(false);
+      expect(member.home).toBeDefined();
+      markets.layout.value = [{ name: "A", view: "cards", ids: ["US:CASY"] }];
+      expect(menu().home.at).toBe(0);
+      // no add or remove while World markets still fill Home in
+      markets.seeding.value = [{ value: "AAPL", state: "pending" }];
+      expect(menu().home).toMatchObject({ sections: null, at: -1 });
     } finally {
+      markets.layout.value = null;
+      markets.seeding.value = null;
       markets.me.value = null;
       markets.detail.value = null;
       markets.detailId.value = null;

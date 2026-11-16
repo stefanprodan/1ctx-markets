@@ -1219,6 +1219,24 @@ export function store(
     ]);
   }
 
+  // a symbol's page reads which section holds it, so its menu adds or removes
+  async function loadLayout(): Promise<void> {
+    const at = session;
+    const asked = edits;
+    const ask = ++asks;
+    let b: Board;
+    try {
+      b = await call<Board>(DASHBOARD_PATH);
+    } catch {
+      return;
+    }
+    if (at !== session || b.revision < revision) return;
+    batch(() => {
+      if (asked === edits && flight === null) adopt(b, ask);
+      else merge(b, ask);
+    });
+  }
+
   // after the page's answer, beside the lines: each listing is a live read
   async function loadExtended(ids: readonly string[], stale: () => boolean) {
     const closed = ids.filter((id) => {
@@ -1470,6 +1488,7 @@ export function store(
     seeding,
     saveError,
     loadDashboard,
+    loadLayout,
     saveLayout,
     // the revision the layout shown was read or saved on, for an edit
     // to start from

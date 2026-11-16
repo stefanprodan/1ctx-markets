@@ -179,6 +179,7 @@ import {
   entryOf,
   extMove,
   gapText,
+  homeSection,
   isSort,
   money,
   moveOf,
@@ -186,6 +187,7 @@ import {
   moveTo,
   nameError,
   removeFrom,
+  removeFromHome,
   rename,
   renameOf,
   type Sort,
@@ -2281,6 +2283,7 @@ describe("the instrument page", () => {
           busy={busy}
           done={done}
           removing={false}
+          home={{ sections: [], at: -1, onAdd: () => {}, onRemove: () => {} }}
           onRefetch={() => {}}
           onDelete={() => {}}
         />,
@@ -4434,6 +4437,12 @@ describe("the dashboard's model", () => {
       },
     ];
     expect(addTo(full, 0, "US:B")).toBeNull();
+    expect(homeSection(l, "US:AAA")).toBe(1);
+    expect(homeSection(l, "US:B")).toBe(-1);
+    expect(removeFromHome(l, "BVB:BET").map((x) => x.ids)).toEqual([
+      ["SNP:^GSPC"],
+      ["US:AAA"],
+    ]);
     expect(moveTo(l, 0, "BVB:BET", 0, "SNP:^GSPC")![0]!.ids).toEqual([
       "BVB:BET",
       "SNP:^GSPC",
@@ -4835,6 +4844,31 @@ describe("the dashboard's store", () => {
     await again;
     expect(h.puts()[1]!.body.revision).toBe(1);
     void load;
+  });
+
+  test("a symbol's page reads Home's layout and saves an add from there", async () => {
+    const saved = { ...BOARD, revision: BOARD.revision + 1 };
+    const f = fake({
+      [`GET ${DASHBOARD_PATH}`]: ok(BOARD),
+      [PUT]: ok(saved),
+    });
+    const s = store(
+      f.fetch,
+      () => NOW,
+      () => "/symbol/US%3AB",
+    );
+    await s.loadLayout();
+    expect(s.layout.value).toEqual(layoutOf(BOARD));
+    const next = addTo(s.layout.value!, 1, "US:B")!;
+    expect(await s.saveLayout(next)).toBe("saved");
+    // off Home a save reads no lines or earnings
+    expect(f.asked.map((a) => `${a.init?.method ?? "GET"} ${a.path}`)).toEqual([
+      `GET ${DASHBOARD_PATH}`,
+      PUT,
+    ]);
+    expect(JSON.parse(f.asked[1]!.init!.body as string)).toEqual(
+      payloadOf(BOARD.revision, next),
+    );
   });
 
   test("a refused save puts the saved layout back and says why", async () => {
