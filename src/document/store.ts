@@ -23,7 +23,7 @@ export const infoOf = ({
   createdAt,
 }: Revision): RevisionInfo => ({ revision, bytes, author, createdAt });
 
-// 1ctx's textFromString(): the text as an editor saves it
+// the text as an editor saves it: well-formed, no NUL, no leading BOM
 export function documentText(value: string): string {
   if (!value.isWellFormed() || value.includes("\u0000")) {
     throw new ArgError("text must be well-formed UTF-8 with no NUL");

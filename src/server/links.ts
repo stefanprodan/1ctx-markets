@@ -1,6 +1,6 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-// Sign-in links by email, as 1ctx's, cut down to a family's: an invite
+// Sign-in links by email, cut down to a family's server: an invite
 // and a sign-in link, each with a six-digit code for the installed app,
 // whose cookies are apart from the browser's. A link and its code are rows
 // holding only a sha256; the token reaches no log and no answer, only the

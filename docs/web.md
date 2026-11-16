@@ -6,9 +6,8 @@ email; `src/server/ui.ts`, the `/ui/*` routes), the paths that serve it
 (`UI_PATHS` and `serve()` in `src/server/http.ts`) and `--no-ui`. The
 admin key, the people and the SMTP settings are in `docs/admin.md`, the
 routes the UI reads in `docs/api.md`, flags and key files in
-`docs/config.md`. Logins and links follow 1ctx's (its `docs/access.md`,
-"Logins" and "Links by email", and `docs/email.md`), cut down to what a
-family needs.
+`docs/config.md`. Logins and links are cut down to what a family
+needs.
 
 ## Why
 
@@ -77,7 +76,7 @@ passwords, no SSO, and no link handed over.
 
 - **A login is a row behind the `markets_session` cookie** (`logins`,
   `docs/storage.md`): the cookie holds 32 random bytes as base64url,
-  the row only their SHA-256, as 1ctx's. No token reaches a log line or
+  the row only their SHA-256. No token reaches a log line or
   an answer but the one `Set-Cookie`; a log line names the login's id
   and its person.
 - **30 days, sliding at most once an hour** (`SESSION_MS`,
@@ -272,8 +271,8 @@ learns it from `email_on` in `GET /ui/me`.
   of this one**: no host path, key or key file name, no data directory, no
   version, no source or flag name, no instrument data, no config in
   `index.html`, no source map. The bundle holds view code only, with
-  Bun's comments naming each module by its path in this repository, as
-  1ctx's bundle does; every value is read after sign-in. `test/web-session.test.ts` reads each anonymous answer
+  Bun's comments naming each module by its path in this repository;
+  every value is read after sign-in. `test/web-session.test.ts` reads each anonymous answer
   and fails on any of them.
 - **No help text on the page.** Where the key lives and how the UI
   works are for this doc, never the page. The SMTP drawer alone names
@@ -461,7 +460,7 @@ learns it from `email_on` in `GET /ui/me`.
   Back included (`watchMore()`), so no page opens under it. It renders beside the bar, never inside: the bar's
   blur would hold a fixed drawer inside it.
 - **Copy is short:** sentence case, no "you", "please" or explanations.
-  An error is the server's phrase as a sentence (`says()`, as 1ctx),
+  An error is the server's phrase as a sentence (`says()`),
   so a wrong key reads "Wrong admin key.": a problem's `detail`, the
   sign-in's `message`. The store branches on the error's `code`, never
   its words.
@@ -989,7 +988,7 @@ The parts:
   ones included; with archived ones only, the card says "No active
   plans." A failed read keeps the last answer; the page's refresh reads
   it again.
-- **Connect agents** (`/connect`), as 1ctx's: a Keys card from
+- **Connect agents** (`/connect`): a Keys card from
   `GET /api/v1/keys` ("N of <limit>", the person's own keys counted
   against the answer's `limit`, New key in its head), a table of each key's name,
   last use, expiry and access. An admin's list holds everyone's keys
@@ -1047,7 +1046,7 @@ The parts:
   operator saves, removes or tests: another admin sees the form read
   only, fields off and Close alone. A save or a remove sets
   `email_on` for the sign-in page at once.
-- **Copy uses `copyText()` (`src/web/lib/clipboard.ts`)**, as 1ctx:
+- **Copy uses `copyText()` (`src/web/lib/clipboard.ts`)**:
   the clipboard exists only on loopback or HTTPS, so on plain HTTP the
   button stays as it is and never says Copied.
 - **A made key's token lives in the Connect agents view alone**: the
@@ -1056,8 +1055,8 @@ The parts:
   MARKETS_ACCESS_KEY=...` line and "Copy it now; it is not shown
   again.", and goes on Done, on any close of the drawer, or on leaving
   the page.
-- **No setup line carries a token.** Each reads `MARKETS_ACCESS_KEY`
-  (as 1ctx's read `ONECTX_ACCESS_KEY`): Claude Code's header in single
+- **No setup line carries a token.** Each reads `MARKETS_ACCESS_KEY`:
+  Claude Code's header in single
   quotes, so the shell never writes the key into its config, Codex's
   `bearer_token_env_var`, OpenCode's `{env:...}` with OAuth off.
 - **Portfolios** (`/portfolios` and `/portfolios/{id}`) reads

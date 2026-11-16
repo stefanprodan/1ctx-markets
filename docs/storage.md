@@ -364,8 +364,8 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   shared price outlives one person's rows (`docs/portfolios.md`).
 - **Market data and tracking stay shared**: anyone's read, rule,
   dashboard card or holding tracks an instrument for all.
-- **Sign-ins are rows holding only a SHA-256** (`0037-people`), as
-  1ctx's: `logins` (`user_id` on delete cascade, `admin_digest` on the
+- **Sign-ins are rows holding only a SHA-256** (`0037-people`):
+  `logins` (`user_id` on delete cascade, `admin_digest` on the
   operator's admin-key logins, `token_hash`, `created_at`,
   `last_seen_at`, `expires_at`), `links` (`user_id` on delete cascade,
   `purpose` `invite` or `sign_in`, `token_hash`, `code_hash`,

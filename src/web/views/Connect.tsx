@@ -1,6 +1,6 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-// Connect agents, as 1ctx's: the keys, each opening to its access and Revoke,
+// Connect agents: the keys, each opening to its access and Revoke,
 // and New key, then a setup tab per agent. A made key's token lives in this
 // view alone, so Done or leaving the page drops it.
 

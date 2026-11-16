@@ -11,7 +11,7 @@ import { createTransport } from "nodemailer";
 export const SECURITY = ["tls", "starttls"] as const;
 export type Security = (typeof SECURITY)[number];
 
-// 1ctx's words: the only thing a log line says of a failed send
+// closed words: the only thing a log line says of a failed send
 export const FAILURES = [
   "auth",
   "tls",

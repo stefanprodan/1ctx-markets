@@ -1,6 +1,6 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-// Markdown drawn on the server, as 1ctx does, so the web UI ships no parser.
+// Markdown drawn on the server, so the web UI ships no parser.
 // Any write key can change the profile, so this is the safety boundary:
 // no raw HTML, no link but http(s) and mailto, no image fetched.
 

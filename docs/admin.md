@@ -44,8 +44,8 @@ never signs in and a sign-in never opens `/mcp`.
   dashboard or alerts**: those routes act as the caller's own person
   (`docs/api.md`). An admin lists and revokes anyone's keys, signs a
   person out everywhere and removes a person.
-- **Writes re-read their caller** (`recheck()` in `src/server/caller.ts`,
-  as 1ctx's `checkKey()`): the router runs each request under a check
+- **Writes re-read their caller** (`recheck()` in `src/server/caller.ts`):
+  the router runs each request under a check
   of its credential (`asCaller()`), and every write of a person's rows
   calls `recheck(db)` first inside its transaction, an admin's write
   `recheck(db, "admin")`. A key revoked or expired, a login ended, a
@@ -128,9 +128,9 @@ never signs in and a sign-in never opens `/mcp`.
   the token, name and expiry stay, an expired key changes too, and the
   key's next request reads the new access, as a revoke holds on the
   next request, since the row is read on every request.
-- **A name follows 1ctx's agent name rule**: 2 to 80 lowercase
-  letters, digits, dashes and underscores, starting with a letter or
-  digit, unique among the person's keys (409 `conflict`, "name
+- **A name is 2 to 80 lowercase letters, digits, dashes and
+  underscores**, starting with a letter or digit, unique among the
+  person's keys (409 `conflict`, "name
   taken"), so two people may name keys alike. `web` and `admin` are
   reserved (409 `conflict`, "name reserved"): the server records the
   web UI and the admin key by those names.
@@ -198,8 +198,7 @@ never signs in and a sign-in never opens `/mcp`.
 
 ## Email
 
-Follows 1ctx's (its `docs/email.md`), without an outbox: a link's email
-is sent directly, after the answer for an ask, before it for an admin.
+No outbox: a link's email is sent directly, after the answer for an ask, before it for an admin.
 
 - **The operator's alone to change** (the admin key or the operator's
   login): whoever sets the SMTP server reads every link it carries, and
@@ -227,8 +226,7 @@ is sent directly, after the answer for an ask, before it for an admin.
   one. `key_missing` says the named file is not there.
 - **Removing the settings** deletes the row: email goes off, new links
   stop; the file, the people and their logins stay.
-- **Only `src/server/email/smtp.ts` imports `nodemailer`**, at 1ctx's
-  pin. Addresses go to it as `{name, address}` objects, a header value
+- **Only `src/server/email/smtp.ts` imports `nodemailer`**. Addresses go to it as `{name, address}` objects, a header value
   with a control character or a line break is refused before it is
   handed over, certificates are always verified (TLS 1.2 or later),
   and the timeouts are 10 s to connect, 10 s for the greeting and 30 s

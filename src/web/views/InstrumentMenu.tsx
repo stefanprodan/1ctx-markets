@@ -8,7 +8,6 @@ import { deleteLine } from "./Instrument.model.ts";
 
 export const SAID_MS = 2000;
 
-// as 1ctx's More menu
 export function InstrumentMenu({
   symbol,
   admin,

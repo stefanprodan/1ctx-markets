@@ -32,7 +32,7 @@ export type SmtpSettings = {
 export const FROM_NAME = "1ctx Markets";
 
 export const MAX_EMAIL = 254;
-// 1ctx's: a strict subset of RFC 5322's addr-spec, a dot-atom local part
+// a strict subset of RFC 5322's addr-spec, a dot-atom local part
 // and a host name, since the SMTP library rewrites anything looser into
 // another address
 const LOCAL =

@@ -1,11 +1,11 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-// A write re-reads the credential that sent it, inside its transaction, as
-// 1ctx's checkKey(): a key revoked, a login ended or a person removed or
-// demoted mid-call writes nothing. The router runs each request under its
-// own check; a write of a person's rows calls recheck() first. Shared work
-// (a fetch two callers wait on, a job) never calls it, so one caller's
-// revoke never fails another's read.
+// A write re-reads the credential that sent it, inside its transaction: a
+// key revoked, a login ended or a person removed or demoted mid-call
+// writes nothing. The router runs each request under its own check; a
+// write of a person's rows calls recheck() first. Shared work (a fetch two
+// callers wait on, a job) never calls it, so one caller's revoke never
+// fails another's read.
 
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { Who } from "../operations/who.ts";

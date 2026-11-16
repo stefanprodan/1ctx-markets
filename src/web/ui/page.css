@@ -67,8 +67,8 @@
     white-space: nowrap;
     font-size: var(--text-title);
     font-weight: 600;
-    /* as 1ctx: the title's box is its text, so its middle meets the
-       rail's toggle across the top inset */
+    /* the title's box is its text, so its middle meets the rail's
+       toggle across the top inset */
     line-height: 1;
   }
 
@@ -255,7 +255,7 @@
     color: var(--failed);
   }
 
-  /* as 1ctx's: what failed, the server's words, and a retry */
+  /* what failed, the server's words, and a retry */
   .page-load-failed {
     display: flex;
     flex-wrap: wrap;
