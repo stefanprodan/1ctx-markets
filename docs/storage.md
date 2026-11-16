@@ -385,9 +385,9 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   `created_at`, `expires_at`, `used_at`), `link_asks` (`user_id`, set
   null when the person goes, the asking browser's `challenge_hash` and
   `asked_at`, kept a day so the caps count asks whatever became of
-  their links) and `link_misses` (wrong codes at an invite per trying
-  browser, going with the link). Expired logins, admin-key logins of an
-  older `user-admin.key`, used or expired links and asks past a day go
+  their links) and `link_misses` (no longer written: an invite's wrong
+  codes count on its `code_tries`, whatever browser tried them).
+  Expired logins, admin-key logins of an older `user-admin.key`, used or expired links and asks past a day go
   with the startup and daily prunes (`pruneLogins()`).
 - **`push_subscriptions` holds the devices push goes to**
   (`0048-push-subscriptions`): `owner` (`users`) and `login`

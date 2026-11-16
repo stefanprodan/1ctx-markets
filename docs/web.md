@@ -151,8 +151,14 @@ learns it from `email_on` in `GET /ui/me`.
   earlier live links working, so nobody's ask kills another's.
 - **Caps**: 3 asks per person a day from one browser
   (`ASKS_PER_USER_DAY`, counted per challenge, so a stranger's asks
-  never use up the person's own), 5 an hour from one browser whoever it
-  names (`ASKS_PER_CHALLENGE_HOUR`) and 50 per server an hour
+  never use up the person's own), 10 per person a day across browsers
+  (`ASKS_PER_INBOX_DAY`, since a browser without the cookie gets a new
+  challenge each ask, so cookieless asks flood no inbox and spend no
+  server-wide quota on one person; a browser whose challenge already
+  signed that person in, a used link of theirs holding it, is held only
+  to its own 3, so a stranger's asks never close the inbox to it), 5
+  an hour from one browser whoever it names (`ASKS_PER_CHALLENGE_HOUR`)
+  and 50 per server an hour
   (`ASKS_PER_HOUR`), counted on `link_asks`, kept a day whatever became
   of their links; over any nothing is sent and `link ask capped` is
   logged. Asks, codes and links used share 10 a minute
@@ -184,8 +190,10 @@ learns it from `email_on` in `GET /ui/me`.
   fifth wrong try kills the link (`MAX_CODE_TRIES`); using the link or
   the code uses both. An invite, which no browser asked for, has no
   challenge: its code is tried beside any `markets_ask` cookie, its
-  misses counted per challenge (`link_misses`), so the fifth wrong try
-  ends that browser's tries at that invite and never the invite.
+  misses counted on the link (`code_tries`) from every browser, since a
+  new cookie is free. The fifth wrong try ends the invite's code, never
+  its link: the emailed link still signs in, and the invitee can ask a
+  fresh code at sign-in.
 - **The same-origin check holds `/ui/link`, `/ui/link/<token>` and
   `/ui/code`** (`sameOrigin()`, below), so no other site signs a
   browser in.
