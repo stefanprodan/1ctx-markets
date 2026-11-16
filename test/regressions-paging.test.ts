@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
+import { status } from "../src/admin/http.ts";
 import { tagOf } from "../src/operations/answer.ts";
 import type { Markets } from "../src/operations/markets.ts";
 import { moversAnswer, parseMovers } from "../src/operations/movers.ts";
@@ -11,7 +12,7 @@ import { type SetRead, setPage, shownBy } from "../src/operations/sets.ts";
 import { OPERATOR, type Who } from "../src/operations/who.ts";
 import type { Db } from "../src/storage/db/index.ts";
 import { ask } from "./helpers/portfolio.ts";
-import { instrument, listing, quote, world } from "./helpers/world.ts";
+import { instrument, listing, NOW, quote, world } from "./helpers/world.ts";
 
 const LONG = "Ünïcödé “Holdings” 日本株式会社 ✓ ".repeat(10);
 
@@ -312,5 +313,61 @@ describe("a live-priced add", () => {
     setQuote(w.db, "XX:LIVE", 51, 49);
     const retry = await ask(w.m, CASEY, "portfolio_trade", add);
     expect(retry.error).toBe(false);
+  });
+});
+
+describe("the status page's runs", () => {
+  test("name each job's newest run and each scope's last ended one", async () => {
+    const w = world();
+    const run = w.db.query(
+      `insert into sync_runs (source, job, scope, started_at, ended_at,
+         status, rows, error) values (?, ?, ?, ?, ?, ?, 0, ?)`,
+    );
+    const t = (min: number) => NOW - 60 * 60_000 + min * 60_000;
+    run.run("yahoo", "quotes", "US", t(1), t(2), "failed", "old");
+    run.run("yahoo", "quotes", "US", t(10), t(11), "ok", null);
+    run.run("yahoo", "quotes", "US", t(30), null, "running", null);
+    run.run("yahoo", "quotes", "XETRA", t(20), t(21), "failed", "down");
+    run.run("yahoo", "bars", null, t(40), t(41), "ok", null);
+    run.run("yahoo", "bars", "US:A", t(5), t(6), "failed", "gone");
+    run.run("fred", "bars", "FRED:X", t(3), t(4), "ok", null);
+    const res = status(
+      { m: w.m, version: "test", sources: [], sync: true },
+      new URL("http://localhost/admin/api/status"),
+    );
+    const jobs = (await res.json()).jobs.map((j: any) => ({
+      job: `${j.source}/${j.job}`,
+      scope: j.last.scope,
+      status: j.last.status,
+      instruments: j.instruments,
+      markets: j.markets,
+      failing: j.failing.map((f: any) => f.scope),
+    }));
+    expect(jobs).toEqual([
+      {
+        job: "fred/bars",
+        scope: "FRED:X",
+        status: "ok",
+        instruments: 1,
+        markets: 0,
+        failing: [],
+      },
+      {
+        job: "yahoo/bars",
+        scope: null,
+        status: "ok",
+        instruments: 1,
+        markets: 0,
+        failing: ["US:A"],
+      },
+      {
+        job: "yahoo/quotes",
+        scope: "US",
+        status: "running",
+        instruments: 0,
+        markets: 2,
+        failing: ["XETRA"],
+      },
+    ]);
   });
 });
