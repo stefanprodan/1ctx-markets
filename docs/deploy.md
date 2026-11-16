@@ -170,7 +170,9 @@ the GitHub Container Registry (GHCR), both made by
   OrbStack.** Their file sharing breaks the POSIX locks SQLite's WAL
   needs. A new named volume takes the image's `/data` with its owner
   65532. On a Linux host a bind mount works once it is
-  `chown 65532:65532`.
+  `chown 65532:65532`. Each start makes `/data` mode 700 and the
+  database 600 (`docs/config.md`); on a mount 65532 does not own it
+  warns and goes on.
 - **`/data/secrets` is mounted read-only.** The owner writes
   `user-admin.key` (32 or more printable ASCII characters) and any
   `source-<name>.key` before the first start, each readable by 65532

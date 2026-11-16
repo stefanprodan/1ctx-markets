@@ -4,6 +4,16 @@
 // modes of the files beside the database.
 
 import { expect, test } from "bun:test";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { signal } from "@preact/signals";
 import { h } from "preact";
 import { render } from "preact-render-to-string";
@@ -11,6 +21,7 @@ import { PREFIX } from "../src/api/http.ts";
 import type { Markets } from "../src/operations/markets.ts";
 import type { Who } from "../src/operations/who.ts";
 import { insertFund } from "../src/portfolios/funds.ts";
+import { keys, startKeys } from "../src/runtime/keys.ts";
 import { silent } from "../src/runtime/log.ts";
 import type { Email } from "../src/server/email/settings.ts";
 import {
@@ -18,12 +29,14 @@ import {
   links,
   MAX_CODE_TRIES,
 } from "../src/server/links.ts";
+import { open, privateData } from "../src/storage/db/index.ts";
 import { call, tools } from "../src/tools/index.ts";
 import { analysisPath, analysisStore } from "../src/web/data/analysis.ts";
 import { client } from "../src/web/data/api.ts";
 import { analysisAuthor } from "../src/web/views/InstrumentAnalysis.model.ts";
 import { AnalysisSection } from "../src/web/views/InstrumentAnalysis.tsx";
 import { api, cookieFor } from "./helpers/api.ts";
+import { fakeClock } from "./helpers/clock.ts";
 import { instrument, NOW, world } from "./helpers/world.ts";
 
 const ANA = "ana@example.com";
@@ -261,3 +274,69 @@ test("the web UI draws a note whose author is hidden without a name", async () =
   expect(html).not.toMatch(/Written [^<]* by/);
   expect(analysisAuthor(null, "Ana")).toBe("");
 });
+
+async function inTemp(body: (dir: string) => void | Promise<void>) {
+  const dir = mkdtempSync(join(tmpdir(), "markets-modes-"));
+  try {
+    await body(dir);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+const mode = (path: string) => statSync(path).mode & 0o777;
+
+test("a new data directory, database and its WAL files are the owner's only", () =>
+  inTemp((tmp) => {
+    const data = join(tmp, "data");
+    startKeys(keys(join(data, "secrets")));
+    expect(mode(data)).toBe(0o700);
+    const file = join(data, "markets.db");
+    expect(privateData(data, file)).toBeNull();
+    const { db } = open(file, fakeClock(0));
+    db.exec("create table t (x integer); insert into t values (1)");
+    for (const f of [file, `${file}-wal`, `${file}-shm`]) {
+      expect([f, mode(f)]).toEqual([f, 0o600]);
+    }
+    db.close();
+    const fresh = join(tmp, "fresh");
+    expect(privateData(fresh, join(fresh, "markets.db"))).toBeNull();
+    expect(mode(fresh)).toBe(0o700);
+  }));
+
+test("an existing install open to others is tightened at start", () =>
+  inTemp((tmp) => {
+    const file = join(tmp, "markets.db");
+    for (const f of [file, `${file}-wal`, `${file}-shm`]) {
+      writeFileSync(f, "");
+      chmodSync(f, 0o644);
+    }
+    chmodSync(tmp, 0o755);
+    expect(privateData(tmp, file)).toBeNull();
+    expect(mode(tmp)).toBe(0o700);
+    for (const f of [file, `${file}-wal`, `${file}-shm`]) {
+      expect([f, mode(f)]).toEqual([f, 0o600]);
+    }
+  }));
+
+test("a data directory that refuses chmod is reported, never thrown", () =>
+  inTemp((tmp) => {
+    const data = join(tmp, "mounted");
+    mkdirSync(data, { mode: 0o755 });
+    chmodSync(data, 0o755);
+    const file = join(data, "markets.db");
+    writeFileSync(file, "");
+    chmodSync(file, 0o644);
+    const refused = Object.assign(new Error("made-up refusal"), {
+      code: "EPERM",
+    });
+    const tried: string[] = [];
+    expect(
+      privateData(data, file, (path) => {
+        tried.push(path);
+        throw refused;
+      }),
+    ).toBe("EPERM");
+    expect(tried).toEqual([data, file]);
+    expect(mode(data)).toBe(0o755);
+  }));
