@@ -324,7 +324,12 @@ export function start(options: AppOptions): App {
   const massiveClient =
     massiveKey === null
       ? null
-      : massive({ clock, key: massiveKey, fetch: options.fetch });
+      : massive({
+          clock,
+          key: massiveKey,
+          fetch: options.fetch,
+          log: options.log("massive"),
+        });
   const massiveSync =
     massiveClient === null
       ? null

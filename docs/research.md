@@ -347,7 +347,11 @@ route's transport in `docs/api.md`; alerts that wait on events in
 - **Text is bounded so an article always fits an answer**: title and
   publisher 300 characters, reasoning 1,000, cut with an ellipsis and
   `truncated` set; a URL must be http or https and at most 2,000
-  characters, an id at most 200, else the answer is malformed.
+  characters, an id at most 200.
+- **An article that fails a check drops itself, never its page**
+  (`parseNews`): no id, title or date, or a bad URL or id, leaves the
+  article out and logs it once, so one bad article never fails a run.
+  A page whose every article fails is malformed.
 - **Rows are one per article and instrument, deduplicated by id.**
 - **Stale reasons** (`newsState`, `STALE_NEWS`): "no news yet", "news
   sync failed", "news sync pending" (no good run for two periods),

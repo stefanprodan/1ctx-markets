@@ -172,13 +172,17 @@ describe("massive answers", () => {
 
   test("a malformed answer is an error, never an empty page", async () => {
     expect(() => parseNews({ results: "no" })).toThrow("malformed answer");
+    expect(() => parseNews({ status: "ERROR" })).toThrow("source error");
+    // a bad article drops itself; a page of only bad ones is malformed
     const body = (await massiveFixture("news-latest")).body;
     delete body.results[1].published_utc;
+    body.results[0].article_url = "javascript:alert(1)";
+    expect(parseNews(body).dropped.map((d) => d.reason)).toEqual([
+      "no article_url",
+      "no published_utc",
+    ]);
+    for (const a of body.results) delete a.published_utc;
     expect(() => parseNews(body)).toThrow("malformed answer");
-    expect(() => parseNews({ status: "ERROR" })).toThrow("source error");
-    const bad = (await massiveFixture("news-latest")).body;
-    bad.results[0].article_url = "javascript:alert(1)";
-    expect(() => parseNews(bad)).toThrow("malformed answer");
   });
 
   test("a cursor goes out only to Massive's own news path, with no key in it", () => {

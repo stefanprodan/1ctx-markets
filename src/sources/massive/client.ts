@@ -3,6 +3,7 @@
 // the key only in a header; a next_url only to Massive's own news path
 
 import type { Clock } from "../../runtime/clock.ts";
+import type { Log } from "../../runtime/log.ts";
 import { MASSIVE } from "../ids.ts";
 import {
   type Backoff,
@@ -81,6 +82,7 @@ export type MassiveOptions = {
   key: string;
   fetch?: Fetch;
   host?: string;
+  log?: Log;
 };
 
 const malformed = (detail: string) =>
@@ -194,12 +196,15 @@ export function scrubbed(a: Article, key: string): Article {
   };
 }
 
+// an article left out of its page, with the check it failed
+export type Dropped = { raw: unknown; reason: string };
+
 // every page Massive answers says OK; one without a status is not a page,
 // and reading it as the last one would end a history walk early
 export function parseNews(
   body: unknown,
   clean: Clean = (v) => v,
-): Omit<Page, "fetchedAt"> {
+): Omit<Page, "fetchedAt"> & { dropped: Dropped[] } {
   if (!isObj(body)) throw malformed("no body");
   if (body.status === undefined) throw malformed("no status");
   if (body.status !== "OK") {
@@ -211,11 +216,29 @@ export function parseNews(
   if (next !== undefined && next !== null && typeof next !== "string") {
     throw malformed("no next_url");
   }
+  const articles: Article[] = [];
+  const dropped: Dropped[] = [];
+  for (const raw of results) {
+    try {
+      articles.push(article(raw, clean));
+    } catch (error) {
+      if (!(error instanceof SourceError)) throw error;
+      dropped.push({ raw, reason: error.detail ?? error.phrase });
+    }
+  }
+  // one bad article costs only itself; a page of nothing but is no page
+  if (articles.length === 0 && dropped.length > 0) {
+    throw malformed(dropped[0]!.reason);
+  }
   return {
-    articles: results.map((a) => article(a, clean)),
+    articles,
     next: typeof next === "string" && next !== "" ? next : null,
+    dropped,
   };
 }
+
+// each dropped article is logged once, though every overlap answers it again
+const LOGGED_MAX = 1_000;
 
 // A key never travels in a query, by any name.
 const KEY_PARAMS = new Set(["apikey", "api_key", "key", "token"]);
@@ -272,6 +295,16 @@ export function massive(options: MassiveOptions): Massive {
   const host = options.host ?? HOST;
   const doFetch: Fetch = options.fetch ?? ((url, init) => fetch(url, init));
   const calls = limiter(clock, SPACING_MS);
+  const logged = new Set<number | bigint>();
+  const report = (dropped: Dropped[]) => {
+    for (const d of dropped) {
+      const seen = Bun.hash(JSON.stringify(d.raw) ?? "");
+      if (logged.has(seen)) continue;
+      if (logged.size >= LOGGED_MAX) logged.clear();
+      logged.add(seen);
+      options.log?.warn("massive article dropped", { reason: d.reason });
+    }
+  };
 
   const get = (url: string, run: RunOptions): Promise<Page> =>
     calls.run(async () => {
@@ -316,6 +349,7 @@ export function massive(options: MassiveOptions): Massive {
         const page = parseNews(body, (v) => scrub(v, key));
         // a cursor that is not Massive's own is never followed
         if (page.next !== null) checkCursor(page.next, host, key);
+        report(page.dropped);
         return {
           articles: page.articles.map((a) => scrubbed(a, key)),
           next: page.next,
