@@ -16,21 +16,28 @@ import {
   SEEN_PATH,
   type Trigger,
 } from "../src/web/data/alerts.ts";
+import type { PlanItem } from "../src/web/data/trade-plans.ts";
 import {
   comparisonsOf,
   conditionLines,
   FIELD_WORDS,
+  figureOf,
   firedText,
+  historyGroups,
   inTile,
   nearOf,
   OP_WORDS,
+  plansFor,
+  priceParts,
   rightNow,
   ruleSummary,
   type StateKey,
   sortRules,
+  standingOf,
   stateOf,
   treeOf,
   triggerText,
+  whenLabel,
 } from "../src/web/views/Alerts.model.ts";
 
 const OWN = "XETRA:MADE";
@@ -370,6 +377,179 @@ describe("an alert's state", () => {
       "US:ZZZ 0.5",
       "US:ZZZ 3",
     ]);
+  });
+});
+
+describe("the history page", () => {
+  const firing = (id: number, alert: Alert, when = alert.when): Trigger => ({
+    id,
+    alert_id: alert.id,
+    symbol: alert.symbol,
+    when,
+    note: null,
+    triggered_at: AT,
+    values: {},
+  });
+  const priced = (
+    value: number,
+    level: number,
+    holds: boolean,
+    gap: number,
+  ): Now => ({ ...now("price", value, level, holds), gap_percent: gap });
+
+  test("a met alert keeps its trigger still met, with the price now", () => {
+    const a = alertOf("price <= 80", {
+      state: "triggered",
+      now: [priced(79.5, 80, true, 0)],
+    });
+    expect(standingOf(firing(1, a), [a])).toMatchObject({
+      met: true,
+      tag: null,
+      price: 79.5,
+    });
+  });
+
+  test("a level moved back past says which side and how far", () => {
+    const below = alertOf("price <= 80", {
+      now: [priced(80.16, 80, false, -0.2)],
+    });
+    expect(standingOf(firing(1, below), [below]).tag).toBe("Back above · 0.2%");
+    const above = alertOf("price >= 150", {
+      now: [priced(147, 150, false, 2.04)],
+    });
+    expect(standingOf(firing(2, above), [above]).tag).toBe("Back below · 2.0%");
+  });
+
+  test("a condition on something other than a price has no distance", () => {
+    const a = alertOf("rsi14 < 30", { now: [now("rsi14", 35, 30, false)] });
+    const s = standingOf(firing(1, a), [a]);
+    expect(s).toMatchObject({ met: false, tag: null, price: null });
+    expect(figureOf(s, L)).toEqual({ figure: "RSI 35", currency: null });
+  });
+
+  test("a reading in the price's currency keeps its name", () => {
+    const a = alertOf("sma50 > sma200", {
+      now: [now("sma50", 165, 160, true)],
+    });
+    expect(figureOf(standingOf(firing(1, a), [a]), L)?.figure).toMatch(
+      /^50-day average /,
+    );
+  });
+
+  test("an alert watching again is no longer met, though it holds now", () => {
+    const a = alertOf("price <= 80", {
+      state: "watching",
+      now: [priced(79, 80, true, 0)],
+    });
+    expect(standingOf(firing(1, a), [a])).toMatchObject({ met: false });
+  });
+
+  test("the figure is the price when the alert reads one", () => {
+    const a = alertOf("price <= 80 and rsi14 < 30", {
+      now: [priced(79.5, 80, true, 0), now("rsi14", 28, 30, true)],
+    });
+    expect(figureOf(standingOf(firing(1, a), [a]), L)).toEqual({
+      figure: "79.50",
+      currency: "EUR",
+    });
+    expect(figureOf(standingOf(firing(2, a), []), L)).toBeNull();
+  });
+
+  test("a paused or split-paused alert is no longer met, untagged", () => {
+    for (const state of ["paused", "split_paused"] as const) {
+      const a = alertOf("price <= 80", {
+        state,
+        now: [priced(79, 80, true, 0)],
+      });
+      expect(standingOf(firing(1, a), [a])).toMatchObject({
+        met: false,
+        tag: null,
+        price: 79,
+      });
+    }
+  });
+
+  test("a removed, changed or unread alert is no longer met, untagged", () => {
+    const a = alertOf("price <= 80", { now: [priced(79, 80, true, 0)] });
+    expect(standingOf(firing(1, a), [])).toEqual({
+      trigger: firing(1, a),
+      met: false,
+      tag: null,
+      price: null,
+      reading: null,
+    });
+    expect(standingOf(firing(2, a, "price <= 90"), [a])).toMatchObject({
+      met: false,
+      tag: null,
+      price: 79,
+    });
+    const unread = alertOf("price <= 80", {
+      state: "unknown",
+      reasons: [`price of ${OWN}: quote overdue`],
+      now: [{ ...now("price", null, 80, null), gap_percent: null }],
+    });
+    expect(standingOf(firing(3, unread), [unread])).toMatchObject({
+      met: false,
+      tag: null,
+      price: null,
+    });
+  });
+
+  test("the newest leads, met or not, then the rest split by now", () => {
+    const met = alertOf("price <= 80", {
+      state: "triggered",
+      now: [priced(79, 80, true, 0)],
+    });
+    const back = alertOf("price <= 70", {
+      now: [priced(79, 70, false, -11.39)],
+    });
+    const g = historyGroups(
+      [firing(4, back), firing(3, met), firing(2, back), firing(1, met)],
+      [met, back],
+    )!;
+    expect(g.latest.trigger.id).toBe(4);
+    expect(g.latest.met).toBe(false);
+    // an alert's older trigger: it went false before firing again
+    expect(g.met.map((s) => s.trigger.id)).toEqual([3]);
+    expect(g.gone.map((s) => [s.trigger.id, s.tag])).toEqual([
+      [2, null],
+      [1, null],
+    ]);
+    expect(historyGroups([], [met])).toBeNull();
+  });
+
+  test("a trigger's time reads alone today, then with its day", () => {
+    const now = new Date(2026, 10, 16, 21, 0).getTime();
+    const at = (d: number, h: number, m: number, y = 2026) =>
+      new Date(y, 10, d, h, m).toISOString();
+    expect(whenLabel(at(16, 19, 20), now)).toBe("19:20");
+    expect(whenLabel(at(15, 17, 5), now)).toBe("Yesterday 17:05");
+    expect(whenLabel(at(14, 17, 5), now)).toBe("14 Nov 17:05");
+    expect(whenLabel(at(14, 9, 30, 2025), now)).toBe("14 Nov 2025 09:30");
+  });
+
+  test("Plan finds the symbol's active plans only", () => {
+    const plan = (id: number, status: PlanItem["status"], symbols: string[]) =>
+      ({ id, name: `Plan ${id}`, status, symbols }) as PlanItem;
+    const plans = [
+      plan(1, "active", [OWN, "US:ZZZ"]),
+      plan(2, "archived", [OWN]),
+      plan(3, "active", ["US:ZZZ"]),
+      plan(4, "active", [OWN]),
+    ];
+    expect(plansFor(plans, OWN).map((p) => p.id)).toEqual([1, 4]);
+    expect(plansFor(null, OWN)).toEqual([]);
+  });
+
+  test("a large price keeps its currency apart, an index has none", () => {
+    expect(priceParts(1234.5, OWN, L)).toEqual({
+      figure: "1,234.50",
+      currency: "EUR",
+    });
+    expect(priceParts(16.82, "US:^VIX", L)).toEqual({
+      figure: "16.82",
+      currency: null,
+    });
   });
 });
 

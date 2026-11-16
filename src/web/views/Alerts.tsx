@@ -3,7 +3,12 @@
 
 import { useSignal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
-import { ALERTS, ALERTS_HISTORY as FIRED, symbolHref } from "../app/paths.ts";
+import {
+  ALERTS,
+  ALERTS_HISTORY as FIRED,
+  symbolHref,
+  tradePlanHref,
+} from "../app/paths.ts";
 import { onPhone } from "../app/shell.ts";
 import type { Alert, Listings, Trigger } from "../data/alerts.ts";
 import type { Listing } from "../data/portfolios.ts";
@@ -15,6 +20,7 @@ import { useRefresh } from "../lib/refresh.ts";
 import { AddButton } from "../ui/AddButton.tsx";
 import { Card } from "../ui/Card.tsx";
 import { Drawer } from "../ui/Drawer.tsx";
+import { MenuButton } from "../ui/Menu.tsx";
 import { Notice } from "../ui/Notice.tsx";
 import { didNotLoad, Page } from "../ui/Page.tsx";
 import { Segmented } from "../ui/Segmented.tsx";
@@ -25,17 +31,23 @@ import {
   comparisonsOf,
   conditionLines,
   dayLabel,
+  figureOf,
   firedText,
+  GONE_SHOWN,
   gateText,
+  historyGroups,
   inTile,
   NEAR_PERCENT,
+  NOT_MET,
   nearOf,
   nowText,
   ON_WORDS,
   PRICE_UNREAD,
+  plansFor,
   rightNow,
   ruleSummary,
   STATE_WORDS,
+  type Standing,
   type StateKey,
   sortRules,
   stateOf,
@@ -44,7 +56,7 @@ import {
   timeText,
   treeOf,
   triggerText,
-  valueText,
+  whenLabel,
 } from "./Alerts.model.ts";
 import { SymbolPick } from "./PortfolioForms.tsx";
 import { listingWords, price as livePrice } from "./Portfolios.model.ts";
@@ -77,6 +89,11 @@ function Head({ tab }: { tab: TabKey }) {
 
 function AlertsPage({ tab }: { tab: TabKey }) {
   useRefresh(store.loadAll);
+  // the owner's plans, for History's Plan and an alert's drawer
+  useEffect(() => {
+    void markets.tradePlans.load();
+  }, []);
+  useRefresh(() => markets.tradePlans.load(), true);
   const adding = useSignal(false);
   const held = store.alerts.value !== null;
   return (
@@ -329,6 +346,7 @@ function RuleDrawer({
   onClose: () => void;
 }) {
   const l = store.listings.value;
+  const plans = plansFor(markets.tradePlans.plans.value, rule.symbol);
   const busy = useSignal(false);
   const asking = useSignal(false);
   const said = useSignal<string | null>(null);
@@ -493,6 +511,23 @@ function RuleDrawer({
             <p class="al-note-full">{rule.note}</p>
           </section>
         )}
+        {plans.length > 0 && (
+          <section class="al-section">
+            <h3 class="card-label">Trade plans</h3>
+            <ul class="al-history">
+              {plans.map((p) => (
+                <li key={p.id}>
+                  <a
+                    class="al-drawer-link"
+                    href={tradePlanHref(p.id, rule.symbol)}
+                  >
+                    {p.name}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
         <section class="al-section">
           <h3 class="card-label">Triggered</h3>
           {fired.length === 0 ? (
@@ -522,8 +557,8 @@ function RuleDrawer({
 
 function FiredTab() {
   const alerts = store.history.value;
-  const l = store.listings.value;
   const rules = store.alerts.value ?? [];
+  const opened = useSignal(false);
   // opening Fired sees the newest; leaving it ends the visit's dots
   useEffect(() => {
     if (alerts !== null) void store.markSeen();
@@ -541,7 +576,8 @@ function FiredTab() {
         />
       </Card>
     );
-  if (alerts.length === 0) {
+  const g = historyGroups(alerts, rules);
+  if (g === null) {
     return (
       <Notice title="Nothing triggered yet" icon="bell">
         An alert shows here the moment it triggers.
@@ -549,77 +585,164 @@ function FiredTab() {
     );
   }
   const now = Date.now();
-  const before = store.seenBefore.value;
-  const days: { label: string; rows: Trigger[] }[] = [];
-  for (const a of alerts) {
-    const label = dayLabel(a.triggered_at, now);
-    if (days.at(-1)?.label !== label) days.push({ label, rows: [] });
-    days.at(-1)!.rows.push(a);
-  }
+  const hidden = opened.value ? 0 : Math.max(0, g.gone.length - GONE_SHOWN);
+  const gone = g.gone.slice(0, g.gone.length - hidden);
+  const more = (hidden > 0 || store.next.value !== null) && (
+    <button
+      type="button"
+      class="btn-text al-more"
+      disabled={store.more.value}
+      onClick={() => {
+        opened.value = true;
+        void store.loadMore();
+      }}
+    >
+      {hidden > 0 ? `Show ${hidden} more` : "Show more"}
+    </button>
+  );
   return (
     <>
-      {days.map((d) => (
-        <Card key={d.label} title={d.label} flush label={d.label}>
-          <ul class="al-fired">
-            {d.rows.map((a) => {
-              const rule = rules.find((r) => r.id === a.alert_id);
-              const first = comparisonsOf(a.when)[0];
-              const now0 = rule?.now[0];
-              const live =
-                first !== undefined &&
-                now0 !== undefined &&
-                now0.field === first.left.field &&
-                (now0.symbol ?? null) === first.left.symbol
-                  ? now0.value
-                  : undefined;
-              return (
-                <li key={a.id}>
-                  <a class="al-fired-row" href={symbolHref(a.symbol)}>
-                    <span class="al-fired-time num faint">
-                      {before !== null && a.id > before && (
-                        <span class="al-dot" role="img" aria-label="New" />
-                      )}
-                      {timeText(a.triggered_at)}
-                    </span>
-                    <span class="al-fired-body">
-                      <SymbolName
-                        compact
-                        ticker={tickerOf(a.symbol, l[a.symbol]?.type)}
-                        name={nameOf(
-                          l[a.symbol]?.name ?? null,
-                          l[a.symbol]?.type,
-                          a.symbol,
-                        )}
-                      />
-                      <span>{triggerText(a, l)}</span>
-                      {a.note && (
-                        <span class="small faint al-note">{a.note}</span>
-                      )}
-                    </span>
-                    <span class="al-fired-now small faint num">
-                      {live !== undefined && live !== null && first
-                        ? `Now ${valueText(first.left.field, live, first.left.symbol ?? a.symbol, l)}`
-                        : ""}
-                    </span>
-                  </a>
-                </li>
-              );
-            })}
+      <Latest s={g.latest} now={now} />
+      {g.met.length > 0 && (
+        <Card flush class="al-live" label="Still met">
+          <ul class="al-list">
+            {g.met.map((s) => (
+              <li key={s.trigger.id} class="al-item">
+                <ItemHead t={s.trigger} now={now} />
+                {s.trigger.note && (
+                  <span class="al-note-all">{s.trigger.note}</span>
+                )}
+                <span class="al-line">
+                  <Price s={s} />
+                  <PlanButton symbol={s.trigger.symbol} />
+                </span>
+              </li>
+            ))}
           </ul>
         </Card>
-      ))}
-      {store.next.value !== null && (
-        <button
-          type="button"
-          class="btn-text faint scr-more"
-          disabled={store.more.value}
-          onClick={() => void store.loadMore()}
-        >
-          Show more
-        </button>
       )}
+      {gone.length > 0 && (
+        <Card flush title={NOT_MET} count={g.gone.length} label={NOT_MET}>
+          <ul class="al-list">
+            {gone.map((s) => (
+              <li key={s.trigger.id} class="al-item al-gone">
+                <ItemHead t={s.trigger} now={now} />
+                {s.trigger.note && (
+                  <span class="al-note small faint">{s.trigger.note}</span>
+                )}
+                <span class="al-line">
+                  <Price s={s} />
+                  {s.tag !== null && <BackTag text={s.tag} />}
+                </span>
+              </li>
+            ))}
+          </ul>
+          {more}
+        </Card>
+      )}
+      {gone.length === 0 && more}
       <p class="small faint al-kept">Alerts are kept for 90 days.</p>
     </>
+  );
+}
+
+// the newest trigger, large; the gold edge only while it is still met
+function Latest({ s, now }: { s: Standing; now: number }) {
+  const l = store.listings.value;
+  const t = s.trigger;
+  const p = figureOf(s, l);
+  return (
+    <Card flush class={s.met ? "al-live" : undefined} label="Latest alert">
+      <div class="al-item al-big">
+        <ItemHead t={t} now={now} />
+        <span>{triggerText(t, l)}</span>
+        <span class="al-line">
+          {p !== null && (
+            <span class="al-fig num">
+              {p.figure}
+              {p.currency && <span class="al-ccy">{p.currency}</span>}
+            </span>
+          )}
+          <PlanButton symbol={t.symbol} />
+        </span>
+        {s.tag !== null && (
+          <span>
+            <BackTag text={s.tag} />
+          </span>
+        )}
+        {t.note && <span class="al-note-all">{t.note}</span>}
+      </div>
+    </Card>
+  );
+}
+
+// the ticker is the link; its cover makes the whole row one
+function ItemHead({ t, now }: { t: Trigger; now: number }) {
+  const l = store.listings.value;
+  const before = store.seenBefore.value;
+  return (
+    <span class="al-head">
+      {before !== null && t.id > before && (
+        <span class="al-dot" role="img" aria-label="New" />
+      )}
+      <a class="al-link" href={symbolHref(t.symbol)}>
+        <SymbolName
+          compact
+          ticker={tickerOf(t.symbol, l[t.symbol]?.type)}
+          name={nameOf(l[t.symbol]?.name ?? null, l[t.symbol]?.type, t.symbol)}
+        />
+      </a>
+      <span class="al-when small faint num">
+        · {whenLabel(t.triggered_at, now)}
+      </span>
+    </span>
+  );
+}
+
+function Price({ s }: { s: Standing }) {
+  const f = figureOf(s, store.listings.value);
+  if (f === null) return null;
+  return (
+    <span class="small num">
+      {f.currency === null ? f.figure : `${f.figure} ${f.currency}`}
+    </span>
+  );
+}
+
+function BackTag({ text }: { text: string }) {
+  return <span class="tag tag-side al-tag">{text}</span>;
+}
+
+// the symbol's active plans: one is a link, several a menu of them
+function PlanButton({ symbol }: { symbol: string }) {
+  const plans = plansFor(markets.tradePlans.plans.value, symbol);
+  const l = store.listings.value;
+  if (plans.length === 0) return null;
+  const one = plans.length === 1 ? plans[0]! : null;
+  return (
+    <span class="al-over">
+      {one !== null ? (
+        <a
+          class="btn btn-small btn-primary"
+          href={tradePlanHref(one.id, symbol)}
+          title={one.name}
+        >
+          Plan
+        </a>
+      ) : (
+        <MenuButton
+          label={`Plans for ${tickerOf(symbol, l[symbol]?.type)}`}
+          head
+          face="Plan"
+          buttonClass="btn-small btn-primary"
+          items={plans.map((p) => ({
+            key: String(p.id),
+            label: p.name,
+            href: tradePlanHref(p.id, symbol),
+          }))}
+        />
+      )}
+    </span>
   );
 }
 

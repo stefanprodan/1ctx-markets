@@ -20,6 +20,7 @@ import {
   type Unit,
 } from "../../shared/when-words.ts";
 import type { Alert, Listings, Now, Trigger } from "../data/alerts.ts";
+import type { PlanItem } from "../data/trade-plans.ts";
 import { amount } from "../lib/format.ts";
 import { tickerOf } from "../lib/names.ts";
 
@@ -389,13 +390,17 @@ export function triggerText(t: Trigger, l: Listings): string {
   return close === null ? text : `${text} at ${close}`;
 }
 
+const daysAgo = (d: Date, today: Date) => {
+  const start = (x: Date) =>
+    new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  return Math.round((start(today) - start(d)) / (24 * 3600 * 1000));
+};
+
 // Today, Yesterday, then the date, in the browser's zone
 export function dayLabel(at: string, now: number): string {
   const d = new Date(at);
   const today = new Date(now);
-  const start = (x: Date) =>
-    new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
-  const days = Math.round((start(today) - start(d)) / (24 * 3600 * 1000));
+  const days = daysAgo(d, today);
   if (days === 0) return "Today";
   if (days === 1) return "Yesterday";
   return d.toLocaleDateString("en-GB", {
@@ -411,3 +416,142 @@ export const timeText = (at: string) =>
     hour: "2-digit",
     minute: "2-digit",
   });
+
+// a trigger's time beside its name: the time alone today
+export function whenLabel(at: string, now: number): string {
+  const d = new Date(at);
+  const today = new Date(now);
+  const days = daysAgo(d, today);
+  if (days === 0) return timeText(at);
+  if (days === 1) return `Yesterday ${timeText(at)}`;
+  const date = d.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    ...(d.getFullYear() !== today.getFullYear() ? { year: "numeric" } : {}),
+  });
+  return `${date} ${timeText(at)}`;
+}
+
+// a trigger read against its alert now
+export type Standing = {
+  trigger: Trigger;
+  met: boolean;
+  // how far it moved back, between price levels only
+  tag: string | null;
+  // the symbol's own price now, as its alert last read it
+  price: number | null;
+  // with no price read, the first comparison's reading, such as RSI
+  reading: Now | null;
+};
+
+export const NOT_MET = "No longer met";
+
+const sameWhen = (a: string, b: string) =>
+  a === b || JSON.stringify(treeOf(a)) === JSON.stringify(treeOf(b));
+
+// the first comparison's side and distance; gap_percent is only given
+// between price levels
+function backText(t: Trigger, rule: Alert): string | null {
+  const c = comparisonsOf(t.when)[0];
+  const n = rule.now[0];
+  const gap = n?.gap_percent;
+  if (c === undefined || n?.holds !== false || gap == null) return null;
+  const side = c.op === "<" || c.op === "<=" ? "Back above" : "Back below";
+  return `${side} · ${Math.abs(gap).toFixed(1)}%`;
+}
+
+// still met: its alert kept with the same condition, read and not
+// paused, and every comparison holding as when joins them
+export function standingOf(t: Trigger, rules: readonly Alert[]): Standing {
+  const rule = rules.find((r) => r.id === t.alert_id);
+  const price =
+    rule?.now.find((n) => n.field === "price" && n.symbol === undefined)
+      ?.value ?? null;
+  const reading = price === null ? (rule?.now[0] ?? null) : null;
+  const gone = { trigger: t, met: false, tag: null, price, reading };
+  if (rule === undefined || !sameWhen(rule.when, t.when)) return gone;
+  const s = stateOf(rule);
+  if (s === "unknown" || s === "stale" || s === "paused" || s === "split") {
+    return gone;
+  }
+  // watching again means it went false after firing, though it may hold
+  // now, as a close alert re-armed by a false close does
+  const met = rule.state !== "watching" && metOf(rule);
+  return { ...gone, met, tag: met ? null : backText(t, rule) };
+}
+
+export type HistoryGroups = {
+  latest: Standing;
+  met: Standing[];
+  gone: Standing[];
+};
+
+// the newest trigger first, met or not, then the rest split by now; an
+// alert fires again only after it went false, so its older ones are gone
+export function historyGroups(
+  triggers: readonly Trigger[],
+  rules: readonly Alert[],
+): HistoryGroups | null {
+  const newer = new Set<number>();
+  const all = triggers.map((t) => {
+    const s = standingOf(t, rules);
+    const older = newer.has(t.alert_id);
+    newer.add(t.alert_id);
+    return older ? { ...s, met: false, tag: null } : s;
+  });
+  const [latest, ...rest] = all;
+  if (latest === undefined) return null;
+  return {
+    latest,
+    met: rest.filter((s) => s.met),
+    gone: rest.filter((s) => !s.met),
+  };
+}
+
+// the rows No longer met shows before Show more
+export const GONE_SHOWN = 3;
+
+// a symbol's active plans, as its own page lists them by default
+export function plansFor(
+  plans: readonly PlanItem[] | null,
+  symbol: string,
+): PlanItem[] {
+  return (plans ?? []).filter(
+    (p) => p.status === "active" && p.symbols.includes(symbol),
+  );
+}
+
+// a price for a large figure: the number, and the currency apart
+export function priceParts(
+  v: number,
+  symbol: string,
+  l: Listings,
+): { figure: string; currency: string | null } {
+  const unit = l[symbol]?.unit;
+  if (unit === "index_points" || unit === "percent") {
+    return { figure: valueText("price", v, symbol, l), currency: null };
+  }
+  const currency = l[symbol]?.currency ?? null;
+  return { figure: amount(v, currency, true), currency };
+}
+
+// a standing's figure: its price, else its reading named ("RSI 34.5")
+export function figureOf(
+  s: Standing,
+  l: Listings,
+): { figure: string; currency: string | null } | null {
+  const own = s.trigger.symbol;
+  if (s.price !== null) return priceParts(s.price, own, l);
+  const r = s.reading;
+  if (r === null || r.value === null) return null;
+  // a reading in the price's currency, such as an average, keeps its name
+  // so it never reads as the price
+  const text = nowText(r, own, l);
+  const named =
+    r.field !== "price" &&
+    (r.symbol ?? own) === own &&
+    words(r.field).unit === "price"
+      ? `${words(r.field).label} ${text}`
+      : text;
+  return { figure: named, currency: null };
+}

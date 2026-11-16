@@ -160,43 +160,115 @@
     gap: 2px;
   }
 
-  .al-fired {
+  /* History: a row is one link, its ticker's cover; Plan sits over it */
+  .al-live {
+    border-left: 3px solid var(--brand);
+  }
+  .al-list {
     margin: 0;
     padding: 0;
     list-style: none;
   }
-  .al-fired li + li {
+  .al-list li + li {
     border-top: 1px solid var(--separator);
   }
-  .al-fired-row {
-    display: grid;
-    grid-template-columns: 64px minmax(0, 1fr) auto;
-    gap: var(--space-3);
-    align-items: baseline;
-    padding: var(--space-3) var(--space-4);
-    color: inherit;
-  }
-  .al-fired-row:hover {
-    background: var(--hover);
-  }
-  .al-fired-time {
+  .al-item {
     position: relative;
-  }
-  .al-dot {
-    position: absolute;
-    left: -12px;
-    top: 50%;
-    width: 6px;
-    height: 6px;
-    margin-top: -3px;
-    border-radius: 50%;
-    background: var(--brand);
-  }
-  .al-fired-body {
     display: flex;
     flex-direction: column;
     gap: 2px;
     min-width: 0;
+    padding: var(--space-3) var(--space-4);
+  }
+  @media (hover: hover) {
+    .al-item:hover {
+      background: var(--hover);
+    }
+  }
+  .al-big {
+    gap: var(--space-1);
+    padding: var(--space-4);
+    border-radius: inherit;
+  }
+  .al-head {
+    display: flex;
+    align-items: baseline;
+    min-width: 0;
+  }
+  .al-link {
+    display: flex;
+    min-width: 0;
+    color: inherit;
+    text-decoration: none;
+  }
+  .al-link::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+  }
+  .al-when {
+    flex-shrink: 0;
+    margin-left: var(--space-1);
+    white-space: nowrap;
+  }
+  .al-dot {
+    flex-shrink: 0;
+    align-self: center;
+    width: 7px;
+    height: 7px;
+    margin-right: var(--space-tight);
+    border-radius: 50%;
+    background: var(--brand);
+  }
+  .al-note-all {
+    color: var(--dim);
+    font-size: var(--text-small);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .al-big .al-note-all {
+    margin-top: var(--space-2);
+  }
+  .al-line {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    margin-top: var(--space-1);
+  }
+  /* after the link, so it paints over the cover; no z-index, so an open
+     menu's own lifts it over the rows below */
+  .al-over {
+    position: relative;
+    margin-left: auto;
+  }
+  .al-over .menu-btn-head {
+    width: auto;
+    padding: 0 var(--space-2);
+  }
+  .al-fig {
+    display: flex;
+    align-items: baseline;
+    font-size: var(--text-display);
+    line-height: 1.05;
+  }
+  .al-ccy {
+    margin-left: var(--space-2);
+    font-size: var(--text-display-unit);
+    color: var(--faint);
+  }
+  .al-gone {
+    opacity: 0.6;
+  }
+  .al-more {
+    display: block;
+    width: 100%;
+    min-height: 44px;
+    padding: 0 var(--space-4);
+    text-align: left;
+  }
+  .card-flush > .al-more {
+    border-top: 1px solid var(--separator);
   }
   .al-kept {
     margin: var(--space-3) 0 0;
@@ -215,11 +287,32 @@
       align-items: center;
       gap: var(--space-2);
     }
-    .al-fired-row {
-      grid-template-columns: 48px minmax(0, 1fr);
+    .al-fig {
+      font-size: var(--text-display-phone);
     }
-    .al-fired-now {
+  }
+
+  @media (min-width: 720px) {
+    .al-list .al-item {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      column-gap: var(--space-5);
+      row-gap: 2px;
+    }
+    .al-list .al-head {
+      grid-column: 1 / -1;
+    }
+    .al-list .al-note-all,
+    .al-list .al-note {
+      grid-column: 1;
+      grid-row: 2;
+      align-self: center;
+    }
+    .al-list .al-line {
       grid-column: 2;
+      grid-row: 2;
+      gap: var(--space-4);
+      margin: 0;
     }
   }
 }
