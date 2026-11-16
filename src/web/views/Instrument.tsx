@@ -222,8 +222,7 @@ export function Instrument({ params }: { params: Params }) {
             id={id}
             intraday={detail.intraday}
             hand={hand}
-            // a share's bars do not change with a trade; a fund's price can
-            saved={hand ? saved.value : 0}
+            saved={saved.value}
           />
           <InstrumentCards detail={detail} held={held} />
           <TradePlansSection key={id} store={plans} id={id} />

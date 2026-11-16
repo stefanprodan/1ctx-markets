@@ -591,9 +591,10 @@ export function Chart({
     };
   }, []);
 
+  // a share's bars do not change with a trade; a fund's price can
   useEffect(() => {
     void load();
-  }, [id, intraday, range.value, onPhone.value, saved]);
+  }, [id, intraday, range.value, onPhone.value, hand ? saved : 0]);
   // the instrument's own read pulses the menu for the page
   useRefresh(() => load(), true);
 
