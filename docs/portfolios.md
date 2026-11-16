@@ -273,10 +273,10 @@ once and valued on the live price the server already keeps.
 - **A person lets chosen people see all their portfolios, read only**
   (`portfolio_viewers`, migration `0038-sharing`; `src/api/sharing.ts`).
   One switch per person, the whole thing, Cash included, and nothing
-  else of theirs: no profile, dashboard or rules, no single portfolio
-  and no editing. Only the owner adds or ends it, in the web UI
-  (`PUT`, `DELETE /api/v1/sharing/{id}`); removing either person ends
-  it with their row.
+  else of theirs: no profile, dashboard, alerts or trade plans, no
+  single portfolio and no editing. Only the owner adds or ends it, in
+  the web UI (`PUT`, `DELETE /api/v1/sharing/{id}`); removing either
+  person ends it with their row.
 - **A viewer reads the owner's portfolios as the owner does.** The six
   reads the Portfolios page draws from (`GET /portfolios`, `/holdings`,
   `/portfolios/{id}/holdings`, `/holdings/growth`,
@@ -291,7 +291,7 @@ once and valued on the live price the server already keeps.
   refused `owner` (403) even for its own person, and the sharing routes,
   so an agent reads only its person's portfolios and the `portfolio`
   tool never changes. To let another person's agent read theirs, an
-  owner makes a key with portfolio `read` (profile and rules `none`) on
+  owner makes a key with portfolio `read` (every other access `none`) on
   Connect agents and hands it over; revoking it ends that.
 
 ## The arithmetic
@@ -495,7 +495,8 @@ once and valued on the live price the server already keeps.
   `value`) plus every cash account's balance (`cash`), reserve and dry
   powder alike. The caller's own portfolios only: a share shows
   portfolios, never a net worth, so the route takes no `owner`. Home's
-  Wealth tab draws `total`; no MCP tool answers it.
+  Wealth tab draws the net worth (`total`) and the Portfolios page's
+  Cash tab the cash (`cash`); no MCP tool answers it.
 - **A cash account is a chain** of rows through `replaces` with the
   past balances entered on them, all of the owner's cash rows read in
   one query and grouped in memory (`cashEntriesOf()`,
@@ -876,9 +877,9 @@ rename_broker(broker: string, name: string): { broker };
   too (`bondsOf()`, holdings, rates, history chains, removed rows, name
   lookups), so no default owner exists to fall back on.
 - **The owner is the caller's** (`Who.user`, `docs/api.md`): a route
-  reads it from its `who`, a tool from the request's `authInfo`. Today
-  the admin key, the web UI's cookie and every key made so far are the
-  operator's, so a single-person server reads as before.
+  reads it from its `who`, a tool from the request's `authInfo`. The
+  admin key is the operator's; a sign-in and an agent key are their
+  own person's (`docs/admin.md`).
 - **Another person's row is no row**: a portfolio, trade, position or
   broker of theirs, by id or by name, answers 404 or "no portfolio" as
   an unknown one does, never 403, so an id never tells that it exists.

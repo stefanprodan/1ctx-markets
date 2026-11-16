@@ -93,7 +93,8 @@ MCP tools copied onto paths.
 | `GET /sharing` | session | `sharingAnswer()` | `people[]` (`id`, `name`, `shared`): everyone else, and whether they see the caller's portfolios; `sharers[]` (`id`, `name`): who lets the caller see theirs; both by name, ignoring case. A web UI sign-in's only: a key, the admin key too, is refused (403) |
 | `PUT`, `DELETE /sharing/{id}` | session | `setSharing()` | starts or ends that person seeing all the caller's portfolios, read only; answers as `GET /sharing`; done already is no error; 404 for no such person, 400 for the caller; a sign-in's only, as above |
 | `GET /keys` | session | `listAnswer()` | `keys[]` (id, name, `owner` `{id, name}`, created, last used, expires; never a token), the caller's own, an admin's everyone's, and `limit` (`docs/admin.md`) |
-| `POST /keys` | session | `createOne()` | `{name, expiresInDays, portfolio, alerts, profile, analysis, trade_plans}` (days null, 30, 90 or 365; each access `none`, the default, `read` or `write`): a key of the caller's; 201 with `key` and its `token`, once; 409 for a name the caller has or past their cap of 5 |
+| `POST /keys` | session | `createOne()` | `{name, expiresInDays, portfolio, alerts, profile, analysis, trade_plans}` (days null, 30, 90 or 365; each access `none`, the default, `read` or `write`): a key of the caller's; 201 with `key` and its `token`, once; 409 for a name the caller has or past the cap a person may hold (`--max-keys`, `docs/config.md`) |
+| `PATCH /keys/{id}` | session | `setOne()` | `{portfolio, alerts, profile, analysis, trade_plans}`, any of them: the caller's own key's access, its token, name and expiry kept; answers `key` as the list does; its next call is held to the new access; 404 for an unknown id or another person's |
 | `DELETE /keys/{id}` | session | `revokeOne()` | 204; 404 for an unknown id or another person's, but for an admin |
 | `GET`, `POST /users`; `PATCH`, `DELETE /users/{id}`; `POST /users/{id}/invite`, `/users/{id}/sign-out` | admin | `src/admin/users.ts` | the people (`docs/admin.md`, "People") |
 | `GET`, `PUT`, `DELETE /smtp`; `POST /smtp/test` | admin | `src/admin/smtp.ts` | the email settings (`docs/admin.md`, "Email") |
@@ -574,14 +575,14 @@ one. Its items are triggers, as `GET /alerts/history` gives them
   (`docs/storage.md`, "Retention"), and it changes the bytes of pages
   already answered, which starts a polling client's run again.
 - **Each person reads their own triggers** (`alerts.owner`, copied from
-  the alert when it triggers). The cursor stays the alert id, shared by
-  everyone, so another person's ids fall between one's own.
+  the alert when it triggers). The cursor stays the trigger id (`alerts.id`), shared
+  by everyone, so another person's ids fall between one's own.
 - **A pruned trigger of the reader's after the cursor is a retention
   gap**: retention keeps each person's newest pruned id
   (`users.alerts_pruned`, `pruneAlerts()`), and one past the cursor
   answers `retention_gap: true`; another person's ids, pruned or not,
   never do. A cursor above any id given to the reader
-  (`issuedAlertId()`: their newest alert or pruned id, never the
+  (`issuedAlertId()`: their newest trigger or pruned id, never the
   server's, which would tell another person's alert count) starts over
   with `cursor_reset: true`, as after a restore.
 - **Delivery is at least once.** The cursor moves only when the client
@@ -592,10 +593,11 @@ one. Its items are triggers, as `GET /alerts/history` gives them
 
 - **`src/api/openapi.ts` is OpenAPI 3.1, written by hand as a typed
   object** and served at `/api/v1/openapi.json`. Every route,
-  parameter, body, answer and documented error is in it, with two
-  bearer security schemes, `read` and `admin`, and the `session`
-  cookie, named per operation. Errors are `application/problem+json`
-  with the `Problem` schema.
+  parameter, body, answer and documented error is in it, with bearer
+  security schemes for `admin` and per access (`read`, then a read and
+  a write scheme each for portfolio, alerts, profile, analysis and
+  trade plans) and the `session` cookie, named per operation. Errors
+  are `application/problem+json` with the `Problem` schema.
 - **Descriptions are for a person reading the docs page**: what a
   route returns, then the limits, defaults and units a caller needs,
   never the reasons behind them or the MCP descriptions copied. They

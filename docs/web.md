@@ -336,7 +336,7 @@ learns it from `email_on` in `GET /ui/me`.
   second) still waiting do a few words show ("Loading prices",
   "Loading charts", "Loading the chart"; `slowFlag()` in
   `lib/slow.ts`, its timer passed into the store so tests drive it
-  with the fake clock). The minute's refresh never puts a placeholder
+  with the fake clock). A refresh never puts a placeholder
   over what is drawn. A symbol the server fetches from its source for
   the first time (seconds, up to the call's deadline) says so at once:
   "Fetching TEL for the first time" with the spinner, in the chart's
@@ -380,7 +380,8 @@ learns it from `email_on` in `GET /ui/me`.
   the icons, trimmed to what these pages use. **The mark is 1ctx's
   chip and sparkle with a rising price line in place of the 1**
   (`Mark` in `lib/icons.tsx`, `favicon.svg` and the manifest's icons).
-  The rail is 1ctx's logo with **Markets** beside it, the pages,
+  The rail is 1ctx's logo with **Markets** beside it, the pages in
+  `ROUTES` order (`RAIL`; More holds the same order),
   **Shared with me** (one row per person who lets the reader see their
   portfolios, "<name>'s portfolios", from `GET /api/v1/sharing` after
   sign-in and every `REFRESH_MS`, a failed read keeping the last;
@@ -621,9 +622,9 @@ The parts:
 
 ## Pages
 
-- **Home** (`/`, the landing page) is the admin's dashboard, from one
-  `GET /api/v1/dashboard` (`docs/api.md`, The dashboard): named
-  sections the admin creates and orders, each shown as cards or as a
+- **Home** (`/`, the landing page) is each person's own dashboard,
+  from one `GET /api/v1/dashboard` (`docs/api.md`, The dashboard):
+  named sections the person creates and orders, each shown as cards or as a
   table, with four tabs above them. `Dashboard.tsx` is
   the view; the rankings, rows and layout edits are
   `Dashboard.model.ts`, which has no DOM and is tested.
@@ -752,8 +753,8 @@ The parts:
   within and between sections, remove one, switch a view and Add
   section all change the draft only. Save sends it in one save on the
   revision it was copied from, or nothing when it matches that copy
-  (`saveOf()`): a save from another tab since, even one a minute
-  refresh already shows, is a 409 that ends the edit and shows that
+  (`saveOf()`): a save from another tab since, even one a refresh
+  already shows, is a 409 that ends the edit and shows that
   save, never overwritten. Save and Cancel wait for the answer; any
   other failure keeps the draft and says why, to try again or Cancel.
   Cancel drops it. Outside Edit, Add from search and the view switch
@@ -764,7 +765,7 @@ The parts:
   apart (a yield in percent) and the day's change in percent; it links
   the instrument. A favourite added but not answered yet keeps the
   card's shape, "Pending" and a dash where its figures will land. The page
-  re-reads every minute while visible. A load is stale once the
+  re-reads on every refresh while visible. A load is stale once the
   router's path changes, checked when its answer lands, and a save that
   lands after leaving starts no load, so leaving the page asks no line
   after it (an effect's cleanup runs too late).
@@ -789,8 +790,7 @@ The parts:
   picks its closes, base and slots.
 - **Before its first answer Status shows** its figures row
   with the four labels over placeholders, and the Jobs card's rows.
-- **Server admin** (last in the rail, after Connect agents, the
-  shield; admins only) is one page of three tabs, each its own address
+- **Server admin** (the shield; admins only) is one page of three tabs, each its own address
   as Portfolios keeps its portfolio, and each loading only its own
   answer: Status (`/admin`, `Status.tsx`), Settings (`/admin/settings`)
   and Users (`/admin/users`), the last two in `Admin.tsx` with their
@@ -835,8 +835,7 @@ The parts:
 - **Add a source** is a card listing the keyed sources that are off,
   each with what it adds, its key file and a link to get a key; it is
   absent when none is off.
-- **Alerts** (`/alerts`, after Portfolios in the rail and first in
-  More on a phone) is the person's price alerts (`docs/alerts.md`) in
+- **Alerts** (`/alerts`) is the person's price alerts (`docs/alerts.md`) in
   two tabs, each its own address: Rules (`/alerts`) and Fired
   (`/alerts/fired`). The page keeps its words "rule" and "fired" for its
   readers; the API says alert and trigger. `Alerts.tsx` is the view,
@@ -872,10 +871,9 @@ The parts:
   a dot until the tab is left.
 - **The rail's Alerts row counts the alerts not seen yet**
   (`GET /api/v1/alerts/seen`, read after sign-in and on the shell's
-  30-second refresh), shown 99+ past 99; on a phone the count sits on
+  refresh), shown 99+ past 99; on a phone the count sits on
   Alerts in More and a dot on More.
-- **Profile** (`/profile`, between Trade plans and Connect agents in
-  the rail) is the owner's profile (`docs/profile.md`): how they invest, one
+- **Profile** (`/profile`) is the owner's profile (`docs/profile.md`): how they invest, one
   Markdown document agents read before any work on the portfolio.
   `Profile.tsx` is the view, `data/profile.ts` its calls; the size,
   the outline and what each toolbar button types are
@@ -913,8 +911,8 @@ The parts:
   that revision drawn; Restore (not on the current one) saves its text
   on the live revision, so a newer save refuses it instead of being
   overwritten, and the profile is read again before a second try.
-- **Trade plans** (`/trade-plans` and `/trade-plans/{id}`, between
-  Alerts and Profile in the rail, the flag) are the reader's own plans
+- **Trade plans** (`/trade-plans` and `/trade-plans/{id}`, the flag)
+  are the reader's own plans
   (`docs/trade-plans.md`): Markdown tagged with symbols, never another
   person's, never an order. `TradePlans.tsx` is the view, its card on an
   instrument page `InstrumentTradePlans.tsx`, `data/trade-plans.ts` the
@@ -991,9 +989,9 @@ The parts:
   ones included; with archived ones only, the card says "No active
   plans." A failed read keeps the last answer; the page's refresh reads
   it again.
-- **Connect agents** (`/connect`, before Server admin in the rail), as
-  1ctx's: a Keys card from `GET /api/v1/keys` ("N of 5", the person's
-  own keys counted, New key in its head), a table of each key's name,
+- **Connect agents** (`/connect`), as 1ctx's: a Keys card from
+  `GET /api/v1/keys` ("N of <limit>", the person's own keys counted
+  against the answer's `limit`, New key in its head), a table of each key's name,
   last use, expiry and access. An admin's list holds everyone's keys
   with an Owner column (`owner.name`); another person's key opens with
   its owner and the picks off, Revoke and Cancel only. The
@@ -1062,11 +1060,10 @@ The parts:
   (as 1ctx's read `ONECTX_ACCESS_KEY`): Claude Code's header in single
   quotes, so the shell never writes the key into its config, Codex's
   `bearer_token_env_var`, OpenCode's `{env:...}` with OAuth off.
-- **Portfolios** (`/portfolios` and `/portfolios/{id}`, after
-  Screener in the rail) reads
+- **Portfolios** (`/portfolios` and `/portfolios/{id}`) reads
   `GET /api/v1/portfolios`, the holdings (`/holdings` or
   `/portfolios/{id}/holdings`) and the trades with removed ones in one
-  load (`data/portfolios.ts`), every minute while visible. The page is
+  load (`data/portfolios.ts`), on every refresh while visible. The page is
   `Portfolios.tsx`, its forms `PortfolioForms.tsx`; its words, numbers
   and rules are `Portfolios.model.ts`, which has no DOM and is tested
   (`test/web-portfolios.test.tsx`). Top to bottom: the head (Add, the
@@ -1094,7 +1091,7 @@ The parts:
   portfolio, Invested against Cash with money invested, which never
   shows now that no other portfolio holds cash; shown only when both
   sides are above 0. The page shows no net worth: All portfolios is not net
-  worth, which only the API and the tool answer.
+  worth, which Home's Wealth tab, the API and the tool answer.
 - **The value band follows the view its figures were read for**
   (`shown` in `data/portfolios.ts`, set with the holdings): a tab
   picked moves `portfolio` at once, but the name, bar and line change
@@ -1127,7 +1124,7 @@ The parts:
   currency, today's being the hero's figure (`cashPoints()`), titled
   "Cash since 4 Jun" and labelled as Home's line. Read once per
   currency (`cash()` in `data/portfolios.ts`, kept in `cashes`), never
-  on the minute's refresh; Home's series stands in when it is in that
+  on the page's refresh; Home's series stands in when it is in that
   currency, still today's and read after the last save. A save drops
   the kept series, as a balance dated in the past moves its past days,
   and the line drawn stays until the new one lands; a read a save
@@ -1140,7 +1137,7 @@ The parts:
   the display currency when none is picked, the live trades' ids, a
   fund's hand price and a bond's face, cost and date), read from that
   cache in the render, so a tab seen once draws at once and a new tab
-  or currency never shows the last one's line; the minute's refresh
+  or currency never shows the last one's line; the page's refresh
   keeps the key and reads nothing. A save keeps the view and currency
   (`growthScope()`): its last line stays drawn until the new series
   swaps in, with no fade. Otherwise an empty slot of the same size
@@ -1567,7 +1564,7 @@ The parts:
   `/symbol/:id` names `/screener`. The old `/instruments` addresses are
   no pages and redirect nowhere. Views link a symbol with
   `symbolHref()` (`app/paths.ts`).
-- **The list re-reads every minute** (`REFRESH_MS`) while the tab is
+- **The list re-reads every `REFRESH_MS` (30 s)** while the tab is
   visible, and at once when it comes back; a load in flight answers a
   second ask, and a failed one keeps the rows and shows the error. An
   instrument's page re-reads the same way (`lib/refresh.ts`).
@@ -1576,8 +1573,8 @@ The parts:
   version, which an anonymous visitor never reads); the client keeps
   the first it sees and reloads the page once a later answer carries
   another (`buildWatch()`),
-  so a tab never runs an old page against a new API. The minute's
-  re-read finds it, or the read when a hidden tab comes back.
+  so a tab never runs an old page against a new API. The page's
+  refresh finds it, or the read when a hidden tab comes back.
 
 ## The chart
 
@@ -1672,7 +1669,7 @@ The parts:
   the last there are (an open week has none).
 - **A range not drawn yet** (the first, or one picked) leaves the
   plot's box empty, its size kept, with "Loading the chart" once slow;
-  the minute's refresh keeps the bars drawn. The first draw waits for
+  the page's refresh keeps the bars drawn. The first draw waits for
   mono face (`document.fonts.load`), which the canvas takes when it
   draws.
 - **Prices on the axis** have separators, and no cents from five
@@ -1688,7 +1685,7 @@ The parts:
 - **The bar still trading is drawn faded**; the last price has its
   line. Log is a toggle (not on a phone, above). **The chart neither pans nor zooms**: the
   range buttons choose what shows, and every draw (a range change, the
-  minute refresh, a toggle, a theme flip) and every resize fits it. **1D spans its whole
+  page's refresh, a toggle, a theme flip) and every resize fits it. **1D spans its whole
   session**, ending in empty 5-minute slots up to the close
   (`sessionSlots()`), as the home cards draw a day, so the first minutes
   are a short line at the left, not the whole width.

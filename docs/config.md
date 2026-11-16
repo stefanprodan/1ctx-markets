@@ -110,7 +110,8 @@ the `--help` text, and a flag changes there in the same commit.
 - **One `startup` line, then one `sources` line**, on stderr in
   slog-text form. `startup` holds `version`, `listen`, `data` (`~` for
   the home directory), `migrations` (applied, or `current`),
-  `quote_every`, `track_days`, `ui` and `sync` (each `on` or `off`). `sources` has one field per source:
+  `quote_every`, `track_days`, `max_keys`, `ui` and `sync` (each `on`
+  or `off`). `sources` has one field per source:
   `yahoo=on`, `cftc=on (always)`, the keyed ones `on (key file)` or
   `off (no key)`, `edgar` also `off (bad contact line)`
   (`docs/edgar.md`), `bvb` `on (flag)` or `off (no flag)`.
@@ -140,10 +141,10 @@ the `--help` text, and a flag changes there in the same commit.
 | Path | Method | Serves |
 |---|---|---|
 | `/mcp` | POST | MCP over Streamable HTTP, stateless |
-| `/api/v1/*` | GET, POST, PATCH, DELETE | the REST API, its spec and docs page (`docs/api.md`); each operation takes the read or the admin scope (`docs/admin.md`) |
+| `/api/v1/*` | GET, POST, PUT, PATCH, DELETE | the REST API, its spec and docs page (`docs/api.md`); each operation names the key access or sign-in it takes (`docs/api.md`, "Keys and caching") |
 | `/health` | GET | 200 with no body, for the service's start check |
 | `/.well-known/agent-skills/index.json`, `{name}.tgz`, `{name}.zip` | GET | the skills under `skills/` and their index (`docs/analysis.md`) |
-| `/`, `/screener`, `/symbol/{id}`, `/portfolios`, `/profile`, `/connect`, `/admin`, `/admin/settings`, `/admin/users` (`UI_PATHS`) | GET | the web UI's page, its assets at the paths it names (`docs/web.md`) |
+| `UI_PATHS`: `/`, `/screener`, `/symbol/{id}`, `/portfolios`, `/alerts`, `/trade-plans`, `/profile`, `/connect`, `/admin` and the pages under them | GET | the web UI's page, its assets at the paths it names (`docs/web.md`) |
 | `/ui/session` | POST, DELETE | the web UI's sign-in and sign-out (`docs/web.md`) |
 | `/ui/push` | GET, POST, DELETE | this device's push subscription (`docs/web.md`) |
 | `/icon-192.png`, `/icon-512.png`, `/icon-maskable-512.png`, `/sw.js` | GET | the manifest's icons and the service worker, at fixed paths, `no-cache` (`docs/web.md`) |
@@ -171,8 +172,9 @@ the `--help` text, and a flag changes there in the same commit.
 exit 0, or exit 1 with the error logged; a second signal during
 shutdown is ignored. The order in `stop()` holds:
 
-1. Stop the World markets tracker between symbols, the scheduler and
-   the push pass, so no new symbol, run or push starts.
+1. Stop the World markets tracker between symbols, sign-in asks, the
+   push pass and the scheduler, so no new symbol, email, push or run
+   starts.
 2. Close every source queue, so a call waiting out a back-off fails at
    once; calls already sent finish.
 3. Stop the HTTP server, so no new request starts.
@@ -181,9 +183,10 @@ shutdown is ignored. The order in `stop()` holds:
 5. Wait for every shared fetch still in flight, a read's past its
    deadline included, so no answer lands after the database closes.
 6. Close the MCP handler.
-7. Wait for the push pass to finish the alert it is on; the cursor
+7. Wait for the sign-in emails sent after their answers.
+8. Wait for the push pass to finish the alert it is on; the cursor
    keeps the rest for the next start.
-8. Close the writer, which refuses new writes and drains the queued
+9. Close the writer, which refuses new writes and drains the queued
    ones.
 
 The database closes only after the writer drained, so no write is lost

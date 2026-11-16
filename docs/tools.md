@@ -405,10 +405,11 @@ tracking in `docs/storage.md`; the source queue and deadlines in
 
 - **Each tool is a read and its paging.** `quoteRows()`,
   `readHistory()`, `searchAll()`, `readMovers()`, `readScreen()`,
-  `readEventsOf()`, `createRule()`, `pauseRule()` and
-  `deleteRuleById()` answer the whole result; the tool pages it and
-  the API (`docs/api.md`) answers it at once. A change to what a tool
-  reads goes in the read, so both surfaces stay the same.
+  `readEventsOf()`, `alertList()`, `historyList()`, `createAlert()`,
+  `updateAlert()`, `pauseAlert()` and `deleteAlert()` answer the whole
+  result; the tool pages it and the API (`docs/api.md`) answers it at
+  once. A change to what a tool reads goes in the read, so both
+  surfaces stay the same.
 - **The MCP answers are pinned**: `test/mcp.test.ts` compares every
   tool's pages over the recordings with
   `test/fixtures/mcp/answers.json` byte for byte. A change meant to

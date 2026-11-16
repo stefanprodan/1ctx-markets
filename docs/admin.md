@@ -181,10 +181,10 @@ never signs in and a sign-in never opens `/mcp`.
   were added to markets. Sign in: <link>, or enter 482913. Both work
   once, for 7 days." The person is added whether or not it went;
   `invite` says which, with the failure word, `timeout` past 25 s
-  (`SEND_DEADLINE_MS`, under Bun's 30 s idle limit) while the send goes
-  on. Invite again replaces any unused invite. The write that makes an
-  invite re-checks the caller is still an admin. Invites skip the ask
-  caps.
+  (`SEND_DEADLINE_MS`, under the server's 30 s idle limit,
+  `IDLE_TIMEOUT_S`) while the send goes on. Invite again replaces any
+  unused invite. The write that makes an invite re-checks the caller
+  is still an admin. Invites skip the ask caps.
 - **Sign out everywhere** (`signOutEverywhere()`) deletes the person's
   logins and live links; their data and keys stay.
 - **Removing a person is one transaction** (`removeUserRows()`): their
@@ -248,7 +248,7 @@ is sent directly, after the answer for an ask, before it for an admin.
 
 ## The instrument list
 
-- **Paged by id, the one paged route:** `page_size` 1 to `MAX_PAGE`
+- **Paged by id:** `page_size` 1 to `MAX_PAGE`
   (200, `DEFAULT_PAGE` 50 by default), `page_token` the
   `next_page_token` of the page before (its last id), and
   `next_page_token` absent on the last page. A page is a screen of

@@ -29,8 +29,8 @@ export const ASKS_PER_USER_DAY = 3;
 export const ASKS_PER_INBOX_DAY = 10;
 export const ASKS_PER_CHALLENGE_HOUR = 5;
 export const ASKS_PER_HOUR = 50;
-// an invite or a test email answers by then, under Bun's 30 s idle
-// limit; the send itself goes on
+// an invite or a test email answers by then, under the server's 30 s
+// idle limit; the send itself goes on
 export const SEND_DEADLINE_MS = 25_000;
 export const LINK_PATH = "/ui/link";
 

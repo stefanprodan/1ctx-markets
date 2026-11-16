@@ -1,8 +1,9 @@
 # 1ctx-markets
 
 A self-hosted market data server for AI agents. It syncs free market
-data (Yahoo, and optionally FRED, Finnhub, Massive, SEC EDGAR and the
-Bucharest Stock Exchange's own feed) into one SQLite file, computes
+data (Yahoo and the CFTC's Commitments of Traders reports, and
+optionally FRED, Finnhub, Massive, SEC EDGAR and the Bucharest Stock
+Exchange's own feed) into one SQLite file, computes
 signals, evaluates price rules, and serves them over the Model Context
 Protocol (MCP, Streamable HTTP) and a REST API under `/api/v1` with an
 OpenAPI spec, both behind the admin key or agents' own keys. It holds
@@ -21,8 +22,10 @@ with symbols; never orders, broker connections, dividends or tax.
   `@modelcontextprotocol/server` (`server/http.ts` a type only); the
   MCP client is for tests. `swagger-ui-dist` is the one package
   `src/api/` imports, and only its `swagger-ui-bundle.js` and
-  `swagger-ui.css`, embedded as files (`docs/api.md`). `preact` and
-  `@preact/signals` are imported only under `src/web/`, the client Bun
+  `swagger-ui.css`, embedded as files (`docs/api.md`). `nodemailer` is
+  imported only by `src/server/email/smtp.ts` (`docs/admin.md`).
+  `preact`, `@preact/signals` and `lightweight-charts` (only by
+  `views/Chart.tsx`) are imported only under `src/web/`, the client Bun
   bundles into the binary; `preact-render-to-string` only by tests.
 
 ## The dev loop
@@ -59,6 +62,7 @@ src/server/                 HTTP and MCP
   mcp.ts                    the stateless MCP endpoint
   instructions.ts           the server instructions every MCP client gets
   session.ts                the web UI's sign-in and its cookie
+  email/                    the SMTP server an admin sets and the one file that sends mail
 src/runtime/                the process
   config.ts                 flags and the --help text
   keys.ts                   key files, the only reader of secrets/
@@ -89,6 +93,7 @@ src/sources/                what every source shares, each provider under it
   finnhub/                  research sections and earnings events
   massive/                  news
   edgar/                    SEC filings, their flags, events' filed_at
+  cftc/                     the CFTC's positioning reports, always on, held in memory
 src/signals/                daily, weekly, live and relative signals
 src/rules/                  alert conditions, evaluation, triggers
 src/push/                   fired alerts as Web Push: encryption, VAPID, the send pass, devices
@@ -98,7 +103,8 @@ src/profile/                the owner's profile: revisions, edits, the read, Mar
 src/analysis/               the analysis per symbol: revisions, the price at each save, the read
 src/trade-plans/            the owner's trade plans: whole-state revisions, symbol tags, sections, the read
 src/operations/             the reads the MCP tools and the API share, with their MCP pages
-src/tools/                  the MCP surface: the tool registry and research's page
+src/tools/                  the MCP surface: index.ts registers the tools per key's
+                            access, one file per area, research's page, schema.ts
 src/api/                    /api/v1: routes, alerts, the spec, the docs page; never imports tools/
 src/service/                `service install|start|stop|...`: launchd, CLI only
 src/admin/                  the instrument, status, screener, dashboard and keys routes, the `admin` and `keys` commands
@@ -108,10 +114,13 @@ src/shared/                 plain data and functions the server and the web UI b
                             nothing else outside itself (test/imports.test.ts)
   currencies.ts             the ISO 4217 codes in circulation, names and minor units from Intl
   isin.ts                   the ISIN check digit
+  when.ts when-words.ts     an alert's condition as text and its words
+  periods.ts                the period starts returns and the chart share
+  marks.ts                  the mark and the wordmark
 src/web/                    the web UI, bundled from index.html (Preact)
   app/                      the shell, rail, router, routes and theme
   data/                     every call and signal; views never fetch
-  views/                    the pages: sign-in, Home, Status, Connect agents, Screener
+  views/                    the pages (app/routes.ts lists them) and their *.model.ts
   style/ ui/ lib/ fonts/    1ctx's tokens, primitives, icons and fonts
 skills/market-analysis/     how agents write and read analysis notes (Agent Skills); served at /.well-known/agent-skills/
 test/                       one *.test.ts per area, helpers/ (fakes), fixtures/ (recordings)
@@ -147,6 +156,7 @@ the same commit as the code that changes a rule.
 | `docs/yahoo.md` | Yahoo's endpoints, parsing, its phrases, resolution, bars, its backfill and split checks, quotes and extended hours, its first fetch and the lock, the jobs |
 | `docs/fred.md` | FRED: its key, its call limit, answer checks, series as instruments, bars, the daily job, attribution |
 | `docs/bvb.md` | the Bucharest feed: its pages and chart feed, parsing, the session, quotes, bars and its rescale checks, resolution, switching sources |
+| `docs/cftc.md` | the CFTC's Commitments of Traders reports: always on, the market list and its job, calls and answer checks, held in memory only, the read |
 | `docs/edgar.md` | SEC EDGAR: its contact line, its call limit, the ticker map, kept forms and their checks, foreign filers, the daily pass, the filing flags, events' `filed_at` |
 | `docs/research.md` | Finnhub research and earnings events, Massive news, their keys and budgets, the `research` and `events` tools, the research route's contents |
 | `docs/signals.md` | the daily and weekly signals, final and live rows, reading, relative return |
@@ -182,8 +192,8 @@ the same commit as the code that changes a rule.
   one exception is World markets (`src/market/world.ts`), a built-in
   list of world indices, commodities, currencies and crypto that is
   always tracked and fills a new person's Home.
-  Every source but Yahoo is optional: off without its key file, or
-  without its `--source` flag for a keyless one.
+  Every source but Yahoo and the CFTC is optional: off without its key
+  file, or without its `--source` flag for a keyless one.
 - **A change that adds or renames a tool, an argument or an answer
   field an agent chooses by updates the server instructions**
   (`src/server/instructions.ts`, `docs/tools.md`) in the same PR: they
