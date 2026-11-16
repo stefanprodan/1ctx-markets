@@ -48,6 +48,13 @@ finality in `docs/calendars.md`; tables, the writer and staleness in
   split again down to one symbol, about 2·log2(20) calls, which is
   asked once as a quote chart and fails alone if that fails too. The
   split is one queued task, so only a batch failing whole backs off.
+- **A symbol the split found is asked alone for `RETRY_MS` (an hour)**
+  (`lone` in `client.ts`): its batch would break again each pass, so
+  later passes leave it out of the spark calls and ask its quote chart
+  at once, one call instead of about ten. Should the chart fail, it
+  fails alone with the spark error its batch gave, as the split would.
+  Once the hour is up it rejoins a batch, and is split out again if it
+  still breaks one.
 - **Accepted limits of the split:** a one-symbol batch whose spark and
   chart both fail backs the queue off as before; a rate limit, timeout
   or network error mid-split fails the batch whole, dropping halves

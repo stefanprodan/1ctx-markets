@@ -370,7 +370,11 @@ describe("a spark batch one symbol breaks", () => {
     before = t.f.urls.length;
     await t.runTo(utc("2026-10-26T18:15"));
     expect(sparks(t.f.urls.slice(before))).toHaveLength(3);
-    expect(charts(t.f.urls.slice(before))).toHaveLength(0);
+    // U2, found breaking its batch, is still asked alone on the chart
+    expect(charts(t.f.urls.slice(before)).map(chartSymbol)).toEqual(["U2"]);
+    expect(
+      sparks(t.f.urls.slice(before)).map((u) => u.searchParams.get("symbols")),
+    ).toEqual(["C0-USD,U0,U1,U3,U4", "C0-USD,U0,U1", "U3,U4"]);
     expect(quoteStale(t.db, us("U0"))).toEqual(["quote sync failed"]);
     // no one symbol is to blame
     for (const market of ["US", "CRYPTO"]) {

@@ -13,8 +13,13 @@ import { upsertInstrument } from "../src/market/instruments.ts";
 import { addDays, wallOfDate } from "../src/market/zone.ts";
 import { DAY_MS } from "../src/runtime/clock.ts";
 import { recomputeSignals, signalsAfterBars } from "../src/signals/store.ts";
+import { RETRY_MS } from "../src/sources/history.ts";
+import type { SourceError } from "../src/sources/source.ts";
+import { yahoo } from "../src/sources/yahoo/client.ts";
 import { type Db, open } from "../src/storage/db/index.ts";
 import { fakeClock } from "./helpers/clock.ts";
+import { sim, US } from "./helpers/sim.ts";
+import { chartSymbol, fakeFetch, recorded } from "./helpers/yahoo.ts";
 
 describe("final signals", () => {
   const start = Date.parse("2026-10-26T15:00:00Z");
@@ -199,4 +204,74 @@ test("an instrument has daily bars exactly when a count or a range finds them", 
     expect(has).toBe(dailyRange(db, id) !== null);
   }
   expect(hasDailyBars(db, "US:DAYS")).toBe(true);
+});
+
+describe("a spark batch one symbol breaks", () => {
+  const symbols = Array.from({ length: 20 }, (_, i) => `S${i}`);
+
+  async function setup(chartFails = false) {
+    // Yahoo's 400, here for any batch holding S7
+    const refused = await recorded("spark-v7-21-symbols");
+    const s = sim(symbols.map((symbol) => US(symbol)));
+    const clock = fakeClock(Date.parse("2026-10-26T15:00:00Z"));
+    const f = fakeFetch((url) =>
+      url.searchParams.get("symbols")?.split(",").includes("S7") ||
+      (chartFails && chartSymbol(url) === "S7")
+        ? refused
+        : s.route(url, clock.now()),
+    );
+    let seen = 0;
+    const pass = async () => {
+      const batches = await y.sparkAll(symbols);
+      const urls = f.urls.slice(seen);
+      seen = f.urls.length;
+      const quoted = batches
+        .flatMap((b) => b.answer?.quotes.map((q) => q.symbol) ?? [])
+        .sort();
+      const failed = batches
+        .filter((b) => b.answer === undefined)
+        .map((b) => ({
+          symbols: b.symbols,
+          alone: b.alone,
+          phrase: (b.error as SourceError).phrase,
+        }));
+      return { urls, quoted, failed };
+    };
+    const y = yahoo({ clock, fetch: f.fetch });
+    return { clock, pass };
+  }
+
+  test("asks that symbol alone on later passes, for a while", async () => {
+    const t = await setup();
+    const first = await t.pass();
+    // 20, then halves down to S7: nine spark calls, and its chart
+    expect(first.urls).toHaveLength(10);
+    expect(first.quoted).toEqual([...symbols].sort());
+    const second = await t.pass();
+    expect(second.quoted).toEqual(first.quoted);
+    expect(second.urls).toHaveLength(2);
+    expect(second.urls.map(chartSymbol)).toContain("S7");
+    expect(
+      second.urls
+        .find((u) => u.pathname.includes("spark"))!
+        .searchParams.get("symbols")!
+        .split(","),
+    ).toEqual(symbols.filter((s) => s !== "S7"));
+    await t.clock.advance(RETRY_MS);
+    const later = await t.pass();
+    expect(later.quoted).toEqual(first.quoted);
+    expect(later.urls).toHaveLength(10);
+  });
+
+  test("fails that symbol alone as its batch did when its chart fails too", async () => {
+    const t = await setup(true);
+    const first = await t.pass();
+    expect(first.failed).toEqual([
+      { symbols: ["S7"], alone: true, phrase: "bad request" },
+    ]);
+    const second = await t.pass();
+    expect(second.urls).toHaveLength(2);
+    expect(second.failed).toEqual(first.failed);
+    expect(second.quoted).toEqual(first.quoted);
+  });
 });
