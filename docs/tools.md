@@ -2,18 +2,10 @@
 
 Governs the Model Context Protocol (MCP) tools: `src/server/mcp.ts`,
 `src/server/instructions.ts`, `src/tools/index.ts`,
-`src/tools/schema.ts`, and `answer.ts`,
-`args.ts`, `markets.ts`, `targets.ts`, `quote.ts`, `extended.ts`,
-`history.ts`, `search.ts`, `movers.ts`, `screen.ts` and `sets.ts` under
-`src/operations/`. The HTTP API that calls the same reads is in
-`docs/api.md`; the research and events tools in `docs/research.md`;
-the alerts tools in `docs/alerts.md`; the portfolio tools in
-`docs/portfolios.md`; the profile tools in `docs/profile.md`; the
-analysis tools in `docs/analysis.md`; the trade plans tools in
-`docs/trade-plans.md`; signal
-rows and returns in `docs/signals.md`; units, stale reasons and
-tracking in `docs/storage.md`; the source queue and deadlines in
-`docs/sources.md`; the server, keys and flags in `docs/config.md`.
+`src/tools/schema.ts`, and `answer.ts`, `args.ts`, `markets.ts`,
+`targets.ts`, `quote.ts`, `extended.ts`, `history.ts`, `search.ts`,
+`movers.ts`, `screen.ts` and `sets.ts` under `src/operations/`. Each
+area's own tools are in its doc.
 
 ## The MCP endpoint
 

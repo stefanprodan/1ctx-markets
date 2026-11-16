@@ -6,12 +6,9 @@ the exchange: `src/sources/bvb/client.ts` (calls), `parse.ts`
 (fetches), `history.ts` and `quotes.ts` (answers into rows), `jobs.ts`
 (the schedule), `listings.ts` (the list pages kept for search),
 `resolve.ts` (the exchange's search beside Yahoo's) and `switch.ts`
-(moving the market between sources). The queue, deadlines, retries,
-backfill, rescales, phrases and the lock every
-source shares are in `docs/sources.md`; sessions in
-`docs/calendars.md`; tables and staleness in `docs/storage.md`; the
-tools in `docs/tools.md`. It is the pattern for a source of another
-exchange: one client, its parsers, its session, the same tables.
+(moving the market between sources). It is the pattern for a source of
+another exchange: one client, its parsers, its session, the same
+tables.
 
 ## On and off
 

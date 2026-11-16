@@ -5,9 +5,7 @@ read), `src/operations/trade-plans.ts`, `src/tools/trade-plans.ts`,
 the `/trade-plans` routes in `src/api/routes.ts` and their spec in
 `src/api/trade-plans-spec.ts`, and the `trade_plans` pointer in
 `quote`. The rules it shares with the profile and the analysis live
-in `src/document/` and `docs/profile.md`; keys and their access in
-`docs/admin.md`; the tool list per key and the server instructions in
-`docs/tools.md`; the tables in `docs/storage.md`.
+in `src/document/` and `docs/profile.md`.
 
 A trade plan is the owner's own intent for a few symbols: a buy ladder,
 dry powder to deploy, a bond subscription, kept as Markdown tagged with
@@ -159,8 +157,8 @@ measures holds the plan's symbols), `conflict()`, `fencedRead()`,
 ## Tools and routes
 
 - **`trade_plans` reads and `trade_plans_edit` writes**, listed per
-  key's trade plans access: `read` lists `trade_plans`, `write` both,
-  `none` neither. `trade_plans` is read-only, `trade_plans_edit`
+  key's trade plans access (`docs/tools.md`). `trade_plans` is
+  read-only, `trade_plans_edit`
   destructive. A plan is picked by `id`, as an alert is. A web UI
   sign-in and the admin key write their own.
 - **`trade_plans` actions**: `list` (`status`: `active` by default,

@@ -2,9 +2,7 @@
 
 Governs the test suite and its recordings: `test/` (one
 `*.test.ts` per area), `test/helpers/`, `test/fixtures/` and the
-recorders under `scripts/probe/`. The clock contract is in
-`docs/storage.md`; how each source's answers are checked is in its own
-doc; key files in `docs/config.md`.
+recorders under `scripts/probe/`.
 
 ## Running
 

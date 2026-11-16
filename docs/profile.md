@@ -3,14 +3,11 @@
 Governs `src/profile/` (the store, the fenced read and the Markdown
 renderer), `src/document/` (`applyEdits()`, the fence, the text and size
 checks, the save and its eviction, the author's form, shared with the
-analysis of `docs/analysis.md` and the trade plans of
-`docs/trade-plans.md`, whose whole-state save calls `checked()` and
-`evict()` from it), `src/operations/document.ts` (the arguments the
-documents take), `src/operations/profile.ts`,
-`src/tools/profile.ts`, the `/profile` routes in `src/api/routes.ts`
-and their spec in `src/api/profile-spec.ts`. Keys and their access are
-in `docs/admin.md`; the tool list per key and the server instructions
-in `docs/tools.md`.
+analysis and the trade plans, whose whole-state save calls `checked()`
+and `evict()` from it), `src/operations/document.ts` (the arguments the
+documents take), `src/operations/profile.ts`, `src/tools/profile.ts`,
+the `/profile` routes in `src/api/routes.ts` and their spec in
+`src/api/profile-spec.ts`.
 
 The profile is how the owner invests: goals, risk, trading style, rules
 and analysis defaults, kept as one Markdown document so that every agent
@@ -113,8 +110,7 @@ versioned text, exact edits, a stale revision refused.
 ## Tools and routes
 
 - **`profile` reads and `profile_edit` writes**, listed per key's
-  profile access: `read` lists `profile`, `write` both, `none` neither.
-  `profile` is read-only; `profile_edit` destructive. The call-time
+  profile access (`docs/tools.md`). `profile` is read-only; `profile_edit` destructive. The call-time
   access check stays (`profileAnswer()`), in the portfolio tools'
   words. `profile`'s description opens with what it answers (how the owner
   invests), the one line a catalog client shows, then its own discovery

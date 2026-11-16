@@ -3,11 +3,9 @@
 Governs the database and what every table shares: `src/storage/db/`
 (connection and migrations), `src/storage/writer.ts`,
 `src/market/instruments.ts`, `src/market/quotes.ts`,
-`src/market/intraday.ts`, `src/storage/runs.ts`, `src/market/stale.ts`, `src/market/tracking.ts`,
-`src/runtime/clock.ts` and the retention turn in `src/app.ts`. Market
-sessions and bar dates are in `docs/calendars.md`; how a source's
-answers become rows is in its own doc and `docs/sources.md`; signal
-rows in `docs/signals.md`; key files and flags in `docs/config.md`.
+`src/market/intraday.ts`, `src/storage/runs.ts`, `src/market/stale.ts`,
+`src/market/tracking.ts`, `src/runtime/clock.ts` and the retention turn
+in `src/app.ts`.
 
 ## The file
 

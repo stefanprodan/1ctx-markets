@@ -4,20 +4,14 @@ Governs the US Commodity Futures Trading Commission's Commitments of
 Traders reports, read from its public reporting API (Socrata):
 `src/sources/cftc/client.ts` (calls, the field map and answer checks)
 and `list.ts` (the market list held in memory and its job), with the
-read in `src/operations/positioning.ts`. The queue, deadlines, phrases
-and retries every source shares are in `docs/sources.md`; the
-`research` section and route in `docs/research.md`; the tool's
-arguments in `docs/tools.md`.
+read in `src/operations/positioning.ts`.
 
 ## On, always
 
-- **The CFTC is on whatever the start options, as Yahoo is.** It needs
-  no key and no contact line, unlike FRED and EDGAR, whose key files
-  are their switch because they need the file anyway, and its markets
-  (gold, oil, the euro, Treasuries, equity indices, Bitcoin) are
-  traded worldwide, so a regional `--source` flag does not fit. No
-  flag, key file or setting turns it off; the start log says
-  `cftc=on (always)` and Server admin's Status the same.
+- **The CFTC is always on, as Yahoo is**: it needs no key or contact
+  line to switch on, and its markets (gold, oil, the euro, equity
+  indices, Bitcoin) trade worldwide, so a regional `--source` flag does
+  not fit. The start log and Status say `cftc=on (always)`.
 - **It costs two calls a day for the market list**, made at start and
   whether anyone reads or not, and one call per market a read asks
   for, at most once per `POSITIONING_MS`.

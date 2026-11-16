@@ -3,17 +3,12 @@
 Governs the operator's routes and command: `src/admin/http.ts` (the
 instrument and status handlers), `src/admin/refetch.ts`,
 `src/admin/retry.ts` (the failed jobs' retry), `src/admin/screener.ts`
-(the Screener page),
-`src/admin/keys.ts` (the agent keys' routes), `src/admin/users.ts`
-(the people), `src/admin/smtp.ts` and `src/server/email/` (email),
-`src/server/caller.ts` (a write's credential re-read),
-`src/admin/cli.ts` (`1ctx-markets admin`), `src/admin/keys-cli.ts`
-(`1ctx-markets keys`) and `src/admin/users-cli.ts` (`1ctx-markets
-users`). Sign-ins and links are in `docs/web.md`. The routes, their errors
-and the spec are in `docs/api.md`; key files in `docs/config.md`;
-runs, tracking and retention in `docs/storage.md`; the source queue
-and deadlines in `docs/sources.md`; each source's fetch code in its
-own doc.
+(the Screener page), `src/admin/keys.ts` (the agent keys' routes),
+`src/admin/users.ts` (the people), `src/admin/smtp.ts` and
+`src/server/email/` (email), `src/server/caller.ts` (a write's
+credential re-read), `src/admin/cli.ts` (`1ctx-markets admin`),
+`src/admin/keys-cli.ts` (`1ctx-markets keys`) and
+`src/admin/users-cli.ts` (`1ctx-markets users`).
 
 ## Why
 
@@ -59,29 +54,32 @@ never signs in and a sign-in never opens `/mcp`.
   (`MAX_BODY_BYTES`), a path symbol matches `KEY`, and every error is a
   fixed phrase that echoes nothing a source said.
 
-| Route | Does |
-|---|---|
-| `GET /api/v1/instruments?query=&page_size=&page_token=` | the stored instruments by id, a page at a time (below) |
-| `GET /api/v1/screener?type=&screen=&sort=&order=&page_size=&page_token=` | the instruments kept up to date through one ready-made screen, read from stored figures in one query, a page at a time (`docs/api.md`, "The screener") |
-| `GET /api/v1/status` | `sync`, false with `--no-sync` (`docs/config.md`), so the jobs' last runs read as from before; sources on, off and why, and every job, with names for people (a source's `label`, `short` and `mark`, a job's `label` and `about`; a keyed source's `key`: its file, what it adds, where to get one), a back-off in force, every job's last run, its scopes (markets or instruments with a run kept) and failing scopes counted, the newest `MAX_FAILING` (5) failing named with their error, a phrase that may name the symbols behind it (`docs/storage.md`; a run cut by shutdown, error `stopped`, never counts, since the next run settles it; one cut by a crash, `interrupted`, does, since a run that kills the server would otherwise never show; a failed Yahoo backfill is settled once the instrument has daily bars, since a read fetches a history without a backfill run; runs with no scope are skipped; the page reads failure from these counts, never the last run), the instrument and tracked counts, the database size, the version |
-| `POST /api/v1/status/retry` | no body: every failing instrument scope status lists asks its failed part again (below); `{asked, fetched, failed, left_out}` |
-| `POST /api/v1/instruments/{symbol}/refetch` | `{"parts": [...], "sections": [...]}`, answered per part |
-| `DELETE /api/v1/instruments/{symbol}` | the instrument and every row of it; 204 |
-| `GET /api/v1/instruments/{symbol}/stored` | `{input, stored}`: true when the read's bare-symbol rule (`restStored()`) finds a stored row with daily bars, so a read answers without a first fetch; asks no source and marks no read. The web UI asks it beside an instrument's first read to say which wait it is in (`docs/web.md`) |
-| `GET /api/v1/keys` | session: the caller's agent keys, an admin's everyone's, each with its `owner` `{id, name}` (below) |
-| `POST /api/v1/keys` | session: `{"name", "expiresInDays", "portfolio", "alerts", "profile", "analysis", "trade_plans"}`: a new agent key of the caller's, its token answered once; `portfolio`, `alerts`, `profile`, `analysis` and `trade_plans` are `none` (the default), `read` or `write` |
-| `PATCH /api/v1/keys/{id}` | session: `{"portfolio", "alerts", "profile", "analysis", "trade_plans"}`, at least one: changes one of the caller's keys' access, the token, name and expiry kept; the key as listed; 400 for none or a bad value, 404 for an unknown id or another's |
-| `DELETE /api/v1/keys/{id}` | session: revokes one of the caller's keys, an admin anyone's; 204 |
-| `GET /api/v1/users` | `users[]` (`id`, `name`, `email`, `role`, `operator`, `created_at`, `last_sign_in_at`, `keys`) and `email_on` (below) |
-| `POST /api/v1/users` | `{"name", "email", "role"}`: adds a person and emails the invite; 201 `{user, invite: "sent"}` or `{user, invite: "failed", reason}`; 409 while email is off or the address is taken |
-| `PATCH /api/v1/users/{id}` | `{"name", "role"}`, at least one; `{user}`; 409 making the operator a member |
-| `POST /api/v1/users/{id}/invite` | no body: a new 7-day invite, replacing an unused one; `{invite, reason?}`; 409 while email is off or for a person with no email |
-| `POST /api/v1/users/{id}/sign-out` | no body: ends their logins and live links; 204 |
-| `DELETE /api/v1/users/{id}?dry_run=` | removes the person and every row of theirs; `{dry_run, deleted}` with each kind's count; `dry_run=true` deletes nothing; 409 for the operator |
-| `GET /api/v1/smtp` | `{settings, key_names, email_on, key_missing}` (below) |
-| `PUT /api/v1/smtp` | every field of the settings; the same answer as `GET` |
-| `DELETE /api/v1/smtp` | email off; 204, 404 with none saved |
-| `POST /api/v1/smtp/test` | `{"to"}`, the caller's own email by default: one email at once; `{result: "sent"}` or `{result: "failed", reason, reply}` |
+The routes, their bodies and answers are the one table in
+`docs/api.md`, "Routes".
+
+## Status
+
+`GET /api/v1/status` answers what Server admin's Status tab draws.
+
+- **`sync`** is false with `--no-sync` (`docs/config.md`), so the jobs'
+  last runs read as from before.
+- **Sources on, off and why, and every job, with names for people**: a
+  source's `label`, `short` and `mark`, a job's `label` and `about`, and
+  a keyed source's `key` (its file, what it adds, where to get one),
+  since the public bundle names no source. Then a back-off in force,
+  every job's last run, its scopes (markets or instruments with a run
+  kept) and failing scopes counted, and the newest `MAX_FAILING` (5)
+  failing named with their error, a phrase that may name the symbols
+  behind it (`docs/storage.md`).
+- **What counts as failing**: a run cut by shutdown (error `stopped`)
+  never counts, since the next run settles it; one cut by a crash
+  (`interrupted`) does, since a run that kills the server would
+  otherwise never show; a failed Yahoo backfill is settled once the
+  instrument has daily bars, since a read fetches a history without a
+  backfill run; runs with no scope are skipped. The page reads failure
+  from these counts, never the last run.
+- **Then the instrument and tracked counts, the database size and the
+  version.**
 
 ## Agent keys
 
@@ -269,15 +267,11 @@ No outbox: a link's email is sent directly, after the answer for an ask, before 
   BVB, FRED), which the instrument page's footer links.
 - **One instrument is a read, for an agent key too**:
   `GET /api/v1/instruments/{symbol}` (`docs/api.md`, "One instrument")
-  reads it through `quoteRows()` as the quote tool does, so an unknown
-  symbol is fetched, a stored one tracked and a due price fetched,
-  with `extended` asked, so the page shows pre or post trading; that
-  read is cached per quote period and skipped while the session is
-  open. The public `/quotes` leaves returns and session out to stay
-  cheap for many symbols; one instrument can afford them. A stored
-  instrument whose read fails (a source down, the deadline) still
-  answers 200 with the stored row, `quote` null and `error` the item's
-  code and detail, so the page keeps the stored price.
+  reads it through `quoteRows()` as the quote tool does, with returns,
+  session and `extended`, which the public `/quotes` leaves out to stay
+  cheap for many symbols. A stored instrument whose read fails still
+  answers 200 with the stored row, `quote` null and `error`, so the
+  page keeps the stored price.
 
 ## Refetch
 

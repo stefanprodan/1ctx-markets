@@ -3,11 +3,7 @@
 Governs the process around the data: `src/main.ts`,
 `src/runtime/config.ts`, `src/runtime/keys.ts`, `src/app.ts`,
 `src/server/http.ts`, `src/runtime/log.ts`, the build and smoke scripts
-in `package.json`, `Makefile` and `scripts/smoke.sh`. The tools are in
-`docs/tools.md`, the HTTP API under `/api/v1` in `docs/api.md`; the
-database, migrations and retention in `docs/storage.md`; the `service`
-command and staging in `docs/deploy.md`; the admin routes and the
-`admin` command in `docs/admin.md`.
+in `package.json`, `Makefile` and `scripts/smoke.sh`.
 
 ## Flags
 
@@ -89,16 +85,12 @@ the `--help` text, and a flag changes there in the same commit.
   file holds a key, and every tool answers without them. A keyless
   optional source is on only with its `--source` flag.
 - **A key value never reaches a row, a log line, an error or an
-  answer.** The logger masks every value `keys.ts` has read (`[key]`)
-  in the message and every field, percent-decoded first, since a key
-  sent in a URL arrives encoded in the logged path. Pass a source its
-  key through `store.source()`, and read an SMTP password through
-  `store.email()`, so the mask knows it. An agent key made
-  while running joins the mask through `store.mask()` before it is
-  answered, and anything shaped like this server's keys
-  (`1ctx-markets-`, `admin-` or not, and 16 or more base64url
-  characters) is masked too, so a key made by an earlier run, whole or
-  cut, never reaches a line.
+  answer.** The logger masks (`[key]`) every value `keys.ts` has read,
+  percent-decoded first since a key in a URL arrives encoded, so pass
+  keys through `store.source()`, `store.email()` and, for a key made
+  while running, `store.mask()`. Anything shaped like this server's
+  keys (`1ctx-markets-`, then 16 or more base64url characters) is
+  masked too, so an earlier run's key, whole or cut, never shows.
 - **The server never writes or checks existing files' modes.** Keep
   `secrets/` readable by the service user only (`chmod 700` on the
   directory, `chmod 600` on its files).
@@ -201,14 +193,10 @@ or runs against a closed connection.
   version. `TARGET` cross-compiles.
 - **The binary loads no `.env` or `bunfig.toml`** from where it runs,
   so a stray file beside it never configures it.
-- **`make smoke` checks the compiled binary**: it refuses an empty
-  admin key, writes only a prefixed one on a first start, answers
-  `/health` without it and 401 to anything else, answers an MCP
-  initialize with it and with an agent key `keys add` made, holds that
-  key to its scopes, lists and revokes it, serves the web UI and its
-  assets, signs in with the admin key into a cookie that holds no key,
-  creates `markets.db`, keeps every key out of the log, and prints a
-  `--version` starting with `v`. It runs with `--no-sync`, so World
-  markets never reaches Yahoo from a smoke run.
+- **`make smoke` checks the compiled binary** end to end: the admin
+  key's first start and refusals, `/health`, MCP with the admin key and
+  an agent key held to its scopes, the web UI and its sign-in, and no
+  key in the log. It runs with `--no-sync`, so World markets never
+  reaches Yahoo from a smoke run.
 - **Bun is the only runtime**, at the version in `.bun-version`; there
   is no Node. `make start` and `make dev` run from source.

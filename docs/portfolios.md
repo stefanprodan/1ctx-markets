@@ -2,15 +2,14 @@
 
 Governs portfolios, brokers, trades, positions and the funds the owner
 prices: the tables of migrations `0020-portfolios` and
-`0026-fund-trades`, `src/portfolios/` (`store.ts` rows, `funds.ts` a
-fund and its prices, `value.ts` the holdings arithmetic, `growth.ts`
-the past year's growth, `net-worth.ts` net worth per day, `fx.ts` rates, `csv.ts`), `src/shared/isin.ts` (the ISIN check),
+`0026-fund-trades`, `src/portfolios/` (`store.ts` rows, `funds.ts` a fund and its
+prices, `value.ts` the holdings arithmetic, `growth.ts` the past
+year's growth, `net-worth.ts` net worth per day, `fx.ts` rates,
+`csv.ts`), `src/shared/isin.ts` (the ISIN check),
 `src/operations/portfolio.ts` (every read and write the tools and the
-routes share), `src/tools/portfolio.ts` (the portfolio tools), `src/operations/portfolio-import.ts` (CSV
-import and export) and `src/api/portfolios.ts` with its spec in
-`src/api/portfolio-spec.ts`. The routes' conventions are `docs/api.md`;
-keys and their portfolio access `docs/admin.md`; the web page
-`docs/web.md`; tracking `docs/storage.md`.
+routes share), `src/tools/portfolio.ts` (the portfolio tools),
+`src/operations/portfolio-import.ts` (CSV import and export) and
+`src/api/portfolios.ts` with its spec in `src/api/portfolio-spec.ts`.
 
 ## Why
 
@@ -518,117 +517,29 @@ once and valued on the live price the server already keeps.
 
 ## The tools
 
-Six MCP tools, listed per key (`portfolioTools()` in
-`src/tools/portfolio.ts`): a key with portfolio access `none` lists
-none of them, `read` only `portfolio`, `write` all six. A key told it
-may only read never sees a write it would be refused, and an agent
-sees which tool changes what. Each tool maps its arguments onto the
+Six MCP tools, listed per key's portfolio access (`portfolioTools()` in
+`src/tools/portfolio.ts`, `docs/tools.md`): `read` only `portfolio`,
+`write` all six. Each tool maps its arguments onto the
 operations the routes share (`portfolioAnswer()`, `addTrade()`,
 `addFundTrade()`, `addPosition()`, `updatePosition()`, `updateFund()`,
 `setTradeState()`, `setPositionState()`), so the REST bodies and the
 web UI keep their own words (a fund's `units`, a sell's
-`quantity: "all"`). Written as functions, `?` marks an optional
-argument:
+`quantity: "all"`). Each tool's arguments and answer are its schema
+and description in `src/tools/portfolio.ts`, pinned with its answers
+in `test/fixtures/mcp/answers.json`; the rules behind them follow.
 
-```ts
-type Portfolio = string | number; // a name or an id
-type Day = string; // YYYY-MM-DD
-type Currency = string; // ISO 4217 (EUR), or a listing's own (GBp)
-
-// portfolio: reads only, marked read-only
-// the portfolios and brokers, the display currency and time zone, the
-// markets a fund can name, and the funds the owner prices, each with its
-// latest price and its day
-list(): { portfolios; brokers; display_currency; time_zone; markets;
-  funds };
-// one row per instrument or position, its parts per broker; totals per
-// currency, converted into `currency`, else the display currency; with
-// no portfolio, reserve is out of the value and in net_worth; removed:
-// true adds `removed`, the cash and bond rows removed and not replaced
-holdings(portfolio?: Portfolio, broker?: string, currency?: Currency,
-  removed?: boolean, next?: string):
-  { holdings; totals; converted; exposure; rates; removed?; next };
-// newest first; removed: true lists the removed ones too
-trades(portfolio?: Portfolio, broker?: string, symbol?: string,
-  from?: Day, to?: Day, removed?: boolean, next?: string): { trades; next };
-// a cash or bond row's chain (`rowHistory()`), oldest first: each row's
-// date, amount, currency, name, broker, note, dry_powder, maturity,
-// removed (taken off by hand) and undone (off the rows that stand, which
-// run from the live one, or the last taken off, back through replaces);
-// never who set it. An update and the row it replaces share one instant;
-// any other removal set the row aside for a restore, or was by hand when
-// no row was live just after. A removal undone by its own restore leaves
-// no trace, since the restore clears it. Past balances are among them
-// with past: true, and removed only when taken off
-history(position: number): { position; kind; history };
-
-// portfolio_trade: a share, ETF, crypto or fund; never Cash; portfolio
-// is needed unless there is one besides Cash; neither price nor total
-// takes the live price (a fund has none); a broker must be on the list;
-// again: a second fill equal to one just saved. A fund is named by
-// isin, its key as symbol (fund:<ISIN>) or name; its first buy makes it
-// with isin, name and currency; market is a fund's only
-add(symbol?: string, isin?: string, name?: string,
-  side: "buy" | "sell", quantity?: number, all?: true,
-  price?: number, total?: number, fees?: number, date?: Day,
-  currency?: Currency, broker?: string, portfolio?: Portfolio,
-  note?: string, market?: string | null, again?: boolean):
-  { trade | trades; live_price?; total?; fund? };
-// portfolio, named out of habit, is checked to be the trade's
-remove(trade: number, portfolio?: Portfolio): { trade };
-restore(trade: number, portfolio?: Portfolio): { trade };
-
-// portfolio_cash: cash lives in Cash, so it takes no portfolio; cash is
-// reserve unless dry_powder (ready to invest)
-add(name: string, amount: number, currency: Currency, date?: Day,
-  broker?: string, note?: string, dry_powder?: boolean,
-  maturity?: Day): { position };
-// amount set outright or moved by `by`, in `currency` or its own; at
-// least one change; broker null takes it off, note and maturity null
-// clear them. A date before the row's day with amount alone saves a
-// past balance, answered with past: true and replaced null
-update(position: number, amount?: number, by?: number,
-  currency?: Currency, date?: Day, note?: string | null,
-  dry_powder?: boolean, name?: string, broker?: string | null,
-  maturity?: Day | null): { position; replaced; rate? };
-remove(position: number): { position };
-restore(position: number): { position };
-
-// portfolio_bond: a bond's currency is its listing's when a symbol
-// names one, else needed; placed as a trade is
-add(name: string, amount: number, symbol?: string, coupon?: number,
-  maturity?: Day, currency?: Currency, cost?: number, date?: Day,
-  broker?: string, portfolio?: Portfolio, note?: string): { position };
-update(position: number, amount?: number, currency?: Currency,
-  cost?: number, date?: Day, note?: string | null, name?: string,
-  broker?: string | null): { position; replaced };
-remove(position: number): { position };
-restore(position: number): { position };
-
-// portfolio_fund, no action: a fund's price per unit for a day (the
-// owner's today by default), a day already priced replaced; market null
-// takes it off; picked by isin or symbol, else by name; with a pick,
-// name renames it; currency only while no live trade is priced in it;
-// holdings from its reports, answered as research top_holdings
-(isin?: string, symbol?: string, name?: string, price?: number,
-  date?: Day, market?: string | null, currency?: Currency,
-  holdings?: { as_of: Day; top?: { symbol?: string; name?: string;
-    weight: number }[]; assets?: { stock?, bond?, cash?, other?,
-    preferred?, convertible?: number }; sectors?: { [key]: number } }):
-  { fund; price?; replaced?; renamed_from?; holdings? };
-
-// portfolio_setup: a new owner's first steps, one or more at once: the
-// currency totals are shown in (asked of the owner, never assumed; set
-// only while none is; Cash is made with it), the time zone (IANA,
-// America/New_York), a portfolio and brokers to make; a name already
-// there is kept, `made` says what was
-setup(display_currency?: Currency, time_zone?: string, portfolio?: string,
-  broker?: string | string[]):
-  { portfolios; brokers; display_currency; time_zone; made };
-// a broker renamed, by its current name
-rename_broker(broker: string, name: string): { broker };
-```
-
+- **`portfolio`'s `history` is a cash or bond row's chain**
+  (`rowHistory()`), oldest first: each row's date, amount, currency,
+  name, broker, note, `dry_powder`, `maturity`, `removed` (taken off by
+  hand) and `undone` (off the rows that stand, which run from the live
+  one, or the last taken off, back through `replaces`); never who set
+  it. An update and the row it replaces share one instant; any other
+  removal set the row aside for a restore, or was by hand when no row
+  was live just after. A removal undone by its own restore leaves no
+  trace, since the restore clears it. Past balances are among them
+  with `past: true`, and `removed` only when taken off.
+- **A `portfolio` named beside a trade's remove or restore is
+  checked** to be the trade's, since agents pass one out of habit.
 - **One handle per row.** A holdings row's instrument is `symbol` in
   the tool's answer: what `quote` takes, or a fund's key, null for
   cash and a bond with no listing; trades answer `symbol` too. The
@@ -683,7 +594,7 @@ rename_broker(broker: string, name: string): { broker };
   to 20 (`MAX_SETUP_BROKERS`), so a new owner's brokers are made in one
   call. The server instructions route a new owner to it.
 - **The descriptions** each open with what the tool changes and carry
-  an example call, within 1,024 characters: `portfolio_trade` has a
+  an example call (`docs/tools.md`): `portfolio_trade` has a
   share buy and a fund's first buy, since a schema cannot require name
   and currency on the first buy only, and says `again` in full;
   `portfolio_cash` says dry powder is ready to invest and the rest
@@ -720,12 +631,9 @@ rename_broker(broker: string, name: string): { broker };
   list, a taken one `conflict`).
 - **A listed bond takes its listing's currency**: a position in another
   is refused, since its value would be relabelled, not converted.
-- **Access is the key's** (`Who`): the router hands the MCP handler the
-  caller as `authInfo` (`whoOf()`), the tools listed follow it, and
-  each call is checked again (`forbidden` without read, and a write
-  without write, `Who.portfolio`), since a client may hold a list from
-  before its person changed the key; a tool the key no longer lists
-  answers the SDK's tool not found. The admin key holds write.
+- **Each call checks the key's access again** (`forbidden` without
+  read, and a write without write, `Who.portfolio`; `docs/tools.md`).
+  The admin key holds write.
 - **holdings and trades page** with a cursor bound to their
   arguments, holdings by the rows shown since its order is by live value
   (`docs/tools.md`), trades by offset; totals, rates, exposure and

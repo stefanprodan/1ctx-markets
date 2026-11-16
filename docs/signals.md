@@ -6,9 +6,7 @@ Governs the technical signals computed from stored bars and quotes:
 `closes.ts` (the closes a return reads), `read.ts` (what tools read,
 with stale reasons) and `relative.ts` (returns), and the `signals`
 table (`src/storage/db/migrations/0005-signals.ts`, the stored returns
-in `0035-stored-returns.ts`). Sessions, bar dates and
-finality are in `docs/calendars.md`; the bar writes that call these in
-`docs/yahoo.md` and `docs/fred.md`; stale reasons in `docs/storage.md`.
+in `0035-stored-returns.ts`).
 
 ## The daily signals
 
