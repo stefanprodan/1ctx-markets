@@ -324,7 +324,15 @@ route's transport in `docs/api.md`; alerts that wait on events in
 
 - **Every 30 minutes each tracked ticker's news is walked newest first**
   (`EVERY_MS`, `refreshNews`), longest waiting first, at most
-  `MAX_PAGES` (3) pages a run. One run is one write and one run row
+  `MAX_PAGES` (3) pages a run.
+- **On a day its market has no session, every 2 hours**
+  (`QUIET_EVERY_MS`, `newsEvery`), read from the market's stored
+  session (`docs/calendars.md`), never fixed hours or weekdays: the day
+  is quiet when the next session is on a later day, or once the
+  session's local start time passed with no session shown for the day.
+  Before that start nothing says the day has none, so pre-market is
+  asked as often as a session day, and post-market too, since the
+  session's own date runs to local midnight. One run is one write and one run row
   scoped to the instrument; a failed page fails the run with the pages
   before it kept.
 - **An unfinished walk resumes from Massive's own cursor, stored in
@@ -354,7 +362,8 @@ route's transport in `docs/api.md`; alerts that wait on events in
   A page whose every article fails is malformed.
 - **Rows are one per article and instrument, deduplicated by id.**
 - **Stale reasons** (`newsState`, `STALE_NEWS`): "no news yet", "news
-  sync failed", "news sync pending" (no good run for two periods),
+  sync failed", "news sync pending" (no good run for two of the periods
+  in force now, so a quiet day's news never reads pending),
   "older news pending" (a walk not finished).
 - **Counts are by the ticker's own sentiment** (`countNews`):
   `positive`, `neutral`, `negative`, and `unknown` for an article

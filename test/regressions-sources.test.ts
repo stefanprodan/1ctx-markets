@@ -2,17 +2,22 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
+import { recordSession, session } from "../src/market/calendars.ts";
 import { readInstrument, upsertInstrument } from "../src/market/instruments.ts";
 import { markRead } from "../src/market/tracking.ts";
+import { fromWallTime, localDate } from "../src/market/zone.ts";
 import { OPERATOR } from "../src/operations/who.ts";
 import { readRule } from "../src/rules/store.ts";
 import { MINUTE_MS } from "../src/runtime/clock.ts";
 import type { Log, LogFields } from "../src/runtime/log.ts";
+import { silent } from "../src/runtime/log.ts";
 import { cftc } from "../src/sources/cftc/client.ts";
 import { cftcJobs, marketList } from "../src/sources/cftc/list.ts";
 import { massive, parseNews } from "../src/sources/massive/client.ts";
+import { massiveJobs } from "../src/sources/massive/jobs.ts";
 import {
   type MassiveContext,
+  newsState,
   refreshNews,
 } from "../src/sources/massive/store.ts";
 import { DeadlinePassed } from "../src/sources/source.ts";
@@ -196,5 +201,99 @@ describe("the CFTC market list job", () => {
     });
     expect(list.held("disaggregated")).not.toBeNull();
     expect(lines.filter(([m]) => m === "cftc markets failed")).toEqual([]);
+  });
+});
+
+// New York: Friday 13 November 2026 is a session, the weekend is not, and
+// Thanksgiving (26 November) is a holiday the source shows no session for
+const ZONE = "America/New_York";
+const at = (date: string, time: string) =>
+  fromWallTime(ZONE, Date.parse(`${date}T${time}:00Z`));
+const regular = (date: string) =>
+  session(ZONE, at(date, "09:30"), at(date, "16:00"));
+
+describe("Massive news on a day with no session", () => {
+  async function newsWorld(start: number) {
+    const clock = fakeClock(start);
+    const { db } = open(":memory:", clock);
+    const fake = { articles: await series("NVDA", 3, start, HOUR_MS) };
+    const f = fakeFetch((url) => massiveAnswer(fake, url));
+    const client = massive({ clock, key: MASSIVE_KEY, fetch: f.fetch });
+    const ctx: MassiveContext = {
+      db,
+      clock,
+      writer: writer(db),
+      massive: client,
+    };
+    const nvda = upsertInstrument(
+      db,
+      {
+        market: "US",
+        symbol: "NVDA",
+        source: "yahoo",
+        sourceSymbol: "NVDA",
+        exchange: "NMS",
+        name: "NVDA",
+        type: "EQUITY",
+        currency: "USD",
+        unit: "per_share",
+        zone: ZONE,
+      },
+      start,
+    );
+    const jobs = massiveJobs({ ctx, log: silent });
+    // the calls of each local day, a tick a minute until to
+    const calls = new Map<string, number>();
+    const run = async (to: number) => {
+      while (clock.now() < to) {
+        markRead(db, [nvda.id], clock.now());
+        const before = f.urls.length;
+        const day = localDate(ZONE, clock.now());
+        await drive(clock, client, jobs.tick());
+        calls.set(day, (calls.get(day) ?? 0) + f.urls.length - before);
+        const minute = Math.floor(clock.now() / MINUTE_MS + 1) * MINUTE_MS;
+        await clock.advance(minute - clock.now());
+      }
+    };
+    const record = (date: string) =>
+      recordSession(db, "US", regular(date), clock.now());
+    return { clock, db, nvda, run, record, calls };
+  }
+
+  test("is asked every 2 hours, and every 30 minutes on a session day", async () => {
+    const w = await newsWorld(at("2026-11-13", "00:00"));
+    w.record("2026-11-13");
+    await w.run(at("2026-11-16", "09:30"));
+    // the source shows Monday's session at its start
+    w.record("2026-11-16");
+    await w.run(at("2026-11-17", "00:00"));
+    expect(Object.fromEntries(w.calls)).toEqual({
+      "2026-11-13": 48,
+      "2026-11-14": 26,
+      "2026-11-15": 26,
+      "2026-11-16": 48,
+    });
+  });
+
+  test("a holiday the source shows no session for is a quiet day", async () => {
+    const w = await newsWorld(at("2026-11-25", "00:00"));
+    w.record("2026-11-25");
+    await w.run(at("2026-11-27", "00:00"));
+    expect(w.calls.get("2026-11-25")).toBe(48);
+    expect(w.calls.get("2026-11-26")).toBe(26);
+  });
+
+  test("weekend news a period old never reads pending", async () => {
+    const w = await newsWorld(at("2026-11-14", "12:00"));
+    w.record("2026-11-13");
+    await w.run(at("2026-11-14", "12:01"));
+    await w.clock.advance(119 * MINUTE_MS);
+    expect(newsState(w.db, w.nvda.id, w.clock.now()).stale).toEqual([]);
+    // a session day keeps the 30 minutes' threshold
+    w.record("2026-11-16");
+    await w.clock.advance(at("2026-11-16", "10:00") - w.clock.now());
+    expect(newsState(w.db, w.nvda.id, w.clock.now()).stale).toEqual([
+      "news sync pending",
+    ]);
   });
 });

@@ -2,7 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // a run per walk, scoped to the instrument, so one failure is stale alone
 
-import { checkStored, type Instrument } from "../../market/instruments.ts";
+import { readSession, sessionDate } from "../../market/calendars.ts";
+import {
+  checkStored,
+  type Instrument,
+  readInstrument,
+} from "../../market/instruments.ts";
+import { fromWallTime, localDate, wallTime } from "../../market/zone.ts";
 import { type Clock, DAY_MS, MINUTE_MS } from "../../runtime/clock.ts";
 import { exclusive } from "../../runtime/lock.ts";
 import type { Db } from "../../storage/db/index.ts";
@@ -27,6 +33,8 @@ import {
 export const JOB = "news";
 export const KEPT_MS = 30 * DAY_MS;
 export const EVERY_MS = 30 * MINUTE_MS;
+// on a day the share's market has no session, when little is published
+export const QUIET_EVERY_MS = 4 * EVERY_MS;
 // for an article published late with an earlier time
 export const OVERLAP_MS = 2 * 60 * MINUTE_MS;
 // pages one run follows for one ticker; the rest continue next run
@@ -361,10 +369,34 @@ function recordRun(
   );
 }
 
+// The period in force for a market, from its stored session: a day is
+// quiet once its local start time passed with no session for it, or when
+// the next session is on a later day. Before that start nothing says the
+// day has none, so pre-market is asked as often as the session.
+export function newsEvery(db: Db, market: string, now: number): number {
+  const s = readSession(db, market);
+  if (s === null) return EVERY_MS;
+  const today = localDate(s.zone, now);
+  const day = sessionDate(s);
+  if (day === today) return EVERY_MS;
+  if (day > today) return QUIET_EVERY_MS;
+  const start = wallTime(s.zone, s.start);
+  const startTime = start - Math.floor(start / DAY_MS) * DAY_MS;
+  const midnight = Math.floor(wallTime(s.zone, now) / DAY_MS) * DAY_MS;
+  return now < fromWallTime(s.zone, midnight + startTime)
+    ? EVERY_MS
+    : QUIET_EVERY_MS;
+}
+
+const everyFor = (db: Db, instrument: string, now: number): number => {
+  const market = readInstrument(db, instrument)?.market;
+  return market === undefined ? EVERY_MS : newsEvery(db, market, now);
+};
+
 // due when no run of the ticker started within the period
 export function newsDue(db: Db, instrument: string, now: number): boolean {
   const last = lastStarted(db, SOURCE, JOB, instrument);
-  return last === null || now - last.startedAt >= EVERY_MS;
+  return last === null || now - last.startedAt >= everyFor(db, instrument, now);
 }
 
 export type NewsState = {
@@ -380,7 +412,10 @@ export function newsState(db: Db, instrument: string, now: number): NewsState {
   if (ok === null) stale.push(STALE_NEWS.none);
   // a run cut by shutdown is no failure: the next run settles it
   if (failedRun(last)) stale.push(STALE_NEWS.failed);
-  else if (ok !== null && now - ok.startedAt >= 2 * EVERY_MS) {
+  else if (
+    ok !== null &&
+    now - ok.startedAt >= 2 * everyFor(db, instrument, now)
+  ) {
     stale.push(STALE_NEWS.pending);
   }
   const walks = readWalks(db, instrument);
