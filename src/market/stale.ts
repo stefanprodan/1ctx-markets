@@ -6,6 +6,7 @@ import { MINUTE_MS } from "../runtime/clock.ts";
 import { BVB } from "../sources/ids.ts";
 import type { Db } from "../storage/db/index.ts";
 import { failedRun, lastRun, lastStarted } from "../storage/runs.ts";
+import { hasDailyBars } from "./bars.ts";
 import {
   CRYPTO,
   closeQuoteAt,
@@ -169,17 +170,13 @@ export function barsStale(
   instrument: Scoped,
   now: number,
 ): StaleReason[] {
-  const has = db
-    .query<{ n: number }, [string]>(
-      "select count(*) as n from bars where instrument = ? and interval = '1d'",
-    )
-    .get(instrument.id)!.n;
+  const has = hasDailyBars(db, instrument.id);
   const reasons: StaleReason[] = switching(db, instrument.market)
     ? [STALE.switchPending]
     : sourceOff(db, instrument)
       ? [STALE.sourceOff]
       : [];
-  if (has === 0) return [STALE.noHistory, ...reasons];
+  if (!has) return [STALE.noHistory, ...reasons];
   // the market's pass, or this instrument's own refetch in it
   if (
     failed(db, instrument, JOBS.bars) ||

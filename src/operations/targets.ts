@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Every instrument a read answers counts as read, which is what tracks it.
 
-import { dailyRange } from "../market/bars.ts";
+import { hasDailyBars } from "../market/bars.ts";
 import {
   type Instrument,
   readBySourceSymbol,
@@ -154,8 +154,6 @@ type Step =
     }
   | { kind: "error"; error: ItemError };
 
-const hasBars = (db: Db, id: string) => dailyRange(db, id) !== null;
-
 // past the deadline, nothing new is asked for an answer no caller waits on
 const yahooCtx = (m: Markets, live: () => boolean) => ({
   db: m.db,
@@ -178,7 +176,7 @@ function fredStep(m: Markets, id: string): Step {
     rules: m.rules,
   });
   const stored = readInstrument(m.db, id);
-  if (stored !== null && hasBars(m.db, id)) {
+  if (stored !== null && hasDailyBars(m.db, id)) {
     if (isKept(m.db, id, m.clock.now(), m.tracking)) {
       return { kind: "ready", instrument: stored };
     }
@@ -236,7 +234,7 @@ function bvbFetchStep(m: Markets, symbol: string, id: string): Step {
 function bvbStep(m: Markets, instrument: Instrument): Step {
   const bvb = m.bvb;
   if (bvb === null) return noBvb;
-  if (!hasBars(m.db, instrument.id)) {
+  if (!hasDailyBars(m.db, instrument.id)) {
     return bvbFetchStep(m, instrument.sourceSymbol, instrument.id);
   }
   if (isKept(m.db, instrument.id, m.clock.now(), m.tracking)) {
@@ -253,7 +251,7 @@ function storedStep(m: Markets, instrument: Instrument): Step {
   if (instrument.source === FRED) return fredStep(m, instrument.id);
   if (instrument.source === BVB) return bvbStep(m, instrument);
   if (instrument.source !== YAHOO) return { kind: "ready", instrument };
-  if (!hasBars(m.db, instrument.id)) {
+  if (!hasDailyBars(m.db, instrument.id)) {
     return {
       kind: "fetch",
       key: instrument.id,

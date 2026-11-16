@@ -2,7 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
-import { type Bar, upsertBars, weeksOf } from "../src/market/bars.ts";
+import {
+  type Bar,
+  dailyRange,
+  hasDailyBars,
+  upsertBars,
+  weeksOf,
+} from "../src/market/bars.ts";
 import { upsertInstrument } from "../src/market/instruments.ts";
 import { addDays, wallOfDate } from "../src/market/zone.ts";
 import { DAY_MS } from "../src/runtime/clock.ts";
@@ -158,4 +164,39 @@ describe("final signals", () => {
     expect(rows(t.db)).toEqual(rows(fresh.db));
     expect(rows(t.db)).not.toEqual(rows(seeded(all).db));
   });
+});
+
+test("an instrument has daily bars exactly when a count or a range finds them", () => {
+  const clock = fakeClock();
+  const { db } = open(":memory:", clock);
+  const bar = { open: 1, high: 1, low: 1, close: 1, volume: 1, final: true };
+  for (const symbol of ["NONE", "WEEKS", "DAYS"]) {
+    upsertInstrument(
+      db,
+      {
+        market: "US",
+        symbol,
+        source: "yahoo",
+        sourceSymbol: symbol,
+        exchange: "NMS",
+        name: null,
+        type: "EQUITY",
+        currency: "USD",
+        unit: "per_share",
+        zone: "America/New_York",
+      },
+      clock.now(),
+    );
+  }
+  upsertBars(db, "US:WEEKS", "1wk", [{ ...bar, date: "2026-10-19" }], 0);
+  upsertBars(db, "US:DAYS", "1d", [{ ...bar, date: "2026-10-23" }], 0);
+  const count = db.query<{ n: number }, [string]>(
+    "select count(*) as n from bars where instrument = ? and interval = '1d'",
+  );
+  for (const id of ["US:NONE", "US:WEEKS", "US:DAYS"]) {
+    const has = hasDailyBars(db, id);
+    expect(has).toBe(count.get(id)!.n > 0);
+    expect(has).toBe(dailyRange(db, id) !== null);
+  }
+  expect(hasDailyBars(db, "US:DAYS")).toBe(true);
 });
