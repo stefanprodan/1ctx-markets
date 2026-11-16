@@ -78,7 +78,7 @@ export const liveRevision = (db: Db, owner: string): number | null =>
     )
     .get(owner)?.r ?? null;
 
-const PROFILE: Kind = {
+export const PROFILE: Kind = {
   noun: "profile",
   notHere:
     "the profile holds goals, risk, trading style, rules and analysis defaults; trades, holdings, cash, scorecards, per-symbol calls and dated logs belong elsewhere",

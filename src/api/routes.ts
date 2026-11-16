@@ -38,6 +38,7 @@ import {
   signOutUser,
 } from "../admin/users.ts";
 import {
+  ANALYSIS_WORDS,
   analysisVersion,
   analysisVersions,
   type ListAt,
@@ -45,7 +46,7 @@ import {
   readAnalysis,
 } from "../analysis/store.ts";
 import type { Revision } from "../document/read.ts";
-import { documentText } from "../document/store.ts";
+import { draftText } from "../document/store.ts";
 import { iso, price } from "../market/format.ts";
 import type { Instrument } from "../market/instruments.ts";
 import { localDate } from "../market/zone.ts";
@@ -100,6 +101,7 @@ import type { World } from "../operations/track.ts";
 import {
   listStatusOf,
   missingPlanRevision,
+  PLAN_WORDS,
   parseTradePlansEdit,
   planIdOf,
   planItem,
@@ -115,6 +117,7 @@ import {
 import type { Who } from "../operations/who.ts";
 import { drawMarkdown, renderMarkdown } from "../profile/markdown.ts";
 import {
+  PROFILE,
   profileVersion,
   profileVersions,
   readProfile,
@@ -731,7 +734,7 @@ function profile(m: Markets): Route[] {
         if (typeof f.text !== "string") {
           throw new ArgError("text must be a string");
         }
-        return json({ html: renderMarkdown(documentText(f.text)) });
+        return json({ html: renderMarkdown(draftText(PROFILE, f.text)) });
       },
     },
     {
@@ -835,7 +838,9 @@ function analysis(m: Markets): Route[] {
         if (typeof f.text !== "string") {
           throw new ArgError("text must be a string");
         }
-        return json({ html: renderMarkdown(documentText(f.text)) });
+        return json({
+          html: renderMarkdown(draftText(ANALYSIS_WORDS, f.text)),
+        });
       },
     },
     {
@@ -987,7 +992,7 @@ function tradePlans(m: Markets): Route[] {
         if (typeof f.text !== "string") {
           throw new ArgError("text must be a string");
         }
-        return json({ html: renderMarkdown(documentText(f.text)) });
+        return json({ html: renderMarkdown(draftText(PLAN_WORDS, f.text)) });
       },
     },
     {

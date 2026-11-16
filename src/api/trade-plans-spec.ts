@@ -213,7 +213,7 @@ export const tradePlansSchemas: Record<string, Schema> = {
   TradePlanPreview: object({
     text: note(
       str,
-      "The draft: well-formed UTF-8 with no NUL. The size cap applies only on save.",
+      "The draft: well-formed UTF-8 with no NUL. Over the 24 KiB a save takes, it is refused as a save is.",
     ),
   }),
   TradePlanDrawn: object({

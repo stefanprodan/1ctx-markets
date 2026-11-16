@@ -11,6 +11,7 @@ import {
   type Save,
   type Saved,
   saveIn,
+  type Words,
 } from "../document/store.ts";
 import { readInstrument } from "../market/instruments.ts";
 import { readQuote } from "../market/quotes.ts";
@@ -153,10 +154,14 @@ export const analysisList = (
 // room for the read's since_written line; events are kept two years
 export const SINCE_RESERVE = 2048;
 
-const ANALYSIS = (symbol: string): Kind => ({
+export const ANALYSIS_WORDS: Words = {
   noun: "analysis",
   notHere:
     "an analysis holds the symbol's trend, earnings, news, valuation and risks; holdings, quantities, cost, gains and the owner's profile never belong in it",
+};
+
+const ANALYSIS = (symbol: string): Kind => ({
+  ...ANALYSIS_WORDS,
   read: (r) => analysisRead(symbol, r),
   reserve: SINCE_RESERVE,
 });

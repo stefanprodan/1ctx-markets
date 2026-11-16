@@ -5,7 +5,12 @@
 // carry the id, revision and bytes.
 
 import type { Edit } from "../document/edit.ts";
-import { authorOf, KEPT_REVISIONS, type Kind } from "../document/store.ts";
+import {
+  authorOf,
+  KEPT_REVISIONS,
+  type Kind,
+  type Words,
+} from "../document/store.ts";
 import { iso } from "../market/format.ts";
 import { readInstrument } from "../market/instruments.ts";
 import { localDate } from "../market/zone.ts";
@@ -429,12 +434,16 @@ export function sectionsOf(
     });
 }
 
+export const PLAN_WORDS: Words = {
+  noun: "trade plan",
+  notHere:
+    "a plan holds one intent's levels, sizes and dates; split a long one into two plans",
+};
+
 const KIND =
   (id: number): ((next: PlanRevision) => Kind) =>
   (next) => ({
-    noun: "trade plan",
-    notHere:
-      "a plan holds one intent's levels, sizes and dates; split a long one into two plans",
+    ...PLAN_WORDS,
     // the symbols are in the measured read; the reserve is a symbol's headings
     read: () => planRead({ id, fields: revisionFields(next) }, next),
     reserve: SECTIONS_RESERVE,
