@@ -10,7 +10,6 @@ import { useEffect, useRef } from "preact/hooks";
 import type { Holding } from "../data/portfolios.ts";
 import { markets } from "../data/store.ts";
 import { AddButton } from "../ui/AddButton.tsx";
-import { MenuButton } from "../ui/Menu.tsx";
 import { AddSheet } from "./PortfolioForms.tsx";
 import { EditSheet } from "./Portfolios.tsx";
 
@@ -33,26 +32,9 @@ export function BuyButton({ open }: { open: Signal<TradeSheet | null> }) {
   );
 }
 
-export function FundMenu({
-  open,
-  held,
-  onWrite,
-}: {
-  open: Signal<TradeSheet | null>;
-  // a fund the owner prices is priced here only while held
-  held: boolean;
-  // only while the fund has no analysis yet
-  onWrite?: () => void;
-}) {
-  const items = [
-    ...(onWrite ? [{ label: "Write analysis", run: onWrite }] : []),
-    ...(held
-      ? [{ label: "Set price", run: () => void show(open, "price") }]
-      : []),
-  ];
-  if (items.length === 0) return null;
-  return <MenuButton head label="More" items={items} />;
-}
+// a fund the owner prices is priced from its menu while held
+export const showPrice = (open: Signal<TradeSheet | null>) =>
+  void show(open, "price");
 
 export function TradeSheets({
   id,

@@ -7,7 +7,7 @@ import { SCREENER } from "../app/paths.ts";
 import { navigate, path } from "../app/router.ts";
 import type { Params } from "../app/routes.ts";
 import { says } from "../data/api.ts";
-import { markets } from "../data/store.ts";
+import { type BoardSection, markets } from "../data/store.ts";
 import { nameOf, tickerOf } from "../lib/names.ts";
 import { useRefresh } from "../lib/refresh.ts";
 import { Card } from "../ui/Card.tsx";
@@ -16,6 +16,13 @@ import { didNotLoad, Page } from "../ui/Page.tsx";
 import { Placeholder, WaitWords } from "../ui/Placeholder.tsx";
 import { CHART_CREDIT, Chart, ChartWaiting } from "./Chart.tsx";
 import {
+  addRefusal,
+  addTo,
+  homeSection,
+  removeFromHome,
+  waiting,
+} from "./Dashboard.model.ts";
+import {
   buyable,
   type Choice,
   choices,
@@ -23,15 +30,14 @@ import {
   summary,
   UNREAD,
 } from "./Instrument.model.ts";
-import { moreMenu } from "./InstrumentAnalysis.model.ts";
 import { AnalysisSection } from "./InstrumentAnalysis.tsx";
 import { InstrumentCards } from "./InstrumentCards.tsx";
 import { Head } from "./InstrumentHead.tsx";
-import { InstrumentMenu, SAID_MS } from "./InstrumentMenu.tsx";
+import { type HomeChoice, InstrumentMenu, SAID_MS } from "./InstrumentMenu.tsx";
 import { useHolding } from "./InstrumentPosition.tsx";
 import {
   BuyButton,
-  FundMenu,
+  showPrice,
   type TradeSheet,
   TradeSheets,
 } from "./InstrumentTrade.tsx";
@@ -54,6 +60,9 @@ export function Instrument({ params }: { params: Params }) {
   }, [said.value]);
   const removing = useSignal(false);
   const refused = useSignal<string | null>(null);
+  useEffect(() => {
+    void markets.loadLayout();
+  }, [id]);
 
   const mine = markets.detailId.value === id;
   const detail = mine ? markets.detail.value : null;
@@ -105,6 +114,34 @@ export function Instrument({ params }: { params: Params }) {
           : r.error;
   };
 
+  // Home keeps the id the server answers, not the one in the address
+  const homeId = detail?.instrument.id ?? id;
+  const toHome = async (next: BoardSection[]) => {
+    refused.value = null;
+    const r = await markets.saveLayout(next);
+    if (!onSymbolPage(path.peek(), id)) return;
+    if (r === "saved") said.value = { text: "Saved", bad: false };
+    else {
+      // said here, so Home never shows an error from no edit of its own
+      refused.value = markets.saveError.peek();
+      markets.saveError.value = null;
+    }
+  };
+  // a save while World markets are still filling in would drop them for good
+  const layout = waiting(markets.seeding.value) ? null : markets.layout.value;
+  const home: HomeChoice = {
+    sections: layout,
+    at: layout === null ? -1 : homeSection(layout, homeId),
+    onAdd: (section) => {
+      const now = markets.layout.peek() ?? [];
+      const next = addTo(now, section, homeId);
+      if (next === null) refused.value = addRefusal(now, section, homeId);
+      else void toHome(next);
+    },
+    onRemove: () =>
+      void toHome(removeFromHome(markets.layout.peek() ?? [], homeId)),
+  };
+
   return (
     <Page
       title={symbol}
@@ -153,22 +190,25 @@ export function Instrument({ params }: { params: Params }) {
           <>
             {/* a buy of what the page is on, held or not */}
             {buyable(detail.instrument) && <BuyButton open={sheet} />}
-            {hand ? (
-              // a fund the owner prices sells and is priced here
-              <FundMenu open={sheet} held={held !== null} onWrite={write} />
-            ) : (
-              moreMenu(markets.isAdmin.value, write !== undefined) && (
-                <InstrumentMenu
-                  symbol={symbol}
-                  admin={markets.isAdmin.value}
-                  onWrite={write}
-                  busy={fetching.value}
-                  done={said.value?.text === "Updated"}
-                  removing={removing.value}
-                  onRefetch={() => void run(options[0]!)}
-                  onDelete={() => void remove()}
-                />
-              )
+            {/* a fund not held, with its analysis, has nothing to offer */}
+            {(!hand || held !== null || write !== undefined) && (
+              <InstrumentMenu
+                symbol={symbol}
+                // a fund the owner prices is never refetched or deleted here
+                admin={markets.isAdmin.value && !hand}
+                home={hand ? undefined : home}
+                onWrite={write}
+                onPrice={
+                  hand && held !== null ? () => showPrice(sheet) : undefined
+                }
+                busy={fetching.value}
+                done={
+                  said.value?.text === "Updated" || said.value?.text === "Saved"
+                }
+                removing={removing.value}
+                onRefetch={() => void run(options[0]!)}
+                onDelete={() => void remove()}
+              />
             )}
           </>
         )

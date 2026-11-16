@@ -15,12 +15,10 @@ import { client, type Fetch } from "../src/web/data/api.ts";
 import { STALE } from "../src/web/data/document.ts";
 import {
   analysisAuthor,
-  moreMenu,
   OUTLINE,
   sinceLine,
 } from "../src/web/views/InstrumentAnalysis.model.ts";
 import { AnalysisSection } from "../src/web/views/InstrumentAnalysis.tsx";
-import { FundMenu } from "../src/web/views/InstrumentTrade.tsx";
 
 const ID = "US:ACME";
 const PATH = analysisPath(ID);
@@ -188,13 +186,6 @@ describe("the analysis model", () => {
     ).toEqual({ change: -1.2, reported: false });
   });
 
-  test("More shows to an admin always, to anyone else only to write one", () => {
-    expect(moreMenu(true, false)).toBe(true);
-    expect(moreMenu(true, true)).toBe(true);
-    expect(moreMenu(false, true)).toBe(true);
-    expect(moreMenu(false, false)).toBe(false);
-  });
-
   test("a first analysis starts from four sections", () => {
     expect(OUTLINE.match(/^## .+$/gm)).toEqual([
       "## Trend",
@@ -202,18 +193,5 @@ describe("the analysis model", () => {
       "## Risks",
       "## Watch",
     ]);
-  });
-});
-
-describe("a fund's menu", () => {
-  test("offers to write an analysis, and a price only while held", () => {
-    const open = signal(null);
-    expect(render(<FundMenu open={open} held={false} />)).toBe("");
-    expect(
-      render(<FundMenu open={open} held={false} onWrite={() => {}} />),
-    ).toContain('aria-label="More"');
-    expect(render(<FundMenu open={open} held />)).toContain(
-      'aria-label="More"',
-    );
   });
 });
