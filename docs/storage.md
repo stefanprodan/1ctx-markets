@@ -121,15 +121,13 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   zone, null before its first alert), set in the write that inserts the
   alert, so a restart keeps the once-a-session limit (`docs/alerts.md`).
   Rules from before it start null: one may fire once more that day.
-- **Alerts keep their tables' old names**: an alert is a `rules` row
-  and a trigger an `alerts` row, the condition stored as its JSON tree
-  with internal camelCase keys and instrument ids, never as the `when`
-  text callers send and read (`docs/alerts.md`), so the text form needed
-  no migration. A trigger's `snapshot` keeps that tree and every value
-  read, and is rendered as text on each read.
-- **A key's alerts access is `keys.alerts`** (`none`, `read`, `write`),
-  the column `0023-key-rules` added as `rules` and `0046-key-alerts`
-  renamed, its check and values kept.
+- **An alert is a `rules` row and a trigger an `alerts` row**, the
+  condition stored as its JSON tree with internal camelCase keys and
+  instrument ids, never as the `when` text callers send and read
+  (`docs/alerts.md`). A trigger's `snapshot` keeps that tree and every
+  value read, and is rendered as text on each read.
+- **A key's alerts access is `keys.alerts`** (`none`, `read`,
+  `write`).
 
 ## Price sources
 
@@ -266,32 +264,25 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
 
 ## Portfolios
 
-- **Five tables and a key column** (`0020-portfolios`): `portfolios`
-  and `brokers` (names), `trades` and `positions` (each with who
-  entered it and when, and a removal stamp), `portfolio_settings` (the
-  owner's display currency) and `keys.portfolio` (`none`, `read`,
-  `write`); `0021-stated-on` adds `trades.stated_on`, the day a trade's
-  figures are stated as of; `0022-trade-indexes` indexes live trades by
-  date and trades by broker, so holdings never scan the table (an
-  owner's trades are read by their portfolios, and only those sorted);
-  `0024-time-zone` adds `portfolio_settings.time_zone`, the owner's IANA
-  zone, null until named; `0025-position-market` adds
-  `positions.market`, the market cash named, null unless named;
-  `0026-fund-trades` adds `funds` (a fund the owner prices: its
-  instrument and the market its money is in) and `fund_prices` (a price
-  per unit per fund and day, the buy it came from or null for the
-  owner's, and who entered it and when), drops fund positions and
-  rebuilds `positions` with kinds `cash` and `bond` and without
-  `units` and `price`, which only funds used, its other rows, columns,
-  indexes and ids as they were; `0031-cash-no-market` clears
-  `positions.market`, since cash counts by its currency and a bond by
-  its listing: no code reads or writes the column, kept so an older
-  binary still opens the database; `0032-cash-portfolio` adds
-  `portfolios.cash`, the mark on the one portfolio that holds all cash
-  (a partial unique index keeps it to one), marks a portfolio named
-  Cash holding only cash or renames one holding more to "Cash
-  (before)", makes Cash when the display currency is set or cash is
-  kept, and moves every cash row, removed ones too, into it.
+- **The tables**: `portfolios` (the owner's, named and ordered by
+  `position`; `cash` marks the one that holds all cash, a partial
+  unique index keeping it to one), `brokers` (names), `trades` and
+  `positions` (each with who entered it and when, and a removal stamp;
+  a trade's `stated_on` is the day its figures are stated as of; a
+  position is `cash` or `bond`, an update a new row that `replaces`
+  the old, a past balance a row whose `past_of` names its account),
+  `funds` (a fund the owner prices: its instrument and the market its
+  money is in) and `fund_prices` (a price per unit per fund and day,
+  the buy it came from or null for the owner's, who entered it and
+  when), `portfolio_settings` (the owner's display currency and IANA
+  `time_zone`, each null until named) and `keys.portfolio` (`none`,
+  `read`, `write`).
+- **Live trades are indexed by date and trades by broker**, so
+  holdings never scan the table: an owner's trades are read by their
+  portfolios, and only those sorted.
+- **`positions.market` is never read or written**: cash counts by its
+  currency and a bond by its listing. It stays so an older binary
+  still opens the database.
   Rows are never deleted but a portfolio with no live row, its removed
   rows with it, and a broker no live row names; what they mean is
   `docs/portfolios.md`.
@@ -299,12 +290,11 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
 ## The profile
 
 - **One table and a key column** (`0033-profile`): `profile_versions`
-  (each revision of the owner's profile: its number, full text, bytes,
-  author and time; the highest is the live one) and `keys.profile`
-  (`none`, `read`, `write`), `none` for every key, the ones made
-  before too. A save inserts a revision and deletes those past the
-  last 100 in the same write; what they mean is `docs/profile.md`.
-  `0036-owners` keys it `(owner, revision)`.
+  (each revision of an owner's profile, keyed `(owner, revision)`: its
+  full text, bytes, author and time; the highest is the live one) and
+  `keys.profile` (`none`, `read`, `write`), `none` by default. A save
+  inserts a revision and deletes those past the last 100 in the same
+  write; what they mean is `docs/profile.md`.
 
 ## The analysis
 
@@ -314,7 +304,7 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   set null when they go, the stored quote's `price`, `currency` and
   `priced_at` at the save, null with none, and `created_at`; a symbol's
   highest revision is the live one) and `keys.analysis` (`none`,
-  `read`, `write`), `none` for every key, the ones made before too.
+  `read`, `write`), `none` by default.
   `analysis_by_symbol` on `(symbol, revision, created_at, bytes,
   author)` lets the list, a pointer and the revisions read no text.
   `symbol` references no instrument, so deleting an instrument leaves
@@ -336,8 +326,8 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   `trade_plan_symbols` (`(plan, symbol)`, the live revision's tags,
   rewritten by each save, with `trade_plan_symbols_by_symbol` on
   `(symbol, plan)` for quote and the instrument page), and
-  `keys.trade_plans` (`none`, `read`, `write`), `none` for every key,
-  the ones made before too. Revisions and tags go with their plan (on
+  `keys.trade_plans` (`none`, `read`, `write`), `none` by default.
+  Revisions and tags go with their plan (on
   delete cascade).
 - **`symbol` references no instrument**, as `analysis_versions.symbol`:
   a reference would block the admin's delete of an instrument or reach
@@ -358,12 +348,10 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   `alerts_pruned` (the newest of their alert ids retention deleted, for
   the alerts feed), and `alerts_seen` (`0044-alerts-seen`, 0 until
   set: the newest of their alert ids the web UI showed, so the rail
-  counts the newer ones; `docs/alerts.md`). The migration made
-  `operator`, an admin, the owner of every row before it;
-  `user-admin.key` is the operator.
+  counts the newer ones; `docs/alerts.md`). `operator` is an admin, and
+  `user-admin.key` signs in as it.
 - **A person's rows name them**: `portfolios.owner`, `brokers.owner`,
-  `portfolio_settings.owner` (was `admin`), `dashboards.owner` (was
-  `operator` already), `rules.owner`, `alerts.owner` (copied from the
+  `portfolio_settings.owner`, `dashboards.owner`, `rules.owner`, `alerts.owner` (copied from the
   rule, as an alert outlives it), `keys.user_id`,
   `profile_versions.owner` and `trade_plans.owner`, each referencing
   `users`; a plan's revisions and tags are owned through it. Trades and
@@ -493,9 +481,8 @@ rows in `docs/signals.md`; key files and flags in `docs/config.md`.
   holdings (`docs/portfolios.md`).
 - **A fund the owner prices keeps its hand-entered holdings in the same
   three tables** (`src/portfolios/fund-holdings.ts`), so they read as
-  an ETF's. `0039-fund-holdings-as-of` adds `as_of` (the day the rows
-  and the six positions are as of) and `sectors_as_of` to
-  `fund_top_holdings`, both null for Yahoo's; `fetched_at` is when they
+  an ETF's. `fund_top_holdings.as_of` (the day the rows and the six
+  positions are as of) and `sectors_as_of` are null for Yahoo's; `fetched_at` is when they
   were last entered and a row's `symbol` column holds a stored
   instrument's id.
   Yahoo's job never asks for or replaces them (`asked()`).

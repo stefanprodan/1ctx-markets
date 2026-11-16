@@ -148,7 +148,7 @@ tracking in `docs/storage.md`; the source queue and deadlines in
   plans tools' `id` and `revision` read `"1"`, `"2.5"` and `"true"` as
   their values (`textValues()`), and `profile_edit`, `analysis_edit`
   and `trade_plans_edit` read `edits` sent as JSON text. Other text is
-  refused as before.
+  refused.
 - **Arguments are typed, each meaning one thing**: an id is an
   integer, never a union with a string, a mode is its own boolean
   (`all: true`), and an argument that changes a row never also picks

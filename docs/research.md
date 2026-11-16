@@ -433,7 +433,7 @@ route's transport in `docs/api.md`; alerts that wait on events in
   other section of its key answers as `quote` does (`OWNER_PRICED`).
 - **`top_holdings` is a fund's from Yahoo**: for an ETF or mutual fund
   on any market (`isFund()`), whose Finnhub, news and filings parts
-  answer as before; a share's overview has no `top_holdings` key, and
+  answer as a share's do; a share's overview has no `top_holdings` key, and
   the section asked for anything but a fund answers `NOT_A_FUND`
   ("Top holdings are for ETFs and mutual funds only."). It holds
   `source` (`yahoo`), `fetched_at`, `stale`, `top` (`rank`, `symbol`,
@@ -568,7 +568,7 @@ is fixed, never an argument, to keep five summaries short.
   `top_holdings` (the tool's section) and `options` (the tool's summary,
   never a chain), under the tool's deadline and tracking. `top_holdings`
   and `options` are answered only when asked, never by default, so a
-  call without `sections` answers as before. `options` takes one symbol
+  call without `sections` leaves them out. `options` takes one symbol
   (`bad_arguments` with more), since a summary is up to six calls (five
   rows, and the listing when its nearest expires that day).
   `positioning` is the tool's first page over the default weeks for a

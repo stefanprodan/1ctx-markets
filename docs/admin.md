@@ -63,7 +63,7 @@ never signs in and a sign-in never opens `/mcp`.
 |---|---|
 | `GET /api/v1/instruments?query=&page_size=&page_token=` | the stored instruments by id, a page at a time (below) |
 | `GET /api/v1/screener?type=&screen=&sort=&order=&page_size=&page_token=` | the instruments kept up to date through one ready-made screen, read from stored figures in one query, a page at a time (`docs/api.md`, "The screener") |
-| `GET /api/v1/status` | `sync`, false with `--no-sync` (`docs/config.md`), so the jobs' last runs read as from before; sources on, off and why, and every job, with names for people (a source's `label`, `short` and `mark`, a job's `label` and `about`; a keyed source's `key`: its file, what it adds, where to get one), a back-off in force, every job's last run, its scopes (markets or instruments with a run kept) and failing scopes counted, the newest `MAX_FAILING` (5) failing named with their error, a phrase that may name the symbols behind it (`docs/storage.md`; a run cut by shutdown, error `stopped`, never counts, since the next run settles it; one cut by a crash, `interrupted`, does, since a run that kills the server would otherwise never show; a failed Yahoo backfill is settled once the instrument has daily bars, since a read fetches a history without a backfill run; runs with no scope, from before backfill runs had one, are skipped; the page reads failure from these counts, never the last run), the instrument and tracked counts, the database size, the version |
+| `GET /api/v1/status` | `sync`, false with `--no-sync` (`docs/config.md`), so the jobs' last runs read as from before; sources on, off and why, and every job, with names for people (a source's `label`, `short` and `mark`, a job's `label` and `about`; a keyed source's `key`: its file, what it adds, where to get one), a back-off in force, every job's last run, its scopes (markets or instruments with a run kept) and failing scopes counted, the newest `MAX_FAILING` (5) failing named with their error, a phrase that may name the symbols behind it (`docs/storage.md`; a run cut by shutdown, error `stopped`, never counts, since the next run settles it; one cut by a crash, `interrupted`, does, since a run that kills the server would otherwise never show; a failed Yahoo backfill is settled once the instrument has daily bars, since a read fetches a history without a backfill run; runs with no scope are skipped; the page reads failure from these counts, never the last run), the instrument and tracked counts, the database size, the version |
 | `POST /api/v1/status/retry` | no body: every failing instrument scope status lists asks its failed part again (below); `{asked, fetched, failed, left_out}` |
 | `POST /api/v1/instruments/{symbol}/refetch` | `{"parts": [...], "sections": [...]}`, answered per part |
 | `DELETE /api/v1/instruments/{symbol}` | the instrument and every row of it; 204 |
@@ -104,33 +104,26 @@ never signs in and a sign-in never opens `/mcp`.
   the feed; `write` lists `alerts_edit` too and opens creating,
   updating, pausing and deleting alerts (`docs/alerts.md`). A feed
   reader is an alerts reader: triggers have no access of their own.
-  Keys made before this access existed were given `write` (migration
-  0023), what they had; the column was named `rules` until migration
-  `0046-key-alerts` renamed it, the values kept.
 - **Profile access is given the same way** (`profile`,
   `keys add --profile`), `none` by default, since the owner's profile is
   personal and a script's key never needs it. `read` lists the `profile`
   tool and opens the profile reads, `write` also lists `profile_edit`
-  and opens `PUT /profile` (`docs/profile.md`). Keys made before profile
-  access existed start at `none` too (migration 0033): the admin opts
-  each in.
+  and opens `PUT /profile` (`docs/profile.md`).
 - **Analysis access is given the same way** (`analysis`,
   `keys add --analysis`), `none` by default. The analysis is shared by
   everyone on the server, so a write key's text reaches every person's
   agents and sign-ins; a script's key never needs it. `read` lists the
   `analysis` tool, opens the analysis reads and adds the `analysis`
   pointer to the `research` overview; `write` also lists
-  `analysis_edit` and opens its `PUT` (`docs/analysis.md`). Keys made
-  before analysis access existed start at `none` too (migration 0041).
-  A web UI sign-in and the admin key write it.
+  `analysis_edit` and opens its `PUT` (`docs/analysis.md`). A web UI
+  sign-in and the admin key write it.
 - **Trade plans access is given the same way** (`trade_plans`,
   `keys add --trade-plans`), `none` by default, since a plan is the
   owner's own intent with their money. `read` lists the `trade_plans`
   tool, opens the trade plans reads and adds the `trade_plans` pointer
   to `quote`; `write` also lists `trade_plans_edit` and opens the
-  writes (`docs/trade-plans.md`). Keys made before trade plans access
-  existed start at `none` too (migration 0047). A web UI sign-in and
-  the admin key write their own.
+  writes (`docs/trade-plans.md`). A web UI sign-in and the admin key
+  write their own.
 - **Access changes on a kept key** (`PATCH /keys/{id}`, `keys set`):
   the token, name and expiry stay, an expired key changes too, and the
   key's next request reads the new access, as a revoke holds on the

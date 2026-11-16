@@ -268,8 +268,8 @@ once and valued on the live price the server already keeps.
   in circulation, or one of the hundredths a listing is priced in
   (`HUNDREDTHS`: GBp, GBX, ZAc, ILA), which a trade keeps as written.
   A conversion target takes no hundredth.
-  Nothing in code, docs or tests defaults to a currency. An install
-  with portfolios from before answers per currency until one is set.
+  Nothing in code, docs or tests defaults to a currency. With none
+  set, holdings answer per currency.
 - **A person lets chosen people see all their portfolios, read only**
   (`portfolio_viewers`, migration `0038-sharing`; `src/api/sharing.ts`).
   One switch per person, the whole thing, Cash included, and nothing
@@ -864,7 +864,7 @@ rename_broker(broker: string, name: string): { broker };
   a Yahoo reader takes that column as the listing's price, and keeps the
   price paid in its tag (`[paid EUR 9.5]`), so the import restores the
   currency and price paid exactly; with no such close the lot is written
-  as paid, tagged `[paid EUR]`, as before. Commission stays in the
+  as paid, tagged `[paid EUR]`. Commission stays in the
   currency paid. Positions are not exported.
 
 ## Owners
