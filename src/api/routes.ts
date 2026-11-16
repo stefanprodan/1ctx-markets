@@ -607,6 +607,7 @@ function alerts(m: Markets, feed: ApiDeps["alerts"]): Route[] {
         const body = fields(read.body, [
           "symbol",
           "when",
+          "on",
           "note",
           "after_earnings",
         ]);
@@ -640,12 +641,13 @@ function alerts(m: Markets, feed: ApiDeps["alerts"]): Route[] {
         if (read instanceof Response) return read;
         const { paused, ...change } = fields(read.body, [
           "when",
+          "on",
           "note",
           "paused",
         ]);
         if (paused !== undefined) {
           if (Object.keys(change).length > 0) {
-            throw new ArgError("paused goes alone, without when or note");
+            throw new ArgError("paused goes alone, without when, on or note");
           }
           if (typeof paused !== "boolean") {
             throw new ArgError("paused must be true or false");

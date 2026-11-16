@@ -51,6 +51,7 @@ import { m0045 } from "./0045-rules-fired-session.ts";
 import { m0046 } from "./0046-key-alerts.ts";
 import { m0047 } from "./0047-trade-plans.ts";
 import { m0048 } from "./0048-push-subscriptions.ts";
+import { m0049 } from "./0049-rules-on.ts";
 
 export const MIGRATIONS: readonly Migration[] = [
   m0001,
@@ -101,4 +102,5 @@ export const MIGRATIONS: readonly Migration[] = [
   m0046,
   m0047,
   m0048,
+  m0049,
 ];

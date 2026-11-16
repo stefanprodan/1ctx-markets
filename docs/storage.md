@@ -119,6 +119,12 @@ in `src/app.ts`.
   zone, null before its first alert), set in the write that inserts the
   alert, so a restart keeps the once-a-session limit (`docs/alerts.md`).
   Rules from before it start null: one may fire once more that day.
+- **`rules.trigger_on` is when a rule is evaluated** (`0049-rules-on`,
+  checked to `touch`, `close` or `weekly_close`, existing rules
+  `touch`), and **`rules.closed_session` the last bar, or a week's
+  Monday, a close rule was evaluated at** (`YYYY-MM-DD`, the same check
+  as `fired_session`, null before its first close). A trigger keeps `on`
+  and its session in its snapshot, so `alerts` has no column for them.
 - **An alert is a `rules` row and a trigger an `alerts` row**, the
   condition stored as its JSON tree with internal camelCase keys and
   instrument ids, never as the `when` text callers send and read

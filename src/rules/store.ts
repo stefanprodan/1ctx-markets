@@ -3,6 +3,7 @@
 // Free of the engine's imports: tracking reads rule instruments from here.
 
 import { DAY_MS } from "../runtime/clock.ts";
+import type { TriggerOn } from "../shared/when.ts";
 import type { Db } from "../storage/db/index.ts";
 import { type Condition, instrumentsOf, readCondition } from "./format.ts";
 
@@ -24,6 +25,9 @@ export type RuleRow = {
   armed: boolean;
   // the session date of its symbol it last fired in
   firedSession: string | null;
+  triggerOn: TriggerOn;
+  // the last bar, or a week's Monday, evaluated at its close
+  closedSession: string | null;
   createdAt: number;
   lastResult: Result | null;
   lastEvaluatedAt: number | null;
@@ -35,7 +39,8 @@ type Raw = Omit<RuleRow, "condition" | "armed"> & {
 };
 
 const SELECT = `select id, owner, instrument, condition, note, paused, armed,
-  fired_session as firedSession, created_at as createdAt, last_result as lastResult,
+  fired_session as firedSession, trigger_on as triggerOn,
+  closed_session as closedSession, created_at as createdAt, last_result as lastResult,
   last_evaluated_at as lastEvaluatedAt from rules`;
 
 const row = (r: Raw): RuleRow => ({
@@ -99,17 +104,28 @@ export function countRules(db: Db): number {
 export function insertRule(
   db: Db,
   owner: string,
-  rule: { instrument: string; condition: string; note: string | null },
+  rule: {
+    instrument: string;
+    condition: string;
+    note: string | null;
+    triggerOn?: TriggerOn;
+  },
   now: number,
 ): number {
   return Number(
     db
       .query(
-        `insert into rules (owner, instrument, condition, note, created_at)
-         values (?, ?, ?, ?, ?)`,
+        `insert into rules (owner, instrument, condition, note, trigger_on,
+           created_at) values (?, ?, ?, ?, ?, ?)`,
       )
-      .run(owner, rule.instrument, rule.condition, rule.note, now)
-      .lastInsertRowid,
+      .run(
+        owner,
+        rule.instrument,
+        rule.condition,
+        rule.note,
+        rule.triggerOn ?? "touch",
+        now,
+      ).lastInsertRowid,
   );
 }
 
@@ -120,18 +136,23 @@ export function deleteRule(db: Db, owner: string, id: number): boolean {
   );
 }
 
-// a new condition is a new question: armed, never fired, no split pause
+// a new condition or on is a new question: armed, never fired or closed;
+// only new levels lift a split pause
 export function updateRule(
   db: Db,
   id: number,
-  change: { condition?: string; note?: string | null },
+  change: { condition?: string; triggerOn?: TriggerOn; note?: string | null },
 ): void {
-  if (change.condition !== undefined) {
+  if (change.condition !== undefined || change.triggerOn !== undefined) {
     db.query(
-      `update rules set condition = ?, armed = 1, fired_session = null,
-         last_result = null, last_evaluated_at = null,
-         paused = nullif(paused, 'split') where id = ?`,
-    ).run(change.condition, id);
+      `update rules set condition = coalesce(?2, condition),
+         trigger_on = coalesce(?3, trigger_on), armed = 1,
+         fired_session = null, closed_session = null, last_result = null,
+         last_evaluated_at = null,
+         paused = case when ?2 is null then paused
+           else nullif(paused, 'split') end
+       where id = ?1`,
+    ).run(id, change.condition ?? null, change.triggerOn ?? null);
   }
   if (change.note !== undefined) {
     db.query("update rules set note = ? where id = ?").run(change.note, id);
@@ -149,15 +170,25 @@ export function setPaused(
 export function recordResult(
   db: Db,
   id: number,
-  result: Result,
-  armed: boolean,
-  firedSession: string | null,
+  state: {
+    result: Result;
+    armed: boolean;
+    firedSession: string | null;
+    closedSession: string | null;
+  },
   now: number,
 ): void {
   db.query(
     `update rules set last_result = ?, last_evaluated_at = ?, armed = ?,
-       fired_session = ? where id = ?`,
-  ).run(result, now, armed ? 1 : 0, firedSession, id);
+       fired_session = ?, closed_session = ? where id = ?`,
+  ).run(
+    state.result,
+    now,
+    state.armed ? 1 : 0,
+    state.firedSession,
+    state.closedSession,
+    id,
+  );
 }
 
 // paused or not, so the jobs keep each one synced while its rule exists;

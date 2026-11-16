@@ -12,6 +12,7 @@ import { CALL_MS } from "../operations/markets.ts";
 import { FIELD_NAMES } from "../operations/screen.ts";
 import { ERRORS } from "../operations/targets.ts";
 import { KEY_DAYS, MAX_NAME, MIN_NAME } from "../server/access.ts";
+import { TRIGGER_ON } from "../shared/when.ts";
 import { REPORTS } from "../sources/cftc/client.ts";
 import {
   COT_WEEKS,
@@ -474,6 +475,14 @@ const trigger = object(
     when: note(str, "The alert's condition when it triggered."),
     note: nstr,
     triggered_at: str,
+    on: note(
+      values(TRIGGER_ON),
+      "When the alert was evaluated: every quote, or at a daily or weekly close.",
+    ),
+    session: note(
+      nstr,
+      "The trading day it triggered for, a week's Monday for a weekly close. Null on older triggers.",
+    ),
     values: note(
       { type: "object", additionalProperties: nnum },
       "Each side read when it triggered, keyed as `when` writes it: `price`, `price(^VIX)`.",
@@ -537,11 +546,17 @@ const nowItem = object(
   ["field", "value", "level", "gap", "holds"],
 );
 
+const ON = note(
+  values(TRIGGER_ON),
+  "When it is evaluated: `touch` on every quote, `close` once after each session ends, `weekly_close` once after each week ends. Touch by default.",
+);
+
 const alertItem = object(
   {
     id: int,
     symbol: note(str, "The listing it watches, a stored id."),
     when: note(str, "Its condition in canonical form, to edit and send back."),
+    on: ON,
     note: nstr,
     after_earnings: note(
       freeForm,
@@ -560,6 +575,15 @@ const alertItem = object(
       "Why it is unknown, or what it waits for; only with those states.",
     ),
     last_triggered_at: note(nstr, "Null when no kept trigger."),
+    last_close: note(
+      nullable(
+        object({
+          session: str,
+          holds: { type: ["boolean", "null"] },
+        }),
+      ),
+      "A close alert's last close: its day, a week's Monday, and whether the condition held there, null when unknown. Null before its first close.",
+    ),
     gap_percent: note(
       nnum,
       "How far from triggering, in percent: an and's farthest comparison, an or's nearest, price levels only; 0 once it holds.",
@@ -570,6 +594,7 @@ const alertItem = object(
     "id",
     "symbol",
     "when",
+    "on",
     "note",
     "state",
     "last_triggered_at",
@@ -1053,6 +1078,7 @@ export const schemas: Record<string, Schema> = {
     {
       symbol: str,
       when: str,
+      on: ON,
       note: nstr,
       after_earnings: note(str, "A US share whose next results it waits for."),
     },
@@ -1061,6 +1087,7 @@ export const schemas: Record<string, Schema> = {
   AlertChange: object(
     {
       when: str,
+      on: ON,
       note: nstr,
       paused: note(bool, "Alone: pause or resume."),
     },

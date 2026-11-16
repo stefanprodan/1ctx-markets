@@ -75,6 +75,7 @@ const alertOf = (when: string, extra: Partial<Alert> = {}): Alert => ({
   id: ids++,
   symbol: OWN,
   when,
+  on: "touch",
   note: null,
   state: "watching",
   last_triggered_at: null,
@@ -145,6 +146,15 @@ describe("an alert in words", () => {
     );
   });
 
+  test("a close alert says which close it waits for", () => {
+    expect(ruleSummary(alertOf("price < 80", { on: "close" }), L)).toBe(
+      "Price below 80.00 EUR on the close",
+    );
+    expect(ruleSummary(alertOf("price < 80", { on: "weekly_close" }), L)).toBe(
+      "Price below 80.00 EUR on the weekly close",
+    );
+  });
+
   test("an unreadable condition shows as its text", () => {
     expect(treeOf("price <")).toBeNull();
     expect(ruleSummary(alertOf("price <"), L)).toBe("price <");
@@ -193,6 +203,24 @@ describe("what triggered, in words", () => {
       ),
     ).toBe(
       "Price rose to 101.00 EUR, above 200-day average (99.00 EUR); VIX rose to 31, above 30",
+    );
+  });
+
+  test("a close alert's trigger names the close it read", () => {
+    const fired = trigger("price > 80", { price: 81 });
+    const at = (on: Trigger["on"], session: string | null) =>
+      triggerText({ ...fired, on, session }, L);
+    expect(at("close", "2026-11-13")).toBe(
+      "Price rose to 81.00 EUR, above 80.00 EUR at the 13 Nov close",
+    );
+    expect(at("weekly_close", "2026-11-09")).toBe(
+      "Price rose to 81.00 EUR, above 80.00 EUR at the close of the week of 9 Nov",
+    );
+    expect(at("touch", "2026-11-13")).toBe(
+      "Price rose to 81.00 EUR, above 80.00 EUR",
+    );
+    expect(triggerText(fired, L)).toBe(
+      "Price rose to 81.00 EUR, above 80.00 EUR",
     );
   });
 });

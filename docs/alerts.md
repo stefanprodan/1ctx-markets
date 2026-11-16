@@ -9,10 +9,11 @@ in `src/api/alerts.ts`, and push in `src/push/`.
 
 An alert belongs to one symbol, reads a few with a fixed condition, and
 triggers once each time the condition turns true, at most once a
-trading session. Alerts hold market conditions only, never holdings or
-orders. In code and tables an alert is a rule (`rules`, `RuleRow`) and
-a trigger an alert (`alerts`, `Fired`): only the words callers see
-differ.
+trading session; one set `on` a close is evaluated only at its
+symbol's daily or weekly close (below). Alerts hold market conditions
+only, never holdings or orders. In code and tables an alert is a rule
+(`rules`, `RuleRow`) and a trigger an alert (`alerts`, `Fired`): only
+the words callers see differ.
 
 ## The condition: `when`
 
@@ -137,6 +138,63 @@ differ.
 - **A failing alert never fails the write it rides on.** `ruleEngine()`
   logs it and the source write and the other alerts go on.
 
+## Alerts on the close
+
+A touch and a close are different signals: a session can dip under a
+level and end well above it. `on` picks which one an alert answers.
+
+- **`on` sets when an alert is evaluated** (`rules.trigger_on`,
+  `TRIGGER_ON` in `src/shared/when.ts`): `touch`, the default, on every
+  write that moves its inputs; `close` once per closed daily bar of its
+  symbol; `weekly_close` once per closed week, Monday to Sunday, as
+  `history` dates weeks. The `when` grammar is the same. For a heads-up
+  on the touch and the close, set two alerts.
+- **A close alert reads its own symbol only** (`checkBound()`): another
+  market can still trade at this one's close (Xetra closes hours before
+  `^VIX` does), so its value there would be its last session's.
+  Relative returns read a benchmark, so they are refused too, and so is
+  a listing with no quote, which has no close.
+- **A daily bar has closed after its close pass**: the reader dates the
+  stored quote the stored session's date, and the quote was fetched at
+  or after `closeQuoteAt()` (`docs/calendars.md`). Not the session's
+  end: a pass at the end's minute, or a symbol fetched inside a call,
+  can store a quote before the closing auction prints. An index
+  restamped up to 75 minutes later (`docs/signals.md`) is still
+  evaluated at the close pass.
+- **Else it is read from its final bar** (`closeAt()`, `readFinal()` in
+  `src/rules/evaluate.ts`): the newest final daily bar not yet
+  evaluated, once the next session's bars refetch writes it and its
+  final signal row, whenever the close pass did not evaluate it: late,
+  never skipped, and after two missed closes only the later. Crypto has
+  no close pass, so its UTC day is always read this way. A newer bar
+  that has closed but is not final yet is waited for, so an older bar is
+  never read in its place.
+- **A week has closed at the close pass of a session dated a Friday**,
+  read from the weekly live row and the day's quote. Any other week is
+  read from its final weekly bar once stored. A session after Friday in
+  a week already evaluated is not evaluated again.
+- **Each closed bar is evaluated once** (`applyClose()`): between
+  closes nothing is stored or rearmed, and a revised close neither
+  retriggers nor retracts. An unknown leaves the bar to a later write,
+  except the earnings gate's `BEFORE_RESULTS`. `fired_session` holds
+  the bar's date.
+- **From a final bar**, `price` and the day fields are the bar's,
+  `previous_close` the bar before's, signals the final row (judged by
+  `stale.final`). In a weekly alert that bar is the week's last
+  session, and weekly fields read the week's row.
+- **A daily close alert reads weekly fields as of the last completed
+  week**, so both paths read the same value; they can lag the live
+  `now` by up to a week. A weekly close alert reads its own week's row.
+- **True when set**: create evaluates the last closed bar (today's after
+  the close pass, else the last final one) and triggers in the answer
+  when it holds.
+- **The earnings gate at a close**: after the close pass it is a touch
+  alert's, so results seen after the close count from the next
+  session's close. A final bar has no trade time to tell results before
+  its open from results after its close, so only a bar dated after the
+  local date the results were seen (in the exchange's zone) counts; a
+  same-day close after results before the open is skipped on purpose.
+
 ## State and how close
 
 Every read evaluates each alert now on one reader (`evaluateRules()`),
@@ -151,11 +209,16 @@ stored nowhere: a read never triggers or changes anything.
   - `waiting_for_earnings`: the gate waits for results; `reasons` say
     so.
   - `watching`: the next true triggers (`firesNext()`: armed and its
-    session later than `fired_session`).
+    session, a weekly close alert's week, later than `fired_session`).
   - `triggered`: it triggered and waits for a false, in this session
     or an earlier one; then it triggers again, at most once a trading
     session.
 - **`reasons` appear only with `unknown` and `waiting_for_earnings`.**
+- **`state` and `now` are the live reading for a close alert too**:
+  `holds` says whether it would trigger if the session ended here. Its
+  own close is `last_close`, `{session, holds}` (`holds` null for
+  unknown), null before its first close; a touch alert has none. Every
+  alert answers `on`.
 - **`now` holds each comparison in `when`'s order** (depth first, left
   to right): `field` as `when` names it, `symbol` only for another
   symbol, `benchmark` for a relative return, `value` (the left side),
@@ -185,15 +248,16 @@ stored nowhere: a read never triggers or changes anything.
   since no job adds an instrument back). True at once triggers in the
   answer: `{alert, triggered}`, `triggered` the trigger or null. An
   answer too long keeps the first 8 reasons.
-- **update changes `when`, `note` or both, keeping the id and its
-  history.** A new `when` is a new question: resolved and checked as on
-  create, stored with the alert rearmed, `fired_session` cleared and a
-  split pause lifted, and evaluated in the same write, so true
-  triggers in the answer even in a session the old one triggered. A
-  manually paused alert stays paused and is not evaluated. The earnings
-  gate stays bound as it was. `note` null clears it; a note alone
-  evaluates nothing. The symbol never changes: another symbol is another
-  alert. Answers `{alert, triggered}`.
+- **update changes `when`, `on`, `note` or any of them, keeping the id
+  and its history.** A new `when` or `on` is a new question: resolved
+  and checked as on create, stored with the alert rearmed and
+  `fired_session` and `closed_session` cleared, and evaluated in the
+  same write, so true triggers in the answer even in a session the old
+  one triggered; only a new `when` lifts a split pause. A manually
+  paused alert stays paused and is not evaluated. The earnings gate
+  stays bound as it was. `note` null clears it; a note alone evaluates
+  nothing. The symbol never changes: another symbol is another alert.
+  Answers `{alert, triggered}`.
 - **pause and resume set or clear the manual pause**, answering
   `{alert}`. A split-paused alert stays paused by pause; resume answers
   `split_paused`, since only a new `when` lifts it.
@@ -202,13 +266,15 @@ stored nowhere: a read never triggers or changes anything.
 
 ## Triggers and history
 
-- **A trigger is `{id, alert_id, symbol, when, note, triggered_at,
-  values}`**, plus `after_earnings` when gated (`triggerItem()`):
-  `when` rendered from its snapshot, as the alert read then; `values`
-  a flat map of each side read, keyed as `when` writes it
-  (`{"price": 79.95, "price(CXI:^VIX)": 26.1}`). Snapshots stored before
-  the text form (a JSON tree with each side's value) render the same
-  way, since the snapshot itself never changed shape.
+- **A trigger is `{id, alert_id, symbol, when, note, triggered_at, on,
+  session, values}`**, plus `after_earnings` when gated
+  (`triggerItem()`): `on` and `session` (the session it fired in, a
+  week's Monday) from its snapshot, older triggers answer `touch` and
+  null; `when` rendered from its snapshot, as the alert read then;
+  `values` a flat map of each side read, keyed as `when` writes it
+  (`{"price": 79.95, "price(CXI:^VIX)": 26.1}`). Snapshots
+  stored before the text form (a JSON tree with each side's value)
+  render the same way, since the snapshot itself never changed shape.
 - **History is kept `ALERTS_KEPT_DAYS` (90) days** (`pruneAlerts()`,
   `docs/storage.md`), also after the alert is deleted, and read newest
   first (`readHistory()`): all, one alert's by id (a deleted one's too),
@@ -300,8 +366,8 @@ stored nowhere: a read never triggers or changes anything.
   read as usual.
 - **`alerts_edit` takes `action`** (`create`, `update`, `pause`,
   `resume`, `delete`) **and only that action's arguments** (`EDIT_ARGS`):
-  create `symbol`, `when`, `note`, `after_earnings`; update `id`, `when`,
-  `note`; the rest `id`.
+  create `symbol`, `when`, `on`, `note`, `after_earnings`; update `id`,
+  `when`, `on`, `note`; the rest `id`.
 - **Alerts and triggers are one person's** (`rules.owner`,
   `alerts.owner`, migration `0036-owners`): the tools and the routes read
   and change only the caller's, another's id answering `not_found`, and
@@ -367,7 +433,8 @@ A fired alert goes to its owner's devices as a Web Push notification
   below 170.00 USD: 168.40 USD", "NVDA RSI below 30: 28.4", a price in
   its currency's minor units as the page shows it, "1,234 JPY";
   `src/push/text.ts`, labels from `src/shared/when-words.ts`, digits
-  from `minorUnits()` in `src/shared/currencies.ts`) and the
-  note on a second line, cut first when long; `url` the Fired tab;
-  `badge` the owner's unseen count as `readSeen()` gives the rail;
-  `tag` the alert's id.
+  from `minorUnits()` in `src/shared/currencies.ts`), led for a close
+  alert by "At the 13 Nov close: " or "At the close of the week of 9
+  Nov: ", and the note on a second line, cut first when long; `url` the
+  Fired tab; `badge` the owner's unseen count as `readSeen()` gives the
+  rail; `tag` the alert's id.

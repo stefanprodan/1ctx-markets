@@ -264,7 +264,7 @@ function Trends({ trends, waiting }: { trends: Trend[]; waiting?: boolean }) {
             <>
               {tickerOf(t.id)}
               {crossedToday(t) && (
-                <span class="tag dash-crossed hide-phone">Crossed today</span>
+                <span class="tag dash-crossed hide-phone">Crossed</span>
               )}
             </>
           }

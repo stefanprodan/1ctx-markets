@@ -31,6 +31,7 @@ import {
   NEAR_PERCENT,
   nearOf,
   nowText,
+  ON_WORDS,
   PRICE_UNREAD,
   rightNow,
   ruleSummary,
@@ -349,6 +350,7 @@ function RuleDrawer({
       ? [{ text: rule.when, depth: 0, at: null }]
       : conditionLines(tree, rule.symbol, l);
   const cs = comparisonsOf(rule.when);
+  const on = ON_WORDS[rule.on];
   const now = Date.now();
   return (
     <Drawer
@@ -483,6 +485,7 @@ function RuleDrawer({
               );
             })}
           </ul>
+          {on && <p class="small faint">{on}</p>}
         </section>
         {rule.note && (
           <section class="al-section">

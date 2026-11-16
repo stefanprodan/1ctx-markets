@@ -56,7 +56,12 @@ import {
 } from "../rules/store.ts";
 import { errorFields, type Log } from "../runtime/log.ts";
 import { recheck } from "../server/caller.ts";
-import { MAX_WHEN, operandText } from "../shared/when.ts";
+import {
+  MAX_WHEN,
+  operandText,
+  TRIGGER_ON,
+  type TriggerOn,
+} from "../shared/when.ts";
 import { eventStatus, nextEvent } from "../sources/finnhub/read.ts";
 import { eligible, NOT_COVERED } from "../sources/finnhub/store.ts";
 import {
@@ -99,8 +104,8 @@ export const SPLIT_PAUSED =
   "paused by a split: its price levels are from before it; update it with new levels";
 
 const EDIT_ARGS: Record<Edit, readonly string[]> = {
-  create: ["action", "symbol", "when", "note", "after_earnings"],
-  update: ["action", "id", "when", "note"],
+  create: ["action", "symbol", "when", "on", "note", "after_earnings"],
+  update: ["action", "id", "when", "on", "note"],
   pause: ["action", "id"],
   resume: ["action", "id"],
   delete: ["action", "id"],
@@ -111,13 +116,15 @@ export type AlertsEdit =
       action: "create";
       symbol: string;
       condition: InputCondition;
+      on: TriggerOn;
       note: string | null;
     }
-  // note undefined keeps it, null clears it
+  // on and note undefined keep them; note null clears it
   | {
       action: "update";
       id: number;
       condition: InputCondition | null;
+      on?: TriggerOn;
       note?: string | null;
     }
   | { action: "pause" | "resume" | "delete"; id: number };
@@ -154,12 +161,31 @@ function whenOf(value: unknown, gate: string | null): InputCondition {
   }
 }
 
+function onOf(value: unknown): TriggerOn | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (
+    typeof value !== "string" ||
+    !(TRIGGER_ON as readonly string[]).includes(value)
+  ) {
+    throw new ArgError(`on must be one of ${TRIGGER_ON.join(", ")}`);
+  }
+  return value as TriggerOn;
+}
+
 const noteOf = (value: unknown): string | null =>
   value === undefined || value === null ? null : text(value, "note", MAX_NOTE);
 
 export function parseAlertsEdit(input: unknown): AlertsEdit {
   const f = textValues(
-    fields(input, ["action", "symbol", "when", "note", "after_earnings", "id"]),
+    fields(input, [
+      "action",
+      "symbol",
+      "when",
+      "on",
+      "note",
+      "after_earnings",
+      "id",
+    ]),
     { ids: ["id"] },
   );
   if (
@@ -191,17 +217,25 @@ export function parseAlertsEdit(input: unknown): AlertsEdit {
           `an alert reads at most ${MAX_INSTRUMENTS} symbols; this one names ${named.size}`,
         );
       }
-      return { action, symbol, condition, note: noteOf(f.note) };
+      return {
+        action,
+        symbol,
+        condition,
+        on: onOf(f.on) ?? "touch",
+        note: noteOf(f.note),
+      };
     }
     case "update": {
       const id = alertId(f.id);
-      if (f.when === undefined && f.note === undefined) {
-        throw new ArgError("update needs when, note or both");
+      const on = onOf(f.on);
+      if (f.when === undefined && on === undefined && f.note === undefined) {
+        throw new ArgError("update needs when, on or note");
       }
       return {
         action,
         id,
         condition: f.when === undefined ? null : whenOf(f.when, null),
+        ...(on === undefined ? {} : { on }),
         ...(f.note === undefined ? {} : { note: noteOf(f.note) }),
       };
     }
@@ -386,16 +420,32 @@ export function alertItem(
     id: rule.id,
     symbol: rule.instrument,
     when: whenText(rule.condition.node, rule.instrument),
+    on: rule.triggerOn,
     note: rule.note,
     ...(gate === null ? {} : { after_earnings: gate }),
     ...stateOf(r, rule, ev),
     last_triggered_at: iso(last),
+    ...(rule.triggerOn === "touch" ? {} : { last_close: lastClose(rule) }),
     gap_percent: gapPercent(rule.condition.node, ev),
     now: ev.values.map((v) => nowItem(rule.instrument, v)),
   };
 }
 
 export type AlertItem = ReturnType<typeof alertItem>;
+
+// a close rule stores a result only at a close, so it is that close's
+function lastClose(rule: RuleRow) {
+  if (rule.closedSession === null) return null;
+  return {
+    session: rule.closedSession,
+    holds:
+      rule.lastResult === "true"
+        ? true
+        : rule.lastResult === "false"
+          ? false
+          : null,
+  };
+}
 
 // a trigger in the words of when, from its snapshot, old ones included
 export function triggerItem(a: Fired) {
@@ -419,6 +469,8 @@ function readTrigger(a: Fired) {
     when: whenText(condition.node, own),
     note: a.snapshot.rule.note,
     triggered_at: iso(a.firedAt),
+    on: a.snapshot.on ?? "touch",
+    session: a.snapshot.session ?? null,
     values,
     ...(a.snapshot.after_earnings === undefined
       ? {}
@@ -655,6 +707,7 @@ async function prepare(
   symbol: string,
   input: InputCondition,
   kept: Gate | null,
+  on: TriggerOn,
 ): Promise<Prepared | Failure> {
   const gate = input.afterEarnings;
   if (gate !== null && m.finnhub === null) {
@@ -721,7 +774,7 @@ async function prepare(
   const condition = bindCondition(input, own, (s) => ids.get(s)!, bound);
   storedWhen(condition.node, own);
   try {
-    checkBound(condition, own, instruments);
+    checkBound(condition, own, instruments, on);
   } catch (error) {
     if (error instanceof RuleError) throw new ArgError(error.message);
     throw error;
@@ -745,11 +798,12 @@ function gone(db: Markets["db"], p: Prepared): Failure | null {
 
 type Written = { rule: RuleRow; outcome: ReturnType<typeof applyRule> | null };
 
-// what a create or an update answers: the alert, and its trigger if true
+// what a create or an update answers: the alert, and its trigger if true;
+// a close rule's now is the live reading, not the close it was set against
 function written(m: Markets, owner: string, w: Written) {
   const r = readerOf(m);
   const ev =
-    w.outcome?.evaluation ??
+    (w.rule.triggerOn === "touch" ? w.outcome?.evaluation : undefined) ??
     evaluateRules(m.db, [w.rule], m.clock.now(), m.quoteEveryMs, r)[0]!;
   const last = lastFired(m.db, owner).get(w.rule.id) ?? null;
   return {
@@ -765,7 +819,7 @@ export async function createAlert(
   owner: string,
   args: Extract<AlertsEdit, { action: "create" }>,
 ): Promise<Changed | Failure> {
-  const p = await prepare(m, args.symbol, args.condition, null);
+  const p = await prepare(m, args.symbol, args.condition, null, args.on);
   if ("error" in p) return p;
   const done = await m.writer.write<Failure | Written | null>((db) => {
     recheck(db);
@@ -781,6 +835,7 @@ export async function createAlert(
         instrument: p.own,
         condition: writeCondition(p.condition),
         note: args.note,
+        triggerOn: args.on,
       },
       now,
     );
@@ -798,7 +853,7 @@ export async function createAlert(
   return written(m, owner, done);
 }
 
-// a new when is a new question: rearmed and checked in the same write
+// a new when or on is a new question: rearmed and checked in the same write
 export async function updateAlert(
   m: Markets,
   owner: string,
@@ -806,7 +861,8 @@ export async function updateAlert(
 ): Promise<Changed | Failure> {
   const before = readRule(m.db, owner, args.id);
   if (before === null) return notFound(args.id);
-  let p: Prepared | null = null;
+  const on = args.on ?? before.triggerOn;
+  const newOn = on !== before.triggerOn;
   if (args.condition !== null) {
     const own = before.instrument;
     const bare = own.slice(own.indexOf(":") + 1).toUpperCase();
@@ -821,15 +877,26 @@ export async function updateAlert(
         `an alert reads at most ${MAX_INSTRUMENTS} symbols; this one names ${named.size}`,
       );
     }
-    const got = await prepare(
-      m,
-      before.instrument,
-      args.condition,
-      before.condition.afterEarnings,
-    );
-    if ("error" in got) return got;
-    p = got;
   }
+  const input =
+    args.condition ??
+    (newOn
+      ? parseWhenCondition(
+          whenText(before.condition.node, before.instrument),
+          null,
+        )
+      : null);
+  const p =
+    input === null
+      ? null
+      : await prepare(
+          m,
+          before.instrument,
+          input,
+          before.condition.afterEarnings,
+          on,
+        );
+  if (p !== null && "error" in p) return p;
   const done = await m.writer.write<Failure | Written | null>((db) => {
     recheck(db);
     const now = m.clock.now();
@@ -841,7 +908,10 @@ export async function updateAlert(
       if (lost !== null) return lost;
     }
     updateRule(db, rule.id, {
-      ...(p === null ? {} : { condition: writeCondition(p.condition) }),
+      ...(args.condition === null
+        ? {}
+        : { condition: writeCondition(p!.condition) }),
+      ...(newOn ? { triggerOn: on } : {}),
       ...(args.note === undefined ? {} : { note: args.note }),
     });
     const changed = readRule(db, owner, rule.id)!;

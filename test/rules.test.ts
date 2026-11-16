@@ -115,7 +115,11 @@ describe("the alert format", () => {
         },
         "note is longer than 500",
       ],
-      [{ action: "update", id: 1 }, "update needs when, note or both"],
+      [{ action: "update", id: 1 }, "update needs when, on or note"],
+      [
+        { action: "create", symbol: "NVDA", when: "price < 1", on: "open" },
+        "on must be one of touch, close, weekly_close",
+      ],
       [
         { action: "update", id: 1, symbol: "AAPL", when: "price < 1" },
         "symbol is not an argument of update",
@@ -1884,6 +1888,8 @@ describe("history", () => {
         when: "change_percent < -3 and price < sma200 and price(CXI:^VIX) > 25",
         note: "old",
         triggered_at: new Date(t.clock.now()).toISOString().replace(".000", ""),
+        on: "touch",
+        session: null,
         values: {
           change_percent: -4,
           price: 150,

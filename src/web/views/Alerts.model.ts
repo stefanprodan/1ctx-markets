@@ -13,6 +13,7 @@ import {
   whenComparisons,
 } from "../../shared/when.ts";
 import {
+  closeName,
   FIELD_WORDS,
   OP_WORDS,
   STATES,
@@ -138,6 +139,12 @@ export function gateText(a: Pick<Alert, "after_earnings">, l: Listings) {
   return `After ${tickerIn(g.symbol, l)}'s Q${g.fiscal_quarter} ${g.fiscal_year} results`;
 }
 
+export const ON_WORDS: Record<Alert["on"], string | null> = {
+  touch: null,
+  close: "On the close",
+  weekly_close: "On the weekly close",
+};
+
 // the condition on one line, for a row
 export function ruleSummary(a: Alert, l: Listings): string {
   const n = treeOf(a.when);
@@ -148,7 +155,9 @@ export function ruleSummary(a: Alert, l: Listings): string {
       : isWhenComparison(n)
         ? comparisonText(n, a.symbol, l)
         : inline(n, a.symbol, l);
-  return gate === null ? body : `${gate}: ${lower(body)}`;
+  const on = ON_WORDS[a.on];
+  const line = gate === null ? body : `${gate}: ${lower(body)}`;
+  return on === null ? line : `${line} ${lower(on)}`;
 }
 
 // a flat group read out, "Price at or below 165.00 EUR and RSI below 40";
@@ -255,17 +264,17 @@ export const STATE_WORDS: Record<StateKey, string> = {
   holds: "Met",
   fired: "Triggered",
   paused: "Paused",
-  split: "Paused by a split",
-  earnings: "Waiting for earnings",
-  stale: "No fresh price",
-  unknown: "Can't check now",
+  split: "Split",
+  earnings: "Earnings",
+  stale: "No price",
+  unknown: "Unknown",
 };
 
 const FRESH_PRICE =
   /quote overdue|quote sync failed|no quote|session check failed|no live|no value/;
 
-// the server's state in the page's words; a watched one already met
-// triggers at its next quote
+// the server's state in the page's words; a met close alert triggers at
+// its close, and its line says so
 export function stateOf(a: Alert): StateKey {
   switch (a.state) {
     case "split_paused":
@@ -371,11 +380,14 @@ export function firedText(
   return `${subject(c.left, own, l)} ${verb} ${at}, ${OP_WORDS[c.op]} ${level}`;
 }
 
-// what triggered, a comparison a phrase
-export const triggerText = (t: Trigger, l: Listings): string =>
-  comparisonsOf(t.when)
+// what triggered, a comparison a phrase, and the close a close alert read
+export function triggerText(t: Trigger, l: Listings): string {
+  const text = comparisonsOf(t.when)
     .map((c) => firedText(c, t.values, t.symbol, l))
     .join("; ");
+  const close = closeName(t.on, t.session);
+  return close === null ? text : `${text} at ${close}`;
+}
 
 // Today, Yesterday, then the date, in the browser's zone
 export function dayLabel(at: string, now: number): string {

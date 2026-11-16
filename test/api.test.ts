@@ -1674,6 +1674,41 @@ describe("alerts", () => {
     expect(count(t.db, "alerts")).toBe(0);
   });
 
+  test("on goes in and comes back, with the last close of a close alert", async () => {
+    const t = await setup();
+    const made = await t.call(
+      "/alerts",
+      json({ symbol: "NVDA", when: "price < 211", on: "close" }),
+    );
+    expect(made.status).toBe(201);
+    const created: any = await made.json();
+    expect(
+      validate(created, answerSchema(spec, "POST", "/alerts", 201)!, spec),
+    ).toEqual([]);
+    expect(created.alert).toMatchObject({
+      on: "close",
+      last_close: { session: "2026-10-23", holds: true },
+    });
+    expect(created.triggered).toMatchObject({
+      on: "close",
+      session: "2026-10-23",
+    });
+    const touch = await t.call("/alerts/1", patch({ on: "touch" }));
+    const body: any = await touch.json();
+    expect(
+      validate(body, answerSchema(spec, "PATCH", "/alerts/{id}", 200)!, spec),
+    ).toEqual([]);
+    expect(body.alert.on).toBe("touch");
+    expect(body.alert.last_close).toBeUndefined();
+    const both = await t.call(
+      "/alerts/1",
+      patch({ paused: true, on: "close" }),
+    );
+    expect(both.status).toBe(400);
+    const wrong = await t.call("/alerts/1", patch({ on: "open" }));
+    expect(wrong.status).toBe(400);
+  });
+
   test("the alerts and their history page by page_token", async () => {
     const t = await setup();
     const first = await t.call(

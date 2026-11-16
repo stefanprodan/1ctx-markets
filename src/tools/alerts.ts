@@ -19,6 +19,7 @@ import {
   MAX_COMPARISONS,
   MAX_DEPTH,
   MAX_WHEN,
+  TRIGGER_ON,
   WHEN_FIELD_NAMES,
 } from "../shared/when.ts";
 import { day, next, schema, symbol, type Tool } from "./schema.ts";
@@ -29,7 +30,7 @@ const STATES =
 const readDescription = (writes: boolean) =>
   `The owner's price alerts ("tell me when"). Each with its condition, state and how close it is now (each comparison's live value and gap); or, with history, what triggered, newest first, kept ${ALERTS_KEPT_DAYS} days. ${STATES}${writes ? " Changes: alerts_edit." : ""}`;
 
-const EDIT = `Sets the owner's price alerts: create, update, pause, resume, delete. An alert triggers when its condition turns true, at most once a trading session of its symbol, again only after false; true when set, it triggers in the answer. when: comparisons joined by and/or, parens allowed: "price < 180", "rsi14 < 30 and price > sma200", "price(^VIX) > 25". A side is a number or a field as quote and screen name it; field(symbol) reads another symbol, relative_return_1m(benchmark); one unit per comparison; at most ${MAX_COMPARISONS} comparisons, ${MAX_INSTRUMENTS} symbols. after_earnings: a US share whose next results it waits for. update keeps the id and history. A split pauses price-level alerts: update them.`;
+const EDIT = `Sets the owner's price alerts: create, update, pause, resume, delete. An alert triggers when its condition turns true, at most once a trading session of its symbol, again only after false; true when set, it triggers in the answer. when: comparisons joined by and/or, parens allowed: "price < 180", "rsi14 < 30 and price > sma200", "price(^VIX) > 25". A side is a number or a field as quote and screen name it; field(symbol) reads another symbol, relative_return_1m(benchmark); one unit per comparison; at most ${MAX_COMPARISONS} comparisons, ${MAX_INSTRUMENTS} symbols. on: close or weekly_close evaluates once at the symbol's daily or weekly close, its own symbol only. after_earnings: a US share whose next results it waits for. update keeps the id and history. A split pauses price-level alerts: update them.`;
 
 const FIELDS = WHEN_FIELD_NAMES.map((f) =>
   isRelative(f) ? `${f}(benchmark)` : f,
@@ -79,6 +80,12 @@ export function alertsTools(m: Markets, access: Access): Tool[] {
             minLength: 1,
             maxLength: MAX_WHEN,
             description: WHEN,
+          },
+          on: {
+            type: "string",
+            enum: [...TRIGGER_ON],
+            default: "touch",
+            description: "create, update: touch evaluates every quote",
           },
           note: {
             type: ["string", "null"],
