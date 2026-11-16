@@ -6,11 +6,17 @@ import { minorUnits } from "../shared/currencies.ts";
 import {
   operandText,
   parseWhen,
+  type TriggerOn,
   type WhenComparison,
   type WhenOperand,
   whenComparisons,
 } from "../shared/when.ts";
-import { FIELD_WORDS, OP_WORDS, STATES } from "../shared/when-words.ts";
+import {
+  closeName,
+  FIELD_WORDS,
+  OP_WORDS,
+  STATES,
+} from "../shared/when-words.ts";
 
 export type Listing = {
   name: string | null;
@@ -24,6 +30,8 @@ export type Trigger = {
   when: string;
   note: string | null;
   values: Record<string, number | null>;
+  on?: TriggerOn;
+  session?: string | null;
 };
 
 const CRYPTO = "CRYPTOCURRENCY";
@@ -138,6 +146,10 @@ export function notification(
   } catch {}
   const held = all.filter((c) => holds(c, t.values));
   const lines = (held.length > 0 ? held : all).map((c) => line(c, t, l));
-  const body = [lines.join("; "), t.note ?? ""].filter((s) => s !== "");
+  const close = closeName(t.on, t.session);
+  const body = [
+    `${close === null ? "" : `At ${close}: `}${lines.join("; ")}`,
+    t.note ?? "",
+  ].filter((s) => s !== "");
   return { title: name, body: body.join("\n") };
 }

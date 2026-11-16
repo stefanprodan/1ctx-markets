@@ -243,6 +243,7 @@ async function repairedRule(
       action: "create",
       symbol: i.id,
       condition: parseWhenCondition("price > sma50", null),
+      on: "touch",
       note: null,
     }),
   );

@@ -551,8 +551,10 @@ Portfolios page is the reference for each part.
   it out.** Distance is the alert's `gap_percent`; the badge maps
   `state` (`stateOf()`): `watching` reads Met when every comparison
   `holds` (the next quote triggers it; a rounded `gap_percent` of 0 is
-  not met), and `unknown` tells a price that did not come in from a
-  check that cannot run.
+  not met; a met close alert triggers at its close instead), and
+  `unknown` tells a price that did not come in from a check that cannot
+  run. A close alert's condition line ends "on the close" or "on the
+  weekly close"; the page's add form makes touch alerts only.
 - **Rules** reads every page of `GET /api/v1/alerts` with each alert's
   `now` and `instruments`, filtered in the page, nearest first, a
   symbol's alerts together and paused last. A row's drawer ticks each
@@ -562,7 +564,9 @@ Portfolios page is the reference for each part.
   saying when it did not load; agents make the richer ones.
 - **Fired** reads `GET /api/v1/alerts/history` by day, newest first, a
   page at a time; each trigger's words come from its `when` and
-  `values`. Opening it marks the newest seen
+  `values`, a close alert's ending with the close it read, in the
+  push's words ("at the 13 Nov close", `closeName()` in
+  `src/shared/when-words.ts`). Opening it marks the newest seen
   (`PUT /api/v1/alerts/seen`); the ones newer than the last visit keep
   a dot until the tab is left. A failed refresh says so over the rows
   still shown (`stale`).

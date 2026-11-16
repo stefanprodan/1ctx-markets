@@ -50,6 +50,8 @@ export const MAX_COMPARISONS = 8;
 export const MAX_DEPTH = 3;
 export const MAX_WHEN = 1000;
 export const MAX_SYMBOL = 100;
+export const TRIGGER_ON = ["touch", "close", "weekly_close"] as const;
+export type TriggerOn = (typeof TRIGGER_ON)[number];
 // past this a level is a typo, not a price
 export const MAX_LITERAL = 1e15;
 

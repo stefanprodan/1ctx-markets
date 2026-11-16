@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // The Alerts page's words for when, which a push notification uses too.
 
-import type { WhenOp } from "./when.ts";
+import type { TriggerOn, WhenOp } from "./when.ts";
 
 export type Unit =
   | "price"
@@ -64,3 +64,22 @@ export const STATES: Record<string, Record<number, string>> = {
   weekly_cross_edge: { 1: "golden", 0: "none", [-1]: "death" },
   macd_turn: { 1: "up", 0: "none", [-1]: "down" },
 };
+
+// the close a close alert's trigger read, "the 13 Nov close", from the
+// session's own date, never a zone's
+export function closeName(
+  on: TriggerOn | undefined,
+  session: string | null | undefined,
+): string | null {
+  if (session == null || (on !== "close" && on !== "weekly_close")) {
+    return null;
+  }
+  const day = new Date(`${session}T00:00:00Z`).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  });
+  return on === "close"
+    ? `the ${day} close`
+    : `the close of the week of ${day}`;
+}

@@ -5,6 +5,7 @@
 // A change answers the refusal's sentence, or null once done.
 
 import { batch, signal } from "@preact/signals";
+import type { TriggerOn } from "../../shared/when.ts";
 import { type Later, paced, timer } from "../lib/slow.ts";
 import { ApiError, type Call, codeOf, says } from "./api.ts";
 
@@ -45,6 +46,7 @@ export type Alert = {
   id: number;
   symbol: string;
   when: string;
+  on: TriggerOn;
   note: string | null;
   after_earnings?: {
     symbol: string;
@@ -56,6 +58,7 @@ export type Alert = {
   state: AlertState;
   reasons?: string[];
   last_triggered_at: string | null;
+  last_close?: { session: string; holds: boolean | null } | null;
   gap_percent: number | null;
   now: Now[];
 };
@@ -68,6 +71,8 @@ export type Trigger = {
   when: string;
   note: string | null;
   triggered_at: string;
+  on?: TriggerOn;
+  session?: string | null;
   values: Record<string, number | null>;
   after_earnings?: {
     symbol: string;

@@ -1116,6 +1116,8 @@ describe("the migration that gives every row an owner", () => {
               delete o.analysis;
               delete o.trade_plans;
               delete o.fired_session;
+              delete o.trigger_on;
+              delete o.closed_session;
               // a later migration renames the key's rules access
               if (x === "keys" && "alerts" in o) {
                 o.rules = o.alerts;

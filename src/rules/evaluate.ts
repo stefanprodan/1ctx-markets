@@ -2,25 +2,36 @@
 // SPDX-License-Identifier: Apache-2.0
 // Rules run inside the write that moved their inputs, in one transaction.
 
-import { barDate } from "../market/calendars.ts";
+import {
+  barDate,
+  closeQuoteAt,
+  readSession,
+  sessionDate,
+  weekOf,
+} from "../market/calendars.ts";
 import { iso, price, round } from "../market/format.ts";
 import { type Instrument, readInstrument } from "../market/instruments.ts";
 import { barsStale, JOBS, quoteStale, STALE } from "../market/stale.ts";
+import { addDays, localDate, wallOfDate } from "../market/zone.ts";
 import { errorFields, type Log, silent } from "../runtime/log.ts";
+import type { TriggerOn } from "../shared/when.ts";
 import {
   type InstrumentSignals,
   readRelativeReturn,
   readSignals,
 } from "../signals/read.ts";
+import { selectList } from "../signals/store.ts";
 import { liveTarget } from "../signals/target.ts";
 import { type EventRow, readEvent } from "../sources/finnhub/read.ts";
 import type { EventKey, Hooks } from "../sources/finnhub/store.ts";
 import type { Db } from "../storage/db/index.ts";
 import { failedRun, lastRun } from "../storage/runs.ts";
 import {
+  CLOSE_NO_RELATIVE,
   type Comparison,
   comparisons,
   FIELDS,
+  type FieldDef,
   hasQuote,
   instrumentsOf,
   isComparison,
@@ -29,6 +40,7 @@ import {
   type Operand,
   PRICE_LEVEL,
   publicField,
+  type QuoteColumn,
   splitSensitive,
   writeCondition,
 } from "./format.ts";
@@ -74,6 +86,10 @@ export type Snapshot = {
     condition: unknown;
     note: string | null;
   };
+  // absent from triggers stored before alerts waited for a close
+  on?: TriggerOn;
+  // the session it fired in: the closed bar's date, a week's Monday
+  session?: string | null;
   after_earnings?: GateItem;
   values: ComparisonValue[];
 };
@@ -94,6 +110,14 @@ export const BEFORE_RESULTS = "prices from before the earnings results";
 export const UNTIMED =
   "a live price with no trade time may be from before the earnings results";
 export const NO_SESSION = "no session date";
+
+export type CloseAt = {
+  session: string;
+  // the final daily bar read; null reads the close pass's quote and live rows
+  bar: string | null;
+};
+
+const isFriday = (date: string) => new Date(wallOfDate(date)).getUTCDay() === 5;
 
 type Read = {
   value: number | null;
@@ -129,12 +153,14 @@ export function reader(db: Db, now: number, quoteEveryMs: number) {
           dayHigh: number | null;
           dayLow: number | null;
           time: number | null;
+          fetchedAt: number;
         },
         [string]
       >(
         `select price, previous_close as previousClose,
            change_percent as changePercent, day_high as dayHigh,
-           day_low as dayLow, time from quotes where instrument = ?`,
+           day_low as dayLow, time, fetched_at as fetchedAt
+         from quotes where instrument = ?`,
       )
       .get(id);
 
@@ -149,28 +175,181 @@ export function reader(db: Db, now: number, quoteEveryMs: number) {
       )
       .get(id)?.date ?? null;
 
+  const lastFinal = (
+    id: string,
+    interval: "1d" | "1wk",
+    before: string | null = null,
+  ) =>
+    db
+      .query<{ date: string }, [string, string, string | null]>(
+        `select date from bars where instrument = ?1 and interval = ?2
+           and final = 1 and (?3 is null or date < ?3)
+         order by date desc limit 1`,
+      )
+      .get(id, interval, before)?.date ?? null;
+  const unsettled = (
+    id: string,
+    interval: "1d" | "1wk",
+    after: string | null,
+    before: string,
+  ) =>
+    db
+      .query<{ n: number }, [string, string, string | null, string]>(
+        `select exists (select 1 from bars where instrument = ?1
+           and interval = ?2 and final = 0 and (?3 is null or date > ?3)
+           and date < ?4) as n`,
+      )
+      .get(id, interval, after, before)!.n === 1;
+  const finalRows = new Map<string, Record<string, number | null> | null>();
+  const finalRow = (id: string, interval: "1d" | "1wk", date: string) => {
+    const key = `${id}|${interval}|${date}`;
+    if (!finalRows.has(key)) {
+      finalRows.set(
+        key,
+        db
+          .query<Record<string, number | null>, [string, string, string]>(
+            `select ${selectList(interval)} from signals where instrument = ?
+               and interval = ? and kind = 'final' and date = ?`,
+          )
+          .get(id, interval, date),
+      );
+    }
+    return finalRows.get(key)!;
+  };
+
+  // its last trade's date in its exchange's zone, never the clock's
+  const session = (id: string): string | null => {
+    if (!sessions.has(id)) {
+      const i = instrument(id);
+      let date: string | null = null;
+      if (i !== null && !hasQuote(i)) {
+        date = signalsOf(i.id)?.daily.final?.date ?? null;
+      } else if (i !== null) {
+        const time = quote(i.id)?.time;
+        date =
+          time === undefined
+            ? null
+            : time === null
+              ? (liveTarget(db, i)?.date ?? lastBar(i.id))
+              : barDate(i.zone, time);
+      }
+      sessions.set(id, date);
+    }
+    return sessions.get(id)!;
+  };
+
+  // a final value, judged by the final rows' own staleness
+  const valued = (o: Operand, value: number | null, missing: string): Read => {
+    const of = `${publicField(o.field)} of ${o.symbol}`;
+    return {
+      value,
+      times: [],
+      reasons: [
+        ...(value === null ? [`${of}: ${missing}`] : []),
+        ...(signalsOf(o.symbol)?.stale.final ?? []).map((r) => `${of}: ${r}`),
+      ],
+    };
+  };
+
+  const readWeek = (o: Operand, monday: string): Read => {
+    const def = FIELDS[o.field] as Extract<FieldDef, { from: "weekly" }>;
+    const row = finalRow(o.symbol, "1wk", monday);
+    if (row === null) {
+      return valued(o, null, `no final weekly row for the week of ${monday}`);
+    }
+    return valued(o, row[def.key] ?? null, "no value yet");
+  };
+
   return {
     instrument,
-    // its last trade's date in its exchange's zone, never the clock's
-    session(id: string): string | null {
-      if (!sessions.has(id)) {
-        const i = instrument(id);
-        let date: string | null = null;
-        if (i !== null && !hasQuote(i)) {
-          date = signalsOf(i.id)?.daily.final?.date ?? null;
-        } else if (i !== null) {
-          const time = quote(i.id)?.time;
-          date =
-            time === undefined
-              ? null
-              : time === null
-                ? (liveTarget(db, i)?.date ?? lastBar(i.id))
-                : barDate(i.zone, time);
+    session,
+    closeAt(rule: RuleRow): CloseAt | null {
+      const i = instrument(rule.instrument);
+      if (i === null || !hasQuote(i)) return null;
+      const weekly = rule.triggerOn === "weekly_close";
+      const open = (at: string) =>
+        rule.closedSession === null || at > rule.closedSession;
+      const day = session(i.id);
+      const latest = readSession(db, i.market);
+      const q = quote(i.id);
+      if (day !== null && latest !== null && q !== null) {
+        const pass = closeQuoteAt(i.market, latest);
+        // a session the stored one has moved past reads from final rows only
+        if (
+          day === sessionDate(latest) &&
+          pass !== null &&
+          q.fetchedAt >= pass
+        ) {
+          const at = weekly ? (isFriday(day) ? weekOf(day) : null) : day;
+          if (at !== null && open(at)) return { session: at, bar: null };
         }
-        sessions.set(id, date);
       }
-      return sessions.get(id)!;
+      // a newer bar that closed but is not final yet is waited for, so an
+      // older one is never read in its place
+      const today = latest === null ? null : sessionDate(latest);
+      const waits = (final: string | null, interval: "1d" | "1wk") =>
+        today !== null &&
+        unsettled(
+          i.id,
+          interval,
+          final,
+          interval === "1d" ? today : weekOf(today),
+        );
+      if (!weekly) {
+        const bar = lastFinal(i.id, "1d");
+        if (waits(bar, "1d")) return null;
+        return bar !== null && open(bar) ? { session: bar, bar } : null;
+      }
+      const week = lastFinal(i.id, "1wk");
+      if (waits(week, "1wk")) return null;
+      if (week === null || !open(week)) return null;
+      const bar = lastFinal(i.id, "1d", addDays(week, 7));
+      return bar !== null && weekOf(bar) === week
+        ? { session: week, bar }
+        : null;
     },
+    readFinal(o: Operand, bar: string): Read {
+      const i = instrument(o.symbol);
+      const def = FIELDS[o.field]!;
+      if (i === null) return valued(o, null, "not stored");
+      if (def.from === "relative") return valued(o, null, CLOSE_NO_RELATIVE);
+      if (def.from === "quote") {
+        const [b, prev] = db
+          .query<
+            {
+              date: string;
+              high: number | null;
+              low: number | null;
+              close: number;
+              final: number;
+            },
+            [string, string]
+          >(
+            `select date, high, low, close, final from bars where instrument = ?
+               and interval = '1d' and date <= ? order by date desc limit 2`,
+          )
+          .all(i.id, bar);
+        if (b === undefined || b.date !== bar || b.final !== 1) {
+          return valued(o, null, `no final bar for ${bar}`);
+        }
+        const before = prev?.close ?? null;
+        const values: Record<QuoteColumn, number | null> = {
+          price: b.close,
+          dayHigh: b.high,
+          dayLow: b.low,
+          previousClose: before,
+          changePercent: before ? ((b.close - before) / before) * 100 : null,
+        };
+        return valued(o, values[def.column], "no value");
+      }
+      if (def.from === "weekly") return readWeek(o, weekOf(bar));
+      const row = finalRow(i.id, "1d", bar);
+      if (row === null) {
+        return valued(o, null, `no final signal row for ${bar}`);
+      }
+      return valued(o, row[def.key] ?? null, "no value yet");
+    },
+    readWeek,
     read(o: Operand): Read {
       const i = instrument(o.symbol);
       const def = FIELDS[o.field]!;
@@ -312,15 +491,33 @@ function splitPauses(c: Comparison, instrument: string): boolean {
   return splitSensitive(c, instrument);
 }
 
-function evaluateWith(r: Reader, db: Db, rule: RuleRow): Evaluation {
+function evaluateWith(
+  r: Reader,
+  db: Db,
+  rule: RuleRow,
+  at: CloseAt | null = null,
+): Evaluation {
+  const bar = at?.bar ?? null;
+  // a daily close reads weekly fields as of the last completed week, so
+  // the close pass and a final bar read the same row
+  const week =
+    at !== null && rule.triggerOn === "close"
+      ? addDays(weekOf(at.session), -7)
+      : null;
+  const read = (o: Operand) =>
+    week !== null && FIELDS[o.field]!.from === "weekly"
+      ? r.readWeek(o, week)
+      : bar === null
+        ? r.read(o)
+        : r.readFinal(o, bar);
   const reasons: string[] = [];
   const times: number[] = [];
   let untimed = false;
   const values = new Map<Comparison, boolean>();
   const shownValues: ComparisonValue[] = [];
   for (const c of comparisons<Comparison>(rule.condition.node)) {
-    const left = r.read(c.left);
-    const right = typeof c.right === "number" ? null : r.read(c.right);
+    const left = read(c.left);
+    const right = typeof c.right === "number" ? null : read(c.right);
     const own = [...left.reasons, ...(right?.reasons ?? [])];
     for (const id of new Set([
       c.left.symbol,
@@ -358,7 +555,7 @@ function evaluateWith(r: Reader, db: Db, rule: RuleRow): Evaluation {
     });
   }
   // with no date a true could not tell a new session from the fired one
-  if (r.session(rule.instrument) === null) {
+  if (bar === null && r.session(rule.instrument) === null) {
     reasons.push(`${rule.instrument}: ${NO_SESSION}`);
   }
   const unique = [...new Set(reasons)];
@@ -376,6 +573,18 @@ function evaluateWith(r: Reader, db: Db, rule: RuleRow): Evaluation {
     }
     if (e.reportedSeenAt === null) {
       return { result: "false", values: shownValues, reasons: [WAITING] };
+    }
+    // a final bar has no trade time to tell a report before its open
+    // from one after its close, so its own day never counts
+    if (bar !== null) {
+      const zone = r.instrument(rule.instrument)?.zone ?? "UTC";
+      if (bar <= localDate(zone, e.reportedSeenAt)) {
+        return {
+          result: "unknown",
+          values: shownValues,
+          reasons: [BEFORE_RESULTS],
+        };
+      }
     }
     if (untimed) {
       return { result: "unknown", values: shownValues, reasons: [UNTIMED] };
@@ -415,7 +624,9 @@ export function evaluateRules(
 
 // its next true result fires: armed, and in a session it has not fired in
 export function firesNext(r: Reader, rule: RuleRow): boolean {
-  return rule.armed && later(r.session(rule.instrument), rule.firedSession);
+  const s = r.session(rule.instrument);
+  const at = s !== null && rule.triggerOn === "weekly_close" ? weekOf(s) : s;
+  return rule.armed && later(at, rule.firedSession);
 }
 
 // later, never just other: a fallback date can be older than the fired one
@@ -430,11 +641,44 @@ export function applyRule(
   quoteEveryMs: number,
   r: Reader = reader(db, now, quoteEveryMs),
 ): Outcome {
+  if (rule.triggerOn !== "touch") return applyClose(db, rule, now, r);
   const evaluation = evaluateWith(r, db, rule);
+  return record(
+    db,
+    rule,
+    evaluation,
+    r.session(rule.instrument),
+    now,
+    rule.closedSession,
+  );
+}
+
+// once per closed bar: a revised close neither retriggers nor retracts
+function applyClose(db: Db, rule: RuleRow, now: number, r: Reader): Outcome {
+  const at = r.closeAt(rule);
+  if (at === null) {
+    return { evaluation: evaluateWith(r, db, rule), alert: null };
+  }
+  const evaluation = evaluateWith(r, db, rule, at);
+  const spent =
+    evaluation.result !== "unknown" ||
+    (evaluation.reasons.length === 1 &&
+      evaluation.reasons[0] === BEFORE_RESULTS);
+  if (!spent) return { evaluation, alert: null };
+  return record(db, rule, evaluation, at.session, now, at.session);
+}
+
+function record(
+  db: Db,
+  rule: RuleRow,
+  evaluation: Evaluation,
+  session: string | null,
+  now: number,
+  closedSession: string | null,
+): Outcome {
   let alert: Fired | null = null;
   let armed = rule.armed;
   let firedSession = rule.firedSession;
-  const session = r.session(rule.instrument);
   // still true in the session it fired in: no alert, and it stays armed
   if (evaluation.result === "true" && armed && later(session, firedSession)) {
     const gate = gateItem(rule, eventOf(db, rule));
@@ -445,6 +689,8 @@ export function applyRule(
         condition: JSON.parse(writeCondition(rule.condition)),
         note: rule.note,
       },
+      on: rule.triggerOn,
+      session,
       ...(gate === null ? {} : { after_earnings: gate }),
       values: evaluation.values,
     };
@@ -458,7 +704,12 @@ export function applyRule(
   } else if (evaluation.result === "false") {
     armed = true;
   }
-  recordResult(db, rule.id, evaluation.result, armed, firedSession, now);
+  recordResult(
+    db,
+    rule.id,
+    { result: evaluation.result, armed, firedSession, closedSession },
+    now,
+  );
   return { evaluation, alert };
 }
 

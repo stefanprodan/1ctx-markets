@@ -113,6 +113,8 @@ describe("the alerts feed", () => {
         when: "price < 200",
         note: null,
         triggered_at: "2026-10-26T07:00:00Z",
+        on: "touch",
+        session: null,
         values: { price: 199.5 },
       },
       expect.objectContaining({ id: 2, triggered_at: "2026-10-26T07:00:00Z" }),

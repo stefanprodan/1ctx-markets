@@ -5,6 +5,7 @@ import { describe, expect, test } from "bun:test";
 import { chmodSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { addDays, localDate } from "../src/market/zone.ts";
 import { markets } from "../src/operations/markets.ts";
 import {
   type Bytes,
@@ -670,6 +671,33 @@ describe("the send pass", () => {
         l,
       ).body,
     ).toBe("NVDA MACD turn below none: down");
+  });
+
+  test("a close alert's text names the close it read", () => {
+    const l = {
+      [NVDA]: { name: null, type: "EQUITY", currency: "USD", unit: "price" },
+    };
+    const monday = localDate("UTC", START);
+    const t = {
+      symbol: NVDA,
+      when: "price < 277",
+      note: null,
+      values: { price: 276.5 },
+    };
+    expect(
+      notification({ ...t, on: "close", session: addDays(monday, 18) }, l).body,
+    ).toBe("At the 13 Nov close: NVDA fell below 277.00 USD: 276.50 USD");
+    expect(
+      notification(
+        { ...t, on: "weekly_close", session: addDays(monday, 14) },
+        l,
+      ).body,
+    ).toBe(
+      "At the close of the week of 9 Nov: NVDA fell below 277.00 USD: 276.50 USD",
+    );
+    expect(notification({ ...t, on: "touch", session: monday }, l).body).toBe(
+      "NVDA fell below 277.00 USD: 276.50 USD",
+    );
   });
 });
 

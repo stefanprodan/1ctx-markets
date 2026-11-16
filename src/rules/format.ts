@@ -10,6 +10,7 @@ import {
   MAX_SYMBOL,
   parseWhen,
   renderWhen,
+  type TriggerOn,
   WHEN_FIELDS,
   WhenError,
   type WhenNode,
@@ -404,11 +405,17 @@ const unitOf = (o: Operand, i: Instrument): string => {
   return i.currency === null ? i.unit : `${i.unit} ${i.currency}`;
 };
 
+// another market can still trade at this one's close, so its value
+// there would be its last session's
+export const CLOSE_OWN = "on: close reads its own symbol only";
+export const CLOSE_NO_RELATIVE = "on: close takes no relative return";
+
 // checks only the resolved instruments can answer: count, quotes, units
 export function checkBound(
   c: Condition,
   own: string,
   instruments: ReadonlyMap<string, Instrument>,
+  on: TriggerOn = "touch",
 ): void {
   const ids = instrumentsOf(c);
   ids.add(own);
@@ -422,10 +429,21 @@ export function checkBound(
     if (i === undefined) throw new Error(`${id} was not resolved`);
     return i;
   };
+  if (on !== "touch" && !hasQuote(get(own))) {
+    throw new RuleError(
+      `${own} is a series with no quote, so it has no close to wait for`,
+    );
+  }
   comparisons<Comparison>(c.node).forEach((cmp, k) => {
     const at = `comparison ${k + 1} (${whenText(cmp, own)})`;
     for (const o of operands(cmp)) {
       const i = get(o.symbol);
+      if (on !== "touch" && FIELDS[o.field]!.from === "relative") {
+        throw new RuleError(`${at}: ${CLOSE_NO_RELATIVE}`);
+      }
+      if (on !== "touch" && o.symbol !== own) {
+        throw new RuleError(`${at}: ${CLOSE_OWN}`);
+      }
       if (FIELDS[o.field]!.from === "quote" && !hasQuote(i)) {
         throw new RuleError(
           `${at}: ${i.id} is a series with no quote; read it by a signal such as sma50`,
@@ -441,7 +459,7 @@ export function checkBound(
     }
     if (!operands(cmp).some((o) => isLive(o, get(o.symbol)))) {
       throw new RuleError(
-        `${at} reads no live value: compare a live field such as price, change_percent or a signal of a listing with quotes`,
+        `${at} reads no live value: compare a live field such as price, change_percent or a signal of a listing with quotes; for a close, use price with on: close`,
       );
     }
     if (typeof cmp.right !== "number") {
