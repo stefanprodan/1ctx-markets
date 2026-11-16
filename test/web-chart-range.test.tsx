@@ -17,6 +17,7 @@ import {
   PHONE,
   rangesOf,
   readRange,
+  untilRead,
 } from "../src/web/views/Chart.model.ts";
 import { Chart } from "../src/web/views/Chart.tsx";
 
@@ -222,5 +223,73 @@ describe("the chart's ranges without 5-minute closes", () => {
         Reflect.deleteProperty(globalThis, "localStorage");
       else Object.defineProperty(globalThis, "localStorage", before);
     }
+  });
+});
+
+describe("the chart's trades", () => {
+  test("a failed read is asked again at the next load, a landed one is not", async () => {
+    const answers: (string[] | null | Error)[] = [
+      new Error("offline"),
+      null,
+      ["buy"],
+    ];
+    let reads = 0;
+    const got: string[][] = [];
+    const r = untilRead(
+      async () => {
+        const a = answers[reads++];
+        if (a instanceof Error) throw a;
+        return a ?? null;
+      },
+      (v) => got.push(v),
+    );
+    await r.again();
+    expect(got).toEqual([]);
+    await r.missing();
+    expect(got).toEqual([]);
+    await r.missing();
+    expect(got).toEqual([["buy"]]);
+    await r.missing();
+    expect(reads).toBe(3);
+  });
+
+  test("a save reads again, and an answer after stop lands nowhere", async () => {
+    let reads = 0;
+    const late = Promise.withResolvers<string | null>();
+    const got: string[] = [];
+    const r = untilRead(
+      () => (++reads === 2 ? late.promise : Promise.resolve(`read ${reads}`)),
+      (v) => got.push(v),
+    );
+    await r.again();
+    const second = r.again();
+    // a load while a read is out asks nothing more
+    void r.missing();
+    expect(reads).toBe(2);
+    r.stop();
+    late.resolve("late");
+    await second;
+    expect(got).toEqual(["read 1"]);
+    // a bars load landing after the page is left asks nothing
+    await r.missing();
+    expect(reads).toBe(2);
+  });
+
+  test("an older answer never replaces a newer one", async () => {
+    const first = Promise.withResolvers<string | null>();
+    const second = Promise.withResolvers<string | null>();
+    const pending = [first, second];
+    const got: string[] = [];
+    const r = untilRead(
+      () => pending.shift()!.promise,
+      (v) => got.push(v),
+    );
+    const one = r.again();
+    const two = r.again();
+    second.resolve("new");
+    await two;
+    first.resolve("old");
+    await one;
+    expect(got).toEqual(["new"]);
   });
 });

@@ -687,3 +687,48 @@ function summed(placed: readonly (Trade & { at: string })[]): TradeMark[] {
     .map(({ cost: _, ...m }) => m)
     .sort((a, b) => a.time.localeCompare(b.time));
 }
+
+// the owner's trades, read until a read lands: a read lost to a dropped
+// connection is asked again at the chart's next load, never kept as none
+export function untilRead<T>(
+  read: () => Promise<T | null>,
+  got: (v: T) => void,
+): {
+  again: () => Promise<void>;
+  missing: () => Promise<void>;
+  stop: () => void;
+} {
+  let landed = false;
+  let stopped = false;
+  let asking: Promise<void> | null = null;
+  let turn = 0;
+  const ask = (): Promise<void> => {
+    const mine = ++turn;
+    const p = read()
+      .catch(() => null)
+      .then((v) => {
+        if (mine !== turn) return;
+        asking = null;
+        if (v === null) return;
+        landed = true;
+        got(v);
+      });
+    asking = p;
+    return p;
+  };
+  return {
+    // a save: what landed may be old
+    again: () => {
+      landed = false;
+      stopped = false;
+      return ask();
+    },
+    missing: () => (landed || stopped ? Promise.resolve() : (asking ?? ask())),
+    // a page left: an answer after this lands nowhere, nothing more is asked
+    stop: () => {
+      stopped = true;
+      turn++;
+      asking = null;
+    },
+  };
+}

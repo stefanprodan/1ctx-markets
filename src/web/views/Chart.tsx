@@ -78,6 +78,7 @@ import {
   tick,
   timeLabel,
   tradeMarks,
+  untilRead,
   volumes,
 } from "./Chart.model.ts";
 import "./chart.css";
@@ -390,18 +391,22 @@ export function Chart({
       price: number;
     }[]
   >([]);
+  const tradesRead = useMemo(
+    () =>
+      untilRead(
+        () => markets.portfolios.tradesOf(id),
+        (got) => {
+          const kept = got.filter((t) => t.removed_at === null);
+          // an empty answer for an empty list would redraw for nothing
+          if (kept.length > 0 || trades.value.length > 0) trades.value = kept;
+        },
+      ),
+    [id],
+  );
   useEffect(() => {
-    let live = true;
-    void markets.portfolios.tradesOf(id).then((got) => {
-      if (!live || got === null) return;
-      const kept = got.filter((t) => t.removed_at === null);
-      // an empty answer for an empty list would redraw the chart for nothing
-      if (kept.length > 0 || trades.value.length > 0) trades.value = kept;
-    });
-    return () => {
-      live = false;
-    };
-  }, [id, saved]);
+    void tradesRead.again();
+    return tradesRead.stop;
+  }, [tradesRead, saved]);
   useEffect(() => {
     // a fund's own range and style are not the ones a share opens with
     if (hand) return;
@@ -501,6 +506,7 @@ export function Chart({
       });
       error.value = null;
       draw();
+      void tradesRead.missing();
     } catch (e) {
       if (mine !== asked.current) return;
       reading.value = false;
