@@ -700,8 +700,11 @@ rename_broker(broker: string, name: string): { broker };
   (`conflict`, 409 over REST) naming that trade's id, in the message and
   in `trade`, so a retry with the same figures after a timeout never
   doubles a lot. An add with no price or total takes the live quote, so
-  a retry after the quote moved has other figures and is saved.
-  `again: true` saves it, for two real fills that are the same.
+  a retry after the quote moved has other figures: such an add is also
+  kept in memory by its resolved arguments for 2 minutes
+  (`LIVE_RETRY_MS`, lost on a restart), and a repeat while its trade is
+  live is refused the same way. `again: true` saves either, for two
+  real fills that are the same.
   `portfolio_trade` and `POST /trades` share it; the import has its own
   duplicate check.
 - **`rename_broker`** renames a broker by its name, as `PATCH

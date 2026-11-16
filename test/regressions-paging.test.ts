@@ -244,3 +244,73 @@ describe("holdings pages", () => {
     expect(seen.toSorted()).toEqual(names);
   });
 });
+
+describe("a live-priced add", () => {
+  const CASEY: Who = {
+    name: "casey-agent",
+    user: OPERATOR,
+    credential: { kind: "key", id: "casey-agent" },
+    portfolio: "write",
+    alerts: "none",
+    profile: "none",
+    analysis: "none",
+    tradePlans: "none",
+  };
+
+  async function setup() {
+    const w = world();
+    await saveSettings(w.m, OPERATOR, { display_currency: "EUR" });
+    await createPortfolio(w.m, OPERATOR, { name: "Shares" });
+    instrument(w.db, "XX:LIVE", { currency: "EUR", name: "Live Made Up" });
+    quote(w.db, "XX:LIVE", 50, 49);
+    return w;
+  }
+
+  const add = { action: "add", symbol: "XX:LIVE", side: "buy", quantity: 2 };
+  const count = (db: Db) =>
+    (db.query("select count(*) as n from trades").get() as { n: number }).n;
+
+  test("retried after the quote moved saves one trade", async () => {
+    const w = await setup();
+    const first = await ask(w.m, CASEY, "portfolio_trade", add);
+    expect(first.error).toBe(false);
+    setQuote(w.db, "XX:LIVE", 51, 49);
+    const retry = await ask(w.m, CASEY, "portfolio_trade", add);
+    expect(retry).toMatchObject({
+      error: true,
+      body: { error: "conflict", trade: first.body.trade.id },
+    });
+    expect(retry.body.message).toMatch(
+      /^the same trade was saved as trade \d+ in the last/,
+    );
+    expect(count(w.db)).toBe(1);
+  });
+
+  test("repeated past two minutes, or with again, is a second trade", async () => {
+    const w = await setup();
+    await ask(w.m, CASEY, "portfolio_trade", add);
+    setQuote(w.db, "XX:LIVE", 51, 49);
+    const again = await ask(w.m, CASEY, "portfolio_trade", {
+      ...add,
+      again: true,
+    });
+    expect(again.error).toBe(false);
+    await w.clock.advance(2 * 60_000 + 1);
+    setQuote(w.db, "XX:LIVE", 52, 49);
+    const later = await ask(w.m, CASEY, "portfolio_trade", add);
+    expect(later.error).toBe(false);
+    expect(count(w.db)).toBe(3);
+  });
+
+  test("retried after the first was removed is saved", async () => {
+    const w = await setup();
+    const first = await ask(w.m, CASEY, "portfolio_trade", add);
+    await ask(w.m, CASEY, "portfolio_trade", {
+      action: "remove",
+      trade: first.body.trade.id,
+    });
+    setQuote(w.db, "XX:LIVE", 51, 49);
+    const retry = await ask(w.m, CASEY, "portfolio_trade", add);
+    expect(retry.error).toBe(false);
+  });
+});

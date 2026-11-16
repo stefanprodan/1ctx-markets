@@ -1128,6 +1128,21 @@ export const ownerToday = (db: Db, owner: string, now: number): string =>
 // a retry within this of the first add is the same trade
 export const RETRY_MS = 10 * 60_000;
 
+// a live-priced add takes the quote at call time, so its retry has another
+// price: it is known by its arguments for this long instead, in memory
+export const LIVE_RETRY_MS = 2 * 60_000;
+const liveAdds = new WeakMap<
+  Markets,
+  Map<string, { at: number; id: number }>
+>();
+
+const retried = (id: number, ms: number): Failure => ({
+  ...conflict(
+    `the same trade was saved as trade ${id} in the last ${ms / 60_000} minutes, so a retry adds nothing; again: true saves a second fill`,
+  ),
+  trade: id,
+});
+
 export type Added = {
   trade?: ReturnType<typeof tradeItem>;
   // a sell of all with no broker: one per broker's part
@@ -1241,6 +1256,7 @@ async function addTradeOn(
   const shares = lots.reduce((a, x) => a + x.quantity, 0);
   let price = args.price;
   let live: Added["live_price"];
+  let liveKey: string | null = null;
   let total: Added["total"];
   if (args.total !== null) {
     // what left or reached the account, fees in it
@@ -1278,6 +1294,17 @@ async function addTradeOn(
       return { error: "no_data", message: `${r.reason}; name the price` };
     }
     price = q.price * r.rate;
+    liveKey = JSON.stringify([
+      owner,
+      p.id,
+      i.id,
+      args.side,
+      args.quantity,
+      args.fees,
+      day,
+      currency,
+      b?.id ?? null,
+    ]);
     live = {
       price,
       at: iso(q.time ?? q.fetchedAt),
@@ -1314,18 +1341,23 @@ async function addTradeOn(
     } else if (readInstrument(db, i.id) === null) {
       return notFound(`${i.id}: deleted while the trade was added`);
     }
+    const seen = liveAdds.get(m) ?? new Map();
+    liveAdds.set(m, seen);
+    for (const [key, add] of seen) {
+      if (now - add.at > LIVE_RETRY_MS) seen.delete(key);
+    }
     if (!args.again) {
+      const before = liveKey === null ? undefined : seen.get(liveKey);
+      if (
+        before !== undefined &&
+        readTrade(db, owner, before.id)?.removedAt === null
+      ) {
+        return retried(before.id, LIVE_RETRY_MS);
+      }
       const since = now - RETRY_MS;
       for (const row of rows) {
         const same = recentSameTrade(db, row, since);
-        if (same !== null) {
-          return {
-            ...conflict(
-              `the same trade was saved as trade ${same.id} in the last ${RETRY_MS / 60_000} minutes, so a retry adds nothing; again: true saves a second fill`,
-            ),
-            trade: same.id,
-          };
-        }
+        if (same !== null) return retried(same.id, RETRY_MS);
       }
     }
     if (oversells(db, owner, rows, i)) {
@@ -1333,6 +1365,7 @@ async function addTradeOn(
     }
     if (making !== null) insertFund(db, making, who.name, now);
     const ids = rows.map((row) => insertTrade(db, row, now));
+    if (liveKey !== null) seen.set(liveKey, { at: now, id: ids[0]! });
     if (make !== null && "market" in make && make.market !== null) {
       setFundMarket(db, i.id, make.market);
     }
