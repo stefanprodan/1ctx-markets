@@ -250,6 +250,9 @@ stored nowhere: a read never triggers or changes anything.
   price level with a number, or with another listing's price level.
   Against its own average, high or other price level the comparison
   still holds and keeps running; non-price fields are never paused.
+  Neither is `macd`, `macd_signal` or `macd_histogram` compared with 0
+  (`splitPauses()`): a split scales both averages alike, so the sign
+  holds.
 - **The pause comes before any evaluation on the new scale**: inside
   the write that applies a new split or rescales past prices, before
   it evaluates, and in a write of its own when a refetch window first
@@ -258,7 +261,8 @@ stored nowhere: a read never triggers or changes anything.
   `docs/sources.md`, "Splits and rescales").
 - **Until the new session's bars are in, split-sensitive comparisons
   are unknown** (`BARS_PENDING`), since the opening quote may already
-  be on the new scale. The symbol's own failed bars run keeps them
+  be on the new scale; MACD's sign against 0 too, since its live value
+  then mixes that quote with unadjusted history. The symbol's own failed bars run keeps them
   unknown too (`BARS_FAILED`), though the market's pass succeeded on
   other listings.
 - **A split pause holds until a new `when`.** `paused` becomes `split`

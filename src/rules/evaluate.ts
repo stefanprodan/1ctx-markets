@@ -303,6 +303,15 @@ export const eventOf = (db: Db, rule: RuleRow): EventRow | null => {
       });
 };
 
+const MACD = new Set(["macd", "macdSignal", "macdHistogram"]);
+
+// MACD's sign survives a split, since its averages scale together; only
+// the split's own session mixes scales, so splitSensitive() still holds it
+function splitPauses(c: Comparison, instrument: string): boolean {
+  if (c.right === 0 && MACD.has(c.left.field)) return false;
+  return splitSensitive(c, instrument);
+}
+
 function evaluateWith(r: Reader, db: Db, rule: RuleRow): Evaluation {
   const reasons: string[] = [];
   const times: number[] = [];
@@ -511,7 +520,7 @@ export function ruleEngine(options: {
           if (rule.paused === "split") continue;
           if (
             comparisons<Comparison>(rule.condition.node).some((c) =>
-              splitSensitive(c, instrument),
+              splitPauses(c, instrument),
             )
           ) {
             setPaused(db, rule.id, "split");
