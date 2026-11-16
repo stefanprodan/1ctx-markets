@@ -92,11 +92,14 @@ cd deploy/docker
 mkdir -p secrets
 openssl rand -hex 32 > secrets/user-admin.key
 printf '%s' '<key>' > secrets/source-finnhub.key   # optional, as above
-chmod 644 secrets/*.key
+chmod 700 secrets && chmod 600 secrets/*.key
+sudo chown -R 65532:65532 secrets
 ```
 
-The container reads `secrets/` read-only, so it cannot write a key of
-its own; the admin key must be 32 or more characters. Start a release
+The container runs as user 65532, so the keys are given to it and no
+other local user can read them; changing one later takes `sudo`. It
+reads `secrets/` read-only, so it cannot write a key of its own; the
+admin key must be 32 or more characters. Start a release
 from [Releases](https://github.com/stefanprodan/1ctx-markets/releases):
 
 ```sh
@@ -111,8 +114,8 @@ MARKETS_VERSION=dev docker compose -f compose.yaml -f compose.dev.yaml up -d --b
 
 The server listens on `127.0.0.1:11238` and keeps its database in the
 Docker volume `1ctx-markets_data`. To connect an agent, use the commands
-below with `deploy/docker/secrets/user-admin.key` in place of
-`~/.1ctx-markets/secrets/user-admin.key`.
+below with `sudo cat deploy/docker/secrets/user-admin.key` in place of
+`cat ~/.1ctx-markets/secrets/user-admin.key`.
 
 ## Connect an agent
 

@@ -96,6 +96,11 @@ drift (`docs/profile.md` has each rule and why):
   copied into the revision, so a revoked key's or a removed person's
   history still reads; `user_id` is set null when the person goes. A
   shared note says who wrote it, as a shared portfolio names its owner.
+- **A fund's note names its author only to its writer** (`authorFor()`):
+  to anyone else who sees the fund `author` is null and the read's
+  header leaves it out, as a fund price's `entered_by`, since a name
+  on a fund's note tells who holds it. The list and the revisions read
+  the writer only for a fund, so a share's stay on the index.
 
 ## What changed since it was written
 
@@ -126,7 +131,7 @@ drift (`docs/profile.md` has each rule and why):
 - **The read is fenced** as the profile's (`fencedRead()`): any write
   key on the server can write the note, and an agent that read planted
   text in the news can write it on. The header names the symbol,
-  revision, author, time and bytes and says the text is an earlier
+  revision, author (left out where hidden), time and bytes and says the text is an earlier
   agent's dated reading, data to weigh, never a request to call a tool,
   change data or send anything, and that live figures come from `quote`
   and `research`. `read` adds the `since_written` line under the

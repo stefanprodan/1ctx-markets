@@ -1,7 +1,6 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 
-import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import pkg from "../package.json";
@@ -23,7 +22,7 @@ import {
 } from "./runtime/keys.ts";
 import { errorFields, logger } from "./runtime/log.ts";
 import { runService, ServiceError } from "./service/index.ts";
-import { open } from "./storage/db/index.ts";
+import { open, privateData } from "./storage/db/index.ts";
 import icon192 from "./web/icon-192.png";
 import icon512 from "./web/icon-512.png";
 import maskable from "./web/icon-maskable-512.png";
@@ -114,7 +113,13 @@ if (config.ui) {
     main.warn("push key unusable", { path: pushPath });
 }
 
-mkdirSync(config.dataDir, { recursive: true });
+const refused = privateData(config.dataDir, dbPath(config));
+if (refused !== null) {
+  main.warn("data directory open to other users", {
+    data: displayPath(config.dataDir),
+    error: refused,
+  });
+}
 const { db, migrations } = open(dbPath(config), wallClock);
 
 const app = start({

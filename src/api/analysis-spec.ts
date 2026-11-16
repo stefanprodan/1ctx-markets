@@ -52,8 +52,8 @@ const tags = ["analysis"];
 const revisionInfo = {
   revision: int,
   author: note(
-    str,
-    "The person and the agent key's name, as `Ana (claude-code)`; the person's name for a web UI save, `admin` for the admin key.",
+    nstr,
+    "The person and the agent key's name, as `Ana (claude-code)`; the person's name for a web UI save, `admin` for the admin key. Null on a fund's note to anyone but its writer.",
   ),
   bytes: note(int, "The text's size in UTF-8 bytes."),
   written_at: note(str, "When this revision was saved."),
@@ -97,7 +97,10 @@ const analysis = object({
     "The text drawn as HTML on the server: no raw HTML, only http, https and mailto links, images shown as text.",
   ),
   revision: nint,
-  author: nstr,
+  author: note(
+    nstr,
+    "Null with no analysis yet, and on a fund's note to anyone but its writer.",
+  ),
   written_at: nstr,
   bytes: nint,
   since_written: since,
@@ -148,7 +151,7 @@ export const analysisSchemas: Record<string, Schema> = {
   AnalysisPreview: object({
     text: note(
       str,
-      "The draft: well-formed UTF-8 with no NUL. The size cap applies only on save.",
+      "The draft: well-formed UTF-8 with no NUL. Over the 24 KiB a save takes, it is refused as a save is.",
     ),
   }),
   AnalysisDrawn: object({

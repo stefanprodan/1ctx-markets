@@ -50,6 +50,16 @@ the `--help` text, and a flag changes there in the same commit.
 | `secrets/source-<name>.key` | a source's API key: `source-fred.key`, `source-finnhub.key`, `source-massive.key`; `source-edgar.key` holds the contact line SEC asks for, a name and an email (`docs/edgar.md`) |
 | `secrets/email-<name>.key` | an SMTP password, put there by hand and picked by name in the web UI's SMTP settings (`docs/admin.md`, "Email"); the name is 1 to 48 lowercase letters, digits and dashes |
 
+- **The data directory is the server user's only** (`privateData()`
+  in `src/storage/db/index.ts`): it is made mode 700 and
+  `markets.db` 600, and SQLite gives `-wal` and `-shm` the file's mode,
+  since the database holds every person's portfolios and email. Each
+  start takes group and other bits off the directory and those files of
+  an older install; a refused `chmod` (a directory another user owns)
+  logs one `data directory open to other users` warning and the start
+  goes on. The service's log and the backups `make staging-deploy`
+  makes sit inside it, so it guards them too.
+
 ## Keys
 
 - **Only `keys.ts` reads key files.** A file holds the bare value,
@@ -91,9 +101,9 @@ the `--help` text, and a flag changes there in the same commit.
   while running, `store.mask()`. Anything shaped like this server's
   keys (`1ctx-markets-`, then 16 or more base64url characters) is
   masked too, so an earlier run's key, whole or cut, never shows.
-- **The server never writes or checks existing files' modes.** Keep
-  `secrets/` readable by the service user only (`chmod 700` on the
-  directory, `chmod 600` on its files).
+- **The server never changes a key file's mode.** Keep `secrets/`
+  readable by the service user only (`chmod 700` on the directory,
+  `chmod 600` on its files).
 
 ## Start log
 

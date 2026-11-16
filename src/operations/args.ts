@@ -32,11 +32,16 @@ export function fields(
   return input as Record<string, unknown>;
 }
 
-const DECIMAL = /^-?(\d+\.?\d*|\.\d+)$/;
+// one way to match each text, so a long run of digits never backtracks
+const DECIMAL = /^-?(?:\d+(?:\.\d*)?|\.\d+)$/;
 const DIGITS = /^\d+$/;
+// longer than any number a person writes; left for the parser to refuse
+export const MAX_NUMBER_TEXT = 64;
 
 export const decimalText = (value: unknown): value is string =>
-  typeof value === "string" && DECIMAL.test(value.trim());
+  typeof value === "string" &&
+  value.length <= MAX_NUMBER_TEXT &&
+  DECIMAL.test(value.trim());
 
 // some clients send a number or a boolean as text, mostly where the
 // schema also takes a string; read as the value, other text is left for

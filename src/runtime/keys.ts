@@ -139,8 +139,8 @@ function createKey(dir: string, file: string, prefix: string): boolean {
 function writeKey(dir: string, file: string, value: string): boolean {
   const path = join(dir, file);
   try {
-    // only secrets/ is private; its parents keep the umask's mode
-    mkdirSync(dirname(dir), { recursive: true });
+    // the data directory holds the database, as private as the keys
+    mkdirSync(dirname(dir), { recursive: true, mode: 0o700 });
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     writeFileSync(path, value, { flag: "wx", mode: 0o600 });
     return true;

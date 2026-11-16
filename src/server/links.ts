@@ -306,12 +306,15 @@ export function links(deps: {
         at - DAY_MS,
       );
       // a browser that signed this person in keeps only its own cap, so
-      // a stranger's asks never close the inbox to it
+      // a stranger's asks never close the inbox to it; a link burned by
+      // wrong codes is used too, but at its last try, never below it
       const known = count(
         `select count(*) as n from links
-         where user_id = ? and challenge_hash = ? and used_at is not null`,
+         where user_id = ? and challenge_hash = ? and used_at is not null
+           and code_tries < ?`,
         u.id,
         asker,
+        MAX_CODE_TRIES,
       );
       const browser = count(
         `select count(*) as n from link_asks

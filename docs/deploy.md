@@ -170,15 +170,20 @@ the GitHub Container Registry (GHCR), both made by
   OrbStack.** Their file sharing breaks the POSIX locks SQLite's WAL
   needs. A new named volume takes the image's `/data` with its owner
   65532. On a Linux host a bind mount works once it is
-  `chown 65532:65532`.
+  `chown 65532:65532`. Each start makes `/data` mode 700 and the
+  database 600 (`docs/config.md`); on a mount 65532 does not own it
+  warns and goes on.
 - **`/data/secrets` is mounted read-only.** The owner writes
   `user-admin.key` (32 or more printable ASCII characters) and any
-  `source-<name>.key` before the first start, each readable by 65532
-  (mode 644). The server keeps an existing admin key and writes nothing
-  else there; on a read-only mount it cannot write one, so a missing
-  admin key fails the start. A missing `push-vapid.key` only turns push
-  notifications off, with a warning; to turn them on, copy in one
-  that a start with writable secrets made, readable by 65532.
+  `source-<name>.key` before the first start, then gives them to 65532
+  alone (`chmod 700 secrets && chmod 600 secrets/*.key`, then
+  `sudo chown -R 65532:65532 secrets`), so no other local user reads
+  the admin key; changing a key later takes `sudo`. The server keeps
+  an existing admin key and writes nothing else there; on a read-only
+  mount it cannot write one, so a missing admin key fails the start. A
+  missing `push-vapid.key` only turns push notifications off, with a
+  warning; to turn them on, copy in one that a start with writable
+  secrets made, given to 65532 the same way.
 - **`make image-smoke` runs the image as Docker Compose does**: a fresh
   named volume, read-only secrets holding an admin key, a read-only
   root, no capabilities, and `--no-sync` so no source is called. It

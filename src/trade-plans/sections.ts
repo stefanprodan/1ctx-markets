@@ -18,18 +18,76 @@ export type Heading = {
   end: number;
 };
 
-const FENCE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
-const ATX = /^ {0,3}(#{1,6})(?:[ \t]+(.*?))?[ \t]*$/;
+// the markers alone, the rest taken with string scans: adjacent quantifiers
+// over a line's spaces backtrack without bound
+const FENCE = /^ {0,3}(`{3,}|~{3,})/;
+const ATX = /^ {0,3}(#{1,6})(?=[ \t]|$)/;
+// what a regex's . never matches: a line holding one was never a heading
+// or a fence
+const BREAKS = /[\r\u2028\u2029]/;
 const SETEXT = /^ {0,3}(=+|-+)[ \t]*$/;
 // a list item, a quote or a table row: its lines are no paragraph, so a
 // --- under them is a thematic break, never a heading
 const BLOCK = /^ {0,3}([-+*]([ \t]|$)|\d{1,9}[.)]([ \t]|$)|>|\|)/;
 const BREAK = /^ {0,3}([-*_])([ \t]*\1){2,}[ \t]*$/;
 
+const blank = (c: string | undefined) => c === " " || c === "\t";
+
+function trimmed(s: string): string {
+  let a = 0;
+  let b = s.length;
+  while (a < b && blank(s[a])) a++;
+  while (b > a && blank(s[b - 1])) b--;
+  return s.slice(a, b);
+}
+
+function fenceOf(line: string): { run: string; info: string } | null {
+  const m = FENCE.exec(line);
+  if (m === null) return null;
+  const info = line.slice(m[0].length);
+  return BREAKS.test(info) ? null : { run: m[1]!, info };
+}
+
+// a closing run of #s goes with the spaces before it, or alone as the whole
+function atxOf(line: string): { level: number; content: string } | null {
+  const m = ATX.exec(line);
+  if (m === null) return null;
+  const rest = line.slice(m[0].length);
+  if (BREAKS.test(rest)) return null;
+  const content = trimmed(rest);
+  let j = content.length;
+  while (j > 0 && content[j - 1] === "#") j--;
+  if (j === content.length || (j > 0 && !blank(content[j - 1]))) {
+    return { level: m[1]!.length, content };
+  }
+  while (j > 0 && blank(content[j - 1])) j--;
+  return { level: m[1]!.length, content: content.slice(0, j) };
+}
+
+// [text](url) and ![text](url) keep their text, to the first ] and the
+// first ) after it; scanned once, as a regex retries every unclosed [
+function unlinked(text: string): string {
+  let out = "";
+  let from = 0;
+  let close = -1;
+  let paren = -1;
+  for (let p = text.indexOf("["); p !== -1; p = text.indexOf("[", p + 1)) {
+    if (close <= p) close = text.indexOf("]", p + 1);
+    if (close === -1) break;
+    if (text[close + 1] !== "(") continue;
+    if (paren <= close + 1) paren = text.indexOf(")", close + 2);
+    if (paren === -1) break;
+    const start = p > from && text[p - 1] === "!" ? p - 1 : p;
+    out += text.slice(from, start) + text.slice(p + 1, close);
+    from = paren + 1;
+    p = paren;
+  }
+  return out + text.slice(from);
+}
+
 // emphasis, code spans, links and escapes leave their words behind
 function plain(text: string): string {
-  return text
-    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+  return unlinked(text)
     .replace(/\\(.)/g, "$1")
     .replace(/[*_`~]+/g, "")
     .replace(/\s+/g, " ")
@@ -50,31 +108,30 @@ export function headings(text: string): Heading[] {
     const line = raw.endsWith("\r") ? raw.slice(0, -1) : raw;
     const start = at;
     at += raw.length + 1;
-    const f = FENCE.exec(line);
+    const f = fenceOf(line);
     if (fence !== null) {
       if (
         f !== null &&
-        f[1]![0] === fence.char &&
-        f[1]!.length >= fence.length &&
-        f[2]!.trim() === ""
+        f.run[0] === fence.char &&
+        f.run.length >= fence.length &&
+        f.info.trim() === ""
       ) {
         fence = null;
       }
       continue;
     }
     // a backtick fence's info string holds no backtick
-    if (f !== null && !(f[1]![0] === "`" && f[2]!.includes("`"))) {
-      fence = { char: f[1]![0]!, length: f[1]!.length };
+    if (f !== null && !(f.run[0] === "`" && f.info.includes("`"))) {
+      fence = { char: f.run[0]!, length: f.run.length };
       para = null;
       block = false;
       continue;
     }
-    const atx = ATX.exec(line);
+    const atx = atxOf(line);
     if (atx !== null) {
-      const content = (atx[2] ?? "").replace(/(^|[ \t]+)#+$/, "");
       found.push({
-        level: atx[1]!.length,
-        text: plain(content),
+        level: atx.level,
+        text: plain(atx.content),
         line: k + 1,
         start,
       });

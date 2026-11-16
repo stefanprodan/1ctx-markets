@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Database } from "bun:sqlite";
+import { chmodSync, closeSync, mkdirSync, openSync, statSync } from "node:fs";
 import type { Clock } from "../../runtime/clock.ts";
 import type { Migration } from "./migration.ts";
 import { MIGRATIONS } from "./migrations/index.ts";
@@ -10,7 +11,41 @@ export type Db = Database;
 
 export type OpenedDb = { db: Db; migrations: string[] };
 
+// every person's portfolio and email is in the database, so only the
+// server's user reads it; SQLite gives -wal and -shm the file's mode
+export const DATA_DIR_MODE = 0o700;
+export const DB_FILE_MODE = 0o600;
+
+// best effort on an existing install: a directory another user owns, as
+// a container's bind mount can be, refuses chmod and the server still
+// starts; the first refusal's code is answered for one warning
+export function privateData(
+  dir: string,
+  file: string,
+  chmod: (path: string, mode: number) => void = chmodSync,
+): string | null {
+  mkdirSync(dir, { recursive: true, mode: DATA_DIR_MODE });
+  let refused: string | null = null;
+  for (const [path, want] of [
+    [dir, DATA_DIR_MODE],
+    [file, DB_FILE_MODE],
+    [`${file}-wal`, DB_FILE_MODE],
+    [`${file}-shm`, DB_FILE_MODE],
+  ] as const) {
+    const st = statSync(path, { throwIfNoEntry: false });
+    // only bits are taken away, never given
+    if (st === undefined || (st.mode & 0o777 & ~want) === 0) continue;
+    try {
+      chmod(path, st.mode & want);
+    } catch (error) {
+      refused ??= (error as NodeJS.ErrnoException).code ?? "failed";
+    }
+  }
+  return refused;
+}
+
 export function open(path: string, clock: Clock): OpenedDb {
+  if (path !== ":memory:") closeSync(openSync(path, "a", DB_FILE_MODE));
   const db = new Database(path, { create: true, strict: true });
   db.exec("pragma journal_mode = wal");
   db.exec("pragma foreign_keys = on");

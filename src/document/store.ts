@@ -41,6 +41,23 @@ export type Kind = {
   reserve: number;
 };
 
+export type Words = Pick<Kind, "noun" | "notHere">;
+
+function sized(words: Words, bytes: number): void {
+  if (bytes > MAX_DOCUMENT_BYTES) {
+    throw new ArgError(
+      `the ${words.noun} would be ${bytes} bytes, over ${MAX_DOCUMENT_BYTES} (24 KiB); ${words.notHere}`,
+    );
+  }
+}
+
+// a draft is drawn only at a size a save takes, so no preview outgrows one
+export function draftText(words: Words, value: string): string {
+  const text = documentText(value);
+  sized(words, Buffer.byteLength(text));
+  return text;
+}
+
 // the read answer is what must fit, since JSON escaping grows short lines,
 // quotes and control characters past the byte cap's promise
 export function checked(kind: Kind, next: Revision): void {
@@ -49,11 +66,7 @@ export function checked(kind: Kind, next: Revision): void {
       `text is empty; the ${kind.noun} is rewritten, never blanked`,
     );
   }
-  if (next.bytes > MAX_DOCUMENT_BYTES) {
-    throw new ArgError(
-      `the ${kind.noun} would be ${next.bytes} bytes, over ${MAX_DOCUMENT_BYTES} (24 KiB); ${kind.notHere}`,
-    );
-  }
+  sized(kind, next.bytes);
   const sent = sentBytes(kind.read(next)) + kind.reserve;
   if (sent > PAGE_BYTES) {
     throw new ArgError(

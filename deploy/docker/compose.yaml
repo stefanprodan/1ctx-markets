@@ -1,7 +1,9 @@
 # Run with MARKETS_VERSION set to a release. ./secrets holds user-admin.key
 # (32 or more printable characters) and any source-<name>.key, written
-# before the first start and readable by the container's user (mode 644):
-# on a read-only mount the server cannot write a key of its own.
+# before the first start, since on a read-only mount the server cannot
+# write a key of its own. Give them to the container's user only:
+# chmod 700 secrets && chmod 600 secrets/*.key
+# sudo chown -R 65532:65532 secrets
 name: 1ctx-markets
 services:
   markets:

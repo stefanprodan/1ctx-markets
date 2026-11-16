@@ -132,7 +132,8 @@ learns it from `email_on` in `GET /ui/me`.
   since a browser without the cookie gets a new challenge each ask, so
   cookieless asks flood no inbox and spend no server-wide quota on one
   person, except from a browser that already signed that person in
-  (a used link of theirs holds its challenge), held only to its own 3;
+  (a link of theirs used to sign in holds its challenge; one killed by
+  wrong codes never counts), held only to its own 3;
   `ASKS_PER_CHALLENGE_HOUR` (5) an hour from one browser
   whoever it names; `ASKS_PER_HOUR` (50) per server. Over any, nothing
   is sent and `link ask capped` is logged. Asks, codes and links used

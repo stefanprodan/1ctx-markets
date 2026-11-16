@@ -39,7 +39,9 @@ broker, fill or alert comes from it.
   (`src/trade-plans/sections.ts`): a heading, ATX or setext, any level,
   outside code fences, up to the next heading of the same or a higher
   level, whose plain text holds the instrument's name for it. The
-  headings are scanned there, since the renderer gives no source spans.
+  headings are scanned there, since the renderer gives no source spans,
+  by string scans past each line's marker: a pattern over a line's
+  spaces, or over unclosed link brackets, backtracks without bound.
   A `---` under a list item, a quote or a table row (or a line lazily
   continuing one) is a thematic break, never a setext heading, as in
   CommonMark. A heading inside a quote, or a setext heading inside a

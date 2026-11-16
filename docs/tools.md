@@ -140,7 +140,8 @@ area's own tools are in its doc.
   plans tools' `id` and `revision` read `"1"`, `"2.5"` and `"true"` as
   their values (`textValues()`), and `profile_edit`, `analysis_edit`
   and `trade_plans_edit` read `edits` sent as JSON text. Other text is
-  refused.
+  refused, and so is a number's text past 64 characters, so no pattern
+  runs over a long one.
 - **Arguments are typed, each meaning one thing**: an id is an
   integer, never a union with a string, a mode is its own boolean
   (`all: true`), and an argument that changes a row never also picks
