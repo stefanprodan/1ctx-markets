@@ -106,7 +106,7 @@ src/shared/                 plain data and functions the server and the web UI b
                             import; a file here imports only shared/ (no package,
                             bun:, node:, database or network), and web/ imports
                             nothing else outside itself (test/imports.test.ts)
-  currencies.ts             the ISO 4217 codes in circulation, names from Intl
+  currencies.ts             the ISO 4217 codes in circulation, names and minor units from Intl
   isin.ts                   the ISIN check digit
 src/web/                    the web UI, bundled from index.html (Preact)
   app/                      the shell, rail, router, routes and theme

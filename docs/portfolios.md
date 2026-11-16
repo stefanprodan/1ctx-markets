@@ -351,9 +351,11 @@ once and valued on the live price the server already keeps.
   over 3 shares costs 100). The arithmetic sums unrounded values, and
   the holdings answer rounds money (value, cost, P/L, day change,
   totals, cash, dry powder, exposure) once, from the exact value
-  straight to its currency's minor units (`minorUnits()`: Intl's digits
-  for an ISO 4217 code, 0 for JPY, 3 for KWD; 8 for a code ISO lacks, a
-  coin), so 0.024999999 USD answers 0.02, never 0.03 by way of 0.025.
+  straight to its currency's minor units (`minorUnits()` in
+  `src/shared/currencies.ts`, shared with the web UI and push text:
+  Intl's digits for an ISO 4217 code, 0 for JPY, 3 for KWD; 8 for a
+  code ISO lacks, a coin), so 0.024999999 USD answers 0.02, never 0.03
+  by way of 0.025.
   Prices, quantities and rates keep their digits (`exact()`: float
   noise off at 15 significant digits), average cost 8 decimals from a
   cent up (`money()`). A part's stored `amount` (cash's balance, a

@@ -15,6 +15,7 @@ import {
   setDisplayCurrency,
 } from "../src/portfolios/store.ts";
 import { holdings } from "../src/portfolios/value.ts";
+import { notification } from "../src/push/text.ts";
 import type { Db } from "../src/storage/db/index.ts";
 import { ADMIN_KEY, api } from "./helpers/api.ts";
 import { instrument, NOW, quote, world } from "./helpers/world.ts";
@@ -154,4 +155,17 @@ test("a total's day change is missing when a quoted holding's is, its value stil
   const body = await res.json();
   expect(body.totals[0].day_change).toBeNull();
   expect(body.converted.day_change).toBeNull();
+});
+
+test("a pushed price has its currency's decimals", () => {
+  const push = (currency: string, price: number) =>
+    notification(
+      { symbol: "XX:AAA", when: "price < 2000", note: null, values: { price } },
+      {
+        "XX:AAA": { name: null, type: "EQUITY", currency, unit: "price" },
+      },
+    ).body;
+  expect(push("JPY", 1234)).toBe("AAA fell below 2,000 JPY: 1,234 JPY");
+  expect(push("KWD", 1234.5)).toBe("AAA fell below 2,000.00 KWD: 1,234.50 KWD");
+  expect(push("USD", 1234.5)).toBe("AAA fell below 2,000.00 USD: 1,234.50 USD");
 });

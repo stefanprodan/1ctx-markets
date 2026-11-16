@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Words and numbers more than one page writes, so they read alike.
 
+import { minorUnits as digitsOf } from "../../shared/currencies.ts";
+
 // a change as text, its sign already written, and which way it went
 export type Signed = { text: string; dir: -1 | 0 | 1 };
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
-
-let iso: Set<string> | null = null;
 
 export function figure(v: number | null): string {
   if (v === null) return "—";
@@ -85,23 +85,9 @@ export function dateIn(iso: string, zone: string | null | undefined): string {
   }
 }
 
-// a currency's minor units (JPY 0, KWD 3), 2 when unknown; a coin's 8
-export function minorUnits(currency?: string | null): number {
-  if (!currency) return 2;
-  const code = currency.toUpperCase();
-  try {
-    iso ??= new Set(Intl.supportedValuesOf("currency"));
-    if (!iso.has(code)) return 8;
-    return (
-      new Intl.NumberFormat("en", {
-        style: "currency",
-        currency: code,
-      }).resolvedOptions().maximumFractionDigits ?? 2
-    );
-  } catch {
-    return 2;
-  }
-}
+// the server's digits; a figure with no currency named shows 2
+const minorUnits = (currency?: string | null): number =>
+  currency ? digitsOf(currency) : 2;
 
 // in the currency's minor units; bare leaves the code off
 export function amount(

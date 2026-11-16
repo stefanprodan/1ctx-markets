@@ -5,6 +5,7 @@
 // point the holdings answer's own figures.
 
 import { localDate } from "../market/zone.ts";
+import { minorUnits } from "../shared/currencies.ts";
 import type { Db } from "../storage/db/index.ts";
 import { balanceOn, counted } from "./balances.ts";
 import {
@@ -16,7 +17,7 @@ import {
 } from "./growth.ts";
 import type { Broker, Portfolio, Position } from "./store.ts";
 import { cashEntriesOf } from "./store.ts";
-import { holdings, minorUnits, scopeTrades } from "./value.ts";
+import { holdings, scopeTrades } from "./value.ts";
 
 export type NetWorthPoint = {
   date: string;

@@ -9,6 +9,7 @@ import { type Instrument, readInstrument } from "../market/instruments.ts";
 import { type QuoteRow, readQuote } from "../market/quotes.ts";
 import { heldStale, quoteStale, STALE } from "../market/stale.ts";
 import { localDate } from "../market/zone.ts";
+import { minorUnits } from "../shared/currencies.ts";
 import type { Db } from "../storage/db/index.ts";
 import { isFund, latestPrice, readFund } from "./funds.ts";
 import { type Rate, type Rates, rates as ratesOf } from "./fx.ts";
@@ -58,20 +59,6 @@ export const money = (v: number | null): number | null =>
       ? Number(v.toFixed(8))
       : Number(v.toPrecision(15));
 export const qty = exact;
-
-const ISO = new Set(Intl.supportedValuesOf("currency"));
-
-// a currency's minor units (JPY 0, KWD 3); a code ISO lacks, a coin, keeps 8
-export function minorUnits(currency: string): number {
-  const code = currency.toUpperCase();
-  if (!ISO.has(code)) return 8;
-  return (
-    new Intl.NumberFormat("en", {
-      style: "currency",
-      currency: code,
-    }).resolvedOptions().maximumFractionDigits ?? 2
-  );
-}
 
 const cents = (v: number | null, digits: number): number | null =>
   v === null ? null : Number(v.toFixed(digits)) + 0;

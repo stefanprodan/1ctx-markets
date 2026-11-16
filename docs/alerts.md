@@ -370,8 +370,10 @@ A fired alert goes to its owner's devices as a Web Push notification
 - **The payload is JSON under Apple's 4 KB** (`payloadOf()`): `title`
   the symbol's name (its ticker without one), `body` the comparisons
   that held in the Alerts page's words with the value read ("NVDA fell
-  below 170.00 USD: 168.40 USD", "NVDA RSI below 30: 28.4";
-  `src/push/text.ts`, labels from `src/shared/when-words.ts`) and the
+  below 170.00 USD: 168.40 USD", "NVDA RSI below 30: 28.4", a price in
+  its currency's minor units as the page shows it, "1,234 JPY";
+  `src/push/text.ts`, labels from `src/shared/when-words.ts`, digits
+  from `minorUnits()` in `src/shared/currencies.ts`) and the
   note on a second line, cut first when long; `url` the Fired tab;
   `badge` the owner's unseen count as `readSeen()` gives the rail;
   `tag` the alert's id.

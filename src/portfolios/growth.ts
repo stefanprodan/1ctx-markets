@@ -5,7 +5,7 @@
 // positions. Nothing is fetched; a day with no row to price counts 0.
 
 import type { Instrument } from "../market/instruments.ts";
-import { HUNDREDTHS } from "../shared/currencies.ts";
+import { HUNDREDTHS, minorUnits } from "../shared/currencies.ts";
 import { YAHOO } from "../sources/ids.ts";
 import type { Db } from "../storage/db/index.ts";
 import { isFund } from "./funds.ts";
@@ -14,7 +14,6 @@ import type { Broker, Portfolio, Split, Trade } from "./store.ts";
 import {
   type Holdings,
   holdings,
-  minorUnits,
   scopeTrades,
   sellStep,
   splitFactor,
