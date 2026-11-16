@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // The release build's own options, bundled once without compiling.
 
 import { describe, expect, test } from "bun:test";

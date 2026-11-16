@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // The nearest ancestor that scrolls, the shell's main column, for
 // anything that follows or reacts to the page's scroll, and keeping a
 // row that opens in view.

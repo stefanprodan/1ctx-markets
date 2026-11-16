@@ -172,7 +172,8 @@ export function historyLines(
         at: r.entered_at,
         line: {
           key: `${r.id}`,
-          // an update that left the balance and its day alone is dated when made
+          // an update that left the balance and its day alone is
+          // dated when made
           date:
             change === 0 && r.as_of === prev.as_of ? when(r.entered_at) : date,
           amount: r.amount,

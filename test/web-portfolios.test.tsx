@@ -1686,7 +1686,8 @@ describe("a fund the owner prices", () => {
     expect(holdingName({ ...fundRow, isin: undefined, parts: [] }, NOW)).toBe(
       "Fund",
     );
-    // its price, then the day it is for under it; the year only when not this one
+    // its price, then the day it is for under it; the year only when
+    // not this one
     expect(priceLine(fundRow)).toBe("6.00 EUR");
     // ICU builds name September "Sep" or "Sept"
     expect(day("2026-09-30", NOW)).toMatch(/^30 Sept?$/);

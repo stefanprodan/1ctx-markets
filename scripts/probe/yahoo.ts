@@ -247,7 +247,8 @@ const CASES: Case[] = [
     name: "spark-v8-batch",
     url: `${Q1}/v8/finance/spark?symbols=NVDA,VVSM.DE,SOL-USD&range=5d&interval=1d`,
   },
-  // v7 spark carries a chart meta per symbol (price time, session); v8 does not.
+  // v7 spark carries a chart meta per symbol (price time, session);
+  // v8 does not.
   {
     name: "spark-v7-batch",
     url: `${Q1}/v7/finance/spark?symbols=NVDA,VVSM.DE,SOL-USD,TLV.RO,EURUSD%3DX&range=1d&interval=5m`,

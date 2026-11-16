@@ -115,7 +115,8 @@ export async function refreshResearch(
     const outcomes: Outcome[] = [];
     let paused: Paused | null = null;
     // the calendar first, so earnings asked in the same pass are fetched
-    // after any report the calendar first sees; results come back in SECTIONS order
+    // after any report the calendar first sees; results come back
+    // in SECTIONS order
     const fetchOrder = asked.toSorted(
       (a, b) => Number(b === "calendar") - Number(a === "calendar"),
     );

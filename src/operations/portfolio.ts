@@ -1607,7 +1607,8 @@ export async function updateFund(
       }
       const before =
         change.price === undefined ? null : priceOn(db, kept.id, day);
-      // a new currency drops the old prices, so a price sent with it comes after
+      // a new currency drops the old prices, so a price sent with
+      // it comes after
       if (change.name !== undefined || change.currency !== undefined) {
         setFundDetails(db, kept.id, change, now);
       }

@@ -93,7 +93,8 @@ export function edgarJobs(options: {
         }
       }
     } catch (error) {
-      // shutting down: the next start picks the work up; a back-off, the next tick
+      // shutting down: the next start picks the work up; a back-off,
+      // the next tick
       if (
         !(
           error instanceof QueueClosed ||

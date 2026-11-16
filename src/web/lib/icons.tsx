@@ -113,7 +113,8 @@ const PATHS = {
   // Connect agents: a plug
   plug: "M8 14.5v-3M6 5.5v-4M10 5.5v-4M4 5.5h8v3a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3z",
   plus: "M8 3v10M3 8h10",
-  // a condition not met yet: an empty circle, never a cross that reads as delete
+  // a condition not met yet: an empty circle, never a cross that
+  // reads as delete
   circle: "M8 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10z",
   // Trade plans: a flag planted at a level
   flag: "M3.5 14V2.5M3.5 3h8.5l-2 3 2 3H3.5",

@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // What a phone reads to install the UI: the manifest, the icons it
 // names at the paths the server serves, and the page's colours.
 

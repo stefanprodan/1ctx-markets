@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // A package the release bundles cannot ship without its license.
 
 import { expect, test } from "bun:test";

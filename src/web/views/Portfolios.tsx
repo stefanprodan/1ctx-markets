@@ -763,7 +763,8 @@ export function rowMenu(
   return rowActionsOf(x).map((a) => run[a]);
 }
 
-// a label already says Dry powder or Reserve; a phone on All has room for that word only
+// a label already says Dry powder or Reserve; a phone on All has room for
+// that word only
 function rowName(x: Holding, all: boolean, labelled: boolean) {
   if (x.kind === "bond") {
     return (

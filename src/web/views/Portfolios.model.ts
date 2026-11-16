@@ -371,7 +371,8 @@ export function dryPowders(h: Holdings | null): DryPowder[] {
     );
 }
 
-// a buy pays from the dry powder at its broker in its currency, else in its currency
+// the one row a buy pays from: at its broker in its currency, else the only one
+// in its currency; with several or none the owner picks
 export function dryPowderFor(
   all: readonly DryPowder[],
   broker: string | null,
@@ -460,7 +461,8 @@ export function holdingTicker(h: Holding): string {
   return tickerOf(h.id, h.type);
 }
 
-// a new amount goes with the date shown; a name, broker or note edit keeps the date
+// a new amount goes with the date shown; a name, broker or note edit
+// keeps the date
 export function figureEdits(
   h: Holding,
   edited: { amount: number; date: string },
@@ -802,7 +804,8 @@ export type BarSide = {
   pct: number;
 };
 
-// All: invested against dry powder, reserve being outside its value; shown only when both are above 0
+// All: invested against dry powder, reserve being outside its value; shown only
+// when both are above 0
 export function barOf(t: Total, all = false): BarSide[] | null {
   const inv = t.invested ?? 0;
   const dry = t.dry_powder ?? 0;

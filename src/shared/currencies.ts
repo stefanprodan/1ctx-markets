@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // The ISO 4217 currencies in circulation, codes only: the browser's own
 // list differs by browser and holds withdrawn ones, and its names come
 // from Intl.DisplayNames in the reader's language.

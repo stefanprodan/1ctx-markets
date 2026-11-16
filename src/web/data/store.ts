@@ -1471,7 +1471,8 @@ export function store(
     saveError,
     loadDashboard,
     saveLayout,
-    // the revision the layout shown was read or saved on, for an edit to start from
+    // the revision the layout shown was read or saved on, for an edit
+    // to start from
     revision: () => revision,
     // a search is no read; upstream false asks the server's database only
     search: (query: string, upstream = true, signal?: AbortSignal) =>

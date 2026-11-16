@@ -86,7 +86,8 @@ export const INSTRUMENT_TABLES = [
 export type SourceState = {
   name: string;
   on: boolean;
-  // why it is on or off: the key file, the flag, or always for Yahoo and the CFTC
+  // why it is on or off: the key file, the flag, or always for Yahoo
+  // and the CFTC
   why: string;
   backoff(): Backoff | null;
 };

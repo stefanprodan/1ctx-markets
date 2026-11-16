@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // The mark's sparkle and the wordmark's outlines, drawn by the web UI and
 // by the server's sign-in link page, which loads nothing but itself.
 

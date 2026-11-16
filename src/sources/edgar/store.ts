@@ -1,6 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-// a filings run per share, scoped to the instrument, so one failure is stale alone
+// a filings run per share, scoped to the instrument, so one failure
+// is stale alone
 
 import { readSession } from "../../market/calendars.ts";
 import type { Instrument } from "../../market/instruments.ts";

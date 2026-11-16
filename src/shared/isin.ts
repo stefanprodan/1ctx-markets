@@ -1,6 +1,5 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-//
 // ISO 6166 numbers: two letters, nine letters or digits, a check digit.
 
 const SHAPE = /^[A-Z]{2}[A-Z0-9]{9}[0-9]$/;
