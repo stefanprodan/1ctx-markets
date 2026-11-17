@@ -141,13 +141,14 @@ export function netWorth(
   if (open.length === 0 && g.points.length === 0) {
     return { ...g, points: [] };
   }
-  // the line starts once every live account has a balance, so none counts
-  // as nothing before it was entered; a removed one never holds it
+  // the line starts at the first live account's first balance; a later
+  // account counts nothing before its own, as a new account is money
+  // moved in from one already counted. A removed one never holds it
   const firsts = open.map((a) => a.entries.map((e) => e.asOf).sort()[0]!);
   let from =
     firsts.length === 0
       ? g.from
-      : [firsts.sort().at(-1)!, yearBefore(to)].sort()[1]!;
+      : [firsts.sort()[0]!, yearBefore(to)].sort()[1]!;
   if (from > to) from = to;
 
   const currencies = new Set(

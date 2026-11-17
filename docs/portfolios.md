@@ -504,12 +504,14 @@ once and valued on the live price the server already keeps.
   (`rateBook()`), a pair with none named in `missing`. A removed
   account (no live row in its chain) counts only on days before the
   day, in the owner's zone, its last row was removed.
-- **The window**: `from` is the first day every live cash account has
-  a balance (the latest of their first entries), so no account counts
-  as nothing before it was entered, at most a year back; a removed
-  account never holds it. With no live cash account, growth's own
-  `from`. One point a day to `to`; none with no live cash account and
-  fewer than two days held.
+- **The window**: `from` is the first day any live cash account has a
+  balance (the earliest of their first entries), at most a year back;
+  an account counts nothing before its first entry, since a new
+  account is money moved in from one already counted, so adding one
+  dated later never moves the start. A removed account never holds
+  it. With no live cash account, growth's own `from`. One point a day
+  to `to`; none with no live cash account and fewer than two days
+  held.
 - **Today's point is the holdings answer's own**: `total` its
   converted `net_worth`, `cash` its dry powder plus reserve, so Home's
   figure and the line's end never differ. With a rate missing today

@@ -120,16 +120,17 @@ describe("net worth", () => {
     s.add({ asOf: "2026-10-14", amount: 800, pastOf: a });
     s.add({ name: "Second", asOf: "2026-10-12", amount: 50 });
     const n = read(s.db);
-    // the first day both accounts have a balance
-    expect(n.from).toBe("2026-10-12");
+    // the first day any account has a balance
+    expect(n.from).toBe("2026-10-11");
     expect(n.to).toBe(LIVE);
-    expect(n.points).toHaveLength(days("2026-10-12", LIVE));
+    expect(n.points).toHaveLength(days("2026-10-11", LIVE));
     expect(n.points[0]).toEqual({
-      date: "2026-10-12",
+      date: "2026-10-11",
       invested: 0,
-      cash: 650,
-      total: 650,
+      cash: 600,
+      total: 600,
     });
+    expect(on(n, "2026-10-12").cash).toBe(650);
     expect(on(n, "2026-10-14").cash).toBe(850);
     expect(on(n, "2026-10-19").cash).toBe(850);
     expect(on(n, "2026-10-20").cash).toBe(1050);
@@ -207,6 +208,17 @@ describe("net worth", () => {
     expect(n.points.every((p) => p.total === 5)).toBe(true);
   });
 
+  test("keeps its start when an account is added, counting it from its first entry", () => {
+    const s = setup();
+    s.add({ asOf: "2026-10-01", amount: 1000 });
+    s.add({ name: "New", asOf: "2026-10-20", amount: 400 });
+    const n = read(s.db);
+    expect(n.from).toBe("2026-10-01");
+    expect(on(n, "2026-10-19").cash).toBe(1000);
+    expect(on(n, "2026-10-20").cash).toBe(1400);
+    expect(n.points.at(-1)!.cash).toBe(1400);
+  });
+
   test("counts money moved into back-dated accounts once", () => {
     const s = setup();
     const old = s.add({ name: "Combined", asOf: "2026-10-01", amount: 3000 });
@@ -221,7 +233,7 @@ describe("net worth", () => {
     setPositionRemoved(s.db, OPERATOR, old, "test", NOW - 3 * DAY);
     s.add({ name: "Combined", asOf: "2026-10-05", amount: 0, pastOf: emptied });
     const n = read(s.db);
-    expect(n.from).toBe("2026-10-05");
+    expect(n.from).toBe("2026-10-01");
     expect(n.points.every((p) => p.cash === 3000)).toBe(true);
   });
 
