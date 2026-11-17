@@ -681,7 +681,7 @@ export const portfolioSchemas: Record<string, Schema> = {
     currency: note(str, "The named currency, else the display currency."),
     from: note(
       str,
-      "The first day every live cash account has a balance, at most a year back; with no cash account, the growth's `from`.",
+      "The first day any live cash account has a balance, at most a year back; with no cash account, the growth's `from`.",
     ),
     to: note(str, "The owner's today."),
     points: note(
