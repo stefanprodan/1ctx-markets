@@ -50,8 +50,13 @@ schedule), `valuation.ts` (an ADR's quote summary),
   fails alone with the spark error its batch gave, as the split would.
   Once the hour is up it rejoins a batch, and is split out again if it
   still breaks one.
+- **A one-symbol batch fails alone as a lone half does** when spark
+  refuses the symbol with an error body or its chart answers about it
+  (`not found`, `bad request`, a JSON `malformed answer`), with no
+  back-off.
 - **Accepted limits of the split:** a one-symbol batch whose spark and
-  chart both fail backs the queue off as before; a rate limit, timeout
+  chart both fail otherwise, such as two HTTP 500s, backs the queue off
+  as before; a rate limit, timeout
   or network error mid-split fails the batch whole, dropping halves
   already answered; two bad symbols in different halves fail it as an
   outage.
@@ -235,18 +240,25 @@ Phrases from Yahoo (`docs/sources.md`, Refusals):
   it, so a symbol Yahoo refuses on spark goes to its chart and never
   backs the queue off, and stored by `storeQuotes()` like the pass's,
   so signals, rules and every reader see it. Readers of one instrument
-  share one call in flight.
+  share one call in flight, and an instrument is asked at most once
+  each `FAST_MS`, whether or not the call brought a quote back.
 - **The page's read never waits on a busy queue.** The call has a
   deadline (`within()`), so it goes ahead of the jobs' calls; past
-  `FAST_WAIT_MS` (5 s) the read answers the stored quote and a call
-  not started yet never goes out.
+  `FAST_WAIT_MS` (5 s) from the read the read answers the stored quote
+  and a call not started yet never goes out.
 - **Only a Yahoo instrument whose market is open** (`isQuoted()`); any
   other answers `fast: false` and asks nothing.
 - **At most `FAST_CAP` (3) instruments at once, across all users,
   their calls `FAST_SPACING_MS` (2 s) apart:** at worst 18 extra calls
-  a minute. A page left frees its place at once (`release()`, `DELETE
-  /instruments/{symbol}/live`), one that never says so after
-  `FAST_HOLD_MS` (30 s). Past the cap it answers `fast: false`.
+  a minute. The spacing holds where a call leaves the queue, so calls
+  waiting on a busy queue never go out together; one whose turn comes
+  past its read's wait asks nothing.
+- **A place is held by its viewers,** one per login, the admin key
+  one more. A viewer leaving frees only its own hold
+  (`release()`, `DELETE /instruments/{symbol}/live`), one that never
+  says so after `FAST_HOLD_MS` (30 s); the place goes to the next once
+  no viewer holds it. Two tabs of one login are one viewer. Past the
+  cap it answers `fast: false`.
 - **Rate limits stop it first.** Its calls fail at once during a
   back-off. While any Yahoo back-off is in force it answers `fast:
   false`, and for `FAST_COOLDOWN_MS` (30 minutes) after one a 429

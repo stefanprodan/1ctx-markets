@@ -26,6 +26,7 @@ import {
   chartSymbol,
   clone,
   fakeFetch,
+  notFound,
   type Recorded,
   recorded,
 } from "./helpers/yahoo.ts";
@@ -657,6 +658,33 @@ describe("a failed spark batch", () => {
     expect(t.sparks()).toHaveLength(3);
     expect(t.charts()).toHaveLength(0);
     expect(t.y.backoff()).not.toBeNull();
+  });
+
+  test("fails a lone symbol alone when its chart does not know it", async () => {
+    const t = setup((url) =>
+      url.pathname.includes("spark")
+        ? broken
+        : chartSymbol(url) === "S7"
+          ? notFound
+          : undefined,
+    );
+    const [batch, ...rest] = await t.y.sparkAll(["S7"]);
+    expect(rest).toEqual([]);
+    expect(batch!.answer).toBeUndefined();
+    expect(batch!.alone).toBe(true);
+    expect((batch!.error as SourceError).phrase).toBe("source error");
+    expect(t.y.backoff()).toBeNull();
+  });
+
+  test("takes a lone symbol's spark and chart both failing for an outage", async () => {
+    const t = setup((url) =>
+      url.pathname.includes("spark") || chartSymbol(url) === "S7"
+        ? broken
+        : undefined,
+    );
+    const [batch] = await t.y.sparkAll(["S7"]);
+    expect(batch!.alone).toBeUndefined();
+    expect(t.y.backoff()).toMatchObject({ until: now + FAILURE_BACKOFF_MS });
   });
 
   test("is never split on a rate limit", async () => {

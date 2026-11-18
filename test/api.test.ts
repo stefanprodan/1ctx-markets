@@ -25,6 +25,7 @@ import { CALLS_PER_MINUTE } from "../src/server/ratelimit.ts";
 import { finnhub } from "../src/sources/finnhub/client.ts";
 import { fred } from "../src/sources/fred/client.ts";
 import { yahoo } from "../src/sources/yahoo/client.ts";
+import { FAST_CAP, FAST_SPACING_MS } from "../src/sources/yahoo/fast.ts";
 import { type Db, open } from "../src/storage/db/index.ts";
 import { writer } from "../src/storage/writer.ts";
 import { tools } from "../src/tools/index.ts";
@@ -40,6 +41,7 @@ import {
   specSchemas,
   validate,
 } from "./helpers/schema.ts";
+import { CRYPTO, sim } from "./helpers/sim.ts";
 import { FRED_KEY, gate, NOW, sources } from "./helpers/sources.ts";
 import {
   bar,
@@ -50,7 +52,7 @@ import {
   row,
   world,
 } from "./helpers/world.ts";
-import { chartSymbol } from "./helpers/yahoo.ts";
+import { added, chartSymbol, fakeFetch } from "./helpers/yahoo.ts";
 
 const METHODS = ["get", "post", "put", "patch", "delete"];
 
@@ -3793,3 +3795,46 @@ async function portfolioOperations(
     );
   }
 }
+
+describe("an open instrument's fast refresh", () => {
+  test("is held per login: one leaving keeps another's place", async () => {
+    const clock = fakeClock();
+    const { db } = open(":memory:", clock);
+    const symbols = Array.from({ length: FAST_CAP + 1 }, (_, k) => `C${k}-USD`);
+    const s = sim(symbols.map(CRYPTO));
+    const f = fakeFetch((url) => s.route(url, clock.now()));
+    const ctx = {
+      db,
+      clock,
+      writer: writer(db),
+      yahoo: yahoo({ clock, fetch: f.fetch }),
+    };
+    for (const symbol of symbols) await added(ctx, symbol);
+    const handle = api(markets({ ...ctx, fred: null, log: silent }));
+    const [one, two] = [0, 1].map(() => cookieFor(db, clock.now()));
+    // each read has its call's turn, so the fast places fill in order
+    const live = async (cookie: string, symbol: string, method = "GET") => {
+      const res = handle(
+        new Request(
+          `http://markets.test${PREFIX}/instruments/CRYPTO:${symbol}/live`,
+          {
+            method,
+            headers: { cookie, "sec-fetch-site": "same-origin" },
+          },
+        ),
+      );
+      await clock.advance(FAST_SPACING_MS);
+      const answer = await res;
+      return method === "GET" ? (await answer.json()).fast : answer.status;
+    };
+    expect(await live(one!, "C0-USD")).toBe(true);
+    expect(await live(two!, "C0-USD")).toBe(true);
+    for (const symbol of symbols.slice(1, FAST_CAP)) {
+      expect(await live(one!, symbol)).toBe(true);
+    }
+    expect(await live(one!, "C0-USD", "DELETE")).toBe(204);
+    expect(await live(one!, symbols[FAST_CAP]!)).toBe(false);
+    expect(await live(two!, "C0-USD", "DELETE")).toBe(204);
+    expect(await live(one!, symbols[FAST_CAP]!)).toBe(true);
+  });
+});

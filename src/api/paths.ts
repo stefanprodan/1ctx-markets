@@ -550,7 +550,7 @@ export const paths = {
       security: ADMIN_AUTH,
       summary: "Free an instrument's fast refresh",
       description: lines(
-        "The web UI's call when an instrument's page is left: its place among the instruments refreshed fast goes to the next page at once.",
+        "The web UI's call when an instrument's page is left: its place among the instruments refreshed fast goes to the next page at once, unless another login or the admin key still reads it.",
         "",
         "- Asks no source; a quote already being fetched is still stored.",
         `- An instrument not refreshed fast, or not stored, answers the same. A page that never calls it frees its place ${FAST_HOLD_MS / 1000} seconds after its last read.`,

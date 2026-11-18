@@ -1068,12 +1068,13 @@ export function yahoo(options: YahooOptions): Yahoo {
     return call(url, parse);
   };
 
-  // the symbol that broke its calls, asked once on the chart
+  // the symbol that broke its calls, asked once on the chart; own says
+  // the chart answered about the symbol, not that the source is unwell
   const chartAlone = async (
     run: RunOptions,
     symbol: string,
     error: unknown,
-  ): Promise<{ answer?: SparkAnswer; error?: unknown }> => {
+  ): Promise<{ answer?: SparkAnswer; error?: unknown; own?: boolean }> => {
     if (!brokenBy(error)) return { error };
     try {
       return {
@@ -1087,7 +1088,10 @@ export function yahoo(options: YahooOptions): Yahoo {
       };
     } catch (e) {
       if (!ownError(e)) throw e;
-      return { error };
+      return {
+        error,
+        own: e instanceof SourceError && e.phrase !== "source error",
+      };
     }
   };
 
@@ -1099,7 +1103,7 @@ export function yahoo(options: YahooOptions): Yahoo {
   const sparkLone = (symbol: string, error: unknown, run: RunOptions) =>
     calls
       .run(async (): Promise<SparkBatch> => {
-        const one = await chartAlone(run, symbol, error);
+        const { own: _, ...one } = await chartAlone(run, symbol, error);
         return {
           symbols: [symbol],
           ...one,
@@ -1162,7 +1166,7 @@ export function yahoo(options: YahooOptions): Yahoo {
                   error: t.error,
                 });
               }
-              const one = await alone(half[0]!, t.error);
+              const { own: _, ...one } = await alone(half[0]!, t.error);
               out.push({
                 symbols: half,
                 ...one,
@@ -1175,10 +1179,17 @@ export function yahoo(options: YahooOptions): Yahoo {
         const first = await ask(batch);
         if (first.answer !== undefined) return [{ symbols: batch, ...first }];
         if (!brokenBy(first.error)) throw first.error;
+        // as a lone half of a split: spark refusing it, or its chart
+        // answering about it, is that symbol's failure alone
         if (batch.length === 1) {
           const one = await alone(batch[0]!, first.error);
-          if (one.answer === undefined) throw first.error;
-          return [{ symbols: batch, ...one }];
+          if (one.answer !== undefined) {
+            return [{ symbols: batch, answer: one.answer }];
+          }
+          if (!(first.error instanceof SparkRefused) && !one.own) {
+            throw first.error;
+          }
+          return [{ symbols: batch, error: first.error, alone: true }];
         }
         if (!(await narrow(batch))) throw first.error;
         return out;
