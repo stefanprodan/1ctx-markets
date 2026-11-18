@@ -78,6 +78,9 @@ export type Position = {
   cost: number | null;
   coupon: number | null;
   maturity: string | null;
+  // a bond's coupons a year (1, 2 or 4) and the day it accrues from
+  couponsPerYear: number | null;
+  issued: string | null;
   asOf: string;
   broker: number | null;
   note: string | null;
@@ -432,24 +435,34 @@ export function setTradeRemoved(
 
 const POSITION = `select id, portfolio,
   kind, name, currency, instrument,
-  amount, cost, coupon, maturity, as_of as asOf, broker, note,
-  dry_powder as dryPowder, replaces, past_of as pastOf,
+  amount, cost, coupon, maturity, coupons_per_year as couponsPerYear, issued,
+  as_of as asOf, broker, note, dry_powder as dryPowder, replaces, past_of as pastOf,
   entered_by as enteredBy, entered_at as enteredAt, removed_at as removedAt,
   removed_by as removedBy from positions`;
 
 export type NewPosition = Omit<
   Position,
-  "id" | "enteredAt" | "removedAt" | "removedBy" | "pastOf"
-> & { pastOf?: number | null };
+  | "id"
+  | "enteredAt"
+  | "removedAt"
+  | "removedBy"
+  | "pastOf"
+  | "couponsPerYear"
+  | "issued"
+> & {
+  pastOf?: number | null;
+  couponsPerYear?: number | null;
+  issued?: string | null;
+};
 
 export function insertPosition(db: Db, p: NewPosition, now: number): number {
   return Number(
     db
       .query(
         `insert into positions (portfolio, kind, name, currency, instrument,
-           amount, cost, coupon, maturity, as_of, broker, note,
-           dry_powder, replaces, past_of, entered_by, entered_at)
-         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           amount, cost, coupon, maturity, coupons_per_year, issued, as_of,
+           broker, note, dry_powder, replaces, past_of, entered_by, entered_at)
+         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         p.portfolio,
@@ -461,6 +474,8 @@ export function insertPosition(db: Db, p: NewPosition, now: number): number {
         p.cost,
         p.coupon,
         p.maturity,
+        p.couponsPerYear ?? null,
+        p.issued ?? null,
         p.asOf,
         p.broker,
         p.note,

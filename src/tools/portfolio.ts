@@ -47,7 +47,7 @@ const TRADE = `Records a buy or sell of a share, ETF, crypto or fund; remove or 
 
 const CASH = `Adds, updates, removes or restores the owner's cash; all cash lives in Cash. A row is picked by position from holdings (removed true lists removed ones), and an update gives it a new position. dry_powder true: ready to invest at a broker; else reserve. add: name, amount, currency, broker, date, note, dry_powder, maturity (a term deposit's last day: from it, matured); the same name, broker and currency replaces that row. update: position and one or more of amount (the new balance), by (+/- a move), currency (of amount or by, converted), date, note (null clears), dry_powder, name, broker (null takes it off), maturity (null takes it off; a deposit rolled over gets its new day). A date before its as_of with amount alone saves a past balance. remove, restore: position. A buy paid from dry powder: holdings, then update that row with by: -(the total paid). Examples: {"action":"update","position":12,"note":"made-up note"}; {"action":"add","name":"Savings","amount":2500,"currency":"EUR","broker":"South"}.`;
 
-const BOND = `Adds, updates, removes or restores a bond the owner holds. add: name, amount (face), currency (the listing's when symbol names one), symbol (a listing, valued at its percent of par), coupon (percent), maturity, cost (paid), date (bought), broker, portfolio (needed when several), note. update: position (from holdings; on a merged bond each purchase's, in parts) and one or more of amount (face), currency (of amount, converted), cost, date, note (null clears), name, broker (null takes it off); an update gives it a new position. Coupon, maturity and listing never change: remove and add again. remove, restore: position. Example: {"action":"add","name":"Made Up 2030","amount":12000,"currency":"EUR","coupon":4.75,"maturity":"2030-06-30","cost":11650,"date":"2026-03-17"}.`;
+const BOND = `Adds, updates, removes or restores a bond the owner holds. add: name, amount (face), currency (the listing's when symbol names one), symbol (a listing, valued at its percent of par), coupon (percent), maturity, coupons_per_year (1, 2 or 4, on maturity's day and month) and issued (accrues from), both needed for interest (accrued, coupons paid, next payout), cost (paid, accrued interest in), date (bought), broker, portfolio (needed when several), note. update: position (from holdings; on a merged bond each purchase's, in parts) and one or more of amount (face), currency (of amount, converted), cost, date, note, coupons_per_year, issued (null clears each), name, broker (null takes it off); an update gives it a new position. Coupon, maturity and listing never change: remove and add again. remove, restore: position. Example: {"action":"add","name":"Made Up 2030","amount":12000,"currency":"EUR","coupon":4.75,"maturity":"2030-06-30","coupons_per_year":1,"issued":"2024-06-30","cost":11650,"date":"2026-03-17"}.`;
 
 const FUND = `Sets a fund the owner prices: its price per unit for a day, its market, name, currency or holdings. The fund is picked by isin or symbol (its key, fund:<ISIN>, as holdings answers it), else by name; with a pick, name renames it. price with date (default today): a day already priced is replaced. market: where its money is invested (list names them), null takes it off. currency: only while no trade is priced in it. holdings, from its reports, read as an ETF's in research: as_of (report day); top (up to ${MAX_HOLDING_ROWS} of symbol as quote takes it, name, weight %) with assets (% per kind), replaced together; sectors (% per sector key), replaced only when given; a later part is never replaced by an earlier one. Buys and sells go through portfolio_trade. Examples: {"isin":"ZZFUND000011","price":11.87,"date":"2026-10-14"}; {"isin":"ZZFUND000011","holdings":{"as_of":"2026-09-30","top":[{"symbol":"AAPL","weight":6.2}],"assets":{"stock":95,"cash":5}}}.`;
 
@@ -343,6 +343,8 @@ const BOND_ADD = [
   "amount",
   "coupon",
   "maturity",
+  "coupons_per_year",
+  "issued",
   "currency",
   "cost",
   "date",
@@ -358,13 +360,15 @@ const BOND_UPDATE = [
   "note",
   "name",
   "broker",
+  "coupons_per_year",
+  "issued",
 ];
 
 export function parseBondTool(input: unknown): PortfolioArgs {
   const f = textValues(
     positionFields(input, ["action", ...BOND_ADD, "position"]),
     {
-      numbers: ["amount", "cost", "coupon"],
+      numbers: ["amount", "cost", "coupon", "coupons_per_year"],
       ids: ["position"],
     },
   );
@@ -580,6 +584,15 @@ export function portfolioTools(m: Markets, access: Access): Tool[] {
           symbol,
           coupon: { type: "number" },
           maturity: day,
+          coupons_per_year: {
+            type: ["integer", "null"],
+            enum: [1, 2, 4, null],
+            description: "update: null takes it off",
+          },
+          issued: nullable("string", {
+            pattern: day.pattern,
+            description: "the day it accrues from; update: null takes it off",
+          }),
           currency: { type: "string" },
           cost: amount,
           date: day,

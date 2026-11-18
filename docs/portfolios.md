@@ -3,7 +3,8 @@
 Governs portfolios, brokers, trades, positions and the funds the owner
 prices: the tables of migrations `0020-portfolios` and
 `0026-fund-trades`, `src/portfolios/` (`store.ts` rows, `funds.ts` a fund and its
-prices, `value.ts` the holdings arithmetic, `growth.ts` the past
+prices, `value.ts` the holdings arithmetic, `bond-interest.ts` a bond's
+coupons and accrued interest, `growth.ts` the past
 year's growth, `net-worth.ts` net worth per day, `fx.ts` rates,
 `csv.ts`), `src/shared/isin.ts` (the ISIN check),
 `src/operations/portfolio.ts` (every read and write the tools and the
@@ -160,11 +161,24 @@ once and valued on the live price the server already keeps.
   position names, removed ones included, refuses its admin delete
   (409), so a restore never finds it gone.
 - **Positions** (`positions`) hold what has no trades: `cash` (an
-  amount) and `bond` (face amount, coupon, maturity, and its listing
-  when the server has one). Each has its currency and `as_of` date. A
+  amount) and `bond` (face amount, coupon, maturity, its coupon
+  schedule, and its listing when the server has one). Each has its
+  currency and `as_of` date. A
   fund was a position (units, one hand price, total cost) until
   migration `0026-fund-trades`, which drops fund positions and the
   kind, moving nothing: the owner adds each fund again as its buys.
+- **A bond's coupon schedule is two fields the owner gives**
+  (migration `0050-bond-schedule`): `coupons_per_year` (1, 2 or 4) and
+  `issued`, the day it accrues from, before maturity. Neither is ever
+  assumed: with either unset (or no coupon or maturity) the bond has no
+  interest figures and `stale` says `no coupon schedule`. Add sets them,
+  update changes or clears them (null), and an add or an import
+  replacing a kept bond keeps the kept ones when it gives none, since a
+  bonds file has no column for them. An add of a further purchase (the
+  same listing, else the same name, broker and currency) that gives none
+  takes a held purchase's, so a merged row is never half scheduled.
+  `no coupon schedule` goes first in `stale`, so a real reason stays
+  last. Each purchase in `parts` answers its own `coupons_paid`.
 - **A fund may name a market** (`funds.market`), so a fund holding one
   market's shares counts in that market in the exposure and its row
   answers it; none is assumed. The name must be a market a fund's money
@@ -440,7 +454,27 @@ once and valued on the live price the server already keeps.
 - **Cash is worth its amount**; a bond its listing's percent of par,
   with the listing's day change on its face,
   when the listing has a quote (`priced: listing`), else its face
-  (`priced: face`), said so.
+  (`priced: face`), said so. That is its `clean_value`.
+- **A bond's value adds its accrued interest** (`bond-interest.ts`),
+  as a broker shows it, since a listed price leaves it out and the buyer
+  pays it on top. Coupon days fall on maturity's day and month every
+  12 / `coupons_per_year` months back, a day the month lacks taking its
+  last. `accrued` is one coupon × the actual days since the later of the
+  last coupon day and `issued` over the days of the current period
+  (ACT/ACT), counted to the owner's today; 0 before `issued` and from
+  maturity on. An exchange buy owns the whole period, as its cost paid
+  the seller for it, so its cost stays what was paid, accrued included.
+- **A bond's gain adds `coupons_paid`**: the coupons dated after both
+  its purchase (`as_of`) and `issued`, up to today, so an exchange
+  buy's accrued interest paid comes back with its first coupon and the
+  issue day is never a coupon. Coupons never count in `value`: they
+  land as cash the owner enters, so net worth counts them once.
+  Converted, they take today's rate, as cash does.
+- **`next_payout`** is a bond's next coupon day after today and its
+  amount, the face added on maturity's day; a merged bond sums its
+  purchases due on the earliest day. A total answers the earliest day of
+  the bonds in its rows with what they pay on it (converted at the live
+  rate, null with a rate missing), and none when no bond has one.
 
 ## Growth
 
@@ -475,24 +509,28 @@ once and valued on the live price the server already keeps.
   `eased`. A bond counts from its live row's `as_of`, its purchase date,
   which an update moves only when given a `date`; a listed bond
   with closes moves with them, today's live value scaled by each day's
-  close over the last one, else it is worth its face.
+  close over the last one, else it is worth its face; either way plus
+  that day's accrued interest, and the coupons paid by the day are added
+  to `gain` only, at the day's rate, as the holdings count them.
 - **Money in** is buys less sells at their amounts (a buy's `quantity ×
   price + fees`, a sell's `quantity × price − fees`), each at its own
   trade day's close, and a bond's cost (its face with none) on its
   first day.
 - **Today's point is the holdings' live value**: the converted
   `invested` of the holdings answer for the same view and currency
-  (less a holding left out as never priced), so the line ends where
-  the holdings stand. Its money in counts every
-  trade, a trade dated past the owner's today too.
+  (less a holding left out as never priced), its gain adding the bonds'
+  converted coupons paid, so the line ends where the holdings stand.
+  Its money in counts every trade, a trade dated past the owner's today
+  too.
 
 ## Net worth
 
 - **Net worth per day over the past year**
   (`src/portfolios/net-worth.ts`, `/holdings/net-worth`): the
   holdings' value as growth rebuilds it (`invested`, growth's
-  `value`) plus every cash account's balance (`cash`), reserve and dry
-  powder alike. The caller's own portfolios only: a share shows
+  `value`, a bond's accrued interest in it and its coupons not, as they
+  are in the cash) plus every cash account's balance (`cash`), reserve
+  and dry powder alike. The caller's own portfolios only: a share shows
   portfolios, never a net worth, so the route takes no `owner`. Home's
   Wealth tab draws the net worth (`total`) and the Portfolios page's
   Cash tab the cash (`cash`); no MCP tool answers it.
@@ -565,7 +603,8 @@ in `test/fixtures/mcp/answers.json`; the rules behind them follow.
   otherwise ("coupon is not an argument of update"); cash and a bond
   refuse `market` with its reason (`NO_POSITION_MARKET`), and a bond's
   update refuses its coupon, maturity and listing, which a remove and
-  add change.
+  add change, but takes `coupons_per_year` and `issued`, which an owner
+  often learns after the add; cash refuses both.
 - **A position is checked against its tool before the write**
   (`positionFor()`): another kind's row is refused naming the right
   tool ("position 7 is a bond; portfolio_bond changes it"); an unknown

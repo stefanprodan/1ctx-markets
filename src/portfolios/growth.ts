@@ -8,10 +8,12 @@ import type { Instrument } from "../market/instruments.ts";
 import { HUNDREDTHS, minorUnits } from "../shared/currencies.ts";
 import { YAHOO } from "../sources/ids.ts";
 import type { Db } from "../storage/db/index.ts";
+import { interestOn, type Schedule, scheduleOf } from "./bond-interest.ts";
 import { isFund } from "./funds.ts";
 import { pairSymbols } from "./fx.ts";
 import type { Broker, Portfolio, Split, Trade } from "./store.ts";
 import {
+  couponsIn,
   type Holdings,
   holdings,
   scopeTrades,
@@ -53,6 +55,8 @@ type Bond = {
   cost: number | null;
   // its purchase date
   start: string;
+  // null with no coupon schedule: no interest counted
+  schedule: Schedule | null;
 };
 
 const major = (c: string): [string, number] => HUNDREDTHS[c] ?? [c, 1];
@@ -330,6 +334,8 @@ export function growth(
       const r = rate(i.currency, day);
       if (r !== null) value += q * price * unitOf(i) * r;
     }
+    // coupons count in the gain only, as the holdings count them
+    let coupons = 0;
     for (const b of bonds) {
       if (b.start > day) continue;
       any = true;
@@ -337,10 +343,13 @@ export function growth(
         b.instrument === null ? undefined : bondScale.get(b.instrument);
       const close =
         scale === undefined ? null : closeOn(closes.get(b.instrument!), day);
-      const worth =
+      const clean =
         close === null ? b.amount : (b.amount * close.close * scale!) / 100;
+      const interest = b.schedule === null ? null : interestOn(b.schedule, day);
       const r = rate(b.currency, day);
-      if (r !== null) value += worth * r;
+      if (r === null) continue;
+      value += (clean + (interest?.accrued ?? 0)) * r;
+      coupons += (interest?.coupons ?? 0) * r;
     }
     if (any) days++;
     points.push({
@@ -348,7 +357,7 @@ export function growth(
       date: day,
       value: round(value),
       invested: round(invested),
-      gain: round(value - invested),
+      gain: round(value + coupons - invested),
     });
   }
 
@@ -363,8 +372,10 @@ export function growth(
   }
   // the converted total's invested is the sum of the rows but cash
   let value = live.converted?.invested ?? 0;
+  let coupons = 0;
   for (const r of live.holdings) {
     if (r.id !== null && unpriced.has(r.id)) value -= r.converted?.value ?? 0;
+    coupons += couponsIn(r);
   }
   if (
     live.holdings.some(
@@ -386,7 +397,7 @@ export function growth(
     date: to,
     value: round(value),
     invested: round(invested),
-    gain: round(value - invested),
+    gain: round(value + coupons - invested),
   });
   return {
     currency: target,
@@ -401,15 +412,33 @@ export function growth(
 // the view's live bonds, each from its live row's as_of: its purchase
 // date, which an update moves only when the owner corrects it
 function bondsOf(db: Db, owner: string, portfolio: number | null): Bond[] {
+  type Raw = Omit<Bond, "schedule"> & {
+    coupon: number | null;
+    maturity: string | null;
+    couponsPerYear: number | null;
+    issued: string | null;
+  };
   return db
-    .query<Bond, [string, number | null]>(
+    .query<Raw, [string, number | null]>(
       `select instrument, currency, coalesce(amount, 0) as amount, cost,
-         as_of as start
+         as_of as start, coupon, maturity,
+         coupons_per_year as couponsPerYear, issued
        from positions where kind = 'bond' and removed_at is null
          and portfolio in (select id from portfolios where owner = ?1)
          and (?2 is null or portfolio = ?2)`,
     )
-    .all(owner, portfolio);
+    .all(owner, portfolio)
+    .map(({ coupon, maturity, couponsPerYear, issued, ...b }) => ({
+      ...b,
+      schedule: scheduleOf({
+        amount: b.amount,
+        coupon,
+        maturity,
+        couponsPerYear,
+        issued,
+        asOf: b.start,
+      }),
+    }));
 }
 
 // the stored pairs between each currency and the target, by Yahoo symbol
