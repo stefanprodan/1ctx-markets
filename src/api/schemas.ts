@@ -757,7 +757,7 @@ export const schemas: Record<string, Schema> = {
             close: num,
           }),
         ),
-        "With `extended=true`: the pre- and post-market closes of the sessions answered, read while the regular session is closed, never stored; when empty, `extended_reason` says why.",
+        "With `extended=true`: the pre- and post-market closes of the sessions answered (while the regular session trades, its pre-market), never stored; when empty, `extended_reason` says why.",
       ),
       extended_reason: extendedReason(
         "Why `extended_points` is empty; null when it holds points.",

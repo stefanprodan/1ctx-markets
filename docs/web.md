@@ -966,7 +966,8 @@ Portfolios page is the reference for each part.
   outside the session is named Pre or Post, since the close is the
   regular session's alone.
 - **1D is a baseline at the previous close**, kept in the scale, with
-  pre and post trading drawn faded and joined to the session
+  pre and post trading drawn faded and joined to the session (the
+  day's pre-market while the session trades too, as a chart site does)
   (`extendedLines`, which drops a bar sharing the closing trade's time),
   and spans its whole session to the close (`sessionSlots()`), so the
   first minutes are a short line, not the whole width. A scale number a
