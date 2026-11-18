@@ -42,7 +42,7 @@ import { sourceFile } from "../runtime/keys.ts";
 import { recheck } from "../server/caller.ts";
 import { ATTRIBUTION } from "../sources/fred/sync.ts";
 import { FRED, FUND_SOURCE, YAHOO } from "../sources/ids.ts";
-import type { Backoff } from "../sources/source.ts";
+import type { Backoff, Phrase } from "../sources/source.ts";
 import { BACKFILL_JOB } from "../sources/yahoo/jobs.ts";
 import type { Db } from "../storage/db/index.ts";
 import { failedRun, type Run } from "../storage/runs.ts";
@@ -321,10 +321,19 @@ function scopeRuns(
     "select 1 as n from bars where instrument = ? and interval = '1d' limit 1",
   );
   type Ended = Row & { endedAt: number; status: Run["status"] };
+  const ended = runs.map((r) => r.ended).filter((r): r is Ended => r !== null);
+  // each source's latest run, of any job or scope, that stored what it
+  // answered: a run with nothing to ask ends ok without asking
+  const answered = new Map<string, number>();
+  for (const r of ended)
+    if (
+      r.status === "ok" &&
+      r.rows > 0 &&
+      r.endedAt > (answered.get(r.source) ?? 0)
+    )
+      answered.set(r.source, r.endedAt);
   return (
-    runs
-      .map((r) => r.ended)
-      .filter((r): r is Ended => r !== null)
+    ended
       .sort(
         (a, b) =>
           cmp(a.source, b.source) || cmp(a.job, b.job) || b.endedAt - a.endedAt,
@@ -334,10 +343,15 @@ function scopeRuns(
       .map((r) => {
         // a read fetches a history without a backfill run, which settles it
         const settled =
-          r.status === "failed" &&
-          r.source === YAHOO &&
-          r.job === BACKFILL_JOB &&
-          hasBars.get(r.scope) !== null;
+          (r.status === "failed" &&
+            r.source === YAHOO &&
+            r.job === BACKFILL_JOB &&
+            hasBars.get(r.scope) !== null) ||
+          // a market's lost connection is the network's, settled once the
+          // source answers again; the market asks on its own schedule
+          (!r.scope.includes(":") &&
+            CONNECTION.has(r.error ?? "") &&
+            (answered.get(r.source) ?? 0) > r.endedAt);
         return {
           source: r.source,
           job: r.job,
@@ -349,6 +363,11 @@ function scopeRuns(
       })
   );
 }
+
+const CONNECTION = new Set<string>([
+  "network error",
+  "timed out",
+] satisfies Phrase[]);
 
 // every scope status lists as failing, not only the few a job shows
 export const failingScopes = (db: Db): ScopeRun[] =>
