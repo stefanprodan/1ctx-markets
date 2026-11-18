@@ -5,12 +5,14 @@
 
 import { wallOfDate } from "../../market/zone.ts";
 import type { Clock } from "../../runtime/clock.ts";
+import type { Log } from "../../runtime/log.ts";
 import { CFTC } from "../ids.ts";
 import {
   type Backoff,
   type Fetch,
   limiter,
   type RunOptions,
+  rateLimited,
   SourceError,
   Unreadable,
 } from "../source.ts";
@@ -173,7 +175,12 @@ export type Cftc = {
   backoff(): Backoff | null;
 };
 
-export type CftcOptions = { clock: Clock; fetch?: Fetch; host?: string };
+export type CftcOptions = {
+  clock: Clock;
+  fetch?: Fetch;
+  host?: string;
+  log?: Log;
+};
 
 const malformed = (detail: string) =>
   new SourceError("malformed answer", detail);
@@ -293,7 +300,13 @@ export function cftc(options: CftcOptions): Cftc {
   const { clock } = options;
   const host = options.host ?? HOST;
   const doFetch: Fetch = options.fetch ?? ((url, init) => fetch(url, init));
-  const calls = limiter(clock, SPACING_MS);
+  const calls = limiter(
+    clock,
+    SPACING_MS,
+    options.log === undefined
+      ? undefined
+      : { source: SOURCE, log: options.log },
+  );
 
   const get = <T>(
     report: Report,
@@ -321,7 +334,7 @@ export function cftc(options: CftcOptions): Cftc {
           throw new SourceError(timedOut ? "timed out" : "network error");
         }
         const fetchedAt = clock.now();
-        if (res.status === 429) throw new SourceError("rate limited");
+        if (res.status === 429) throw rateLimited(res, clock.now());
         if (res.status === 404) throw new SourceError("not found");
         if (res.status === 400) throw new SourceError("bad request");
         if (!res.ok) {

@@ -13,6 +13,8 @@ import {
   deleteOne,
   instrument,
   instruments,
+  liveCheck,
+  liveRelease,
   pageSize,
   refetchOne,
   retryFailing,
@@ -1178,6 +1180,18 @@ function operator(admin: AdminDeps, world: World): Route[] {
       scope: "session",
       handle: async (_req, url, params, who) =>
         storedCheck(m, who, url, params.symbol!),
+    },
+    {
+      method: "GET",
+      path: "/instruments/{symbol}/live",
+      scope: "session",
+      handle: (_req, url, params) => liveCheck(m, url, params.symbol!),
+    },
+    {
+      method: "DELETE",
+      path: "/instruments/{symbol}/live",
+      scope: "session",
+      handle: async (_req, url, params) => liveRelease(m, url, params.symbol!),
     },
     {
       method: "POST",

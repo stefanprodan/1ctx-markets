@@ -10,6 +10,7 @@ import {
   type Fetch,
   limiter,
   type RunOptions,
+  rateLimited,
   SourceError,
   scrub,
   Unreadable,
@@ -294,7 +295,13 @@ export function massive(options: MassiveOptions): Massive {
   const { clock, key } = options;
   const host = options.host ?? HOST;
   const doFetch: Fetch = options.fetch ?? ((url, init) => fetch(url, init));
-  const calls = limiter(clock, SPACING_MS);
+  const calls = limiter(
+    clock,
+    SPACING_MS,
+    options.log === undefined
+      ? undefined
+      : { source: SOURCE, log: options.log },
+  );
   const logged = new Set<number | bigint>();
   const report = (dropped: Dropped[]) => {
     for (const d of dropped) {
@@ -330,7 +337,7 @@ export function massive(options: MassiveOptions): Massive {
           throw new SourceError(timedOut ? "timed out" : "network error");
         }
         const fetchedAt = clock.now();
-        if (res.status === 429) throw new SourceError("rate limited");
+        if (res.status === 429) throw rateLimited(res, clock.now());
         // unlike Finnhub's, a Massive 403 is a refused key, never no data
         if (res.status === 401 || res.status === 403) {
           throw new SourceError("key refused");

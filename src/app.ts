@@ -56,6 +56,7 @@ import { type MassiveJobs, massiveJobs } from "./sources/massive/jobs.ts";
 import { pruneNews } from "./sources/massive/store.ts";
 import { type Backoff, type Fetch, queue } from "./sources/source.ts";
 import { type Yahoo, yahoo } from "./sources/yahoo/client.ts";
+import { fastQuotes } from "./sources/yahoo/fast.ts";
 import { settleStored } from "./sources/yahoo/history.ts";
 import { type YahooJobs, yahooJobs } from "./sources/yahoo/jobs.ts";
 import { topHoldingsJobs } from "./sources/yahoo/top-holdings.ts";
@@ -217,7 +218,11 @@ export function start(options: AppOptions): App {
     .catch((error: unknown) => {
       options.log("markets").error("returns fill failed", errorFields(error));
     });
-  const yahooQueue = queue(clock, YAHOO_CONCURRENCY);
+  const sourcesLog = options.log("sources");
+  const yahooQueue = queue(clock, YAHOO_CONCURRENCY, {
+    source: "yahoo",
+    log: sourcesLog,
+  });
   const client = yahoo({ clock, fetch: options.fetch, queue: yahooQueue });
   const yahooCtx = { db, clock, yahoo: client, writer: write, rules };
   const sync = yahooJobs({
@@ -232,6 +237,7 @@ export function start(options: AppOptions): App {
       ? bvb({
           clock,
           fetch: options.fetch,
+          log: sourcesLog,
           // search's copy of a list page never fails the read that brought it
           onList: (kind, rows, at) =>
             write
@@ -284,7 +290,7 @@ export function start(options: AppOptions): App {
   const fredClient =
     fredKey === null
       ? null
-      : fred({ clock, key: fredKey, fetch: options.fetch });
+      : fred({ clock, key: fredKey, fetch: options.fetch, log: sourcesLog });
   const fredSync =
     fredClient === null
       ? null
@@ -298,7 +304,12 @@ export function start(options: AppOptions): App {
   const finnhubClient =
     finnhubKey === null
       ? null
-      : finnhub({ clock, key: finnhubKey, fetch: options.fetch });
+      : finnhub({
+          clock,
+          key: finnhubKey,
+          fetch: options.fetch,
+          log: sourcesLog,
+        });
   const finnhubSync =
     finnhubClient === null
       ? null
@@ -343,7 +354,12 @@ export function start(options: AppOptions): App {
   const edgarClient =
     edgarKey === null || !usableContact(edgarKey)
       ? null
-      : edgar({ clock, contact: edgarKey, fetch: options.fetch });
+      : edgar({
+          clock,
+          contact: edgarKey,
+          fetch: options.fetch,
+          log: sourcesLog,
+        });
   const edgarSync =
     edgarClient === null
       ? null
@@ -353,7 +369,7 @@ export function start(options: AppOptions): App {
           tracking,
         });
 
-  const cftcClient = cftc({ clock, fetch: options.fetch });
+  const cftcClient = cftc({ clock, fetch: options.fetch, log: sourcesLog });
   const cftcList = marketList(clock);
   const cftcSync = cftcJobs({
     clock,
@@ -381,6 +397,14 @@ export function start(options: AppOptions): App {
     log: options.log("tools"),
     tracking,
     quoteEveryMs: options.quoteEveryMs,
+    fast: fastQuotes({
+      db,
+      clock,
+      writer: write,
+      yahoo: client,
+      rules,
+      log: options.log("yahoo"),
+    }),
   });
   const track = tracker({
     m: reads,

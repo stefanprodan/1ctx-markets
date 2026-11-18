@@ -1550,6 +1550,10 @@ export const schemas: Record<string, Schema> = {
     input: note(str, "The symbol as sent."),
     stored: bool,
   }),
+  Live: object({
+    input: note(str, "The symbol as sent."),
+    fast: bool,
+  }),
   Refetched: object({
     input: note(str, "The symbol as sent."),
     id: str,

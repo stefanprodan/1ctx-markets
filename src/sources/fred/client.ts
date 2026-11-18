@@ -5,6 +5,7 @@
 import { wallOfDate } from "../../market/zone.ts";
 import type { Clock } from "../../runtime/clock.ts";
 import { MINUTE_MS } from "../../runtime/clock.ts";
+import type { Log } from "../../runtime/log.ts";
 import { FRED } from "../ids.ts";
 import {
   type Backoff,
@@ -14,6 +15,7 @@ import {
   QueueClosed,
   queue,
   type RunOptions,
+  rateLimited,
   SourceError,
   scrub,
   Unreadable,
@@ -72,6 +74,7 @@ export type FredOptions = {
   fetch?: Fetch;
   host?: string;
   queue?: Queue;
+  log?: Log;
 };
 
 const malformed = (detail: string) =>
@@ -220,7 +223,15 @@ export function fred(options: FredOptions): Fred {
   const { clock, key } = options;
   const host = options.host ?? HOST;
   const doFetch: Fetch = options.fetch ?? ((url, init) => fetch(url, init));
-  const calls = options.queue ?? queue(clock, CONCURRENCY);
+  const calls =
+    options.queue ??
+    queue(
+      clock,
+      CONCURRENCY,
+      options.log === undefined
+        ? undefined
+        : { source: SOURCE, log: options.log },
+    );
   // start times of the calls in the last minute
   const started: number[] = [];
   let closed = false;
@@ -295,7 +306,7 @@ export function fred(options: FredOptions): Fred {
         } catch {
           body = undefined;
         }
-        if (res.status === 429) throw new SourceError("rate limited");
+        if (res.status === 429) throw rateLimited(res, clock.now());
         if (res.status === 400) throw refusal(body);
         if (res.status === 404) throw new SourceError("not found");
         if (!res.ok) {

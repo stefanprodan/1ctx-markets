@@ -277,8 +277,15 @@ learns it from `email_on` in `GET /ui/me`.
   or sign-out starts a session anew (`session` in the store): an answer
   from before it never lands, and its 401 never signs the new one out.
 - **`useRefresh` reads the page again every `REFRESH_MS` (30 s)**, and
-  at once when the tab comes back; it sets its timer once and calls the
-  latest load, so a redraw never pushes the refresh back. Every page
+  at once when the tab comes back; it sets its timer again only when
+  its interval changes and calls the latest load, so a redraw never
+  pushes the refresh back. An instrument page asks `GET
+  /instruments/{symbol}/live` before each read, and on open while
+  visible, and reads every `FAST_REFRESH_MS` (10 s) while it answers
+  `fast` (`fastId`, `refreshMs()`; `docs/yahoo.md`, "Fast quotes").
+  Leaving the page, hiding its tab or closing it (`onLeave()`) frees
+  that place with a keepalive `DELETE` (`leave()`), only after a `fast`
+  answer; the tab shown again reads at once and takes it back. Every page
   with data the server or an agent changes uses it; Connect agents
   changes only by its reader. A refresh never puts a placeholder over
   what is drawn; a failed one keeps it and shows the error. A re-read

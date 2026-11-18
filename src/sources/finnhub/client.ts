@@ -4,12 +4,14 @@
 
 import { wallOfDate } from "../../market/zone.ts";
 import type { Clock } from "../../runtime/clock.ts";
+import type { Log } from "../../runtime/log.ts";
 import { FINNHUB } from "../ids.ts";
 import {
   type Backoff,
   type Fetch,
   limiter,
   type RunOptions,
+  rateLimited,
   SourceError,
   Unreadable,
 } from "../source.ts";
@@ -115,6 +117,7 @@ export type FinnhubOptions = {
   key: string;
   fetch?: Fetch;
   host?: string;
+  log?: Log;
 };
 
 const malformed = (detail: string) =>
@@ -461,7 +464,13 @@ export function finnhub(options: FinnhubOptions): Finnhub {
   const { clock, key } = options;
   const host = options.host ?? HOST;
   const doFetch: Fetch = options.fetch ?? ((url, init) => fetch(url, init));
-  const calls = limiter(clock, SPACING_MS);
+  const calls = limiter(
+    clock,
+    SPACING_MS,
+    options.log === undefined
+      ? undefined
+      : { source: SOURCE, log: options.log },
+  );
 
   const get = <T>(
     path: string,
@@ -494,7 +503,7 @@ export function finnhub(options: FinnhubOptions): Finnhub {
         const fetchedAt = clock.now();
         // the free key's answer for a listing it does not cover
         if (res.status === 403) return { ...NONE, fetchedAt };
-        if (res.status === 429) throw new SourceError("rate limited");
+        if (res.status === 429) throw rateLimited(res, clock.now());
         if (res.status === 401) throw new SourceError("key refused");
         if (res.status === 404) throw new SourceError("not found");
         if (!res.ok) {

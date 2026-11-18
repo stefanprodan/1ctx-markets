@@ -18,7 +18,14 @@ Each provider's own behaviour is in its doc.
   its spacing.
 - **A failure backs the whole queue off.** A 429 pauses every call
   for `RATE_LIMIT_BACKOFF_MS` (5 minutes), any other failure for
-  `FAILURE_BACKOFF_MS` (30 seconds).
+  `FAILURE_BACKOFF_MS` (30 seconds). A 429's `Retry-After` (seconds or
+  an HTTP date, `rateLimited()`) lengthens it, never shortens it, up to
+  `MAX_RETRY_AFTER_MS` (an hour) so one odd header cannot silence a
+  source for days. The Bucharest client reads no headers and keeps 5
+  minutes.
+- **Back-offs are logged once each, never per call** (`QueueLog`):
+  `source backing off` (warn: `source`, `reason`, `until`) when one
+  starts or is pushed later, `source resumed` (info) when it ends.
 - **Some failures never back off** (`backsOff`): `not found`, `bad
   request`, a malformed answer that parsed as JSON, a passed
   deadline, and a call refused for a back-off already in force. An

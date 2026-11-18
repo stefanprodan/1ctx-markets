@@ -26,7 +26,9 @@ import {
   buyable,
   type Choice,
   choices,
+  onLeave,
   onSymbolPage,
+  refreshMs,
   summary,
   UNREAD,
 } from "./Instrument.model.ts";
@@ -46,8 +48,13 @@ import "./instruments.css";
 
 export function Instrument({ params }: { params: Params }) {
   const id = params.id!;
-  const load = useCallback(() => markets.loadInstrument(id), [id]);
-  useRefresh(load);
+  const load = useCallback(() => markets.refreshInstrument(id), [id]);
+  useRefresh(load, false, refreshMs(markets.fastId.value, id));
+  // so a fast refresh starts at once, not a whole period after the open
+  useEffect(() => {
+    if (document.visibilityState === "visible") void markets.live(id);
+    return onLeave(document, window, () => markets.leave(id));
+  }, [id]);
   const fetching = useSignal(false);
   const said = useSignal<{ text: string; bad: boolean } | null>(null);
   // the button's outcome fades back to Refetch

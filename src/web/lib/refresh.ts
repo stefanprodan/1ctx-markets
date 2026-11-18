@@ -6,6 +6,8 @@ import { useEffect, useRef } from "preact/hooks";
 
 // a page's re-read is cheap: it reads the server's store, never a source
 export const REFRESH_MS = 30_000;
+// an open instrument's while the server refreshes its quote that often
+export const FAST_REFRESH_MS = 10_000;
 
 // a read lands in tens of milliseconds; the title's line needs this long
 // to be seen at all
@@ -18,11 +20,16 @@ export const holding = signal(false);
 // the page's refreshes in flight, for the title's line
 export const reloading = signal(0);
 
-// a refresh every REFRESH_MS while the page is on screen, and at once
-// when the tab comes back. The timer is set once: the latest load is
-// read when it fires, so a redraw (a crosshair moving) never restarts it.
+// a refresh every `every` ms while the page is on screen, and at once
+// when the tab comes back. The timer is set again only when `every`
+// changes: the latest load is read when it fires, so a redraw (a
+// crosshair moving) never restarts it.
 // quiet keeps the menu still, for a read that is not the page's
-export function useRefresh(load: () => unknown, quiet = false): void {
+export function useRefresh(
+  load: () => unknown,
+  quiet = false,
+  every = REFRESH_MS,
+): void {
   const latest = useRef(load);
   latest.current = load;
   useEffect(() => {
@@ -41,11 +48,11 @@ export function useRefresh(load: () => unknown, quiet = false): void {
         reloading.value--;
       });
     };
-    const timer = setInterval(fire, REFRESH_MS);
+    const timer = setInterval(fire, every);
     document.addEventListener("visibilitychange", fire);
     return () => {
       clearInterval(timer);
       document.removeEventListener("visibilitychange", fire);
     };
-  }, []);
+  }, [every]);
 }

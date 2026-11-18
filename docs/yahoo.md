@@ -225,6 +225,34 @@ Phrases from Yahoo (`docs/sources.md`, Refusals):
   (`src/app.ts`), shared by jobs and tools, with no limiter; the rest
   is `docs/sources.md`.
 
+## Fast quotes
+
+- **An open instrument page's quote is refetched between passes**
+  (`fastQuotes()` in `src/sources/yahoo/fast.ts`, asked by `GET
+  /instruments/{symbol}/live`): the pass runs every `--quote-every`
+  minutes, too old for a page someone watches. A stored quote older
+  than `FAST_MS` (10 s) is asked through `sparkAll()` as the pass asks
+  it, so a symbol Yahoo refuses on spark goes to its chart and never
+  backs the queue off, and stored by `storeQuotes()` like the pass's,
+  so signals, rules and every reader see it. Readers of one instrument
+  share one call in flight.
+- **The page's read never waits on a busy queue.** The call has a
+  deadline (`within()`), so it goes ahead of the jobs' calls; past
+  `FAST_WAIT_MS` (5 s) the read answers the stored quote and a call
+  not started yet never goes out.
+- **Only a Yahoo instrument whose market is open** (`isQuoted()`); any
+  other answers `fast: false` and asks nothing.
+- **At most `FAST_CAP` (3) instruments at once, across all users,
+  their calls `FAST_SPACING_MS` (2 s) apart:** at worst 18 extra calls
+  a minute. A page left frees its place at once (`release()`, `DELETE
+  /instruments/{symbol}/live`), one that never says so after
+  `FAST_HOLD_MS` (30 s). Past the cap it answers `fast: false`.
+- **Rate limits stop it first.** Its calls fail at once during a
+  back-off. While any Yahoo back-off is in force it answers `fast:
+  false`, and for `FAST_COOLDOWN_MS` (30 minutes) after one a 429
+  started (`limitedUntil()`), so the pass gets Yahoo back first; it
+  logs `yahoo fast refresh paused` (info, `until`) once per pause.
+
 ## Resolution
 
 - **A caller's symbol becomes one listing, never a guess**
