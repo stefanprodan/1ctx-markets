@@ -33,6 +33,7 @@ import {
 import { InstrumentMenu } from "../src/web/views/InstrumentMenu.tsx";
 import {
   heldOf,
+  interestFacts,
   positionOf,
 } from "../src/web/views/InstrumentPosition.model.ts";
 import { PositionCard } from "../src/web/views/InstrumentPosition.tsx";
@@ -296,6 +297,26 @@ describe("the instrument page's position", () => {
     expect(html).not.toContain("all time");
   });
 
+  test("a bond with its coupon dates adds accrued, coupons paid and the next payout", () => {
+    const h = bond({
+      accrued: 41.2,
+      coupons_paid: 275,
+      next_payout: { date: "2027-04-15", amount: 275 },
+    });
+    expect(
+      positionOf(h, NOW)
+        .facts.slice(4)
+        .map((f) => [f.label, f.value]),
+    ).toEqual([
+      ["Accrued", "41.20 RON"],
+      ["Coupons paid", "275.00 RON"],
+      ["Next payout", "275.00 RON on 15 Apr 2027"],
+    ]);
+    // none without them: the stale tag says why
+    expect(interestFacts(bond({ accrued: null }), NOW)).toEqual([]);
+    expect(interestFacts(holding(), NOW)).toEqual([]);
+  });
+
   test("quantities read to two decimals, a fraction to four digits", () => {
     expect(briefQuantity(1234.5678)).toBe("1,234.57");
     expect(briefQuantity(1)).toBe("1");
@@ -371,6 +392,11 @@ describe("the instrument page's position drawer", () => {
       pct: null,
     });
     expect(gainOf(part("A", null, { cost: 0, value: 5 })).pct).toBeNull();
+    // a bond purchase's coupons paid are in its gain
+    expect(gainOf(part("A", null, { coupons_paid: 20 }))).toEqual({
+      pl: 120,
+      pct: 30,
+    });
   });
 
   test("trades read as orders, newest first, with Activity's tags", () => {

@@ -58,6 +58,7 @@ import {
 } from "../ui/Table.tsx";
 import { Tabs } from "../ui/Tabs.tsx";
 import { CashSheet } from "./CashSheet.tsx";
+import { interestFacts } from "./InstrumentPosition.model.ts";
 import {
   AddSheet,
   type AddStart,
@@ -83,14 +84,17 @@ import {
   addKindOf,
   barOf,
   bondPhoneLine,
+  bondsOnly,
   cashLine,
   columnsFor,
   currencies,
+  currencyBarOf,
   type EditWhat,
   enteredBy,
   groupShare,
   groupsOf,
   heroOf,
+  heroPayout,
   holdingMatches,
   holdingName,
   holdingTicker,
@@ -118,7 +122,7 @@ import {
   sideTag,
   sideWord,
   sortRows,
-  staleWords,
+  staleTag,
   sums,
   toggleShut,
   tradeAmount,
@@ -436,7 +440,7 @@ export function PortfoliosBody({
 
 // every column a holding can fill, so the rows wait in the widest shape
 const WAITING_COLUMNS = holdingColumns(
-  { spark: true, price: true, priceHead: "Change", gain: true },
+  { spark: true, price: true, priceHead: "Change", gain: true, bonds: false },
   {},
 );
 
@@ -635,7 +639,10 @@ function ValueBand({
   const fit = useHeroFit(box, money(value, null), shortMoney(value), line);
   if (hero === null) return null;
   const t = hero.total;
-  const bar = barOf(t, id === null);
+  // a bonds view splits by currency, as a broker's bonds page does
+  const bonds = bondsOnly(h.holdings);
+  const bar = bonds ? currencyBarOf(h) : barOf(t, id === null);
+  const payout = heroPayout(h);
   const moveList: Move[] = [
     ...(hero.today
       ? [
@@ -679,12 +686,24 @@ function ValueBand({
         valueClass="amount"
         currency={<CurrencyPick store={store} h={h} cur={t.currency} />}
         moves={moveList}
-        lines={hero.others.map((o) => (
-          <span key={o.currency}>
-            <span class="num amount">{money(o.value, o.currency)}</span>{" "}
-            <Change s={percent(o.pl_percent)} />
-          </span>
-        ))}
+        lines={[
+          ...hero.others.map((o) => (
+            <span key={o.currency}>
+              <span class="num amount">{money(o.value, o.currency)}</span>{" "}
+              <Change s={percent(o.pl_percent)} />
+            </span>
+          )),
+          ...(payout
+            ? [
+                <span key="payout">
+                  <span class="num amount">
+                    {money(payout.amount, payout.currency)}
+                  </span>{" "}
+                  <span class="faint">next payout {day(payout.date)}</span>
+                </span>,
+              ]
+            : []),
+        ]}
       >
         {line &&
           (cashWanted ? (
@@ -765,12 +784,12 @@ export function rowMenu(
 
 // a label already says Dry powder or Reserve; a phone on All has room for
 // that word only
-function rowName(x: Holding, all: boolean, labelled: boolean) {
+function rowName(x: Holding, all: boolean, labelled: boolean, bonds: boolean) {
   if (x.kind === "bond") {
     return (
       <>
         <span class="hide-phone">{holdingName(x)}</span>
-        <span class="show-phone">{bondPhoneLine(x)}</span>
+        <span class="show-phone">{bondPhoneLine(x, bonds)}</span>
       </>
     );
   }
@@ -810,21 +829,22 @@ export function holdingColumns(
       },
       cell: (x) => {
         const m = matured(x);
+        const tag = staleTag(x.stale);
         return (
           <SymbolName
             ticker={holdingTicker(x)}
             name={
-              m || x.stale.length > 0 ? (
+              m || tag !== null ? (
                 <>
                   {m ? (
                     <span class="tag tag-side pf-matured-tag">Matured</span>
                   ) : (
-                    <span class="tag">{staleWords(x.stale.at(-1)!)}</span>
+                    <span class="tag">{tag}</span>
                   )}{" "}
-                  {rowName(x, all, labelled)}
+                  {rowName(x, all, labelled, cols.bonds)}
                 </>
               ) : (
-                rowName(x, all, labelled)
+                rowName(x, all, labelled, cols.bonds)
               )
             }
           />
@@ -833,13 +853,22 @@ export function holdingColumns(
     },
     {
       key: "spark",
-      head: "3M",
+      head: cols.bonds ? "Next payout" : "3M",
       width: "104px",
       align: "end",
-      headAlign: "start",
+      headAlign: cols.bonds ? "end" : "start",
       hide: "tablet",
       show: cols.spark,
       cell: (x) => {
+        if (cols.bonds) {
+          const next = x.next_payout;
+          return next ? (
+            <span class="pf-payout">
+              <Num class="amount">{money(next.amount, x.currency)}</Num>
+              <Num class="small faint">{day(next.date)}</Num>
+            </span>
+          ) : null;
+        }
         const b = x.id ? sparks[x.id] : undefined;
         return b && b.length > 1 ? (
           <Spark closes={b.map((p) => p.close)} />
@@ -856,7 +885,10 @@ export function holdingColumns(
       show: cols.price,
       cell: (x) => (
         <>
-          <span class="num faint pf-price">{priceLine(x)}</span>
+          {/* a bond's price is its figure, a share's its move */}
+          <span class={`num${cols.bonds ? "" : " faint"} pf-price`}>
+            {priceLine(x)}
+          </span>
           {x.priced === "hand" ? (
             x.as_of && <Num class="small faint pf-price">{day(x.as_of)}</Num>
           ) : (
@@ -880,8 +912,26 @@ export function holdingColumns(
             <Num class="amount">
               {money(shownValue(x), x.converted?.currency ?? x.currency)}
             </Num>
-            {x.converted && x.converted.currency !== x.currency && (
-              <Num class="small faint amount">{money(x.value, x.currency)}</Num>
+            {cols.bonds ? (
+              <span class="small pf-gain-line">
+                {shownGain(x) !== null && (
+                  <span class="hide-phone">
+                    <Change
+                      s={signedMoney(shownGain(x), null)}
+                      class="amount"
+                    />
+                    {shownGainPercent(x) !== null && " · "}
+                  </span>
+                )}
+                <Change s={percent(shownGainPercent(x))} />
+              </span>
+            ) : (
+              x.converted &&
+              x.converted.currency !== x.currency && (
+                <Num class="small faint amount">
+                  {money(x.value, x.currency)}
+                </Num>
+              )
             )}
           </>
         ),
@@ -892,7 +942,8 @@ export function holdingColumns(
       width: { base: "minmax(0, 0.9fr)", phone: "66px" },
       align: "end",
       sortable: true,
-      show: cols.gain,
+      // a bonds view carries the gain under the value
+      show: cols.gain && !cols.bonds,
       cell: (x) => (
         <>
           <Change s={percent(shownGainPercent(x))} />
@@ -962,7 +1013,12 @@ function HoldingsCard({
   const rows = listed.filter((x) => holdingMatches(x, q));
   const groups = groupsOf(rows, all, order);
   const flat = groups.length <= 1;
-  const columns = holdingColumns(columnsFor(rows), sparks, all, !flat);
+  const columns = holdingColumns(
+    columnsFor(rows, bondsOnly(listed)),
+    sparks,
+    all,
+    !flat,
+  );
   const tableGroups: TableGroup<Holding>[] = groups.map((g) => {
     // a lone group has no label to open it again
     const closed = !flat && shut.has(g.key);
@@ -1065,7 +1121,21 @@ export function EditSheet({
   const busy = useSignal(false);
   const error = useSignal<string | null>(null);
   const name = h.name ?? holdingTicker(h);
-  const head = <SymbolName ticker={name} name={holdingName(h)} />;
+  const facts = interestFacts(h);
+  const head = (
+    <>
+      <SymbolName ticker={name} name={holdingName(h)} />
+      {facts.length > 0 && (
+        <Facts
+          items={facts.map((f) => ({
+            label: f.label,
+            value: <span class="amount">{f.value}</span>,
+            num: true,
+          }))}
+        />
+      )}
+    </>
+  );
   return (
     <Drawer title={SHEET_TITLES[what]} onClose={onDone} busy={busy.value} bare>
       {(close) =>

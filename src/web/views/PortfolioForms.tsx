@@ -52,11 +52,14 @@ import {
   listingWords,
   movePlaces,
   noteEdit,
+  PER_YEAR,
   payFromLabel,
   price,
   type Remembered,
   ranked,
   readRemembered,
+  type Schedule,
+  scheduleEdits,
   shownIn,
   today,
   tradeMoney,
@@ -185,6 +188,27 @@ export function PositionEdit({
   const note = useSignal(h.note ?? "");
   const maturity = useSignal(h.maturity ?? "");
   const dry = useSignal(h.dry_powder === true);
+  const bond = h.kind === "bond";
+  // a bond's coupon schedule is read from its row; its fields wait on it
+  const kept = useSignal<Schedule | null>(null);
+  const perYear = useSignal("");
+  const issued = useSignal("");
+  useEffect(() => {
+    const id = h.position;
+    if (!bond || id === null) return;
+    let live = true;
+    void store.positionHistory<Schedule & { id: number }>(id).then((got) => {
+      const row = got?.find((r) => r.id === id);
+      if (!live || row === undefined) return;
+      perYear.value =
+        row.coupons_per_year == null ? "" : String(row.coupons_per_year);
+      issued.value = row.issued ?? "";
+      kept.value = row;
+    });
+    return () => {
+      live = false;
+    };
+  }, [h.position]);
   const own = useSignal(false);
   const busy = saving ?? own;
   const error = useSignal<string | null>(null);
@@ -230,6 +254,12 @@ export function PositionEdit({
         : brokered
           ? { ...brokerEdit(h, at), ...noteEdit(h, note.value) }
           : {}),
+      ...(bond && kept.value
+        ? scheduleEdits(kept.value, {
+            perYear: perYear.value,
+            issued: issued.value,
+          })
+        : {}),
     };
     if (Object.keys(change).length === 0) {
       error.value = null;
@@ -291,6 +321,31 @@ export function PositionEdit({
             />
           </span>
         </label>
+      )}
+      {bond && (
+        <>
+          <FormPick
+            label="Coupons a year"
+            value={perYear}
+            options={PER_YEAR}
+            disabled={kept.value === null}
+          />
+          <label class="field">
+            <span class="label">Issued</span>
+            <span
+              class={`pf-date-opt${issued.value === "" ? " pf-date-empty" : ""}`}
+            >
+              <input
+                type="date"
+                value={issued.value}
+                disabled={kept.value === null}
+                onInput={(e) => {
+                  issued.value = e.currentTarget.value;
+                }}
+              />
+            </span>
+          </label>
+        </>
       )}
       {brokered && (
         <BrokerPick
@@ -1058,6 +1113,8 @@ export function AddForm({
   const cost = useSignal("");
   const coupon = useSignal("");
   const maturity = useSignal("");
+  const perYear = useSignal("");
+  const issued = useSignal("");
   // cash set aside for buying is what is added most
   const dry = useSignal(true);
   // the market a fund's shares are in; none unless picked
@@ -1389,6 +1446,10 @@ export function AddForm({
           ? {
               coupon: num(coupon, "Coupon", false, null),
               ...(maturity.value ? { maturity: maturity.value } : {}),
+              ...(perYear.value
+                ? { coupons_per_year: Number(perYear.value) }
+                : {}),
+              ...(issued.value ? { issued: issued.value } : {}),
               ...(symbol.value.trim() ? { symbol: symbol.value.trim() } : {}),
             }
           : {}),
@@ -1976,6 +2037,14 @@ export function AddForm({
             <div class="pf-pair">
               <Field label="Coupon %" value={coupon} decimal />
               <Field label="Maturity" value={maturity} type="date" />
+            </div>
+            <div class="pf-pair">
+              <FormPick
+                label="Coupons a year"
+                value={perYear}
+                options={PER_YEAR}
+              />
+              <Field label="Issued" value={issued} type="date" />
             </div>
             <div class="pf-pair">
               <Field label="As of" value={date} type="date" />

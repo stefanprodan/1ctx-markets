@@ -13,7 +13,7 @@ import type {
   TradeRow,
 } from "../data/portfolios.ts";
 import type { Candidate } from "../data/store.ts";
-import { amount, day, quantity } from "../lib/format.ts";
+import { amount, day, money, quantity } from "../lib/format.ts";
 import { nameOf, symbolOf, tickerOf } from "../lib/names.ts";
 
 const decimals = (v: number) => {
@@ -166,7 +166,17 @@ export function staleWords(reason: string): string {
   const rate = /^no (\S+) to (\S+) (rate|close)/.exec(reason);
   if (rate) return `No ${rate[1]} rate`;
   if (reason === "no listing currency") return "No currency";
+  if (reason === NO_SCHEDULE) return "No coupon dates";
   return "Old price";
+}
+
+// a bond missing its coupons a year or issue day, as the server says it
+export const NO_SCHEDULE = "no coupon schedule";
+
+// a price or rate problem outranks missing coupon dates
+export function staleTag(stale: readonly string[]): string | null {
+  const r = stale.findLast((x) => x !== NO_SCHEDULE) ?? stale.at(-1);
+  return r === undefined ? null : staleWords(r);
 }
 
 // what a total left out: a listing by its symbol, a rate in words
@@ -509,6 +519,40 @@ export function noteEdit(
   return n !== (h.note ?? "") ? { note: n === "" ? null : n } : {};
 }
 
+// the holdings answer leaves a bond's schedule out
+export type Schedule = {
+  coupons_per_year?: number | null;
+  issued?: string | null;
+};
+
+// the picks a bond's coupons a year can take; "" leaves it unset
+export const PER_YEAR = [
+  { value: "", text: "Not set" },
+  { value: "1", text: "1" },
+  { value: "2", text: "2" },
+  { value: "4", text: "4" },
+];
+
+// only what differs is sent; "" takes either off
+export function scheduleEdits(
+  kept: Schedule,
+  edited: { perYear: string; issued: string },
+): Pick<PositionChange, "coupons_per_year" | "issued"> {
+  const was =
+    kept.coupons_per_year == null ? "" : String(kept.coupons_per_year);
+  return {
+    ...(edited.perYear !== was
+      ? {
+          coupons_per_year:
+            edited.perYear === "" ? null : Number(edited.perYear),
+        }
+      : {}),
+    ...(edited.issued !== (kept.issued ?? "")
+      ? { issued: edited.issued === "" ? null : edited.issued }
+      : {}),
+  };
+}
+
 // only what differs is sent; null takes a broker or a note off
 export function cashEdits(
   h: Holding,
@@ -584,9 +628,26 @@ export function holdingName(h: Holding, now = Date.now()): string {
   return h.sold_today ? (name ? `${name} · Sold today` : "Sold today") : name;
 }
 
-// a phone fits a bond's coupon only; a matured one's tag says all
-export function bondPhoneLine(h: Holding, now = Date.now()): string {
+// a payout's day this year, else its month and year, as a phone fits it
+export function payoutWhen(date: string, now = Date.now()): string {
+  const [y, m] = date.split("-").map(Number) as [number, number];
+  if (y === new Date(now).getFullYear()) return `on ${day(date, now)}`;
+  const month = new Date(y, m - 1, 1).toLocaleDateString("en-GB", {
+    month: "short",
+  });
+  return `in ${month} ${y}`;
+}
+
+// payout: only a bonds view's line; a matured bond's tag says all
+export function bondPhoneLine(
+  h: Holding,
+  payout: boolean,
+  now = Date.now(),
+): string {
   if (matured(h, now)) return "";
+  const next = payout ? h.next_payout : null;
+  if (next)
+    return `${money(next.amount, h.currency)} ${payoutWhen(next.date, now)}`;
   return h.coupon != null ? `${h.coupon}%` : holdingName(h, now);
 }
 
@@ -757,19 +818,42 @@ export const moves = (h: Holding): boolean =>
   h.priced === "quote" || h.priced === "listing";
 
 // the columns something in view fills
-export function columnsFor(rows: readonly Holding[]): {
+// bonds: the view's, so a search never swaps its columns
+export function columnsFor(
+  rows: readonly Holding[],
+  bonds = bondsOnly(rows),
+): {
   spark: boolean;
   price: boolean;
   priceHead: "Change" | "Price";
   gain: boolean;
+  bonds: boolean;
 } {
   const listed = rows.some(moves);
   return {
-    spark: listed,
+    // a bonds view puts the next payout in the 3M line's place
+    spark: listed || (bonds && rows.some((x) => x.next_payout)),
     price: !rows.every((x) => x.kind === "cash"),
-    priceHead: listed ? "Change" : "Price",
+    // a bond's top figure is its price, a percent of face
+    priceHead: listed && !bonds ? "Change" : "Price",
     gain: !rows.every((x) => x.pl === null),
+    bonds,
   };
+}
+
+// a view of bonds alone, such as a bonds portfolio, reads as a broker's
+export const bondsOnly = (rows: readonly Holding[]): boolean =>
+  rows.length > 0 && rows.every((x) => x.kind === "bond");
+
+// the hero's next payout: a bonds view's, in the hero's currency
+export function heroPayout(
+  h: Holdings,
+): { date: string; amount: number; currency: string } | null {
+  if (!bondsOnly(h.holdings)) return null;
+  const t = heroOf(h)?.total;
+  const next = t?.next_payout;
+  if (!t || !next || next.amount === null) return null;
+  return { date: next.date, amount: next.amount, currency: t.currency };
 }
 
 // the value band: today only when something in view moves within a day,
@@ -827,6 +911,40 @@ export function barOf(t: Total, all = false): BarSide[] | null {
   if (!sides.every((x) => x.value > 0)) return null;
   const sum = sides.reduce((a, x) => a + x.value, 0);
   return sides.map((x) => ({ ...x, pct: Math.round((x.value / sum) * 100) }));
+}
+
+// the bar's colors, in order, for a split with no meaning of its own
+const SPLIT_KEYS = ["invested", "cash", "reserve"] as const;
+
+// a converted bonds view split by currency, from the rows' converted
+// values, accrued interest in, so its sides sum to the hero's figure; a
+// fourth currency on joins the third as Other
+export function currencyBarOf(h: Holdings): BarSide[] | null {
+  if (h.converted === null || !bondsOnly(h.holdings)) return null;
+  const by = new Map<string, number>();
+  for (const x of h.holdings) {
+    const v = x.converted?.value ?? null;
+    if (v !== null) by.set(x.currency, (by.get(x.currency) ?? 0) + v);
+  }
+  const sorted = [...by].sort((a, b) => b[1] - a[1]);
+  const sides =
+    sorted.length > SPLIT_KEYS.length
+      ? [
+          ...sorted.slice(0, SPLIT_KEYS.length - 1),
+          [
+            "Other",
+            sorted.slice(SPLIT_KEYS.length - 1).reduce((a, [, v]) => a + v, 0),
+          ] as const,
+        ]
+      : sorted;
+  if (sides.length < 2 || !sides.every(([, v]) => v > 0)) return null;
+  const sum = sides.reduce((a, [, v]) => a + v, 0);
+  return sides.map(([label, value], i) => ({
+    key: SPLIT_KEYS[i]!,
+    label,
+    value,
+    pct: Math.round((value / sum) * 100),
+  }));
 }
 
 // balance: a cash row's drawer with its details folded

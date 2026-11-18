@@ -93,6 +93,8 @@ export type Part = {
   position?: number;
   as_of?: string;
   amount?: number | null;
+  // a bond purchase's coupons paid, in its gain
+  coupons_paid?: number | null;
 };
 
 export type Converted = {
@@ -134,12 +136,19 @@ export type Holding = {
   converted?: Converted;
   coupon?: number | null;
   maturity?: string | null;
+  // a bond's value is clean_value plus accrued; pl adds coupons_paid
+  clean_value?: number | null;
+  accrued?: number | null;
+  coupons_paid?: number | null;
+  next_payout?: Payout | null;
   dry_powder?: boolean;
   sold_today?: boolean;
   note?: string | null;
   stale: string[];
   parts: Part[];
 };
+
+export type Payout = { date: string; amount: number };
 
 // across portfolios value leaves reserve out; the page shows no net worth
 export type Total = {
@@ -156,6 +165,8 @@ export type Total = {
   invested_weight: number | null;
   reserve_weight: number | null;
   dry_powder_weight: number | null;
+  // the earliest payout of the bonds in view; null amount with a rate missing
+  next_payout?: { date: string; amount: number | null };
 };
 
 export type Share = { key: string | null; value: number; weight: number };
@@ -336,6 +347,8 @@ export type PositionIn = {
   cost?: number;
   coupon?: number;
   maturity?: string;
+  coupons_per_year?: number;
+  issued?: string;
   symbol?: string;
   date?: string;
   dry_powder?: boolean;
@@ -356,6 +369,9 @@ export type PositionChange = {
   // a term deposit's last day; null takes it off
   maturity?: string | null;
   dry_powder?: boolean;
+  // a bond's coupon schedule; null takes it off
+  coupons_per_year?: number | null;
+  issued?: string | null;
 };
 
 export type ImportRow = {
