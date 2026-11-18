@@ -76,7 +76,10 @@ The routes, their bodies and answers are the one table in
   (`interrupted`) does, since a run that kills the server would
   otherwise never show; a failed Yahoo backfill is settled once the
   instrument has daily bars, since a read fetches a history without a
-  backfill run; runs with no scope are skipped. The page reads failure
+  backfill run; a market's run that lost its connection (`network
+  error`, `timed out`) is settled once any later run of its source
+  succeeded, since an outage is the network's and a closed market is
+  not asked again until it opens; runs with no scope are skipped. The page reads failure
   from these counts, never the last run.
 - **Then the instrument and tracked counts, the database size and the
   version.**

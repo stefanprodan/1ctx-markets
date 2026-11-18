@@ -338,6 +338,44 @@ describe("the admin scope", () => {
       { start: NOW },
     ));
 
+  test("a market's lost connection settles once its source answers again", () =>
+    withApp(
+      async ({ url, admin, db }) => {
+        db.query(
+          `insert into sync_runs (source, job, scope, started_at, ended_at,
+             status, rows, error)
+           values ('yahoo', 'quotes', 'ASX', ?1, ?1, 'failed', 0, 'timed out'),
+             ('yahoo', 'check', 'HKG', ?1, ?1, 'failed', 0, 'network error'),
+             ('yahoo', 'quotes', 'OSA', ?1, ?1, 'failed', 0, 'rate limited'),
+             ('yahoo', 'bars', 'US:X', ?1, ?1, 'failed', 0, 'timed out'),
+             ('massive', 'news', 'NEWS', ?1, ?1, 'failed', 0, 'timed out'),
+             ('massive', 'news', 'US:Z', ?2, ?2, 'ok', 0, null),
+             ('yahoo', 'quotes', 'LSE', ?2, ?2, 'failed', 0, 'timed out'),
+             ('finnhub', 'calendar', 'US:Y', ?2, ?2, 'ok', 1, null),
+             ('yahoo', 'quotes', 'US', ?2, ?2, 'ok', 5, null)`,
+        ).run(NOW - 60_000, NOW);
+        const res = await fetch(`${url}/api/v1/status`, {
+          headers: { authorization: `Bearer ${admin}` },
+        });
+        const jobs = (await res.json()).jobs;
+        const failing = (source: string, job: string) =>
+          jobs
+            .find(
+              (j: { source: string; job: string }) =>
+                j.source === source && j.job === job,
+            )
+            ?.failing.map((f: { scope: string }) => f.scope);
+        // another error, an instrument, a source not answering since (a
+        // run storing nothing asked nothing), and a failure as new as the
+        // source's answer all stay
+        expect(failing("yahoo", "quotes")).toEqual(["LSE", "OSA"]);
+        expect(failing("yahoo", "check")).toEqual([]);
+        expect(failing("yahoo", "bars")).toEqual(["US:X"]);
+        expect(failing("massive", "news")).toEqual(["NEWS"]);
+      },
+      { start: NOW },
+    ));
+
   test("status answers its fields and never a key", () =>
     withApp(
       async ({ url, admin, bearer, db }) => {
