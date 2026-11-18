@@ -17,6 +17,7 @@ import { markRead } from "../src/market/tracking.ts";
 import { alertsEdit, parseAlertsEdit } from "../src/operations/alerts.ts";
 import {
   extendedPoints,
+  heldOpen,
   heldUntil,
   latestExtended,
   nextOpen,
@@ -57,6 +58,8 @@ const POST = "post-2122";
 // recorded overnight, after the post window, and in the pre window
 const OVERNIGHT = "overnight-0030";
 const PRE = "pre-0830";
+// recorded in the regular session, eight minutes after the open
+const OPEN = "open-1438";
 
 const LISTINGS = [
   { id: "US:HOOD", symbol: "HOOD", exchange: "NMS", zone: "America/New_York" },
@@ -100,7 +103,10 @@ async function setup(
   } = {},
 ) {
   const window = options.window ?? POST;
-  const spark = await recorded(`spark-v7-extended-${window}`);
+  // the regular session's recording is a chart alone
+  const spark = await recorded(
+    `spark-v7-extended-${window === OPEN ? POST : window}`,
+  );
   const charts = new Map<string, Recorded>();
   // the others have one-day recordings only, and only some windows; past
   // the post window a chart names the evening's windows, as the post one
@@ -893,6 +899,55 @@ describe("the extended cache", () => {
     expect(t.m.extended.has("US:HOOD")).toBe(false);
     await ask(t.m);
     expect(t.charted("HOOD")).toHaveLength(2);
+  });
+
+  test("in the regular session, one read holds the day's pre-market to the close", async () => {
+    const t = await setup({ window: OPEN });
+    const answer = parseIntraday(t.charts.get("HOOD")!.body, t.clock.now());
+    const regular = answer.windows.regular.find(
+      (w) => t.clock.now() >= w.start && t.clock.now() < w.end,
+    )!;
+    const pre = answer.windows.pre.find((w) => w.end === regular.start)!;
+    recordSession(
+      t.db,
+      "US",
+      session("America/New_York", regular.start, regular.end),
+      t.clock.now(),
+    );
+    const hood = readInstrument(t.db, "US:HOOD")!;
+    const read = () => readExtendedPoints(t.m, hood, t.clock.now() + CALL_MS);
+    const today = (await read()).points.filter((p) => p.at >= pre.start);
+    expect(today.length).toBeGreaterThan(0);
+    for (const p of today) {
+      expect(p.session).toBe("pre");
+      expect(p.at).toBeLessThan(pre.end);
+    }
+    expect(t.charted("HOOD")).toHaveLength(1);
+    // later in the session: the held answer, no fetch
+    await t.clock.advance(3 * t.m.quoteEveryMs);
+    expect((await read()).points.length).toBeGreaterThan(0);
+    expect(t.charted("HOOD")).toHaveLength(1);
+    // the quote's extended price stays off while the session trades
+    const quoted = byId(await ask(t.m), "US:HOOD");
+    expect(quoted.extended).toBeNull();
+    expect(quoted.extended_reason).toBe(EXTENDED.open);
+    expect(t.charted("HOOD")).toHaveLength(1);
+    // past the close the held answer is over
+    await t.clock.advance(regular.end - t.clock.now() + 60_000);
+    await read();
+    expect(t.charted("HOOD")).toHaveLength(2);
+  });
+
+  test("a read at the open holds one quote period, for the pre-market's last bar", async () => {
+    const fx = await recorded(hoodChart(OPEN));
+    const period = 5 * 60_000;
+    const late = parseIntraday(fx.body, Date.parse(fx.recordedAt));
+    const regular = late.windows.regular.find(
+      (w) => late.fetchedAt >= w.start && late.fetchedAt < w.end,
+    )!;
+    expect(heldOpen(late, period)).toBe(regular.end);
+    const early = parseIntraday(fx.body, regular.start + 30_000);
+    expect(heldOpen(early, period)).toBe(regular.start + period);
   });
 
   test("answers the chart's points from the held answer without a fetch", async () => {

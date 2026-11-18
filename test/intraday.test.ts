@@ -463,7 +463,7 @@ describe("history with interval 5m", () => {
     expect(rest.extended_reason).toBe(EXTENDED.failed);
   });
 
-  test("an empty extended list says why: the session open, or none in the sessions answered", async () => {
+  test("an empty extended list says why: a failed read in the session, or none in the sessions answered", async () => {
     const t = setup(Date.parse("2026-10-27T21:22:55Z"));
     await pass(t, "spark-v7-extended-post-2122");
     const now = t.clock.now();
@@ -478,8 +478,9 @@ describe("history with interval 5m", () => {
       interval: "5m",
       extended: true,
     });
+    // the session's pre-market is read too; here it reaches no network
     expect(open.body.extended_points).toEqual([]);
-    expect(open.body.extended_reason).toBe(EXTENDED.open);
+    expect(open.body.extended_reason).toBe(EXTENDED.failed);
     const point = { at: now, session: "post" as const, close: 1 };
     expect(extendedOut({ points: [point], reason: null })).toMatchObject({
       extended_reason: null,

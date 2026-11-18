@@ -267,9 +267,11 @@ area's own tools are in its doc.
 - **history's `5m` with `extended=true` adds `extended_points`**: the
   pre and post trading of the sessions answered, the last close of each
   5 minutes (`extendedPoints()`), from the same read and cache as
-  quote's `extended`, so a chart costs no call more; so it too runs only
-  while the regular session is closed, a failed read leaves the list
-  empty and the points stand, and nothing of it is stored. An empty
+  quote's `extended`, so a closed chart costs no call more. While the
+  regular session trades, quote reads nothing, but the chart reads once
+  and holds the answer to the session's end (`heldOpen()`), since the
+  day's pre-market cannot change once it trades. A failed read leaves
+  the list empty and the points stand, and nothing of it is stored. An empty
   list comes with `extended_reason`, quote's reasons or `none in the
   sessions answered` when the read held points of other sessions only,
   so it never reads as no trading; null with points. Asked with

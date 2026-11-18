@@ -581,7 +581,7 @@ export const paths = {
         ),
         query(
           "extended",
-          "With `5m` only: `true` adds `extended_points`, the pre- and post-market closes of the sessions answered, read while the regular session is closed, and `extended_reason`, why the list is empty. Default: `false`.",
+          "With `5m` only: `true` adds `extended_points`, the pre- and post-market closes of the sessions answered (while the regular session trades, its pre-market), and `extended_reason`, why the list is empty. Default: `false`.",
           bool,
         ),
       ],

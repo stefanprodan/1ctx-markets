@@ -107,6 +107,17 @@ export function heldUntil(answer: IntradayAnswer, periodMs: number): number {
   return Math.min(next, now + HOUR_MS);
 }
 
+// the day's pre-market cannot change once its regular session trades, but
+// its last minute bar can land after the open
+export function heldOpen(answer: IntradayAnswer, periodMs: number): number {
+  const now = answer.fetchedAt;
+  const w = answer.windows.regular.find((x) => now >= x.start && now < x.end);
+  if (w === undefined || now < w.start + periodMs) {
+    return heldUntil(answer, periodMs);
+  }
+  return w.end;
+}
+
 // whole days at the same wall time, so a clock change keeps the local hour
 export function preStarts(
   zone: string,
@@ -136,12 +147,19 @@ async function readOne(
   m: Markets,
   instrument: Instrument,
   deadline: number,
+  whileOpen: boolean,
 ): Promise<ExtendedRead> {
   if (instrument.source !== YAHOO) return none(EXTENDED.unreported);
   if (instrument.market === CRYPTO) return none(EXTENDED.none);
   const now = m.clock.now();
-  if (isQuoted(instrument.market, readSession(m.db, instrument.market), now)) {
-    return unread(m, instrument, EXTENDED.open);
+  const open = isQuoted(
+    instrument.market,
+    readSession(m.db, instrument.market),
+    now,
+  );
+  if (open && !whileOpen) return unread(m, instrument, EXTENDED.open);
+  if (open && m.yahoo.prePost(instrument.sourceSymbol) === false) {
+    return none(EXTENDED.none);
   }
   const cached = m.extended.get(instrument.id);
   if (cached !== undefined && now < cached.until) return cached.read;
@@ -155,7 +173,9 @@ async function readOne(
     checkAnswer(instrument, answer);
     const read = latestExtended(answer, answer.fetchedAt);
     m.extended.set(instrument.id, {
-      until: heldUntil(answer, m.quoteEveryMs),
+      until: open
+        ? heldOpen(answer, m.quoteEveryMs)
+        : heldUntil(answer, m.quoteEveryMs),
       read,
       points: extendedPoints(answer),
     });
@@ -189,21 +209,23 @@ export function extendedPoints(answer: IntradayAnswer): ExtendedPoint[] {
 }
 
 // the same read and cache as the extended price, so a chart costs no call more
+// while closed; while open, one read keeps the day's pre-market to the close
 export async function readExtendedPoints(
   m: Markets,
   instrument: Instrument,
   deadline: number,
 ): Promise<ExtendedPoints> {
-  const read = (await readExtended(m, [instrument], deadline)).get(
+  const read = (await readExtended(m, [instrument], deadline, true)).get(
     instrument.id,
   )!;
-  // refused (open, none, a failure): a cached answer is not this read's
+  // refused (none, a failure): a cached answer is not this read's
   if (REFUSED.has(read.reason)) return { points: [], reason: read.reason };
   const cached = m.extended.get(instrument.id);
   return {
     points:
       cached !== undefined && m.clock.now() < cached.until ? cached.points : [],
-    reason: read.reason,
+    // read in the session: an empty list is none in the sessions answered
+    reason: read.reason === EXTENDED.open ? null : read.reason,
   };
 }
 
@@ -213,7 +235,6 @@ export type ExtendedPoints = {
 };
 
 const REFUSED: ReadonlySet<ExtendedReason | null> = new Set([
-  EXTENDED.open,
   EXTENDED.none,
   EXTENDED.unreported,
   EXTENDED.timeout,
@@ -227,6 +248,8 @@ export async function readExtended(
   m: Markets,
   instruments: readonly Instrument[],
   deadline: number,
+  // a chart's points: read in the regular session too, for its pre-market
+  whileOpen = false,
 ): Promise<Map<string, ExtendedRead>> {
   let cancel = () => {};
   const expired = new Promise<typeof EXPIRED>((resolve) => {
@@ -235,7 +258,10 @@ export async function readExtended(
   try {
     const reads = await Promise.all(
       instruments.map(async (i) => {
-        const done = await Promise.race([readOne(m, i, deadline), expired]);
+        const done = await Promise.race([
+          readOne(m, i, deadline, whileOpen),
+          expired,
+        ]);
         return [i.id, done === EXPIRED ? unread(m, i, EXTENDED.timeout) : done];
       }),
     );
