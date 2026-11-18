@@ -82,6 +82,15 @@
   .pf-price {
     white-space: nowrap;
   }
+  /* a bond's next payout: its amount over its day */
+  .pf-payout {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+  }
+  .pf-gain-line {
+    white-space: nowrap;
+  }
   /* repaid: its figures fade, its name and tag stay readable */
   .pf-matured .table-end {
     opacity: 0.4;

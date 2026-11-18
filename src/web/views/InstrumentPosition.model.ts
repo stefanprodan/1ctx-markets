@@ -16,7 +16,7 @@ export type Position = {
   value: string;
   currency: string;
   moves: { money: Signed; percent: Signed; label: string }[];
-  facts: { label: string; value: string; amount: boolean }[];
+  facts: Fact[];
   parts: { key: string; where: string; held: string; value: string }[];
 };
 
@@ -33,6 +33,28 @@ const averageOf = (h: Holding): string =>
     : h.unit === "percent_of_par"
       ? `${amount(h.average_cost)}%`
       : amount(h.average_cost, h.currency);
+
+type Fact = { label: string; value: string; amount: boolean };
+
+// a bond's interest, in its own currency; none without its coupon dates
+export function interestFacts(h: Holding, now = Date.now()): Fact[] {
+  if (h.kind !== "bond" || h.accrued == null) return [];
+  const c = h.currency;
+  const next = h.next_payout;
+  return [
+    { label: "Accrued", value: money(h.accrued, c), amount: true },
+    {
+      label: "Coupons paid",
+      value: money(h.coupons_paid ?? null, c),
+      amount: true,
+    },
+    {
+      label: "Next payout",
+      value: next ? `${money(next.amount, c)} on ${day(next.date, now)}` : "—",
+      amount: true,
+    },
+  ];
+}
 
 export function positionOf(h: Holding, now = Date.now()): Position {
   const c = h.currency;
@@ -63,6 +85,7 @@ export function positionOf(h: Holding, now = Date.now()): Position {
           value: h.as_of ? day(h.as_of, now) : "—",
           amount: false,
         },
+        ...interestFacts(h, now),
       ]
     : [
         { label: "Quantity", value: briefQuantity(h.quantity), amount: true },

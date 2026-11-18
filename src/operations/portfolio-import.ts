@@ -458,6 +458,11 @@ function keptBond(
   const relist = old.instrument === null && position.instrument !== null;
   // the kept purchase date stands when the file gives none
   if (relist && undated) position.asOf = old.asOf;
+  // a file has no schedule columns: the kept one stands
+  if (relist) {
+    position.couponsPerYear = old.couponsPerYear;
+    position.issued = old.issued;
+  }
   return { old, relist };
 }
 

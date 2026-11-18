@@ -51,11 +51,13 @@ import {
   addKindOf,
   barOf,
   bondPhoneLine,
+  bondsOnly,
   brokerEdit,
   cashDate,
   cashEdits,
   columnsFor,
   currencies,
+  currencyBarOf,
   dryPowderFor,
   dryPowders,
   enteredBy,
@@ -67,6 +69,7 @@ import {
   heldAt,
   heldWhere,
   heroOf,
+  heroPayout,
   holdingMatches,
   holdingName,
   holdingTicker,
@@ -82,17 +85,21 @@ import {
   orderOf,
   pageOf,
   payFromLabel,
+  payoutWhen,
   priceLine,
   ranked,
   rateLine,
   readRemembered,
   rowActions,
   SHUT_KEY,
+  scheduleEdits,
   shownGainPercent,
   shownIn,
   shownValue,
   shutOf,
   sortRows,
+  staleTag,
+  staleWords,
   sums,
   today,
   toggleShut,
@@ -1511,8 +1518,8 @@ describe("a bond", () => {
     expect(holdingName(old, NOW)).toBe("North · 6.5% · 15 Jan");
     expect(matured(old, NOW)).toBe(true);
     expect(matured(bond, NOW)).toBe(false);
-    expect(bondPhoneLine(bond, NOW)).toBe("6.5%");
-    expect(bondPhoneLine(old, NOW)).toBe("");
+    expect(bondPhoneLine(bond, false, NOW)).toBe("6.5%");
+    expect(bondPhoneLine(old, false, NOW)).toBe("");
   });
 
   test("a matured one is tagged and dimmed, a phone shows its coupon or tag only", async () => {
@@ -1554,6 +1561,242 @@ describe("a bond", () => {
       );
       expect(html).toMatch(/>Note<\/label>(<\/span>)+<textarea/);
     }
+  });
+});
+
+describe("a bonds view", () => {
+  const conv = (value: number, pl: number) => ({
+    currency: "EUR",
+    rate: 0.2,
+    rate_at: null,
+    value,
+    cost: value - pl,
+    pl,
+    pl_percent: Number(((pl / (value - pl)) * 100).toFixed(2)),
+    weight: null,
+  });
+  const bond = (more: Partial<Holding>): Holding => ({
+    ...HOLDINGS.holdings[1]!,
+    kind: "bond",
+    id: "BVB:MADE29",
+    position: 9,
+    name: "Made Up 2029",
+    type: "BOND",
+    dry_powder: false,
+    unit: "percent_of_par",
+    priced: "listing",
+    price: 101.5,
+    change_percent: 0.2,
+    currency: "RON",
+    value: 5100,
+    pl: 140,
+    pl_percent: 2.82,
+    coupon: 6.5,
+    maturity: "2029-07-17",
+    clean_value: 5075,
+    accrued: 25,
+    coupons_paid: 40,
+    next_payout: { date: "2027-07-17", amount: 325 },
+    converted: conv(1020, 28),
+    stale: [],
+    parts: [],
+    ...more,
+  });
+  const eur = bond({
+    id: "BVB:EURO27",
+    position: 10,
+    name: "Euro Made Up",
+    currency: "EUR",
+    value: 3060,
+    next_payout: { date: "2026-12-17", amount: 375 },
+    converted: conv(3060, 60),
+  });
+  const ron = bond({});
+  const view: Holdings = {
+    ...HOLDINGS,
+    totals: [total("EUR"), total("RON")],
+    converted: {
+      ...total("EUR", {
+        value: 4080,
+        invested: 4080,
+        dry_powder: 0,
+        next_payout: { date: "2026-12-17", amount: 375 },
+      }),
+      missing: [],
+    },
+    holdings: [eur, ron],
+  };
+
+  test("its next payout reads by day this year, by month after", () => {
+    expect(payoutWhen("2026-12-17", NOW)).toBe("on 17 Dec");
+    expect(payoutWhen("2027-07-17", NOW)).toBe("in Jul 2027");
+    expect(bondPhoneLine(eur, true, NOW)).toBe("375.00 EUR on 17 Dec");
+    expect(
+      bondPhoneLine(
+        { ...ron, next_payout: { date: "2027-07-17", amount: 1860 } },
+        true,
+        NOW,
+      ),
+    ).toBe("1,860 RON in Jul 2027");
+    expect(bondPhoneLine({ ...ron, next_payout: null }, true, NOW)).toBe(
+      "6.5%",
+    );
+    // any other view keeps the coupon
+    expect(bondPhoneLine(eur, false, NOW)).toBe("6.5%");
+  });
+
+  test("a bond without coupon dates says so, a price problem first", () => {
+    expect(staleWords("no coupon schedule")).toBe("No coupon dates");
+    expect(staleTag(["no coupon schedule"])).toBe("No coupon dates");
+    expect(staleTag(["quote is old", "no coupon schedule"])).toBe("Old price");
+    expect(staleTag([])).toBeNull();
+  });
+
+  test("its columns put the payout for the 3M line and the gain under the value", () => {
+    expect(bondsOnly([eur, ron])).toBe(true);
+    expect(bondsOnly([eur, HOLDINGS.holdings[0]!])).toBe(false);
+    expect(bondsOnly([])).toBe(false);
+    expect(columnsFor([eur, ron])).toEqual({
+      spark: true,
+      price: true,
+      priceHead: "Price",
+      gain: true,
+      bonds: true,
+    });
+    // a listed bond among shares keeps the shares' columns
+    expect(columnsFor([eur, HOLDINGS.holdings[0]!]).priceHead).toBe("Change");
+    // unlisted bonds with no payout have nothing for the column
+    const face = { ...ron, priced: "face" as const, next_payout: null };
+    expect(columnsFor([face]).spark).toBe(false);
+  });
+
+  test("its hero splits by currency, accrued in, and names the next payout", () => {
+    expect(heroPayout(view)).toEqual({
+      date: "2026-12-17",
+      amount: 375,
+      currency: "EUR",
+    });
+    expect(heroPayout(HOLDINGS)).toBeNull();
+    expect(
+      currencyBarOf(view)!.map((x) => [x.key, x.label, x.value, x.pct]),
+    ).toEqual([
+      ["invested", "EUR", 3060, 75],
+      ["cash", "RON", 1020, 25],
+    ]);
+    // nothing converted: no sum across currencies
+    expect(currencyBarOf({ ...view, converted: null })).toBeNull();
+    expect(currencyBarOf({ ...view, holdings: [eur] })).toBeNull();
+    const usd = bond({ id: "X:USD", currency: "USD", converted: conv(500, 0) });
+    const gbp = bond({ id: "X:GBP", currency: "GBP", converted: conv(400, 0) });
+    expect(
+      currencyBarOf({ ...view, holdings: [eur, ron, usd, gbp] })!.map((x) => [
+        x.label,
+        x.value,
+      ]),
+    ).toEqual([
+      ["EUR", 3060],
+      ["RON", 1020],
+      ["Other", 900],
+    ]);
+  });
+
+  test("the page draws the bonds view as approved, other views as before", async () => {
+    const { s } = await loaded(view);
+    const html = render(<PortfoliosBody store={s.portfolios} />);
+    expect(html).toContain(">Next payout<");
+    expect(html).not.toContain(">3M<");
+    expect(html).not.toContain(">Gain<");
+    expect(html).not.toContain(">Change<");
+    expect(html).toContain('<span class="num pf-price">101.50%</span>');
+    expect(html).toContain(
+      '<span class="show-phone">375.00 EUR on 17 Dec</span>',
+    );
+    expect(html).toContain("next payout 17 Dec");
+    expect(html).toContain('aria-label="EUR 75%, RON 25%"');
+    expect(html).toContain("pf-gain-line");
+    // the row's own currency line gives way to the gain
+    expect(html).not.toContain(">5,100 RON<");
+    const other = render(
+      <PortfoliosBody store={(await loaded()).s.portfolios} />,
+    );
+    expect(other).not.toContain("Next payout");
+    expect(other).not.toContain("pf-gain-line");
+    expect(other).not.toContain("next payout");
+  });
+
+  test("a bond with no cost has no gain line in the bonds view", async () => {
+    const free = {
+      ...eur,
+      pl: null,
+      pl_percent: null,
+      converted: { ...eur.converted!, pl: null, pl_percent: null },
+    };
+    const { s } = await loaded({ ...view, holdings: [free] });
+    const html = render(<PortfoliosBody store={s.portfolios} />);
+    expect(html).toContain('<span class="small pf-gain-line"></span>');
+    const gift = {
+      ...eur,
+      pl: 3060,
+      pl_percent: null,
+      converted: { ...eur.converted!, pl: 3060, pl_percent: null },
+    };
+    const given = render(
+      <PortfoliosBody
+        store={(await loaded({ ...view, holdings: [gift] })).s.portfolios}
+      />,
+    );
+    expect(given).toContain(
+      '<span class="small pf-gain-line"><span class="hide-phone"><span class="num up amount">+3,060</span></span></span>',
+    );
+  });
+
+  test("a bond's drawer lists its interest", async () => {
+    const { s } = await loaded(view);
+    const html = render(
+      <EditSheet
+        store={s.portfolios}
+        h={{ ...eur, id: null }}
+        what="edit"
+        onDone={() => {}}
+      />,
+    );
+    expect(html).toContain("Accrued");
+    expect(html).toContain("Coupons paid");
+    expect(html).toContain("375.00 EUR on 17 Dec");
+    expect(html).toContain("Coupons a year");
+    expect(html).toContain("Issued");
+    expect(html).not.toContain("<select");
+  });
+
+  test("its coupon schedule is added and edited with only what changed", async () => {
+    const { s } = await loaded();
+    const add = render(
+      <AddForm store={s.portfolios} kind="bond" onDone={() => {}} />,
+    );
+    expect(add).toContain("Coupons a year");
+    expect(add).toContain(">Issued<");
+    expect(add).toContain('aria-label="Coupons a year: Not set"');
+    expect(add).not.toContain("<select");
+    const kept = { coupons_per_year: 1, issued: "2024-07-19" };
+    expect(scheduleEdits(kept, { perYear: "1", issued: "2024-07-19" })).toEqual(
+      {},
+    );
+    expect(scheduleEdits(kept, { perYear: "2", issued: "" })).toEqual({
+      coupons_per_year: 2,
+      issued: null,
+    });
+    expect(
+      scheduleEdits(
+        { coupons_per_year: null, issued: null },
+        {
+          perYear: "4",
+          issued: "2025-01-14",
+        },
+      ),
+    ).toEqual({ coupons_per_year: 4, issued: "2025-01-14" });
+    expect(scheduleEdits(kept, { perYear: "", issued: "2024-07-19" })).toEqual({
+      coupons_per_year: null,
+    });
   });
 });
 
@@ -1959,12 +2202,14 @@ describe("the page's model", () => {
       price: true,
       priceHead: "Change",
       gain: true,
+      bonds: false,
     });
     expect(columnsFor([cash])).toEqual({
       spark: false,
       price: false,
       priceHead: "Price",
       gain: false,
+      bonds: false,
     });
     const fund = row({ kind: "fund", priced: "hand", pl: null });
     expect(columnsFor([fund, cash]).priceHead).toBe("Price");

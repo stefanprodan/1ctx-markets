@@ -705,6 +705,18 @@ Portfolios page is the reference for each part.
   (`docs/portfolios.md`), and on Cash Dry powder against Reserve. All
   portfolios is not net worth, which Home's Wealth tab, the API and the
   tool answer.
+- **A view of bonds alone reads as a broker's bonds page**
+  (`bondsOnly()`), and no other view changes: the 3M column becomes the
+  next payout (amount over day), the price is headed Price at full
+  strength, the gain sits under the value with no Gain column, and the
+  hero adds the totals' next payout on its own line (`heroPayout()`)
+  and a bar split by currency from the rows' converted values, accrued
+  interest in (`currencyBarOf()`). On a phone a bond's line is its next
+  payout (`bondPhoneLine()`, `payoutWhen()`). A bond's drawer lists its
+  accrued, coupons paid and next payout (`interestFacts()`); its edit
+  reads the coupon schedule from the row's history, since the holdings
+  leave it out (`scheduleEdits()`). A price problem's tag shows before
+  a missing coupon schedule's (`staleTag()`).
 - **The value band follows the view its figures were read for**
   (`shown`, set with the holdings): a tab picked moves `portfolio` at
   once, but the name, bar and line change only when its holdings land,

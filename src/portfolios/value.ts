@@ -11,6 +11,13 @@ import { heldStale, quoteStale, STALE } from "../market/stale.ts";
 import { localDate } from "../market/zone.ts";
 import { minorUnits } from "../shared/currencies.ts";
 import type { Db } from "../storage/db/index.ts";
+import {
+  interestOn,
+  NO_SCHEDULE,
+  type Payout,
+  scheduleOf,
+  soonest,
+} from "./bond-interest.ts";
 import { isFund, latestPrice, readFund } from "./funds.ts";
 import { type Rate, type Rates, rates as ratesOf } from "./fx.ts";
 import {
@@ -22,6 +29,7 @@ import {
   type Split,
   splitsOf,
   type Trade,
+  timeZone,
 } from "./store.ts";
 
 // a quantity sold down to this is gone; float sums never reach zero
@@ -237,6 +245,8 @@ export type PartItem = {
   as_of?: string;
   // as stored: cash's balance or a bond's face, never rounded for show
   amount?: number | null;
+  // a bond purchase's, null with no schedule
+  coupons_paid?: number | null;
 };
 
 export type Row = {
@@ -270,6 +280,11 @@ export type Row = {
   converted?: Converted;
   coupon?: number | null;
   maturity?: string | null;
+  // a bond's: value is clean_value plus accrued; coupons_paid is in pl only
+  clean_value?: number | null;
+  accrued?: number | null;
+  coupons_paid?: number | null;
+  next_payout?: Payout | null;
   // cash kept for buying
   dry_powder?: boolean;
   // all of it sold on the quote's day: kept until then for the day's move
@@ -303,6 +318,8 @@ export type Total = {
   pl_percent: number | null;
   day_change: number | null;
   missing: string[];
+  // the earliest coupon or maturity day of the bonds in view, summed
+  next_payout?: { date: string; amount: number | null };
 } & Split3;
 
 // across portfolios reserve stays out of the value, weights and exposure
@@ -535,7 +552,7 @@ export function readHoldingRows(
       const costIn = held.reduce<number | null>((s, p) => add(s, p.costIn), 0);
       row.converted = convert(fx, currency, scope.currency, value, costIn);
     }
-    RAW.set(row, { value, cost });
+    RAW.set(row, { value, cost, coupons: 0 });
     rows.push(row);
     shares.set(
       row,
@@ -550,8 +567,9 @@ export function readHoldingRows(
     portfolio: scope.portfolio,
     broker: scope.broker,
   });
+  const today = localDate(timeZone(db, scope.owner) ?? "UTC", now);
   for (const p of positions) {
-    const row = positionRow(db, p, now, everyMs, names, brokers);
+    const row = positionRow(db, p, now, everyMs, names, brokers, today);
     if (scope.currency !== null) {
       const raw = rawOf(row);
       const costIn =
@@ -568,6 +586,7 @@ export function readHoldingRows(
         raw.value,
         p.kind === "cash" ? raw.value : costIn,
         p.kind === "cash",
+        raw.coupons,
       );
     }
     rows.push(row);
@@ -607,7 +626,9 @@ function mergeBonds(list: readonly Row[]): Row {
   const first = list[0]!;
   const value = sumOrNull(list.map((r) => rawOf(r).value));
   const cost = sumOrNull(list.map((r) => rawOf(r).cost));
+  const coupons = list.reduce((a, r) => a + rawOf(r).coupons, 0);
   const dates = new Set(list.map((r) => r.as_of));
+  const accrued = sumOrNull(list.map((r) => r.accrued ?? null));
   const row: Row = {
     ...first,
     // no one position: edit or remove each purchase on its own
@@ -615,10 +636,18 @@ function mergeBonds(list: readonly Row[]): Row {
     cost: finite(cost),
     as_of: dates.size === 1 ? first.as_of : null,
     value: finite(value),
-    pl: finite(plOf(value, cost)),
-    pl_percent: pct(plPct(value, cost)),
+    pl: finite(plOf(add(value, coupons), cost)),
+    pl_percent: pct(plPct(add(value, coupons), cost)),
+    clean_value: sumOrNull(list.map((r) => r.clean_value ?? null)),
+    accrued,
+    coupons_paid: sumOrNull(list.map((r) => r.coupons_paid ?? null)),
+    next_payout:
+      accrued === null ? null : soonest(list.map((r) => r.next_payout)),
     day_change: sumOrNull(list.map((r) => r.day_change)),
-    stale: [...new Set(list.flatMap((r) => r.stale))],
+    // a real reason stays last, after the missing schedule
+    stale: [...new Set(list.flatMap((r) => r.stale))].sort(
+      (a, b) => Number(b === NO_SCHEDULE) - Number(a === NO_SCHEDULE),
+    ),
     parts: list.flatMap((r) => r.parts),
   };
   if (first.converted !== undefined) {
@@ -627,30 +656,33 @@ function mergeBonds(list: readonly Row[]): Row {
     );
     const v = sumOrNull(raws.map((x) => x?.value ?? null));
     const c = sumOrNull(raws.map((x) => x?.cost ?? null));
+    const k = sumOrNull(raws.map((x) => x?.coupons ?? null));
     const out: Converted = {
       ...first.converted,
       value: finite(v),
       cost: finite(c),
-      pl: finite(plOf(v, c)),
-      pl_percent: pct(plPct(v, c)),
+      pl: finite(plOf(add(v, k), c)),
+      pl_percent: pct(plPct(add(v, k), c)),
     };
-    RAW_IN.set(out, { value: v, cost: c });
+    RAW_IN.set(out, { value: v, cost: c, coupons: k ?? 0 });
     row.converted = out;
   }
-  RAW.set(row, { value, cost });
+  RAW.set(row, { value, cost, coupons });
   return row;
 }
 
-// the unrounded value and cost a row was made from, for sums
-const RAW = new WeakMap<Row, { value: number | null; cost: number | null }>();
-const rawOf = (row: Row) =>
-  RAW.get(row) ?? { value: row.value, cost: row.cost };
+// unrounded, so totals never sum rounded rows
+type Raw = { value: number | null; cost: number | null; coupons: number };
+const RAW = new WeakMap<Row, Raw>();
+const rawOf = (row: Row): Raw =>
+  RAW.get(row) ?? { value: row.value, cost: row.cost, coupons: 0 };
 
-// the unrounded converted value and cost, for the converted total
-const RAW_IN = new WeakMap<
-  Converted,
-  { value: number | null; cost: number | null }
->();
+// the unrounded converted value, cost and coupons, for the converted total
+const RAW_IN = new WeakMap<Converted, Raw>();
+
+// a row's coupons paid in the named currency, at today's rate
+export const couponsIn = (r: Row): number =>
+  r.converted === undefined ? 0 : (RAW_IN.get(r.converted)?.coupons ?? 0);
 
 function convert(
   fx: Rates,
@@ -659,22 +691,26 @@ function convert(
   value: number | null,
   costIn: number | null,
   cash = false,
+  coupons = 0,
 ): Converted {
   const r: Rate = fx.rate(from, to, null);
   const v = value === null || r.rate === null ? null : value * r.rate;
   // cash is worth what it is today, in either currency
   const c = cash ? v : costIn;
+  // coupons landed as cash: today's rate, as cash converts
+  const k = r.rate === null ? 0 : coupons * r.rate;
+  const gain = v === null ? null : v + k;
   const out: Converted = {
     currency: to,
     rate: exact(r.rate),
     rate_at: r.at,
     value: finite(v),
     cost: finite(c),
-    pl: cash ? null : finite(plOf(v, c)),
-    pl_percent: cash ? null : pct(plPct(v, c)),
+    pl: cash ? null : finite(plOf(gain, c)),
+    pl_percent: cash ? null : pct(plPct(gain, c)),
     weight: null,
   };
-  RAW_IN.set(out, { value: v, cost: c });
+  RAW_IN.set(out, { value: v, cost: c, coupons: k });
   return out;
 }
 
@@ -691,6 +727,8 @@ function positionRow(
   everyMs: number,
   names: Map<number, string>,
   brokers: Map<number, string>,
+  // the owner's date, which a bond's interest is counted to
+  today: string,
 ): Row {
   let value: number | null = null;
   let cost: number | null = p.cost;
@@ -728,6 +766,13 @@ function positionRow(
       if (instrument !== null) stale.push(STALE.noQuoteYet);
     }
   }
+  const schedule = p.kind === "bond" ? scheduleOf(p) : null;
+  const interest = schedule === null ? null : interestOn(schedule, today);
+  const clean = value;
+  if (interest !== null) value = add(value, interest.accrued);
+  // first, so a UI showing the last reason shows a real one
+  if (p.kind === "bond" && interest === null) stale.unshift(NO_SCHEDULE);
+  const coupons = interest?.coupons ?? 0;
   const row: Row = {
     kind: p.kind,
     id: instrument?.id ?? p.instrument,
@@ -745,12 +790,22 @@ function positionRow(
     priced,
     as_of: p.asOf,
     value: finite(value),
-    pl: p.kind === "cash" ? null : finite(plOf(value, cost)),
-    pl_percent: p.kind === "cash" ? null : pct(plPct(value, cost)),
+    pl: p.kind === "cash" ? null : finite(plOf(add(value, coupons), cost)),
+    pl_percent:
+      p.kind === "cash" ? null : pct(plPct(add(value, coupons), cost)),
     day_change: dayChange,
     change_percent: pct(changePercent),
     currency_weight: null,
-    ...(p.kind === "bond" ? { coupon: p.coupon, maturity: p.maturity } : {}),
+    ...(p.kind === "bond"
+      ? {
+          coupon: p.coupon,
+          maturity: p.maturity,
+          clean_value: finite(clean),
+          accrued: interest?.accrued ?? null,
+          coupons_paid: interest?.coupons ?? null,
+          next_payout: interest?.next ?? null,
+        }
+      : {}),
     ...(p.kind === "cash"
       ? {
           dry_powder: p.dryPowder,
@@ -772,10 +827,13 @@ function positionRow(
         position: p.id,
         as_of: p.asOf,
         amount: p.amount,
+        ...(p.kind === "bond"
+          ? { coupons_paid: interest?.coupons ?? null }
+          : {}),
       },
     ],
   };
-  RAW.set(row, { value, cost });
+  RAW.set(row, { value, cost, coupons });
   return row;
 }
 
@@ -792,7 +850,11 @@ const moves = (r: Row): boolean =>
 function sumOf(
   rows: readonly Row[],
   currency: string,
-  worth: (r: Row) => { value: number | null; cost: number | null },
+  worth: (r: Row) => {
+    value: number | null;
+    cost: number | null;
+    coupons?: number;
+  },
   day: (r: Row) => number | null,
   missing: (r: Row) => string,
   apart: boolean,
@@ -818,7 +880,8 @@ function sumOf(
     value += w.value;
     if (r.kind !== "cash" && w.cost !== null) {
       cost += w.cost;
-      costed += w.value;
+      // a bond's coupons paid count in the gain, never in the value
+      costed += w.value + (w.coupons ?? 0);
       any = true;
     }
     const d = day(r);
@@ -883,23 +946,19 @@ export function holdings(
         ? share.reduce((a, s) => a + (s.value ?? 0), 0)
         : null;
       const cost = r.cost;
-      RAW.set(r, { value, cost });
+      RAW.set(r, { value, cost, coupons: 0 });
     }
   }
   // across portfolios reserve is listed but outside every sum and weight
   const apart = scope.portfolio === null;
   const counted = apart ? rows.filter((r) => !isReserve(r)) : rows;
   const currencies = [...new Set(rows.map((r) => r.currency))].sort();
-  const totals = currencies.map((c) =>
-    sumOf(
-      rows.filter((r) => r.currency === c),
-      c,
-      rawOf,
-      (r) => r.day_change,
-      nameOf,
-      apart,
-    ),
-  );
+  const totals = currencies.map((c) => {
+    const inC = rows.filter((r) => r.currency === c);
+    const t = sumOf(inC, c, rawOf, (r) => r.day_change, nameOf, apart);
+    const next = soonest(inC.map((r) => r.next_payout));
+    return next === null ? t : { ...t, next_payout: next };
+  });
   // weights within one currency, never across
   for (const c of currencies) {
     const inC = counted.filter((r) => r.currency === c);
@@ -976,6 +1035,7 @@ export function holdings(
         return {
           value: valueIn(r, rawOf(r).value),
           cost: raw?.cost ?? null,
+          coupons: raw?.coupons ?? 0,
         };
       },
       (r) => {
@@ -990,6 +1050,18 @@ export function holdings(
       },
       apart,
     );
+    // the earliest day across currencies; a rate missing on it voids the sum
+    const due = soonest(rows.map((r) => r.next_payout));
+    if (due !== null) {
+      let amount: number | null = 0;
+      for (const r of rows) {
+        const own = r.next_payout;
+        if (own == null || own.date !== due.date) continue;
+        const v = valueIn(r, own.amount);
+        amount = amount === null || v === null ? null : amount + v;
+      }
+      converted.next_payout = { date: due.date, amount };
+    }
     exposure = [
       {
         currency: to,
@@ -1087,9 +1159,21 @@ function roundRow(r: Row): void {
   r.value = cents(r.value, d);
   r.pl = cents(r.pl, d);
   r.day_change = cents(r.day_change, d);
+  if (r.kind === "bond") {
+    r.clean_value = cents(r.clean_value ?? null, d);
+    r.accrued = cents(r.accrued ?? null, d);
+    r.coupons_paid = cents(r.coupons_paid ?? null, d);
+    if (r.next_payout != null) {
+      r.next_payout = {
+        date: r.next_payout.date,
+        amount: cents(r.next_payout.amount, d)!,
+      };
+    }
+  }
   for (const p of r.parts) {
     p.cost = cents(p.cost, d);
     p.value = cents(p.value, d);
+    if (p.coupons_paid != null) p.coupons_paid = cents(p.coupons_paid, d);
   }
   for (const p of r.paid ?? [])
     p.amount = cents(p.amount, minorUnits(p.currency));
@@ -1111,6 +1195,12 @@ function roundTotal(t: Total): void {
   t.invested = cents(t.invested, d);
   t.reserve = cents(t.reserve, d);
   t.dry_powder = cents(t.dry_powder, d);
+  if (t.next_payout !== undefined) {
+    t.next_payout = {
+      date: t.next_payout.date,
+      amount: cents(t.next_payout.amount, d),
+    };
+  }
 }
 
 // every currency pair a conversion in this scope would read, so missing

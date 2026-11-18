@@ -61,12 +61,16 @@ const total = {
     list(str),
     "What has no value or rate and is left out of the sum, by id or name, or the missing rate; across portfolios never reserve, which the value leaves out.",
   ),
+  next_payout: note(
+    object({ date: str, amount: nnum }),
+    "The earliest coupon or maturity day of the bonds in view and what they pay on it, the face included on maturity; null amount when a rate is missing. Left out with none.",
+  ),
 };
 
-// net_worth only across portfolios
+// net_worth only across portfolios, next_payout only with a bond's
 const totalObject = object(
   total,
-  Object.keys(total).filter((k) => k !== "net_worth"),
+  Object.keys(total).filter((k) => k !== "net_worth" && k !== "next_payout"),
 );
 
 const part = object(
@@ -85,6 +89,10 @@ const part = object(
     amount: note(
       nnum,
       "Cash's balance or a bond purchase's face, as stored, unrounded.",
+    ),
+    coupons_paid: note(
+      nnum,
+      "A bond purchase's coupons paid since it was bought, so its gain is value + coupons_paid − cost; null with no coupon schedule.",
     ),
   },
   ["portfolio", "broker", "quantity", "average_cost", "cost", "value"],
@@ -177,6 +185,11 @@ const position = object(
     cost: nnum,
     coupon: nnum,
     maturity: nstr,
+    coupons_per_year: note(
+      { type: ["integer", "null"] },
+      "A bond's: 1, 2 or 4, paid on its maturity's day and month. Left out for cash.",
+    ),
+    issued: note(nstr, "A bond's: the day it accrues from. Left out for cash."),
     as_of: note(
       str,
       "Cash's amount is as of this day; a bond's is the day it was bought, its listed price dated by `fetched_at`.",
@@ -287,7 +300,7 @@ const holding = object(
       "The day a fund's price is for, or cash's amount is true on; a bond's is the day it was bought, its listed price dated by `fetched_at`.",
     ),
     value: nnum,
-    pl: nnum,
+    pl: note(nnum, "Value less cost; a bond's adds its coupons paid."),
     pl_percent: nnum,
     day_change: nnum,
     change_percent: nnum,
@@ -299,6 +312,22 @@ const holding = object(
     converted,
     coupon: nnum,
     maturity: nstr,
+    clean_value: note(
+      nnum,
+      "A bond's price on its face, or its face; `value` adds `accrued`.",
+    ),
+    accrued: note(
+      nnum,
+      "A bond's interest since its last coupon day (or `issued`, when later), counted to the owner's today; in `value`. Null with no coupon schedule.",
+    ),
+    coupons_paid: note(
+      nnum,
+      "A bond's coupons paid since it was bought; in `pl`, never in `value`, as they land as cash. Null with no coupon schedule.",
+    ),
+    next_payout: note(
+      { ...object({ date: str, amount: num }), type: ["object", "null"] },
+      "A bond's next coupon day after today and what it pays, the face included on maturity; a merged bond sums its purchases due that day. Null after maturity or with no coupon schedule.",
+    ),
     dry_powder: bool,
     sold_today: note(
       bool,
@@ -540,6 +569,11 @@ export const portfolioSchemas: Record<string, Schema> = {
         str,
         "A bond's maturity, or a term deposit's last day for cash.",
       ),
+      coupons_per_year: note(
+        { type: "integer", enum: [1, 2, 4] },
+        "A bond's coupons a year, paid on its maturity's day and month; with `issued`, its interest is counted.",
+      ),
+      issued: note(str, "A bond's issue day, which it accrues from."),
       date: note(str, "As of; today by default."),
       dry_powder: note(
         bool,
@@ -576,6 +610,11 @@ export const portfolioSchemas: Record<string, Schema> = {
         nstr,
         "Cash's: a term deposit's last day, changed when it rolls over; null takes it off. A bond's never changes.",
       ),
+      coupons_per_year: note(
+        { type: ["integer", "null"], enum: [1, 2, 4, null] },
+        "A bond's coupons a year; null takes it off.",
+      ),
+      issued: note(nstr, "A bond's issue day; null takes it off."),
       market: note(nstr, NO_MARKET),
     },
     [],

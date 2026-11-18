@@ -9,6 +9,7 @@ import { readQuote } from "../market/quotes.ts";
 import { markRead } from "../market/tracking.ts";
 import { checkZone, localDate } from "../market/zone.ts";
 import { standing } from "../portfolios/balances.ts";
+import { COUPONS_PER_YEAR } from "../portfolios/bond-interest.ts";
 import { writeFundHoldings } from "../portfolios/fund-holdings.ts";
 import {
   buyPrice,
@@ -201,6 +202,9 @@ export type PositionArgs = {
   cost: number | null;
   coupon: number | null;
   maturity: string | null;
+  // a bond's schedule, unset by default
+  couponsPerYear?: number | null;
+  issued?: string | null;
   date: string | null;
   broker: string | null;
   note: string | null;
@@ -225,6 +229,9 @@ export type PositionChange = {
   broker?: string | null;
   // a term deposit's last day, null takes it off; a bond's never changes
   maturity?: string | null;
+  // a bond's coupon schedule, null takes it off
+  couponsPerYear?: number | null;
+  issued?: string | null;
 };
 
 export type HoldingsArgs = {
@@ -500,6 +507,8 @@ export function parsePosition(
     cost: optionalAmount(f.cost, "cost"),
     coupon: null,
     maturity: null,
+    couponsPerYear: null,
+    issued: null,
     date: date(f.date, "date"),
     broker: optionalName(f.broker, "broker"),
     note: note(f.note),
@@ -518,6 +527,11 @@ export function parsePosition(
       dryPowder: f.dry_powder === true,
     };
   }
+  const issued = date(f.issued, "issued");
+  const maturity = date(f.maturity, "maturity");
+  if (issued !== null && maturity !== null && issued >= maturity) {
+    throw new ArgError(ISSUED_LATE);
+  }
   let coupon: number | null = null;
   if (f.coupon !== undefined && f.coupon !== null) {
     if (typeof f.coupon !== "number" || !Number.isFinite(f.coupon)) {
@@ -533,8 +547,20 @@ export function parsePosition(
         : text(f.symbol, "symbol"),
     amount: amount(f.amount, "amount", { positive: true }),
     coupon,
-    maturity: date(f.maturity, "maturity"),
+    maturity,
+    couponsPerYear: perYear(f.coupons_per_year),
+    issued,
   };
+}
+
+function perYear(v: unknown): number | null {
+  if (v === undefined || v === null) return null;
+  if (!(COUPONS_PER_YEAR as readonly unknown[]).includes(v)) {
+    throw new ArgError(
+      `coupons_per_year must be ${COUPONS_PER_YEAR.join(", ")}`,
+    );
+  }
+  return v as number;
 }
 
 // what a position's update changes; currency goes with amount or by
@@ -548,6 +574,8 @@ export const UPDATE_FIELDS = [
   "name",
   "broker",
   "maturity",
+  "coupons_per_year",
+  "issued",
 ] as const;
 
 // a fund's update: its price for a day and its market; kind and
@@ -609,6 +637,10 @@ export function parseChange(
   if (f.name !== undefined) c.name = text(f.name, "name", MAX_POSITION_NAME);
   if (f.broker !== undefined) c.broker = optionalName(f.broker, "broker");
   if (f.maturity !== undefined) c.maturity = date(f.maturity, "maturity");
+  if (f.coupons_per_year !== undefined) {
+    c.couponsPerYear = perYear(f.coupons_per_year);
+  }
+  if (f.issued !== undefined) c.issued = date(f.issued, "issued");
   if (Object.keys(c).length === 0) {
     throw new ArgError(`update changes at least one of ${named.join(", ")}`);
   }
@@ -660,6 +692,8 @@ export const KIND_ARGS: Record<AddKind, readonly string[]> = {
     "amount",
     "coupon",
     "maturity",
+    "coupons_per_year",
+    "issued",
     "currency",
     "cost",
     "date",
@@ -906,6 +940,9 @@ export function positionItem(db: Db, owner: string, p: Position) {
     cost: p.cost,
     coupon: p.coupon,
     maturity: p.maturity,
+    ...(p.kind === "bond"
+      ? { coupons_per_year: p.couponsPerYear, issued: p.issued }
+      : {}),
     as_of: p.asOf,
     ...(p.kind === "cash" ? { dry_powder: p.dryPowder } : {}),
     broker: b?.name ?? null,
@@ -1720,6 +1757,8 @@ export async function addPosition(
     cost: args.cost,
     coupon: args.coupon,
     maturity: args.maturity,
+    couponsPerYear: args.couponsPerYear ?? null,
+    issued: args.issued ?? null,
     asOf: day,
     broker: b?.id ?? null,
     note: args.note,
@@ -1759,8 +1798,21 @@ export async function addPosition(
       };
     }
     if (old !== null) setPositionRemoved(db, owner, old.id, who.name, now);
+    // so a merged bond is never half scheduled
+    const from = row.kind === "bond" ? (old ?? heldBond(db, owner, row)) : null;
+    const kept =
+      from === null
+        ? {}
+        : {
+            couponsPerYear: row.couponsPerYear ?? from.couponsPerYear,
+            issued: row.issued ?? from.issued,
+          };
     return {
-      id: insertPosition(db, { ...row, replaces: old?.id ?? null }, now),
+      id: insertPosition(
+        db,
+        { ...row, ...kept, replaces: old?.id ?? null },
+        now,
+      ),
       replaced: old?.id ?? null,
     };
   });
@@ -1859,6 +1911,19 @@ export async function updatePosition(
         message: "a bond's maturity never changes: remove it and add it again",
       };
     }
+    if (
+      old.kind !== "bond" &&
+      (change.couponsPerYear !== undefined || change.issued !== undefined)
+    ) {
+      return {
+        error: "bad_arguments",
+        message: "coupons_per_year and issued are a bond's",
+      };
+    }
+    const issued = change.issued === undefined ? old.issued : change.issued;
+    if (issued !== null && old.maturity !== null && issued >= old.maturity) {
+      return { error: "bad_arguments", message: ISSUED_LATE };
+    }
     const name = change.name ?? old.name;
     const at = broker === undefined ? old.broker : (broker?.id ?? null);
     // add takes cash of one name, broker and currency as one row
@@ -1915,6 +1980,11 @@ export async function updatePosition(
         dryPowder: change.dryPowder ?? old.dryPowder,
         maturity:
           change.maturity === undefined ? old.maturity : change.maturity,
+        couponsPerYear:
+          change.couponsPerYear === undefined
+            ? old.couponsPerYear
+            : change.couponsPerYear,
+        issued,
         name,
         broker: at,
         replaces: id,
@@ -1930,6 +2000,25 @@ export async function updatePosition(
     ...(rate === undefined ? {} : { rate }),
   };
 }
+
+function heldBond(db: Db, owner: string, row: NewPosition): Position | null {
+  const name = row.name.toLowerCase();
+  return (
+    readPositions(db, owner).find(
+      (p) =>
+        p.kind === "bond" &&
+        p.currency === row.currency &&
+        (p.couponsPerYear !== null || p.issued !== null) &&
+        (row.instrument !== null
+          ? p.instrument === row.instrument
+          : p.instrument === null &&
+            p.broker === row.broker &&
+            p.name.toLowerCase() === name),
+    ) ?? null
+  );
+}
+
+export const ISSUED_LATE = "issued must be before maturity";
 
 export const PAST_ONLY =
   "a date before the row's own day takes only amount: its balance that day";

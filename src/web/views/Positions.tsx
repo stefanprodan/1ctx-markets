@@ -29,10 +29,11 @@ import "./positions.css";
 const FIRST = 20;
 
 // a broker's gain is its value over the cost of the units it still
-// holds, both from the server in the holding's currency
+// holds, both from the server in the holding's currency; a bond
+// purchase's adds the coupons it paid, as its row's does
 export function gainOf(p: Part): { pl: number | null; pct: number | null } {
   if (p.value === null || p.cost === null) return { pl: null, pct: null };
-  const pl = p.value - p.cost;
+  const pl = p.value + (p.coupons_paid ?? 0) - p.cost;
   return { pl, pct: p.cost > 0 ? (pl / p.cost) * 100 : null };
 }
 
