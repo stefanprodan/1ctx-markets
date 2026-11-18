@@ -31,6 +31,8 @@ MCP tools copied onto paths.
 | `DELETE /instruments/{symbol}` | admin | `deleteOne()` | 204; 409 with `rules` (`docs/admin.md`) |
 | `POST /instruments/{symbol}/refetch` | admin | `refetchOne()` | `input`, `id`, `parts[]` (`docs/admin.md`) |
 | `GET /instruments/{symbol}/stored` | session | `storedCheck()` | `input`, `stored`: whether a read answers from the database or fetches the symbol first (`docs/admin.md`) |
+| `DELETE /instruments/{symbol}/live` | session | `liveRelease()` | 204: the page left frees its fast place at once; asks no source, and an instrument not held answers the same (`docs/yahoo.md`, "Fast quotes") |
+| `GET /instruments/{symbol}/live` | session | `liveCheck()` | `input`, `fast`: the open page's quote refetched when older than 10 s, and whether to read again in 10 s; a symbol not stored answers `fast: false` and adds nothing (`docs/yahoo.md`, "Fast quotes") |
 | `GET /instruments/{symbol}/bars?interval=&from=&to=&benchmark=&extended=` | read | `readHistory()`, `readIntradayHistory()` | bars or 5-minute points (below) |
 | `GET /dashboard` | session | `readDashboard()` | the web UI's home page: `revision`, `created`, `sections[]` of `items[]` (below) |
 | `PUT /dashboard` | session | `saveDashboard()` | `{revision, sections: [{name, view, symbols}]}` replaces the layout; the saved dashboard; 409 with `dashboard`, 422 with `errors` (below) |

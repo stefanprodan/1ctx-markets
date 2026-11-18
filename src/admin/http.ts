@@ -728,6 +728,35 @@ export function storedCheck(
   });
 }
 
+// the open page's light read: it never adds an instrument, and fast tells
+// the page how soon to read again
+export async function liveCheck(
+  m: Markets,
+  url: URL,
+  raw: string,
+): Promise<Response> {
+  noQuery(url);
+  const input = keyed(raw);
+  const row = isFundKey(input)
+    ? null
+    : restStored(m.db, input, m.bvb !== null, false);
+  return json({
+    input,
+    fast: row === null ? false : await m.fast.refresh(row),
+  });
+}
+
+// the page left: never asks a source
+export function liveRelease(m: Markets, url: URL, raw: string): Response {
+  noQuery(url);
+  const input = keyed(raw);
+  const row = isFundKey(input)
+    ? null
+    : restStored(m.db, input, m.bvb !== null, false);
+  if (row !== null) m.fast.release(row);
+  return new Response(null, { status: 204, headers: NO_STORE });
+}
+
 function keyed(raw: string): string {
   const input = pathSymbol(raw);
   if (!KEY.test(input)) {

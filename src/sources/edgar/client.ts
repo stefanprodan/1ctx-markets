@@ -4,12 +4,14 @@
 // codes, dates and numbers is kept, so no text can carry it back
 
 import type { Clock } from "../../runtime/clock.ts";
+import type { Log } from "../../runtime/log.ts";
 import { EDGAR } from "../ids.ts";
 import {
   type Backoff,
   type Fetch,
   limiter,
   type RunOptions,
+  rateLimited,
   SourceError,
   Unreadable,
 } from "../source.ts";
@@ -95,6 +97,7 @@ export type EdgarOptions = {
   fetch?: Fetch;
   www?: string;
   data?: string;
+  log?: Log;
 };
 
 const malformed = (detail: string) =>
@@ -230,7 +233,13 @@ export function edgar(options: EdgarOptions): Edgar {
   const www = options.www ?? WWW;
   const data = options.data ?? DATA;
   const doFetch: Fetch = options.fetch ?? ((url, init) => fetch(url, init));
-  const calls = limiter(clock, SPACING_MS);
+  const calls = limiter(
+    clock,
+    SPACING_MS,
+    options.log === undefined
+      ? undefined
+      : { source: SOURCE, log: options.log },
+  );
 
   const get = <T>(
     url: string,
@@ -259,7 +268,7 @@ export function edgar(options: EdgarOptions): Edgar {
         const fetchedAt = clock.now();
         // SEC answers a client over its limit or without a contact with 403
         if (res.status === 429 || res.status === 403) {
-          throw new SourceError("rate limited");
+          throw rateLimited(res, clock.now());
         }
         if (res.status === 404) throw new SourceError("not found");
         if (res.status === 400) throw new SourceError("bad request");

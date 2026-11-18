@@ -4,6 +4,7 @@
 import { type Session, sessionFromChartMeta } from "../../market/calendars.ts";
 import type { Point } from "../../market/intraday.ts";
 import type { Clock } from "../../runtime/clock.ts";
+import type { Log } from "../../runtime/log.ts";
 import { RETRY_MS } from "../history.ts";
 import { YAHOO } from "../ids.ts";
 import { cut } from "../massive/client.ts";
@@ -17,6 +18,7 @@ import {
   QueueClosed,
   queue,
   type RunOptions,
+  rateLimited,
   SourceError,
   Unreadable,
 } from "../source.ts";
@@ -211,6 +213,8 @@ export type Yahoo = {
   failFast(): Yahoo;
   within(live: () => boolean): Yahoo;
   backoff(): Backoff | null;
+  // when the latest back-off a 429 set ends or ended, 0 before any
+  limitedUntil(): number;
 };
 
 export type YahooOptions = {
@@ -219,6 +223,7 @@ export type YahooOptions = {
   host?: string;
   // shared with every other caller of the same source
   queue?: Queue;
+  log?: Log;
 };
 
 const malformed = (detail: string) =>
@@ -875,7 +880,15 @@ export function yahoo(options: YahooOptions): Yahoo {
   const { clock } = options;
   const host = options.host ?? HOST;
   const doFetch: Fetch = options.fetch ?? ((url, init) => fetch(url, init));
-  const calls = options.queue ?? queue(clock, CONCURRENCY);
+  const calls =
+    options.queue ??
+    queue(
+      clock,
+      CONCURRENCY,
+      options.log === undefined
+        ? undefined
+        : { source: SOURCE, log: options.log },
+    );
   // kept from every answer, so a listing without extended prices answers
   // none even when its chart fails; a restart empties it
   const prePost = new Map<string, boolean>();
@@ -920,7 +933,7 @@ export function yahoo(options: YahooOptions): Yahoo {
       Accept: "application/json",
       ...headers,
     });
-    if (res.status === 429) throw new SourceError("rate limited");
+    if (res.status === 429) throw rateLimited(res, clock.now());
     if (res.status === 400) throw new SourceError("bad request");
     if (res.status === 401) throw new Unauthorized();
     let body: unknown;
@@ -952,7 +965,7 @@ export function yahoo(options: YahooOptions): Yahoo {
   const newSession = async (run: RunOptions): Promise<Crumb> => {
     ready(run);
     const fc = await send(COOKIE_URL, {}, "manual");
-    if (fc.res.status === 429) throw new SourceError("rate limited");
+    if (fc.res.status === 429) throw rateLimited(fc.res, clock.now());
     const cookie = fc.res.headers
       .getSetCookie()
       .map((c) => c.split(";")[0]!.trim())
@@ -961,7 +974,9 @@ export function yahoo(options: YahooOptions): Yahoo {
     if (cookie === "") throw new SourceError("source error", "no cookie");
     ready(run);
     const answer = await send(`${host}/v1/test/getcrumb`, { Cookie: cookie });
-    if (answer.res.status === 429) throw new SourceError("rate limited");
+    if (answer.res.status === 429) {
+      throw rateLimited(answer.res, clock.now());
+    }
     const crumb = answer.raw.trim();
     if (!answer.res.ok || !CRUMB.test(crumb)) {
       throw new SourceError("source error", "no crumb");
@@ -1278,6 +1293,7 @@ export function yahoo(options: YahooOptions): Yahoo {
       failFast: () => client({ failFast: true }),
       within: (live) => client({ failFast: true, live }),
       backoff: () => calls.backoff(),
+      limitedUntil: () => calls.limitedUntil(),
     };
   };
   return client({});

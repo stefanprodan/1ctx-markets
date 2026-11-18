@@ -38,6 +38,14 @@ import {
 import { ALERTS_KEPT_DAYS, ALERTS_PAGE } from "../rules/store.ts";
 import { CALLS_PER_MINUTE } from "../server/ratelimit.ts";
 import { POSITIONING_WEEKS } from "../sources/cftc/list.ts";
+import {
+  FAST_CAP,
+  FAST_COOLDOWN_MS,
+  FAST_HOLD_MS,
+  FAST_MS,
+  FAST_SPACING_MS,
+  FAST_WAIT_MS,
+} from "../sources/yahoo/fast.ts";
 import { SUMMARY_EXPIRIES } from "../sources/yahoo/options.ts";
 import { ALERT_PAGE_BYTES } from "./alerts.ts";
 import { DOC_FILES } from "./docs.ts";
@@ -514,6 +522,42 @@ export const paths = {
       parameters: [symbolParam(STORED_SYMBOL)],
       responses: admins({
         200: ok("Whether it is stored.", ref("Stored")),
+      }),
+    },
+  },
+  "/instruments/{symbol}/live": {
+    get: {
+      tags: ["instruments"],
+      operationId: "instrumentLive",
+      security: ADMIN_AUTH,
+      summary: "Refresh an open instrument's quote",
+      description: lines(
+        `The web UI's read while an instrument's page is open: a quote older than ${FAST_MS / 1000} seconds is fetched again from its source, so the next read of the instrument shows it. \`fast\` says whether to read again in ${FAST_MS / 1000} seconds.`,
+        "",
+        "- Only a stored instrument whose market is open refreshes, never a regional source's listing, an economic series or a fund the owner prices; any other answers `fast: false` and fetches nothing.",
+        `- At most ${FAST_CAP} instruments refresh at once across all users, their calls at least ${FAST_SPACING_MS / 1000} seconds apart; past that it answers \`fast: false\`.`,
+        `- Off while that source backs off, and for ${FAST_COOLDOWN_MS / 60_000} minutes after it was rate limited.`,
+        `- Waits at most ${FAST_WAIT_MS / 1000} seconds for the source, then answers with the stored quote kept.`,
+      ),
+      parameters: [symbolParam(STORED_SYMBOL)],
+      responses: admins({
+        200: ok("Whether the quote refreshes fast.", ref("Live")),
+      }),
+    },
+    delete: {
+      tags: ["instruments"],
+      operationId: "instrumentLeft",
+      security: ADMIN_AUTH,
+      summary: "Free an instrument's fast refresh",
+      description: lines(
+        "The web UI's call when an instrument's page is left: its place among the instruments refreshed fast goes to the next page at once.",
+        "",
+        "- Asks no source; a quote already being fetched is still stored.",
+        `- An instrument not refreshed fast, or not stored, answers the same. A page that never calls it frees its place ${FAST_HOLD_MS / 1000} seconds after its last read.`,
+      ),
+      parameters: [symbolParam(STORED_SYMBOL)],
+      responses: admins({
+        204: { description: "Freed." },
       }),
     },
   },

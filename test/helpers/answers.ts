@@ -339,6 +339,9 @@ const REQUESTS: [string, RequestInit?][] = [
   ["/instruments/US:NVDA"],
   ["/instruments/US:NVDA/stored"],
   ["/instruments/ZZNOTHING/stored"],
+  ["/instruments/US:NVDA/live"],
+  ["/instruments/ZZNOTHING/live"],
+  ["/instruments/US:NVDA/live", { method: "DELETE" }],
   [
     "/instruments/US:NVDA/refetch",
     post("POST", {

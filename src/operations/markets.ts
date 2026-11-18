@@ -17,6 +17,7 @@ import { type Hooks, NO_HOOKS } from "../sources/finnhub/store.ts";
 import type { Fred } from "../sources/fred/client.ts";
 import type { Massive } from "../sources/massive/client.ts";
 import type { OptionChain, Yahoo } from "../sources/yahoo/client.ts";
+import { type FastQuotes, fastQuotes } from "../sources/yahoo/fast.ts";
 import type { Db } from "../storage/db/index.ts";
 import type { Writer } from "../storage/writer.ts";
 
@@ -31,6 +32,8 @@ export type Markets = {
   writer: Writer;
   // fail-fast clients: a read never waits out a source's back-off
   yahoo: Yahoo;
+  // the open instrument page's quote, between the passes
+  fast: FastQuotes;
   fred: Fred | null;
   // null while the Bucharest feed is off
   bvb: Bvb | null;
@@ -73,12 +76,23 @@ export function markets(options: {
   tracking?: Tracking;
   quoteEveryMs?: number;
   callMs?: number;
+  fast?: FastQuotes;
 }): Markets {
   return {
     db: options.db,
     clock: options.clock,
     writer: options.writer,
     yahoo: options.yahoo.failFast(),
+    fast:
+      options.fast ??
+      fastQuotes({
+        db: options.db,
+        clock: options.clock,
+        writer: options.writer,
+        yahoo: options.yahoo,
+        rules: options.rules,
+        log: options.log,
+      }),
     fred: options.fred?.failFast() ?? null,
     bvb: options.bvb?.failFast() ?? null,
     finnhub: options.finnhub?.failFast() ?? null,

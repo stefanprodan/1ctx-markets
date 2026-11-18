@@ -568,6 +568,8 @@ export function store(
   const detailCode = signal<number | null>(null);
   const detailWait = slowFlag(later);
   const firstFetch = signal<string | null>(null);
+  // the instrument whose quote the server refreshes fast while its page is open
+  const fastId = signal<string | null>(null);
   // the id asked last, whose page is open or on its way; detailId stays
   // on the page left until this one's answer lands
   let askedId: string | null = null;
@@ -995,6 +997,49 @@ export function store(
     } finally {
       out = false;
     }
+  }
+
+  // keepalive, so it still goes out as the tab closes
+  function release(id: string): void {
+    void fetchFn(`${instrumentPath(id)}/live`, {
+      method: "DELETE",
+      credentials: "same-origin",
+      keepalive: true,
+    }).catch(() => {});
+  }
+
+  // the page whose live answer counts; a page left answered late frees
+  // the place it just took, never taking the open page's state
+  let liveFor: string | null = null;
+
+  // asked before the page's read, so the read shows the quote it fetched
+  async function live(id: string): Promise<void> {
+    liveFor = id;
+    let fast = false;
+    try {
+      fast = (await call<{ fast: boolean }>(`${instrumentPath(id)}/live`)).fast;
+    } catch {}
+    if (liveFor !== id) {
+      if (fast) release(id);
+      return;
+    }
+    if (fast) fastId.value = id;
+    else if (fastId.peek() === id) fastId.value = null;
+  }
+
+  // the page left frees its fast place at once
+  function leave(id: string): void {
+    if (liveFor === id) liveFor = null;
+    if (fastId.peek() !== id) return;
+    fastId.value = null;
+    release(id);
+  }
+
+  async function refreshInstrument(id: string): Promise<void> {
+    await live(id);
+    // another page opened meanwhile: this read would land over it
+    if (askedId !== null && askedId !== id) return;
+    await loadInstrument(id);
   }
 
   async function refetch(
@@ -1512,7 +1557,11 @@ export function store(
     detailFailures,
     detailSlow: detailWait.slow,
     firstFetch,
+    fastId,
+    leave,
+    live,
     loadInstrument,
+    refreshInstrument,
     refetch,
     remove,
     screenAsk,

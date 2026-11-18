@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { Clock } from "../../runtime/clock.ts";
+import type { Log } from "../../runtime/log.ts";
 import { BVB, BVB_MARKET } from "../ids.ts";
 import {
   type Backoff,
@@ -91,6 +92,7 @@ export type BvbOptions = {
     rows: { symbol: string; isin: string | null; name: string | null }[],
     at: number,
   ) => Promise<unknown>;
+  log?: Log;
 };
 
 type Raw = { status: number; text: string; fetchedAt: number };
@@ -98,7 +100,13 @@ type Raw = { status: number; text: string; fetchedAt: number };
 export function bvb(options: BvbOptions): Bvb {
   const { clock } = options;
   const doFetch: Fetch = options.fetch ?? ((url, init) => fetch(url, init));
-  const calls: Limiter = limiter(clock, SPACING_MS);
+  const calls: Limiter = limiter(
+    clock,
+    SPACING_MS,
+    options.log === undefined
+      ? undefined
+      : { source: SOURCE, log: options.log },
+  );
   // the chart feed's key, from the last instrument page read
   let key: string | null = null;
   let fetches = 0;

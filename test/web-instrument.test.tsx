@@ -17,6 +17,7 @@ import { briefQuantity } from "../src/web/lib/format.ts";
 import { stopped } from "../src/web/lib/names.ts";
 import { barWidth } from "../src/web/ui/Weights.tsx";
 import { monthlyShares, tradeMarks } from "../src/web/views/Chart.model.ts";
+import { tradeText } from "../src/web/views/Chart.tsx";
 import {
   buyable,
   onSymbolPage,
@@ -932,6 +933,19 @@ describe("a fund the owner prices, on its page", () => {
         [{ date: "2026-10-01", side: "buy", quantity: 1, price: 1 }],
       ),
     ).toEqual([]);
+  });
+
+  test("a month's mark reads at its average price, a day's at its price", () => {
+    const mark = { time: "2026-09-15", quantity: 4, price: 17.5 };
+    expect(tradeText({ ...mark, side: "buy", month: true })).toBe(
+      "Bought 4 · avg 17.50",
+    );
+    expect(tradeText({ ...mark, side: "sell", month: true })).toBe(
+      "Sold 4 · avg 17.50",
+    );
+    expect(tradeText({ ...mark, side: "buy", month: false })).toBe(
+      "Bought 4 at 17.50",
+    );
   });
 
   test("a year or more sums each month's trades on its latest trade's bar", () => {

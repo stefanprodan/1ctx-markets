@@ -1,7 +1,8 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 
-import { type Clock, MINUTE_MS } from "../runtime/clock.ts";
+import { type Clock, HOUR_MS, MINUTE_MS } from "../runtime/clock.ts";
+import type { Log } from "../runtime/log.ts";
 
 export type Fetch = (url: string, init: RequestInit) => Promise<Response>;
 
@@ -58,6 +59,21 @@ export function phraseOf(error: unknown): string {
   return error instanceof SourceError ? error.phrase : "failed";
 }
 
+// a 429; waitMs is the answer's Retry-After, null without a usable one
+export class RateLimited extends SourceError {
+  constructor(readonly waitMs: number | null = null) {
+    super("rate limited");
+  }
+}
+
+// Retry-After is seconds or an HTTP date
+export function rateLimited(res: Response, now: number): RateLimited {
+  const raw = res.headers.get("retry-after")?.trim() ?? "";
+  if (/^\d+$/.test(raw)) return new RateLimited(Number(raw) * 1000);
+  const at = raw === "" ? Number.NaN : Date.parse(raw);
+  return new RateLimited(Number.isNaN(at) ? null : Math.max(0, at - now));
+}
+
 // not the source's format at all, such as a consent page: the source is unwell
 export class Unreadable extends SourceError {
   constructor(detail = "not JSON") {
@@ -105,6 +121,18 @@ const backsOff = (error: unknown): boolean =>
 
 export const RATE_LIMIT_BACKOFF_MS = 5 * MINUTE_MS;
 export const FAILURE_BACKOFF_MS = 30_000;
+// a Retry-After past this is taken as this, so one odd header never
+// silences a source for days
+export const MAX_RETRY_AFTER_MS = HOUR_MS;
+
+// the pause a failure sets: a 429's Retry-After lengthens it, never shortens
+export function pauseOf(error: unknown): number {
+  if (!(error instanceof SourceError && error.phrase === "rate limited")) {
+    return FAILURE_BACKOFF_MS;
+  }
+  const asked = error instanceof RateLimited ? (error.waitMs ?? 0) : 0;
+  return Math.max(RATE_LIMIT_BACKOFF_MS, Math.min(asked, MAX_RETRY_AFTER_MS));
+}
 
 export type RunOptions = {
   // a tool fails at once while the queue backs off; a job waits it out
@@ -129,7 +157,12 @@ export type Queue = {
   due(): number | null;
   // null once it ended, whether or not a call waits
   backoff(): Backoff | null;
+  // when the latest back-off a 429 set ends or ended, 0 before any
+  limitedUntil(): number;
 };
+
+// a source's back-offs are logged once each, never per call
+export type QueueLog = { source: string; log: Log };
 
 export class QueueClosed extends Error {
   constructor() {
@@ -147,7 +180,11 @@ type Waiting = {
   reject: (error: unknown) => void;
 };
 
-export function queue(clock: Clock, concurrency: number): Queue {
+export function queue(
+  clock: Clock,
+  concurrency: number,
+  logged?: QueueLog,
+): Queue {
   if (!Number.isSafeInteger(concurrency) || concurrency < 1) {
     throw new Error("concurrency is a whole number above 0");
   }
@@ -157,6 +194,26 @@ export function queue(clock: Clock, concurrency: number): Queue {
   let pausedBy: Phrase = "rate limited";
   let armed = false;
   let closed = false;
+  let resume: (() => void) | null = null;
+  let limited = 0;
+  const backOff = (pause: number, phrase: Phrase) => {
+    const next = clock.now() + pause;
+    if (phrase === "rate limited") limited = Math.max(limited, next);
+    if (next <= until) return;
+    until = next;
+    pausedBy = phrase;
+    if (logged === undefined) return;
+    logged.log.warn("source backing off", {
+      source: logged.source,
+      reason: phrase,
+      until: new Date(until).toISOString(),
+    });
+    resume?.();
+    resume = clock.at(until, () => {
+      resume = null;
+      logged.log.info("source resumed", { source: logged.source });
+    });
+  };
   const pump = () => {
     if (closed) return;
     if (clock.now() < until) {
@@ -191,19 +248,10 @@ export function queue(clock: Clock, concurrency: number): Queue {
             .then(task)
             .then(resolve, (error: unknown) => {
               if (backsOff(error)) {
-                const limited =
-                  error instanceof SourceError &&
-                  error.phrase === "rate limited";
-                const pause = limited
-                  ? RATE_LIMIT_BACKOFF_MS
-                  : FAILURE_BACKOFF_MS;
-                if (clock.now() + pause > until) {
-                  until = clock.now() + pause;
-                  pausedBy =
-                    error instanceof SourceError
-                      ? error.phrase
-                      : "source error";
-                }
+                backOff(
+                  pauseOf(error),
+                  error instanceof SourceError ? error.phrase : "source error",
+                );
               }
               reject(error);
             })
@@ -239,6 +287,8 @@ export function queue(clock: Clock, concurrency: number): Queue {
     },
     close() {
       closed = true;
+      resume?.();
+      resume = null;
       const left = waiting;
       waiting = [];
       for (const w of left) w.reject(new QueueClosed());
@@ -246,6 +296,7 @@ export function queue(clock: Clock, concurrency: number): Queue {
     isClosed: () => closed,
     due: () => (armed ? until : null),
     backoff: () => (clock.now() < until ? { until, after: pausedBy } : null),
+    limitedUntil: () => limited,
   };
 }
 
@@ -258,8 +309,12 @@ export type Limiter = {
 };
 
 // spaced starts, so a source's own rate limit holds across its jobs and tools
-export function limiter(clock: Clock, spacingMs: number): Limiter {
-  const calls = queue(clock, 1);
+export function limiter(
+  clock: Clock,
+  spacingMs: number,
+  logged?: QueueLog,
+): Limiter {
+  const calls = queue(clock, 1, logged);
   let lastStart = Number.NEGATIVE_INFINITY;
   let closed = false;
   let parked: number | null = null;

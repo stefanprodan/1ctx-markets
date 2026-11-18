@@ -11,6 +11,30 @@ import {
   priceParts,
   type Signed,
 } from "../lib/format.ts";
+import { FAST_REFRESH_MS, REFRESH_MS } from "../lib/refresh.ts";
+
+// the page is left when it goes, when its tab hides and as the tab
+// closes; the cleanup is the page going
+export function onLeave(
+  doc: EventTarget & { visibilityState: DocumentVisibilityState },
+  win: EventTarget,
+  leave: () => void,
+): () => void {
+  const hidden = () => {
+    if (doc.visibilityState === "hidden") leave();
+  };
+  doc.addEventListener("visibilitychange", hidden);
+  win.addEventListener("pagehide", leave);
+  return () => {
+    doc.removeEventListener("visibilitychange", hidden);
+    win.removeEventListener("pagehide", leave);
+    leave();
+  };
+}
+
+// the server says which open instrument it refreshes fast
+export const refreshMs = (fastId: string | null, id: string): number =>
+  fastId === id ? FAST_REFRESH_MS : REFRESH_MS;
 
 // the quote's figures through the list's own formats, so both read alike
 export function headline(d: Detail): {

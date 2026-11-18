@@ -16,6 +16,7 @@ import {
   unread,
 } from "../src/web/data/store.ts";
 import { kindOf } from "../src/web/lib/names.ts";
+import { FAST_REFRESH_MS, REFRESH_MS } from "../src/web/lib/refresh.ts";
 import {
   HOLD_MS,
   hold,
@@ -28,6 +29,7 @@ import {
 import { pointerAt, type Rest } from "../src/web/views/Chart.model.ts";
 import { ConnectBody } from "../src/web/views/Connect.tsx";
 import { HomeWaiting, SectionView } from "../src/web/views/Dashboard.tsx";
+import { onLeave, refreshMs } from "../src/web/views/Instrument.model.ts";
 import { InstrumentWaiting } from "../src/web/views/Instrument.tsx";
 import { PortfoliosBody } from "../src/web/views/Portfolios.tsx";
 import { ScreenerList } from "../src/web/views/Screener.tsx";
@@ -331,6 +333,117 @@ describe("an instrument while it reads", () => {
     await again;
     expect(h.asked.filter((k) => k === READ)).toHaveLength(2);
     expect(s.detail.value?.instrument.id).toBe(ID);
+  });
+
+  test("the refresh asks for the live quote before the read; its answer sets the interval", async () => {
+    const LIVE = `GET ${instrumentPath(ID)}/live`;
+    const h = held();
+    const s = store(h.fetch);
+    expect(refreshMs(s.fastId.value, ID)).toBe(REFRESH_MS);
+    const fast = s.refreshInstrument(ID);
+    expect(h.asked).toEqual([LIVE]);
+    await h.answer(LIVE, Response.json({ input: ID, fast: true }));
+    expect(h.asked).toEqual([LIVE, READ, STORED]);
+    expect(refreshMs(s.fastId.value, ID)).toBe(FAST_REFRESH_MS);
+    expect(refreshMs(s.fastId.value, "US:OTHER")).toBe(REFRESH_MS);
+    await h.answer(READ, Response.json(detailOf(ID)));
+    await fast;
+    const slow = s.refreshInstrument(ID);
+    await h.answer(LIVE, Response.json({ input: ID, fast: false }));
+    expect(refreshMs(s.fastId.value, ID)).toBe(REFRESH_MS);
+    await h.answer(READ, Response.json(detailOf(ID)));
+    await slow;
+  });
+
+  test("a refresh whose live answer lands after another page opened reads nothing", async () => {
+    const OTHER = "US:BBB";
+    const LIVE = `GET ${instrumentPath(ID)}/live`;
+    const h = held();
+    const s = store(h.fetch);
+    const first = s.loadInstrument(ID);
+    await h.answer(STORED, Response.json({ input: ID, stored: true }));
+    await h.answer(READ, Response.json(detailOf(ID)));
+    await first;
+    const late = s.refreshInstrument(ID);
+    const next = s.loadInstrument(OTHER);
+    await h.answer(
+      `GET ${instrumentPath(OTHER)}`,
+      Response.json(detailOf(OTHER)),
+    );
+    await next;
+    await h.answer(LIVE, Response.json({ input: ID, fast: true }));
+    await late;
+    expect(h.asked.filter((k) => k === READ)).toHaveLength(1);
+    expect(s.detailId.value).toBe(OTHER);
+    expect(s.detail.value?.instrument.id).toBe(OTHER);
+  });
+
+  test("a page left frees its fast place, only when its last answer was fast", async () => {
+    const LIVE = `GET ${instrumentPath(ID)}/live`;
+    const LEFT = `DELETE ${instrumentPath(ID)}/live`;
+    const h = held();
+    const sent: RequestInit[] = [];
+    const s = store((path, init) => {
+      if (init?.method === "DELETE") sent.push(init);
+      return h.fetch(path, init);
+    });
+    const slow = s.live(ID);
+    await h.answer(LIVE, Response.json({ input: ID, fast: false }));
+    await slow;
+    s.leave(ID);
+    expect(h.asked).not.toContain(LEFT);
+    const fast = s.live(ID);
+    await h.answer(LIVE, Response.json({ input: ID, fast: true }));
+    await fast;
+    s.leave(ID);
+    s.leave(ID);
+    expect(h.asked.filter((k) => k === LEFT)).toHaveLength(1);
+    expect(sent[0]?.keepalive).toBe(true);
+    expect(s.fastId.value).toBeNull();
+  });
+
+  test("a page left before its live answer frees that place and keeps the open page's", async () => {
+    const OTHER = "US:BBB";
+    const h = held();
+    const s = store(h.fetch);
+    const left = s.live(ID);
+    s.leave(ID);
+    const open = s.live(OTHER);
+    await h.answer(
+      `GET ${instrumentPath(OTHER)}/live`,
+      Response.json({ input: OTHER, fast: true }),
+    );
+    await open;
+    await h.answer(
+      `GET ${instrumentPath(ID)}/live`,
+      Response.json({ input: ID, fast: true }),
+    );
+    await left;
+    expect(s.fastId.value).toBe(OTHER);
+    expect(h.asked).toContain(`DELETE ${instrumentPath(ID)}/live`);
+    s.leave(OTHER);
+    expect(h.asked).toContain(`DELETE ${instrumentPath(OTHER)}/live`);
+  });
+
+  test("the page is left when it goes, when its tab hides and as the tab closes", () => {
+    const doc = Object.assign(new EventTarget(), {
+      visibilityState: "visible" as DocumentVisibilityState,
+    });
+    const win = new EventTarget();
+    let left = 0;
+    const stop = onLeave(doc, win, () => left++);
+    doc.dispatchEvent(new Event("visibilitychange"));
+    expect(left).toBe(0);
+    doc.visibilityState = "hidden";
+    doc.dispatchEvent(new Event("visibilitychange"));
+    expect(left).toBe(1);
+    win.dispatchEvent(new Event("pagehide"));
+    expect(left).toBe(2);
+    stop();
+    expect(left).toBe(3);
+    doc.dispatchEvent(new Event("visibilitychange"));
+    win.dispatchEvent(new Event("pagehide"));
+    expect(left).toBe(3);
   });
 
   test("a source's failure reads in plain words", () => {

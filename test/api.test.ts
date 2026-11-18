@@ -891,6 +891,43 @@ describe("every operation", () => {
       await t.call("/instruments/US:NVDA/stored", reader),
       403,
     );
+    const live = "/instruments/{symbol}/live";
+    await check("GET", live, await t.call("/instruments/US:NVDA/live"), 200);
+    await check(
+      "GET",
+      live,
+      await t.call("/instruments/US:NVDA/live?x=1"),
+      400,
+    );
+    await check(
+      "GET",
+      live,
+      await t.call("/instruments/US:NVDA/live", wrong),
+      401,
+    );
+    await check(
+      "GET",
+      live,
+      await t.call("/instruments/US:NVDA/live", reader),
+      403,
+    );
+    const left = (init: RequestInit = {}) =>
+      t.call("/instruments/US:NVDA/live", { method: "DELETE", ...init });
+    await check("DELETE", live, await left(), 204);
+    await check(
+      "DELETE",
+      live,
+      await t.call("/instruments/ZZNOTHING/live", { method: "DELETE" }),
+      204,
+    );
+    await check(
+      "DELETE",
+      live,
+      await t.call("/instruments/US:NVDA/live?x=1", { method: "DELETE" }),
+      400,
+    );
+    await check("DELETE", live, await left(wrong), 401);
+    await check("DELETE", live, await left(reader), 403);
     const again = "/instruments/{symbol}/refetch";
     const refetch = { parts: ["quotes"] };
     await check(
