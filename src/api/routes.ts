@@ -1185,13 +1185,15 @@ function operator(admin: AdminDeps, world: World): Route[] {
       method: "GET",
       path: "/instruments/{symbol}/live",
       scope: "session",
-      handle: (_req, url, params) => liveCheck(m, url, params.symbol!),
+      handle: (_req, url, params, who) =>
+        liveCheck(m, who, url, params.symbol!),
     },
     {
       method: "DELETE",
       path: "/instruments/{symbol}/live",
       scope: "session",
-      handle: async (_req, url, params) => liveRelease(m, url, params.symbol!),
+      handle: async (_req, url, params, who) =>
+        liveRelease(m, who, url, params.symbol!),
     },
     {
       method: "POST",

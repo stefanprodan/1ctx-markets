@@ -732,6 +732,7 @@ export function storedCheck(
 // the page how soon to read again
 export async function liveCheck(
   m: Markets,
+  who: Who,
   url: URL,
   raw: string,
 ): Promise<Response> {
@@ -742,19 +743,30 @@ export async function liveCheck(
     : restStored(m.db, input, m.bvb !== null, false);
   return json({
     input,
-    fast: row === null ? false : await m.fast.refresh(row),
+    fast: row === null ? false : await m.fast.refresh(row, viewerOf(who)),
   });
 }
 
 // the page left: never asks a source
-export function liveRelease(m: Markets, url: URL, raw: string): Response {
+export function liveRelease(
+  m: Markets,
+  who: Who,
+  url: URL,
+  raw: string,
+): Response {
   noQuery(url);
   const input = keyed(raw);
   const row = isFundKey(input)
     ? null
     : restStored(m.db, input, m.bvb !== null, false);
-  if (row !== null) m.fast.release(row);
+  if (row !== null) m.fast.release(row, viewerOf(who));
   return new Response(null, { status: 204, headers: NO_STORE });
+}
+
+// one per login, so a page left frees no one else's place
+function viewerOf(who: Who): string {
+  const c = who.credential;
+  return c.kind === "login" ? `login:${c.id}` : c.kind;
 }
 
 function keyed(raw: string): string {

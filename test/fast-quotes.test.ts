@@ -57,6 +57,7 @@ async function setup(symbols: string[], closed: string[] = []) {
   const s = sim([...symbols.map(CRYPTO), ...closed.map(US)]);
   const limited = await recorded("chart-429-chrome-ua");
   let refusal: Recorded | null = null;
+  let chartRefusal: Recorded | null = null;
   let down = false;
   const sparkAt: { at: number; symbols: string }[] = [];
   const charts: string[] = [];
@@ -65,6 +66,9 @@ async function setup(symbols: string[], closed: string[] = []) {
     if (down) throw new Error("no route to host");
     const chart = chartSymbol(url);
     if (chart !== null) charts.push(chart);
+    if (chart !== null && chart !== "BUSY" && chartRefusal !== null) {
+      return chartRefusal;
+    }
     // a job's call that holds a queue slot until released
     if (chart === "BUSY") {
       return new Promise<Recorded>((resolve) => {
@@ -109,8 +113,12 @@ async function setup(symbols: string[], closed: string[] = []) {
     answer(r: Recorded) {
       refusal = r;
     },
+    answerChart(r: Recorded) {
+      chartRefusal = r;
+    },
     allow() {
       refusal = null;
+      chartRefusal = null;
       down = false;
     },
     fail() {
@@ -133,14 +141,17 @@ describe("fast quotes", () => {
   test("a fresh quote makes no call; an older one makes one, shared by readers at once", async () => {
     const t = await setup(["C0-USD"]);
     const [c0] = t.instruments;
-    expect(await t.fast.refresh(c0!)).toBe(true);
+    expect(await t.fast.refresh(c0!, "v")).toBe(true);
     const before = t.sparks();
     await t.clock.advance(FAST_MS - 1);
-    expect(await t.fast.refresh(c0!)).toBe(true);
+    expect(await t.fast.refresh(c0!, "v")).toBe(true);
     expect(t.sparks()).toBe(before);
     await t.clock.advance(1);
     const was = readQuote(t.db, c0!.id)!.fetchedAt;
-    const both = await Promise.all([t.fast.refresh(c0!), t.fast.refresh(c0!)]);
+    const both = await Promise.all([
+      t.fast.refresh(c0!, "v"),
+      t.fast.refresh(c0!, "v"),
+    ]);
     expect(both).toEqual([true, true]);
     expect(t.sparks()).toBe(before + 1);
     expect(readQuote(t.db, c0!.id)!.fetchedAt).toBeGreaterThan(was);
@@ -151,10 +162,10 @@ describe("fast quotes", () => {
     await t.clock.advance(FAST_MS);
     const before = t.sparks();
     const [a, b, c, d] = t.instruments;
-    const asked = Promise.all([a, b, c].map((i) => t.fast.refresh(i!)));
+    const asked = Promise.all([a, b, c].map((i) => t.fast.refresh(i!, "v")));
     await t.clock.advance(2 * FAST_SPACING_MS);
     expect(await asked).toEqual([true, true, true]);
-    expect(await t.fast.refresh(d!)).toBe(false);
+    expect(await t.fast.refresh(d!, "v")).toBe(false);
     const calls = t.sparkAt.slice(before);
     expect(calls.map((c) => c.symbols)).toEqual(["C0-USD", "C1-USD", "C2-USD"]);
     const starts = calls.map((c) => c.at);
@@ -162,26 +173,26 @@ describe("fast quotes", () => {
     expect(starts[2]! - starts[1]!).toBe(FAST_SPACING_MS);
     // a page that stopped asking frees its slot
     await t.clock.advance(FAST_HOLD_MS);
-    expect(await t.fast.refresh(d!)).toBe(true);
+    expect(await t.fast.refresh(d!, "v")).toBe(true);
   });
 
   test("a page left frees its place for the next at once", async () => {
     const t = await setup(["C0-USD", "C1-USD", "C2-USD", "C3-USD"]);
     const [a, b, c, d] = t.instruments;
-    const asked = Promise.all([a, b, c].map((i) => t.fast.refresh(i!)));
+    const asked = Promise.all([a, b, c].map((i) => t.fast.refresh(i!, "v")));
     await t.clock.advance(2 * FAST_SPACING_MS);
     expect(await asked).toEqual([true, true, true]);
     // one never refreshed fast frees nothing
-    t.fast.release(d!);
-    t.fast.release({ ...d!, id: "US:ZZNOTHING" });
-    expect(await t.fast.refresh(d!)).toBe(false);
+    t.fast.release(d!, "v");
+    t.fast.release({ ...d!, id: "US:ZZNOTHING" }, "v");
+    expect(await t.fast.refresh(d!, "v")).toBe(false);
     const before = t.sparks();
-    t.fast.release(b!);
-    const next = t.fast.refresh(d!);
+    t.fast.release(b!, "v");
+    const next = t.fast.refresh(d!, "v");
     await t.clock.advance(FAST_SPACING_MS);
     expect(await next).toBe(true);
     expect(t.sparks()).toBe(before + 1);
-    expect(await t.fast.refresh(b!)).toBe(false);
+    expect(await t.fast.refresh(b!, "v")).toBe(false);
   });
 
   test("a closed market and another source make no call", async () => {
@@ -189,8 +200,8 @@ describe("fast quotes", () => {
     const [aapl] = t.instruments;
     await t.clock.advance(FAST_MS);
     const before = t.sparks();
-    expect(await t.fast.refresh(aapl!)).toBe(false);
-    expect(await t.fast.refresh({ ...aapl!, source: "fred" })).toBe(false);
+    expect(await t.fast.refresh(aapl!, "v")).toBe(false);
+    expect(await t.fast.refresh({ ...aapl!, source: "fred" }, "v")).toBe(false);
     expect(t.sparks()).toBe(before);
   });
 
@@ -200,7 +211,7 @@ describe("fast quotes", () => {
     await t.clock.advance(FAST_MS);
     const at = t.clock.now();
     t.refuse();
-    expect(await t.fast.refresh(c0!)).toBe(false);
+    expect(await t.fast.refresh(c0!, "v")).toBe(false);
     expect(t.client.backoff()).toEqual({
       until: at + RATE_LIMIT_BACKOFF_MS,
       after: "rate limited",
@@ -227,7 +238,7 @@ describe("fast quotes", () => {
     t.allow();
     const refused = t.sparks();
     await t.clock.advance(FAST_MS);
-    expect(await t.fast.refresh(c0!)).toBe(false);
+    expect(await t.fast.refresh(c0!, "v")).toBe(false);
     expect(t.sparks()).toBe(refused);
     // the pass goes again once the back-off ends, the resume logged once
     await t.clock.advance(RATE_LIMIT_BACKOFF_MS);
@@ -243,10 +254,10 @@ describe("fast quotes", () => {
     expect(t.sparks()).toBe(refused + 1);
     // fast refresh waits out its cool-down after the back-off
     await t.clock.advance(FAST_COOLDOWN_MS - 2 * FAST_MS);
-    expect(await t.fast.refresh(c0!)).toBe(false);
+    expect(await t.fast.refresh(c0!, "v")).toBe(false);
     expect(t.sparks()).toBe(refused + 1);
     await t.clock.advance(2 * FAST_MS);
-    expect(await t.fast.refresh(c0!)).toBe(true);
+    expect(await t.fast.refresh(c0!, "v")).toBe(true);
     expect(t.sparks()).toBe(refused + 2);
     expect(t.fastLines).toHaveLength(1);
     expect(t.queueLines).toHaveLength(2);
@@ -259,7 +270,7 @@ describe("fast quotes", () => {
     const before = t.sparks();
     const was = readQuote(t.db, c0!.id)?.fetchedAt ?? null;
     const release = t.busy();
-    const asked = t.fast.refresh(c0!);
+    const asked = t.fast.refresh(c0!, "v");
     await t.clock.advance(FAST_WAIT_MS);
     expect(await asked).toBe(true);
     expect(t.sparks()).toBe(before);
@@ -282,7 +293,7 @@ describe("fast quotes", () => {
       body: { spark: { result: null, error: { code: "Not Found" } } },
     });
     const charts = t.charts.length;
-    expect(await t.fast.refresh(c0!)).toBe(true);
+    expect(await t.fast.refresh(c0!, "v")).toBe(true);
     expect(t.charts.slice(charts)).toEqual(["C0-USD"]);
     expect(t.client.backoff()).toBeNull();
     expect(readQuote(t.db, c0!.id)!.fetchedAt).toBe(t.clock.now());
@@ -294,15 +305,15 @@ describe("fast quotes", () => {
     const [c0] = t.instruments;
     await t.clock.advance(FAST_MS);
     t.fail();
-    expect(await t.fast.refresh(c0!)).toBe(false);
+    expect(await t.fast.refresh(c0!, "v")).toBe(false);
     const paused = t.client.backoff();
     expect(paused?.after).toBe("network error");
     t.allow();
     await t.clock.advance(FAST_MS);
-    expect(await t.fast.refresh(c0!)).toBe(false);
+    expect(await t.fast.refresh(c0!, "v")).toBe(false);
     await t.clock.advance(paused!.until - t.clock.now());
     const before = t.sparks();
-    expect(await t.fast.refresh(c0!)).toBe(true);
+    expect(await t.fast.refresh(c0!, "v")).toBe(true);
     expect(t.sparks()).toBe(before + 1);
   });
 
@@ -312,8 +323,112 @@ describe("fast quotes", () => {
     await t.clock.advance(FAST_MS);
     const at = t.clock.now();
     t.refuse({ "retry-after": "600" });
-    expect(await t.fast.refresh(c0!)).toBe(false);
+    expect(await t.fast.refresh(c0!, "v")).toBe(false);
     expect(t.client.backoff()?.until).toBe(at + 10 * MINUTE_MS);
+  });
+  test("a place is the symbol's while any of its viewers still asks", async () => {
+    const t = await setup(["C0-USD", "C1-USD", "C2-USD", "C3-USD"]);
+    const [a, b, c, d] = t.instruments;
+    const asked = Promise.all([
+      t.fast.refresh(a!, "v1"),
+      t.fast.refresh(a!, "v2"),
+      t.fast.refresh(b!, "v3"),
+      t.fast.refresh(c!, "v4"),
+    ]);
+    await t.clock.advance(2 * FAST_SPACING_MS);
+    expect(await asked).toEqual([true, true, true, true]);
+    // past the cap the read answers at once, so a place taken would hang
+    const ask = async (i: (typeof t.instruments)[number], viewer: string) => {
+      const answer = t.fast.refresh(i!, viewer);
+      await t.clock.advance(FAST_WAIT_MS);
+      return answer;
+    };
+    t.fast.release(a!, "v1");
+    expect(await ask(d, "v5")).toBe(false);
+    expect(await ask(a, "v2")).toBe(true);
+    t.fast.release(a!, "v2");
+    const next = t.fast.refresh(d!, "v5");
+    await t.clock.advance(FAST_SPACING_MS);
+    expect(await next).toBe(true);
+  });
+
+  test("calls start spaced apart however late the queue frees", async () => {
+    const t = await setup(["C0-USD", "C1-USD", "C2-USD"]);
+    await t.clock.advance(FAST_MS);
+    const before = t.sparks();
+    const release = t.busy();
+    const at = t.clock.now();
+    const asked = Promise.all(
+      t.instruments.map((i) => t.fast.refresh(i!, "v")),
+    );
+    const late = FAST_SPACING_MS + 500;
+    await t.clock.advance(late);
+    await release();
+    await t.clock.advance(FAST_WAIT_MS);
+    expect(await asked).toEqual([true, true, true]);
+    // the third's turn comes past its wait, so it asks nothing
+    const starts = t.sparkAt.slice(before).map((c) => c.at - at);
+    expect(starts).toEqual([late, late + FAST_SPACING_MS]);
+    expect(t.client.backoff()).toBeNull();
+  });
+
+  test("a read past a stuck call's wait makes a call of its own", async () => {
+    const t = await setup(["C0-USD"]);
+    const [c0] = t.instruments;
+    await t.clock.advance(FAST_MS);
+    const before = t.sparks();
+    const release = t.busy();
+    const first = t.fast.refresh(c0!, "v");
+    await t.clock.advance(FAST_MS);
+    expect(await first).toBe(true);
+    const second = t.fast.refresh(c0!, "v");
+    await t.clock.advance(1_000);
+    await release();
+    await t.clock.advance(FAST_WAIT_MS);
+    expect(await second).toBe(true);
+    expect(t.sparks()).toBe(before + 1);
+  });
+
+  test("a symbol neither spark nor its chart knows backs nothing off", async () => {
+    const t = await setup(["C0-USD"]);
+    const [c0] = t.instruments;
+    await t.clock.advance(FAST_MS);
+    const was = readQuote(t.db, c0!.id)?.fetchedAt ?? null;
+    t.answer({
+      recordedAt: "",
+      status: 200,
+      headers: { "content-type": "application/json" },
+      body: { spark: { result: null, error: { code: "Not Found" } } },
+    });
+    t.answerChart(notFound);
+    expect(await t.fast.refresh(c0!, "v")).toBe(true);
+    expect(t.client.backoff()).toBeNull();
+    await t.clock.advance(FAST_MS);
+    t.answer({ ...notFound, status: 500 });
+    expect(await t.fast.refresh(c0!, "v")).toBe(true);
+    expect(t.client.backoff()).toBeNull();
+    expect(readQuote(t.db, c0!.id)?.fetchedAt ?? null).toBe(was);
+    expect(t.fastLines).toEqual([]);
+  });
+
+  test("a symbol is asked once each FAST_MS, answered with a quote or not", async () => {
+    const t = await setup(["C0-USD"]);
+    const [c0] = t.instruments;
+    await t.clock.advance(FAST_MS);
+    t.answer({
+      recordedAt: "",
+      status: 200,
+      headers: { "content-type": "application/json" },
+      body: { spark: { result: [{ symbol: "C0-USD", response: null }] } },
+    });
+    const before = t.sparks();
+    for (let k = 0; k < 5; k++) {
+      expect(await t.fast.refresh(c0!, `v${k}`)).toBe(true);
+      await t.clock.advance(FAST_SPACING_MS);
+    }
+    expect(t.sparks()).toBe(before + 1);
+    expect(await t.fast.refresh(c0!, "v0")).toBe(true);
+    expect(t.sparks()).toBe(before + 2);
   });
 });
 
