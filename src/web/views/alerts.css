@@ -270,6 +270,13 @@
   .card-flush > .al-more {
     border-top: 1px solid var(--separator);
   }
+  .al-find {
+    display: flex;
+    margin: 0 0 var(--space-3);
+  }
+  .al-none {
+    margin: var(--space-3) 0;
+  }
   .al-kept {
     margin: var(--space-3) 0 0;
     text-align: center;
@@ -289,6 +296,25 @@
     }
     .al-fig {
       font-size: var(--text-display-phone);
+    }
+    /* History's search has a row of its own, so it never folds to an icon */
+    .al-find .search {
+      margin: 0;
+    }
+    .al-find .search.search-shut {
+      flex: 1;
+      width: auto;
+      margin: 0;
+      padding: 0 0 0 10px;
+      justify-content: flex-start;
+      border-color: var(--line);
+      color: var(--faint);
+      cursor: text;
+    }
+    .al-find .search-shut .search-input {
+      position: static;
+      opacity: 1;
+      cursor: text;
     }
   }
 

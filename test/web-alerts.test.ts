@@ -18,6 +18,7 @@ import {
 } from "../src/web/data/alerts.ts";
 import type { PlanItem } from "../src/web/data/trade-plans.ts";
 import {
+  alertMatches,
   comparisonsOf,
   conditionLines,
   FIELD_WORDS,
@@ -36,6 +37,7 @@ import {
   standingOf,
   stateOf,
   treeOf,
+  triggerMatches,
   triggerText,
   whenLabel,
 } from "../src/web/views/Alerts.model.ts";
@@ -92,6 +94,22 @@ const alertOf = (when: string, extra: Partial<Alert> = {}): Alert => ({
 });
 
 describe("an alert in words", () => {
+  test("a search finds an alert by symbol, name, condition, note or state", () => {
+    const a = alertOf("price <= 80", { note: "Rung two", state: "paused" });
+    for (const q of [
+      "made",
+      "MADE up ag",
+      "at or below 80",
+      "rung two",
+      "paused",
+      "",
+    ]) {
+      expect(alertMatches(a, q, L)).toBe(true);
+    }
+    // every word must match somewhere
+    expect(alertMatches(a, "made zzz", L)).toBe(false);
+  });
+
   test("every field when takes has a label", () => {
     expect(Object.keys(FIELD_WORDS).sort()).toEqual(
       [...WHEN_FIELD_NAMES].sort(),
@@ -516,6 +534,33 @@ describe("the history page", () => {
       [1, null],
     ]);
     expect(historyGroups([], [met])).toBeNull();
+  });
+
+  test("a search keeps each trigger's standing from the whole history", () => {
+    const a = alertOf("price <= 80", {
+      state: "triggered",
+      now: [priced(79, 80, true, 0)],
+    });
+    const newer = { ...firing(2, a), note: "second" };
+    const older = { ...firing(1, a), note: "first" };
+    const g = historyGroups([newer, older], [a], (t) => t.note === "first")!;
+    // the newer trigger is hidden, yet the older one is still not met
+    expect(g.latest.trigger.id).toBe(1);
+    expect(g.latest.met).toBe(false);
+    expect(historyGroups([newer], [a], () => false)).toBeNull();
+  });
+
+  test("a search finds a trigger by symbol, name, what fired or note", () => {
+    const a = alertOf("price <= 80");
+    const t: Trigger = {
+      ...firing(1, a),
+      note: "Rung two",
+      values: { price: 79.5 },
+    };
+    for (const q of ["made", "MADE up ag", "79.50", "rung", ""]) {
+      expect(triggerMatches(t, q, L)).toBe(true);
+    }
+    expect(triggerMatches(t, "made zzz", L)).toBe(false);
   });
 
   test("a trigger's time reads alone today, then with its day", () => {

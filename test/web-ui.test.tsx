@@ -10,7 +10,7 @@ import { clearsFirst, Drawer, returnTo } from "../src/web/ui/Drawer.tsx";
 import { Change, Facts, Hero } from "../src/web/ui/Figures.tsx";
 import { MenuButton, MenuItems } from "../src/web/ui/Menu.tsx";
 import { Page } from "../src/web/ui/Page.tsx";
-import { Search } from "../src/web/ui/Search.tsx";
+import { echoOf, Search } from "../src/web/ui/Search.tsx";
 import { sparkLine } from "../src/web/ui/Spark.tsx";
 import {
   escapeFrom,
@@ -591,6 +591,15 @@ describe("the card and the search", () => {
     );
     expect(typed).not.toContain("search-shut");
     expect(typed).toContain('aria-label="Clear search"');
+  });
+
+  test("an older text the box sent is an echo, never a reset", () => {
+    // typed "a", "ab", "abc" before the page rendered "a" back
+    expect(echoOf(["a", "ab", "abc"], "a")).toEqual(["ab", "abc"]);
+    expect(echoOf(["ab", "abc"], "abc")).toEqual([]);
+    // a query set from elsewhere resets the box
+    expect(echoOf(["a", "ab"], "x")).toBeNull();
+    expect(echoOf([], "")).toBeNull();
   });
 });
 
