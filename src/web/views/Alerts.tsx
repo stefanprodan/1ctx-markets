@@ -23,11 +23,13 @@ import { Drawer } from "../ui/Drawer.tsx";
 import { MenuButton } from "../ui/Menu.tsx";
 import { Notice } from "../ui/Notice.tsx";
 import { didNotLoad, Page } from "../ui/Page.tsx";
+import { Search } from "../ui/Search.tsx";
 import { Segmented } from "../ui/Segmented.tsx";
 import { SymbolName } from "../ui/Symbol.tsx";
 import { type Column, Table } from "../ui/Table.tsx";
 import { Tabs } from "../ui/Tabs.tsx";
 import {
+  alertMatches,
   comparisonsOf,
   conditionLines,
   dayLabel,
@@ -55,6 +57,7 @@ import {
   type TileKey,
   timeText,
   treeOf,
+  triggerMatches,
   triggerText,
   whenLabel,
 } from "./Alerts.model.ts";
@@ -265,11 +268,15 @@ function ruleColumns(l: Listings): Column<Alert>[] {
 function RulesTab() {
   const tile = useSignal<TileKey>("all");
   const open = useSignal<number | null>(null);
+  const query = useSignal("");
   const rules = store.alerts.value;
   const triggers = store.history.value ?? [];
   const l = store.listings.value;
   const now = Date.now();
-  const sorted = rules === null ? [] : sortRules(rules);
+  // the search narrows every filter, so their counts follow it
+  const sorted = (rules === null ? [] : sortRules(rules)).filter((r) =>
+    alertMatches(r, query.value, l),
+  );
   const shown = sorted.filter((r) => inTile(tile.value, r, triggers, now));
   const rule = rules?.find((r) => r.id === open.value) ?? null;
   if (rules !== null && rules.length === 0) {
@@ -305,7 +312,11 @@ function RulesTab() {
           );
         })}
       </fieldset>
-      <Card label={TILES.find((t) => t.key === tile.value)!.name}>
+      <Card
+        title={TILES.find((t) => t.key === tile.value)!.name}
+        count={rules === null ? null : shown.length}
+        actions={<Search query={query} placeholder="Search alerts" />}
+      >
         <Table
           label="Price alerts"
           columns={ruleColumns(l)}
@@ -317,7 +328,12 @@ function RulesTab() {
             },
           })}
           rowLabel={(r) => ruleSummary(r, l)}
-          empty="None here."
+          empty={
+            // a match under another filter is not "no match"
+            sorted.length > 0 || query.value.trim() === ""
+              ? "None here."
+              : `No alert matches “${query.value}”.`
+          }
           head={!onPhone.value}
           waiting={rules === null ? 4 : undefined}
         />
@@ -559,6 +575,7 @@ function FiredTab() {
   const alerts = store.history.value;
   const rules = store.alerts.value ?? [];
   const opened = useSignal(false);
+  const query = useSignal("");
   // opening Fired sees the newest; leaving it ends the visit's dots
   useEffect(() => {
     if (alerts !== null) void store.markSeen();
@@ -576,7 +593,33 @@ function FiredTab() {
         />
       </Card>
     );
-  const g = historyGroups(alerts, rules);
+  const l = store.listings.value;
+  const g = historyGroups(alerts, rules, (t) =>
+    triggerMatches(t, query.value, l),
+  );
+  const find = (
+    <div class="al-find">
+      <Search query={query} placeholder="Search history" />
+    </div>
+  );
+  if (g === null && query.value.trim() !== "") {
+    return (
+      <>
+        {find}
+        <p class="faint al-none">No alert matches “{query.value}”.</p>
+        {store.next.value !== null && (
+          <button
+            type="button"
+            class="btn-text al-more"
+            disabled={store.more.value}
+            onClick={() => void store.loadMore()}
+          >
+            Show more
+          </button>
+        )}
+      </>
+    );
+  }
   if (g === null) {
     return (
       <Notice title="Nothing triggered yet" icon="bell">
@@ -602,6 +645,7 @@ function FiredTab() {
   );
   return (
     <>
+      {find}
       <Latest s={g.latest} now={now} />
       {g.met.length > 0 && (
         <Card flush class="al-live" label="Still met">

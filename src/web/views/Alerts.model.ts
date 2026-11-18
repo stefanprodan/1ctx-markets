@@ -22,7 +22,8 @@ import {
 import type { Alert, Listings, Now, Trigger } from "../data/alerts.ts";
 import type { PlanItem } from "../data/trade-plans.ts";
 import { amount } from "../lib/format.ts";
-import { tickerOf } from "../lib/names.ts";
+import { nameOf, tickerOf } from "../lib/names.ts";
+import { wordsMatch } from "./Portfolios.model.ts";
 
 export { FIELD_WORDS, OP_WORDS };
 
@@ -337,6 +338,31 @@ export function inTile(
   return true;
 }
 
+// the symbol, its name, the condition as read, the note or the state
+export function alertMatches(a: Alert, q: string, l: Listings): boolean {
+  const type = l[a.symbol]?.type;
+  return wordsMatch(
+    q,
+    tickerOf(a.symbol, type),
+    nameOf(l[a.symbol]?.name ?? null, type, a.symbol),
+    ruleSummary(a, l),
+    a.note,
+    STATE_WORDS[stateOf(a)],
+  );
+}
+
+// the symbol, its name, what triggered or the note
+export function triggerMatches(t: Trigger, q: string, l: Listings): boolean {
+  const type = l[t.symbol]?.type;
+  return wordsMatch(
+    q,
+    tickerOf(t.symbol, type),
+    nameOf(l[t.symbol]?.name ?? null, type, t.symbol),
+    triggerText(t, l),
+    t.note,
+  );
+}
+
 // nearest first, a symbol's alerts together, paused last
 export function sortRules(alerts: readonly Alert[]): Alert[] {
   const rank = (a: Alert) => {
@@ -487,10 +513,12 @@ export type HistoryGroups = {
 };
 
 // the newest trigger first, met or not, then the rest split by now; an
-// alert fires again only after it went false, so its older ones are gone
+// alert fires again only after it went false, so its older ones are gone.
+// The search keeps triggers after that, so a hidden newer one still counts
 export function historyGroups(
   triggers: readonly Trigger[],
   rules: readonly Alert[],
+  keep: (t: Trigger) => boolean = () => true,
 ): HistoryGroups | null {
   const newer = new Set<number>();
   const all = triggers.map((t) => {
@@ -499,7 +527,7 @@ export function historyGroups(
     newer.add(t.alert_id);
     return older ? { ...s, met: false, tag: null } : s;
   });
-  const [latest, ...rest] = all;
+  const [latest, ...rest] = all.filter((s) => keep(s.trigger));
   if (latest === undefined) return null;
   return {
     latest,

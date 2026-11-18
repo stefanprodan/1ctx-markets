@@ -10,6 +10,13 @@ import { useEffect, useRef } from "preact/hooks";
 import { Icon } from "../lib/icons.tsx";
 import "./search.css";
 
+// the writes still to come back when value is one the box sent, or null
+// when it came from elsewhere
+export function echoOf(sent: readonly string[], value: string) {
+  const own = sent.indexOf(value);
+  return own < 0 ? null : sent.slice(own + 1);
+}
+
 export function Search(
   props: {
     placeholder: string;
@@ -24,7 +31,7 @@ export function Search(
 ) {
   const { placeholder, delay = 0, children } = props;
   const value = "query" in props ? props.query.value : props.value;
-  const onChange =
+  const write =
     "query" in props
       ? (q: string) => {
           props.query.value = q;
@@ -34,9 +41,24 @@ export function Search(
   const open = useSignal(false);
   const input = useRef<HTMLInputElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // what the box wrote and the page has not yet rendered back: an effect
+  // runs after later keys, and resetting to its older text drops them
+  const sent = useRef<string[]>([]);
+  const onChange = (q: string) => {
+    // the same text again renders nothing, so nothing would take it off
+    if (q === (sent.current.at(-1) ?? value)) return;
+    sent.current.push(q);
+    write(q);
+  };
   // the query moved under the box (back, a link): the box follows,
   // and a write still pending would only put the old text back
   useEffect(() => {
+    const left = echoOf(sent.current, value);
+    if (left !== null) {
+      sent.current = left;
+      return;
+    }
+    sent.current = [];
     if (timer.current !== null) clearTimeout(timer.current);
     timer.current = null;
     text.value = value;

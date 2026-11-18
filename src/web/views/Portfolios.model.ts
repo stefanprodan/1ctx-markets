@@ -418,7 +418,10 @@ export function payFromLabel(d: DryPowder, choices: readonly DryPowder[]) {
 }
 
 // every word typed matches some field, so "nvda xtb" finds NVDA at XTB
-const has = (q: string, ...fields: (string | null | undefined)[]) => {
+export const wordsMatch = (
+  q: string,
+  ...fields: (string | null | undefined)[]
+) => {
   const text = fields.map((f) => (f ?? "").toLowerCase());
   return q
     .toLowerCase()
@@ -428,7 +431,7 @@ const has = (q: string, ...fields: (string | null | undefined)[]) => {
 };
 
 export const holdingMatches = (h: Holding, q: string): boolean =>
-  has(
+  wordsMatch(
     q,
     holdingTicker(h),
     h.name,
@@ -445,7 +448,7 @@ export const cashWord = (h: Holding): string =>
   h.dry_powder ? "Dry powder" : "Reserve";
 
 export const tradeMatches = (t: TradeRow, q: string): boolean =>
-  has(q, t.side, symbolOf(t.symbol), t.name, t.broker, t.note);
+  wordsMatch(q, t.side, symbolOf(t.symbol), t.name, t.broker, t.note);
 
 // ---- the page: value band, holdings, activity -----------------------------
 
