@@ -759,6 +759,10 @@ export const schemas: Record<string, Schema> = {
         ),
         "With `extended=true`: the pre- and post-market closes of the sessions answered (while the regular session trades, its pre-market), never stored; when empty, `extended_reason` says why.",
       ),
+      extended_session: note(
+        nullable(object({ start: str, end: str })),
+        "With `extended=true`: the newest session's pre-market start and post-market end, in UTC, from the same read as `extended_points`; null when not known: the listing has no pre or post trading, the read failed, or the session is older than the last two days the read covers, so null alone never means no extended trading.",
+      ),
       extended_reason: extendedReason(
         "Why `extended_points` is empty; null when it holds points.",
       ),

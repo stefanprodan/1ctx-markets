@@ -140,8 +140,16 @@ export type ExtendedPoint = {
 
 export type ExtendedCache = Map<
   string,
-  { until: number; read: ExtendedRead; points: ExtendedPoint[] }
+  {
+    until: number;
+    read: ExtendedRead;
+    points: ExtendedPoint[];
+    hours: ExtendedHours[];
+  }
 >;
+
+// a day's pre-market start to its post-market end
+export type ExtendedHours = { start: number; end: number };
 
 // by instrument and expiry, "listed" the answer asked without a date, for
 // the quote period it was fetched in

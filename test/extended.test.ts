@@ -16,6 +16,7 @@ import { EXTENDED } from "../src/market/stale.ts";
 import { markRead } from "../src/market/tracking.ts";
 import { alertsEdit, parseAlertsEdit } from "../src/operations/alerts.ts";
 import {
+  extendedHours,
   extendedPoints,
   heldOpen,
   heldUntil,
@@ -679,6 +680,8 @@ describe("the extended points of a chart's day", () => {
     const body = JSON.parse((r.content[0] as any).text);
     expect(body.extended_points).toEqual([]);
     expect(body.extended_reason).toBe(EXTENDED.outside);
+    // the recording names no hours of that day
+    expect(body.extended_session).toBeNull();
     const res = await api(t.m)(
       new Request(
         `http://markets.test/api/v1/instruments/US:HOOD/bars?interval=5m&extended=true&from=${old.from}&to=${old.to}`,
@@ -689,6 +692,38 @@ describe("the extended points of a chart's day", () => {
     const newest = JSON.parse(SESSIONS);
     expect(newest.extended_points.length).toBeGreaterThan(0);
     expect(newest.extended_reason).toBeNull();
+    // its day from the pre-market's start to the post-market's end
+    expect(newest.extended_session).toEqual({
+      start: "2026-10-27T08:00:00Z",
+      end: "2026-10-28T00:00:00Z",
+    });
+  });
+
+  test("a day's hours run from its pre window's start to its post window's end", async () => {
+    const fx = await recorded(hoodChart());
+    const answer = parseIntraday(fx.body, Date.parse(fx.recordedAt));
+    expect(extendedHours(answer)).toEqual([
+      {
+        start: Date.parse("2026-10-26T08:00:00Z"),
+        end: Date.parse("2026-10-27T00:00:00Z"),
+      },
+      {
+        start: Date.parse("2026-10-27T08:00:00Z"),
+        end: Date.parse("2026-10-28T00:00:00Z"),
+      },
+    ]);
+    // a missing window keeps the regular edge on its side
+    const { pre, regular } = answer.windows;
+    const noPost = {
+      ...answer,
+      windows: { pre, regular, post: [] },
+    };
+    expect(extendedHours(noPost).at(-1)).toEqual({
+      start: Date.parse("2026-10-27T08:00:00Z"),
+      end: Date.parse("2026-10-27T20:00:00Z"),
+    });
+    // a listing without pre or post trading has none, whatever its windows
+    expect(extendedHours({ ...answer, prePost: false })).toEqual([]);
   });
 
   test("are the last close of each 5 minutes, pre and post only, in order", async () => {
@@ -954,12 +989,13 @@ describe("the extended cache", () => {
     const t = await setup({ window: OVERNIGHT });
     await t.client.spark(SYMBOLS);
     await ask(t.m);
-    const held = t.m.extended.get("US:HOOD")!.points;
+    const { points: held, hours } = t.m.extended.get("US:HOOD")!;
     expect(held.length).toBeGreaterThan(0);
+    expect(hours.length).toBeGreaterThan(0);
     await t.clock.advance(3 * t.m.quoteEveryMs);
     const hood = readInstrument(t.db, "US:HOOD")!;
     const points = await readExtendedPoints(t.m, hood, t.clock.now() + CALL_MS);
-    expect(points).toEqual({ points: held, reason: null });
+    expect(points).toEqual({ points: held, hours, reason: null });
     expect(t.charted("HOOD")).toHaveLength(1);
   });
 });

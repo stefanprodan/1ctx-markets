@@ -159,7 +159,7 @@ area's own tools are in its doc.
 | Tool | Takes | Answers |
 |---|---|---|
 | `quote` | `symbols`, `benchmark`, `extended`, `next` | per symbol a `QuoteItem` (`quote.ts`) with `returns`, `session`, with a benchmark `relative_return_1m`, `_3m`, `relative_to`, `relative_live` and, across currencies, `relative_note`, with `extended` true `extended`, `extended_reason` and `opens`; for a key with trade plans access, `trade_plans` when the caller has active plans tagged with it |
-| `history` | `symbol`, `interval`, `from`, `to`, `benchmark`, `extended`, `next` | bars oldest first with `final` and signals; `session`; `relative`; with `5m`, `points` and `sessions`, and `extended_points` with `extended_reason` when `extended` |
+| `history` | `symbol`, `interval`, `from`, `to`, `benchmark`, `extended`, `next` | bars oldest first with `final` and signals; `session`; `relative`; with `5m`, `points` and `sessions`, and `extended_points` with `extended_reason` and `extended_session` when `extended` |
 | `search` | `query`, `next` | up to 20 stored matches, then up to 20 Bucharest listings from the stored list pages while the feed is on, then Yahoo's, each with id, exchange, type, name, `source`, `stored`; a listing Yahoo found adds `exchange_name`, the exchange in Yahoo's words, the stored copy of it too, and a stored one its `currency`, so one fund on several exchanges reads apart; a Bucharest listing adds its `isin`; last, up to 20 CFTC futures markets from the held list (`CFTC:<code>`, `name`, `source` `cftc`, `latest_report`), for research's `positioning` only |
 | `movers` | `symbols`, `min_move_pct`, `direction`, `average`, `relation`, `next` | matches by absolute change, largest first; `counts` |
 | `screen` | `symbols`, `filters`, `benchmark`, `sort`, `order`, `fields`, `next` | matches with each used and asked field's value, unit, kind and date; `counts` |
@@ -274,8 +274,15 @@ area's own tools are in its doc.
   the list empty and the points stand, and nothing of it is stored. An empty
   list comes with `extended_reason`, quote's reasons or `none in the
   sessions answered` when the read held points of other sessions only,
-  so it never reads as no trading; null with points. Asked with
-  another interval it is `bad_arguments`.
+  so it never reads as no trading; null with points.
+  `extended_session` is the newest session answered from its pre-market
+  start to its post-market end (`extendedHours()`: each regular window
+  with the pre and post windows that touch it, as the source names
+  them), from the same read, so a day's chart spans the hours it may
+  trade; null when not known: a listing without pre or post trading, a
+  failed read, or a session older than the read's last two days
+  (`INTRADAY_RANGE`), so null alone never reads as no extended trading.
+  Asked with another interval it is `bad_arguments`.
 - **history's `5m` cursor holds the next point's `at` and the resolved
   `from` and `to`**, never a session date, which would repeat a page
   inside a session, so a session added between pages never moves the

@@ -3,6 +3,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { recordSession, session } from "../src/market/calendars.ts";
+import { iso } from "../src/market/format.ts";
 import { upsertInstrument } from "../src/market/instruments.ts";
 import {
   INTRADAY_SESSIONS,
@@ -482,11 +483,16 @@ describe("history with interval 5m", () => {
     expect(open.body.extended_points).toEqual([]);
     expect(open.body.extended_reason).toBe(EXTENDED.failed);
     const point = { at: now, session: "post" as const, close: 1 };
-    expect(extendedOut({ points: [point], reason: null })).toMatchObject({
+    const hours = { start: now - 60_000, end: now + 60_000 };
+    expect(
+      extendedOut({ points: [point], hours: [hours], reason: null }),
+    ).toMatchObject({
+      extended_session: { start: iso(hours.start), end: iso(hours.end) },
       extended_reason: null,
     });
-    expect(extendedOut({ points: [], reason: null })).toEqual({
+    expect(extendedOut({ points: [], hours: [], reason: null })).toEqual({
       extended_points: [],
+      extended_session: null,
       extended_reason: EXTENDED.outside,
     });
   });

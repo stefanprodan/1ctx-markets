@@ -116,6 +116,7 @@ import {
   clearOfTags,
   DEFAULT_SETTINGS,
   DESK,
+  daySlots,
   drawnRange,
   extendedLines,
   fromOf,
@@ -139,6 +140,7 @@ import {
   sessionSlots,
   tick,
   timeLabel,
+  timeTick,
   volumes,
 } from "../src/web/views/Chart.model.ts";
 import { Chart, LegendLine, paintOptions } from "../src/web/views/Chart.tsx";
@@ -3622,6 +3624,98 @@ describe("the chart model", () => {
       }),
     ).toEqual([]);
     expect(sessionSlots([at("13:30")], null)).toEqual([]);
+  });
+
+  test("1D labels every tick with its time, longer ranges a new day by date", () => {
+    // the post-market's end crosses UTC midnight, a day mark to the library
+    expect(timeTick("1D", false)).toBe(true);
+    expect(timeTick("1D", true)).toBe(true);
+    expect(timeTick("5D", false)).toBe(false);
+    expect(timeTick("5D", true)).toBe(true);
+    expect(timeTick("1M", false)).toBe(false);
+  });
+
+  test("a day's chart has a slot for every empty 5 minutes to its end", () => {
+    const at = (hhmm: string) => Date.parse(`2026-10-29T${hhmm}:00Z`) / 1000;
+    const open = {
+      state: "open" as const,
+      start: "2026-10-29T13:30:00Z",
+      end: "2026-10-29T20:00:00Z",
+    };
+    const hours = {
+      start: "2026-10-29T08:00:00Z",
+      end: "2026-10-30T00:00:00Z",
+    };
+    // a share trading after hours spans to its post-market's end
+    const day = daySlots([at("08:00"), at("13:30"), at("13:35")], open, hours);
+    expect(day.at(-1)).toBe(Date.parse("2026-10-30T00:00:00Z") / 1000);
+    // a gap in the pre-market is filled, the points' own times left out
+    expect(day.slice(0, 2)).toEqual([at("08:05"), at("08:10")]);
+    expect(day).not.toContain(at("13:30"));
+    expect(day.filter((t) => t < at("13:30"))).toHaveLength(65);
+    expect(day.filter((t) => t > at("13:35"))).toHaveLength(125);
+    // a point between slots takes the slot it falls in
+    expect(daySlots([at("13:30"), at("13:42")], open)).toContain(at("13:35"));
+    expect(daySlots([at("13:30"), at("13:42")], open)).not.toContain(
+      at("13:40"),
+    );
+    // a market with no post window keeps its regular end
+    for (const none of [undefined, null]) {
+      expect(daySlots([at("13:30"), at("13:35")], open, none).at(-1)).toBe(
+        at("20:00"),
+      );
+    }
+    // a series already past the frame adds no slots after it
+    expect(daySlots([at("13:30"), at("20:00")], open)).toHaveLength(77);
+    expect(daySlots([at("13:30"), at("20:00")], open).at(-1)).toBe(at("19:55"));
+    expect(
+      daySlots([at("13:30"), at("13:35")], null, {
+        start: "2026-10-30T08:00:00Z",
+        end: "2026-10-31T00:00:00Z",
+      }),
+    ).toEqual([]);
+    expect(daySlots([], open, hours)).toEqual([]);
+  });
+
+  test("the legend over an empty slot reads the price before it", () => {
+    const h: Intraday = {
+      instrument: { id: "US:A", unit: "per_share" },
+      interval: "5m",
+      session: { state: "open" },
+      previous_close: 100,
+      points: [
+        {
+          at: "2026-10-21T13:30:00Z",
+          session: "2026-10-21",
+          close: 101,
+          final: true,
+        },
+        {
+          at: "2026-10-21T14:00:00Z",
+          session: "2026-10-21",
+          close: 102,
+          final: false,
+        },
+      ],
+      extended_points: [
+        { at: "2026-10-21T08:00:00Z", session: "pre", close: 98 },
+      ],
+    };
+    const t = (hhmm: string) => Date.parse(`2026-10-21T${hhmm}:00Z`) / 1000;
+    expect(pointLegendOf(h, t("09:00"), "UTC")).toMatchObject({
+      time: "08:00",
+      close: 98,
+      session: "pre",
+    });
+    const gap = pointLegendOf(h, t("13:45"), "UTC");
+    expect(gap).toMatchObject({ time: "13:30", close: 101, live: false });
+    expect(gap?.session).toBeUndefined();
+    // past the last price, the newest one, live while it trades
+    expect(pointLegendOf(h, t("15:00"), "UTC")).toMatchObject({
+      time: "14:00",
+      close: 102,
+      live: true,
+    });
   });
 
   test("kept settings fall back field by field", () => {

@@ -220,7 +220,9 @@ MCP tools copied onto paths.
   `points[]` with `at`, `session`, `close`, `final`; `sessions[]` with
   each one's `fetched_at`; `previous_close`; and with `extended=true`
   `extended_points`, for the whole range, unpaged, with
-  `extended_reason` saying why when it is empty (`docs/storage.md`).
+  `extended_reason` saying why when it is empty (`docs/storage.md`),
+  and `extended_session`, the newest session's pre-market start and
+  post-market end (`docs/tools.md`).
   Its `instrument` has no `basis`: the points are closes as stored.
   `benchmark` with `5m`, and `extended` with `1d` or `1wk`, are
   `bad_arguments`.

@@ -45,6 +45,7 @@ import {
   closes,
   DESK,
   dayOf,
+  daySlots,
   drawnFor,
   extendedLines,
   fromOf,
@@ -73,10 +74,10 @@ import {
   readRange,
   readSettings,
   type Settings,
-  sessionSlots,
   type TradeMark,
   tick,
   timeLabel,
+  timeTick,
   tradeMarks,
   untilRead,
   volumes,
@@ -685,11 +686,13 @@ export function Chart({
         fixLeftEdge: true,
         fixRightEdge: true,
         rightOffset: 0,
+        // a new UTC day is a major tick, drawn bold among a day's hours
+        allowBoldLabels: shown.value !== "1D",
         timeVisible: h.interval === "5m",
         tickMarkFormatter: (time: unknown, type: number) => {
           const at = typeof time === "number" ? localTime(time) : null;
           const text =
-            at !== null && type >= l.TickMarkType.Time
+            at !== null && timeTick(shown.value, type >= l.TickMarkType.Time)
               ? at.time
               : tick(
                   at?.date ?? dateOf(time),
@@ -819,10 +822,12 @@ export function Chart({
           session: h.extended_points![i]!.session,
         })),
       );
-      const slots = sessionSlots(
-        values.map((v) => v.time),
+      const drawn = [...pre.slice(0, -1), ...values, ...post.slice(1)];
+      const slots = daySlots(
+        drawn.map((v) => v.time),
         h.session,
-      ).map((t) => ({ time: t as UTCTimestamp }));
+        h.extended_session,
+      );
       const s = day(values, false, post.length === 0);
       const at = levelsOf(
         base,
@@ -830,7 +835,16 @@ export function Chart({
       );
       if (at) levels.current = { s, at };
       if (slots.length > 0) {
-        s.setData([...values, ...slots]);
+        // a series of its own: whitespace inside a line would break it
+        const room = c.addSeries(l.LineSeries, {
+          priceLineVisible: false,
+          lastValueVisible: false,
+          crosshairMarkerVisible: false,
+        });
+        room.setData(slots.map((t) => ({ time: t as UTCTimestamp })));
+        series.current.push(room);
+      }
+      if ((slots.at(-1) ?? 0) > (drawn.at(-1)?.time ?? 0)) {
         // a fixed right edge pins the last price there, pushing the slots out
         // and a little room keeps the close's label whole
         c.applyOptions({ timeScale: { fixRightEdge: false, rightOffset: 3 } });
