@@ -34,17 +34,21 @@ const VERB: Record<KeyAccess, string | null> = {
 
 // said only for what it has, as many keys reach neither
 export function accessWords(k: AgentKey): string | null {
+  const areas: [KeyAccess, string][] = [
+    [k.portfolio ?? "none", "portfolios"],
+    [k.alerts ?? "none", "alerts"],
+    [k.profile ?? "none", "the profile"],
+    [k.analysis ?? "none", "analyses"],
+    [k.trade_plans ?? "none", "trade plans"],
+  ];
   const said: string[] = [];
-  const portfolio = VERB[k.portfolio ?? "none"];
-  if (portfolio !== null) said.push(`${portfolio} portfolios`);
-  const alerts = VERB[k.alerts ?? "none"];
-  if (alerts !== null) said.push(`${alerts} alerts`);
-  const profile = VERB[k.profile ?? "none"];
-  if (profile !== null) said.push(`${profile} the profile`);
-  const analysis = VERB[k.analysis ?? "none"];
-  if (analysis !== null) said.push(`${analysis} analyses`);
-  const plans = VERB[k.trade_plans ?? "none"];
-  if (plans !== null) said.push(`${plans} trade plans`);
+  for (const level of ["write", "read"] as const) {
+    const named = areas.filter(([a]) => a === level).map(([, n]) => n);
+    if (named.length === 0) continue;
+    const what =
+      named.length === areas.length ? "everything" : named.join(", ");
+    said.push(`${VERB[level]} ${what}`);
+  }
   return said.length === 0 ? null : said.join(" · ");
 }
 

@@ -396,15 +396,14 @@ describe("Connect agents for an admin", () => {
     await s.loadKeys();
     s.me.value = OPERATOR;
     const html = render(<Keys store={s} shown={{ value: null } as any} />);
-    expect(html).toContain(">Owner<");
-    expect(html).toContain("Ana");
+    // an admin's list names each key's owner under its name
+    expect(html).toContain('class="cut faint connect-key-owner">Ana<');
     expect(html).toContain("1 of 1");
     expect(ownKey(keys[1]!, OPERATOR.id)).toBe(false);
     expect(ownKey(keys[0]!, OPERATOR.id)).toBe(true);
-    // a member's list is theirs alone, with no Owner column
-    expect(
-      keyColumns(keys, NOW, false).find((c) => c.key === "owner")?.show,
-    ).toBe(false);
+    // a member's list is theirs alone, with no owner named
+    const mine = render(<>{keyColumns(keys, NOW, false)[0]!.cell(keys[1]!)}</>);
+    expect(mine).not.toContain("connect-key-owner");
   });
 });
 

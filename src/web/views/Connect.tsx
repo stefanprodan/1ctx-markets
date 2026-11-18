@@ -475,43 +475,42 @@ export function keyColumns(
     {
       key: "name",
       head: "Name",
-      width: "minmax(0, 1.4fr)",
-      cell: (k) => <span class="cut">{k.name}</span>,
-    },
-    {
-      key: "owner",
-      head: "Owner",
       width: "minmax(0, 1fr)",
-      show: owners,
-      cell: (k) => <span class="cut faint">{k.owner?.name ?? ""}</span>,
-    },
-    {
-      key: "used",
-      head: "Last used",
-      width: "minmax(0, 1fr)",
-      hide: "phone",
-      cell: (k) => <span class="faint">{usedWords(k, now)}</span>,
-    },
-    {
-      key: "expires",
-      head: "Expires",
-      width: { base: "minmax(0, 1fr)", phone: "100px" },
-      align: "end",
       cell: (k) => (
-        <span class={expired(k, now) ? "error" : "faint"}>
-          {expiryWords(k, now)}
+        <span class="connect-key">
+          <span class="cut">{k.name}</span>
+          {owners && k.owner && (
+            <span class="cut faint connect-key-owner">{k.owner.name}</span>
+          )}
         </span>
       ),
     },
     {
       key: "access",
       head: "Access",
-      width: "minmax(0, 1.4fr)",
-      align: "end",
+      width: "minmax(0, 1.6fr)",
       hide: "phone",
       // many keys reach no portfolio, rule, profile or analysis
       show: keys.some((k) => accessWords(k) !== null),
       cell: (k) => <span class="faint">{accessWords(k) ?? ""}</span>,
+    },
+    {
+      key: "used",
+      head: "Last used",
+      width: "minmax(0, 0.7fr)",
+      hide: "phone",
+      cell: (k) => <span class="faint">{usedWords(k, now)}</span>,
+    },
+    {
+      key: "expires",
+      head: "Expires",
+      width: { base: "minmax(0, 0.6fr)", phone: "100px" },
+      align: "end",
+      cell: (k) => (
+        <span class={expired(k, now) ? "error" : "faint"}>
+          {expiryWords(k, now)}
+        </span>
+      ),
     },
   ];
 }

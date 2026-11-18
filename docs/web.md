@@ -663,8 +663,10 @@ Portfolios page is the reference for each part.
 - **Connect agents** (`/connect`) lists the person's keys from
   `GET /api/v1/keys`, counted against the answer's `limit` (`capLine`),
   and makes, changes and revokes them. An admin's list holds everyone's
-  keys with their owner; another person's key opens with its picks off,
-  Revoke only. A key's access shows only what it has. A new key's
+  keys, each owner's name under the key's; another person's key opens
+  with its picks off, Revoke only. A key's access shows only what it
+  has, on one line grouped by level (`Writes everything`, `Writes
+  portfolios, alerts · Reads the profile`). A new key's
   access is none by default (the profile and trade plans are personal,
   so a key reaches them only when picked). At the cap, New key goes. A
   revoke that answers 404 drops the row and its drawer.
