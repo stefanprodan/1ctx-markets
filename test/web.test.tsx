@@ -2526,19 +2526,41 @@ describe("connect agents", () => {
     expect(accessWords(agentKey("a", { alerts: "read" }))).toBe("Reads alerts");
     expect(
       accessWords(agentKey("a", { portfolio: "write", alerts: "write" })),
-    ).toBe("Writes portfolios · Writes alerts");
+    ).toBe("Writes portfolios, alerts");
     expect(accessWords(agentKey("a", { portfolio: "read" }))).toBe(
       "Reads portfolios",
     );
     expect(
       accessWords(agentKey("a", { alerts: "read", profile: "write" })),
-    ).toBe("Reads alerts · Writes the profile");
+    ).toBe("Writes the profile · Reads alerts");
     expect(accessWords(agentKey("a", { analysis: "read" }))).toBe(
       "Reads analyses",
     );
     expect(
       accessWords(agentKey("a", { analysis: "read", trade_plans: "write" })),
-    ).toBe("Reads analyses · Writes trade plans");
+    ).toBe("Writes trade plans · Reads analyses");
+    const all = {
+      portfolio: "write",
+      alerts: "write",
+      profile: "write",
+      analysis: "write",
+      trade_plans: "write",
+    } as const;
+    expect(accessWords(agentKey("a", all))).toBe("Writes everything");
+    expect(
+      accessWords(
+        agentKey("a", {
+          portfolio: "read",
+          alerts: "read",
+          profile: "read",
+          analysis: "read",
+          trade_plans: "read",
+        }),
+      ),
+    ).toBe("Reads everything");
+    expect(accessWords(agentKey("a", { ...all, alerts: "read" }))).toBe(
+      "Writes portfolios, the profile, analyses, trade plans · Reads alerts",
+    );
   });
 
   test("New key and a key's details pick each access with the app's own buttons", () => {

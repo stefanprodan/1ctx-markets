@@ -48,4 +48,14 @@
     flex-shrink: 0;
     margin: 2px 2px 0 0;
   }
+
+  /* an admin's list names each key's owner under it */
+  .connect-key {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .connect-key-owner {
+    font-size: var(--text-small);
+  }
 }
